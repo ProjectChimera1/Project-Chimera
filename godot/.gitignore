@@ -1,0 +1,17 @@
+# Godot 4 .gitignore
+.godot/
+*.translation
+
+# .NET / C#
+.mono/
+bin/
+obj/
+*.user
+*.suo
+*.cache
+data_*/
+
+# OS junk
+.DS_Store
+Thumbs.db
+desktop.ini
