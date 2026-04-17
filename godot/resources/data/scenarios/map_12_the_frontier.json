@@ -1,0 +1,56 @@
+{
+  "id": "map_12_the_frontier",
+  "display_name": "The Frontier",
+  "terrain_ref": "",
+  "map_bounds": 160.0,
+  "win_condition": "DestroyAllBuildings",
+
+  "player_slots": [
+    {
+      "slot": 0,
+      "faction_json": "res://resources/data/factions/alpha_faction.json",
+      "start_ore": 150.0,
+      "base_x": -80.0,
+      "base_z": 0.0
+    },
+    {
+      "slot": 1,
+      "faction_json": "res://resources/data/factions/beta_faction.json",
+      "start_ore": 150.0,
+      "base_x":  80.0,
+      "base_z": 0.0
+    }
+  ],
+
+  "resource_nodes": [
+    { "x": -75.0, "z": -20.0, "supply": 600.0, "rate": 5.0, "max_gatherers": 4 },
+    { "x": -75.0, "z":  20.0, "supply": 600.0, "rate": 5.0, "max_gatherers": 4 },
+    { "x": -55.0, "z":   0.0, "supply": 500.0, "rate": 5.0, "max_gatherers": 4 },
+    { "x": -55.0, "z": -30.0, "supply": 400.0, "rate": 4.0, "max_gatherers": 3 },
+
+    { "x": -20.0, "z": -25.0, "supply": 750.0, "rate": 6.0, "max_gatherers": 4 },
+    { "x": -20.0, "z":  25.0, "supply": 750.0, "rate": 6.0, "max_gatherers": 4 },
+    { "x":   0.0, "z":   0.0, "supply": 1000.0, "rate": 8.0, "max_gatherers": 6 },
+    { "x":  20.0, "z": -25.0, "supply": 750.0, "rate": 6.0, "max_gatherers": 4 },
+    { "x":  20.0, "z":  25.0, "supply": 750.0, "rate": 6.0, "max_gatherers": 4 },
+
+    { "x":  55.0, "z":  30.0, "supply": 400.0, "rate": 4.0, "max_gatherers": 3 },
+    { "x":  55.0, "z":   0.0, "supply": 500.0, "rate": 5.0, "max_gatherers": 4 },
+    { "x":  75.0, "z":  20.0, "supply": 600.0, "rate": 5.0, "max_gatherers": 4 },
+    { "x":  75.0, "z": -20.0, "supply": 600.0, "rate": 5.0, "max_gatherers": 4 }
+  ],
+
+  "buildings": [
+    { "type": "CommandCenter", "slot": 0, "x": -80.0, "z": 0.0, "pre_built": true },
+    { "type": "CommandCenter", "slot": 1, "x":  80.0, "z": 0.0, "pre_built": true }
+  ],
+
+  "units": [
+    { "unit_id": "worker", "slot": 0, "x": -77.0, "z": -4.0 },
+    { "unit_id": "worker", "slot": 0, "x": -77.0, "z":  4.0 },
+    { "unit_id": "worker", "slot": 0, "x": -83.0, "z": -4.0 },
+    { "unit_id": "forgehand", "slot": 1, "x":  77.0, "z": -4.0 },
+    { "unit_id": "forgehand", "slot": 1, "x":  77.0, "z":  4.0 },
+    { "unit_id": "forgehand", "slot": 1, "x":  83.0, "z": -4.0 }
+  ]
+}

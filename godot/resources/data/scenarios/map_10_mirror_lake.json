@@ -1,0 +1,54 @@
+{
+  "id": "map_10_mirror_lake",
+  "display_name": "Mirror Lake",
+  "terrain_ref": "",
+  "map_bounds": 130.0,
+  "win_condition": "DestroyAllBuildings",
+
+  "player_slots": [
+    {
+      "slot": 0,
+      "faction_json": "res://resources/data/factions/alpha_faction.json",
+      "start_ore": 250.0,
+      "base_x": -60.0,
+      "base_z": -40.0
+    },
+    {
+      "slot": 1,
+      "faction_json": "res://resources/data/factions/beta_faction.json",
+      "start_ore": 250.0,
+      "base_x":  60.0,
+      "base_z":  40.0
+    }
+  ],
+
+  "resource_nodes": [
+    { "x": -55.0, "z": -18.0, "supply": 700.0, "rate": 6.0, "max_gatherers": 4 },
+    { "x": -38.0, "z": -52.0, "supply": 700.0, "rate": 6.0, "max_gatherers": 4 },
+
+    { "x": -20.0, "z": -10.0, "supply": 550.0, "rate": 5.0, "max_gatherers": 4 },
+    { "x": -10.0, "z": -35.0, "supply": 550.0, "rate": 5.0, "max_gatherers": 4 },
+
+    { "x":   0.0, "z":   0.0, "supply": 900.0, "rate": 7.0, "max_gatherers": 5 },
+
+    { "x":  10.0, "z":  35.0, "supply": 550.0, "rate": 5.0, "max_gatherers": 4 },
+    { "x":  20.0, "z":  10.0, "supply": 550.0, "rate": 5.0, "max_gatherers": 4 },
+
+    { "x":  38.0, "z":  52.0, "supply": 700.0, "rate": 6.0, "max_gatherers": 4 },
+    { "x":  55.0, "z":  18.0, "supply": 700.0, "rate": 6.0, "max_gatherers": 4 }
+  ],
+
+  "buildings": [
+    { "type": "CommandCenter", "slot": 0, "x": -60.0, "z": -40.0, "pre_built": true },
+    { "type": "CommandCenter", "slot": 1, "x":  60.0, "z":  40.0, "pre_built": true }
+  ],
+
+  "units": [
+    { "unit_id": "worker", "slot": 0, "x": -57.0, "z": -37.0 },
+    { "unit_id": "worker", "slot": 0, "x": -57.0, "z": -43.0 },
+    { "unit_id": "worker", "slot": 0, "x": -63.0, "z": -37.0 },
+    { "unit_id": "forgehand", "slot": 1, "x":  57.0, "z":  37.0 },
+    { "unit_id": "forgehand", "slot": 1, "x":  57.0, "z":  43.0 },
+    { "unit_id": "forgehand", "slot": 1, "x":  63.0, "z":  37.0 }
+  ]
+}

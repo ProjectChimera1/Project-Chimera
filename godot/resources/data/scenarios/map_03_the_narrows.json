@@ -1,0 +1,45 @@
+{
+  "id": "map_03_the_narrows",
+  "display_name": "The Narrows",
+  "terrain_ref": "",
+  "map_bounds": 90.0,
+  "win_condition": "DestroyAllBuildings",
+
+  "player_slots": [
+    {
+      "slot": 0,
+      "faction_json": "res://resources/data/factions/alpha_faction.json",
+      "start_ore": 150.0,
+      "base_x": -55.0,
+      "base_z": 0.0
+    },
+    {
+      "slot": 1,
+      "faction_json": "res://resources/data/factions/alpha_faction.json",
+      "start_ore": 150.0,
+      "base_x": 55.0,
+      "base_z": 0.0
+    }
+  ],
+
+  "resource_nodes": [
+    { "x": -20.0, "z":  -8.0, "supply": 700.0, "rate": 6.0, "max_gatherers": 4 },
+    { "x": -20.0, "z":   8.0, "supply": 700.0, "rate": 6.0, "max_gatherers": 4 },
+    { "x":  20.0, "z":  -8.0, "supply": 700.0, "rate": 6.0, "max_gatherers": 4 },
+    { "x":  20.0, "z":   8.0, "supply": 700.0, "rate": 6.0, "max_gatherers": 4 },
+    { "x":   0.0, "z": -15.0, "supply": 1000.0, "rate": 7.0, "max_gatherers": 5 },
+    { "x":   0.0, "z":  15.0, "supply": 1000.0, "rate": 7.0, "max_gatherers": 5 }
+  ],
+
+  "buildings": [
+    { "type": "CommandCenter", "slot": 0, "x": -55.0, "z": 0.0, "pre_built": true },
+    { "type": "CommandCenter", "slot": 1, "x":  55.0, "z": 0.0, "pre_built": true }
+  ],
+
+  "units": [
+    { "unit_id": "worker", "slot": 0, "x": -52.0, "z": -3.0 },
+    { "unit_id": "worker", "slot": 0, "x": -52.0, "z":  3.0 },
+    { "unit_id": "worker", "slot": 1, "x":  52.0, "z": -3.0 },
+    { "unit_id": "worker", "slot": 1, "x":  52.0, "z":  3.0 }
+  ]
+}

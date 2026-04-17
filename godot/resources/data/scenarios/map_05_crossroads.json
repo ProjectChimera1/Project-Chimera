@@ -1,0 +1,50 @@
+{
+  "id": "map_05_crossroads",
+  "display_name": "Crossroads",
+  "terrain_ref": "",
+  "map_bounds": 120.0,
+  "win_condition": "EliminateAllUnits",
+
+  "player_slots": [
+    {
+      "slot": 0,
+      "faction_json": "res://resources/data/factions/alpha_faction.json",
+      "start_ore": 300.0,
+      "base_x": 0.0,
+      "base_z": -50.0
+    },
+    {
+      "slot": 1,
+      "faction_json": "res://resources/data/factions/beta_faction.json",
+      "start_ore": 300.0,
+      "base_x": 0.0,
+      "base_z": 50.0
+    }
+  ],
+
+  "resource_nodes": [
+    { "x": -25.0, "z": -25.0, "supply": 500.0, "rate": 5.0, "max_gatherers": 4 },
+    { "x":  25.0, "z": -25.0, "supply": 500.0, "rate": 5.0, "max_gatherers": 4 },
+    { "x": -25.0, "z":  25.0, "supply": 500.0, "rate": 5.0, "max_gatherers": 4 },
+    { "x":  25.0, "z":  25.0, "supply": 500.0, "rate": 5.0, "max_gatherers": 4 },
+    { "x": -40.0, "z":   0.0, "supply": 400.0, "rate": 5.0, "max_gatherers": 4 },
+    { "x":  40.0, "z":   0.0, "supply": 400.0, "rate": 5.0, "max_gatherers": 4 },
+    { "x":   0.0, "z":   0.0, "supply": 900.0, "rate": 7.0, "max_gatherers": 6 }
+  ],
+
+  "buildings": [
+    { "type": "CommandCenter", "slot": 0, "x":  0.0, "z": -50.0, "pre_built": true },
+    { "type": "CommandCenter", "slot": 1, "x":  0.0, "z":  50.0, "pre_built": true }
+  ],
+
+  "units": [
+    { "unit_id": "worker",    "slot": 0, "x":  -3.0, "z": -47.0 },
+    { "unit_id": "worker",    "slot": 0, "x":   3.0, "z": -47.0 },
+    { "unit_id": "scout",     "slot": 0, "x": -10.0, "z": -42.0 },
+    { "unit_id": "scout",     "slot": 0, "x":  10.0, "z": -42.0 },
+    { "unit_id": "forgehand", "slot": 1, "x":  -3.0, "z":  47.0 },
+    { "unit_id": "forgehand", "slot": 1, "x":   3.0, "z":  47.0 },
+    { "unit_id": "footsoldier","slot": 1, "x": -10.0, "z":  42.0 },
+    { "unit_id": "footsoldier","slot": 1, "x":  10.0, "z":  42.0 }
+  ]
+}

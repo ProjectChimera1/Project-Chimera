@@ -1,0 +1,46 @@
+{
+  "id": "map_04_scorched_plains",
+  "display_name": "Scorched Plains",
+  "terrain_ref": "",
+  "map_bounds": 120.0,
+  "win_condition": "DestroyAllBuildings",
+
+  "player_slots": [
+    {
+      "slot": 0,
+      "faction_json": "res://resources/data/factions/beta_faction.json",
+      "start_ore": 100.0,
+      "base_x": -60.0,
+      "base_z": 0.0
+    },
+    {
+      "slot": 1,
+      "faction_json": "res://resources/data/factions/beta_faction.json",
+      "start_ore": 100.0,
+      "base_x": 60.0,
+      "base_z": 0.0
+    }
+  ],
+
+  "resource_nodes": [
+    { "x": -35.0, "z": -20.0, "supply": 350.0, "rate": 4.0, "max_gatherers": 3 },
+    { "x": -35.0, "z":  20.0, "supply": 350.0, "rate": 4.0, "max_gatherers": 3 },
+    { "x":  35.0, "z": -20.0, "supply": 350.0, "rate": 4.0, "max_gatherers": 3 },
+    { "x":  35.0, "z":  20.0, "supply": 350.0, "rate": 4.0, "max_gatherers": 3 },
+    { "x":   0.0, "z":   0.0, "supply": 600.0, "rate": 6.0, "max_gatherers": 5 },
+    { "x": -60.0, "z": -35.0, "supply": 200.0, "rate": 3.0, "max_gatherers": 2 },
+    { "x":  60.0, "z":  35.0, "supply": 200.0, "rate": 3.0, "max_gatherers": 2 }
+  ],
+
+  "buildings": [
+    { "type": "CommandCenter", "slot": 0, "x": -60.0, "z": 0.0, "pre_built": true },
+    { "type": "CommandCenter", "slot": 1, "x":  60.0, "z": 0.0, "pre_built": true }
+  ],
+
+  "units": [
+    { "unit_id": "forgehand", "slot": 0, "x": -57.0, "z": -3.0 },
+    { "unit_id": "forgehand", "slot": 0, "x": -57.0, "z":  3.0 },
+    { "unit_id": "forgehand", "slot": 1, "x":  57.0, "z": -3.0 },
+    { "unit_id": "forgehand", "slot": 1, "x":  57.0, "z":  3.0 }
+  ]
+}

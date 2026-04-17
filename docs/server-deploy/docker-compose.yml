@@ -1,0 +1,65 @@
+version: "3"
+
+# Project Chimera — VPS Server Stack
+#
+# Runs Nakama (matchmaking) + PostgreSQL on a single VPS alongside the
+# headless Godot dedicated game server.
+#
+# Setup:
+#   1. Copy this file and nakama-config.yml to your VPS.
+#   2. Run: docker compose up -d
+#   3. Deploy the headless Godot binary separately (see README.md).
+#   4. In the Godot Inspector on MainScene, set:
+#        NakamaHost    = <your VPS public IP>
+#        NakamaKey     = <matches NAKAMA_SERVER_KEY below>
+#        GameServerIp  = <your VPS public IP>
+#        GameServerPort = 7777
+
+services:
+
+  postgres:
+    image: postgres:14-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB:       nakama
+      POSTGRES_USER:     postgres
+      POSTGRES_PASSWORD: localdb
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  nakama:
+    image: registry.heroiclabs.com/heroiclabs/nakama:3.22.0
+    restart: unless-stopped
+    entrypoint:
+      - "/bin/sh"
+      - "-ecx"
+      - >
+        /nakama/nakama migrate up
+          --database.address postgres:localdb@postgres:5432/nakama &&
+        exec /nakama/nakama
+          --name chimera-nakama
+          --database.address postgres:localdb@postgres:5432/nakama
+          --session.token_expiry_sec 7200
+          --runtime.http_key ${NAKAMA_SERVER_KEY:-defaultkey}
+          --socket.server_key ${NAKAMA_SERVER_KEY:-defaultkey}
+          --logger.level INFO
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "7349:7349"   # Nakama client API (gRPC)
+      - "7350:7350"   # Nakama HTTP / REST API  ← clients connect here
+      - "7351:7351"   # Nakama WebSocket console (optional, close in production)
+    environment:
+      NAKAMA_SERVER_KEY: ${NAKAMA_SERVER_KEY:-defaultkey}
+    volumes:
+      - nakama-data:/nakama/data
+
+volumes:
+  postgres-data:
+  nakama-data:

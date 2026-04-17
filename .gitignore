@@ -1,0 +1,20 @@
+# Godot build cache
+godot/.godot/
+
+# .NET build output
+godot/.mono/
+godot/bin/
+godot/obj/
+
+# VS/Rider IDE files
+.vs/
+*.user
+*.suo
+.idea/
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Local Claude Code permissions (machine-specific)
+.claude/settings.local.json

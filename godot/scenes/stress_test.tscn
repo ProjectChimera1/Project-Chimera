@@ -1,0 +1,9 @@
+[gd_scene load_steps=2 format=3 uid="uid://stress_test_001"]
+
+[ext_resource type="Script" path="res://src/Core/StressTest.cs" id="1"]
+
+[node name="StressTest" type="Node3D"]
+script = ExtResource("1")
+UnitsPerFaction = 500
+SpawnRadius = 40.0
+SpawnOffsetX = 30.0

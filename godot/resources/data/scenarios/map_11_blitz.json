@@ -1,0 +1,48 @@
+{
+  "id": "map_11_blitz",
+  "display_name": "Blitz",
+  "terrain_ref": "",
+  "map_bounds": 80.0,
+  "win_condition": "EliminateAllUnits",
+
+  "player_slots": [
+    {
+      "slot": 0,
+      "faction_json": "res://resources/data/factions/alpha_faction.json",
+      "start_ore": 400.0,
+      "base_x": -32.0,
+      "base_z": 0.0
+    },
+    {
+      "slot": 1,
+      "faction_json": "res://resources/data/factions/beta_faction.json",
+      "start_ore": 400.0,
+      "base_x":  32.0,
+      "base_z": 0.0
+    }
+  ],
+
+  "resource_nodes": [
+    { "x": -14.0, "z": -16.0, "supply": 500.0, "rate": 7.0, "max_gatherers": 3 },
+    { "x": -14.0, "z":  16.0, "supply": 500.0, "rate": 7.0, "max_gatherers": 3 },
+    { "x":   0.0, "z":   0.0, "supply": 800.0, "rate": 8.0, "max_gatherers": 5 },
+    { "x":  14.0, "z": -16.0, "supply": 500.0, "rate": 7.0, "max_gatherers": 3 },
+    { "x":  14.0, "z":  16.0, "supply": 500.0, "rate": 7.0, "max_gatherers": 3 }
+  ],
+
+  "buildings": [
+    { "type": "CommandCenter", "slot": 0, "x": -32.0, "z": 0.0, "pre_built": true },
+    { "type": "Barracks",      "slot": 0, "x": -32.0, "z": -8.0, "pre_built": true },
+    { "type": "CommandCenter", "slot": 1, "x":  32.0, "z": 0.0, "pre_built": true },
+    { "type": "Barracks",      "slot": 1, "x":  32.0, "z": -8.0, "pre_built": true }
+  ],
+
+  "units": [
+    { "unit_id": "worker",      "slot": 0, "x": -29.0, "z": -3.0 },
+    { "unit_id": "worker",      "slot": 0, "x": -29.0, "z":  3.0 },
+    { "unit_id": "scout",       "slot": 0, "x": -26.0, "z": -6.0 },
+    { "unit_id": "forgehand",   "slot": 1, "x":  29.0, "z": -3.0 },
+    { "unit_id": "forgehand",   "slot": 1, "x":  29.0, "z":  3.0 },
+    { "unit_id": "footsoldier", "slot": 1, "x":  26.0, "z": -6.0 }
+  ]
+}

@@ -1,0 +1,123 @@
+{
+  "id": "alpha_map_01",
+  "display_name": "Alpha Skirmish",
+  "terrain_ref": "",
+  "map_bounds": 120,
+  "win_condition": "DestroyAllBuildings",
+  "player_slots": [
+    {
+      "slot": 0,
+      "faction_json": "res://resources/data/factions/alpha_faction.json",
+      "start_ore": 200,
+      "base_x": -38.88743,
+      "base_z": 0.047416687
+    },
+    {
+      "slot": 1,
+      "faction_json": "res://resources/data/factions/alpha_faction.json",
+      "start_ore": 200,
+      "base_x": 38.93686,
+      "base_z": -1.5269203
+    }
+  ],
+  "resource_nodes": [
+    {
+      "x": -20,
+      "z": -15,
+      "supply": 600,
+      "rate": 5,
+      "max_gatherers": 4
+    },
+    {
+      "x": -20,
+      "z": 15,
+      "supply": 600,
+      "rate": 5,
+      "max_gatherers": 4
+    },
+    {
+      "x": 20,
+      "z": -15,
+      "supply": 600,
+      "rate": 5,
+      "max_gatherers": 4
+    },
+    {
+      "x": 20,
+      "z": 15,
+      "supply": 600,
+      "rate": 5,
+      "max_gatherers": 4
+    },
+    {
+      "x": 0,
+      "z": -25,
+      "supply": 400,
+      "rate": 5,
+      "max_gatherers": 4
+    },
+    {
+      "x": 0,
+      "z": 25,
+      "supply": 400,
+      "rate": 5,
+      "max_gatherers": 4
+    },
+    {
+      "x": -35,
+      "z": 0,
+      "supply": 300,
+      "rate": 5,
+      "max_gatherers": 4
+    },
+    {
+      "x": 35,
+      "z": 0,
+      "supply": 300,
+      "rate": 5,
+      "max_gatherers": 4
+    }
+  ],
+  "buildings": [
+    {
+      "type": "CommandCenter",
+      "slot": 0,
+      "x": -45,
+      "z": 0,
+      "pre_built": true
+    },
+    {
+      "type": "CommandCenter",
+      "slot": 1,
+      "x": 45,
+      "z": 0,
+      "pre_built": true
+    }
+  ],
+  "units": [
+    {
+      "unit_id": "worker",
+      "slot": 0,
+      "x": -42,
+      "z": -3
+    },
+    {
+      "unit_id": "worker",
+      "slot": 0,
+      "x": -42,
+      "z": 3
+    },
+    {
+      "unit_id": "worker",
+      "slot": 1,
+      "x": 42,
+      "z": -3
+    },
+    {
+      "unit_id": "worker",
+      "slot": 1,
+      "x": 42,
+      "z": 3
+    }
+  ]
+}
