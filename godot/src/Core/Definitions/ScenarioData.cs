@@ -157,5 +157,12 @@ namespace ProjectChimera.Core.Definitions
 
         [JsonPropertyName("units")]
         public ScenarioUnit[] Units { get; set; } = System.Array.Empty<ScenarioUnit>();
+
+        /// <summary>
+        /// Scenario triggers evaluated each tick by ScenarioDirector.
+        /// Authored via the Trigger Editor (ECA UI) or natural language → LLM → JSON.
+        /// </summary>
+        [JsonPropertyName("triggers")]
+        public TriggerDefinition[] Triggers { get; set; } = System.Array.Empty<TriggerDefinition>();
     }
 }

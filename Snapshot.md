@@ -15,12 +15,13 @@ status: Active
 Phases 0–4 are code-complete. Phase 5 is underway. Session 20 shipped worker-placed buildings + UI bug sweep. Session 21 (remote, away from computer) shipped Utility AI + Adaptive Input Delay.
 
 ## Next Action
-**Build + smoke test the two systems written this session (see checklist below), then drop in audio assets.**
+**Smoke test all three unverified systems, then drop in audio assets.**
 
-1. Run `dotnet build` in `godot/` — expect 0 errors.
+1. ✅ `dotnet build` — 0 errors confirmed (session 22).
 2. Run the Utility AI smoke test (see checklist).
 3. Run the Adaptive Delay smoke test (see checklist).
-4. Drop `.ogg` files at `res://resources/audio/sfx/`.
+4. Run the LLM Trigger System smoke test (see checklist below).
+5. Drop `.ogg` files at `res://resources/audio/sfx/`.
 
 ## Needs Testing — Written This Session
 
@@ -67,7 +68,33 @@ RTT measurement via Ping/Pong + negotiated delay changes via DelayProposal packe
 ---
 
 ## What's In Progress
-Nothing blocking — both systems written but untested (written while away from computer).
+- Utility AI + Adaptive Input Delay (written, needs smoke test — see checklist)
+- LLM Trigger System (written this session, needs smoke test — see checklist below)
+
+---
+
+### ✅ LLM Trigger System (session 22)
+
+**New files:**
+- `src/Core/Definitions/TriggerDefinition.cs` — JSON data model (events, conditions, actions)
+- `src/Core/ScenarioDirector.cs` — ISimSystem; evaluates triggers every tick; runs last in sim loop
+- `src/AI/LLMService.cs` — Claude API (+ Ollama fallback) + 5-pass validation pipeline
+- `src/CreationSuite/TriggerEditorPanel.cs` — Edit-mode UI panel (L key toggle)
+
+**Changes:** `ScenarioData.cs` +`Triggers[]`, `MainScene.cs` wired.
+
+**Smoke test (single machine, Edit mode):**
+- [ ] Open any map in Edit mode, press **L** → TriggerEditorPanel should open on the right side.
+- [ ] Click "**+ New Trigger (via AI)**" → generator section appears.
+- [ ] **(No API key):** Type any description and click Generate → status shows "Both Claude and Ollama are unavailable." or an Ollama response if Ollama is running locally.
+- [ ] **(With API key):** Set `AnthropicApiKey` in Godot Inspector on MainScene → Generate produces a JSON preview → Accept adds the trigger to the list.
+- [ ] **Inline trigger test (no API needed):** Add a trigger JSON manually to a scenario file (e.g. `alpha_map_01.json`), reload, enter Play mode:
+  - match_start event → add_resources action → P1 ore should jump by the specified amount on tick 1.
+  - create_timer (5s) → display_message action → toast label should appear after 150 ticks (~5 seconds).
+  - unit_dies event → spawn_unit action → new units should appear at the specified position.
+- [ ] **Validation test:** Manually craft invalid JSON (faction=5, count=200, bad operator) → `LLMService.Validate()` should reject with a clear message.
+
+---
 
 ## Phase 5 Remaining Items
 | Item | Status | Notes |
@@ -80,7 +107,7 @@ Nothing blocking — both systems written but untested (written while away from 
 | Utility AI decision system | 🔨 | Written — needs smoke test (see checklist above) |
 | AI build order + attack timing logic | ✅ | Covered by utility scoring (tech tree, supply, aggression weights) |
 | Adaptive input delay | 🔨 | Written — needs LAN test (see checklist above) |
-| LLM trigger scripting | 📋 | Phase 5 GDD item — AI-powered trigger authoring |
+| LLM trigger scripting | 🔨 | Written — needs smoke test (see checklist below) |
 | AI-assisted map generation | 📋 | Phase 5 GDD item |
 | AI balance analysis tools | 📋 | Phase 5 GDD item |
 | Performance optimization pass | 📋 | Phase 5 GDD item |

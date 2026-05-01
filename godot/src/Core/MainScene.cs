@@ -123,6 +123,14 @@ namespace ProjectChimera.Core
         private bool           _gameOver          = false;
         private int            _playFrames        = 0;
 
+        // ── Trigger system ────────────────────────────────────────────────────
+
+        private ScenarioDirector                      _scenarioDirector = null!;
+        private CreationSuite.TriggerEditorPanel      _triggerPanel     = null!;
+        private AI.LLMService                         _llmService       = null!;
+        private Label?                                _toastLabel;
+        private float                                 _toastTimer;
+
         // ── Match stats ───────────────────────────────────────────────────────
 
         private readonly MatchStats _matchStats    = new MatchStats();
@@ -186,6 +194,12 @@ namespace ProjectChimera.Core
         /// </summary>
         [Export] public string ModIoApiKey { get; set; } = "";
 
+        /// <summary>
+        /// Anthropic API key for LLM-powered trigger authoring in the Trigger Editor.
+        /// Set via Godot Inspector. Leave empty to use local Ollama fallback only.
+        /// </summary>
+        [Export] public string AnthropicApiKey { get; set; } = "";
+
         // ── Constants ─────────────────────────────────────────────────────────
 
         private const string P1_FACTION_JSON = "res://resources/data/factions/alpha_faction.json";
@@ -234,6 +248,7 @@ namespace ProjectChimera.Core
             _fog = new FogOfWarSystem(Faction.Player1);
 
             _buildSys = new BuildingSystem(_buildings, _resources, _factionDef, _factionDef2, _matchStats);
+            _scenarioDirector = new ScenarioDirector(_buildings, _resources);
             _simLoop = new SimulationLoop(_world,
                 _buildSys,
                 new GatheringSystem(_nodes, _resources, _matchStats),
@@ -242,7 +257,8 @@ namespace ProjectChimera.Core
                 new Combat.ProjectileSystem(_projectiles, _combatEvents, _matchStats),
                 new SupplySystem(_resources),
                 _fog,
-                new AiOpponentSystem(_buildings, _resources, _buildSys, AiLevel));
+                new AiOpponentSystem(_buildings, _resources, _buildSys, AiLevel),
+                _scenarioDirector); // runs last — sees fully-updated world state
 
             _simLoop.EnableChecksums(_buildings, _resources);
             _simLoop.OnChecksum = (tick, checksum) =>
@@ -274,6 +290,7 @@ namespace ProjectChimera.Core
             SetupReplayStatusLabel();
             SetupContentBrowser();   // Phase 4 map browser (above all other UI)
             SetupMainMenu();         // Phase 5 — shown on first launch; dismissed on mode choice
+            SetupTriggerEditor();    // Phase 5 — LLM trigger authoring (L key in Edit mode)
 
             // Compute scenario hash now that both scenario and lobby are ready.
             // Sent with the Ready packet so peers can detect map mismatches before starting.
@@ -354,6 +371,11 @@ namespace ProjectChimera.Core
                 _contentBrowser.ToggleVisible();
                 GetViewport().SetInputAsHandled();
             }
+            else if (key.Keycode == Key.L)
+            {
+                _triggerPanel.Toggle();
+                GetViewport().SetInputAsHandled();
+            }
         }
 
         public override void _Process(double delta)
@@ -406,6 +428,15 @@ namespace ProjectChimera.Core
                     _buildGhost.GlobalPosition = new Vector3(ghostHit.X, 1.5f, ghostHit.Z);
                     _buildGhost.Visible = true;
                 }
+            }
+
+            // Drain LLM callbacks and update toast notification.
+            _triggerPanel.Update();
+            if (_toastTimer > 0)
+            {
+                _toastTimer -= (float)delta;
+                if (_toastTimer <= 0 && _toastLabel != null)
+                    _toastLabel.Visible = false;
             }
 
             UpdateHud();
@@ -498,6 +529,9 @@ namespace ProjectChimera.Core
                 }
                 SpawnScenarioUnit(def, faction, u.X, u.Z);
             }
+
+            // ── 5. Triggers ────────────────────────────────────────────────────
+            _scenarioDirector.LoadScenario(scenario);
         }
 
         /// <summary>Spawn a unit from a UnitDefinition, wiring all SoA fields.</summary>
@@ -1783,6 +1817,81 @@ void fragment() {
             _mainMenu.OnQuit += () => GetTree().Quit();
 
             GD.Print("[MainMenu] Initialized — showing title screen.");
+        }
+
+        // ── Trigger Editor ────────────────────────────────────────────────────
+
+        private void SetupTriggerEditor()
+        {
+            _llmService = new AI.LLMService { AnthropicApiKey = AnthropicApiKey };
+
+            _triggerPanel = new CreationSuite.TriggerEditorPanel();
+            AddChild(_triggerPanel);
+
+            // Build unit ID list from all loaded faction defs.
+            var unitIds = new System.Collections.Generic.HashSet<string>();
+            foreach (var def in _slotFactionDefs)
+                if (def?.Units != null)
+                    foreach (var u in def.Units) unitIds.Add(u.Id);
+
+            var context = new AI.ScenarioContext
+            {
+                UnitIds   = new string[unitIds.Count],
+                MapBounds = _scenario?.MapBounds ?? 120f
+            };
+            unitIds.CopyTo(context.UnitIds);
+
+            _triggerPanel.Initialize(_scenario, _gameState, _llmService, context);
+
+            // Wire ScenarioDirector presentation-layer delegates.
+            _scenarioDirector.OnSpawnUnit = (unitId, slot, x, z, count) =>
+            {
+                var faction    = (Faction)(slot + 1);
+                int fIdx       = (int)faction;
+                var factionDef = (fIdx >= 0 && fIdx < _slotFactionDefs.Length)
+                    ? _slotFactionDefs[fIdx] : _factionDef;
+                var def = factionDef?.GetUnit(unitId);
+                if (def == null)
+                {
+                    GD.PrintErr($"[ScenarioDirector] spawn_unit: unknown unit_id '{unitId}' for slot {slot}.");
+                    return;
+                }
+                for (int i = 0; i < count; i++)
+                    SpawnScenarioUnit(def, faction, x + i * 2.5f, z);
+            };
+
+            _scenarioDirector.OnDisplayMessage = ShowTriggerMessage;
+
+            _scenarioDirector.OnPlaySound = _ => _audioMgr?.PlayBuildingPlaced();
+
+            _scenarioDirector.OnVictory = winnerSlot => ShowGameOver(winnerSlot + 1);
+
+            // Build the toast label used by OnDisplayMessage.
+            _toastLabel = new Label
+            {
+                HorizontalAlignment = HorizontalAlignment.Center,
+                AutowrapMode        = TextServer.AutowrapMode.Word,
+                Visible             = false,
+                ZIndex              = 10
+            };
+            _toastLabel.SetAnchorsPreset(Control.LayoutPreset.CenterTop);
+            _toastLabel.OffsetTop  = 140f;
+            _toastLabel.OffsetLeft = -300f;
+            _toastLabel.OffsetRight = 300f;
+            _uiCanvas.AddChild(_toastLabel);
+
+            GD.Print("[TriggerEditor] Initialized — press L in Edit mode to open. " +
+                     "Anthropic API key " +
+                     (string.IsNullOrEmpty(AnthropicApiKey) ? "not set (Ollama fallback)." : "configured."));
+        }
+
+        /// <summary>Show a brief HUD notification from a trigger display_message action.</summary>
+        private void ShowTriggerMessage(string text, float duration)
+        {
+            if (_toastLabel == null) return;
+            _toastLabel.Text    = text;
+            _toastLabel.Visible = true;
+            _toastTimer = duration;
         }
 
         /// <summary>
