@@ -12,13 +12,62 @@ status: Active
 ## Current Phase
 **Phase 5 — Polish & 1.0** (Months 25-31 of GDD roadmap)
 
-Phases 0–4 are code-complete. Phase 5 is underway. Session 20 shipped worker-placed buildings + UI bug sweep.
+Phases 0–4 are code-complete. Phase 5 is underway. Session 20 shipped worker-placed buildings + UI bug sweep. Session 21 (remote, away from computer) shipped Utility AI + Adaptive Input Delay.
 
 ## Next Action
-Drop in audio assets. Place `.ogg` files at `res://resources/audio/sfx/`: `melee_hit.ogg`, `ranged_hit.ogg`, `explosion.ogg`, `unit_killed.ogg`, `building_placed.ogg`, `training_complete.ogg`, `ui_click.ogg`. AudioManager loads them automatically — no code change needed.
+**Build + smoke test the two systems written this session (see checklist below), then drop in audio assets.**
+
+1. Run `dotnet build` in `godot/` — expect 0 errors.
+2. Run the Utility AI smoke test (see checklist).
+3. Run the Adaptive Delay smoke test (see checklist).
+4. Drop `.ogg` files at `res://resources/audio/sfx/`.
+
+## Needs Testing — Written This Session
+
+### ✅ Utility AI (`src/AI/AiOpponentSystem.cs`)
+
+Full replacement of the rigid 3-phase FSM with utility scoring. All public API unchanged — `MainScene` needs no changes.
+
+**Smoke test (single machine, Play mode):**
+- [ ] Open any skirmish map in Play mode. Watch the P2 AI.
+- [ ] **Early game**: AI should build a Barracks within ~20s of having 100 ore.
+- [ ] **Tech progression**: after the Barracks is complete, AI should eventually build an ArcheryRange (requires Barracks complete), then SiegeWorkshop (requires ArcheryRange complete). Watch Godot Output for `[Lockstep]` / AI build logs to confirm order.
+- [ ] **Supply expansion**: when AI supply headroom ≤ 4, it should build a CommandCenter before queuing more units (score 0.95 = highest priority).
+- [ ] **Double production**: after the expansion CC is complete, AI should build a second Barracks.
+- [ ] **Attack waves**: P2 combat units should periodically attack-move toward P1 base. Easy = fewer waves (threshold 8), Hard = more frequent (threshold 3).
+- [ ] **Scenario pre-placed buildings**: load `map_06_contested_peaks` (pre-placed Barracks). AI should immediately train from it — verify units appear without AI needing to build its own Barracks first.
+- [ ] **Destroyed Barracks recovery**: destroy P2's Barracks in-game. AI should score `BuildBarracks = 0.85` and rebuild without getting stuck in a reset loop.
+
+**Difficulty smoke test:**
+- [ ] Set `AiLevel = Easy` in Inspector → AI attacks late, small waves.
+- [ ] Set `AiLevel = Hard` → AI teches up fast, attacks early and often.
+
+---
+
+### ✅ Adaptive Input Delay (`src/Multiplayer/LockstepManager.cs` + `NetworkCommand.cs`)
+
+RTT measurement via Ping/Pong + negotiated delay changes via DelayProposal packets. `INPUT_DELAY = 4` is still the starting value; the constant is preserved for documentation.
+
+**Build check:**
+- [ ] `dotnet build` — 0 errors, 0 new warnings.
+
+**Offline smoke test (single machine):**
+- [ ] Launch game in Play mode (offline). No pings should be sent (only fires when `IsOnline`). No errors in Output.
+
+**LAN smoke test (two machines required — do alongside P2.4 LAN test):**
+- [ ] Host + join on LAN. Watch Godot Output on both machines.
+- [ ] Within 2s of match start: both machines should log `[Lockstep] RTT sample: Xms` and a smoothed RTT.
+- [ ] On LAN (~1-5ms RTT): target delay = `ceil(2.5ms / 33ms) + 1 = 2`. Both machines should log `[Lockstep] Delay: 4 → 2 ticks` within ~5s.
+- [ ] Play for 300+ ticks. Checksums must stay in sync (same HUD hash on both machines). The delay reduction must NOT cause desync.
+- [ ] Optionally: to test high-latency path, add artificial latency (e.g. `tc netem` on Linux) and verify delay increases toward MAX_DELAY=12.
+
+**HUD wiring (optional, low priority):**
+- The `CurrentDelay` property is now public. You can display it in the HUD stall indicator: e.g. `"Delay: {_lockstep.CurrentDelay} ticks"` alongside the "Waiting for peer…" banner. Not required for correctness — just a nice debug display.
+
+---
 
 ## What's In Progress
-Nothing actively in-progress — last session ended cleanly with worker construction system shipped.
+Nothing blocking — both systems written but untested (written while away from computer).
 
 ## Phase 5 Remaining Items
 | Item | Status | Notes |
@@ -28,9 +77,9 @@ Nothing actively in-progress — last session ended cleanly with worker construc
 | P2.4 LAN test (P2P mode) | 📋 | FlowFieldBridge active, verify checksums stay in sync through 300+ ticks |
 | P0.3 Iron Pact art | 📋 | Hunyuan3D or Tripo — 8 GLBs to replace box placeholders (external work) |
 | Terrain texture painting | 📋 | Set Terrain3D textures via Godot Inspector (Terrain3D → Assets) — procedural via ClassDB doesn't persist |
-| Utility AI decision system | 📋 | Upgrade rule-based AI skeleton to utility AI |
-| AI build order + attack timing logic | 📋 | Phase 5 AI improvements |
-| Adaptive input delay | 📋 | Scale INPUT_DELAY dynamically based on real RTT data |
+| Utility AI decision system | 🔨 | Written — needs smoke test (see checklist above) |
+| AI build order + attack timing logic | ✅ | Covered by utility scoring (tech tree, supply, aggression weights) |
+| Adaptive input delay | 🔨 | Written — needs LAN test (see checklist above) |
 | LLM trigger scripting | 📋 | Phase 5 GDD item — AI-powered trigger authoring |
 | AI-assisted map generation | 📋 | Phase 5 GDD item |
 | AI balance analysis tools | 📋 | Phase 5 GDD item |
@@ -43,7 +92,7 @@ Nothing actively in-progress — last session ended cleanly with worker construc
 - **Current stack**: Godot 4.6.2 stable, C# / .NET 8, ECS-inspired simulation (custom SoA arrays, not a framework)
 - **Rendering**: MultiMeshInstance3D for all unit rendering; two MultiMesh nodes per faction (separate colors)
 - **Pathfinding**: `FlowFieldBridge` is the live path bridge (replaced `PathRequestSystem`). `PathRequestSystem` stays unused as fallback. Flow fields are deterministic — required for lockstep.
-- **Networking**: Deterministic lockstep complete. `INPUT_DELAY=4` ticks (133ms at 30Hz). `LockstepManager.Flush(tick)` gates sim advancement. FlowFieldBridge eliminates NavServer desync.
+- **Networking**: Deterministic lockstep complete. `_currentDelay` starts at 4 and adapts via Ping/Pong RTT measurement + `DelayProposal` negotiation. Target delay = `ceil(OWL/33ms) + 1`, clamped [2, 12]. Both peers must agree before a change applies (`CommitDelayChange` pre-seeds gap ticks on delay increase). `INPUT_DELAY=4` is preserved as the start value constant. `CurrentDelay` property is public for HUD display.
 - **Worker construction**: workers walk to site (`UnitCommand.Build` + `BuildTarget[]` SoA), building ticks its own construction timer autonomously, worker arrival clears command + resumes gathering.
 - **`CommandCardSystem` worker card** fires `OnWorkerBuildRequested` → `MainScene` owns placement mode. `_Input` (not `_UnhandledInput`) for placement intercept — beats SelectionSystem.
 - **`SettingsPanel`** uses intermediate `anchorRoot` Control (MouseFilter=Stop) for full-screen input blocking; Escape in `_Input`.
@@ -55,7 +104,6 @@ Nothing actively in-progress — last session ended cleanly with worker construc
 
 ## Open Design Decisions
 - **AI art tool**: Hunyuan3D vs Tripo vs other — P0.3 Iron Pact art still pending
-- **Utility AI**: upgrade rule-based FSM to utility AI system
 
 ## Performance Baseline
 | Configuration | FPS |
