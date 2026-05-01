@@ -26,7 +26,17 @@ namespace ProjectChimera.Multiplayer
         /// Wire format: type(1) + faction(1) + msgLen(2 LE) + msgBytes(UTF-8, max 200).
         /// Relayed by DedicatedServer to all connected peers.
         /// </summary>
-        Chat         = 0x20,
+        Chat          = 0x20,
+        /// <summary>RTT probe sent by either peer. Wire: type(1) + seq(1) + senderMs(4 LE).</summary>
+        Ping          = 0x40,
+        /// <summary>RTT probe reply. Same wire format as Ping — echoes seq + senderMs back.</summary>
+        Pong          = 0x41,
+        /// <summary>
+        /// Proposal to change the input-delay budget.
+        /// Wire: type(1) + proposedDelay(1) + applyAtTick(4 LE).
+        /// Both peers must agree before the change takes effect; see LockstepManager.
+        /// </summary>
+        DelayProposal = 0x42,
     }
 
     // ── Per-unit order (11 bytes) ─────────────────────────────────────────────
@@ -273,6 +283,68 @@ namespace ProjectChimera.Multiplayer
             if (msgLen < 0 || msgLen > MAX_CHAT_BYTES) return false;
             if (len < 4 + msgLen) return false;
             message = System.Text.Encoding.UTF8.GetString(buf, 4, msgLen);
+            return true;
+        }
+
+        // ── RTT probe helpers ─────────────────────────────────────────────────
+
+        /// <summary>Serialise a Ping packet (6 bytes). seq wraps at 255.</summary>
+        public static byte[] MakePing(byte seq, uint senderMs)
+        {
+            var buf = new byte[6];
+            buf[0] = (byte)PacketType.Ping;
+            buf[1] = seq;
+            int pos = 2;
+            WriteUint(buf, ref pos, senderMs);
+            return buf;
+        }
+
+        /// <summary>Serialise a Pong reply by echoing the Ping's seq and timestamp.</summary>
+        public static byte[] MakePong(byte seq, uint senderMs)
+        {
+            var buf = new byte[6];
+            buf[0] = (byte)PacketType.Pong;
+            buf[1] = seq;
+            int pos = 2;
+            WriteUint(buf, ref pos, senderMs);
+            return buf;
+        }
+
+        /// <summary>Parse a Pong packet. Returns false if malformed.</summary>
+        public static bool TryReadPong(byte[] buf, int len, out byte seq, out uint senderMs)
+        {
+            seq = 0; senderMs = 0;
+            if (len < 6) return false;
+            if ((PacketType)buf[0] != PacketType.Pong) return false;
+            seq = buf[1];
+            int pos = 2;
+            senderMs = ReadUint(buf, ref pos);
+            return true;
+        }
+
+        // ── Delay-proposal helpers ────────────────────────────────────────────
+
+        /// <summary>Serialise a DelayProposal packet (6 bytes).</summary>
+        public static byte[] MakeDelayProposal(byte proposedDelay, uint applyAtTick)
+        {
+            var buf = new byte[6];
+            buf[0] = (byte)PacketType.DelayProposal;
+            buf[1] = proposedDelay;
+            int pos = 2;
+            WriteUint(buf, ref pos, applyAtTick);
+            return buf;
+        }
+
+        /// <summary>Parse a DelayProposal packet. Returns false if malformed.</summary>
+        public static bool TryReadDelayProposal(byte[] buf, int len,
+                                                out byte proposedDelay, out uint applyAtTick)
+        {
+            proposedDelay = 0; applyAtTick = 0;
+            if (len < 6) return false;
+            if ((PacketType)buf[0] != PacketType.DelayProposal) return false;
+            proposedDelay = buf[1];
+            int pos = 2;
+            applyAtTick = ReadUint(buf, ref pos);
             return true;
         }
 
