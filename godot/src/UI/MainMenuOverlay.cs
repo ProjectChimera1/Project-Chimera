@@ -33,6 +33,7 @@ namespace ProjectChimera.UI
         public event Action? OnPlaySkirmish;
         public event Action? OnCreate;
         public event Action? OnBrowse;
+        public event Action? OnGenerateMap;
         public event Action? OnSettings;
         public event Action? OnQuit;
 
@@ -140,6 +141,15 @@ namespace ProjectChimera.UI
                 {
                     Visible = false;
                     OnBrowse?.Invoke();
+                });
+
+            AddMenuButton(btnVbox, "Generate Map (AI)",
+                "Describe a map concept in plain English and let Claude build it.",
+                isPrimary: false,
+                onPress: () =>
+                {
+                    Visible = false;
+                    OnGenerateMap?.Invoke();
                 });
 
             AddMenuButton(btnVbox, "Settings",

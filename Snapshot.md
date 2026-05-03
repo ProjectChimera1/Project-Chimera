@@ -15,13 +15,14 @@ status: Active
 Phases 0–4 are code-complete. Phase 5 is underway. Session 20 shipped worker-placed buildings + UI bug sweep. Session 21 (remote, away from computer) shipped Utility AI + Adaptive Input Delay.
 
 ## Next Action
-**Smoke test all three unverified systems, then drop in audio assets.**
+**Smoke test all four unverified systems, then drop in audio assets.**
 
-1. ✅ `dotnet build` — 0 errors confirmed (session 22).
+1. ✅ `dotnet build` — 0 errors confirmed (session 23).
 2. Run the Utility AI smoke test (see checklist).
 3. Run the Adaptive Delay smoke test (see checklist).
 4. Run the LLM Trigger System smoke test (see checklist below).
-5. Drop `.ogg` files at `res://resources/audio/sfx/`.
+5. Run the AI Map Generator smoke test (see checklist below).
+6. Drop `.ogg` files at `res://resources/audio/sfx/`.
 
 ## Needs Testing — Written This Session
 
@@ -69,7 +70,8 @@ RTT measurement via Ping/Pong + negotiated delay changes via DelayProposal packe
 
 ## What's In Progress
 - Utility AI + Adaptive Input Delay (written, needs smoke test — see checklist)
-- LLM Trigger System (written this session, needs smoke test — see checklist below)
+- LLM Trigger System (written session 22, needs smoke test — see checklist below)
+- AI Map Generator (written session 23, needs smoke test — see checklist below)
 
 ---
 
@@ -96,6 +98,38 @@ RTT measurement via Ping/Pong + negotiated delay changes via DelayProposal packe
 
 ---
 
+---
+
+### ✅ AI Map Generator (session 23)
+
+**New files:**
+- `src/CreationSuite/MapGeneratorPanel.cs` — Edit-mode panel (M key toggle, CanvasLayer layer=13, left side)
+
+**Changed files:**
+- `src/AI/LLMService.cs` — `MapGeneratorContext` class, `GenerateScenarioAsync()`, `ValidateScenario()` (7-pass), `BuildMapSystemPrompt()`, `CancelScenario()`. `TryClaudeAsync`/`TryOllamaAsync` refactored to accept full `userMessage` string.
+- `src/UI/MainMenuOverlay.cs` — `OnGenerateMap` event + "Generate Map (AI)" button (after Browse).
+- `src/Core/MainScene.cs` — `_mapGenPanel` field, `_pendingGeneratedScenario` static field, `SetupMapGenerator()` after `SetupTriggerEditor()`, `LoadGeneratedScenario(ScenarioData)`, M key in `_UnhandledInput`, `_mapGenPanel.Update()` in `_Process`, `_mainMenu.OnGenerateMap` wired, `LoadAndApplyScenario()` checks `_pendingGeneratedScenario` before disk load.
+
+**How it works:**
+1. Press **M** in Edit mode (or click "Generate Map (AI)" in main menu) → `MapGeneratorPanel` opens (left side).
+2. Type a map brief → **Generate ✦** → Claude API (or Ollama fallback) generates `ScenarioData` JSON.
+3. 7-pass validation: schema → player slots (faction paths forced) → building types → unit IDs → position bounds → ore spacing ≥15u → ≤6 combat units per faction.
+4. Preview shows: name, win condition, bounds, node/building/unit counts.
+5. **↗ Load (no save)**: sets `_pendingGeneratedScenario` static field → `GetTree().ReloadCurrentScene()` → `LoadAndApplyScenario` reads the static field (no disk write).
+6. **💾 Save & Load**: writes to `res://resources/data/scenarios/ai_generated.json` first, then same reload.
+
+**Smoke test (single machine, Edit mode):**
+- [ ] Open any map in Edit mode, press **M** → `MapGeneratorPanel` should open on the left side.
+- [ ] **(No API key):** Type a brief → Generate → status shows "Both Claude and Ollama are unavailable." or Ollama response if running.
+- [ ] **(With API key):** Set `AnthropicApiKey` in Inspector → Generate → stats preview appears (name, win condition, node/building/unit counts).
+- [ ] Click **↗ Load (no save)** → scene reloads with the generated scenario; no JSON written to `res://resources/data/scenarios/` (check file browser).
+- [ ] Click **💾 Save & Load** → `ai_generated.json` appears in `res://resources/data/scenarios/`; scene loads correctly.
+- [ ] **Validation test:** The system should reject: positions outside ±120u, ore nodes closer than 15u, >6 combat units per faction, unknown unit_id, unknown building type.
+- [ ] **Main menu button:** Open main menu → "Generate Map (AI)" button → menu closes, Edit mode entered, panel opens.
+- [ ] Panel hides automatically when switching to Play mode (F5).
+
+---
+
 ## Phase 5 Remaining Items
 | Item | Status | Notes |
 |------|--------|-------|
@@ -108,7 +142,7 @@ RTT measurement via Ping/Pong + negotiated delay changes via DelayProposal packe
 | AI build order + attack timing logic | ✅ | Covered by utility scoring (tech tree, supply, aggression weights) |
 | Adaptive input delay | 🔨 | Written — needs LAN test (see checklist above) |
 | LLM trigger scripting | 🔨 | Written — needs smoke test (see checklist below) |
-| AI-assisted map generation | 📋 | Phase 5 GDD item |
+| AI-assisted map generation | 🔨 | Written session 23 — needs smoke test |
 | AI balance analysis tools | 📋 | Phase 5 GDD item |
 | Performance optimization pass | 📋 | Phase 5 GDD item |
 | Advanced editor features | 📋 | Particles, sound triggers |

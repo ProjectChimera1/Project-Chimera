@@ -28,6 +28,25 @@ namespace ProjectChimera.AI
     }
 
     /// <summary>
+    /// Context injected into map generation prompts — tells the LLM which factions
+    /// and unit types are available, the playable bounds, and the faction JSON paths.
+    /// </summary>
+    public class MapGeneratorContext
+    {
+        /// <summary>All unit IDs available across both factions (e.g. "worker", "melee").</summary>
+        public string[] UnitIds { get; set; } = Array.Empty<string>();
+
+        /// <summary>Half-width of the playable map in world units. Positions must be within ±MapBounds.</summary>
+        public float MapBounds { get; set; } = 120f;
+
+        /// <summary>res:// path to the faction JSON for slot 0 (Player 1).</summary>
+        public string Slot0FactionJson { get; set; } = "res://resources/data/factions/alpha_faction.json";
+
+        /// <summary>res:// path to the faction JSON for slot 1 (Player 2).</summary>
+        public string Slot1FactionJson { get; set; } = "res://resources/data/factions/beta_faction.json";
+    }
+
+    /// <summary>
     /// Translates natural language descriptions into validated TriggerDefinition JSON
     /// using the Claude API (cloud) with an optional Ollama fallback (local).
     ///
@@ -58,6 +77,7 @@ namespace ProjectChimera.AI
         private readonly HttpClient _http;
         private readonly ConcurrentQueue<Action> _queue = new();
         private CancellationTokenSource? _cts;
+        private CancellationTokenSource? _mapCts;
 
         /// <summary>Set before calling GenerateTriggerAsync. Empty string disables cloud.</summary>
         public string AnthropicApiKey { get; set; } = "";
@@ -93,19 +113,20 @@ namespace ProjectChimera.AI
                     string prompt  = BuildSystemPrompt(context);
                     string? json   = null;
                     string? error  = null;
+                    string msg     = $"Create a trigger for: {description}";
 
                     // Try Claude API first.
                     if (!string.IsNullOrEmpty(AnthropicApiKey))
-                        (json, error) = await TryClaudeAsync(prompt, description, token);
+                        (json, error) = await TryClaudeAsync(prompt, msg, token);
 
                     // Fallback: local Ollama.
                     if (json == null)
-                        (json, error) = await TryOllamaAsync(prompt, description, token);
+                        (json, error) = await TryOllamaAsync(prompt, msg, token);
 
                     if (json == null)
                     {
-                        string msg = error ?? "Both Claude and Ollama are unavailable.";
-                        _queue.Enqueue(() => onComplete(null, msg));
+                        string fallback = error ?? "Both Claude and Ollama are unavailable.";
+                        _queue.Enqueue(() => onComplete(null, fallback));
                         return;
                     }
 
@@ -141,7 +162,7 @@ namespace ProjectChimera.AI
         // ── Claude API ────────────────────────────────────────────────────────
 
         private async Task<(string? json, string? error)> TryClaudeAsync(
-            string systemPrompt, string userDescription, CancellationToken ct)
+            string systemPrompt, string userMessage, CancellationToken ct)
         {
             try
             {
@@ -152,7 +173,7 @@ namespace ProjectChimera.AI
                     system     = systemPrompt,
                     messages   = new[]
                     {
-                        new { role = "user", content = $"Create a trigger for: {userDescription}" }
+                        new { role = "user", content = userMessage }
                     }
                 };
 
@@ -188,14 +209,14 @@ namespace ProjectChimera.AI
         // ── Ollama fallback ───────────────────────────────────────────────────
 
         private async Task<(string? json, string? error)> TryOllamaAsync(
-            string systemPrompt, string userDescription, CancellationToken ct)
+            string systemPrompt, string userMessage, CancellationToken ct)
         {
             try
             {
                 var body = new
                 {
                     model  = OLLAMA_MODEL,
-                    prompt = $"{systemPrompt}\n\nCreate a trigger for: {userDescription}",
+                    prompt = $"{systemPrompt}\n\n{userMessage}",
                     stream = false
                 };
 
@@ -405,5 +426,249 @@ play_sound      — sound_id (string)");
 
         // Helper type alias — BuildingType is defined in ProjectChimera.Core namespace.
         private enum BuildingType { CommandCenter, Barracks, ArcheryRange, SiegeWorkshop }
+
+        // ── Scenario generation ───────────────────────────────────────────────
+
+        /// <summary>
+        /// Asynchronously generates a full ScenarioData from a natural language map brief.
+        /// Callback is marshalled to the main thread via DrainEvents().
+        /// On success: callback(scenario, null). On failure: callback(null, errorMessage).
+        /// </summary>
+        public void GenerateScenarioAsync(
+            string description,
+            MapGeneratorContext context,
+            Action<ScenarioData?, string?> onComplete)
+        {
+            _mapCts?.Cancel();
+            _mapCts = new CancellationTokenSource();
+            var token = _mapCts.Token;
+
+            Task.Run(async () =>
+            {
+                try
+                {
+                    string prompt = BuildMapSystemPrompt(context);
+                    string? json  = null;
+                    string? error = null;
+                    string msg    = $"Create a map scenario for: {description}";
+
+                    if (!string.IsNullOrEmpty(AnthropicApiKey))
+                        (json, error) = await TryClaudeAsync(prompt, msg, token);
+
+                    if (json == null)
+                        (json, error) = await TryOllamaAsync(prompt, msg, token);
+
+                    if (json == null)
+                    {
+                        string fallback = error ?? "Both Claude and Ollama are unavailable.";
+                        _queue.Enqueue(() => onComplete(null, fallback));
+                        return;
+                    }
+
+                    var (scenario, validationError) = ValidateScenario(json, context);
+                    if (scenario == null)
+                    {
+                        _queue.Enqueue(() => onComplete(null,
+                            $"Generated map failed validation: {validationError}"));
+                        return;
+                    }
+
+                    _queue.Enqueue(() => onComplete(scenario, null));
+                }
+                catch (OperationCanceledException) { }
+                catch (Exception ex)
+                {
+                    _queue.Enqueue(() => onComplete(null, ex.Message));
+                }
+            }, token);
+        }
+
+        /// <summary>Cancel any in-flight scenario generation request.</summary>
+        public void CancelScenario() => _mapCts?.Cancel();
+
+        /// <summary>
+        /// Validate a generated ScenarioData JSON through seven passes:
+        /// 1. Schema — deserialization succeeds.
+        /// 2. Player slots — exactly 2; faction paths forced to known values.
+        /// 3. Building types — only valid BuildingType enum names.
+        /// 4. Unit IDs — only IDs present in MapGeneratorContext.UnitIds.
+        /// 5. Position bounds — all X/Z within ±MapBounds.
+        /// 6. Ore node spacing — every pair at least 15 units apart.
+        /// 7. Pre-placed unit count — at most 6 non-worker units per faction slot.
+        /// Returns (null, errorMessage) on failure, (scenario, null) on success.
+        /// </summary>
+        public static (ScenarioData? scenario, string? error) ValidateScenario(
+            string json, MapGeneratorContext context)
+        {
+            // Pass 1 — schema.
+            ScenarioData scenario;
+            try
+            {
+                scenario = JsonSerializer.Deserialize<ScenarioData>(json,
+                    new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
+                    ?? throw new InvalidOperationException("Deserialised to null.");
+            }
+            catch (Exception ex)
+            {
+                return (null, $"Invalid JSON: {ex.Message}");
+            }
+
+            // Pass 2 — player slots.
+            if (scenario.PlayerSlots.Length < 2)
+                return (null, $"Expected 2 player slots, got {scenario.PlayerSlots.Length}.");
+
+            // Force faction JSON paths to known valid values — LLMs often hallucinate these.
+            foreach (var slot in scenario.PlayerSlots)
+            {
+                slot.FactionJson = slot.Slot == 0
+                    ? context.Slot0FactionJson
+                    : context.Slot1FactionJson;
+            }
+
+            // Pass 3 — building types.
+            var validBuildings = new HashSet<string>
+                { "CommandCenter", "Barracks", "ArcheryRange", "SiegeWorkshop" };
+            foreach (var b in scenario.Buildings)
+                if (!validBuildings.Contains(b.Type))
+                    return (null, $"Unknown building type '{b.Type}'. " +
+                        $"Valid: {string.Join(", ", validBuildings)}");
+
+            // Pass 4 — unit IDs.
+            var validUnits = new HashSet<string>(context.UnitIds, StringComparer.OrdinalIgnoreCase);
+            validUnits.Add("worker"); // always present in every faction
+            foreach (var u in scenario.Units)
+                if (!validUnits.Contains(u.UnitId))
+                    return (null, $"Unknown unit_id '{u.UnitId}'. " +
+                        $"Valid: {string.Join(", ", context.UnitIds)}");
+
+            // Pass 5 — position bounds.
+            float bounds = context.MapBounds;
+            foreach (var slot in scenario.PlayerSlots)
+                if (Math.Abs(slot.BaseX) > bounds || Math.Abs(slot.BaseZ) > bounds)
+                    return (null, $"Slot {slot.Slot} base ({slot.BaseX}, {slot.BaseZ}) " +
+                        $"is outside map bounds ±{bounds}.");
+
+            foreach (var node in scenario.ResourceNodes)
+            {
+                if (Math.Abs(node.X) > bounds || Math.Abs(node.Z) > bounds)
+                    return (null, $"Resource node at ({node.X}, {node.Z}) is outside ±{bounds}.");
+                if (node.Supply <= 0) node.Supply = 400f;
+                if (node.Rate   <= 0) node.Rate   = 5f;
+            }
+
+            foreach (var b in scenario.Buildings)
+                if (Math.Abs(b.X) > bounds || Math.Abs(b.Z) > bounds)
+                    return (null, $"Building '{b.Type}' at ({b.X}, {b.Z}) is outside ±{bounds}.");
+
+            foreach (var u in scenario.Units)
+                if (Math.Abs(u.X) > bounds || Math.Abs(u.Z) > bounds)
+                    return (null, $"Unit '{u.UnitId}' at ({u.X}, {u.Z}) is outside ±{bounds}.");
+
+            // Pass 6 — ore node spacing ≥ 15u.
+            for (int i = 0; i < scenario.ResourceNodes.Length; i++)
+                for (int j = i + 1; j < scenario.ResourceNodes.Length; j++)
+                {
+                    float dx = scenario.ResourceNodes[i].X - scenario.ResourceNodes[j].X;
+                    float dz = scenario.ResourceNodes[i].Z - scenario.ResourceNodes[j].Z;
+                    float dist = (float)Math.Sqrt(dx * dx + dz * dz);
+                    if (dist < 15f)
+                        return (null, $"Ore nodes {i} and {j} are {dist:F1}u apart (minimum 15u).");
+                }
+
+            // Pass 7 — pre-placed combat units per slot ≤ 6.
+            var combatCount = new Dictionary<int, int>();
+            foreach (var u in scenario.Units)
+                if (!string.Equals(u.UnitId, "worker", StringComparison.OrdinalIgnoreCase))
+                    combatCount[u.Slot] = combatCount.GetValueOrDefault(u.Slot) + 1;
+            foreach (var kv in combatCount)
+                if (kv.Value > 6)
+                    return (null, $"Slot {kv.Key} has {kv.Value} pre-placed combat units (max 6).");
+
+            return (scenario, null);
+        }
+
+        // ── Map system prompt ─────────────────────────────────────────────────
+
+        private static string BuildMapSystemPrompt(MapGeneratorContext ctx)
+        {
+            var sb = new StringBuilder();
+            sb.AppendLine(
+                "You are a scenario designer for Project Chimera, a real-time strategy game.");
+            sb.AppendLine(
+                "Convert the user's map brief into a valid JSON ScenarioData object.");
+            sb.AppendLine();
+            sb.AppendLine("=== SCENARIO SCHEMA ===");
+            sb.AppendLine($@"{{
+  ""id"": ""string (lowercase_snake_case, e.g. my_map)"",
+  ""display_name"": ""string"",
+  ""terrain_ref"": """",
+  ""map_bounds"": 120.0,
+  ""win_condition"": ""DestroyAllBuildings"" | ""EliminateAllUnits"",
+  ""player_slots"": [
+    {{ ""slot"": 0, ""faction_json"": ""{ctx.Slot0FactionJson}"", ""start_ore"": 200.0, ""base_x"": -45.0, ""base_z"": 0.0 }},
+    {{ ""slot"": 1, ""faction_json"": ""{ctx.Slot1FactionJson}"", ""start_ore"": 200.0, ""base_x"":  45.0, ""base_z"": 0.0 }}
+  ],
+  ""resource_nodes"": [
+    {{ ""x"": float, ""z"": float, ""supply"": 400.0, ""rate"": 5.0, ""max_gatherers"": 4 }}
+  ],
+  ""buildings"": [
+    {{ ""type"": ""CommandCenter""|""Barracks""|""ArcheryRange""|""SiegeWorkshop"", ""slot"": 0|1, ""x"": float, ""z"": float, ""pre_built"": true }}
+  ],
+  ""units"": [
+    {{ ""unit_id"": ""string"", ""slot"": 0|1, ""x"": float, ""z"": float }}
+  ],
+  ""triggers"": []
+}}");
+            sb.AppendLine();
+            sb.AppendLine("=== PLACEMENT RULES ===");
+            sb.AppendLine($"- All x/z positions MUST be within ±{ctx.MapBounds} world units.");
+            sb.AppendLine("- Player 1 (slot 0): base near X=-45, Z=0. Player 2 (slot 1): base near X=45, Z=0.");
+            sb.AppendLine("- Each slot MUST have a CommandCenter (pre_built=true) at its base position.");
+            sb.AppendLine("- Ore nodes must be spaced at least 15 units apart from every other ore node.");
+            sb.AppendLine("- Use 4–12 resource nodes. Supply 200–2000, rate 3–10.");
+            sb.AppendLine("- Pre-place at most 6 combat (non-worker) units per faction slot.");
+            sb.AppendLine("- Start workers 3–5 units from their CommandCenter.");
+            sb.AppendLine();
+            sb.AppendLine("=== AVAILABLE UNIT IDs ===");
+            sb.AppendLine(string.Join(", ", ctx.UnitIds.Select(id => $"\"{id}\"")));
+            sb.AppendLine();
+            sb.AppendLine("=== EXAMPLE OUTPUT ===");
+            sb.AppendLine($@"{{
+  ""id"": ""contested_valley"",
+  ""display_name"": ""Contested Valley"",
+  ""terrain_ref"": """",
+  ""map_bounds"": 120,
+  ""win_condition"": ""DestroyAllBuildings"",
+  ""player_slots"": [
+    {{ ""slot"": 0, ""faction_json"": ""{ctx.Slot0FactionJson}"", ""start_ore"": 200, ""base_x"": -45, ""base_z"": 0 }},
+    {{ ""slot"": 1, ""faction_json"": ""{ctx.Slot1FactionJson}"", ""start_ore"": 200, ""base_x"":  45, ""base_z"": 0 }}
+  ],
+  ""resource_nodes"": [
+    {{ ""x"": -25, ""z"":  15, ""supply"": 600, ""rate"": 5, ""max_gatherers"": 4 }},
+    {{ ""x"": -25, ""z"": -15, ""supply"": 600, ""rate"": 5, ""max_gatherers"": 4 }},
+    {{ ""x"":   0, ""z"":   0, ""supply"": 900, ""rate"": 7, ""max_gatherers"": 4 }},
+    {{ ""x"":  25, ""z"":  15, ""supply"": 600, ""rate"": 5, ""max_gatherers"": 4 }},
+    {{ ""x"":  25, ""z"": -15, ""supply"": 600, ""rate"": 5, ""max_gatherers"": 4 }}
+  ],
+  ""buildings"": [
+    {{ ""type"": ""CommandCenter"", ""slot"": 0, ""x"": -45, ""z"": 0, ""pre_built"": true }},
+    {{ ""type"": ""CommandCenter"", ""slot"": 1, ""x"":  45, ""z"": 0, ""pre_built"": true }}
+  ],
+  ""units"": [
+    {{ ""unit_id"": ""worker"", ""slot"": 0, ""x"": -42, ""z"": -3 }},
+    {{ ""unit_id"": ""worker"", ""slot"": 0, ""x"": -42, ""z"":  3 }},
+    {{ ""unit_id"": ""worker"", ""slot"": 1, ""x"":  42, ""z"": -3 }},
+    {{ ""unit_id"": ""worker"", ""slot"": 1, ""x"":  42, ""z"":  3 }}
+  ],
+  ""triggers"": []
+}}");
+            sb.AppendLine();
+            sb.AppendLine("=== INSTRUCTIONS ===");
+            sb.AppendLine(
+                "Create an interesting, balanced, playable map based on the user's description.");
+            sb.AppendLine(
+                "Return ONLY valid JSON. No markdown fences, no explanation, no extra text.");
+            return sb.ToString();
+        }
     }
 }

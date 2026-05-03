@@ -127,9 +127,14 @@ namespace ProjectChimera.Core
 
         private ScenarioDirector                      _scenarioDirector = null!;
         private CreationSuite.TriggerEditorPanel      _triggerPanel     = null!;
+        private CreationSuite.MapGeneratorPanel       _mapGenPanel      = null!;
         private AI.LLMService                         _llmService       = null!;
         private Label?                                _toastLabel;
         private float                                 _toastTimer;
+
+        // Pending AI-generated scenario: written before scene reload, consumed in LoadAndApplyScenario.
+        // Static so it survives the Godot scene reload cycle.
+        private static ScenarioData? _pendingGeneratedScenario;
 
         // ── Match stats ───────────────────────────────────────────────────────
 
@@ -291,6 +296,7 @@ namespace ProjectChimera.Core
             SetupContentBrowser();   // Phase 4 map browser (above all other UI)
             SetupMainMenu();         // Phase 5 — shown on first launch; dismissed on mode choice
             SetupTriggerEditor();    // Phase 5 — LLM trigger authoring (L key in Edit mode)
+            SetupMapGenerator();     // Phase 5 — AI map generation (M key in Edit mode)
 
             // Compute scenario hash now that both scenario and lobby are ready.
             // Sent with the Ready packet so peers can detect map mismatches before starting.
@@ -376,6 +382,11 @@ namespace ProjectChimera.Core
                 _triggerPanel.Toggle();
                 GetViewport().SetInputAsHandled();
             }
+            else if (key.Keycode == Key.M)
+            {
+                _mapGenPanel.Toggle();
+                GetViewport().SetInputAsHandled();
+            }
         }
 
         public override void _Process(double delta)
@@ -432,6 +443,7 @@ namespace ProjectChimera.Core
 
             // Drain LLM callbacks and update toast notification.
             _triggerPanel.Update();
+            _mapGenPanel.Update();
             if (_toastTimer > 0)
             {
                 _toastTimer -= (float)delta;
@@ -450,6 +462,18 @@ namespace ProjectChimera.Core
         /// </summary>
         private void LoadAndApplyScenario()
         {
+            // Check for an AI-generated scenario passed across the scene reload boundary.
+            if (_pendingGeneratedScenario != null)
+            {
+                var generated = _pendingGeneratedScenario;
+                _pendingGeneratedScenario = null;
+                _scenario = generated;
+                ApplyScenario(generated);
+                GD.Print($"[MainScene] Loaded AI-generated scenario: \"{generated.DisplayName}\"");
+                SetupStartPositionBridge();
+                return;
+            }
+
             string abs = ProjectSettings.GlobalizePath(ScenarioPath);
             var scenario = ScenarioSerializer.LoadFromFile(abs);
 
@@ -1812,6 +1836,14 @@ void fragment() {
                 _contentBrowser.ToggleVisible();
             };
 
+            _mainMenu.OnGenerateMap += () =>
+            {
+                // Switch to Edit mode and open the map generator panel.
+                if (_gameState.Mode != GameMode.Edit)
+                    _gameState.Toggle();
+                _mapGenPanel.Toggle();
+            };
+
             _mainMenu.OnSettings += () => _settingsPanel.ToggleVisible();
 
             _mainMenu.OnQuit += () => GetTree().Quit();
@@ -1883,6 +1915,50 @@ void fragment() {
             GD.Print("[TriggerEditor] Initialized — press L in Edit mode to open. " +
                      "Anthropic API key " +
                      (string.IsNullOrEmpty(AnthropicApiKey) ? "not set (Ollama fallback)." : "configured."));
+        }
+
+        // ── Map Generator ─────────────────────────────────────────────────────
+
+        private void SetupMapGenerator()
+        {
+            _mapGenPanel = new CreationSuite.MapGeneratorPanel();
+            AddChild(_mapGenPanel);
+
+            // Build unit ID list — same pass used by SetupTriggerEditor.
+            var unitIds = new System.Collections.Generic.HashSet<string>();
+            foreach (var def in _slotFactionDefs)
+                if (def?.Units != null)
+                    foreach (var u in def.Units) unitIds.Add(u.Id);
+
+            var context = new AI.MapGeneratorContext
+            {
+                UnitIds          = new string[unitIds.Count],
+                MapBounds        = _scenario?.MapBounds ?? 120f,
+                Slot0FactionJson = _scenario?.PlayerSlots?.Length > 0
+                    ? _scenario.PlayerSlots[0].FactionJson
+                    : "res://resources/data/factions/alpha_faction.json",
+                Slot1FactionJson = _scenario?.PlayerSlots?.Length > 1
+                    ? _scenario.PlayerSlots[1].FactionJson
+                    : "res://resources/data/factions/beta_faction.json",
+            };
+            unitIds.CopyTo(context.UnitIds);
+
+            _mapGenPanel.Initialize(_gameState, _llmService, context);
+            _mapGenPanel.OnLoadRequested += LoadGeneratedScenario;
+
+            GD.Print("[MapGenerator] Initialized — press M in Edit mode to open.");
+        }
+
+        /// <summary>
+        /// Load an AI-generated scenario into the active session.
+        /// Stores the data in a static field so it survives the scene reload,
+        /// then reloads the scene — no disk write required.
+        /// </summary>
+        public void LoadGeneratedScenario(ScenarioData scenario)
+        {
+            _pendingGeneratedScenario = scenario;
+            GD.Print($"[MapGenerator] Loading \"{scenario.DisplayName}\" — reloading scene.");
+            GetTree().ReloadCurrentScene();
         }
 
         /// <summary>Show a brief HUD notification from a trigger display_message action.</summary>
