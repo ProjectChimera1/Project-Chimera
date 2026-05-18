@@ -15,14 +15,7 @@ status: Active
 Phases 0–4 are code-complete. Phase 5 is underway. Session 20 shipped worker-placed buildings + UI bug sweep. Session 21 (remote, away from computer) shipped Utility AI + Adaptive Input Delay.
 
 ## Next Action
-**Smoke test all four unverified systems, then drop in audio assets.**
-
-1. ✅ `dotnet build` — 0 errors confirmed (session 23).
-2. Run the Utility AI smoke test (see checklist).
-3. Run the Adaptive Delay smoke test (see checklist).
-4. Run the LLM Trigger System smoke test (see checklist below).
-5. Run the AI Map Generator smoke test (see checklist below).
-6. Drop `.ogg` files at `res://resources/audio/sfx/`.
+Confirm which of the 5 priority items you want to tackle first (recommend Utility AI smoke test of `AiOpponentSystem.cs`), or pivot to a different surface if a blocker has emerged since session 23.
 
 ## Needs Testing — Written This Session
 
