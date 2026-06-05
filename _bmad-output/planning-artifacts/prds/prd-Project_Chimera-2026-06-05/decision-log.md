@@ -1,0 +1,14 @@
+# Decision Log — Project Chimera PRD
+
+Real-time record of every decision, change, and version transition.
+
+| # | Date | Decision | Rationale |
+|---|------|----------|-----------|
+| 1 | 2026-06-05 | Intent = **Create**. Workspace created at `_bmad-output/planning-artifacts/prds/prd-Project_Chimera-2026-06-05/`. | User invoked `/gds-prd` to map the project start-to-finish toward a complete game. No prior PRD existed. |
+| 2 | 2026-06-05 | Brownfield **From-GDD** path. Sources: `Project_Chimera_GDD.md` (design intent) + `_bmad-output/` as-built docs (architecture, component-inventory, data-models, state-management). | User explicitly pointed at both. PRD references GDD, does not relitigate it. |
+| 3 | 2026-06-05 | **Scope frame = Gap-to-1.0.** PRD defines the definition-of-done for a complete game and specifies only remaining work from as-built state to shippable 1.0. Built-and-working systems are referenced as done (cite component-inventory), not re-specified as FRs. | User selection. Leanest path to a complete game; avoids re-documenting working code. Phases 0–4 already code-complete. |
+| 4 | 2026-06-05 | **Working mode = Facilitative.** Walk the sections needing real product/scope thinking (1.0 DoD, journeys, metrics, non-goals) before drafting; capture decisions section-by-section. | User selection. |
+| 5 | 2026-06-05 | **1.0 North Star = the Creation Suite.** 1.0 = a fully-polished, WC3-World-Editor-class, AI-assisted creation platform to build *any* custom RTS game (units, skills, characters, factions, maps, rules) — intuitive/efficient, giving the creator "ultimate capabilities." The playable base game is the showcase, not the goal. Supersedes the leaner "verify + finish" framing; the verification/hardening work remains the FLOOR, the creation suite is the CEILING and the headline. | User's authored vision. Pulls in-app authoring (unit/skill/character/building/faction editors) into 1.0 critical scope. |
+| 6 | 2026-06-05 | **Factions: 2 truly asymmetric at 1.0** (Iron Pact upgraded from reskin to distinct faction), PLUS the creator-mode building blocks to author new factions. 3rd faction is post-1.0. | User selection. Reinforces creation-suite priority — faction authoring is a 1.0 surface, not just shipped content. |
+| 7 | 2026-06-05 | **Full AI suite in 1.0** — NL trigger gen, AI map gen, AND AI balance analysis (currently unbuilt). AI assistance spans the whole creation workflow. | User selection. Adds AI-balance-analysis build work to the 1.0 critical path. |
+| 8 | 2026-06-05 | **LLM provider requirement expanded.** AI features must support **OpenRouter (free tier)** and **Claude** as user-supplied-API-key providers, plus existing Ollama local fallback. User will add OpenRouter. (Current code: Claude API + Ollama only.) | Stated by user in DoD answer. Becomes a technical requirement / NFR; provider selection + key config is a creation-suite concern. See [[addendum]] technical notes. |
