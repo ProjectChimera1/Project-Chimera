@@ -63,12 +63,16 @@ that decides which genres become buildable.**
 - GDD LLM authoring core-vs-stretch contradiction — **resolved: full AI suite in 1.0** (decision-log #7).
 - `project.godot` main scene `res://scenes/main.tscn`; composition root `godot/src/UI/MainScene.cs` (~2,200 LOC, ~25 `SetupXxx()` methods) — large; **the single integration chokepoint** every new system wires into. M2/M3 add ~6 editors + hero sim + DSL expansion through it — decompose the wiring first (PRD §6.2 M0).
 
-## G. Save-State Persistence (creator-toggled) — FR-7a
-Persistence is a **per-scenario creator toggle**, but enabling it is **net-new build work**, not just a flag:
-- The engine has **no mid-game world snapshot today.** Replays (`.chmr`) and lockstep both work by *re-simulating from initial state + commands* — there is no serialized world state. So FR-7a requires a brand-new **deterministic full-world serializer** covering `EntityWorld`/`BuildingStore`/`ResourceStore`/fog (and any other authored persistent state — to be enumerated).
-- **Enabled** → scenario progress (hero levels/XP, world state) serializes across play sessions → RPG-campaign scenarios.
-- **Disabled** → state is match-only (RTS/MOBA model); no save files.
-- **1.0 scope:** single-player/co-op campaigns. Persistent *competitive/multiplayer* state is `[v2 — out of 1.0]` — round-tripping persistence through lockstep is a determinism hazard. Sequence the serializer in M2 (PRD §6.2) before scenarios depend on it.
+## G. Persistence — two distinct capabilities — FR-7a–c
+The user's intent (clarified 2026-06-05) is the **WC3 save-code / "-load"** model, NOT full mid-game save. Two separate things, don't conflate:
+
+**(1) Persistent artifacts (in 1.0, online-capable) — FR-7a–c.**
+- A **per-player profile serializer driven by a creator-authored manifest**: only the selected fields (hero level/XP, items, skill tree, currency) are saved — *not* the whole `EntityWorld`.
+- Loaded at **match initialization** and applied as deterministic initial state. **This is why it works online:** it's init-time data baked into the start state all peers agree on, never a mid-game snapshot through lockstep → **no determinism hazard.**
+- Build cost is moderate: manifest authoring UI (M2), a per-player profile (de)serializer, an init-time apply step, and **server-side profile storage/validation** (FR-7c) to stop save-code tampering (WC3's classic exploit). Sequence: manifest authoring in M2, online storage in M5.
+
+**(2) Mid-game save/resume (single-player) — `[v2 — out of 1.0]`.**
+- The heavier full-world serializer (`EntityWorld`/`BuildingStore`/`ResourceStore`/fog) for quit-and-resume of a single-player campaign. The engine has none today (replays/lockstep re-simulate from initial state + commands). Deferred unless the user wants single-player quit-resume at 1.0.
 
 ## H. AI Generation Clamps (relax for non-RTS) — FR-31/FR-32
 The AI map/scenario generator's 7-pass validator currently **hard-clamps** output to the showcase RTS (≤6 combat units/faction, ≤6 player slots, forced faction paths). For UJ-1/UJ-2 ("build any game" — TD waves, RPG parties), these clamps are too tight and must be **parameterized by scenario type**, not hardcoded to RTS conventions.
