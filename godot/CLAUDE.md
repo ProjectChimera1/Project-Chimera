@@ -9,7 +9,7 @@ Always use MCP tools to verify changes compile and run correctly.
 ## Build & Run
 - Build C#: Use the MCP `editor` tool or run `dotnet build` in this folder
 - Run project: Use the MCP `run_project` tool or press F5 in Godot
-- The .sln file is `ProjectChimera.sln`
+- The .sln file is `godot.sln` (the assembly name is `ProjectChimera`, but the project/solution files are `godot.csproj`/`godot.sln`)
 
 ## C# Architecture Rules
 
