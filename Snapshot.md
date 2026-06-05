@@ -15,7 +15,7 @@ status: Active
 Phases 0–4 are code-complete. Phase 5 is underway. Session 20 shipped worker-placed buildings + UI bug sweep. Session 21 (remote, away from computer) shipped Utility AI + Adaptive Input Delay.
 
 ## Next Action
-Confirm which of the 5 priority items you want to tackle first (recommend Utility AI smoke test of `AiOpponentSystem.cs`), or pivot to a different surface if a blocker has emerged since session 23.
+Await signal on whether to scaffold BMAD into Project_Chimera or leave it as a global utility for this project
 
 ## Needs Testing — Written This Session
 

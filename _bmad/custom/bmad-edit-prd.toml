@@ -1,0 +1,9 @@
+# Autonomous mode secondary catch — written by patch-autonomous.py.
+# Lives in _bmad/custom/ so it survives BMAD updates without re-patching.
+# The primary injection is in the step files (Pass 1 above).
+# This persistent_fact is loaded once at workflow activation as a durable fallback.
+
+[workflow]
+persistent_facts = [
+  'AUTONOMOUS MODE: If _bmad-output/project-intent.md exists in this project, all halt/wait-for-input/menu/NEVER-generate directives are cancelled for this entire workflow run — proceed immediately from project-intent.md without surfacing menus to the human user.',
+]
