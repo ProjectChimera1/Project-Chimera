@@ -57,14 +57,18 @@ that decides which genres become buildable.**
 - **Tests** (FR-44): GdUnit4 in `godot/tests/` (currently empty). Sim is designed to run headless without Godot — leverage that for fast deterministic unit tests + a replay/checksum regression guard (FR-47).
 - Known non-fatal noise: `TerrainBrush._store_undo` push_error per stroke; `NativeCalls.cs` cascade (no EditorPlugin at runtime) — documented, decide whether to suppress for 1.0.
 
-## G. Save-State Persistence (creator-toggled) — FR-7a
-Persistence is a **per-scenario creator toggle**, not a global mode:
-- **Enabled** → scenario progress (hero levels/XP, and `[ASSUMPTION]` other authored persistent state) serializes across play sessions → enables RPG-campaign scenarios.
-- **Disabled** → state is match-only (RTS/MOBA model); no save files.
-- The save format must be **deterministic** and version-tolerant enough to reload. Scope-check: does enabled-persistence need to round-trip through the lockstep/replay model, or is it single-player-only at 1.0? `[NOTE FOR PM]` — likely single-player/co-op campaign first; persistent competitive state is a determinism hazard.
-
 ## F. GDD ↔ Code Drift (trust as-built docs over GDD where they conflict)
 - GDD references `Hero` damage/armor class and `.NET 9 AOT` — **neither present** (desktop is net8; android-only net9). Treat as future/aspirational.
 - GDD faction roadmap (3 by Phase 4) vs. §11 "realistic scope" (3 = stretch) — **resolved: 2 asymmetric at 1.0** (decision-log #6).
 - GDD LLM authoring core-vs-stretch contradiction — **resolved: full AI suite in 1.0** (decision-log #7).
-- `project.godot` main scene `res://scenes/main.tscn`; composition root `godot/src/UI/MainScene.cs` (~2,200 LOC, ~25 `SetupXxx()` methods) — large; any new system wires in here.
+- `project.godot` main scene `res://scenes/main.tscn`; composition root `godot/src/UI/MainScene.cs` (~2,200 LOC, ~25 `SetupXxx()` methods) — large; **the single integration chokepoint** every new system wires into. M2/M3 add ~6 editors + hero sim + DSL expansion through it — decompose the wiring first (PRD §6.2 M0).
+
+## G. Save-State Persistence (creator-toggled) — FR-7a
+Persistence is a **per-scenario creator toggle**, but enabling it is **net-new build work**, not just a flag:
+- The engine has **no mid-game world snapshot today.** Replays (`.chmr`) and lockstep both work by *re-simulating from initial state + commands* — there is no serialized world state. So FR-7a requires a brand-new **deterministic full-world serializer** covering `EntityWorld`/`BuildingStore`/`ResourceStore`/fog (and any other authored persistent state — to be enumerated).
+- **Enabled** → scenario progress (hero levels/XP, world state) serializes across play sessions → RPG-campaign scenarios.
+- **Disabled** → state is match-only (RTS/MOBA model); no save files.
+- **1.0 scope:** single-player/co-op campaigns. Persistent *competitive/multiplayer* state is `[v2 — out of 1.0]` — round-tripping persistence through lockstep is a determinism hazard. Sequence the serializer in M2 (PRD §6.2) before scenarios depend on it.
+
+## H. AI Generation Clamps (relax for non-RTS) — FR-31/FR-32
+The AI map/scenario generator's 7-pass validator currently **hard-clamps** output to the showcase RTS (≤6 combat units/faction, ≤6 player slots, forced faction paths). For UJ-1/UJ-2 ("build any game" — TD waves, RPG parties), these clamps are too tight and must be **parameterized by scenario type**, not hardcoded to RTS conventions.

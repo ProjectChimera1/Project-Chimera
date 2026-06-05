@@ -107,14 +107,21 @@ workflow's job. Features (§4) reference these by ID.*
 - **AI collaborator / AI-assisted authoring** — LLM-backed help (trigger gen, map gen, unit/ability/faction gen, balance analysis) available throughout the Creation Suite, via a user-supplied API key (OpenRouter / Claude) or local Ollama.
 - **Deterministic lockstep** — server-authoritative, command-based multiplayer using fixed-point (`Fixed`) math, deterministic RNG, and a 30 Hz tick, such that all machines compute identical state.
 - **Proof-of-play gate** — the requirement that a creator complete (win) their own scenario before publishing it.
+- **Custom UI element** — a creator-authored runtime UI primitive (text, counter, button, dialog) driven by triggers; required for non-RTS modes (TD wave counters, RPG dialog, scoreboards). See FR-26.
+- **Combat-feedback profile** — the per-unit/ability bundle of hit particles, impact sound, screen shake, hit-freeze, and death effect that gives combat "juice." A tuned default ships; creators override it. See FR-12a.
 - **Built Foundation** — systems already code-complete and referenced as done (§4.0); not re-specified here.
 - **Verification floor** — the testing/hardening work (LAN determinism, smoke tests, automated test suite) that 1.0 requires before the built systems can be trusted.
 
 ## 4. Features
 
-> **Reading guide.** §4.0 references what is *already built* (done — not 1.0 work). §4.1–§4.9 specify
-> the **remaining 1.0 work**, grouped by area, with globally-numbered FRs describing *capabilities*.
-> Implementation detail lives in `addendum.md`. Items marked `[v2 — out of 1.0]` are explicitly deferred.
+> **Reading guide.** §4.0 references what is *already built* (done — not 1.0 work). §4.1–§4.11 specify
+> the **remaining 1.0 work**, grouped by area, with globally-numbered FRs describing *capabilities*;
+> §4.12 holds cross-cutting NFRs. Implementation detail lives in `addendum.md`. Items marked
+> `[v2 — out of 1.0]` are explicitly deferred. **FR numbering:** FR-1..FR-52 are stable global IDs;
+> a lettered insert (e.g. FR-7a) is an intentional in-place addition — treat it as its own requirement.
+> **Layered complexity applies everywhere:** every editor's *advanced mode* retains direct raw-data
+> (JSON) access for power users — the in-app editors augment JSON authoring, they do not remove the
+> expert escape hatch (GDD pillar).
 
 ### 4.0 Built Foundation *(reference — already done, not 1.0 scope)*
 Per `component-inventory.md` / `architecture.md`, these are code-complete and referenced as done. 1.0
@@ -122,7 +129,7 @@ work *hardens and verifies* them (§4.7) but does not re-specify them:
 - **Deterministic sim core** — `Fixed` 16.16 math, SoA `EntityWorld` (4096), 30 Hz `SimulationLoop`, `SpatialHash`, MultiMesh rendering, interpolation. (~350 FPS @ 1000 units verified single-machine.)
 - **Combat** — damage/armor matrix, cooldowns, projectiles, splash, combat feedback, death/cleanup.
 - **Economy** — resource nodes, gatherer FSM, dynamic supply cap, resource HUD.
-- **Unit framework** — JSON `UnitDefinition`, 6 archetypes, command system, selection/control groups, formations.
+- **Unit framework** — JSON `UnitDefinition`, 6 archetypes, command system, `SelectionSystem` (box/click). `[ASSUMPTION: control groups + formation movement are present — verify against component-inventory before treating as done; if stubbed, they move to a §4.10 verify task.]`
 - **Navigation** — flow-field pathfinding (live, deterministic), fog of war, NavServer3D direct API.
 - **Base building** — placement, construction, production queues, data-driven tech-tree gating, rally points.
 - **AI opponent** — utility-AI, Easy/Normal/Hard.
@@ -147,11 +154,11 @@ field exposed). Replaces today's JSON-by-hand authoring. Realizes UJ-1, UJ-2.
 - **FR-4** — An Architect can compose a unit from the 6 archetypes plus orthogonal ability/behavior components (composition over inheritance — no subclassing).
 - **FR-5** — An Architect can designate a unit as a **Hero**, configuring leveling curve, experience gain, and signature/ultimate abilities.
 - **FR-6** — Simple mode offers preset/templated units; advanced mode exposes every authorable field.
-- **FR-7** — Validation surfaces authoring errors (missing model, invalid stat, undefined ability) inline before save/playtest.
-- **FR-7a** — An Architect can **enable or disable cross-session save state per scenario.** When enabled, scenario progress (incl. hero levels/XP) persists across play sessions, enabling RPG-campaign scenarios; when disabled, state is match-only (RTS/MOBA model). The save system is deterministic and creator-toggled (data-driven).
+- **FR-7** — Validation surfaces authoring errors inline before save/playtest, covering at minimum: missing/invalid model, out-of-range or missing required stat, reference to an undefined ability, and invalid archetype composition.
+- **FR-7a** — An Architect can **enable or disable cross-session save state per scenario.** When enabled, scenario progress (incl. hero levels/XP) persists across play sessions, enabling RPG-campaign scenarios; when disabled, state is match-only (RTS/MOBA model). At 1.0 persistence targets **single-player/co-op campaigns**; persistent *competitive* state is `[v2 — out of 1.0]` (determinism hazard). The save format is deterministic.
 
-**Feature-specific NFRs:** Editing a unit and entering playtest reflects changes without an app restart (supports UJ-3).
-**Notes:** Hero leveling/XP is a new sim system. Save-state persistence (FR-7a) is a creator-facing toggle, not always-on — see addendum §G.
+**Feature-specific NFRs:** Editing a unit and entering playtest reflects changes without an app restart (supports UJ-3, measured by §4.12).
+**Notes:** `[NOTE FOR PM]` Hero leveling/XP is a new sim system. **FR-7a is net-new build work, not a mere toggle:** the engine has no mid-game world snapshot today (replays + lockstep re-simulate from initial state + commands), so save-state requires a new **deterministic full-world serializer** for `EntityWorld`/`BuildingStore`/`ResourceStore`/fog. Sequence it explicitly — see addendum §G.
 
 ### 4.2 Creation Suite — Ability / Skill Authoring *(headline)*
 **Description:** A creator builds active and passive abilities ("skills") via an **Ability Editor**
@@ -167,6 +174,7 @@ set the trigger DSL exposes, so abilities and triggers share one effect vocabula
 - **FR-10** — An Architect can compose an ability from multiple effect primitives in advanced mode, and from configurable presets in simple mode.
 - **FR-11** — Abilities can be attached to units and heroes (FR-4, FR-5) and appear on the command card at runtime.
 - **FR-12** — Ability definitions are data-driven, deterministic, and server-validatable (no float math, no arbitrary scripts).
+- **FR-12a** — Abilities and units carry a **combat-feedback profile** (hit particles, impact sound, screen shake, hit-freeze, death effect). A tuned, satisfying **default profile ships** so every Chimera-built game has baseline "juice," and creators can override it per unit/ability (GDD §3 framework guarantee).
 
 **Notes:** `[NOTE FOR PM]` The breadth of effect primitives is the lever that makes "any game" real or not — it warrants its own spec pass with the GDD/architecture phase. The richer the primitive set, the more genres become buildable.
 
@@ -195,7 +203,7 @@ experience (GDD). Realizes UJ-1.
 - **FR-17** — An Architect can create a faction by assembling authored units/heroes/buildings/tech-tree, name, color, and starting conditions through a guided multi-step flow.
 - **FR-18** — An Architect can assign an AI preset to a faction so it is playable against/with the AI opponent.
 - **FR-19** — A completed faction is immediately selectable in playtest and in skirmish/multiplayer setup.
-- **FR-20** — The two shipped factions (Alpha, Iron Pact) are themselves valid Faction Definer outputs, and **Iron Pact is upgraded from a reskin to a genuinely asymmetric faction** (distinct units/mechanics/feel).
+- **FR-20** — The two shipped factions (Alpha, Iron Pact) are themselves valid Faction Definer outputs, and **Iron Pact is upgraded from a reskin to a genuinely asymmetric faction.** *Acceptance:* Iron Pact has ≥1 unique core mechanic and a roster that differs from Alpha in role/stat profile (not 1:1 renamed units), validated in playtest.
 
 ### 4.5 Creation Suite — Map / Terrain Editor *(polish)*
 **Description:** The existing Terrain3D sculpt/paint editor is brought to a shippable bar: the
@@ -234,10 +242,10 @@ names/lore, and performs **balance analysis** (new). All AI output is *editable 
 box — the creator reviews and tweaks. Realizes UJ-2.
 
 **Functional Requirements:**
-- **FR-29** — A creator can select and configure an LLM provider (OpenRouter, Claude, or local Ollama) by supplying an API key via settings; keys are never hardcoded or committed.
+- **FR-29** — A creator can select and configure an LLM provider (OpenRouter, Claude, or local Ollama) by supplying an API key via settings; keys are never hardcoded or committed. *Note:* this includes migrating key storage from the current single `AnthropicApiKey` Inspector export on `MainScene` into the persisted settings system (`SettingsData`/`SettingsManager`) — it is more than adding a dropdown.
 - **FR-30** — A creator can generate triggers from a natural-language prompt and review/edit the result before applying (built — verify, extend to new DSL constructs).
-- **FR-31** — A creator can generate a map from a prompt with validation before load (built — verify).
-- **FR-32** — A creator can generate a unit, ability, hero, or faction draft (stats + name + lore) from a prompt, as editable data.
+- **FR-31** — A creator can generate a map from a prompt with validation before load (built — verify). *Note:* the existing 7-pass validator hard-clamps output to the showcase (≤6 combat units/faction, ≤6 slots, forced faction paths); these clamps must be **relaxed/parameterized** for non-RTS scenario types (TD/RPG) to honor UJ-1/UJ-2.
+- **FR-32** — A creator can generate a unit, ability, hero, or faction draft (stats + name + lore) from a prompt, as editable data. *Note:* generation/validation must not assume RTS-only conventions (see FR-31 note).
 - **FR-33** — A creator can request **AI balance analysis** of a faction/scenario and receive actionable, editable suggestions (new build work).
 - **FR-34** — When no provider/key is available, AI features degrade gracefully with a clear message and the suite remains fully usable manually.
 
@@ -253,8 +261,9 @@ verified, configured, end-to-end-working bar, including the **proof-of-play gate
 - **FR-36** — A creator must pass the **proof-of-play gate** (win their own scenario) before publishing.
 - **FR-37** — A player can browse, search, tag-filter, sort, subscribe to, and rate scenarios in the content browser.
 - **FR-38** — Published packages are content-hashed and integrity-verified on download.
+- **FR-38a** — **Creators retain full ownership of their content.** The platform takes only a non-exclusive right to host and distribute published scenarios; it claims no ownership of creator IP (GDD §7 non-negotiable, Reforged cautionary tale). This is surfaced at publish time.
 
-**Notes:** `[NOTE FOR PM]` mod.io integration is wired but never verified end-to-end — treat as verification work, not "done." Ratings/discovery depth beyond mod.io's native features is `[v2]` unless you want richer in-app discovery at 1.0.
+**Notes:** `[NOTE FOR PM]` mod.io integration is wired but never verified end-to-end — treat as verification work, not "done." `[v2 — out of 1.0]` GDD's richer discovery-quality mechanics (weighted rating algorithm — completion rate / unique players / recency, not just average stars; auto-hide on multiple reports) are a conscious deferral; 1.0 uses proof-of-play + star ratings + mod.io-native features.
 
 ### 4.9 The Showcase Game & Multiplayer *(verify + harden + content)*
 **Description:** The shipped, polished proof that the engine is real: two asymmetric factions playable
@@ -263,9 +272,9 @@ single largest 1.0 risk lives here — **multiplayer has never been verified on 
 
 **Functional Requirements:**
 - **FR-39** — Two players can complete a full multiplayer match on **separate machines (LAN)** with checksums in sync for 300+ ticks and zero desync — the **P2.4 LAN determinism test must pass** (currently never run; #1 risk).
-- **FR-40** — Players can matchmake (Nakama) or join via LAN/lobby, with in-game chat, and a `.chmr` replay is saved.
+- **FR-40** — Players can matchmake (Nakama) or join via LAN/lobby, with in-game chat, and a `.chmr` replay is saved **and viewable/shareable** (not just recorded). *Target:* support **up to 8 players** (GDD ceiling) across the supported modes; `[ASSUMPTION: pre-match party grouping is 1.0 — confirm.]` **Spectator mode** is included in the multiplayer verification set (it is code-complete but unverified).
 - **FR-41** — Adaptive input delay verifiably adjusts to RTT on real networks (4→2 on LAN, clamped [2,12]) without desync.
-- **FR-42** — The two shipped factions are balanced enough that neither dominates in normal play (informed by FR-33 AI balance analysis).
+- **FR-42** — The two shipped factions are balanced. *Acceptance:* neither faction's win rate falls outside ~45–55% across a representative AI self-play / playtest sample (informed by FR-33 AI balance analysis).
 - **FR-43** — A solo player can play skirmish vs. the AI opponent across difficulties on the shipped maps.
 
 **Notes:** `[NOTE FOR PM]` Nakama matchmaking is **1v1-only** today; GDD intended 2–8 players. Decision needed — is >2-player matchmaking 1.0 or `[v2]`? `[NOTE FOR PM]` NavServer3D is non-deterministic across machines; flow fields are the mitigation but unproven on real LAN — FR-39 is the make-or-break test.
@@ -286,9 +295,20 @@ player-facing surface but gates everything.
 **Functional Requirements:**
 - **FR-48** — Audio assets (`.ogg`) are present and wired through the existing audio system.
 - **FR-49** — Iron Pact's 8 placeholder GLBs are replaced with real art (external Hunyuan3D/Tripo pipeline).
+- **FR-49a** — An **art-style consistency layer** keeps AI-generated and creator-supplied assets visually coherent — at minimum a shared material library and a global post-process (e.g. cel-shading) shader, so community content doesn't look incoherent (GDD §8.4 names this the pipeline's hardest challenge). `[NOTE FOR PM]` confirm the 1.0 enforcement depth (post-process shader baseline vs. fuller style-prefix/LoRA pipeline).
 - **FR-50** — A Linux export (dedicated-server and/or client) builds and runs.
-- **FR-51** — Accessibility and settings meet the GDD's Phase 5 bar (`[ASSUMPTION]` — define the specific accessibility checklist).
+- **FR-51** — Accessibility meets a 1.0 **baseline**: remappable keys, colorblind-safe team colors, UI scaling, and subtitles for any voice-over. `[NOTE FOR PM: baseline only — expand if you want deeper a11y at 1.0.]`
 - **FR-52** — The build ships to **Steam and a direct DRM-free channel** (e.g. your site / Gumroad): both store/build pipelines are release-ready.
+
+### 4.12 Cross-Cutting NFRs
+*System-wide quality attributes not owned by a single feature. Downstream UX/architecture must honor these.*
+
+- **NFR-1 — Fast edit→play loop (realizes UJ-3).** The editor→playtest→editor round-trip is near-instant: entering playtest reflects authoring changes **without an app restart**, target **≤ a few seconds**. This is the core creation-loop quality bar; UJ-3 is realized by the playtest capability across §4.1–§4.9, measured here.
+- **NFR-2 — Creator-experience / discoverability.** Every editor field, button, and panel has a hover tooltip (the Dreams lesson); a guided **"Your First Scenario"** onboarding flow exists; a creator reaches a basic playable scenario in **< 15 min** (complements the ≤12-min faction metric).
+- **NFR-3 — Editor invisible to Commanders.** Players who never create are never exposed to authoring UI/complexity; creation surfaces are opt-in.
+- **NFR-4 — Determinism is sacred (system-wide).** No feature — including new editors, hero/save systems, custom UI, AI — introduces float gameplay math, wall-clock dependence, or nondeterministic iteration into the sim layer. AI/LLM runs only in the authoring layer, never in the sim tick.
+- **NFR-5 — Performance.** The 500–2,000 units @ 60 FPS render / 30 Hz sim target holds on representative shipped and community scenarios (verified by FR-46).
+- **NFR-6 — Server-validatable content.** Every shareable construct (units, abilities, triggers, DSL logic, custom UI) is statically validatable so the server can reject malformed/cheating scenarios before they run — this *bounds* the DSL's expressiveness (anything not statically validatable is out).
 
 ## 5. Non-Goals (Explicit)
 
@@ -301,6 +321,7 @@ player-facing surface but gates everything.
 - **No cross-package dependencies.** Each scenario is fully self-contained for 1.0.
 - **3rd faction is post-1.0.** Two asymmetric factions ship; the third is `[v2]`.
 - **No real-money creator marketplace at 1.0.** Sharing is free via mod.io; monetized marketplace is `[v2]`.
+- **No claim on creator IP.** The platform never takes ownership of creator content — only a non-exclusive host/distribute right (FR-38a). `[NON-GOAL by design]`
 
 ## 6. 1.0 Scope & Build Sequencing
 *Decision (log #13): **all features in §4.1–§4.11 are in 1.0** — the full vision, no fast-follow tier.
@@ -316,8 +337,9 @@ T3 visual node-graph triggers (FR-28), custom runtime UI in triggers (FR-26), fu
 authoring (FR-15/16), and >2-player matchmaking (FR-40).
 
 ### 6.2 Recommended Build Sequencing *(internal milestones — always shippable state)*
+- **M0 — Integration hygiene (do alongside M1).** `MainScene.cs` is a ~2,200 LOC composition root (~25 `SetupXxx()`) and the single point every new system wires into — M2/M3 add ~6 editors + hero sim + a major DSL expansion all threading through it. Decompose/modularize the wiring **before** piling on, or it becomes the integration chokepoint. Also: `PathRequestSystem` still owns the Move→Stop transition (dodging a historical stutter bug) — its Move→Stop logic must migrate to `FlowFieldBridge` before it can be removed; don't delete it blindly during FR-39 work.
 - **M1 — Foundation trust.** Verification floor: automated test suite (FR-44), smoke-test the 4 unverified systems (FR-45), and **pass the LAN determinism test (FR-39)** ⚠️. *Nothing else is safe to build on until multiplayer determinism is proven.* Also clear the data-driven debt (DamageMatrix→JSON) so later authoring builds on data, not constants.
-- **M2 — Core authoring.** Unit Card Editor (FR-1–7), Ability Editor (FR-8–12), Building/Tech-Tree/Economy authoring (FR-13–16), Faction Definer (FR-17–20). Iron Pact → asymmetric (FR-20). *Now a creator can build a faction in-app.*
+- **M2 — Core authoring.** Unit Card Editor (FR-1–7), Ability Editor (FR-8–12), Building/Tech-Tree/Economy authoring (FR-13–16), Faction Definer (FR-17–20). Iron Pact → asymmetric (FR-20). Hero sim + the new **world-state serializer** for save-state (FR-7a) land here, before scenarios depend on them. *Now a creator can build a faction in-app.*
 - **M3 — DSL power.** Expand the trigger DSL (FR-24–25 variables/loops/timers/events), custom runtime UI (FR-26), server validation (FR-27), the four tiers incl. T3 node graph (FR-28). *Now "any game" is buildable.*
 - **M4 — AI everywhere.** Provider config + OpenRouter (FR-29), extend AI gen across new editors (FR-32), balance analysis (FR-33). *Now creation is AI-assisted end to end.*
 - **M5 — Share/Discover + multiplayer breadth.** Verify UGC e2e (FR-35–38), >2-player matchmaking (FR-40). *Now scenarios circulate and play at scale.*
@@ -327,22 +349,21 @@ authoring (FR-15/16), and >2-player matchmaking (FR-40).
 3rd faction · creator marketplace · cross-package dependencies · advanced editor extras (particles, sound triggers) · anything in §5 Non-Goals.
 
 ## 7. Success Metrics
-*`[NOTE FOR PM]` Seeded from GDD goals — **set/confirm the targets**. For a solo premium title, "I'd
-ship this and be proud" + a few hard gates matter more than a metrics dashboard.*
+*Confirmed 2026-06-05. For a solo premium title, the two hard gates matter most; the rest are health signals.*
 
-**Primary (1.0 gates)**
-- **Zero desyncs** in 95%+ of multiplayer matches (GDD); FR-39 LAN test passes. *(non-negotiable)*
+**Primary (1.0 hard gates — must be true to ship)**
+- **Zero desyncs** in ≥95% of multiplayer matches; FR-39 LAN determinism test passes. *(non-negotiable)*
 - **A creator can build a complete, novel custom game** (units + heroes + abilities + faction + rules) **in-app without editing JSON** — the North Star, demonstrably true.
-- **Steam reviews >80% positive** (GDD 1.0 criterion). *Target — confirm.*
 
-**Secondary**
-- ≥N community scenarios published within the first month of 1.0. *(GDD floated 50 at EA — set your N.)*
+**Secondary (health signals)**
+- **Steam reviews >80% positive** (GDD 1.0 criterion).
+- **≥50 community scenarios published** within the first month of 1.0.
+- **First-faction authoring achievable in ≤12 min** (GDD).
 - Avg session length / "when can I play more?" qualitative signal (GDD Phase 1 bar).
-- First-faction authoring achievable in ≤12 min (GDD).
 
 **Counter-metrics (do NOT optimize)**
 - **Don't optimize feature count / "ship everything."** The GDD's named failure mode (Stormgate). A focused, polished, verified 1.0 beats a broad, flaky one.
-- **Don't optimize raw unit-count benchmarks** past the 500–2,000 target — diminishing returns vs. creation-suite polish.
+- **Don't chase higher unit-count benchmarks** once the 500–2,000 target is met — pushing the engine ceiling further trades creation-suite polish for a number nobody asked for.
 - **Don't chase non-RTS genre coverage breadth** at the cost of the core RTS showcase feeling unfinished.
 
 ## 8. Open Questions
@@ -354,9 +375,11 @@ authoring are all **in 1.0** (log #13). Remaining:*
 
 ## 9. Assumptions Index
 - **§2.1** — Developer-as-primary-user is the load-bearing 1.0 persona; community Architects are the same persona at lower fluency.
-- **§4.1 / FR-5** — Ability authoring shares the effect-primitive vocabulary with the trigger DSL (one effect language).
-- **§4.7 / FR-29** — OpenRouter + Claude + Ollama is the provider set; keys via settings export.
+- **§4.2 / FR-8** — Ability authoring shares the effect-primitive vocabulary with the trigger DSL (one effect language).
+- **§4.0 (unit framework)** — Control groups + formation movement are present/working; verify against component-inventory before treating as done.
+- **FR-7a** — Save-state persistence at 1.0 is single-player/co-op; the deterministic world-serializer covers `EntityWorld`/`BuildingStore`/`ResourceStore`/fog (and `[ASSUMPTION]` other authored persistent state — to be enumerated). Persistent competitive state is `[v2]`.
+- **FR-40** — Pre-match party grouping is in 1.0; 8-player ceiling is the target.
 - **FR-47** — Determinism is CI-regression-guarded via replay/checksum test.
-- **FR-51** — Accessibility bar is the GDD Phase 5 intent (specifics TBD).
-- **FR-52** — Steam is the 1.0 storefront.
+- **§7** — Success-metric targets (Steam >80%, ≥50 scenarios month 1) confirmed 2026-06-05; revisit against actual launch reach.
 - **§4.3** — Two-resource default remains the showcase ceiling; resources become data-driven for creators.
+- **FR-52** — Steam + a direct DRM-free channel are the 1.0 distribution targets.
