@@ -15,7 +15,7 @@ status: Active
 Phases 0–4 are code-complete. Phase 5 is underway. Session 20 shipped worker-placed buildings + UI bug sweep. Session 21 (remote, away from computer) shipped Utility AI + Adaptive Input Delay.
 
 ## Next Action
-1.
+Run the `design-handoff-prompt.md` in Google Stitch (or equivalent producer tool), paste Style System block + four screen blocks, save outputs, then return to
 
 ## Needs Testing — Written This Session
 
