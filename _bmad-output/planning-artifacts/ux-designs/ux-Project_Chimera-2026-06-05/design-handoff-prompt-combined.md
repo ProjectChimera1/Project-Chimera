@@ -114,6 +114,50 @@ in-app and dark/low-poly-echo themed.
 
 ---
 
+## References, constraints & worries
+
+**Games whose UX to admire (and why):**
+- **StarCraft II** — gold standard for the non-diegetic RTS HUD: instant readability of the
+  selection/command card at zoomed-out distances, clean control-group and production tabs. The
+  clarity bar for Screen 1.
+- **Warcraft III World Editor** — the model for the Creation Suite: *one entity, one consolidated
+  view* with all data in a single panel. The target for the Unit Card Editor.
+- **Mindustry** — utilitarian, schematic clarity; dense info without clutter. The clarity end of the
+  low-poly-echo style.
+- **Northgard** — warm, hand-crafted panel character; the painterly end of the reference band.
+- **Super Mario Maker** — build↔play immediacy and the "prove you can win it before you publish"
+  gate; channel that into the EDIT↔PLAY toggle and the publish flow.
+
+**Must-keep constraints:**
+- UI must stay **legible on top of a busy, zoomed-out 3D battlefield** — clarity always wins over
+  decorative faceting.
+- **Faction/team colors (blue vs. red) are reserved for units in the world** — chrome and accent
+  must never be mistaken for a team color.
+- Maps to **Godot Control nodes** (standard retained-mode widgets) — no exotic layouts that wouldn't
+  rebuild in a normal UI toolkit.
+- **Keyboard + mouse first**, with visible hotkey glyphs; everything reachable by hotkey.
+- **Progressive disclosure everywhere** in the editor: a Simple mode (presets/sliders) and an
+  Advanced mode (every field + raw JSON); the editor is **invisible to players who only want to
+  play**.
+
+**Things to avoid:**
+- The **StarCraft II Galaxy Editor** failure mode: data scattered across many separate editors
+  requiring cross-referencing. Keep editing consolidated.
+- Pill/fully-rounded shapes, heavy gradients, or skeuomorphic "realistic" textures — we want flat,
+  faceted, cel-shaded.
+- Over-faceting that costs legibility; transparency/glass effects so heavy the battlefield bleeds
+  through and numbers get hard to read.
+- Bright UI accents that collide with the saturated team colors.
+
+**Performance worries:**
+- The game targets **500–2,000 units at 60 FPS** — the HUD can't be expensive. Avoid per-frame
+  full-screen blur, large live-blur panels, or heavy drop-shadow stacks. Prefer flat fills and crisp
+  borders.
+- The **minimap streams a fog-of-war texture every frame** and renders many unit dots — keep its
+  treatment simple (no expensive filters over it).
+
+---
+
 Deliver a cohesive design system (color tokens for the dark theme + accent options, typography
 scale, the faceted component kit) and high-fidelity mockups of the screens above, all sharing one
 consistent low-poly-echo identity.
