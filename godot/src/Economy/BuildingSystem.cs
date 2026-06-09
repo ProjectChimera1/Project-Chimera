@@ -34,6 +34,9 @@ namespace ProjectChimera.Economy
         // Spawn offset (world units) from building centre
         private static readonly Fixed SPAWN_OFFSET = Fixed.FromFloat(3f);
 
+        // Lateral spacing between consecutive spawns from the same building
+        private static readonly Fixed SPAWN_SPREAD = Fixed.FromFloat(1.5f);
+
         private readonly BuildingStore        _buildings;
         private readonly ResourceStore        _resources;
         // Per-faction definitions indexed by (int)Faction. Slot 0 = Neutral (unused).
@@ -151,12 +154,17 @@ namespace ProjectChimera.Economy
             var   dmgType     = def?.ParsedDamageType ?? Combat.DamageType.Normal;
             var   armType     = def?.ParsedArmorType  ?? Combat.ArmorType.Light;
 
-            // Place unit slightly in front of building (along +X for P1, -X for P2)
+            // Place unit slightly in front of building (along +X for P1, -X for P2).
+            // The Z offset cycles per trained unit: units that hold position (Stop)
+            // would otherwise spawn on the exact same fixed-point coordinate, and
+            // MovementSystem separation skips exactly-overlapping pairs.
+            int trained = _buildings.TrainedCount[buildingId]++;
             Fixed offsetX = faction == Faction.Player1 ? SPAWN_OFFSET : -SPAWN_OFFSET;
+            Fixed offsetZ = SPAWN_SPREAD * Fixed.FromInt((trained % 5) - 2);
             FixedVec3 spawnPos = new FixedVec3(
                 _buildings.Position[buildingId].X + offsetX,
                 Fixed.Zero,
-                _buildings.Position[buildingId].Z);
+                _buildings.Position[buildingId].Z + offsetZ);
 
             int id = world.Create(spawnPos, faction,
                 Fixed.FromFloat(hp), Fixed.FromFloat(speed));
@@ -180,6 +188,12 @@ namespace ProjectChimera.Economy
                 world.CommandState[id] = UnitCommand.Move;
                 world.CommandGoal[id]  = _buildings.RallyPoint[buildingId];
                 world.MoveTarget[id]   = _buildings.RallyPoint[buildingId];
+            }
+            else
+            {
+                // Hold position at the spawn point — Idle would send the unit
+                // chasing the nearest enemy across the map (global chase).
+                world.CommandState[id] = UnitCommand.Stop;
             }
         }
 

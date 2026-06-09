@@ -8,7 +8,8 @@ namespace ProjectChimera.Economy
     /// Workers (GatherState != Inactive) automatically cycle through:
     ///   Idle → MovingToResource → Gathering → MovingToBase → (deposit) → repeat
     ///
-    /// Workers have AttackDamage == 0, so CombatSystem skips them entirely.
+    /// CombatSystem skips any entity with GatherState != Inactive, so workers never
+    /// auto-attack — even when their unit data carries attack damage.
     /// MovementSystem handles their physical movement via MoveTarget + Moving flag.
     /// This system only manages state transitions.
     /// </summary>

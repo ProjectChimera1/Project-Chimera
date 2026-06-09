@@ -53,7 +53,7 @@ namespace ProjectChimera.AI
 
         private readonly float _aggressionWeight; // scales attack score (0–1)
         private readonly float _techWeight;        // scales tech-up scores  (0–1)
-        private readonly int   _attackThreshold;  // idle units needed before considering an attack wave
+        private readonly int   _attackThreshold;  // available (Idle/Stop) units needed before considering an attack wave
         private readonly Fixed _attackCooldownMax;
 
         // ── Dependencies ──────────────────────────────────────────────────────
@@ -121,7 +121,7 @@ namespace ProjectChimera.AI
         private struct AiSnapshot
         {
             public int  SupplyHeadroom;
-            public int  IdleCombatUnits;
+            public int  AvailableCombatUnits; // Idle or Stop — not under orders, conscriptable into a wave
             public bool HasLiveBarracks;
             public bool HasCompleteBarracks;
             public bool HasLiveArcheryRange;
@@ -168,14 +168,19 @@ namespace ProjectChimera.AI
             snap.HasSecondBarracks = barracksComplete >= 2;
             snap.HasCCExpansion    = _cmdCenterExpId >= 0 && _buildings.Alive[_cmdCenterExpId];
 
-            // Count idle P2 combat units (non-workers).
+            // Count P2 combat units (non-workers) available for a wave.
+            // Freshly trained units hold position (Stop) at the spawn point;
+            // veterans whose AttackMove completed sit at Idle wherever the
+            // wave ended. Both are conscriptable into the next wave.
             int hwm = world.HighWaterMark;
             for (int i = 0; i < hwm; i++)
             {
                 if (!world.IsAlive(i)) continue;
                 if (world.FactionOf[i]   != AI_FACTION)         continue;
                 if (world.GatherState[i] != GatherState.Inactive) continue;
-                if (world.CommandState[i] == UnitCommand.Idle)  snap.IdleCombatUnits++;
+                if (world.CommandState[i] == UnitCommand.Idle ||
+                    world.CommandState[i] == UnitCommand.Stop)
+                    snap.AvailableCombatUnits++;
             }
 
             snap.CanAffordCC       = _resources.CanAffordOre(AI_FACTION, COST_CC);
@@ -235,11 +240,11 @@ namespace ProjectChimera.AI
 
         private float ScoreLaunchAttack(in AiSnapshot s)
         {
-            if (_attackCooldown > Fixed.Zero)           return 0f;
-            if (s.IdleCombatUnits < _attackThreshold)   return 0f;
+            if (_attackCooldown > Fixed.Zero)                return 0f;
+            if (s.AvailableCombatUnits < _attackThreshold)   return 0f;
 
             // Score scales up as the army grows beyond the minimum threshold.
-            float ratio = Math.Min(1f, (float)s.IdleCombatUnits / (_attackThreshold * 2));
+            float ratio = Math.Min(1f, (float)s.AvailableCombatUnits / (_attackThreshold * 2));
             return _aggressionWeight * ratio;
         }
 
@@ -327,7 +332,8 @@ namespace ProjectChimera.AI
                 if (!world.IsAlive(i))                              continue;
                 if (world.FactionOf[i]   != AI_FACTION)            continue;
                 if (world.GatherState[i] != GatherState.Inactive)  continue;
-                if (world.CommandState[i] != UnitCommand.Idle)     continue;
+                if (world.CommandState[i] != UnitCommand.Idle &&
+                    world.CommandState[i] != UnitCommand.Stop)     continue;
                 world.CommandState[i] = UnitCommand.AttackMove;
                 world.CommandGoal[i]  = P1_BASE;
                 world.MoveTarget[i]   = P1_BASE;

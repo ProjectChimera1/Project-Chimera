@@ -1,0 +1,13 @@
+# Deferred Work
+
+Pre-existing issues surfaced by reviews; not caused by the story that logged them.
+
+## From spec-ai-deadlock-combat-gathering-fix (2026-06-09 review)
+
+1. **AI counts zero-damage units as combat units.** `AiOpponentSystem.BuildSnapshot` / `DoLaunchAttack` have no `AttackDamage > 0` filter; a zero-damage non-gatherer P2 unit (possible via data or trigger spawn) inflates wave counts and, once flipped to `AttackMove`, is skipped by CombatSystem's non-combatant gate and never exits the command — permanently leaked from the available pool. Fix: filter `world.AttackDamage[i] > Fixed.Zero` in both loops.
+2. **Rally points are not lockstep-replicated.** `SelectionSystem` writes `HasRallyPoint`/`RallyPoint` locally (no `EnqueueOrder`, not recorded in replays), so `SpawnTrainedUnit`'s rally branch can diverge between peers → desync vector. Route rally-set through the lockstep command stream.
+3. **Float math in the AI utility scorer.** `ScoreLaunchAttack` etc. use `float`/`Math.Min` for decisions that mutate sim state — violates the project determinism rule if AI ever runs during lockstep play. Companion issue: AI building costs are hardcoded constants (`AiOpponentSystem.cs:34-37`) that must mirror JSON. Candidate story alongside Mechanism 2 (AI economy recovery).
+4. **`SpawnTrainedUnit` never sets `GatherState`.** A production path that trains Workers (Mechanism-2 story) must set `GatherState.Idle` + `CarryCapacity` or trained workers will never gather (and would be combat-active). Handle inside the TrainWorker story.
+5. **`UnitCommand.Build` falls to CombatSystem's `default` case** (`TickIdleCombat`). Unreachable for gatherers (skipped) and currently nothing else gets Build, but it's a residual hole if Build is ever assigned to a non-gatherer. Add an explicit `case UnitCommand.Build: continue;`.
+6. **`AssignedGatherers` leaks on worker death** while assigned to a node (no decrement on death) — nodes can permanently lose gatherer capacity slots. (Also recorded in the investigation case file side findings.)
+7. **AttackMove arrive threshold unreachable under crowding.** `AMOVE_ARRIVE_SQR` = 0.5u² (CombatSystem.cs:38); a wave converging on one goal point holds an equilibrium ring at ~1.0u (separation vs seek), so no unit ever "arrives" — they hover in AttackMove forever and never return to the AI's available pool (not Idle/Stop), so they can't be re-waved. Observed in-engine at P1's CC during fix verification (2026-06-09). Fix candidates: widen arrive radius (e.g. 2–3u or scale with group size), or treat "no progress for N ticks near goal" as arrival. Pairs with the Mechanism-4 building-damage story — arrived waves currently have nothing to do at an enemy base anyway.

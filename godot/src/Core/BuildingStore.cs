@@ -53,6 +53,10 @@ namespace ProjectChimera.Core
         /// <summary>True when the player (or AI) has explicitly set a rally point for this building.</summary>
         public readonly bool[]         HasRallyPoint;
 
+        /// <summary>Lifetime count of units trained here — cycles the spawn offset so
+        /// held (no-rally) units never stack on the exact same fixed-point position.</summary>
+        public readonly int[]          TrainedCount;
+
         // ── Management ─────────────────────────────────────────────────────────
         public int Count { get; private set; }
 
@@ -71,6 +75,7 @@ namespace ProjectChimera.Core
             ProductionQueue      = new byte[MAX_BUILDINGS];
             RallyPoint           = new FixedVec3[MAX_BUILDINGS];
             HasRallyPoint        = new bool[MAX_BUILDINGS];
+            TrainedCount         = new int[MAX_BUILDINGS];
         }
 
         /// <summary>Returns true while the building is still being constructed.</summary>
@@ -91,6 +96,7 @@ namespace ProjectChimera.Core
             Type[id]            = type;
             ProductionTimer[id] = Fixed.Zero;
             ProductionQueue[id] = 0;
+            TrainedCount[id]    = 0;
 
             // Per-type defaults
             switch (type)

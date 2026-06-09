@@ -13,6 +13,9 @@ namespace ProjectChimera.Combat
     ///   Move         — skip all combat (pure navigation)
     ///   AttackMove   — attack enemies within range; resume toward CommandGoal after kill
     ///   Stop/Hold    — attack enemies within range; never chase or modify MoveTarget
+    ///
+    /// Gatherers (GatherState != Inactive) are skipped entirely regardless of their
+    /// attack damage — auto-combat would hijack the gather loop's MoveTarget.
     /// </summary>
     public class CombatSystem : ISimSystem
     {
@@ -45,6 +48,20 @@ namespace ProjectChimera.Combat
             for (int i = 0; i < count; i++)
             {
                 if ((world.Flags[i] & EntityFlags.Alive) == 0) continue;
+                // Gatherers are exempt from auto-combat even when their unit data
+                // carries attack damage — idle-chase would overwrite their MoveTarget
+                // every tick and halt all gathering (see GatheringSystem). Combat
+                // command states issued to a gatherer are normalized back to Idle so
+                // it can never sit in AttackMove with no system able to complete it;
+                // explicit worker fight-back is a future feature.
+                if (world.GatherState[i] != GatherState.Inactive)
+                {
+                    if (world.CommandState[i] == UnitCommand.AttackMove ||
+                        world.CommandState[i] == UnitCommand.Stop ||
+                        world.CommandState[i] == UnitCommand.HoldPosition)
+                        world.CommandState[i] = UnitCommand.Idle;
+                    continue;
+                }
                 if (world.AttackDamage[i] == Fixed.Zero) continue; // non-combatant
 
                 switch (world.CommandState[i])
