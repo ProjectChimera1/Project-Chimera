@@ -3,6 +3,8 @@ extends MCPBaseCommand
 class_name MCPDebugCommands
 
 const DEBUG_OUTPUT_TIMEOUT := 5.0
+# Keep in sync with LAUNCH_FROZEN_ENV in mcp_game_bridge.gd.
+const LAUNCH_FROZEN_ENV := "GODOT_MCP_LAUNCH_FROZEN"
 
 var _debug_output_result: PackedStringArray = []
 var _debug_output_pending: bool = false
@@ -21,15 +23,32 @@ func get_commands() -> Dictionary:
 
 func run_project(params: Dictionary) -> Dictionary:
 	var scene_path: String = params.get("scene_path", "")
+	var frozen: bool = params.get("frozen", false)
 
 	MCPLogger.clear()
+
+	# Launch-frozen: the spawned game inherits the editor's environment, so
+	# setting this before play makes the bridge freeze the tree in _ready —
+	# before the first process frame. Deterministic, unlike sending a freeze
+	# message after the debug session comes up (which races the game's first
+	# frames against the agent's latency).
+	if frozen:
+		OS.set_environment(LAUNCH_FROZEN_ENV, "1")
 
 	if scene_path.is_empty():
 		EditorInterface.play_main_scene()
 	else:
 		EditorInterface.play_custom_scene(scene_path)
 
-	return _success({})
+	if frozen:
+		# The child captured its environment at spawn; clear promptly so a
+		# manual F5 run doesn't inherit the freeze. Two frames covers a
+		# deferred spawn. (Godot has no unset; empty fails the == "1" check.)
+		await Engine.get_main_loop().process_frame
+		await Engine.get_main_loop().process_frame
+		OS.set_environment(LAUNCH_FROZEN_ENV, "")
+
+	return _success({"frozen": frozen})
 
 
 func stop_project(_params: Dictionary) -> Dictionary:
@@ -97,24 +116,25 @@ func _on_debug_output_received(output: PackedStringArray) -> void:
 
 func get_log_messages(params: Dictionary) -> Dictionary:
 	var clear: bool = params.get("clear", false)
-	var limit: int = params.get("limit", 50)
+	var limit: int = int(params.get("limit", 50))
+	var severity: String = params.get("severity", "all")
+	var since: int = int(params.get("since", 0))
 
-	var all_messages := MCPLogger.get_errors()
-	var total_count := all_messages.size()
-
-	var limited: Array[Dictionary] = []
-	var start_index := maxi(0, total_count - limit)
-	for i in range(start_index, total_count):
-		limited.append(all_messages[i])
+	var result := MCPLogger.query(since, severity, limit)
 
 	if clear:
 		MCPLogger.clear_errors()
 
-	return _success({
-		"total_count": total_count,
-		"returned_count": limited.size(),
-		"messages": limited,
-	})
+	# The phantom "Identifier not found: <autoload>" errors that mislead agents
+	# come from the editor running stale after project.godot was edited on disk
+	# (#245). When that divergence is present, attach it here so the caller reads
+	# the log and the "your editor is stale, restart it" advisory in one shot,
+	# instead of chasing compile errors that do not exist at runtime.
+	var staleness := MCPUtils.detect_project_staleness()
+	if staleness.get("stale", false):
+		result["staleness"] = staleness
+
+	return _success(result)
 
 
 func get_errors(params: Dictionary) -> Dictionary:
