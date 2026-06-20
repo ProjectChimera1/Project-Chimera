@@ -15,11 +15,14 @@ status: Active
 Phases 0–4 are code-complete. Phase 5 is underway. Session 20 shipped worker-placed buildings + UI bug sweep. Session 21 (remote, away from computer) shipped Utility AI + Adaptive Input Delay.
 
 ## Next Action
-- (Session interrupted; Claude's next step was to finish reading the Alchemy retheme artifact and provide specific execution-layer recommendations for bringing Chimera's character concept into the engine without re-
+- ✅ DONE 2026-06-20: Utility AI deadlock fix (`e3e48bc`) RE-VERIFIED in-engine on alpha_map_01/Normal (~290s). All 4 ACs pass — economy + AI + determinism healthy, no deadlock. Details under "Needs Testing" below.
+- NEXT: GDS planning chain. Sprint planning does NOT exist yet — epics/stories were never created (readiness report 2026-06-05 = 🔴 NOT READY). Run `gds-create-epics-and-stories` (seed from PRD §6.2 M0–M6) before `gds-sprint-planning`.
 
 ## Needs Testing — Written This Session
 
 ### ✅ Utility AI (`src/AI/AiOpponentSystem.cs`)
+
+**VERIFIED 2026-06-20 (in-engine, alpha_map_01/Normal, ~290s game time, frozen-step):** All 4 deadlock-fix ACs PASS. P1 ore 200→540→660→900→1060 (monotonic rise); P2 gathered + reinvested (nodes 8→6, army 2→5→7→10→14, no solo-trickle); AI teched CC→Barracks→ArcheryRange (buildings 3→4); P2 wave reached P1 base and eliminated both P1 workers (P1 units 2→0) ~tick 5760–8700; **5 distinct sim hashes** (0x104E51CE→0xF2F66B7A→0x56FA1DEA→0x1774681A→0x5D07F97A — no fixed point); 0 errors. Earlier 2026-06-09 /godot-verify FAIL (deadlock) is resolved by `e3e48bc`. Not exercised this run: SiegeWorkshop tier, supply-expansion CC, Easy/Hard difficulty deltas, destroyed-Barracks recovery.
 
 Full replacement of the rigid 3-phase FSM with utility scoring. All public API unchanged — `MainScene` needs no changes.
 
@@ -138,7 +141,7 @@ RTT measurement via Ping/Pong + negotiated delay changes via DelayProposal packe
 | P2.4 LAN test (P2P mode) | 📋 | FlowFieldBridge active, verify checksums stay in sync through 300+ ticks |
 | P0.3 Iron Pact art | 📋 | Hunyuan3D or Tripo — 8 GLBs to replace box placeholders (external work) |
 | Terrain texture painting | 📋 | Set Terrain3D textures via Godot Inspector (Terrain3D → Assets) — procedural via ClassDB doesn't persist |
-| Utility AI decision system | 🔨 | Written — needs smoke test (see checklist above) |
+| Utility AI decision system | ✅ | VERIFIED in-engine 2026-06-20 (alpha_map_01/Normal, ~290s) — all 4 deadlock ACs pass, no deadlock. `e3e48bc` resolves the 2026-06-09 FAIL. |
 | AI build order + attack timing logic | ✅ | Covered by utility scoring (tech tree, supply, aggression weights) |
 | Adaptive input delay | 🔨 | Written — needs LAN test (see checklist above) |
 | LLM trigger scripting | 🔨 | Written — needs smoke test (see checklist below) |
