@@ -74,8 +74,19 @@ A light frame — enough to give surfaces meaning, not a campaign plot.
 
 ## 4. The two schools — factions as the bio↔iron axis
 
-The aesthetic split and the faction split are now **one decision**. Your existing stat asymmetry already
-encodes it: the durable-slow faction *is* forged iron; the quick-soft faction *is* living flesh.
+The aesthetic split and the faction split collapse into **one decision** — but keep what's *real* vs.
+*proposed* honest:
+
+- **Iron Pact (Iron school) — already real.** Its shipped roster is iron/forge-built (Forgehand,
+  Bulwark, Ironclad, Forge Citadel, Bolt Foundry, War Foundry). This direction *names* an identity the
+  faction already has in data; it ships today.
+- **Verdant Coil (Vital school) — a proposal.** The current `alpha_faction.json` ("Alpha Faction") is
+  generic-medieval (Worker, Scout, Archer, Mage, Griffin, Barracks) with a placeholder name and no theme.
+  Giving it a living/organic identity is a real art-direction change to its ~12 currently-placeholder
+  meshes — adopt it when those assets are generated; until then it is *direction, not description*.
+
+The stat asymmetry backs the axis on the iron side (heavy / durable / slow = forged) and leaves the Vital
+side an open, fitting target (quicker / softer = living).
 
 | | **The Iron Pact** *(Iron school)* | **The Verdant Coil** *(Vital school — renames "Alpha")* |
 |---|---|---|
@@ -99,6 +110,12 @@ Three **independent** color layers — keeping them separate is what makes the s
    can be fielded under any team color.
 3. **Faction aesthetic.** Iron *forms* vs Vital *forms* — expressed in unit silhouette and material,
    **not** ownership tint. An Iron Pact army can be blue or red; its "iron-ness" is the mesh, not the team.
+
+> **Implementation reality (2026-06-19):** today each faction file bakes in a single `color` (Alpha blue
+> `[0.2,0.5,1.0]`, Iron Pact red `[0.8,0.25,0.1]`), so faction and ownership are currently **coupled**.
+> The decoupled model above is the *target* — a creation platform may want four players all fielding one
+> faction — reached by a small later change: move `color` off the faction onto a per-player slot. Until
+> then, faction = its color.
 
 **Crimson is danger-only** and must always pair with an icon — never as a general accent, never as
 ownership (red is a team color). Keep the UI "active/in-progress" semantic on the cooler *verdigris-teal*,
