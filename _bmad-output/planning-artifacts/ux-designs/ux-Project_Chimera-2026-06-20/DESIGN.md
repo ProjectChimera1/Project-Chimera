@@ -1,5 +1,5 @@
 ---
-status: draft
+status: final
 updated: 2026-06-20
 project: Project Chimera
 kind: game-ux-design
