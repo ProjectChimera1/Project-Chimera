@@ -15,7 +15,7 @@ status: Active
 Phases 0–4 are code-complete. Phase 5 is underway. Session 20 shipped worker-placed buildings + UI bug sweep. Session 21 (remote, away from computer) shipped Utility AI + Adaptive Input Delay.
 
 ## Next Action
-Install ripgrep standalone via `winget install BurntSushi.ripgrep.MSVC` and update VS Code settings.json with the resulting executable path.
+- (Session interrupted; Claude's next step was to finish reading the Alchemy retheme artifact and provide specific execution-layer recommendations for bringing Chimera's character concept into the engine without re-
 
 ## Needs Testing — Written This Session
 
