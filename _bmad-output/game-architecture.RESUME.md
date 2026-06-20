@@ -2,7 +2,8 @@
 
 > Working-state sidecar for the **gds-game-architecture** workflow. The clean deliverable is
 > `game-architecture.md` (Steps 1–3 saved; frontmatter `stepsCompleted: [1, 2, 3]`).
-> This note exists so a NEW session can resume Step 4 at D1 without reconstructing context.
+> **D1 ✅ decided 2026-06-20** — recorded in the deliverable under *Architectural Decisions (Step 4)*.
+> This note exists so a NEW session can resume Step 4 at **D2** without reconstructing context.
 > Delete this file once Step 4 is appended to the deliverable and `stepsCompleted` reaches `[…,4]`.
 
 ## Where we are
@@ -62,6 +63,35 @@ MultiMesh + `*Bridge` rendering · deterministic `SpatialHash` (Jolt presentatio
 - PRD: `_bmad-output/planning-artifacts/prds/prd-Project_Chimera-2026-06-05/` (prd, addendum, decision-log)
 - UX (canonical): `_bmad-output/planning-artifacts/ux-designs/ux-Project_Chimera-2026-06-20/` (DESIGN, EXPERIENCE)
 
+## D2 starting inputs (confirmed 2026-06-20 — don't re-derive)
+- **D2 = Trigger-DSL design.** It CONSUMES D1: trigger *actions = D1 effect graphs*. D2 owns the
+  **logic layer around** the effect vocabulary — it does NOT redefine effects.
+- **PRD §4.6 (headline) + FR-23–28 + NFR-4/6** are the spec. Key FRs:
+  - FR-24: typed/scoped **variables**, arithmetic/boolean **expressions**, **arrays/collections**,
+    **conditional loops**, **timers**.
+  - FR-25: **custom events** (define + raise → decoupled logic modules).
+  - FR-26: **custom runtime UI** (text/counters/buttons) driven by triggers — required for TD waves,
+    RPG dialog, scoreboards. Sim/pres binding problem: UI reads DSL vars; button clicks → DSL events.
+  - FR-27/NFR-6: deterministic, fixed-point, **statically server-validatable, no scripting escape
+    hatch** — this BOUNDS expressiveness (the "DSL Goldilocks" top risk).
+  - FR-28: **four tiers** — T1 presets → T2 ECA editor (built) → T3 visual node-graph (GraphEdit) →
+    T4 natural-language/AI (built) — all interoperating on **ONE underlying DSL representation**.
+    (T3 + custom UI confirmed IN 1.0 per decision-log #13; lands in milestone **M3 "DSL power"**.)
+- **As-built to evolve:** `ScenarioDirector` (flat ECA, polled each tick, single
+  `Dictionary<string,int>` vars — no arithmetic/arrays/loops/events) · `TriggerDefinition` (fat
+  nullable structs — being retired by D1) · `TriggerEditorPanel` (L-key; mostly the T4 NL→Claude→JSON
+  preview→accept generator) · `LLMService` 5-pass trigger validation.
+- **Likely D2 deep-dive shape** (mirror D1): reference research (WC3 GUI/JASS triggers = parity bar;
+  SC2 Galaxy trigger editor; **eBPF verifier / Starlark / Dhall / CEL** = statically-terminating-language
+  analogues; Unreal Blueprints event-graph + custom UI binding; reject Lua/Luau escape hatch) →
+  analysis (DSL static-validation+termination envelope incl. **per-tick instruction/fuel budget**,
+  bounded loops, acyclic custom-event graph; feature→genre map; architecture+migration) → synthesize
+  3 options (Extended-ECA-as-data / bounded-imperative-IR à la eBPF / visual-dataflow-graph) +
+  recommendation + open sub-decisions (T3 build scope, custom-UI model, NL/LLM interplay, loop-bounding
+  mechanism).
+
 ## How to resume in the new session
-Say something like: **"continue the game architecture workflow — D1"** (or re-invoke
-`/gds-game-architecture`). First action: read this note + `game-architecture.md`, then open **D1**.
+Say something like: **"continue the game architecture workflow — D2"** (or re-invoke
+`/gds-game-architecture`). First action: read this note + `game-architecture.md` (esp. the D1 record
+under *Architectural Decisions (Step 4)*), then open **D2** in the same facilitated deep-dive mode
+(INTERACTIVE — user makes each call; autonomous mode still OFF). After D2 comes **D3**, then batch D4–D6.
