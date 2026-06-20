@@ -27,6 +27,9 @@ GDS Architecture Workflow and is informed by, but distinct from, the brownfield
 
 **Steps Completed:** 3 of 9 (Engine & Framework)
 
+**In progress:** Step 4 (Architectural Decisions) — decision map agreed; next action is **D1
+(effects-primitive vocabulary)**. Full Step 4 working state in **`game-architecture.RESUME.md`**.
+
 ---
 
 ## Project Context
