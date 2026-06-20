@@ -11,7 +11,12 @@
   `project-intent.md.disabled` on 2026-06-20 at the user's request (rename back to re-enable).
 - Step 3 engine decision locked: **adopt Godot 4.6.3** for 1.0; defer 4.7 to post-1.0.
 - MCP: `godot-mcp` v3.14.0 (`@satelliteoflove/godot-mcp`), min Godot 4.5 → 4.6.3 supported, no change.
-- ▶ **NEXT ACTION: open D1 (effects-primitive vocabulary).**
+- **D1 DECIDED 2026-06-20** — Bounded Effect-Graph (Option C). Full record appended to
+  `game-architecture.md` → *Architectural Decisions (Step 4)*. Calls: Option C; Modifier in MVP;
+  cut line = MVP + `Switch` + `NamedEffectReference` (first stretch); sealed `EffectNode` hierarchy;
+  caps as named constants (depth≤8, Seq≤8, Search≤64, Spawn≤64, Persist≤256). New prereqs surfaced:
+  `SimRng` (build now), `Energy`/`Mana` SoA arrays, data-drive `DamageMatrix`→JSON (feeds D3).
+- ▶ **NEXT ACTION: open D2 (trigger-DSL design) — consumes D1's effect vocabulary.**
 
 ## Agreed approach (confirmed by Alec)
 Deep-dive **D1 → D2 → D3** one at a time (novel, coupled, highest-stakes — facilitate carefully,
@@ -26,9 +31,8 @@ MultiMesh + `*Bridge` rendering · deterministic `SpatialHash` (Jolt presentatio
 
 ## OPEN decisions queue
 **CRITICAL (PRD-deferred levers, coupled):**
-- **D1. Effects-primitive vocabulary** — shared atomic effects (damage, heal, buff/debuff, spawn,
-  teleport, aura, projectile, status…) that abilities + triggers + AI-balance all compose from.
-  *Breadth = which genres are buildable.* FOUNDATIONAL. (PRD addendum §C; FR-10/24; decision #12)
+- **D1. Effects-primitive vocabulary** — ✅ **DECIDED 2026-06-20** (Bounded Effect-Graph, Option C).
+  Recorded in `game-architecture.md` → *Architectural Decisions (Step 4)*.
 - **D2. Trigger-DSL design** — variables / arithmetic / boolean / arrays / loops / timers / custom
   events / custom runtime UI, bounded so the server can STATICALLY validate. Consumes D1.
   (PRD §4.6; FR-24–28; decision #12)
