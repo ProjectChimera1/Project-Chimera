@@ -2,8 +2,9 @@
 
 > Working-state sidecar for the **gds-game-architecture** workflow. The clean deliverable is
 > `game-architecture.md` (Steps 1–3 saved; frontmatter `stepsCompleted: [1, 2, 3]`).
-> **D1 ✅ decided 2026-06-20** — recorded in the deliverable under *Architectural Decisions (Step 4)*.
-> This note exists so a NEW session can resume Step 4 at **D2** without reconstructing context.
+> **D1 ✅ + D2 ✅ decided 2026-06-20** — both recorded in the deliverable under *Architectural Decisions
+> (Step 4)*. The full D2 options analysis lives in `game-architecture.D2-briefing.md`.
+> This note exists so a NEW session can resume Step 4 at **D3** without reconstructing context.
 > Delete this file once Step 4 is appended to the deliverable and `stepsCompleted` reaches `[…,4]`.
 
 ## Where we are
@@ -12,12 +13,21 @@
   `project-intent.md.disabled` on 2026-06-20 at the user's request (rename back to re-enable).
 - Step 3 engine decision locked: **adopt Godot 4.6.3** for 1.0; defer 4.7 to post-1.0.
 - MCP: `godot-mcp` v3.14.0 (`@satelliteoflove/godot-mcp`), min Godot 4.5 → 4.6.3 supported, no change.
-- **D1 DECIDED 2026-06-20** — Bounded Effect-Graph (Option C). Full record appended to
-  `game-architecture.md` → *Architectural Decisions (Step 4)*. Calls: Option C; Modifier in MVP;
+- **D1 DECIDED 2026-06-20** — Bounded Effect-Graph (Option C). Calls: Option C; Modifier in MVP;
   cut line = MVP + `Switch` + `NamedEffectReference` (first stretch); sealed `EffectNode` hierarchy;
   caps as named constants (depth≤8, Seq≤8, Search≤64, Spawn≤64, Persist≤256). New prereqs surfaced:
   `SimRng` (build now), `Energy`/`Mana` SoA arrays, data-drive `DamageMatrix`→JSON (feeds D3).
-- ▶ **NEXT ACTION: open D2 (trigger-DSL design) — consumes D1's effect vocabulary.**
+- **D2 DECIDED 2026-06-20** — Typed Event/Dataflow Graph (Option C). Full record in `game-architecture.md`;
+  full analysis in `game-architecture.D2-briefing.md`. Calls: **Option C** graph IR (graph-canonical from
+  step 1, contains D1 effect subgraphs, `GraphEdit` a replaceable view); **Records IN at MVP** (user
+  override of briefing "stretch"); **custom-UI read+write BOTH at MVP, button-events carry up to a
+  Fixed/Point arg** (user: "fully functional"); layered termination hybrid (L0 grammar / L1 acyclic event
+  DAG / L2 transitive cost / L3 checksummed fuel) — guarantee is *per-tick bounded cost, not whole-program
+  termination*; **Q4 cost/desync posture accepted in full** (fuel+queues in checksum, `rulesetHash` at
+  lobby, checksum-algo-version field, caps corpus-validated as a gate on D2). Prereqs surfaced: combat-
+  layer killer/last-hit attribution; new server-side load-time validator; fix two live nondeterminisms
+  (unstable `Array.Sort`, `Dictionary` enumeration); replay format v2 for the write path.
+- ▶ **NEXT ACTION: open D3 (data-driven definition schema & loader) — serializes D1 + D2.**
 
 ## Agreed approach (confirmed by Alec)
 Deep-dive **D1 → D2 → D3** one at a time (novel, coupled, highest-stakes — facilitate carefully,
@@ -34,9 +44,8 @@ MultiMesh + `*Bridge` rendering · deterministic `SpatialHash` (Jolt presentatio
 **CRITICAL (PRD-deferred levers, coupled):**
 - **D1. Effects-primitive vocabulary** — ✅ **DECIDED 2026-06-20** (Bounded Effect-Graph, Option C).
   Recorded in `game-architecture.md` → *Architectural Decisions (Step 4)*.
-- **D2. Trigger-DSL design** — variables / arithmetic / boolean / arrays / loops / timers / custom
-  events / custom runtime UI, bounded so the server can STATICALLY validate. Consumes D1.
-  (PRD §4.6; FR-24–28; decision #12)
+- **D2. Trigger-DSL design** — ✅ **DECIDED 2026-06-20** (Typed Event/Dataflow Graph, Option C).
+  Recorded in `game-architecture.md`; full analysis in `game-architecture.D2-briefing.md`.
 - **D3. Data-driven definition schema & loader** — the `Definitions` (de)serialization architecture;
   resolves pillar debt: `DamageMatrix`→JSON (+ add the `Hero` damage/armor type), N-resources,
   authorable tech-tree schema. Serializes D1/D2. (GDD §1; FR-12/14/15; arch §5)
@@ -91,7 +100,26 @@ MultiMesh + `*Bridge` rendering · deterministic `SpatialHash` (Jolt presentatio
   mechanism).
 
 ## How to resume in the new session
-Say something like: **"continue the game architecture workflow — D2"** (or re-invoke
-`/gds-game-architecture`). First action: read this note + `game-architecture.md` (esp. the D1 record
-under *Architectural Decisions (Step 4)*), then open **D2** in the same facilitated deep-dive mode
-(INTERACTIVE — user makes each call; autonomous mode still OFF). After D2 comes **D3**, then batch D4–D6.
+Say something like: **"continue the game architecture workflow — D3"** (or re-invoke
+`/gds-game-architecture`). First action: read this note + `game-architecture.md` (esp. the D1 and D2
+records under *Architectural Decisions (Step 4)*), then open **D3** in the same facilitated deep-dive
+mode (INTERACTIVE — user makes each call; autonomous mode still OFF). D3 is the **last of the deep-dive
+trio (D1→D2→D3)**; after D3, batch **D4–D6** as recommend-and-confirm.
+
+## D3 starting inputs (confirmed 2026-06-20 — don't re-derive)
+- **D3 = Data-driven definition schema & loader.** It SERIALIZES D1 + D2 and resolves the data-driven
+  pillar debt. Scope: the `System.Text.Json` (de)serialization architecture for `EffectDef`/`ModifierDef`
+  (D1) + the full DSL graph IR / variable / custom-event / UI-definition / replay-v2 schemas (D2 hand-off,
+  see D2 record → *Hand-offs (→ D3)*); `DamageMatrix`→`damage_table.json` (+ add the `Hero` damage/armor
+  type); N-resources data-drive; authorable tech-tree schema. (GDD §1; FR-12/14/15; arch §5; decision #12)
+- **Constraints D3 must honor:** closed typed nodes only, named references, **Fixed-at-load** (convert
+  once, reject NaN/Inf); deterministic serialization so `scenarioHash`/`rulesetHash` stay meaningful;
+  decide whether to add a source-gen `JsonSerializerContext` (today: runtime reflection, case-insensitive).
+- **As-built to evolve:** `ScenarioSerializer.cs` / `ScenarioData.cs` / `TriggerDefinition.cs` (flat
+  nullable shape, being retired by D1+D2); `resources/data/**` JSON; `LoadScenario` does zero validation
+  today (D2 adds the load-time gate).
+- **Likely D3 deep-dive shape:** lighter than D1/D2 (mostly serialization architecture, not a novel
+  semantic model) — reference (System.Text.Json source-gen vs reflection; schema-versioning/migration
+  patterns; closed-polymorphic-type (de)serialization for the node hierarchies) → analysis (one unified
+  `Definitions` loader vs per-domain; schema versioning + forward-compat for UGC; validation seam) →
+  recommend-and-confirm (this is the trio's tail; the user may opt to batch it lighter).

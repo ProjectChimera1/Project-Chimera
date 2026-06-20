@@ -1,9 +1,9 @@
 ---
 title: D2 — Trigger-DSL Design — Decision Briefing
-status: DRAFT — analysis complete, DECISION PENDING (user makes the call)
+status: DECIDED 2026-06-20 — Option C (Typed Event/Dataflow Graph). User overrides vs this briefing's recommended defaults — Records IN at MVP (briefing said stretch); custom-UI write path IN at MVP with Fixed/Point payloads (briefing said simple enum args). Canonical record: game-architecture.md → Architectural Decisions (Step 4) → D2.
 workflow: gds-game-architecture Step 4, decision D2
 generated: 2026-06-20 (ultracode D2 deep-dive workflow, 10 agents, adversarially verified)
-note: Working sidecar. The final D2 DECISION record goes into game-architecture.md only after the user decides. Delete this once D2 is recorded there.
+note: Retained analysis artifact (the deep options analysis + adversarial verification behind D2). The canonical decision lives in game-architecture.md.
 ---
 
 # D2 — Trigger-DSL Design: Decision Briefing (FINAL)

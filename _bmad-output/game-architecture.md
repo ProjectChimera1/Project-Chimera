@@ -27,9 +27,10 @@ GDS Architecture Workflow and is informed by, but distinct from, the brownfield
 
 **Steps Completed:** 3 of 9 (Engine & Framework)
 
-**In progress:** Step 4 (Architectural Decisions). **D1 (effects-primitive vocabulary) is decided
-(2026-06-20)** — see *Architectural Decisions (Step 4)* below. Next action is **D2 (trigger-DSL
-design, consumes D1)**. Full Step 4 working state in **`game-architecture.RESUME.md`**.
+**In progress:** Step 4 (Architectural Decisions). **D1 (effects-primitive vocabulary) and D2
+(trigger-DSL design) are decided (2026-06-20)** — see *Architectural Decisions (Step 4)* below. Next
+action is **D3 (data-driven definition schema & loader, serializes D1+D2)**. Full Step 4 working state
+in **`game-architecture.RESUME.md`**.
 
 ---
 
@@ -216,7 +217,8 @@ Engine settles rendering/physics/input/scene/transport. These game-specific deci
 > user makes each call), then batch **D4–D6** as recommend-and-confirm. Decisions are appended here as
 > they are settled. Frontmatter `stepsCompleted` advances to `[…,4]` only once D1–D6 are all recorded.
 >
-> **Settled so far:** D1 ✅ (2026-06-20). **Next:** D2 (Trigger-DSL design — consumes D1).
+> **Settled so far:** D1 ✅, D2 ✅ (both 2026-06-20). **Next:** D3 (Definition schema & loader —
+> serializes D1+D2).
 
 ### D1 — Effects-Primitive Vocabulary ✅ (decided 2026-06-20)
 
@@ -420,3 +422,231 @@ documented "powerful but overwhelming" cliff and honors the data-driven pillar /
   `EffectDef`/`ModifierDef`, the `damage_table.json` schema, the named-effect catalog, and the `Hero`
   damage/armor-type addition. D1 only *constrains* the serialization shape (closed typed nodes, named
   references, Fixed-at-load).
+
+---
+
+### D2 — Trigger-DSL Design ✅ (decided 2026-06-20)
+
+> Full options analysis + adversarial verification (10-agent deep-dive, code-grounded) lives in the
+> working sidecar **`game-architecture.D2-briefing.md`**. This record is the canonical decision.
+
+**Decision — Typed Event/Dataflow Graph (Option C).** Adopt a single canonical **typed event/dataflow
+graph IR** for all creator logic: nodes connected by **two edge kinds** — *exec* edges (control flow:
+"do this, then this") and *data* edges (typed values flowing between nodes, e.g. the killer entity, a
+`Fixed` amount). This graph is the **one serialized representation** that all four authoring tiers
+(T1 presets, T2 sentence/ECA editor, T3 `GraphEdit` node editor, T4 NL/AI) read and write. Critically,
+**the trigger graph is a superset that CONTAINS D1's effect subgraphs**: a trigger's action region *is
+literally a D1 `EffectNode` graph* embedded in the larger logic graph, executed by D1's executor
+unchanged. D2 therefore **extends D1's validator and executor rather than duplicating them** — one graph
+paradigm, one execution model, one static validator across spells + triggers + AI balance. The graph
+serialization (persistent node ids + the two typed edge kinds) is **canonical from the very first
+migration step**, even while only the T2/T4 front-ends exist; `GraphEdit` (T3) is a later, additive
+editor *view* over an IR that was always a graph (no late content migration). The Godot `GraphEdit`
+widget — officially "Experimental" — is kept a **replaceable view**: no `GraphEdit`/Godot types ever
+enter the serialized IR, so the widget can be swapped without touching saved content, and T1/T2/T4 ship
+the capability before the editor exists. **No scripting escape hatch** (inherited from D1) — the DSL's
+expressiveness is bounded by exactly what the server can statically validate.
+
+**Why C, not A or B.**
+- The IR is **invisible plumbing the creator never touches** — authoring intuitiveness is decided by the
+  four editors (identical across all options), so the choice is about build cost, risk, and how cleanly
+  the plumbing fits D1 + the mandated visual editor.
+- **A (nested statement-tree as data)** is the cheapest (closest to the as-built `ScenarioDirector`), but
+  the *mandated* T3 visual editor becomes a permanent lossy list↔graph adapter, and there is a structural
+  seam between A's "list of steps" and D1's effect graph — paying forever to save once.
+- **B (bounded-imperative bytecode + a tiny deterministic VM)** has the highest theoretical ceiling, but
+  that ceiling is *locked away by Chimera's own determinism + no-escape-hatch + static-validation rules*
+  (no `while`/recursion regardless of option), so at MVP it exposes **identical** creator capability to A
+  and C while costing the most (a mini-language + verifier + VM + four decompilers) and risking the most
+  for a solo dev on the critical path. Its real value — scaling toward a general, non-deterministic
+  "build any game" engine — directly contradicts decision #11 (WC3-parity bar, explicitly *not*
+  Roblox-scale) and the determinism constraints; choosing B would mean reopening those. (Confirmed with
+  the user as a product-vision check: Chimera is "Warcraft III reimagined with AI," not a general engine.)
+- **C** is the only option where the mandated T3 editor renders the IR **directly** (no decompilation),
+  where the action region *is* a D1 graph (cleanest unification), and where D2's static validator is
+  D1's graph-linter **plus three rules** (data-edge purity, the bounded-loop node is the only back-edge,
+  acyclic event edges) instead of a separate validator. Same creator power as B, better visual-editing
+  experience, far smaller build surface.
+
+**Settled sub-decisions (incl. user calls that override the briefing's recommended defaults):**
+1. **Records/structs (labeled typed-field bundles) are IN the 1.0 MVP.** *User call, overriding the
+   briefing's "first-stretch" recommendation.* Wave tables, quest/dialog definitions, inventory items,
+   and autochess unit pools are *naturally* records; for a creation platform the authoring ergonomics
+   justify the extra type-system + validator + serialization surface at launch. Parallel-array authoring
+   remains available but is no longer the only path.
+2. **Custom runtime UI is MVP and fully functional, including the write path with rich payloads.** *User
+   call: "we need the systems to be fully functional."* Read path (UI bound to DSL variables) and write
+   path (buttons raise DSL events into the sim) **both ship at 1.0**, and button-events carry **typed
+   payloads up to a `Fixed` or `Point` argument** (not just small enums) — folded in now because widening
+   the event later would force a second wire-format + replay-format change. Runtime-*created* widgets (vs
+   pre-declared-and-toggled) remain stretch.
+3. **Loop-bounding = the layered hybrid** (the heart of D2): **L0** the grammar cannot express
+   non-termination (no `while`/recursion/`goto`; the only loop is `ForEach` over a snapshotted finite
+   collection); **L1** custom-event dispatch is proven an acyclic **DAG at load** (legitimate feedback
+   must cross a tick boundary); **L2** static cost rejection at load, computed from declared **caps** and
+   summed over the event DAG's **transitive closure** (`MaxCascadeOps`, `MaxEventFanOut`); **L3** a
+   checksummed per-tick fuel budget (`MaxDslOpsPerTick`) halting at a **whole-trigger boundary** — a
+   seatbelt valid content never trips. Doctrine: **"reject at load, assert at runtime — never silently
+   clamp."** The honest guarantee is **per-tick bounded cost, not whole-program termination** (timers /
+   next-tick events are deliberately unbounded across a match — a *liveness*, not a determinism, concern;
+   bounded by `MaxNextTickEventQueue`).
+4. **`ForEachBatched` ships at MVP** as the sanctioned answer to ">cap" iteration ("do X to all 200
+   enemies" → tick-dripped across frames), so the bounded-loop rule never forces silent truncation; a
+   group whose provable max size exceeds a loop cap is a **load-time error** or a loud opt-in
+   `ForEachUpTo(cap)`, never a silent `Math.Min` truncation.
+5. **Variables = closed types × scopes, dense-index-keyed, checksummed.** Types: `Int`, `Fixed` (16.16,
+   the *only* fractional numeric — no float type), `Bool`, `EntityRef` (id+generation), `FactionRef`,
+   `Point` (Fixed X,Z), `TimerRef`, `Array<scalar>`, **+ `Record`** (per sub-decision 1). Scopes:
+   Global / Per-player (slots 0..7) / Trigger-local (loop counters are *always* lexically-scoped locals —
+   kills WC3's `Integer A` reentrancy bug). Stored SoA in a **top-level sim store** (sibling of
+   `BuildingStore`/`ResourceStore`, NOT inside `ScenarioDirector`) so `SimulationLoop` can fold it into
+   `SimChecksum`. Replaces the as-built `Dictionary<string,int> _variables`.
+6. **Expressions = a CEL-shaped pure, typed, side-effect-free, Fixed-only sublanguage** — a strict
+   generalization of D1's already-chosen bounded grammar (`! && || comparisons count()`) with arithmetic
+   + typed variable reads; two-phase (type-check + cost-estimate at load, evaluate cheap in the tick;
+   div-by-zero and NaN/Inf rejected at validation). Conditions are just boolean expressions (retires the
+   pure-AND `AllConditionsMet`, gives real OR/NOT/grouping).
+7. **Events = engine-emitted typed bus + acyclic custom events.** Sim systems *emit* typed events
+   (closed structs, not stringified blobs) into a per-tick bus, replacing today's per-tick polling +
+   string round-trip; threshold events support **both** a level (`WhileTrue`) and an edge (`OnCross`)
+   form (a declared, migrated behavior change — *not* observably identical to today's level-triggered
+   `resource_threshold`). Custom events: closed registry, `RaiseEvent` (same-tick, processed by a
+   **work-list drain**) + `RaiseEventNextTick`; **a run-once trigger fires at most once per match even if
+   re-raised; cooldown suppresses same-tick re-entry.** Zero per-tick heap allocation in the eval/event
+   path (allocate-at-load).
+8. **The four-tier *interoperate* promise = one shared IR with full bidirectional editing guaranteed
+   only in the IR-native tier**; other tiers provide best-effort projection + a non-destructive fallback
+   ("edit in graph view" placeholder). Inherent to any single-IR choice; stated as truth, not a defect.
+9. **T4 NL/LLM authoring uses the SAME new server-side validator.** The as-built `LLMService` 5-/7-pass
+   checker is a *value-range* check over the flat shape, invoked only during generation — D2 builds a
+   **new** type-checker + graph-linter + cost-bounder and **promotes it to an authoritative load-time
+   gate** (`LoadScenario.cs` does zero validation today; there is no server-side load path). This is the
+   equalizer that makes AI authoring safe-by-construction — a claim no escape-hatch system can make.
+   Reconcile the **50-vs-64 spawn-cap discrepancy** (as-built `Math.Min(…,50)` in three places vs D1's
+   authoritative `Spawn≤64`) to one named constant during the D0 audit.
+10. **Trigger evaluation gets a total deterministic order** `(Priority desc, then declaration-index asc)`
+    via an explicit comparator — replaces the as-built **unstable `Array.Sort`** (`ScenarioDirector.cs:192`);
+    dense-index var/timer stores replace **`Dictionary` enumeration** (`:149`); simultaneous timer
+    expiries fire in declaration order. *(Two live nondeterminisms in shipped code — latent today, desync
+    bombs the moment D2 adds shared mutable variables / fuel / cascades. Prerequisite fixes, gated by
+    negative tests.)*
+11. **Q4 cost/desync posture accepted in full** *(user call)* — DSL fuel + the event queue + the next-tick
+    queue all fold into `SimChecksum`; a `rulesetHash` (the caps) is compared at the lobby handshake
+    alongside the existing `scenarioHash`; a **checksum-algorithm-version field** ships in the first
+    migration step (so a v0 replay never spuriously "desyncs" under a v1 algorithm); and **caps are
+    corpus-validated as a gate on D2 before lock** — a *representation* gate, not a tuning dial.
+
+**Named termination/cost constants** (named, reviewable, corpus-validated like D1's caps):
+`MaxLoopIterations` (≈256), `MaxLoopNestingDepth` (≈3), `MaxEventCascadeDepth` (≈8), `MaxEventFanOut`,
+`MaxCascadeOps`, `MaxDslOpsPerTrigger`, `MaxDslOpsPerTick`, `MaxArrayCapacity` (≈256),
+`MaxNextTickEventQueue`, `MaxDslEventsPerTick`, `MaxVariablesPerScenario`, `MaxWidgets` (≈256),
+`MaxUiDepth` (≈8), `MaxListRows` (≈64).
+
+#### Custom-UI binding model (FR-26)
+
+UI lives in the **presentation layer** (per-client `Control` nodes, *not* replicated, *not* in
+`SimChecksum`) yet must display sim-truth and feed the sim — two rails on existing infrastructure:
+- **READ rail (sim → UI), `CustomUiBridge` + versioned `DslVarReadback`** (modeled on `FogOfWarBridge`):
+  at the tick boundary the sim publishes a read-only, version-stamped snapshot of the var table; widgets
+  pull in `_Process` and re-format only on version change. **Formatting is presentation-side** (int→str,
+  Fixed→`mm:ss`); strings never enter the tick. Cannot desync. Ships scoreboards/wave-counters/timers
+  with zero command-rail change.
+- **WRITE rail (UI → sim), new `DslEventCommand` on the lockstep command bus** (analog of `EnqueueOrder`):
+  a button's `Pressed` handler **mutates nothing** — it enqueues an event command that rides the existing
+  buffered/serialized/`currentTick+delay` pipeline, so every client applies it at the identical tick.
+  Authorization is **net-new sim state** (a per-event allowed-raiser set — the as-built `:601` check is
+  unit-ownership, which a UI event lacks). Pinned tick-phase order: apply DSL events → sim systems tick →
+  `ScenarioDirector` drains the bus. Wire encoding: a **parallel capped event list** in
+  `TickCommandPacket` (`…orderCount+orders[]+eventCount+events[]`), each event `eventId + up to a
+  Fixed/Point arg`. **Local-only buttons** (toggle a panel) use a closed presentation-action whitelist,
+  statically barred from any DSL var/event (disjoint namespaces). UI is a declarative widget tree in
+  `ScenarioData` (covered by `scenarioHash`) from a closed vocabulary
+  (`Panel/Label/Counter/ProgressBar/Button/Timer/Leaderboard/FloatingText/ItemList`); every `BindVar`/
+  `BindEvent` resolves + type-matches at load.
+
+#### Migration sequence (strangler — golden-checksum-gated, always-shippable)
+
+Preserves the `On*` delegate seam and the "evaluates last on settled state" contract; reuses D1's
+golden-checksum harness. **Begins only after D1 steps 1–2 and 8 land** (test harness + `SimRng` +
+checksum/replay inclusion; `TriggerAction[]`→`EffectDef[]`, switch deleted). Invariant split: steps
+assert **identical observable outcomes**; a `SimChecksum` baseline **re-pin** is a *named, expected
+event* at the steps that change what `Compute` hashes (the var-table step and the fuel step).
+
+- **D0** — land on D1's seam + audit `ExecuteActions`: classify every action Sim vs Pres; reconcile the
+  runtime clamps (`Math.Min(…,50)` vs D1 `≤64`) and runtime float→Fixed (`add_resources`, `create_timer`)
+  against D1's load-time discipline. *Baseline tag; no behavior change.*
+- **D1s** — typed `DslVarTable` hoisted to a top-level store + checksum inclusion; change the
+  `SimChecksum.Compute` signature + every call site (`SimulationLoop.cs:98/135`, `MainScene.cs:268`);
+  establish the **graph-canonical serialization** (node ids + typed edges) in `ScenarioData`; add the
+  checksum-algorithm-version field.
+- **D2s** — CEL-shaped Fixed-only expression evaluator; conditions → boolean tree; delete the
+  float-epsilon `Compare` (`:364`) + `float.TryParse` (`:252`); retype `OnSpawnUnit`/`TriggerDefinition`
+  floats → Fixed; install the total `(Priority, decl-index)` trigger order.
+- **D3s** — event-driven bus + typed payloads (retire polling + per-tick GC); threshold level/edge forms;
+  secure **killer/last-hit attribution** on the death event (combat-layer prerequisite, §below).
+- **D4s** — custom events + acyclic-dispatch DAG proof + transitive cascade-cost bound; same-tick
+  work-list drain with pinned run-once/cooldown semantics; `RaiseEventNextTick` bounded + checksummed.
+- **D5s** — bounded `ForEach`/`ForEachBatched` + in-action `Branch` (D2's own branching — does **not**
+  depend on D1's stretch `Switch`); wire per-tick fuel into `SimChecksum` (re-pin). *Makes TD/autochess
+  authorable.*
+- **D6s** — promote the type-checker + graph-linter + cap/cost validator to the **authoritative
+  pre-tick load gate**; reconcile the 50/64 constant; `scenarioHash` covers the larger serialized form.
+- **D7s** — T3 `GraphEdit` view (additive only — IR was a graph since D1s, so *no content migration*).
+- **D8s** — custom-UI **read path** (`CustomUiBridge` + `DslVarReadback` + closed widget set incl.
+  `ItemList`). Pure presentation; no rail change. *Ships scoreboards/wave-counters/timers.*
+- **D9s** — custom-UI **write path** (`DslEventCommand`): extend `TickCommandPacket`; add
+  `EnqueueDslEvent`; **bump `ReplayRecorder.VERSION → 2` with a DSL-event record kind + a `ReplayPlayer`
+  parse/apply branch**; thread DSL-event application through **all four** command-apply sites (live
+  `:315`, spectator `:261`, `ReplayPlayer.ApplyOrders`, recorder `:318` — recommend first unifying the
+  three `ApplyOrders` copies); net-new per-event authorization. *(The "replays are free" claim was FALSE;
+  this is real, scoped engineering.)*
+
+#### Prerequisites surfaced (carry forward)
+
+- **D1's `src/Effects/` + `EffectNode` + graph executor + graph validator** — D2 contains/extends these
+  (hard dependency on D1 steps 5–8). *(Confirmed absent today.)*
+- **`SimRng`** — required before any random DSL construct; its draw-order determinism *depends on* the
+  total-trigger-order fix. *(Confirmed absent.)*
+- **`SimChecksum` signature change** to hash vars/timers/event-queue/next-tick-queue/fuel — closes the
+  confirmed desync hole (`SimChecksum.cs:26-57` hashes only World/Buildings/Resources).
+- **Total trigger order + dense-index var/timer stores** — fixes the unstable `Array.Sort` (`:192`) and
+  `Dictionary` enumeration (`:149`). *(Both verified.)*
+- **Combat-layer killer/last-hit attribution** on `unit_dies` (carries victim slot only, `:126`) —
+  without it, MOBA last-hit gold / kill-credit quests are unbuildable. A D1/combat prerequisite, not a
+  DSL feature.
+- **A *new* static validator** (type-check + graph-lint + cap/cost) promoted to a **server-side
+  load-time gate** — distinct from the as-built generation-time value-range checker.
+- **Replay format v2** (`DslEventCommand` record) + four apply-sites; **`Record`-type serialization**
+  (new at MVP per sub-decision 1).
+- **Caps corpus-validated as a gate on D2** (loop/nesting/cascade/fan-out/fuel/array/widgets) before lock.
+
+#### Residual risks / watch-items
+
+1. **The caps ARE the architecture** (highest residual): "~90% of real content is bounded" is asserted,
+   not proven. If the corpus shows common single-tick "do X to every unit on the map," `ForEach`-over-
+   finite + `ForEachBatched` won't paper it — reopen the *envelope*, not the constants. Corpus validation
+   gates D2.
+2. **Cap-product cost narrows the DSL more than "nest freely" suggests** — `MaxArrayCapacity` × nesting
+   rejects deep loops at load; document the ceiling as an acceptance criterion.
+3. **`GraphEdit` "Experimental"** — mitigated by the editor-agnostic, graph-canonical-from-D1s IR +
+   replaceable view + non-graph tiers first; but T3 is MVP, so budget a possible view-swap.
+4. **Write-path is a bigger build than it looks** (network + replay-v2 + four apply-sites + new
+   authorization) — de-risked by read-path-first, but real engineering.
+5. **Level→edge threshold migration** breaks sustained-state maps relying on level semantics — both forms
+   supported, but D3s is *not* checksum-identical (declared change).
+6. **Runtime strings are permanently out** (no player-named heroes / typed passwords) — inseparable from
+   determinism; stated plainly, not hidden.
+
+#### Hand-offs (→ D3)
+
+- **→ D3 (Definition schema & loader):** D3 owns the `System.Text.Json` (de)serialization and must encode
+  deterministically into `ScenarioData` (so `scenarioHash` stays meaningful): **the graph IR** (logic
+  nodes `ForEach`/`ForEachBatched`/`Branch`/`RaiseEvent`/`SetVariable`/`StartTimer`/get-set/expression,
+  two edge types, persistent node ids, embedded D1 `EffectDef` action subgraphs); the **variable schema**
+  (name/type/scope/initial, closed types incl. `Array<T>` capacity **and `Record` field shapes**); the
+  **custom-event registry** (names + typed params + per-event allowed-raiser set); the **UI-definition
+  schema** (closed widget tree incl. `ItemList`, `BindVar`/`BindEvent`/`Format`/layout + named caps);
+  **authoring-affordance annotations** (T3 node positions, T1 preset origin, T4 prompt provenance — never
+  destroyed); and the **replay-v2** `DslEventCommand` record schema. Constraint on shape: closed typed
+  nodes only, named references, **Fixed-at-load** (convert once, reject NaN/Inf). D2 only *constrains* the
+  serialization; D3 designs it.
