@@ -15,8 +15,12 @@ status: Active
 Phases 0–4 are code-complete. Phase 5 is underway. Session 20 shipped worker-placed buildings + UI bug sweep. Session 21 (remote, away from computer) shipped Utility AI + Adaptive Input Delay.
 
 ## Next Action
-- ✅ DONE 2026-06-20: Utility AI deadlock fix (`e3e48bc`) RE-VERIFIED in-engine on alpha_map_01/Normal (~290s). All 4 ACs pass — economy + AI + determinism healthy, no deadlock. Details under "Needs Testing" below.
-- NEXT: GDS planning chain. Sprint planning does NOT exist yet — epics/stories were never created (readiness report 2026-06-05 = 🔴 NOT READY). Run `gds-create-epics-and-stories` (seed from PRD §6.2 M0–M6) before `gds-sprint-planning`.
+**GDS planning chain for 1.0** (readiness report 2026-06-05 = 🔴 NOT READY: no UX/epics/stories). Order: UX → forward architecture → epics/stories → re-run readiness → sprint planning.
+- ✅ Verification (2026-06-20): Utility AI deadlock fix `e3e48bc` re-verified in-engine — all 4 ACs pass (details under "Needs Testing").
+- ✅ **UX pass DONE (2026-06-20)** → `_bmad-output/planning-artifacts/ux-designs/ux-Project_Chimera-2026-06-20/`. `DESIGN.md` + `EXPERIENCE.md` both **`status: final`** (distilled from the shipped Claude Design kit at `ux-Project_Chimera-2026-06-05/mockups/project-chimera`). 3 new gap-surface mockups built + browser-validated: `mockups/{tech-tree-editor,hero-picker,custom-ui-builder}.html`. Scope win: 4 of 7 "missing" surfaces already existed in `Creation Suite.html` (Unit Card / Ability / Trigger / Faction wizard). NFR-1/2/3 now have testable ACs.
+- ⏭ **NEXT SESSION — forward architecture pass (`gds-game-architecture`).** Design the net-new systems the headline epics depend on: **Trigger DSL engine + shared effect-primitive set** (covers FR-24/25 deeper DSL + Ability passive FR-9), the **new editor presentation layer**, the **persistence/profile serializer** (hero saves, FR-7), and the **M0 `MainScene.cs` (~2,200 LOC) decomposition** plan. Inputs: the two UX spines + PRD + readiness report. Both UX spines are `final` and ready to build on.
+- Then: `gds-create-epics-and-stories` (seed from PRD §6.2 M0–M6, FR-traced, FR-39 LAN determinism as a hard predecessor) → re-run `gds-check-implementation-readiness` → `gds-sprint-planning`.
+- Open reconciliation for the new session: confirm PRD §2.5 UJ-1…6 names vs the 6 journeys authored in EXPERIENCE.md Key Flows.
 
 ## Needs Testing — Written This Session
 
