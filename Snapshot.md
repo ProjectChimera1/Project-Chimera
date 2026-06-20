@@ -31,8 +31,23 @@ testing/quality is the headline: **two-tier checks** (fast Godot-free rule check
 setup deferred to M1), plus determinism enforcement, observability/desync-diagnosis, error handling,
 performance, accessibility (English-first), and telemetry (dev-only + opt-in crash report). See *Cross-Cutting
 Concerns (Step 5)* in `game-architecture.md` + the `game-architecture.Step5-cross-cutting-briefing.md` sidecar.
-**Resume at Step 6** (`MainScene` decomposition / structure). Remaining chain after architecture:
-epics/stories → re-run `gds-check-implementation-readiness` → `gds-sprint-planning`.
+
+**Step 6 (Project Structure + `MainScene` Decomposition) COMPLETE (2026-06-20).** Decision: **Shrinking
+Composition Root + Sim-Spine Strangler** — the 2,223-LOC `MainScene` god object (which is *also* the composition
+root every D1–D6 system threads through) is decomposed WITHOUT moving the file: it becomes a thin ≤250-LOC
+ordered phase-list (`ISetupPhase[]` + `PhaseOrderTest`, preserving the fragile `_Ready()` order) that constructs
+a Godot-free `SimulationHost` + `ScenarioApplier` (the sim-mutation path, now headless-testable + reused by a new
+`ServerBootstrap`) behind a net-new fail-closed `ScenarioValidator` gate, plus focused presentation coordinators.
+`FactionRegistry` localizes the 2-faction hardcodes (D5 N≤8 path). 14-step golden-checksum-gated, always-shippable
+strangler; every net-new D1–D6 + Step-5 module homed. Produced via a 16-agent design+adversarial-verify workflow
+(winning strategy 93/100). **Alec's 4 scope calls (✅):** (1) Validate gate flips fail-closed only on a release
+branch after corpus-verify; (2) the sim-core + `ServerBootstrap` are M1-blocking — the spine; (3) AOT `.csproj`
+split stays deferred (discipline + analyzers only now); (4) D6 secrets/config migration lands with the editor/MP
+coordinator carve (migration Step 12). See *Step 6 — Project Structure + `MainScene` Decomposition* in
+`game-architecture.md` + the `game-architecture.Step6-structure-briefing.md` sidecar.
+
+**Resume at Step 7** (Implementation Patterns) → Step 8 (Validation) → Step 9 (Complete). Remaining chain after
+architecture: epics/stories → re-run `gds-check-implementation-readiness` → `gds-sprint-planning`.
 
 ## Needs Testing — Written This Session
 

@@ -4,7 +4,7 @@ project: 'Project_Chimera'
 date: '2026-06-20'
 author: 'Alec'
 version: '1.0'
-stepsCompleted: [1, 2, 3, 4, 5]
+stepsCompleted: [1, 2, 3, 4, 5, 6]
 status: 'in-progress'
 
 # Source Documents
@@ -25,7 +25,7 @@ that keep AI agents implementing consistently on the path to 1.0. It is created 
 GDS Architecture Workflow and is informed by, but distinct from, the brownfield
 `architecture.md` (which documents the code **as-built**, deep scan 2026-06-05).
 
-**Steps Completed:** 5 of 9 (Cross-Cutting Concerns)
+**Steps Completed:** 6 of 9 (Project Structure & `MainScene` Decomposition)
 
 **Step 4 COMPLETE (2026-06-20).** All six game-specific decisions are settled: **D1** (effects-primitive
 vocabulary), **D2** (trigger-DSL design), **D3** (data-driven definition schema & loader) — the deep-dive
@@ -39,7 +39,19 @@ headline (two-tier checks, an AI-orchestrated cross-platform check-runner), plus
 observability/desync-diagnosis, error handling, performance, quality gates, accessibility, and the
 completeness additions (config mgmt, UGC safety, migration/replay-compat testing). Alec's calls baked in.
 See *Cross-Cutting Concerns (Step 5)* below + the `game-architecture.Step5-cross-cutting-briefing.md`
-sidecar. **Next:** Step 6 (`MainScene` decomposition / structure).
+sidecar.
+
+**Step 6 COMPLETE (2026-06-20).** Project structure + the `MainScene` decomposition recorded — the headline
+brownfield problem (the 2,223-LOC `MainScene` god object that is *also* the composition root every D1–D6
+system threads through). Decision: **Shrinking Composition Root + Sim-Spine Strangler** — `MainScene` stays
+the scene root but stops doing work, becoming a thin ordered phase-list that constructs a Godot-free
+`SimulationHost` + `ScenarioApplier` (the sim-mutation path, now testable headless + reused verbatim by a new
+`ServerBootstrap`) behind the net-new fail-closed `ScenarioValidator` gate, plus focused presentation
+coordinators in the exact preserved `_Ready()` order. Every net-new D1–D6 + Step-5 module gets a definitive
+home; a `FactionRegistry` localizes the 2-faction hardcodes for the D5 N≤8 path. Produced via a 16-agent
+design+adversarial-verify workflow (winning strategy 93/100). Alec's four scope calls baked in. See
+*Step 6 — Project Structure + `MainScene` Decomposition* below + the
+`game-architecture.Step6-structure-briefing.md` sidecar. **Next:** Step 7 (Implementation Patterns).
 
 ---
 
@@ -1313,3 +1325,401 @@ D5 AOT server** shares the Godot-free test project's source.
   releases (a check that's skipped is no check) — budget a minimal scheduled trigger.
 - Zero-alloc-in-tick asserts are brittle to refactors — treat a regression as a real finding, not noise.
 - Accessibility is a *baseline*, not full WCAG — stated plainly.
+
+---
+
+## Step 6 — Project Structure + `MainScene` Decomposition
+
+> Full design — three candidate decomposition strategies, the adversarial scoreboard, and the reviewer-found
+> flaws that were eliminated — lives in the working sidecar **`game-architecture.Step6-structure-briefing.md`**.
+> This record is the canonical decision. Produced via a 16-agent design+adversarial-verify workflow (3 diverse
+> designs → 9 constraint/breakage reviews → synthesis); the winning strategy scored **93/100** with the two
+> runner-ups' best ideas grafted in and every reviewer-found fatal flaw eliminated. **Recommend-and-confirm;
+> Alec's four scope calls are tagged ✅.** Decided 2026-06-20.
+
+#### Scope calls confirmed by Alec (2026-06-20)
+
+1. **Validation-gate flip = warn-first on master, fail-closed on a release branch** after a corpus run proves
+   every shipped scenario passes. ✅ The gate is structurally present (log-only) from migration Step 4; **C2 is
+   reported *enforcing* only post-flip**, never at land-time. Keeps the hourly `[AutoSave]`→master loop from ever
+   bricking a previously-tolerated map.
+2. **The Godot-free sim-core (`SimulationHost` + `ScenarioApplier` + `ScenarioValidator`) and `ServerBootstrap`
+   are M1-blocking — the spine.** ✅ They must land before any D3/D4/D5/D6 content reaches the lobby; the
+   canonical start-state hash, the generalized `SimChecksum`, and the server-shared-sim-path all ride this seam.
+3. **AOT server `.csproj` extraction stays deferred (per D5); discipline-only now.** ✅ Land the Godot-free
+   shared-source set into `ProjectChimera.Sim.Tests` + the advisory banned-API/AOT analyzers + the
+   never-inherit-`EnableDynamicLoading` rule. No second build target for 1.0; ship/verify N≤4.
+4. **D6 secrets/config migration lands with the editor/MP coordinator carve** (migration Step 12), since the
+   `LLMService`/`ModIoService` key sites are inside the exact coordinators being extracted. ✅ Retires the
+   plaintext-`[Export]`-key smell in one coherent presentation-layer pass.
+
+**Decision — Shrinking Composition Root + Sim-Spine Strangler (Option A).** Decompose
+`godot/src/Core/MainScene.cs` (2,223 LOC, `partial class MainScene : Node3D`, namespace `ProjectChimera.Core`)
+by splitting it along its true fault line — **composition vs. presentation vs. sim-mutation** — without moving
+the file. MainScene stays the scene root at `res://src/Core/MainScene.cs` (main.tscn:3 untouched, so there is
+no irreversible scene-repath cutover), but it stops *doing* work: it becomes a thin ordered composition root
+that constructs (1) one Godot-free `SimulationHost` (the store + 9-system assembly, single owner of the fragile
+loop order, shared verbatim by client and server) and (2) a list of focused presentation **coordinators**, in
+the *exact present `_Ready()` order*, expressed as an explicit `ISetupPhase[]` literal guarded by a
+`PhaseOrderTest`. The load-bearing move is **sim-seam-first**: extract a Godot-free `ScenarioApplier` (the sim
+half of `ApplyScenario`/`SpawnScenarioUnit`/`ApplyFallbackScenario`) gated by the currently-**missing**
+fail-closed `Validate(model)` boundary, *before* any cosmetic coordinator carving — because D3/D4/D5/C2/C6 all
+block on it and it is the only extraction that crosses the sacred sim↔presentation line. No DI framework: the
+manual `new` + `Initialize(...)` idiom is kept; `SimulationHost` and the phase list **are** the lightweight
+composition seam (C8).
+
+**Why A, not B (Thin Root + SimWorld Sandwich / boundary-purist) or C (Sim Spine First / SimulationHost-centric).**
+B and C are excellent and score within a point; A is the synthesis spine because it is the only one whose first
+commit takes zero irreversible risk against the hourly `[AutoSave]`→master loop (C4): B's plan ends in a
+`main.tscn:3` root-script repath bundled with five extractions (a multi-hour red window if AutoSave fires
+mid-edit), and C asserts `ApplyScenario` moves "verbatim, Godot-free" while it still embeds
+`ProjectSettings.GlobalizePath` (MainScene.cs:509) + `FactionDefinition.LoadFromFile` (MainScene.cs:512) — a
+build-break on master. A keeps MainScene in place and **reorders** the extraction so path resolution is hoisted
+to a presentation pre-pass that hands the applier already-loaded `FactionDefinition` objects, making the
+Godot-free claim true the instant the applier compiles. From B we **graft** the `ISetupPhase[]`-as-data +
+`PhaseOrderTest` (the cleanest C1 treatment — order becomes asserted data, not implicit method-call timing) and
+the `SimWorld` aggregate (one container the server and Sim.Tests both build). From C we **graft** the
+`Validated<ScenarioModel>` type-enforced gate (makes "no raw `Fixed.FromFloat` on external data outside the
+gate" analyzer-checkable, not a convention), the single `SetChecksumSink` owner (retires the verified
+OnChecksum double-set trap), and `FactionSlots.ToFaction(slot)` centralizing the `(Faction)(slot+1)` magic. All
+three reviewers independently re-derived the same correction set (missing Validate gate, mid-tick OnSpawnUnit
+write, the `+1` duplication, the hidden `_uiCanvas` dep, the OnChecksum double-set, the `[5]`/`[2]` faction-array
+hardcodes, the server-has-no-shared-sim-path reality, the un-homed `ILogSink`/`StressTest`) — this section
+adopts every one.
+
+### Settled sub-decisions
+
+1. **MainScene stays at `src/Core/MainScene.cs`.** It remains `partial class MainScene : Node3D` and the scene
+   root (main.tscn:3 unchanged). It keeps: the `[Export]` inspector surface (minus the two secret keys, see §10),
+   `_Ready()` as the ordered orchestration script (now a phase-list run), the headless early-return branch
+   (delegates to `ServerBootstrap`), and one-line `_Input`/`_UnhandledInput`/`_Process` forwards. It loses every
+   inline Godot-tree builder, every sim-mutation body, and both `[Export]` secret fields. Target ≤ 250 LOC.
+2. **`SimulationHost` (Godot-free) is the single owner of the fragile 9-system order.** It absorbs the store
+   construction (MainScene.cs:246–266) and the `SimulationLoop` assembly with its 9 ordered `ISimSystem`s —
+   `BuildingSystem, GatheringSystem, MovementSystem, CombatSystem, ProjectileSystem, SupplySystem,
+   FogOfWarSystem, AiOpponentSystem, ScenarioDirector`(last, runs after a fully-updated world, MainScene.cs:266).
+   The D1 `ModifierSystem` inserts at **index 3** (before `CombatSystem`). `EnableChecksums` (MainScene.cs:268)
+   and the `OnChecksum` hook (MainScene.cs:269–270) move here behind a single `SetChecksumSink` called exactly
+   once by the multiplayer phase — eliminating the verified silent double-set (MainScene.cs:269 inline vs.
+   MainScene.cs:1761 MP-overwrite). `SimulationHost` is the object that **both** `ProjectChimera.Sim.Tests` and
+   `ServerBootstrap` construct.
+3. **`ScenarioApplier` (Godot-free) is the sole writer of sim truth.** It absorbs `ApplyScenario`
+   (MainScene.cs:499), `SpawnScenarioUnit` (MainScene.cs:562), `ParseBuildingType` (MainScene.cs:587),
+   `ApplyFallbackScenario` (MainScene.cs:599), and the sim half of `MoveStartPosition` (MainScene.cs:1009–1011).
+   It consumes a `Validated<ScenarioModel>` + `SimulationHost` and writes
+   `_resources`/`_nodes`/`_buildSys`/`_world`/`_scenarioDirector`. It exposes `SpawnUnit(def, faction, x, z)`
+   (the director calls this directly) and `SetFactionBase(faction, pos)` — the **single** path both
+   scenario-load (MainScene.cs:519) and the editor `MoveStartPosition` (MainScene.cs:1010) route through. **Path
+   resolution is hoisted out**: the applier receives already-loaded `FactionDefinition` objects from a
+   presentation pre-pass (the `GlobalizePath`/`LoadFromFile` at MainScene.cs:509/512 stays in
+   presentation/ContentLoader); the applier carries **no** `res://` or Godot call. `SpawnUnit` must be
+   allocation-free (pre-resolved def, no LINQ) to satisfy the zero-alloc-in-tick assert.
+4. **`ScenarioValidator` is the net-new fail-closed `Validate(model)` gate (C2).** Pure C#, AOT-eligible, in
+   `src/Core/Definitions`. `ValidationResult Validate(ScenarioModel)` bounds-checks every value currently
+   `Fixed.FromFloat`'d raw — `StartOre`/`BaseX`/`BaseZ` (MainScene.cs:518–520), node `X`/`Z`/`Supply`/`Rate`
+   (MainScene.cs:526–528), building `X`/`Z`+slot (MainScene.cs:534–535), unit `X`/`Z`+slot
+   (MainScene.cs:543/564); rejects NaN/Inf (via the D3 `JsonConverter<Fixed>`); rejects `slot >= FACTION_COUNT`
+   (fixes the length-5 overflow at MainScene.cs:242); and gates trigger/director data, because `ApplyScenario`
+   ends in `_scenarioDirector.LoadScenario(scenario)` (MainScene.cs:558). `ScenarioApplier` consumes **only**
+   `Validated<ScenarioModel>` — a malformed model cannot reach a store. Every untrusted source (D3 file, D4
+   profile/Nakama, D6 AI output, fallback, editor in-memory, replay) funnels through this one gate.
+5. **`ServerBootstrap` is a peer composition root, not a client branch (C6).** It builds a `SimulationHost` +
+   runs `ScenarioValidator` + `ScenarioApplier` with **no presentation** — the headless branch
+   (MainScene.cs:220–228) calls it instead of only constructing `DedicatedServer`. The server holds **zero** sim
+   state today; this **creates** the shared path (it does not preserve one). Godot detection
+   (`DisplayServer.GetName()`/`OS.HasFeature`, MainScene.cs:220) and `ParsePortArg` (MainScene.cs:2210) stay as a
+   thin Godot edge that passes a port `int` down. The server-authority core (checksum collector + majority-vote
+   DesyncAlert, `TickCommandsMerged` re-stamp, Ready-COUNT, adaptive delay, PROTOCOL_VERSION compare, multi-hash
+   Ready — D5) lives in a Godot-free `ServerHost` extracted out of `DedicatedServer` (which stays the transport
+   shell). The server-shared source set `{Core/Sim, Core/Definitions, Effects, Dsl, Combat, Economy, Navigation,
+   AI(sim)}` is the future AOT `.csproj` include manifest; `EnableDynamicLoading` (godot.csproj:5) must **not** be
+   inherited by it.
+6. **The fragile `_Ready()` order becomes an asserted `ISetupPhase[]` literal (C1).** Each former `Setup*()`
+   (MainScene.cs:272–299) becomes one small `ISetupPhase` in the **identical** order; a `ScenePhaseRunner`
+   executes the array; a `PhaseOrderTest` pins the literal. Hidden dependencies become explicit constructor
+   inputs, not implicit timing: `HudPhase` **publicly owns `_uiCanvas`** (built in `SetupHud`, MainScene.cs:1028)
+   and injects it into the ≥5 later phases that `AddChild` to it (Minimap, WinConditionUi, GameOverOverlay,
+   ReplayStatus, TriggerEditor-toast) — converting a silent NRE-ordering hazard into a compile/null-checked
+   contract. The documented order invariants are migrated onto phase entries: Settings→Audio
+   (MainScene.cs:272–273), Navigation→Camera (MainScene.cs:277), Camera→Rendering (the `CombatFeedbackBridge`
+   needs `_camCtrl`, MainScene.cs:832), LoadAndApplyScenario→FlowFieldBridge.Initialize (MainScene.cs:283→289),
+   MP/Browser/Menu/Trigger/MapGen **last** (MainScene.cs:294–299), scenario hash **after** scenario+lobby
+   (MainScene.cs:303). Reordering now requires editing a test-guarded list.
+7. **The On\* delegate seam is preserved as a growable contract, and the one sim-write is repaired (C3).** A
+   single `ScenarioDelegateBinder` (in `src/CreationSuite`) is the sole site that assigns `ScenarioDirector.On*`
+   (today MainScene.cs:1879–1899). `OnDisplayMessage`/`OnPlaySound`/`OnVictory` stay presentation; the binder is
+   designed to **grow** to the D1-expanded set (PlayVfx/ShakeScreen) without touching MainScene. **Critical
+   repair:** `OnSpawnUnit` (today a presentation closure that calls `SpawnScenarioUnit` mid-tick,
+   MainScene.cs:1879–1893, executing presentation code *inside* the sim step at director-runs-last
+   MainScene.cs:266) is **re-pointed at `ScenarioApplier.SpawnUnit`** so the sim director calls sim code directly
+   — removing the determinism hazard while preserving the seam contract.
+8. **`FactionSlots`/`FactionRegistry` localizes all faction-count knowledge (C7).** `FactionSlots.ToFaction(slot)`
+   centralizes the `(Faction)(slot+1)` `+1` offset duplicated at MainScene.cs:504/534/543 and in the OnSpawnUnit
+   closure (MainScene.cs:1881); `FactionRegistry` owns `FACTION_COUNT`, the active-faction list, and the per-slot
+   `FactionDefinition` array (replacing `new FactionDefinition[5]` at MainScene.cs:242 and the `[2]`-sized
+   `StartPositionBridge` at MainScene.cs:965). `FactionView` is a thin presentation read-struct the
+   HUD/win/game-over loops iterate. This covers the three MainScene 2-faction hardcodes (`UpdateHud`
+   MainScene.cs:1127–1156, `ShowGameOver` MainScene.cs:1549–1578, `CheckWinCondition` MainScene.cs:2164–2201),
+   the missed presentation hardcodes (`StartPositionBridge[2]` MainScene.cs:965, `ExportMapPackage` 2v2/1v1
+   MainScene.cs:1443–1446), **and the sim-side hardcode the runner-up designs left un-homed**: `ScenarioDirector`'s
+   `OnVictory?.Invoke(1 - a.Faction)` (ScenarioDirector.cs:326) and `slot < 2` threshold loop
+   (ScenarioDirector.cs:165) are rewritten to iterate active factions via `FactionRegistry`. Verified at **N≤4**
+   for 1.0; raising `FACTION_COUNT`/`Faction` enum (`Player4`→`Player8`, EntityWorld.cs:47–54) is then a localized
+   constant bump (D5 fast-follow).
+9. **`ILogSink` is the net-new deterministic logging seam (Step 5).** Sim code logs through `ILogSink` (no
+   `GD.Print`, no alloc/ordering side-effects), so the Godot-free server/test project runs and the tick is never
+   perturbed. The sim-path `GD.Print` sites (e.g. MainScene.cs:551, `ScenarioDirector`) route here; presentation
+   injects a `GodotLogSink`; tests/server inject a no-op/buffer sink.
+10. **D6 secrets + config (`ISecretStore`).** The two `[Export]` plaintext-secret paths are **ripped out**:
+    `AnthropicApiKey` (MainScene.cs:206→1858) and `ModIoApiKey` (MainScene.cs:200→1795). Provider/model/baseUrl
+    move into versioned `SettingsData` (schema_version + migration registry, parallel to D3 content migration);
+    keys are read via `ISecretStore` over gitignored `user://secrets/llm.key`. `LLMService`/`ModIoService` are
+    key-injected, never `[Export]`-fed. The `SecretExclusionTest` enforces no key in build output. The remaining
+    `[Export]` config (AiLevel/ScenarioPath/ReplayPath/Nakama*/GameServer*/ModIoGameId) copies into a typed
+    `GameConfig` DTO at boot.
+11. **`StressTest.cs`** (the *second* `using Godot;` file in `src/Core`, backing `scenes/stress_test.tscn`)
+    relocates to `tools/` (or `tests/benchmark`) so the `BannedSimApiAnalyzer` over `src/Core` does not flag
+    unrelated code; its deterministic-headless descendant becomes the Step-5 perf benchmark.
+
+### Target directory tree
+
+```
+godot/
+  godot.csproj                          # client; EnableDynamicLoading=true (NOT inherited by future AOT server)
+  godot.sln
+  scenes/ main.tscn                     # res:// path -> src/Core/MainScene.cs  (UNCHANGED)
+  ProjectChimera.Sim.Tests/             # NET-NEW (Step 5): Godot-free plain-.NET runner; glob-includes the pure-sim folders
+    ProjectChimera.Sim.Tests.csproj     #   shared-source home the deferred D5 AOT server compiles from
+    Golden/GoldenChecksumReplayTests.cs
+    Determinism/{SimRng,AscendingId,ZeroAllocInTick}Tests.cs
+    Validation/NegativeValidationTests.cs        # targets ScenarioValidator
+    Builder/ScenarioApplierTests.cs              # targets ScenarioApplier — Godot-free proof + start-state hash
+    Checksum/SimChecksumCoverageGuardTest.cs
+    Migration/MigrationRoundTripTests.cs         # v1->v2 reject
+    Secrets/SecretExclusionTest.cs               # D6
+    Bootstrap/PhaseOrderTest.cs                  # pins the ISetupPhase[] literal
+    Perf/HeadlessStressBenchmark.cs              # from relocated StressTest.cs
+  analyzers/                            # NET-NEW (Step 5): advisory-on-master Roslyn
+    BannedSimApiAnalyzer/               #   flags `using Godot;` / float gameplay in sim layer
+    AotAnalyzer/                        #   D3/D5 AOT-eligibility gate
+  tests/                                # NET-NEW (Step 5, greenfield): Tier-2 GdUnit4 presentation/integration
+    Integration/MainSceneBootSmokeTest.cs
+  tools/
+    StressTest.cs                       # MOVED out of src/Core (second Godot-in-sim smell removed)
+  src/
+    Core/
+      MainScene.cs                      # THIN root (2,223 -> <=250 LOC); Node3D; scene root preserved
+      FixedPoint.cs  EntityWorld.cs     # EntityWorld: +Energy/Mana SoA (D1), Faction->Player8 (D5 fast-follow)
+      SimulationLoop.cs                 # +ModifierSystem slot; OnChecksum threaded from host
+      SimChecksum.cs                    # generalized P1/P2 -> active factions; +SimRng/DslVarTable/Modifier/Hero
+      ScenarioDirector.cs               # OnSpawnUnit -> ScenarioApplier.SpawnUnit; 1-a.Faction / slot<2 -> FactionRegistry
+      Bootstrap/                        # NET-NEW (C1)
+        ISetupPhase.cs  ScenePhaseRunner.cs
+        Phases/ SettingsPhase.cs ... MapGeneratorPhase.cs  (21 phases, order = the literal)
+      Sim/                              # NET-NEW pure-C# spine (C2/C3/C6) — NO using Godot
+        SimulationHost.cs               #   stores + 9-system loop; single SetChecksumSink owner
+        SimWorld.cs                     #   aggregate of sim-truth stores (host's payload)
+        ScenarioApplier.cs              #   ApplyScenario/SpawnUnit/ParseBuildingType/Fallback (Godot-free)
+        FactionSlots.cs FactionRegistry.cs  # centralizes (Faction)(slot+1) + FACTION_COUNT + per-slot defs
+        DslVarTable.cs                  #   D2 top-level sim store (sibling of BuildingStore)
+        HeroStore.cs                    #   D4 sparse SoA
+        ILogSink.cs                     #   Step-5 deterministic logging seam
+        ServerBootstrap.cs              #   headless shared sim/apply root (C6)
+      Definitions/                      # Godot-free DTOs/converters (AOT-eligible)
+        ScenarioData.cs ScenarioModel.cs FactionDefinition.cs UnitDefinition.cs SettingsData.cs
+        ScenarioValidator.cs            #   NET-NEW Validate(model) gate (C2)
+        ContentLoader.cs                #   D3 single choke point + one canonical JsonSerializerOptions
+        FixedJsonConverter.cs NodeBaseJsonConverter.cs ChimeraJsonContext.cs   # D3
+        MigrationRegistry.cs GameVersion.cs CanonicalModelHash.cs              # D3 (FNV-64 algo-2)
+        EffectDef.cs DslGraphDef.cs                                            # D1/D2 serializable defs
+        PlayerProfile.cs PersistenceManifest.cs                                # D4
+        GameConfig.cs                   #   typed carrier for [Export] config (D6)
+    Effects/                            # D1 — ProjectChimera.Effects, pure sim, peer of Combat/Economy
+      EffectNode.cs (sealed) Sequence.cs SearchArea.cs Persistent.cs
+      EffectContext.cs EffectExecutor.cs EffectValidator.cs
+      ModifierStore.cs ModifierSystem.cs (ISimSystem @ index 3) SimRng.cs
+    Dsl/                                # D2 — ProjectChimera.Dsl, pure sim
+      NodeBase.cs GraphExecutor.cs ExpressionEvaluator.cs EventBus.cs
+      CustomEventRegistry.cs DslValidator.cs DslEventCommand.cs (write rail)
+    Combat/ Economy/ Navigation/        # existing pure sim, untouched
+    AI/                                 # ProjectChimera.AI — AiOpponentSystem (sim) stays
+      ILLMProvider.cs AnthropicAdapter.cs OllamaAdapter.cs OpenRouterAdapter.cs   # D6 (Godot-free)
+    Multiplayer/
+      DedicatedServer.cs                # transport shell; RelayCore/ServerHost extraction shapes deferred AOT split
+      Server/ ServerHost.cs ProtocolVersion.cs DelayController.cs                 # D5 authority core (Godot-free)
+      MatchLifecycleController.cs       # NET-NEW: SetupMultiplayer/OnMatchStart/replay
+      ServerChecksumCollector.cs TickCommandsMerged.cs ReadyStateMachine.cs       # D5
+      LockstepManager.cs ENetTransport.cs ReplayRecorder.cs ReplayPlayer.cs       # existing
+    CreationSuite/
+      EditorToolsController.cs          # NET-NEW: terrain brush/content browser/main menu/trigger+mapgen/build placement
+      MapIoController.cs                # NET-NEW: export/import .chimera.zip + reload carrier
+      ScenarioDelegateBinder.cs         # NET-NEW: sole On* wiring site (growable; OnSpawnUnit -> applier)
+      TriggerEditorPanel.cs MapGeneratorPanel.cs CustomUiBridge.cs DslVarReadback.cs  # D2 read rail
+    UI/
+      InputRouter.cs                    # NET-NEW: _Input/_UnhandledInput/build-placement/RaycastFloor
+      GameLoopDriver.cs                 # NET-NEW: _Process body (replay/online/offline branch dispatch)
+      Presenters/ FactionRoster.cs HudPresenter.cs GameOverPresenter.cs WinConditionPresenter.cs FactionView.cs
+      Settings/ SettingsManager.cs SettingsPanel.cs ISecretStore.cs LocalFileSecretStore.cs GodotLogSink.cs
+      Bridges/ (existing 9 *Bridge readers) CustomUiBridge (D2)
+    UGC/                                # ProjectChimera.UGC — mod.io IO (presentation/IO side)
+```
+
+### Architectural boundary rules
+
+- **Sim-truth writes** (any `_world`/`_resources`/`_nodes`/`_buildings`/`ModifierStore`/`DslVarTable`/`HeroStore`
+  SoA, `_buildSys.PlaceBuildingDirect`, `_scenarioDirector.LoadScenario`, `FactionBase`, `ore`) live **only** in
+  `src/Core/Sim`|`Effects`|`Dsl`|`Combat`|`Economy`|`Navigation` — **no `using Godot;`**. Presentation never
+  touches a store directly; it calls a named command on `SimulationHost`/`ScenarioApplier` (`SpawnUnit`,
+  `SetFactionBase`, `QueueWorkerBuild`). Both `FactionBase` write sites (`ApplyScenario`, `MoveStartPosition`)
+  route through `ScenarioApplier.SetFactionBase`.
+- **No raw `Fixed.FromFloat` on external data** may occur before `ScenarioValidator.Validate` returns `Ok`.
+  `ScenarioApplier` accepts only `Validated<ScenarioModel>` — a type-enforced, analyzer-checkable invariant.
+- **All JSON deserialization** goes through `ContentLoader` + the one canonical `JsonSerializerOptions`. New
+  `FactionDefinition.LoadFromFile`/bespoke `JsonSerializer` calls are forbidden (the divergent second load path at
+  MainScene.cs:512 is folded onto `ContentLoader`). **Ordering invariant (D3):** options-unification (D3.0) must
+  precede the enum lift (D3.2) or the two loaders bind `UnitDefinition` divergently.
+- **Faction-count knowledge** lives only in `FactionSlots`/`FactionRegistry`. No literal `Player1`/`Player2`, no
+  `slot+1`, no `[5]`/`[2]` array sizing, no `slot<2` loop anywhere else (sim or presentation).
+- **The On\* delegates are a presentation-output channel**: a sim node may *fire* them but they may never
+  *read/write* sim state. `ScenarioDelegateBinder` is the only assignment site and may grow without editing
+  MainScene.
+- **Sim logging** goes through `ILogSink`; `GD.Print` below the presentation layer is `BannedSimApiAnalyzer`
+  territory.
+- **Secrets** come from `ISecretStore` only; an `[Export]` string holding a key is a banned pattern
+  (`SecretExclusionTest`).
+- **The dedicated server** composes `ServerBootstrap` and must never reference `UI`/`Presenters`/`CreationSuite`
+  or a MainScene member. Its source set is the future AOT include manifest.
+- **Shared-source guard:** the sim folders are **glob-included** into `ProjectChimera.Sim.Tests` (not hand-listed
+  `<Compile Include>`), with a CI check that the sim folder set matches — preventing a new sim file from compiling
+  in the client but silently missing from the Godot-free/AOT compile until the AOT step.
+
+### Migration sequence (strangler; golden-checksum-gated; always-shippable; advisory-on-master)
+
+> Gates are **advisory on master** (the repo auto-commits hourly via `[AutoSave]`; a hard pre-commit gate would
+> fight that loop). Hard enforcement and the one behavior-changing flip happen on a **release branch** only.
+
+- **Step 0 — Gate foundation (no behavior change):** create `ProjectChimera.Sim.Tests.csproj` (net8.0, no Godot)
+  + `GoldenChecksumReplayTests` pinning today's `SimChecksum` sequence for `alpha_map_01` over N ticks. Add
+  `BannedSimApiAnalyzer` (warn-only; it already flags MainScene + StressTest). Add `ILogSink` + a trivial
+  `GodotLogSink`; leave sim `GD.Print`s in place. **Ship.**
+- **Step 1 — Extract `SimulationHost`/`SimWorld` (mechanical lift):** move the store + `SimulationLoop`
+  construction (MainScene.cs:246–266) + `EnableChecksums` (MainScene.cs:268) verbatim into `SimulationHost`.
+  MainScene reads `_host.World` etc. System order byte-identical. Golden checksum must match. **Ship.**
+- **Step 2 — Hoist faction-def resolution to a presentation pre-pass:** lift `GlobalizePath`/`LoadFromFile`
+  (MainScene.cs:230–239, 509–514) into a small presentation resolver that produces already-loaded
+  `FactionDefinition` objects. **No sim move yet** — this is the prerequisite that lets the applier be Godot-free
+  at Step 3. Golden checksum unchanged. **Ship.**
+- **Step 3 — Extract `ScenarioApplier` (Godot-free):** move
+  `ApplyScenario`/`SpawnScenarioUnit`/`ParseBuildingType`/`ApplyFallbackScenario` into `Sim/ScenarioApplier`,
+  taking `SimulationHost` + pre-resolved defs. Replace the four `(Faction)(slot+1)` sites with
+  `FactionSlots.ToFaction`. Add `ScenarioApplierTests` (Godot-free, asserts identical store contents + a
+  start-state hash baseline the instant it compiles). Golden checksum identical. **Ship.**
+- **Step 4 — Insert `ScenarioValidator` in shadow/log-only mode (C2 seam present):** add `Validate(model)` called
+  before every Apply on all paths; failures **log-only**, still apply, so master never breaks. Add
+  `NegativeValidationTests` (NaN ore, `slot>=FACTION_COUNT`, out-of-bounds X/Z) asserting rejection. **Ship.**
+  *(Fail-closed flip is a release-branch step — confirmed by Alec; see Scope call 1.)*
+- **Step 5 — Centralize `FactionRegistry`:** introduce `FactionRegistry.FactionForSlot` + `FACTION_COUNT`; size
+  `_slotFactionDefs`/`StartPositionBridge[]` off it. No behavioral change at N≤2. Golden checksum unchanged.
+  **Ship.** *(C7 keystone.)*
+- **Step 6 — Stand up `ServerBootstrap` (C6 created, not preserved):** re-point the headless branch
+  (MainScene.cs:220–228) to build `SimulationHost` + `Validate` + `Apply` with no presentation. Add a determinism
+  test: server start-state checksum == client offline start-state on the same scenario. **Ship; client unaffected.**
+- **Step 7 — `ScenePhaseRunner` wrap (mechanical):** wrap the existing `_Ready` Setup* sequence as a named
+  `ISetupPhase[]` in the **same** order; add `PhaseOrderTest`. No bodies move. **Ship.**
+- **Step 8 — Carve presentation coordinators, ONE phase per commit:** order `HudPresenter` **first** (it owns
+  `_uiCanvas`, injected as a ctor dep into later phases) → `WorldView`/`Navigation` → `Minimap` →
+  `WinConditionPresenter` + `MapIoController` → `GameOverPresenter` → `ReplayStatus` → `InputRouter` +
+  `GameLoopDriver`. Each move is behavior-identical, golden-gated (sim untouched), smoke-tested (build placement
+  still beats selection; F5; replay/online/offline branches). **Ship per move.**
+- **Step 9 — `ScenarioDelegateBinder` + OnSpawnUnit repair:** make the binder the sole On* site; re-point
+  `OnSpawnUnit` at `ScenarioApplier.SpawnUnit` (sim→sim). Re-run the spawn-trigger golden replay to prove
+  identical sim output. **Ship.**
+- **Step 10 — `MatchLifecycleController` + single `SetChecksumSink`:** extract
+  `SetupMultiplayer`/`OnMatchStart`/replay; delete the inline MainScene.cs:269–270 assignment so the host's
+  `SetChecksumSink` is the single owner (kills the MainScene.cs:269-vs-1761 double-set). Verify offline print
+  **and** online `lockstep.SendChecksum`. **Ship.**
+- **Step 11 — Generalize 2-faction surfaces (C7 done at N≤4):** rewrite
+  `HudPresenter`/`GameOverPresenter`/`WinConditionPresenter` to loop over `FactionRoster`; generalize
+  `ScenarioDirector` `1-a.Faction` (ScenarioDirector.cs:326) + `slot<2` (ScenarioDirector.cs:165); fix
+  `ExportMapPackage` tags (MainScene.cs:1443–1446). Add a 3–4-faction golden scenario so the span path is
+  exercised deterministically. **Ship.**
+- **Step 12 — D6 secrets/config:** introduce `ISecretStore` + `LocalFileSecretStore`; rip `AnthropicApiKey`
+  (MainScene.cs:1858) and `ModIoApiKey` (MainScene.cs:1795) out of `[Export]`; move provider/model into versioned
+  `SettingsData`; add `SecretExclusionTest`. **Ship.**
+- **Step 13 — Generalize `SimChecksum` as its OWN golden re-baseline:** widen `SimChecksum` from P1/P2-only
+  (SimChecksum.cs:53–54) to active factions + fold in `SimRng`/`DslVarTable`/`Modifier`/`Hero`. This is a
+  **hash-changing event** — it is its own re-baseline step so the intended widening is never confused with a
+  regression. Add `SimChecksumCoverageGuardTest`. **Ship.**
+- **Step 14+ — Plug-in band:** D1 (`Effects` + `ModifierSystem` @ index 3 + `SimRng`), D2 (`Dsl` + `DslVarTable`
+  + read rail), D3 (`ContentLoader` folds the two load paths; canonical model hash replaces the file hash at
+  MainScene.cs:303 — fixing the stale-hash-on-generated-scenario bug), D4 (`HeroStore`/profiles through the gate),
+  D5 (`ServerChecksumCollector`/`TickCommandsMerged` + `Faction`→`Player8` constant bump). Each lands behind its
+  own golden gate; none touches MainScene beyond a `SimulationHost`/coordinator hookup.
+
+### Prerequisites (surfaced)
+
+- **The cross-cutting 3-way hashing bug is the M1 foundation** all of D4/D5/D6 converge on: `SimChecksum` hashes
+  only `Ore[Player1]`/`Ore[Player2]` (SimChecksum.cs:53–54); `DedicatedServer` is a pure relay with no hash
+  compare (DedicatedServer.cs:171–191); AI-generated in-memory scenarios ship a stale on-disk **file** hash
+  (MainScene.cs:303, via `ScenarioSerializer.ComputeFileHash`). The shared remediation — canonical **model-level**
+  start-state hash + server-enforced agreement + generalized `SimChecksum` — must land before D4/D5/D6 content
+  reaches the lobby. The static `_pendingGeneratedScenario` (MainScene.cs:137) cross-reload path is the concrete
+  reason a model-level (not file-level) hash is mandatory.
+- **`FactionDefinition`/`UnitDefinition` must stay Godot-free** (they are Definitions DTOs — verified) so the
+  applier's per-slot `GetUnit` lookup compiles in the sim assembly.
+- **`SettingsData` becomes a versioned subsystem** (its own `schema_version` + migration registry) before §10 can
+  land D6 provider fields + Step-5 accessibility fields.
+- **Net-new seams the brief's inventory omitted, now homed:** `ILogSink` (deterministic logging, `src/Core/Sim`);
+  per-system sub-checksums + a `.chmr` replay-diff tool (D5 desync diagnosis, `src/Multiplayer`/Sim.Tests);
+  settings schema-versioning; accessibility baseline (input-remap/colorblind/UI-scale/subtitles in
+  `SettingsData`/`SettingsPanel`); a translatable seam for the game's own UI (English-first 1.0; UGC text
+  untranslated); the version-stamp coherence check
+  (CurrentGameVersion/schema_version/checksum_algo_version/PROTOCOL_VERSION/min_game_version move together);
+  zero-alloc-in-tick asserts + migration round-trip/replay-compat tests in `ProjectChimera.Sim.Tests`.
+  **Deliberately NOT homed (do not re-derive):** the D4 engine-side hero-normalization mode enum is **CUT**
+  (fairness via D1 Modifiers / D2 graph at match-init) — Step 6 creates no code path for it.
+
+### Hand-offs
+
+- **To Step 7 (patterns):** the read-rail/write-rail templates this structure assumes — `FogOfWarBridge` as the
+  one-way read-rail template for D2's `CustomUiBridge`/`DslVarReadback`; the lockstep command bus as the sole
+  write rail; the `ISetupPhase`/`ScenarioDelegateBinder`/`SimulationHost.SetChecksumSink` single-owner patterns —
+  should be lifted into Step 7 as the canonical composition/seam patterns. The `Validated<T>` gate pattern is the
+  canonical "untrusted input → fail-closed → sim" pattern.
+- **To M1 implementation:** Steps 0–6 are the M1 foundation (the Step-5 hand-off "MainScene decomposition must
+  become testable as it is split" is satisfied: the golden harness is stood up at Step 0 and every sim-touching
+  step rides it). M1 must also run the deferred **Linux/WSL cross-platform check** (.NET-in-WSL is the only
+  missing piece) against `ProjectChimera.Sim.Tests` to prove the Godot-free sim/server source genuinely builds
+  off-Godot.
+
+### Residual risks
+
+- **Coordinator extraction (Step 8) is the one band a red client build can slip past the golden gate** — the sim
+  is untouched, so a missed `_uiCanvas`/`_camCtrl` ref surfaces as a runtime NRE, not a checksum mismatch.
+  Mitigation: one phase per commit, `_uiCanvas` injected as a ctor dependency (compile/null-checked), mandatory
+  in-engine smoke after each.
+- **C2 is only truly enforcing after the release-branch fail-closed flip** — between Step 4 and the flip, a
+  malformed scenario still reaches `Fixed.FromFloat` (it is logged, not rejected). Signing off C2 at Step 4 is
+  premature; the flip is the genuine close — **confirmed by Alec: release-branch flip after corpus-verify**
+  (Scope call 1).
+- **The fail-closed flip can reject a previously-tolerated hand-authored map** — mitigated by corpus-verifying
+  every shipped scenario passes on a release branch before flipping, plus a legacy-amnesty migration pass.
+- **`SimChecksum` widening (Step 13) is a hash-changing event** — kept as its own re-baseline step so a
+  regression is distinguishable from intended widening.
+- **N-faction is verified only at N≤2 today** — Step 11 adds a 3–4-faction golden scenario so the span-based path
+  is exercised deterministically before claiming C7 closed; N≤8 stays a `FACTION_COUNT` constant bump (D5
+  fast-follow), not a 1.0 deliverable.
+- **Shared-source `<Compile Include>` drift** between `godot.csproj` and `ProjectChimera.Sim.Tests` could hide a
+  Godot leak until the AOT step — mitigated by glob-includes + the CI folder-set match check.
+
+### Open items (non-blocking; carry forward)
+
+- Confirm the relocation target for `StressTest.cs` (`tools/` vs `tests/benchmark`) and whether
+  `scenes/stress_test.tscn`'s script-path edit is an isolated commit or the file is left with an analyzer
+  suppression. *(Implementation-time detail; Step 0/11.)*
+- The deferred Linux/WSL cross-platform build check runs against `ProjectChimera.Sim.Tests` at M1 (only .NET-in-WSL
+  is missing per memory) — the cheapest proof the Godot-free sim/server source set genuinely builds off-Godot.
+- Per-system sub-checksums + the `.chmr` replay-diff desync tool (D5 diagnosis) are homed structurally but
+  **fast-follow, not 1.0-blocking** unless an actual N-player desync forces them earlier.
+- Translatable-UI + accessibility-baseline seams are homed in `SettingsData`/`SettingsPanel`; their content rides
+  the D6/settings band (migration Step 12) or a later cross-cutting pass.
