@@ -7,7 +7,7 @@ status: Active
 
 # Project Chimera — Snapshot
 
-**Last Touched:** `2026-06-10`
+**Last Touched:** `2026-06-19`
 
 ## Current Phase
 **Phase 5 — Polish & 1.0** (Months 25-31 of GDD roadmap)
@@ -15,7 +15,7 @@ status: Active
 Phases 0–4 are code-complete. Phase 5 is underway. Session 20 shipped worker-placed buildings + UI bug sweep. Session 21 (remote, away from computer) shipped Utility AI + Adaptive Input Delay.
 
 ## Next Action
-Run the `design-handoff-prompt.md` in Google Stitch (or equivalent producer tool), paste Style System block + four screen blocks, save outputs, then return to
+Install ripgrep standalone via `winget install BurntSushi.ripgrep.MSVC` and update VS Code settings.json with the resulting executable path.
 
 ## Needs Testing — Written This Session
 
