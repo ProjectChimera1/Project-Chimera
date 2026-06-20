@@ -4,7 +4,7 @@ project: 'Project_Chimera'
 date: '2026-06-20'
 author: 'Alec'
 version: '1.0'
-stepsCompleted: [1, 2]
+stepsCompleted: [1, 2, 3]
 status: 'in-progress'
 
 # Source Documents
@@ -25,7 +25,7 @@ that keep AI agents implementing consistently on the path to 1.0. It is created 
 GDS Architecture Workflow and is informed by, but distinct from, the brownfield
 `architecture.md` (which documents the code **as-built**, deep scan 2026-06-05).
 
-**Steps Completed:** 2 of 9 (Project Context)
+**Steps Completed:** 3 of 9 (Engine & Framework)
 
 ---
 
@@ -143,3 +143,62 @@ expressiveness** (NFR-6).
 - **AI clamps:** map generator hard-clamps to RTS conventions — must parameterize for TD/RPG.
 - **`GraphEdit` is "Experimental"** (tech-tree + trigger graphs) — needs an abstraction layer.
 - **Terrain3D runtime modification** not stress-tested under rapid brush + collider updates.
+
+## Engine & Framework
+
+### Selected Engine
+
+**Godot 4.6.x stable** (.NET build) · **C# / .NET 8** — locked (brownfield).
+
+**Rationale (GDD §2, confirmed as-built):** C# runs the RTS sim hot path ~2–3× faster than
+GDScript JIT; Godot's runtime introspection (`GetPropertyList`/`Get`/`Set`, runtime
+`PackedScene.Pack()`, `GraphEdit` at runtime) is *the* reason an in-game creation suite is
+viable; MIT license (no royalties/seat fees); native headless/dedicated-server export.
+
+**Version decision (2026-06-20):** Adopt **Godot 4.6.3** for 1.0 (patch on the 4.6 line,
+released 2026-05-20 — low-risk bugfixes over 4.6.2). **Defer 4.7** (released 2026-06-17) to
+post-1.0: a days-old minor carries regression + addon-compat (Terrain3D, godot-mcp) risk not
+worth taking mid-release. Engine stays pinned to a known-good line.
+
+### Project Initialization
+
+Existing project — no scaffolding. Entry: `project.godot` → `res://scenes/main.tscn` →
+`MainScene.cs._Ready()`. Solution `godot/godot.sln` (.NET 8). Sole NuGet dependency: `NakamaClient`.
+
+### Engine-Provided Architecture
+
+| Component | Solution | Notes |
+|---|---|---|
+| Rendering | Forward+; `MultiMeshInstance3D` for all units | 1 draw call/unit-type/faction; sim→transform via `*Bridge` |
+| Physics | Jolt (engine default) | **NOT for gameplay** — sim uses deterministic `SpatialHash`; Jolt for editor/raycast/presentation only |
+| Audio | `AudioServer` / `AudioStreamPlayer` | Presentation layer only |
+| Input | `Input` + `InputMap` | Presentation only; maps to sim *command intents*, never mutates sim |
+| Scene mgmt | Scene tree + `PackedScene`; `MainScene` composition root; autoload `MCPGameBridge` | Runtime `PackedScene.Pack()` powers editor save/load |
+| UI | `Control` nodes + `Theme` | Claude Design System → faceted `StyleBox` theme |
+| Networking transport | `ENetMultiplayerPeer` (+ WebSocket fallback) | Custom deterministic lockstep layered on top |
+| Build / export | .NET 8 MSBuild + Godot export templates; `--headless` / `dedicated_server` (Linux) | NativeAOT server build is an open question |
+| Serialization | `System.Text.Json` (data) + custom binary (`.chmr`, terrain) | .NET, not engine-provided |
+
+### AI Tooling (MCP Servers)
+
+- **godot-mcp (already in use, keep)** — rich Godot MCP via the `MCPGameBridge` autoload
+  (`addons/godot_mcp`): live scene/node/animation/tilemap/gridmap edits, `runtime_state` digests,
+  profiler, `validate_meshes`, input injection, frozen game-time stepping, `godot_docs`. The
+  AI-assisted-dev backbone. **Dev-time tooling only — not shipped in the 1.0 build.** Hygiene:
+  verify the addon still connects after the 4.6.3 bump (patch bumps rarely break editor addons)
+  and pull upstream fixes periodically.
+- **Context7** (optional, `upstash/context7`) — current .NET/NuGet/library docs (Nakama,
+  System.Text.Json): `claude mcp add context7 -- npx -y @upstash/context7-mcp`.
+
+### Remaining Architectural Decisions (→ Step 4)
+
+Engine settles rendering/physics/input/scene/transport. These game-specific decisions remain:
+
+1. **Effects-primitive vocabulary** shared by abilities + triggers (the "buildable genres" lever)
+2. **Trigger-DSL design** — variables/loops/arrays/events/custom UI + static-validation model
+3. **Data-driven definition schema & loader** — `DamageMatrix`→JSON, N-resources, tech trees
+4. **Hero persistence** — init-time deterministic state + server validation
+5. **>2-player lockstep** topology + Nakama matchmaking (up to 8)
+6. **Test architecture** — GdUnit4 + headless deterministic sim tests (from zero)
+7. **`MainScene` decomposition** — taming the 2,200-LOC composition root
+8. **LLM provider config** migration (Inspector export → settings) + multi-provider
