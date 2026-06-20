@@ -1,26 +1,33 @@
-# Mockups — run 2026-06-20
+# Mockups — run 2026-06-20 (self-contained)
 
-New gap-surface mockups built on the shipped Claude Design kit (`chimera.css` + `editor.css`),
-linked by relative path to the 2026-06-05 run so they inherit the design system 1:1.
+This run is **self-contained**: the shipped Claude Design kit + all screens were copied in on
+2026-06-20, and the new gap-surface mockups were relinked to **same-directory** CSS. There is no
+longer any cross-folder dependency on the 2026-06-05 run (which remains as the historical source).
 
-| File | Surface | FR | Accent | Notes |
-|------|---------|----|--------|-------|
-| `tech-tree-editor.html` | Tech-Tree visual editor | FR-14 | amber (editor) | Tier lanes T1→T3, building nodes with drag-port prerequisites, dependency edges, right-dock building inspector (reuses `.gnode`/`.sect`/`.fieldrow`). |
-| `hero-picker.html` | Save/Load hero-picker | FR-7d/e | teal (player) | Hero slot cards (portrait, level, XP bar, signature ability, faction tag), Deploy/Overwrite/Delete, overwrite/delete confirm dialog, server-side-validation note. |
-| `custom-ui-builder.html` | Custom runtime UI builder | FR-26 | amber (editor) | Widget palette → 16:9 screen canvas with safe-area; placed HUD widgets; inspector with `{variable}` bindings, 9-point anchor, style, trigger-driven visibility. Buttons fire triggers on click. |
+**Everything lives in `project-chimera/project/`** — open any screen there; the kit (`chimera.css`,
+`editor.css`, `shell.css`, `browser.css`, `theme.js`, `stage.js`) is alongside it.
 
-## Already covered by the shipped Creation Suite (no new mockup needed)
-These live as panel-views in `../../ux-Project_Chimera-2026-06-05/mockups/project-chimera/project/Creation Suite.html`
-and are distilled into `EXPERIENCE.md`, not re-mocked:
-- **Unit Card Editor** (FR-2) — `pv-unit`: model turntable, templates, Combat/Economy/Abilities/Hero sections, Promote-to-Hero, compare, live JSON, Simple/Advanced disclosure.
-- **Ability Editor** (FR-8–12) — `pv-ability`: targeting & cost + effect-primitive composition.
-- **Trigger editor** (FR-23–28) — `pv-triggers`: list + node-graph + ECA blocks.
-- **Faction Definer wizard** (FR-17) — `pv-faction`: 5-step wizard.
+## Screens
+
+| Screen | File (`project-chimera/project/…`) | Origin |
+|--------|-------------------------------------|--------|
+| Title / Mode / Lobby / Settings | `Shell.html` | shipped (06-05) |
+| In-game HUD | `HUD.html` | shipped (06-05) |
+| Creation Suite (Unit Card · Ability · Trigger · Faction wizard · Terrain · AI Gen) | `Creation Suite.html` | shipped (06-05) |
+| Content Browser (mod.io) | `Content Browser.html` | shipped (06-05) |
+| Design System reference | `Design System.html` | shipped (06-05) |
+| UI System Hub (index) | `index.html` | shipped (06-05) |
+| **Tech-Tree visual editor** (FR-14) | `tech-tree-editor.html` | **new this run** |
+| **Hero Save/Load picker** (FR-7d/e) | `hero-picker.html` | **new this run** |
+| **Custom runtime UI builder** (FR-26) | `custom-ui-builder.html` | **new this run** |
+
+The 4 editor surfaces the readiness report listed as "missing" (Unit Card, Ability, Trigger,
+Faction wizard) already existed inside `Creation Suite.html` — distilled into `../EXPERIENCE.md`, not
+re-mocked.
 
 ## View live
-From `_bmad-output/planning-artifacts/ux-designs/`:
 ```
-python -m http.server 8777
+python -m http.server 8778 --directory "<this run>/mockups/project-chimera/project"
 ```
-Then open `http://localhost:8777/ux-Project_Chimera-2026-06-20/mockups/<file>.html`
-(serving from `ux-designs/` is required so the `../../ux-Project_Chimera-2026-06-05/...` CSS links resolve).
+Then open `http://localhost:8778/<file>.html` (e.g. `tech-tree-editor.html`). Serving from the
+`project/` dir is enough — every screen links its CSS same-dir.

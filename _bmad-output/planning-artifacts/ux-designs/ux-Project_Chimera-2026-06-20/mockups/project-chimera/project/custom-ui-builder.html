@@ -4,9 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Chimera — Custom Runtime UI Builder (gap surface)</title>
-<link rel="stylesheet" href="../../ux-Project_Chimera-2026-06-05/mockups/project-chimera/project/chimera.css">
-<link rel="stylesheet" href="../../ux-Project_Chimera-2026-06-05/mockups/project-chimera/project/editor.css">
-<script src="../../ux-Project_Chimera-2026-06-05/mockups/project-chimera/project/theme.js"></script>
+<link rel="stylesheet" href="chimera.css">
+<link rel="stylesheet" href="editor.css">
+<script src="theme.js"></script>
 <style>
   /* widget palette (left) reuses .pal-btn rhythm but labelled */
   .wpal{width:150px;flex:none;background:var(--surface-1);box-shadow:1px 0 0 var(--line);padding:12px 10px;overflow-y:auto;}
@@ -195,7 +195,7 @@
 
 <div class="demo-theme"><button onclick="chimeraToggleTheme()">◐ Light / Dark</button></div>
 
-<script src="../../ux-Project_Chimera-2026-06-05/mockups/project-chimera/project/stage.js"></script>
+<script src="stage.js"></script>
 <script>
   document.querySelectorAll('.anchor9 button').forEach(b=>b.addEventListener('click',()=>{
     document.querySelectorAll('.anchor9 button').forEach(x=>x.classList.remove('on')); b.classList.add('on');

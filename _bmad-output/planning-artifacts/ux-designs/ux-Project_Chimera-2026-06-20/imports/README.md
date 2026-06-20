@@ -2,7 +2,7 @@
 
 | Item | Path | Notes |
 |------|------|-------|
-| **Claude Design UI (latest)** | `../../ux-Project_Chimera-2026-06-05/mockups/project-chimera/` | Confirmed latest by Alec 2026-06-20. Referenced in place, not copied (large). Authoritative visual source for `DESIGN.md`. |
+| **Claude Design UI (latest)** | `../../ux-Project_Chimera-2026-06-05/mockups/project-chimera/` | Confirmed latest by Alec 2026-06-20. **Copied into this run** (`../mockups/project-chimera/`) on 2026-06-20 so the run is self-contained; the 2026-06-05 copy remains as the historical source. Authoritative visual source for `DESIGN.md`. |
 
 ### What the import contains
 - `project/chimera.css` — **the design system** (tokens + Godot Control–mappable component kit). Primary source for `DESIGN.md`.

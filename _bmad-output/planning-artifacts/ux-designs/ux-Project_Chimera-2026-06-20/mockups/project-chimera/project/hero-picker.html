@@ -5,8 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Chimera — Hero Save/Load Picker (gap surface)</title>
 <!-- Inherit the shipped kit 1:1 (player-facing → default teal accent) -->
-<link rel="stylesheet" href="../../ux-Project_Chimera-2026-06-05/mockups/project-chimera/project/chimera.css">
-<script src="../../ux-Project_Chimera-2026-06-05/mockups/project-chimera/project/theme.js"></script>
+<link rel="stylesheet" href="chimera.css">
+<script src="theme.js"></script>
 <style>
   html,body{height:100%;overflow:hidden;background:var(--void);}
   .viewport{position:fixed;inset:0;overflow:hidden;}
@@ -186,7 +186,7 @@
 
 <div class="demo-theme"><button onclick="chimeraToggleTheme()">◐ Light / Dark</button></div>
 
-<script src="../../ux-Project_Chimera-2026-06-05/mockups/project-chimera/project/stage.js"></script>
+<script src="stage.js"></script>
 <script>
   document.querySelectorAll('.hcard').forEach(c=>c.addEventListener('click',e=>{
     if(e.target.closest('.btn')||e.target.closest('.icon-btn'))return;

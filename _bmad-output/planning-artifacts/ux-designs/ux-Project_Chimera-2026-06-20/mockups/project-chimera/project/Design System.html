@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="en" data-accent="amber">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Project Chimera — Design System</title>
+<link rel="stylesheet" href="chimera.css">
+<script src="theme.js"></script>
+<style>
+  body { background: var(--surface-0); }
+  .ds { max-width: 1280px; margin: 0 auto; padding: 56px 40px 120px; }
+
+  /* masthead */
+  .mast { display:flex; align-items:flex-end; justify-content:space-between; gap:24px; margin-bottom: 40px; }
+  .logo { display:flex; align-items:center; gap:14px; }
+  .logo .mark { width: 42px; height: 42px; flex:none; }
+  .logo .wm { font-family: var(--font-display); font-weight: 700; font-size: 30px; letter-spacing: 0.04em; color: var(--text-hi); line-height:1; }
+  .logo .wm b { color: var(--accent-bright); font-weight: 700; }
+  .logo .sub { font-family: var(--font-mono); font-size: 11px; color: var(--text-lo); letter-spacing: 0.18em; text-transform: uppercase; margin-top: 4px; }
+
+  /* section scaffold */
+  section { margin-top: 56px; }
+  .sec-head { display:flex; align-items:center; gap:14px; margin-bottom: 22px; }
+  .sec-head h2 { font-size: var(--t-xl); }
+  .sec-head .idx { font-family: var(--font-mono); color: var(--accent-dim); font-size: var(--t-sm); }
+  .sec-head .rule { flex:1; height:1px; background: var(--line); }
+
+  .grid { display:grid; gap: 16px; }
+  .demo { padding: 22px; }
+  .demo .cap { font-family: var(--font-mono); font-size: 11px; color: var(--text-lo); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 14px; display:block; }
+
+  /* color tokens */
+  .swatches { display:grid; grid-template-columns: repeat(auto-fill, minmax(150px,1fr)); gap: 10px; }
+  .sw { padding: 12px; box-shadow: inset 0 0 0 1px var(--line); }
+  .sw .chipbox { height: 52px; margin-bottom: 10px; clip-path: polygon(0 5px,5px 0,100% 0,100% calc(100% - 5px),calc(100% - 5px) 100%,0 100%); box-shadow: inset 0 0 0 1px rgba(255,255,255,0.06); }
+  .sw .nm { font-size: 12px; color: var(--text-hi); font-weight:600; }
+  .sw .vr { font-family: var(--font-mono); font-size: 10px; color: var(--text-lo); }
+
+  .accent-picker { display:flex; gap:10px; }
+  .accent-picker button { display:flex; align-items:center; gap:9px; padding:9px 14px 9px 9px; background: var(--surface-2); box-shadow: inset 0 0 0 1px var(--line); clip-path: polygon(0 5px,5px 0,100% 0,100% calc(100% - 5px),calc(100% - 5px) 100%,0 100%); font-family: var(--font-display); font-size:12px; text-transform:uppercase; letter-spacing:0.05em; color: var(--text-mid); transition: all 130ms; }
+  .accent-picker button .dot { width: 22px; height: 22px; clip-path: polygon(0 4px,4px 0,100% 0,100% calc(100% - 4px),calc(100% - 4px) 100%,0 100%); }
+  .accent-picker button[aria-pressed="true"] { color: var(--text-hi); box-shadow: inset 0 0 0 1px var(--accent); background: var(--accent-wash); }
+
+  /* type scale rows */
+  .type-row { display:flex; align-items:baseline; gap: 24px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+  .type-row .meta { width: 150px; flex:none; font-family: var(--font-mono); font-size: 11px; color: var(--text-lo); }
+  .teamgrid { display:grid; grid-template-columns: repeat(4,1fr); gap:10px; }
+  .team { display:flex; align-items:center; gap:10px; padding: 11px; background: var(--surface-2); box-shadow: inset 0 0 0 1px var(--line); clip-path: polygon(0 5px,5px 0,100% 0,100% calc(100% - 5px),calc(100% - 5px) 100%,0 100%); }
+  .team .dot { width: 18px; height:18px; flex:none; clip-path: polygon(50% 0,100% 50%,50% 100%,0 50%); }
+  .team .nm { font-size:12px; color: var(--text-hi); }
+  .team .gl { width:18px;height:18px;flex:none; display:grid;place-items:center; color: var(--text-lo); }
+
+  .cols-2 { grid-template-columns: 1fr 1fr; }
+  .cols-3 { grid-template-columns: repeat(3,1fr); }
+  .stack > * + * { margin-top: 14px; }
+  .lbl-row { font-size:11px; font-family:var(--font-mono); color:var(--text-lo); text-transform:uppercase; letter-spacing:0.08em; margin-bottom:8px; }
+  .note { font-size: 12px; color: var(--text-lo); line-height:1.5; }
+  .pin { position: sticky; top: 0; z-index: 30; background: linear-gradient(180deg, var(--surface-0) 70%, transparent); padding: 16px 0; margin: -16px 0 0; }
+</style>
+</head>
+<body>
+<div class="ds">
+
+  <!-- MASTHEAD -->
+  <header class="mast">
+    <div class="logo">
+      <svg class="mark" viewBox="0 0 96 96"><use href="#chimera-seal"></use></svg>
+      <div>
+        <div class="wm">PROJECT <b>CHIMERA</b></div>
+        <div class="sub">Design System · v0.1</div>
+      </div>
+    </div>
+    <div class="accent-picker" id="accentPicker">
+      <button data-acc="teal" aria-pressed="false"><span class="dot" style="background:oklch(0.78 0.13 192)"></span>Teal</button>
+      <button data-acc="amber" aria-pressed="true"><span class="dot" style="background:oklch(0.80 0.14 75)"></span>Amber</button>
+      <button data-acc="violet" aria-pressed="false"><span class="dot" style="background:oklch(0.74 0.15 295)"></span>Violet</button>
+      <button onclick="chimeraToggleTheme()" title="Toggle dark / light theme"><span class="dot" style="background:linear-gradient(135deg,#14181d 50%,#f1eee6 50%)"></span>Theme</button>
+    </div>
+  </header>
+
+  <p class="note" style="max-width:680px; font-size:14px; color:var(--text-mid);">
+    A dark-first, faceted, cel-shaded UI language built for clarity over a busy 3D battlefield — with a warm-paper light variant for the editor crowd. Flat color blocks, crisp chamfered edges, a thin bright edge-light on raised panels, geometric iconography, and a single reserved accent. Every component maps to a standard Godot Control node. <b class="accent-text">Switch the accent or theme above</b> to compare options live.
+  </p>
+
+  <!-- 01 COLOR -->
+  <section>
+    <div class="sec-head"><span class="idx">01</span><h2>Color Tokens</h2><span class="rule"></span></div>
+
+    <div class="panel demo">
+      <span class="cap">Surfaces — cool, slightly desaturated darks</span>
+      <div class="swatches">
+        <div class="sw"><div class="chipbox" style="background:var(--void)"></div><div class="nm">void</div><div class="vr">#0a0c0f</div></div>
+        <div class="sw"><div class="chipbox" style="background:var(--surface-0)"></div><div class="nm">surface-0</div><div class="vr">#0f1216</div></div>
+        <div class="sw"><div class="chipbox" style="background:var(--surface-1)"></div><div class="nm">surface-1</div><div class="vr">#14181d</div></div>
+        <div class="sw"><div class="chipbox" style="background:var(--surface-2)"></div><div class="nm">surface-2</div><div class="vr">#1a1f26</div></div>
+        <div class="sw"><div class="chipbox" style="background:var(--surface-3)"></div><div class="nm">surface-3</div><div class="vr">#222831</div></div>
+        <div class="sw"><div class="chipbox" style="background:var(--surface-4)"></div><div class="nm">surface-4</div><div class="vr">#2c333d</div></div>
+      </div>
+    </div>
+
+    <div class="grid cols-2" style="margin-top:16px;">
+      <div class="panel demo">
+        <span class="cap">Accent — interactive / selected / highlight (reserved, never a team color)</span>
+        <div class="swatches">
+          <div class="sw"><div class="chipbox" style="background:var(--accent-bright)"></div><div class="nm">accent-bright</div><div class="vr">hover / edge-light</div></div>
+          <div class="sw"><div class="chipbox" style="background:var(--accent)"></div><div class="nm">accent</div><div class="vr">primary</div></div>
+          <div class="sw"><div class="chipbox" style="background:var(--accent-dim)"></div><div class="nm">accent-dim</div><div class="vr">pressed / track</div></div>
+          <div class="sw"><div class="chipbox" style="background:var(--accent-wash)"></div><div class="nm">accent-wash</div><div class="vr">selected bg</div></div>
+        </div>
+      </div>
+      <div class="panel demo">
+        <span class="cap">Semantic — always paired with icon + label, never color alone</span>
+        <div class="swatches">
+          <div class="sw"><div class="chipbox" style="background:var(--ok)"></div><div class="nm">ok / valid</div><div class="vr">success</div></div>
+          <div class="sw"><div class="chipbox" style="background:var(--warn)"></div><div class="nm">warn</div><div class="vr">caution / stall</div></div>
+          <div class="sw"><div class="chipbox" style="background:var(--danger)"></div><div class="nm">danger</div><div class="vr">destructive</div></div>
+          <div class="sw"><div class="chipbox" style="background:var(--info)"></div><div class="nm">info</div><div class="vr">neutral note</div></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel demo" style="margin-top:16px;">
+      <span class="cap">Faction / team colors — Okabe-Ito derived, colorblind-safe. Distinct from chrome + accent. Paired with a diamond glyph, never color-only.</span>
+      <div class="teamgrid">
+        <div class="team"><span class="dot" style="background:var(--team-1)"></span><span class="nm">P1 Blue</span></div>
+        <div class="team"><span class="dot" style="background:var(--team-2)"></span><span class="nm">P2 Vermilion</span></div>
+        <div class="team"><span class="dot" style="background:var(--team-3)"></span><span class="nm">P3 Green</span></div>
+        <div class="team"><span class="dot" style="background:var(--team-4)"></span><span class="nm">P4 Magenta</span></div>
+        <div class="team"><span class="dot" style="background:var(--team-5)"></span><span class="nm">P5 Sky</span></div>
+        <div class="team"><span class="dot" style="background:var(--team-6)"></span><span class="nm">P6 Yellow</span></div>
+        <div class="team"><span class="dot" style="background:var(--team-7)"></span><span class="nm">P7 Purple</span></div>
+        <div class="team"><span class="dot" style="background:var(--team-8)"></span><span class="nm">P8 Neutral</span></div>
+      </div>
+      <p class="note" style="margin-top:14px;">The accent (teal/amber/violet) sits in a hue gap away from the blue↔red team-identity axis, so chrome reads as "the tool," not "a player."</p>
+    </div>
+  </section>
+
+  <!-- 02 TYPE -->
+  <section>
+    <div class="sec-head"><span class="idx">02</span><h2>Typography</h2><span class="rule"></span></div>
+    <div class="grid cols-2">
+      <div class="panel demo">
+        <span class="cap">Families</span>
+        <div class="stack">
+          <div><div class="lbl-row">Display — Chakra Petch</div><div style="font-family:var(--font-display); font-size:28px; color:var(--text-hi); font-weight:600;">Build the game. Then play it.</div></div>
+          <div><div class="lbl-row">UI — Space Grotesk</div><div style="font-size:16px; color:var(--text-mid);">Confident, concise, builder-friendly interface copy that stays legible at distance.</div></div>
+          <div><div class="lbl-row">Numeric — JetBrains Mono</div><div class="num" style="font-size:22px;">1,240 · 12/20 · 04:37 · +18.5</div></div>
+        </div>
+      </div>
+      <div class="panel demo">
+        <span class="cap">Scale</span>
+        <div class="type-row"><span class="meta">4xl / 52</span><span style="font-family:var(--font-display);font-size:var(--t-4xl);color:var(--text-hi);font-weight:700;">Aa</span></div>
+        <div class="type-row"><span class="meta">2xl / 29</span><span style="font-family:var(--font-display);font-size:var(--t-2xl);color:var(--text-hi);font-weight:600;">Display Heading</span></div>
+        <div class="type-row"><span class="meta">lg / 18</span><span style="font-size:var(--t-lg);color:var(--text-hi);">Subhead / panel title</span></div>
+        <div class="type-row"><span class="meta">md / 15</span><span style="font-size:var(--t-md);color:var(--text-mid);">Body & control text</span></div>
+        <div class="type-row" style="border:0;"><span class="meta">2xs / 11</span><span class="eyebrow">Eyebrow · Label Caps</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 03 BUTTONS -->
+  <section>
+    <div class="sec-head"><span class="idx">03</span><h2>Buttons &amp; Controls</h2><span class="rule"></span></div>
+    <div class="grid cols-2">
+      <div class="panel demo">
+        <span class="cap">Button variants &amp; states</span>
+        <div class="row gap3 wrap">
+          <button class="btn btn-primary">Primary</button>
+          <button class="btn btn-secondary">Secondary</button>
+          <button class="btn btn-ghost">Ghost</button>
+          <button class="btn btn-danger">Destroy</button>
+          <button class="btn" disabled>Disabled</button>
+        </div>
+        <div class="row gap3 wrap" style="margin-top:14px;">
+          <button class="btn btn-primary btn-lg">Large CTA</button>
+          <button class="btn btn-sm">Small</button>
+          <button class="btn btn-primary"><svg width="14" height="14" viewBox="0 0 16 16"><path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" stroke-width="1.8" fill="none"/></svg>With Icon</button>
+        </div>
+        <div class="lbl-row" style="margin-top:18px;">Icon buttons</div>
+        <div class="row gap2">
+          <button class="icon-btn is-active" title="Move"><svg viewBox="0 0 18 18"><path d="M9 2v14M2 9h14M9 2l-3 3M9 2l3 3M9 16l-3-3M9 16l3-3" stroke="currentColor" stroke-width="1.4" fill="none"/></svg></button>
+          <button class="icon-btn" title="Attack"><svg viewBox="0 0 18 18"><path d="M3 15L13 5M11 3h4v4" stroke="currentColor" stroke-width="1.5" fill="none"/><path d="M3 15l2-1 1-2" stroke="currentColor" stroke-width="1.5" fill="none"/></svg></button>
+          <button class="icon-btn" title="Stop"><rect x="4" y="4" width="10" height="10" fill="currentColor"/></button>
+          <button class="icon-btn" title="Settings"><path d="" /><svg viewBox="0 0 18 18"><circle cx="9" cy="9" r="2.5" stroke="currentColor" stroke-width="1.4" fill="none"/><path d="M9 2v2M9 14v2M2 9h2M14 9h2M4 4l1.5 1.5M12.5 12.5L14 14M14 4l-1.5 1.5M5.5 12.5L4 14" stroke="currentColor" stroke-width="1.3"/></svg></button>
+        </div>
+      </div>
+      <div class="panel demo">
+        <span class="cap">Tabs, segmented &amp; hotkeys</span>
+        <div class="tabs" style="border-bottom:1px solid var(--line); margin-bottom:16px;">
+          <button class="tab is-active">Combat</button>
+          <button class="tab">Economy</button>
+          <button class="tab">Abilities</button>
+          <button class="tab">Hero</button>
+        </div>
+        <div class="lbl-row">Segmented control — Simple ↔ Advanced</div>
+        <div class="segment" style="margin-bottom:18px;">
+          <button class="is-active">Simple</button>
+          <button>Advanced</button>
+        </div>
+        <div class="lbl-row">Hotkey glyphs</div>
+        <div class="row gap2 wrap">
+          <span class="kbd">Q</span><span class="kbd">W</span><span class="kbd">E</span><span class="kbd">A</span><span class="kbd">S</span><span class="kbd">Ctrl</span><span class="kbd">Shift</span><span class="kbd">↵</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 04 INPUTS -->
+  <section>
+    <div class="sec-head"><span class="idx">04</span><h2>Inputs &amp; Sliders</h2><span class="rule"></span></div>
+    <div class="grid cols-3">
+      <div class="panel demo">
+        <span class="cap">Slider + numeric input</span>
+        <div class="stack">
+          <div class="field"><label>Hit Points</label><div class="field-slider"><input type="range" class="slider" min="0" max="2000" value="820"><input class="num-input" value="820"></div></div>
+          <div class="field"><label>Attack Damage</label><div class="field-slider"><input type="range" class="slider" min="0" max="200" value="46"><input class="num-input" value="46"></div></div>
+          <div class="field"><label>Move Speed</label><div class="field-slider"><input type="range" class="slider" min="0" max="500" value="270"><input class="num-input" value="270"></div></div>
+        </div>
+      </div>
+      <div class="panel demo">
+        <span class="cap">Text, select &amp; dropdown</span>
+        <div class="stack">
+          <div class="field"><label>Unit Name</label><input class="input" value="Vanguard"></div>
+          <div class="field"><label>Armor Type</label><select class="select"><option>Heavy</option><option>Light</option><option>Fortified</option></select></div>
+          <div class="field"><label>Search</label><input class="input" placeholder="Filter abilities…"></div>
+        </div>
+      </div>
+      <div class="panel demo">
+        <span class="cap">Progress &amp; XP</span>
+        <div class="stack">
+          <div><div class="lbl-row">Training — 64%</div><div class="progress"><i style="width:64%"></i></div></div>
+          <div><div class="lbl-row">Validation — complete</div><div class="progress progress--ok"><i style="width:100%"></i></div></div>
+          <div><div class="lbl-row">Hero XP — Lv 3</div><div class="progress progress--xp"><i style="width:42%"></i></div></div>
+          <div class="lbl-row" style="margin-top:6px;">Dropdown menu</div>
+          <div class="menu" style="min-width:auto;">
+            <div class="menu-item is-active"><svg width="14" height="14" viewBox="0 0 14 14"><path d="M2 7l3 3 7-7" stroke="currentColor" stroke-width="1.6" fill="none"/></svg>Popular</div>
+            <div class="menu-item">Top Rated</div>
+            <div class="menu-item">Newest</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 05 DATA / CHROME -->
+  <section>
+    <div class="sec-head"><span class="idx">05</span><h2>Readouts, Chips &amp; Tags</h2><span class="rule"></span></div>
+    <div class="grid cols-2">
+      <div class="panel demo">
+        <span class="cap">Resource readouts — top-bar (monospace, tabular)</span>
+        <div class="row gap5 wrap" style="align-items:center;">
+          <div class="readout"><span class="ic" style="background:oklch(0.62 0.08 60)"><svg width="13" height="13" viewBox="0 0 14 14"><path d="M7 1l5 3v6l-5 3-5-3V4z" fill="#1a1206"/></svg></span><span class="val">1,240</span><span class="lbl">Ore</span></div>
+          <div class="readout"><span class="ic" style="background:oklch(0.68 0.12 230)"><svg width="13" height="13" viewBox="0 0 14 14"><path d="M7 1l4 5-4 7-4-7z" fill="#06121a"/></svg></span><span class="val">680</span><span class="lbl">Crystal</span></div>
+          <div class="readout"><span class="ic" style="background:var(--surface-4)"><svg width="13" height="13" viewBox="0 0 14 14"><circle cx="4.5" cy="5" r="2.2" fill="var(--text-hi)"/><circle cx="9.5" cy="5" r="2.2" fill="var(--text-hi)"/><path d="M1.5 12c0-2 1.4-3 3-3s3 1 3 3M7.5 12c0-2 1.4-3 3-3s3 1 3 3" fill="var(--text-hi)"/></svg></span><span class="val">12/20</span><span class="lbl">Supply</span></div>
+          <div class="readout"><span class="val">04:37</span><span class="lbl">Clock</span></div>
+        </div>
+        <div class="lbl-row" style="margin-top:18px;">Stat chips</div>
+        <div class="row gap2 wrap">
+          <span class="chip"><svg class="chip-icon" viewBox="0 0 16 16"><path d="M8 14s5-3.5 5-7a3 3 0 00-5-2 3 3 0 00-5 2c0 3.5 5 7 5 7z" fill="var(--danger)"/></svg><span class="num">820</span> HP</span>
+          <span class="chip"><svg class="chip-icon" viewBox="0 0 16 16"><path d="M3 13L11 5M9 3h4v4" stroke="var(--warn)" stroke-width="1.5" fill="none"/></svg><span class="num">46</span> DMG</span>
+          <span class="chip"><svg class="chip-icon" viewBox="0 0 16 16"><path d="M8 1l6 3v4c0 4-3 6-6 7-3-1-6-3-6-7V4z" fill="none" stroke="var(--accent)" stroke-width="1.3"/></svg><span class="num">4</span> ARM</span>
+        </div>
+      </div>
+      <div class="panel demo">
+        <span class="cap">Tags — status &amp; prerequisites</span>
+        <div class="row gap2 wrap">
+          <span class="tag tag--ok"><svg width="11" height="11" viewBox="0 0 12 12"><path d="M2 6l3 3 5-6" stroke="currentColor" stroke-width="1.6" fill="none"/></svg>Valid</span>
+          <span class="tag tag--lock"><svg width="11" height="11" viewBox="0 0 12 12"><rect x="2.5" y="5" width="7" height="5" rx="1" fill="currentColor"/><path d="M4 5V3.5a2 2 0 014 0V5" stroke="currentColor" stroke-width="1.2" fill="none"/></svg>Need: Barracks</span>
+          <span class="tag tag--accent">Hero</span>
+          <span class="tag tag--danger">Conflict</span>
+          <span class="tag">Tier 2</span>
+        </div>
+        <div class="lbl-row" style="margin-top:18px;">List rows — default · selected · locked</div>
+        <div class="stack" style="--stack-gap:8px;">
+          <div class="list-row"><span class="ph ph--facet" style="width:34px;height:34px;font-size:8px;">U</span><div class="grow"><div class="hi" style="font-size:13px;">Footman</div><div class="muted" style="font-size:11px;">Tier 1 · Melee</div></div><span class="kbd">F</span></div>
+          <div class="list-row is-selected" style="margin-top:8px;"><span class="ph ph--facet" style="width:34px;height:34px;font-size:8px;">U</span><div class="grow"><div class="hi" style="font-size:13px;">Archer</div><div class="muted" style="font-size:11px;">Tier 1 · Ranged</div></div><span class="kbd">R</span></div>
+          <div class="list-row is-locked" style="margin-top:8px;"><span class="ph ph--facet" style="width:34px;height:34px;font-size:8px;">U</span><div class="grow"><div class="hi" style="font-size:13px;">Knight</div><div class="muted" style="font-size:11px;">Tier 3 · Cavalry</div></div><span class="tag tag--lock">Locked</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 06 SURFACES & FEEDBACK -->
+  <section>
+    <div class="sec-head"><span class="idx">06</span><h2>Toasts, Banners &amp; Dialog</h2><span class="rule"></span></div>
+    <div class="grid cols-2">
+      <div class="panel demo">
+        <span class="cap">Toasts &amp; alert banners</span>
+        <div class="stack">
+          <div class="toast toast--danger"><svg class="toast__ic" viewBox="0 0 22 22"><path d="M11 2l9 16H2z" fill="none" stroke="var(--danger)" stroke-width="1.6"/><path d="M11 8v5M11 15.5v.5" stroke="var(--danger)" stroke-width="1.8"/></svg><div><div class="toast__title">Under attack!</div><div class="toast__msg">Your base at grid C-4 is taking damage.</div></div></div>
+          <div class="toast toast--ok" style="margin-top:12px;"><svg class="toast__ic" viewBox="0 0 22 22"><circle cx="11" cy="11" r="9" fill="none" stroke="var(--ok)" stroke-width="1.6"/><path d="M7 11l3 3 5-6" stroke="var(--ok)" stroke-width="1.8" fill="none"/></svg><div><div class="toast__title">Upgrade complete</div><div class="toast__msg">Iron Plating researched.</div></div></div>
+        </div>
+        <div class="lbl-row" style="margin-top:18px;">Multiplayer-stall banner</div>
+        <div class="banner-stall"><span class="tmute tmute--sm" role="status" aria-label="Syncing"><svg class="tm-ring"><use href="#chimera-spin-ring"></use></svg><svg class="tm-tri"><use href="#chimera-spin-tri"></use></svg><svg class="tm-core"><use href="#chimera-spin-core"></use></svg></span>Waiting for peer…</div>
+        <div class="lbl-row" style="margin-top:18px;">Transmute spinner — loading indicator <span class="muted" style="text-transform:none;letter-spacing:0;">(sm · default · lg)</span></div>
+        <div class="row gap6" style="align-items:center;">
+          <span class="tmute tmute--sm" role="status" aria-label="Loading"><svg class="tm-ring"><use href="#chimera-spin-ring"></use></svg><svg class="tm-tri"><use href="#chimera-spin-tri"></use></svg><svg class="tm-core"><use href="#chimera-spin-core"></use></svg></span>
+          <span class="tmute" role="status" aria-label="Loading"><svg class="tm-ring"><use href="#chimera-spin-ring"></use></svg><svg class="tm-tri"><use href="#chimera-spin-tri"></use></svg><svg class="tm-core"><use href="#chimera-spin-core"></use></svg></span>
+          <span class="tmute tmute--lg" role="status" aria-label="Loading"><svg class="tm-ring"><use href="#chimera-spin-ring"></use></svg><svg class="tm-tri"><use href="#chimera-spin-tri"></use></svg><svg class="tm-core"><use href="#chimera-spin-core"></use></svg></span>
+          <span class="note" style="font-size:12px;max-width:200px;">Ring rotates clockwise, triangles counter-rotate, triad core pulses. Respects reduced-motion.</span>
+        </div>
+      </div>
+      <div class="panel demo" style="position:relative; min-height:280px; overflow:hidden;">
+        <span class="cap">Modal dialog (in-game menu / confirm)</span>
+        <div class="scrim" style="position:absolute;">
+          <div class="dialog" style="width:90%;">
+            <div class="dialog__head row between"><h3 style="font-size:var(--t-lg);">Leave match?</h3><span class="kbd">Esc</span></div>
+            <div class="dialog__body"><p class="note" style="font-size:13px;">Leaving an active multiplayer match counts as a forfeit and may affect your standing. Your current build progress will be lost.</p></div>
+            <div class="dialog__foot"><button class="btn btn-ghost">Stay</button><button class="btn btn-danger">Forfeit &amp; Leave</button></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 07 PANEL ANATOMY -->
+  <section>
+    <div class="sec-head"><span class="idx">07</span><h2>Faceted Panel Anatomy</h2><span class="rule"></span></div>
+    <div class="grid cols-3">
+      <div class="panel demo"><span class="cap">panel — primary</span><p class="note" style="font-size:13px;">Chamfered top-left / bottom-right corners. Faceted hairline border with a brighter cel-shade top edge. Used for all docked surfaces.</p></div>
+      <div class="panel panel--2 demo"><span class="cap">panel--2 — raised card</span><p class="note" style="font-size:13px;">Lighter surface for cards and nested groups. Same facet geometry, one step up in elevation.</p></div>
+      <div class="panel panel--accent demo"><span class="cap">panel--accent — focus</span><p class="note" style="font-size:13px;">Accent-lit border for the active / selected panel — e.g. the hero Unit Card under edit.</p></div>
+    </div>
+    <p class="note" style="margin-top:16px; max-width:760px;">Chamfers are kept small (5–14px) and applied to two opposite corners — enough to read as faceted/low-poly without the angularity ever competing with text. Borders are crisp 1px gradients (cel edge-light → shadow), never glows on dense surfaces. No per-frame blur on HUD panels; blur is reserved for paused modal scrims.</p>
+  </section>
+
+</div>
+
+<style>@keyframes spin { to { transform: rotate(360deg); } }</style>
+<script>
+  const picker = document.getElementById('accentPicker');
+  picker.addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    chimeraSetAccent(b.dataset.acc);
+    picker.querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', x === b));
+  });
+  /* reflect persisted accent in picker */
+  (function(){
+    const a = document.documentElement.dataset.accent || 'amber';
+    picker.querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', x.dataset.acc === a));
+  })();
+  // wire sliders to their numeric inputs
+  document.querySelectorAll('.field-slider').forEach(fs => {
+    const r = fs.querySelector('.slider'), n = fs.querySelector('.num-input');
+    if (r && n) { r.addEventListener('input', () => n.value = r.value); n.addEventListener('input', () => r.value = n.value); }
+  });
+</script>
+</body>
+</html>

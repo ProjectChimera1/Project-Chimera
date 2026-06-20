@@ -3,7 +3,7 @@ status: final
 updated: 2026-06-20
 project: Project Chimera
 kind: game-ux-design
-distilled_from: ../ux-Project_Chimera-2026-06-05/mockups/project-chimera/project/chimera.css
+distilled_from: ./mockups/project-chimera/project/chimera.css  # copied in 2026-06-20 (self-contained); source: ux-Project_Chimera-2026-06-05
 sources:
   - Project_Chimera_GDD.md
   - _bmad-output/planning-artifacts/prds/prd-Project_Chimera-2026-06-05/prd.md

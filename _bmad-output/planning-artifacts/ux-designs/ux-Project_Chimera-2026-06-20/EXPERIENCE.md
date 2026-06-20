@@ -9,12 +9,12 @@ sources:
   - _bmad-output/planning-artifacts/prds/prd-Project_Chimera-2026-06-05/prd.md
   - Snapshot.md
   - _bmad-output/project-context.md
-distilled_from:
-  - ../ux-Project_Chimera-2026-06-05/mockups/project-chimera/project/Shell.html        # title / mode / lobby / settings
-  - ../ux-Project_Chimera-2026-06-05/mockups/project-chimera/project/Creation Suite.html # editor shell + panels
-  - ../ux-Project_Chimera-2026-06-05/mockups/project-chimera/project/HUD.html
-  - godot/src/Core/MainScene.cs                                                          # the AS-BUILT in-game HUD (authoritative)
-  - ./mockups/{tech-tree-editor,hero-picker,custom-ui-builder}.html                      # this run's gap surfaces
+distilled_from:                                            # all UI is local to this run (copied in 2026-06-20; source = ux-Project_Chimera-2026-06-05)
+  - ./mockups/project-chimera/project/Shell.html           # title / mode / lobby / settings
+  - ./mockups/project-chimera/project/Creation Suite.html  # editor shell + panels
+  - ./mockups/project-chimera/project/HUD.html
+  - godot/src/Core/MainScene.cs                            # the AS-BUILT in-game HUD (authoritative)
+  - ./mockups/project-chimera/project/{tech-tree-editor,hero-picker,custom-ui-builder}.html  # this run's gap surfaces
 ---
 
 # Project Chimera — EXPERIENCE.md
@@ -139,9 +139,9 @@ Single form factor (PC desktop). Adaptation is **UI scale + resolution**, not la
 
 | Surface | Mockup | Behavior summary |
 |---------|--------|------------------|
-| **Tech-Tree editor** (FR-13/14) | `mockups/tech-tree-editor.html` | Tier-laned graph; drag out-port → building to set a prerequisite; node = building (icon, prereqs, unlocks); right-dock inspector edits building stats (with tooltips) + unlock list; **runtime gates production by the graph.** Building defs reuse the Unit-Card pattern ("Open full Building Card"). |
-| **Hero Save/Load picker** (FR-7d/e) | `mockups/hero-picker.html` | Creator-enabled per scenario. Slot cards (portrait, level, XP, signature ability, faction); **Deploy / Overwrite / Delete** with confirm dialogs; multiple heroes per player; "validated server-side for online." |
-| **Custom runtime UI builder** (FR-26) | `mockups/custom-ui-builder.html` | Widget palette (Label/Counter/Bar/Button/Timer/Image/Panel) → drag onto a 16:9 screen canvas; per-widget inspector: **`{variable}` data binding**, 9-point anchor + offsets, style (font role/size/color), **trigger-driven visibility**; **buttons fire triggers on click.** |
+| **Tech-Tree editor** (FR-13/14) | `mockups/project-chimera/project/tech-tree-editor.html` | Tier-laned graph; drag out-port → building to set a prerequisite; node = building (icon, prereqs, unlocks); right-dock inspector edits building stats (with tooltips) + unlock list; **runtime gates production by the graph.** Building defs reuse the Unit-Card pattern ("Open full Building Card"). |
+| **Hero Save/Load picker** (FR-7d/e) | `mockups/project-chimera/project/hero-picker.html` | Creator-enabled per scenario. Slot cards (portrait, level, XP, signature ability, faction); **Deploy / Overwrite / Delete** with confirm dialogs; multiple heroes per player; "validated server-side for online." |
+| **Custom runtime UI builder** (FR-26) | `mockups/project-chimera/project/custom-ui-builder.html` | Widget palette (Label/Counter/Bar/Button/Timer/Image/Panel) → drag onto a 16:9 screen canvas; per-widget inspector: **`{variable}` data binding**, 9-point anchor + offsets, style (font role/size/color), **trigger-driven visibility**; **buttons fire triggers on click.** |
 
 **Existing surfaces (in `Creation Suite.html`, not re-mocked):** Unit Card Editor (FR-2), Ability Editor (FR-8–12), Trigger list+graph (FR-23–28), Faction Definer wizard (FR-17). **Extensions to log for architecture/epics:** Ability Editor **passive** path (FR-9); deeper Trigger DSL — typed/scoped variables, arithmetic/boolean expressions, collections, loops, custom events (FR-24/25).
 

@@ -5,9 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Chimera — Tech-Tree Editor (gap surface)</title>
 <!-- Inherit the shipped kit 1:1 -->
-<link rel="stylesheet" href="../../ux-Project_Chimera-2026-06-05/mockups/project-chimera/project/chimera.css">
-<link rel="stylesheet" href="../../ux-Project_Chimera-2026-06-05/mockups/project-chimera/project/editor.css">
-<script src="../../ux-Project_Chimera-2026-06-05/mockups/project-chimera/project/theme.js"></script>
+<link rel="stylesheet" href="chimera.css">
+<link rel="stylesheet" href="editor.css">
+<script src="theme.js"></script>
 <style>
   /* ---- Tech-tree-specific: reuses .graph/.gnode language, adds tier lanes + ports ---- */
   .tech-wrap{flex:1;position:relative;min-width:0;display:flex;flex-direction:column;}
@@ -211,7 +211,7 @@
 <div class="demo-theme"><button onclick="chimeraToggleTheme()">◐ Light / Dark</button></div>
 
 <!-- shared 1920×1080 letterbox scaler (same as shipped screens) -->
-<script src="../../ux-Project_Chimera-2026-06-05/mockups/project-chimera/project/stage.js"></script>
+<script src="stage.js"></script>
 <script>
   // minimal interactivity: select a node → reflect in dock title (kit-faithful demo behavior)
   document.querySelectorAll('.tnode').forEach(n=>n.addEventListener('mousedown',e=>{

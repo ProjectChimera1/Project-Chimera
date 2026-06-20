@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en" data-accent="amber">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Project Chimera — Design System &amp; Screens</title>
+<link rel="stylesheet" href="chimera.css">
+<script src="theme.js"></script>
+<style>
+  body{ min-height:100%; background:
+    radial-gradient(1200px 600px at 78% -10%, var(--accent-wash), transparent 60%),
+    var(--surface-0); }
+  .hub{ max-width:1280px; margin:0 auto; padding:46px 40px 70px; }
+
+  /* hero */
+  .hub-hero{ display:flex; align-items:flex-start; gap:22px; margin-bottom:34px; }
+  .hub-mk{ width:60px; height:60px; flex:none; margin-top:4px; }
+  .hub-h1{ font-family:var(--font-display); font-weight:700; font-size:var(--t-4xl); color:var(--text-hi); line-height:1; letter-spacing:.005em; }
+  .hub-h1 b{ color:var(--accent-bright); font-weight:700; }
+  .hub-h1 small{ display:block; font-family:var(--font-mono); font-size:var(--t-xs); letter-spacing:.34em; color:var(--text-lo); margin-bottom:10px; font-weight:500; }
+  .hub-sub{ max-width:680px; margin-top:14px; color:var(--text-mid); font-size:var(--t-md); line-height:1.6; }
+  .hub-sub b{ color:var(--text-hi); font-weight:600; }
+  .hub-spec{ margin-left:auto; flex:none; display:flex; flex-direction:column; gap:8px; align-items:flex-end; }
+  .accent-legend{ display:flex; gap:8px; }
+  .acc-sw{ display:flex; align-items:center; gap:7px; padding:7px 11px; background:var(--surface-2); box-shadow:inset 0 0 0 1px var(--line);
+    clip-path:polygon(0 4px,4px 0,100% 0,100% calc(100% - 4px),calc(100% - 4px) 100%,0 100%);
+    font-family:var(--font-mono); font-size:var(--t-2xs); letter-spacing:.1em; text-transform:uppercase; color:var(--text-mid); }
+  .acc-sw .dot{ width:14px; height:14px; clip-path:polygon(0 4px,4px 0,100% 0,100% calc(100% - 4px),calc(100% - 4px) 100%,0 100%); }
+  .acc-sw.is-default{ box-shadow:inset 0 0 0 1px var(--accent); color:var(--text-hi); }
+
+  /* section rule */
+  .hub-rule{ display:flex; align-items:center; gap:16px; margin:38px 0 20px; }
+  .hub-rule .eyebrow{ margin:0; white-space:nowrap; }
+  .hub-rule .ln{ height:1px; background:linear-gradient(90deg,var(--line-strong),transparent); flex:1; position:relative; }
+  .hub-rule .ln::before{ content:""; position:absolute; left:0; top:-3.5px; width:8px; height:8px; border:1.2px solid var(--accent-dim); border-radius:50%; background:var(--surface-0); }
+  .hub-rule .ct{ font-family:var(--font-mono); font-size:var(--t-2xs); color:var(--text-lo); }
+
+  /* featured design-system card */
+  .feat-ds{ display:grid; grid-template-columns:1.15fr 1fr; gap:0; overflow:hidden; }
+  .feat-ds .shot{ background-size:cover; background-position:left top; min-height:300px; position:relative; }
+  .feat-ds .shot::after{ content:""; position:absolute; inset:0; box-shadow:inset -40px 0 60px -30px var(--surface-1); }
+  .feat-ds .body{ padding:34px 36px; display:flex; flex-direction:column; gap:14px; justify-content:center; }
+  .feat-ds h2{ font-size:var(--t-2xl); }
+  .feat-ds p{ color:var(--text-mid); line-height:1.6; font-size:var(--t-sm); }
+  .ds-tokens{ display:flex; gap:8px; flex-wrap:wrap; margin-top:4px; }
+
+  /* screen grid */
+  .screen-grid{ display:grid; grid-template-columns:repeat(2,1fr); gap:18px; }
+  a.scard{ text-decoration:none; color:inherit; display:flex; flex-direction:column; overflow:hidden; transition:transform var(--speed) var(--ease); position:relative; }
+  a.scard:hover{ transform:translateY(-3px); }
+  a.scard .shot{ aspect-ratio:16/9; background-size:cover; background-position:center top; position:relative; box-shadow:inset 0 0 0 1px var(--line); }
+  a.scard .shot::after{ content:""; position:absolute; inset:0; background:linear-gradient(180deg,transparent 55%, rgba(10,13,16,.55)); opacity:0; transition:opacity var(--speed) var(--ease); }
+  a.scard:hover .shot::after{ opacity:1; }
+  a.scard .num-tag{ position:absolute; top:12px; left:12px; font-family:var(--font-mono); font-size:var(--t-2xs); letter-spacing:.1em; color:var(--accent-bright);
+    background:rgba(10,13,16,.78); padding:4px 9px; clip-path:polygon(0 4px,4px 0,100% 0,100% calc(100% - 4px),calc(100% - 4px) 100%,0 100%); box-shadow:inset 0 0 0 1px var(--line); }
+  a.scard .open{ position:absolute; top:12px; right:12px; display:flex; align-items:center; gap:6px; font-family:var(--font-display); text-transform:uppercase; letter-spacing:.05em;
+    font-size:var(--t-2xs); font-weight:600; color:var(--accent-ink); background:var(--accent); padding:5px 10px; opacity:0; transform:translateY(-4px); transition:all var(--speed) var(--ease);
+    clip-path:polygon(0 4px,4px 0,100% 0,100% calc(100% - 4px),calc(100% - 4px) 100%,0 100%); }
+  a.scard:hover .open{ opacity:1; transform:translateY(0); }
+  a.scard .cbody{ padding:16px 18px 18px; display:flex; flex-direction:column; gap:7px; }
+  a.scard h3{ font-size:var(--t-lg); display:flex; align-items:center; gap:10px; }
+  a.scard h3 .arr{ color:var(--text-lo); transition:color var(--speed) var(--ease),transform var(--speed) var(--ease); }
+  a.scard:hover h3 .arr{ color:var(--accent-bright); transform:translateX(3px); }
+  a.scard p{ color:var(--text-lo); font-size:var(--t-sm); line-height:1.5; }
+  a.scard .views{ display:flex; gap:6px; flex-wrap:wrap; margin-top:3px; }
+
+  /* footer facts */
+  .hub-facts{ display:grid; grid-template-columns:2fr 1fr; gap:18px; margin-top:8px; }
+  .fact-list{ padding:24px 28px; }
+  .fact-list h4{ font-size:var(--t-md); margin-bottom:14px; }
+  .frow{ display:flex; gap:14px; padding:9px 0; border-bottom:1px solid var(--line); font-size:var(--t-sm); }
+  .frow:last-child{ border:0; }
+  .frow .k{ width:150px; flex:none; color:var(--text-lo); font-family:var(--font-mono); font-size:var(--t-xs); text-transform:uppercase; letter-spacing:.06em; padding-top:1px; }
+  .frow .v{ color:var(--text-mid); }
+  .frow .v b{ color:var(--text-hi); font-weight:600; }
+  .faction-card{ padding:24px 28px; }
+  .faction-card h4{ font-size:var(--t-md); margin-bottom:6px; }
+  .faction-card .note{ font-size:var(--t-xs); color:var(--text-lo); line-height:1.5; margin-bottom:16px; }
+  .team-row{ display:flex; align-items:center; gap:12px; padding:8px 0; }
+  .team-row .sw{ width:18px; height:18px; flex:none; clip-path:polygon(0 5px,5px 0,100% 0,100% calc(100% - 5px),calc(100% - 5px) 100%,0 100%); }
+  .team-row .gl{ font-size:14px; width:18px; text-align:center; color:var(--text-mid); }
+  .team-row .nm{ font-size:var(--t-sm); color:var(--text-mid); }
+  .team-row .hex{ margin-left:auto; font-family:var(--font-mono); font-size:var(--t-2xs); color:var(--text-lo); }
+
+  .theme-flip{ display:flex; align-items:center; gap:7px; padding:7px 11px; white-space:nowrap; background:var(--surface-2); box-shadow:inset 0 0 0 1px var(--line); cursor:pointer;
+    clip-path:polygon(0 4px,4px 0,100% 0,100% calc(100% - 4px),calc(100% - 4px) 100%,0 100%);
+    font-family:var(--font-mono); font-size:var(--t-2xs); letter-spacing:.1em; text-transform:uppercase; color:var(--text-mid); transition:all var(--speed) var(--ease); }
+  .theme-flip:hover{ box-shadow:inset 0 0 0 1px var(--accent); color:var(--text-hi); }
+
+  .hub-foot{ margin-top:40px; display:flex; align-items:center; gap:14px; color:var(--text-lo); font-family:var(--font-mono); font-size:var(--t-xs); }
+  .hub-foot .pill{ padding:4px 10px; background:var(--surface-2); box-shadow:inset 0 0 0 1px var(--line); clip-path:polygon(0 4px,4px 0,100% 0,100% calc(100% - 4px),calc(100% - 4px) 100%,0 100%); }
+</style>
+</head>
+<template id="__bundler_thumbnail" data-bg-color="#0e1216">
+  <svg viewBox="0 0 1200 800" xmlns="http://www.w3.org/2000/svg">
+    <rect width="1200" height="800" fill="#0e1216"/>
+    <circle cx="600" cy="420" r="210" fill="none" stroke="#c79a44" stroke-width="7"/>
+    <circle cx="600" cy="420" r="165" fill="none" stroke="#6f5a30" stroke-width="5"/>
+    <path d="M600 260 L738.6 500 L461.4 500 Z" fill="none" stroke="#c79a44" stroke-width="7"/>
+    <path d="M600 580 L461.4 340 L738.6 340 Z" fill="none" stroke="#6f5a30" stroke-width="5"/>
+    <circle cx="600" cy="420" r="36" fill="#c79a44"/>
+    <circle cx="600" cy="260" r="19" fill="#e3bd6a"/>
+    <circle cx="738.6" cy="500" r="19" fill="#e3bd6a"/>
+    <circle cx="461.4" cy="500" r="19" fill="#e3bd6a"/>
+    <text x="600" y="742" fill="#7e8a96" font-family="monospace" font-size="34" letter-spacing="14" text-anchor="middle">CHIMERA</text>
+  </svg>
+</template>
+<body>
+<div class="hub">
+
+  <!-- HERO -->
+  <div class="hub-hero">
+    <svg class="hub-mk" viewBox="0 0 96 96"><use href="#chimera-seal"></use></svg>
+    <div>
+      <div class="hub-h1"><small>PROJECT</small>CHIMERA <b>·</b> UI System</div>
+      <p class="hub-sub">A complete UI system and high-fidelity mockups for a PC-desktop RTS <b>creation platform</b> — a polished real-time-strategy game and a World-Editor–class build tool in one app. One <b>dark, faceted, cel-shaded</b> identity tuned for clarity over a busy 3D battlefield, mapped to standard Godot 4.6 Control nodes.</p>
+    </div>
+    <div class="hub-spec">
+      <span class="eyebrow" style="margin-bottom:2px">UI Accent &amp; Theme</span>
+      <div class="accent-legend">
+        <span class="acc-sw" id="acc-teal" onclick="setAccent('teal')"><span class="dot" style="background:oklch(0.78 0.13 192)"></span>Teal</span>
+        <span class="acc-sw is-default" id="acc-amber" onclick="setAccent('amber')"><span class="dot" style="background:oklch(0.80 0.14 75)"></span>Amber</span>
+        <span class="acc-sw" id="acc-violet" onclick="setAccent('violet')"><span class="dot" style="background:oklch(0.74 0.15 295)"></span>Violet</span>
+      </div>
+      <button class="theme-flip" id="theme-flip" onclick="flipTheme()"><svg width="13" height="13" viewBox="0 0 20 20"><circle cx="10" cy="10" r="7" fill="none" stroke="currentColor" stroke-width="1.6"></circle><path d="M10 3 A7 7 0 0 1 10 17 Z" fill="currentColor"></path></svg><span id="theme-label">Dark theme</span></button>
+      <span class="muted" style="font-size:11px;margin-top:2px">Choices persist across every screen</span>
+    </div>
+  </div>
+
+  <!-- DESIGN SYSTEM (featured) -->
+  <div class="hub-rule"><span class="eyebrow">Foundation</span><span class="ln"></span><span class="ct">tokens · component kit</span></div>
+  <a href="Design%20System.html" style="text-decoration:none;color:inherit">
+    <div class="panel panel--2 feat-ds" style="transition:transform 130ms" onmouseover="this.style.transform='translateY(-3px)'" onmouseout="this.style.transform=''">
+      <div class="shot" style="background-image:url('screenshots/hub-ds.png')"></div>
+      <div class="body">
+        <div class="eyebrow">00 · Design System</div>
+        <h2>Tokens &amp; Faceted Component Kit</h2>
+        <p>The single source of truth: dark surface ramp, three reserved accent options, a geometric type scale (Chakra&nbsp;Petch / Space&nbsp;Grotesk + JetBrains&nbsp;Mono for readouts), and the full low-poly-echo component kit — faceted panels, buttons, sliders, dropdowns, tabs, chips, tooltips, progress bars, list rows, modals, toasts &amp; the colorblind-safe faction palette.</p>
+        <div class="ds-tokens">
+          <span class="tag">Color tokens</span><span class="tag">Type scale</span><span class="tag">12+ components</span><span class="tag tag--accent">Hover / selected states</span>
+        </div>
+        <div class="row gap2" style="margin-top:10px;color:var(--accent-bright);font-family:var(--font-display);font-size:var(--t-sm);font-weight:600;text-transform:uppercase;letter-spacing:.05em">Open design system <svg width="16" height="16" viewBox="0 0 20 20"><path d="M5 10h10M11 6l4 4-4 4" stroke="currentColor" stroke-width="1.7" fill="none"/></svg></div>
+      </div>
+    </div>
+  </a>
+
+  <!-- SCREENS -->
+  <div class="hub-rule"><span class="eyebrow">Key Screens</span><span class="ln"></span><span class="ct">4 surfaces · 16 views</span></div>
+  <div class="screen-grid">
+
+    <a class="scard panel panel--2" href="HUD.html">
+      <div class="shot" style="background-image:url('screenshots/hub-hud.png')">
+        <span class="num-tag">SCREEN 01</span>
+        <span class="open">Open <svg width="12" height="12" viewBox="0 0 20 20"><path d="M5 10h10M11 6l4 4-4 4" stroke="currentColor" stroke-width="2" fill="none"/></svg></span>
+      </div>
+      <div class="cbody">
+        <h3>In-Game RTS HUD <svg class="arr" width="17" height="17" viewBox="0 0 20 20"><path d="M5 10h10M11 6l4 4-4 4" stroke="currentColor" stroke-width="1.7" fill="none"/></svg></h3>
+        <p>The most-seen surface. Resource &amp; supply bar, selection / command card with hotkey glyphs, production with build queues, fog-of-war minimap, control groups, alerts.</p>
+        <div class="views"><span class="tag">Command card</span><span class="tag">Production</span><span class="tag">Minimap</span><span class="tag">Victory / Pause</span></div>
+      </div>
+    </a>
+
+    <a class="scard panel panel--2" href="Creation%20Suite.html">
+      <div class="shot" style="background-image:url('screenshots/hub-cs.png')">
+        <span class="num-tag">SCREEN 02</span>
+        <span class="open">Open <svg width="12" height="12" viewBox="0 0 20 20"><path d="M5 10h10M11 6l4 4-4 4" stroke="currentColor" stroke-width="2" fill="none"/></svg></span>
+      </div>
+      <div class="cbody">
+        <h3>Creation Suite + Unit Card Editor <svg class="arr" width="17" height="17" viewBox="0 0 20 20"><path d="M5 10h10M11 6l4 4-4 4" stroke="currentColor" stroke-width="1.7" fill="none"/></svg></h3>
+        <p>The headline differentiator. Editor shell with EDIT↔PLAY toggle and the consolidated one-panel Unit Card Editor — Combat / Economy / Abilities / Hero, Simple↔Advanced + JSON, compare &amp; validation.</p>
+        <div class="views"><span class="tag tag--accent">Edit ↔ Play</span><span class="tag">Unit Card</span><span class="tag">Simple / Advanced</span><span class="tag">Compare</span></div>
+      </div>
+    </a>
+
+    <a class="scard panel panel--2" href="Shell.html">
+      <div class="shot" style="background-image:url('screenshots/hub-shell.png')">
+        <span class="num-tag">SCREEN 03</span>
+        <span class="open">Open <svg width="12" height="12" viewBox="0 0 20 20"><path d="M5 10h10M11 6l4 4-4 4" stroke="currentColor" stroke-width="2" fill="none"/></svg></span>
+      </div>
+      <div class="cbody">
+        <h3>Shell &amp; Menus <svg class="arr" width="17" height="17" viewBox="0 0 20 20"><path d="M5 10h10M11 6l4 4-4 4" stroke="currentColor" stroke-width="1.7" fill="none"/></svg></h3>
+        <p>The out-of-match shell. Low-poly title screen, mode select, host/join lobby with faction &amp; color picks, ready states, chat &amp; version-match hash, plus tabbed settings with remappable keys &amp; accessibility.</p>
+        <div class="views"><span class="tag">Title</span><span class="tag">Mode select</span><span class="tag">Lobby</span><span class="tag">Settings</span></div>
+      </div>
+    </a>
+
+    <a class="scard panel panel--2" href="Content%20Browser.html">
+      <div class="shot" style="background-image:url('screenshots/hub-cb.png')">
+        <span class="num-tag">SCREEN 04</span>
+        <span class="open">Open <svg width="12" height="12" viewBox="0 0 20 20"><path d="M5 10h10M11 6l4 4-4 4" stroke="currentColor" stroke-width="2" fill="none"/></svg></span>
+      </div>
+      <div class="cbody">
+        <h3>Content Browser <svg class="arr" width="17" height="17" viewBox="0 0 20 20"><path d="M5 10h10M11 6l4 4-4 4" stroke="currentColor" stroke-width="1.7" fill="none"/></svg></h3>
+        <p>The share / discover loop. Browse grid with filter sidebar, sort &amp; featured rail; scenario detail with creator-owns-content note; the package + proof-of-play publish flow; creator profile.</p>
+        <div class="views"><span class="tag">Browse</span><span class="tag">Detail</span><span class="tag tag--ok">Proof-of-play publish</span><span class="tag">Profile</span></div>
+      </div>
+    </a>
+
+  </div>
+
+  <!-- FACTS -->
+  <div class="hub-rule"><span class="eyebrow">At a glance</span><span class="ln"></span><span class="ct">platform &amp; principles</span></div>
+  <div class="hub-facts">
+    <div class="panel fact-list">
+      <h4>Platform &amp; constraints</h4>
+      <div class="frow"><span class="k">Target</span><span class="v"><b>PC desktop</b> (Windows primary) · premium one-time purchase on Steam</span></div>
+      <div class="frow"><span class="k">Canvas</span><span class="v">Designed at <b>1920×1080</b>, 16:9 · scales to 1440p / 4K via UI-scale setting</span></div>
+      <div class="frow"><span class="k">Input</span><span class="v">Keyboard + mouse — hover, right-click context, drag &amp; <b>hotkey glyphs</b> throughout</span></div>
+      <div class="frow"><span class="k">Renderer</span><span class="v">Godot <b>4.6 Control nodes</b> — panels, containers, sliders, dropdowns, tab bars, grids</span></div>
+      <div class="frow"><span class="k">Identity</span><span class="v">Dark, desaturated surfaces · <b>faceted / chamfered</b> chrome · thin cel-shade edge-light · flat color blocks</span></div>
+      <div class="frow"><span class="k">Accessibility</span><span class="v">WCAG AA text on dark · UI scaling · colorblind-safe teams · <b>never color alone</b> (icon + label)</span></div>
+    </div>
+    <div class="panel faction-card">
+      <h4>Faction colors</h4>
+      <p class="note">Reserved &amp; colorblind-safe (Okabe-Ito derived). Distinct from the UI accent — every team also carries a glyph &amp; label so meaning is never encoded by color alone.</p>
+      <div class="team-row"><span class="sw" style="background:var(--team-1)"></span><span class="gl">◆</span><span class="nm">Player 1 · Blue</span><span class="hex">#2a7fd4</span></div>
+      <div class="team-row"><span class="sw" style="background:var(--team-2)"></span><span class="gl">▲</span><span class="nm">Player 2 · Vermilion</span><span class="hex">#e06a1b</span></div>
+      <div class="team-row"><span class="sw" style="background:var(--team-3)"></span><span class="gl">●</span><span class="nm">Player 3 · Green</span><span class="hex">#16a37a</span></div>
+      <div class="team-row"><span class="sw" style="background:var(--team-4)"></span><span class="gl">■</span><span class="nm">Player 4 · Magenta</span><span class="hex">#cf72ad</span></div>
+    </div>
+  </div>
+
+  <div class="hub-foot">
+    <span class="pill">v0.4.1 · build 2847</span>
+    <span class="pill">Godot 4.6</span>
+    <span class="pill">© Northwind Studio</span>
+    <span>You own what you make.</span>
+  </div>
+
+</div>
+
+<script>
+function setAccent(a){
+  chimeraSetAccent(a);
+  ['teal','amber','violet'].forEach(x=>document.getElementById('acc-'+x).classList.toggle('is-default', x===a));
+}
+function syncThemeUI(){
+  var light = document.documentElement.getAttribute('data-theme')==='light';
+  document.getElementById('theme-label').textContent = light ? 'Light theme' : 'Dark theme';
+}
+function flipTheme(){ chimeraToggleTheme(); syncThemeUI(); }
+(function(){
+  var a = document.documentElement.getAttribute('data-accent') || 'amber';
+  ['teal','amber','violet'].forEach(x=>document.getElementById('acc-'+x).classList.toggle('is-default', x===a));
+  syncThemeUI();
+})();
+</script>
+</body>
+</html>
