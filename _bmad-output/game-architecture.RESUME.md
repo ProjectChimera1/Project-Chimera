@@ -1,11 +1,12 @@
-# Game Architecture — RESUME NOTE (Step 4 in progress)
+# Game Architecture — RESUME NOTE (Step 4 in progress — deep-dive trio DONE)
 
 > Working-state sidecar for the **gds-game-architecture** workflow. The clean deliverable is
 > `game-architecture.md` (Steps 1–3 saved; frontmatter `stepsCompleted: [1, 2, 3]`).
-> **D1 ✅ + D2 ✅ decided 2026-06-20** — both recorded in the deliverable under *Architectural Decisions
-> (Step 4)*. The full D2 options analysis lives in `game-architecture.D2-briefing.md`.
-> This note exists so a NEW session can resume Step 4 at **D3** without reconstructing context.
-> Delete this file once Step 4 is appended to the deliverable and `stepsCompleted` reaches `[…,4]`.
+> **D1 ✅ + D2 ✅ + D3 ✅ all decided 2026-06-20** — all three recorded in the deliverable under
+> *Architectural Decisions (Step 4)*. Full options analyses live in `game-architecture.D2-briefing.md`
+> and `game-architecture.D3-briefing.md`. The **deep-dive trio (D1→D2→D3) is COMPLETE.**
+> This note now exists so a NEW session can resume Step 4 at **the D4–D6 batch** without reconstructing
+> context. Delete this file once Step 4 is fully appended and `stepsCompleted` reaches `[…,4]`.
 
 ## Where we are
 - Workflow: **gds-game-architecture, Step 4 of 9 — Architectural Decisions.**
@@ -27,7 +28,22 @@
   lobby, checksum-algo-version field, caps corpus-validated as a gate on D2). Prereqs surfaced: combat-
   layer killer/last-hit attribution; new server-side load-time validator; fix two live nondeterminisms
   (unstable `Array.Sort`, `Dictionary` enumeration); replay format v2 for the write path.
-- ▶ **NEXT ACTION: open D3 (data-driven definition schema & loader) — serializes D1 + D2.**
+- **D3 DECIDED 2026-06-20** — **Option B (Maximal-now)**; Alec pulled ALL FOUR defer-items forward
+  (source-gen now; fully populated migration registry; replay-v2 in lockstep; AOT analyzer as CI gate).
+  Unified `ContentLoader` + model-level `Validate(model)` gate at `ApplyScenario` (all paths incl.
+  AI-gen/fallback/replay); custom `JsonConverter`+closed registry (forced — `[JsonPolymorphic]`
+  incompatible with `Disallow`, #100057); canonical-model hash FNV-64 over `Fixed.Raw` (annotations
+  excluded, all gameplay files; byte-FNV frozen as algo-1 tamper check); `JsonConverter<Fixed>` NaN/Inf
+  reject; in-tick float fix **A17** (`ScenarioDirector:168/170/252`); enforced `min_game_version`
+  (+auto-stamp); `schema_version`+`checksum_algo_version`+`rulesetHash`+Hello `PROTOCOL_VERSION` reject.
+  Schema shapes: `damage_table.json` 5×6 **+Hero (before COUNT)**; N-resource registry; inline tech-tree
+  registry; `_editor`/`_ext` annotation sidecar (hash-excluded + denylist); id-keyed named-effect catalog;
+  replay-v2 `DslEventCommand`. Migration D3.0–D3.9 interleaves with D1 1–9 + D2 D0–D9s. Full record in
+  `game-architecture.md`; analysis in `game-architecture.D3-briefing.md`. **New prereq surfaced & pulled
+  forward: dedicated-server `.csproj` project-split** (real AOT long-pole) → D5/engine-section.
+- ▶ **NEXT ACTION: batch D4–D6 as recommend-and-confirm** (Hero persistence · >2-player lockstep +
+  matchmaking · LLM provider abstraction). The deep-dive trio is done; D4–D6 are lighter recorded-choice
+  decisions per the agreed approach.
 
 ## Agreed approach (confirmed by Alec)
 Deep-dive **D1 → D2 → D3** one at a time (novel, coupled, highest-stakes — facilitate carefully,
@@ -46,9 +62,9 @@ MultiMesh + `*Bridge` rendering · deterministic `SpatialHash` (Jolt presentatio
   Recorded in `game-architecture.md` → *Architectural Decisions (Step 4)*.
 - **D2. Trigger-DSL design** — ✅ **DECIDED 2026-06-20** (Typed Event/Dataflow Graph, Option C).
   Recorded in `game-architecture.md`; full analysis in `game-architecture.D2-briefing.md`.
-- **D3. Data-driven definition schema & loader** — the `Definitions` (de)serialization architecture;
-  resolves pillar debt: `DamageMatrix`→JSON (+ add the `Hero` damage/armor type), N-resources,
-  authorable tech-tree schema. Serializes D1/D2. (GDD §1; FR-12/14/15; arch §5)
+- **D3. Data-driven definition schema & loader** — ✅ **DECIDED 2026-06-20** (Option B, Maximal-now;
+  all four defer-items pulled forward). Recorded in `game-architecture.md`; full analysis in
+  `game-architecture.D3-briefing.md`.
 
 **IMPORTANT (recorded choice needed):**
 - **D4. Hero persistence model** — HOW to build the WC3 "-load" init-time-deterministic,
@@ -100,11 +116,15 @@ MultiMesh + `*Bridge` rendering · deterministic `SpatialHash` (Jolt presentatio
   mechanism).
 
 ## How to resume in the new session
-Say something like: **"continue the game architecture workflow — D3"** (or re-invoke
-`/gds-game-architecture`). First action: read this note + `game-architecture.md` (esp. the D1 and D2
-records under *Architectural Decisions (Step 4)*), then open **D3** in the same facilitated deep-dive
-mode (INTERACTIVE — user makes each call; autonomous mode still OFF). D3 is the **last of the deep-dive
-trio (D1→D2→D3)**; after D3, batch **D4–D6** as recommend-and-confirm.
+Say something like: **"continue the game architecture workflow — D4–D6"** (or re-invoke
+`/gds-game-architecture`). First action: read this note + `game-architecture.md` (esp. the D1, D2, and D3
+records under *Architectural Decisions (Step 4)*), then open the **D4–D6 batch** as **recommend-and-confirm**
+(INTERACTIVE — user makes each call; autonomous mode still OFF). The deep-dive trio (D1→D2→D3) is DONE.
+D4 = Hero persistence (FR-7a–e; the *what* is set by decisions #19/#20). D5 = >2-player lockstep +
+matchmaking (FR-39/40; #13) — **now also owns the dedicated-server `.csproj` project-split surfaced by D3's
+AOT posture**. D6 = LLM provider abstraction (FR-29; #8; addendum §D). After D4–D6 are recorded, advance
+`stepsCompleted` to `[1,2,3,4]` and move to Step 5 (cross-cutting / testing) then Step 6 (`MainScene`
+decomposition / structure). The **D3 starting-inputs section below is now historical** (D3 is decided).
 
 ## D3 starting inputs (confirmed 2026-06-20 — don't re-derive)
 - **D3 = Data-driven definition schema & loader.** It SERIALIZES D1 + D2 and resolves the data-driven

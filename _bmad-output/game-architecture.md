@@ -27,10 +27,11 @@ GDS Architecture Workflow and is informed by, but distinct from, the brownfield
 
 **Steps Completed:** 3 of 9 (Engine & Framework)
 
-**In progress:** Step 4 (Architectural Decisions). **D1 (effects-primitive vocabulary) and D2
-(trigger-DSL design) are decided (2026-06-20)** — see *Architectural Decisions (Step 4)* below. Next
-action is **D3 (data-driven definition schema & loader, serializes D1+D2)**. Full Step 4 working state
-in **`game-architecture.RESUME.md`**.
+**In progress:** Step 4 (Architectural Decisions). **D1 (effects-primitive vocabulary), D2
+(trigger-DSL design), and D3 (data-driven definition schema & loader) are all decided (2026-06-20)** —
+see *Architectural Decisions (Step 4)* below. The deep-dive trio (D1→D2→D3) is complete. Next action is
+**batch D4–D6 (Hero persistence · >2-player lockstep + matchmaking · LLM provider abstraction) as
+recommend-and-confirm**. Full Step 4 working state in **`game-architecture.RESUME.md`**.
 
 ---
 
@@ -217,8 +218,8 @@ Engine settles rendering/physics/input/scene/transport. These game-specific deci
 > user makes each call), then batch **D4–D6** as recommend-and-confirm. Decisions are appended here as
 > they are settled. Frontmatter `stepsCompleted` advances to `[…,4]` only once D1–D6 are all recorded.
 >
-> **Settled so far:** D1 ✅, D2 ✅ (both 2026-06-20). **Next:** D3 (Definition schema & loader —
-> serializes D1+D2).
+> **Settled so far:** D1 ✅, D2 ✅, D3 ✅ (all 2026-06-20) — the deep-dive trio is complete. **Next:**
+> batch D4–D6 (recommend-and-confirm).
 
 ### D1 — Effects-Primitive Vocabulary ✅ (decided 2026-06-20)
 
@@ -650,3 +651,211 @@ event* at the steps that change what `Compute` hashes (the var-table step and th
   destroyed); and the **replay-v2** `DslEventCommand` record schema. Constraint on shape: closed typed
   nodes only, named references, **Fixed-at-load** (convert once, reject NaN/Inf). D2 only *constrains* the
   serialization; D3 designs it.
+
+---
+
+### D3 — Data-Driven Definition Schema & Loader ✅ (decided 2026-06-20)
+
+> Full options analysis + adversarial verification (14-agent code-grounded deep-dive; 4 adversarial
+> reviewers raised 17 non-minor issues, 7 folded in as design changes) lives in the working sidecar
+> **`game-architecture.D3-briefing.md`**. This record is the canonical decision. **Decision = Option B
+> (Maximal-now), and Alec pulled ALL FOUR defer-recommended items forward** — source-gen now, fully
+> populated migration registry, replay-v2 in lockstep, AOT analyzer as a CI gate — consistent with the
+> D1/D2 "build it fully functional now" overrides. D3 is the **last of the deep-dive trio (D1→D2→D3)**.
+
+**Decision — Unified, fail-closed, deterministic schema & loader (Option B).** Replace the as-built
+serialization layer — which is *scattered* (5–7 independently-constructed `JsonSerializerOptions` with
+three different behaviors), *unvalidated* (`LoadScenario`/`LoadFromFile` trust everything), and
+*byte-fragile* (`scenarioHash` is FNV-32 over raw file **bytes**, so whitespace / key-order / `1.0`-vs-`1`
+/ a moved editor node spuriously flips it) — with a single, trustworthy pipeline:
+
+1. **One `ContentLoader` choke point** + **one canonical `static readonly JsonSerializerOptions`**
+   (`ReadCommentHandling=Skip`, `AllowTrailingCommas`, `WriteIndented`, per-enum
+   `JsonStringEnumConverter<T>`, **`AllowDuplicateProperties=false`**). The divergent `FactionDefinition`
+   / `ContentPackager` / preview options are unified onto it. A separate lenient case-insensitive ingest
+   options exists **only** for the T4 LLM path.
+2. **A model-level `Validate(model)` gate at the `ApplyScenario` boundary** — the authoritative pre-tick
+   gate. Contract: **no `ScenarioData` reaches `ScenarioDirector.LoadScenario` unvalidated**, on *every*
+   path (file-loaded, AI-generated, fallback, editor-in-memory, replay-loaded). Two-stage: STJ → dumb
+   transient DTOs (syntax, fail-closed) then pure-C# compile/validate (type-check + graph-lint + cap/cost,
+   fail-closed). The DTO stage is transient and **must not survive into the tick**.
+3. **Custom `JsonConverter<NodeBase>` + closed type registry** for the polymorphic D1/D2 node IR
+   (discriminator `kind`, first property). **Forced**: built-in `[JsonPolymorphic]` is incompatible with
+   `UnmappedMemberHandling.Disallow` (the `$type` token is itself "unmapped" and throws — dotnet/runtime
+   #100057 **open**), so it cannot give a closed IR both polymorphism *and* strict unknown-property
+   rejection. Lookup-miss → located `JsonException`. A `JsonConverter<Fixed>` fronts the verified-unguarded
+   `Fixed.FromFloat` and **rejects NaN/Inf** at the load boundary.
+4. **Canonical-model hash** (FNV-64) computed over the parsed model's **`Fixed.Raw` integers** (never
+   float text), fixed field order, enums as stable **name** (not ordinal — ordinal drifts when `Hero`
+   inserts before `COUNT`), sorted collections (nodes by id; edges by `(src,srcPort,dst,dstPort)`; sparse
+   maps by key), **authoring annotations excluded**, **covering ALL gameplay files** (scenario + faction
+   DTOs + named-effect catalog + N-resource registry). Single-pass canonicalizer feeds both the hash and
+   the validator. Same domain as `SimChecksum`. The old byte-FNV is **frozen as algo-1** (a literal-zip
+   tamper check, hashed pre-save); the canonical-model hash is **algo-2** (the handshake/equality channel).
+5. **Source-gen `JsonSerializerContext` adopted now** (hybrid — converter-driven node/Fixed/graph types
+   run in metadata mode; converter-free leaf DTOs get the fast path). All DTOs/converters stay Godot-free
+   in `src/Core/Definitions` so they are AOT-eligible. Per-enum **generic** `JsonStringEnumConverter<T>`
+   only (the non-generic reflective factory is an AOT trap).
+6. **Versioning:** integer `schema_version` on `ScenarioData` (absent ⇒ one-time legacy amnesty to v1);
+   a **fully populated** `JsonNode`-DOM migration registry (vN→vN+1 transforms run on the mutable DOM at
+   load, *then* deserialize; never silently rewrite subscribed content); strict gameplay region uses
+   `Disallow`+throw (**no** extension bag) while only an explicit `_editor`/`_ext` namespace gets
+   verbatim round-trip, guarded by a denylist so no registry gameplay-key name can hide in the excluded
+   region; `checksum_algo_version` (bootstrap-excluded) so old replays/manifests never spuriously desync.
+7. **Enforced `min_game_version`** (verified today: written but **never read**) — a `CurrentGameVersion`
+   constant + InvariantCulture semver-prefix compare checked **before** strict deserialize + **auto-stamp**
+   from each registry entry's `introduced_in` (creators never hand-maintain it). This is the strict
+   region's only forward-compat safety valve.
+8. **In-tick determinism invariant (A17).** Eliminate the verified live `Fixed→float→"F2"-string→
+   float.TryParse` round-trip that gates triggers every tick (`ScenarioDirector.cs:168/170/252`):
+   `FiredEvent` payloads carry **`Fixed.Raw` ints**, all threshold comparisons are **Fixed-vs-Fixed**, and
+   `InvariantCulture` is pinned process-wide. A perfect on-disk hash is otherwise defeated at tick N.
+
+**Why B, not C or A.**
+- **A (evolve the as-built)** is cheapest but **under-delivers D2**: D2 mandated annotations *round-tripped
+  but excluded from the gameplay hash* — impossible on a byte-hash — and a gate that covers all execution
+  paths; A leaves the in-tick desync (A17) unaddressed and accrues AOT debt. Below the bar.
+- **C (balanced)** was the recommendation for a cost-sensitive solo dev: build everything load-bearing for
+  determinism + the D2 hand-off now, defer pure future-proofing with no 1.0 consumer (shipping AOT, full
+  migration corpus, exhaustive replay-v2).
+- **B (chosen)** = C **plus** the four pull-forwards. Alec's call: pay the larger near-term diff to reach
+  the best end-state with the lowest long-term risk, matching the maximal-1.0 posture (decision #13) and
+  the D1/D2 precedent. The added cost is real but front-loaded; nothing in B is *wrong*, only *earlier*.
+- **Forced regardless of A/B/C:** the custom converter (R1/#100057), the canonical-model hash (D2's
+  annotation-exclusion mandate + .NET's shortest-roundtrip float-text drift, R7/R8), A17, and enforced
+  `min_game_version` — these are correctness, not preference.
+
+**Settled sub-decisions (the decided calls):**
+1. **Polymorphic mechanism = custom `JsonConverter<NodeBase>` + closed registry**, discriminator `kind`
+   (avoids collision with the retiring `TriggerDefinition.type` during the migration window), first
+   property, registry-backed and **decoupled from the C# class name** (rename-safe; class-name keying
+   destroys instances, the Unity `SerializeReference` lesson).
+2. **Source-gen now** (hybrid metadata mode); converters hand-written AOT-safe; generic enum converters
+   only; `Converters` must resolve via the metadata resolver, never the fast path (else the converter is
+   silently bypassed).
+3. **Single `ContentLoader` + model-level gate at `ApplyScenario`** (covers in-memory + replay paths).
+4. **Canonical-model hash** as in the decision above; **block on hash 0 / short / unknown-algo**, remap a
+   legitimate canonical-0 to 1 (FNV-sentinel) — closes the verified 0-hash fail-open in the handshake.
+5. **In-tick encoding (A17):** `Fixed.Raw` payloads + Fixed-vs-Fixed compares + pinned `InvariantCulture`.
+6. **Versioning:** integer `schema_version` (amnesty), **fully populated** DOM migration registry, strict
+   (`Disallow`+throw, no bag) / tolerant (`_editor`/`_ext` verbatim + gameplay-key denylist) split,
+   enforced `min_game_version` with auto-stamp, `checksum_algo_version`.
+7. **`damage_table.json` = named-key object-of-objects** keyed by enum **name**; **add `Hero` DamageType
+   (5th) and `Hero` ArmorType (6th), inserted *before* `COUNT`** (→ 5×6); unspecified cell ⇒ 1.0.
+   (Positional arrays corrupt silently on enum reorder; the matrix sizes off `COUNT`.)
+8. **N-resources = top-level ordered resource registry**; balances/costs as sparse `{resourceId: amount}`
+   maps (generalizes the Ore+Crystal ceiling; scope reconciled to PerPlayer 0..7).
+9. **Tech-tree = inline `prerequisites: string[]`** resolved against a data-driven id registry (retires
+   the three hardcoded `TechTreeChecker` switches).
+10. **Annotation channel = single in-file `_editor`/`_ext` sidecar**, keyed by node id, independently
+    versioned, verbatim-preserved; hash excludes it; a tier that cannot render a known node still
+    **preserves it byte-faithfully through `JsonNode`** (never a lossy DTO).
+11. **Named-effect catalog = top-level id-keyed `EffectDef` map**, referenced by id (never inlined),
+    cycle-linted at load, with **cross-file referential-integrity at import** (rejects dangling ids).
+12. **Replay-v2 built in lockstep:** new `DslEventCommand` record, per-record discriminator, `Fixed`/
+    `EntityRef` raw ints; bump `ReplayRecorder.VERSION` 1→2, **hard-reject v1**; **embed the canonical
+    scenarioHash + algo-version in the header** and **re-gate the referenced scenario on playback**,
+    asserting recorded-hash == loaded-hash before the first `Flush` (fail closed, never silent desync).
+13. **`rulesetHash` corpus pinned to every constant the tick reads** — spawn cap (post-50→64), 4096
+    entity cap, 30 Hz, resource-slot count, damage-table dims incl. `Hero`. Compared at the lobby
+    handshake alongside `scenarioHash`. **The 50→64 spawn-cap reconciliation is a hard prerequisite.**
+14. **Protocol hardening:** add the missing `PROTOCOL_VERSION` mismatch **rejection in the Hello
+    handshake** (today exchanged but never compared) and bump it there — a host requiring `rulesetHash`
+    **rejects** an old-protocol peer rather than relying on the `Ready` reader's `len>=5` tolerance.
+15. **AOT analyzer = CI gate now** over the Godot-free `Definitions`/`Effects` sim source (static
+    trim/AOT IL analysis). The full `PublishAot` *build* gate activates with the dedicated-server
+    **`.csproj` project-split** — which D3 now elevates to a **near-term engine-section decision**
+    (pulled forward by the AOT posture; `PublishAot` is unsupported under `Godot.NET.Sdk` with
+    `EnableDynamicLoading=true`, so AOT can only target a separate Godot-SDK-free server project sharing
+    the sim source).
+
+#### Migration sequence (strangler — golden-checksum-gated; slots into D1 steps 1–9 and D2 steps D0–D9s)
+
+- **D3.0** (rides D2 **D0**) — `ContentLoader` skeleton + the one canonical options + `FixedConverter`
+  (NaN/Inf reject); **unify `FactionDefinition`/`ContentPackager`/preview options onto it**; decouple
+  `ExportMapPackage` save from hash (`Pack` hashes pre-save bytes; freeze package byte-hash as algo-1).
+  *Gate:* existing scenarios load byte-identical; existing `.chimera.zip` corpus still `Unpack`s; the same
+  `UnitDefinition` JSON via scenario-path and faction-path yields byte-identical `Fixed.Raw` fields.
+  **Hard invariant: D3.0 options-unification MUST precede D3.2's enum lift**, or the two loaders silently
+  bind the same `UnitDefinition` differently.
+- **D3.1** (rides D2 **D1s**) — `schema_version` + `checksum_algo_version` + **canonical-model hash
+  (algo-2)**; legacy amnesty (absent ⇒ v1/algo-1); **land enforced `min_game_version`**; re-point
+  `MainScene.cs:303` from `ComputeFileHash(ScenarioPath)` to the canonical hash over the **in-memory**
+  loaded model (fixes the AI-gen stale-file hash). *Gate:* model-hash stable across re-save / key-reorder /
+  whitespace / comment-insert; two peers loading the same AI-generated scenario produce matching hashes.
+- **D3.2** (rides D1 **step 3**) — `damage_table.json` (5×6, `Hero`×`Hero`) replaces `DamageMatrix._table`;
+  enums extended **before `COUNT`**. *Gate:* damage outcomes bit-identical to the hardcoded matrix on all
+  legacy 4×5 cells.
+- **D3.3** (rides D1 **steps 4–6**) — `EffectDef`/`ModifierDef` DTOs + custom node converter + registry +
+  thin stage-2 builder; named-effect catalog with cross-file referential-integrity. *Gate:* every D1
+  runtime node round-trips; unknown `kind` and dangling catalog id rejected with located errors.
+- **D3.4** (rides D2 **D2s–D4s**) — graph IR + variable schema + custom-event registry serialized;
+  `Dictionary<string,int>` stores → dense SoA folded into `SimChecksum`; **A17** (delete the
+  float/"F2"/TryParse round-trip); replace the unstable trigger `Array.Sort` with a stable total order
+  (Priority desc, ascending persistent node-id tiebreak). *Gate:* graph canonical-hash invariant to node
+  reorder; `SimChecksum` widened (vars/timers/Crystal/all slots); a threshold trigger fires identically
+  with no float/culture in the path.
+- **D3.5** (rides D2 **D5s**) — N-resource registry + data-driven tech-tree. *Gate:* N=2 reproduces legacy
+  balances exactly.
+- **D3.6** (rides D2 **D6s**) — **promote the validator to the authoritative pre-tick gate** over the
+  model on all paths; reconcile **50→64** spawn cap; UI-definition schema + bind-resolution at load;
+  **AOT analyzer CI gate activates**. *Gate:* a malformed-scenario corpus (incl. an AI-generated one)
+  each rejected with the correct specific error; all valid pass; spawn cap = 64 everywhere.
+- **D3.7** (rides D2 **D7s–D8s**) — annotation channel live; hash confirmed to exclude `_editor`; verbatim
+  round-trip across tiers + gameplay-key denylist. *Gate:* cosmetic-only edit ⇒ same hash; sim-semantic
+  edit ⇒ different hash; a T4 node survives a T2 open+resave with unchanged hash.
+- **D3.8** (rides D2 **D1s lobby**) — `rulesetHash` in the Ready packet (corpus = pinned tick-read
+  constants; 50→64 already done); **add the Hello `PROTOCOL_VERSION` rejection + bump**; block on hash 0.
+  *Gate:* matched caps ready; mismatched blocked with reason; old-protocol Hello rejected.
+- **D3.9** (rides D2 **D9s**) — **replay-v2 in lockstep**: `DslEventCommand` record; `VERSION` 1→2; v1
+  hard-rejected; embed canonical hash + algo-version; re-gate on playback, assert recorded==loaded before
+  first `Flush`. *Gate:* a recorded match replays bit-identically; a migrated-world replay reproduces OR
+  fails closed — never silently desyncs.
+
+#### Prerequisites surfaced (carry forward)
+
+- **`Fixed.FromFloat` NaN/Inf reject** (verified unguarded; enforced by `FixedConverter`, D3.0).
+- **In-tick float/culture removal (A17)** — verified live; the load hash is defeated at tick N without it.
+- **Options unification before any new enum** (verified latent divergence; D3.0 before D3.2).
+- **Dense-index var/timer/event-queue store** replacing `Dictionary<string,int>` (for `SimChecksum`
+  coverage + deterministic ordering).
+- **Ceiling reconciliation** — D2 scope is PerPlayer 0..7 but `ResourceStore.FACTION_COUNT=5`,
+  `ScenarioDirector` hardcodes `slot<2`, `Math.Min(count,50)` vs D1's `≤64`. In the `rulesetHash` corpus
+  by definition; reconcile before D3.8.
+- **NativeAOT requires a dedicated-server `.csproj` project-split** (not just a `JsonSerializerContext`) —
+  now **pulled forward** as a near-term engine-section decision by the AOT-CI posture. D3 keeps the source
+  AOT-eligible; the split itself is D5/engine-section work D3 surfaces.
+- **`min_game_version` is an unbuilt subsystem**, not a field (constant + comparer + gate + auto-stamp).
+- **Wire-format / protocol bump** — D3.8 grows the Ready packet *and* adds the missing Hello version check.
+
+#### Residual risks / watch-items
+
+1. **The caps/hash domain is the architecture** — `scenarioHash` and `SimChecksum` must each cover the
+   FULL model/state, not mirror each other's current narrow coverage (`SimChecksum` today omits Crystal,
+   slots 3+, vars/timers; widened at D3.4).
+2. **Replay path is the counter-example to "the gate runs everywhere"** — fixed by embedding the hash +
+   re-gating on playback (D3.9); a later-edited scenario at the stored path otherwise replays garbage.
+3. **Cross-file/faction content** must be under the content hash + an import-time referential-integrity
+   pass (today `Pack` hashes `scenario.json` only).
+4. **Two-region leak direction** — a gameplay key emitted into `_editor`/`_ext`, or a future gameplay
+   field an old loader can't map, must fail closed (strict `Disallow`+throw, no bag; denylist).
+5. **Allocation contract is conditional** — "kind-first" is canonicalizer-enforced so the converter reads
+   straight into the concrete node; the transient DTO must not survive into the tick (load-allocation
+   budget in the D3.4 gate).
+6. **Canonical-walk cost on max-caps UGC** — single-pass, total-order sorts, `Fixed.Raw` as fixed-width
+   LE int32; assert worst-case hash completes within the lobby-handshake budget (D3.1 perf gate).
+7. **Migration determinism** — pin `InvariantCulture`; keep migrations pure (a culture-sensitive parse or
+   dictionary enumeration inside a migration desyncs upgraded bytes across machines).
+
+#### Hand-offs
+
+- **→ D4 (Hero persistence):** the persistent-artifact profile is *more authored content* that flows
+  through this same `ContentLoader` gate, canonical hash, versioning, and Fixed-at-load discipline; D4
+  decides the init-time-deterministic, server-validated *shape*, D3 already owns *how it serializes*.
+- **→ D5 (>2-player lockstep + matchmaking):** D3 delivers `rulesetHash`, the protocol-version rejection,
+  the 0-hash block, and PerPlayer 0..7 scoping that D5's N-player handshake/topology builds on. **D3 also
+  elevates the dedicated-server `.csproj` project-split (AOT target) into D5/engine-section scope.**
+- **→ D6 (LLM provider abstraction):** the T4 lenient ingest options + the authoritative model-level gate
+  are the safe seam — AI output is validated by the *same* gate as hand-authored content, never trusted.
+- **→ Implementation (Step 6+):** D1+D2+D3 together define the complete serialized contract; the strangler
+  steps D3.0–D3.9 interleave with D1 1–9 and D2 D0–D9s as a single migration program.
