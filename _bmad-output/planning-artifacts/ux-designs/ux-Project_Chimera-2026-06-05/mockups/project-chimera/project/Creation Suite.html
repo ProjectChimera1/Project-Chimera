@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="en" data-accent="amber">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chimera — Creation Suite</title>
+<link rel="stylesheet" href="chimera.css">
+<link rel="stylesheet" href="editor.css">
+<script src="theme.js"></script>
+<template id="__bundler_thumbnail" data-bg-color="#0e1216">
+  <svg viewBox="0 0 1200 800" xmlns="http://www.w3.org/2000/svg">
+    <rect width="1200" height="800" fill="#0e1216"/>
+    <rect x="40" y="40" width="1120" height="56" fill="#161b21" stroke="#2a323b" stroke-width="3"/>
+    <rect x="470" y="52" width="120" height="32" fill="#F0A92D"/>
+    <rect x="600" y="52" width="120" height="32" fill="#161b21" stroke="#2a323b" stroke-width="2"/>
+    <rect x="700" y="140" width="460" height="600" fill="#10171c" stroke="#F0A92D" stroke-width="3"/>
+    <circle cx="400" cy="420" r="120" fill="none" stroke="#F0A92D" stroke-width="3" stroke-dasharray="14 10"/>
+    <text x="600" y="690" fill="#7e8a96" font-family="monospace" font-size="34" letter-spacing="10" text-anchor="middle">UNIT CARD EDITOR</text>
+  </svg>
+</template>
+</head>
+<body>
+<div class="viewport">
+  <div class="stage" id="stage" data-screen-label="Creation Suite">
+
+    <!-- ============ TOP TOOLBAR ============ -->
+    <div class="toolbar">
+      <div class="tb-brand">
+        <svg class="mk" viewBox="0 0 96 96"><use href="#chimera-seal"></use></svg>
+        <div class="pn">Ashen Reach<small>UNTITLED PROJECT · DRAFT</small></div>
+      </div>
+
+      <div class="editplay" id="editplay">
+        <button class="edit is-active" onclick="setMode('edit')"><svg viewBox="0 0 16 16"><path d="M11 2l3 3-8 8-4 1 1-4z" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>Edit</button>
+        <button class="play" onclick="setMode('play')"><svg viewBox="0 0 16 16"><path d="M4 3l9 5-9 5z" fill="currentColor"/></svg>Play</button>
+      </div>
+
+      <div class="divider--v" style="height:30px"></div>
+
+      <div class="tb-tools" id="tbTools">
+        <button class="tb-tool" data-panel="terrain"><svg viewBox="0 0 22 22"><path d="M2 16l5-8 4 5 3-4 6 7z" fill="none" stroke="currentColor" stroke-width="1.4"/></svg><span>Terrain</span></button>
+        <button class="tb-tool is-active" data-panel="unit"><svg viewBox="0 0 22 22"><path d="M11 2l8 4.5v9L11 20l-8-4.5v-9z" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M11 7l4 2.5v0L11 12 7 9.5z" fill="currentColor"/></svg><span>Entities</span></button>
+        <button class="tb-tool" data-panel="resources"><svg viewBox="0 0 22 22"><path d="M11 3l7 4v8l-7 4-7-4V7z" fill="none" stroke="currentColor" stroke-width="1.4"/><circle cx="11" cy="11" r="2.5" fill="currentColor"/></svg><span>Resources</span></button>
+        <button class="tb-tool" data-panel="triggers"><svg viewBox="0 0 22 22"><circle cx="5" cy="6" r="2.4" fill="none" stroke="currentColor" stroke-width="1.4"/><circle cx="5" cy="16" r="2.4" fill="none" stroke="currentColor" stroke-width="1.4"/><circle cx="16" cy="11" r="2.4" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M7.4 6.6L13.6 10M7 15l6.5-3" stroke="currentColor" stroke-width="1.3"/></svg><span>Triggers</span></button>
+        <button class="tb-tool" data-panel="win"><svg viewBox="0 0 22 22"><path d="M11 2l2.5 5 5.5.6-4 3.8 1 5.5L11 20l-5 2.5 1-5.5L3 13.2l5.5-.6z" fill="none" stroke="currentColor" stroke-width="1.3"/></svg><span>Win Cond.</span></button>
+        <button class="tb-tool" data-panel="faction"><svg viewBox="0 0 22 22"><path d="M5 3v16M5 4h11l-2 3 2 3H5" fill="none" stroke="currentColor" stroke-width="1.4"/></svg><span>Factions</span></button>
+        <button class="tb-tool" data-panel="ai"><svg viewBox="0 0 22 22"><path d="M11 2l1.8 4.5L17 8l-4.2 1.5L11 14l-1.8-4.5L5 8l4.2-1.5z" fill="currentColor"/><circle cx="17" cy="16" r="1.6" fill="currentColor"/><circle cx="5" cy="15" r="1.2" fill="currentColor"/></svg><span>AI Gen</span></button>
+      </div>
+
+      <div class="tb-spacer"></div>
+      <div class="tb-right">
+        <button class="icon-btn" title="Undo (Ctrl+Z)"><svg viewBox="0 0 18 18"><path d="M6 4L2 8l4 4M2 8h9a4 4 0 010 8h-2" fill="none" stroke="currentColor" stroke-width="1.5"/></svg></button>
+        <button class="icon-btn" title="Redo (Ctrl+Y)"><svg viewBox="0 0 18 18"><path d="M12 4l4 4-4 4M16 8H7a4 4 0 000 8h2" fill="none" stroke="currentColor" stroke-width="1.5"/></svg></button>
+        <div class="divider--v" style="height:24px"></div>
+        <button class="btn btn-secondary btn-sm">Save</button>
+        <button class="btn btn-primary btn-sm"><svg width="13" height="13" viewBox="0 0 14 14"><path d="M7 1v8M4 5l3-3 3 3M2 11h10" stroke="currentColor" stroke-width="1.5" fill="none"/></svg>Publish</button>
+      </div>
+    </div>
+
+    <!-- ============ BODY ============ -->
+    <div class="ed-body">
+
+      <!-- LEFT PALETTE -->
+      <div class="palette" id="palette">
+        <button class="pal-btn" data-panel="select"><svg viewBox="0 0 22 22"><path d="M4 3l14 6-6 2-2 6z" fill="currentColor"/></svg><span class="pl-tip">Select · V</span></button>
+        <button class="pal-btn" data-panel="terrain"><svg viewBox="0 0 22 22"><path d="M3 17l5-9 4 6 3-4 4 7z" fill="none" stroke="currentColor" stroke-width="1.5"/></svg><span class="pl-tip">Terrain Brush · B</span></button>
+        <button class="pal-btn is-active" data-panel="unit"><svg viewBox="0 0 22 22"><path d="M11 2l8 4.5v9L11 20l-8-4.5v-9z" fill="none" stroke="currentColor" stroke-width="1.5"/></svg><span class="pl-tip">Entities · E</span></button>
+        <button class="pal-btn" data-panel="resources"><svg viewBox="0 0 22 22"><path d="M11 3l7 4v8l-7 4-7-4V7z" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="11" cy="11" r="2.4" fill="currentColor"/></svg><span class="pl-tip">Resources · R</span></button>
+        <div class="pal-div"></div>
+        <button class="pal-btn" data-panel="triggers"><svg viewBox="0 0 22 22"><circle cx="5" cy="6" r="2.2" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="16" cy="11" r="2.2" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="5" cy="16" r="2.2" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M7 6.6L14 10M7 15l7-3" stroke="currentColor" stroke-width="1.3"/></svg><span class="pl-tip">Triggers / Rules · T</span></button>
+        <button class="pal-btn" data-panel="ability"><svg viewBox="0 0 22 22"><path d="M12 2L5 12h5l-1 8 8-11h-6z" fill="currentColor"/></svg><span class="pl-tip">Ability Editor · A</span></button>
+        <button class="pal-btn" data-panel="faction"><svg viewBox="0 0 22 22"><path d="M5 3v16M5 4h11l-2 3 2 3H5" fill="none" stroke="currentColor" stroke-width="1.5"/></svg><span class="pl-tip">Faction Definer · F</span></button>
+        <div class="pal-div"></div>
+        <button class="pal-btn" data-panel="ai"><svg viewBox="0 0 22 22"><path d="M11 2l1.8 4.5L17 8l-4.2 1.5L11 14l-1.8-4.5L5 8z" fill="currentColor"/></svg><span class="pl-tip">AI Generate · G</span></button>
+      </div>
+
+      <!-- CENTER WORLD -->
+      <div class="world">
+        <div class="grid3d"></div>
+        <svg class="viewcube" viewBox="0 0 54 54"><path d="M27 4l20 11v24L27 50 7 39V15z" fill="rgba(26,31,38,.7)" stroke="var(--line-strong)"/><path d="M27 4l20 11-20 11L7 15z" fill="rgba(46,211,198,.12)" stroke="var(--accent-dim)"/><text x="27" y="22" fill="var(--text-lo)" font-size="7" text-anchor="middle" font-family="monospace">TOP</text></svg>
+        <div class="ent" style="left:42%;top:46%;background:var(--team-1)"></div>
+        <div class="placed-ring" style="left:calc(42% + 11px);top:calc(46% + 11px)"></div>
+        <div class="ent" style="left:54%;top:54%;background:var(--team-1)"></div>
+        <div class="ent" style="left:48%;top:60%;background:var(--team-2)"></div>
+        <div class="wlabel">3D World · Entities tool active · click to place “Vanguard” · scroll to zoom · RMB to orbit</div>
+      </div>
+
+      <!-- RIGHT DOCK -->
+      <div class="dock" id="dock">
+        <div class="dock-head" id="dockHead">
+          <div class="grow"><div class="deyebrow" id="dockEyebrow">ENTITY · UNIT DEFINITION</div><div class="dtitle" id="dockTitle">Unit Card Editor</div></div>
+          <div class="segment" id="simpleAdv">
+            <button class="is-active" onclick="setDisclosure('simple')">Simple</button>
+            <button onclick="setDisclosure('advanced')">Advanced</button>
+          </div>
+        </div>
+
+        <div class="dock-body" id="dockBody">
+
+          <!-- ===== UNIT CARD EDITOR ===== -->
+          <div class="panel-view show" id="pv-unit">
+            <div class="uc" id="uc">
+              <!-- left: model + template -->
+              <div class="uc-left">
+                <div class="model-prev">
+                  <div class="rotbadge"><svg width="11" height="11" viewBox="0 0 12 12" style="animation:turn 4s linear infinite"><path d="M6 1a5 5 0 11-4 2" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M2 1v2.5h2.5" stroke="currentColor" stroke-width="1.3" fill="none"/></svg>LIVE</div>
+                  <div class="turntable"><svg viewBox="0 0 130 130"><path d="M65 14l40 24v52l-40 24-40-24V38z" fill="rgba(42,127,212,.18)" stroke="var(--team-1)" stroke-width="1.5"/><path d="M65 14l40 24-40 24-40-24z" fill="rgba(92,184,236,.3)"/><path d="M65 62v52l-40-24V38z" fill="rgba(42,127,212,.25)"/><path d="M65 62l40-24v52l-40 24z" fill="rgba(42,127,212,.12)"/></svg></div>
+                  <div class="floor"></div>
+                  <div class="mp-tag">model · vanguard.glb</div>
+                </div>
+                <div class="model-actions">
+                  <button class="btn btn-secondary"><svg width="13" height="13" viewBox="0 0 14 14"><path d="M7 1l5 3v6l-5 3-5-3V4z" fill="none" stroke="currentColor" stroke-width="1.3"/></svg>Model</button>
+                  <button class="btn btn-secondary"><svg width="13" height="13" viewBox="0 0 14 14"><rect x="2" y="2" width="10" height="10" rx="1" fill="none" stroke="currentColor" stroke-width="1.3"/><circle cx="5" cy="5" r="1.3" fill="currentColor"/><path d="M2 10l3-3 3 2 4-4" stroke="currentColor" stroke-width="1.2" fill="none"/></svg>Icon</button>
+                </div>
+                <div class="tpl-pick">
+                  <label>Start from template</label>
+                  <div class="tpl-grid" id="tplGrid"></div>
+                </div>
+                <button class="btn btn-ghost btn-sm" style="justify-content:flex-start;gap:8px" onclick="toggleCompare()"><svg width="14" height="14" viewBox="0 0 16 16"><path d="M8 2v12M3 5h2M3 8h2M3 11h2M11 5h2M11 8h2M11 11h2" stroke="currentColor" stroke-width="1.3"/></svg>Compare to unit…</button>
+              </div>
+
+              <!-- right: stat sections -->
+              <div class="uc-right">
+                <div class="uc-bar">
+                  <input class="uc-name" value="Vanguard" spellcheck="false">
+                  <span class="tag tag--accent">Tier 1</span>
+                  <div class="grow"></div>
+                  <span class="valid-badge"><svg width="13" height="13" viewBox="0 0 14 14"><path d="M2 7l3 3 7-7" stroke="currentColor" stroke-width="1.8" fill="none"/></svg>Valid</span>
+                </div>
+                <div class="uc-scroll" id="ucScroll">
+                  <!-- COMBAT -->
+                  <div class="sect">
+                    <div class="sect-head"><span class="sh-ic"><svg width="15" height="15" viewBox="0 0 16 16"><path d="M3 13L11 5M9 3h4v4" stroke="currentColor" stroke-width="1.5" fill="none"/></svg></span><h4>Combat</h4><span class="rule"></span></div>
+                    <div id="combatFields"></div>
+                  </div>
+                  <!-- ECONOMY -->
+                  <div class="sect">
+                    <div class="sect-head"><span class="sh-ic"><svg width="15" height="15" viewBox="0 0 16 16"><path d="M8 2l5 3v6l-5 3-5-3V5z" fill="none" stroke="currentColor" stroke-width="1.4"/></svg></span><h4>Economy</h4><span class="rule"></span></div>
+                    <div id="econFields"></div>
+                  </div>
+                  <!-- ABILITIES -->
+                  <div class="sect">
+                    <div class="sect-head"><span class="sh-ic"><svg width="15" height="15" viewBox="0 0 16 16"><path d="M9 1L3 9h4l-1 6 7-9H8z" fill="currentColor"/></svg></span><h4>Abilities</h4><span class="rule"></span></div>
+                    <div class="abil-list" id="abilList"></div>
+                    <div class="add-abil" style="margin-top:8px" onclick="addAbil()"><svg width="14" height="14" viewBox="0 0 14 14"><path d="M7 2v10M2 7h10" stroke="currentColor" stroke-width="1.6"/></svg>Add from library</div>
+                  </div>
+                  <!-- HERO -->
+                  <div class="sect">
+                    <div class="sect-head"><span class="sh-ic"><svg width="15" height="15" viewBox="0 0 16 16"><path d="M8 1l2 4 4.5.5-3.3 3 .9 4.5L8 11l-4 2 .9-4.5L1.5 5.5 6 5z" fill="currentColor"/></svg></span><h4>Hero Unit</h4><span class="rule"></span></div>
+                    <div class="hero-toggle">
+                      <div><div style="font-size:13px;color:var(--text-hi);font-family:var(--font-display);font-weight:600">Promote to Hero</div><div style="font-size:11px;color:var(--text-lo)">Reveals leveling, XP curve &amp; ultimate</div></div>
+                      <div class="switch" id="heroSwitch" onclick="toggleHero()"></div>
+                    </div>
+                    <div class="hero-fields" id="heroFields"></div>
+                  </div>
+
+                  <div class="json-box">
+                    <div class="eyebrow" style="margin-bottom:8px">Raw definition · vanguard.unit.json</div>
+                    <pre id="jsonOut"></pre>
+                  </div>
+                </div>
+
+                <!-- compare drawer -->
+                <div class="compare" id="compare">
+                  <div class="cmp-head"><div><div class="deyebrow">COMPARE</div><div style="font-size:14px;color:var(--text-hi);font-family:var(--font-display);font-weight:600">Vanguard vs Knight</div></div><button class="icon-btn" style="width:28px;height:28px" onclick="toggleCompare()"><svg viewBox="0 0 18 18"><path d="M4 4l10 10M14 4L4 14" stroke="currentColor" stroke-width="1.6"/></svg></button></div>
+                  <div class="cmp-body" id="cmpBody"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ===== TRIGGERS ===== -->
+          <div class="panel-view" id="pv-triggers">
+            <div class="trig">
+              <div class="trig-toolbar">
+                <button class="btn btn-secondary btn-sm"><svg width="12" height="12" viewBox="0 0 14 14"><path d="M7 2v10M2 7h10" stroke="currentColor" stroke-width="1.6"/></svg>New Trigger</button>
+                <div class="grow"></div>
+                <div class="segment" id="trigView">
+                  <button class="is-active" onclick="setTrigView('list')">List</button>
+                  <button onclick="setTrigView('graph')">Node Graph</button>
+                </div>
+              </div>
+              <div class="trig-body">
+                <div class="trig-tree">
+                  <div class="eyebrow" style="margin-bottom:8px">RULES (4)</div>
+                  <div class="trig-node sel"><svg width="13" height="13" viewBox="0 0 14 14"><circle cx="7" cy="7" r="5" fill="none" stroke="var(--accent)" stroke-width="1.4"/></svg>On Unit Dies</div>
+                  <div class="trig-node"><svg width="13" height="13" viewBox="0 0 14 14"><circle cx="7" cy="7" r="5" fill="none" stroke="currentColor" stroke-width="1.4"/></svg>Wave Spawner</div>
+                  <div class="trig-node"><svg width="13" height="13" viewBox="0 0 14 14"><circle cx="7" cy="7" r="5" fill="none" stroke="currentColor" stroke-width="1.4"/></svg>Capture Point</div>
+                  <div class="trig-node"><svg width="13" height="13" viewBox="0 0 14 14"><circle cx="7" cy="7" r="5" fill="none" stroke="currentColor" stroke-width="1.4"/></svg>Victory Check</div>
+                </div>
+                <div class="trig-main" id="trigMain">
+                  <h4 style="font-size:15px;margin-bottom:4px">On Unit Dies → Award Bounty</h4>
+                  <p style="font-size:12px;color:var(--text-lo);margin-bottom:18px">Runs whenever any unit is destroyed.</p>
+                  <div class="eca-block">
+                    <div class="eca-label" style="color:var(--team-2)"><span class="dot" style="background:var(--team-2)"></span>Event</div>
+                    <div class="eca-item"><span class="pill">EVENT</span>A unit <b>dies</b> anywhere on the map</div>
+                  </div>
+                  <div class="eca-block">
+                    <div class="eca-label" style="color:var(--warn)"><span class="dot" style="background:var(--warn)"></span>Conditions</div>
+                    <div class="eca-item"><span class="pill">IF</span>Dying unit <b>owner</b> ≠ <b>Triggering player</b></div>
+                    <div class="eca-item"><span class="pill">AND</span>Dying unit <b>bounty</b> &gt; <b>0</b></div>
+                  </div>
+                  <div class="eca-block">
+                    <div class="eca-label" style="color:var(--accent-bright)"><span class="dot" style="background:var(--accent)"></span>Actions</div>
+                    <div class="eca-item"><span class="pill">DO</span>Add <b>(unit.bounty)</b> Ore to <b>Killing player</b></div>
+                    <div class="eca-item"><span class="pill">DO</span>Show floating text <b>"+{bounty}"</b> at unit position</div>
+                    <div class="add-abil" style="margin-top:4px"><svg width="13" height="13" viewBox="0 0 14 14"><path d="M7 2v10M2 7h10" stroke="currentColor" stroke-width="1.6"/></svg>Add action</div>
+                  </div>
+                </div>
+                <div class="graph" id="trigGraph">
+                  <div class="gnode ev" style="left:40px;top:60px"><div class="gh">Event</div><div class="gb">unit.died</div></div>
+                  <div class="gnode co" style="left:250px;top:40px"><div class="gh">Condition</div><div class="gb">owner != killer</div></div>
+                  <div class="gnode co" style="left:250px;top:150px"><div class="gh">Condition</div><div class="gb">bounty &gt; 0</div></div>
+                  <div class="gnode ac" style="left:470px;top:95px"><div class="gh">Action</div><div class="gb">addOre(bounty)</div></div>
+                  <svg style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none" stroke="var(--line-strong)" fill="none" stroke-width="1.5">
+                    <path d="M190 85 C220 85 220 70 250 70"/><path d="M190 90 C220 90 220 175 250 175"/>
+                    <path d="M400 70 C440 70 440 115 470 115"/><path d="M400 175 C440 175 440 125 470 125"/>
+                  </svg>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ===== ABILITY EDITOR ===== -->
+          <div class="panel-view" id="pv-ability">
+            <div class="simple-panel">
+              <div class="uc-bar" style="margin:-18px -18px 16px;padding:14px 18px"><input class="uc-name" value="Volley" spellcheck="false"><span class="tag tag--accent">Active</span><div class="grow"></div><span class="valid-badge"><svg width="13" height="13" viewBox="0 0 14 14"><path d="M2 7l3 3 7-7" stroke="currentColor" stroke-width="1.8" fill="none"/></svg>Valid</span></div>
+              <div class="sect"><div class="sect-head"><span class="sh-ic"><svg width="14" height="14" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" stroke-width="1.4"/></svg></span><h4>Targeting &amp; Cost</h4><span class="rule"></span></div><div id="abilCfg"></div></div>
+              <div class="sect"><div class="sect-head"><span class="sh-ic"><svg width="14" height="14" viewBox="0 0 16 16"><path d="M8 1L3 9h4l-1 6 7-9H8z" fill="currentColor"/></svg></span><h4>Effect Primitives</h4><span class="rule"></span></div>
+                <div class="abil-list" id="primList"></div>
+                <div class="add-abil" style="margin-top:8px"><svg width="14" height="14" viewBox="0 0 14 14"><path d="M7 2v10M2 7h10" stroke="currentColor" stroke-width="1.6"/></svg>Add effect primitive</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ===== TERRAIN ===== -->
+          <div class="panel-view" id="pv-terrain">
+            <div class="simple-panel">
+              <div class="sect"><div class="sect-head"><h4>Brush</h4><span class="rule"></span></div>
+                <div class="brush-grid" id="brushGrid"></div></div>
+              <div class="sect"><div class="fieldrow" style="grid-template-columns:80px 1fr 60px"><label>Size</label><input type="range" class="slider" min="1" max="40" value="12"><input class="num-input" value="12"></div>
+                <div class="fieldrow" style="grid-template-columns:80px 1fr 60px"><label>Strength</label><input type="range" class="slider" min="0" max="100" value="60"><input class="num-input" value="60"></div></div>
+              <div class="sect"><div class="sect-head"><h4>Texture Palette</h4><span class="rule"></span></div>
+                <div class="tex-grid" id="texGrid"></div></div>
+              <div class="sect"><div class="sect-head"><h4>Scatter / Doodads</h4><span class="rule"></span></div>
+                <div class="brush-grid" id="doodadGrid"></div></div>
+            </div>
+          </div>
+
+          <!-- ===== AI GENERATE ===== -->
+          <div class="panel-view" id="pv-ai">
+            <div class="ai-panel">
+              <div class="ai-prompt">
+                <div class="field"><label>Describe what to generate</label>
+                  <textarea class="input" rows="2" spellcheck="false">A fast desert raider faction with low HP, high speed, and a hit-and-run economy that rewards aggression.</textarea></div>
+                <div class="row between" style="margin-top:12px">
+                  <div class="row gap2"><span class="tag">Faction</span><span class="tag">3 units</span><span class="tag">Balanced vs Tier 1</span></div>
+                  <button class="btn btn-primary btn-sm" onclick="aiGen()"><svg width="13" height="13" viewBox="0 0 14 14"><path d="M7 1l1.2 3L11 5l-2.8 1L7 9 5.8 6 3 5l2.8-1z" fill="currentColor"/></svg>Generate</button>
+                </div>
+              </div>
+              <div class="ai-result" id="aiResult">
+                <div class="muted" style="text-align:center;padding:40px 0;font-size:13px">Results appear here as editable cards — tweak, accept, or regenerate any part.</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ===== FACTION WIZARD ===== -->
+          <div class="panel-view" id="pv-faction">
+            <div class="wiz">
+              <div class="wiz-steps" id="wizSteps"></div>
+              <div class="wiz-body" id="wizBody"></div>
+              <div class="wiz-foot">
+                <button class="btn btn-ghost" onclick="wizNav(-1)">Back</button>
+                <div class="row gap2"><span class="muted mono" style="font-size:12px;align-self:center" id="wizCount">Step 2 / 5</span><button class="btn btn-primary" onclick="wizNav(1)">Continue</button></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ===== generic placeholder (resources / win) ===== -->
+          <div class="panel-view" id="pv-generic">
+            <div class="simple-panel"><div class="ph ph--facet" style="height:100%;min-height:300px" id="genPh">Panel</div></div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ PLAY MODE OVERLAY ============ -->
+    <div class="playmode" id="playmode">
+      <div class="pm-topbar">
+        <div class="pm-test-banner"><svg width="14" height="14" viewBox="0 0 16 16"><path d="M4 3l9 5-9 5z" fill="currentColor"/></svg>Playtesting · changes are live</div>
+        <button class="btn btn-secondary btn-sm" onclick="setMode('edit')"><svg width="13" height="13" viewBox="0 0 14 14"><path d="M11 2l3 3-8 8-4 1 1-4z" fill="none" stroke="currentColor" stroke-width="1.4"/></svg>Return to Edit · Esc</button>
+      </div>
+      <div class="pm-center">
+        <div class="ph ph--facet" style="width:220px;height:140px;margin:0 auto 18px">live 3D match</div>
+        <div class="eyebrow">Instant Playtest</div>
+        <h2 style="font-size:24px;margin-top:6px">Your edits run immediately</h2>
+        <p class="muted" style="font-size:13px;max-width:360px;margin:8px auto 0">No build step, no export. Place a unit, hit Play, and it's in the match — Mario-Maker-style build↔play.</p>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<div class="demo-theme"><button onclick="chimeraToggleTheme()">◐ Light / Dark</button></div>
+
+<script src="stage.js"></script>
+<script src="editor-data.js"></script>
+</body>
+</html>

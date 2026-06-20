@@ -1,0 +1,504 @@
+<!DOCTYPE html>
+<html lang="en" data-accent="amber">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chimera — In-game HUD</title>
+<link rel="stylesheet" href="chimera.css">
+<script src="theme.js"></script>
+<template id="__bundler_thumbnail" data-bg-color="#0e1216">
+  <svg viewBox="0 0 1200 800" xmlns="http://www.w3.org/2000/svg">
+    <rect width="1200" height="800" fill="#0e1216"/>
+    <rect x="60" y="40" width="1080" height="60" fill="#161b21" stroke="#F0A92D" stroke-width="3"/>
+    <rect x="60" y="640" width="320" height="120" fill="#161b21" stroke="#2a323b" stroke-width="3"/>
+    <rect x="900" y="560" width="240" height="200" fill="#10171c" stroke="#F0A92D" stroke-width="3"/>
+    <circle cx="980" cy="640" r="8" fill="#2a7fd4"/><circle cx="1060" cy="700" r="8" fill="#e06a1b"/>
+    <text x="600" y="420" fill="#7e8a96" font-family="monospace" font-size="38" letter-spacing="12" text-anchor="middle">IN-GAME HUD</text>
+  </svg>
+</template>
+<style>
+  html,body{height:100%;overflow:hidden;background:var(--void);}
+  .viewport{position:fixed;inset:0;overflow:hidden;}
+  .stage{position:absolute;top:50%;left:50%;width:1920px;height:1080px;transform-origin:center;background:var(--void);}
+
+  /* ---------------- BATTLEFIELD (low-poly placeholder) ---------------- */
+  .field{position:absolute;inset:0;overflow:hidden;
+    background:
+      radial-gradient(120% 90% at 50% 0%, #20303a 0%, #16222b 36%, #0e171d 70%, #0a1015 100%);}
+  .field .terrain{position:absolute;inset:-10%;
+    background-image:
+      linear-gradient(115deg, rgba(40,70,64,0.45) 0 2px, transparent 2px),
+      linear-gradient(65deg,  rgba(40,70,64,0.40) 0 2px, transparent 2px);
+    background-size:118px 118px, 118px 118px;
+    transform:perspective(1400px) rotateX(46deg) scale(1.5);
+    transform-origin:center 30%;opacity:.7;}
+  .field .biome{position:absolute;clip-path:polygon(0 18%,30% 0,72% 8%,100% 40%,86% 100%,24% 92%,0 60%);}
+  .biome.b1{left:8%;top:30%;width:32%;height:42%;background:radial-gradient(circle at 40% 40%, #2a4a3e, #1c3329);opacity:.55;}
+  .biome.b2{right:6%;top:44%;width:30%;height:40%;background:radial-gradient(circle at 50% 50%, #3a3320, #241f12);opacity:.5;clip-path:polygon(10% 0,100% 22%,92% 80%,40% 100%,0 54%);}
+  .water{position:absolute;left:30%;top:54%;width:40%;height:30%;background:linear-gradient(180deg,#16414f,#0e2c38);opacity:.6;clip-path:polygon(8% 0,100% 14%,86% 90%,18% 100%,0 40%);}
+  .vignette{position:absolute;inset:0;background:radial-gradient(120% 80% at 50% 40%, transparent 50%, rgba(5,8,11,.55) 100%);pointer-events:none;}
+
+  /* --- light theme: daylight battlefield (world render, day lighting) --- */
+  [data-theme="light"] .field{background:
+    radial-gradient(120% 90% at 50% 0%, #b9cfb4 0%, #a3bd9c 36%, #8aa583 70%, #768f6f 100%);}
+  [data-theme="light"] .biome.b1{background:radial-gradient(circle at 40% 40%, #7fae84, #659168);}
+  [data-theme="light"] .biome.b2{background:radial-gradient(circle at 50% 50%, #b3a26b, #998a58);}
+  [data-theme="light"] .water{background:linear-gradient(180deg,#7ab5c0,#5c98a6);opacity:.75;}
+  [data-theme="light"] .vignette{background:radial-gradient(120% 80% at 50% 40%, transparent 55%, rgba(60,70,50,.30) 100%);}
+  /* force re-substitution of cached background shorthands (Chromium var cache quirk) */
+  [data-theme="light"] .cmd{background-color:var(--surface-2);}
+  [data-theme="light"] .cmd.empty{background-color:var(--surface-1);}
+  [data-theme="light"] .cmd:hover{background-color:var(--surface-4);}
+
+  /* unit blobs in world (team colored) */
+  .units{position:absolute;inset:0;}
+  .u{position:absolute;width:18px;height:18px;clip-path:polygon(50% 0,100% 50%,50% 100%,0 50%);box-shadow:0 2px 4px rgba(0,0,0,.5);}
+  .u::after{content:"";position:absolute;inset:3px;background:rgba(0,0,0,.25);clip-path:inherit;}
+  .u.big{width:26px;height:26px;}
+  /* selection group highlight */
+  .selring{position:absolute;border:2px dashed var(--accent-bright);background:var(--accent-wash);
+    box-shadow:0 0 0 1px rgba(0,0,0,.4), 0 0 20px var(--accent-glow);
+    clip-path:polygon(0 10px,10px 0,100% 0,100% calc(100% - 10px),calc(100% - 10px) 100%,0 100%);}
+  .ground-ring{position:absolute;width:42px;height:24px;border:2px solid var(--accent);border-radius:50%;opacity:.85;
+    transform:translate(-50%,-50%) rotateX(60deg);}
+  .field-tag{position:absolute;font-family:var(--font-mono);font-size:11px;letter-spacing:.18em;color:rgba(174,183,194,.32);
+    text-transform:uppercase;left:50%;top:20%;transform:translateX(-50%);}
+
+  /* ---------------- TOP BAR ---------------- */
+  .topbar{position:absolute;top:0;left:0;right:0;height:54px;display:flex;align-items:center;justify-content:space-between;
+    padding:0 16px;background:linear-gradient(180deg, rgba(15,18,22,.96), rgba(15,18,22,.78) 70%, transparent);}
+  [data-theme="light"] .topbar{background:linear-gradient(180deg, rgba(231,227,217,.96), rgba(231,227,217,.75) 70%, transparent);}
+  .topbar .res-cluster{display:flex;align-items:center;gap:22px;
+    background:var(--surface-1);padding:7px 18px;box-shadow:inset 0 0 0 1px var(--line);
+    clip-path:polygon(0 7px,7px 0,100% 0,100% calc(100% - 7px),calc(100% - 7px) 100%,0 100%);}
+  .res-cluster .divider--v{height:26px;}
+  .topbar .right{display:flex;align-items:center;gap:14px;}
+  .clock-box{display:flex;align-items:center;gap:10px;background:var(--surface-1);padding:8px 16px;
+    box-shadow:inset 0 0 0 1px var(--line);clip-path:polygon(0 7px,7px 0,100% 0,100% calc(100% - 7px),calc(100% - 7px) 100%,0 100%);}
+  .clock-box .val{font-family:var(--font-mono);font-weight:700;font-size:18px;color:var(--text-hi);font-variant-numeric:tabular-nums;}
+
+  /* ---------------- ALERTS ---------------- */
+  .alerts{position:absolute;top:66px;left:16px;display:flex;flex-direction:column;gap:8px;width:300px;z-index:8;}
+  .alerts .toast{animation:slideIn .25s var(--ease);}
+  @keyframes slideIn{from{opacity:0;transform:translateX(-12px);}to{opacity:1;transform:none;}}
+
+  .stall{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);z-index:30;display:none;}
+  .stall.show{display:block;}
+
+  /* ---------------- BOTTOM LEFT: selection + command ---------------- */
+  .bl{position:absolute;left:16px;bottom:16px;width:560px;z-index:7;}
+  .ctrl-row{display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:8px;}
+  .ctrl-groups{display:flex;gap:3px;}
+  .cg{width:30px;height:30px;display:flex;align-items:center;justify-content:center;position:relative;
+    background:var(--surface-1);box-shadow:inset 0 0 0 1px var(--line);
+    clip-path:polygon(0 4px,4px 0,100% 0,100% calc(100% - 4px),calc(100% - 4px) 100%,0 100%);
+    font-family:var(--font-mono);font-size:12px;color:var(--text-lo);font-weight:700;cursor:pointer;}
+  .cg.has{color:var(--text-hi);}
+  .cg.has::after{content:attr(data-n);position:absolute;top:-3px;right:-3px;background:var(--accent);color:var(--accent-ink);
+    font-size:8px;width:13px;height:13px;display:flex;align-items:center;justify-content:center;border-radius:2px;font-weight:700;}
+  .cg.is-active{box-shadow:inset 0 0 0 1px var(--accent);color:var(--accent-bright);}
+  .selcount{font-family:var(--font-mono);font-size:12px;color:var(--text-lo);background:var(--surface-1);padding:5px 10px;
+    box-shadow:inset 0 0 0 1px var(--line);clip-path:polygon(0 4px,4px 0,100% 0,100% calc(100% - 4px),calc(100% - 4px) 100%,0 100%);}
+  .selcount b{color:var(--accent-bright);}
+
+  .cmd-shell{display:flex;gap:0;}
+  /* portrait column */
+  .portraits{width:148px;flex:none;padding:12px;display:flex;flex-direction:column;gap:8px;}
+  .portrait-main{height:96px;position:relative;}
+  .portrait-main .ph{height:100%;font-size:9px;}
+  .pname{position:absolute;left:0;right:0;bottom:0;padding:4px 8px;background:linear-gradient(0deg,rgba(10,13,16,.9),transparent);
+    font-family:var(--font-display);font-size:13px;color:var(--text-hi);font-weight:600;}
+  .hpbar{height:6px;background:var(--surface-3);box-shadow:inset 0 0 0 1px var(--line);
+    clip-path:polygon(0 2px,2px 0,100% 0,100% calc(100% - 2px),calc(100% - 2px) 100%,0 100%);}
+  .hpbar > i{display:block;height:100%;background:linear-gradient(90deg,#3a8f3a,var(--ok));}
+  .mini-stats{display:flex;gap:6px;flex-wrap:wrap;}
+  .mini-stats .chip{padding:3px 7px;font-size:11px;}
+  /* selected stack thumbnails */
+  .sel-stack{display:flex;flex-wrap:wrap;gap:4px;margin-top:2px;}
+  .sel-thumb{width:26px;height:26px;position:relative;clip-path:polygon(0 3px,3px 0,100% 0,100% calc(100% - 3px),calc(100% - 3px) 100%,0 100%);
+    background:var(--surface-3);box-shadow:inset 0 0 0 1px var(--line);}
+  .sel-thumb.sel{box-shadow:inset 0 0 0 1px var(--accent);}
+  .sel-thumb b{position:absolute;bottom:0;right:1px;font-family:var(--font-mono);font-size:8px;color:var(--text-mid);}
+
+  /* command grid */
+  .cmd-grid{display:grid;grid-template-columns:repeat(5,1fr);grid-template-rows:repeat(3,1fr);gap:5px;}
+  .cmd{position:relative;aspect-ratio:1;background:var(--surface-2);box-shadow:inset 0 1px 0 rgba(255,255,255,.05), inset 0 0 0 1px var(--line);
+    clip-path:polygon(0 4px,4px 0,100% 0,100% calc(100% - 4px),calc(100% - 4px) 100%,0 100%);
+    display:flex;align-items:center;justify-content:center;color:var(--text-mid);transition:all 120ms var(--ease);cursor:pointer;}
+  .cmd:hover{background:var(--surface-4);color:var(--text-hi);}
+  .cmd:hover .cmd-tip{opacity:1;transform:translateX(-50%) translateY(0);}
+  .cmd.empty{background:var(--surface-1);box-shadow:inset 0 0 0 1px var(--line);cursor:default;}
+  .cmd.empty:hover{background:var(--surface-1);}
+  .cmd svg{width:24px;height:24px;}
+  .cmd .hk{position:absolute;bottom:2px;right:3px;font-family:var(--font-mono);font-size:9px;color:var(--text-lo);font-weight:700;}
+  .cmd:hover .hk{color:var(--accent-bright);}
+  .cmd.attackmove{box-shadow:inset 0 0 0 1px var(--accent-dim), inset 0 1px 0 rgba(255,255,255,.05);}
+  .cmd-tip{position:absolute;bottom:calc(100% + 7px);left:50%;transform:translateX(-50%) translateY(4px);
+    background:var(--surface-3);box-shadow:var(--shadow-pop),inset 0 0 0 1px var(--line-strong);
+    clip-path:polygon(0 4px,4px 0,100% 0,100% calc(100% - 4px),calc(100% - 4px) 100%,0 100%);
+    padding:7px 9px;width:150px;opacity:0;pointer-events:none;transition:all 120ms;z-index:20;text-align:left;}
+  .cmd-tip .tt{font-family:var(--font-display);font-size:12px;color:var(--text-hi);font-weight:600;}
+  .cmd-tip .td{font-size:11px;color:var(--text-lo);margin-top:2px;line-height:1.35;}
+
+  /* production list (building selected) */
+  .prod{padding:12px 12px 12px 0;flex:1;display:none;flex-direction:column;gap:6px;}
+  .prod.show{display:flex;}
+  .cmd-body{flex:1;padding:12px 12px 12px 0;display:none;}
+  .cmd-body.show{display:block;}
+  .queue-row{display:flex;align-items:center;gap:8px;margin-bottom:4px;}
+  .queue-slot{width:32px;height:32px;position:relative;background:var(--surface-3);box-shadow:inset 0 0 0 1px var(--accent);
+    clip-path:polygon(0 3px,3px 0,100% 0,100% calc(100% - 3px),calc(100% - 3px) 100%,0 100%);display:flex;align-items:center;justify-content:center;}
+  .queue-q{width:26px;height:26px;background:var(--surface-2);box-shadow:inset 0 0 0 1px var(--line);
+    clip-path:polygon(0 3px,3px 0,100% 0,100% calc(100% - 3px),calc(100% - 3px) 100%,0 100%);display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:10px;color:var(--text-lo);}
+  .prod-item{display:flex;align-items:center;gap:10px;padding:7px 9px;background:var(--surface-1);box-shadow:inset 0 0 0 1px var(--line);
+    clip-path:polygon(0 4px,4px 0,100% 0,100% calc(100% - 4px),calc(100% - 4px) 100%,0 100%);cursor:pointer;transition:all 120ms;}
+  .prod-item:hover{background:var(--surface-2);}
+  .prod-item.lock{opacity:.55;cursor:not-allowed;}
+  .prod-item .pi-ic{width:34px;height:34px;flex:none;}
+  .prod-item .pi-name{font-family:var(--font-display);font-size:13px;color:var(--text-hi);font-weight:600;}
+  .prod-item .pi-cost{display:flex;gap:10px;font-family:var(--font-mono);font-size:11px;color:var(--text-mid);margin-top:2px;}
+  .pi-cost span{display:flex;align-items:center;gap:3px;}
+  .cost-dot{width:9px;height:9px;clip-path:polygon(50% 0,100% 50%,50% 100%,0 50%);}
+
+  /* ---------------- BOTTOM RIGHT: minimap ---------------- */
+  .br{position:absolute;right:16px;bottom:16px;z-index:7;}
+  .minimap-shell{padding:10px;}
+  .mm-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;padding:0 2px;}
+  .mm-head .ttl{font-family:var(--font-display);font-size:12px;color:var(--text-lo);text-transform:uppercase;letter-spacing:.12em;font-weight:600;}
+  .mm-head .row{gap:5px;}
+  .mm{width:288px;height:288px;position:relative;background:#0a1318;
+    clip-path:polygon(0 8px,8px 0,100% 0,100% calc(100% - 8px),calc(100% - 8px) 100%,0 100%);box-shadow:inset 0 0 0 1px var(--line-strong);overflow:hidden;}
+  /* fog layers */
+  .fog-unexplored{position:absolute;inset:0;background:#070b0e;}
+  .fog-explored{position:absolute;background:#11202a;opacity:.9;}
+  .fog-visible{position:absolute;background:radial-gradient(circle at 50% 50%, rgba(46,211,198,.10), rgba(46,211,198,.03));}
+  .mm-terrain{position:absolute;clip-path:polygon(0 20%,40% 0,100% 30%,80% 100%,10% 80%);}
+  .mm-dot{position:absolute;width:6px;height:6px;clip-path:polygon(50% 0,100% 50%,50% 100%,0 50%);}
+  .mm-bld{position:absolute;width:9px;height:9px;box-shadow:inset 0 0 0 1px rgba(0,0,0,.4);}
+  .mm-view{position:absolute;border:1.5px solid var(--text-hi);opacity:.85;width:78px;height:54px;}
+  .mm-legend{display:flex;gap:12px;margin-top:8px;padding:0 2px;flex-wrap:wrap;}
+  .mm-legend span{display:flex;align-items:center;gap:5px;font-size:10px;color:var(--text-lo);font-family:var(--font-mono);text-transform:uppercase;letter-spacing:.04em;}
+  .mm-legend i{width:9px;height:9px;display:block;}
+
+  /* ---------------- OVERLAYS ---------------- */
+  .overlay{position:absolute;inset:0;z-index:40;display:none;}
+  .overlay.show{display:block;}
+  .pause-menu{position:absolute;inset:0;background:rgba(7,10,13,.72);backdrop-filter:blur(3px);display:flex;align-items:center;justify-content:center;}
+  .pause-card{width:380px;}
+  .pause-card .pm-head{padding:22px 26px 14px;text-align:center;}
+  .pause-card .pm-body{padding:8px 26px 26px;display:flex;flex-direction:column;gap:9px;}
+
+  /* victory card */
+  .vic-wrap{position:absolute;inset:0;background:rgba(7,10,13,.78);backdrop-filter:blur(3px);display:flex;align-items:center;justify-content:center;}
+  .vic{width:640px;}
+  .vic-head{padding:26px 32px;display:flex;align-items:center;gap:18px;border-bottom:1px solid var(--line);}
+  .vic-badge{width:60px;height:60px;flex:none;display:flex;align-items:center;justify-content:center;
+    clip-path:polygon(50% 0,100% 28%,100% 72%,50% 100%,0 72%,0 28%);background:var(--accent-wash);box-shadow:inset 0 0 0 1.5px var(--accent);}
+  .vic-title{font-family:var(--font-display);font-size:38px;font-weight:700;color:var(--accent-bright);letter-spacing:.04em;line-height:1;}
+  .vic-sub{font-family:var(--font-mono);font-size:12px;color:var(--text-lo);text-transform:uppercase;letter-spacing:.14em;margin-top:6px;}
+  .vic-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--line);}
+  .vic-stat{background:var(--surface-1);padding:18px 20px;text-align:center;}
+  .vic-stat .v{font-family:var(--font-mono);font-size:28px;font-weight:700;color:var(--text-hi);}
+  .vic-stat .l{font-size:11px;color:var(--text-lo);text-transform:uppercase;letter-spacing:.1em;margin-top:4px;}
+  .vic-foot{padding:18px 32px;display:flex;justify-content:space-between;align-items:center;}
+
+  /* demo state bar (not part of game UI) */
+  .demobar{position:absolute;top:50%;left:0;transform:translateY(-50%);z-index:60;display:flex;flex-direction:column;gap:6px;
+    background:rgba(10,13,16,.92);padding:10px;box-shadow:0 0 0 1px var(--line-strong);}
+  .demobar .dlabel{font-family:var(--font-mono);font-size:9px;color:var(--text-lo);letter-spacing:.14em;text-transform:uppercase;margin-bottom:2px;}
+  .demobar button{font-family:var(--font-display);font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--text-mid);line-height:1.3;
+    padding:6px 10px;background:var(--surface-2);box-shadow:inset 0 0 0 1px var(--line);text-align:left;transition:all 120ms;height:auto;min-height:26px;
+    clip-path:polygon(0 3px,3px 0,100% 0,100% calc(100% - 3px),calc(100% - 3px) 100%,0 100%);}
+  .demobar button:hover{color:var(--text-hi);background:var(--surface-4);}
+  .demobar button.on{color:var(--accent-ink);background:var(--accent);}
+  .demobar .theme-btn{margin-top:6px;border-top:1px solid rgba(255,255,255,.12);padding-top:8px;color:#d9b86a !important;background:transparent !important;box-shadow:none !important;}
+</style>
+</head>
+<body>
+<div class="viewport">
+  <div class="stage" id="stage" data-screen-label="HUD">
+
+    <!-- ===== BATTLEFIELD ===== -->
+    <div class="field">
+      <div class="terrain"></div>
+      <div class="biome b1"></div>
+      <div class="biome b2"></div>
+      <div class="water"></div>
+      <div class="field-tag">3D battlefield · ~1,400 units · angled top-down camera</div>
+      <div class="units" id="worldUnits"></div>
+      <div class="selring" id="selBox" style="left:760px;top:430px;width:300px;height:170px;"></div>
+      <div class="vignette"></div>
+    </div>
+
+    <!-- ===== TOP BAR ===== -->
+    <header class="topbar">
+      <div class="res-cluster">
+        <div class="readout"><span class="ic" style="background:oklch(0.6 0.07 60)"><svg width="13" height="13" viewBox="0 0 14 14"><path d="M7 1l5 3v6l-5 3-5-3V4z" fill="#160f05"/></svg></span><span class="val">1,240</span><span class="lbl">Ore</span></div>
+        <div class="divider--v"></div>
+        <div class="readout"><span class="ic" style="background:oklch(0.66 0.12 230)"><svg width="13" height="13" viewBox="0 0 14 14"><path d="M7 1l4 5-4 7-4-7z" fill="#06121a"/></svg></span><span class="val">680</span><span class="lbl">Crystal</span></div>
+        <div class="divider--v"></div>
+        <div class="readout"><span class="ic" style="background:var(--surface-4)"><svg width="13" height="13" viewBox="0 0 14 14"><circle cx="4.5" cy="5" r="2" fill="var(--text-hi)"/><circle cx="9.5" cy="5" r="2" fill="var(--text-hi)"/><path d="M1.5 12c0-2 1.2-3 3-3s3 1 3 3M7.5 12c0-2 1.2-3 3-3s3 1 3 3" fill="var(--text-hi)"/></svg></span><span class="val">12/20</span><span class="lbl">Supply</span></div>
+      </div>
+      <div class="right">
+        <div class="clock-box"><svg width="15" height="15" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.5" fill="none" stroke="var(--text-lo)" stroke-width="1.3"/><path d="M8 4.5V8l2.5 1.5" stroke="var(--text-hi)" stroke-width="1.3" fill="none"/></svg><span class="val">04:37</span></div>
+        <button class="icon-btn" title="Alliances (F11)"><svg viewBox="0 0 18 18"><circle cx="6" cy="6" r="2.4" fill="currentColor"/><circle cx="12" cy="6" r="2.4" fill="currentColor"/><path d="M2 15c0-2.4 1.8-4 4-4s4 1.6 4 4M8 15c0-2.4 1.8-4 4-4s4 1.6 4 4" fill="currentColor"/></svg></button>
+        <button class="icon-btn" title="Menu (Esc)" onclick="toggle('pause',true)"><svg viewBox="0 0 18 18"><path d="M3 5h12M3 9h12M3 13h12" stroke="currentColor" stroke-width="1.6"/></svg></button>
+      </div>
+    </header>
+
+    <!-- ===== ALERTS ===== -->
+    <div class="alerts" id="alertArea"></div>
+
+    <!-- ===== STALL BANNER ===== -->
+    <div class="stall" id="stall">
+      <div class="banner-stall"><span class="tmute tmute--sm" role="status" aria-label="Syncing"><svg class="tm-ring"><use href="#chimera-spin-ring"></use></svg><svg class="tm-tri"><use href="#chimera-spin-tri"></use></svg><svg class="tm-core"><use href="#chimera-spin-core"></use></svg></span>Waiting for peer… <span style="font-family:var(--font-mono);font-size:12px;opacity:.8;">syncing turn 318</span></div>
+    </div>
+
+    <!-- ===== BOTTOM LEFT: SELECTION + COMMAND ===== -->
+    <div class="bl">
+      <div class="ctrl-row">
+        <div class="ctrl-groups" id="ctrlGroups">
+          <div class="cg has is-active" data-n="9">1</div>
+          <div class="cg has" data-n="4">2</div>
+          <div class="cg has" data-n="1">3</div>
+          <div class="cg">4</div><div class="cg">5</div><div class="cg">6</div>
+          <div class="cg">7</div><div class="cg">8</div><div class="cg">9</div>
+        </div>
+        <div class="selcount" id="selCount"><b>9</b> selected · <span style="color:var(--text-mid)">Vanguard ×6 · Marksman ×3</span></div>
+      </div>
+
+      <div class="panel cmd-shell" id="cmdShell">
+        <!-- portraits -->
+        <div class="portraits">
+          <div class="portrait-main">
+            <div class="ph ph--facet" id="portFace">Unit Portrait</div>
+            <div class="pname" id="portName">Vanguard</div>
+          </div>
+          <div class="hpbar"><i style="width:82%"></i></div>
+          <div class="mini-stats">
+            <span class="chip"><span class="cost-dot" style="background:var(--danger)"></span><span class="num">820</span></span>
+            <span class="chip"><span class="cost-dot" style="background:var(--warn)"></span><span class="num">46</span></span>
+            <span class="chip"><span class="cost-dot" style="background:var(--accent)"></span><span class="num">4</span></span>
+          </div>
+          <div class="sel-stack" id="selStack"></div>
+        </div>
+
+        <!-- COMMAND GRID (army selected) -->
+        <div class="cmd-body show" id="cmdBody">
+          <div class="cmd-grid" id="cmdGrid"></div>
+        </div>
+
+        <!-- PRODUCTION LIST (building selected) -->
+        <div class="prod" id="prodList">
+          <div class="queue-row">
+            <div class="queue-slot"><svg width="18" height="18" viewBox="0 0 18 18"><path d="M9 2l6 3.5v7L9 16l-6-3.5v-7z" fill="none" stroke="var(--accent)" stroke-width="1.2"/></svg>
+              <svg viewBox="0 0 36 36" style="position:absolute;inset:-2px;"><circle cx="18" cy="18" r="16" fill="none" stroke="var(--accent)" stroke-width="2" stroke-dasharray="100" stroke-dashoffset="36" transform="rotate(-90 18 18)" opacity=".9"/></svg></div>
+            <div class="queue-q">+2</div><div class="queue-q" style="opacity:.5">·</div>
+            <div class="grow"></div>
+            <div style="font-family:var(--font-mono);font-size:11px;color:var(--text-lo)">build 0:09</div>
+          </div>
+          <div class="progress" style="margin-bottom:4px;"><i style="width:64%"></i></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== BOTTOM RIGHT: MINIMAP ===== -->
+    <div class="br">
+      <div class="panel minimap-shell">
+        <div class="mm-head">
+          <span class="ttl">Tactical Map</span>
+          <div class="row gap1">
+            <button class="icon-btn" style="width:26px;height:26px" title="Ping (G)"><svg viewBox="0 0 18 18" style="width:14px;height:14px"><path d="M9 2v4M9 12v4M2 9h4M12 9h4" stroke="currentColor" stroke-width="1.5"/><circle cx="9" cy="9" r="2.2" fill="currentColor"/></svg></button>
+            <button class="icon-btn" style="width:26px;height:26px" title="Toggle terrain"><svg viewBox="0 0 18 18" style="width:14px;height:14px"><path d="M3 13l4-7 3 4 2-3 3 6z" fill="none" stroke="currentColor" stroke-width="1.3"/></svg></button>
+          </div>
+        </div>
+        <div class="mm" id="minimap">
+          <div class="fog-unexplored"></div>
+          <div class="fog-explored mm-terrain" style="left:8%;top:14%;width:64%;height:60%;"></div>
+          <div class="fog-explored mm-terrain" style="left:40%;top:44%;width:50%;height:48%;clip-path:polygon(10% 0,100% 24%,82% 100%,0 64%);"></div>
+          <div class="fog-visible" style="left:30%;top:34%;width:42%;height:40%;clip-path:polygon(0 18%,40% 0,100% 30%,80% 100%,10% 80%);"></div>
+          <!-- buildings -->
+          <div class="mm-bld" style="left:24%;top:62%;background:var(--team-1);"></div>
+          <div class="mm-bld" style="left:30%;top:66%;background:var(--team-1);"></div>
+          <div class="mm-bld" style="left:70%;top:30%;background:var(--team-2);"></div>
+          <!-- camera viewport -->
+          <div class="mm-view" style="left:38%;top:46%;"></div>
+        </div>
+        <div class="mm-legend">
+          <span><i style="background:var(--team-1);clip-path:polygon(50% 0,100% 50%,50% 100%,0 50%)"></i>You</span>
+          <span><i style="background:var(--team-2);clip-path:polygon(50% 0,100% 50%,50% 100%,0 50%)"></i>Enemy</span>
+          <span><i style="background:#11202a"></i>Explored</span>
+          <span><i style="background:#070b0e"></i>Fog</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== PAUSE MENU ===== -->
+    <div class="overlay" id="ov-pause">
+      <div class="pause-menu">
+        <div class="panel pause-card">
+          <div class="pm-head"><div class="eyebrow">Match Paused</div><h2 style="font-size:26px;margin-top:6px;">Skirmish — Ashen Reach</h2></div>
+          <div class="pm-body">
+            <button class="btn btn-primary btn-block btn-lg" onclick="toggle('pause',false)">Resume</button>
+            <button class="btn btn-secondary btn-block">Options</button>
+            <button class="btn btn-secondary btn-block">Save Replay</button>
+            <button class="btn btn-danger btn-block">Surrender</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== VICTORY CARD ===== -->
+    <div class="overlay" id="ov-victory">
+      <div class="vic-wrap">
+        <div class="panel vic">
+          <div class="vic-head">
+            <div class="vic-badge"><svg width="30" height="30" viewBox="0 0 30 30"><path d="M15 2l4 8 9 1-6.5 6 1.5 9L15 22l-8 4 1.5-9L2 11l9-1z" fill="var(--accent)"/></svg></div>
+            <div class="grow"><div class="vic-title">VICTORY</div><div class="vic-sub">Ashen Reach · 1v1 · 18:42 elapsed</div></div>
+            <button class="icon-btn" onclick="toggle('victory',false)"><svg viewBox="0 0 18 18"><path d="M4 4l10 10M14 4L4 14" stroke="currentColor" stroke-width="1.6"/></svg></button>
+          </div>
+          <div class="vic-stats">
+            <div class="vic-stat"><div class="v">47</div><div class="l">Kills</div></div>
+            <div class="vic-stat"><div class="v">112</div><div class="l">Units Built</div></div>
+            <div class="vic-stat"><div class="v">8.4k</div><div class="l">Ore Mined</div></div>
+            <div class="vic-stat"><div class="v">18:42</div><div class="l">Duration</div></div>
+          </div>
+          <div class="vic-foot">
+            <button class="btn btn-ghost">Watch Replay</button>
+            <div class="row gap3"><button class="btn btn-secondary">Rematch</button><button class="btn btn-primary">Continue</button></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- DEMO STATE SWITCHER (not part of game UI) -->
+<div class="demobar">
+  <div class="dlabel">Demo States</div>
+  <button id="btn-sel" class="on" onclick="setSel('army')">Army Selected</button>
+  <button id="btn-bld" onclick="setSel('building')">Barracks Selected</button>
+  <button id="btn-alert" onclick="toggleAlerts()">Combat Alert</button>
+  <button id="btn-stall" onclick="toggle('stall')">Peer Stall</button>
+  <button id="btn-pause" onclick="toggle('pause')">Pause Menu</button>
+  <button id="btn-victory" onclick="toggle('victory')">Victory Card</button>
+  <button class="theme-btn" onclick="chimeraToggleTheme()">◐ Light / Dark</button>
+</div>
+
+<style>@keyframes spin{to{transform:rotate(360deg)}}</style>
+<script src="stage.js"></script>
+<script>
+/* ---- world unit blobs ---- */
+const teams = {1:getCSS('--team-1'),2:getCSS('--team-2')};
+function getCSS(v){return getComputedStyle(document.documentElement).getPropertyValue(v).trim();}
+(function spawnUnits(){
+  const host=document.getElementById('worldUnits');
+  // friendly group (selected) clustered center-left
+  const f=[[800,470],[840,500],[880,460],[820,540],[900,520],[860,560],[940,480],[920,560],[980,520]];
+  f.forEach(([x,y],i)=>{const u=document.createElement('div');u.className='u'+(i<6?'':' big');u.style.cssText=`left:${x}px;top:${y}px;background:var(--team-1)`;host.appendChild(u);
+    const r=document.createElement('div');r.className='ground-ring';r.style.cssText=`left:${x+9}px;top:${y+18}px`;host.appendChild(r);});
+  // enemy group right
+  const e=[[1320,360],[1360,390],[1300,410],[1390,350],[1340,430]];
+  e.forEach(([x,y],i)=>{const u=document.createElement('div');u.className='u'+(i==0?' big':'');u.style.cssText=`left:${x}px;top:${y}px;background:var(--team-2)`;host.appendChild(u);});
+  // scattered neutral structures
+  [[560,640],[600,660]].forEach(([x,y])=>{const u=document.createElement('div');u.className='u';u.style.cssText=`left:${x}px;top:${y}px;background:var(--team-8);clip-path:polygon(0 0,100% 0,100% 100%,0 100%)`;host.appendChild(u);});
+})();
+
+/* ---- command card content ---- */
+const ICON = {
+  move:`<svg viewBox="0 0 24 24"><path d="M12 3v18M3 12h18M12 3l-4 4M12 3l4 4M12 21l-4-4M12 21l4-4M3 12l4-4M3 12l4 4M21 12l-4-4M21 12l-4 4" stroke="currentColor" stroke-width="1.4" fill="none"/></svg>`,
+  attackmove:`<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.3" fill="none"/><circle cx="12" cy="12" r="2.4" fill="currentColor"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3" stroke="currentColor" stroke-width="1.4"/></svg>`,
+  stop:`<svg viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="1" fill="currentColor"/></svg>`,
+  hold:`<svg viewBox="0 0 24 24"><path d="M12 3l8 4v6c0 4-3.5 6.5-8 8-4.5-1.5-8-4-8-8V7z" fill="none" stroke="currentColor" stroke-width="1.4"/></svg>`,
+  patrol:`<svg viewBox="0 0 24 24"><path d="M6 16a4 4 0 010-8h9a4 4 0 010 8" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M13 5l3 3-3 3" stroke="currentColor" stroke-width="1.4" fill="none"/></svg>`,
+  charge:`<svg viewBox="0 0 24 24"><path d="M13 2L4 14h6l-1 8 9-12h-6z" fill="currentColor"/></svg>`,
+  shield:`<svg viewBox="0 0 24 24"><path d="M12 3l8 4v6c0 4-3.5 6.5-8 8-4.5-1.5-8-4-8-8V7z" fill="currentColor" opacity=".25"/><path d="M12 3l8 4v6c0 4-3.5 6.5-8 8-4.5-1.5-8-4-8-8V7z" fill="none" stroke="currentColor" stroke-width="1.4"/></svg>`,
+  volley:`<svg viewBox="0 0 24 24"><path d="M4 20L20 4M20 4h-6M20 4v6M9 8l-2 5 5-2" stroke="currentColor" stroke-width="1.4" fill="none"/></svg>`,
+};
+const cmds = [
+  {ic:'move',name:'Move',hk:'M',d:'Order units to a location.'},
+  {ic:'attackmove',name:'Attack-Move',hk:'A',d:'Advance, engaging any enemy on the way.',cls:'attackmove'},
+  {ic:'stop',name:'Stop',hk:'S',d:'Halt all current orders.'},
+  {ic:'hold',name:'Hold Position',hk:'H',d:'Hold ground; do not chase.'},
+  {ic:'patrol',name:'Patrol',hk:'P',d:'Patrol between two points.'},
+  {empty:1},{empty:1},{empty:1},{empty:1},{empty:1},
+  {ic:'charge',name:'Charge',hk:'Q',d:'+40% speed for 4s. 12s cooldown.'},
+  {ic:'shield',name:'Shield Wall',hk:'W',d:'+6 armor, rooted for 5s.'},
+  {ic:'volley',name:'Volley',hk:'E',d:'Marksmen fire a ranged volley.'},
+  {empty:1},
+  {ic:'stop',name:'Disband',hk:'Del',d:'Remove from control group.'},
+];
+const grid = document.getElementById('cmdGrid');
+cmds.forEach(c=>{
+  const d=document.createElement('div');
+  if(c.empty){d.className='cmd empty';grid.appendChild(d);return;}
+  d.className='cmd'+(c.cls?' '+c.cls:'');
+  d.innerHTML = ICON[c.ic] + `<span class="hk">${c.hk}</span>
+    <div class="cmd-tip"><div class="tt">${c.name}</div><div class="td">${c.d}</div></div>`;
+  grid.appendChild(d);
+});
+
+/* selected stack thumbnails */
+const stack=document.getElementById('selStack');
+for(let i=0;i<9;i++){const t=document.createElement('div');t.className='sel-thumb'+(i<6?'':' sel');t.innerHTML=`<b>${i<6?'V':'M'}</b>`;stack.appendChild(t);}
+
+/* production list rebuild */
+function buildProd(){
+  const list=document.getElementById('prodList');
+  list.querySelectorAll('.prod-item').forEach(n=>n.remove());
+  const items=[
+    {n:'Vanguard',ore:50,cry:0,t:'0:18',ic:'V'},
+    {n:'Marksman',ore:60,cry:25,t:'0:22',ic:'M'},
+    {n:'Engineer',ore:40,cry:10,t:'0:15',ic:'E'},
+    {n:'Knight',ore:120,cry:60,t:'0:34',ic:'K',lock:'Need: Stables'},
+  ];
+  items.forEach(it=>{
+    const el=document.createElement('div');el.className='prod-item'+(it.lock?' lock':'');
+    el.innerHTML=`<span class="ph ph--facet pi-ic">${it.ic}</span>
+      <div class="grow"><div class="pi-name">${it.n}</div>
+      <div class="pi-cost"><span><span class="cost-dot" style="background:oklch(.6 .07 60)"></span>${it.ore}</span>
+      ${it.cry?`<span><span class="cost-dot" style="background:oklch(.66 .12 230)"></span>${it.cry}</span>`:''}
+      <span style="color:var(--text-lo)">⏱ ${it.t}</span></div></div>
+      ${it.lock?`<span class="tag tag--lock"><svg width="10" height="10" viewBox="0 0 12 12"><rect x="2.5" y="5" width="7" height="5" rx="1" fill="currentColor"/><path d="M4 5V3.5a2 2 0 014 0V5" stroke="currentColor" stroke-width="1.2" fill="none"/></svg>${it.lock.replace('Need: ','')}</span>`:`<span class="kbd">${it.n[0]}</span>`}`;
+    list.appendChild(el);
+  });
+}
+buildProd();
+
+/* ---- demo state toggles ---- */
+function setSel(mode){
+  const body=document.getElementById('cmdBody'), prod=document.getElementById('prodList');
+  const isB = mode==='building';
+  body.classList.toggle('show',!isB); prod.classList.toggle('show',isB);
+  document.getElementById('btn-sel').classList.toggle('on',!isB);
+  document.getElementById('btn-bld').classList.toggle('on',isB);
+  document.getElementById('portFace').textContent = isB?'Building':'Unit Portrait';
+  document.getElementById('portName').textContent = isB?'Barracks':'Vanguard';
+  document.getElementById('selCount').innerHTML = isB
+    ? '<b>1</b> structure · <span style="color:var(--text-mid)">Barracks · producing</span>'
+    : '<b>9</b> selected · <span style="color:var(--text-mid)">Vanguard ×6 · Marksman ×3</span>';
+  document.getElementById('selStack').style.display = isB?'none':'flex';
+}
+let alertsOn=false;
+function toggleAlerts(){
+  alertsOn=!alertsOn;
+  document.getElementById('btn-alert').classList.toggle('on',alertsOn);
+  const area=document.getElementById('alertArea');
+  if(alertsOn){
+    area.innerHTML=`
+    <div class="toast toast--danger"><svg class="toast__ic" viewBox="0 0 22 22"><path d="M11 2l9 16H2z" fill="none" stroke="var(--danger)" stroke-width="1.6"/><path d="M11 8v5M11 15.5v.5" stroke="var(--danger)" stroke-width="1.8"/></svg><div><div class="toast__title">Under attack!</div><div class="toast__msg">Base · grid C-4 · click to jump</div></div></div>
+    <div class="toast toast--ok"><svg class="toast__ic" viewBox="0 0 22 22"><circle cx="11" cy="11" r="9" fill="none" stroke="var(--ok)" stroke-width="1.6"/><path d="M7 11l3 3 5-6" stroke="var(--ok)" stroke-width="1.8" fill="none"/></svg><div><div class="toast__title">Iron Plating ready</div><div class="toast__msg">+2 armor to all infantry</div></div></div>`;
+  } else area.innerHTML='';
+}
+function toggle(id,force){
+  if(id==='stall'){const el=document.getElementById('stall');const v=force!==undefined?force:!el.classList.contains('show');el.classList.toggle('show',v);document.getElementById('btn-stall').classList.toggle('on',v);return;}
+  const el=document.getElementById('ov-'+id);const v=force!==undefined?force:!el.classList.contains('show');el.classList.toggle('show',v);
+  const b=document.getElementById('btn-'+id);if(b)b.classList.toggle('on',v);
+}
+/* control groups click */
+document.querySelectorAll('.cg').forEach(cg=>cg.addEventListener('click',()=>{
+  document.querySelectorAll('.cg').forEach(x=>x.classList.remove('is-active'));cg.classList.add('is-active');}));
+</script>
+</body>
+</html>
