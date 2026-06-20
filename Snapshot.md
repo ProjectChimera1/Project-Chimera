@@ -15,7 +15,19 @@ status: Active
 Phases 0–4 are code-complete. Phase 5 is underway. Session 20 shipped worker-placed buildings + UI bug sweep. Session 21 (remote, away from computer) shipped Utility AI + Adaptive Input Delay.
 
 ## Next Action
-Await D2 workflow completion signal; deliver briefing with three options, comparison matrix, recommendation, and explicit decision prompts for user call.
+**GDS forward-architecture pass — Step 4 (Architectural Decisions) COMPLETE (2026-06-20).** All six
+game-specific decisions are recorded in `_bmad-output/game-architecture.md` (`stepsCompleted: [1,2,3,4]`):
+D1 effects-primitive vocabulary, D2 trigger-DSL, D3 schema/loader (the deep-dive trio), plus the D4–D6
+batch — **D4** hero persistence (two-rail, server-attested; PvP allowed, normalization via D1/D2),
+**D5** >2-player lockstep + matchmaking (N-aware dedicated relay; ship N≤4, 8 fast-follow; AOT split
+deferred), **D6** LLM provider abstraction (hand-rolled `ILLMProvider`; plaintext-key floor behind
+`ISecretStore`). Full D4–D6 analyses in `game-architecture.D{4,5,6}-briefing.md`. **Cross-cutting finding:**
+the batch surfaced one shared latent MP-correctness bug — unsound peer-agreement hashing in three places
+(`SimChecksum` P1/P2-only; dedicated server is a pure relay with no hash compare; AI scenarios ship a stale
+file-hash) — remediated by a canonical-model start-state hash + server-enforced agreement + generalized
+`SimChecksum` (a single prerequisite program). **Resume at Step 5** (cross-cutting concerns / testing
+architecture) → **Step 6** (`MainScene` decomposition / structure). Remaining chain after architecture:
+epics/stories → re-run `gds-check-implementation-readiness` → `gds-sprint-planning`.
 
 ## Needs Testing — Written This Session
 

@@ -4,7 +4,7 @@ project: 'Project_Chimera'
 date: '2026-06-20'
 author: 'Alec'
 version: '1.0'
-stepsCompleted: [1, 2, 3]
+stepsCompleted: [1, 2, 3, 4]
 status: 'in-progress'
 
 # Source Documents
@@ -25,13 +25,14 @@ that keep AI agents implementing consistently on the path to 1.0. It is created 
 GDS Architecture Workflow and is informed by, but distinct from, the brownfield
 `architecture.md` (which documents the code **as-built**, deep scan 2026-06-05).
 
-**Steps Completed:** 3 of 9 (Engine & Framework)
+**Steps Completed:** 4 of 9 (Architectural Decisions)
 
-**In progress:** Step 4 (Architectural Decisions). **D1 (effects-primitive vocabulary), D2
-(trigger-DSL design), and D3 (data-driven definition schema & loader) are all decided (2026-06-20)** —
-see *Architectural Decisions (Step 4)* below. The deep-dive trio (D1→D2→D3) is complete. Next action is
-**batch D4–D6 (Hero persistence · >2-player lockstep + matchmaking · LLM provider abstraction) as
-recommend-and-confirm**. Full Step 4 working state in **`game-architecture.RESUME.md`**.
+**Step 4 COMPLETE (2026-06-20).** All six game-specific decisions are settled: **D1** (effects-primitive
+vocabulary), **D2** (trigger-DSL design), **D3** (data-driven definition schema & loader) — the deep-dive
+trio — plus **D4** (hero persistence), **D5** (>2-player lockstep + matchmaking), **D6** (LLM provider
+abstraction), batched as recommend-and-confirm with Alec's scope calls recorded. See *Architectural
+Decisions (Step 4)* below; full D4–D6 options analyses in the `game-architecture.D{4,5,6}-briefing.md`
+sidecars. **Next:** Step 5 (cross-cutting concerns / testing) then Step 6 (`MainScene` decomposition / structure).
 
 ---
 
@@ -215,11 +216,24 @@ Engine settles rendering/physics/input/scene/transport. These game-specific deci
 
 > Step 4 records the game-specific decisions the engine layer does not settle. Approach (confirmed
 > 2026-06-20): deep-dive **D1 → D2 → D3** one at a time (novel, coupled, highest-stakes — facilitated,
-> user makes each call), then batch **D4–D6** as recommend-and-confirm. Decisions are appended here as
-> they are settled. Frontmatter `stepsCompleted` advances to `[…,4]` only once D1–D6 are all recorded.
+> user makes each call), then batch **D4–D6** as recommend-and-confirm. **All six are now recorded;
+> `stepsCompleted` = `[1,2,3,4]` (Step 4 complete 2026-06-20).**
 >
-> **Settled so far:** D1 ✅, D2 ✅, D3 ✅ (all 2026-06-20) — the deep-dive trio is complete. **Next:**
-> batch D4–D6 (recommend-and-confirm).
+> **Cross-cutting finding (D4 + D5 + D6 converged — the highest-value output of the batch).** All three
+> independently hit the **same unsound peer-agreement hashing** in the as-built code, three different ways:
+> `SimChecksum` hashes only `Ore[Player1]`/`Ore[Player2]` (`SimChecksum.cs:53-54`) — Crystal, Supply, and
+> factions 3+ are invisible to the 60-tick desync check; the dedicated server is a **pure relay** that
+> broadcasts `StartGame` the instant both ready flags flip with **no hash compare** (`DedicatedServer.cs:171-191`),
+> and the only `scenarioHash` check is client-side and skips on `hash==0` (`LobbyUi.cs:315`); AI-generated
+> in-memory scenarios ship a **stale on-disk file hash** (`MainScene.cs:303`) describing content that is not
+> running. Each is a **latent multiplayer-correctness bug in shipped code, independent of the new features.**
+> The shared remediation — a **canonical-model start-state hash** (D3 FNV-64 over `Fixed.Raw`),
+> **server-enforced agreement** (a trusted host that computes/attests, never a relay that compares
+> self-reported hashes), and a **generalized `SimChecksum`** over all active factions — is a single
+> prerequisite program, not three separate fixes, and must land before any D4/D5/D6 content reaches the lobby.
+>
+> **Settled:** D1 ✅, D2 ✅, D3 ✅, D4 ✅, D5 ✅, D6 ✅ (all 2026-06-20). **Next:** Step 5 (cross-cutting /
+> testing) → Step 6 (`MainScene` decomposition).
 
 ### D1 — Effects-Primitive Vocabulary ✅ (decided 2026-06-20)
 
@@ -859,3 +873,283 @@ three different behaviors), *unvalidated* (`LoadScenario`/`LoadFromFile` trust e
   are the safe seam — AI output is validated by the *same* gate as hand-authored content, never trusted.
 - **→ Implementation (Step 6+):** D1+D2+D3 together define the complete serialized contract; the strangler
   steps D3.0–D3.9 interleave with D1 1–9 and D2 D0–D9s as a single migration program.
+
+---
+
+### D4 — Hero Persistence Model ✅ (decided 2026-06-20)
+
+> Full options analysis + 4-lens adversarial verification (determinism · static-validation/anti-tamper ·
+> brownfield-fit · scope/solo-cost) lives in the working sidecar **`game-architecture.D4-briefing.md`**.
+> This record is the canonical decision. Recommend-and-confirm; **Alec's scope call: persistence allowed in
+> any scenario including competitive PvP, and the bespoke engine-side normalization-mode enum is CUT** —
+> fairness, if wanted, is expressed via D1 Modifiers / D2 graph at match-init.
+
+**Decision — Two-rail persistence, one validation boundary (Option C).** One `PlayerProfile` model, one
+`ContentLoader` + `Validate(profile, manifest)` boundary, and one canonical-model **`startStateHash`**, all
+designed in **M2** — with an offline `LocalProfileSource` (explicitly *untrusted*, single-player only) that
+gives an immediate playable hero-progression loop. The **online rail (M5) is an additive provider drop-in,
+not a rewrite**: a server-stored, server-validated, **server-attested** profile becomes the sole source of
+truth. The one hard correction from the adversarial review: *server-authoritative* must mean a **trusted
+host that COMPUTES/ATTESTS the start-state hash**, never a relay that merely compares self-reported hashes.
+
+**Why C, not signed-save-codes-only or server-only-from-the-start.**
+- **Signed client save-codes** (WC3-faithful, lightest) are rejected for the *online* path: any value the
+  client can read and apply, it can forge; a signature proves *who signed*, not *that the value is
+  legitimate*, and is clonable/replayable across accounts without server custody of the canonical value
+  (WC3's classic -load exploit). They remain acceptable only for the offline-untrusted local rail.
+- **Server-only-from-the-start** would block the solo dev's M2 single-player hero loop on the entire M5
+  online stack. Two-rail lets M2 ship a real feature while keeping the M5 online path a drop-in.
+
+**Settled sub-decisions (the confirmed calls):**
+1. **Online anti-tamper = server-stored profiles as the sole online source of truth** (Nakama storage
+   object: Owner-Read, No-Client-Write, written only via a validating server RPC). Signed client save-codes
+   rejected online; the local `user://` profile is explicitly untrusted and structurally walled off from any
+   MP hash. *(D4-A)*
+2. **Init-time agreement = server-authoritative delivery + attestation, fail-closed.** A trusted host
+   computes/attests the canonical `startStateHash` (or signs the validated profile set it delivers); each
+   client verifies its locally-recomputed hash *equals* the attested hash. The dedicated server GATES
+   `StartGame` on server-side hash agreement and refuses to broadcast on any mismatch or any peer reporting a
+   zero/missing hash. The LAN peer-broadcast fallback is dropped (it violates the no-P2P non-goal): route LAN
+   through a local listen-server acting as authority, or carve LAN persisted-profiles out of 1.0.
+   *(D4-B — corrects the as-built pure-relay `DedicatedServer.cs:171-191` + client-only check `LobbyUi.cs:315`.)*
+3. **A NEW canonical-model `startStateHash`** (D3 FNV-64 over `Fixed.Raw`, algo-2, `_editor`/`_ext`
+   excluded) over the full applied initial sim state *including every player's applied profile + the
+   manifest*, computed **pre-apply over the canonical model** (never over post-`ApplyScenario` state that
+   passed through `Fixed.FromFloat`), server-attested, verified in the handshake beside `scenarioHash` +
+   `rulesetHash`. Do **not** extend `ComputeFileHash` (raw bytes) or `SimChecksum` (live-state, wrong scope).
+   The `hash==0`-means-skip tolerance (`LobbyUi.cs:315`) becomes a **hard reject**. *(D4-C)*
+4. **Hero sim state = a separate sparse `HeroStore` SoA** keyed by a **stable cross-match hero identity**
+   (NOT the recycled `EntityWorld` free-list id), Fixed/int only, applied via `Fixed.FromRaw`. It folds into
+   **both** `SimChecksum` and `startStateHash` — which **requires generalizing `SimChecksum` from its
+   P1/P2-only coverage (`SimChecksum.cs:53-54`) to all active factions first**, or P3/P4 hero state is
+   silently dropped from the desync hash (fail-open). *(D4-D — shared prerequisite with D5-SD-7.)*
+5. **Identity binding = Nakama account/userId; real-account (email) auth is engine-enforced for online
+   persistence.** If a manifest enables online persisted profiles, the lobby path hard-rejects device-auth
+   sessions before any profile loads. Global email-auth rule for online persistence in 1.0 (defer the
+   per-scenario conditional to v2). Device-auth stays fine for casual/LAN (local-untrusted profiles only).
+   `NakamaKey='defaultkey'` (`NakamaService.cs:38`) is a deployment secret — not committed. *(D4-E)*
+6. **Manifest granularity = fine-grained declared bounds** (which categories carry + their bounds:
+   max_level, currency_cap, allowed item-ids + per-stack caps, skill-point cap). **The manifest itself must
+   pass a `Validate(manifest)` engine-ceiling gate** (absolute caps; item-id existence) *before* it can be
+   the validation oracle — for online/ranked the effective bound is `min(declared, engine-ceiling)`. Both
+   manifest and profile traverse the identical D3 `ContentLoader`+`Validate` choke point with no bypass,
+   including the AI-generated path. *(D4-F — closes "the attacker controls the validation oracle.")*
+7. **Persistence allowed in any scenario incl. competitive PvP** via the decision-#15 creator toggle +
+   manifest bounds; **the bespoke engine-side normalization-mode enum is CUT.** Any hero
+   normalization/fairness is expressed through **D1 Modifiers / D2 graph logic at match-init**, never an
+   engine capping code path (which would be a creator-unreachable balance path — data-driven-pillar
+   violation — and would duplicate D1/D2). *(D4-G — Alec's scope call.)*
+
+**Migration sequence (M2 local rail → M5 online rail; full detail in the sidecar).** **M2:** `PlayerProfile`
++ `PersistenceManifest` DTOs through the D3 loader; sparse `HeroStore`; manifest-authoring UI; init-time
+apply; `startStateHash`; the hero-picker Save/Load UI (FR-7d/e) as a reusable platform component. **M5:**
+Nakama storage source + validating write-RPC; server attestation + `StartGame` gate; email-auth enforcement.
+Each step golden-checksum-gated.
+
+**Prerequisites surfaced (carry forward):**
+- **D1 must be frozen first** — `HeroStore` is a subset-serializer of D1 sim state (Modifier SoA,
+  Energy/Mana, items/skills-as-Modifiers); a post-M2 D1 shift re-touches the persisted subset + both rails.
+- **D3's full loader + the currently-MISSING `Validate(model)` gate at `ApplyScenario`** (`MainScene.cs:499-558`
+  has none; float `StartOre` trusted verbatim at `:518`) must exist.
+- **Generalize `SimChecksum` to all active factions before the `HeroStore` fold** (`SimChecksum.cs:53-54`).
+- **Dedicated server must grow from pure relay → trusted host that gates `StartGame` on hash agreement**
+  (`DedicatedServer.cs:171-191`) — a large net-new D5 component, not "add a couple Nakama RPCs."
+- **The 5-byte single-hash Ready packet** (`NetworkCommand.cs:213-220`) is redesigned once to a fixed-length
+  multi-hash structure (scenario + ruleset + startState) with reject-on-length-mismatch — **shared-owned with
+  D2's `rulesetHash` change; sequence after it.**
+
+**Hand-offs:** → **D5** owns the server-attestation/`StartGame`-gate + multi-hash Ready packet + faction
+generalization that D4's online rail rides on. → **D3** already owns *how* profile/manifest serialize + hash.
+→ **Implementation** (M2 local rail, M5 online rail).
+
+**Residual risks:** persistence-in-PvP balance is now the creator's responsibility (no engine guardrail —
+deliberate, per D4-G); the local rail must be provably unable to enter any MP hash; the start-state-hash walk
+cost on max-caps profiles must fit the lobby-handshake budget.
+
+---
+
+### D5 — >2-Player Lockstep + Matchmaking ✅ (decided 2026-06-20)
+
+> Full options analysis + 4-lens adversarial verification in **`game-architecture.D5-briefing.md`**. This
+> record is canonical. **Alec's scope calls: ship/verify N≤4 in 1.0** (8 as a constant-bump fast-follow);
+> **defer the NativeAOT project-split extraction** (keep the D3 AOT-analyzer CI gate now; the
+> `RelayCore`/`ITransport` extraction + `PublishAot` build are post-1.0).
+
+**Decision — N-aware dedicated relay (Option A\*).** The server becomes the single fan-in/materialization
+point: it collects all N single-faction `TickCommands`, **re-stamps faction from the authoritative slot**,
+and broadcasts ONE merged multi-faction `TickCommandsMerged` packet; a **server-side checksum collector**
+does majority-vote desync attribution. Build the N-shaped architecture once so **8 players is later a
+constant-bump + `Faction`-enum extension, not a rewrite** — but make the **1.0 verification gate N≤4** (the
+codebase is already 4-faction-shaped: `Faction.Player4`, `ServerTransport MAX_SLOTS=4`) and defer the 8-peer
+soak + parties-lobby UI + full `PublishAot` Linux build. The server-side checksum collector, the
+merged-packet faction re-stamp, and the canonical intra-tick application order are **hard, non-deferrable**.
+
+**Why A\*, not client-host or a thin relay tweak.**
+- **Client-host-authoritative** conflicts with the server-authoritative mandate and reintroduces trust +
+  host-migration problems.
+- **"Just add a slot byte to the existing relay"** understates the work: the as-built server is a **pure
+  relay with no game knowledge** — no RTT tracking, no hash compare, opaque checksum forwarding. N-player
+  determinism + diagnosability require the server to become a **stateful authority**. That inversion *is* the
+  decision.
+
+**Settled sub-decisions (load-bearing subset; full 13 in the sidecar):**
+1. **Merged multi-faction tick packet**, server-built/broadcast on a NEW distinct type (`TickCommandsMerged`,
+   server→client only); clients send only their own single-faction `TickCommands` (client→server only). Server
+   **rejects** a merged-shape packet from a client; re-stamps each sub-bundle's faction = `SLOT_FACTION[sourceSlot]`
+   (never trusts the client byte); drops on faction mismatch/over-count; sub-bundles **sorted ascending by
+   faction id** (analogue of the ascending-entity-ID mandate). *(SD-1 — generalizes the single-peer gate
+   `LockstepManager.cs:303`.)*
+2. **One tick slot gated on the single merged-packet arrival** (no N-stream ANDing); fixed application order:
+   for each faction ascending by id, apply unit orders in wire order, **then** that faction's DSL events.
+   Spectator path rewritten to demux the merged packet (`LockstepManager.cs:408-424`). *(SD-2.)*
+3. **Ready-COUNT server state machine** — replace `_ready[0]&&_ready[1]` (`DedicatedServer.cs:32,179`) with
+   `connectedPlayers==expected && readyCount==expected`, `expected` supplied authoritatively by the loaded
+   scenario/lobby. *(SD-3.)*
+4. **Server-dictated adaptive input delay (net-new server work):** server-side Ping/Pong + per-slot RTT;
+   server computes max-over-N target delay, broadcasts ONE authoritative `DelayProposal` reliably; all N ACK
+   `applyAt`, commit only when all ACK before `applyAt` (else re-broadcast/abort, fail-closed). Clients accept
+   `DelayProposal` only from the server channel and **re-clamp to [2,12]** on receipt (fixes the unclamped
+   `Math.Max` `LockstepManager.cs:495`). The server has **no RTT knowledge today** (`DedicatedServer.cs:133-166`).
+   *(SD-4.)*
+5. **Server-side checksum collector + majority-vote attribution:** server parses Checksum packets (today
+   relayed opaquely `DedicatedServer.cs:148-156`), buffers one slot-tagged hash/slot/60-tick window, declares
+   strict-majority canonical, broadcasts a `DesyncAlert` naming the diverged peer(s); on no strict majority →
+   "global desync, no canonical" and HALT (fail-closed). Slot is transport-authoritative (`ServerTransport.cs:170`),
+   never client-supplied. *(SD-5 — delivers FR-39 diagnosability.)*
+6. **Single up-to-8 player model:** extend `Faction` enum to `Player8`, `Faction==player` for 1.0 (D3
+   PerPlayer 0..7 → Faction 1..8); raise `FACTION_COUNT`; seed N active factions; audit every `(int)Faction`
+   index site + 2-player loop. Convert the `ScenarioDirector` threshold loop (`:165-172`) from float
+   (`ore.ToFloat()`/`ToString("F2")`) to **Fixed.Raw integer compares** before fanning out to N. *(SD-6 —
+   decoupling slot from faction deferred until a teams feature exists.)*
+7. **Fix `SimChecksum` coverage now, broadly:** hash Ore + Crystal + SupplyUsed + SupplyCap (+ any D1
+   Energy/Mana/Modifier SoA) for ALL active factions in ascending order; bump `checksum_algo_version` once;
+   add a guard test that fails if a per-faction array is added without checksum coverage. Today only
+   `Ore[P1]`/`Ore[P2]` are hashed (`SimChecksum.cs:53-54`) — a latent desync hole defeating FR-39/40
+   independent of D5. *(SD-7 — shared prerequisite with D4-D.)*
+8. **Ship ceiling = 4 now, 8 fast-follow** *(Alec's scope call)* — architecture identical; only verification
+   breadth + parties/soak differ, so deferring the shipped ceiling carries no architectural regret. *(SD-8.)*
+9. **Pre-match parties:** parameterize the Nakama matchmaker (minCount/maxCount/countMultiple,
+   `NakamaService.cs:132`) + `AddMatchmakerParty`/partyId now; **slot/faction assignment stays server-side**
+   via the existing Hello mechanism (`DedicatedServer.cs:93-95`), not Nakama's lexicographic pick. The parties
+   **lobby UI** is the deferrable slice. Confirm matchmade-server routing (single static `GameServerIp/Port`
+   `NakamaService.cs:194` vs allocated instance). *(SD-9.)*
+10. **Disconnect = deterministic freeze-and-continue:** server broadcasts "faction K idle at
+    `applyTick = currentServerTick + delay + margin`" (reliable, ACK-gated) so all peers pre-seed empty
+    command sets for K from the identical tick; K's passive sim continues; never indefinite pause.
+    Drop-to-deterministic-AI is a D4/D1-coupled fast-follow. *(SD-10.)*
+11. **AOT project-split = defer extraction; CI gate now** *(Alec's call)* — `EnableDynamicLoading=true`
+    (`godot.csproj:5`) confirms AOT needs a separate Godot-SDK-free server `.csproj` sharing the pure-sim
+    source. FR-39/40 are satisfied by the existing headless JIT server; NativeAOT is a hosting-cost
+    optimization with no player-facing 1.0 requirement. Keep D3's AOT-analyzer CI gate + Godot-free discipline
+    now; defer the `RelayCore`/`ITransport` extraction + `PublishAot` build to late-M5/post-1.0 (extracting now
+    is speculative work touching the FR-39-validated relay). *(SD-11.)*
+12. **Replay v2 for N players:** bump `ReplayRecorder.VERSION`→2 (`:25`); header carries player roster +
+    active faction count + `rulesetHash` (`:106-114`); **tagged record body** (orderKind discriminator) so unit
+    orders + D2 `DslEventCommand`s share one self-describing envelope **mirroring the SD-1 merged packet**.
+    **Co-design with D2 before freezing the wire format.** *(SD-12 — converges with D2-D9s / D3.9.)*
+13. **Tick-0 start-state agreement:** authoritative initial delay in the `StartGame` packet (server-dictated;
+    generalize `SeedInitialTicks` `LockstepManager.cs:579-590`); compare a single start-state hash
+    {roster + faction count + initial delay + rulesetHash + scenarioHash (+ D4 `startStateHash`)} across all N
+    before any tick — fail-closed. Land the inbound D3 gates the lobby assumes: server-side `PROTOCOL_VERSION`
+    reject (`DedicatedServer.cs:135-137` ignores client Hello) + `rulesetHash` compared at the lobby. *(SD-13.)*
+
+**Prerequisites surfaced:** FR-39 2-player LAN green first (M1 golden baseline); the SD-7 `SimChecksum` fix;
+a multi-peer (N=3,4) desync harness extended with **adversarial inputs** (faction-spoof sub-bundle,
+over-count bundle, merged-from-client, forged `DelayProposal`, forged checksum slot, mid-match drop) asserting
+the server fails closed; **D2 envelope co-design** before freezing the packet/replay body; the inbound D3
+server-side gates; pin the authoritative expected-player-count + initial-delay sources; a float/locale-leak
+audit of every `Faction`→`Player8` site (`ScenarioDirector.cs:168/170`).
+
+**Hand-offs:** → **D4** depends on the server-attestation/`StartGame`-gate + multi-hash Ready built here.
+→ **D2/D3** co-own the tagged tick/replay envelope + `rulesetHash`/`PROTOCOL_VERSION` gates. → **Step 5/6**
+inherit the (deferred) AOT extraction as a post-1.0 engine-structure item.
+
+**Residual risks:** the server-authority inversion is a real net-new build (not a relay tweak); 8-peer
+slowest-peer stalls remain unproven (deliberately deferred); the matchmade-server allocation story is
+unconfirmed (SD-9); freeze-and-continue grief/abuse edges.
+
+---
+
+### D6 — LLM Provider Abstraction ✅ (decided 2026-06-20)
+
+> Full options analysis + 4-lens adversarial verification in **`game-architecture.D6-briefing.md`**. This
+> record is canonical. **Alec's call: key-at-rest = plaintext floor behind an `ISecretStore` seam**
+> (DPAPI/libsecret as drop-in fast-follows).
+
+**Decision — Hand-rolled `ILLMProvider` + adapters (Option A, revised).** A Godot-free `ILLMProvider`
+abstraction with a normalized `GenerateAsync(NormalizedRequest, ct) → NormalizedResult` over three adapters
+(Anthropic Messages lift, Ollama `/api/chat` migration, new OpenRouter OpenAI-compatible `/chat/completions`);
+provider/model/key config moved into the persisted **settings** system; the raw key in a **gitignored
+`user://` file behind a 1-method `ISecretStore` seam**. No NuGet/vendor-SDK dependency (keeps the D3
+AOT-analyzer clean; the abstraction is ~15 lines over the existing raw-`HttpClient` idiom). **Authoring-layer
+only — zero sim coupling** (NFR-4). The decisive coupling: **AI output is validated by the SAME D3
+authoritative gate as hand-authored content, with float→Fixed quantization before the canonical-model hash** —
+the adversarial review proved AI-generated scenarios currently ship a **stale, byte-domain peer-agreement hash
+that silently desyncs MP**.
+
+**Why A, not Microsoft.Extensions.AI/official-SDK or OpenAI-compatible-only.**
+- An **SDK** injects NuGet deps + AOT-analyzer friction into the authoring layer for an abstraction
+  reproducible in a few lines over the existing raw-`HttpClient` + `System.Text.Json` idiom (`LLMService.cs:53,77`).
+- **OpenAI-compatible-only** would force an Anthropic→OpenAI shim and lose Anthropic-native features; thin
+  per-provider adapters are cleaner and testable.
+
+**Settled sub-decisions (load-bearing subset; full 10 in the sidecar):**
+1. **Hand-rolled `ILLMProvider`**, `IChatClient`-shaped in spirit (mechanical later SDK swap), no NuGet v1. *(D6-1.)*
+2. **Blocking v1** (`stream=false`); a streaming overload is left purely additive; **raise `TIMEOUT_MS`**
+   (`LLMService.cs:69`) after measuring a representative Opus-4.8 7-pass map-gen latency. *(D6-2 / D6-9 latency.)*
+3. **Key-at-rest = plaintext floor behind `ISecretStore`** *(Alec's call)* — raw key in a gitignored
+   `user://secrets/llm.key`; DPAPI(Win)/libsecret(Linux) drop in behind the same seam later. Satisfies FR-29
+   (never hardcoded/committed/synced); encryption-at-rest is neither determinism- nor spec-load-bearing. *(D6-3.)*
+4. **Key in a separate `user://` file, never in `settings.json`**; `SettingsData` stores only
+   `AiProvider`/`AiModel`/`AiBaseUrl` + a "key present" flag. Enforced by a **test** asserting the key string
+   appears in no `settings.json`, no `res://` write (`MapGeneratorPanel.cs:246`, `ContentPackager`), no
+   `main.tscn`. *(D6-4.)*
+5. **Selected provider authoritative** (replace the implicit Claude→Ollama auto-fallback
+   `LLMService.cs:118-131`); ship as a discrete commit after the abstraction is smoke-tested; **default the
+   optional "fall back to local if cloud unreachable" toggle ON until the four-state FR-34 UI ships**, then OFF
+   (resolves the D6-5/D6-8 tension without an FR-34 regression for a no-key creator). *(D6-5.)*
+6. **Curated static provider/model lists in data-driven JSON + free-text override.** Claude trio:
+   `claude-opus-4-8` (premium), `claude-sonnet-4-6` (mid default, preserves `LLMService.cs:62`),
+   `claude-haiku-4-5-20251001` (cheap). **The curated entry PINS the provider host.** *(D6-6.)*
+7. **Validation/hash pipeline:** provider returns raw text → StripMarkdown → deserialize with the D3 canonical
+   options/context → **quantize all floats to Fixed** (canonicalize) → single shared validator → compute the
+   **canonical-model hash** (FNV-64 over `Fixed.Raw`) as the peer-comparable artifact. This is **TWO swap
+   points** — the deserialize *target type* (legacy `TriggerDefinition`/`ScenarioData` → D2 `NodeBase` graph
+   IR) AND the validator. **Prefer sequencing after D3**; if interim, gate with a golden-checksum equivalence
+   harness. *(D6-7.)*
+8. **FR-34 = four distinct states** ("no provider selected" / "no key" / "unreachable/failed" / "generated
+   content failed validation"), suite fully manual-usable in all four, + a "Test connection" button. The
+   actionable signal today is the completion-error string (`LLMService.cs:128`), not the dead `_llm==null`
+   branch (the service is constructed unconditionally `MainScene.cs:1858`) — two states are unreachable until
+   the `[Export]` rip-out. *(D6-8.)*
+9. **AI scenarios commit/quantize/hash BEFORE the lockstep Ready packet; a committed scenario is immutable
+   thereafter.** The in-memory `_pendingGeneratedScenario` path (`MainScene.cs:137,466,1959`) must
+   compute/exchange the **canonical-model hash**, not the stale on-disk `ScenarioPath` hash (`:303-304`).
+   Regeneration invalidates + re-sends the hash before Ready. *(D6-9 — closes a verified fail-closed MP
+   correctness hole: today two peers load different AI maps, both keep an identical stale hash, agreement
+   passes, sim desyncs at tick 0.)*
+10. **Provider endpoints/config are untrusted input:** PIN cloud hosts in code via the curated registry; allow
+    a custom base URL only for the explicitly-local Ollama provider, validated loopback/private before any
+    keyed request; validate `AiProvider`/`AiModel`/`AiBaseUrl` on load, fail-closed to "no provider selected"
+    on anything unrecognized; **cap buffered response bytes** before `JsonDocument.Parse` (`LLMService.cs:190,231`
+    read the full body unbounded). Closes a one-click key-exfiltration primitive + an oversized-payload surface.
+    *(D6-10.)*
+
+**Prerequisites surfaced (binding):** move the cross-peer scenario-agreement hash **off raw bytes**
+(`ScenarioSerializer.ComputeFileHash:59-80`, used `MainScene.cs:303-304`) **onto the canonical
+Fixed-quantized model**; a float→Fixed **quantization step** (`Fixed.FromFloat FixedPoint.cs:27` —
+truncating, no NaN/Inf/overflow guard) in the AI ingest contract with finiteness/magnitude clamps on every
+scalar reaching it; the D3 **`Validate(model)` gate at `ApplyScenario`** covering the saved-file round-trip
+(`MapGeneratorPanel.cs:246` → `LoadFromFile`, zero validation today) — **prefer sequencing after D3**; the AI
+prompt schema (`BuildSystemPrompt LLMService.cs:334-408`, `BuildMapSystemPrompt:600-664`) + deserialize target
+(`:264/:507`) are bound to legacy `TriggerDefinition`/`ScenarioData` and must be regenerated against D2's
+`NodeBase` IR (isolate behind one "generation contract" to bound the D2 migration); verify `user://` is
+outside VCS (don't assume) and remove the `[Export] AnthropicApiKey` path (`MainScene.cs:206/1858/1917`).
+
+**Hand-offs:** → **D3** owns the canonical gate + hash + Fixed converter D6 routes AI output through.
+→ **D2** owns the `NodeBase` IR the prompt schema + deserialize target must migrate to. → **M4** (provider
+config + OpenRouter) per the milestone plan; the validation reconciliation lands with/after D3.
+
+**Residual risks:** the "two swap points" mean an interim (pre-D3) AI gate needs a golden-checksum equivalence
+harness or it diverges from the future `ContentLoader`; the latency of a real Opus-4.8 7-pass run vs the
+timeout is unmeasured; the secret-exclusion invariant is only as good as its test.
