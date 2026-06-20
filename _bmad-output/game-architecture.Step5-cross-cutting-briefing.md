@@ -79,9 +79,10 @@ P1/P2-only; `ScenarioDirector` in-tick float/"F2"/TryParse (A17, :168/170/252), 
   Windows PC; the cross-platform comparison runs via the workflow against a Linux env when it matters.
 - **Advisory, not blocking** on `master` — the repo auto-commits hourly (`[AutoSave]`); a hard pre-commit gate
   would fight that loop. Hard enforcement only on a release branch.
-- **Linux env prerequisite (implementation-time):** both Alec's machines are Windows. Recommend **WSL2**
-  (free, non-destructive, no second machine; also hosts the Linux dedicated-server build for dev/testing).
-  Detailed click-by-click setup deferred to M1 (memory: `linux-env-for-crossplatform-check`).
+- **Linux env prerequisite (implementation-time):** **Alec already has WSL/Ubuntu installed** (from his bmad
+  automator) and uses its terminal — no OS setup needed. M1 work is small: install .NET in that Ubuntu + run
+  the check there + diff against Windows. Same WSL also hosts the Linux dedicated-server build for dev/testing.
+  (memory: `linux-env-for-crossplatform-check`).
 - The workflow also checks the D3 version stamps move together (`CurrentGameVersion`/`schema_version`/
   `checksum_algo_version`/`PROTOCOL_VERSION`/`min_game_version`).
 

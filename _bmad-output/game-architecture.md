@@ -1250,12 +1250,11 @@ Greenfield: no CI today; the repo auto-commits to `master` hourly (`[AutoSave]`)
   environment** it can reach.
 - This keeps the hourly `[AutoSave]` loop **unblocked** (gates are advisory, not a hard pre-commit block) while
   still catching the #1 multiplayer risk.
-- **Prerequisite surfaced (implementation-time):** a **Linux environment** for the cross-platform check. Both
-  of Alec's machines are Windows; recommended path is **WSL2** (Linux inside Windows — free, non-destructive,
-  no second machine), which **doubles as the host for the Linux dedicated-server build** in dev/testing.
-  Alternatives: a local VM or a cheap cloud Linux box on the same network. **Detailed step-by-step setup is
-  deferred to M1** — Alec has asked for click-by-click instructions, assuming zero Linux background, when the
-  time comes. *(See memory `linux-env-for-crossplatform-check`.)*
+- **Prerequisite surfaced (implementation-time):** a **Linux environment** for the cross-platform check.
+  **Alec already has WSL/Ubuntu installed** (from his bmad automator on another project) and is comfortable in
+  that terminal, so the OS hurdle is gone — M1 work is small: **install .NET inside the existing Ubuntu WSL**,
+  then run the golden-checksum harness there and diff against the Windows run. The same WSL Ubuntu **doubles as
+  the host for the Linux dedicated-server build**. *(See memory `linux-env-for-crossplatform-check`.)*
 - **Versioning ownership:** the check-workflow also verifies the D3 version stamps move together —
   `CurrentGameVersion` / `schema_version` / `checksum_algo_version` / `PROTOCOL_VERSION` + the
   `min_game_version` auto-stamp.
