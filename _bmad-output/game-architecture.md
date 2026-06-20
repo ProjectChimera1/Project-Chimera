@@ -4,7 +4,7 @@ project: 'Project_Chimera'
 date: '2026-06-20'
 author: 'Alec'
 version: '1.0'
-stepsCompleted: [1, 2, 3, 4]
+stepsCompleted: [1, 2, 3, 4, 5]
 status: 'in-progress'
 
 # Source Documents
@@ -25,14 +25,21 @@ that keep AI agents implementing consistently on the path to 1.0. It is created 
 GDS Architecture Workflow and is informed by, but distinct from, the brownfield
 `architecture.md` (which documents the code **as-built**, deep scan 2026-06-05).
 
-**Steps Completed:** 4 of 9 (Architectural Decisions)
+**Steps Completed:** 5 of 9 (Cross-Cutting Concerns)
 
 **Step 4 COMPLETE (2026-06-20).** All six game-specific decisions are settled: **D1** (effects-primitive
 vocabulary), **D2** (trigger-DSL design), **D3** (data-driven definition schema & loader) — the deep-dive
 trio — plus **D4** (hero persistence), **D5** (>2-player lockstep + matchmaking), **D6** (LLM provider
 abstraction), batched as recommend-and-confirm with Alec's scope calls recorded. See *Architectural
 Decisions (Step 4)* below; full D4–D6 options analyses in the `game-architecture.D{4,5,6}-briefing.md`
-sidecars. **Next:** Step 5 (cross-cutting concerns / testing) then Step 6 (`MainScene` decomposition / structure).
+sidecars.
+
+**Step 5 COMPLETE (2026-06-20).** Cross-cutting concerns recorded — testing/quality architecture is the
+headline (two-tier checks, an AI-orchestrated cross-platform check-runner), plus determinism enforcement,
+observability/desync-diagnosis, error handling, performance, quality gates, accessibility, and the
+completeness additions (config mgmt, UGC safety, migration/replay-compat testing). Alec's calls baked in.
+See *Cross-Cutting Concerns (Step 5)* below + the `game-architecture.Step5-cross-cutting-briefing.md`
+sidecar. **Next:** Step 6 (`MainScene` decomposition / structure).
 
 ---
 
@@ -1153,3 +1160,157 @@ config + OpenRouter) per the milestone plan; the validation reconciliation lands
 **Residual risks:** the "two swap points" mean an interim (pre-D3) AI gate needs a golden-checksum equivalence
 harness or it diverges from the future `ContentLoader`; the latency of a real Opus-4.8 7-pass run vs the
 timeout is unmeasured; the secret-exclusion invariant is only as good as its test.
+
+---
+
+## Cross-Cutting Concerns (Step 5)
+
+> Step 5 records the concerns that span every system rather than belonging to one. **Testing/quality is the
+> headline** — the repo has zero tests today (the M1 "foundation trust" gate, FR-44/47) and the same
+> infrastructure surfaced as a prerequisite across all of D1–D6. This section consolidates those scattered
+> prerequisites into one regime and fills the gaps. Synthesized 2026-06-20 (the parallel research workflow
+> was interrupted by a usage cap; authored directly from the Step 1–4 grounding + a manual determinism /
+> scope / completeness review). Full per-area depth in **`game-architecture.Step5-cross-cutting-briefing.md`**.
+> **Alec's confirmed calls are tagged ✅ inline.** `stepsCompleted` → `[1,2,3,4,5]`.
+
+### The foundation premise
+M1 ("foundation trust") must be GREEN before the D1 strangler can start: there are **zero tests today**, and
+D1 step 1 is literally "stand up the repo's first headless deterministic tests." Everything in D1–D6 is gated
+on a golden-checksum regression harness that does not yet exist. So the testing/determinism/CI architecture
+below is not a side concern — it is the **first thing built**, and the regression guard that makes the entire
+migration program safe.
+
+### 1. Testing architecture (headline) — two-tier ✅
+The simulation is **pure Godot-free C#** (CLAUDE.md mandate, verified — no `using Godot` in
+`src/Core`/`Combat`/`Economy`/`Navigation`). That single fact drives a two-tier strategy:
+- **Tier 1 — a new Godot-free test project** (e.g. `ProjectChimera.Sim.Tests`, plain .NET test runner): the
+  **golden-checksum replay regression harness** (run a fixed scenario N ticks through `SimulationLoop`, record
+  the `SimChecksum` sequence, assert byte-identical on replay — reusing the `ReplayRecorder`/`ReplayPlayer`
+  `.chmr` path), Fixed-math / `SimRng` / ascending-ID determinism tests, the D1/D2/D3 **negative-validation
+  tests** (cycle / unknown-type / cosmetic-touches-sim / malformed-corpus all rejected), the
+  **`SimChecksum`-coverage guard test**, and the D6 secret-exclusion invariant. Runs in seconds, no engine
+  boot. **This same Godot-free project is the shared-source home the deferred D5 AOT dedicated server compiles
+  from** — building it now does double duty.
+- **Tier 2 — GdUnit4 in `godot/tests/`** (honors FR-44) for presentation / Godot-API / integration tests
+  only (editor panels, bridges, input).
+- **Why two-tier, not GdUnit4-only:** GdUnit4 boots the engine for every run; routing the determinism/rules
+  suite through it would make the check loop slow and couldn't be reused for the server. FR-44's literal
+  "GdUnit4 in `godot/tests/`" predates the Godot-free/AOT insight — **recommend updating FR-44's wording** to
+  the two-tier reality (GdUnit4 remains the integration tier).
+
+### 2. Determinism enforcement & cross-platform — mechanical, not hope
+Determinism is the spine (NFR-4) but is enforced only by discipline today and is **already violated in spots**:
+`StressTest.cs` seeds a wall-clock `RandomNumberGenerator().Randomize()`; `SimChecksum.cs:53-54` covers only
+`Ore[Player1/2]`; `ScenarioDirector` runs an in-tick `Fixed→float→"F2"→TryParse` path (A17, :168/170/252) and
+uses an unstable `Array.Sort` (:192) + `Dictionary` enumeration (:149).
+- **Static guard:** a banned-API analyzer fails the build if sim-layer code uses `using Godot`, `float`
+  gameplay math, `System.Random`/Godot RNG, wall-clock, or nondeterministic enumeration (composes with D3's
+  AOT analyzer over the same source).
+- **Cross-platform gate ✅:** Windows clients and the **Linux** dedicated server must produce **byte-identical**
+  Fixed checksums. The golden-checksum harness runs on **both Windows and Linux** and the two checksum
+  sequences are diffed — the only real proof Fixed-point holds and no float/culture leaked. *(How it runs: §6.)*
+- Generalized `SimChecksum` (all active factions + Crystal/Supply + new D1/D2/D4 SoA stores) + the guard test;
+  `InvariantCulture` pinned process-wide (D3). Consolidates every D1–D6 determinism prerequisite.
+
+### 3. Observability & desync diagnosis
+FR-39 requires N-player desync to be diagnosable; today there is only `GD.Print` + an opaque relay.
+- A **deterministic-safe logging seam** (sim logs through an interface, never `GD.Print`, nothing that affects
+  state/order; works in the Godot-free test/server project).
+- **Desync bisection** on D5's server-side checksum collector + majority-vote `DesyncAlert`: add **per-system
+  sub-checksums** so a divergence narrows to a system/tick, and **replay-diff** between two peers' `.chmr`
+  recordings to find the first diverging tick.
+- The `.chmr` replay is the primary **record-and-reproduce** artifact (also the opt-in crash/desync report
+  payload, §Telemetry).
+
+### 4. Error handling — two worlds, one policy
+- **Sim = deterministic, fail-closed, never-throw-mid-tick:** impossible states fail identically on all peers
+  (Spawn fails closed at the 4096 cap per D1; a confirmed desync HALTs the match per D5). No exception escapes
+  a tick.
+- **Authoring/presentation = catch-and-degrade-gracefully:** D3's fail-closed `Validate(model)` gate rejects
+  malformed/tampered content before tick 0 with **located** errors; FR-34's four-state AI degradation keeps the
+  suite manual-usable; UGC/content-load failures surface a clear message, never a crash.
+
+### 5. Performance & profiling
+NFR-5/FR-46: 500–2000 units @ 60 FPS render / 30 Hz sim on representative shipped **and community** scenarios;
+the 4096 cap stays an explicit counter-metric.
+- Evolve `StressTest.cs` (a non-deterministic Godot demo) into a repeatable benchmark.
+- **CI-gateable:** headless **sim throughput** (Godot-free, OS-portable) + **zero-allocation-in-tick asserts**
+  (`GC.GetAllocatedBytesForCurrentThread`, enforcing D1's no-GC-in-tick). **Not CI-gateable:** render FPS —
+  stays a periodic in-engine measurement via `godot_profiler`.
+- Representative **community-scenario fixtures** (a 2000-unit TD stresses differently than 500 brawlers).
+
+### 6. Quality gates & the check-runner ✅
+Greenfield: no CI today; the repo auto-commits to `master` hourly (`[AutoSave]`).
+- **The checks get built in M1** (the §1 Tier-1 + Tier-2 suites, the golden-checksum harness, the analyzers).
+- **The runner is an AI-orchestrated workflow** ✅ *(Alec's call)* — not an always-on cloud service: triggered
+  or scheduled, it runs the checks, the saved-battle replays, and the **Windows-vs-Linux comparison**, and
+  reports/diagnoses failures.
+- **Day-to-day:** the fast Tier-1 rule-checks run locally on the Windows PC in seconds. **When it matters**
+  (before a release, or on a schedule): the AI workflow runs the cross-platform comparison using a **Linux
+  environment** it can reach.
+- This keeps the hourly `[AutoSave]` loop **unblocked** (gates are advisory, not a hard pre-commit block) while
+  still catching the #1 multiplayer risk.
+- **Prerequisite surfaced (implementation-time):** a **Linux environment** for the cross-platform check. Both
+  of Alec's machines are Windows; recommended path is **WSL2** (Linux inside Windows — free, non-destructive,
+  no second machine), which **doubles as the host for the Linux dedicated-server build** in dev/testing.
+  Alternatives: a local VM or a cheap cloud Linux box on the same network. **Detailed step-by-step setup is
+  deferred to M1** — Alec has asked for click-by-click instructions, assuming zero Linux background, when the
+  time comes. *(See memory `linux-env-for-crossplatform-check`.)*
+- **Versioning ownership:** the check-workflow also verifies the D3 version stamps move together —
+  `CurrentGameVersion` / `schema_version` / `checksum_algo_version` / `PROTOCOL_VERSION` + the
+  `min_game_version` auto-stamp.
+
+### 7. Accessibility baseline ✅ + languages ✅
+PRD §4.11 / decision-log #17 baseline: **input remap** (already clean — Input→command-intents is pure
+presentation), **colorblind-safe** faction palette + mode (the current blue/red is a classic confusion pair),
+**UI scale** (Theme / content-scale), **subtitles** for built-in audio — all in `SettingsData` /
+`SettingsManager` / `SettingsPanel`, designed with the UX pass.
+- **Languages ✅ *(Alec's call)*:** English-first for 1.0 with a **translatable seam for the game's own UI**
+  (menus translatable later without a rebuild); **player-made (UGC) content is NOT translated in 1.0**.
+
+### 8. Concerns the completeness pass adds
+- **Configuration/settings management:** `SettingsData` is growing (AI provider/model + "key present" flag from
+  D6; accessibility from §7) — give it the **same schema-versioning discipline as content** (a settings
+  `schema_version` + migration), or an old settings file breaks a new build.
+- **UGC / content safety:** the safety boundary is **structural, not a scanner** — D1/D2's no-escape-hatch (no
+  code in content) + D3's fail-closed validation gate **is** the sandbox; mod.io downloads are gated by content
+  hashing. No creator content ever executes as code.
+- **Migration & replay-compat testing:** D3's migration registry needs **round-trip tests** (vN→vN+1 preserves
+  meaning) and the replay format needs **v1→v2 reject** + cross-version tests (D5-SD-12 / D3.9).
+- **Dependency hygiene:** the sole shipped NuGet dep stays `NakamaClient`; test-only dependencies live **only in
+  the Godot-free test project** (never the Godot build), keeping the sim AOT-eligible.
+
+### Telemetry ✅
+**No analytics in 1.0** *(Alec's call)*. Dev-only diagnostics (logs, replay capture) + an **opt-in
+crash/desync report** the player chooses to send (the `.chmr` replay + checksum log). Fits the premium,
+no-live-service model.
+
+### M1 foundation build sequence (build in this order — the D1 strangler depends on it)
+1. The Godot-free **test project** + the **golden-checksum replay harness** (D1 step 1).
+2. **Generalize `SimChecksum`** (all factions + Crystal/Supply) + the **coverage guard test** (D4-D / D5-SD-7).
+3. The **determinism banned-API analyzer** (+ fold in D3's AOT analyzer).
+4. The **AI check-workflow runner** + the **Windows↔Linux cross-platform comparison** (needs the Linux env —
+   WSL2, deferred-setup).
+5. **Negative-validation tests** (D1/D2/D3) + the perf benchmark + zero-alloc asserts.
+*(Then the D1 → D2 → D3 strangler steps proceed, each gated by this harness.)*
+
+### Consolidated prerequisites (this step now owns)
+Golden-checksum harness · generalized `SimChecksum` + guard · `SimRng` checksummed · banned-API + AOT analyzers ·
+cross-platform determinism comparison (Linux env) · negative/validation test corpus · multi-peer (N=3,4)
+adversarial desync harness (D5) · canonical-hash determinism tests (D3.1) · zero-alloc-in-tick asserts ·
+migration round-trip + replay-compat tests · secret-exclusion test · A17 + unstable-sort/dict-enum fixes gated
+by negative tests.
+
+### Hand-offs
+→ **M1 implementation** builds this foundation first (the later gds-test-framework / gds-test-automate /
+gds-performance-test skills implement what this section architects). → **Step 6** (`MainScene` decomposition)
+inherits the test seams (the 2,200-LOC composition root must become testable as it is split). → The **deferred
+D5 AOT server** shares the Godot-free test project's source.
+
+### Residual risks / watch-items
+- The cross-platform comparison is only as good as having a real Linux environment wired into the runner; until
+  then "Win/Linux identical" is asserted, not proven (and FR-39 is the #1 ship risk).
+- An AI-orchestrated runner is non-standard; it must be **reliable/unattended enough** to actually run before
+  releases (a check that's skipped is no check) — budget a minimal scheduled trigger.
+- Zero-alloc-in-tick asserts are brittle to refactors — treat a regression as a real finding, not noise.
+- Accessibility is a *baseline*, not full WCAG — stated plainly.

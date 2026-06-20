@@ -25,8 +25,13 @@ deferred), **D6** LLM provider abstraction (hand-rolled `ILLMProvider`; plaintex
 the batch surfaced one shared latent MP-correctness bug — unsound peer-agreement hashing in three places
 (`SimChecksum` P1/P2-only; dedicated server is a pure relay with no hash compare; AI scenarios ship a stale
 file-hash) — remediated by a canonical-model start-state hash + server-enforced agreement + generalized
-`SimChecksum` (a single prerequisite program). **Resume at Step 5** (cross-cutting concerns / testing
-architecture) → **Step 6** (`MainScene` decomposition / structure). Remaining chain after architecture:
+`SimChecksum` (a single prerequisite program). **Step 5 (Cross-Cutting Concerns) COMPLETE (2026-06-20)** —
+testing/quality is the headline: **two-tier checks** (fast Godot-free rule checks + GdUnit4 in-game) and an
+**AI-orchestrated check-runner** with a Windows↔Linux cross-platform comparison (needs a Linux env — WSL2,
+setup deferred to M1), plus determinism enforcement, observability/desync-diagnosis, error handling,
+performance, accessibility (English-first), and telemetry (dev-only + opt-in crash report). See *Cross-Cutting
+Concerns (Step 5)* in `game-architecture.md` + the `game-architecture.Step5-cross-cutting-briefing.md` sidecar.
+**Resume at Step 6** (`MainScene` decomposition / structure). Remaining chain after architecture:
 epics/stories → re-run `gds-check-implementation-readiness` → `gds-sprint-planning`.
 
 ## Needs Testing — Written This Session
