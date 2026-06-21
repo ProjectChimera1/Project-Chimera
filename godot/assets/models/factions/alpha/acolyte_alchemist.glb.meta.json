@@ -1,0 +1,8 @@
+{
+  "content_hash": "adb7900a9548427a",
+  "asset": "alpha/worker",
+  "mesh_file": "acolyte_alchemist.glb",
+  "tris": 5995,
+  "warns": [],
+  "pipeline": "v1-remesh240-6k"
+}

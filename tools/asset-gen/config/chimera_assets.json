@@ -1,0 +1,374 @@
+{
+  "project_root": "D:/Projects/Project_Chimera",
+  "comfy_root": "C:\\Vid-Pic Gen Dump from C Drive\\AI Video Generation\\ComfyUI_windows_portable_nvidia\\ComfyUI_windows_portable\\ComfyUI",
+  "tri_target": {
+    "unit": 6000,
+    "building": 10000
+  },
+  "concept_steps": 30,
+  "concept_cfg": 7.0,
+  "hunyuan_seed_base": 42,
+  "max_rerolls": 4,
+  "assets": [
+    {
+      "id": "worker",
+      "faction": "alpha",
+      "prefix": "unit",
+      "tri_kind": "unit",
+      "mesh_file": "acolyte_alchemist.glb",
+      "mesh_scale": 0.95,
+      "dest": "godot/assets/models/factions/alpha/acolyte_alchemist.glb",
+      "concept_size": [
+        832,
+        1216
+      ],
+      "prompt": "clean low-poly RTS unit, flat-shaded single-material albedo (engine applies a global cel-shade, do not add PBR/specular/roughness/normal-map detail), readable silhouette for a distant top-down camera, early-20th-century industrial/European-military FMA-inspired alchemy world, neutral relaxed idle pose facing +Z (A-pose, arms slightly away from the body, NOT a rigid T-pose), plain white background, origin centered at the feet/base on the +Z axis. FACTION PALETTE: slate-blue greatcoats and leather, matte brass-colored automail accents (used sparingly), chalk-white transmutation sigils that flare cyan-white; flat color blocks, no implied metal gloss. SUBJECT: a slight young acolyte in a knee-length slate-blue work coat with rolled sleeves, one simple brass automail forearm, chalk satchel and a small pick at the hip; compact unarmed silhouette clearly the smallest humanoid; a faint chalk-white circle glows on the open palm. (single full-body character, ONE subject only, isolated and centered on a plain seamless white background, full figure from head to feet, straight-on front view).",
+      "negative": "high-poly, photorealistic, PBR, specular highlights, glossy or metallic reflections, normal-map or rivet/crack micro-detail, baked shadows, ground plane, base or pedestal, scenery, multiple characters, cropped or missing limbs, text, watermark, logo, signature, busy background, motion blur, depth of field, dramatic cinematic lighting, off-center framing, action or dynamic pose, character sheet, reference sheet, model sheet, turnaround, multiple views, multiple poses, item studies, equipment studies, weapon studies, panels, insets, grid layout, collage, design sheet, props, duplicate"
+    },
+    {
+      "id": "infantry",
+      "faction": "alpha",
+      "prefix": "unit",
+      "tri_kind": "unit",
+      "mesh_file": "covenant_transmuter.glb",
+      "mesh_scale": 1.0,
+      "dest": "godot/assets/models/factions/alpha/covenant_transmuter.glb",
+      "concept_size": [
+        832,
+        1216
+      ],
+      "prompt": "clean low-poly RTS unit, flat-shaded single-material albedo (engine applies a global cel-shade, do not add PBR/specular/roughness/normal-map detail), readable silhouette for a distant top-down camera, early-20th-century industrial/European-military FMA-inspired alchemy world, neutral relaxed idle pose facing +Z (A-pose, arms slightly away from the body, NOT a rigid T-pose), plain white background, origin centered at the feet/base on the +Z axis. FACTION PALETTE: slate-blue greatcoats and leather, matte brass-colored automail accents (used sparingly), chalk-white transmutation sigils that flare cyan-white; flat color blocks, no implied metal gloss. SUBJECT: a standing soldier in a belted slate-blue greatcoat over a leather cuirass, etched chalk bracers, a short straight sword at the hip, hands meeting over a small glowing chalk-white circle; bulk the shoulders and pauldrons so this is the widest of the Covenant humanoids; baseline soldier read. (single full-body character, ONE subject only, isolated and centered on a plain seamless white background, full figure from head to feet, straight-on front view).",
+      "negative": "high-poly, photorealistic, PBR, specular highlights, glossy or metallic reflections, normal-map or rivet/crack micro-detail, baked shadows, ground plane, base or pedestal, scenery, multiple characters, cropped or missing limbs, text, watermark, logo, signature, busy background, motion blur, depth of field, dramatic cinematic lighting, off-center framing, action or dynamic pose, character sheet, reference sheet, model sheet, turnaround, multiple views, multiple poses, item studies, equipment studies, weapon studies, panels, insets, grid layout, collage, design sheet, props, duplicate"
+    },
+    {
+      "id": "scout",
+      "faction": "alpha",
+      "prefix": "unit",
+      "tri_kind": "unit",
+      "mesh_file": "quicksilver_runner.glb",
+      "mesh_scale": 0.9,
+      "dest": "godot/assets/models/factions/alpha/quicksilver_runner.glb",
+      "concept_size": [
+        832,
+        1216
+      ],
+      "prompt": "clean low-poly RTS unit, flat-shaded single-material albedo (engine applies a global cel-shade, do not add PBR/specular/roughness/normal-map detail), readable silhouette for a distant top-down camera, early-20th-century industrial/European-military FMA-inspired alchemy world, neutral relaxed idle pose facing +Z (A-pose, arms slightly away from the body, NOT a rigid T-pose), plain white background, origin centered at the feet/base on the +Z axis. FACTION PALETTE: slate-blue greatcoats and leather, matte brass-colored automail accents (used sparingly), chalk-white transmutation sigils that flare cyan-white; flat color blocks, no implied metal gloss. SUBJECT: a lean runner in a cropped slate-blue jacket and tight leggings, a long scarf swept hard to one side and a light dagger; low crouched stance with no shoulder bulk so the outline is a thin dart shape; chalk-white speed-streak sigils glow along the boots. (single full-body character, ONE subject only, isolated and centered on a plain seamless white background, full figure from head to feet, straight-on front view).",
+      "negative": "high-poly, photorealistic, PBR, specular highlights, glossy or metallic reflections, normal-map or rivet/crack micro-detail, baked shadows, ground plane, base or pedestal, scenery, multiple characters, cropped or missing limbs, text, watermark, logo, signature, busy background, motion blur, depth of field, dramatic cinematic lighting, off-center framing, action or dynamic pose, character sheet, reference sheet, model sheet, turnaround, multiple views, multiple poses, item studies, equipment studies, weapon studies, panels, insets, grid layout, collage, design sheet, props, duplicate"
+    },
+    {
+      "id": "heavy_infantry",
+      "faction": "alpha",
+      "prefix": "unit",
+      "tri_kind": "unit",
+      "mesh_file": "bulwark_adept.glb",
+      "mesh_scale": 1.2,
+      "dest": "godot/assets/models/factions/alpha/bulwark_adept.glb",
+      "concept_size": [
+        832,
+        1216
+      ],
+      "prompt": "clean low-poly RTS unit, flat-shaded single-material albedo (engine applies a global cel-shade, do not add PBR/specular/roughness/normal-map detail), readable silhouette for a distant top-down camera, early-20th-century industrial/European-military FMA-inspired alchemy world, neutral relaxed idle pose facing +Z (A-pose, arms slightly away from the body, NOT a rigid T-pose), plain white background, origin centered at the feet/base on the +Z axis. FACTION PALETTE: slate-blue greatcoats and leather, matte brass-colored automail accents (used sparingly), chalk-white transmutation sigils that flare cyan-white; flat color blocks, no implied metal gloss. SUBJECT: a broad heavily-built soldier in matte brass-and-iron plate over a slate-blue underlayer, large slab pauldron, heavy two-handed maul held head-down; bulky wide top-heavy silhouette, clearly the tankiest human; one chalk-white circle glowing at a shoulder seam. (single full-body character, ONE subject only, isolated and centered on a plain seamless white background, full figure from head to feet, straight-on front view).",
+      "negative": "high-poly, photorealistic, PBR, specular highlights, glossy or metallic reflections, normal-map or rivet/crack micro-detail, baked shadows, ground plane, base or pedestal, scenery, multiple characters, cropped or missing limbs, text, watermark, logo, signature, busy background, motion blur, depth of field, dramatic cinematic lighting, off-center framing, action or dynamic pose, character sheet, reference sheet, model sheet, turnaround, multiple views, multiple poses, item studies, equipment studies, weapon studies, panels, insets, grid layout, collage, design sheet, props, duplicate"
+    },
+    {
+      "id": "archer",
+      "faction": "alpha",
+      "prefix": "unit",
+      "tri_kind": "unit",
+      "mesh_file": "pierce_marksman.glb",
+      "mesh_scale": 0.95,
+      "dest": "godot/assets/models/factions/alpha/pierce_marksman.glb",
+      "concept_size": [
+        832,
+        1216
+      ],
+      "prompt": "clean low-poly RTS unit, flat-shaded single-material albedo (engine applies a global cel-shade, do not add PBR/specular/roughness/normal-map detail), readable silhouette for a distant top-down camera, early-20th-century industrial/European-military FMA-inspired alchemy world, neutral relaxed idle pose facing +Z (A-pose, arms slightly away from the body, NOT a rigid T-pose), plain white background, origin centered at the feet/base on the +Z axis. FACTION PALETTE: slate-blue greatcoats and leather, matte brass-colored automail accents (used sparingly), chalk-white transmutation sigils that flare cyan-white; flat color blocks, no implied metal gloss. SUBJECT: a poised marksman in a long slate-blue duster and leather bandolier, peaked cap and goggles, a long brass-fitted bolt-action rifle held horizontally across the body; tall slim vertical figure that reads as ranged; chalk-white sigil glows at the rifle breech. (single full-body character, ONE subject only, isolated and centered on a plain seamless white background, full figure from head to feet, straight-on front view).",
+      "negative": "high-poly, photorealistic, PBR, specular highlights, glossy or metallic reflections, normal-map or rivet/crack micro-detail, baked shadows, ground plane, base or pedestal, scenery, multiple characters, cropped or missing limbs, text, watermark, logo, signature, busy background, motion blur, depth of field, dramatic cinematic lighting, off-center framing, action or dynamic pose, character sheet, reference sheet, model sheet, turnaround, multiple views, multiple poses, item studies, equipment studies, weapon studies, panels, insets, grid layout, collage, design sheet, props, duplicate"
+    },
+    {
+      "id": "mage",
+      "faction": "alpha",
+      "prefix": "unit",
+      "tri_kind": "unit",
+      "mesh_file": "circle_savant.glb",
+      "mesh_scale": 1.0,
+      "dest": "godot/assets/models/factions/alpha/circle_savant.glb",
+      "concept_size": [
+        832,
+        1216
+      ],
+      "prompt": "clean low-poly RTS unit, flat-shaded single-material albedo (engine applies a global cel-shade, do not add PBR/specular/roughness/normal-map detail), readable silhouette for a distant top-down camera, early-20th-century industrial/European-military FMA-inspired alchemy world, neutral relaxed idle pose facing +Z (A-pose, arms slightly away from the body, NOT a rigid T-pose), plain white background, origin centered at the feet/base on the +Z axis. FACTION PALETTE: slate-blue greatcoats and leather, matte brass-colored automail accents (used sparingly), chalk-white transmutation sigils that flare cyan-white; flat color blocks, no implied metal gloss. SUBJECT: a robed scholar in a flowing hooded slate-blue coat with wide split sleeves, no automail, a large glowing chalk-white transmutation circle held symmetrically between two outstretched hands; distinctive floating-circle silhouette and trailing hem; thin and unarmored. (single full-body character, ONE subject only, isolated and centered on a plain seamless white background, full figure from head to feet, straight-on front view).",
+      "negative": "high-poly, photorealistic, PBR, specular highlights, glossy or metallic reflections, normal-map or rivet/crack micro-detail, baked shadows, ground plane, base or pedestal, scenery, multiple characters, cropped or missing limbs, text, watermark, logo, signature, busy background, motion blur, depth of field, dramatic cinematic lighting, off-center framing, action or dynamic pose, character sheet, reference sheet, model sheet, turnaround, multiple views, multiple poses, item studies, equipment studies, weapon studies, panels, insets, grid layout, collage, design sheet, props, duplicate"
+    },
+    {
+      "id": "siege_engine",
+      "faction": "alpha",
+      "prefix": "vehicle",
+      "tri_kind": "unit",
+      "mesh_file": "crucible_mortar.glb",
+      "mesh_scale": 1.8,
+      "dest": "godot/assets/models/factions/alpha/crucible_mortar.glb",
+      "concept_size": [
+        1024,
+        1024
+      ],
+      "prompt": "clean low-poly RTS unit, flat-shaded single-material albedo (engine applies a global cel-shade, do not add PBR/specular/roughness/normal-map detail), readable silhouette for a distant top-down camera, early-20th-century industrial/European-military FMA-inspired alchemy world, static neutral orientation, barrel/front facing +Z (no biped pose), plain white background, origin centered at the feet/base on the +Z axis. FACTION PALETTE: slate-blue greatcoats and leather, matte brass-colored automail accents (used sparingly), chalk-white transmutation sigils that flare cyan-white; flat color blocks, no implied metal gloss. SUBJECT: a two-wheeled brass-and-iron mortar carriage with a stubby upward-angled barrel feeding from a glowing crucible furnace at the rear, slate-blue plating, hand-crank; low wide wheeled machine silhouette, clearly mechanical and much bigger than infantry; chalk-white sigils ring the barrel mouth. (single full-body character, ONE subject only, isolated and centered on a plain seamless white background, full figure from head to feet, straight-on front view).",
+      "negative": "high-poly, photorealistic, PBR, specular highlights, glossy or metallic reflections, normal-map or rivet/crack micro-detail, baked shadows, ground plane, base or pedestal, scenery, multiple characters, cropped or missing limbs, text, watermark, logo, signature, busy background, motion blur, depth of field, dramatic cinematic lighting, off-center framing, action or dynamic pose, character sheet, reference sheet, model sheet, turnaround, multiple views, multiple poses, item studies, equipment studies, weapon studies, panels, insets, grid layout, collage, design sheet, props, duplicate"
+    },
+    {
+      "id": "griffin",
+      "faction": "alpha",
+      "prefix": "air",
+      "tri_kind": "unit",
+      "mesh_file": "greycrest_bonded.glb",
+      "mesh_scale": 1.4,
+      "dest": "godot/assets/models/factions/alpha/greycrest_bonded.glb",
+      "concept_size": [
+        832,
+        1216
+      ],
+      "prompt": "clean low-poly RTS unit, flat-shaded single-material albedo (engine applies a global cel-shade, do not add PBR/specular/roughness/normal-map detail), readable silhouette for a distant top-down camera, early-20th-century industrial/European-military FMA-inspired alchemy world, neutral relaxed idle pose facing +Z (A-pose, arms slightly away from the body, NOT a rigid T-pose), plain white background, origin centered under the body as if hovering low, no ground contact. FACTION PALETTE: slate-blue greatcoats and leather, matte brass-colored automail accents (used sparingly), chalk-white transmutation sigils that flare cyan-white; flat color blocks, no implied metal gloss. SUBJECT: a noble eagle-lion chimera with broad smooth rounded feathered wings, a lion's hindquarters, one brass automail foreleg-talon, a slim slate-blue saddle-harness with a chalk-white brand on the shoulder; instantly-readable rounded winged silhouette; alert and loyal, not monstrous. (single full-body character, ONE subject only, isolated and centered on a plain seamless white background, full figure from head to feet, straight-on front view).",
+      "negative": "high-poly, photorealistic, PBR, specular highlights, glossy or metallic reflections, normal-map or rivet/crack micro-detail, baked shadows, ground plane, base or pedestal, scenery, multiple characters, cropped or missing limbs, text, watermark, logo, signature, busy background, motion blur, depth of field, dramatic cinematic lighting, off-center framing, action or dynamic pose, character sheet, reference sheet, model sheet, turnaround, multiple views, multiple poses, item studies, equipment studies, weapon studies, panels, insets, grid layout, collage, design sheet, props, duplicate"
+    },
+    {
+      "id": "command_center",
+      "faction": "alpha",
+      "prefix": "structure",
+      "tri_kind": "building",
+      "mesh_file": "covenant_sanctum.glb",
+      "mesh_scale": 3.0,
+      "dest": "godot/assets/models/factions/alpha/covenant_sanctum.glb",
+      "concept_size": [
+        1024,
+        1024
+      ],
+      "prompt": "clean low-poly RTS structure, flat-shaded single-material albedo (engine applies a global cel-shade, do not add PBR/specular/roughness/normal-map detail), readable silhouette for a distant top-down camera, early-20th-century industrial/European-military FMA-inspired alchemy world, sitting squarely on the ground plane facing +Z, plain white background, origin centered at the base footprint. FACTION PALETTE: slate-blue greatcoats and leather, matte brass-colored automail accents (used sparingly), chalk-white transmutation sigils that flare cyan-white; flat color blocks, no implied metal gloss. SUBJECT: a stout fortified chapel-workshop of slate-blue stone, steep slate roof, tall central clocktower-spire, brass-pipe chimneys, telegraph wires, a huge glowing chalk-white transmutation circle inlaid in the courtyard; clearly the largest friendly structure, civic and protective. (single isolated structure, ONE building only, centered on a plain seamless white background, full structure in frame, straight-on view).",
+      "negative": "high-poly, photorealistic, PBR, specular highlights, glossy or metallic reflections, normal-map or rivet/crack micro-detail, baked shadows, ground plane, base or pedestal, scenery, multiple characters, cropped or missing limbs, text, watermark, logo, signature, busy background, motion blur, depth of field, dramatic cinematic lighting, off-center framing, action or dynamic pose, character sheet, reference sheet, model sheet, turnaround, multiple views, multiple poses, item studies, equipment studies, weapon studies, panels, insets, grid layout, collage, design sheet, props, duplicate"
+    },
+    {
+      "id": "barracks",
+      "faction": "alpha",
+      "prefix": "structure",
+      "tri_kind": "building",
+      "mesh_file": "crucible_hall.glb",
+      "mesh_scale": 2.5,
+      "dest": "godot/assets/models/factions/alpha/crucible_hall.glb",
+      "concept_size": [
+        1024,
+        1024
+      ],
+      "prompt": "clean low-poly RTS structure, flat-shaded single-material albedo (engine applies a global cel-shade, do not add PBR/specular/roughness/normal-map detail), readable silhouette for a distant top-down camera, early-20th-century industrial/European-military FMA-inspired alchemy world, sitting squarely on the ground plane facing +Z, plain white background, origin centered at the base footprint. FACTION PALETTE: slate-blue greatcoats and leather, matte brass-colored automail accents (used sparingly), chalk-white transmutation sigils that flare cyan-white; flat color blocks, no implied metal gloss. SUBJECT: a long low slate-blue barracks hall with an arched drilling-yard entrance, a banner of crossed chalk and sword, training dummies, a chalk-white circle glowing above the doorway; squat rectangular military silhouette. (single isolated structure, ONE building only, centered on a plain seamless white background, full structure in frame, straight-on view).",
+      "negative": "high-poly, photorealistic, PBR, specular highlights, glossy or metallic reflections, normal-map or rivet/crack micro-detail, baked shadows, ground plane, base or pedestal, scenery, multiple characters, cropped or missing limbs, text, watermark, logo, signature, busy background, motion blur, depth of field, dramatic cinematic lighting, off-center framing, action or dynamic pose, character sheet, reference sheet, model sheet, turnaround, multiple views, multiple poses, item studies, equipment studies, weapon studies, panels, insets, grid layout, collage, design sheet, props, duplicate"
+    },
+    {
+      "id": "archery_range",
+      "faction": "alpha",
+      "prefix": "structure",
+      "tri_kind": "building",
+      "mesh_file": "sigil_foundry.glb",
+      "mesh_scale": 2.5,
+      "dest": "godot/assets/models/factions/alpha/sigil_foundry.glb",
+      "concept_size": [
+        1024,
+        1024
+      ],
+      "prompt": "clean low-poly RTS structure, flat-shaded single-material albedo (engine applies a global cel-shade, do not add PBR/specular/roughness/normal-map detail), readable silhouette for a distant top-down camera, early-20th-century industrial/European-military FMA-inspired alchemy world, sitting squarely on the ground plane facing +Z, plain white background, origin centered at the base footprint. FACTION PALETTE: slate-blue greatcoats and leather, matte brass-colored automail accents (used sparingly), chalk-white transmutation sigils that flare cyan-white; flat color blocks, no implied metal gloss. SUBJECT: an open-fronted slate-blue range with a tall slatted firing canopy, hanging brass lanterns, stacked target butts down one side, a chalk-white aiming sigil on the back wall; horizontal open-air silhouette with a distinctive overhanging roof. (single isolated structure, ONE building only, centered on a plain seamless white background, full structure in frame, straight-on view).",
+      "negative": "high-poly, photorealistic, PBR, specular highlights, glossy or metallic reflections, normal-map or rivet/crack micro-detail, baked shadows, ground plane, base or pedestal, scenery, multiple characters, cropped or missing limbs, text, watermark, logo, signature, busy background, motion blur, depth of field, dramatic cinematic lighting, off-center framing, action or dynamic pose, character sheet, reference sheet, model sheet, turnaround, multiple views, multiple poses, item studies, equipment studies, weapon studies, panels, insets, grid layout, collage, design sheet, props, duplicate"
+    },
+    {
+      "id": "siege_workshop",
+      "faction": "alpha",
+      "prefix": "structure",
+      "tri_kind": "building",
+      "mesh_file": "transmutation_forge.glb",
+      "mesh_scale": 2.8,
+      "dest": "godot/assets/models/factions/alpha/transmutation_forge.glb",
+      "concept_size": [
+        1024,
+        1024
+      ],
+      "prompt": "clean low-poly RTS structure, flat-shaded single-material albedo (engine applies a global cel-shade, do not add PBR/specular/roughness/normal-map detail), readable silhouette for a distant top-down camera, early-20th-century industrial/European-military FMA-inspired alchemy world, sitting squarely on the ground plane facing +Z, plain white background, origin centered at the base footprint. FACTION PALETTE: slate-blue greatcoats and leather, matte brass-colored automail accents (used sparingly), chalk-white transmutation sigils that flare cyan-white; flat color blocks, no implied metal gloss. SUBJECT: a heavy industrial forge-hall of slate-blue brick with a tall brick smokestack, a large arched vehicle bay with a half-built mortar inside, glowing orange crucible light spilling out, brass gauges; bulky workshop silhouette with the tall chimney as its read-at-distance marker. (single isolated structure, ONE building only, centered on a plain seamless white background, full structure in frame, straight-on view).",
+      "negative": "high-poly, photorealistic, PBR, specular highlights, glossy or metallic reflections, normal-map or rivet/crack micro-detail, baked shadows, ground plane, base or pedestal, scenery, multiple characters, cropped or missing limbs, text, watermark, logo, signature, busy background, motion blur, depth of field, dramatic cinematic lighting, off-center framing, action or dynamic pose, character sheet, reference sheet, model sheet, turnaround, multiple views, multiple poses, item studies, equipment studies, weapon studies, panels, insets, grid layout, collage, design sheet, props, duplicate"
+    },
+    {
+      "id": "forgehand",
+      "faction": "beta",
+      "prefix": "unit",
+      "tri_kind": "unit",
+      "mesh_file": "cinderhand_thrall.glb",
+      "mesh_scale": 1.0,
+      "dest": "godot/assets/models/factions/beta/cinderhand_thrall.glb",
+      "concept_size": [
+        832,
+        1216
+      ],
+      "prompt": "clean low-poly RTS unit, flat-shaded single-material albedo (engine applies a global cel-shade, do not add PBR/specular/roughness/normal-map detail), readable silhouette for a distant top-down camera, early-20th-century industrial/European-military FMA-inspired alchemy world, neutral relaxed idle pose facing +Z (A-pose, arms slightly away from the body, NOT a rigid T-pose), plain white background, origin centered at the feet/base on the +Z axis. FACTION PALETTE: oxblood-crimson cloth, flat black-iron and brass blocks, faint crimson alchemic Core-glow as emissive accent, gothic-uncanny homunculus mood; flat color blocks, no implied metal gloss. SUBJECT: a stooped hollow-eyed laborer in a soot-stained leather apron, one crude brass prosthetic ending in a digging claw, a dim red Core-ember glowing through a chest vent; hunched, the smallest and simplest silhouette so it reads as a non-combatant worker. (single full-body character, ONE subject only, isolated and centered on a plain seamless white background, full figure from head to feet, straight-on front view).",
+      "negative": "high-poly, photorealistic, PBR, specular highlights, glossy or metallic reflections, normal-map or rivet/crack micro-detail, baked shadows, ground plane, base or pedestal, scenery, multiple characters, cropped or missing limbs, text, watermark, logo, signature, busy background, motion blur, depth of field, dramatic cinematic lighting, off-center framing, action or dynamic pose, character sheet, reference sheet, model sheet, turnaround, multiple views, multiple poses, item studies, equipment studies, weapon studies, panels, insets, grid layout, collage, design sheet, props, duplicate"
+    },
+    {
+      "id": "footsoldier",
+      "faction": "beta",
+      "prefix": "unit",
+      "tri_kind": "unit",
+      "mesh_file": "maul_fused_wretch.glb",
+      "mesh_scale": 0.95,
+      "dest": "godot/assets/models/factions/beta/maul_fused_wretch.glb",
+      "concept_size": [
+        832,
+        1216
+      ],
+      "prompt": "clean low-poly RTS unit, flat-shaded single-material albedo (engine applies a global cel-shade, do not add PBR/specular/roughness/normal-map detail), readable silhouette for a distant top-down camera, early-20th-century industrial/European-military FMA-inspired alchemy world, neutral relaxed idle pose facing +Z (A-pose, arms slightly away from the body, NOT a rigid T-pose), plain white background, origin centered at the feet/base on the +Z axis. FACTION PALETTE: oxblood-crimson cloth, flat black-iron and brass blocks, faint crimson alchemic Core-glow as emissive accent, gothic-uncanny homunculus mood; flat color blocks, no implied metal gloss. SUBJECT: a gaunt fused thrall-beast in a tattered oxblood coat, an iron half-mask and one over-grafted brute arm ending in a fused cleaver-maul, faint red Core-light bleeding from coat seams; lean asymmetric humanoid-beast silhouette, rank-and-file, slightly inhuman in outline. (single full-body character, ONE subject only, isolated and centered on a plain seamless white background, full figure from head to feet, straight-on front view).",
+      "negative": "high-poly, photorealistic, PBR, specular highlights, glossy or metallic reflections, normal-map or rivet/crack micro-detail, baked shadows, ground plane, base or pedestal, scenery, multiple characters, cropped or missing limbs, text, watermark, logo, signature, busy background, motion blur, depth of field, dramatic cinematic lighting, off-center framing, action or dynamic pose, character sheet, reference sheet, model sheet, turnaround, multiple views, multiple poses, item studies, equipment studies, weapon studies, panels, insets, grid layout, collage, design sheet, props, duplicate"
+    },
+    {
+      "id": "bulwark",
+      "faction": "beta",
+      "prefix": "unit",
+      "tri_kind": "unit",
+      "mesh_file": "slag_bulwark.glb",
+      "mesh_scale": 1.0,
+      "dest": "godot/assets/models/factions/beta/slag_bulwark.glb",
+      "concept_size": [
+        832,
+        1216
+      ],
+      "prompt": "clean low-poly RTS unit, flat-shaded single-material albedo (engine applies a global cel-shade, do not add PBR/specular/roughness/normal-map detail), readable silhouette for a distant top-down camera, early-20th-century industrial/European-military FMA-inspired alchemy world, neutral relaxed idle pose facing +Z (A-pose, arms slightly away from the body, NOT a rigid T-pose), plain white background, origin centered at the feet/base on the +Z axis. FACTION PALETTE: oxblood-crimson cloth, flat black-iron and brass blocks, faint crimson alchemic Core-glow as emissive accent, gothic-uncanny homunculus mood; flat color blocks, no implied metal gloss. SUBJECT: a broad squat humanoid whose left side is a massive fused slab of dark iron forming a built-in tower shield, the other arm a stubby crushing maul; a single broad glowing crimson seam across the slab; wide low blocky silhouette that reads as a wall on legs. (single full-body character, ONE subject only, isolated and centered on a plain seamless white background, full figure from head to feet, straight-on front view).",
+      "negative": "high-poly, photorealistic, PBR, specular highlights, glossy or metallic reflections, normal-map or rivet/crack micro-detail, baked shadows, ground plane, base or pedestal, scenery, multiple characters, cropped or missing limbs, text, watermark, logo, signature, busy background, motion blur, depth of field, dramatic cinematic lighting, off-center framing, action or dynamic pose, character sheet, reference sheet, model sheet, turnaround, multiple views, multiple poses, item studies, equipment studies, weapon studies, panels, insets, grid layout, collage, design sheet, props, duplicate"
+    },
+    {
+      "id": "ironclad",
+      "faction": "beta",
+      "prefix": "unit",
+      "tri_kind": "unit",
+      "mesh_file": "pride_colossus.glb",
+      "mesh_scale": 1.3,
+      "dest": "godot/assets/models/factions/beta/pride_colossus.glb",
+      "concept_size": [
+        832,
+        1216
+      ],
+      "prompt": "clean low-poly RTS unit, flat-shaded single-material albedo (engine applies a global cel-shade, do not add PBR/specular/roughness/normal-map detail), readable silhouette for a distant top-down camera, early-20th-century industrial/European-military FMA-inspired alchemy world, neutral relaxed idle pose facing +Z (A-pose, arms slightly away from the body, NOT a rigid T-pose), plain white background, origin centered at the feet/base on the +Z axis. FACTION PALETTE: oxblood-crimson cloth, flat black-iron and brass blocks, faint crimson alchemic Core-glow as emissive accent, gothic-uncanny homunculus mood; flat color blocks, no implied metal gloss. SUBJECT: a towering armored homunculus in flat black-iron plate over a crimson tabard, an uncanny too-perfect masked face, a heavy gauntleted fist, regal stance, a bright red Core glowing through a breastplate gap; the largest, most imposing humanoid silhouette, an elite head-and-shoulders above the rest. (single full-body character, ONE subject only, isolated and centered on a plain seamless white background, full figure from head to feet, straight-on front view).",
+      "negative": "high-poly, photorealistic, PBR, specular highlights, glossy or metallic reflections, normal-map or rivet/crack micro-detail, baked shadows, ground plane, base or pedestal, scenery, multiple characters, cropped or missing limbs, text, watermark, logo, signature, busy background, motion blur, depth of field, dramatic cinematic lighting, off-center framing, action or dynamic pose, character sheet, reference sheet, model sheet, turnaround, multiple views, multiple poses, item studies, equipment studies, weapon studies, panels, insets, grid layout, collage, design sheet, props, duplicate"
+    },
+    {
+      "id": "crossbowman",
+      "faction": "beta",
+      "prefix": "unit",
+      "tri_kind": "unit",
+      "mesh_file": "bolt_penitent.glb",
+      "mesh_scale": 0.95,
+      "dest": "godot/assets/models/factions/beta/bolt_penitent.glb",
+      "concept_size": [
+        832,
+        1216
+      ],
+      "prompt": "clean low-poly RTS unit, flat-shaded single-material albedo (engine applies a global cel-shade, do not add PBR/specular/roughness/normal-map detail), readable silhouette for a distant top-down camera, early-20th-century industrial/European-military FMA-inspired alchemy world, neutral relaxed idle pose facing +Z (A-pose, arms slightly away from the body, NOT a rigid T-pose), plain white background, origin centered at the feet/base on the +Z axis. FACTION PALETTE: oxblood-crimson cloth, flat black-iron and brass blocks, faint crimson alchemic Core-glow as emissive accent, gothic-uncanny homunculus mood; flat color blocks, no implied metal gloss. SUBJECT: a hooded thrall whose forearms are bolted into a bulky black-iron repeating crossbow held at the hip, heavy shoulder plates, dim red Core-glow at the throat; distinct wide horizontal weapon silhouette separating it from the bare-handed melee bodies. (single full-body character, ONE subject only, isolated and centered on a plain seamless white background, full figure from head to feet, straight-on front view).",
+      "negative": "high-poly, photorealistic, PBR, specular highlights, glossy or metallic reflections, normal-map or rivet/crack micro-detail, baked shadows, ground plane, base or pedestal, scenery, multiple characters, cropped or missing limbs, text, watermark, logo, signature, busy background, motion blur, depth of field, dramatic cinematic lighting, off-center framing, action or dynamic pose, character sheet, reference sheet, model sheet, turnaround, multiple views, multiple poses, item studies, equipment studies, weapon studies, panels, insets, grid layout, collage, design sheet, props, duplicate"
+    },
+    {
+      "id": "rune_caster",
+      "faction": "beta",
+      "prefix": "unit",
+      "tri_kind": "unit",
+      "mesh_file": "cinder_cantor.glb",
+      "mesh_scale": 1.0,
+      "dest": "godot/assets/models/factions/beta/cinder_cantor.glb",
+      "concept_size": [
+        832,
+        1216
+      ],
+      "prompt": "clean low-poly RTS unit, flat-shaded single-material albedo (engine applies a global cel-shade, do not add PBR/specular/roughness/normal-map detail), readable silhouette for a distant top-down camera, early-20th-century industrial/European-military FMA-inspired alchemy world, neutral relaxed idle pose facing +Z (A-pose, arms slightly away from the body, NOT a rigid T-pose), plain white background, origin centered at the feet/base on the +Z axis. FACTION PALETTE: oxblood-crimson cloth, flat black-iron and brass blocks, faint crimson alchemic Core-glow as emissive accent, gothic-uncanny homunculus mood; flat color blocks, no implied metal gloss. SUBJECT: a tall robed thrall in a hooded oxblood greatcoat with one bare arm raised, a single glowing red transmutation disc held off to that one raised hand (asymmetric, one-sided), an uncanny serene masked face, a bright Core at the sternum; slender silhouette defined by the off-side floating disc. (single full-body character, ONE subject only, isolated and centered on a plain seamless white background, full figure from head to feet, straight-on front view).",
+      "negative": "high-poly, photorealistic, PBR, specular highlights, glossy or metallic reflections, normal-map or rivet/crack micro-detail, baked shadows, ground plane, base or pedestal, scenery, multiple characters, cropped or missing limbs, text, watermark, logo, signature, busy background, motion blur, depth of field, dramatic cinematic lighting, off-center framing, action or dynamic pose, character sheet, reference sheet, model sheet, turnaround, multiple views, multiple poses, item studies, equipment studies, weapon studies, panels, insets, grid layout, collage, design sheet, props, duplicate"
+    },
+    {
+      "id": "war_machine",
+      "faction": "beta",
+      "prefix": "vehicle",
+      "tri_kind": "unit",
+      "mesh_file": "render_crawler.glb",
+      "mesh_scale": 1.8,
+      "dest": "godot/assets/models/factions/beta/render_crawler.glb",
+      "concept_size": [
+        1024,
+        1024
+      ],
+      "prompt": "clean low-poly RTS unit, flat-shaded single-material albedo (engine applies a global cel-shade, do not add PBR/specular/roughness/normal-map detail), readable silhouette for a distant top-down camera, early-20th-century industrial/European-military FMA-inspired alchemy world, static neutral orientation, barrel/front facing +Z (no biped pose), plain white background, origin centered at the feet/base on the +Z axis. FACTION PALETTE: oxblood-crimson cloth, flat black-iron and brass blocks, faint crimson alchemic Core-glow as emissive accent, gothic-uncanny homunculus mood; flat color blocks, no implied metal gloss. SUBJECT: a massive low many-legged crawling siege furnace, a fat upward-angled mortar barrel over a glowing red boiler-belly, flat black-iron plating and brass gauges, vents leaking crimson light; the single largest and lowest silhouette, clearly a vehicle not a humanoid. (single full-body character, ONE subject only, isolated and centered on a plain seamless white background, full figure from head to feet, straight-on front view).",
+      "negative": "high-poly, photorealistic, PBR, specular highlights, glossy or metallic reflections, normal-map or rivet/crack micro-detail, baked shadows, ground plane, base or pedestal, scenery, multiple characters, cropped or missing limbs, text, watermark, logo, signature, busy background, motion blur, depth of field, dramatic cinematic lighting, off-center framing, action or dynamic pose, character sheet, reference sheet, model sheet, turnaround, multiple views, multiple poses, item studies, equipment studies, weapon studies, panels, insets, grid layout, collage, design sheet, props, duplicate"
+    },
+    {
+      "id": "wyvern",
+      "faction": "beta",
+      "prefix": "air",
+      "tri_kind": "unit",
+      "mesh_file": "envy_wraithwing.glb",
+      "mesh_scale": 1.4,
+      "dest": "godot/assets/models/factions/beta/envy_wraithwing.glb",
+      "concept_size": [
+        832,
+        1216
+      ],
+      "prompt": "clean low-poly RTS unit, flat-shaded single-material albedo (engine applies a global cel-shade, do not add PBR/specular/roughness/normal-map detail), readable silhouette for a distant top-down camera, early-20th-century industrial/European-military FMA-inspired alchemy world, neutral relaxed idle pose facing +Z (A-pose, arms slightly away from the body, NOT a rigid T-pose), plain white background, origin centered under the body as if hovering low, no ground contact. FACTION PALETTE: oxblood-crimson cloth, flat black-iron and brass blocks, faint crimson alchemic Core-glow as emissive accent, gothic-uncanny homunculus mood; flat color blocks, no implied metal gloss. SUBJECT: a stitched flying chimera with wide ragged asymmetric bat-leather wings with trailing tatters, an elongated fanged maw, faint extra human-like faces fused into a crimson-glowing torso; broad torn-wing silhouette that reads instantly as airborne. (single full-body character, ONE subject only, isolated and centered on a plain seamless white background, full figure from head to feet, straight-on front view).",
+      "negative": "high-poly, photorealistic, PBR, specular highlights, glossy or metallic reflections, normal-map or rivet/crack micro-detail, baked shadows, ground plane, base or pedestal, scenery, multiple characters, cropped or missing limbs, text, watermark, logo, signature, busy background, motion blur, depth of field, dramatic cinematic lighting, off-center framing, action or dynamic pose, character sheet, reference sheet, model sheet, turnaround, multiple views, multiple poses, item studies, equipment studies, weapon studies, panels, insets, grid layout, collage, design sheet, props, duplicate"
+    },
+    {
+      "id": "command_center",
+      "faction": "beta",
+      "prefix": "structure",
+      "tri_kind": "building",
+      "mesh_file": "sanguine_furnace.glb",
+      "mesh_scale": 3.0,
+      "dest": "godot/assets/models/factions/beta/sanguine_furnace.glb",
+      "concept_size": [
+        1024,
+        1024
+      ],
+      "prompt": "clean low-poly RTS structure, flat-shaded single-material albedo (engine applies a global cel-shade, do not add PBR/specular/roughness/normal-map detail), readable silhouette for a distant top-down camera, early-20th-century industrial/European-military FMA-inspired alchemy world, sitting squarely on the ground plane facing +Z, plain white background, origin centered at the base footprint. FACTION PALETTE: oxblood-crimson cloth, flat black-iron and brass blocks, faint crimson alchemic Core-glow as emissive accent, gothic-uncanny homunculus mood; flat color blocks, no implied metal gloss. SUBJECT: a tall gothic foundry-cathedral of black iron and brass with a great central furnace-chimney pouring red light, ringed by smaller smokestacks and a glowing transmutation circle on the forecourt; the largest, most vertical and ornate structure. (single isolated structure, ONE building only, centered on a plain seamless white background, full structure in frame, straight-on view).",
+      "negative": "high-poly, photorealistic, PBR, specular highlights, glossy or metallic reflections, normal-map or rivet/crack micro-detail, baked shadows, ground plane, base or pedestal, scenery, multiple characters, cropped or missing limbs, text, watermark, logo, signature, busy background, motion blur, depth of field, dramatic cinematic lighting, off-center framing, action or dynamic pose, character sheet, reference sheet, model sheet, turnaround, multiple views, multiple poses, item studies, equipment studies, weapon studies, panels, insets, grid layout, collage, design sheet, props, duplicate"
+    },
+    {
+      "id": "barracks",
+      "faction": "beta",
+      "prefix": "structure",
+      "tri_kind": "building",
+      "mesh_file": "thrall_yards.glb",
+      "mesh_scale": 2.5,
+      "dest": "godot/assets/models/factions/beta/thrall_yards.glb",
+      "concept_size": [
+        1024,
+        1024
+      ],
+      "prompt": "clean low-poly RTS structure, flat-shaded single-material albedo (engine applies a global cel-shade, do not add PBR/specular/roughness/normal-map detail), readable silhouette for a distant top-down camera, early-20th-century industrial/European-military FMA-inspired alchemy world, sitting squarely on the ground plane facing +Z, plain white background, origin centered at the base footprint. FACTION PALETTE: oxblood-crimson cloth, flat black-iron and brass blocks, faint crimson alchemic Core-glow as emissive accent, gothic-uncanny homunculus mood; flat color blocks, no implied metal gloss. SUBJECT: a long low fortified hall of dark iron and stone with barred pens along one side, a wide arched mustering gate stained crimson, chained gibbets; broad horizontal silhouette, lower than the central furnace. (single isolated structure, ONE building only, centered on a plain seamless white background, full structure in frame, straight-on view).",
+      "negative": "high-poly, photorealistic, PBR, specular highlights, glossy or metallic reflections, normal-map or rivet/crack micro-detail, baked shadows, ground plane, base or pedestal, scenery, multiple characters, cropped or missing limbs, text, watermark, logo, signature, busy background, motion blur, depth of field, dramatic cinematic lighting, off-center framing, action or dynamic pose, character sheet, reference sheet, model sheet, turnaround, multiple views, multiple poses, item studies, equipment studies, weapon studies, panels, insets, grid layout, collage, design sheet, props, duplicate"
+    },
+    {
+      "id": "archery_range",
+      "faction": "beta",
+      "prefix": "structure",
+      "tri_kind": "building",
+      "mesh_file": "bolt_sanctum.glb",
+      "mesh_scale": 2.5,
+      "dest": "godot/assets/models/factions/beta/bolt_sanctum.glb",
+      "concept_size": [
+        1024,
+        1024
+      ],
+      "prompt": "clean low-poly RTS structure, flat-shaded single-material albedo (engine applies a global cel-shade, do not add PBR/specular/roughness/normal-map detail), readable silhouette for a distant top-down camera, early-20th-century industrial/European-military FMA-inspired alchemy world, sitting squarely on the ground plane facing +Z, plain white background, origin centered at the base footprint. FACTION PALETTE: oxblood-crimson cloth, flat black-iron and brass blocks, faint crimson alchemic Core-glow as emissive accent, gothic-uncanny homunculus mood; flat color blocks, no implied metal gloss. SUBJECT: a narrow tall vaulted chapel-armory of black iron with tall slit firing-windows, racks of crimson-glowing quarrels along the front, a small floating sigil-disc over the entrance; upright slender silhouette. (single isolated structure, ONE building only, centered on a plain seamless white background, full structure in frame, straight-on view).",
+      "negative": "high-poly, photorealistic, PBR, specular highlights, glossy or metallic reflections, normal-map or rivet/crack micro-detail, baked shadows, ground plane, base or pedestal, scenery, multiple characters, cropped or missing limbs, text, watermark, logo, signature, busy background, motion blur, depth of field, dramatic cinematic lighting, off-center framing, action or dynamic pose, character sheet, reference sheet, model sheet, turnaround, multiple views, multiple poses, item studies, equipment studies, weapon studies, panels, insets, grid layout, collage, design sheet, props, duplicate"
+    },
+    {
+      "id": "siege_workshop",
+      "faction": "beta",
+      "prefix": "structure",
+      "tri_kind": "building",
+      "mesh_file": "render_works.glb",
+      "mesh_scale": 2.8,
+      "dest": "godot/assets/models/factions/beta/render_works.glb",
+      "concept_size": [
+        1024,
+        1024
+      ],
+      "prompt": "clean low-poly RTS structure, flat-shaded single-material albedo (engine applies a global cel-shade, do not add PBR/specular/roughness/normal-map detail), readable silhouette for a distant top-down camera, early-20th-century industrial/European-military FMA-inspired alchemy world, sitting squarely on the ground plane facing +Z, plain white background, origin centered at the base footprint. FACTION PALETTE: oxblood-crimson cloth, flat black-iron and brass blocks, faint crimson alchemic Core-glow as emissive accent, gothic-uncanny homunculus mood; flat color blocks, no implied metal gloss. SUBJECT: a massive heavy-industrial foundry of black iron with an overhead gantry crane, a glowing red rendering-vat, oversized brass boiler tanks, a wide vehicle-bay door; the bulkiest, most mechanical structure with a clear vehicle exit. (single isolated structure, ONE building only, centered on a plain seamless white background, full structure in frame, straight-on view).",
+      "negative": "high-poly, photorealistic, PBR, specular highlights, glossy or metallic reflections, normal-map or rivet/crack micro-detail, baked shadows, ground plane, base or pedestal, scenery, multiple characters, cropped or missing limbs, text, watermark, logo, signature, busy background, motion blur, depth of field, dramatic cinematic lighting, off-center framing, action or dynamic pose, character sheet, reference sheet, model sheet, turnaround, multiple views, multiple poses, item studies, equipment studies, weapon studies, panels, insets, grid layout, collage, design sheet, props, duplicate"
+    }
+  ]
+}

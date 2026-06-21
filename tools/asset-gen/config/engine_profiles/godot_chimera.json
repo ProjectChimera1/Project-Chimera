@@ -16,7 +16,7 @@
     "max_materials": 1,
     "require_no_nan": true,
     "tri_budget": {
-      "unit":     { "target": 3000,  "warn": 15000, "fail": 15000 },
+      "unit":     { "target": 6000,  "warn": 12000, "fail": 15000 },
       "building": { "target": 10000, "warn": 30000, "fail": 30000 },
       "prop":     { "target": 1000,  "warn": 3000,  "fail": 3000 }
     },
