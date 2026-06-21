@@ -1,5 +1,5 @@
 ---
-stepsCompleted: [1]
+stepsCompleted: [1, 2]
 inputDocuments:
   - "_bmad-output/planning-artifacts/prds/prd-Project_Chimera-2026-06-05/prd.md"   # FR/NFR source (Road-to-1.0 PRD)
   - "_bmad-output/planning-artifacts/prds/prd-Project_Chimera-2026-06-05/addendum.md"
@@ -344,8 +344,109 @@ Items flagged ⚠ are under-specified in the source and need a concrete value/de
 
 ### FR Coverage Map
 
-{{requirements_coverage_map}}
+*Every FR maps to exactly one epic. (NFRs and the AR-* technical requirements are cross-cutting and woven into the relevant epic's stories; they are not single-epic-owned.)*
+
+| FR | Epic | Capability |
+|----|------|-----------|
+| FR-1 | Epic 3 | Create/edit/duplicate/delete units in-app (no JSON) |
+| FR-2 | Epic 3 | Unit Card Editor — single consolidated panel |
+| FR-3 | Epic 3 | Assign + preview a 3D model/placeholder |
+| FR-4 | Epic 3 | Compose from 6 archetypes (composition, no subclassing) |
+| FR-5 | Epic 3 | Designate Hero — leveling/XP/signature & ultimate |
+| FR-6 | Epic 3 | Simple (presets) + advanced (all fields) modes |
+| FR-7 | Epic 3 | Inline authoring validation before save/playtest |
+| FR-7a | Epic 3 | Persistence manifest (which attrs carry forward) |
+| FR-7b | Epic 3 | Load profile as deterministic init state (MP-safe) |
+| FR-7c | Epic 9 | Server-side profile storage/validation (online) |
+| FR-7d | Epic 3 | Save/Load Interface (hero-picker menu) |
+| FR-7e | Epic 3 | Load/save/overwrite saved heroes (multi per player) |
+| FR-8 | Epic 2 | Author active abilities (targeting/cost/cooldown/effects) |
+| FR-9 | Epic 2 | Author passive abilities (auras/on-hit/modifiers) |
+| FR-10 | Epic 2 | Compose abilities from multiple effect primitives |
+| FR-11 | Epic 2 | Attach abilities to units/heroes → command card |
+| FR-12 | Epic 2 | Abilities data-driven/deterministic/validatable |
+| FR-12a | Epic 2 | Combat-feedback profile ("juice"), override per unit |
+| FR-13 | Epic 4 | Author building definitions in-app |
+| FR-14 | Epic 4 | Visual tech-tree editor + runtime production gating |
+| FR-15 | Epic 4 | Data-driven resource set (beyond Ore+Crystal) |
+| FR-16 | Epic 4 | Per-scenario supply/cap model |
+| FR-17 | Epic 5 | Faction Definer guided multi-step wizard |
+| FR-18 | Epic 5 | Assign AI preset to a faction |
+| FR-19 | Epic 5 | Faction instantly selectable in playtest/skirmish/MP |
+| FR-20 | Epic 5 | Iron Pact upgraded reskin → genuinely asymmetric |
+| FR-21 | Epic 6 | Terrain sculpt/paint with persistent textures |
+| FR-22 | Epic 6 | Place entities/start/resources + set win conditions |
+| FR-23 | Epic 7 | ECA triggers in-app (verify to ship bar) |
+| FR-24 | Epic 7 | DSL variables/arithmetic/arrays/loops/timers |
+| FR-25 | Epic 7 | Custom events raised from triggers |
+| FR-26 | Epic 7 | Custom runtime UI elements driven by triggers |
+| FR-27 | Epic 7 | All DSL constructs deterministic + server-validatable |
+| FR-28 | Epic 7 | Four interoperating tiers (T1/T2/T3/T4) on one DSL |
+| FR-29 | Epic 8 | Select/configure LLM provider via settings (no hardcoded keys) |
+| FR-30 | Epic 8 | NL trigger generation (verify, extend to new DSL) |
+| FR-31 | Epic 8 | Map generation + relaxed/parameterized clamps |
+| FR-32 | Epic 8 | Generate unit/ability/hero/faction drafts as editable data |
+| FR-33 | Epic 8 | AI balance analysis with actionable suggestions |
+| FR-34 | Epic 8 | Graceful degradation with no provider/key |
+| FR-35 | Epic 9 | Package `.chimera.zip` + publish to mod.io in-app |
+| FR-36 | Epic 9 | Proof-of-play gate before publishing |
+| FR-37 | Epic 9 | Browse/search/filter/sort/subscribe/rate content |
+| FR-38 | Epic 9 | Content-hashed + integrity-verified on download |
+| FR-38a | Epic 9 | Creators retain IP ownership (surfaced at publish) |
+| FR-39 | Epic 1 | LAN determinism test passes — 300+ ticks, zero desync |
+| FR-40 | Epic 9 | Matchmake/lobby/chat + viewable replays, up to 8 |
+| FR-41 | Epic 9 | Adaptive input delay verifiably adjusts on real nets |
+| FR-42 | Epic 10 | Two shipped factions balanced (45–55% win rate) |
+| FR-43 | Epic 10 | Solo skirmish vs AI across difficulties (verify) |
+| FR-44 | Epic 1 | Automated test suite, headless-runnable |
+| FR-45 | Epic 1 | Smoke-test the 4 unverified systems |
+| FR-46 | Epic 10 | Performance pass (500–2,000 units @ 60/30) |
+| FR-47 | Epic 1 | Determinism CI regression guard (replay/checksum) |
+| FR-48 | Epic 10 | Audio assets present + wired |
+| FR-49 | Epic 10 | Iron Pact placeholder GLBs → real art |
+| FR-49a | Epic 10 | Art-style consistency layer |
+| FR-50 | Epic 10 | Linux export builds + runs |
+| FR-51 | Epic 10 | Accessibility 1.0 baseline |
+| FR-52 | Epic 10 | Ship to Steam + DRM-free channel |
 
 ## Epic List
 
-{{epics_list}}
+### Epic 1: Trustworthy Foundation & Desync-Free Multiplayer
+Multiplayer provably stays in sync across two machines (the #1 ship risk, retired), the deterministic sim is covered by automated tests and CI-regression-guarded, and the ~2,200-LOC `MainScene` god-object is decomposed into a Godot-free sim spine ready to absorb six editors. *(PRD M0+M1; arch foundational program — strangler refactor, SimRng, generalized SimChecksum, fail-closed ScenarioValidator + `Validated<T>`, two-tier testing, banned-API/AOT analyzers, cross-platform determinism gate, engine bump → 4.6.3, DamageMatrix→JSON. Realizes NFR-4.)*
+**FRs covered:** FR-39, FR-44, FR-45, FR-47
+
+### Epic 2: Living Combat — Effect Engine, Modifiers & Ability Authoring
+The sim engine can express buffs, auras, DoT/HoT, summons, and multi-effect abilities deterministically; creators author active and passive abilities in-app; and the showcase factions' signature mechanics finally *run* with satisfying combat feedback. *(PRD M2; arch D1 — single Effect-Graph surface + Modifier subsystem + Energy/Mana SoA; unblocks the combat-reachability gaps the FMA factions need: per-unit production-selection UI, Air building/category, anti-air/ground TargetFilter, anti-building combat, worker-cast path, crystal-spend wiring; `CombatFeedbackProfile`.)*
+**FRs covered:** FR-8, FR-9, FR-10, FR-11, FR-12, FR-12a
+
+### Epic 3: Author Units & Heroes (incl. Save/Load)
+A creator builds units and heroes in one consolidated Unit Card Editor with no JSON, and players save/load hero progression between custom games via a hero-picker interface. *(PRD M2; arch D4 offline hero-persistence rail. The shared **UI design-system Godot Theme + reusable component kit** (UX-DR1–32) is delivered here and reused by every later editor surface. FR-7c online rail → Epic 9.)*
+**FRs covered:** FR-1, FR-2, FR-3, FR-4, FR-5, FR-6, FR-7, FR-7a, FR-7b, FR-7d, FR-7e
+
+### Epic 4: Author Buildings, Tech Trees & Economy
+A creator authors building definitions, drag-builds a visual tech tree that gates production at runtime, and configures resources and the supply model as data — closing the hardcoded-economy gap so creators aren't locked to Ore+Crystal. *(PRD M2; arch D3 data-drive tables — N-resource registry, tech-tree prerequisites, supply/cap.)*
+**FRs covered:** FR-13, FR-14, FR-15, FR-16
+
+### Epic 5: Faction Definer & the Asymmetric Showcase Factions
+A creator assembles authored units/heroes/buildings/tech into a complete, playable faction through a guided wizard, and the two showcase factions become genuinely asymmetric with their FMA identities landed and playtest-validated. *(PRD M2; consumes Epics 2–4; lands revised FMA stats, `display_names`, and themed mesh filenames into the alpha/beta faction JSON.)*
+**FRs covered:** FR-17, FR-18, FR-19, FR-20
+
+### Epic 6: Map & Terrain Editor
+A creator sculpts and texture-paints terrain with textures that persist correctly on save/load (fixing the current procedural-texture defect), and places entities, start positions, resource nodes, and win conditions to a ship-quality bar. *(PRD §4.5 polish; largely verification + the terrain-persistence fix.)*
+**FRs covered:** FR-21, FR-22
+
+### Epic 7: Rich Trigger DSL & Custom Runtime UI
+"Build any game": the trigger DSL gains variables, arithmetic, collections, loops, timers, and custom events, plus trigger-driven custom runtime UI — authored across four interoperating tiers (preset / ECA / visual node-graph / natural-language) on one underlying representation, all deterministic and server-validatable. *(PRD M3; arch D2 typed event/dataflow graph IR containing D1 effect subgraphs + bounded-loop model + two-rail custom UI; arch D3 serialization contract — single ContentLoader, `NodeBase` converter, canonical-model hash, versioning/migration.)*
+**FRs covered:** FR-23, FR-24, FR-25, FR-26, FR-27, FR-28
+
+### Epic 8: AI-Assisted Creation
+An AI collaborator is available across every editor — provider configuration (OpenRouter / Claude / local Ollama), generation of triggers, maps, units, abilities, heroes and factions as editable data, and faction/scenario balance analysis — degrading gracefully to a fully-usable manual suite when no provider is available. *(PRD M4; arch D6 hand-rolled `ILLMProvider` + `ISecretStore`; relax the AI-gen validator clamps for non-RTS scenario types; all AI output passes the same content-validation gate.)*
+**FRs covered:** FR-29, FR-30, FR-31, FR-32, FR-33, FR-34
+
+### Epic 9: Share, Discover & Multiplayer at Scale
+Creators package and publish scenarios to mod.io (gated by proof-of-play, with IP ownership surfaced), players browse/subscribe/rate them, and multiplayer scales to a verified ≤4 players (8 as a fast-follow) with matchmaking, parties, viewable/shareable replays, and server-validated online hero persistence. *(PRD M5; arch D5 — invert the pure relay into stateful server authority with canonical multi-hash handshake, majority-vote desync attribution, replay v2; arch D4 online hero rail = FR-7c.)*
+**FRs covered:** FR-35, FR-36, FR-37, FR-38, FR-38a, FR-40, FR-41, FR-7c
+
+### Epic 10: Release Readiness — Content, Balance, Performance & Ship
+The concrete finishing work to ship: audio assets wired, Iron Pact's placeholder art replaced and held coherent by an art-style consistency layer, the performance pass, final faction balance, the Linux export, the accessibility baseline, and release to both Steam and a direct DRM-free channel. *(PRD M6; arch P1 art-style layer; closes the two primary 1.0 quality gates alongside Epics 1 & 5.)*
+**FRs covered:** FR-42, FR-43, FR-46, FR-48, FR-49, FR-49a, FR-50, FR-51, FR-52
