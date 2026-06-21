@@ -182,6 +182,10 @@ namespace ProjectChimera.Economy
             world.VisionRange[id]   = Fixed.FromFloat(vision);
             world.SplashRadius[id]  = Fixed.FromFloat(splashRadius);
 
+            // Presentation: tag the unit type so MultiMeshBridge renders the right mesh.
+            int meshType = def != null ? (GetFactionDef(faction)?.IndexOfUnit(def.Id) ?? -1) : -1;
+            world.MeshType[id] = (byte)(meshType < 0 ? 0 : meshType);
+
             // Walk to rally point if the building has one set
             if (_buildings.HasRallyPoint[buildingId])
             {

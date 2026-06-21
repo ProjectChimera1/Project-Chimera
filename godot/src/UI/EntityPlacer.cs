@@ -103,6 +103,7 @@ namespace ProjectChimera.UI
             public byte        SupplyCost;
             public GatherState GatherState;
             public Fixed       CarryCapacity;
+            public byte        MeshType;
         }
 
         // ── Ghost preview mesh ────────────────────────────────────────────────
@@ -163,6 +164,18 @@ namespace ProjectChimera.UI
 
             CreateGhostMesh();
             BuildPaletteUi();
+        }
+
+        /// <summary>
+        /// Re-point the placement faction definitions after a scenario has assigned each
+        /// slot's faction. Keeps editor click-to-spawn (mesh + stats) consistent with what
+        /// the unit/building bridges render. Initialize() wires the defaults before the
+        /// scenario loads; MainScene.SetupFactionVisuals() calls this afterward.
+        /// </summary>
+        public void SetFactionDefs(FactionDefinition? player1, FactionDefinition? player2)
+        {
+            if (player1 != null) _faction  = player1;
+            if (player2 != null) _faction2 = player2;
         }
 
         // ── Godot lifecycle ───────────────────────────────────────────────────
@@ -418,7 +431,8 @@ namespace ProjectChimera.UI
         /// <summary>Spawn a worker and return its entity id (-1 on failure).</summary>
         private int DoSpawnWorker(FixedVec3 pos, Faction faction)
         {
-            var   def   = ActiveFactionDef()?.GetUnit("worker");
+            var   fdef  = ActiveFactionDef();
+            var   def   = fdef?.GetUnitByCategory("Worker"); // worker id differs per faction (alpha "worker", beta "forgehand")
             float hp    = def?.Hp    ?? WORKER_HEALTH;
             float speed = def?.Speed ?? WORKER_SPEED;
 
@@ -428,6 +442,9 @@ namespace ProjectChimera.UI
             _world.SupplyCost[id]    = 0;
             _world.GatherState[id]   = GatherState.Idle;
             _world.CarryCapacity[id] = Fixed.FromFloat(WORKER_CARRY);
+
+            int workerMesh = def != null ? (fdef?.IndexOfUnit(def.Id) ?? -1) : -1;
+            _world.MeshType[id] = (byte)(workerMesh < 0 ? 0 : workerMesh);
 
             GD.Print($"[EntityPlacer] Spawned {faction} worker id={id}");
             return id;
@@ -465,6 +482,9 @@ namespace ProjectChimera.UI
             _world.ArmorTypeOf[id]   = armType;
             _world.VisionRange[id]   = Fixed.FromFloat(vision);
             _world.SplashRadius[id]  = Fixed.FromFloat(splashRadius);
+
+            int meshType = def != null ? (ActiveFactionDef()?.IndexOfUnit(def.Id) ?? -1) : -1;
+            _world.MeshType[id] = (byte)(meshType < 0 ? 0 : meshType);
 
             GD.Print($"[EntityPlacer] Spawned {faction} {def?.DisplayName ?? "unit"} id={id}");
             return id;
@@ -1019,6 +1039,7 @@ namespace ProjectChimera.UI
                 SupplyCost   = _world.SupplyCost[id],
                 GatherState  = _world.GatherState[id],
                 CarryCapacity = _world.CarryCapacity[id],
+                MeshType     = _world.MeshType[id],
             };
             _world.Destroy(id);
             GD.Print($"[EntityPlacer] Deleted unit id={id}");
@@ -1069,6 +1090,7 @@ namespace ProjectChimera.UI
             _world.SplashRadius[id] = snap.SplashRadius;
             _world.GatherState[id]  = snap.GatherState;
             _world.CarryCapacity[id] = snap.CarryCapacity;
+            _world.MeshType[id]     = snap.MeshType;
             return id;
         }
 

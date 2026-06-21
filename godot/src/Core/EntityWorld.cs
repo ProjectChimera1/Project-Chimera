@@ -94,6 +94,16 @@ namespace ProjectChimera.Core
         /// <summary>Supply population this entity occupies (0 = workers/buildings, 1+ = combat).</summary>
         public readonly byte[] SupplyCost;
 
+        // --- Presentation ---
+        /// <summary>
+        /// Index of this entity's unit definition within its faction's Units list.
+        /// Purely presentational — selects which mesh MultiMeshBridge renders so each
+        /// unit type looks distinct. Never read by the simulation and excluded from the
+        /// determinism checksum. Defaults to 0 (the worker / first unit) for any entity
+        /// a spawn site forgets to tag.
+        /// </summary>
+        public readonly byte[] MeshType;
+
         // --- Command state ---
         /// <summary>Active order governing autonomous combat behaviour (set by player commands).</summary>
         public readonly UnitCommand[] CommandState;
@@ -150,6 +160,7 @@ namespace ProjectChimera.Core
             VisionRange    = new Fixed[MAX_ENTITIES];
             SplashRadius   = new Fixed[MAX_ENTITIES];
             SupplyCost     = new byte[MAX_ENTITIES];
+            MeshType       = new byte[MAX_ENTITIES];
             CommandState   = new UnitCommand[MAX_ENTITIES];
             CommandGoal    = new FixedVec3[MAX_ENTITIES];
             GatherState    = new GatherState[MAX_ENTITIES];
@@ -206,6 +217,7 @@ namespace ProjectChimera.Core
             VisionRange[id]   = Fixed.FromFloat(8f);
             SplashRadius[id]  = Fixed.Zero;
             SupplyCost[id]    = 0;
+            MeshType[id]      = 0;
             CommandState[id]  = UnitCommand.Idle;
             CommandGoal[id]   = position;
             GatherState[id]   = Core.GatherState.Inactive;

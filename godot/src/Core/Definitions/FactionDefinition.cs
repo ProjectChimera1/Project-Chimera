@@ -46,6 +46,19 @@ namespace ProjectChimera.Core.Definitions
             return null;
         }
 
+        /// <summary>
+        /// Index of the unit with the given ID within the Units list, or -1 if not found.
+        /// Used to tag each entity's <c>EntityWorld.MeshType</c> so MultiMeshBridge can
+        /// render a distinct mesh per unit type (the index maps 1:1 to the bridge's
+        /// per-type MultiMeshInstance3D slots).
+        /// </summary>
+        public int IndexOfUnit(string id)
+        {
+            for (int i = 0; i < Units.Count; i++)
+                if (Units[i].Id == id) return i;
+            return -1;
+        }
+
         /// <summary>Find the first unit with the given category string (case-insensitive), or null.</summary>
         public UnitDefinition? GetUnitByCategory(string category)
         {

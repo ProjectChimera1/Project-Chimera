@@ -281,6 +281,7 @@ namespace ProjectChimera.Core
             SetupMinimap();         // after world/buildings are ready
             SetupTerrainBrush();    // after camera and nav so deps are ready
             LoadAndApplyScenario();
+            SetupFactionVisuals();   // after scenario so per-slot faction meshes are correct
 
             // Initialize flow field system now that scenario buildings are placed.
             // RebuildObstacles seeds the obstacle map; Initialize snapshots the initial
@@ -575,6 +576,13 @@ namespace ProjectChimera.Core
             _world.SplashRadius[id] = Fixed.FromFloat(def.SplashRadius);
             _world.SupplyCost[id]   = (byte)def.Supply;
 
+            // Presentation: tag the unit type so MultiMeshBridge renders the right mesh.
+            int   fIdx     = (int)faction;
+            var   fdef     = (fIdx >= 0 && fIdx < _slotFactionDefs.Length)
+                ? _slotFactionDefs[fIdx] : _factionDef;
+            int   meshType = fdef?.IndexOfUnit(def.Id) ?? -1;
+            _world.MeshType[id] = (byte)(meshType < 0 ? 0 : meshType);
+
             // Workers need gatherer state; combat units stay at default (Idle command)
             if (string.Equals(def.Category, "Worker", StringComparison.OrdinalIgnoreCase))
             {
@@ -630,8 +638,8 @@ namespace ProjectChimera.Core
                 new FixedVec3(Fixed.FromFloat(+45f), Fixed.Zero, Fixed.Zero), preBuilt: true);
 
             // 2 workers per faction — each faction uses its own worker definition
-            var workerDef  = _slotFactionDefs[(int)Faction.Player1]?.GetUnit("worker");
-            var workerDef2 = _slotFactionDefs[(int)Faction.Player2]?.GetUnit("worker") ?? workerDef;
+            var workerDef  = _slotFactionDefs[(int)Faction.Player1]?.GetUnitByCategory("Worker");
+            var workerDef2 = _slotFactionDefs[(int)Faction.Player2]?.GetUnitByCategory("Worker") ?? workerDef;
             if (workerDef != null)
             {
                 SpawnScenarioUnit(workerDef,  Faction.Player1, -42f, -3f);
@@ -789,32 +797,15 @@ void fragment() {
 
         private void SetupRendering()
         {
-            var p1Color  = new Color(0.2f, 0.5f, 1.0f);
-            var p2Color  = new Color(1.0f, 0.3f, 0.2f);
-            var unitSize = new Vector3(0.6f, 1.2f, 0.6f);
-            float unitYOffset = unitSize.Y / 2f; // lift mesh centre above ground
-
-            var bridgeP1 = new MultiMeshBridge();
-            AddChild(bridgeP1);
-            bridgeP1.Initialize(_simLoop,
-                LoadFactionMesh(P1_FACTION_JSON, p1Color, unitSize),
-                EntityWorld.MAX_ENTITIES, Faction.Player1, unitYOffset);
-
-            var bridgeP2 = new MultiMeshBridge();
-            AddChild(bridgeP2);
-            bridgeP2.Initialize(_simLoop,
-                LoadFactionMesh(P2_FACTION_JSON, p2Color, unitSize),
-                EntityWorld.MAX_ENTITIES, Faction.Player2, unitYOffset);
+            // Unit and building visuals are faction-dependent and created later, in
+            // SetupFactionVisuals() — after the scenario assigns each slot's faction — so
+            // per-slot meshes (alpha vs beta) render correctly. Everything below here is
+            // scenario-independent and safe to build now.
 
             // Resource node visuals
             var nodeBridge = new ResourceNodeBridge();
             AddChild(nodeBridge);
             nodeBridge.Initialize(_nodes);
-
-            // Building visuals
-            var buildingBridge = new BuildingBridge();
-            AddChild(buildingBridge);
-            buildingBridge.Initialize(_buildings);
 
             // Fog of war overlay
             _fogBridge = new FogOfWarBridge();
@@ -832,15 +823,36 @@ void fragment() {
             feedbackBridge.Initialize(_combatEvents, _camCtrl);
         }
 
-        private static Mesh LoadFactionMesh(string jsonResPath, Color fallback, Vector3 size)
+        /// <summary>
+        /// Create the faction-dependent visuals (per-faction unit bridge + building bridge).
+        /// Must run AFTER LoadAndApplyScenario so each slot's faction definition is final —
+        /// the unit and building meshes are taken from the faction actually assigned to that
+        /// slot, and tinted to the player's team colour (P1 blue / P2 red).
+        /// </summary>
+        private void SetupFactionVisuals()
         {
-            string abs = ProjectSettings.GlobalizePath(jsonResPath);
-            if (System.IO.File.Exists(abs))
-            {
-                var def = FactionDefinition.LoadFromFile(abs);
-                return MeshLoader.LoadFromGlb(def.PrimaryUnit?.MeshPath ?? "", size, fallback);
-            }
-            return MeshLoader.LoadFromGlb("", size, fallback);
+            var p1Color = new Color(0.2f, 0.5f, 1.0f); // Player 1 = blue
+            var p2Color = new Color(1.0f, 0.3f, 0.2f); // Player 2 = red
+
+            var p1Def = _slotFactionDefs[(int)Faction.Player1] ?? _factionDef;
+            var p2Def = _slotFactionDefs[(int)Faction.Player2] ?? _factionDef2;
+
+            var unitP1 = new MultiMeshBridge();
+            AddChild(unitP1);
+            unitP1.Initialize(_simLoop, p1Def, Faction.Player1, p1Color);
+
+            var unitP2 = new MultiMeshBridge();
+            AddChild(unitP2);
+            unitP2.Initialize(_simLoop, p2Def, Faction.Player2, p2Color);
+
+            var buildingBridge = new BuildingBridge();
+            AddChild(buildingBridge);
+            buildingBridge.Initialize(_buildings, p1Def, p2Def, p1Color, p2Color);
+
+            // Keep the editor placement tool in sync with the slot factions so click-to-spawn
+            // in Edit mode produces the same mesh + stats the bridges render (it was wired with
+            // the defaults in SetupCamera, before the scenario assigned per-slot factions).
+            _placer.SetFactionDefs(p1Def, p2Def);
         }
 
         /// <summary>
