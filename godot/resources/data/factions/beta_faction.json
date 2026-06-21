@@ -1,15 +1,19 @@
 {
   "id": "beta",
-  "display_name": "Iron Pact",
-  "color": [0.8, 0.25, 0.1, 1.0],
-
+  "display_name": "The Sanguine Court",
+  "color": [
+    0.8,
+    0.25,
+    0.1,
+    1.0
+  ],
   "units": [
     {
       "id": "forgehand",
-      "display_name": "Forgehand",
+      "display_name": "Cinderhand Thrall",
       "category": "Worker",
-      "mesh_path": "res://assets/models/factions/beta/forgehand.glb",
-      "hp": 70,
+      "mesh_path": "res://assets/models/factions/beta/cinderhand_thrall.glb",
+      "hp": 80,
       "speed": 3.0,
       "attack_damage": 5,
       "attack_range": 1.5,
@@ -25,30 +29,30 @@
     },
     {
       "id": "footsoldier",
-      "display_name": "Footsoldier",
+      "display_name": "Maul-Fused Wretch",
       "category": "Melee",
-      "mesh_path": "res://assets/models/factions/beta/footsoldier.glb",
-      "hp": 110,
-      "speed": 4.5,
+      "mesh_path": "res://assets/models/factions/beta/maul_fused_wretch.glb",
+      "hp": 130,
+      "speed": 3.4,
       "attack_damage": 10,
       "attack_range": 1.5,
       "attack_speed": 1.2,
       "damage_type": "Normal",
       "armor_type": "Medium",
-      "cost_ore": 75,
+      "cost_ore": 70,
       "cost_crystal": 0,
       "supply": 1,
-      "mesh_scale": 0.9,
+      "mesh_scale": 0.95,
       "train_time": 7.0,
       "vision_range": 8.0
     },
     {
       "id": "bulwark",
-      "display_name": "Bulwark",
+      "display_name": "Slag Bulwark",
       "category": "Melee",
-      "mesh_path": "res://assets/models/factions/beta/bulwark.glb",
-      "hp": 220,
-      "speed": 3.0,
+      "mesh_path": "res://assets/models/factions/beta/slag_bulwark.glb",
+      "hp": 240,
+      "speed": 2.8,
       "attack_damage": 20,
       "attack_range": 1.5,
       "attack_speed": 1.0,
@@ -56,37 +60,37 @@
       "armor_type": "Heavy",
       "cost_ore": 100,
       "cost_crystal": 0,
-      "supply": 1,
+      "supply": 2,
       "mesh_scale": 1.0,
       "train_time": 9.0,
       "vision_range": 7.0
     },
     {
       "id": "ironclad",
-      "display_name": "Ironclad",
+      "display_name": "Pride Colossus",
       "category": "Melee",
-      "mesh_path": "res://assets/models/factions/beta/ironclad.glb",
-      "hp": 380,
+      "mesh_path": "res://assets/models/factions/beta/pride_colossus.glb",
+      "hp": 340,
       "speed": 2.0,
       "attack_damage": 35,
       "attack_range": 1.5,
       "attack_speed": 1.5,
       "damage_type": "Normal",
-      "armor_type": "Fortified",
-      "cost_ore": 175,
+      "armor_type": "Heavy",
+      "cost_ore": 250,
       "cost_crystal": 25,
-      "supply": 2,
-      "mesh_scale": 1.2,
+      "supply": 3,
+      "mesh_scale": 1.3,
       "train_time": 15.0,
       "vision_range": 6.0
     },
     {
       "id": "crossbowman",
-      "display_name": "Crossbowman",
+      "display_name": "Bolt Penitent",
       "category": "Ranged",
-      "mesh_path": "res://assets/models/factions/beta/crossbowman.glb",
-      "hp": 100,
-      "speed": 3.0,
+      "mesh_path": "res://assets/models/factions/beta/bolt_penitent.glb",
+      "hp": 120,
+      "speed": 2.8,
       "attack_damage": 18,
       "attack_range": 5.5,
       "attack_speed": 1.3,
@@ -101,10 +105,10 @@
     },
     {
       "id": "rune_caster",
-      "display_name": "Rune Caster",
+      "display_name": "Cinder Cantor",
       "category": "Ranged",
-      "mesh_path": "res://assets/models/factions/beta/rune_caster.glb",
-      "hp": 90,
+      "mesh_path": "res://assets/models/factions/beta/cinder_cantor.glb",
+      "hp": 110,
       "speed": 2.5,
       "attack_damage": 25,
       "attack_range": 7.0,
@@ -116,14 +120,15 @@
       "supply": 2,
       "mesh_scale": 1.0,
       "train_time": 13.0,
-      "vision_range": 9.0
+      "vision_range": 9.0,
+      "splash_radius": 1.5
     },
     {
       "id": "war_machine",
-      "display_name": "War Machine",
+      "display_name": "Render Crawler",
       "category": "Siege",
-      "mesh_path": "res://assets/models/factions/beta/war_machine.glb",
-      "hp": 450,
+      "mesh_path": "res://assets/models/factions/beta/render_crawler.glb",
+      "hp": 480,
       "speed": 1.5,
       "attack_damage": 90,
       "attack_range": 9.0,
@@ -136,15 +141,15 @@
       "mesh_scale": 1.8,
       "train_time": 22.0,
       "vision_range": 6.0,
-      "splash_radius": 3.5
+      "splash_radius": 4.0
     },
     {
       "id": "wyvern",
-      "display_name": "Wyvern",
+      "display_name": "Envy Wraithwing",
       "category": "Air",
-      "mesh_path": "res://assets/models/factions/beta/wyvern.glb",
-      "hp": 250,
-      "speed": 5.0,
+      "mesh_path": "res://assets/models/factions/beta/envy_wraithwing.glb",
+      "hp": 300,
+      "speed": 4.8,
       "attack_damage": 40,
       "attack_range": 2.0,
       "attack_speed": 1.2,
@@ -158,13 +163,12 @@
       "vision_range": 13.0
     }
   ],
-
   "buildings": [
     {
       "id": "command_center",
-      "display_name": "Forge Citadel",
+      "display_name": "The Sanguine Furnace",
       "category": "Structure",
-      "mesh_path": "res://assets/models/factions/beta/forge_citadel.glb",
+      "mesh_path": "res://assets/models/factions/beta/sanguine_furnace.glb",
       "hp": 1800,
       "speed": 0,
       "attack_damage": 0,
@@ -182,9 +186,9 @@
     },
     {
       "id": "barracks",
-      "display_name": "Iron Barracks",
+      "display_name": "The Thrall Yards",
       "category": "Structure",
-      "mesh_path": "res://assets/models/factions/beta/iron_barracks.glb",
+      "mesh_path": "res://assets/models/factions/beta/thrall_yards.glb",
       "hp": 1000,
       "speed": 0,
       "attack_damage": 0,
@@ -202,9 +206,9 @@
     },
     {
       "id": "archery_range",
-      "display_name": "Bolt Foundry",
+      "display_name": "The Bolt Sanctum",
       "category": "Structure",
-      "mesh_path": "res://assets/models/factions/beta/bolt_foundry.glb",
+      "mesh_path": "res://assets/models/factions/beta/bolt_sanctum.glb",
       "hp": 900,
       "speed": 0,
       "attack_damage": 0,
@@ -218,13 +222,15 @@
       "mesh_scale": 2.5,
       "train_time": 0,
       "vision_range": 0,
-      "prerequisites": ["barracks"]
+      "prerequisites": [
+        "barracks"
+      ]
     },
     {
       "id": "siege_workshop",
-      "display_name": "War Foundry",
+      "display_name": "The Render Works",
       "category": "Structure",
-      "mesh_path": "res://assets/models/factions/beta/war_foundry.glb",
+      "mesh_path": "res://assets/models/factions/beta/render_works.glb",
       "hp": 900,
       "speed": 0,
       "attack_damage": 0,
@@ -238,7 +244,9 @@
       "mesh_scale": 2.8,
       "train_time": 0,
       "vision_range": 0,
-      "prerequisites": ["archery_range"]
+      "prerequisites": [
+        "archery_range"
+      ]
     }
   ]
 }

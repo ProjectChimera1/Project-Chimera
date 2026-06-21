@@ -1,0 +1,51 @@
+{
+  "profile": "godot_chimera",
+  "engine": "Godot 4.6.2-stable mono",
+  "notes": "The engine ingest contract AS DATA. The reusable asset-gen skill reads this; swap the profile for any other project. Verified against UnitDefinition.cs (mesh_path), the P2 runtime ingest (GLTFDocument.AppendFromFile->GenerateScene), and an empirical GLB-compression-rejection test (err 43).",
+
+  "formats": { "mesh": "glb", "texture": "png", "audio": "ogg" },
+
+  "mesh": {
+    "container": "glb",
+    "compression_forbidden": ["KHR_draco_mesh_compression", "EXT_meshopt_compression", "KHR_mesh_quantization"],
+    "up_axis": "Y",
+    "forward_axis": "+Z",
+    "origin": "feet_base",
+    "origin_min_z_tolerance": [-0.02, 0.05],
+    "xy_center_tolerance_frac": 0.02,
+    "max_materials": 1,
+    "require_no_nan": true,
+    "tri_budget": {
+      "unit":     { "target": 3000,  "warn": 15000, "fail": 15000 },
+      "building": { "target": 10000, "warn": 30000, "fail": 30000 },
+      "prop":     { "target": 1000,  "warn": 3000,  "fail": 3000 }
+    },
+    "lods": { "lod1_ratio": 0.40, "lod2_ratio": 0.15 }
+  },
+
+  "texture": {
+    "container": "png",
+    "min_dim": 1024,
+    "max_dim": 2048,
+    "tileable": true,
+    "seam_max_mean_abs_diff": 8.0,
+    "albedo_only": true
+  },
+
+  "audio": {
+    "container": "ogg",
+    "codec": "libvorbis",
+    "channels": 1,
+    "vorbis_q": 4,
+    "max_trailing_silence_s": 0.2,
+    "peak_dbfs_range": [-3.0, -0.5]
+  },
+
+  "dest": {
+    "project_root": "D:/Projects/Project_Chimera",
+    "unit_glb": "godot/assets/models/factions/{faction}/{file}",
+    "building_glb": "godot/assets/models/factions/{faction}/{file}",
+    "sfx": "godot/resources/audio/sfx/{file}",
+    "godot_res_root": "godot"
+  }
+}
