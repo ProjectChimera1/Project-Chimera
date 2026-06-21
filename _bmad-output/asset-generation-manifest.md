@@ -175,9 +175,21 @@ Prompt: `STRUCTURE_PREFIX + COURT_PALETTE` SUBJECT: a massive heavy-industrial f
 
 ---
 
-### D. The 7 SFX generation prompts (Stable Audio Open; +negative each: `"music, melody, vocals, reverb tail, long sustain, low quality, background hum"`; `num_waveforms_per_prompt=3`, fixed seed)
+### D. The 7 SFX generation prompts — via the reused Stable Audio 3 setup
 
-| File | Prompt | audio_end_in_s |
+> **Generator (reused, already proven on this exact rig):** Stable Audio 3 **`medium-base`** at
+> `D:\Projects\TabletopMagic\TabletopMagic\tools\bird-audio-gen\stable-audio-3\.venv\Scripts\python.exe`
+> (Py 3.12, torch 2.7.1+cu126; HF gated repos already accepted; runs on the RTX 3060 12GB without flash_attn).
+> License: Stability AI Community (commercial OK < $1M).
+> **PROVEN RECIPE — do not change:** `model.generate(prompt=…, duration=N, steps=50, cfg_scale=7.0,
+> rescale_cfg=False, seed=42)` with **NO negative_prompt** (at cfg>1 it causes electrical buzzing — the old
+> "Stable Audio Open + negative + num_waveforms" plan is REPLACED). Output runs hot (peak ~1.0) →
+> **normalize/limit in post**, then `ffmpeg -ac 1 -c:a libvorbis -q:a 4` → mono `.ogg`. For clean sustained
+> tonal cues (`ui_click`, `training_complete`) drop **cfg to 4–5** if cfg 7 distorts. Prompt rules: concrete
+> sound-words + "dry, close-mic'd, single sound, quiet background"; avoid instrument-metaphor words (taken
+> literally). `audio_end_in_s` below = the `duration` arg.
+
+| File | Prompt | duration_s |
 |---|---|---|
 | `melee_hit.ogg` | "a single sharp metallic sword-on-shield clash, short, dry, percussive, high quality" | 1.0 |
 | `ranged_hit.ogg` | "a single arrow thudding into wood and flesh, short whoosh then impact, dry" | 1.0 |
@@ -186,7 +198,7 @@ Prompt: `STRUCTURE_PREFIX + COURT_PALETTE` SUBJECT: a massive heavy-industrial f
 | `building_placed.ogg` | "a heavy structure thud settling into ground with a brief stone-and-wood creak, confirming" | 1.5 |
 | `training_complete.ogg` | "a short bright positive confirmation chime, two ascending metallic notes, clean game UI cue" | 1.2 |
 | `ui_click.ogg` | "a single crisp short UI button click, tight tick, dry, no reverb" | 0.5 |
-> UI cues (training_complete, ui_click) are abstract, not real-world recordings — expect more re-rolls; fall back to ElevenLabs (PAID plan only) or a CC0 grab if needed.
+> UI cues (`training_complete`, `ui_click`) are abstract — expect more re-rolls; try cfg 4–5. No cloud/ElevenLabs fallback needed: the local Stable Audio 3 `medium-base` setup is reused in place.
 
 ### E. The 4 terrain-texture prompts (SDXL + seamless-tiling, 1k-2k, +negative: `"seams, visible tile edges, repeating motif, objects, shadows, baked lighting, text, photoreal high detail"`)
 
