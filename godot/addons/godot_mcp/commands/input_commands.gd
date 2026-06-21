@@ -104,7 +104,7 @@ func _get_editor_input_map() -> Dictionary:
 	# This map is read from the editor's in-memory InputMap, which is loaded at
 	# startup and goes stale if project.godot's [input] section is edited on disk
 	# (#245). Flag that so the caller knows the map may be incomplete and can
-	# recover with `godot_editor restart`. The game-running path above reads fresh
+	# recover with `godot_editor_edit restart`. The game-running path above reads fresh
 	# from the bridge, so it never carries this.
 	var result := {"actions": actions, "source": "editor"}
 	var staleness := MCPUtils.detect_project_staleness()
@@ -115,15 +115,7 @@ func _get_editor_input_map() -> Dictionary:
 
 func _event_to_string(event: InputEvent) -> String:
 	if event is InputEventKey:
-		var key_event := event as InputEventKey
-		var key_name := OS.get_keycode_string(key_event.keycode)
-		if key_event.ctrl_pressed:
-			key_name = "Ctrl+" + key_name
-		if key_event.alt_pressed:
-			key_name = "Alt+" + key_name
-		if key_event.shift_pressed:
-			key_name = "Shift+" + key_name
-		return key_name
+		return MCPKeyNames.event_string(event as InputEventKey)
 	elif event is InputEventMouseButton:
 		var mouse_event := event as InputEventMouseButton
 		match mouse_event.button_index:
@@ -137,10 +129,15 @@ func _event_to_string(event: InputEvent) -> String:
 				return "Mouse Button %d" % mouse_event.button_index
 	elif event is InputEventJoypadButton:
 		var joy_event := event as InputEventJoypadButton
-		return "Joypad Button %d" % joy_event.button_index
+		return "Joypad Button %d (%s)" % [joy_event.button_index, MCPJoyNames.button_name(joy_event.button_index)]
 	elif event is InputEventJoypadMotion:
+		# The signed axis_value is the direction bit an agent needs to lift the
+		# binding straight into an injection (e.g. move_left = left_x, value -1.0).
 		var joy_motion := event as InputEventJoypadMotion
-		return "Joypad Axis %d" % joy_motion.axis
+		return "Joypad Axis %d (%s, value %+.1f)" % [joy_motion.axis, MCPJoyNames.axis_name(joy_motion.axis), joy_motion.axis_value]
+	elif event is InputEventMouseMotion:
+		var mouse_motion := event as InputEventMouseMotion
+		return "Mouse Motion (rel %+.1f, %+.1f)" % [mouse_motion.relative.x, mouse_motion.relative.y]
 	return event.as_text()
 
 
