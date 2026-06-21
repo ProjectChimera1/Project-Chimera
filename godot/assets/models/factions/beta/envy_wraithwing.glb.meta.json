@@ -1,0 +1,8 @@
+{
+  "content_hash": "86ea652b31816e7c",
+  "asset": "beta/wyvern",
+  "mesh_file": "envy_wraithwing.glb",
+  "tris": 5998,
+  "warns": [],
+  "pipeline": "v1-remesh240-6k"
+}

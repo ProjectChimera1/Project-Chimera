@@ -1,8 +1,0 @@
-{
-  "content_hash": "f054040448d36972",
-  "asset": "alpha/command_center",
-  "mesh_file": "covenant_sanctum.glb",
-  "tris": 10000,
-  "warns": [],
-  "pipeline": "v1-remesh240-6k"
-}

@@ -54,7 +54,8 @@ def sdxl_seamless_terrain(prompt, negative, ckpt="sd_xl_base_1.0.safetensors",
     reconciled at runtime against /object_info (custom node)."""
     wf = sdxl_concept(prompt, negative, ckpt=ckpt, seed=seed, steps=steps, cfg=cfg,
                       width=size, height=size, out_prefix=out_prefix)
-    # Insert the seamless-tiling toggle on the model (exact class_type confirmed at runtime).
-    wf["10"] = {"class_type": "SeamlessTile", "inputs": {"model": ["1", 0], "tiling": "enable", "copy_vae": "enable"}}
+    # Circular-padding tiling on BOTH the UNet (SeamlessTile) and the VAE decode (CircularVAEDecode).
+    wf["10"] = {"class_type": "SeamlessTile", "inputs": {"model": ["1", 0], "tiling": "enable", "copy_model": "Make a copy"}}
     wf["5"]["inputs"]["model"] = ["10", 0]
+    wf["6"] = {"class_type": "CircularVAEDecode", "inputs": {"samples": ["5", 0], "vae": ["1", 2], "tiling": "enable"}}
     return wf

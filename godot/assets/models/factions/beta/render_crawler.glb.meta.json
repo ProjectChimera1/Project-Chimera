@@ -1,0 +1,8 @@
+{
+  "content_hash": "523ab7104e92b4ff",
+  "asset": "beta/war_machine",
+  "mesh_file": "render_crawler.glb",
+  "tris": 5927,
+  "warns": [],
+  "pipeline": "v1-remesh240-6k"
+}
