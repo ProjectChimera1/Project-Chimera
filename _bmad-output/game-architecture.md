@@ -4,8 +4,10 @@ project: 'Project_Chimera'
 date: '2026-06-20'
 author: 'Alec'
 version: '1.0'
-stepsCompleted: [1, 2, 3, 4, 5, 6, 7]
-status: 'in-progress'
+stepsCompleted: [1, 2, 3, 4, 5, 6, 7, 8, 9]
+status: 'complete'
+engine: 'Godot 4.6.3 (.NET)'
+platform: 'PC desktop — Windows primary, Linux dedicated/headless'
 
 # Source Documents
 gdd: 'Project_Chimera_GDD.md'
@@ -18,6 +20,44 @@ brief: null
 
 # Game Architecture
 
+## Executive Summary
+
+**Project Chimera** — an RTS *creation platform* ("Warcraft III reimagined with AI") — is built on
+**Godot 4.6.3** (.NET build) with **C# / .NET 8**, targeting **PC desktop** (Windows primary; Linux for
+dedicated/headless servers). It is a **brownfield project at Phase 5 → 1.0**: Phases 0–4 are code-complete;
+the creation suite, trigger-DSL expansion, hero persistence, and >2-player multiplayer are net-new.
+
+**Key architectural decisions:**
+
+- **One shared, closed, statically-validated Effect-Graph vocabulary** (D1) is the *only* effect surface for
+  abilities, triggers, and AI balance — **no scripting escape hatch** — bounded so every shared construct is
+  server-validatable before any multiplayer tick.
+- **A single typed event/dataflow graph IR** (D2) underlies all four authoring tiers and *contains* D1's
+  effect subgraphs — one graph paradigm, one executor, one validator across spells + triggers.
+- **Determinism is sacred:** 16.16 `Fixed` end-to-end (convert at parse), ascending-ID iteration, a new
+  seeded `SimRng`, and a generalized `SimChecksum` + canonical-model multi-hash handshake (D3/D5) —
+  remediating three latent peer-agreement bugs found in the as-built code.
+- **The 2,223-LOC `MainScene` god object is strangled in place** (Step 6) into a thin ordered phase-list
+  constructing a Godot-free `SimulationHost` + `ScenarioApplier` behind a fail-closed `ScenarioValidator` —
+  now headless-testable and reused by a `ServerBootstrap`.
+- **Two-tier testing from zero** (Step 5): fast Godot-free **xUnit** golden-checksum tests + in-engine
+  GdUnit4, with a banned-API analyzer and a cross-platform check-runner.
+
+**Project structure:** the sacred Simulation/Presentation split, a SoA entity model, `src/<System>/`
+organization with net-new `Effects/`, `Dsl/`, and `Sim/` modules — every D1–D6 + Step-5 module has a
+definitive home.
+
+**Implementation patterns:** 67 patterns (7 novel + a standard catalog + a Consistency Rules table), each
+with a determinism-safe example and analyzer/test/convention enforcement, so AI agents implement
+checksum-identically.
+
+**Validation:** PASS — coherent, complete, no determinism or correctness blockers (30 findings →
+22 confirmed / 8 refuted; all resolved this pass).
+
+**Ready for:** the epics/stories phase → `gds-check-implementation-readiness` re-run → `gds-sprint-planning`.
+
+---
+
 ## Document Status
 
 This is the **forward-looking** technical architecture for Project Chimera — the decisions
@@ -25,7 +65,7 @@ that keep AI agents implementing consistently on the path to 1.0. It is created 
 GDS Architecture Workflow and is informed by, but distinct from, the brownfield
 `architecture.md` (which documents the code **as-built**, deep scan 2026-06-05).
 
-**Steps Completed:** 7 of 9 (Implementation Patterns)
+**Steps Completed:** 9 of 9 (Complete)
 
 **Step 4 COMPLETE (2026-06-20).** All six game-specific decisions are settled: **D1** (effects-primitive
 vocabulary), **D2** (trigger-DSL design), **D3** (data-driven definition schema & loader) — the deep-dive
@@ -61,8 +101,15 @@ point + a **Consistency Rules table**, each with a determinism-safe code example
 enforcement. Authored via an 11-agent design+adversarial-verify workflow (67 patterns, 49 determinism/API issues
 caught and fixed). **Alec's 3 scope calls (✅):** Tier-1 test runner = **xUnit**; hash width = **32-bit wire /
 64-bit canonical**; content numeric shape = **`Fixed` end-to-end (convert at parse)**. See *Step 7 —
-Implementation Patterns* below + the `game-architecture.Step7-patterns-briefing.md` sidecar. **Next:** Step 8
-(Validation).
+Implementation Patterns* below + the `game-architecture.Step7-patterns-briefing.md` sidecar.
+
+**Step 8 COMPLETE (2026-06-21).** Validation run as a 6-dimension fan-out with adversarial verification of every
+finding (30 raw → 22 confirmed / 8 refuted; 36 agents). Overall **PASS — no determinism or correctness
+blockers.** Decision-compatibility, pattern-completeness, and brownfield code-claims (11/12 confirmed exactly)
+validated clean; GDD/PRD/document gaps were resolved in-pass — 13 doc-accuracy corrections, a consolidated
+Decision Summary + Naming Conventions, and the *Presentation & UGC-Publish Coverage* addendum homing five
+1.0-scope gaps (FR-12a/36/37/38a/49a + binary-asset ingest). Full results in *Architecture Validation* at the
+end of this document. **Next:** Step 9 (Completion).
 
 ---
 
@@ -2563,4 +2610,101 @@ framework command vocabulary carried by the lockstep command bus (`EnqueueOrder`
 covers **Move / AttackMove / Stop / HoldPosition / Build**; **Patrol, Follow, and Rally-as-a-unit-command
 are pending** — mechanical `enum` + system extensions over the already-architected command seam, no new
 architecture required.
+
+---
+
+## Architecture Validation
+
+### Validation Summary
+
+| Check | Result | Notes |
+|---|---|---|
+| Decision Compatibility | ✅ PASS | D1–D7 cohere; every cross-decision conflict (spawn cap, hash width, SimRng timing, Fixed-end-to-end, ref-vs-readonly `EffectContext`) reconciled to one answer. The one determinism-relevant item — the `ScenarioApplier` example vs the "Fixed end-to-end" call — corrected. |
+| GDD Coverage | ✅ PASS | All sim/gameplay systems homed; the 5 visual + UGC-publish gaps homed in the *Presentation & UGC-Publish Coverage* addendum. |
+| PRD FR/NFR Coverage | ✅ PASS | All 6 NFRs + headline FR clusters covered; FR-12a / 36 / 37 / 38a / 49a + binary-asset import homed. |
+| Pattern Completeness | ✅ PASS | 67 patterns (7 novel + standard + Consistency Rules table), each with a determinism-safe example + analyzer/test/convention enforcement. |
+| Document Completeness | ✅ PASS | Decision Summary table + Naming Conventions cross-ref added; stale ❓ / step-counter / version-pin / symbol issues fixed. |
+| Brownfield Code-Claims | ✅ PASS | 11/12 as-built `file:line` claims confirmed exactly against `godot/src/`; 2 citation-precision slips fixed. The cross-cutting remediation rests on real bugs. |
+
+**Overall Status: PASS** — the architecture is coherent, complete, and carries no determinism or correctness
+blockers. Ready to guide implementation (epics/stories).
+
+### Coverage Report
+
+- **Systems covered:** all GDD core systems + the 5 presentation/UGC-publish gaps now homed.
+- **Patterns defined:** 67 (7 novel + standard catalog + Consistency Rules table).
+- **Decisions made:** Engine (Godot 4.6.3) + Runtime (.NET 8) + D1–D6 + Step 5/6/7 + 5 homed in Step 8.
+- **Findings:** 30 raw → **22 confirmed / 8 refuted** (every finding adversarially refuted before counting).
+
+### Method
+
+Run as a 6-dimension fan-out — decision compatibility, GDD coverage, PRD FR/NFR coverage, pattern
+completeness, document completeness, and **brownfield code-claim verification against `godot/src/`** — with
+each finding independently refuted before it counted (36 agents). The 8 refuted findings included a
+misdiagnosed terrain-texture "gap" (whose proposed fix pointed at the wrong layer), a claim that the Step-7
+effect caps weren't corpus-validated (they are, in S-FX-5), and several "missing" items already covered
+elsewhere in the doc.
+
+### Issues Resolved (this pass)
+
+- **6 majors.** The `ScenarioApplier` Fixed-end-to-end example contradiction (corrected to the decided
+  convert-at-parse boundary); and 5 presentation/UGC-publish coverage gaps — FR-49a art-style layer, runtime
+  binary-asset ingest, FR-12a `CombatFeedbackProfile`, FR-36 proof-of-play gate, FR-37/FR-38a content-browser
+  + IP-consent — all homed in the *Presentation & UGC-Publish Coverage* addendum.
+- **~10 minors / ~6 nits (doc accuracy).** D1 `ref struct` prose corrected to non-ref; `ReplayFormat.REPLAY_VERSION`
+  → `ReplayRecorder.VERSION`; spawn-cap claim corrected (two sites — one `Math.Min`, one `Math.Clamp`);
+  `LoadScenario.cs` → `ScenarioSerializer.LoadFromFile`; `:149` Dictionary citation clarified (timers vs
+  `_variables`); stale `❓` markers flipped to ✅; stale Step-4 step-counter banner updated; `NakamaClient 3.13.0`
+  pinned; `MaxIterationsPerTick` vs `MaxLoopIterations` disambiguated; `FACTION_COUNT` slot-loop switched to
+  `PLAYER_COUNT` + analyzer rule noted; consolidated **Decision Summary** table and **Naming Conventions**
+  cross-ref added.
+
+### Carried Forward (not blockers — for sprint planning)
+
+The M1 implementation-time leaf forks already tracked under *Deferred to implementation (M1)*. Two are
+**checksum-relevant** — **cross-faction same-tick event tie-break** and **server >2-player quorum** — and
+must be **pinned before their subsystem ships** (each carries a recommended default). Promote both to explicit
+story-entry gates in `gds-sprint-planning`.
+
+### Validation Date
+
+2026-06-21
+
+---
+
+## Development Environment
+
+### Prerequisites
+
+- **Godot 4.6.3** (.NET / Mono build) — pinned for 1.0; 4.7 deferred to post-1.0.
+- **.NET 8 SDK** (desktop `net8.0`).
+- **Addons:** `godot_mcp` (dev-time AI tooling — **not shipped** in the 1.0 build) and `terrain_3d`
+  (Terrain3D editor). Verify both still connect after the 4.6.3 bump.
+- **Sole NuGet dependency:** `NakamaClient 3.13.0`.
+
+### AI Tooling (MCP Servers)
+
+| MCP Server | Purpose | Install |
+|---|---|---|
+| **godot-mcp** (in use — keep) | Live scene/node/animation edits, `runtime_state` digests, profiler, `validate_meshes`, input injection, frozen-time stepping, `godot_docs` | `MCPGameBridge` autoload (`addons/godot_mcp`) — already installed |
+| **Context7** (optional) | Current .NET / NuGet / library docs (Nakama, System.Text.Json) | `claude mcp add context7 -- npx -y @upstash/context7-mcp` |
+
+Dev-time only — neither ships in the 1.0 build.
+
+### Build / Run
+
+```bash
+# Entry: project.godot → res://scenes/main.tscn → MainScene.cs._Ready()
+dotnet build godot/godot.sln          # build the C# solution
+# Run: open the project in the Godot 4.6.3 .NET editor and press Play (F5), or export + run.
+# Dedicated/headless server is detected at runtime via DisplayServer.GetName() == "headless".
+```
+
+### First steps toward implementation (M1 foundation — build in this order; the D1 strangler depends on it)
+
+1. Stand up the **Tier-1 golden-checksum harness** (xUnit, Godot-free) — pins current sim behavior before any change.
+2. Build **`SimRng`** (seeded, deterministic), the **generalized `SimChecksum`** (all active factions), and the **canonical-model start-state hash**.
+3. Add the **banned-API analyzer** (warn-first on master) and the `SimulationHost` + `ScenarioApplier` + fail-closed `ScenarioValidator` spine (Step 6, Steps 0–6).
+4. Then strangle the effect / DSL / hero / multiplayer systems behind their individual golden-checksum gates (the D1–D6 migration sequences).
+5. Configure MCP servers (above) so AI agents have live `4.6.3` context.
 

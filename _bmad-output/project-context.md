@@ -1,14 +1,61 @@
 ---
 project_name: 'Project Chimera'
 user_name: 'Alec'
-date: '2026-06-04'
-sections_completed: ['technology_stack', 'critical_rules']
+date: '2026-06-21'
+sections_completed: ['technology_stack', 'critical_rules', 'forward_architecture']
 existing_patterns_found: 12
 ---
 
 # Project Context for AI Agents
 
-_Critical rules and patterns AI agents MUST follow when implementing game code in Project Chimera. This focuses on unobvious, project-specific details agents otherwise miss. For full design rationale see `Project_Chimera_GDD.md`; for current state see `Snapshot.md`._
+_Critical rules and patterns AI agents MUST follow when implementing game code in Project Chimera. This focuses on unobvious, project-specific details agents otherwise miss. For full design rationale see `Project_Chimera_GDD.md`; for current state see `Snapshot.md`; for the forward 1.0 architecture see `_bmad-output/game-architecture.md`._
+
+---
+
+## Forward Architecture Rules (1.0 — from `game-architecture.md`, complete 2026-06-21)
+
+_NET-NEW rules the forward architecture adds on top of the as-built rules below. Where they touch the same
+topic, **these win for 1.0 work.** Full detail + per-decision sidecars in `_bmad-output/game-architecture.md`._
+
+- **One Effect-Graph is the only effect surface.** Abilities, triggers, AND AI-balance all compile to a single
+  closed, typed `EffectNode` graph (atomic leaves + `Sequence`/`SearchArea`/`Persistent` + a first-class
+  `Modifier`). **No scripting escape hatch — ever** (no Lua/JASS/`RunScript`/`customParams`). Everything must be
+  **statically server-validated before any MP tick**. Structural caps are named constants (`MaxEffectDepth=8`,
+  `MaxSearchTargets=64`, `MaxSpawnCount=64`, …) folded into a `rulesetHash`. New code → `src/Effects/`.
+- **Trigger DSL = one typed event/dataflow graph** (`src/Dsl/`) that *contains* effect subgraphs — it extends
+  the effect validator/executor, not a second system. Loops are bounded (`ForEach`/`ForEachBatched` over
+  snapshots; no `while`/recursion). Trigger order is `(Priority desc, declaration-index asc)` — never an
+  unstable `Array.Sort`. The DSL variable store is dense-index SoA folded into `SimChecksum` (replaces
+  `Dictionary<string,int> _variables`).
+- **`SimRng` (new, seeded, deterministic) is the ONLY randomness in sim.** Never `System.Random`/Godot RNG in
+  sim code; random selection sorts ascending-ID *then* draws; `SimRng` folds into `SimChecksum`. Until it ships,
+  the validator forbids random effects.
+- **`Fixed` end-to-end (convert at parse).** Content-model numeric fields **are `Fixed`**, deserialized via
+  `FixedJsonConverter` (rejects NaN/Inf). **Never call `Fixed.FromFloat` outside the converter** (and the AI
+  float→`Fixed` quantize step) — one quantization boundary, no second conversion in `ScenarioApplier`.
+- **Peer agreement is server-enforced, over the whole model.** `SimChecksum` must cover **all active factions**
+  + all sim state (the as-built P1/P2-ore-only hash is a bug being fixed). The match start-state hash is
+  **FNV-64 over the canonical model** (not file bytes — fixes the AI-gen stale-file desync). A trusted server
+  **computes/attests** agreement (it must stop being a pure relay). Hash width: **32-bit wire / 64-bit canonical**.
+- **The sim spine is Godot-free and headless-testable.** `MainScene` becomes a thin `ISetupPhase[]` composition
+  root constructing a `SimulationHost` + `ScenarioApplier` (`src/Sim/`) behind a fail-closed **`ScenarioValidator`**
+  gate. **All** content load returns `Validated<T>` (no throw / null-swallow); `ScenarioSerializer.LoadFromFile`
+  does zero validation today and is being replaced. `FactionRegistry` localizes faction counts (`PLAYER_COUNT=8`
+  playable; `FACTION_ARRAY_SIZE=9` incl. Neutral — never bare `FACTION_COUNT` in new loops). `ModifierSystem`
+  registers **before** `CombatSystem`; `Energy`/`Mana` SoA arrays are added for ability costs.
+- **Testing from zero, two tiers.** Tier-1 = **xUnit, Godot-free** golden-checksum + negative tests
+  (`ProjectChimera.Sim.Tests`); Tier-2 = GdUnit4 (`godot/tests/`). A determinism **banned-API analyzer** (warn
+  on master, fail-closed on a release branch) bans `float`/`Fixed.FromFloat`/`System.Random`/`DateTime`/
+  `Dictionary`-enumeration in sim code.
+- **Presentation / UGC (homed Step 8).** `CombatFeedbackProfile` is a presentation-domain DTO **excluded from
+  the hash**; a **runtime binary-asset ingest path** (`GLTFDocument`, not `GD.Load<PackedScene>`) loads
+  creator/AI art in non-editor builds (validated alongside the content hash); art-style coherence = a shared
+  material library + one global post-process shader; the **proof-of-play gate** rides the `Victory` leaf →
+  `.chimera.zip` manifest → mod.io publish.
+- **LLM = `ILLMProvider` abstraction** (Anthropic / OpenRouter / Ollama adapters; provider + model in settings;
+  keys behind an `ISecretStore` seam). AI-generated content passes the **same** content-validation gate as
+  everything else.
+- **Engine target bumped to Godot 4.6.3** for 1.0 (as-built is 4.6.2; defer 4.7 to post-1.0).
 
 ---
 
