@@ -21,20 +21,24 @@ COURT_PALETTE = ("FACTION PALETTE: oxblood-crimson cloth, flat black-iron and br
 NEGATIVE = ("high-poly, photorealistic, PBR, specular highlights, glossy or metallic reflections, normal-map "
     "or rivet/crack micro-detail, baked shadows, ground plane, base or pedestal, scenery, multiple characters, "
     "cropped or missing limbs, text, watermark, logo, signature, busy background, motion blur, depth of field, "
-    "dramatic cinematic lighting, off-center framing, action or dynamic pose.")
+    "dramatic cinematic lighting, off-center framing, action or dynamic pose, "
+    "character sheet, reference sheet, model sheet, turnaround, multiple views, multiple poses, "
+    "item studies, equipment studies, weapon studies, panels, insets, grid layout, collage, design sheet, props, duplicate")
 SUBJECT = ("a stooped hollow-eyed laborer in a soot-stained leather apron, one crude brass prosthetic ending "
     "in a digging claw, a dim red Core-ember glowing through a chest vent; hunched, the smallest and simplest "
     "silhouette so it reads as a non-combatant worker.")
 
 ASSET = "cinderhand_thrall"
-prompt = f"{UNIT_PREFIX} {COURT_PALETTE} SUBJECT: {SUBJECT}"
+prompt = (f"{UNIT_PREFIX} {COURT_PALETTE} SUBJECT: {SUBJECT} "
+          "(single full-body character, ONE subject only, isolated and centered on a plain seamless white "
+          "background, full figure from head to feet, straight-on front view).")
 
 c = ComfyClient(comfy_root=COMFY_ROOT)
 if not c.ping():
     print("FAIL: ComfyUI not reachable"); sys.exit(1)
 
 print(f">>> [1/2] SDXL concept image for {ASSET}")
-wf = W.sdxl_concept(prompt, NEGATIVE, seed=42, steps=30, cfg=7.0, out_prefix=f"concept/{ASSET}")
+wf = W.sdxl_concept(prompt, NEGATIVE, seed=42, steps=30, cfg=7.0, width=832, height=1216, out_prefix=f"concept/{ASSET}")
 hist = c.wait(c.queue(wf), timeout=300)
 imgs = [f for f in c.output_files(hist) if f["filename"].lower().endswith(".png")]
 print("    concept outputs:", imgs)

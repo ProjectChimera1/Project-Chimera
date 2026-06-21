@@ -62,7 +62,8 @@
 - COURT_PALETTE: `FACTION PALETTE: oxblood-crimson cloth, flat black-iron and brass blocks, faint crimson alchemic Core-glow as emissive accent, gothic-uncanny homunculus mood; flat color blocks, no implied metal gloss.`
 
 ## ONE SHARED NEGATIVE PROMPT (apply to every gen)
-`high-poly, photorealistic, PBR, specular highlights, glossy or metallic reflections, normal-map or rivet/crack micro-detail, baked shadows, ground plane, base or pedestal, scenery, multiple characters, cropped or missing limbs, text, watermark, logo, signature, busy background, motion blur, depth of field, dramatic cinematic lighting, off-center framing, action or dynamic pose.`
+`high-poly, photorealistic, PBR, specular highlights, glossy or metallic reflections, normal-map or rivet/crack micro-detail, baked shadows, ground plane, base or pedestal, scenery, multiple characters, cropped or missing limbs, text, watermark, logo, signature, busy background, motion blur, depth of field, dramatic cinematic lighting, off-center framing, action or dynamic pose, character sheet, reference sheet, model sheet, turnaround, multiple views, multiple poses, item studies, equipment studies, weapon studies, panels, insets, grid layout, collage, design sheet, props, duplicate.`
+> **Also generate concept images at a PORTRAIT aspect (e.g. 832×1216 for units, 768×1152 for buildings)** — a tall canvas strongly biases SDXL toward a single full-body subject instead of a wide multi-panel "character sheet" (a real failure mode observed on the first proof). Terrain textures use square 1024.
 
 ---
 

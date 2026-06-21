@@ -3,19 +3,20 @@
 Headless Blender normalize/retopo/export for the asset-gen pipeline.
 Run:  blender -b -P blender_pipeline.py -- <in.glb|.obj> <out.glb> <tri_target> [kind]
 
-Does, in one pass (all bpy APIs present in Blender 4.x):
+Pass (all bpy APIs present in Blender 4.x):
   1. import mesh
   2. join all meshes into one object
-  3. triangulate (so tri counts are exact)
-  4. decimate (collapse) to the tri_target if over budget
-  5. single material (clear + one flat material)
-  6. origin to base/feet: translate so min-Z = 0 and X/Y centered, origin at world 0
-  7. export PLAIN GLB (Y-up, no Draco/quantization/meshopt) — the no-compression contract
-  8. print one JSON metrics line: {"tris","materials","bbox","min_z","center_xy","ok"}
-
-Facing (+Z) is enforced at generation time (prompt) and verified by the QA gate, not auto-rotated here.
+  3. VOXEL REMESH -> clean watertight manifold (AI voxel meshes are high-genus; collapse-decimate
+     alone can't hit budget on them, and they're rarely watertight)
+  4. triangulate (exact tri counts)
+  5. decimate (collapse) to the tri_target
+  6. single material (clear + one flat material)
+  7. origin to base/feet: translate so min-Z = 0 and X/Y centered, origin at world 0
+  8. export PLAIN GLB (Y-up, no Draco/quantization/meshopt) — the no-compression contract
+  9. print one JSON metrics line: PIPELINE_JSON {...}
+Facing (+Z) is enforced at generation (prompt) and verified by the QA gate, not auto-rotated here.
 """
-import bpy, sys, json, math
+import bpy, sys, json
 
 def argv_after_ddash():
     a = sys.argv
@@ -60,6 +61,14 @@ def tri_count(obj):
     me.calc_loop_triangles()
     return len(me.loop_triangles)
 
+def voxel_remesh(obj, max_dim, divisions=160):
+    """Rebuild as a clean watertight manifold ~`divisions` voxels across the largest axis."""
+    bpy.context.view_layer.objects.active = obj
+    obj.data.remesh_voxel_size = max(max_dim / float(divisions), 1e-4)
+    obj.data.remesh_voxel_adaptivity = 0.0
+    obj.data.use_remesh_fix_poles = True
+    bpy.ops.object.voxel_remesh()
+
 def triangulate(obj):
     m = obj.modifiers.new("tri", "TRIANGULATE")
     bpy.context.view_layer.objects.active = obj
@@ -69,7 +78,7 @@ def decimate_to(obj, target):
     cur = tri_count(obj)
     if cur <= target:
         return cur, cur, 1.0
-    ratio = max(0.01, float(target) / float(cur))
+    ratio = max(0.002, float(target) / float(cur))
     m = obj.modifiers.new("dec", "DECIMATE")
     m.decimate_type = "COLLAPSE"
     m.ratio = ratio
@@ -86,7 +95,6 @@ def single_material(obj):
 def origin_to_base(obj):
     bpy.context.view_layer.objects.active = obj
     bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
-    # world-space bbox
     corners = [obj.matrix_world @ v.co for v in obj.data.vertices]
     xs = [c.x for c in corners]; ys = [c.y for c in corners]; zs = [c.z for c in corners]
     cx = (min(xs) + max(xs)) / 2.0
@@ -96,24 +104,16 @@ def origin_to_base(obj):
     obj.location.y -= cy
     obj.location.z -= minz
     bpy.ops.object.transform_apply(location=True, rotation=False, scale=False)
-    # set object origin to world 0
     bpy.context.scene.cursor.location = (0.0, 0.0, 0.0)
     bpy.ops.object.origin_set(type="ORIGIN_CURSOR")
 
 def export_plain_glb(path):
-    kwargs = dict(
-        filepath=path,
-        export_format="GLB",
-        export_yup=True,
-        export_apply=True,
-    )
-    # explicitly disable every compression/quantization path Godot 4.6.2 rejects
+    kwargs = dict(filepath=path, export_format="GLB", export_yup=True, export_apply=True)
     for k in ("export_draco_mesh_compression_enable",):
         kwargs[k] = False
     try:
         bpy.ops.export_scene.gltf(**kwargs)
     except TypeError:
-        # older/newer kwarg drift: retry with the minimal safe set
         bpy.ops.export_scene.gltf(filepath=path, export_format="GLB", export_yup=True)
 
 def main():
@@ -126,6 +126,8 @@ def main():
     reset_scene()
     import_any(src)
     obj = join_meshes()
+    md = max(obj.dimensions.x, obj.dimensions.y, obj.dimensions.z) or 1.0
+    voxel_remesh(obj, md)
     triangulate(obj)
     before, after, ratio = decimate_to(obj, target)
     single_material(obj)
@@ -135,13 +137,11 @@ def main():
     corners = [obj.matrix_world @ v.co for v in obj.data.vertices]
     xs = [c.x for c in corners]; ys = [c.y for c in corners]; zs = [c.z for c in corners]
     log({
-        "kind": kind,
-        "src": src, "dst": dst,
+        "kind": kind, "src": src, "dst": dst,
         "tris_before": before, "tris_after": after, "decimate_ratio": round(ratio, 4),
         "materials": len(obj.data.materials),
         "bbox": {"min": [min(xs), min(ys), min(zs)], "max": [max(xs), max(ys), max(zs)]},
-        "min_z": min(zs),
-        "center_xy": [(min(xs) + max(xs)) / 2.0, (min(ys) + max(ys)) / 2.0],
+        "min_z": min(zs), "center_xy": [(min(xs) + max(xs)) / 2.0, (min(ys) + max(ys)) / 2.0],
         "ok": True,
     })
 
