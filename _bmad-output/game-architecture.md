@@ -98,6 +98,8 @@ multiplayer, and UGC ship together, gated by always-shippable internal milestone
 
 Status: ✅ Built · 🟡 Partial · ⬜ To-build · ❓ Unresolved (architecture must decide)
 
+_Note: this is the pre-Step-4 snapshot; ❓ items were resolved in the Step-4 decisions (D1–D6) below._
+
 | System | Layer | Complexity | Status | Source |
 |---|---|---|---|---|
 | Entity model — SoA `EntityWorld` (4096 cap), `BuildingStore`/`ResourceStore` | Sim | Med | ✅ | arch §3 |
@@ -122,7 +124,7 @@ Status: ✅ Built · 🟡 Partial · ⬜ To-build · ❓ Unresolved (architectur
 | Hero system + Save/Load picker (persistent artifacts, init-time deterministic) | Sim+Pres | High | ⬜ | PRD §4.8, Dec #19/#20 |
 | **Trigger DSL expansion** — variables/loops/arrays/events/custom UI | Sim | **Very High** | ⬜ | PRD §4.6, Dec #12 |
 | Custom runtime UI builder (bound to DSL vars) | Pres | High | ⬜ | PRD §4.6 |
-| **Effects-primitive vocabulary** (shared abilities + triggers) | Sim | High | ❓ **architecture lever** | PRD addendum §C |
+| **Effects-primitive vocabulary** (shared abilities + triggers) | Sim | High | ✅ (resolved in D1) **architecture lever** | PRD addendum §C |
 | MultiMesh rendering + `*Bridge` readers | Pres | Med | ✅ | arch §10 |
 | Screen/state mgmt (Title/Mode/Lobby/HUD/Editor/Browser/Settings) | Pres | Med | 🟡 | UX EXPERIENCE |
 | Claude Design System → Godot `Theme` (faceted `StyleBox`) | Pres | Med | ⬜ designed, impl pending | UX DESIGN |
@@ -166,7 +168,7 @@ expressiveness** (NFR-6).
 - Hero persistent artifacts as **init-time deterministic** state with server validation.
 
 **Novel concepts (no off-the-shelf pattern)**
-- ❓ **Effects-primitive vocabulary** shared by abilities AND triggers — deferred to this phase; breadth determines buildable genres.
+- ✅ (resolved in D1) **Effects-primitive vocabulary** shared by abilities AND triggers — deferred to this phase; breadth determines buildable genres.
 - A runtime, data-driven, **multiplayer-deterministic** creation suite where creator content is server-validated.
 - LLM-assisted authoring (NL→trigger, AI map gen, AI balance) as a sandboxed authoring layer that **never touches the sim tick**.
 - Creator-authored **custom runtime UI** bound to DSL variables.
@@ -231,7 +233,7 @@ Existing project — no scaffolding. Entry: `project.godot` → `res://scenes/ma
 
 Engine settles rendering/physics/input/scene/transport. These game-specific decisions remain:
 
-1. **Effects-primitive vocabulary** shared by abilities + triggers (the "buildable genres" lever)
+1. **Effects-primitive vocabulary** shared by abilities + triggers (the "buildable genres" lever) — ✅ (resolved in D1)
 2. **Trigger-DSL design** — variables/loops/arrays/events/custom UI + static-validation model
 3. **Data-driven definition schema & loader** — `DamageMatrix`→JSON, N-resources, tech trees
 4. **Hero persistence** — init-time deterministic state + server validation
@@ -246,8 +248,8 @@ Engine settles rendering/physics/input/scene/transport. These game-specific deci
 
 > Step 4 records the game-specific decisions the engine layer does not settle. Approach (confirmed
 > 2026-06-20): deep-dive **D1 → D2 → D3** one at a time (novel, coupled, highest-stakes — facilitated,
-> user makes each call), then batch **D4–D6** as recommend-and-confirm. **All six are now recorded;
-> `stepsCompleted` = `[1,2,3,4]` (Step 4 complete 2026-06-20).**
+> user makes each call), then batch **D4–D6** as recommend-and-confirm. **All six are now recorded (Step 4
+> complete 2026-06-20).**
 >
 > **Cross-cutting finding (D4 + D5 + D6 converged — the highest-value output of the batch).** All three
 > independently hit the **same unsound peer-agreement hashing** in the as-built code, three different ways:
@@ -262,8 +264,8 @@ Engine settles rendering/physics/input/scene/transport. These game-specific deci
 > self-reported hashes), and a **generalized `SimChecksum`** over all active factions — is a single
 > prerequisite program, not three separate fixes, and must land before any D4/D5/D6 content reaches the lobby.
 >
-> **Settled:** D1 ✅, D2 ✅, D3 ✅, D4 ✅, D5 ✅, D6 ✅ (all 2026-06-20). **Next:** Step 5 (cross-cutting /
-> testing) → Step 6 (`MainScene` decomposition).
+> **Settled:** D1 ✅, D2 ✅, D3 ✅, D4 ✅, D5 ✅, D6 ✅ (all 2026-06-20). Steps 5, 6, and 7 are now complete;
+> Step 8 (validation) is underway. *(Live progress is tracked in the Document Status block above.)*
 
 ### D1 — Effects-Primitive Vocabulary ✅ (decided 2026-06-20)
 
@@ -370,8 +372,8 @@ unbounded tree. Leaves do the work; the three structural nodes (`Sequence`, `Sea
 plus the Modifier are the *only* over-time / stateful / fan-out mechanisms. Targeting is an explicit,
 **finite frame of reference points** (`Caster`, `Source`, `Target`, `Point`, `Area`) carried down and
 **re-rooted** as the graph is walked — `SearchArea` re-roots each child's `Target` to the found unit;
-`Persistent` re-roots `Source` to its host — implemented allocation-free as a `readonly ref struct
-EffectContext` copied per child call. *Which* entities are valid is the shared `TargetFilter` flag set,
+`Persistent` re-roots `Source` to its host — implemented allocation-free as a `readonly struct
+EffectContext` (NOT a `ref struct` — see Step 7 N2: a `ref struct` cannot be stored in the executor's `Frame[]` work-stack) copied per child call. *Which* entities are valid is the shared `TargetFilter` flag set,
 identical across abilities and triggers. Every gameplay magnitude is an **externalized, named `Fixed`
 (or tick-int) field** so the AI balance analyzer can enumerate every number; no inlined magic constants.
 
@@ -565,13 +567,17 @@ expressiveness is bounded by exactly what the server can statically validate.
 9. **T4 NL/LLM authoring uses the SAME new server-side validator.** The as-built `LLMService` 5-/7-pass
    checker is a *value-range* check over the flat shape, invoked only during generation — D2 builds a
    **new** type-checker + graph-linter + cost-bounder and **promotes it to an authoritative load-time
-   gate** (`LoadScenario.cs` does zero validation today; there is no server-side load path). This is the
+   gate** (`ScenarioSerializer.LoadFromFile` (`ScenarioSerializer.cs:35-40`) does zero validation today; there is no server-side load path). This is the
    equalizer that makes AI authoring safe-by-construction — a claim no escape-hatch system can make.
-   Reconcile the **50-vs-64 spawn-cap discrepancy** (as-built `Math.Min(…,50)` in three places vs D1's
-   authoritative `Spawn≤64`) to one named constant during the D0 audit.
+   Reconcile the **50-vs-64 spawn-cap discrepancy** — a hardcoded spawn cap of 50 at two runtime sites:
+   `Math.Min(a.Count, 50)` in `ScenarioDirector.ExecuteActions` (`ScenarioDirector.cs:312`) and
+   `Math.Clamp(a.Count, 1, MAX_SPAWN_COUNT)` in `LLMService` validation (`LLMService.cs:309-310`, const at
+   `:73`) — plus matching documentation/prompt text — all conflicting with D1's authoritative `Spawn≤64`;
+   collapse to one named constant during the D0 audit.
 10. **Trigger evaluation gets a total deterministic order** `(Priority desc, then declaration-index asc)`
     via an explicit comparator — replaces the as-built **unstable `Array.Sort`** (`ScenarioDirector.cs:192`);
-    dense-index var/timer stores replace **`Dictionary` enumeration** (`:149`); simultaneous timer
+    dense-index SoA stores replace the **Dictionary-backed sim state** spanning BOTH `_timers` (`:33`,
+    enumerated `:149`) AND `_variables` (`Dictionary<string,int>` at `:34`) — both folded into `SimChecksum`; simultaneous timer
     expiries fire in declaration order. *(Two live nondeterminisms in shipped code — latent today, desync
     bombs the moment D2 adds shared mutable variables / fuel / cascades. Prerequisite fixes, gated by
     negative tests.)*
@@ -618,8 +624,11 @@ assert **identical observable outcomes**; a `SimChecksum` baseline **re-pin** is
 event* at the steps that change what `Compute` hashes (the var-table step and the fuel step).
 
 - **D0** — land on D1's seam + audit `ExecuteActions`: classify every action Sim vs Pres; reconcile the
-  runtime clamps (`Math.Min(…,50)` vs D1 `≤64`) and runtime float→Fixed (`add_resources`, `create_timer`)
-  against D1's load-time discipline. *Baseline tag; no behavior change.*
+  spawn cap — a hardcoded 50 at two runtime sites, `Math.Min(a.Count, 50)` in `ScenarioDirector.ExecuteActions`
+  (`ScenarioDirector.cs:312`) and `Math.Clamp(a.Count, 1, MAX_SPAWN_COUNT)` in `LLMService` validation
+  (`LLMService.cs:309-310`, const at `:73`), plus matching documentation/prompt text, all vs D1 `≤64` — and
+  runtime float→Fixed (`add_resources`, `create_timer`) against D1's load-time discipline. *Baseline tag; no
+  behavior change.*
 - **D1s** — typed `DslVarTable` hoisted to a top-level store + checksum inclusion; change the
   `SimChecksum.Compute` signature + every call site (`SimulationLoop.cs:98/135`, `MainScene.cs:268`);
   establish the **graph-canonical serialization** (node ids + typed edges) in `ScenarioData`; add the
@@ -655,7 +664,8 @@ event* at the steps that change what `Compute` hashes (the var-table step and th
 - **`SimChecksum` signature change** to hash vars/timers/event-queue/next-tick-queue/fuel — closes the
   confirmed desync hole (`SimChecksum.cs:26-57` hashes only World/Buildings/Resources).
 - **Total trigger order + dense-index var/timer stores** — fixes the unstable `Array.Sort` (`:192`) and
-  `Dictionary` enumeration (`:149`). *(Both verified.)*
+  the Dictionary-backed sim state: `_timers` (`:33`, enumerated `:149`) AND `_variables`
+  (`Dictionary<string,int>` at `:34`), both moving to dense SoA folded into `SimChecksum`. *(Both verified.)*
 - **Combat-layer killer/last-hit attribution** on `unit_dies` (carries victim slot only, `:126`) —
   without it, MOBA last-hit gold / kill-credit quests are unbuildable. A D1/combat prerequisite, not a
   DSL feature.
@@ -1859,7 +1869,7 @@ for (int slot = 0; slot < FactionRegistry.FACTION_COUNT; slot++)
 hash = Mix(hash, rng.RawState);
 ```
 
-**ENFORCEMENT** — analyzer: bans `float` locals / `Fixed.FromFloat` / `Fixed.ToFloat` / `System.Random` / `DateTime` / `Stopwatch` / `Time.GetTicksMsec` / `Dictionary`-`.Keys`/`.Values`-enumeration / unstable `Array.Sort` in the sim layer, and allow-lists `Fixed.FromFloat` to `ScenarioApplier`/converters ONLY (not `EntityWorld.Create`). test: `SimChecksumCoverageTest` (Tier-1, reflection over EntityWorld arrays + the store registry) fails when a non-exempt length-`MAX_ENTITIES` array or a per-faction store is not folded; the golden-checksum replay harness catches any leaked nondeterminism.
+**ENFORCEMENT** — analyzer: bans `float` locals / `Fixed.FromFloat` / `Fixed.ToFloat` / `System.Random` / `DateTime` / `Stopwatch` / `Time.GetTicksMsec` / `Dictionary`-`.Keys`/`.Values`-enumeration / unstable `Array.Sort` in the sim layer, and allow-lists `Fixed.FromFloat` to `FixedJsonConverter` (and the AI float→Fixed quantize step) ONLY — NOT `ScenarioApplier` (which receives already-`Fixed` model fields) and NOT `EntityWorld.Create`. test: `SimChecksumCoverageTest` (Tier-1, reflection over EntityWorld arrays + the store registry) fails when a non-exempt length-`MAX_ENTITIES` array or a per-faction store is not folded; the golden-checksum replay harness catches any leaked nondeterminism.
 
 ---
 
@@ -2152,15 +2162,17 @@ public readonly struct Validated<T>
     internal Validated(T model) => Model = model;   // assembly-internal; ScenarioValidator is the sole minter
 }
 
-// ScenarioApplier.Apply — signatures verified against as-built ResourceStore.AddOre / FactionBase (MainScene.cs:518):
+// ScenarioApplier.Apply — signatures verified against as-built ResourceStore.AddOre / FactionBase.
+// Fixed end-to-end: slot.StartOre / BaseX / BaseZ are ALREADY `Fixed` (deserialized via FixedJsonConverter,
+// the single quantization boundary). The applier does NO second conversion — there is no convert-at-apply step:
 public void Apply(Validated<ScenarioModel> v)        // cannot be called with a raw model
 {
     foreach (var slot in v.Model.PlayerSlots)        // ascending slot order
     {
         Faction f = FactionRegistry.ToFaction(slot.Slot);   // centralized (Faction)(slot+1)
-        _resources.AddOre(f, Fixed.FromFloat(slot.StartOre));               // safe: validated, load-time
+        _resources.AddOre(f, slot.StartOre);                // Fixed in → Fixed out; no FromFloat
         _resources.FactionBase[(int)f] =
-            new FixedVec3(Fixed.FromFloat(slot.BaseX), Fixed.Zero, Fixed.FromFloat(slot.BaseZ));
+            new FixedVec3(slot.BaseX, Fixed.Zero, slot.BaseZ);   // model fields are already Fixed
     }
 }
 ```
@@ -2316,7 +2328,7 @@ internal static void ApplyOrder(EntityWorld world, in UnitOrder o, Faction expec
 ```
 ENFORCEMENT: replay-determinism harness (byte-identical per-60-tick checksum stream); spectator-parity test.
 
-**S-MP-3 — Bump `REPLAY_VERSION` on any command-semantics change.** RULE: any change to command serialization, the `UnitCommand` vocabulary, or applier semantics bumps `ReplayFormat.REPLAY_VERSION`; `ReplayPlayer` refuses a file whose version differs. WHY: a replay is a checksum-gated golden; reinterpreting old bytes under new rules is a silent desync. ENFORCEMENT: CI test (touching `UnitOrder`/`UnitCommand`/applier without a bump fails a semantic-surface hash); fail-closed load.
+**S-MP-3 — Bump `ReplayRecorder.VERSION` on any command-semantics change.** RULE: any change to command serialization, the `UnitCommand` vocabulary, or applier semantics bumps `ReplayRecorder.VERSION`; `ReplayPlayer` refuses a file whose version differs. WHY: a replay is a checksum-gated golden; reinterpreting old bytes under new rules is a silent desync. ENFORCEMENT: CI test (touching `UnitOrder`/`UnitCommand`/applier without a bump fails a semantic-surface hash); fail-closed load.
 
 **S-MP-4 — Input-delay clamp [2,12] committed on an agreed tick.** RULE: delay is `Math.Clamp(ticks+1, MIN_DELAY=2, MAX_DELAY=12)`; a change takes effect only at the negotiated `applyTick` via `DelayProposal`. `BUFFER_SIZE` is a power of two strictly greater than `MAX_DELAY+1` (16 > 13 as-built). WHY: both peers must use the identical `_currentDelay` and switch at the identical tick or the circular buffers alias. ENFORCEMENT: test asserts output in [2,12] across an RTT sweep + a static BUFFER_SIZE > MAX_DELAY+1 assertion; two-peer test asserts same delay at same tick.
 
@@ -2391,7 +2403,7 @@ ENFORCEMENT: CI `dotnet test`; convention: no `using Godot;`, exact `uint` equal
 |---|---|---|
 | Per-entity field | New `T[] = new T[MAX_ENTITIES]`, reset in `Create()` (no FromFloat), folded into SimChecksum | test: SoA coverage-guard |
 | Entity iteration | `for (id=0; id<HighWaterMark; id++) if(!IsAlive) continue` ascending | analyzer + convention |
-| Fixed conversion | `Fixed.FromFloat` only in converters/`ScenarioApplier`; tick is Fixed-only | analyzer (allow-list appliers only) |
+| Fixed conversion | `Fixed.FromFloat` only in `FixedJsonConverter` (+ the AI quantize step); model fields are already `Fixed`, so `ScenarioApplier` does no conversion; tick is Fixed-only | analyzer (allow-list `FixedJsonConverter` only) |
 | Randomness | shared `SimRng`; sort candidates ascending-id then draw; global draw order = sys-reg→slot→id | analyzer (bans System.Random/Godot RNG) + replay |
 | SimChecksum | fold every truth array (`.Raw`) + all faction slots; `[ChecksumExempt]` for PrevPosition; `Mix` internal | test: coverage-guard |
 | New ISimSystem | `Tick(EntityWorld, Fixed)`, registered in `SimulationHost` at its contractual slot (ModifierSystem before CombatSystem) | test: SystemOrderTest |
@@ -2410,7 +2422,7 @@ ENFORCEMENT: CI `dotnet test`; convention: no `using Godot;`, exact `uint` equal
 | sim→presentation reader | Godot `*Bridge`, reads SoA, interpolates by `InterpolationAlpha`, never writes sim | analyzer + convention |
 | presentation effect seam | fire-only `On*` / single `IEffectPresentationSink`, assigned only by `ScenarioDelegateBinder` (bind+unbind) | test: single-assignment + binder coverage |
 | Network command | fixed struct, apply at `currentTick+delay`; shared applier; alive+faction re-check every case | test: replay + spectator parity |
-| Replay format | bump `REPLAY_VERSION` on any semantics change; fail-closed load | CI semantic-surface test |
+| Replay format | bump `ReplayRecorder.VERSION` on any semantics change; fail-closed load | CI semantic-surface test |
 | Input delay | `Clamp(ticks+1,2,12)`, commit on agreed tick; `BUFFER_SIZE > MAX_DELAY+1` | test: clamp sweep + buffer invariant |
 | Stall | tick-counted, deterministic Abort, never wall-clock | test: dropped-peer |
 | Faction/slot | `FactionRegistry.ToFaction`/`SlotOf`; arrays sized `FACTION_ARRAY_SIZE`, indexed `(int)faction` (Neutral=0); server re-stamps from slot | analyzer + array-length test |
