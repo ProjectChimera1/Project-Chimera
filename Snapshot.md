@@ -7,7 +7,7 @@ status: Active
 
 # Project Chimera — Snapshot
 
-**Last Touched:** `2026-06-20`
+**Last Touched:** `2026-06-21`
 
 ## Current Phase
 **Phase 5 — Polish & 1.0** (Months 25-31 of GDD roadmap)
@@ -46,8 +46,19 @@ split stays deferred (discipline + analyzers only now); (4) D6 secrets/config mi
 coordinator carve (migration Step 12). See *Step 6 — Project Structure + `MainScene` Decomposition* in
 `game-architecture.md` + the `game-architecture.Step6-structure-briefing.md` sidecar.
 
-**Resume at Step 7** (Implementation Patterns) → Step 8 (Validation) → Step 9 (Complete). Remaining chain after
-architecture: epics/stories → re-run `gds-check-implementation-readiness` → `gds-sprint-planning`.
+**Step 7 (Implementation Patterns) COMPLETE (2026-06-21).** The canonical "how an AI agent writes this codebase"
+pattern catalog so D1–D6 are implemented checksum-identically: **7 Novel Patterns** (deterministic kernel,
+Effect-Graph executor, Modifier SoA, DSL event/dataflow graph, two-rail custom UI, `Validated<T>` fail-closed
+gate, canonical-model multi-hash handshake) + **Standard Patterns** (every divergence point) + a **Consistency
+Rules table**, each with a determinism-safe code example + analyzer/test/convention enforcement. 11-agent
+design+adversarial-verify workflow (67 patterns, 49 determinism/API issues caught and fixed). **Alec's 3 scope
+calls (✅):** Tier-1 test runner = **xUnit**; hash width = **32-bit wire / 64-bit canonical**; content numbers =
+**`Fixed` end-to-end (convert at parse)**. Leaf implementation forks (SimRng API, ILogSink shape, Energy regen,
+event tie-break, etc.) tracked as *Deferred to implementation (M1)*. See *Step 7 — Implementation Patterns* in
+`game-architecture.md` + the `game-architecture.Step7-patterns-briefing.md` sidecar.
+
+**Resume at Step 8** (Validation) → Step 9 (Complete). Remaining chain after architecture: epics/stories →
+re-run `gds-check-implementation-readiness` → `gds-sprint-planning`.
 
 ## Needs Testing — Written This Session
 

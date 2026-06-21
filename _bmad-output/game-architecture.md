@@ -4,7 +4,7 @@ project: 'Project_Chimera'
 date: '2026-06-20'
 author: 'Alec'
 version: '1.0'
-stepsCompleted: [1, 2, 3, 4, 5, 6]
+stepsCompleted: [1, 2, 3, 4, 5, 6, 7]
 status: 'in-progress'
 
 # Source Documents
@@ -25,7 +25,7 @@ that keep AI agents implementing consistently on the path to 1.0. It is created 
 GDS Architecture Workflow and is informed by, but distinct from, the brownfield
 `architecture.md` (which documents the code **as-built**, deep scan 2026-06-05).
 
-**Steps Completed:** 6 of 9 (Project Structure & `MainScene` Decomposition)
+**Steps Completed:** 7 of 9 (Implementation Patterns)
 
 **Step 4 COMPLETE (2026-06-20).** All six game-specific decisions are settled: **D1** (effects-primitive
 vocabulary), **D2** (trigger-DSL design), **D3** (data-driven definition schema & loader) — the deep-dive
@@ -51,7 +51,18 @@ coordinators in the exact preserved `_Ready()` order. Every net-new D1–D6 + St
 home; a `FactionRegistry` localizes the 2-faction hardcodes for the D5 N≤8 path. Produced via a 16-agent
 design+adversarial-verify workflow (winning strategy 93/100). Alec's four scope calls baked in. See
 *Step 6 — Project Structure + `MainScene` Decomposition* below + the
-`game-architecture.Step6-structure-briefing.md` sidecar. **Next:** Step 7 (Implementation Patterns).
+`game-architecture.Step6-structure-briefing.md` sidecar.
+
+**Step 7 COMPLETE (2026-06-21).** Implementation-pattern catalog recorded — the canonical "how an AI agent writes
+this codebase" so D1–D6 are implemented checksum-identically: **7 Novel Patterns** (the deterministic kernel, the
+Effect-Graph executor, Modifier SoA, the DSL event/dataflow graph, the two-rail custom UI, the `Validated<T>`
+fail-closed gate, the canonical-model multi-hash handshake) + **Standard Patterns** answering every divergence
+point + a **Consistency Rules table**, each with a determinism-safe code example and an analyzer/test/convention
+enforcement. Authored via an 11-agent design+adversarial-verify workflow (67 patterns, 49 determinism/API issues
+caught and fixed). **Alec's 3 scope calls (✅):** Tier-1 test runner = **xUnit**; hash width = **32-bit wire /
+64-bit canonical**; content numeric shape = **`Fixed` end-to-end (convert at parse)**. See *Step 7 —
+Implementation Patterns* below + the `game-architecture.Step7-patterns-briefing.md` sidecar. **Next:** Step 8
+(Validation).
 
 ---
 
@@ -1723,3 +1734,712 @@ godot/
   **fast-follow, not 1.0-blocking** unless an actual N-player desync forces them earlier.
 - Translatable-UI + accessibility-baseline seams are homed in `SettingsData`/`SettingsPanel`; their content rides
   the D6/settings band (migration Step 12) or a later cross-cutting pass.
+
+---
+
+## Step 7 — Implementation Patterns
+
+> Authored via an 11-agent design+adversarial-verify workflow (5 domain pattern-authors → 5 determinism/API
+> reviewers → synthesis): **67 patterns, 49 determinism/API/consistency issues caught and fixed** (e.g. the
+> as-built `SimChecksum` baseline corrected, `EffectContext` made a non-ref `readonly struct` so it is
+> work-stack-storable, `SimRng` shared-not-copied, per-depth `SearchArea` buffers, `FACTION_COUNT`
+> cardinality-vs-Neutral pinned). Every code example is grounded in the real as-built API signatures and
+> verified determinism-safe. This record is the canonical pattern catalog; deeper material in the working
+> sidecar `game-architecture.Step7-patterns-briefing.md`. **Recommend-and-confirm; Alec's three scope calls
+> are tagged ✅.** Decided 2026-06-21.
+
+#### Scope calls confirmed by Alec (2026-06-21)
+
+1. **Tier-1 sim test runner = xUnit.** ✅ All three candidates (xUnit/NUnit/MSTest) are free/open-source; xUnit
+   is the cleanest for exact `uint`/`ulong` checksum-equality + golden-fixture tests and is first-class in
+   `dotnet test`.
+2. **Hash width = 32-bit wire, 64-bit canonical.** ✅ The live per-60-tick `SimChecksum` + the wire Ready hashes
+   stay 32-bit (the canonical 64-bit model hash is truncated for the wire) — least churn for the brownfield
+   strangler; widening everything to `ulong` is deferred.
+3. **Content numeric shape = `Fixed` end-to-end (convert at parse).** ✅ `FixedJsonConverter` quantizes + rejects
+   NaN/Inf/over-range at deserialize, the validator checks `Fixed.Raw` ranges, and the canonical hash folds
+   `.Raw` directly — one quantization boundary, no second conversion, fingerprint taken from the exact run-time
+   numbers.
+
+This section is the canonical "how an AI agent writes this codebase." It exists because D1-D6 will be implemented by multiple agents across many sessions, and the only way they produce **compatible, determinism-safe** code is a single written rule for every point where two competent agents would otherwise decide differently. The lens throughout is: *what desyncs, fragments, or breaks the sacred sim/presentation split if left unsaid?*
+
+Three enforcement mechanisms back every pattern below: a **banned-API Roslyn analyzer** over the sim layer (`src/Core`, `src/Combat`, `src/Economy`, `src/Navigation`, `src/Effects`, `src/Dsl`), the **Tier-1 Godot-free test project** `ProjectChimera.Sim.Tests` (golden-checksum replay + coverage-guard + negative-validation + secret-exclusion), and **reviewable conventions** (single construction sites, named-constant corpora). The analyzer and tests are advisory-on-master per the migration strangler.
+
+A note on the as-built baseline, because two reviews caught the grounding overstating it: today's `SimChecksum.Compute` (SimChecksum.cs:26) **already** folds EntityWorld Position/Health, BuildingStore Alive/Health/ConstructionTimer, and `Ore[Player1]`/`Ore[Player2]`. The real coverage hole is narrower and is the canonical target: `Crystal` (all factions), `Ore` for slots 3+, `SupplyUsed`/`SupplyCap`, and every net-new store (Modifier/Energy/DslVarTable). `Mix` is `private` (SimChecksum.cs:62) — it is widened to `internal` (with `InternalsVisibleTo` the test project) so external `FoldInto` methods can call it.
+
+---
+
+## Implementation Patterns
+
+### Novel Patterns
+
+These seven carry full designs because they are net-new subsystems with no as-built precedent to copy.
+
+---
+
+#### N1 — The deterministic kernel (SoA + Fixed + SimRng + generalized SimChecksum)
+
+The spine. Everything else assumes it.
+
+**RULE — Per-entity state is a new `public readonly T[] Name = new T[MAX_ENTITIES]` parallel array on EntityWorld, allocated in the ctor, reset to a zero/sentinel value (never `Fixed.FromFloat`) in `Create()`, and folded into `SimChecksum.Compute` — never a per-entity class, `List`, or `Dictionary`.**
+WHY — EntityWorld is Struct-of-Arrays indexed by id with a free-list; a per-entity object breaks cache layout, id-reuse hygiene, and ascending-id iteration, and a store the checksum never sees can desync invisibly.
+
+```csharp
+// EntityWorld.cs — declare alongside the existing SoA arrays (Health[], AttackDamage[], …)
+public readonly Fixed[] Energy;
+public readonly Fixed[] MaxEnergy;
+
+// ctor, next to the other `new T[MAX_ENTITIES]` lines:
+Energy    = new Fixed[MAX_ENTITIES];
+MaxEnergy = new Fixed[MAX_ENTITIES];
+
+// Create(...) — reset EVERY new field. Authored defaults are PASSED IN by ScenarioApplier;
+// never hardcode Fixed.FromFloat here. (EntityWorld.cs:206 VisionRange=Fixed.FromFloat(8f) is a
+// pre-existing instance to migrate to a ctor parameter — Create() must use Fixed.Zero/FromInt only.)
+Energy[id]    = Fixed.Zero;
+MaxEnergy[id] = Fixed.Zero;
+```
+
+**RULE — Every per-entity loop in sim is `for (int id = 0; id < world.HighWaterMark; id++) { if (!world.IsAlive(id)) continue; … }` — ascending id, bounded by `HighWaterMark`, dead skipped via `IsAlive`. Never iterate a `List`/`HashSet`/`Dictionary` of ids.**
+WHY — Iteration order is part of the determinism contract; ascending-id is the one order both peers agree on regardless of insertion history.
+
+**RULE — `Fixed.FromFloat` runs ONLY at load (inside a converter or `ScenarioApplier`, after the `Validated<T>` gate). Inside `Tick` do only Fixed-vs-Fixed arithmetic, `Fixed.FromInt`, and `Fixed` constants — zero `float`, zero `FromFloat`, zero `ToFloat`.**
+WHY — float math is non-deterministic across JIT/platform; `FromFloat` is a lossy `(int)(value*ONE)` quantization (FixedPoint.cs:27). The tick must be a pure integer-`Raw` pipeline.
+
+```csharp
+// LOAD (ScenarioApplier, after Validate→Ok) — float→Fixed allowed:
+world.Speed[id] = Fixed.FromFloat(def.SpeedFloat);
+
+// TICK — only Fixed; integer/constant literals, never FromFloat:
+Fixed reduced   = world.AttackDamage[id] * Fixed.Half;     // NOT Fixed.FromFloat(0.5f)
+Fixed threeTiles = Fixed.FromInt(3);
+world.AttackCooldown[id] = world.AttackCooldown[id] - dt;  // duration via dt, never DateTime
+```
+
+**RULE — The ONLY sim randomness source is `SimRng` (seeded from the match seed, stored in the deterministic sim state, folded into SimChecksum). Draws happen in ONE canonical global order: ascending system-registration order, then ascending faction slot, then ascending entity id; candidates are collected and sorted ascending-id BEFORE `rng.NextInt(count)`.**
+WHY — RNG determinism needs an identical seed-advance sequence AND an identical candidate ordering AND an identical *cross-site draw order* on every peer; any of the three diverging desyncs silently. `SimRng` is a single shared mutable instance referenced (never copied) by callers, so a draw in one place advances the stream everyone sees.
+
+```csharp
+Span<int> candidates = stackalloc int[MaxCandidates];
+int n = 0;
+for (int id = 0; id < world.HighWaterMark; id++)        // ascending id ⇒ candidates pre-sorted
+{
+    if (!world.IsAlive(id)) continue;
+    if (world.FactionOf[id] == enemy) candidates[n++] = id;
+}
+if (n > 0) world.AttackTarget[picker] = candidates[rng.NextInt(n)];  // advances the shared stream
+```
+
+**RULE — `SimChecksum.Compute` folds every gameplay-truth SoA array (ascending id) and every per-faction store for ALL faction slots `0..FactionRegistry.FACTION_COUNT`, each as its integer `.Raw` (enums by `(int)`, bools as 1/0). Adding a store is a two-site edit — the store + a `Mix(…)` call — guarded by a reflection coverage test. Intentionally-excluded arrays carry a `[ChecksumExempt]` marker with a one-line justification.**
+WHY — the per-60-tick checksum is the only desync tripwire; state it doesn't hash can diverge undetected. `PrevPosition` is exempt (presentation interpolation snapshot written by `SnapshotPositions`, not truth) — it is the canonical example of an exemption.
+
+```csharp
+// SimChecksum.cs — fold the FULL as-built gameplay-truth set, ascending id:
+for (int i = 0; i < world.HighWaterMark; i++)
+{
+    if (!world.IsAlive(i)) continue;
+    hash = Mix(hash, world.Position[i].X.Raw); hash = Mix(hash, world.Position[i].Y.Raw);
+    hash = Mix(hash, world.Position[i].Z.Raw);
+    hash = Mix(hash, world.Velocity[i].X.Raw); hash = Mix(hash, world.Velocity[i].Z.Raw);
+    hash = Mix(hash, world.Health[i].Raw);     hash = Mix(hash, world.AttackDamage[i].Raw);
+    hash = Mix(hash, world.AttackCooldown[i].Raw); hash = Mix(hash, world.AttackTarget[i]);
+    hash = Mix(hash, (int)world.CommandState[i]);  hash = Mix(hash, (int)world.GatherState[i]);
+    hash = Mix(hash, world.CarryAmount[i].Raw);    hash = Mix(hash, world.Energy[i].Raw); // NEW
+    // PrevPosition is [ChecksumExempt] — presentation interpolation only, intentionally omitted.
+}
+// ALL faction slots, not Player1/Player2 literals. ResourceStore.Ore is indexed by (int)Faction,
+// 1-based, slot 0 = Neutral, array length FactionRegistry.FACTION_ARRAY_SIZE.
+for (int slot = 0; slot < FactionRegistry.FACTION_COUNT; slot++)
+{
+    Faction f = FactionRegistry.ToFaction(slot);   // (Faction)(slot+1), the ONE cast site
+    hash = Mix(hash, resources.Ore[(int)f].Raw);
+    hash = Mix(hash, resources.Crystal[(int)f].Raw);     // closes the as-built Crystal hole
+    hash = Mix(hash, resources.SupplyUsed[(int)f]);
+}
+hash = Mix(hash, rng.RawState);
+```
+
+**ENFORCEMENT** — analyzer: bans `float` locals / `Fixed.FromFloat` / `Fixed.ToFloat` / `System.Random` / `DateTime` / `Stopwatch` / `Time.GetTicksMsec` / `Dictionary`-`.Keys`/`.Values`-enumeration / unstable `Array.Sort` in the sim layer, and allow-lists `Fixed.FromFloat` to `ScenarioApplier`/converters ONLY (not `EntityWorld.Create`). test: `SimChecksumCoverageTest` (Tier-1, reflection over EntityWorld arrays + the store registry) fails when a non-exempt length-`MAX_ENTITIES` array or a per-faction store is not folded; the golden-checksum replay harness catches any leaked nondeterminism.
+
+---
+
+#### N2 — The Effect-Graph executor
+
+D1, `src/Effects`, pure sim.
+
+**RULE — Every gameplay effect is exactly one `sealed EffectNode` subclass exposing `void Apply(in EffectContext ctx)` + `bool Validate(in EffectValidationCtx v, out string error)`, constructed ONCE at scenario-load and immutable thereafter; `Apply` allocates nothing. No effect ever lands as a case in `ScenarioDirector`'s action switch (that switch is frozen).**
+WHY — a closed sealed hierarchy is enumerable, registrable, load-validatable, and exhaustively testable; per-tick allocation introduces nondeterministic GC stalls.
+
+```csharp
+namespace ProjectChimera.Effects   // NO 'using Godot;'
+{
+    public sealed class DamageEffect : EffectNode
+    {
+        public readonly Fixed BaseAmount;        // authored, frozen at load (no Fixed.FromFloat in Apply)
+        public readonly DamageType DamageType;
+        public DamageEffect(Fixed baseAmount, DamageType dt) { BaseAmount = baseAmount; DamageType = dt; }
+
+        public override void Apply(in EffectContext ctx)
+        {
+            int t = ctx.Target;
+            if (t < 0 || !ctx.World.IsAlive(t)) return;
+            DamageResolver.Apply(ctx.World, t, BaseAmount, DamageType);   // single choke point (see N2.5)
+        }
+        public override bool Validate(in EffectValidationCtx v, out string error)
+        { if (BaseAmount < Fixed.Zero) { error = "DamageEffect.BaseAmount < 0"; return false; }
+          error = string.Empty; return true; }
+    }
+}
+```
+
+**RULE (N2.5 — the unified DamageResolver) — ALL damage application (melee, projectile-hit, effect) routes through one `DamageResolver.Apply(world, target, baseAmount, dmgType)` leaf; no other site multiplies by `DamageMatrix.Get`. The canonical formula is `final = baseAmount * DamageMatrix.Get(dmgType, armorType)` (no `- armorValue` term — there is no per-entity ArmorValue array as-built; add one + fold it into SimChecksum only if the design later adopts armor subtraction).**
+WHY — D1 exists to kill the three duplicated damage sites (CombatSystem.cs:271, ProjectileSystem.cs:76/:121); a single resolver is the only way that consolidation survives multiple agents. `DamageMatrix.Get(DamageType, ArmorType)` is **static** and returns `Fixed` as-built.
+
+```csharp
+public static class DamageResolver
+{
+    public static void Apply(EntityWorld world, int target, Fixed baseAmount, DamageType dmgType)
+    {
+        Fixed mult  = DamageMatrix.Get(dmgType, world.ArmorTypeOf[target]); // static, returns Fixed
+        Fixed final = baseAmount * mult;                                    // all Fixed, no float
+        world.Health[target] = world.Health[target] - final;
+        if (world.Health[target] <= Fixed.Zero) world.Destroy(target);
+    }
+}
+```
+
+**RULE — Composite nodes (Sequence/SearchArea/Persistent) NEVER call `child.Apply` directly; one `EffectExecutor.Run` drives an explicit pre-allocated work-stack of `(node, context)` frames, popping/pushing in deterministic order, enforcing `MaxEffectDepth = 8` and `MaxEffectFrames` fuel.**
+WHY — an explicit stack gives one canonical, depth-capped, allocation-free traversal; recursion hides order and depth and cannot be fuel-bounded.
+
+**RULE — `EffectContext` is a `readonly struct` (NOT a ref struct) holding the finite reference frame `{World, Caster, Source, Target, Point, Rng, PresentationSink}`; it is never mutated — re-rooting produces a NEW context via `With*` and is passed `in`. `SimRng` and the presentation sink are reference fields shared (not copied) across re-roots.**
+WHY — *fix applied:* a ref struct cannot be stored in the executor's `Frame[]` work-stack (mutually incompatible decisions in the source catalog). A plain `readonly struct` is array-storable and still zero-heap; sharing `Rng` by reference means a child's draw advances the stream the parent and siblings see, so draw order = work-stack pop order on every peer.
+
+```csharp
+public readonly struct EffectContext
+{
+    public readonly EntityWorld World;
+    public readonly int Caster, Source, Target;   // entity ids, -1 = none
+    public readonly FixedVec3 Point;
+    public readonly SimRng Rng;                    // shared reference — never copied/advanced-in-isolation
+    public readonly IEffectPresentationSink Sink;  // single sim-owned sink (see N6)
+    public EffectContext WithTarget(int t) => new(World, Caster, Source, t, Point, Rng, Sink);
+    public EffectContext WithPoint(FixedVec3 p) => new(World, Caster, Source, Target, p, Rng, Sink);
+    // …full ctor omitted…
+}
+
+public sealed class EffectExecutor
+{
+    public const int MaxEffectDepth = EffectCaps.MaxEffectDepth;     // 8, from the ruleset corpus
+    public const int MaxEffectFrames = EffectCaps.MaxEffectFrames;   // 256
+    private readonly Frame[] _stack = new Frame[MaxEffectFrames];    // allocated ONCE
+    // SearchArea hits live in a per-DEPTH slice so a nested SearchArea never clobbers its parent's buffer:
+    private readonly int[] _hitRing = new int[MaxEffectDepth * EffectCaps.MaxHitsPerSearch];
+    private readonly struct Frame { public readonly EffectNode Node; public readonly EffectContext Ctx;
+        public readonly int Depth; public Frame(EffectNode n, in EffectContext c, int d){ Node=n; Ctx=c; Depth=d; } }
+
+    public void Run(EffectNode root, in EffectContext rootCtx)
+    {
+        int sp = 0; _stack[sp++] = new Frame(root, rootCtx, 0);
+        while (sp > 0)
+        {
+            Frame f = _stack[--sp];
+            if (f.Depth >= MaxEffectDepth) continue;                 // depth cap
+            if (f.Node is SequenceEffect seq)
+                for (int k = seq.Children.Length - 1; k >= 0; k--)   // reverse push ⇒ authored order
+                    _stack[sp++] = new Frame(seq.Children[k], f.Ctx, f.Depth + 1);
+            else if (f.Node is SearchAreaEffect area)
+            {
+                int off = f.Depth * EffectCaps.MaxHitsPerSearch;     // per-depth slice, no clobber
+                area.GatherAscendingId(f.Ctx, _hitRing, off, out int n);
+                for (int k = n - 1; k >= 0; k--)
+                    _stack[sp++] = new Frame(area.Body, f.Ctx.WithTarget(_hitRing[off + k]), f.Depth + 1);
+            }
+            else f.Node.Apply(f.Ctx);
+        }
+        f_flushPresentation();   // presentation On* fires are buffered during the drain, flushed once here
+    }
+}
+```
+
+**RULE — The `EffectNode` JsonConverter dispatches on a closed `kind` discriminator against a hardcoded registry; unknown kind, missing required field, or dangling node-id reference is a hard deserialize failure (`Validated<T>` → Err). No scripting/eval escape hatch. `[JsonPolymorphic]`/`[JsonDerivedType]` are forbidden.**
+WHY — fail-closed deserialization is the only way two peers provably build the identical graph; `[JsonPolymorphic]` is incompatible with `UnmappedMemberHandling.Disallow` (dotnet/runtime #100057) and throws at runtime on the first real node. (See N4 for the converter shape.)
+
+**ENFORCEMENT** — analyzer: no `using Godot;` in `src/Effects`; new cases in the frozen `ScenarioDirector` action switch flagged; an `EffectNode.Apply` calling another node's `Apply` flagged; `[JsonPolymorphic]` banned project-wide. test: `EffectRegistryCoverageTest` (every sealed subtype registered + round-trips Validate), negative-validation fixtures (unknown kind / dangling id / depth-overflow → Err), an alloc-probe asserting zero managed bytes across an `Apply` batch via `GC.GetAllocatedBytesForCurrentThread`, and an RNG-order test pinning state after a multi-leaf graph.
+
+---
+
+#### N3 — Modifier SoA + ModifierSystem
+
+D1.
+
+**RULE — A Modifier never writes a unit's stat array directly; it is an entry in a Modifier SoA store keyed by entity, and `ModifierSystem : ISimSystem` (inserted immediately BEFORE `CombatSystem` in the single `SimulationHost` registration) recomputes `Effective*` stats from `Base*` for dirty entities each tick. `Base*`/`Effective*` are NET-NEW parallel arrays: the migration renames authored `AttackDamage` → `BaseAttackDamage` and makes `AttackDamage` the recomputed Effective slot — both folded into SimChecksum.**
+WHY — separating base from effective with a dirty flag makes add/remove/stack/expire reversible and order-independent; direct stat mutation is irreversible and stacks wrong. Registration order IS the design — `SimulationLoop` ticks systems in array order (`void Tick(EntityWorld, Fixed)`), so combat must read recomputed stats the same tick or lag one tick vs a correctly-ordered peer.
+
+```csharp
+public sealed class ModifierSystem : ISimSystem
+{
+    private readonly Fixed[] _flatDamageBonus = new Fixed[EntityWorld.MAX_ENTITIES];
+    private readonly bool[]  _dirty            = new bool[EntityWorld.MAX_ENTITIES];
+    public void MarkDirty(int id) => _dirty[id] = true;
+
+    public void Tick(EntityWorld world, Fixed dt)
+    {
+        for (int i = 0; i < world.HighWaterMark; i++)            // ascending id
+        {
+            if (!world.IsAlive(i) || !_dirty[i]) continue;
+            world.AttackDamage[i] = world.BaseAttackDamage[i] + _flatDamageBonus[i]; // Effective = Base + mods
+            _dirty[i] = false;
+        }
+    }
+}
+// SimulationHost: new ModifierSystem() is registered BEFORE combatSystem.
+```
+
+**ENFORCEMENT** — test: stack/remove fixture (apply N, remove M, assert Effective == Base + remaining); a stat-timing fixture (buff applied this tick affects this tick's combat); the SimChecksum coverage-guard asserts the Modifier SoA and `BaseAttackDamage`/`AttackDamage` fold in; `SystemOrderTest` pins the registration array. convention: `CombatSystem` reads Effective only; systems constructed only in `SimulationHost`.
+
+---
+
+#### N4 — The DSL typed event/dataflow graph
+
+D2, `src/Dsl`, pure sim. Contains D1 effect subgraphs.
+
+**RULE — Every DSL node is a `NodeBase` with a persistent integer `Id` (stable across migrations) and exactly two edge kinds: ordered exec edges (control flow) and typed data edges (value flow, type-checked at load). The action region of an event node IS a D1 `EffectNode` graph. The node store is a DENSE array indexed by a load-resolved compact index (persistent-Id → dense-index map built at load); any whole-graph pass iterates that dense array ascending — never enumerate a `Dictionary<int,NodeBase>`.**
+WHY — persistent ids let migrations/replays rewire unambiguously; separating exec from typed-data makes the IR statically checkable; dense ascending iteration avoids the as-built Dictionary-enumeration desync (ScenarioDirector.cs:149).
+
+```csharp
+namespace ProjectChimera.Dsl
+{
+    public abstract class NodeBase
+    {
+        public int Id { get; init; }                                  // persistent, canonical from migration step 1
+        public int[] ExecNext { get; init; } = Array.Empty<int>();    // ordered next exec node ids
+        public DataEdge[] DataIn { get; init; } = Array.Empty<DataEdge>();
+    }
+    public readonly struct DataEdge
+    { public readonly int SourceNodeId, SourcePort; public readonly DslType Type;   // closed enum
+      public DataEdge(int s, int p, DslType t){ SourceNodeId=s; SourcePort=p; Type=t; } }
+
+    public sealed class OnEventNode : NodeBase
+    { public int EventTypeId { get; init; }  public EffectNode Action { get; init; } = default!; } // D1 subgraph
+}
+```
+
+**RULE — Iteration is expressed ONLY by `ForEach`/`ForEachBatched` over a finite collection SNAPSHOTTED ascending-id into a pre-allocated buffer at loop entry; no `While`/`Repeat`/recursion/`goto` node exists in the closed registry; per-tick fuel caps total iterations. `ForEachBatched` processes a fixed `BatchSize` per tick from the entry snapshot, advancing an integer cursor in the DslVarTable — never resnapshots, never a time budget.**
+WHY — a snapshotted ascending-id collection with an integer fuel/batch cap terminates identically on every peer; live iteration or a wall-clock budget desyncs.
+
+```csharp
+public sealed class ForEachNode : NodeBase
+{
+    public int Body { get; init; }
+    public const int MaxIterationsPerTick = DslCaps.MaxIterationsPerTick; // 4096
+    public void Run(DslContext ctx, EntityWorld world, Faction owner)
+    {
+        int n = 0;
+        for (int i = 0; i < world.HighWaterMark && n < MaxIterationsPerTick; i++)
+            if (world.IsAlive(i) && world.FactionOf[i] == owner) ctx.LoopBuffer[n++] = i;  // ascending snapshot
+        for (int k = 0; k < n; k++) ctx.RunExec(Body, k, ctx.LoopBuffer[k]);               // body sees frozen set
+    }
+}
+```
+
+**RULE — Expression nodes evaluate a closed, CEL-shaped, pure, side-effect-free grammar whose numeric type is `Fixed` ONLY; comparisons/arithmetic operate on `Fixed` directly. There is NO `Fixed→float→ToString("F2")→TryParse` path (the A17 as-built bug, ScenarioDirector.cs:168/170/252) and no `float`/`double` anywhere in evaluation.**
+WHY — Fixed-only integer arithmetic is bit-identical across platforms; the as-built float round-trip rounds per-culture/JIT and silently desyncs.
+
+```csharp
+public sealed class CompareExpr : ExprNode
+{
+    public readonly ExprNode Left, Right; public readonly CompareOp Op;   // closed enum
+    public override DslValue Eval(in DslEvalCtx ctx)
+    {
+        Fixed a = Left.Eval(ctx).AsFixed, b = Right.Eval(ctx).AsFixed;     // NOT .ToFloat()
+        return DslValue.Bool(Op switch { CompareOp.Gt => a>b, CompareOp.Ge => a>=b,
+            CompareOp.Lt => a<b, CompareOp.Le => a<=b, CompareOp.Eq => a==b, _ => a!=b });
+    }
+}
+```
+
+**RULE — Events are closed typed structs (not strings); custom events register in an ACYCLIC registry checked at load; `RaiseEvent` appends to a same-tick worklist drained FIFO in ascending registered-handler-id order (never Dictionary enumeration) until empty (fuel-capped); `RaiseEventNextTick` defers to a back buffer swapped at the next tick boundary. Any randomness inside an event-triggered effect uses the shared `SimRng` in work-stack order.** [Deferred to implementation (M1): cross-faction same-tick tie-break — ascending faction slot vs command-bus arrival re-stamp — is checksum-relevant and not settled; the worklist is FIFO by insertion until pinned.]
+WHY — typed structs remove string-parse desync; an acyclic registry + FIFO worklist guarantees termination and one deterministic delivery order; recursive synchronous re-raise does neither.
+
+**RULE — DSL variables live in a single top-level `DslVarTable` sim store (NOT inside ScenarioDirector), keyed by a dense integer index resolved at load from (closed `VarType` × `Scope`), backed by per-type parallel arrays, and folded into SimChecksum; the table is never enumerated to drive sim order.**
+WHY — dense-index arrays give O(1) deterministic access with no enumeration-order dependence and can be checksummed, closing the as-built omission (ScenarioDirector.cs:34).
+
+```csharp
+public sealed class DslVarTable
+{
+    private readonly Fixed[] _fixedVars; private readonly bool[] _boolVars; private readonly int[] _entityVars;
+    public Fixed GetFixed(int i) => _fixedVars[i];
+    public void  SetFixed(int i, Fixed v) => _fixedVars[i] = v;
+    public void FoldInto(ref uint hash)    // SimChecksum.Mix is internal (InternalsVisibleTo this assembly)
+    {
+        for (int i = 0; i < _fixedVars.Length;  i++) hash = SimChecksum.Mix(hash, _fixedVars[i].Raw);
+        for (int i = 0; i < _boolVars.Length;   i++) hash = SimChecksum.Mix(hash, _boolVars[i] ? 1 : 0);
+        for (int i = 0; i < _entityVars.Length; i++) hash = SimChecksum.Mix(hash, _entityVars[i]);
+    }
+}
+```
+
+**ENFORCEMENT** — analyzer: closed node registry has no While/Repeat/goto kind; `.ToFloat()`/`float`/`double`/`ToString("F2")` banned in `src/Dsl` evaluation; no `Dictionary<,>` field whose enumeration drives sim order; events must be structs in a closed namespace. test: load-time type-check (DataEdge.Type matches source port), id-uniqueness + dangling-exec fixtures, cycle-detection (a→b→a → Err), ForEach fuel-cap + snapshot fixtures, `DslVarTable.FoldInto` covered by the SimChecksum coverage-guard.
+
+---
+
+#### N5 — The two-rail custom UI
+
+D2. The other half of the sacred one-way split.
+
+**READ rail. RULE — Sim publishes a DOUBLE-BUFFERED, version-stamped numeric `DslVarReadback` snapshot exactly once per tick, at the END of `StepOnce` after all systems tick (same site/cadence as the SimChecksum block, SimulationLoop.cs:~89-100); a `CustomUiBridge` (Godot Node, modeled on `FogOfWarBridge`) reads it in `_Process` and re-formats a widget ONLY when `Version` changes. Formatting and all strings live entirely in presentation. The published buffer is filled, then `Version` bumped — the live-read buffer is never mutated in place.**
+WHY — numbers-only at the tick boundary with a version gate keeps the sim string-free and allocation-free and makes the read path incapable of desyncing; in-tick formatting injects culture-dependent strings (the A17 bug). Double-buffering prevents a torn presentation-side read mid-publish.
+
+```csharp
+// SIM (src/Dsl): published exactly once at end of StepOnce. Back/front double buffer, atomic version bump.
+public sealed class DslVarReadback
+{
+    public int Version { get; private set; }
+    private readonly Fixed[] _front = new Fixed[DslVarTable.MaxPublishedVars];
+    private readonly Fixed[] _back  = new Fixed[DslVarTable.MaxPublishedVars];
+    public ReadOnlySpan<Fixed> Values => _front;            // presentation reads the stable front buffer
+    public void Publish(DslVarTable table)
+    { table.CopyPublishedInto(_back); var t = _front; /* swap */ Array.Copy(_back, _front, _back.Length); Version++; }
+}
+
+// PRESENTATION (src/UI/CustomUiBridge.cs): read sim, write Godot, never write sim.
+public partial class CustomUiBridge : Godot.Control
+{
+    private DslVarReadback _rb = null!; private Godot.Label _gold = null!; private int _seen = -1;
+    public override void _Process(double delta)
+    {
+        if (_rb.Version == _seen) return;                  // re-format only on change
+        _seen = _rb.Version;
+        _gold.Text = _rb.Values[DslVarTable.GoldIndex].ToFloat().ToString("N0"); // float/format PRESENTATION-side
+    }
+}
+```
+
+**WRITE rail. RULE — A custom-UI control's `Pressed` handler MUTATES NOTHING in sim — it enqueues a `DslEventCommand` (NET-NEW wire payload) onto `LockstepManager` so it rides the buffered/serialized/`currentTick+delay` pipeline and is raised inside the single shared `ApplyOrders` path on every peer, with per-event allowed-raiser authorization checked against the issuing slot's authoritative faction.**
+WHY — only commands applied at an agreed tick on every peer stay in sync; a direct `RaiseEvent` from presentation applies at an arbitrary local tick and desyncs online + corrupts replays.
+
+*The write rail is NET-NEW and does not exist on the bus today.* As-built `EnqueueOrder(int unitId, UnitCommand command, Fixed targetX, Fixed targetZ)` (LockstepManager.cs:215) takes four args and a `UnitOrder` (11 bytes); there is no `NetworkCommand` type and no event path. Implementing it requires: a new `PacketType.DslEvent` + `DslEventOrder` struct serialized in `TickCommandPacket`; a sibling `EnqueueEvent(ushort eventId, int slot)`; and a case in the single shared applier (see S-MP below), which all four live apply sites + `ReplayPlayer` route through.
+
+```csharp
+// PRESENTATION: enqueue, never mutate. Slot resolved via FactionRegistry, not a literal.
+private void OnAbilityPressed() => _lockstep.EnqueueEvent(_eventId, _localSlot);
+
+// APPLY (shared applier, every peer, same tick):
+case NetCommandKind.DslEvent:
+    if (!DslEventPolicy.MayRaise(o.EventId, expectedFaction)) break;     // authorization, deterministic drop
+    _dslBus.RaiseEvent(o.EventId, raiser: expectedFaction, o.EventPayload); // ascending-handler-id drain
+    break;
+```
+
+**ENFORCEMENT** — analyzer: presentation namespaces may not call `_dslBus.RaiseEvent` / mutate sim stores; string formatting of `Fixed` banned in the sim layer. test: `DslVarReadback.Version` monotonic + folded into the coverage-guard + a no-string-fields assertion on the snapshot; `DslEventCommand` round-trips serialize/deserialize; authorization fixture (unauthorized raiser dropped identically on all peers); replay re-applies identically.
+
+---
+
+#### N6 — The Validated&lt;T&gt; fail-closed content gate + single-owner seams
+
+D3 + Step 6. The compiler enforces "validation ran."
+
+**RULE — ALL JSON (de)serialization goes through `ContentLoader` using the single `static readonly ContentJson.Options`; never call `JsonSerializer.*` directly and never construct a `JsonSerializerOptions` anywhere else. The options carry `UnmappedMemberHandling.Disallow`, the source-gen context, `JsonStringEnumConverter` (enums by NAME), `FixedJsonConverter`, and `NodeBaseJsonConverter`.**
+WHY — the Fixed + NodeBase converters and Disallow must apply uniformly to every byte; three divergent options objects (as-built: ScenarioSerializer.cs:23, FactionDefinition.cs:66, inline) are three parsers and three hashes.
+
+**RULE — `ScenarioApplier` consumes ONLY `Validated<ScenarioModel>`; the wrapper has no public ctor (minted solely by `ScenarioValidator.Validate`, whose internal ctor is assembly-`internal`, not file-scoped); so no `Fixed.FromFloat` on external data can compile before validation returns Ok. The model-level `Validate` gate runs on ALL five entry paths — file, AI-gen, fallback, editor-in-memory, replay.**
+WHY — a gate enforced by the compiler makes "forgot to validate one path" a compile error, not a NaN in `Fixed.Raw` or a multiplayer desync. **Decision (Alec ✅): the content model carries `Fixed` end-to-end** — `FixedJsonConverter` quantizes + rejects NaN/Inf/over-range at parse, the validator checks `Fixed.Raw` ranges, and the canonical hash folds `.Raw` directly (one quantization boundary, no second conversion, fingerprint taken from the exact run-time numbers).
+
+```csharp
+public readonly struct Validated<T>
+{
+    public readonly T Model;
+    internal Validated(T model) => Model = model;   // assembly-internal; ScenarioValidator is the sole minter
+}
+
+// ScenarioApplier.Apply — signatures verified against as-built ResourceStore.AddOre / FactionBase (MainScene.cs:518):
+public void Apply(Validated<ScenarioModel> v)        // cannot be called with a raw model
+{
+    foreach (var slot in v.Model.PlayerSlots)        // ascending slot order
+    {
+        Faction f = FactionRegistry.ToFaction(slot.Slot);   // centralized (Faction)(slot+1)
+        _resources.AddOre(f, Fixed.FromFloat(slot.StartOre));               // safe: validated, load-time
+        _resources.FactionBase[(int)f] =
+            new FixedVec3(Fixed.FromFloat(slot.BaseX), Fixed.Zero, Fixed.FromFloat(slot.BaseZ));
+    }
+}
+```
+
+**RULE — `FixedJsonConverter.Read` reads the JSON number as `double`, rejects NaN/±Inf/over-16.16-range, and quantizes ONCE via `Fixed.FromRaw`; `NodeBaseJsonConverter` dispatches on a closed `kind` registry and throws on unknown kind / dangling ref. `Write` may use `ToFloat()` for human-readable authoring round-trip ONLY (never reachable from the tick); save-then-reload equality is asserted via `Fixed.Raw`.**
+
+```csharp
+public sealed class FixedJsonConverter : JsonConverter<Fixed>
+{
+    public override Fixed Read(ref Utf8JsonReader r, Type t, JsonSerializerOptions o)
+    {
+        double d = r.GetDouble();
+        if (double.IsNaN(d) || double.IsInfinity(d)) throw new JsonException("Fixed NaN/Infinity");
+        double raw = d * Fixed.ONE;
+        if (raw > int.MaxValue || raw < int.MinValue) throw new JsonException($"Fixed {d} out of 16.16 range");
+        return Fixed.FromRaw((int)raw);                 // single guarded quantization at load
+    }
+    public override void Write(Utf8JsonWriter w, Fixed v, JsonSerializerOptions o) => w.WriteNumberValue(v.ToFloat());
+}
+```
+
+**RULE — Every content failure is a `ContentError { Source, JsonPath, Message }` carried in `LoadResult<T>`; loaders/validators NEVER return null, throw past the boundary, or log-and-continue (replaces the as-built null-swallow ScenarioSerializer.cs:35-40 and `GD.PrintErr` MainScene.cs:551). Presentation surfaces it via `ILogSink`.**
+
+**RULE (composition seams) — A new sim→presentation reader is a Godot Node `*Bridge` that READS the sim SoA in `_Process`, interpolates `Prev→Curr` by `SimulationLoop.InterpolationAlpha`, writes ONLY Godot transforms/textures, and NEVER writes sim. A new startup step is an `ISetupPhase` at an explicit index in the `ScenePhaseRunner` order literal (asserted by `PhaseOrderTest`), with cross-phase deps (e.g. `_uiCanvas`) constructor-injected. Sim fires presentation via fire-only `On*` delegates assigned solely by `ScenarioDelegateBinder`, which `Bind`s on every `ApplyScenario` and `Unbind`s (nulls every `On*`) on teardown so a stale delegate never fires into a freed node. Effect-fired presentation goes through ONE sim-owned `IEffectPresentationSink` (carried on `EffectContext`, assigned once by `ScenarioDelegateBinder`) — leaves never declare their own `Action` field.**
+WHY — one-way sim→presentation is the sacred rule; centralizing assignment keeps it auditable and Godot out of sim; the single sink preserves the one-binder invariant rather than fragmenting into N delegate slots.
+
+```csharp
+public partial class HealthBarBridge : MultiMeshInstance3D   // reader, modeled on MultiMeshBridge.cs
+{
+    private SimulationLoop _sim = null!;
+    public override void _Process(double delta)
+    {
+        EntityWorld w = _sim.World; float a = _sim.InterpolationAlpha;   // READ ONLY
+        int slot = 0;
+        for (int i = 0; i < w.HighWaterMark && slot < Multimesh.InstanceCount; i++)
+        {
+            if (!w.IsAlive(i)) continue;
+            Vector3 pos = w.PrevPosition[i].ToGodotVector3().Lerp(w.Position[i].ToGodotVector3(), a);
+            float frac = w.Health[i].ToFloat() / w.MaxHealth[i].ToFloat();   // float PRESENTATION-side only
+            Multimesh.SetInstanceTransform(slot++, new Transform3D(
+                Basis.Identity.Scaled(new Vector3(frac, 1f, 1f)), pos + new Vector3(0, 3, 0)));
+        }
+    }
+}
+```
+
+**ENFORCEMENT** — analyzer: `new JsonSerializerOptions(` / direct `JsonSerializer.` outside `src/Core/Content/`; `Fixed.FromFloat` on any non-`Validated` content model; `[JsonPolymorphic]` project-wide; a `*Bridge` assigning an EntityWorld array or calling a sim mutator; sim `On*` delegate types taking a world-state parameter; `GD.Print`/`using Godot;` in sim. test: single-options test; `NegativeValidationTest` feeds NaN/out-of-range/dangling-ref down each of the five paths and asserts Fail (not throw); `FixedConverterRejectTest`; `ClosedRegistryTest` (every sealed NodeBase in the factory + unknown kind throws); `PhaseOrderTest`; a binder test asserting Bind and Unbind cover the identical `On*` field set.
+
+---
+
+#### N7 — The canonical-model multi-hash handshake
+
+D4/D5. Server is a stateful authority, not a relay.
+
+**RULE — Content hashes are FNV-1a over the CANONICAL MODEL, not file bytes (replaces ScenarioSerializer.cs:59-80 byte-hash): enums by NAME, collections sorted by a stable key, `Fixed` by its int `Raw`, presentation-only annotation fields excluded, fields visited in declared order. NEVER hash a file path for the handshake — hash the in-memory bound model on all five paths (fixes the AI-gen stale-file bug where a generated scenario is never written to `ScenarioPath`).**
+WHY — the hash must be invariant to formatting/key-order but sensitive to semantics; it is the desync detector in the `{scenarioHash, rulesetHash, startStateHash}` Ready packet.
+
+**RULE — The Ready packet carries THREE hashes; `startStateHash` is computed PRE-apply from the validated model. Per the wire-width scope decision the wire Ready hashes stay 32-bit (the canonical 64-bit model hash truncated for the wire, matching the existing 32-bit `SimChecksum`); if widened, add `WriteUlong`/`ReadUlong` to `NetworkCommand` and size the buffer accordingly — do not silently mix `WriteUint` with a 64-bit claim.** **Decision (Alec ✅): the wire Ready hashes + the live per-60-tick `SimChecksum` stay 32-bit; only the load-time canonical model hash is 64-bit (truncated for the wire) — least churn for the brownfield strangler. Widening everything to `ulong` is deferred.**
+
+**RULE — The server is a STATEFUL AUTHORITY: it maintains its own canonical scenario/ruleset/startState hashes and its own per-tick checksum collector, and gates `StartGame` on agreement against ITS values — never relays a self-reported hash. (As-built `HandleReady` DedicatedServer.cs:171-191 ignores the Ready payload entirely and gates only on both `_ready` flags — the pattern ADDS hash storage + attestation, and the server must first parse Ready via `TryReadReady`.) `PROTOCOL_VERSION` is compared at BOTH handshake endpoints — the client `TryReadHello` path AND the server `HandlePacket` Hello case (DedicatedServer.cs:135) — refusing the connection on mismatch.**
+
+```csharp
+private void HandleReady(int slot, in ReadyHashes peer)
+{
+    _readyHashes[slot] = peer; _ready[slot] = true;          // store, never relay
+    if (_ready[0] && _ready[1])
+    {
+        if (!_authority.Agrees(_readyHashes[0]) || !_authority.Agrees(_readyHashes[1])
+            || !_readyHashes[0].Equals(_readyHashes[1]))
+        { _transport.BroadcastReliable(TickCommandPacket.MakeAbort(AbortReason.HashMismatch)); return; }
+        _transport.BroadcastReliable(TickCommandPacket.MakeStartGame(startTick: 0));
+    }
+}
+```
+
+**RULE — The server collects every peer's checksum for a tick and takes a strict MAJORITY vote: minority peers get a `DesyncAlert`; no strict majority → HALT the match for everyone. The checksum tick is the EXECUTED sim tick (post-`ApplyOrders`), identical on both peers; stale checksums for non-matching ticks are dropped, not compared. Spectators compute the identical checksum and attest read-only (or are explicitly excluded) — never silently divergent.**
+
+```csharp
+private void OnChecksum(int slot, uint tick, uint hash)      // checksum is uint as-built (SimChecksum.cs)
+{
+    var bucket = _collector.Record(tick, slot, hash);
+    if (!bucket.AllPeersReported) return;
+    if (bucket.TryMajority(out uint canonical, out var minority))
+        foreach (int s in minority) _transport.SendReliableTo(s, TickCommandPacket.MakeDesyncAlert(tick, canonical));
+    else { _transport.BroadcastReliable(TickCommandPacket.MakeHalt(tick, HaltReason.NoMajority)); _state = State.Halted; }
+}
+```
+
+**ENFORCEMENT** — test: `HashStabilityTest` (re-serialize/whitespace-shuffle → identical hash) + `HashSensitivityTest`; handshake tests mismatch each of the three hashes + wrong `PROTOCOL_VERSION` at both endpoints + a lying-client hash (no StartGame); collector tests {all-agree, one-minority, no-majority}; a spoof test asserts the merged bundle re-stamps faction from the authoritative slot. convention: forbid re-introducing transparent Checksum relay; HALT is terminal until a defined recovery policy. [Deferred to implementation (M1): abort/HALT player-facing recovery policy — recoverable rejoin vs terminal — is not derivable from the architecture.]
+
+---
+
+### Standard Patterns
+
+The divergence-point answers, grouped by domain. Each: RULE / WHY / correct code / ENFORCEMENT. Patterns whose full design lives above are cross-referenced, not repeated.
+
+#### Sim Core
+
+**S-CORE-1 — No Dictionary enumeration driving sim order.** RULE: never let `Dictionary`/`HashSet` enumeration order influence the tick (event fire, iteration, selection); store such state in a dense ascending-index array. WHY: enumeration order is unspecified and differs across runtimes — the as-built timer bug (ScenarioDirector.cs:149).
+```csharp
+for (int slot = 0; slot < _timerRemaining.Length; slot++)           // dense, ascending, deterministic
+    if (_timerRemaining[slot] > 0 && --_timerRemaining[slot] == 0)
+        events.Add(new FiredEvent(EventKind.TimerExpires, -1, _timerName[slot]));
+```
+ENFORCEMENT: analyzer flags `.Keys`/`.Values`/`foreach` over `IDictionary`/`HashSet` in sim; golden-checksum replay.
+
+**S-CORE-2 — No unstable sort.** RULE: any in-sim sort must be TOTAL — tie-break on ascending id/index so equal keys have a defined order. WHY: `Array.Sort` is an unstable introsort; equal-priority triggers come out in partition-order, desyncing (ScenarioDirector.cs:192).
+```csharp
+Array.Sort(order, (a, b) => { int p = _triggers[b].Priority.CompareTo(_triggers[a].Priority);
+    return p != 0 ? p : a.CompareTo(b); });   // ascending-index tie-break ⇒ total
+```
+ENFORCEMENT: analyzer flags `Array.Sort`/`List.Sort`/`OrderBy` in sim lacking a total tie-break; replay over a many-equal-priority scenario.
+
+**S-CORE-3 — No float-string round-trip in the tick.** RULE: compare/pass values as `Fixed` (`Raw`); never `ToFloat()`/`ToString("F2")`/parse — strings never enter sim decisions; author thresholds quantized at load, compared Fixed-vs-Fixed. WHY: the A17 triple non-determinism (float, culture, rounding), ScenarioDirector.cs:168/170. ENFORCEMENT: analyzer flags `ToFloat()`/`ToString()`/`float.Parse`/numeric string concat in sim; replay.
+
+**S-CORE-4 — No wall-clock in sim.** RULE: all sim timing derives from the tick — accumulate `Fixed dt` for durations or count `CurrentTick` for periods; never `DateTime`/`Stopwatch`/`Time.GetTicksMsec` for gameplay. WHY: only tick count and `dt` are identical across peers (30 Hz fixed step). ENFORCEMENT: analyzer flags wall-clock types in sim; replay.
+
+**S-CORE-5 — Sim logging through ILogSink.** RULE: sim/Godot-free types (`SimulationHost`, `ScenarioApplier`, every `ISimSystem`, bridge sim-side helpers) log only through an injected `ILogSink`; never `GD.Print`/`Console`/`Debug`. Presentation Godot Nodes may use `GD.Print`. WHY: `GD.Print` requires `using Godot;`, breaking the pure-C# boundary and the AOT server build. ENFORCEMENT: analyzer flags `GD.Print`/`Console`/`using Godot;` in sim; convention: `ILogSink` ctor-injected, never static. [Deferred to implementation (M1): `ILogSink` method set (Debug/Info/Warn) and structured-arg shape — Fixed.Raw ints vs interpolated message — is net-new and undefined.]
+
+**S-CORE-6 — SimChecksum mixes integer `.Raw` only.** RULE: `Mix` consumes one `int` — pass `Fixed` as `.Raw`, enums as `(int)`, bools as 1/0; never a float/`GetHashCode`/string. WHY: `Fixed.Raw` is the platform-independent integer truth. ENFORCEMENT: convention + coverage-guard. [Deferred to implementation (M1): whether the coverage-guard enumerates EntityWorld arrays by reflection or a hand-maintained store registry — pick one as the single source of truth.]
+
+#### Effects / DSL
+
+**S-FX-1 — TargetFilter is OR-able `[Flags]` evaluated against ascending-id candidates.** RULE: `TargetFilter` is a `[Flags] enum`; `SearchArea` gathers candidates ascending-id into a pre-allocated (per-depth) buffer, then admits matches — distance uses `Fixed`, never reorders the set. WHY: OR-able flags compose any predicate; ascending-id admission keeps the hit order deterministic (distance-sort is float + nondeterministic). ENFORCEMENT: convention + filter-composition / candidate-order fixtures.
+
+**S-FX-2 — Persistent effect = a Modifier with an integer-tick lifetime.** RULE: a `Persistent` node registers a Modifier with `remaining = (int)(authoredSeconds * TICKS_PER_SECOND)` computed at load; `ModifierSystem` decrements and removes at zero — never float seconds summed by `dt`. WHY: integer-tick lifetimes are exactly reproducible and align with the 30 Hz step. ENFORCEMENT: test (a 2s buff at 30 tps expires on exactly tick 60); convention (seconds→ticks at load only).
+
+**S-FX-3 — Energy/Mana are new SoA arrays mutated only through effects.** RULE: `Energy`/`MaxEnergy` are parallel `Fixed[]` (the N1 idiom), mutated only via `EffectNode`s, folded into SimChecksum. WHY: parallel arrays match the SoA contract; any unfolded per-entity field is a latent desync. ENFORCEMENT: coverage-guard; convention (no per-entity classes). [Deferred to implementation (M1): Energy regen model — per-tick vs effect-only — decides whether a regen pass belongs in `ModifierSystem`, a new `EnergySystem`, or nowhere.]
+
+**S-FX-4 — Authored float→Fixed conversion is load-time only.** RULE: `Fixed.FromFloat` runs only during deserialization/Validate; by `Apply` every magnitude is a frozen `Fixed` field. WHY: in-tick `FromFloat` reintroduces float into deterministic math (A17-class). ENFORCEMENT: analyzer (FromFloat in tick-reachable `src/Effects`/`src/Dsl` flagged); Validated<T> gate.
+
+**S-FX-5 — Named structural caps live in `EffectCaps`/`DslCaps` and the rulesetHash corpus.** RULE: every cap (`MaxEffectDepth=8`, `MaxEffectFrames`, `MaxIterationsPerTick`, `MaxRaisesPerTick`, `ForEachBatchSize`, `MaxHitsPerSearch`) is a named `const` referenced everywhere and folded into the rulesetHash — never an inline literal. WHY: peers must agree on caps before the match; a literal can't be hashed. ENFORCEMENT: rulesetHash-corpus test; analyzer flags bare cap literals at use sites.
+
+[Deferred to implementation (M1): the `Area` representation on `EffectContext` (center+radius `Fixed` vs precomputed candidate buffer); the Modifier stat-coverage set and stacking rule (additive/multiplicative/max); the `DslValue` union shape (tagged struct vs typed ports). These are net-new design forks the type-checker and ModifierSystem depend on.]
+
+#### Multiplayer
+
+**S-MP-1 — Add a network command (struct + apply-at-`currentTick+delay`).** RULE: a command is a fixed-size readonly struct serialized into the `TickCommandPacket` order stream and APPLIED ONLY inside the shared applier at `execTick == currentTick + delay`; the issuer never mutates sim — `EnqueueOrder` buffers (returns false online). WHY: lockstep requires the identical command set at the identical tick on every peer.
+```csharp
+bool appliedNow = _lockstep.EnqueueOrder(unitId, UnitCommand.AttackMove, targetX, targetZ); // Fixed already
+```
+ENFORCEMENT: test asserts online `EnqueueOrder` returns false and never mutates `_world`; golden-checksum replay.
+
+**S-MP-2 — One shared `ApplyOrders`; keep all apply sites in sync (the 4-site rule).** RULE: the per-order switch lives in ONE shared, public, Godot-free applier extracted from the private `LockstepManager.ApplyOrders(buf, baseIdx, count, faction)` (LockstepManager.cs:594); all four live sites (online-local/remote, spectator-P1/P2) plus `ReplayPlayer` route through it — never fork per site. EVERY command case re-validates `IsAlive(id)` AND `FactionOf[id] == expectedFaction` (the last line of defense even after server re-stamping). WHY: replays/spectators re-apply the same orders; a forked site breaks the golden checksum.
+```csharp
+internal static void ApplyOrder(EntityWorld world, in UnitOrder o, Faction expectedFaction, …callbacks)
+{
+    int id = o.UnitId;
+    if (!world.IsAlive(id)) return;
+    if (world.FactionOf[id] != expectedFaction) return;        // mandatory anti-cheat guard, every case
+    world.CommandState[id] = o.Command;                        // the ONE switch
+}
+```
+ENFORCEMENT: replay-determinism harness (byte-identical per-60-tick checksum stream); spectator-parity test.
+
+**S-MP-3 — Bump `REPLAY_VERSION` on any command-semantics change.** RULE: any change to command serialization, the `UnitCommand` vocabulary, or applier semantics bumps `ReplayFormat.REPLAY_VERSION`; `ReplayPlayer` refuses a file whose version differs. WHY: a replay is a checksum-gated golden; reinterpreting old bytes under new rules is a silent desync. ENFORCEMENT: CI test (touching `UnitOrder`/`UnitCommand`/applier without a bump fails a semantic-surface hash); fail-closed load.
+
+**S-MP-4 — Input-delay clamp [2,12] committed on an agreed tick.** RULE: delay is `Math.Clamp(ticks+1, MIN_DELAY=2, MAX_DELAY=12)`; a change takes effect only at the negotiated `applyTick` via `DelayProposal`. `BUFFER_SIZE` is a power of two strictly greater than `MAX_DELAY+1` (16 > 13 as-built). WHY: both peers must use the identical `_currentDelay` and switch at the identical tick or the circular buffers alias. ENFORCEMENT: test asserts output in [2,12] across an RTT sweep + a static BUFFER_SIZE > MAX_DELAY+1 assertion; two-peer test asserts same delay at same tick.
+
+**S-MP-5 — Off-tick wall-clock isolation.** RULE: wall-clock and the float RTT EWMA may influence ONLY `ComputeTargetDelay`'s proposed value, which rides the deterministic `DelayProposal` and commits on a tick (`CommitDelayChange`, the sole writer of `_currentDelay`); the float RTT must never index `_localBuf`/`_remoteBuf`, set `_currentDelay` directly, or appear in the applier. WHY: RTT is a presentation-side hint; the schedule is purely tick-based. ENFORCEMENT: analyzer flags `Time.GetTicksMsec`/`DateTime` in `src/Core` sim and the applier; test asserts `CommitDelayChange` is the sole `_currentDelay` writer.
+
+**S-MP-6 — Stall detection is tick-counted, not wall-clock.** RULE: when remote commands never arrive, `Flush` stalls; declare a drop/abort after N stalled `Flush` calls (a tick count), never a wall-clock timeout, and trigger a deterministic Abort — never a silent continue. WHY: a wall-clock timeout fires at different real times per peer. ENFORCEMENT: test simulates a dropped peer and asserts deterministic Abort after N stalls.
+
+**S-MP-7 — Faction→Player8 is a localized bump; reference factions only via `FactionRegistry`.** RULE: add `Player5..Player8` to the enum and bump `FactionRegistry`; size faction-indexed arrays via `FACTION_ARRAY_SIZE` and index by `(int)faction`; iterate slot loops via `FactionRegistry.ToFaction(slot)`. No literal `Player1`/`Player2`, `(slot+1)` cast, `[5]`/`[2]`, or `< 2` loop anywhere else. The server `SLOT_FACTION` map (DedicatedServer.cs:42) and the merged `TickCommandsMerged` RE-STAMP each order's faction from `SLOT_FACTION[fromSlot]` (the client faction byte is advisory). WHY: faction count is part of the deterministic contract (checksum coverage, slot map, sizing); scattered literals leave one site at 2 and drop a faction from the hash; the arrival slot is the only trustworthy identity.
+
+*Critical fix — `FACTION_COUNT` has two meanings as-built and they must not collide.* Today `FACTION_COUNT = 5` (ResourceStore.cs:9, MatchStats.cs:14) is the ENUM CARDINALITY including Neutral, and per-faction arrays are sized to it and indexed by `(int)Faction` (slot 0 = Neutral). `FactionRegistry` exposes BOTH explicitly:
+```csharp
+public static class FactionRegistry
+{
+    public const int PLAYER_COUNT = 8;                         // Player1..Player8, for slot loops
+    public const int FACTION_COUNT = PLAYER_COUNT;             // alias: number of PLAYABLE factions (excl. Neutral)
+    public const int FACTION_ARRAY_SIZE = PLAYER_COUNT + 1;    // +1 for Neutral=0, for (int)Faction-indexed arrays
+    public static Faction ToFaction(int slot) => (Faction)(slot + 1);   // the ONE (slot+1) cast
+    public static int SlotOf(Faction f) => (int)f - 1;
+}
+// Per-faction SoA stores: new Fixed[FactionRegistry.FACTION_ARRAY_SIZE], indexed by (int)faction (Neutral=0 reserved).
+// Slot iteration: for (slot in 0..PLAYER_COUNT-1) faction = ToFaction(slot).
+```
+ENFORCEMENT: analyzer flags literal `Faction.PlayerN`, raw `(slot+1)`, and magic per-faction array sizes outside `FactionRegistry`; test asserts every faction-indexed array length == `FACTION_ARRAY_SIZE` and the checksum/seed/threshold loops cover all `PLAYER_COUNT` slots. [Deferred to implementation (M1): whether the production server runs >2 players — decides true majority quorum vs a 2-peer strict-equality fast path; and the spectator checksum-attestation model.]
+
+#### Content / Config / Tooling
+
+**S-CON-1 — `schema_version` + `min_game_version` + JsonNode-DOM migration chain.** RULE: every top-level document carries integer `schema_version` + `min_game_version`; `ContentLoader` runs the ordered `vN→vN+1` migration chain on the loose DOM up to `CURRENT` before binding, and HARD-REFUSES a document whose `min_game_version` exceeds the engine. WHY: migrations run on the DOM (the typed model only knows CURRENT) in a deterministic chain so every peer lands on identical bytes; `min_game_version` turns "mis-load a future file" into an explicit refusal. ENFORCEMENT: `MigrationChainTest` (golden vN → byte-identical CURRENT; chain length == CURRENT); `MinGameVersionTest`; convention (bumping a model shape requires CURRENT++ + a chain entry in the same commit).
+
+**S-CON-2 — Named caps as the rulesetHash corpus.** RULE: every constant two peers must agree on (`MaxEffectDepth`, `MAX_ENTITIES`, checksum cadence 60, input-delay [2,12], the `DamageMatrix` entries) lives as a named field in `SimConstants` and is folded into `RulesetHash`; literals at call sites are forbidden. The `DamageMatrix` fold iterates the real enum dims — `DamageType.COUNT` (4) × `ArmorType.COUNT` (5) — against the **static** `DamageMatrix.Get`, not invented `TypeCount`/`ArmorCount` members.
+```csharp
+for (int d = 0; d < (int)DamageType.COUNT; d++)
+    for (int a = 0; a < (int)ArmorType.COUNT; a++)
+        h.Fold(DamageMatrix.Get((DamageType)d, (ArmorType)a));   // static, returns Fixed → folded by .Raw
+```
+WHY: a constant not in the corpus is an invisible desync axis. ENFORCEMENT: `RulesetCorpusTest` reflects over `SimConstants` and asserts each field is referenced by `RulesetHash`; analyzer flags magic-number literals matching a known cap.
+
+**S-CON-3 — Referential integrity + combined content hash at import.** RULE: dangling `NamedEffectReference`/`resourceId`/faction ids are rejected at load (Validated<T> → Err); the `scenarioHash` for the handshake folds ALL gameplay files (scenario + faction DTOs + catalog + registry), not a single model. WHY: cross-file dangling refs and partial-corpus hashes are load-bearing for the D4/D5 handshake. ENFORCEMENT: negative fixtures for each dangling-ref class; a combined-hash test over a multi-file corpus.
+
+**S-CON-4 — Two-algorithm hash split.** RULE: keep the package zip BYTE-hash (tamper check, hashed PRE-save) decoupled from the canonical-MODEL hash (handshake/replay); each carries its own `checksum_algo_version`. WHY: unifying options must not break existing `.chimera.zip` unpack, and the handshake needs the format-invariant model hash — the two cannot be the same algorithm. ENFORCEMENT: golden gate — an existing package round-trips its byte-hash while its model hash is computed independently. **Decision: FNV-64 (per D3)** — sufficient for accidental-desync detection; a cryptographic digest (SHA-256) is a post-1.0 option only if the D5 authority later needs tamper-resistance (threat-model call).
+
+**S-CFG-1 — Config placement: GameConfig vs SettingsData vs ISecretStore.** RULE: per-match fixed inputs → the immutable `GameConfig` DTO (part of the hash corpus when sim-affecting); user-tunable persisted prefs → versioned `SettingsData`; secrets (LLM keys) → ONLY `ISecretStore` over gitignored `user://secrets/llm.key`. An `[Export] string` holding a key is banned. WHY: three lifetimes, three homes; a key in an `[Export]`/scene is a leak, a tunable in the hash corrupts agreement.
+```csharp
+public sealed record GameConfig(int MatchSeed, int InputDelayTicks, string ScenarioId);   // per-match, immutable
+public sealed class SettingsData { public int SchemaVersion { get; init; } = 3;
+    public string LlmProvider { get; init; } = "anthropic"; public float MasterVolume { get; init; } = 0.8f; } // float OK: presentation
+public interface ISecretStore { string? Get(string key); }   // backed by gitignored user://secrets, never [Export]
+```
+ENFORCEMENT: `SecretExclusionTest` (an `[Export] string` named *key*/*secret*/*token* is banned); `SettingsData` schema-version round-trip; secrets dir gitignored. **Decision: plaintext floor (per D6)** — raw key text in gitignored `user://secrets/llm.key` behind the 1-method `ISecretStore` seam; DPAPI(Win)/libsecret(Linux) drop in behind the same seam post-1.0.
+
+**S-LLM-1 — Godot-free `ILLMProvider`, authoring-layer only.** RULE: `ILLMProvider.GenerateAsync(NormalizedRequest, ct) → NormalizedResult` with 3 adapters; provider/model in versioned `SettingsData`; AI output validated by the SAME D3 gate with float→Fixed quantize BEFORE the canonical hash; ZERO sim coupling. WHY: AI is an authoring tool — it produces content that must pass the identical fail-closed gate, never touches the tick. ENFORCEMENT: analyzer (no LLM types referenced from sim); negative-validation over AI-gen fixtures.
+
+#### Testing
+
+**S-TEST-1 — Tier-1 Godot-free golden-checksum replay.** RULE: sim logic is tested in `ProjectChimera.Sim.Tests` (plain .NET, **xUnit** — Alec's call) by constructing `SimulationHost`, applying a recorded order stream via the shared applier + `StepOnce()`, and asserting the final `SimChecksum` equals a committed golden by EXACT `uint` equality — never float epsilon. The checksum is `uint` as-built (`SimChecksum.Compute` → `uint`, `LastChecksum` is `uint`, `OnChecksum` is `Action<uint,uint>`); if D4 widens the world-state hash to 64-bit, `SimChecksum`, the Checksum packet, and `SendChecksum` move to `ulong` together. The shared applier (S-MP-2) is extracted to a public Godot-free signature so the test, `LockstepManager`, and `ReplayPlayer` all call it.
+```csharp
+var host = SimulationHost.Create(matchSeed: 12345);
+uint captured = 0;
+host.SetChecksumSink((uint tick, uint checksum) => captured = checksum);   // uint, matches as-built
+var orders = ReplayFixture.Load("fixtures/skirmish.chmr");
+for (int t = 0; t < orders.TickCount; t++) { host.ApplyOrders(orders.At(t)); host.StepOnce(); }
+Assert.Equal(0xDEADBEEFu, captured);   // exact golden; regen only on intended change
+```
+ENFORCEMENT: CI `dotnet test`; convention: no `using Godot;`, exact `uint` equality.
+
+**S-TEST-2 — Tier-2 GdUnit4 presentation/integration.** RULE: anything touching Godot types (bridges, phases, scene wiring) is a GdUnit4 test in `godot/tests`; pure-sim determinism is NEVER tested here. WHY: GdUnit4 needs the Godot runtime (the only place presentation runs); determinism must stay in the fast, AOT-portable Tier-1. ENFORCEMENT: convention + CI runs the GdUnit4 suite separately.
+
+---
+
+### Consistency Rules Table
+
+| Pattern | Convention | Enforcement |
+|---|---|---|
+| Per-entity field | New `T[] = new T[MAX_ENTITIES]`, reset in `Create()` (no FromFloat), folded into SimChecksum | test: SoA coverage-guard |
+| Entity iteration | `for (id=0; id<HighWaterMark; id++) if(!IsAlive) continue` ascending | analyzer + convention |
+| Fixed conversion | `Fixed.FromFloat` only in converters/`ScenarioApplier`; tick is Fixed-only | analyzer (allow-list appliers only) |
+| Randomness | shared `SimRng`; sort candidates ascending-id then draw; global draw order = sys-reg→slot→id | analyzer (bans System.Random/Godot RNG) + replay |
+| SimChecksum | fold every truth array (`.Raw`) + all faction slots; `[ChecksumExempt]` for PrevPosition; `Mix` internal | test: coverage-guard |
+| New ISimSystem | `Tick(EntityWorld, Fixed)`, registered in `SimulationHost` at its contractual slot (ModifierSystem before CombatSystem) | test: SystemOrderTest |
+| Effect leaf | one sealed `EffectNode` + `Apply(in)`/`Validate`, allocated at load, alloc-free | analyzer + EffectRegistryCoverageTest + alloc-probe |
+| Effect composition | work-stack executor, depth=8, per-depth SearchArea buffers; no recursion | analyzer + depth/order fixtures |
+| EffectContext | `readonly struct` (not ref), re-rooted via `With*`, `in` everywhere; Rng/Sink shared | analyzer + RNG-order test |
+| Damage | single `DamageResolver.Apply`; formula `base * DamageMatrix.Get(...)` | analyzer (no other `Get` multiply) |
+| Modifier | SoA Base*/Effective* + dirty flag, recomputed before combat | test: stack/remove + timing |
+| DSL nodes | dense-index store, ascending iteration, persistent ids, exec+typed-data edges | test: type-check + id-uniqueness |
+| DSL iteration | ForEach/ForEachBatched over ascending-id snapshot + fuel; no While/recursion | analyzer (closed registry) + fuel/snapshot fixtures |
+| DSL expressions | CEL-shaped, `Fixed`-only, no float/string | analyzer + Fixed-equality fixture |
+| DSL events | closed structs, acyclic registry, FIFO ascending-handler-id drain | test: cycle-detect + worklist-order |
+| DSL variables | top-level `DslVarTable`, dense-index, folded into SimChecksum | test: coverage-guard |
+| UI read rail | double-buffered version-stamped `DslVarReadback`, published once end-of-StepOnce; format presentation-side | analyzer + version/no-string fixtures |
+| UI write rail | `Pressed` enqueues `DslEventCommand` on lockstep bus; authorized at apply | analyzer + authz/replay fixtures |
+| sim→presentation reader | Godot `*Bridge`, reads SoA, interpolates by `InterpolationAlpha`, never writes sim | analyzer + convention |
+| presentation effect seam | fire-only `On*` / single `IEffectPresentationSink`, assigned only by `ScenarioDelegateBinder` (bind+unbind) | test: single-assignment + binder coverage |
+| Network command | fixed struct, apply at `currentTick+delay`; shared applier; alive+faction re-check every case | test: replay + spectator parity |
+| Replay format | bump `REPLAY_VERSION` on any semantics change; fail-closed load | CI semantic-surface test |
+| Input delay | `Clamp(ticks+1,2,12)`, commit on agreed tick; `BUFFER_SIZE > MAX_DELAY+1` | test: clamp sweep + buffer invariant |
+| Stall | tick-counted, deterministic Abort, never wall-clock | test: dropped-peer |
+| Faction/slot | `FactionRegistry.ToFaction`/`SlotOf`; arrays sized `FACTION_ARRAY_SIZE`, indexed `(int)faction` (Neutral=0); server re-stamps from slot | analyzer + array-length test |
+| Handshake | 3-hash Ready, canonical-model hash, server attests/gates, majority-vote HALT, PROTOCOL_VERSION both ends | test: handshake mismatch + collector + spoof |
+| Content JSON | one `ContentJson.Options` via `ContentLoader`; Disallow; closed NodeBase registry; no `[JsonPolymorphic]` | analyzer + single-options + ClosedRegistryTest |
+| Content gate | `Validated<T>` (internal ctor), all five paths; no FromFloat before Ok | analyzer + NegativeValidationTest |
+| Content hash | FNV over canonical model (enums by name, sorted, `.Raw`); hash model not file path; 2-algo split | test: HashStability/Sensitivity + byte-hash golden |
+| schema_version | integer + migration chain + `min_game_version` refusal | test: MigrationChainTest + MinGameVersionTest |
+| Named caps | `SimConstants`/`EffectCaps`/`DslCaps`, folded into rulesetHash; no literals | test: RulesetCorpusTest + analyzer |
+| Config | GameConfig (fixed) / SettingsData (versioned) / ISecretStore (secret); no `[Export]` key | analyzer: SecretExclusionTest |
+| Sim logging | `ILogSink` injected; never `GD.Print`/`Console` in sim | analyzer |
+| ContentError | `{Source,JsonPath,Message}` in `LoadResult<T>`; never null/throw/swallow | analyzer + convention |
+| Composition root | `ISetupPhase[]` + `ScenePhaseRunner` order literal, ctor-injected deps | test: PhaseOrderTest |
+| Sim test | Tier-1 golden-checksum replay, exact `uint` equality, Godot-free | CI `dotnet test` |
+| Presentation test | Tier-2 GdUnit4 in `godot/tests`; no determinism asserts | convention + CI |
+
+### Deferred to implementation (M1) — tracked forks
+
+The catalog is complete at the architecture altitude. A handful of NET-NEW design forks are genuine
+**implementation-time** leaf choices (they do not change any pattern's *shape*) — recorded here so none is
+silently lost; each carries a recommended default consistent with the decided architecture:
+
+- **`SimRng` concrete API/state** — method names (`NextInt(count)`/`NextFixed()`/`NextRaw()`) + where the seed/`RawState` lives (recommend a small `SimState` field exposed to `SimChecksum`).
+- **`ILogSink` method set + arg shape** — `Debug/Info/Warn` with `Fixed.Raw`-int structured args (no interpolated strings in sim).
+- **`SimChecksum` coverage-guard mechanism** — recommend a hand-maintained explicit store registry as the single source of truth over reflection.
+- **`EffectContext.Area` representation** (center+radius `Fixed` vs precomputed candidate buffer); **Modifier stat-coverage set + stacking rule** (D1 already names `Speed/AttackDamage/AttackSpeed/MaxHealth/armorBonus` + `Refresh|Stack|Ignore`); **`DslValue` union shape** (tagged `readonly struct` vs typed ports).
+- **Energy/Mana regeneration model** (per-tick rate vs effect-only) — decides `ModifierSystem` vs a new `EnergySystem` vs nowhere.
+- **Cross-faction same-tick event tie-break** — ascending faction slot (recommended default; matches the ascending-id mandate) vs command-bus arrival order.
+- **Server >2-player quorum** — true majority (D5 ships this) vs a 2-peer strict-equality fast path (optimization only); spectator checksum-attestation model.
+- **Abort/HALT player-facing recovery policy** — recoverable rejoin vs terminal (a UX call, tracked with the lobby/UX work).
+- **`DslEvent` authorization granularity** (faction-only vs a per-scenario role table); **`DslVarReadback` publish granularity** (recommend a declared `MaxPublishedVars` subset over all-vars); **`ContentJsonContext` source-gen split**; **`Validated<T>` internal-ctor assembly boundary** (`InternalsVisibleTo` the test project).
+
