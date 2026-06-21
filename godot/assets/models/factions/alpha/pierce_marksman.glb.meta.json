@@ -1,0 +1,8 @@
+{
+  "content_hash": "4c02667fe33ad50d",
+  "asset": "alpha/archer",
+  "mesh_file": "pierce_marksman.glb",
+  "tris": 5986,
+  "warns": [],
+  "pipeline": "v1-remesh240-6k"
+}

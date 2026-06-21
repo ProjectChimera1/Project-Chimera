@@ -1,0 +1,8 @@
+{
+  "content_hash": "7f84d8f7ccdfe3d5",
+  "asset": "alpha/heavy_infantry",
+  "mesh_file": "bulwark_adept.glb",
+  "tris": 5982,
+  "warns": [],
+  "pipeline": "v1-remesh240-6k"
+}

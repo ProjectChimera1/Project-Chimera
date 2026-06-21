@@ -1,0 +1,8 @@
+{
+  "content_hash": "ca062d7a3f0aed9d",
+  "asset": "beta/ironclad",
+  "mesh_file": "pride_colossus.glb",
+  "tris": 5984,
+  "warns": [],
+  "pipeline": "v1-remesh240-6k"
+}

@@ -1,0 +1,8 @@
+{
+  "content_hash": "82d1a57c10459651",
+  "asset": "beta/footsoldier",
+  "mesh_file": "maul_fused_wretch.glb",
+  "tris": 5992,
+  "warns": [],
+  "pipeline": "v1-remesh240-6k"
+}

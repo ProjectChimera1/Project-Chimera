@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
 """Build the structured asset manifest (chimera_assets.json) from compact data.
-This is the data the run_manifest orchestrator consumes. Source of truth for prompts =
-_bmad-output/asset-generation-manifest.md (themed)."""
+Source of truth for prompts = _bmad-output/asset-generation-manifest.md (themed).
+NOTE: buildings use a 3/4-ISOMETRIC SOLID-MASSING concept prompt — flat/top-down/facade concepts
+produce thin flat meshes in Hunyuan (observed in the first batch)."""
 import json, os
 
 OUT = r"D:\Projects\Project_Chimera\tools\asset-gen\config\chimera_assets.json"
@@ -11,10 +12,12 @@ UNIT_PREFIX = ("clean low-poly RTS unit, flat-shaded single-material albedo (eng
     "top-down camera, early-20th-century industrial/European-military FMA-inspired alchemy world, neutral "
     "relaxed idle pose facing +Z (A-pose, arms slightly away from the body, NOT a rigid T-pose), plain "
     "white background, origin centered at the feet/base on the +Z axis.")
-STRUCTURE_PREFIX = ("clean low-poly RTS structure, flat-shaded single-material albedo (engine applies a global "
-    "cel-shade, do not add PBR/specular/roughness/normal-map detail), readable silhouette for a distant "
-    "top-down camera, early-20th-century industrial/European-military FMA-inspired alchemy world, sitting "
-    "squarely on the ground plane facing +Z, plain white background, origin centered at the base footprint.")
+# Buildings: force a SOLID 3D structure seen at a 3/4 high angle (NOT top-down / floor plan / facade).
+STRUCTURE_PREFIX = ("clean low-poly RTS building game asset, a SINGLE three-dimensional structure shown from a "
+    "3/4 high-angle isometric perspective with clear volumetric massing — visible roof, walls, and depth, like "
+    "an Age of Empires / Warcraft building render, flat-shaded single-material albedo (engine applies a global "
+    "cel-shade, no PBR/specular/normal-map detail), early-20th-century industrial/European-military FMA-inspired "
+    "alchemy world, the whole building resting on the ground, plain white background.")
 VEHICLE_PREFIX = UNIT_PREFIX.replace(
     "neutral relaxed idle pose facing +Z (A-pose, arms slightly away from the body, NOT a rigid T-pose)",
     "static neutral orientation, barrel/front facing +Z (no biped pose)")
@@ -37,11 +40,16 @@ NEGATIVE = ("high-poly, photorealistic, PBR, specular highlights, glossy or meta
     "cinematic lighting, off-center framing, action or dynamic pose, character sheet, reference sheet, model sheet, "
     "turnaround, multiple views, multiple poses, item studies, equipment studies, weapon studies, panels, insets, "
     "grid layout, collage, design sheet, props, duplicate")
+# Extra negatives for buildings — kill the flat/top-down/emblem failure modes.
+BUILDING_NEG = (", top-down view, overhead map, floor plan, blueprint, schematic, flat facade, single wall, "
+    "wall panel, elevation drawing, emblem, seal, medallion, circular design, mandala, 2D, orthographic, flat slab, "
+    "tile, rug, coin")
 
 CHAR_SUFFIX = ("(single full-body character, ONE subject only, isolated and centered on a plain seamless white "
     "background, full figure from head to feet, straight-on front view).")
-STRUCT_SUFFIX = ("(single isolated structure, ONE building only, centered on a plain seamless white background, "
-    "full structure in frame, straight-on view).")
+STRUCT_SUFFIX = ("(a solid 3D building with real depth and a roof, seen at a 3/4 aerial isometric angle; NOT "
+    "top-down, NOT a floor plan or map, NOT a flat facade or wall, NOT an emblem or seal or medallion, NOT a 2D "
+    "drawing; ONE isolated building centered on plain white).")
 
 # (id, faction, prefix, tri_kind, mesh_file, mesh_scale, subject)
 ASSETS = [
@@ -63,13 +71,13 @@ ASSETS = [
     ("griffin", "alpha", "air", "unit", "greycrest_bonded.glb", 1.4,
      "a noble eagle-lion chimera with broad smooth rounded feathered wings, a lion's hindquarters, one brass automail foreleg-talon, a slim slate-blue saddle-harness with a chalk-white brand on the shoulder; instantly-readable rounded winged silhouette; alert and loyal, not monstrous."),
     ("command_center", "alpha", "structure", "building", "covenant_sanctum.glb", 3.0,
-     "a stout fortified chapel-workshop of slate-blue stone, steep slate roof, tall central clocktower-spire, brass-pipe chimneys, telegraph wires, a huge glowing chalk-white transmutation circle inlaid in the courtyard; clearly the largest friendly structure, civic and protective."),
+     "a stout fortified chapel-workshop of slate-blue stone with a steep slate roof, a tall central clocktower-spire, brass-pipe chimneys and telegraph wires, arched doors with a glowing chalk-white sigil banner over the entrance; clearly the largest, tallest friendly structure, civic and protective."),
     ("barracks", "alpha", "structure", "building", "crucible_hall.glb", 2.5,
-     "a long low slate-blue barracks hall with an arched drilling-yard entrance, a banner of crossed chalk and sword, training dummies, a chalk-white circle glowing above the doorway; squat rectangular military silhouette."),
+     "a long low slate-blue barracks hall with a pitched roof and an arched drilling-yard gateway, a banner of crossed chalk and sword over the door, brick chimney; squat rectangular military building, distinctly lower than the spired command center."),
     ("archery_range", "alpha", "structure", "building", "sigil_foundry.glb", 2.5,
-     "an open-fronted slate-blue range with a tall slatted firing canopy, hanging brass lanterns, stacked target butts down one side, a chalk-white aiming sigil on the back wall; horizontal open-air silhouette with a distinctive overhanging roof."),
+     "an open-fronted slate-blue range building with a tall slatted firing canopy roof, hanging brass lanterns, a stacked row of target butts along one side; horizontal open-air building with a distinctive overhanging slatted roof."),
     ("siege_workshop", "alpha", "structure", "building", "transmutation_forge.glb", 2.8,
-     "a heavy industrial forge-hall of slate-blue brick with a tall brick smokestack, a large arched vehicle bay with a half-built mortar inside, glowing orange crucible light spilling out, brass gauges; bulky workshop silhouette with the tall chimney as its read-at-distance marker."),
+     "a heavy industrial forge-hall of slate-blue brick with a tall brick smokestack and a large arched vehicle bay, glowing orange crucible light spilling from the bay, brass gauges on the walls; bulky workshop building with the tall chimney as its read-at-distance marker."),
     # ---- Sanguine Court (beta) ----
     ("forgehand", "beta", "unit", "unit", "cinderhand_thrall.glb", 1.0,
      "a stooped hollow-eyed laborer in a soot-stained leather apron, one crude brass prosthetic ending in a digging claw, a dim red Core-ember glowing through a chest vent; hunched, the smallest and simplest silhouette so it reads as a non-combatant worker."),
@@ -88,13 +96,13 @@ ASSETS = [
     ("wyvern", "beta", "air", "unit", "envy_wraithwing.glb", 1.4,
      "a stitched flying chimera with wide ragged asymmetric bat-leather wings with trailing tatters, an elongated fanged maw, faint extra human-like faces fused into a crimson-glowing torso; broad torn-wing silhouette that reads instantly as airborne."),
     ("command_center", "beta", "structure", "building", "sanguine_furnace.glb", 3.0,
-     "a tall gothic foundry-cathedral of black iron and brass with a great central furnace-chimney pouring red light, ringed by smaller smokestacks and a glowing transmutation circle on the forecourt; the largest, most vertical and ornate structure."),
+     "a tall gothic foundry-cathedral of black iron and brass with a great central furnace-chimney pouring red light, ringed by smaller smokestacks, tall arched doors with a crimson sigil over them; the largest, most vertical and ornate building."),
     ("barracks", "beta", "structure", "building", "thrall_yards.glb", 2.5,
-     "a long low fortified hall of dark iron and stone with barred pens along one side, a wide arched mustering gate stained crimson, chained gibbets; broad horizontal silhouette, lower than the central furnace."),
+     "a long low fortified hall of dark iron and stone with a pitched roof, barred pens along one side and a wide arched mustering gate stained crimson; broad horizontal building, lower than the central furnace cathedral."),
     ("archery_range", "beta", "structure", "building", "bolt_sanctum.glb", 2.5,
-     "a narrow tall vaulted chapel-armory of black iron with tall slit firing-windows, racks of crimson-glowing quarrels along the front, a small floating sigil-disc over the entrance; upright slender silhouette."),
+     "a narrow tall vaulted chapel-armory of black iron with a steep roof and tall slit firing-windows, racks of crimson-glowing quarrels along the front wall; upright slender building distinct from the squat barracks."),
     ("siege_workshop", "beta", "structure", "building", "render_works.glb", 2.8,
-     "a massive heavy-industrial foundry of black iron with an overhead gantry crane, a glowing red rendering-vat, oversized brass boiler tanks, a wide vehicle-bay door; the bulkiest, most mechanical structure with a clear vehicle exit."),
+     "a massive heavy-industrial foundry building of black iron with an overhead gantry crane, oversized brass boiler tanks and a wide vehicle-bay door glowing red inside; the bulkiest, most mechanical building with a clear vehicle exit."),
 ]
 
 def concept_size(prefix):
@@ -103,13 +111,14 @@ def concept_size(prefix):
 assets = []
 for (aid, fac, prefix, tri_kind, mesh, scale, subject) in ASSETS:
     suffix = STRUCT_SUFFIX if prefix == "structure" else CHAR_SUFFIX
+    neg = NEGATIVE + (BUILDING_NEG if prefix == "structure" else "")
     full_prompt = f"{PREFIXES[prefix]} {PALETTES[fac]} SUBJECT: {subject} {suffix}"
     assets.append({
         "id": aid, "faction": fac, "prefix": prefix, "tri_kind": tri_kind,
         "mesh_file": mesh, "mesh_scale": scale,
         "dest": f"godot/assets/models/factions/{fac}/{mesh}",
         "concept_size": concept_size(prefix),
-        "prompt": full_prompt, "negative": NEGATIVE,
+        "prompt": full_prompt, "negative": neg,
     })
 
 doc = {
@@ -123,6 +132,4 @@ doc = {
 os.makedirs(os.path.dirname(OUT), exist_ok=True)
 with open(OUT, "w", encoding="utf-8") as f:
     json.dump(doc, f, indent=2, ensure_ascii=False)
-print(f"WROTE {OUT}: {len(assets)} assets")
-for a in assets:
-    print(f"  {a['faction']}/{a['id']:14s} -> {a['mesh_file']}")
+print(f"WROTE {OUT}: {len(assets)} assets ({sum(1 for a in assets if a['prefix']=='structure')} buildings with 3/4-isometric prompt)")

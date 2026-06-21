@@ -1,0 +1,8 @@
+{
+  "content_hash": "469d3858dc38edb5",
+  "asset": "beta/rune_caster",
+  "mesh_file": "cinder_cantor.glb",
+  "tris": 5985,
+  "warns": [],
+  "pipeline": "v1-remesh240-6k"
+}

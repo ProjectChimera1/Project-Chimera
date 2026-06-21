@@ -1,0 +1,8 @@
+{
+  "content_hash": "85f74a883d795b97",
+  "asset": "beta/crossbowman",
+  "mesh_file": "bolt_penitent.glb",
+  "tris": 5966,
+  "warns": [],
+  "pipeline": "v1-remesh240-6k"
+}

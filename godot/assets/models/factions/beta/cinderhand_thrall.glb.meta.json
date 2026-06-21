@@ -1,0 +1,8 @@
+{
+  "content_hash": "c71d0c055ac20da8",
+  "asset": "beta/forgehand",
+  "mesh_file": "cinderhand_thrall.glb",
+  "tris": 5982,
+  "warns": [],
+  "pipeline": "v1-remesh240-6k"
+}

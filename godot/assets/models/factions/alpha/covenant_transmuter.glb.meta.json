@@ -1,0 +1,8 @@
+{
+  "content_hash": "4ee430dc511a12ce",
+  "asset": "alpha/infantry",
+  "mesh_file": "covenant_transmuter.glb",
+  "tris": 5986,
+  "warns": [],
+  "pipeline": "v1-remesh240-6k"
+}

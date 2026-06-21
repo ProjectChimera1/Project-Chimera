@@ -1,0 +1,8 @@
+{
+  "content_hash": "2e3f16001d0fc2bf",
+  "asset": "alpha/griffin",
+  "mesh_file": "greycrest_bonded.glb",
+  "tris": 5993,
+  "warns": [],
+  "pipeline": "v1-remesh240-6k"
+}

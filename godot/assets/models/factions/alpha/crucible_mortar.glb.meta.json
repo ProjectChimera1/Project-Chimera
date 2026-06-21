@@ -1,0 +1,8 @@
+{
+  "content_hash": "1cf12f27870bcf93",
+  "asset": "alpha/siege_engine",
+  "mesh_file": "crucible_mortar.glb",
+  "tris": 5988,
+  "warns": [],
+  "pipeline": "v1-remesh240-6k"
+}

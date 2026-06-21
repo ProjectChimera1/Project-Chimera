@@ -1,0 +1,8 @@
+{
+  "content_hash": "4aba0c4ce7015e12",
+  "asset": "alpha/scout",
+  "mesh_file": "quicksilver_runner.glb",
+  "tris": 5987,
+  "warns": [],
+  "pipeline": "v1-remesh240-6k"
+}

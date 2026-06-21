@@ -1,0 +1,8 @@
+{
+  "content_hash": "76af8b64a68c46ab",
+  "asset": "beta/bulwark",
+  "mesh_file": "slag_bulwark.glb",
+  "tris": 5989,
+  "warns": [],
+  "pipeline": "v1-remesh240-6k"
+}

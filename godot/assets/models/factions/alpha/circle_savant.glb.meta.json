@@ -1,0 +1,8 @@
+{
+  "content_hash": "fe0c26d9ddd8bc20",
+  "asset": "alpha/mage",
+  "mesh_file": "circle_savant.glb",
+  "tris": 5997,
+  "warns": [],
+  "pipeline": "v1-remesh240-6k"
+}
