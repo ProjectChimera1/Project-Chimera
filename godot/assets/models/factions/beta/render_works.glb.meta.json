@@ -1,0 +1,8 @@
+{
+  "content_hash": "b05f4e10ee812494",
+  "asset": "beta/siege_workshop",
+  "mesh_file": "render_works.glb",
+  "tris": 9987,
+  "warns": [],
+  "pipeline": "v1-remesh240-6k"
+}

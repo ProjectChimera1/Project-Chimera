@@ -1,0 +1,8 @@
+{
+  "content_hash": "3dc6fbf209341f70",
+  "asset": "beta/barracks",
+  "mesh_file": "thrall_yards.glb",
+  "tris": 9988,
+  "warns": [],
+  "pipeline": "v1-remesh240-6k"
+}

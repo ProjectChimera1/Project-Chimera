@@ -1,0 +1,8 @@
+{
+  "content_hash": "7f6ac19347ad5243",
+  "asset": "beta/archery_range",
+  "mesh_file": "bolt_sanctum.glb",
+  "tris": 9985,
+  "warns": [],
+  "pipeline": "v1-remesh240-6k"
+}
