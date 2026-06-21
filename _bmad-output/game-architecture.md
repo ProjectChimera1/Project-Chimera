@@ -66,6 +66,27 @@ Implementation Patterns* below + the `game-architecture.Step7-patterns-briefing.
 
 ---
 
+## Decision Summary
+
+| Category | Decision | Version / Option | Rationale (1-line) |
+|---|---|---|---|
+| Engine | Godot for 1.0; defer 4.7 | 4.6.3 (patch on 4.6 line; 4.7 post-1.0) | Low-risk bugfixes; avoid days-old-minor regression/addon risk |
+| Runtime | .NET desktop | .NET 8 | Stable target; ".NET 9 AOT" is post-1.0 aspiration |
+| Sole NuGet dep | NakamaClient | 3.13.0 (pinned) | Only shipped dependency; keeps sim AOT-eligible |
+| D1 | Effects vocabulary | Bounded Effect-Graph (Option C) | Closed, typed, statically-bounded shared ability/trigger primitives |
+| D2 | Trigger DSL | Typed event/dataflow graph (Option C) | Statically checkable graph IR vs flat-list/escape-hatch |
+| D3 | Definition schema & loader | Data-driven JSON + `Validated<T>` fail-closed gate + canonical-model FNV-64 hash | One trustworthy pipeline; safe-by-construction AI authoring |
+| D4 | Hero persistence | Two-rail, server-attested | Init-time deterministic state the server validates |
+| D5 | >2-player lockstep + matchmaking | N-aware dedicated relay (ship N≤4, 8 fast-follow) | Server-enforced agreement; localized faction bump |
+| D6 | LLM provider | Hand-rolled `ILLMProvider` + `ISecretStore` | Sandboxed authoring layer; never touches the sim tick |
+| Step 5 | Test runner | Tier-1 xUnit (Godot-free) + Tier-2 GdUnit4 | Fast AOT-portable determinism tests; presentation in-runtime |
+| Hash width | Checksum/hash sizing | 32-bit wire / 64-bit canonical | Compact on the wire; collision-safe canonical model hash |
+| Content numeric shape | Fixed-point everywhere | Fixed end-to-end, convert at parse | One quantization boundary; no in-tick float |
+
+_Full detail in the per-decision sections below and the sidecar briefings._
+
+---
+
 ## Project Context
 
 ### Game Overview
@@ -86,7 +107,7 @@ multiplayer, and UGC ship together, gated by always-shippable internal milestone
 - **Platform:** PC desktop — **Windows primary, Linux** (dedicated server + client). No web,
   mobile, console, VR, or gamepad.
 - **Engine / Language:** Godot **4.6.2 stable** (Forward+, Jolt, D3D12) · **C# / .NET 8**
-  desktop (".NET 9 AOT" is a future aspiration, not 1.0). Sole NuGet dependency: `NakamaClient`.
+  desktop (".NET 9 AOT" is a future aspiration, not 1.0). Sole NuGet dependency: `NakamaClient 3.13.0`.
 - **Genre:** Real-time strategy + in-game creation toolset (editor-as-product).
 - **Project Level:** **4 — Maximum.** Multiplayer-deterministic simulation + full data-driven
   creation suite + LLM-assisted authoring, on a **brownfield codebase at Phase 5 (→1.0)**.
@@ -202,7 +223,7 @@ worth taking mid-release. Engine stays pinned to a known-good line.
 ### Project Initialization
 
 Existing project — no scaffolding. Entry: `project.godot` → `res://scenes/main.tscn` →
-`MainScene.cs._Ready()`. Solution `godot/godot.sln` (.NET 8). Sole NuGet dependency: `NakamaClient`.
+`MainScene.cs._Ready()`. Solution `godot/godot.sln` (.NET 8). Sole NuGet dependency: `NakamaClient 3.13.0`.
 
 ### Engine-Provided Architecture
 
@@ -1309,7 +1330,7 @@ presentation), **colorblind-safe** faction palette + mode (the current blue/red 
   hashing. No creator content ever executes as code.
 - **Migration & replay-compat testing:** D3's migration registry needs **round-trip tests** (vN→vN+1 preserves
   meaning) and the replay format needs **v1→v2 reject** + cross-version tests (D5-SD-12 / D3.9).
-- **Dependency hygiene:** the sole shipped NuGet dep stays `NakamaClient`; test-only dependencies live **only in
+- **Dependency hygiene:** the sole shipped NuGet dep stays `NakamaClient` (pinned 3.13.0); test-only dependencies live **only in
   the Godot-free test project** (never the Godot build), keeping the sim AOT-eligible.
 
 ### Telemetry ✅
@@ -1859,7 +1880,7 @@ for (int i = 0; i < world.HighWaterMark; i++)
 }
 // ALL faction slots, not Player1/Player2 literals. ResourceStore.Ore is indexed by (int)Faction,
 // 1-based, slot 0 = Neutral, array length FactionRegistry.FACTION_ARRAY_SIZE.
-for (int slot = 0; slot < FactionRegistry.FACTION_COUNT; slot++)
+for (int slot = 0; slot < FactionRegistry.PLAYER_COUNT; slot++)
 {
     Faction f = FactionRegistry.ToFaction(slot);   // (Faction)(slot+1), the ONE cast site
     hash = Mix(hash, resources.Ore[(int)f].Raw);
@@ -2304,7 +2325,7 @@ ENFORCEMENT: analyzer flags `Array.Sort`/`List.Sort`/`OrderBy` in sim lacking a 
 
 **S-FX-4 — Authored float→Fixed conversion is load-time only.** RULE: `Fixed.FromFloat` runs only during deserialization/Validate; by `Apply` every magnitude is a frozen `Fixed` field. WHY: in-tick `FromFloat` reintroduces float into deterministic math (A17-class). ENFORCEMENT: analyzer (FromFloat in tick-reachable `src/Effects`/`src/Dsl` flagged); Validated<T> gate.
 
-**S-FX-5 — Named structural caps live in `EffectCaps`/`DslCaps` and the rulesetHash corpus.** RULE: every cap (`MaxEffectDepth=8`, `MaxEffectFrames`, `MaxIterationsPerTick`, `MaxRaisesPerTick`, `ForEachBatchSize`, `MaxHitsPerSearch`) is a named `const` referenced everywhere and folded into the rulesetHash — never an inline literal. WHY: peers must agree on caps before the match; a literal can't be hashed. ENFORCEMENT: rulesetHash-corpus test; analyzer flags bare cap literals at use sites.
+**S-FX-5 — Named structural caps live in `EffectCaps`/`DslCaps` and the rulesetHash corpus.** RULE: every cap (`MaxEffectDepth=8`, `MaxEffectFrames`, `MaxIterationsPerTick`, `MaxRaisesPerTick`, `ForEachBatchSize`, `MaxHitsPerSearch`) is a named `const` referenced everywhere and folded into the rulesetHash — never an inline literal. WHY: peers must agree on caps before the match; a literal can't be hashed. ENFORCEMENT: rulesetHash-corpus test; analyzer flags bare cap literals at use sites. _(distinct from `MaxLoopIterations`≈256, the per-loop iteration cap; `MaxIterationsPerTick`≈4096 is the per-tick total-iteration fuel budget)_
 
 [Deferred to implementation (M1): the `Area` representation on `EffectContext` (center+radius `Fixed` vs precomputed candidate buffer); the Modifier stat-coverage set and stacking rule (additive/multiplicative/max); the `DslValue` union shape (tagged struct vs typed ports). These are net-new design forks the type-checker and ModifierSystem depend on.]
 
@@ -2351,7 +2372,7 @@ public static class FactionRegistry
 // Per-faction SoA stores: new Fixed[FactionRegistry.FACTION_ARRAY_SIZE], indexed by (int)faction (Neutral=0 reserved).
 // Slot iteration: for (slot in 0..PLAYER_COUNT-1) faction = ToFaction(slot).
 ```
-ENFORCEMENT: analyzer flags literal `Faction.PlayerN`, raw `(slot+1)`, and magic per-faction array sizes outside `FactionRegistry`; test asserts every faction-indexed array length == `FACTION_ARRAY_SIZE` and the checksum/seed/threshold loops cover all `PLAYER_COUNT` slots. [Deferred to implementation (M1): whether the production server runs >2 players — decides true majority quorum vs a 2-peer strict-equality fast path; and the spectator checksum-attestation model.]
+Analyzer rule: ban bare `FACTION_COUNT` in new faction-iteration loops — use `PLAYER_COUNT` (playable, excl. Neutral) or `FACTION_ARRAY_SIZE` (sized incl. Neutral). ENFORCEMENT: analyzer flags literal `Faction.PlayerN`, raw `(slot+1)`, and magic per-faction array sizes outside `FactionRegistry`; test asserts every faction-indexed array length == `FACTION_ARRAY_SIZE` and the checksum/seed/threshold loops cover all `PLAYER_COUNT` slots. [Deferred to implementation (M1): whether the production server runs >2 players — decides true majority quorum vs a 2-peer strict-equality fast path; and the spectator checksum-attestation model.]
 
 #### Content / Config / Tooling
 
@@ -2439,6 +2460,12 @@ ENFORCEMENT: CI `dotnet test`; convention: no `using Godot;`, exact `uint` equal
 | Sim test | Tier-1 golden-checksum replay, exact `uint` equality, Godot-free | CI `dotnet test` |
 | Presentation test | Tier-2 GdUnit4 in `godot/tests`; no determinism asserts | convention + CI |
 
+### Naming Conventions
+
+The base C# casing rule lives in `CLAUDE.md` / `project-context.md`: PascalCase for classes/methods/public members; camelCase for locals; SCREAMING_CASE for consts; a `PascalCase.cs` filename equals its class name; sources live under `godot/src/<System>/`.
+
+The doc-specific idioms are consolidated in the Consistency Rules Table above: `*Bridge` (sim→presentation readers), `*System`/`*Store` (sim systems and SoA stores), `*Phase` (composition-root setup steps), paired `Base*` + `Effective*` stat arrays, `Max*`/`MIN_*`/`MAX_*` caps, `*Test` (Tier-1 tests), and the `S-`/`N-` pattern ids.
+
 ### Deferred to implementation (M1) — tracked forks
 
 The catalog is complete at the architecture altitude. A handful of NET-NEW design forks are genuine
@@ -2454,4 +2481,86 @@ silently lost; each carries a recommended default consistent with the decided ar
 - **Server >2-player quorum** — true majority (D5 ships this) vs a 2-peer strict-equality fast path (optimization only); spectator checksum-attestation model.
 - **Abort/HALT player-facing recovery policy** — recoverable rejoin vs terminal (a UX call, tracked with the lobby/UX work).
 - **`DslEvent` authorization granularity** (faction-only vs a per-scenario role table); **`DslVarReadback` publish granularity** (recommend a declared `MaxPublishedVars` subset over all-vars); **`ContentJsonContext` source-gen split**; **`Validated<T>` internal-ctor assembly boundary** (`InternalsVisibleTo` the test project).
+
+---
+
+## Presentation & UGC-Publish Coverage (Step 8 Addendum)
+
+> Step-8 validation surfaced five 1.0-scope requirements (FR-12a, FR-36, FR-37/FR-38a, FR-49a, plus
+> creator binary-asset import; GDD §7.1/§7.2/§7.3/§8.4) that had **no architectural home**. All are
+> **presentation / IO domain** — none enters the deterministic 30 Hz tick or any `SimChecksum` /
+> canonical-model hash. They are homed here as concrete decisions (Alec's call 2026-06-21: home all five
+> now); depth tuning is deferred to their milestones. Each closes the matching validation finding.
+
+### P1 — Art-style consistency layer (FR-49a / GDD §8.4)
+
+**Decision — two in-engine mechanisms.** (a) A **shared `StandardMaterial3D` preset library** (a
+`resources/` `.tres` resource set of a few canonical materials) applied via the **MultiMesh
+material-override** path, so every unit/building mesh — first-party or creator-generated — shares lighting,
+roughness, and rim characteristics. (b) **One global post-process pass** via Godot `WorldEnvironment` + a
+single screen-space shader (cel-shading bands + color-correction/tonemap) so the whole scene reads as one
+coherent style regardless of per-asset variation. This is the **in-engine consistency stage that runs
+AFTER the external AI-art generation pipeline** (Hunyuan3D/Tripo + LoRA stay out of runtime scope). 1.0
+baseline = the post-process shader + the preset library; deeper style-transfer is external. **Home:**
+presentation/rendering — preset library is a `resources/` asset; the post-process shader lives with the
+main scene's `WorldEnvironment`. **Determinism:** none.
+
+### P2 — Runtime binary-asset ingest (GDD §7.2; `UnitDefinition` model refs)
+
+**Decision — a runtime asset-loading path distinct from the editor import pipeline.** Shipped / dedicated
+builds load creator-supplied `.glb` via **`GLTFDocument.AppendFromFile` → `GenerateScene`** (NOT
+`GD.Load<PackedScene>`, which only resolves editor-pre-imported `res://` assets), textures via
+`Image.LoadFromFile` + `ImageTexture.CreateFromImage`, and audio via `AudioStreamOggVorbis.LoadFromFile`.
+Assets are extracted from `.chimera.zip` into a `user://` cache. Each asset is **validated alongside the
+content hash**: extension allow-list, max file size, max texture dimensions, mesh vertex/submesh caps; a
+missing/invalid asset resolves to the existing **box placeholder** (`MeshLoader` already does this) and
+**never crashes the load**. An **`AssetRegistry`** maps a logical asset id → the runtime-loaded mesh and
+registers it into the MultiMesh; `UnitDefinition.model` references resolve through it. **Home:**
+`ProjectChimera.UGC` (ingest + validation) + a presentation `AssetRegistry`. **Critical:** this path is
+required for **any non-editor build** to show custom art — exported first-party builds and Alec's own
+locally-generated Iron Pact GLBs included, not just downloaded UGC. **Determinism:** none (assets never
+enter the tick); asset bytes **are** folded into the content hash, so peers still verify identical content.
+
+### P3 — `CombatFeedbackProfile` (FR-12a)
+
+**Decision — a `CombatFeedbackProfile` DTO** in `src/Core/Definitions/` (sibling of `UnitDefinition`): a
+per-unit/per-ability bundle `{ hitParticleId, impactSoundId, shake{intensity, durationTicks},
+hitFreezeFrames, deathEffectId, deathSoundId }`. A **tuned default ships as data**; units/abilities
+reference a profile id and may override. It serializes through D3's `ContentLoader` / `Validated<T>` like
+every other definition and is flagged **presentation-domain → excluded from `SimChecksum` and the
+canonical-model hash** (per the D1 domain rule). At runtime it drives the D1 presentation leaves
+(`PlayVfx`/`PlaySound`/`ShakeScreen`) via the `On*` seam. **`hit-freeze` is a presentation-timeline
+concern** (a brief render-side pause/scale on the hit reactor) — it is **not** an effect node and must
+never pause the sim tick. **Home:** Definitions (DTO) + `CombatFeedbackBridge` (upgraded from hardcoded to
+profile-driven). **Determinism:** none.
+
+### P4 — Proof-of-play + pre-publish quality gate (FR-36 / GDD §7.3)
+
+**Decision — capture proof-of-play from the existing D1 `Victory` control leaf.** When a creator wins
+their own scenario in a non-multiplayer test run, a **signed completion token** (scenario canonical hash +
+outcome + timestamp) is written into the `.chimera.zip` **manifest** (D3 owns the manifest). The mod.io
+publish path in `ProjectChimera.UGC` **refuses upload** unless the manifest carries a valid token whose
+hash matches the package, plus the GDD §7.3 minimum-quality fields (thumbnail, description ≥ 100 chars,
+≥ 1 screenshot). Enforcement is **client-side at publish** (1.0 posture — premium title, low abuse
+surface); server-side re-validation is a post-1.0 option. **Home:** `ProjectChimera.UGC` (publish flow) +
+D3 manifest. **Determinism:** none.
+
+### P5 — Content browser + IP-ownership surfacing (FR-37 / FR-38a)
+
+**Decision.** (a) Browse / search / tag-filter / sort / subscribe / rate **delegate entirely to
+mod.io-native features** — **no parallel rating/search system is built**; the content browser is a
+presentation view over mod.io REST responses (`ProjectChimera.UGC.ModIoService`, raw `HttpClient`).
+(b) **FR-38a** (creator retains ownership; the platform takes only a **non-exclusive host/distribute
+right**) is surfaced as an explicit **consent checkbox in the publish flow**, recorded in the manifest,
+and **required before upload**. **Home:** `ProjectChimera.UGC` (REST) + CreationSuite content-browser /
+publish UI. This also gives mod.io REST integration the depth GDD §7.1 prescribes (closing the related
+minor finding). **Determinism:** none.
+
+### Traceability note — framework command vocabulary (GDD §3.4)
+
+The GDD §3.4 non-negotiable command set (**Move, Attack-Move, Patrol, Stop, Hold, Follow, Rally**) is the
+framework command vocabulary carried by the lockstep command bus (`EnqueueOrder`). As-built `UnitCommand`
+covers **Move / AttackMove / Stop / HoldPosition / Build**; **Patrol, Follow, and Rally-as-a-unit-command
+are pending** — mechanical `enum` + system extensions over the already-architected command seam, no new
+architecture required.
 
