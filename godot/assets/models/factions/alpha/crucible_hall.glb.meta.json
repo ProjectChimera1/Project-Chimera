@@ -1,0 +1,8 @@
+{
+  "content_hash": "7165ed83446e2d5b",
+  "asset": "alpha/barracks",
+  "mesh_file": "crucible_hall.glb",
+  "tris": 9981,
+  "warns": [],
+  "pipeline": "v1-remesh240-6k"
+}

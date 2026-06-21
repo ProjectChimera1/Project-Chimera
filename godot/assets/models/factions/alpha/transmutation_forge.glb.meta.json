@@ -1,0 +1,8 @@
+{
+  "content_hash": "31a6edf921930eea",
+  "asset": "alpha/siege_workshop",
+  "mesh_file": "transmutation_forge.glb",
+  "tris": 9991,
+  "warns": [],
+  "pipeline": "v1-remesh240-6k"
+}

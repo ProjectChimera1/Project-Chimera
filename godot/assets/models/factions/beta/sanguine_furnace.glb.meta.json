@@ -1,0 +1,8 @@
+{
+  "content_hash": "4cf86dcca3cc1626",
+  "asset": "beta/command_center",
+  "mesh_file": "sanguine_furnace.glb",
+  "tris": 9986,
+  "warns": [],
+  "pipeline": "v1-remesh240-6k"
+}

@@ -1,0 +1,8 @@
+{
+  "content_hash": "7ca2822efe767ac7",
+  "asset": "alpha/archery_range",
+  "mesh_file": "sigil_foundry.glb",
+  "tris": 9963,
+  "warns": [],
+  "pipeline": "v1-remesh240-6k"
+}
