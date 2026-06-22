@@ -1,5 +1,5 @@
 ---
-stepsCompleted: ['step-01-document-discovery', 'step-02-gdd-analysis']
+stepsCompleted: ['step-01-document-discovery', 'step-02-gdd-analysis', 'step-03-epic-coverage-validation']
 documentsUnderReview:
   - type: GDD
     path: 'Project_Chimera_GDD.md'
@@ -178,5 +178,71 @@ Design intentions present in the GDD that are **not owned by any numbered PRD FR
 - **Principal risk:** several "Built Foundation" claims (command vocabulary, formation movement, unit tags, projectile/splash authoring) are **vague labels the PRD never decomposes into verifiable FRs** — and the PRD itself flags some as assumptions. These are the highest-value items for Step-3 epic-coverage and later code-verification.
 - **Count reconciled:** tracker, epics, and PRD all agree on **60** FRs (the Step-2 verifier's "58" was a lettered-insert miscount, corrected here).
 - **Verdict:** the requirement set is **faithful and complete enough to serve as the Step-3 coverage measuring stick** (verifier confidence: high).
+
+---
+
+## 3. Epic Coverage Validation
+
+_Method: extracted the epics' declared FR Coverage Map, then **independently** re-audited all 10 epics (one auditor per epic, blind to the coverage claim) to confirm each FR is substantively delivered, and probed the 12 Step-2 design-gap candidates against the actual story ACs._
+
+### 3.1 Coverage Statistics
+- **Total PRD FRs:** 60 (52 base + 8 lettered)
+- **FRs covered in epics:** 60
+- **FR coverage: 100% (60/60)** — independently confirmed. The epics' declared "FR coverage 60/60" claim **holds** under blind re-audit. Every FR is delivered by ≥1 story with concrete acceptance criteria; **no FR is missing, and none is merely name-dropped without a story attempting it.**
+- Stories: ~95–97 across 10 epics. NFR-1…NFR-6 are each substantively touched somewhere (though often enforced via AC content rather than tagged by NFR id).
+
+### 3.2 Coverage Matrix (by epic — all FRs substantiated)
+
+| Epic | FRs owned | Status |
+|------|-----------|--------|
+| 1 — Trustworthy Foundation & Desync-Free MP | FR-39, FR-44, FR-45, FR-47 | ✓ all delivered (FR-44/45 caveats below) |
+| 2 — Living Combat (Effect Engine, Abilities) | FR-8, FR-9, FR-10, FR-11, FR-12, FR-12a | ✓ strong |
+| 3 — Author Units & Heroes (Save/Load) | FR-1…FR-7, FR-7a, FR-7b, FR-7d, FR-7e | ✓ strong (offline rail; FR-7c → Epic 9) |
+| 4 — Buildings, Tech Trees & Economy | FR-13, FR-14, FR-15, FR-16 | ✓ strong (FR-15 scope-narrowed, see §3.4) |
+| 5 — Faction Definer & Showcase Factions | FR-17, FR-18, FR-19, FR-20 | ✓ (FR-20 single-point-of-failure on Epic 2) |
+| 6 — Map & Terrain Editor | FR-21, FR-22 | ✓ strong |
+| 7 — Rich Trigger DSL & Custom UI | FR-23…FR-28 | ✓ (FR-28 T1/T4 cross-epic, see below) |
+| 8 — AI-Assisted Creation | FR-29…FR-34 | ✓ strong |
+| 9 — Share, Discover & Multiplayer | FR-35, FR-36, FR-37, FR-38, FR-38a, FR-7c, FR-40, FR-41 | ✓ (FR-40 spectator/parties thin) |
+| 10 — Release Readiness | FR-42, FR-43, FR-46, FR-48, FR-49, FR-49a, FR-50, FR-51, FR-52 | ✓ (FR-43 verify-only; perf/a11y AC caveats) |
+
+### 3.3 Missing Requirements (strict FR sense)
+**None.** All 60 PRD FRs trace to at least one story. The epics' coverage map is accurate and the lettered inserts are all placed.
+
+### 3.4 ⭐ The Real Finding — GDD design intentions owned by NO FR
+The PRD declares whole subsystems as "Built Foundation" without decomposing them into FRs. So these GDD requirements are **invisible to an FR-coverage check** — yet a blind probe of the stories shows they are **absent or only adjacent** in the epics. These are *not* FR-coverage gaps; they are **requirements that were never turned into FRs.** This is the highest-value output of the readiness check.
+
+| # | GDD design intention (no owning FR) | In stories? | Severity | Finding |
+|---|--------------------------------------|-------------|----------|---------|
+| 1 | **Full RTS command vocabulary** — Patrol, Hold Position, Follow, Attack-Move *behaviors*, + the "creators may disable per-unit but never remove" framework guarantee | **Partial** | **HIGH** | Only **keybindings** exist (UX-DR66 default binds; Story 10.8a remap UI binds keys to actions). **No story implements the command behaviors** (Patrol waypoint-loop, Hold no-chase, Attack-Move acquire-en-route). "Follow" absent even at the keybinding layer. The framework-guarantee/disable-not-remove contract has zero representation. PRD inventory itself flags this **VERIFY**. |
+| 2 | **Formation movement** (line/box/wedge) + **priority-based yielding** | **No** | **HIGH** | Appears only in "Built Foundation reference — NOT 1.0 scope" with "VERIFY before treating as done — *may become a §4.10 task*" — **but no §4.10 story ever picked it up.** Story 1.11's smoke-tests do not include it. Zero ACs for shapes or yielding. |
+| 3 | **Per-resource collection MODELS** (GATHER / INCOME / STREAMING) + node fields (max_gatherers, requires_structure) | **Partial** | MEDIUM | FR-15/Story 4.3 delivers the data-driven resource *set* + cost maps, but the three collection behaviors and node fields are **name-dropped only** — INCOME/STREAMING/max_gatherers/requires_structure appear **nowhere**. Passive-income / streaming economies silently unbuildable. |
+| 4 | **Authorable unit tags** (organic / mechanical / magical) | **No** | MEDIUM | Fully absent. The damage/armor matrix is a *separate* axis the GDD lists alongside tags, not in place of them. Removes a whole ability-targeting/counter dimension. |
+| 5 | **Projectile-vs-hitscan flag** + per-unit **splash radius** as authorable fields | **Partial** | MEDIUM | Engine *has* projectiles+splash; ability effect-graph has FireProjectile/SearchArea leaves. But **no per-unit authorable projectile/hitscan toggle or first-class splash field**; "hitscan" never appears. Authorable only via generic effect-graph composition. |
+| 6 | **Command rate-limiting** (Tier-1 anti-spam) | **No** | MEDIUM | GDD lists it as **must-have** Tier-1 anti-cheat; **no AC throttles the command bus.** (Tier-2 measures — replay review, anomaly detection — are *correctly* deferred by design; no action.) |
+| 7 | **AI adaptivity** — player-pattern tracking (rush/turtle counters) + Tinkerer decision-weight debug overlay | **No** | MEDIUM | Both halves absent; AI opponent stories treat Utility AI as static. *Note: GDD itself flags pattern-tracking as an unresolved open question — may be an intended descope, but no epic records that decision.* |
+| 8 | **Win-condition preset set** (Annihilation, Landmark Destruction, Score, KotH, Assassination, Timed Survival) | **No** | MEDIUM | Only a 2-option setter (EliminateAllUnits / DestroyAllBuildings, Story 6.4) is scoped. The 6 named presets appear nowhere; would have to be hand-built via the DSL. Starves the zero-code Create on-ramp. |
+| 9 | **Height-advantage vision** toggle in fog of war | **No** | MEDIUM | Absent. **Bigger structural flag:** there is **no dedicated Fog-of-War story at all** — the entire FoW subsystem (incl. *server-enforced visibility*, a stated anti-cheat/security guarantee) is treated as built with no verification story. |
+| 10 | Optional **upkeep / population-tax** economy | **No** | LOW | Supply/cap (FR-16) ≠ income-scaling tax. Constructible via DSL but not a first-class authorable model. |
+| 11 | **PCK delta-encoding** for incremental UGC updates | **No** | LOW | mod.io full-file download model scoped — the opposite of incremental. 1.0 may ship full re-downloads. |
+| 12 | Richer **discovery-quality** (weighted rating, auto-hide-on-reports) | **No** | LOW | **Conscious [v2] deferral** — epics explicitly delegate browse/rate to mod.io-native only. No action; flagged for deliberate sign-off (Discover is a pillar). |
+
+### 3.5 AC-quality / sufficiency caveats (carry to Step 5 — Story Quality)
+The FRs are *covered*, but several have thin or non-objective acceptance criteria worth tightening:
+- **FR-44** — Epic 1 delivers sim + combat-formula tests but **no explicit economy or pathfinding unit-test AC** (PRD names all four domains). FR-44 is ~50% substantiated against its own wording. **Recommend a named economy + pathfinding test slice.**
+- **FR-45** — Story 1.11 leans on undefined "smoke-test checklist" artifacts and vague "produces decisions deterministically" for 2 of 4 systems (self-flagged).
+- **Validator staging** — the fail-closed `ScenarioValidator` ships **shadow/log-only on master**; the actual fail-closed flip is only "a release-branch toggle." Within M1 the server-rejection (NFR-6) guarantee is **staged, not delivered**.
+- **FR-28** — Epic 7 delivers the shared IR + T2 + T3, but the **T1 preset tier is thin** (no dedicated ACs) and **T4 (natural language) is Epic 8** — "all four tiers exist" closes only cross-epic.
+- **FR-20** — strong in aggregate but a **single point of failure**: depends on Epic 2's modifier system; Story 5.4 is ambiguous (build vs verify) and 5.7's "observably asymmetric" AC is subjective.
+- **FR-43 / FR-42 / FR-46 / FR-51** — verify-only or time-based/subjective ACs ("Hard observably more aggressive", "<12 min faction", perf "shortfall documented" with no hard floor, "representative hardware" unspecified). Need objective metrics.
+- **FR-40** — spectator-mode verification clause and full parties UI are thin/deferred-to-fast-follow.
+
+### 3.6 Step-3 Verdict
+- ✅ **FR coverage is genuinely 100% (60/60)** and the epics' map is accurate — strong planning hygiene.
+- ⚠️ **2 HIGH-severity design gaps** (RTS command-vocabulary *behaviors*; formation movement + yielding) sit outside the FR system and are unscoped in 1.0 — and both directly affect whether the showcase reads as a *real* RTS. The PRD itself flagged both as "VERIFY before done." **These are the must-resolve items before production.**
+- ⚠️ **7 MEDIUM gaps** narrow the "build *any* RTS" creation promise (collection models, unit tags, projectile/splash authoring, win-condition presets, height-advantage/Fog-of-War verification, AI adaptivity, command rate-limiting).
+- The AC-quality caveats (§3.5) are real but belong to the later story-quality step.
+
+**Recommended action:** decide per HIGH/MEDIUM gap whether to (a) add a story/FR for 1.0, (b) explicitly descope to post-1.0, or (c) confirm it's genuinely already-built and add a *verification* story. Right now several are silently assumed-built with no verification.
 
 ---
