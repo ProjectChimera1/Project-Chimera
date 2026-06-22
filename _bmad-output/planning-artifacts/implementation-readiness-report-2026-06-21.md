@@ -1,5 +1,6 @@
 ---
-stepsCompleted: ['step-01-document-discovery', 'step-02-gdd-analysis', 'step-03-epic-coverage-validation', 'step-04-ux-alignment']
+stepsCompleted: ['step-01-document-discovery', 'step-02-gdd-analysis', 'step-03-epic-coverage-validation', 'step-04-ux-alignment', 'step-05-epic-quality-review', 'step-06-final-assessment']
+readinessStatus: 'NEEDS WORK'
 documentsUnderReview:
   - type: GDD
     path: 'Project_Chimera_GDD.md'
@@ -19,6 +20,10 @@ project: 'Project_Chimera'
 
 **Date:** 2026-06-21
 **Project:** Project_Chimera
+**Assessor:** Claude (Game Producer / Scrum Master)
+
+> ## 🟠 Overall Readiness: **NEEDS WORK** (strong foundation, surgical fixes required)
+> FR coverage is **100% (60/60, independently confirmed)**, cross-epic independence holds, and the architecture is excellent below the UI line. But ship-blocking refinements remain: **2 critical epic-structure defects**, **2 HIGH unscoped GDD design intentions** (RTS command-vocabulary *behaviors*; formation movement) the PRD itself flagged as unverified, **2 HIGH architecture presentation gaps** (edit→play transition/measurement; editor-shell + NFR-3 mode separation), and a **stale GDD** (missing FR-7/FR-26 + the FMA pivot). None are correctness/coverage blockers — but they must be decided before production. **See §6 for the prioritized action list.**
 
 ## 1. Document Inventory
 
@@ -300,3 +305,87 @@ The architecture is **excellent and complete below the UI line.** Every UX surfa
 - ⚠️ Several committed GDD features (NL trigger UI, AI map-gen/balance UI, replay/spectator UI, publish-quality gates) are **thin or absent in the UX** — confirm they're scoped in the epics' UX-DR items (they largely are) and not lost.
 
 ---
+
+## 5. Epic Quality Review
+
+_Method: 10 parallel adversarial best-practices auditors (one per epic), each told to **try to disprove** the frontmatter claims, then a cross-epic auditor assembled the dependency graph and audited the frontmatter._
+
+### 5.1 Best-practices scorecard
+| Criterion | Result |
+|-----------|--------|
+| **Cross-epic independence** (Epic N never requires Epic >N) | ✅ **HOLDS across all 10 epics.** Every cross-epic `Depends on` points backward; the only forward references (Epic 2/5 → Epic 7 on-death/event seam) are explicit, AC-proven *deferrals*, not dependencies. The "always-shippable" brownfield pattern done right. |
+| **Brownfield handling** | ✅ **Correct.** The deliberate absence of a greenfield starter-template story is the right call (replaced by the documented MainScene "strangler" refactor); verify/integration stories are appropriate and carry testable ACs. |
+| **Data-creation timing** | ✅ **Strong** (just-in-time, verified against source) — one mild exception (9.3↔9.11 envelope co-design). |
+| **FR traceability** | ✅ Accurate mapping; ⚠️ several Epic-9 `Covers:` lines duplicate their own FR ids (cosmetic copy-paste). |
+| **Player/creator value** | ⚠️ 8/10 epics deliver it; **Epics 1 and 9 skew technical-milestone** (Epic 9: ~42% "As a multiplayer engineer" stories). |
+| **Story sizing** | ⚠️ ~11 oversized/multi-deliverable stories should be split. |
+| **Acceptance-criteria quality** | ⚠️ Recurring non-objective / escape-hatch ACs — several flagged by the epics' *own* ⚠ notes but never applied. |
+
+### 5.2 🔴 Critical violations (must fix before sprint planning)
+1. **Epic 1 — within-epic forward-dependency cycle (1.5 ↔ 1.7).** Story 1.5's AC-4 ("reject random effects via the forbidden-until-SimRng rule") can only be enforced by the `ScenarioValidator`, which is **net-new in the later Story 1.7** — and 1.7 already `Depends on: 1.5`. A logical cycle, confirmed against the architecture and the (validator-absent) brownfield code. **This disproves the frontmatter's "no within-epic forward dependencies" claim.** *Fix: move AC-4 into 1.7, or have 1.5 ship a minimal standalone guard that 1.7 absorbs.*
+2. **Epic 2 — dangling dependency on a non-existent story (2.10 → "2.9").** Story 2.10 (the capstone) reads `Depends on: 2.5, 2.6, 2.7, 2.9`, but **2.9 was split into 2.9a/2.9b** and the footer was never updated. Its real hard dependency — 2.9b's crystal-spend wiring, required by 2.10's Equal-Exchange self-cost AC — is unlisted. *Fix: `Depends on: …, 2.9a, 2.9b`.*
+
+### 5.3 🟠 Major issues (recurring patterns)
+- **Technical-milestone framing.** Epic 1 is wholesale enabler-heavy (only 1.9b LAN-zero-desync and arguably 1.11 are end-user-observable); Epic 9's 9.1–9.5 (~42%) are "As a multiplayer engineer" infra; plus front-loaded enablers 2.1–2.3, 7.1a/7.1b, 5.1, 3.1/3.2, 8.3a. *Defensible* as M1/FR-39 seams on a brownfield platform, but should be re-framed as value or explicitly blessed as the verification rail, **and sprint-sequenced as fused enabler blocks immediately followed by their first value consumer** (e.g. 2.1–2.3 → 2.4) so a vertical slice lands early.
+- **Oversized stories to split** (~11): 1.8 (god-object strangle + 4 deliverables), 1.10 (CI + 2 analyzers + WSL gate), 2.2 (4 net-new subsystems), 3.1 (Theme + ~20 components), 5.5 (5-step wizard + presets + JSON + colorblind + persistence), 7.1b (IR DTOs + flat→graph migration), 7.8 (DslEventCommand + replay-v2 + 4 apply sites), 8.6 (4 entity-gen kinds, no per-type ACs), 9.3 (5 concerns + hidden chat-spoof fix; highest-risk story), 10.9 (Steam + DRM-free pipelines), 10.2 (new harness + open-ended tuning).
+- **Non-objective / escape-hatch ACs — several flagged by the epics' OWN inline ⚠ notes but never folded into the live AC:**
+  - 10.1 "Hard observably more aggressive than Easy" — subjective; an objective metric (first-attack tick / army-size delta) was requested but not applied.
+  - 10.3 "2000-unit case meets target **OR** any shortfall is documented" — no-floor escape hatch; "representative hardware" undefined → perf gate not reproducible.
+  - 5.7 "observably asymmetric" — subjective; the suggested win-rate/composition-delta fix was not applied.
+  - 9.6 "routing assumption resolved **OR** a static-endpoint decision is recorded" — a documentation outcome, not a testable AC (and it's a UI story that should be web/in-engine verifiable).
+  - 1.11 — per-system smoke-test checklists are undefined (self-flagged).
+  - 6.2 "visually identical" terrain fidelity bar (subjective) on the epic's headline persistence story; recommend a hash/delta-equality check.
+  - Other subjective/example bars: 2.7 camera-shake (no duration/magnitude), 9.4 "e.g. 4→2" (example-as-assertion), 8.x adjective creep ("curated/actionable/minimal" without thresholds), 10.8 colorblind "reliably distinguishable" (no tool/threshold).
+  - **Missing error/edge ACs:** 2.4 invalid-target cast, 2.6 overlapping-aura stacking, 2.10 self-cost lethal/clamp, 2.2 non-commutative modifier ordering, 6.2 save-write failure / missing-corrupt TerrainRef on load, 8.4/8.6 parse-failure/oversize-response, 9.10/9.12 failure UX (mod.io call failure; hero-attestation failure).
+- **Incomplete dependency metadata (all backward — no sequencing break, but misleading):** 3.2 cites "Epic 1/1.3" (real provider 1.3b); 3.10 cites "Epic 1" (real 1.8); 10.3→10.2 and 10.5→10.3 undeclared; 9.3↔9.11 envelope co-design coupling; 6.1→1.1 in prose only. Several the doc's own quality notes already flag.
+
+### 5.4 🟡 Minor
+- Epic-9 `Covers:` lines duplicate their own FR ids (cosmetic).
+- **Faction-naming drift:** FR-49/Story 10.6 say "Iron Pact" and the sequencing note uses "Crucible Covenant / Sanguine Court," while the current direction is the FMA **Rebel Alchemists vs Homunculus Legion** redesign — content-coherence to reconcile before art is wired (not an FR-tag defect).
+- Developer-voice framing on ship-infra stories (10.2/10.7/10.9) — add a one-line player-value framing.
+
+### 5.5 Frontmatter claim audit
+The epics frontmatter asserts: _"FR coverage 60/60; NFR-1..6 covered; no residual placeholders; no within-epic forward dependencies."_
+| Sub-claim | Verdict |
+|-----------|---------|
+| FR coverage 60/60 | ✅ **Accurate** (independently confirmed, §3). |
+| NFR-1..6 covered | ✅ Consistent (cross-cutting; not single-epic-owned). |
+| No residual placeholders | ⚠️ **Undermined** — no `[TBD]` tokens, but the dangling `2.9` reference (§5.2 #2) is a residual broken reference. |
+| No within-epic forward dependencies | ❌ **FALSE** — the 1.5↔1.7 cycle (§5.2 #1). |
+
+### 5.6 Step-5 Verdict
+- ✅ The breakdown is **structurally sound on the highest-stakes rule** (cross-epic independence) and on brownfield handling, data timing, and FR/NFR coverage. Genuinely good planning.
+- 🔴 **2 critical, surgically-fixable defects** (1.5↔1.7 cycle; 2.10 dangling ref) must be corrected before sprint planning consumes this file.
+- 🟠 A recurring **major** pattern — oversized stories, technical-milestone framing in Epics 1 & 9, and ~7 non-objective/escape-hatch ACs (several already self-flagged) — is **polish, not a coverage/architecture blocker**, but should be cleaned up so stories are independently completable and testable.
+- **None of the Step-5 findings are determinism/correctness or coverage blockers.** They are story-craft fixes.
+
+---
+
+## 6. Summary and Recommendations
+
+### Overall Readiness Status: 🟠 **NEEDS WORK**
+Not "READY" (real critical defects + unscoped HIGH design intentions + a false planning claim), but emphatically not "NOT READY" — the foundation is genuinely strong. The required work is **concentrated and surgical**, not a structural overhaul. What's solid: **100% FR coverage (60/60, independently verified)**, clean **cross-epic independence**, correct **brownfield handling**, disciplined **data-creation timing**, and an **architecture that rigorously backs everything below the UI line** (determinism, lockstep, content pipeline, persistence, LLM/secrets).
+
+### What this assessment changed vs. the inputs (corrections worth keeping)
+- The FR count is **60**, not 58 — the Step-2 extraction undercounted lettered inserts; tracker/epics were right.
+- The **GDD is the stale artifact**, not the UX. The UX (06-20) is future-proof against the FMA pivot; the GDD (04-07) lags (no FR-7/FR-26, no faction identity).
+- The "hidden cross-epic forward dependency" risk **did not materialize** — independence holds. The real structural defect is *within* Epic 1.
+
+### Critical Issues Requiring Immediate Action (before sprint planning / production)
+1. **🔴 Two HIGH design intentions are owned by no FR and unscoped in 1.0** — the **RTS command-vocabulary behaviors** (Patrol/Hold/Follow/Attack-Move, + the disable-not-remove guarantee) and **formation movement + yielding**. The PRD *itself* flags both as "VERIFY before done." They directly determine whether the showcase reads as a real RTS. **Decide per item: add a story/FR, descope to post-1.0, or add a verification story** — do not leave them silently assumed-built. *(§3.4 #1–#2)*
+2. **🔴 Two epic-structure defects block clean sprint planning** — the **1.5 ↔ 1.7 forbidden-until-SimRng cycle** (move AC-4 to 1.7 or ship a minimal guard in 1.5) and the **2.10 → "2.9" dangling dependency** (retarget to 2.9a/2.9b). These also make the frontmatter's "no within-epic forward dependencies / no residual placeholders" claim untrue — fix the file, then the claim. *(§5.2)*
+3. **🔴 Two HIGH architecture presentation gaps** — the **edit→play transition is enabled but never designed or measured** (no ≤2s budget/benchmark — the headline "instant loop" is unproven), and the **Creation Suite editor shell + the player/creator mode separation NFR-3 depends on has no architectural design.** Close these in the UX-implementation/architecture pass before those surfaces are built. *(§4.2)*
+
+### Recommended Next Steps (in order)
+1. **Triage the 2 HIGH + 7 MEDIUM "no-FR" design gaps (§3.4):** for each, record an explicit decision — *in 1.0 (add story/FR)* / *post-1.0 (descope)* / *already-built (add a verification story)*. Pay special attention to the **Fog-of-War subsystem having no verification story at all** despite server-enforced visibility being a security pillar.
+2. **Fix the 2 critical epic defects (§5.2)** and **apply the ~7 already-self-flagged ⚠ AC fixes** (10.1, 10.3, 5.7, 9.6, 1.11, 6.2) and **split the ~11 oversized stories** (§5.3) so every story is independently completable and testable.
+3. **Reconcile the GDD upward (§4.1):** add FR-7 (persistent heroes) + FR-26 (custom UI builder) or mark them deferred; absorb the FMA faction direction; fix the campaign count (5–8 vs "/12"); reconcile faction naming (Iron Pact / Crucible Covenant / Sanguine Court → Rebel Alchemists / Homunculus Legion) before art is wired.
+4. **Add the missing architecture design for the editor/UX-shell tier (§4.2):** edit→play transition + ≤2s measurement hook; editor-shell + screen/state manager + NFR-3 mode separation; design-system → single Godot Theme mapping; pervasive-tooltip/onboarding home.
+5. **Then proceed to `gds-sprint-planning`** to sequence the (now-clean) epics — sequencing the technical-milestone enabler blocks (Epic 1; 2.1–2.3; 9.1–9.5) as fused blocks immediately followed by their first value-delivering consumer.
+
+### Final Note
+This assessment identified **2 critical, ~6 HIGH-priority, and a larger set of MEDIUM/MINOR** items across **5 dimensions** (requirements baseline, FR coverage, UX↔GDD, UX↔Architecture, epic quality). The headline is reassuring: **coverage and architecture are sound, and nothing here is a determinism/correctness blocker.** The gaps are the *unglamorous-but-real* kind a coverage check alone would miss — design intentions that were never turned into FRs, planning claims that don't quite hold, and presentation-tier architecture that's deferred-but-not-yet-designed. Address the critical issues (and decide the HIGH design gaps) before implementation; the MEDIUM/MINOR items can be folded into sprint refinement. You may also choose to proceed as-is with eyes open — the report makes the risks explicit.
+
+---
+
+*Assessment complete — generated 2026-06-21 by the `gds-check-implementation-readiness` workflow.*
