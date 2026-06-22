@@ -1,5 +1,9 @@
 ---
-stepsCompleted: [1, 2, 3]
+stepsCompleted: [1, 2, 3, 4]
+status: complete
+epicCount: 10
+storyCount: 97
+validation: "FR coverage 60/60; NFR-1..6 covered; no residual placeholders; no within-epic forward dependencies (verified 2026-06-21)"
 inputDocuments:
   - "_bmad-output/planning-artifacts/prds/prd-Project_Chimera-2026-06-05/prd.md"   # FR/NFR source (Road-to-1.0 PRD)
   - "_bmad-output/planning-artifacts/prds/prd-Project_Chimera-2026-06-05/addendum.md"
@@ -499,27 +503,37 @@ _Covers: FR-44, FR-47, AR-35, AR-15. Depends on: 1.1._
 
 > Migration Step 1 — pins current behavior before any change. Establishes the replay regression harness that AR-47/Story 1.10 later wires into CI. Uses today's SimChecksum as-is; 1.3 then widens coverage and re-baselines the golden once.
 
-### Story 1.3: Generalize SimChecksum coverage + faction registry + coverage-guard test
+### Story 1.3a: FactionRegistry — localize all faction-count knowledge
 
-As a solo developer closing the #1 latent desync hole,
-I want SimChecksum widened from Ore[P1]/Ore[P2] to Ore+Crystal+SupplyUsed+SupplyCap (and every per-faction store) for ALL active factions in ascending slot order, a FactionRegistry localizing the counts, and a guard test that fails if a new per-faction array is added without checksum coverage,
-So that the checksum actually reflects full sim truth so desync detection cannot silently miss divergence.
+As a solo developer hardening the sim for N players,
+I want a FactionRegistry that centralizes PLAYER_COUNT=8, FACTION_ARRAY_SIZE=9 (incl. Neutral), and the one (Faction)(slot+1) cast, replacing the scattered 2-faction hardcodes,
+So that every checksum, slot loop, and new subsystem iterates factions one correct way (never a bare FACTION_COUNT).
 
 **Acceptance Criteria:**
 
-**Given** the current Ore-only SimChecksum **When** I extend it to hash Crystal, SupplyUsed, SupplyCap and every per-faction store across all active factions in ascending faction-slot order and bump checksum_algo_version exactly once **Then** the golden harness from 1.2 is re-baselined to the new algo version and passes, and old replays under the prior algo version do not spuriously desync
+**Given** FactionRegistry with PLAYER_COUNT=8 and FACTION_ARRAY_SIZE=9 (incl Neutral) **When** checksum and any new slot loop iterate factions **Then** they iterate active factions ascending via the registry and never use a bare FACTION_COUNT constant **And** a 3–4-faction golden scenario exercises the span path
 
-**Given** FactionRegistry with PLAYER_COUNT=8 and FACTION_ARRAY_SIZE=9 (incl Neutral) **When** checksum and any new slot loop iterate factions **Then** they iterate active factions ascending via the registry and never use a bare FACTION_COUNT constant
+_Covers: AR-3. Depends on: 1.2._
+
+> Split from former 1.3 (FactionRegistry is a separable concern from the checksum/algo-version work). AR-3 localizes faction-count knowledge so 1.3b and Epic 5's 5.1 build on one source of truth. Disambiguation: as-built FACTION_COUNT=5 is enum cardinality incl. Neutral — new slot loops use PLAYER_COUNT.
+
+### Story 1.3b: Generalize SimChecksum coverage + coverage-guard + ScenarioDirector locale fix
+
+As a solo developer closing the #1 latent desync hole,
+I want SimChecksum widened from Ore[P1]/Ore[P2] to Ore+Crystal+SupplyUsed+SupplyCap (and every per-faction store) for ALL active factions in ascending slot order, a guard test that fails if a new per-faction array is added without coverage, and the ScenarioDirector float-threshold leak removed,
+So that the checksum reflects full sim truth and desync detection cannot silently miss divergence.
+
+**Acceptance Criteria:**
+
+**Given** the current Ore-only SimChecksum **When** I extend it to hash Crystal, SupplyUsed, SupplyCap and every per-faction store across all active factions in ascending faction-slot order (via the 1.3a registry) and bump checksum_algo_version exactly once **Then** the golden harness from 1.2 is re-baselined to the new algo version and passes, and old replays under the prior algo version do not spuriously desync
 
 **Given** the new SimChecksumCoverageGuardTest **When** a per-faction array is added to a store without being hashed **Then** the guard test FAILS, naming the uncovered array
 
 **Given** the ScenarioDirector threshold loop that today uses ore.ToFloat()/ToString("F2") **When** it is converted to Fixed.Raw integer compares **Then** the golden checksum is byte-identical to the pre-conversion baseline (no behavior change, only locale/float leak removed)
 
-_Covers: FR-39, FR-44, AR-15, AR-3, AR-16. Depends on: 1.2._
+_Covers: FR-39, FR-44, AR-15, AR-16. Depends on: 1.3a._
 
-> Brownfield fix to existing SimChecksum.cs (Ore[P1]/Ore[P2] only at :53-54) and ScenarioDirector.cs (:165-172 float threshold). FactionRegistry (AR-3) localizes the 2-faction hardcodes onto the N<=8 path. Bumps checksum_algo_version once. Partially addresses AR-16 (locale leak).
-
-> ⚠ Quality-review: consider extracting FactionRegistry creation from the checksum-widening + algo-version bump (separable concern, also referenced by Epic 5's 5.1).
+> Split from former 1.3. Brownfield fix to SimChecksum.cs (Ore[P1]/Ore[P2] only at :53-54) and ScenarioDirector.cs (:165-172 float threshold). Bumps checksum_algo_version once. Partially addresses AR-16 (locale leak); the other two AR-16 nondeterminisms land in 1.4.
 
 ### Story 1.4: Fixed end-to-end: FixedJsonConverter quantization + nondeterminism negative tests
 
@@ -621,27 +635,39 @@ _Covers: FR-39, FR-44, AR-6, AR-7, AR-3. Depends on: 1.7._
 
 > Net-new SimulationHost (AR-6) + ScenarioApplier (AR-7); AR-3 ScenePhaseRunner/ISetupPhase[]/PhaseOrderTest. Strangles MainScene.cs (2234 LOC). ModifierSystem is reserved at index 3 but built in a later epic. This creates the shared sim path the server (1.9) reuses. Golden checksum must stay byte-identical.
 
-### Story 1.9: ServerBootstrap headless peer + server checksum quorum + FR-39 two-machine LAN green
+### Story 1.9a: ServerBootstrap headless peer + server checksum collector with quorum + HALT (loopback)
 
-As a solo developer who must prove multiplayer never desyncs,
-I want a ServerBootstrap peer composition root (headless branch builds SimulationHost+Validator+Applier, no presentation), a server-side checksum collector with majority-vote desync attribution and the M1 tie-break/quorum forks pinned, and the P2.4 LAN determinism test passing on two separate machines,
-So that two players complete a full match on separate machines with checksums in lockstep for 300+ ticks and zero desync, and a desync HALTs with a clear message.
+As a solo developer building the server authority the sim needs,
+I want a ServerBootstrap peer composition root (headless branch builds SimulationHost+Validator+Applier, no presentation) and a server-side checksum collector with majority-vote desync attribution and the M1 tie-break/quorum forks pinned, all loopback-testable on one machine,
+So that the server holds real sim state and can detect/attribute desync and HALT cleanly, before I attempt a two-machine run.
 
 **Acceptance Criteria:**
 
 **Given** the headless branch **When** ServerBootstrap runs **Then** it builds SimulationHost + ScenarioValidator + ScenarioApplier with no presentation/Godot Node tree, reusing the exact sim spine from 1.8
 
-**Given** two machines on a LAN running the P2.4 determinism scenario **When** they play a full match for 300+ ticks **Then** the server-collected slot-tagged checksums stay in lockstep every comparison window with ZERO desync, and the P2.4 LAN test passes
-
 **Given** the cross-faction same-tick event tie-break and the server >2-player quorum model **When** two events resolve on the same tick from different faction slots **Then** the pinned ascending-faction-slot tie-break is applied, and the server declares a strict-majority canonical hash (or HALTs as 'global desync, no canonical' on no majority)
 
-**Given** an induced divergence on one peer **When** the server's collector detects a mismatch **Then** it broadcasts a DesyncAlert naming the diverged peer and the match terminates with a clear user-facing HALT message distinct from silent drift (UX-DR64e)
+**Given** an induced divergence on one loopback peer **When** the server's collector detects a mismatch **Then** it broadcasts a DesyncAlert naming the diverged peer and the match terminates with a clear user-facing HALT message distinct from silent drift (UX-DR64e)
 
-_Covers: FR-39, AR-38, AR-40, UX-DR64, UX-DR84. Depends on: 1.8._
+_Covers: AR-38, AR-40, UX-DR64. Depends on: 1.8._
 
-> THE #1 ship risk. AR-38 ServerBootstrap peer root; AR-40 pins the two M1 checksum forks (ascending-faction-slot tie-break, >2-player quorum). UX-DR84 LAN lockstep journey (300+ ticks zero desync); UX-DR64e desync->terminal HALT with clear message. Brownfield: extends DedicatedServer.cs (opaque checksum relay at :148-156) and LockstepManager. Faction enum already groomed to N<=8 via 1.3 registry. Requires two physical machines.
+> Split from former 1.9. AR-38 ServerBootstrap peer root; AR-40 pins the two M1 checksum forks (ascending-faction-slot tie-break, >2-player quorum = true majority). UX-DR64e desync->terminal HALT. Brownfield: extends DedicatedServer.cs (opaque checksum relay at :148-156) and LockstepManager. Single-machine / loopback — no second machine required.
 
-> ⚠ Quality-review (SPLIT — this is the #1 ship risk): split into (a) ServerBootstrap headless peer + server checksum collector with majority-vote/quorum + induced-divergence HALT (single-machine, loopback-testable) and (b) the two-physical-machine LAN P2.4 300-tick zero-desync green run as a dedicated gate story. Pin the two M1 forks (AR-40): cross-faction same-tick event tie-break = ascending faction slot; server >2-player quorum = true majority.
+### Story 1.9b: FR-39 two-machine LAN determinism green (the #1 ship-risk gate)
+
+As a solo developer who must prove multiplayer never desyncs,
+I want the P2.4 LAN determinism test to pass on two separate physical machines,
+So that two players complete a full match in lockstep for 300+ ticks with ZERO desync — the gate the whole 1.0 rests on.
+
+**Acceptance Criteria:**
+
+**Given** two machines on a LAN running the P2.4 determinism scenario against the 1.9a server **When** they play a full match for 300+ ticks **Then** the server-collected slot-tagged checksums stay in lockstep every comparison window with ZERO desync, and the P2.4 LAN test passes (UX-DR84)
+
+**Given** the two-machine match **When** a real desync would occur **Then** the 1.9a DesyncAlert/HALT path fires with the clear message (verified end-to-end, not just unit-tested)
+
+_Covers: FR-39, UX-DR84. Depends on: 1.9a._
+
+> Split from former 1.9 — THE #1 ship risk, isolated as a dedicated physical-machine gate so the engine work (1.9a) isn't buried under the manual two-machine run. UX-DR84 LAN lockstep journey (300+ ticks zero desync). Requires two physical machines.
 
 ### Story 1.10: CI determinism regression guard + banned-API/AOT analyzers + cross-platform (WSL) gate
 
@@ -837,11 +863,11 @@ _Covers: FR-11, AR-8. Depends on: 2.4._
 
 > Combat-reachability gap (non-FR, design-driven; advances FR-11 by surfacing the full roster on the command card). LIVE SOURCE: BuildingSystem.GetProductionUnit uses GetUnitByCategory which returns only the FIRST unit per category, and there is NO Air producer (faction-design doc calls this out explicitly). This story: (1) extend the production card to list every unit in the building's category and let the player pick which to train (extend CommandCardSystem.cs production section + BuildingSystem.TrainUnit to take a chosen unit id); (2) add an Air production building type + map the 'Air' category to it so Air units become trainable. Keep TrainUnit's existing prereq/cost/supply checks intact (no regression).
 
-### Story 2.9: Combat reachability II — TargetFilter (anti-air/ground), anti-building combat, worker-cast path, multi-resource cost
+### Story 2.9a: Combat reachability — air/ground TargetFilter + anti-building combat
 
 As a player,
-I want units to honor anti-air/anti-ground target filters, attack enemy buildings, allow workers to cast abilities, and pay multi-resource (crystal) ability/unit costs,
-So that the showcase factions' combat actually resolves against the right targets and signature abilities can be paid for and cast as designed.
+I want units to honor anti-air/anti-ground target filters and to be able to attack enemy buildings,
+So that the showcase factions' combat resolves against the right targets and armies can destroy structures.
 
 **Acceptance Criteria:**
 
@@ -849,13 +875,23 @@ So that the showcase factions' combat actually resolves against the right target
 
 **Given** a combat unit ordered to attack an enemy building **When** it is in range **Then** it deals damage to the building in BuildingStore via the DamageMatrix and can destroy it **And** friendly buildings are never targeted
 
+_Covers: FR-11, FR-12, AR-8, NFR-4. Depends on: 2.4, 2.8._
+
+> Split from former 2.9. LIVE SOURCE: CombatSystem targets purely by nearest-enemy via SpatialHash (no air/ground or unit/building distinction) and resolves damage only against EntityWorld. Adds an air/ground tag + TargetFilter honored by CombatSystem/SpatialHash, and lets CombatSystem damage enemy buildings (BuildingStore). All sim changes stay Fixed/deterministic and ascending-id.
+
+### Story 2.9b: Combat reachability — worker-cast ability path + multi-resource (crystal) cost
+
+As a player,
+I want workers to cast abilities and units/abilities to charge multi-resource (ore + crystal) costs,
+So that signature abilities can be paid for and cast as designed.
+
+**Acceptance Criteria:**
+
 **Given** a worker unit with an active ability and a multi-resource cost (ore + crystal) **When** the player casts it and the faction can afford both resources **Then** the worker casts via the new worker-cast path, both ore and crystal are debited, and the ability is refused if either resource is insufficient **And** the cast resolves deterministically and the worker's gather/build loop is not corrupted by the cast
 
-_Covers: FR-11, FR-12, AR-8, AR-9, NFR-4. Depends on: 2.4, 2.8._
+_Covers: FR-11, FR-12, AR-9, NFR-4. Depends on: 2.9a._
 
-> Combat-reachability gaps (design-driven). LIVE SOURCE: CombatSystem targets purely by nearest-enemy via SpatialHash (no TargetFilter — nothing distinguishes air vs ground or unit vs building) and resolves damage only against EntityWorld, never against the separate BuildingStore. This story: (1) add an air/ground tag + TargetFilter honored by CombatSystem/SpatialHash so anti-air-only and ground-only units engage correctly; (2) let CombatSystem deal damage to enemy buildings (BuildingStore) so armies can destroy structures; (3) add a worker-cast ability path (gatherers are currently skipped by CombatSystem and have no ability-activation route) so worker abilities like 'Mend Matter' can fire; (4) wire crystal-spend / multi-resource cost so 2.3 ability costs and unit costs can charge crystal as well as ore. All sim changes stay Fixed/deterministic and ascending-id.
-
-> ⚠ Quality-review (SPLIT): separate (a) air/ground TargetFilter + anti-building targeting from (b) the worker-cast ability path + multi-resource (crystal) cost wiring — each touches a different system.
+> Split from former 2.9. Gatherers are currently skipped by CombatSystem and have no ability-activation route — this adds the worker-cast ability path and wires crystal-spend / multi-resource cost so ability and unit costs can charge crystal as well as ore. Enables Equal Exchange's matter/crystal cost option (2.10). Stays Fixed/deterministic and ascending-id.
 
 ### Story 2.10: Showcase faction signature mechanics — Equal Exchange and Sanguine Furnace passive HoT (D1-only)
 
@@ -1459,27 +1495,37 @@ _Covers: FR-22, UX-DR56, UX-DR59, UX-DR70. Depends on: 6.1._
 
 _'Build any game': the trigger DSL gains variables/arithmetic/collections/loops/timers/custom-events plus trigger-driven custom UI, across four interoperating tiers, all deterministic and server-validatable._
 
-### Story 7.1: Graph-canonical DSL IR foundation + determinism prerequisites
+### Story 7.1a: Trigger-layer determinism prerequisites (ordering, Fixed, culture)
 
 As a platform engineer hardening the trigger layer for multiplayer,
-I want the trigger system rebuilt onto a single editor-agnostic graph IR (persistent integer node ids, typed exec + data edges) that embeds D1 effect subgraphs, with the as-built ordering and float/culture nondeterminisms removed,
-So that every later DSL feature lands on one deterministic, server-validatable representation instead of the flat polled ECA that desyncs silently.
+I want the as-built trigger ordering, float round-trips, and culture-sensitivity nondeterminisms removed and the golden re-pinned,
+So that the trigger system is deterministic before it is rebuilt onto the graph IR.
 
 **Acceptance Criteria:**
-
-**Given** the existing flat TriggerDefinition[] in ScenarioData and ScenarioDirector **When** graph IR DTOs are introduced in src/Dsl with an id-keyed node list, two sparse typed edge-lists (exec, data) and persistent integer node ids **Then** the trigger graph is a superset that embeds D1 EffectDef action subgraphs unchanged (no second executor), and a NodeBase JsonConverter over a CLOSED type registry round-trips every node by id with [JsonPolymorphic] forbidden **And** an unknown node kind is rejected at parse with a located error naming the kind **And** the graph section serializes canonically (nodes sorted by id, edges by (src,srcPort,dst,dstPort))
 
 **Given** the as-built unstable Array.Sort by Priority (ScenarioDirector :192) and Dictionary timer enumeration (:149) **When** trigger evaluation order is replaced with an explicit total order (Priority desc, then ascending persistent node-id) and timer/var stores become dense index-keyed arrays **Then** two equal-priority triggers writing a shared variable produce a byte-identical SimChecksum across two headless runs and across runtime versions **And** two timers expiring on the same tick fire in declaration-index order deterministically
 
 **Given** the in-tick Fixed->float->"F2"->float.TryParse round trip (ScenarioDirector :168/:170/:252) and the float-epsilon Compare (:364) **When** FiredEvent payloads are retyped to carry Fixed.Raw ints, all threshold compares become Fixed-vs-Fixed, OnSpawnUnit X/Z and TriggerDefinition numeric fields are retyped to Fixed/int at the deserialization boundary, and InvariantCulture is pinned process-wide **Then** a threshold trigger fires identically on two clients with zero float or culture-sensitive code in the tick path **And** the existing scenarios still produce identical observable outcomes (golden harness green); the checksum baseline re-pin is recorded as a named expected event
 
+_Covers: FR-27, AR-13, AR-16. Depends on: — (none / earlier epics only)._
+
+> Split from former 7.1 — the determinism fixes (D3.4 A17 ordering/float) pulled out as a standalone, golden-re-pinning prerequisite. Depends on the prior D1 effect-graph epic (SimRng, golden harness). Must land before the IR rebuild so the migration starts from a deterministic baseline.
+
+### Story 7.1b: Graph-canonical DSL IR foundation + lossless migration
+
+As a platform engineer unifying the trigger representation,
+I want the trigger system rebuilt onto a single editor-agnostic graph IR (persistent integer node ids, typed exec + data edges) that embeds D1 effect subgraphs, with a closed-registry NodeBase converter and lossless migration from the flat format,
+So that every later DSL feature lands on one deterministic, server-validatable representation instead of the flat polled ECA.
+
+**Acceptance Criteria:**
+
+**Given** the existing flat TriggerDefinition[] in ScenarioData and ScenarioDirector **When** graph IR DTOs are introduced in src/Dsl with an id-keyed node list, two sparse typed edge-lists (exec, data) and persistent integer node ids **Then** the trigger graph is a superset that embeds D1 EffectDef action subgraphs unchanged (no second executor), and a NodeBase JsonConverter over a CLOSED type registry round-trips every node by id with [JsonPolymorphic] forbidden **And** an unknown node kind is rejected at parse with a located error naming the kind **And** the graph section serializes canonically (nodes sorted by id, edges by (src,srcPort,dst,dstPort))
+
 **Given** an existing flat-format scenario JSON on disk **When** it is loaded **Then** it migrates losslessly into the graph IR (T2 sentence list is a linear projection of an exec-edge chain) with no second serialization path
 
-_Covers: FR-23, FR-27, FR-28, AR-10, AR-21, AR-22, AR-13. Depends on: — (none / earlier epics only)._
+_Covers: FR-23, FR-27, FR-28, AR-10, AR-21, AR-22. Depends on: 7.1a._
 
-> D2 D0+D1s seam, D3.4 A17 ordering/float fixes pulled forward as prerequisites. Graph-canonical serialization is established from step one even though only T2/T4 author it. Depends on the prior D1 effect-graph epic (EffectDef[], SimRng, golden harness). AR-10/AR-21/AR-22/AR-13, FR-27, FR-28.
-
-> ⚠ Quality-review (SPLIT): separate (1) the determinism fixes (stable sort order, Fixed retyping at the boundary, process-wide InvariantCulture) re-pinning the golden, from (2) the graph IR DTO + closed-registry NodeBase converter + lossless flat→graph migration.
+> Split from former 7.1. Graph-canonical serialization established from step one even though only T2/T4 author it. AR-10/AR-21/AR-22, FR-27, FR-28.
 
 ### Story 7.2: Typed scoped variables, deterministic timers, and verify-to-ship ECA
 
@@ -1667,27 +1713,39 @@ _Covers: FR-29, AR-5, AR-34, AR-33. Depends on: 8.1._
 
 > AR-5 (versioned SettingsData must exist before provider fields land) + AR-34 (move provider/model/baseUrl into versioned SettingsData). Add a schema version field and provider/model/baseUrl fields to SettingsData (currently has none). Curated data-driven provider list (Anthropic, Ollama, OpenRouter) and per-provider curated model list PLUS a free-text override field. Default model claude-sonnet-4-6. Settings continue to load/save via SettingsManager (user://settings.json) with safe defaults so older save files still load. The API key itself stays in ISecretStore (8.1), NOT in settings.json.
 
-### Story 8.3: Godot-free ILLMProvider over 3 adapters + four-state UI + test-connection
+### Story 8.3a: Godot-free ILLMProvider over three adapters (Anthropic / Ollama / OpenRouter)
 
 As a creator using AI features,
-I want one provider abstraction that talks to my selected provider and clearly tells me when AI is unavailable,
-So that the selected provider is authoritative and the suite stays fully usable manually when there is no AI.
+I want one Godot-free provider abstraction that talks to my selected provider with no vendor SDK,
+So that the selected provider is authoritative and the sim stays AOT-clean and uncoupled from AI.
 
 **Acceptance Criteria:**
 
 **Given** a NormalizedRequest and each of the three providers selected in turn **When** GenerateAsync runs against a stub endpoint **Then** the correct adapter (Anthropic messages / Ollama chat / OpenRouter chat completions) is used and returns a NormalizedResult **And** no vendor SDK is referenced; only System.Net.Http is used
 
-**Given** a selected provider that fails **When** GenerateAsync runs **Then** it does NOT silently fall back to another provider **And** the selected provider is authoritative and the failure surfaces as one of the four states
+**Given** a selected provider that fails **When** GenerateAsync runs **Then** it does NOT silently fall back to another provider **And** the selected provider is authoritative
+
+**Given** a configured reachable provider **When** a minimal round-trip runs **Then** it succeeds **And** buffered response bytes are capped and the cloud host is on the pinned allowlist; keys are read via the ISecretStore seam, never an [Export] field
+
+_Covers: FR-29, AR-33, AR-34. Depends on: 8.1, 8.2._
+
+> Split from former 8.3. Hand-rolled Godot-free ILLMProvider GenerateAsync(NormalizedRequest)->NormalizedResult over three adapters: Anthropic /v1/messages, Ollama /api/chat, OpenRouter /chat/completions. NO vendor SDK (AOT-clean). Blocking v1. SELECTED PROVIDER IS AUTHORITATIVE — REPLACES the implicit Claude->Ollama fallback in LLMService (~118-124, ~455-459). Pin/allowlist cloud hosts; cap buffered bytes. Authoring-layer only. AR-34 ISecretStore key storage established in 8.1/8.2; this stack reads keys via the secret seam.
+
+### Story 8.3b: FR-34 four-state availability UI + Test-connection
+
+As a creator,
+I want the AI panels to clearly tell me when AI is unavailable and let me test my connection,
+So that the suite stays fully usable manually in every state.
+
+**Acceptance Criteria:**
 
 **Given** no provider configured / provider-but-no-key / unreachable host / response that fails validation **When** I open an AI panel or hit Test-connection **Then** each case shows its own distinct four-state message **And** the editor remains fully usable manually in every state
 
-**Given** a configured reachable provider **When** I press Test-connection **Then** a minimal round-trip succeeds and reports a healthy state **And** buffered response bytes are capped and the cloud host is on the pinned allowlist
+**Given** a configured reachable provider **When** I press Test-connection **Then** a minimal round-trip via 8.3a succeeds and reports a healthy state
 
-_Covers: FR-29, FR-34, AR-33, AR-34, UX-DR52. Depends on: 8.1, 8.2._
+_Covers: FR-34, AR-33, UX-DR52. Depends on: 8.3a._
 
-> AR-33 + FR-34. Hand-rolled Godot-free ILLMProvider with GenerateAsync(NormalizedRequest)->NormalizedResult over three adapters: Anthropic /v1/messages, Ollama /api/chat, OpenRouter /chat/completions. NO vendor SDK (AOT-clean). Blocking v1. SELECTED PROVIDER IS AUTHORITATIVE — this REPLACES the implicit Claude->Ollama fallback currently in LLMService (lines ~118-124, ~455-459). Pin/allowlist cloud hosts; cap buffered response bytes. FR-34 four-state UI: (1) no provider configured, (2) provider set but no key, (3) provider unreachable, (4) generation returned but failed validation — each a distinct, clear message. Test-connection button performs a minimal round-trip and reports which of the four states applies. When unavailable, AI affordances disable/explain but every editor stays usable manually (UX-DR52 microcopy/voice).
-
-> ⚠ Quality-review (SPLIT): separate the three-adapter ILLMProvider stack (Anthropic/Ollama/OpenRouter) from the FR-34 four-state UI + Test-connection surface.
+> Split from former 8.3. FR-34 four states: (1) no provider, (2) provider set but no key, (3) unreachable, (4) returned-but-failed-validation — each a distinct clear message. Test-connection performs a minimal round-trip and reports which state applies. When unavailable, AI affordances disable/explain but every editor stays usable manually (UX-DR52 voice/microcopy).
 
 ### Story 8.4: Trigger generation on the new provider stack + new DSL constructs
 
@@ -2167,25 +2225,39 @@ _Covers: FR-51, UX-DR41. Depends on: 10.8._
 
 > FR-51 (slice 2 of 4) + UX-DR41. Build a keybinding remap UI in the settings panel over Godot's InputMap; persist bindings (extend SettingsData/SettingsManager which already load+save user://settings.json). Must cover the actual gameplay actions (camera, select, move, attack-move, stop, hold, control groups, building mode). Provide per-binding reset and reset-all. Detect and warn on conflicts.
 
-### Story 10.8b: Accessibility baseline: UI scaling 80-150% + reduced-motion + warm-paper theme tokens
+### Story 10.8b-1: Accessibility baseline: UI scaling 80-150% + reduced-motion
 
 As a player at various resolutions and motion sensitivities,
-I want to scale the UI from 80% to 150% and enable a reduced-motion mode, with a defined light theme,
+I want to scale the UI from 80% to 150% and enable a reduced-motion mode,
 So that the interface is readable and comfortable on 1080p/1440p/4K.
 
 **Acceptance Criteria:**
 
-**Given** no defined values yet for reduced-motion or the warm-paper theme **When** this story starts **Then** reduced-motion target values and the warm-paper light-theme token set are defined and recorded as the canonical reference **And** these definitions satisfy the ⚠ open items UX-DR44 and UX-DR37
+**Given** no defined reduced-motion target values yet **When** this story starts **Then** the reduced-state target values are defined and recorded as the canonical reference (satisfying the ⚠ open item UX-DR44)
 
 **Given** the UI scale setting from 80% to 150% **When** the player changes it at 1080p, 1440p, and 4K **Then** HUD and menus scale without clipping or overlap and the choice persists across restart **And** layout stays usable at the 80% and 150% extremes
 
-**Given** reduced-motion enabled **When** events that normally animate occur (camera shake on kills, panel transitions) **Then** motion is suppressed to the defined reduced-state values (e.g. SetShake becomes a no-op) **And** the warm-paper light theme can be selected and applies the defined tokens across the UI
+**Given** reduced-motion enabled **When** events that normally animate occur (camera shake on kills, panel transitions) **Then** motion is suppressed to the defined reduced-state values (e.g. RtsCameraController.SetShake becomes a no-op, transition durations cut to ~0)
 
-_Covers: FR-51, UX-DR42, UX-DR46, UX-DR47, UX-DR48, UX-DR49, UX-DR44, UX-DR37. Depends on: 10.8._
+_Covers: FR-51, UX-DR42, UX-DR44, UX-DR46, UX-DR47, UX-DR48, UX-DR49. Depends on: 10.8._
 
-> FR-51 (slice 3 of 4). UX-DR42/46-49 UI scaling 80-150% across 1080p/1440p/4K (responsive). UX-DR44 prefers-reduced-motion: first AC must DEFINE the reduced-state target values (e.g. disable camera shake, cut transition durations to ~0, freeze idle anim flourishes). UX-DR37 warm-paper light theme: token values not yet defined — first AC must DEFINE the token set (bg/surface/text/accent paper-tone values). Persist via SettingsData. Camera shake hook (RtsCameraController.SetShake) already exists and must respect reduced-motion.
+> Split from former 10.8b. FR-51 (slice 3 of 4). UX-DR42/46-49 UI scaling 80-150% across 1080p/1440p/4K (responsive). UX-DR44 reduced-motion: first AC DEFINES the reduced-state target values. Persist via SettingsData. Camera shake hook (RtsCameraController.SetShake) already exists and must respect reduced-motion.
 
-> ⚠ Quality-review (SPLIT): separate the warm-paper light-theme token definition + application (UX-DR37, values not yet defined) from the UI-scaling 80–150% + reduced-motion work (UX-DR42/44).
+### Story 10.8b-2: Accessibility baseline: warm-paper light theme token set
+
+As a player who prefers a light interface,
+I want a warm-paper light theme defined and selectable as a first-class peer to the cool-dark default,
+So that I can use the UI comfortably in a bright environment.
+
+**Acceptance Criteria:**
+
+**Given** no warm-paper light-theme token values exist in DESIGN.md **When** this story starts **Then** the full light-theme token set (bg/surface/text/accent paper-tone values, WCAG-AA on light) is defined and recorded as the canonical reference (satisfying the ⚠ open item UX-DR37)
+
+**Given** the defined warm-paper token set **When** the player selects the light theme **Then** it applies across the HUD and every editor surface via the one Godot Theme resource and persists across restart **And** contrast still meets WCAG AA on the light surfaces
+
+_Covers: UX-DR37. Depends on: 10.8b-1._
+
+> Split from former 10.8b. UX-DR37 warm-paper light theme is a first-class peer to cool-dark; its token VALUES are not in DESIGN.md, so the first AC defines them. Applies through the single Godot Theme resource built in Epic 3 (UX-DR12). Persist via SettingsData.
 
 ### Story 10.8c: Accessibility baseline: subtitles (S/M/L) for voice-over
 
@@ -2199,9 +2271,9 @@ So that I can follow spoken content.
 
 **Given** subtitles disabled **When** a VO line plays **Then** no caption is shown and there is no error **And** enabling subtitles mid-session begins captioning subsequent lines
 
-**Given** the shipped content set **When** subtitles are reviewed **Then** every voice-over line present has a matching caption cue, or it is documented that the build currently ships no VO and the system is verified via a test cue **And** caption text respects the warm-paper/contrast settings from 10.8/10.8b for readability
+**Given** the shipped content set **When** subtitles are reviewed **Then** every voice-over line present has a matching caption cue, or it is documented that the build currently ships no VO and the system is verified via a test cue **And** caption text respects the warm-paper/contrast settings from 10.8/10.8b-1/10.8b-2 for readability
 
-_Covers: FR-51, UX-DR43. Depends on: 10.8b._
+_Covers: FR-51, UX-DR43. Depends on: 10.8b-1, 10.8b-2._
 
 > FR-51 (slice 4 of 4) + UX-DR43. Add a subtitle display layer + a setting toggle with three size presets (S/M/L) persisted in SettingsData. Drive it from a simple subtitle-cue source so any voice-over line shows a caption. If the shipped build has no VO lines yet, the system must still be demonstrable with a test cue and degrade to no-op when no VO plays.
 
