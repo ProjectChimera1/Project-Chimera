@@ -243,13 +243,14 @@ namespace ProjectChimera.Core
             );
 
         // --- Conversions to Godot types (presentation layer only) ---
-
+#if GODOT
         /// <summary>Convert to Godot Vector3 for rendering. Only use in presentation layer.</summary>
         public Godot.Vector3 ToGodotVector3() =>
             new Godot.Vector3(X.ToFloat(), Y.ToFloat(), Z.ToFloat());
 
         public static FixedVec3 FromGodotVector3(Godot.Vector3 v) =>
             new FixedVec3(Fixed.FromFloat(v.X), Fixed.FromFloat(v.Y), Fixed.FromFloat(v.Z));
+#endif
 
         // --- Equality ---
 

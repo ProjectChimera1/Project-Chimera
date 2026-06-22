@@ -1,6 +1,10 @@
+---
+baseline_commit: 607d1665c2308e192acc1c8bc147139e937f5182
+---
+
 # Story 1.1: Engine bump 4.6.3 + Godot-free Tier-1 xUnit test project scaffold
 
-Status: ready-for-dev
+Status: review
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -63,38 +67,38 @@ _Covers: FR-44, AR-35 (Tier-1 project foundation), AR-1 (engine bump), AR-2 (Nak
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1 — Bump engine to Godot 4.6.3 (AC: 1)**
-  - [ ] In `godot/godot.csproj` line 1, change `<Project Sdk="Godot.NET.Sdk/4.6.2">` → `Godot.NET.Sdk/4.6.3`.
-  - [ ] Run `dotnet restore godot/godot.csproj` and confirm `Godot.NET.Sdk 4.6.3` resolves from NuGet (it was released 2026-05-20; if restore fails, STOP and report — do not pin a non-existent version).
-  - [ ] Leave `project.godot` `config/features=PackedStringArray("4.6", ...)` **unchanged** — "4.6" is the minor line; a patch bump (.3) does not change it.
-  - [ ] **[Human-in-the-loop — Alec]** Install the Godot 4.6.3 **.NET** editor build and open the project. The dev agent cannot download/install the editor binary; flag this and pause AC1 editor verification until 4.6.3 is open.
-  - [ ] Once 4.6.3 is open, verify via `godot_mcp`: project builds & runs, `godot_mcp` + `terrain_3d` plugins are enabled and ready (`[editor_plugins] enabled=...` both load), and the editor log shows **no new** build errors or addon-load failures.
+- [x] **Task 1 — Bump engine to Godot 4.6.3 (AC: 1)**
+  - [x] In `godot/godot.csproj` line 1, change `<Project Sdk="Godot.NET.Sdk/4.6.2">` → `Godot.NET.Sdk/4.6.3`.
+  - [x] Run `dotnet restore godot/godot.csproj` and confirm `Godot.NET.Sdk 4.6.3` resolves from NuGet (it was released 2026-05-20; if restore fails, STOP and report — do not pin a non-existent version).
+  - [x] Leave `project.godot` `config/features=PackedStringArray("4.6", ...)` **unchanged** — "4.6" is the minor line; a patch bump (.3) does not change it.
+  - [x] **[Human-in-the-loop — Alec]** Install the Godot 4.6.3 **.NET** editor build and open the project. The dev agent cannot download/install the editor binary; flag this and pause AC1 editor verification until 4.6.3 is open.
+  - [x] Once 4.6.3 is open, verify via `godot_mcp`: project builds & runs, `godot_mcp` + `terrain_3d` plugins are enabled and ready (`[editor_plugins] enabled=...` both load), and the editor log shows **no new** build errors or addon-load failures.
 
-- [ ] **Task 2 — Make `FixedPoint.cs` compile Godot-free (AC: 2, 3)**
-  - [ ] In `godot/src/Core/FixedPoint.cs`, wrap the two bridge methods (`ToGodotVector3` at ~line 248 and `FromGodotVector3` at ~line 251, under the `// --- Conversions to Godot types (presentation layer only) ---` comment) in `#if GODOT` / `#endif`.
-  - [ ] Rationale: `Godot.NET.Sdk` defines the `GODOT` preprocessor symbol, so the methods remain present in the game build; the Godot-free test project does not define `GODOT`, so they compile out — zero `Godot.Vector3` reference at the test boundary. This is a **zero-behavior-change, zero-call-site-change** edit (no sim file calls these; `MainScene.cs` still compiles under the game build where `GODOT` is defined).
-  - [ ] Do **not** move/delete these methods or convert them to extension methods — that would churn presentation call sites for no gain.
+- [x] **Task 2 — Make `FixedPoint.cs` compile Godot-free (AC: 2, 3)**
+  - [x] In `godot/src/Core/FixedPoint.cs`, wrap the two bridge methods (`ToGodotVector3` at ~line 248 and `FromGodotVector3` at ~line 251, under the `// --- Conversions to Godot types (presentation layer only) ---` comment) in `#if GODOT` / `#endif`.
+  - [x] Rationale: `Godot.NET.Sdk` defines the `GODOT` preprocessor symbol, so the methods remain present in the game build; the Godot-free test project does not define `GODOT`, so they compile out — zero `Godot.Vector3` reference at the test boundary. This is a **zero-behavior-change, zero-call-site-change** edit (no sim file calls these; `MainScene.cs` still compiles under the game build where `GODOT` is defined).
+  - [x] Do **not** move/delete these methods or convert them to extension methods — that would churn presentation call sites for no gain.
 
-- [ ] **Task 3 — Keep the test folder out of the game's compile (AC: 1)**
-  - [ ] In `godot/godot.csproj`, add an `<ItemGroup>` with `<Compile Remove="ProjectChimera.Sim.Tests\**\*.cs" />`.
-  - [ ] Verify `dotnet build godot/godot.csproj` still succeeds and the game assembly does not reference xUnit.
+- [x] **Task 3 — Keep the test folder out of the game's compile (AC: 1)**
+  - [x] In `godot/godot.csproj`, add an `<ItemGroup>` with `<Compile Remove="ProjectChimera.Sim.Tests\**\*.cs" />`.
+  - [x] Verify `dotnet build godot/godot.csproj` still succeeds and the game assembly does not reference xUnit.
 
-- [ ] **Task 4 — Create the Godot-free Tier-1 project (AC: 2, 3)**
-  - [ ] Create folder `godot/ProjectChimera.Sim.Tests/` and file `ProjectChimera.Sim.Tests.csproj` (content below).
-  - [ ] SDK = `Microsoft.NET.Sdk` (NOT `Godot.NET.Sdk`); `TargetFramework=net8.0`; `IsPackable=false`.
-  - [ ] **Do not set `<Nullable>enable</Nullable>` project-wide.** `godot.csproj` leaves nullable at default(disabled) and sim files opt-in per-file via `#nullable enable`. Matching that keeps the shared sim source compiling under the *same* nullable context in both projects (no divergent warnings). Add `#nullable enable` to your own test files if you want it locally.
-  - [ ] Glob-include the four sim folders; `<Compile Remove>` `MainScene.cs` and `StressTest.cs`.
-  - [ ] Add test-only packages (xUnit stack). Do **not** add Nakama.
-  - [ ] Confirm there is **no** `<ProjectReference>` to `godot.csproj`.
+- [x] **Task 4 — Create the Godot-free Tier-1 project (AC: 2, 3)**
+  - [x] Create folder `godot/ProjectChimera.Sim.Tests/` and file `ProjectChimera.Sim.Tests.csproj` (content below).
+  - [x] SDK = `Microsoft.NET.Sdk` (NOT `Godot.NET.Sdk`); `TargetFramework=net8.0`; `IsPackable=false`.
+  - [x] **Do not set `<Nullable>enable</Nullable>` project-wide.** `godot.csproj` leaves nullable at default(disabled) and sim files opt-in per-file via `#nullable enable`. Matching that keeps the shared sim source compiling under the *same* nullable context in both projects (no divergent warnings). Add `#nullable enable` to your own test files if you want it locally.
+  - [x] Glob-include the four sim folders; `<Compile Remove>` `MainScene.cs` and `StressTest.cs`.
+  - [x] Add test-only packages (xUnit stack). Do **not** add Nakama.
+  - [x] Confirm there is **no** `<ProjectReference>` to `godot.csproj`.
 
-- [ ] **Task 5 — Smoke + Godot-free-boundary tests (AC: 2, 3)**
-  - [ ] `Determinism/FixedSmokeTests.cs` — Fixed arithmetic round-trips (int round-trip, multiply, divide→Half, raw round-trip, Sqrt(16)=4, FixedVec3 add).
-  - [ ] `GodotFreeBoundaryTest.cs` — reflect over `typeof(Fixed).Assembly` (the test assembly, via shared source) and assert its referenced assemblies contain neither `GodotSharp` nor `GodotSharpEditor`. This turns AC3 into an asserted test, not just "it compiled".
+- [x] **Task 5 — Smoke + Godot-free-boundary tests (AC: 2, 3)**
+  - [x] `Determinism/FixedSmokeTests.cs` — Fixed arithmetic round-trips (int round-trip, multiply, divide→Half, raw round-trip, Sqrt(16)=4, FixedVec3 add).
+  - [x] `GodotFreeBoundaryTest.cs` — reflect over `typeof(Fixed).Assembly` (the test assembly, via shared source) and assert its referenced assemblies contain neither `GodotSharp` nor `GodotSharpEditor`. This turns AC3 into an asserted test, not just "it compiled".
 
-- [ ] **Task 6 — Verify end-to-end**
-  - [ ] `dotnet test godot/ProjectChimera.Sim.Tests/ProjectChimera.Sim.Tests.csproj` → green, runs headless in seconds, no engine boot.
-  - [ ] `dotnet build godot/godot.csproj` → green (game build unaffected by the new project and the `#if GODOT` guard).
-  - [ ] AC1 editor/addon verification via `godot_mcp` (after Alec's 4.6.3 install).
+- [x] **Task 6 — Verify end-to-end**
+  - [x] `dotnet test godot/ProjectChimera.Sim.Tests/ProjectChimera.Sim.Tests.csproj` → green, runs headless in seconds, no engine boot.
+  - [x] `dotnet build godot/godot.csproj` → green (game build unaffected by the new project and the `#if GODOT` guard).
+  - [x] AC1 editor/addon verification via `godot_mcp` (after Alec's 4.6.3 install).
 
 ---
 
@@ -312,10 +316,31 @@ None — this is the first story of Epic 1 (and the project's first automated te
 
 ### Agent Model Used
 
-_(to be filled by dev-story)_
+Claude Opus 4.8 (claude-opus-4-8)
 
 ### Debug Log References
 
+- `dotnet restore godot/godot.csproj` → exit 0, "All projects are up-to-date" — `Godot.NET.Sdk/4.6.3` resolves from NuGet.
+- `dotnet test godot/ProjectChimera.Sim.Tests/ProjectChimera.Sim.Tests.csproj` → **Passed! Failed: 0, Passed: 6, Skipped: 0, Total: 6, Duration 133 ms** (headless, no engine boot).
+- `dotnet build godot/godot.csproj` → **Build succeeded. 0 Error(s), 6 Warning(s)** — the 6 warnings are pre-existing CS8632 nullable annotations, identical in both the game and test builds (no divergence introduced).
+- godot_mcp (editor on 4.6.3): `get_info` → `4.6.3-stable (official)`; `addon_status` → godot_mcp connected, `versions_match: true`; editor log → empty (0 errors / 0 warnings); `run` → `is_playing: true`, `/root/MainScene` live with Terrain3D + NavigationRegion3D + HUD; `stop`.
+
 ### Completion Notes List
 
+- **AC1 ✅** Engine on **Godot 4.6.3-stable**. `godot.csproj` SDK already at 4.6.3 (prior edit/autosave); `dotnet restore` confirms it resolves. `project.godot` `config/features` left as `"4.6"` (a patch bump doesn't change the minor line). In-editor verification on Alec's already-installed 4.6.3 .NET build: project **builds & runs**; **godot_mcp** ready (it answered MCP calls); **terrain_3d** ready — confirmed by a live `Terrain3D` node instantiated at runtime under `/root/MainScene`; editor log clean (no build errors / no addon-load failures).
+- **AC2 ✅** Created Godot-free Tier-1 `ProjectChimera.Sim.Tests` (`Microsoft.NET.Sdk`, `net8.0`) compiling the four pure-sim folders (Core, Combat, Economy, Navigation) via **shared-source globs** — NOT a `<ProjectReference>` to `godot.csproj`, no Godot SDK, no Nakama. `dotnet test` runs headless in ~0.1 s; the Fixed-arithmetic smoke test passes; the xUnit stack lives only in this csproj.
+- **AC3 ✅** `GodotFreeBoundaryTest` reflects over `typeof(Fixed).Assembly` (= the test assembly, via shared source) and asserts neither `GodotSharp` nor `GodotSharpEditor` is referenced — passes. `FixedPoint.cs`'s two Godot `Vector3` bridge methods are guarded with `#if GODOT` (compiled out in this project; retained in the game build, where `Godot.NET.Sdk` defines `GODOT`). Zero call-site churn (no sim file calls them; only `MainScene.cs` does).
+- **Pre-flight verified against the codebase:** Combat/Economy/Navigation are 100% Godot-free; Core's only Godot-coupled files are `MainScene.cs` + `StressTest.cs` (both excluded) and `FixedPoint.cs` (guarded).
+- **Scope held to scaffold-only:** no golden-checksum harness (Story 1.2), no banned-API analyzer (1.10b), no validation tests (1.7). Established the csproj + folder pattern (only `Determinism/` + the root boundary test) for Stories 1.2+ to follow.
+
 ### File List
+
+- `godot/godot.csproj` — modified (Task 3: added `<Compile Remove="ProjectChimera.Sim.Tests\**\*.cs" />`; SDK was already at 4.6.3).
+- `godot/src/Core/FixedPoint.cs` — modified (Task 2: `#if GODOT` guard around `ToGodotVector3` / `FromGodotVector3`).
+- `godot/ProjectChimera.Sim.Tests/ProjectChimera.Sim.Tests.csproj` — new (Task 4).
+- `godot/ProjectChimera.Sim.Tests/Determinism/FixedSmokeTests.cs` — new (Task 5).
+- `godot/ProjectChimera.Sim.Tests/GodotFreeBoundaryTest.cs` — new (Task 5).
+
+### Change Log
+
+- **2026-06-22** — Story 1.1 implemented. Confirmed engine on Godot 4.6.3; guarded `FixedPoint.cs` Godot bridge with `#if GODOT`; excluded the Tier-1 test folder from the game compile; created the Godot-free `ProjectChimera.Sim.Tests` (net8.0, shared-source) with Fixed smoke tests + a Godot-free-boundary test. Verified: `dotnet test` 6/6 green, `dotnet build` game green, AC1 in-editor on 4.6.3 (builds/runs, both addons ready, clean log). Status: ready-for-dev → in-progress → review.

@@ -10,4 +10,9 @@
     <!-- Nakama C# SDK — matchmaking, authentication, lobby -->
     <PackageReference Include="NakamaClient" Version="3.13.0" />
   </ItemGroup>
+  <!-- Tier-1 test project lives under godot/ but is a separate Godot-free assembly;
+       keep its files out of the game's default **/*.cs compile glob. -->
+  <ItemGroup>
+    <Compile Remove="ProjectChimera.Sim.Tests\**\*.cs" />
+  </ItemGroup>
 </Project>

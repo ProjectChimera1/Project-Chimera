@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+    <!-- Godot-free: intentionally NOT Godot.NET.Sdk and the GODOT symbol is NOT defined here,
+         so FixedPoint.cs's #if GODOT bridge methods compile out. -->
+  </PropertyGroup>
+
+  <!-- SHARED SOURCE: compile the pure-sim folders directly. NOT a <ProjectReference> to godot.csproj
+       (that would drag GodotSharp into this assembly and break the Godot-free guarantee). -->
+  <ItemGroup>
+    <Compile Include="..\src\Core\**\*.cs"       LinkBase="Sim\Core" />
+    <Compile Include="..\src\Combat\**\*.cs"     LinkBase="Sim\Combat" />
+    <Compile Include="..\src\Economy\**\*.cs"    LinkBase="Sim\Economy" />
+    <Compile Include="..\src\Navigation\**\*.cs" LinkBase="Sim\Navigation" />
+    <!-- Effects/ and Dsl/ are net-new in Epics 2 & 7; those stories add their includes when the folders exist. -->
+
+    <!-- The only Godot-coupled files in the sim folders. MainScene = god object (strangled in 1.8a/c);
+         StressTest relocates to tools/ in 1.8a. FixedPoint.cs STAYS IN (Godot bridge guarded by #if GODOT). -->
+    <Compile Remove="..\src\Core\MainScene.cs" />
+    <Compile Remove="..\src\Core\StressTest.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Test-only. Pin the exact versions `dotnet restore` resolves so CI (Story 1.10a) is reproducible.
+         Known-good baseline; bump to current stable if newer. xUnit 2.x is the conservative choice. -->
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+  </ItemGroup>
+
+</Project>
