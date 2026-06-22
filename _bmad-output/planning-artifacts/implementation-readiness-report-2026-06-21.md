@@ -23,7 +23,7 @@ project: 'Project_Chimera'
 **Assessor:** Claude (Game Producer / Scrum Master)
 
 > ## 🟠 Overall Readiness: **NEEDS WORK** (strong foundation, surgical fixes required)
-> FR coverage is **100% (60/60, independently confirmed)**, cross-epic independence holds, and the architecture is excellent below the UI line. But ship-blocking refinements remain: ~~**2 critical epic-structure defects**~~ (✅ **fixed 2026-06-21**), **2 HIGH unscoped GDD design intentions** (RTS command-vocabulary *behaviors*; formation movement) the PRD itself flagged as unverified, **2 HIGH architecture presentation gaps** (edit→play transition/measurement; editor-shell + NFR-3 mode separation), and a **stale GDD** (missing FR-7/FR-26 + the FMA pivot). None are correctness/coverage blockers — but they must be decided before production. **See §6 for the prioritized action list.**
+> FR coverage is **100% (60/60, independently confirmed)**, cross-epic independence holds, and the architecture is excellent below the UI line. But ship-blocking refinements remain: ~~**2 critical epic-structure defects**~~ (✅ **fixed 2026-06-21**), **2 HIGH unscoped GDD design intentions** (RTS command-vocabulary *behaviors*; formation movement) the PRD itself flagged as unverified, **2 HIGH architecture presentation gaps** (edit→play transition/measurement; editor-shell + NFR-3 mode separation), and a **stale GDD** (missing FR-7/FR-26 + the FMA pivot). None are correctness/coverage blockers. **Design-gap triage is now complete (§7, 2026-06-21):** a code check ground-truthed each gap and Alec decided each — most folded into 1.0 (a deliberate scope increase); fog-of-war / splash / worker-caps were found **already built** (verify-only); the anti-maphack netcode pivot is deferred post-1.0. **See §6 for the action list and §7 for the triage decisions + scope delta.**
 
 ## 1. Document Inventory
 
@@ -215,6 +215,8 @@ _Method: extracted the epics' declared FR Coverage Map, then **independently** r
 **None.** All 60 PRD FRs trace to at least one story. The epics' coverage map is accurate and the lettered inserts are all placed.
 
 ### 3.4 ⭐ The Real Finding — GDD design intentions owned by NO FR
+> **Update (2026-06-21):** a follow-up code check (9 probes against `godot/src`) ground-truthed every item below and **corrected several** — fog-of-war is **fully built** (not missing), and splash radius, worker-caps, and 4 of 7 commands are **already implemented**. All 9 were then triaged with decisions. **See §7 for the code-grounded state + decisions; the severities below were the doc-only view.**
+
 The PRD declares whole subsystems as "Built Foundation" without decomposing them into FRs. So these GDD requirements are **invisible to an FR-coverage check** — yet a blind probe of the stories shows they are **absent or only adjacent** in the epics. These are *not* FR-coverage gaps; they are **requirements that were never turned into FRs.** This is the highest-value output of the readiness check.
 
 | # | GDD design intention (no owning FR) | In stories? | Severity | Finding |
@@ -388,4 +390,35 @@ This assessment identified **2 critical, ~6 HIGH-priority, and a larger set of M
 
 ---
 
-*Assessment complete — generated 2026-06-21 by the `gds-check-implementation-readiness` workflow.*
+## 7. Design-Gap Triage Decisions (2026-06-21)
+
+_A code check (9 parallel probes against `godot/src`) ground-truthed each §3.4 gap, then each was triaged with Alec. **Code-state corrections to the doc-only §3.4 view:** fog-of-war is **fully built**; splash radius, worker-caps (max_gatherers), and 4 of 7 commands (Move/Stop/Attack-Move + Hold-as-alias) are **already implemented**. So the genuinely new build work is smaller than "9 gaps" implied — but Alec chose an ambitious, mostly-in-1.0 scope._
+
+| Gap | Code state | Decision | Lands in | Determinism-sensitive |
+|-----|-----------|----------|----------|:---:|
+| **G1** Command vocabulary | partial (Move/Stop/Attack-Move built) | **1.0 — full set:** add single-target **Attack**, **Patrol**, **Follow**; make **Hold distinct from Stop** (hold-ground, no-chase). Verify the 3 built. | Epic 1 (extends `UnitCommand` + lockstep/replay serialization) | ✅ yes |
+| **G2** Formations | partial (grid-scatter + separation) | **1.0:** priority **yielding** (moving > idle) + per-unit collision-radius/push-yield fields + **role-based formations** (heavies/tanks front, ranged/archers back). | Epic 1 (`MovementSystem`) + `UnitDefinition` | ✅ yes |
+| **G3** Collection models | partial (GATHER + caps built; Crystal dead) | **1.0 — all models:** add **INCOME** (trickle) + **STREAMING** + **requires_structure**, and **wire Crystal** production. Verify GATHER + caps. | Epic 4 (economy) | ✅ yes |
+| **G4** Unit tags | absent | **1.0:** add organic/mechanical/magical **tag axis**, folded into the effect engine's targeting/counters. | Epic 2 (effect engine) + Epic 3 (authoring) | ✅ yes |
+| **G5** Delivery flag | partial (splash built & authorable) | **1.0:** add explicit **hitscan-vs-projectile** flag (+ optional per-unit projectile speed), decoupled from range. Verify splash. | Epic 3 (+ `CombatSystem`) | ✅ yes |
+| **G6** Command rate-limiting | absent | **1.0:** add a **per-client command-rate throttle / anti-spam** on the server. | Epic 9 (`DedicatedServer`) | ⛔ no (validation layer) |
+| **G7** AI adaptivity | absent (static utility AI built) | **1.0 — full:** player-pattern tracking (rush/turtle) + counter-strategy weighting + **decision-weight debug overlay**. | Epic 10 / AI-opponent (sim) | ✅ yes (counters fold into `SimChecksum`) |
+| **G8** Win-condition presets | partial (2 conditions + trigger hook) | **1.0:** ship named **preset templates** (KotH, Timed Survival, Assassination, Landmark) as T1 DSL templates; also move win-evaluation into the **sim** (`WinConditionSystem`, currently in `MainScene`). | Epic 7 (DSL) + sim | ✅ yes (win-eval → sim) |
+| **G9a** Height-advantage vision | absent (+ flat sim terrain) | **1.0:** add deterministic **sim-side terrain elevation** + height-advantage vision rule + creator toggle. | Epic 6 (terrain) + Epic 1/sim | ✅ yes (elevation feeds sim/pathing/vision) |
+| **G9b** Anti-maphack fog | absent (architecturally blocked) | **Deferred post-1.0** — see finding below. Fog-of-war itself = **verify-only** (built). | post-1.0 architecture epic | — |
+
+### 7.1 ⚠️ New architectural finding — GDD ↔ netcode contradiction (G9b)
+The GDD states "map-hacking is impossible," but that is only true of **server-authoritative state replication** — **not** the **deterministic lockstep** Chimera is actually built on. In lockstep, every client simulates the *full* game (including units inside your fog) from the shared command stream; **fog is a draw-time mask on data the client already holds.** The server cannot strip hidden state without breaking clients' ability to stay in sync (they'd fail the next checksum). True anti-maphack would require a different netcode model — an architecture pivot, not a story. **Decision: defer to a post-1.0 architecture epic; for 1.0, accept lockstep's limitation (as WC3/AoE/SC do) and reconcile the GDD wording to "server-authoritative command validation" (which IS built and true).** _This is a latent GDD↔architecture contradiction the FR/coverage checks could not have surfaced._
+
+### 7.2 Scope delta & producer note
+This triage **expands 1.0 scope by ~9 build areas** (8 in-1.0 gaps, several non-trivial: all collection models, full AI adaptivity, sim-side terrain elevation, the full command set) **plus ~4 verify-only stories**. That is a deliberate, eyes-open expansion — legitimate, but it should reshape sprint planning:
+- **8 of the new build items are determinism-sensitive** (they mutate sim state) — they must follow the `Fixed`/ascending-id/`SimRng` rules, fold into `SimChecksum`, and **will re-baseline golden checksums**. Sequence them **after Epic 1's determinism foundation** and budget for re-baselining. Only G6 (server validation) is determinism-neutral.
+- **New/expanded stories to author before sprint planning** (suggested homes): Epic 1 — RTS command vocabulary (Attack/Patrol/Follow/Hold) + movement yielding & role-formations; Epic 2/3 — unit tags + delivery flag; Epic 3/6 — terrain elevation + height-advantage vision; Epic 4 — INCOME/STREAMING/requires_structure + Crystal; Epic 7 — win-condition preset templates + sim `WinConditionSystem`; Epic 9 — command throttle; Epic 10 — adaptive AI (pattern-tracking + counter-weighting + debug overlay).
+- **Verify-only stories** (already built — just confirm to ship bar): Move/Stop/Attack-Move behaviors; splash radius; GATHER + worker-caps; **fog-of-war** (3-state grid, per-unit vision, spectator reveal). Fold into the Epic 1/Epic 10 verification floor.
+- **Post-1.0 backlog:** the server-authoritative netcode pivot (G9b) as its own architecture epic.
+
+**Recommended next action:** apply these decisions to `epics.md` as the new/modified/verify stories above (a `gds-correct-course` pass or direct authoring), **then** run `gds-sprint-planning` on the updated breakdown.
+
+---
+
+*Assessment complete — generated 2026-06-21 by the `gds-check-implementation-readiness` workflow. Triage decisions appended 2026-06-21.*
