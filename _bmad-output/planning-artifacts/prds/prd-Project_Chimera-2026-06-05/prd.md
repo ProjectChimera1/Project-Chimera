@@ -1,7 +1,7 @@
 ---
 title: Project Chimera
 created: 2026-06-05
-updated: 2026-06-05
+updated: 2026-06-22
 status: drafting
 scope_frame: gap-to-1.0
 ---
@@ -122,6 +122,7 @@ workflow's job. Features (§4) reference these by ID.*
 > §4.12 holds cross-cutting NFRs. Implementation detail lives in `addendum.md`. Items marked
 > `[v2 — out of 1.0]` are explicitly deferred. **FR numbering:** FR-1..FR-52 are stable global IDs;
 > a lettered insert (e.g. FR-7a) is an intentional in-place addition — treat it as its own requirement.
+> **FR-53–FR-61** are the 2026-06-21 readiness-triage additions (§4.13), tracked upstream as DG-1…DG-9 in `epics.md`.
 > **Layered complexity applies everywhere:** every editor's *advanced mode* retains direct raw-data
 > (JSON) access for power users — the in-app editors augment JSON authoring, they do not remove the
 > expert escape hatch (GDD pillar).
@@ -317,6 +318,29 @@ player-facing surface but gates everything.
 - **NFR-5 — Performance.** The 500–2,000 units @ 60 FPS render / 30 Hz sim target holds on representative shipped and community scenarios (verified by FR-46).
 - **NFR-6 — Server-validatable content.** Every shareable construct (units, abilities, triggers, DSL logic, custom UI) is statically validatable so the server can reject malformed/cheating scenarios before they run — this *bounds* the DSL's expressiveness (anything not statically validatable is out).
 
+### 4.13 Core Gameplay Framework — Readiness-Triage Additions *(in 1.0)*
+**Description:** These nine FRs (**FR-53…FR-61**) back-fill design intentions the GDD specified but no
+prior PRD FR owned — surfaced by the **2026-06-21 implementation-readiness check**, ground-truthed
+against `godot/src`, and triaged **in-1.0** (a deliberate, eyes-open scope addition). They are tracked
+upstream as **DG-1…DG-9** in `epics.md` and homed in the epics/stories noted per item. Eight of the
+nine mutate the deterministic sim, so they obey the determinism rules (`Fixed` math, ascending-id
+iteration, seeded `SimRng`, fold into `SimChecksum`) and **re-baseline the golden checksum** when they
+land — sequence them **after Epic 1's determinism floor**. The "verify-only" portions (the parts the
+code check found already built) are folded into the relevant epic's verification floor, not rebuilt.
+
+**Functional Requirements:**
+- **FR-53** *(DG-1 → Epic 1 / Story 1.12)* — The framework guarantees the **full RTS command vocabulary**: single-target **Attack** (force-fire a specific enemy), **Patrol** (waypoint loop, auto-engage en route), **Follow** (escort with a leash), and a **Hold Position** behaviorally distinct from Stop (hold ground, attack in range, never chase or be displaced). Move/Stop/Attack-Move already exist (verify). Creators may disable a command per unit type but can never remove it from the framework.
+- **FR-54** *(DG-2 → Epic 1 / Story 1.13)* — **Formation movement**: moving units take priority and idle units yield aside; units carry creator-authorable **collision-radius** and **push-vs-yield** fields; multi-unit moves form up by **combat role** (melee/siege front, ranged/support back).
+- **FR-55** *(DG-3 → Epic 4 / Story 4.7)* — Per-resource **collection models** beyond GATHER — **INCOME** (passive trickle) and **STREAMING** — plus node fields **max_gatherers** and **requires_structure**, and the declared-but-unproduced **Crystal** resource is wired to actually produce. (GATHER + caps already built — verify.)
+- **FR-56** *(DG-4 → Epic 2 / Story 2.11)* — Authorable **unit tags** (Organic / Mechanical / Magical) as a first-class targeting-and-counter axis for abilities and effects, distinct from the damage/armor matrix.
+- **FR-57** *(DG-5 → Epic 3 / Story 3.12)* — An authorable **attack-delivery flag** (Hitscan vs Projectile) plus per-unit projectile speed, decoupled from range, exposed as creator-editable fields. (Splash radius already authorable — verify.)
+- **FR-58** *(DG-6 → Epic 9 / Story 9.13)* — A per-client **command-rate throttle / anti-spam** on the dedicated server (the GDD's Tier-1 anti-cheat must-have). Server-validation layer; determinism-neutral.
+- **FR-59** *(DG-7 → Epic 10 / Story 10.11)* — **Adaptive AI opponent**: deterministic player-pattern tracking (rush/turtle), counter-strategy weighting, and a Tinkerer-facing **decision-weight debug overlay**. (Pattern counters fold into `SimChecksum`.)
+- **FR-60** *(DG-8 → Epic 7 / Story 7.10)* — **Win-condition preset templates** (King of the Hill, Timed Survival, Assassination, Landmark Destruction) shipped as T1 DSL templates, with win-evaluation moved into a sim-layer **`WinConditionSystem`** (today it lives in `MainScene`).
+- **FR-61** *(DG-9 → Epic 6 / Story 6.5)* — Deterministic **sim-side terrain elevation** plus a **height-advantage vision** rule with a creator toggle. (Fog-of-war itself already built — verify.)
+
+**Notes:** `[NOTE FOR PM]` Ratified during the 2026-06-21 design-gap triage (readiness report §7). DG-10 (true server-enforced anti-maphack fog) is **deferred post-1.0** — see §5; it is incompatible with the as-built deterministic lockstep.
+
 ## 5. Non-Goals (Explicit)
 
 - **No arbitrary scripting language.** Creator logic is the declarative DSL only — never raw scripts (preserves determinism + server validation). `[NON-GOAL for 1.0 and by design]`
@@ -324,6 +348,7 @@ player-facing surface but gates everything.
 - **No free-to-play / microtransactions.** Premium one-time purchase ($15–25). Explicit anti-Stormgate stance. `[NON-GOAL by design]`
 - **No web / mobile / console.** PC desktop only (Windows primary, Linux for servers). No C# web export.
 - **No client-side/kernel anti-cheat.** Server authority + command validation only; not an anti-cheat arms race.
+- **No server-enforced anti-maphack fog at 1.0** (epics DG-10). True information-hiding (the server stripping hidden entity state) is incompatible with the as-built deterministic **lockstep**, where every client simulates the full game from the shared command stream and fog is a client-side render mask. Anti-maphack via server-authoritative state replication is `[v2 — out of 1.0]`; what ships is server-authoritative command *validation* (ownership / affordability / content-hash), as in WC3/AoE/StarCraft. The GDD wording is reconciled to match.
 - **No P2P/WebRTC netcode.** Server-authoritative lockstep only.
 - **No cross-package dependencies.** Each scenario is fully self-contained for 1.0.
 - **3rd faction is post-1.0.** Two asymmetric factions ship; the third is `[v2]`.
@@ -338,10 +363,11 @@ nothing until 1.0, but keep the build in an always-working state via internal mi
 integration risk surfaces early. Treat the milestones below as the recommended order for the
 epics/stories workflow — adjust freely.*
 
-### 6.1 In Scope — All of §4.1–§4.11
+### 6.1 In Scope — All of §4.1–§4.13
 Everything specified in §4 is 1.0 scope, including all four formerly-fast-follow items:
 T3 visual node-graph triggers (FR-28), custom runtime UI in triggers (FR-26), full economy-model
-authoring (FR-15/16), and >2-player matchmaking (FR-40).
+authoring (FR-15/16), and >2-player matchmaking (FR-40) — plus the nine readiness-triage additions in
+§4.13 (FR-53–FR-61 = DG-1…DG-9), ratified in-1.0 by the 2026-06-21 design-gap triage.
 
 ### 6.2 Recommended Build Sequencing *(internal milestones — always shippable state)*
 - **M0 — Integration hygiene (do alongside M1).** `MainScene.cs` is a ~2,200 LOC composition root (~25 `SetupXxx()`) and the single point every new system wires into — M2/M3 add ~6 editors + hero sim + a major DSL expansion all threading through it. Decompose/modularize the wiring **before** piling on, or it becomes the integration chokepoint. Also: `PathRequestSystem` still owns the Move→Stop transition (dodging a historical stutter bug) — its Move→Stop logic must migrate to `FlowFieldBridge` before it can be removed; don't delete it blindly during FR-39 work.

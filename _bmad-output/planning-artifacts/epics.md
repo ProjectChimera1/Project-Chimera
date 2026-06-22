@@ -2,8 +2,8 @@
 stepsCompleted: [1, 2, 3, 4]
 status: complete
 epicCount: 10
-storyCount: 106
-validation: "FR coverage 60/60; NFR-1..6 covered; no residual placeholders; no within-epic forward dependencies (verified 2026-06-21). Readiness-check corrections applied 2026-06-21: (1) relocated Story 1.5's forbidden-until-SimRng AC into Story 1.7 to break a 1.5<->1.7 logical cycle — the claim now holds; (2) corrected Story 2.10's dangling 'Depends on: 2.9' to '2.9a, 2.9b' — the dangling reference is resolved. Readiness-triage stories added 2026-06-21: +9 in-1.0 build stories tagged DG-1..DG-9 (across Epics 1/2/3/4/6/7/9/10); DG-10 deferred post-1.0; objective-AC fixes applied to Stories 5.7/9.6/10.1/10.3."
+storyCount: 121
+validation: "FR coverage 60/60; NFR-1..6 covered; no residual placeholders; no within-epic forward dependencies (verified 2026-06-21). Readiness-check corrections applied 2026-06-21: (1) relocated Story 1.5's forbidden-until-SimRng AC into Story 1.7 to break a 1.5<->1.7 logical cycle — the claim now holds; (2) corrected Story 2.10's dangling 'Depends on: 2.9' to '2.9a, 2.9b' — the dangling reference is resolved. Readiness-triage stories added 2026-06-21: +9 in-1.0 build stories tagged DG-1..DG-9 (across Epics 1/2/3/4/6/7/9/10); DG-10 deferred post-1.0; objective-AC fixes applied to Stories 5.7/9.6/10.1/10.3. Story-splitting pass 2026-06-22: split the 11 oversized stories (1.8/1.10/2.2/3.1/5.5/7.1b/7.8/8.6/9.3/10.2/10.9) into lettered sub-stories via an adversarially-verified workflow (storyCount 106->121); re-pointed every downstream Depends-on to the terminal sub-story and fixed pre-existing dangling refs left by earlier splits (1.4->1.3b, 1.10a->1.9b, 7.2->7.1b-2, 8.4/8.5/8.6a/8.7->8.3b) — the 'no dangling references' claim now holds."
 inputDocuments:
   - "_bmad-output/planning-artifacts/prds/prd-Project_Chimera-2026-06-05/prd.md"   # FR/NFR source (Road-to-1.0 PRD)
   - "_bmad-output/planning-artifacts/prds/prd-Project_Chimera-2026-06-05/addendum.md"
@@ -13,7 +13,7 @@ inputDocuments:
   - "_bmad-output/planning-artifacts/ux-designs/ux-Project_Chimera-2026-06-20/EXPERIENCE.md" # UX-DR source (behavioral spine)
   - "Project_Chimera_GDD.md"                                                       # design context (not a numbered-req source)
   - "_bmad-output/fma-faction-design.md"                                           # showcase-faction content context
-frNumberingNote: "FR IDs preserved verbatim from the PRD (FR-1..FR-52; lettered inserts FR-7a..e, FR-12a, FR-38a, FR-49a are each their own requirement). NFR-1..NFR-6 are the PRD's canonical cross-cutting NFRs."
+frNumberingNote: "FR IDs preserved verbatim from the PRD (FR-1..FR-52; lettered inserts FR-7a..e, FR-12a, FR-38a, FR-49a are each their own requirement; FR-53..FR-61 = the readiness-triage DG-1..DG-9 additions back-filled to the PRD 2026-06-22 / PRD §4.13). NFR-1..NFR-6 are the PRD's canonical cross-cutting NFRs."
 scope: "gap-to-1.0 (brownfield). §4.0 PRD Built Foundation is reference-only, NOT 1.0 scope."
 ---
 
@@ -237,7 +237,7 @@ from the **UX run** (`ux-Project_Chimera-2026-06-20`). GDD + FMA faction design 
 
 ### Design-Gap Requirements *(surfaced by implementation-readiness 2026-06-21; triaged in-scope for 1.0 — see `implementation-readiness-report-2026-06-21.md` §7)*
 
-_GDD design intentions that no PRD FR owned; decided in-1.0. **To be back-filled into the PRD as FR-53+ in a PRD-update pass** (the PRD stays the canonical requirements baseline)._
+_GDD design intentions that no PRD FR owned; decided in-1.0. **Back-filled into the PRD as FR-53…FR-61 (2026-06-22; PRD §4.13)** — the PRD stays the canonical requirements baseline; DG-1…DG-9 map 1:1 to FR-53…FR-61._
 
 - **DG-1** — Full RTS command vocabulary: single-target **Attack** (right-click enemy), **Patrol**, **Follow**, and a **Hold Position** behaviorally distinct from Stop (Move/Stop/Attack-Move already built). *(GDD §3)*
 - **DG-2** — **Formation movement**: priority yielding (moving units take precedence; idle shift aside) + per-unit collision-radius & push/yield fields + role-based battle formations (front-line/back-line by archetype). *(GDD §3, line 163)*
@@ -363,7 +363,7 @@ Items flagged ⚠ are under-specified in the source and need a concrete value/de
 
 ### FR Coverage Map
 
-*Every FR maps to exactly one epic. (NFRs and the AR-* technical requirements are cross-cutting and woven into the relevant epic's stories; they are not single-epic-owned.)*
+*Every FR maps to exactly one epic. (NFRs and the AR-* technical requirements are cross-cutting and woven into the relevant epic's stories; they are not single-epic-owned.) FR-53–FR-61 are the readiness-triage additions (PRD §4.13), tracked as DG-1…DG-9 and homed in the DG stories.*
 
 | FR | Epic | Capability |
 |----|------|-----------|
@@ -427,6 +427,15 @@ Items flagged ⚠ are under-specified in the source and need a concrete value/de
 | FR-50 | Epic 10 | Linux export builds + runs |
 | FR-51 | Epic 10 | Accessibility 1.0 baseline |
 | FR-52 | Epic 10 | Ship to Steam + DRM-free channel |
+| FR-53 | Epic 1 | Full RTS command vocabulary — Attack/Patrol/Follow/Hold (DG-1, Story 1.12) |
+| FR-54 | Epic 1 | Formation movement: yielding + role formations + radius fields (DG-2, Story 1.13) |
+| FR-55 | Epic 4 | Collection models INCOME/STREAMING + node fields + Crystal (DG-3, Story 4.7) |
+| FR-56 | Epic 2 | Authorable unit tags (organic/mechanical/magical) (DG-4, Story 2.11) |
+| FR-57 | Epic 3 | Attack-delivery flag (hitscan vs projectile) + speed (DG-5, Story 3.12) |
+| FR-58 | Epic 9 | Per-client command-rate throttle / anti-spam (DG-6, Story 9.13) |
+| FR-59 | Epic 10 | Adaptive AI: pattern-tracking + counter-weighting + overlay (DG-7, Story 10.11) |
+| FR-60 | Epic 7 | Win-condition preset templates + sim WinConditionSystem (DG-8, Story 7.10) |
+| FR-61 | Epic 6 | Sim-side terrain elevation + height-advantage vision (DG-9, Story 6.5) |
 
 ## Epic List
 
@@ -480,7 +489,7 @@ _Multiplayer provably stays in sync across two machines, the deterministic sim i
 
 **Sequencing note:** Epic structured along the architecture's golden-checksum-gated strangler (migration Steps 0-4 of D1 + the M1 testing/determinism/MP/decomposition spine). Effects/Modifier/Trigger steps 5-9 are deliberately deferred to later epics. Stories are ordered so each is completable using only earlier Epic-1 stories. The hard milestone gate M1 (1.1-1.10 green) must land before any later epic's engine work; 1.9 (FR-39 LAN green) is the #1 ship-risk climax and depends on the full determinism spine + server quorum being in place first. Brownfield: 1.3-1.6 are "fix/extend/harden existing systems" (SimChecksum, FixedPoint, DamageMatrix all exist); 1.1, 1.5, 1.7, 1.8 are genuinely net-new (test project, SimRng, ScenarioValidator, SimulationHost/Applier). Floor on 8-player is built into the registry/checksum/enum work (FACTION_ARRAY_SIZE=9, PLAYER_COUNT=8) even though ship ceiling is 4-now/8-fast-follow.
 
-**Coverage note (added by review):** **AR-4** (net-new `ILogSink` deterministic logging seam so sim/Godot-free code never calls `GD.Print`/Console; relocate `StressTest.cs` out of `src/Core`) is folded into the Godot-free sim-spine story (**1.8 SimulationHost/ScenarioApplier**) — it is a headless-server/test prerequisite. **AR-41** (telemetry posture: **NO analytics in 1.0**; dev-only diagnostics via logs + `.chmr` replay capture; an opt-in crash/desync report bundling the `.chmr` + checksum log) is folded into the CI/regression-guard story (**1.10**); per-system sub-checksums + a replay-diff tool are homed as a structural fast-follow, not 1.0-blocking.
+**Coverage note (added by review):** **AR-4** (net-new `ILogSink` deterministic logging seam so sim/Godot-free code never calls `GD.Print`/Console; relocate `StressTest.cs` out of `src/Core`) is folded into the Godot-free sim-spine story (**1.8a SimulationHost**) — it is a headless-server/test prerequisite. **AR-41** (telemetry posture: **NO analytics in 1.0**; dev-only diagnostics via logs + `.chmr` replay capture; an opt-in crash/desync report bundling the `.chmr` + checksum log) is folded into the CI/regression-guard story (**1.10a**); per-system sub-checksums + a replay-diff tool are homed as a structural fast-follow, not 1.0-blocking.
 
 ### Story 1.1: Engine bump 4.6.3 + Godot-free Tier-1 xUnit test project scaffold
 
@@ -566,7 +575,7 @@ So that there is exactly one quantization boundary and no float or unordered-col
 
 **Given** a negative test exercising Dictionary-backed timers/variables and an in-tick Fixed->float->string round-trip **When** the scenario runs twice **Then** checksums are byte-identical, and the test FAILS if iteration order or the float round-trip is reintroduced into the tick
 
-_Covers: FR-44, FR-47, AR-14, AR-16. Depends on: 1.3._
+_Covers: FR-44, FR-47, AR-14, AR-16. Depends on: 1.3b._
 
 > Brownfield hardening of FixedPoint.cs and the deserialize path. AR-14 single quantization boundary; AR-16 the three latent nondeterminisms each gated by a negative test. Golden checksum must stay byte-identical (or be re-baselined intentionally if a sort tiebreak changes output).
 
@@ -628,25 +637,53 @@ _Covers: FR-39, FR-44, AR-39, AR-23, AR-13. Depends on: 1.5, 1.6._
 
 > Net-new. AR-39 single pre-tick gate, shadow/log-only on master with release-branch fail-closed flip. AR-23 canonical start-state hash fixes the AI-gen stale-file desync (re-points off ComputeFileHash). Depends on 1.5 (validator forbids random effects until SimRng) and 1.6 (validates the damage table). Negative-validation tests added to Tier-1.
 
-### Story 1.8: Strangle MainScene into Godot-free SimulationHost + ScenarioApplier + asserted ScenePhaseRunner
+### Story 1.8a: Extract Godot-free SimulationHost with the 9-system tick order + single checksum sink + ILogSink seam
 
 As a solo developer decomposing the 2,234-LOC MainScene god-object,
-I want a net-new Godot-free SimulationHost owning the 9-system tick order (ModifierSystem reserved at index 3 before CombatSystem, single checksum sink), a Godot-free ScenarioApplier as the sole writer of sim truth with allocation-free SpawnUnit and Godot path resolution hoisted to a presentation pre-pass, and an asserted ISetupPhase[] run by ScenePhaseRunner pinned by a PhaseOrderTest,
-So that the sim spine is testable headless, reused verbatim by the server, and ready to absorb the six editors without touching presentation.
+I want a net-new Godot-free SimulationHost owning the canonical 9-system tick order (ModifierSystem reserved at index 3 before CombatSystem, single checksum sink), with a net-new injected ILogSink so sim/Godot-free code never calls `GD.Print`/Console, and `StressTest.cs` relocated out of `src/Core`,
+So that the sim spine is testable headless and runs without perturbing the tick, ready to be reused verbatim by the server.
 
 **Acceptance Criteria:**
 
 **Given** the tick logic currently inside MainScene **When** it is extracted into a Godot-free SimulationHost **Then** SimulationHost has no `using Godot`, owns the canonical 9-system tick order with a reserved index-3 slot for ModifierSystem before CombatSystem, exposes a single checksum sink, and the golden scenario run through it is byte-identical to the pre-extraction baseline
 
+**Given** the net-new ILogSink deterministic logging seam **When** sim/Godot-free code logs **Then** it logs only through the injected sink (never `GD.Print`/Console), `StressTest.cs` is relocated out of `src/Core`, and SimulationHost compiles in the Godot-free test project so the headless server/test project runs without perturbing the tick
+
+_Covers: FR-39, FR-44, AR-6, AR-4. Depends on: 1.7._
+
+> Split from former 1.8. Net-new SimulationHost (AR-6). AR-4 ILogSink seam + StressTest.cs relocation folded here per the Epic-1 coverage note — both are headless-server/test prerequisites that belong with the sim spine. ModifierSystem is reserved at index 3 but built in a later epic. Strangles tick logic out of MainScene.cs (2234 LOC). Golden checksum must stay byte-identical.
+
+### Story 1.8b: ScenarioApplier as the sole writer of sim truth with alloc-free SpawnUnit + hoisted path resolution
+
+As a solo developer decomposing the 2,234-LOC MainScene god-object,
+I want a net-new Godot-free ScenarioApplier as the sole writer of sim truth, with allocation-free SpawnUnit and all Godot path resolution hoisted to a presentation pre-pass that runs before the Applier,
+So that the sim spine has one auditable mutation path that is testable headless and reused verbatim by the server.
+
+**Acceptance Criteria:**
+
 **Given** ScenarioApplier as the sole writer of sim truth **When** a scenario is applied **Then** all Godot path resolution happens in a presentation pre-pass before the Applier runs, SpawnUnit allocates zero per call, and the Applier compiles in the Godot-free test project
+
+**Given** the golden scenario applied through ScenarioApplier **When** it is run through the 1.8a SimulationHost **Then** the resulting checksum is byte-identical to the pre-extraction baseline (no behavior change, only the mutation path relocated)
+
+_Covers: FR-39, FR-44, AR-7. Depends on: 1.8a._
+
+> Split from former 1.8. Net-new ScenarioApplier (AR-7), built on the 1.8a SimulationHost. This is the sim-mutating change for this seam, so it keeps the byte-identical-golden requirement. Establishes the single sim-truth writer that 1.8c's MainScene diff asserts mutation flows exclusively through.
+
+### Story 1.8c: Asserted ScenePhaseRunner + ISetupPhase[] + PhaseOrderTest, and the MainScene strangle diff
+
+As a solo developer decomposing the 2,234-LOC MainScene god-object,
+I want the composition root expressed as an asserted ISetupPhase[] run by a ScenePhaseRunner and pinned by a PhaseOrderTest, with MainScene reduced to presentation/wiring only,
+So that the materially-smaller MainScene is presentation-only and ready to absorb the six editors without touching the sim spine.
+
+**Acceptance Criteria:**
 
 **Given** the composition root as an ISetupPhase[] run by ScenePhaseRunner **When** PhaseOrderTest runs **Then** it asserts the exact phase order and FAILS if a phase is reordered, added, or removed
 
 **Given** MainScene after the strangle **When** I diff it **Then** MainScene is materially smaller and contains only presentation/wiring, with sim mutation flowing exclusively through ScenarioApplier
 
-_Covers: FR-39, FR-44, AR-6, AR-7, AR-3. Depends on: 1.7._
+_Covers: FR-39, FR-44, AR-3. Depends on: 1.8b._
 
-> Net-new SimulationHost (AR-6) + ScenarioApplier (AR-7); AR-3 ScenePhaseRunner/ISetupPhase[]/PhaseOrderTest. Strangles MainScene.cs (2234 LOC). ModifierSystem is reserved at index 3 but built in a later epic. This creates the shared sim path the server (1.9) reuses. Golden checksum must stay byte-identical.
+> Split from former 1.8. AR-3 ScenePhaseRunner/ISetupPhase[]/PhaseOrderTest. Final strangle step: MainScene.cs (was 2234 LOC) becomes presentation/wiring only, with all sim mutation routed through the 1.8b ScenarioApplier. This completes the shared sim path the server (1.9) reuses.
 
 ### Story 1.9a: ServerBootstrap headless peer + server checksum collector with quorum + HALT (loopback)
 
@@ -662,7 +699,7 @@ So that the server holds real sim state and can detect/attribute desync and HALT
 
 **Given** an induced divergence on one loopback peer **When** the server's collector detects a mismatch **Then** it broadcasts a DesyncAlert naming the diverged peer and the match terminates with a clear user-facing HALT message distinct from silent drift (UX-DR64e)
 
-_Covers: AR-38, AR-40, UX-DR64. Depends on: 1.8._
+_Covers: AR-38, AR-40, UX-DR64. Depends on: 1.8c._
 
 > Split from former 1.9. AR-38 ServerBootstrap peer root; AR-40 pins the two M1 checksum forks (ascending-faction-slot tie-break, >2-player quorum = true majority). UX-DR64e desync->terminal HALT. Brownfield: extends DedicatedServer.cs (opaque checksum relay at :148-156) and LockstepManager. Single-machine / loopback — no second machine required.
 
@@ -682,25 +719,49 @@ _Covers: FR-39, UX-DR84. Depends on: 1.9a._
 
 > Split from former 1.9 — THE #1 ship risk, isolated as a dedicated physical-machine gate so the engine work (1.9a) isn't buried under the manual two-machine run. UX-DR84 LAN lockstep journey (300+ ticks zero desync). Requires two physical machines.
 
-### Story 1.10: CI determinism regression guard + banned-API/AOT analyzers + cross-platform (WSL) gate
+### Story 1.10a: Wire the golden-checksum replay regression harness into CI + pin/isolate deps
 
 As a solo developer who must keep determinism from silently breaking,
-I want the golden-checksum replay regression harness wired into CI, a banned-API Roslyn analyzer plus an AOT-eligibility analyzer over the sim layer (advisory on master, hard-enforced on a release branch), and the golden-checksum harness also running on Linux via the existing WSL/Ubuntu with the Windows and Linux sequences diffed,
-So that any future change that breaks determinism or cross-platform reproducibility fails CI before it can ship.
+I want the golden-checksum replay regression harness from 1.2 (now at the current algo version) wired into CI so every push runs the golden scenarios headless and fails the build on any checksum diff, with NakamaClient pinned at 3.13.0 and test-only deps kept isolated to the Godot-free test project,
+So that any future change that breaks determinism fails CI before it can ship, and the dependency surface stays reproducible.
 
 **Acceptance Criteria:**
 
 **Given** the replay/checksum regression harness from 1.2 (now at the current algo version) **When** CI runs on every push **Then** it executes the golden scenarios headless and FAILS the build on any checksum diff against the committed golden file
 
+**Given** the deps **When** CI builds **Then** NakamaClient is pinned at 3.13.0 and test-only deps remain isolated to the Godot-free test project
+
+_Covers: FR-47, FR-44, AR-2, AR-35. Depends on: 1.9b._
+
+> FR-47 regression guard closes the loop so 1.9's LAN-green cannot regress silently. Establishes the headless CI lane that 1.10b's analyzers and 1.10c's cross-platform gate plug into. AR-2 pins NakamaClient 3.13.0; AR-35 keeps test-only deps off the shipping sim. AR-41 telemetry posture: no analytics in 1.0 — only opt-in crash/desync report bundling the .chmr + checksum log.
+
+### Story 1.10b: Banned-API + AOT-eligibility analyzers over the sim layer
+
+As a solo developer who must keep determinism from silently breaking,
+I want a banned-API Roslyn analyzer plus an AOT-eligibility analyzer over the sim layer, advisory on master and hard-enforced on a release branch,
+So that any future change that smuggles a nondeterministic or AOT-incompatible API into gameplay code fails CI before it can ship.
+
+**Acceptance Criteria:**
+
 **Given** the banned-API analyzer over src/Core,Combat,Economy,Navigation,Effects,Dsl **When** sim code uses `using Godot`, float gameplay math, System.Random, or Fixed.FromFloat outside the converter allow-list **Then** it reports advisory on master and hard-fails on the release branch; the AOT-eligibility analyzer flags AOT-incompatible patterns the same way
+
+_Covers: AR-36. Depends on: 1.10a._
+
+> AR-36 banned-API + AOT analyzers (advisory master / enforce release). Runs in the headless CI lane established by 1.10a. Banned set mirrors the determinism rules: no `using Godot`, no float gameplay math, no System.Random, no Fixed.FromFloat outside the FixedJsonConverter allow-list from 1.4.
+
+### Story 1.10c: Cross-platform Windows<->Linux golden-checksum gate via WSL
+
+As a solo developer who must keep determinism from silently breaking,
+I want the golden-checksum harness also running on Linux via the existing WSL/Ubuntu, with the Windows and Linux checksum sequences diffed and any mismatch failing the gate,
+So that any future change that breaks cross-platform reproducibility fails CI before it can ship.
+
+**Acceptance Criteria:**
 
 **Given** the existing WSL/Ubuntu with .NET installed **When** the golden-checksum harness runs on both Windows and Linux **Then** the two checksum sequences are diffed and are byte-identical, and a mismatch fails the gate
 
-**Given** the deps **When** CI builds **Then** NakamaClient is pinned at 3.13.0 and test-only deps remain isolated to the Godot-free test project
+_Covers: AR-37. Depends on: 1.10b._
 
-_Covers: FR-47, FR-44, AR-36, AR-37, AR-2, AR-35. Depends on: 1.9._
-
-> AR-36 banned-API + AOT analyzers (advisory master / enforce release). AR-37 cross-platform gate via WSL (.NET-in-WSL prereq per memory note). FR-47 regression guard closes the loop so 1.9's LAN-green cannot regress silently. Hard milestone M1 completes when 1.1-1.10 are green.
+> AR-37 cross-platform gate via WSL (.NET-in-WSL prereq per memory note). Reuses the same committed golden harness wired into CI by 1.10a; diffs the Windows and Linux sequences. Hard milestone M1 completes when 1.1-1.10 (incl. 1.10a/1.10b/1.10c) are green.
 
 ### Story 1.11: Smoke-test the four unverified systems (Utility AI, Adaptive Input Delay, LLM Trigger, AI Map Generator)
 
@@ -718,7 +779,7 @@ So that I know these systems actually function and do not introduce nondetermini
 
 **Given** the AI Map Generator **When** its smoke-test checklist runs with a fixed seed via SimRng **Then** it generates a byte-identical map across two runs and the checklist passes
 
-_Covers: FR-45, AR-13, AR-39. Depends on: 1.10._
+_Covers: FR-45, AR-13, AR-39. Depends on: 1.10c._
 
 > FR-45 the four unverified systems pass smoke-test checklists. Leans on SimRng (1.5) for the map generator seed and ScenarioValidator (1.7) to keep LLM-trigger output validated-only. Runs after M1 is green so any nondeterminism these surface is caught against an already-trustworthy baseline.
 
@@ -744,7 +805,7 @@ So that I can micro units the way every RTS trains me to (force-fire a specific 
 
 **Given** all five orders (Move, AttackMove, Stop, HoldPosition + the three new) issued across both `LockstepManager` and `ReplayPlayer` command-apply switches **When** the pinned golden scenario exercises every order and the run is checksummed **Then** the new orders serialize/deserialize identically through both paths, all new SoA fields fold into `SimChecksum`, and the run reproduces byte-identically against the re-baselined golden checksum on a repeat run
 
-_Covers: DG-1, UX-DR66. Depends on: 1.8._
+_Covers: DG-1, UX-DR66. Depends on: 1.8c._
 
 > Brownfield: Move/Stop/AttackMove are BUILT — VERIFY them (CombatSystem.Tick{Idle,Stop,AttackMove}Combat at cs:91–211; issued via SelectionSystem.Issue{Move,Stop,Hold,AttackMove}Command) and do not regress them. BUILD: single-target `AttackTarget`, `Patrol`, `Follow`, plus a genuinely distinct `HoldPosition` — today Hold aliases Stop in the CombatSystem switch (cs:72–74) and the enum comment (EntityWorld.cs:16). Append the three enum values after Build=5 so existing replays keep their byte meaning; `AttackTarget`/`CommandGoal` SoA arrays already exist, so reuse them and add only the genuinely new per-entity arrays (forced-target id, patrol leg/anchors, follow leash). MUST extend the command-apply switch in BOTH LockstepManager.cs:605–642 AND ReplayPlayer.cs:151–182 (each currently handles only Move/AttackMove/Stop/HoldPosition) — a new order added to one but not the other will desync. Determinism: all distance/leash/range math uses the 16.16 `Fixed` type (no float/double/Mathf in sim), iterate ascending entity id, target re-acquisition only via the seeded `SimRng` if any tie-break is needed (else lowest-id), no wall-clock; new SoA fields MUST fold into `SimChecksum`, which RE-BASELINES the golden checksum — commit the new golden file in this story. Scope limit: ground-target Attack-Move already exists (do not rebuild it); this story is single-TARGET orders + Hold semantics only — no formation/group-move, no rally points, no queued/shift-click command chaining. Presentation (right-click hit-test feedback, patrol/follow cursors) stays in the UI layer with no Godot types leaking into sim.
 
@@ -768,7 +829,7 @@ So that armies advance through their own ranks instead of jamming, and front-lin
 
 **Given** the committed golden scenario after these sim arrays and separation/formation changes land **When** the replay harness runs headless **Then** the run is byte-identical to the RE-BASELINED golden checksum (separation math stays in 16.16 `Fixed`, entities iterate ascending-id, no float/Mathf/wall-clock/unseeded randomness in sim), and removing the Moving-bias OR the per-unit-radius term changes the checksum — proving both fold into SimChecksum
 
-_Covers: DG-2. Depends on: 1.8._
+_Covers: DG-2. Depends on: 1.8c._
 
 > Brownfield: MovementSystem.cs:72-89 is today SYMMETRIC separation (SEPARATION_RADIUS=2.0, SEPARATION_STRENGTH=2.5) with NO Moving-vs-idle bias — BUILD the priority bias here. SelectionSystem.IssueMoveCommand:332-374 is a flat square grid (cols=ceil(sqrt(n)), SPACING=2.0), not role-aware — BUILD the role-based front/back ordering off UnitDefinition.Category (Worker/Melee/Ranged/Siege/Air/Structure). UnitDefinition has Speed but NO CollisionRadius and NO push/yield flag — BUILD both as JSON fields + new parallel SoA arrays on EntityWorld. VERIFY the spatial-hash neighbor query still feeds separation unchanged. Determinism: all new math in `Fixed`, ascending-id iteration, no Godot types in sim (formation is sim-state mutation; IssueMoveCommand only sets goals); these new fields and the new separation result MUST fold into SimChecksum and WILL RE-BASELINE the golden checksum — commit the new golden in the same change. Scope: yielding/push + role front-back ordering + the two data fields only; NO flow-field formations, NO collision-aware pathfinding, NO per-formation morale/cohesion. NOTE: STATUS.md currently marks "Formation movement ✅" — this story DOWNGRADES that claim (the as-built grid is not role-aware and has no yielding); update STATUS.md to reflect partial/in-progress.
 
@@ -798,11 +859,11 @@ _Covers: FR-12, AR-8, AR-13, NFR-4. Depends on: Epic 1._
 
 > Net-new src/Effects directory — confirmed absent in live source. Pure C#, no 'using Godot', Fixed 16.16 only. AR-8: sealed EffectNode leaves (closed set, e.g. Damage [matrix], DirectHpDelta [non-matrix flat, for Equal Exchange self-cost], Heal, ApplyModifier, SetVariable, FireProjectile, TargetFilter) + EXACTLY three composition nodes (Sequence, SearchArea, Persistent) + a first-class Modifier descriptor. Executed via pre-allocated work-stack (NOT recursion), depth<=8, fan-out capped. NO scripting escape hatch. Random-effect leaves must route through Epic-1 SimRng (no System.Random, no wall-clock). This is the keystone; build it first.
 
-### Story 2.2: D1 Modifier subsystem: ModifierStore, ModifierSystem, Energy/Mana, Base/Effective stats
+### Story 2.2a: D1 Effective-stat pipeline: Base*/Effective* arrays, dirty-flag recompute, ModifierSystem ordered before combat
 
 As a engine developer,
-I want a net-new SoA ModifierStore plus a ModifierSystem registered before CombatSystem, new Energy/Mana arrays, and Base*/Effective* paired stat arrays with dirty-flag recompute,
-So that buffs, debuffs, auras, DoT/HoT and stat modifiers can be expressed deterministically — the primitive without which MOBA/TD/RPG content is unbuildable.
+I want Base*/Effective* paired stat arrays plus new Energy/Mana SoA arrays and a per-entity dirty-flag recompute driven by a ModifierSystem registered strictly before CombatSystem and ProjectileSystem, with CombatSystem repointed to read Effective*,
+So that combat math reads a recomputed effective-stat layer that buffs and debuffs can later target — without regressing existing combat.
 
 **Acceptance Criteria:**
 
@@ -810,13 +871,25 @@ So that buffs, debuffs, auras, DoT/HoT and stat modifiers can be expressed deter
 
 **Given** an entity with BaseAttackDamage and an active +damage Modifier **When** ModifierSystem ticks with the entity's dirty flag set **Then** EffectiveAttackDamage recomputes to Base + modifier and the dirty flag clears; a subsequent tick with no change performs no recompute **And** recompute is order-independent and produces identical results regardless of modifier insertion order for commutative modifiers
 
-**Given** a HoT modifier applied via a Persistent node (periodEffect = Heal) and a DoT modifier (periodEffect = DirectHpDelta) **When** the modifier's period elapses over several ticks **Then** health changes by the expected Fixed amount per period and the modifier expires after its duration **And** an Energy/Mana cost can be debited from the new Energy SoA array and an ability is refused when Energy is insufficient
+_Covers: FR-12, AR-9, NFR-4. Depends on: 2.1._
+
+> Split from former 2.2 (the Effective-stat substrate is separable from the ModifierStore mechanics). EntityWorld today has flat AttackDamage/AttackRange/AttackSpeed/MaxHealth and NO Energy/Mana — add Base*/Effective* pairs (e.g. BaseAttackDamage/EffectiveAttackDamage) + Energy/Mana SoA arrays + a per-entity dirty flag. ModifierSystem.Tick recomputes Effective* from Base* + active modifiers ONLY when dirty, BEFORE CombatSystem reads them — so ModifierSystem must be inserted earlier in the SimulationLoop _systems array than CombatSystem. CombatSystem must be repointed to read Effective* (do not regress existing combat). Pure C#, Fixed only.
+
+### Story 2.2b: D1 ModifierStore: SoA store with apply/stack/refresh/expire, DoT/HoT, Energy cost, determinism
+
+As a engine developer,
+I want a net-new SoA ModifierStore with apply/stack/refresh/expire policy, DoT/HoT via Persistent(periodEffect), Energy debit with refuse-when-insufficient, and ModifierStore state folded into the determinism path,
+So that buffs, debuffs, auras, DoT/HoT and stat modifiers can be expressed deterministically — the primitive without which MOBA/TD/RPG content is unbuildable.
+
+**Acceptance Criteria:**
+
+**Given** a HoT modifier applied via a Persistent node (periodEffect = Heal) and a DoT modifier (periodEffect = DirectHpDelta) **When** the modifier's period elapses over several ticks **Then** health changes by the expected Fixed amount per period and the modifier expires after its duration **And** an Energy/Mana cost can be debited from the Energy SoA array and an ability is refused when Energy is insufficient
 
 **Given** two runs of a fixed scenario that applies, stacks, refreshes, and expires modifiers **When** a golden SimChecksum is computed at matching ticks **Then** the checksums are byte-identical across both runs **And** ModifierStore state is included in the determinism path (no float, ascending-id iteration)
 
-_Covers: FR-12, AR-9, AR-8, NFR-4. Depends on: 2.1._
+_Covers: FR-12, AR-9, AR-8, NFR-4. Depends on: 2.2a._
 
-> AR-9 keystone. EntityWorld today has flat AttackDamage/AttackRange/AttackSpeed/MaxHealth and NO Energy/Mana — add Base*/Effective* pairs (e.g. BaseAttackDamage/EffectiveAttackDamage) + Energy/Mana SoA arrays + a per-entity dirty flag. ModifierSystem.Tick recomputes Effective* from Base* + active modifiers ONLY when dirty, BEFORE CombatSystem reads them — so ModifierSystem must be inserted earlier in the SimulationLoop _systems array than CombatSystem. CombatSystem must be repointed to read Effective* (do not regress existing combat). The ApplyModifier leaf from 2.1 now resolves against this store; Persistent(periodEffect) drives DoT/HoT. Modifiers carry stack/refresh policy (needed later for the Glut). Pure C#, Fixed only.
+> AR-9 keystone. Net-new SoA ModifierStore over the 2.2a Effective-stat substrate. The ApplyModifier leaf from 2.1 now resolves against this store; Persistent(periodEffect) drives DoT/HoT. Modifiers carry stack/refresh policy (needed later for the Glut). Energy debit reads the 2.2a Energy SoA array and refuses casts when insufficient. Fold ModifierStore state into SimChecksum and re-baseline the golden once; two runs must be byte-identical. Pure C#, Fixed only, ascending-id iteration, no float.
 
 ### Story 2.3: AbilityDefinition data model and Validated<T> gate with static validator rules
 
@@ -832,7 +905,7 @@ So that ability definitions are JSON-authored, deterministic, and server-validat
 
 **Given** an ability JSON containing a random effect leaf **When** it is validated in an environment where Epic-1 SimRng is available **Then** the random leaf is accepted and seeded from SimRng; and the validator would reject it if SimRng were absent (per AR-13) **And** no ability definition can carry an executable script or arbitrary code payload
 
-_Covers: FR-12, FR-10, AR-8, AR-13, AR-39, NFR-6. Depends on: 2.1, 2.2._
+_Covers: FR-12, FR-10, AR-8, AR-13, AR-39, NFR-6. Depends on: 2.1, 2.2b._
 
 > FR-12 is the spine. AbilityDefinition fields: id, display name, targeting type, cost (energy/ore/crystal), cooldown, and an effect-graph payload composed of 2.1 leaves/composition nodes. Deserialized by a C# class in src/Core/Definitions (mirrors UnitDefinition pattern). All defs flow through Epic-1 Validated<T> gate (AR-39). Validator rules (AR-13): reject random leaves unless SimRng present; reject float gameplay values; reject graphs over depth/fan-out cap; reject unknown node types; reject unresolvable modifier/ability references — each with a LOCATED error (which ability, which node). No scripting payload accepted. This story builds only the model + validator + loader, not the editor UI.
 
@@ -1004,11 +1077,11 @@ _A creator builds units and heroes in one consolidated Unit Card Editor with no 
 
 **Coverage note:** Design-system story also covers (low-materiality fold-ins): UX-DR35 (chamfer everywhere, .kbd radius sole exception), UX-DR36 (non-diegetic flat HUD trait), UX-DR38 (do NOT reintroduce the bio-alchemy 'Transmutation Lab' retheme — guardrail), UX-DR45 (keyboard-focus reveals tooltips + dialogs trap focus), UX-DR50 (130ms motion timing / cubic-bezier / 1px button depress / toggle snap), UX-DR85 (runtime UI built with Godot Control nodes).
 
-### Story 3.1: Shared UI Design-System: Godot Theme + reusable component kit
+### Story 3.1a: Resolve open design decisions + author the canonical Godot Theme resource
 
 As a creator-tools developer,
-I want one canonical Godot Theme resource encoding every design token, plus a reusable kit of pre-styled UI components,
-So that every editor in this and later epics composes a consistent, on-brand UI without re-styling controls.
+I want the two open design decisions resolved and one canonical Godot Theme resource encoding every design token,
+So that every component and every later editor styles itself from a single committed source of truth.
 
 **Acceptance Criteria:**
 
@@ -1016,13 +1089,39 @@ So that every editor in this and later epics composes a consistent, on-brand UI 
 
 **Given** the resolved tokens **When** the Theme resource is authored **Then** all of UX-DR1..UX-DR12 (surface/line/text/accent/semantic/team colors, typography roles, type scale, chamfer cuts, spacing, shadows) map 1:1 into a single .theme resource committed to the repo **And** UX-DR34 mono tabular-number font role is defined for numeric readouts
 
-**Given** the Theme resource **When** the component kit is built **Then** each of UX-DR13..UX-DR32 (panel, btn, icon-btn, kbd, chip, readout, tag, progress, slider, input, menu, tabs, list-row, tooltip, dialog, toast, spinner, mark, switch, num-input) exists as a reusable component (scene or factory) styled only from the Theme **And** a demo/gallery scene instantiates every component so the kit is visually verifiable in-engine **And** no component hardcodes a color or size that exists as a token
+_Covers: UX-DR1, UX-DR2, UX-DR3, UX-DR4, UX-DR5, UX-DR6, UX-DR7, UX-DR8, UX-DR9, UX-DR10, UX-DR11, UX-DR12, UX-DR34. Depends on: — (none / earlier epics only)._
+
+> Split from former 3.1 (decisions + Theme are the foundation every component depends on). No Theme/.theme exists in repo today (verified). Presentation layer only — Godot Nodes/Control; no sim coupling. This AC MUST resolve the two open decisions UX-DR4 and UX-DR9 before tokens are finalized, since UX-DR9's chamfer choice blocks every chamfer-dependent component in 3.1b/3.1c.
+
+### Story 3.1b: Core reusable component kit (simple controls) styled from the Theme
+
+As a creator-tools developer,
+I want the core set of simple, reusable UI components pre-styled from the canonical Theme,
+So that editors compose layouts, readouts, and inputs without re-styling controls.
+
+**Acceptance Criteria:**
+
+**Given** the Theme resource from 3.1a **When** the core component kit is built **Then** each of UX-DR13..UX-DR22, UX-DR24, UX-DR25, UX-DR32 (panel, btn, icon-btn, kbd, chip, readout, tag, progress, slider, input, tabs, list-row, num-input) exists as a reusable component (scene or factory) styled only from the Theme **And** no component hardcodes a color or size that exists as a token
+
+_Covers: UX-DR13, UX-DR14, UX-DR15, UX-DR16, UX-DR17, UX-DR18, UX-DR19, UX-DR20, UX-DR21, UX-DR22, UX-DR24, UX-DR25, UX-DR32. Depends on: 3.1a._
+
+> Split from former 3.1. The simpler controls — surfaces, buttons, readouts, inputs, tabs, list-rows — that carry no popover/scrim/animation machinery. All styling flows from the 3.1a Theme; the composite + feedback components and the demo gallery land in 3.1c.
+
+### Story 3.1c: Composite + feedback components, tooltip/switch foundations, and demo gallery
+
+As a creator-tools developer,
+I want the composite and feedback components (menu/tooltip/dialog/toast/spinner/mark/switch) plus a gallery scene that instantiates the full kit,
+So that the design-system is visually verifiable in-engine and every later editor composes from one complete, on-brand kit.
+
+**Acceptance Criteria:**
+
+**Given** the Theme from 3.1a and the core kit from 3.1b **When** the composite and feedback components are built **Then** each of UX-DR23, UX-DR26..UX-DR31 (menu, tooltip, dialog, toast, spinner, mark, switch) exists as a reusable component (scene or factory) styled only from the Theme **And** a demo/gallery scene instantiates every component across 3.1b and 3.1c so the kit is visually verifiable in-engine **And** no component hardcodes a color or size that exists as a token **And** the 7 gap surfaces compose from this kit with no new primitives unless a missing one is logged (UX-DR33)
 
 **Given** the tooltip and switch components **When** they are used by a control **Then** the tooltip component supports a hover tooltip on any control (UX-DR53 foundation for NFR-2) and the switch component exposes a clean on/off toggle reusable for simple/advanced disclosure (UX-DR54 foundation)
 
-_Covers: UX-DR1, UX-DR2, UX-DR3, UX-DR4, UX-DR5, UX-DR6, UX-DR7, UX-DR8, UX-DR9, UX-DR10, UX-DR11, UX-DR12, UX-DR13, UX-DR14, UX-DR15, UX-DR16, UX-DR17, UX-DR18, UX-DR19, UX-DR20, UX-DR21, UX-DR22, UX-DR23, UX-DR24, UX-DR25, UX-DR26, UX-DR27, UX-DR28, UX-DR29, UX-DR30, UX-DR31, UX-DR32, UX-DR33, UX-DR34, UX-DR53, UX-DR54. Depends on: — (none / earlier epics only)._
+_Covers: UX-DR23, UX-DR26, UX-DR27, UX-DR28, UX-DR29, UX-DR30, UX-DR31, UX-DR33, UX-DR53, UX-DR54. Depends on: 3.1b._
 
-> Foundational UI epic deliverable reused by every later editor (UX-DR33). No Theme/.theme/component kit exists in repo today (verified). Presentation layer only — Godot Nodes/Control; no sim coupling. First AC MUST resolve the two open decisions UX-DR4 and UX-DR9 before tokens are finalized.
+> Split from former 3.1. The popover/scrim/animation components (menu, tooltip, dialog, toast, spinner, mark, switch) plus the gallery that proves the full kit and the UX-DR33 compose-from-kit guarantee. Presentation layer only — Godot Nodes/Control; no sim coupling. Foundational UI epic deliverable reused by every later editor.
 
 ### Story 3.2: HeroStore SoA + stable hero identity folded into SimChecksum & startStateHash
 
@@ -1056,7 +1155,7 @@ So that I can see everything about a unit type in one WC3-style card before I st
 
 **Given** a unit whose mesh_path resolves to a GLB **When** the card is shown **Then** the assigned 3D model renders in an in-panel preview viewport reusing the existing AssetPreviewScene/MeshLoader path (FR-3 display half) **And** a unit with null/missing mesh_path shows the box placeholder instead of failing
 
-_Covers: FR-2, FR-3, UX-DR77, UX-DR34, UX-DR53. Depends on: 3.1._
+_Covers: FR-2, FR-3, UX-DR77, UX-DR34, UX-DR53. Depends on: 3.1c._
 
 > Brownfield: UnitDefinition (verified) already has stats/combat/model/scale/prereqs; AssetPreviewScene.cs + MeshLoader.cs already load GLB with box fallback — REUSE them, do not rebuild. This story is the display shell of the Unit Card Editor (UX-DR77); editing/persistence/validation arrive in 3.4. No new editable fields yet.
 
@@ -1456,19 +1555,35 @@ _Covers: FR-20, AR-39. Depends on: 5.3, Epic 2._
 
 > ⚠ Quality-review (OWNERSHIP): re-scope as VERIFY/INTEGRATION — confirm the Epic-2 signature mechanics (Equal Exchange, Sanguine Furnace) are correctly wired to the Court/Covenant faction data; do NOT re-implement them here.
 
-### Story 5.5: Faction Definer guided wizard (FR-17, FR-18, UX-DR80, UX-DR40)
+### Story 5.5a: Faction Definer guided wizard flow + validator-gated save (FR-17, UX-DR40)
 
 As a creator,
-I want a guided multi-step flow to assemble a faction (name & color, roster, buildings & tech, starting conditions, AI preset) that writes a valid faction definition,
-So that I can author a complete, playable faction in one sitting (target <=12 min) without hand-editing JSON.
+I want a guided multi-step flow (name & color -> roster -> buildings & tech -> starting conditions -> AI-preset step) that serializes a valid faction definition and blocks save when validation fails,
+So that I can assemble a complete, playable faction's core data step-by-step without hand-editing JSON.
 
 **Acceptance Criteria:**
 
-**Given** the Faction Definer entry point **When** a creator steps name/color -> roster -> buildings & tech -> start -> AI preset and finishes **Then** a faction definition file is written containing the chosen name, color, assembled roster from authored units, buildings/tech, starting conditions, and the selected ai_preset
+**Given** the Faction Definer entry point **When** a creator steps name/color -> roster -> buildings & tech -> start -> AI-preset step and finishes **Then** a faction definition file is written containing the chosen name, color, assembled roster from authored units, buildings/tech, and starting conditions (FR-17)
 
 **Given** the color step **When** the creator picks a team color **Then** the swatches are Okabe-Ito colorblind-safe and a distinguishing glyph/label is assigned (UX-DR40)
 
-**Given** a finished faction that fails validation (e.g. a dangling prerequisite or no AI preset chosen) **When** the creator clicks save/finish **Then** save is blocked and the offending step/field is identified by the 5.2 validator's located error
+**Given** a finished faction that fails validation (e.g. a dangling prerequisite) **When** the creator clicks save/finish **Then** save is blocked and the offending step/field is identified by the 5.2 validator's located error (AR-39)
+
+_Covers: FR-17, AR-39, UX-DR40. Depends on: 5.2, 5.3._
+
+> Presentation layer (src/UI + a snake_case .tscn) — no setup/wizard scene exists yet, build new. UX-DR80 steps: name/color -> roster -> buildings & tech -> start conditions -> AI preset (the AI-preset SELECTION capability lands in 5.5b; this story lays out the step and serializes a default/valid preset so the file passes validation). Simple mode = preset pickers from authored units/buildings (Epics 2-4 content). UX-DR40: team-color picker offers Okabe-Ito colorblind-safe swatches plus a glyph/label per faction (alpha/beta colors already follow this). On finish, the wizard serializes a FactionDefinition and runs the 5.2 FactionValidator, blocking save with the located error(s) until PASS (AR-39). The wizard only PRODUCES a valid faction file; making it selectable in skirmish is 5.6.
+
+### Story 5.5b: AI-preset selection, advanced raw-JSON mode, hero/persistence config + completion target (FR-18, UX-DR80, AR-12)
+
+As a creator,
+I want to choose and write the faction's AI preset, hero/persistence config, and an advanced raw-JSON escape hatch (validator-gated), hitting the <=12-min simple-preset target with the authoring surface hidden from Commanders,
+So that I can author a complete, playable faction in one sitting without hand-editing JSON unless I choose to.
+
+**Acceptance Criteria:**
+
+**Given** the AI-preset step **When** the creator selects from the available presets and finishes **Then** the written faction definition contains the selected ai_preset, and a finish attempt with no AI preset chosen is blocked by the 5.2 validator identifying ai_preset as the cause (FR-18, AR-39)
+
+**Given** the wizard flow surfaces hero/persistence config **When** the creator sets it **Then** the saved faction definition carries the hero unit reference and persistence flag (AR-12)
 
 **Given** a creator who wants full control **When** they open the advanced mode **Then** they can edit the raw JSON and the same validator still gates the result (simple + advanced both supported)
 
@@ -1476,9 +1591,9 @@ So that I can author a complete, playable faction in one sitting (target <=12 mi
 
 **Given** a player in Play/Skirmish-only context **When** they navigate the in-match HUD **Then** no Faction Definer/authoring control is reachable by accident (creation entry is opt-in only)
 
-_Covers: FR-17, FR-18, AR-12, AR-39. Depends on: 5.2, 5.3._
+_Covers: FR-18, AR-12, AR-39, UX-DR80. Depends on: 5.5a._
 
-> Presentation layer (src/UI + a snake_case .tscn) — no setup/wizard scene exists yet, build new. UX-DR80 steps: name/color -> roster -> buildings & tech -> start conditions -> AI preset. UX-DR40: team-color picker offers Okabe-Ito colorblind-safe swatches plus a glyph/label per faction (alpha/beta colors already follow this). Simple mode = preset pickers from authored units/buildings (Epics 2-4 content); advanced mode = raw-JSON escape hatch (layered complexity). On finish, the wizard serializes a FactionDefinition and runs the 5.2 FactionValidator, blocking save with the located error(s) until PASS (AR-39). AI-preset step selects from available presets and writes ai_preset (FR-18). Hero/persistence config surfaced as part of the flow (AR-12). The wizard only PRODUCES a valid faction file; making it selectable in skirmish is 5.6. UI must respect editor-invisible-to-Commanders (creation surface is opt-in).
+> Advanced mode = raw-JSON escape hatch (layered complexity) re-running the same 5.2 FactionValidator on the edited result (AR-39). AI-preset step selects from available presets and writes ai_preset (FR-18). Hero/persistence config surfaced as part of the flow (AR-12). UI must respect editor-invisible-to-Commanders (creation surface is opt-in). The <=12-min first-faction target is measured against the full simple-mode flow (5.5a + this story) with no JSON hand-editing. No sim-mutating change here — the wizard only produces/validates a faction file (no checksum/golden impact).
 
 ### Story 5.6: Wizard-authored factions are immediately selectable in playtest & skirmish (FR-19, UX-DR80)
 
@@ -1496,7 +1611,7 @@ So that I get an instant author->play loop and can validate my faction right awa
 
 **Given** a faction file that fails validation present in the data folder **When** the setup list is built **Then** it is either excluded or shown as non-selectable with a reason (a broken faction cannot be launched into a match)
 
-_Covers: FR-19, AR-3, UX-DR80. Depends on: 5.1, 5.5._
+_Covers: FR-19, AR-3, UX-DR80. Depends on: 5.1, 5.5b._
 
 > Wires the 5.5 wizard output into the runtime selection path. Uses the 5.1 FactionRegistry as the single source of selectable factions; the skirmish/playtest faction picker enumerates the registry (which now includes user-authored factions discovered from the data folder) and assigns the chosen FactionDefinition to a player slot (replacing/extending today's scenario-JSON-slot mechanism). On match boot the selected faction must flow through to the existing per-slot load that 5.1 centralized. UX-DR80 acceptance: output instantly selectable in skirmish. AR-3: slot assignment goes through the registry's PLAYER_COUNT-aware API. Presentation-layer selection UI sends an intent; it does not mutate sim state directly.
 
@@ -1668,21 +1783,33 @@ _Covers: FR-27, AR-13, AR-16. Depends on: — (none / earlier epics only)._
 
 > Split from former 7.1 — the determinism fixes (D3.4 A17 ordering/float) pulled out as a standalone, golden-re-pinning prerequisite. Depends on the prior D1 effect-graph epic (SimRng, golden harness). Must land before the IR rebuild so the migration starts from a deterministic baseline.
 
-### Story 7.1b: Graph-canonical DSL IR foundation + lossless migration
+### Story 7.1b-1: Graph-canonical DSL IR foundation + closed-registry node converter
 
 As a platform engineer unifying the trigger representation,
-I want the trigger system rebuilt onto a single editor-agnostic graph IR (persistent integer node ids, typed exec + data edges) that embeds D1 effect subgraphs, with a closed-registry NodeBase converter and lossless migration from the flat format,
+I want the graph IR DTOs (persistent integer node ids, typed exec + data edges) that embed D1 effect subgraphs, served by a closed-registry NodeBase converter with canonical serialization,
 So that every later DSL feature lands on one deterministic, server-validatable representation instead of the flat polled ECA.
 
 **Acceptance Criteria:**
 
 **Given** the existing flat TriggerDefinition[] in ScenarioData and ScenarioDirector **When** graph IR DTOs are introduced in src/Dsl with an id-keyed node list, two sparse typed edge-lists (exec, data) and persistent integer node ids **Then** the trigger graph is a superset that embeds D1 EffectDef action subgraphs unchanged (no second executor), and a NodeBase JsonConverter over a CLOSED type registry round-trips every node by id with [JsonPolymorphic] forbidden **And** an unknown node kind is rejected at parse with a located error naming the kind **And** the graph section serializes canonically (nodes sorted by id, edges by (src,srcPort,dst,dstPort))
 
+_Covers: FR-23, FR-28, AR-10, AR-21, AR-22. Depends on: 7.1a._
+
+> Split from former 7.1b. Establishes the graph-canonical IR + closed-registry converter from step one even though only T2/T4 author it. AR-10/AR-21/AR-22, FR-28. The D1 effect executor is reused unchanged — no second executor.
+
+### Story 7.1b-2: Lossless flat-to-graph migration
+
+As a platform engineer unifying the trigger representation,
+I want lossless migration of the existing flat trigger format into the graph IR with no second serialization path,
+So that legacy scenarios load onto the single deterministic representation without behavior change or a divergent code path.
+
+**Acceptance Criteria:**
+
 **Given** an existing flat-format scenario JSON on disk **When** it is loaded **Then** it migrates losslessly into the graph IR (T2 sentence list is a linear projection of an exec-edge chain) with no second serialization path
 
-_Covers: FR-23, FR-27, FR-28, AR-10, AR-21, AR-22. Depends on: 7.1a._
+_Covers: FR-27. Depends on: 7.1b-1._
 
-> Split from former 7.1. Graph-canonical serialization established from step one even though only T2/T4 author it. AR-10/AR-21/AR-22, FR-27, FR-28.
+> Split from former 7.1b. The flat TriggerDefinition[] migrates with the T2 sentence list as a linear projection of an exec-edge chain — loaded through the same canonical IR serialization from 7.1b-1, never a parallel path. FR-27.
 
 ### Story 7.2: Typed scoped variables, deterministic timers, and verify-to-ship ECA
 
@@ -1698,7 +1825,7 @@ So that I can hold scoreboard/economy/per-player state and schedule delayed logi
 
 **Given** the existing Trigger Editor panel (FR-23, basic, verify-to-ship) **When** a creator adds/edits/enables/deletes an ECA trigger whose actions embed a D1 effect subgraph and reads/writes a declared variable **Then** the trigger persists into the graph IR and fires correctly in a running match **And** the editor surfaces a simple preset entry AND the raw-IR escape hatch (layered complexity)
 
-_Covers: FR-23, FR-24, FR-27, AR-10, AR-21, UX-DR79. Depends on: 7.1._
+_Covers: FR-23, FR-24, FR-27, AR-10, AR-21, UX-DR79. Depends on: 7.1b-2._
 
 > D2 D1s var table + ECA verify (FR-23). Variables are the 'typed, scoped' half of FR-24. UX-DR79 trigger list with typed/scoped variables. Depends only on 7.1.
 
@@ -1792,23 +1919,37 @@ _Covers: FR-26, FR-27, AR-32, AR-21, UX-DR76, UX-DR58, UX-DR48. Depends on: 7.6.
 
 > D2 D8s read path. AR-32 READ rail; UX-DR76 widget-palette builder, UX-DR58 direct-manipulation authoring, UX-DR48 16:9 safe-area. Depends on 7.6 (binds resolve against the validated variable registry; UI schema rides the load gate).
 
-### Story 7.8: Custom runtime UI write rail: Button-raised DslEventCommand on the lockstep bus
+### Story 7.8a: Custom runtime UI write rail: Button-raised DslEventCommand on the lockstep bus
 
 As a scenario creator building interactive runtime UI,
-I want Buttons that raise custom events through a net-new DslEventCommand on the lockstep command bus (with per-event allowed-raiser authorization), plus local-only buttons on a closed presentation-action whitelist,
-So that players can vote, buy from a shop, or trigger waves via custom UI in both single-player and multiplayer, replayed identically.
+I want Buttons that raise custom events through a net-new DslEventCommand on the lockstep command bus, with per-event allowed-raiser authorization enforced sim-side,
+So that players can vote, buy from a shop, or trigger waves via custom UI in both single-player and multiplayer, executed identically on every client.
 
 **Acceptance Criteria:**
 
 **Given** the custom events from 7.4 and the read-rail UI from 7.7 **When** a Button.Pressed handler calls LockstepManager.EnqueueDslEvent(eventId, args) capturing LocalFaction as raiser, riding TickCommandPacket (parallel capped event list, MaxDslEventsPerTick) **Then** a button press defers by _currentDelay and applies at the same exec tick on two headless clients, and ApplyDslEvents enforces the per-event allowed-raiser set as sim-side authorization (never client-side button-disable) **And** the pinned tick-phase order is apply DSL events -> sim systems tick -> ScenarioDirector drains the bus
 
-**Given** the replay format is hardwired to UnitOrder (VERSION=1) **When** the write path is wired **Then** ReplayRecorder.VERSION bumps to 2 with a DSL-event record kind, ReplayPlayer gains a parse+apply branch, and DSL-event application is threaded through all four command-application sites (live, spectator, ReplayPlayer.ApplyOrders, recorder) **And** a recorded match with a button press replays bit-identically under v2 and a v1 replay is hard-rejected
+**Given** DslEventCommand now mutates the sim via the lockstep bus **When** the new command kind and the apply-DSL-events tick phase are folded into the deterministic path **Then** the golden harness is re-baselined once (button-press scenario byte-identical across two headless clients) and DSL-event application is hashed/ordered deterministically (ascending faction-slot raiser order, no float/wall-clock)
+
+_Covers: FR-26, FR-27, AR-32, AR-23. Depends on: 7.7, 7.4._
+
+> D2 D9s write path (network arm): net-out DslEventCommand + capped per-tick event list + net-new sim-side authorization. AR-32 WRITE rail (networked arm), AR-23 lockstep event authority. Depends on 7.7 (buttons live in the widget tree) and 7.4 (buttons raise registered custom events). This is the sim-mutating landing — golden re-baseline rides here.
+
+### Story 7.8b: Replay-v2 DSL-event record + local-only presentation-action whitelist
+
+As a scenario creator building interactive runtime UI,
+I want the replay format upgraded to record and re-apply DSL events through all command-application sites, plus local-only buttons confined to a closed presentation-action whitelist,
+So that interactive matches replay bit-identically and cosmetic UI buttons can never leak into the deterministic simulation.
+
+**Acceptance Criteria:**
+
+**Given** the replay format is hardwired to UnitOrder (VERSION=1) and the write path from 7.8a **When** the write path is recorded **Then** ReplayRecorder.VERSION bumps to 2 with a DSL-event record kind, ReplayPlayer gains a parse+apply branch, and DSL-event application is threaded through all four command-application sites (live, spectator, ReplayPlayer.ApplyOrders, recorder) **And** a recorded match with a button press replays bit-identically under v2 and a v1 replay is hard-rejected
 
 **Given** a local-only button (toggle a panel, open a sub-panel) **When** it uses the closed presentation-action whitelist (ToggleWidgetVisible/OpenSubPanel/CloseSelf/SetLocalUiVar) **Then** the validator proves it cannot touch any DSL variable or event (disjoint sim/local-UI namespaces) and provably cannot affect SimChecksum
 
-_Covers: FR-26, FR-27, AR-32, AR-23, AR-24. Depends on: 7.7, 7.4._
+_Covers: AR-32, AR-24. Depends on: 7.8a._
 
-> D2 D9s + D3.9 write path: network + replay-v2 + four apply-sites + net-new authorization. AR-32 WRITE rail. Depends on 7.7 (buttons live in the widget tree) and 7.4 (buttons raise registered custom events).
+> D2 D9s write path (replay + local arm): replay-v2 record kind across four apply-sites + the local-only presentation-action whitelist. AR-32 WRITE rail (local arm), AR-24 replay integrity. The whitelist is proven disjoint from the sim namespaces and provably outside SimChecksum.
 
 ### Story 7.9: T3 visual node-graph editor view (additive) over the shared IR
 
@@ -1944,7 +2085,7 @@ So that I get a correct, editable trigger no matter which provider I use.
 
 **Given** no provider available **When** I open the trigger generator **Then** a four-state message explains AI is unavailable **And** I can still author triggers manually in the panel
 
-_Covers: FR-30, AR-33, UX-DR52, UX-DR65. Depends on: 8.3._
+_Covers: FR-30, AR-33, UX-DR52, UX-DR65. Depends on: 8.3b._
 
 > FR-30 (built — verify, extend). Re-point LLMService.GenerateTriggerAsync from its hardcoded Claude/Ollama calls to ILLMProvider (8.3). VERIFY the existing 5-pass trigger Validate still gates output and the review/edit-before-apply flow in TriggerEditorPanel still works. EXTEND the prompt schema + validator to cover DSL constructs added by earlier epics that the current prompt omits (audit the live DSL event/condition/action set vs the hardcoded schema in BuildSystemPrompt). UX-DR52 'Transmuting...' spinner during generation; UX-DR65 microcopy. Authoring-layer only: any float in generated values is quantized to Fixed by the same validation gate before persistence/hash.
 
@@ -1964,29 +2105,53 @@ So that I can generate maps for scenario types that need more than 6 units, more
 
 **Given** no provider available **When** I open the map generator **Then** a four-state message explains AI is unavailable and I can still build/place maps manually **And** a 'Transmuting...' spinner shows when a provider is generating
 
-_Covers: FR-31, AR-33, UX-DR52. Depends on: 8.3._
+_Covers: FR-31, AR-33, UX-DR52. Depends on: 8.3b._
 
 > FR-31 (built — verify) + the AR-33 requirement to relax/parameterize the hard-clamps. Re-point LLMService.GenerateScenarioAsync to ILLMProvider. VERIFY the 7-pass ValidateScenario still runs and the map loads only after validation. RELAX/PARAMETERIZE the RTS-only constraints currently hardcoded: <=6 combat units/faction (pass 7), the exactly-2 player-slots assumption (pass 2), and forced faction-JSON paths (pass 2 overwrites slot.FactionJson) — these limits become parameters driven by the scenario type rather than hardcoded, so non-RTS scenarios are not wrongly clamped. RTS presets keep today's defaults to avoid regression. UX-DR52 spinner.
 
-### Story 8.6: Generate unit / ability / hero / faction drafts as editable data
+### Story 8.6a: Draft-generation framework + UNIT and ABILITY drafts as editable data
 
 As a content creator,
-I want to generate a unit, ability, hero, or faction draft (stats, name, lore) from a prompt as editable data,
+I want to generate a unit or ability draft (stats, name, lore) from a prompt as editable data through a provider-backed framework,
 So that I get a fast starting point I can fully edit, not a black box.
 
 **Acceptance Criteria:**
 
-**Given** a configured provider and a prompt for a unit (and likewise ability, hero, faction) **When** I generate **Then** a draft with stats + name + lore appears as fully editable data matching the existing definition schema **And** a 'Transmuting...' spinner shows during generation
+**Given** a configured provider and a prompt for a unit **When** I generate **Then** a unit draft with stats + name + lore appears as fully editable data matching the existing unit definition schema **And** a 'Transmuting...' spinner shows during generation
 
-**Given** a generated draft **When** it is validated and saved **Then** it passes the same validation gate as hand-authored data and float stats are quantized to Fixed before hashing **And** the draft is reopenable and editable, never locked
+**Given** a configured provider and a prompt for an ability **When** I generate **Then** an ability draft with stats + name + lore appears as fully editable data matching the existing ability definition schema **And** a 'Transmuting...' spinner shows during generation
 
-**Given** a prompt that implies non-RTS conventions **When** I generate **Then** the draft expresses behavior via archetype + ability composition rather than RTS-only assumptions **And** invalid generated fields are reported with a located error rather than silently accepted
+**Given** a generated unit or ability draft **When** it is validated and saved **Then** it passes the same validation gate as hand-authored data and float stats are quantized to Fixed before hashing **And** the draft is reopenable and editable, never locked
 
-**Given** no provider available **When** I open a draft generator **Then** a four-state message explains AI is unavailable and the entity can still be authored manually **And** the manual editor flow is unaffected
+**Given** a prompt that implies non-RTS conventions for a unit or ability **When** I generate **Then** the draft expresses behavior via archetype + ability composition rather than RTS-only assumptions or bespoke subclasses **And** invalid generated fields are reported with a located error rather than silently accepted
 
-_Covers: FR-32, AR-33, UX-DR52, UX-DR65. Depends on: 8.3._
+**Given** no provider available **When** I open a unit or ability draft generator **Then** a four-state message explains AI is unavailable and the entity can still be authored manually **And** the manual editor flow is unaffected
 
-> FR-32 (mostly new). Add provider-backed draft generation for the four entity kinds, each emitting JSON matching the existing Core/Definitions data classes (unit, ability, hero, faction). Output lands as EDITABLE data into the existing data/file flow (and into an entity editor host if one exists from an earlier epic; if not, drafts save as editable JSON the manual editor already consumes). Must NOT assume RTS-only conventions — composition over inheritance: a generated draft references archetype + abilities, not bespoke subclasses. Validated by the SAME D3 gate; float stats quantized to Fixed before the canonical hash (authoring-layer only, zero sim coupling). UX-DR52 'Transmuting...' + UX-DR65 voice/microcopy; all output editable.
+_Covers: FR-32, AR-33, UX-DR52. Depends on: 8.3b._
+
+> Split from former 8.6 (the readiness review flagged that each entity kind needs its own concrete Given/When/Then). 8.6a stands up the provider-backed draft-generation framework and lands the UNIT and ABILITY kinds. Each emits JSON matching the existing Core/Definitions data classes (unit, ability). Output lands as EDITABLE data into the existing data/file flow (and into an entity editor host if one exists from an earlier epic; if not, drafts save as editable JSON the manual editor already consumes). Must NOT assume RTS-only conventions — composition over inheritance: a generated draft references archetype + abilities, not bespoke subclasses. Validated by the SAME D3 gate; float stats quantized to Fixed before the canonical hash (authoring-layer only, zero sim coupling). UX-DR52 'Transmuting...' spinner; all output editable. This is the authoring-layer quantize-before-hash contract that 8.6b reuses verbatim.
+
+### Story 8.6b: HERO and FACTION drafts as editable data
+
+As a content creator,
+I want to generate a hero or faction draft (stats, name, lore) from a prompt as editable data,
+So that I get a fast starting point I can fully edit, not a black box.
+
+**Acceptance Criteria:**
+
+**Given** a configured provider and a prompt for a hero **When** I generate **Then** a hero draft with stats + name + lore appears as fully editable data matching the existing hero definition schema **And** a 'Transmuting...' spinner shows during generation
+
+**Given** a configured provider and a prompt for a faction **When** I generate **Then** a faction draft with stats + name + lore appears as fully editable data matching the existing faction definition schema **And** a 'Transmuting...' spinner shows during generation
+
+**Given** a generated hero or faction draft **When** it is validated and saved **Then** it passes the same validation gate and float->Fixed quantize-before-hash contract from 8.6a as hand-authored data **And** the draft is reopenable and editable, never locked
+
+**Given** a prompt that implies non-RTS conventions for a hero or faction **When** I generate **Then** the draft expresses behavior via archetype + ability composition rather than RTS-only assumptions or bespoke subclasses **And** invalid generated fields are reported with a located error rather than silently accepted
+
+**Given** no provider available **When** I open a hero or faction draft generator **Then** a four-state message explains AI is unavailable and the entity can still be authored manually **And** the manual editor flow is unaffected
+
+_Covers: FR-32, AR-33, UX-DR65. Depends on: 8.6a._
+
+> Split from former 8.6. 8.6b adds the HERO and FACTION kinds onto the 8.6a framework, each emitting JSON matching the existing Core/Definitions data classes (hero, faction). Reuses 8.6a's editable-data flow, validation gate, and float->Fixed quantize-before-canonical-hash contract unchanged. Must NOT assume RTS-only conventions — composition over inheritance: a generated draft references archetype + abilities, not bespoke subclasses. UX-DR65 voice/microcopy ("Commander", confident/terse, "you own what you make"); all output editable and reopenable, never locked.
 
 ### Story 8.7: AI balance analysis of a faction/scenario with editable suggestions
 
@@ -2004,7 +2169,7 @@ So that I can iterate on balance without the AI mutating my data behind my back.
 
 **Given** no provider available **When** I open balance analysis **Then** a four-state message explains AI is unavailable **And** manual balance editing remains fully available
 
-_Covers: FR-33, AR-33, UX-DR52, UX-DR65. Depends on: 8.3, 8.6._
+_Covers: FR-33, AR-33, UX-DR52, UX-DR65. Depends on: 8.3b, 8.6b._
 
 > FR-33 (new build). New balance-analysis flow: gather the target faction/scenario data (using the definition schemas exercised in 8.6), send a NormalizedRequest via ILLMProvider, and return structured, actionable suggestions (e.g. proposed stat deltas + rationale) as EDITABLE data — never an auto-applied opaque change. The creator reviews each suggestion and chooses to apply/edit/discard; applied changes go through the same validation gate with float->Fixed quantize. Authoring-layer only, zero sim coupling. UX-DR52 spinner; UX-DR65 microcopy; FR-34 four-state degrade.
 
@@ -2050,25 +2215,49 @@ _Covers: AR-17, NFR-determinism. Depends on: 9.1._
 
 > SD-6. EntityWorld.cs:49-54 stops at Player4; ResourceStore FACTION_COUNT=5. ScenarioDirector float leak verified at :168/:170. Requires 9.1's widened checksum as the safety net (briefing section 6). Faction==player for 1.0; decoupled playerSlot deferred.
 
-### Story 9.3: Server-authoritative merged tick packet + ready-count state machine + spectator-demux rewrite
+### Story 9.3a: Server-built TickCommandsMerged packet + tamper-rejection ceilings + tagged envelope
 
 As a multiplayer engineer,
-I want a new server-built TickCommandsMerged packet that re-stamps faction from the authoritative slot, a one-slot client gate, a ready-COUNT server state machine, and the spectator ingest path rewritten to consume server-built merged output,
-So that the relay becomes stateful N-player server authority with a single deterministic apply order, closing the faction-spoof and merged-from-client tamper holes.
+I want the server to fan client TickCommands into a new server-only TickCommandsMerged type with faction re-stamped from the authoritative slot, sub-bundles sorted ascending by faction id, drop-on-mismatch/over-count, and the byte/order ceilings enforced as drop-not-clamp,
+So that the relay becomes the single authoritative source of merged tick truth and the faction-spoof and merged-from-client tamper holes are closed at the build boundary.
 
 **Acceptance Criteria:**
 
 **Given** client TickCommands packets (client->server only, single-faction) **When** the server fans them in **Then** it builds a distinct TickCommandsMerged type (server->client only) with faction re-stamped from SLOT_FACTION[sourceSlot], sub-bundles sorted ascending by faction id, dropping bundles on faction mismatch or over-count **And** a merged-shape packet received FROM a client is hard-rejected **And** MERGED_MAX_BYTES and per-sub-bundle MAX_ORDERS ceilings are enforced (drop, not clamp)
 
+_Covers: AR-18. Depends on: 9.2._
+
+> SD-1/SD-2 (build half). DedicatedServer.cs int other=1-slot at :116/:155/:218 are the seams for sourceSlot->faction re-stamping. Co-design the tagged envelope layout with the DSL event record NOW so 9.11 replay v2 can reuse it. Faction order is sorted ascending by faction id so the merged wire layout is itself deterministic before any client consumes it.
+
+### Story 9.3b: Client merged-arrival gate + connected/ready count state machine
+
+As a multiplayer engineer,
+I want the client tick gate rewritten to wait on a single merged-arrival flag and apply per faction ascending, replacing the hardcoded two-slot ready logic with a connected==expected && ready==expected count machine,
+So that the client has a single deterministic apply order that scales to N players instead of the 2-faction-only gate.
+
+**Acceptance Criteria:**
+
 **Given** the merged packet on the client **When** the client gates a tick **Then** it waits on a single merged-arrival flag and applies per faction ascending (unit orders in wire order), replacing the _ready[0]&&_ready[1] / 1-slot logic with a connected==expected && ready==expected count machine
 
-**Given** the in-scope spectator path that demuxed single-faction packets by cmdFaction **When** a spectator joins **Then** it consumes only the server-built merged output and renders all factions correctly
+_Covers: AR-17. Depends on: 9.3a._
+
+> SD-3 (consume half). _ready[0]&&_ready[1] at DedicatedServer.cs:179 is the seam. Consumes the server-built merged output from 9.3a as the only tick-command source; the per-faction ascending apply order matches 9.3a's ascending sub-bundle sort so wire order is the canonical apply order.
+
+### Story 9.3c: Spectator-demux rewrite + chat-spoof fix + N=2 golden regression gate
+
+As a multiplayer engineer,
+I want the spectator ingest path rewritten to consume only the server-built merged output, the chat faction re-stamped from the authoritative slot, and an N=2 golden replay gate proving the rewrite is byte-identical to the pre-rewrite baseline,
+So that spectators and chat ride the same authoritative path and the whole stateful-server rewrite is regression-locked against desync.
+
+**Acceptance Criteria:**
+
+**Given** the in-scope spectator path that demuxed single-faction packets by cmdFaction **When** a spectator joins **Then** it consumes only the server-built merged output and renders all factions correctly **And** chat faction is re-stamped from SLOT_FACTION[fromSlot] (chat spoof fix)
 
 **Given** the N=2 golden replay **When** the merged-packet path runs as N=2 of the new format **Then** the golden checksum is byte-identical to the pre-rewrite baseline (FR-39 regression gate)
 
-_Covers: AR-17, AR-18, NFR-determinism. Depends on: 9.2._
+_Covers: AR-17, AR-18, NFR-determinism, FR-39. Depends on: 9.3b._
 
-> SD-1/SD-2/SD-3. The #1 FR-39 regression gate (briefing section 8). DedicatedServer.cs int other=1-slot at :116/:155/:218 and _ready[0]&&_ready[1] at :179 are the seams. Co-design the tagged envelope layout with the DSL event record NOW so 9.11 replay v2 can reuse it. Also overwrite chat faction = SLOT_FACTION[fromSlot] (chat spoof fix). Golden-gated at N=2.
+> SD-1/SD-2/SD-3 (the #1 FR-39 regression gate, briefing section 8). Overwrite chat faction = SLOT_FACTION[fromSlot]. Golden-gated at N=2: the merged path runs as N=2 of the new format and must reproduce the pre-rewrite baseline byte-for-byte before the stateful-server rewrite is considered landed.
 
 ### Story 9.4: Server-dictated adaptive input delay + start-state agreement + PROTOCOL_VERSION/rulesetHash gates
 
@@ -2084,7 +2273,7 @@ So that input delay verifiably adapts to real-network RTT without desync, and th
 
 **Given** two runs of an identical match with a mid-match RTT change **When** the server re-dictates delay **Then** both runs produce byte-identical golden checksums (no desync from the delay change)
 
-_Covers: FR-41, AR-17, AR-18, FR-41, NFR-determinism, UX-DR28. Depends on: 9.3._
+_Covers: FR-41, AR-17, AR-18, FR-41, NFR-determinism, UX-DR28. Depends on: 9.3c._
 
 > SD-4 + SD-13. Verified the server has NO Ping/Pong/DelayProposal cases today (DedicatedServer.cs:133-166) — this is net-new server RTT collection. Server ignores client Hello today (:135-137). Generalize SeedInitialTicks (LockstepManager.cs:579-590). UX-DR28 stall banner surfaces clamp/RTT changes. Golden-gated at N=2.
 
@@ -2210,7 +2399,7 @@ So that I can re-watch and share matches with confidence the replay is bound to 
 
 **Given** a recorded match **When** I open a replay **Then** it is VIEWABLE (plays back through the deterministic sim, not merely recorded) and the file can be shared **And** playing the same v2 replay twice yields byte-identical golden checksums
 
-_Covers: FR-40, AR-19, FR-40, NFR-determinism. Depends on: 9.3, 9.7._
+_Covers: FR-40, AR-19, FR-40, NFR-determinism. Depends on: 9.3c, 9.7._
 
 > SD-12 / AR-19. ReplayRecorder.cs VERSION=1 (no DSL events, no scenarioHash gate); ReplayPlayer.cs already replays the command stream (viewable foundation exists). Reuses the tagged envelope frozen in 9.3. Depends on 9.7 for canonical-hash embedding. FR-40 requires .chmr replay saved AND viewable/shareable.
 
@@ -2252,7 +2441,7 @@ So that a malicious or buggy client cannot flood the command bus and degrade the
 
 **Given** two runs of an identical 1v1 match where one run additionally injects a command flood from one slot that the server throttles **When** both runs complete **Then** the surviving honest peers produce byte-identical golden SimChecksums across both runs, proving the throttle is a pure server-validation layer with zero sim-state or determinism impact.
 
-_Covers: DG-6. Depends on: 9.3._
+_Covers: DG-6. Depends on: 9.3c._
 
 > Server/validation-layer concern ONLY — must NOT touch the sim or determinism. VERIFY (as-built): RelayTickCommands (DedicatedServer.cs:199-221) validates only `claimedFaction==SLOT_FACTION[fromSlot]` then relays unconditionally ("we trust the sender"); grep-confirmed NO rate/throttle/token-bucket anywhere; MAX_ORDERS=32 (NetworkCommand.cs:81) is a per-packet size bound, not a rate cap; Chat relay (DedicatedServer.cs:159-160) broadcasts to all peers unconditionally. BUILD: net-new per-slot token-bucket/rolling-window keyed on `fromSlot` with configurable cap + penalty threshold, drop-before-relay, escalating penalty → single-slot disconnect with a surfaced reason, and an optional chat-rate cap on the Chat case. SCOPE: 1v1 trusted friends/family EA + spectators, so the blast radius is limited and the cap is anti-spam/anti-bug, not full anti-cheat; cap must sit above worst-case legitimate play (full 32-order packet per tick at dictated delay) so honest peers never trip it. Disconnect leans on 9.5's deterministic freeze-and-continue for the dropped slot. Determinism: because dropped packets are simply never relayed and in-budget packets are relayed unmodified, the honest command stream is unchanged — golden re-baseline NOT required; instead a flood-vs-no-flood golden equality test (honest peers byte-identical) is the gate. Cap/threshold values data-driven, not hardcoded.
 
@@ -2282,11 +2471,11 @@ _Covers: FR-43, NFR-5. Depends on: Epic 9._
 
 > ✅ Resolved 2026-06-21 (readiness triage): the AC now uses an objective metric — Hard's first-attack tick / army-size delta vs Easy on the same seed, with recorded numbers.
 
-### Story 10.2: AI self-play balance harness + tune the two showcase factions to 45-55%
+### Story 10.2a: Deterministic headless self-play harness with win-rate reporting
 
 As a game developer shipping a balanced game,
-I want a deterministic headless self-play harness that runs many alpha-vs-beta AI matches and reports win rates,
-So that I can confirm and tune the two shipped factions so neither sits outside a ~45-55% win rate.
+I want a deterministic headless self-play harness that runs alpha-vs-beta AI matches on the sim layer only and reports per-faction win/draw/length stats,
+So that I have a reproducible measurement tool to confirm faction balance before I tune it.
 
 **Acceptance Criteria:**
 
@@ -2294,11 +2483,23 @@ So that I can confirm and tune the two shipped factions so neither sits outside 
 
 **Given** a representative batch of alpha-vs-beta matches across the shipped maps at a fixed AI difficulty **When** the batch completes **Then** the harness reports per-faction win rate, draw rate, and average match length **And** mirror-side bias is controlled by alternating which faction starts on which side
 
-**Given** an initial win-rate report outside 45-55% for either faction **When** the developer adjusts only data fields in the faction JSON and re-runs the batch **Then** both factions land within ~45-55% on the final batch **And** the final report is saved as the balance baseline artifact and no gameplay code constants were changed
-
 _Covers: FR-42, NFR-5. Depends on: 10.1, Epic 9._
 
-> FR-42, informed by FR-33 AI balance analysis. New harness (none exists today). MUST reuse the existing deterministic substrate: SimRng + fixed 30Hz SimulationLoop + SimChecksum so each match is reproducible from a seed. Run the sim layer without presentation (no MultiMesh/Godot rendering per the sacred boundary). Tuning is data-only edits to alpha_faction.json / beta_faction.json — no code balance constants. Capture a representative sample across the shipped maps from 10.1.
+> FR-42, informed by FR-33 AI balance analysis. New harness (none exists today). MUST reuse the existing deterministic substrate: SimRng + fixed 30Hz SimulationLoop + SimChecksum so each match is reproducible from a seed. Run the sim layer without presentation (no MultiMesh/Godot rendering per the sacred boundary). Capture a representative sample across the shipped maps from 10.1.
+
+### Story 10.2b: Tune the two showcase factions to 45-55% via JSON-data-only edits
+
+As a game developer shipping a balanced game,
+I want to drive both shipped factions inside a ~45-55% win rate using the 10.2a harness by editing only faction-JSON data,
+So that neither shipped faction sits outside a fair balance band and the final batch is captured as the balance baseline.
+
+**Acceptance Criteria:**
+
+**Given** an initial win-rate report outside 45-55% for either faction **When** the developer adjusts only data fields in the faction JSON and re-runs the 10.2a batch **Then** both factions land within ~45-55% on the final batch **And** the final report is saved as the balance baseline artifact and no gameplay code constants were changed
+
+_Covers: FR-42, NFR-5. Depends on: 10.2a._
+
+> Tuning is data-only edits to alpha_faction.json / beta_faction.json — no code balance constants. Re-runs the 10.2a batch (same seeds, same deterministic substrate) so each tuning iteration is reproducible; the saved baseline artifact is the final batch report from that harness.
 
 ### Story 10.3: Performance pass: 500-2,000 units at 60 FPS render / 30 Hz sim
 
@@ -2482,23 +2683,35 @@ _Covers: FR-51, UX-DR43. Depends on: 10.8b-1, 10.8b-2._
 
 > FR-51 (slice 4 of 4) + UX-DR43. Add a subtitle display layer + a setting toggle with three size presets (S/M/L) persisted in SettingsData. Drive it from a simple subtitle-cue source so any voice-over line shows a caption. If the shipped build has no VO lines yet, the system must still be demonstrable with a test cue and degrade to no-op when no VO plays.
 
-### Story 10.9: Release pipelines: ship to Steam and a direct DRM-free channel
+### Story 10.9a: Steam release pipeline — repeatable depot upload to a test branch
 
 As a developer launching the game,
-I want both a Steam release pipeline and a direct DRM-free distribution pipeline ready,
-So that players can buy/download through Steam or a direct channel at launch.
+I want a repeatable (documented/scripted) Steam depot-upload pipeline that publishes the finished build to a Steam test/default branch,
+So that players can buy/download through Steam at launch.
 
 **Acceptance Criteria:**
 
 **Given** the finished build artifacts (Windows + the Linux export from 10.7) **When** the Steam pipeline is run **Then** a depot upload succeeds to a Steam test/default branch and the build is installable+launchable from the Steam client **And** the pipeline is repeatable (documented/scripted), not a one-off manual upload
 
-**Given** the same build artifacts **When** the direct DRM-free pipeline is run **Then** a downloadable DRM-free package is produced and runs without any Steam/DRM dependency **And** the package launches on a machine without Steam installed
-
-**Given** both pipelines configured **When** a launch dry-run is performed **Then** both channels are confirmed release-ready (store/page metadata + build present) with a documented release checklist **And** version/build numbers match across both channels
-
 _Covers: FR-52. Depends on: 10.4, 10.5, 10.6, 10.7, 10.8c._
 
-> FR-52, last because it packages the finished build (audio, art, accessibility, Linux export all done). Set up the Steam app/depot upload pipeline (Steamworks) and a DRM-free package (e.g. site/Gumroad) for the platform builds produced in 10.7. No DRM on the direct channel. This is build/packaging/release config work plus a dry-run upload, not gameplay code.
+> FR-52 (Steam channel). Set up the Steam app/depot upload pipeline (Steamworks) for the platform builds produced in 10.7. This is build/packaging/release config work plus a dry-run upload, not gameplay code.
+
+### Story 10.9b: Direct DRM-free channel + both-channels launch dry-run and parity gate
+
+As a developer launching the game,
+I want a direct DRM-free distribution package plus a launch dry-run that confirms both channels are release-ready with matching version/build numbers,
+So that players can also download through a direct channel and the launch gate closes only when both channels are release-ready.
+
+**Acceptance Criteria:**
+
+**Given** the same build artifacts (Windows + the Linux export from 10.7) **When** the direct DRM-free pipeline is run **Then** a downloadable DRM-free package is produced and runs without any Steam/DRM dependency **And** the package launches on a machine without Steam installed
+
+**Given** both pipelines configured (Steam from 10.9a + this DRM-free channel) **When** a launch dry-run is performed **Then** both channels are confirmed release-ready (store/page metadata + build present) with a documented release checklist **And** version/build numbers match across both channels
+
+_Covers: FR-52. Depends on: 10.9a._
+
+> FR-52 (direct channel + release gate). Produce a DRM-free package (e.g. site/Gumroad) for the platform builds produced in 10.7 — no DRM on the direct channel. The gate closes only when BOTH channels are release-ready, so the dry-run verifies store/page metadata + build present and version/build parity across Steam and direct. This is build/packaging/release config work plus a dry-run upload, not gameplay code.
 
 ### Story 10.10: [ADDED] Gameplay HUD, controls strip, selection & default keybindings verify/harden
 
@@ -2542,6 +2755,6 @@ So that skirmishes feel reactive instead of scripted and I can see exactly why t
 
 **Given** the adaptive AI replaces the static AI in the 10.2 self-play balance harness **When** the alpha-vs-beta batch is re-run at a fixed difficulty **Then** both showcase factions still land within ~45-55% win rate (FR-42 not regressed) **And** Hard difficulty's adapted first-attack tick against a turtling P1 is measurably earlier than the static AI's on the same seed
 
-_Covers: DG-7. Depends on: 10.2._
+_Covers: DG-7. Depends on: 10.2b._
 
 > Brownfield: `AiOpponentSystem.cs` is pure static utility scoring — Score* methods (cs:200-249) read ONLY the AI's own `AiSnapshot`, weights (`_aggressionWeight`/`_techWeight`/`_attackThreshold`/`_attackCooldownMax`) are set once in the ctor from a fixed `AiDifficulty` preset and never mutate, `ExecuteBestAction` (cs:264-290) computes scores then DISCARDS them, and P1 exists only as the static `P1_BASE` constant. VERIFY this static path and the 10.2 baseline still pass; BUILD (1) deterministic P1-observation pattern counters, (2) bounded counter-strategy modifiers feeding the existing Score* layer (clean integration point — do not rewrite the scorer), (3) the read-only Tinkerer overlay surfacing the already-computed scores. Determinism: pattern counters are SIM state — store as new parallel SoA arrays on `EntityWorld` (or a sim-owned AI-state struct, no Godot types), use `Fixed` 16.16 math only (no float/double/Mathf in the counter/threshold math; existing Score* float weights are unchanged), iterate ascending-id, no wall-clock, randomness (if any) only via seeded `SimRng`. The counters MUST fold into `SimChecksum.Compute` (which today hashes only EntityWorld pos/health, BuildingStore, and faction Ore — it does NOT yet hash any AI internal state), so this WILL re-baseline the golden checksum — regenerate and commit the new golden, replacing the old. The overlay is presentation-only (`src/UI/`, Godot Control), reads sim arrays, never mutates — its presence must not perturb the checksum. Scope: only the existing two-player P1-vs-AI skirmish path and the existing rush/turtle axes — no new strategic actions, no multi-opponent or team adaptation, no ML/persistence across matches.

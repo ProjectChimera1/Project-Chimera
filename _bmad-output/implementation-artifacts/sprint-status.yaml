@@ -1,0 +1,185 @@
+# generated: 2026-06-22
+# last_updated: 2026-06-22
+# project: Project_Chimera
+# project_key: NOKEY
+# tracking_system: file-system
+# story_location: _bmad-output/implementation-artifacts
+
+# STATUS DEFINITIONS:
+# ==================
+# Epic Status:
+#   - backlog: Epic not yet started
+#   - in-progress: Epic actively being worked on
+#   - done: All stories in epic completed
+#
+# Epic Status Transitions:
+#   - backlog -> in-progress: Automatically when first story is created (via create-story)
+#   - in-progress -> done: Manually when all stories reach 'done' status
+#
+# Story Status:
+#   - backlog: Story only exists in epic file
+#   - ready-for-dev: Story file created in stories folder
+#   - in-progress: Developer actively working on implementation
+#   - review: Ready for code review (via Dev's code-review workflow)
+#   - done: Story completed
+#
+# Retrospective Status:
+#   - optional: Can be completed but not required
+#   - done: Retrospective has been completed
+#
+# WORKFLOW NOTES:
+# ===============
+# - Epic transitions to 'in-progress' automatically when first story is created
+# - Stories can be worked in parallel if team capacity allows
+# - Developer typically creates next story after previous one is 'done' to incorporate learnings
+# - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
+
+generated: 2026-06-22
+last_updated: 2026-06-22
+project: Project_Chimera
+project_key: NOKEY
+tracking_system: file-system
+story_location: _bmad-output/implementation-artifacts
+
+development_status:
+  epic-1: backlog
+  1-1-engine-bump-4-6-3-godot-free-tier-1-xunit-test-project-scaffold: backlog
+  1-2-golden-checksum-replay-harness-pinning-current-sim-behavior: backlog
+  1-3a-factionregistry-localize-all-faction-count-knowledge: backlog
+  1-3b-generalize-simchecksum-coverage-coverage-guard-scenariodirector-locale-fix: backlog
+  1-4-fixed-end-to-end-fixedjsonconverter-quantization-nondeterminism-negative-tests: backlog
+  1-5-seeded-deterministic-simrng-folded-into-checksum-replay: backlog
+  1-6-data-drive-damagematrix-to-damage-table-json-5x6-with-hero-damageresolver: backlog
+  1-7-fail-closed-scenariovalidator-validated-t-single-pre-tick-gate-canonical-start-state-hash: backlog
+  1-8a-extract-godot-free-simulationhost-with-the-9-system-tick-order-single-checksum-sink-ilogsink-seam: backlog
+  1-8b-scenarioapplier-as-the-sole-writer-of-sim-truth-with-alloc-free-spawnunit-hoisted-path-resolution: backlog
+  1-8c-asserted-scenephaserunner-isetupphase-phaseordertest-and-the-mainscene-strangle-diff: backlog
+  1-9a-serverbootstrap-headless-peer-server-checksum-collector-with-quorum-halt-loopback: backlog
+  1-9b-fr-39-two-machine-lan-determinism-green-the-1-ship-risk-gate: backlog
+  1-10a-wire-the-golden-checksum-replay-regression-harness-into-ci-pin-isolate-deps: backlog
+  1-10b-banned-api-aot-eligibility-analyzers-over-the-sim-layer: backlog
+  1-10c-cross-platform-windows-linux-golden-checksum-gate-via-wsl: backlog
+  1-11-smoke-test-the-four-unverified-systems-utility-ai-adaptive-input-delay-llm-trigger-ai-map-generator: backlog
+  1-12-full-rts-command-vocabulary-single-target-attack-patrol-follow-hold-distinct-from-stop: backlog
+  1-13-formation-movement-priority-yielding-role-based-battle-formations-push-yield-data-fields: backlog
+  epic-1-retrospective: optional
+  epic-2: backlog
+  2-1-d1-effect-graph-vocabulary-and-work-stack-executor-pure-sim-keystone: backlog
+  2-2a-d1-effective-stat-pipeline-base-effective-arrays-dirty-flag-recompute-modifiersystem-ordered-before-combat: backlog
+  2-2b-d1-modifierstore-soa-store-with-apply-stack-refresh-expire-dot-hot-energy-cost-determinism: backlog
+  2-3-abilitydefinition-data-model-and-validated-t-gate-with-static-validator-rules: backlog
+  2-4-attach-abilities-to-units-heroes-and-surface-them-on-the-runtime-command-card: backlog
+  2-5-ability-editor-author-active-abilities-with-simple-preset-and-advanced-multi-effect-modes: backlog
+  2-6-ability-editor-passive-ability-path-auras-on-hit-effects-stat-modifiers-trigger-conditions: backlog
+  2-7-combatfeedbackprofile-profile-driven-feedback-presentation-only-excluded-from-checksum: backlog
+  2-8-combat-reachability-i-per-unit-production-selection-ui-and-air-production-building-category: backlog
+  2-9a-combat-reachability-air-ground-targetfilter-anti-building-combat: backlog
+  2-9b-combat-reachability-worker-cast-ability-path-multi-resource-crystal-cost: backlog
+  2-10-showcase-faction-signature-mechanics-equal-exchange-and-sanguine-furnace-passive-hot-d1-only: backlog
+  2-11-authorable-unit-tags-organic-mechanical-magical-as-an-effect-targeting-counter-axis: backlog
+  epic-2-retrospective: optional
+  epic-3: backlog
+  3-1a-resolve-open-design-decisions-author-the-canonical-godot-theme-resource: backlog
+  3-1b-core-reusable-component-kit-simple-controls-styled-from-the-theme: backlog
+  3-1c-composite-feedback-components-tooltip-switch-foundations-and-demo-gallery: backlog
+  3-2-herostore-soa-stable-hero-identity-folded-into-simchecksum-startstatehash: backlog
+  3-3-read-only-unit-card-panel-stats-combat-type-archetype-model-preview: backlog
+  3-4-unit-card-editor-edit-create-duplicate-delete-with-inline-validation-persisted-to-faction-data: backlog
+  3-5-in-editor-model-assignment-preview-box-placeholder-glb-browse: backlog
+  3-6-archetype-orthogonal-ability-behavior-composition-no-subclassing: backlog
+  3-7-promote-to-hero-leveling-curve-xp-signature-ultimate-abilities: backlog
+  3-8-persistence-manifest-authoring-which-attributes-carry-forward-through-the-validate-gate: backlog
+  3-9-offline-hero-persistence-rail-save-load-hero-picker-deterministic-init-time-apply: backlog
+  3-10-added-edit-play-round-trip-loop-no-restart-playtest: backlog
+  3-11-added-apply-the-design-system-to-the-front-end-shell-title-mode-select-settings: backlog
+  3-12-authorable-attack-delivery-flag-hitscan-vs-projectile-per-unit-projectile-speed: backlog
+  epic-3-retrospective: optional
+  epic-4: backlog
+  4-1-data-drive-the-building-definition-runtime-building-store: backlog
+  4-2-data-driven-tech-prerequisite-resolution-with-import-time-cycle-referential-lint: backlog
+  4-3-n-resource-registry-with-sparse-cost-maps-generalize-ore-crystal: backlog
+  4-4-data-driven-supply-cap-model-per-scenario: backlog
+  4-5-in-app-building-definition-editor-unit-card-pattern-right-dock-inspector: backlog
+  4-6-visual-tech-tree-editor-tier-laned-graph-drag-out-port-to-wire-prerequisites: backlog
+  4-7-per-resource-collection-models-income-streaming-requires-structure-crystal-production: backlog
+  epic-4-retrospective: optional
+  epic-5: backlog
+  5-1-factionregistry-canonical-faction-slot-constants-ar-3: backlog
+  5-2-faction-schema-extension-validator-ar-39-ar-12-fr-18-data: backlog
+  5-3-land-harden-the-fma-showcase-content-as-valid-definer-outputs-fr-20: backlog
+  5-4-wire-the-two-signature-mechanics-via-d1-modifiers-fr-20-unique-mechanic: backlog
+  5-5a-faction-definer-guided-wizard-flow-validator-gated-save-fr-17-ux-dr40: backlog
+  5-5b-ai-preset-selection-advanced-raw-json-mode-hero-persistence-config-completion-target-fr-18-ux-dr80-ar-12: backlog
+  5-6-wizard-authored-factions-are-immediately-selectable-in-playtest-skirmish-fr-19-ux-dr80: backlog
+  5-7-playtest-validate-asymmetry-ai-playability-of-the-showcase-factions-fr-20-fr-18: backlog
+  5-8-added-your-first-scenario-guided-onboarding-15-min-playable: backlog
+  epic-5-retrospective: optional
+  epic-6: backlog
+  6-1-verify-and-harden-in-app-terrain-sculpt-texture-paint: backlog
+  6-2-persist-sculpted-height-painted-textures-across-save-load-headline-defect-fix: backlog
+  6-3-terrain-stroke-undo-redo-and-store-undo-push-error-cleanup: backlog
+  6-4-verify-entity-start-position-resource-node-and-win-condition-placement-to-ship-bar: backlog
+  6-5-sim-side-deterministic-terrain-elevation-height-advantage-vision-and-fog-of-war-verify: backlog
+  epic-6-retrospective: optional
+  epic-7: backlog
+  7-1a-trigger-layer-determinism-prerequisites-ordering-fixed-culture: backlog
+  7-1b-1-graph-canonical-dsl-ir-foundation-closed-registry-node-converter: backlog
+  7-1b-2-lossless-flat-to-graph-migration: backlog
+  7-2-typed-scoped-variables-deterministic-timers-and-verify-to-ship-eca: backlog
+  7-3-fixed-point-arithmetic-and-boolean-expression-layer: backlog
+  7-4-custom-events-define-raise-subscribe-with-acyclic-same-tick-dispatch: backlog
+  7-5-bounded-foreach-foreachbatched-loops-arrays-and-layer-3-fuel: backlog
+  7-6-authoritative-server-side-load-time-validator-gate-no-escape-hatch: backlog
+  7-7-custom-runtime-ui-read-rail-declarative-widget-tree-version-stamped-readback: backlog
+  7-8a-custom-runtime-ui-write-rail-button-raised-dsleventcommand-on-the-lockstep-bus: backlog
+  7-8b-replay-v2-dsl-event-record-local-only-presentation-action-whitelist: backlog
+  7-9-t3-visual-node-graph-editor-view-additive-over-the-shared-ir: backlog
+  7-10-win-condition-preset-templates-t1-sim-layer-winconditionsystem: backlog
+  epic-7-retrospective: optional
+  epic-8: backlog
+  8-1-isecretstore-rip-out-plaintext-export-secret-fields: backlog
+  8-2-provider-model-baseurl-fields-in-versioned-settingsdata: backlog
+  8-3a-godot-free-illmprovider-over-three-adapters-anthropic-ollama-openrouter: backlog
+  8-3b-fr-34-four-state-availability-ui-test-connection: backlog
+  8-4-trigger-generation-on-the-new-provider-stack-new-dsl-constructs: backlog
+  8-5-verify-map-generation-relax-parameterize-the-7-pass-clamps: backlog
+  8-6a-draft-generation-framework-unit-and-ability-drafts-as-editable-data: backlog
+  8-6b-hero-and-faction-drafts-as-editable-data: backlog
+  8-7-ai-balance-analysis-of-a-faction-scenario-with-editable-suggestions: backlog
+  epic-8-retrospective: optional
+  epic-9: backlog
+  9-1-widen-simchecksum-add-server-side-checksum-collector-with-majority-vote-desync-attribution: backlog
+  9-2-expand-the-faction-player-model-to-8-and-audit-every-int-faction-site: backlog
+  9-3a-server-built-tickcommandsmerged-packet-tamper-rejection-ceilings-tagged-envelope: backlog
+  9-3b-client-merged-arrival-gate-connected-ready-count-state-machine: backlog
+  9-3c-spectator-demux-rewrite-chat-spoof-fix-n-2-golden-regression-gate: backlog
+  9-4-server-dictated-adaptive-input-delay-start-state-agreement-protocol-version-rulesethash-gates: backlog
+  9-5-deterministic-disconnect-freeze-and-continue-drop-policy: backlog
+  9-6-nakama-n-player-matchmaking-parties-api-server-side-slot-assignment-lobby-matchmaking-ui: backlog
+  9-7-proof-of-play-signed-completion-token-from-the-victory-leaf: backlog
+  9-8-pre-publish-quality-gate-ip-ownership-consent-publish-chimera-zip-to-mod-io: backlog
+  9-9-content-hash-integrity-verification-on-download-runtime-binary-asset-ingest: backlog
+  9-10-content-browser-delegating-browse-search-tag-sort-subscribe-rate-to-mod-io: backlog
+  9-11-replay-v2-versioned-tagged-record-body-scenario-re-gate-on-playback-and-viewable-replays: backlog
+  9-12-server-validated-online-hero-persistence-rail: backlog
+  9-13-per-client-command-rate-throttle-anti-spam-on-the-dedicated-server: backlog
+  epic-9-retrospective: optional
+  epic-10: backlog
+  10-1-verify-solo-skirmish-vs-ai-across-difficulties-on-all-shipped-maps: backlog
+  10-2a-deterministic-headless-self-play-harness-with-win-rate-reporting: backlog
+  10-2b-tune-the-two-showcase-factions-to-45-55-via-json-data-only-edits: backlog
+  10-3-performance-pass-500-2-000-units-at-60-fps-render-30-hz-sim: backlog
+  10-4-author-and-wire-real-ogg-audio-assets-through-the-existing-audio-system: backlog
+  10-5-art-style-consistency-layer-shared-material-library-global-cel-shade-post-process: backlog
+  10-6-replace-iron-pact-s-8-placeholder-glbs-with-real-art: backlog
+  10-7-linux-export-client-and-or-dedicated-server-builds-and-runs-via-wsl-host: backlog
+  10-8-accessibility-baseline-colorblind-safe-team-colors-wcag-aa-contrast: backlog
+  10-8a-accessibility-baseline-fully-remappable-keybindings-with-reset: backlog
+  10-8b-1-accessibility-baseline-ui-scaling-80-150-reduced-motion: backlog
+  10-8b-2-accessibility-baseline-warm-paper-light-theme-token-set: backlog
+  10-8c-accessibility-baseline-subtitles-s-m-l-for-voice-over: backlog
+  10-9a-steam-release-pipeline-repeatable-depot-upload-to-a-test-branch: backlog
+  10-9b-direct-drm-free-channel-both-channels-launch-dry-run-and-parity-gate: backlog
+  10-10-added-gameplay-hud-controls-strip-selection-default-keybindings-verify-harden: backlog
+  10-11-adaptive-ai-opponent-player-pattern-tracking-counter-strategy-weighting-decision-weight-debug-overlay: backlog
+  epic-10-retrospective: optional
