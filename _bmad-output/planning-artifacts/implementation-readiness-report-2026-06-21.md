@@ -1,5 +1,5 @@
 ---
-stepsCompleted: ['step-01-document-discovery', 'step-02-gdd-analysis', 'step-03-epic-coverage-validation']
+stepsCompleted: ['step-01-document-discovery', 'step-02-gdd-analysis', 'step-03-epic-coverage-validation', 'step-04-ux-alignment']
 documentsUnderReview:
   - type: GDD
     path: 'Project_Chimera_GDD.md'
@@ -244,5 +244,59 @@ The FRs are *covered*, but several have thin or non-objective acceptance criteri
 - The AC-quality caveats (§3.5) are real but belong to the later story-quality step.
 
 **Recommended action:** decide per HIGH/MEDIUM gap whether to (a) add a story/FR for 1.0, (b) explicitly descope to post-1.0, or (c) confirm it's genuinely already-built and add a *verification* story. Right now several are silently assumed-built with no verification.
+
+---
+
+## 4. UX Alignment
+
+_UX document: **FOUND** — `ux-Project_Chimera-2026-06-20/` (DESIGN.md + EXPERIENCE.md), the finalized run. 14 screens/surfaces, 6 player journeys (mapped to Architect/Tinkerer/Commander), a full design system. Validated UX↔GDD and UX↔Architecture in parallel._
+
+### 4.1 UX ↔ GDD — Verdict: **Substantially aligned** (the GDD is the stale artifact)
+All 6 UX journeys map cleanly to GDD personas and core systems (edit→play loop, faction wizard, deterministic lockstep, consolidated WC3 unit editor). The misalignments are **UX/PRD ahead of the GDD**, not contradictions:
+
+**UX surfaces with NO GDD specification (GDD is behind):**
+| UX surface | Severity | Note |
+|------------|----------|------|
+| **FR-7 Persistent heroes** — save/load picker, cross-match XP, server-validated profiles | **HIGH** | GDD has Hero only as an *in-match* archetype; no persistent cross-scenario profile concept anywhere. Largest single UX↔GDD gap. **(Present in PRD + epics + UX — only the GDD lacks it.)** |
+| **FR-26 Custom Runtime UI Builder** — WYSIWYG widget canvas, data binding, trigger-driven visibility | **HIGH** | No creator-authored runtime-UI builder in the GDD. **(Present in PRD + epics + UX — only the GDD lacks it.)** |
+| NFR-1 ≤2s edit→play budget | MEDIUM | GDD mandates "instant" toggling but never commits to a numeric ≤2s SLA. |
+| FR-51 accessibility floor specifics (colorblind/scaling/contrast/subtitles/remap) | MEDIUM | GDD has only one roadmap line ("Accessibility features"); UX is far more concrete. |
+| Tooltips-everywhere, per-surface Simple/Advanced, lobby hash readouts, passive abilities + deeper DSL | LOW | Consistent in spirit; UX is ahead in detail. |
+
+**GDD features the UX under-represents (committed in GDD, thin/absent in UX):**
+- **Natural-language (Tier-4) trigger authoring UI** — a flagship GDD feature; only a generic "Transmuting…" spinner gestures at it. *(No dedicated generate→preview→confirm/fuzzy-match surface.)*
+- **AI map-gen + AI balance-analysis surfaces** — only an "AI Gen" toolbar tab; no dedicated journeys.
+- Terrain Editor / Resource-Node / Start-Position surfaces — folded into tool tabs, lightly covered.
+- Content browser: **proof-of-play gate, min-quality gate, Play-Now auto-lobby, creator profiles, report-to-moderation** — partial.
+- Single-player save/load + campaign mission-select/briefing UI.
+- **Replay + spectator UI** — no surface at all.
+- Input-delay / game-speed indicator UI; lobby "Update Required" one-click mismatch recovery.
+
+**Contradictions (all LOW):** campaign count UX "/12" vs GDD "5-8 missions" (likely placeholder); Attack-Move bound to Q vs classic "A"; tick-rate framing nuance.
+
+**Theme freshness — UX is CONSISTENT, GDD is STALE.** The UX deliberately kept alchemy minimal (Chimera Seal + transmute spinner) and **shelved** the bio-alchemy "Transmutation Lab" retheme (decision-log D3); the FMA pivot (06-21, one day *after* the UX finalized) is a **world/faction** direction, not a UI retheme, and the UX reserves the 8 colorblind-safe team colors for world units separately from UI accents. **So the UX UI system needs no rework for the pivot.** The genuinely stale artifact is the **GDD** (2026-04-07: pre-pivot, no faction identity, missing FR-7/FR-26). *Correction to a prior assumption: the GDD does **not** name "Alpha/Iron Pact" — those codenames are in the PRD, not the GDD.*
+
+**Recommended GDD reconciliation (not a hard blocker — PRD+epics+UX carry the truth):** update the GDD to (a) add FR-7 persistent heroes + FR-26 custom UI builder (or mark them deferred), (b) reconcile the campaign count, (c) absorb the FMA faction direction.
+
+### 4.2 UX ↔ Architecture — Verdict: **Supported-with-gaps**
+The architecture is **excellent and complete below the UI line.** Every UX surface touching the sim / network / content-validation boundary has a precise mechanism: multiplayer determinism gate, lobby multi-hash stateful-authority handshake, **custom runtime UI (both READ + WRITE rails)**, trigger/tech-tree IR, hero-picker persistence (D4), content-browser IO (mod.io), LLM provider/secrets (D6), accessibility-settings baseline (Step 5), and MultiMesh 500–2,000 @ 60/30 perf.
+
+**Gaps concentrate in the presentation / editor-chrome tier** (which the architecture consciously defers as "composes from the existing kit"):
+| UX surface | Gap | Severity |
+|------------|-----|----------|
+| **Edit↔Play round-trip + ≤2s budget (NFR-1 AC2)** | Enabling primitive exists (in-memory edit→Validate→Apply, no restart), but the **transition itself is never designed** (teardown vs incremental on F5? where's the toggle? how is ≤2s met/measured?). Latency is **unowned and unbenchmarked** — the headline "instant loop" is structurally enabled but unproven. | **HIGH** |
+| **Creation Suite editor shell + player/creator mode separation (NFR-3)** | The shell hosting all authoring surfaces has no architectural design; **NFR-3 (a pure player never sees an authoring control)** has no screen/state-manager or editor↔player mode-separation pattern. *(Note: Epic 10 Story 10.10 adds an NFR-3 acceptance gate, so it's covered at the epic level — the gap is architectural design depth.)* | **HIGH** |
+| Editor panels (Unit Card, Ability, Tech-Tree GraphEdit drag-wiring, Faction wizard) | Data models fully designed (D1–D4); the panels + drag-wiring/inspector-binding interactions are not. | MEDIUM |
+| Design-system → Godot Theme mapping (chimera.css `:root` → single Theme resource) | UX hands this to the arch pass; arch doesn't pick it up. | MEDIUM |
+| Tooltip-on-every-control + onboarding flow + <15-min target | No tooltip/help data model, no onboarding state machine, no measurement hook. | MEDIUM |
+| Title / Mode-Select / screen-navigation state management | Subsumed under one "Partial" row; NFR-3 depends on this routing backbone. | MEDIUM |
+| `prefers-reduced-motion` mirror | UX note only; no SettingsData field / animation-gating mechanism. | LOW |
+
+**Perf/responsiveness:** render + multiplayer responsiveness are well-architected (MultiMesh + one-way interpolating bridges, zero-alloc-in-tick CI asserts, clamped adaptive input delay, cross-platform golden-checksum). The one real shortfall is the **edit→play ≤2s loop — enabled but unmeasured** (render FPS is *watched* via profiler, not CI-gated).
+
+### 4.3 Warnings
+- ⚠️ **GDD is stale vs the rest of the planning set** — missing FR-7 + FR-26 (both fully designed downstream) and the FMA pivot. Reconcile upward; not a blocker since the PRD is the requirements baseline.
+- ⚠️ **Two HIGH architectural presentation gaps** (edit→play transition/measurement; editor-shell + NFR-3 mode separation) — design debt to close in the UX-implementation/epics pass *before those surfaces are built*. Neither is a determinism/correctness blocker.
+- ⚠️ Several committed GDD features (NL trigger UI, AI map-gen/balance UI, replay/spectator UI, publish-quality gates) are **thin or absent in the UX** — confirm they're scoped in the epics' UX-DR items (they largely are) and not lost.
 
 ---
