@@ -15,50 +15,8 @@ status: Active
 Phases 0–4 are code-complete. Phase 5 is underway. Session 20 shipped worker-placed buildings + UI bug sweep. Session 21 (remote, away from computer) shipped Utility AI + Adaptive Input Delay.
 
 ## Next Action
-**GDS forward-architecture pass — Step 4 (Architectural Decisions) COMPLETE (2026-06-20).** All six
-game-specific decisions are recorded in `_bmad-output/game-architecture.md` (`stepsCompleted: [1,2,3,4]`):
-D1 effects-primitive vocabulary, D2 trigger-DSL, D3 schema/loader (the deep-dive trio), plus the D4–D6
-batch — **D4** hero persistence (two-rail, server-attested; PvP allowed, normalization via D1/D2),
-**D5** >2-player lockstep + matchmaking (N-aware dedicated relay; ship N≤4, 8 fast-follow; AOT split
-deferred), **D6** LLM provider abstraction (hand-rolled `ILLMProvider`; plaintext-key floor behind
-`ISecretStore`). Full D4–D6 analyses in `game-architecture.D{4,5,6}-briefing.md`. **Cross-cutting finding:**
-the batch surfaced one shared latent MP-correctness bug — unsound peer-agreement hashing in three places
-(`SimChecksum` P1/P2-only; dedicated server is a pure relay with no hash compare; AI scenarios ship a stale
-file-hash) — remediated by a canonical-model start-state hash + server-enforced agreement + generalized
-`SimChecksum` (a single prerequisite program). **Step 5 (Cross-Cutting Concerns) COMPLETE (2026-06-20)** —
-testing/quality is the headline: **two-tier checks** (fast Godot-free rule checks + GdUnit4 in-game) and an
-**AI-orchestrated check-runner** with a Windows↔Linux cross-platform comparison (needs a Linux env — WSL2,
-setup deferred to M1), plus determinism enforcement, observability/desync-diagnosis, error handling,
-performance, accessibility (English-first), and telemetry (dev-only + opt-in crash report). See *Cross-Cutting
-Concerns (Step 5)* in `game-architecture.md` + the `game-architecture.Step5-cross-cutting-briefing.md` sidecar.
-
-**Step 6 (Project Structure + `MainScene` Decomposition) COMPLETE (2026-06-20).** Decision: **Shrinking
-Composition Root + Sim-Spine Strangler** — the 2,223-LOC `MainScene` god object (which is *also* the composition
-root every D1–D6 system threads through) is decomposed WITHOUT moving the file: it becomes a thin ≤250-LOC
-ordered phase-list (`ISetupPhase[]` + `PhaseOrderTest`, preserving the fragile `_Ready()` order) that constructs
-a Godot-free `SimulationHost` + `ScenarioApplier` (the sim-mutation path, now headless-testable + reused by a new
-`ServerBootstrap`) behind a net-new fail-closed `ScenarioValidator` gate, plus focused presentation coordinators.
-`FactionRegistry` localizes the 2-faction hardcodes (D5 N≤8 path). 14-step golden-checksum-gated, always-shippable
-strangler; every net-new D1–D6 + Step-5 module homed. Produced via a 16-agent design+adversarial-verify workflow
-(winning strategy 93/100). **Alec's 4 scope calls (✅):** (1) Validate gate flips fail-closed only on a release
-branch after corpus-verify; (2) the sim-core + `ServerBootstrap` are M1-blocking — the spine; (3) AOT `.csproj`
-split stays deferred (discipline + analyzers only now); (4) D6 secrets/config migration lands with the editor/MP
-coordinator carve (migration Step 12). See *Step 6 — Project Structure + `MainScene` Decomposition* in
-`game-architecture.md` + the `game-architecture.Step6-structure-briefing.md` sidecar.
-
-**Step 7 (Implementation Patterns) COMPLETE (2026-06-21).** The canonical "how an AI agent writes this codebase"
-pattern catalog so D1–D6 are implemented checksum-identically: **7 Novel Patterns** (deterministic kernel,
-Effect-Graph executor, Modifier SoA, DSL event/dataflow graph, two-rail custom UI, `Validated<T>` fail-closed
-gate, canonical-model multi-hash handshake) + **Standard Patterns** (every divergence point) + a **Consistency
-Rules table**, each with a determinism-safe code example + analyzer/test/convention enforcement. 11-agent
-design+adversarial-verify workflow (67 patterns, 49 determinism/API issues caught and fixed). **Alec's 3 scope
-calls (✅):** Tier-1 test runner = **xUnit**; hash width = **32-bit wire / 64-bit canonical**; content numbers =
-**`Fixed` end-to-end (convert at parse)**. Leaf implementation forks (SimRng API, ILogSink shape, Energy regen,
-event tie-break, etc.) tracked as *Deferred to implementation (M1)*. See *Step 7 — Implementation Patterns* in
-`game-architecture.md` + the `game-architecture.Step7-patterns-briefing.md` sidecar.
-
-**Resume at Step 8** (Validation) → Step 9 (Complete). Remaining chain after architecture: epics/stories →
-re-run `gds-check-implementation-readiness` → `gds-sprint-planning`.
+Select canonical versions for:
+1.
 
 ## Needs Testing — Written This Session
 
