@@ -417,7 +417,7 @@ This triage **expands 1.0 scope by ~9 build areas** (8 in-1.0 gaps, several non-
 - **Verify-only stories** (already built — just confirm to ship bar): Move/Stop/Attack-Move behaviors; splash radius; GATHER + worker-caps; **fog-of-war** (3-state grid, per-unit vision, spectator reveal). Fold into the Epic 1/Epic 10 verification floor.
 - **Post-1.0 backlog:** the server-authoritative netcode pivot (G9b) as its own architecture epic.
 
-**Recommended next action:** apply these decisions to `epics.md` as the new/modified/verify stories above (a `gds-correct-course` pass or direct authoring), **then** run `gds-sprint-planning` on the updated breakdown.
+**✅ Applied 2026-06-21:** the triage decisions are now in `epics.md` — **9 new in-1.0 build stories** (1.12, 1.13, 2.11, 3.12, 4.7, 6.5, 7.10, 9.13, 10.11; verify-only for already-built parts folded into each), a **Design-Gap Requirements block (DG-1…DG-10)**, Epic-List DG tags, the **⚠ AC fixes** (5.7, 9.6, 10.1, 10.3 → objective/testable), and **STATUS.md** command/formation rows downgraded to 🟡 with pointers to 1.12/1.13. `storyCount` 97 → **106**. The **GDD anti-maphack wording reconciled** (DG-10; both §-fog and §-anti-cheat claims now note the lockstep reality + post-1.0 deferral). The two critical epic defects (§5.2) were already fixed. **Remaining before/with sprint planning:** split the ~11 oversized stories (§5.3); reconcile the rest of the GDD (FR-7/FR-26, FMA faction direction, campaign count, faction naming); back-fill DG-1…DG-9 into the PRD as FR-53+. **Then** run `gds-sprint-planning` on the updated breakdown.
 
 ---
 

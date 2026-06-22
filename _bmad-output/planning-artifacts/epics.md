@@ -2,8 +2,8 @@
 stepsCompleted: [1, 2, 3, 4]
 status: complete
 epicCount: 10
-storyCount: 97
-validation: "FR coverage 60/60; NFR-1..6 covered; no residual placeholders; no within-epic forward dependencies (verified 2026-06-21). Readiness-check corrections applied 2026-06-21: (1) relocated Story 1.5's forbidden-until-SimRng AC into Story 1.7 to break a 1.5<->1.7 logical cycle — the claim now holds; (2) corrected Story 2.10's dangling 'Depends on: 2.9' to '2.9a, 2.9b' — the dangling reference is resolved."
+storyCount: 106
+validation: "FR coverage 60/60; NFR-1..6 covered; no residual placeholders; no within-epic forward dependencies (verified 2026-06-21). Readiness-check corrections applied 2026-06-21: (1) relocated Story 1.5's forbidden-until-SimRng AC into Story 1.7 to break a 1.5<->1.7 logical cycle — the claim now holds; (2) corrected Story 2.10's dangling 'Depends on: 2.9' to '2.9a, 2.9b' — the dangling reference is resolved. Readiness-triage stories added 2026-06-21: +9 in-1.0 build stories tagged DG-1..DG-9 (across Epics 1/2/3/4/6/7/9/10); DG-10 deferred post-1.0; objective-AC fixes applied to Stories 5.7/9.6/10.1/10.3."
 inputDocuments:
   - "_bmad-output/planning-artifacts/prds/prd-Project_Chimera-2026-06-05/prd.md"   # FR/NFR source (Road-to-1.0 PRD)
   - "_bmad-output/planning-artifacts/prds/prd-Project_Chimera-2026-06-05/addendum.md"
@@ -235,6 +235,21 @@ from the **UX run** (`ux-Project_Chimera-2026-06-20`). GDD + FMA faction design 
 
 ---
 
+### Design-Gap Requirements *(surfaced by implementation-readiness 2026-06-21; triaged in-scope for 1.0 — see `implementation-readiness-report-2026-06-21.md` §7)*
+
+_GDD design intentions that no PRD FR owned; decided in-1.0. **To be back-filled into the PRD as FR-53+ in a PRD-update pass** (the PRD stays the canonical requirements baseline)._
+
+- **DG-1** — Full RTS command vocabulary: single-target **Attack** (right-click enemy), **Patrol**, **Follow**, and a **Hold Position** behaviorally distinct from Stop (Move/Stop/Attack-Move already built). *(GDD §3)*
+- **DG-2** — **Formation movement**: priority yielding (moving units take precedence; idle shift aside) + per-unit collision-radius & push/yield fields + role-based battle formations (front-line/back-line by archetype). *(GDD §3, line 163)*
+- **DG-3** — Per-resource **collection models** (GATHER built; add **INCOME** trickle + **STREAMING** + **requires_structure**) and **Crystal production** wired (declared-but-never-produced today). *(GDD §3)*
+- **DG-4** — Authorable **unit tags** (Organic/Mechanical/Magical) as an effect-targeting & counter axis, distinct from damage/armor types. *(GDD §3)*
+- **DG-5** — Authorable **attack-delivery flag** (Hitscan vs Projectile) + per-unit projectile speed, decoupled from range (splash already authorable). *(GDD §3)*
+- **DG-6** — Per-client **command-rate throttle / anti-spam** on the dedicated server (server-validation layer; determinism-neutral). *(GDD §6 Tier-1 anti-cheat)*
+- **DG-7** — **Adaptive AI opponent**: deterministic player-pattern tracking (rush/turtle) + counter-strategy weighting + Tinkerer decision-weight debug overlay. *(GDD §9)*
+- **DG-8** — **Win-condition preset templates** (King of the Hill, Timed Survival, Assassination, Landmark Destruction) as T1 DSL templates + move win-evaluation into a sim `WinConditionSystem`. *(GDD §3/§5)*
+- **DG-9** — Deterministic **sim-side terrain elevation** + **height-advantage vision** toggle (fog-of-war itself already built — verify). *(GDD §2/§3)*
+- **DG-10** — *(DEFERRED post-1.0)* True server-enforced **anti-maphack** fog requires server-authoritative state replication, which is **incompatible with the as-built deterministic lockstep** (every client must simulate hidden units to stay in sync). Logged as a post-1.0 architecture epic; the GDD "map-hacking impossible" claim is reconciled to "server-authoritative command **validation**" for 1.0. *(GDD §3 line 171 / §6 line 340)*
+
 ### UX Design Requirements
 
 *From `ux-Project_Chimera-2026-06-20` (DESIGN.md visual spine + EXPERIENCE.md behavioral spine), both authoritative.
@@ -417,19 +432,19 @@ Items flagged ⚠ are under-specified in the source and need a concrete value/de
 
 ### Epic 1: Trustworthy Foundation & Desync-Free Multiplayer
 Multiplayer provably stays in sync across two machines (the #1 ship risk, retired), the deterministic sim is covered by automated tests and CI-regression-guarded, and the ~2,200-LOC `MainScene` god-object is decomposed into a Godot-free sim spine ready to absorb six editors. *(PRD M0+M1; arch foundational program — strangler refactor, SimRng, generalized SimChecksum, fail-closed ScenarioValidator + `Validated<T>`, two-tier testing, banned-API/AOT analyzers, cross-platform determinism gate, engine bump → 4.6.3, DamageMatrix→JSON. Realizes NFR-4.)*
-**FRs covered:** FR-39, FR-44, FR-45, FR-47
+**FRs covered:** FR-39, FR-44, FR-45, FR-47 · **DG (readiness triage):** DG-1 (command vocabulary, 1.12), DG-2 (formations, 1.13)
 
 ### Epic 2: Living Combat — Effect Engine, Modifiers & Ability Authoring
 The sim engine can express buffs, auras, DoT/HoT, summons, and multi-effect abilities deterministically; creators author active and passive abilities in-app; and the showcase factions' signature mechanics finally *run* with satisfying combat feedback. *(PRD M2; arch D1 — single Effect-Graph surface + Modifier subsystem + Energy/Mana SoA; unblocks the combat-reachability gaps the FMA factions need: per-unit production-selection UI, Air building/category, anti-air/ground TargetFilter, anti-building combat, worker-cast path, crystal-spend wiring; `CombatFeedbackProfile`.)*
-**FRs covered:** FR-8, FR-9, FR-10, FR-11, FR-12, FR-12a
+**FRs covered:** FR-8, FR-9, FR-10, FR-11, FR-12, FR-12a · **DG:** DG-4 (unit tags, 2.11)
 
 ### Epic 3: Author Units & Heroes (incl. Save/Load)
 A creator builds units and heroes in one consolidated Unit Card Editor with no JSON, and players save/load hero progression between custom games via a hero-picker interface. *(PRD M2; arch D4 offline hero-persistence rail. The shared **UI design-system Godot Theme + reusable component kit** (UX-DR1–32) is delivered here and reused by every later editor surface. FR-7c online rail → Epic 9.)*
-**FRs covered:** FR-1, FR-2, FR-3, FR-4, FR-5, FR-6, FR-7, FR-7a, FR-7b, FR-7d, FR-7e
+**FRs covered:** FR-1, FR-2, FR-3, FR-4, FR-5, FR-6, FR-7, FR-7a, FR-7b, FR-7d, FR-7e · **DG:** DG-5 (attack-delivery flag, 3.12)
 
 ### Epic 4: Author Buildings, Tech Trees & Economy
 A creator authors building definitions, drag-builds a visual tech tree that gates production at runtime, and configures resources and the supply model as data — closing the hardcoded-economy gap so creators aren't locked to Ore+Crystal. *(PRD M2; arch D3 data-drive tables — N-resource registry, tech-tree prerequisites, supply/cap.)*
-**FRs covered:** FR-13, FR-14, FR-15, FR-16
+**FRs covered:** FR-13, FR-14, FR-15, FR-16 · **DG:** DG-3 (collection models + Crystal, 4.7)
 
 ### Epic 5: Faction Definer & the Asymmetric Showcase Factions
 A creator assembles authored units/heroes/buildings/tech into a complete, playable faction through a guided wizard, and the two showcase factions become genuinely asymmetric with their FMA identities landed and playtest-validated. *(PRD M2; consumes Epics 2–4; lands revised FMA stats, `display_names`, and themed mesh filenames into the alpha/beta faction JSON.)*
@@ -437,11 +452,11 @@ A creator assembles authored units/heroes/buildings/tech into a complete, playab
 
 ### Epic 6: Map & Terrain Editor
 A creator sculpts and texture-paints terrain with textures that persist correctly on save/load (fixing the current procedural-texture defect), and places entities, start positions, resource nodes, and win conditions to a ship-quality bar. *(PRD §4.5 polish; largely verification + the terrain-persistence fix.)*
-**FRs covered:** FR-21, FR-22
+**FRs covered:** FR-21, FR-22 · **DG:** DG-9 (terrain elevation + high-ground vision, 6.5)
 
 ### Epic 7: Rich Trigger DSL & Custom Runtime UI
 "Build any game": the trigger DSL gains variables, arithmetic, collections, loops, timers, and custom events, plus trigger-driven custom runtime UI — authored across four interoperating tiers (preset / ECA / visual node-graph / natural-language) on one underlying representation, all deterministic and server-validatable. *(PRD M3; arch D2 typed event/dataflow graph IR containing D1 effect subgraphs + bounded-loop model + two-rail custom UI; arch D3 serialization contract — single ContentLoader, `NodeBase` converter, canonical-model hash, versioning/migration.)*
-**FRs covered:** FR-23, FR-24, FR-25, FR-26, FR-27, FR-28
+**FRs covered:** FR-23, FR-24, FR-25, FR-26, FR-27, FR-28 · **DG:** DG-8 (win-condition presets + sim WinConditionSystem, 7.10)
 
 ### Epic 8: AI-Assisted Creation
 An AI collaborator is available across every editor — provider configuration (OpenRouter / Claude / local Ollama), generation of triggers, maps, units, abilities, heroes and factions as editable data, and faction/scenario balance analysis — degrading gracefully to a fully-usable manual suite when no provider is available. *(PRD M4; arch D6 hand-rolled `ILLMProvider` + `ISecretStore`; relax the AI-gen validator clamps for non-RTS scenario types; all AI output passes the same content-validation gate.)*
@@ -449,11 +464,11 @@ An AI collaborator is available across every editor — provider configuration (
 
 ### Epic 9: Share, Discover & Multiplayer at Scale
 Creators package and publish scenarios to mod.io (gated by proof-of-play, with IP ownership surfaced), players browse/subscribe/rate them, and multiplayer scales to a verified ≤4 players (8 as a fast-follow) with matchmaking, parties, viewable/shareable replays, and server-validated online hero persistence. *(PRD M5; arch D5 — invert the pure relay into stateful server authority with canonical multi-hash handshake, majority-vote desync attribution, replay v2; arch D4 online hero rail = FR-7c.)*
-**FRs covered:** FR-35, FR-36, FR-37, FR-38, FR-38a, FR-40, FR-41, FR-7c
+**FRs covered:** FR-35, FR-36, FR-37, FR-38, FR-38a, FR-40, FR-41, FR-7c · **DG:** DG-6 (command rate-limiting, 9.13)
 
 ### Epic 10: Release Readiness — Content, Balance, Performance & Ship
 The concrete finishing work to ship: audio assets wired, Iron Pact's placeholder art replaced and held coherent by an art-style consistency layer, the performance pass, final faction balance, the Linux export, the accessibility baseline, and release to both Steam and a direct DRM-free channel. *(PRD M6; arch P1 art-style layer; closes the two primary 1.0 quality gates alongside Epics 1 & 5.)*
-**FRs covered:** FR-42, FR-43, FR-46, FR-48, FR-49, FR-49a, FR-50, FR-51, FR-52
+**FRs covered:** FR-42, FR-43, FR-46, FR-48, FR-49, FR-49a, FR-50, FR-51, FR-52 · **DG:** DG-7 (adaptive AI, 10.11)
 
 ---
 
@@ -709,6 +724,54 @@ _Covers: FR-45, AR-13, AR-39. Depends on: 1.10._
 
 > ⚠ Quality-review: define the concrete smoke-test checklist per system; for the LLM-Trigger and Utility-AI items specify exactly which sim-touching outputs are checksummed (not 'decisions deterministically').
 
+### Story 1.12: Full RTS command vocabulary (single-target Attack, Patrol, Follow; Hold distinct from Stop)
+
+As a Commander issuing orders in a live match,
+I want the complete RTS command set — single-target Attack, Patrol, and Follow — plus a Hold Position that truly holds ground instead of behaving like Stop,
+So that I can micro units the way every RTS trains me to (force-fire a specific enemy, patrol a lane, escort a unit, anchor a chokepoint) without the orders silently collapsing into Move/Stop.
+
+**Acceptance Criteria:**
+
+**Given** the current `UnitCommand:byte` enum (Idle=0, Move=1, AttackMove=2, Stop=3, HoldPosition=4, Build=5) **When** the new orders are added **Then** the enum gains `AttackTarget`, `Patrol`, and `Follow` as new byte values appended AFTER Build (existing values 0–5 unchanged for replay back-compat), each new per-entity field (e.g. forced-target id, patrol anchor/leg, follow leash) is a new parallel SoA array on EntityWorld sized to capacity, and a unit test asserts the three new behaviors each route to a distinct `CombatSystem.Tick*Combat` branch in the per-command switch (not the `default: // Idle` fall-through)
+
+**Given** an idle friendly unit and a visible enemy unit **When** the Commander right-clicks the enemy (SelectionSystem right-click hit-tests to an enemy entity, not ground) **Then** the unit is issued `AttackTarget` with the clicked enemy's id stored in the forced-target SoA array, it path-moves to and force-attacks ONLY that target ignoring nearer enemies, and a Move command is still issued when the right-click hits ground or a friendly instead of an enemy
+
+**Given** a unit on `AttackTarget` whose forced target dies or becomes invalid **When** the next CombatSystem tick runs **Then** the forced-target slot is cleared and the unit falls back to `Idle` (acquire-nearest) behavior rather than freezing, stuttering, or holding a dangling target id (error/edge path)
+
+**Given** a unit issued `Patrol` between two or more waypoints (P key / patrol order) and `Follow` on a friendly target (F key) **When** the patrol unit meets an enemy en route **Then** it auto-engages like AttackMove, then resumes its waypoint loop and reverses at the final leg to return; and the `Follow` unit tracks its friendly target, re-pathing only when it exceeds a fixed leash distance and idling within it, dropping to `Idle` if the followed unit dies
+
+**Given** units on `HoldPosition` versus `Stop` **When** an enemy enters attack range and when a friendly unit pushes into the holder's tile **Then** Hold attacks any in-range enemy but NEVER sets a MoveTarget toward it and is never displaced from its tile by collision/steering, whereas Stop retains its existing behavior — proving Hold no longer aliases Stop (CombatSystem currently shares the `case Stop: case HoldPosition:` branch)
+
+**Given** all five orders (Move, AttackMove, Stop, HoldPosition + the three new) issued across both `LockstepManager` and `ReplayPlayer` command-apply switches **When** the pinned golden scenario exercises every order and the run is checksummed **Then** the new orders serialize/deserialize identically through both paths, all new SoA fields fold into `SimChecksum`, and the run reproduces byte-identically against the re-baselined golden checksum on a repeat run
+
+_Covers: DG-1, UX-DR66. Depends on: 1.8._
+
+> Brownfield: Move/Stop/AttackMove are BUILT — VERIFY them (CombatSystem.Tick{Idle,Stop,AttackMove}Combat at cs:91–211; issued via SelectionSystem.Issue{Move,Stop,Hold,AttackMove}Command) and do not regress them. BUILD: single-target `AttackTarget`, `Patrol`, `Follow`, plus a genuinely distinct `HoldPosition` — today Hold aliases Stop in the CombatSystem switch (cs:72–74) and the enum comment (EntityWorld.cs:16). Append the three enum values after Build=5 so existing replays keep their byte meaning; `AttackTarget`/`CommandGoal` SoA arrays already exist, so reuse them and add only the genuinely new per-entity arrays (forced-target id, patrol leg/anchors, follow leash). MUST extend the command-apply switch in BOTH LockstepManager.cs:605–642 AND ReplayPlayer.cs:151–182 (each currently handles only Move/AttackMove/Stop/HoldPosition) — a new order added to one but not the other will desync. Determinism: all distance/leash/range math uses the 16.16 `Fixed` type (no float/double/Mathf in sim), iterate ascending entity id, target re-acquisition only via the seeded `SimRng` if any tie-break is needed (else lowest-id), no wall-clock; new SoA fields MUST fold into `SimChecksum`, which RE-BASELINES the golden checksum — commit the new golden file in this story. Scope limit: ground-target Attack-Move already exists (do not rebuild it); this story is single-TARGET orders + Hold semantics only — no formation/group-move, no rally points, no queued/shift-click command chaining. Presentation (right-click hit-test feedback, patrol/follow cursors) stays in the UI layer with no Godot types leaking into sim.
+
+### Story 1.13: Formation movement: priority yielding + role-based battle formations + push/yield data fields
+
+As a Commander maneuvering armies,
+I want moving units to take precedence so idle units shift aside, units to push/yield by their authored radius, and multi-unit moves to form up by combat role,
+So that armies advance through their own ranks instead of jamming, and front-line troops lead while ranged/support trail — without ever desyncing multiplayer.
+
+**Acceptance Criteria:**
+
+**Given** a moving unit and an idle unit overlapping inside SEPARATION_RADIUS **When** MovementSystem resolves separation **Then** the separation push is biased by the Moving flag (not the current symmetric split at MovementSystem.cs:72-89) so the idle unit receives the larger displacement and the moving unit's path-following velocity is reduced by no more than a fixed bias fraction, and two moving units (or two idle units) still split symmetrically as a measurable equal-magnitude baseline
+
+**Given** UnitDefinition with new `collision_radius` and a push-vs-yield flag (creator-authorable per GDD line 163) **When** a faction JSON is loaded **Then** both fields deserialize into new parallel SoA arrays on EntityWorld (`CollisionRadius`, push/yield), separation uses the summed per-unit radii as the contact threshold instead of the flat SEPARATION_RADIUS constant, and a unit flagged "push" is never displaced by a "yield" unit it contacts
+
+**Given** a unit definition that omits `collision_radius` or sets it <= 0 **When** it loads **Then** it falls back to a single documented default radius (no NaN, no exception, no zero-radius divide) and the unit participates in separation identically to a unit that authored that same default value
+
+**Given** N selected units issued a move in a facing direction **When** IssueMoveCommand builds the formation (replacing the flat ceil(sqrt(N)) square grid at SelectionSystem.cs:332-374) **Then** Melee/Siege archetypes (from UnitDefinition.Category) are assigned slots forward of the move direction and Ranged/Support slots behind it, slot assignment iterates selected ids in ascending order, and re-issuing the identical move with the identical selection produces the identical per-unit destinations
+
+**Given** a single-unit move or a selection of one archetype only **When** the formation is built **Then** it degrades to a centered single destination (or a single-row line for a one-archetype group) with no empty front/back gap and no destination placed on top of another selected unit
+
+**Given** the committed golden scenario after these sim arrays and separation/formation changes land **When** the replay harness runs headless **Then** the run is byte-identical to the RE-BASELINED golden checksum (separation math stays in 16.16 `Fixed`, entities iterate ascending-id, no float/Mathf/wall-clock/unseeded randomness in sim), and removing the Moving-bias OR the per-unit-radius term changes the checksum — proving both fold into SimChecksum
+
+_Covers: DG-2. Depends on: 1.8._
+
+> Brownfield: MovementSystem.cs:72-89 is today SYMMETRIC separation (SEPARATION_RADIUS=2.0, SEPARATION_STRENGTH=2.5) with NO Moving-vs-idle bias — BUILD the priority bias here. SelectionSystem.IssueMoveCommand:332-374 is a flat square grid (cols=ceil(sqrt(n)), SPACING=2.0), not role-aware — BUILD the role-based front/back ordering off UnitDefinition.Category (Worker/Melee/Ranged/Siege/Air/Structure). UnitDefinition has Speed but NO CollisionRadius and NO push/yield flag — BUILD both as JSON fields + new parallel SoA arrays on EntityWorld. VERIFY the spatial-hash neighbor query still feeds separation unchanged. Determinism: all new math in `Fixed`, ascending-id iteration, no Godot types in sim (formation is sim-state mutation; IssueMoveCommand only sets goals); these new fields and the new separation result MUST fold into SimChecksum and WILL RE-BASELINE the golden checksum — commit the new golden in the same change. Scope: yielding/push + role front-back ordering + the two data fields only; NO flow-field formations, NO collision-aware pathfinding, NO per-formation morale/cohesion. NOTE: STATUS.md currently marks "Formation movement ✅" — this story DOWNGRADES that claim (the as-built grid is not role-aware and has no yielding); update STATUS.md to reflect partial/in-progress.
+
 ## Epic 2: Living Combat — Effect Engine, Modifiers & Ability Authoring
 
 _The sim engine can express buffs/auras/DoT/summons/multi-effect abilities deterministically; creators author abilities in-app; the showcase factions' signature mechanics run with satisfying combat feedback._
@@ -910,6 +973,30 @@ _Covers: FR-8, FR-9, FR-10, FR-12a, AR-8, AR-9, AR-29, UX-DR51. Depends on: 2.5,
 > Caps the epic by authoring the showcase mechanics with the now-shipped tools (no new engine code). Equal Exchange (Covenant): each signature active ability deducts a FLAT armor-independent HP cost via the non-matrix DirectHpDelta leaf (per faction-design: a self-Damage leaf would wrongly scale by armor) OR a matter/crystal cost — never both; authored in 2.5, paid via 2.9b multi-resource cost, felt via 2.7 feedback. Sanguine Furnace (Court): passive per-unit regen as a Persistent(periodEffect=Heal) Modifier (pawns trickle, immortals pour) authored in 2.6. SCOPE LIMIT: the on-death 'Glut' accelerated-regen aura needs the D2 on-death trigger seam and is ENABLED-BY-EPIC-7 — do NOT build it here and do NOT create a dependency on Epic 7; only the D1-expressible passive HoT + Equal Exchange ship in this story. Flag Glut as deferred in the ability data with a note.
 
 > ⚠ Quality-review (OWNERSHIP): Epic 2 OWNS the Equal Exchange (flat self-cost) and Sanguine Furnace (Persistent HoT) D1 mechanics. Epic 5's 5.4 is a verify/integration consumer, not a re-wire. The on-death 'Glut' aura is deferred to Epic 7's D2 on-death seam.
+
+### Story 2.11: Authorable unit tags (organic/mechanical/magical) as an effect-targeting & counter axis
+
+As a creator,
+I want an authorable unit-tag classification (Organic / Mechanical / Magical) that is separate from damage_type and armor_type and that the effect engine can filter and counter by,
+So that I can build effects and counters like "bonus damage vs Mechanical" or "heal only Organic" without abusing the damage/armor matrix.
+
+**Acceptance Criteria:**
+
+**Given** a UnitDefinition JSON declaring `tags: ["Organic","Magical"]` **When** it is loaded **Then** it deserializes into a new tag field on UnitDefinition that resolves to a flags `UnitTag` value distinct from the existing DamageType/ArmorType/Category fields **And** a per-entity tag SoA array on EntityWorld is populated for each spawned entity, leaving the existing damage_type x armor_type DamageMatrix path unchanged
+
+**Given** a UnitDefinition JSON whose `tags` contains a token not in the closed set {Organic, Mechanical, Magical} (e.g. "Undead") **When** it passes through the Validated<T> gate **Then** the gate rejects it with a located error naming the unit id and the offending token **And** no rejected definition produces a spawnable entity
+
+**Given** a 2.1 SearchArea node configured with a tag predicate `requireTag = Mechanical` **When** the effect executes over a mixed-tag set of candidates in ascending-id order **Then** only entities whose tag array intersects Mechanical are collected as targets and all non-Mechanical entities are skipped, asserted by exact target-id count and membership
+
+**Given** an effect/modifier authored as "+X bonus vs Mechanical" and a separate "Heal only Organic" effect **When** each resolves against a target that does/does not carry the required tag **Then** the bonus is applied (matching-tag) or fully omitted (non-matching) and the heal lands on Organic targets only, with all gameplay deltas computed in 16.16 Fixed (no float/Mathf in the sim path)
+
+**Given** a unit with no `tags` field in JSON **When** it is loaded and spawned **Then** its tag SoA entry is the empty/None flag value, it is matched by no tag predicate, and it loads without error (back-compatible default)
+
+**Given** two identical replays of a scenario exercising tag-filtered SearchArea and a "bonus vs Mechanical" effect **When** a SimChecksum is taken after resolution **Then** the checksums are byte-identical across both runs **And** the new per-entity tag array is folded into SimChecksum
+
+_Covers: DG-4, AR-8. Depends on: 2.1, 2.3._
+
+> BROWNFIELD: UnitDefinition.cs today has DamageType (Normal/Pierce/Siege/Magic), ArmorType (Unarmored/Light/Medium/Heavy/Fortified), and a non-combat Category archetype string, but NO tag/classification field — BUILD a new authorable dimension here. The damage_type x armor_type DamageMatrix is a different axis and is explicitly NOT a substitute: tags are an orthogonal targeting/counter facet, so do not overload Category or the matrix. VERIFY the 2.1 effect-graph executor + SearchArea composition node and the 2.3 AbilityDefinition+Validated<T> gate exist as the consumers; BUILD: `[Flags] enum UnitTag { None, Organic, Mechanical, Magical }` (or validated string[] resolving to it), a `tags` JSON field + ParsedTags accessor mirroring the existing ParsedDamageType/ParsedArmorType pattern, a new parallel tag SoA array on EntityWorld, a SearchArea tag predicate, and tag-conditional effect/modifier application. The Validated<T> gate must reject any tag outside the closed set with a LOCATED error (unit id + token), per AR-8. DETERMINISM: this mutates sim state — iterate candidates in ascending-id order, all math in Fixed (never float/double/Mathf), randomness only via seeded SimRng, no wall-clock; the new tag array MUST fold into SimChecksum, which WILL RE-BASELINE the golden checksum (regenerate and commit the new golden after this story). Presentation stays separate — no Godot types in the sim. SCOPE LIMIT: this story ships only the data model, JSON schema, validator, EntityWorld array, and the effect-engine filter/counter consumption; the authoring/editor UI for tags lands in Epic 3 (do not build editor UI here).
 
 ## Epic 3: Author Units & Heroes (incl. Save/Load)
 
@@ -1113,6 +1200,30 @@ _Covers: UX-DR67, UX-DR68, UX-DR73. Depends on: 3.x design-system + component ki
 
 > ADDED by coverage review. Built-foundation HUD/menus exist ('assets pending') — this is verify + restyle to the design system, not net-new screens.
 
+### Story 3.12: Authorable attack-delivery flag (hitscan vs projectile) + per-unit projectile speed
+
+As a creator,
+I want to explicitly author whether a unit's attack is delivered as instant hitscan or a travelling projectile, with an optional per-unit projectile speed, independent of its range,
+So that I can build a long-range instant-hit sniper or a slow short-range projectile lobber without the engine inferring delivery from range alone.
+
+**Acceptance Criteria:**
+
+**Given** the as-built splash code path (UnitDefinition.SplashRadius, EntityWorld.SplashRadius SoA, ProjectileSystem.ApplySplash) **When** a Siege-archetype unit authored with splash_radius > 0 in alpha/beta_faction.json fires and the projectile hits **Then** every enemy within splash_radius takes full damage exactly as today (VERIFY-only: no behavior change, no new field for splash) **And** a unit with splash_radius 0 deals damage only to the primary target
+
+**Given** a new creator-authorable `delivery` field on UnitDefinition (enum Hitscan | Projectile) deserialized from faction JSON **When** CombatSystem.TryDealDamage resolves an attack **Then** it branches on `world.Delivery[attacker]` (the new per-entity SoA), NOT on `world.AttackRange[attacker] > MELEE_THRESHOLD`, and the legacy MELEE_THRESHOLD comparison is removed from the delivery decision **And** a unit authored Hitscan applies damage instantly with no projectile spawned regardless of its AttackRange, while a unit authored Projectile spawns a tracking projectile regardless of its AttackRange
+
+**Given** a unit authored `delivery: "Projectile"` with an optional `projectile_speed` set in JSON **When** it fires **Then** the spawned projectile travels at that unit's per-entity `world.ProjectileSpeed[attacker]` value (sourced from the new SoA, in 16.16 Fixed) instead of the hardcoded global PROJECTILE_SPEED=18 **And** a Projectile unit that omits projectile_speed falls back to the documented default (18) so existing faction data is unchanged
+
+**Given** a faction JSON that omits the `delivery` field entirely (existing/legacy data) **When** it loads **Then** `delivery` defaults such that every shipped alpha/beta unit keeps its current behavior (melee-ranged units stay instant, ranged-attacker units stay projectile) and the match runs with zero authoring errors **And** an invalid `delivery` string or a negative/zero `projectile_speed` on a Projectile unit fails closed through the AR-39 validator with a located error badge (UX-DR55) and blocks Save/Playtest
+
+**Given** the Unit Card Editor from 3.4 **When** I open a unit **Then** a `delivery` enum control (Hitscan | Projectile) and a `projectile_speed` field (shown/relevant only when Projectile is selected) are exposed with tooltips, edit through the EditorHistory undo stack, and persist to the faction JSON **And** changing delivery from Projectile to Hitscan and back in the editor is fully reversible via Ctrl+Z
+
+**Given** the golden-checksum harness on a fixed-seed scenario containing a Hitscan unit, a Projectile unit with custom projectile_speed, and a splash unit **When** the match is simulated for the recorded tick count **Then** SimChecksum (now folding the new Delivery and ProjectileSpeed SoA arrays) is byte-identical to the re-baselined golden value across two consecutive runs and across platforms, with entities processed in ascending-id order and no float/Mathf used in the new sim code
+
+_Covers: DG-5, UX-DR77. Depends on: 3.4._
+
+> VERIFY vs BUILD: splash_radius is already fully built and authorable (UnitDefinition.cs:82-83 with real values in alpha/beta_faction.json; EntityWorld.SplashRadius SoA; ProjectileSystem.ApplySplash:103-131) — this story only confirms it, it adds NO splash field. BUILD: a new `delivery` enum (Hitscan | Projectile) and optional `projectile_speed` on UnitDefinition, two new parallel SoA arrays on EntityWorld (Delivery, ProjectileSpeed), and the replacement of the implicit `world.AttackRange[attacker] > MELEE_THRESHOLD` branch (CombatSystem.cs:254; MELEE_THRESHOLD at :31) with an explicit `world.Delivery[attacker]` check so delivery is decoupled from range. No "hitscan" symbol exists today — introduce it. Per-unit ProjectileSpeed replaces the hardcoded global PROJECTILE_SPEED=18 (CombatSystem.cs:31 / ProjectileSystem.cs:17), which becomes the fallback default only. Determinism: ProjectileSpeed stored and applied as the custom 16.16 Fixed (never float/double/Mathf in sim), enum default chosen so legacy JSON reproduces current behavior, ascending-id iteration preserved, seeded SimRng only, no wall-clock. Both new SoA arrays MUST fold into SimChecksum, which RE-BASELINES the golden checksum (regenerate and commit the new golden value as part of this story). Presentation stays separate — no Godot types in the sim layer; the editor control lives in the UI layer. Scope limit: delivery is a binary Hitscan/Projectile choice only — no beam/arc/ballistic-arc variants, and projectile visuals/tracking behavior are unchanged beyond honoring the per-unit speed.
+
 ## Epic 4: Author Buildings, Tech Trees & Economy
 
 _A creator authors building definitions, drag-builds a visual tech tree that gates production, and configures resources and the supply model as data._
@@ -1226,6 +1337,30 @@ So that I can design progression visually instead of editing prerequisite arrays
 _Covers: FR-14, UX-DR74, UX-DR57, UX-DR33, AR-26. Depends on: 4.2, 4.5._
 
 > FR-14 (visual authoring half) / UX-DR74 (tier-laned tech-tree graph) / UX-DR57 (drag out-port to wire a dependency) / UX-DR33 / AR-26. Brownfield: no graph-editing UI exists; Godot GraphEdit/GraphNode is the natural kit, and the right-dock inspector is shared with 4.5. Presentation layer only — it edits prerequisite DATA consumed by 4.2's resolver; it never mutates sim state. Depends on 4.5 (building nodes/inspector) and 4.2 (prerequisite data model + cycle/referential lint reused for in-editor edge validation).
+
+### Story 4.7: Per-resource collection models (INCOME / STREAMING / requires_structure) + Crystal production
+
+As a RTS creator,
+I want each resource node to declare its collection model (GATHER round-trip, INCOME flat trickle, or STREAMING in-place deposit), an optional requires_structure gate, and Crystal to actually be produced,
+So that I can author idle/tower-defense economies, base-fed streaming economies, and structure-gated extraction without being locked to the single carry-it-back-to-base loop.
+
+**Acceptance Criteria:**
+
+**Given** the existing GATHER node (worker cycles Idle → MovingToResource → Gathering → MovingToBase → deposit-on-arrival) with a per-node max_gatherers cap **When** a worker reaches a node already at its max_gatherers and when it physically arrives at the FactionBase **Then** FindBestNode skips the saturated node (a third worker stays Idle until a slot frees) and the carried amount is added to the depositing faction's balance only on arrival — verifying the as-built GATHER + max_gatherers behavior is unchanged by this story
+
+**Given** a ScenarioResourceNode declaring collection_model=INCOME with a period and per-period amount and no assigned workers **When** the sim runs **Then** the node credits exactly amount to the owning faction's resource balance every period ticks (accumulated in Fixed, decremented from SupplyRemaining, the node depleting and going Active=false when SupplyRemaining hits zero) and zero workers are ever assigned to or routed toward it
+
+**Given** a ScenarioResourceNode declaring collection_model=STREAMING with assigned workers standing in-place at the node **When** workers are Gathering **Then** the gathered amount is credited directly to the owning faction's balance each tick at the node (no MovingToBase leg, no CarryAmount round-trip) and the same total is mined whether the FactionBase is adjacent or across the map
+
+**Given** a node with requires_structure set to a structure type **When** the owning faction has no qualifying structure within the configured proximity (or does not own one) **Then** FindBestNode excludes that node and INCOME/STREAMING credit is withheld; and as soon as a qualifying owned structure exists in range the node becomes eligible and begins producing — gated purely on sim state in ascending id order
+
+**Given** a scenario whose nodes/units produce and spend Crystal **When** a STREAMING or GATHER Crystal node deposits and a unit with CostCrystal is purchased **Then** ResourceStore.AddCrystal credits the Crystal balance and ResourceStore.SpendCrystal deducts it atomically (returning false and mutating nothing when insufficient), closing the dead path where Crystal[] was declared and consumed but never produced
+
+**Given** two runs of a scenario mixing GATHER, INCOME, STREAMING and a requires_structure-gated Crystal node **When** the sim runs for N ticks and a golden checksum is taken **Then** checksums are byte-identical (all credit math in Fixed, periods counted in integer ticks, nodes/entities processed in ascending id order, randomness only via SimRng, no wall-clock, no Godot types in GatheringSystem/ResourceNodeStore/ResourceStore)
+
+_Covers: DG-3, FR-15. Depends on: 4.3._
+
+> DG-3 / FR-15. Brownfield as-built: GatheringSystem.cs is a single GATHER round-trip only (TickIdle→TickMovingToResource→TickGathering→TickMovingToBase, deposit gated on physical arrival at FactionBase cs:135-143 via AddOre). VERIFY-ONLY: max_gatherers is fully built (ResourceNodeStore.MaxGatherers/AssignedGatherers, FindBestNode skips saturated nodes cs:189, max_gatherers present in every scenario JSON) — do not rebuild it, only assert it. BUILD: a collection_model selector (GATHER|INCOME|STREAMING, default GATHER for back-compat) + requires_structure field on ScenarioResourceNode and the parallel SoA arrays on ResourceNodeStore; the INCOME path (periodic flat trickle, no workers, no entity routing) and STREAMING path (credit at node each Gathering tick, no MovingToBase/CarryAmount leg); the structure-proximity/ownership gate folded into FindBestNode + INCOME/STREAMING eligibility; and ResourceStore.AddCrystal/SpendCrystal to close the real dead path (Crystal[] declared cs:13, consumed via UnitDefinition.CostCrystal, never produced today). DETERMINISM: this mutates sim state — all credit math stays in the 16.16 Fixed type, INCOME periods are integer-tick counters (never wall-clock), iterate nodes/entities in ascending id, any randomness only via SimRng; new per-node fields are new parallel SoA arrays on ResourceNodeStore and every new Crystal/period-accumulator value MUST fold into SimChecksum — this RE-BASELINES the golden checksum (record the new baseline as part of this story per AR-15/AR-16). SCOPE: GATHER behavior and existing scenarios are unchanged (default model = GATHER); presentation stays separate (no Godot types added to sim); requires_structure resolves against owned structures only (no shared/ally visibility in 1.0).
 
 ## Epic 5: Faction Definer & the Asymmetric Showcase Factions
 
@@ -1377,7 +1512,7 @@ So that FR-20's 'genuinely asymmetric, validated in playtest' bar and FR-18's AI
 
 **Given** the running match **When** observed **Then** Court units regenerate HP via the Sanguine Furnace HoT and a Covenant signature action deducts a flat Equal Exchange self-cost — each faction's unique mechanic is observed firing live (FR-20 unique-mechanic bar)
 
-**Given** the two factions in play **When** their behavior/army profiles are compared **Then** they are observably asymmetric (different stat-driven pacing and at least one distinct mechanic), not 1:1 mirrors — captured as a playtest validation note
+**Given** the two factions in play **When** their behavior/army profiles are compared over a fixed-seed sample **Then** their army-composition profiles (unit-share by archetype) diverge by at least a defined threshold (e.g. ≥25% composition distance) AND/OR each faction's self-play win rate sits within the FR-42 45–55% band while at least one distinct signature mechanic fires live — the measured composition-distance and win-rate numbers are recorded as the playtest validation note (not a subjective "looks different")
 
 **Given** the same skirmish seed run twice **When** both runs complete equal ticks **Then** the golden checksum is byte-identical (the playtest path did not break determinism)
 
@@ -1385,7 +1520,7 @@ _Covers: FR-20, FR-18, AR-39, UX-DR80. Depends on: 5.4, 5.6._
 
 > Integration/validation story — no new systems, it exercises 5.1-5.6 together. Uses the godot-verify / in-engine MCP path to run a skirmish: alpha vs beta, each driven by its ai_preset. Confirms (a) each faction's signature mechanic from 5.4 actually fires in a live match (Court units visibly regenerate via Sanguine Furnace; a Covenant signature action pays Equal Exchange flat self-cost), (b) the AI builds/trains and fights with each faction (FR-18), and (c) the factions feel/play asymmetrically (different effective army composition/behavior, not mirror). The on-death Glut remains out (Epic 7). Capture a brief playtest note as the FR-20 'validated in playtest' artifact. Confirm no determinism regression (golden checksum still byte-identical across two seeded runs).
 
-> ⚠ Quality-review: replace 'observably asymmetric' with an objective criterion (e.g. divergent army composition or a win-rate/behavior delta beyond a threshold) so the asymmetry bar is testable.
+> ✅ Resolved 2026-06-21 (readiness triage): AC#3 now uses an objective criterion — an army-composition divergence threshold and/or the FR-42 win-rate band with recorded numbers — replacing 'observably asymmetric'.
 
 ### Story 5.8: [ADDED] 'Your First Scenario' guided onboarding (<15-min playable)
 
@@ -1488,6 +1623,30 @@ So that I can author a complete, playable map that meets a ship-quality bar.
 _Covers: FR-22, UX-DR56, UX-DR59, UX-DR70. Depends on: 6.1._
 
 > Brownfield: EntityPlacer.cs already implements the full palette (P1/P2 unit, Ore Node, Building, Start Pos), a ghost mesh that follows the cursor, G grid-snap, Delete with undo, EditorHistory for Ctrl+Z/Y, configurable node supply/rate and per-slot start ore; the win-condition panel exists in MainScene. VERIFY-TO-SHIP-BAR + close UX gaps against UX-DR56. Headline gap: UX-DR56 specifies left-click place / RIGHT-CLICK or ESC to CANCEL — verify/add a cancel that exits the active placement mode and hides the ghost (currently only left-click place exists; no explicit right-click/Esc cancel). Confirm ghost shape/color previews each mode and snaps on G. Confirm win-condition selection persists into ScenarioData (DestroyAllBuildings / EliminateAllUnits) on save/load. Reuses the Epic 3 creation-suite shell (UX-DR70). Advances FR-22.
+
+### Story 6.5: Sim-side deterministic terrain elevation + height-advantage vision (and fog-of-war verify)
+
+As a solo developer,
+I want the simulation to carry deterministic per-unit terrain elevation sampled from the authored heightmap and an optional height-advantage vision bonus, with the existing fog-of-war first verified,
+So that Commanders gain a real tactical reason to seize high ground while determinism and the shipped fog system stay intact.
+
+**Acceptance Criteria:**
+
+**Given** a running match with P1 units, an enemy P2 unit out of vision range, and the spectator/RevealAll path **When** the match ticks **Then** the existing FogOfWarSystem is confirmed as-built: the 128×128 byte Grid demotes Visible→Explored then re-stamps Visible per alive P1 unit using world.VisionRange, FogOfWarBridge uploads it to the GPU R8 texture and the minimap renders the same 3 states, and spectator RevealAll sets every cell to Visible — all VERIFIED with zero behavioural change to fog when the new height feature is toggled OFF
+
+**Given** a scenario whose authored Terrain3D heightmap has sculpted hills (non-zero heights) **When** the scenario loads and entities are spawned **Then** each entity's new `EntityWorld.Elevation[id]` (a Fixed parallel SoA array) is populated by deterministically sampling the authored heightmap at the entity's world X/Z, replacing today's all-zero flat path (MainScene.cs:753-760), and a flat/legacy heightmap yields Elevation == Fixed.Zero for every entity (no regression for flat maps)
+
+**Given** the per-scenario `HeightAdvantageVision` creator toggle is ENABLED and an elevated unit and a same-type ground-level unit exist **When** FogOfWarSystem.StampCircle runs for both **Then** the elevated unit stamps a strictly larger Visible radius (base VisionRange plus the configured per-elevation-step bonus, all computed in Fixed) while the ground-level unit's stamped radius equals its base VisionRange unchanged
+
+**Given** the `HeightAdvantageVision` toggle is DISABLED (default) **When** any unit at any elevation stamps vision **Then** the stamped radius equals exactly its base VisionRange with no elevation term applied, byte-for-byte matching the pre-feature fog Grid for an identical scenario
+
+**Given** an entity is sampled at or outside the heightmap's edge, or at a world X/Z that maps to an out-of-range region **When** Elevation is sampled **Then** the sample clamps to the nearest valid cell (no out-of-bounds read, no NaN, no exception) and returns a finite Fixed value, and the sim does not desync or crash
+
+**Given** the golden-checksum determinism harness over the canonical seeded scenario **When** the new Elevation array is folded into SimChecksum.Compute (alongside Position/Health, iterating alive entities in ascending-id order) and the match is replayed twice from the same seed **Then** both runs produce byte-identical per-frame checksums AND the recorded golden checksum is RE-BASELINED to the new value (the change is acknowledged as an intentional sim-state expansion, not a regression)
+
+_Covers: DG-9, AR-5. Depends on: 6.2._
+
+> Brownfield/as-built: FogOfWarSystem.cs is FULLY BUILT (3-state 128×128 byte Grid, Visible→Explored demote then per-unit StampCircle keyed on world.VisionRange, registered as ISimSystem, rendered via FogOfWarBridge GPU R8 + shader and MinimapBridge, spectator RevealAll) — VERIFY it, do not rebuild it. StampCircle today reads ONLY world X/Z; Position.Y is never read, and the sim terrain is FLAT (MainScene.cs:753-760 imports an all-zero RF heightmap at Y=0) so no elevation reaches the sim, and a height-advantage grep returns 0 hits. BUILD: (1) a new parallel `Fixed[] Elevation` SoA array on EntityWorld populated by a deterministic heightmap sample at spawn (Fixed math only — no float/double/Mathf in sim, sample via clamped integer cell lookup, not Godot Image interpolation in the sim layer); (2) a `HeightAdvantageVision` per-scenario creator toggle (ScenarioData, default OFF) plus a configurable per-step bonus; (3) the bonus term inside StampCircle computed in Fixed and added to base VisionRange only when the toggle is on. Determinism: Elevation is Fixed, sampled deterministically, and MUST fold into SimChecksum.Compute (currently Position.X/Y/Z.Raw + Health.Raw per alive entity, ascending id) — this RE-BASELINES the golden checksum; state the re-baseline explicitly and commit the new golden value. SCOPE LIMIT — vision-only coupling for 1.0: elevation feeds the fog/vision radius ONLY and MUST NOT silently alter pathfinding/flow-field results. If sampling or storing elevation is found to feed the NavMesh bake or flow-fields in any way, STOP and call it out rather than changing pathfinding determinism in this story. Presentation stays separate (no Godot types in sim). Advances DG-9 (vision/high-ground) and AR-5 (deterministic sim state).
 
 ## Epic 7: Rich Trigger DSL & Custom Runtime UI
 
@@ -1666,6 +1825,30 @@ So that I can author the same logic visually as T1/T2/T4, interoperating on one 
 _Covers: FR-28, AR-10, AR-21, UX-DR79, UX-DR57. Depends on: 7.6._
 
 > D2 D7s additive T3 view + D3.7 annotation channel. FR-28 (T3 tier on the one IR), UX-DR57 graph wiring, UX-DR79 node graph. GraphEdit is 'Experimental' (briefing residual risk) - mitigated by editor-agnostic IR + replaceable view. Depends on 7.6 (renders errors from the validator gate) and the graph IR from 7.1.
+
+### Story 7.10: Win-condition preset templates (T1) + sim-layer WinConditionSystem
+
+As a scenario creator setting up a match's victory rules,
+I want the two built-in win conditions evaluated inside the deterministic simulation by a real WinConditionSystem, plus four named turnkey win-condition presets (King of the Hill, Timed Survival, Assassination, Landmark Destruction) authored on the DSL,
+So that multiplayer victory is server-checkable and identical on every client, and I can pick a complete objective in one click instead of hand-wiring triggers.
+
+**Acceptance Criteria:**
+
+**Given** the as-built win-eval that lives in presentation (MainScene.CheckWinCondition:2176-2213, a per-frame 2-case switch) and the enum comment that already names the intended owner (ScenarioData.cs:7 "(future) WinConditionSystem") **When** a sim-layer WinConditionSystem is added that ticks in the deterministic loop in ascending-id order and emits a verdict (None / FactionWon(slot) / FactionLost(slot)) **Then** the legacy DestroyAllBuildings and EliminateAllUnits cases (ScenarioData.cs:10-16) are VERIFIED to produce the same winning/losing faction as the old presentation switch on a fixed scenario, and MainScene now only reads the system's verdict to drive ShowGameOver (no win math remains in presentation) **And** the verdict is computed purely from sim arrays with no `using Godot;`, no float/double/Mathf, and no wall-clock
+
+**Given** the trigger/variable/timer/region primitives shipped earlier in Epic 7 (7.2 variables+timers, regions) **When** the four T1 presets are authored as turnkey graph-IR templates on the trigger system — King of the Hill (one faction holds a designated region continuously for N ticks), Timed Survival (a designated faction is still alive at tick N), Assassination (a designated leader entity dies), Landmark Destruction (a designated structure is destroyed) **Then** each preset, when applied with its parameters filled, instantiates valid trigger/condition nodes that compile through the load-time validator and resolves victory/defeat for the correct faction in a running headless match **And** each preset is expressed entirely through the public DSL (no hidden engine-only opcode), proven by round-tripping the instantiated template through the graph IR schema unchanged
+
+**Given** the WinConditionSystem now folds new per-match win state into the sim (e.g. King-of-the-Hill hold-tick counters and Timed-Survival deadline ticks as parallel SoA/declaration-index stores, integer ticks only) **When** two headless runs execute the same seeded scenario+command stream that triggers each of the six conditions **Then** SimChecksum.Compute is widened to fold every live win-state field in declaration/ascending-id order and both runs yield a byte-identical final checksum, and the golden baseline is RE-BASELINED to capture the new fields
+
+**Given** a King-of-the-Hill setup whose designated region is contested (two factions both have units inside the zone on the same tick) **When** the hold-tick counter is evaluated **Then** the counter does NOT advance for either faction that tick (contested = no progress, resolved deterministically with no tie-break ambiguity), and it resets to zero for a faction the tick it no longer solely holds the zone
+
+**Given** a preset applied with an invalid or missing required parameter (Assassination with no leader entity assigned, Landmark Destruction pointing at a non-existent structure id, Timed Survival with N <= 0, King of the Hill referencing an undefined region) **When** the scenario is loaded **Then** it is rejected AT LOAD with a single located error naming the preset and the offending parameter (never a runtime crash or a silently un-winnable match)
+
+**Given** the win-condition picker UI (which today exposes only the 2 enum values) **When** it is expanded **Then** it lists all six options (2 built-in + 4 presets), shows each preset's required parameter fields inline, and selecting one writes the corresponding WinCondition/preset template into ScenarioData such that it reloads to the same selection **And** the existing ScenarioDirector generic trigger-driven victory/defeat action (ScenarioDirector.cs:322-327, OnVictory) remains intact as the advanced escape hatch for authors who want fully custom logic
+
+_Covers: DG-8, FR-28, FR-22. Depends on: 7.2._
+
+> Brownfield: only 2 win conditions exist (ScenarioData.cs:10-16) and win-eval is mis-located in presentation (MainScene.CheckWinCondition:2176-2213). VERIFY the 2 built-ins behave identically after the move; BUILD the sim-layer WinConditionSystem and the 4 named T1 presets (all grep-absent today). This story MUTATES sim state: win counters/deadlines are new parallel SoA arrays on EntityWorld / a sibling win store, integer ticks only, all math via the 16.16 `Fixed` type, entities iterated in ascending-id order, any randomness only via seeded SimRng, no wall-clock — and the new state MUST fold into SimChecksum, which RE-BASELINES the golden checksum (call it out in the dev log). Presentation stays separate: MainScene only reads the verdict; no Godot types enter the sim. Scope limit: T1 tier only — these four are turnkey presets composed from Epic-7 DSL primitives (7.2), not a new generic win-condition engine; the ScenarioDirector OnVictory action (cs:322-327) stays as the T3 escape hatch and is not reworked here. Multi-team (>2 faction) free-for-all resolution beyond the existing P1/P2 two-faction assumption is out of scope.
 
 ## Epic 8: AI-Assisted Creation
 
@@ -1931,7 +2114,7 @@ So that I can find and start scaled multiplayer matches with friends through a c
 
 **Acceptance Criteria:**
 
-**Given** the Nakama matchmaker hardcoded to minCount/maxCount=2 **When** N-player matchmaking is parameterized **Then** minCount/maxCount/countMultiple are configurable, slot assignment is server-side (not the lexicographic pick at NakamaService.cs:186-194), and a distinct parties API groups players pre-match **And** the single-static GameServerIp/Port routing assumption is resolved or an explicit static-endpoint-for-1.0 decision is recorded
+**Given** the Nakama matchmaker hardcoded to minCount/maxCount=2 **When** N-player matchmaking is parameterized **Then** minCount/maxCount/countMultiple are configurable, slot assignment is server-side (not the lexicographic pick at NakamaService.cs:186-194), and a distinct parties API groups players pre-match **And** the GameServerIp/Port is read from configuration (not hardcoded) and a 4-player match successfully connects to and starts on that configured endpoint — dynamic per-match server routing is explicitly deferred to post-1.0 (1.0 ships a single configured static endpoint)
 
 **Given** a lobby of matched/LAN players **When** the lobby UI renders (UX-DR69) **Then** it shows the scenario header with a version-match hash check, per-slot colorblind dots+glyphs, ready pills, and ping, plus lobby chat, and the Start button is gated until all slots are ready
 
@@ -2049,6 +2232,30 @@ _Covers: FR-7c, AR-12, FR-7c, UX-DR75. Depends on: 9.6._
 
 > AR-12. Sole source of truth = Nakama storage object (Owner-Read, No-Client-Write) + validating server RPC + server attestation gating StartGame + email-auth. NakamaService already supports email/device auth (NakamaService.cs:76-115). Depends on 9.6 for the N-player matchmaking/StartGame surface to gate on.
 
+### Story 9.13: Per-client command-rate throttle / anti-spam on the dedicated server
+
+As a multiplayer engineer,
+I want a per-slot command-rate cap (token-bucket or rolling-window) plus optional chat anti-spam enforced in DedicatedServer.RelayTickCommands and the Chat relay path,
+So that a malicious or buggy client cannot flood the command bus and degrade the match for honest peers, while the deterministic command stream those peers simulate stays untouched.
+
+**Acceptance Criteria:**
+
+**Given** the relay path that today validates only faction ownership and then relays unconditionally (DedicatedServer.cs:199-221, comment "we trust the sender") **When** the throttle is added **Then** each player slot has an independent per-slot rate budget (token-bucket or rolling-window) measured at the server, packets within budget relay byte-for-byte unchanged (no rewrite, reorder, or coalesce of UnitOrders), and the budget is tracked per `fromSlot` so one slot's spend never debits another's.
+
+**Given** a slot whose inbound TickCommands rate exceeds the configured cap **When** the budget is exhausted **Then** the over-budget packets are dropped at the server before `SendCommandsTo`/`BroadcastCommandsToSpectators`, a `[Server]` warning is logged identifying the offending slot, and the surviving in-budget packets that honest peers receive are identical to a no-throttle run for the same input.
+
+**Given** a slot that keeps flooding past a configured penalty threshold **When** the threshold is crossed **Then** the server applies an escalating penalty culminating in disconnect of that slot only, the disconnect reason is surfaced to that client (and reflected in the lobby/spectator view), and the freeze-and-continue drop policy from 9.5 handles the now-absent slot deterministically.
+
+**Given** an honest peer at the legitimate ceiling (a full MAX_ORDERS=32 packet every tick at the dictated input delay, which is a packet-size bound not a rate cap) **When** that peer plays a normal match **Then** zero of its packets are throttled or penalized (no false positives), proving the cap sits above worst-case legitimate play.
+
+**Given** a Chat packet flood on the relay at DedicatedServer.cs:159-160 (today broadcast to all peers unconditionally) **When** a slot exceeds the chat anti-spam cap **Then** excess chat messages are dropped/rate-limited before broadcast and a warning is logged, with no effect on the TickCommands command stream.
+
+**Given** two runs of an identical 1v1 match where one run additionally injects a command flood from one slot that the server throttles **When** both runs complete **Then** the surviving honest peers produce byte-identical golden SimChecksums across both runs, proving the throttle is a pure server-validation layer with zero sim-state or determinism impact.
+
+_Covers: DG-6. Depends on: 9.3._
+
+> Server/validation-layer concern ONLY — must NOT touch the sim or determinism. VERIFY (as-built): RelayTickCommands (DedicatedServer.cs:199-221) validates only `claimedFaction==SLOT_FACTION[fromSlot]` then relays unconditionally ("we trust the sender"); grep-confirmed NO rate/throttle/token-bucket anywhere; MAX_ORDERS=32 (NetworkCommand.cs:81) is a per-packet size bound, not a rate cap; Chat relay (DedicatedServer.cs:159-160) broadcasts to all peers unconditionally. BUILD: net-new per-slot token-bucket/rolling-window keyed on `fromSlot` with configurable cap + penalty threshold, drop-before-relay, escalating penalty → single-slot disconnect with a surfaced reason, and an optional chat-rate cap on the Chat case. SCOPE: 1v1 trusted friends/family EA + spectators, so the blast radius is limited and the cap is anti-spam/anti-bug, not full anti-cheat; cap must sit above worst-case legitimate play (full 32-order packet per tick at dictated delay) so honest peers never trip it. Disconnect leans on 9.5's deterministic freeze-and-continue for the dropped slot. Determinism: because dropped packets are simply never relayed and in-budget packets are relayed unmodified, the honest command stream is unchanged — golden re-baseline NOT required; instead a flood-vs-no-flood golden equality test (honest peers byte-identical) is the gate. Cap/threshold values data-driven, not hardcoded.
+
 ## Epic 10: Release Readiness — Content, Balance, Performance & Ship
 
 _The finishing work to ship: audio, real art + style-consistency, the performance pass, faction balance, Linux export, accessibility baseline, and release to Steam + a DRM-free channel._
@@ -2065,7 +2272,7 @@ So that I can confirm the core single-player experience works end-to-end before 
 
 **Given** the shipped map list in resources/data/scenarios **When** the tester launches a skirmish on each map at each of Easy/Normal/Hard **Then** every (map, difficulty) combination loads, the AI builds and attacks, and the match can reach a win or loss condition without a crash or soft-lock **And** a pass/fail matrix is recorded with every cell marked
 
-**Given** a difficulty selection in the skirmish setup UI **When** the player picks Easy, Normal, or Hard **Then** the selected AiDifficulty is applied to AiOpponentSystem for that match **And** Hard is observably more aggressive (earlier/larger attacks) than Easy
+**Given** a difficulty selection in the skirmish setup UI **When** the player picks Easy, Normal, or Hard **Then** the selected AiDifficulty is applied to AiOpponentSystem for that match **And** on the same seed and map, Hard's first-attack tick is earlier than Easy's by a recorded margin (or Hard's committed army size at a fixed tick N exceeds Easy's by a recorded margin) — the measured ticks/counts are logged, not a subjective judgement
 
 **Given** any (map, difficulty) cell that fails **When** the failure is a ship-blocker (crash, unloadable map, AI never produces) **Then** the root cause is fixed and the cell re-tested to pass **And** non-blocking polish issues are filed but not necessarily fixed here
 
@@ -2073,7 +2280,7 @@ _Covers: FR-43, NFR-5. Depends on: Epic 9._
 
 > FR-43 verify-only. Maps already exist in resources/data/scenarios (alpha_map_01 + map_02..map_12). AiDifficulty enum (Easy/Normal/Hard) + AiOpponentSystem already wired via MainScene [Export] AiLevel. This story is a structured playability pass, not new systems. Produce a pass/fail matrix (map x difficulty) and file located bugs; fix only ship-blocking breakage discovered (e.g. a map that fails to load, an AI that never attacks).
 
-> ⚠ Quality-review: add an objective difficulty metric (e.g. first-attack tick or army-size delta at tick N) — 'observably more aggressive' is untestable as written.
+> ✅ Resolved 2026-06-21 (readiness triage): the AC now uses an objective metric — Hard's first-attack tick / army-size delta vs Easy on the same seed, with recorded numbers.
 
 ### Story 10.2: AI self-play balance harness + tune the two showcase factions to 45-55%
 
@@ -2101,7 +2308,7 @@ So that large battles stay smooth on the shipped scenarios and community-scale s
 
 **Acceptance Criteria:**
 
-**Given** a stress scenario spawning 500, then 1000, then 2000 active units in combat **When** the scenario runs on representative hardware **Then** render stays at >=60 FPS and the simulation holds a stable 30 Hz tick (no tick overrun/spiral) at 500 and 1000 units **And** the 2000-unit case meets the target or any shortfall is documented with the bottleneck identified
+**Given** a stress scenario spawning 500, then 1000, then 2000 active units in combat **When** the scenario runs on the named reference machine (CPU / GPU / RAM recorded in this story) **Then** render stays at >=60 FPS and the simulation holds a stable 30 Hz tick (no tick overrun/spiral) at 500 and 1000 units **And** the 2000-unit case either meets the 60 FPS / 30 Hz target or holds a defined minimum floor (>=30 FPS render with a stable 30 Hz tick) with the dominant bottleneck identified — a documented failure WITHOUT meeting the floor is not a pass
 
 **Given** a profiler capture of a heavy frame **When** the developer reviews sim-tick cost vs render cost **Then** the two budgets are reported separately and the dominant cost centers are named **And** at least one identified bottleneck is optimized and re-measured to show improvement
 
@@ -2111,7 +2318,7 @@ _Covers: FR-46, AR-37, NFR-5. Depends on: 10.1._
 
 > FR-46 + AR-37 (perf holds on community scenarios too, NFR-5). MultiMesh rendering + spatial-hash combat + NavServer rate limiting already exist. This is a measurement + targeted-optimization pass, not a rewrite. Build/extend a stress scenario at 500/1000/2000 units. Keep the sim 30Hz tick budget separate from the 60FPS render budget in measurement. Use the godot profiler. Do not break determinism while optimizing the sim layer.
 
-> ⚠ Quality-review: define a minimum acceptable degraded target for the 2,000-unit case (not 'shortfall documented') and specify the representative-hardware spec so the perf gate is reproducible.
+> ✅ Resolved 2026-06-21 (readiness triage): AC1 now names a reference machine (spec recorded in-story) and a minimum floor (>=30 FPS / stable 30 Hz) for the 2,000-unit case, replacing 'shortfall documented'.
 
 ### Story 10.4: Author and wire real .ogg audio assets through the existing audio system
 
@@ -2314,3 +2521,27 @@ So that the shipped game plays cleanly and a non-creator never sees authoring UI
 _Covers: UX-DR60, UX-DR61, UX-DR66, UX-DR71, UX-DR63, NFR-3. Depends on: 3.x design-system, 10.8a remap UI._
 
 > ADDED by coverage review — in-match HUD/input verify, default keybinding set, and the NFR-3 acceptance gate were unowned.
+
+### Story 10.11: Adaptive AI opponent: player-pattern tracking + counter-strategy weighting + decision-weight debug overlay
+
+As a solo developer,
+I want the AI opponent to observe P1's play pattern and shift its own scoring to counter it, plus a Tinkerer debug overlay that surfaces the per-action decision weights,
+So that skirmishes feel reactive instead of scripted and I can see exactly why the AI chose each action while tuning balance.
+
+**Acceptance Criteria:**
+
+**Given** a match where P1 rushes early (combat units pushing toward the AI base before a fixed early-game tick budget) **When** the AI runs its per-tick observation of P1 state **Then** the AI's deterministic rush-frequency counter (a `Fixed`/int parallel array, not float) increments and, once it crosses the rush threshold, `ScoreBuildBarracks`/`ScoreExpandSupply` receive a counter-defense weight modifier that measurably raises defensive/production scores above their static baseline for that snapshot **And** P1 is observed only by reading its sim arrays (no new P1_BASE-style hard-coded assumptions about P1 behavior)
+
+**Given** a match where P1 turtles (low forward-army movement, sustained base/tech investment past the same tick budget) **When** the turtle-frequency counter crosses its threshold **Then** the AI's `_aggressionWeight`-fed `ScoreLaunchAttack` and `_techWeight`-fed tech scores are nudged toward earlier/larger pressure via the counter-strategy modifier **And** the modifier is bounded so no Score* function can exceed 1.0 or drop below 0 (clamp verified at both ends)
+
+**Given** the same seed, faction tuple, and map run twice headless on the sim layer only **When** both matches complete **Then** the final `SimChecksum` is byte-identical across the two runs with the new pattern counters folded into the hash **And** the new counters are iterated/mixed in ascending-id order and a stored golden checksum is RE-BASELINED to the new value with the old baseline replaced (not kept alongside)
+
+**Given** the Tinkerer decision-weight debug overlay is toggled on during a live skirmish **When** the AI executes a tick **Then** the overlay displays every StrategicAction with the exact score `ExecuteBestAction` computed this tick (the values currently discarded) plus the chosen action and the active rush/turtle counter values **And** the overlay reads sim state only and writes nothing back — toggling it on or off produces a byte-identical `SimChecksum` versus a run with it never opened
+
+**Given** a degenerate observation window where P1 has zero alive entities (e.g. P1 eliminated, or observation runs before P1 spawns) **When** the AI updates its pattern counters that tick **Then** neither counter is incremented from a divide-by-zero or empty-scan path, the counters hold their prior values, and no exception is thrown **And** the AI falls back to its static (Story 10.1/10.2) scoring with zero counter modifier applied
+
+**Given** the adaptive AI replaces the static AI in the 10.2 self-play balance harness **When** the alpha-vs-beta batch is re-run at a fixed difficulty **Then** both showcase factions still land within ~45-55% win rate (FR-42 not regressed) **And** Hard difficulty's adapted first-attack tick against a turtling P1 is measurably earlier than the static AI's on the same seed
+
+_Covers: DG-7. Depends on: 10.2._
+
+> Brownfield: `AiOpponentSystem.cs` is pure static utility scoring — Score* methods (cs:200-249) read ONLY the AI's own `AiSnapshot`, weights (`_aggressionWeight`/`_techWeight`/`_attackThreshold`/`_attackCooldownMax`) are set once in the ctor from a fixed `AiDifficulty` preset and never mutate, `ExecuteBestAction` (cs:264-290) computes scores then DISCARDS them, and P1 exists only as the static `P1_BASE` constant. VERIFY this static path and the 10.2 baseline still pass; BUILD (1) deterministic P1-observation pattern counters, (2) bounded counter-strategy modifiers feeding the existing Score* layer (clean integration point — do not rewrite the scorer), (3) the read-only Tinkerer overlay surfacing the already-computed scores. Determinism: pattern counters are SIM state — store as new parallel SoA arrays on `EntityWorld` (or a sim-owned AI-state struct, no Godot types), use `Fixed` 16.16 math only (no float/double/Mathf in the counter/threshold math; existing Score* float weights are unchanged), iterate ascending-id, no wall-clock, randomness (if any) only via seeded `SimRng`. The counters MUST fold into `SimChecksum.Compute` (which today hashes only EntityWorld pos/health, BuildingStore, and faction Ore — it does NOT yet hash any AI internal state), so this WILL re-baseline the golden checksum — regenerate and commit the new golden, replacing the old. The overlay is presentation-only (`src/UI/`, Godot Control), reads sim arrays, never mutates — its presence must not perturb the checksum. Scope: only the existing two-player P1-vs-AI skirmish path and the existing rush/turtle axes — no new strategic actions, no multi-opponent or team adaptation, no ML/persistence across matches.

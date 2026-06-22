@@ -170,6 +170,8 @@ Each simulation tick: reset all Visible cells to Explored, then for each friendl
 
 For multiplayer, fog of war is **server-enforced**. The server only transmits entity data for units within a player's visible cells. This prevents map hacking at the protocol level — clients literally never receive data about units they cannot see.
 
+> **[1.0 reconciliation — readiness triage 2026-06-21]** The as-built 1.0 netcode is **deterministic lockstep**: every client simulates the *full* game from the shared command stream, so fog is a client-side **render mask** and the server does **not** strip hidden entity state (doing so would break determinism — clients would fail the next checksum). True server-enforced/anti-maphack fog requires **server-authoritative state replication**, which is a **deferred post-1.0 architecture item** (see `_bmad-output/planning-artifacts/epics.md` DG-10). For 1.0, "anti-cheat" means server-authoritative command **validation** (ownership/affordability/content-hash), **not** information-hiding — so map-hacking is technically possible in 1.0, as in WC3/AoE/StarCraft (all lockstep).
+
 Creators can disable fog entirely, toggle shroud (explored vs. unexplored distinction), set per-unit vision ranges, configure fog color, and enable or disable height advantage. The system is opt-in — sandbox and cooperative scenarios can run without fog.
 
 ### Win condition and scenario logic system
@@ -337,7 +339,7 @@ This is automated end-to-end. Players never manually manage mod versions. The sy
 
 ### Anti-cheat strategy
 
-The primary anti-cheat measure is **server authority itself**. All simulation runs on the server. Clients submit commands and receive only the game state they're entitled to see. Server-side fog of war filtering means clients literally never receive data about enemy units outside their vision — map hacking is impossible because the data doesn't exist on the client.
+The primary anti-cheat measure is **server authority itself**. All simulation runs on the server. Clients submit commands and receive only the game state they're entitled to see. Server-side fog of war filtering means clients literally never receive data about enemy units outside their vision — map hacking is impossible because the data doesn't exist on the client. *[1.0 reconciliation (readiness 2026-06-21): this describes server-authoritative **state replication**; the as-built 1.0 netcode is deterministic **lockstep**, where the full game state exists on every client (fog is a render mask), so map-hacking is technically possible in 1.0 as in other lockstep RTS. True anti-maphack is deferred post-1.0 (DG-10); 1.0 ships server-authoritative command **validation**, not information-hiding.]*
 
 A creation platform faces unique challenges: custom unit stats aren't "cheats" but intended design. The server validates commands against the loaded scenario definition (not hardcoded values), loads content from the hash-verified mod.io package (not client-supplied data), and rate-limits commands to prevent spam.
 

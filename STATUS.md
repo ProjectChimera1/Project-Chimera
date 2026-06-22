@@ -74,9 +74,9 @@ Each item references the GDD section it comes from.
 |------|--------|-------------|-------|
 | UnitDefinition data class | ✅ | §3 | JSON-driven; spawning wired to alpha_faction.json (BuildingSystem + EntityPlacer + MainScene.SpawnWorker) |
 | 6 base archetypes implemented | ✅ | §3 | Worker, Melee, Ranged, Siege, Air, Structure. `train_time`+`vision_range` in UnitDef+JSON. BuildingSystem.TrainUnit() maps building type→category (Barracks→Melee, ArcheryRange→Ranged, SiegeWorkshop→Siege). EntityPlacer U-key cycles 7 combat archetypes. CommandCard shows correct unit per building. |
-| Command system (Move, Attack-Move, etc.) | ✅ | §3 | UnitCommand enum (Idle/Move/AttackMove/Stop/HoldPosition); CombatSystem branches per command; R-Click=Move, A+Click=AttackMove, S=Stop, H=Hold |
+| Command system (Move, Attack-Move, etc.) | 🟡 | §3 | PARTIAL (readiness 2026-06-21): Move/Stop/Attack-Move built (UnitCommand enum; CombatSystem branches; R-Click=Move, A+Click=AttackMove, S=Stop, H=Hold). MISSING: single-target Attack (right-click enemy), Patrol, Follow; Hold currently aliases Stop. → Story 1.12 / DG-1. |
 | Selection system | ✅ | §3 | Click select, box-select, move command, control groups (Ctrl+1-9 assign, 1-9 recall); P1-only faction filter on click + box-select |
-| Formation movement | ✅ | §3 | Grid spread on multi-unit R-click move: sqrt(N) columns, 2u spacing, centred on click point |
+| Formation movement | 🟡 | §3 | PARTIAL (readiness 2026-06-21): grid scatter only (sqrt(N) columns, 2u spacing) + symmetric separation. MISSING: role-based formations (front/back by archetype) and priority yielding (moving>idle), plus per-unit collision-radius/push-yield fields. → Story 1.13 / DG-2. |
 
 ### §3 Fog of War
 | Item | Status | GDD Section | Notes |
