@@ -3,7 +3,7 @@ stepsCompleted: [1, 2, 3, 4]
 status: complete
 epicCount: 10
 storyCount: 97
-validation: "FR coverage 60/60; NFR-1..6 covered; no residual placeholders; no within-epic forward dependencies (verified 2026-06-21)"
+validation: "FR coverage 60/60; NFR-1..6 covered; no residual placeholders; no within-epic forward dependencies (verified 2026-06-21). Readiness-check corrections applied 2026-06-21: (1) relocated Story 1.5's forbidden-until-SimRng AC into Story 1.7 to break a 1.5<->1.7 logical cycle — the claim now holds; (2) corrected Story 2.10's dangling 'Depends on: 2.9' to '2.9a, 2.9b' — the dangling reference is resolved."
 inputDocuments:
   - "_bmad-output/planning-artifacts/prds/prd-Project_Chimera-2026-06-05/prd.md"   # FR/NFR source (Road-to-1.0 PRD)
   - "_bmad-output/planning-artifacts/prds/prd-Project_Chimera-2026-06-05/addendum.md"
@@ -558,7 +558,7 @@ _Covers: FR-44, FR-47, AR-14, AR-16. Depends on: 1.3._
 ### Story 1.5: Seeded deterministic SimRng folded into checksum + replay
 
 As a solo developer enabling random effects without breaking determinism,
-I want a net-new Godot-free SimRng (deterministic PCG/xorshift over int/Fixed) threaded through systems by ref, its state folded into SimChecksum and ReplayRecorder/Player, with the validator forbidding any random effect until SimRng is present,
+I want a net-new Godot-free SimRng (deterministic PCG/xorshift over int/Fixed) threaded through systems by ref, its state folded into SimChecksum and ReplayRecorder/Player (the validator's forbidden-until-SimRng rule — gating random effects on SimRng's presence — is owned by Story 1.7, which depends on this story),
 So that randomness is reproducible across machines and replays, and no non-deterministic Random can enter the sim.
 
 **Acceptance Criteria:**
@@ -568,8 +568,6 @@ So that randomness is reproducible across machines and replays, and no non-deter
 **Given** SimRng state **When** a tick completes **Then** the RNG state is folded into SimChecksum and recorded/restored by ReplayRecorder/Player so a replay reproduces the exact RNG stream
 
 **Given** a scenario that records a checksum sequence with RNG-driven behavior **When** the golden harness runs it twice and across a replay **Then** checksum sequences are byte-identical
-
-**Given** the current absence of SimRng-gated random effects **When** a definition declares a random effect before SimRng is wired **Then** validation rejects it (forbidden-until-SimRng rule)
 
 _Covers: FR-39, FR-44, FR-47, AR-13, AR-15. Depends on: 1.4._
 
@@ -605,7 +603,7 @@ So that every match starts from validated, hash-agreed truth and AI-generated st
 
 **Given** the five scenario entry paths **When** any path attempts to tick a model **Then** it must pass through ScenarioValidator.Validate producing a Validated<T>, and Validated<T> cannot be constructed anywhere except inside the validator
 
-**Given** an invalid model (e.g. random effect before SimRng, out-of-range value, dangling reference) **When** Validate runs **Then** it returns a failure with a located error and the tick loop never sees the model
+**Given** an invalid model — e.g. a random effect declared while `SimRng` is absent/unwired (the **forbidden-until-SimRng rule**, AR-13; relocated here from 1.5 so the rule is owned by the story that builds the validator), an out-of-range value, or a dangling reference — **When** Validate runs **Then** it returns a failure with a located error and the tick loop never sees the model
 
 **Given** the canonical start-state hash (FNV-64 over Fixed.Raw, fields sorted, annotations excluded) **When** two semantically identical models from different files (different whitespace/path) are hashed **Then** the hashes are equal, and the match start-state hash uses this canonical hash, not ComputeFileHash(path)
 
@@ -907,9 +905,9 @@ So that the two showcase factions finally play with their signature feel instead
 
 **Given** the Court faction definition in this story **When** the on-death 'Glut' accelerated-regen aura is reviewed **Then** it is documented as deferred/enabled-by-Epic-7 and is NOT wired into the sim here, with no code dependency on a later epic **And** the faction remains always-shippable: with abilities present it plays with its signature feel, and nothing regresses the existing stat-sheet behavior
 
-_Covers: FR-8, FR-9, FR-10, FR-12a, AR-8, AR-9, AR-29, UX-DR51. Depends on: 2.5, 2.6, 2.7, 2.9._
+_Covers: FR-8, FR-9, FR-10, FR-12a, AR-8, AR-9, AR-29, UX-DR51. Depends on: 2.5, 2.6, 2.7, 2.9a, 2.9b._
 
-> Caps the epic by authoring the showcase mechanics with the now-shipped tools (no new engine code). Equal Exchange (Covenant): each signature active ability deducts a FLAT armor-independent HP cost via the non-matrix DirectHpDelta leaf (per faction-design: a self-Damage leaf would wrongly scale by armor) OR a matter/crystal cost — never both; authored in 2.5, paid via 2.9 multi-resource cost, felt via 2.7 feedback. Sanguine Furnace (Court): passive per-unit regen as a Persistent(periodEffect=Heal) Modifier (pawns trickle, immortals pour) authored in 2.6. SCOPE LIMIT: the on-death 'Glut' accelerated-regen aura needs the D2 on-death trigger seam and is ENABLED-BY-EPIC-7 — do NOT build it here and do NOT create a dependency on Epic 7; only the D1-expressible passive HoT + Equal Exchange ship in this story. Flag Glut as deferred in the ability data with a note.
+> Caps the epic by authoring the showcase mechanics with the now-shipped tools (no new engine code). Equal Exchange (Covenant): each signature active ability deducts a FLAT armor-independent HP cost via the non-matrix DirectHpDelta leaf (per faction-design: a self-Damage leaf would wrongly scale by armor) OR a matter/crystal cost — never both; authored in 2.5, paid via 2.9b multi-resource cost, felt via 2.7 feedback. Sanguine Furnace (Court): passive per-unit regen as a Persistent(periodEffect=Heal) Modifier (pawns trickle, immortals pour) authored in 2.6. SCOPE LIMIT: the on-death 'Glut' accelerated-regen aura needs the D2 on-death trigger seam and is ENABLED-BY-EPIC-7 — do NOT build it here and do NOT create a dependency on Epic 7; only the D1-expressible passive HoT + Equal Exchange ship in this story. Flag Glut as deferred in the ability data with a note.
 
 > ⚠ Quality-review (OWNERSHIP): Epic 2 OWNS the Equal Exchange (flat self-cost) and Sanguine Furnace (Persistent HoT) D1 mechanics. Epic 5's 5.4 is a verify/integration consumer, not a re-wire. The on-death 'Glut' aura is deferred to Epic 7's D2 on-death seam.
 
