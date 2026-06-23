@@ -4,7 +4,7 @@ baseline_commit: abe4936
 
 # Story 1.3b: Generalize SimChecksum coverage + coverage-guard + ScenarioDirector locale fix
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -378,6 +378,6 @@ _Code review 2026-06-23 (gds-code-review — 3 adversarial layers: Blind Hunter 
 
 - [x] **[Review][Decision] Trigger fire-boundary now uses exact ore, not 2-decimal-rounded ore (fractional-ore semantics change)** _(RESOLVED 2026-06-23 — Alec accepted the exact semantics: intended de-floated behavior, ≤1-tick impact, no code change.)_ — De-floating the `resource_threshold`/`resource_comparison` path replaced `Ore.ToFloat().ToString("F2")` (which rounded ore to 2 decimals before comparing) with the exact `Ore.Raw`. Gathering deposits fractional ore every tick (`FixedDt = 65536/30` raw ≈ not an exact 1/30 — verified in `GatheringSystem.cs`), so ordered triggers (`>=`, `<`, `>`, `<=`) now fire at the *true* threshold rather than the displayed/rounded value — up to ~1 tick (~0.005 ore) later than before. Not a desync (both peers run the new code); not golden-covered (empty-trigger goldens). [edge] — Decision: (a) accept exact semantics (recommended — it is the intended de-floated behavior); (b) restore a rounding tolerance to match the old display; (c) document only.
 
-- [ ] **[Review][Patch] Epsilon doc-comment over-claims "==/!= preserved exactly"** [godot/src/Core/ScenarioDirector.cs:~372] — `CompareEpsilon = Fixed.FromRaw(655)` = 0.0099945, not 0.01 (0.01×65536 = 655.36 is not representable). The `Compare` XML doc says behavior is "preserved exactly"; it is ≈ (a difference in [0.009945, 0.01) flips `==`/`!=`). Fix = soften the wording to "≈ the old 0.01 tolerance (within ~1e-4)"; the numeric `655` is the closest representable value and stays. Negligible runtime impact (unreachable for integer thresholds). [blind+edge]
+- [x] **[Review][Patch] Epsilon doc-comment over-claims "==/!= preserved exactly"** _(APPLIED 2026-06-23 — comment softened at lines 369 & 375; no code/logic change.)_ [godot/src/Core/ScenarioDirector.cs:369,375] — `CompareEpsilon = Fixed.FromRaw(655)` = 0.0099945, not 0.01 (0.01×65536 = 655.36 is not representable). The `Compare` XML doc says behavior is "preserved exactly"; it is ≈ (a difference in [0.009945, 0.01) flips `==`/`!=`). Fix = soften the wording to "≈ the old 0.01 tolerance (within ~1e-4)"; the numeric `655` is the closest representable value and stays. Negligible runtime impact (unreachable for integer thresholds). [blind+edge]
 
 - [x] **[Review][Defer] `Fixed.FromFloat(def.Amount)` residual at the compare site — fractional-threshold quantization + silent overflow for thresholds ≥ 32768** [godot/src/Core/ScenarioDirector.cs:~261,~300] — deferred to Story 1.4 (the `FixedJsonConverter` FromFloat sweep). (a) Fractional authored thresholds are quantized to 16.16 at the compare site (acknowledged residual — 1.4 makes `Amount` a `Fixed`). (b) An authored threshold ≥ 32768 overflows the `(int)(value*65536)` cast and wraps negative, inverting the comparison (the old float path had no such ceiling). Ore caps at ~32767.99 (16.16) so such thresholds are pathological, but the flip is never-fires→always-fires. Resolve with the 1.4 sweep, or add a load-time validation that authored ore thresholds are ≤ Fixed max. [blind+edge]

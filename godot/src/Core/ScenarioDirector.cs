@@ -366,13 +366,14 @@ namespace ProjectChimera.Core
             return n;
         }
 
-        // ≈ the prior 0.01f float tolerance (0.01 × 65536 ≈ 655 raw) so ==/!= behavior is preserved.
+        // ≈ the prior 0.01f float tolerance (0.01 × 65536 = 655.36, rounded to 655 raw ≈ 0.0099945) so ==/!= behavior is closely preserved.
         private static readonly Fixed CompareEpsilon = Fixed.FromRaw(655);
 
         /// <summary>
         /// Fixed-vs-Fixed comparison for the threshold/condition sim path. Replaces the prior float compare,
         /// removing the last float arithmetic (and MathF) from ScenarioDirector (AR-16). The ==/!= cases keep a
-        /// small epsilon mirroring the old 0.01f tolerance so existing trigger behavior is preserved exactly.
+        /// small epsilon ≈ the old 0.01f tolerance (FromRaw(655) = 0.0099945 — within ~1e-4, not exact), so
+        /// existing trigger behavior is closely preserved (integer thresholds never land in that sub-0.01 gap).
         /// </summary>
         private static bool Compare(Fixed a, Fixed b, string op) => op switch
         {
