@@ -26,6 +26,10 @@ namespace ProjectChimera.Core
         public static uint Compute(EntityWorld world, BuildingStore buildings, ResourceStore resources,
                                    FactionRegistry factions)
         {
+            // Contract guard for the registry param added in Story 1.3a: a future direct caller (e.g. the
+            // 1.9a/9.1 server checksum collector) gets a clear error instead of an opaque NRE in the Ore loop.
+            System.ArgumentNullException.ThrowIfNull(factions);
+
             uint hash = FNV_OFFSET;
 
             // ── Entity positions and health ───────────────────────────────────────

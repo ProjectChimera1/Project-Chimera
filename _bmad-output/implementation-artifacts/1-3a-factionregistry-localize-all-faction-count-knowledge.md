@@ -4,7 +4,7 @@ baseline_commit: ddbb110
 
 # Story 1.3a: FactionRegistry — localize all faction-count knowledge
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -294,6 +294,7 @@ claude-opus-4-8 (Claude Opus 4.8) — gds-dev-story workflow.
 | Date       | Change                                                                                                  |
 |------------|---------------------------------------------------------------------------------------------------------|
 | 2026-06-22 | Implemented Story 1.3a: added `FactionRegistry` (sim source of truth: `PLAYER_COUNT=8`, `FACTION_ARRAY_SIZE=9`, single `ToFaction` cast, ascending `ActiveFactions`); re-pointed `SimChecksum`'s faction loop at the registry (Ore-only, byte-identical at N=2 — 1.2 golden unchanged); generalized the golden engine with optional `build`/`fileName`; added the 4-faction `MultiFactionScenario` + recorded golden + registry/span/golden tests. 35/35 Tier-1 tests green; `godot.csproj` builds clean. Status → review. |
+| 2026-06-23 | Code review (3-layer adversarial) on commit `f908a15`: 1 finding deferred to Story 9.2 (registry range vs store-array size), 2 Low patches applied + verified — golden self-identifies via parameterized `FormatGolden`; `SimChecksum` null-guard added. 35/35 Tier-1 green, `godot.csproj` clean, 1.2 golden byte-unchanged. Status → done. |
 
 ---
 
@@ -308,5 +309,7 @@ _Adversarial code review — Blind Hunter + Edge Case Hunter + Acceptance Audito
 
 **patch (2):**
 
-- [ ] [Review][Patch] New `golden-multifaction.golden.txt` mislabels itself as "Story 1.2 / GoldenScenario.Build()" and its embedded re-baseline instructions are scenario-agnostic (following them re-records the 1.2 golden too) — root cause: `FormatGolden` hardcodes those header strings [`godot/ProjectChimera.Sim.Tests/Golden/GoldenChecksumReplay.cs:159-161`]
-- [ ] [Review][Patch] `SimChecksum.Compute` does not null-check the new non-nullable `factions` param — public static API, latent `NullReferenceException` for a future direct caller (e.g. the 1.9a/9.1 server checksum collector) [`godot/src/Core/SimChecksum.cs:~53`]
+- [x] [Review][Patch] New `golden-multifaction.golden.txt` mislabels itself as "Story 1.2 / GoldenScenario.Build()" and its embedded re-baseline instructions are scenario-agnostic (following them re-records the 1.2 golden too) — root cause: `FormatGolden` hardcodes those header strings [`godot/ProjectChimera.Sim.Tests/Golden/GoldenChecksumReplay.cs:159-161`]
+  - **Fixed 2026-06-23:** parameterized `FormatGolden`/`MaybeRecord` with an optional `GoldenHeader` (default = the original 1.2 text → the 1.2 path stays byte-unchanged); `MultiFactionGoldenTests` now passes a Story-1.3a header whose re-baseline recipe names the `~MultiFaction` filter. Golden re-recorded: **header `#` lines only — all 300 data lines byte-identical, 1.2 golden untouched.** Full suite 35/35 green; `godot.csproj` clean.
+- [x] [Review][Patch] `SimChecksum.Compute` does not null-check the new non-nullable `factions` param — public static API, latent `NullReferenceException` for a future direct caller (e.g. the 1.9a/9.1 server checksum collector) [`godot/src/Core/SimChecksum.cs:~53`]
+  - **Fixed 2026-06-23:** added `System.ArgumentNullException.ThrowIfNull(factions)` at the top of `Compute` — clear contract error instead of an opaque NRE. Compiles in both the test project and `godot.csproj` (0 errors).

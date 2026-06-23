@@ -1,9 +1,8 @@
-# Project Chimera — golden-checksum replay baseline (Story 1.2).
+# Project Chimera — multi-faction golden-checksum baseline (Story 1.3a).
 # Format: "<tick> <hashHex8>" per line — tick decimal, hash 8 uppercase hex digits (no 0x).
-# Pins today's SimChecksum sequence for GoldenScenario.Build() stepped via StepOnce at ChecksumInterval=1.
+# Pins the SimChecksum sequence for MultiFactionScenario.Build() (4 active factions via FactionRegistry(4)) stepped via StepOnce at ChecksumInterval=1.
 # Samples: 300 (one line per sim tick).
-# Re-baseline (intentional behavior change only): set CHIMERA_GOLDEN_RECORD=1, run the Golden tests,
-#   then `dotnet build` (refreshes the embedded copy) and commit. DO NOT hand-edit.
+# Re-baseline (intentional behavior change only): set CHIMERA_GOLDEN_RECORD=1, run `dotnet test --filter FullyQualifiedName~MultiFaction`, then `dotnet build` (refreshes the embedded copy) and commit. DO NOT hand-edit.
 1 E353C32B
 2 BC0CD68D
 3 A79F5145

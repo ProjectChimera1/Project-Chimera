@@ -149,19 +149,38 @@ namespace ProjectChimera.Sim.Tests.Golden
         }
 
         /// <summary>
+        /// Descriptive metadata for a golden file's leading '#' comment block, so each scenario's golden
+        /// self-identifies. <see cref="ParseGolden"/> skips '#' lines, so this is documentation only — it never
+        /// affects the parsed samples. (Story 1.3a fix: <see cref="FormatGolden"/> previously hardcoded the 1.2
+        /// scenario's text, which mislabelled the multi-faction golden as "Story 1.2 / GoldenScenario.Build()".)
+        /// </summary>
+        /// <param name="Title">Baseline title, e.g. "golden-checksum replay baseline (Story 1.2)".</param>
+        /// <param name="ScenarioDescription">What the sequence pins (scenario builder + step settings).</param>
+        /// <param name="RebaselineHint">Exact re-baseline recipe for THIS golden (its own test filter + rebuild + commit).</param>
+        public readonly record struct GoldenHeader(string Title, string ScenarioDescription, string RebaselineHint);
+
+        /// <summary>Default header — the Story 1.2 <see cref="GoldenScenario"/> baseline. Call sites that omit a
+        /// header keep this text; the filter names only the 1.2 tests so a re-baseline won't touch other goldens.</summary>
+        public static readonly GoldenHeader DefaultHeader = new(
+            "golden-checksum replay baseline (Story 1.2)",
+            "Pins today's SimChecksum sequence for GoldenScenario.Build() stepped via StepOnce at ChecksumInterval=1.",
+            $"set {RecordEnvVar}=1, run `dotnet test --filter FullyQualifiedName~GoldenChecksumReplay`, then `dotnet build` (refreshes the embedded copy) and commit. DO NOT hand-edit.");
+
+        /// <summary>
         /// Serialize a sequence to the committed golden text format: a documented header comment followed by
         /// one "<tick> <hashHex8>" line per sample. Uses '\n' explicitly (not Environment.NewLine) for
-        /// cross-platform stability.
+        /// cross-platform stability. Pass a <paramref name="header"/> so the file self-identifies; omit it for
+        /// the default (Story 1.2) baseline.
         /// </summary>
-        public static string FormatGolden(IReadOnlyList<Sample> seq)
+        public static string FormatGolden(IReadOnlyList<Sample> seq, GoldenHeader? header = null)
         {
+            GoldenHeader h = header ?? DefaultHeader;
             var sb = new StringBuilder();
-            sb.Append("# Project Chimera — golden-checksum replay baseline (Story 1.2).\n");
+            sb.Append($"# Project Chimera — {h.Title}.\n");
             sb.Append("# Format: \"<tick> <hashHex8>\" per line — tick decimal, hash 8 uppercase hex digits (no 0x).\n");
-            sb.Append("# Pins today's SimChecksum sequence for GoldenScenario.Build() stepped via StepOnce at ChecksumInterval=1.\n");
+            sb.Append($"# {h.ScenarioDescription}\n");
             sb.Append($"# Samples: {seq.Count} (one line per sim tick).\n");
-            sb.Append($"# Re-baseline (intentional behavior change only): set {RecordEnvVar}=1, run the Golden tests,\n");
-            sb.Append("#   then `dotnet build` (refreshes the embedded copy) and commit. DO NOT hand-edit.\n");
+            sb.Append($"# Re-baseline (intentional behavior change only): {h.RebaselineHint}\n");
             foreach (Sample s in seq)
                 sb.Append($"{s.Tick} {s.Hash:X8}\n");
             return sb.ToString();
@@ -170,13 +189,15 @@ namespace ProjectChimera.Sim.Tests.Golden
         /// <summary>
         /// In record mode, write <paramref name="seq"/> to the SOURCE golden file (located via
         /// <see cref="GoldenSourcePath"/>) and return true; otherwise do nothing and return false.
-        /// The dev then rebuilds (to refresh the embedded copy) and commits.
+        /// The dev then rebuilds (to refresh the embedded copy) and commits. Pass a <paramref name="header"/>
+        /// so the written file self-identifies (omit it for the default Story 1.2 baseline).
         /// </summary>
-        public static bool MaybeRecord(IReadOnlyList<Sample> seq, string fileName = GoldenFileName)
+        public static bool MaybeRecord(IReadOnlyList<Sample> seq, string fileName = GoldenFileName,
+            GoldenHeader? header = null)
         {
             if (!IsRecordMode) return false;
             string path = GoldenSourcePath(fileName);
-            File.WriteAllText(path, FormatGolden(seq), new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+            File.WriteAllText(path, FormatGolden(seq, header), new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
             return true;
         }
 

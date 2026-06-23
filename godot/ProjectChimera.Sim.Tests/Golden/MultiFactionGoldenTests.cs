@@ -16,6 +16,14 @@ namespace ProjectChimera.Sim.Tests.Golden
     {
         private const string GoldenFile = "golden-multifaction.golden.txt";
 
+        /// <summary>Header so the multi-faction golden self-identifies as Story 1.3a (not the default Story 1.2 /
+        /// GoldenScenario text), and so its embedded re-baseline recipe names the MultiFaction filter — running
+        /// ALL Golden tests in record mode would also rewrite the 1.2 golden.</summary>
+        private static readonly GoldenChecksumReplay.GoldenHeader MfHeader = new(
+            "multi-faction golden-checksum baseline (Story 1.3a)",
+            "Pins the SimChecksum sequence for MultiFactionScenario.Build() (4 active factions via FactionRegistry(4)) stepped via StepOnce at ChecksumInterval=1.",
+            $"set {GoldenChecksumReplay.RecordEnvVar}=1, run `dotnet test --filter FullyQualifiedName~MultiFaction`, then `dotnet build` (refreshes the embedded copy) and commit. DO NOT hand-edit.");
+
         /// <summary>
         /// Records the multi-faction golden and, in re-baseline mode (CHIMERA_GOLDEN_RECORD=1), writes it to
         /// the source file under Golden/. In normal mode it does NOT write — it verifies the harness emits the
@@ -49,11 +57,11 @@ namespace ProjectChimera.Sim.Tests.Golden
                 "Refusing to record: two in-process runs diverged — fix the nondeterminism before re-baselining.");
             Assert.True(
                 GoldenChecksumReplay.ParseGolden(
-                    System.Text.Encoding.UTF8.GetBytes(GoldenChecksumReplay.FormatGolden(seq)))
+                    System.Text.Encoding.UTF8.GetBytes(GoldenChecksumReplay.FormatGolden(seq, MfHeader)))
                     .SequenceEqual(seq),
                 "Refusing to record: FormatGolden/ParseGolden do not round-trip the recorded sequence.");
 
-            bool wrote = GoldenChecksumReplay.MaybeRecord(seq, GoldenFile);
+            bool wrote = GoldenChecksumReplay.MaybeRecord(seq, GoldenFile, MfHeader);
             if (wrote)
                 Assert.True(GoldenChecksumReplay.IsRecordMode); // sanity: only writes in record mode
         }
