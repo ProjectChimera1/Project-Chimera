@@ -4,7 +4,7 @@ baseline_commit: acd948f06680477c157c92449198317b3f2868fe
 
 # Story 1.2: Golden-checksum replay harness pinning current sim behavior
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -325,3 +325,11 @@ claude-opus-4-8 (Claude Opus 4.8)
 ### Change Log
 
 - 2026-06-22 — Story 1.2 implemented: golden-checksum replay harness pinning current sim behavior. Added `src/AI` to the Tier-1 compile set; built a Godot-free in-code scenario + 9-system headless harness; recorded/committed a 300-tick golden; added recorder + first-divergence comparator + the 3 AC tests; added 10 `Fixed` boundary-value determinism tests (1.1 deferral). 20/20 Tier-1 tests green; `godot.csproj` build green. Status → review.
+
+### Review Findings
+
+_Code review 2026-06-22 — 3 parallel adversarial layers (Blind Hunter, Edge-Case Hunter, Acceptance Auditor) at Opus 4.8. **AC verdict: AC1 / AC2 / AC3 all SATISFIED** (independently confirmed — story is functionally sound and shippable). 3 `patch` items below (all hardening, no blockers); 0 decision-needed; 0 deferred; 7 findings dismissed after verification (documented-intentional `0u` divergence sentinel, empty==empty comparator behavior, clear-throw on corrupt golden, `Distinct>1` liveness check, spec-mandated AC2 no-subprocess design, the necessary `FactionBase` addition, and the AC3 deep-liveness self-check which needs a harness API change — revisit in 1.3b)._
+
+- [x] [Review][Patch] Overflow asserts re-derive the expected value from the operator under test instead of an independent literal — directly contradicts the inherited 1.1 "no tautological assert" lesson (line 265) and the Completion Note claim (line 312). The `Assert.True(wrapped.Raw < 0 / > 0)` line carries the real behavioral signal; the `Assert.Equal(unchecked(int.MaxValue + Fixed.ONE), …)` line compares operator output against the same `unchecked int+int` on the same operands. Fix: pin the hand-computed literals `-2147418113` / `2147418112`. [godot/ProjectChimera.Sim.Tests/Determinism/FixedBoundaryTests.cs:79,87]
+- [x] [Review][Patch] Re-baseline (record mode) writes the golden from ONE unverified run — in record mode all 3 AC tests early-return, so `RecordGoldenBaseline` is the only body that executes and it neither re-runs to confirm in-process determinism nor round-trips `ParseGolden(FormatGolden(seq))` before writing. A re-baseline that simultaneously introduces nondeterminism/format breakage commits a golden the next CI run fails on. This is the exact path 1.3b/1.4/1.5 will each use. Fix: run twice + assert `SequenceEqual` and round-trip before `MaybeRecord`. [godot/ProjectChimera.Sim.Tests/Golden/GoldenChecksumReplayTests.cs:32-48]
+- [x] [Review][Patch] AC3 hardcodes `k = 100` with no guard that `DefaultTicks > k + 1` — a later story that shortens `DefaultTicks` to speed CI silently turns the located-drift self-test into a confusing false-fail ("perturbation went undetected"). Fix: add a one-line precondition assert tying `k` to `DefaultTicks`. [godot/ProjectChimera.Sim.Tests/Golden/GoldenChecksumReplayTests.cs:100]

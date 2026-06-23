@@ -75,8 +75,10 @@ public class FixedBoundaryTests
         Fixed wrapped = Fixed.MaxValue + Fixed.One; // must NOT throw
         // Behavioral: wrap-around makes the result negative (saturation would not).
         Assert.True(wrapped.Raw < 0, "MaxValue + One must wrap to negative (unchecked overflow), not saturate.");
-        // Exact pin: int.MaxValue + 65536 wrapped into the int range.
-        Assert.Equal(unchecked(int.MaxValue + Fixed.ONE), wrapped.Raw);
+        // Exact pin (independent literal, per the inherited 1.1 "no tautological assert" lesson):
+        // int.MaxValue (2147483647) + ONE (65536) = 2147549183, which wraps past int.MaxValue
+        // by 2^32 to 2147549183 - 4294967296 = -2147418113.
+        Assert.Equal(-2147418113, wrapped.Raw);
     }
 
     [Fact]
@@ -84,7 +86,9 @@ public class FixedBoundaryTests
     {
         Fixed wrapped = Fixed.MinValue - Fixed.One; // must NOT throw
         Assert.True(wrapped.Raw > 0, "MinValue - One must wrap to positive (unchecked underflow), not saturate.");
-        Assert.Equal(unchecked(int.MinValue - Fixed.ONE), wrapped.Raw);
+        // Exact pin (independent literal): int.MinValue (-2147483648) - ONE (65536) = -2147549184,
+        // which wraps past int.MinValue by 2^32 to -2147549184 + 4294967296 = 2147418112.
+        Assert.Equal(2147418112, wrapped.Raw);
     }
 
     // ── Sqrt of degenerate / irrational inputs ────────────────────────────────────

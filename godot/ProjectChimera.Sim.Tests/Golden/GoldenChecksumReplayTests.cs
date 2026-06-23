@@ -42,6 +42,18 @@ namespace ProjectChimera.Sim.Tests.Golden
             Assert.True(seq.Select(s => s.Hash).Distinct().Count() > 1,
                 "Golden sequence is constant — the scenario is not exercising the systems.");
 
+            // Re-baseline safety gate: in record mode the 3 AC tests early-return, so this is the ONLY body
+            // that runs. Never commit a golden a second in-process run can't reproduce, or one ParseGolden
+            // can't read back — catch nondeterminism / format breakage AT record time, not on the next CI run.
+            var seq2 = GoldenChecksumReplay.RunAndRecord(GoldenScenario.DefaultTicks);
+            Assert.True(seq.SequenceEqual(seq2),
+                "Refusing to record: two in-process runs diverged — fix the nondeterminism before re-baselining.");
+            Assert.True(
+                GoldenChecksumReplay.ParseGolden(
+                    System.Text.Encoding.UTF8.GetBytes(GoldenChecksumReplay.FormatGolden(seq)))
+                    .SequenceEqual(seq),
+                "Refusing to record: FormatGolden/ParseGolden do not round-trip the recorded sequence.");
+
             bool wrote = GoldenChecksumReplay.MaybeRecord(seq);
             if (wrote)
                 Assert.True(GoldenChecksumReplay.IsRecordMode); // sanity: only writes in record mode
@@ -98,6 +110,11 @@ namespace ProjectChimera.Sim.Tests.Golden
             if (GoldenChecksumReplay.IsRecordMode) return; // re-baseline run: skip
 
             const int k = 100;                              // perturb at loop index 100 => tick 101
+            // Precondition: the run must extend past the perturbed tick, or "located at K+1" is unprovable.
+            // Guards a future re-baseline that shortens DefaultTicks from silently turning this into a
+            // confusing "perturbation went undetected" false-fail.
+            Assert.True(GoldenScenario.DefaultTicks > k + 1,
+                $"AC3 needs DefaultTicks ({GoldenScenario.DefaultTicks}) > k+1 ({k + 1}) so the perturbed tick is recorded.");
             int targetId = GoldenScenario.PerturbTargetId;  // the worker — combat never overwrites its health
 
             var golden = GoldenChecksumReplay.LoadGolden();
