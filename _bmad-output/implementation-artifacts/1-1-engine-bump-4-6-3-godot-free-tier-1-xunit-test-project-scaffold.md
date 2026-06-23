@@ -4,9 +4,10 @@ baseline_commit: 607d1665c2308e192acc1c8bc147139e937f5182
 
 # Story 1.1: Engine bump 4.6.3 + Godot-free Tier-1 xUnit test project scaffold
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
+<!-- Code review 2026-06-22: ACCEPTED → done. All 3 ACs met; 2 patches applied (RawRoundTrip rewrite + EOF newline); 5 items deferred to 1.2/1.10a/1.10b + pre-existing cleanup. See Review Findings below. -->>
 
 ## Story
 
@@ -353,8 +354,8 @@ _Code review 2026-06-22 (3-layer adversarial: Blind Hunter / Edge Case Hunter / 
 
 **Patch (2) — unblocked, in-scope, unambiguous fix:**
 
-- [ ] [Review][Patch] `RawRoundTrip` is tautological — both sides reduce to `int 65536`, so it asserts `65536 == 65536` and cannot fail (proves nothing about raw↔value layout). Rewrite to round-trip a *fractional* raw (e.g. `0x1_8000` = 1.5) and separately assert `Fixed.ONE == Fixed.One.Raw`. [godot/ProjectChimera.Sim.Tests/Determinism/FixedSmokeTests.cs — RawRoundTrip]
-- [ ] [Review][Patch] `godot.csproj` has no trailing newline at EOF. [godot/godot.csproj — end of file]
+- [x] [Review][Patch] `RawRoundTrip` is tautological — both sides reduce to `int 65536`, so it asserts `65536 == 65536` and cannot fail (proves nothing about raw↔value layout). Rewrite to round-trip a *fractional* raw (e.g. `0x1_8000` = 1.5) and separately assert `Fixed.ONE == Fixed.One.Raw`. [godot/ProjectChimera.Sim.Tests/Determinism/FixedSmokeTests.cs — RawRoundTrip]
+- [x] [Review][Patch] `godot.csproj` has no trailing newline at EOF. [godot/godot.csproj — end of file]
 
 **Defer (5) — real, but out of scope for this scaffold story (tracked to their target stories):**
 

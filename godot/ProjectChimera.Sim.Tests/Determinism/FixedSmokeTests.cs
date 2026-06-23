@@ -22,7 +22,12 @@ public class FixedSmokeTests
     [Fact]
     public void RawRoundTrip()
     {
-        Assert.Equal(Fixed.ONE, Fixed.FromRaw(Fixed.One.Raw).Raw);
+        // FromInt(1) must yield the ONE bit pattern (1 << 16) — verifies the integer→raw shift.
+        Assert.Equal(Fixed.ONE, Fixed.FromInt(1).Raw);
+
+        // An arbitrary fractional raw (1.5 in 16.16 == 0x18000) must survive FromRaw → Raw unchanged.
+        const int raw = 0x18000;
+        Assert.Equal(raw, Fixed.FromRaw(raw).Raw);
     }
 
     [Fact]
