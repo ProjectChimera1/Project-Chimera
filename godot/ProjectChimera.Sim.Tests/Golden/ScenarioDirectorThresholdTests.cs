@@ -33,7 +33,7 @@ namespace ProjectChimera.Sim.Tests.Golden
         /// set to <paramref name="oreInt"/>; the threshold is (<paramref name="amount"/>, <paramref name="op"/>).
         /// Optionally runs the tick under <paramref name="culture"/> (restored in a finally).
         /// </summary>
-        private static bool ThresholdFires(int oreInt, float amount, string op, string? culture = null)
+        private static bool ThresholdFires(int oreInt, Fixed amount, string op, string? culture = null)
         {
             var resources = new ResourceStore(Fixed.Zero);
             resources.Ore[(int)Faction.Player1] = Fixed.FromInt(oreInt);
@@ -56,7 +56,7 @@ namespace ProjectChimera.Sim.Tests.Golden
         /// resource_comparison CONDITION (faction 0), and report whether it fired. Proves the EvalCondition
         /// Fixed-vs-Fixed change gates correctly.
         /// </summary>
-        private static bool ResourceComparisonGates(int oreInt, float amount, string op)
+        private static bool ResourceComparisonGates(int oreInt, Fixed amount, string op)
         {
             var resources = new ResourceStore(Fixed.Zero);
             resources.Ore[(int)Faction.Player1] = Fixed.FromInt(oreInt);
@@ -108,18 +108,18 @@ namespace ProjectChimera.Sim.Tests.Golden
         [Fact]
         public void ResourceThreshold_GreaterOrEqual_FiresAtAndAbove_NotBelow()
         {
-            Assert.True(ThresholdFires(oreInt: 150, amount: 100f, op: ">="), "Ore 150 ≥ 100 should fire.");
-            Assert.True(ThresholdFires(oreInt: 100, amount: 100f, op: ">="), "Ore 100 ≥ 100 should fire (inclusive boundary).");
-            Assert.False(ThresholdFires(oreInt: 50, amount: 100f, op: ">="), "Ore 50 ≥ 100 should NOT fire.");
+            Assert.True(ThresholdFires(oreInt: 150, amount: Fixed.FromInt(100), op: ">="), "Ore 150 ≥ 100 should fire.");
+            Assert.True(ThresholdFires(oreInt: 100, amount: Fixed.FromInt(100), op: ">="), "Ore 100 ≥ 100 should fire (inclusive boundary).");
+            Assert.False(ThresholdFires(oreInt: 50, amount: Fixed.FromInt(100), op: ">="), "Ore 50 ≥ 100 should NOT fire.");
         }
 
         /// <summary>"&lt;" boundary: fires strictly below only (50&lt;100 ✓, 100&lt;100 ✗, 150&lt;100 ✗).</summary>
         [Fact]
         public void ResourceThreshold_LessThan_FiresStrictlyBelow_NotAtOrAbove()
         {
-            Assert.True(ThresholdFires(oreInt: 50, amount: 100f, op: "<"), "Ore 50 < 100 should fire.");
-            Assert.False(ThresholdFires(oreInt: 100, amount: 100f, op: "<"), "Ore 100 < 100 should NOT fire.");
-            Assert.False(ThresholdFires(oreInt: 150, amount: 100f, op: "<"), "Ore 150 < 100 should NOT fire.");
+            Assert.True(ThresholdFires(oreInt: 50, amount: Fixed.FromInt(100), op: "<"), "Ore 50 < 100 should fire.");
+            Assert.False(ThresholdFires(oreInt: 100, amount: Fixed.FromInt(100), op: "<"), "Ore 100 < 100 should NOT fire.");
+            Assert.False(ThresholdFires(oreInt: 150, amount: Fixed.FromInt(100), op: "<"), "Ore 150 < 100 should NOT fire.");
         }
 
         // ── AC3(b): resource_comparison CONDITION (the other changed compare site) ──
@@ -128,9 +128,9 @@ namespace ProjectChimera.Sim.Tests.Golden
         [Fact]
         public void ResourceComparisonCondition_GatesOnFixedCompare()
         {
-            Assert.True(ResourceComparisonGates(oreInt: 150, amount: 100f, op: ">="),
+            Assert.True(ResourceComparisonGates(oreInt: 150, amount: Fixed.FromInt(100), op: ">="),
                 "Ore 150 ≥ 100: condition met → trigger fires.");
-            Assert.False(ResourceComparisonGates(oreInt: 50, amount: 100f, op: ">="),
+            Assert.False(ResourceComparisonGates(oreInt: 50, amount: Fixed.FromInt(100), op: ">="),
                 "Ore 50 ≥ 100: condition not met → trigger does not fire.");
         }
 
@@ -146,7 +146,7 @@ namespace ProjectChimera.Sim.Tests.Golden
         [Fact]
         public void ResourceThreshold_FiresIdentically_UnderCommaDecimalCulture_DeDE()
         {
-            Assert.True(ThresholdFires(oreInt: 150, amount: 100f, op: ">=", culture: "de-DE"),
+            Assert.True(ThresholdFires(oreInt: 150, amount: Fixed.FromInt(100), op: ">=", culture: "de-DE"),
                 "resource_threshold must fire identically under de-DE — the emit/match round-trip is InvariantCulture on both sides.");
         }
     }

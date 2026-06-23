@@ -4,7 +4,7 @@ baseline_commit: baf9ae5
 
 # Story 1.4: Fixed end-to-end — FixedJsonConverter quantization + nondeterminism negative tests
 
-Status: ready-for-dev
+Status: review
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -109,30 +109,30 @@ _Covers: FR-44 (deterministic-sim + headless test coverage), FR-47 (regression-g
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1 — Net-new `FixedJsonConverter` (AC: 1)**
-  - [ ] Create `godot/src/Core/Definitions/FixedJsonConverter.cs`: `public sealed class FixedJsonConverter : JsonConverter<Fixed>` (`#nullable enable`, namespace `ProjectChimera.Core.Definitions`, Godot-free).
-  - [ ] `Read`: if `reader.TokenType != JsonTokenType.Number` throw a located `JsonException`; `double d = reader.GetDouble();` reject `double.IsNaN(d) || double.IsInfinity(d)`; reject `Math.Abs(d) >= 32768d` (16.16 over-range — would overflow `Fixed.FromFloat`); `return Fixed.FromFloat((float)d);` (**the sole allow-listed `FromFloat` call**). Throw `JsonException` with a clear reason on each rejection (System.Text.Json appends the `Path`).
-  - [ ] `Write`: `writer.WriteNumberValue(value.ToFloat());`.
-  - [ ] XML-doc the class: single quantization boundary (AR-14); rejects NaN/Inf/over-range (resolves the 1.3b ≥32768 deferral, D7); the only place `Fixed.FromFloat` may be called on external data.
-  - [ ] `dotnet build godot/godot.csproj` → green.
+- [x] **Task 1 — Net-new `FixedJsonConverter` (AC: 1)**
+  - [x] Create `godot/src/Core/Definitions/FixedJsonConverter.cs`: `public sealed class FixedJsonConverter : JsonConverter<Fixed>` (`#nullable enable`, namespace `ProjectChimera.Core.Definitions`, Godot-free).
+  - [x] `Read`: if `reader.TokenType != JsonTokenType.Number` throw a located `JsonException`; `double d = reader.GetDouble();` reject `double.IsNaN(d) || double.IsInfinity(d)`; reject `Math.Abs(d) >= 32768d` (16.16 over-range — would overflow `Fixed.FromFloat`); `return Fixed.FromFloat((float)d);` (**the sole allow-listed `FromFloat` call**). Throw `JsonException` with a clear reason on each rejection (System.Text.Json appends the `Path`).
+  - [x] `Write`: `writer.WriteNumberValue(value.ToFloat());`.
+  - [x] XML-doc the class: single quantization boundary (AR-14); rejects NaN/Inf/over-range (resolves the 1.3b ≥32768 deferral, D7); the only place `Fixed.FromFloat` may be called on external data.
+  - [x] `dotnet build godot/godot.csproj` → green.
 
-- [ ] **Task 2 — Register the converter + convert the four trigger fields to `Fixed` (AC: 1, 2)**
-  - [ ] Register `new FixedJsonConverter()` in `ScenarioSerializer._options.Converters` (`ScenarioSerializer.cs:28`), and in the two inline AI options (`LLMService.cs:265`, `:508`). (AI content is the highest NaN/Inf risk — the converter must guard it.)
-  - [ ] `TriggerDefinition.cs`: change `TriggerEvent.Amount` (`:75`), `TriggerCondition.Amount` (`:109`), `TriggerAction.Amount` (`:175`), `TriggerAction.TimerSeconds` (`:172`) from `float` → `Fixed`. Keep the `[JsonPropertyName]` keys. Pick sensible `Fixed` defaults (`Amount = Fixed.Zero`; `TimerSeconds = Fixed.FromInt(30)`).
-  - [ ] Confirm `using ProjectChimera.Core;` is present in `TriggerDefinition.cs` for the `Fixed` type.
-  - [ ] `dotnet build` → green (the field-type change will surface every caller — fix in Task 3 + the presentation caller).
+- [x] **Task 2 — Register the converter + convert the four trigger fields to `Fixed` (AC: 1, 2)**
+  - [x] Register `new FixedJsonConverter()` in `ScenarioSerializer._options.Converters` (`ScenarioSerializer.cs:28`), and in the two inline AI options (`LLMService.cs:265`, `:508`). (AI content is the highest NaN/Inf risk — the converter must guard it.)
+  - [x] `TriggerDefinition.cs`: change `TriggerEvent.Amount` (`:75`), `TriggerCondition.Amount` (`:109`), `TriggerAction.Amount` (`:175`), `TriggerAction.TimerSeconds` (`:172`) from `float` → `Fixed`. Keep the `[JsonPropertyName]` keys. Pick sensible `Fixed` defaults (`Amount = Fixed.Zero`; `TimerSeconds = Fixed.FromInt(30)`).
+  - [x] Confirm `using ProjectChimera.Core;` is present in `TriggerDefinition.cs` for the `Fixed` type.
+  - [x] `dotnet build` → green (the field-type change will surface every caller — fix in Task 3 + the presentation caller).
 
-- [ ] **Task 3 — De-float the three in-tick `ScenarioDirector` sites (AC: 2)**
-  - [ ] `EventMatches` `resource_threshold` (`:261`): `Compare(Fixed.FromRaw(oreRaw), def.Amount, def.Operator)` (drop `Fixed.FromFloat` — `def.Amount` is now `Fixed`).
-  - [ ] `EvalCondition` `resource_comparison` (`:300`): `Compare(_resources.Ore[(int)faction], c.Amount, c.Operator)` (drop `Fixed.FromFloat`).
-  - [ ] `ExecuteActions` `add_resources` (`:347`): `_resources.AddOre(faction, a.Amount);` (drop `Fixed.FromFloat`).
-  - [ ] `ExecuteActions` `create_timer` (`:341-342`): compute ticks with `Fixed` math, no float — e.g. `_timers[a.TimerName] = (a.TimerSeconds * Fixed.FromInt(SimulationLoop.TICKS_PER_SECOND)).ToInt();` and keep the `a.TimerSeconds > Fixed.Zero` guard.
-  - [ ] **Fix the AI-validation caller `LLMService.Validate` Pass 5 (`:315-316`)** — the **only** non-sim read of a converted field, and one the compiler will **not** flag (it compiles unchanged via implicit `int→Fixed`). Change `a.TimerSeconds <= 0` → `a.TimerSeconds <= Fixed.Zero` (explicit), and keep `{a.TimerSeconds}s` (now prints `30.0000s`) or switch to `{a.TimerSeconds.ToFloat()}s` for the old `30s` look — error-message text only, zero determinism impact. **Note:** the converter (registered on the `:265` options in Task 2) already rejects NaN/Inf/over-range at deserialize — caught by the `:268` try/catch as `"Invalid JSON: …"` — so this `<= 0` check still earns its keep for in-range non-positive durations (`0` / negative).
-  - [ ] **Do NOT hunt for a MainScene/UI/CreationSuite caller — there is none (verified).** `ExecuteActions` dispatches spawn/message via `OnSpawnUnit(UnitId, Faction, X, Z, Count)` / `OnDisplayMessage(Text, Duration)` (`:320-327`); neither passes `Amount`/`TimerSeconds`, and no trigger-editor UI exists yet. (If a grep for `.Amount`/`.TimerSeconds` on a trigger type ever returns a hit outside `ScenarioDirector.cs` / `LLMService.cs` / the tests, STOP — the closed set was wrong.)
-  - [ ] `dotnet build godot/godot.csproj` → green. Confirm no `Fixed.FromFloat` remains in `ScenarioDirector.cs` (grep the file), and that `LLMService.Validate` was actually visited (`a.TimerSeconds <= Fixed.Zero`) — the build will **not** remind you, since that line compiles either way.
+- [x] **Task 3 — De-float the three in-tick `ScenarioDirector` sites (AC: 2)**
+  - [x] `EventMatches` `resource_threshold` (`:261`): `Compare(Fixed.FromRaw(oreRaw), def.Amount, def.Operator)` (drop `Fixed.FromFloat` — `def.Amount` is now `Fixed`).
+  - [x] `EvalCondition` `resource_comparison` (`:300`): `Compare(_resources.Ore[(int)faction], c.Amount, c.Operator)` (drop `Fixed.FromFloat`).
+  - [x] `ExecuteActions` `add_resources` (`:347`): `_resources.AddOre(faction, a.Amount);` (drop `Fixed.FromFloat`).
+  - [x] `ExecuteActions` `create_timer` (`:341-342`): compute ticks with `Fixed` math, no float — e.g. `_timers[a.TimerName] = (a.TimerSeconds * Fixed.FromInt(SimulationLoop.TICKS_PER_SECOND)).ToInt();` and keep the `a.TimerSeconds > Fixed.Zero` guard.
+  - [x] **Fix the AI-validation caller `LLMService.Validate` Pass 5 (`:315-316`)** — the **only** non-sim read of a converted field, and one the compiler will **not** flag (it compiles unchanged via implicit `int→Fixed`). Change `a.TimerSeconds <= 0` → `a.TimerSeconds <= Fixed.Zero` (explicit), and keep `{a.TimerSeconds}s` (now prints `30.0000s`) or switch to `{a.TimerSeconds.ToFloat()}s` for the old `30s` look — error-message text only, zero determinism impact. **Note:** the converter (registered on the `:265` options in Task 2) already rejects NaN/Inf/over-range at deserialize — caught by the `:268` try/catch as `"Invalid JSON: …"` — so this `<= 0` check still earns its keep for in-range non-positive durations (`0` / negative).
+  - [x] **Do NOT hunt for a MainScene/UI/CreationSuite caller — there is none (verified).** `ExecuteActions` dispatches spawn/message via `OnSpawnUnit(UnitId, Faction, X, Z, Count)` / `OnDisplayMessage(Text, Duration)` (`:320-327`); neither passes `Amount`/`TimerSeconds`, and no trigger-editor UI exists yet. (If a grep for `.Amount`/`.TimerSeconds` on a trigger type ever returns a hit outside `ScenarioDirector.cs` / `LLMService.cs` / the tests, STOP — the closed set was wrong.)
+  - [x] `dotnet build godot/godot.csproj` → green. Confirm no `Fixed.FromFloat` remains in `ScenarioDirector.cs` (grep the file), and that `LLMService.Validate` was actually visited (`a.TimerSeconds <= Fixed.Zero`) — the build will **not** remind you, since that line compiles either way.
 
-- [ ] **Task 4 — Stable trigger total order (AC: 3)**
-  - [ ] `EvaluateTriggers` (`:196`): replace the priority-only comparator with **Priority desc, then ascending declaration index**:
+- [x] **Task 4 — Stable trigger total order (AC: 3)**
+  - [x] `EvaluateTriggers` (`:196`): replace the priority-only comparator with **Priority desc, then ascending declaration index**:
     ```csharp
     Array.Sort(order, (a, b) =>
     {
@@ -141,33 +141,33 @@ _Covers: FR-44 (deterministic-sim + headless test coverage), FR-47 (regression-g
     });
     ```
     (Comment that `a - b` is the flat-array surrogate for the future persistent node-id total order; 7.1b supersedes.)
-  - [ ] `dotnet build` → green.
+  - [x] `dotnet build` → green.
 
-- [ ] **Task 5 — Deterministic `_timers` enumeration (AC: 4)**
-  - [ ] `CollectEvents` timer loop (`:150`): replace `var keys = new List<string>(_timers.Keys);` with a deterministically-ordered snapshot, e.g. `var keys = _timers.Keys.OrderBy(k => k, StringComparer.Ordinal).ToList();` (add `using System.Linq;`). Keep the decrement/expire/remove body unchanged. Comment WHY (same-tick expiry order must be insertion-order-independent; AR-16; 7.2 replaces with the dense SoA store).
-  - [ ] Leave `_variables` untouched (key-access only — no enumeration).
-  - [ ] `dotnet build` → green.
+- [x] **Task 5 — Deterministic `_timers` enumeration (AC: 4)**
+  - [x] `CollectEvents` timer loop (`:150`): replace `var keys = new List<string>(_timers.Keys);` with a deterministically-ordered snapshot, e.g. `var keys = _timers.Keys.OrderBy(k => k, StringComparer.Ordinal).ToList();` (add `using System.Linq;`). Keep the decrement/expire/remove body unchanged. Comment WHY (same-tick expiry order must be insertion-order-independent; AR-16; 7.2 replaces with the dense SoA store).
+  - [x] Leave `_variables` untouched (key-access only — no enumeration).
+  - [x] `dotnet build` → green.
 
-- [ ] **Task 6 — `FixedJsonConverter` tests (AC: 1)**
-  - [ ] New `godot/ProjectChimera.Sim.Tests/Determinism/FixedJsonConverterTests.cs`:
+- [x] **Task 6 — `FixedJsonConverter` tests (AC: 1)**
+  - [x] New `godot/ProjectChimera.Sim.Tests/Determinism/FixedJsonConverterTests.cs`:
     - Round-trip: deserialize `{"amount": 12.5}` into a tiny test record (or a `TriggerAction`) → assert `.Amount.Raw == Fixed.FromFloat(12.5f).Raw` (quantized at the boundary, identical raw).
     - Integer JSON number (`100`) deserializes correctly.
     - **NaN/Inf rejected:** deserializing `NaN`/`Infinity` (as raw JSON tokens, or a string the converter rejects) throws `JsonException`; assert the message/path locates the field.
     - **Over-range rejected:** `32768` and `1e9` throw `JsonException`; `32767.5` succeeds. (Pins D7 — the 1.3b ≥32768 deferral.)
-  - [ ] `dotnet test --filter FullyQualifiedName~FixedJsonConverter` → green.
+  - [x] `dotnet test --filter FullyQualifiedName~FixedJsonConverter` → green.
 
-- [ ] **Task 7 — AR-16 negative tests (AC: 3, 4)**
-  - [ ] New `godot/ProjectChimera.Sim.Tests/Golden/TriggerOrderingTests.cs` (sort guard, AC3): build a `ScenarioData` with ≥3 **equal-priority** triggers whose fire order is observable (ordered fire-log via `OnDisplayMessage` or a test delegate; or `set_variable`→read). Drive a `ScenarioDirector` one tick; assert they fired in **ascending declaration index**. Add a negative-control note: removing the `a - b` tiebreak makes a crafted arrangement fail. Add a focused unit assertion on the ordering for equal priorities.
-  - [ ] New `godot/ProjectChimera.Sim.Tests/Golden/TimerDeterminismTests.cs` (timer guard, AC4): a helper builds a scenario with two `create_timer` actions expiring the same tick, each `timer_expires` firing a `spawn_unit` (order → entity-id → hashed Position/Health). Build it **twice with the two `create_timer` actions in opposite order**; run the harness (reuse `GoldenChecksumReplay.RunAndRecord` with a custom `build:`); assert the two `SimChecksum` sequences are **byte-identical** (`SequenceEqual`). Document that this fails if `_timers` reverts to `Dictionary.Keys` order. (If `spawn_unit` needs a faction-unit definition to resolve, wire a minimal `FactionDefinition` like the existing scenarios; if that is heavy, use a variable-gated `add_resources` whose ordering is made non-commutative via a `set_variable`+`variable_comparison` chain — pick whichever reaches hashed state cleanly and note the choice.)
-  - [ ] Float-round-trip guard (AC4): confirm/extend the de-DE culture test in `ScenarioDirectorThresholdTests.cs` still passes against the now-`Fixed` `Amount` fields (the threshold test builds `TriggerEvent { Amount = ... }` — update those literals from `float` to `Fixed`). It remains the guard that the emit/match path stays culture-symmetric / float-free.
-  - [ ] `dotnet test --filter "FullyQualifiedName~TriggerOrdering|FullyQualifiedName~TimerDeterminism|FullyQualifiedName~ScenarioDirectorThreshold"` → green.
+- [x] **Task 7 — AR-16 negative tests (AC: 3, 4)**
+  - [x] New `godot/ProjectChimera.Sim.Tests/Golden/TriggerOrderingTests.cs` (sort guard, AC3): build a `ScenarioData` with ≥3 **equal-priority** triggers whose fire order is observable (ordered fire-log via `OnDisplayMessage` or a test delegate; or `set_variable`→read). Drive a `ScenarioDirector` one tick; assert they fired in **ascending declaration index**. Add a negative-control note: removing the `a - b` tiebreak makes a crafted arrangement fail. Add a focused unit assertion on the ordering for equal priorities.
+  - [x] New `godot/ProjectChimera.Sim.Tests/Golden/TimerDeterminismTests.cs` (timer guard, AC4): a helper builds a scenario with two `create_timer` actions expiring the same tick, each `timer_expires` firing a `spawn_unit` (order → entity-id → hashed Position/Health). Build it **twice with the two `create_timer` actions in opposite order**; run the harness (reuse `GoldenChecksumReplay.RunAndRecord` with a custom `build:`); assert the two `SimChecksum` sequences are **byte-identical** (`SequenceEqual`). Document that this fails if `_timers` reverts to `Dictionary.Keys` order. (If `spawn_unit` needs a faction-unit definition to resolve, wire a minimal `FactionDefinition` like the existing scenarios; if that is heavy, use a variable-gated `add_resources` whose ordering is made non-commutative via a `set_variable`+`variable_comparison` chain — pick whichever reaches hashed state cleanly and note the choice.)
+  - [x] Float-round-trip guard (AC4): confirm/extend the de-DE culture test in `ScenarioDirectorThresholdTests.cs` still passes against the now-`Fixed` `Amount` fields (the threshold test builds `TriggerEvent { Amount = ... }` — update those literals from `float` to `Fixed`). It remains the guard that the emit/match path stays culture-symmetric / float-free.
+  - [x] `dotnet test --filter "FullyQualifiedName~TriggerOrdering|FullyQualifiedName~TimerDeterminism|FullyQualifiedName~ScenarioDirectorThreshold"` → green.
 
-- [ ] **Task 8 — Verify end-to-end + negative controls + golden no-regression (AC: 1, 2, 3, 4)**
-  - [ ] **Golden no-regression:** run the full Golden suite — both `golden-scenario.golden.txt` and `golden-multifaction.golden.txt` must be byte-identical to their committed values (`git status` clean for both). They are unaffected (empty triggers → `Tick` early-returns); this proves the trigger-path edits changed no hashed state. **If a golden moves, STOP and find the unintended hashed-state change** (likely a non-byte-identical `Amount` quantization).
-  - [ ] **AC3 negative control:** remove the `a - b` tiebreak (revert to priority-only) → `TriggerOrderingTests` goes red; restore → green.
-  - [ ] **AC4 negative control:** revert the timer loop to `new List<string>(_timers.Keys)` → `TimerDeterminismTests` goes red (sequences diverge); restore → green.
-  - [ ] **AC1 negative control:** feed the converter `NaN`/`32768` in a test → `JsonException` with located path; valid values pass.
-  - [ ] `dotnet test godot/ProjectChimera.Sim.Tests/ProjectChimera.Sim.Tests.csproj` → ALL green (the existing 41 tests + the new ones), headless, in seconds. `dotnet build godot/godot.csproj` → green (only the pre-existing CS8632 warnings, untouched). Grep the sim tick path: zero `Fixed.FromFloat`/`ToFloat`/`float ` in `ScenarioDirector.cs` (FogOfWar documented as the lone fenced exception).
+- [x] **Task 8 — Verify end-to-end + negative controls + golden no-regression (AC: 1, 2, 3, 4)**
+  - [x] **Golden no-regression:** run the full Golden suite — both `golden-scenario.golden.txt` and `golden-multifaction.golden.txt` must be byte-identical to their committed values (`git status` clean for both). They are unaffected (empty triggers → `Tick` early-returns); this proves the trigger-path edits changed no hashed state. **If a golden moves, STOP and find the unintended hashed-state change** (likely a non-byte-identical `Amount` quantization).
+  - [x] **AC3 negative control:** remove the `a - b` tiebreak (revert to priority-only) → `TriggerOrderingTests` goes red; restore → green.
+  - [x] **AC4 negative control:** revert the timer loop to `new List<string>(_timers.Keys)` → `TimerDeterminismTests` goes red (sequences diverge); restore → green.
+  - [x] **AC1 negative control:** feed the converter `NaN`/`32768` in a test → `JsonException` with located path; valid values pass.
+  - [x] `dotnet test godot/ProjectChimera.Sim.Tests/ProjectChimera.Sim.Tests.csproj` → ALL green (the existing 41 tests + the new ones), headless, in seconds. `dotnet build godot/godot.csproj` → green (only the pre-existing CS8632 warnings, untouched). Grep the sim tick path: zero `Fixed.FromFloat`/`ToFloat`/`float ` in `ScenarioDirector.cs` (FogOfWar documented as the lone fenced exception).
 
 ---
 
@@ -320,10 +320,57 @@ From **Story 1.3b** (done, code-review ACCEPTED 2026-06-23):
 
 ### Agent Model Used
 
-{{agent_model_name_version}}
+claude-opus-4-8 (Claude Opus 4.8)
 
 ### Debug Log References
 
+- `dotnet build godot/godot.csproj` → **Build succeeded, 0 errors.** 14 `CS8632` nullable warnings, ALL pre-existing (`SimulationLoop.cs`, `GatheringSystem.cs`, `FlowFieldSystem.cs`) — none introduced by this story.
+- `dotnet test ProjectChimera.Sim.Tests` → **Passed! 56/56** (41 pre-existing + 15 new), 0 failed, ~120 ms, headless/Godot-free.
+- **AC3 negative control** (reverted sort tiebreak → priority-only): `TriggerOrderingTests.EqualPriorityTriggers_FireInAscendingDeclarationIndex` went **RED** — the introsort shuffled the 24 equal-priority triggers to `[0,21,20,19,…]` instead of ascending (confirms the 24-count crosses .NET's 16-element insertion-sort threshold so the instability actually manifests). Restored → green.
+- **AC4 negative control** (reverted `_timers` snapshot → `new List<string>(_timers.Keys)`): `TimerDeterminismTests.SameTickExpiries_EmitInOrdinalSortedOrder_IndependentOfInsertionOrder` went **RED** — reverse-insertion emitted `["gamma","beta","alpha"]` (Dictionary insertion order) ≠ sorted. Restored → green.
+- **AC1 negative control**: covered by passing `FixedJsonConverterTests` — NaN/±Infinity and `≥32768`/`1e9` throw `JsonException` (over-range carries a located `Path` naming `amount`); `32767.5` and integers pass.
+- **Golden no-regression**: `git status --porcelain` empty for BOTH `golden-scenario.golden.txt` and `golden-multifaction.golden.txt` (empty triggers → `Tick` early-returns; no hashed state moved). `AlgoVersion` unchanged at 2 — no re-baseline.
+
 ### Completion Notes List
 
+**Summary.** Built the net-new `FixedJsonConverter` (AR-14 single quantization boundary), routed the in-tick trigger fields through it, removed all in-tick float from the trigger path (AR-14), and killed AR-16's two remaining nondeterminisms (unstable sort, `Dictionary` timer enumeration) with negative-controlled tests. Goldens stay byte-identical.
+
+**AC1 — FixedJsonConverter (single quantization boundary).** `godot/src/Core/Definitions/FixedJsonConverter.cs` (`JsonConverter<Fixed>`): reads a JSON number, rejects NaN/±Infinity and `|value| ≥ 32768` (the 16.16 overflow boundary) with a located `JsonException`, else quantizes via the **sole allow-listed** `Fixed.FromFloat`. Registered on `ScenarioSerializer._options` and BOTH inline AI-ingest options in `LLMService` (`:265` TriggerDefinition, `:508` ScenarioData). The over-range reject resolves Story 1.3b's deferred `≥32768` overflow finding (D7).
+
+**AC2 — zero in-tick float in the trigger path.** Converted the four story-named fields to `Fixed` (`TriggerEvent.Amount`, `TriggerCondition.Amount`, `TriggerAction.Amount`, `TriggerAction.TimerSeconds`), removed the three in-tick `Fixed.FromFloat` sites (resource_threshold, resource_comparison, add_resources → now Fixed-vs-Fixed / Fixed add), and rewrote `create_timer` to Fixed math + `.ToInt()` (no `Fixed→int` cast exists). Fixed the **silent non-sim caller** `LLMService.Validate` Pass 5 (`a.TimerSeconds <= 0` → `<= Fixed.Zero`; error string via `.ToFloat()`) — it compiles unchanged via the implicit `int→Fixed` op, so it would have been missed by the build.
+- **⚠ DEVIATION — a FIFTH field (`CooldownSeconds`) was converted.** The story's four-field audit **missed an in-tick float**: `EvaluateTriggers` computed `(int)(t.CooldownSeconds * SimulationLoop.TICKS_PER_SECOND)` — float gameplay math in the trigger evaluation path. AC2 demands *"no float gameplay math in the trigger evaluation/condition/action path"* and asserts FogOfWar is *"the one remaining in-tick float in the sim,"* so leaving cooldown float would make AC2 literally false. `CooldownSeconds` has exactly two sites (the field + this one computation — no LLMService/UI caller, grep-verified), so de-floating it is minimal and uses the identical seconds→ticks Fixed pattern as `TimerSeconds`. This **completes AC2**, not scope creep; `X`/`Z`/`Duration` correctly stay `float` (presentation-only, not in-tick).
+- **AC2 audit sign-off:** zero `Fixed.FromFloat`/`.ToFloat()` *calls* remain in `ScenarioDirector` (only a comment + the presentation-boundary delegate signatures `Action<…float…>` for spawn X/Z and message duration). `FogOfWarSystem` (#7) is the documented lone remaining in-tick float — fenced to Story 6.5; verified no sim system branches on fog visibility (consumed only by `UI/MinimapBridge` + `UI/FogOfWarBridge`; `Navigation/FlowField` mirrors only grid *dimensions*), so it cannot leak into `SimChecksum`.
+
+**AC3 — stable total-order sort.** Comparator is now `(Priority desc, then ascending declaration index)`; the index tiebreak is the flat-array surrogate for the future persistent node-id (7.1b supersedes). Behavioral test asserts the exact ascending fire order for **24** equal-priority triggers (above the introsort threshold, so reverting genuinely shuffles — verified RED) plus a distinct-priority test pinning priority-desc as the primary key.
+
+**AC4 — deterministic timer enumeration + float-round-trip guard.** `_timers` now iterates `Keys.OrderBy(k => k, StringComparer.Ordinal)`. `_variables` left untouched (key-access only). Neither folded into `SimChecksum` (deferred to Story 7.2).
+- **⚠ DEVIATION — AC4's checksum-sequence sketch was replaced with a direct emission-order assertion (to AVOID a tautology).** In the current `ScenarioDirector` the timer enumeration order's only effect is the order of `timer_expires` events, which is consumed solely by the **boolean** `AnyEventMatches`; triggers then fire in the independent SORT order, so timer order **never reaches `SimChecksum`**. A "build twice, compare checksums" test (the story's spawn-order sketch) would therefore pass *even with the bug* — a tautology the story itself forbids. `TimerDeterminismTests` instead asserts the emission order directly (reflection white-box, the same idiom as `SimChecksumCoverageGuardTest`): two opposite insertion orders must both emit ordinal-sorted — and the reverse-insertion case **fails if the fix is reverted** (verified RED). The float-round-trip guard is the 1.3b de-DE `ScenarioDirectorThresholdTests`, updated to `Fixed` `Amount` literals, still green.
+
+**Scope fences honored:** no broad model-wide float→Fixed sweep, no `ContentLoader`/canonical-options unify, no `Validated<T>`/`ScenarioValidator`/`ScenarioApplier`, no graph-IR/`DslVarTable`/timer-variable SoA fold, no FogOfWar fix, no Roslyn analyzer, no `X`/`Z`/`Duration` conversion, no golden hand-edit. No new dependencies. Pre-existing `CS8632` warnings left untouched.
+
 ### File List
+
+**Production (sim + AI):**
+- `godot/src/Core/Definitions/FixedJsonConverter.cs` — **NEW**: the `JsonConverter<Fixed>` quantization boundary.
+- `godot/src/Core/Definitions/TriggerDefinition.cs` — MOD: 5 fields `float→Fixed` (`TriggerEvent.Amount`, `TriggerCondition.Amount`, `TriggerAction.Amount`, `TriggerAction.TimerSeconds`, `TriggerDefinition.CooldownSeconds`); `+using ProjectChimera.Core`.
+- `godot/src/Core/Definitions/ScenarioSerializer.cs` — MOD: register `FixedJsonConverter` on `_options`.
+- `godot/src/Core/ScenarioDirector.cs` — MOD: de-float 3 in-tick sites + `create_timer` + cooldown (Fixed math); stable total-order sort; ordinal-sorted `_timers` snapshot; `+using System.Linq`.
+- `godot/src/AI/LLMService.cs` — MOD: register `FixedJsonConverter` on both AI-ingest options; `Validate` Pass-5 `TimerSeconds` guard → `Fixed.Zero`; `+using ProjectChimera.Core`.
+
+**Tests (Tier-1 xUnit, Godot-free):**
+- `godot/ProjectChimera.Sim.Tests/Determinism/FixedJsonConverterTests.cs` — **NEW**: AC1 (quantize/NaN/Inf/over-range/located-error + TriggerAction integration), 12 cases.
+- `godot/ProjectChimera.Sim.Tests/Golden/TriggerOrderingTests.cs` — **NEW**: AC3 (24-trigger equal-priority ascending order + distinct-priority primary key).
+- `godot/ProjectChimera.Sim.Tests/Golden/TimerDeterminismTests.cs` — **NEW**: AC4 (emission-order determinism, reflection white-box; bites on revert).
+- `godot/ProjectChimera.Sim.Tests/Golden/ScenarioDirectorThresholdTests.cs` — MOD: `Fixed` `Amount` literals (de-DE float-round-trip guard kept green).
+
+**Tracking:**
+- `_bmad-output/implementation-artifacts/sprint-status.yaml` — `1-4` → `review`.
+- `_bmad-output/implementation-artifacts/1-4-…-negative-tests.md` — this story (frontmatter `baseline_commit: baf9ae5` preserved; tasks, Dev Agent Record, Status).
+
+_Note: Godot may auto-generate `.cs.uid` sidecars for the new test `.cs` files (engine artifact, not hand-authored)._
+
+### Change Log
+
+| Date       | Change |
+|------------|--------|
+| 2026-06-23 | Implemented Story 1.4. Net-new `FixedJsonConverter` (AR-14 single quantization boundary; NaN/Inf/over-range reject, resolves 1.3b's ≥32768 deferral). Five trigger fields `float→Fixed` (the four named + `CooldownSeconds`, a missed in-tick-float gap completing AC2). Removed all in-tick `Fixed.FromFloat`/float math from the trigger path (3 compare/add sites + `create_timer` + cooldown). Stable total-order trigger sort (Priority desc, declaration index asc) and ordinal-sorted `_timers` enumeration (AR-16). Added 15 tests (converter + AC3 + AC4) with verified RED negative controls; updated 1.3b threshold test to `Fixed`. Goldens byte-identical; `AlgoVersion` unchanged. Status → review. |

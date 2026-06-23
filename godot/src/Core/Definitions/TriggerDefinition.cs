@@ -1,6 +1,7 @@
 #nullable enable
 using System;
 using System.Text.Json.Serialization;
+using ProjectChimera.Core;
 
 namespace ProjectChimera.Core.Definitions
 {
@@ -26,7 +27,7 @@ namespace ProjectChimera.Core.Definitions
 
         /// <summary>Minimum seconds between consecutive firings. 0 = no cooldown.</summary>
         [JsonPropertyName("cooldown_seconds")]
-        public float CooldownSeconds { get; set; } = 0f;
+        public Fixed CooldownSeconds { get; set; } = Fixed.Zero;
 
         /// <summary>Higher values fire first when multiple triggers match the same tick.</summary>
         [JsonPropertyName("priority")]
@@ -72,7 +73,7 @@ namespace ProjectChimera.Core.Definitions
 
         /// <summary>Ore amount to compare against. Used by resource_threshold.</summary>
         [JsonPropertyName("amount")]
-        public float Amount { get; set; } = 0f;
+        public Fixed Amount { get; set; } = Fixed.Zero;
 
         /// <summary>Unit count to compare against. Used by unit_count_threshold.</summary>
         [JsonPropertyName("count")]
@@ -106,7 +107,7 @@ namespace ProjectChimera.Core.Definitions
         public string? BuildingType { get; set; }
 
         [JsonPropertyName("amount")]
-        public float Amount { get; set; } = 0f;
+        public Fixed Amount { get; set; } = Fixed.Zero;
 
         [JsonPropertyName("count")]
         public int Count { get; set; } = 0;
@@ -169,10 +170,10 @@ namespace ProjectChimera.Core.Definitions
         public string? TimerName { get; set; }
 
         [JsonPropertyName("timer_seconds")]
-        public float TimerSeconds { get; set; } = 30f;
+        public Fixed TimerSeconds { get; set; } = Fixed.FromInt(30);
 
         [JsonPropertyName("amount")]
-        public float Amount { get; set; } = 0f;
+        public Fixed Amount { get; set; } = Fixed.Zero;
 
         [JsonPropertyName("variable")]
         public string? Variable { get; set; }

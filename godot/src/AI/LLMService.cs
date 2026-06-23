@@ -10,6 +10,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
+using ProjectChimera.Core;
 using ProjectChimera.Core.Definitions;
 
 namespace ProjectChimera.AI
@@ -262,7 +263,7 @@ namespace ProjectChimera.AI
             try
             {
                 trigger = JsonSerializer.Deserialize<TriggerDefinition>(json,
-                    new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
+                    new JsonSerializerOptions { PropertyNameCaseInsensitive = true, Converters = { new FixedJsonConverter() } })
                     ?? throw new InvalidOperationException("Deserialised to null.");
             }
             catch (Exception ex)
@@ -312,8 +313,8 @@ namespace ProjectChimera.AI
                     if (a.X < -b || a.X > b || a.Z < -b || a.Z > b)
                         return (null, $"spawn_unit position ({a.X}, {a.Z}) is outside map bounds ±{b}.");
                 }
-                if (a.Type == "create_timer" && a.TimerSeconds <= 0)
-                    return (null, $"create_timer '{a.TimerName}' has invalid duration {a.TimerSeconds}s.");
+                if (a.Type == "create_timer" && a.TimerSeconds <= Fixed.Zero)
+                    return (null, $"create_timer '{a.TimerName}' has invalid duration {a.TimerSeconds.ToFloat()}s.");
                 if (a.Type == "display_message" && a.Duration <= 0)
                     a.Duration = 4f; // auto-fix
             }
@@ -505,7 +506,7 @@ play_sound      — sound_id (string)");
             try
             {
                 scenario = JsonSerializer.Deserialize<ScenarioData>(json,
-                    new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
+                    new JsonSerializerOptions { PropertyNameCaseInsensitive = true, Converters = { new FixedJsonConverter() } })
                     ?? throw new InvalidOperationException("Deserialised to null.");
             }
             catch (Exception ex)

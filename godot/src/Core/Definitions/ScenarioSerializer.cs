@@ -25,7 +25,7 @@ namespace ProjectChimera.Core.Definitions
             ReadCommentHandling = JsonCommentHandling.Skip,
             AllowTrailingCommas = true,
             WriteIndented       = true,
-            Converters          = { new JsonStringEnumConverter() },
+            Converters          = { new JsonStringEnumConverter(), new FixedJsonConverter() },
         };
 
         /// <summary>

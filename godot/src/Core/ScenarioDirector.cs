@@ -2,6 +2,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using ProjectChimera.Core.Definitions;
 using ProjectChimera.Economy;
 
@@ -146,8 +147,12 @@ namespace ProjectChimera.Core
             }
 
             // Timers — decrement and collect expiries.
-            // Iterate over a copy of keys to allow modification during enumeration.
-            var keys = new List<string>(_timers.Keys);
+            // Iterate a DETERMINISTICALLY-ORDERED snapshot of keys (ordinal), NOT Dictionary enumeration order
+            // (which depends on insertion history): same-tick expiries must append timer_expires events in a
+            // stable order regardless of the order the timers were created, or two peers desync (AR-16). The
+            // snapshot also allows mutating _timers during the loop. Story 7.2 replaces _timers with the dense
+            // SoA store folded into SimChecksum.
+            var keys = _timers.Keys.OrderBy(k => k, StringComparer.Ordinal).ToList();
             foreach (var name in keys)
             {
                 int remaining = _timers[name] - 1;
@@ -190,10 +195,18 @@ namespace ProjectChimera.Core
 
         private void EvaluateTriggers(List<FiredEvent> events, EntityWorld world)
         {
-            // Sort indices by priority descending. Trigger arrays are small (<100).
+            // Sort indices by a STABLE TOTAL ORDER: priority descending, then ascending declaration index.
+            // Array.Sort is an unstable introsort, so without the index tiebreak equal-priority triggers could
+            // reorder across runtimes/platforms — and ExecuteActions runs in this order, so equal-priority
+            // triggers writing shared state would desync (AR-16). The declaration index (a - b) is the flat-array
+            // surrogate for the future persistent node-id total order; Story 7.1b supersedes it. Arrays are small (<100).
             var order = new int[_triggers.Length];
             for (int i = 0; i < order.Length; i++) order[i] = i;
-            Array.Sort(order, (a, b) => _triggers[b].Priority - _triggers[a].Priority);
+            Array.Sort(order, (a, b) =>
+            {
+                int byPriority = _triggers[b].Priority - _triggers[a].Priority; // priority desc
+                return byPriority != 0 ? byPriority : a - b;                    // tiebreak: ascending declaration index
+            });
 
             foreach (int idx in order)
             {
@@ -206,7 +219,8 @@ namespace ProjectChimera.Core
 
                 if (t.RunOnce) _triggerFired[idx] = true;
 
-                int coolTicks = (int)(t.CooldownSeconds * SimulationLoop.TICKS_PER_SECOND);
+                // Fixed seconds → whole ticks (same pattern as create_timer): no in-tick float math (AC2/AR-14).
+                int coolTicks = (t.CooldownSeconds * Fixed.FromInt(SimulationLoop.TICKS_PER_SECOND)).ToInt();
                 if (coolTicks > 0) _triggerCooldown[idx] = coolTicks;
             }
         }
@@ -253,12 +267,11 @@ namespace ProjectChimera.Core
                     return string.IsNullOrEmpty(def.TimerName) || f.Data == def.TimerName;
                 case "resource_threshold":
                     if (f.Slot != def.Faction) return false;
-                    // f.Data is the ore's raw Fixed integer (InvariantCulture). Compare Fixed-vs-Fixed; the
-                    // authored threshold (def.Amount — a JSON float) becomes Fixed at the compare site. That
-                    // residual FromFloat converts an authored CONSTANT (identical bits on every peer, so not a
-                    // cross-machine desync source); Story 1.4 removes it when FixedJsonConverter makes Amount a Fixed.
+                    // f.Data is the ore's raw Fixed integer (InvariantCulture). Compare Fixed-vs-Fixed; def.Amount
+                    // is now a Fixed quantized at the JSON boundary by FixedJsonConverter (Story 1.4), so the prior
+                    // in-tick Fixed.FromFloat(def.Amount) is gone — zero float in the trigger tick path (AR-14/AR-16).
                     return int.TryParse(f.Data, NumberStyles.Integer, CultureInfo.InvariantCulture, out int oreRaw)
-                        && Compare(Fixed.FromRaw(oreRaw), Fixed.FromFloat(def.Amount), def.Operator);
+                        && Compare(Fixed.FromRaw(oreRaw), def.Amount, def.Operator);
                 case "unit_count_threshold":
                     if (f.Slot != def.Faction) return false;
                     return int.TryParse(f.Data, NumberStyles.Integer, CultureInfo.InvariantCulture, out int cnt)
@@ -296,8 +309,8 @@ namespace ProjectChimera.Core
                     return false;
                 }
                 case "resource_comparison":
-                    // Fixed-vs-Fixed (no ToFloat). Authored threshold → Fixed at the compare site (1.4 removes the FromFloat).
-                    return Compare(_resources.Ore[(int)faction], Fixed.FromFloat(c.Amount), c.Operator);
+                    // Fixed-vs-Fixed (no float). c.Amount is a Fixed quantized at the JSON boundary (Story 1.4) — no in-tick FromFloat.
+                    return Compare(_resources.Ore[(int)faction], c.Amount, c.Operator);
                 case "unit_count":
                     return Compare(CountAlive(world, faction), c.Count, c.Operator);
                 case "variable_comparison":
@@ -337,14 +350,16 @@ namespace ProjectChimera.Core
                         OnVictory?.Invoke(1 - a.Faction); // other faction wins
                         break;
                     case "create_timer":
-                        if (!string.IsNullOrEmpty(a.TimerName) && a.TimerSeconds > 0)
+                        if (!string.IsNullOrEmpty(a.TimerName) && a.TimerSeconds > Fixed.Zero)
+                            // a.TimerSeconds is a Fixed (seconds); multiply by ticks/sec as Fixed, then truncate to
+                            // whole ticks. No float and no Fixed→int cast exists, so use Fixed math + ToInt() (AR-14).
                             _timers[a.TimerName] =
-                                (int)(a.TimerSeconds * SimulationLoop.TICKS_PER_SECOND);
+                                (a.TimerSeconds * Fixed.FromInt(SimulationLoop.TICKS_PER_SECOND)).ToInt();
                         break;
                     case "add_resources":
                     {
                         var faction = (Faction)(a.Faction + 1);
-                        _resources.AddOre(faction, Fixed.FromFloat(a.Amount));
+                        _resources.AddOre(faction, a.Amount); // a.Amount is already Fixed (quantized at the JSON boundary, Story 1.4)
                         break;
                     }
                     case "set_variable":
