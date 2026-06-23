@@ -52,6 +52,12 @@ namespace ProjectChimera.Combat
         {
             EntityWorld world = ctx.World;
             int t = ctx.TargetId;
+            // Defensive guard for the single reusable damage path: never apply to a dead/destroyed
+            // slot. No current caller reaches this (melee, projectile-primary, and splash all check
+            // aliveness upstream), so it is a no-op for the golden checksums (AC2). It exists so a
+            // FUTURE caller (ability, DoT, second same-tick hit) can't produce a phantom UnitKilled
+            // event or an inflated RecordKill by hitting an already-dead target.
+            if (!world.IsAlive(t)) return false;
             Fixed multiplier = ctx.Table.Get(type, ctx.TargetArmor);
             Fixed damage = amount * multiplier; // NO − armorValue (as-built formula; D8)
             world.Health[t] = world.Health[t] - damage;
