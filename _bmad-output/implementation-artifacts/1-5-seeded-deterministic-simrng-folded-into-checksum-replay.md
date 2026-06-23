@@ -336,3 +336,21 @@ claude-opus-4-8 (Claude Code, gds-dev-story workflow).
 1. **Replay round-trip test scope (Task 7).** Recommended: add `ReplayRecorder.cs`/`ReplayPlayer.cs` as explicit Godot-free includes to the Tier-1 csproj so AC2/AC3's `.chmr` seed round-trip is unit-tested headlessly. Fallback: narrower seed-header test + golden-harness "twice" proof, deferring full sim-replay verification to Tier-2. (Dev will pick and record the choice; flagging in case you have a preference.)
 2. **RNG algorithm.** SplitMix64 recommended (tiny, integer-only, seed-0 safe). `pcg32` is an acceptable substitute — leaf choice per `game-architecture.md`:2522.
 3. **Match-seed source.** For 1.5 the seed is a fixed default const (the MP match-seed handshake is Epic 9). No real seed negotiation is wired now — confirm that's the intended scope boundary.
+
+---
+
+### Review Findings
+
+_Adversarial code review (Blind Hunter + Edge Case Hunter + Acceptance Auditor, all Opus 4.8), 2026-06-23. Diff `a90c786..HEAD` scoped to `godot/`. Outcome: **0 decision-needed · 1 patch · 3 deferred · 1 dismissed**. All 3 ACs and all design decisions D1–D8 verified **MET**; the SplitMix64 outputs were independently re-derived and confirmed against the pinned test constants (AC1 independence is real, not circular); both goldens confirmed re-baselined + self-stamped `checksum_algo_version: 3`; no `ISimSystem` / `SimChecksum.Compute` / system-`Tick` signature changed (D2); all scope fences respected._
+
+**Patch (open):**
+
+- [ ] [Review][Patch] Truncated/forged v2 `.chmr` header throws `EndOfStreamException` instead of the documented `InvalidDataException` [godot/src/Multiplayer/ReplayPlayer.cs:~88] — the net-new 8-byte seed read (`version >= 2 ? reader.ReadUInt64() : DEFAULT_RNG_SEED`) is unguarded; a v2-stamped file truncated within the seed field escapes the loader's `InvalidDataException` corruption contract (the live `MainScene.TryLoadReplay` catch swallows it → degraded diagnostics only, no crash, no desync). Fix: length-check (or wrap) the header read and throw `InvalidDataException` on a short read, matching the bad-magic / bad-version paths. _Severity LOW. Found independently by Blind + Edge._
+
+**Deferred:**
+
+- [x] [Review][Defer] AC3 replay round-trip records zero orders — replay proof reduces to seed round-trip + same-seed determinism [godot/ProjectChimera.Sim.Tests/Golden/SimRngChecksumReplayTests.cs:~348] — deferred, **by design** (D6 seed-only / D7 no production draws this story); Auditor-confirmed NOT an AC violation. The end-to-end "recorded behavior replays under RNG" proof lands when a real system draws (Epic 2). Found by Blind + Auditor.
+- [x] [Review][Defer] Recorder hardcodes `EntityWorld.DEFAULT_RNG_SEED` instead of the match's actual start seed [godot/src/Core/MainScene.cs:~2113] — deferred, correct today (1.5 always runs the default seed) but a latent silent-desync trap once the Epic 9 MP seed handshake introduces a real per-match seed. Wire the recorded seed to the real match-start seed when that handshake lands (naive live `world.Rng.State` is itself wrong after draws). Found by Blind.
+- [x] [Review][Defer] `ulong.MaxValue` seed exercised only as a fixture, never pinned as a stream [godot/ProjectChimera.Sim.Tests/Determinism/SimRngTests.cs] — deferred, coverage-hardening only (max-seed `unchecked` wrap verified correct; seeds 0 & 12345 already independently pinned). Optional: add one externally-computed max-seed assertion. Found by Edge.
+
+**Dismissed (1):** `NextInt`/`NextFixed` lack an independently-pinned value — Auditor's own verdict "Gap: None functionally"; both are pure functions of the independently-pinned `NextRaw`, so independence holds transitively.
