@@ -61,6 +61,23 @@ namespace ProjectChimera.Core
     {
         public const int MAX_ENTITIES = 4096;
 
+        // --- Determinism (shared, NOT per-entity) ---
+        /// <summary>
+        /// Default seed for <see cref="Rng"/> so the parameterless ctor (used widely by scenarios and
+        /// tests) always yields a valid deterministic stream. The match bootstrap / replay restore
+        /// reseeds via <c>world.Rng.Seed(matchSeed)</c>. Recognizable nonzero value (the SplitMix64 gamma).
+        /// </summary>
+        public const ulong DEFAULT_RNG_SEED = 0x9E3779B97F4A7C15UL;
+
+        /// <summary>
+        /// The single shared deterministic RNG for this world — the ONLY randomness source in the sim
+        /// (AR-13). Reached by every system through the <c>world</c> they already receive, and its
+        /// <see cref="SimRng.State"/> is folded into <see cref="SimChecksum"/>. A fixed reference with
+        /// mutable internal state (exactly like the readonly SoA arrays): reseed via <see cref="SimRng.Seed"/>,
+        /// never reassign. NOT a per-entity array.
+        /// </summary>
+        public SimRng Rng { get; }
+
         // --- SoA arrays ---
         public readonly EntityFlags[] Flags;
         public readonly FixedVec3[] Position;
@@ -172,6 +189,9 @@ namespace ProjectChimera.Core
             _freeList = new int[MAX_ENTITIES];
             _freeCount = 0;
             _nextId = 0;
+
+            // Single shared deterministic RNG (AR-13). Reseeded at match start / replay restore.
+            Rng = new SimRng(DEFAULT_RNG_SEED);
 
             // Initialize sentinels
             Array.Fill(AttackTarget,  -1);

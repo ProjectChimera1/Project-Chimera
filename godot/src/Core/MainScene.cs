@@ -2099,7 +2099,10 @@ void fragment() {
                 string timestamp = System.DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss");
                 string filePath  = System.IO.Path.Combine(replayDir, $"{timestamp}_1v1.chmr");
 
-                _replayRecorder = new ReplayRecorder(filePath, ScenarioPath);
+                // Match seed: a fixed default for now (the real MP seed handshake is Epic 9). The
+                // EntityWorld's RNG already starts at this value; record it so a replay restores the
+                // identical stream origin (D6 — lockstep regenerates the stream from the seed alone).
+                _replayRecorder = new ReplayRecorder(filePath, ScenarioPath, EntityWorld.DEFAULT_RNG_SEED);
                 _lockstep.Recorder = _replayRecorder;
 
                 if (_replayStatusLabel != null)
@@ -2138,6 +2141,8 @@ void fragment() {
         {
             try
             {
+                // ReplayPlayer reads the match seed from the header and reseeds _world.Rng before the
+                // first tick (v1 files → default seed), so the replayed RNG stream matches the recording.
                 _replayPlayer = new ReplayPlayer(filePath, _world);
                 _replayPlayer.OnRequestPath       = (id, x, z) => _flowFieldBridge.RequestPath(id, new Godot.Vector3(x, 0f, z));
                 _replayPlayer.OnRequestAttackMove = (id, x, z) => _flowFieldBridge.RequestAttackMove(id, new Godot.Vector3(x, 0f, z));

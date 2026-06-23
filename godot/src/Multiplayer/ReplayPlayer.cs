@@ -23,6 +23,12 @@ namespace ProjectChimera.Multiplayer
         /// <summary>The scenario path embedded in the replay file header.</summary>
         public string ScenarioPath { get; }
 
+        /// <summary>
+        /// The match-start SimRng seed parsed from the header (v2+). For pre-seed v1 files this is
+        /// <see cref="EntityWorld.DEFAULT_RNG_SEED"/>. The ctor reseeds the world's RNG to it before any tick.
+        /// </summary>
+        public ulong Seed { get; }
+
         /// <summary>True once all recorded ticks have been applied.</summary>
         public bool IsFinished { get; private set; }
 
@@ -76,12 +82,19 @@ namespace ProjectChimera.Multiplayer
                 throw new InvalidDataException($"Replay: bad magic 0x{magic:X8} in '{filePath}'");
 
             ushort version = reader.ReadUInt16();
-            if (version != ReplayRecorder.VERSION)
+            // Accept every known version (1..current) — v1 files predate the seed header and stay playable.
+            if (version < 1 || version > ReplayRecorder.VERSION)
                 throw new InvalidDataException($"Replay: unsupported version {version}");
 
             ushort pathLen = reader.ReadUInt16();
             var pathBytes  = reader.ReadBytes(pathLen);
             ScenarioPath   = System.Text.Encoding.UTF8.GetString(pathBytes);
+
+            // v2 (Story 1.5): the 8-byte match-start SimRng seed follows the path. v1 files have no seed
+            // → fall back to the default. Restore the stream origin BEFORE the first tick so the replayed
+            // lockstep sim regenerates the identical RNG sequence (D6 — seed only, not per-tick state).
+            Seed = version >= 2 ? reader.ReadUInt64() : EntityWorld.DEFAULT_RNG_SEED;
+            _world.Rng.Seed(Seed);
 
             // ── Parse tick records ────────────────────────────────────────────────
             while (stream.Position < stream.Length - 3) // at least 4 bytes remain

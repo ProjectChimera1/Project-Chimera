@@ -16,7 +16,7 @@ namespace ProjectChimera.Sim.Tests.Golden
     ///      mutation. If a future story adds a public per-faction array to ResourceStore but forgets to fold it
     ///      into the checksum, mutating that array leaves the hash unchanged and this test FAILS, naming the
     ///      uncovered field. This proves *actual* coverage instead of a hand-maintained list that silently drifts.
-    ///   2. <see cref="KnownWorldState_ProducesPinnedV2Hash"/> — a snapshot/tripwire: a hand-built fixed world
+    ///   2. <see cref="KnownWorldState_ProducesPinnedV3Hash"/> — a snapshot/tripwire: a hand-built fixed world
     ///      hashes to a committed constant. Any unintended change to the algorithm (reordering mixes, adding or
     ///      dropping a field) moves the constant and turns this red, forcing a conscious re-pin + AlgoVersion bump.
     ///
@@ -83,38 +83,45 @@ namespace ProjectChimera.Sim.Tests.Golden
         }
 
         /// <summary>
-        /// AC1 — pins the v2 algorithm. A hand-built, fully-deterministic world (all <see cref="Fixed"/>; no
-        /// FromFloat, no RNG, no wall-clock) must hash to a committed constant. This is a tripwire: an intentional
-        /// algorithm change must update BOTH this constant AND <see cref="SimChecksum.AlgoVersion"/> in the same
-        /// commit (mirrors the Story 9.1 "known world state → fixed expected hash" guard). The value was recorded
-        /// once from a green run; it is byte-identical across Windows/Linux because every hashed field is Fixed.
+        /// AC1 — pins the v3 algorithm. A hand-built, fully-deterministic world (all <see cref="Fixed"/>; no
+        /// FromFloat, no wall-clock; the shared <see cref="SimRng"/> seeded to a fixed known value) must hash to
+        /// a committed constant. This is a tripwire: an intentional algorithm change must update BOTH this constant
+        /// AND <see cref="SimChecksum.AlgoVersion"/> in the same commit (mirrors the Story 9.1 "known world state →
+        /// fixed expected hash" guard). The value was recorded once from a green run; it is byte-identical across
+        /// Windows/Linux because every hashed field is Fixed and the RNG seed is an explicit constant.
         /// </summary>
         [Fact]
-        public void KnownWorldState_ProducesPinnedV2Hash()
+        public void KnownWorldState_ProducesPinnedV3Hash()
         {
-            // Algorithm version must be exactly 2 (Story 1.3b's single bump). If this fails, the const below is stale.
-            Assert.Equal(2, SimChecksum.AlgoVersion);
+            // Algorithm version must be exactly 3 (Story 1.5's SimRng fold). If this fails, the const below is stale.
+            Assert.Equal(3, SimChecksum.AlgoVersion);
 
             uint actual = ComputeKnownStateHash();
 
-            // ── Pinned v2 hash for the fixed world built by ComputeKnownStateHash() ───────────────────────────
+            // ── Pinned v3 hash for the fixed world built by ComputeKnownStateHash() ───────────────────────────
             // An intentional SimChecksum algorithm change must update this value AND bump SimChecksum.AlgoVersion.
-            const uint ExpectedV2Hash = 0xE65C97C8; // recorded from a green v2 run; re-pin only on an intentional algo change
-            Assert.True(actual == ExpectedV2Hash,
-                $"Known-state v2 checksum changed: expected 0x{ExpectedV2Hash:X8}, actual 0x{actual:X8}. " +
-                $"If this is an INTENTIONAL algorithm change, re-pin ExpectedV2Hash to 0x{actual:X8} and bump " +
+            const uint ExpectedV3Hash = 0x8C96EC08; // recorded from a green v3 run; re-pin only on an intentional algo change
+            Assert.True(actual == ExpectedV3Hash,
+                $"Known-state v3 checksum changed: expected 0x{ExpectedV3Hash:X8}, actual 0x{actual:X8}. " +
+                $"If this is an INTENTIONAL algorithm change, re-pin ExpectedV3Hash to 0x{actual:X8} and bump " +
                 $"SimChecksum.AlgoVersion. If not, you broke the deterministic checksum — investigate.");
         }
 
         /// <summary>
-        /// Build a small fixed world by hand and compute its v2 checksum. Fully self-contained: every hashed
+        /// Build a small fixed world by hand and compute its v3 checksum. Fully self-contained: every hashed
         /// field is set explicitly with <see cref="Fixed"/> so the pinned hash does not silently depend on store
-        /// constructor defaults a future story might change.
+        /// constructor defaults a future story might change. The shared <see cref="SimRng"/> is reseeded to a
+        /// fixed known value so the v3 RNG fold is pinned independently of EntityWorld.DEFAULT_RNG_SEED.
         /// </summary>
         private static uint ComputeKnownStateHash()
         {
             // Two entities (hashed: Position X/Y/Z + Health). Speed (4th arg) is not hashed; fixed for clarity.
             var world = new EntityWorld();
+
+            // v3 (Story 1.5): SimRng.State is folded into the checksum. Reseed to a fixed known value so the pin
+            // is explicit and independent of the EntityWorld default seed.
+            const ulong KnownRngSeed = 0x0123456789ABCDEFUL;
+            world.Rng.Seed(KnownRngSeed);
             world.Create(new FixedVec3(Fixed.FromInt(3), Fixed.Zero, Fixed.FromInt(-5)),
                          Faction.Player1, Fixed.FromInt(42), Fixed.FromInt(3));
             world.Create(new FixedVec3(Fixed.FromInt(-7), Fixed.FromInt(1), Fixed.FromInt(9)),

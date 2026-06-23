@@ -8,7 +8,7 @@ namespace ProjectChimera.Multiplayer
     /// Records the command stream of a live match to a binary file for later replay.
     ///
     /// File format:
-    ///   Header:  magic(4) + version(2) + scenarioPathLen(2) + scenarioPath(UTF8)
+    ///   Header:  magic(4) + version(2) + scenarioPathLen(2) + scenarioPath(UTF8) + seed(8, v2+)
     ///   Records: For each tick with ≥1 order per faction, zero or more entries of:
     ///              tick(4) + faction(1) + orderCount(1) + [unitId(2)+cmd(1)+tx(4)+tz(4)] * count
     ///   Sentinel: tick = 0xFFFFFFFF (4 bytes) marks EOF.
@@ -22,7 +22,7 @@ namespace ProjectChimera.Multiplayer
 
         /// <summary>Four-byte magic: "CHMR" (Chimera Replay).</summary>
         public const uint   MAGIC   = 0x524D4843u; // 'C','H','M','R' LE
-        public const ushort VERSION = 1;
+        public const ushort VERSION = 2; // v2 (Story 1.5): header carries the 8-byte match-start SimRng seed
 
         /// <summary>Sentinel written at end-of-file to mark replay completion.</summary>
         public const uint EOF_SENTINEL = 0xFFFFFFFFu;
@@ -36,14 +36,21 @@ namespace ProjectChimera.Multiplayer
         public string FilePath     { get; }
         public string ScenarioPath { get; }
 
+        /// <summary>The match-start SimRng seed embedded in the header (D6 — restored on playback).</summary>
+        public ulong Seed { get; }
+
         // ── Construction ──────────────────────────────────────────────────────────
 
         /// <param name="filePath">Absolute or Godot user:// path to write to.</param>
         /// <param name="scenarioPath">The scenario that was loaded — stored for playback.</param>
-        public ReplayRecorder(string filePath, string scenarioPath)
+        /// <param name="seed">The match-START SimRng seed (the value passed to <c>world.Rng.Seed</c> at
+        /// match start) — NOT the post-tick <c>State</c>. A lockstep replay regenerates the whole stream
+        /// from this origin, so per-tick RNG state is redundant and deliberately not recorded (D6).</param>
+        public ReplayRecorder(string filePath, string scenarioPath, ulong seed)
         {
             FilePath     = filePath;
             ScenarioPath = scenarioPath;
+            Seed         = seed;
 
             var stream = new FileStream(filePath, FileMode.Create, FileAccess.Write, FileShare.None);
             _writer = new BinaryWriter(stream, System.Text.Encoding.UTF8, leaveOpen: false);
@@ -111,6 +118,8 @@ namespace ProjectChimera.Multiplayer
             var pathBytes = System.Text.Encoding.UTF8.GetBytes(scenarioPath);
             _writer.Write((ushort)pathBytes.Length);
             _writer.Write(pathBytes);
+
+            _writer.Write(Seed); // v2: 8-byte match-start SimRng seed (D6 — restored by ReplayPlayer)
         }
     }
 }

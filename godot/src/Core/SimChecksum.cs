@@ -11,6 +11,7 @@ namespace ProjectChimera.Core
     ///   - BuildingStore: Alive flag, Health, ConstructionTimer for every building slot
     ///   - ResourceStore: Ore, Crystal, SupplyUsed, SupplyCap, FactionBase for each active
     ///     faction (via FactionRegistry, ascending)
+    ///   - SimRng: the shared generator's 64-bit State (low 32 bits then high 32 bits) — added v3 (Story 1.5)
     ///
     /// Versioned by <see cref="AlgoVersion"/> — bump on any change to the hashed set/order
     /// (forces an intentional golden re-baseline). MatchStats is deliberately NOT hashed
@@ -31,8 +32,9 @@ namespace ProjectChimera.Core
         /// re-baseline the goldens in the SAME commit.
         ///   v1 — implicit, pre-1.3b: Ore only, per active faction (Stories 1.1–1.3a).
         ///   v2 — Story 1.3b: full per-faction coverage (Ore, Crystal, SupplyUsed, SupplyCap, FactionBase).
+        ///   v3 — Story 1.5: fold the shared SimRng.State (low then high 32 bits) so a divergent RNG stream desyncs.
         /// </summary>
-        public const int AlgoVersion = 2;
+        public const int AlgoVersion = 3;
 
         /// <summary>
         /// Compute a full-state checksum for desync detection.
@@ -85,6 +87,14 @@ namespace ProjectChimera.Core
                 hash = Mix(hash, resources.FactionBase[idx].Y.Raw);
                 hash = Mix(hash, resources.FactionBase[idx].Z.Raw);
             }
+
+            // ── RNG state (v3, Story 1.5) ─────────────────────────────────────────
+            // The single shared SimRng's state IS sim truth: once Epic 2 effects draw from it, a divergent
+            // draw stream between peers must desync detectably. Folded as two int mixes (low/high 32 bits)
+            // via the existing Mix primitive. State is constant (== seed) until something draws.
+            ulong rng = world.Rng.State;
+            hash = Mix(hash, (int)(rng & 0xFFFFFFFFUL)); // low 32 bits
+            hash = Mix(hash, (int)(rng >> 32));          // high 32 bits
 
             return hash;
         }

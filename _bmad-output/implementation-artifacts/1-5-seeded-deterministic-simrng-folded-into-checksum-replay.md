@@ -4,7 +4,7 @@ baseline_commit: a90c786
 
 # Story 1.5: Seeded deterministic SimRng folded into checksum + replay
 
-Status: ready-for-dev
+Status: review
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -94,70 +94,52 @@ _Covers: FR-39 (deterministic lockstep), FR-44 (deterministic-sim + headless tes
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1 — Net-new `SimRng` class (AC: 1)**
-  - [ ] Create `godot/src/Core/SimRng.cs`: `public sealed class SimRng` (`#nullable enable`, namespace `ProjectChimera.Core`, **no `using Godot`**, no `float`/`double`). Use the SplitMix64 reference in Dev Notes.
-  - [ ] API: `SimRng(ulong seed = …)`, `ulong State { get; }`, `void Seed(ulong seed)`, `ulong NextRaw()`, `int NextInt(int countExclusive)` (throw on `<= 0`), `Fixed NextFixed()` (`Fixed.FromRaw((int)(NextRaw() >> 48))`).
-  - [ ] XML-doc the class: only sim randomness source (AR-13/AR-15); integer-only; shared single instance; folded into checksum + replay; the ascending-id-candidates-then-draw rule.
-  - [ ] `dotnet build godot/godot.csproj` → green.
+- [x] **Task 1 — Net-new `SimRng` class (AC: 1)**
+  - [x] Create `godot/src/Core/SimRng.cs`: `public sealed class SimRng` (`#nullable enable`, namespace `ProjectChimera.Core`, **no `using Godot`**, no `float`/`double`). Use the SplitMix64 reference in Dev Notes.
+  - [x] API: `SimRng(ulong seed = …)`, `ulong State { get; }`, `void Seed(ulong seed)`, `ulong NextRaw()`, `int NextInt(int countExclusive)` (throw on `<= 0`), `Fixed NextFixed()` (`Fixed.FromRaw((int)(NextRaw() >> 48))`).
+  - [x] XML-doc the class: only sim randomness source (AR-13/AR-15); integer-only; shared single instance; folded into checksum + replay; the ascending-id-candidates-then-draw rule.
+  - [x] `dotnet build godot/godot.csproj` → green.
 
-- [ ] **Task 2 — Hold one shared `SimRng` on `EntityWorld` (AC: 1, 2)**
-  - [ ] `EntityWorld.cs`: add `public SimRng Rng { get; }`; initialize with a named default seed const in the ctor (so `new EntityWorld()` keeps working everywhere). Add `using` for `ProjectChimera.Core` types as needed (same namespace — none needed).
-  - [ ] Confirm reseed path: `world.Rng.Seed(seed)` resets the stream; the `Rng` reference stays fixed (matches the readonly-array pattern).
-  - [ ] `dotnet build` → green.
+- [x] **Task 2 — Hold one shared `SimRng` on `EntityWorld` (AC: 1, 2)**
+  - [x] `EntityWorld.cs`: add `public SimRng Rng { get; }`; initialize with a named default seed const (`DEFAULT_RNG_SEED`) in the ctor (so `new EntityWorld()` keeps working everywhere). Same namespace — no new `using`.
+  - [x] Confirm reseed path: `world.Rng.Seed(seed)` resets the stream; the `Rng` reference stays fixed (matches the readonly-array pattern).
+  - [x] `dotnet build` → green.
 
-- [ ] **Task 3 — Fold RNG state into `SimChecksum` + bump `AlgoVersion` (AC: 2)**
-  - [ ] `SimChecksum.cs`: after the faction loop (`:87`), before `return hash;` (`:89`), add:
-    ```csharp
-    // ── RNG state (v3) ── single shared SimRng; its state is sim truth — a divergent draw stream desyncs silently.
-    ulong rng = world.Rng.State;
-    hash = Mix(hash, (int)(rng & 0xFFFFFFFFUL)); // low 32 bits
-    hash = Mix(hash, (int)(rng >> 32));          // high 32 bits
-    ```
-  - [ ] Bump `AlgoVersion` 2 → 3 (`:35`) and append the v3 line to the version-history doc (`:27-34`); add the RNG line to the hashed-state list in the class doc (`:9-19`). **No signature change** to `Compute`.
-  - [ ] `dotnet build` → green.
+- [x] **Task 3 — Fold RNG state into `SimChecksum` + bump `AlgoVersion` (AC: 2)**
+  - [x] `SimChecksum.cs`: after the faction loop, before `return hash;`, added the two-int (low/high 32-bit) `Mix` fold of `world.Rng.State`.
+  - [x] Bumped `AlgoVersion` 2 → 3; appended the v3 line to the version-history doc; added the RNG line to the hashed-state list in the class doc. **No signature change** to `Compute`.
+  - [x] `dotnet build` → green.
 
-- [ ] **Task 4 — Replay seed: record + restore (AC: 2)**
-  - [ ] `ReplayRecorder.cs`: bump `VERSION` 1 → 2 (`:25`); make `WriteHeader` (`:106-114`) write the 8-byte `ulong` seed after the scenario-path bytes; accept the seed via the ctor/begin path. **Persist the match-START seed (the value passed to `world.Rng.Seed(...)`), NOT `world.Rng.State`** — `State` has advanced after ticks; a replay must restore the stream's origin. Comment WHY (seed-only — lockstep regenerates the stream; D6).
-  - [ ] `ReplayPlayer.cs`: after the header path parse (`:73-84`), read the seed **only when `version >= 2`** (`reader.ReadUInt64()`); expose it (e.g. a `Seed` property) and ensure the playback bootstrap calls `world.Rng.Seed(seed)` **before the first `StepOnce`**. v1 files → default seed (document).
-  - [ ] `dotnet build godot/godot.csproj` → green.
+- [x] **Task 4 — Replay seed: record + restore (AC: 2)**
+  - [x] `ReplayRecorder.cs`: bumped `VERSION` 1 → 2; added a required `ulong seed` ctor param + public `Seed` property; `WriteHeader` writes the 8-byte seed after the scenario-path bytes. Persists the match-START seed (NOT `State`); commented WHY (seed-only, D6). MainScene call site updated to pass `EntityWorld.DEFAULT_RNG_SEED`.
+  - [x] `ReplayPlayer.cs`: relaxed the exact-match version check to accept v1..current; reads the seed only when `version >= 2` (v1 → `DEFAULT_RNG_SEED`); exposes a `Seed` property; reseeds `_world.Rng.Seed(seed)` in the ctor **before any tick** (foolproof — MainScene needs no change).
+  - [x] `dotnet build godot/godot.csproj` → green.
 
-- [ ] **Task 5 — `SimRng` unit tests (AC: 1)**
-  - [ ] New `godot/ProjectChimera.Sim.Tests/Determinism/SimRngTests.cs`:
-    - Same seed → two instances produce bit-identical `NextRaw` streams (≥1000 draws).
-    - `Seed(s)` restore reproduces the stream from that point; different seeds diverge.
-    - `NextInt(n)` always in `[0, n)`; `NextInt(0)`/negative throws.
-    - `NextFixed()` always in `[0, 1)` (`Raw` in `[0, 65535]`), integer-only.
-    - **Independent expected value:** hand-compute one SplitMix64 step for a known seed and assert `NextRaw()` equals it (not derived by re-running the method — AC1).
-  - [ ] `dotnet test --filter FullyQualifiedName~SimRng` → green.
+- [x] **Task 5 — `SimRng` unit tests (AC: 1)**
+  - [x] New `godot/ProjectChimera.Sim.Tests/Determinism/SimRngTests.cs`: same-seed bit-identical streams (1000 draws); `Seed` restore reproduces / different seeds diverge; `State` tracks seed + advances; `NextInt(n)` in `[0,n)` + throws on `<=0`; `NextFixed()` `Raw` in `[0, ONE)`.
+  - [x] **Independent expected value:** pinned the canonical SplitMix64 outputs (computed in standalone Python, externally citable — seed 0 → `0xE220A8397B1DCDAF`, etc.) and asserted `NextRaw()` equals them. NOT derived by re-running the method (AC1).
+  - [x] `dotnet test --filter FullyQualifiedName~SimRng` → green (16 cases).
 
-- [ ] **Task 6 — Re-baseline goldens + re-pin coverage guard (AC: 2)**
-  - [ ] `SimChecksumCoverageGuardTest`: change the `AlgoVersion` assertion 2→3; in `ComputeKnownStateHash`, seed the hand-built `world.Rng` to a fixed known value; re-pin `ExpectedV2Hash` (→ a v3 name/value) from a green run; update comments.
-  - [ ] Re-baseline **both** goldens: `CHIMERA_GOLDEN_RECORD=1` → run the record-mode golden test(s) for `golden-scenario` **and** `golden-multifaction` → `dotnet build` (refreshes embedded copies) → verify both files changed and self-stamp `checksum_algo_version: 3`. Commit them in the SAME commit as Task 3. (PowerShell: `$env:CHIMERA_GOLDEN_RECORD=1; dotnet test godot/ProjectChimera.Sim.Tests --filter FullyQualifiedName~Golden; $env:CHIMERA_GOLDEN_RECORD=$null; dotnet build godot/godot.csproj`.)
-  - [ ] `dotnet test` (normal mode) → both goldens verify green at v3.
+- [x] **Task 6 — Re-baseline goldens + re-pin coverage guard (AC: 2)**
+  - [x] `SimChecksumCoverageGuardTest`: `AlgoVersion` assertion 2→3; `ComputeKnownStateHash` seeds the hand-built `world.Rng` to a fixed known value (`0x0123456789ABCDEF`); renamed `ExpectedV2Hash`→`ExpectedV3Hash` and re-pinned to `0x8C96EC08` (captured from a green v3 run); updated docs + method name.
+  - [x] Re-baselined **both** goldens via the record path; both now self-stamp `checksum_algo_version: 3` and every checksum moved (e.g. golden-scenario tick 1: `2863D41A`→`31E69403`). Regenerated, not hand-edited.
+  - [x] `dotnet test` (normal mode) → both goldens verify green at v3.
 
-- [ ] **Task 7 — RNG-driven checksum + replay reproduction tests (AC: 2, 3)**
-  - [ ] New `godot/ProjectChimera.Sim.Tests/Golden/SimRngChecksumReplayTests.cs`. **The RNG-driven behavior MUST live in a test-only `ISimSystem` added to the loop — NOT in a `RunAndRecord` `perturb` callback.** A `.chmr` records *orders*, not the perturb, so the perturb does not re-run on playback and the replayed checksum would diverge for a non-bug reason. Put the draw in a system so the replay (which re-runs the sim) reproduces it:
-    ```csharp
-    sealed class RngDrawTestSystem : ISimSystem { // test-only; mirrors how Epic 2 effects will draw
-        public void Tick(EntityWorld world, Fixed dt) {
-            int id = /* a known alive entity id from the scenario */;
-            world.Health[id] = world.Health[id] + Fixed.FromInt(world.Rng.NextInt(3)); // draw advances shared stream + writes HASHED state
-        }
-    }
-    ```
-    - **AC3 "twice":** `RunAndRecord(ticks, build: () => BuildLoopWithRngDrawSystem(seed))` (the `build:` factory adds `RngDrawTestSystem` to the loop and `world.Rng.Seed(seed)`s before running) — run twice; assert the two `Sample.Hash` sequences are `SequenceEqual`. Same seed + same systems → identical stream.
-    - **AC2/AC3 "across a replay":** record that SAME loop (test system included) to a `.chmr` (match-start seed in header); replay by reconstructing the SAME loop (test system included) + `world.Rng.Seed(seed)` from the header, driving it through `ReplayPlayer`; capture the checksum sequence and assert byte-identical to the live run. The draw reproduces because it lives in the replayed sim. **See the replay-test note below** for the csproj decision.
-    - **Negative control:** a different seed (or temporarily removing the RNG mix from `SimChecksum`) makes the sequences diverge — proves the test bites. Verify RED, then restore.
-  - [ ] `dotnet test --filter FullyQualifiedName~SimRngChecksumReplay` → green.
+- [x] **Task 7 — RNG-driven checksum + replay reproduction tests (AC: 2, 3)**
+  - [x] New `godot/ProjectChimera.Sim.Tests/Golden/SimRngChecksumReplayTests.cs`. The RNG draw lives in a test-only `RngDrawTestSystem : ISimSystem` (advances `world.Rng` + writes hashed Health), so it re-runs on playback.
+    - **AC3 "twice":** two live runs with the same seed → identical per-tick checksum sequences (`SequenceEqual`).
+    - **AC2/AC3 "across a replay":** record the match seed to a `.chmr` (v2 header), reconstruct the SAME loop seeded to a WRONG value, let `ReplayPlayer` restore the seed from the header, drive via `Flush`+`StepOnce`; replayed checksum sequence byte-identical to the live run. Verified `recorder.Seed`→`player.Seed`→`world.Rng.State` round-trip.
+    - **Negative control:** a different seed diverges the checksum sequence (stream/checksum-level — no reflection/BCL-internal probing, per the 1.4 review lesson). Plus a v1-back-compat test (no seed → `DEFAULT_RNG_SEED`).
+  - [x] `dotnet test --filter FullyQualifiedName~SimRngChecksumReplay` → green (4 cases).
 
-  > **Replay-test note (resolve before writing the `.chmr` test):** `ReplayRecorder`/`ReplayPlayer` live in `src/Multiplayer`, which the Tier-1 csproj does **not** glob (a wildcard would drag in ENet/Godot-coupled `LockstepManager`). **Recommended:** add the two files as **explicit single-file `<Compile Include>`** entries to `ProjectChimera.Sim.Tests.csproj` after confirming they (and their pure deps like `UnitOrder`) are Godot-free — then the full record→replay round-trip is Tier-1-testable. **Fallback** (if they can't be isolated cleanly): unit-test the seed header write/read directly, prove RNG reproduction via the golden harness "twice" path, and defer the full sim-replay verification to Tier-2/GdUnit4. Pick one; note the choice in the Dev Agent Record.
+  > **Replay-test note — RESOLVED: took the RECOMMENDED path.** Added `ReplayRecorder.cs`, `ReplayPlayer.cs`, and `NetworkCommand.cs` (for `UnitOrder`) as explicit single-file `<Compile Include>` entries to `ProjectChimera.Sim.Tests.csproj` after verifying all three are Godot-free (System.* + Core only). The full record→restore-seed→replay round-trip is now Tier-1 (headless) testable — no Tier-2/GdUnit4 deferral. `src/Multiplayer` is still NOT globbed (LockstepManager/ENet stay out).
 
-- [ ] **Task 8 — Verify end-to-end (AC: 1, 2, 3)**
-  - [ ] `dotnet test godot/ProjectChimera.Sim.Tests/ProjectChimera.Sim.Tests.csproj` → ALL green (existing suite + new tests), headless, in seconds.
-  - [ ] `dotnet build godot/godot.csproj` → green (only the pre-existing CS8632 warnings — do not "fix" them).
-  - [ ] Grep `SimRng.cs` and `SimRngTests.cs`: zero `float`/`double`/`System.Random`/`Mathf`/`Math.`/`using Godot`.
-  - [ ] Confirm both goldens self-stamp `checksum_algo_version: 3` and the coverage guard pins v3.
-  - [ ] Confirm `git diff` touches no system `Tick` signature, no `ISimSystem`, no `SimChecksum.Compute` signature (D2).
+- [x] **Task 8 — Verify end-to-end (AC: 1, 2, 3)**
+  - [x] `dotnet test godot/ProjectChimera.Sim.Tests/ProjectChimera.Sim.Tests.csproj` → ALL green (81 passed / 0 failed; baseline 61 + 20 new), headless, ~115 ms.
+  - [x] `dotnet build godot/godot.csproj` → green (only the pre-existing CS8632 warnings — left untouched).
+  - [x] Grep `SimRng.cs` and `SimRngTests.cs`: zero `float`/`double`/`System.Random`/`Mathf`/`Math.`/`using Godot` (reworded the two doc comments that named the banned tokens).
+  - [x] Both goldens self-stamp `checksum_algo_version: 3`; the coverage guard pins v3 (`0x8C96EC08`).
+  - [x] `git diff` confirmed: no system `Tick` signature, no `ISimSystem`, no `SimChecksum.Compute` signature changed (D2).
 
 ---
 
@@ -305,11 +287,47 @@ _Extracted from `_bmad-output/project-context.md` + `game-architecture.md` — t
 
 ### Agent Model Used
 
+claude-opus-4-8 (Claude Code, gds-dev-story workflow).
+
 ### Debug Log References
+
+- Baseline before any change: full Tier-1 suite green (61/61).
+- After Task 3 fold + AlgoVersion bump, the coverage guard reported the new v3 known-state hash via its own failure message: `actual 0x8C96EC08` → pinned.
+- Re-baseline (record mode, `~Golden` filter): 28 cases green; both source goldens rewritten and self-stamp `checksum_algo_version: 3`.
+- Final: game build succeeds (only pre-existing CS8632 warnings); full Tier-1 suite green (81/81, ~115 ms).
 
 ### Completion Notes List
 
+- **Design decisions honored as specified.** `SimRng` is a sealed reference type (D1, SplitMix64/D3); single shared instance on `EntityWorld.Rng` reached through the `world` callers already receive (D2 — zero `ISimSystem`/`Compute`/system-Tick signature churn, verified via `git diff`); state folded into `SimChecksum` with `AlgoVersion` 2→3 and an intended re-baseline of both goldens (D5); replay records the SEED ONLY in a v2 header (D6); no system draws / no random gameplay added (D7); no validator/`ScenarioValidator` built (D8 — that is Story 1.7).
+- **AC1 independence.** The expected `NextRaw()` values were computed in a standalone Python implementation of SplitMix64 (and cross-checked against the textbook canonical value `0xE220A8397B1DCDAF` for seed 0), then pasted as literals — not produced by calling `SimRng` (the "tautological assert" rule).
+- **Replay-test scope decision (Task 7 open question #1):** took the RECOMMENDED path — `ReplayRecorder.cs`/`ReplayPlayer.cs`/`NetworkCommand.cs` are explicitly compiled into the Tier-1 (Godot-free) test assembly, so the full record→restore-seed→replay round-trip is verified headlessly. All three were confirmed Godot-free (System.* + `ProjectChimera.Core` only). `src/Multiplayer` remains un-globbed so ENet/`LockstepManager` stay out.
+- **Match-seed source (open question #3):** for 1.5 the seed is the fixed `EntityWorld.DEFAULT_RNG_SEED` constant; the real MP seed handshake remains Epic 9 (scope boundary confirmed).
+- **Back-compat:** `ReplayPlayer`'s exact-match version check was relaxed to accept v1..current; v1 `.chmr` files (no seed field) fall back to `DEFAULT_RNG_SEED` (covered by a dedicated test).
+- **Pre-existing items left alone:** the CS8632 nullable warnings and `EntityWorld.cs` load-time `Fixed.FromFloat(8f)` for `VisionRange` are fenced to their own stories and were not touched.
+
 ### File List
+
+**New:**
+- `godot/src/Core/SimRng.cs`
+- `godot/ProjectChimera.Sim.Tests/Determinism/SimRngTests.cs`
+- `godot/ProjectChimera.Sim.Tests/Golden/SimRngChecksumReplayTests.cs`
+
+**Modified:**
+- `godot/src/Core/EntityWorld.cs` (DEFAULT_RNG_SEED const + shared `Rng` property + ctor init)
+- `godot/src/Core/SimChecksum.cs` (RNG-state fold + `AlgoVersion` 2→3 + docs)
+- `godot/src/Multiplayer/ReplayRecorder.cs` (VERSION 1→2 + seed ctor param/property + header write)
+- `godot/src/Multiplayer/ReplayPlayer.cs` (version-range check + seed read + `Seed` property + reseed `world.Rng`)
+- `godot/src/Core/MainScene.cs` (recorder call site passes the match seed)
+- `godot/ProjectChimera.Sim.Tests/ProjectChimera.Sim.Tests.csproj` (3 explicit Godot-free Multiplayer includes)
+- `godot/ProjectChimera.Sim.Tests/Golden/SimChecksumCoverageGuardTest.cs` (v3 assertion + seeded known-state + re-pinned hash)
+- `godot/ProjectChimera.Sim.Tests/Golden/golden-scenario.golden.txt` (re-baselined to v3)
+- `godot/ProjectChimera.Sim.Tests/Golden/golden-multifaction.golden.txt` (re-baselined to v3)
+
+### Change Log
+
+| Date | Change |
+|------|--------|
+| 2026-06-23 | Implemented Story 1.5: net-new `SimRng` (SplitMix64) on `EntityWorld`, folded its state into `SimChecksum` (AlgoVersion 2→3, both goldens re-baselined), threaded the match seed through `.chmr` replay (header v1→2), added 20 Tier-1 tests. Full suite 81/81 green. Status → review. |
 
 ---
 

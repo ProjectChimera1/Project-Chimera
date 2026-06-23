@@ -21,6 +21,14 @@
     <Compile Include="..\src\AI\**\*.cs"         LinkBase="Sim\AI" />
     <!-- Effects/ and Dsl/ are net-new in Epics 2 & 7; those stories add their includes when the folders exist. -->
 
+    <!-- Story 1.5: explicit single-file includes so the .chmr record→replay round-trip (with the v2 seed
+         header) is Tier-1 testable. These three Multiplayer files are verified Godot-free (System.* + Core
+         only); the rest of src/Multiplayer (LockstepManager, ENet transports) is Godot/ENet-coupled, so the
+         folder is deliberately NOT globbed. -->
+    <Compile Include="..\src\Multiplayer\ReplayRecorder.cs" LinkBase="Sim\Multiplayer" />
+    <Compile Include="..\src\Multiplayer\ReplayPlayer.cs"   LinkBase="Sim\Multiplayer" />
+    <Compile Include="..\src\Multiplayer\NetworkCommand.cs" LinkBase="Sim\Multiplayer" />
+
     <!-- The only Godot-coupled files in the sim folders. MainScene = god object (strangled in 1.8a/c);
          StressTest relocates to tools/ in 1.8a. FixedPoint.cs STAYS IN (Godot bridge guarded by #if GODOT). -->
     <Compile Remove="..\src\Core\MainScene.cs" />
