@@ -200,12 +200,13 @@ namespace ProjectChimera.Core
             // reorder across runtimes/platforms — and ExecuteActions runs in this order, so equal-priority
             // triggers writing shared state would desync (AR-16). The declaration index (a - b) is the flat-array
             // surrogate for the future persistent node-id total order; Story 7.1b supersedes it. Arrays are small (<100).
+            // Use CompareTo (not subtraction) so extreme int priorities cannot overflow the comparator (AR-16).
             var order = new int[_triggers.Length];
             for (int i = 0; i < order.Length; i++) order[i] = i;
             Array.Sort(order, (a, b) =>
             {
-                int byPriority = _triggers[b].Priority - _triggers[a].Priority; // priority desc
-                return byPriority != 0 ? byPriority : a - b;                    // tiebreak: ascending declaration index
+                int byPriority = _triggers[b].Priority.CompareTo(_triggers[a].Priority); // priority desc
+                return byPriority != 0 ? byPriority : a.CompareTo(b);                     // tiebreak: ascending declaration index
             });
 
             foreach (int idx in order)
@@ -219,11 +220,23 @@ namespace ProjectChimera.Core
 
                 if (t.RunOnce) _triggerFired[idx] = true;
 
-                // Fixed seconds → whole ticks (same pattern as create_timer): no in-tick float math (AC2/AR-14).
-                int coolTicks = (t.CooldownSeconds * Fixed.FromInt(SimulationLoop.TICKS_PER_SECOND)).ToInt();
+                // Fixed seconds → whole ticks via SecondsToTicks (64-bit intermediate, overflow-safe): AC2/AR-14.
+                int coolTicks = SecondsToTicks(t.CooldownSeconds);
                 if (coolTicks > 0) _triggerCooldown[idx] = coolTicks;
             }
         }
+
+        /// <summary>
+        /// Convert a <see cref="Fixed"/> duration in seconds to whole sim ticks WITHOUT overflowing the
+        /// Fixed multiply. <c>seconds * Fixed.FromInt(TICKS_PER_SECOND)</c> overflows the <c>(int)</c> cast
+        /// inside <see cref="Fixed"/>'s <c>operator*</c> once the product leaves 16.16 range (~1092 s at
+        /// 30 ticks/s) and silently wraps negative — yet <c>FixedJsonConverter</c> still admits durations up
+        /// to ~32767 s. Computing the product in a 64-bit intermediate and shifting down maps every
+        /// converter-admitted duration to a correct non-negative tick count, and is byte-identical to the
+        /// prior Fixed math for in-range values.
+        /// </summary>
+        private static int SecondsToTicks(Fixed seconds) =>
+            (int)(((long)seconds.Raw * SimulationLoop.TICKS_PER_SECOND) >> Fixed.FRACTIONAL_BITS);
 
         // ── Snapshot update ───────────────────────────────────────────────────
 
@@ -351,10 +364,9 @@ namespace ProjectChimera.Core
                         break;
                     case "create_timer":
                         if (!string.IsNullOrEmpty(a.TimerName) && a.TimerSeconds > Fixed.Zero)
-                            // a.TimerSeconds is a Fixed (seconds); multiply by ticks/sec as Fixed, then truncate to
-                            // whole ticks. No float and no Fixed→int cast exists, so use Fixed math + ToInt() (AR-14).
-                            _timers[a.TimerName] =
-                                (a.TimerSeconds * Fixed.FromInt(SimulationLoop.TICKS_PER_SECOND)).ToInt();
+                            // Fixed seconds → whole ticks via SecondsToTicks (64-bit intermediate): the plain
+                            // Fixed multiply overflows for durations past ~1092 s and wraps negative (AR-14).
+                            _timers[a.TimerName] = SecondsToTicks(a.TimerSeconds);
                         break;
                     case "add_resources":
                     {

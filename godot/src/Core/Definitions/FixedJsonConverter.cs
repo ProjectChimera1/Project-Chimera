@@ -37,11 +37,17 @@ namespace ProjectChimera.Core.Definitions
             double d = reader.GetDouble();
             if (double.IsNaN(d) || double.IsInfinity(d))
                 throw new JsonException($"Fixed value must be finite; got {d}.");
-            if (Math.Abs(d) >= FixedRangeLimit)
-                throw new JsonException(
-                    $"Fixed value {d} is out of 16.16 range (|value| must be < {FixedRangeLimit}).");
 
-            return Fixed.FromFloat((float)d); // the sole allow-listed FromFloat call on external data
+            // Range-check the POST-CAST float, not the double. Fixed.FromFloat does (int)(value * 65536) on the
+            // float, so a double just under +32768 that rounds UP to 32768f when narrowed would overflow that cast
+            // to int.MinValue — a silent sign flip (the exact wrap AC1 must reject). 16.16 represents
+            // [-32768, 32767.99998]; -32768f is exactly representable (raw int.MinValue) and must NOT be rejected.
+            float f = (float)d;
+            if (f >= FixedRangeLimit || f < -FixedRangeLimit)
+                throw new JsonException(
+                    $"Fixed value {d} is out of 16.16 range ([-{FixedRangeLimit}, {FixedRangeLimit})).");
+
+            return Fixed.FromFloat(f); // the sole allow-listed FromFloat call on external data
         }
 
         public override void Write(Utf8JsonWriter writer, Fixed value, JsonSerializerOptions options)

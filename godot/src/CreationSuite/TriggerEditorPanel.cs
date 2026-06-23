@@ -311,8 +311,10 @@ namespace ProjectChimera.CreationSuite
             _pendingTrigger   = trigger;
             _statusLabel.Text = "✔ Review and accept below.";
 
+            // Register the FixedJsonConverter so the Fixed fields (Amount/TimerSeconds/CooldownSeconds) render as
+            // human-readable decimals in the preview, not as {} (Fixed.Raw is a field, which STJ omits by default).
             string prettyJson = JsonSerializer.Serialize(trigger,
-                new JsonSerializerOptions { WriteIndented = true });
+                new JsonSerializerOptions { WriteIndented = true, Converters = { new FixedJsonConverter() } });
 
             _preview.Text = $"[code]{GodotEscape(prettyJson)}[/code]";
             _preview.Visible = true;

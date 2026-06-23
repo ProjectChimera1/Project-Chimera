@@ -78,10 +78,11 @@ namespace ProjectChimera.Sim.Tests.Determinism
         // ── Rejection: over-range (the D7 ≥32768 overflow), with a located error ──────────────────────
 
         [Theory]
-        [InlineData(@"{""amount"": 32768}")]   // exactly the 16.16 overflow boundary (rejected — boundary is inclusive)
+        [InlineData(@"{""amount"": 32768}")]        // exactly the 16.16 overflow boundary
+        [InlineData(@"{""amount"": 32767.9999}")]   // < 32768 as a double, but rounds UP to 32768f when narrowed → would overflow; must reject
         [InlineData(@"{""amount"": 100000}")]
         [InlineData(@"{""amount"": 1e9}")]
-        [InlineData(@"{""amount"": -32768}")]
+        [InlineData(@"{""amount"": -40000}")]       // below the 16.16 minimum (-32768)
         public void OverRange_IsRejectedWithLocatedError(string json)
         {
             // |value| ≥ 32768 overflows Fixed.FromFloat's (int)(value*65536) cast and wraps; the converter rejects
@@ -98,6 +99,37 @@ namespace ProjectChimera.Sim.Tests.Determinism
             // 32767.5 is representable in 16.16 (raw 2,147,450,880 < int.MaxValue) → must NOT be rejected.
             FixedHolder h = Deserialize(@"{""amount"": 32767.5}");
             Assert.Equal(Fixed.FromFloat(32767.5f).Raw, h.Amount.Raw);
+        }
+
+        [Fact]
+        public void NegativeBoundary_Minus32768_Succeeds()
+        {
+            // -32768.0 is the exact 16.16 minimum (raw int.MinValue, no overflow) — it must NOT be rejected.
+            // The old symmetric Math.Abs(d) >= 32768 guard wrongly rejected this; the post-cast-float guard allows it.
+            FixedHolder h = Deserialize(@"{""amount"": -32768}");
+            Assert.Equal(Fixed.FromFloat(-32768f).Raw, h.Amount.Raw);
+            Assert.Equal(int.MinValue, h.Amount.Raw);
+        }
+
+        // ── Rejection: NaN / ±Infinity actually REACHING the converter's guard (non-tautological) ─────
+
+        [Theory]
+        [InlineData(@"{""amount"": NaN}")]
+        [InlineData(@"{""amount"": Infinity}")]
+        [InlineData(@"{""amount"": -Infinity}")]
+        public void NonFinite_ReachingTheConverter_IsRejectedByItsGuard(string json)
+        {
+            // NonFinite_IsRejected (default options) proves only that the PARSER rejects a bare NaN/Infinity token
+            // (AllowNamedFloatingPointLiterals unset) — it would pass even if the converter's IsNaN/IsInfinity guard
+            // were deleted (tautological for the guard). With AllowNamedFloatingPointLiterals the parser PASSES the
+            // token through to Read(), where GetDouble() returns the non-finite value — so this actually executes the
+            // converter's guard (delete the guard and this test goes red: FromFloat(NaN) → raw 0, no throw).
+            var opts = new JsonSerializerOptions
+            {
+                NumberHandling = JsonNumberHandling.AllowNamedFloatingPointLiterals,
+                Converters = { new FixedJsonConverter() },
+            };
+            Assert.Throws<JsonException>(() => JsonSerializer.Deserialize<FixedHolder>(json, opts));
         }
 
         // ── Integration: the real TriggerAction fields bind through the converter ─────────────────────
