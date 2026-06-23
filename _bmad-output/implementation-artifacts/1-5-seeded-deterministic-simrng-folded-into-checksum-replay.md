@@ -4,7 +4,7 @@ baseline_commit: a90c786
 
 # Story 1.5: Seeded deterministic SimRng folded into checksum + replay
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -328,6 +328,7 @@ claude-opus-4-8 (Claude Code, gds-dev-story workflow).
 | Date | Change |
 |------|--------|
 | 2026-06-23 | Implemented Story 1.5: net-new `SimRng` (SplitMix64) on `EntityWorld`, folded its state into `SimChecksum` (AlgoVersion 2→3, both goldens re-baselined), threaded the match seed through `.chmr` replay (header v1→2), added 20 Tier-1 tests. Full suite 81/81 green. Status → review. |
+| 2026-06-23 | Code review (3-layer adversarial: Blind / Edge / Auditor, all Opus 4.8) — 0 critical/high/medium; all 3 ACs + D1–D8 verified MET, SplitMix64 outputs independently re-derived. Applied the 1 LOW patch: `ReplayPlayer` now rejects a truncated v2 seed header with `InvalidDataException` (+1 regression test). Game build green; Tier-1 suite 82/82. 3 LOW items deferred (→ Epic 2 replay-of-orders proof / → Epic 9 recorder match-seed / coverage-hardening). Status → done. |
 
 ---
 
@@ -345,7 +346,7 @@ _Adversarial code review (Blind Hunter + Edge Case Hunter + Acceptance Auditor, 
 
 **Patch (open):**
 
-- [ ] [Review][Patch] Truncated/forged v2 `.chmr` header throws `EndOfStreamException` instead of the documented `InvalidDataException` [godot/src/Multiplayer/ReplayPlayer.cs:~88] — the net-new 8-byte seed read (`version >= 2 ? reader.ReadUInt64() : DEFAULT_RNG_SEED`) is unguarded; a v2-stamped file truncated within the seed field escapes the loader's `InvalidDataException` corruption contract (the live `MainScene.TryLoadReplay` catch swallows it → degraded diagnostics only, no crash, no desync). Fix: length-check (or wrap) the header read and throw `InvalidDataException` on a short read, matching the bad-magic / bad-version paths. _Severity LOW. Found independently by Blind + Edge._
+- [x] [Review][Patch] Truncated/forged v2 `.chmr` header throws `EndOfStreamException` instead of the documented `InvalidDataException` [godot/src/Multiplayer/ReplayPlayer.cs:~88] — the net-new 8-byte seed read (`version >= 2 ? reader.ReadUInt64() : DEFAULT_RNG_SEED`) was unguarded; a v2-stamped file truncated within the seed field escaped the loader's `InvalidDataException` corruption contract (the live `MainScene.TryLoadReplay` catch swallows it → degraded diagnostics only, no crash, no desync). _Severity LOW. Found independently by Blind + Edge._ **✅ FIXED 2026-06-23** — added an "8 bytes remaining" length check before the v2 seed read, throwing `InvalidDataException` on a short read (matches the bad-magic / unsupported-version rejections); scoped to the net-new seed field only (the pre-existing path read stays out of scope). Added regression test `V2Replay_TruncatedSeed_ThrowsInvalidData`. Game build green; Tier-1 suite 82/82.
 
 **Deferred:**
 

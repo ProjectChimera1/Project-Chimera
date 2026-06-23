@@ -182,5 +182,35 @@ namespace ProjectChimera.Sim.Tests.Golden
                 if (File.Exists(chmrPath)) File.Delete(chmrPath);
             }
         }
+
+        /// <summary>
+        /// Robustness (review patch, Story 1.5) — a v2-stamped .chmr whose header ends before the full 8-byte
+        /// seed is truncated/corrupt. The loader must reject it with <see cref="InvalidDataException"/> (the
+        /// documented ctor contract), NOT leak the raw <see cref="EndOfStreamException"/> that a short
+        /// ReadUInt64 would throw — matching how bad-magic / unsupported-version headers are rejected.
+        /// </summary>
+        [Fact]
+        public void V2Replay_TruncatedSeed_ThrowsInvalidData()
+        {
+            string chmrPath = Path.Combine(Path.GetTempPath(), $"chimera_simrng_trunc_{Guid.NewGuid():N}.chmr");
+            try
+            {
+                // Hand-write a v2 header that stops mid-seed: magic + version(2) + pathLen(0) + only 3 of 8 seed bytes.
+                using (var w = new BinaryWriter(File.Open(chmrPath, FileMode.Create)))
+                {
+                    w.Write(ReplayRecorder.MAGIC);
+                    w.Write((ushort)2);                       // v2 — promises an 8-byte seed
+                    w.Write((ushort)0);                       // empty scenario path
+                    w.Write(new byte[] { 0x01, 0x02, 0x03 }); // truncated seed (3 of 8 bytes)
+                }
+
+                var world = new EntityWorld();
+                Assert.Throws<InvalidDataException>(() => new ReplayPlayer(chmrPath, world));
+            }
+            finally
+            {
+                if (File.Exists(chmrPath)) File.Delete(chmrPath);
+            }
+        }
     }
 }

@@ -93,7 +93,20 @@ namespace ProjectChimera.Multiplayer
             // v2 (Story 1.5): the 8-byte match-start SimRng seed follows the path. v1 files have no seed
             // → fall back to the default. Restore the stream origin BEFORE the first tick so the replayed
             // lockstep sim regenerates the identical RNG sequence (D6 — seed only, not per-tick state).
-            Seed = version >= 2 ? reader.ReadUInt64() : EntityWorld.DEFAULT_RNG_SEED;
+            // A v2+ header that ends before the full 8-byte seed is a truncated/corrupt file: surface it as
+            // InvalidDataException (the documented ctor contract), not the raw EndOfStreamException that a
+            // short ReadUInt64 would throw — matching the bad-magic / unsupported-version rejections above.
+            if (version >= 2)
+            {
+                if (stream.Length - stream.Position < sizeof(ulong))
+                    throw new InvalidDataException(
+                        $"Replay: truncated header — expected an 8-byte seed in '{filePath}'");
+                Seed = reader.ReadUInt64();
+            }
+            else
+            {
+                Seed = EntityWorld.DEFAULT_RNG_SEED;
+            }
             _world.Rng.Seed(Seed);
 
             // ── Parse tick records ────────────────────────────────────────────────
