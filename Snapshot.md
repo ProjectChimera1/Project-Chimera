@@ -15,9 +15,7 @@ status: Active
 Phases 0–4 are code-complete. Phase 5 is underway. Session 20 shipped worker-placed buildings + UI bug sweep. Session 21 (remote, away from computer) shipped Utility AI + Adaptive Input Delay.
 
 ## Next Action
-- **[BLOCKING]** Await completion of three parallel review layers
-- **[IMMEDIATE NEXT]** Triage triaged findings: normalize → dedupe → classify (patch/decision_needed/defer/dismiss)
-- **[VERIFY]** Manually confirm `Fixed` overflow risk (`CooldownSeconds`, 18+ min duration) against `FixedPoint.cs` bounds during triage
+Begin Story 1.6 (or Epic 2 ability/effect groundwork that depends on this RNG), verifying that `SimRng` is actually consumed in gameplay logic.
 
 ---
 
