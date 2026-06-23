@@ -15,12 +15,24 @@
     <Compile Include="..\src\Combat\**\*.cs"     LinkBase="Sim\Combat" />
     <Compile Include="..\src\Economy\**\*.cs"    LinkBase="Sim\Economy" />
     <Compile Include="..\src\Navigation\**\*.cs" LinkBase="Sim\Navigation" />
+    <!-- AI: the live 9-system tick loop's system #8 is AiOpponentSystem (src/AI/, namespace
+         ProjectChimera.AI). src/AI/ is verified Godot-free (AiOpponentSystem.cs + LLMService.cs,
+         which uses System.Net.Http, not Godot). Required so the golden harness can build the full loop. -->
+    <Compile Include="..\src\AI\**\*.cs"         LinkBase="Sim\AI" />
     <!-- Effects/ and Dsl/ are net-new in Epics 2 & 7; those stories add their includes when the folders exist. -->
 
     <!-- The only Godot-coupled files in the sim folders. MainScene = god object (strangled in 1.8a/c);
          StressTest relocates to tools/ in 1.8a. FixedPoint.cs STAYS IN (Godot bridge guarded by #if GODOT). -->
     <Compile Remove="..\src\Core\MainScene.cs" />
     <Compile Remove="..\src\Core\StressTest.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Golden baseline: embedded so it's read via manifest stream (portable across Windows/Linux — no
+         file-path or line-ending fragility, required for the 1.10c cross-platform gate). The <None Remove>
+         pre-empts an NETSDK1022 duplicate-item error with the SDK's default None glob. -->
+    <None Remove="Golden\golden-scenario.golden.txt" />
+    <EmbeddedResource Include="Golden\golden-scenario.golden.txt" />
   </ItemGroup>
 
   <ItemGroup>

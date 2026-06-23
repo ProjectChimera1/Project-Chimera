@@ -4,7 +4,7 @@ baseline_commit: acd948f06680477c157c92449198317b3f2868fe
 
 # Story 1.2: Golden-checksum replay harness pinning current sim behavior
 
-Status: ready-for-dev
+Status: review
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -99,55 +99,55 @@ loop.ChecksumInterval = 1;                                     // harness choice
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1 — Compile `AiOpponentSystem` into the Tier-1 project (enables the full 9-system loop)**
-  - [ ] In `godot/ProjectChimera.Sim.Tests/ProjectChimera.Sim.Tests.csproj`, add to the shared-source `<ItemGroup>` (after the `Navigation` include, line ~17):
+- [x] **Task 1 — Compile `AiOpponentSystem` into the Tier-1 project (enables the full 9-system loop)**
+  - [x] In `godot/ProjectChimera.Sim.Tests/ProjectChimera.Sim.Tests.csproj`, add to the shared-source `<ItemGroup>` (after the `Navigation` include, line ~17):
     `<Compile Include="..\src\AI\**\*.cs" LinkBase="Sim\AI" />`
-  - [ ] Rationale: the live tick loop's system #8 is `AiOpponentSystem` (`src/AI/AiOpponentSystem.cs`, namespace `ProjectChimera.AI`). `src/AI/` is verified Godot-free (only `AiOpponentSystem.cs` + `LLMService.cs`; `LLMService` uses `System.Net.Http`, not Godot). Glob, don't hand-list (matches the project's glob-preference; the CI folder-set guard lands in 1.10).
-  - [ ] `dotnet build godot/ProjectChimera.Sim.Tests/ProjectChimera.Sim.Tests.csproj` → still green and still Godot-free (the `GodotFreeBoundaryTest` from 1.1 must still pass).
+  - [x] Rationale: the live tick loop's system #8 is `AiOpponentSystem` (`src/AI/AiOpponentSystem.cs`, namespace `ProjectChimera.AI`). `src/AI/` is verified Godot-free (only `AiOpponentSystem.cs` + `LLMService.cs`; `LLMService` uses `System.Net.Http`, not Godot). Glob, don't hand-list (matches the project's glob-preference; the CI folder-set guard lands in 1.10).
+  - [x] `dotnet build godot/ProjectChimera.Sim.Tests/ProjectChimera.Sim.Tests.csproj` → still green and still Godot-free (the `GodotFreeBoundaryTest` from 1.1 must still pass).
 
-- [ ] **Task 2 — Build the deterministic in-code scenario + headless harness (AC: 1, 2, 3)**
-  - [ ] Create `godot/ProjectChimera.Sim.Tests/Golden/GoldenScenario.cs`. Expose a method that constructs a **fresh** loop + stores every call (no statics) and returns enough handles to step it and read/perturb state, e.g.:
+- [x] **Task 2 — Build the deterministic in-code scenario + headless harness (AC: 1, 2, 3)**
+  - [x] Create `godot/ProjectChimera.Sim.Tests/Golden/GoldenScenario.cs`. Expose a method that constructs a **fresh** loop + stores every call (no statics) and returns enough handles to step it and read/perturb state, e.g.:
     `public static GoldenHarness Build()` returning a small record/class holding `SimulationLoop Loop`, `EntityWorld World`, `BuildingStore Buildings`, `ResourceStore Resources`, and the id of a designated "perturbation target" unit.
-  - [ ] Inside `Build()`, replicate `MainScene.cs:246–268` exactly (the block in Developer Context). Use `AiDifficulty.Normal` for the AI level and `new MatchStats()` / `new FactionDefinition()` for the deps.
-  - [ ] Populate a fixed, deterministic scenario that makes the checksum **evolve** over 300 ticks (so AC3 has signal). Author all values with `Fixed.FromInt`/`Fixed.FromRaw` — **no `Fixed.FromFloat`** (keep the harness obviously float-free; see Dev Notes recipe). Minimum to exercise every system:
+  - [x] Inside `Build()`, replicate `MainScene.cs:246–268` exactly (the block in Developer Context). Use `AiDifficulty.Normal` for the AI level and `new MatchStats()` / `new FactionDefinition()` for the deps.
+  - [x] Populate a fixed, deterministic scenario that makes the checksum **evolve** over 300 ticks (so AC3 has signal). Author all values with `Fixed.FromInt`/`Fixed.FromRaw` — **no `Fixed.FromFloat`** (keep the harness obviously float-free; see Dev Notes recipe). Minimum to exercise every system:
     - **Player1:** 1 melee unit + 1 ranged unit positioned to close on and fight Player2 units (CombatSystem + ProjectileSystem + MovementSystem); 1 worker set to gather (GatheringSystem changes `Ore[P1]` → checksum moves); a pre-built CommandCenter and a building left **under construction** (its `ConstructionTimer` ticks down → BuildingSystem signal); starting ore.
     - **Player2:** 2–3 units as combat fodder, **no production building, zero ore** (keeps `AiOpponentSystem` quiet/deterministic — it runs but can't build/train).
-  - [ ] Construction-complete a building by setting `Buildings.ConstructionTimer[id] = Fixed.Zero` after `Create` (a fresh `Create` starts under construction). Leave one building's timer > 0 so BuildingSystem has work.
-  - [ ] Mirror MainScene's director lifecycle: `director.LoadScenario(new ScenarioData())` (Godot-free POCO) to initialize empty trigger state. If `ScenarioDirector.Tick` is safe without it, you may skip — **verify by running**, don't assume.
-  - [ ] Do **not** call `Fixed.FromFloat`, `System.Random`, `DateTime`, `GD.*`, or enumerate any `Dictionary`/`HashSet` in the harness. Process is deterministic by construction.
+  - [x] Construction-complete a building by setting `Buildings.ConstructionTimer[id] = Fixed.Zero` after `Create` (a fresh `Create` starts under construction). Leave one building's timer > 0 so BuildingSystem has work.
+  - [x] Mirror MainScene's director lifecycle: `director.LoadScenario(new ScenarioData())` (Godot-free POCO) to initialize empty trigger state. If `ScenarioDirector.Tick` is safe without it, you may skip — **verify by running**, don't assume.
+  - [x] Do **not** call `Fixed.FromFloat`, `System.Random`, `DateTime`, `GD.*`, or enumerate any `Dictionary`/`HashSet` in the harness. Process is deterministic by construction.
 
-- [ ] **Task 3 — Checksum-sequence recorder + first-divergence comparator + golden IO (AC: 1, 2, 3)**
-  - [ ] In `GoldenChecksumReplayTests.cs` (or a small `GoldenHarness` helper), add `RunAndRecord(int ticks, Action<int, EntityWorld>? perturb = null)` that:
+- [x] **Task 3 — Checksum-sequence recorder + first-divergence comparator + golden IO (AC: 1, 2, 3)**
+  - [x] In `GoldenChecksumReplayTests.cs` (or a small `GoldenHarness` helper), add `RunAndRecord(int ticks, Action<int, EntityWorld>? perturb = null)` that:
     1. `Build()`s a fresh harness, subscribes `Loop.OnChecksum = (tick, hash) => seq.Add((tick, hash));`
     2. loops `for (int i = 0; i < ticks; i++) { perturb?.Invoke(i, World); Loop.StepOnce(); }` — **hook runs BEFORE `StepOnce`** so a perturbation at loop index `K` is reflected in that iteration's checksum (tick `K+1`), giving a clean, off-by-one-free located tick.
     3. returns the recorded `IReadOnlyList<(uint tick, uint hash)>`.
     (With `ChecksumInterval = 1`, `OnChecksum` fires every tick → ticks 1..N captured.)
-  - [ ] Implement `CompareSequences(expected, actual)` returning the **first** differing entry as `(uint tick, uint expected, uint actual)?` (null = identical). Handle length mismatch explicitly (report it as a divergence at the first missing/extra tick). The failure message MUST name the tick and both hashes, e.g. `$"Checksum drift at tick {t}: expected 0x{exp:X8}, actual 0x{act:X8}"`.
-  - [ ] Golden file: commit `godot/ProjectChimera.Sim.Tests/Golden/golden-scenario.golden.txt`, one line per sample `tick hashHex` (or `tick,hashHex`), with a header-comment line documenting the format. Add it to the csproj as `<EmbeddedResource Include="Golden\golden-scenario.golden.txt" />`. **MSBuild gotcha:** `Microsoft.NET.Sdk` auto-globs non-code files as `<None>`, so explicitly adding the same file as `<EmbeddedResource>` can trigger a duplicate-item error (NETSDK1022). If you hit it, add `<None Remove="Golden\golden-scenario.golden.txt" />` in the same `ItemGroup` (or it builds clean on your SDK — verify). Read it back via `Assembly.GetExecutingAssembly().GetManifestResourceStream(asm.GetManifestResourceNames().Single(n => n.EndsWith("golden-scenario.golden.txt")))` — robust to namespace and **portable across Windows/Linux** (no file paths; required for the 1.10c cross-platform gate). Read as bytes, split on `\n` trimming `\r`, skip the header/blank lines, parse to `(uint, uint)[]`.
-  - [ ] Provide a **re-baseline path** (Stories 1.3b/1.4/1.5 will use it): a record mode gated by env var (`CHIMERA_GOLDEN_RECORD=1`) that writes the freshly recorded sequence to the **source** file via `[CallerFilePath]` (locates `Golden/` on the build machine), then the dev rebuilds + commits. Document the exact command in Dev Notes. Do not auto-overwrite the golden in normal runs.
+  - [x] Implement `CompareSequences(expected, actual)` returning the **first** differing entry as `(uint tick, uint expected, uint actual)?` (null = identical). Handle length mismatch explicitly (report it as a divergence at the first missing/extra tick). The failure message MUST name the tick and both hashes, e.g. `$"Checksum drift at tick {t}: expected 0x{exp:X8}, actual 0x{act:X8}"`.
+  - [x] Golden file: commit `godot/ProjectChimera.Sim.Tests/Golden/golden-scenario.golden.txt`, one line per sample `tick hashHex` (or `tick,hashHex`), with a header-comment line documenting the format. Add it to the csproj as `<EmbeddedResource Include="Golden\golden-scenario.golden.txt" />`. **MSBuild gotcha:** `Microsoft.NET.Sdk` auto-globs non-code files as `<None>`, so explicitly adding the same file as `<EmbeddedResource>` can trigger a duplicate-item error (NETSDK1022). If you hit it, add `<None Remove="Golden\golden-scenario.golden.txt" />` in the same `ItemGroup` (or it builds clean on your SDK — verify). Read it back via `Assembly.GetExecutingAssembly().GetManifestResourceStream(asm.GetManifestResourceNames().Single(n => n.EndsWith("golden-scenario.golden.txt")))` — robust to namespace and **portable across Windows/Linux** (no file paths; required for the 1.10c cross-platform gate). Read as bytes, split on `\n` trimming `\r`, skip the header/blank lines, parse to `(uint, uint)[]`.
+  - [x] Provide a **re-baseline path** (Stories 1.3b/1.4/1.5 will use it): a record mode gated by env var (`CHIMERA_GOLDEN_RECORD=1`) that writes the freshly recorded sequence to the **source** file via `[CallerFilePath]` (locates `Golden/` on the build machine), then the dev rebuilds + commits. Document the exact command in Dev Notes. Do not auto-overwrite the golden in normal runs.
 
-- [ ] **Task 4 — Generate and commit the golden (AC: 1)**
-  - [ ] Run the harness once in record mode (`CHIMERA_GOLDEN_RECORD=1 dotnet test --filter <recorder>`); confirm it emits ≥300 samples.
-  - [ ] Inspect the sequence: it must **change over time** (early vs late hashes differ — proves the scenario is dynamic, not a static constant). If it's constant, the scenario isn't exercising the systems — fix the scenario (units must actually move/fight/gather), not the golden.
-  - [ ] Rebuild (so the `<EmbeddedResource>` picks up the new file) and commit `golden-scenario.golden.txt`.
+- [x] **Task 4 — Generate and commit the golden (AC: 1)**
+  - [x] Run the harness once in record mode (`CHIMERA_GOLDEN_RECORD=1 dotnet test --filter <recorder>`); confirm it emits ≥300 samples.
+  - [x] Inspect the sequence: it must **change over time** (early vs late hashes differ — proves the scenario is dynamic, not a static constant). If it's constant, the scenario isn't exercising the systems — fix the scenario (units must actually move/fight/gather), not the golden.
+  - [x] Rebuild (so the `<EmbeddedResource>` picks up the new file) and commit `golden-scenario.golden.txt`.
 
-- [ ] **Task 5 — The three AC tests (AC: 1, 2, 3)**
-  - [ ] **AC1** `RunsTwiceInProcess_BothMatchGoldenAndEachOther`: run the scenario twice via `RunAndRecord(300)` (fresh `Build()` each time), assert `seq1.SequenceEqual(seq2)` AND `CompareSequences(golden, seq1) == null`. (Two fresh assemblies + identical results also proves no static mutation between runs.)
-  - [ ] **AC2** `MatchesGolden_RecordedInSeparateProcess`: a `[Fact]` that runs the scenario in this (fresh) process and asserts it equals the committed golden. **The golden was produced by a *prior* process invocation (Task 4), so asserting against it in a fresh `dotnet test` run IS the two-process comparison.** Add an XML-doc comment stating this explicitly. **Do NOT build a subprocess spawner** — the golden-from-another-process + fresh-process-assert (plus AC1's twice-in-one-process equality) fully satisfies "no static/mutable-state leakage."
-  - [ ] **AC3** `OneTickPerturbation_IsDetectedAndLocated`: `RunAndRecord(300, perturb: (i, w) => { if (i == K) w.Health[targetId] = Fixed.FromRaw(w.Health[targetId].Raw + 1); })` for a fixed `K` (e.g. 100) and a **non-combat** target (the worker — so the +1 raw persists and isn't overwritten by combat/death). Assert `CompareSequences(golden, perturbedSeq)` is **non-null**, that the located tick is exactly **`K+1`** (the hook runs before `StepOnce`, so index `K`'s perturbation is captured in the tick-`K+1` checksum), and that expected≠actual. This proves the guard FAILS loudly and points at the exact tick.
+- [x] **Task 5 — The three AC tests (AC: 1, 2, 3)**
+  - [x] **AC1** `RunsTwiceInProcess_BothMatchGoldenAndEachOther`: run the scenario twice via `RunAndRecord(300)` (fresh `Build()` each time), assert `seq1.SequenceEqual(seq2)` AND `CompareSequences(golden, seq1) == null`. (Two fresh assemblies + identical results also proves no static mutation between runs.)
+  - [x] **AC2** `MatchesGolden_RecordedInSeparateProcess`: a `[Fact]` that runs the scenario in this (fresh) process and asserts it equals the committed golden. **The golden was produced by a *prior* process invocation (Task 4), so asserting against it in a fresh `dotnet test` run IS the two-process comparison.** Add an XML-doc comment stating this explicitly. **Do NOT build a subprocess spawner** — the golden-from-another-process + fresh-process-assert (plus AC1's twice-in-one-process equality) fully satisfies "no static/mutable-state leakage."
+  - [x] **AC3** `OneTickPerturbation_IsDetectedAndLocated`: `RunAndRecord(300, perturb: (i, w) => { if (i == K) w.Health[targetId] = Fixed.FromRaw(w.Health[targetId].Raw + 1); })` for a fixed `K` (e.g. 100) and a **non-combat** target (the worker — so the +1 raw persists and isn't overwritten by combat/death). Assert `CompareSequences(golden, perturbedSeq)` is **non-null**, that the located tick is exactly **`K+1`** (the hook runs before `StepOnce`, so index `K`'s perturbation is captured in the tick-`K+1` checksum), and that expected≠actual. This proves the guard FAILS loudly and points at the exact tick.
 
-- [ ] **Task 6 — (Inherited from the 1.1 code review) `Fixed` boundary-value determinism tests** *(secondary to the 3 ACs above)*
-  - [ ] Extend `godot/ProjectChimera.Sim.Tests/Determinism/FixedSmokeTests.cs` (or add `FixedBoundaryTests.cs`) with the edge cases the 1.1 review explicitly deferred here — the classic lockstep desync sources:
+- [x] **Task 6 — (Inherited from the 1.1 code review) `Fixed` boundary-value determinism tests** *(secondary to the 3 ACs above)*
+  - [x] Extend `godot/ProjectChimera.Sim.Tests/Determinism/FixedSmokeTests.cs` (or add `FixedBoundaryTests.cs`) with the edge cases the 1.1 review explicitly deferred here — the classic lockstep desync sources:
     - **Negative-multiply rounding direction** (the #1 cross-machine desync source): assert `Fixed.FromInt(-3) * Fixed.Half` rounds identically and as expected.
     - **Division truncation direction** for negatives.
     - **Overflow behavior at the 16.16 limits** (`Fixed.MaxValue`/`MinValue` raw edges) is well-defined (document actual behavior; pin it).
     - **`Sqrt` of `0`, a negative, and a non-perfect-square** (e.g. `Sqrt(2)`) — pin the deterministic result.
-  - [ ] These are pure-`Fixed` unit tests (no scenario). Use `Fixed`/raw asserts only — never `float`/`double` asserts (the 1.1 review's `RawRoundTrip` lesson: a tautological assert proves nothing; assert against an independently-derived expected raw value).
+  - [x] These are pure-`Fixed` unit tests (no scenario). Use `Fixed`/raw asserts only — never `float`/`double` asserts (the 1.1 review's `RawRoundTrip` lesson: a tautological assert proves nothing; assert against an independently-derived expected raw value).
 
-- [ ] **Task 7 — Verify end-to-end**
-  - [ ] `dotnet test godot/ProjectChimera.Sim.Tests/ProjectChimera.Sim.Tests.csproj` → all green (the 6 existing 1.1 tests + the new golden + boundary tests), runs headless in seconds, no engine boot.
-  - [ ] Temporarily corrupt one line of the golden file (or flip the AC3 perturbation on for AC1) and confirm the suite **goes red with a located-tick message** — then revert. (Proves the guard actually guards.)
-  - [ ] `dotnet build godot/godot.csproj` → green (you added no production code; the game build is unaffected).
+- [x] **Task 7 — Verify end-to-end**
+  - [x] `dotnet test godot/ProjectChimera.Sim.Tests/ProjectChimera.Sim.Tests.csproj` → all green (the 6 existing 1.1 tests + the new golden + boundary tests), runs headless in seconds, no engine boot.
+  - [x] Temporarily corrupt one line of the golden file (or flip the AC3 perturbation on for AC1) and confirm the suite **goes red with a located-tick message** — then revert. (Proves the guard actually guards.)
+  - [x] `dotnet build godot/godot.csproj` → green (you added no production code; the game build is unaffected).
 
 ---
 
@@ -288,12 +288,40 @@ From **Story 1.1** (done, code-review ACCEPTED 2026-06-22):
 
 ### Agent Model Used
 
-{{agent_model_name_version}}
+claude-opus-4-8 (Claude Opus 4.8)
 
 ### Debug Log References
 
+- `dotnet build ProjectChimera.Sim.Tests.csproj` after Task 1 (AI glob) → succeeded; existing 6 tests still green (GodotFreeBoundaryTest confirms `src/AI` is Godot-free).
+- `CHIMERA_GOLDEN_RECORD=1 dotnet test --filter ~RecordGoldenBaseline` → wrote `golden-scenario.golden.txt` (300 samples; early hash `4DCB84DB` ≠ late hash `47AD1976` → scenario is dynamic).
+- Full suite after embedding golden → 20/20 green (6 prior + 4 Golden + 10 boundary).
+- Negative control: corrupted golden tick 1 (`4DCB84DB`→`DEADBEEF`), rebuilt, ran AC2 → FAILED with `Checksum drift at tick 1: expected 0xDEADBEEF, actual 0x4DCB84DB`; restored golden (byte-identical) → 20/20 green again.
+- `dotnet build godot/godot.csproj` → succeeded, 0 errors (game build unaffected).
+- Sole self-correction: `Sqrt(2)` exact-pin (raw 92681) was right; the squaring corroboration's tolerance was too tight (real deterministic error is 3 raw, 131069 vs 131072) → loosened to ≤8 raw with an accurate comment.
+
 ### Completion Notes List
+
+- **Scope honored: test-only, zero production change.** No sim behavior was altered. Production edits = none; the only non-test file touched is the Tier-1 csproj (one `src/AI/**` compile glob + the golden `<EmbeddedResource>`/`<None Remove>`). `dotnet build godot/godot.csproj` stays green.
+- **AC1 ✅** `RunsTwiceInProcess_BothMatchGoldenAndEachOther`: two fresh `Build()`s × 300 ticks are byte-identical to each other AND to the golden (proves in-process determinism + no static/shared-state leak).
+- **AC2 ✅** `MatchesGolden_RecordedInSeparateProcess`: the committed golden was produced by a prior `dotnet test` process and is asserted by a fresh process — the cross-process comparison, no subprocess spawner.
+- **AC3 ✅** `OneTickPerturbation_IsDetectedAndLocated`: +1 raw into the worker's `Fixed` health at loop index K=100 diverges at exactly tick K+1=101 with expected≠actual. Worker chosen because CombatSystem skips gatherers (GatheringSystem.cs:11-12), so the injection persists.
+- **Key decision: in-code synthetic scenario** (not `alpha_map_01.json`) — the JSON *apply* path is Godot-coupled in `MainScene.ApplyScenario`; a Godot-free `ScenarioApplier` is Story 1.8b. In-code = zero production deps, zero duplication, zero drift risk. `// TODO(1.8b)` left in `GoldenScenario` doc.
+- **AI kept deterministic-and-quiet** by giving Player2 no production building + 0 ore: every `AiOpponentSystem` action is gated to score 0 (3 fodder units < the Normal attack threshold of 5; can't afford to build), so it ticks and is pinned but no-ops. Float scoring is never reached.
+- **Faithful to MainScene.cs:246-268**: same 9-system order, same stores, `EnableChecksums`, and `director.LoadScenario(new ScenarioData())` lifecycle — so the Story 1.8a relocation ("Golden checksum must match") has an exact guard. Drove the sim with `StepOnce()` (never `Update(float)`), `ChecksumInterval=1`.
+- **Re-baseline path for 1.3b/1.4/1.5**: `CHIMERA_GOLDEN_RECORD=1` → `RecordGoldenBaseline` writes the golden to source via `[CallerFilePath]`; AC tests skip in record mode so a re-baseline never fails against the stale embedded copy. Golden read via embedded manifest stream + `\n`-split/`\r`-trim parse → portable for the 1.10c Windows↔Linux gate.
+- **Task 6 (inherited 1.1 deferral)**: 10 `Fixed` boundary tests pin the desync traps — multiply floors toward −∞ (−1.5→−2) vs divide truncates toward zero (−1.5→−1); unchecked wrapping overflow at the 16.16 limits; `Sqrt` of 0/negative→0 and `Sqrt(2)`→raw 92681. Every expected value derived independently from the math (no tautological asserts, per the 1.1 review).
+- **No new dependencies**; nothing added to `godot.sln`; no `Multiplayer/` pulled in.
 
 ### File List
 
+- `godot/ProjectChimera.Sim.Tests/ProjectChimera.Sim.Tests.csproj` (modified — added `src/AI/**` compile glob; added golden `<EmbeddedResource>` + `<None Remove>`)
+- `godot/ProjectChimera.Sim.Tests/Golden/GoldenScenario.cs` (new — `GoldenHarness` + in-code scenario replicating MainScene's 9-system loop)
+- `godot/ProjectChimera.Sim.Tests/Golden/GoldenChecksumReplay.cs` (new — `RunAndRecord`, first-divergence `CompareSequences`, golden IO, env-var re-baseline writer)
+- `godot/ProjectChimera.Sim.Tests/Golden/GoldenChecksumReplayTests.cs` (new — recorder + the 3 AC tests)
+- `godot/ProjectChimera.Sim.Tests/Golden/golden-scenario.golden.txt` (new — committed 300-sample golden baseline)
+- `godot/ProjectChimera.Sim.Tests/Determinism/FixedBoundaryTests.cs` (new — 10 `Fixed` boundary-value determinism tests)
+- `_bmad-output/implementation-artifacts/sprint-status.yaml` (modified — story status ready-for-dev → in-progress → review)
+
 ### Change Log
+
+- 2026-06-22 — Story 1.2 implemented: golden-checksum replay harness pinning current sim behavior. Added `src/AI` to the Tier-1 compile set; built a Godot-free in-code scenario + 9-system headless harness; recorded/committed a 300-tick golden; added recorder + first-divergence comparator + the 3 AC tests; added 10 `Fixed` boundary-value determinism tests (1.1 deferral). 20/20 Tier-1 tests green; `godot.csproj` build green. Status → review.
