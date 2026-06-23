@@ -178,6 +178,9 @@ namespace ProjectChimera.Sim.Tests.Golden
             var sb = new StringBuilder();
             sb.Append($"# Project Chimera — {h.Title}.\n");
             sb.Append("# Format: \"<tick> <hashHex8>\" per line — tick decimal, hash 8 uppercase hex digits (no 0x).\n");
+            // Self-identifying algorithm version (Story 1.3b). ParseGolden skips '#' lines, so this is
+            // informational only — but it lets a baseline declare which SimChecksum algorithm produced it.
+            sb.Append($"# checksum_algo_version: {ProjectChimera.Core.SimChecksum.AlgoVersion}\n");
             sb.Append($"# {h.ScenarioDescription}\n");
             sb.Append($"# Samples: {seq.Count} (one line per sim tick).\n");
             sb.Append($"# Re-baseline (intentional behavior change only): {h.RebaselineHint}\n");

@@ -4,7 +4,7 @@ baseline_commit: abe4936
 
 # Story 1.3b: Generalize SimChecksum coverage + coverage-guard + ScenarioDirector locale fix
 
-Status: ready-for-dev
+Status: review
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -85,9 +85,9 @@ _Covers: FR-39, FR-44, AR-15 (generalized SimChecksum + coverage guard), AR-16 (
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1 — Widen `SimChecksum` + introduce `AlgoVersion` (AC: 1)**
-  - [ ] `SimChecksum.cs`: add `public const int AlgoVersion = 2;` near the FNV constants, XML-documented (v1 = implicit Ore-only hash for Stories 1.1–1.3a; v2 = full per-faction coverage, this story). This is the single `checksum_algo_version` bump.
-  - [ ] Replace the `:59-60` Ore-only `foreach` body with the full per-faction block (ascending, via the registry):
+- [x] **Task 1 — Widen `SimChecksum` + introduce `AlgoVersion` (AC: 1)**
+  - [x] `SimChecksum.cs`: add `public const int AlgoVersion = 2;` near the FNV constants, XML-documented (v1 = implicit Ore-only hash for Stories 1.1–1.3a; v2 = full per-faction coverage, this story). This is the single `checksum_algo_version` bump.
+  - [x] Replace the `:59-60` Ore-only `foreach` body with the full per-faction block (ascending, via the registry):
     ```csharp
     // ── Faction resources (all per-faction stores, active factions, ascending slot order) ──
     // Story 1.3b widened this from Ore-only to full coverage; checksum_algo_version bumped to 2.
@@ -103,23 +103,23 @@ _Covers: FR-39, FR-44, AR-15 (generalized SimChecksum + coverage guard), AR-16 (
         hash = Mix(hash, resources.FactionBase[idx].Z.Raw);
     }
     ```
-  - [ ] Update the class XML "Hashed state" list (`:9-14`) to: "ResourceStore: Ore, Crystal, SupplyUsed, SupplyCap, FactionBase for each active faction (via FactionRegistry, ascending)". Note the entity and building loops are unchanged.
-  - [ ] `dotnet build godot/godot.csproj` → green. (No call-site changes: the signature is unchanged from 1.3a.)
+  - [x] Update the class XML "Hashed state" list (`:9-14`) to: "ResourceStore: Ore, Crystal, SupplyUsed, SupplyCap, FactionBase for each active faction (via FactionRegistry, ascending)". Note the entity and building loops are unchanged.
+  - [x] `dotnet build godot/godot.csproj` → green. (No call-site changes: the signature is unchanged from 1.3a.)
 
-- [ ] **Task 2 — Stamp the algo version into golden headers + re-baseline BOTH goldens (AC: 1)**
-  - [ ] `GoldenChecksumReplay.cs` `FormatGolden` (`:175-187`): add one line after the format line — `sb.Append($"# checksum_algo_version: {ProjectChimera.Core.SimChecksum.AlgoVersion}\n");`. (Informational only; `ParseGolden` skips `#` lines. Both goldens now self-identify as v2 on their next record.)
-  - [ ] Re-baseline `golden-scenario.golden.txt` (1.2): `CHIMERA_GOLDEN_RECORD=1`, run the 1.2 record-mode test (filter `~GoldenChecksumReplay`); it must use the existing twice-run + `ParseGolden(FormatGolden(seq))` round-trip safety gate. Confirm 300 samples, early≠late hashes (still dynamic).
-  - [ ] Re-baseline `golden-multifaction.golden.txt` (1.3a): `CHIMERA_GOLDEN_RECORD=1`, run the multi-faction record-mode test (filter `~MultiFaction`). Confirm 300 samples, early≠late, distinct from the 1.2 golden.
-  - [ ] `dotnet build` (refreshes both embedded copies), then commit BOTH goldens. Verify each file's header now reads `# checksum_algo_version: 2`.
-  - [ ] **Sanity:** the v2 goldens MUST differ from the committed v1 values (because Supply/Crystal/FactionBase are now hashed). If a golden is byte-identical to its old value, the widen did not take effect — fix Task 1 before recording. (This is the inverse of 1.3a's "must not move" gate.)
+- [x] **Task 2 — Stamp the algo version into golden headers + re-baseline BOTH goldens (AC: 1)**
+  - [x] `GoldenChecksumReplay.cs` `FormatGolden` (`:175-187`): add one line after the format line — `sb.Append($"# checksum_algo_version: {ProjectChimera.Core.SimChecksum.AlgoVersion}\n");`. (Informational only; `ParseGolden` skips `#` lines. Both goldens now self-identify as v2 on their next record.)
+  - [x] Re-baseline `golden-scenario.golden.txt` (1.2): `CHIMERA_GOLDEN_RECORD=1`, run the 1.2 record-mode test (filter `~GoldenChecksumReplay`); it must use the existing twice-run + `ParseGolden(FormatGolden(seq))` round-trip safety gate. Confirm 300 samples, early≠late hashes (still dynamic).
+  - [x] Re-baseline `golden-multifaction.golden.txt` (1.3a): `CHIMERA_GOLDEN_RECORD=1`, run the multi-faction record-mode test (filter `~MultiFaction`). Confirm 300 samples, early≠late, distinct from the 1.2 golden.
+  - [x] `dotnet build` (refreshes both embedded copies), then commit BOTH goldens. Verify each file's header now reads `# checksum_algo_version: 2`.
+  - [x] **Sanity:** the v2 goldens MUST differ from the committed v1 values (because Supply/Crystal/FactionBase are now hashed). If a golden is byte-identical to its old value, the widen did not take effect — fix Task 1 before recording. (This is the inverse of 1.3a's "must not move" gate.)
 
-- [ ] **Task 3 — Coverage guard + v2 known-state hash guard (AC: 1, 2)**
-  - [ ] Create `godot/ProjectChimera.Sim.Tests/Golden/SimChecksumCoverageGuardTest.cs`. Reflect `ResourceStore`'s public per-faction array fields (length == a constructed instance's `Ore.Length`) and differential-mutate each active slot; FAIL naming any field whose mutation does not change `Compute`. (Skeleton in Dev Notes.) Assert the set is non-empty and that all five known arrays (Ore/Crystal/SupplyUsed/SupplyCap/FactionBase) are covered.
-  - [ ] In the same file, add the **v2 known-state hash guard** (AC1): build a tiny fixed world by hand (a couple of entities at fixed `Fixed` positions/health, one building, `ResourceStore` with set Ore/Crystal/Supply/FactionBase for P1/P2), call `SimChecksum.Compute(..., new FactionRegistry(2))`, and assert it equals a committed expected `uint` (record the value once from a green run and paste it in, with a comment that an intentional algo change must update it AND bump `AlgoVersion`). Assert `SimChecksum.AlgoVersion == 2`.
-  - [ ] `dotnet test --filter FullyQualifiedName~Coverage` → green.
+- [x] **Task 3 — Coverage guard + v2 known-state hash guard (AC: 1, 2)**
+  - [x] Create `godot/ProjectChimera.Sim.Tests/Golden/SimChecksumCoverageGuardTest.cs`. Reflect `ResourceStore`'s public per-faction array fields (length == a constructed instance's `Ore.Length`) and differential-mutate each active slot; FAIL naming any field whose mutation does not change `Compute`. (Skeleton in Dev Notes.) Assert the set is non-empty and that all five known arrays (Ore/Crystal/SupplyUsed/SupplyCap/FactionBase) are covered.
+  - [x] In the same file, add the **v2 known-state hash guard** (AC1): build a tiny fixed world by hand (a couple of entities at fixed `Fixed` positions/health, one building, `ResourceStore` with set Ore/Crystal/Supply/FactionBase for P1/P2), call `SimChecksum.Compute(..., new FactionRegistry(2))`, and assert it equals a committed expected `uint` (record the value once from a green run and paste it in, with a comment that an intentional algo change must update it AND bump `AlgoVersion`). Assert `SimChecksum.AlgoVersion == 2`.
+  - [x] `dotnet test --filter FullyQualifiedName~Coverage` → green.
 
-- [ ] **Task 4 — Fix `ScenarioDirector` threshold/condition float-locale leak (AC: 3)**
-  - [ ] `ScenarioDirector.cs`: add `using System.Globalization;`. Add the Fixed `Compare` overload + epsilon (mirrors the `0.01f` tolerance):
+- [x] **Task 4 — Fix `ScenarioDirector` threshold/condition float-locale leak (AC: 3)**
+  - [x] `ScenarioDirector.cs`: add `using System.Globalization;`. Add the Fixed `Compare` overload + epsilon (mirrors the `0.01f` tolerance):
     ```csharp
     // ≈ the prior 0.01f float tolerance (0.01 × 65536 ≈ 655 raw) so ==/!= behavior is preserved.
     private static readonly Fixed CompareEpsilon = Fixed.FromRaw(655);
@@ -132,7 +132,7 @@ _Covers: FR-39, FR-44, AR-15 (generalized SimChecksum + coverage guard), AR-16 (
         _    => false
     };
     ```
-  - [ ] Emit loop (`:165-172`) — keep `slot < 2`; carry the ore as raw Fixed (InvariantCulture), no `ToFloat()/ToString("F2")`:
+  - [x] Emit loop (`:165-172`) — keep `slot < 2`; carry the ore as raw Fixed (InvariantCulture), no `ToFloat()/ToString("F2")`:
     ```csharp
     for (int slot = 0; slot < 2; slot++)  // slot<2 stays — widening to all factions is Story 9.2
     {
@@ -143,7 +143,7 @@ _Covers: FR-39, FR-44, AR-15 (generalized SimChecksum + coverage guard), AR-16 (
         events.Add(new FiredEvent("unit_count_threshold", slot, units.ToString(CultureInfo.InvariantCulture)));
     }
     ```
-  - [ ] Match `EventMatches` (`:250-255`) — parse the raw int (InvariantCulture) and compare Fixed-vs-Fixed / int-vs-int:
+  - [x] Match `EventMatches` (`:250-255`) — parse the raw int (InvariantCulture) and compare Fixed-vs-Fixed / int-vs-int:
     ```csharp
     case "resource_threshold":
         if (f.Slot != def.Faction) return false;
@@ -154,26 +154,26 @@ _Covers: FR-39, FR-44, AR-15 (generalized SimChecksum + coverage guard), AR-16 (
         return int.TryParse(f.Data, NumberStyles.Integer, CultureInfo.InvariantCulture, out int cnt)
             && Compare(cnt, def.Count, def.Operator);
     ```
-  - [ ] Condition `EvalCondition` `resource_comparison` (`:289`) — compare Fixed-vs-Fixed, no `ToFloat()`:
+  - [x] Condition `EvalCondition` `resource_comparison` (`:289`) — compare Fixed-vs-Fixed, no `ToFloat()`:
     ```csharp
     case "resource_comparison":
         return Compare(_resources.Ore[(int)faction], Fixed.FromFloat(c.Amount), c.Operator);
     ```
-  - [ ] **Scope fence reminder:** do NOT touch `add_resources` `Fixed.FromFloat(a.Amount)` (`:336`), the `Array.Sort` (`:192`), or the `Dictionary` timers/variables — all Story 1.4. Leave `slot < 2` as-is (9.2).
-  - [ ] **(Option B — stricter, only if Alec requests it; otherwise skip):** instead of `Fixed.FromFloat(def.Amount)` at the compare site, pre-quantize each trigger's resource thresholds to `Fixed` once in `LoadScenario` (the allowed load boundary) and compare raw ints — fully float-free in the tick. This needs index-threading through `AnyEventMatches`/`AllConditionsMet`; it is a larger, riskier refactor for a marginal gain (the residual `FromFloat` is a constant conversion, cross-platform-deterministic). Default to Option A.
-  - [ ] `dotnet build godot/godot.csproj` → green.
+  - [x] **Scope fence reminder:** do NOT touch `add_resources` `Fixed.FromFloat(a.Amount)` (`:336`), the `Array.Sort` (`:192`), or the `Dictionary` timers/variables — all Story 1.4. Leave `slot < 2` as-is (9.2).
+  - [x] **(Option B — DECISION: NOT TAKEN. Option A chosen per D5; Alec did not request B.)** Option B would pre-quantize each trigger's resource thresholds to `Fixed` once in `LoadScenario` and compare raw ints (fully float-free in the tick), but it needs index-threading through `AnyEventMatches`/`AllConditionsMet` — a larger, riskier refactor for a marginal gain (the residual `FromFloat` is a constant conversion, cross-platform-deterministic, and is removed wholesale by Story 1.4). Option A (Fixed-vs-Fixed + `Fixed.FromFloat` at the compare site) implemented instead.
+  - [x] `dotnet build godot/godot.csproj` → green.
 
-- [ ] **Task 5 — AC3 proof tests + golden no-regression (AC: 3)**
-  - [ ] **Golden no-regression:** after Task 4, run the full Golden suite — both re-baselined goldens MUST be byte-identical vs their just-committed v2 values (`git status` clean for both `.golden.txt`). They are unaffected because `Tick` early-returns on empty triggers; this proves the `ScenarioDirector` edit changed no hashed sim state.
-  - [ ] **Functional correctness** (`Golden/ScenarioDirectorThresholdTests.cs`): build a `ScenarioData` with ONE `resource_threshold` trigger (faction 0, `amount=100`, op `">="`) whose action is observable (recommended: `display_message`, captured via `director.OnDisplayMessage`). Drive a `ScenarioDirector` over a `ResourceStore` with `Ore[Player1]` set to test values; `Tick` once; assert the trigger fired for `Ore=150` and `Ore=100`, did NOT fire for `Ore=50`. Add an `op "<"` case. (This pins the new Fixed compare's boundary behavior.)
-  - [ ] **Culture robustness** (same file): wrap the `Ore=150` fire case in `CultureInfo.CurrentCulture = new CultureInfo("de-DE")` (restore in a `finally`); assert it STILL fires. This guards against asymmetric culture handling — e.g. a future revert of the emit to `ToString("F2")` (which yields "150,00" under de-DE) while the match parses with `InvariantCulture` would FAIL this test. Add a comment stating exactly what it does and does not prove (it does NOT, on a single machine, prove cross-architecture float determinism — that is structural, removed by going Fixed; it DOES guard culture-symmetry + correct firing).
-  - [ ] `dotnet test --filter FullyQualifiedName~ScenarioDirectorThreshold` → green.
+- [x] **Task 5 — AC3 proof tests + golden no-regression (AC: 3)**
+  - [x] **Golden no-regression:** after Task 4, run the full Golden suite — both re-baselined goldens MUST be byte-identical vs their just-committed v2 values (`git status` clean for both `.golden.txt`). They are unaffected because `Tick` early-returns on empty triggers; this proves the `ScenarioDirector` edit changed no hashed sim state.
+  - [x] **Functional correctness** (`Golden/ScenarioDirectorThresholdTests.cs`): build a `ScenarioData` with ONE `resource_threshold` trigger (faction 0, `amount=100`, op `">="`) whose action is observable (recommended: `display_message`, captured via `director.OnDisplayMessage`). Drive a `ScenarioDirector` over a `ResourceStore` with `Ore[Player1]` set to test values; `Tick` once; assert the trigger fired for `Ore=150` and `Ore=100`, did NOT fire for `Ore=50`. Add an `op "<"` case. (This pins the new Fixed compare's boundary behavior.)
+  - [x] **Culture robustness** (same file): wrap the `Ore=150` fire case in `CultureInfo.CurrentCulture = new CultureInfo("de-DE")` (restore in a `finally`); assert it STILL fires. This guards against asymmetric culture handling — e.g. a future revert of the emit to `ToString("F2")` (which yields "150,00" under de-DE) while the match parses with `InvariantCulture` would FAIL this test. Add a comment stating exactly what it does and does not prove (it does NOT, on a single machine, prove cross-architecture float determinism — that is structural, removed by going Fixed; it DOES guard culture-symmetry + correct firing).
+  - [x] `dotnet test --filter FullyQualifiedName~ScenarioDirectorThreshold` → green.
 
-- [ ] **Task 6 — Verify end-to-end + negative controls (AC: 1, 2, 3)**
-  - [ ] `dotnet test godot/ProjectChimera.Sim.Tests/ProjectChimera.Sim.Tests.csproj` → ALL green: the 35 prior tests (now asserting against the re-baselined goldens) + the new coverage/known-state/threshold tests, headless, in seconds.
-  - [ ] **AC2 negative control:** temporarily comment out one `Mix(...)` line in `SimChecksum`'s faction block (e.g. the `Crystal` line), run `~Coverage` → the guard goes **red naming `ResourceStore.Crystal`**; restore → green. (Proves the guard guards.)
-  - [ ] **AC1 negative control:** corrupt one data line of each `.golden.txt`, rebuild, run → each goes red with a located-tick message; restore (re-embed via rebuild) → green.
-  - [ ] `dotnet build godot/godot.csproj` → green. Confirm production edits are limited to `SimChecksum.cs` (+const, widened loop), `ScenarioDirector.cs` (Fixed compare + InvariantCulture), and `GoldenChecksumReplay.cs` (one header line). Confirm both goldens' headers read `checksum_algo_version: 2`.
+- [x] **Task 6 — Verify end-to-end + negative controls (AC: 1, 2, 3)**
+  - [x] `dotnet test godot/ProjectChimera.Sim.Tests/ProjectChimera.Sim.Tests.csproj` → ALL green: the 35 prior tests (now asserting against the re-baselined goldens) + the new coverage/known-state/threshold tests, headless, in seconds.
+  - [x] **AC2 negative control:** temporarily comment out one `Mix(...)` line in `SimChecksum`'s faction block (e.g. the `Crystal` line), run `~Coverage` → the guard goes **red naming `ResourceStore.Crystal`**; restore → green. (Proves the guard guards.)
+  - [x] **AC1 negative control:** corrupt one data line of each `.golden.txt`, rebuild, run → each goes red with a located-tick message; restore (re-embed via rebuild) → green.
+  - [x] `dotnet build godot/godot.csproj` → green. Confirm production edits are limited to `SimChecksum.cs` (+const, widened loop), `ScenarioDirector.cs` (Fixed compare + InvariantCulture), and `GoldenChecksumReplay.cs` (one header line). Confirm both goldens' headers read `checksum_algo_version: 2`.
 
 ---
 
@@ -322,10 +322,50 @@ From **Story 1.3a** (done, code-review ACCEPTED 2026-06-23):
 
 ### Agent Model Used
 
-{{agent_model_name_version}}
+claude-opus-4-8 (Claude Opus 4.8)
 
 ### Debug Log References
 
+- **Baseline (pre-change):** `dotnet test ProjectChimera.Sim.Tests` → 35/35 green.
+- **Re-baseline (record mode):** `CHIMERA_GOLDEN_RECORD=1 dotnet test … --filter ~GoldenChecksumReplay` (1.2 golden) and `… --filter ~MultiFaction` (1.3a golden). Both passed the twice-run + `ParseGolden(FormatGolden)` round-trip safety gate.
+- **v2 hashes moved (widen took effect):** golden-scenario tick1 `4DCB84DB`→`2863D41A`; golden-multifaction tick1 `E353C32B`→`164AA13A`. Both still dynamic (tick300 differs from tick1) and distinct from each other.
+- **Known-state v2 hash** captured from a green run and pinned: `0xE65C97C8` (stable across two runs).
+- **Checksum-neutrality of the ScenarioDirector fix (AC3 no-regression):** sha256 of both goldens identical before vs after a fresh record on the post-Task-4 code → the Fixed/InvariantCulture change moved no hashed state (goldens' empty triggers early-return `Tick`).
+- **AC2 negative control:** removing the `Crystal` Mix line → `EveryPerFactionResourceArray_IsFoldedIntoTheChecksum` FAILED with `Per-faction array ResourceStore.Crystal is NOT folded into SimChecksum…` (named the exact array); restored → green.
+- **AC1 negative control:** corrupting golden-scenario tick 2 → `Checksum drift at tick 2: expected 0xDEADBEEF, actual 0x3A3E5E32` (detected AND located); restored via record mode → green.
+- **Final:** `dotnet test` 41/41 green; `dotnet build godot/godot.csproj` → Build succeeded (only the pre-existing CS8632 warnings, left untouched per Dev Notes).
+
 ### Completion Notes List
 
+- **AC1 — generalized SimChecksum + single algo bump + both goldens re-baselined.** Widened the post-1.3a Ore-only active-faction loop in `SimChecksum.Compute` to hash all five per-faction `ResourceStore` arrays (Ore, Crystal, SupplyUsed, SupplyCap, FactionBase) in ascending slot order via `FactionRegistry.ActiveFactions`. `int[]` arrays (SupplyUsed/SupplyCap) hash directly; `FixedVec3` (FactionBase) hashes as three `.Raw` mixes. Introduced `public const int SimChecksum.AlgoVersion = 2` (the single bump; v1 = implicit pre-1.3b Ore-only). `FormatGolden` now stamps `# checksum_algo_version: {AlgoVersion}` into every golden header (info-only; `ParseGolden` skips `#`). Both goldens re-recorded to v2 (record mode only — never hand-edited) and self-stamp v2. The `KnownWorldState_ProducesPinnedV2Hash` guard pins the v2 algorithm to `0xE65C97C8` and asserts `AlgoVersion == 2` (a future intentional algo change must update both, in one commit).
+- **AC2 — coverage guard.** New `SimChecksumCoverageGuardTest` reflects `ResourceStore`'s public per-faction array fields (length == the faction-array size) and differential-mutates each active slot, FAILING (naming `ResourceStore.<field>`) if a mutation does not move the checksum. Asserts all five known arrays are present; an unhandled element type throws a clear "extend the guard" error. Proven by the negative control above. **MatchStats stays excluded by design (D2)** — its per-faction arrays are private/write-only/derived, so the public-field scan never sees them; documented in the test, the loop comment, and the class XML so a future dev won't fold it in.
+- **AC3 — ScenarioDirector de-floated + locale-invariant.** Converted the `resource_threshold` emit (carry ore as raw `Fixed` int via `InvariantCulture`), the `resource_threshold` match, and the `resource_comparison` condition to compare **Fixed-vs-Fixed** with an `InvariantCulture` integer round-trip. Added a `Compare(Fixed,Fixed,string)` overload with a `Fixed.FromRaw(655)` epsilon mirroring the old `0.01f` `==`/`!=` tolerance. **Decision:** the two float-`Compare` call sites were its only callers (it is `private static`), so I **replaced** the now-dead `Compare(float,…)` overload rather than leave dead float/`MathF` code in the sim layer — this fully removes float arithmetic and `MathF` from the file, strengthening AC3's "no float arithmetic remains in the threshold/condition sim path." Proof tests (`ScenarioDirectorThresholdTests`) drive a real director and assert observable firing at the boundary (fires 150≥100 & 100≥100, not 50≥100; `<` fires strictly below), the `resource_comparison` condition gates correctly, and the 150≥100 case still fires under a comma-decimal `de-DE` culture (guards emit/match culture-symmetry). No golden exercises ScenarioDirector (empty triggers → early return), so these tests — not the byte-identical golden — are the real proof of the fix.
+- **Scope fence honored:** `Faction` enum / array sizes / `FACTION_COUNT` / the `slot < 2` emit bound all unchanged (Story 9.2); `add_resources` `Fixed.FromFloat` (line ~347), the `create_timer` float, the unstable `Array.Sort`, and the `Dictionary` timers/variables all left for Story 1.4; no server/MP collector and no net-new store folded in. The residual `Fixed.FromFloat(def.Amount/c.Amount)` at the two compare sites converts an authored constant (identical bits on every peer → not a cross-machine desync source) and is the explicit 1.4 cleanup target.
+- **Option B (load-time pre-quantization) NOT taken** — Option A chosen per D5; Alec did not request B.
+- **Note on git:** changes are left uncommitted (the project's hourly `[AutoSave]` commits to `master`); goldens are embedded from the source files at build time, so no manual commit is required for correctness. `baseline_commit: abe4936` preserved in the frontmatter for the code-review diff range.
+
 ### File List
+
+_Paths relative to repo root._
+
+**Modified — production (sim layer):**
+- `godot/src/Core/SimChecksum.cs` — `AlgoVersion = 2` const; widened faction loop to all 5 per-faction stores (ascending); updated "Hashed state" XML + MatchStats-exclusion note.
+- `godot/src/Core/ScenarioDirector.cs` — `using System.Globalization`; emit carries raw `Fixed` int (InvariantCulture); `resource_threshold` match & `resource_comparison` condition compare Fixed-vs-Fixed; `Compare(float,…)` → `Compare(Fixed,…)` + epsilon.
+
+**Modified — test engine:**
+- `godot/ProjectChimera.Sim.Tests/Golden/GoldenChecksumReplay.cs` — `FormatGolden` stamps one `# checksum_algo_version: {AlgoVersion}` header line.
+
+**Modified — re-baselined goldens (record mode only):**
+- `godot/ProjectChimera.Sim.Tests/Golden/golden-scenario.golden.txt` — v2, self-stamps `checksum_algo_version: 2`.
+- `godot/ProjectChimera.Sim.Tests/Golden/golden-multifaction.golden.txt` — v2, self-stamps `checksum_algo_version: 2`.
+
+**New — tests:**
+- `godot/ProjectChimera.Sim.Tests/Golden/SimChecksumCoverageGuardTest.cs` — AC2 coverage guard + AC1 v2 known-state hash pin.
+- `godot/ProjectChimera.Sim.Tests/Golden/ScenarioDirectorThresholdTests.cs` — AC3 functional boundary + condition + de-DE culture proofs.
+
+**Modified — tracking:**
+- `_bmad-output/implementation-artifacts/sprint-status.yaml` — story status ready-for-dev → in-progress → review.
+
+### Change Log
+
+- **2026-06-23 — Story 1.3b implemented (Status → review).** Generalized `SimChecksum` from Ore-only to full per-faction coverage with a single `AlgoVersion` bump to 2 and both goldens re-baselined to v2 (AC1); added `SimChecksumCoverageGuardTest` (reflection + differential mutation) and a v2 known-state hash pin (AC2/AC1); converted the `ScenarioDirector` `resource_threshold`/`resource_comparison` path from float/locale-dependent formatting to Fixed-vs-Fixed + InvariantCulture, removing the last float arithmetic/`MathF` from the file (AC3). All 41 Tier-1 xUnit tests green; `godot.csproj` build green; both negative controls verified.

@@ -1,6 +1,7 @@
 #nullable enable
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using ProjectChimera.Core.Definitions;
 using ProjectChimera.Economy;
 
@@ -162,13 +163,16 @@ namespace ProjectChimera.Core
             }
 
             // Threshold events — polled every tick so triggers can react to sustained states.
+            // Carry the ore as its raw Fixed integer (InvariantCulture) — locale-invariant and lossless — so the
+            // match path compares Fixed-vs-Fixed with no float arithmetic or culture-dependent number formatting
+            // (AR-16). slot < 2 stays as-is: widening to all active factions is Story 9.2, not this story.
             for (int slot = 0; slot < 2; slot++)
             {
                 var faction = (Faction)(slot + 1);
-                float ore   = _resources.Ore[(int)faction].ToFloat();
-                int   units = CountAlive(world, faction);
-                events.Add(new FiredEvent("resource_threshold",    slot, ore.ToString("F2")));
-                events.Add(new FiredEvent("unit_count_threshold",   slot, units.ToString()));
+                int oreRaw  = _resources.Ore[(int)faction].Raw;
+                int units   = CountAlive(world, faction);
+                events.Add(new FiredEvent("resource_threshold",   slot, oreRaw.ToString(CultureInfo.InvariantCulture)));
+                events.Add(new FiredEvent("unit_count_threshold", slot, units.ToString(CultureInfo.InvariantCulture)));
             }
 
             return events;
@@ -249,10 +253,16 @@ namespace ProjectChimera.Core
                     return string.IsNullOrEmpty(def.TimerName) || f.Data == def.TimerName;
                 case "resource_threshold":
                     if (f.Slot != def.Faction) return false;
-                    return float.TryParse(f.Data, out float ore) && Compare(ore, def.Amount, def.Operator);
+                    // f.Data is the ore's raw Fixed integer (InvariantCulture). Compare Fixed-vs-Fixed; the
+                    // authored threshold (def.Amount — a JSON float) becomes Fixed at the compare site. That
+                    // residual FromFloat converts an authored CONSTANT (identical bits on every peer, so not a
+                    // cross-machine desync source); Story 1.4 removes it when FixedJsonConverter makes Amount a Fixed.
+                    return int.TryParse(f.Data, NumberStyles.Integer, CultureInfo.InvariantCulture, out int oreRaw)
+                        && Compare(Fixed.FromRaw(oreRaw), Fixed.FromFloat(def.Amount), def.Operator);
                 case "unit_count_threshold":
                     if (f.Slot != def.Faction) return false;
-                    return int.TryParse(f.Data, out int cnt) && Compare(cnt, def.Count, def.Operator);
+                    return int.TryParse(f.Data, NumberStyles.Integer, CultureInfo.InvariantCulture, out int cnt)
+                        && Compare(cnt, def.Count, def.Operator);
                 default:
                     return false;
             }
@@ -286,7 +296,8 @@ namespace ProjectChimera.Core
                     return false;
                 }
                 case "resource_comparison":
-                    return Compare(_resources.Ore[(int)faction].ToFloat(), c.Amount, c.Operator);
+                    // Fixed-vs-Fixed (no ToFloat). Authored threshold → Fixed at the compare site (1.4 removes the FromFloat).
+                    return Compare(_resources.Ore[(int)faction], Fixed.FromFloat(c.Amount), c.Operator);
                 case "unit_count":
                     return Compare(CountAlive(world, faction), c.Count, c.Operator);
                 case "variable_comparison":
@@ -355,14 +366,22 @@ namespace ProjectChimera.Core
             return n;
         }
 
-        private static bool Compare(float a, float b, string op) => op switch
+        // ≈ the prior 0.01f float tolerance (0.01 × 65536 ≈ 655 raw) so ==/!= behavior is preserved.
+        private static readonly Fixed CompareEpsilon = Fixed.FromRaw(655);
+
+        /// <summary>
+        /// Fixed-vs-Fixed comparison for the threshold/condition sim path. Replaces the prior float compare,
+        /// removing the last float arithmetic (and MathF) from ScenarioDirector (AR-16). The ==/!= cases keep a
+        /// small epsilon mirroring the old 0.01f tolerance so existing trigger behavior is preserved exactly.
+        /// </summary>
+        private static bool Compare(Fixed a, Fixed b, string op) => op switch
         {
             ">"  => a > b,
             "<"  => a < b,
             ">=" => a >= b,
             "<=" => a <= b,
-            "==" => MathF.Abs(a - b) < 0.01f,
-            "!=" => MathF.Abs(a - b) >= 0.01f,
+            "==" => Fixed.Abs(a - b) <  CompareEpsilon,
+            "!=" => Fixed.Abs(a - b) >= CompareEpsilon,
             _    => false
         };
 
