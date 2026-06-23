@@ -23,6 +23,7 @@ namespace ProjectChimera.Combat
         private readonly ProjectileStore  _projectiles;
         private readonly CombatEventQueue? _events;
         private readonly MatchStats?       _stats;
+        private readonly DamageTable       _table;
 
         /// <summary>
         /// Units with AttackRange above this value use projectiles; at or below it use instant melee damage.
@@ -30,11 +31,13 @@ namespace ProjectChimera.Combat
         /// </summary>
         private static readonly Fixed MELEE_THRESHOLD = Fixed.FromFloat(2.5f);
 
-        public CombatSystem(ProjectileStore projectiles, CombatEventQueue? events = null, MatchStats? stats = null)
+        public CombatSystem(ProjectileStore projectiles, CombatEventQueue? events = null, MatchStats? stats = null,
+            DamageTable? table = null)
         {
             _projectiles = projectiles;
             _events      = events;
             _stats       = stats;
+            _table       = table ?? DamageTable.Default;
         }
 
         // Squared arrive threshold for AttackMove goal detection (0.5 world units)
@@ -266,19 +269,14 @@ namespace ProjectChimera.Combat
             }
             else
             {
-                // Melee — instant damage
-                Fixed rawDamage  = world.AttackDamage[attacker];
-                Fixed multiplier = DamageMatrix.Get(world.DamageTypeOf[attacker], world.ArmorTypeOf[target]);
-                Fixed damage     = rawDamage * multiplier;
-
+                // Melee — instant damage. Event BEFORE Apply; attacker-cleanup AFTER, gated on death —
+                // operation order preserved exactly so the golden checksums stay byte-identical (Story 1.6 AC2).
                 _events?.Push(CombatEventType.MeleeHit, world.Position[target]);
 
-                world.Health[target] = world.Health[target] - damage;
-                if (world.Health[target] <= Fixed.Zero)
+                var ctx = new DamageContext(world, target, world.ArmorTypeOf[target],
+                                            world.FactionOf[attacker], _table, _events, _stats);
+                if (DamageResolver.Apply(in ctx, world.AttackDamage[attacker], world.DamageTypeOf[attacker]))
                 {
-                    _events?.Push(CombatEventType.UnitKilled, world.Position[target]);
-                    _stats?.RecordKill(world.FactionOf[target], world.FactionOf[attacker]);
-                    world.Destroy(target);
                     world.AttackTarget[attacker] = -1;
                     world.Flags[attacker]       &= ~EntityFlags.Attacking;
                 }

@@ -22,12 +22,15 @@ namespace ProjectChimera.Combat
         private readonly ProjectileStore   _store;
         private readonly CombatEventQueue? _events;
         private readonly MatchStats?        _stats;
+        private readonly DamageTable        _table;
 
-        public ProjectileSystem(ProjectileStore store, CombatEventQueue? events = null, MatchStats? stats = null)
+        public ProjectileSystem(ProjectileStore store, CombatEventQueue? events = null, MatchStats? stats = null,
+            DamageTable? table = null)
         {
             _store  = store;
             _events = events;
             _stats  = stats;
+            _table  = table ?? DamageTable.Default;
         }
 
         public void Tick(EntityWorld world, Fixed dt)
@@ -73,23 +76,17 @@ namespace ProjectChimera.Combat
         /// <summary>Resolve projectile damage on a live target. Destroys target if HP reaches zero.</summary>
         private void ApplyHit(EntityWorld world, int projId, int targetId)
         {
-            Fixed multiplier = DamageMatrix.Get(_store.DmgType[projId], _store.TargetArmor[projId]);
-            Fixed damage     = _store.Damage[projId] * multiplier;
-
             Fixed splashRadius = _store.SplashRadius[projId];
             bool  isSplash     = splashRadius > Fixed.Zero;
 
-            // Emit hit event at the impact position
+            // Emit hit event at the impact position — BEFORE Apply, to preserve event order (Story 1.6 AC2).
             _events?.Push(isSplash ? CombatEventType.SplashHit : CombatEventType.RangedHit,
                           _store.Position[projId]);
 
-            world.Health[targetId] = world.Health[targetId] - damage;
-            if (world.Health[targetId] <= Fixed.Zero)
-            {
-                _events?.Push(CombatEventType.UnitKilled, world.Position[targetId]);
-                _stats?.RecordKill(world.FactionOf[targetId], _store.Owner[projId]);
-                world.Destroy(targetId);
-            }
+            // Primary hit uses the armor SNAPSHOT captured at spawn (_store.TargetArmor), not live armor.
+            var ctx = new DamageContext(world, targetId, _store.TargetArmor[projId],
+                                        _store.Owner[projId], _table, _events, _stats);
+            DamageResolver.Apply(in ctx, _store.Damage[projId], _store.DmgType[projId]);
 
             // AoE splash: deal same damage to all other enemies within splash radius
             if (isSplash)
@@ -118,15 +115,9 @@ namespace ProjectChimera.Combat
                 Fixed distSqr = FixedVec3.SqrDistance(hitPos, world.Position[i]);
                 if (distSqr > radiusSqr) continue;
 
-                Fixed multiplier = DamageMatrix.Get(dmgType, world.ArmorTypeOf[i]);
-                Fixed splashDamage = damage * multiplier;
-                world.Health[i] -= splashDamage;
-                if (world.Health[i] <= Fixed.Zero)
-                {
-                    _events?.Push(CombatEventType.UnitKilled, world.Position[i]);
-                    _stats?.RecordKill(world.FactionOf[i], owner);
-                    world.Destroy(i);
-                }
+                // Secondary splash targets use LIVE armor (caller-supplied), and emit no pre-hit event.
+                var ctx = new DamageContext(world, i, world.ArmorTypeOf[i], owner, _table, _events, _stats);
+                DamageResolver.Apply(in ctx, damage, dmgType);
             }
         }
     }

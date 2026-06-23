@@ -40,6 +40,7 @@ namespace ProjectChimera.Core
         private FactionDefinition[] _slotFactionDefs = null!;
         private Combat.ProjectileStore  _projectiles = null!;
         private Combat.CombatEventQueue _combatEvents = null!;
+        private Combat.DamageTable      _damageTable = null!;
 
         // ── Presentation ──────────────────────────────────────────────────────
 
@@ -209,6 +210,7 @@ namespace ProjectChimera.Core
 
         private const string P1_FACTION_JSON = "res://resources/data/factions/alpha_faction.json";
         private const string P2_FACTION_JSON = "res://resources/data/factions/beta_faction.json";
+        private const string DAMAGE_TABLE_JSON = "res://resources/data/damage_table.json";
 
         // ── Lifecycle ─────────────────────────────────────────────────────────
 
@@ -250,6 +252,14 @@ namespace ProjectChimera.Core
             _projectiles  = new Combat.ProjectileStore();
             _combatEvents = new Combat.CombatEventQueue();
 
+            // Damage multipliers (AR-26): load the creator-editable table. A malformed file fails closed
+            // with a located error (DamageTable.FromJson); a MISSING file falls back to the canonical
+            // Default (matching the FactionDefinition graceful pattern above).
+            string damageTableAbs = ProjectSettings.GlobalizePath(DAMAGE_TABLE_JSON);
+            _damageTable = System.IO.File.Exists(damageTableAbs)
+                ? Combat.DamageTable.Load(damageTableAbs)
+                : Combat.DamageTable.Default;
+
             _fog = new FogOfWarSystem(Faction.Player1);
 
             _buildSys = new BuildingSystem(_buildings, _resources, _factionDef, _factionDef2, _matchStats);
@@ -258,8 +268,8 @@ namespace ProjectChimera.Core
                 _buildSys,
                 new GatheringSystem(_nodes, _resources, _matchStats),
                 new MovementSystem(),
-                new CombatSystem(_projectiles, _combatEvents, _matchStats),
-                new Combat.ProjectileSystem(_projectiles, _combatEvents, _matchStats),
+                new CombatSystem(_projectiles, _combatEvents, _matchStats, _damageTable),
+                new Combat.ProjectileSystem(_projectiles, _combatEvents, _matchStats, _damageTable),
                 new SupplySystem(_resources),
                 _fog,
                 new AiOpponentSystem(_buildings, _resources, _buildSys, AiLevel),

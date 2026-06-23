@@ -1,0 +1,13 @@
+{
+  // Damage effectiveness matrix (AR-26). final = base_damage * multipliers[DamageType][ArmorType].
+  // 1.0 = full damage. Rows = attacker damage type; columns = defender armor type.
+  // The original 4x5 values are the retired DamageMatrix defaults and MUST stay bit-identical (Story 1.6 AC1).
+  // The Hero row and Hero column are neutral (1.0) placeholders, tuned when heroes ship in Epic 3.
+  "multipliers": {
+    "Normal": { "Unarmored": 1.0, "Light": 1.0, "Medium": 0.75, "Heavy": 0.5,  "Fortified": 0.35, "Hero": 1.0 },
+    "Pierce": { "Unarmored": 1.5, "Light": 1.0, "Medium": 0.75, "Heavy": 0.35, "Fortified": 0.25, "Hero": 1.0 },
+    "Siege":  { "Unarmored": 0.5, "Light": 0.5, "Medium": 1.0,  "Heavy": 1.0,  "Fortified": 1.5,  "Hero": 1.0 },
+    "Magic":  { "Unarmored": 1.0, "Light": 1.0, "Medium": 1.0,  "Heavy": 1.0,  "Fortified": 0.5,  "Hero": 1.0 },
+    "Hero":   { "Unarmored": 1.0, "Light": 1.0, "Medium": 1.0,  "Heavy": 1.0,  "Fortified": 1.0,  "Hero": 1.0 }
+  }
+}
