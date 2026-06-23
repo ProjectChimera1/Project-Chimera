@@ -344,3 +344,34 @@ Claude Opus 4.8 (claude-opus-4-8)
 ### Change Log
 
 - **2026-06-22** — Story 1.1 implemented. Confirmed engine on Godot 4.6.3; guarded `FixedPoint.cs` Godot bridge with `#if GODOT`; excluded the Tier-1 test folder from the game compile; created the Godot-free `ProjectChimera.Sim.Tests` (net8.0, shared-source) with Fixed smoke tests + a Godot-free-boundary test. Verified: `dotnet test` 6/6 green, `dotnet build` game green, AC1 in-editor on 4.6.3 (builds/runs, both addons ready, clean log). Status: ready-for-dev → in-progress → review.
+
+---
+
+## Review Findings
+
+_Code review 2026-06-22 (3-layer adversarial: Blind Hunter / Edge Case Hunter / Acceptance Auditor, all Opus 4.8). **Verdict: all 3 ACs met in code; all hard constraints satisfied; no Critical/High survives triage.** Reviewer-reproduced independently: `dotnet build godot/godot.csproj` → 0 errors / 6 pre-existing CS8632 warnings; `dotnet test …Sim.Tests` → 6/6 passed headless (144 ms)._
+
+**Patch (2) — unblocked, in-scope, unambiguous fix:**
+
+- [ ] [Review][Patch] `RawRoundTrip` is tautological — both sides reduce to `int 65536`, so it asserts `65536 == 65536` and cannot fail (proves nothing about raw↔value layout). Rewrite to round-trip a *fractional* raw (e.g. `0x1_8000` = 1.5) and separately assert `Fixed.ONE == Fixed.One.Raw`. [godot/ProjectChimera.Sim.Tests/Determinism/FixedSmokeTests.cs — RawRoundTrip]
+- [ ] [Review][Patch] `godot.csproj` has no trailing newline at EOF. [godot/godot.csproj — end of file]
+
+**Defer (5) — real, but out of scope for this scaffold story (tracked to their target stories):**
+
+- [x] [Review][Defer] Determinism boundary-value tests missing — no negative-multiply rounding direction (the classic lockstep desync source), division truncation direction, overflow at the 16.16 limits, or `Sqrt` of 0 / negative / non-perfect-square. The `Determinism/` suite is happy-path-only by design here. [godot/ProjectChimera.Sim.Tests/Determinism/FixedSmokeTests.cs] — deferred to Story 1.2 (golden-checksum harness)
+- [x] [Review][Defer] No structural guard against a future Godot-coupled `.cs` entering the globbed sim folders — the `<Compile Remove>` denylist is two hand-maintained filenames; a new `using Godot;` file would silently break the test build with a confusing far-away error. [godot/ProjectChimera.Sim.Tests/ProjectChimera.Sim.Tests.csproj] — deferred to Story 1.10b (banned-Godot analyzer) / 1.10 (folder-set match check)
+- [x] [Review][Defer] The Godot-free boundary test is executed by nothing routine — intentionally not in `godot.sln`, and no CI exists yet, so the guarantee only holds when someone manually runs `dotnet test`. [godot/ProjectChimera.Sim.Tests/ProjectChimera.Sim.Tests.csproj] — deferred to Story 1.10a (CI)
+- [x] [Review][Defer] No `packages.lock.json` — restore is not bit-reproducible despite pinned top-level versions (transitives still float); the csproj comment overstates "reproducible CI." [godot/ProjectChimera.Sim.Tests/ProjectChimera.Sim.Tests.csproj] — deferred to Story 1.10a (CI)
+- [x] [Review][Defer] 6 pre-existing CS8632 warnings (nullable annotations without file-level `#nullable enable`) in `GatheringSystem.cs` (×2), `SimulationLoop.cs` (×3), `FlowFieldSystem.cs` (×1) — verified **identical** in the game and test builds (no divergence; `Godot.NET.Sdk` does not enable nullable). Add `#nullable enable` to those files. [pre-existing] — deferred, pre-existing cleanup
+
+**Dismissed (7) — raised then verified false / handled (recorded for audit trail):**
+
+- Cross-platform backslash globs — MSBuild normalizes `\`→`/` on Linux for Include *and* Remove identically; on-disk names match case. (Edge Case Hunter, verified)
+- `<ImplicitUsings>disable` divergence — zero LINQ / implicit-`System` reliance across all 25 compiled sim files. (verified)
+- `GetReferencedAssemblies()` "weak proof" — adequate here: the test project references no GodotSharp at all and `typeof(Fixed).Assembly` is the shared-source test assembly. (verified)
+- Empty-glob false confidence — Combat/Economy/Navigation are populated (25 files compiled). (verified)
+- SDK 4.6.3 / editor mismatch — `dotnet build` confirms 4.6.3 restores & builds; editor on 4.6.3 per Dev Record. (verified)
+- AC1 bump provenance — the `4.6.2→4.6.3` "before" is an AutoSave-to-master artifact; end state is correct. (benign)
+- CS8632 "divergence" (Edge Case Hunter #3) — **disproven by build**: the same 6 warnings appear in the game build too, so there is no game-vs-test divergence.
+
+**Residual manual gate:** AC1's "editor opens on 4.6.3 + `godot_mcp` & `terrain_3d` both report ready + clean editor log" is confirmed only by the Dev Agent Record (via `godot_mcp`), not re-reproduced in this review (requires driving the editor). Low risk; optional final in-editor glance.
