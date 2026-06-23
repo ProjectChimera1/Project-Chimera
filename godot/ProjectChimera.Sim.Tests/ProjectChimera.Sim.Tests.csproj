@@ -33,6 +33,9 @@
          pre-empts an NETSDK1022 duplicate-item error with the SDK's default None glob. -->
     <None Remove="Golden\golden-scenario.golden.txt" />
     <EmbeddedResource Include="Golden\golden-scenario.golden.txt" />
+    <!-- Story 1.3a multi-faction (4 active factions) golden — same embedded/manifest transport. -->
+    <None Remove="Golden\golden-multifaction.golden.txt" />
+    <EmbeddedResource Include="Golden\golden-multifaction.golden.txt" />
   </ItemGroup>
 
   <ItemGroup>

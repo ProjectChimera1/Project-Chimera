@@ -116,7 +116,9 @@ namespace ProjectChimera.Sim.Tests.Golden
                 new AiOpponentSystem(buildings, resources, buildSys, AiDifficulty.Normal), // 8 AI (plays Player2)
                 director);                                                 // 9 ScenarioDirector  (Core) — runs last
 
-            loop.EnableChecksums(buildings, resources); // REQUIRED before stepping, or no checksum fires
+            // (2) = P1+P2 active. The registry's ActiveFactions = [Player1, Player2], so the checksum's
+            // faction loop does Mix(Ore[1]) then Mix(Ore[2]) — byte-identical to the pre-registry literals.
+            loop.EnableChecksums(buildings, resources, new FactionRegistry(2)); // REQUIRED before stepping, or no checksum fires
             loop.ChecksumInterval = 1;                  // checksum EVERY tick so the located-tick is exact
 
             // Mirror MainScene's director lifecycle: initialize empty trigger state. ScenarioDirector.Tick

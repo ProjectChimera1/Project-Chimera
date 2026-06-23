@@ -9,7 +9,7 @@ namespace ProjectChimera.Core
     /// Hashed state (in order, ascending entity ID):
     ///   - EntityWorld: Position (X, Y, Z) and Health for every alive entity
     ///   - BuildingStore: Alive flag, Health for every building slot
-    ///   - ResourceStore: Ore balance for each faction
+    ///   - ResourceStore: Ore balance for each active faction (iterated via FactionRegistry)
     ///
     /// All values are Fixed (int Raw) — platform-independent, no float arithmetic.
     /// </summary>
@@ -23,7 +23,8 @@ namespace ProjectChimera.Core
         /// Compute a full-state checksum for desync detection.
         /// Call after all systems have ticked for the current frame.
         /// </summary>
-        public static uint Compute(EntityWorld world, BuildingStore buildings, ResourceStore resources)
+        public static uint Compute(EntityWorld world, BuildingStore buildings, ResourceStore resources,
+                                   FactionRegistry factions)
         {
             uint hash = FNV_OFFSET;
 
@@ -49,9 +50,10 @@ namespace ProjectChimera.Core
             }
 
             // ── Faction resources ─────────────────────────────────────────────────
-            // Factions 1 and 2 only (Neutral=0 is unused; 3/4 reserved)
-            hash = Mix(hash, resources.Ore[(int)Faction.Player1].Raw);
-            hash = Mix(hash, resources.Ore[(int)Faction.Player2].Raw);
+            // Active factions only (ascending slot order), via the registry. Ore-only today —
+            // Story 1.3b widens THIS loop to Crystal/SupplyUsed/SupplyCap and bumps the algo version.
+            foreach (Faction f in factions.ActiveFactions)
+                hash = Mix(hash, resources.Ore[(int)f].Raw);
 
             return hash;
         }

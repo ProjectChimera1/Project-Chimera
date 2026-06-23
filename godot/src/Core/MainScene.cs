@@ -265,7 +265,9 @@ namespace ProjectChimera.Core
                 new AiOpponentSystem(_buildings, _resources, _buildSys, AiLevel),
                 _scenarioDirector); // runs last — sees fully-updated world state
 
-            _simLoop.EnableChecksums(_buildings, _resources);
+            // TODO(5.1): derive active player count from the loaded scenario's assigned slots.
+            // 2-player today, so new FactionRegistry(2) is behaviour-preserving (Ore[P1]+Ore[P2], byte-identical).
+            _simLoop.EnableChecksums(_buildings, _resources, new FactionRegistry(2));
             _simLoop.OnChecksum = (tick, checksum) =>
                 GD.Print($"[Checksum] tick={tick} hash=0x{checksum:X8}");
 

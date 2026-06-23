@@ -48,9 +48,11 @@ namespace ProjectChimera.Sim.Tests.Golden
         /// so a perturbation injected at loop index K is reflected in that iteration's checksum (tick K+1) —
         /// giving a clean, off-by-one-free located tick for AC3.
         /// </summary>
-        public static IReadOnlyList<Sample> RunAndRecord(int ticks, Action<int, EntityWorld>? perturb = null)
+        public static IReadOnlyList<Sample> RunAndRecord(int ticks, Action<int, EntityWorld>? perturb = null,
+            Func<GoldenHarness>? build = null)
         {
-            GoldenHarness harness = GoldenScenario.Build(); // fresh stores + systems; no statics
+            build ??= GoldenScenario.Build; // default: the 1.2 scenario — existing call sites are unaffected
+            GoldenHarness harness = build(); // fresh stores + systems; no statics
             var seq = new List<Sample>(ticks);
             harness.Loop.OnChecksum = (tick, hash) => seq.Add(new Sample(tick, hash));
 
@@ -101,14 +103,14 @@ namespace ProjectChimera.Sim.Tests.Golden
         /// Load the committed golden baseline from the EMBEDDED resource (portable across Windows/Linux:
         /// no file paths, no line-ending fragility — required for the 1.10c cross-platform gate).
         /// </summary>
-        public static IReadOnlyList<Sample> LoadGolden()
+        public static IReadOnlyList<Sample> LoadGolden(string fileName = GoldenFileName)
         {
             Assembly asm = Assembly.GetExecutingAssembly();
             string? resourceName = asm.GetManifestResourceNames()
-                .SingleOrDefault(n => n.EndsWith(GoldenFileName, StringComparison.Ordinal));
+                .SingleOrDefault(n => n.EndsWith(fileName, StringComparison.Ordinal));
             if (resourceName is null)
                 throw new InvalidOperationException(
-                    $"Golden baseline '{GoldenFileName}' is not embedded in the test assembly. " +
+                    $"Golden baseline '{fileName}' is not embedded in the test assembly. " +
                     $"Generate it first: set {RecordEnvVar}=1 and run the Golden tests, then rebuild. " +
                     $"(Embedded resources found: {string.Join(", ", asm.GetManifestResourceNames())})");
 
@@ -170,10 +172,10 @@ namespace ProjectChimera.Sim.Tests.Golden
         /// <see cref="GoldenSourcePath"/>) and return true; otherwise do nothing and return false.
         /// The dev then rebuilds (to refresh the embedded copy) and commits.
         /// </summary>
-        public static bool MaybeRecord(IReadOnlyList<Sample> seq)
+        public static bool MaybeRecord(IReadOnlyList<Sample> seq, string fileName = GoldenFileName)
         {
             if (!IsRecordMode) return false;
-            string path = GoldenSourcePath();
+            string path = GoldenSourcePath(fileName);
             File.WriteAllText(path, FormatGolden(seq), new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
             return true;
         }
@@ -183,11 +185,11 @@ namespace ProjectChimera.Sim.Tests.Golden
         /// via <see cref="CallerFilePathAttribute"/> (the golden lives beside this file under Golden/).
         /// Used only by the re-baseline writer, which runs on the build machine.
         /// </summary>
-        public static string GoldenSourcePath([CallerFilePath] string thisFilePath = "")
+        public static string GoldenSourcePath(string fileName = GoldenFileName, [CallerFilePath] string thisFilePath = "")
         {
             string dir = Path.GetDirectoryName(thisFilePath)
                          ?? throw new InvalidOperationException("Could not resolve the Golden/ source directory.");
-            return Path.Combine(dir, GoldenFileName);
+            return Path.Combine(dir, fileName);
         }
     }
 }

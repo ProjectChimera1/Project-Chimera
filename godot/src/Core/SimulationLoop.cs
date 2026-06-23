@@ -58,6 +58,7 @@ namespace ProjectChimera.Core
         // Optional stores for checksum — set via EnableChecksums()
         private BuildingStore?  _checksumBuildings;
         private ResourceStore?  _checksumResources;
+        private FactionRegistry? _checksumFactions;
 
         public SimulationLoop(EntityWorld world, params ISimSystem[] systems)
         {
@@ -71,10 +72,11 @@ namespace ProjectChimera.Core
         /// Provide building and resource stores so the sim loop can include them in checksums.
         /// Call once after construction, before the first Update().
         /// </summary>
-        public void EnableChecksums(BuildingStore buildings, ResourceStore resources)
+        public void EnableChecksums(BuildingStore buildings, ResourceStore resources, FactionRegistry factions)
         {
             _checksumBuildings = buildings;
             _checksumResources = resources;
+            _checksumFactions  = factions;
         }
 
         /// <summary>
@@ -93,9 +95,9 @@ namespace ProjectChimera.Core
             InterpolationAlpha = 0f;
 
             if (ChecksumInterval > 0 && CurrentTick % (uint)ChecksumInterval == 0
-                && _checksumBuildings != null && _checksumResources != null)
+                && _checksumBuildings != null && _checksumResources != null && _checksumFactions != null)
             {
-                LastChecksum = SimChecksum.Compute(World, _checksumBuildings, _checksumResources);
+                LastChecksum = SimChecksum.Compute(World, _checksumBuildings, _checksumResources, _checksumFactions);
                 OnChecksum?.Invoke(CurrentTick, LastChecksum);
             }
         }
@@ -130,9 +132,9 @@ namespace ProjectChimera.Core
 
                 // Checksum every N ticks for desync detection (P2.4)
                 if (ChecksumInterval > 0 && CurrentTick % (uint)ChecksumInterval == 0
-                    && _checksumBuildings != null && _checksumResources != null)
+                    && _checksumBuildings != null && _checksumResources != null && _checksumFactions != null)
                 {
-                    LastChecksum = SimChecksum.Compute(World, _checksumBuildings, _checksumResources);
+                    LastChecksum = SimChecksum.Compute(World, _checksumBuildings, _checksumResources, _checksumFactions);
                     OnChecksum?.Invoke(CurrentTick, LastChecksum);
                 }
             }
