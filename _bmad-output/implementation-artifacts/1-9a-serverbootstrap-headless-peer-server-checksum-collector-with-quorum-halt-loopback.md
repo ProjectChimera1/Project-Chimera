@@ -494,6 +494,7 @@ Claude Opus 4.8 (`claude-opus-4-8`) — gds-dev-story workflow.
 - 2026-06-24 — Story 1.9a implemented (Tasks 1–9 complete; Task 10 tooling complete + server-boot/overlay runtime-verified, the live 2-client F9 round-trip is a push-button manual eyeball). 3 net-new Godot-free types (`ServerBootstrap`/`ServerHost`/`ServerChecksumCollector`), 4 net-new packet builders + `Halt`/`HaltReason`, headless-branch re-point + relay rewrite, client HALT handler + terminal overlay, AR-40 tie-break pin + golden. Tier-1 183 green; existing goldens byte-identical; `godot.csproj` builds. baseline_commit `3599834` preserved.
 - 2026-06-24 — Task 10 loopback tooling: one-click launcher (`godot/tools/loopback-desync-smoke.cmd`) + `#if DEBUG` auto-join/auto-ready (`LobbyUi`/`MainScene`). Fixed a latent headless NRE (`_headless` guard on `MainScene._Process`/`_Input`/`_UnhandledInput`). Headless server boot runtime-verified (sim spine built + port bound, 0 stderr errors).
 - 2026-06-24 — Loopback bug fix (found while standing up the smoke): `DedicatedServer.HandleReady` dropped a Ready received before both peers connected, so a fast/auto-join client deadlocked on "Ready! Waiting for other player". Now records the early Ready and starts on both-connected-AND-ready (order-independent). Server boot re-verified; `godot.csproj` builds clean.
+- 2026-06-24 — Loopback smoke hardening (after live failures): root cause of the repeated hangs was the **headless server being windowless** — a leftover from a prior run kept holding port 7777 with OLD (pre-fix) code, so re-run clients hit the stale server and deadlocked. Fixes: (a) `--server` runs the dedicated server as a VISIBLE, closeable window (`MainScene.ShowServerWindowMarker`); (b) the launcher is now `loopback-desync-smoke.ps1` (+ `.cmd` wrapper) that KILLS leftover loopback instances first (matched by cmdline flags — never the editor); (c) auto-join hides the title menu so the started match isn't covered. Removed the in-process self-test (Godot/ENet does not deliver app packets between hosts in one process — a same-process engine limitation, not a 1.9a bug; confirmed the server sends Hello `Ok` and clients connect, but in-process delivery fails). Windowed `--server` verified to launch + bind the port.
 
 ### File List
 
@@ -503,7 +504,7 @@ Claude Opus 4.8 (`claude-opus-4-8`) — gds-dev-story workflow.
 - `godot/src/Multiplayer/Server/ServerHost.cs`
 
 **NEW — loopback smoke tooling (Task 10):**
-- `godot/tools/loopback-desync-smoke.cmd` — one-click launcher: headless server + two auto-joining client windows; then F9 on a client induces the desync.
+- `godot/tools/loopback-desync-smoke.ps1` + `godot/tools/loopback-desync-smoke.cmd` (double-click wrapper) — kills leftover loopback instances, opens a VISIBLE dedicated-server window (`-- --server`) + two auto-joining client windows; then F9 on a client induces the desync. `MainScene` gained a `--server` windowed-server mode (`ShowServerWindowMarker`) + a title-menu hide on auto-join.
 
 **NEW — tests + golden:**
 - `godot/ProjectChimera.Sim.Tests/Server/ServerChecksumCollectorTests.cs`

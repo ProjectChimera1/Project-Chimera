@@ -1,0 +1,19 @@
+Godot Engine v4.6.3.stable.mono.official.7d41c59c4 - https://godotengine.org
+
+[MainScene] --loopback-test → running in-process loopback desync self-test.
+[Server] Listening on port 49777 (max 4 peers).
+[Server] Sim spine: none — relay + quorum only.
+[ENet] Connecting to 127.0.0.1:49777
+[ENet] Connecting to 127.0.0.1:49777
+[LoopbackTest] server + 2 clients connecting on 127.0.0.1:49777 …
+[ENet] Peer connected.
+[ENet] Peer connected.
+[Server] Peer connected → slot 0.
+[Server] Slot 0 connected → assigned Player1.
+[Server] -> Hello to slot 0: Ok
+[Server] State → OneConnected.
+[Server] Peer connected → slot 1.
+[Server] Slot 1 connected → assigned Player2.
+[Server] -> Hello to slot 1: Ok
+[Server] State → BothConnected.
+[LoopbackTest] RESULT: FAIL — handshake never completed (clients did not both start)

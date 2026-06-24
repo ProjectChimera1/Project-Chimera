@@ -190,13 +190,19 @@ namespace ProjectChimera.Core
         public override void _Ready()
         {
             // ── Dedicated server mode ─────────────────────────────────────────────
-            // Running headless (no display server): start the relay server and skip
-            // all client-side initialization. The server never renders anything.
-            if (DisplayServer.GetName() == "headless" || OS.HasFeature("dedicated_server"))
+            // Headless (no display server) OR an explicit `-- --server` window (loopback smoke). The server holds
+            // validated sim state but renders no game; with --server it shows a small "DEDICATED SERVER" window so
+            // it is never an invisible, port-holding ghost process (which otherwise persists across smoke runs).
+            bool isHeadlessServer = DisplayServer.GetName() == "headless" || OS.HasFeature("dedicated_server");
+            bool isWindowedServer = false;
+#if DEBUG
+            isWindowedServer = HasCmdArg("--server");
+#endif
+            if (isHeadlessServer || isWindowedServer)
             {
                 _headless = true; // gates the client-only _Process/_Input/_UnhandledInput (no _ctx is built below)
                 int port = ParsePortArg(ProjectChimera.Multiplayer.DedicatedServer.DEFAULT_PORT);
-                GD.Print($"[MainScene] Headless mode — starting dedicated server on port {port}.");
+                GD.Print($"[MainScene] Dedicated server on port {port} (windowed={isWindowedServer && !isHeadlessServer}).");
 
                 // Story 1.9a / AR-38: build the SAME Godot-free sim spine the client uses (SimulationHost +
                 // ScenarioValidator + ScenarioApplier) via ServerBootstrap, so the server holds VALIDATED
@@ -209,6 +215,10 @@ namespace ProjectChimera.Core
                 var server = new ProjectChimera.Multiplayer.DedicatedServer { SimHost = serverSimHost };
                 AddChild(server);
                 server.Start(port);
+
+#if DEBUG
+                if (isWindowedServer && !isHeadlessServer) ShowServerWindowMarker(port);
+#endif
                 return; // skip all visual / client setup
             }
 
@@ -355,6 +365,7 @@ namespace ProjectChimera.Core
                 int port   = (sep > 0 && int.TryParse(autoJoin.Substring(sep + 1), out int ap))
                     ? ap : ProjectChimera.Multiplayer.DedicatedServer.DEFAULT_PORT;
                 GD.Print($"[MainScene] --autojoin {ip}:{port} — auto-connecting to dedicated server (loopback smoke).");
+                if (_ctx.MainMenu != null) _ctx.MainMenu.Visible = false; // auto-join bypasses the Play-Skirmish button; hide the title screen so it doesn't cover the game
                 _ctx.LobbyUi.AutoJoinDedicated(ip, port);
             }
 #endif
@@ -1190,6 +1201,36 @@ namespace ProjectChimera.Core
             for (int i = 0; i < args.Length - 1; i++)
                 if (args[i] == "--autojoin") return args[i + 1];
             return null;
+        }
+
+        /// <summary>Story 1.9a (DEBUG-only): true if <paramref name="flag"/> is present in the user cmdline args (after "--").</summary>
+        private static bool HasCmdArg(string flag)
+        {
+            foreach (var a in OS.GetCmdlineUserArgs()) if (a == flag) return true;
+            return false;
+        }
+
+        /// <summary>
+        /// Story 1.9a (DEBUG-only): a minimal on-screen marker for a windowed `-- --server` dedicated server
+        /// (loopback smoke), so it is a visible, closeable window instead of an invisible port-holding ghost.
+        /// </summary>
+        private void ShowServerWindowMarker(int port)
+        {
+            GetWindow().Title = $"Chimera Dedicated Server — port {port}";
+            var cl = new CanvasLayer();
+            var bg = new ColorRect { Color = new Color(0.08f, 0.10f, 0.14f) };
+            bg.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
+            cl.AddChild(bg);
+            var lbl = new Label
+            {
+                Text                = $"DEDICATED SERVER (loopback)\nport {port}\n\nLeave this open during the test.\nClose this window to stop the server.",
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment   = VerticalAlignment.Center,
+            };
+            lbl.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
+            lbl.AddThemeFontSizeOverride("font_size", 22);
+            cl.AddChild(lbl);
+            AddChild(cl);
         }
 #endif
 
