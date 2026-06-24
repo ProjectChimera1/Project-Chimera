@@ -15,7 +15,7 @@ status: Active
 Phases 0–4 are code-complete. Phase 5 is underway. Session 20 shipped worker-placed buildings + UI bug sweep. Session 21 (remote, away from computer) shipped Utility AI + Adaptive Input Delay.
 
 ## Next Action
--
+Launch parallel adversarial review layers per `gds-code-review` skill spec (Layer 1: determinism invariants, Layer 2: concurrency + Byzantine quorum, Layer 3: transport seams). Await triage gate decisions (patch/defer/dismiss) before presenting findings.
 
 ---
 
