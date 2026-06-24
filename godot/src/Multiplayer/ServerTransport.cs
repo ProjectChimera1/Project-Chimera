@@ -113,6 +113,11 @@ namespace ProjectChimera.Multiplayer
                     case ENetConnection.EventType.Receive:
                     {
                         int slot = FindSlot(peer);
+#if DEBUG
+                        // Story 1.9a loopback diagnostic: did a client packet actually reach the server, and did
+                        // FindSlot resolve its slot? (slot=-1 ⇒ peer-wrapper mismatch dropped it.)
+                        GD.Print($"[ServerTransport] RX slot={slot} len={(data?.Length ?? -1)} type=0x{((data!=null && data.Length>0)?data[0]:0):X2} ch={channel}");
+#endif
                         if (slot >= 0 && data != null && data.Length > 0)
                             OnPacketReceived?.Invoke(slot, data, data.Length, channel);
                         break;

@@ -153,10 +153,15 @@ namespace ProjectChimera.Multiplayer
         // FlagReliable is exposed as a long constant — cast to int when calling Send.
         private Error SendRaw(byte[] data, int length, int channel, long flags)
         {
-            if (_peer == null || !IsConnected) return Error.Unconfigured;
+            if (_peer == null || !IsConnected) { GD.PrintErr($"[ENet] Send DROPPED (peer={( _peer==null?"null":"ok")}, connected={IsConnected})"); return Error.Unconfigured; }
             if (length <= 0 || length > data.Length) return Error.InvalidParameter;
             byte[] payload = length == data.Length ? data : data[..length];
-            return _peer.Send(channel, payload, (int)flags);
+            var e = _peer.Send(channel, payload, (int)flags);
+#if DEBUG
+            // Story 1.9a loopback diagnostic: surface a failing client->server send (the lobby-stuck smoking gun).
+            GD.Print($"[ENet] Send ch{channel} len{length} type=0x{(length>0?data[0]:0):X2} -> {e} (peerState={_peer.GetState()})");
+#endif
+            return e;
         }
 
         // ── Cleanup ───────────────────────────────────────────────────────────────
