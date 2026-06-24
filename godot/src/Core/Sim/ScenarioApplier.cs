@@ -60,11 +60,27 @@ namespace ProjectChimera.Core.Sim
         public void Apply(Validated<ScenarioData> v)
         {
             ScenarioData s = v.Value; // as-built property name (NOT .Model)
+            if (s is null)
+            {
+                // A default/unproven Validated<ScenarioData> carries a null model (the token-less Fail path used
+                // by the null-model early-out). Reject it at the consumption point instead of NRE'ing on
+                // s.PlayerSlots — closes the validation-bypass the Story 1.7 review deferred to 1.8b.
+                _log.Warn("[ScenarioApplier] Apply received a Validated<ScenarioData> with a null model — skipped.");
+                return;
+            }
 
             // ── 1. Player slots: faction def + starting ore + base deposit point ─
             foreach (var slot in s.PlayerSlots ?? System.Array.Empty<ScenarioPlayerSlot>())
             {
                 var faction = (Faction)(slot.Slot + 1); // slot 0 → Player1, slot 1 → Player2
+                if (!InFactionRange(faction))
+                {
+                    // (Faction)(slot+1) is an UNCHECKED enum cast; shadow mode (the default) applies models that
+                    // FAILED validation (D3), so an out-of-range slot can reach here. Skip + warn instead of
+                    // indexing the faction-keyed stores out of bounds (restores the pre-1.8b MainScene guard).
+                    _log.Warn($"[ScenarioApplier] player_slot.slot={slot.Slot} maps to an out-of-range faction — skipped.");
+                    continue;
+                }
                 var def = _slotFactionDefs[(int)faction]; // pre-resolved by the presentation pre-pass
                 if (def != null) _host.BuildSys.SetFactionDef(faction, def);
 
@@ -94,11 +110,12 @@ namespace ProjectChimera.Core.Sim
             foreach (var u in s.Units ?? System.Array.Empty<ScenarioUnit>())
             {
                 var faction = (Faction)(u.Slot + 1);
-                // Look up def from the per-slot faction definition resolved by the pre-pass.
-                var def = _slotFactionDefs[(int)faction]?.GetUnit(u.UnitId);
+                // Look up def from the per-slot faction definition resolved by the pre-pass. Bounds-guard the
+                // UNCHECKED (Faction) cast — a shadow-applied invalid model (D3) may carry an out-of-range slot.
+                var def = InFactionRange(faction) ? _slotFactionDefs[(int)faction]?.GetUnit(u.UnitId) : null;
                 if (def == null)
                 {
-                    _log.Warn($"[ScenarioApplier] Scenario unit_id '{u.UnitId}' not found in faction — skipped.");
+                    _log.Warn($"[ScenarioApplier] Scenario unit_id '{u.UnitId}' not found in faction (or out-of-range slot) — skipped.");
                     continue;
                 }
                 SpawnUnit(def, faction, u.X, u.Z);
@@ -106,6 +123,19 @@ namespace ProjectChimera.Core.Sim
 
             // ── 5. Triggers ────────────────────────────────────────────────────
             _host.ScenarioDirector.LoadScenario(s); // triggers last (same as today)
+        }
+
+        /// <summary>
+        /// True when <paramref name="faction"/> is a valid index into the faction-keyed stores
+        /// (<c>_slotFactionDefs</c> / <c>Resources.Ore</c> / <c>Resources.FactionBase</c>, all length-5). The
+        /// <c>(Faction)(slot + 1)</c> casts in <see cref="Apply"/> are unchecked, and shadow mode (D3) applies
+        /// models that failed validation, so an out-of-range slot can reach the apply loops — this guard turns
+        /// that into a logged skip instead of an <see cref="System.IndexOutOfRangeException"/>.
+        /// </summary>
+        private bool InFactionRange(Faction faction)
+        {
+            int fIdx = (int)faction;
+            return fIdx >= 0 && fIdx < _slotFactionDefs.Length;
         }
 
         /// <summary>
