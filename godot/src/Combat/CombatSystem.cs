@@ -47,6 +47,14 @@ namespace ProjectChimera.Combat
         {
             _spatialHash.Rebuild(world);
 
+            // ── AR-40 fork #1 — cross-faction same-tick tie-break (Story 1.9a, D11) ───────────────────────
+            // CANONICAL RULE: when two state-mutating events from DIFFERENT faction slots resolve on the SAME
+            // tick, they are ordered by ASCENDING FACTION SLOT. Today that rule is SUBSUMED by this
+            // ascending-entity-ID iteration: the only cross-faction same-tick *hashed* mutation at present is
+            // the combat death sequence (world.Destroy inside DamageResolver.Apply), and units are created in
+            // faction-slot order, so ascending entity id == ascending faction slot here. Pinned (no behavior
+            // change) by Golden/SameTickTieBreakGoldenTests. Forward owner for ordering cross-faction *DSL
+            // events*: Epic 7 (SD-2). Do NOT replace this in-order scan with an unstable enumeration.
             int count = world.HighWaterMark;
             for (int i = 0; i < count; i++)
             {

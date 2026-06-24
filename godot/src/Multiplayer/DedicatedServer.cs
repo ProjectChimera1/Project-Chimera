@@ -1,6 +1,8 @@
 #nullable enable
 using Godot;
 using ProjectChimera.Core;
+using ProjectChimera.Core.Sim;            // SimulationHost (the validated spine built by ServerBootstrap)
+using ProjectChimera.Multiplayer.Server;  // ServerHost (strict-majority quorum + DesyncAlert/HALT)
 
 namespace ProjectChimera.Multiplayer
 {
@@ -47,6 +49,22 @@ namespace ProjectChimera.Multiplayer
         private State           _state     = State.Waiting;
         private readonly bool[] _ready     = new bool[ServerTransport.MAX_SLOTS];
 
+        // ── Story 1.9a: server authority ───────────────────────────────────────────
+
+        /// <summary>
+        /// The validated Godot-free sim spine built by <see cref="ServerBootstrap"/> and injected by MainScene's
+        /// headless edge (AR-38). The server HOLDS it (proving it can hold validated start-state) but does NOT
+        /// tick it in 1.9a — the live re-simulated server vote needs TickCommandsMerged and is Epic 9 (D3).
+        /// Null when the scenario was missing/invalid ⇒ the server runs as a relay + quorum only.
+        /// </summary>
+        public SimulationHost? SimHost { get; init; }
+
+        /// <summary>
+        /// Server-authority core: the strict-majority checksum quorum + DesyncAlert/HALT generator. Constructed
+        /// when the match starts (HandleReady → InGame) with the connected player count and the transport seams.
+        /// </summary>
+        private ServerHost? _serverHost;
+
         // Reusable buffers to avoid per-frame allocation
         private readonly byte[] _relayBuf  = new byte[
             TickCommandPacket.HEADER_BYTES + TickCommandPacket.MAX_ORDERS * UnitOrder.SIZE + 16];
@@ -68,6 +86,7 @@ namespace ProjectChimera.Multiplayer
             var err = _transport.Listen(port);
             if (err != Error.Ok)
                 GD.PrintErr($"[Server] Failed to listen on port {port}: {err}");
+            GD.Print($"[Server] Sim spine: {(SimHost != null ? "validated + held (AR-38)" : "none — relay + quorum only")}.");
             return err;
         }
 
@@ -146,15 +165,16 @@ namespace ProjectChimera.Multiplayer
                     break;
 
                 case PacketType.Checksum:
-                case PacketType.DesyncAlert:
-                    // Relay checksum and desync alerts transparently so each peer can
-                    // compare its hash against the other side's.
-                    if (_state == State.InGame)
-                    {
-                        int other = 1 - slot;
-                        _transport.SendReliableTo(other, data, len);
-                    }
+                    // Story 1.9a (D8): the server CONSUMES checksums into the authoritative quorum collector
+                    // instead of opaquely relaying them to the other peer. Slot is transport-authoritative —
+                    // taken from THIS callback's `slot` (the ENet peer→slot map), never the packet payload (which
+                    // carries only tick+hash) — so a client cannot spoof another slot's checksum. The collector's
+                    // verdicts emit DesyncAlert (to a minority) or Halt (no majority) via ServerHost's seams.
+                    if (_state == State.InGame && _serverHost != null &&
+                        TickCommandPacket.TryReadChecksum(data, len, out uint ckTick, out uint ckHash))
+                        _serverHost.OnChecksum(slot, ckTick, ckHash);
                     break;
+                // PacketType.DesyncAlert is now SERVER-GENERATED (clients never send it) — the old relay case is gone.
 
                 case PacketType.Chat:
                     // Broadcast chat to all connected peers (players + spectators).
@@ -179,10 +199,20 @@ namespace ProjectChimera.Multiplayer
             if (_ready[0] && _ready[1])
             {
                 _state = State.InGame;
+
+                // Story 1.9a (D5): stand up the server-authority core for this match. expectedPeerCount = the
+                // connected PLAYER count (spectators excluded — D6). The transport seams are wrapped in lambdas
+                // because SendReliableTo/BroadcastReliable take an optional length arg, so a method-group
+                // conversion to Action<int,byte[]> / Action<byte[]> won't bind.
+                int playerCount = CountConnectedPlayers();
+                _serverHost = new ServerHost(playerCount,
+                    (s, pkt) => _transport.SendReliableTo(s, pkt),
+                    pkt => _transport.BroadcastReliable(pkt));
+
                 // Broadcast StartGame (tick 0) to both peers simultaneously.
                 var startPkt = TickCommandPacket.MakeStartGame(startTick: 0);
                 _transport.BroadcastReliable(startPkt);
-                GD.Print("[Server] Both peers ready — broadcasting StartGame. Match begins.");
+                GD.Print($"[Server] Both peers ready — broadcasting StartGame. Match begins (quorum N={playerCount}).");
             }
             else
             {

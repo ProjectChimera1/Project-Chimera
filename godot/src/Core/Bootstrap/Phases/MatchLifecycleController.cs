@@ -34,6 +34,12 @@ namespace ProjectChimera.Core.Bootstrap
             _ctx.Lockstep.OnDesync += (tick, local, remote) =>
                 _ctx.Log.Warn($"[DESYNC] tick={tick} local=0x{local:X8} remote=0x{remote:X8}");
 
+            // Story 1.9a (UX-DR64e / D10): the authoritative server's TERMINAL halt drives a terminal,
+            // danger-styled overlay — visually + behaviorally distinct from the recoverable stall banner
+            // (UX-DR28). The P2P OnDesync above is now dormant in server-authoritative online play (the server
+            // consumes checksums), so this OnHalt is the live halt path. Offers only "Return to Menu".
+            _ctx.Lockstep.OnHalt += (tick, canonical) => _ctx.Scene.ShowHalt(tick, canonical);
+
             _ctx.LobbyUi = new LobbyUi
             {
                 NakamaHost     = _ctx.Scene.NakamaHost,

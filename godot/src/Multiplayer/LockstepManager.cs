@@ -54,6 +54,18 @@ namespace ProjectChimera.Multiplayer
         /// <summary>Fires when a desync is detected: (tick, localHash, remoteHash).</summary>
         public event Action<uint, uint, uint>? OnDesync;
 
+        /// <summary>
+        /// Fires ONCE when the authoritative server orders a TERMINAL halt for this client (Story 1.9a):
+        /// either a DesyncAlert (this peer is the named minority of a strict majority) or a global Halt
+        /// (no majority). Args: (tick, canonicalHash) — canonicalHash is the strict-majority hash for a
+        /// DesyncAlert, or 0 for a global no-majority Halt. The sim stops advancing; the presentation shows the
+        /// terminal HALT overlay (UX-DR64e), DISTINCT from the recoverable stall banner.
+        /// </summary>
+        public event Action<uint, uint>? OnHalt;
+
+        /// <summary>Terminal once the server has ordered a halt (Story 1.9a). Gates <see cref="Flush"/>.</summary>
+        private bool _halted;
+
         /// <summary>Fires when a chat message arrives. Args: (senderFaction, message).</summary>
         public event Action<Faction, string>? OnChatReceived;
 
@@ -241,6 +253,11 @@ namespace ProjectChimera.Multiplayer
         {
             if (!IsOnline) return true;
 
+            // Server-authoritative terminal HALT (Story 1.9a): once the server orders a halt, the sim stops
+            // advancing — permanently. We deliberately do NOT set IsStalling, so the recoverable stall banner
+            // stays hidden; the distinct terminal HALT overlay is shown via the OnHalt event instead (UX-DR64e).
+            if (_halted) return false;
+
             // ── Spectator path ────────────────────────────────────────────────
             if (IsSpectator)
             {
@@ -341,6 +358,20 @@ namespace ProjectChimera.Multiplayer
             _transport.SendReliable(_checksumBuf[..len]);
         }
 
+        /// <summary>
+        /// Enter the terminal halt state (Story 1.9a): stop advancing the sim and fire <see cref="OnHalt"/> ONCE.
+        /// Idempotent — repeated server alerts after the first are ignored. Clears <see cref="IsStalling"/> so the
+        /// recoverable stall banner (which the terminal HALT overlay must be visually distinct from) is not left
+        /// showing underneath the overlay.
+        /// </summary>
+        private void RaiseHalt(uint tick, uint canonicalHash)
+        {
+            if (_halted) return;
+            _halted = true;
+            IsStalling = false;
+            OnHalt?.Invoke(tick, canonicalHash);
+        }
+
         // ── Chat ──────────────────────────────────────────────────────────────
 
         public void SendChat(string message)
@@ -363,6 +394,11 @@ namespace ProjectChimera.Multiplayer
                     break;
 
                 case PacketType.Checksum:
+                    // Story 1.9a (D8/D9): DORMANT in server-authoritative online play. The dedicated server now
+                    // CONSUMES Checksum packets into its quorum collector and GENERATES DesyncAlert/Halt — clients
+                    // no longer receive a peer's raw Checksum, so this P2P compare never fires (no double-fire with
+                    // the server path). Kept inert + defensive (a direct-P2P topology without the server would
+                    // still use it); the authoritative halt path is the two cases below.
                     if (TickCommandPacket.TryReadChecksum(data, len, out uint cTick, out uint remoteHash))
                     {
                         if (_localChecksumReady && remoteHash != _pendingLocalChecksum)
@@ -372,6 +408,24 @@ namespace ProjectChimera.Multiplayer
                             OnDesync?.Invoke(cTick, _pendingLocalChecksum, remoteHash);
                         }
                         _localChecksumReady = false;
+                    }
+                    break;
+
+                case PacketType.DesyncAlert:
+                    // Server → this client: you are the named minority of a strict majority. Terminal halt.
+                    if (TickCommandPacket.TryReadDesyncAlert(data, len, out uint dTick, out uint canon))
+                    {
+                        GD.PrintErr($"[Lockstep] SERVER DESYNC ALERT @tick {dTick} (canonical 0x{canon:X8}) — this peer diverged.");
+                        RaiseHalt(dTick, canon);
+                    }
+                    break;
+
+                case PacketType.Halt:
+                    // Server → everyone: no strict-majority canonical hash. Terminal halt for all peers.
+                    if (TickCommandPacket.TryReadHalt(data, len, out uint hTick, out HaltReason hReason))
+                    {
+                        GD.PrintErr($"[Lockstep] SERVER HALT @tick {hTick} ({hReason}) — match cannot continue.");
+                        RaiseHalt(hTick, 0u);
                     }
                     break;
 

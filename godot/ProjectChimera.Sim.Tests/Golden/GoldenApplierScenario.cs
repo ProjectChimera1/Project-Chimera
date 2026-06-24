@@ -62,8 +62,10 @@ namespace ProjectChimera.Sim.Tests.Golden
             return new GoldenHarness(host, 0);
         }
 
-        /// <summary>A faction whose worker drives ore gathering so the recorded checksum sequence EVOLVES over time.</summary>
-        private static FactionDefinition BuildFaction() => new FactionDefinition
+        /// <summary>A faction whose worker drives ore gathering so the recorded checksum sequence EVOLVES over time.
+        /// Public so Story 1.9a's ServerBootstrapDeterminismTests feeds the EXACT same faction the client-path
+        /// applier golden uses (proving the server sim path == the client sim path, not merely a similar one).</summary>
+        public static FactionDefinition BuildFaction() => new FactionDefinition
         {
             Id = "alpha", DisplayName = "Alpha",
             Units =
@@ -72,8 +74,9 @@ namespace ProjectChimera.Sim.Tests.Golden
             },
         };
 
-        /// <summary>An in-code mirror of alpha_map_01.json: 2 slots, 8 nodes, 2 pre-built CommandCenters, 4 workers.</summary>
-        private static ScenarioData BuildModel() => new ScenarioData
+        /// <summary>An in-code mirror of alpha_map_01.json: 2 slots, 8 nodes, 2 pre-built CommandCenters, 4 workers.
+        /// Public so Story 1.9a's ServerBootstrapDeterminismTests builds its server host from the identical model.</summary>
+        public static ScenarioData BuildModel() => new ScenarioData
         {
             Id = "alpha_map_01", DisplayName = "Alpha Skirmish", TerrainRef = "",
             MapBounds = 120f, WinCondition = WinCondition.DestroyAllBuildings,

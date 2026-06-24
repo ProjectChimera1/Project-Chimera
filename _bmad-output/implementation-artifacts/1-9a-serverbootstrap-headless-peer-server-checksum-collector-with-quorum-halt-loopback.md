@@ -4,9 +4,13 @@ baseline_commit: 3599834
 
 # Story 1.9a: ServerBootstrap headless peer + server checksum collector with quorum + HALT (loopback)
 
-Status: ready-for-dev
+Status: review
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
+<!-- 1.9a: Tasks 1–9 complete (Tier-1 183 green, goldens byte-identical, godot.csproj builds). Task 10 code
+     complete + in-engine overlay/boot verified; the live 3-process loopback (server + 2 clients, F9-induced
+     desync) is the one remaining MANUAL gate before 'done'. -->
+
 
 ## Story
 
@@ -238,51 +242,53 @@ case PacketType.Halt:          // global no-majority
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1 — Net-new `ServerChecksumCollector` (pure quorum engine) (AC: 3)**
-  - [ ] Create `godot/src/Multiplayer/Server/ServerChecksumCollector.cs` (`#nullable enable`, namespace `ProjectChimera.Multiplayer.Server`, **no `using Godot`**): the `Verdict` struct + `ServerChecksumCollector(int expectedPeerCount)` + `Verdict Record(uint tick, int slot, uint hash)` per D4 — bounded tick window, stale-tick drop, duplicate-(slot,tick) idempotency, strict majority (`> N/2`), **ascending-slot** minority list.
-  - [ ] Add `<Compile Include="..\src\Multiplayer\Server\**\*.cs" LinkBase="Sim\Multiplayer\Server" />` to `ProjectChimera.Sim.Tests.csproj` (D13).
-  - [ ] `dotnet build godot/godot.csproj` → green.
+- [x] **Task 1 — Net-new `ServerChecksumCollector` (pure quorum engine) (AC: 3)**
+  - [x] Create `godot/src/Multiplayer/Server/ServerChecksumCollector.cs` (`#nullable enable`, namespace `ProjectChimera.Multiplayer.Server`, **no `using Godot`**): the `Verdict` struct + `ServerChecksumCollector(int expectedPeerCount)` + `Verdict Record(uint tick, int slot, uint hash)` per D4 — bounded tick window, stale-tick drop, duplicate-(slot,tick) idempotency, strict majority (`> N/2`), **ascending-slot** minority list.
+  - [x] Add `<Compile Include="..\src\Multiplayer\Server\**\*.cs" LinkBase="Sim\Multiplayer\Server" />` to `ProjectChimera.Sim.Tests.csproj` (D13).
+  - [x] `dotnet build godot/godot.csproj` → green.
 
-- [ ] **Task 2 — Net-new `DesyncAlert`/`Halt` packet builders + `Halt` type (AC: 4)**
-  - [ ] In `godot/src/Multiplayer/NetworkCommand.cs`: add `PacketType.Halt = 0x13`; `public enum HaltReason : byte { NoMajority = 0 }`; `MakeDesyncAlert(uint tick, uint canonicalHash)` + `TryReadDesyncAlert`; `MakeHalt(uint tick, HaltReason reason)` + `TryReadHalt` — using the existing `WriteUint`/`ReadUint` LE helpers, mirroring `WriteChecksum`/`TryReadChecksum` (D7).
-  - [ ] `dotnet build godot/godot.csproj` → green.
+- [x] **Task 2 — Net-new `DesyncAlert`/`Halt` packet builders + `Halt` type (AC: 4)**
+  - [x] In `godot/src/Multiplayer/NetworkCommand.cs`: add `PacketType.Halt = 0x13`; `public enum HaltReason : byte { NoMajority = 0 }`; `MakeDesyncAlert(uint tick, uint canonicalHash)` + `TryReadDesyncAlert`; `MakeHalt(uint tick, HaltReason reason)` + `TryReadHalt` — using the existing `WriteUint`/`ReadUint` LE helpers, mirroring `WriteChecksum`/`TryReadChecksum` (D7).
+  - [x] `dotnet build godot/godot.csproj` → green.
 
-- [ ] **Task 3 — Net-new `ServerHost` (verdicts → packets over transport seams) (AC: 3, 4)**
-  - [ ] Create `godot/src/Multiplayer/Server/ServerHost.cs` (`#nullable enable`, namespace `ProjectChimera.Multiplayer.Server`, **no `using Godot`**): per D5 — owns the collector, `OnChecksum(int slot, uint tick, uint hash)` ⇒ `DesyncAlert` to each minority slot on majority, `Halt` broadcast + terminal `Halted=true` on no majority. Transport via injected `Action<int,byte[]>` / `Action<byte[]>`.
-  - [ ] `dotnet build godot/godot.csproj` → green.
+- [x] **Task 3 — Net-new `ServerHost` (verdicts → packets over transport seams) (AC: 3, 4)**
+  - [x] Create `godot/src/Multiplayer/Server/ServerHost.cs` (`#nullable enable`, namespace `ProjectChimera.Multiplayer.Server`, **no `using Godot`**): per D5 — owns the collector, `OnChecksum(int slot, uint tick, uint hash)` ⇒ `DesyncAlert` to each minority slot on majority, `Halt` broadcast + terminal `Halted=true` on no majority. Transport via injected `Action<int,byte[]>` / `Action<byte[]>`.
+  - [x] `dotnet build godot/godot.csproj` → green.
 
-- [ ] **Task 4 — Net-new `ServerBootstrap` (Godot-free composition root) (AC: 1)**
-  - [ ] Create `godot/src/Core/Sim/ServerBootstrap.cs` (`#nullable enable`, namespace `ProjectChimera.Core.Sim`, **no `using Godot`**): `static SimulationHost? Build(ScenarioData model, FactionDefinition?[] slotFactionDefs, DamageTable? damageTable, ILogSink log, int activeFactionCount)` per D2 — `SimulationHost.Create` → `new ScenarioValidator().Validate(model)` (fail-closed: invalid ⇒ `log.Warn` + `null`) → `new ScenarioApplier(host, log, slotFactionDefs).Apply(r.Value)` → return host.
-  - [ ] `dotnet build godot/godot.csproj` → green.
+- [x] **Task 4 — Net-new `ServerBootstrap` (Godot-free composition root) (AC: 1)**
+  - [x] Create `godot/src/Core/Sim/ServerBootstrap.cs` (`#nullable enable`, namespace `ProjectChimera.Core.Sim`, **no `using Godot`**): `static SimulationHost? Build(ScenarioData model, FactionDefinition?[] slotFactionDefs, DamageTable? damageTable, ILogSink log, int activeFactionCount)` per D2 — `SimulationHost.Create` → `new ScenarioValidator().Validate(model)` (fail-closed: invalid ⇒ `log.Warn` + `null`) → `new ScenarioApplier(host, log, slotFactionDefs).Apply(r.Value)` → return host.
+  - [x] `dotnet build godot/godot.csproj` → green.
 
-- [ ] **Task 5 — Re-point the headless branch + rewrite the relay in `DedicatedServer` (AC: 1, 3, 4)**
-  - [ ] `MainScene.cs:185-197`: the Godot edge resolves port + loads/resolves the scenario `ScenarioData`, the `FactionDefinition?[]` slot defs, and the `DamageTable` (reuse existing loaders + `GlobalizePath`), calls `ServerBootstrap.Build(...)`, and constructs `DedicatedServer` injected with the resulting `SimulationHost` (so a future Epic-9 server can tick it). Keep `ParsePortArg`/`Start(port)`/`return`.
-  - [ ] `DedicatedServer`: add a `ServerHost _serverHost` constructed in `HandleReady` when `_state → InGame` (`expectedPeerCount` = connected player count; callbacks = `_transport.SendReliableTo`, `_transport.BroadcastReliable`). Replace the `:148-157` block per D8 (`Checksum` → `TryReadChecksum` → `_serverHost.OnChecksum(slot, …)`; drop the `DesyncAlert` relay case). **Preserve** `TickCommands`/`Chat`/`Ready`/`SLOT_FACTION`.
-  - [ ] `dotnet build godot/godot.csproj` → green.
+- [x] **Task 5 — Re-point the headless branch + rewrite the relay in `DedicatedServer` (AC: 1, 3, 4)**
+  - [x] `MainScene.cs` headless branch: the Godot edge resolves port + loads/resolves the scenario `ScenarioData` (`ScenarioSerializer.LoadFromFile` + per-slot faction resolution mirroring `ScenarioLoadPhase`), the `FactionDefinition?[]` slot defs, and the `DamageTable` (reuse existing loaders + `GlobalizePath`) in a new `BuildHeadlessServerSimHost()`, calls `ServerBootstrap.Build(...)`, and constructs `DedicatedServer { SimHost = … }` injected with the resulting `SimulationHost` (held for Epic-9; not ticked in 1.9a). Kept `ParsePortArg`/`Start(port)`/`return`. Null host (missing/invalid scenario) ⇒ relay + quorum only.
+  - [x] `DedicatedServer`: added `ServerHost _serverHost` constructed in `HandleReady` when `_state → InGame` (`expectedPeerCount` = `CountConnectedPlayers()`; seams wrapped in lambdas because `SendReliableTo`/`BroadcastReliable` take an optional length arg). Replaced the `:148-157` block per D8 (`Checksum` → `TryReadChecksum` → `_serverHost.OnChecksum(slot, …)`; dropped the `DesyncAlert` relay case). **Preserved** `TickCommands`/`Chat`/`Ready`/`SLOT_FACTION`.
+  - [x] `dotnet build godot/godot.csproj` → green (0 errors).
 
-- [ ] **Task 6 — Client HALT handling + terminal overlay (AC: 4)**
-  - [ ] `LockstepManager`: add inbound `case PacketType.DesyncAlert:` + `case PacketType.Halt:` per D9 → `RaiseHalt(tick)` (terminal `_halted` flag gating `Flush`; fire `OnDesync`/`OnHalt`). Make the dormant P2P compare (`:365-376`) inert/guarded so it does not double-fire. `SendChecksum` unchanged.
-  - [ ] `MatchLifecycleController`: turn the halt event into a **terminal** user-facing overlay (reuse `GameOverOverlay`), with the UX-DR65-voiced message (D10), distinct from the stall banner. Recommended copy in D10 — **flag the exact string as Open Question #1**.
-  - [ ] `dotnet build godot/godot.csproj` → green.
+- [x] **Task 6 — Client HALT handling + terminal overlay (AC: 4)**
+  - [x] `LockstepManager`: added inbound `case PacketType.DesyncAlert:` + `case PacketType.Halt:` per D9 → `RaiseHalt(tick, canonicalHash)` (terminal `_halted` flag gating `Flush`; fires new `OnHalt` event; clears `IsStalling` so the stall banner is not left showing). Annotated the now-dormant P2P compare (`:365-376`) as inert in server-authoritative play (no double-fire — server consumes Checksums). `SendChecksum` unchanged.
+  - [x] `MatchLifecycleController`: subscribes `OnHalt` → new `MainScene.ShowHalt(tick, canonical)` — a **terminal**, danger-styled overlay (reuses the `GameOverOverlay` root), UX-DR65 "Commander" voice, mono status string, "Return to Menu", distinct from the stall banner (D10). Exact copy = the recommended default (Open Question #1). **Verified rendering in-engine** (screenshot).
+  - [x] `dotnet build godot/godot.csproj` → green (0 errors).
 
-- [ ] **Task 7 — Pin the AR-40 same-tick tie-break + golden (AC: 2)**
-  - [ ] Add the named comment/constant on the canonical "ascending faction slot" rule at the combat resolution site (D11), citing AR-40 + Epic 7 (forward DSL-event owner). **No sim behavior change.**
-  - [ ] New `godot/ProjectChimera.Sim.Tests/Golden/SameTickTieBreakGoldenTests.cs` (+ a small symmetric two-faction same-tick mutual-engagement scenario): assert the checksum sequence is byte-identical across two same-process runs **and** across separate-process invocations (determinism + order-stability). Expectation: passes with current combat (no golden moves); if it surfaces a real non-determinism, fix it and re-baseline **only** this new golden, with justification.
-  - [ ] `dotnet test --filter FullyQualifiedName~SameTickTieBreak` → green.
+- [x] **Task 7 — Pin the AR-40 same-tick tie-break + golden (AC: 2)**
+  - [x] Add the named comment/constant on the canonical "ascending faction slot" rule at the combat resolution site (D11), citing AR-40 + Epic 7 (forward DSL-event owner). **No sim behavior change.** — added at `CombatSystem.Tick`'s ascending-ID loop.
+  - [x] New `godot/ProjectChimera.Sim.Tests/Golden/SameTickTieBreakGoldenTests.cs` (+ a small symmetric two-faction same-tick mutual-engagement scenario `SameTickTieBreakScenario.cs` + recorded `same-tick-tie-break.golden.txt`): assert the checksum sequence is byte-identical across two same-process runs **and** across separate-process invocations (determinism + order-stability). Passed with current combat — no existing golden moved.
+  - [x] `dotnet test --filter FullyQualifiedName~SameTickTieBreak` → green.
 
-- [ ] **Task 8 — Tier-1 `Server/` tests (AC: 1, 3, 4)**
-  - [ ] New `godot/ProjectChimera.Sim.Tests/Server/ServerChecksumCollectorTests.cs` (AC3): all-agree → majority canonical, no minority; **one-minority at N=3** → canonical = the pair, minority names the odd slot; **no-majority** (N=2 mismatch; N=3 all-different) → `HasMajority=false`; **stale tick** dropped; **duplicate (slot,tick)** idempotent; verdict incomplete until all expected peers report.
-  - [ ] New `Server/ServerHostTests.cs` (AC3/AC4): inject capturing `sendReliableTo`/`broadcastReliable`; assert a majority emits one `DesyncAlert` (parseable via `TryReadDesyncAlert`, carrying the canonical hash) to **each** minority slot; assert no-majority emits a broadcast `Halt` (`TryReadHalt` → `NoMajority`) and sets `Halted`; assert `Halted` is terminal (later `OnChecksum` is a no-op).
-  - [ ] New `Server/ServerBootstrapDeterminismTests.cs` (AC1): build a host via `ServerBootstrap.Build(<golden model>, …)`, run **300+ ticks**, assert the checksum sequence is **byte-identical to the committed golden** (reuse the `GoldenChecksumReplay` harness) — i.e. server sim path == client. Also assert `ServerBootstrap.Build(<invalid model>, …)` returns `null` (fail-closed) and logs.
-  - [ ] Add packet round-trip asserts (in `ServerHostTests` or a small `Server/ServerPacketTests.cs`): `MakeDesyncAlert`/`TryReadDesyncAlert` and `MakeHalt`/`TryReadHalt` round-trip; truncated buffers return `false`.
-  - [ ] `dotnet test --filter FullyQualifiedName~Server` → green.
+- [x] **Task 8 — Tier-1 `Server/` tests (AC: 1, 3, 4)**
+  - [x] New `godot/ProjectChimera.Sim.Tests/Server/ServerChecksumCollectorTests.cs` (AC3): all-agree → majority canonical, no minority; **one-minority at N=3** → canonical = the pair, minority names the odd slot; **no-majority** (N=2 mismatch; N=3 all-different; N=4 2-2 split) → `HasMajority=false`; **stale tick** dropped; **duplicate (slot,tick)** idempotent; verdict incomplete until all expected peers report; resolved tick does not re-complete; N=4 minority attribution regardless of report order; ctor rejects out-of-range N.
+  - [x] New `Server/ServerHostTests.cs` (AC3/AC4): inject capturing `sendReliableTo`/`broadcastReliable`; assert a majority emits one `DesyncAlert` (parseable via `TryReadDesyncAlert`, carrying the canonical hash) to **each** minority slot; assert clean majority emits nothing; assert no-majority emits a broadcast `Halt` (`TryReadHalt` → `NoMajority`) and sets `Halted`; assert `Halted` is terminal (later `OnChecksum` is a no-op); null seams throw.
+  - [x] New `Server/ServerBootstrapDeterminismTests.cs` (AC1): build a host via `ServerBootstrap.Build(<applier-golden model>, …)`, run **300 ticks**, assert the checksum sequence is **byte-identical to the committed `golden-applier-scenario.golden.txt`** (reuse the `GoldenChecksumReplay` harness) — i.e. server sim path == client. Also assert two in-process server-built runs agree, and `ServerBootstrap.Build(<invalid model>, …)` returns `null` (fail-closed) and logs `REJECTED`.
+  - [x] Add packet round-trip asserts (`Server/ServerPacketTests.cs`): `MakeDesyncAlert`/`TryReadDesyncAlert` and `MakeHalt`/`TryReadHalt` round-trip (incl. uint.MaxValue); truncated + wrong-type buffers return `false`.
+  - [x] `dotnet test --filter FullyQualifiedName~Server` → green (29 tests).
 
-- [ ] **Task 9 — Prove AC5 (goldens byte-identical, Godot-free, suite green) (AC: 5)**
-  - [ ] `dotnet test godot/ProjectChimera.Sim.Tests/ProjectChimera.Sim.Tests.csproj` → ALL green (152 prior + the new Server/tie-break tests), with **all three** `*.golden.txt` UNCHANGED (`git status` clean). A moved golden = a real leak; fix it, do NOT re-record.
-  - [ ] Confirm `ServerBootstrap`/`ServerHost`/`ServerChecksumCollector` have zero `using Godot`/`GD.`; `GodotFreeBoundaryTest` passes. `git diff` shows no signature change to `SimChecksum.Compute`/`ISimSystem`/any `Tick`/`Apply`.
+- [x] **Task 9 — Prove AC5 (goldens byte-identical, Godot-free, suite green) (AC: 5)**
+  - [x] `dotnet test godot/ProjectChimera.Sim.Tests/ProjectChimera.Sim.Tests.csproj` → ALL green (**183 passing**, 0 failed = 152 prior + 29 Server + 2 tie-break), with **all three** existing `*.golden.txt` UNCHANGED (only the NEW `same-tick-tie-break.golden.txt` is added). No existing golden moved.
+  - [x] Confirmed `ServerBootstrap`/`ServerHost`/`ServerChecksumCollector` have zero `using Godot`/`GD.`; `GodotFreeBoundaryTest` passes (in the 183). No signature change to `SimChecksum.Compute`/`ISimSystem`/any `Tick`/`Apply` — `CombatSystem.Tick` gained only a comment; `DamageResolver`/`SimChecksum`/`ScenarioApplier` untouched.
 
-- [ ] **Task 10 — Loopback in-engine smoke (AC: 4) — the only check of the production wiring**
-  - [ ] Run a single-machine loopback (host + two clients via the existing 2-player loopback path, or `--headless` server + two windowed clients). Induce a divergence on **one** peer (a debug-only key that perturbs that client's sim — e.g. a one-off `Fixed` health nudge gated behind a `#if DEBUG`/an editor-only input). Confirm: the server's collector reaches **no majority** (N=2) → broadcasts `Halt` → **both** clients show the **terminal** HALT overlay with the message (UX-DR64e), **distinct** from the stall banner, and the match stops advancing. _(MainScene/LockstepManager are excluded from Tier-1, so this is the only end-to-end check of the re-pointed headless branch + relay rewrite + client handler.)_
+- [~] **Task 10 — Loopback in-engine smoke (AC: 4) — the only check of the production wiring** _(partially verified — see note)_
+  - [x] **Debug divergence hook implemented:** `#if DEBUG` `F9` in `MainScene._UnhandledInput` perturbs THIS peer's sim (+1 raw health on the first alive entity, mirroring the golden AC3 nudge) while `IsOnline`, so a single-machine loopback can induce a one-peer desync.
+  - [x] **In-engine verification (single instance, via godot-mcp):** the game boots clean after all wiring changes (no `_Ready`/phase regression); `MainScene.ShowHalt(123, 0xDEADBEEF)` builds + renders the **terminal HALT overlay** correctly — "MATCH HALTED" (danger red), the UX-DR64e message, mono status `· desync · #DEADBEEF`, and "Return to Menu" — with no runtime error (screenshot captured).
+  - [ ] **PENDING MANUAL RUN (3 coordinated processes — cannot be driven from this single-instance session):** launch a `--headless` server + two windowed clients, ready both, press `F9` on one, and confirm end-to-end: client→server `Checksum` → collector no-majority (N=2) → server broadcasts `Halt` → **both** clients `RaiseHalt` → terminal overlay + sim stops advancing. The server-side path (collector quorum, `ServerHost` verdict→`Halt`), the packet builders/readers, and `ServerBootstrap` determinism are all exhaustively Tier-1-tested; the live ENet round-trip across 3 processes is the one remaining gate for Alec to observe. _(MainScene/LockstepManager/DedicatedServer are excluded from Tier-1.)_
 
 ---
 
@@ -455,13 +461,65 @@ _Extracted from `_bmad-output/project-context.md` + `game-architecture.md` — t
 
 ### Agent Model Used
 
-_(populated by dev-story)_
+Claude Opus 4.8 (`claude-opus-4-8`) — gds-dev-story workflow.
 
 ### Debug Log References
 
+- Full Tier-1 suite: **183 passing, 0 failed** (`dotnet test ProjectChimera.Sim.Tests`). Server filter alone: 29 passing.
+- `dotnet build godot/godot.csproj` → **0 errors** (7 pre-existing CS8632 warnings, out of scope per the story).
+- One test bug found+fixed during red→green: an N=4 "two-element minority" assertion was impossible (a strict majority of 4 = 3 leaves ≤1 minority) — the collector correctly returned no-majority for a 2-2 split; test corrected.
+- Tie-break golden recorded via `CHIMERA_GOLDEN_RECORD=1` then embedded; verified byte-identical in normal mode. The three existing goldens never re-recorded.
+- In-engine (godot-mcp, Godot 4.6.3): game boots clean post-wiring; `MainScene.ShowHalt(123,0xDEADBEEF)` renders the terminal HALT overlay with no runtime error (screenshot).
+
 ### Completion Notes List
 
+**Implemented (all ACs except the live 3-process loopback observation — Task 10, see below):**
+- **AC1** — `ServerBootstrap.Build` (Godot-free, `src/Core/Sim/`) composes the verbatim 1.8 spine (`SimulationHost.Create` → `ScenarioValidator.Validate` → `ScenarioApplier.Apply`); fail-closed (invalid ⇒ `null` + log). `ServerBootstrapDeterminismTests` runs the SAME model the client-path applier golden uses through a ServerBootstrap-built host for 300 ticks and asserts byte-identity to `golden-applier-scenario.golden.txt` ⇒ **server sim path == client sim path**.
+- **AC2** — AR-40 fork #1 pinned with a named comment at the `CombatSystem.Tick` ascending-ID resolution site (the only cross-faction same-tick *hashed* mutation is `world.Destroy`); new `SameTickTieBreakGoldenTests` + symmetric duel scenario + recorded golden prove determinism + order-stability across in-process and separate-process runs. `CombatEventQueue` untouched (Trap #4).
+- **AC3** — `ServerChecksumCollector` (Godot-free): N-shaped strict-majority (`> N/2`), bounded ring window, stale-tick drop, duplicate-(slot,tick) idempotency, ascending-slot minority. Unit-tested: all-agree, one-minority@N=3, no-majority (N=2 mismatch / N=3 all-diff / N=4 2-2), stale drop, idempotency, incomplete-until-all, no-re-complete, ctor bounds.
+- **AC4** — `MakeDesyncAlert`/`TryReadDesyncAlert` (9B) + `MakeHalt`/`TryReadHalt` (6B) + `Halt=0x13` + `HaltReason` (mirror the 9B Checksum LE pattern, 32-bit). `ServerHost` turns verdicts into wire actions over injected seams (DesyncAlert→minority / Halt broadcast + terminal `Halted`); slot is transport-authoritative. Client `LockstepManager` handles inbound `DesyncAlert`/`Halt` → terminal `_halted` (gates `Flush`) + `OnHalt`; `MatchLifecycleController` → `MainScene.ShowHalt` terminal danger overlay (distinct from the stall banner, "Return to Menu").
+- **AC5** — additive only; **all three existing goldens byte-identical** (only the NEW tie-break golden added). New sim-adjacent types are Godot-free (`GodotFreeBoundaryTest` green). No signature change to `SimChecksum`/`ISimSystem`/`Tick`/`Apply` — `CombatSystem.Tick` gained only a comment.
+
+**Design adherence (settled decisions honored):** server is the **arbiter**, not a voting player (D3 — no `TickCommandsMerged`/Ready-COUNT/adaptive-delay; the held `SimHost` is built but NOT ticked, for Epic 9); slot transport-authoritative (D5/D8); spectators excluded from quorum (D6); 32-bit wire, no widening (D12); fail-closed validator on the server (D2).
+
+**Open Questions — shipped recommended defaults (Alec can override):** #1 exact HALT copy = D10 default (mono `· desync · #{canonical:X8}` for a DesyncAlert, `· @tick {n}` for a global Halt); #2 server = arbiter (not voting); #3 N=2 mismatch = no-majority → terminal HALT; #4 spectators excluded; #5 DSL-event tie-break enforcement site deferred to Epic 7; #6 `src/Multiplayer/Server/` home + Tier-1 include.
+
+**⚠ Task 10 — remaining manual gate:** the live 3-process loopback (headless server + 2 clients, F9-induced desync, observing the `Halt` packet round-trip + both overlays) was **not executed** in this session — it needs 3 coordinated processes. The debug `F9` hook is in place; in-engine I verified clean boot + correct HALT-overlay rendering; the server/collector/packet logic is exhaustively Tier-1-tested. **Recommend Alec run the manual loopback before marking 1.9a `done`.** Procedure: export/run `--headless -- --port 7777`, launch two clients (press `N` → connect to `127.0.0.1:7777` → Ready ×2), then `F9` on one client → both should show "MATCH HALTED".
+
+### Change Log
+
+- 2026-06-24 — Story 1.9a implemented (Tasks 1–9 complete; Task 10 code complete + in-engine overlay/boot verified, live 3-process loopback pending manual run). 3 net-new Godot-free types (`ServerBootstrap`/`ServerHost`/`ServerChecksumCollector`), 4 net-new packet builders + `Halt`/`HaltReason`, headless-branch re-point + relay rewrite, client HALT handler + terminal overlay, AR-40 tie-break pin + golden. Tier-1 183 green; existing goldens byte-identical; `godot.csproj` builds. baseline_commit `3599834` preserved.
+
 ### File List
+
+**NEW — production (Godot-free):**
+- `godot/src/Core/Sim/ServerBootstrap.cs`
+- `godot/src/Multiplayer/Server/ServerChecksumCollector.cs`
+- `godot/src/Multiplayer/Server/ServerHost.cs`
+
+**NEW — tests + golden:**
+- `godot/ProjectChimera.Sim.Tests/Server/ServerChecksumCollectorTests.cs`
+- `godot/ProjectChimera.Sim.Tests/Server/ServerHostTests.cs`
+- `godot/ProjectChimera.Sim.Tests/Server/ServerBootstrapDeterminismTests.cs`
+- `godot/ProjectChimera.Sim.Tests/Server/ServerPacketTests.cs`
+- `godot/ProjectChimera.Sim.Tests/Golden/SameTickTieBreakScenario.cs`
+- `godot/ProjectChimera.Sim.Tests/Golden/SameTickTieBreakGoldenTests.cs`
+- `godot/ProjectChimera.Sim.Tests/Golden/same-tick-tie-break.golden.txt`
+
+**MODIFIED — production:**
+- `godot/src/Multiplayer/NetworkCommand.cs` — `PacketType.Halt=0x13`, `HaltReason`, `MakeDesyncAlert`/`TryReadDesyncAlert`/`MakeHalt`/`TryReadHalt`.
+- `godot/src/Multiplayer/DedicatedServer.cs` — `SimHost` prop + `ServerHost _serverHost`; construct in `HandleReady`; relay rewrite at the `Checksum` case (drop `DesyncAlert` relay); usings; Start log.
+- `godot/src/Core/MainScene.cs` — headless-branch re-point + `BuildHeadlessServerSimHost()`; `ShowHalt(uint,uint)` terminal overlay; `#if DEBUG` F9 divergence hook.
+- `godot/src/Multiplayer/LockstepManager.cs` — `OnHalt` event + `_halted` field + `RaiseHalt`; inbound `DesyncAlert`/`Halt` cases; dormant-P2P comment; `Flush` halt gate.
+- `godot/src/Core/Bootstrap/Phases/MatchLifecycleController.cs` — subscribe `OnHalt` → `ShowHalt`.
+- `godot/src/Combat/CombatSystem.cs` — AR-40 fork #1 tie-break named comment at the resolution site (comment only — no behavior change).
+
+**MODIFIED — tests/build:**
+- `godot/ProjectChimera.Sim.Tests/ProjectChimera.Sim.Tests.csproj` — `src/Multiplayer/Server/**` compile include + `same-tick-tie-break.golden.txt` embedded resource.
+- `godot/ProjectChimera.Sim.Tests/Golden/GoldenApplierScenario.cs` — `BuildModel()`/`BuildFaction()` → `public` (reused by the AC1 determinism test).
+
+**MODIFIED — artifacts:**
+- `_bmad-output/implementation-artifacts/sprint-status.yaml` — 1.9a → in-progress → review.
 
 ---
 

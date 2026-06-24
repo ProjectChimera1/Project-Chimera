@@ -19,8 +19,17 @@ namespace ProjectChimera.Multiplayer
         TickCommands = 0x10,
         /// <summary>World-state checksum for desync detection.</summary>
         Checksum     = 0x11,
-        /// <summary>Desync detected — alert the other peer.</summary>
+        /// <summary>
+        /// Server → a minority peer: the authoritative collector found this peer diverged from the
+        /// strict-majority canonical hash. Wire: type(1) + tick(4 LE) + canonicalHash(4 LE) = 9 bytes.
+        /// Server-GENERATED in 1.9a (no longer client-sent / opaquely relayed). See <see cref="TickCommandPacket.MakeDesyncAlert"/>.
+        /// </summary>
         DesyncAlert  = 0x12,
+        /// <summary>
+        /// Server → everyone: no strict-majority canonical hash exists (global desync) — terminal HALT.
+        /// Wire: type(1) + tick(4 LE) + reason(1) = 6 bytes. See <see cref="TickCommandPacket.MakeHalt"/>.
+        /// </summary>
+        Halt         = 0x13,
         /// <summary>
         /// In-game chat message.
         /// Wire format: type(1) + faction(1) + msgLen(2 LE) + msgBytes(UTF-8, max 200).
@@ -37,6 +46,18 @@ namespace ProjectChimera.Multiplayer
         /// Both peers must agree before the change takes effect; see LockstepManager.
         /// </summary>
         DelayProposal = 0x42,
+    }
+
+    // ── HALT reason ───────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Why the server issued a terminal <see cref="PacketType.Halt"/>. Byte-wide and extensible
+    /// (ProtocolMismatch / StartStateDisagreement etc. arrive with the Epic-9 server-authority work).
+    /// </summary>
+    public enum HaltReason : byte
+    {
+        /// <summary>No strict-majority canonical hash for the executed tick — global desync.</summary>
+        NoMajority = 0,
     }
 
     // ── Per-unit order (11 bytes) ─────────────────────────────────────────────
@@ -174,6 +195,60 @@ namespace ProjectChimera.Multiplayer
             int pos = 1;
             tick = ReadUint(buf, ref pos);
             checksum = ReadUint(buf, ref pos);
+            return true;
+        }
+
+        // ── DesyncAlert / Halt helpers (server-generated, Story 1.9a) ──────────
+
+        /// <summary>
+        /// Server → a minority peer. Wire: type(1) + tick(4 LE) + canonicalHash(4 LE) = 9 bytes
+        /// (mirrors <see cref="WriteChecksum"/>). 32-bit width — the wire is never widened to ulong (D12).
+        /// </summary>
+        public static byte[] MakeDesyncAlert(uint tick, uint canonicalHash)
+        {
+            var b = new byte[9];
+            int p = 0;
+            b[p++] = (byte)PacketType.DesyncAlert;
+            WriteUint(b, ref p, tick);
+            WriteUint(b, ref p, canonicalHash);
+            return b;
+        }
+
+        /// <summary>Parse a DesyncAlert packet. Returns false if malformed/truncated.</summary>
+        public static bool TryReadDesyncAlert(byte[] buf, int len, out uint tick, out uint canonicalHash)
+        {
+            tick = 0; canonicalHash = 0;
+            if (len < 9) return false;
+            if ((PacketType)buf[0] != PacketType.DesyncAlert) return false;
+            int pos = 1;
+            tick = ReadUint(buf, ref pos);
+            canonicalHash = ReadUint(buf, ref pos);
+            return true;
+        }
+
+        /// <summary>
+        /// Server → everyone, on no strict-majority canonical hash. Wire: type(1) + tick(4 LE) + reason(1) = 6 bytes.
+        /// Terminal HALT (recovery/rejoin is deferred post-1.0).
+        /// </summary>
+        public static byte[] MakeHalt(uint tick, HaltReason reason)
+        {
+            var b = new byte[6];
+            int p = 0;
+            b[p++] = (byte)PacketType.Halt;
+            WriteUint(b, ref p, tick);
+            b[p] = (byte)reason;
+            return b;
+        }
+
+        /// <summary>Parse a Halt packet. Returns false if malformed/truncated.</summary>
+        public static bool TryReadHalt(byte[] buf, int len, out uint tick, out HaltReason reason)
+        {
+            tick = 0; reason = default;
+            if (len < 6) return false;
+            if ((PacketType)buf[0] != PacketType.Halt) return false;
+            int pos = 1;
+            tick = ReadUint(buf, ref pos);
+            reason = (HaltReason)buf[pos];
             return true;
         }
 

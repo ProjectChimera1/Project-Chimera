@@ -191,7 +191,16 @@ namespace ProjectChimera.Core
             {
                 int port = ParsePortArg(ProjectChimera.Multiplayer.DedicatedServer.DEFAULT_PORT);
                 GD.Print($"[MainScene] Headless mode — starting dedicated server on port {port}.");
-                var server = new ProjectChimera.Multiplayer.DedicatedServer();
+
+                // Story 1.9a / AR-38: build the SAME Godot-free sim spine the client uses (SimulationHost +
+                // ScenarioValidator + ScenarioApplier) via ServerBootstrap, so the server holds VALIDATED
+                // start-state (server start-state checksum == client offline start-state). All res:// resolution
+                // happens HERE on the Godot edge; ServerBootstrap stays Godot-free. The server does NOT tick this
+                // host in 1.9a — it is the arbiter that quorums over peer-reported checksums (the live re-sim vote
+                // is Epic 9). A null host (missing/invalid scenario) ⇒ relay + quorum only.
+                SimulationHost? serverSimHost = BuildHeadlessServerSimHost();
+
+                var server = new ProjectChimera.Multiplayer.DedicatedServer { SimHost = serverSimHost };
                 AddChild(server);
                 server.Start(port);
                 return; // skip all visual / client setup
@@ -380,6 +389,25 @@ namespace ProjectChimera.Core
                 GetViewport().SetInputAsHandled();
                 return;
             }
+
+#if DEBUG
+            // Story 1.9a (Task 10 loopback smoke, DEBUG-only): F9 perturbs THIS peer's sim so its next
+            // SimChecksum diverges — letting a single-machine loopback induce a one-peer desync. The server's
+            // collector then sees no strict majority (N=2) and broadcasts a terminal HALT; both clients show the
+            // terminal HALT overlay (distinct from the stall banner). Mirrors the golden AC3 +1-raw nudge.
+            if (key.Keycode == Key.F9 && _ctx.Lockstep.IsOnline)
+            {
+                for (int id = 0; id < _world.HighWaterMark; id++)
+                {
+                    if (!_world.IsAlive(id)) continue;
+                    _world.Health[id] = Fixed.FromRaw(_world.Health[id].Raw + 1);
+                    GD.PrintErr($"[DEBUG] Induced desync: nudged entity {id} health (+1 raw) — local checksum will diverge.");
+                    break;
+                }
+                GetViewport().SetInputAsHandled();
+                return;
+            }
+#endif
 
             // Edit-mode-only shortcuts.
             if (_ctx.GameState.Mode != GameMode.Edit) return;
@@ -840,6 +868,77 @@ namespace ProjectChimera.Core
                      $"P2: {p2Kills}k/{p2Built}u/{p2Ore}ore. Press F5 to return to Edit.");
         }
 
+        /// <summary>
+        /// Story 1.9a (UX-DR64e / D10): show the TERMINAL desync-halt overlay. Reuses the GameOverOverlay root but
+        /// is danger-styled and behaviorally terminal — the match has already stopped advancing (LockstepManager
+        /// gates Flush on its _halted flag). DISTINCT from the recoverable stall banner (UX-DR28, a transient warn
+        /// pill): this ends the match and offers only "Return to Menu". Voiced to the "Commander" (UX-DR65).
+        /// Exact copy is the story's recommended default (Open Question #1).
+        /// </summary>
+        internal void ShowHalt(uint tick, uint canonicalHash)
+        {
+            if (_gameOver) return;   // a terminal state (win/lose or a prior halt) is already shown
+            _gameOver = true;        // stop win-condition / play-mode processing
+
+            _ctx.ChatOverlay?.AddSystemMessage("Simulation desync — match halted.");
+            _ctx.MatchLifecycle.StopRecording();
+
+            // Clear any previous overlay children (defensive — e.g. a stale game-over card).
+            foreach (Node child in _ctx.GameOverOverlay.GetChildren())
+            {
+                _ctx.GameOverOverlay.RemoveChild(child);
+                child.QueueFree();
+            }
+
+            var card = new PanelContainer();
+            card.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.Center);
+            card.CustomMinimumSize = new Vector2(560, 300);
+            _ctx.GameOverOverlay.AddChild(card);
+
+            var vbox = new VBoxContainer { Alignment = BoxContainer.AlignmentMode.Center };
+            vbox.AddThemeConstantOverride("separation", 14);
+            card.AddChild(vbox);
+
+            var heading = new Label { Text = "MATCH HALTED", HorizontalAlignment = HorizontalAlignment.Center };
+            heading.AddThemeFontSizeOverride("font_size", 56);
+            heading.AddThemeColorOverride("font_color", new Color(0.85f, 0.15f, 0.15f)); // danger, NOT the victory gold
+            vbox.AddChild(heading);
+
+            var body = new Label
+            {
+                Text                = $"Simulation desync detected at tick {tick}. The match cannot continue.",
+                HorizontalAlignment = HorizontalAlignment.Center,
+                AutowrapMode        = TextServer.AutowrapMode.WordSmart,
+                CustomMinimumSize   = new Vector2(480, 0),
+            };
+            body.AddThemeFontSizeOverride("font_size", 20);
+            body.AddThemeColorOverride("font_color", Colors.LightGray);
+            vbox.AddChild(body);
+
+            // Mono status string (UX-DR65): show the canonical hash when present (DesyncAlert), else the tick (Halt).
+            var status = new Label
+            {
+                Text                = canonicalHash != 0u ? $"· desync · #{canonicalHash:X8}" : $"· desync · @tick {tick}",
+                HorizontalAlignment = HorizontalAlignment.Center,
+            };
+            status.AddThemeFontSizeOverride("font_size", 15);
+            status.AddThemeColorOverride("font_color", new Color(0.55f, 0.55f, 0.55f));
+            vbox.AddChild(status);
+
+            vbox.AddChild(new HSeparator());
+
+            var menuBtn = new Button { Text = "Return to Menu", CustomMinimumSize = new Vector2(200, 40) };
+            menuBtn.Pressed += () =>
+            {
+                _ctx.GameOverOverlay.Visible = false;
+                if (_ctx.MainMenu != null) _ctx.MainMenu.Visible = true;
+            };
+            vbox.AddChild(menuBtn);
+
+            _ctx.GameOverOverlay.Visible = true;
+            GD.PrintErr($"[HALT] Match halted at tick {tick} (canonical 0x{canonicalHash:X8}) — simulation desync. Terminal.");
+        }
+
         // ── Replay status label ───────────────────────────────────────────────
 
         /// <summary>
@@ -987,6 +1086,56 @@ namespace ProjectChimera.Core
         }
 
         // ── Utilities ─────────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// Story 1.9a (AR-38, D2): resolve all res:// inputs on the Godot edge and build the server's Godot-free
+        /// sim spine via <see cref="ServerBootstrap"/>. Mirrors the client _Ready faction/damage-table seeding and
+        /// the ScenarioLoadPhase per-slot faction resolution, so the server's validated start-state is
+        /// byte-identical to a client's. Returns null if the scenario is missing/parse-fails or fails validation
+        /// (fail-closed) — the caller then runs the server as a relay + quorum without a held sim spine.
+        /// </summary>
+        private SimulationHost? BuildHeadlessServerSimHost()
+        {
+            // Faction defaults — mirror the client _Ready seeding (P1 alpha, P2 beta/Iron Pact).
+            string p1Abs = ProjectSettings.GlobalizePath(P1_FACTION_JSON);
+            var p1Def = System.IO.File.Exists(p1Abs) ? FactionDefinition.LoadFromFile(p1Abs) : new FactionDefinition();
+            string p2Abs = ProjectSettings.GlobalizePath(P2_FACTION_JSON);
+            var p2Def = System.IO.File.Exists(p2Abs) ? FactionDefinition.LoadFromFile(p2Abs) : new FactionDefinition();
+
+            var slotDefs = new FactionDefinition?[5];
+            slotDefs[(int)Faction.Player1] = p1Def;
+            slotDefs[(int)Faction.Player2] = p2Def;
+
+            // Damage table — mirror the client _Ready seeding (missing file → canonical Default).
+            string dtAbs = ProjectSettings.GlobalizePath(DAMAGE_TABLE_JSON);
+            var damageTable = System.IO.File.Exists(dtAbs) ? Combat.DamageTable.Load(dtAbs) : Combat.DamageTable.Default;
+
+            // Scenario model from the configured path.
+            string scnAbs = ProjectSettings.GlobalizePath(ScenarioPath);
+            ScenarioData? model = ScenarioSerializer.LoadFromFile(scnAbs);
+            if (model == null)
+            {
+                GD.PrintErr($"[ServerBootstrap] Scenario '{ScenarioPath}' missing/parse-failed — server runs relay + quorum only (no validated sim spine).");
+                return null;
+            }
+
+            // Per-slot faction resolution — mirror ScenarioLoadPhase.ResolveSlotFactionDefs (the one path-resolution).
+            foreach (var slot in model.PlayerSlots ?? System.Array.Empty<ScenarioPlayerSlot>())
+            {
+                if (string.IsNullOrEmpty(slot.FactionJson)) continue;
+                var f = (Faction)(slot.Slot + 1); // slot 0 → Player1, slot 1 → Player2
+                if ((int)f < 0 || (int)f >= slotDefs.Length) continue;
+                string fAbs = ProjectSettings.GlobalizePath(slot.FactionJson);
+                if (System.IO.File.Exists(fAbs)) slotDefs[(int)f] = FactionDefinition.LoadFromFile(fAbs);
+            }
+
+            // ServerBootstrap validates (fail-closed: invalid ⇒ null + log via the seam) and applies through the
+            // shared spine. activeFactionCount=2 mirrors the client's new FactionRegistry(2) (1v1 today).
+            SimulationHost? host = ServerBootstrap.Build(model, slotDefs, damageTable, _logSink, activeFactionCount: 2);
+            if (host != null)
+                GD.Print("[ServerBootstrap] Validated server sim spine built + applied (AR-38).");
+            return host;
+        }
 
         /// <summary>
         /// Parse "--port N" from Godot command-line args (after the "--" separator).

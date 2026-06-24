@@ -29,6 +29,11 @@
     <Compile Include="..\src\Multiplayer\ReplayPlayer.cs"   LinkBase="Sim\Multiplayer" />
     <Compile Include="..\src\Multiplayer\NetworkCommand.cs" LinkBase="Sim\Multiplayer" />
 
+    <!-- Story 1.9a: the Godot-free server-authority core (ServerHost + ServerChecksumCollector) lives under
+         src/Multiplayer/Server/ — a guaranteed-Godot-free subfolder. Folder-globbed (not single files) so the
+         Epic-9 additions (ProtocolVersion / DelayController) are picked up without touching this csproj. -->
+    <Compile Include="..\src\Multiplayer\Server\**\*.cs" LinkBase="Sim\Multiplayer\Server" />
+
     <!-- The only Godot-coupled file remaining in the sim folders is MainScene (the god object, strangled in
          1.8a/c). StressTest was relocated to godot/tools/ in Story 1.8a, so it is no longer under the
          ..\src\Core\** glob and needs no <Compile Remove>. FixedPoint.cs STAYS IN (Godot bridge #if GODOT). -->
@@ -54,6 +59,10 @@
          (Validated<ScenarioData> -> Apply). A NEW file; the two goldens above are never re-recorded. -->
     <None Remove="Golden\golden-applier-scenario.golden.txt" />
     <EmbeddedResource Include="Golden\golden-applier-scenario.golden.txt" />
+    <!-- Story 1.9a AR-40 fork #1 — cross-faction same-tick tie-break golden. NEW file; the three goldens
+         above are never re-recorded here. -->
+    <None Remove="Golden\same-tick-tie-break.golden.txt" />
+    <EmbeddedResource Include="Golden\same-tick-tie-break.golden.txt" />
   </ItemGroup>
 
   <ItemGroup>
