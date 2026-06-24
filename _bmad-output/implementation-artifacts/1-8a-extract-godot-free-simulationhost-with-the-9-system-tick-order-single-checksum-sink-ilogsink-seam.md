@@ -4,9 +4,14 @@ baseline_commit: 2ebf704
 
 # Story 1.8a: Extract Godot-free SimulationHost with the 9-system tick order + single checksum sink + ILogSink seam
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
+
+<!-- 2026-06-24: Adversarial code review (Blind Hunter + Edge Case Hunter + Acceptance Auditor, all Opus) —
+     CLEAN. All 5 ACs SATISFIED, D1–D9 followed, scope-fence clean, goldens byte-identical (protected files
+     untouched, verified via `git diff --name-only`). 9 plausible concerns raised across layers; all 9 triaged
+     to dismiss (verified handled / false positive). Zero patches, zero deferrals. → done. -->
 
 ## Story
 
