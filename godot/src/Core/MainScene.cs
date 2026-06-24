@@ -182,6 +182,11 @@ namespace ProjectChimera.Core
 
         // ── Lifecycle ─────────────────────────────────────────────────────────
 
+        /// <summary>True when running as a headless dedicated server (set in _Ready's headless branch). Gates the
+        /// client-only lifecycle callbacks (_Process/_Input/_UnhandledInput) — in headless mode _Ready returns
+        /// early before building the presentation context, so those would dereference a null _ctx. (Story 1.9a)</summary>
+        private bool _headless;
+
         public override void _Ready()
         {
             // ── Dedicated server mode ─────────────────────────────────────────────
@@ -189,6 +194,7 @@ namespace ProjectChimera.Core
             // all client-side initialization. The server never renders anything.
             if (DisplayServer.GetName() == "headless" || OS.HasFeature("dedicated_server"))
             {
+                _headless = true; // gates the client-only _Process/_Input/_UnhandledInput (no _ctx is built below)
                 int port = ParsePortArg(ProjectChimera.Multiplayer.DedicatedServer.DEFAULT_PORT);
                 GD.Print($"[MainScene] Headless mode — starting dedicated server on port {port}.");
 
@@ -336,6 +342,23 @@ namespace ProjectChimera.Core
             if (!string.IsNullOrEmpty(ReplayPath))
                 _ctx.MatchLifecycle.TryLoadReplay(ReplayPath);
 
+#if DEBUG
+            // Story 1.9a (Task 10 loopback smoke, DEBUG-only): if launched with `-- --autojoin <ip:port>`, this
+            // client auto-connects to the dedicated server and auto-readies (no lobby clicks), so the one-click
+            // launcher (godot/tools/loopback-desync-smoke.cmd) can stand up server + 2 clients into a live match.
+            // Then F9 (handled in _UnhandledInput) induces a one-peer desync → server HALT → both clients halt.
+            string? autoJoin = ParseAutoJoinArg();
+            if (autoJoin != null)
+            {
+                int sep    = autoJoin.LastIndexOf(':');
+                string ip  = sep > 0 ? autoJoin.Substring(0, sep) : autoJoin;
+                int port   = (sep > 0 && int.TryParse(autoJoin.Substring(sep + 1), out int ap))
+                    ? ap : ProjectChimera.Multiplayer.DedicatedServer.DEFAULT_PORT;
+                GD.Print($"[MainScene] --autojoin {ip}:{port} — auto-connecting to dedicated server (loopback smoke).");
+                _ctx.LobbyUi.AutoJoinDedicated(ip, port);
+            }
+#endif
+
             GD.Print("[MainScene] Ready. F5=Play/Edit, Tab=cycle mode, Shift+Click=worker, " +
                      "L-Drag=box-select, R-Click=move, Ctrl+1-9=group. N=Multiplayer lobby.");
         }
@@ -347,6 +370,7 @@ namespace ProjectChimera.Core
         /// </summary>
         public override void _Input(InputEvent @event)
         {
+            if (_headless) return; // dedicated server has no input / no _ctx
             if (_pendingBuildWorkerId < 0) return;
 
             if (@event is InputEventMouseButton mb && mb.Pressed)
@@ -380,6 +404,7 @@ namespace ProjectChimera.Core
 
         public override void _UnhandledInput(InputEvent @event)
         {
+            if (_headless) return; // dedicated server has no input / no _ctx
             if (@event is not InputEventKey key || !key.Pressed || key.Echo) return;
 
             // Escape — toggle settings panel (any mode).
@@ -437,6 +462,7 @@ namespace ProjectChimera.Core
 
         public override void _Process(double delta)
         {
+            if (_headless) return; // dedicated server: no presentation context (the DedicatedServer node self-polls)
             if (_ctx.GameState.Mode == GameMode.Play && !_gameOver)
             {
                 if (_ctx.ReplayPlayer != null)
@@ -1152,6 +1178,20 @@ namespace ProjectChimera.Core
             }
             return defaultPort;
         }
+
+#if DEBUG
+        /// <summary>
+        /// Story 1.9a (loopback smoke, DEBUG-only): parse "--autojoin ip:port" from the user cmdline args
+        /// (after "--"). Returns the "ip:port" string, or null if absent.
+        /// </summary>
+        private static string? ParseAutoJoinArg()
+        {
+            var args = OS.GetCmdlineUserArgs();
+            for (int i = 0; i < args.Length - 1; i++)
+                if (args[i] == "--autojoin") return args[i + 1];
+            return null;
+        }
+#endif
 
     }
 }

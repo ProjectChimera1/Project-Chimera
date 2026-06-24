@@ -285,10 +285,13 @@ case PacketType.Halt:          // global no-majority
   - [x] `dotnet test godot/ProjectChimera.Sim.Tests/ProjectChimera.Sim.Tests.csproj` → ALL green (**183 passing**, 0 failed = 152 prior + 29 Server + 2 tie-break), with **all three** existing `*.golden.txt` UNCHANGED (only the NEW `same-tick-tie-break.golden.txt` is added). No existing golden moved.
   - [x] Confirmed `ServerBootstrap`/`ServerHost`/`ServerChecksumCollector` have zero `using Godot`/`GD.`; `GodotFreeBoundaryTest` passes (in the 183). No signature change to `SimChecksum.Compute`/`ISimSystem`/any `Tick`/`Apply` — `CombatSystem.Tick` gained only a comment; `DamageResolver`/`SimChecksum`/`ScenarioApplier` untouched.
 
-- [~] **Task 10 — Loopback in-engine smoke (AC: 4) — the only check of the production wiring** _(partially verified — see note)_
-  - [x] **Debug divergence hook implemented:** `#if DEBUG` `F9` in `MainScene._UnhandledInput` perturbs THIS peer's sim (+1 raw health on the first alive entity, mirroring the golden AC3 nudge) while `IsOnline`, so a single-machine loopback can induce a one-peer desync.
-  - [x] **In-engine verification (single instance, via godot-mcp):** the game boots clean after all wiring changes (no `_Ready`/phase regression); `MainScene.ShowHalt(123, 0xDEADBEEF)` builds + renders the **terminal HALT overlay** correctly — "MATCH HALTED" (danger red), the UX-DR64e message, mono status `· desync · #DEADBEEF`, and "Return to Menu" — with no runtime error (screenshot captured).
-  - [ ] **PENDING MANUAL RUN (3 coordinated processes — cannot be driven from this single-instance session):** launch a `--headless` server + two windowed clients, ready both, press `F9` on one, and confirm end-to-end: client→server `Checksum` → collector no-majority (N=2) → server broadcasts `Halt` → **both** clients `RaiseHalt` → terminal overlay + sim stops advancing. The server-side path (collector quorum, `ServerHost` verdict→`Halt`), the packet builders/readers, and `ServerBootstrap` determinism are all exhaustively Tier-1-tested; the live ENet round-trip across 3 processes is the one remaining gate for Alec to observe. _(MainScene/LockstepManager/DedicatedServer are excluded from Tier-1.)_
+- [~] **Task 10 — Loopback in-engine smoke (AC: 4)** _(tooling complete + server/overlay verified at runtime; the 2-client F9 observation is push-button for Alec)_
+  - [x] **Debug divergence hook:** `#if DEBUG` `F9` in `MainScene._UnhandledInput` perturbs THIS peer's sim (+1 raw health on the first alive entity, mirroring the golden AC3 nudge) while `IsOnline`.
+  - [x] **One-click launcher + auto-join (so Alec only clicks + presses F9):** `godot/tools/loopback-desync-smoke.cmd` starts a `--headless` server + two client windows with `-- --autojoin 127.0.0.1:7777`; a `#if DEBUG` `LobbyUi.AutoJoinDedicated` (+ `MainScene` `--autojoin` arg) connects + auto-readies via the REAL JoinGame/Ready path — no lobby clicks.
+  - [x] **Headless server VERIFIED at runtime** (ran the actual Godot binary headless): boots clean, builds + validates the sim spine (`[ServerBootstrap] Validated server sim spine built + applied (AR-38)`), and binds the port (`Listening on port … (max 4 peers)`), with **0 errors** in stderr.
+  - [x] **Fixed a latent headless NRE:** the headless branch returns before building `_ctx`, so `MainScene._Process/_Input/_UnhandledInput` were NRE-ing every frame — added a `_headless` guard; stderr is now clean.
+  - [x] **Terminal HALT overlay VERIFIED in-engine** (godot-mcp): `MainScene.ShowHalt(123,0xDEADBEEF)` renders "MATCH HALTED" (danger red) + UX-DR64e message + mono `· desync · #DEADBEEF` + "Return to Menu", no runtime error (screenshot).
+  - [ ] **Final manual observation (Alec, ~30s):** run `godot/tools/loopback-desync-smoke.cmd`, wait for both clients to auto-join, click a client + press `F9` → confirm BOTH clients show MATCH HALTED and stop advancing. This is the one piece that needs 3 live processes (out of this single-instance session's reach). The full server-side path + packets + determinism are exhaustively Tier-1-tested; the server boot is runtime-verified above — only the live 2-client ENet round-trip remains to eyeball.
 
 ---
 
@@ -484,11 +487,12 @@ Claude Opus 4.8 (`claude-opus-4-8`) — gds-dev-story workflow.
 
 **Open Questions — shipped recommended defaults (Alec can override):** #1 exact HALT copy = D10 default (mono `· desync · #{canonical:X8}` for a DesyncAlert, `· @tick {n}` for a global Halt); #2 server = arbiter (not voting); #3 N=2 mismatch = no-majority → terminal HALT; #4 spectators excluded; #5 DSL-event tie-break enforcement site deferred to Epic 7; #6 `src/Multiplayer/Server/` home + Tier-1 include.
 
-**⚠ Task 10 — remaining manual gate:** the live 3-process loopback (headless server + 2 clients, F9-induced desync, observing the `Halt` packet round-trip + both overlays) was **not executed** in this session — it needs 3 coordinated processes. The debug `F9` hook is in place; in-engine I verified clean boot + correct HALT-overlay rendering; the server/collector/packet logic is exhaustively Tier-1-tested. **Recommend Alec run the manual loopback before marking 1.9a `done`.** Procedure: export/run `--headless -- --port 7777`, launch two clients (press `N` → connect to `127.0.0.1:7777` → Ready ×2), then `F9` on one client → both should show "MATCH HALTED".
+**Task 10 — made push-button + runtime-verified as far as one session allows:** added a one-click launcher (`godot/tools/loopback-desync-smoke.cmd`) + a `#if DEBUG` auto-join/auto-ready (`LobbyUi.AutoJoinDedicated` + `MainScene --autojoin`) so Alec only **runs the .cmd, then clicks a client + presses F9**. Runtime-verified this session: (a) the **headless server boots clean** via the real Godot binary — builds + validates the sim spine + binds the port, 0 stderr errors; (b) fixed a **latent headless NRE** (`_Process`/`_Input`/`_UnhandledInput` dereferenced a null `_ctx` after the headless early-return) via a `_headless` guard; (c) the **terminal HALT overlay renders** correctly in-engine. The one piece needing 3 live processes — the 2-client F9 → server-`Halt` → both-halt ENet round-trip — is the final eyeball for Alec; everything it builds on (collector quorum, `ServerHost`, packets, `ServerBootstrap` determinism) is Tier-1-tested and the server boot is runtime-verified.
 
 ### Change Log
 
-- 2026-06-24 — Story 1.9a implemented (Tasks 1–9 complete; Task 10 code complete + in-engine overlay/boot verified, live 3-process loopback pending manual run). 3 net-new Godot-free types (`ServerBootstrap`/`ServerHost`/`ServerChecksumCollector`), 4 net-new packet builders + `Halt`/`HaltReason`, headless-branch re-point + relay rewrite, client HALT handler + terminal overlay, AR-40 tie-break pin + golden. Tier-1 183 green; existing goldens byte-identical; `godot.csproj` builds. baseline_commit `3599834` preserved.
+- 2026-06-24 — Story 1.9a implemented (Tasks 1–9 complete; Task 10 tooling complete + server-boot/overlay runtime-verified, the live 2-client F9 round-trip is a push-button manual eyeball). 3 net-new Godot-free types (`ServerBootstrap`/`ServerHost`/`ServerChecksumCollector`), 4 net-new packet builders + `Halt`/`HaltReason`, headless-branch re-point + relay rewrite, client HALT handler + terminal overlay, AR-40 tie-break pin + golden. Tier-1 183 green; existing goldens byte-identical; `godot.csproj` builds. baseline_commit `3599834` preserved.
+- 2026-06-24 — Task 10 loopback tooling: one-click launcher (`godot/tools/loopback-desync-smoke.cmd`) + `#if DEBUG` auto-join/auto-ready (`LobbyUi`/`MainScene`). Fixed a latent headless NRE (`_headless` guard on `MainScene._Process`/`_Input`/`_UnhandledInput`). Headless server boot runtime-verified (sim spine built + port bound, 0 stderr errors).
 
 ### File List
 
@@ -496,6 +500,9 @@ Claude Opus 4.8 (`claude-opus-4-8`) — gds-dev-story workflow.
 - `godot/src/Core/Sim/ServerBootstrap.cs`
 - `godot/src/Multiplayer/Server/ServerChecksumCollector.cs`
 - `godot/src/Multiplayer/Server/ServerHost.cs`
+
+**NEW — loopback smoke tooling (Task 10):**
+- `godot/tools/loopback-desync-smoke.cmd` — one-click launcher: headless server + two auto-joining client windows; then F9 on a client induces the desync.
 
 **NEW — tests + golden:**
 - `godot/ProjectChimera.Sim.Tests/Server/ServerChecksumCollectorTests.cs`
@@ -509,8 +516,9 @@ Claude Opus 4.8 (`claude-opus-4-8`) — gds-dev-story workflow.
 **MODIFIED — production:**
 - `godot/src/Multiplayer/NetworkCommand.cs` — `PacketType.Halt=0x13`, `HaltReason`, `MakeDesyncAlert`/`TryReadDesyncAlert`/`MakeHalt`/`TryReadHalt`.
 - `godot/src/Multiplayer/DedicatedServer.cs` — `SimHost` prop + `ServerHost _serverHost`; construct in `HandleReady`; relay rewrite at the `Checksum` case (drop `DesyncAlert` relay); usings; Start log.
-- `godot/src/Core/MainScene.cs` — headless-branch re-point + `BuildHeadlessServerSimHost()`; `ShowHalt(uint,uint)` terminal overlay; `#if DEBUG` F9 divergence hook.
+- `godot/src/Core/MainScene.cs` — headless-branch re-point + `BuildHeadlessServerSimHost()`; `ShowHalt(uint,uint)` terminal overlay; `#if DEBUG` F9 divergence hook + `--autojoin` arg/`ParseAutoJoinArg`; `_headless` guard on `_Process`/`_Input`/`_UnhandledInput` (fixes a latent per-frame headless NRE).
 - `godot/src/Multiplayer/LockstepManager.cs` — `OnHalt` event + `_halted` field + `RaiseHalt`; inbound `DesyncAlert`/`Halt` cases; dormant-P2P comment; `Flush` halt gate.
+- `godot/src/Multiplayer/LobbyUi.cs` — `#if DEBUG` `AutoJoinDedicated`/`TryAutoReady` (reuses the real JoinGame/Ready path for the one-click loopback smoke).
 - `godot/src/Core/Bootstrap/Phases/MatchLifecycleController.cs` — subscribe `OnHalt` → `ShowHalt`.
 - `godot/src/Combat/CombatSystem.cs` — AR-40 fork #1 tie-break named comment at the resolution site (comment only — no behavior change).
 

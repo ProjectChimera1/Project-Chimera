@@ -133,6 +133,31 @@ namespace ProjectChimera.Multiplayer
             _nakama.DrainEvents();   // marshal Nakama background events to main thread
         }
 
+#if DEBUG
+        // ── Story 1.9a (Task 10 loopback smoke, DEBUG-only) ────────────────────────
+        // Auto-connect to a dedicated server and auto-ready with NO user interaction, reusing the real
+        // JoinGame + Ready path, so a one-click launcher can stand up server + 2 clients into a live match
+        // (then F9 induces a one-peer desync). Never compiled into a release build.
+
+        private bool _autoReady;
+
+        /// <summary>Connect to a dedicated server (ip:port) and auto-ready. Made Visible so _Process polls the
+        /// transport during the handshake; the lobby closes itself on StartGame (FireMatchStart → Close).</summary>
+        public void AutoJoinDedicated(string ip, int port)
+        {
+            Show();                 // so _Process(delta) polls the transport during the handshake
+            _autoReady = true;
+            var err = _transport.JoinGame(ip, port);
+            SetStatus(err == Error.Ok ? $"[AUTO] Connecting to {ip}:{port}…" : $"[AUTO] connect failed: {err}");
+        }
+
+        /// <summary>Fire the real Ready path once, when armed (called when the server's Hello arrives).</summary>
+        private void TryAutoReady()
+        {
+            if (_autoReady && !_readyConfirmed) OnReadyPressed();
+        }
+#endif
+
         // ── Direct tab — button handlers ──────────────────────────────────────────
 
         private void OnHostPressed()
@@ -306,6 +331,9 @@ namespace ProjectChimera.Multiplayer
                     }
                     _readyBtn.Visible  = true;
                     _readyBtn.Disabled = false;
+#if DEBUG
+                    TryAutoReady();   // Story 1.9a loopback smoke: auto-ready once the server assigns a faction
+#endif
                     break;
 
                 case PacketType.Ready:
