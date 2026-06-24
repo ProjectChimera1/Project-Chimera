@@ -15,7 +15,7 @@ status: Active
 Phases 0–4 are code-complete. Phase 5 is underway. Session 20 shipped worker-placed buildings + UI bug sweep. Session 21 (remote, away from computer) shipped Utility AI + Adaptive Input Delay.
 
 ## Next Action
-Merge Story 1.8a to main (
+Await confirmation to launch parallel adversarial review layers (Layer A: spec conformance; Layer B: checksum-preservation risk; Layer C: mechanical rename + seam integrity).
 
 ---
 
