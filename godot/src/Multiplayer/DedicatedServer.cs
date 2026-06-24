@@ -168,9 +168,13 @@ namespace ProjectChimera.Multiplayer
                     // Story 1.9a (D8): the server CONSUMES checksums into the authoritative quorum collector
                     // instead of opaquely relaying them to the other peer. Slot is transport-authoritative —
                     // taken from THIS callback's `slot` (the ENet peer→slot map), never the packet payload (which
-                    // carries only tick+hash) — so a client cannot spoof another slot's checksum. The collector's
-                    // verdicts emit DesyncAlert (to a minority) or Halt (no majority) via ServerHost's seams.
-                    if (_state == State.InGame && _serverHost != null &&
+                    // carries only tick+hash) — so a client cannot spoof another slot's checksum. Spectators
+                    // (slot >= MAX_PLAYERS) are EXCLUDED from the quorum (D6): they run the sim and send checksums
+                    // too, but `expectedPeerCount` counts only players, so feeding a spectator's report would let
+                    // a tick's bucket complete on the wrong reporter set — masking a real player desync, or
+                    // tripping a false HALT. The collector's verdicts emit DesyncAlert (to a minority) or Halt
+                    // (no majority) via ServerHost's seams.
+                    if (_state == State.InGame && _serverHost != null && slot < ServerTransport.MAX_PLAYERS &&
                         TickCommandPacket.TryReadChecksum(data, len, out uint ckTick, out uint ckHash))
                         _serverHost.OnChecksum(slot, ckTick, ckHash);
                     break;

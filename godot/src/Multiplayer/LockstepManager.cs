@@ -57,11 +57,14 @@ namespace ProjectChimera.Multiplayer
         /// <summary>
         /// Fires ONCE when the authoritative server orders a TERMINAL halt for this client (Story 1.9a):
         /// either a DesyncAlert (this peer is the named minority of a strict majority) or a global Halt
-        /// (no majority). Args: (tick, canonicalHash) — canonicalHash is the strict-majority hash for a
-        /// DesyncAlert, or 0 for a global no-majority Halt. The sim stops advancing; the presentation shows the
-        /// terminal HALT overlay (UX-DR64e), DISTINCT from the recoverable stall banner.
+        /// (no majority). Args: (tick, canonicalHash, hasCanonical). For a DesyncAlert hasCanonical is true and
+        /// canonicalHash is the strict-majority hash; for a global no-majority Halt hasCanonical is false (and
+        /// canonicalHash is 0). Consumers MUST branch on hasCanonical, NOT on "canonicalHash != 0" — 0 is a
+        /// legitimate 32-bit checksum, so an attributed desync whose hash is 0 would otherwise be mislabeled as a
+        /// global halt. The sim stops advancing; the presentation shows the terminal HALT overlay (UX-DR64e),
+        /// DISTINCT from the recoverable stall banner.
         /// </summary>
-        public event Action<uint, uint>? OnHalt;
+        public event Action<uint, uint, bool>? OnHalt;
 
         /// <summary>Terminal once the server has ordered a halt (Story 1.9a). Gates <see cref="Flush"/>.</summary>
         private bool _halted;
@@ -351,7 +354,11 @@ namespace ProjectChimera.Multiplayer
 
         public void SendChecksum(uint tick, uint localHash)
         {
-            if (!IsOnline) return;
+            // Spectators run the sim (so the SimulationHost checksum sink fires) but must NEVER vote in the
+            // server's quorum — a spectator's checksum reaching the collector can complete a tick's bucket on the
+            // wrong reporter set, masking a real player desync or forcing a false HALT (D6). The server-side drop
+            // (DedicatedServer: slot >= MAX_PLAYERS) is the primary guard; this is the matching client-side one.
+            if (!IsOnline || IsSpectator) return;
             _pendingLocalChecksum = localHash;
             _localChecksumReady   = true;
             int len = TickCommandPacket.WriteChecksum(_checksumBuf, tick, localHash);
@@ -364,12 +371,12 @@ namespace ProjectChimera.Multiplayer
         /// recoverable stall banner (which the terminal HALT overlay must be visually distinct from) is not left
         /// showing underneath the overlay.
         /// </summary>
-        private void RaiseHalt(uint tick, uint canonicalHash)
+        private void RaiseHalt(uint tick, uint canonicalHash, bool hasCanonical)
         {
             if (_halted) return;
             _halted = true;
             IsStalling = false;
-            OnHalt?.Invoke(tick, canonicalHash);
+            OnHalt?.Invoke(tick, canonicalHash, hasCanonical);
         }
 
         // ── Chat ──────────────────────────────────────────────────────────────
@@ -416,7 +423,7 @@ namespace ProjectChimera.Multiplayer
                     if (TickCommandPacket.TryReadDesyncAlert(data, len, out uint dTick, out uint canon))
                     {
                         GD.PrintErr($"[Lockstep] SERVER DESYNC ALERT @tick {dTick} (canonical 0x{canon:X8}) — this peer diverged.");
-                        RaiseHalt(dTick, canon);
+                        RaiseHalt(dTick, canon, hasCanonical: true);
                     }
                     break;
 
@@ -425,7 +432,7 @@ namespace ProjectChimera.Multiplayer
                     if (TickCommandPacket.TryReadHalt(data, len, out uint hTick, out HaltReason hReason))
                     {
                         GD.PrintErr($"[Lockstep] SERVER HALT @tick {hTick} ({hReason}) — match cannot continue.");
-                        RaiseHalt(hTick, 0u);
+                        RaiseHalt(hTick, 0u, hasCanonical: false);
                     }
                     break;
 

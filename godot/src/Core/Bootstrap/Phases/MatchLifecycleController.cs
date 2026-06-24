@@ -38,7 +38,7 @@ namespace ProjectChimera.Core.Bootstrap
             // danger-styled overlay — visually + behaviorally distinct from the recoverable stall banner
             // (UX-DR28). The P2P OnDesync above is now dormant in server-authoritative online play (the server
             // consumes checksums), so this OnHalt is the live halt path. Offers only "Return to Menu".
-            _ctx.Lockstep.OnHalt += (tick, canonical) => _ctx.Scene.ShowHalt(tick, canonical);
+            _ctx.Lockstep.OnHalt += (tick, canonical, hasCanonical) => _ctx.Scene.ShowHalt(tick, canonical, hasCanonical);
 
             _ctx.LobbyUi = new LobbyUi
             {

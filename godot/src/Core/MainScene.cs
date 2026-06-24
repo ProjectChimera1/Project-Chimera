@@ -924,7 +924,7 @@ namespace ProjectChimera.Core
         /// pill): this ends the match and offers only "Return to Menu". Voiced to the "Commander" (UX-DR65).
         /// Exact copy is the story's recommended default (Open Question #1).
         /// </summary>
-        internal void ShowHalt(uint tick, uint canonicalHash)
+        internal void ShowHalt(uint tick, uint canonicalHash, bool hasCanonical)
         {
             if (_gameOver) return;   // a terminal state (win/lose or a prior halt) is already shown
             _gameOver = true;        // stop win-condition / play-mode processing
@@ -964,10 +964,12 @@ namespace ProjectChimera.Core
             body.AddThemeColorOverride("font_color", Colors.LightGray);
             vbox.AddChild(body);
 
-            // Mono status string (UX-DR65): show the canonical hash when present (DesyncAlert), else the tick (Halt).
+            // Mono status string (UX-DR65): show the canonical hash for an attributed DesyncAlert, else the tick
+            // for a global Halt. Branch on hasCanonical — NOT "canonicalHash != 0" — because 0 is a valid 32-bit
+            // checksum, so an attributed desync hashing to 0 must still render as "#00000000", not "@tick".
             var status = new Label
             {
-                Text                = canonicalHash != 0u ? $"· desync · #{canonicalHash:X8}" : $"· desync · @tick {tick}",
+                Text                = hasCanonical ? $"· desync · #{canonicalHash:X8}" : $"· desync · @tick {tick}",
                 HorizontalAlignment = HorizontalAlignment.Center,
             };
             status.AddThemeFontSizeOverride("font_size", 15);
