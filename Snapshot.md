@@ -15,7 +15,7 @@ status: Active
 Phases 0–4 are code-complete. Phase 5 is underway. Session 20 shipped worker-placed buildings + UI bug sweep. Session 21 (remote, away from computer) shipped Utility AI + Adaptive Input Delay.
 
 ## Next Action
-Wait for agents → merge findings → write story file with bulletproof checksum-sink order and SimulationHost boundary spec
+Merge Story 1.8a to main (
 
 ---
 
