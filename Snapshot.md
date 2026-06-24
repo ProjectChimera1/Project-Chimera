@@ -15,7 +15,7 @@ status: Active
 Phases 0–4 are code-complete. Phase 5 is underway. Session 20 shipped worker-placed buildings + UI bug sweep. Session 21 (remote, away from computer) shipped Utility AI + Adaptive Input Delay.
 
 ## Next Action
-Await confirmation to launch parallel adversarial review layers (Layer A: spec conformance; Layer B: checksum-preservation risk; Layer C: mechanical rename + seam integrity).
+Merge Story 1.8c into mainline once code review passes. Begin Epic 3 (Scenario Editor UI) knowing that phase architecture can absorb new phases without MainScene mutation risk.
 
 ---
 
