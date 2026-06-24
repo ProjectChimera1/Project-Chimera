@@ -76,7 +76,6 @@ namespace ProjectChimera.Multiplayer
                 if (eventType == ENetConnection.EventType.None) break;
 
                 var peer    = result[1].As<ENetPacketPeer>();
-                var data    = result[2].AsByteArray();
                 var channel = (int)result[3];
 
                 switch (eventType)
@@ -113,13 +112,12 @@ namespace ProjectChimera.Multiplayer
                     case ENetConnection.EventType.Receive:
                     {
                         int slot = FindSlot(peer);
-#if DEBUG
-                        // Story 1.9a loopback diagnostic: did a client packet actually reach the server, and did
-                        // FindSlot resolve its slot? (slot=-1 ⇒ peer-wrapper mismatch dropped it.)
-                        GD.Print($"[ServerTransport] RX slot={slot} len={(data?.Length ?? -1)} type=0x{((data!=null && data.Length>0)?data[0]:0):X2} ch={channel}");
-#endif
-                        if (slot >= 0 && data != null && data.Length > 0)
-                            OnPacketReceived?.Invoke(slot, data, data.Length, channel);
+                        // Godot 4: the received packet lives on the PEER (get_packet()), NOT in service()'s
+                        // result[2] (which is the connect/disconnect integer). Reading result[2] yielded an empty
+                        // array, silently dropping every data packet — the root cause of the loopback hang (1.9a fix).
+                        byte[] pkt = peer != null ? peer.GetPacket() : System.Array.Empty<byte>();
+                        if (slot >= 0 && pkt != null && pkt.Length > 0)
+                            OnPacketReceived?.Invoke(slot, pkt, pkt.Length, channel);
                         break;
                     }
                 }

@@ -108,7 +108,6 @@ namespace ProjectChimera.Multiplayer
                 if (eventType == ENetConnection.EventType.None) break;
 
                 var peer    = result[1].As<ENetPacketPeer>();
-                var data    = result[2].AsByteArray();
                 var channel = (int)result[3];
 
                 switch (eventType)
@@ -128,8 +127,15 @@ namespace ProjectChimera.Multiplayer
                         break;
 
                     case ENetConnection.EventType.Receive:
-                        if (data != null && data.Length > 0)
-                            OnPacketReceived?.Invoke(data, data.Length, channel);
+                        // Godot 4: the received packet lives on the PEER (get_packet()), NOT in service()'s
+                        // result[2] (which is the connect/disconnect integer). Reading result[2] yielded an
+                        // empty array, silently dropping every data packet (Story 1.9a fix).
+                        if (peer != null)
+                        {
+                            byte[] pkt = peer.GetPacket();
+                            if (pkt != null && pkt.Length > 0)
+                                OnPacketReceived?.Invoke(pkt, pkt.Length, channel);
+                        }
                         break;
                 }
             }
@@ -153,15 +159,10 @@ namespace ProjectChimera.Multiplayer
         // FlagReliable is exposed as a long constant — cast to int when calling Send.
         private Error SendRaw(byte[] data, int length, int channel, long flags)
         {
-            if (_peer == null || !IsConnected) { GD.PrintErr($"[ENet] Send DROPPED (peer={( _peer==null?"null":"ok")}, connected={IsConnected})"); return Error.Unconfigured; }
+            if (_peer == null || !IsConnected) return Error.Unconfigured;
             if (length <= 0 || length > data.Length) return Error.InvalidParameter;
             byte[] payload = length == data.Length ? data : data[..length];
-            var e = _peer.Send(channel, payload, (int)flags);
-#if DEBUG
-            // Story 1.9a loopback diagnostic: surface a failing client->server send (the lobby-stuck smoking gun).
-            GD.Print($"[ENet] Send ch{channel} len{length} type=0x{(length>0?data[0]:0):X2} -> {e} (peerState={_peer.GetState()})");
-#endif
-            return e;
+            return _peer.Send(channel, payload, (int)flags);
         }
 
         // ── Cleanup ───────────────────────────────────────────────────────────────

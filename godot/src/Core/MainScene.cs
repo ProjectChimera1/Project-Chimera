@@ -189,6 +189,18 @@ namespace ProjectChimera.Core
 
         public override void _Ready()
         {
+#if DEBUG
+            // Story 1.9a (DEBUG-only): in-process loopback desync self-test. Verifies the full server→desync→HALT
+            // path over real loopback ENet in ONE process. Run: godot --headless -- --loopback-test
+            if (HasCmdArg("--loopback-test"))
+            {
+                _headless = true;
+                GD.Print("[MainScene] --loopback-test → running in-process loopback desync self-test.");
+                AddChild(new ProjectChimera.Multiplayer.LoopbackDesyncSelfTest());
+                return;
+            }
+#endif
+
             // ── Dedicated server mode ─────────────────────────────────────────────
             // Headless (no display server) OR an explicit `-- --server` window (loopback smoke). The server holds
             // validated sim state but renders no game; with --server it shows a small "DEDICATED SERVER" window so
