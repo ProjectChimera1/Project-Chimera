@@ -180,6 +180,20 @@ _Covers: FR-39 (LAN determinism / desync-free MP — the single auditable mutati
 - [x] **Task 7 — In-engine smoke (AC: 2, 6) — recommended**
   - [x] Run the game (`/godot-verify` or Godot MCP run): a normal skirmish loads `alpha_map_01` through `_applier.Apply` (units/buildings/nodes/ore identical to before), the `[Checksum]` line still prints, and a trigger that spawns a unit (`OnSpawnUnit`) still works via `_applier.SpawnUnit`. _(MainScene is excluded from Tier-1, so this is the only check of the production wiring.)_
 
+### Review Findings
+
+_Code review 2026-06-24 (`gds-code-review`) — 3 parallel adversarial layers (Blind Hunter · Edge Case Hunter · Acceptance Auditor) vs baseline `73dbff7`. Result: **2 patch · 2 deferred · 4 dismissed**. The extraction itself is faithful — all 6 ACs structurally met, both existing goldens byte-identical, scope fences honored, sole-minter intact. Both patches are robustness gaps on the shadow-mode / untrusted-input boundary (where AI-generated + creator-authored scenarios live), not defects in the happy path._
+
+#### Patch (action required)
+
+- [ ] [Review][Patch] **Shadow-applied invalid scenario crashes the applier** (a `Units`/trigger entry with `slot ≥ 4` → `IndexOutOfRangeException`). The relocated `Apply` units-loop and `SpawnUnit` mesh lookup dropped the `(fIdx >= 0 && fIdx < _slotFactionDefs.Length)` bounds guard the old `MainScene` code had. Because D3 makes shadow mode (the default) apply models that **failed** validation, and `(Faction)(slot.Slot + 1)` is an *unchecked* enum cast, a unit slot ≥ 4 reaches `_slotFactionDefs[(int)faction]` (length 5) and throws where the old code fell back to `_factionDef`. A bad `PlayerSlot` already crashed in both old and new (pre-existing, via `FactionBase[(int)faction]`), so the **net-new** divergence is specifically units/triggers. Diverges from D3/AC4 "shadow preserved byte-for-byte." Fix: restore the bounds guard at the faction-index sites; treat out-of-range as `_log.Warn` + skip. [godot/src/Core/Sim/ScenarioApplier.cs:98 (units), :68 (slot), :189 (mesh)] _(blind+edge; refutes the Acceptance Auditor's "unreachable/harmless" verdict)_
+- [ ] [Review][Patch] **`Apply` consumes `v.Value` without rejecting a `default`/unproven `Validated<ScenarioData>`** — this is the validation-bypass the 1.7 review **explicitly deferred to story 1.8b** (`deferred-work.md` → "story-1.7" #1), still open. The token-less `Fail(string)` overload (null-model early-out) returns a `default` token whose model is `null`, so `Apply` would NRE on `s.PlayerSlots`. Not reachable from today's two call sites (both pass a non-null scenario), but `Apply` is `public` and slated for verbatim 1.9a `ServerBootstrap` reuse. Fix: guard at the consumption point (e.g. `if (v.Value is null) { _log.Warn(...); return; }`), closing the gap exactly where the 1.7 review intended. [godot/src/Core/Sim/ScenarioApplier.cs:62; godot/src/Core/Definitions/Validated.cs:69] _(blind+edge)_
+
+#### Deferred
+
+- [x] [Review][Defer] `ResolveSlotFactionDefs` never resets `_slotFactionDefs` entries — a scenario re-applied into the same `MainScene`/host after a slot's `faction_json` goes missing keeps the stale def (the array is allocated once in `_Ready` and shared by reference). Behavior-preserving (old code had the identical `if (!IsNullOrEmpty) { if (Exists) … }` shape); latent — only on re-apply into a live instance. [godot/src/Core/MainScene.cs:ResolveSlotFactionDefs] — deferred, behavior-preserving
+- [x] [Review][Defer] Scenario with > 64 resource nodes or > 64 buildings silently drops the overflow (`Nodes.Create` / `PlaceBuildingDirect` return -1, unchecked; the validator imposes no count cap). Unchanged from the original inline code. [godot/src/Core/Sim/ScenarioApplier.cs:Apply/ApplyFallback] — deferred, pre-existing
+
 ---
 
 ## Dev Notes
