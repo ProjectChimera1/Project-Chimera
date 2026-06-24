@@ -1,6 +1,7 @@
 #nullable enable
 using System;
 using System.Collections.Generic;
+using ProjectChimera.Core.Sim;             // NullLogSink
 using ProjectChimera.Multiplayer;          // PacketType, TickCommandPacket, HaltReason
 using ProjectChimera.Multiplayer.Server;   // ServerHost
 using Xunit;
@@ -25,7 +26,7 @@ namespace ProjectChimera.Sim.Tests.Server
         private static (ServerHost host, Captured cap) Make(int expectedPeers)
         {
             var cap = new Captured();
-            var host = new ServerHost(expectedPeers,
+            var host = new ServerHost(expectedPeers, new NullLogSink(),
                 (slot, pkt) => cap.Sent.Add((slot, pkt)),
                 pkt => cap.Broadcast.Add(pkt));
             return (host, cap);
@@ -98,8 +99,9 @@ namespace ProjectChimera.Sim.Tests.Server
         [Fact]
         public void Ctor_NullSeams_Throw()
         {
-            Assert.Throws<ArgumentNullException>(() => new ServerHost(2, null!, _ => { }));
-            Assert.Throws<ArgumentNullException>(() => new ServerHost(2, (_, _) => { }, null!));
+            Assert.Throws<ArgumentNullException>(() => new ServerHost(2, null!, (_, _) => { }, _ => { }));          // null log
+            Assert.Throws<ArgumentNullException>(() => new ServerHost(2, new NullLogSink(), null!, _ => { }));      // null sendTo
+            Assert.Throws<ArgumentNullException>(() => new ServerHost(2, new NullLogSink(), (_, _) => { }, null!)); // null broadcast
         }
     }
 }

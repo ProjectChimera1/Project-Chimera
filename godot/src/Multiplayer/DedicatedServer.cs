@@ -60,10 +60,23 @@ namespace ProjectChimera.Multiplayer
         public SimulationHost? SimHost { get; init; }
 
         /// <summary>
+        /// Optional logging seam injected by MainScene's headless edge (its GodotLogSink → the server console).
+        /// The Story-1.9b determinism verdict (per-window PASS lines + the MATCH SUMMARY) is written here. Defaults
+        /// to a NullLogSink when not injected (e.g. the in-process self-test reads the counters directly instead).
+        /// </summary>
+        public ILogSink? Log { get; init; }
+
+        /// <summary>
         /// Server-authority core: the strict-majority checksum quorum + DesyncAlert/HALT generator. Constructed
         /// when the match starts (HandleReady → InGame) with the connected player count and the transport seams.
         /// </summary>
         private ServerHost? _serverHost;
+
+        /// <summary>
+        /// The server-authority core for the live match (null until StartGame), exposed read-only for the in-process
+        /// loopback self-test to read the Story-1.9b determinism counters/verdict (WindowsCompared/DesyncCount/Passing).
+        /// </summary>
+        public ServerHost? Host => _serverHost;
 
         // Reusable buffers to avoid per-frame allocation
         private readonly byte[] _relayBuf  = new byte[
@@ -130,6 +143,9 @@ namespace ProjectChimera.Multiplayer
 
             if (_state == State.InGame)
             {
+                // Story 1.9b: a player left mid-match (ends the 1v1) — emit the determinism verdict-so-far.
+                _serverHost?.LogSummary();
+
                 // Notify the remaining player peer.
                 int other = 1 - slot;
                 if (_transport.IsSlotConnected(other))
@@ -215,7 +231,7 @@ namespace ProjectChimera.Multiplayer
                 // because SendReliableTo/BroadcastReliable take an optional length arg, so a method-group
                 // conversion to Action<int,byte[]> / Action<byte[]> won't bind.
                 int playerCount = CountConnectedPlayers();
-                _serverHost = new ServerHost(playerCount,
+                _serverHost = new ServerHost(playerCount, Log ?? new NullLogSink(),
                     (s, pkt) => _transport.SendReliableTo(s, pkt),
                     pkt => _transport.BroadcastReliable(pkt));
 
@@ -274,6 +290,8 @@ namespace ProjectChimera.Multiplayer
 
         public override void _ExitTree()
         {
+            // Story 1.9b: emit the final determinism verdict on server shutdown (if a match ran).
+            _serverHost?.LogSummary();
             _transport?.Dispose();
         }
     }
