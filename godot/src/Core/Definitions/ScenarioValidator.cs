@@ -60,22 +60,28 @@ namespace ProjectChimera.Core.Definitions
         {
             if (m is null) return ValidationResult.Fail("scenario is null.");
 
+            // D3 (Story 1.8b): mint the proof-of-validation token ONCE here (m is non-null). It is carried by BOTH
+            // Pass and every Fail below, so 1.7 shadow-mode can still apply the model on a FAILED validation (the
+            // applier consumes only Validated<ScenarioData>). Golden-neutral: the same model is applied as today.
+            // This is the codebase's sole `new Validated<` (ValidatedSoleMinterTest guards it).
+            var validated = new Validated<ScenarioData>(m, _proof);
+
             // ── Map bounds: finite, > 0, and inside the Fixed range (it is a coordinate ceiling) ──
             if (!Finite(m.MapBounds) || m.MapBounds <= 0f)
-                return ValidationResult.Fail($"scenario.map_bounds={m.MapBounds} must be finite and > 0.");
+                return ValidationResult.Fail($"scenario.map_bounds={m.MapBounds} must be finite and > 0.", validated);
             if (m.MapBounds >= Range)
                 return ValidationResult.Fail(
-                    $"scenario.map_bounds={m.MapBounds} exceeds the 16.16 range [0, {Range}).");
+                    $"scenario.map_bounds={m.MapBounds} exceeds the 16.16 range [0, {Range}).", validated);
 
             float bounds = m.MapBounds;
 
             // ── Collections must be present. A null array is malformed input the applier would NRE on, so the
             // validator rejects it (located) rather than silently treating it as empty via the `?? Array.Empty`
             // guards below — those are then belt-and-suspenders. [Story 1.7 review patch] ──
-            if (m.PlayerSlots is null)   return ValidationResult.Fail("scenario.player_slots is null.");
-            if (m.ResourceNodes is null) return ValidationResult.Fail("scenario.resource_nodes is null.");
-            if (m.Buildings is null)     return ValidationResult.Fail("scenario.buildings is null.");
-            if (m.Units is null)         return ValidationResult.Fail("scenario.units is null.");
+            if (m.PlayerSlots is null)   return ValidationResult.Fail("scenario.player_slots is null.", validated);
+            if (m.ResourceNodes is null) return ValidationResult.Fail("scenario.resource_nodes is null.", validated);
+            if (m.Buildings is null)     return ValidationResult.Fail("scenario.buildings is null.", validated);
+            if (m.Units is null)         return ValidationResult.Fail("scenario.units is null.", validated);
 
             // ── Player slots: range / non-negative ore / in-bounds base / engine ceiling / uniqueness ──
             // declared = the set of slots a PlayerSlot actually declares; buildings/units must reference one of
@@ -88,7 +94,7 @@ namespace ProjectChimera.Core.Definitions
 
                 if (s.Slot < 0 || s.Slot >= FactionRegistry.PLAYER_COUNT)
                     return ValidationResult.Fail(
-                        $"scenario.player_slots[{i}].slot={s.Slot} is out of [0,{FactionRegistry.PLAYER_COUNT}).");
+                        $"scenario.player_slots[{i}].slot={s.Slot} is out of [0,{FactionRegistry.PLAYER_COUNT}).", validated);
 
                 // The AR-39 length-5 overflow guard: the as-built Faction enum tops at Player4, so FactionRegistry
                 // .ToFaction(slot) is only defined for slot <= 3. A slot in [4,8) is < PLAYER_COUNT but overflows
@@ -96,16 +102,16 @@ namespace ProjectChimera.Core.Definitions
                 if (s.Slot + 1 > (int)Faction.Player4)
                     return ValidationResult.Fail(
                         $"scenario.player_slots[{i}].slot={s.Slot} maps to an undefined Faction " +
-                        $"(engine ceiling: slot <= {(int)Faction.Player4 - 1}).");
+                        $"(engine ceiling: slot <= {(int)Faction.Player4 - 1}).", validated);
 
                 if (!declared.Add(s.Slot))
                     return ValidationResult.Fail(
-                        $"scenario.player_slots[{i}].slot={s.Slot} is a duplicate.");
+                        $"scenario.player_slots[{i}].slot={s.Slot} is a duplicate.", validated);
 
                 string? e = CheckNonNeg($"scenario.player_slots[{i}].start_ore", s.StartOre)
                          ?? CheckCoord($"scenario.player_slots[{i}].base_x", s.BaseX, bounds)
                          ?? CheckCoord($"scenario.player_slots[{i}].base_z", s.BaseZ, bounds);
-                if (e != null) return ValidationResult.Fail(e);
+                if (e != null) return ValidationResult.Fail(e, validated);
             }
 
             // ── Resource nodes: in-bounds position, non-negative supply/rate, non-negative gatherer cap ──
@@ -117,10 +123,10 @@ namespace ProjectChimera.Core.Definitions
                          ?? CheckCoord($"scenario.resource_nodes[{i}].z", n.Z, bounds)
                          ?? CheckNonNeg($"scenario.resource_nodes[{i}].supply", n.Supply)
                          ?? CheckNonNeg($"scenario.resource_nodes[{i}].rate", n.Rate);
-                if (e != null) return ValidationResult.Fail(e);
+                if (e != null) return ValidationResult.Fail(e, validated);
                 if (n.MaxGatherers < 0)
                     return ValidationResult.Fail(
-                        $"scenario.resource_nodes[{i}].max_gatherers={n.MaxGatherers} must be >= 0.");
+                        $"scenario.resource_nodes[{i}].max_gatherers={n.MaxGatherers} must be >= 0.", validated);
             }
 
             // ── Buildings: in-bounds position, slot references a declared PlayerSlot, known building type ──
@@ -130,13 +136,13 @@ namespace ProjectChimera.Core.Definitions
                 ScenarioBuilding b = buildings[i];
                 string? e = CheckCoord($"scenario.buildings[{i}].x", b.X, bounds)
                          ?? CheckCoord($"scenario.buildings[{i}].z", b.Z, bounds);
-                if (e != null) return ValidationResult.Fail(e);
+                if (e != null) return ValidationResult.Fail(e, validated);
                 if (!declared.Contains(b.Slot))
                     return ValidationResult.Fail(
-                        $"scenario.buildings[{i}].slot={b.Slot} references no declared player_slot.");
+                        $"scenario.buildings[{i}].slot={b.Slot} references no declared player_slot.", validated);
                 if (!IsKnownBuildingType(b.Type))
                     return ValidationResult.Fail(
-                        $"scenario.buildings[{i}].type='{b.Type}' is not a known BuildingType.");
+                        $"scenario.buildings[{i}].type='{b.Type}' is not a known BuildingType.", validated);
             }
 
             // ── Units: in-bounds position, slot references a declared PlayerSlot ──
@@ -146,10 +152,10 @@ namespace ProjectChimera.Core.Definitions
                 ScenarioUnit u = units[i];
                 string? e = CheckCoord($"scenario.units[{i}].x", u.X, bounds)
                          ?? CheckCoord($"scenario.units[{i}].z", u.Z, bounds);
-                if (e != null) return ValidationResult.Fail(e);
+                if (e != null) return ValidationResult.Fail(e, validated);
                 if (!declared.Contains(u.Slot))
                     return ValidationResult.Fail(
-                        $"scenario.units[{i}].slot={u.Slot} references no declared player_slot.");
+                        $"scenario.units[{i}].slot={u.Slot} references no declared player_slot.", validated);
             }
 
             // AR-13 (forbidden-until-SimRng) — RESERVED, intentionally NOT implemented here. SimRng shipped in
@@ -160,7 +166,7 @@ namespace ProjectChimera.Core.Definitions
             // effect is valid only if it draws from world.Rng") is a static check over the effect graph, enforced
             // by Epic 2's effect-validator (Story 2.3) — the first point an effect schema exists.
 
-            return ValidationResult.Pass(new Validated<ScenarioData>(m, _proof));
+            return ValidationResult.Pass(validated);
         }
 
         // ── Helpers (return a located error string, or null when the field is OK) ──

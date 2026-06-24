@@ -44,6 +44,10 @@
     <!-- Story 1.3a multi-faction (4 active factions) golden — same embedded/manifest transport. -->
     <None Remove="Golden\golden-multifaction.golden.txt" />
     <EmbeddedResource Include="Golden\golden-multifaction.golden.txt" />
+    <!-- Story 1.8b applier-driven golden — the alpha_map_01 mirror applied through the Godot-free ScenarioApplier
+         (Validated<ScenarioData> -> Apply). A NEW file; the two goldens above are never re-recorded. -->
+    <None Remove="Golden\golden-applier-scenario.golden.txt" />
+    <EmbeddedResource Include="Golden\golden-applier-scenario.golden.txt" />
   </ItemGroup>
 
   <ItemGroup>

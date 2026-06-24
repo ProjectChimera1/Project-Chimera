@@ -4,7 +4,7 @@ baseline_commit: 73dbff7
 
 # Story 1.8b: ScenarioApplier as the sole writer of sim truth with alloc-free SpawnUnit + hoisted path resolution
 
-Status: ready-for-dev
+Status: review
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -136,49 +136,49 @@ _Covers: FR-39 (LAN determinism / desync-free MP — the single auditable mutati
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1 — Net-new Godot-free `ScenarioApplier` (AC: 1, 4)**
-  - [ ] Create `godot/src/Core/Sim/ScenarioApplier.cs` (`#nullable enable`, namespace `ProjectChimera.Core.Sim`, **no `using Godot`/`GD.*`/`ProjectSettings`/`res://`**). Constructor `ScenarioApplier(SimulationHost host, ILogSink log, FactionDefinition?[] slotFactionDefs)` — store all three; `slotFactionDefs` is the **same array** `MainScene` owns (the pre-pass fills it in place; never reassign it — D1/D4). Expose nothing public beyond the methods below.
-  - [ ] `int SpawnUnit(UnitDefinition def, Faction faction, float x, float z)` — verbatim relocation of `MainScene.SpawnScenarioUnit` (return the id). Use `_host.World` + `_slotFactionDefs[(int)faction].IndexOfUnit(def.Id)` for the `MeshType` lookup. No allocation; failure-path logging via `_log.Warn` only (D5).
-  - [ ] `void SetFactionBase(Faction faction, FixedVec3 pos)` — `_host.Resources.FactionBase[(int)faction] = pos;` (the unified write site, D6).
-  - [ ] `static BuildingType ParseBuildingType(string type)` — verbatim move (D2).
-  - [ ] `void Apply(Validated<ScenarioData> v)` — verbatim `ApplyScenario` body **minus** the `ProjectSettings.GlobalizePath`/`File.Exists`/`LoadFromFile` (those are now in the pre-pass; read `_slotFactionDefs[(int)faction]` + `_host.BuildSys.SetFactionDef`). Read the model via `v.Value`. Preserve order: slots(ore+base+SetFactionDef) → nodes → buildings → units(SpawnUnit) → `_host.ScenarioDirector.LoadScenario(v.Value)`. Keep every `Fixed.FromFloat`/`Fixed.Zero` exactly (D2). Unknown unit_id → `_log.Warn(...)` + continue.
-  - [ ] `void ApplyFallback()` — verbatim `ApplyFallbackScenario` hardcoded writes (2 bases via `SetFactionBase`, ore, 8 nodes, 2 CommandCenters, 4 workers via `SpawnUnit` using `_slotFactionDefs[...]?.GetUnitByCategory("Worker")`). **No `LoadScenario`** (preserve the split). The `_fallbackMirror`/validation/canonical-hash bookkeeping stays in `MainScene` (Verify-in-code #4).
-  - [ ] `dotnet build godot/godot.csproj` → green.
+- [x] **Task 1 — Net-new Godot-free `ScenarioApplier` (AC: 1, 4)**
+  - [x] Create `godot/src/Core/Sim/ScenarioApplier.cs` (`#nullable enable`, namespace `ProjectChimera.Core.Sim`, **no `using Godot`/`GD.*`/`ProjectSettings`/`res://`**). Constructor `ScenarioApplier(SimulationHost host, ILogSink log, FactionDefinition?[] slotFactionDefs)` — store all three; `slotFactionDefs` is the **same array** `MainScene` owns (the pre-pass fills it in place; never reassign it — D1/D4). Expose nothing public beyond the methods below.
+  - [x] `int SpawnUnit(UnitDefinition def, Faction faction, float x, float z)` — verbatim relocation of `MainScene.SpawnScenarioUnit` (return the id). Use `_host.World` + `_slotFactionDefs[(int)faction].IndexOfUnit(def.Id)` for the `MeshType` lookup. No allocation; failure-path logging via `_log.Warn` only (D5).
+  - [x] `void SetFactionBase(Faction faction, FixedVec3 pos)` — `_host.Resources.FactionBase[(int)faction] = pos;` (the unified write site, D6).
+  - [x] `static BuildingType ParseBuildingType(string type)` — verbatim move (D2).
+  - [x] `void Apply(Validated<ScenarioData> v)` — verbatim `ApplyScenario` body **minus** the `ProjectSettings.GlobalizePath`/`File.Exists`/`LoadFromFile` (those are now in the pre-pass; read `_slotFactionDefs[(int)faction]` + `_host.BuildSys.SetFactionDef`). Read the model via `v.Value`. Preserve order: slots(ore+base+SetFactionDef) → nodes → buildings → units(SpawnUnit) → `_host.ScenarioDirector.LoadScenario(v.Value)`. Keep every `Fixed.FromFloat`/`Fixed.Zero` exactly (D2). Unknown unit_id → `_log.Warn(...)` + continue.
+  - [x] `void ApplyFallback()` — verbatim `ApplyFallbackScenario` hardcoded writes (2 bases via `SetFactionBase`, ore, 8 nodes, 2 CommandCenters, 4 workers via `SpawnUnit` using `_slotFactionDefs[...]?.GetUnitByCategory("Worker")`). **No `LoadScenario`** (preserve the split). The `_fallbackMirror`/validation/canonical-hash bookkeeping stays in `MainScene` (Verify-in-code #4).
+  - [x] `dotnet build godot/godot.csproj` → green.
 
-- [ ] **Task 2 — Type-gate via `Validated<ScenarioData>` (AC: 4) — the one 1.7 touch (D3)**
-  - [ ] Extend `ValidationResult` (`src/Core/Definitions/Validated.cs`) so `Fail` carries the minted `Validated<ScenarioData>` (wrap the model; `Ok=false`). Mint inside `ScenarioValidator` (`new Validated<ScenarioData>(m, _proof)`) so the sole-minter invariant + `ValidatedSoleMinterTest` stay intact. (The `m is null` early-return may keep `default` — that path routes to fallback.)
-  - [ ] Update `ScenarioValidator.Validate`'s `Fail` call sites to pass the wrapped model where `m` is non-null.
-  - [ ] Run + fix `NegativeValidationTests` / `ValidatedSoleMinterTest` (Verify-in-code #3): rejection still located, `Ok==false`, and (now) `Value` carries the wrapped model.
-  - [ ] `dotnet test --filter FullyQualifiedName~Validation` (and `~ValidatedSoleMinter`) → green.
+- [x] **Task 2 — Type-gate via `Validated<ScenarioData>` (AC: 4) — the one 1.7 touch (D3)**
+  - [x] Extend `ValidationResult` (`src/Core/Definitions/Validated.cs`) so `Fail` carries the minted `Validated<ScenarioData>` (wrap the model; `Ok=false`). Mint inside `ScenarioValidator` (`new Validated<ScenarioData>(m, _proof)`) so the sole-minter invariant + `ValidatedSoleMinterTest` stay intact. (The `m is null` early-return may keep `default` — that path routes to fallback.)
+  - [x] Update `ScenarioValidator.Validate`'s `Fail` call sites to pass the wrapped model where `m` is non-null.
+  - [x] Run + fix `NegativeValidationTests` / `ValidatedSoleMinterTest` (Verify-in-code #3): rejection still located, `Ok==false`, and (now) `Value` carries the wrapped model.
+  - [x] `dotnet test --filter FullyQualifiedName~Validation` (and `~ValidatedSoleMinter`) → green.
 
-- [ ] **Task 3 — Presentation faction-resolution pre-pass + MainScene re-point (AC: 2, 6)**
-  - [ ] Add a `MainScene` helper (e.g. `void ResolveSlotFactionDefs(ScenarioData scenario)`) doing the per-slot `ProjectSettings.GlobalizePath(slot.FactionJson)` + `File.Exists` + `FactionDefinition.LoadFromFile`, writing resolved defs into `_slotFactionDefs` **in place** (kept on `MainScene` for the trigger delegate; shared with the applier) and ensuring the **default** defs are present for the fallback path (Verify-in-code #5).
-  - [ ] Construct `_applier = new ScenarioApplier(_host, _logSink, _slotFactionDefs)` in `_Ready` (after `_host` + `_slotFactionDefs` exist; `_logSink` is the 1.8a `GodotLogSink`). The applier shares the `_slotFactionDefs` array reference — the pre-pass fills it before each apply.
-  - [ ] Rewrite `ValidateBeforeApply` to return the `ValidationResult` (preserve the located-error logging; D3 / Verify-in-code #1).
-  - [ ] Rewire `LoadAndApplyScenario`: file + AI-gen branches → `ResolveSlotFactionDefs(scenario); var r = ValidateBeforeApply(scenario, label); if (ScenarioGate.ShouldProceed(r.Ok, ScenarioGate.IsFailClosed())) _applier.Apply(r.Value);`. Fallback branch → resolve defaults into `_slotFactionDefs` + `_applier.ApplyFallback()` (keep the `_fallbackMirror` validate/hash bookkeeping).
-  - [ ] Re-point the `OnSpawnUnit` trigger delegate (`~:2001-2015`) to call `_applier.SpawnUnit` (move its failure-path `GD.PrintErr` to `_logSink.Warn`).
-  - [ ] Route `MoveStartPosition`'s sim-half `FactionBase` write through `_applier.SetFactionBase` (Verify-in-code #2).
-  - [ ] **Delete** the four former methods (`ApplyScenario`/`SpawnScenarioUnit`/`ParseBuildingType`/`ApplyFallbackScenario`) from `MainScene` — their bodies now live in the applier. Confirm no `MainScene` code writes `_resources`/`_nodes`/`_buildings`/`_world`/`_scenarioDirector` sim truth directly for scenario setup.
-  - [ ] `dotnet build godot/godot.csproj` → green.
+- [x] **Task 3 — Presentation faction-resolution pre-pass + MainScene re-point (AC: 2, 6)**
+  - [x] Add a `MainScene` helper (e.g. `void ResolveSlotFactionDefs(ScenarioData scenario)`) doing the per-slot `ProjectSettings.GlobalizePath(slot.FactionJson)` + `File.Exists` + `FactionDefinition.LoadFromFile`, writing resolved defs into `_slotFactionDefs` **in place** (kept on `MainScene` for the trigger delegate; shared with the applier) and ensuring the **default** defs are present for the fallback path (Verify-in-code #5).
+  - [x] Construct `_applier = new ScenarioApplier(_host, _logSink, _slotFactionDefs)` in `_Ready` (after `_host` + `_slotFactionDefs` exist; `_logSink` is the 1.8a `GodotLogSink`). The applier shares the `_slotFactionDefs` array reference — the pre-pass fills it before each apply.
+  - [x] Rewrite `ValidateBeforeApply` to return the `ValidationResult` (preserve the located-error logging; D3 / Verify-in-code #1).
+  - [x] Rewire `LoadAndApplyScenario`: file + AI-gen branches → `ResolveSlotFactionDefs(scenario); var r = ValidateBeforeApply(scenario, label); if (ScenarioGate.ShouldProceed(r.Ok, ScenarioGate.IsFailClosed())) _applier.Apply(r.Value);`. Fallback branch → resolve defaults into `_slotFactionDefs` + `_applier.ApplyFallback()` (keep the `_fallbackMirror` validate/hash bookkeeping).
+  - [x] Re-point the `OnSpawnUnit` trigger delegate (`~:2001-2015`) to call `_applier.SpawnUnit` (move its failure-path `GD.PrintErr` to `_logSink.Warn`).
+  - [x] Route `MoveStartPosition`'s sim-half `FactionBase` write through `_applier.SetFactionBase` (Verify-in-code #2).
+  - [x] **Delete** the four former methods (`ApplyScenario`/`SpawnScenarioUnit`/`ParseBuildingType`/`ApplyFallbackScenario`) from `MainScene` — their bodies now live in the applier. Confirm no `MainScene` code writes `_resources`/`_nodes`/`_buildings`/`_world`/`_scenarioDirector` sim truth directly for scenario setup.
+  - [x] `dotnet build godot/godot.csproj` → green.
 
-- [ ] **Task 4 — New Godot-free `ScenarioApplierTests` + zero-alloc proof (AC: 1, 3, 5)**
-  - [ ] Create `godot/ProjectChimera.Sim.Tests/Builder/ScenarioApplierTests.cs`. Build a known in-code `ScenarioData` (mirror `alpha_map_01`) + an in-code `FactionDefinition` (with a `"worker"` `UnitDefinition`) placed into a `slotFactionDefs` array. Construct `var host = SimulationHost.Create(NullLogSink.Instance, new FactionRegistry(2), ...)` + `var applier = new ScenarioApplier(host, NullLogSink.Instance, slotFactionDefs)`. `var r = new ScenarioValidator().Validate(model)` → assert `r.Ok`; `applier.Apply(r.Value)`.
-  - [ ] Assert **identical store contents**: `World.AliveCount`; each unit `Position`(=`Fixed.FromFloat(x)`,`Fixed.Zero`,`Fixed.FromFloat(z)`)/`Faction`/`Health`/`GatherState`/`MeshType`; `Buildings.Count`/`Type`/`Position`/`ConstructionTimer==Fixed.Zero` (pre-built); `Nodes` count/positions/`Supply`/`Rate`/`MaxGatherers`; `Resources` ore per faction; `FactionBase` per faction. Assert a stable `CanonicalModelHash` baseline of the model.
-  - [ ] Add the **zero-alloc** assert: warm up `applier.SpawnUnit(def, faction, x, z)` once (JIT), then assert `GC.GetAllocatedBytesForCurrentThread()` delta == 0 across an N-call loop (place in this file or `Determinism/ZeroAllocInTickTests.cs`).
-  - [ ] `GodotFreeBoundaryTest` green (proves the applier + test are Godot-free). `dotnet test --filter FullyQualifiedName~ScenarioApplier` → green.
+- [x] **Task 4 — New Godot-free `ScenarioApplierTests` + zero-alloc proof (AC: 1, 3, 5)**
+  - [x] Create `godot/ProjectChimera.Sim.Tests/Builder/ScenarioApplierTests.cs`. Build a known in-code `ScenarioData` (mirror `alpha_map_01`) + an in-code `FactionDefinition` (with a `"worker"` `UnitDefinition`) placed into a `slotFactionDefs` array. Construct `var host = SimulationHost.Create(NullLogSink.Instance, new FactionRegistry(2), ...)` + `var applier = new ScenarioApplier(host, NullLogSink.Instance, slotFactionDefs)`. `var r = new ScenarioValidator().Validate(model)` → assert `r.Ok`; `applier.Apply(r.Value)`.
+  - [x] Assert **identical store contents**: `World.AliveCount`; each unit `Position`(=`Fixed.FromFloat(x)`,`Fixed.Zero`,`Fixed.FromFloat(z)`)/`Faction`/`Health`/`GatherState`/`MeshType`; `Buildings.Count`/`Type`/`Position`/`ConstructionTimer==Fixed.Zero` (pre-built); `Nodes` count/positions/`Supply`/`Rate`/`MaxGatherers`; `Resources` ore per faction; `FactionBase` per faction. Assert a stable `CanonicalModelHash` baseline of the model.
+  - [x] Add the **zero-alloc** assert: warm up `applier.SpawnUnit(def, faction, x, z)` once (JIT), then assert `GC.GetAllocatedBytesForCurrentThread()` delta == 0 across an N-call loop (place in this file or `Determinism/ZeroAllocInTickTests.cs`).
+  - [x] `GodotFreeBoundaryTest` green (proves the applier + test are Godot-free). `dotnet test --filter FullyQualifiedName~ScenarioApplier` → green.
 
-- [ ] **Task 5 — (Optional) applier-driven golden replay realizing `TODO(1.8b)` (AC: 5)**
-  - [ ] Add a `build:` delegate to a new test (e.g. `GoldenApplierScenario.Build`) that constructs a `SimulationHost`, applies the in-code `Validated<ScenarioData>` via `ScenarioApplier`, returns a `GoldenHarness`; run `GoldenChecksumReplay.RunAndRecord(300, build: GoldenApplierScenario.Build)` and record `golden-applier-scenario.golden.txt` **once** (the only sanctioned `CHIMERA_GOLDEN_RECORD`, NEW file only). Wire it as `<EmbeddedResource>`.
-  - [ ] `dotnet test --filter FullyQualifiedName~GoldenApplier` → green, byte-identical thereafter.
+- [x] **Task 5 — (Optional) applier-driven golden replay realizing `TODO(1.8b)` (AC: 5)**
+  - [x] Add a `build:` delegate to a new test (e.g. `GoldenApplierScenario.Build`) that constructs a `SimulationHost`, applies the in-code `Validated<ScenarioData>` via `ScenarioApplier`, returns a `GoldenHarness`; run `GoldenChecksumReplay.RunAndRecord(300, build: GoldenApplierScenario.Build)` and record `golden-applier-scenario.golden.txt` **once** (the only sanctioned `CHIMERA_GOLDEN_RECORD`, NEW file only). Wire it as `<EmbeddedResource>`.
+  - [x] `dotnet test --filter FullyQualifiedName~GoldenApplier` → green, byte-identical thereafter.
 
-- [ ] **Task 6 — Prove AC5: full suite green, existing goldens byte-identical, Godot-free boundary (AC: 5)**
-  - [ ] `dotnet test godot/ProjectChimera.Sim.Tests/ProjectChimera.Sim.Tests.csproj` → ALL green (incl. `GodotFreeBoundaryTest`, both existing golden suites, `ScenarioApplierTests`, the validation tests).
-  - [ ] `git status --porcelain` on `golden-scenario.golden.txt` + `golden-multifaction.golden.txt` → **empty** (unchanged). `git diff` shows no change to `EntityWorld`/`BuildingStore`/`ResourceNodeStore`/`SimChecksum`/`SimulationLoop`/the 9 system bodies/`SimulationHost`'s public surface.
-  - [ ] Grep `src/Core/Sim/ScenarioApplier.cs`: zero `using Godot`/`GD.`/`ProjectSettings`/`res://`/`Console.`/`System.Random`.
-  - [ ] `dotnet build godot/godot.csproj` → green (only pre-existing CS8632 warnings).
+- [x] **Task 6 — Prove AC5: full suite green, existing goldens byte-identical, Godot-free boundary (AC: 5)**
+  - [x] `dotnet test godot/ProjectChimera.Sim.Tests/ProjectChimera.Sim.Tests.csproj` → ALL green (incl. `GodotFreeBoundaryTest`, both existing golden suites, `ScenarioApplierTests`, the validation tests).
+  - [x] `git status --porcelain` on `golden-scenario.golden.txt` + `golden-multifaction.golden.txt` → **empty** (unchanged). `git diff` shows no change to `EntityWorld`/`BuildingStore`/`ResourceNodeStore`/`SimChecksum`/`SimulationLoop`/the 9 system bodies/`SimulationHost`'s public surface.
+  - [x] Grep `src/Core/Sim/ScenarioApplier.cs`: zero `using Godot`/`GD.`/`ProjectSettings`/`res://`/`Console.`/`System.Random`.
+  - [x] `dotnet build godot/godot.csproj` → green (only pre-existing CS8632 warnings).
 
-- [ ] **Task 7 — In-engine smoke (AC: 2, 6) — recommended**
-  - [ ] Run the game (`/godot-verify` or Godot MCP run): a normal skirmish loads `alpha_map_01` through `_applier.Apply` (units/buildings/nodes/ore identical to before), the `[Checksum]` line still prints, and a trigger that spawns a unit (`OnSpawnUnit`) still works via `_applier.SpawnUnit`. _(MainScene is excluded from Tier-1, so this is the only check of the production wiring.)_
+- [x] **Task 7 — In-engine smoke (AC: 2, 6) — recommended**
+  - [x] Run the game (`/godot-verify` or Godot MCP run): a normal skirmish loads `alpha_map_01` through `_applier.Apply` (units/buildings/nodes/ore identical to before), the `[Checksum]` line still prints, and a trigger that spawns a unit (`OnSpawnUnit`) still works via `_applier.SpawnUnit`. _(MainScene is excluded from Tier-1, so this is the only check of the production wiring.)_
 
 ---
 
@@ -304,12 +304,44 @@ _Extracted from `_bmad-output/project-context.md` + `game-architecture.md` — t
 
 ### Agent Model Used
 
-_(to be filled by dev-story)_
+claude-opus-4-8 (Claude Code, gds-dev-story workflow)
 
 ### Debug Log References
 
+- `dotnet build godot/ProjectChimera.Sim.Tests/...` and `dotnet build godot/godot.csproj` — both green (only pre-existing CS8632 nullable warnings; no new warnings/errors).
+- `dotnet test` Tier-1 suite: **147/147 passing** (was 142 pre-story; +3 `ScenarioApplierTests`, +2 `GoldenApplierScenarioTests`).
+- Canonical-model hash of the in-code alpha mirror recorded once from a deliberate placeholder-fail: `12401609732849360762UL` (pinned in `ScenarioApplierTests.ExpectedCanonicalHash`).
+- Applier golden recorded via `CHIMERA_GOLDEN_RECORD=1 dotnet test --filter ~GoldenApplier` (NEW file only; the two existing goldens stayed git-clean throughout).
+- In-engine smoke (Godot 4.6.3 MCP): launched, pressed Play Skirmish; HUD showed `Tick 377 Hash 0xF809EDCF`, `Total: 4` units, `Nodes: 8 Buildings: 3`, P1 200→280 ore — exact alpha_map_01 state, zero editor errors.
+
 ### Completion Notes List
+
+**Story 1.8b complete — net-new Godot-free `ScenarioApplier` is the sole writer of sim truth.** Behavior-preserving extraction; both existing goldens byte-identical.
+
+- **AC1 (net-new Godot-free sole writer):** `src/Core/Sim/ScenarioApplier.cs` (namespace `ProjectChimera.Core.Sim`, auto-globbed into Tier-1). No `using Godot`/`GD.*`/`ProjectSettings`/`res://`/`Vector3` in code (grep-clean; `GodotFreeBoundaryTest` green). Writes only through the 1.8a host's stores; exposes `Apply(Validated<ScenarioData>)`, `ApplyFallback()`, `int SpawnUnit(UnitDefinition,Faction,float,float)`, `SetFactionBase(Faction,FixedVec3)`, `static ParseBuildingType(string)`. The per-slot `FactionDefinition?[]` is constructor-injected (shared in place with MainScene).
+- **AC2 (path resolution hoisted):** the only `ProjectSettings.GlobalizePath` for the slot faction-JSON now lives in `MainScene.ResolveSlotFactionDefs` (a presentation pre-pass that fills `_slotFactionDefs` IN PLACE before the applier runs). Mesh/GLB path (`SetupFactionVisuals`→`MeshLoader`) left untouched.
+- **AC3 (SpawnUnit zero-alloc):** `SpawnUnit_AllocatesZeroBytes_AfterWarmup` asserts `GC.GetAllocatedBytesForCurrentThread()` delta == 0 over 256 calls after JIT warm-up. The failure-path log moved to `ILogSink.Warn`. Same primitive is the single spawn path for `Apply`, `ApplyFallback`, and the `OnSpawnUnit` trigger delegate.
+- **AC4 (consumes only `Validated<ScenarioData>`):** `Apply` reads `v.Value`. D3 — `ValidationResult.Fail` gains a token-carrying overload; `ScenarioValidator` mints the proof ONCE after the null-check and threads it through every Fail + the Pass (still the sole `new Validated<` in the file → `ValidatedSoleMinterTest` green). 1.7 shadow-mode apply-on-fail preserved byte-for-byte: `MainScene.ValidateBeforeApply` now returns the `ValidationResult`; the caller applies `r.Value` under `ScenarioGate.ShouldProceed`.
+- **AC5 (byte-identical gate + new proof + Godot-free compile):** both `golden-scenario.golden.txt` and `golden-multifaction.golden.txt` git-clean (untouched — no shared primitive modified). New `ScenarioApplierTests` asserts identical store contents (units/buildings/nodes/ore/bases, all SoA stat writes, MeshType via faction-def lookup) + a pinned canonical-hash baseline. `dotnet build godot/godot.csproj` green.
+- **AC6 (MainScene routes ALL mutation through the applier):** `LoadAndApplyScenario` (file + AI-gen) and the fallback go through `_applier`; `OnSpawnUnit`→`_applier.SpawnUnit`; `MoveStartPosition`→`_applier.SetFactionBase`. The four former methods (`ApplyScenario`/`SpawnScenarioUnit`/`ParseBuildingType`/`ApplyFallbackScenario`) are deleted — grep confirms zero direct `_resources.FactionBase[…]=`/`AddOre`/`_nodes.Create`/`PlaceBuildingDirect`/`_world.Create` scenario writes remain in MainScene (sets up 1.8c's exclusivity assertion).
+- **Task 5 (optional, done):** applier-driven golden `golden-applier-scenario.golden.txt` realizes `GoldenScenario`'s `TODO(1.8b)` — pins the SimChecksum sequence of the alpha mirror applied through the applier over 300 ticks (recorded only this new file; safe targeted record).
+- **Scope fences honored:** `ScenarioData` left `float`-typed (kept `Fixed.FromFloat` per D2); no `SimWorld`/`ISetupPhase`/`ScenePhaseRunner`/`ServerBootstrap`/`ModifierStore`; `SimulationHost` public surface + `_loop` privacy untouched; no `FactionRegistry`/`SimChecksum` widening.
 
 ### File List
 
+**New:**
+- `godot/src/Core/Sim/ScenarioApplier.cs`
+- `godot/ProjectChimera.Sim.Tests/Builder/ScenarioApplierTests.cs`
+- `godot/ProjectChimera.Sim.Tests/Golden/GoldenApplierScenario.cs`
+- `godot/ProjectChimera.Sim.Tests/Golden/GoldenApplierScenarioTests.cs`
+- `godot/ProjectChimera.Sim.Tests/Golden/golden-applier-scenario.golden.txt`
+
+**Modified:**
+- `godot/src/Core/MainScene.cs` — `_applier` field + construction; `_slotFactionDefs` → `FactionDefinition?[]`; `ResolveSlotFactionDefs` pre-pass; `ValidateBeforeApply`→`ValidationResult`; `ApplyScenarioThroughApplier`/`ApplyFallbackThroughApplier`; rewired `LoadAndApplyScenario`, `OnSpawnUnit`, `MoveStartPosition`; deleted the 4 former methods.
+- `godot/src/Core/Definitions/Validated.cs` — token-carrying `ValidationResult.Fail(string, Validated<ScenarioData>)` overload (D3).
+- `godot/src/Core/Definitions/ScenarioValidator.cs` — mint the proof once after null-check; thread it through every Fail + Pass.
+- `godot/ProjectChimera.Sim.Tests/ProjectChimera.Sim.Tests.csproj` — embed the new applier golden.
+
 ### Change Log
+
+- 2026-06-24 — Story 1.8b implemented (gds-dev-story). Extracted MainScene's scenario-mutation methods into the net-new Godot-free `ScenarioApplier` (sole writer of sim truth, alloc-free `SpawnUnit`, hoisted faction-JSON resolution); type-gated to `Validated<ScenarioData>` (D3, golden-neutral shadow-mode preserved); added Godot-free `ScenarioApplierTests` (store-contents + canonical-hash + zero-alloc) and an optional applier-driven golden. 147/147 Tier-1 green; both existing goldens byte-identical; in-engine smoke verified on Godot 4.6.3. Status → review.

@@ -44,7 +44,12 @@ namespace ProjectChimera.Core.Definitions
         /// <summary>Located error, e.g. "scenario.units[3].slot=5 references no declared player_slot". Null when Ok.</summary>
         public string? Error { get; }
 
-        /// <summary>The minted proof-of-validation value. Meaningful only when <see cref="Ok"/> is true.</summary>
+        /// <summary>
+        /// The minted proof-of-validation value. On <see cref="Ok"/>==true it wraps the validated model. On a
+        /// FAILED result it carries the same (now-suspect) model ONLY when minted via the token-carrying
+        /// <see cref="Fail(string, Validated{ScenarioData})"/> overload — so 1.7 shadow-mode can still apply it
+        /// (Story 1.8b, D3); the null-model early-out leaves it <c>default</c>.
+        /// </summary>
         public Validated<ScenarioData> Value { get; }
 
         private ValidationResult(bool ok, string? error, Validated<ScenarioData> value)
@@ -57,7 +62,20 @@ namespace ProjectChimera.Core.Definitions
         /// <summary>Successful validation carrying the minted proof-of-validation value.</summary>
         public static ValidationResult Pass(Validated<ScenarioData> value) => new(true, null, value);
 
-        /// <summary>Failed validation carrying a single located error message (field path + offending value).</summary>
+        /// <summary>
+        /// Failed validation carrying ONLY a located error (no token). Used for the null-model early-out, which
+        /// routes to the fallback and never reaches the applier, so it needs no <see cref="Validated{T}"/>.
+        /// </summary>
         public static ValidationResult Fail(string located) => new(false, located, default);
+
+        /// <summary>
+        /// Failed validation carrying a located error AND the minted proof-of-validation token (Story 1.8b, D3).
+        /// The 1.7 shadow gate applies the model even when validation fails (master never breaks), and the 1.8b
+        /// applier consumes only a <see cref="Validated{T}"/> — so a shadow-mode apply-on-fail still needs a token.
+        /// Golden-neutral: the same model is applied; only the result plumbing changes. The validator is the sole
+        /// minter, so this wraps a token it minted (never one constructed here).
+        /// </summary>
+        public static ValidationResult Fail(string located, Validated<ScenarioData> value) =>
+            new(false, located, value);
     }
 }

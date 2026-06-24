@@ -31,6 +31,7 @@ namespace ProjectChimera.Core
 
         private SimulationHost    _host        = null!;   // Story 1.8a: the Godot-free sim composition root
         private readonly ILogSink _logSink     = new GodotLogSink(); // presentation log seam injected into _host
+        private ScenarioApplier   _applier     = null!;   // Story 1.8b: the sole Godot-free writer of sim truth
         private EntityWorld       _world       = null!;
         private ResourceNodeStore _nodes       = null!;
         private ResourceStore     _resources   = null!;
@@ -38,8 +39,9 @@ namespace ProjectChimera.Core
         private FogOfWarSystem    _fog         = null!;
         private FactionDefinition _factionDef  = null!;  // default P1 (alpha)
         private FactionDefinition _factionDef2 = null!;  // default P2 (beta)
-        // Active per-slot definitions — set by ApplyScenario from slot.FactionJson
-        private FactionDefinition[] _slotFactionDefs = null!;
+        // Active per-slot definitions — resolved by the presentation pre-pass (ResolveSlotFactionDefs) from
+        // slot.FactionJson and shared IN PLACE with ScenarioApplier (Story 1.8b). Elements are null until resolved.
+        private FactionDefinition?[] _slotFactionDefs = null!;
         private Combat.ProjectileStore  _projectiles = null!;
         private Combat.CombatEventQueue _combatEvents = null!;
         private Combat.DamageTable      _damageTable = null!;
@@ -256,8 +258,8 @@ namespace ProjectChimera.Core
                 ? FactionDefinition.LoadFromFile(faction2Abs)
                 : new FactionDefinition();
 
-            // Default slot assignments — overwritten per-slot by ApplyScenario
-            _slotFactionDefs = new FactionDefinition[5];
+            // Default slot assignments — overwritten per-slot by the ResolveSlotFactionDefs pre-pass
+            _slotFactionDefs = new FactionDefinition?[5];
             _slotFactionDefs[(int)Faction.Player1] = _factionDef;
             _slotFactionDefs[(int)Faction.Player2] = _factionDef2;
 
@@ -293,6 +295,10 @@ namespace ProjectChimera.Core
             _fog              = _host.Fog;
             _buildSys         = _host.BuildSys;
             _scenarioDirector = _host.ScenarioDirector;
+
+            // Story 1.8b: the sole Godot-free writer of sim truth. It shares the _slotFactionDefs array (the
+            // presentation pre-pass fills it in place before each apply) and the presentation log seam.
+            _applier = new ScenarioApplier(_host, _logSink, _slotFactionDefs);
 
             // Single checksum sink (D5): ONE owner. Offline → log; online → also forward to lockstep
             // (replaces the former double-set: this inline log sink + the SetupMultiplayer overwrite). The
@@ -512,7 +518,7 @@ namespace ProjectChimera.Core
                 var generated = _pendingGeneratedScenario;
                 _pendingGeneratedScenario = null;
                 _scenario = generated;
-                ApplyScenario(generated);
+                ApplyScenarioThroughApplier(generated, "ApplyScenario");
                 GD.Print($"[MainScene] Loaded AI-generated scenario: \"{generated.DisplayName}\"");
                 SetupStartPositionBridge();
                 return;
@@ -524,12 +530,12 @@ namespace ProjectChimera.Core
             if (scenario == null)
             {
                 GD.PrintErr($"[MainScene] Scenario not found or failed to parse: {ScenarioPath} — using defaults.");
-                ApplyFallbackScenario();
+                ApplyFallbackThroughApplier();
             }
             else
             {
                 _scenario = scenario;
-                ApplyScenario(scenario);
+                ApplyScenarioThroughApplier(scenario, "ApplyScenario");
                 GD.Print($"[MainScene] Loaded scenario: \"{scenario.DisplayName}\" ({scenario.Id})");
             }
 
@@ -537,196 +543,78 @@ namespace ProjectChimera.Core
         }
 
         /// <summary>
-        /// Story 1.7 shadow-mode gate: run the model through the validator before it is applied to the sim. On
-        /// failure, log a LOCATED rejection (presentation-side — the Godot-free validator never logs) and return
-        /// whether to still proceed: shadow mode (default) proceeds; fail-closed (CHIMERA_VALIDATE_FAILCLOSED=1)
-        /// halts. Never throws.
+        /// Story 1.7 shadow-mode gate: run the model through the validator and return its
+        /// <see cref="Definitions.ValidationResult"/>. On failure, log a LOCATED rejection (presentation-side — the
+        /// Godot-free validator never logs). The caller applies <c>result.Value</c> when
+        /// <see cref="Definitions.ScenarioGate.ShouldProceed"/> permits: shadow mode (default) proceeds even on
+        /// failure (Story 1.8b D3: the result now carries the minted token on Fail too); fail-closed
+        /// (CHIMERA_VALIDATE_FAILCLOSED=1) halts. Never throws.
         /// </summary>
-        private bool ValidateBeforeApply(ScenarioData model, string pathLabel)
+        private Definitions.ValidationResult ValidateBeforeApply(ScenarioData model, string pathLabel)
         {
             Definitions.ValidationResult result = _validator.Validate(model);
             if (!result.Ok)
                 GD.PrintErr($"[ScenarioValidator] {pathLabel} REJECTED: {result.Error}");
-            return Definitions.ScenarioGate.ShouldProceed(result.Ok, _failClosed);
+            return result;
         }
 
         /// <summary>
-        /// Apply a loaded <see cref="ScenarioData"/> to the simulation stores.
-        /// Order: faction setup → resource nodes → buildings → units.
+        /// Story 1.8b (D4) — presentation faction-resolution pre-pass. Resolves each player slot's res:// faction
+        /// JSON to an absolute OS path, loads the <see cref="FactionDefinition"/>, and populates
+        /// <see cref="_slotFactionDefs"/> IN PLACE before the Godot-free <see cref="ScenarioApplier"/> runs. This is
+        /// the ONLY <c>ProjectSettings.GlobalizePath</c> on the scenario-apply path — it stays in presentation so the
+        /// applier carries zero Godot path work. Slots without an explicit faction_json keep their _Ready-seeded
+        /// defaults (and BuildingSystem keeps its constructor faction defs), matching the as-built behavior.
         /// </summary>
-        private void ApplyScenario(ScenarioData scenario)
+        private void ResolveSlotFactionDefs(ScenarioData scenario)
         {
-            // Story 1.7: single pre-tick validation gate (shadow on master, fail-closed via env toggle). Shadow
-            // mode logs located rejections and proceeds; fail-closed refuses to apply an invalid model.
-            if (!ValidateBeforeApply(scenario, "ApplyScenario")) return;
-            _scenarioApplied = true; // reached only when the gate permits applying (Story 1.7 review patch)
-
-            // ── 1. Player slots: faction def + starting ore + base deposit point ─
             foreach (var slot in scenario.PlayerSlots ?? System.Array.Empty<ScenarioPlayerSlot>())
             {
+                if (string.IsNullOrEmpty(slot.FactionJson)) continue;
                 var faction = (Faction)(slot.Slot + 1); // slot 0 → Player1, slot 1 → Player2
-
-                // Load the faction definition specified in the scenario slot (may differ from defaults)
-                if (!string.IsNullOrEmpty(slot.FactionJson))
-                {
-                    string abs = ProjectSettings.GlobalizePath(slot.FactionJson);
-                    if (System.IO.File.Exists(abs))
-                    {
-                        var def = FactionDefinition.LoadFromFile(abs);
-                        _slotFactionDefs[(int)faction] = def;
-                        _buildSys.SetFactionDef(faction, def);
-                    }
-                }
-
-                _resources.AddOre(faction, Fixed.FromFloat(slot.StartOre));
-                _resources.FactionBase[(int)faction] = new FixedVec3(
-                    Fixed.FromFloat(slot.BaseX), Fixed.Zero, Fixed.FromFloat(slot.BaseZ));
-            }
-
-            // ── 2. Resource nodes ─────────────────────────────────────────────
-            foreach (var node in scenario.ResourceNodes ?? System.Array.Empty<ScenarioResourceNode>())
-            {
-                var pos = new FixedVec3(Fixed.FromFloat(node.X), Fixed.Zero, Fixed.FromFloat(node.Z));
-                _nodes.Create(pos, Fixed.FromFloat(node.Supply),
-                              Fixed.FromFloat(node.Rate), node.MaxGatherers);
-            }
-
-            // ── 3. Buildings ──────────────────────────────────────────────────
-            foreach (var b in scenario.Buildings ?? System.Array.Empty<ScenarioBuilding>())
-            {
-                var faction  = (Faction)(b.Slot + 1);
-                var pos      = new FixedVec3(Fixed.FromFloat(b.X), Fixed.Zero, Fixed.FromFloat(b.Z));
-                var bType    = ParseBuildingType(b.Type);
-                _buildSys.PlaceBuildingDirect(bType, faction, pos, b.PreBuilt);
-            }
-
-            // ── 4. Units ──────────────────────────────────────────────────────
-            foreach (var u in scenario.Units ?? System.Array.Empty<ScenarioUnit>())
-            {
-                var faction = (Faction)(u.Slot + 1);
-                // Look up def from the per-slot faction definition set during slot processing above.
-                int fIdx = (int)faction;
-                var factionDef = (fIdx >= 0 && fIdx < _slotFactionDefs.Length)
-                    ? _slotFactionDefs[fIdx] : _factionDef;
-                var def = factionDef?.GetUnit(u.UnitId);
-                if (def == null)
-                {
-                    GD.PrintErr($"[MainScene] Scenario unit_id '{u.UnitId}' not found in faction — skipped.");
-                    continue;
-                }
-                SpawnScenarioUnit(def, faction, u.X, u.Z);
-            }
-
-            // ── 5. Triggers ────────────────────────────────────────────────────
-            _scenarioDirector.LoadScenario(scenario);
-        }
-
-        /// <summary>Spawn a unit from a UnitDefinition, wiring all SoA fields.</summary>
-        private void SpawnScenarioUnit(UnitDefinition def, Faction faction, float x, float z)
-        {
-            var pos = new FixedVec3(Fixed.FromFloat(x), Fixed.Zero, Fixed.FromFloat(z));
-            int id  = _world.Create(pos, faction,
-                                    Fixed.FromFloat(def.Hp), Fixed.FromFloat(def.Speed));
-            if (id < 0) return;
-
-            _world.VisionRange[id]  = Fixed.FromFloat(def.VisionRange);
-            _world.AttackRange[id]  = Fixed.FromFloat(def.AttackRange);
-            _world.AttackDamage[id] = Fixed.FromFloat(def.AttackDamage);
-            _world.AttackSpeed[id]  = Fixed.FromFloat(def.AttackSpeed);
-            _world.DamageTypeOf[id] = def.ParsedDamageType;
-            _world.ArmorTypeOf[id]  = def.ParsedArmorType;
-            _world.SplashRadius[id] = Fixed.FromFloat(def.SplashRadius);
-            _world.SupplyCost[id]   = (byte)def.Supply;
-
-            // Presentation: tag the unit type so MultiMeshBridge renders the right mesh.
-            int   fIdx     = (int)faction;
-            var   fdef     = (fIdx >= 0 && fIdx < _slotFactionDefs.Length)
-                ? _slotFactionDefs[fIdx] : _factionDef;
-            int   meshType = fdef?.IndexOfUnit(def.Id) ?? -1;
-            _world.MeshType[id] = (byte)(meshType < 0 ? 0 : meshType);
-
-            // Workers need gatherer state; combat units stay at default (Idle command)
-            if (string.Equals(def.Category, "Worker", StringComparison.OrdinalIgnoreCase))
-            {
-                _world.GatherState[id]   = GatherState.Idle;
-                _world.CarryCapacity[id] = Fixed.FromFloat(20f);
+                string abs = ProjectSettings.GlobalizePath(slot.FactionJson);
+                if (System.IO.File.Exists(abs))
+                    _slotFactionDefs[(int)faction] = FactionDefinition.LoadFromFile(abs);
             }
         }
-
-        /// <summary>Parse a building type string to its enum value.</summary>
-        private static BuildingType ParseBuildingType(string type) => type switch
-        {
-            "Barracks"      => BuildingType.Barracks,
-            "ArcheryRange"  => BuildingType.ArcheryRange,
-            "SiegeWorkshop" => BuildingType.SiegeWorkshop,
-            _               => BuildingType.CommandCenter,
-        };
 
         /// <summary>
-        /// Hardcoded fallback used only if the scenario JSON is missing.
-        /// Mirrors the layout in alpha_map_01.json so the game is always playable.
+        /// Story 1.8b — presentation orchestration for a parsed scenario: run the faction-resolution pre-pass, the
+        /// 1.7 validation gate, and — when the shadow / fail-closed policy permits — hand the validated model to the
+        /// Godot-free <see cref="ScenarioApplier"/> (the sole writer of sim truth). Replaces the former inline
+        /// <c>ApplyScenario</c>; every sim-truth write for the file / AI-generated paths now flows through
+        /// <c>_applier</c>.
         /// </summary>
-        private void ApplyFallbackScenario()
+        private void ApplyScenarioThroughApplier(ScenarioData scenario, string pathLabel)
         {
-            // Story 1.7 (D9): build a ScenarioData mirror of the hardcoded fallback so it passes through the same
-            // validation gate (AC1) and gets a real canonical hash at :316 (AC3). The hardcoded apply below is
-            // kept VERBATIM — we do NOT reroute through ApplyScenario (that would newly fire match_start triggers
-            // and move behavior). The fallback is the missing-file safety net, so it is always applied; the gate
-            // call is shadow-validation only (its result is intentionally not used to halt the safety net).
-            _fallbackMirror = BuildFallbackMirror();
-            ValidateBeforeApply(_fallbackMirror, "fallback");
-            _scenarioApplied = true; // the fallback is the always-applied safety net (Story 1.7 review patch)
-
-            // Faction bases
-            _resources.FactionBase[(int)Faction.Player1] = new FixedVec3(
-                Fixed.FromFloat(-45f), Fixed.Zero, Fixed.Zero);
-            _resources.FactionBase[(int)Faction.Player2] = new FixedVec3(
-                Fixed.FromFloat(+45f), Fixed.Zero, Fixed.Zero);
-
-            // Starting ore
-            _resources.AddOre(Faction.Player1, Fixed.FromFloat(200f));
-            _resources.AddOre(Faction.Player2, Fixed.FromFloat(200f));
-
-            // Resource nodes
-            var rate = Fixed.FromFloat(5f);
-            foreach (var (x, z, supply) in new (float, float, float)[]
+            ResolveSlotFactionDefs(scenario);                              // the one Godot path-resolution, hoisted
+            Definitions.ValidationResult r = ValidateBeforeApply(scenario, pathLabel);
+            if (Definitions.ScenarioGate.ShouldProceed(r.Ok, _failClosed)) // shadow proceeds even when r.Ok == false
             {
-                ( -20f, -15f, 600f ), ( -20f,  15f, 600f ),
-                (  20f, -15f, 600f ), (  20f,  15f, 600f ),
-                (   0f, -25f, 400f ), (   0f,  25f, 400f ),
-                ( -35f,   0f, 300f ), (  35f,   0f, 300f ),
-            })
-            {
-                _nodes.Create(
-                    new FixedVec3(Fixed.FromFloat(x), Fixed.Zero, Fixed.FromFloat(z)),
-                    Fixed.FromFloat(supply), rate, maxGatherers: 4);
-            }
-
-            // Starter command centres
-            _buildSys.PlaceBuildingDirect(BuildingType.CommandCenter, Faction.Player1,
-                new FixedVec3(Fixed.FromFloat(-45f), Fixed.Zero, Fixed.Zero), preBuilt: true);
-            _buildSys.PlaceBuildingDirect(BuildingType.CommandCenter, Faction.Player2,
-                new FixedVec3(Fixed.FromFloat(+45f), Fixed.Zero, Fixed.Zero), preBuilt: true);
-
-            // 2 workers per faction — each faction uses its own worker definition
-            var workerDef  = _slotFactionDefs[(int)Faction.Player1]?.GetUnitByCategory("Worker");
-            var workerDef2 = _slotFactionDefs[(int)Faction.Player2]?.GetUnitByCategory("Worker") ?? workerDef;
-            if (workerDef != null)
-            {
-                SpawnScenarioUnit(workerDef,  Faction.Player1, -42f, -3f);
-                SpawnScenarioUnit(workerDef,  Faction.Player1, -42f, +3f);
-            }
-            if (workerDef2 != null)
-            {
-                SpawnScenarioUnit(workerDef2, Faction.Player2, +42f, -3f);
-                SpawnScenarioUnit(workerDef2, Faction.Player2, +42f, +3f);
+                _applier.Apply(r.Value);
+                _scenarioApplied = true; // reached only when the gate permits applying (Story 1.7 review patch)
             }
         }
 
         /// <summary>
-        /// Story 1.7: a <see cref="ScenarioData"/> mirror of the hardcoded <see cref="ApplyFallbackScenario"/>
+        /// Story 1.8b — fallback path (scenario JSON missing): build the <see cref="ScenarioData"/> mirror so it
+        /// passes the same validation gate (AC1) and yields a real canonical-model hash (AC3), then apply the
+        /// hardcoded fallback writes through the applier. The hardcoded apply is the always-applied safety net (its
+        /// gate result is shadow-validation only, intentionally NOT used to halt). The applier deliberately does NOT
+        /// call LoadScenario — rerouting through Apply would newly fire match_start triggers (Story 1.7 D9 split).
+        /// </summary>
+        private void ApplyFallbackThroughApplier()
+        {
+            _fallbackMirror = BuildFallbackMirror();
+            ValidateBeforeApply(_fallbackMirror, "fallback"); // shadow-validation only (result intentionally not used)
+            _scenarioApplied = true; // the fallback is the always-applied safety net (Story 1.7 review patch)
+            _applier.ApplyFallback();
+        }
+
+        /// <summary>
+        /// Story 1.7: a <see cref="ScenarioData"/> mirror of the hardcoded <see cref="ScenarioApplier.ApplyFallback"/>
         /// layout, used ONLY to feed the validation gate and the canonical-model hash (the fallback writes stores
-        /// directly and never builds a ScenarioData). Keep these literal values in sync with the apply above;
+        /// directly and never builds a ScenarioData). Keep these literal values in sync with the applier's fallback;
         /// unit_id "worker" is the conventional worker id. Local-only — the fallback fires only when the scenario
         /// file is missing.
         /// </summary>
@@ -1100,7 +988,7 @@ void fragment() {
             }
             else
             {
-                // Fallback positions matching ApplyFallbackScenario
+                // Fallback positions matching ScenarioApplier.ApplyFallback
                 positions[0] = (-45f, 0f);
                 positions[1] = (+45f, 0f);
             }
@@ -1131,10 +1019,11 @@ void fragment() {
                 }
             }
 
-            // Update live sim: faction deposit / rally point
+            // Update live sim: faction deposit / rally point. Routed through the applier (Story 1.8b D6) — the
+            // unified sole writer of FactionBase; after 1.8b no MainScene code writes Resources.FactionBase directly.
             var faction = (Faction)(slot + 1);
-            _resources.FactionBase[(int)faction] = new FixedVec3(
-                Fixed.FromFloat(worldPos.X), Fixed.Zero, Fixed.FromFloat(worldPos.Z));
+            _applier.SetFactionBase(faction, new FixedVec3(
+                Fixed.FromFloat(worldPos.X), Fixed.Zero, Fixed.FromFloat(worldPos.Z)));
 
             // Move the visual marker
             _startPosBridge.SetPosition(slot, worldPos);
@@ -2007,11 +1896,11 @@ void fragment() {
                 var def = factionDef?.GetUnit(unitId);
                 if (def == null)
                 {
-                    GD.PrintErr($"[ScenarioDirector] spawn_unit: unknown unit_id '{unitId}' for slot {slot}.");
+                    _logSink.Warn($"[ScenarioDirector] spawn_unit: unknown unit_id '{unitId}' for slot {slot}.");
                     return;
                 }
                 for (int i = 0; i < count; i++)
-                    SpawnScenarioUnit(def, faction, x + i * 2.5f, z);
+                    _applier.SpawnUnit(def, faction, x + i * 2.5f, z);
             };
 
             _scenarioDirector.OnDisplayMessage = ShowTriggerMessage;
