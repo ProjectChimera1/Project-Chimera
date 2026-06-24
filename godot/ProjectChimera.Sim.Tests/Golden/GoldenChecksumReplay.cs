@@ -54,12 +54,12 @@ namespace ProjectChimera.Sim.Tests.Golden
             build ??= GoldenScenario.Build; // default: the 1.2 scenario — existing call sites are unaffected
             GoldenHarness harness = build(); // fresh stores + systems; no statics
             var seq = new List<Sample>(ticks);
-            harness.Loop.OnChecksum = (tick, hash) => seq.Add(new Sample(tick, hash));
+            harness.Host.SetChecksumSink((tick, hash) => seq.Add(new Sample(tick, hash))); // single sink owner (D5)
 
             for (int i = 0; i < ticks; i++)
             {
                 perturb?.Invoke(i, harness.World); // perturb BEFORE step => located tick = K+1
-                harness.Loop.StepOnce();
+                harness.Host.StepOnce();
             }
 
             return seq;

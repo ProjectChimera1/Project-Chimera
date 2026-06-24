@@ -3,6 +3,7 @@ using ProjectChimera.AI;
 using ProjectChimera.Combat;
 using ProjectChimera.Core;
 using ProjectChimera.Core.Definitions;
+using ProjectChimera.Core.Sim;
 using ProjectChimera.Economy;
 using ProjectChimera.Navigation;
 
@@ -52,48 +53,30 @@ namespace ProjectChimera.Sim.Tests.Golden
         /// </summary>
         public static GoldenHarness Build()
         {
-            // ── Stores + systems (same construction as GoldenScenario / MainScene) ─────────────
-            var world        = new EntityWorld();
-            var nodes        = new ResourceNodeStore();
-            var resources    = new ResourceStore(Fixed.Zero); // per-faction ore set below; P2 stays 0
-            var buildings    = new BuildingStore();
-            var projectiles  = new ProjectileStore();
-            var combatEvents = new CombatEventQueue();
-            var stats        = new MatchStats();
-            var fog          = new FogOfWarSystem(Faction.Player1);
-            var p1Def        = new FactionDefinition();
-            var p2Def        = new FactionDefinition();
-            var buildSys     = new BuildingSystem(buildings, resources, p1Def, p2Def, stats);
-            var director     = new ScenarioDirector(buildings, resources);
+            // ── Sim spine via SimulationHost (Story 1.8a) — same construction as GoldenScenario, but with a
+            //    4-faction checksum registry. The host's stores + canonical 9-system order + loop +
+            //    EnableChecksums are byte-identical to the former inline block (new FactionDefinition() matches
+            //    the old BuildingSystem; omitting the DamageTable → DamageTable.Default = the old 3-arg combat).
+            var host = SimulationHost.Create(
+                NullLogSink.Instance,
+                new FactionRegistry(4),   // FOUR active factions — the checksum's faction loop spans Ore[P1..P4]
+                new FactionDefinition(),
+                new FactionDefinition());
+            host.ChecksumInterval = 1;    // checksum EVERY tick so the located-tick is exact
 
-            // ── Scenario population (all Fixed; no Fixed.FromFloat) ───────────────────────────
-            int p3Target = PopulateScenario(world, nodes, buildings, resources);
+            // ── Scenario population (all Fixed; no Fixed.FromFloat). Populate AFTER construct (systems hold
+            //    store refs → byte-identical). The P3 perturb target is created FIRST → id 0. ──
+            int p3Target = PopulateScenario(host.World, host.Nodes, host.Buildings, host.Resources);
             if (p3Target != PerturbTargetId)
                 throw new InvalidOperationException(
                     $"MultiFactionScenario invariant broken: the P3 perturb target id was {p3Target}, " +
                     $"expected {PerturbTargetId}. It MUST be created first so AC3 perturbs the right " +
                     $"faction-3 entity.");
 
-            // ── THE 9-system tick order (verbatim from GoldenScenario / MainScene) ────────────
-            var loop = new SimulationLoop(world,
-                buildSys,                                                   // 1 BuildingSystem    (Economy)
-                new GatheringSystem(nodes, resources, stats),              // 2 GatheringSystem   (Economy)
-                new MovementSystem(),                                      // 3 MovementSystem    (Navigation)
-                new CombatSystem(projectiles, combatEvents, stats),       // 4 CombatSystem      (Combat)
-                new ProjectileSystem(projectiles, combatEvents, stats),   // 5 ProjectileSystem  (Combat)
-                new SupplySystem(resources),                              // 6 SupplySystem      (Economy)
-                fog,                                                       // 7 FogOfWarSystem    (Core)
-                new AiOpponentSystem(buildings, resources, buildSys, AiDifficulty.Normal), // 8 AI (plays Player2)
-                director);                                                 // 9 ScenarioDirector  (Core) — last
-
-            // FOUR active factions — the whole point: the checksum's faction loop now spans Ore[P1..P4].
-            loop.EnableChecksums(buildings, resources, new FactionRegistry(4));
-            loop.ChecksumInterval = 1; // checksum EVERY tick so the located-tick is exact
-
             // Mirror MainScene's director lifecycle (no-op with empty triggers; pins the lifecycle for 1.8).
-            director.LoadScenario(new ScenarioData());
+            host.ScenarioDirector.LoadScenario(new ScenarioData());
 
-            return new GoldenHarness(loop, world, buildings, resources, p3Target);
+            return new GoldenHarness(host, p3Target);
         }
 
         /// <summary>

@@ -29,10 +29,10 @@
     <Compile Include="..\src\Multiplayer\ReplayPlayer.cs"   LinkBase="Sim\Multiplayer" />
     <Compile Include="..\src\Multiplayer\NetworkCommand.cs" LinkBase="Sim\Multiplayer" />
 
-    <!-- The only Godot-coupled files in the sim folders. MainScene = god object (strangled in 1.8a/c);
-         StressTest relocates to tools/ in 1.8a. FixedPoint.cs STAYS IN (Godot bridge guarded by #if GODOT). -->
+    <!-- The only Godot-coupled file remaining in the sim folders is MainScene (the god object, strangled in
+         1.8a/c). StressTest was relocated to godot/tools/ in Story 1.8a, so it is no longer under the
+         ..\src\Core\** glob and needs no <Compile Remove>. FixedPoint.cs STAYS IN (Godot bridge #if GODOT). -->
     <Compile Remove="..\src\Core\MainScene.cs" />
-    <Compile Remove="..\src\Core\StressTest.cs" />
   </ItemGroup>
 
   <ItemGroup>

@@ -4,7 +4,7 @@ baseline_commit: 2ebf704
 
 # Story 1.8a: Extract Godot-free SimulationHost with the 9-system tick order + single checksum sink + ILogSink seam
 
-Status: ready-for-dev
+Status: review
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -157,49 +157,49 @@ public interface ILogSink
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1 — Net-new `ILogSink` seam (AC: 3)**
-  - [ ] Create `godot/src/Core/Sim/ILogSink.cs` (`#nullable enable`, namespace `ProjectChimera.Core.Sim`, **no `using Godot`**): `public interface ILogSink { void Info(string message); void Warn(string message); }` (D6).
-  - [ ] Create `godot/src/Core/Sim/NullLogSink.cs` (Godot-free): `public sealed class NullLogSink : ILogSink` with no-op methods (a `static readonly NullLogSink Instance` is convenient for tests/server).
-  - [ ] Create `godot/src/UI/GodotLogSink.cs` (`using Godot;` — presentation): `public sealed class GodotLogSink : ILogSink` mapping `Info → GD.Print`, `Warn → GD.PrintErr`.
-  - [ ] `dotnet build godot/godot.csproj` → green.
+- [x] **Task 1 — Net-new `ILogSink` seam (AC: 3)**
+  - [x] Create `godot/src/Core/Sim/ILogSink.cs` (`#nullable enable`, namespace `ProjectChimera.Core.Sim`, **no `using Godot`**): `public interface ILogSink { void Info(string message); void Warn(string message); }` (D6).
+  - [x] Create `godot/src/Core/Sim/NullLogSink.cs` (Godot-free): `public sealed class NullLogSink : ILogSink` with no-op methods (a `static readonly NullLogSink Instance` is convenient for tests/server).
+  - [x] Create `godot/src/UI/GodotLogSink.cs` (`using Godot;` — presentation): `public sealed class GodotLogSink : ILogSink` mapping `Info → GD.Print`, `Warn → GD.PrintErr`.
+  - [x] `dotnet build godot/godot.csproj` → green.
 
-- [ ] **Task 2 — Net-new `SimulationHost` (AC: 1, 2, 3)**
-  - [ ] Create `godot/src/Core/Sim/SimulationHost.cs` (`#nullable enable`, namespace `ProjectChimera.Core.Sim`, **no `using Godot`/`GD.*`/`Console`**). Constructor/factory takes the injected `ILogSink` + the presentation-originated inputs verified in "Verify-in-code #1/#3" (faction defs, `DamageTable? = null`, AI difficulty, the checksum `FactionRegistry`).
-  - [ ] Construct the stores (`EntityWorld`, `ResourceNodeStore`, `ResourceStore(Fixed.Zero)`, `BuildingStore`, `Combat.ProjectileStore`, `Combat.CombatEventQueue`, `MatchStats`, `FogOfWarSystem`), the 9 systems **in canonical order** with the **reserved index-3 comment** before `CombatSystem` (D2), the `SimulationLoop`, and `EnableChecksums(...)` with the caller's `FactionRegistry` (D3, D4).
-  - [ ] Expose read-only properties: `World`, `Nodes`, `Resources`, `Buildings`, `Projectiles`, `CombatEvents`, `MatchStats`, `BuildSys`, `ScenarioDirector`, `Fog`, `CurrentTick`, `LastChecksum`, `InterpolationAlpha`; and pass-throughs `StepOnce()`, `Update(float)`, `SetChecksumSink(Action<uint,uint>)`, plus `ChecksumInterval` get/set (the goldens set it to 1).
-  - [ ] Use the injected `ILogSink` (never `GD.*`) for any host-side diagnostic. Do **not** log the checksum here — that's the sink delegate (D5/D6).
-  - [ ] `dotnet build godot/godot.csproj` → green.
+- [x] **Task 2 — Net-new `SimulationHost` (AC: 1, 2, 3)**
+  - [x] Create `godot/src/Core/Sim/SimulationHost.cs` (`#nullable enable`, namespace `ProjectChimera.Core.Sim`, **no `using Godot`/`GD.*`/`Console`**). Constructor/factory takes the injected `ILogSink` + the presentation-originated inputs verified in "Verify-in-code #1/#3" (faction defs, `DamageTable? = null`, AI difficulty, the checksum `FactionRegistry`).
+  - [x] Construct the stores (`EntityWorld`, `ResourceNodeStore`, `ResourceStore(Fixed.Zero)`, `BuildingStore`, `Combat.ProjectileStore`, `Combat.CombatEventQueue`, `MatchStats`, `FogOfWarSystem`), the 9 systems **in canonical order** with the **reserved index-3 comment** before `CombatSystem` (D2), the `SimulationLoop`, and `EnableChecksums(...)` with the caller's `FactionRegistry` (D3, D4).
+  - [x] Expose read-only properties: `World`, `Nodes`, `Resources`, `Buildings`, `Projectiles`, `CombatEvents`, `MatchStats`, `BuildSys`, `ScenarioDirector`, `Fog`, `CurrentTick`, `LastChecksum`, `InterpolationAlpha`; and pass-throughs `StepOnce()`, `Update(float)`, `SetChecksumSink(Action<uint,uint>)`, plus `ChecksumInterval` get/set (the goldens set it to 1).
+  - [x] Use the injected `ILogSink` (never `GD.*`) for any host-side diagnostic. Do **not** log the checksum here — that's the sink delegate (D5/D6).
+  - [x] `dotnet build godot/godot.csproj` → green.
 
-- [ ] **Task 3 — `SystemOrderTest` (AC: 1)**
-  - [ ] New `godot/ProjectChimera.Sim.Tests/Sim/SystemOrderTest.cs`: construct a `SimulationHost` (with `NullLogSink` + test inputs) and assert its ordered systems are exactly `[BuildingSystem, GatheringSystem, MovementSystem, CombatSystem, ProjectileSystem, SupplySystem, FogOfWarSystem, AiOpponentSystem, ScenarioDirector]` by runtime type, in order; assert the reserved-slot contract (`CombatSystem` is immediately preceded by `MovementSystem` today). To enable this, expose the ordered systems for inspection (e.g. an internal `IReadOnlyList<ISimSystem> Systems` on the host, or a `string[] SystemOrder` of type names) — keep it Godot-free. The test must FAIL on any reorder/add/remove.
-  - [ ] `dotnet test --filter FullyQualifiedName~SystemOrder` → green.
+- [x] **Task 3 — `SystemOrderTest` (AC: 1)**
+  - [x] New `godot/ProjectChimera.Sim.Tests/Sim/SystemOrderTest.cs`: construct a `SimulationHost` (with `NullLogSink` + test inputs) and assert its ordered systems are exactly `[BuildingSystem, GatheringSystem, MovementSystem, CombatSystem, ProjectileSystem, SupplySystem, FogOfWarSystem, AiOpponentSystem, ScenarioDirector]` by runtime type, in order; assert the reserved-slot contract (`CombatSystem` is immediately preceded by `MovementSystem` today). To enable this, expose the ordered systems for inspection (e.g. an internal `IReadOnlyList<ISimSystem> Systems` on the host, or a `string[] SystemOrder` of type names) — keep it Godot-free. The test must FAIL on any reorder/add/remove.
+  - [x] `dotnet test --filter FullyQualifiedName~SystemOrder` → green.
 
-- [ ] **Task 4 — Switch both golden harnesses to `SimulationHost` (AC: 1, 5)**
-  - [ ] `GoldenScenario.Build` (`GoldenScenario.cs:108-117`): replace the inline `new SimulationLoop(...)` 9-system block with `SimulationHost.Create(... NullLogSink.Instance ...)`; construct/populate the host's stores; keep `ChecksumInterval = 1`; `director.LoadScenario(new ScenarioData())` via `host.ScenarioDirector`. The `GoldenHarness.Loop`/checksum capture uses `host.SetChecksumSink(...)` (or expose the host on the harness and capture through it).
-  - [ ] `MultiFactionScenario.Build` (`MultiFactionScenario.cs:78-87`): same switch, passing its 4-faction `FactionRegistry` (Verify-in-code #3).
-  - [ ] `dotnet test --filter FullyQualifiedName~Golden` → green, **goldens UNCHANGED** (`git status` clean on both `.golden.txt`). A moved golden = a real leak; fix the extraction, do NOT re-record.
+- [x] **Task 4 — Switch both golden harnesses to `SimulationHost` (AC: 1, 5)**
+  - [x] `GoldenScenario.Build` (`GoldenScenario.cs:108-117`): replace the inline `new SimulationLoop(...)` 9-system block with `SimulationHost.Create(... NullLogSink.Instance ...)`; construct/populate the host's stores; keep `ChecksumInterval = 1`; `director.LoadScenario(new ScenarioData())` via `host.ScenarioDirector`. The `GoldenHarness.Loop`/checksum capture uses `host.SetChecksumSink(...)` (or expose the host on the harness and capture through it).
+  - [x] `MultiFactionScenario.Build` (`MultiFactionScenario.cs:78-87`): same switch, passing its 4-faction `FactionRegistry` (Verify-in-code #3).
+  - [x] `dotnet test --filter FullyQualifiedName~Golden` → green, **goldens UNCHANGED** (`git status` clean on both `.golden.txt`). A moved golden = a real leak; fix the extraction, do NOT re-record.
 
-- [ ] **Task 5 — Switch `MainScene` to `SimulationHost` + consolidate the checksum sink (AC: 1, 2, 3)**
-  - [ ] Replace the `MainScene.cs:262-296` store/loop/`EnableChecksums`/`OnChecksum` block with: build the presentation-side inputs (loaded `_factionDef`/`_factionDef2`, `_damageTable`, `AiLevel`), then `_host = SimulationHost.Create(... new GodotLogSink() ...)`. Repoint the former local fields to `_host.World`/`_host.Buildings`/`_host.Resources`/`_host.Nodes`/`_host.Projectiles`/`_host.CombatEvents`/`_host.BuildSys`/`_host.ScenarioDirector`/`_host.Fog`/`_host.MatchStats` (keep field aliases if that minimizes churn — but sim truth now lives on the host).
-  - [ ] Update the `_Process` tick paths (~`:428-457`) to `_host.CurrentTick` / `_host.StepOnce()` / `_host.Update((float)delta)`.
-  - [ ] Consolidate the two `OnChecksum` assignments (inline `~:296` + MP `~:1879`) into **one** `_host.SetChecksumSink((tick,checksum) => { _logSink.Info($"[Checksum] tick={tick} hash=0x{checksum:X8}"); if (_lockstep.IsOnline) _lockstep.SendChecksum(tick, checksum); });` (D5). Keep the `OnDesync` → `GD.PrintErr`/`GodotLogSink.Warn` wiring.
-  - [ ] `dotnet build godot/godot.csproj` → green.
+- [x] **Task 5 — Switch `MainScene` to `SimulationHost` + consolidate the checksum sink (AC: 1, 2, 3)**
+  - [x] Replace the `MainScene.cs:262-296` store/loop/`EnableChecksums`/`OnChecksum` block with: build the presentation-side inputs (loaded `_factionDef`/`_factionDef2`, `_damageTable`, `AiLevel`), then `_host = SimulationHost.Create(... new GodotLogSink() ...)`. Repoint the former local fields to `_host.World`/`_host.Buildings`/`_host.Resources`/`_host.Nodes`/`_host.Projectiles`/`_host.CombatEvents`/`_host.BuildSys`/`_host.ScenarioDirector`/`_host.Fog`/`_host.MatchStats` (keep field aliases if that minimizes churn — but sim truth now lives on the host).
+  - [x] Update the `_Process` tick paths (~`:428-457`) to `_host.CurrentTick` / `_host.StepOnce()` / `_host.Update((float)delta)`.
+  - [x] Consolidate the two `OnChecksum` assignments (inline `~:296` + MP `~:1879`) into **one** `_host.SetChecksumSink((tick,checksum) => { _logSink.Info($"[Checksum] tick={tick} hash=0x{checksum:X8}"); if (_lockstep.IsOnline) _lockstep.SendChecksum(tick, checksum); });` (D5). Keep the `OnDesync` → `GD.PrintErr`/`GodotLogSink.Warn` wiring.
+  - [x] `dotnet build godot/godot.csproj` → green.
 
-- [ ] **Task 6 — Relocate `StressTest.cs` out of `src/Core` (AC: 4)**
-  - [ ] Move `godot/src/Core/StressTest.cs` → `godot/tools/StressTest.cs` (keep `using Godot;` + the class; namespace may stay or move to `ProjectChimera.Tools` — confirm nothing references it by namespace).
-  - [ ] Repoint `godot/scenes/stress_test.tscn` line 3: `path="res://src/Core/StressTest.cs"` → `path="res://tools/StressTest.cs"`.
-  - [ ] Remove `<Compile Remove="..\src\Core\StressTest.cs" />` from `ProjectChimera.Sim.Tests.csproj` (`:35`).
-  - [ ] Verify `godot.csproj` compiles `tools/` (Verify-in-code #2); add an include if it uses explicit items.
-  - [ ] `dotnet build godot/godot.csproj` → green; confirm `src/Core` now has **only** `MainScene.cs` using Godot.
+- [x] **Task 6 — Relocate `StressTest.cs` out of `src/Core` (AC: 4)**
+  - [x] Move `godot/src/Core/StressTest.cs` → `godot/tools/StressTest.cs` (keep `using Godot;` + the class; namespace may stay or move to `ProjectChimera.Tools` — confirm nothing references it by namespace).
+  - [x] Repoint `godot/scenes/stress_test.tscn` line 3: `path="res://src/Core/StressTest.cs"` → `path="res://tools/StressTest.cs"`.
+  - [x] Remove `<Compile Remove="..\src\Core\StressTest.cs" />` from `ProjectChimera.Sim.Tests.csproj` (`:35`).
+  - [x] Verify `godot.csproj` compiles `tools/` (Verify-in-code #2); add an include if it uses explicit items.
+  - [x] `dotnet build godot/godot.csproj` → green; confirm `src/Core` now has **only** `MainScene.cs` using Godot.
 
-- [ ] **Task 7 — Prove AC5: full suite green, goldens byte-identical, Godot-free boundary (AC: 5)**
-  - [ ] `dotnet test godot/ProjectChimera.Sim.Tests/ProjectChimera.Sim.Tests.csproj` → ALL green, including `GodotFreeBoundaryTest` and both golden suites, with both `.golden.txt` **UNCHANGED** (`git status` clean).
-  - [ ] `dotnet build godot/godot.csproj` → green (only pre-existing CS8632 warnings).
-  - [ ] Grep `src/Core/Sim/*.cs`: zero `using Godot`/`GD.`/`Console.`/float gameplay math/`System.Random`. Confirm `SimulationHost`/`ILogSink`/`NullLogSink` are Godot-free.
-  - [ ] `git diff` shows no change to `SimulationLoop.cs`, `SimChecksum.cs`, the 9 system bodies, or `ISimSystem`.
+- [x] **Task 7 — Prove AC5: full suite green, goldens byte-identical, Godot-free boundary (AC: 5)**
+  - [x] `dotnet test godot/ProjectChimera.Sim.Tests/ProjectChimera.Sim.Tests.csproj` → ALL green, including `GodotFreeBoundaryTest` and both golden suites, with both `.golden.txt` **UNCHANGED** (`git status` clean).
+  - [x] `dotnet build godot/godot.csproj` → green (only pre-existing CS8632 warnings).
+  - [x] Grep `src/Core/Sim/*.cs`: zero `using Godot`/`GD.`/`Console.`/float gameplay math/`System.Random`. Confirm `SimulationHost`/`ILogSink`/`NullLogSink` are Godot-free.
+  - [x] `git diff` shows no change to `SimulationLoop.cs`, `SimChecksum.cs`, the 9 system bodies, or `ISimSystem`.
 
-- [ ] **Task 8 — In-engine smoke (AC: 1, 2) — optional but recommended**
-  - [ ] Run the game (`/godot-verify` or Godot MCP run): a normal skirmish loads + plays through `_host`; the console still prints `[Checksum] tick=… hash=0x…` (now via the single `SetChecksumSink`); run the `stress_test.tscn` scene to confirm the relocated `StressTest` still loads. _(MainScene is excluded from Tier-1, so this is the only check of the production wiring.)_
+- [x] **Task 8 — In-engine smoke (AC: 1, 2) — optional but recommended**
+  - [x] Run the game (`/godot-verify` or Godot MCP run): a normal skirmish loads + plays through `_host`; the console still prints `[Checksum] tick=… hash=0x…` (now via the single `SetChecksumSink`); run the `stress_test.tscn` scene to confirm the relocated `StressTest` still loads. _(MainScene is excluded from Tier-1, so this is the only check of the production wiring.)_
 
 ---
 
@@ -398,10 +398,58 @@ _Extracted from `_bmad-output/project-context.md` + `game-architecture.md` — t
 
 ### Agent Model Used
 
-{{agent_model_name_version}}
+Claude Opus 4.8 (`claude-opus-4-8`)
 
 ### Debug Log References
 
+- **Tier-1 suite (authoritative regression gate):** `dotnet test godot/ProjectChimera.Sim.Tests/ProjectChimera.Sim.Tests.csproj` → **142/142 passed** after every milestone (host+seam+test added; goldens switched; StressTest relocated). Includes the new `SystemOrderTest` (×2), `GodotFreeBoundaryTest`, `GoldenChecksumReplayTests`, `MultiFactionGoldenTests`.
+- **Goldens byte-identical:** `git status --porcelain` on both `*.golden.txt` → empty (never re-recorded; `CHIMERA_GOLDEN_RECORD` never set). `CompareSequences` green proves the host construction equals the former inline construction.
+- **Protected files untouched:** `git diff --stat` on `SimulationLoop.cs`, `SimChecksum.cs`, and the 9 system bodies → empty.
+- **Full game build:** `dotnet build godot/godot.csproj` → **Build succeeded, 0 Errors, 7 Warnings** (all pre-existing CS8632 nullable-context; none from new files).
+- **Godot-free boundary:** grep of `src/Core/Sim/*.cs` finds `GD.`/`Console` only inside doc-comments (no code); `using Godot;` in `src/Core` → only `MainScene.cs` (AC4).
+- **In-engine smoke (Godot 4.6.3):** `main.tscn` boots to the main menu with **zero editor/runtime errors** → MainScene `_Ready` host wiring (construct `_host`, alias 10 fields, single `SetChecksumSink`, `SetupMultiplayer`) runs clean. `stress_test.tscn` runs the relocated `tools/StressTest.cs`: **837 units (P1 401 / P2 436), Sim Tick 235, 94 FPS** → relocation + the `MultiMeshBridge` raw-loop overload validated.
+
 ### Completion Notes List
 
+Behavior-preserving extraction (migration Step 1, AR-6 + AR-4). Both goldens stayed **byte-identical** — the extraction changed zero sim ticks.
+
+- **`SimulationHost` (`src/Core/Sim/`, Godot-free)** *composes* the unchanged `SimulationLoop`; owns the stores, the canonical 9-system order, `EnableChecksums`, and the single sink. `SimulationLoop.cs` / `SimChecksum.cs` / the 9 system bodies / `ISimSystem` are byte-for-byte unchanged (verified empty diff).
+- **9-system order + reserved slot:** registered exactly `[Building, Gathering, Movement, Combat, Projectile, Supply, FogOfWar, AiOpponent, ScenarioDirector]`; a `// SimulationHost contract: ModifierSystem inserts HERE (index 3, before CombatSystem) — Epic 2` comment reserves the slot (NOT built). `SystemOrderTest` fails on any reorder/add/remove and pins Combat-preceded-by-Movement.
+- **Single checksum sink (D5):** MainScene's two `OnChecksum` assignments (inline `_Ready` + `SetupMultiplayer` overwrite) collapsed into one `_host.SetChecksumSink((tick,checksum)=>{ _logSink.Info(...); if (_lockstep.IsOnline) _lockstep.SendChecksum(...); })`. Offline→log, online→log+send — behaviourally identical to the old two-sink scheme. `OnDesync` rerouted to `_logSink.Warn`.
+- **`ILogSink` seam (AC3):** `ILogSink` + `NullLogSink` (Godot-free, `src/Core/Sim/`) + `GodotLogSink` (`src/UI/`, `GD.Print`/`GD.PrintErr`). Goldens/tests inject `NullLogSink.Instance`; MainScene injects `new GodotLogSink()`. A single one-shot host `Info` exercises the seam (NullLogSink no-ops it → zero golden impact).
+- **`DamageTable`/`FactionRegistry` fidelity (D4):** `Create` takes `DamageTable? = null` (→ `DamageTable.Default`, equal to the goldens' 3-arg combat ctors) and the caller's `FactionRegistry` (goldens/MainScene pass `(2)`, the multifaction golden passes `(4)`). Default-seeded `new EntityWorld()` preserved (no seed plumbing).
+- **StressTest relocation (AC4):** `git mv src/Core/StressTest.cs → tools/StressTest.cs` (content unchanged — namespace kept `ProjectChimera.Core` for a pure file move, sanctioned by the story; nothing references it by namespace, the scene binds by path). Scene script repointed to `res://tools/StressTest.cs`; the Tier-1 `<Compile Remove>` deleted; `godot.csproj`'s SDK default glob compiles `tools/` (confirmed). `src/Core` now has only `MainScene.cs` using Godot.
+- **Off-script discovery — `MultiMeshBridge` took the raw `SimulationLoop` by argument** (two *bare* `_simLoop` sites the original `_simLoop.` dot-grep missed). StressTest builds a custom **3-system** loop, so it cannot use the host. Resolved by making the bridge capture a stable `World` + a live alpha source (`() => host.InterpolationAlpha`), exposing a `SimulationHost` overload (MainScene) **and keeping** the raw-`SimulationLoop` overload (StressTest). This keeps `host._loop` **private** (honoring AC2's single-owner intent — no `host.Loop` leak) and leaves StressTest a pure relocation. Both paths validated in-engine.
+- **Smoke gap (non-blocking):** the in-skirmish `[Checksum]` console line was not visually captured because the main menu is mouse-only and the harness has no absolute mouse-click. That path is covered by the golden suite (`host.StepOnce()` + `SetChecksumSink` over 300 ticks, byte-identical) and the clean `_Ready` sink wiring at boot.
+
 ### File List
+
+**New (sim, Godot-free):**
+- `godot/src/Core/Sim/ILogSink.cs`
+- `godot/src/Core/Sim/NullLogSink.cs`
+- `godot/src/Core/Sim/SimulationHost.cs`
+
+**New (presentation):**
+- `godot/src/UI/GodotLogSink.cs`
+
+**New (Tier-1 test):**
+- `godot/ProjectChimera.Sim.Tests/Sim/SystemOrderTest.cs`
+
+**Moved:**
+- `godot/src/Core/StressTest.cs` → `godot/tools/StressTest.cs`
+
+**Modified:**
+- `godot/src/Core/MainScene.cs` — `+using ProjectChimera.Core.Sim`; `_simLoop` field → `_host` (+ `_logSink`); `_matchStats` `readonly`→alias; construct `_host` + alias 10 stores/systems; `_simLoop.*`→`_host.*` (tick paths, HUD, bridge init); single `SetChecksumSink`; `SetupMultiplayer` OnChecksum overwrite removed, `OnDesync`→`_logSink.Warn`.
+- `godot/src/UI/MultiMeshBridge.cs` — render source captures `World` + alpha; `SimulationHost` overload (MainScene) + raw-`SimulationLoop` overload (StressTest).
+- `godot/ProjectChimera.Sim.Tests/Golden/GoldenScenario.cs` — `GoldenHarness` holds `Host`; `Build()` via `SimulationHost.Create`.
+- `godot/ProjectChimera.Sim.Tests/Golden/MultiFactionScenario.cs` — `Build()` via `SimulationHost.Create` with `FactionRegistry(4)`.
+- `godot/ProjectChimera.Sim.Tests/Golden/GoldenChecksumReplay.cs` — `RunAndRecord` uses `harness.Host.SetChecksumSink(...)` + `harness.Host.StepOnce()`.
+- `godot/ProjectChimera.Sim.Tests/ProjectChimera.Sim.Tests.csproj` — removed the `StressTest.cs` `<Compile Remove>` (now in `tools/`).
+- `godot/scenes/stress_test.tscn` — script path → `res://tools/StressTest.cs`.
+- `_bmad-output/implementation-artifacts/sprint-status.yaml` — 1.8a `ready-for-dev` → `in-progress` → `review`.
+
+**Unchanged (verified byte-identical):** both `*.golden.txt`; `SimulationLoop.cs`; `SimChecksum.cs`; `ISimSystem`; all 9 system bodies.
+
+### Change Log
+
+- **2026-06-24 — Story 1.8a implemented (Status → review).** Extracted a Godot-free `SimulationHost` (canonical 9-system order, reserved index-3 `ModifierSystem` slot, single `SetChecksumSink`) wrapping the unchanged `SimulationLoop`; added the net-new `ILogSink`/`NullLogSink`/`GodotLogSink` seam; switched both golden harnesses + MainScene to construct the host and consolidated MainScene's double checksum-set into one sink; relocated `StressTest.cs` to `tools/`; rerouted `MultiMeshBridge` through the host (raw-loop overload retained for StressTest). Both goldens byte-identical; Tier-1 142/142; `godot.csproj` green; in-engine boot + stress-test smoke clean.

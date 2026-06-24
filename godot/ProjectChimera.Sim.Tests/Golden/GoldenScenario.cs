@@ -3,6 +3,7 @@ using ProjectChimera.AI;
 using ProjectChimera.Combat;
 using ProjectChimera.Core;
 using ProjectChimera.Core.Definitions;
+using ProjectChimera.Core.Sim;
 using ProjectChimera.Economy;
 using ProjectChimera.Navigation;
 
@@ -15,17 +16,19 @@ namespace ProjectChimera.Sim.Tests.Golden
     /// </summary>
     public sealed class GoldenHarness
     {
-        /// <summary>The live 9-system loop. Drive it with <see cref="SimulationLoop.StepOnce"/> (never Update).</summary>
-        public SimulationLoop Loop { get; }
+        /// <summary>The Godot-free sim composition root (Story 1.8a). Drive it with
+        /// <see cref="SimulationHost.StepOnce"/> (never Update); set the capture sink via
+        /// <see cref="SimulationHost.SetChecksumSink"/>.</summary>
+        public SimulationHost Host { get; }
 
         /// <summary>Entity SoA world (positions/health/flags). Read for checksums; perturb for AC3.</summary>
-        public EntityWorld World { get; }
+        public EntityWorld World => Host.World;
 
         /// <summary>Building store (construction timers drive checksum evolution).</summary>
-        public BuildingStore Buildings { get; }
+        public BuildingStore Buildings => Host.Buildings;
 
         /// <summary>Per-faction resource balances (Ore[P1] evolves as the worker deposits).</summary>
-        public ResourceStore Resources { get; }
+        public ResourceStore Resources => Host.Resources;
 
         /// <summary>
         /// Entity id of the designated perturbation target (the worker). The worker is a gatherer
@@ -35,13 +38,9 @@ namespace ProjectChimera.Sim.Tests.Golden
         /// </summary>
         public int PerturbTargetId { get; }
 
-        public GoldenHarness(SimulationLoop loop, EntityWorld world,
-            BuildingStore buildings, ResourceStore resources, int perturbTargetId)
+        public GoldenHarness(SimulationHost host, int perturbTargetId)
         {
-            Loop = loop;
-            World = world;
-            Buildings = buildings;
-            Resources = resources;
+            Host = host;
             PerturbTargetId = perturbTargetId;
         }
     }
@@ -83,50 +82,34 @@ namespace ProjectChimera.Sim.Tests.Golden
         /// </summary>
         public static GoldenHarness Build()
         {
-            // ── Stores (order as in MainScene.cs:246-251) ─────────────────────────
-            var world        = new EntityWorld();
-            var nodes        = new ResourceNodeStore();
-            var resources    = new ResourceStore(Fixed.Zero); // P1 ore set below; P2 stays 0 (keeps the AI quiet)
-            var buildings    = new BuildingStore();
-            var projectiles  = new ProjectileStore();
-            var combatEvents = new CombatEventQueue();
-            var stats        = new MatchStats();
-            var fog          = new FogOfWarSystem(Faction.Player1);
-            var p1Def        = new FactionDefinition();
-            var p2Def        = new FactionDefinition();
-            var buildSys     = new BuildingSystem(buildings, resources, p1Def, p2Def, stats);
-            var director     = new ScenarioDirector(buildings, resources);
+            // ── Sim spine via SimulationHost (Story 1.8a). The host constructs the stores + the canonical
+            //    9-system order + the SimulationLoop + EnableChecksums internally — byte-identical to the
+            //    former inline block. Pass new FactionDefinition() (matching the old BuildingSystem
+            //    construction) and OMIT the DamageTable: null → DamageTable.Default, which is exactly the old
+            //    3-arg CombatSystem/ProjectileSystem construction. (2) = P1+P2 active, so the checksum's
+            //    faction loop does Mix(Ore[1]) then Mix(Ore[2]) — byte-identical to the pre-registry literals.
+            var host = SimulationHost.Create(
+                NullLogSink.Instance,
+                new FactionRegistry(2),
+                new FactionDefinition(),
+                new FactionDefinition());
+            host.ChecksumInterval = 1;   // checksum EVERY tick so the located-tick is exact
 
-            // ── Scenario population (all Fixed; no Fixed.FromFloat) ───────────────
-            int workerId = PopulateScenario(world, nodes, buildings, resources);
+            // ── Scenario population (all Fixed; no Fixed.FromFloat). Populate AFTER construct: the systems
+            //    hold store references, so this is byte-identical to the former populate-then-construct order.
+            //    The worker is created FIRST → id 0 (the host creates zero entities), preserving the invariant.
+            int workerId = PopulateScenario(host.World, host.Nodes, host.Buildings, host.Resources);
             if (workerId != PerturbTargetId)
                 throw new InvalidOperationException(
                     $"GoldenScenario invariant broken: worker id was {workerId}, expected " +
                     $"{PerturbTargetId}. The worker MUST be created first so AC3 perturbs the right entity.");
 
-            // ── THE 9-system tick order (MainScene.cs:257-266, verbatim) ──────────
-            var loop = new SimulationLoop(world,
-                buildSys,                                                   // 1 BuildingSystem    (Economy)
-                new GatheringSystem(nodes, resources, stats),              // 2 GatheringSystem   (Economy)
-                new MovementSystem(),                                      // 3 MovementSystem    (Navigation)
-                new CombatSystem(projectiles, combatEvents, stats),       // 4 CombatSystem      (Combat)
-                new ProjectileSystem(projectiles, combatEvents, stats),   // 5 ProjectileSystem  (Combat)
-                new SupplySystem(resources),                              // 6 SupplySystem      (Economy)
-                fog,                                                       // 7 FogOfWarSystem    (Core)
-                new AiOpponentSystem(buildings, resources, buildSys, AiDifficulty.Normal), // 8 AI (plays Player2)
-                director);                                                 // 9 ScenarioDirector  (Core) — runs last
-
-            // (2) = P1+P2 active. The registry's ActiveFactions = [Player1, Player2], so the checksum's
-            // faction loop does Mix(Ore[1]) then Mix(Ore[2]) — byte-identical to the pre-registry literals.
-            loop.EnableChecksums(buildings, resources, new FactionRegistry(2)); // REQUIRED before stepping, or no checksum fires
-            loop.ChecksumInterval = 1;                  // checksum EVERY tick so the located-tick is exact
-
             // Mirror MainScene's director lifecycle: initialize empty trigger state. ScenarioDirector.Tick
             // early-returns when there are no triggers, so this is a faithful no-op — included for fidelity
             // to the live construction (and to pin the lifecycle the 1.8 decomposition must preserve).
-            director.LoadScenario(new ScenarioData());
+            host.ScenarioDirector.LoadScenario(new ScenarioData());
 
-            return new GoldenHarness(loop, world, buildings, resources, workerId);
+            return new GoldenHarness(host, workerId);
         }
 
         /// <summary>

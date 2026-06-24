@@ -2,6 +2,7 @@
 using Godot;
 using ProjectChimera.Core;
 using ProjectChimera.Core.Definitions;
+using ProjectChimera.Core.Sim;
 
 namespace ProjectChimera.UI
 {
@@ -24,8 +25,13 @@ namespace ProjectChimera.UI
     /// </summary>
     public partial class MultiMeshBridge : Node3D
     {
-        private SimulationLoop _simLoop = null!;
-        private Faction        _faction;
+        // Render source (Story 1.8a): the bridge reads sim truth (World + per-tick interpolation alpha) each
+        // frame. MainScene supplies a SimulationHost; StressTest supplies its own raw SimulationLoop — both
+        // expose World + InterpolationAlpha, so the bridge captures the (stable) World plus a live alpha
+        // source instead of coupling to either concrete owner (and the host keeps its SimulationLoop private).
+        private EntityWorld        _renderWorld = null!;
+        private System.Func<float> _alphaSource = () => 0f;
+        private Faction            _faction;
 
         // One MultiMeshInstance3D per unit type (index == EntityWorld.MeshType).
         private MultiMeshInstance3D[] _mmi          = null!;
@@ -41,10 +47,11 @@ namespace ProjectChimera.UI
         /// Per-unit-type setup. Loads one mesh per unit definition in <paramref name="factionDef"/>
         /// and applies a shared team-coloured material override.
         /// </summary>
-        public void Initialize(SimulationLoop simLoop, FactionDefinition factionDef,
+        public void Initialize(SimulationHost host, FactionDefinition factionDef,
                                Faction faction, Color teamColor)
         {
-            _simLoop = simLoop;
+            _renderWorld = host.World;
+            _alphaSource = () => host.InterpolationAlpha;
             _faction = faction;
 
             var units = factionDef.Units;
@@ -79,7 +86,8 @@ namespace ProjectChimera.UI
         public void Initialize(SimulationLoop simLoop, Mesh unitMesh, int maxInstances,
                                Faction faction, float yOffset = 0f)
         {
-            _simLoop = simLoop;
+            _renderWorld = simLoop.World;
+            _alphaSource = () => simLoop.InterpolationAlpha;
             _faction = faction;
 
             _typeCount = 1;
@@ -130,8 +138,8 @@ namespace ProjectChimera.UI
         {
             if (!_initialized) return;
 
-            EntityWorld world = _simLoop.World;
-            float alpha       = _simLoop.InterpolationAlpha;
+            EntityWorld world = _renderWorld;
+            float alpha       = _alphaSource();
             int   simCount    = world.HighWaterMark;
 
             // Pass 1 — count alive faction entities per mesh type.

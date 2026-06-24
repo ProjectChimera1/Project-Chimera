@@ -3,6 +3,7 @@ using Godot;
 using ProjectChimera.AI;
 using ProjectChimera.Combat;
 using ProjectChimera.Core.Definitions;
+using ProjectChimera.Core.Sim;
 using ProjectChimera.CreationSuite;
 using ProjectChimera.Economy;
 using ProjectChimera.Multiplayer;
@@ -28,7 +29,8 @@ namespace ProjectChimera.Core
     {
         // ── Simulation ────────────────────────────────────────────────────────
 
-        private SimulationLoop    _simLoop     = null!;
+        private SimulationHost    _host        = null!;   // Story 1.8a: the Godot-free sim composition root
+        private readonly ILogSink _logSink     = new GodotLogSink(); // presentation log seam injected into _host
         private EntityWorld       _world       = null!;
         private ResourceNodeStore _nodes       = null!;
         private ResourceStore     _resources   = null!;
@@ -153,7 +155,7 @@ namespace ProjectChimera.Core
 
         // ── Match stats ───────────────────────────────────────────────────────
 
-        private readonly MatchStats _matchStats    = new MatchStats();
+        private MatchStats _matchStats    = null!;  // alias of _host.MatchStats (assigned in _Ready, Story 1.8a)
         /// <summary>Time.GetTicksMsec() value when Play mode first started this match.</summary>
         private ulong _matchStartMs = 0;
 
@@ -259,13 +261,6 @@ namespace ProjectChimera.Core
             _slotFactionDefs[(int)Faction.Player1] = _factionDef;
             _slotFactionDefs[(int)Faction.Player2] = _factionDef2;
 
-            _world        = new EntityWorld();
-            _nodes        = new ResourceNodeStore();
-            _resources    = new ResourceStore(Fixed.Zero); // starting ore set by scenario
-            _buildings    = new BuildingStore();
-            _projectiles  = new Combat.ProjectileStore();
-            _combatEvents = new Combat.CombatEventQueue();
-
             // Damage multipliers (AR-26): load the creator-editable table. A malformed file fails closed
             // with a located error (DamageTable.FromJson); a MISSING file falls back to the canonical
             // Default (matching the FactionDefinition graceful pattern above).
@@ -274,26 +269,39 @@ namespace ProjectChimera.Core
                 ? Combat.DamageTable.Load(damageTableAbs)
                 : Combat.DamageTable.Default;
 
-            _fog = new FogOfWarSystem(Faction.Player1);
+            // ── Sim spine (Story 1.8a / AR-6): SimulationHost is the single Godot-free owner of the SoA
+            //    stores, the canonical 9-system tick order (ModifierSystem reserved at index 3), the
+            //    SimulationLoop, and the single checksum sink. MainScene injects the presentation GodotLogSink
+            //    plus the loaded inputs; sim truth now lives on the host (the fields below are aliases of it).
+            //    TODO(5.1): derive the active player count from the loaded scenario's assigned slots; 2-player
+            //    today, so new FactionRegistry(2) is behaviour-preserving (Ore[P1]+Ore[P2], byte-identical).
+            _host = SimulationHost.Create(
+                _logSink,
+                new FactionRegistry(2),
+                _factionDef,
+                _factionDef2,
+                _damageTable,
+                AiLevel);
 
-            _buildSys = new BuildingSystem(_buildings, _resources, _factionDef, _factionDef2, _matchStats);
-            _scenarioDirector = new ScenarioDirector(_buildings, _resources);
-            _simLoop = new SimulationLoop(_world,
-                _buildSys,
-                new GatheringSystem(_nodes, _resources, _matchStats),
-                new MovementSystem(),
-                new CombatSystem(_projectiles, _combatEvents, _matchStats, _damageTable),
-                new Combat.ProjectileSystem(_projectiles, _combatEvents, _matchStats, _damageTable),
-                new SupplySystem(_resources),
-                _fog,
-                new AiOpponentSystem(_buildings, _resources, _buildSys, AiLevel),
-                _scenarioDirector); // runs last — sees fully-updated world state
+            _world            = _host.World;
+            _nodes            = _host.Nodes;
+            _resources        = _host.Resources;
+            _buildings        = _host.Buildings;
+            _projectiles      = _host.Projectiles;
+            _combatEvents     = _host.CombatEvents;
+            _matchStats       = _host.MatchStats;
+            _fog              = _host.Fog;
+            _buildSys         = _host.BuildSys;
+            _scenarioDirector = _host.ScenarioDirector;
 
-            // TODO(5.1): derive active player count from the loaded scenario's assigned slots.
-            // 2-player today, so new FactionRegistry(2) is behaviour-preserving (Ore[P1]+Ore[P2], byte-identical).
-            _simLoop.EnableChecksums(_buildings, _resources, new FactionRegistry(2));
-            _simLoop.OnChecksum = (tick, checksum) =>
-                GD.Print($"[Checksum] tick={tick} hash=0x{checksum:X8}");
+            // Single checksum sink (D5): ONE owner. Offline → log; online → also forward to lockstep
+            // (replaces the former double-set: this inline log sink + the SetupMultiplayer overwrite). The
+            // lambda reads _lockstep.IsOnline at tick time, so it is correct once SetupMultiplayer has run.
+            _host.SetChecksumSink((tick, checksum) =>
+            {
+                _logSink.Info($"[Checksum] tick={tick} hash=0x{checksum:X8}");
+                if (_lockstep.IsOnline) _lockstep.SendChecksum(tick, checksum);
+            });
 
             SetupSettings();        // load persisted settings before anything reads them
             SetupAudio();           // after settings so SFX bus volume is already applied
@@ -433,12 +441,12 @@ namespace ProjectChimera.Core
                 {
                     // Replay mode: feed recorded commands instead of live network/input.
                     // Always advances one tick per frame — no stalling.
-                    _replayPlayer.Flush(_simLoop.CurrentTick);
-                    _simLoop.StepOnce();
+                    _replayPlayer.Flush(_host.CurrentTick);
+                    _host.StepOnce();
 
                     if (_replayPlayer.IsFinished)
                     {
-                        GD.Print($"[Replay] Finished at tick {_simLoop.CurrentTick}.");
+                        GD.Print($"[Replay] Finished at tick {_host.CurrentTick}.");
                         _replayPlayer = null;
                         if (_replayStatusLabel != null) _replayStatusLabel.Visible = false;
                     }
@@ -447,13 +455,13 @@ namespace ProjectChimera.Core
                 {
                     // Online: only step the sim when both peers' commands for this tick have arrived.
                     // Flush() sends local commands, polls transport, and returns true when ready.
-                    if (_lockstep.Flush(_simLoop.CurrentTick))
-                        _simLoop.StepOnce();
+                    if (_lockstep.Flush(_host.CurrentTick))
+                        _host.StepOnce();
                 }
                 else
                 {
                     // Offline: free-running fixed-timestep as before.
-                    _simLoop.Update((float)delta);
+                    _host.Update((float)delta);
                 }
 
                 if (_playFrames == 0)
@@ -945,11 +953,11 @@ void fragment() {
 
             var unitP1 = new MultiMeshBridge();
             AddChild(unitP1);
-            unitP1.Initialize(_simLoop, p1Def, Faction.Player1, p1Color);
+            unitP1.Initialize(_host, p1Def, Faction.Player1, p1Color);
 
             var unitP2 = new MultiMeshBridge();
             AddChild(unitP2);
-            unitP2.Initialize(_simLoop, p2Def, Faction.Player2, p2Color);
+            unitP2.Initialize(_host, p2Def, Faction.Player2, p2Color);
 
             var buildingBridge = new BuildingBridge();
             AddChild(buildingBridge);
@@ -1237,8 +1245,8 @@ void fragment() {
             string modeTag = isEdit ? "EDIT" : "PLAY";
 
             // ── Line 1: performance / sim state ──────────────────────────────
-            string checksumStr = _simLoop.LastChecksum == 0 ? "—"
-                : $"0x{_simLoop.LastChecksum:X8}";
+            string checksumStr = _host.LastChecksum == 0 ? "—"
+                : $"0x{_host.LastChecksum:X8}";
             string onlineTag = _lockstep.IsOnline ? "  ONLINE" : "";
 
             // ── Line 2: unit counts ───────────────────────────────────────────
@@ -1255,7 +1263,7 @@ void fragment() {
                     : $"{selCount} units{groupTag}";
 
             _hudLabel.Text =
-                $"FPS {Engine.GetFramesPerSecond()}   [{modeTag}]   Tick {_simLoop.CurrentTick}   Hash {checksumStr}{onlineTag}\n" +
+                $"FPS {Engine.GetFramesPerSecond()}   [{modeTag}]   Tick {_host.CurrentTick}   Hash {checksumStr}{onlineTag}\n" +
                 $"P1: {p1} units   P2: {p2} units   Total: {_world.AliveCount}\n" +
                 (isEdit ? $"Placing: {_placer.ModeLabel}" : $"Selected: {selInfo}");
 
@@ -1875,15 +1883,11 @@ void fragment() {
             _transport = new ENetTransport();
             _lockstep  = new LockstepManager(_transport, _world);
 
-            // Wire checksum broadcasting through lockstep when online
-            _simLoop.OnChecksum = (tick, hash) =>
-            {
-                GD.Print($"[Checksum] tick={tick} hash=0x{hash:X8}");
-                _lockstep.SendChecksum(tick, hash);
-            };
-
+            // Checksum broadcasting is handled by the SINGLE SimulationHost sink set in _Ready (it forwards to
+            // lockstep when _lockstep.IsOnline). The former second OnChecksum assignment here is removed —
+            // there is now exactly one SetChecksumSink call per caller (D5).
             _lockstep.OnDesync += (tick, local, remote) =>
-                GD.PrintErr($"[DESYNC] tick={tick} local=0x{local:X8} remote=0x{remote:X8}");
+                _logSink.Warn($"[DESYNC] tick={tick} local=0x{local:X8} remote=0x{remote:X8}");
 
             _lobbyUi = new LobbyUi
             {
