@@ -5,7 +5,7 @@ baseline_commit: 5195b2a
 
 # Story 1.8c: Asserted ScenePhaseRunner + ISetupPhase[] + PhaseOrderTest, and the MainScene strangle diff
 
-Status: review
+Status: done
 
 ## Story
 
@@ -151,7 +151,14 @@ public interface ISetupPhase
 
 ### Review Findings
 
-_(left for the code-review pass)_
+_Code review — 2026-06-24 (gds-code-review): 3-layer adversarial pass (Blind Hunter diff-only · Edge Case Hunter diff+project · Acceptance Auditor diff+spec), all at Opus. **Outcome: behavior-preserving refactor confirmed — AC1/AC2/AC3 all met, scope fence clean.** Acceptance Auditor found zero violations; Blind Hunter verified the moved bodies match the deleted originals line-by-line; Edge Case Hunter confirmed every cross-phase ordering/null invariant currently holds. 0 decision-needed · 0 patches · 4 deferred · 6 dismissed as noise._
+
+- [x] [Review][Defer] `ResolveSlotFactionDefs` throws `IndexOutOfRangeException` for player slots 4–7 [godot/src/Core/Bootstrap/Phases/ScenarioLoadPhase.cs:100] — deferred, pre-existing (verbatim move from MainScene). `_ctx.SlotFactionDefs` is sized `[5]` but `(Faction)(slot.Slot+1)` indexes 5–8 for slots 4–7, and the resolve runs (line 110) *before* the shadow-mode validator (line 111) that is designed to reject those slots. Only reachable for >4-faction scenarios → owned by Story 9.2 (which raises the `[5]` faction arrays). Optional 1-line guard if wanted now: `if ((int)faction >= _ctx.SlotFactionDefs.Length) continue;`.
+- [x] [Review][Defer] `SceneContext` `null!` cross-phase coupling is load-bearing and undefended [godot/src/Core/Bootstrap/Phases/SceneContext.cs] — deferred. Currently SAFE (Edge Case Hunter verified every synchronous cross-phase read resolves to an earlier-positioned producer, and every deferred lambda fires only after all 22 phases complete), but the invariant is implicit, not guarded/asserted. When Epics 3–8 add the six editor phases, preserve producer-before-consumer ordering or null-guard the `ctx` reads.
+- [x] [Review][Defer] `PhaseOrderTest` cannot catch concrete-phase `Name` drift or duplicate canonical names [godot/ProjectChimera.Sim.Tests/Bootstrap/PhaseOrderTest.cs] — deferred. `ScenePhaseRunner.AssertOrder` already catches any drift loudly at every boot (throws, never silent), so AC1 holds; the test pins `Canonical`↔`ExpectedOrder` but not the live concrete phase identities. A Tier-2 GdUnit4 test over the real phases would close the gap; a cheap Tier-1 win is a no-duplicates assert on `Canonical`.
+- [x] [Review][Defer] Pre-existing duplicated logic across phase files [godot/src/Core/Bootstrap/Phases/ScenarioLoadPhase.cs + ContentBrowserPhase.cs/WinConditionPhase.cs] — deferred, pre-existing. `BuildFallbackMirror` duplicates `ScenarioApplier.ApplyFallback`'s layout; `HandleLoadMap` duplicates `DoImport`'s `.chimera.zip` import. Now split across files → consolidate to one source of truth later to prevent drift.
+
+**Dismissed as noise (6):** stale `[MainScene]`/`[Navigation]` `GD.Print` tags in carved phases (cosmetic; defensible as a bootstrap-subsystem tag); `TerrainPhase`/`NavigationPhase` fallback shapes (verified — no bug); `ResetMatchOnReturnToEdit` carve (verified — all reset steps preserved); `AudioMgr` `null!`-vs-`?.` contract smell (matches original; no runtime bug); Unicode ellipsis literal vs `…` (same code point under UTF-8); `RaycastFloor`/`ApplySettingsToSystems` `_ctx` reads (safe — `_ctx` is set before the phase list and input cannot fire pre-`_Ready`).
 
 ---
 
