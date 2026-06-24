@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-06-22
-last_updated: 2026-06-23 (1.7 review)
+last_updated: 2026-06-23 (1.7 done — code review: 5 patches applied, 1 deferred to 1.8b)
 project: Project_Chimera
 project_key: NOKEY
 tracking_system: file-system
@@ -50,7 +50,7 @@ development_status:
   1-4-fixed-end-to-end-fixedjsonconverter-quantization-nondeterminism-negative-tests: done
   1-5-seeded-deterministic-simrng-folded-into-checksum-replay: done
   1-6-data-drive-damagematrix-to-damage-table-json-5x6-with-hero-damageresolver: done
-  1-7-fail-closed-scenariovalidator-validated-t-single-pre-tick-gate-canonical-start-state-hash: review
+  1-7-fail-closed-scenariovalidator-validated-t-single-pre-tick-gate-canonical-start-state-hash: done
   1-8a-extract-godot-free-simulationhost-with-the-9-system-tick-order-single-checksum-sink-ilogsink-seam: backlog
   1-8b-scenarioapplier-as-the-sole-writer-of-sim-truth-with-alloc-free-spawnunit-hoisted-path-resolution: backlog
   1-8c-asserted-scenephaserunner-isetupphase-phaseordertest-and-the-mainscene-strangle-diff: backlog

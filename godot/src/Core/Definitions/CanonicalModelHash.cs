@@ -41,10 +41,14 @@ namespace ProjectChimera.Core.Definitions
             h = MixStr(h, m.WinCondition.ToString());            // enum by NAME, not ordinal
             h = MixStr(h, m.TerrainRef);
 
-            // Sort each collection by a stable key so input/file order cannot move the hash. String keys use an
-            // ORDINAL comparer (the default string comparer is culture-sensitive — a determinism hazard).
+            // Sort each collection by a TOTAL order over EVERY folded field (not just a primary key) so neither
+            // input/file order NOR a tie on a partial key can move the hash. Numeric sort keys use the same
+            // quantized Fixed.Raw the payload folds (a raw-float key could order two values that quantize equal);
+            // string keys use an ORDINAL comparer (the default string comparer is culture-sensitive). [Story 1.7 review]
             foreach (ScenarioPlayerSlot s in (m.PlayerSlots ?? Array.Empty<ScenarioPlayerSlot>())
-                         .OrderBy(x => x.Slot))
+                         .OrderBy(x => x.Slot).ThenBy(x => x.FactionJson, StringComparer.Ordinal)
+                         .ThenBy(x => Fixed.FromFloat(x.StartOre).Raw)
+                         .ThenBy(x => Fixed.FromFloat(x.BaseX).Raw).ThenBy(x => Fixed.FromFloat(x.BaseZ).Raw))
             {
                 h = MixInt(h, s.Slot);
                 h = MixStr(h, s.FactionJson);
@@ -54,8 +58,9 @@ namespace ProjectChimera.Core.Definitions
             }
 
             foreach (ScenarioResourceNode n in (m.ResourceNodes ?? Array.Empty<ScenarioResourceNode>())
-                         .OrderBy(x => x.X).ThenBy(x => x.Z).ThenBy(x => x.Supply)
-                         .ThenBy(x => x.Rate).ThenBy(x => x.MaxGatherers))
+                         .OrderBy(x => Fixed.FromFloat(x.X).Raw).ThenBy(x => Fixed.FromFloat(x.Z).Raw)
+                         .ThenBy(x => Fixed.FromFloat(x.Supply).Raw)
+                         .ThenBy(x => Fixed.FromFloat(x.Rate).Raw).ThenBy(x => x.MaxGatherers))
             {
                 h = MixInt(h, Fixed.FromFloat(n.X).Raw);
                 h = MixInt(h, Fixed.FromFloat(n.Z).Raw);
@@ -66,7 +71,8 @@ namespace ProjectChimera.Core.Definitions
 
             foreach (ScenarioBuilding b in (m.Buildings ?? Array.Empty<ScenarioBuilding>())
                          .OrderBy(x => x.Slot).ThenBy(x => x.Type, StringComparer.Ordinal)
-                         .ThenBy(x => x.X).ThenBy(x => x.Z))
+                         .ThenBy(x => Fixed.FromFloat(x.X).Raw).ThenBy(x => Fixed.FromFloat(x.Z).Raw)
+                         .ThenBy(x => x.PreBuilt))
             {
                 h = MixStr(h, b.Type);
                 h = MixInt(h, b.Slot);
@@ -77,7 +83,7 @@ namespace ProjectChimera.Core.Definitions
 
             foreach (ScenarioUnit u in (m.Units ?? Array.Empty<ScenarioUnit>())
                          .OrderBy(x => x.Slot).ThenBy(x => x.UnitId, StringComparer.Ordinal)
-                         .ThenBy(x => x.X).ThenBy(x => x.Z))
+                         .ThenBy(x => Fixed.FromFloat(x.X).Raw).ThenBy(x => Fixed.FromFloat(x.Z).Raw))
             {
                 h = MixStr(h, u.UnitId);
                 h = MixInt(h, u.Slot);

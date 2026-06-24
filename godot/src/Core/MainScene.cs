@@ -80,6 +80,10 @@ namespace ProjectChimera.Core
         /// leaves <see cref="_scenario"/> null but still needs a real canonical hash at :316.</summary>
         private ScenarioData? _fallbackMirror;
 
+        // Story 1.7 review patch: true once a scenario (or the always-applied fallback) actually reaches the sim.
+        // In fail-closed mode a rejected model leaves this false, so _Ready publishes no canonical hash for it.
+        private bool _scenarioApplied;
+
         // ── HUD ───────────────────────────────────────────────────────────────
 
         private CanvasLayer    _uiCanvas       = null!;
@@ -327,8 +331,11 @@ namespace ProjectChimera.Core
             // stable across whitespace / JSON key order / 1.0-vs-1 / file path, fixing the AI-gen stale-file
             // desync. Folded to the existing 32-bit Ready-packet wire (widening is Epic 9). _scenario holds the
             // applied model for the file / AI / editor paths; _fallbackMirror holds it for the hardcoded fallback.
+            // Story 1.7 review patch: only publish a hash for a model that was actually applied. In fail-closed
+            // mode a rejected scenario leaves _scenarioApplied false (nothing reached the sim), so we publish 0 —
+            // the handshake treats 0 as fail-open/skip rather than advertising a start-state we never built.
             ScenarioData? hashModel = _scenario ?? _fallbackMirror;
-            _lobbyUi.ScenarioHash = hashModel != null
+            _lobbyUi.ScenarioHash = (_scenarioApplied && hashModel != null)
                 ? Definitions.CanonicalModelHash.ToWire(Definitions.CanonicalModelHash.Compute(hashModel))
                 : 0u;
             GD.Print($"[MainScene] Scenario hash: 0x{_lobbyUi.ScenarioHash:X8}");
@@ -544,9 +551,10 @@ namespace ProjectChimera.Core
             // Story 1.7: single pre-tick validation gate (shadow on master, fail-closed via env toggle). Shadow
             // mode logs located rejections and proceeds; fail-closed refuses to apply an invalid model.
             if (!ValidateBeforeApply(scenario, "ApplyScenario")) return;
+            _scenarioApplied = true; // reached only when the gate permits applying (Story 1.7 review patch)
 
             // ── 1. Player slots: faction def + starting ore + base deposit point ─
-            foreach (var slot in scenario.PlayerSlots)
+            foreach (var slot in scenario.PlayerSlots ?? System.Array.Empty<ScenarioPlayerSlot>())
             {
                 var faction = (Faction)(slot.Slot + 1); // slot 0 → Player1, slot 1 → Player2
 
@@ -568,7 +576,7 @@ namespace ProjectChimera.Core
             }
 
             // ── 2. Resource nodes ─────────────────────────────────────────────
-            foreach (var node in scenario.ResourceNodes)
+            foreach (var node in scenario.ResourceNodes ?? System.Array.Empty<ScenarioResourceNode>())
             {
                 var pos = new FixedVec3(Fixed.FromFloat(node.X), Fixed.Zero, Fixed.FromFloat(node.Z));
                 _nodes.Create(pos, Fixed.FromFloat(node.Supply),
@@ -576,7 +584,7 @@ namespace ProjectChimera.Core
             }
 
             // ── 3. Buildings ──────────────────────────────────────────────────
-            foreach (var b in scenario.Buildings)
+            foreach (var b in scenario.Buildings ?? System.Array.Empty<ScenarioBuilding>())
             {
                 var faction  = (Faction)(b.Slot + 1);
                 var pos      = new FixedVec3(Fixed.FromFloat(b.X), Fixed.Zero, Fixed.FromFloat(b.Z));
@@ -585,7 +593,7 @@ namespace ProjectChimera.Core
             }
 
             // ── 4. Units ──────────────────────────────────────────────────────
-            foreach (var u in scenario.Units)
+            foreach (var u in scenario.Units ?? System.Array.Empty<ScenarioUnit>())
             {
                 var faction = (Faction)(u.Slot + 1);
                 // Look up def from the per-slot faction definition set during slot processing above.
@@ -659,6 +667,7 @@ namespace ProjectChimera.Core
             // call is shadow-validation only (its result is intentionally not used to halt the safety net).
             _fallbackMirror = BuildFallbackMirror();
             ValidateBeforeApply(_fallbackMirror, "fallback");
+            _scenarioApplied = true; // the fallback is the always-applied safety net (Story 1.7 review patch)
 
             // Faction bases
             _resources.FactionBase[(int)Faction.Player1] = new FixedVec3(

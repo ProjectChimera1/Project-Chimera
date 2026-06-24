@@ -4,7 +4,7 @@ baseline_commit: b42f5a7
 
 # Story 1.7: Fail-closed ScenarioValidator + Validated<T> single pre-tick gate (canonical start-state hash)
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -484,3 +484,23 @@ Implemented the net-new fail-closed validation gate + canonical start-state hash
 | Date | Change |
 | --- | --- |
 | 2026-06-23 | Implemented Story 1.7: net-new `ScenarioValidator` + `Validated<T>` shadow-mode gate on all scenario entry paths, `CanonicalModelHash` (FNV-64) re-pointing the lobby start-state hash off `ComputeFileHash`, `ScenarioGate` shadow/fail-closed policy, and `Validation/` Tier-1 tests. Goldens unchanged; 133 Tier-1 tests green. Status → review. |
+
+---
+
+## Review Findings (code review 2026-06-23)
+
+_Adversarial review — Blind Hunter (diff-only) + Edge Case Hunter (diff + source) + Acceptance Auditor (diff + spec), all Opus 4.8. **AC1–AC5 independently verified MET** (133/133 Tier-1 green, both goldens byte-identical, no sim signature touched). The items below are hardening / edge-cases against a fundamentally sound implementation — not blocking defects. 5 findings dismissed as noise, including the `Faction.Player4` ceiling "off-by-one" (verified a false positive — the live enum tops at `Player4 == 4`, so the `slot+1 > (int)Faction.Player4` check correctly rejects slot ≥ 4)._
+
+### Patch (unambiguous fixes)
+
+_Decision items resolved 2026-06-23 ("go with your picks"): fail-closed hash gap → patched now (first item below); `default(Validated<T>)` hole → deferred to Story 1.8b (see Deferred)._
+
+- [x] [Review][Patch] Fail-closed publishes a canonical hash for a model it refused to apply [MainScene.cs:330-333 vs :546] — With `CHIMERA_VALIDATE_FAILCLOSED=1`, an invalid scenario makes `ApplyScenario` early-return at `:546` (nothing applied to the sim), but `_scenario` was already assigned at `:499`/`:516`, so the Ready-packet hash at `:330-333` folds a start-state the sim never built → a false "match" / silent desync. Default shadow mode is unaffected. Fix (resolved from decision): when the gate refuses to apply a model, do not publish a canonical hash for it — leave `ScenarioHash = 0` (the lobby handshake already treats 0 as fail-open / skip).
+- [x] [Review][Patch] Canonical hash sort keys omit folded fields → JSON array order can change the hash [CanonicalModelHash.cs:46-86] — buildings sort by `(Slot,Type,X,Z)` yet also fold `PreBuilt`; player slots sort by `Slot` alone yet fold `FactionJson`/`StartOre`/`BaseX`/`BaseZ`; every collection sorts on raw `float` keys rather than the quantized `Fixed.Raw` values it actually folds. This contradicts the type's own docstring ("collections SORTED by a stable key, so JSON array order cannot change the hash"). Valid-model exposure is the dev-documented stacked-buildings-differing-only-in-`PreBuilt` corner (Completion Notes); the slot/float facets additionally defend the duplicate-slot shadow-mode path. Fix: sort each collection by the full quantized folded tuple (one extended `ThenBy` chain per collection).
+- [x] [Review][Patch] Validator tolerates null collection arrays that then NRE in ApplyScenario [ScenarioValidator.cs; MainScene.cs:549/571/579/588] — the validator's `?? Array.Empty<>()` silently passes a `null` `PlayerSlots`/`ResourceNodes`/`Buildings`/`Units` (reachable via an explicit `"player_slots": null` in hand-authored / AI-generated JSON), but the unguarded `foreach` in `ApplyScenario` NREs on the same null. The new gate gives false "safe to apply" confidence and, in fail-closed mode, can't even locate the error. Fix: validator rejects null collection fields with a located error.
+- [x] [Review][Patch] Stale doc comment: Proof ctor described as "private" [Validated.cs:26] — the ctor-level XML doc says the Proof ctor "is private to that class," but it is `internal` (the class-level doc and Debug Log already explain why private raises CS0122). Fix: correct line 26 to match.
+- [x] [Review][Patch] Test hardening for the hash / validator boundaries [Validation/*.cs] — add tests that lock in the two patches above (PreBuilt-tiebreaker hash stability, duplicate-slot hash stability, null-array rejection, `Validate(null)`), and tighten three over-loose asserts (the `ToWire` sentinel test comment misdescribes the fold mechanism; the over-range position test asserts only the field name, not the reason-branch; the sole-minter source scan is a whitespace-evadable substring match).
+
+### Deferred
+
+- [x] [Review][Defer] `default(Validated<T>)` can sidestep the Proof-token guarantee [Validated.cs:19-29, 59] — deferred to Story 1.8b. Harmless in 1.7 (the type is never consumed yet; `ValidationResult.Ok` already gates `.Value`); it becomes a validation-bypass vector only when 1.8b makes the scenario applier require `Validated<ScenarioData>`. Close it there: reject `default`/unproven values at the consumption point (e.g. an internal `_isProven` flag the real mint sets).

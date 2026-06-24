@@ -69,6 +69,14 @@ namespace ProjectChimera.Core.Definitions
 
             float bounds = m.MapBounds;
 
+            // ── Collections must be present. A null array is malformed input the applier would NRE on, so the
+            // validator rejects it (located) rather than silently treating it as empty via the `?? Array.Empty`
+            // guards below — those are then belt-and-suspenders. [Story 1.7 review patch] ──
+            if (m.PlayerSlots is null)   return ValidationResult.Fail("scenario.player_slots is null.");
+            if (m.ResourceNodes is null) return ValidationResult.Fail("scenario.resource_nodes is null.");
+            if (m.Buildings is null)     return ValidationResult.Fail("scenario.buildings is null.");
+            if (m.Units is null)         return ValidationResult.Fail("scenario.units is null.");
+
             // ── Player slots: range / non-negative ore / in-bounds base / engine ceiling / uniqueness ──
             // declared = the set of slots a PlayerSlot actually declares; buildings/units must reference one of
             // these or they are dangling.

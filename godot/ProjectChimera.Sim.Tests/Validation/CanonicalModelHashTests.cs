@@ -125,7 +125,7 @@ namespace ProjectChimera.Sim.Tests.Validation
         public void ToWire_FoldsTo32Bit_AndAppliesZeroSentinel()
         {
             Assert.Equal(1u, CanonicalModelHash.ToWire(0UL));             // 0 → 1 (never the fail-open value)
-            Assert.Equal(1u, CanonicalModelHash.ToWire(0x1_0000_0001UL)); // high ^ low == 0 → sentinel → 1
+            Assert.Equal(1u, CanonicalModelHash.ToWire(0x1_0000_0001UL)); // (uint)(h ^ (h>>32)) truncates to 0 → sentinel → 1
             ulong h = CanonicalModelHash.Compute(BuildModel(false));
             Assert.NotEqual(0u, CanonicalModelHash.ToWire(h));
             Assert.Equal(CanonicalModelHash.ToWire(h), CanonicalModelHash.ToWire(h)); // stable
@@ -156,6 +156,51 @@ namespace ProjectChimera.Sim.Tests.Validation
             if (expected == 0UL) expected = 1UL;             // mirror the documented 0 → 1 sentinel
 
             Assert.Equal(expected, CanonicalModelHash.Compute(model));
+        }
+
+        [Fact]
+        public void Buildings_DifferingOnlyInPreBuilt_AreOrderStable()
+        {
+            // Two buildings identical on (Slot, Type, X, Z) but differing on PreBuilt — a FOLDED field. PreBuilt
+            // must be part of the sort order, else array order leaks into the hash → false MP desync. [Review][Patch]
+            static ScenarioData Make(bool reversed)
+            {
+                var buildings = new[]
+                {
+                    new ScenarioBuilding { Type = "CommandCenter", Slot = 0, X = 10f, Z = 10f, PreBuilt = true },
+                    new ScenarioBuilding { Type = "CommandCenter", Slot = 0, X = 10f, Z = 10f, PreBuilt = false },
+                };
+                if (reversed) Array.Reverse(buildings);
+                return new ScenarioData
+                {
+                    TerrainRef = "", MapBounds = 120f, WinCondition = WinCondition.DestroyAllBuildings,
+                    PlayerSlots = new[] { new ScenarioPlayerSlot { Slot = 0, FactionJson = "res://a.json" } },
+                    Buildings = buildings,
+                };
+            }
+            Assert.Equal(CanonicalModelHash.Compute(Make(false)), CanonicalModelHash.Compute(Make(true)));
+        }
+
+        [Fact]
+        public void PlayerSlots_SharingASlotValue_AreOrderStable()
+        {
+            // Two slots sharing Slot but differing on folded fields. The validator rejects duplicate slots, but in
+            // shadow mode such a model still reaches Compute — the hash must not depend on array order. [Review][Patch]
+            static ScenarioData Make(bool reversed)
+            {
+                var slots = new[]
+                {
+                    new ScenarioPlayerSlot { Slot = 0, FactionJson = "res://a.json", StartOre = 200f, BaseX = -45f, BaseZ = 0f },
+                    new ScenarioPlayerSlot { Slot = 0, FactionJson = "res://b.json", StartOre = 150f, BaseX =  45f, BaseZ = 0f },
+                };
+                if (reversed) Array.Reverse(slots);
+                return new ScenarioData
+                {
+                    TerrainRef = "", MapBounds = 120f, WinCondition = WinCondition.DestroyAllBuildings,
+                    PlayerSlots = slots,
+                };
+            }
+            Assert.Equal(CanonicalModelHash.Compute(Make(false)), CanonicalModelHash.Compute(Make(true)));
         }
 
         // ── Independent FNV-64 reference (NOT the production MixInt/MixStr) ──

@@ -22,8 +22,10 @@ namespace ProjectChimera.Core.Definitions
         public T Value { get; }
 
         /// <summary>
-        /// Mint a validated value. Callable only from <see cref="ScenarioValidator"/>, because it requires a
-        /// <see cref="ScenarioValidator.Proof"/> whose constructor is private to that class.
+        /// Mint a validated value. Callable only from <see cref="ScenarioValidator"/> within the sim assembly,
+        /// because it requires a <see cref="ScenarioValidator.Proof"/> whose constructor is <c>internal</c> (a
+        /// private nested ctor would be a C# CS0122 error — see the class summary above; <c>internal</c> + the
+        /// ValidatedSoleMinterTest source scan is the equivalent guarantee).
         /// </summary>
         public Validated(T value, ScenarioValidator.Proof proof) { Value = value; }
     }

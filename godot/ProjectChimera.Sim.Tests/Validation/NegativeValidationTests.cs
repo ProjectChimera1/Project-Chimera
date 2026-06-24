@@ -66,13 +66,14 @@ namespace ProjectChimera.Sim.Tests.Validation
         }
 
         [Fact]
-        public void OverRangePosition_IsRejected()
+        public void OverRangePosition_IsRejected_ViaTheRangeBranch()
         {
             var m = ValidModel();
             m.PlayerSlots[0].BaseX = 40000f; // beyond the 16.16 range (>= 32768) — would wrap Fixed.FromFloat
             ValidationResult r = NewValidator().Validate(m);
             Assert.False(r.Ok);
             Assert.Contains("base_x", r.Error!);
+            Assert.Contains("16.16 range", r.Error!); // the range branch, NOT the map_bounds branch (distinct reasons)
         }
 
         [Fact]
@@ -207,6 +208,36 @@ namespace ProjectChimera.Sim.Tests.Validation
             };
             var ex = Record.Exception(() => NewValidator().Validate(m));
             Assert.Null(ex);
+        }
+
+        [Fact]
+        public void NullModel_IsRejected()
+        {
+            ValidationResult r = NewValidator().Validate(null!);
+            Assert.False(r.Ok);
+            Assert.Contains("null", r.Error!);
+        }
+
+        [Theory]
+        [InlineData("player_slots")]
+        [InlineData("resource_nodes")]
+        [InlineData("buildings")]
+        [InlineData("units")]
+        public void NullCollection_IsRejected_LocatingTheField(string field)
+        {
+            // A null array is malformed input the applier would NRE on; the validator must reject it (located),
+            // not silently treat it as empty. [Review][Patch]
+            var m = ValidModel();
+            switch (field)
+            {
+                case "player_slots":   m.PlayerSlots = null!;   break;
+                case "resource_nodes": m.ResourceNodes = null!; break;
+                case "buildings":      m.Buildings = null!;     break;
+                case "units":          m.Units = null!;         break;
+            }
+            ValidationResult r = NewValidator().Validate(m);
+            Assert.False(r.Ok);
+            Assert.Contains(field, r.Error!);
         }
     }
 }

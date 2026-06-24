@@ -2,6 +2,7 @@
 using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Text.RegularExpressions;
 using ProjectChimera.Core;
 using ProjectChimera.Core.Definitions;
 using Xunit;
@@ -40,11 +41,14 @@ namespace ProjectChimera.Sim.Tests.Validation
             string srcRoot = LocateSrcRoot();
             Assert.True(Directory.Exists(srcRoot), $"Could not locate the sim source root at '{srcRoot}'.");
 
+            // Whitespace-tolerant so `new  Validated<` / `new\nValidated<` cannot evade the scan — a missed mint
+            // (not a false trip) is the dangerous failure. [Review][Patch]
+            var mintPattern = new Regex(@"new\s+Validated\s*<");
             string[] offenders = Directory
                 .EnumerateFiles(srcRoot, "*.cs", SearchOption.AllDirectories)
-                .Where(f => File.ReadAllText(f).Contains("new Validated<"))
+                .Where(f => mintPattern.IsMatch(File.ReadAllText(f)))
+                .Where(f => Path.GetFileName(f) != "ScenarioValidator.cs")
                 .Select(Path.GetFileName)
-                .Where(name => name != "ScenarioValidator.cs")
                 .ToArray()!;
 
             Assert.True(offenders.Length == 0,
