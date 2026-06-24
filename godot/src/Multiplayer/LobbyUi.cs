@@ -131,6 +131,14 @@ namespace ProjectChimera.Multiplayer
             if (!Visible) return;
             _transport.Poll();
             _nakama.DrainEvents();   // marshal Nakama background events to main thread
+#if DEBUG
+            // Loopback smoke (auto-join): ready as soon as the connection is established, INDEPENDENT of the
+            // server's Hello packet arriving. The Hello (faction assignment) is reliable and still arrives to
+            // set the faction before StartGame, but readiness must not hinge on its timing — a single delayed/
+            // missed Hello otherwise leaves the lobby stuck on "Ready! Waiting" forever. Fires once (OnReadyPressed
+            // sets _readyConfirmed). The connect event itself is reliable, so this always fires after connecting.
+            if (_autoReady && !_readyConfirmed && _transport.IsConnected) OnReadyPressed();
+#endif
         }
 
 #if DEBUG
