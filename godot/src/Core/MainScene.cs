@@ -70,6 +70,16 @@ namespace ProjectChimera.Core
         /// </summary>
         private ScenarioData? _scenario;
 
+        // ── Story 1.7: fail-closed validation gate (shadow on master) + canonical-model hash ──────
+        /// <summary>The single pre-tick validation gate (Godot-free). Shadow-mode on master; the GD.PrintErr
+        /// rejection log and the shadow/fail-closed apply policy live here in presentation.</summary>
+        private readonly Definitions.ScenarioValidator _validator = new();
+        /// <summary>Fail-closed toggle (CHIMERA_VALIDATE_FAILCLOSED, default off). Flip only on a release branch.</summary>
+        private static readonly bool _failClosed = Definitions.ScenarioGate.IsFailClosed();
+        /// <summary>In-memory <see cref="ScenarioData"/> mirror of the hardcoded fallback — the fallback path
+        /// leaves <see cref="_scenario"/> null but still needs a real canonical hash at :316.</summary>
+        private ScenarioData? _fallbackMirror;
+
         // ── HUD ───────────────────────────────────────────────────────────────
 
         private CanvasLayer    _uiCanvas       = null!;
@@ -313,8 +323,14 @@ namespace ProjectChimera.Core
 
             // Compute scenario hash now that both scenario and lobby are ready.
             // Sent with the Ready packet so peers can detect map mismatches before starting.
-            _lobbyUi.ScenarioHash = Definitions.ScenarioSerializer.ComputeFileHash(
-                ProjectSettings.GlobalizePath(ScenarioPath));
+            // Story 1.7 (AR-23): canonical-model hash over the in-memory APPLIED scenario (not file bytes) —
+            // stable across whitespace / JSON key order / 1.0-vs-1 / file path, fixing the AI-gen stale-file
+            // desync. Folded to the existing 32-bit Ready-packet wire (widening is Epic 9). _scenario holds the
+            // applied model for the file / AI / editor paths; _fallbackMirror holds it for the hardcoded fallback.
+            ScenarioData? hashModel = _scenario ?? _fallbackMirror;
+            _lobbyUi.ScenarioHash = hashModel != null
+                ? Definitions.CanonicalModelHash.ToWire(Definitions.CanonicalModelHash.Compute(hashModel))
+                : 0u;
             GD.Print($"[MainScene] Scenario hash: 0x{_lobbyUi.ScenarioHash:X8}");
 
             // If a replay file is specified via the Inspector, load it now and
@@ -506,11 +522,29 @@ namespace ProjectChimera.Core
         }
 
         /// <summary>
+        /// Story 1.7 shadow-mode gate: run the model through the validator before it is applied to the sim. On
+        /// failure, log a LOCATED rejection (presentation-side — the Godot-free validator never logs) and return
+        /// whether to still proceed: shadow mode (default) proceeds; fail-closed (CHIMERA_VALIDATE_FAILCLOSED=1)
+        /// halts. Never throws.
+        /// </summary>
+        private bool ValidateBeforeApply(ScenarioData model, string pathLabel)
+        {
+            Definitions.ValidationResult result = _validator.Validate(model);
+            if (!result.Ok)
+                GD.PrintErr($"[ScenarioValidator] {pathLabel} REJECTED: {result.Error}");
+            return Definitions.ScenarioGate.ShouldProceed(result.Ok, _failClosed);
+        }
+
+        /// <summary>
         /// Apply a loaded <see cref="ScenarioData"/> to the simulation stores.
         /// Order: faction setup → resource nodes → buildings → units.
         /// </summary>
         private void ApplyScenario(ScenarioData scenario)
         {
+            // Story 1.7: single pre-tick validation gate (shadow on master, fail-closed via env toggle). Shadow
+            // mode logs located rejections and proceeds; fail-closed refuses to apply an invalid model.
+            if (!ValidateBeforeApply(scenario, "ApplyScenario")) return;
+
             // ── 1. Player slots: faction def + starting ore + base deposit point ─
             foreach (var slot in scenario.PlayerSlots)
             {
@@ -618,6 +652,14 @@ namespace ProjectChimera.Core
         /// </summary>
         private void ApplyFallbackScenario()
         {
+            // Story 1.7 (D9): build a ScenarioData mirror of the hardcoded fallback so it passes through the same
+            // validation gate (AC1) and gets a real canonical hash at :316 (AC3). The hardcoded apply below is
+            // kept VERBATIM — we do NOT reroute through ApplyScenario (that would newly fire match_start triggers
+            // and move behavior). The fallback is the missing-file safety net, so it is always applied; the gate
+            // call is shadow-validation only (its result is intentionally not used to halt the safety net).
+            _fallbackMirror = BuildFallbackMirror();
+            ValidateBeforeApply(_fallbackMirror, "fallback");
+
             // Faction bases
             _resources.FactionBase[(int)Faction.Player1] = new FixedVec3(
                 Fixed.FromFloat(-45f), Fixed.Zero, Fixed.Zero);
@@ -663,6 +705,49 @@ namespace ProjectChimera.Core
                 SpawnScenarioUnit(workerDef2, Faction.Player2, +42f, +3f);
             }
         }
+
+        /// <summary>
+        /// Story 1.7: a <see cref="ScenarioData"/> mirror of the hardcoded <see cref="ApplyFallbackScenario"/>
+        /// layout, used ONLY to feed the validation gate and the canonical-model hash (the fallback writes stores
+        /// directly and never builds a ScenarioData). Keep these literal values in sync with the apply above;
+        /// unit_id "worker" is the conventional worker id. Local-only — the fallback fires only when the scenario
+        /// file is missing.
+        /// </summary>
+        private static ScenarioData BuildFallbackMirror() => new ScenarioData
+        {
+            Id           = "fallback",
+            DisplayName  = "Fallback",
+            MapBounds    = 120f,
+            WinCondition = WinCondition.DestroyAllBuildings,
+            PlayerSlots = new[]
+            {
+                new ScenarioPlayerSlot { Slot = 0, StartOre = 200f, BaseX = -45f, BaseZ = 0f },
+                new ScenarioPlayerSlot { Slot = 1, StartOre = 200f, BaseX =  45f, BaseZ = 0f },
+            },
+            ResourceNodes = new[]
+            {
+                new ScenarioResourceNode { X = -20f, Z = -15f, Supply = 600f, Rate = 5f, MaxGatherers = 4 },
+                new ScenarioResourceNode { X = -20f, Z =  15f, Supply = 600f, Rate = 5f, MaxGatherers = 4 },
+                new ScenarioResourceNode { X =  20f, Z = -15f, Supply = 600f, Rate = 5f, MaxGatherers = 4 },
+                new ScenarioResourceNode { X =  20f, Z =  15f, Supply = 600f, Rate = 5f, MaxGatherers = 4 },
+                new ScenarioResourceNode { X =   0f, Z = -25f, Supply = 400f, Rate = 5f, MaxGatherers = 4 },
+                new ScenarioResourceNode { X =   0f, Z =  25f, Supply = 400f, Rate = 5f, MaxGatherers = 4 },
+                new ScenarioResourceNode { X = -35f, Z =   0f, Supply = 300f, Rate = 5f, MaxGatherers = 4 },
+                new ScenarioResourceNode { X =  35f, Z =   0f, Supply = 300f, Rate = 5f, MaxGatherers = 4 },
+            },
+            Buildings = new[]
+            {
+                new ScenarioBuilding { Type = "CommandCenter", Slot = 0, X = -45f, Z = 0f, PreBuilt = true },
+                new ScenarioBuilding { Type = "CommandCenter", Slot = 1, X =  45f, Z = 0f, PreBuilt = true },
+            },
+            Units = new[]
+            {
+                new ScenarioUnit { UnitId = "worker", Slot = 0, X = -42f, Z = -3f },
+                new ScenarioUnit { UnitId = "worker", Slot = 0, X = -42f, Z =  3f },
+                new ScenarioUnit { UnitId = "worker", Slot = 1, X =  42f, Z = -3f },
+                new ScenarioUnit { UnitId = "worker", Slot = 1, X =  42f, Z =  3f },
+            },
+        };
 
         // ── Setup ─────────────────────────────────────────────────────────────
 

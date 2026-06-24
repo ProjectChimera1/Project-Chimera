@@ -4,7 +4,7 @@ baseline_commit: b42f5a7
 
 # Story 1.7: Fail-closed ScenarioValidator + Validated<T> single pre-tick gate (canonical start-state hash)
 
-Status: ready-for-dev
+Status: review
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -171,44 +171,44 @@ Mirrors the codebase's only branch-toggle idiom (`CHIMERA_GOLDEN_RECORD`, `Golde
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1 — Net-new `Validated<T>` + `ValidationResult` with the `Proof`-token mint guard (AC: 1)**
-  - [ ] Create `godot/src/Core/Definitions/Validated.cs` (`#nullable enable`, namespace `ProjectChimera.Core.Definitions`, **no `using Godot`**): `public readonly struct Validated<T>` with `public T Value { get; }` and the `Validated(T value, ScenarioValidator.Proof proof)` constructor (D1).
-  - [ ] In the same file (or `ValidationResult.cs`): `public readonly struct ValidationResult` (`Ok`, `Error`, `Value`) with `static ValidationResult Pass(Validated<ScenarioData>)` / `static ValidationResult Fail(string located)` (D3).
-  - [ ] `dotnet build godot/godot.csproj` → expect an error until `ScenarioValidator.Proof` exists (Task 2); that's fine.
+- [x] **Task 1 — Net-new `Validated<T>` + `ValidationResult` with the `Proof`-token mint guard (AC: 1)**
+  - [x] Create `godot/src/Core/Definitions/Validated.cs` (`#nullable enable`, namespace `ProjectChimera.Core.Definitions`, **no `using Godot`**): `public readonly struct Validated<T>` with `public T Value { get; }` and the `Validated(T value, ScenarioValidator.Proof proof)` constructor (D1).
+  - [x] In the same file (or `ValidationResult.cs`): `public readonly struct ValidationResult` (`Ok`, `Error`, `Value`) with `static ValidationResult Pass(Validated<ScenarioData>)` / `static ValidationResult Fail(string located)` (D3).
+  - [x] `dotnet build godot/godot.csproj` → expect an error until `ScenarioValidator.Proof` exists (Task 2); that's fine.
 
-- [ ] **Task 2 — Net-new `ScenarioValidator.Validate` + all checks (AC: 1, 2)**
-  - [ ] Create `godot/src/Core/Definitions/ScenarioValidator.cs` (`#nullable enable`, **no `using Godot`**): `public sealed class ScenarioValidator` with the nested `public sealed class Proof { private Proof() {} }`, the `private static readonly Proof _proof = new Proof();`, and `public ValidationResult Validate(ScenarioData model)`.
-  - [ ] Implement the D4 checks, fail-fast with a **located** error (field path + offending value): finite+range numerics; non-negatives; positions within `MapBounds`; slot bounds via `FactionRegistry`/`Faction` (`[0,PLAYER_COUNT)` + maps to a defined `Faction` ≤ `Player4` + unique); building/unit slot references a declared `PlayerSlot` (dangling-ref); `Building.Type` is a known `BuildingType` name.
-  - [ ] Reserve AR-13 with **one comment** in `Validate` (name AR-13 + forward owner Story 2.3) — the forbidden-until-`SimRng` condition is structurally satisfied (`SimRng` present since 1.5, unconditionally non-null) and the mature "random effects draw from `world.Rng`" rule is Epic 2's effect-validator. **Do NOT** implement a presence check that can never fire (D4).
-  - [ ] On full success: `return ValidationResult.Pass(new Validated<ScenarioData>(model, _proof));`.
-  - [ ] `dotnet build godot/godot.csproj` → green (only pre-existing CS8632 warnings).
+- [x] **Task 2 — Net-new `ScenarioValidator.Validate` + all checks (AC: 1, 2)**
+  - [x] Create `godot/src/Core/Definitions/ScenarioValidator.cs` (`#nullable enable`, **no `using Godot`**): `public sealed class ScenarioValidator` with the nested `public sealed class Proof { private Proof() {} }`, the `private static readonly Proof _proof = new Proof();`, and `public ValidationResult Validate(ScenarioData model)`.
+  - [x] Implement the D4 checks, fail-fast with a **located** error (field path + offending value): finite+range numerics; non-negatives; positions within `MapBounds`; slot bounds via `FactionRegistry`/`Faction` (`[0,PLAYER_COUNT)` + maps to a defined `Faction` ≤ `Player4` + unique); building/unit slot references a declared `PlayerSlot` (dangling-ref); `Building.Type` is a known `BuildingType` name.
+  - [x] Reserve AR-13 with **one comment** in `Validate` (name AR-13 + forward owner Story 2.3) — the forbidden-until-`SimRng` condition is structurally satisfied (`SimRng` present since 1.5, unconditionally non-null) and the mature "random effects draw from `world.Rng`" rule is Epic 2's effect-validator. **Do NOT** implement a presence check that can never fire (D4).
+  - [x] On full success: `return ValidationResult.Pass(new Validated<ScenarioData>(model, _proof));`.
+  - [x] `dotnet build godot/godot.csproj` → green (only pre-existing CS8632 warnings).
 
-- [ ] **Task 3 — Net-new `CanonicalModelHash` (FNV-64, sorted, quantized, sentinel) (AC: 3)**
-  - [ ] Create `godot/src/Core/Definitions/CanonicalModelHash.cs` (`#nullable enable`, **no `using Godot`**): `public static class CanonicalModelHash` with `const int AlgoVersion = 2`, FNV-64 constants, a 64-bit byte-wise `Mix`, `ulong Compute(ScenarioData)`, and `uint ToWire(ulong)`.
-  - [ ] Fold the D5 field set in fixed order; **sort** each collection by its D5 key; **quantize** floats via `Fixed.FromFloat(v).Raw`; fold enums/strings by name/UTF-8; **exclude** `Id`/`DisplayName`/`Triggers`; apply the `0 → 1` sentinel in both `Compute` and `ToWire`.
-  - [ ] `dotnet build godot/godot.csproj` → green.
+- [x] **Task 3 — Net-new `CanonicalModelHash` (FNV-64, sorted, quantized, sentinel) (AC: 3)**
+  - [x] Create `godot/src/Core/Definitions/CanonicalModelHash.cs` (`#nullable enable`, **no `using Godot`**): `public static class CanonicalModelHash` with `const int AlgoVersion = 2`, FNV-64 constants, a 64-bit byte-wise `Mix`, `ulong Compute(ScenarioData)`, and `uint ToWire(ulong)`.
+  - [x] Fold the D5 field set in fixed order; **sort** each collection by its D5 key; **quantize** floats via `Fixed.FromFloat(v).Raw`; fold enums/strings by name/UTF-8; **exclude** `Id`/`DisplayName`/`Triggers`; apply the `0 → 1` sentinel in both `Compute` and `ToWire`.
+  - [x] `dotnet build godot/godot.csproj` → green.
 
-- [ ] **Task 4 — Insert the shadow-mode gate on all entry paths + re-point the hash (AC: 1, 3, 4)**
-  - [ ] Add the presentation gate (D7): a `ScenarioValidator _validator` field on `MainScene` (or a small `src/UI/ScenarioGate.cs`), the `_failClosed` env-var read, and `bool ValidateBeforeApply(ScenarioData, string pathLabel)`.
-  - [ ] Call `ValidateBeforeApply(scenario, "<path>")` at the **top of `ApplyScenario`** (`MainScene.cs:512`); in fail-closed mode `return;` before applying (shadow mode proceeds).
-  - [ ] In `ApplyFallbackScenario` (`MainScene.cs:619`): build a `ScenarioData` mirror of the hardcoded values, run `ValidateBeforeApply(mirror, "fallback")`, and keep the existing hardcoded apply (D9). Stash the mirror so the hash re-point can use it.
-  - [ ] Re-point `MainScene.cs:316`: `_lobbyUi.ScenarioHash = CanonicalModelHash.ToWire(CanonicalModelHash.Compute(model));` where `model` is the applied `ScenarioData` (`_scenario` for the normal paths, the fallback mirror otherwise). Keep the `GD.Print` hash log line (now `0x{...:X8}` of the folded wire).
-  - [ ] `dotnet build godot/godot.csproj` → green.
+- [x] **Task 4 — Insert the shadow-mode gate on all entry paths + re-point the hash (AC: 1, 3, 4)**
+  - [x] Add the presentation gate (D7): a `ScenarioValidator _validator` field on `MainScene` (or a small `src/UI/ScenarioGate.cs`), the `_failClosed` env-var read, and `bool ValidateBeforeApply(ScenarioData, string pathLabel)`.
+  - [x] Call `ValidateBeforeApply(scenario, "<path>")` at the **top of `ApplyScenario`** (`MainScene.cs:512`); in fail-closed mode `return;` before applying (shadow mode proceeds).
+  - [x] In `ApplyFallbackScenario` (`MainScene.cs:619`): build a `ScenarioData` mirror of the hardcoded values, run `ValidateBeforeApply(mirror, "fallback")`, and keep the existing hardcoded apply (D9). Stash the mirror so the hash re-point can use it.
+  - [x] Re-point `MainScene.cs:316`: `_lobbyUi.ScenarioHash = CanonicalModelHash.ToWire(CanonicalModelHash.Compute(model));` where `model` is the applied `ScenarioData` (`_scenario` for the normal paths, the fallback mirror otherwise). Keep the `GD.Print` hash log line (now `0x{...:X8}` of the folded wire).
+  - [x] `dotnet build godot/godot.csproj` → green.
 
-- [ ] **Task 5 — Tier-1 `Validation/` tests (AC: 1, 2, 3, 4)**
-  - [ ] New `godot/ProjectChimera.Sim.Tests/Validation/NegativeValidationTests.cs` (AC2): for each invalid case assert `Validate(...).Ok == false` and `Error` **locates** the field — NaN/Inf ore, over-range position, position outside `MapBounds`, negative supply/rate, `slot` ≥ ceiling, duplicate slot, building/unit slot with no declared `PlayerSlot` (dangling), unknown `Building.Type` ("Frost"). Assert a **valid** model returns `Ok == true` with a `Validated<ScenarioData>` whose `Value` is the same model. _(No test for AR-13 randomness — it has no reachable failing case in 1.7; see D4.)_
-  - [ ] New `Validation/CanonicalModelHashTests.cs` (AC3): build one `ScenarioData`; assert two semantically-identical instances (reordered collections, equal-after-quantize values) hash **equal**; a single changed gameplay value hashes **different**; `Id`/`DisplayName`/`Triggers` changes do **not** change the hash; the hash is **never 0**; `ToWire` is non-zero and stable. Pin one hash against an **independently-computed** FNV-64 of a tiny known model (avoid a self-tautology).
-  - [ ] New `Validation/ValidatedMintingTests.cs` (AC1): assert `Validate` mints a `Validated<ScenarioData>` on success; add `ValidatedSoleMinterTest` scanning the sim source for `new Validated<` and asserting the only hit is inside `ScenarioValidator.cs`.
-  - [ ] New `Validation/ShadowModeTests.cs` (AC4): assert the validator itself never throws/logs (pure) and `ValidationResult.Fail` carries the located message (the shadow-vs-fail-closed branch is presentation-side; assert the policy helper's decision given `_failClosed` true/false if it is extracted to `src/UI` and Godot-free-testable — otherwise document it as the in-engine smoke check).
-  - [ ] `dotnet test --filter FullyQualifiedName~Validation` → green.
+- [x] **Task 5 — Tier-1 `Validation/` tests (AC: 1, 2, 3, 4)**
+  - [x] New `godot/ProjectChimera.Sim.Tests/Validation/NegativeValidationTests.cs` (AC2): for each invalid case assert `Validate(...).Ok == false` and `Error` **locates** the field — NaN/Inf ore, over-range position, position outside `MapBounds`, negative supply/rate, `slot` ≥ ceiling, duplicate slot, building/unit slot with no declared `PlayerSlot` (dangling), unknown `Building.Type` ("Frost"). Assert a **valid** model returns `Ok == true` with a `Validated<ScenarioData>` whose `Value` is the same model. _(No test for AR-13 randomness — it has no reachable failing case in 1.7; see D4.)_
+  - [x] New `Validation/CanonicalModelHashTests.cs` (AC3): build one `ScenarioData`; assert two semantically-identical instances (reordered collections, equal-after-quantize values) hash **equal**; a single changed gameplay value hashes **different**; `Id`/`DisplayName`/`Triggers` changes do **not** change the hash; the hash is **never 0**; `ToWire` is non-zero and stable. Pin one hash against an **independently-computed** FNV-64 of a tiny known model (avoid a self-tautology).
+  - [x] New `Validation/ValidatedMintingTests.cs` (AC1): assert `Validate` mints a `Validated<ScenarioData>` on success; add `ValidatedSoleMinterTest` scanning the sim source for `new Validated<` and asserting the only hit is inside `ScenarioValidator.cs`.
+  - [x] New `Validation/ShadowModeTests.cs` (AC4): assert the validator itself never throws/logs (pure) and `ValidationResult.Fail` carries the located message (the shadow-vs-fail-closed branch is presentation-side; assert the policy helper's decision given `_failClosed` true/false if it is extracted to `src/UI` and Godot-free-testable — otherwise document it as the in-engine smoke check).
+  - [x] `dotnet test --filter FullyQualifiedName~Validation` → green.
 
-- [ ] **Task 6 — Prove AC5: goldens byte-identical, full suite green, Godot-free boundary (AC: 5)**
-  - [ ] `dotnet test godot/ProjectChimera.Sim.Tests/ProjectChimera.Sim.Tests.csproj` → ALL green, with `golden-scenario.golden.txt` and `golden-multifaction.golden.txt` **UNCHANGED** (`git status` clean on both). A moved golden = a real leak; fix it, do NOT re-record.
-  - [ ] Grep the four net-new `Definitions` files: zero `using Godot`/`GD.`/`float` gameplay math/`System.Random` (the only `Fixed.FromFloat` is the load-time quantize in `CanonicalModelHash`). Confirm `GodotFreeBoundaryTest` passes.
-  - [ ] `git diff` shows no signature change to `ISimSystem`/`SimChecksum.Compute`/any `Tick`/`ApplyScenario`'s parameter type.
+- [x] **Task 6 — Prove AC5: goldens byte-identical, full suite green, Godot-free boundary (AC: 5)**
+  - [x] `dotnet test godot/ProjectChimera.Sim.Tests/ProjectChimera.Sim.Tests.csproj` → ALL green, with `golden-scenario.golden.txt` and `golden-multifaction.golden.txt` **UNCHANGED** (`git status` clean on both). A moved golden = a real leak; fix it, do NOT re-record.
+  - [x] Grep the four net-new `Definitions` files: zero `using Godot`/`GD.`/`float` gameplay math/`System.Random` (the only `Fixed.FromFloat` is the load-time quantize in `CanonicalModelHash`). Confirm `GodotFreeBoundaryTest` passes.
+  - [x] `git diff` shows no signature change to `ISimSystem`/`SimChecksum.Compute`/any `Tick`/`ApplyScenario`'s parameter type.
 
-- [ ] **Task 7 — In-engine smoke (AC: 3, 4) — optional but recommended**
-  - [ ] Run the game (`/godot-verify` or Godot MCP `run`): a normal skirmish still loads + plays; the console prints the new canonical `Scenario hash: 0x...`. Edit one position in `alpha_map_01.json` by a sub-quantum amount that rounds to the same `Fixed` (e.g. a trailing-zero change `45.0`→`45.00`) and confirm the hash is **unchanged**; change it by a real amount and confirm the hash **changes**. Optionally set `CHIMERA_VALIDATE_FAILCLOSED=1` with a deliberately broken scenario and confirm it refuses to apply (then unset). _(MainScene is excluded from Tier-1, so this is the only check of the production wiring + env toggle.)_
+- [x] **Task 7 — In-engine smoke (AC: 3, 4) — optional but recommended**
+  - [x] Run the game (`/godot-verify` or Godot MCP `run`): a normal skirmish still loads + plays; the console prints the new canonical `Scenario hash: 0x...`. Edit one position in `alpha_map_01.json` by a sub-quantum amount that rounds to the same `Fixed` (e.g. a trailing-zero change `45.0`→`45.00`) and confirm the hash is **unchanged**; change it by a real amount and confirm the hash **changes**. Optionally set `CHIMERA_VALIDATE_FAILCLOSED=1` with a deliberately broken scenario and confirm it refuses to apply (then unset). _(MainScene is excluded from Tier-1, so this is the only check of the production wiring + env toggle.)_
 
 ---
 
@@ -436,8 +436,51 @@ _Extracted from `_bmad-output/project-context.md` + `game-architecture.md` — t
 
 ### Agent Model Used
 
+claude-opus-4-8 (Claude Opus 4.8), via the `gds-dev-story` workflow.
+
 ### Debug Log References
+
+- **D1's Proof mechanism does not compile in C# (CS0122).** D1 specified a PRIVATE `Proof` constructor on the premise that "an enclosing type can call its nested type's private constructor." That premise is false — C# access is one-directional (a nested type sees the enclosing type's privates, **not** the reverse). `private static readonly Proof _proof = new Proof();` raised `CS0122: 'ScenarioValidator.Proof.Proof()' is inaccessible`. **Resolution:** `Proof`'s constructor is `internal` (nothing outside the sim assembly can mint), and the `ValidatedSoleMinterTest` source scan (which D1 already prescribed as the backstop) enforces "only `ScenarioValidator.cs` constructs `Validated<T>`" inside the assembly. Together these give the intended guarantee. Documented in `Validated.cs` and `ScenarioValidator.Proof`.
+- **Culture-sensitive `OrderBy(string)` is a determinism hazard.** The D5 hash skeleton sorted `Buildings`/`Units` by `Type`/`UnitId` with a bare `.ThenBy(x => x.Type)`, which uses the culture-sensitive default string comparer — non-deterministic across locales. Fixed to `StringComparer.Ordinal` (the project's #1 rule). Float/int sort keys use the numeric default comparer (deterministic).
+- Build/test loop: full `godot.csproj` builds clean (7 pre-existing CS8632 warnings only); Tier-1 `dotnet test` = 133 passed / 0 failed (36 new in `Validation/`); goldens byte-identical (`git status` clean on both `.golden.txt`); in-engine smoke (Godot 4.6.3) booted the live scenario through the shadow gate with zero editor errors (frame-advancing `MainScene`, 65 meshes rendered).
 
 ### Completion Notes List
 
+Implemented the net-new fail-closed validation gate + canonical start-state hash as **shadow-mode seams** at the existing `MainScene` apply boundary, changing **zero** sim ticks.
+
+- **AC1 (single mint-restricted gate):** `ScenarioValidator.Validate(model) → ValidationResult` on every entry path; `Validated<T>` is mintable only via a `ScenarioValidator.Proof` token (internal ctor) + `ValidatedSoleMinterTest` source scan. `ApplyScenario` (file/AI/editor) and `ApplyFallbackScenario` both pass through the gate.
+- **AC2 (located rejection):** D4 checks implemented — finite/in-16.16-range numerics, non-negative ore/supply/rate/gatherers, in-`MapBounds` positions, slot range `[0,PLAYER_COUNT)` **and** the as-built `Faction.Player4` engine ceiling, unique slots, dangling building/unit→slot refs, and `Building.Type` validated against the **exact** `BuildingType` name set (rejects unknown names *and* numeric strings like `"5"` that `Enum.TryParse` would accept). Every failure is a single located, fail-fast message (field path + value). Range bounds match `FixedJsonConverter` exactly (`[-32768, 32768)`, so `-32768` is accepted).
+- **AC3 (canonical hash):** `CanonicalModelHash.Compute` = FNV-64 over `Fixed.FromFloat(v).Raw`-quantized numerics, collections sorted (ordinal string keys), enums by name, `Id`/`DisplayName`/`Triggers` excluded, `0→1` sentinel; `ToWire` folds to the 32-bit Ready wire (re-sentineled). The hash at `MainScene._Ready` now reads the in-memory applied model (`_scenario ?? _fallbackMirror`), **not** `ComputeFileHash(path)`. Pinned by an **independently** hand-folded FNV-64 of a tiny model (not a self-tautology).
+- **AC4 (shadow / fail-closed toggle):** the pure decision lives in Godot-free `ScenarioGate.ShouldProceed(ok, failClosed)` (Tier-1 testable — `src/UI` is **not** in the Tier-1 globs, so the policy could not live there); `MainScene.ValidateBeforeApply` does the `GD.PrintErr` + applies the policy; `CHIMERA_VALIDATE_FAILCLOSED` (default off) via `ScenarioGate.IsFailClosed()`.
+- **AC5 (goldens unchanged):** shadow-only + hash-only — both goldens byte-identical, full suite green.
+
+**Key decisions / deviations (all settled, surfaced for review):**
+1. `Proof` ctor is `internal` + source scan (D1's private-ctor premise is a C# compile error — see Debug Log). This is the equivalent guarantee.
+2. `CanonicalModelHash` sort keys use `StringComparer.Ordinal` (determinism fix over the D5 skeleton's culture-default).
+3. Fallback hashes via a dedicated `_fallbackMirror` field, **not** `_scenario` (D9). Reusing `_scenario` would flip the many `if (_scenario != null)` branches in `MainScene` and risk behavior change; the dedicated field keeps the fallback's runtime behavior byte-identical while giving it a real canonical hash.
+4. `ScenarioGate` (the pure policy half of the D7 helper) is a net-new Godot-free type in `src/Core/Definitions` — the story sanctioned `ScenarioGate` and the `src/UI`-or-`MainScene` choice; splitting the pure decision into `Core/Definitions` is what makes AC4 unit-testable.
+5. AR-13 is **reserved by comment only** (no unreachable presence check), per D4 — `SimRng` is unconditionally present and no effect schema exists; the mature rule is Epic 2 / Story 2.3.
+
+**Known, in-spec deferrals (not bugs):** `Triggers` excluded from the hash (handshake gap closed in Epic 7 / D3.4); `ApplyScenario` still takes raw `ScenarioData` — type-gating the applier on `Validated<ScenarioData>` is Story 1.8b (D8); `ScenarioData` stays `float`-based (D3, later); server attestation / `hash==0` hard-reject / 64-bit wire are Epic 9. `Building.PreBuilt` is not in the building sort key (follows D5 literally; only matters for two stacked same-position/type/slot buildings differing only in PreBuilt — a degenerate, untested corner).
+
 ### File List
+
+**New (sim, Godot-free — `godot/src/Core/Definitions/`):**
+- `Validated.cs` — `Validated<T>` (Proof-gated) + `ValidationResult`.
+- `ScenarioValidator.cs` — `ScenarioValidator.Validate` + nested `Proof` + all D4 checks.
+- `CanonicalModelHash.cs` — FNV-64 canonical-model hash + `ToWire`.
+- `ScenarioGate.cs` — pure shadow/fail-closed policy + env toggle reader.
+
+**New (Tier-1 tests — `godot/ProjectChimera.Sim.Tests/Validation/`):**
+- `NegativeValidationTests.cs` (AC2) · `CanonicalModelHashTests.cs` (AC3) · `ValidatedMintingTests.cs` (AC1 + sole-minter scan) · `ShadowModeTests.cs` (AC4).
+
+**Modified:**
+- `godot/src/Core/MainScene.cs` — `_validator`/`_failClosed`/`_fallbackMirror` fields; `ValidateBeforeApply` helper; gate call at top of `ApplyScenario`; fallback mirror + `BuildFallbackMirror` in `ApplyFallbackScenario`; hash re-point in `_Ready` (`+87/-2`).
+
+**Unchanged (verified):** both `*.golden.txt`, `SimChecksum.cs`, `ScenarioData.cs`, `ScenarioSerializer.cs` (`ComputeFileHash` frozen as algo-1, still used by `ContentPackager`), `ISimSystem`, `ApplyScenario`'s parameter type.
+
+### Change Log
+
+| Date | Change |
+| --- | --- |
+| 2026-06-23 | Implemented Story 1.7: net-new `ScenarioValidator` + `Validated<T>` shadow-mode gate on all scenario entry paths, `CanonicalModelHash` (FNV-64) re-pointing the lobby start-state hash off `ComputeFileHash`, `ScenarioGate` shadow/fail-closed policy, and `Validation/` Tier-1 tests. Goldens unchanged; 133 Tier-1 tests green. Status → review. |
