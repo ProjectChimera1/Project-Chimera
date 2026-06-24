@@ -224,7 +224,10 @@ namespace ProjectChimera.Core
                 // is Epic 9). A null host (missing/invalid scenario) ⇒ relay + quorum only.
                 SimulationHost? serverSimHost = BuildHeadlessServerSimHost();
 
-                var server = new ProjectChimera.Multiplayer.DedicatedServer { SimHost = serverSimHost };
+                // Story 1.9b review (P1): inject the presentation log sink so the dedicated server actually PRINTS
+                // its FR-39 determinism verdict (per-window lines + MATCH SUMMARY) to the server console. Without
+                // this, Log defaults to NullLogSink and every AC1 verdict line is silently dropped in production.
+                var server = new ProjectChimera.Multiplayer.DedicatedServer { SimHost = serverSimHost, Log = _logSink };
                 AddChild(server);
                 server.Start(port);
 

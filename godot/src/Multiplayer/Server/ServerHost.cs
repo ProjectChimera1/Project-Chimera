@@ -40,7 +40,9 @@ namespace ProjectChimera.Multiplayer.Server
 
         // ── Story 1.9b: positive determinism observability (the FR-39 PASS evidence) ──────────────────────────
 
-        /// <summary>Completed comparison windows where ALL expected peers reported the same hash (clean agreement).</summary>
+        /// <summary>ALL completed comparison windows (clean + diverged) — the total the MATCH SUMMARY reports.
+        /// Clean (unanimous) windows = <see cref="WindowsCompared"/> − <see cref="DesyncCount"/>. (Story 1.9b review:
+        /// counts every completed window, not just clean ones, so "windows compared" is the true total.)</summary>
         public int WindowsCompared { get; private set; }
 
         /// <summary>Completed windows that diverged — a named minority (majority case) or a no-majority HALT.</summary>
@@ -70,11 +72,14 @@ namespace ProjectChimera.Multiplayer.Server
             ServerChecksumCollector.Verdict v = _collector.Record(tick, slot, hash);
             if (!v.Complete) return;
 
+            // Story 1.9b review: every completed comparison window counts toward the total the MATCH SUMMARY reports
+            // (clean + diverged); DesyncCount tracks the diverged subset (clean = WindowsCompared − DesyncCount).
+            WindowsCompared++;
+
             if (v.HasMajority && v.Minority.Count == 0)
             {
                 // Story 1.9b: ALL expected peers agreed → the positive PASS evidence (FR-39). This is the line a
                 // human reads on the dedicated-server console to confirm the match is still in lockstep.
-                WindowsCompared++;
                 _log.Info($"[Determinism] tick {tick}: all {ExpectedPeerCount} peers matched 0x{v.Canonical:X8} (window #{WindowsCompared}).");
             }
             else if (v.HasMajority)
@@ -98,9 +103,14 @@ namespace ProjectChimera.Multiplayer.Server
 
         /// <summary>
         /// Emit the terminal FR-39 verdict line. Call on match end / player disconnect / server shutdown so a human
-        /// reading the dedicated-server console sees the PASS/FAIL summary: "{N} windows compared, {D} desync — PASS|FAIL".
+        /// reading the dedicated-server console sees the summary: "{N} windows compared, {D} desync — PASS|FAIL|INCONCLUSIVE".
+        /// INCONCLUSIVE when no window was ever completed — nothing was actually compared, so it is NOT a clean pass
+        /// (Story 1.9b review: a 0-window match must not masquerade as PASS in a console/log scan).
         /// </summary>
-        public void LogSummary() =>
-            _log.Info($"[Determinism] MATCH SUMMARY: {WindowsCompared} windows compared, {DesyncCount} desync — {(Passing ? "PASS" : "FAIL")}.");
+        public void LogSummary()
+        {
+            string verdict = WindowsCompared == 0 ? "INCONCLUSIVE" : Passing ? "PASS" : "FAIL";
+            _log.Info($"[Determinism] MATCH SUMMARY: {WindowsCompared} windows compared, {DesyncCount} desync — {verdict}.");
+        }
     }
 }

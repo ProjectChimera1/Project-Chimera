@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-06-22
-last_updated: 2026-06-24 (1.9b review — dev-story; AC4 physical gate parked pending 2nd machine)
+last_updated: 2026-06-24 (1.9b code-review PASS → done; 6 patches applied, Tier-1 192 green, goldens identical; AC4 physical gate parked pending 2nd machine)
 project: Project_Chimera
 project_key: NOKEY
 tracking_system: file-system
@@ -55,7 +55,7 @@ development_status:
   1-8b-scenarioapplier-as-the-sole-writer-of-sim-truth-with-alloc-free-spawnunit-hoisted-path-resolution: done
   1-8c-asserted-scenephaserunner-isetupphase-phaseordertest-and-the-mainscene-strangle-diff: done
   1-9a-serverbootstrap-headless-peer-server-checksum-collector-with-quorum-halt-loopback: done
-  1-9b-fr-39-two-machine-lan-determinism-green-the-1-ship-risk-gate: review
+  1-9b-fr-39-two-machine-lan-determinism-green-the-1-ship-risk-gate: done
   1-10a-wire-the-golden-checksum-replay-regression-harness-into-ci-pin-isolate-deps: backlog
   1-10b-banned-api-aot-eligibility-analyzers-over-the-sim-layer: backlog
   1-10c-cross-platform-windows-linux-golden-checksum-gate-via-wsl: backlog

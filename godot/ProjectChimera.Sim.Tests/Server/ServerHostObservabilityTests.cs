@@ -9,7 +9,7 @@ namespace ProjectChimera.Sim.Tests.Server
     /// <summary>
     /// Story 1.9b (AC1) — the server's POSITIVE determinism verdict. The 1.9a ServerHost was silent on a clean
     /// window; this proves the new evidence trail: WindowsCompared / DesyncCount / Passing, a per-clean-window
-    /// Info line, and the terminal MATCH SUMMARY (PASS on zero desync, FAIL otherwise). This is the FR-39
+    /// Info line, and the terminal MATCH SUMMARY (PASS on zero desync, FAIL on any desync, INCONCLUSIVE when nothing was compared). This is the FR-39
     /// "300+ ticks, 0 desync — PASS" readout a human reads on the dedicated-server console.
     /// </summary>
     public class ServerHostObservabilityTests
@@ -93,14 +93,14 @@ namespace ProjectChimera.Sim.Tests.Server
             host.OnChecksum(0, 120u, 0x1u);     // then a 1-vs-1 mismatch → no majority → HALT
             host.OnChecksum(1, 120u, 0x2u);
 
-            Assert.Equal(1, host.WindowsCompared);
+            Assert.Equal(2, host.WindowsCompared);   // 1 clean + 1 no-majority — both completed windows count (review P5)
             Assert.Equal(1, host.DesyncCount);
             Assert.False(host.Passing);
             Assert.True(host.Halted);
 
             host.LogSummary();
             string summary = log.Infos[^1];
-            Assert.Contains("MATCH SUMMARY: 1 windows compared, 1 desync", summary);
+            Assert.Contains("MATCH SUMMARY: 2 windows compared, 1 desync", summary);
             Assert.EndsWith("FAIL.", summary);
         }
 
@@ -113,10 +113,24 @@ namespace ProjectChimera.Sim.Tests.Server
             host.OnChecksum(1, 60u, 0xAAAAu);
             host.OnChecksum(2, 60u, 0xBBBBu);   // slot 2 diverged → majority {0,1}, minority {2}
 
-            Assert.Equal(0, host.WindowsCompared); // not a clean window
+            Assert.Equal(1, host.WindowsCompared); // the diverged window still counts as a completed comparison (review P5)
             Assert.Equal(1, host.DesyncCount);
             Assert.False(host.Passing);
             Assert.False(host.Halted);             // the majority plays on; only the minority is alerted
+        }
+
+        [Fact]
+        public void NoWindowsCompared_SummaryIsInconclusive_NotPass()
+        {
+            var (host, log) = Make(2);
+
+            // The server ran but no comparison window ever completed (e.g. an immediate disconnect at tick 0).
+            host.LogSummary();
+
+            string summary = Assert.Single(log.Infos);
+            Assert.Contains("MATCH SUMMARY: 0 windows compared, 0 desync", summary);
+            Assert.EndsWith("INCONCLUSIVE.", summary);   // Story 1.9b review P6: a no-data match must NOT read as PASS
+            Assert.True(host.Passing);                   // no desync observed, but nothing was verified either
         }
     }
 }

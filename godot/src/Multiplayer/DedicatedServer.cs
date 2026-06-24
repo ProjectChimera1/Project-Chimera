@@ -78,6 +78,18 @@ namespace ProjectChimera.Multiplayer
         /// </summary>
         public ServerHost? Host => _serverHost;
 
+        /// <summary>Guards <see cref="EmitSummaryOnce"/> so the terminal MATCH SUMMARY prints exactly once per match —
+        /// the disconnect path and <see cref="_ExitTree"/> can otherwise both fire it (Story 1.9b review P2).</summary>
+        private bool _summaryLogged;
+
+        /// <summary>Emit the determinism MATCH SUMMARY at most once, regardless of how many shutdown paths run.</summary>
+        private void EmitSummaryOnce()
+        {
+            if (_summaryLogged) return;
+            _summaryLogged = true;
+            _serverHost?.LogSummary();
+        }
+
         // Reusable buffers to avoid per-frame allocation
         private readonly byte[] _relayBuf  = new byte[
             TickCommandPacket.HEADER_BYTES + TickCommandPacket.MAX_ORDERS * UnitOrder.SIZE + 16];
@@ -143,8 +155,8 @@ namespace ProjectChimera.Multiplayer
 
             if (_state == State.InGame)
             {
-                // Story 1.9b: a player left mid-match (ends the 1v1) — emit the determinism verdict-so-far.
-                _serverHost?.LogSummary();
+                // Story 1.9b: a player left mid-match (ends the 1v1) — emit the determinism verdict-so-far (once).
+                EmitSummaryOnce();
 
                 // Notify the remaining player peer.
                 int other = 1 - slot;
@@ -290,8 +302,9 @@ namespace ProjectChimera.Multiplayer
 
         public override void _ExitTree()
         {
-            // Story 1.9b: emit the final determinism verdict on server shutdown (if a match ran).
-            _serverHost?.LogSummary();
+            // Story 1.9b: emit the final determinism verdict on server shutdown (if a match ran; once — the
+            // disconnect path may already have emitted it). Review P2: guard against a duplicate MATCH SUMMARY.
+            EmitSummaryOnce();
             _transport?.Dispose();
         }
     }

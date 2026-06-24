@@ -76,9 +76,12 @@ picker. Both clients load whatever `ScenarioPath` points to.
   `CanonicalScenarioTests`.)
 
 > **CRITICAL invariant:** both machines must use the **same** `ScenarioPath`. Different scenario files =
-> guaranteed desync. The lobby enforces this — at Ready it compares scenario hashes and **blocks** the
-> match on a mismatch ("Your map: 0x… / Peer map: 0x…"), so you cannot accidentally start a mismatched
-> game. If you see that block, fix `ScenarioPath` to match on both machines.
+> guaranteed desync. The lobby helps catch this — at Ready it compares scenario hashes and **blocks** the
+> match when **both** sides report a valid, **non-zero** hash that disagree ("Your map: 0x… / Peer map: 0x…").
+> **Caveat — fail-open:** if either side's scenario failed validation it publishes hash `0`, and a `0` hash is
+> **not** blocked (the strict content-sync handshake is Epic 9 / Story 9-4). So do **not** treat the lobby as a
+> guarantee: confirm by eye that **both** lobby map hashes are identical **and non-zero** before you Ready.
+> If you see the mismatch block, fix `ScenarioPath` to match on both machines.
 
 ---
 
@@ -152,7 +155,7 @@ That confirms a real divergence is detected, attributed, and terminated end-to-e
 | Symptom | Likely cause / fix |
 |---|---|
 | Client B can't connect | Firewall on A blocking UDP 7777 (allow it); wrong IP (re-check `ipconfig` on A); not on the same subnet. |
-| Lobby blocks Ready with a map-hash mismatch | The two machines have different `ScenarioPath` (or different repo state). Make them identical and rebuild. |
+| Lobby blocks Ready with a map-hash mismatch | The two machines have different `ScenarioPath` (or different repo state), both with valid non-zero hashes. Make them identical and rebuild. **Note:** a `0` hash (a validation-rejected scenario) is fail-open and is **not** blocked — verify both hashes are non-zero by eye. |
 | Match never starts | Both players must be connected **and** ready. With auto-join this is automatic; in manual lobby, both must click Ready. |
 | Leftover/stale Godot windows holding the port | Close them, or run any launcher with `-CleanFirst` once before the fresh server launch (kills only `--server`/`--autojoin`/`--headless` instances, never the editor). |
 | Immediate desync at tick 0 | Different scenario or different build/commit on the two machines. Re-sync the repo + rebuild on both. |

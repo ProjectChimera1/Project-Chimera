@@ -4,7 +4,7 @@ baseline_commit: 38e0b61
 
 # Story 1.9b: FR-39 two-machine LAN determinism — green the #1 ship-risk gate
 
-Status: review
+Status: done  <!-- AC1–3 + AC5 dev-complete + code-reviewed (gds-code-review 2026-06-24, 3-layer adversarial; all 6 patches applied + suite green). AC4 (the physical two-machine LAN run) is PARKED pending a 2nd machine per Resolved Decision #1 — Task 7 stays unchecked; run lan-determinism-runbook.md + record it in the Change Log when the hardware exists. -->
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 <!-- 1.9b is the SECOND half of the former Story 1.9 and is a DIFFERENT KIND of story than every Epic-1
@@ -34,7 +34,7 @@ I want the FR-39 two-machine LAN determinism gate made **executable, instrumente
 
 4. **(The physical two-machine gate — HUMAN-performed; the actual FR-39 proof)** **Given** two Windows machines on the same LAN running the runbook against the canonical P2.4 scenario, **When** they play a full match for **≥300 ticks** (≥5 windows; a multi-minute match recommended for a meaningful sample), **Then** the server reports **PASS** with **zero desync**, both clients' checksum readouts **match every window**, and the adaptive input delay adapts (4→2) **without** causing a desync — **AND** a deliberate **F9 divergence** on one machine fires the `DesyncAlert`/`Halt` path with the clear terminal "MATCH HALTED" message on **both** machines. **This AC is confirmed by Alec's live run (recorded in the Change Log), not by the dev agent.** The dev-agent deliverables (AC1–3, 5) make it push-button and **must be complete and green before this gate is attempted**. **PARKED as of 2026-06-24:** Alec has one machine right now (Resolved Decision #1), so AC4 waits for a second LAN machine — the story reaches `review` on AC1–3 + AC5; AC4 is performed and logged when the hardware is available. This is the designed split, not an incomplete story.
 
-5. **(No sim behavior change — goldens byte-identical, Godot-free boundary preserved, suite green)** **Given** the full Tier-1 suite, **When** it runs, **Then** **all three** existing `*.golden.txt` verify green **unchanged** (`git status` clean for goldens) — every change here is **additive networking/observability + tooling + docs**; nothing mutates the 30 Hz tick, `SimChecksum`, the checksum interval, or the wire width. `ServerHost`/`ServerChecksumCollector` contain **no `using Godot`/`GD.*`** and pass `GodotFreeBoundaryTest`. If a golden moves, something leaked into the tick — **fix it; do not re-record.**
+5. **(No sim behavior change — goldens byte-identical, Godot-free boundary preserved, suite green)** **Given** the full Tier-1 suite, **When** it runs, **Then** **all four** existing `*.golden.txt` verify green **unchanged** (`git status` clean for goldens) — every change here is **additive networking/observability + tooling + docs**; nothing mutates the 30 Hz tick, `SimChecksum`, the checksum interval, or the wire width. `ServerHost`/`ServerChecksumCollector` contain **no `using Godot`/`GD.*`** and pass `GodotFreeBoundaryTest`. If a golden moves, something leaked into the tick — **fix it; do not re-record.**
 
 _Covers: FR-39 (two-machine LAN, 300+ ticks, zero desync — the hard gate), UX-DR84 (LAN lockstep journey), UX-DR64e (desync→terminal HALT verified over the wire, not just unit-tested). Depends on: 1.9a (DONE — server quorum/HALT engine + the ENet packet-drop fix that makes real MP deliver). Independent of Epic 9 (N-scale relay, Nakama matchmaking, server-vote, disconnect policy) and Story 1.10c (cross-platform Windows↔Linux gate)._
 
@@ -64,7 +64,7 @@ _Covers: FR-39 (two-machine LAN, 300+ ticks, zero desync — the hard gate), UX-
 4. **Two-machine runbook** (`godot/tools/lan-determinism-runbook.md`, net-new) — prerequisites, pinned topology, canonical scenario, step-by-step, where to read PASS, the F9 drill, the adaptive-delay watch-item, troubleshooting, explicit pass/fail criteria. (AC3/AC4)
 5. **Pin + verify the canonical P2.4 scenario** (reuse existing data; an optional Tier-1 determinism check of that scenario through `ServerBootstrap` if it is not already golden-covered). (AC1/AC4)
 6. **Verify per-machine on-screen evidence** — confirm the client checksum readout (`MainScene.cs:596-597`) + `[Checksum]` per-window log (`MainScene.cs:308`) are visible in an online match; harden only if hidden. (AC3)
-7. **Prove AC5** — full Tier-1 green, three existing goldens byte-identical, `ServerHost`/collector Godot-free, no `SimChecksum`/tick/wire change. (AC5)
+7. **Prove AC5** — full Tier-1 green, four existing goldens byte-identical, `ServerHost`/collector Godot-free, no `SimChecksum`/tick/wire change. (AC5)
 8. **Manual two-machine gate** — Alec's physical run + F9 drill per the runbook. (AC4 — human)
 
 ### Key design decisions (settled here — do NOT re-derive)
@@ -169,7 +169,7 @@ public void LogSummary() =>
 - **Do NOT** build an export pipeline / `export_presets.cfg` / shipped builds — **Epic 10** (10-7/10-9a); 1.9b runs from source (D7).
 - **Do NOT** change `SimChecksum`, the 60-tick interval, or the 32-bit wire (Trap #8/AC5).
 - **Do NOT** turn the self-test into a two-real-sim harness — synthetic checksums are correct for the network-path proof (D6/Trap #9).
-- **Do NOT** move/re-record the three existing goldens — additive-only ⇒ byte-identical (AC5/Trap #4).
+- **Do NOT** move/re-record the four existing goldens — additive-only ⇒ byte-identical (AC5/Trap #4).
 - **Do NOT** break `loopback-desync-smoke.ps1` or the 1.9a `LoopbackDesyncSelfTest` HALT drill — extend, don't replace.
 
 ---
@@ -197,7 +197,7 @@ public void LogSummary() =>
   - [x] Pin `map_02_iron_crossing.json` (D4) as the canonical P2.4 scenario in the runbook. Verify it loads and plays ≥300 ticks deterministically. If it is **not** already covered by an existing golden/determinism test, add a Tier-1 `Server/` (or `Golden/`) determinism check that runs THIS scenario through a `ServerBootstrap`-built host for ≥300 ticks (reuse the `GoldenChecksumReplay` / `ServerBootstrapDeterminismTests` harness) and asserts a stable checksum sequence across two in-process runs. If it **is** covered, cite the test and skip.
 
 - [x] **Task 6 — Prove AC5 (goldens byte-identical, Godot-free, suite green) (AC: 5)**
-  - [x] `dotnet test godot/ProjectChimera.Sim.Tests/ProjectChimera.Sim.Tests.csproj` → ALL green (183 prior + the new observability/scenario tests), with **all three** existing `*.golden.txt` UNCHANGED. Confirm `ServerHost`/`ServerChecksumCollector` still have zero `using Godot`/`GD.`; `GodotFreeBoundaryTest` passes. No signature change to `SimChecksum.Compute`/`ISimSystem`/any `Tick`/`Apply`; the 60-tick interval and 32-bit wire are unchanged.
+  - [x] `dotnet test godot/ProjectChimera.Sim.Tests/ProjectChimera.Sim.Tests.csproj` → ALL green (183 prior + the new observability/scenario tests), with **all four** existing `*.golden.txt` UNCHANGED. Confirm `ServerHost`/`ServerChecksumCollector` still have zero `using Godot`/`GD.`; `GodotFreeBoundaryTest` passes. No signature change to `SimChecksum.Compute`/`ISimSystem`/any `Tick`/`Apply`; the 60-tick interval and 32-bit wire are unchanged.
 
 - [ ] **Task 7 — Physical two-machine LAN gate (AC: 4) — ALEC (human gate, NOT the dev agent; PARKED pending a second machine)**
   - [ ] **PARKED as of 2026-06-24 (Resolved Decision #1 — Alec has one machine).** After Tasks 1–6 are done and green, surface the runbook to Alec; the story moves to `review` **without** this box checked. When a second LAN machine is available, Alec runs the two-machine LAN match per `lan-determinism-runbook.md`: full match ≥300 ticks → server `MATCH SUMMARY: … 0 desync — PASS`, both client readouts match every window, adaptive delay adapts without desync; then the F9 drill → both machines show terminal HALT. **Record the outcome in the Change Log** when performed. _(The dev agent does NOT check this box; Alec's confirmation does — exactly as 1.9a's live run was logged.)_
@@ -223,7 +223,7 @@ Two processes on **one** machine share locale/region/culture and the same CPU, s
 ### Project Structure Notes
 - **NEW:** `godot/tools/lan-desync-smoke.ps1`, `godot/tools/lan-determinism-runbook.md`; Tier-1 `Server/ServerHostObservabilityTests.cs` (+ optionally a `map_02` determinism test).
 - **MODIFIED:** `godot/src/Multiplayer/Server/ServerHost.cs` (ctor + counters + logs + `LogSummary`), `godot/src/Multiplayer/DedicatedServer.cs` (inject `GodotLogSink`, call `LogSummary`, expose `Host` for the self-test), `godot/src/Multiplayer/LoopbackDesyncSelfTest.cs` (clean-PASS phase), and the existing `Server/ServerHostTests.cs` (ctor signature). Possibly `godot/src/Core/MainScene.cs` only if the client checksum readout needs hardening to show online (verify first).
-- **UNCHANGED (must stay so):** all three `*.golden.txt`; `SimChecksum.cs`; the 60-tick interval; `ServerChecksumCollector.cs` (consumed, not modified); the packet builders + wire width; the 30 Hz tick / `ISimSystem` / 9-system order; the Ready handshake; `ENetTransport`/`ServerTransport`/`LobbyUi` join paths (already LAN-ready).
+- **UNCHANGED (must stay so):** all four `*.golden.txt`; `SimChecksum.cs`; the 60-tick interval; `ServerChecksumCollector.cs` (consumed, not modified); the packet builders + wire width; the 30 Hz tick / `ISimSystem` / 9-system order; the Ready handshake; `ENetTransport`/`ServerTransport`/`LobbyUi` join paths (already LAN-ready).
 - **NOT here:** two-machine harness *automation* (impossible for an LLM — AC4 is human), handshake hardening, Nakama, server-vote, disconnect policy, N>2, cross-platform, export presets — Epic 9 / 1.10c / Epic 10.
 
 ### Project Context Rules
@@ -258,7 +258,7 @@ Claude Opus 4.8 (`claude-opus-4-8`) — gds-dev-story workflow.
 - Full Tier-1 suite: **191 passing, 0 failed** (`dotnet test ProjectChimera.Sim.Tests`) = 183 prior + 5 `ServerHostObservabilityTests` + 3 `CanonicalScenarioTests`. Filters: `~Server` → 37; `~CanonicalScenario` → 3.
 - `dotnet build godot/godot.csproj` → **0 errors** (7 pre-existing CS8632 warnings, out of scope).
 - **Headless self-test** `godot --headless -- --loopback-test` → **exit 0 = PASS**. Transcript (key lines): `[Determinism] tick 1..5: all 2 peers matched 0xA11AA11A (window #1..5)` → `clean phase OK — server reports 5 windows compared, 0 desync (PASS)` → `divergence injected at tick 6` → `[Determinism] tick 6: GLOBAL DESYNC — no canonical hash. Broadcasting terminal HALT.` → `RESULT: PASS — clean PASS (5 windows, 0 desync) + both clients HALTed after divergence` → `MATCH SUMMARY: 5 windows compared, 1 desync — FAIL.` (the FAIL summary is correct — the self-test deliberately induces a desync; the TEST passes because it proved both the clean-PASS and the HALT paths).
-- Goldens: `git status --short -- '*.golden.txt'` → **empty** (three existing goldens byte-identical).
+- Goldens: `git status --short -- '*.golden.txt'` → **empty** (four existing goldens byte-identical).
 - `lan-desync-smoke.ps1` → PowerShell parser: PARSE OK, no syntax errors.
 
 ### Completion Notes List
@@ -267,12 +267,13 @@ Claude Opus 4.8 (`claude-opus-4-8`) — gds-dev-story workflow.
 - **AC2 (automated end-to-end proxy)** — `LoopbackDesyncSelfTest` extended: the `Agreeing` phase now waits for the server to tally **≥5 clean windows** and asserts `Host.Passing && !Host.Halted` BEFORE inducing the divergence; exit 0 only if **both** the clean-PASS and the existing both-HALT drill pass. Verified live headless (exit 0).
 - **AC3 (LAN launcher + on-screen evidence)** — `lan-desync-smoke.ps1` (`-Role server|client`, `-ServerIp`, `-Port`, `-CleanFirst`) parameterizes the server IP; confirmed `--autojoin <ip:port>` honors a remote IP (`MainScene.cs:375-381` → `AutoJoinDedicated(ip,port)`), so a client can reach a LAN server. Client checksum readout verified visible online by inspection (`MainScene.cs:613-614`, the always-on HUD line `Hash 0x........  ONLINE`) — no hardening needed. `loopback-desync-smoke.ps1` untouched.
 - **AC4 (physical two-machine gate) — PARKED, HUMAN.** Alec has one machine as of 2026-06-24 (Resolved Decision #1), so the physical run is deferred to a second LAN machine. `lan-determinism-runbook.md` makes it push-button (topology, scenario, steps, verdict-reading, F9 drill, adaptive-delay watch-item, troubleshooting, explicit PASS/FAIL). **Task 7 is intentionally left unchecked** — the dev agent does not (cannot) satisfy AC4; Alec checks it and logs the run when performed. The story reaching `review` on AC1–3 + AC5 is the designed split, not incomplete work.
-- **AC5 (no regression)** — additive only: **191 Tier-1 green** (incl. `GodotFreeBoundaryTest` ⇒ `ServerHost`/`ServerChecksumCollector` still zero `using Godot`/`GD.`); **three existing goldens byte-identical** (`git` clean); no change to `SimChecksum`, the 60-tick `ChecksumInterval`, the 32-bit wire, the 30 Hz tick, or any sim signature.
+- **AC5 (no regression)** — additive only: **191 Tier-1 green** (incl. `GodotFreeBoundaryTest` ⇒ `ServerHost`/`ServerChecksumCollector` still zero `using Godot`/`GD.`); **four existing goldens byte-identical** (`git` clean); no change to `SimChecksum`, the 60-tick `ChecksumInterval`, the 32-bit wire, the 30 Hz tick, or any sim signature.
 - **Scenario discovery (informs the runbook + Open Question follow-up).** The match scenario is the **`MainScene.ScenarioPath` export** (default `alpha_map_01.json`), **not** a lobby picker. `CanonicalScenarioTests` proves both `map_02_iron_crossing` (pinned canonical P2.4) and `alpha_map_01` load + validate, and map_02 runs **deterministically** through `ServerBootstrap` (two 300-tick runs identical). The runbook documents setting `ScenarioPath` to map_02 on **both** machines, the zero-config `alpha_map_01` fallback, and the lobby hash-gate that **blocks** a scenario mismatch (the determinism safety net).
 
 ### Change Log
 
-- 2026-06-24 — Story 1.9b implemented (Tasks 1–6 complete; Task 7 = the physical two-machine LAN gate is **PARKED pending a second machine**, Alec's to run + log). AC1 server determinism PASS/FAIL verdict (`ServerHost` `ILogSink` + counters + per-window log + `MATCH SUMMARY`); AC2 extended `LoopbackDesyncSelfTest` clean-PASS assertion (headless `--loopback-test` exit 0 = PASS); AC3 `lan-desync-smoke.ps1` LAN launcher + `lan-determinism-runbook.md` + verified client HUD readout; AC5 additive — Tier-1 **191 green**, three existing goldens byte-identical, `ServerHost`/collector Godot-free. Canonical P2.4 scenario pinned (`map_02_iron_crossing`) + verified valid/deterministic; surfaced that the scenario is the `ScenarioPath` export (default `alpha_map_01`). `baseline_commit` `38e0b61`. Status → review.
+- 2026-06-24 — **Code review (`gds-code-review`, 3-layer adversarial: Blind Hunter + Edge Case Hunter + Acceptance Auditor) — verdict PASS.** 12 findings → 2 decisions (both resolved by Alec → patches), 6 patches applied + verified, 1 deferred, 5 dismissed. **Headline fix (P1, HIGH): the production dedicated server was SILENT** — `MainScene.cs:227` constructed `DedicatedServer` without wiring `Log`, so every AC1 `[Determinism]` window line + `MATCH SUMMARY` was dropped on the real `--server`/`--headless` path; the loopback self-test passed only because it injects its own sink. Fixed: `Log = _logSink`. Also — P2: `_summaryLogged`/`EmitSummaryOnce` guard against a duplicate MATCH SUMMARY (disconnect + `_ExitTree`); **P5 (Alec's decision): `WindowsCompared` now counts ALL completed windows (clean + desync)** so the summary reports the true total — verified live (self-test: `MATCH SUMMARY: 6 windows compared, 1 desync`, was 5); **P6 (Alec's decision): `LogSummary` emits `INCONCLUSIVE` at 0 windows** so a no-data match no longer reads as PASS; P3: runbook lobby-block claim qualified (the scenario-hash compare is fail-open on `hash==0`); P4: "three"→"four" goldens. **Verification:** game build 0 errors, **Tier-1 192 green** (was 191; +1 INCONCLUSIVE test), all 4 `*.golden.txt` byte-identical, headless `--loopback-test` exit 0. AC4 physical two-machine gate remains PARKED. Status `review` → `done`.
+- 2026-06-24 — Story 1.9b implemented (Tasks 1–6 complete; Task 7 = the physical two-machine LAN gate is **PARKED pending a second machine**, Alec's to run + log). AC1 server determinism PASS/FAIL verdict (`ServerHost` `ILogSink` + counters + per-window log + `MATCH SUMMARY`); AC2 extended `LoopbackDesyncSelfTest` clean-PASS assertion (headless `--loopback-test` exit 0 = PASS); AC3 `lan-desync-smoke.ps1` LAN launcher + `lan-determinism-runbook.md` + verified client HUD readout; AC5 additive — Tier-1 **191 green**, four existing goldens byte-identical, `ServerHost`/collector Godot-free. Canonical P2.4 scenario pinned (`map_02_iron_crossing`) + verified valid/deterministic; surfaced that the scenario is the `ScenarioPath` export (default `alpha_map_01`). `baseline_commit` `38e0b61`. Status → review.
 
 ### File List
 
@@ -294,6 +295,32 @@ Claude Opus 4.8 (`claude-opus-4-8`) — gds-dev-story workflow.
 
 **MODIFIED — artifacts:**
 - `_bmad-output/implementation-artifacts/sprint-status.yaml` — 1.9b `backlog` → `ready-for-dev` → `in-progress` → `review`.
+
+---
+
+### Review Findings
+
+_Code review (`gds-code-review`, 3-layer adversarial: Blind Hunter + Edge Case Hunter + Acceptance Auditor, all Opus 4.8) — 2026-06-24. Diff `38e0b61..7a20356`. 12 raw findings → **2 decisions, 4 patches, 1 deferred, 5 dismissed**. Headline: the loopback self-test is green but it MASKED a production gap (P1) — the real server never prints the verdict._
+
+**Decisions (RESOLVED by Alec 2026-06-24 → both converted to patches P5/P6):**
+
+- [x] [Review][Decision→Patch P5] **`WindowsCompared` / MATCH SUMMARY counts CLEAN windows only** — on a FAIL run the summary under-reports total windows (e.g. `1 windows compared, 1 desync` for 2 actually-completed windows). [`ServerHost.cs:77,104`] (blind+auditor). **RESOLVED: option (b) — add a total-windows counter.** `WindowsCompared` now counts ALL completed windows (clean + desync) so the summary reports the true total; the literal AC1 string format is unchanged (only the semantics of the count), but the 2 affected tests + the XML doc are updated. (Also corrects the field's own misnomer.) → see Patch P5.
+- [x] [Review][Decision→Patch P6] **Vacuous PASS at zero windows** — a server that ran but never completed a comparison window logs `0 windows compared, 0 desync — PASS`. [`ServerHost.cs` `Passing`/`LogSummary`] (blind). **RESOLVED: option (a) — emit `INCONCLUSIVE` when `WindowsCompared==0`** (accepts a third verdict word beyond AC1's "PASS|FAIL"); clean-PASS / FAIL strings unchanged; add a Tier-1 test for the no-data case. → see Patch P6.
+
+**Patches:**
+
+- [x] [Review][Patch] **[HIGH — production server is silent]** `MainScene` builds the dedicated server WITHOUT wiring `Log`, so the real `--server` / `--headless` path defaults to `NullLogSink` and DROPS every AC1 verdict line (per-window `[Determinism]` + `MATCH SUMMARY`). The loopback self-test passes only because IT injects its own `GodotLogSink`; the runbook tells Alec to read a console that prints nothing. [`MainScene.cs:227`] (edge) — fix: `new DedicatedServer { SimHost = serverSimHost, Log = _logSink }`.
+- [x] [Review][Patch] **[MEDIUM]** Duplicate `MATCH SUMMARY` — `LogSummary()` fires on the disconnect path AND in `_ExitTree`, printing the terminal verdict twice on the normal end-of-match path (masked today by NullLogSink; becomes visible once the HIGH patch lands). [`DedicatedServer.cs:147,294`] (blind+edge) — fix: a `_summaryLogged` guard (or null `_serverHost` after the disconnect summary).
+- [x] [Review][Patch] **[LOW — doc]** Runbook over-claims mismatch protection — "you cannot accidentally start a mismatched game" holds only when BOTH peers publish a valid non-zero scenario hash; the lobby compare is fail-open when either hash is 0 (a fail-closed-rejected scenario publishes hash 0). [`lan-determinism-runbook.md` §3, §8] (auditor) — fix: qualify the claim (blocks when both sides have a valid non-zero hash).
+- [x] [Review][Patch] **[NIT — doc]** Prose says "all three existing `*.golden.txt`" but FOUR goldens are embedded (`same-tick-tie-break` was added in 1.9a). All four are byte-identical (substantive AC5 MET); only the count is stale. [AC5 / Scope Fence / Completion Notes] (auditor) — fix: "three" → "four".
+- [x] [Review][Patch P5] **[from Decision 1]** Make `WindowsCompared` count ALL completed windows (clean + desync) — increment it unconditionally after the `v.Complete` gate; `DesyncCount` still counts only diverged windows; clean = `WindowsCompared − DesyncCount`. Summary string format unchanged; update XML docs + the `NoMajority_N2` and `Minority_N3` test assertions to the new totals. [`ServerHost.cs`; `ServerHostObservabilityTests.cs`] (resolved decision).
+- [x] [Review][Patch P6] **[from Decision 2]** `LogSummary()` emits `INCONCLUSIVE` (not PASS) when `WindowsCompared == 0`; PASS/FAIL paths unchanged. Add a Tier-1 test asserting the no-data summary ends `INCONCLUSIVE.`. [`ServerHost.cs`; `ServerHostObservabilityTests.cs`] (resolved decision).
+
+**Deferred** (→ `deferred-work.md`):
+
+- [x] [Review][Defer] LAN launcher's `--server`/`--autojoin`/F9 are `#if DEBUG`; against a future exported (non-DEBUG) build the `-Role server` path silently boots a normal client, not a server. Currently consistent (1.9b runs from source = DEBUG), but a latent trap once exports exist. [`lan-desync-smoke.ps1`] (edge) — deferred, surfaced by this change but only actionable at Epic 10 / Story 10-7.
+
+**Dismissed (5):** the N≥3 clean-window condition, the `Halted` early-return, no-double-count, `Minority` non-null, and `_tick` advancing to 5 real windows — all VERIFIED correct by the Edge Case Hunter against the live code; "1 windows" grammar (AC1-pinned exact format); minority `Warn`-string drift from the D2 sample (cosmetic, non-asserted, AC1 pins only the clean+summary strings); loopback clean-phase "timeout-vs-desync" diagnostic (the synthetic-GOOD clean phase cannot desync, so the trigger can't occur); observability tests not asserting alert/HALT dispatch (already covered by `ServerHostTests`); test nullable `!` suppressions (no runtime defect).
 
 ---
 
