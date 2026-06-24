@@ -191,12 +191,18 @@ namespace ProjectChimera.Multiplayer
         private void HandleReady(int slot)
         {
             if (slot >= ServerTransport.MAX_PLAYERS) return; // spectators don't send Ready
-            if (_state != State.BothConnected && _state != State.BothReady) return;
+            if (_state == State.InGame) return;              // match already started — ignore late/duplicate Ready
 
+            // Story 1.9a: RECORD the ready even if the other player hasn't connected yet (it was previously
+            // DROPPED unless the server was already BothConnected). A client that readies the instant it connects
+            // — e.g. the auto-join loopback smoke, or simply a faster peer — must not deadlock waiting on a Ready
+            // the server threw away. Start only once BOTH players are connected AND both have readied; the
+            // connect/ready order no longer matters.
             _ready[slot] = true;
             GD.Print($"[Server] Slot {slot} is Ready.");
 
-            if (_ready[0] && _ready[1])
+            bool bothConnected = CountConnectedPlayers() >= ServerTransport.MAX_PLAYERS;
+            if (bothConnected && _ready[0] && _ready[1])
             {
                 _state = State.InGame;
 

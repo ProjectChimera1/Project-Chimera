@@ -493,6 +493,7 @@ Claude Opus 4.8 (`claude-opus-4-8`) — gds-dev-story workflow.
 
 - 2026-06-24 — Story 1.9a implemented (Tasks 1–9 complete; Task 10 tooling complete + server-boot/overlay runtime-verified, the live 2-client F9 round-trip is a push-button manual eyeball). 3 net-new Godot-free types (`ServerBootstrap`/`ServerHost`/`ServerChecksumCollector`), 4 net-new packet builders + `Halt`/`HaltReason`, headless-branch re-point + relay rewrite, client HALT handler + terminal overlay, AR-40 tie-break pin + golden. Tier-1 183 green; existing goldens byte-identical; `godot.csproj` builds. baseline_commit `3599834` preserved.
 - 2026-06-24 — Task 10 loopback tooling: one-click launcher (`godot/tools/loopback-desync-smoke.cmd`) + `#if DEBUG` auto-join/auto-ready (`LobbyUi`/`MainScene`). Fixed a latent headless NRE (`_headless` guard on `MainScene._Process`/`_Input`/`_UnhandledInput`). Headless server boot runtime-verified (sim spine built + port bound, 0 stderr errors).
+- 2026-06-24 — Loopback bug fix (found while standing up the smoke): `DedicatedServer.HandleReady` dropped a Ready received before both peers connected, so a fast/auto-join client deadlocked on "Ready! Waiting for other player". Now records the early Ready and starts on both-connected-AND-ready (order-independent). Server boot re-verified; `godot.csproj` builds clean.
 
 ### File List
 
@@ -515,7 +516,7 @@ Claude Opus 4.8 (`claude-opus-4-8`) — gds-dev-story workflow.
 
 **MODIFIED — production:**
 - `godot/src/Multiplayer/NetworkCommand.cs` — `PacketType.Halt=0x13`, `HaltReason`, `MakeDesyncAlert`/`TryReadDesyncAlert`/`MakeHalt`/`TryReadHalt`.
-- `godot/src/Multiplayer/DedicatedServer.cs` — `SimHost` prop + `ServerHost _serverHost`; construct in `HandleReady`; relay rewrite at the `Checksum` case (drop `DesyncAlert` relay); usings; Start log.
+- `godot/src/Multiplayer/DedicatedServer.cs` — `SimHost` prop + `ServerHost _serverHost`; construct in `HandleReady`; relay rewrite at the `Checksum` case (drop `DesyncAlert` relay); usings; Start log. **`HandleReady` now RECORDS an early Ready (one received before both peers connect) instead of dropping it, and starts only when both are connected AND ready** — fixes an auto-join / fast-peer deadlock found during the loopback smoke (a client that readies the instant it connects used to have its Ready thrown away → "Ready! Waiting for other player" forever).
 - `godot/src/Core/MainScene.cs` — headless-branch re-point + `BuildHeadlessServerSimHost()`; `ShowHalt(uint,uint)` terminal overlay; `#if DEBUG` F9 divergence hook + `--autojoin` arg/`ParseAutoJoinArg`; `_headless` guard on `_Process`/`_Input`/`_UnhandledInput` (fixes a latent per-frame headless NRE).
 - `godot/src/Multiplayer/LockstepManager.cs` — `OnHalt` event + `_halted` field + `RaiseHalt`; inbound `DesyncAlert`/`Halt` cases; dormant-P2P comment; `Flush` halt gate.
 - `godot/src/Multiplayer/LobbyUi.cs` — `#if DEBUG` `AutoJoinDedicated`/`TryAutoReady` (reuses the real JoinGame/Ready path for the one-click loopback smoke).

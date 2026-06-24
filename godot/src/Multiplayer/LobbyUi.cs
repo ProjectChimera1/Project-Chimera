@@ -154,6 +154,7 @@ namespace ProjectChimera.Multiplayer
         /// <summary>Fire the real Ready path once, when armed (called when the server's Hello arrives).</summary>
         private void TryAutoReady()
         {
+            GD.Print($"[Lobby] TryAutoReady: autoReady={_autoReady} readyConfirmed={_readyConfirmed}");
             if (_autoReady && !_readyConfirmed) OnReadyPressed();
         }
 #endif
@@ -267,6 +268,9 @@ namespace ProjectChimera.Multiplayer
             _readyConfirmed    = true;
             _readyBtn.Disabled = true;
             _transport.SendReliable(TickCommandPacket.MakeReady(ScenarioHash));
+#if DEBUG
+            GD.Print($"[Lobby] Ready packet SENT (scenarioHash=0x{ScenarioHash:X8}).");
+#endif
             string hashStr = ScenarioHash != 0 ? $"  [map 0x{ScenarioHash:X8}]" : "";
             SetStatus($"Ready! Waiting for other player…{hashStr}");
             TryStartGame();
@@ -289,6 +293,9 @@ namespace ProjectChimera.Multiplayer
 
         private void HandlePeerConnected()
         {
+#if DEBUG
+            GD.Print($"[Lobby] peer connected (isHost={_transport.IsHost}, online={_onlineModeActive}, autoReady={_autoReady})");
+#endif
             SetStatus("Connected! Click Ready when set up.");
             _readyBtn.Visible  = true;
             _readyBtn.Disabled = false;
@@ -319,6 +326,9 @@ namespace ProjectChimera.Multiplayer
             switch (type)
             {
                 case PacketType.Hello:
+#if DEBUG
+                    GD.Print("[Lobby] Hello packet received from server.");
+#endif
                     if (TickCommandPacket.TryReadHello(data, len, out var f)
                         && f != Core.Faction.Neutral)
                     {
