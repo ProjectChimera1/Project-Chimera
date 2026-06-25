@@ -15,7 +15,7 @@ status: Active
 Phases 0–4 are code-complete. Phase 5 is underway. Session 20 shipped worker-placed buildings + UI bug sweep. Session 21 (remote, away from computer) shipped Utility AI + Adaptive Input Delay.
 
 ## Next Action
-Alec reviews the saved questions (CI runner OS, trigger cadence) and confirms defaults before dev sprint begins; story
+Complete step 1 checkpoint (halt for confirmation) and proceed to parallel adversarial review layers (L1: security/config, L2: test harness correctness, L3: CI/workflow logic).
 
 ---
 
