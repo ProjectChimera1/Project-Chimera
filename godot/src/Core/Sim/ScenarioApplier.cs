@@ -213,6 +213,17 @@ namespace ProjectChimera.Core.Sim
             world.SplashRadius[id] = Fixed.FromFloat(def.SplashRadius);
             world.SupplyCost[id]   = (byte)def.Supply;
 
+            // Story 1.13 (DG-2 / FR-54): per-unit separation/formation fields. CollisionRadius mirrors the
+            // SplashRadius float→Fixed load conversion, then is clamped: omitted/<=0 → DEFAULT (AC3, no
+            // zero-radius divide), and > MAX → MAX (AC2b query-safety — keeps the largest summed contact inside
+            // the unchanged spatial-hash query window). All value-type ops → the spawn path stays alloc-free.
+            Fixed r = Fixed.FromFloat(def.CollisionRadius);
+            if (r <= Fixed.Zero) r = EntityWorld.DEFAULT_COLLISION_RADIUS;
+            if (r > EntityWorld.MAX_COLLISION_RADIUS) r = EntityWorld.MAX_COLLISION_RADIUS;
+            world.CollisionRadius[id]      = r;
+            world.SeparationPriorityOf[id] = def.ParsedSeparationPriority;
+            world.CategoryOf[id]           = def.ParsedCategory;
+
             // Presentation: tag the unit type so MultiMeshBridge renders the right mesh. MeshType is a byte
             // excluded from the determinism checksum; the index comes from the pre-resolved faction def.
             int fIdx     = (int)faction;

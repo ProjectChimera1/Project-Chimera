@@ -16,7 +16,7 @@ namespace ProjectChimera.Sim.Tests.Golden
     ///      mutation. If a future story adds a public per-faction array to ResourceStore but forgets to fold it
     ///      into the checksum, mutating that array leaves the hash unchanged and this test FAILS, naming the
     ///      uncovered field. This proves *actual* coverage instead of a hand-maintained list that silently drifts.
-    ///   2. <see cref="KnownWorldState_ProducesPinnedV3Hash"/> — a snapshot/tripwire: a hand-built fixed world
+    ///   2. <see cref="KnownWorldState_ProducesPinnedV5Hash"/> — a snapshot/tripwire: a hand-built fixed world
     ///      hashes to a committed constant. Any unintended change to the algorithm (reordering mixes, adding or
     ///      dropping a field) moves the constant and turns this red, forcing a conscious re-pin + AlgoVersion bump.
     ///
@@ -83,38 +83,39 @@ namespace ProjectChimera.Sim.Tests.Golden
         }
 
         /// <summary>
-        /// AC1 — pins the v4 algorithm. A hand-built, fully-deterministic world (all <see cref="Fixed"/>; no
+        /// AC1 — pins the v5 algorithm. A hand-built, fully-deterministic world (all <see cref="Fixed"/>; no
         /// FromFloat, no wall-clock; the shared <see cref="SimRng"/> seeded to a fixed known value) must hash to
         /// a committed constant. This is a tripwire: an intentional algorithm change must update BOTH this constant
         /// AND <see cref="SimChecksum.AlgoVersion"/> in the same commit (mirrors the Story 9.1 "known world state →
         /// fixed expected hash" guard). The value was recorded once from a green run; it is byte-identical across
         /// Windows/Linux because every hashed field is Fixed and the RNG seed is an explicit constant.
-        /// (Story 1.12: bumped v3→v4 when CommandTarget + the patrol-route ring were folded in — the known-state
+        /// (Story 1.13: bumped v4→v5 when CollisionRadius + SeparationPriorityOf were folded in — the known-state
         /// world leaves them at Create() defaults, so the hash still moves because new mixes are added.)
         /// </summary>
         [Fact]
-        public void KnownWorldState_ProducesPinnedV4Hash()
+        public void KnownWorldState_ProducesPinnedV5Hash()
         {
-            // Algorithm version must be exactly 4 (Story 1.12's command-vocabulary fold). If this fails, the const below is stale.
-            Assert.Equal(4, SimChecksum.AlgoVersion);
+            // Algorithm version must be exactly 5 (Story 1.13's separation-config fold). If this fails, the const below is stale.
+            Assert.Equal(5, SimChecksum.AlgoVersion);
 
             uint actual = ComputeKnownStateHash();
 
-            // ── Pinned v4 hash for the fixed world built by ComputeKnownStateHash() ───────────────────────────
+            // ── Pinned v5 hash for the fixed world built by ComputeKnownStateHash() ───────────────────────────
             // An intentional SimChecksum algorithm change must update this value AND bump SimChecksum.AlgoVersion.
-            const uint ExpectedV4Hash = 0x964FF9F8; // recorded from a green v4 run; re-pin only on an intentional algo change
-            Assert.True(actual == ExpectedV4Hash,
-                $"Known-state v4 checksum changed: expected 0x{ExpectedV4Hash:X8}, actual 0x{actual:X8}. " +
-                $"If this is an INTENTIONAL algorithm change, re-pin ExpectedV4Hash to 0x{actual:X8} and bump " +
+            const uint ExpectedV5Hash = 0x5E7BE3D8; // recorded from a green v5 run; re-pin only on an intentional algo change
+            Assert.True(actual == ExpectedV5Hash,
+                $"Known-state v5 checksum changed: expected 0x{ExpectedV5Hash:X8}, actual 0x{actual:X8}. " +
+                $"If this is an INTENTIONAL algorithm change, re-pin ExpectedV5Hash to 0x{actual:X8} and bump " +
                 $"SimChecksum.AlgoVersion. If not, you broke the deterministic checksum — investigate.");
         }
 
         /// <summary>
-        /// AC6c (Story 1.12) — the EntityWorld analogue of the ResourceStore coverage guard above: prove the new
-        /// v4 command fields are ACTUALLY folded into the checksum. Mutating CommandTarget, or a PatrolWaypoints
-        /// slot / PatrolCount / PatrolIndex / PatrolDir on a live entity, MUST move <see cref="SimChecksum.Compute"/>.
-        /// A no-move means a field escaped the hash — a silent desync surface. (PatrolWaypoints is count-driven, so
-        /// the route must have PatrolCount &gt; 0 for its slots to be read.)
+        /// AC6c (Story 1.12) / AC6b (Story 1.13) — the EntityWorld analogue of the ResourceStore coverage guard
+        /// above: prove the folded per-entity fields ACTUALLY move the checksum. Mutating CommandTarget, a
+        /// PatrolWaypoints slot / PatrolCount / PatrolIndex / PatrolDir (v4), or CollisionRadius / SeparationPriorityOf
+        /// (v5) on a live entity MUST move <see cref="SimChecksum.Compute"/>. A no-move means a field escaped the
+        /// hash — a silent desync surface. (PatrolWaypoints is count-driven, so the route must have PatrolCount &gt; 0
+        /// for its slots to be read.) CategoryOf is intentionally absent — it is presentation-read and NOT folded.
         /// </summary>
         [Fact]
         public void EntityCommandFields_AreFoldedIntoTheChecksum()
@@ -164,6 +165,23 @@ namespace ProjectChimera.Sim.Tests.Golden
                 return () => w.PatrolWaypoints[e * EntityWorld.MAX_PATROL_WAYPOINTS + 1] =
                     new FixedVec3(Fixed.FromInt(9), Fixed.Zero, Fixed.FromInt(9));
             });
+
+            // CollisionRadius folded (v5, Story 1.13) — mutate to a value != the Create() default (1.0).
+            AssertFieldFoldedIntoChecksum(buildings, resources, registry, w =>
+            {
+                int e = w.Create(new FixedVec3(Fixed.FromInt(1), Fixed.Zero, Fixed.FromInt(2)),
+                                 Faction.Player1, Fixed.FromInt(10), Fixed.FromInt(3));
+                return () => w.CollisionRadius[e] = Fixed.Half;
+            });
+
+            // SeparationPriorityOf folded (v5, Story 1.13) — mutate to a value != the Create() default (Normal).
+            // (CategoryOf is deliberately NOT proven here: it is presentation-read and NOT folded.)
+            AssertFieldFoldedIntoChecksum(buildings, resources, registry, w =>
+            {
+                int e = w.Create(new FixedVec3(Fixed.FromInt(1), Fixed.Zero, Fixed.FromInt(2)),
+                                 Faction.Player1, Fixed.FromInt(10), Fixed.FromInt(3));
+                return () => w.SeparationPriorityOf[e] = SeparationPriority.Push;
+            });
         }
 
         /// <summary>
@@ -180,15 +198,16 @@ namespace ProjectChimera.Sim.Tests.Golden
             mutate();
             uint after = SimChecksum.Compute(world, buildings, resources, registry);
             Assert.True(before != after,
-                "A v4 EntityWorld command field is NOT folded into SimChecksum: mutating it left the checksum " +
-                "unchanged. Add it to the entity loop in SimChecksum.Compute (and bump AlgoVersion).");
+                "A folded EntityWorld per-entity field is NOT folded into SimChecksum: mutating it left the " +
+                "checksum unchanged. Add it to the entity loop in SimChecksum.Compute (and bump AlgoVersion).");
         }
 
         /// <summary>
-        /// Build a small fixed world by hand and compute its v3 checksum. Fully self-contained: every hashed
+        /// Build a small fixed world by hand and compute its v5 checksum. Fully self-contained: every hashed
         /// field is set explicitly with <see cref="Fixed"/> so the pinned hash does not silently depend on store
         /// constructor defaults a future story might change. The shared <see cref="SimRng"/> is reseeded to a
-        /// fixed known value so the v3 RNG fold is pinned independently of EntityWorld.DEFAULT_RNG_SEED.
+        /// fixed known value so the RNG fold is pinned independently of EntityWorld.DEFAULT_RNG_SEED. The new v5
+        /// separation fields are left at their Create() defaults (CollisionRadius=1.0, SeparationPriorityOf=Normal).
         /// </summary>
         private static uint ComputeKnownStateHash()
         {

@@ -8,7 +8,9 @@ namespace ProjectChimera.Navigation
     ///
     /// Seek:       Steer toward MoveTarget at full speed (Moving units only).
     /// Arrive:     Scale speed down linearly within SLOW_RADIUS of target; stop at ARRIVE_THRESHOLD.
-    /// Separation: Push away from all alive neighbors within SEPARATION_RADIUS (every alive unit).
+    /// Separation: Push away from contacting neighbours — per-pair contact = summed per-unit radii, biased so a
+    ///             moving unit yields less than an idle one, and a Push unit is not displaced by a Yield neighbour
+    ///             (Story 1.13, DG-2 / FR-54). Every alive unit separates (so units spread even while attacking).
     /// </summary>
     public class MovementSystem : ISimSystem
     {
@@ -19,11 +21,19 @@ namespace ProjectChimera.Navigation
         // Arrive: begin slowing down within this distance of target
         private static readonly Fixed SLOW_RADIUS = Fixed.FromFloat(4.0f);
 
-        // Separation: query neighbors within this radius
-        private static readonly Fixed SEPARATION_RADIUS = Fixed.FromFloat(2.0f);
+        // Separation: how WIDE to scan for neighbours (the flat query bound). NOT the contact distance — that is
+        // now the per-pair summed radii (Story 1.13). Kept at 2.0 so the neighbour scan + 32-slot buffer are
+        // unchanged, and so 2 * EntityWorld.MAX_COLLISION_RADIUS (= 2.0) never exceeds it (no contact silently
+        // missed). A future story wanting bigger units widens BOTH this and MAX_COLLISION_RADIUS together.
+        private static readonly Fixed SEPARATION_QUERY_RADIUS = Fixed.FromFloat(2.0f);
 
         // Separation: multiplier on the summed separation vector
         private static readonly Fixed SEPARATION_STRENGTH = Fixed.FromFloat(2.5f);
+
+        // Separation: the fraction by which a MOVING unit's separation displacement (and thus the perturbation to
+        // its path-following) is damped, so an idle neighbour yields more in a mixed contact while same-state pairs
+        // (both moving / both idle) stay symmetric (Story 1.13, AC1). Fixed.Half = 0.5 (named, not a bare literal).
+        private static readonly Fixed MOVING_SEPARATION_BIAS = Fixed.Half;
 
         private readonly SpatialHash _spatialHash = new SpatialHash();
 
@@ -81,7 +91,8 @@ namespace ProjectChimera.Navigation
                 }
 
                 // --- Separation from nearby units (all alive units) ---
-                int neighborCount = _spatialHash.QueryRadius(world, pos, SEPARATION_RADIUS, i, _neighborBuffer);
+                // The query is a flat bound (how wide to scan); the actual CONTACT is the per-pair summed radii.
+                int neighborCount = _spatialHash.QueryRadius(world, pos, SEPARATION_QUERY_RADIUS, i, _neighborBuffer);
                 if (neighborCount > 0)
                 {
                     FixedVec3 separation = FixedVec3.Zero;
@@ -90,13 +101,28 @@ namespace ProjectChimera.Navigation
                         int j = _neighborBuffer[n];
                         FixedVec3 away = pos - world.Position[j];
                         Fixed neighborDist = away.Magnitude();
-                        if (neighborDist <= Fixed.Zero) continue; // exactly overlapping — skip
+                        if (neighborDist <= Fixed.Zero) continue; // exactly overlapping — skip (unchanged)
 
-                        // Linear falloff: full push at dist=0, zero push at dist=SEPARATION_RADIUS
-                        Fixed weight = (SEPARATION_RADIUS - neighborDist) / SEPARATION_RADIUS;
+                        // AC2b: per-pair contact = summed radii (replaces the flat SEPARATION_RADIUS in the weight).
+                        Fixed contact = world.CollisionRadius[i] + world.CollisionRadius[j];
+                        if (neighborDist >= contact) continue; // not in contact
+
+                        // AC2c: a Push unit is never displaced by a Yield neighbour it contacts — it skips that
+                        // neighbour's contribution to its OWN separation. (The yield unit is still pushed by the
+                        // push unit when the yield unit computes ITS separation, where this guard is false.)
+                        if (world.SeparationPriorityOf[i] == SeparationPriority.Push &&
+                            world.SeparationPriorityOf[j] == SeparationPriority.Yield) continue;
+
+                        // Linear falloff normalized by the summed radii: full push at dist=0, zero push at contact.
+                        Fixed weight = (contact - neighborDist) / contact;
                         separation = separation + away.Normalized() * weight;
                     }
-                    velocity = velocity + separation * SEPARATION_STRENGTH;
+
+                    // AC1: moving-vs-idle bias — damp a MOVING unit's total separation by MOVING_SEPARATION_BIAS so
+                    // its path-following is perturbed by at most that fraction and an idle neighbour yields more in a
+                    // mixed contact; same-state pairs (both moving / both idle) stay symmetric (equal magnitude).
+                    Fixed bias = isMoving ? (Fixed.One - MOVING_SEPARATION_BIAS) : Fixed.One;
+                    velocity = velocity + separation * SEPARATION_STRENGTH * bias;
                 }
 
                 // No net force — skip update

@@ -11,7 +11,8 @@ namespace ProjectChimera.Sim.Tests.Golden
     /// onto a FAR enemy with a nearer decoy present, to pin force-fire), Patrol (a 3-waypoint route with an enemy
     /// on the lane), and Follow (escorting a moving friendly). Stepped via <see cref="SimulationHost.StepOnce"/>
     /// at ChecksumInterval = 1, the per-tick <see cref="SimChecksum"/> sequence pins the full command vocabulary's
-    /// deterministic evolution (movement + combat + the new SoA command fields folded in at v4).
+    /// deterministic evolution (movement + combat + the command SoA fields folded at v4; re-baselined at v5 by
+    /// Story 1.13's separation-config fold).
     ///
     /// CROSS-PLATFORM SAFE (unlike the AI-active golden): every authored field and every new hashed field is
     /// integer / <see cref="Fixed"/> only — no float in the hashed path. Player2 is left EMPTY (0 units, 0 ore,

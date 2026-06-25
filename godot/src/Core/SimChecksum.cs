@@ -14,6 +14,8 @@ namespace ProjectChimera.Core
     ///   - SimRng: the shared generator's 64-bit State (low 32 bits then high 32 bits) — added v3 (Story 1.5)
     ///   - EntityWorld command state: per alive entity, CommandTarget + the patrol-route ring (PatrolCount,
     ///     PatrolIndex, PatrolDir, then count-driven PatrolWaypoints X/Y/Z) — added v4 (Story 1.12)
+    ///   - EntityWorld separation config: per alive entity, CollisionRadius (Raw) + SeparationPriorityOf (int) —
+    ///     added v5 (Story 1.13). CategoryOf is deliberately NOT hashed (presentation-read, like MeshType).
     ///
     /// Versioned by <see cref="AlgoVersion"/> — bump on any change to the hashed set/order
     /// (forces an intentional golden re-baseline). MatchStats is deliberately NOT hashed
@@ -37,8 +39,11 @@ namespace ProjectChimera.Core
         ///   v3 — Story 1.5: fold the shared SimRng.State (low then high 32 bits) so a divergent RNG stream desyncs.
         ///   v4 — Story 1.12: fold per-entity CommandTarget + the patrol-route ring (PatrolCount/Index/Dir +
         ///        count-driven PatrolWaypoints) so the full RTS command vocabulary is hashed sim truth.
+        ///   v5 — Story 1.13: fold per-entity CollisionRadius + SeparationPriorityOf (separation config is sim
+        ///        truth — a peer divergence in either changes movement and must desync detectably). CategoryOf is
+        ///        NOT folded (presentation-read formation input; its effect reaches the hash via Position).
         /// </summary>
-        public const int AlgoVersion = 4;
+        public const int AlgoVersion = 5;
 
         /// <summary>
         /// Compute a full-state checksum for desync detection.
@@ -85,6 +90,15 @@ namespace ProjectChimera.Core
                     hash = Mix(hash, world.PatrolWaypoints[wpBase + k].Y.Raw);
                     hash = Mix(hash, world.PatrolWaypoints[wpBase + k].Z.Raw);
                 }
+
+                // ── Separation / formation config (v5, Story 1.13) ────────────────
+                // CollisionRadius + SeparationPriorityOf are read in-sim by MovementSystem every tick on every
+                // peer, so a content divergence in either must desync detectably. CategoryOf is NOT folded: it is
+                // presentation-read (formation planning, like MeshType) and its effect reaches the hash only
+                // transitively via Position, so a divergent local CategoryOf cannot desync. Both are int/Fixed.Raw
+                // → cross-platform safe (the new formation-separation golden is compared on BOTH CI legs).
+                hash = Mix(hash, world.CollisionRadius[i].Raw);
+                hash = Mix(hash, (int)world.SeparationPriorityOf[i]);
             }
 
             // ── Building state ────────────────────────────────────────────────────

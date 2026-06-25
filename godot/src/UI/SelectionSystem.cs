@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using Godot;
 using ProjectChimera.Core;
 using ProjectChimera.Multiplayer;
+using ProjectChimera.Navigation; // FormationPlanner (Story 1.13)
 
 namespace ProjectChimera.UI
 {
@@ -390,30 +391,23 @@ namespace ProjectChimera.UI
 
         // ── Move command ──────────────────────────────────────────────────────────
 
+        /// <summary>Spacing (world units) between adjacent units' destinations in a formation (Story 1.13).</summary>
+        private static readonly Fixed FORMATION_SPACING = Fixed.FromInt(2);
+
         private void IssueMoveCommand(Vector2 screenPos)
         {
             Vector3 target;
             if (!RaycastGround(screenPos, out target)) return;
             target.Y = 0f;
 
-            int n    = _selectedList.Count;
-            int cols = (int)System.Math.Ceiling(System.Math.Sqrt(n));
-
-            // Formation spacing: 2 world units between each unit's individual destination.
-            const float SPACING = 2.0f;
-
-            for (int si = 0; si < n; si++)
+            // Story 1.13: role-based formation via the Godot-free FormationPlanner (replaces the flat ceil(sqrt N)
+            // grid). The planner is shared with IssueAttackMoveCommand so the two paths can never diverge (AC4d).
+            FixedVec3[] dests = BuildFormation(target, out int[] ids);
+            for (int k = 0; k < ids.Length; k++)
             {
-                int id = _selectedList[si];
-                if (!_world.IsAlive(id)) continue;
-
-                // Spread units in a square grid centred on the click point.
-                int   row = si / cols;
-                int   col = si % cols;
-                float ox  = (col - (cols - 1) * 0.5f) * SPACING;
-                float oz  = (row - ((n - 1) / cols) * 0.5f) * SPACING;
-
-                var dest = new Vector3(target.X + ox, 0f, target.Z + oz);
+                int id = ids[k];
+                FixedVec3 fd = dests[k];
+                var dest = new Vector3(fd.X.ToFloat(), 0f, fd.Z.ToFloat());
 
                 if (!EnqueueCommand(id, UnitCommand.Move, dest)) continue; // online: queued, not applied yet
 
@@ -423,7 +417,8 @@ namespace ProjectChimera.UI
                 }
                 else
                 {
-                    // Fallback: direct steering
+                    // Fallback: direct steering (goal rebuilt from the Vector3 so online + offline use the IDENTICAL
+                    // Fixed.FromFloat boundary value — exactly the pre-1.13 offline-apply pattern).
                     var goal = new FixedVec3(Fixed.FromFloat(dest.X), Fixed.Zero, Fixed.FromFloat(dest.Z));
                     _world.CommandState[id]  = UnitCommand.Move;
                     _world.CommandGoal[id]   = goal;
@@ -432,6 +427,41 @@ namespace ProjectChimera.UI
                     _world.AttackTarget[id]  = -1;
                 }
             }
+        }
+
+        /// <summary>
+        /// Build the role-based formation for the current selection toward <paramref name="target"/> (Story 1.13).
+        /// Gathers alive selected ids in ASCENDING order (the planner's deterministic slot contract — <c>_selectedList</c>
+        /// may be control-group/click ordered), reads each unit's archetype from the sim SoA, derives the facing from
+        /// the selection centroid → target, and calls the Godot-free <see cref="FormationPlanner"/>. Returns one
+        /// destination per id (parallel to <paramref name="ids"/>). Shared by both issue paths (AC4d).
+        /// </summary>
+        private FixedVec3[] BuildFormation(Vector3 target, out int[] ids)
+        {
+            var idList = new List<int>(_selectedList.Count);
+            foreach (int id in _selectedList)
+                if (_world.IsAlive(id)) idList.Add(id);
+            idList.Sort(); // ascending entity-id
+            ids = idList.ToArray();
+
+            int m = ids.Length;
+            var cats = new UnitCategory[m];
+            FixedVec3 centroid = FixedVec3.Zero;
+            for (int k = 0; k < m; k++)
+            {
+                cats[k]  = _world.CategoryOf[ids[k]];
+                centroid = centroid + _world.Position[ids[k]];
+            }
+
+            var ftarget = new FixedVec3(Fixed.FromFloat(target.X), Fixed.Zero, Fixed.FromFloat(target.Z));
+            FixedVec3 facing = ftarget; // m == 0 → Plan returns an empty array; facing is unused
+            if (m > 0)
+            {
+                centroid = centroid / Fixed.FromInt(m);
+                facing   = ftarget - centroid;
+            }
+
+            return FormationPlanner.Plan(ids, cats, ftarget, facing, FORMATION_SPACING);
         }
 
         // ── Command methods ───────────────────────────────────────────────────────
@@ -483,21 +513,13 @@ namespace ProjectChimera.UI
             if (!RaycastGround(screenPos, out target)) return;
             target.Y = 0f;
 
-            int n    = _selectedList.Count;
-            int cols = (int)System.Math.Ceiling(System.Math.Sqrt(n));
-            const float SPACING = 2.0f;
-
-            for (int si = 0; si < n; si++)
+            // Story 1.13: same role-based formation as IssueMoveCommand (AC4d — both paths share FormationPlanner).
+            FixedVec3[] dests = BuildFormation(target, out int[] ids);
+            for (int k = 0; k < ids.Length; k++)
             {
-                int id = _selectedList[si];
-                if (!_world.IsAlive(id)) continue;
-
-                int   row  = si / cols;
-                int   col  = si % cols;
-                float ox   = (col - (cols - 1) * 0.5f) * SPACING;
-                float oz   = (row - ((n - 1) / cols) * 0.5f) * SPACING;
-
-                var dest = new Vector3(target.X + ox, 0f, target.Z + oz);
+                int id = ids[k];
+                FixedVec3 fd = dests[k];
+                var dest = new Vector3(fd.X.ToFloat(), 0f, fd.Z.ToFloat());
 
                 if (!EnqueueCommand(id, UnitCommand.AttackMove, dest)) continue; // online: queued
 
@@ -515,7 +537,7 @@ namespace ProjectChimera.UI
                     _world.AttackTarget[id]  = -1;
                 }
             }
-            GD.Print($"[Selection] Attack-Move issued to {n} unit(s).");
+            GD.Print($"[Selection] Attack-Move issued to {ids.Length} unit(s).");
         }
 
         /// <summary>

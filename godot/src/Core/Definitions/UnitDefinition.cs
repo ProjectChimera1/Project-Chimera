@@ -1,6 +1,7 @@
 #nullable enable
 using System.Text.Json.Serialization;
 using ProjectChimera.Combat;
+using ProjectChimera.Core; // UnitCategory, SeparationPriority (sim enums)
 
 namespace ProjectChimera.Core.Definitions
 {
@@ -83,6 +84,24 @@ namespace ProjectChimera.Core.Definitions
         public float SplashRadius { get; set; } = 0f;
 
         /// <summary>
+        /// Per-unit collision/separation radius in world units (Story 1.13, DG-2 / FR-54). Summed with a
+        /// neighbour's radius to form the per-pair contact threshold in <c>MovementSystem</c>'s separation
+        /// (replacing the old flat constant). Default 1.0 so two unauthored units sum to a 2.0 contact distance
+        /// = the legacy flat separation radius (backward-compatible). Omitted, &lt;= 0, or &gt; the engine cap is
+        /// clamped to the documented default/max at spawn (see <c>ScenarioApplier.SpawnUnit</c>).
+        /// </summary>
+        [JsonPropertyName("collision_radius")]
+        public float CollisionRadius { get; set; } = 1.0f;
+
+        /// <summary>
+        /// Crowd-steering precedence: Yield | Normal | Push (Story 1.13). A Push unit holds its ground against a
+        /// Yield neighbour it contacts. Default "Normal" → symmetric separation, so existing factions are
+        /// unchanged. Parsed to <see cref="SeparationPriority"/> via <see cref="ParsedSeparationPriority"/>.
+        /// </summary>
+        [JsonPropertyName("separation_priority")]
+        public string SeparationPriority { get; set; } = "Normal";
+
+        /// <summary>
         /// Building-type IDs that must be alive and fully constructed (for the same faction)
         /// before this unit can be trained or this building can be placed.
         /// Example: ["barracks"] means a completed Barracks is required.
@@ -110,6 +129,30 @@ namespace ProjectChimera.Core.Definitions
             "Heavy"     => Combat.ArmorType.Heavy,
             "Fortified" => Combat.ArmorType.Fortified,
             _           => Combat.ArmorType.Unarmored,
+        };
+
+        /// <summary>
+        /// separation_priority string from JSON resolved to enum. Exact-string match (mirrors
+        /// <see cref="ParsedDamageType"/>); unknown / unset → Normal (symmetric separation). The enum is
+        /// qualified with <c>Core.</c> because the string property above shares its name (the same disambiguation
+        /// <see cref="ParsedDamageType"/> uses for the <c>DamageType</c> property/enum clash).
+        /// </summary>
+        public SeparationPriority ParsedSeparationPriority => SeparationPriority switch
+        {
+            "Yield" => Core.SeparationPriority.Yield,
+            "Push"  => Core.SeparationPriority.Push,
+            _       => Core.SeparationPriority.Normal,
+        };
+
+        /// <summary>category string from JSON resolved to the archetype enum. Unknown / unset → Melee.</summary>
+        public UnitCategory ParsedCategory => Category switch
+        {
+            "Worker"    => UnitCategory.Worker,
+            "Ranged"    => UnitCategory.Ranged,
+            "Siege"     => UnitCategory.Siege,
+            "Air"       => UnitCategory.Air,
+            "Structure" => UnitCategory.Structure,
+            _           => UnitCategory.Melee,
         };
     }
 }

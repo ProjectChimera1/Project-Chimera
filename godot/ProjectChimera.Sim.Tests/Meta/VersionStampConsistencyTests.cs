@@ -31,7 +31,7 @@ namespace ProjectChimera.Sim.Tests.Meta
     /// scenario <c>schema_version</c> is added so it cannot land outside this consistency surface.
     ///
     /// NOTE: <see cref="SimChecksum.AlgoVersion"/> is ALSO canonically pinned (with a known-state hash) by
-    /// <c>SimChecksumCoverageGuardTest.KnownWorldState_ProducesPinnedV3Hash</c>. It is repeated here for a complete
+    /// <c>SimChecksumCoverageGuardTest.KnownWorldState_ProducesPinnedV5Hash</c>. It is repeated here for a complete
     /// single-view registry; a deliberate bump must update BOTH guards (and re-baseline the goldens) in one commit.
     ///
     /// All five stamps are reachable from this Godot-free Tier-1 assembly: <c>src/Core/**</c> (SimChecksum,
@@ -45,8 +45,8 @@ namespace ProjectChimera.Sim.Tests.Meta
         //    same commit as the source change — that edit is the "did the siblings + goldens move too?" checkpoint.
 
         /// <summary>Runtime desync-checksum algorithm version. Bump ⇒ re-baseline ALL goldens (same commit).
-        /// v4 (Story 1.12): folded CommandTarget + the patrol-route ring (full RTS command vocabulary).</summary>
-        private const int ExpectedSimChecksumAlgoVersion = 4;
+        /// v5 (Story 1.13): folded per-entity CollisionRadius + SeparationPriorityOf (separation config).</summary>
+        private const int ExpectedSimChecksumAlgoVersion = 5;
 
         /// <summary>Load-time canonical start-state hash algorithm version (lobby handshake value).</summary>
         private const int ExpectedCanonicalModelHashAlgoVersion = 2;

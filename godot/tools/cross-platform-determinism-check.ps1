@@ -116,7 +116,7 @@ $ran    = @(@($windowsPassed, $wslPassed) | Where-Object { $_ -ne $null })   # o
 $allOk  = ($ran.Count -gt 0) -and (-not ($ran -contains $false))
 
 if ($allOk -and (-not $SkipWindows) -and (-not $SkipWsl)) {
-    Write-Host '✅ Windows<->Linux byte-identical: the 4 committed goldens produce IDENTICAL per-tick' -ForegroundColor Green
+    Write-Host '✅ Windows<->Linux byte-identical: all committed goldens produce IDENTICAL per-tick' -ForegroundColor Green
     Write-Host '   SimChecksum sequences on both OSes (verify mode; no golden re-recorded).' -ForegroundColor Green
     Write-Host '   Fixed-point determinism holds cross-platform (AR-37 / M1 cross-platform gate GREEN).' -ForegroundColor Green
 }

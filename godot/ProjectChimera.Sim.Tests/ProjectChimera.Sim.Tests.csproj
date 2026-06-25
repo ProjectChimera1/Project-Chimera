@@ -47,6 +47,11 @@
          (Windows + Linux/WSL), NOT Windows-gated like the AI-active golden. NEW file; goldens above untouched. -->
     <None Remove="Golden\command-vocabulary-scenario.golden.txt" />
     <EmbeddedResource Include="Golden\command-vocabulary-scenario.golden.txt" />
+    <!-- Story 1.13 (AC6d) — formation-separation golden (a moving unit pushing through idle units, units of
+         different CollisionRadius, a Push-vs-Yield pair; Player2 empty so the AI no-ops). Integer/Fixed-only →
+         CROSS-PLATFORM SAFE: compared on both CI legs, NOT Windows-gated. NEW file; goldens above untouched. -->
+    <None Remove="Golden\formation-separation-scenario.golden.txt" />
+    <EmbeddedResource Include="Golden\formation-separation-scenario.golden.txt" />
   </ItemGroup>
 
   <ItemGroup>

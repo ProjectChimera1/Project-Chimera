@@ -74,6 +74,25 @@ namespace ProjectChimera.Core
         /// </summary>
         public const int MAX_PATROL_WAYPOINTS = 8;
 
+        /// <summary>
+        /// Default per-unit separation radius (Story 1.13) applied when <c>collision_radius</c> is omitted or
+        /// authored &lt;= 0. Chosen as 1.0 so two default units sum to a 2.0 contact distance — identical to the
+        /// legacy flat <c>MovementSystem.SEPARATION_QUERY_RADIUS</c>, so unauthored units keep their pre-1.13
+        /// separation contact (the existing goldens move ONLY from the new moving-bias, not the radius math).
+        /// A named <c>static readonly Fixed</c> (not a bare literal) so the determinism analyzer's CHM0004
+        /// magic-cap advisory stays clean.
+        /// </summary>
+        public static readonly Fixed DEFAULT_COLLISION_RADIUS = Fixed.One;
+
+        /// <summary>
+        /// Engine cap on an authored <c>collision_radius</c> (Story 1.13). 1.0 keeps the largest possible summed
+        /// contact (2 * MAX = 2.0) within the UNCHANGED spatial-hash query window (<c>SEPARATION_QUERY_RADIUS</c>)
+        /// and its 32-slot neighbour buffer, so a large authored radius can never make a real contact be silently
+        /// MISSED by the neighbour scan. A future story wanting bigger units widens BOTH the query radius and this
+        /// cap together (and re-checks the buffer). See the query-radius safety note in the Story 1.13 dev notes.
+        /// </summary>
+        public static readonly Fixed MAX_COLLISION_RADIUS = Fixed.One;
+
         // --- Determinism (shared, NOT per-entity) ---
         /// <summary>
         /// Default seed for <see cref="Rng"/> so the parameterless ctor (used widely by scenarios and
@@ -119,6 +138,34 @@ namespace ProjectChimera.Core
         /// 0 = no splash. Set from UnitDefinition.SplashRadius; used by ProjectileSystem.
         /// </summary>
         public readonly Fixed[] SplashRadius;
+
+        // --- Separation / formation (Story 1.13, DG-2 / FR-54) ---
+        /// <summary>
+        /// Per-unit separation radius. Summed with a neighbour's (<c>CollisionRadius[i] + CollisionRadius[j]</c>)
+        /// to form the per-pair contact threshold in <see cref="ProjectChimera.Navigation.MovementSystem"/>,
+        /// replacing the old flat radius. Set from UnitDefinition.collision_radius at spawn (clamped to
+        /// [<see cref="DEFAULT_COLLISION_RADIUS"/> on &lt;=0, <see cref="MAX_COLLISION_RADIUS"/>]). Read in-sim
+        /// every tick → FOLDED into <see cref="SimChecksum"/> (v5).
+        /// </summary>
+        public readonly Fixed[] CollisionRadius;
+
+        /// <summary>
+        /// Per-unit crowd-steering precedence (Yield/Normal/Push). A Push unit is not displaced by a Yield
+        /// neighbour it contacts. Set from UnitDefinition.separation_priority at spawn. Read in-sim every tick by
+        /// MovementSystem → FOLDED into <see cref="SimChecksum"/> (v5). The <c>*Of</c> suffix mirrors
+        /// <see cref="DamageTypeOf"/>/<see cref="ArmorTypeOf"/> so the field name does not collide with the
+        /// <see cref="Core.SeparationPriority"/> enum type.
+        /// </summary>
+        public readonly SeparationPriority[] SeparationPriorityOf;
+
+        /// <summary>
+        /// Per-unit archetype, parsed from UnitDefinition.category at spawn. Read ONLY by the presentation-side
+        /// <see cref="ProjectChimera.Navigation.FormationPlanner"/> (front/back role layout). NOT folded into the
+        /// determinism checksum — it is presentation-read and constant, exactly like <see cref="MeshType"/>; the
+        /// formation it shapes is computed once on the issuer and transmitted as a Fixed MoveTarget, so a
+        /// divergent local category cannot desync.
+        /// </summary>
+        public readonly UnitCategory[] CategoryOf;
 
         // --- Supply ---
         /// <summary>Supply population this entity occupies (0 = workers/buildings, 1+ = combat).</summary>
@@ -213,6 +260,9 @@ namespace ProjectChimera.Core
 
             VisionRange    = new Fixed[MAX_ENTITIES];
             SplashRadius   = new Fixed[MAX_ENTITIES];
+            CollisionRadius      = new Fixed[MAX_ENTITIES];              // Story 1.13 (folded v5)
+            SeparationPriorityOf = new SeparationPriority[MAX_ENTITIES]; // Story 1.13 (folded v5)
+            CategoryOf           = new UnitCategory[MAX_ENTITIES];       // Story 1.13 (NOT folded — presentation-read)
             SupplyCost     = new byte[MAX_ENTITIES];
             MeshType       = new byte[MAX_ENTITIES];
             CommandState   = new UnitCommand[MAX_ENTITIES];
@@ -279,6 +329,12 @@ namespace ProjectChimera.Core
             ArmorTypeOf[id]   = ArmorType.Unarmored;
             VisionRange[id]   = Fixed.FromFloat(8f);
             SplashRadius[id]  = Fixed.Zero;
+            // Story 1.13: default separation/formation fields on (re)allocation. A recycled slot must never carry
+            // the previous unit's radius/priority/category (the classic SoA bug — cf. the 1.12 zombie-route fix).
+            // SpawnUnit overwrites these from the def; Create must default them for any spawn site that forgets.
+            CollisionRadius[id]      = DEFAULT_COLLISION_RADIUS;
+            SeparationPriorityOf[id] = SeparationPriority.Normal;
+            CategoryOf[id]           = UnitCategory.Melee;
             SupplyCost[id]    = 0;
             MeshType[id]      = 0;
             CommandState[id]  = UnitCommand.Idle;

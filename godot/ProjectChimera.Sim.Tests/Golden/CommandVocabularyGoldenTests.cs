@@ -14,9 +14,9 @@ namespace ProjectChimera.Sim.Tests.Golden
     ///   • non-vacuity — the sequence EVOLVES (units move, fight, patrol), so the golden pins real behavior.
     ///
     /// Unlike <see cref="AiActiveGoldenTests"/>, the match assertion is NOT gated to Windows: every hashed field
-    /// (positions/health + the v4 command fields: CommandTarget + the patrol-route ring) is integer / Fixed, and
-    /// Player2 is empty so the float-scoring AI no-ops. So this golden is cross-platform-safe and the normal
-    /// Tier-1 run on BOTH CI legs (Windows + Linux/WSL) compares it — closing the loop without a separate gate.
+    /// (positions/health + the v4 command fields + the v5 separation fields) is integer / Fixed, and Player2 is
+    /// empty so the float-scoring AI no-ops. So this golden is cross-platform-safe and the normal Tier-1 run on
+    /// BOTH CI legs (Windows + Linux/WSL) compares it — closing the loop without a separate gate.
     /// </summary>
     public class CommandVocabularyGoldenTests
     {
@@ -26,7 +26,7 @@ namespace ProjectChimera.Sim.Tests.Golden
         /// CommandVocabulary filter (running ALL Golden tests in record mode would rewrite every golden).</summary>
         private static readonly GoldenChecksumReplay.GoldenHeader CmdHeader = new(
             "command-vocabulary golden-checksum baseline (Story 1.12, AC6d) — CROSS-PLATFORM SAFE (integer/Fixed only)",
-            "Pins the SimChecksum (v4) sequence for CommandVocabularyScenario.Build() (one Player1 unit per order: " +
+            "Pins the SimChecksum (v5) sequence for CommandVocabularyScenario.Build() (one Player1 unit per order: " +
             "Move, AttackMove, Stop, HoldPosition, AttackTarget, Patrol, Follow; Player2 empty so the AI no-ops) " +
             "stepped via StepOnce at ChecksumInterval=1. All hashed fields are integer/Fixed → byte-identical " +
             "Win↔Linux; this golden is NOT Windows-gated and the normal Tier-1 run compares it on both CI legs.",
