@@ -24,3 +24,4 @@ dotnet_diagnostic.CHM0002.severity = warning
 dotnet_diagnostic.CHM0003.severity = warning
 dotnet_diagnostic.CHM0004.severity = warning
 dotnet_diagnostic.CHM0005.severity = warning
+dotnet_diagnostic.CHM0006.severity = warning

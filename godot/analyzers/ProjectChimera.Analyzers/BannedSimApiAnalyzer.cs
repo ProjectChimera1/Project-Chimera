@@ -38,6 +38,13 @@ namespace ProjectChimera.Analyzers
         /// <summary>The one type permitted to call <c>Fixed.FromFloat</c>/<c>ToFloat</c> — the AR-14 boundary.</summary>
         public const string AllowlistedConverterTypeName = "FixedJsonConverter";
 
+        /// <summary>
+        /// The namespace of the one permitted converter. The CHM0005 allow-list is anchored to it so a type that
+        /// merely shares the name <see cref="AllowlistedConverterTypeName"/> in another namespace (UGC, a test
+        /// double, an accidental dupe) cannot silently exempt itself from the float↔Fixed conversion ban.
+        /// </summary>
+        public const string AllowlistedConverterNamespace = "ProjectChimera.Core.Definitions";
+
         /// <summary>Integer literals with magnitude below this are never treated as a "cap" (CHM0004).</summary>
         internal const long CapLiteralThreshold = 8;
 
@@ -94,6 +101,16 @@ namespace ProjectChimera.Analyzers
             description: "Fixed.FromFloat/ToFloat may only run in FixedJsonConverter (load/save). Anywhere else is a determinism hazard. Existing load-time static-constant sites are advisory D2 debt.",
             helpLinkUri: HelpLinkBase + "chm0005");
 
+        internal static readonly DiagnosticDescriptor FloatStringConversionRule = new(
+            id: "CHM0006",
+            title: "float/double Parse/ToString in sim code",
+            messageFormat: "Sim code calls '{0}' — float/double<->string parse/format is culture- and rounding-nondeterministic (A17) and differs across machines/peers. Author thresholds as Fixed; never System.Single/Double.Parse or .ToString in sim (S-CORE-3).",
+            category: Category,
+            defaultSeverity: DiagnosticSeverity.Warning,
+            isEnabledByDefault: true,
+            description: "float.Parse/double.Parse and float.ToString/double.ToString depend on the current culture and rounding mode, so their results diverge across peers. The off-the-shelf banned-API bare-name doc-IDs (M:System.Single.Parse/.ToString) resolve unreliably for these overloaded methods, so this rule detects them semantically instead. Advisory: the one existing site (the Fixed.ToString debug formatter) is D2 'Fixed end-to-end' debt; it cannot be release-gated zero-baseline, hence advisory like the sibling CHM0005.",
+            helpLinkUri: HelpLinkBase + "chm0006");
+
         /// <inheritdoc />
         public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics { get; } =
             ImmutableArray.Create(
@@ -101,7 +118,8 @@ namespace ProjectChimera.Analyzers
                 DictionaryEnumerationRule,
                 UnstableSortRule,
                 MagicCapLiteralRule,
-                FromFloatOutsideConverterRule);
+                FromFloatOutsideConverterRule,
+                FloatStringConversionRule);
 
         /// <inheritdoc />
         public override void Initialize(AnalysisContext context)
@@ -190,9 +208,22 @@ namespace ProjectChimera.Analyzers
             // CHM0005 — Fixed.FromFloat / Fixed.ToFloat outside the FixedJsonConverter allow-list
             if ((method.Name == "FromFloat" || method.Name == "ToFloat")
                 && owner.Name == "Fixed" && ownerNs == "ProjectChimera.Core"
-                && !IsInsideAllowlistedConverter(node))
+                && !IsInsideAllowlistedConverter(ctx, node))
             {
                 ctx.ReportDiagnostic(Diagnostic.Create(FromFloatOutsideConverterRule, node.GetLocation(), method.Name));
+                return;
+            }
+
+            // CHM0006 — float/double .Parse / .ToString (culture/rounding-nondeterministic, A17). Detected
+            // semantically because the off-the-shelf bare-name doc-ID bans (M:System.Single.Parse/.ToString)
+            // resolve unreliably across compilations and cannot be release-gated zero-baseline (the Fixed.ToString
+            // debug formatter is one legitimate site). Advisory — mirrors the float<->Fixed CHM0005 cadence.
+            if ((method.Name == "Parse" || method.Name == "ToString")
+                && ownerNs == "System"
+                && (owner.MetadataName == "Single" || owner.MetadataName == "Double"))
+            {
+                ctx.ReportDiagnostic(Diagnostic.Create(
+                    FloatStringConversionRule, node.GetLocation(), owner.Name + "." + method.Name));
             }
         }
 
@@ -219,12 +250,23 @@ namespace ProjectChimera.Analyzers
             ctx.ReportDiagnostic(Diagnostic.Create(MagicCapLiteralRule, node.GetLocation(), value));
         }
 
-        /// <summary>True when <paramref name="node"/> is enclosed by a type named <see cref="AllowlistedConverterTypeName"/>.</summary>
-        private static bool IsInsideAllowlistedConverter(SyntaxNode node)
+        /// <summary>
+        /// True when <paramref name="node"/> is lexically enclosed by the real AR-14 boundary type
+        /// <see cref="AllowlistedConverterTypeName"/> in namespace <see cref="AllowlistedConverterNamespace"/>.
+        /// The namespace is verified via the semantic model so an unrelated / UGC / test-double type that merely
+        /// shares the name <c>FixedJsonConverter</c> in another namespace cannot silently exempt itself from CHM0005.
+        /// </summary>
+        private static bool IsInsideAllowlistedConverter(SyntaxNodeAnalysisContext ctx, SyntaxNode node)
         {
             for (SyntaxNode? a = node.Parent; a is not null; a = a.Parent)
+            {
                 if (a is TypeDeclarationSyntax t && t.Identifier.ValueText == AllowlistedConverterTypeName)
-                    return true;
+                {
+                    INamedTypeSymbol? sym = ctx.SemanticModel.GetDeclaredSymbol(t, ctx.CancellationToken);
+                    string ns = sym?.ContainingNamespace?.ToDisplayString() ?? string.Empty;
+                    return ns == AllowlistedConverterNamespace;
+                }
+            }
             return false;
         }
 

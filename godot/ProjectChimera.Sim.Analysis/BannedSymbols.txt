@@ -23,12 +23,13 @@ T:System.Security.Cryptography.RandomNumberGenerator;Nondeterministic. Use SimRn
 // --- Godot in the sim layer (S-CORE-5) --- (the Godot-free compile also forbids `using Godot`)
 N:Godot;The sim layer is Godot-free pure C#. Godot types / GD.Print / Time.GetTicksMsec belong in presentation; sim logs via ILogSink.
 
-// --- float<->string boundaries in the tick (S-CORE-3, A17 culture/rounding bug) ---
-// (float<->Fixed via Fixed.FromFloat/ToFloat is CHM0005 in the custom analyzer, advisory.)
-M:System.Single.Parse;Float parse is culture/rounding-nondeterministic (A17). Author thresholds as Fixed.
-M:System.Double.Parse;Double parse is culture/rounding-nondeterministic (A17). Author thresholds as Fixed.
-M:System.Single.ToString;Float formatting is culture-nondeterministic (A17). Never stringify floats in sim.
-M:System.Double.ToString;Double formatting is culture-nondeterministic (A17). Never stringify doubles in sim.
+// --- float<->string boundaries (S-CORE-3, A17 culture/rounding bug) ---
+// MOVED to the custom analyzer as advisory CHM0006. Reason (code-review 2026-06-24): the off-the-shelf
+// bare-name method doc-IDs `M:System.Single.Parse` / `.ToString` resolve UNRELIABLY across compilations —
+// they matched in a vanilla probe but caught nothing in this analysis project — so they cannot be trusted as
+// a gate. AND `float.ToString` has 1 legitimate site (the Fixed.ToString debug formatter) so it cannot be
+// release-gated zero-baseline. CHM0006 detects float/double Parse/ToString SEMANTICALLY (reliable), advisory,
+// mirroring how float<->Fixed (FromFloat/ToFloat) is CHM0005.
 
 // --- AOT / serialization traps (AR-36, D3) ---
 T:System.Text.Json.Serialization.JsonPolymorphicAttribute;Reflective polymorphism is an AOT trap; use a closed typed registry.

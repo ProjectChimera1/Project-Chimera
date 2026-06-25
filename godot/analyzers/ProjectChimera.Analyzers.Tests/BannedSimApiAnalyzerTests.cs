@@ -5,7 +5,7 @@ using Xunit;
 namespace ProjectChimera.Analyzers.Tests
 {
     /// <summary>
-    /// TDD coverage for every <see cref="BannedSimApiAnalyzer"/> rule (CHM0001..CHM0005), each with a positive
+    /// TDD coverage for every <see cref="BannedSimApiAnalyzer"/> rule (CHM0001..CHM0006), each with a positive
     /// (must fire) and a negative (must NOT fire) case so a vacuous pass is impossible. Snippets are crafted to
     /// isolate the rule under test; assertions are on specific diagnostic IDs via Contains/DoesNotContain.
     /// </summary>
@@ -167,6 +167,42 @@ namespace ProjectChimera.Analyzers.Tests
                 "namespace ProjectChimera.Core.Definitions { public class FixedJsonConverter { " +
                 "public void M() { var x = Fixed.FromFloat(1.5f); } } }");
             Assert.DoesNotContain("CHM0005", ids);
+        }
+
+        [Fact]
+        public async Task FromFloat_inside_samename_converter_in_other_namespace_reports_CHM0005()
+        {
+            // The allow-list is namespace-anchored to ProjectChimera.Core.Definitions: a type that merely shares
+            // the name FixedJsonConverter elsewhere must NOT exempt itself (the real AR-14 boundary is the only one).
+            string[] ids = await Ids(
+                "using ProjectChimera.Core;\n" + FixedDef +
+                "namespace Some.Other.Place { public class FixedJsonConverter { " +
+                "public void M() { var x = Fixed.FromFloat(1.5f); } } }");
+            Assert.Contains("CHM0005", ids);
+        }
+
+        // ── CHM0006 — float/double Parse/ToString (culture-nondeterministic, A17) ──────────────
+
+        [Fact]
+        public async Task FloatParse_reports_CHM0006()
+        {
+            string[] ids = await Ids("public class C { public object M(string s) => float.Parse(s); }");
+            Assert.Contains("CHM0006", ids);
+        }
+
+        [Fact]
+        public async Task FloatToString_reports_CHM0006()
+        {
+            string[] ids = await Ids("public class C { public string M(float f) => f.ToString(\"F4\"); }");
+            Assert.Contains("CHM0006", ids);
+        }
+
+        [Fact]
+        public async Task IntToString_does_not_report_CHM0006()
+        {
+            // CHM0006 is float/double-specific — a non-float ToString is deterministic and must not fire.
+            string[] ids = await Ids("public class C { public string M(int n) => n.ToString(); }");
+            Assert.DoesNotContain("CHM0006", ids);
         }
     }
 }

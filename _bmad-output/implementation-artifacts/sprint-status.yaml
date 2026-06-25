@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-06-22
-last_updated: 2026-06-24 (1.10b → review via gds-dev-story: determinism analyzer gate SHIPPED over the Godot-free sim compilation [AR-36] — off-the-shelf BannedApiAnalyzers 3.3.4/RS0030 [zero-baseline, release-gated] + custom BannedSimApiAnalyzer CHM0001..CHM0005 [advisory, 17 TDD tests] + <IsAotCompatible> IL2xxx/IL3xxx, advisory-on-master/-warnaserror-on-release ratchet PROVEN to fail on a deliberate new System.Random(), tier1-analyzer-gate CI sibling job, 7 new Tier-1 guards [203 green], 3 lock files. Custom-analyzer scope expansion delivered. Baseline: RS0030 0-effective, CHM0001 128/CHM0005 133/CHM0004 6/CHM0002 1/CHM0003 1/IL 11+13 advisory. 1 real finding surfaced: unstable Array.Sort ScenarioDirector.cs:206)
+last_updated: 2026-06-24 (1.10b → DONE via gds-code-review: 3-layer adversarial PASS. All 6 ACs confirmed; gate empirically verified by RS0030 injection probe (DateTime fires, real build RS0030=0 — disproved the Edge Case Hunter's "gate would hard-fail" High). 2 patches applied: (1) NEW advisory CHM0006 — reliable SEMANTIC float/double Parse/ToString detection, replacing the 4 unreliable RS0030 bare-DocID bans that caught nothing in the real build [closes the AC1 float↔string gap; probe-proven]; (2) CHM0005 converter allow-list namespace-anchored to ProjectChimera.Core.Definitions [was bare type-name]. Analyzer tests 17→21 green, Tier-1 203 green, goldens byte-identical, RS0030 still zero-baseline. 6 advisory-rule items deferred to deferred-work.md. Prior: gate SHIPPED via gds-dev-story [AR-36, custom-analyzer scope expansion, tier1-analyzer-gate CI job, 3 lock files])
 project: Project_Chimera
 project_key: NOKEY
 tracking_system: file-system
@@ -57,7 +57,7 @@ development_status:
   1-9a-serverbootstrap-headless-peer-server-checksum-collector-with-quorum-halt-loopback: done
   1-9b-fr-39-two-machine-lan-determinism-green-the-1-ship-risk-gate: done
   1-10a-wire-the-golden-checksum-replay-regression-harness-into-ci-pin-isolate-deps: done
-  1-10b-banned-api-aot-eligibility-analyzers-over-the-sim-layer: review
+  1-10b-banned-api-aot-eligibility-analyzers-over-the-sim-layer: done
   1-10c-cross-platform-windows-linux-golden-checksum-gate-via-wsl: backlog
   1-11-smoke-test-the-four-unverified-systems-utility-ai-adaptive-input-delay-llm-trigger-ai-map-generator: backlog
   1-12-full-rts-command-vocabulary-single-target-attack-patrol-follow-hold-distinct-from-stop: backlog
