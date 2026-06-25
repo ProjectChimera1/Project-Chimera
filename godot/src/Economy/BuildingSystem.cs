@@ -177,7 +177,10 @@ namespace ProjectChimera.Economy
             {
                 world.SupplyCost[id]   = 1;
                 world.AttackRange[id]  = Fixed.FromFloat(FALLBACK_ATTACK_RNG);
-                world.EffectiveAttackDamage[id] = Fixed.FromFloat(FALLBACK_ATTACK_DMG);
+                // Story 2.2a (A2): non-mapper write sets BOTH Base (authored source) and Effective, so a later
+                // modifier recomputes Effective = Base + delta correctly instead of from a stale Zero base.
+                world.BaseAttackDamage[id]      = Fixed.FromFloat(FALLBACK_ATTACK_DMG);
+                world.EffectiveAttackDamage[id] = world.BaseAttackDamage[id];
                 world.AttackSpeed[id]  = Fixed.FromFloat(FALLBACK_ATTACK_SPD);
                 world.DamageTypeOf[id] = Combat.DamageType.Normal;
                 world.ArmorTypeOf[id]  = Combat.ArmorType.Light;

@@ -489,7 +489,10 @@ namespace ProjectChimera.UI
             {
                 _world.SupplyCost[id]   = supply;
                 _world.AttackRange[id]  = Fixed.FromFloat(ATTACK_RANGE);
-                _world.EffectiveAttackDamage[id] = Fixed.FromFloat(ATTACK_DMG);
+                // Story 2.2a (A2): a non-mapper write must set BOTH Base (authored source) and Effective, so a later
+                // modifier recomputes Effective = Base + delta correctly instead of from a stale Zero base.
+                _world.BaseAttackDamage[id]      = Fixed.FromFloat(ATTACK_DMG);
+                _world.EffectiveAttackDamage[id] = _world.BaseAttackDamage[id];
                 _world.AttackSpeed[id]  = Fixed.FromFloat(ATTACK_SPEED);
                 _world.DamageTypeOf[id] = DamageType.Normal;
                 _world.ArmorTypeOf[id]  = ArmorType.Light;
@@ -1093,9 +1096,15 @@ namespace ProjectChimera.UI
             int id = _world.Create(snap.Position, snap.Faction, snap.MaxHealth, snap.Speed);
             if (id < 0) { GD.PrintErr("[EntityPlacer] EntityWorld full — cannot restore deleted unit."); return -1; }
 
+            // Story 2.2a (A2): restore sets BOTH Base and Effective for the modifier-affected stats so a restored
+            // unit's authored base is correct for any future modifier recompute (MaxHealth also flows from Create's
+            // ctor arg above; this keeps Base authoritative). New 2.2a fields (Energy/MaxEnergy) and the 1.13
+            // separation fields are not in UnitSnapshot yet — deferred (see deferred-work.md).
+            _world.BaseMaxHealth[id]         = snap.MaxHealth;
             _world.EffectiveMaxHealth[id]    = snap.MaxHealth;
             _world.SupplyCost[id]   = snap.SupplyCost;
             _world.AttackRange[id]  = snap.AttackRange;
+            _world.BaseAttackDamage[id]      = snap.AttackDamage;
             _world.EffectiveAttackDamage[id] = snap.AttackDamage;
             _world.AttackSpeed[id]  = snap.AttackSpeed;
             _world.DamageTypeOf[id] = snap.DamageType;
