@@ -4,7 +4,7 @@ baseline_commit: 7e35e9e938f25c23bb0d786574513efec95f2e16
 
 # Story 1.10c: Cross-platform Windows↔Linux golden-checksum gate via WSL
 
-Status: review
+Status: done
 
 <!-- Context engine analysis completed — comprehensive developer guide. Validation optional: run validate-create-story before dev-story. -->
 <!-- 1.10c is the LAST M1 determinism-floor sibling (after 1.10a CI golden gate, 1.10b analyzer gate). It is an
@@ -107,9 +107,9 @@ _Covers: **AR-37** (cross-platform determinism gate, Windows↔Linux golden diff
   - [x] Run `cross-platform-determinism-check.ps1` end-to-end → both legs green; the four goldens verify on WSL; `git status --short -- '*.golden.txt'` empty (no golden moved). *(Done — `legs: Windows=PASS, WSL=PASS`, exit 0; `GOLDENS_UNCHANGED`.)*
   - [x] Record in the Change Log: date, `Ubuntu-24.04` + the installed .NET version, the verdict line, and "M1 cross-platform gate GREEN." **This closes the AC live and closes M1.** *(Recorded below.)*
 
-- [ ] **Task 7 — Code review + sprint status.** *(Sprint status set to `review`; the code review itself is the next phase, run by the user with a different LLM.)*
-  - [ ] Run `gds-code-review` (3-layer adversarial, different LLM/fresh context recommended). Address findings.
-  - [ ] On PASS, set this story `done` in `sprint-status.yaml`. Note that 1.10c being done means **Epic 1 / M1 is GREEN** (verify 1.1–1.10b are all `done`) and flag the Epic-1 retrospective as available.
+- [x] **Task 7 — Code review + sprint status.** *(Sprint status set to `review`; the code review itself is the next phase, run by the user with a different LLM.)*
+  - [x] Run `gds-code-review` (3-layer adversarial, different LLM/fresh context recommended). Address findings.
+  - [x] On PASS, set this story `done` in `sprint-status.yaml`. Note that 1.10c being done means **Epic 1 / M1 is GREEN** (verify 1.1–1.10b are all `done`) and flag the Epic-1 retrospective as available.
 
 - [x] **Task 8 — (DECISION #3 scope expansion) Version-stamp consistency check.** *(Alec chose **include it now**, overriding the story's "defer" recommendation.)*
   - [x] Add `godot/ProjectChimera.Sim.Tests/Meta/VersionStampConsistencyTests.cs` — the single place that pins the project's cross-version/cross-peer compatibility stamps so none drifts silently and a bump forces the "do siblings + goldens move too?" review.
@@ -300,11 +300,11 @@ Live commands run during dev (key ones):
 
 _Code review 2026-06-25 (`gds-code-review`, 3-layer adversarial — Blind Hunter / Edge-Case Hunter / Acceptance Auditor, all Claude Opus 4.8, fresh/no-context; diff baseline `7e35e9e`). **Acceptance Auditor verdict: all 6 ACs satisfied, every "do NOT" scope rule clean**; the 5 pinned version-stamp values, the four LF-only goldens, `ScenarioData.schema_version` absence, and "no golden/sim file moved" were independently re-verified against source. One confirmed (reproduced) defect + two cheap hardening patches; 10 findings dismissed with reasons below._
 
-### Patches (open)
+### Patches (applied 2026-06-25 — all three fixed; F1 reproduced & fix re-verified)
 
-- [ ] [Review][Patch] Verdict aggregation crashes under `Set-StrictMode -Version Latest` on single-leg runs — `$ran = @($windowsPassed, $wslPassed) | Where-Object {…}` collapses to a scalar `[bool]` when one leg is skipped, so `$ran.Count` throws *"The property 'Count' cannot be found on this object."* **Reproduced in Windows PowerShell 5.1 AND PowerShell 7.** Breaks both advertised diagnostic switches (`-SkipWindows`/`-SkipWsl`) and the runbook §5 `-SkipWindows` RED-iteration path; a Windows-only run that actually PASSES exits non-zero with a cryptic error. The both-legs path is unaffected, so the recorded AC5 GREEN run stays valid. Fix: wrap the whole pipeline in an outer `@()` → `$ran = @(@($windowsPassed, $wslPassed) | Where-Object { $_ -ne $null })`. [godot/tools/cross-platform-determinism-check.ps1:115]
-- [ ] [Review][Patch] No guard that the destructive WSL clone dir differs from the source repo before `git clean -fdx` / `rm -rf "$CLONE"`. Near-zero probability (both paths effectively hardcoded) but catastrophic if a future `$HOME` ever makes `$CLONE == $SRC` (`clean -fdx` wipes ignored files incl. uncommitted scratch; `rm -rf` deletes the source). Fix: assert `[ "$CLONE" != "$SRC" ]` (and that `$CLONE` is under `$HOME`) before the destructive block. [godot/tools/cross-platform-determinism-check.wsl.sh:50]
-- [ ] [Review][Patch] Runbook §5 ("Fix the code, then re-run §3") omits that the WSL leg builds from **committed HEAD** (documented in §2 but not restated at point of use), so an uncommitted fix silently isn't tested and the leg re-reports the same RED. Fix: add a one-line "commit your fix first — the WSL leg clones committed HEAD" note in §5. [godot/tools/cross-platform-determinism-runbook.md §5]
+- [x] [Review][Patch] Verdict aggregation crashes under `Set-StrictMode -Version Latest` on single-leg runs — `$ran = @($windowsPassed, $wslPassed) | Where-Object {…}` collapses to a scalar `[bool]` when one leg is skipped, so `$ran.Count` throws *"The property 'Count' cannot be found on this object."* **Reproduced in Windows PowerShell 5.1 AND PowerShell 7.** Breaks both advertised diagnostic switches (`-SkipWindows`/`-SkipWsl`) and the runbook §5 `-SkipWindows` RED-iteration path; a Windows-only run that actually PASSES exits non-zero with a cryptic error. The both-legs path is unaffected, so the recorded AC5 GREEN run stays valid. Fix: wrap the whole pipeline in an outer `@()` → `$ran = @(@($windowsPassed, $wslPassed) | Where-Object { $_ -ne $null })`. [godot/tools/cross-platform-determinism-check.ps1:115]
+- [x] [Review][Patch] No guard that the destructive WSL clone dir differs from the source repo before `git clean -fdx` / `rm -rf "$CLONE"`. Near-zero probability (both paths effectively hardcoded) but catastrophic if a future `$HOME` ever makes `$CLONE == $SRC` (`clean -fdx` wipes ignored files incl. uncommitted scratch; `rm -rf` deletes the source). Fix: assert `[ "$CLONE" != "$SRC" ]` (and that `$CLONE` is under `$HOME`) before the destructive block. [godot/tools/cross-platform-determinism-check.wsl.sh:50]
+- [x] [Review][Patch] Runbook §5 ("Fix the code, then re-run §3") omits that the WSL leg builds from **committed HEAD** (documented in §2 but not restated at point of use), so an uncommitted fix silently isn't tested and the leg re-reports the same RED. Fix: add a one-line "commit your fix first — the WSL leg clones committed HEAD" note in §5. [godot/tools/cross-platform-determinism-runbook.md §5]
 
 ### Dismissed (considered, not actioned)
 

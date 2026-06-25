@@ -47,6 +47,16 @@ if [ ! -d "$SRC/.git" ]; then
   echo "[wsl] ERROR: source repo not found at '$SRC' (expected a git work tree)." >&2
   exit 4
 fi
+# Safety: the throwaway clone dir must NEVER coincide with the source repo, or the
+# destructive `git clean -fdx` / `rm -rf "$CLONE"` below would wipe the real source tree.
+if [ "${CLONE%/}" = "${SRC%/}" ]; then
+  echo "[wsl] ERROR: clone dir ('$CLONE') must differ from the source repo ('$SRC')." >&2
+  exit 5
+fi
+case "$CLONE" in
+  "$HOME"/*) : ;;  # OK: under $HOME — safe to git clean / rm -rf
+  *) echo "[wsl] ERROR: refusing destructive git clean/rm on '$CLONE' (not under \$HOME)." >&2; exit 5 ;;
+esac
 if [ -d "$CLONE/.git" ]; then
   echo "[wsl] syncing existing clone -> source HEAD ($CLONE)"
   git -C "$CLONE" fetch --depth 1 "file://$SRC" HEAD

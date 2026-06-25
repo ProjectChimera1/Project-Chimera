@@ -112,7 +112,7 @@ if (-not $SkipWsl) {
 # ── Verdict ──────────────────────────────────────────────────────────────────
 Write-Host ''
 Write-Host '──────────────────────────────────────────────────────────────'
-$ran    = @($windowsPassed, $wslPassed) | Where-Object { $_ -ne $null }
+$ran    = @(@($windowsPassed, $wslPassed) | Where-Object { $_ -ne $null })   # outer @() forces an array even when a single leg ran, so .Count is safe under StrictMode
 $allOk  = ($ran.Count -gt 0) -and (-not ($ran -contains $false))
 
 if ($allOk -and (-not $SkipWindows) -and (-not $SkipWsl)) {

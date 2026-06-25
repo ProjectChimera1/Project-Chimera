@@ -118,7 +118,8 @@ Work the suspects in this order (highest-probability first), using the reported 
 3. **AI float scoring** — *only if a new AI-active golden was added.* `AiOpponentSystem` uses raw `float`
    in the live tick path (see §6); a golden that drives the AI to actually act could diverge here.
 
-Reproduce a single leg with `-SkipWindows` (Linux only) to iterate. Fix the **code**, then re-run §3.
+Reproduce a single leg with `-SkipWindows` (Linux only) to iterate. Fix the **code**, **commit it**
+(the WSL leg builds a clone of committed `HEAD` — an *uncommitted* fix is **not** tested; see §2), then re-run §3.
 
 ---
 
