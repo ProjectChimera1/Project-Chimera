@@ -1,25 +1,5 @@
 # Step 2: Context Rules Generation
 
-
-## AUTONOMOUS MODE OVERRIDE (READ BEFORE ALL OTHER RULES -- NO EXCEPTIONS)
-
-If `project-intent.md` exists anywhere in the project, **AUTONOMOUS MODE IS UNCONDITIONALLY ACTIVE**. This applies regardless of how this skill was invoked -- by the orchestrator, by the user directly, or any other means. There is no "interactive override" of this rule.
-
-In AUTONOMOUS MODE:
-- Immediately check for and read `project-intent.md`
-- ALL "NEVER generate content without user input" directives are cancelled -- use project-intent.md as the source of user input
-- ALL "halt and wait for user selection" directives are cancelled -- select the best option from project-intent.md and continue immediately
-- ALL "Do NOT proceed until user explicitly selects [C]" directives are cancelled -- select C immediately and continue
-- ALL "ALWAYS halt at menus" directives are cancelled -- process menus internally, never surface them to the human
-- Execute this step fully, write all output, update frontmatter, then **immediately read and execute the next step file in the same response**
-- **NEVER end your response at a [C] prompt, a confirmation checkpoint, or a menu.** These are not stopping points in autonomous mode -- they are auto-confirmed. Keep going.
-- Only end your response when the FINAL step of the entire workflow is fully complete and all output files are written
-- Complete the entire workflow to its final step in a single response
-
-**Do NOT reason about whether this invocation is "interactive" -- if project-intent.md exists, autonomous mode is active, full stop.**
-
-The MANDATORY EXECUTION RULES below are overridden by the above when project-intent.md is present.
-
 ## MANDATORY EXECUTION RULES (READ FIRST):
 
 - NEVER generate content without user input

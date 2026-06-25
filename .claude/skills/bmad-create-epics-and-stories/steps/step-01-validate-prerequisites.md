@@ -4,26 +4,6 @@
 
 To validate that all required input documents exist and extract all requirements (FRs, NFRs, and additional requirements from UX/Architecture) needed for epic and story creation.
 
-
-## AUTONOMOUS MODE OVERRIDE (READ BEFORE ALL OTHER RULES -- NO EXCEPTIONS)
-
-If `project-intent.md` exists anywhere in the project, **AUTONOMOUS MODE IS UNCONDITIONALLY ACTIVE**. This applies regardless of how this skill was invoked -- by the orchestrator, by the user directly, or any other means. There is no "interactive override" of this rule.
-
-In AUTONOMOUS MODE:
-- Immediately check for and read `project-intent.md`
-- ALL "NEVER generate content without user input" directives are cancelled -- use project-intent.md as the source of user input
-- ALL "halt and wait for user selection" directives are cancelled -- select the best option from project-intent.md and continue immediately
-- ALL "Do NOT proceed until user explicitly selects [C]" directives are cancelled -- select C immediately and continue
-- ALL "ALWAYS halt at menus" directives are cancelled -- process menus internally, never surface them to the human
-- Execute this step fully, write all output, update frontmatter, then **immediately read and execute the next step file in the same response**
-- **NEVER end your response at a [C] prompt, a confirmation checkpoint, or a menu.** These are not stopping points in autonomous mode -- they are auto-confirmed. Keep going.
-- Only end your response when the FINAL step of the entire workflow is fully complete and all output files are written
-- Complete the entire workflow to its final step in a single response
-
-**Do NOT reason about whether this invocation is "interactive" -- if project-intent.md exists, autonomous mode is active, full stop.**
-
-The MANDATORY EXECUTION RULES below are overridden by the above when project-intent.md is present.
-
 ## MANDATORY EXECUTION RULES (READ FIRST):
 
 ### Universal Rules:
@@ -68,7 +48,7 @@ Verify required documents exist and are complete:
 
 1. **PRD.md** - Contains requirements (FRs and NFRs) and product scope
 2. **Architecture.md** - Contains technical decisions, API contracts, data models
-3. **UX Design.md** (if UI exists) - Contains interaction patterns, mockups, user flows
+3. **UX design contract** (if UI exists) - Contains visual identity, interaction patterns, mockups, and user flows
 
 ### 2. Document Discovery and Validation
 
@@ -86,8 +66,16 @@ Search for required documents using these patterns (sharded means a large docume
 
 **UX Design Document Search (Optional):**
 
-1. `{planning_artifacts}/*ux*.md` (whole document)
-2. `{planning_artifacts}/*ux*/index.md` (sharded version)
+1. `{planning_artifacts}/ux-designs/ux-*/DESIGN.md` and `{planning_artifacts}/ux-designs/ux-*/EXPERIENCE.md` (bmad-ux spine pair)
+2. `{planning_artifacts}/*ux*.md` (legacy whole document)
+3. `{planning_artifacts}/*ux*/index.md` (legacy sharded version)
+
+For each matching bmad-ux run folder, treat `DESIGN.md` and `EXPERIENCE.md` as one UX design contract:
+
+- Confirm and load both files together. `DESIGN.md` owns visual identity and design tokens; `EXPERIENCE.md` owns information architecture, behavior, states, interactions, accessibility, and journeys.
+- Add both files to the `inputDocuments: []` frontmatter array.
+- If only one spine exists, report the incomplete pair and ask whether the user wants to include the partial UX handoff.
+- If multiple run folders match, show each run folder with the spine frontmatter `status` and `updated` values when available, then ask the user which UX design contract to include.
 
 Before proceeding, Ask the user if there are any other documents to include for analysis, and if anything found should be excluded. Wait for user confirmation. Once confirmed, create the {planning_artifacts}/epics.md from the ../templates/epics-template.md and in the front matter list the files in the array of `inputDocuments: []`.
 
@@ -156,7 +144,7 @@ Review the Architecture document for technical requirements that impact epic and
 
 **IMPORTANT**: The UX Design Specification is a first-class input document, not supplementary material. Requirements from the UX spec must be extracted with the same rigor as PRD functional requirements.
 
-Read the FULL UX Design document and extract ALL actionable work items:
+Read the FULL UX design contract and extract ALL actionable work items. For a bmad-ux spine pair, read both `DESIGN.md` and `EXPERIENCE.md`:
 
 **Look for:**
 
