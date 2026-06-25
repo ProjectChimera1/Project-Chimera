@@ -1,6 +1,10 @@
+---
+baseline_commit: 3ac39916106b07eb42649a88127cc35272ed46cd
+---
+
 # Story 2.1: D1 Effect-Graph vocabulary and work-stack executor (pure sim keystone)
 
-Status: ready-for-dev
+Status: review
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -30,53 +34,53 @@ _Covers: FR-12, AR-8, AR-13, NFR-4. Depends on: Epic 1 (all green — `SimRng` 1
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1 — Scaffold `src/Effects/` and wire it into the build/test/analyzer surface (AC1, AC2)**
-  - [ ] 1.1 Create `godot/src/Effects/` with namespace `ProjectChimera.Effects`. Pure C#, `#nullable enable`, no `using Godot;`.
-  - [ ] 1.2 **🚨 LOAD-BEARING: add `..\src\Effects\**\*.cs` to `godot/ProjectChimera.Sim.Tests/SimSources.props`.** `src/Effects` is NOT in the existing glob (`Core/Combat/Economy/Navigation`). Without this the new code compiles into **neither** the Tier-1 test project **nor** the `ProjectChimera.Sim.Analysis` determinism analyzer **nor** `GodotFreeBoundaryTest` — a silent coverage hole. `SimSources.props` feeds both projects, so one edit fixes both.
-  - [ ] 1.3 **Prove the gate now has teeth (A3):** temporarily drop a throwaway `src/Effects/_AnalyzerSmoke.cs` containing `using Godot;`, a `float`, and `new System.Random()`; build → observe `GodotFreeBoundaryTest` fail + analyzer CHM0001/RS0030 fire; delete the file. Record the observed failures in the Dev Agent Record.
-  - [ ] 1.4 Define `EffectCaps` (static class of named constants — never bare literals, CHM0004): `MaxEffectDepth = 8`, `MaxSequenceChildren = 8`, `MaxSearchTargets = 64`, `MaxHitsPerSearch = 64`, and `MaxEffectFrames` **computed from** the worst-case nesting the other caps imply (document the derivation; size so a maximal valid graph never overflows — see Dev Notes §"Work-stack sizing"). Reserve `MaxSpawnCount = 64` / `MaxPersistentPeriods = 256` as named constants for later stories. These are the structural caps that fold into `rulesetHash` (the hash itself is a later/Epic-9 concern; here just name them, don't hardcode).
+- [x] **Task 1 — Scaffold `src/Effects/` and wire it into the build/test/analyzer surface (AC1, AC2)**
+  - [x] 1.1 Create `godot/src/Effects/` with namespace `ProjectChimera.Effects`. Pure C#, `#nullable enable`, no `using Godot;`.
+  - [x] 1.2 **🚨 LOAD-BEARING: add `..\src\Effects\**\*.cs` to `godot/ProjectChimera.Sim.Tests/SimSources.props`.** `src/Effects` is NOT in the existing glob (`Core/Combat/Economy/Navigation`). Without this the new code compiles into **neither** the Tier-1 test project **nor** the `ProjectChimera.Sim.Analysis` determinism analyzer **nor** `GodotFreeBoundaryTest` — a silent coverage hole. `SimSources.props` feeds both projects, so one edit fixes both.
+  - [x] 1.3 **Prove the gate now has teeth (A3):** temporarily drop a throwaway `src/Effects/_AnalyzerSmoke.cs` containing `using Godot;`, a `float`, and `new System.Random()`; build → observe `GodotFreeBoundaryTest` fail + analyzer CHM0001/RS0030 fire; delete the file. Record the observed failures in the Dev Agent Record.
+  - [x] 1.4 Define `EffectCaps` (static class of named constants — never bare literals, CHM0004): `MaxEffectDepth = 8`, `MaxSequenceChildren = 8`, `MaxSearchTargets = 64`, `MaxHitsPerSearch = 64`, and `MaxEffectFrames` **computed from** the worst-case nesting the other caps imply (document the derivation; size so a maximal valid graph never overflows — see Dev Notes §"Work-stack sizing"). Reserve `MaxSpawnCount = 64` / `MaxPersistentPeriods = 256` as named constants for later stories. These are the structural caps that fold into `rulesetHash` (the hash itself is a later/Epic-9 concern; here just name them, don't hardcode).
 
-- [ ] **Task 2 — Define the closed EffectNode vocabulary (AC1)**
-  - [ ] 2.1 `EffectNode` base: abstract, **non-extensible outside the assembly** (internal/private-protected ctor; no `public` open extension). Leaves carry an `internal abstract void Apply(in EffectContext ctx)`; composition nodes are dispatched by the executor (do not self-`Apply`). No `virtual` member reachable by data/creators.
-  - [ ] 2.2 **Sealed leaf nodes — implement & execute end-to-end in 2.1:**
+- [x] **Task 2 — Define the closed EffectNode vocabulary (AC1)**
+  - [x] 2.1 `EffectNode` base: abstract, **non-extensible outside the assembly** (internal/private-protected ctor; no `public` open extension). Leaves carry an `internal abstract void Apply(in EffectContext ctx)`; composition nodes are dispatched by the executor (do not self-`Apply`). No `virtual` member reachable by data/creators.
+  - [x] 2.2 **Sealed leaf nodes — implement & execute end-to-end in 2.1:**
     - `DirectHpDeltaEffect` — flat `Fixed` HP delta, **armor-independent, never through DamageMatrix** (this is the Equal-Exchange self-cost primitive).
     - `HealEffect` — `Fixed` amount, clamped to `MaxHealth`.
     - `DamageEffect` — `Fixed` amount + `DamageType`, routes through `DamageResolver.Apply` (the one damage path; matrix lookup).
-  - [ ] 2.3 **Composition nodes — exactly three, sealed:**
+  - [x] 2.3 **Composition nodes — exactly three, sealed:**
     - `SequenceEffect` — ordered `EffectNode[] Children` (≤ `MaxSequenceChildren`); executes children in authored order.
     - `SearchAreaEffect` — `Fixed Radius` + `TargetFilter` + a single child; fans out one child execution per matched entity in **ascending entity-id order** (≤ `MaxSearchTargets`).
     - `PersistentEffect` — `InitialEffect` / `PeriodEffect` / `ExpireEffect` + `periodTicks`/`periodCount`. **Define the type now** (it is one of the mandated three); its periodic time-axis execution resolves against the ModifierStore and lands in **Story 2.2b** (see Dev Notes §Scope).
-  - [ ] 2.4 First-class `Modifier` descriptor (its own type, NOT a leaf): `id`, `durationTicks`, `stackRule {Refresh|Stack|Ignore}`, `maxStacks`, `Fixed` stat deltas, status flags, optional `periodEffect`/`periodTicks`. **Define the type + fields now**; `ApplyModifierEffect` leaf is defined but its store resolution lands in **2.2b**.
-  - [ ] 2.5 `TargetFilter` — OR-able flag set. In 2.1 evaluate only `Self` / `Ally` / `Enemy` / `Neutral` / `Alive` (faction comparison + `IsAlive`). Reserve `Air` / `Ground` / `Structure` bits (evaluation lands in **2.9a**); do not wire building targeting here.
-  - [ ] 2.6 No scripting hook anywhere: zero `Delegate`/`Func`/`Action`/`dynamic`/`object`-payload/free-text-code fields on any node (the closedness contract — enforced by the Task 5.1 structural test).
+  - [x] 2.4 First-class `Modifier` descriptor (its own type, NOT a leaf): `id`, `durationTicks`, `stackRule {Refresh|Stack|Ignore}`, `maxStacks`, `Fixed` stat deltas, status flags, optional `periodEffect`/`periodTicks`. **Define the type + fields now**; `ApplyModifierEffect` leaf is defined but its store resolution lands in **2.2b**.
+  - [x] 2.5 `TargetFilter` — OR-able flag set. In 2.1 evaluate only `Self` / `Ally` / `Enemy` / `Neutral` / `Alive` (faction comparison + `IsAlive`). Reserve `Air` / `Ground` / `Structure` bits (evaluation lands in **2.9a**); do not wire building targeting here.
+  - [x] 2.6 No scripting hook anywhere: zero `Delegate`/`Func`/`Action`/`dynamic`/`object`-payload/free-text-code fields on any node (the closedness contract — enforced by the Task 5.1 structural test).
 
-- [ ] **Task 3 — Pre-allocated work-stack executor (AC2, AC3)**
-  - [ ] 3.1 `EffectContext` — `readonly struct` holding **references** (`EntityWorld World`, `SimRng Rng`) + value fields (`int CasterId`, `int PrimaryTargetId`, `Faction CasterFaction`) + the refs the `Damage` leaf needs (`DamageTable`, optional `CombatEventQueue`, optional `MatchStats`). Add `WithTarget(int id)` returning a copy. **Because the heavy state sits behind class references, copying the struct into a work-stack frame is safe and RNG draws still advance the one shared stream** (do NOT make the context copy SimRng by value — it is a class; never re-seed or clone it mid-run).
-  - [ ] 3.2 `EffectExecutor` — sealed class. Pre-allocate **once in the constructor**: `Frame[] _stack = new Frame[EffectCaps.MaxEffectFrames]` and `int[] _hitRing = new int[EffectCaps.MaxEffectDepth * EffectCaps.MaxHitsPerSearch]`. `void Run(EffectNode root, in EffectContext ctx)`: explicit LIFO work-stack, **no recursion**; push children in reverse so they pop in authored order; depth tracked per frame.
-  - [ ] 3.3 Leaf dispatch inside `Run` (all guard `IsAlive` + id-bounds at entry):
+- [x] **Task 3 — Pre-allocated work-stack executor (AC2, AC3)**
+  - [x] 3.1 `EffectContext` — `readonly struct` holding **references** (`EntityWorld World`, `SimRng Rng`) + value fields (`int CasterId`, `int PrimaryTargetId`, `Faction CasterFaction`) + the refs the `Damage` leaf needs (`DamageTable`, optional `CombatEventQueue`, optional `MatchStats`). Add `WithTarget(int id)` returning a copy. **Because the heavy state sits behind class references, copying the struct into a work-stack frame is safe and RNG draws still advance the one shared stream** (do NOT make the context copy SimRng by value — it is a class; never re-seed or clone it mid-run).
+  - [x] 3.2 `EffectExecutor` — sealed class. Pre-allocate **once in the constructor**: `Frame[] _stack = new Frame[EffectCaps.MaxEffectFrames]` and `int[] _hitRing = new int[EffectCaps.MaxEffectDepth * EffectCaps.MaxHitsPerSearch]`. `void Run(EffectNode root, in EffectContext ctx)`: explicit LIFO work-stack, **no recursion**; push children in reverse so they pop in authored order; depth tracked per frame.
+  - [x] 3.3 Leaf dispatch inside `Run` (all guard `IsAlive` + id-bounds at entry):
     - `DirectHpDelta` → `world.Health[t] = Fixed.Clamp(world.Health[t] + delta, Fixed.Zero, world.MaxHealth[t])` — direct, **no `DamageResolver`, no matrix**.
     - `Heal` → `world.Health[t] = Fixed.Min(world.Health[t] + amount, world.MaxHealth[t])`.
     - `Damage` → build `DamageContext` and call `DamageResolver.Apply(in ctx, amount, type)` (handles death/events).
-  - [ ] 3.4 `SearchArea` execution: `spatialHash.QueryRadius(world, pos, radius, excludeId, hitBuffer)` → `Array.Sort(hitBuffer, 0, count)` (**ascending-id — QueryRadius returns unordered**) → clamp to `MaxSearchTargets` → push the child per target, in ascending order, using the **per-depth** hit slice (`_hitRing[depth * MaxHitsPerSearch ..]`) so nested searches never clobber a parent's buffer. SpatialHash must be `Rebuild()`-ed for the snapshot before querying (in the unit harness, build it from the test world).
-  - [ ] 3.5 Bounds enforcement (AC2): a static **load-time** `EffectBounds.Validate(EffectNode root)` that walks the graph and rejects depth > `MaxEffectDepth` or any `Sequence.Children.Length > MaxSequenceChildren` (returns a located error: which node, which limit). PLUS a defensive **runtime** guard so the stack pointer can never exceed `MaxEffectFrames` (fail-closed: stop pushing / skip past the cap, never resize, never throw OOM). Pin the exact depth semantics by test (depth 8 runs; depth 9 rejected) — do not infer them from the constant.
-  - [ ] 3.6 Zero-alloc `Run` (AC2): no `new`, no LINQ, no closures, no boxing inside `Run`; reuse `_stack`/`_hitRing`. (Verify with `GC.GetAllocatedBytesForCurrentThread()` delta == 0 across a warm run in Task 5.2.)
-  - [ ] 3.7 `ApplyModifier` / `Persistent` execution is **deferred to 2.2b**: in 2.1 the executor recognizes the node types but must not mutate a (nonexistent) ModifierStore. Make this explicit and fail-closed-friendly — a clearly-commented guard (e.g. throw `NotSupportedException("ApplyModifier/Persistent execution lands in Story 2.2b")` if one reaches `Run`, OR a documented deterministic no-op). The 2.3 validator will keep these off the executor until 2.2b ships; pick the guard that the 2.2b dev will most cleanly replace (recommend the throwing guard so a premature wire-up is loud, not silent).
+  - [x] 3.4 `SearchArea` execution: `spatialHash.QueryRadius(world, pos, radius, excludeId, hitBuffer)` → `Array.Sort(hitBuffer, 0, count)` (**ascending-id — QueryRadius returns unordered**) → clamp to `MaxSearchTargets` → push the child per target, in ascending order, using the **per-depth** hit slice (`_hitRing[depth * MaxHitsPerSearch ..]`) so nested searches never clobber a parent's buffer. SpatialHash must be `Rebuild()`-ed for the snapshot before querying (in the unit harness, build it from the test world).
+  - [x] 3.5 Bounds enforcement (AC2): a static **load-time** `EffectBounds.Validate(EffectNode root)` that walks the graph and rejects depth > `MaxEffectDepth` or any `Sequence.Children.Length > MaxSequenceChildren` (returns a located error: which node, which limit). PLUS a defensive **runtime** guard so the stack pointer can never exceed `MaxEffectFrames` (fail-closed: stop pushing / skip past the cap, never resize, never throw OOM). Pin the exact depth semantics by test (depth 8 runs; depth 9 rejected) — do not infer them from the constant.
+  - [x] 3.6 Zero-alloc `Run` (AC2): no `new`, no LINQ, no closures, no boxing inside `Run`; reuse `_stack`/`_hitRing`. (Verify with `GC.GetAllocatedBytesForCurrentThread()` delta == 0 across a warm run in Task 5.2.)
+  - [x] 3.7 `ApplyModifier` / `Persistent` execution is **deferred to 2.2b**: in 2.1 the executor recognizes the node types but must not mutate a (nonexistent) ModifierStore. Make this explicit and fail-closed-friendly — a clearly-commented guard (e.g. throw `NotSupportedException("ApplyModifier/Persistent execution lands in Story 2.2b")` if one reaches `Run`, OR a documented deterministic no-op). The 2.3 validator will keep these off the executor until 2.2b ships; pick the guard that the 2.2b dev will most cleanly replace (recommend the throwing guard so a premature wire-up is loud, not silent).
 
-- [ ] **Task 4 — Equal-Exchange-shaped primitive + non-matrix proof (AC4)**
-  - [ ] 4.1 Confirm `DirectHpDelta` is flat/armor-independent (Task 3.3) — explicitly bypasses `DamageResolver`/`DamageTable`.
-  - [ ] 4.2 Test (Task 5.4): `Sequence{ DirectHpDelta(-10), Heal(+25) }` on one entity; assert the post-state against **independently-computed `Fixed.Raw`** values; assert ordering (delta then heal); assert armor-independence by running the same graph on a `Heavy`-armor entity and a `Unarmored` entity and observing the **identical** flat delta.
+- [x] **Task 4 — Equal-Exchange-shaped primitive + non-matrix proof (AC4)**
+  - [x] 4.1 Confirm `DirectHpDelta` is flat/armor-independent (Task 3.3) — explicitly bypasses `DamageResolver`/`DamageTable`.
+  - [x] 4.2 Test (Task 5.4): `Sequence{ DirectHpDelta(-10), Heal(+25) }` on one entity; assert the post-state against **independently-computed `Fixed.Raw`** values; assert ordering (delta then heal); assert armor-independence by running the same graph on a `Heavy`-armor entity and a `Unarmored` entity and observing the **identical** flat delta.
 
-- [ ] **Task 5 — Tier-1 tests in a new `ProjectChimera.Sim.Tests/Effects/` folder (AC1, AC2, AC3, AC4)**
-  - [ ] 5.1 `EffectVocabularyTests.cs` (AC1): reflection scan over the `ProjectChimera.Effects` assembly asserting — every concrete `EffectNode` subtype is `sealed`; exactly **three** composition node types; a first-class `Modifier` type exists; **no** node type exposes a `Delegate`/`Func`/`Action`/`dynamic`/`object` field or `using Godot`/`float`/`double` field. Teeth: this fails if anyone adds an open/virtual/scripted node.
-  - [ ] 5.2 `EffectExecutorBoundsTests.cs` (AC2): depth-8 graph runs; depth-9 graph **rejected** by `EffectBounds.Validate` (located error); `Sequence` with 9 children rejected; a maximal valid graph (max depth × max fan-out) executes without exceeding `MaxEffectFrames`; **zero-alloc** assertion via `GC.GetAllocatedBytesForCurrentThread()`. Negative control: temporarily raising the cap lets the over-deep graph through (demonstrating the gate is what's stopping it) — document, don't commit.
-  - [ ] 5.3 `EffectExecutorDeterminismTests.cs` (AC3): two fresh identical worlds + identical graph → `SimChecksum.Compute(...)` equal across runs (byte-identical); a `SearchArea` over ≥3 entities applies in **ascending-id order** (assert the exact target-id sequence and per-target deltas); if exercising a random selection, same seed → identical, **different seed → diverges** (negative control).
-  - [ ] 5.4 `EffectExecutorEqualExchangeTests.cs` (AC4): the Task 4.2 sequence + armor-independence assertions.
-  - [ ] All tests: build a bare `EntityWorld` (the `DamageResolverTests.cs` pattern — `w.Create(FixedVec3.Zero, faction, Fixed.FromInt(hp), Fixed.FromInt(speed))`), author state with `Fixed.FromInt` only (no `Fixed.FromFloat` in tests), assert against **independently-derived** raws. No Godot, no `SimulationHost`.
+- [x] **Task 5 — Tier-1 tests in a new `ProjectChimera.Sim.Tests/Effects/` folder (AC1, AC2, AC3, AC4)**
+  - [x] 5.1 `EffectVocabularyTests.cs` (AC1): reflection scan over the `ProjectChimera.Effects` assembly asserting — every concrete `EffectNode` subtype is `sealed`; exactly **three** composition node types; a first-class `Modifier` type exists; **no** node type exposes a `Delegate`/`Func`/`Action`/`dynamic`/`object` field or `using Godot`/`float`/`double` field. Teeth: this fails if anyone adds an open/virtual/scripted node.
+  - [x] 5.2 `EffectExecutorBoundsTests.cs` (AC2): depth-8 graph runs; depth-9 graph **rejected** by `EffectBounds.Validate` (located error); `Sequence` with 9 children rejected; a maximal valid graph (max depth × max fan-out) executes without exceeding `MaxEffectFrames`; **zero-alloc** assertion via `GC.GetAllocatedBytesForCurrentThread()`. Negative control: temporarily raising the cap lets the over-deep graph through (demonstrating the gate is what's stopping it) — document, don't commit.
+  - [x] 5.3 `EffectExecutorDeterminismTests.cs` (AC3): two fresh identical worlds + identical graph → `SimChecksum.Compute(...)` equal across runs (byte-identical); a `SearchArea` over ≥3 entities applies in **ascending-id order** (assert the exact target-id sequence and per-target deltas); if exercising a random selection, same seed → identical, **different seed → diverges** (negative control).
+  - [x] 5.4 `EffectExecutorEqualExchangeTests.cs` (AC4): the Task 4.2 sequence + armor-independence assertions.
+  - [x] All tests: build a bare `EntityWorld` (the `DamageResolverTests.cs` pattern — `w.Create(FixedVec3.Zero, faction, Fixed.FromInt(hp), Fixed.FromInt(speed))`), author state with `Fixed.FromInt` only (no `Fixed.FromFloat` in tests), assert against **independently-derived** raws. No Godot, no `SimulationHost`.
 
-- [ ] **Task 6 — Verify, confirm no regression, document deferrals**
-  - [ ] 6.1 `dotnet build godot/ProjectChimera.Sim.Tests -c Release` + `dotnet test` green; full Tier-1 suite still passes (baseline ~283 pass / 1 skip / 0 fail → +N new tests).
-  - [ ] 6.2 Confirm **all 7 existing goldens byte-identical** (`git status --short -- '*.golden.txt'` clean) and `SimChecksum.AlgoVersion` stays **5** — 2.1 adds no hashed state, so **no fold, no bump, no re-record**. Confirm `SystemOrderTest` untouched (the executor is NOT a tick system — it is a helper invoked by graph data; precedent: `FormationPlanner`/`DelayMath`/`OrderApplier`).
-  - [ ] 6.3 Append to `_bmad-output/implementation-artifacts/deferred-work.md`: `ApplyModifier`/`Persistent` execution → 2.2b; `SetVariable` → Epic 7 (DSL); `FireProjectile`/`SpawnUnit`/`Teleport`/`Victory`/presentation leaves → their owning stories; `Air`/`Ground`/`Structure` `TargetFilter` evaluation → 2.9a.
+- [x] **Task 6 — Verify, confirm no regression, document deferrals**
+  - [x] 6.1 `dotnet build godot/ProjectChimera.Sim.Tests -c Release` + `dotnet test` green; full Tier-1 suite still passes (baseline ~283 pass / 1 skip / 0 fail → +N new tests).
+  - [x] 6.2 Confirm **all 7 existing goldens byte-identical** (`git status --short -- '*.golden.txt'` clean) and `SimChecksum.AlgoVersion` stays **5** — 2.1 adds no hashed state, so **no fold, no bump, no re-record**. Confirm `SystemOrderTest` untouched (the executor is NOT a tick system — it is a helper invoked by graph data; precedent: `FormationPlanner`/`DelayMath`/`OrderApplier`).
+  - [x] 6.3 Append to `_bmad-output/implementation-artifacts/deferred-work.md`: `ApplyModifier`/`Persistent` execution → 2.2b; `SetVariable` → Epic 7 (DSL); `FireProjectile`/`SpawnUnit`/`Teleport`/`Victory`/presentation leaves → their owning stories; `Air`/`Ground`/`Structure` `TargetFilter` evaluation → 2.9a.
 
 ---
 
@@ -238,10 +242,73 @@ _Extracted from `_bmad-output/project-context.md` — these apply directly to th
 
 ### Agent Model Used
 
-_(populated by dev-story)_
+claude-opus-4-8 (Claude Opus 4.8) — `gds-dev-story`.
 
 ### Debug Log References
 
+**Gate-teeth evidence (A3 — inject-violation → observe-failure → revert):**
+
+- **Task 1.3 — analyzer + boundary teeth over `src/Effects`** (throwaway `src/Effects/_AnalyzerSmoke.cs`, then deleted):
+  - `using Godot;` → `error CS0246: The type or namespace name 'Godot' could not be found` in BOTH Godot-free projects (`ProjectChimera.Sim.Tests` and `ProjectChimera.Sim.Analysis`) — the sim layer cannot even reference Godot (a compile-time boundary stronger than the runtime `GodotFreeBoundaryTest`).
+  - `float Bad = 1.0f;` → `warning CHM0001` (`_AnalyzerSmoke.cs(10,25)`).
+  - `new System.Random()` → `warning RS0030: The symbol 'Random' is banned in this project` (`_AnalyzerSmoke.cs(11,54)`).
+  - (The Godot `using` short-circuits compilation before the analyzer emits, so CHM0001/RS0030 were observed in a second build with the `using Godot;` line removed — both teeth still proven over `src/Effects`.)
+- **Task 5.1 — vocabulary-scan teeth** (throwaway `src/Effects/_VocabSmoke.cs` = a non-sealed `public class _VocabSmokeNode : LeafEffect`, then deleted): `EffectVocabularyTests.EveryConcreteEffectNode_IsSealed` → **FAIL**: _"_VocabSmokeNode is a concrete EffectNode but not sealed — an open/virtual extension point (AC1)."_ Reverted → 23/23 Effects tests green again.
+
+**Real-code analyzer finding (accepted, advisory):** the only determinism diagnostic on the shipped `src/Effects` is `CHM0003` on `SearchAreaEffect.cs:58` (`Array.Sort(hitBuffer, 0, count)`). Accepted false-positive: the buffer holds **unique** entity ids, so there are no equal keys for an unstable sort to reorder — the sort is a total order and fully deterministic (the story Dev Notes explicitly bless `Array.Sort` on int ids; precedent `ScenarioDirector.cs:206`). Advisory only — never release-gated (RS0030 stays a clean zero-baseline set).
+
 ### Completion Notes List
 
+**What shipped (the executable core of AR-8, with the full closed shape DEFINED):**
+- `src/Effects/` net-new (15 files, namespace `ProjectChimera.Effects`, pure C# / `Fixed`-only / Godot-free), wired into `SimSources.props` (one edit → covered by BOTH the Tier-1 harness AND the determinism analyzer).
+- **Closed vocabulary (AC1):** `EffectNode` base with a `private protected` ctor (no external subclassing) → `LeafEffect` (internal `Apply`) + `CompositionEffect`. Built+executing leaves `DirectHpDeltaEffect` / `HealEffect` / `DamageEffect`; the exactly-three composition nodes `SequenceEffect` / `SearchAreaEffect` / `PersistentEffect`; defined-but-deferred `ApplyModifierEffect`; first-class `Modifier` descriptor (+ `StackRule` / `StatusFlags`); `TargetFilter` flag set + `TargetMatcher`. No delegate/object/float/Godot field on any node (reflection-proven).
+- **Executor (AC2/AC3):** `EffectExecutor` — single pre-allocated `Frame[MaxEffectFrames]` work-stack, explicit LIFO, **no recursion, zero heap alloc per run** (proven via `GC.GetAllocatedBytesForCurrentThread()` == 0). `EffectContext` is a `readonly struct` of references (so the one shared `SimRng` stream is never copied by value — the 1.5 trap). `EffectBounds.Validate` is the load-time gate (located errors); the executor adds two fail-closed runtime backstops (depth + capacity).
+
+**Design decisions / deviations from the story sketch (all honoring the AC over the illustrative pseudocode):**
+1. **SearchArea reverse-pushes its children** (like Sequence), NOT the forward-push in the story's Run sketch. AC3 / test 5.3 require *application* in ascending entity-id order; on a LIFO stack a forward-push of ascending ids applies them descending. Reverse-push makes the lowest id pop/apply first. Proven by `SearchArea_AppliesToTargets_InAscendingIdOrder` (the kill-event sequence is order-observable, so a forward-push would turn that test red — it is the teeth behind the reverse-push).
+2. **Single reusable hit buffer**, not the per-depth `_hitRing` in the sketch. Matched ids are captured into child frames (by value via `WithTarget`) at push time, so a SearchArea's buffer is fully consumed before any child — including a nested SearchArea — runs. No clobber is possible; proven by the 2-level nested-search peak test. Simpler, smaller, identically deterministic.
+3. **`MaxEffectFrames` = `(MaxEffectDepth-1)*(MaxSearchTargets-1) + MaxSearchTargets` = 505** — the static worst case (a chain of 8 SearchAreas each fanning to 64; mixing Sequences only lowers it). Documented on the constant; the fail-closed capacity backstop is the ultimate guard if the derivation were ever wrong.
+4. **`DirectHpDelta` clamps to [0, MaxHealth] and does NOT fire the death sequence** (Destroy/UnitKilled). It is the flat Equal-Exchange *pool* primitive; death/events belong to `DamageEffect` via `DamageResolver`. Explicitly tested (`DirectHpDelta_OverkillClampsAtZero_WithoutFiringDeath`) so the "0-HP alive" semantics are deliberate, not an oversight.
+5. **`ApplyModifier` / `Persistent` fail closed loudly** (`NotSupportedException`) when reached — the throwing guard the 2.2b dev replaces (a premature wire-up is caught, not silently mis-run).
+
+**Verification (Task 6):**
+- Tier-1: **305 passed / 1 skipped / 0 failed** (was 283 total → 306 total; **+23** new Effects tests). 1 skip is the pre-existing parked test, not new.
+- `dotnet build` of the Godot-free test project AND the analyzer project: **0 errors**. Full `godot.csproj` (production, Godot SDK) build: **0 errors** — the new code compiles in the production assembly too.
+- **All 7 existing goldens byte-identical** (`git status --short -- '*.golden.txt'` clean). `SimChecksum.AlgoVersion` stays **5** (no fold, no bump, no re-record — 2.1 mutates only already-hashed `Health`). `SimChecksum.cs` and `SystemOrderTest.cs` untouched (the executor is a graph-invoked helper, not a tick system — precedent: `FormationPlanner`/`DelayMath`/`OrderApplier`).
+- **Single-mapper SoA rule (retro A2) does NOT apply to 2.1** — it adds no persistent per-entity SoA array (its state is a transient work-stack over existing arrays). A2 lands with the first SoA-adding story (2.2a), per the story Dev Notes.
+
+**Deferrals** appended to `deferred-work.md` (§"Deferred from: story 2.1"): `ApplyModifier`/`Persistent` exec → 2.2b; `Air`/`Ground`/`Structure` filter eval → 2.9a; `SetVariable` → Epic 7; `FireProjectile`/`SpawnUnit`/`Teleport`/`Victory`/presentation leaves → owning stories; SearchArea over-cap (>64 in radius) selection is deterministic-but-cell-ordered.
+
+### Change Log
+
+| Date | Change |
+|---|---|
+| 2026-06-25 | Story 2.1 implemented (`gds-dev-story`). Net-new `src/Effects/` closed Effect-Graph vocabulary + pre-allocated work-stack `EffectExecutor` (AR-8). 15 source files + 4 Tier-1 test files (+23 tests, all green) + 1-line `SimSources.props` glob add. No `SimChecksum`/golden/`SystemOrderTest` change (AlgoVersion stays 5; 7 goldens byte-identical). Status → review. |
+
 ### File List
+
+**New — `godot/src/Effects/` (production sim source, namespace `ProjectChimera.Effects`):**
+- `EffectCaps.cs` — named structural caps + `MaxEffectFrames` work-stack-size derivation.
+- `EffectNode.cs` — `EffectNode` / `LeafEffect` / `CompositionEffect` abstract bases (closedness contract).
+- `TargetFilter.cs` — OR-able target-selection flag set (Self/Ally/Enemy/Neutral/Alive + reserved Air/Ground/Structure).
+- `TargetMatcher.cs` — allegiance/alive predicate evaluation.
+- `Modifier.cs` — first-class `Modifier` descriptor + `StackRule` + `StatusFlags`.
+- `DirectHpDeltaEffect.cs` — flat armor-independent HP delta (Equal-Exchange primitive).
+- `HealEffect.cs` — flat heal, clamped at MaxHealth.
+- `DamageEffect.cs` — matrix damage via `DamageResolver` (the one damage path).
+- `ApplyModifierEffect.cs` — defined; execution fail-closed to 2.2b.
+- `SequenceEffect.cs` — ordered composition.
+- `SearchAreaEffect.cs` — area fan-out (ascending-id) + `FindTargets`.
+- `PersistentEffect.cs` — time-axis composition; periodic execution deferred to 2.2b.
+- `EffectContext.cs` — `readonly struct` invocation environment (references + `WithTarget`).
+- `EffectBounds.cs` — load-time `Validate` (depth + fan-out caps, located errors) + `EffectBoundsResult`.
+- `EffectExecutor.cs` — pre-allocated, non-recursive, zero-alloc LIFO executor.
+
+**New — `godot/ProjectChimera.Sim.Tests/Effects/` (Tier-1 tests):**
+- `EffectVocabularyTests.cs` (AC1), `EffectExecutorBoundsTests.cs` (AC2), `EffectExecutorDeterminismTests.cs` (AC3), `EffectExecutorEqualExchangeTests.cs` (AC4 + edge cases + deferred guards).
+
+**Modified:**
+- `godot/SimSources.props` — added `src/Effects/**/*.cs` to the shared sim-source glob (covers both the Tier-1 harness and the analyzer gate).
+- `_bmad-output/implementation-artifacts/deferred-work.md` — appended the Story 2.1 deferral section.
+- `_bmad-output/implementation-artifacts/2-1-…-keystone.md` (this file) — frontmatter `baseline_commit`, tasks checked, Dev Agent Record, Status → review.
+- `_bmad-output/implementation-artifacts/sprint-status.yaml` — story status `ready-for-dev` → `in-progress` → `review`.

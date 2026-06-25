@@ -28,8 +28,12 @@
          which uses System.Net.Http, not Godot). Required so the golden harness can build the full loop,
          and so the analyzer quantifies the known AI float→Fixed debt (advisory). -->
     <Compile Include="$(MSBuildThisFileDirectory)src\AI\**\*.cs"         LinkBase="Sim\AI" />
-    <!-- Effects/ and Dsl/ are net-new in Epics 2 & 7; add their includes HERE when the folders exist
-         and both the test harness and the analyzer gate cover them automatically. -->
+    <!-- Story 2.1 (AR-8): the net-new Effect-Graph surface (src/Effects/, namespace ProjectChimera.Effects).
+         Pure C# / Fixed-only / Godot-free. Globbed HERE so it is covered automatically by BOTH the Tier-1
+         golden harness (ProjectChimera.Sim.Tests) AND the determinism analyzer gate (ProjectChimera.Sim.Analysis)
+         — without this line the new code would compile into neither, a silent coverage hole. Dsl/ (Epic 7) is
+         still net-new; add its include HERE when the folder exists. -->
+    <Compile Include="$(MSBuildThisFileDirectory)src\Effects\**\*.cs"    LinkBase="Sim\Effects" />
 
     <!-- Story 1.5: explicit single-file includes so the .chmr record→replay round-trip (with the v2 seed
          header) is Tier-1 testable. These three Multiplayer files are verified Godot-free (System.* + Core
