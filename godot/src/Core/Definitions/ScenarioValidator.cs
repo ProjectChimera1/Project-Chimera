@@ -82,6 +82,9 @@ namespace ProjectChimera.Core.Definitions
             if (m.ResourceNodes is null) return ValidationResult.Fail("scenario.resource_nodes is null.", validated);
             if (m.Buildings is null)     return ValidationResult.Fail("scenario.buildings is null.", validated);
             if (m.Units is null)         return ValidationResult.Fail("scenario.units is null.", validated);
+            // Story 1.11 (AC3): triggers are now gated too. A null array would NRE in ScenarioDirector.LoadScenario
+            // (new bool[_triggers.Length]); reject it located, like the four collections above.
+            if (m.Triggers is null)      return ValidationResult.Fail("scenario.triggers is null.", validated);
 
             // ── Player slots: range / non-negative ore / in-bounds base / engine ceiling / uniqueness ──
             // declared = the set of slots a PlayerSlot actually declares; buildings/units must reference one of
@@ -158,6 +161,87 @@ namespace ProjectChimera.Core.Definitions
                         $"scenario.units[{i}].slot={u.Slot} references no declared player_slot.", validated);
             }
 
+            // ── Triggers (Story 1.11, AC3 — Decision #1: extend THIS gate rather than add a second validator) ──
+            // The as-built path wrote accepted LLM/editor triggers straight into Triggers[] and reached
+            // ScenarioDirector WITHOUT any validation; AR-39 now inspects them too, so non-deterministic /
+            // crash-inducing trigger content can never reach the tick. Each check below maps to a concrete
+            // ScenarioDirector behavior: an out-of-range faction slot does (Faction)(slot+1) → Ore[idx] = an OOB
+            // crash; an unknown event/condition/action type or operator silently NEVER fires (a dead trigger that
+            // is almost certainly an authoring/LLM error); an unknown building_type silently never matches; a
+            // spawn coordinate outside the 16.16 range / map bounds overflows when the spawn delegate converts it
+            // to Fixed; a timer_expires that names no create_timer is a dangling no-op. Triggers are validated as
+            // INPUT ONLY — they are deliberately NOT folded into SimChecksum / CanonicalModelHash (that is Epic 7).
+            // First failure returns a single located error, mirroring the buildings/units loops above.
+            TriggerDefinition[] triggers = m.Triggers ?? Array.Empty<TriggerDefinition>();
+
+            // Pass 1: collect every timer name a create_timer action declares, so a timer_expires reference can be
+            // checked against it (the only cross-trigger reference; variables default to 0 at read, so they need none).
+            var declaredTimers = new HashSet<string>(StringComparer.Ordinal);
+            for (int i = 0; i < triggers.Length; i++)
+            {
+                if (triggers[i] is null) continue; // located-rejected in pass 2; don't NRE while collecting
+                TriggerAction[] collectActions = triggers[i].Actions ?? Array.Empty<TriggerAction>();
+                for (int a = 0; a < collectActions.Length; a++)
+                    if (collectActions[a].Type == "create_timer" && !string.IsNullOrEmpty(collectActions[a].TimerName))
+                        declaredTimers.Add(collectActions[a].TimerName!);
+            }
+
+            // Pass 2: validate each trigger's events, conditions, and actions in declaration order.
+            for (int i = 0; i < triggers.Length; i++)
+            {
+                TriggerDefinition t = triggers[i];
+                if (t is null) return ValidationResult.Fail($"scenario.triggers[{i}] is null.", validated);
+
+                TriggerEvent[] events = t.Events ?? Array.Empty<TriggerEvent>();
+                for (int j = 0; j < events.Length; j++)
+                {
+                    TriggerEvent e = events[j];
+                    string ep = $"scenario.triggers[{i}].events[{j}]";
+                    if (!InSet(_triggerEventTypes, e.Type))
+                        return ValidationResult.Fail($"{ep}.type='{e.Type}' is not a known trigger event type.", validated);
+                    string? fe = CheckFactionSlot($"{ep}.faction", e.Faction);
+                    if (fe != null) return ValidationResult.Fail(fe, validated);
+                    if (!string.IsNullOrEmpty(e.BuildingType) && !IsKnownBuildingType(e.BuildingType))
+                        return ValidationResult.Fail($"{ep}.building_type='{e.BuildingType}' is not a known BuildingType.", validated);
+                    if (!InSet(_operators, e.Operator))
+                        return ValidationResult.Fail($"{ep}.operator='{e.Operator}' is not a known comparison operator.", validated);
+                    if (e.Type == "timer_expires" && !string.IsNullOrEmpty(e.TimerName) && !declaredTimers.Contains(e.TimerName))
+                        return ValidationResult.Fail(
+                            $"{ep}.timer_name='{e.TimerName}' references no timer created by any create_timer action.", validated);
+                }
+
+                TriggerCondition[] conds = t.Conditions ?? Array.Empty<TriggerCondition>();
+                for (int j = 0; j < conds.Length; j++)
+                {
+                    TriggerCondition c = conds[j];
+                    string cp = $"scenario.triggers[{i}].conditions[{j}]";
+                    if (!InSet(_conditionTypes, c.Type))
+                        return ValidationResult.Fail($"{cp}.type='{c.Type}' is not a known trigger condition type.", validated);
+                    string? fe = CheckFactionSlot($"{cp}.faction", c.Faction);
+                    if (fe != null) return ValidationResult.Fail(fe, validated);
+                    if (!string.IsNullOrEmpty(c.BuildingType) && !IsKnownBuildingType(c.BuildingType))
+                        return ValidationResult.Fail($"{cp}.building_type='{c.BuildingType}' is not a known BuildingType.", validated);
+                    if (!InSet(_operators, c.Operator))
+                        return ValidationResult.Fail($"{cp}.operator='{c.Operator}' is not a known comparison operator.", validated);
+                }
+
+                TriggerAction[] actions = t.Actions ?? Array.Empty<TriggerAction>();
+                for (int j = 0; j < actions.Length; j++)
+                {
+                    TriggerAction a = actions[j];
+                    string ap = $"scenario.triggers[{i}].actions[{j}]";
+                    if (!InSet(_actionTypes, a.Type))
+                        return ValidationResult.Fail($"{ap}.type='{a.Type}' is not a known trigger action type.", validated);
+                    string? fe = CheckFactionSlot($"{ap}.faction", a.Faction);
+                    if (fe != null) return ValidationResult.Fail(fe, validated);
+                    if (a.Type == "spawn_unit")
+                    {
+                        string? ce = CheckCoord($"{ap}.x", a.X, bounds) ?? CheckCoord($"{ap}.z", a.Z, bounds);
+                        if (ce != null) return ValidationResult.Fail(ce, validated);
+                    }
+                }
+            }
+
             // AR-13 (forbidden-until-SimRng) — RESERVED, intentionally NOT implemented here. SimRng shipped in
             // Story 1.5 and is unconditionally present (EntityWorld.Rng, non-null, no flag), and no effect/ability
             // schema exists yet (Epic 2). The rule's failing condition ("SimRng absent") can never occur and there
@@ -203,6 +287,37 @@ namespace ProjectChimera.Core.Definitions
             for (int i = 0; i < _buildingTypeNames.Length; i++)
                 if (_buildingTypeNames[i] == type) return true;
             return false;
+        }
+
+        // ── Trigger vocabulary (Story 1.11, AC3) — the CLOSED, typed sets ScenarioDirector actually handles.
+        //    Each mirrors a switch in ScenarioDirector (EventMatches / EvalCondition / ExecuteActions / Compare);
+        //    a value outside the set is silently inert at runtime, so the gate rejects it instead. Static =
+        //    allocated once, so the per-trigger checks allocate nothing (mirrors _buildingTypeNames). ──
+        private static readonly string[] _operators          = { ">", "<", ">=", "<=", "==", "!=" };
+        private static readonly string[] _triggerEventTypes  = { "match_start", "unit_dies", "building_completed", "timer_expires", "resource_threshold", "unit_count_threshold" };
+        private static readonly string[] _conditionTypes     = { "always", "building_exists", "resource_comparison", "unit_count", "variable_comparison" };
+        private static readonly string[] _actionTypes        = { "spawn_unit", "display_message", "victory", "defeat", "create_timer", "add_resources", "set_variable", "play_sound" };
+
+        /// <summary>Exact-match membership in a closed string set (case-sensitive). Null is never a member.</summary>
+        private static bool InSet(string[] set, string? value)
+        {
+            if (value is null) return false;
+            for (int i = 0; i < set.Length; i++)
+                if (set[i] == value) return true;
+            return false;
+        }
+
+        /// <summary>
+        /// A trigger faction slot must map to a defined <see cref="Faction"/>: ScenarioDirector does
+        /// <c>(Faction)(slot + 1)</c> and indexes the size-5 per-faction arrays, so an out-of-range slot crashes
+        /// the tick (OOB) — exactly the engine ceiling the player-slot check enforces, reused here. Returns a
+        /// located error or null when OK.
+        /// </summary>
+        private static string? CheckFactionSlot(string path, int slot)
+        {
+            if (slot < 0 || slot + 1 > (int)Faction.Player4)
+                return $"{path}={slot} is out of the valid faction-slot range [0,{(int)Faction.Player4 - 1}].";
+            return null;
         }
     }
 }

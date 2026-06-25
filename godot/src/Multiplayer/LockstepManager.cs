@@ -38,14 +38,14 @@ namespace ProjectChimera.Multiplayer
         /// <summary>Starting input delay (ticks). Adaptive logic adjusts from here.</summary>
         public const int INPUT_DELAY = 4;
 
-        private const int   MIN_DELAY   = 2;   // minimum delay (≈ 66ms) — safe floor for LAN
-        private const int   MAX_DELAY   = 12;  // maximum delay (≈ 400ms) — gives up to ~200ms OWL
+        // Story 1.11 (AC2a): the [MIN_DELAY, MAX_DELAY] clamp and the RTT→delay / cross-peer agreement math were
+        // extracted to the Godot-free DelayMath helper so they are Tier-1 unit-testable. This class now delegates
+        // to DelayMath.ComputeTargetDelay / DelayMath.AgreeDelay (behavior-neutral). TICK_MS also lives there.
 
-        /// <summary>Circular buffer slots (must be power of 2 and > MAX_DELAY + 1).</summary>
+        /// <summary>Circular buffer slots (must be a power of two and &gt; <c>DelayMath.MAX_DELAY</c> + 1).</summary>
         private const int BUFFER_SIZE = 16;
         private const int BUFFER_MASK = BUFFER_SIZE - 1;
 
-        private const float TICK_MS    = 1000f / 30f; // milliseconds per sim tick at 30 Hz
         private const float RTT_ALPHA  = 0.125f;       // EWMA smoothing weight for RTT samples
         private const uint  PING_INTERVAL_TICKS = 60;  // send a ping every ~2 seconds
 
@@ -113,7 +113,7 @@ namespace ProjectChimera.Multiplayer
 
         // ── RTT measurement ───────────────────────────────────────────────────
 
-        private float _smoothedRttMs = INPUT_DELAY * TICK_MS * 2f; // initial estimate
+        private float _smoothedRttMs = INPUT_DELAY * DelayMath.TICK_MS * 2f; // initial estimate
         private byte  _pingSeq;
         private uint  _lastPingSentTick;
         private uint  _lastPingSentMs;   // wall-clock ms at the time we sent the last ping
@@ -520,16 +520,11 @@ namespace ProjectChimera.Multiplayer
         // ── Adaptive delay negotiation ────────────────────────────────────────
 
         /// <summary>
-        /// Compute the ideal input delay from the current smoothed RTT.
-        /// = ceil(OWL / TICK_MS) + 1, clamped to [MIN_DELAY, MAX_DELAY].
-        /// The +1 provides a one-tick safety margin above the bare minimum.
+        /// Compute the ideal input delay from the current smoothed RTT. Delegates to the Godot-free
+        /// <see cref="DelayMath.ComputeTargetDelay"/> (Story 1.11, AC2a) — ceil(OWL / TICK_MS) + 1 clamped to
+        /// [MIN_DELAY, MAX_DELAY] — so the policy is Tier-1 unit-testable.
         /// </summary>
-        private int ComputeTargetDelay()
-        {
-            float owlMs = _smoothedRttMs / 2f;
-            int ticks   = (int)Math.Ceiling(owlMs / TICK_MS);
-            return Math.Clamp(ticks + 1, MIN_DELAY, MAX_DELAY);
-        }
+        private int ComputeTargetDelay() => DelayMath.ComputeTargetDelay(_smoothedRttMs);
 
         private void MaybeProposeDelayChange()
         {
@@ -553,7 +548,7 @@ namespace ProjectChimera.Multiplayer
                     out byte theirDelay, out uint theirApplyAt)) return;
 
             int  myDesired    = ComputeTargetDelay();
-            int  agreedDelay  = Math.Max(myDesired, theirDelay);
+            int  agreedDelay  = DelayMath.AgreeDelay(myDesired, theirDelay);
 
             // Accept their applyAt if it is still safely in the future;
             // otherwise extend it.  Both peers converge to the same value because
@@ -630,7 +625,7 @@ namespace ProjectChimera.Multiplayer
         private void ResetAdaptiveState()
         {
             _currentDelay            = INPUT_DELAY;
-            _smoothedRttMs           = INPUT_DELAY * TICK_MS * 2f;
+            _smoothedRttMs           = INPUT_DELAY * DelayMath.TICK_MS * 2f;
             _pingSeq                 = 0;
             _lastPingSentTick        = 0;
             _pendingDelayChange      = false;

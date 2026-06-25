@@ -37,6 +37,11 @@
          above are never re-recorded here. -->
     <None Remove="Golden\same-tick-tie-break.golden.txt" />
     <EmbeddedResource Include="Golden\same-tick-tie-break.golden.txt" />
+    <!-- Story 1.11 (AC1) — AI-ACTIVE golden (Player2 AiOpponentSystem active). SAME-MACHINE ONLY: it encodes
+         the AI's float scoring (D2), so AiActiveGoldenTests gates the golden-match on Windows and it is
+         deliberately EXCLUDED from the 1.10c Win↔Linux cross-platform gate. NEW file; goldens above untouched. -->
+    <None Remove="Golden\ai-active-scenario.golden.txt" />
+    <EmbeddedResource Include="Golden\ai-active-scenario.golden.txt" />
   </ItemGroup>
 
   <ItemGroup>
