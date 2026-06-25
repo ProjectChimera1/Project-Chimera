@@ -4,7 +4,7 @@ baseline_commit: 6fb31efff58dad10ab1dd070ddd035ac425c9ae7
 
 # Story 1.13: Formation movement — priority yielding + role-based battle formations + push/yield data fields
 
-Status: review
+Status: done
 
 <!-- Context engine analysis completed — comprehensive developer guide. Validation optional: run validate-create-story before dev-story. -->
 <!-- 1.13 is the SECOND post-M1 design-gap story and the SIBLING of 1.12. It closes DG-2 / FR-54: the as-built
@@ -185,7 +185,34 @@ _Covers: **DG-2 / FR-54** (formation movement: priority yielding + role formatio
   - [x] Run the full Windows CI command `dotnet test godot/ProjectChimera.Sim.Tests/ProjectChimera.Sim.Tests.csproj -c Release` → green (was **264** at 1.12 close; **do not hardcode** — rely on exit code). Confirm: all 6 existing goldens re-recorded to `checksum_algo_version: 5`, the new `formation-separation` golden added, all three version-pin guards green at v5, `SystemOrderTest` untouched/green, the analyzer gate green (advisory on master).
   - [x] Confirm the cross-platform integer-safety claim: every new hashed field is `Fixed.Raw`/`int` (no float in the hashed path), so the re-recorded goldens stay Win↔Linux byte-identical. **CONFIRMED by inspection** — the v5 fold mixes only `world.CollisionRadius[i].Raw` and `(int)world.SeparationPriorityOf[i]` (`SimChecksum.cs`); `CategoryOf` (the one float-adjacent field, parsed from a string) is NOT folded. The new `FormationSeparationScenario` authors all state in `Fixed`/int and leaves Player2 empty so the float-AI no-ops. The local WSL `cross-platform-determinism-check.ps1` builds from a clone of committed HEAD, so it can't verify the (uncommitted) 1.13 working tree — the always-on `ubuntu-latest` CI leg (1.10c) enforces this on push. (Cosmetic fix APPLIED: `:119` "the 4 committed goldens" → "all committed goldens".)
   - [x] Update `STATUS.md:79` — flip the `Formation movement` row from 🟡 PARTIAL to ✅ (note: role-based formations + priority yielding + per-unit collision-radius/push-yield now built; reference Story 1.13 / DG-2).
-  - [ ] Run `gds-code-review` (3-layer adversarial, fresh-context / different LLM). On PASS, set this story `done` in `sprint-status.yaml` and update `last_updated`. (This workflow only sets `review`; code-review flips `done`.) **← pending: the next workflow (this dev-story sets `review`).**
+  - [x] Run `gds-code-review` (3-layer adversarial, fresh-context / different LLM). On PASS, set this story `done` in `sprint-status.yaml` and update `last_updated`. (This workflow only sets `review`; code-review flips `done`.) **← DONE 2026-06-25 — PASS (0 Critical/High after fixes); see Review Findings. 1 HIGH (live-spawn-path gap) FIXED in-story via shared `ApplyUnitDefinition`, 2 Low patches applied, 1 deferred (RestoreUnit snapshot format). Story → `done`.**
+
+---
+
+### Review Findings
+
+_`gds-code-review` (3-layer adversarial — Blind Hunter / Edge Case Hunter / Acceptance Auditor, fresh-context Opus 4.8), 2026-06-25._
+_**Blind Hunter:** 0 findings (cleared bias sign, weight div-by-zero, query-window safety, FormationPlanner geometry, SoA recycle reset, checksum fold, Move/AttackMove parity)._
+_**Acceptance Auditor:** all 6 ACs **MET**, all OUT-of-scope fences **honored**, all Dev Agent Record claims verified TRUE against the diff._
+_**Independent Tier-1 Release re-run:** 282 pass / 1 skip / 0 fail (exit 0) — matches the Dev Record._
+_Triage: 1 decision · 2 patches · 1 dismissed (+1 already-documented note)._
+
+**Decision needed (resolve before patches):**
+- [x] [Review][Decision] **Live spawn paths don't wire the 3 new per-unit fields** — only `ScenarioApplier.SpawnUnit` populates `CollisionRadius` / `SeparationPriorityOf` / `CategoryOf`. The 4 live unit-spawn sites bypass it (`world.Create(...)` + hand-copy) and keep the `Create()` defaults (`1.0` / `Normal` / `Melee`): `BuildingSystem.SpawnTrainedUnit` [`BuildingSystem.cs:169`] — **building production, the PRIMARY in-match unit source**; `EntityPlacer.DoSpawnCombatUnit` [`EntityPlacer.cs:474`]; `EntityPlacer.DoSpawnWorker` [`EntityPlacer.cs:439`]; `EntityPlacer.RestoreUnit` [`EntityPlacer.cs:1079`]. Consequence: trained/placed units all read `CategoryOf == Melee`, so `FormationPlanner` front-lines them → the headline role-based formation (**AC4**) is INERT for produced armies, and authored `collision_radius`/`separation_priority` are ignored (units fall back to today's uniform separation — no regression, but feature-not-applied). **NOT a desync** (defaults identical on every peer; `CategoryOf` is issuer-only) → MP-safe, 282 tests green, goldens byte-identical. Story Task 2 documented bypass→defaults as "acceptable," so wiring the live paths now vs a fast-follow is a scope call. `def` (with `ParsedCategory`/`CollisionRadius`/`ParsedSeparationPriority`) is available at every `def`-based site; `RestoreUnit` would additionally need the `EntitySnapshot` struct extended. Found by: Edge Case Hunter (HIGH); confirmed by orchestrator (all sites read).
+
+**Patches (unambiguous; both golden-safe — neither moves a checksum):**
+- [x] [Review][Patch] **FormationPlanner row axis collapses on a purely-vertical facing** — `right = (f.Z, 0, -f.X)` becomes `Zero` when `f.X==0 && f.Z==0`, collapsing a whole rank onto one destination (violates AC5 distinctness). The degenerate guard only catches exact `f == Zero`. Unreachable today (all spawn Y + `BuildFormation` target forced to 0 → facing always planar), but the planner is a general reusable helper. Found INDEPENDENTLY by Edge Case Hunter + Acceptance Auditor. Fix: fall back to the canonical axis when the horizontal projection is zero; add a vertical-facing Tier-1 test. [`FormationPlanner.cs:53-57`]
+- [x] [Review][Patch] **FormationPlanner centroid can int-overflow for huge selections** — `SelectionSystem.BuildFormation` accumulates `Position` raw sums in `Fixed` (unchecked int32); ~200+ units near a map edge (or ~400 mid-map) overflow before the divide → wrapped centroid → wrong group facing. Presentation-only (destinations are issuer-computed + transmitted as `Fixed` → no desync/crash; worst case the canonical-axis fallback fires). Fix: accumulate the raw centroid in `long` (or divide-as-you-go) before constructing the `Fixed` mean. [`SelectionSystem.cs:449-462`]
+
+**Dismissed / no-action:**
+- [Review][Dismiss] AC1b "equal-magnitude" is asserted within a 25% band, not exactly — by-design and honestly documented; the residual asymmetry is the pre-existing deterministic in-tick sequential position update (id 1 sees id 0's moved position), NOT the bias (which keys only off unit `i`'s own Moving flag). The band still rejects the 2:1 ratio a real bias-leak would produce. [`SeparationBiasTests.cs:610`]
+- [Review][Note] `MAX_COLLISION_RADIUS == DEFAULT == 1.0` silently clamps an authored `collision_radius > 1.0` down to `1.0` (content footgun) — already the documented AC2b "parked sub-claim" (query-window safety). A future story wanting bigger units widens the query radius + cap together. No action for 1.13.
+
+**Resolution (2026-06-25 — all findings closed):**
+- **Decision → FIXED in-story (root-cause, not bandaid; Alec's call).** Extracted `EntityWorld.ApplyUnitDefinition(id, def)` as the SINGLE owner of definition→SoA field copy (+ a shared `ClampCollisionRadius`), and routed the 3 definition-based spawn paths through it: `ScenarioApplier.SpawnUnit` (behavior-identical), `BuildingSystem.SpawnTrainedUnit` (the primary in-match unit source), `EntityPlacer.DoSpawnCombatUnit`. Workers (`DoSpawnWorker`) take the 3 fields directly (no combat stats to share). A future per-unit field now lives in ONE place — the forgotten-field recurrence is structurally closed. `RestoreUnit` (save/snapshot restore, no def) carved off to `deferred-work.md` (needs the `UnitSnapshot` format widened — editor undo/load only, NOT a lockstep path).
+- **Patch 1 → APPLIED.** `FormationPlanner` degenerate-facing guard now also catches a purely-vertical facing (`f.X == f.Z == 0`), not just exact-zero; + a new `VerticalFacing_DoesNotCollapseRank_DestinationsStayDistinct` Tier-1 test.
+- **Patch 2 → APPLIED.** `SelectionSystem.BuildFormation` centroid now accumulates raw sums in `long` (overflow-safe for 200+ unit selections); presentation/issuer-only, no determinism impact.
+- **Verification:** full Godot build **0 errors** (7 pre-existing CS8632 warnings, none in touched files); Tier-1 Release **283 pass / 1 skip / 0 fail** (+1 new test); **all 6 + 1 goldens byte-identical (NO re-record)** — the spawn refactor is determinism-neutral (trained units carry default radius/priority = the Create defaults already folded). Determinism floor intact.
 
 ---
 
@@ -413,9 +440,20 @@ Implemented Story 1.13 (DG-2 / FR-54) across all 8 tasks; status → **review**.
 - `STATUS.md` — Formation movement row 🟡 → ✅.
 - `godot/tools/cross-platform-determinism-check.ps1` — stale "4 committed goldens" → "all committed goldens".
 
+**Edited (1.13 code-review — spawn-path unification + 2 patches, 2026-06-25):**
+- `godot/src/Core/EntityWorld.cs` — NEW `ApplyUnitDefinition(id, def)` (the SINGLE owner of definition→SoA field copy) + shared static `ClampCollisionRadius(float)`.
+- `godot/src/Core/Sim/ScenarioApplier.cs` — `SpawnUnit` inline field-copy → `world.ApplyUnitDefinition(id, def)` (behavior-identical).
+- `godot/src/Economy/BuildingSystem.cs` — `SpawnTrainedUnit` routes a resolved def through `ApplyUnitDefinition` (trained units now get authored radius/priority/Category); legacy fallback kept for the no-def degenerate case.
+- `godot/src/UI/EntityPlacer.cs` — `DoSpawnCombatUnit` → `ApplyUnitDefinition`; `DoSpawnWorker` sets the 3 new fields directly (Category=Worker); `RestoreUnit` documented (snapshot-format follow-up).
+- `godot/src/Navigation/FormationPlanner.cs` — degenerate-facing guard extended to a purely-vertical facing (Patch 1).
+- `godot/src/UI/SelectionSystem.cs` — `BuildFormation` centroid accumulated in `long` (overflow-safe; Patch 2).
+- `godot/ProjectChimera.Sim.Tests/Navigation/FormationPlannerTests.cs` — `VerticalFacing_DoesNotCollapseRank_DestinationsStayDistinct` (Patch 1).
+- `_bmad-output/implementation-artifacts/deferred-work.md` — `RestoreUnit` snapshot-format follow-up logged.
+
 ## Change Log
 
 | Date | Version | Change | Author |
 |---|---|---|---|
 | 2026-06-25 | 0.1 | Story created via `gds-create-story` (exhaustive context-engine analysis: 3 core sim files read line-level + 2 parallel research subagents tracing the UnitDefinition→EntityWorld data-flow and the full SimChecksum re-baseline/version-guard surface). 6 decisions baked in (per-unit moving-bias; `CategoryOf` as a new enum SoA; 3-state `SeparationPriority`; Godot-free `Fixed` `FormationPlanner`; default/max-radius + query-safety constants; the real `AlgoVersion 4→5` fold). Status → ready-for-dev. | Alec (SM) |
 | 2026-06-25 | 1.0 | Implemented via `gds-dev-story` (all 8 tasks). Moving-vs-idle bias + summed-radii contact + push/yield in `MovementSystem`; new `CollisionRadius`/`SeparationPriorityOf`/`CategoryOf` SoA + authorable `collision_radius`/`separation_priority`; Godot-free `FormationPlanner` (role-based, shared by Move + Attack-Move); `SimChecksum AlgoVersion 4→5` fold + 3 version-pin guards re-pinned (`ExpectedV5Hash=0x5E7BE3D8`); all 6 goldens re-recorded to v5 + new cross-platform-safe `formation-separation` golden. Tier-1 Release **282 pass / 1 skip / 0 fail**; full Godot build 0 errors; goldens churn = 6 modified + 1 added. Cross-platform integer-safety confirmed by inspection (CI `ubuntu-latest` leg enforces). Status → review. | Link Freeman (Dev) |
+| 2026-06-25 | 1.1 | `gds-code-review` (3-layer adversarial, fresh-context Opus) → **PASS**. Blind Hunter 0 findings; Acceptance Auditor all 6 ACs MET + every out-of-scope fence honored + Dev-Record claims verified true; Edge Case Hunter 1 HIGH + 2 Low. HIGH = the live spawn paths (building production + editor placement) bypassed `ScenarioApplier.SpawnUnit` and kept the `Create()` defaults for the 3 new per-unit fields → role-based formation INERT for produced armies (MP-safe; not a desync). FIXED root-cause in-story (Alec's call over a bandaid): new shared `EntityWorld.ApplyUnitDefinition` mapper routed through the 3 definition-based spawn paths + workers wired directly; `RestoreUnit` (snapshot, no def) deferred to `deferred-work.md`. 2 Low patches applied: `FormationPlanner` vertical-facing guard (+ test), `SelectionSystem` centroid `long`-accumulation. Independent verify: Godot build **0 errors** (7 pre-existing warnings), Tier-1 Release **283 pass / 1 skip / 0 fail** (+1 test), all 7 goldens **byte-identical** (no re-record — the refactor is determinism-neutral). Status → done. | Link Freeman (Review) |

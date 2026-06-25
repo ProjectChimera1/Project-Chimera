@@ -443,6 +443,17 @@ namespace ProjectChimera.UI
             _world.GatherState[id]   = GatherState.Idle;
             _world.CarryCapacity[id] = Fixed.FromFloat(WORKER_CARRY);
 
+            // Story 1.13 (review fix): workers carry no combat stats, so they take only the per-unit separation/
+            // formation fields directly (not the full ApplyUnitDefinition combat copy) — a placed worker still gets
+            // its authored collision_radius / separation_priority and Category=Worker (back-line) instead of the
+            // Create() Melee/default. With no def, the Create defaults stand.
+            if (def != null)
+            {
+                _world.CollisionRadius[id]      = EntityWorld.ClampCollisionRadius(def.CollisionRadius);
+                _world.SeparationPriorityOf[id] = def.ParsedSeparationPriority;
+                _world.CategoryOf[id]           = def.ParsedCategory;
+            }
+
             int workerMesh = def != null ? (fdef?.IndexOfUnit(def.Id) ?? -1) : -1;
             _world.MeshType[id] = (byte)(workerMesh < 0 ? 0 : workerMesh);
 
@@ -453,16 +464,9 @@ namespace ProjectChimera.UI
         /// <summary>Spawn a combat unit and return its entity id (-1 on failure).</summary>
         private int DoSpawnCombatUnit(FixedVec3 pos, Faction faction, UnitDefinition? def)
         {
-            float hp           = def?.Hp           ?? HEALTH;
-            float speed        = def?.Speed        ?? SPEED;
-            float atkRng       = def?.AttackRange  ?? ATTACK_RANGE;
-            float atkDmg       = def?.AttackDamage ?? ATTACK_DMG;
-            float atkSpd       = def?.AttackSpeed  ?? ATTACK_SPEED;
-            float vision       = def?.VisionRange  ?? 8f;
-            float splashRadius = def?.SplashRadius ?? 0f;
-            byte  supply       = (byte)(def?.Supply ?? 1);
-            var   dmgType      = def?.ParsedDamageType ?? DamageType.Normal;
-            var   armType      = def?.ParsedArmorType  ?? ArmorType.Light;
+            float hp     = def?.Hp    ?? HEALTH;
+            float speed  = def?.Speed ?? SPEED;
+            byte  supply = (byte)(def?.Supply ?? 1);
 
             if (_resources != null && !_resources.HasSupply(faction, supply))
             {
@@ -474,14 +478,24 @@ namespace ProjectChimera.UI
             int id = _world.Create(pos, faction, Fixed.FromFloat(hp), Fixed.FromFloat(speed));
             if (id < 0) { GD.PrintErr("[EntityPlacer] EntityWorld full."); return -1; }
 
-            _world.SupplyCost[id]    = supply;
-            _world.AttackRange[id]   = Fixed.FromFloat(atkRng);
-            _world.AttackDamage[id]  = Fixed.FromFloat(atkDmg);
-            _world.AttackSpeed[id]   = Fixed.FromFloat(atkSpd);
-            _world.DamageTypeOf[id]  = dmgType;
-            _world.ArmorTypeOf[id]   = armType;
-            _world.VisionRange[id]   = Fixed.FromFloat(vision);
-            _world.SplashRadius[id]  = Fixed.FromFloat(splashRadius);
+            // Copy the def's per-entity fields via the SINGLE shared mapper (Story 1.13 review fix) so an editor-placed
+            // unit gets its authored collision_radius / separation_priority / Category like a scenario-placed one. With
+            // no def, keep the legacy fallback combat stats; the separation/formation fields stay at Create defaults.
+            if (def != null)
+            {
+                _world.ApplyUnitDefinition(id, def);
+            }
+            else
+            {
+                _world.SupplyCost[id]   = supply;
+                _world.AttackRange[id]  = Fixed.FromFloat(ATTACK_RANGE);
+                _world.AttackDamage[id] = Fixed.FromFloat(ATTACK_DMG);
+                _world.AttackSpeed[id]  = Fixed.FromFloat(ATTACK_SPEED);
+                _world.DamageTypeOf[id] = DamageType.Normal;
+                _world.ArmorTypeOf[id]  = ArmorType.Light;
+                _world.VisionRange[id]  = Fixed.FromFloat(8f);
+                _world.SplashRadius[id] = Fixed.FromFloat(0f);
+            }
 
             int meshType = def != null ? (ActiveFactionDef()?.IndexOfUnit(def.Id) ?? -1) : -1;
             _world.MeshType[id] = (byte)(meshType < 0 ? 0 : meshType);
@@ -1091,6 +1105,10 @@ namespace ProjectChimera.UI
             _world.GatherState[id]  = snap.GatherState;
             _world.CarryCapacity[id] = snap.CarryCapacity;
             _world.MeshType[id]     = snap.MeshType;
+            // Story 1.13 (review follow-up): UnitSnapshot does not yet carry collision_radius / separation_priority /
+            // Category, so a restored unit keeps the Create() defaults (1.0 / Normal / Melee) for those — a known
+            // save/restore fidelity gap (editor undo / load only; NOT a lockstep path). Closing it means widening
+            // UnitSnapshot + this restore. Tracked in deferred-work.md (1.13 review).
             return id;
         }
 

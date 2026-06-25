@@ -49,9 +49,13 @@ namespace ProjectChimera.Navigation
             // AC5: a single-unit move degrades to the centered single destination (the target point itself).
             if (n == 1) { dest[0] = target; return dest; }
 
-            // Normalize facing; fall back to a canonical axis if degenerate (target == centroid).
+            // Normalize facing; fall back to a canonical axis when degenerate. This covers BOTH a zero facing
+            // (target == centroid) AND a purely VERTICAL facing (f.X == f.Z == 0), which would otherwise collapse
+            // `right` (below) to zero and stack a whole rank on one point — violating AC5 distinctness. Today every
+            // spawn forces Y == 0 so facing is always planar and only the zero case can fire, but the planner is a
+            // general reusable helper, so the vertical degeneracy is guarded too.
             FixedVec3 f = facing.Normalized();
-            if (f == FixedVec3.Zero) f = CanonicalFacing;
+            if (f.X == Fixed.Zero && f.Z == Fixed.Zero) f = CanonicalFacing;
             // Row direction: a 90° rotation of f in the XZ plane (unit-length when f is planar-unit, which it is
             // for an RTS move on the ground plane). Units in a rank spread along this axis.
             FixedVec3 right = new FixedVec3(f.Z, Fixed.Zero, -f.X);

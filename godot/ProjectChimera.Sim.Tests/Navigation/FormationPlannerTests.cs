@@ -90,6 +90,21 @@ namespace ProjectChimera.Sim.Tests.Navigation
             Assert.Empty(d);
         }
 
+        // ── Review patch (1.13) — degenerate facing guard ───────────────────────────────────────────────────────
+
+        [Fact]
+        public void VerticalFacing_DoesNotCollapseRank_DestinationsStayDistinct()
+        {
+            // A purely-vertical facing (X == Z == 0) would make the row axis `right = (f.Z, 0, -f.X)` zero and stack
+            // an entire rank on one point. The degenerate guard must fall back to the canonical axis so the slots stay
+            // distinct (AC5). Unreachable from the shipped Y==0 call sites, but the planner is a general helper — without
+            // the guard these four destinations all collapse onto the target.
+            int[] ids = { 0, 1, 2, 3 };
+            var cats = new[] { UnitCategory.Ranged, UnitCategory.Ranged, UnitCategory.Ranged, UnitCategory.Ranged };
+            FixedVec3[] d = FormationPlanner.Plan(ids, cats, V(0, 0, 0), V(0, 1, 0), Spacing);
+            AssertAllDistinct(d);
+        }
+
         // ── Helpers ─────────────────────────────────────────────────────────────────────────────────────────────
 
         private static FixedVec3 V(int x, int y, int z)

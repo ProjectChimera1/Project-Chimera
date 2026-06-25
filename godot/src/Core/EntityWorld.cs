@@ -1,5 +1,6 @@
 using System;
 using ProjectChimera.Combat;
+using ProjectChimera.Core.Definitions; // UnitDefinition (definition→SoA copy in ApplyUnitDefinition)
 
 namespace ProjectChimera.Core
 {
@@ -355,6 +356,50 @@ namespace ProjectChimera.Core
 
             AliveCount++;
             return id;
+        }
+
+        /// <summary>
+        /// Copy a unit <see cref="UnitDefinition"/>'s per-entity fields onto an already-<see cref="Create"/>d slot.
+        /// This is the SINGLE place definition→SoA field mapping lives, so every spawn path (scenario apply,
+        /// building production, editor placement) shares one copy — a new per-unit field can never again be wired
+        /// into one path and silently forgotten in the others (the Story 1.13 review found exactly that gap, where
+        /// trained/placed units kept the <see cref="Create"/> defaults for the new separation/formation fields).
+        /// Sets the combat stats, supply, and the Story 1.13 separation/formation fields (with the documented
+        /// collision-radius clamp). Does NOT set <c>Health</c>/<c>Speed</c> (those are <see cref="Create"/> ctor
+        /// args) nor <c>MeshType</c> (its faction-def index differs per caller), and does NOT touch worker gather
+        /// state — callers own those. Allocation-free: value-type writes only, no LINQ/closures/boxing.
+        /// </summary>
+        public void ApplyUnitDefinition(int id, UnitDefinition def)
+        {
+            VisionRange[id]  = Fixed.FromFloat(def.VisionRange);
+            AttackRange[id]  = Fixed.FromFloat(def.AttackRange);
+            AttackDamage[id] = Fixed.FromFloat(def.AttackDamage);
+            AttackSpeed[id]  = Fixed.FromFloat(def.AttackSpeed);
+            DamageTypeOf[id] = def.ParsedDamageType;
+            ArmorTypeOf[id]  = def.ParsedArmorType;
+            SplashRadius[id] = Fixed.FromFloat(def.SplashRadius);
+            SupplyCost[id]   = (byte)def.Supply;
+
+            // Story 1.13 (DG-2 / FR-54): per-unit separation/formation fields. CollisionRadius mirrors the
+            // SplashRadius float→Fixed load conversion, then is clamped (see ClampCollisionRadius). SeparationPriority
+            // is folded into SimChecksum (in-sim read); Category is presentation-read (formation planning), NOT folded.
+            CollisionRadius[id]      = ClampCollisionRadius(def.CollisionRadius);
+            SeparationPriorityOf[id] = def.ParsedSeparationPriority;
+            CategoryOf[id]           = def.ParsedCategory;
+        }
+
+        /// <summary>
+        /// Resolve an authored <c>collision_radius</c> (a raw float from the unit definition) to the clamped
+        /// <see cref="Fixed"/> stored in the SoA: omitted/&lt;= 0 → <see cref="DEFAULT_COLLISION_RADIUS"/> (Story 1.13
+        /// AC3 — no zero-radius divide), and &gt; <see cref="MAX_COLLISION_RADIUS"/> → the cap (AC2b query-window
+        /// safety). Shared by <see cref="ApplyUnitDefinition"/> and the worker spawn path so the clamp rule lives once.
+        /// </summary>
+        public static Fixed ClampCollisionRadius(float authoredRadius)
+        {
+            Fixed r = Fixed.FromFloat(authoredRadius);
+            if (r <= Fixed.Zero) r = DEFAULT_COLLISION_RADIUS;
+            if (r > MAX_COLLISION_RADIUS) r = MAX_COLLISION_RADIUS;
+            return r;
         }
 
         /// <summary>

@@ -446,19 +446,26 @@ namespace ProjectChimera.UI
 
             int m = ids.Length;
             var cats = new UnitCategory[m];
-            FixedVec3 centroid = FixedVec3.Zero;
+            // Accumulate the centroid in 64-bit raw sums: summing ~200+ unit Positions (Fixed is 16.16 over int32)
+            // can overflow int32 near a map edge BEFORE the divide, wrapping the centroid → a wrong group facing on
+            // large selections. long holds the worst-case 4096-unit sum with room to spare; each per-axis mean lands
+            // back inside Fixed range. Presentation/issuer-only (the planner's output is transmitted as Fixed), so
+            // this never touches lockstep determinism — but it removes a real big-army failure mode.
+            long sumX = 0, sumY = 0, sumZ = 0;
             for (int k = 0; k < m; k++)
             {
-                cats[k]  = _world.CategoryOf[ids[k]];
-                centroid = centroid + _world.Position[ids[k]];
+                cats[k] = _world.CategoryOf[ids[k]];
+                FixedVec3 p = _world.Position[ids[k]];
+                sumX += p.X.Raw; sumY += p.Y.Raw; sumZ += p.Z.Raw;
             }
 
             var ftarget = new FixedVec3(Fixed.FromFloat(target.X), Fixed.Zero, Fixed.FromFloat(target.Z));
             FixedVec3 facing = ftarget; // m == 0 → Plan returns an empty array; facing is unused
             if (m > 0)
             {
-                centroid = centroid / Fixed.FromInt(m);
-                facing   = ftarget - centroid;
+                var centroid = new FixedVec3(
+                    Fixed.FromRaw((int)(sumX / m)), Fixed.FromRaw((int)(sumY / m)), Fixed.FromRaw((int)(sumZ / m)));
+                facing = ftarget - centroid;
             }
 
             return FormationPlanner.Plan(ids, cats, ftarget, facing, FORMATION_SPACING);

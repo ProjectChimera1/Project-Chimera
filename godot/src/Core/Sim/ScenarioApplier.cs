@@ -204,25 +204,10 @@ namespace ProjectChimera.Core.Sim
                                    Fixed.FromFloat(def.Hp), Fixed.FromFloat(def.Speed));
             if (id < 0) return id;
 
-            world.VisionRange[id]  = Fixed.FromFloat(def.VisionRange);
-            world.AttackRange[id]  = Fixed.FromFloat(def.AttackRange);
-            world.AttackDamage[id] = Fixed.FromFloat(def.AttackDamage);
-            world.AttackSpeed[id]  = Fixed.FromFloat(def.AttackSpeed);
-            world.DamageTypeOf[id] = def.ParsedDamageType;
-            world.ArmorTypeOf[id]  = def.ParsedArmorType;
-            world.SplashRadius[id] = Fixed.FromFloat(def.SplashRadius);
-            world.SupplyCost[id]   = (byte)def.Supply;
-
-            // Story 1.13 (DG-2 / FR-54): per-unit separation/formation fields. CollisionRadius mirrors the
-            // SplashRadius float→Fixed load conversion, then is clamped: omitted/<=0 → DEFAULT (AC3, no
-            // zero-radius divide), and > MAX → MAX (AC2b query-safety — keeps the largest summed contact inside
-            // the unchanged spatial-hash query window). All value-type ops → the spawn path stays alloc-free.
-            Fixed r = Fixed.FromFloat(def.CollisionRadius);
-            if (r <= Fixed.Zero) r = EntityWorld.DEFAULT_COLLISION_RADIUS;
-            if (r > EntityWorld.MAX_COLLISION_RADIUS) r = EntityWorld.MAX_COLLISION_RADIUS;
-            world.CollisionRadius[id]      = r;
-            world.SeparationPriorityOf[id] = def.ParsedSeparationPriority;
-            world.CategoryOf[id]           = def.ParsedCategory;
+            // Copy the definition's per-entity fields (combat stats, supply, + the Story 1.13 separation/formation
+            // fields with the documented collision-radius clamp) via the SINGLE shared mapper, so this path and the
+            // live spawn paths (building production, editor placement) can never again drift apart on a per-unit field.
+            world.ApplyUnitDefinition(id, def);
 
             // Presentation: tag the unit type so MultiMeshBridge renders the right mesh. MeshType is a byte
             // excluded from the determinism checksum; the index comes from the pre-resolved faction def.

@@ -143,16 +143,8 @@ namespace ProjectChimera.Economy
             Faction faction = _buildings.FactionOf[buildingId];
             var def = GetProductionUnit(_buildings.Type[buildingId], faction);
 
-            float hp          = def?.Hp           ?? FALLBACK_HP;
-            float speed       = def?.Speed        ?? FALLBACK_SPEED;
-            float atkDmg      = def?.AttackDamage ?? FALLBACK_ATTACK_DMG;
-            float atkRng      = def?.AttackRange  ?? FALLBACK_ATTACK_RNG;
-            float atkSpd      = def?.AttackSpeed  ?? FALLBACK_ATTACK_SPD;
-            float vision      = def?.VisionRange  ?? 8f;
-            float splashRadius = def?.SplashRadius ?? 0f;
-            byte  supply      = (byte)(def?.Supply ?? 1);
-            var   dmgType     = def?.ParsedDamageType ?? Combat.DamageType.Normal;
-            var   armType     = def?.ParsedArmorType  ?? Combat.ArmorType.Light;
+            float hp    = def?.Hp    ?? FALLBACK_HP;
+            float speed = def?.Speed ?? FALLBACK_SPEED;
 
             // Place unit slightly in front of building (along +X for P1, -X for P2).
             // The Z offset cycles per trained unit: units that hold position (Stop)
@@ -173,14 +165,25 @@ namespace ProjectChimera.Economy
 
             _stats?.RecordUnitBuilt(faction);
 
-            world.SupplyCost[id]    = supply;
-            world.AttackRange[id]   = Fixed.FromFloat(atkRng);
-            world.AttackDamage[id]  = Fixed.FromFloat(atkDmg);
-            world.AttackSpeed[id]   = Fixed.FromFloat(atkSpd);
-            world.DamageTypeOf[id]  = dmgType;
-            world.ArmorTypeOf[id]   = armType;
-            world.VisionRange[id]   = Fixed.FromFloat(vision);
-            world.SplashRadius[id]  = Fixed.FromFloat(splashRadius);
+            // Copy the production def's per-entity fields via the SINGLE shared mapper (Story 1.13 review fix) — so a
+            // trained unit gets its authored collision_radius / separation_priority / Category instead of the Create()
+            // defaults, exactly like a scenario-placed unit. When no def resolves (missing/degenerate faction data),
+            // keep the legacy fallback combat stats; the separation/formation fields then stay at their Create defaults.
+            if (def != null)
+            {
+                world.ApplyUnitDefinition(id, def);
+            }
+            else
+            {
+                world.SupplyCost[id]   = 1;
+                world.AttackRange[id]  = Fixed.FromFloat(FALLBACK_ATTACK_RNG);
+                world.AttackDamage[id] = Fixed.FromFloat(FALLBACK_ATTACK_DMG);
+                world.AttackSpeed[id]  = Fixed.FromFloat(FALLBACK_ATTACK_SPD);
+                world.DamageTypeOf[id] = Combat.DamageType.Normal;
+                world.ArmorTypeOf[id]  = Combat.ArmorType.Light;
+                world.VisionRange[id]  = Fixed.FromFloat(8f);
+                world.SplashRadius[id] = Fixed.FromFloat(0f);
+            }
 
             // Presentation: tag the unit type so MultiMeshBridge renders the right mesh.
             int meshType = def != null ? (GetFactionDef(faction)?.IndexOfUnit(def.Id) ?? -1) : -1;
