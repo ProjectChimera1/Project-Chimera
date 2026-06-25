@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-06-22
-last_updated: 2026-06-24 (1.10b → ready-for-dev via gds-create-story: banned-API + AOT-eligibility analyzers over the Godot-free sim compilation [AR-36]; exhaustive context build — config-only MVP [BannedApiAnalyzers 3.3.4 + <IsAotCompatible> on a new Godot-free ProjectChimera.Sim.Analysis project, advisory-on-master/fail-on-release ratchet, sibling CI job], custom BannedSimApiAnalyzer deferred; 3 decisions surfaced for Alec)
+last_updated: 2026-06-24 (1.10b → review via gds-dev-story: determinism analyzer gate SHIPPED over the Godot-free sim compilation [AR-36] — off-the-shelf BannedApiAnalyzers 3.3.4/RS0030 [zero-baseline, release-gated] + custom BannedSimApiAnalyzer CHM0001..CHM0005 [advisory, 17 TDD tests] + <IsAotCompatible> IL2xxx/IL3xxx, advisory-on-master/-warnaserror-on-release ratchet PROVEN to fail on a deliberate new System.Random(), tier1-analyzer-gate CI sibling job, 7 new Tier-1 guards [203 green], 3 lock files. Custom-analyzer scope expansion delivered. Baseline: RS0030 0-effective, CHM0001 128/CHM0005 133/CHM0004 6/CHM0002 1/CHM0003 1/IL 11+13 advisory. 1 real finding surfaced: unstable Array.Sort ScenarioDirector.cs:206)
 project: Project_Chimera
 project_key: NOKEY
 tracking_system: file-system
@@ -57,7 +57,7 @@ development_status:
   1-9a-serverbootstrap-headless-peer-server-checksum-collector-with-quorum-halt-loopback: done
   1-9b-fr-39-two-machine-lan-determinism-green-the-1-ship-risk-gate: done
   1-10a-wire-the-golden-checksum-replay-regression-harness-into-ci-pin-isolate-deps: done
-  1-10b-banned-api-aot-eligibility-analyzers-over-the-sim-layer: ready-for-dev
+  1-10b-banned-api-aot-eligibility-analyzers-over-the-sim-layer: review
   1-10c-cross-platform-windows-linux-golden-checksum-gate-via-wsl: backlog
   1-11-smoke-test-the-four-unverified-systems-utility-ai-adaptive-input-delay-llm-trigger-ai-map-generator: backlog
   1-12-full-rts-command-vocabulary-single-target-attack-patrol-follow-hold-distinct-from-stop: backlog

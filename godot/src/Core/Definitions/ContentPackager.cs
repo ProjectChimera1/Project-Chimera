@@ -89,7 +89,13 @@ namespace ProjectChimera.Core.Definitions
                 ThumbnailFile   = options.ThumbnailPath != null ? "thumbnail.png" : null,
                 FactionFiles    = factionEntries,
                 ScenarioHash    = scenarioHash,
+                // AR-36 allow-list (Story 1.10b): packaging-time wall-clock stamped when EXPORTING a
+                // .chimera.zip — never tick-reachable and never folded into the sim/start-state hash, so it is
+                // an explicit RS0030 exemption (keeps the banned-API release gate at a clean zero baseline). A
+                // new DateTime in tick code is NOT exempted and still fails the release gate.
+#pragma warning disable RS0030
                 CreatedAt       = DateTime.UtcNow.ToString("o"),
+#pragma warning restore RS0030
             };
 
             // Delete existing output file if present.

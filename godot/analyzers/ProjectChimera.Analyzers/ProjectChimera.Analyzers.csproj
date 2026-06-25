@@ -1,0 +1,39 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Story 1.10b (AR-36) — the custom determinism analyzer (BannedSimApiAnalyzer) covering the rules the
+       off-the-shelf Microsoft.CodeAnalysis.BannedApiAnalyzers CANNOT express:
+         CHM0001 true float/double primitive ban (keyword on declarations/casts — roslyn-analyzers #7371)
+         CHM0002 Dictionary/HashSet enumeration driving sim order (S-CORE-1)
+         CHM0003 unstable Array.Sort / List<T>.Sort (S-CORE-2)
+         CHM0004 magic cap literal not a named constant (S-CON-2 / S-FX-5, heuristic)
+         CHM0005 Fixed.FromFloat/ToFloat outside the FixedJsonConverter allow-list (S-FX-4, advisory)
+       A Roslyn analyzer assembly: netstandard2.0, references the compiler API only, ships no runtime closure.
+       It is consumed as an analyzer by ProjectChimera.Sim.Analysis (OutputItemType="Analyzer"). It is NOT a
+       game dependency — godot.csproj <Compile Remove>s godot/analyzers/** so it never enters the shipping build. -->
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+    <IncludeBuildOutput>false</IncludeBuildOutput>
+    <EnforceExtendedAnalyzerRules>true</EnforceExtendedAnalyzerRules>
+    <!-- Reproducible restore (AR-2/AR-35), mirrors the Tier-1 test project + the 1.10a CI locked-mode lane. -->
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Compiler API. PrivateAssets=all: these are provided by the host compiler at analysis time and must
+         NOT flow to consumers. 4.8.0 matches the Roslyn shipped in SDK 8.0.419 (global.json pin). -->
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.8.0" PrivateAssets="all" />
+    <PackageReference Include="Microsoft.CodeAnalysis.Analyzers" Version="3.3.4" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Analyzer release tracking (RS2008) — the authoritative list of shipped/unshipped diagnostic IDs. -->
+    <AdditionalFiles Include="AnalyzerReleases.Shipped.md" />
+    <AdditionalFiles Include="AnalyzerReleases.Unshipped.md" />
+  </ItemGroup>
+
+</Project>

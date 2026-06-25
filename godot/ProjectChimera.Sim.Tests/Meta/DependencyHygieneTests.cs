@@ -96,6 +96,53 @@ namespace ProjectChimera.Sim.Tests.Meta
                     $"shipping project — this assertion proves the isolation lives where it should.");
         }
 
+        // ── Story 1.10b — the determinism analyzer dependency must stay dev-only and isolated ─────
+
+        /// <summary>The off-the-shelf banned-API analyzer the determinism gate adds (Story 1.10b).</summary>
+        private const string AnalyzerPackageId = "Microsoft.CodeAnalysis.BannedApiAnalyzers";
+
+        /// <summary>Pinned per the story's library note (avoid 4.14.0 / 3.11+). Intentional bump edits this constant.</summary>
+        private const string AnalyzerPackageVersion = "3.3.4";
+
+        [Fact]
+        public void AnalysisCsproj_CarriesBannedApiAnalyzers_AsPrivateDevDependency()
+        {
+            XDocument doc = XDocument.Load(AnalysisCsprojPath());
+            XElement? pr = doc.Descendants("PackageReference").FirstOrDefault(e =>
+                string.Equals((string?)e.Attribute("Include"), AnalyzerPackageId, StringComparison.OrdinalIgnoreCase));
+
+            Assert.True(pr is not null,
+                $"{AnalyzerPackageId} PackageReference not found in ProjectChimera.Sim.Analysis.csproj. Story 1.10b's " +
+                $"banned-API gate (RS0030) depends on it. If the analysis project layout moved, update this guard.");
+
+            string? version = pr!.Attribute("Version")?.Value ?? pr.Element("Version")?.Value;
+            Assert.True(version == AnalyzerPackageVersion,
+                $"{AnalyzerPackageId} is pinned at '{version}', expected '{AnalyzerPackageVersion}' (Story 1.10b library note). " +
+                $"An intentional bump must change {nameof(AnalyzerPackageVersion)} in the same commit.");
+
+            string privateAssets = (pr.Attribute("PrivateAssets")?.Value ?? pr.Element("PrivateAssets")?.Value ?? string.Empty).Trim();
+            Assert.True(privateAssets.Equals("all", StringComparison.OrdinalIgnoreCase),
+                $"{AnalyzerPackageId} must be PrivateAssets=all so the analyzer stays dev-only and never flows into a " +
+                $"consuming build (AR-2). Found PrivateAssets='{privateAssets}'.");
+        }
+
+        [Fact]
+        public void GodotCsproj_DoesNotCarry_AnyRoslynAnalyzerPackage()
+        {
+            // Belt-and-suspenders over GodotCsproj_CarriesExactly_TheSingleShippedPackage: name the specific hazard
+            // Story 1.10b introduces so a regression message points straight at it. The analyzer gate must remain
+            // confined to ProjectChimera.Sim.Analysis (PrivateAssets=all) and never reach the shipping game project.
+            string[] leaked = PackageReferences(GodotCsprojPath())
+                .Select(r => r.Include)
+                .Where(id => id.IndexOf("BannedApiAnalyzers", StringComparison.OrdinalIgnoreCase) >= 0
+                          || id.IndexOf("Microsoft.CodeAnalysis", StringComparison.OrdinalIgnoreCase) >= 0)
+                .ToArray();
+
+            Assert.True(leaked.Length == 0,
+                $"Roslyn analyzer package(s) leaked into the shipping game project godot.csproj: [{string.Join(", ", leaked)}]. " +
+                $"Story 1.10b's analyzer gate must stay in ProjectChimera.Sim.Analysis (PrivateAssets=all). Move it back.");
+        }
+
         // ── helpers ──────────────────────────────────────────────────────────────
 
         /// <summary>
@@ -137,6 +184,10 @@ namespace ProjectChimera.Sim.Tests.Meta
         /// <summary>The sibling test csproj — one directory up from this file.</summary>
         private static string TestCsprojPath([CallerFilePath] string thisFilePath = "") =>
             ResolveFromHere(thisFilePath, "..", "ProjectChimera.Sim.Tests.csproj");
+
+        /// <summary>godot/ProjectChimera.Sim.Analysis/ProjectChimera.Sim.Analysis.csproj — the Story 1.10b analyzer gate (two up, then in).</summary>
+        private static string AnalysisCsprojPath([CallerFilePath] string thisFilePath = "") =>
+            ResolveFromHere(thisFilePath, "..", "..", "ProjectChimera.Sim.Analysis", "ProjectChimera.Sim.Analysis.csproj");
 
         /// <summary>Resolve a path relative to THIS source file's directory and normalize away the '..' segments.</summary>
         private static string ResolveFromHere(string thisFilePath, params string[] segments)

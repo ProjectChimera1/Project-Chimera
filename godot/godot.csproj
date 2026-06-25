@@ -14,5 +14,14 @@
        keep its files out of the game's default **/*.cs compile glob. -->
   <ItemGroup>
     <Compile Remove="ProjectChimera.Sim.Tests\**\*.cs" />
+    <!-- Story 1.10b: the determinism analyzer gate is two more separate Godot-free assemblies under godot/.
+         Keep them out of the shipping game's compile glob too (they reference Microsoft.CodeAnalysis and would
+         otherwise break this build). This adds NO PackageReference, so godot.csproj stays at exactly one
+         (NakamaClient) and DependencyHygieneTests.GodotCsproj_CarriesExactly_TheSingleShippedPackage stays green.
+         - analyzers\**          : the custom BannedSimApiAnalyzer + its unit tests.
+         - ProjectChimera.Sim.Analysis\** : defensive — the analysis target LINKS src\** and has no .cs of its
+           own today, but this guards against a stray source landing there later. -->
+    <Compile Remove="analyzers\**\*.cs" />
+    <Compile Remove="ProjectChimera.Sim.Analysis\**\*.cs" />
   </ItemGroup>
 </Project>

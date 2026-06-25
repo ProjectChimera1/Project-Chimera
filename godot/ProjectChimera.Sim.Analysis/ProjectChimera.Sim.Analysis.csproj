@@ -1,0 +1,80 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- ============================================================================================
+       Story 1.10b (AR-36) — the DETERMINISM ANALYZER GATE.
+
+       A Godot-free compilation of the exact sim source set (imported from ../SimSources.props, the same
+       set the Tier-1 golden harness compiles) whose ONLY purpose is to run three analyzer families over
+       gameplay code and surface determinism / AOT hazards at build time:
+
+         1. Off-the-shelf Microsoft.CodeAnalysis.BannedApiAnalyzers (RS0030) + BannedSymbols.txt — the HARD,
+            zero-baseline determinism bans (System.Random, DateTime/Stopwatch, Godot, Guid.NewGuid,
+            [JsonPolymorphic], float.Parse/ToString). Release-gated.
+         2. The custom BannedSimApiAnalyzer (CHM0001..CHM0005) — the rules off-the-shelf cannot express
+            (true float/double keyword ban, Dictionary/HashSet enumeration, unstable sort, magic cap
+            literal, Fixed.FromFloat/ToFloat-outside-the-converter). Advisory (existing legitimate debt).
+         3. The built-in trim/AOT analyzers via <IsAotCompatible> (IL2xxx/IL3xxx). Advisory (reflective STJ
+            is D3 source-gen debt).
+
+       CADENCE (AR-36): advisory (warnings) on master so the hourly [AutoSave] loop is never blocked;
+       hard-fail on a release build (`/p:ChimeraRelease=true` → -warnaserror for the zero-baseline rule set).
+
+       This target references NOTHING Godot. If a sim file ever leaks `using Godot`, this project fails to
+       compile — itself a useful guard that the sim layer stays Godot-free (required for a TRUE AOT verdict;
+       GodotSharp is unannotated and would poison the trim/AOT analysis).
+
+       Built by direct path in CI (tier1-analyzer-gate), NOT added to godot.sln (mirrors ProjectChimera.Sim.Tests).
+       ============================================================================================ -->
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <!-- No .cs of its own — it ONLY compiles the linked sim sources from SimSources.props. -->
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <!-- This assembly is a throwaway analysis artifact; never run, never shipped. -->
+    <OutputType>Library</OutputType>
+
+    <!-- AOT/trim analyzer umbrella (net8+): enables IsTrimmable + EnableTrimAnalyzer + EnableSingleFileAnalyzer
+         + EnableAotAnalyzer. These are Roslyn analyzers — they run on a plain `dotnet build`, no publish needed.
+         TrimmerSingleWarn=false expands the IL2104 per-assembly rollup into per-site IL2xxx diagnostics. -->
+    <IsAotCompatible>true</IsAotCompatible>
+    <TrimmerSingleWarn>false</TrimmerSingleWarn>
+
+    <!-- Reproducible restore (AR-2/AR-35); the 1.10a CI lane restores this project in locked mode. -->
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+  </PropertyGroup>
+
+  <!-- The single sim-source source-of-truth, shared with ProjectChimera.Sim.Tests (Story 1.10b, Task 1). -->
+  <Import Project="..\SimSources.props" />
+
+  <ItemGroup>
+    <!-- Off-the-shelf banned-API analyzer. Dev-only (PrivateAssets=all): analyzer-only, no runtime closure,
+         never flows to any consumer. Pinned 3.3.4 (avoid 4.14.0 / 3.11+ — see the story's library notes). -->
+    <PackageReference Include="Microsoft.CodeAnalysis.BannedApiAnalyzers" Version="3.3.4">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <AdditionalFiles Include="BannedSymbols.txt" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The custom determinism analyzer, consumed AS AN ANALYZER (not a compile reference). Building this
+         project builds the analyzer first, then runs CHM0001..CHM0005 over the linked sim sources. -->
+    <ProjectReference Include="..\analyzers\ProjectChimera.Analyzers\ProjectChimera.Analyzers.csproj"
+                      OutputItemType="Analyzer"
+                      ReferenceOutputAssembly="false" />
+  </ItemGroup>
+
+  <PropertyGroup Condition="'$(ChimeraRelease)' == 'true'">
+    <!-- RELEASE RATCHET (AC4). Escalate ONLY the zero-baseline rule IDs to build errors so a release build
+         hard-fails on any nondeterministic/AOT-incompatible API — while master stays advisory/green.
+         WarningsAsErrors (the csc -warnaserror:<ids> switch) BEATS editorconfig severity and is per-ID, unlike
+         the blanket -p:TreatWarningsAsErrors (roslyn #43051). The advisory CHM/IL rules with legitimate
+         existing debt are deliberately NOT listed here — they stay warnings until their cleanup story.
+         The exact gated set is the zero-baseline scan result recorded in the story's Baseline/ratchet table. -->
+    <WarningsAsErrors>$(WarningsAsErrors);RS0030</WarningsAsErrors>
+  </PropertyGroup>
+
+</Project>

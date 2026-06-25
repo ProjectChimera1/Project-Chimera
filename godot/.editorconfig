@@ -2,3 +2,25 @@ root = true
 
 [*]
 charset = utf-8
+
+# ──────────────────────────────────────────────────────────────────────────────────────────────
+# Story 1.10b (AR-36) — determinism analyzer severities for the sim sources.
+#
+# These pins live HERE, not in godot/ProjectChimera.Sim.Analysis/.editorconfig, ON PURPOSE: the analysis
+# project LINKS the sim sources from godot/src/**, and Roslyn resolves a file's .editorconfig by its real
+# on-disk path — so only an .editorconfig at or above godot/src/ governs them. They are no-ops for every
+# other project here (godot.csproj and the Tier-1 test project don't run these analyzers).
+#
+# Advisory cadence (warnings) on master so the hourly [AutoSave] loop is never blocked. The RELEASE gate
+# escalates the zero-baseline rule set to errors via <WarningsAsErrors> in ProjectChimera.Sim.Analysis.csproj
+# (the csc -warnaserror switch beats editorconfig severity — roslyn #43051), NOT here.
+[*.cs]
+# Off-the-shelf banned-API analyzer (BannedSymbols.txt).
+dotnet_diagnostic.RS0030.severity = warning
+dotnet_diagnostic.RS0031.severity = warning
+# Custom BannedSimApiAnalyzer.
+dotnet_diagnostic.CHM0001.severity = warning
+dotnet_diagnostic.CHM0002.severity = warning
+dotnet_diagnostic.CHM0003.severity = warning
+dotnet_diagnostic.CHM0004.severity = warning
+dotnet_diagnostic.CHM0005.severity = warning

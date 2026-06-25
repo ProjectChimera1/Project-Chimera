@@ -18,6 +18,11 @@ on:
   push:
     branches: ['**']     # covers every branch; no separate pull_request trigger needed (1.10a review — avoids the per-push double-run)
   workflow_dispatch:
+    inputs:
+      run_release_gate:
+        description: 'Also run the analyzer gate in RELEASE mode (-warnaserror for the zero-baseline rule set) to prove the hard-fail enforcement.'
+        type: boolean
+        default: false
 
 # Collapse the project's hourly [AutoSave] push bursts to a single in-flight run per ref.
 concurrency:
@@ -53,3 +58,54 @@ jobs:
           name: tier1-test-results
           path: '**/*.trx'
           if-no-files-found: warn   # surface a missing tier1.trx (e.g. test host crashed before writing) instead of passing silently (1.10a review)
+
+  # Story 1.10b (AR-36) — determinism banned-API + AOT-eligibility analyzers over the Godot-free sim
+  # compilation (ProjectChimera.Sim.Analysis). SIBLING job to tier1-golden-gate (left untouched), reusing the
+  # same Godot-free windows-latest / SDK 8.0.419 / --locked-mode lane. No Godot is installed here either.
+  #
+  # ADVISORY on master: the analyzers emit warnings (surfaced as annotations) but the build stays GREEN, so the
+  # hourly [AutoSave] auto-commit loop is never blocked. The RELEASE variant (-warnaserror for the zero-baseline
+  # rule set, currently RS0030) HARD-FAILS the build and is reachable on a release/** branch or on demand via the
+  # workflow_dispatch `run_release_gate` input — so the enforcement mechanism exists and can be exercised before a
+  # real release branch is cut.
+  tier1-analyzer-gate:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up .NET 8 SDK (no Godot)
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.419'   # same frozen toolchain as tier1-golden-gate (global.json + lock files)
+
+      - name: Restore (analyzer gate + custom-analyzer unit tests, locked package graph)
+        run: |
+          dotnet restore godot/ProjectChimera.Sim.Analysis/ProjectChimera.Sim.Analysis.csproj --locked-mode
+          dotnet restore godot/analyzers/ProjectChimera.Analyzers.Tests/ProjectChimera.Analyzers.Tests.csproj --locked-mode
+
+      - name: Custom-analyzer unit tests (CHM0001..CHM0005)
+        run: dotnet test godot/analyzers/ProjectChimera.Analyzers.Tests/ProjectChimera.Analyzers.Tests.csproj -c Release --no-restore --logger "trx;LogFileName=analyzer-tests.trx"
+
+      - name: Determinism analyzer gate — ADVISORY (master stays green; findings surface as warnings/annotations)
+        # No -warnaserror here: BannedApiAnalyzers (RS0030), the custom BannedSimApiAnalyzer (CHM0001..CHM0005) and
+        # the trim/AOT analyzers (IL2xxx/IL3xxx) all run and PRINT, but warnings never fail this step.
+        run: dotnet build godot/ProjectChimera.Sim.Analysis/ProjectChimera.Sim.Analysis.csproj -c Release --no-restore
+
+      - name: Determinism analyzer gate — RELEASE hard-fail (release/** branch or dispatched)
+        if: ${{ github.event.inputs.run_release_gate == 'true' || startsWith(github.ref, 'refs/heads/release/') }}
+        # ChimeraRelease=true adds the zero-baseline rule set (RS0030) to WarningsAsErrors — any banned determinism
+        # API in sim code now FAILS the build. Green today (zero baseline); proven to fail on a real violation
+        # (see the 1.10b story Change Log / deliberate-violation check).
+        # --no-incremental is REQUIRED: the advisory step above already compiled this assembly, and toggling only
+        # the ChimeraRelease property does NOT invalidate MSBuild's up-to-date check — without a forced recompile
+        # CoreCompile is skipped, the analyzers never re-run, and the gate would silently pass on a real violation.
+        run: dotnet build godot/ProjectChimera.Sim.Analysis/ProjectChimera.Sim.Analysis.csproj -c Release --no-restore --no-incremental -p:ChimeraRelease=true
+
+      - name: Upload analyzer test results (.trx)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: analyzer-test-results
+          path: '**/analyzer-tests.trx'
+          if-no-files-found: warn

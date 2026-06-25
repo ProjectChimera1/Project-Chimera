@@ -1,6 +1,10 @@
+---
+baseline_commit: ddd9dc5f1a16b4d5c5da2d116e9269e9b204be70
+---
+
 # Story 1.10b: Banned-API + AOT-eligibility analyzers over the sim layer
 
-Status: ready-for-dev
+Status: review
 
 <!-- Context engine analysis completed — comprehensive developer guide. Validation optional: run validate-create-story before dev-story. -->
 
@@ -54,42 +58,54 @@ The AC's folder list — `src/Core,Combat,Economy,Navigation,Effects,Dsl` — is
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1 — Single source of truth for the sim include set (AC1, AC3).**
-  - [ ] Extract the `<Compile Include>` sim-source set currently inline in `godot/ProjectChimera.Sim.Tests/ProjectChimera.Sim.Tests.csproj` into a shared `godot/SimSources.props` (the Core/Combat/Economy/Navigation/AI globs + the 3 Multiplayer files + `Multiplayer/Server/**`, and the `Remove`s for `MainScene.cs` + `Bootstrap/Phases/**`). Import it from the test csproj. This must be **behavior-neutral** — the test project compiles the identical file set; run the Tier-1 suite and confirm the same test count + byte-identical goldens.
-  - [ ] *(Alternative if you prefer no refactor: duplicate the identical globs in the new analysis project. Shared props is recommended — it prevents the analyzer's coverage from silently drifting from the test project's as new sim files are added.)*
+- [x] **Task 1 — Single source of truth for the sim include set (AC1, AC3).**
+  - [x] Extracted the `<Compile Include>` sim-source set into `godot/SimSources.props`, anchored to `$(MSBuildThisFileDirectory)` so it resolves identically from either sibling project; imported from the test csproj. **Behavior-neutral confirmed:** Tier-1 stayed at 196 tests, goldens byte-identical.
+  - [x] *(Chose the shared-props route, as recommended.)*
 
-- [ ] **Task 2 — Create the Godot-free analysis project (AC1, AC3, AC6).**
-  - [ ] Create `godot/ProjectChimera.Sim.Analysis/ProjectChimera.Sim.Analysis.csproj` (`Microsoft.NET.Sdk`, `net8.0`, **not** `Godot.NET.Sdk`). Set `<EnableDefaultCompileItems>false</EnableDefaultCompileItems>`, `<IsPackable>false</IsPackable>`, `<Nullable>enable</Nullable>`, `<RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>`. Import `..\SimSources.props` (or duplicate the globs). It references **nothing Godot** — if a sim file leaks a `using Godot`, this project fails to compile, which is itself a useful guard.
-  - [ ] Enable the AOT/trim analyzer: `<IsAotCompatible>true</IsAotCompatible>` + `<TrimmerSingleWarn>false</TrimmerSingleWarn>` (expands the IL2104 rollup into per-site IL2xxx).
-  - [ ] Add the banned-API analyzer: `<PackageReference Include="Microsoft.CodeAnalysis.BannedApiAnalyzers" Version="3.3.4"><PrivateAssets>all</PrivateAssets></PackageReference>` and `<AdditionalFiles Include="BannedSymbols.txt" />`.
+- [x] **Task 2 — Create the Godot-free analysis project (AC1, AC3, AC6).**
+  - [x] Created `godot/ProjectChimera.Sim.Analysis/ProjectChimera.Sim.Analysis.csproj` (`Microsoft.NET.Sdk`, `net8.0`, `EnableDefaultCompileItems=false`, `IsPackable=false`, `Nullable=enable`, `RestorePackagesWithLockFile=true`), imports `..\SimSources.props`, references nothing Godot. Confirmed: it compiles the sim source cleanly with zero Godot in the closure (clean AOT verdict).
+  - [x] `<IsAotCompatible>true</IsAotCompatible>` + `<TrimmerSingleWarn>false</TrimmerSingleWarn>` — IL2026/IL3050 fire (13/11 sites).
+  - [x] Added `Microsoft.CodeAnalysis.BannedApiAnalyzers` 3.3.4 (`PrivateAssets=all`) + `<AdditionalFiles Include="BannedSymbols.txt" />`.
 
-- [ ] **Task 3 — Author `BannedSymbols.txt` (AC1, AC2).**
-  - [ ] Create `godot/ProjectChimera.Sim.Analysis/BannedSymbols.txt` from the [starter list below](#starter-bannedsymbolstxt). Use the exact doc-comment-ID syntax. Refine method overloads against the baseline scan (Task 6).
+- [x] **Task 3 — Author `BannedSymbols.txt` (AC1, AC2).**
+  - [x] Created `godot/ProjectChimera.Sim.Analysis/BannedSymbols.txt` — the **zero-baseline-only** set (DateTime/DateTimeOffset/Stopwatch/Environment.TickCount(64), Random/Guid.NewGuid/RandomNumberGenerator, `N:Godot`, float/double `.Parse`/`.ToString`, JsonPolymorphicAttribute). FromFloat/ToFloat deliberately NOT here — see Task 11/CHM0005.
 
-- [ ] **Task 4 — Allow-list the quantization boundary (AC2).**
-  - [ ] Suppress `RS0030` for the two legitimate `Fixed.FromFloat`/`Fixed.ToFloat` calls in `src/Core/Definitions/FixedJsonConverter.cs` (`Read` line 50, `Write` line 54). Prefer method-level `[System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("ApiDesign", "RS0030", Justification = "AR-14: the single float↔Fixed quantization boundary")]` (also documents intent and is visible to the AOT tools), or a tight `#pragma warning disable RS0030` / `restore` around each call. Confirm a *new* `FromFloat` elsewhere still reports.
+- [x] **Task 4 — Allow-list the quantization boundary (AC2).**
+  - [x] **Mechanism refined:** the `FixedJsonConverter` `FromFloat`/`ToFloat` allow-list is realized in the **custom analyzer (CHM0005)**, which recognizes `FixedJsonConverter` and does not report there (proven by paired unit tests: a `FromFloat` inside the converter does not fire, one elsewhere does). The converter source is therefore left clean (no pragma needed). **Additionally** the Task-6 baseline scan surfaced 2 *legitimate author/packaging-time* `DateTime` sites (`ContentPackager.cs:92`, `ContentPackageManifest.cs:110`) — allow-listed via tight `#pragma warning disable RS0030` so RS0030 stays a clean zero baseline.
 
-- [ ] **Task 5 — Severity + advisory/release cadence (AC4).**
-  - [ ] Add a nested `.editorconfig` in `godot/ProjectChimera.Sim.Analysis/` (`root = true`) setting advisory defaults: `dotnet_diagnostic.RS0030.severity = warning`, `dotnet_diagnostic.RS0031.severity = warning`. (Keep AOT IL-rules at their default warning severity.)
-  - [ ] Wire the release ratchet: in the analysis csproj, a `Condition="'$(ChimeraRelease)' == 'true'"` `PropertyGroup` sets `<WarningsAsErrors>$(WarningsAsErrors);RS0030;RS0031;<the zero-baseline IL ids></WarningsAsErrors>` for **only** the rule IDs chosen in Task 6. (Use `WarningsAsErrors` for specific IDs, **not** `-p:TreatWarningsAsErrors`, because editorconfig severity overrides the property but not the explicit ID escalation / the `-warnaserror` switch — roslyn #43051.)
+- [x] **Task 5 — Severity + advisory/release cadence (AC4).**
+  - [x] **Location corrected:** advisory severities pinned in `godot/.editorconfig` (RS0030/RS0031 + CHM0001–CHM0005 = `warning`), NOT a nested `Sim.Analysis/.editorconfig` — the sim sources are *linked* from `godot/src/**`, and Roslyn resolves editorconfig by each file's real on-disk path, so a project-dir editorconfig would never govern them.
+  - [x] Release ratchet wired: `Condition="'$(ChimeraRelease)' == 'true'"` PropertyGroup sets `<WarningsAsErrors>$(WarningsAsErrors);RS0030</WarningsAsErrors>` (RS0030 is the verified zero-baseline gated set).
 
-- [ ] **Task 6 — Establish the baseline + pick the release-gated rule set (AC4).**
-  - [ ] Build the analysis project locally and capture the full warning list per rule ID. Record counts in the [Baseline table](#baseline--ratchet-fill-during-dev) in this story.
-  - [ ] **Ratchet rule:** a rule is release-gated (added to `WarningsAsErrors`) **only if its current count is zero or every site is explicitly allow-listed.** Expect zero-baseline (gate now): `T:System.Random`, `DateTime`/`DateTimeOffset`/`Stopwatch`, `Guid.NewGuid`, `N:Godot`, `JsonPolymorphicAttribute`. Expect non-zero (advisory only): `Fixed.FromFloat`/`ToFloat` (≈95 load-time static-const sites are D2 debt), the AI float sites, and the IL2026/IL3050 reflective-JSON AOT warnings (D3 source-gen debt). Document each non-gated rule with the story that will clear it.
+- [x] **Task 6 — Establish the baseline + pick the release-gated rule set (AC4).**
+  - [x] Built the analysis project; captured unique per-rule counts (see [Baseline table](#baseline--ratchet-fill-during-dev)).
+  - [x] **Ratchet applied:** only **RS0030** is release-gated (zero-baseline after the 2 author-time DateTime sites were allow-listed). Everything else (CHM0001=128, CHM0005=133, CHM0004=6, CHM0002=1, CHM0003=1, IL2026=11, IL3050=13) stays advisory, each mapped to its clearing story.
 
-- [ ] **Task 7 — CI sibling job (AC5).**
-  - [ ] Add job `tier1-analyzer-gate` to `.github/workflows/determinism-gate.yml` (do **not** create a new workflow; keep `tier1-golden-gate` unchanged). Reuse: `windows-latest`, `actions/setup-dotnet@v4` pinned `8.0.419`, `dotnet restore … --locked-mode`, then `dotnet build godot/ProjectChimera.Sim.Analysis/ProjectChimera.Sim.Analysis.csproj -c Release --no-restore` (advisory — no `-warnaserror`, so the job is green on master with warnings printed as annotations).
-  - [ ] Make the release enforcement reachable: gate the `-warnaserror`/`/p:ChimeraRelease=true` variant behind a release branch condition or a `workflow_dispatch` input, so the mechanism exists and can be exercised even before a real release branch is cut.
-  - [ ] *(Optional, while in the file: bump `actions/*@v4` → `@v5` — GitHub is deprecating the Node 20 runtime. Non-urgent.)*
+- [x] **Task 7 — CI sibling job (AC5).**
+  - [x] Added job `tier1-analyzer-gate` to `.github/workflows/determinism-gate.yml` (`tier1-golden-gate` untouched). Reuses `windows-latest` / `setup-dotnet@v4` `8.0.419` / `--locked-mode`; runs the analyzer unit tests + the advisory gate build (green on master).
+  - [x] Release enforcement reachable via a `workflow_dispatch` `run_release_gate` input **and** `refs/heads/release/**`; the release step uses `--no-incremental` (REQUIRED — see Change Log: the advisory step pre-compiles, and toggling only `ChimeraRelease` doesn't invalidate the up-to-date check, so without it CoreCompile is skipped and the gate silently passes).
+  - [x] *(Left `actions/*@v4` to match the sibling job; the @v5 bump is non-urgent.)*
 
-- [ ] **Task 8 — Guard tests + dependency hygiene (AC6).**
-  - [ ] Extend `godot/ProjectChimera.Sim.Tests/Meta/DependencyHygieneTests.cs`: assert `BannedApiAnalyzers` is `PrivateAssets=all`, lives **only** in the analysis project, and is **absent** from `godot.csproj` (which must stay at exactly one `PackageReference`). Add the analysis csproj to whatever set the test parses.
-  - [ ] Add a small Tier-1 guard test (in `Meta/`) asserting `BannedSymbols.txt` exists and is referenced as an `AdditionalFile`, and (if you did Task 1) that both projects import `SimSources.props` so the analyzer's source set can't drift from the tested source set. Use the `[CallerFilePath]` path-resolution convention from 1.10a.
+- [x] **Task 8 — Guard tests + dependency hygiene (AC6).**
+  - [x] Extended `DependencyHygieneTests.cs`: asserts `BannedApiAnalyzers` is pinned 3.3.4 / `PrivateAssets=all` in the analysis project, and that no Roslyn analyzer package leaks into `godot.csproj`. (`GodotCsproj_CarriesExactly_TheSingleShippedPackage` still green — godot.csproj stays at one PackageReference.)
+  - [x] Added `Meta/AnalyzerGateGuardTests.cs` (5 Tier-1 guards): `SimSources.props` exists; both projects import it (source set can't drift); `BannedSymbols.txt` exists + is an `AdditionalFile`; `<IsAotCompatible>` set; the custom analyzer is referenced `OutputItemType="Analyzer"`. `[CallerFilePath]` convention.
 
-- [ ] **Task 9 — Lock file, local proof, and the deliberate-violation gate test (AC4, AC6).**
-  - [ ] Generate `godot/ProjectChimera.Sim.Analysis/packages.lock.json` (`dotnet restore` with `RestorePackagesWithLockFile=true`) and commit it. Confirm `dotnet restore … --locked-mode` succeeds (CI uses it).
-  - [ ] Local proof: `dotnet build …Sim.Analysis.csproj -c Release` is green with the advisory warnings printed; the Tier-1 suite (`dotnet test …Sim.Tests.csproj -c Release`) still passes with byte-identical goldens.
-  - [ ] **Prove the release gate fails:** temporarily add `var _ = new System.Random();` to a sim file, build with the release variant (`/p:ChimeraRelease=true` or `-warnaserror:RS0030`), confirm the build **fails**, then revert. Record this in the Change Log.
+- [x] **Task 9 — Lock file, local proof, and the deliberate-violation gate test (AC4, AC6).**
+  - [x] Generated + committed `packages.lock.json` for all three new projects; `dotnet restore … --locked-mode` succeeds for each (CI parity).
+  - [x] Local proof: advisory build green (295 warnings, 0 errors); Tier-1 203 green, goldens byte-identical.
+  - [x] **Release gate proven to fail:** a temporary `new System.Random()` in a sim file made the release build (`-p:ChimeraRelease=true --no-incremental`) emit `error RS0030` → **Build FAILED, exit 1**; reverted. The same code is advisory-only (warning, build succeeds) without the release flag.
+
+- [x] **Task 11 — Custom `BannedSimApiAnalyzer` (APPROVED SCOPE EXPANSION, Alec 2026-06-24).**
+  *The original story deferred the custom analyzer; Alec elected to build it now. This implements the four rules off-the-shelf cannot express, plus it resolves the RS0030-monolith tension (see note below).*
+  - [x] Created `godot/analyzers/ProjectChimera.Analyzers/` (`netstandard2.0`) + `godot/analyzers/ProjectChimera.Analyzers.Tests/` (`net8.0` xUnit). Added `<Compile Remove="analyzers\**\*.cs" />` + `ProjectChimera.Sim.Analysis\**` to `godot.csproj` — single `PackageReference` intact, hygiene guard green.
+  - [x] **CHM0001 — true `float`/`double` primitive ban** (`PredefinedType` keyword; skips `float.X` member-access to avoid double-reporting RS0030). Advisory — 128 sites.
+  - [x] **CHM0002 — `Dictionary`/`HashSet` enumeration** (`foreach` whose collection implements `IDictionary`/`IReadOnlyDictionary`/`ISet`). Advisory — 1 site (LLMService).
+  - [x] **CHM0003 — unstable sort** (`Array.Sort` / `List<T>.Sort`). Advisory — 1 real finding (`ScenarioDirector.cs:206`).
+  - [x] **CHM0004 — magic cap literal** (int literal ≥ 8 as a relational bound or array size, not a `const`/enum). Advisory — 6 sites.
+  - [x] **CHM0005 — `Fixed.FromFloat`/`ToFloat` outside the `FixedJsonConverter` allow-list.** Advisory — 133 sites. Owns the conversion ban so RS0030 stays clean/gateable.
+  - [x] TDD'd each rule (RED→GREEN) via a `CSharpCompilation.WithAnalyzers` harness (no Roslyn test-SDK dep). 17 tests, paired positive/negative per rule. (RED proven: 10 positives failed against the stub.)
+  - [x] Referenced from `ProjectChimera.Sim.Analysis` via `<ProjectReference OutputItemType="Analyzer" ReferenceOutputAssembly="false" />`; CHM rules fire over the sim set alongside RS0030 + IL rules.
+  - [x] `ProjectChimera.Analyzers.Tests` runs in `tier1-analyzer-gate`; lock files committed for all three new projects.
 
 - [ ] **Task 10 — Code review + sprint status.**
   - [ ] Run `gds-code-review` (3-layer adversarial). Address findings.
@@ -218,17 +234,26 @@ T:System.Double;Prefer Fixed for all gameplay magnitudes (backstop: only member 
 - **Engine/runtime:** Godot **4.6.3** (csproj already bumped), C# `net8.0` (`.NET 9 AOT` is a *future* aspiration — 1.10b is the analyzer gate toward it, not the AOT build).
 - **Conventions:** `PascalCase.cs`, `#nullable enable` per file, comment public methods. Brownfield style: investigate before changing, favor small shippable slices, respect determinism constraints.
 
-### Baseline / ratchet (fill during dev)
-| Rule ID | Current count in sim set | Release-gated now? | If not, cleared by |
+### Baseline / ratchet (FILLED during dev — unique sites, 2026-06-24)
+_Counts are unique `(file,line)` sites from a Release build of `ProjectChimera.Sim.Analysis` (raw build output double-emits; deduped here)._
+
+| Rule ID | Unique sites | Release-gated? | Disposition / cleared by |
 |---|---|---|---|
-| RS0030 — `N:Godot` | _(expect 0)_ | _(expect yes)_ | — |
-| RS0030 — `System.Random` | _(expect 0)_ | _(expect yes)_ | — |
-| RS0030 — `DateTime`/`DateTimeOffset`/`Stopwatch` | _(verify — Agent found 3 DateTime, confirm none in the sim set)_ | _(yes if 0)_ | — |
-| RS0030 — `Guid.NewGuid` / `JsonPolymorphicAttribute` | _(expect 0)_ | _(expect yes)_ | — |
-| RS0030 — `Fixed.FromFloat`/`ToFloat` (non-converter) | _(≈95 load-time static-const sites)_ | **no (advisory)** | D2 "Fixed end-to-end" migration |
-| RS0030 — `float.Parse`/`float.ToString` | _(verify — A17 sites should already be fixed by 1.4)_ | _(yes if 0)_ | — |
-| AOT IL2026/IL3050 (reflective STJ) | _(expect >0)_ | **no (advisory)** | D3 JSON source-gen migration |
-| AI-layer float conversion sites | _(>0)_ | **no (advisory)** | AI float→Fixed determinism work |
+| RS0030 — `N:Godot` | 0 | ✅ yes | — (the Godot-free compile also forbids `using Godot`) |
+| RS0030 — `System.Random` / `Guid.NewGuid` / `RandomNumberGenerator` | 0 | ✅ yes | — |
+| RS0030 — `DateTime`/`DateTimeOffset`/`Stopwatch`/`Environment.TickCount` | 2 → **0 effective** | ✅ yes | the 2 sites (`ContentPackager.cs:92`, `ContentPackageManifest.cs:110`) are author/packaging-time, not tick-reachable, excluded from the sim/start-state hash → explicitly allow-listed (`#pragma RS0030`) |
+| RS0030 — `float`/`double` `.Parse`/`.ToString` | 0 | ✅ yes | — (A17 sites already clean post-1.4) |
+| RS0030 — `JsonPolymorphicAttribute` | 0 | ✅ yes | — |
+| **→ RS0030 (the gated set)** | **0 effective** | **✅ GATED** | release gate (`-warnaserror:RS0030`) clean today; proven to FAIL on a deliberate `new System.Random()` |
+| CHM0001 — `float`/`double` primitive keyword | 128 | ❌ advisory | D2 "Fixed end-to-end" migration |
+| CHM0005 — `Fixed.FromFloat`/`ToFloat` (non-converter) | 133 | ❌ advisory | D2 "Fixed end-to-end" migration |
+| CHM0004 — magic cap literal | 6 | ❌ advisory | structural-cap → `SimConstants` work (Epics 2/7) |
+| CHM0002 — Dictionary/HashSet enumeration | 1 (`LLMService.cs:584`) | ❌ advisory | AI float→Fixed / determinism work |
+| CHM0003 — unstable `Array.Sort` | 1 (`ScenarioDirector.cs:206`) | ❌ advisory | **real finding** — tie-break fix (tracked, not fixed here per scope) |
+| AOT IL2026 / IL3050 (reflective STJ) | 11 / 13 | ❌ advisory | D3 JSON source-gen migration |
+| _(not a gate rule)_ CS8765 nullability mismatch | 2 | n/a | pre-existing; surfaced only because the analysis project sets `Nullable=enable`. Not determinism, not gated. |
+
+**Note vs. the pre-dev estimate:** FromFloat/ToFloat was estimated "≈95"; the actual is **133** (CHM0005), and the raw `float`/`double` keyword count is **128** (CHM0001) — both larger than guessed, which is exactly why CHM0005 had to be split off RS0030 for the gate to stay clean.
 
 ### References
 - `_bmad-output/planning-artifacts/epics.md` — Epic 1 §Story 1.10b (user story, AC, "Covers AR-36 / Depends on 1.10a"); AR-2, AR-36, AR-38; Story 1.4 banned-API audit AC.
@@ -243,6 +268,8 @@ T:System.Double;Prefer Fixed for all gameplay magnitudes (backstop: only member 
 
 ## Decisions for Alec (answer before or during dev)
 
+> **RESOLVED 2026-06-24 (dev):** (1) **Dedicated `ProjectChimera.Sim.Analysis` project** — chosen. (3) **"float gameplay math" = conversion boundaries** — adopted (CHM0005/RS0030), AND (2) **the custom `BannedSimApiAnalyzer` was built now** at Alec's explicit direction (scope expansion → Task 11). So 1.10b ships the off-the-shelf gate **and** the custom analyzer.
+
 1. **Analyzer home — dedicated project vs. fold into the test project.** *Recommended:* a dedicated Godot-free `ProjectChimera.Sim.Analysis` project (clean AOT verdict — no xunit/test-SDK in the closure; analyzes only sim source; doubles as a "sim has zero Godot deps" compile guard). *Alternative:* add `<IsAotCompatible>` + BannedApiAnalyzers to the existing `ProjectChimera.Sim.Tests.csproj` (no new project, but you must editorconfig-mute the IL/RS rules on the test `.cs` files and accept xunit AOT noise). The story assumes the dedicated project.
 2. **Custom `BannedSimApiAnalyzer` — now or later?** The architecture's folder tree imagines a hand-written analyzer covering the *true* `float`/`double` primitive ban, Dictionary-enumeration, unstable-sort, and magic-cap-literal detection — things off-the-shelf can't express. This story deliberately **defers** it (those rules have runtime backstops: golden-checksum replay for sort/enum order, `RulesetCorpusTest` for caps, `SecretExclusionTest` for `[Export]`-key). Confirm you're OK shipping 1.10b as "off-the-shelf bans + AOT analyzer (advisory/release cadence)" and tracking the custom analyzer as a follow-up — or say the word and I'll scope the custom analyzer into 1.10b (larger story).
 3. **"float gameplay math" interpretation.** Read here as the **conversion boundaries** (`FromFloat`/`ToFloat`/`float.Parse`/`float.ToString`) per the architecture's S-CORE-3 enforcement wording, not "every float declaration." That makes the AC config-satisfiable. If you want a true primitive ban, it pulls in the custom analyzer from #2.
@@ -250,11 +277,73 @@ T:System.Double;Prefer Fixed for all gameplay magnitudes (backstop: only member 
 ## Dev Agent Record
 
 ### Agent Model Used
+Claude Opus 4.8 (`claude-opus-4-8`), via the `gds-dev-story` workflow.
 
 ### Debug Log References
+Three issues hit and resolved during dev (no HALTs):
+1. **`MSB4025` — analyzer csproj failed to load:** an XML comment contained `--locked-mode`; `--` is illegal inside XML comments. Reworded to `locked-mode`.
+2. **CHM0005 unit tests RED for the wrong reason:** the test snippets placed `using ProjectChimera.Core;` *after* the in-snippet `namespace` declaration → `CS1529`, so the unqualified `Fixed` never bound and the semantic lookup found no symbol. Moved the `using` to the top of each snippet. (The inside-converter negative test had been passing *vacuously* for the same reason — now passes for the right reason.)
+3. **Release-gate proof reported a FALSE PASS:** building the advisory variant immediately before the release variant left the assembly up-to-date, and toggling only the `ChimeraRelease` MSBuild property does **not** invalidate MSBuild's incremental check → `CoreCompile` was skipped, so the analyzers never re-ran and `-warnaserror:RS0030` had nothing to escalate. Fixed with `--no-incremental`. **This also fixed a latent CI bug:** the release step runs after the advisory step on the same runner, so the gate would have silently passed on real violations — `--no-incremental` is now on the CI release step too.
 
 ### Completion Notes List
+**What shipped.** A determinism analyzer gate over the Godot-free sim compilation (`ProjectChimera.Sim.Analysis`), composed of three analyzer families that run on a plain `dotnet build`:
+- **Off-the-shelf `BannedApiAnalyzers` 3.3.4 (RS0030)** driven by `BannedSymbols.txt` — the **zero-baseline** hard determinism bans (Random/DateTime/Stopwatch/TickCount/Guid.NewGuid/RandomNumberGenerator/`N:Godot`/float·double `.Parse`·`.ToString`/`JsonPolymorphicAttribute`). **Release-gated.**
+- **Custom `BannedSimApiAnalyzer` (CHM0001–CHM0005)** — the rules off-the-shelf cannot express: true `float`/`double` keyword ban, Dictionary/HashSet enumeration, unstable `Array.Sort`/`List.Sort`, magic cap literal, and `Fixed.FromFloat`/`ToFloat`-outside-the-converter. **Advisory** (legitimate existing debt). 17 TDD unit tests.
+- **Built-in trim/AOT analyzers (IL2xxx/IL3xxx)** via `<IsAotCompatible>` on the Godot-free compile — a clean, meaningful AOT verdict. **Advisory** (reflective STJ = D3 debt).
+
+**Cadence (AR-36):** advisory on master (warnings only → the hourly `[AutoSave]` loop is never blocked); release builds (`-p:ChimeraRelease=true`, or a `release/**` branch / the `workflow_dispatch` input) escalate the zero-baseline set (RS0030) to errors and hard-fail. Proven to fail on a deliberate `new System.Random()` and to stay green on clean code.
+
+**Key design decision — RS0030 stays a clean zero-baseline set.** RS0030 is one monolithic diagnostic ID, so it can only be release-gated if *every* banned symbol it covers is zero-baseline. The non-zero `Fixed.FromFloat`/`ToFloat` ban (133 legitimate D2-debt sites) was therefore moved OFF `BannedSymbols.txt` into the custom analyzer as advisory **CHM0005** (which owns the `FixedJsonConverter` allow-list in-analyzer). This resolves a latent contradiction in the story's literal plan (it had FromFloat/ToFloat in `BannedSymbols.txt` *and* wanted RS0030 release-gated — mutually exclusive given the ~95+ debt sites).
+
+**Refinements to the story's literal plan (all documented in the tasks):**
+- **Converter allow-list (AC2)** realized in the analyzer (CHM0005 recognizes `FixedJsonConverter`), so no pragma/edit was needed in `FixedJsonConverter.cs`. Paired unit tests prove the allow-list.
+- **Severity editorconfig** placed in `godot/.editorconfig`, not a nested `Sim.Analysis/.editorconfig` — the sim sources are *linked* from `godot/src/**`, and Roslyn resolves editorconfig by each file's real path, so a project-dir editorconfig would never govern them.
+- **`godot.csproj` `<Compile Remove>`** for `analyzers/**` (+ defensive `ProjectChimera.Sim.Analysis/**`) was required (the game globs `godot/**/*.cs`; the analyzer sources reference `Microsoft.CodeAnalysis` and would break the shipping build). It adds no `PackageReference`, so the AR-2 hygiene guard stays green.
+- **Two author-time `DateTime` sites allow-listed** (`ContentPackager`, `ContentPackageManifest`) — packaging/metadata timestamps, never tick-reachable, excluded from the sim hash — so RS0030's effective baseline is zero.
+
+**One real finding (left advisory per scope):** CHM0003 flagged an unstable `Array.Sort` at `ScenarioDirector.cs:206`. Not fixed here (1.10b makes debt visible, it doesn't clean it); the analyzer now guards it.
+
+**AC status:** AC1 ✅ (banned-API gate over the Godot-free sim set, all AR-36 determinism bans across RS0030 + CHM). AC2 ✅ (converter allow-listed via CHM0005; a new FromFloat/ToFloat elsewhere reports). AC3 ✅ (`<IsAotCompatible>` IL2xxx/IL3xxx over a Godot-free closure). AC4 ✅ (advisory master / `-warnaserror:RS0030` release, wired and proven to fail). AC5 ✅ (`tier1-analyzer-gate` sibling job, `tier1-golden-gate` untouched). AC6 ✅ (analyzer dev-only `PrivateAssets=all`; `godot.csproj` still one `PackageReference`; three `packages.lock.json` committed).
+
+**Verification:** Tier-1 **203** green (196 + 7 new guards), goldens byte-identical; analyzer unit tests **17/17**; advisory gate build 0 errors; release gate fails on the deliberate violation (exit 1) and passes clean; all three new projects restore `--locked-mode`; `bin/obj` confirmed git-ignored.
 
 ### File List
+**Created**
+- `godot/SimSources.props`
+- `godot/ProjectChimera.Sim.Analysis/ProjectChimera.Sim.Analysis.csproj`
+- `godot/ProjectChimera.Sim.Analysis/BannedSymbols.txt`
+- `godot/ProjectChimera.Sim.Analysis/packages.lock.json`
+- `godot/analyzers/ProjectChimera.Analyzers/ProjectChimera.Analyzers.csproj`
+- `godot/analyzers/ProjectChimera.Analyzers/BannedSimApiAnalyzer.cs`
+- `godot/analyzers/ProjectChimera.Analyzers/AnalyzerReleases.Shipped.md`
+- `godot/analyzers/ProjectChimera.Analyzers/AnalyzerReleases.Unshipped.md`
+- `godot/analyzers/ProjectChimera.Analyzers/packages.lock.json`
+- `godot/analyzers/ProjectChimera.Analyzers.Tests/ProjectChimera.Analyzers.Tests.csproj`
+- `godot/analyzers/ProjectChimera.Analyzers.Tests/AnalyzerTestHarness.cs`
+- `godot/analyzers/ProjectChimera.Analyzers.Tests/BannedSimApiAnalyzerTests.cs`
+- `godot/analyzers/ProjectChimera.Analyzers.Tests/packages.lock.json`
+- `godot/ProjectChimera.Sim.Tests/Meta/AnalyzerGateGuardTests.cs`
+
+**Modified**
+- `godot/ProjectChimera.Sim.Tests/ProjectChimera.Sim.Tests.csproj` — import `..\SimSources.props` (replaces the inline sim-include set).
+- `godot/godot.csproj` — `<Compile Remove>` for `analyzers\**` + `ProjectChimera.Sim.Analysis\**` (no new `PackageReference`).
+- `godot/.editorconfig` — advisory severities for RS0030/RS0031 + CHM0001–CHM0005 over `src/**`.
+- `godot/ProjectChimera.Sim.Tests/Meta/DependencyHygieneTests.cs` — analyzer-isolation + analyzer-pin guards.
+- `godot/src/Core/Definitions/ContentPackager.cs` — `#pragma RS0030` allow-list (author-time `DateTime`).
+- `godot/src/Core/Definitions/ContentPackageManifest.cs` — `#pragma RS0030` allow-list (author-time `DateTime`).
+- `.github/workflows/determinism-gate.yml` — `tier1-analyzer-gate` sibling job + `workflow_dispatch` `run_release_gate` input.
+- `_bmad-output/implementation-artifacts/sprint-status.yaml` — status transitions.
+- `_bmad-output/implementation-artifacts/1-10b-…md` — this story (frontmatter `baseline_commit`, tasks, Dev Agent Record, baseline table, File List, Change Log, Status).
 
 ### Change Log
+| Date | Change |
+|---|---|
+| 2026-06-24 | Story set in-progress; `baseline_commit: ddd9dc5`. Approved scope expansion (custom analyzer → Task 11). |
+| 2026-06-24 | Task 1: extracted `godot/SimSources.props` (behavior-neutral; Tier-1 196 green, goldens identical). |
+| 2026-06-24 | Task 11: built `BannedSimApiAnalyzer` (CHM0001–CHM0005) + 17 TDD unit tests (RED→GREEN proven). |
+| 2026-06-24 | Tasks 2/3/5: stood up `ProjectChimera.Sim.Analysis` (off-the-shelf RS0030 + custom analyzer + `<IsAotCompatible>`); zero-baseline `BannedSymbols.txt`; advisory severities in `godot/.editorconfig`; release ratchet (`ChimeraRelease`→`WarningsAsErrors=RS0030`). |
+| 2026-06-24 | Task 6: baseline scan (unique sites: RS0030 2→0 after allow-list, CHM0001 128, CHM0005 133, CHM0004 6, CHM0002 1, CHM0003 1, IL2026 11, IL3050 13). Allow-listed 2 author-time `DateTime` sites. |
+| 2026-06-24 | Task 7: `tier1-analyzer-gate` CI sibling job (advisory build + analyzer unit tests; release variant on `release/**`/dispatch, `--no-incremental`). |
+| 2026-06-24 | Task 8: `DependencyHygieneTests` extended + new `AnalyzerGateGuardTests` (Tier-1 203 green). |
+| 2026-06-24 | Task 9: committed 3 lock files; **deliberate-violation proof** — `new System.Random()` → release build `error RS0030`, FAILED (exit 1); reverted. |
+| 2026-06-24 | Status → review. |

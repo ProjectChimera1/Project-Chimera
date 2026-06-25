@@ -12,43 +12,13 @@
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
   </PropertyGroup>
 
-  <!-- SHARED SOURCE: compile the pure-sim folders directly. NOT a <ProjectReference> to godot.csproj
-       (that would drag GodotSharp into this assembly and break the Godot-free guarantee). -->
-  <ItemGroup>
-    <Compile Include="..\src\Core\**\*.cs"       LinkBase="Sim\Core" />
-    <Compile Include="..\src\Combat\**\*.cs"     LinkBase="Sim\Combat" />
-    <Compile Include="..\src\Economy\**\*.cs"    LinkBase="Sim\Economy" />
-    <Compile Include="..\src\Navigation\**\*.cs" LinkBase="Sim\Navigation" />
-    <!-- AI: the live 9-system tick loop's system #8 is AiOpponentSystem (src/AI/, namespace
-         ProjectChimera.AI). src/AI/ is verified Godot-free (AiOpponentSystem.cs + LLMService.cs,
-         which uses System.Net.Http, not Godot). Required so the golden harness can build the full loop. -->
-    <Compile Include="..\src\AI\**\*.cs"         LinkBase="Sim\AI" />
-    <!-- Effects/ and Dsl/ are net-new in Epics 2 & 7; those stories add their includes when the folders exist. -->
-
-    <!-- Story 1.5: explicit single-file includes so the .chmr record→replay round-trip (with the v2 seed
-         header) is Tier-1 testable. These three Multiplayer files are verified Godot-free (System.* + Core
-         only); the rest of src/Multiplayer (LockstepManager, ENet transports) is Godot/ENet-coupled, so the
-         folder is deliberately NOT globbed. -->
-    <Compile Include="..\src\Multiplayer\ReplayRecorder.cs" LinkBase="Sim\Multiplayer" />
-    <Compile Include="..\src\Multiplayer\ReplayPlayer.cs"   LinkBase="Sim\Multiplayer" />
-    <Compile Include="..\src\Multiplayer\NetworkCommand.cs" LinkBase="Sim\Multiplayer" />
-
-    <!-- Story 1.9a: the Godot-free server-authority core (ServerHost + ServerChecksumCollector) lives under
-         src/Multiplayer/Server/ — a guaranteed-Godot-free subfolder. Folder-globbed (not single files) so the
-         Epic-9 additions (ProtocolVersion / DelayController) are picked up without touching this csproj. -->
-    <Compile Include="..\src\Multiplayer\Server\**\*.cs" LinkBase="Sim\Multiplayer\Server" />
-
-    <!-- The only Godot-coupled file remaining in the sim folders is MainScene (the god object, strangled in
-         1.8a/c). StressTest was relocated to godot/tools/ in Story 1.8a, so it is no longer under the
-         ..\src\Core\** glob and needs no <Compile Remove>. FixedPoint.cs STAYS IN (Godot bridge #if GODOT). -->
-    <Compile Remove="..\src\Core\MainScene.cs" />
-    <!-- Story 1.8c: the Godot-TOUCHING concrete setup phases + SceneContext live under Bootstrap/Phases/ and
-         must NOT enter this Godot-free assembly (they hold CanvasLayer/Node handles). The Godot-FREE phase
-         kernel (ISetupPhase / DelegateSetupPhase / ScenePhaseOrder / ScenePhaseRunner) stays directly under
-         Bootstrap/ and remains globbed-in + Tier-1-testable (PhaseOrderTest reads it). GodotFreeBoundaryTest
-         is the backstop if anything Godot-touching ever lands outside Phases/. -->
-    <Compile Remove="..\src\Core\Bootstrap\Phases\**\*.cs" />
-  </ItemGroup>
+  <!-- SHARED SOURCE: the pure-sim source set now lives in godot/SimSources.props (Story 1.10b, Task 1) — a
+       single source of truth imported by BOTH this test project and ProjectChimera.Sim.Analysis so the
+       analyzer gate's coverage can never drift from the tested set. Behavior-neutral extraction: this project
+       compiles the identical file set it did before (the props anchors to $(MSBuildThisFileDirectory)=godot/).
+       Compiled DIRECTLY, not via a <ProjectReference> to godot.csproj (that would drag GodotSharp in and break
+       the Godot-free guarantee). -->
+  <Import Project="..\SimSources.props" />
 
   <ItemGroup>
     <!-- Golden baseline: embedded so it's read via manifest stream (portable across Windows/Linux — no

@@ -1,0 +1,34 @@
+// BannedSymbols.txt — determinism floor for the Godot-free sim compilation (AR-36 / S-CORE / S-FX).
+// Drives RS0030 ("Do not use banned APIs"). Format: {DocCommentId}[;Message]. '//' starts a comment.
+//
+// RATCHET CONTRACT: every symbol in THIS file is expected to be at a ZERO baseline in the sim source set, so
+// RS0030 as a whole stays release-gateable (`/p:ChimeraRelease=true` adds RS0030 to WarningsAsErrors). The
+// NON-zero-baseline conversion ban — Fixed.FromFloat/ToFloat (~95 legitimate load-time D2-debt sites) — is
+// deliberately NOT here; it lives in the custom analyzer as the advisory CHM0005 so it cannot trip this gate.
+// If the Task-6 baseline scan finds any symbol below at a non-zero count, MOVE it out of the gated set (record
+// it in the story's ratchet table) rather than weakening the gate.
+
+// --- Wall-clock / nondeterministic time (S-CORE-4, S-MP-5) ---
+T:System.DateTime;Wall-clock is nondeterministic in lockstep. Derive time from the sim tick (CurrentTick / Fixed dt).
+T:System.DateTimeOffset;Wall-clock is nondeterministic in lockstep. Derive time from the sim tick.
+T:System.Diagnostics.Stopwatch;Measures real time (nondeterministic). Count ticks in sim, never elapsed wall-time.
+P:System.Environment.TickCount;Wall-clock is nondeterministic in sim.
+P:System.Environment.TickCount64;Wall-clock is nondeterministic in sim.
+
+// --- Nondeterministic randomness (AR-36) ---
+T:System.Random;Use SimRng (seeded, folded into SimChecksum). System.Random differs across runs/peers.
+M:System.Guid.NewGuid;Nondeterministic. Use a seeded id scheme.
+T:System.Security.Cryptography.RandomNumberGenerator;Nondeterministic. Use SimRng in sim.
+
+// --- Godot in the sim layer (S-CORE-5) --- (the Godot-free compile also forbids `using Godot`)
+N:Godot;The sim layer is Godot-free pure C#. Godot types / GD.Print / Time.GetTicksMsec belong in presentation; sim logs via ILogSink.
+
+// --- float<->string boundaries in the tick (S-CORE-3, A17 culture/rounding bug) ---
+// (float<->Fixed via Fixed.FromFloat/ToFloat is CHM0005 in the custom analyzer, advisory.)
+M:System.Single.Parse;Float parse is culture/rounding-nondeterministic (A17). Author thresholds as Fixed.
+M:System.Double.Parse;Double parse is culture/rounding-nondeterministic (A17). Author thresholds as Fixed.
+M:System.Single.ToString;Float formatting is culture-nondeterministic (A17). Never stringify floats in sim.
+M:System.Double.ToString;Double formatting is culture-nondeterministic (A17). Never stringify doubles in sim.
+
+// --- AOT / serialization traps (AR-36, D3) ---
+T:System.Text.Json.Serialization.JsonPolymorphicAttribute;Reflective polymorphism is an AOT trap; use a closed typed registry.

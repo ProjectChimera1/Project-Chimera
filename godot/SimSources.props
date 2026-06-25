@@ -1,0 +1,59 @@
+<Project>
+
+  <!-- ============================================================================================
+       SINGLE SOURCE OF TRUTH for the Godot-free deterministic sim source set. (Story 1.10b, Task 1.)
+
+       Imported by BOTH:
+         - godot/ProjectChimera.Sim.Tests   (the Tier-1 golden-checksum harness), and
+         - godot/ProjectChimera.Sim.Analysis (the banned-API + AOT analyzer gate, Story 1.10b)
+       so the analyzer's coverage can NEVER silently drift from the tested source set: a sim folder
+       added here is picked up by the tests AND the analyzers in the same edit.
+
+       Paths are anchored to $(MSBuildThisFileDirectory) (= godot/) — NOT '..\' — so the set resolves
+       to the identical absolute files regardless of which sibling project (one level below godot/)
+       imports it. The content below was extracted behavior-neutrally from ProjectChimera.Sim.Tests.csproj.
+
+       This is the pure-sim source compiled DIRECTLY (not a <ProjectReference> to godot.csproj, which would
+       drag GodotSharp in and break the Godot-free guarantee). FixedPoint.cs's #if GODOT bridge methods
+       compile out because neither importer defines the GODOT symbol.
+       ============================================================================================ -->
+
+  <ItemGroup>
+    <Compile Include="$(MSBuildThisFileDirectory)src\Core\**\*.cs"       LinkBase="Sim\Core" />
+    <Compile Include="$(MSBuildThisFileDirectory)src\Combat\**\*.cs"     LinkBase="Sim\Combat" />
+    <Compile Include="$(MSBuildThisFileDirectory)src\Economy\**\*.cs"    LinkBase="Sim\Economy" />
+    <Compile Include="$(MSBuildThisFileDirectory)src\Navigation\**\*.cs" LinkBase="Sim\Navigation" />
+    <!-- AI: the live 9-system tick loop's system #8 is AiOpponentSystem (src/AI/, namespace
+         ProjectChimera.AI). src/AI/ is verified Godot-free (AiOpponentSystem.cs + LLMService.cs,
+         which uses System.Net.Http, not Godot). Required so the golden harness can build the full loop,
+         and so the analyzer quantifies the known AI float→Fixed debt (advisory). -->
+    <Compile Include="$(MSBuildThisFileDirectory)src\AI\**\*.cs"         LinkBase="Sim\AI" />
+    <!-- Effects/ and Dsl/ are net-new in Epics 2 & 7; add their includes HERE when the folders exist
+         and both the test harness and the analyzer gate cover them automatically. -->
+
+    <!-- Story 1.5: explicit single-file includes so the .chmr record→replay round-trip (with the v2 seed
+         header) is Tier-1 testable. These three Multiplayer files are verified Godot-free (System.* + Core
+         only); the rest of src/Multiplayer (LockstepManager, ENet transports) is Godot/ENet-coupled, so the
+         folder is deliberately NOT globbed. -->
+    <Compile Include="$(MSBuildThisFileDirectory)src\Multiplayer\ReplayRecorder.cs" LinkBase="Sim\Multiplayer" />
+    <Compile Include="$(MSBuildThisFileDirectory)src\Multiplayer\ReplayPlayer.cs"   LinkBase="Sim\Multiplayer" />
+    <Compile Include="$(MSBuildThisFileDirectory)src\Multiplayer\NetworkCommand.cs" LinkBase="Sim\Multiplayer" />
+
+    <!-- Story 1.9a: the Godot-free server-authority core (ServerHost + ServerChecksumCollector) lives under
+         src/Multiplayer/Server/ — a guaranteed-Godot-free subfolder. Folder-globbed (not single files) so the
+         Epic-9 additions (ProtocolVersion / DelayController) are picked up without touching this file. -->
+    <Compile Include="$(MSBuildThisFileDirectory)src\Multiplayer\Server\**\*.cs" LinkBase="Sim\Multiplayer\Server" />
+
+    <!-- The only Godot-coupled file remaining in the sim folders is MainScene (the god object, strangled in
+         1.8a/c). StressTest was relocated to godot/tools/ in Story 1.8a, so it is no longer under the
+         src\Core\** glob and needs no <Compile Remove>. FixedPoint.cs STAYS IN (Godot bridge is #if GODOT). -->
+    <Compile Remove="$(MSBuildThisFileDirectory)src\Core\MainScene.cs" />
+    <!-- Story 1.8c: the Godot-TOUCHING concrete setup phases + SceneContext live under Bootstrap/Phases/ and
+         must NOT enter this Godot-free assembly (they hold CanvasLayer/Node handles). The Godot-FREE phase
+         kernel (ISetupPhase / DelegateSetupPhase / ScenePhaseOrder / ScenePhaseRunner) stays directly under
+         Bootstrap/ and remains globbed-in + Tier-1-testable (PhaseOrderTest reads it). GodotFreeBoundaryTest
+         is the backstop if anything Godot-touching ever lands outside Phases/. -->
+    <Compile Remove="$(MSBuildThisFileDirectory)src\Core\Bootstrap\Phases\**\*.cs" />
+  </ItemGroup>
+
+</Project>

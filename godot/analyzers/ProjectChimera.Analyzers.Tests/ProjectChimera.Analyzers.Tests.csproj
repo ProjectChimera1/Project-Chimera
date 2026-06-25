@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Story 1.10b — unit tests for the custom BannedSimApiAnalyzer (CHM0001..CHM0005). Godot-free xUnit,
+       runs in the 1.10a CI lane (tier1-analyzer-gate job). The harness drives the analyzer with an in-memory
+       CSharpCompilation (no heavyweight Microsoft.CodeAnalysis.Testing dependency — keeps the package graph
+       tight and version-aligned on the single Roslyn 4.8.0 the SDK ships). -->
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <!-- The compiler API the harness uses to build compilations and run the analyzer. Same 4.8.0 the analyzer
+         is compiled against, so the analyzer's types load against an identical Roslyn surface. -->
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.8.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Reference the analyzer as a NORMAL library (default OutputItemType) so the tests can instantiate
+         BannedSimApiAnalyzer directly. Deliberately NOT OutputItemType="Analyzer" — we do not want the analyzer
+         running over this test project's own sources, only over the synthetic snippets the harness compiles. -->
+    <ProjectReference Include="..\ProjectChimera.Analyzers\ProjectChimera.Analyzers.csproj" />
+  </ItemGroup>
+
+</Project>

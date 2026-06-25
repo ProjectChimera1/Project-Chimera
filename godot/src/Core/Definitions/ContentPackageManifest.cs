@@ -107,7 +107,12 @@ namespace ProjectChimera.Core.Definitions
 
         /// <summary>UTC ISO-8601 timestamp when this package was first created.</summary>
         [JsonPropertyName("created_at")]
+        // AR-36 allow-list (Story 1.10b): package-envelope metadata (author/mod.io-time), excluded from the
+        // sim/start-state hash and never read in a tick — an explicit RS0030 exemption so the banned-API
+        // release gate stays at a clean zero baseline. Tick-path DateTime is NOT exempt and still fails the gate.
+#pragma warning disable RS0030
         public string CreatedAt { get; set; } = DateTime.UtcNow.ToString("o");
+#pragma warning restore RS0030
 
         /// <summary>
         /// FNV-1a hash of the embedded scenario.json bytes.
