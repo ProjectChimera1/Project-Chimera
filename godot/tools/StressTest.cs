@@ -85,7 +85,7 @@ namespace ProjectChimera.Core
                 if (id < 0) break;
 
                 world.AttackRange[id] = Fixed.FromFloat(ATTACK_RANGE);
-                world.AttackDamage[id] = Fixed.FromFloat(ATTACK_DAMAGE);
+                world.EffectiveAttackDamage[id] = Fixed.FromFloat(ATTACK_DAMAGE);
                 world.AttackSpeed[id] = Fixed.FromFloat(ATTACK_SPEED);
                 world.DamageTypeOf[id] = dmgType;
                 world.ArmorTypeOf[id] = armor;

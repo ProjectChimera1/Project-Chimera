@@ -116,16 +116,44 @@ namespace ProjectChimera.Core
         public readonly FixedVec3[] Position;
         public readonly FixedVec3[] PrevPosition; // For interpolation
         public readonly FixedVec3[] Velocity;
-        public readonly Fixed[] Speed;            // Max movement speed
+        /// <summary>
+        /// Authored base move speed — immutable within a tick; the source the
+        /// <see cref="ProjectChimera.Effects.ModifierSystem"/> recompute reads (Story 2.2a / AR-9).
+        /// </summary>
+        public readonly Fixed[] BaseMoveSpeed;
+        /// <summary>
+        /// Effective max move speed = <see cref="BaseMoveSpeed"/> + active modifier deltas; the value
+        /// <see cref="ProjectChimera.Navigation.MovementSystem"/> reads. Recomputed by ModifierSystem only on a tick
+        /// where a delta changed. In 2.2a it always equals <see cref="BaseMoveSpeed"/> (no modifier exists yet), so
+        /// it is NOT hashed — it folds into SimChecksum with the ModifierStore in 2.2b.
+        /// </summary>
+        public readonly Fixed[] EffectiveMoveSpeed;
         public readonly Fixed[] Health;
-        public readonly Fixed[] MaxHealth;
+        /// <summary>Authored base max health — immutable in-tick; source for the effective recompute (Story 2.2a / AR-9).</summary>
+        public readonly Fixed[] BaseMaxHealth;
+        /// <summary>Effective max health = <see cref="BaseMaxHealth"/> + modifier deltas; the Health-clamp ceiling combat/heal read. == Base in 2.2a (unhashed; folds in 2.2b).</summary>
+        public readonly Fixed[] EffectiveMaxHealth;
         public readonly Faction[] FactionOf;
         public readonly FixedVec3[] MoveTarget;   // Where entity is heading
         public readonly int[] AttackTarget;        // Entity ID of attack target (-1 = none)
         public readonly Fixed[] AttackCooldown;    // Time until next attack
         public readonly Fixed[] AttackRange;
-        public readonly Fixed[] AttackDamage;
+        /// <summary>Authored base attack damage — immutable in-tick; source for the effective recompute. The ONE modifier-affected stat sourced from <see cref="ProjectChimera.Core.Definitions.UnitDefinition"/> via <see cref="ApplyUnitDefinition"/> (Story 2.2a / AR-9).</summary>
+        public readonly Fixed[] BaseAttackDamage;
+        /// <summary>Effective attack damage = <see cref="BaseAttackDamage"/> + modifier deltas; the value <see cref="ProjectChimera.Combat.CombatSystem"/> deals. == Base in 2.2a (unhashed; folds in 2.2b).</summary>
+        public readonly Fixed[] EffectiveAttackDamage;
         public readonly Fixed[] AttackSpeed;       // Seconds between attacks
+
+        // --- Ability resource pool (Story 2.2a substrate; the ModifierStore debits it in 2.2b) ---
+        /// <summary>
+        /// Current ability-resource (energy) pool — the single ability-cost pool (architecture: Energy + MaxEnergy,
+        /// no separate Mana). 2.2a substrate only: <see cref="Core.Definitions.UnitDefinition"/> has no energy field
+        /// yet, so it is Create-defaulted to Zero and untouched by <see cref="ApplyUnitDefinition"/>. 2.2b debits it
+        /// (refuse-when-insufficient). NOT hashed in 2.2a (0 everywhere; folds with the store in 2.2b).
+        /// </summary>
+        public readonly Fixed[] Energy;
+        /// <summary>Maximum ability-resource capacity. Authored MaxEnergy lands in 2.2b/2.3 (then through <see cref="ApplyUnitDefinition"/> per the single-mapper rule); Create-defaulted to Zero in 2.2a.</summary>
+        public readonly Fixed[] MaxEnergy;
         public readonly DamageType[] DamageTypeOf;
         public readonly ArmorType[] ArmorTypeOf;
 
@@ -246,16 +274,21 @@ namespace ProjectChimera.Core
             Position = new FixedVec3[MAX_ENTITIES];
             PrevPosition = new FixedVec3[MAX_ENTITIES];
             Velocity = new FixedVec3[MAX_ENTITIES];
-            Speed = new Fixed[MAX_ENTITIES];
+            BaseMoveSpeed = new Fixed[MAX_ENTITIES];
+            EffectiveMoveSpeed = new Fixed[MAX_ENTITIES];
             Health = new Fixed[MAX_ENTITIES];
-            MaxHealth = new Fixed[MAX_ENTITIES];
+            BaseMaxHealth = new Fixed[MAX_ENTITIES];
+            EffectiveMaxHealth = new Fixed[MAX_ENTITIES];
             FactionOf = new Faction[MAX_ENTITIES];
             MoveTarget = new FixedVec3[MAX_ENTITIES];
             AttackTarget = new int[MAX_ENTITIES];
             AttackCooldown = new Fixed[MAX_ENTITIES];
             AttackRange = new Fixed[MAX_ENTITIES];
-            AttackDamage = new Fixed[MAX_ENTITIES];
+            BaseAttackDamage = new Fixed[MAX_ENTITIES];
+            EffectiveAttackDamage = new Fixed[MAX_ENTITIES];
             AttackSpeed = new Fixed[MAX_ENTITIES];
+            Energy         = new Fixed[MAX_ENTITIES];
+            MaxEnergy      = new Fixed[MAX_ENTITIES];
             DamageTypeOf = new DamageType[MAX_ENTITIES];
             ArmorTypeOf = new ArmorType[MAX_ENTITIES];
 
@@ -316,16 +349,22 @@ namespace ProjectChimera.Core
             Position[id] = position;
             PrevPosition[id] = position;
             Velocity[id] = FixedVec3.Zero;
-            Speed[id] = speed;
+            BaseMoveSpeed[id] = speed;
+            EffectiveMoveSpeed[id] = speed;
             Health[id] = health;
-            MaxHealth[id] = health;
+            BaseMaxHealth[id] = health;
+            EffectiveMaxHealth[id] = health;
             FactionOf[id] = faction;
             MoveTarget[id] = position;
             AttackTarget[id]  = -1;
             AttackCooldown[id] = Fixed.Zero;
             AttackRange[id]   = Fixed.Zero;
-            AttackDamage[id]  = Fixed.Zero;
+            BaseAttackDamage[id]       = Fixed.Zero;
+            EffectiveAttackDamage[id]  = Fixed.Zero;
             AttackSpeed[id]   = Fixed.Zero;
+            // Story 2.2a: ability-resource pool defaults (no UnitDefinition source yet → ModifierStore debits in 2.2b).
+            Energy[id]        = Fixed.Zero;
+            MaxEnergy[id]     = Fixed.Zero;
             DamageTypeOf[id]  = DamageType.Normal;
             ArmorTypeOf[id]   = ArmorType.Unarmored;
             VisionRange[id]   = Fixed.FromFloat(8f);
@@ -373,7 +412,10 @@ namespace ProjectChimera.Core
         {
             VisionRange[id]  = Fixed.FromFloat(def.VisionRange);
             AttackRange[id]  = Fixed.FromFloat(def.AttackRange);
-            AttackDamage[id] = Fixed.FromFloat(def.AttackDamage);
+            // Story 2.2a (A2): AttackDamage is the one modifier-affected stat sourced from the def. Write Base (the
+            // authored, in-tick-immutable source) then mirror into Effective (== Base until a modifier applies in 2.2b).
+            BaseAttackDamage[id]      = Fixed.FromFloat(def.AttackDamage);
+            EffectiveAttackDamage[id] = BaseAttackDamage[id];
             AttackSpeed[id]  = Fixed.FromFloat(def.AttackSpeed);
             DamageTypeOf[id] = def.ParsedDamageType;
             ArmorTypeOf[id]  = def.ParsedArmorType;

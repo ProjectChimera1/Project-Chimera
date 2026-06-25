@@ -166,8 +166,8 @@ namespace ProjectChimera.Sim.Tests.Builder
                 Assert.Equal(new FixedVec3(Fixed.FromFloat(u.X), Fixed.Zero, Fixed.FromFloat(u.Z)), host.World.Position[id]);
                 Assert.Equal(faction,                   host.World.FactionOf[id]);
                 Assert.Equal(Fixed.FromFloat(def.Hp),   host.World.Health[id]);
-                Assert.Equal(Fixed.FromFloat(def.Hp),   host.World.MaxHealth[id]);
-                Assert.Equal(Fixed.FromFloat(def.Speed), host.World.Speed[id]);
+                Assert.Equal(Fixed.FromFloat(def.Hp),   host.World.EffectiveMaxHealth[id]);
+                Assert.Equal(Fixed.FromFloat(def.Speed), host.World.EffectiveMoveSpeed[id]);
                 Assert.Equal(GatherState.Idle,          host.World.GatherState[id]);          // Category == "Worker"
                 Assert.Equal(Fixed.FromFloat(20f),      host.World.CarryCapacity[id]);
                 Assert.Equal((byte)WorkerMeshIndex,     host.World.MeshType[id]);             // IndexOfUnit("worker") == 1
@@ -176,7 +176,7 @@ namespace ProjectChimera.Sim.Tests.Builder
             // SoA stat detail on the first unit (the same write path for all).
             Assert.Equal(Fixed.FromFloat(def.VisionRange),  host.World.VisionRange[0]);
             Assert.Equal(Fixed.FromFloat(def.AttackRange),  host.World.AttackRange[0]);
-            Assert.Equal(Fixed.FromFloat(def.AttackDamage), host.World.AttackDamage[0]);
+            Assert.Equal(Fixed.FromFloat(def.AttackDamage), host.World.EffectiveAttackDamage[0]);
             Assert.Equal(Fixed.FromFloat(def.AttackSpeed),  host.World.AttackSpeed[0]);
             Assert.Equal(Fixed.FromFloat(def.SplashRadius), host.World.SplashRadius[0]);
             Assert.Equal((byte)def.Supply,                  host.World.SupplyCost[0]);

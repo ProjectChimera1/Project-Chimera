@@ -69,7 +69,7 @@ namespace ProjectChimera.Sim.Tests.Golden
         private static int MakeDuelist(EntityWorld world, FixedVec3 pos, Faction faction)
         {
             int id = world.Create(pos, faction, Fixed.FromInt(50), Fixed.FromInt(3));
-            world.AttackDamage[id] = Fixed.FromInt(10);
+            world.EffectiveAttackDamage[id] = Fixed.FromInt(10);
             world.AttackRange[id]  = Fixed.FromInt(2);  // <= MELEE_THRESHOLD (2.5) ⇒ instant same-tick melee damage
             world.AttackSpeed[id]  = Fixed.Zero;        // zero cooldown ⇒ attacks every tick
             world.DamageTypeOf[id] = DamageType.Normal;

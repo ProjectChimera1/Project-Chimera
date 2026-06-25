@@ -115,7 +115,7 @@ namespace ProjectChimera.Sim.Tests.Golden
         private static int Combatant(EntityWorld w, FixedVec3 pos, Faction f)
         {
             int id = w.Create(pos, f, Fixed.FromInt(100), Fixed.FromInt(3));
-            w.AttackDamage[id] = Fixed.FromInt(10);
+            w.EffectiveAttackDamage[id] = Fixed.FromInt(10);
             w.AttackRange[id]  = Fixed.FromInt(2);
             w.AttackSpeed[id]  = Fixed.FromInt(1);
             w.DamageTypeOf[id] = DamageType.Normal;

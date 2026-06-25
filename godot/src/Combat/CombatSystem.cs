@@ -90,7 +90,7 @@ namespace ProjectChimera.Combat
                 // movement). Acceptable for 1.12: every order is issued to damage-bearing combat units (the
                 // golden + tests use such units). Supporting zero-damage support units patrolling/following is
                 // an Epic-2 concern; do NOT hoist the movement branches above this guard here. Flagged, not built.
-                if (world.AttackDamage[i] == Fixed.Zero) continue; // non-combatant
+                if (world.EffectiveAttackDamage[i] == Fixed.Zero) continue; // non-combatant
 
                 switch (world.CommandState[i])
                 {
@@ -465,7 +465,7 @@ namespace ProjectChimera.Combat
                     world.Position[attacker],
                     target,
                     world.Position[target],
-                    world.AttackDamage[attacker],
+                    world.EffectiveAttackDamage[attacker],
                     world.DamageTypeOf[attacker],
                     world.ArmorTypeOf[target],
                     world.FactionOf[attacker],
@@ -479,7 +479,7 @@ namespace ProjectChimera.Combat
 
                 var ctx = new DamageContext(world, target, world.ArmorTypeOf[target],
                                             world.FactionOf[attacker], _table, _events, _stats);
-                if (DamageResolver.Apply(in ctx, world.AttackDamage[attacker], world.DamageTypeOf[attacker]))
+                if (DamageResolver.Apply(in ctx, world.EffectiveAttackDamage[attacker], world.DamageTypeOf[attacker]))
                 {
                     world.AttackTarget[attacker] = -1;
                     world.Flags[attacker]       &= ~EntityFlags.Attacking;

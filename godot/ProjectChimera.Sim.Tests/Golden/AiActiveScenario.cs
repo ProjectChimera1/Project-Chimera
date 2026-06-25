@@ -86,7 +86,7 @@ namespace ProjectChimera.Sim.Tests.Golden
             {
                 int u = world.Create(new FixedVec3(Fixed.FromInt(40), Fixed.Zero, Fixed.FromInt(i * 2 - 4)),
                                      Faction.Player2, Fixed.FromInt(80), Fixed.FromInt(3));
-                world.AttackDamage[u] = Fixed.FromInt(6);
+                world.EffectiveAttackDamage[u] = Fixed.FromInt(6);
                 world.AttackRange[u]  = Fixed.FromInt(2);
                 world.AttackSpeed[u]  = Fixed.FromInt(1);
                 world.DamageTypeOf[u] = DamageType.Normal;

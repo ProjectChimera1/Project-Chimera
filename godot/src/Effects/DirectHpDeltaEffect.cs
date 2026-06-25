@@ -30,7 +30,7 @@ namespace ProjectChimera.Effects
             if (!world.IsAlive(t)) return; // dead/recycled target — no-op (future callers hit these)
 
             // Flat, armor-independent, NEVER through the damage matrix. Clamp into the valid HP band.
-            world.Health[t] = Fixed.Clamp(world.Health[t] + Delta, Fixed.Zero, world.MaxHealth[t]);
+            world.Health[t] = Fixed.Clamp(world.Health[t] + Delta, Fixed.Zero, world.EffectiveMaxHealth[t]);
         }
     }
 }

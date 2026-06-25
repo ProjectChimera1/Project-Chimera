@@ -27,7 +27,7 @@ namespace ProjectChimera.Effects
 
             // Clamp into the valid HP band [0, MaxHealth] — no overheal, and a (mis-authored) negative amount
             // floors at 0 instead of underflowing to negative HP (matches DirectHpDeltaEffect's both-ends clamp).
-            world.Health[t] = Fixed.Clamp(world.Health[t] + Amount, Fixed.Zero, world.MaxHealth[t]);
+            world.Health[t] = Fixed.Clamp(world.Health[t] + Amount, Fixed.Zero, world.EffectiveMaxHealth[t]);
         }
     }
 }

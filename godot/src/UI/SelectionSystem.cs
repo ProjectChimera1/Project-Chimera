@@ -810,7 +810,7 @@ namespace ProjectChimera.UI
             Vector2 screen = camera.UnprojectPosition(worldPos);
             _barRoot.Position = screen - new Vector2(BAR_W * 0.5f, BAR_H);
 
-            float maxHp = _world.MaxHealth[_focusId].ToFloat();
+            float maxHp = _world.EffectiveMaxHealth[_focusId].ToFloat();
             float curHp = _world.Health[_focusId].ToFloat();
             float ratio = maxHp > 0f ? Mathf.Clamp(curHp / maxHp, 0f, 1f) : 0f;
 

@@ -489,7 +489,7 @@ namespace ProjectChimera.UI
             {
                 _world.SupplyCost[id]   = supply;
                 _world.AttackRange[id]  = Fixed.FromFloat(ATTACK_RANGE);
-                _world.AttackDamage[id] = Fixed.FromFloat(ATTACK_DMG);
+                _world.EffectiveAttackDamage[id] = Fixed.FromFloat(ATTACK_DMG);
                 _world.AttackSpeed[id]  = Fixed.FromFloat(ATTACK_SPEED);
                 _world.DamageTypeOf[id] = DamageType.Normal;
                 _world.ArmorTypeOf[id]  = ArmorType.Light;
@@ -1041,10 +1041,10 @@ namespace ProjectChimera.UI
             {
                 Position     = _world.Position[id],
                 Faction      = _world.FactionOf[id],
-                MaxHealth    = _world.MaxHealth[id],
-                Speed        = _world.Speed[id],
+                MaxHealth    = _world.EffectiveMaxHealth[id],
+                Speed        = _world.EffectiveMoveSpeed[id],
                 AttackRange  = _world.AttackRange[id],
-                AttackDamage = _world.AttackDamage[id],
+                AttackDamage = _world.EffectiveAttackDamage[id],
                 AttackSpeed  = _world.AttackSpeed[id],
                 DamageType   = _world.DamageTypeOf[id],
                 ArmorType    = _world.ArmorTypeOf[id],
@@ -1093,10 +1093,10 @@ namespace ProjectChimera.UI
             int id = _world.Create(snap.Position, snap.Faction, snap.MaxHealth, snap.Speed);
             if (id < 0) { GD.PrintErr("[EntityPlacer] EntityWorld full — cannot restore deleted unit."); return -1; }
 
-            _world.MaxHealth[id]    = snap.MaxHealth;
+            _world.EffectiveMaxHealth[id]    = snap.MaxHealth;
             _world.SupplyCost[id]   = snap.SupplyCost;
             _world.AttackRange[id]  = snap.AttackRange;
-            _world.AttackDamage[id] = snap.AttackDamage;
+            _world.EffectiveAttackDamage[id] = snap.AttackDamage;
             _world.AttackSpeed[id]  = snap.AttackSpeed;
             _world.DamageTypeOf[id] = snap.DamageType;
             _world.ArmorTypeOf[id]  = snap.ArmorType;

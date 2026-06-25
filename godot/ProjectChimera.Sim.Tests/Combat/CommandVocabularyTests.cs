@@ -313,7 +313,7 @@ namespace ProjectChimera.Sim.Tests.Combat
         private static int Combatant(EntityWorld w, FixedVec3 pos, Faction f, int dmg = 10, int range = 2)
         {
             int id = w.Create(pos, f, Fixed.FromInt(100), Fixed.FromInt(3));
-            w.AttackDamage[id] = Fixed.FromInt(dmg);
+            w.EffectiveAttackDamage[id] = Fixed.FromInt(dmg);
             w.AttackRange[id]  = Fixed.FromInt(range);
             w.AttackSpeed[id]  = Fixed.FromInt(1);
             w.DamageTypeOf[id] = DamageType.Normal;

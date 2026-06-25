@@ -349,7 +349,7 @@ namespace ProjectChimera.UI
             _lastFocusedWorkerId = focusId;
 
             float hp    = _world.Health[focusId].ToFloat();
-            float maxHp = _world.MaxHealth[focusId].ToFloat();
+            float maxHp = _world.EffectiveMaxHealth[focusId].ToFloat();
 
             _workerTitleLabel.Text = "Worker  [P1]";
             _workerHpLabel.Text    = $"HP: {(int)hp} / {(int)maxHp}";

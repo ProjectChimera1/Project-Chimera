@@ -112,7 +112,7 @@ namespace ProjectChimera.Sim.Tests.Golden
             // ── P1 melee: closes on the P2 fodder and fights (Movement + Combat evolve the entity hash). ──
             int p1Melee = world.Create(new FixedVec3(Fixed.FromInt(-10), Fixed.Zero, Fixed.Zero),
                                        Faction.Player1, Fixed.FromInt(100), Fixed.FromInt(3));
-            world.AttackDamage[p1Melee] = Fixed.FromInt(10);
+            world.EffectiveAttackDamage[p1Melee] = Fixed.FromInt(10);
             world.AttackRange[p1Melee]  = Fixed.FromInt(2);   // <= 2.5 => melee
             world.AttackSpeed[p1Melee]  = Fixed.FromInt(1);
             world.DamageTypeOf[p1Melee] = DamageType.Normal;
@@ -159,7 +159,7 @@ namespace ProjectChimera.Sim.Tests.Golden
         private static void CreateP2Fodder(EntityWorld world, FixedVec3 pos)
         {
             int u = world.Create(pos, Faction.Player2, Fixed.FromInt(80), Fixed.FromInt(3));
-            world.AttackDamage[u] = Fixed.FromInt(6);
+            world.EffectiveAttackDamage[u] = Fixed.FromInt(6);
             world.AttackRange[u]  = Fixed.FromInt(2);
             world.AttackSpeed[u]  = Fixed.FromInt(1);
             world.DamageTypeOf[u] = DamageType.Normal;

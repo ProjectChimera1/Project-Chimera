@@ -83,7 +83,7 @@ namespace ProjectChimera.Navigation
                     }
 
                     Fixed dist = toTarget.Magnitude();
-                    Fixed speed = world.Speed[i];
+                    Fixed speed = world.EffectiveMoveSpeed[i];
                     if (dist < SLOW_RADIUS)
                         speed = speed * dist / SLOW_RADIUS;
 
@@ -129,7 +129,7 @@ namespace ProjectChimera.Navigation
                 if (velocity == FixedVec3.Zero) continue;
 
                 // --- Clamp to max speed ---
-                Fixed maxSpeed = world.Speed[i];
+                Fixed maxSpeed = world.EffectiveMoveSpeed[i];
                 Fixed velSqr = velocity.SqrMagnitude();
                 if (velSqr > maxSpeed * maxSpeed)
                     velocity = velocity.Normalized() * maxSpeed;

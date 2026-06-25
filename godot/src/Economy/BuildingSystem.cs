@@ -177,7 +177,7 @@ namespace ProjectChimera.Economy
             {
                 world.SupplyCost[id]   = 1;
                 world.AttackRange[id]  = Fixed.FromFloat(FALLBACK_ATTACK_RNG);
-                world.AttackDamage[id] = Fixed.FromFloat(FALLBACK_ATTACK_DMG);
+                world.EffectiveAttackDamage[id] = Fixed.FromFloat(FALLBACK_ATTACK_DMG);
                 world.AttackSpeed[id]  = Fixed.FromFloat(FALLBACK_ATTACK_SPD);
                 world.DamageTypeOf[id] = Combat.DamageType.Normal;
                 world.ArmorTypeOf[id]  = Combat.ArmorType.Light;
