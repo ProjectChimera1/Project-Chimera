@@ -42,6 +42,29 @@ namespace ProjectChimera.Sim.Tests.Effects
         }
 
         [Fact]
+        public void Sequence_AppliesInAuthoredOrder_ObservableAtTheZeroClamp()
+        {
+            // AC4 ordering TEETH: with headroom the +/- is commutative (50-10+25 == 50+25-10), so the test above
+            // can't see order. At the 0-HP floor it CAN: DirectHpDelta(-10) then Heal(+25) on a 5-HP unit is
+            // 5 -10 → clamp 0, then 0 +25 = 25; a REVERSED Sequence would be 5 +25 -10 = 20. So this pins the
+            // authored-order execution of Sequence (a forward/reverse-push regression turns it RED).
+            var w = new EntityWorld();
+            int id = w.Create(FixedVec3.Zero, Faction.Player1, Fixed.FromInt(200), Fixed.FromInt(3)); // MaxHealth 200
+            w.Health[id] = Fixed.FromInt(5);
+
+            var graph = new SequenceEffect(
+                new DirectHpDeltaEffect(Fixed.FromInt(-10)),
+                new HealEffect(Fixed.FromInt(25)));
+            var ex = new EffectExecutor();
+            EffectContext ctx = SelfCtx(w, id);
+            ex.Run(graph, in ctx);
+
+            // delta-then-heal = 25; heal-then-delta would be 20. (raw 25*65536 = 1_638_400)
+            Assert.Equal(Fixed.FromInt(25).Raw, w.Health[id].Raw);
+            Assert.Equal(1_638_400, w.Health[id].Raw);
+        }
+
+        [Fact]
         public void DirectHpDelta_IsArmorIndependent_UnlikeMatrixDamage()
         {
             // DirectHpDelta: flat -10 regardless of armor → 50 - 10 = 40 for BOTH Heavy and Unarmored.

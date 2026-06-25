@@ -4,11 +4,11 @@ using ProjectChimera.Core;
 namespace ProjectChimera.Effects
 {
     /// <summary>
-    /// Restores a flat <see cref="Fixed"/> amount of Health to the target, clamped at <c>MaxHealth</c> (no
-    /// overheal). Armor-independent (healing is not combat damage). Like every leaf, it guards
+    /// Restores a flat <see cref="Fixed"/> amount of Health to the target, clamped into <c>[0, MaxHealth]</c>
+    /// (no overheal). Armor-independent (healing is not combat damage). Like every leaf, it guards
     /// <see cref="EntityWorld.IsAlive"/> at entry. <see cref="Amount"/> is expected to be non-negative; a
-    /// negative amount is still safe (it lowers Health, never below the current value's natural floor of 0 only
-    /// if authored that way) but the intended primitive for costs is <see cref="DirectHpDeltaEffect"/>.
+    /// (mis-authored) negative amount is floored at 0 — it never underflows to negative HP — but the intended
+    /// primitive for an HP cost is <see cref="DirectHpDeltaEffect"/>.
     /// </summary>
     public sealed class HealEffect : LeafEffect
     {
@@ -25,8 +25,9 @@ namespace ProjectChimera.Effects
             int t = ctx.PrimaryTargetId;
             if (!world.IsAlive(t)) return;
 
-            // Clamp at MaxHealth — no overheal.
-            world.Health[t] = Fixed.Min(world.Health[t] + Amount, world.MaxHealth[t]);
+            // Clamp into the valid HP band [0, MaxHealth] — no overheal, and a (mis-authored) negative amount
+            // floors at 0 instead of underflowing to negative HP (matches DirectHpDeltaEffect's both-ends clamp).
+            world.Health[t] = Fixed.Clamp(world.Health[t] + Amount, Fixed.Zero, world.MaxHealth[t]);
         }
     }
 }

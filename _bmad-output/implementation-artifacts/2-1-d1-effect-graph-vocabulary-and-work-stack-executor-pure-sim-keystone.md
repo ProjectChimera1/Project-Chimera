@@ -4,7 +4,7 @@ baseline_commit: 3ac39916106b07eb42649a88127cc35272ed46cd
 
 # Story 2.1: D1 Effect-Graph vocabulary and work-stack executor (pure sim keystone)
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -272,7 +272,7 @@ claude-opus-4-8 (Claude Opus 4.8) — `gds-dev-story`.
 5. **`ApplyModifier` / `Persistent` fail closed loudly** (`NotSupportedException`) when reached — the throwing guard the 2.2b dev replaces (a premature wire-up is caught, not silently mis-run).
 
 **Verification (Task 6):**
-- Tier-1: **305 passed / 1 skipped / 0 failed** (was 283 total → 306 total; **+23** new Effects tests). 1 skip is the pre-existing parked test, not new.
+- Tier-1: **305 passed / 1 skipped / 0 failed** (was 284 total = 283 pass + 1 skip → 306 total; **+22** new Effects tests across 4 files). 1 skip is the pre-existing parked test, not new. _(Code review 2026-06-25 added 2 more teeth tests → **307 pass / 1 skip / 308 total**; see Change Log + Review Findings.)_
 - `dotnet build` of the Godot-free test project AND the analyzer project: **0 errors**. Full `godot.csproj` (production, Godot SDK) build: **0 errors** — the new code compiles in the production assembly too.
 - **All 7 existing goldens byte-identical** (`git status --short -- '*.golden.txt'` clean). `SimChecksum.AlgoVersion` stays **5** (no fold, no bump, no re-record — 2.1 mutates only already-hashed `Health`). `SimChecksum.cs` and `SystemOrderTest.cs` untouched (the executor is a graph-invoked helper, not a tick system — precedent: `FormationPlanner`/`DelayMath`/`OrderApplier`).
 - **Single-mapper SoA rule (retro A2) does NOT apply to 2.1** — it adds no persistent per-entity SoA array (its state is a transient work-stack over existing arrays). A2 lands with the first SoA-adding story (2.2a), per the story Dev Notes.
@@ -283,7 +283,8 @@ claude-opus-4-8 (Claude Opus 4.8) — `gds-dev-story`.
 
 | Date | Change |
 |---|---|
-| 2026-06-25 | Story 2.1 implemented (`gds-dev-story`). Net-new `src/Effects/` closed Effect-Graph vocabulary + pre-allocated work-stack `EffectExecutor` (AR-8). 15 source files + 4 Tier-1 test files (+23 tests, all green) + 1-line `SimSources.props` glob add. No `SimChecksum`/golden/`SystemOrderTest` change (AlgoVersion stays 5; 7 goldens byte-identical). Status → review. |
+| 2026-06-25 | Story 2.1 implemented (`gds-dev-story`). Net-new `src/Effects/` closed Effect-Graph vocabulary + pre-allocated work-stack `EffectExecutor` (AR-8). 15 source files + 4 Tier-1 test files (+22 tests, all green) + 1-line `SimSources.props` glob add. No `SimChecksum`/golden/`SystemOrderTest` change (AlgoVersion stays 5; 7 goldens byte-identical). Status → review. |
+| 2026-06-25 | Code review (`gds-code-review`, 3-layer adversarial — Blind/Auditor/Edge on fresh Opus + orchestrator verification — **PASS**; 0 Critical/High, zero desync). **6 patches applied:** `HealEffect` lower-clamp to `[0, MaxHealth]` + corrected the contradicting comment (negative-`Amount` underflow); `EffectExecutor(0)` fail-closed guard before the root push; **+2 test-teeth** (`Array.Sort` ascending negative-control where cell-scan order is descending; `Sequence` authored-order observable at the 0-clamp); `MaximalFanout` peak assertion tightened from a `505≥505` tautology + loose range to an exact self-derived `2*fanout-1` pin; DAR test-count corrected (+22, not +23). **1 decision** (deferred-node load-time gate) resolved **Accept-by-design** → deferred to the 2.3 content-validator; **3 defers + 3 dismissals** recorded (see Review Findings + `deferred-work.md`). Re-verified: Tier-1 **307 pass / 1 skip / 0 fail**, **7 goldens byte-identical** (no checksum moved), full Godot production build **0 errors**. Status → **done**. |
 
 ### File List
 
@@ -312,3 +313,30 @@ claude-opus-4-8 (Claude Opus 4.8) — `gds-dev-story`.
 - `_bmad-output/implementation-artifacts/deferred-work.md` — appended the Story 2.1 deferral section.
 - `_bmad-output/implementation-artifacts/2-1-…-keystone.md` (this file) — frontmatter `baseline_commit`, tasks checked, Dev Agent Record, Status → review.
 - `_bmad-output/implementation-artifacts/sprint-status.yaml` — story status `ready-for-dev` → `in-progress` → `review`.
+
+---
+
+### Review Findings
+
+_Code review 2026-06-25 (`gds-code-review`, 3-layer adversarial on fresh Opus context — Blind Hunter + Acceptance Auditor + Edge Case Hunter — plus independent orchestrator verification). **Verdict: PASS** — 0 Critical, 0 High, **zero determinism/desync defects** (all three layers concur). Independently re-verified: Tier-1 **305 pass / 1 skip / 0 fail**; full Godot production build **0 errors** (7 pre-existing CS8632 warnings, none in Effects); **7 goldens byte-identical**; `SimChecksum.AlgoVersion` stays **5**; scope fences clean (no `SimChecksum.cs`/`SystemOrderTest`/`.golden.txt`/Modifier*/JSON-converter edits). AC1–AC4 all re-derived MET (incl. the `MaxEffectFrames=505` work-stack derivation — correct & tight — and the 40-vs-45 armor-independence proof, `DamageTable` Normal×Heavy=0.50). Findings below are quality/teeth polish, not blockers._
+
+**Decision needed:**
+
+- [x] [Review][Decision→Defer] Load-time `EffectBounds.Validate` accepts deferred-node graphs that `Run` throws on [godot/src/Effects/EffectBounds.cs:81-88, EffectExecutor.cs:113-125] — **RESOLVED 2026-06-25: Accept by-design (Alec).** `EffectBounds` stays the purely-structural (depth/width) gate; node-kind admissibility belongs to the **Story 2.3 content-validator**, which will keep `Persistent`/`ApplyModifier` graphs off the executor. No 2.1 production caller exists (the executor is invoked only from tests), the `NotSupportedException` is the intentional-loud guard the 2.2b dev replaces, and it is deterministic (uniform throw = **no desync**). Deferred to the 2.3 validator; recorded in `deferred-work.md`. (sources: blind+edge)
+
+**Patches:**
+
+- [x] [Review][Patch] `HealEffect` has no lower clamp — a negative `Amount` underflows Health below 0 on a still-alive unit; the doc comment contradicts the code [godot/src/Effects/HealEffect.cs:29] — flagged by 3 independent perspectives. Sibling `DirectHpDeltaEffect` clamps `[0, MaxHealth]`; Heal should match (`Fixed.Clamp(Health+Amount, Zero, MaxHealth)`) and the misleading comment be corrected. (sources: blind+edge+orchestrator)
+- [x] [Review][Patch] AC3 `Array.Sort` ascending-id mechanism has no negative control — both order tests feed inputs already ascending out of the spatial hash (x=1,2,3 same cell, filled ascending-by-id; x=5,15,25,35 created in id-order), so deleting the sort leaves them GREEN [godot/ProjectChimera.Sim.Tests/Effects/EffectExecutorDeterminismTests.cs] — add a test where scan-order ≠ id-order (a high-id entity in a spatially-earlier cell) so the sort is load-bearing (A3 gate-teeth). The reverse-push IS proven with teeth; the sort is not. (source: auditor)
+- [x] [Review][Patch] AC2 `MaximalFanout` stack test asserts a tautology — `MaxEffectFrames >= worstCase` where `worstCase` re-spells the formula that *defines* `MaxEffectFrames` → `505 >= 505`, can't fail; the live peak only reaches 127, never exercising the 505 boundary [godot/ProjectChimera.Sim.Tests/Effects/EffectExecutorBoundsTests.cs:112-138] — assert the live 2-level peak EQUALS the computed 127 to pin the formula↔executor correspondence (the code's 505 is correct & tight; the *test* is what's weak). (source: blind)
+- [x] [Review][Patch] AC4 Sequence-order sub-claim is untested — `Sequence_DirectHpDeltaThenHeal` uses headroom (Health 50, Max 200) so `50−10+25 == 50+25−10 == 65` in either order [godot/ProjectChimera.Sim.Tests/Effects/EffectExecutorEqualExchangeTests.cs:24-42] — add a clamp-boundary case (e.g. Health 5 → delta-then-heal=25 vs heal-then-delta=20) so a reversed Sequence goes RED. (source: auditor)
+- [x] [Review][Patch] `EffectExecutor(0)` throws `IndexOutOfRange` on the initial root push before any capacity check [godot/src/Effects/EffectExecutor.cs:77] — one-line guard (`if (root is null || _stack.Length == 0) return;`) so the fail-closed contract holds for all capacities (internal test-only ctor; not production-reachable). (source: edge)
+- [x] [Review][Patch] Dev Agent Record test-count imprecise — Completion Notes say "+23 new tests" / "was 283 total"; actual is **22** `[Fact]` and baseline **284** total (283 pass + 1 skip) [story DAR Completion Notes] — correct to +22 / 284 baseline total (the `305 / 1 / 306` headline is already right). (source: auditor)
+
+**Deferred (also in `deferred-work.md`):**
+
+- [x] [Review][Defer] `SearchArea` truncates the hit buffer BEFORE the faction filter → enemy fan-out can undercount at >64 in-radius density [godot/src/Effects/SearchAreaEffect.cs:53-72] — deterministic (no desync); a proper fix needs a filtered `QueryRadius` (SpatialHash API change, out of 2.1 scope).
+- [x] [Review][Defer] No total-work/node-count bound — a validated 8-deep all-`SearchArea` graph fanning 64 each = 64⁸ executions [godot/src/Effects/EffectBounds.cs] — AC2 ("never grows beyond the pre-allocated size") is MET (stack peak 505); not creator-reachable until the 2.3 JSON loader. Recommend a `MaxTotalEffectNodes`/execution-budget cap in the 2.3 validator / Epic-9 rulesetHash.
+- [x] [Review][Defer] Zero-alloc test doesn't exercise the lethal (`UnitKilled`-enqueue) or 64-wide fan-out paths [godot/ProjectChimera.Sim.Tests/Effects/EffectExecutorBoundsTests.cs:168-198] — an allocation appearing only at scale or on the death path would pass unnoticed; optional future strengthening.
+
+**Dismissed (3):** `QueryRadius` "dictionary-enumeration → desync" (false positive — `SpatialHash` is a fixed 32×32 array-grid with deterministic dz/dx cell-scan and within-cell ascending-id, no dict); duplicate-id double-apply (false positive — each entity is assigned to exactly one cell, returned ids are unique); `DirectHpDelta` 0-HP-alive (by-design, tested as `DirectHpDelta_OverkillClampsAtZero_WithoutFiringDeath`, documented deviation #4).

@@ -134,5 +134,35 @@ namespace ProjectChimera.Sim.Tests.Effects
             Assert.Equal(1, n); // only the Player2 entity
             Assert.Equal(Faction.Player2, w.FactionOf[buffer[0]]);
         }
+
+        // ── NEGATIVE CONTROL for the ascending-id Array.Sort: scan-order is DESCENDING, only the sort fixes it ─
+
+        [Fact]
+        public void FindTargets_SortsAscending_EvenWhenCellScanOrderIsDescending()
+        {
+            // The two existing order tests feed ids that are ALREADY ascending out of the spatial hash, so the
+            // Array.Sort in FindTargets is inert there. This test arranges the ids so the cell-scan order is
+            // DESCENDING by id — the higher id sits in a spatially-EARLIER cell — making the sort load-bearing.
+            // Delete `Array.Sort` from SearchAreaEffect.FindTargets and this test turns RED (buffer[0] == high).
+            var w = new EntityWorld();
+            int caster = w.Create(FixedVec3.Zero, Faction.Player1, Fixed.FromInt(100), Fixed.FromInt(3)); // id 0, cell cx=16
+            int low = w.Create(At(50), Faction.Player2, Fixed.FromInt(50), Fixed.FromInt(3));   // id 1 at x=+50 → cx=21 (scanned LATER)
+            int high = w.Create(At(-50), Faction.Player2, Fixed.FromInt(50), Fixed.FromInt(3)); // id 2 at x=-50 → cx=11 (scanned EARLIER)
+            var sh = new SpatialHash();
+            sh.Rebuild(w);
+
+            var search = new SearchAreaEffect(Fixed.FromInt(100), TargetFilter.Enemy,
+                                              new DamageEffect(Fixed.One, DamageType.Normal));
+            var buffer = new int[EffectCaps.MaxHitsPerSearch];
+            var ctx = new EffectContext(w, caster, caster, Faction.Player1, DamageTable.Default, sh);
+
+            int n = search.FindTargets(in ctx, buffer);
+
+            // QueryRadius cell-scan yields [high(2), low(1)] (descending); only Array.Sort makes it [low(1), high(2)].
+            Assert.Equal(2, n);
+            Assert.Equal(low, buffer[0]);   // id 1 first — true ONLY because the ascending sort ran
+            Assert.Equal(high, buffer[1]);  // id 2 second
+            Assert.True(buffer[0] < buffer[1]);
+        }
     }
 }

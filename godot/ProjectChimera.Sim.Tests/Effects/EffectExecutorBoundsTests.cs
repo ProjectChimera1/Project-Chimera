@@ -114,8 +114,10 @@ namespace ProjectChimera.Sim.Tests.Effects
             Assert.True(EffectCaps.MaxEffectFrames >= worstCase,
                 $"MaxEffectFrames {EffectCaps.MaxEffectFrames} must cover the static worst case {worstCase}.");
 
-            // Real, observable multi-level fan-out: two nested SearchAreas over MaxSearchTargets co-located
-            // enemies → peak == (2-1)*(64-1)+64 == 127 frames (well within the 505 pre-alloc).
+            // Real, observable multi-level fan-out from two nested SearchAreas over co-located enemies. The
+            // caster sits in the SAME cell as the enemies, so it consumes one of the 64 buffer slots — the
+            // per-search enemy fan-out is therefore data-dependent (63 here, not 64). Rather than hard-code that
+            // subtlety, MEASURE the single-level fan-out and derive the exact 2-level peak from it.
             var w = World();
             int caster = w.Create(FixedVec3.Zero, Faction.Player1, Fixed.FromInt(100), Fixed.FromInt(3));
             for (int i = 0; i < EffectCaps.MaxSearchTargets; i++)
@@ -128,12 +130,25 @@ namespace ProjectChimera.Sim.Tests.Effects
             var outer = new SearchAreaEffect(Fixed.FromInt(10), TargetFilter.Enemy, inner);
             Assert.True(EffectBounds.Validate(outer).IsValid);
 
-            var ex = new EffectExecutor();
             EffectContext ctx = new EffectContext(w, caster, caster, Faction.Player1, DamageTable.Default, sh);
+
+            // One SearchArea from the caster's position fans out to `fanout` targets (all co-located, so the inner
+            // searches — centered on a matched enemy at the same point — match the same set).
+            var probe = new int[EffectCaps.MaxHitsPerSearch];
+            int fanout = inner.FindTargets(in ctx, probe);
+            Assert.True(fanout > 1 && fanout <= EffectCaps.MaxSearchTargets,
+                $"need real multi-level fan-out within the cap; got {fanout}.");
+
+            var ex = new EffectExecutor();
             ex.Run(outer, in ctx);
 
-            Assert.True(ex.LastPeakStackDepth > EffectCaps.MaxSearchTargets,
-                $"expected real multi-level fan-out (> {EffectCaps.MaxSearchTargets}); got peak {ex.LastPeakStackDepth}.");
+            // Pin the EXACT peak, DERIVED (not hard-coded): the outer search pushes `fanout` inner-frames;
+            // popping one and expanding it pushes `fanout` leaf-frames → (fanout-1) un-popped outer siblings +
+            // fanout = 2*fanout-1 simultaneous frames. Pinning the exact value (vs a loose ≤ MaxEffectFrames
+            // range) gives the work-stack derivation real teeth: if the executor ever retained parent frames or
+            // mis-counted, this turns RED. The `MaxEffectFrames >= worstCase` assert above, by contrast, is a
+            // 505≥505 tautology that can never fail.
+            Assert.Equal(2 * fanout - 1, ex.LastPeakStackDepth);
             Assert.True(ex.LastPeakStackDepth <= EffectCaps.MaxEffectFrames,
                 $"peak {ex.LastPeakStackDepth} grew beyond the pre-allocated {EffectCaps.MaxEffectFrames} (AC2 violation).");
         }

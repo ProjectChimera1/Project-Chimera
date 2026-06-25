@@ -71,8 +71,8 @@ namespace ProjectChimera.Effects
         public void Run(EffectNode? root, in EffectContext ctx)
         {
             LastPeakStackDepth = 0;
-            if (root is null)
-                return;
+            if (root is null || _stack.Length == 0)
+                return; // null graph, or a zero-capacity stack (test seam) — fail closed before the root push
 
             _stack[0] = new Frame(root, in ctx, 0);
             int sp = 1;
