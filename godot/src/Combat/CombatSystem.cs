@@ -12,7 +12,15 @@ namespace ProjectChimera.Combat
     ///   Idle         — auto-attack in range; chase globally if no target nearby
     ///   Move         — skip all combat (pure navigation)
     ///   AttackMove   — attack enemies within range; resume toward CommandGoal after kill
-    ///   Stop/Hold    — attack enemies within range; never chase or modify MoveTarget
+    ///   Stop         — attack enemies within range; never chase or modify MoveTarget
+    ///   HoldPosition — like Stop in combat (attack in range, never chase); its DISTINCTION from Stop is the
+    ///                  MovementSystem separation-anchor (a Hold unit is never pushed off its tile) — Story 1.12
+    ///   AttackTarget — force-attack ONE specific enemy (CommandTarget); chase only it, ignoring nearer enemies;
+    ///                  falls back to Idle if that target dies/becomes invalid (Story 1.12)
+    ///   Patrol       — walk an ordered waypoint route, engaging enemies en route like AttackMove, reversing at
+    ///                  both ends (Story 1.12)
+    ///   Follow       — track a friendly (CommandTarget) within a leash; re-path beyond it, idle within; drop to
+    ///                  Idle if the followed unit dies (tracking only — no auto-engage in 1.12) (Story 1.12)
     ///
     /// Gatherers (GatherState != Inactive) are skipped entirely regardless of their
     /// attack damage — auto-combat would hijack the gather loop's MoveTarget.
@@ -69,10 +77,19 @@ namespace ProjectChimera.Combat
                 {
                     if (world.CommandState[i] == UnitCommand.AttackMove ||
                         world.CommandState[i] == UnitCommand.Stop ||
-                        world.CommandState[i] == UnitCommand.HoldPosition)
+                        world.CommandState[i] == UnitCommand.HoldPosition ||
+                        world.CommandState[i] == UnitCommand.AttackTarget ||
+                        world.CommandState[i] == UnitCommand.Patrol ||
+                        world.CommandState[i] == UnitCommand.Follow ||
+                        world.CommandState[i] == UnitCommand.PatrolAppend)
                         world.CommandState[i] = UnitCommand.Idle;
                     continue;
                 }
+                // EDGE (Story 1.12): this zero-damage guard sits BEFORE the command switch, so a zero-damage
+                // non-gatherer is skipped entirely — it therefore cannot Patrol/Follow (both are partly
+                // movement). Acceptable for 1.12: every order is issued to damage-bearing combat units (the
+                // golden + tests use such units). Supporting zero-damage support units patrolling/following is
+                // an Epic-2 concern; do NOT hoist the movement branches above this guard here. Flagged, not built.
                 if (world.AttackDamage[i] == Fixed.Zero) continue; // non-combatant
 
                 switch (world.CommandState[i])
@@ -81,15 +98,30 @@ namespace ProjectChimera.Combat
                         continue; // pure navigation — no combat processing
 
                     case UnitCommand.Stop:
-                    case UnitCommand.HoldPosition:
                         TickStopCombat(world, i, dt);
+                        break;
+
+                    case UnitCommand.HoldPosition:
+                        TickHoldCombat(world, i, dt);
                         break;
 
                     case UnitCommand.AttackMove:
                         TickAttackMoveCombat(world, i, dt);
                         break;
 
-                    default: // Idle
+                    case UnitCommand.AttackTarget:
+                        TickAttackTargetCombat(world, i, dt);
+                        break;
+
+                    case UnitCommand.Patrol:
+                        TickPatrolCombat(world, i, dt);
+                        break;
+
+                    case UnitCommand.Follow:
+                        TickFollowCombat(world, i, dt);
+                        break;
+
+                    default: // Idle (and Build — workers are handled by the gatherer guard above)
                         TickIdleCombat(world, i, dt);
                         break;
                 }
@@ -136,9 +168,20 @@ namespace ProjectChimera.Combat
         }
 
         // ── Stop / Hold Position ──────────────────────────────────────────────────
-        // Attack enemies that enter range; never chase; never move.
+        // Attack enemies that enter range; never chase; never move. Stop and Hold share this combat body —
+        // their ONLY difference is the MovementSystem separation anchor (Story 1.12 AC5b): a Hold unit is
+        // never displaced from its tile, a Stop unit can still be pushed. Two case labels + one shared body.
 
-        private void TickStopCombat(EntityWorld world, int i, Fixed dt)
+        private void TickStopCombat(EntityWorld world, int i, Fixed dt) => TickStationaryCombat(world, i, dt);
+
+        /// <summary>
+        /// Hold Position combat (Story 1.12). Identical to Stop in combat — attack in range, never chase, never
+        /// set a MoveTarget. The distinction from Stop is enforced by the dedicated case label here plus the
+        /// MovementSystem Hold-anchor exemption; do NOT add chase logic.
+        /// </summary>
+        private void TickHoldCombat(EntityWorld world, int i, Fixed dt) => TickStationaryCombat(world, i, dt);
+
+        private void TickStationaryCombat(EntityWorld world, int i, Fixed dt)
         {
             TickCooldown(world, i, dt);
 
@@ -165,6 +208,151 @@ namespace ProjectChimera.Combat
 
             world.Flags[i] = (world.Flags[i] | EntityFlags.Attacking) & ~EntityFlags.Moving;
             TryDealDamage(world, i, target);
+        }
+
+        // ── AttackTarget (Story 1.12) ──────────────────────────────────────────────
+        // Force-attack ONE specific enemy (CommandTarget): path to and chase ONLY it, ignoring nearer enemies.
+        // If that target dies/becomes invalid, clear the slot and fall back to Idle (acquire-nearest) — no
+        // freeze, no per-tick stutter, no dangling id (AC3).
+
+        private void TickAttackTargetCombat(EntityWorld world, int i, Fixed dt)
+        {
+            int forced = world.CommandTarget[i];
+            if (forced < 0 || !world.IsAlive(forced))
+            {
+                // AC3 — forced target gone: clear and resume normal Idle acquire-nearest THIS tick (no freeze).
+                // Delegate cooldown + acquisition to TickIdleCombat (do NOT also tick cooldown here, or it would
+                // decrement twice this tick).
+                world.CommandTarget[i] = -1;
+                world.CommandState[i]  = UnitCommand.Idle;
+                world.AttackTarget[i]  = -1;
+                TickIdleCombat(world, i, dt);
+                return;
+            }
+
+            TickCooldown(world, i, dt);
+
+            // Force-fire: target is exactly the player-issued enemy, regardless of any nearer enemy (the AC2
+            // distinction from Idle's nearest-enemy acquisition).
+            world.AttackTarget[i] = forced;
+
+            Fixed sqrDist  = FixedVec3.SqrDistance(world.Position[i], world.Position[forced]);
+            Fixed sqrRange = world.AttackRange[i] * world.AttackRange[i];
+
+            if (sqrDist > sqrRange)
+            {
+                // Out of range — chase ONLY the forced target (its position moves, so re-aim each tick like Idle-chase).
+                world.MoveTarget[i] = world.Position[forced];
+                world.Flags[i]      = (world.Flags[i] | EntityFlags.Moving) & ~EntityFlags.Attacking;
+                return;
+            }
+
+            world.Flags[i] = (world.Flags[i] | EntityFlags.Attacking) & ~EntityFlags.Moving;
+            TryDealDamage(world, i, forced);
+        }
+
+        // ── Patrol (Story 1.12) ────────────────────────────────────────────────────
+        // Walk an ordered waypoint route, engaging enemies in range exactly like AttackMove, then resuming
+        // toward the current waypoint; advance the route on arrival, reversing at both ends.
+
+        private void TickPatrolCombat(EntityWorld world, int i, Fixed dt)
+        {
+            TickCooldown(world, i, dt);
+
+            int target = ValidateOrClearTarget(world, i);
+            if (target < 0) target = _spatialHash.FindNearestEnemy(world, i);
+            world.AttackTarget[i] = target;
+
+            if (target < 0)
+            {
+                // No enemy in range — resume walking the route.
+                world.Flags[i] &= ~EntityFlags.Attacking;
+                ResumePatrol(world, i);
+                return;
+            }
+
+            Fixed sqrDist  = FixedVec3.SqrDistance(world.Position[i], world.Position[target]);
+            Fixed sqrRange = world.AttackRange[i] * world.AttackRange[i];
+
+            if (sqrDist > sqrRange)
+            {
+                world.AttackTarget[i] = -1;
+                world.Flags[i]       &= ~EntityFlags.Attacking;
+                ResumePatrol(world, i);
+                return;
+            }
+
+            world.Flags[i] = (world.Flags[i] | EntityFlags.Attacking) & ~EntityFlags.Moving;
+            TryDealDamage(world, i, target);
+        }
+
+        /// <summary>
+        /// Steer a Patrol unit toward its current waypoint; on arrival, advance the route index along
+        /// <see cref="EntityWorld.PatrolDir"/>, reversing at either end (the AC's "reverses at the final leg").
+        /// Index/direction arithmetic is pure integer; the arrival test reuses the shared Fixed threshold —
+        /// fully deterministic. A degenerate route (count &lt;= 1) just holds in place.
+        /// </summary>
+        private static void ResumePatrol(EntityWorld world, int id)
+        {
+            int n = world.PatrolCount[id];
+            if (n <= 1)
+            {
+                world.Flags[id] &= ~EntityFlags.Moving; // no real route — hold position
+                return;
+            }
+
+            int baseIdx = id * EntityWorld.MAX_PATROL_WAYPOINTS;
+            int leg     = world.PatrolIndex[id];
+
+            Fixed sqrToWp = FixedVec3.SqrDistance(world.Position[id], world.PatrolWaypoints[baseIdx + leg]);
+            if (sqrToWp <= AMOVE_ARRIVE_SQR)
+            {
+                // Arrived — advance, reversing at either end (top: dir→-1; bottom: dir→+1).
+                int dir  = world.PatrolDir[id];
+                int next = leg + dir;
+                if      (next > n - 1) { dir = -1; next = leg + dir; }
+                else if (next < 0)     { dir =  1; next = leg + dir; }
+                world.PatrolDir[id]   = (sbyte)dir;
+                world.PatrolIndex[id] = (byte)next;
+                leg = next;
+            }
+
+            world.MoveTarget[id] = world.PatrolWaypoints[baseIdx + leg];
+            world.Flags[id]      = (world.Flags[id] | EntityFlags.Moving) & ~EntityFlags.Attacking;
+        }
+
+        // ── Follow (Story 1.12) ────────────────────────────────────────────────────
+        // Track a friendly unit (CommandTarget) within a leash: re-path toward it when beyond the leash, idle
+        // in place within it, drop to Idle if it dies. Tracking only — no auto-engage in 1.12 (per AC).
+
+        /// <summary>Re-path threshold for Follow: stay put within this distance of the followed unit, re-path beyond it.</summary>
+        private static readonly Fixed FOLLOW_LEASH     = Fixed.FromInt(3); // 3 world units (1.12 default tuning)
+        private static readonly Fixed FOLLOW_LEASH_SQR = FOLLOW_LEASH * FOLLOW_LEASH;
+
+        private void TickFollowCombat(EntityWorld world, int i, Fixed dt)
+        {
+            int friendly = world.CommandTarget[i];
+            if (friendly < 0 || !world.IsAlive(friendly))
+            {
+                // Followed unit gone — drop to Idle (AC4b).
+                world.CommandState[i]  = UnitCommand.Idle;
+                world.CommandTarget[i] = -1;
+                world.Flags[i]        &= ~(EntityFlags.Moving | EntityFlags.Attacking);
+                return;
+            }
+
+            Fixed sqrDist = FixedVec3.SqrDistance(world.Position[i], world.Position[friendly]);
+            if (sqrDist > FOLLOW_LEASH_SQR)
+            {
+                // Beyond leash — re-path toward the (moving) friendly each tick.
+                world.MoveTarget[i] = world.Position[friendly];
+                world.Flags[i]      = (world.Flags[i] | EntityFlags.Moving) & ~EntityFlags.Attacking;
+            }
+            else
+            {
+                // Within leash — idle in place.
+                world.Flags[i] &= ~EntityFlags.Moving;
+            }
         }
 
         // ── AttackMove ────────────────────────────────────────────────────────────

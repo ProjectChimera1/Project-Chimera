@@ -83,28 +83,105 @@ namespace ProjectChimera.Sim.Tests.Golden
         }
 
         /// <summary>
-        /// AC1 — pins the v3 algorithm. A hand-built, fully-deterministic world (all <see cref="Fixed"/>; no
+        /// AC1 — pins the v4 algorithm. A hand-built, fully-deterministic world (all <see cref="Fixed"/>; no
         /// FromFloat, no wall-clock; the shared <see cref="SimRng"/> seeded to a fixed known value) must hash to
         /// a committed constant. This is a tripwire: an intentional algorithm change must update BOTH this constant
         /// AND <see cref="SimChecksum.AlgoVersion"/> in the same commit (mirrors the Story 9.1 "known world state →
         /// fixed expected hash" guard). The value was recorded once from a green run; it is byte-identical across
         /// Windows/Linux because every hashed field is Fixed and the RNG seed is an explicit constant.
+        /// (Story 1.12: bumped v3→v4 when CommandTarget + the patrol-route ring were folded in — the known-state
+        /// world leaves them at Create() defaults, so the hash still moves because new mixes are added.)
         /// </summary>
         [Fact]
-        public void KnownWorldState_ProducesPinnedV3Hash()
+        public void KnownWorldState_ProducesPinnedV4Hash()
         {
-            // Algorithm version must be exactly 3 (Story 1.5's SimRng fold). If this fails, the const below is stale.
-            Assert.Equal(3, SimChecksum.AlgoVersion);
+            // Algorithm version must be exactly 4 (Story 1.12's command-vocabulary fold). If this fails, the const below is stale.
+            Assert.Equal(4, SimChecksum.AlgoVersion);
 
             uint actual = ComputeKnownStateHash();
 
-            // ── Pinned v3 hash for the fixed world built by ComputeKnownStateHash() ───────────────────────────
+            // ── Pinned v4 hash for the fixed world built by ComputeKnownStateHash() ───────────────────────────
             // An intentional SimChecksum algorithm change must update this value AND bump SimChecksum.AlgoVersion.
-            const uint ExpectedV3Hash = 0x8C96EC08; // recorded from a green v3 run; re-pin only on an intentional algo change
-            Assert.True(actual == ExpectedV3Hash,
-                $"Known-state v3 checksum changed: expected 0x{ExpectedV3Hash:X8}, actual 0x{actual:X8}. " +
-                $"If this is an INTENTIONAL algorithm change, re-pin ExpectedV3Hash to 0x{actual:X8} and bump " +
+            const uint ExpectedV4Hash = 0x964FF9F8; // recorded from a green v4 run; re-pin only on an intentional algo change
+            Assert.True(actual == ExpectedV4Hash,
+                $"Known-state v4 checksum changed: expected 0x{ExpectedV4Hash:X8}, actual 0x{actual:X8}. " +
+                $"If this is an INTENTIONAL algorithm change, re-pin ExpectedV4Hash to 0x{actual:X8} and bump " +
                 $"SimChecksum.AlgoVersion. If not, you broke the deterministic checksum — investigate.");
+        }
+
+        /// <summary>
+        /// AC6c (Story 1.12) — the EntityWorld analogue of the ResourceStore coverage guard above: prove the new
+        /// v4 command fields are ACTUALLY folded into the checksum. Mutating CommandTarget, or a PatrolWaypoints
+        /// slot / PatrolCount / PatrolIndex / PatrolDir on a live entity, MUST move <see cref="SimChecksum.Compute"/>.
+        /// A no-move means a field escaped the hash — a silent desync surface. (PatrolWaypoints is count-driven, so
+        /// the route must have PatrolCount &gt; 0 for its slots to be read.)
+        /// </summary>
+        [Fact]
+        public void EntityCommandFields_AreFoldedIntoTheChecksum()
+        {
+            var registry  = new FactionRegistry(2);
+            var buildings = new BuildingStore();
+            var resources = new ResourceStore(Fixed.Zero);
+
+            // CommandTarget folded.
+            AssertFieldFoldedIntoChecksum(buildings, resources, registry, w =>
+            {
+                int e = w.Create(new FixedVec3(Fixed.FromInt(1), Fixed.Zero, Fixed.FromInt(2)),
+                                 Faction.Player1, Fixed.FromInt(10), Fixed.FromInt(3));
+                return () => w.CommandTarget[e] = 5;
+            });
+
+            // PatrolCount folded.
+            AssertFieldFoldedIntoChecksum(buildings, resources, registry, w =>
+            {
+                int e = w.Create(new FixedVec3(Fixed.FromInt(1), Fixed.Zero, Fixed.FromInt(2)),
+                                 Faction.Player1, Fixed.FromInt(10), Fixed.FromInt(3));
+                return () => w.PatrolCount[e] = 3;
+            });
+
+            // PatrolIndex folded.
+            AssertFieldFoldedIntoChecksum(buildings, resources, registry, w =>
+            {
+                int e = w.Create(new FixedVec3(Fixed.FromInt(1), Fixed.Zero, Fixed.FromInt(2)),
+                                 Faction.Player1, Fixed.FromInt(10), Fixed.FromInt(3));
+                return () => w.PatrolIndex[e] = 2;
+            });
+
+            // PatrolDir folded.
+            AssertFieldFoldedIntoChecksum(buildings, resources, registry, w =>
+            {
+                int e = w.Create(new FixedVec3(Fixed.FromInt(1), Fixed.Zero, Fixed.FromInt(2)),
+                                 Faction.Player1, Fixed.FromInt(10), Fixed.FromInt(3));
+                return () => w.PatrolDir[e] = -1;
+            });
+
+            // PatrolWaypoints folded (count-driven — set PatrolCount > 0 first so the slot is read).
+            AssertFieldFoldedIntoChecksum(buildings, resources, registry, w =>
+            {
+                int e = w.Create(new FixedVec3(Fixed.FromInt(1), Fixed.Zero, Fixed.FromInt(2)),
+                                 Faction.Player1, Fixed.FromInt(10), Fixed.FromInt(3));
+                w.PatrolCount[e] = 2; // make the first 2 waypoint slots part of the hashed set
+                return () => w.PatrolWaypoints[e * EntityWorld.MAX_PATROL_WAYPOINTS + 1] =
+                    new FixedVec3(Fixed.FromInt(9), Fixed.Zero, Fixed.FromInt(9));
+            });
+        }
+
+        /// <summary>
+        /// Build a fresh world via <paramref name="setup"/> (which returns a mutation thunk), checksum before,
+        /// run the mutation, checksum after, and assert the hash moved. Buildings/resources/registry are shared
+        /// constants so only the EntityWorld field under test varies.
+        /// </summary>
+        private static void AssertFieldFoldedIntoChecksum(BuildingStore buildings, ResourceStore resources,
+            FactionRegistry registry, System.Func<EntityWorld, System.Action> setup)
+        {
+            var world = new EntityWorld();
+            System.Action mutate = setup(world);
+            uint before = SimChecksum.Compute(world, buildings, resources, registry);
+            mutate();
+            uint after = SimChecksum.Compute(world, buildings, resources, registry);
+            Assert.True(before != after,
+                "A v4 EntityWorld command field is NOT folded into SimChecksum: mutating it left the checksum " +
+                "unchanged. Add it to the entity loop in SimChecksum.Compute (and bump AlgoVersion).");
         }
 
         /// <summary>

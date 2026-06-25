@@ -40,6 +40,17 @@ namespace ProjectChimera.Navigation
             {
                 if ((world.Flags[i] & EntityFlags.Alive) == 0) continue;
 
+                // Story 1.12 (AC5b) — Hold Position anchor: a HoldPosition unit is NEVER displaced from its
+                // tile by separation/collision steering. This is the REAL distinction from Stop (which still
+                // gets pushed). Zero its velocity and skip seek+separation entirely; the unit stays in the
+                // spatial hash, so neighbours still see it and steer AROUND it — only its OWN position is
+                // anchored. (DG-1: Hold no longer aliases Stop.) Stop is deliberately NOT exempted.
+                if (world.CommandState[i] == UnitCommand.HoldPosition)
+                {
+                    world.Velocity[i] = FixedVec3.Zero;
+                    continue;
+                }
+
                 FixedVec3 pos = world.Position[i];
                 bool isMoving = (world.Flags[i] & EntityFlags.Moving) != 0;
 

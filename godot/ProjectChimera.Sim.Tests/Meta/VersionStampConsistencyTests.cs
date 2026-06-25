@@ -44,8 +44,9 @@ namespace ProjectChimera.Sim.Tests.Meta
         // ── The pinned registry (expected current values). An INTENTIONAL bump edits the constant HERE, in the
         //    same commit as the source change — that edit is the "did the siblings + goldens move too?" checkpoint.
 
-        /// <summary>Runtime desync-checksum algorithm version. Bump ⇒ re-baseline ALL goldens (same commit).</summary>
-        private const int ExpectedSimChecksumAlgoVersion = 3;
+        /// <summary>Runtime desync-checksum algorithm version. Bump ⇒ re-baseline ALL goldens (same commit).
+        /// v4 (Story 1.12): folded CommandTarget + the patrol-route ring (full RTS command vocabulary).</summary>
+        private const int ExpectedSimChecksumAlgoVersion = 4;
 
         /// <summary>Load-time canonical start-state hash algorithm version (lobby handshake value).</summary>
         private const int ExpectedCanonicalModelHashAlgoVersion = 2;

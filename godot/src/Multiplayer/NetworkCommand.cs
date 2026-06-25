@@ -1,3 +1,4 @@
+#nullable enable
 using System;
 using System.Runtime.InteropServices;
 using ProjectChimera.Core;
@@ -88,6 +89,139 @@ namespace ProjectChimera.Multiplayer
         }
 
         public const int SIZE = 11; // bytes on the wire
+    }
+
+    // ── OrderApplier (the SINGLE deterministic command→world step) ──────────────
+
+    /// <summary>
+    /// Applies one <see cref="UnitOrder"/> to the <see cref="EntityWorld"/> — the deterministic command→world
+    /// step shared verbatim by BOTH apply paths (<c>LockstepManager.ApplyOrders</c> live and
+    /// <c>ReplayPlayer.ApplyOrders</c> on playback). Story 1.12 extracted this from the two formerly-duplicated
+    /// switches so they can NEVER diverge: a command handled in one path but not the other is a guaranteed
+    /// replay-vs-live desync (AR-17 / the epic's #1 trap), and that whole class of bug is now structurally
+    /// impossible — there is exactly one switch.
+    ///
+    /// Godot-free (System.* + Core only), so it compiles into the Tier-1 test assembly and the parity is unit-
+    /// testable directly (CommandApplyParityTests). The path-request delegates are PRESENTATION hooks (flow-field
+    /// smoothing wired by MainScene) — null in the headless/golden/replay paths; the deterministic sim truth is
+    /// always the MoveTarget + Moving/Attacking flags and the SoA fields set here.
+    /// </summary>
+    public static class OrderApplier
+    {
+        /// <summary>
+        /// Apply <paramref name="o"/> to <paramref name="world"/> for the unit it names. No-ops if that unit is
+        /// dead or not owned by <paramref name="expectedFaction"/> (the anti-cheat guard both paths share).
+        /// </summary>
+        public static void Apply(EntityWorld world, in UnitOrder o, Faction expectedFaction,
+            Action<int, float, float>? onRequestPath = null,
+            Action<int, float, float>? onRequestAttackMove = null,
+            Action<int>? onCancelPath = null)
+        {
+            int id = o.UnitId;
+            if (!world.IsAlive(id)) return;
+            if (world.FactionOf[id] != expectedFaction) return; // anti-cheat: only command your own units
+
+            world.CommandState[id] = o.Command;
+
+            switch (o.Command)
+            {
+                case UnitCommand.Move:
+                {
+                    var target = new FixedVec3(Fixed.FromRaw(o.TargetX), Fixed.Zero, Fixed.FromRaw(o.TargetZ));
+                    world.CommandGoal[id]  = target;
+                    world.MoveTarget[id]   = target;
+                    world.Flags[id]        = (world.Flags[id] | EntityFlags.Moving) & ~EntityFlags.Attacking;
+                    world.AttackTarget[id] = -1;
+                    onRequestPath?.Invoke(id, Fixed.FromRaw(o.TargetX).ToFloat(), Fixed.FromRaw(o.TargetZ).ToFloat());
+                    break;
+                }
+                case UnitCommand.AttackMove:
+                {
+                    var target = new FixedVec3(Fixed.FromRaw(o.TargetX), Fixed.Zero, Fixed.FromRaw(o.TargetZ));
+                    world.CommandGoal[id]  = target;
+                    world.MoveTarget[id]   = target;
+                    world.Flags[id]        = (world.Flags[id] | EntityFlags.Moving) & ~EntityFlags.Attacking;
+                    world.AttackTarget[id] = -1;
+                    onRequestAttackMove?.Invoke(id, Fixed.FromRaw(o.TargetX).ToFloat(), Fixed.FromRaw(o.TargetZ).ToFloat());
+                    break;
+                }
+                case UnitCommand.Stop:
+                case UnitCommand.HoldPosition:
+                {
+                    world.Flags[id]        = world.Flags[id] & ~(EntityFlags.Moving | EntityFlags.Attacking);
+                    world.AttackTarget[id] = -1;
+                    onCancelPath?.Invoke(id);
+                    break;
+                }
+                case UnitCommand.AttackTarget:
+                {
+                    // The forced enemy id rides in TargetX as a RAW int (Fixed.FromRaw at issue time) — read it
+                    // back directly, never via .ToFloat() (that path is float and would corrupt the id). Seed the
+                    // transient AttackTarget too; CombatSystem.TickAttackTargetCombat drives MoveTarget each tick
+                    // (the target moves), so we do NOT request a one-shot path here.
+                    world.CommandTarget[id] = o.TargetX;
+                    world.AttackTarget[id]  = o.TargetX;
+                    world.Flags[id]        &= ~EntityFlags.Attacking;
+                    break;
+                }
+                case UnitCommand.Follow:
+                {
+                    // Friendly id packed in TargetX as a raw int. CombatSystem.TickFollowCombat drives movement.
+                    world.CommandTarget[id] = o.TargetX;
+                    world.Flags[id]        &= ~EntityFlags.Attacking;
+                    break;
+                }
+                case UnitCommand.Patrol:
+                {
+                    // START a fresh route: leg 0 = current position (the return anchor), leg 1 = the clicked
+                    // point. PatrolIndex=1 heads toward the clicked point first; dir=+1. (N=2 is the classic
+                    // ping-pong.) TargetX/TargetZ are a Fixed.Raw ground point, exactly like Move.
+                    int baseIdx = id * EntityWorld.MAX_PATROL_WAYPOINTS;
+                    var clicked = new FixedVec3(Fixed.FromRaw(o.TargetX), Fixed.Zero, Fixed.FromRaw(o.TargetZ));
+                    world.PatrolWaypoints[baseIdx + 0] = world.Position[id];
+                    world.PatrolWaypoints[baseIdx + 1] = clicked;
+                    world.PatrolCount[id]  = 2;
+                    world.PatrolIndex[id]  = 1;
+                    world.PatrolDir[id]    = 1;
+                    world.CommandGoal[id]  = clicked;
+                    world.MoveTarget[id]   = clicked;
+                    world.Flags[id]        = (world.Flags[id] | EntityFlags.Moving) & ~EntityFlags.Attacking;
+                    world.AttackTarget[id] = -1;
+                    break;
+                }
+                case UnitCommand.PatrolAppend:
+                {
+                    // APPEND a waypoint to the far end of an existing route, WITHOUT disturbing the current leg
+                    // (PatrolIndex/MoveTarget untouched). If not already patrolling, behave like a fresh Patrol.
+                    // Appends past the cap are silently ignored (deterministic no-op). Then force CommandState
+                    // back to Patrol (overriding the o.Command set above) so CombatSystem never sees PatrolAppend.
+                    int baseIdx = id * EntityWorld.MAX_PATROL_WAYPOINTS;
+                    var clicked = new FixedVec3(Fixed.FromRaw(o.TargetX), Fixed.Zero, Fixed.FromRaw(o.TargetZ));
+                    int n = world.PatrolCount[id];
+                    if (n >= 2 && n < EntityWorld.MAX_PATROL_WAYPOINTS)
+                    {
+                        world.PatrolWaypoints[baseIdx + n] = clicked;
+                        world.PatrolCount[id]              = (byte)(n + 1);
+                    }
+                    else if (n < 2)
+                    {
+                        // Not already patrolling → fresh route, identical to the Patrol case.
+                        world.PatrolWaypoints[baseIdx + 0] = world.Position[id];
+                        world.PatrolWaypoints[baseIdx + 1] = clicked;
+                        world.PatrolCount[id]  = 2;
+                        world.PatrolIndex[id]  = 1;
+                        world.PatrolDir[id]    = 1;
+                        world.CommandGoal[id]  = clicked;
+                        world.MoveTarget[id]   = clicked;
+                        world.Flags[id]        = (world.Flags[id] | EntityFlags.Moving) & ~EntityFlags.Attacking;
+                        world.AttackTarget[id] = -1;
+                    }
+                    // else: route is full — silently ignore the extra waypoint.
+                    world.CommandState[id] = UnitCommand.Patrol;
+                    break;
+                }
+            }
+        }
     }
 
     // ── TickCommandPacket ──────────────────────────────────────────────────────

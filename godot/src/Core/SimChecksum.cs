@@ -12,6 +12,8 @@ namespace ProjectChimera.Core
     ///   - ResourceStore: Ore, Crystal, SupplyUsed, SupplyCap, FactionBase for each active
     ///     faction (via FactionRegistry, ascending)
     ///   - SimRng: the shared generator's 64-bit State (low 32 bits then high 32 bits) — added v3 (Story 1.5)
+    ///   - EntityWorld command state: per alive entity, CommandTarget + the patrol-route ring (PatrolCount,
+    ///     PatrolIndex, PatrolDir, then count-driven PatrolWaypoints X/Y/Z) — added v4 (Story 1.12)
     ///
     /// Versioned by <see cref="AlgoVersion"/> — bump on any change to the hashed set/order
     /// (forces an intentional golden re-baseline). MatchStats is deliberately NOT hashed
@@ -33,8 +35,10 @@ namespace ProjectChimera.Core
         ///   v1 — implicit, pre-1.3b: Ore only, per active faction (Stories 1.1–1.3a).
         ///   v2 — Story 1.3b: full per-faction coverage (Ore, Crystal, SupplyUsed, SupplyCap, FactionBase).
         ///   v3 — Story 1.5: fold the shared SimRng.State (low then high 32 bits) so a divergent RNG stream desyncs.
+        ///   v4 — Story 1.12: fold per-entity CommandTarget + the patrol-route ring (PatrolCount/Index/Dir +
+        ///        count-driven PatrolWaypoints) so the full RTS command vocabulary is hashed sim truth.
         /// </summary>
-        public const int AlgoVersion = 3;
+        public const int AlgoVersion = 4;
 
         /// <summary>
         /// Compute a full-state checksum for desync detection.
@@ -59,6 +63,23 @@ namespace ProjectChimera.Core
                 hash = Mix(hash, world.Position[i].Y.Raw);
                 hash = Mix(hash, world.Position[i].Z.Raw);
                 hash = Mix(hash, world.Health[i].Raw);
+
+                // ── Command state (v4, Story 1.12) ────────────────────────────────
+                // The full RTS command vocabulary's persistent per-entity state IS sim truth: a peer divergence
+                // in a forced/follow target or a patrol route must desync detectably. Count-driven + ascending,
+                // all int / Fixed.Raw → cross-platform safe (this golden MAY join the Win↔Linux gate, unlike AI).
+                hash = Mix(hash, world.CommandTarget[i]);
+                hash = Mix(hash, world.PatrolCount[i]);
+                hash = Mix(hash, world.PatrolIndex[i]);
+                hash = Mix(hash, world.PatrolDir[i]);
+                int wpBase  = i * EntityWorld.MAX_PATROL_WAYPOINTS;
+                int wpCount = world.PatrolCount[i];
+                for (int k = 0; k < wpCount; k++)
+                {
+                    hash = Mix(hash, world.PatrolWaypoints[wpBase + k].X.Raw);
+                    hash = Mix(hash, world.PatrolWaypoints[wpBase + k].Y.Raw);
+                    hash = Mix(hash, world.PatrolWaypoints[wpBase + k].Z.Raw);
+                }
             }
 
             // ── Building state ────────────────────────────────────────────────────

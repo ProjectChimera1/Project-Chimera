@@ -12,8 +12,11 @@ namespace ProjectChimera.UI
     /// Play mode input:
     ///   Left-click         — click-select nearest unit
     ///   Left-drag          — box-select all units inside the drawn rectangle
-    ///   Right-click        — move all selected units to the clicked ground point
+    ///   Right-click        — on an ENEMY: single-target Attack (force-fire); on ground/friendly: move (Story 1.12)
     ///   Q + Left-click     — attack-move to click destination (engage enemies en route)
+    ///   P + Left-click     — patrol to the clicked waypoint; hold Shift and click to add more waypoints (Story 1.12)
+    ///   F + Left-click     — follow (escort) the clicked friendly unit (Story 1.12)
+    ///   S / H              — stop / hold position (H is a TRUE hold — defends its tile, never displaced; Story 1.12)
     ///   Ctrl+1–9           — assign current selection to control group N
     ///   1–9                — recall control group N (replaces current selection)
     ///   Escape             — deselect all
@@ -92,6 +95,11 @@ namespace ProjectChimera.UI
         /// <summary>True when the player has pressed Q and we're waiting for a click destination.</summary>
         private bool _awaitingAttackMoveClick;
 
+        /// <summary>True after P: the next left-click places a patrol waypoint; Shift+click keeps it armed for more (Story 1.12).</summary>
+        private bool _awaitingPatrolClick;
+        /// <summary>True after F: the next left-click picks a friendly unit to follow (Story 1.12).</summary>
+        private bool _awaitingFollowClick;
+
         /// <summary>
         /// Optional lockstep coordinator. When set (online mode), all player commands
         /// are queued here instead of applied directly to EntityWorld. When null (offline),
@@ -150,6 +158,14 @@ namespace ProjectChimera.UI
         private bool EnqueueStationary(int unitId, UnitCommand cmd)
             => _lockstep?.EnqueueOrder(unitId, cmd, Fixed.Zero, Fixed.Zero) ?? true;
 
+        /// <summary>
+        /// Route a targeted command (AttackTarget/Follow): packs the TARGET ENTITY id into TargetX as a RAW int
+        /// via Fixed.FromRaw — NEVER Fixed.FromFloat, which would round the id through float and corrupt it
+        /// (and break determinism). Read back at apply time as o.TargetX. Story 1.12.
+        /// </summary>
+        private bool EnqueueTargetedCommand(int unitId, UnitCommand cmd, int targetEntityId)
+            => _lockstep?.EnqueueOrder(unitId, cmd, Fixed.FromRaw(targetEntityId), Fixed.Zero) ?? true;
+
         public override void _Ready()
         {
             SetupRings();
@@ -188,6 +204,29 @@ namespace ProjectChimera.UI
                         return;
                     }
 
+                    // Patrol pending (Story 1.12): place a waypoint. Shift keeps the placement armed, so
+                    // P, click, shift-click, shift-click… builds a multi-waypoint route; a plain click disarms.
+                    if (_awaitingPatrolClick)
+                    {
+                        IssuePatrolCommand(lmb.Position, append: lmb.ShiftPressed);
+                        if (!lmb.ShiftPressed) _awaitingPatrolClick = false;
+                        GetViewport().SetInputAsHandled();
+                        return;
+                    }
+
+                    // Follow pending (Story 1.12): pick a friendly unit under the cursor to escort.
+                    if (_awaitingFollowClick)
+                    {
+                        if (RaycastGround(lmb.Position, out Vector3 fHit))
+                        {
+                            int friendlyId = FindNearestUnit(fHit, PICK_RADIUS); // Player1-only = friendly
+                            if (friendlyId >= 0) IssueFollowCommand(friendlyId);
+                        }
+                        _awaitingFollowClick = false;
+                        GetViewport().SetInputAsHandled();
+                        return;
+                    }
+
                     _lmbHeld     = true;
                     _isDragging  = false;
                     _dragStart   = lmb.Position;
@@ -220,7 +259,14 @@ namespace ProjectChimera.UI
                 && rmb.Pressed)
             {
                 if (_selectedSet.Count > 0)
-                    IssueMoveCommand(rmb.Position);
+                {
+                    // Story 1.12: right-click an ENEMY → single-target Attack (force-fire); ground/friendly → Move.
+                    int enemyId = RaycastGround(rmb.Position, out Vector3 hit)
+                        ? FindNearestEnemyUnit(hit, PICK_RADIUS)
+                        : -1;
+                    if (enemyId >= 0) IssueAttackTargetCommand(enemyId);
+                    else              IssueMoveCommand(rmb.Position);
+                }
                 else if (SelectedBuildingId >= 0 && _buildingStore != null)
                     SetRallyPoint(SelectedBuildingId, rmb.Position);
             }
@@ -247,11 +293,24 @@ namespace ProjectChimera.UI
                 else if (key.Keycode == Key.Q && _selectedSet.Count > 0)
                 {
                     _awaitingAttackMoveClick = true;
+                    _awaitingPatrolClick = false; _awaitingFollowClick = false;
                     GD.Print("[Selection] Attack-Move: click a destination.");
+                }
+                else if (key.Keycode == Key.P && _selectedSet.Count > 0)
+                {
+                    _awaitingPatrolClick = true;
+                    _awaitingAttackMoveClick = false; _awaitingFollowClick = false;
+                    GD.Print("[Selection] Patrol: click a waypoint (hold Shift and click to add more).");
+                }
+                else if (key.Keycode == Key.F && _selectedSet.Count > 0)
+                {
+                    _awaitingFollowClick = true;
+                    _awaitingAttackMoveClick = false; _awaitingPatrolClick = false;
+                    GD.Print("[Selection] Follow: click a friendly unit to escort.");
                 }
                 else if (key.Keycode == Key.Escape)
                 {
-                    _awaitingAttackMoveClick = false;
+                    _awaitingAttackMoveClick = false; _awaitingPatrolClick = false; _awaitingFollowClick = false;
                     ClearSelection();
                 }
             }
@@ -458,6 +517,65 @@ namespace ProjectChimera.UI
         }
 
         /// <summary>
+        /// Single-target Attack (Story 1.12): force every selected unit to attack ONE specific enemy, chasing
+        /// only it and ignoring nearer enemies. Issued by right-clicking an enemy unit.
+        /// </summary>
+        private void IssueAttackTargetCommand(int enemyId)
+        {
+            foreach (int id in _selectedList)
+            {
+                if (!_world.IsAlive(id)) continue;
+                if (!EnqueueTargetedCommand(id, UnitCommand.AttackTarget, enemyId)) continue; // online: queued
+                // Offline: apply now (mirrors IssueStopCommand's offline/online split).
+                _world.CommandState[id]  = UnitCommand.AttackTarget;
+                _world.CommandTarget[id] = enemyId;
+                _world.AttackTarget[id]  = enemyId;
+                _world.Flags[id]        &= ~EntityFlags.Attacking;
+            }
+            GD.Print($"[Selection] Attack issued on enemy {enemyId} to {_selectedList.Count} unit(s).");
+        }
+
+        /// <summary>
+        /// Patrol (Story 1.12): a plain click starts a fresh route [current position, clicked point]; each
+        /// subsequent Shift+click appends a waypoint (PatrolAppend) up to MAX_PATROL_WAYPOINTS. Single
+        /// destination — NO formation grid here (that is Story 1.13). The offline path applies through the SAME
+        /// OrderApplier the lockstep/replay paths use, so patrol route setup is never duplicated in presentation.
+        /// </summary>
+        private void IssuePatrolCommand(Vector2 screenPos, bool append)
+        {
+            if (!RaycastGround(screenPos, out Vector3 target)) return;
+            target.Y = 0f;
+
+            UnitCommand cmd = append ? UnitCommand.PatrolAppend : UnitCommand.Patrol;
+            foreach (int id in _selectedList)
+            {
+                if (!_world.IsAlive(id)) continue;
+                var dest = new Vector3(target.X, 0f, target.Z);
+                if (!EnqueueCommand(id, cmd, dest)) continue; // online: queued (applied later by Flush)
+                var order = new UnitOrder(id, cmd, Fixed.FromFloat(dest.X), Fixed.FromFloat(dest.Z));
+                OrderApplier.Apply(_world, in order, _world.FactionOf[id]);
+            }
+            GD.Print($"[Selection] Patrol ({(append ? "append" : "new")}) issued to {_selectedList.Count} unit(s).");
+        }
+
+        /// <summary>
+        /// Follow (Story 1.12): every selected unit escorts the clicked friendly unit, tracking it within a leash.
+        /// </summary>
+        private void IssueFollowCommand(int friendlyId)
+        {
+            foreach (int id in _selectedList)
+            {
+                if (!_world.IsAlive(id)) continue;
+                if (id == friendlyId) continue; // a unit cannot follow itself
+                if (!EnqueueTargetedCommand(id, UnitCommand.Follow, friendlyId)) continue; // online: queued
+                _world.CommandState[id]  = UnitCommand.Follow;
+                _world.CommandTarget[id] = friendlyId;
+                _world.Flags[id]        &= ~EntityFlags.Attacking;
+            }
+            GD.Print($"[Selection] Follow issued on friendly {friendlyId} to {_selectedList.Count} unit(s).");
+        }
+
+        /// <summary>
         /// Set the rally point for a building to the world position the player right-clicked.
         /// Newly trained units from this building will walk to this point on spawn.
         /// </summary>
@@ -502,6 +620,30 @@ namespace ProjectChimera.UI
             {
                 if (!_world.IsAlive(i)) continue;
                 if (_world.FactionOf[i] != Faction.Player1) continue; // only select own units
+                var pos = _world.Position[i];
+                float dx = pos.X.ToFloat() - worldHit.X;
+                float dz = pos.Z.ToFloat() - worldHit.Z;
+                float sqDist = dx * dx + dz * dz;
+                if (sqDist < bestSqDist) { bestSqDist = sqDist; bestId = i; }
+            }
+            return bestId;
+        }
+
+        /// <summary>
+        /// Nearest ENEMY unit to the world hit within radius (Story 1.12). Enemy = alive and neither Player1
+        /// (the local player) nor Neutral. Mirror of <see cref="FindNearestUnit"/>, which finds Player1-only.
+        /// </summary>
+        private int FindNearestEnemyUnit(Vector3 worldHit, float radius)
+        {
+            int   bestId     = -1;
+            float bestSqDist = radius * radius;
+            int   cap        = _world.HighWaterMark;
+
+            for (int i = 0; i < cap; i++)
+            {
+                if (!_world.IsAlive(i)) continue;
+                Faction f = _world.FactionOf[i];
+                if (f == Faction.Player1 || f == Faction.Neutral) continue; // enemy = not me, not neutral
                 var pos = _world.Position[i];
                 float dx = pos.X.ToFloat() - worldHit.X;
                 float dz = pos.Z.ToFloat() - worldHit.Z;

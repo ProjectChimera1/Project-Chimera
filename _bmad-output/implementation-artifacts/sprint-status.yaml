@@ -60,7 +60,7 @@ development_status:
   1-10b-banned-api-aot-eligibility-analyzers-over-the-sim-layer: done
   1-10c-cross-platform-windows-linux-golden-checksum-gate-via-wsl: done
   1-11-smoke-test-the-four-unverified-systems-utility-ai-adaptive-input-delay-llm-trigger-ai-map-generator: done
-  1-12-full-rts-command-vocabulary-single-target-attack-patrol-follow-hold-distinct-from-stop: ready-for-dev
+  1-12-full-rts-command-vocabulary-single-target-attack-patrol-follow-hold-distinct-from-stop: review
   1-13-formation-movement-priority-yielding-role-based-battle-formations-push-yield-data-fields: backlog
   epic-1-retrospective: optional
   epic-2: backlog

@@ -649,54 +649,13 @@ namespace ProjectChimera.Multiplayer
 
         private void ApplyOrders(UnitOrder[] buf, int baseIdx, int count, Faction expectedFaction)
         {
+            // Story 1.12: the per-order command→world step is the SHARED OrderApplier.Apply (in NetworkCommand.cs),
+            // used VERBATIM by both this live path and ReplayPlayer.ApplyOrders — so the two can never diverge
+            // (AR-17; the epic's #1 replay-vs-live desync trap is now structurally impossible). The path-request
+            // delegates are this manager's presentation hooks (wired by MainScene; null in headless/tests).
             for (int i = 0; i < count; i++)
-            {
-                var o  = buf[baseIdx + i];
-                int id = o.UnitId;
-                if (!_world.IsAlive(id)) continue;
-                if (_world.FactionOf[id] != expectedFaction) continue; // anti-cheat
-
-                _world.CommandState[id] = o.Command;
-
-                switch (o.Command)
-                {
-                    case UnitCommand.Move:
-                    {
-                        var target = new FixedVec3(Fixed.FromRaw(o.TargetX), Fixed.Zero,
-                                                   Fixed.FromRaw(o.TargetZ));
-                        _world.CommandGoal[id]  = target;
-                        _world.MoveTarget[id]   = target;
-                        _world.Flags[id]        = (_world.Flags[id] | EntityFlags.Moving)
-                                                  & ~EntityFlags.Attacking;
-                        _world.AttackTarget[id] = -1;
-                        OnRequestPath?.Invoke(id, Fixed.FromRaw(o.TargetX).ToFloat(),
-                                                  Fixed.FromRaw(o.TargetZ).ToFloat());
-                        break;
-                    }
-                    case UnitCommand.AttackMove:
-                    {
-                        var target = new FixedVec3(Fixed.FromRaw(o.TargetX), Fixed.Zero,
-                                                   Fixed.FromRaw(o.TargetZ));
-                        _world.CommandGoal[id]  = target;
-                        _world.MoveTarget[id]   = target;
-                        _world.Flags[id]        = (_world.Flags[id] | EntityFlags.Moving)
-                                                  & ~EntityFlags.Attacking;
-                        _world.AttackTarget[id] = -1;
-                        OnRequestAttackMove?.Invoke(id, Fixed.FromRaw(o.TargetX).ToFloat(),
-                                                        Fixed.FromRaw(o.TargetZ).ToFloat());
-                        break;
-                    }
-                    case UnitCommand.Stop:
-                    case UnitCommand.HoldPosition:
-                    {
-                        _world.Flags[id]        = _world.Flags[id]
-                                                  & ~(EntityFlags.Moving | EntityFlags.Attacking);
-                        _world.AttackTarget[id] = -1;
-                        OnCancelPath?.Invoke(id);
-                        break;
-                    }
-                }
-            }
+                OrderApplier.Apply(_world, in buf[baseIdx + i], expectedFaction,
+                    OnRequestPath, OnRequestAttackMove, OnCancelPath);
         }
     }
 }

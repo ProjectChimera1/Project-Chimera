@@ -12,9 +12,14 @@ namespace ProjectChimera.Core
         Idle         = 0, // Auto-attack nearest enemy; chase globally if none in range
         Move         = 1, // Navigate to destination; ignore enemies en route
         AttackMove   = 2, // Navigate to destination; attack enemies encountered in range; resume after kill
-        Stop         = 3, // Stand still; attack enemies that enter range; never chase
-        HoldPosition = 4, // Same as Stop (Phase 1); reserved for stricter non-bumping in future
+        Stop         = 3, // Stand still; attack enemies that enter range; never chase. CAN be displaced by separation steering.
+        HoldPosition = 4, // Hold ground: attack in range but NEVER chase/set MoveTarget, AND never be displaced by separation — a TRUE hold, distinct from Stop (Story 1.12).
         Build        = 5, // Worker walking to a build site; GatheringSystem skips this worker
+        // ── Story 1.12 (DG-1 / FR-53): appended AFTER Build. Values 0–5 are FROZEN for replay back-compat. ──
+        AttackTarget = 6, // Force-attack ONE specific enemy (CommandTarget); path to and chase only it, ignoring nearer enemies.
+        Patrol       = 7, // Walk an ordered waypoint route (PatrolWaypoints ring), engaging enemies en route, reversing at both ends.
+        Follow       = 8, // Track a friendly unit (CommandTarget) within a leash; re-path when beyond it, idle within it.
+        PatrolAppend = 9, // WIRE-ONLY: append a waypoint to the patrol route, then rewritten to Patrol on apply (CombatSystem never sees it).
     }
 
     /// <summary>
@@ -60,6 +65,14 @@ namespace ProjectChimera.Core
     public class EntityWorld
     {
         public const int MAX_ENTITIES = 4096;
+
+        /// <summary>
+        /// Maximum waypoints in a single unit's patrol route (Story 1.12). The patrol-route SoA ring is a
+        /// fixed-capacity flat buffer sized <see cref="MAX_ENTITIES"/> * this — the SoA-safe way to store a
+        /// variable-length route without a per-entity dynamic list (which would break determinism). Named
+        /// so the determinism analyzer's CHM0004 (bare-cap) advisory stays clean.
+        /// </summary>
+        public const int MAX_PATROL_WAYPOINTS = 8;
 
         // --- Determinism (shared, NOT per-entity) ---
         /// <summary>
@@ -128,8 +141,32 @@ namespace ProjectChimera.Core
         /// <summary>
         /// Final destination for Move and AttackMove orders.
         /// CombatSystem steers toward this after an AttackMove engagement ends.
+        /// Patrol drives this (and MoveTarget) from its current waypoint each leg.
         /// </summary>
         public readonly FixedVec3[] CommandGoal;
+
+        // --- Persistent command targets / patrol route (Story 1.12, DG-1 / FR-53) ---
+        /// <summary>
+        /// PERSISTENT, player-issued target this unit's command references: the enemy id for AttackTarget,
+        /// the friendly id for Follow (-1 = none). Distinct from <see cref="AttackTarget"/>, which is the
+        /// TRANSIENT live combat target recomputed each tick by the spatial hash. One array serves both
+        /// command states because a unit is in exactly one CommandState at a time, so the two uses never
+        /// overlap. Folded into <see cref="SimChecksum"/> (v4).
+        /// </summary>
+        public readonly int[] CommandTarget;
+
+        /// <summary>
+        /// Flat patrol-route ring, indexed <c>id * MAX_PATROL_WAYPOINTS + k</c> — the ordered waypoints a
+        /// Patrol unit walks. Slots at <c>k &gt;= PatrolCount</c> are unread (and never hashed), so a
+        /// recycled slot needs no waypoint reset (only <see cref="PatrolCount"/> is reset in Create).
+        /// </summary>
+        public readonly FixedVec3[] PatrolWaypoints;
+        /// <summary>Patrol route length (0 = no route). Folded into <see cref="SimChecksum"/> (v4).</summary>
+        public readonly byte[] PatrolCount;
+        /// <summary>Current patrol-leg target waypoint index. Folded into <see cref="SimChecksum"/> (v4).</summary>
+        public readonly byte[] PatrolIndex;
+        /// <summary>Patrol walk direction: +1 forward / -1 back (reverse-at-ends). Folded into <see cref="SimChecksum"/> (v4).</summary>
+        public readonly sbyte[] PatrolDir;
 
         // --- Gatherer data (workers only; Inactive for all other units) ---
         public readonly GatherState[] GatherState;
@@ -180,6 +217,11 @@ namespace ProjectChimera.Core
             MeshType       = new byte[MAX_ENTITIES];
             CommandState   = new UnitCommand[MAX_ENTITIES];
             CommandGoal    = new FixedVec3[MAX_ENTITIES];
+            CommandTarget   = new int[MAX_ENTITIES];
+            PatrolWaypoints = new FixedVec3[MAX_ENTITIES * MAX_PATROL_WAYPOINTS];
+            PatrolCount     = new byte[MAX_ENTITIES];
+            PatrolIndex     = new byte[MAX_ENTITIES];
+            PatrolDir       = new sbyte[MAX_ENTITIES];
             GatherState    = new GatherState[MAX_ENTITIES];
             GatherTarget   = new int[MAX_ENTITIES];
             CarryAmount    = new Fixed[MAX_ENTITIES];
@@ -195,6 +237,7 @@ namespace ProjectChimera.Core
 
             // Initialize sentinels
             Array.Fill(AttackTarget,  -1);
+            Array.Fill(CommandTarget, -1);
             Array.Fill(GatherTarget,  -1);
             Array.Fill(BuildTarget,   -1);
         }
@@ -240,6 +283,14 @@ namespace ProjectChimera.Core
             MeshType[id]      = 0;
             CommandState[id]  = UnitCommand.Idle;
             CommandGoal[id]   = position;
+            // Story 1.12: reset persistent command target + patrol route on (re)allocation. Skipping this is
+            // the classic SoA bug — a recycled slot would carry the previous unit's forced target / route and
+            // drive nondeterministic ghost behavior. PatrolWaypoints needs no reset: PatrolCount=0 makes its
+            // slots unread (and unhashed) until a Patrol command writes them.
+            CommandTarget[id] = -1;
+            PatrolCount[id]   = 0;
+            PatrolIndex[id]   = 0;
+            PatrolDir[id]     = 1;
             GatherState[id]   = Core.GatherState.Inactive;
             GatherTarget[id]  = -1;
             CarryAmount[id]   = Fixed.Zero;

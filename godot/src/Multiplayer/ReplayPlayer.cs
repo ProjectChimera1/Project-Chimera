@@ -167,54 +167,12 @@ namespace ProjectChimera.Multiplayer
 
         private void ApplyOrders(UnitOrder[] orders, int count, Faction expectedFaction)
         {
+            // Story 1.12: same SHARED OrderApplier.Apply as LockstepManager.ApplyOrders — replay-vs-live parity
+            // by construction (one switch, two callers). The path-request delegates mirror LockstepManager's and
+            // are null in the Tier-1 golden harness.
             for (int i = 0; i < count; i++)
-            {
-                var o  = orders[i];
-                int id = o.UnitId;
-                if (!_world.IsAlive(id)) continue;
-                if (_world.FactionOf[id] != expectedFaction) continue;
-
-                _world.CommandState[id] = o.Command;
-
-                switch (o.Command)
-                {
-                    case UnitCommand.Move:
-                    {
-                        var target = new FixedVec3(Fixed.FromRaw(o.TargetX), Fixed.Zero,
-                                                   Fixed.FromRaw(o.TargetZ));
-                        _world.CommandGoal[id]  = target;
-                        _world.MoveTarget[id]   = target;
-                        _world.Flags[id]        = (_world.Flags[id] | EntityFlags.Moving)
-                                                  & ~EntityFlags.Attacking;
-                        _world.AttackTarget[id] = -1;
-                        OnRequestPath?.Invoke(id, Fixed.FromRaw(o.TargetX).ToFloat(),
-                                                  Fixed.FromRaw(o.TargetZ).ToFloat());
-                        break;
-                    }
-                    case UnitCommand.AttackMove:
-                    {
-                        var target = new FixedVec3(Fixed.FromRaw(o.TargetX), Fixed.Zero,
-                                                   Fixed.FromRaw(o.TargetZ));
-                        _world.CommandGoal[id]  = target;
-                        _world.MoveTarget[id]   = target;
-                        _world.Flags[id]        = (_world.Flags[id] | EntityFlags.Moving)
-                                                  & ~EntityFlags.Attacking;
-                        _world.AttackTarget[id] = -1;
-                        OnRequestAttackMove?.Invoke(id, Fixed.FromRaw(o.TargetX).ToFloat(),
-                                                        Fixed.FromRaw(o.TargetZ).ToFloat());
-                        break;
-                    }
-                    case UnitCommand.Stop:
-                    case UnitCommand.HoldPosition:
-                    {
-                        _world.Flags[id]        = _world.Flags[id]
-                                                  & ~(EntityFlags.Moving | EntityFlags.Attacking);
-                        _world.AttackTarget[id] = -1;
-                        OnCancelPath?.Invoke(id);
-                        break;
-                    }
-                }
-            }
+                OrderApplier.Apply(_world, in orders[i], expectedFaction,
+                    OnRequestPath, OnRequestAttackMove, OnCancelPath);
         }
     }
 }

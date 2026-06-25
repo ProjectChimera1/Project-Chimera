@@ -42,6 +42,11 @@
          deliberately EXCLUDED from the 1.10c Win↔Linux cross-platform gate. NEW file; goldens above untouched. -->
     <None Remove="Golden\ai-active-scenario.golden.txt" />
     <EmbeddedResource Include="Golden\ai-active-scenario.golden.txt" />
+    <!-- Story 1.12 (AC6d) — command-vocabulary golden (one Player1 unit per order; Player2 empty so the AI
+         no-ops). Integer/Fixed-only → CROSS-PLATFORM SAFE: compared by the normal Tier-1 run on both CI legs
+         (Windows + Linux/WSL), NOT Windows-gated like the AI-active golden. NEW file; goldens above untouched. -->
+    <None Remove="Golden\command-vocabulary-scenario.golden.txt" />
+    <EmbeddedResource Include="Golden\command-vocabulary-scenario.golden.txt" />
   </ItemGroup>
 
   <ItemGroup>
