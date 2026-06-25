@@ -15,7 +15,7 @@ status: Active
 Phases 0–4 are code-complete. Phase 5 is underway. Session 20 shipped worker-placed buildings + UI bug sweep. Session 21 (remote, away from computer) shipped Utility AI + Adaptive Input Delay.
 
 ## Next Action
-Pass story 1.10b to code review (Tier-1 green 203/203, analyzer tests 17/17, definition of done confirmed, all memory trackers + sprint status updated).
+Execute parallel adversarial review layers (Layers 1–3: structural, cross-platform contract, failure-path logic) and triage findings with patch/defer/dismiss gates before presenting actionable results.
 
 ---
 
