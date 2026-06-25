@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-06-22
-last_updated: 2026-06-24 (1.10b → DONE via gds-code-review: 3-layer adversarial PASS. All 6 ACs confirmed; gate empirically verified by RS0030 injection probe (DateTime fires, real build RS0030=0 — disproved the Edge Case Hunter's "gate would hard-fail" High). 2 patches applied: (1) NEW advisory CHM0006 — reliable SEMANTIC float/double Parse/ToString detection, replacing the 4 unreliable RS0030 bare-DocID bans that caught nothing in the real build [closes the AC1 float↔string gap; probe-proven]; (2) CHM0005 converter allow-list namespace-anchored to ProjectChimera.Core.Definitions [was bare type-name]. Analyzer tests 17→21 green, Tier-1 203 green, goldens byte-identical, RS0030 still zero-baseline. 6 advisory-rule items deferred to deferred-work.md. Prior: gate SHIPPED via gds-dev-story [AR-36, custom-analyzer scope expansion, tier1-analyzer-gate CI job, 3 lock files])
+last_updated: 2026-06-25 (1.10c story CREATED via gds-create-story → ready-for-dev. "Cross-platform Windows<->Linux golden-checksum gate via WSL" [AR-37] — the LAST M1 sibling; closing it GREEN closes M1. Exhaustive analysis [2 research subagents + live env probes]. KEY FINDINGS — the golden harness was built portable FOR this story [embedded-resource goldens, InvariantCulture parse, godot/.gitattributes eol=lf so goldens are i/lf w/lf on both OSes, integer-only Fixed checksum, endian-safe Mix], so the WSL verify-run against the Windows-recorded committed goldens IS the diff [transitive, zero harness change]. The ONLY real cross-platform hazard = AiOpponentSystem float scoring in the tick path, but all 4 goldens deliberately keep the AI quiescent so no float is hashed today [coverage caveat documented]. Live env — WSL Ubuntu-24.04 present but .NET NOT yet installed [Task 2 prereq; must install >=8.0.419 or global.json resolution fails; Ubuntu built-in feed lags = #1 gotcha]. Story scoped additive tooling/test/docs only [no sim/golden/SimChecksum edits]; 4 decisions PARKED for dev — ubuntu-latest CI add-on [recommend yes], transitive-vs-literal diff [recommend transitive], D3 version-stamp scope [recommend defer], release-gate realization. Prior 1.10b → DONE via gds-code-review.)
 project: Project_Chimera
 project_key: NOKEY
 tracking_system: file-system
@@ -58,7 +58,7 @@ development_status:
   1-9b-fr-39-two-machine-lan-determinism-green-the-1-ship-risk-gate: done
   1-10a-wire-the-golden-checksum-replay-regression-harness-into-ci-pin-isolate-deps: done
   1-10b-banned-api-aot-eligibility-analyzers-over-the-sim-layer: done
-  1-10c-cross-platform-windows-linux-golden-checksum-gate-via-wsl: backlog
+  1-10c-cross-platform-windows-linux-golden-checksum-gate-via-wsl: ready-for-dev
   1-11-smoke-test-the-four-unverified-systems-utility-ai-adaptive-input-delay-llm-trigger-ai-map-generator: backlog
   1-12-full-rts-command-vocabulary-single-target-attack-patrol-follow-hold-distinct-from-stop: backlog
   1-13-formation-movement-priority-yielding-role-based-battle-formations-push-yield-data-fields: backlog
