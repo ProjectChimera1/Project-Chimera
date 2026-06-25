@@ -5,6 +5,10 @@ godot/.godot/
 godot/.mono/
 godot/bin/
 godot/obj/
+# Story 1.10a: also cover the nested Godot-free test project (godot/ProjectChimera.Sim.Tests/bin|obj)
+# and any other nested build output, so build artifacts can never be committed by accident.
+**/bin/
+**/obj/
 
 # VS/Rider IDE files
 .vs/

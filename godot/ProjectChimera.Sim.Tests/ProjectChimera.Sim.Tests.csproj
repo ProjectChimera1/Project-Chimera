@@ -6,6 +6,10 @@
     <IsPackable>false</IsPackable>
     <!-- Godot-free: intentionally NOT Godot.NET.Sdk and the GODOT symbol is NOT defined here,
          so FixedPoint.cs's #if GODOT bridge methods compile out. -->
+    <!-- Story 1.10a (AR-2/AR-35 reproducibility): commit a packages.lock.json pinning the full transitive
+         package graph. The CI determinism gate restores in locked mode so the dependency surface cannot
+         drift silently. Regenerate intentionally with `dotnet restore` after an approved dependency change. -->
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
   </PropertyGroup>
 
   <!-- SHARED SOURCE: compile the pure-sim folders directly. NOT a <ProjectReference> to godot.csproj

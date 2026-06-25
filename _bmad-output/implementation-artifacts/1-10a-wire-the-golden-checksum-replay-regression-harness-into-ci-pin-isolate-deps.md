@@ -4,7 +4,7 @@ baseline_commit: 6b20883
 
 # Story 1.10a: Wire the golden-checksum replay regression harness into CI + pin/isolate deps
 
-Status: ready-for-dev
+Status: review
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 <!-- 1.10a is an INFRASTRUCTURE story, not a sim/gameplay story. It writes ZERO sim code. It takes the
@@ -122,38 +122,38 @@ _Covers: **FR-47** (CI regression guard fails the build on any determinism/check
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1 — GitHub Actions golden-checksum determinism gate (AC: 1, 3)**
-  - [ ] Create `.github/workflows/determinism-gate.yml` (net-new). Shape:
+- [x] **Task 1 — GitHub Actions golden-checksum determinism gate (AC: 1, 3)**
+  - [x] Create `.github/workflows/determinism-gate.yml` (net-new). Shape:
     - `on:` `push:` `branches: ['**']`, `pull_request:`, `workflow_dispatch:`
     - `concurrency:` `group: determinism-${{ github.ref }}`, `cancel-in-progress: true` (collapses `[AutoSave]` push bursts)
     - one job `tier1-golden-gate`, `runs-on: windows-latest` (D3)
     - steps: `actions/checkout@v4` → `actions/setup-dotnet@v4` with `dotnet-version: '8.0.x'` → `dotnet restore godot/ProjectChimera.Sim.Tests/ProjectChimera.Sim.Tests.csproj` → `dotnet test godot/ProjectChimera.Sim.Tests/ProjectChimera.Sim.Tests.csproj -c Release --no-restore`
-    - **Do NOT** define `CHIMERA_GOLDEN_RECORD` anywhere (Trap #2). **Do NOT** install Godot or reference the `.sln`/`godot.csproj` (Trap #1).
-  - [ ] (Optional) add a final step `actions/upload-artifact@v4` for the `.trx`/test results so failures are inspectable; use `--logger trx` on `dotnet test` if so.
-  - [ ] Validate the YAML is well-formed (it is parsed by GitHub; a local YAML lint or a careful read suffices — there is no local Actions runner required).
+    - **Do NOT** define `CHIMERA_GOLDEN_RECORD` anywhere (Trap #2). **Do NOT** install Godot or reference the `.sln`/`godot.csproj` (Trap #1). — _Done: `CHIMERA_GOLDEN_RECORD` never set; no Godot install; only the test csproj is referenced (`godot.sln`/`godot.csproj` appear only inside the "do NOT" scope-fence comments)._
+  - [x] (Optional) add a final step `actions/upload-artifact@v4` for the `.trx`/test results so failures are inspectable; use `--logger trx` on `dotnet test` if so. — _Done: `--logger "trx;LogFileName=tier1.trx"` + `upload-artifact@v4` with `if: always()` so the `.trx` uploads even when the gate fails._
+  - [x] Validate the YAML is well-formed (it is parsed by GitHub; a local YAML lint or a careful read suffices — there is no local Actions runner required). — _Done: `yaml.safe_load` parses cleanly → keys `name`/`on`/`concurrency`/`jobs`; 1 job `tier1-golden-gate`, 5 steps, `runs-on: windows-latest`._
 
-- [ ] **Task 2 — Dependency-pinning + isolation guard test (AC: 2)**
-  - [ ] New `ProjectChimera.Sim.Tests/Meta/DependencyHygieneTests.cs` (create the `Meta/` folder; or place under `Validation/` if you prefer — either is globbed in via `..\` ? **No** — these test files live *in* the test project root tree, which is NOT under `..\src`, so they compile as normal test sources; no csproj change needed).
-  - [ ] Locate the two csprojs portably via `[CallerFilePath]` (resolve this test file's dir → `godot/godot.csproj` and the sibling `ProjectChimera.Sim.Tests.csproj`). Mirror `GoldenChecksumReplay.GoldenSourcePath` (`[CallerFilePath]` + `Path.GetDirectoryName` + `Path.Combine`).
-  - [ ] Assert (parse with `XDocument` or a tolerant `Regex`):
+- [x] **Task 2 — Dependency-pinning + isolation guard test (AC: 2)**
+  - [x] New `ProjectChimera.Sim.Tests/Meta/DependencyHygieneTests.cs` (create the `Meta/` folder; or place under `Validation/` if you prefer — either is globbed in via `..\` ? **No** — these test files live *in* the test project root tree, which is NOT under `..\src`, so they compile as normal test sources; no csproj change needed). — _Done: `Meta/` created; auto-globbed by the default Microsoft.NET.Sdk compile items; no csproj change for the test source._
+  - [x] Locate the two csprojs portably via `[CallerFilePath]` (resolve this test file's dir → `godot/godot.csproj` and the sibling `ProjectChimera.Sim.Tests.csproj`). Mirror `GoldenChecksumReplay.GoldenSourcePath` (`[CallerFilePath]` + `Path.GetDirectoryName` + `Path.Combine`). — _Done: `ResolveFromHere(... [CallerFilePath] ...)` + `Path.GetFullPath(Path.Combine(...))`, mirroring `GoldenSourcePath`._
+  - [x] Assert (parse with `XDocument` or a tolerant `Regex`):
     - `godot.csproj` contains a `PackageReference Include="NakamaClient" Version="3.13.0"` (exact version).
     - `godot.csproj` contains **no** `PackageReference` whose `Include` matches `xunit`, `Microsoft.NET.Test.Sdk`, or `*.runner.*` (no test deps in the shipping project).
-    - the test `.csproj` **does** contain the test deps (proves isolation is where it should be).
-  - [ ] Keep messages actionable (name the offending package + file) so a future drift is self-explaining. Run `dotnet test … --filter FullyQualifiedName~DependencyHygiene` → green.
+    - the test `.csproj` **does** contain the test deps (proves isolation is where it should be). — _Done via `XDocument`: 3 facts — exact-pin assert, no-test-dep-leak assert, test-dep-ownership assert._
+  - [x] Keep messages actionable (name the offending package + file) so a future drift is self-explaining. Run `dotnet test … --filter FullyQualifiedName~DependencyHygiene` → green. — _Done: messages name the package/version/file + the fix; red-green verified (a deliberately-wrong expected pin made `GodotCsproj_PinsNakamaClient_ToExactVersion` FAIL, then reverted to green)._
 
-- [ ] **Task 3 — Reproducibility hardening (AC: 2, 3) [recommended]**
-  - [ ] Add repo-root `global.json`: `{ "sdk": { "version": "8.0.419", "rollForward": "latestFeature" } }`. Verify `dotnet --version` now resolves an `8.0.x` SDK at the repo root. (D6)
-  - [ ] (Optional, stronger) Enable a lock file on the test project for a fully reproducible package graph: add `<RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>` to `ProjectChimera.Sim.Tests.csproj`, run `dotnet restore` once to generate `packages.lock.json`, commit it, and add `--locked-mode` to the CI `dotnet restore` step. (Strengthens AR-2/AR-35 "reproducible".)
-  - [ ] (Optional, hygiene) Harden `.gitignore` so nested build artifacts can never be committed: add unanchored `**/bin/` and `**/obj/` (or `godot/**/bin/`, `godot/**/obj/`). Confirm `git status` still clean and no currently-tracked file is newly ignored.
+- [x] **Task 3 — Reproducibility hardening (AC: 2, 3) [recommended]**
+  - [x] Add repo-root `global.json`: `{ "sdk": { "version": "8.0.419", "rollForward": "latestFeature" } }`. Verify `dotnet --version` now resolves an `8.0.x` SDK at the repo root. (D6) — _Done: `dotnet --version` at repo root now reports `8.0.419` (was `9.0.312`)._
+  - [x] (Optional, stronger) Enable a lock file on the test project for a fully reproducible package graph: add `<RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>` to `ProjectChimera.Sim.Tests.csproj`, run `dotnet restore` once to generate `packages.lock.json`, commit it, and add `--locked-mode` to the CI `dotnet restore` step. (Strengthens AR-2/AR-35 "reproducible".) — _Done: property added, `packages.lock.json` generated under the 8.0 SDK and committed; CI restore uses `--locked-mode`; a local `--locked-mode` restore was verified green._
+  - [x] (Optional, hygiene) Harden `.gitignore` so nested build artifacts can never be committed: add unanchored `**/bin/` and `**/obj/` (or `godot/**/bin/`, `godot/**/obj/`). Confirm `git status` still clean and no currently-tracked file is newly ignored. — _Done: added `**/bin/` + `**/obj/`; verified zero tracked files live under any `bin/`/`obj/`, and `packages.lock.json` is NOT swept up by the new patterns._
 
-- [ ] **Task 4 — AR-41 telemetry-posture doc (AC: 4)**
-  - [ ] New `docs/telemetry-posture.md` (or a clearly-titled section in an existing top-level doc): state **NO analytics/telemetry in 1.0**; dev-only diagnostics are **`ILogSink` logs + `.chmr` replay capture** (`ReplayRecorder`/`ReplayPlayer`); the **opt-in crash/desync report** (bundling the `.chmr` + checksum log) and desync-diagnosis tooling (per-system sub-checksums, replay-diff) are a **documented fast-follow, NOT built in 1.0**. Cite AR-41 (`epics.md:234,492`). Build no code.
+- [x] **Task 4 — AR-41 telemetry-posture doc (AC: 4)**
+  - [x] New `docs/telemetry-posture.md` (or a clearly-titled section in an existing top-level doc): state **NO analytics/telemetry in 1.0**; dev-only diagnostics are **`ILogSink` logs + `.chmr` replay capture** (`ReplayRecorder`/`ReplayPlayer`); the **opt-in crash/desync report** (bundling the `.chmr` + checksum log) and desync-diagnosis tooling (per-system sub-checksums, replay-diff) are a **documented fast-follow, NOT built in 1.0**. Cite AR-41 (`epics.md:234,492`). Build no code. — _Done: `docs/telemetry-posture.md` written; policy + dev-diagnostics + explicit fast-follow sections; zero code._
 
-- [ ] **Task 5 — Prove AC3 (no regression; CI is Godot-free; goldens byte-identical) (AC: 3)**
-  - [ ] Run the **exact CI command** locally with **no** record env var: `dotnet test godot/ProjectChimera.Sim.Tests/ProjectChimera.Sim.Tests.csproj -c Release` → **all green** (existing suite + the new `DependencyHygieneTests`). Capture the summary line for the Debug Log.
-  - [ ] `git status --short -- '*.golden.txt'` → **empty** (four goldens byte-identical). If any moved, you leaked something / set the record var — fix it; never re-record.
-  - [ ] Confirm the workflow installs **no** Godot and references **only** the test `.csproj` (grep the YAML for `godot.sln`/`godot.csproj`/`Godot` → none except the test-project path).
-  - [ ] Push a branch and confirm the GitHub Actions run goes **green** end-to-end (the real proof the lane works). If pushing is deferred to Alec, note that the first push validates the lane and leave the box for Alec to confirm in the Change Log. _(Surface to Alec: the workflow runs on his GitHub repo's Actions minutes — see Open Question #2 on trigger scope/cost.)_
+- [x] **Task 5 — Prove AC3 (no regression; CI is Godot-free; goldens byte-identical) (AC: 3)**
+  - [x] Run the **exact CI command** locally with **no** record env var: `dotnet test godot/ProjectChimera.Sim.Tests/ProjectChimera.Sim.Tests.csproj -c Release` → **all green** (existing suite + the new `DependencyHygieneTests`). Capture the summary line for the Debug Log. — _Done: **Passed! Failed: 0, Passed: 195, Skipped: 0** (`CHIMERA_GOLDEN_RECORD` confirmed empty)._
+  - [x] `git status --short -- '*.golden.txt'` → **empty** (four goldens byte-identical). If any moved, you leaked something / set the record var — fix it; never re-record. — _Done: empty._
+  - [x] Confirm the workflow installs **no** Godot and references **only** the test `.csproj` (grep the YAML for `godot.sln`/`godot.csproj`/`Godot` → none except the test-project path). — _Done: only hits are the scope-fence comments; the `restore`/`test` steps reference only `godot/ProjectChimera.Sim.Tests/ProjectChimera.Sim.Tests.csproj`._
+  - [ ] **(DEFERRED to Alec — outward-facing; consumes GitHub Actions minutes.)** Push a branch and confirm the GitHub Actions run goes **green** end-to-end (the real proof the lane works). _Local proof is complete (exact CI command green at 195 tests, goldens byte-identical, workflow verified Godot-free + locked-mode restore green); the **first push to GitHub validates the live lane.** Alec to push and tick this box in the Change Log._ _(Open Question #2 — trigger scope/cost: `windows-latest` bills at 2× minutes; current default is all-branches + `concurrency: cancel-in-progress`. Levers if minutes bite: switch to `ubuntu-latest`, restrict to `master`+PR, or `paths-ignore` doc-only commits.)_
 
 ---
 
@@ -241,12 +241,48 @@ _Extracted from `_bmad-output/project-context.md` + `game-architecture.md` — t
 
 ### Agent Model Used
 
-_(to be filled by dev-story)_
+claude-opus-4-8 (Claude Opus 4.8) — `gds-dev-story` workflow.
 
 ### Debug Log References
 
+- `dotnet --version` at repo root → **`8.0.419`** (was `9.0.312`; `global.json` now pins the 8.0 family with `rollForward: latestFeature`).
+- Lock file generation: `dotnet restore …ProjectChimera.Sim.Tests.csproj` → wrote `packages.lock.json` (4079 bytes); `dotnet restore … --locked-mode` → **restored OK** (CI restore mode verified locally).
+- Exact CI test command (verify mode, `CHIMERA_GOLDEN_RECORD=[]`): `dotnet test godot/ProjectChimera.Sim.Tests/ProjectChimera.Sim.Tests.csproj -c Release` → **`Passed! Failed: 0, Passed: 195, Skipped: 0, Total: 195`** (191/192 prior + 3 new `DependencyHygieneTests`). 7 pre-existing CS8632 `#nullable` warnings only (out of scope).
+- Guard-test teeth check (red→green): temporarily set `ShippedPackageVersion = "9.9.9-TEETH-CHECK"` → `GodotCsproj_PinsNakamaClient_ToExactVersion` **FAILED** with the actionable message; reverted to `3.13.0` → green.
+- `git status --short -- '*.golden.txt'` → **empty** (four goldens byte-identical).
+- Workflow Godot-free grep: `godot.sln`/`godot.csproj`/`Godot` hits are only in the scope-fence comments; `restore`/`test` steps reference only the test csproj path.
+- YAML well-formedness: `yaml.safe_load` parsed cleanly (`name`/`on`/`concurrency`/`jobs`; 1 job, 5 steps, `windows-latest`).
+- `.gitignore` safety: `git ls-files | grep -E '(^|/)(bin|obj)/'` → empty (no tracked file newly ignored); `git check-ignore packages.lock.json` → not ignored.
+
 ### Completion Notes List
+
+Infrastructure story — **zero sim code**; the 30 Hz tick, `SimChecksum`, the four goldens, and the wire are untouched (AC3). Every change is additive CI/config/test/docs.
+
+- **AC1 ✅** — `.github/workflows/determinism-gate.yml` runs the Tier-1 golden gate headless on `push` (all branches) + `pull_request` + `workflow_dispatch`, on `windows-latest`, installing **only** the .NET 8 SDK (`setup-dotnet 8.0.x`). `CHIMERA_GOLDEN_RECORD` is never set (verify mode). No hardcoded test count — relies on xUnit's non-zero exit. `concurrency: cancel-in-progress` collapses `[AutoSave]` push bursts. `.trx` uploaded as an artifact (even on failure).
+- **AC2 ✅** — `Meta/DependencyHygieneTests.cs` (3 facts) locks the surface as a permanent Tier-1 guard: NakamaClient pinned exactly `3.13.0`, no test-only `PackageReference` in `godot.csproj`, and the test deps owned by the test csproj. Csprojs located via `[CallerFilePath]` (mirrors `GoldenChecksumReplay.GoldenSourcePath`). Teeth verified. The csprojs were **not** edited for the pin/isolation (guarded, not changed).
+- **AC3 ✅** — exact CI command green locally (195/195); goldens byte-identical; CI installs no Godot and targets only the test csproj.
+- **AC4 ✅** — `docs/telemetry-posture.md`: NO analytics/telemetry in 1.0; dev diagnostics = `ILogSink` logs + `.chmr` replay; opt-in crash/desync bundle = documented fast-follow, not built. Zero code.
+- **Reproducibility hardening (Task 3, all three done):** repo-root `global.json` (8.0 family); `packages.lock.json` + `--locked-mode` CI restore for a fully pinned transitive graph; `.gitignore` `**/bin/`+`**/obj/` so nested build output can't be committed.
+- **Scope fences honored:** no Linux/WSL job or cross-OS diff (1.10c); no analyzers (1.10b); no analytics/crash-bundler code; CI never touches `godot.sln`/`godot.csproj`; no `ProjectReference` from the test project to `godot.csproj`.
+- **One item gated on Alec:** the live GitHub Actions run requires a push to his repo (consumes Actions minutes). Local proof is complete; the first push validates the lane. Left unchecked in Task 5 by design (per the story) for Alec to confirm. Surfaced: `windows-latest` bills at 2× minutes (Open Question #2).
 
 ### File List
 
+**New:**
+- `.github/workflows/determinism-gate.yml` — GitHub Actions determinism gate (AC1).
+- `godot/ProjectChimera.Sim.Tests/Meta/DependencyHygieneTests.cs` — dependency-pin + isolation guard test (AC2).
+- `global.json` — pins the .NET SDK to the 8.0 family (`rollForward: latestFeature`) for local/CI parity (Task 3).
+- `godot/ProjectChimera.Sim.Tests/packages.lock.json` — pinned transitive package graph; CI restores with `--locked-mode` (Task 3).
+- `docs/telemetry-posture.md` — AR-41 no-analytics posture (AC4).
+
+**Modified:**
+- `godot/ProjectChimera.Sim.Tests/ProjectChimera.Sim.Tests.csproj` — added `<RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>` (Task 3). No dependency or compile-item changes.
+- `.gitignore` — added unanchored `**/bin/` and `**/obj/` (Task 3 hygiene).
+- `_bmad-output/implementation-artifacts/sprint-status.yaml` — `1-10a` status tracking (→ in-progress → review).
+
+**Unchanged (verified):** all four `*.golden.txt`; `GoldenChecksumReplay.cs`/`GoldenChecksumReplayTests.cs`; `SimChecksum.cs`; `godot/godot.csproj` (NakamaClient `3.13.0` pin guarded, not edited); every sim source file.
+
 ### Change Log
+
+- **2026-06-24 — Story 1.10a implemented (Status → review).** Wired the Tier-1 golden-checksum replay harness into CI as a GitHub Actions determinism gate (Godot-free, `windows-latest`, .NET 8 only, fails on any checksum diff); added the `DependencyHygieneTests` guard locking the NakamaClient `3.13.0` pin + test-dep isolation; added reproducibility hardening (`global.json`, `packages.lock.json` + `--locked-mode`, `.gitignore`); documented the AR-41 no-analytics posture. Tier-1 suite **195 green**, four goldens byte-identical, zero sim code changed. Covers FR-47, FR-44, AR-2, AR-35, AR-41, AR-47.
+- **PENDING (Alec):** push to GitHub to confirm the live Actions run goes green end-to-end (first push validates the lane; closes the last Task-5 box). _Note: runs on Alec's Actions minutes — `windows-latest` = 2× rate._
