@@ -4,7 +4,7 @@ baseline_commit: 2cd247e34a40cb09ea8326b889787b320bbc7433
 
 # Story 1.11: Smoke-test the four unverified systems (Utility AI, Adaptive Input Delay, LLM Trigger, AI Map Generator)
 
-Status: review
+Status: done
 
 <!-- Context engine analysis completed — comprehensive developer guide. Validation optional: run validate-create-story before dev-story. -->
 <!-- 1.11 is the FIRST post-M1 story (M1 [1.1–1.10c] is GREEN). It is a VERIFICATION story: FR-45 says the four
@@ -342,8 +342,8 @@ _Blind Hunter + Edge Case Hunter + Acceptance Auditor — all 3 layers returned;
 
 ### Patches (fixable without your input)
 
-- [ ] [Review][Patch] **`ProceduralMapGenerator.Generate` precondition is wrong + unguarded — crashes for `mapBounds ≤ 29`.** [godot/src/Core/MapGen/ProceduralMapGenerator.cs:54,64] — The XML doc says `mapBounds` must be `> EdgeMargin` (15), but `bx = EdgeMargin + rng.NextInt(interior - EdgeMargin + 1)` passes `mapBounds - 29` to `SimRng.NextInt`, which throws `ArgumentOutOfRangeException` for any `countExclusive ≤ 0` (`SimRng.cs:63`) — so every `mapBounds ∈ [16,29]` (and ≤15) throws deep in the RNG. The real floor is `mapBounds > 29`. **UNREACHABLE today** (only caller is the test with default `mapBounds=120`; the AC4c presentation button is deferred) → Low priority. Fix: correct the doc to the real precondition AND add a guard at the top of `Generate` (throw a located `ArgumentOutOfRangeException(nameof(mapBounds), …)`, or clamp to a safe minimum).
-- [ ] [Review][Patch] **`SeedLabel` is dead code.** [godot/src/Core/MapGen/ProceduralMapGenerator.cs:134] — `internal static string SeedLabel(ulong)` is never referenced anywhere in `godot/` (the `Id`/`DisplayName` are hardcoded constants by design). Remove it.
+- [x] [Review][Patch] **[APPLIED 2026-06-25]** **`ProceduralMapGenerator.Generate` precondition is wrong + unguarded — crashes for `mapBounds ≤ 29`.** _Fixed: doc corrected to `>= 2×EdgeMargin (30)` + a fail-fast `ArgumentOutOfRangeException(nameof(mapBounds))` guard added at the top of `Generate`. Tier-1 Release 239 pass/1 skip/0 fail post-patch._ [godot/src/Core/MapGen/ProceduralMapGenerator.cs:54,64] — The XML doc says `mapBounds` must be `> EdgeMargin` (15), but `bx = EdgeMargin + rng.NextInt(interior - EdgeMargin + 1)` passes `mapBounds - 29` to `SimRng.NextInt`, which throws `ArgumentOutOfRangeException` for any `countExclusive ≤ 0` (`SimRng.cs:63`) — so every `mapBounds ∈ [16,29]` (and ≤15) throws deep in the RNG. The real floor is `mapBounds > 29`. **UNREACHABLE today** (only caller is the test with default `mapBounds=120`; the AC4c presentation button is deferred) → Low priority. Fix: correct the doc to the real precondition AND add a guard at the top of `Generate` (throw a located `ArgumentOutOfRangeException(nameof(mapBounds), …)`, or clamp to a safe minimum).
+- [x] [Review][Patch] **[APPLIED 2026-06-25]** **`SeedLabel` is dead code.** _Fixed: removed the unused method + its now-orphaned `using System.Globalization;` and a stale comment clause._ [godot/src/Core/MapGen/ProceduralMapGenerator.cs:134] — `internal static string SeedLabel(ulong)` is never referenced anywhere in `godot/` (the `Id`/`DisplayName` are hardcoded constants by design). Remove it.
 
 ### Deferred (pre-existing / consistent-with-existing; logged to deferred-work.md)
 

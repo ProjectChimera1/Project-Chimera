@@ -1,7 +1,6 @@
 #nullable enable
 using System;
 using System.Collections.Generic;
-using System.Globalization;
 using ProjectChimera.Core.Definitions;
 
 namespace ProjectChimera.Core.MapGen
@@ -51,11 +50,20 @@ namespace ProjectChimera.Core.MapGen
         /// a different layout (the seed is the sole entropy source).
         /// </summary>
         /// <param name="seed">Stream seed for the single <see cref="SimRng"/>. Any value is valid (including 0).</param>
-        /// <param name="mapBounds">Playable half-extent (map_bounds). Must be &gt; <see cref="EdgeMargin"/>.</param>
+        /// <param name="mapBounds">Playable half-extent (map_bounds). Must be &gt;= <c>2 x EdgeMargin</c> (30) so both
+        /// point-symmetric bases fit inside the margin; guarded below (throws <see cref="ArgumentOutOfRangeException"/>).</param>
         /// <param name="resourceNodeCount">Target number of resource nodes (fewer if the grid runs out under spacing).</param>
         public static ScenarioData Generate(ulong seed, int mapBounds = DefaultMapBounds,
             int resourceNodeCount = DefaultResourceNodeCount)
         {
+            // Precondition (Story 1.11 review patch): both point-symmetric bases are drawn from
+            // [EdgeMargin, interior], which needs interior >= EdgeMargin, i.e. mapBounds >= 2*EdgeMargin.
+            // Below that, rng.NextInt(interior - EdgeMargin + 1) gets a non-positive count and SimRng.NextInt
+            // throws; fail fast with a located message instead of a confusing deep-in-the-RNG throw.
+            if (mapBounds < 2 * EdgeMargin)
+                throw new ArgumentOutOfRangeException(nameof(mapBounds),
+                    $"must be >= {2 * EdgeMargin} (2 x EdgeMargin) so both player bases fit inside the edge margin.");
+
             var rng = new SimRng(seed);
             int interior = mapBounds - EdgeMargin;            // bases/nodes stay within ±interior
 
@@ -93,7 +101,7 @@ namespace ProjectChimera.Core.MapGen
 
             // Seed-INDEPENDENT id/name: the only thing that can differ between two seeds is the generated geometry,
             // so a "different seed → different serialization" check genuinely proves the seed drives GENERATION
-            // (not just the label). InvariantCulture so the ulong renders identically on every machine.
+            // (not just the label).
             return new ScenarioData
             {
                 Id = "procedural",
@@ -128,9 +136,5 @@ namespace ProjectChimera.Core.MapGen
             Rate = 5,
             MaxGatherers = 4,
         };
-
-        /// <summary>Render a ulong seed identically on every machine (digits only; used only if a caller wants a
-        /// seed-stamped label). Kept invariant-culture-safe per the determinism contract.</summary>
-        internal static string SeedLabel(ulong seed) => seed.ToString(CultureInfo.InvariantCulture);
     }
 }
