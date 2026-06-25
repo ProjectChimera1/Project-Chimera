@@ -293,3 +293,28 @@ Live commands run during dev (key ones):
 
 - **2026-06-25 — Story 1.10c implemented; M1 cross-platform gate GREEN.** Built the Windows↔Linux golden-checksum gate (additive tooling/test/docs only): AC4 LF-only guard test (teeth verified), .NET 8.0.422 installed in WSL Ubuntu-24.04 via no-sudo `dotnet-install.sh`, the `.ps1`+`.wsl.sh` two-OS check (WSL-native-clone isolation), the runbook, and (Decision #1) the always-on `ubuntu-latest` CI sibling leg. AC3 proven via an induced+reverted divergence. **Decision #3 scope expansion:** added `VersionStampConsistencyTests` (pins the 5 existing version stamps; documents/tripwires the 2 unbuilt D3.1 stamps). Tier-1 210 green (Windows) / 203 green (Linux clone).
 - **2026-06-25 — AC5 cross-platform gate RUN (recorded):** `powershell -File godot/tools/cross-platform-determinism-check.ps1` → **`legs: Windows=PASS, WSL=PASS` → ✅ Windows↔Linux byte-identical**, exit 0. Environment: **WSL `Ubuntu-24.04`, .NET SDK `8.0.422`** (≥ the `global.json` `8.0.419` floor). All four committed goldens verified byte-identical on Linux vs the Windows-recorded baseline; `git status --short -- '*.golden.txt'` empty (no golden moved). **M1 cross-platform determinism gate (AR-37) is GREEN — closing this story closes M1 (pending code review).**
+
+---
+
+## Review Findings
+
+_Code review 2026-06-25 (`gds-code-review`, 3-layer adversarial — Blind Hunter / Edge-Case Hunter / Acceptance Auditor, all Claude Opus 4.8, fresh/no-context; diff baseline `7e35e9e`). **Acceptance Auditor verdict: all 6 ACs satisfied, every "do NOT" scope rule clean**; the 5 pinned version-stamp values, the four LF-only goldens, `ScenarioData.schema_version` absence, and "no golden/sim file moved" were independently re-verified against source. One confirmed (reproduced) defect + two cheap hardening patches; 10 findings dismissed with reasons below._
+
+### Patches (open)
+
+- [ ] [Review][Patch] Verdict aggregation crashes under `Set-StrictMode -Version Latest` on single-leg runs — `$ran = @($windowsPassed, $wslPassed) | Where-Object {…}` collapses to a scalar `[bool]` when one leg is skipped, so `$ran.Count` throws *"The property 'Count' cannot be found on this object."* **Reproduced in Windows PowerShell 5.1 AND PowerShell 7.** Breaks both advertised diagnostic switches (`-SkipWindows`/`-SkipWsl`) and the runbook §5 `-SkipWindows` RED-iteration path; a Windows-only run that actually PASSES exits non-zero with a cryptic error. The both-legs path is unaffected, so the recorded AC5 GREEN run stays valid. Fix: wrap the whole pipeline in an outer `@()` → `$ran = @(@($windowsPassed, $wslPassed) | Where-Object { $_ -ne $null })`. [godot/tools/cross-platform-determinism-check.ps1:115]
+- [ ] [Review][Patch] No guard that the destructive WSL clone dir differs from the source repo before `git clean -fdx` / `rm -rf "$CLONE"`. Near-zero probability (both paths effectively hardcoded) but catastrophic if a future `$HOME` ever makes `$CLONE == $SRC` (`clean -fdx` wipes ignored files incl. uncommitted scratch; `rm -rf` deletes the source). Fix: assert `[ "$CLONE" != "$SRC" ]` (and that `$CLONE` is under `$HOME`) before the destructive block. [godot/tools/cross-platform-determinism-check.wsl.sh:50]
+- [ ] [Review][Patch] Runbook §5 ("Fix the code, then re-run §3") omits that the WSL leg builds from **committed HEAD** (documented in §2 but not restated at point of use), so an uncommitted fix silently isn't tested and the leg re-reports the same RED. Fix: add a one-line "commit your fix first — the WSL leg clones committed HEAD" note in §5. [godot/tools/cross-platform-determinism-runbook.md §5]
+
+### Dismissed (considered, not actioned)
+
+- `git fetch … HEAD` from a `file://` working-tree remote is fragile for a detached-HEAD source — repo lives on `master`; the script's exit code stays correct; no clean fix worth the added complexity.
+- `sdk_satisfies_globaljson` regex rejects a hypothetical 4-digit feature band `8.0.1000` — .NET 8.0 ships only 3-digit bands and is near EOL; unreachable. Correctly accepts 8.0.419/8.0.422 and rejects 8.0.128/8.0.3xx (the cases that matter).
+- Vacuous PASS if `dotnet test` discovered zero tests — xUnit exits non-zero on no-match; the story deliberately avoided a hardcoded min-count.
+- New `tier1-golden-gate-linux` job doesn't set `DOTNET_CLI_TELEMETRY_OPTOUT` — matches the pre-existing windows jobs; patching only the new leg would create a fresh in-file asymmetry. (.NET CLI telemetry ≠ the project beacon AR-41 forbids.)
+- AC3 first-divergence echo is regex-coupled to the drift message — regex verified to match the real `GoldenChecksumReplay.DescribeDivergence` text today; the gate's non-zero-exit propagation is independent of it.
+- ubuntu CI leg committed but not yet observed green — empirically de-risked: the WSL leg already ran `dotnet restore --locked-mode` + the suite on Linux GREEN, so cross-platform locked-restore works; will surface on the next push (as 1.10a did).
+- `SimChecksum.AlgoVersion` pinned in two guards (`VersionStampConsistencyTests` + `SimChecksumCoverageGuardTest`) — intentional single-view registry, documented in the test ("a deliberate bump must update BOTH").
+- Windows-leg `dotnet restore` failure `throw`s past the verdict block (asymmetric vs the WSL leg) — exit stays non-zero; surfacing a hard environment error raw is acceptable.
+- Unquoted `$wslRepo`/`$wslWorker` passed to `wsl … bash` + UNC edge in `ConvertTo-WslPath` — current repo path has no spaces; UNC fails loudly; latent only.
+- CI can't prove the goldens were Windows-recorded — inherent to the golden approach; mitigated by verify-only + never-record + the new AC4 LF guard; out of scope for this story.
