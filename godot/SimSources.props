@@ -23,7 +23,7 @@
     <Compile Include="$(MSBuildThisFileDirectory)src\Combat\**\*.cs"     LinkBase="Sim\Combat" />
     <Compile Include="$(MSBuildThisFileDirectory)src\Economy\**\*.cs"    LinkBase="Sim\Economy" />
     <Compile Include="$(MSBuildThisFileDirectory)src\Navigation\**\*.cs" LinkBase="Sim\Navigation" />
-    <!-- AI: the live 9-system tick loop's system #8 is AiOpponentSystem (src/AI/, namespace
+    <!-- AI: the live 10-system tick loop includes AiOpponentSystem (src/AI/, namespace
          ProjectChimera.AI). src/AI/ is verified Godot-free (AiOpponentSystem.cs + LLMService.cs,
          which uses System.Net.Http, not Godot). Required so the golden harness can build the full loop,
          and so the analyzer quantifies the known AI float→Fixed debt (advisory). -->

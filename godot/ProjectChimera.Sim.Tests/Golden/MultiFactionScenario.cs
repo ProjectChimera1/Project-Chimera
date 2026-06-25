@@ -11,7 +11,7 @@ namespace ProjectChimera.Sim.Tests.Golden
 {
     /// <summary>
     /// Builds the 4-active-faction golden scenario for Story 1.3a — the span-path counterpart to the
-    /// 2-faction <see cref="GoldenScenario"/>. It runs the SAME Godot-free 9-system loop, but constructs the
+    /// 2-faction <see cref="GoldenScenario"/>. It runs the SAME Godot-free 10-system loop, but constructs the
     /// loop's checksum with <c>new FactionRegistry(4)</c> so the per-tick <see cref="SimChecksum"/> hashes
     /// Ore for Player1..Player4 (ascending, via the registry) — proving the registry's active-faction loop
     /// genuinely spans more than two factions and stays byte-deterministic.
@@ -54,7 +54,7 @@ namespace ProjectChimera.Sim.Tests.Golden
         public static GoldenHarness Build()
         {
             // ── Sim spine via SimulationHost (Story 1.8a) — same construction as GoldenScenario, but with a
-            //    4-faction checksum registry. The host's stores + canonical 9-system order + loop +
+            //    4-faction checksum registry. The host's stores + canonical 10-system order + loop +
             //    EnableChecksums are byte-identical to the former inline block (new FactionDefinition() matches
             //    the old BuildingSystem; omitting the DamageTable → DamageTable.Default = the old 3-arg combat).
             var host = SimulationHost.Create(

@@ -48,14 +48,14 @@ namespace ProjectChimera.Sim.Tests.Golden
     /// <summary>
     /// Builds the fixed, deterministic in-code scenario that the golden-checksum harness pins.
     ///
-    /// This replicates MainScene.cs:246-268 (the live 9-system tick loop) Godot-free, then populates a
+    /// This replicates MainScene.cs:246-268 (the live 10-system tick loop) Godot-free, then populates a
     /// small synthetic world authored entirely with <see cref="Fixed"/> (no <c>Fixed.FromFloat</c>) so the
     /// recorded <see cref="SimChecksum"/> sequence is byte-identical on every run. The scenario is built
     /// IN CODE — not loaded from alpha_map_01.json — on purpose: the JSON apply path is Godot-coupled in
     /// MainScene, and a Godot-free ScenarioApplier does not exist until Story 1.8b. An in-code scenario has
     /// zero production dependencies, zero duplication of MainScene.ApplyScenario, and zero drift risk, and
     /// pins exactly what the strangler migration must preserve: the deterministic evolution of a fixed world
-    /// state through the real 9 systems.
+    /// state through the real 10 systems.
     ///
     /// TODO(1.8b): add an alpha_map_01-loaded golden + start-state hash once ScenarioApplier is Godot-free.
     /// </summary>
@@ -83,7 +83,7 @@ namespace ProjectChimera.Sim.Tests.Golden
         public static GoldenHarness Build()
         {
             // ── Sim spine via SimulationHost (Story 1.8a). The host constructs the stores + the canonical
-            //    9-system order + the SimulationLoop + EnableChecksums internally — byte-identical to the
+            //    10-system order + the SimulationLoop + EnableChecksums internally — byte-identical to the
             //    former inline block. Pass new FactionDefinition() (matching the old BuildingSystem
             //    construction) and OMIT the DamageTable: null → DamageTable.Default, which is exactly the old
             //    3-arg CombatSystem/ProjectileSystem construction. (2) = P1+P2 active, so the checksum's

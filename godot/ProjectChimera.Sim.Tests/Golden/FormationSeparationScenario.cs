@@ -6,7 +6,7 @@ namespace ProjectChimera.Sim.Tests.Golden
 {
     /// <summary>
     /// Story 1.13 (AC6d) — the FORMATION-SEPARATION golden scenario. A fixed, in-code, all-<see cref="Fixed"/>
-    /// world that exercises the new separation behaviour through the real 9-system tick:
+    /// world that exercises the new separation behaviour through the real 10-system tick:
     ///   • a MOVING unit walking +X through a cluster of IDLE units (exercises AC1 moving-vs-idle bias via Position),
     ///   • idle units of DIFFERENT CollisionRadius (exercises AC2b summed-radii contact via Position),
     ///   • a Push unit contacted by a Yield unit, off the lane (exercises AC2c push-beats-yield via Position).

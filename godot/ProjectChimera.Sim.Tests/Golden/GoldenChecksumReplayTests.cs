@@ -7,7 +7,7 @@ namespace ProjectChimera.Sim.Tests.Golden
 {
     /// <summary>
     /// Migration Step 1 — the golden-checksum replay regression guard the entire strangler rides on.
-    /// Runs the fixed in-code scenario (<see cref="GoldenScenario"/>) through the real 9-system
+    /// Runs the fixed in-code scenario (<see cref="GoldenScenario"/>) through the real 10-system
     /// <see cref="SimulationLoop"/> and asserts the per-tick <see cref="SimChecksum"/> sequence is
     /// deterministic in-process (AC1), reproduces the committed golden produced by a prior process (AC2),
     /// and that a one-tick perturbation is detected AND located (AC3).

@@ -6,35 +6,38 @@ using ProjectChimera.Core;
 using ProjectChimera.Core.Definitions;
 using ProjectChimera.Core.Sim;
 using ProjectChimera.Economy;
+using ProjectChimera.Effects;
 using ProjectChimera.Navigation;
 using Xunit;
 
 namespace ProjectChimera.Sim.Tests.Sim
 {
     /// <summary>
-    /// Pins the canonical 9-system tick order that <see cref="SimulationHost"/> owns (Story 1.8a / AR-6).
-    /// The registration order IS the determinism contract — a desync hides in any silent reorder/add/remove —
-    /// so these tests FAIL loudly the moment the order drifts. They also pin the reserved index-3 slot
-    /// contract: <c>ModifierSystem</c> (Epic 2) inserts immediately before <see cref="CombatSystem"/>, so
-    /// today CombatSystem must be directly preceded by <see cref="MovementSystem"/>.
+    /// Pins the canonical 10-system tick order that <see cref="SimulationHost"/> owns (Story 1.8a / AR-6;
+    /// <c>ModifierSystem</c> filled the index-3 slot in Story 2.2a / AR-9). The registration order IS the
+    /// determinism contract — a desync hides in any silent reorder/add/remove — so these tests FAIL loudly the
+    /// moment the order drifts. They also pin the AR-9 slot contract: <c>ModifierSystem</c> sits immediately
+    /// before <see cref="CombatSystem"/> (so combat reads recomputed Effective* stats the same tick) and
+    /// immediately after <see cref="MovementSystem"/>, strictly before <see cref="ProjectileSystem"/>.
     /// </summary>
     public class SystemOrderTest
     {
         /// <summary>
-        /// The canonical order, by runtime type. ModifierSystem is intentionally ABSENT — it is reserved for
-        /// Epic 2 at index 3 (which will shift CombatSystem from [3] to [4]); inserting it now is out of scope.
+        /// The canonical order, by runtime type. <see cref="ModifierSystem"/> occupies index 3 (Story 2.2a / AR-9),
+        /// immediately before <see cref="CombatSystem"/>, so combat reads recomputed Effective* stats the same tick.
         /// </summary>
         private static readonly System.Type[] ExpectedOrder =
         {
             typeof(BuildingSystem),    // [0]
             typeof(GatheringSystem),   // [1]
             typeof(MovementSystem),    // [2]
-            typeof(CombatSystem),      // [3]  ← ModifierSystem inserts HERE in Epic 2 (before Combat)
-            typeof(ProjectileSystem),  // [4]
-            typeof(SupplySystem),      // [5]
-            typeof(FogOfWarSystem),    // [6]
-            typeof(AiOpponentSystem),  // [7]
-            typeof(ScenarioDirector),  // [8]  runs LAST
+            typeof(ModifierSystem),    // [3]  ← AR-9 effective-stat recompute (Story 2.2a), immediately before Combat
+            typeof(CombatSystem),      // [4]
+            typeof(ProjectileSystem),  // [5]
+            typeof(SupplySystem),      // [6]
+            typeof(FogOfWarSystem),    // [7]
+            typeof(AiOpponentSystem),  // [8]
+            typeof(ScenarioDirector),  // [9]  runs LAST
         };
 
         /// <summary>
@@ -48,7 +51,7 @@ namespace ProjectChimera.Sim.Tests.Sim
             new FactionDefinition());
 
         [Fact]
-        public void Systems_AreTheNineCanonicalSystems_InExactOrder()
+        public void Systems_AreTheTenCanonicalSystems_InExactOrder()
         {
             IReadOnlyList<ISimSystem> systems = BuildHost().Systems;
 
@@ -58,18 +61,25 @@ namespace ProjectChimera.Sim.Tests.Sim
         }
 
         [Fact]
-        public void ReservedModifierSlot_CombatSystem_IsImmediatelyPrecededByMovementSystem()
+        public void ModifierSlot_ModifierSystem_IsImmediatelyBeforeCombat_AfterMovement_AndBeforeProjectile()
         {
             IReadOnlyList<ISimSystem> systems = BuildHost().Systems;
 
-            int combatIdx = -1;
+            int modifierIdx = -1, combatIdx = -1, movementIdx = -1, projectileIdx = -1;
             for (int i = 0; i < systems.Count; i++)
             {
-                if (systems[i] is CombatSystem) { combatIdx = i; break; }
+                if (systems[i] is ModifierSystem)   modifierIdx   = i;
+                if (systems[i] is CombatSystem)     combatIdx     = i;
+                if (systems[i] is MovementSystem)   movementIdx   = i;
+                if (systems[i] is ProjectileSystem) projectileIdx = i;
             }
 
-            Assert.True(combatIdx > 0, "CombatSystem must be present and not first (the reserved slot sits before it).");
-            Assert.IsType<MovementSystem>(systems[combatIdx - 1]);
+            Assert.True(modifierIdx >= 0, "ModifierSystem must be registered (AR-9 effective-stat recompute).");
+            // AR-9 contract: Movement, Modifier, Combat are contiguous, so combat reads recomputed Effective* the
+            // same tick a modifier changes them; Projectile (which snapshots Effective* at spawn) runs strictly after.
+            Assert.Equal(combatIdx - 1, modifierIdx);    // immediately before CombatSystem
+            Assert.Equal(movementIdx + 1, modifierIdx);  // immediately after MovementSystem
+            Assert.True(modifierIdx < projectileIdx, "ModifierSystem must run strictly before ProjectileSystem.");
         }
     }
 }

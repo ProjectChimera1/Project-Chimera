@@ -9,7 +9,7 @@ namespace ProjectChimera.Core.Bootstrap
     /// so a reorder, addition, or removal fails loudly at startup AND in CI, never silently. Changing the order
     /// is therefore a deliberate, test-guarded edit (this array + the test), exactly as intended by C1
     /// ("never silently reorder <c>_Ready()</c>"). This is the presentation-side analog of the canonical
-    /// 9-system tick order that <c>SimulationHost</c> owns and <c>SystemOrderTest</c> pins.
+    /// 10-system tick order that <c>SimulationHost</c> owns and <c>SystemOrderTest</c> pins.
     /// </summary>
     public static class ScenePhaseOrder
     {

@@ -262,7 +262,7 @@ namespace ProjectChimera.Core
                 : Combat.DamageTable.Default;
 
             // ── Sim spine (Story 1.8a / AR-6): SimulationHost is the single Godot-free owner of the SoA
-            //    stores, the canonical 9-system tick order (ModifierSystem reserved at index 3), the
+            //    stores, the canonical 10-system tick order (ModifierSystem at index 3), the
             //    SimulationLoop, and the single checksum sink. MainScene injects the presentation GodotLogSink
             //    plus the loaded inputs; sim truth now lives on the host (the fields below are aliases of it).
             //    TODO(5.1): derive the active player count from the loaded scenario's assigned slots; 2-player
