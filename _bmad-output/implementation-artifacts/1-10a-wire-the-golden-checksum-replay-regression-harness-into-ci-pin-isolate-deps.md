@@ -4,7 +4,7 @@ baseline_commit: 6b20883
 
 # Story 1.10a: Wire the golden-checksum replay regression harness into CI + pin/isolate deps
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 <!-- 1.10a is an INFRASTRUCTURE story, not a sim/gameplay story. It writes ZERO sim code. It takes the
@@ -278,7 +278,8 @@ Infrastructure story — **zero sim code**; the 30 Hz tick, `SimChecksum`, the f
 **Modified:**
 - `godot/ProjectChimera.Sim.Tests/ProjectChimera.Sim.Tests.csproj` — added `<RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>` (Task 3). No dependency or compile-item changes.
 - `.gitignore` — added unanchored `**/bin/` and `**/obj/` (Task 3 hygiene).
-- `_bmad-output/implementation-artifacts/sprint-status.yaml` — `1-10a` status tracking (→ in-progress → review).
+- `Snapshot.md` — session "Next Action" note updated (1.9b → 1.10a). Behavior-neutral session state; declared here per 1.10a code-review.
+- `_bmad-output/implementation-artifacts/sprint-status.yaml` — `1-10a` status tracking (→ in-progress → review → done).
 
 **Unchanged (verified):** all four `*.golden.txt`; `GoldenChecksumReplay.cs`/`GoldenChecksumReplayTests.cs`; `SimChecksum.cs`; `godot/godot.csproj` (NakamaClient `3.13.0` pin guarded, not edited); every sim source file.
 
@@ -286,3 +287,27 @@ Infrastructure story — **zero sim code**; the 30 Hz tick, `SimChecksum`, the f
 
 - **2026-06-24 — Story 1.10a implemented (Status → review).** Wired the Tier-1 golden-checksum replay harness into CI as a GitHub Actions determinism gate (Godot-free, `windows-latest`, .NET 8 only, fails on any checksum diff); added the `DependencyHygieneTests` guard locking the NakamaClient `3.13.0` pin + test-dep isolation; added reproducibility hardening (`global.json`, `packages.lock.json` + `--locked-mode`, `.gitignore`); documented the AR-41 no-analytics posture. Tier-1 suite **195 green**, four goldens byte-identical, zero sim code changed. Covers FR-47, FR-44, AR-2, AR-35, AR-41, AR-47.
 - **PENDING (Alec):** push to GitHub to confirm the live Actions run goes green end-to-end (first push validates the lane; closes the last Task-5 box). _Note: runs on Alec's Actions minutes — `windows-latest` = 2× rate._
+- **2026-06-24 — `gds-code-review` PASS → Status `done`.** 3-layer adversarial review (Blind Hunter / Edge Case Hunter / Acceptance Auditor): all 4 ACs met, zero scope-fence breaches, zero spec contradictions, goldens byte-identical. 2 decisions resolved + 5 patches applied — CI SDK pinned to `8.0.419` (matches `global.json`/lock); `pull_request` trigger dropped (kills the per-push double-run; `push:['**']` already covers all branches); dep guard hardened denylist→allowlist (new `GodotCsproj_CarriesExactly_TheSingleShippedPackage`); `if-no-files-found: warn`; `Snapshot.md` added to the File List. Exact CI command re-run green — **Tier-1 196 green** (195 + 1 allowlist test), four goldens byte-identical, verify mode confirmed. The live GitHub Actions run remains Alec's to trigger (unchanged from above; one push validates the lane end-to-end).
+
+---
+
+## Review Findings
+
+_`gds-code-review` (3-layer adversarial: Blind Hunter / Edge Case Hunter / Acceptance Auditor), 2026-06-24, baseline `6b20883`→HEAD. Verdict: **all 4 ACs MET, zero scope-fence breaches, zero spec contradictions, goldens byte-identical, suite 195 green.** Edge Case Hunter empirically re-ran the exact CI `--locked-mode` restore→`-c Release` test sequence locally (green) and ran `git check-ignore` over every tracked file (nothing tracked is swept by the new `**/bin/`+`**/obj/`). Nothing below blocks ship; all items are low-priority hardening or config preference._
+
+### Decisions (resolved 2026-06-24)
+
+- [x] **[Review][Decision] SDK pin** — RESOLVED → pin CI `dotnet-version` to `8.0.419` (match `global.json` + `packages.lock.json`). Alec delegated ("idk what's best for the future"); chosen for a self-consistent, frozen, reproducible toolchain — the gate's whole identity. Determinism is SDK-independent (integer math) so the checksum was never at risk; this is consistency only. _Became a Patch below._
+- [x] **[Review][Decision] CI trigger cost** — RESOLVED → drop the `pull_request` trigger (`push:['**']` already covers every branch, so this kills the per-push double-run on PR branches with no loss of coverage). Alec's choice. _Became a Patch below._
+
+### Patches (unambiguous, all low-priority)
+
+- [x] **[Review][Patch] Pin CI SDK to 8.0.419** _(from Decision 1)_ ✅ applied — change `setup-dotnet` `dotnet-version: '8.0.x'` → `'8.0.419'` so CI installs exactly the SDK `global.json`/`packages.lock.json` name; ends the float-vs-pin inconsistency the reviewers flagged. [`.github/workflows/determinism-gate.yml:45`]
+- [x] **[Review][Patch] Drop the `pull_request` trigger** _(from Decision 2)_ ✅ applied — remove the `pull_request:` trigger; `push: branches:['**']` already runs the gate on every branch, so this removes the double-run with no coverage loss. [`.github/workflows/determinism-gate.yml:25-26`]
+- [x] **[Review][Patch] Strengthen the dep guard from denylist → allowlist** ✅ applied (new `GodotCsproj_CarriesExactly_TheSingleShippedPackage` test) — `IsTestOnlyPackage` is a denylist (`xunit*`/`Microsoft.NET.Test.Sdk`/`.runner.`/`TestPlatform`), so a *non-xunit* test framework added to the shipping project (coverlet, Moq, NUnit, FluentAssertions) would leak through `GodotCsproj_ContainsNo_TestOnlyDependencies` undetected (false-green). Asserting `godot.csproj` carries **exactly one** `PackageReference` (= `NakamaClient`) closes the gap entirely and encodes AR-2's "sole dependency" verbatim. _Optional — the current denylist satisfies AC2 as written; this is a strictly-stronger permanent guard._ [`godot/ProjectChimera.Sim.Tests/Meta/DependencyHygieneTests.cs:191-204,246-250`]
+- [x] **[Review][Patch] `upload-artifact` `if-no-files-found: ignore` → `warn`** ✅ applied — if the test host ever crashes before writing `tier1.trx`, the upload step currently passes silently with no diagnostic trail. `warn` surfaces the absence without failing the build (the red `dotnet test` step remains the primary signal). [`.github/workflows/determinism-gate.yml:61`]
+- [x] **[Review][Patch] Add `Snapshot.md` to this story's File List** ✅ applied — `Snapshot.md`'s "Next Action" note was edited (1.9b→1.10a) but not declared in the File List. Behavior-neutral; traceability only. [story `### File List`]
+
+### Dismissed (11 — verified false-positive or out-of-scope)
+
+Blind Hunter ran context-free, so several diff-only worries were retired by the project-aware layers: `--no-restore`+`--locked-mode` "brittle" (Edge re-ran it green), gate "may run zero golden tests" (the four goldens + `GoldenChecksumReplayTests`/`MultiFactionGoldenTests`/`GoldenApplierScenarioTests`/`SameTickTieBreakGoldenTests` are all in the test project), `**/obj/` "hides the lock file" (lock lives at project root — `git check-ignore` confirms not ignored), the value-tuple `FirstOrDefault` (correct), `[CallerFilePath]` coupling (verified resolves correctly; fails loud if moved), NU1004 "confusion" (the fail-closed *is* the guard), tag/branch-delete triggers (branch filter handles them), golden line-ending parity (single-OS gate — correctly deferred to 1.10c).

@@ -16,8 +16,7 @@ name: determinism-gate
 
 on:
   push:
-    branches: ['**']
-  pull_request:
+    branches: ['**']     # covers every branch; no separate pull_request trigger needed (1.10a review — avoids the per-push double-run)
   workflow_dispatch:
 
 # Collapse the project's hourly [AutoSave] push bursts to a single in-flight run per ref.
@@ -37,7 +36,7 @@ jobs:
       - name: Set up .NET 8 SDK (no Godot)
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '8.0.x'   # matches the test project's net8.0 TFM (D6)
+          dotnet-version: '8.0.419'   # pin to the exact SDK global.json + packages.lock.json name (D6 + 1.10a review) — one frozen, reproducible toolchain everywhere; bump intentionally alongside a lock-file regen
 
       - name: Restore (Godot-free Tier-1 test project only, locked package graph)
         run: dotnet restore godot/ProjectChimera.Sim.Tests/ProjectChimera.Sim.Tests.csproj --locked-mode
@@ -53,4 +52,4 @@ jobs:
         with:
           name: tier1-test-results
           path: '**/*.trx'
-          if-no-files-found: ignore
+          if-no-files-found: warn   # surface a missing tier1.trx (e.g. test host crashed before writing) instead of passing silently (1.10a review)

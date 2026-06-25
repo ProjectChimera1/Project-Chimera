@@ -65,6 +65,26 @@ namespace ProjectChimera.Sim.Tests.Meta
         }
 
         [Fact]
+        public void GodotCsproj_CarriesExactly_TheSingleShippedPackage()
+        {
+            // Allowlist counterpart to the denylist above (1.10a review hardening). AR-2 makes NakamaClient the
+            // SOLE shipped NuGet dependency, so ANY other PackageReference is a leak — including a non-xUnit test
+            // framework (coverlet, Moq, NUnit, FluentAssertions, …) that the IsTestOnlyPackage heuristic would miss.
+            // This assertion closes that blind spot: it fails on anything that is not exactly NakamaClient.
+            string[] unexpected = PackageReferences(GodotCsprojPath())
+                .Select(r => r.Include)
+                .Where(id => !id.Equals(ShippedPackageId, StringComparison.OrdinalIgnoreCase))
+                .ToArray();
+
+            Assert.True(unexpected.Length == 0,
+                $"godot.csproj carries unexpected PackageReference(s): [{string.Join(", ", unexpected)}]. " +
+                $"AR-2 requires {ShippedPackageId} to be the SOLE NuGet dependency of the shipping game project; " +
+                $"this allowlist catches ANY extra dependency the {nameof(IsTestOnlyPackage)} denylist might miss. " +
+                $"Move it to ProjectChimera.Sim.Tests.csproj, or — if it is a deliberate new shipped dependency — " +
+                $"update AR-2 and this guard in the same commit.");
+        }
+
+        [Fact]
         public void TestCsproj_OwnsTheTestOnlyDependencies()
         {
             string[] ids = PackageReferences(TestCsprojPath()).Select(r => r.Include).ToArray();

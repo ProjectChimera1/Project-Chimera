@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-06-22
-last_updated: 2026-06-24 (1.10a → review: Godot-free GitHub Actions golden-checksum determinism gate + DependencyHygieneTests pin/isolation guard + global.json & packages.lock.json reproducibility + AR-41 no-analytics posture doc; Tier-1 195 green, goldens byte-identical, zero sim code; live Actions run pending Alec's push)
+last_updated: 2026-06-24 (1.10a → done via gds-code-review PASS: 3-layer adversarial review, all 4 ACs met, zero scope breaches; 2 decisions resolved + 5 patches applied [CI SDK pinned 8.0.419, pull_request trigger dropped, dep guard denylist→allowlist, if-no-files-found warn, Snapshot.md filed]; Tier-1 196 green, four goldens byte-identical, zero sim code; live GitHub Actions run still pending Alec's push)
 project: Project_Chimera
 project_key: NOKEY
 tracking_system: file-system
@@ -56,7 +56,7 @@ development_status:
   1-8c-asserted-scenephaserunner-isetupphase-phaseordertest-and-the-mainscene-strangle-diff: done
   1-9a-serverbootstrap-headless-peer-server-checksum-collector-with-quorum-halt-loopback: done
   1-9b-fr-39-two-machine-lan-determinism-green-the-1-ship-risk-gate: done
-  1-10a-wire-the-golden-checksum-replay-regression-harness-into-ci-pin-isolate-deps: review
+  1-10a-wire-the-golden-checksum-replay-regression-harness-into-ci-pin-isolate-deps: done
   1-10b-banned-api-aot-eligibility-analyzers-over-the-sim-layer: backlog
   1-10c-cross-platform-windows-linux-golden-checksum-gate-via-wsl: backlog
   1-11-smoke-test-the-four-unverified-systems-utility-ai-adaptive-input-delay-llm-trigger-ai-map-generator: backlog
