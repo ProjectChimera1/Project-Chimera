@@ -15,7 +15,7 @@ status: Active
 Phases 0–4 are code-complete. Phase 5 is underway. Session 20 shipped worker-placed buildings + UI bug sweep. Session 21 (remote, away from computer) shipped Utility AI + Adaptive Input Delay.
 
 ## Next Action
-Review the 122-file diff in git, commit the update, then test one story-first artifact flow to confirm new skill routing works as expected (especially the deprecated `bmad-create-architecture` → `bmad-architecture` path).
+Pass story 1.10b to code review (Tier-1 green 203/203, analyzer tests 17/17, definition of done confirmed, all memory trackers + sprint status updated).
 
 ---
 
