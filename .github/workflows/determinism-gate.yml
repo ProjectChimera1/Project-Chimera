@@ -59,6 +59,42 @@ jobs:
           path: '**/*.trx'
           if-no-files-found: warn   # surface a missing tier1.trx (e.g. test host crashed before writing) instead of passing silently (1.10a review)
 
+  # Story 1.10c (AR-37, Decision #1 = both) — the always-on Windows<->Linux cross-platform backstop.
+  # SIBLING job to tier1-golden-gate (left untouched; its name stays stable): runs the SAME Godot-free
+  # Tier-1 golden-checksum suite on ubuntu-latest on EVERY push, in VERIFY mode against the committed
+  # (Windows-recorded) goldens. Green here => Linux computes byte-identical Fixed checksums to Windows,
+  # continuously. This is the CLOUD Linux signal; it does NOT replace the WSL gate
+  # (godot/tools/cross-platform-determinism-check.ps1), which tests the REAL Linux dedicated-server host.
+  # ubuntu-latest bills 1x (vs windows-latest 2x), so the continuous cross-platform proof is near-free.
+  # It directly answers AR-37's residual risk ("the runner must have a trigger or it silently never runs
+  # before releases"). No Godot is installed; CHIMERA_GOLDEN_RECORD is NEVER set; --locked-mode pins deps.
+  tier1-golden-gate-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up .NET 8 SDK (no Godot)
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.419'   # same frozen toolchain as tier1-golden-gate (global.json + lock files)
+
+      - name: Restore (Godot-free Tier-1 test project only, locked package graph)
+        run: dotnet restore godot/ProjectChimera.Sim.Tests/ProjectChimera.Sim.Tests.csproj --locked-mode
+
+      - name: Cross-platform golden-checksum gate on Linux (fails on ANY checksum diff vs the committed Windows goldens)
+        # Verify mode — CHIMERA_GOLDEN_RECORD intentionally NEVER set (recording on Linux would overwrite the
+        # committed Windows baseline). No hardcoded test count: xUnit's non-zero exit on ANY failure fails this step.
+        run: dotnet test godot/ProjectChimera.Sim.Tests/ProjectChimera.Sim.Tests.csproj -c Release --no-restore --logger "trx;LogFileName=tier1-linux.trx"
+
+      - name: Upload test results (.trx)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tier1-test-results-linux   # distinct artifact name from the windows-latest job (no upload collision)
+          path: '**/*.trx'
+          if-no-files-found: warn
+
   # Story 1.10b (AR-36) — determinism banned-API + AOT-eligibility analyzers over the Godot-free sim
   # compilation (ProjectChimera.Sim.Analysis). SIBLING job to tier1-golden-gate (left untouched), reusing the
   # same Godot-free windows-latest / SDK 8.0.419 / --locked-mode lane. No Godot is installed here either.

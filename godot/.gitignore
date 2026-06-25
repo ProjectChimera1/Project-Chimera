@@ -11,6 +11,10 @@ obj/
 *.cache
 data_*/
 
+# Test output (xUnit --logger trx; uploaded as a CI artifact, never committed — Story 1.10c tooling)
+TestResults/
+*.trx
+
 # OS junk
 .DS_Store
 Thumbs.db
