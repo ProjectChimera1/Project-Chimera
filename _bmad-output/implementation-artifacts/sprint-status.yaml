@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-06-22
-last_updated: 2026-06-24 (1.10a → done via gds-code-review PASS: 3-layer adversarial review, all 4 ACs met, zero scope breaches; 2 decisions resolved + 5 patches applied [CI SDK pinned 8.0.419, pull_request trigger dropped, dep guard denylist→allowlist, if-no-files-found warn, Snapshot.md filed]; Tier-1 196 green, four goldens byte-identical, zero sim code; live GitHub Actions run still pending Alec's push)
+last_updated: 2026-06-24 (1.10b → ready-for-dev via gds-create-story: banned-API + AOT-eligibility analyzers over the Godot-free sim compilation [AR-36]; exhaustive context build — config-only MVP [BannedApiAnalyzers 3.3.4 + <IsAotCompatible> on a new Godot-free ProjectChimera.Sim.Analysis project, advisory-on-master/fail-on-release ratchet, sibling CI job], custom BannedSimApiAnalyzer deferred; 3 decisions surfaced for Alec)
 project: Project_Chimera
 project_key: NOKEY
 tracking_system: file-system
@@ -57,7 +57,7 @@ development_status:
   1-9a-serverbootstrap-headless-peer-server-checksum-collector-with-quorum-halt-loopback: done
   1-9b-fr-39-two-machine-lan-determinism-green-the-1-ship-risk-gate: done
   1-10a-wire-the-golden-checksum-replay-regression-harness-into-ci-pin-isolate-deps: done
-  1-10b-banned-api-aot-eligibility-analyzers-over-the-sim-layer: backlog
+  1-10b-banned-api-aot-eligibility-analyzers-over-the-sim-layer: ready-for-dev
   1-10c-cross-platform-windows-linux-golden-checksum-gate-via-wsl: backlog
   1-11-smoke-test-the-four-unverified-systems-utility-ai-adaptive-input-delay-llm-trigger-ai-map-generator: backlog
   1-12-full-rts-command-vocabulary-single-target-attack-patrol-follow-hold-distinct-from-stop: backlog
