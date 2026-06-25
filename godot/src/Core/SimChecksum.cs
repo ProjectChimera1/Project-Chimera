@@ -67,13 +67,18 @@ namespace ProjectChimera.Core
                 // ── Command state (v4, Story 1.12) ────────────────────────────────
                 // The full RTS command vocabulary's persistent per-entity state IS sim truth: a peer divergence
                 // in a forced/follow target or a patrol route must desync detectably. Count-driven + ascending,
-                // all int / Fixed.Raw → cross-platform safe (this golden MAY join the Win↔Linux gate, unlike AI).
+                // all int / Fixed.Raw → cross-platform safe: the Story 1.12 golden IS compared on both CI legs
+                // (NOT Windows-gated, unlike the float-scoring AI golden).
                 hash = Mix(hash, world.CommandTarget[i]);
                 hash = Mix(hash, world.PatrolCount[i]);
                 hash = Mix(hash, world.PatrolIndex[i]);
                 hash = Mix(hash, world.PatrolDir[i]);
                 int wpBase  = i * EntityWorld.MAX_PATROL_WAYPOINTS;
                 int wpCount = world.PatrolCount[i];
+                // Defensive (Review, Story 1.12): never read past the per-entity ring. OrderApplier caps the
+                // count at MAX_PATROL_WAYPOINTS today, so this can't fire — but a future writer that sets a
+                // larger count must not turn a logic slip into an OOB read inside per-tick desync detection.
+                if (wpCount > EntityWorld.MAX_PATROL_WAYPOINTS) wpCount = EntityWorld.MAX_PATROL_WAYPOINTS;
                 for (int k = 0; k < wpCount; k++)
                 {
                     hash = Mix(hash, world.PatrolWaypoints[wpBase + k].X.Raw);

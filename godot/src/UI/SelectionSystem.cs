@@ -284,10 +284,12 @@ namespace ProjectChimera.UI
                 }
                 else if (key.Keycode == Key.S && _selectedSet.Count > 0)
                 {
+                    _awaitingAttackMoveClick = false; _awaitingPatrolClick = false; _awaitingFollowClick = false;
                     IssueStopCommand();
                 }
                 else if (key.Keycode == Key.H && _selectedSet.Count > 0)
                 {
+                    _awaitingAttackMoveClick = false; _awaitingPatrolClick = false; _awaitingFollowClick = false;
                     IssueHoldCommand();
                 }
                 else if (key.Keycode == Key.Q && _selectedSet.Count > 0)
@@ -526,11 +528,10 @@ namespace ProjectChimera.UI
             {
                 if (!_world.IsAlive(id)) continue;
                 if (!EnqueueTargetedCommand(id, UnitCommand.AttackTarget, enemyId)) continue; // online: queued
-                // Offline: apply now (mirrors IssueStopCommand's offline/online split).
-                _world.CommandState[id]  = UnitCommand.AttackTarget;
-                _world.CommandTarget[id] = enemyId;
-                _world.AttackTarget[id]  = enemyId;
-                _world.Flags[id]        &= ~EntityFlags.Attacking;
+                // Offline: apply through the SAME shared OrderApplier the lockstep/replay paths use (Review,
+                // Story 1.12) — never a hand-rolled copy that could silently drift from production apply logic.
+                var atkOrder = new UnitOrder(id, UnitCommand.AttackTarget, Fixed.FromRaw(enemyId), Fixed.Zero);
+                OrderApplier.Apply(_world, in atkOrder, _world.FactionOf[id]);
             }
             GD.Print($"[Selection] Attack issued on enemy {enemyId} to {_selectedList.Count} unit(s).");
         }
@@ -568,9 +569,9 @@ namespace ProjectChimera.UI
                 if (!_world.IsAlive(id)) continue;
                 if (id == friendlyId) continue; // a unit cannot follow itself
                 if (!EnqueueTargetedCommand(id, UnitCommand.Follow, friendlyId)) continue; // online: queued
-                _world.CommandState[id]  = UnitCommand.Follow;
-                _world.CommandTarget[id] = friendlyId;
-                _world.Flags[id]        &= ~EntityFlags.Attacking;
+                // Offline: apply through the shared OrderApplier (Review, Story 1.12) — same path as Patrol.
+                var followOrder = new UnitOrder(id, UnitCommand.Follow, Fixed.FromRaw(friendlyId), Fixed.Zero);
+                OrderApplier.Apply(_world, in followOrder, _world.FactionOf[id]);
             }
             GD.Print($"[Selection] Follow issued on friendly {friendlyId} to {_selectedList.Count} unit(s).");
         }

@@ -132,6 +132,7 @@ namespace ProjectChimera.Multiplayer
                     world.MoveTarget[id]   = target;
                     world.Flags[id]        = (world.Flags[id] | EntityFlags.Moving) & ~EntityFlags.Attacking;
                     world.AttackTarget[id] = -1;
+                    ClearPatrolRoute(world, id);
                     onRequestPath?.Invoke(id, Fixed.FromRaw(o.TargetX).ToFloat(), Fixed.FromRaw(o.TargetZ).ToFloat());
                     break;
                 }
@@ -142,6 +143,7 @@ namespace ProjectChimera.Multiplayer
                     world.MoveTarget[id]   = target;
                     world.Flags[id]        = (world.Flags[id] | EntityFlags.Moving) & ~EntityFlags.Attacking;
                     world.AttackTarget[id] = -1;
+                    ClearPatrolRoute(world, id);
                     onRequestAttackMove?.Invoke(id, Fixed.FromRaw(o.TargetX).ToFloat(), Fixed.FromRaw(o.TargetZ).ToFloat());
                     break;
                 }
@@ -150,6 +152,7 @@ namespace ProjectChimera.Multiplayer
                 {
                     world.Flags[id]        = world.Flags[id] & ~(EntityFlags.Moving | EntityFlags.Attacking);
                     world.AttackTarget[id] = -1;
+                    ClearPatrolRoute(world, id);
                     onCancelPath?.Invoke(id);
                     break;
                 }
@@ -162,6 +165,7 @@ namespace ProjectChimera.Multiplayer
                     world.CommandTarget[id] = o.TargetX;
                     world.AttackTarget[id]  = o.TargetX;
                     world.Flags[id]        &= ~EntityFlags.Attacking;
+                    ClearPatrolRoute(world, id);
                     break;
                 }
                 case UnitCommand.Follow:
@@ -169,6 +173,7 @@ namespace ProjectChimera.Multiplayer
                     // Friendly id packed in TargetX as a raw int. CombatSystem.TickFollowCombat drives movement.
                     world.CommandTarget[id] = o.TargetX;
                     world.Flags[id]        &= ~EntityFlags.Attacking;
+                    ClearPatrolRoute(world, id);
                     break;
                 }
                 case UnitCommand.Patrol:
@@ -221,6 +226,19 @@ namespace ProjectChimera.Multiplayer
                     break;
                 }
             }
+        }
+
+        /// <summary>
+        /// Reset the patrol-route ring to "no route" (Review, Story 1.12). Called whenever a unit is given a
+        /// NON-patrol command, so a later <see cref="UnitCommand.PatrolAppend"/> (whose "already patrolling?"
+        /// gate keys on <c>PatrolCount</c>) cannot resurrect an abandoned route, and the v4 checksum stops
+        /// folding a dead route the unit no longer walks. Patrol/PatrolAppend own this state and do NOT call it.
+        /// </summary>
+        private static void ClearPatrolRoute(EntityWorld world, int id)
+        {
+            world.PatrolCount[id] = 0;
+            world.PatrolIndex[id] = 0;
+            world.PatrolDir[id]   = 1;
         }
     }
 

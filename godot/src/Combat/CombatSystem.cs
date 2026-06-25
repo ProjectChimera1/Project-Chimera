@@ -218,11 +218,16 @@ namespace ProjectChimera.Combat
         private void TickAttackTargetCombat(EntityWorld world, int i, Fixed dt)
         {
             int forced = world.CommandTarget[i];
-            if (forced < 0 || !world.IsAlive(forced))
+            // Invalid if: no target (-1), dead/out-of-range (IsAlive short-circuits before the FactionOf index so a
+            // bad id never reads out of bounds), itself, or a SAME-faction unit. The faction/self guard (Review
+            // Option A, Story 1.12) blocks force-firing your own units — reachable when a killed enemy's slot is
+            // recycled into a friendly before this tick, or via a crafted order. Same-faction ONLY: a Neutral is
+            // still a valid force-fire target (the golden relies on it).
+            if (forced < 0 || !world.IsAlive(forced) || forced == i || world.FactionOf[forced] == world.FactionOf[i])
             {
-                // AC3 — forced target gone: clear and resume normal Idle acquire-nearest THIS tick (no freeze).
-                // Delegate cooldown + acquisition to TickIdleCombat (do NOT also tick cooldown here, or it would
-                // decrement twice this tick).
+                // AC3 — forced target gone/invalid: clear and resume normal Idle acquire-nearest THIS tick (no
+                // freeze). Delegate cooldown + acquisition to TickIdleCombat (do NOT also tick cooldown here, or it
+                // would decrement twice this tick).
                 world.CommandTarget[i] = -1;
                 world.CommandState[i]  = UnitCommand.Idle;
                 world.AttackTarget[i]  = -1;
@@ -332,9 +337,12 @@ namespace ProjectChimera.Combat
         private void TickFollowCombat(EntityWorld world, int i, Fixed dt)
         {
             int friendly = world.CommandTarget[i];
-            if (friendly < 0 || !world.IsAlive(friendly))
+            // Drop to Idle if the followed unit is gone (-1 / dead / out-of-range — IsAlive short-circuits before
+            // the FactionOf index), is itself, or is no longer SAME-faction (a recycled slot now holding an
+            // enemy/neutral). Follow tracks a friendly only (Review, Story 1.12).
+            if (friendly < 0 || !world.IsAlive(friendly) || friendly == i || world.FactionOf[friendly] != world.FactionOf[i])
             {
-                // Followed unit gone — drop to Idle (AC4b).
+                // Followed unit gone/invalid — drop to Idle (AC4b).
                 world.CommandState[i]  = UnitCommand.Idle;
                 world.CommandTarget[i] = -1;
                 world.Flags[i]        &= ~(EntityFlags.Moving | EntityFlags.Attacking);

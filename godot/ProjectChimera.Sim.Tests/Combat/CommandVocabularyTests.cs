@@ -90,6 +90,28 @@ namespace ProjectChimera.Sim.Tests.Combat
             Assert.Equal(forced, w.AttackTarget[attacker]);
         }
 
+        [Fact]
+        public void AttackTarget_DamagesForcedTargetInRange_NotNearer()
+        {
+            var (w, combat) = NewSim();
+            int attacker = Combatant(w, V(0, 0, 0), Faction.Player1, range: 2); // melee (<= MELEE_THRESHOLD) → instant damage
+            int near     = Combatant(w, V(1, 0, 0), Faction.Player2);           // nearer enemy, also in range
+            int forced   = Combatant(w, V(2, 0, 0), Faction.Player2);           // the player's chosen target, in range (dist 2 <= 2)
+
+            w.CommandState[attacker]  = UnitCommand.AttackTarget;
+            w.CommandTarget[attacker] = forced;
+
+            Fixed nearBefore   = w.Health[near];
+            Fixed forcedBefore = w.Health[forced];
+            combat.Tick(w, Dt);
+
+            // Force-fire damages ONLY the forced target — proving AC2's in-range half (Task 7 wording), the
+            // complement of AttackTarget_ForceFires_IgnoringNearerEnemy (which proves the out-of-range chase half).
+            Assert.True(w.Health[forced].Raw < forcedBefore.Raw, "force-fire must damage the forced target in range");
+            Assert.Equal(nearBefore.Raw, w.Health[near].Raw);                  // nearer enemy untouched
+            Assert.True((w.Flags[attacker] & EntityFlags.Attacking) != 0);
+        }
+
         // ── AC3 — forced target dies → clear, fall back to Idle, re-acquire (no freeze/stutter/dangle) ──────
 
         [Fact]
