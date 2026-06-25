@@ -347,3 +347,33 @@ Three issues hit and resolved during dev (no HALTs):
 | 2026-06-24 | Task 8: `DependencyHygieneTests` extended + new `AnalyzerGateGuardTests` (Tier-1 203 green). |
 | 2026-06-24 | Task 9: committed 3 lock files; **deliberate-violation proof** — `new System.Random()` → release build `error RS0030`, FAILED (exit 1); reverted. |
 | 2026-06-24 | Status → review. |
+
+---
+
+### Review Findings (gds-code-review, 2026-06-24)
+
+_3-layer adversarial review (Blind Hunter / Edge Case Hunter / Acceptance Auditor), all on Opus 4.8, against `baseline_commit ddd9dc5`. The Acceptance Auditor confirmed **all 6 ACs met, zero scope breaches, all Dev-Agent-Record claims true**. Findings below are post-**empirical verification** — the reviewer built `ProjectChimera.Sim.Analysis` and ran a live RS0030 injection probe rather than reasoning from assumed analyzer semantics. **2 actionable (1 decision, 1 patch), 6 deferred, 6 dismissed.**_
+
+**✅ Verified clean (empirical, not asserted):** RS0030 is wired & functional — an injected `System.DateTime.UtcNow` in `src/Core/` fired RS0030 (2 sites); the real advisory build is green at **295 warnings / 0 errors with RS0030 = 0**, so the release-gated set is genuinely clean on current code (**AC4 holds**). Per-rule counts reproduced the baseline table (CHM0001/0005/0004/0002/0003 + IL2026/IL3050 all at documented values).
+
+#### Decision needed
+- [ ] [Review][Decision] **The four `M:System.Single/Double.Parse/.ToString` bans in `BannedSymbols.txt` do not reliably fire — the float↔string release-gate coverage is effectively non-functional** [`BannedSymbols.txt:28-31`] — Real-pipeline probe: an injected `float.ToString("F4")` **and** `float.Parse("1.0")` in `src/Core/` produced **0 RS0030** (only the `DateTime` type-ban fired). Bare-name method doc-IDs resolve unreliably in the real compilation (the *same* `float.ToString("F4")` DID fire in a vanilla micro-test, so this is config-dependent and not trustworthy as a gate). Net: AC1's literal claim that the gate reports "`float.Parse`/`float.ToString`" is **not met by the release-gated RS0030 set**. Mitigations already in place: CHM0001 (float keyword, advisory) flags float locals/fields; `FixedJsonConverter` is the sanctioned parse path; golden-checksum replay backstops a real desync. **Decide:** (1) fix now — explicit overload signatures, or move the float-parse/stringify ban into the custom analyzer as a CHM rule; (2) accept & document — downgrade the baseline claim, rely on CHM0001/CHM0005 + golden backstop; (3) fold into the D2 "Fixed end-to-end" migration that removes the float debt anyway.
+
+#### Patch
+- [ ] [Review][Patch] **CHM0005 converter allow-list matches `FixedJsonConverter` by bare type name with no namespace anchor** [`BannedSimApiAnalyzer.cs:223-228`] — `IsInsideAllowlistedConverter` matches `t.Identifier.ValueText == "FixedJsonConverter"` only; any future / UGC / test-double type named `FixedJsonConverter` in *any* namespace silently exempts CHM0005 forever. The sibling receiver check (`:191-192`) correctly pins `ownerNs == "ProjectChimera.Core"` — the allow-list side should be anchored the same way. **Flagged independently by all three review layers** (highest-confidence finding). Fix: anchor to namespace `ProjectChimera.Core.Definitions` (or resolve the containing type's symbol) + add a paired negative test. Advisory rule, single converter today → latent, but it's the rule's trust boundary and the fix is cheap.
+
+#### Deferred (advisory-rule polish — all backstopped, none blocking)
+- [x] [Review][Defer] **CHM0002 only inspects `foreach`** — misses `.Keys`/`.Values`, LINQ, and explicit `.GetEnumerator()` enumeration of a Dictionary/HashSet [`BannedSimApiAnalyzer.cs:135`] — advisory; golden-checksum replay backstops order desync; story scoped CHM0002 as best-effort.
+- [x] [Review][Defer] **CHM0001 misses fully-qualified `System.Single`/`System.Double` and `var`-inferred float** [`BannedSimApiAnalyzer.cs:119`] — only the `float`/`double` keyword (`PredefinedType`) fires; the XML-doc's "the real coverage" slightly overclaims. Advisory, rare spelling.
+- [x] [Review][Defer] **CHM0003 misses `Span<T>.Sort` / delegate-reached sorts and over-flags tie-broken (deterministic) sorts** [`BannedSimApiAnalyzer.cs:182-184`] — advisory; story scoped CHM0003 to `Array.Sort`/`List<T>.Sort`.
+- [x] [Review][Defer] **CHM0004 heuristic — false-positives on ordinary loop bounds/comparisons; blind to `static readonly` caps and negated (`< -N`) bounds** [`BannedSimApiAnalyzer.cs:200-276`] — advisory by design ("Heuristic and advisory"); cleanup story (Epics 2/7) will triage.
+- [x] [Review][Defer] **Analyzer test hardening** [`BannedSimApiAnalyzerTests.cs`] — `OrderBy_does_not_report_CHM0003` is structurally vacuous (CHM0003 can't match `OrderBy` regardless); positive coverage omits `float?`, `List<float>`, tuple-element and lambda-param forms (the bulk of the 128 CHM0001 sites). The rules empirically fire on these; the tests just don't pin them.
+- [x] [Review][Defer] **CI release-gate `== 'true'` string-boolean comparison is load-bearing-by-quirk** [`determinism-gate.yml`] — correct today (dispatch inputs serialize as strings); add a guard comment so a future `== true` "cleanup" can't silently disable the on-demand release proof.
+
+#### Dismissed as noise (6)
+1. **[Edge Case Hunter, High] "RS0030 release gate would hard-fail on `FixedPoint.cs:147`"** — empirically false; RS0030 = 0, gate clean & functional. That line is flagged by CHM0005 (the `ToFloat()` call), not RS0030; the `.ToString("F4")` does not match the bare `M:System.Single.ToString` ban in the real compilation (see Decision finding).
+2. **[Edge] CHM0005 false-positive if the converter delegates to a helper outside the type** — speculative future refactor; the current converter inlines the call (correct).
+3. **[Blind] `ImplicitUsings disable` may break the Godot-free compile** — empirically the analysis project builds clean (295 warns / 0 err).
+4. **[Auditor] `Microsoft.NET.ILLink.Tasks` is a `Direct` dep in the lock file** — benign/expected from `<IsAotCompatible>`; `godot.csproj` still carries exactly one `PackageReference` (verified).
+5. **[Blind] advisory/release `--no-incremental` asymmetry** — no `bin`/`obj` caching in the lane + fresh checkout per run; not a current defect.
+6. **[Auditor] `.editorconfig` `[*.cs]` global vs File-List "over `src/**`"** — harmless wording nit; only `ProjectChimera.Sim.Analysis` actually runs these rules.
