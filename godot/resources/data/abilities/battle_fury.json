@@ -1,0 +1,19 @@
+{
+  "id": "battle_fury",
+  "display_name": "Battle Fury",
+  "targeting": "Self",
+  "cost_energy": 35,
+  "cooldown": 12,
+  "effect": {
+    "kind": "apply_modifier",
+    "modifier": {
+      "id": 1001,
+      "duration_ticks": 150,
+      "stacking": "Refresh",
+      "max_stacks": 1,
+      "attack_damage_delta": 12,
+      "move_speed_delta": 1,
+      "status": "None"
+    }
+  }
+}

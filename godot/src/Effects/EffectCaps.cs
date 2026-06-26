@@ -68,5 +68,24 @@ namespace ProjectChimera.Effects
         /// so the store never carries a bare-literal cap.
         /// </summary>
         public const int MaxModifiersPerEntity = 8;
+
+        /// <summary>
+        /// Maximum number of <c>SearchAreaEffect</c> nodes on any single root→leaf path (Story 2.3, AC4). The
+        /// depth (<see cref="MaxEffectDepth"/>) and per-Sequence (<see cref="MaxSequenceChildren"/>) caps bound a
+        /// graph's SIZE but NOT its worst-case execution COUNT: a chain of nested SearchArea nodes multiplies
+        /// fan-out per level (up to <see cref="MaxSearchTargets"/>^depth ≈ 64⁸ leaf executions — the hang the 2.1
+        /// review surfaced). Bounding SearchArea nesting to 2 caps a single cast's area-fan-out at
+        /// <see cref="MaxSearchTargets"/>² = 4096 executions (chain-lightning fits; 3-deep area cascades are
+        /// rejected). Enforced by <c>AbilityValidator</c>; reserved to fold into the Epic-9 <c>rulesetHash</c>.
+        /// </summary>
+        public const int MaxSearchAreaDepth = 2;
+
+        /// <summary>
+        /// Maximum total node count in one ability's effect graph (Story 2.3, AC4) — the absolute graph-size
+        /// ceiling that, together with <see cref="MaxSearchAreaDepth"/>, bounds the worst-case work of a single
+        /// cast. Enforced by <c>AbilityValidator</c>'s iterative node walk; reserved to fold into the Epic-9
+        /// <c>rulesetHash</c>.
+        /// </summary>
+        public const int MaxTotalEffectNodes = 64;
     }
 }

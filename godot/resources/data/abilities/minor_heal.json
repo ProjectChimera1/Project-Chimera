@@ -1,0 +1,8 @@
+{
+  "id": "minor_heal",
+  "display_name": "Minor Heal",
+  "targeting": "Self",
+  "cost_energy": 20,
+  "cooldown": 3,
+  "effect": { "kind": "heal", "amount": 40 }
+}

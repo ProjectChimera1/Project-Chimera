@@ -1,4 +1,5 @@
 #nullable enable
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
@@ -31,15 +32,25 @@ namespace ProjectChimera.Sim.Tests.Validation
         }
 
         /// <summary>
-        /// ValidatedSoleMinterTest — scan the sim source: the only file that may construct a Validated&lt;T&gt;
-        /// is <c>ScenarioValidator.cs</c>. A stray <c>new Validated&lt;</c> anywhere else means a value is being
-        /// labelled "validated" without passing the gate (Story 1.7, D1).
+        /// ValidatedSoleMinterTest — scan the sim source: the only files that may construct a Validated&lt;T&gt;
+        /// are the validator ALLOW-LIST (each a focused validator that owns a proof-of-validation type). A stray
+        /// <c>new Validated&lt;</c> anywhere else means a value is being labelled "validated" without passing a gate
+        /// (Story 1.7, D1). Story 2.3 added <c>AbilityValidator.cs</c> (mints <c>Validated&lt;AbilityDefinition&gt;</c>),
+        /// so the sole-minter guarantee became a documented, auditable two-file allow-list.
         /// </summary>
         [Fact]
-        public void NewValidated_AppearsOnlyInScenarioValidator()
+        public void NewValidated_AppearsOnlyInValidatorAllowList()
         {
             string srcRoot = LocateSrcRoot();
             Assert.True(Directory.Exists(srcRoot), $"Could not locate the sim source root at '{srcRoot}'.");
+
+            // The allow-list of files permitted to mint a Validated<T>. Each is a validator that owns a
+            // proof-of-validation type; adding to this set is a deliberate, reviewed act (never incidental).
+            var minters = new HashSet<string>(System.StringComparer.Ordinal)
+            {
+                "ScenarioValidator.cs",  // Validated<ScenarioData>   (Story 1.7)
+                "AbilityValidator.cs",   // Validated<AbilityDefinition> (Story 2.3)
+            };
 
             // Whitespace-tolerant so `new  Validated<` / `new\nValidated<` cannot evade the scan — a missed mint
             // (not a false trip) is the dangerous failure. [Review][Patch]
@@ -47,13 +58,14 @@ namespace ProjectChimera.Sim.Tests.Validation
             string[] offenders = Directory
                 .EnumerateFiles(srcRoot, "*.cs", SearchOption.AllDirectories)
                 .Where(f => mintPattern.IsMatch(File.ReadAllText(f)))
-                .Where(f => Path.GetFileName(f) != "ScenarioValidator.cs")
+                .Where(f => !minters.Contains(Path.GetFileName(f)))
                 .Select(Path.GetFileName)
                 .ToArray()!;
 
             Assert.True(offenders.Length == 0,
-                $"`new Validated<` found outside ScenarioValidator.cs: {string.Join(", ", offenders)}. " +
-                $"Validated<T> is proof of validation — only ScenarioValidator may mint it (Story 1.7, D1).");
+                $"`new Validated<` found outside the validator allow-list {{{string.Join(", ", minters)}}}: " +
+                $"{string.Join(", ", offenders)}. Validated<T> is proof of validation — only a validator may mint it " +
+                $"(Story 1.7 D1; Story 2.3 added AbilityValidator).");
         }
 
         // Anchor the scan to the repo via the compile-time path of THIS file:
