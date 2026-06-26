@@ -197,6 +197,75 @@ namespace ProjectChimera.Sim.Tests.Definitions
             Assert.True(V.Validate(Def(persistent)).Ok);
         }
 
+        // ── (f) AC5 — code-review of story-2.3: ApplyModifier.modifier.period_effect coverage (re-entrancy fix) ──
+
+        [Fact]
+        public void ApplyModifier_InstallLeafInModifierPeriod_Rejected_DirectTargetPeriod_Passes()
+        {
+            // A Modifier.period_effect is store-run per-tick on the dedicated single-work-stack executor. A benign
+            // direct-target period (Heal) is admissible; an INSTALL leaf there re-enters that executor (clobber) and
+            // must be rejected exactly like an install inside a Persistent phase. AC5 teeth for the period subtree.
+            var benign = new Modifier(1, 30, StackRule.Refresh, 1, Fixed.Zero, Fixed.Zero, Fixed.Zero,
+                                      StatusFlags.None, periodEffect: new HealEffect(Fixed.FromInt(1)), periodTicks: 10);
+            Assert.True(V.Validate(Def(new ApplyModifierEffect(benign))).Ok,
+                V.Validate(Def(new ApplyModifierEffect(benign))).Error);
+
+            var innerInstall = new ApplyModifierEffect(
+                new Modifier(3, 30, StackRule.Refresh, 1, Fixed.Zero, Fixed.Zero, Fixed.Zero, StatusFlags.None, null, 0));
+            var nested = new Modifier(2, 30, StackRule.Refresh, 1, Fixed.Zero, Fixed.Zero, Fixed.Zero,
+                                      StatusFlags.None, periodEffect: innerInstall, periodTicks: 10);
+            AbilityValidationResult r = V.Validate(Def(new ApplyModifierEffect(nested)));
+            Assert.False(r.Ok);
+            Assert.Contains("atest", r.Error!);
+            Assert.Contains("modifier.period_effect", r.Error!);
+        }
+
+        [Fact]
+        public void SearchArea_InsideModifierPeriod_Rejected()
+        {
+            // SearchArea in a modifier period would no-op at runtime (store runs periods spatial:null) — reject it.
+            var mod = new Modifier(1, 30, StackRule.Refresh, 1, Fixed.Zero, Fixed.Zero, Fixed.Zero, StatusFlags.None,
+                                   periodEffect: new SearchAreaEffect(Fixed.FromInt(5), TargetFilter.Enemy, Leaf()),
+                                   periodTicks: 10);
+            AbilityValidationResult r = V.Validate(Def(new ApplyModifierEffect(mod)));
+            Assert.False(r.Ok);
+            Assert.Contains("modifier.period_effect", r.Error!);
+        }
+
+        [Fact]
+        public void SearchArea_InsidePersistentInitialOrExpire_Rejected()
+        {
+            // The store runs initial/expire with spatial:null too, so a SearchArea there silently matches nothing —
+            // reject it fail-closed (the AC5(b) rule now spans all three phases, not just the period).
+            var search = new SearchAreaEffect(Fixed.FromInt(5), TargetFilter.Enemy, Leaf());
+
+            AbilityValidationResult ri = V.Validate(Def(new PersistentEffect(search, null, null, 0, 0)));
+            Assert.False(ri.Ok);
+            Assert.Contains("initial_effect", ri.Error!);
+
+            AbilityValidationResult re = V.Validate(Def(new PersistentEffect(null, null, search, 0, 0)));
+            Assert.False(re.Ok);
+            Assert.Contains("expire_effect", re.Error!);
+        }
+
+        [Fact]
+        public void EmptySequence_IsRejected()
+        {
+            AbilityValidationResult r = V.Validate(Def(new SequenceEffect()));
+            Assert.False(r.Ok);
+            Assert.Contains("0 children", r.Error!);
+        }
+
+        [Fact]
+        public void NullJson_IsLocatedFail_NotThrow()
+        {
+            // The loader's "never throws past its boundary" contract: a null source is a located fail, not an
+            // ArgumentNullException (which JsonSerializer.Deserialize(null) would otherwise raise).
+            AbilityValidationResult r = AbilityLoader.Load(null!, "src");
+            Assert.False(r.Ok);
+            Assert.Contains("src", r.Error!);
+        }
+
         // ── (b/AC2) over-range number is rejected at parse, folded into a located result by the loader ──
 
         [Fact]

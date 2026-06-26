@@ -159,6 +159,30 @@ namespace ProjectChimera.Sim.Tests.Definitions
         }
 
         [Fact]
+        public void DuplicateProperty_InsideEffectObject_IsLocatedReject()
+        {
+            // JsonDocument permits duplicate keys and TryGetProperty takes the FIRST — the converter must reject the
+            // dup, else a second value (here an over-range 40000) rides past validation. RED if the dup check is removed.
+            AbilityValidationResult r = AbilityLoader.Load(
+                """{ "id": "dup", "targeting": "Self", "effect": { "kind": "heal", "amount": 1, "amount": 40000 } }""", "dup");
+            Assert.False(r.Ok);
+            Assert.Contains("dup", r.Error!);
+            Assert.Contains("duplicate property", r.Error!);
+        }
+
+        [Fact]
+        public void ReservedTargetFilterBit_IsLocatedReject()
+        {
+            // Air/Ground/Structure are reserved (2.9a) and unevaluated — authoring one fails OPEN (matches all). The
+            // converter rejects it fail-closed. RED if the reserved-bit guard is removed.
+            AbilityValidationResult r = AbilityLoader.Load(
+                """{ "id": "air", "targeting": "Self", "effect": { "kind": "search_area", "radius": 4, "filter": "Air", "child": { "kind": "heal", "amount": 1 } } }""", "air");
+            Assert.False(r.Ok);
+            Assert.Contains("filter", r.Error!);
+            Assert.Contains("reserved", r.Error!);
+        }
+
+        [Fact]
         public void NoSourceFile_UsesJsonPolymorphic_OrJsonDerivedType()
         {
             // AR-22: closed-registry converter only; the attributes are forbidden project-wide. Match the ATTRIBUTE

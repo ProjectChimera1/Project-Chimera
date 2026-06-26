@@ -1,4 +1,5 @@
 #nullable enable
+using System;
 using System.IO;
 using System.Text.Json;
 
@@ -20,6 +21,11 @@ namespace ProjectChimera.Core.Definitions
         /// </summary>
         public static AbilityValidationResult Load(string json, string sourceLabel)
         {
+            // Fail-closed on a null source: JsonSerializer.Deserialize(null) throws ArgumentNullException (NOT a
+            // JsonException), which would otherwise escape this loader's "never throws past its boundary" contract.
+            if (json is null)
+                return AbilityValidationResult.Fail($"ability '{sourceLabel}': JSON source is null.");
+
             AbilityDefinition? def;
             try
             {
@@ -31,7 +37,12 @@ namespace ProjectChimera.Core.Definitions
                 string id = TryPeekId(json) ?? sourceLabel;
                 // The converter/FixedJsonConverter messages already carry the "<path>: <reason>" tail (e.g.
                 // "effect.children[2]: unknown kind 'lua'"), so prefixing "ability '<id>'." yields the AC2 shape.
-                return AbilityValidationResult.Fail($"ability '{id}'.{ex.Message}");
+                // Strip System.Text.Json's appended " Path: $.x | LineNumber: … " tail so the located error stays
+                // single-pathed (STJ re-throws converter errors with its own path info appended).
+                string reason = ex.Message;
+                int pathIdx = reason.IndexOf(" Path: ", StringComparison.Ordinal);
+                if (pathIdx >= 0) reason = reason.Substring(0, pathIdx);
+                return AbilityValidationResult.Fail($"ability '{id}'.{reason}");
             }
 
             if (def is null)
@@ -50,7 +61,20 @@ namespace ProjectChimera.Core.Definitions
             string label = Path.GetFileName(absolutePath);
             if (!File.Exists(absolutePath))
                 return AbilityValidationResult.Fail($"ability '{label}': file not found at '{absolutePath}'.");
-            return Load(File.ReadAllText(absolutePath), label);
+            string json;
+            try
+            {
+                json = File.ReadAllText(absolutePath);
+            }
+            catch (IOException ex)
+            {
+                return AbilityValidationResult.Fail($"ability '{label}': could not read file ({ex.Message}).");
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return AbilityValidationResult.Fail($"ability '{label}': access denied reading file ({ex.Message}).");
+            }
+            return Load(json, label);
         }
 
         /// <summary>

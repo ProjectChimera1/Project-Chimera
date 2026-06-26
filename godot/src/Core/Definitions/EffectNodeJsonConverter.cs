@@ -122,6 +122,13 @@ namespace ProjectChimera.Core.Definitions
                     GuardDepth(depth, path);
                     Fixed radius = ReadFixed(el, "radius", path, options);
                     TargetFilter filter = ReadEnum<TargetFilter>(el, "filter", path, options, required: true);
+                    // Air/Ground/Structure are RESERVED for Story 2.9a and NOT yet evaluated by TargetMatcher — an
+                    // authored reserved bit would fail OPEN (no allegiance bit set → matches every in-radius entity).
+                    // Reject fail-closed until 2.9a wires their evaluation.
+                    const TargetFilter reserved = TargetFilter.Air | TargetFilter.Ground | TargetFilter.Structure;
+                    if ((filter & reserved) != 0)
+                        throw new JsonException(
+                            $"{path}.filter: Air/Ground/Structure are reserved (Story 2.9a) and not yet evaluated — remove them.");
                     EffectNode child = ReadRequiredChild(el, "child", options, depth + 1, $"{path}.child");
                     return new SearchAreaEffect(radius, filter, child);
                 }
@@ -256,14 +263,22 @@ namespace ProjectChimera.Core.Definitions
         /// </summary>
         private static void RejectUnknownProperties(JsonElement el, string path, params string[] allowed)
         {
+            // Track which allowed slot each property maps to, so a DUPLICATE key is a located reject too. JsonDocument
+            // permits duplicate property names and TryGetProperty silently takes the FIRST — without this, a second
+            // "amount"/"kind" could smuggle a value (e.g. an over-range number) past validation (fail-closed, AR-22).
+            Span<bool> seen = stackalloc bool[allowed.Length];
             foreach (JsonProperty p in el.EnumerateObject())
             {
-                bool ok = false;
+                int idx = -1;
                 for (int i = 0; i < allowed.Length; i++)
-                    if (string.Equals(p.Name, allowed[i], StringComparison.Ordinal)) { ok = true; break; }
-                if (!ok)
+                    if (string.Equals(p.Name, allowed[i], StringComparison.Ordinal)) { idx = i; break; }
+                if (idx < 0)
                     throw new JsonException(
                         $"{path}.{p.Name}: unknown property (effect objects are closed — no scripting/extension escape hatch, AR-22).");
+                if (seen[idx])
+                    throw new JsonException(
+                        $"{path}.{p.Name}: duplicate property (each field may appear at most once, AR-22).");
+                seen[idx] = true;
             }
         }
     }

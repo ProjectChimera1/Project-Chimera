@@ -48,13 +48,13 @@ namespace ProjectChimera.Core.Definitions
             // ── (b) Costs + cooldown sign (FixedJsonConverter already rejected NaN/Inf/over-range at parse; this
             //        guards SIGN and the int costs). Fixed sign via .Raw (the underlying 16.16 int). ──
             if (def.CostEnergy.Raw < 0)
-                return Fail(id, "cost_energy", $"={def.CostEnergy.ToFloat()} must be >= 0.");
+                return Fail(id, "cost_energy", $"raw {def.CostEnergy.Raw} must be >= 0.");
             if (def.CostOre < 0)
                 return Fail(id, "cost_ore", $"={def.CostOre} must be >= 0.");
             if (def.CostCrystal < 0)
                 return Fail(id, "cost_crystal", $"={def.CostCrystal} must be >= 0.");
             if (def.Cooldown.Raw < 0)
-                return Fail(id, "cooldown", $"={def.Cooldown.ToFloat()} must be >= 0.");
+                return Fail(id, "cooldown", $"raw {def.Cooldown.Raw} must be >= 0.");
 
             // ── (c) ≥ 1 effect node (AC1's floor) ──
             EffectNode? root = def.EffectGraph;
@@ -80,9 +80,12 @@ namespace ProjectChimera.Core.Definitions
         /// <summary>
         /// Iterative graph walk (explicit stack, like <see cref="EffectBounds"/>) enforcing AC4 + AC5. Returns a
         /// located error string, or null when the graph is admissible. Traverses the SAME structure EffectBounds
-        /// does (Sequence children, SearchArea child, Persistent initial/period/expire); an ApplyModifier is a
-        /// structural leaf (its <c>modifier.period_effect</c> is bounded for nesting by the converter's parse guard
-        /// and for breadth by the executor's frame cap — see the story-2.3 deferral note).
+        /// does (Sequence children, SearchArea child, Persistent initial/period/expire) PLUS an
+        /// <c>ApplyModifierEffect</c>'s <c>modifier.period_effect</c> — which <c>ModifierStore</c> runs per-tick on
+        /// its dedicated single-work-stack executor (spatial:null), so it carries the SAME AC4 counts and AC5
+        /// re-entrancy/period-shape rules as a Persistent period. EffectBounds treats ApplyModifier as a leaf, so
+        /// this walk is the ONLY coverage of that subtree (code-review of story-2.3: the install-re-entrancy fix —
+        /// an install-leaf there would re-enter the dedicated executor and clobber its shared work-stack).
         /// </summary>
         private static string? WalkGraph(string id, EffectNode root)
         {
@@ -101,11 +104,20 @@ namespace ProjectChimera.Core.Definitions
 
                 switch (f.Node)
                 {
-                    case ApplyModifierEffect:
-                        // AC5(a): an install leaf inside a Persistent phase would re-enter the store's dedicated executor.
+                    case ApplyModifierEffect am:
+                        // AC5(a): an install leaf inside a Persistent phase (or another modifier's period — below)
+                        // would re-enter the store's dedicated, single-work-stack executor.
                         if (f.InPersistentPhase)
                             return Located(id, f.Path,
                                 "ApplyModifierEffect is not allowed inside a PersistentEffect phase (install re-entrancy).");
+                        // A Modifier.period_effect is store-run per-tick on that same dedicated executor with
+                        // spatial:null — structurally identical to a PersistentEffect.period_effect. EffectBounds and
+                        // this walk otherwise treat ApplyModifier as a leaf, so descend here (inPersistentPhase +
+                        // inPersistentPeriod = true) to extend the AC4 node/SearchArea counts and the AC5
+                        // re-entrancy / period-shape rules over the modifier's period subtree.
+                        if (am.Modifier?.PeriodEffect is not null)
+                            stack.Push(new WalkFrame(am.Modifier.PeriodEffect, $"{f.Path}.modifier.period_effect",
+                                f.SearchAreaDepth, inPersistentPhase: true, inPersistentPeriod: true));
                         break;
 
                     case PersistentEffect p:
@@ -129,16 +141,22 @@ namespace ProjectChimera.Core.Definitions
                         if (sad > EffectCaps.MaxSearchAreaDepth)
                             return Located(id, f.Path,
                                 $"SearchArea nesting reaches {sad}, exceeds MaxSearchAreaDepth={EffectCaps.MaxSearchAreaDepth}.");
-                        // AC5(b): no SearchArea inside a Persistent period subtree (no per-tick SpatialHash rebuild).
-                        if (f.InPersistentPeriod)
+                        // AC5(b): no SearchArea inside ANY store-run Persistent phase (initial/period/expire). The
+                        // store runs all three with spatial:null, so a SearchArea there silently matches nothing —
+                        // reject fail-closed rather than ship validated content that no-ops.
+                        if (f.InPersistentPhase)
                             return Located(id, f.Path,
-                                "SearchAreaEffect is not allowed inside a PersistentEffect.period_effect (periods are direct-target only).");
+                                "SearchAreaEffect is not allowed inside a PersistentEffect phase (initial/period/expire run direct-target only — no spatial hash).");
                         if (s.Child is not null)
                             stack.Push(new WalkFrame(s.Child, $"{f.Path}.child", sad, f.InPersistentPhase, f.InPersistentPeriod));
                         break;
                     }
 
                     case SequenceEffect seq:
+                        // A 0-child Sequence is a validated no-op ability — reject it (the story testing-discipline
+                        // boundary "Sequence 0 children → reject"; EffectBounds only caps the UPPER child count).
+                        if (seq.Children.Length == 0)
+                            return Located(id, f.Path, "SequenceEffect has 0 children (an effect must do something).");
                         for (int k = 0; k < seq.Children.Length; k++)
                             if (seq.Children[k] is not null)
                                 stack.Push(new WalkFrame(seq.Children[k], $"{f.Path}.children[{k}]",
