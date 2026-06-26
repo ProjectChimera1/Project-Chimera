@@ -285,3 +285,25 @@ _Not source edits: several Godot-generated `*.cs.uid` artifacts and `Snapshot.md
 |---|---|
 | 2026-06-25 | Story 2.2a created (`gds-create-story`). Scope Decision #1 = full three-stat substrate (AttackDamage+MaxHealth+MoveSpeed); Decision #2 = no checksum fold (standing rule — data dormant until 2.2b). Status → ready-for-dev. |
 | 2026-06-25 | Story 2.2a implemented (`gds-dev-story`). Two-pass: behavior-preserving rename to `Effective*` (goldens byte-identical) → additive `Base*`/`Energy`/`MaxEnergy` + no-op `ModifierSystem` at host index 3. All 4 ACs met; A2 single-mapper rule + guard test landed (teeth proven). NO checksum fold (AlgoVersion 5, `SimChecksum.cs` untouched, 7 goldens byte-identical, `0x5E7BE3D8` unchanged). Tier-1 314 pass / 1 skip / 0 fail; Godot build 0 errors. Status → review. |
+
+---
+
+## Review Findings (gds-code-review, 2026-06-26)
+
+**Outcome: PASS.** 3-layer adversarial review (Blind Hunter · Edge Case Hunter · Acceptance Auditor — all Opus, no conversation context). All 4 ACs independently verified **MET**, including a live re-run (Tier-1 **314 pass / 1 skip / 0 fail**, full Godot-SDK build **0 errors**) and a git-verified determinism posture (7 goldens byte-identical, `SimChecksum.cs` untouched, `AlgoVersion` 5, `0x5E7BE3D8` pinned, **zero production `AccumulateBonus` caller** ⇒ `ModifierSystem.Tick` is a true no-op). **Zero Critical/High/Medium findings reachable in 2.2a.** Every substantive finding is forward-looking (2.2b) and consistent with the story's documented scope; one trivial dev-tool consistency patch.
+
+### Patch findings
+
+- [ ] [Review][Patch] StressTest spawn writer sets `Effective` but not `Base` [godot/tools/StressTest.cs:88] — breaks the Base+Effective dual-write rule the story enforces in its sibling writers (`BuildingSystem.cs:182-183`, `EntityPlacer.cs:494-495`). Inert in 2.2a (no production `AccumulateBonus` caller) but a latent footgun: once a modifier runs over a stress unit, `Effective = Base(0) + bonus` wipes `ATTACK_DAMAGE`. Fix mirrors the siblings: set `BaseAttackDamage[id]` then `EffectiveAttackDamage[id] = BaseAttackDamage[id]`.
+
+### Deferred findings (to Story 2.2b / future SoA stories — all dormant in 2.2a)
+
+- [x] [Review][Defer] `ModifierSystem` per-entity state not cleared on death/recycle AND outside the A2 guard's reach [godot/src/Effects/ModifierSystem.cs:36-46] — deferred. Confirms deferred-work item 5; the review adds the sharper architectural point: the story's headline (close the A2 recycle defect class for EntityWorld) introduced a NEW external per-entity store (`_dirty`/`_flat*Bonus`) that `EntityWorld.Create/Destroy` cannot reset and `ApplyUnitDefinitionGuardTest` cannot see. 2.2b must add `ClearEntity(id)` on destroy AND extend the A2 guard to assert a recycled slot carries no residual bonus.
+- [x] [Review][Defer] Recompute has no lower-clamp / overflow guard; downstream readers assume `Effective ≥ 0` [godot/src/Effects/ModifierSystem.cs:51-53] — deferred (dormant in 2.2a: no deltas, `Effective==Base≥0`). 2.2b must set the negative/overflow policy: `CombatSystem`'s non-combatant gate is `== Fixed.Zero` so a negative `EffectiveAttackDamage` would flow into `DamageResolver.Apply` and HEAL the target; `MovementSystem` has no speed floor; `Fixed.Clamp(h, Zero, EffectiveMaxHealth)` becomes a `max<min` clamp if a debuff drops MaxHealth below current Health. Decide floor-at-zero vs the `StatusFlags.Disarmed` route (the story's own 2.2b note).
+- [x] [Review][Defer] `EntityPlacer` editor snapshot captures `Effective` and restores it into `Base` [godot/src/UI/EntityPlacer.cs:1095-1132] — deferred. Inert in 2.2a (`Effective==Base`); folds with deferred-work item 6 (RestoreUnit/UnitSnapshot widening). Once 2.2b adds modifiers, an undo-restore would bake the transient buff into the authored base and drop the modifier; correct capture semantics depend on 2.2b's modifier model (snapshot Base + active modifiers separately).
+- [x] [Review][Defer] A2 guard coverage is hand-maintained + runtime-tooth-tested only on `ScenarioApplier.SpawnUnit` [godot/ProjectChimera.Sim.Tests/Core/ApplyUnitDefinitionGuardTest.cs] — deferred (durable lesson, not a 2.2a defect). Every future SoA story must extend BOTH `ApplyUnitDefinition` AND the guard's assertion list together, or a partial-hand-copy path could escape (same class as the SimChecksum coverage guard's hand-maintained list).
+
+### Dismissed (2 — handled by design, not action items)
+
+- **Move-speed 1-tick lag** (Movement@2 reads `EffectiveMoveSpeed` before Modifier@3 recomputes) — by-design, deterministic, no AC violation (AC1 only requires Modifier before Combat+Projectile), already deferred-work item 3. Both reviewers flagged it "for the record, not a defect."
+- **A2 guard does not runtime-cover `BuildingSystem.SpawnTrainedUnit`** — per spec Task 4.2c (coverage conditional on drivability); the with-def branch routes through `ApplyUnitDefinition` and the no-def fallback is compiler-forced. Auditor: "noting, not faulting."
