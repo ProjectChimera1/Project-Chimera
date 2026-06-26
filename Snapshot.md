@@ -15,11 +15,10 @@ status: Active
 Phases 0–4 are code-complete. Phase 5 is underway. Session 20 shipped worker-placed buildings + UI bug sweep. Session 21 (remote, away from computer) shipped Utility AI + Adaptive Input Delay.
 
 ## Next Action
-Await research agent completion → synthesize findings into a single visual-first clarity view (HTML) with:
-1. Decision callout: "Is this 1.0 scope?" (green/amber/red)
-2. Groundwork checklist (what to spot in stories)
-3. Trigger model diagram (flow: author → editor surface → runtime)
-4. Heroes + ability + trigger authorship outcomes (confirm or correct expectations)
+Story 2.2b moves to `review` status. Awaiting user review of:
+- The two architectural decisions (self-contained store, heal-on-apply semantics)
+- Golden re-baseline confirmation
+- Sprint-status flip from `in-progress` to `review`
 
 ---
 
