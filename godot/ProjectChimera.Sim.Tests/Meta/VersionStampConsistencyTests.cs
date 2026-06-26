@@ -45,8 +45,8 @@ namespace ProjectChimera.Sim.Tests.Meta
         //    same commit as the source change — that edit is the "did the siblings + goldens move too?" checkpoint.
 
         /// <summary>Runtime desync-checksum algorithm version. Bump ⇒ re-baseline ALL goldens (same commit).
-        /// v5 (Story 1.13): folded per-entity CollisionRadius + SeparationPriorityOf (separation config).</summary>
-        private const int ExpectedSimChecksumAlgoVersion = 5;
+        /// v6 (Story 2.2b): folded per-entity Effective* / Energy / StatusFlagsOf + the ModifierStore instance state.</summary>
+        private const int ExpectedSimChecksumAlgoVersion = 6;
 
         /// <summary>Load-time canonical start-state hash algorithm version (lobby handshake value).</summary>
         private const int ExpectedCanonicalModelHashAlgoVersion = 2;

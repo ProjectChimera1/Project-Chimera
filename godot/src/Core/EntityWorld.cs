@@ -1,6 +1,7 @@
 using System;
 using ProjectChimera.Combat;
 using ProjectChimera.Core.Definitions; // UnitDefinition (definition→SoA copy in ApplyUnitDefinition)
+using ProjectChimera.Effects;          // StatusFlags (modifier-imposed per-entity status; a value enum, same sim layer)
 
 namespace ProjectChimera.Core
 {
@@ -154,6 +155,18 @@ namespace ProjectChimera.Core
         public readonly Fixed[] Energy;
         /// <summary>Maximum ability-resource capacity. Authored MaxEnergy lands in 2.2b/2.3 (then through <see cref="ApplyUnitDefinition"/> per the single-mapper rule); Create-defaulted to Zero in 2.2a.</summary>
         public readonly Fixed[] MaxEnergy;
+
+        /// <summary>
+        /// Per-entity boolean status the active <see cref="ProjectChimera.Effects.Modifier"/> instances impose
+        /// (the OR-union over a unit's modifiers — Stunned/Rooted/Silenced/Disarmed/Invulnerable). Written by the
+        /// Story 2.2b <c>ModifierStore</c> on apply/remove; <c>Create</c>-defaulted to <see cref="StatusFlags.None"/>
+        /// (so a recycled slot never inherits the prior occupant's status). The combat/movement systems that HONOUR
+        /// each flag land in a later story (2.4+/2.9a); 2.2b only sets/clears them correctly. It is mutable sim truth
+        /// the moment a status modifier exists → FOLDED into <see cref="SimChecksum"/> (v6). Lives here (not in the
+        /// store) so future systems read it for free via <c>world</c>, exactly like <see cref="EffectiveAttackDamage"/>.
+        /// </summary>
+        public readonly StatusFlags[] StatusFlagsOf;
+
         public readonly DamageType[] DamageTypeOf;
         public readonly ArmorType[] ArmorTypeOf;
 
@@ -258,6 +271,19 @@ namespace ProjectChimera.Core
         public readonly int[] BuildTarget;
 
         // --- Management ---
+        /// <summary>
+        /// Generic per-id lifecycle callback fired synchronously inside <see cref="Destroy"/>, before the id returns
+        /// to the free list. The Story 2.2b <c>ModifierStore</c> subscribes its <c>ClearEntity</c> here so an entity's
+        /// active modifiers + external stat-bonus accumulators are reverted on death/recycle (the SoA-recycle trap an
+        /// external store cannot close via <see cref="Create"/> alone). Deliberately an <c>Action&lt;int&gt;</c>, NOT a
+        /// typed store ref: <c>EntityWorld</c> (Core) stays free of any dependency on the modifier store — clean
+        /// layering (Effects depends on Core, never the reverse). Fires in the same deterministic order
+        /// <see cref="Destroy"/> is called on every peer; zero-alloc once bound. (Declared without a nullable
+        /// annotation because <see cref="EntityWorld"/> opts out of the nullable context; a delegate field is null
+        /// until bound regardless, and the <c>?.Invoke</c> call site guards it.)
+        /// </summary>
+        public Action<int> OnDestroy;
+
         private int _nextId;
         private readonly int[] _freeList;
         private int _freeCount;
@@ -289,6 +315,7 @@ namespace ProjectChimera.Core
             AttackSpeed = new Fixed[MAX_ENTITIES];
             Energy         = new Fixed[MAX_ENTITIES];
             MaxEnergy      = new Fixed[MAX_ENTITIES];
+            StatusFlagsOf  = new StatusFlags[MAX_ENTITIES];     // Story 2.2b (folded v6); modifier-imposed status
             DamageTypeOf = new DamageType[MAX_ENTITIES];
             ArmorTypeOf = new ArmorType[MAX_ENTITIES];
 
@@ -365,6 +392,9 @@ namespace ProjectChimera.Core
             // Story 2.2a: ability-resource pool defaults (no UnitDefinition source yet → ModifierStore debits in 2.2b).
             Energy[id]        = Fixed.Zero;
             MaxEnergy[id]     = Fixed.Zero;
+            // Story 2.2b: a (re)allocated slot carries NO modifier-imposed status — the ModifierStore ORs flags in on
+            // apply and recomputes the union on remove; defaulting here closes the SoA-recycle trap for this field.
+            StatusFlagsOf[id] = StatusFlags.None;
             DamageTypeOf[id]  = DamageType.Normal;
             ArmorTypeOf[id]   = ArmorType.Unarmored;
             VisionRange[id]   = Fixed.FromFloat(8f);
@@ -453,6 +483,10 @@ namespace ProjectChimera.Core
             if ((Flags[id] & EntityFlags.Alive) == 0) return;
 
             Flags[id] = EntityFlags.None;
+            // Story 2.2b: fire the per-id destroy hook BEFORE the id returns to the free list, so subscribers
+            // (the ModifierStore) revert this entity's modifiers + external accumulators while the id is still its
+            // own. Synchronous + deterministic order on every peer; a no-op when nothing is subscribed.
+            OnDestroy?.Invoke(id);
             _freeList[_freeCount++] = id;
             AliveCount--;
         }

@@ -110,19 +110,28 @@ namespace ProjectChimera.Effects
                         }
                         break;
 
-                    case PersistentEffect:
-                        // Defined type; periodic execution lands in Story 2.2b. Loud fail-closed guard so a
-                        // premature wire-up is caught, not silently mis-run. Validate keeps these off the
-                        // executor until 2.2b (the 2.3 validator).
-                        throw new NotSupportedException(
-                            "PersistentEffect execution lands in Story 2.2b (ModifierStore not yet built).");
+                    case PersistentEffect persistent:
+                        // Story 2.2b: install a time-axis instance into the store (runs InitialEffect now on the
+                        // store's OWN executor — not this one — and schedules PeriodEffect/ExpireEffect). A modifier
+                        // graph needs a store in context; a null store fails CLOSED rather than silently no-op'ing.
+                        if (f.Ctx.ModifierStore is null)
+                            throw new NotSupportedException(
+                                "PersistentEffect requires a ModifierStore in the EffectContext (Story 2.2b).");
+                        f.Ctx.ModifierStore.InstallPersistent(
+                            f.Ctx.PrimaryTargetId, persistent, f.Ctx.CasterId, f.Ctx.CasterFaction);
+                        break;
 
-                    case ApplyModifierEffect:
+                    case ApplyModifierEffect applyMod:
                         // ApplyModifierEffect is a LeafEffect, so it MUST be matched before the generic LeafEffect
-                        // case below. Its own Apply also throws; this explicit guard makes the deferral visible at
-                        // the dispatch site.
-                        throw new NotSupportedException(
-                            "ApplyModifier execution lands in Story 2.2b (ModifierStore not yet built).");
+                        // case below. Story 2.2b: install the modifier into the store (apply / stack / refresh /
+                        // ignore / schedule period). Mirrors ApplyModifierEffect.Apply — same path, explicit case for
+                        // dispatch clarity. Null store fails CLOSED.
+                        if (f.Ctx.ModifierStore is null)
+                            throw new NotSupportedException(
+                                "ApplyModifierEffect requires a ModifierStore in the EffectContext (Story 2.2b).");
+                        f.Ctx.ModifierStore.Apply(
+                            f.Ctx.PrimaryTargetId, applyMod.Modifier, f.Ctx.CasterId, f.Ctx.CasterFaction);
+                        break;
 
                     case LeafEffect leaf:
                         leaf.Apply(in f.Ctx); // guards IsAlive / faction internally

@@ -1,0 +1,478 @@
+#nullable enable
+using ProjectChimera.Combat; // DamageTable / CombatEventQueue / MatchStats (period-effect resolution sinks)
+using ProjectChimera.Core;   // EntityWorld, Fixed, Faction
+
+namespace ProjectChimera.Effects
+{
+    /// <summary>
+    /// The AR-9 <b>ModifierStore</b> (Story 2.2b) — the net-new SoA store of active, timed <see cref="Modifier"/> /
+    /// <see cref="PersistentEffect"/> instances that DRIVES the Story 2.2a effective-stat pipeline. It installs,
+    /// stacks, refreshes, and expires modifiers; runs the <c>PersistentEffect</c> time-axis (DoT/HoT); debits
+    /// <see cref="EntityWorld.Energy"/> with refuse-when-insufficient; clears an entity's modifier state on
+    /// death/recycle (via the <see cref="EntityWorld.OnDestroy"/> hook); and folds its mutable state into
+    /// <see cref="SimChecksum"/> (the one scheduled <c>AlgoVersion 5→6</c> re-baseline). The primitive without which
+    /// MOBA/TD/RPG content (buffs, debuffs, auras, DoT/HoT, stat modifiers) cannot exist.
+    ///
+    /// <para><b>Self-contained SoA (Decision #2 = Option B).</b> The store owns its slot arrays (it is not slots on
+    /// <see cref="EntityWorld"/>); its numeric state folds into the checksum via a new <c>SimChecksum.Compute(…,
+    /// ModifierStore)</c> parameter. Per-entity fixed-capacity slot ring: flat arrays sized
+    /// <c>MAX_ENTITIES * <see cref="EffectCaps.MaxModifiersPerEntity"/></c>, plus a per-entity <c>_count</c>. Slot
+    /// index for entity <c>id</c>, slot <c>s</c> is <c>id * MaxModifiersPerEntity + s</c>. The iteration contract for
+    /// BOTH the fold and <see cref="Advance"/> is <b>ascending owner-id then ascending slot</b>.</para>
+    ///
+    /// <para><b>Determinism.</b> Pure C#: no <c>using Godot;</c>, no <c>float</c>/<c>double</c>, no
+    /// <c>Fixed.FromFloat</c> (Fixed arithmetic only), no <c>System.Random</c> (the shared <see cref="SimRng"/> via
+    /// the context), no <c>Dictionary</c>/<c>HashSet</c> enumeration (flat-array SoA; index accessors expose the fold
+    /// fields), named caps only. The foldable per-instance fields are all <c>int</c>: <c>_modifierId</c>,
+    /// <c>_remainingTicks</c>, <c>_ticksUntilPeriod</c>, <c>_periodsRemaining</c>, <c>_stackCount</c>. The descriptor
+    /// references + caster id/faction are NOT folded — authored / peer-identical by construction (like a
+    /// <c>UnitDefinition</c> reference).</para>
+    ///
+    /// <para><b>Re-entrancy.</b> The store runs initial/period/expire effects on its OWN dedicated
+    /// <see cref="EffectExecutor"/> — never shared with a graph-running executor, whose single pre-allocated work-stack
+    /// running re-entrantly would clobber. In 2.2b period effects are direct-target leaves (DirectHpDelta/Heal/Damage,
+    /// <c>spatial: null</c>) so no nesting occurs; a future period that itself installs a modifier needs a separate
+    /// executor or a deferred queue (documented in deferred-work).</para>
+    /// </summary>
+    public sealed class ModifierStore
+    {
+        /// <summary>
+        /// <c>_remainingTicks</c> sentinel for a PERMANENT modifier (<c>Modifier.DurationTicks &lt; 0</c>): never
+        /// decremented, removed only explicitly or on recycle. A fixed constant so the fold mixes it deterministically.
+        /// </summary>
+        public const int PERMANENT = int.MinValue;
+
+        // ── Foldable per-instance numeric state (all int, ascending owner-id then slot — the determinism contract) ──
+        private readonly int[] _modifierId;        // Modifier.Id (0 for a pure PersistentEffect instance — see Apply scan)
+        private readonly int[] _remainingTicks;    // duration countdown (PERMANENT sentinel = never expires by duration)
+        private readonly int[] _ticksUntilPeriod;  // ticks until the next DoT/HoT pulse (0 when the instance has no period)
+        private readonly int[] _periodsRemaining;  // remaining pulses (Persistent: lifetime; Modifier: a MaxPersistentPeriods cap)
+        private readonly int[] _stackCount;         // simultaneous stacks (shared-duration model; all expire together)
+
+        // ── Non-folded per-instance state (authored / peer-identical by construction; like a UnitDefinition ref) ──
+        private readonly Modifier?[] _modifier;             // the installing Modifier descriptor (null for a Persistent instance)
+        private readonly PersistentEffect?[] _persistent;   // the installing PersistentEffect descriptor (null for a Modifier instance)
+        private readonly int[] _casterId;
+        private readonly Faction[] _casterFaction;
+
+        private readonly int[] _count; // active slots per entity (the [0,_count) dense window the fold + Advance read)
+
+        // ── Wired deps ──
+        private readonly EntityWorld _world;
+        private readonly ModifierSystem? _system;   // required for apply/remove (it owns AccumulateBonus/RecomputeEntity)
+        private readonly DamageTable _damageTable;
+        private readonly CombatEventQueue? _events;
+        private readonly MatchStats? _stats;
+        private readonly EffectExecutor _executor;  // DEDICATED — never shared with a graph-running executor
+
+        /// <summary>
+        /// Construct the store, wire deps, and subscribe the destroy hook. <paramref name="system"/>/<paramref
+        /// name="events"/>/<paramref name="stats"/> are nullable so a cheap FOLD-ONLY store can be built
+        /// (<c>new ModifierStore(world)</c>) for a checksum-only call site; the live host wires the full set. The
+        /// <paramref name="system"/> ref is required for any real apply/remove (it calls <c>AccumulateBonus</c>); a
+        /// fold-only store never applies a modifier. <paramref name="damageTable"/> resolves to
+        /// <see cref="DamageTable.Default"/> (mirrors <c>CombatSystem</c>/<c>ProjectileSystem</c>).
+        /// </summary>
+        public ModifierStore(EntityWorld world, ModifierSystem? system = null, DamageTable? damageTable = null,
+                             CombatEventQueue? events = null, MatchStats? stats = null)
+        {
+            _world = world;
+            _system = system;
+            _damageTable = damageTable ?? DamageTable.Default;
+            _events = events;
+            _stats = stats;
+            _executor = new EffectExecutor(); // its own pre-allocated stack (re-entrancy-safe)
+
+            int cap = EntityWorld.MAX_ENTITIES * EffectCaps.MaxModifiersPerEntity;
+            _modifierId       = new int[cap];
+            _remainingTicks   = new int[cap];
+            _ticksUntilPeriod = new int[cap];
+            _periodsRemaining = new int[cap];
+            _stackCount       = new int[cap];
+            _modifier         = new Modifier?[cap];
+            _persistent       = new PersistentEffect?[cap];
+            _casterId         = new int[cap];
+            _casterFaction    = new Faction[cap];
+            _count            = new int[EntityWorld.MAX_ENTITIES];
+
+            world.OnDestroy += ClearEntity; // recycle safety: revert this entity's modifiers on Destroy
+        }
+
+        // ─────────────────────────────────── Apply / stack / refresh / ignore ───────────────────────────────────
+
+        /// <summary>
+        /// Install (or stack/refresh/ignore) <paramref name="mod"/> on <paramref name="targetId"/>. Stacking against
+        /// an existing same-<see cref="Modifier.Id"/> instance follows the <see cref="StackRule"/> enum docs verbatim:
+        /// <list type="bullet">
+        /// <item><b>Refresh</b> — reset the existing instance's duration (and period schedule); no second stack/bonus.</item>
+        /// <item><b>Stack</b> — up to <see cref="Modifier.MaxStacks"/>, increment <c>_stackCount</c> and re-add the deltas;
+        ///   shared duration refreshed (all stacks expire together); at the cap, refresh duration only.</item>
+        /// <item><b>Ignore</b> — a no-op while an instance is active (no refresh, no stack).</item>
+        /// </list>
+        /// A dead/stale <paramref name="targetId"/> is a no-op (no throw). A slot-full target refuses the new install
+        /// DETERMINISTICALLY (drops it; never overflows the per-entity ring). Persistent instances carry
+        /// <c>_modifier == null</c> so they never match the same-id stacking scan (a <c>Modifier.Id == 0</c> can't
+        /// collide with one).
+        /// </summary>
+        public void Apply(int targetId, Modifier mod, int casterId, Faction casterFaction)
+        {
+            if (!_world.IsAlive(targetId)) return; // IsAlive also bounds-checks the id
+
+            int @base = targetId * EffectCaps.MaxModifiersPerEntity;
+            int n = _count[targetId];
+
+            int existing = -1;
+            for (int s = 0; s < n; s++)
+            {
+                int sl = @base + s;
+                if (_modifier[sl] != null && _modifierId[sl] == mod.Id) { existing = s; break; }
+            }
+
+            if (existing < 0)
+            {
+                if (n >= EffectCaps.MaxModifiersPerEntity) return; // full → refuse (drop), never overflow
+                int slot = @base + n;
+                _modifierId[slot]    = mod.Id;
+                _modifier[slot]      = mod;
+                _persistent[slot]    = null;
+                _casterId[slot]      = casterId;
+                _casterFaction[slot] = casterFaction;
+                _stackCount[slot]    = 1;
+                _remainingTicks[slot] = mod.DurationTicks < 0 ? PERMANENT : mod.DurationTicks;
+                ResetPeriodSchedule(slot, mod);
+                _count[targetId] = n + 1;
+
+                ApplyStatDeltas(targetId, mod.AttackDamageDelta, mod.MaxHealthDelta, mod.MoveSpeedDelta);
+                _world.StatusFlagsOf[targetId] |= mod.Status;
+                return;
+            }
+
+            int eslot = @base + existing;
+            switch (mod.Stacking)
+            {
+                case StackRule.Refresh:
+                    _remainingTicks[eslot] = mod.DurationTicks < 0 ? PERMANENT : mod.DurationTicks;
+                    ResetPeriodSchedule(eslot, mod);
+                    break;
+
+                case StackRule.Stack:
+                    if (_stackCount[eslot] < mod.MaxStacks)
+                    {
+                        _stackCount[eslot]++;
+                        ApplyStatDeltas(targetId, mod.AttackDamageDelta, mod.MaxHealthDelta, mod.MoveSpeedDelta); // each stack re-adds
+                        _world.StatusFlagsOf[targetId] |= mod.Status; // idempotent re-OR
+                    }
+                    // Shared duration refreshed on every (re)apply — at the cap this is the only effect (refresh-only).
+                    _remainingTicks[eslot] = mod.DurationTicks < 0 ? PERMANENT : mod.DurationTicks;
+                    ResetPeriodSchedule(eslot, mod);
+                    break;
+
+                case StackRule.Ignore:
+                    break; // active instance → ignore the re-apply entirely
+            }
+        }
+
+        /// <summary>
+        /// Install a pure time-axis <see cref="PersistentEffect"/> (the AC1 DoT/HoT path) into a fresh slot: runs
+        /// <see cref="PersistentEffect.InitialEffect"/> now (on the dedicated executor), schedules
+        /// <see cref="PersistentEffect.PeriodEffect"/> every <see cref="PersistentEffect.PeriodTicks"/> for
+        /// <see cref="PersistentEffect.PeriodCount"/> pulses (clamped to <see cref="EffectCaps.MaxPersistentPeriods"/>),
+        /// and runs <see cref="PersistentEffect.ExpireEffect"/> on the final period. Carries no stat deltas/status
+        /// (its lifetime is the period count, so <c>_remainingTicks = PERMANENT</c>). Dead/stale or slot-full target →
+        /// no-op / deterministic refuse.
+        /// </summary>
+        public void InstallPersistent(int targetId, PersistentEffect pe, int casterId, Faction casterFaction)
+        {
+            if (!_world.IsAlive(targetId)) return;
+
+            int @base = targetId * EffectCaps.MaxModifiersPerEntity;
+            int n = _count[targetId];
+            if (n >= EffectCaps.MaxModifiersPerEntity) return; // full → refuse
+
+            int slot = @base + n;
+            _modifierId[slot]    = 0;     // no stacking identity (scanned out of Apply via _modifier == null)
+            _modifier[slot]      = null;
+            _persistent[slot]    = pe;
+            _casterId[slot]      = casterId;
+            _casterFaction[slot] = casterFaction;
+            _stackCount[slot]    = 1;
+            _remainingTicks[slot] = PERMANENT; // lifetime is governed by the period count, not a duration countdown
+            bool hasPeriod = pe.PeriodEffect != null && pe.PeriodTicks > 0;
+            _ticksUntilPeriod[slot] = hasPeriod ? pe.PeriodTicks : 0;
+            int periods = pe.PeriodCount;
+            if (periods > EffectCaps.MaxPersistentPeriods) periods = EffectCaps.MaxPersistentPeriods; // named cap
+            if (periods < 0) periods = 0;
+            _periodsRemaining[slot] = periods;
+            _count[targetId] = n + 1;
+
+            if (pe.InitialEffect != null) RunEffect(targetId, slot, pe.InitialEffect); // one-shot install pulse
+        }
+
+        // ─────────────────────────────────────────── Per-tick advance ───────────────────────────────────────────
+
+        /// <summary>
+        /// The per-tick store update, called by <see cref="ModifierSystem.Tick"/> BEFORE its effective-stat recompute.
+        /// Iterates ascending owner-id then ascending slot. For each active instance: fire a period pulse when its
+        /// timer reaches the boundary, then count down its lifetime and <see cref="RemoveSlot"/> it on expiry. Removal
+        /// swap-compacts the slot out and the walk re-tests the same index (so a sibling is never skipped or
+        /// double-processed). <paramref name="dt"/> is unused (periods are tick-counted, not time-based; the 30 Hz
+        /// fixed step makes one Advance == one tick).
+        /// </summary>
+        public void Advance(EntityWorld world, Fixed dt)
+        {
+            int cap = _world.HighWaterMark;
+            for (int i = 0; i < cap; i++)
+            {
+                if (!_world.IsAlive(i)) continue;
+
+                int @base = i * EffectCaps.MaxModifiersPerEntity;
+                int n = _count[i];
+                for (int s = 0; s < n; )
+                {
+                    int slot = @base + s;
+
+                    // 1. Period pulse — fire on the boundary, reset the timer, consume one scheduled period.
+                    if (HasPeriod(slot) && _periodsRemaining[slot] != 0)
+                    {
+                        _ticksUntilPeriod[slot]--;
+                        if (_ticksUntilPeriod[slot] <= 0)
+                        {
+                            RunEffect(i, slot, PeriodEffectOf(slot)!);
+                            // Defensive: a future LETHAL period (DamageEffect) could destroy the host mid-pulse →
+                            // OnDestroy → ClearEntity already wiped this entity's slots. 2.2b periods are non-lethal
+                            // (DirectHpDelta/Heal clamp), so this never fires today; the guard keeps the walk safe.
+                            if (!_world.IsAlive(i)) break;
+                            _ticksUntilPeriod[slot] = PeriodLengthOf(slot);
+                            _periodsRemaining[slot]--;
+                        }
+                    }
+
+                    // 2. Expiry — Persistent: lifetime = its period count; Modifier: its duration countdown.
+                    bool expired;
+                    if (_persistent[slot] != null)
+                        expired = _periodsRemaining[slot] <= 0 || !HasPeriod(slot); // periodless persistent expires at once
+                    else if (_remainingTicks[slot] == PERMANENT)
+                        expired = false;
+                    else
+                    {
+                        _remainingTicks[slot]--;
+                        expired = _remainingTicks[slot] <= 0;
+                    }
+
+                    if (expired)
+                    {
+                        RemoveSlot(i, slot);
+                        n = _count[i]; // count shrank; re-read. s unchanged → re-test the swapped-in instance here.
+                        continue;
+                    }
+                    s++;
+                }
+            }
+        }
+
+        // ─────────────────────────────────────────── Remove / expiry ────────────────────────────────────────────
+
+        /// <summary>
+        /// Remove the instance at <paramref name="slot"/> from host <paramref name="hostId"/>: run its
+        /// <see cref="PersistentEffect.ExpireEffect"/> (final pulse, while still applied), revert the FULL stat
+        /// contribution (deltas × <c>_stackCount</c>) through the 2.2a <c>AccumulateBonus</c> seam, recompute the host's
+        /// status union WITHOUT this slot (never blindly clearing a flag another modifier still holds), then
+        /// swap-compact the slot out so <c>[0,_count)</c> stays dense. Deterministic given identical apply/remove order
+        /// across peers (the fold reads <c>[0,_count)</c>, so a swap-compact needs no re-sort).
+        /// </summary>
+        private void RemoveSlot(int hostId, int slot)
+        {
+            EffectNode? expireEffect = _persistent[slot]?.ExpireEffect;
+            if (expireEffect != null)
+            {
+                RunEffect(hostId, slot, expireEffect);
+                if (!_world.IsAlive(hostId)) return; // expire-effect killed the host → ClearEntity already wiped slots
+            }
+
+            Modifier? mod = _modifier[slot];
+            if (mod != null)
+            {
+                Fixed stacks = Fixed.FromInt(_stackCount[slot]); // exact for an int multiplier (no Fixed rounding)
+                ApplyStatDeltas(hostId, -(mod.AttackDamageDelta * stacks),
+                                        -(mod.MaxHealthDelta * stacks),
+                                        -(mod.MoveSpeedDelta * stacks));
+            }
+            RecomputeStatusUnion(hostId, excludeSlot: slot);
+
+            CompactSlot(hostId, slot);
+        }
+
+        /// <summary>
+        /// Subscriber for <see cref="EntityWorld.OnDestroy"/> — clear ALL of <paramref name="id"/>'s modifier state on
+        /// death/recycle so a recycled slot can never inherit the prior occupant's modifiers (the 1.12/1.13/2.2a
+        /// SoA-recycle trap). Zeroes the store slots + count + status, then zeroes the EXTERNAL
+        /// <see cref="ModifierSystem"/> stat-bonus accumulators (which live outside <see cref="EntityWorld"/> and so
+        /// <see cref="EntityWorld.Create"/> cannot reset on recycle — the exact gap the 2.2a code review flagged).
+        /// Runs synchronously inside <see cref="EntityWorld.Destroy"/>, in deterministic order. Bounds-guarded.
+        /// </summary>
+        public void ClearEntity(int id)
+        {
+            if (id < 0 || id >= EntityWorld.MAX_ENTITIES) return;
+
+            int @base = id * EffectCaps.MaxModifiersPerEntity;
+            int n = _count[id];
+            for (int s = 0; s < n; s++) ClearSlotFields(@base + s);
+            _count[id] = 0;
+            _world.StatusFlagsOf[id] = StatusFlags.None;
+
+            // The external accumulators get zeroed wholesale here (cheaper + simpler than a per-slot −delta revert, and
+            // equivalent — the entity is gone). This + the OnDestroy subscription are the two recycle teeth (4.3).
+            _system?.ClearEntity(id);
+        }
+
+        // ─────────────────────────────────────────────── Energy ─────────────────────────────────────────────────
+
+        /// <summary>
+        /// Debit a <see cref="Fixed"/> <paramref name="cost"/> from <see cref="EntityWorld.Energy"/> for ability
+        /// affordability. Succeeds (and subtracts) ONLY when <c>Energy[id] &gt;= cost</c>; otherwise REFUSES and leaves
+        /// <c>Energy</c> untouched (no partial spend, no negative balance). A negative <paramref name="cost"/> is a
+        /// programmer error — refused, never refunded. Dead/stale id → false (no throw). The affordability primitive
+        /// 2.4's ability-cast consumes; proven in isolation here (no ability exists in 2.2b).
+        /// </summary>
+        public bool TryDebitEnergy(int id, Fixed cost)
+        {
+            if (!_world.IsAlive(id)) return false;
+            if (cost < Fixed.Zero) return false; // never refund a negative cost
+            if (_world.Energy[id] >= cost)
+            {
+                _world.Energy[id] -= cost;
+                return true;
+            }
+            return false; // insufficient → refuse WITHOUT mutating Energy
+        }
+
+        // ─────────────────────────────────────── Checksum fold accessors ────────────────────────────────────────
+        // Cheap flat-array index reads (CHM0002-clean — no Dictionary/HashSet enumeration). SimChecksum.Compute folds
+        // [0, CountAt(id)) per entity, ascending owner-id then slot. The descriptor refs + caster id/faction are NOT
+        // folded (authored / peer-identical). The fold loop guarantees slot in [0,count), so the *At accessors index
+        // directly.
+
+        /// <summary>Active modifier-instance count for entity <paramref name="id"/> (0 outside bounds).</summary>
+        public int CountAt(int id) => (uint)id < (uint)EntityWorld.MAX_ENTITIES ? _count[id] : 0;
+
+        /// <summary>Folded: the installing <see cref="Modifier.Id"/> at this slot (0 for a Persistent instance).</summary>
+        public int ModifierIdAt(int id, int slot) => _modifierId[id * EffectCaps.MaxModifiersPerEntity + slot];
+
+        /// <summary>Folded: the duration countdown at this slot (<see cref="PERMANENT"/> sentinel never expires).</summary>
+        public int RemainingTicksAt(int id, int slot) => _remainingTicks[id * EffectCaps.MaxModifiersPerEntity + slot];
+
+        /// <summary>Folded: ticks until the next period pulse at this slot.</summary>
+        public int TicksUntilPeriodAt(int id, int slot) => _ticksUntilPeriod[id * EffectCaps.MaxModifiersPerEntity + slot];
+
+        /// <summary>Folded: remaining scheduled periods at this slot.</summary>
+        public int PeriodsRemainingAt(int id, int slot) => _periodsRemaining[id * EffectCaps.MaxModifiersPerEntity + slot];
+
+        /// <summary>Folded: the stack count at this slot.</summary>
+        public int StackCountAt(int id, int slot) => _stackCount[id * EffectCaps.MaxModifiersPerEntity + slot];
+
+        // ────────────────────────────────────────────── Internals ───────────────────────────────────────────────
+
+        /// <summary>
+        /// Apply signed stat deltas through the 2.2a <c>AccumulateBonus</c> seam, EAGERLY recompute the host's
+        /// effective stats (so <c>EffectiveMaxHealth</c> is fresh for the clamp and combat at index 4 reads the change
+        /// the same tick), then adjust current Health for a max-health change. <b>Decision #3 (Alec): heal on a rising
+        /// ceiling.</b> When the effective max-health ceiling RISES (a +MaxHealth buff applied, or a −MaxHealth debuff
+        /// removed) current Health rises by the same amount — the buff doubles as a burst heal. When it FALLS (buff
+        /// removed / debuff applied) Health only clamps down (no phantom HP, never a death-on-expiry). Always re-clamped
+        /// into <c>[0, EffectiveMaxHealth]</c>.
+        /// </summary>
+        private void ApplyStatDeltas(int id, Fixed attackChange, Fixed maxHealthChange, Fixed moveChange)
+        {
+            _system?.AccumulateBonus(id, attackChange, maxHealthChange, moveChange);
+            _system?.RecomputeEntity(_world, id);
+
+            if (maxHealthChange.Raw != 0)
+            {
+                if (maxHealthChange > Fixed.Zero) _world.Health[id] += maxHealthChange; // ceiling rose → heal up
+                _world.Health[id] = Fixed.Clamp(_world.Health[id], Fixed.Zero, _world.EffectiveMaxHealth[id]);
+            }
+        }
+
+        /// <summary>Recompute and write the host's status-flag union from all active slots EXCEPT <paramref name="excludeSlot"/>.</summary>
+        private void RecomputeStatusUnion(int hostId, int excludeSlot)
+        {
+            StatusFlags union = StatusFlags.None;
+            int @base = hostId * EffectCaps.MaxModifiersPerEntity;
+            int n = _count[hostId];
+            for (int s = 0; s < n; s++)
+            {
+                int sl = @base + s;
+                if (sl == excludeSlot) continue;
+                Modifier? m = _modifier[sl];
+                if (m != null) union |= m.Status;
+            }
+            _world.StatusFlagsOf[hostId] = union;
+        }
+
+        /// <summary>Swap the last active slot into <paramref name="slot"/> (keeps <c>[0,_count)</c> dense), clear the vacated tail, drop the count.</summary>
+        private void CompactSlot(int hostId, int slot)
+        {
+            int @base = hostId * EffectCaps.MaxModifiersPerEntity;
+            int n = _count[hostId];
+            int last = @base + (n - 1);
+            if (slot != last)
+            {
+                _modifierId[slot]       = _modifierId[last];
+                _remainingTicks[slot]   = _remainingTicks[last];
+                _ticksUntilPeriod[slot] = _ticksUntilPeriod[last];
+                _periodsRemaining[slot] = _periodsRemaining[last];
+                _stackCount[slot]       = _stackCount[last];
+                _modifier[slot]         = _modifier[last];
+                _persistent[slot]       = _persistent[last];
+                _casterId[slot]         = _casterId[last];
+                _casterFaction[slot]    = _casterFaction[last];
+            }
+            ClearSlotFields(last);
+            _count[hostId] = n - 1;
+        }
+
+        /// <summary>Zero a slot (foldable ints → 0; refs → null). Hygiene — a cleared slot is outside <c>[0,_count)</c> so it is never folded.</summary>
+        private void ClearSlotFields(int slot)
+        {
+            _modifierId[slot]       = 0;
+            _remainingTicks[slot]   = 0;
+            _ticksUntilPeriod[slot] = 0;
+            _periodsRemaining[slot] = 0;
+            _stackCount[slot]       = 0;
+            _modifier[slot]         = null;
+            _persistent[slot]       = null;
+            _casterId[slot]         = 0;
+            _casterFaction[slot]    = Faction.Neutral;
+        }
+
+        /// <summary>Reset a Modifier slot's period schedule on (re)apply: arm the period timer or clear it for a periodless modifier.</summary>
+        private void ResetPeriodSchedule(int slot, Modifier mod)
+        {
+            bool hasPeriod = mod.PeriodEffect != null && mod.PeriodTicks > 0;
+            _ticksUntilPeriod[slot] = hasPeriod ? mod.PeriodTicks : 0;
+            _periodsRemaining[slot] = hasPeriod ? EffectCaps.MaxPersistentPeriods : 0; // a Modifier's periods are bounded by the cap; duration governs expiry
+        }
+
+        /// <summary>Run an effect node against a fresh, direct-target (<c>spatial: null</c>) context for the host, on the dedicated executor.</summary>
+        private void RunEffect(int hostId, int slot, EffectNode effect)
+        {
+            var ctx = new EffectContext(_world, _casterId[slot], hostId, _casterFaction[slot],
+                                        _damageTable, spatial: null, _events, _stats, modifierStore: this);
+            _executor.Run(effect, in ctx);
+        }
+
+        private bool HasPeriod(int slot)
+        {
+            PersistentEffect? pe = _persistent[slot];
+            if (pe != null) return pe.PeriodEffect != null && pe.PeriodTicks > 0;
+            Modifier? m = _modifier[slot];
+            return m != null && m.PeriodEffect != null && m.PeriodTicks > 0;
+        }
+
+        private EffectNode? PeriodEffectOf(int slot) =>
+            _persistent[slot] != null ? _persistent[slot]!.PeriodEffect : _modifier[slot]?.PeriodEffect;
+
+        private int PeriodLengthOf(int slot) =>
+            _persistent[slot] != null ? _persistent[slot]!.PeriodTicks : (_modifier[slot]?.PeriodTicks ?? 0);
+    }
+}

@@ -44,21 +44,30 @@ namespace ProjectChimera.Effects
         public readonly MatchStats? Stats;
 
         /// <summary>
+        /// The Story 2.2b modifier store an <c>ApplyModifierEffect</c>/<c>PersistentEffect</c> resolves against
+        /// (install / stack / schedule periods). Optional (a graph with no modifier leaf never reads it); reaching
+        /// an <c>ApplyModifier</c>/<c>Persistent</c> node with a NULL store fails CLOSED (a modifier graph needs a
+        /// store in context). A reference, like the other heavy state — never copied by value.
+        /// </summary>
+        public readonly ModifierStore? ModifierStore;
+
+        /// <summary>
         /// Build a root context. <see cref="Rng"/> is taken from <paramref name="world"/> (the one shared stream);
         /// callers never pass a separate generator. <paramref name="primaryTargetId"/> defaults to the caster for
-        /// self-targeted graphs.
+        /// self-targeted graphs. <paramref name="modifierStore"/> is null for graphs that install no modifier.
         /// </summary>
         public EffectContext(EntityWorld world, int casterId, int primaryTargetId, Faction casterFaction,
                              DamageTable damageTable, SpatialHash? spatial = null,
-                             CombatEventQueue? events = null, MatchStats? stats = null)
-            : this(world, world.Rng, spatial, casterId, primaryTargetId, casterFaction, damageTable, events, stats)
+                             CombatEventQueue? events = null, MatchStats? stats = null,
+                             ModifierStore? modifierStore = null)
+            : this(world, world.Rng, spatial, casterId, primaryTargetId, casterFaction, damageTable, events, stats, modifierStore)
         {
         }
 
         // All-field private ctor used by WithTarget (re-targets without re-reading world.Rng).
         private EffectContext(EntityWorld world, SimRng rng, SpatialHash? spatial, int casterId,
                               int primaryTargetId, Faction casterFaction, DamageTable damageTable,
-                              CombatEventQueue? events, MatchStats? stats)
+                              CombatEventQueue? events, MatchStats? stats, ModifierStore? modifierStore)
         {
             World = world;
             Rng = rng;
@@ -69,14 +78,15 @@ namespace ProjectChimera.Effects
             DamageTable = damageTable;
             Events = events;
             Stats = stats;
+            ModifierStore = modifierStore;
         }
 
         /// <summary>
         /// A copy of this context re-pointed at <paramref name="targetId"/> as the primary target. Used by the
         /// executor to fan a SearchArea child out per matched entity. Cheap (struct copy of references) and shares
-        /// the same RNG stream.
+        /// the same RNG stream and modifier store.
         /// </summary>
         public EffectContext WithTarget(int targetId) =>
-            new EffectContext(World, Rng, Spatial, CasterId, targetId, CasterFaction, DamageTable, Events, Stats);
+            new EffectContext(World, Rng, Spatial, CasterId, targetId, CasterFaction, DamageTable, Events, Stats, ModifierStore);
     }
 }

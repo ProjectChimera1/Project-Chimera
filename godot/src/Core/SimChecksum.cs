@@ -1,3 +1,6 @@
+#nullable enable
+using ProjectChimera.Effects; // ModifierStore (Option B fold param, Story 2.2b) + StatusFlags — same sim layer
+
 namespace ProjectChimera.Core
 {
     /// <summary>
@@ -16,6 +19,13 @@ namespace ProjectChimera.Core
     ///     PatrolIndex, PatrolDir, then count-driven PatrolWaypoints X/Y/Z) — added v4 (Story 1.12)
     ///   - EntityWorld separation config: per alive entity, CollisionRadius (Raw) + SeparationPriorityOf (int) —
     ///     added v5 (Story 1.13). CategoryOf is deliberately NOT hashed (presentation-read, like MeshType).
+    ///   - EntityWorld effective stats + ability/status: per alive entity, EffectiveAttackDamage, EffectiveMaxHealth,
+    ///     EffectiveMoveSpeed, Energy (all Raw), and StatusFlagsOf (int) — added v6 (Story 2.2b), now that the
+    ///     ModifierStore MUTATES them mid-match. Base* stays UNFOLDED (authored, in-tick-immutable).
+    ///   - ModifierStore: per alive entity (ascending owner-id then slot), the active-instance count then, per slot,
+    ///     modifierId / remainingTicks / ticksUntilPeriod / periodsRemaining / stackCount — added v6 (Story 2.2b).
+    ///     The descriptor refs + caster id/faction are NOT folded (authored / peer-identical). A null store folds an
+    ///     identical Mix(0) count per entity (≡ an empty store), so legacy callers and an empty store agree.
     ///
     /// Versioned by <see cref="AlgoVersion"/> — bump on any change to the hashed set/order
     /// (forces an intentional golden re-baseline). MatchStats is deliberately NOT hashed
@@ -42,15 +52,19 @@ namespace ProjectChimera.Core
         ///   v5 — Story 1.13: fold per-entity CollisionRadius + SeparationPriorityOf (separation config is sim
         ///        truth — a peer divergence in either changes movement and must desync detectably). CategoryOf is
         ///        NOT folded (presentation-read formation input; its effect reaches the hash via Position).
+        ///   v6 — Story 2.2b: the ModifierStore now mutates Effective* / Energy / StatusFlagsOf mid-match, so fold
+        ///        per-entity EffectiveAttackDamage/EffectiveMaxHealth/EffectiveMoveSpeed/Energy + StatusFlagsOf, AND
+        ///        the ModifierStore per-instance state (count-driven, ascending owner-id then slot). Base* stays
+        ///        UNFOLDED (authored, in-tick-immutable). The ONE scheduled re-baseline of all goldens.
         /// </summary>
-        public const int AlgoVersion = 5;
+        public const int AlgoVersion = 6;
 
         /// <summary>
         /// Compute a full-state checksum for desync detection.
         /// Call after all systems have ticked for the current frame.
         /// </summary>
         public static uint Compute(EntityWorld world, BuildingStore buildings, ResourceStore resources,
-                                   FactionRegistry factions)
+                                   FactionRegistry factions, ModifierStore? modifiers = null)
         {
             // Contract guard for the registry param added in Story 1.3a: a future direct caller (e.g. the
             // 1.9a/9.1 server checksum collector) gets a clear error instead of an opaque NRE in the Ore loop.
@@ -99,6 +113,31 @@ namespace ProjectChimera.Core
                 // → cross-platform safe (the new formation-separation golden is compared on BOTH CI legs).
                 hash = Mix(hash, world.CollisionRadius[i].Raw);
                 hash = Mix(hash, (int)world.SeparationPriorityOf[i]);
+
+                // ── Effective stats + ability resource + status (v6, Story 2.2b) ──
+                // The ModifierStore now MUTATES these mid-match (a modifier changes Effective*; an ability debits
+                // Energy; a status modifier sets StatusFlagsOf), so they are peer-divergent sim truth and must fold.
+                // Base* is deliberately NOT folded (authored, in-tick-immutable — exactly as the pre-2.2a
+                // AttackDamage/MaxHealth/Speed were never folded). All int / Fixed.Raw → cross-platform safe.
+                hash = Mix(hash, world.EffectiveAttackDamage[i].Raw);
+                hash = Mix(hash, world.EffectiveMaxHealth[i].Raw);
+                hash = Mix(hash, world.EffectiveMoveSpeed[i].Raw);
+                hash = Mix(hash, world.Energy[i].Raw);
+                hash = Mix(hash, (int)world.StatusFlagsOf[i]);
+
+                // ── Active modifier instances (v6, Story 2.2b) — count-driven, ascending slot ──
+                // A null store folds Mix(0) count (≡ an empty store), so a legacy 4-arg caller and a real empty store
+                // hash identically. The descriptor refs + caster id/faction are NOT folded (authored/peer-identical).
+                int modCount = modifiers?.CountAt(i) ?? 0;
+                hash = Mix(hash, modCount);
+                for (int s = 0; s < modCount; s++)
+                {
+                    hash = Mix(hash, modifiers!.ModifierIdAt(i, s));
+                    hash = Mix(hash, modifiers!.RemainingTicksAt(i, s));
+                    hash = Mix(hash, modifiers!.TicksUntilPeriodAt(i, s));
+                    hash = Mix(hash, modifiers!.PeriodsRemainingAt(i, s));
+                    hash = Mix(hash, modifiers!.StackCountAt(i, s));
+                }
             }
 
             // ── Building state ────────────────────────────────────────────────────

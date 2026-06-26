@@ -1,4 +1,6 @@
+#nullable enable
 using System;
+using ProjectChimera.Effects; // ModifierStore (Story 2.2b checksum dep)
 
 namespace ProjectChimera.Core
 {
@@ -59,6 +61,7 @@ namespace ProjectChimera.Core
         private BuildingStore?  _checksumBuildings;
         private ResourceStore?  _checksumResources;
         private FactionRegistry? _checksumFactions;
+        private ModifierStore?   _checksumModifiers; // Story 2.2b (Option B): folds active modifier state (null ≡ empty)
 
         public SimulationLoop(EntityWorld world, params ISimSystem[] systems)
         {
@@ -72,11 +75,13 @@ namespace ProjectChimera.Core
         /// Provide building and resource stores so the sim loop can include them in checksums.
         /// Call once after construction, before the first Update().
         /// </summary>
-        public void EnableChecksums(BuildingStore buildings, ResourceStore resources, FactionRegistry factions)
+        public void EnableChecksums(BuildingStore buildings, ResourceStore resources, FactionRegistry factions,
+                                    ModifierStore? modifiers = null)
         {
             _checksumBuildings = buildings;
             _checksumResources = resources;
             _checksumFactions  = factions;
+            _checksumModifiers = modifiers; // Story 2.2b — folds the live store's active modifier state (null ≡ empty)
         }
 
         /// <summary>
@@ -97,7 +102,7 @@ namespace ProjectChimera.Core
             if (ChecksumInterval > 0 && CurrentTick % (uint)ChecksumInterval == 0
                 && _checksumBuildings != null && _checksumResources != null && _checksumFactions != null)
             {
-                LastChecksum = SimChecksum.Compute(World, _checksumBuildings, _checksumResources, _checksumFactions);
+                LastChecksum = SimChecksum.Compute(World, _checksumBuildings, _checksumResources, _checksumFactions, _checksumModifiers);
                 OnChecksum?.Invoke(CurrentTick, LastChecksum);
             }
         }
@@ -134,7 +139,7 @@ namespace ProjectChimera.Core
                 if (ChecksumInterval > 0 && CurrentTick % (uint)ChecksumInterval == 0
                     && _checksumBuildings != null && _checksumResources != null && _checksumFactions != null)
                 {
-                    LastChecksum = SimChecksum.Compute(World, _checksumBuildings, _checksumResources, _checksumFactions);
+                    LastChecksum = SimChecksum.Compute(World, _checksumBuildings, _checksumResources, _checksumFactions, _checksumModifiers);
                     OnChecksum?.Invoke(CurrentTick, LastChecksum);
                 }
             }

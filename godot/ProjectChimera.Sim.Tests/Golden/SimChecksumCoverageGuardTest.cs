@@ -3,6 +3,7 @@ using System;
 using System.Linq;
 using System.Reflection;
 using ProjectChimera.Core;
+using ProjectChimera.Effects; // ModifierStore / Modifier / StatusFlags (v6 fold coverage)
 using Xunit;
 
 namespace ProjectChimera.Sim.Tests.Golden
@@ -16,7 +17,7 @@ namespace ProjectChimera.Sim.Tests.Golden
     ///      mutation. If a future story adds a public per-faction array to ResourceStore but forgets to fold it
     ///      into the checksum, mutating that array leaves the hash unchanged and this test FAILS, naming the
     ///      uncovered field. This proves *actual* coverage instead of a hand-maintained list that silently drifts.
-    ///   2. <see cref="KnownWorldState_ProducesPinnedV5Hash"/> — a snapshot/tripwire: a hand-built fixed world
+    ///   2. <see cref="KnownWorldState_ProducesPinnedV6Hash"/> — a snapshot/tripwire: a hand-built fixed world
     ///      hashes to a committed constant. Any unintended change to the algorithm (reordering mixes, adding or
     ///      dropping a field) moves the constant and turns this red, forcing a conscious re-pin + AlgoVersion bump.
     ///
@@ -89,23 +90,24 @@ namespace ProjectChimera.Sim.Tests.Golden
         /// AND <see cref="SimChecksum.AlgoVersion"/> in the same commit (mirrors the Story 9.1 "known world state →
         /// fixed expected hash" guard). The value was recorded once from a green run; it is byte-identical across
         /// Windows/Linux because every hashed field is Fixed and the RNG seed is an explicit constant.
-        /// (Story 1.13: bumped v4→v5 when CollisionRadius + SeparationPriorityOf were folded in — the known-state
-        /// world leaves them at Create() defaults, so the hash still moves because new mixes are added.)
+        /// (Story 2.2b: bumped v5→v6 when Effective* / Energy / StatusFlagsOf + the ModifierStore instance state were
+        /// folded in — the known-state world has no modifiers, so the store folds Mix(0) count per entity and
+        /// Effective* == Base / Energy == 0 / StatusFlagsOf == None, yet the hash still moves because new mixes are added.)
         /// </summary>
         [Fact]
-        public void KnownWorldState_ProducesPinnedV5Hash()
+        public void KnownWorldState_ProducesPinnedV6Hash()
         {
-            // Algorithm version must be exactly 5 (Story 1.13's separation-config fold). If this fails, the const below is stale.
-            Assert.Equal(5, SimChecksum.AlgoVersion);
+            // Algorithm version must be exactly 6 (Story 2.2b's effective-stat + ModifierStore fold). If this fails, the const below is stale.
+            Assert.Equal(6, SimChecksum.AlgoVersion);
 
             uint actual = ComputeKnownStateHash();
 
-            // ── Pinned v5 hash for the fixed world built by ComputeKnownStateHash() ───────────────────────────
+            // ── Pinned v6 hash for the fixed world built by ComputeKnownStateHash() ───────────────────────────
             // An intentional SimChecksum algorithm change must update this value AND bump SimChecksum.AlgoVersion.
-            const uint ExpectedV5Hash = 0x5E7BE3D8; // recorded from a green v5 run; re-pin only on an intentional algo change
-            Assert.True(actual == ExpectedV5Hash,
-                $"Known-state v5 checksum changed: expected 0x{ExpectedV5Hash:X8}, actual 0x{actual:X8}. " +
-                $"If this is an INTENTIONAL algorithm change, re-pin ExpectedV5Hash to 0x{actual:X8} and bump " +
+            const uint ExpectedV6Hash = 0x70CD3FEE; // recorded from a green v6 run; re-pin only on an intentional algo change
+            Assert.True(actual == ExpectedV6Hash,
+                $"Known-state v6 checksum changed: expected 0x{ExpectedV6Hash:X8}, actual 0x{actual:X8}. " +
+                $"If this is an INTENTIONAL algorithm change, re-pin ExpectedV6Hash to 0x{actual:X8} and bump " +
                 $"SimChecksum.AlgoVersion. If not, you broke the deterministic checksum — investigate.");
         }
 
@@ -182,6 +184,75 @@ namespace ProjectChimera.Sim.Tests.Golden
                                  Faction.Player1, Fixed.FromInt(10), Fixed.FromInt(3));
                 return () => w.SeparationPriorityOf[e] = SeparationPriority.Push;
             });
+
+            // ── v6 (Story 2.2b): effective stats + ability resource + status are folded ──
+            AssertFieldFoldedIntoChecksum(buildings, resources, registry, w =>
+            {
+                int e = w.Create(new FixedVec3(Fixed.FromInt(1), Fixed.Zero, Fixed.FromInt(2)),
+                                 Faction.Player1, Fixed.FromInt(10), Fixed.FromInt(3));
+                return () => w.EffectiveAttackDamage[e] = Fixed.FromInt(99);
+            });
+            AssertFieldFoldedIntoChecksum(buildings, resources, registry, w =>
+            {
+                int e = w.Create(new FixedVec3(Fixed.FromInt(1), Fixed.Zero, Fixed.FromInt(2)),
+                                 Faction.Player1, Fixed.FromInt(10), Fixed.FromInt(3));
+                return () => w.EffectiveMaxHealth[e] = Fixed.FromInt(99);
+            });
+            AssertFieldFoldedIntoChecksum(buildings, resources, registry, w =>
+            {
+                int e = w.Create(new FixedVec3(Fixed.FromInt(1), Fixed.Zero, Fixed.FromInt(2)),
+                                 Faction.Player1, Fixed.FromInt(10), Fixed.FromInt(3));
+                return () => w.EffectiveMoveSpeed[e] = Fixed.FromInt(99);
+            });
+            AssertFieldFoldedIntoChecksum(buildings, resources, registry, w =>
+            {
+                int e = w.Create(new FixedVec3(Fixed.FromInt(1), Fixed.Zero, Fixed.FromInt(2)),
+                                 Faction.Player1, Fixed.FromInt(10), Fixed.FromInt(3));
+                return () => w.Energy[e] = Fixed.FromInt(7);
+            });
+            AssertFieldFoldedIntoChecksum(buildings, resources, registry, w =>
+            {
+                int e = w.Create(new FixedVec3(Fixed.FromInt(1), Fixed.Zero, Fixed.FromInt(2)),
+                                 Faction.Player1, Fixed.FromInt(10), Fixed.FromInt(3));
+                return () => w.StatusFlagsOf[e] = StatusFlags.Stunned;
+            });
+
+            // ── v6 (Story 2.2b): the ModifierStore per-instance state is folded ──
+            // Installing a modifier on a live entity MUST move the hash; advancing a tick (which changes
+            // remainingTicks/ticksUntilPeriod) MUST move it again. A no-move means store state escaped the fold.
+            AssertModifierStoreFoldedIntoChecksum(buildings, resources, registry);
+        }
+
+        /// <summary>
+        /// Story 2.2b coverage teeth: the <see cref="ModifierStore"/> instance state must move the checksum. Builds a
+        /// live entity, hashes empty, installs a modifier (hash must move), then advances one tick so its countdown
+        /// fields change (hash must move again). A no-move means a folded store field escaped <see cref="SimChecksum"/>.
+        /// </summary>
+        private static void AssertModifierStoreFoldedIntoChecksum(BuildingStore buildings, ResourceStore resources,
+            FactionRegistry registry)
+        {
+            var world = new EntityWorld();
+            var sys = new ModifierSystem();
+            var store = new ModifierStore(world, sys);
+            sys.AttachStore(store);
+            int e = world.Create(new FixedVec3(Fixed.FromInt(1), Fixed.Zero, Fixed.FromInt(2)),
+                                 Faction.Player1, Fixed.FromInt(50), Fixed.FromInt(3));
+
+            uint empty = SimChecksum.Compute(world, buildings, resources, registry, store);
+
+            // A finite stat modifier + a DoT → store slots become non-empty.
+            store.Apply(e, new Modifier(1, 20, StackRule.Refresh, 1, Fixed.Zero, Fixed.FromInt(5), Fixed.Zero,
+                                        StatusFlags.None, null, 0), e, Faction.Player1);
+            store.InstallPersistent(e, new PersistentEffect(null, new DirectHpDeltaEffect(Fixed.FromInt(-1)), null, 3, 5),
+                                    e, Faction.Player1);
+            uint installed = SimChecksum.Compute(world, buildings, resources, registry, store);
+            Assert.True(empty != installed,
+                "ModifierStore install did NOT move the checksum — the store instance state is not folded into SimChecksum.");
+
+            sys.Tick(world, Fixed.Zero); // advances ticksUntilPeriod / remainingTicks
+            uint advanced = SimChecksum.Compute(world, buildings, resources, registry, store);
+            Assert.True(installed != advanced,
+                "Advancing the ModifierStore one tick did NOT move the checksum — countdown fields are not folded.");
         }
 
         /// <summary>
@@ -203,11 +274,13 @@ namespace ProjectChimera.Sim.Tests.Golden
         }
 
         /// <summary>
-        /// Build a small fixed world by hand and compute its v5 checksum. Fully self-contained: every hashed
+        /// Build a small fixed world by hand and compute its v6 checksum. Fully self-contained: every hashed
         /// field is set explicitly with <see cref="Fixed"/> so the pinned hash does not silently depend on store
         /// constructor defaults a future story might change. The shared <see cref="SimRng"/> is reseeded to a
-        /// fixed known value so the RNG fold is pinned independently of EntityWorld.DEFAULT_RNG_SEED. The new v5
-        /// separation fields are left at their Create() defaults (CollisionRadius=1.0, SeparationPriorityOf=Normal).
+        /// fixed known value so the RNG fold is pinned independently of EntityWorld.DEFAULT_RNG_SEED. The v5
+        /// separation fields are at their Create() defaults (CollisionRadius=1.0, SeparationPriorityOf=Normal), and
+        /// the v6 fields are at theirs (Effective* == Base / Energy == 0 / StatusFlagsOf == None), with an EMPTY
+        /// <see cref="ModifierStore"/> (count 0 per entity) — so the hash moves from v5 purely by the added mixes.
         /// </summary>
         private static uint ComputeKnownStateHash()
         {
@@ -244,7 +317,9 @@ namespace ProjectChimera.Sim.Tests.Golden
             resources.FactionBase[(int)Faction.Player1] = new FixedVec3(Fixed.FromInt(-14), Fixed.Zero, Fixed.FromInt(2));
             resources.FactionBase[(int)Faction.Player2] = new FixedVec3(Fixed.FromInt(14), Fixed.Zero, Fixed.FromInt(-2));
 
-            return SimChecksum.Compute(world, buildings, resources, new FactionRegistry(2));
+            // v6: pass an EMPTY ModifierStore (count 0 per entity) — the live host always passes a real store, so the
+            // pin reflects the production fold path (null would hash identically via the ?? 0 count, but be explicit).
+            return SimChecksum.Compute(world, buildings, resources, new FactionRegistry(2), new ModifierStore(world));
         }
 
         /// <summary>

@@ -35,6 +35,8 @@ namespace ProjectChimera.Core.Sim
         public ResourceStore Resources { get; }
         public BuildingStore Buildings { get; }
         public ProjectileStore Projectiles { get; }
+        /// <summary>The Story 2.2b AR-9 modifier store (driven by the index-3 ModifierSystem; folded into the checksum). Exposed like <see cref="Projectiles"/> for the 2.4 ability-cast path.</summary>
+        public ModifierStore Modifiers { get; }
         public CombatEventQueue CombatEvents { get; }
         public MatchStats MatchStats { get; }
         public BuildingSystem BuildSys { get; }
@@ -84,6 +86,11 @@ namespace ProjectChimera.Core.Sim
             BuildSys         = new BuildingSystem(Buildings, Resources, factionDef1, factionDef2, MatchStats);
             ScenarioDirector = new ScenarioDirector(Buildings, Resources);
 
+            // AR-9 effective-stat recompute (Story 2.2a) at index 3, and the Story 2.2b ModifierStore it drives.
+            // Construct the system FIRST so the store ctor can take it; AttachStore closes the system↔store cycle
+            // once both exist. The store subscribes World.OnDestroy += ClearEntity in its ctor (recycle safety).
+            var modSys = new ModifierSystem();
+
             // ── The canonical 10-system tick order. The registration order IS the determinism contract;
             //    SystemOrderTest FAILS on any reorder/add/remove. ──
             _systems = new ISimSystem[]
@@ -91,10 +98,10 @@ namespace ProjectChimera.Core.Sim
                 BuildSys,                                                                 // [0] BuildingSystem   (Economy)
                 new GatheringSystem(Nodes, Resources, MatchStats),                        // [1] GatheringSystem  (Economy)
                 new MovementSystem(),                                                     // [2] MovementSystem   (Navigation)
-                // ── AR-9 effective-stat recompute (Story 2.2a). At index 3, immediately before CombatSystem, so
-                //    combat & projectile-spawn damage read freshly-recomputed Effective* stats the SAME tick a
-                //    modifier changes them. A no-op until the ModifierStore (Story 2.2b) drives it. ──
-                new ModifierSystem(),                                                     // [3] ModifierSystem   (Effects, AR-9)
+                // ── AR-9 effective-stat recompute. At index 3, immediately before CombatSystem, so combat &
+                //    projectile-spawn damage read freshly-recomputed Effective* stats the SAME tick a modifier
+                //    changes them. Drives the ModifierStore (Story 2.2b) each tick (periods/expiry) then recomputes. ──
+                modSys,                                                                   // [3] ModifierSystem   (Effects, AR-9)
                 new CombatSystem(Projectiles, CombatEvents, MatchStats, damageTable),     // [4] (null table → DamageTable.Default)
                 new ProjectileSystem(Projectiles, CombatEvents, MatchStats, damageTable), // [5] ProjectileSystem (Combat)
                 new SupplySystem(Resources),                                              // [6] SupplySystem     (Economy)
@@ -103,8 +110,12 @@ namespace ProjectChimera.Core.Sim
                 ScenarioDirector,                                                         // [9] ScenarioDirector — runs LAST
             };
 
+            // The store needs the same damage table / event + stats sinks combat uses (null → DamageTable.Default).
+            Modifiers = new ModifierStore(World, modSys, damageTable, CombatEvents, MatchStats);
+            modSys.AttachStore(Modifiers);
+
             _loop = new SimulationLoop(World, _systems);
-            _loop.EnableChecksums(Buildings, Resources, checksumFactions);
+            _loop.EnableChecksums(Buildings, Resources, checksumFactions, Modifiers); // fold the live modifier state (v6)
 
             // The sim spine's only host-side log in 1.8a: a one-shot construction diagnostic through the
             // injected seam. NullLogSink no-ops it (tests/server → zero effect on the golden); GodotLogSink

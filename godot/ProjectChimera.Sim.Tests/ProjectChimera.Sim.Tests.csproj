@@ -52,6 +52,11 @@
          CROSS-PLATFORM SAFE: compared on both CI legs, NOT Windows-gated. NEW file; goldens above untouched. -->
     <None Remove="Golden\formation-separation-scenario.golden.txt" />
     <EmbeddedResource Include="Golden\formation-separation-scenario.golden.txt" />
+    <!-- Story 2.2b (AC2/AC3) — modifier-active golden (four stationary P1 units through a fixed
+         apply/refresh/stack/ignore/DoT/HoT/Energy schedule; Player2 empty so the AI no-ops). The first golden with
+         ACTIVE ModifierStore state. Integer/Fixed-only → CROSS-PLATFORM SAFE, compared on both CI legs. NEW file. -->
+    <None Remove="Golden\modifier-scenario.golden.txt" />
+    <EmbeddedResource Include="Golden\modifier-scenario.golden.txt" />
   </ItemGroup>
 
   <ItemGroup>

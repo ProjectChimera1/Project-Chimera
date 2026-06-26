@@ -60,5 +60,13 @@ namespace ProjectChimera.Effects
 
         /// <summary>Reserved (Story 2.2b): max periodic ticks a <c>PersistentEffect</c> may schedule. Named now to forbid a bare literal later.</summary>
         public const int MaxPersistentPeriods = 256;
+
+        /// <summary>
+        /// Maximum simultaneous active <c>Modifier</c>/<c>PersistentEffect</c> instances per entity in the
+        /// <c>ModifierStore</c> (Story 2.2b). The store's per-entity slot ring is sized to this; a same-tick apply
+        /// that would exceed it is refused DETERMINISTICALLY (dropped, never overflowed). Named here (CHM0004-clean)
+        /// so the store never carries a bare-literal cap.
+        /// </summary>
+        public const int MaxModifiersPerEntity = 8;
     }
 }

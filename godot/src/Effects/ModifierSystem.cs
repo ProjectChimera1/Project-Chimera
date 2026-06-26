@@ -10,10 +10,18 @@ namespace ProjectChimera.Effects
     /// <see cref="ProjectChimera.Combat.CombatSystem"/> and <see cref="ProjectChimera.Combat.ProjectileSystem"/> —
     /// so combat reads freshly-recomputed effective stats the SAME tick a modifier changes them.
     ///
-    /// <para>Story 2.2a builds the PIPELINE; Story 2.2b builds the <c>ModifierStore</c> that drives it (apply /
-    /// remove / stack / expire / DoT-HoT / energy cost). In 2.2a nothing sets a dirty flag, so <see cref="Tick"/> is
-    /// a no-op every tick → every <c>Effective* == Base*</c> → combat and movement are byte-identical to pre-story,
-    /// and the goldens do not move.</para>
+    /// <para>Story 2.2a built the PIPELINE; Story 2.2b adds the <c>ModifierStore</c> that DRIVES it (apply / remove /
+    /// stack / expire / DoT-HoT / energy cost). Once a store is attached (<see cref="AttachStore"/>), <see cref="Tick"/>
+    /// first calls <c>ModifierStore.Advance</c> (periods fire, expiries revert their bonuses) and THEN recomputes —
+    /// so combat at index 4 reads fresh effective stats the same tick. With NO store attached (the pure-pipeline
+    /// unit tests) <see cref="Tick"/> is still a no-op every tick (nothing dirties), so those tests and the
+    /// store-free goldens behave exactly as in 2.2a.</para>
+    ///
+    /// <para><b>Story 2.2b — Zero-floor.</b> The recompute now floors each <c>Effective*</c> at <see cref="Fixed.Zero"/>:
+    /// a debuff can never drive damage/maxhealth/speed negative (a negative effective damage would HEAL through
+    /// <c>DamageResolver</c>'s matrix; a negative speed would reverse movement; a negative maxhealth would invert the
+    /// Health clamp). "Cannot attack" is modeled by <see cref="StatusFlags.Disarmed"/> (read by a later story), never
+    /// by a sub-zero stat.</para>
     ///
     /// <para><b>Determinism (why the dirty flag + bonuses are private and UNHASHED).</b> They are a transient
     /// recompute optimisation, not sim truth: the recompute is idempotent (<c>Effective = Base + bonus</c> regardless
@@ -35,24 +43,72 @@ namespace ProjectChimera.Effects
         private readonly Fixed[] _flatMoveSpeedBonus    = new Fixed[EntityWorld.MAX_ENTITIES];
 
         /// <summary>
+        /// The Story 2.2b store this system drives each tick (null until <see cref="AttachStore"/>). Held, not
+        /// hashed — the store folds its OWN state into <see cref="SimChecksum"/>; this is just the per-tick driver ref.
+        /// </summary>
+        private ModifierStore? _store;
+
+        /// <summary>
         /// Recompute every dirty entity's effective stats from its base + net modifier bonus, then clear the flag.
         /// Ascending-id (the deterministic contract). A clean entity is left untouched — that gate is what makes a
         /// recompute happen ONLY when a modifier changed (and is the AC2 "no recompute when clean" teeth).
         /// </summary>
         public void Tick(EntityWorld world, Fixed dt)
         {
+            // Story 2.2b: drive the store FIRST (periods pulse; expiries RemoveSlot → AccumulateBonus(−delta), all
+            // ascending-id) so the recompute below picks up every bonus/status change this tick. No-op when no store.
+            _store?.Advance(world, dt);
+
             int cap = world.HighWaterMark;
             for (int i = 0; i < cap; i++)
             {
                 // Recompute ONLY for live, dirty entities. The IsAlive guard keeps a future caller that dirtied a
-                // since-recycled slot from writing stats onto a dead entity (the SoA-recycle trap).
+                // since-recycled slot from writing stats onto a dead entity (the SoA-recycle trap). The dirty gate is
+                // the 2.2a "no recompute when clean" teeth; entities the store already eager-recomputed are clean here.
                 if (!world.IsAlive(i) || !_dirty[i]) continue;
-
-                world.EffectiveAttackDamage[i] = world.BaseAttackDamage[i] + _flatAttackDamageBonus[i];
-                world.EffectiveMaxHealth[i]    = world.BaseMaxHealth[i]    + _flatMaxHealthBonus[i];
-                world.EffectiveMoveSpeed[i]    = world.BaseMoveSpeed[i]    + _flatMoveSpeedBonus[i];
-                _dirty[i] = false;
+                RecomputeEntity(world, i);
             }
+        }
+
+        /// <summary>
+        /// Recompute a SINGLE entity's effective stats from base + net bonus, Zero-floored, and clear its dirty flag.
+        /// Idempotent (<c>Effective = max(0, Base + Σbonus)</c> regardless of prior value), so the Story 2.2b store
+        /// calls it EAGERLY right after an apply/remove — making <c>EffectiveMaxHealth</c> fresh for the same-tick
+        /// MaxHealth clamp and guaranteeing combat at index 4 reads the buffed stat the tick a modifier changes it —
+        /// while <see cref="Tick"/>'s dirty loop remains the catch-all for any bonus dirtied outside the store.
+        /// </summary>
+        internal void RecomputeEntity(EntityWorld world, int id)
+        {
+            if (id < 0 || id >= EntityWorld.MAX_ENTITIES) return;
+            if (!world.IsAlive(id)) { _dirty[id] = false; return; }
+
+            // Zero-floor (Story 2.2b): a debuff can never drive a stat below zero (which would heal/reverse/invert).
+            world.EffectiveAttackDamage[id] = Fixed.Max(Fixed.Zero, world.BaseAttackDamage[id] + _flatAttackDamageBonus[id]);
+            world.EffectiveMaxHealth[id]    = Fixed.Max(Fixed.Zero, world.BaseMaxHealth[id]    + _flatMaxHealthBonus[id]);
+            world.EffectiveMoveSpeed[id]    = Fixed.Max(Fixed.Zero, world.BaseMoveSpeed[id]    + _flatMoveSpeedBonus[id]);
+            _dirty[id] = false;
+        }
+
+        /// <summary>
+        /// Wire the Story 2.2b <see cref="ModifierStore"/> this system drives each <see cref="Tick"/>. Called once at
+        /// <see cref="ProjectChimera.Core.Sim.SimulationHost"/> construction AFTER both objects exist (the store's
+        /// ctor needs this system, and this system needs the store — <see cref="AttachStore"/> breaks the cycle).
+        /// </summary>
+        internal void AttachStore(ModifierStore store) => _store = store;
+
+        /// <summary>
+        /// Zero this entity's external stat-bonus accumulators and dirty flag. Called by
+        /// <see cref="ModifierStore.ClearEntity"/> on the destroy hook, because these accumulators live OUTSIDE
+        /// <see cref="EntityWorld"/> and so <see cref="EntityWorld.Create"/> cannot reset them on recycle — the exact
+        /// gap the Story 2.2a code review flagged. Bounds-guarded (no throw on a bad id).
+        /// </summary>
+        internal void ClearEntity(int id)
+        {
+            if (id < 0 || id >= EntityWorld.MAX_ENTITIES) return;
+            _flatAttackDamageBonus[id] = Fixed.Zero;
+            _flatMaxHealthBonus[id]    = Fixed.Zero;
+            _flatMoveSpeedBonus[id]    = Fixed.Zero;
+            _dirty[id] = false;
         }
 
         /// <summary>
