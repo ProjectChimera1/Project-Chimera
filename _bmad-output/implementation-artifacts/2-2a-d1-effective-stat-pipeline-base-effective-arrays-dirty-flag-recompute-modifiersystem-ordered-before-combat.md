@@ -4,7 +4,7 @@ baseline_commit: 3c4d27b349a3fa7f38d465069e6ced9b97250d11
 
 # Story 2.2a: D1 Effective-stat pipeline — Base*/Effective* arrays, dirty-flag recompute, ModifierSystem ordered before combat
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -285,6 +285,7 @@ _Not source edits: several Godot-generated `*.cs.uid` artifacts and `Snapshot.md
 |---|---|
 | 2026-06-25 | Story 2.2a created (`gds-create-story`). Scope Decision #1 = full three-stat substrate (AttackDamage+MaxHealth+MoveSpeed); Decision #2 = no checksum fold (standing rule — data dormant until 2.2b). Status → ready-for-dev. |
 | 2026-06-25 | Story 2.2a implemented (`gds-dev-story`). Two-pass: behavior-preserving rename to `Effective*` (goldens byte-identical) → additive `Base*`/`Energy`/`MaxEnergy` + no-op `ModifierSystem` at host index 3. All 4 ACs met; A2 single-mapper rule + guard test landed (teeth proven). NO checksum fold (AlgoVersion 5, `SimChecksum.cs` untouched, 7 goldens byte-identical, `0x5E7BE3D8` unchanged). Tier-1 314 pass / 1 skip / 0 fail; Godot build 0 errors. Status → review. |
+| 2026-06-26 | Code review (`gds-code-review`, 3-layer adversarial — Blind/Edge/Auditor on fresh Opus). **PASS** — all 4 ACs independently MET, 0 Critical/High/Medium reachable in 2.2a; Auditor re-ran the proof (Tier-1 314 pass/1 skip/0 fail, full Godot build 0 errors, 7 goldens byte-identical, `SimChecksum.cs` untouched, no-op `Tick` confirmed via zero production `AccumulateBonus` callers). 1 patch APPLIED & verified (`StressTest.cs:88` Base+Effective dual-write — godot.csproj 0 errors, goldens byte-identical); 4 defers → 2.2b (`deferred-work.md`); 2 dismissed. Status → done. |
 
 ---
 
@@ -294,7 +295,7 @@ _Not source edits: several Godot-generated `*.cs.uid` artifacts and `Snapshot.md
 
 ### Patch findings
 
-- [ ] [Review][Patch] StressTest spawn writer sets `Effective` but not `Base` [godot/tools/StressTest.cs:88] — breaks the Base+Effective dual-write rule the story enforces in its sibling writers (`BuildingSystem.cs:182-183`, `EntityPlacer.cs:494-495`). Inert in 2.2a (no production `AccumulateBonus` caller) but a latent footgun: once a modifier runs over a stress unit, `Effective = Base(0) + bonus` wipes `ATTACK_DAMAGE`. Fix mirrors the siblings: set `BaseAttackDamage[id]` then `EffectiveAttackDamage[id] = BaseAttackDamage[id]`.
+- [x] [Review][Patch] StressTest spawn writer sets `Effective` but not `Base` [godot/tools/StressTest.cs:88] — breaks the Base+Effective dual-write rule the story enforces in its sibling writers (`BuildingSystem.cs:182-183`, `EntityPlacer.cs:494-495`). Inert in 2.2a (no production `AccumulateBonus` caller) but a latent footgun: once a modifier runs over a stress unit, `Effective = Base(0) + bonus` wipes `ATTACK_DAMAGE`. Fix mirrors the siblings: set `BaseAttackDamage[id]` then `EffectiveAttackDamage[id] = BaseAttackDamage[id]`. **✅ APPLIED & verified 2026-06-26** (godot.csproj build 0 errors; 7 goldens still byte-identical — determinism-neutral).
 
 ### Deferred findings (to Story 2.2b / future SoA stories — all dormant in 2.2a)
 

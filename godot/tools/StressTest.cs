@@ -85,7 +85,11 @@ namespace ProjectChimera.Core
                 if (id < 0) break;
 
                 world.AttackRange[id] = Fixed.FromFloat(ATTACK_RANGE);
-                world.EffectiveAttackDamage[id] = Fixed.FromFloat(ATTACK_DAMAGE);
+                // Set BOTH Base (authored source) and Effective so a later modifier recomputes
+                // Effective = Base + delta correctly instead of from a stale Zero base (matches the
+                // BuildingSystem / EntityPlacer spawn-fallback dual-write rule).
+                world.BaseAttackDamage[id] = Fixed.FromFloat(ATTACK_DAMAGE);
+                world.EffectiveAttackDamage[id] = world.BaseAttackDamage[id];
                 world.AttackSpeed[id] = Fixed.FromFloat(ATTACK_SPEED);
                 world.DamageTypeOf[id] = dmgType;
                 world.ArmorTypeOf[id] = armor;
