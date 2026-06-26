@@ -91,6 +91,7 @@ If you are tempted to put a `Node`, a `signal`, `GD.Print`, or a `float` positio
 
 ### Data layout
 - Entity data uses **Struct-of-Arrays (SoA)**, not arrays-of-objects. New per-entity fields are new parallel arrays in the entity world, indexed by entity id, managed with the existing **free list** for recycling slots. Don't introduce per-entity classes.
+- **Single def→SoA mapper (the A2 rule).** Every new per-unit SoA field that derives from `UnitDefinition` MUST be written via `EntityWorld.ApplyUnitDefinition` (the one def→SoA mapper) — **never hand-copied in a spawn path**. Stats sourced from the `Create()` ctor args (Health/MaxHealth/MoveSpeed) flow through that single channel; non-def fields are defaulted in `Create()` (and a recycled slot must never carry the prior occupant's value — the SoA-recycle trap). This closes the 1.12/1.13 spawn-path / zombie-state defect class and is guarded by `ApplyUnitDefinitionGuardTest` (a Godot-free spawn path that leaves a new field at its `Create` default goes RED).
 - Reuse the existing systems rather than building parallel ones: `EntityWorld` (SoA), `BuildingStore`, `ScenarioData`, `FlowFieldBridge`, `SpatialHash`. Adding a bespoke subsystem when one of these covers it is the wrong call.
 
 ### Everything is data-driven (the platform rule)

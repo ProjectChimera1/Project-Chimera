@@ -16,6 +16,7 @@ Always use MCP tools to verify changes compile and run correctly.
 ### Simulation Layer (`src/Core/`, `src/Combat/`, `src/Economy/`, `src/Navigation/`)
 - Pure C# only. No Godot Node types. No `using Godot;` in sim code.
 - Use Struct-of-Arrays (SoA) pattern for entity data
+- New per-unit SoA fields that derive from `UnitDefinition` MUST be written through the single `EntityWorld.ApplyUnitDefinition` mapper — never hand-copied in a spawn path. Fields sourced from the `Create()` ctor args (Health/MaxHealth/MoveSpeed) flow through that single channel; non-def fields are defaulted in `Create()` (a recycled slot must never carry the prior occupant's value). Closes the 1.12/1.13 spawn-path / zombie-state defect class; guarded by `ApplyUnitDefinitionGuardTest`.
 - All math uses FixedPoint (not float) for determinism
 - Process entities by ascending ID for deterministic order
 - Target: 500-2000 entities at 30 ticks/sec simulation rate
