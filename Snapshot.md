@@ -15,10 +15,7 @@ status: Active
 Phases 0–4 are code-complete. Phase 5 is underway. Session 20 shipped worker-placed buildings + UI bug sweep. Session 21 (remote, away from computer) shipped Utility AI + Adaptive Input Delay.
 
 ## Next Action
-Story 2.2b moves to `review` status. Awaiting user review of:
-- The two architectural decisions (self-contained store, heal-on-apply semantics)
-- Golden re-baseline confirmation
-- Sprint-status flip from `in-progress` to `review`
+Triage and synthesize findings from three adversarial review layers upon their completion; distill into patch/defer/dismiss verdict per BMAD triage gates, then report final review sign-off or escalation list.
 
 ---
 
