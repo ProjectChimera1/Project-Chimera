@@ -28,11 +28,16 @@ namespace ProjectChimera.Effects
     /// references + caster id/faction are NOT folded — authored / peer-identical by construction (like a
     /// <c>UnitDefinition</c> reference).</para>
     ///
-    /// <para><b>Re-entrancy.</b> The store runs initial/period/expire effects on its OWN dedicated
-    /// <see cref="EffectExecutor"/> — never shared with a graph-running executor, whose single pre-allocated work-stack
-    /// running re-entrantly would clobber. In 2.2b period effects are direct-target leaves (DirectHpDelta/Heal/Damage,
-    /// <c>spatial: null</c>) so no nesting occurs; a future period that itself installs a modifier needs a separate
-    /// executor or a deferred queue (documented in deferred-work).</para>
+    /// <para><b>Re-entrancy.</b> The store runs ALL THREE effect phases — <c>InitialEffect</c> (on install),
+    /// <c>PeriodEffect</c> (each pulse), and <c>ExpireEffect</c> (on removal) — on its OWN dedicated
+    /// <see cref="EffectExecutor"/>, never shared with a graph-running executor, whose single pre-allocated work-stack
+    /// running re-entrantly would clobber. In 2.2b all three phases use only direct-target leaves
+    /// (DirectHpDelta/Heal/Damage, <c>spatial: null</c>) so no nesting occurs. An install-leaf
+    /// (<see cref="ApplyModifierEffect"/>/<see cref="PersistentEffect"/>) nested inside ANY of the three phases — not
+    /// just a period — would re-enter the dedicated executor AND mutate <c>_count</c> mid-<see cref="Advance"/>; that
+    /// case is unsupported in 2.2b and is kept off the executor by the Story 2.3 content validator. A future phase that
+    /// itself installs a modifier needs a fail-closed re-entrancy guard or a deferred-application queue (documented in
+    /// deferred-work, code-review 2.2b W1).</para>
     /// </summary>
     public sealed class ModifierStore
     {
@@ -142,7 +147,7 @@ namespace ProjectChimera.Effects
                 ResetPeriodSchedule(slot, mod);
                 _count[targetId] = n + 1;
 
-                ApplyStatDeltas(targetId, mod.AttackDamageDelta, mod.MaxHealthDelta, mod.MoveSpeedDelta);
+                ApplyStatDeltas(targetId, mod.AttackDamageDelta, mod.MaxHealthDelta, mod.MoveSpeedDelta, isApply: true);
                 _world.StatusFlagsOf[targetId] |= mod.Status;
                 return;
             }
@@ -159,7 +164,7 @@ namespace ProjectChimera.Effects
                     if (_stackCount[eslot] < mod.MaxStacks)
                     {
                         _stackCount[eslot]++;
-                        ApplyStatDeltas(targetId, mod.AttackDamageDelta, mod.MaxHealthDelta, mod.MoveSpeedDelta); // each stack re-adds
+                        ApplyStatDeltas(targetId, mod.AttackDamageDelta, mod.MaxHealthDelta, mod.MoveSpeedDelta, isApply: true); // each stack re-adds
                         _world.StatusFlagsOf[targetId] |= mod.Status; // idempotent re-OR
                     }
                     // Shared duration refreshed on every (re)apply — at the cap this is the only effect (refresh-only).
@@ -295,7 +300,7 @@ namespace ProjectChimera.Effects
                 Fixed stacks = Fixed.FromInt(_stackCount[slot]); // exact for an int multiplier (no Fixed rounding)
                 ApplyStatDeltas(hostId, -(mod.AttackDamageDelta * stacks),
                                         -(mod.MaxHealthDelta * stacks),
-                                        -(mod.MoveSpeedDelta * stacks));
+                                        -(mod.MoveSpeedDelta * stacks), isApply: false);
             }
             RecomputeStatusUnion(hostId, excludeSlot: slot);
 
@@ -375,20 +380,24 @@ namespace ProjectChimera.Effects
         /// <summary>
         /// Apply signed stat deltas through the 2.2a <c>AccumulateBonus</c> seam, EAGERLY recompute the host's
         /// effective stats (so <c>EffectiveMaxHealth</c> is fresh for the clamp and combat at index 4 reads the change
-        /// the same tick), then adjust current Health for a max-health change. <b>Decision #3 (Alec): heal on a rising
-        /// ceiling.</b> When the effective max-health ceiling RISES (a +MaxHealth buff applied, or a −MaxHealth debuff
-        /// removed) current Health rises by the same amount — the buff doubles as a burst heal. When it FALLS (buff
-        /// removed / debuff applied) Health only clamps down (no phantom HP, never a death-on-expiry). Always re-clamped
-        /// into <c>[0, EffectiveMaxHealth]</c>.
+        /// the same tick), then adjust current Health for a max-health change. <b>Decision #3 (Alec), refined in the
+        /// 2.2b code review: heal ONLY on a buff's APPLICATION.</b> When a <b>positive</b> <paramref name="maxHealthChange"/>
+        /// is <b>applied</b> (<paramref name="isApply"/> = true — a +MaxHealth buff installed/stacked) current Health
+        /// rises by the same amount: the buff doubles as a burst heal. Every <b>removal</b> (<paramref name="isApply"/>
+        /// = false — buff expiry / dispel) and every <b>debuff</b> (negative change) only ever clamps Health DOWN —
+        /// never heals. This kills the earlier symmetric-model exploit where a wearing-off −MaxHealth debuff net-healed
+        /// the host (an enemy debuff that grants HP); a debuff round-trip now restores the ceiling without restoring HP.
+        /// Health is always re-clamped into <c>[0, EffectiveMaxHealth]</c> (no phantom HP, never a death-on-expiry).
         /// </summary>
-        private void ApplyStatDeltas(int id, Fixed attackChange, Fixed maxHealthChange, Fixed moveChange)
+        private void ApplyStatDeltas(int id, Fixed attackChange, Fixed maxHealthChange, Fixed moveChange, bool isApply)
         {
             _system?.AccumulateBonus(id, attackChange, maxHealthChange, moveChange);
             _system?.RecomputeEntity(_world, id);
 
             if (maxHealthChange.Raw != 0)
             {
-                if (maxHealthChange > Fixed.Zero) _world.Health[id] += maxHealthChange; // ceiling rose → heal up
+                // Heal-up ONLY when a positive MaxHealth modifier is APPLIED. A removal or a debuff clamps down only.
+                if (isApply && maxHealthChange > Fixed.Zero) _world.Health[id] += maxHealthChange;
                 _world.Health[id] = Fixed.Clamp(_world.Health[id], Fixed.Zero, _world.EffectiveMaxHealth[id]);
             }
         }

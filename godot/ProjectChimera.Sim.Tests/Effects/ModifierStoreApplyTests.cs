@@ -12,8 +12,10 @@ namespace ProjectChimera.Sim.Tests.Effects
     ///   • status flags set on apply, recomputed (NOT blindly cleared) on remove — a flag a second modifier still
     ///     holds survives;
     ///   • a debuff can never drive a stat below <see cref="Fixed.Zero"/> (the Zero-floor — RED without it);
-    ///   • MaxHealth semantics (Decision #3 = heal-on-apply): a +MaxHealth buff RAISES current Health by the same
-    ///     amount (a burst heal); removal clamps Health DOWN to the new ceiling (no phantom HP).
+    ///   • MaxHealth semantics (Decision #3 = heal-on-apply, refined in 2.2b review to heal-on-BUFF-apply ONLY): a
+    ///     +MaxHealth buff RAISES current Health by the same amount (a burst heal); removal clamps Health DOWN to the
+    ///     new ceiling (no phantom HP); a −MaxHealth DEBUFF round-trip restores the ceiling WITHOUT restoring HP (no
+    ///     free heal from a wearing-off enemy debuff — RED under the old symmetric model).
     /// Bare worlds via <see cref="EntityWorld.Create"/>; <see cref="Fixed.FromInt"/> only; independently-derived raws.
     /// </summary>
     public class ModifierStoreApplyTests
@@ -107,6 +109,26 @@ namespace ProjectChimera.Sim.Tests.Effects
             // Additive heal (current += maxDelta), NOT fill-to-full: 50 + 50 = 100 of a new 150 ceiling → 100/150.
             Assert.Equal(Fixed.FromInt(150).Raw, world.EffectiveMaxHealth[id].Raw);
             Assert.Equal(Fixed.FromInt(100).Raw, world.Health[id].Raw);
+        }
+
+        [Fact]
+        public void MaxHealthDebuff_RoundTrip_RestoresCeiling_WithoutHealing() // 2.2b review (D1): heal-on-BUFF-apply only
+        {
+            var (world, sys, store) = Wire();
+            int id = world.Create(FixedVec3.Zero, Faction.Player1, Fixed.FromInt(100), Fixed.FromInt(4));
+            world.Health[id] = Fixed.FromInt(50); // damaged: 50/100
+
+            // A −50 MaxHealth debuff (duration 1). Apply drops the ceiling to 50 and clamps Health to 50 → 50/50.
+            store.Apply(id, StatMod(1, 1, StackRule.Refresh, 1, maxHp: -50, atk: 0, move: 0), id, Faction.Player1);
+            Assert.Equal(Fixed.FromInt(50).Raw, world.EffectiveMaxHealth[id].Raw);
+            Assert.Equal(Fixed.FromInt(50).Raw, world.Health[id].Raw);
+
+            sys.Tick(world, Dt); // duration 1 → debuff removed
+
+            // Ceiling restored to 100 — but Health is NOT healed up (clamp-only on removal). Old symmetric model
+            // would have added +50 here (→ 100/100, a free heal from a wearing-off enemy debuff). RED without the fix.
+            Assert.Equal(Fixed.FromInt(100).Raw, world.EffectiveMaxHealth[id].Raw);
+            Assert.Equal(Fixed.FromInt(50).Raw, world.Health[id].Raw);
         }
 
         [Fact]
