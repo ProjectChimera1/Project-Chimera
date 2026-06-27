@@ -110,6 +110,57 @@ namespace ProjectChimera.Core.Definitions
         [JsonPropertyName("prerequisites")]
         public string[] Prerequisites { get; set; } = System.Array.Empty<string>();
 
+        /// <summary>
+        /// Active-ability ids this unit type can cast (each references an ability JSON in
+        /// <c>resources/data/abilities/</c>). Mirrors <see cref="Prerequisites"/> — a snake_case JSON string array,
+        /// empty = no abilities. Resolved to <see cref="AbilityRegistry"/> indices via <see cref="ResolveAbilities"/>
+        /// at scenario link time (see <see cref="AbilityIndices"/>); cast through the deterministic effect engine (Story 2.4a).
+        /// </summary>
+        [JsonPropertyName("abilities")]
+        public string[] Abilities { get; set; } = System.Array.Empty<string>();
+
+        /// <summary>
+        /// Maximum ability-resource (energy) pool for this unit type (authored float, quantized once to
+        /// <see cref="ProjectChimera.Core.Fixed"/> in <see cref="ProjectChimera.Core.EntityWorld.ApplyUnitDefinition"/>
+        /// — the single float→Fixed boundary, like the other stats). 0 = no energy pool (cannot cast energy-cost
+        /// abilities). Story 2.4a: the unit starts FULL (Energy = MaxEnergy) and there is no regen yet.
+        /// </summary>
+        [JsonPropertyName("max_energy")]
+        public float MaxEnergy { get; set; } = 0f;
+
+        /// <summary>
+        /// Registry indices of <see cref="Abilities"/>, back-filled ONCE at scenario link by
+        /// <see cref="ResolveAbilities"/>. Unlike <see cref="ParsedCategory"/> (a pure computed prop) this needs the
+        /// <see cref="AbilityRegistry"/>, so it is an explicit resolve step run before any spawn. Excluded from JSON.
+        /// </summary>
+        [JsonIgnore]
+        public int[] AbilityIndices { get; private set; } = System.Array.Empty<int>();
+
+        /// <summary>
+        /// Resolve each <see cref="Abilities"/> id to its <paramref name="registry"/> index, DROPPING any id the
+        /// registry does not contain (a unit referencing an unknown ability gets fewer slots, never a crash — the
+        /// validator already guaranteed each registry ability is valid) and clamping to
+        /// <see cref="ProjectChimera.Core.EntityWorld.MAX_ABILITIES_PER_UNIT"/>. Run once at scenario link, before
+        /// any spawn; idempotent. (Allocation here is fine — link-time, not the tick.)
+        /// </summary>
+        public void ResolveAbilities(AbilityRegistry registry)
+        {
+            if (registry is null || Abilities.Length == 0)
+            {
+                AbilityIndices = System.Array.Empty<int>();
+                return;
+            }
+
+            int max = ProjectChimera.Core.EntityWorld.MAX_ABILITIES_PER_UNIT;
+            var resolved = new System.Collections.Generic.List<int>(Abilities.Length);
+            for (int i = 0; i < Abilities.Length && resolved.Count < max; i++)
+            {
+                int idx = registry.IndexOf(Abilities[i]);
+                if (idx >= 0) resolved.Add(idx); // drop unknown ids (never crash)
+            }
+            AbilityIndices = resolved.ToArray();
+        }
+
         // ── Enum conversions ────────────────────────────────────────────────────
 
         /// <summary>DamageType string from JSON resolved to enum.</summary>

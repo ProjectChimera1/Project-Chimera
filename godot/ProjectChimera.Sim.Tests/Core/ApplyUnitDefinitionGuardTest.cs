@@ -110,5 +110,71 @@ namespace ProjectChimera.Sim.Tests.Core
             Assert.Equal(refWorld.SeparationPriorityOf[refId], w.SeparationPriorityOf[id]);
             Assert.Equal(refWorld.CategoryOf[refId],           w.CategoryOf[id]);
         }
+
+        // ── Story 2.4a — the FIRST per-entity ability state flows through ApplyUnitDefinition (A2), and a recycled
+        //    slot never carries a prior occupant's ability/cooldown (the SoA-recycle trap). ─────────────────────
+
+        /// <summary>A registry with one ability (only its Id matters — the registry indexes by Id).</summary>
+        private static AbilityRegistry OneAbilityRegistry()
+            => new AbilityRegistry(new[] { new AbilityDefinition { Id = "test_ability" } });
+
+        /// <summary>The combat def + an energy pool + a referenced ability, with AbilityIndices resolved (the link step).</summary>
+        private static UnitDefinition AbilityDef(AbilityRegistry registry)
+        {
+            UnitDefinition def = CombatDef();
+            def.MaxEnergy = 75f;
+            def.Abilities = new[] { "test_ability" };
+            def.ResolveAbilities(registry); // back-fill AbilityIndices once at scenario link
+            return def;
+        }
+
+        [Fact]
+        public void ApplyUnitDefinition_WritesMaxEnergyAndAbilitySlots_OffTheirCreateDefault()
+        {
+            AbilityRegistry registry = OneAbilityRegistry();
+            UnitDefinition def = AbilityDef(registry);
+
+            var w = new EntityWorld();
+            int id = w.Create(FixedVec3.Zero, Faction.Player1, Fixed.FromFloat(def.Hp), Fixed.FromFloat(def.Speed));
+            w.ApplyUnitDefinition(id, def);
+
+            int slot0 = id * EntityWorld.MAX_ABILITIES_PER_UNIT + 0;
+            // MaxEnergy mapped; Energy started FULL (Decision #5); ability slot 0 carries the resolved registry index.
+            Assert.Equal(Fixed.FromFloat(75f).Raw, w.MaxEnergy[id].Raw);
+            Assert.Equal(w.MaxEnergy[id].Raw,       w.Energy[id].Raw);
+            Assert.Equal((byte)1,                   w.AbilityCount[id]);
+            Assert.Equal(registry.IndexOf("test_ability"), w.AbilityId[slot0]);
+
+            // Teeth: prove the mapped values are NOT the Create defaults (MaxEnergy 0, AbilityCount 0, AbilityId -1) —
+            // a spawn path that left these at the Create default goes RED here (the retro-A2 guard).
+            Assert.NotEqual(Fixed.Zero.Raw, w.MaxEnergy[id].Raw);
+            Assert.NotEqual((byte)0,        w.AbilityCount[id]);
+            Assert.NotEqual(-1,             w.AbilityId[slot0]);
+        }
+
+        [Fact]
+        public void RecycledSlot_CarriesNoPriorAbilityOrCooldown()
+        {
+            AbilityRegistry registry = OneAbilityRegistry();
+            UnitDefinition def = AbilityDef(registry);
+
+            var w = new EntityWorld();
+            int first = w.Create(FixedVec3.Zero, Faction.Player1, Fixed.FromInt(100), Fixed.FromInt(3));
+            w.ApplyUnitDefinition(first, def);
+            int slot0 = first * EntityWorld.MAX_ABILITIES_PER_UNIT + 0;
+            w.AbilityCooldownTicks[slot0] = 99; // dirty the cooldown slot (as if a cast had started one)
+            Assert.Equal((byte)1, w.AbilityCount[first]);
+
+            w.Destroy(first);
+            int reused = w.Create(FixedVec3.Zero, Faction.Player2, Fixed.FromInt(50), Fixed.FromInt(3));
+            Assert.Equal(first, reused); // free-list reuse of the same id
+
+            // The new occupant (NO def applied) must carry NONE of the prior ability/cooldown/energy state.
+            Assert.Equal((byte)0, w.AbilityCount[reused]);
+            Assert.Equal(-1,      w.AbilityId[reused * EntityWorld.MAX_ABILITIES_PER_UNIT + 0]);
+            Assert.Equal(0,       w.AbilityCooldownTicks[reused * EntityWorld.MAX_ABILITIES_PER_UNIT + 0]);
+            Assert.Equal(EntityWorld.NO_PENDING_CAST, w.PendingCastSlot[reused]);
+            Assert.Equal(Fixed.Zero.Raw, w.MaxEnergy[reused].Raw); // Create default (no def applied)
+        }
     }
 }

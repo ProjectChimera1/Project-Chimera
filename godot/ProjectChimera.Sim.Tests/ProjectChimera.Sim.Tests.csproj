@@ -57,6 +57,11 @@
          ACTIVE ModifierStore state. Integer/Fixed-only → CROSS-PLATFORM SAFE, compared on both CI legs. NEW file. -->
     <None Remove="Golden\modifier-scenario.golden.txt" />
     <EmbeddedResource Include="Golden\modifier-scenario.golden.txt" />
+    <!-- Story 2.4a (AC3) — ability-cast golden (one P1 caster casts a Self battle_fury via a CastAbility UnitOrder;
+         Player2 empty so the AI no-ops). First golden with a LIVE ability cast; exercises the v7 cooldown fold.
+         Integer/Fixed-only → CROSS-PLATFORM SAFE, compared on both CI legs. NEW file; goldens above untouched. -->
+    <None Remove="Golden\ability-cast-scenario.golden.txt" />
+    <EmbeddedResource Include="Golden\ability-cast-scenario.golden.txt" />
   </ItemGroup>
 
   <ItemGroup>

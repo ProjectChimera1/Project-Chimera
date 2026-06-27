@@ -26,6 +26,10 @@ namespace ProjectChimera.Core
     ///     modifierId / remainingTicks / ticksUntilPeriod / periodsRemaining / stackCount — added v6 (Story 2.2b).
     ///     The descriptor refs + caster id/faction are NOT folded (authored / peer-identical). A null store folds an
     ///     identical Mix(0) count per entity (≡ an empty store), so legacy callers and an empty store agree.
+    ///   - EntityWorld ability cooldowns: per alive entity, AbilityCount then count-driven AbilityCooldownTicks
+    ///     (int ticks) — added v7 (Story 2.4a), the first ability array that mutates mid-match (a cast starts a
+    ///     cooldown; it ticks down each frame). AbilityId / MaxEnergy / PendingCast* are NOT hashed (authored /
+    ///     transient); AbilityCount is folded ONLY as the cross-platform-safe count-driven loop bound (like PatrolCount).
     ///
     /// Versioned by <see cref="AlgoVersion"/> — bump on any change to the hashed set/order
     /// (forces an intentional golden re-baseline). MatchStats is deliberately NOT hashed
@@ -56,8 +60,12 @@ namespace ProjectChimera.Core
         ///        per-entity EffectiveAttackDamage/EffectiveMaxHealth/EffectiveMoveSpeed/Energy + StatusFlagsOf, AND
         ///        the ModifierStore per-instance state (count-driven, ascending owner-id then slot). Base* stays
         ///        UNFOLDED (authored, in-tick-immutable). The ONE scheduled re-baseline of all goldens.
+        ///   v7 — Story 2.4a: fold per-entity AbilityCooldownTicks (count-driven by AbilityCount, ascending slot) —
+        ///        the first ability array that mutates mid-match (a cast starts the cooldown; it ticks down each
+        ///        frame). AbilityId / MaxEnergy / PendingCast* stay UNFOLDED (authored / transient). The fold is
+        ///        count-driven, so raising EntityWorld.MAX_ABILITIES_PER_UNIT later moves no golden. One scheduled re-baseline.
         /// </summary>
-        public const int AlgoVersion = 6;
+        public const int AlgoVersion = 7;
 
         /// <summary>
         /// Compute a full-state checksum for desync detection.
@@ -138,6 +146,20 @@ namespace ProjectChimera.Core
                     hash = Mix(hash, modifiers!.PeriodsRemainingAt(i, s));
                     hash = Mix(hash, modifiers!.StackCountAt(i, s));
                 }
+
+                // ── Ability cooldowns (v7, Story 2.4a) — count-driven, ascending slot ──
+                // AbilityCooldownTicks is the first per-entity ability array that MUTATES mid-match (a cast starts
+                // it; AbilityCastSystem ticks it down each frame), so it is peer-divergent sim truth and must fold.
+                // Count-driven by AbilityCount (the cross-platform-safe loop bound, like PatrolCount) — only the
+                // populated slots are hashed, never the stride or empty slots, so raising MAX_ABILITIES_PER_UNIT
+                // later moves no golden. AbilityId / MaxEnergy are authored/peer-identical (NOT folded, like MeshType);
+                // PendingCast* are transient (cleared by AbilityCastSystem before this checksum). All int → x-platform.
+                int abCount = world.AbilityCount[i];
+                if (abCount > EntityWorld.MAX_ABILITIES_PER_UNIT) abCount = EntityWorld.MAX_ABILITIES_PER_UNIT; // defensive
+                hash = Mix(hash, abCount);
+                int abBase = i * EntityWorld.MAX_ABILITIES_PER_UNIT;
+                for (int s = 0; s < abCount; s++)
+                    hash = Mix(hash, world.AbilityCooldownTicks[abBase + s]);
             }
 
             // ── Building state ────────────────────────────────────────────────────

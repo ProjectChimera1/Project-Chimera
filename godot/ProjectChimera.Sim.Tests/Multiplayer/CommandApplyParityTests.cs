@@ -210,5 +210,78 @@ namespace ProjectChimera.Sim.Tests.Multiplayer
                 File.Delete(path);
             }
         }
+
+        // ── Story 2.4a (AC5) — CastAbility rides the same shared applier + the same 11-byte wire ──────────────
+
+        [Fact]
+        public void OrderApplier_CastAbility_QueuesPendingIntent_AndPreservesCommandState()
+        {
+            var w = new EntityWorld();
+            int u = w.Create(V(0, 0, 0), Faction.Player1, Fixed.FromInt(100), Fixed.FromInt(3));
+            w.AbilityCount[u] = 1;                 // slot 0 exists, so the applier accepts the cast
+            w.CommandState[u] = UnitCommand.Move;  // the unit is mid-move
+
+            // Self cast of slot 0: slot packed in TargetX (raw), target -1 (Self) in TargetZ (raw).
+            OrderApplier.Apply(w, new UnitOrder(u, UnitCommand.CastAbility, Fixed.FromRaw(0), Fixed.FromRaw(-1)), Faction.Player1);
+
+            Assert.Equal((byte)0, w.PendingCastSlot[u]);        // intent queued
+            Assert.Equal(-1, w.PendingCastTarget[u]);
+            Assert.Equal(UnitCommand.Move, w.CommandState[u]);  // a fire-and-forget cast does NOT clobber the order
+        }
+
+        [Fact]
+        public void OrderApplier_CastAbility_UnknownSlot_IsANoOp()
+        {
+            var w = new EntityWorld();
+            int u = w.Create(V(0, 0, 0), Faction.Player1, Fixed.FromInt(100), Fixed.FromInt(3));
+            // AbilityCount defaults to 0 → no slot exists → the cast is a deterministic no-op (no intent queued).
+            OrderApplier.Apply(w, new UnitOrder(u, UnitCommand.CastAbility, Fixed.FromRaw(0), Fixed.FromRaw(-1)), Faction.Player1);
+            Assert.Equal(EntityWorld.NO_PENDING_CAST, w.PendingCastSlot[u]);
+        }
+
+        [Fact]
+        public void ReplayFile_RoundTrips_CastAbility_ThroughSharedApplier_NoVersionBump()
+        {
+            // The cast reuses the unchanged 11-byte wire — NO replay-format bump (the Story 1.12 precedent).
+            Assert.Equal(2, ReplayRecorder.VERSION);
+
+            string path = Path.GetTempFileName();
+            try
+            {
+                using (var rec = new ReplayRecorder(path, "test://ability-cast", EntityWorld.DEFAULT_RNG_SEED))
+                {
+                    var orders = new[]
+                    {
+                        new UnitOrder(0, UnitCommand.CastAbility, Fixed.FromRaw(0), Fixed.FromRaw(3)), // slot 0, target id 3
+                    };
+                    rec.RecordTick(1, Faction.Player1, orders, 0, orders.Length);
+                }
+
+                // Replayed world.
+                var world = new EntityWorld();
+                int caster = world.Create(V(0, 0, 0), Faction.Player1, Fixed.FromInt(100), Fixed.FromInt(3));
+                world.AbilityCount[caster] = 1; // slot 0 exists
+                Assert.Equal(0, caster);
+
+                // LIVE reference: apply the identical order directly through the shared applier.
+                var live = new EntityWorld();
+                int liveCaster = live.Create(V(0, 0, 0), Faction.Player1, Fixed.FromInt(100), Fixed.FromInt(3));
+                live.AbilityCount[liveCaster] = 1;
+                OrderApplier.Apply(live, new UnitOrder(0, UnitCommand.CastAbility, Fixed.FromRaw(0), Fixed.FromRaw(3)), Faction.Player1);
+
+                var player = new ReplayPlayer(path, world);
+                player.Flush(1); // ReplayPlayer.ApplyOrders → OrderApplier.Apply (the SAME switch the live path uses)
+
+                // Byte-identical post-state: the replayed cast intent matches the live one (structural parity).
+                Assert.Equal(live.PendingCastSlot[liveCaster],   world.PendingCastSlot[caster]);
+                Assert.Equal(live.PendingCastTarget[liveCaster], world.PendingCastTarget[caster]);
+                Assert.Equal((byte)0, world.PendingCastSlot[caster]);
+                Assert.Equal(3, world.PendingCastTarget[caster]); // packed target id round-tripped through the file
+            }
+            finally
+            {
+                File.Delete(path);
+            }
+        }
     }
 }

@@ -59,5 +59,24 @@ namespace ProjectChimera.Core
             Ore[(int)faction] = Ore[(int)faction] - cost;
             return true;
         }
+
+        // ── Crystal API (Story 2.4a) ────────────────────────────────────────────
+        // Mirrors the Ore API exactly. Crystal[] already existed (the scarce second resource) and is already folded
+        // into SimChecksum, but had no spend/afford path — a documented dead path until abilities can cost crystal.
+        // No checksum change from adding these (Crystal is already hashed).
+
+        public void AddCrystal(Faction faction, Fixed amount) =>
+            Crystal[(int)faction] = Crystal[(int)faction] + amount;
+
+        public bool CanAffordCrystal(Faction faction, Fixed cost) =>
+            Crystal[(int)faction] >= cost;
+
+        /// <summary>Deduct crystal cost. Returns false (and does nothing — atomic refuse) if insufficient.</summary>
+        public bool SpendCrystal(Faction faction, Fixed cost)
+        {
+            if (!CanAffordCrystal(faction, cost)) return false;
+            Crystal[(int)faction] = Crystal[(int)faction] - cost;
+            return true;
+        }
     }
 }

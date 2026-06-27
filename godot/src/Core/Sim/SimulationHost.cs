@@ -13,10 +13,11 @@ namespace ProjectChimera.Core.Sim
 {
     /// <summary>
     /// Net-new, Godot-free composition root for the simulation (Story 1.8a / AR-6). It owns the SoA stores,
-    /// the canonical 10-system tick order (with <c>ModifierSystem</c> at index 3 — immediately before
-    /// <see cref="CombatSystem"/> — filled in Story 2.2a / AR-9), the <see cref="SimulationLoop"/> it
-    /// wraps, and the single checksum sink. Because it has zero Godot dependency it compiles into the
-    /// Godot-free Tier-1 test project and (Story 1.9a) the headless ServerBootstrap reuses it verbatim.
+    /// the canonical 11-system tick order (with <c>AbilityCastSystem</c> at index 3 and <c>ModifierSystem</c> at
+    /// index 4 — both immediately before <see cref="CombatSystem"/>; the ability-cast spine landed in Story 2.4a /
+    /// FR-11, the AR-9 effective-stat recompute in Story 2.2a), the <see cref="SimulationLoop"/> it wraps, and the
+    /// single checksum sink. Because it has zero Godot dependency it compiles into the Godot-free Tier-1 test
+    /// project and (Story 1.9a) the headless ServerBootstrap reuses it verbatim.
     ///
     /// This is a behavior-preserving extraction: the construction performed here is byte-for-byte equivalent
     /// to the former inline construction in MainScene, pinned by the byte-identical golden-checksum suite.
@@ -63,12 +64,13 @@ namespace ProjectChimera.Core.Sim
             FactionDefinition? factionDef1 = null,
             FactionDefinition? factionDef2 = null,
             DamageTable? damageTable = null,
-            AiDifficulty aiLevel = AiDifficulty.Normal)
-            => new SimulationHost(log, checksumFactions, factionDef1, factionDef2, damageTable, aiLevel);
+            AiDifficulty aiLevel = AiDifficulty.Normal,
+            AbilityRegistry? registry = null)
+            => new SimulationHost(log, checksumFactions, factionDef1, factionDef2, damageTable, aiLevel, registry);
 
         private SimulationHost(ILogSink log, FactionRegistry checksumFactions,
             FactionDefinition? factionDef1, FactionDefinition? factionDef2,
-            DamageTable? damageTable, AiDifficulty aiLevel)
+            DamageTable? damageTable, AiDifficulty aiLevel, AbilityRegistry? registry)
         {
             _log = log;
 
@@ -86,41 +88,48 @@ namespace ProjectChimera.Core.Sim
             BuildSys         = new BuildingSystem(Buildings, Resources, factionDef1, factionDef2, MatchStats);
             ScenarioDirector = new ScenarioDirector(Buildings, Resources);
 
-            // AR-9 effective-stat recompute (Story 2.2a) at index 3, and the Story 2.2b ModifierStore it drives.
-            // Construct the system FIRST so the store ctor can take it; AttachStore closes the system↔store cycle
-            // once both exist. The store subscribes World.OnDestroy += ClearEntity in its ctor (recycle safety).
+            // AR-9 effective-stat recompute (Story 2.2a), the Story 2.2b ModifierStore it drives, and the Story 2.4a
+            // ability-cast system. Construct the systems + store FIRST — the store ctor takes modSys, and
+            // AbilityCastSystem takes the store — then AttachStore closes the system↔store cycle, THEN build the
+            // ordered array (so abilitySys can be slotted at index 3). The store needs the same damage table / event +
+            // stats sinks combat uses (null → DamageTable.Default); it subscribes World.OnDestroy += ClearEntity in its
+            // ctor (recycle safety). A null registry → the Empty registry, so existing callers stay scenario-identical.
             var modSys = new ModifierSystem();
+            Modifiers = new ModifierStore(World, modSys, damageTable, CombatEvents, MatchStats);
+            var abilitySys = new AbilityCastSystem(registry ?? AbilityRegistry.Empty, Resources, Modifiers,
+                                                   damageTable, CombatEvents, MatchStats);
+            modSys.AttachStore(Modifiers);
 
-            // ── The canonical 10-system tick order. The registration order IS the determinism contract;
+            // ── The canonical 11-system tick order. The registration order IS the determinism contract;
             //    SystemOrderTest FAILS on any reorder/add/remove. ──
             _systems = new ISimSystem[]
             {
-                BuildSys,                                                                 // [0] BuildingSystem   (Economy)
-                new GatheringSystem(Nodes, Resources, MatchStats),                        // [1] GatheringSystem  (Economy)
-                new MovementSystem(),                                                     // [2] MovementSystem   (Navigation)
-                // ── AR-9 effective-stat recompute. At index 3, immediately before CombatSystem, so combat &
-                //    projectile-spawn damage read freshly-recomputed Effective* stats the SAME tick a modifier
-                //    changes them. Drives the ModifierStore (Story 2.2b) each tick (periods/expiry) then recomputes. ──
-                modSys,                                                                   // [3] ModifierSystem   (Effects, AR-9)
-                new CombatSystem(Projectiles, CombatEvents, MatchStats, damageTable),     // [4] (null table → DamageTable.Default)
-                new ProjectileSystem(Projectiles, CombatEvents, MatchStats, damageTable), // [5] ProjectileSystem (Combat)
-                new SupplySystem(Resources),                                              // [6] SupplySystem     (Economy)
-                Fog,                                                                      // [7] FogOfWarSystem   (Core)
-                new AiOpponentSystem(Buildings, Resources, BuildSys, aiLevel),            // [8] AI opponent (plays Player2)
-                ScenarioDirector,                                                         // [9] ScenarioDirector — runs LAST
+                BuildSys,                                                                 // [0] BuildingSystem    (Economy)
+                new GatheringSystem(Nodes, Resources, MatchStats),                        // [1] GatheringSystem   (Economy)
+                new MovementSystem(),                                                     // [2] MovementSystem    (Navigation)
+                // ── Story 2.4a ability-cast spine. At index 3, immediately BEFORE ModifierSystem, so a cast that
+                //    installs a buff is recomputed by ModifierSystem (index 4) and read by CombatSystem (index 5) the
+                //    SAME tick. Ticks per-slot cooldowns down, consumes the pending-cast intent, runs the effect graph. ──
+                abilitySys,                                                               // [3] AbilityCastSystem  (Effects, FR-11)
+                // ── AR-9 effective-stat recompute. Immediately before CombatSystem, so combat & projectile-spawn
+                //    damage read freshly-recomputed Effective* stats the SAME tick a modifier changes them. Drives the
+                //    ModifierStore (Story 2.2b) each tick (periods/expiry) then recomputes. ──
+                modSys,                                                                   // [4] ModifierSystem    (Effects, AR-9)
+                new CombatSystem(Projectiles, CombatEvents, MatchStats, damageTable),     // [5] (null table → DamageTable.Default)
+                new ProjectileSystem(Projectiles, CombatEvents, MatchStats, damageTable), // [6] ProjectileSystem  (Combat)
+                new SupplySystem(Resources),                                              // [7] SupplySystem      (Economy)
+                Fog,                                                                      // [8] FogOfWarSystem    (Core)
+                new AiOpponentSystem(Buildings, Resources, BuildSys, aiLevel),            // [9] AI opponent (plays Player2)
+                ScenarioDirector,                                                         // [10] ScenarioDirector — runs LAST
             };
 
-            // The store needs the same damage table / event + stats sinks combat uses (null → DamageTable.Default).
-            Modifiers = new ModifierStore(World, modSys, damageTable, CombatEvents, MatchStats);
-            modSys.AttachStore(Modifiers);
-
             _loop = new SimulationLoop(World, _systems);
-            _loop.EnableChecksums(Buildings, Resources, checksumFactions, Modifiers); // fold the live modifier state (v6)
+            _loop.EnableChecksums(Buildings, Resources, checksumFactions, Modifiers); // fold the live modifier state (v6) + ability cooldowns (v7)
 
             // The sim spine's only host-side log in 1.8a: a one-shot construction diagnostic through the
             // injected seam. NullLogSink no-ops it (tests/server → zero effect on the golden); GodotLogSink
             // prints it for MainScene. NEVER a per-tick log (D6).
-            _log.Info("[SimulationHost] Sim spine constructed (10 systems; ModifierSystem at index 3).");
+            _log.Info("[SimulationHost] Sim spine constructed (11 systems; AbilityCastSystem at index 3, ModifierSystem at index 4).");
         }
 
         /// <summary>Advance exactly one tick (lockstep / replay / golden path). Wraps SimulationLoop.StepOnce.</summary>

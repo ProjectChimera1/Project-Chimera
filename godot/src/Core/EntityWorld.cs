@@ -22,6 +22,8 @@ namespace ProjectChimera.Core
         Patrol       = 7, // Walk an ordered waypoint route (PatrolWaypoints ring), engaging enemies en route, reversing at both ends.
         Follow       = 8, // Track a friendly unit (CommandTarget) within a leash; re-path when beyond it, idle within it.
         PatrolAppend = 9, // WIRE-ONLY: append a waypoint to the patrol route, then rewritten to Patrol on apply (CombatSystem never sees it).
+        // ── Story 2.4a (FR-11): appended AFTER PatrolAppend. Values 0–9 stay FROZEN for replay back-compat. ──
+        CastAbility  = 10, // Cast the ability in slot TargetX (raw int) at target entity TargetZ (raw int, -1 = Self/None). A fire-and-forget INTENT: OrderApplier writes PendingCast*, AbilityCastSystem consumes it inside the tick — it does NOT persist as a CommandState (the caster's Move/Attack order is preserved).
     }
 
     /// <summary>
@@ -75,6 +77,25 @@ namespace ProjectChimera.Core
         /// so the determinism analyzer's CHM0004 (bare-cap) advisory stays clean.
         /// </summary>
         public const int MAX_PATROL_WAYPOINTS = 8;
+
+        /// <summary>
+        /// Maximum active abilities a single unit can carry (Story 2.4a, FR-11) — both the per-entity ability-slot
+        /// count AND the stride of the flat ability buffers (<see cref="AbilityId"/>, <see cref="AbilityCooldownTicks"/>),
+        /// indexed <c>id * MAX_ABILITIES_PER_UNIT + slot</c> (the SoA-safe fixed-capacity ring, like
+        /// <see cref="MAX_PATROL_WAYPOINTS"/>). Named so the determinism analyzer's CHM0004 (bare-cap) advisory stays
+        /// clean. Freely RAISABLE later at ZERO determinism cost: the v7 cooldown fold is count-driven (it hashes each
+        /// unit's <see cref="AbilityCount"/> + only its USED cooldown slots, never the stride or empty slots), so a
+        /// 2-ability unit hashes identically at cap 4 or 12 — raising this moves no golden. The wire packs the slot as
+        /// a full int (no wire limit); the practical ceiling is command-card real-estate (~6–8 buttons).
+        /// </summary>
+        public const int MAX_ABILITIES_PER_UNIT = 4;
+
+        /// <summary>
+        /// <see cref="PendingCastSlot"/> sentinel for "no cast queued this tick" (valid slots are 0..MAX-1, so
+        /// <see cref="byte.MaxValue"/> can never be a real slot). Named so the analyzer's CHM0004 magic-number
+        /// advisory stays clean.
+        /// </summary>
+        public const byte NO_PENDING_CAST = byte.MaxValue;
 
         /// <summary>
         /// Default per-unit separation radius (Story 1.13) applied when <c>collision_radius</c> is omitted or
@@ -145,15 +166,19 @@ namespace ProjectChimera.Core
         public readonly Fixed[] EffectiveAttackDamage;
         public readonly Fixed[] AttackSpeed;       // Seconds between attacks
 
-        // --- Ability resource pool (Story 2.2a substrate; the ModifierStore debits it in 2.2b) ---
+        // --- Ability resource pool (Story 2.2a substrate; ModifierStore debits it 2.2b; sourced from the def 2.4a) ---
         /// <summary>
         /// Current ability-resource (energy) pool — the single ability-cost pool (architecture: Energy + MaxEnergy,
-        /// no separate Mana). 2.2a substrate only: <see cref="Core.Definitions.UnitDefinition"/> has no energy field
-        /// yet, so it is Create-defaulted to Zero and untouched by <see cref="ApplyUnitDefinition"/>. 2.2b debits it
-        /// (refuse-when-insufficient). NOT hashed in 2.2a (0 everywhere; folds with the store in 2.2b).
+        /// no separate Mana). Story 2.4a: <see cref="ApplyUnitDefinition"/> now sets it to <see cref="MaxEnergy"/>
+        /// (start full; no regen yet) from <see cref="Core.Definitions.UnitDefinition.MaxEnergy"/>; the
+        /// <see cref="ProjectChimera.Effects.AbilityCastSystem"/> debits it on cast (refuse-when-insufficient via
+        /// <c>ModifierStore.TryDebitEnergy</c>). FOLDED into <see cref="SimChecksum"/> since v6 (it mutates mid-match).
+        /// Create-defaulted to Zero (a unit with no def / before mapping has no pool).
         /// </summary>
         public readonly Fixed[] Energy;
-        /// <summary>Maximum ability-resource capacity. Authored MaxEnergy lands in 2.2b/2.3 (then through <see cref="ApplyUnitDefinition"/> per the single-mapper rule); Create-defaulted to Zero in 2.2a.</summary>
+        /// <summary>Maximum ability-resource capacity, authored on <see cref="Core.Definitions.UnitDefinition.MaxEnergy"/>
+        /// and copied via <see cref="ApplyUnitDefinition"/> (the single-mapper rule, Story 2.4a). Spawn-constant
+        /// authored data → NOT folded (peer-identical, like <c>BaseMaxHealth</c>). Create-defaulted to Zero.</summary>
         public readonly Fixed[] MaxEnergy;
 
         /// <summary>
@@ -257,6 +282,40 @@ namespace ProjectChimera.Core
         /// <summary>Patrol walk direction: +1 forward / -1 back (reverse-at-ends). Folded into <see cref="SimChecksum"/> (v4).</summary>
         public readonly sbyte[] PatrolDir;
 
+        // --- Abilities (Story 2.4a, FR-11) — flat per-slot buffers indexed id * MAX_ABILITIES_PER_UNIT + slot ---
+        /// <summary>
+        /// Registry index of the ability in each slot (−1 = empty), indexed <c>id * MAX_ABILITIES_PER_UNIT + slot</c>.
+        /// Copied from <see cref="Core.Definitions.UnitDefinition.AbilityIndices"/> by <see cref="ApplyUnitDefinition"/>.
+        /// Spawn-constant authored data → peer-identical, NOT folded into <see cref="SimChecksum"/> (like
+        /// <see cref="MeshType"/>/<see cref="CategoryOf"/>).
+        /// </summary>
+        public readonly int[] AbilityId;
+        /// <summary>
+        /// Remaining cooldown in INTEGER ticks per ability slot (0 = ready), indexed
+        /// <c>id * MAX_ABILITIES_PER_UNIT + slot</c>. The FIRST per-entity ability array that MUTATES mid-match (a
+        /// cast starts it; <see cref="ProjectChimera.Effects.AbilityCastSystem"/> ticks it down each frame) →
+        /// FOLDED into <see cref="SimChecksum"/> (v7, count-driven by <see cref="AbilityCount"/>).
+        /// </summary>
+        public readonly int[] AbilityCooldownTicks;
+        /// <summary>
+        /// Number of populated ability slots per entity (0 = none). Spawn-constant/peer-identical, so NOT folded as
+        /// data — but it IS mixed into the v7 fold as the cross-platform-safe count-driven loop bound (exactly like
+        /// <see cref="PatrolCount"/> bounds the patrol-waypoint fold).
+        /// </summary>
+        public readonly byte[] AbilityCount;
+        /// <summary>
+        /// Transient cast intent: the slot a queued cast targets (<see cref="NO_PENDING_CAST"/> = none). Written by
+        /// <see cref="Multiplayer.OrderApplier"/> at input time (pre-tick), consumed + cleared by
+        /// <see cref="ProjectChimera.Effects.AbilityCastSystem"/> the SAME tick — so it is ALWAYS
+        /// <see cref="NO_PENDING_CAST"/> at the checksum boundary → NOT folded (transient, like <see cref="PrevPosition"/>).
+        /// </summary>
+        public readonly byte[] PendingCastSlot;
+        /// <summary>
+        /// Transient cast intent: the target entity id a queued cast acts on (−1 = none/self). Same transient
+        /// treatment as <see cref="PendingCastSlot"/> (consumed + cleared before the checksum) → NOT folded.
+        /// </summary>
+        public readonly int[] PendingCastTarget;
+
         // --- Gatherer data (workers only; Inactive for all other units) ---
         public readonly GatherState[] GatherState;
         public readonly int[]         GatherTarget;   // ResourceNodeStore index (-1 = none)
@@ -333,6 +392,11 @@ namespace ProjectChimera.Core
             PatrolCount     = new byte[MAX_ENTITIES];
             PatrolIndex     = new byte[MAX_ENTITIES];
             PatrolDir       = new sbyte[MAX_ENTITIES];
+            AbilityId            = new int[MAX_ENTITIES * MAX_ABILITIES_PER_UNIT];  // Story 2.4a (authored — NOT folded)
+            AbilityCooldownTicks = new int[MAX_ENTITIES * MAX_ABILITIES_PER_UNIT];  // Story 2.4a (folded v7)
+            AbilityCount         = new byte[MAX_ENTITIES];                          // Story 2.4a (v7 fold loop bound)
+            PendingCastSlot      = new byte[MAX_ENTITIES];                          // Story 2.4a (transient — NOT folded)
+            PendingCastTarget    = new int[MAX_ENTITIES];                           // Story 2.4a (transient — NOT folded)
             GatherState    = new GatherState[MAX_ENTITIES];
             GatherTarget   = new int[MAX_ENTITIES];
             CarryAmount    = new Fixed[MAX_ENTITIES];
@@ -351,6 +415,9 @@ namespace ProjectChimera.Core
             Array.Fill(CommandTarget, -1);
             Array.Fill(GatherTarget,  -1);
             Array.Fill(BuildTarget,   -1);
+            Array.Fill(AbilityId,         -1);              // Story 2.4a: -1 = empty ability slot
+            Array.Fill(PendingCastSlot,   NO_PENDING_CAST); // Story 2.4a: 255 = no cast queued
+            Array.Fill(PendingCastTarget, -1);
         }
 
         /// <summary>
@@ -389,7 +456,8 @@ namespace ProjectChimera.Core
             BaseAttackDamage[id]       = Fixed.Zero;
             EffectiveAttackDamage[id]  = Fixed.Zero;
             AttackSpeed[id]   = Fixed.Zero;
-            // Story 2.2a: ability-resource pool defaults (no UnitDefinition source yet → ModifierStore debits in 2.2b).
+            // Story 2.2a substrate / 2.4a: ability-resource pool defaults to empty here; ApplyUnitDefinition sets it
+            // from UnitDefinition.MaxEnergy (start full) for ability-bearing units. A unit with no def stays at 0.
             Energy[id]        = Fixed.Zero;
             MaxEnergy[id]     = Fixed.Zero;
             // Story 2.2b: a (re)allocated slot carries NO modifier-imposed status — the ModifierStore ORs flags in on
@@ -417,6 +485,18 @@ namespace ProjectChimera.Core
             PatrolCount[id]   = 0;
             PatrolIndex[id]   = 0;
             PatrolDir[id]     = 1;
+            // Story 2.4a: reset the per-entity ability slots + cooldowns + transient cast intent on (re)allocation —
+            // a recycled slot must NEVER carry the prior occupant's abilities/cooldowns (the SoA-recycle trap the A2
+            // guard catches). ApplyUnitDefinition overwrites AbilityId/AbilityCount/MaxEnergy/Energy for def-based units.
+            AbilityCount[id]      = 0;
+            PendingCastSlot[id]   = NO_PENDING_CAST;
+            PendingCastTarget[id] = -1;
+            int abResetBase = id * MAX_ABILITIES_PER_UNIT;
+            for (int s = 0; s < MAX_ABILITIES_PER_UNIT; s++)
+            {
+                AbilityId[abResetBase + s]            = -1;
+                AbilityCooldownTicks[abResetBase + s] = 0;
+            }
             GatherState[id]   = Core.GatherState.Inactive;
             GatherTarget[id]  = -1;
             CarryAmount[id]   = Fixed.Zero;
@@ -458,6 +538,20 @@ namespace ProjectChimera.Core
             CollisionRadius[id]      = ClampCollisionRadius(def.CollisionRadius);
             SeparationPriorityOf[id] = def.ParsedSeparationPriority;
             CategoryOf[id]           = def.ParsedCategory;
+
+            // Story 2.4a (A2): the FIRST per-entity ability state flows through this single mapper — never hand-copied
+            // in a spawn path (the retro-A2 rule that closed the 1.12/1.13 spawn-path defect class). MaxEnergy is the
+            // one float→Fixed boundary here (the CHM0005-allow-listed mapper site, like VisionRange/AttackRange above);
+            // the unit starts FULL (Decision #5 — immediately castable, no regen in 2.4a). Ability slots copy from the
+            // registry-resolved indices (UnitDefinition.ResolveAbilities ran once at scenario link). Cooldown slots
+            // stay 0 from Create (ready). Excess ids beyond the cap were already dropped by ResolveAbilities.
+            MaxEnergy[id] = Fixed.FromFloat(def.MaxEnergy);
+            Energy[id]    = MaxEnergy[id];
+            byte abN = (byte)System.Math.Min(def.AbilityIndices.Length, MAX_ABILITIES_PER_UNIT);
+            AbilityCount[id] = abN;
+            int abApplyBase = id * MAX_ABILITIES_PER_UNIT;
+            for (int s = 0; s < abN; s++)
+                AbilityId[abApplyBase + s] = def.AbilityIndices[s];
         }
 
         /// <summary>

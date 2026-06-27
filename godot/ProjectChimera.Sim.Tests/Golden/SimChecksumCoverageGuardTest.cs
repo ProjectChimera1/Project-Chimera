@@ -84,30 +84,32 @@ namespace ProjectChimera.Sim.Tests.Golden
         }
 
         /// <summary>
-        /// AC1 — pins the v5 algorithm. A hand-built, fully-deterministic world (all <see cref="Fixed"/>; no
+        /// AC1 — pins the v7 algorithm. A hand-built, fully-deterministic world (all <see cref="Fixed"/>; no
         /// FromFloat, no wall-clock; the shared <see cref="SimRng"/> seeded to a fixed known value) must hash to
         /// a committed constant. This is a tripwire: an intentional algorithm change must update BOTH this constant
         /// AND <see cref="SimChecksum.AlgoVersion"/> in the same commit (mirrors the Story 9.1 "known world state →
         /// fixed expected hash" guard). The value was recorded once from a green run; it is byte-identical across
         /// Windows/Linux because every hashed field is Fixed and the RNG seed is an explicit constant.
-        /// (Story 2.2b: bumped v5→v6 when Effective* / Energy / StatusFlagsOf + the ModifierStore instance state were
-        /// folded in — the known-state world has no modifiers, so the store folds Mix(0) count per entity and
-        /// Effective* == Base / Energy == 0 / StatusFlagsOf == None, yet the hash still moves because new mixes are added.)
+        /// (Story 2.2b: bumped v5→v6 for Effective* / Energy / StatusFlagsOf + the ModifierStore instance state.
+        /// Story 2.4a: bumped v6→v7 for the per-entity AbilityCooldownTicks fold — the known-state world has no
+        /// abilities, so AbilityCount == 0 and the fold adds Mix(0) per entity, yet the hash still moves.)
         /// </summary>
         [Fact]
-        public void KnownWorldState_ProducesPinnedV6Hash()
+        public void KnownWorldState_ProducesPinnedV7Hash()
         {
-            // Algorithm version must be exactly 6 (Story 2.2b's effective-stat + ModifierStore fold). If this fails, the const below is stale.
-            Assert.Equal(6, SimChecksum.AlgoVersion);
+            // Algorithm version must be exactly 7 (Story 2.4a's ability-cooldown fold). If this fails, the const below is stale.
+            Assert.Equal(7, SimChecksum.AlgoVersion);
 
             uint actual = ComputeKnownStateHash();
 
-            // ── Pinned v6 hash for the fixed world built by ComputeKnownStateHash() ───────────────────────────
+            // ── Pinned v7 hash for the fixed world built by ComputeKnownStateHash() ───────────────────────────
             // An intentional SimChecksum algorithm change must update this value AND bump SimChecksum.AlgoVersion.
-            const uint ExpectedV6Hash = 0x70CD3FEE; // recorded from a green v6 run; re-pin only on an intentional algo change
-            Assert.True(actual == ExpectedV6Hash,
-                $"Known-state v6 checksum changed: expected 0x{ExpectedV6Hash:X8}, actual 0x{actual:X8}. " +
-                $"If this is an INTENTIONAL algorithm change, re-pin ExpectedV6Hash to 0x{actual:X8} and bump " +
+            // The known-state world has no abilities (AbilityCount == 0 per entity), so the v7 fold adds one Mix(0)
+            // per alive entity — the hash moves from v6 purely by the added count mixes (no real cooldown state).
+            const uint ExpectedV7Hash = 0xEB4B548E; // recorded from a green v7 run; re-pin only on an intentional algo change
+            Assert.True(actual == ExpectedV7Hash,
+                $"Known-state v7 checksum changed: expected 0x{ExpectedV7Hash:X8}, actual 0x{actual:X8}. " +
+                $"If this is an INTENTIONAL algorithm change, re-pin ExpectedV7Hash to 0x{actual:X8} and bump " +
                 $"SimChecksum.AlgoVersion. If not, you broke the deterministic checksum — investigate.");
         }
 
@@ -217,6 +219,17 @@ namespace ProjectChimera.Sim.Tests.Golden
                 return () => w.StatusFlagsOf[e] = StatusFlags.Stunned;
             });
 
+            // ── v7 (Story 2.4a): AbilityCooldownTicks is folded (count-driven — set AbilityCount > 0 first so the
+            //    slot is part of the hashed set, exactly like PatrolWaypoints needs PatrolCount > 0). A non-zero
+            //    cooldown slot MUST move the hash; a no-move means the fold is not reading the field. ──
+            AssertFieldFoldedIntoChecksum(buildings, resources, registry, w =>
+            {
+                int e = w.Create(new FixedVec3(Fixed.FromInt(1), Fixed.Zero, Fixed.FromInt(2)),
+                                 Faction.Player1, Fixed.FromInt(10), Fixed.FromInt(3));
+                w.AbilityCount[e] = 1; // make slot 0 part of the count-driven hashed set
+                return () => w.AbilityCooldownTicks[e * EntityWorld.MAX_ABILITIES_PER_UNIT + 0] = 42;
+            });
+
             // ── v6 (Story 2.2b): the ModifierStore per-instance state is folded ──
             // Installing a modifier on a live entity MUST move the hash; advancing a tick (which changes
             // remainingTicks/ticksUntilPeriod) MUST move it again. A no-move means store state escaped the fold.
@@ -274,13 +287,14 @@ namespace ProjectChimera.Sim.Tests.Golden
         }
 
         /// <summary>
-        /// Build a small fixed world by hand and compute its v6 checksum. Fully self-contained: every hashed
+        /// Build a small fixed world by hand and compute its v7 checksum. Fully self-contained: every hashed
         /// field is set explicitly with <see cref="Fixed"/> so the pinned hash does not silently depend on store
         /// constructor defaults a future story might change. The shared <see cref="SimRng"/> is reseeded to a
         /// fixed known value so the RNG fold is pinned independently of EntityWorld.DEFAULT_RNG_SEED. The v5
-        /// separation fields are at their Create() defaults (CollisionRadius=1.0, SeparationPriorityOf=Normal), and
-        /// the v6 fields are at theirs (Effective* == Base / Energy == 0 / StatusFlagsOf == None), with an EMPTY
-        /// <see cref="ModifierStore"/> (count 0 per entity) — so the hash moves from v5 purely by the added mixes.
+        /// separation fields are at their Create() defaults (CollisionRadius=1.0, SeparationPriorityOf=Normal), the
+        /// v6 fields are at theirs (Effective* == Base / Energy == 0 / StatusFlagsOf == None) with an EMPTY
+        /// <see cref="ModifierStore"/> (count 0 per entity), and the v7 ability fields are at theirs (AbilityCount == 0,
+        /// no cooldowns) — so the hash moves from v6 purely by the added count mixes.
         /// </summary>
         private static uint ComputeKnownStateHash()
         {

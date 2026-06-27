@@ -121,6 +121,7 @@ namespace ProjectChimera.Multiplayer
             if (!world.IsAlive(id)) return;
             if (world.FactionOf[id] != expectedFaction) return; // anti-cheat: only command your own units
 
+            UnitCommand prior = world.CommandState[id]; // captured for CastAbility's restore (a cast must not clobber the order)
             world.CommandState[id] = o.Command;
 
             switch (o.Command)
@@ -223,6 +224,24 @@ namespace ProjectChimera.Multiplayer
                     }
                     // else: route is full — silently ignore the extra waypoint.
                     world.CommandState[id] = UnitCommand.Patrol;
+                    break;
+                }
+                case UnitCommand.CastAbility:
+                {
+                    // Story 2.4a (FR-11): a fire-and-forget cast INTENT. The ability slot rides in TargetX (raw int,
+                    // packed at issue time via Fixed.FromRaw(slot)) and the target entity id in TargetZ (raw int,
+                    // -1 = Self/None) — read back directly as o.TargetX/o.TargetZ, NEVER via .ToFloat() (that path is
+                    // float and would corrupt the packed int — the 1.12 AttackTarget lesson). We write ONLY the
+                    // pending-cast SoA; the effect graph runs in AbilityCastSystem INSIDE the tick. Running it here
+                    // would advance the shared SimRng / query a stale SpatialHash off-tick (OrderApplier runs at input
+                    // time, OUTSIDE the tick on the offline path) → desync vs the online/replay path. An instant cast
+                    // must not interrupt the unit's order, so restore CommandState to its prior value (mirrors how
+                    // PatrolAppend rewrites CommandState back to Patrol above).
+                    world.CommandState[id] = prior;
+                    int slot = o.TargetX;
+                    if (slot < 0 || slot >= world.AbilityCount[id]) break; // no such slot → deterministic no-op
+                    world.PendingCastSlot[id]   = (byte)slot;
+                    world.PendingCastTarget[id] = o.TargetZ;
                     break;
                 }
             }

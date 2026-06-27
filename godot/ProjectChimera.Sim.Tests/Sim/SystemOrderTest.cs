@@ -13,31 +13,36 @@ using Xunit;
 namespace ProjectChimera.Sim.Tests.Sim
 {
     /// <summary>
-    /// Pins the canonical 10-system tick order that <see cref="SimulationHost"/> owns (Story 1.8a / AR-6;
-    /// <c>ModifierSystem</c> filled the index-3 slot in Story 2.2a / AR-9). The registration order IS the
-    /// determinism contract — a desync hides in any silent reorder/add/remove — so these tests FAIL loudly the
-    /// moment the order drifts. They also pin the AR-9 slot contract: <c>ModifierSystem</c> sits immediately
-    /// before <see cref="CombatSystem"/> (so combat reads recomputed Effective* stats the same tick) and
-    /// immediately after <see cref="MovementSystem"/>, strictly before <see cref="ProjectileSystem"/>.
+    /// Pins the canonical 11-system tick order that <see cref="SimulationHost"/> owns (Story 1.8a / AR-6;
+    /// <c>ModifierSystem</c> filled the AR-9 slot in Story 2.2a; <c>AbilityCastSystem</c> was inserted at index 3 in
+    /// Story 2.4a / FR-11). The registration order IS the determinism contract — a desync hides in any silent
+    /// reorder/add/remove — so these tests FAIL loudly the moment the order drifts. They also pin the cast/AR-9 slot
+    /// contract: <c>AbilityCastSystem</c> sits immediately after <see cref="MovementSystem"/> and immediately before
+    /// <see cref="ModifierSystem"/>, which sits immediately before <see cref="CombatSystem"/> (so a cast's buff is
+    /// recomputed and combat reads the recomputed Effective* stats the SAME tick), all strictly before
+    /// <see cref="ProjectileSystem"/>.
     /// </summary>
     public class SystemOrderTest
     {
         /// <summary>
-        /// The canonical order, by runtime type. <see cref="ModifierSystem"/> occupies index 3 (Story 2.2a / AR-9),
-        /// immediately before <see cref="CombatSystem"/>, so combat reads recomputed Effective* stats the same tick.
+        /// The canonical order, by runtime type. <see cref="AbilityCastSystem"/> occupies index 3 (Story 2.4a / FR-11)
+        /// and <see cref="ModifierSystem"/> index 4 (Story 2.2a / AR-9), both immediately before
+        /// <see cref="CombatSystem"/>, so a cast's buff is recomputed and combat reads the recomputed Effective* stats
+        /// the same tick.
         /// </summary>
         private static readonly System.Type[] ExpectedOrder =
         {
             typeof(BuildingSystem),    // [0]
             typeof(GatheringSystem),   // [1]
             typeof(MovementSystem),    // [2]
-            typeof(ModifierSystem),    // [3]  ← AR-9 effective-stat recompute (Story 2.2a), immediately before Combat
-            typeof(CombatSystem),      // [4]
-            typeof(ProjectileSystem),  // [5]
-            typeof(SupplySystem),      // [6]
-            typeof(FogOfWarSystem),    // [7]
-            typeof(AiOpponentSystem),  // [8]
-            typeof(ScenarioDirector),  // [9]  runs LAST
+            typeof(AbilityCastSystem), // [3]  ← Story 2.4a ability-cast spine (FR-11), immediately before ModifierSystem
+            typeof(ModifierSystem),    // [4]  ← AR-9 effective-stat recompute (Story 2.2a), immediately before Combat
+            typeof(CombatSystem),      // [5]
+            typeof(ProjectileSystem),  // [6]
+            typeof(SupplySystem),      // [7]
+            typeof(FogOfWarSystem),    // [8]
+            typeof(AiOpponentSystem),  // [9]
+            typeof(ScenarioDirector),  // [10]  runs LAST
         };
 
         /// <summary>
@@ -51,7 +56,7 @@ namespace ProjectChimera.Sim.Tests.Sim
             new FactionDefinition());
 
         [Fact]
-        public void Systems_AreTheTenCanonicalSystems_InExactOrder()
+        public void Systems_AreTheElevenCanonicalSystems_InExactOrder()
         {
             IReadOnlyList<ISimSystem> systems = BuildHost().Systems;
 
@@ -61,24 +66,28 @@ namespace ProjectChimera.Sim.Tests.Sim
         }
 
         [Fact]
-        public void ModifierSlot_ModifierSystem_IsImmediatelyBeforeCombat_AfterMovement_AndBeforeProjectile()
+        public void CastAndModifierSlots_AreContiguousBetweenMovementAndCombat_AndBeforeProjectile()
         {
             IReadOnlyList<ISimSystem> systems = BuildHost().Systems;
 
-            int modifierIdx = -1, combatIdx = -1, movementIdx = -1, projectileIdx = -1;
+            int abilityIdx = -1, modifierIdx = -1, combatIdx = -1, movementIdx = -1, projectileIdx = -1;
             for (int i = 0; i < systems.Count; i++)
             {
-                if (systems[i] is ModifierSystem)   modifierIdx   = i;
-                if (systems[i] is CombatSystem)     combatIdx     = i;
-                if (systems[i] is MovementSystem)   movementIdx   = i;
-                if (systems[i] is ProjectileSystem) projectileIdx = i;
+                if (systems[i] is AbilityCastSystem) abilityIdx    = i;
+                if (systems[i] is ModifierSystem)    modifierIdx   = i;
+                if (systems[i] is CombatSystem)      combatIdx     = i;
+                if (systems[i] is MovementSystem)    movementIdx   = i;
+                if (systems[i] is ProjectileSystem)  projectileIdx = i;
             }
 
+            Assert.True(abilityIdx >= 0,  "AbilityCastSystem must be registered (Story 2.4a ability-cast spine).");
             Assert.True(modifierIdx >= 0, "ModifierSystem must be registered (AR-9 effective-stat recompute).");
-            // AR-9 contract: Movement, Modifier, Combat are contiguous, so combat reads recomputed Effective* the
-            // same tick a modifier changes them; Projectile (which snapshots Effective* at spawn) runs strictly after.
-            Assert.Equal(combatIdx - 1, modifierIdx);    // immediately before CombatSystem
-            Assert.Equal(movementIdx + 1, modifierIdx);  // immediately after MovementSystem
+            // Story 2.4a / AR-9 contract: Movement, AbilityCast, Modifier, Combat are contiguous in that order, so a
+            // cast that installs a buff is recomputed by ModifierSystem and read by combat the SAME tick; Projectile
+            // (which snapshots Effective* at spawn) runs strictly after.
+            Assert.Equal(movementIdx + 1, abilityIdx);   // AbilityCast immediately after MovementSystem
+            Assert.Equal(abilityIdx + 1, modifierIdx);   // ModifierSystem immediately after AbilityCast
+            Assert.Equal(combatIdx - 1, modifierIdx);    // ModifierSystem immediately before CombatSystem
             Assert.True(modifierIdx < projectileIdx, "ModifierSystem must run strictly before ProjectileSystem.");
         }
     }
