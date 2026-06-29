@@ -101,7 +101,7 @@ namespace ProjectChimera.CreationSuite
             {
                 rawBox.Visible = on;
                 rawToggle.Text = (on ? "▾" : "▸") + " Raw JSON (escape hatch)";
-                if (on) ShowJson();   // populate the pane from the composed tree when first revealed
+                if (on && !_paneDirty) ShowJson();   // populate from the composed tree on reveal — but never clobber unsaved manual edits (Review P2)
             };
 
             RebuildAdvancedCostRows();
@@ -162,7 +162,7 @@ namespace ProjectChimera.CreationSuite
             {
                 AbilityValidationResult r = AbilityLoader.Load(_jsonPane.Text, CurrentEditorId());
                 if (!r.Ok) { ShowError(r.Error); return null; }
-                SeedDraftFromDef(r.Value.Value);   // fold the manual edits back into the tree
+                ReflectModelIntoForm(r.Value.Value);   // fold manual edits back into header + tree (Review P1: the shared header must reconverge too, not just the tree)
                 _paneDirty = false;
                 return r.Value.Value;
             }
@@ -268,7 +268,7 @@ namespace ProjectChimera.CreationSuite
 
                 case DraftKind.SearchArea:
                     AddSpinRow(card, "Radius", 0, FixedSpinMax, 0.5, FixedToDouble(node.Radius), v => node.Radius = ToFixed(v));
-                    AddDropdownRow(card, "Filter", FilterItems(), (int)node.Filter, id => node.Filter = (TargetFilter)id);
+                    AddDropdownRow(card, "Filter", IncludingCurrent(FilterItems(), (int)node.Filter, node.Filter.ToString()), (int)node.Filter, id => node.Filter = (TargetFilter)id);
                     RenderChildSlot(card, "Child effect", ctx, () => node.Child, n => node.Child = n);
                     break;
 
@@ -330,7 +330,7 @@ namespace ProjectChimera.CreationSuite
             AddSpinRow(card, "Max Health Δ", -FixedSpinMax, FixedSpinMax, 1, FixedToDouble(m.MaxHealthDelta), v => m.MaxHealthDelta = ToFixed(v));
             AddSpinRow(card, "Attack Damage Δ", -FixedSpinMax, FixedSpinMax, 1, FixedToDouble(m.AttackDamageDelta), v => m.AttackDamageDelta = ToFixed(v));
             AddSpinRow(card, "Move Speed Δ", -FixedSpinMax, FixedSpinMax, 0.5, FixedToDouble(m.MoveSpeedDelta), v => m.MoveSpeedDelta = ToFixed(v));
-            AddDropdownRow(card, "Status", StatusItems(), (int)m.Status, id => m.Status = (StatusFlags)id);
+            AddDropdownRow(card, "Status", IncludingCurrent(StatusItems(), (int)m.Status, m.Status.ToString()), (int)m.Status, id => m.Status = (StatusFlags)id);
             AddSpinRow(card, "Period (ticks)", 0, 99999, 1, m.PeriodTicks, v => m.PeriodTicks = (int)v);
             RenderChildSlot(card, "Period effect", ctx, () => m.Period, n => m.Period = n);
         }
@@ -411,6 +411,27 @@ namespace ProjectChimera.CreationSuite
             var items = new (string, int)[values.Length];
             for (int i = 0; i < values.Length; i++) items[i] = (values[i].ToString()!, toId(values[i]));
             return items;
+        }
+
+        /// <summary>
+        /// Harden a single-select enum dropdown against a loaded MULTI-BIT <c>[Flags]</c> value (Story 2.5b review P3):
+        /// the composer OFFERS single values (AC5-COMPOSER), but <see cref="TargetFilter"/>/<see cref="StatusFlags"/> are
+        /// <c>[Flags]</c> and the converter accepts combinations (e.g. <c>Stunned|Silenced</c>). If <paramref name="currentId"/>
+        /// is not already one of <paramref name="items"/>, append it as an explicit item so a loaded combo DISPLAYS
+        /// faithfully and round-trips — never a silent collapse to a single bit on a stray click; picking a single value
+        /// stays a deliberate choice. The appended value is always a combination of ALLOWED bits (the converter's
+        /// <c>Read</c> rejects the reserved Air/Ground/Structure filter bits + <c>DamageType.COUNT</c> before they could
+        /// reach a draft node), so the closed AC5-COMPOSER set is preserved.
+        /// </summary>
+        private static (string Label, int Id)[] IncludingCurrent((string Label, int Id)[] items, int currentId, string currentLabel)
+        {
+            foreach ((string Label, int Id) it in items)
+                if (it.Id == currentId) return items;   // already offered (a single value) — no change
+
+            var extended = new (string, int)[items.Length + 1];
+            Array.Copy(items, extended, items.Length);
+            extended[items.Length] = (currentLabel, currentId);   // the loaded combination, shown verbatim
+            return extended;
         }
 
         // ── Small UI helpers ─────────────────────────────────────────────────────

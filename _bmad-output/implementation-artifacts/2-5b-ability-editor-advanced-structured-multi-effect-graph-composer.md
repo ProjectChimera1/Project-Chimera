@@ -3,7 +3,7 @@ baseline_commit: 6b095e525ba5e397977218fe33acbec60013b2a6
 ---
 # Story 2.5b: Ability Editor — advanced structured multi-effect graph composer
 
-Status: review
+Status: done
 
 Depends on: 2.5a (transitively 2.3, 2.4b) — all done.
 
@@ -257,3 +257,25 @@ claude-opus-4-8 (Claude Opus 4.8) — via `gds-dev-story` with ultracode multi-a
 | Date | Version | Change |
 |---|---|---|
 | 2026-06-29 | 2.5b | Implemented the advanced structured multi-effect graph composer: Godot-free mutable `AbilityDraft` authoring model + the `AbilityEditorPanel` visual effect-tree composer (closed-vocabulary dropdowns, add/remove/reorder/nest, in-UI `EffectCaps` guardrail), bidirectional structured↔raw-JSON↔header sync (fixes the 2.5a `ShowJson` round-trip trap), Decision #8 id-integrity guard. AC4 no-fold fence held (`AlgoVersion` 7, 9 goldens byte-identical). Tier-1 452 pass/1 skip/0 fail; Godot build 0 err; analyzer release gate exit 0; `/godot-verify` PASS (compose/parse-in/round-trip/AC5-audit/save all confirmed in-engine, 0 runtime errors). Status → review. |
+
+### Review Findings
+
+_`gds-code-review` 2026-06-29 — 3-layer adversarial (Blind Hunter · Edge Case Hunter · Acceptance Auditor, all Opus 4.8) + independent reviewer verification, diff `6b095e5`→`b2c34a6`. **All 4 ACs MET**; AC4 determinism fence independently re-verified TRUE (`AlgoVersion` 7; no golden/`SimChecksum`/`SystemOrderTest`/`EffectNodeJsonConverter`/`AbilityValidator`/props in diff; 9 goldens untouched). Immutability rule, single-load-path, Decision #8, Decision #9-default, no-parallel-validator all confirmed. The in-UI caps guardrail was confirmed to match `EffectBounds`/`WalkGraph` exactly (no off-by-one). 14 raw findings → **9 unique** after dedup: 1 decision, 2 patch, 4 defer, 2 dismissed. Zero Critical; zero confirmed determinism/desync defects._
+
+- [x] [Review][Patch] ✅ APPLIED 2026-06-29 — **Harden Filter/Status dropdowns against combined `[Flags]` values** _(resolved from [Decision] — Alec chose harden-now, 2026-06-29)_ — `TargetFilter`/`StatusFlags` are `[Flags]` and the converter accepts combinations (e.g. `Enemy, Alive`; `Stunned, Silenced`), but the composer's single-select Filter/Status dropdowns can't represent them: a loaded combo shows the wrong item ("None"; not-found id leaves `SelectDropdownId` at item 0) and one click silently overwrites it with a single bit (gameplay-changing data loss; e.g. stun+silence → stun-only). Found by all 3 layers (Edge=High; Blind/Auditor=Low). **Resolution (harden-now):** when a node's loaded Filter/Status is not one of the offered single values, add it as an explicit dropdown item so the combo displays faithfully and `SelectDropdownId` finds it — no silent collapse on a stray click; single-value picks stay deliberate. (Reserved bits can't reach here — converter `Read` rejects `Air/Ground/Structure`/`COUNT`, so the added item is always a combination of allowed bits → AC5-COMPOSER preserved.) [`AbilityEditorPanel.Advanced.cs:271,333`]
+
+- [x] [Review][Defer] **Flag-combination multi-select (checkbox) UI — future enhancement** — Alec likes checkboxes as the clearer way for creators to author combined Filter/Status flags directly; that's real feature work beyond 2.5b's single-value scope, better as its own slice (candidate for a dedicated UI pass / Story 2.6 passive-ability mode). The harden-now guard above makes 2.5b combo-safe in the interim. — deferred, scope (new feature)
+
+- [x] [Review][Patch] ✅ APPLIED 2026-06-29 (build + Tier-1 452/1-skip green) — **Header (id/name/targeting) not refreshed after a dirty-pane fold → AC2 three-source divergence** — `ResolveAdvancedDef`'s dirty branch folds raw-JSON via `SeedDraftFromDef` (rebuilds draft+tree+cost rows) but never refreshes `_idEdit`/`_nameEdit`/`_targetingName`; a later non-dirty `BuildAdvancedModel` re-reads the stale header and silently reverts a JSON-edited id/name (can even write two files under different ids). Found by all 3 layers (Blind=High; Auditor/Edge=Medium — `Save & Reload` masks it; bites on repeated plain `Save`). Fix: route the dirty branch through `ReflectModelIntoForm` (or refresh the header inside `SeedDraftFromDef`). [`AbilityEditorPanel.Advanced.cs:159-166`]
+
+- [x] [Review][Patch] ✅ APPLIED 2026-06-29 — **Collapsible raw-JSON re-expand clobbers unsaved manual pane edits** — `rawToggle.Toggled` calls `ShowJson()` on *every* expand (not just the first), overwriting a dirty pane from the tree and resetting `_paneDirty`. Edit JSON → collapse → re-expand silently discards the edit. Found by Blind (Medium) + Auditor (Low). Fix: `if (on && !_paneDirty) ShowJson();`. [`AbilityEditorPanel.Advanced.cs:100-105`]
+
+- [x] [Review][Defer] **All-empty Persistent node validates + saves as a no-op ability** — no "Persistent needs ≥1 phase" validator rule (asymmetric with the 0-child Sequence reject + the inline-blocked empty SearchArea). Validator unchanged per Decision #6; optional in-UI dim-note. — deferred, minor UX; pre-existing validator gap [`AbilityDraft.cs:213-216`]
+
+- [x] [Review][Defer] **`period_effect` with `period_ticks = 0` validates but never fires** — `ModifierStore` gates periods on `PeriodTicks > 0`; the SpinBox min is 0 and no validator check pairs a present period child with a non-zero tick count, so the authored DoT/HoT silently dies. Optional in-UI hint; validator unchanged per Decision #6. — deferred, minor UX; pre-existing validator gap [`AbilityEditorPanel.Advanced.cs:334-335`]
+
+- [x] [Review][Defer] **SpinBox sub-step display mismatch (loaded `4.3` radius shows `4.5`)** — the documented 2.5a deferred-item-3 `Fixed`-precision caveat inherited by the composer's `AddSpinRow` fields; untouched values are preserved (no data loss), raw-JSON is the precision path. Optionally use a finer `Step` for Radius/cooldown where exactness matters. — deferred, documented-by-design [`AbilityEditorPanel.cs:647-658`]
+
+- [x] [Review][Defer] **`DraftNode.Depth()`/`SearchAreaDepth()` are Tier-1-tested but unused by the production guardrail** (which re-derives depth via `TreeCtx`); `Depth()` uses an all-nodes semantic (returns 3 for seq→search→heal) inconsistent with the composition-only `MaxEffectDepth` — a latent off-by-one trap if a future dev wires it into a cap check. Optional: remove the unused helpers, or add a clarifying comment. — deferred, code-quality [`AbilityDraft.cs:288-306`]
+
+_Dismissed (2, dropped as noise/handled): (a) **kind-change dropdown bypasses the in-UI caps guardrail** — handled at the validator gate (no file written; located error), and gating the kind list at depth has design tension with AC5's "exactly 7"; (b) **`SetPaneText` `text_changed`-sync assumption** — Godot 4 emits `text_changed` synchronously on programmatic `.Text` set (non-deferred `+=` connection) and the `/godot-verify` round-trip empirically confirms the dirty-guard holds._
