@@ -1,6 +1,12 @@
 # Story 2.5: Ability Editor — author active abilities with simple-preset and advanced multi-effect modes
 
-Status: ready-for-dev
+Status: superseded — split into Story 2.5a + Story 2.5b (Decision #7)
+
+> **SUPERSEDED — DO NOT DEV THIS FILE.** Per Decision #7 (resolved = split now), this comprehensive parent story was split into two dev-ready stories. Do not implement from here; pick up the split files instead:
+> - **`2-5a-ability-editor-godot-free-core-simple-preset-and-raw-json-escape-hatch.md`** (Status: ready-for-dev) — the shippable core: Godot-free `EffectNodeJsonConverter.Write`, `AbilityPresets`, the `AbilityEditorPanel` shell, Simple-preset mode, the raw-JSON escape hatch, the validate-gated save, and the full Creation-Suite wiring. **This is the next actionable Epic-2 story.**
+> - **`2-5b-ability-editor-advanced-structured-multi-effect-graph-composer.md`** (Status: backlog; Depends on: 2.5a) — Task 3 carved off: the advanced structured multi-effect tree composer.
+>
+> `sprint-status.yaml` has been reconciled: the single `2-5-…` key is replaced by `2-5a-…: ready-for-dev` and `2-5b-…: backlog`. This file is retained for traceability only.
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
