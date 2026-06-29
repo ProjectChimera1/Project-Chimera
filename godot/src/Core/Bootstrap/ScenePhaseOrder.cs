@@ -23,7 +23,7 @@ namespace ProjectChimera.Core.Bootstrap
             "Settings", "Audio", "GameState", "Lighting", "Terrain", "Navigation", "Camera",
             "Rendering", "Hud", "Minimap", "TerrainBrush", "ScenarioLoad", "FactionVisuals",
             "FlowFieldInit", "WinConditionUi", "GameOverOverlay", "Multiplayer", "ReplayStatus",
-            "ContentBrowser", "MainMenu", "TriggerEditor", "MapGenerator",
+            "ContentBrowser", "MainMenu", "TriggerEditor", "MapGenerator", "AbilityEditor",
         };
     }
 }

@@ -63,6 +63,10 @@ namespace ProjectChimera.Core.Definitions
         /// silently default it the way <see cref="UnitDefinition.ParsedCategory"/> defaults to Melee — an ability's
         /// targeting mode changes how it is cast, so an unknown value must fail closed).
         /// </summary>
+        // [JsonIgnore]: computed/derived from Targeting. It must NEVER be serialized — the authoring round-trip
+        // (Story 2.5a) serializes through ContentJson.Options whose UnmappedMemberHandling.Disallow would hard-reject
+        // a re-emitted "ParsedTargeting" member on reload (and it would pollute authored files with a redundant key).
+        [JsonIgnore]
         public AbilityTargeting? ParsedTargeting => Targeting switch
         {
             "None"        => AbilityTargeting.None,

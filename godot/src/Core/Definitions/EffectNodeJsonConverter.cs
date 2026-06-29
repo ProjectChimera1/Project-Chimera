@@ -56,13 +56,124 @@ namespace ProjectChimera.Core.Definitions
         }
 
         /// <summary>
-        /// <see cref="Write"/> (authoring round-trip / save) is deferred to the Ability Editor (Story 2.5). 2.3 only
-        /// LOADS abilities (hand-/AI-authored JSON → validated runtime graph); nothing serializes one yet. Throws a
-        /// clear located error rather than emitting a lossy/half-correct node.
+        /// Authoring-only serialize (Story 2.5a — the keystone 2.3 deferred to the Ability Editor by name). Emits the
+        /// closed effect graph back to JSON so the editor can round-trip it (raw-JSON view) and save it. The EXACT
+        /// inverse of <see cref="Read"/>: each node writes its <c>kind</c> discriminator + ONLY that kind's
+        /// allow-listed fields (the same property names <see cref="RejectUnknownProperties"/> accepts), so a serialized
+        /// graph re-loads byte-faithfully (round-trip identity judged on <c>Fixed.Raw</c> + structure). <c>Fixed</c> and
+        /// enum fields are emitted by delegating to the registered converters via
+        /// <see cref="JsonSerializer"/>.<c>Serialize</c> (Fixed → <see cref="FixedJsonConverter"/> as a number; enums →
+        /// name-only), so the single quantization boundary holds and no hand-rolled <c>ToFloat</c> escapes the
+        /// converter. Nullable child nodes are OMITTED when null (Read treats missing and explicit-null identically —
+        /// the cleaner mirror). The <c>Modifier</c> object carries NO <c>kind</c> (mirrors <see cref="ReadModifier"/>).
+        ///
+        /// DETERMINISM: authoring-only — never invoked inside a tick or <c>SimChecksum.Compute</c> (the sim consumes
+        /// the already-built runtime graph; only the editor/loader serialize). AlgoVersion is unaffected (AC4).
         /// </summary>
         public override void Write(Utf8JsonWriter writer, EffectNode value, JsonSerializerOptions options) =>
-            throw new NotSupportedException(
-                "Serializing an EffectNode is not supported in Story 2.3 (Read-only). Authoring round-trip lands with the Ability Editor (Story 2.5).");
+            WriteNode(writer, value, options);
+
+        // ── Node writing (the exact inverse of ReadNode; emits only each kind's allow-listed keys) ───────────────
+
+        private static void WriteNode(Utf8JsonWriter writer, EffectNode node, JsonSerializerOptions options)
+        {
+            writer.WriteStartObject();
+            switch (node)
+            {
+                // ── Leaves ──
+                case DirectHpDeltaEffect d:
+                    writer.WriteString("kind", KindDirectHpDelta);
+                    WriteFixed(writer, "delta", d.Delta, options);
+                    break;
+
+                case HealEffect h:
+                    writer.WriteString("kind", KindHeal);
+                    WriteFixed(writer, "amount", h.Amount, options);
+                    break;
+
+                case DamageEffect dm:
+                    writer.WriteString("kind", KindDamage);
+                    WriteFixed(writer, "amount", dm.Amount, options);
+                    WriteEnum(writer, "damage_type", dm.Type, options);   // accessor is .Type (NOT .DamageType); mirrors Read
+                    break;
+
+                case ApplyModifierEffect am:
+                    writer.WriteString("kind", KindApplyModifier);
+                    writer.WritePropertyName("modifier");
+                    WriteModifier(writer, am.Modifier, options);
+                    break;
+
+                // ── Composition nodes ──
+                case SequenceEffect s:
+                    writer.WriteString("kind", KindSequence);
+                    writer.WritePropertyName("children");
+                    writer.WriteStartArray();
+                    foreach (EffectNode child in s.Children)
+                        WriteNode(writer, child, options);
+                    writer.WriteEndArray();
+                    break;
+
+                case SearchAreaEffect sa:
+                    writer.WriteString("kind", KindSearchArea);
+                    WriteFixed(writer, "radius", sa.Radius, options);
+                    WriteEnum(writer, "filter", sa.Filter, options);
+                    writer.WritePropertyName("child");
+                    WriteNode(writer, sa.Child, options);
+                    break;
+
+                case PersistentEffect p:
+                    writer.WriteString("kind", KindPersistent);
+                    WriteOptionalChild(writer, "initial_effect", p.InitialEffect, options);
+                    WriteOptionalChild(writer, "period_effect",  p.PeriodEffect,  options);
+                    WriteOptionalChild(writer, "expire_effect",  p.ExpireEffect,  options);
+                    writer.WriteNumber("period_ticks", p.PeriodTicks);
+                    writer.WriteNumber("period_count", p.PeriodCount);
+                    break;
+
+                default:
+                    // Fail-closed: a node type outside the closed registry cannot be authored (mirrors Read's default).
+                    throw new JsonException(
+                        $"Cannot serialize effect node of type '{node.GetType().Name}': not in the closed kind registry (authoring-only Write).");
+            }
+            writer.WriteEndObject();
+        }
+
+        private static void WriteModifier(Utf8JsonWriter writer, Modifier m, JsonSerializerOptions options)
+        {
+            // No "kind" — ReadModifier reads a bare modifier object (one converter owns the whole effect+modifier surface).
+            writer.WriteStartObject();
+            writer.WriteNumber("id", m.Id);
+            writer.WriteNumber("duration_ticks", m.DurationTicks);
+            WriteEnum(writer, "stacking", m.Stacking, options);
+            writer.WriteNumber("max_stacks", m.MaxStacks);
+            WriteFixed(writer, "max_health_delta", m.MaxHealthDelta, options);
+            WriteFixed(writer, "attack_damage_delta", m.AttackDamageDelta, options);
+            WriteFixed(writer, "move_speed_delta", m.MoveSpeedDelta, options);
+            WriteEnum(writer, "status", m.Status, options);
+            WriteOptionalChild(writer, "period_effect", m.PeriodEffect, options);
+            writer.WriteNumber("period_ticks", m.PeriodTicks);
+            writer.WriteEndObject();
+        }
+
+        private static void WriteOptionalChild(Utf8JsonWriter writer, string name, EffectNode? child, JsonSerializerOptions options)
+        {
+            if (child is null) return;          // Read treats missing == null; omitting is the clean mirror
+            writer.WritePropertyName(name);
+            WriteNode(writer, child, options);
+        }
+
+        private static void WriteFixed(Utf8JsonWriter writer, string name, Fixed value, JsonSerializerOptions options)
+        {
+            writer.WritePropertyName(name);
+            JsonSerializer.Serialize(writer, value, options);   // → FixedJsonConverter (number); never a hand-rolled ToFloat (CHM0005)
+        }
+
+        private static void WriteEnum<TEnum>(Utf8JsonWriter writer, string name, TEnum value, JsonSerializerOptions options)
+            where TEnum : struct, Enum
+        {
+            writer.WritePropertyName(name);
+            JsonSerializer.Serialize(writer, value, options);   // → JsonStringEnumConverter (name-only, allowIntegerValues:false)
+        }
 
         // ── Node dispatch ────────────────────────────────────────────────────────
 

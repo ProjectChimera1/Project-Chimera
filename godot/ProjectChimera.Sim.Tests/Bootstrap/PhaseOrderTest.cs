@@ -25,7 +25,7 @@ namespace ProjectChimera.Sim.Tests.Bootstrap
             "Settings", "Audio", "GameState", "Lighting", "Terrain", "Navigation", "Camera",
             "Rendering", "Hud", "Minimap", "TerrainBrush", "ScenarioLoad", "FactionVisuals",
             "FlowFieldInit", "WinConditionUi", "GameOverOverlay", "Multiplayer", "ReplayStatus",
-            "ContentBrowser", "MainMenu", "TriggerEditor", "MapGenerator",
+            "ContentBrowser", "MainMenu", "TriggerEditor", "MapGenerator", "AbilityEditor",
         };
 
         /// <summary>A Godot-free stub phase that appends its name to a shared log when run (call-order proof).</summary>

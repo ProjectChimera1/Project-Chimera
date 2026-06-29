@@ -101,6 +101,7 @@ namespace ProjectChimera.Core.Bootstrap
         public UI.AudioManager        AudioMgr       = null!;
         public CreationSuite.TriggerEditorPanel TriggerPanel = null!;
         public CreationSuite.MapGeneratorPanel  MapGenPanel  = null!;
+        public CreationSuite.AbilityEditorPanel AbilityEditorPanel = null!;  // Story 2.5a (AbilityEditor phase)
         public AI.LLMService          LlmService     = null!;
         public Label?                 ToastLabel;
 
