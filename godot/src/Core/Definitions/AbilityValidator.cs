@@ -45,6 +45,27 @@ namespace ProjectChimera.Core.Definitions
                 return Fail(id, "targeting",
                     $"'{def.Targeting}' is not a known targeting type (None|Self|TargetUnit|GroundPoint).");
 
+            // ── (a2) Activation (Story 2.6): the closed passive set, fail-closed on an unknown string ──
+            PassiveActivation? parsedActivation = def.ParsedActivation;
+            if (parsedActivation is null)
+                return Fail(id, "activation",
+                    $"'{def.Activation}' is not a known activation (active|aura|on_hit|while_alive).");
+            PassiveActivation activation = parsedActivation.Value;
+            bool isPassive = activation != PassiveActivation.Active;
+
+            // Passive targeting shape (AC5): aura/on_hit acquire no player target; while_alive is Self/None.
+            if (activation is PassiveActivation.Aura or PassiveActivation.OnHit)
+            {
+                if (def.ParsedTargeting != AbilityTargeting.None)
+                    return Fail(id, "targeting",
+                        $"a '{def.Activation}' passive must use targeting None (it acquires no player-selected target).");
+            }
+            else if (activation == PassiveActivation.WhileAlive)
+            {
+                if (def.ParsedTargeting is not (AbilityTargeting.Self or AbilityTargeting.None))
+                    return Fail(id, "targeting", "a 'while_alive' passive must use targeting Self or None.");
+            }
+
             // ── (b) Costs + cooldown sign (FixedJsonConverter already rejected NaN/Inf/over-range at parse; this
             //        guards SIGN and the int costs). Fixed sign via .Raw (the underlying 16.16 int). ──
             if (def.CostEnergy.Raw < 0)
@@ -55,6 +76,20 @@ namespace ProjectChimera.Core.Definitions
                 return Fail(id, "cost_crystal", $"={def.CostCrystal} must be >= 0.");
             if (def.Cooldown.Raw < 0)
                 return Fail(id, "cooldown", $"raw {def.Cooldown.Raw} must be >= 0.");
+
+            // Decision #4: a passive is never player-cast, so the runtime never debits it — reject any non-zero
+            // cost/cooldown fail-closed (rather than silently ignore an authored value that implies a cost gate).
+            if (isPassive)
+            {
+                if (def.CostEnergy.Raw != 0)
+                    return Fail(id, "cost_energy", "a passive ability must have zero cost_energy (passives are not cast).");
+                if (def.CostOre != 0)
+                    return Fail(id, "cost_ore", "a passive ability must have zero cost_ore (passives are not cast).");
+                if (def.CostCrystal != 0)
+                    return Fail(id, "cost_crystal", "a passive ability must have zero cost_crystal (passives are not cast).");
+                if (def.Cooldown.Raw != 0)
+                    return Fail(id, "cooldown", "a passive ability has no cooldown (it is not cast).");
+            }
 
             // ── (c) ≥ 1 effect node (AC1's floor) ──
             EffectNode? root = def.EffectGraph;
@@ -70,6 +105,14 @@ namespace ProjectChimera.Core.Definitions
             string? walkError = WalkGraph(id, root);
             if (walkError is not null)
                 return AbilityValidationResult.Fail(walkError);
+
+            // ── (g) Passive effect-root shape (Story 2.6 AC5) — the activation dictates the admissible root shape ──
+            if (isPassive)
+            {
+                string? shapeError = ValidatePassiveShape(id, activation, root);
+                if (shapeError is not null)
+                    return AbilityValidationResult.Fail(shapeError);
+            }
 
             // ── Success: mint the proof-of-validation token (the codebase's SECOND `new Validated<`; the sole-minter
             //    source scan allow-lists {ScenarioValidator.cs, AbilityValidator.cs}). ──
@@ -179,6 +222,58 @@ namespace ProjectChimera.Core.Definitions
 
         private static string Located(string id, string path, string reason) =>
             $"ability '{id}'.{path}: {reason}";
+
+        /// <summary>
+        /// Story 2.6 AC5 passive effect-root shape rules (only reached for a non-Active activation). The generic
+        /// checks (≥ 1 node, EffectBounds, WalkGraph re-entrancy/period-shape) have already passed; this constrains
+        /// the ROOT shape to what each passive driver can actually run:
+        ///   • aura ⇒ a <c>SearchArea</c> whose <c>Child</c> is an <c>ApplyModifier</c> (the per-tick grant).
+        ///   • on_hit ⇒ any non-empty rider (already guaranteed by the ≥ 1-node floor) — no further constraint.
+        ///   • while_alive ⇒ a PERMANENT <c>ApplyModifier</c> (duration_ticks &lt; 0) OR a <c>Persistent</c> with ≥ 1
+        ///     phase, and <c>period_ticks &gt; 0</c> whenever a <c>period_effect</c> is present (closes 2.5b deferred
+        ///     #1/#2 at the validator for passives).
+        /// </summary>
+        private static string? ValidatePassiveShape(string id, PassiveActivation activation, EffectNode root)
+        {
+            switch (activation)
+            {
+                case PassiveActivation.Aura:
+                    if (root is not SearchAreaEffect sa)
+                        return Located(id, "effect",
+                            "an 'aura' passive's effect root must be a SearchArea (it grants a modifier to units in radius each tick).");
+                    if (sa.Child is not ApplyModifierEffect)
+                        return Located(id, "effect.child",
+                            "an 'aura' passive's SearchArea must apply a modifier to each match (SearchArea → ApplyModifier).");
+                    return null;
+
+                case PassiveActivation.OnHit:
+                    return null; // a non-empty rider graph is sufficient (the ≥ 1-node floor already passed).
+
+                case PassiveActivation.WhileAlive:
+                    if (root is ApplyModifierEffect am)
+                    {
+                        if (am.Modifier is null || am.Modifier.DurationTicks >= 0)
+                            return Located(id, "effect",
+                                "a 'while_alive' ApplyModifier passive must be permanent (modifier.duration_ticks < 0).");
+                        return null;
+                    }
+                    if (root is PersistentEffect p)
+                    {
+                        if (p.InitialEffect is null && p.PeriodEffect is null && p.ExpireEffect is null)
+                            return Located(id, "effect",
+                                "a 'while_alive' Persistent passive must declare at least one phase (initial/period/expire).");
+                        if (p.PeriodEffect is not null && p.PeriodTicks <= 0)
+                            return Located(id, "effect.period_ticks",
+                                "a 'while_alive' Persistent with a period_effect must set period_ticks > 0 (else the period never fires).");
+                        return null;
+                    }
+                    return Located(id, "effect",
+                        "a 'while_alive' passive's effect root must be a permanent ApplyModifier or a Persistent.");
+
+                default:
+                    return null;
+            }
+        }
 
         /// <summary>Per-path walk state: the node, its located path, and the inherited AC4/AC5 context flags.</summary>
         private readonly struct WalkFrame

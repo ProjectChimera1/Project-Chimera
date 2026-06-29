@@ -41,6 +41,7 @@ namespace ProjectChimera.Effects
         private readonly Fixed[] _flatAttackDamageBonus = new Fixed[EntityWorld.MAX_ENTITIES];
         private readonly Fixed[] _flatMaxHealthBonus    = new Fixed[EntityWorld.MAX_ENTITIES];
         private readonly Fixed[] _flatMoveSpeedBonus    = new Fixed[EntityWorld.MAX_ENTITIES];
+        private readonly Fixed[] _flatArmorBonus        = new Fixed[EntityWorld.MAX_ENTITIES]; // Story 2.6
 
         /// <summary>
         /// The Story 2.2b store this system drives each tick (null until <see cref="AttachStore"/>). Held, not
@@ -86,6 +87,8 @@ namespace ProjectChimera.Effects
             world.EffectiveAttackDamage[id] = Fixed.Max(Fixed.Zero, world.BaseAttackDamage[id] + _flatAttackDamageBonus[id]);
             world.EffectiveMaxHealth[id]    = Fixed.Max(Fixed.Zero, world.BaseMaxHealth[id]    + _flatMaxHealthBonus[id]);
             world.EffectiveMoveSpeed[id]    = Fixed.Max(Fixed.Zero, world.BaseMoveSpeed[id]    + _flatMoveSpeedBonus[id]);
+            // Story 2.6: EffectiveArmor = max(0, BaseArmor + Σ armor deltas) — DamageResolver subtracts it (floored at 0).
+            world.EffectiveArmor[id]        = Fixed.Max(Fixed.Zero, world.BaseArmor[id]         + _flatArmorBonus[id]);
             _dirty[id] = false;
         }
 
@@ -108,6 +111,7 @@ namespace ProjectChimera.Effects
             _flatAttackDamageBonus[id] = Fixed.Zero;
             _flatMaxHealthBonus[id]    = Fixed.Zero;
             _flatMoveSpeedBonus[id]    = Fixed.Zero;
+            _flatArmorBonus[id]        = Fixed.Zero;   // Story 2.6
             _dirty[id] = false;
         }
 
@@ -121,13 +125,15 @@ namespace ProjectChimera.Effects
         /// the 2.2b store reach this without <c>InternalsVisibleTo</c>.
         /// </summary>
         /// <param name="id">Target entity id. Out-of-range ids are ignored (defensive; future callers may pass stale ids).</param>
-        internal void AccumulateBonus(int id, Fixed attackDamageDelta, Fixed maxHealthDelta, Fixed moveSpeedDelta)
+        internal void AccumulateBonus(int id, Fixed attackDamageDelta, Fixed maxHealthDelta, Fixed moveSpeedDelta,
+                                      Fixed armorDelta = default)
         {
             if (id < 0 || id >= EntityWorld.MAX_ENTITIES) return; // defensive bounds guard (no throw on a bad id)
 
             _flatAttackDamageBonus[id] += attackDamageDelta;
             _flatMaxHealthBonus[id]    += maxHealthDelta;
             _flatMoveSpeedBonus[id]    += moveSpeedDelta;
+            _flatArmorBonus[id]        += armorDelta;   // Story 2.6 (optional trailing param → pre-2.6 callers unchanged)
             _dirty[id] = true;
         }
     }

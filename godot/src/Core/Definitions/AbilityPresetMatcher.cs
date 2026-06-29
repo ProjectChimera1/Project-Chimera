@@ -68,6 +68,7 @@ namespace ProjectChimera.Core.Definitions
             && m.Status == StatusFlags.None
             && m.MaxHealthDelta.Raw == 0
             && m.MoveSpeedDelta.Raw == 0
+            && m.ArmorDelta.Raw == 0
             && m.PeriodEffect is null
             && m.PeriodTicks == 0;
     }

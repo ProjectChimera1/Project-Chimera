@@ -25,6 +25,9 @@ namespace ProjectChimera.Sim.Tests.Definitions
         [InlineData("fireball.json")]     // sequence → [ damage, search_area → damage ]
         [InlineData("minor_heal.json")]   // single heal leaf (omits optional costs → defaults)
         [InlineData("battle_fury.json")]  // apply_modifier with stat deltas
+        [InlineData("aura_guard.json")]      // Story 2.6 aura: search_area(Ally) → apply_modifier(+armor)
+        [InlineData("onhit_searing.json")]   // Story 2.6 on_hit: a single damage rider
+        [InlineData("furnace_trickle.json")] // Story 2.6 while_alive: persistent HoT
         public void SampleAbility_SurvivesSerializeRoundTrip_WithIdenticalGraph(string fileName)
         {
             string path = Path.Combine(AbilitiesResourceDir(), fileName);
@@ -116,6 +119,7 @@ namespace ProjectChimera.Sim.Tests.Definitions
             Assert.Equal(original.Id, rt.Id);
             Assert.Equal(original.DisplayName, rt.DisplayName);
             Assert.Equal(original.ParsedTargeting, rt.ParsedTargeting);
+            Assert.Equal(original.ParsedActivation, rt.ParsedActivation);   // Story 2.6
             Assert.Equal(original.CostEnergy.Raw, rt.CostEnergy.Raw);
             Assert.Equal(original.CostOre, rt.CostOre);
             Assert.Equal(original.CostCrystal, rt.CostCrystal);

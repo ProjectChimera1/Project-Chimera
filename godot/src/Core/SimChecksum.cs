@@ -22,6 +22,9 @@ namespace ProjectChimera.Core
     ///   - EntityWorld effective stats + ability/status: per alive entity, EffectiveAttackDamage, EffectiveMaxHealth,
     ///     EffectiveMoveSpeed, Energy (all Raw), and StatusFlagsOf (int) — added v6 (Story 2.2b), now that the
     ///     ModifierStore MUTATES them mid-match. Base* stays UNFOLDED (authored, in-tick-immutable).
+    ///   - EntityWorld effective armor: per alive entity, EffectiveArmor (Raw) — added v8 (Story 2.6), the buffable
+    ///     armor stat. ModifierSystem recomputes it mid-match (an aura grants +armor; DamageResolver subtracts it),
+    ///     so it is peer-divergent sim truth. BaseArmor stays UNFOLDED (authored, the BaseAttackDamage posture).
     ///   - ModifierStore: per alive entity (ascending owner-id then slot), the active-instance count then, per slot,
     ///     modifierId / remainingTicks / ticksUntilPeriod / periodsRemaining / stackCount — added v6 (Story 2.2b).
     ///     The descriptor refs + caster id/faction are NOT folded (authored / peer-identical). A null store folds an
@@ -64,8 +67,14 @@ namespace ProjectChimera.Core
         ///        the first ability array that mutates mid-match (a cast starts the cooldown; it ticks down each
         ///        frame). AbilityId / MaxEnergy / PendingCast* stay UNFOLDED (authored / transient). The fold is
         ///        count-driven, so raising EntityWorld.MAX_ABILITIES_PER_UNIT later moves no golden. One scheduled re-baseline.
+        ///   v8 — Story 2.6: fold per-entity EffectiveArmor — the buffable armor stat (Decision #6). The
+        ///        ModifierSystem recomputes it mid-match (an aura grants +armor) and DamageResolver subtracts it,
+        ///        so it is peer-divergent sim truth. BaseArmor stays UNFOLDED (authored, the BaseAttackDamage
+        ///        posture). The passive DRIVERS (aura / on-hit / self-passive) add NO new folded state — they reuse
+        ///        ModifierStore v6 / Health / Effective* and register passives via authored, not-folded SoA. One
+        ///        scheduled re-baseline of all goldens (the existing combat is unchanged since BaseArmor=0 → −0).
         /// </summary>
-        public const int AlgoVersion = 7;
+        public const int AlgoVersion = 8;
 
         /// <summary>
         /// Compute a full-state checksum for desync detection.
@@ -130,6 +139,13 @@ namespace ProjectChimera.Core
                 hash = Mix(hash, world.EffectiveAttackDamage[i].Raw);
                 hash = Mix(hash, world.EffectiveMaxHealth[i].Raw);
                 hash = Mix(hash, world.EffectiveMoveSpeed[i].Raw);
+                // EffectiveArmor (v8, Story 2.6): the buffable armor stat. ModifierSystem recomputes it mid-match
+                // (an aura grants +armor via Modifier.ArmorDelta) and DamageResolver subtracts it, so it is
+                // peer-divergent sim truth and must fold. BaseArmor stays UNFOLDED (authored, in-tick-immutable —
+                // the BaseAttackDamage posture). Fixed.Raw → cross-platform safe (the passive goldens are compared
+                // on both CI legs). Existing content has BaseArmor=0 → EffectiveArmor=0 → a single Mix(0) per
+                // entity moves the hash from v7 even though no real armor exists yet (the scheduled re-baseline).
+                hash = Mix(hash, world.EffectiveArmor[i].Raw);
                 hash = Mix(hash, world.Energy[i].Raw);
                 hash = Mix(hash, (int)world.StatusFlagsOf[i]);
 

@@ -94,6 +94,65 @@ namespace ProjectChimera.Effects
                     world.PendingCastTarget[id] = -1;
                 }
             }
+
+            // (c) Story 2.6 — the while-alive AURA pass. Every tick each aura owner re-grants a short Refresh modifier
+            //     to its SearchArea matches. Runs here at index [3] so ModifierSystem[4] recomputes the grant and
+            //     CombatSystem[5] reads the buffed Effective* the SAME tick (AC1). Separate ascending-owner-id loop,
+            //     after the cast loop; no new per-entity counter (expiry is by non-refresh — the no-fold design).
+            TickAuras(world);
+        }
+
+        /// <summary>
+        /// The Story 2.6 while-alive AURA driver (AC1). For each alive owner (ascending id) whose
+        /// <see cref="EntityWorld.AuraAbilityIndex"/> is set, run its aura graph — a <c>SearchArea</c> →
+        /// <c>ApplyModifier</c> that re-grants a SHORT-duration <see cref="StackRule.Refresh"/> modifier to every
+        /// in-radius match. A target that leaves the radius (or an owner that dies) simply stops being re-applied to,
+        /// and the modifier expires on its own within its duration — so there is NO "remove" bookkeeping and NO new
+        /// folded counter (architecture: "an aura = a short Modifier re-applied each tick"). The spatial hash is built
+        /// LAZILY on the first aura owner, so a scenario with no auras pays nothing and its checksum is untouched
+        /// (the existing goldens never enter this path). Reuses this system's own executor + spatial + store — never
+        /// the ModifierStore's dedicated period executor (re-entrancy safety, as for player casts).
+        /// </summary>
+        private void TickAuras(EntityWorld world)
+        {
+            int cap = world.HighWaterMark;
+            bool spatialBuilt = false;
+            for (int id = 0; id < cap; id++)
+            {
+                if (!world.IsAlive(id)) continue;
+                int auraIdx = world.AuraAbilityIndex[id];
+                if (auraIdx < 0 || auraIdx >= _registry.Count) continue;
+
+                // Build the spatial hash once, only when an aura actually exists (current post-cast positions).
+                if (!spatialBuilt) { _spatial.Rebuild(world); spatialBuilt = true; }
+
+                AbilityDefinition aura = _registry.Get(auraIdx);
+                // primaryTarget = the owner → the SearchArea centers on the owner's position; the owner's faction
+                // drives the Ally/Enemy filter. The store is MANDATORY (the aura's ApplyModifier leaf needs it).
+                var ctx = new EffectContext(world, casterId: id, primaryTargetId: id, casterFaction: world.FactionOf[id],
+                                            _damageTable, spatial: _spatial, _events, _stats, modifierStore: _modifiers);
+                _executor.Run(aura.EffectGraph, in ctx);
+            }
+        }
+
+        /// <summary>
+        /// Story 2.6 — the WHILE-ALIVE self-passive installer (AC3). Subscribed to
+        /// <see cref="EntityWorld.OnUnitDefinitionApplied"/> (fired once per def-based spawn, AFTER the SoA is written),
+        /// it installs the unit's self-passive — a <c>Persistent</c> (DoT/HoT) or a permanent <c>ApplyModifier</c> — by
+        /// running its graph with the owner as both caster and primary target. Installed exactly once per live spawn
+        /// (the seam fires once per <see cref="EntityWorld.ApplyUnitDefinition"/>); reverted by
+        /// <c>ModifierStore.ClearEntity</c> on death (the OnDestroy subscriber). No spatial needed — a while_alive root
+        /// is an <c>ApplyModifier</c>/<c>Persistent</c>, never a <c>SearchArea</c> (the validator guarantees it).
+        /// </summary>
+        public void InstallSelfPassive(EntityWorld world, int id)
+        {
+            if (!world.IsAlive(id)) return;
+            int idx = world.SelfPassiveAbilityIndex[id];
+            if (idx < 0 || idx >= _registry.Count) return;
+            AbilityDefinition passive = _registry.Get(idx);
+            var ctx = new EffectContext(world, casterId: id, primaryTargetId: id, casterFaction: world.FactionOf[id],
+                                        _damageTable, spatial: null, _events, _stats, modifierStore: _modifiers);
+            _executor.Run(passive.EffectGraph, in ctx);
         }
 
         /// <summary>

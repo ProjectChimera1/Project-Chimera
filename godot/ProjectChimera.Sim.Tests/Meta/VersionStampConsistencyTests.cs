@@ -45,9 +45,10 @@ namespace ProjectChimera.Sim.Tests.Meta
         //    same commit as the source change — that edit is the "did the siblings + goldens move too?" checkpoint.
 
         /// <summary>Runtime desync-checksum algorithm version. Bump ⇒ re-baseline ALL goldens (same commit).
-        /// v7 (Story 2.4a): folded per-entity AbilityCooldownTicks (count-driven). v6 (Story 2.2b): Effective* /
-        /// Energy / StatusFlagsOf + the ModifierStore instance state.</summary>
-        private const int ExpectedSimChecksumAlgoVersion = 7;
+        /// v8 (Story 2.6): folded per-entity EffectiveArmor (the buffable armor stat). v7 (Story 2.4a): folded
+        /// per-entity AbilityCooldownTicks (count-driven). v6 (Story 2.2b): Effective* / Energy / StatusFlagsOf +
+        /// the ModifierStore instance state.</summary>
+        private const int ExpectedSimChecksumAlgoVersion = 8;
 
         /// <summary>Load-time canonical start-state hash algorithm version (lobby handshake value).</summary>
         private const int ExpectedCanonicalModelHashAlgoVersion = 2;

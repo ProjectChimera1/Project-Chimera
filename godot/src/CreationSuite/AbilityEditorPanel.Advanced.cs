@@ -27,6 +27,7 @@ namespace ProjectChimera.CreationSuite
         // ── Advanced composer state ──
         private AbilityDraft   _draft       = new();
         private VBoxContainer  _treeBox     = null!;   // hosts the rendered effect-tree rows
+        private VBoxContainer  _advCostSection = null!;// wraps the cost header + box so passive mode hides it (Decision #4)
         private VBoxContainer  _advCostBox  = null!;   // hosts the Advanced cost/cooldown rows (bound to the draft)
         private bool           _paneDirty;             // the raw-JSON pane has manual edits not yet folded into the tree
         private bool           _suppressPaneDirty;     // guard: a programmatic SetPaneText must not mark the pane dirty
@@ -53,12 +54,16 @@ namespace ProjectChimera.CreationSuite
             _treeBox.AddThemeConstantOverride("separation", 4);
             pane.AddChild(_treeBox);
 
-            // Costs & cooldown (top-level AbilityDefinition fields; Simple authors these in its own rows).
-            pane.AddChild(new HSeparator());
-            AddSectionHeader(pane, "Costs & cooldown");
+            // Costs & cooldown (top-level AbilityDefinition fields; Simple authors these in its own rows). Wrapped in a
+            // section so passive mode can hide it wholesale (Decision #4 — a passive carries no cost/cooldown).
+            _advCostSection = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+            _advCostSection.AddThemeConstantOverride("separation", 6);
+            pane.AddChild(_advCostSection);
+            _advCostSection.AddChild(new HSeparator());
+            AddSectionHeader(_advCostSection, "Costs & cooldown");
             _advCostBox = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
             _advCostBox.AddThemeConstantOverride("separation", 6);
-            pane.AddChild(_advCostBox);
+            _advCostSection.AddChild(_advCostBox);
 
             // Raw-JSON escape hatch — kept, but collapsible (Decision #10) so the tree gets vertical room.
             pane.AddChild(new HSeparator());
@@ -147,6 +152,10 @@ namespace ProjectChimera.CreationSuite
             _draft.Id          = _idEdit.Text.Trim();   // raw (Decision #8 blocks an un-sanitised id at save), not silently sanitised
             _draft.DisplayName = _nameEdit.Text;
             _draft.Targeting   = _targetingName;
+            _draft.Activation  = _activationName;        // Story 2.6 — carry the activation into the saved model
+            // Decision #4 — a passive carries no cost/cooldown; force zero so the validator passes regardless of any
+            // stale value the (hidden) cost rows held before the activation switch.
+            if (IsPassive) { _draft.CostEnergy = Fixed.Zero; _draft.CostOre = 0; _draft.CostCrystal = 0; _draft.Cooldown = Fixed.Zero; }
             return _draft.ToDefinition();
         }
 
@@ -268,7 +277,9 @@ namespace ProjectChimera.CreationSuite
 
                 case DraftKind.SearchArea:
                     AddSpinRow(card, "Radius", 0, FixedSpinMax, 0.5, FixedToDouble(node.Radius), v => node.Radius = ToFixed(v));
-                    AddDropdownRow(card, "Filter", IncludingCurrent(FilterItems(), (int)node.Filter, node.Filter.ToString()), (int)node.Filter, id => node.Filter = (TargetFilter)id);
+                    // Story 2.6 (Task 8) — Filter is a [Flags] set: author COMBINATIONS via checkboxes (Ally + Alive …),
+                    // closed to allegiance + Alive (NEVER the reserved Air/Ground/Structure bits — AC5).
+                    AddFlagChecks(card, "Filter", DraftVocabulary.Filters, () => node.Filter, v => node.Filter = v);
                     RenderChildSlot(card, "Child effect", ctx, () => node.Child, n => node.Child = n);
                     break;
 
@@ -278,6 +289,11 @@ namespace ProjectChimera.CreationSuite
                     RenderChildSlot(card, "Initial effect", ctx, () => node.Initial, n => node.Initial = n);
                     RenderChildSlot(card, "Period effect",  ctx, () => node.Period,  n => node.Period  = n);
                     RenderChildSlot(card, "Expire effect",  ctx, () => node.Expire,  n => node.Expire  = n);
+                    // Story 2.6 (Task 7.3) — the 2.5b deferred no-op traps, surfaced where they bite passives hardest.
+                    if (node.Initial is null && node.Period is null && node.Expire is null)
+                        AddDimNote(card, "A Persistent with no initial / period / expire effect does nothing.");
+                    if (node.Period is not null && node.PeriodTicks == 0)
+                        AddDimNote(card, "Period (ticks) = 0 with a period effect — the period effect never fires.");
                     break;
             }
         }
@@ -330,9 +346,16 @@ namespace ProjectChimera.CreationSuite
             AddSpinRow(card, "Max Health Δ", -FixedSpinMax, FixedSpinMax, 1, FixedToDouble(m.MaxHealthDelta), v => m.MaxHealthDelta = ToFixed(v));
             AddSpinRow(card, "Attack Damage Δ", -FixedSpinMax, FixedSpinMax, 1, FixedToDouble(m.AttackDamageDelta), v => m.AttackDamageDelta = ToFixed(v));
             AddSpinRow(card, "Move Speed Δ", -FixedSpinMax, FixedSpinMax, 0.5, FixedToDouble(m.MoveSpeedDelta), v => m.MoveSpeedDelta = ToFixed(v));
-            AddDropdownRow(card, "Status", IncludingCurrent(StatusItems(), (int)m.Status, m.Status.ToString()), (int)m.Status, id => m.Status = (StatusFlags)id);
+            // Story 2.6 (Task 7.4) — the buffable armor stat (e.g. the aura's +armor grant); round-trips via armor_delta.
+            AddSpinRow(card, "Armor Δ", -FixedSpinMax, FixedSpinMax, 1, FixedToDouble(m.ArmorDelta), v => m.ArmorDelta = ToFixed(v));
+            // Story 2.6 (Task 8) — Status is a [Flags] set: author COMBINATIONS via checkboxes (Stunned + Silenced …),
+            // closed to the real status bits. Supersedes the 2.5b single-select dropdown + loaded-combo workaround.
+            AddFlagChecks(card, "Status", DraftVocabulary.Statuses, () => m.Status, v => m.Status = v);
             AddSpinRow(card, "Period (ticks)", 0, 99999, 1, m.PeriodTicks, v => m.PeriodTicks = (int)v);
             RenderChildSlot(card, "Period effect", ctx, () => m.Period, n => m.Period = n);
+            // Story 2.6 (Task 7.3) — surface the 2.5b deferred no-op trap (a period effect that never fires).
+            if (m.Period is not null && m.PeriodTicks == 0)
+                AddDimNote(card, "Period (ticks) = 0 with a period effect — the period effect never fires.");
         }
 
         // ── Add affordance + caps guardrail (Task 1.4 / 1.5) ─────────────────────
@@ -401,37 +424,16 @@ namespace ProjectChimera.CreationSuite
 
         // damage_type: the 5 real types — NEVER COUNT (AC5-COMPOSER).
         private static (string Label, int Id)[] DamageTypeItems() => EnumItems(DraftVocabulary.DamageTypes, t => (int)t);
-        // filter: allegiance + Alive — NEVER the reserved Air/Ground/Structure bits (AC5-COMPOSER).
-        private static (string Label, int Id)[] FilterItems()     => EnumItems(DraftVocabulary.Filters, f => (int)f);
         private static (string Label, int Id)[] StackRuleItems()  => EnumItems(DraftVocabulary.StackRules, s => (int)s);
-        private static (string Label, int Id)[] StatusItems()     => EnumItems(DraftVocabulary.Statuses, s => (int)s);
+        // (Story 2.6, Task 8) filter + status are now authored via AddFlagChecks ([Flags] multi-select checkboxes), not
+        // single-select dropdowns — so the former FilterItems/StatusItems builders + the IncludingCurrent loaded-combo
+        // dropdown workaround (2.5b review P3) are removed: checkboxes display + round-trip any combination natively.
 
         private static (string Label, int Id)[] EnumItems<TEnum>(TEnum[] values, Func<TEnum, int> toId) where TEnum : struct, Enum
         {
             var items = new (string, int)[values.Length];
             for (int i = 0; i < values.Length; i++) items[i] = (values[i].ToString()!, toId(values[i]));
             return items;
-        }
-
-        /// <summary>
-        /// Harden a single-select enum dropdown against a loaded MULTI-BIT <c>[Flags]</c> value (Story 2.5b review P3):
-        /// the composer OFFERS single values (AC5-COMPOSER), but <see cref="TargetFilter"/>/<see cref="StatusFlags"/> are
-        /// <c>[Flags]</c> and the converter accepts combinations (e.g. <c>Stunned|Silenced</c>). If <paramref name="currentId"/>
-        /// is not already one of <paramref name="items"/>, append it as an explicit item so a loaded combo DISPLAYS
-        /// faithfully and round-trips — never a silent collapse to a single bit on a stray click; picking a single value
-        /// stays a deliberate choice. The appended value is always a combination of ALLOWED bits (the converter's
-        /// <c>Read</c> rejects the reserved Air/Ground/Structure filter bits + <c>DamageType.COUNT</c> before they could
-        /// reach a draft node), so the closed AC5-COMPOSER set is preserved.
-        /// </summary>
-        private static (string Label, int Id)[] IncludingCurrent((string Label, int Id)[] items, int currentId, string currentLabel)
-        {
-            foreach ((string Label, int Id) it in items)
-                if (it.Id == currentId) return items;   // already offered (a single value) — no change
-
-            var extended = new (string, int)[items.Length + 1];
-            Array.Copy(items, extended, items.Length);
-            extended[items.Length] = (currentLabel, currentId);   // the loaded combination, shown verbatim
-            return extended;
         }
 
         // ── Small UI helpers ─────────────────────────────────────────────────────
@@ -457,6 +459,38 @@ namespace ProjectChimera.CreationSuite
             lbl.AddThemeFontSizeOverride("font_size", 11);
             lbl.AddThemeColorOverride("font_color", HintText);
             parent.AddChild(lbl);
+        }
+
+        /// <summary>
+        /// Story 2.6 (Task 8) — a CLOSED multi-select for a <c>[Flags]</c> enum: one checkbox per real bit in
+        /// <paramref name="bits"/>, so the creator authors COMBINATIONS (e.g. <c>Ally + Alive</c>, <c>Stunned + Silenced</c>)
+        /// directly. The zero/None value is intentionally NOT a checkbox — it is the state of no boxes checked. Because
+        /// the offered bits come from <see cref="DraftVocabulary"/> (which excludes the reserved Air/Ground/Structure
+        /// filter bits), the composer can only ever build a value inside the closed AC5 set — the load-bearing
+        /// closed-vocabulary guarantee, now for combinations too. Supersedes the 2.5b single-select dropdown + the
+        /// loaded-combo (IncludingCurrent) workaround: checkboxes display + round-trip any combination natively.
+        /// </summary>
+        private void AddFlagChecks<TEnum>(Control card, string label, TEnum[] bits, Func<TEnum> get, Action<TEnum> set)
+            where TEnum : struct, Enum
+        {
+            AddSlotLabel(card, label + " (check any combination):");
+            var wrap = new HFlowContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+            card.AddChild(wrap);
+            foreach (TEnum bit in bits)
+            {
+                int b = Convert.ToInt32(bit);
+                if (b == 0) continue;   // the empty value (None) is "no boxes checked", not its own checkbox
+                var cb = new CheckBox { Text = bit.ToString(), ButtonPressed = (Convert.ToInt32(get()) & b) == b };
+                cb.AddThemeFontSizeOverride("font_size", 12);
+                cb.AddThemeColorOverride("font_color", BodyText);
+                cb.Toggled += on =>
+                {
+                    int cur = Convert.ToInt32(get());
+                    cur = on ? (cur | b) : (cur & ~b);
+                    set((TEnum)Enum.ToObject(typeof(TEnum), cur));
+                };
+                wrap.AddChild(cb);
+            }
         }
     }
 }

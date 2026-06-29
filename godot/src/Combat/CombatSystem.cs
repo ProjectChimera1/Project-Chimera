@@ -1,5 +1,7 @@
 #nullable enable
 using ProjectChimera.Core;
+using ProjectChimera.Core.Definitions;  // AbilityRegistry / AbilityDefinition (Story 2.6 on-hit rider)
+using ProjectChimera.Effects;           // EffectExecutor / EffectContext / ModifierStore (Story 2.6 on-hit rider)
 using ProjectChimera.Navigation;
 
 namespace ProjectChimera.Combat
@@ -33,6 +35,12 @@ namespace ProjectChimera.Combat
         private readonly MatchStats?       _stats;
         private readonly DamageTable       _table;
 
+        // Story 2.6 — the on-hit rider (melee-first). Optional: null in bare combat tests (no on-hit run). The
+        // executor is DEDICATED (not the ModifierStore's period executor — re-entrancy safety, as for the cast spine).
+        private readonly AbilityRegistry?  _registry;
+        private readonly ModifierStore?    _modifiers;
+        private readonly EffectExecutor    _onHitExecutor = new EffectExecutor();
+
         /// <summary>
         /// Units with AttackRange above this value use projectiles; at or below it use instant melee damage.
         /// Matches the highest melee range in alpha_faction.json (griffin = 2.0u).
@@ -40,12 +48,14 @@ namespace ProjectChimera.Combat
         private static readonly Fixed MELEE_THRESHOLD = Fixed.FromFloat(2.5f);
 
         public CombatSystem(ProjectileStore projectiles, CombatEventQueue? events = null, MatchStats? stats = null,
-            DamageTable? table = null)
+            DamageTable? table = null, AbilityRegistry? registry = null, ModifierStore? modifiers = null)
         {
             _projectiles = projectiles;
             _events      = events;
             _stats       = stats;
             _table       = table ?? DamageTable.Default;
+            _registry    = registry;   // Story 2.6 (optional — the on-hit rider runs only when both are wired)
+            _modifiers   = modifiers;
         }
 
         // Squared arrive threshold for AttackMove goal detection (0.5 world units)
@@ -484,7 +494,32 @@ namespace ProjectChimera.Combat
                     world.AttackTarget[attacker] = -1;
                     world.Flags[attacker]       &= ~EntityFlags.Attacking;
                 }
+
+                // Story 2.6 — the ON-HIT rider (melee-first, AC2). Fires on the landed hit and not otherwise (driven by
+                // the same AttackCooldown gate above — no new counter). primaryTarget = the struck unit; runs AFTER the
+                // base damage resolves, so a lethal base hit leaves the rider's IsAlive-guarded leaves as safe no-ops.
+                RunOnHit(world, attacker, target);
             }
+        }
+
+        /// <summary>
+        /// Story 2.6 ON-HIT rider (AC2, melee-first). If <paramref name="attacker"/> carries an on-hit passive
+        /// (<see cref="EntityWorld.OnHitAbilityIndex"/> set) and the rider machinery is wired (<see cref="_registry"/>
+        /// + <see cref="_modifiers"/> — null in bare combat tests), run its effect graph with the struck
+        /// <paramref name="target"/> as the primary target. No-op when no on-hit passive exists (so the existing
+        /// passive-free goldens never enter this path). Uses a DEDICATED executor (never the ModifierStore's period
+        /// executor) and the already-rebuilt Tick spatial hash (read-only) for any rider SearchArea.
+        /// </summary>
+        private void RunOnHit(EntityWorld world, int attacker, int target)
+        {
+            if (_registry is null || _modifiers is null) return;        // on-hit not wired (bare combat tests)
+            int idx = world.OnHitAbilityIndex[attacker];
+            if (idx < 0 || idx >= _registry.Count) return;             // attacker has no on-hit passive
+            AbilityDefinition onHit = _registry.Get(idx);
+            var ctx = new EffectContext(world, casterId: attacker, primaryTargetId: target,
+                                        casterFaction: world.FactionOf[attacker], _table,
+                                        spatial: _spatialHash, _events, _stats, modifierStore: _modifiers);
+            _onHitExecutor.Run(onHit.EffectGraph, in ctx);
         }
     }
 }

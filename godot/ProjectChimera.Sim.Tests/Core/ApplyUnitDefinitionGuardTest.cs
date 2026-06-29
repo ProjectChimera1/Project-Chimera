@@ -27,13 +27,14 @@ namespace ProjectChimera.Sim.Tests.Core
         // A combat def whose EVERY mapped field differs from the Create() default, so each assertion is meaningful
         // and the "moved off default" teeth bite. (Create defaults: AttackRange/AttackDamage/AttackSpeed = 0,
         // VisionRange = 8, SplashRadius = 0, SupplyCost = 0, DamageType = Normal, ArmorType = Unarmored,
-        // CollisionRadius = 1.0, SeparationPriority = Normal, Category = Melee.)
+        // CollisionRadius = 1.0, SeparationPriority = Normal, Category = Melee, Armor = 0 [Story 2.6],
+        // Aura/OnHit/SelfPassiveAbilityIndex = -1 [Story 2.6].)
         private static UnitDefinition CombatDef() => new UnitDefinition
         {
             Id = "test_combatant", DisplayName = "Test Combatant", Category = "Ranged",
             Hp = 123f, Speed = 4.25f, VisionRange = 11f, AttackRange = 6f, AttackDamage = 17f,
             AttackSpeed = 1.25f, SplashRadius = 2.5f, Supply = 3,
-            DamageType = "Pierce", ArmorType = "Heavy",
+            DamageType = "Pierce", ArmorType = "Heavy", Armor = 7f,
             CollisionRadius = 0.5f, SeparationPriority = "Push",
         };
 
@@ -49,6 +50,9 @@ namespace ProjectChimera.Sim.Tests.Core
             // BaseAttackDamage is the mapper-sourced stat; Effective mirrors it (no modifier yet).
             Assert.Equal(Fixed.FromFloat(def.AttackDamage).Raw, w.BaseAttackDamage[id].Raw);
             Assert.Equal(w.BaseAttackDamage[id].Raw,            w.EffectiveAttackDamage[id].Raw);
+            // Story 2.6: BaseArmor is mapper-sourced; Effective mirrors it (no modifier yet).
+            Assert.Equal(Fixed.FromFloat(def.Armor).Raw,        w.BaseArmor[id].Raw);
+            Assert.Equal(w.BaseArmor[id].Raw,                   w.EffectiveArmor[id].Raw);
 
             // Every other def-derived field is written.
             Assert.Equal(Fixed.FromFloat(def.AttackRange).Raw,  w.AttackRange[id].Raw);
@@ -64,6 +68,7 @@ namespace ProjectChimera.Sim.Tests.Core
 
             // Teeth: prove the mapped values are NOT coincidentally the Create defaults.
             Assert.NotEqual(Fixed.Zero.Raw,            w.BaseAttackDamage[id].Raw);    // default 0
+            Assert.NotEqual(Fixed.Zero.Raw,            w.BaseArmor[id].Raw);           // default 0 (Story 2.6)
             Assert.NotEqual(UnitCategory.Melee,        w.CategoryOf[id]);              // default Melee
             Assert.NotEqual(SeparationPriority.Normal, w.SeparationPriorityOf[id]);    // default Normal
         }
@@ -97,6 +102,9 @@ namespace ProjectChimera.Sim.Tests.Core
             // The mapper-sourced attack damage (Base + mirrored Effective) — the field added in this story.
             Assert.Equal(refWorld.BaseAttackDamage[refId].Raw,      w.BaseAttackDamage[id].Raw);
             Assert.Equal(refWorld.EffectiveAttackDamage[refId].Raw, w.EffectiveAttackDamage[id].Raw);
+            // Story 2.6 armor (Base + mirrored Effective) routes through the same single mapper.
+            Assert.Equal(refWorld.BaseArmor[refId].Raw,             w.BaseArmor[id].Raw);
+            Assert.Equal(refWorld.EffectiveArmor[refId].Raw,        w.EffectiveArmor[id].Raw);
 
             // Every other def-derived field.
             Assert.Equal(refWorld.AttackRange[refId].Raw,      w.AttackRange[id].Raw);
@@ -175,6 +183,69 @@ namespace ProjectChimera.Sim.Tests.Core
             Assert.Equal(0,       w.AbilityCooldownTicks[reused * EntityWorld.MAX_ABILITIES_PER_UNIT + 0]);
             Assert.Equal(EntityWorld.NO_PENDING_CAST, w.PendingCastSlot[reused]);
             Assert.Equal(Fixed.Zero.Raw, w.MaxEnergy[reused].Raw); // Create default (no def applied)
+        }
+
+        // ── Story 2.6 — passive registration: ResolveAbilities partitions by activation, ApplyUnitDefinition copies
+        //    the passive indices (A2), and a recycled slot carries none of them (the SoA-recycle trap). ────────────
+
+        /// <summary>A registry with one ability of each activation kind (only Id + Activation matter for the partition).</summary>
+        private static AbilityRegistry PassiveRegistry() => new AbilityRegistry(new[]
+        {
+            new AbilityDefinition { Id = "active_x",  Activation = "active" },
+            new AbilityDefinition { Id = "aura_x",    Activation = "aura" },
+            new AbilityDefinition { Id = "onhit_x",   Activation = "on_hit" },
+            new AbilityDefinition { Id = "selfreg_x", Activation = "while_alive" },
+        });
+
+        [Fact]
+        public void ApplyUnitDefinition_PartitionsPassivesIntoTheirSlots_OffTheCreateDefault()
+        {
+            AbilityRegistry registry = PassiveRegistry();
+            UnitDefinition def = CombatDef();
+            def.Abilities = new[] { "active_x", "aura_x", "onhit_x", "selfreg_x" };
+            def.ResolveAbilities(registry); // partition by activation at scenario link
+
+            var w = new EntityWorld();
+            int id = w.Create(FixedVec3.Zero, Faction.Player1, Fixed.FromFloat(def.Hp), Fixed.FromFloat(def.Speed));
+            w.ApplyUnitDefinition(id, def);
+
+            // The ACTIVE ability fills a single cast slot; the three passives fill their dedicated slots — and a
+            // passive is NEVER exposed as a castable slot (AbilityCount == 1 proves it).
+            Assert.Equal((byte)1, w.AbilityCount[id]);
+            Assert.Equal(registry.IndexOf("active_x"),  w.AbilityId[id * EntityWorld.MAX_ABILITIES_PER_UNIT + 0]);
+            Assert.Equal(registry.IndexOf("aura_x"),    w.AuraAbilityIndex[id]);
+            Assert.Equal(registry.IndexOf("onhit_x"),   w.OnHitAbilityIndex[id]);
+            Assert.Equal(registry.IndexOf("selfreg_x"), w.SelfPassiveAbilityIndex[id]);
+
+            // Teeth: each passive slot moved off its Create default (−1) — a path that forgot to copy goes RED.
+            Assert.NotEqual(-1, w.AuraAbilityIndex[id]);
+            Assert.NotEqual(-1, w.OnHitAbilityIndex[id]);
+            Assert.NotEqual(-1, w.SelfPassiveAbilityIndex[id]);
+        }
+
+        [Fact]
+        public void RecycledSlot_CarriesNoPriorPassiveRegistration()
+        {
+            AbilityRegistry registry = PassiveRegistry();
+            UnitDefinition def = CombatDef();
+            def.Abilities = new[] { "aura_x", "onhit_x", "selfreg_x" };
+            def.ResolveAbilities(registry);
+
+            var w = new EntityWorld();
+            int first = w.Create(FixedVec3.Zero, Faction.Player1, Fixed.FromInt(100), Fixed.FromInt(3));
+            w.ApplyUnitDefinition(first, def);
+            Assert.NotEqual(-1, w.AuraAbilityIndex[first]); // populated for the first occupant
+
+            w.Destroy(first);
+            int reused = w.Create(FixedVec3.Zero, Faction.Player2, Fixed.FromInt(50), Fixed.FromInt(3));
+            Assert.Equal(first, reused); // same id off the free list
+
+            // The new occupant (NO def applied) must carry NONE of the prior passive registration / armor.
+            Assert.Equal(-1, w.AuraAbilityIndex[reused]);
+            Assert.Equal(-1, w.OnHitAbilityIndex[reused]);
+            Assert.Equal(-1, w.SelfPassiveAbilityIndex[reused]);
+            Assert.Equal(Fixed.Zero.Raw, w.BaseArmor[reused].Raw);
+            Assert.Equal(Fixed.Zero.Raw, w.EffectiveArmor[reused].Raw);
         }
     }
 }

@@ -147,7 +147,7 @@ namespace ProjectChimera.Effects
                 ResetPeriodSchedule(slot, mod);
                 _count[targetId] = n + 1;
 
-                ApplyStatDeltas(targetId, mod.AttackDamageDelta, mod.MaxHealthDelta, mod.MoveSpeedDelta, isApply: true);
+                ApplyStatDeltas(targetId, mod.AttackDamageDelta, mod.MaxHealthDelta, mod.MoveSpeedDelta, mod.ArmorDelta, isApply: true);
                 _world.StatusFlagsOf[targetId] |= mod.Status;
                 return;
             }
@@ -164,7 +164,7 @@ namespace ProjectChimera.Effects
                     if (_stackCount[eslot] < mod.MaxStacks)
                     {
                         _stackCount[eslot]++;
-                        ApplyStatDeltas(targetId, mod.AttackDamageDelta, mod.MaxHealthDelta, mod.MoveSpeedDelta, isApply: true); // each stack re-adds
+                        ApplyStatDeltas(targetId, mod.AttackDamageDelta, mod.MaxHealthDelta, mod.MoveSpeedDelta, mod.ArmorDelta, isApply: true); // each stack re-adds
                         _world.StatusFlagsOf[targetId] |= mod.Status; // idempotent re-OR
                     }
                     // Shared duration refreshed on every (re)apply — at the cap this is the only effect (refresh-only).
@@ -300,7 +300,8 @@ namespace ProjectChimera.Effects
                 Fixed stacks = Fixed.FromInt(_stackCount[slot]); // exact for an int multiplier (no Fixed rounding)
                 ApplyStatDeltas(hostId, -(mod.AttackDamageDelta * stacks),
                                         -(mod.MaxHealthDelta * stacks),
-                                        -(mod.MoveSpeedDelta * stacks), isApply: false);
+                                        -(mod.MoveSpeedDelta * stacks),
+                                        -(mod.ArmorDelta * stacks), isApply: false);
             }
             RecomputeStatusUnion(hostId, excludeSlot: slot);
 
@@ -389,9 +390,9 @@ namespace ProjectChimera.Effects
         /// the host (an enemy debuff that grants HP); a debuff round-trip now restores the ceiling without restoring HP.
         /// Health is always re-clamped into <c>[0, EffectiveMaxHealth]</c> (no phantom HP, never a death-on-expiry).
         /// </summary>
-        private void ApplyStatDeltas(int id, Fixed attackChange, Fixed maxHealthChange, Fixed moveChange, bool isApply)
+        private void ApplyStatDeltas(int id, Fixed attackChange, Fixed maxHealthChange, Fixed moveChange, Fixed armorChange, bool isApply)
         {
-            _system?.AccumulateBonus(id, attackChange, maxHealthChange, moveChange);
+            _system?.AccumulateBonus(id, attackChange, maxHealthChange, moveChange, armorChange);
             _system?.RecomputeEntity(_world, id);
 
             if (maxHealthChange.Raw != 0)

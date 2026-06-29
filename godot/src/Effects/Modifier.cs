@@ -61,6 +61,9 @@ namespace ProjectChimera.Effects
         public readonly Fixed AttackDamageDelta;
         /// <summary>Flat move-speed delta while active.</summary>
         public readonly Fixed MoveSpeedDelta;
+        /// <summary>Flat armor delta while active (Story 2.6). Folds into <c>EffectiveArmor</c>; reduces incoming
+        /// post-matrix damage (<c>DamageResolver</c> subtracts <c>EffectiveArmor</c>, floored at 0).</summary>
+        public readonly Fixed ArmorDelta;
 
         /// <summary>Status flags imposed while active.</summary>
         public readonly StatusFlags Status;
@@ -71,10 +74,13 @@ namespace ProjectChimera.Effects
         /// <summary>Period length in ticks for <see cref="PeriodEffect"/> (0 when there is none).</summary>
         public readonly int PeriodTicks;
 
-        /// <summary>Construct a modifier descriptor. Pure data; no execution happens here.</summary>
+        /// <summary>Construct a modifier descriptor. Pure data; no execution happens here.
+        /// <paramref name="armorDelta"/> is an optional trailing parameter (Story 2.6) so every pre-2.6
+        /// <c>new Modifier(...)</c> call site stays source-compatible (defaults to <see cref="Fixed.Zero"/>).</summary>
         public Modifier(int id, int durationTicks, StackRule stacking, int maxStacks,
                         Fixed maxHealthDelta, Fixed attackDamageDelta, Fixed moveSpeedDelta,
-                        StatusFlags status, EffectNode? periodEffect, int periodTicks)
+                        StatusFlags status, EffectNode? periodEffect, int periodTicks,
+                        Fixed armorDelta = default)
         {
             Id = id;
             DurationTicks = durationTicks;
@@ -86,6 +92,7 @@ namespace ProjectChimera.Effects
             Status = status;
             PeriodEffect = periodEffect;
             PeriodTicks = periodTicks;
+            ArmorDelta = armorDelta;
         }
     }
 }

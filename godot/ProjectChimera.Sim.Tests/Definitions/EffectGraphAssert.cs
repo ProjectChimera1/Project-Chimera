@@ -78,6 +78,7 @@ namespace ProjectChimera.Sim.Tests.Definitions
             Assert.Equal(e.MaxHealthDelta.Raw,    a.MaxHealthDelta.Raw);
             Assert.Equal(e.AttackDamageDelta.Raw, a.AttackDamageDelta.Raw);
             Assert.Equal(e.MoveSpeedDelta.Raw,    a.MoveSpeedDelta.Raw);
+            Assert.Equal(e.ArmorDelta.Raw,        a.ArmorDelta.Raw);   // Story 2.6
             Assert.Equal(e.Status, a.Status);                      // StatusFlags
             Assert.Equal(e.PeriodTicks, a.PeriodTicks);
             Equal(e.PeriodEffect, a.PeriodEffect);                 // nested DoT/HoT graph

@@ -100,6 +100,13 @@ namespace ProjectChimera.Core.Sim
                                                    damageTable, CombatEvents, MatchStats);
             modSys.AttachStore(Modifiers);
 
+            // Story 2.6 — wire the WHILE-ALIVE self-passive installer to the spawn seam. EntityWorld fires
+            // OnUnitDefinitionApplied once per def-based spawn (after the SoA is written); the cast system installs the
+            // unit's self-passive (a Persistent HoT or a permanent stat modifier) through its executor + store. One
+            // closure alloc at construction (never per-tick); symmetric with the OnDestroy → ClearEntity wire. A unit
+            // with no self-passive (SelfPassiveAbilityIndex = -1) is a no-op, so existing scenarios stay identical.
+            World.OnUnitDefinitionApplied += id => abilitySys.InstallSelfPassive(World, id);
+
             // ── The canonical 11-system tick order. The registration order IS the determinism contract;
             //    SystemOrderTest FAILS on any reorder/add/remove. ──
             _systems = new ISimSystem[]
@@ -115,7 +122,9 @@ namespace ProjectChimera.Core.Sim
                 //    damage read freshly-recomputed Effective* stats the SAME tick a modifier changes them. Drives the
                 //    ModifierStore (Story 2.2b) each tick (periods/expiry) then recomputes. ──
                 modSys,                                                                   // [4] ModifierSystem    (Effects, AR-9)
-                new CombatSystem(Projectiles, CombatEvents, MatchStats, damageTable),     // [5] (null table → DamageTable.Default)
+                // Story 2.6: the on-hit rider needs the ability registry (index→graph) + the ModifierStore (apply leaf).
+                new CombatSystem(Projectiles, CombatEvents, MatchStats, damageTable,
+                                 registry ?? AbilityRegistry.Empty, Modifiers),            // [5] (null table → DamageTable.Default)
                 new ProjectileSystem(Projectiles, CombatEvents, MatchStats, damageTable), // [6] ProjectileSystem  (Combat)
                 new SupplySystem(Resources),                                              // [7] SupplySystem      (Economy)
                 Fog,                                                                      // [8] FogOfWarSystem    (Core)

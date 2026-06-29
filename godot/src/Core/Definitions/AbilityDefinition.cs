@@ -31,6 +31,14 @@ namespace ProjectChimera.Core.Definitions
         [JsonPropertyName("targeting")]
         public string Targeting { get; set; } = "Self";
 
+        /// <summary>
+        /// How this ability ACTIVATES (Story 2.6, FR-9): one of <see cref="PassiveActivation"/> by NAME —
+        /// active | aura | on_hit | while_alive. Default <c>"active"</c> so every pre-2.6 ability (and every existing
+        /// golden) is unaffected — the field is omittable and an absent value reads back as "active".
+        /// </summary>
+        [JsonPropertyName("activation")]
+        public string Activation { get; set; } = "active";
+
         /// <summary>Energy pool cost (Fixed; matches the Energy SoA added in 2.2a). 2.4 debits it on cast.</summary>
         [JsonPropertyName("cost_energy")]
         public Fixed CostEnergy { get; set; } = Fixed.Zero;
@@ -73,6 +81,22 @@ namespace ProjectChimera.Core.Definitions
             "Self"        => AbilityTargeting.Self,
             "TargetUnit"  => AbilityTargeting.TargetUnit,
             "GroundPoint" => AbilityTargeting.GroundPoint,
+            _             => null,
+        };
+
+        /// <summary>
+        /// <see cref="Activation"/> string resolved to the closed <see cref="PassiveActivation"/> set by EXACT name
+        /// (snake_case JSON: <c>on_hit</c>/<c>while_alive</c>). Returns <c>null</c> for an unknown string so
+        /// <see cref="AbilityValidator"/> rejects it located. <c>[JsonIgnore]</c> for the same round-trip reason as
+        /// <see cref="ParsedTargeting"/> (UnmappedMemberHandling.Disallow would reject a re-emitted computed getter).
+        /// </summary>
+        [JsonIgnore]
+        public PassiveActivation? ParsedActivation => Activation switch
+        {
+            "active"      => PassiveActivation.Active,
+            "aura"        => PassiveActivation.Aura,
+            "on_hit"      => PassiveActivation.OnHit,
+            "while_alive" => PassiveActivation.WhileAlive,
             _             => null,
         };
     }

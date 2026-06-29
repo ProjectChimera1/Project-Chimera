@@ -1,0 +1,12 @@
+{
+  "id": "furnace_trickle",
+  "display_name": "Furnace Trickle",
+  "targeting": "Self",
+  "activation": "while_alive",
+  "effect": {
+    "kind": "persistent",
+    "period_effect": { "kind": "heal", "amount": 2 },
+    "period_ticks": 5,
+    "period_count": 256
+  }
+}

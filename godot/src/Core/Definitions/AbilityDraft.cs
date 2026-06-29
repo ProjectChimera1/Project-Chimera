@@ -83,6 +83,7 @@ namespace ProjectChimera.Core.Definitions
         public Fixed       MaxHealthDelta   = Fixed.Zero;
         public Fixed       AttackDamageDelta = Fixed.Zero;
         public Fixed       MoveSpeedDelta   = Fixed.Zero;
+        public Fixed       ArmorDelta       = Fixed.Zero;          // Story 2.6 — flat armor buff (e.g. aura grant)
         public StatusFlags Status           = StatusFlags.None;
         public DraftNode?  Period;                                 // optional period_effect (DoT/HoT)
         public int         PeriodTicks;
@@ -91,7 +92,7 @@ namespace ProjectChimera.Core.Definitions
         public Modifier ToModifier() => new Modifier(
             Id, DurationTicks, Stacking, MaxStacks,
             MaxHealthDelta, AttackDamageDelta, MoveSpeedDelta,
-            Status, Period?.ToEffectNode(), PeriodTicks);
+            Status, Period?.ToEffectNode(), PeriodTicks, ArmorDelta);
 
         /// <summary>Build a mutable draft from an existing immutable runtime <see cref="Modifier"/> (parse-in / load path).</summary>
         public static DraftModifier FromModifier(Modifier m) => new DraftModifier
@@ -103,6 +104,7 @@ namespace ProjectChimera.Core.Definitions
             MaxHealthDelta    = m.MaxHealthDelta,
             AttackDamageDelta = m.AttackDamageDelta,
             MoveSpeedDelta    = m.MoveSpeedDelta,
+            ArmorDelta        = m.ArmorDelta,
             Status            = m.Status,
             Period            = m.PeriodEffect is null ? null : DraftNode.FromEffectNode(m.PeriodEffect),
             PeriodTicks       = m.PeriodTicks,
@@ -319,6 +321,7 @@ namespace ProjectChimera.Core.Definitions
         public string Id          = "";
         public string DisplayName = "";
         public string Targeting   = "Self";
+        public string Activation  = "active";   // Story 2.6 — active | aura | on_hit | while_alive (closed set)
         public Fixed  CostEnergy  = Fixed.Zero;
         public int    CostOre;
         public int    CostCrystal;
@@ -333,6 +336,7 @@ namespace ProjectChimera.Core.Definitions
             Id          = Id,
             DisplayName = DisplayName,
             Targeting   = Targeting,
+            Activation  = Activation,
             CostEnergy  = CostEnergy,
             CostOre     = CostOre,
             CostCrystal = CostCrystal,
@@ -346,6 +350,7 @@ namespace ProjectChimera.Core.Definitions
             Id          = def.Id,
             DisplayName = def.DisplayName,
             Targeting   = def.Targeting,
+            Activation  = def.Activation,
             CostEnergy  = def.CostEnergy,
             CostOre     = def.CostOre,
             CostCrystal = def.CostCrystal,

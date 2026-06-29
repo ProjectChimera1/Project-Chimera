@@ -62,6 +62,12 @@
          Integer/Fixed-only → CROSS-PLATFORM SAFE, compared on both CI legs. NEW file; goldens above untouched. -->
     <None Remove="Golden\ability-cast-scenario.golden.txt" />
     <EmbeddedResource Include="Golden\ability-cast-scenario.golden.txt" />
+    <!-- Story 2.6 (AC4) — passive-active golden (an aura owner buffing an armored ally, a Neutral on-hit attacker,
+         and a self-regen unit; Player2 empty so the AI no-ops). First golden exercising all three passive drivers
+         AND the v8 EffectiveArmor fold with a non-zero armor value. Integer/Fixed-only → CROSS-PLATFORM SAFE,
+         compared on both CI legs. NEW file; goldens above are re-baselined once for the v8 fold. -->
+    <None Remove="Golden\passive-scenario.golden.txt" />
+    <EmbeddedResource Include="Golden\passive-scenario.golden.txt" />
   </ItemGroup>
 
   <ItemGroup>

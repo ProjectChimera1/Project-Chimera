@@ -1,0 +1,7 @@
+{
+  "id": "onhit_searing",
+  "display_name": "Searing Strikes",
+  "targeting": "None",
+  "activation": "on_hit",
+  "effect": { "kind": "damage", "amount": 15, "damage_type": "Magic" }
+}

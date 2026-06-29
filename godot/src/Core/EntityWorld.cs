@@ -164,6 +164,15 @@ namespace ProjectChimera.Core
         public readonly Fixed[] BaseAttackDamage;
         /// <summary>Effective attack damage = <see cref="BaseAttackDamage"/> + modifier deltas; the value <see cref="ProjectChimera.Combat.CombatSystem"/> deals. == Base in 2.2a (unhashed; folds in 2.2b).</summary>
         public readonly Fixed[] EffectiveAttackDamage;
+        /// <summary>Authored base armor — flat post-matrix damage reduction (Story 2.6, Decision #6). Immutable in-tick;
+        /// the source for the effective recompute. Copied from <see cref="Core.Definitions.UnitDefinition.Armor"/> via
+        /// <see cref="ApplyUnitDefinition"/>. Spawn-constant/peer-identical → NOT folded (the <see cref="BaseAttackDamage"/> posture).</summary>
+        public readonly Fixed[] BaseArmor;
+        /// <summary>Effective armor = <see cref="BaseArmor"/> + modifier deltas (aura/buff grants). The flat value
+        /// <see cref="ProjectChimera.Combat.DamageResolver"/> subtracts from post-matrix damage (floored at 0). It mutates
+        /// mid-match the moment an armor modifier exists → FOLDED into <see cref="SimChecksum"/> (v8) — the ONE intentional
+        /// fold of Story 2.6.</summary>
+        public readonly Fixed[] EffectiveArmor;
         public readonly Fixed[] AttackSpeed;       // Seconds between attacks
 
         // --- Ability resource pool (Story 2.2a substrate; ModifierStore debits it 2.2b; sourced from the def 2.4a) ---
@@ -316,6 +325,18 @@ namespace ProjectChimera.Core
         /// </summary>
         public readonly int[] PendingCastTarget;
 
+        // --- Passive ability registration (Story 2.6, FR-9) — per-entity AbilityRegistry indices partitioned by
+        //     activation; each is one index or −1 (none). Spawn-constant authored data → NOT folded (the AbilityId
+        //     posture); written ONLY via ApplyUnitDefinition (A2). Read by the passive drivers: the aura pass
+        //     (AbilityCastSystem) reads AuraAbilityIndex, the on-hit rider (CombatSystem) reads OnHitAbilityIndex,
+        //     the spawn-install seam reads SelfPassiveAbilityIndex.
+        /// <summary>Registry index of this unit's while-alive AURA passive (−1 = none). NOT folded (authored).</summary>
+        public readonly int[] AuraAbilityIndex;
+        /// <summary>Registry index of this unit's ON-HIT rider passive (−1 = none). NOT folded (authored).</summary>
+        public readonly int[] OnHitAbilityIndex;
+        /// <summary>Registry index of this unit's WHILE-ALIVE self-passive installed at spawn (−1 = none). NOT folded (authored).</summary>
+        public readonly int[] SelfPassiveAbilityIndex;
+
         // --- Gatherer data (workers only; Inactive for all other units) ---
         public readonly GatherState[] GatherState;
         public readonly int[]         GatherTarget;   // ResourceNodeStore index (-1 = none)
@@ -342,6 +363,18 @@ namespace ProjectChimera.Core
         /// until bound regardless, and the <c>?.Invoke</c> call site guards it.)
         /// </summary>
         public Action<int> OnDestroy;
+
+        /// <summary>
+        /// Per-id lifecycle callback fired synchronously at the END of <see cref="ApplyUnitDefinition"/> — AFTER every
+        /// def-derived field (including the passive-registration indices) is written. The Story 2.6 passive
+        /// spawn-installer (subscribed in <see cref="Core.Sim.SimulationHost"/>) installs a unit's <c>while_alive</c>
+        /// self-passive exactly once per def-based spawn, through the SINGLE def→SoA mapper — so it can never be
+        /// forgotten in a spawn path (the A2 rule, symmetric with <see cref="OnDestroy"/>). A bare
+        /// <c>Action&lt;int&gt;</c> so <c>EntityWorld</c> (Core) keeps zero dependency on the Effects layer. NOTE:
+        /// <c>RestoreUnit</c> (editor snapshot) does not call <see cref="ApplyUnitDefinition"/>, so restored units get
+        /// no passives — consistent with the standing <c>UnitSnapshot</c> carve-off (documented, not fixed here).
+        /// </summary>
+        public Action<int> OnUnitDefinitionApplied;
 
         private int _nextId;
         private readonly int[] _freeList;
@@ -371,6 +404,8 @@ namespace ProjectChimera.Core
             AttackRange = new Fixed[MAX_ENTITIES];
             BaseAttackDamage = new Fixed[MAX_ENTITIES];
             EffectiveAttackDamage = new Fixed[MAX_ENTITIES];
+            BaseArmor      = new Fixed[MAX_ENTITIES];   // Story 2.6 (authored — NOT folded)
+            EffectiveArmor = new Fixed[MAX_ENTITIES];   // Story 2.6 (folded v8)
             AttackSpeed = new Fixed[MAX_ENTITIES];
             Energy         = new Fixed[MAX_ENTITIES];
             MaxEnergy      = new Fixed[MAX_ENTITIES];
@@ -397,6 +432,9 @@ namespace ProjectChimera.Core
             AbilityCount         = new byte[MAX_ENTITIES];                          // Story 2.4a (v7 fold loop bound)
             PendingCastSlot      = new byte[MAX_ENTITIES];                          // Story 2.4a (transient — NOT folded)
             PendingCastTarget    = new int[MAX_ENTITIES];                           // Story 2.4a (transient — NOT folded)
+            AuraAbilityIndex        = new int[MAX_ENTITIES];                        // Story 2.6 (authored — NOT folded)
+            OnHitAbilityIndex       = new int[MAX_ENTITIES];                        // Story 2.6 (authored — NOT folded)
+            SelfPassiveAbilityIndex = new int[MAX_ENTITIES];                        // Story 2.6 (authored — NOT folded)
             GatherState    = new GatherState[MAX_ENTITIES];
             GatherTarget   = new int[MAX_ENTITIES];
             CarryAmount    = new Fixed[MAX_ENTITIES];
@@ -455,6 +493,8 @@ namespace ProjectChimera.Core
             AttackRange[id]   = Fixed.Zero;
             BaseAttackDamage[id]       = Fixed.Zero;
             EffectiveAttackDamage[id]  = Fixed.Zero;
+            BaseArmor[id]              = Fixed.Zero;   // Story 2.6: ApplyUnitDefinition sets from def.Armor for def units
+            EffectiveArmor[id]         = Fixed.Zero;
             AttackSpeed[id]   = Fixed.Zero;
             // Story 2.2a substrate / 2.4a: ability-resource pool defaults to empty here; ApplyUnitDefinition sets it
             // from UnitDefinition.MaxEnergy (start full) for ability-bearing units. A unit with no def stays at 0.
@@ -491,6 +531,11 @@ namespace ProjectChimera.Core
             AbilityCount[id]      = 0;
             PendingCastSlot[id]   = NO_PENDING_CAST;
             PendingCastTarget[id] = -1;
+            // Story 2.6: a recycled slot must NEVER carry the prior occupant's passive registration (the SoA-recycle
+            // trap). ApplyUnitDefinition re-partitions these from the def for def-based units; default −1 (none) here.
+            AuraAbilityIndex[id]        = -1;
+            OnHitAbilityIndex[id]       = -1;
+            SelfPassiveAbilityIndex[id] = -1;
             int abResetBase = id * MAX_ABILITIES_PER_UNIT;
             for (int s = 0; s < MAX_ABILITIES_PER_UNIT; s++)
             {
@@ -526,6 +571,10 @@ namespace ProjectChimera.Core
             // authored, in-tick-immutable source) then mirror into Effective (== Base until a modifier applies in 2.2b).
             BaseAttackDamage[id]      = Fixed.FromFloat(def.AttackDamage);
             EffectiveAttackDamage[id] = BaseAttackDamage[id];
+            // Story 2.6 (A2): armor mirrors the AttackDamage Base→Effective pattern. Base is authored (def.Armor,
+            // float→Fixed at this single boundary like the other stats); Effective == Base until a modifier applies.
+            BaseArmor[id]      = Fixed.FromFloat(def.Armor);
+            EffectiveArmor[id] = BaseArmor[id];
             AttackSpeed[id]  = Fixed.FromFloat(def.AttackSpeed);
             DamageTypeOf[id] = def.ParsedDamageType;
             ArmorTypeOf[id]  = def.ParsedArmorType;
@@ -552,6 +601,17 @@ namespace ProjectChimera.Core
             int abApplyBase = id * MAX_ABILITIES_PER_UNIT;
             for (int s = 0; s < abN; s++)
                 AbilityId[abApplyBase + s] = def.AbilityIndices[s];
+
+            // Story 2.6 (A2): the per-entity passive registration, partitioned by activation at scenario link
+            // (UnitDefinition.ResolveAbilities). Authored/peer-identical → NOT folded (the AbilityId posture).
+            AuraAbilityIndex[id]        = def.AuraAbilityIndex;
+            OnHitAbilityIndex[id]       = def.OnHitAbilityIndex;
+            SelfPassiveAbilityIndex[id] = def.SelfPassiveAbilityIndex;
+
+            // Story 2.6: fire the spawn-install seam LAST — every field the installer reads (SelfPassiveAbilityIndex,
+            // faction, position) is now set. The subscriber (wired in SimulationHost) installs a while_alive
+            // self-passive exactly once per def-based spawn. Symmetric with the OnDestroy seam; A2-safe (single mapper).
+            OnUnitDefinitionApplied?.Invoke(id);
         }
 
         /// <summary>

@@ -52,6 +52,13 @@ namespace ProjectChimera.Core.Definitions
         [JsonPropertyName("armor_type")]
         public string ArmorType { get; set; } = "Unarmored";
 
+        /// <summary>Flat base armor (Story 2.6, Decision #6) — subtracted from post-matrix damage in
+        /// <c>DamageResolver</c> (floored at 0). Authored float like the other stats; quantized once to
+        /// <see cref="ProjectChimera.Core.Fixed"/> in <c>EntityWorld.ApplyUnitDefinition</c>. 0 = no armor (default →
+        /// combat outcomes unchanged). Distinct from <see cref="ArmorType"/> (the damage-matrix axis).</summary>
+        [JsonPropertyName("armor")]
+        public float Armor { get; set; } = 0f;
+
         /// <summary>Ore cost.</summary>
         [JsonPropertyName("cost_ore")]
         public int CostOre { get; set; } = 50;
@@ -136,29 +143,67 @@ namespace ProjectChimera.Core.Definitions
         [JsonIgnore]
         public int[] AbilityIndices { get; private set; } = System.Array.Empty<int>();
 
+        /// <summary>Registry index of this unit's while-alive AURA passive (−1 = none), back-filled by
+        /// <see cref="ResolveAbilities"/>. Copied to <c>EntityWorld.AuraAbilityIndex</c> via ApplyUnitDefinition. Excluded from JSON.</summary>
+        [JsonIgnore]
+        public int AuraAbilityIndex { get; private set; } = -1;
+
+        /// <summary>Registry index of this unit's ON-HIT rider passive (−1 = none), back-filled by
+        /// <see cref="ResolveAbilities"/>. Copied to <c>EntityWorld.OnHitAbilityIndex</c> via ApplyUnitDefinition. Excluded from JSON.</summary>
+        [JsonIgnore]
+        public int OnHitAbilityIndex { get; private set; } = -1;
+
+        /// <summary>Registry index of this unit's WHILE-ALIVE self-passive (−1 = none), back-filled by
+        /// <see cref="ResolveAbilities"/>. Copied to <c>EntityWorld.SelfPassiveAbilityIndex</c> via ApplyUnitDefinition. Excluded from JSON.</summary>
+        [JsonIgnore]
+        public int SelfPassiveAbilityIndex { get; private set; } = -1;
+
         /// <summary>
         /// Resolve each <see cref="Abilities"/> id to its <paramref name="registry"/> index, DROPPING any id the
         /// registry does not contain (a unit referencing an unknown ability gets fewer slots, never a crash — the
-        /// validator already guaranteed each registry ability is valid) and clamping to
-        /// <see cref="ProjectChimera.Core.EntityWorld.MAX_ABILITIES_PER_UNIT"/>. Run once at scenario link, before
-        /// any spawn; idempotent. (Allocation here is fine — link-time, not the tick.)
+        /// validator already guaranteed each registry ability is valid), and PARTITION by activation (Story 2.6): an
+        /// ACTIVE ability fills a player-cast slot (<see cref="AbilityIndices"/>, clamped to
+        /// <see cref="ProjectChimera.Core.EntityWorld.MAX_ABILITIES_PER_UNIT"/>); a passive fills its single dedicated
+        /// slot (<see cref="AuraAbilityIndex"/>/<see cref="OnHitAbilityIndex"/>/<see cref="SelfPassiveAbilityIndex"/>;
+        /// the FIRST of each kind wins). Passives are kept OUT of <see cref="AbilityIndices"/> so they never appear as
+        /// castable on the command card. Run once at scenario link, before any spawn; idempotent. (Allocation here is
+        /// fine — link-time, not the tick.)
         /// </summary>
         public void ResolveAbilities(AbilityRegistry registry)
         {
+            AbilityIndices          = System.Array.Empty<int>();
+            AuraAbilityIndex        = -1;
+            OnHitAbilityIndex       = -1;
+            SelfPassiveAbilityIndex = -1;
+
             if (registry is null || Abilities.Length == 0)
-            {
-                AbilityIndices = System.Array.Empty<int>();
                 return;
-            }
 
             int max = ProjectChimera.Core.EntityWorld.MAX_ABILITIES_PER_UNIT;
-            var resolved = new System.Collections.Generic.List<int>(Abilities.Length);
-            for (int i = 0; i < Abilities.Length && resolved.Count < max; i++)
+            var active = new System.Collections.Generic.List<int>(Abilities.Length);
+            for (int i = 0; i < Abilities.Length; i++)
             {
                 int idx = registry.IndexOf(Abilities[i]);
-                if (idx >= 0) resolved.Add(idx); // drop unknown ids (never crash)
+                if (idx < 0) continue; // drop unknown ids (never crash)
+
+                // The registry holds only validated abilities → ParsedActivation is non-null; default-to-Active is defensive.
+                switch (registry.Get(idx).ParsedActivation ?? PassiveActivation.Active)
+                {
+                    case PassiveActivation.Aura:
+                        if (AuraAbilityIndex < 0) AuraAbilityIndex = idx;
+                        break;
+                    case PassiveActivation.OnHit:
+                        if (OnHitAbilityIndex < 0) OnHitAbilityIndex = idx;
+                        break;
+                    case PassiveActivation.WhileAlive:
+                        if (SelfPassiveAbilityIndex < 0) SelfPassiveAbilityIndex = idx;
+                        break;
+                    default: // Active — a player-cast slot (capped)
+                        if (active.Count < max) active.Add(idx);
+                        break;
+                }
             }
-            AbilityIndices = resolved.ToArray();
+            AbilityIndices = active.ToArray();
         }
 
         // ── Enum conversions ────────────────────────────────────────────────────

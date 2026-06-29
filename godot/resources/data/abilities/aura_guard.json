@@ -1,0 +1,22 @@
+{
+  "id": "aura_guard",
+  "display_name": "Guardian Aura",
+  "targeting": "None",
+  "activation": "aura",
+  "effect": {
+    "kind": "search_area",
+    "radius": 5,
+    "filter": "Ally",
+    "child": {
+      "kind": "apply_modifier",
+      "modifier": {
+        "id": 2001,
+        "duration_ticks": 2,
+        "stacking": "Refresh",
+        "max_stacks": 1,
+        "armor_delta": 5,
+        "status": "None"
+      }
+    }
+  }
+}

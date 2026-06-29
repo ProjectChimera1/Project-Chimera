@@ -155,6 +155,7 @@ namespace ProjectChimera.Core.Definitions
             WriteFixed(writer, "max_health_delta", m.MaxHealthDelta, options);
             WriteFixed(writer, "attack_damage_delta", m.AttackDamageDelta, options);
             WriteFixed(writer, "move_speed_delta", m.MoveSpeedDelta, options);
+            WriteFixed(writer, "armor_delta", m.ArmorDelta, options);
             WriteEnum(writer, "status", m.Status, options);
             WriteOptionalChild(writer, "period_effect", m.PeriodEffect, options);
             writer.WriteNumber("period_ticks", m.PeriodTicks);
@@ -276,7 +277,7 @@ namespace ProjectChimera.Core.Definitions
 
             RejectUnknownProperties(el, path,
                 "id", "duration_ticks", "stacking", "max_stacks",
-                "max_health_delta", "attack_damage_delta", "move_speed_delta",
+                "max_health_delta", "attack_damage_delta", "move_speed_delta", "armor_delta",
                 "status", "period_effect", "period_ticks");
 
             int id                 = ReadInt(el, "id", path, 0);
@@ -286,6 +287,7 @@ namespace ProjectChimera.Core.Definitions
             Fixed maxHealthDelta   = ReadFixedOpt(el, "max_health_delta", path, options, Fixed.Zero);
             Fixed attackDamageDelta = ReadFixedOpt(el, "attack_damage_delta", path, options, Fixed.Zero);
             Fixed moveSpeedDelta   = ReadFixedOpt(el, "move_speed_delta", path, options, Fixed.Zero);
+            Fixed armorDelta       = ReadFixedOpt(el, "armor_delta", path, options, Fixed.Zero);   // Story 2.6
             StatusFlags status     = ReadEnum<StatusFlags>(el, "status", path, options, required: false, fallback: StatusFlags.None);
             // The modifier's periodic effect (DoT/HoT) is itself a nested effect node — recurse (depth+1, conservative
             // parse-time bound; ApplyModifier is a structural leaf so this is for stack-safety, not EffectBounds depth).
@@ -294,7 +296,7 @@ namespace ProjectChimera.Core.Definitions
 
             return new Modifier(id, durationTicks, stacking, maxStacks,
                                 maxHealthDelta, attackDamageDelta, moveSpeedDelta,
-                                status, periodEffect, periodTicks);
+                                status, periodEffect, periodTicks, armorDelta);
         }
 
         // ── Field readers (each wraps a value-converter error with the located field path) ──

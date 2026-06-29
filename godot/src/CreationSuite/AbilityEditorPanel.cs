@@ -63,6 +63,13 @@ namespace ProjectChimera.CreationSuite
         private Label        _targetingHint = null!;
         private string       _targetingName = "Self";
 
+        // ── Activation (Story 2.6 — the closed passive model: active | aura | on_hit | while_alive) ──
+        private OptionButton _activationBtn  = null!;
+        private Label        _activationHint = null!;
+        private string       _activationName = "active";
+        /// <summary>A passive activation (anything but <c>active</c>) — drives the passive-authoring affordances.</summary>
+        private bool IsPassive => _activationName != "active";
+
         // ── Simple body ──
         private OptionButton      _presetBtn = null!;
         private VBoxContainer     _simpleRows = null!;
@@ -179,6 +186,18 @@ namespace ProjectChimera.CreationSuite
             _targetingHint.AddThemeFontSizeOverride("font_size", 10);
             _targetingHint.AddThemeColorOverride("font_color", HintText);
             content.AddChild(_targetingHint);
+
+            // Activation selector (Story 2.6) — the CLOSED passive set, exactly these four and nothing else (AC5). A
+            // passive choice reveals the passive affordances, fixes targeting, hides cost/cooldown, and routes the
+            // effect graph through the Advanced structured composer (no Simple preset form for passives).
+            _activationBtn = AddDropdownRow(content, "Activation", new[]
+            {
+                ("Active (player-cast)", 0), ("Aura (while-alive)", 1), ("On-hit", 2), ("While-alive (self)", 3),
+            }, selectedId: 0, OnActivationSelected);
+            _activationHint = new Label { AutowrapMode = TextServer.AutowrapMode.Word, Visible = false };
+            _activationHint.AddThemeFontSizeOverride("font_size", 10);
+            _activationHint.AddThemeColorOverride("font_color", HintText);
+            content.AddChild(_activationHint);
 
             // Simple pane.
             _simplePane = BuildSimplePane();
@@ -358,6 +377,70 @@ namespace ProjectChimera.CreationSuite
             _targetingHint.Visible = name == "GroundPoint";
         }
 
+        // ── Activation (Story 2.6 passive mode) ─────────────────────────────────
+
+        private void OnActivationSelected(int id)
+        {
+            string name = id switch { 0 => "active", 1 => "aura", 2 => "on_hit", 3 => "while_alive", _ => "active" };
+            SetActivation(name, userInitiated: true);
+            ClearStatus();
+        }
+
+        /// <summary>
+        /// Apply an activation choice. A passive (aura/on_hit/while_alive) fixes targeting to its shape rule
+        /// (aura/on_hit ⇒ None, while_alive ⇒ Self), hides cost/cooldown (Decision #4) and zeroes them on the draft,
+        /// shows the shape hint, and routes authoring into the Advanced structured composer (a passive has no Simple
+        /// preset form). <paramref name="userInitiated"/> is false on the load path (<see cref="ReflectModelIntoForm"/>),
+        /// where the mode is set by the caller — so loading a passive does not yank the user into Advanced twice.
+        /// </summary>
+        private void SetActivation(string name, bool userInitiated)
+        {
+            _activationName = name;
+            int id = name switch { "active" => 0, "aura" => 1, "on_hit" => 2, "while_alive" => 3, _ => 0 };
+            SelectDropdownId(_activationBtn, id);
+
+            bool passive = IsPassive;
+            ApplyPassiveAffordances(passive);   // hide + zero cost/cooldown (Decision #4)
+
+            if (passive)
+            {
+                // Shape-rule targeting (AC5): aura/on_hit ⇒ None; while_alive ⇒ Self. Lock the dropdown so the
+                // creator can't compose an invalid passive targeting.
+                SetTargeting(name == "while_alive" ? "Self" : "None");
+                _targetingBtn.Disabled = true;
+
+                _activationHint.Text = name switch
+                {
+                    "aura"        => "Aura: every tick, grant a Modifier to allies in range. Build a Search Area (filter Ally) → Apply Modifier. Targeting None; no cost/cooldown.",
+                    "on_hit"      => "On-hit: runs your effect graph when this unit's melee attack lands — and not otherwise. Targeting None; no cost/cooldown.",
+                    "while_alive" => "While-alive (self): a permanent Apply Modifier (Duration < 0) OR a Persistent (period effect), installed at spawn. Targeting Self; no cost/cooldown.",
+                    _             => "",
+                };
+                _activationHint.Visible = true;
+
+                // No Simple preset form for passives — author the graph in the structured composer.
+                if (userInitiated && _simpleMode) { SwitchMode(simple: false); EnterAdvancedFromSimple(); }
+                _simpleBtn.Disabled = true;
+            }
+            else
+            {
+                _targetingBtn.Disabled  = false;
+                _simpleBtn.Disabled     = false;
+                _activationHint.Visible = false;
+            }
+        }
+
+        /// <summary>Show/hide the Advanced cost &amp; cooldown section and, for a passive, zero those values on the
+        /// draft (Decision #4 — a passive carries no cost/cooldown; the validator rejects a non-zero one).</summary>
+        private void ApplyPassiveAffordances(bool passive)
+        {
+            if (_advCostSection != null!) _advCostSection.Visible = !passive;
+            if (passive)
+            {
+                _draft.CostEnergy = Fixed.Zero; _draft.CostOre = 0; _draft.CostCrystal = 0; _draft.Cooldown = Fixed.Zero;
+            }
+        }
+
         // ── Model build ─────────────────────────────────────────────────────────
 
         /// <summary>Build the in-memory ability from the Simple form: preset effect + costs + the header overrides.</summary>
@@ -366,7 +449,8 @@ namespace ProjectChimera.CreationSuite
             _params.Id = SanitizeId(_idEdit.Text);
             _params.DisplayName = _nameEdit.Text;
             AbilityDefinition def = AbilityPresets.Build(_presetKind, _params);
-            def.Targeting = _targetingName;     // header override (the creator's explicit choice wins)
+            def.Targeting  = _targetingName;     // header override (the creator's explicit choice wins)
+            def.Activation = _activationName;    // Story 2.6 (always "active" in Simple — passives author in Advanced)
             return def;
         }
 
@@ -409,6 +493,9 @@ namespace ProjectChimera.CreationSuite
             _idEdit.Text   = def.Id;
             _nameEdit.Text = def.DisplayName;
             SetTargeting(def.Targeting);
+            // Story 2.6 — reflect the activation (drives passive affordances). Load-path: the caller owns the mode
+            // switch (LoadFromRegistry opens non-preset passives in Advanced), so do not double-switch here.
+            SetActivation(def.Activation, userInitiated: false);
 
             if (AbilityPresetMatcher.TryDetectPreset(def, out AbilityPresets.Kind kind, out AbilityPresets.Params p))
             {

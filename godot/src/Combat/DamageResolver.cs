@@ -33,9 +33,10 @@ namespace ProjectChimera.Combat
     }
 
     /// <summary>
-    /// The single damage code path (AR-26 / FR-44). final = amount * matrix[type][armor]
-    /// (NO flat armor subtraction — matches the as-built formula). Unifies the formula + Health
-    /// subtraction + death sequence (UnitKilled event, RecordKill, Destroy) across the three call sites.
+    /// The single damage code path (AR-26 / FR-44). final = max(0, amount * matrix[type][armor] − EffectiveArmor)
+    /// (Story 2.6 added the flat post-matrix armor term, floored at 0; with the default BaseArmor=0 it is a no-op, so
+    /// pre-2.6 combat outcomes are unchanged). Unifies the formula + Health subtraction + death sequence (UnitKilled
+    /// event, RecordKill, Destroy) across the three call sites.
     /// The pre-hit feedback event and the melee attacker-cleanup stay at the call sites (they differ per
     /// site), so this preserves the exact event/death order the golden checksums pin (Story 1.6 AC2).
     /// </summary>
@@ -59,7 +60,10 @@ namespace ProjectChimera.Combat
             // event or an inflated RecordKill by hitting an already-dead target.
             if (!world.IsAlive(t)) return false;
             Fixed multiplier = ctx.Table.Get(type, ctx.TargetArmor);
-            Fixed damage = amount * multiplier; // NO − armorValue (as-built formula; D8)
+            // Story 2.6 (Decision #6): flat post-matrix armor subtraction, floored at 0 so a hit never heals. With the
+            // default BaseArmor=0 (and no armor modifier) EffectiveArmor=0 → the term is −0, leaving every pre-2.6
+            // combat outcome unchanged; the goldens move ONLY from the EffectiveArmor checksum fold (v8), not the math.
+            Fixed damage = Fixed.Max(Fixed.Zero, amount * multiplier - world.EffectiveArmor[t]);
             world.Health[t] = world.Health[t] - damage;
             if (world.Health[t] <= Fixed.Zero)
             {

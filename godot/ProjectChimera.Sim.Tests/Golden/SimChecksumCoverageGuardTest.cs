@@ -17,7 +17,7 @@ namespace ProjectChimera.Sim.Tests.Golden
     ///      mutation. If a future story adds a public per-faction array to ResourceStore but forgets to fold it
     ///      into the checksum, mutating that array leaves the hash unchanged and this test FAILS, naming the
     ///      uncovered field. This proves *actual* coverage instead of a hand-maintained list that silently drifts.
-    ///   2. <see cref="KnownWorldState_ProducesPinnedV6Hash"/> — a snapshot/tripwire: a hand-built fixed world
+    ///   2. <see cref="KnownWorldState_ProducesPinnedV8Hash"/> — a snapshot/tripwire: a hand-built fixed world
     ///      hashes to a committed constant. Any unintended change to the algorithm (reordering mixes, adding or
     ///      dropping a field) moves the constant and turns this red, forcing a conscious re-pin + AlgoVersion bump.
     ///
@@ -92,24 +92,27 @@ namespace ProjectChimera.Sim.Tests.Golden
         /// Windows/Linux because every hashed field is Fixed and the RNG seed is an explicit constant.
         /// (Story 2.2b: bumped v5→v6 for Effective* / Energy / StatusFlagsOf + the ModifierStore instance state.
         /// Story 2.4a: bumped v6→v7 for the per-entity AbilityCooldownTicks fold — the known-state world has no
-        /// abilities, so AbilityCount == 0 and the fold adds Mix(0) per entity, yet the hash still moves.)
+        /// abilities, so AbilityCount == 0 and the fold adds Mix(0) per entity, yet the hash still moves.
+        /// Story 2.6: bumped v7→v8 for the per-entity EffectiveArmor fold — the known-state world has no armor
+        /// (EffectiveArmor == 0 per entity, the Create default), so the fold adds one Mix(0) per entity, yet the
+        /// hash still moves.)
         /// </summary>
         [Fact]
-        public void KnownWorldState_ProducesPinnedV7Hash()
+        public void KnownWorldState_ProducesPinnedV8Hash()
         {
-            // Algorithm version must be exactly 7 (Story 2.4a's ability-cooldown fold). If this fails, the const below is stale.
-            Assert.Equal(7, SimChecksum.AlgoVersion);
+            // Algorithm version must be exactly 8 (Story 2.6's EffectiveArmor fold). If this fails, the const below is stale.
+            Assert.Equal(8, SimChecksum.AlgoVersion);
 
             uint actual = ComputeKnownStateHash();
 
-            // ── Pinned v7 hash for the fixed world built by ComputeKnownStateHash() ───────────────────────────
+            // ── Pinned v8 hash for the fixed world built by ComputeKnownStateHash() ───────────────────────────
             // An intentional SimChecksum algorithm change must update this value AND bump SimChecksum.AlgoVersion.
-            // The known-state world has no abilities (AbilityCount == 0 per entity), so the v7 fold adds one Mix(0)
-            // per alive entity — the hash moves from v6 purely by the added count mixes (no real cooldown state).
-            const uint ExpectedV7Hash = 0xEB4B548E; // recorded from a green v7 run; re-pin only on an intentional algo change
-            Assert.True(actual == ExpectedV7Hash,
-                $"Known-state v7 checksum changed: expected 0x{ExpectedV7Hash:X8}, actual 0x{actual:X8}. " +
-                $"If this is an INTENTIONAL algorithm change, re-pin ExpectedV7Hash to 0x{actual:X8} and bump " +
+            // The known-state world has no armor (EffectiveArmor == 0 per entity, the Create default), so the v8
+            // fold adds one Mix(0) per alive entity — the hash moves from v7 purely by the added field mixes.
+            const uint ExpectedV8Hash = 0x983D39AE; // recorded from a green v8 run; re-pin only on an intentional algo change
+            Assert.True(actual == ExpectedV8Hash,
+                $"Known-state v8 checksum changed: expected 0x{ExpectedV8Hash:X8}, actual 0x{actual:X8}. " +
+                $"If this is an INTENTIONAL algorithm change, re-pin ExpectedV8Hash to 0x{actual:X8} and bump " +
                 $"SimChecksum.AlgoVersion. If not, you broke the deterministic checksum — investigate.");
         }
 
@@ -206,6 +209,15 @@ namespace ProjectChimera.Sim.Tests.Golden
                                  Faction.Player1, Fixed.FromInt(10), Fixed.FromInt(3));
                 return () => w.EffectiveMoveSpeed[e] = Fixed.FromInt(99);
             });
+            // EffectiveArmor folded (v8, Story 2.6) — the buffable armor stat. A non-zero EffectiveArmor MUST move
+            // the hash; a no-move means the v8 fold is not reading the field. (BaseArmor is deliberately NOT proven
+            // here: it is authored/unfolded, the BaseAttackDamage posture — only EffectiveArmor is sim truth.)
+            AssertFieldFoldedIntoChecksum(buildings, resources, registry, w =>
+            {
+                int e = w.Create(new FixedVec3(Fixed.FromInt(1), Fixed.Zero, Fixed.FromInt(2)),
+                                 Faction.Player1, Fixed.FromInt(10), Fixed.FromInt(3));
+                return () => w.EffectiveArmor[e] = Fixed.FromInt(5);
+            });
             AssertFieldFoldedIntoChecksum(buildings, resources, registry, w =>
             {
                 int e = w.Create(new FixedVec3(Fixed.FromInt(1), Fixed.Zero, Fixed.FromInt(2)),
@@ -287,7 +299,7 @@ namespace ProjectChimera.Sim.Tests.Golden
         }
 
         /// <summary>
-        /// Build a small fixed world by hand and compute its v7 checksum. Fully self-contained: every hashed
+        /// Build a small fixed world by hand and compute its v8 checksum. Fully self-contained: every hashed
         /// field is set explicitly with <see cref="Fixed"/> so the pinned hash does not silently depend on store
         /// constructor defaults a future story might change. The shared <see cref="SimRng"/> is reseeded to a
         /// fixed known value so the RNG fold is pinned independently of EntityWorld.DEFAULT_RNG_SEED. The v5
