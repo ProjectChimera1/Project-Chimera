@@ -225,13 +225,15 @@ namespace ProjectChimera.CreationSuite
                 CustomMinimumSize = new Vector2(0, 32), SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
             };
             _simpleBtn   = MakePill("Simple", true);
-            _advancedBtn = MakePill("Advanced (raw JSON)", false);
+            _advancedBtn = MakePill("Advanced", false);
             _simpleBtn.AddThemeFontSizeOverride("font_size", 13);
             _advancedBtn.AddThemeFontSizeOverride("font_size", 13);
             _simpleBtn.Pressed   += SwitchToSimpleFromAdvanced;
             // Re-entry guard (mirrors SwitchToSimpleFromAdvanced): re-clicking the ALREADY-active Advanced pill must
-            // NOT re-run ShowJson — that would re-render from the Simple model and clobber hand-edited raw JSON.
-            _advancedBtn.Pressed += () => { if (!_simpleMode) return; SwitchMode(simple: false); ShowJson(); };
+            // NOT re-seed/re-serialize — that would rebuild the structured tree from the Simple model and clobber
+            // in-progress Advanced edits. Story 2.5b: entering Advanced seeds the structured composer from the
+            // current Simple model (EnterAdvancedFromSimple), then renders the tree + serializes the raw-JSON pane.
+            _advancedBtn.Pressed += () => { if (!_simpleMode) return; SwitchMode(simple: false); EnterAdvancedFromSimple(); };
             pillRow.AddChild(_simpleBtn);
             pillRow.AddChild(_advancedBtn);
         }
@@ -250,35 +252,9 @@ namespace ProjectChimera.CreationSuite
             return pane;
         }
 
-        private Control BuildAdvancedPane()
-        {
-            var pane = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill, Visible = false };
-            pane.AddThemeConstantOverride("separation", 6);
-
-            AddSectionHeader(pane, "Raw JSON (escape hatch)");
-            var hint = new Label
-            {
-                Text = "Edit the ability JSON directly. 'Apply' parses + validates and reflects back into the form; 'Show' re-renders from the form.",
-                AutowrapMode = TextServer.AutowrapMode.Word,
-            };
-            hint.AddThemeFontSizeOverride("font_size", 10);
-            hint.AddThemeColorOverride("font_color", HintText);
-            pane.AddChild(hint);
-
-            _jsonPane = MakeJsonPane();
-            pane.AddChild(_jsonPane);
-
-            var btnRow = new HBoxContainer();
-            btnRow.AddThemeConstantOverride("separation", 8);
-            pane.AddChild(btnRow);
-            var showBtn = new Button { Text = "Show JSON", SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
-            showBtn.Pressed += ShowJson;
-            btnRow.AddChild(showBtn);
-            var applyBtn = new Button { Text = "Apply JSON", SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
-            applyBtn.Pressed += ApplyJson;
-            btnRow.AddChild(applyBtn);
-            return pane;
-        }
+        // BuildAdvancedPane() now lives in the partial AbilityEditorPanel.Advanced.cs (Story 2.5b): the structured
+        // effect-tree composer + the kept (collapsible) raw-JSON escape hatch. It still assigns _jsonPane + wires
+        // Show/Apply, so the raw-JSON round-trip path below is unchanged.
 
         // ── Mode + preset handlers ──────────────────────────────────────────────
 
@@ -303,20 +279,18 @@ namespace ProjectChimera.CreationSuite
         {
             if (_simpleMode) return;   // defensive: the grouped pill won't re-fire Pressed when already Simple
 
-            AbilityValidationResult r = AbilityLoader.Load(_jsonPane.Text, CurrentEditorId());
-            if (!r.Ok)
+            // Story 2.5b — reconcile from the CANONICAL Advanced model (the structured tree; a dirty raw-JSON pane
+            // wins and re-seeds the tree), not just the raw pane, so the tree/JSON/header can never silently diverge.
+            AbilityDefinition? resolved = ResolveAdvancedDef();
+            if (resolved is null) { _advancedBtn.ButtonPressed = true; return; }   // invalid/incomplete: stay in Advanced (error shown)
+
+            if (!AbilityPresetMatcher.TryDetectPreset(resolved, out _, out _))
             {
-                ShowError("Fix the JSON before switching to Simple — " + r.Error);
+                ShowError("This effect graph has no Simple preset form — keep editing it in Advanced (structured composer or raw JSON).");
                 _advancedBtn.ButtonPressed = true;   // revert the pill; stay in Advanced (programmatic set ≠ Pressed)
                 return;
             }
-            if (!AbilityPresetMatcher.TryDetectPreset(r.Value.Value, out _, out _))
-            {
-                ShowError("This effect graph has no Simple preset form — keep editing it in Advanced (raw JSON).");
-                _advancedBtn.ButtonPressed = true;
-                return;
-            }
-            ReflectModelIntoForm(r.Value.Value);   // sets header + reflects the detected preset into the Simple body
+            ReflectModelIntoForm(resolved);   // sets header + reflects the detected preset into the Simple body
             SwitchMode(simple: true);
             ShowValid("Loaded into the Simple form.");
         }
@@ -402,8 +376,16 @@ namespace ProjectChimera.CreationSuite
         {
             try
             {
-                _jsonPane.Text = JsonSerializer.Serialize(BuildSimpleModel(), IndentedOptions);
+                // Story 2.5b: in Advanced, serialize the COMPOSED graph (the structured tree + header) — NOT
+                // BuildSimpleModel(); that was the #1 round-trip trap (2.5a deferred item 1) that silently overwrote a
+                // composed graph with the Simple preset. In Simple mode, unchanged.
+                AbilityDefinition model = _simpleMode ? BuildSimpleModel() : BuildAdvancedModel();
+                SetPaneText(JsonSerializer.Serialize(model, IndentedOptions));
                 ClearStatus();
+            }
+            catch (InvalidOperationException ex)   // a structurally-incomplete composed tree (e.g. a Search Area with no child yet)
+            {
+                ShowError(ex.Message);
             }
             catch (Exception ex)
             {
@@ -415,7 +397,8 @@ namespace ProjectChimera.CreationSuite
         {
             AbilityValidationResult r = AbilityLoader.Load(_jsonPane.Text, CurrentEditorId());
             if (!r.Ok) { ShowError(r.Error); return; }   // do NOT clobber the model on a bad edit
-            ReflectModelIntoForm(r.Value.Value);
+            ReflectModelIntoForm(r.Value.Value);          // seeds header + Simple form + the structured tree (Story 2.5b, Task 2.2)
+            _paneDirty = false;                            // the pane now matches the applied model
             ShowValid("Valid — applied to the form.");
         }
 
@@ -434,8 +417,12 @@ namespace ProjectChimera.CreationSuite
                 SelectDropdownId(_presetBtn, (int)kind);
                 RebuildSimpleRows();
             }
-            // else: an advanced graph (e.g. a Sequence) with no preset shape — leave the Simple form as-is; the
-            // graph remains fully editable through the raw-JSON pane (that IS the advanced path in 2.5a).
+            // else: a non-preset advanced graph (e.g. a Sequence) — the Simple form is left as-is; the structured
+            // composer (seeded just below) is its editable home (Story 2.5b), with the raw-JSON pane as the escape hatch.
+
+            // Story 2.5b — hook the structured-tree rebuild into the ONE shared load path (Task 2.4): clicking an
+            // existing multi-effect ability, Apply-JSON, and Advanced→Simple reconciliation all seed the composer here.
+            SeedDraftFromDef(def);
         }
 
         // Preset detection (TryDetectPreset / IsSimpleSelfBuff — the LOSSLESS data-loss guard) lives in the Godot-free
@@ -445,20 +432,28 @@ namespace ProjectChimera.CreationSuite
 
         private void DoSave(bool reloadAfter)
         {
-            AbilityValidationResult r;
             AbilityDefinition def;
             if (_simpleMode)
             {
                 def = BuildSimpleModel();
-                r = new AbilityValidator().Validate(def);
+                AbilityValidationResult r = new AbilityValidator().Validate(def);
+                if (!r.Ok) { ShowError(r.Error); return; }   // AC3: blocked, located error shown, NO file written
             }
             else
             {
-                r = AbilityLoader.Load(_jsonPane.Text, CurrentEditorId());
-                def = r.Ok ? r.Value.Value : null!;
+                // Story 2.5b — the structured tree is canonical; a manually-edited (dirty) raw-JSON pane wins and is
+                // folded back into the tree (ResolveAdvancedDef), so the three sources never silently diverge.
+                AbilityDefinition? resolved = ResolveAdvancedDef();
+                if (resolved is null) return;                // AC3: inline error already shown, NOTHING written
+                def = resolved;
+                // Decision #8 — block an un-sanitised content id in Advanced (filename would diverge from the id, and
+                // distinct ids could collide on one file). Panel-side; the validator only checks IsNullOrEmpty.
+                if (SanitizeId(def.Id) != def.Id)
+                {
+                    ShowError($"ability '{def.Id}'.id: contains characters outside [a-z0-9_]; rename before saving.");
+                    return;
+                }
             }
-
-            if (!r.Ok) { ShowError(r.Error); return; }   // AC3: blocked, located error shown, NO file written
 
             string fileId = SanitizeId(def.Id);
             if (string.IsNullOrEmpty(fileId)) { ShowError("ability id must contain at least one [a-z0-9_] character."); return; }
@@ -544,8 +539,8 @@ namespace ProjectChimera.CreationSuite
         /// Story 2.5b reuses this to seed its structured tree).</summary>
         private void LoadFromRegistry(AbilityDefinition def)
         {
-            ReflectModelIntoForm(def);
-            _jsonPane.Text = JsonSerializer.Serialize(def, IndentedOptions);
+            ReflectModelIntoForm(def);                                       // seeds header + Simple form + structured tree
+            SetPaneText(JsonSerializer.Serialize(def, IndentedOptions));     // raw-JSON view (programmatic → not a manual edit, not dirty)
             bool isPreset = AbilityPresetMatcher.TryDetectPreset(def, out _, out _);
             SwitchMode(simple: isPreset);
             ShowValid($"Loaded '{def.Id}' for editing.");
@@ -666,6 +661,15 @@ namespace ProjectChimera.CreationSuite
         private OptionButton AddDropdownRow(Control parent, string label, (string Label, int Id)[] items, int selectedId, Action<int> onSelect)
         {
             HBoxContainer row = MakeLabeledRow(parent, label);
+            OptionButton dropdown = MakeStyledDropdown(items, selectedId, onSelect);
+            row.AddChild(dropdown);
+            return dropdown;
+        }
+
+        /// <summary>The house-styled <see cref="OptionButton"/> half of <see cref="AddDropdownRow"/>, without the label
+        /// row — so the Story 2.5b structured composer can use the same palette for its bare per-node kind dropdown.</summary>
+        private OptionButton MakeStyledDropdown((string Label, int Id)[] items, int selectedId, Action<int> onSelect)
+        {
             var dropdown = new OptionButton { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill, CustomMinimumSize = new Vector2(0, 30) };
             dropdown.AddThemeFontSizeOverride("font_size", 13);
             dropdown.AddThemeColorOverride("font_color", BodyText);
@@ -677,7 +681,6 @@ namespace ProjectChimera.CreationSuite
             foreach (var (itemLabel, id) in items) dropdown.AddItem(itemLabel, id);
             SelectDropdownId(dropdown, selectedId);
             dropdown.ItemSelected += index => onSelect(dropdown.GetItemId((int)index));
-            row.AddChild(dropdown);
             return dropdown;
         }
 
