@@ -1,6 +1,10 @@
+---
+baseline_commit: 101bc404783cae3df8cdbd8a6283947c12cc16f6
+---
+
 # Story 2.5a: Ability Editor — Godot-free core, simple-preset mode, raw-JSON escape hatch, validated save & wiring
 
-Status: ready-for-dev
+Status: in-progress
 
 Depends on: 2.3 (done), 2.4b (done).
 
