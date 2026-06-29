@@ -71,6 +71,35 @@ namespace ProjectChimera.Sim.Tests.Definitions
             AssertSerializeRoundTrips(original, original.Id);
         }
 
+        // ── Hand-built apply_modifier with EVERY Modifier field at a NON-default value. Closes the coverage gap where ──
+        // ── across all other inputs 6 of the 10 modifier fields sat at their Read-fallback (max_stacks=1,           ──
+        // ── max_health_delta=0, stacking=Refresh, status=None, period_ticks=0, period_effect=null), so a WriteModifier ──
+        // ── regression that omitted any of those would still round-trip green. Here each is distinct + non-fallback. ──
+        [Fact]
+        public void ApplyModifier_AllFieldsNonDefault_SurvivesSerializeRoundTrip()
+        {
+            var original = new AbilityDefinition
+            {
+                Id          = "test_apply_modifier_full",
+                DisplayName = "Test Apply Modifier Full",
+                Targeting   = "Self",
+                CostEnergy  = Fixed.FromInt(20),
+                Cooldown    = Fixed.FromInt(8),
+                EffectGraph = new ApplyModifierEffect(new Modifier(
+                    id:                7,
+                    durationTicks:     200,
+                    stacking:          StackRule.Stack,                       // ≠ Refresh
+                    maxStacks:         3,                                      // ≠ 1
+                    maxHealthDelta:    Fixed.FromInt(50),                      // ≠ 0
+                    attackDamageDelta: Fixed.FromInt(8),
+                    moveSpeedDelta:    Fixed.FromInt(2),                       // ≠ 0
+                    status:            StatusFlags.Stunned | StatusFlags.Rooted, // ≠ None (OR-combo)
+                    periodEffect:      new HealEffect(Fixed.FromInt(3)),       // ≠ null (store-run HoT)
+                    periodTicks:       10)),                                   // ≠ 0
+            };
+            AssertSerializeRoundTrips(original, original.Id);
+        }
+
         /// <summary>
         /// Serialize through the canonical options, re-load through the fail-closed loader, and assert the parsed
         /// graph + scalar fields are identical (Fixed pinned by .Raw). The re-load also re-validates, so a round-trip

@@ -4,6 +4,7 @@ using System.IO;
 using System.Text.Json;
 using Godot;
 using ProjectChimera.Core;              // Fixed, ScenarioData
+using ProjectChimera.Combat;            // DamageType (lossless preset detection)
 using ProjectChimera.Core.Definitions;  // AbilityDefinition, AbilityPresets, AbilityValidator, AbilityLoader, ContentJson, AbilityRegistry
 using ProjectChimera.Effects;           // EffectNode shapes (preset round-trip detection)
 using ProjectChimera.UI;                // GameState, GameMode
@@ -26,6 +27,9 @@ namespace ProjectChimera.CreationSuite
         private const float PANEL_W = 480f;
         private const float PANEL_H = 660f;
         private const float MARGIN  = 12f;
+        // SpinBox upper bound for Fixed-backed fields = the 16.16 integer ceiling, so any value representable in the
+        // Fixed range reflects into the form WITHOUT a silent display-vs-model clamp (a loaded value can't exceed it).
+        private const double FixedSpinMax = 32767;
 
         // ── House palette (verbatim from SettingsPanel / ContentBrowserPanel; the design kit is Epic 3) ──
         private static readonly Color PanelBg    = new(0.10f, 0.11f, 0.16f, 0.98f);
@@ -226,7 +230,7 @@ namespace ProjectChimera.CreationSuite
             _advancedBtn = MakePill("Advanced (raw JSON)", false);
             _simpleBtn.AddThemeFontSizeOverride("font_size", 13);
             _advancedBtn.AddThemeFontSizeOverride("font_size", 13);
-            _simpleBtn.Pressed   += () => SwitchMode(simple: true);
+            _simpleBtn.Pressed   += SwitchToSimpleFromAdvanced;
             _advancedBtn.Pressed += () => { SwitchMode(simple: false); ShowJson(); };
             pillRow.AddChild(_simpleBtn);
             pillRow.AddChild(_advancedBtn);
@@ -287,6 +291,36 @@ namespace ProjectChimera.CreationSuite
             _advancedBtn.AddThemeColorOverride("font_color", simple ? DimText : Colors.White);
         }
 
+        /// <summary>
+        /// Switching Advanced→Simple RECONCILES the raw-JSON pane into the form first, so the two model sources can
+        /// never silently diverge (the data-loss footgun): the JSON is parsed + validated and, only if it maps
+        /// LOSSLESSLY onto a preset, reflected into the Simple form. An invalid or non-preset graph is REFUSED — the
+        /// pill snaps back to Advanced (preserving the raw text) with an inline note — so Simple mode only ever holds
+        /// a model it can faithfully re-save. (Simple→Advanced is the reverse: BuildModePill's Advanced handler
+        /// re-serialises the form via ShowJson, which is always in sync because we got here through this gate.)
+        /// </summary>
+        private void SwitchToSimpleFromAdvanced()
+        {
+            if (_simpleMode) return;   // defensive: the grouped pill won't re-fire Pressed when already Simple
+
+            AbilityValidationResult r = AbilityLoader.Load(_jsonPane.Text, CurrentEditorId());
+            if (!r.Ok)
+            {
+                ShowError("Fix the JSON before switching to Simple — " + r.Error);
+                _advancedBtn.ButtonPressed = true;   // revert the pill; stay in Advanced (programmatic set ≠ Pressed)
+                return;
+            }
+            if (!TryDetectPreset(r.Value.Value, out _, out _))
+            {
+                ShowError("This effect graph has no Simple preset form — keep editing it in Advanced (raw JSON).");
+                _advancedBtn.ButtonPressed = true;
+                return;
+            }
+            ReflectModelIntoForm(r.Value.Value);   // sets header + reflects the detected preset into the Simple body
+            SwitchMode(simple: true);
+            ShowValid("Loaded into the Simple form.");
+        }
+
         private void OnPresetSelected(int id) => SelectPreset((AbilityPresets.Kind)id, seedHeader: false);
 
         private void SelectPreset(AbilityPresets.Kind kind, bool seedHeader)
@@ -321,16 +355,16 @@ namespace ProjectChimera.CreationSuite
                 AbilityPresets.Kind.AoeNuke        => "Damage (per target)",
                 _ => "Amount",
             };
-            AddSpinRow(_simpleRows, amountLabel, 0, 9999, 1, FixedToDouble(_params.Amount), v => _params.Amount = ToFixed(v));
+            AddSpinRow(_simpleRows, amountLabel, 0, FixedSpinMax, 1, FixedToDouble(_params.Amount), v => _params.Amount = ToFixed(v));
 
             if (_presetKind == AbilityPresets.Kind.AoeNuke)
-                AddSpinRow(_simpleRows, "Radius", 0, 100, 0.5, FixedToDouble(_params.Radius), v => _params.Radius = ToFixed(v));
+                AddSpinRow(_simpleRows, "Radius", 0, FixedSpinMax, 0.5, FixedToDouble(_params.Radius), v => _params.Radius = ToFixed(v));
 
             if (_presetKind == AbilityPresets.Kind.SelfBuff)
                 AddSpinRow(_simpleRows, "Duration (ticks)", 0, 99999, 1, _params.DurationTicks, v => _params.DurationTicks = (int)v);
 
-            AddSpinRow(_simpleRows, "Cooldown (s)", 0, 600, 0.5, FixedToDouble(_params.Cooldown), v => _params.Cooldown = ToFixed(v));
-            AddSpinRow(_simpleRows, "Cost: Energy", 0, 9999, 1, FixedToDouble(_params.CostEnergy), v => _params.CostEnergy = ToFixed(v));
+            AddSpinRow(_simpleRows, "Cooldown (s)", 0, FixedSpinMax, 0.5, FixedToDouble(_params.Cooldown), v => _params.Cooldown = ToFixed(v));
+            AddSpinRow(_simpleRows, "Cost: Energy", 0, FixedSpinMax, 1, FixedToDouble(_params.CostEnergy), v => _params.CostEnergy = ToFixed(v));
             AddSpinRow(_simpleRows, "Cost: Ore", 0, 99999, 1, _params.CostOre, v => _params.CostOre = (int)v);
             AddSpinRow(_simpleRows, "Cost: Crystal", 0, 99999, 1, _params.CostCrystal, v => _params.CostCrystal = (int)v);
         }
@@ -404,7 +438,14 @@ namespace ProjectChimera.CreationSuite
             // graph remains fully editable through the raw-JSON pane (that IS the advanced path in 2.5a).
         }
 
-        /// <summary>Best-effort: recognise a preset shape from a parsed graph so Advanced edits round-trip into Simple.</summary>
+        /// <summary>
+        /// LOSSLESS preset detection from a parsed graph: a preset matches only when the graph carries EXACTLY the
+        /// shape AND the fixed (non-tunable) field values that <see cref="AbilityPresets.Build"/> would emit — so
+        /// reflecting it into the Simple form and re-saving can never silently drop or rewrite a field (a non-Magic
+        /// damage type, a self-buff's move-speed delta or modifier id, a non-Enemy AoE filter, …). A graph that can't
+        /// be faithfully represented returns false and stays in the raw-JSON (Advanced) pane — its only safe editor.
+        /// Only the genuinely tunable fields (amount, radius, duration, costs, cooldown) vary across a preset.
+        /// </summary>
         private static bool TryDetectPreset(AbilityDefinition def, out AbilityPresets.Kind kind, out AbilityPresets.Params p)
         {
             p = new AbilityPresets.Params
@@ -414,19 +455,42 @@ namespace ProjectChimera.CreationSuite
             };
             switch (def.EffectGraph)
             {
-                case DamageEffect d:
+                // Targeted Damage: a single damage leaf — Magic only (the preset forces Magic; another type would be lost).
+                case DamageEffect { Type: DamageType.Magic } d:
                     kind = AbilityPresets.Kind.TargetedDamage; p.Amount = d.Amount; return true;
+
+                // Heal: a single heal leaf (Amount is its only field — always faithfully representable).
                 case HealEffect h:
                     kind = AbilityPresets.Kind.Heal; p.Amount = h.Amount; return true;
-                case ApplyModifierEffect am:
-                    kind = AbilityPresets.Kind.SelfBuff; p.Amount = am.Modifier.AttackDamageDelta;
-                    p.DurationTicks = am.Modifier.DurationTicks; return true;
-                case SearchAreaEffect { Child: DamageEffect cd } sa:
+
+                // Self Buff: apply_modifier, but only if every NON-tunable modifier field matches the preset's fixed shape.
+                case ApplyModifierEffect am when IsSimpleSelfBuff(am.Modifier):
+                    kind = AbilityPresets.Kind.SelfBuff;
+                    p.Amount = am.Modifier.AttackDamageDelta; p.DurationTicks = am.Modifier.DurationTicks; return true;
+
+                // AoE Nuke: search_area(Enemy) → damage(Magic); both the filter and the child damage type must match.
+                case SearchAreaEffect { Filter: TargetFilter.Enemy, Child: DamageEffect { Type: DamageType.Magic } cd } sa:
                     kind = AbilityPresets.Kind.AoeNuke; p.Amount = cd.Amount; p.Radius = sa.Radius; return true;
+
                 default:
-                    kind = AbilityPresets.Kind.TargetedDamage; return false;
+                    kind = AbilityPresets.Kind.TargetedDamage; return false;   // no lossless Simple form → edit via raw JSON
             }
         }
+
+        /// <summary>True only when the modifier carries EXACTLY the Self Buff preset's fixed (non-tunable) fields, so
+        /// reflecting it into Simple and re-saving preserves it byte-for-byte (only attack-damage delta + duration tune).
+        /// Guards the data-loss footgun: a modifier with a different id, a move-speed/max-health delta, stacking, status,
+        /// or a periodic effect is NOT Simple-representable and must stay in raw JSON.</summary>
+        private static bool IsSimpleSelfBuff(Modifier m) =>
+            m != null
+            && m.Id == AbilityPresets.SelfBuffModifierId
+            && m.MaxStacks == 1
+            && m.Stacking == StackRule.Refresh
+            && m.Status == StatusFlags.None
+            && m.MaxHealthDelta.Raw == 0
+            && m.MoveSpeedDelta.Raw == 0
+            && m.PeriodEffect is null
+            && m.PeriodTicks == 0;
 
         // ── Validate-gated save (AC1, AC3) ──────────────────────────────────────
 
@@ -457,10 +521,10 @@ namespace ProjectChimera.CreationSuite
 
         private void WriteFile(string abs, AbilityDefinition def, bool reloadAfter)
         {
+            string tmp = abs + ".tmp";
             try
             {
                 string json = JsonSerializer.Serialize(def, IndentedOptions);
-                string tmp = abs + ".tmp";
                 File.WriteAllText(tmp, json);   // atomic: write to temp, then replace
                 File.Move(tmp, abs, overwrite: true);
                 GD.Print($"[AbilityEditor] Saved {abs}");
@@ -469,6 +533,7 @@ namespace ProjectChimera.CreationSuite
             }
             catch (Exception ex)
             {
+                try { if (File.Exists(tmp)) File.Delete(tmp); } catch { /* best-effort: leave no stray .tmp on failure */ }
                 ShowError($"Save failed: {ex.Message}");
             }
         }
@@ -479,6 +544,7 @@ namespace ProjectChimera.CreationSuite
             {
                 Title = "Overwrite ability?",
                 DialogText = $"{Path.GetFileName(abs)} already exists. Overwrite it?",
+                Exclusive = true,   // modal: blocks repeat-Save behind it so confirm dialogs can't stack
             };
             _canvas.AddChild(dlg);
             dlg.Confirmed += () => { WriteFile(abs, def, reloadAfter); dlg.QueueFree(); };
@@ -556,7 +622,9 @@ namespace ProjectChimera.CreationSuite
         // ── Conversions (authoring boundary — deterministic, no Fixed.FromFloat) ─
 
         private static double FixedToDouble(Fixed f) => f.Raw / (double)Fixed.ONE;
-        private static Fixed ToFixed(double v) => Fixed.FromRaw((int)Math.Round(v * Fixed.ONE));
+        // Clamp to the 16.16 integer range so the int Raw can never overflow even if a SpinBox bound is later widened
+        // (defensive; realistic Simple values sit far inside). FixedJsonConverter.Read independently rejects out-of-range.
+        private static Fixed ToFixed(double v) => Fixed.FromRaw((int)Math.Round(Math.Clamp(v, -FixedSpinMax, FixedSpinMax) * Fixed.ONE));
 
         /// <summary>Filename/id sanitiser: lowercase, keep [a-z0-9_], collapse the rest to '_'.</summary>
         private static string SanitizeId(string raw)

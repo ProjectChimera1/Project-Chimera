@@ -98,8 +98,10 @@ namespace ProjectChimera.Core.Definitions
         };
 
         /// <summary>Default modifier identity for the Self Buff preset. A stable, deterministic constant (never a
-        /// non-deterministic string hash). Creators needing a specific id edit it via the raw-JSON escape hatch.</summary>
-        private const int SelfBuffModifierId = 1;
+        /// non-deterministic string hash). Creators needing a specific id edit it via the raw-JSON escape hatch.
+        /// Public so the editor can detect a Self-Buff-shaped graph LOSSLESSLY — an apply_modifier with any other id
+        /// is not Simple-representable and opens in the raw-JSON pane instead (no silent id rewrite on re-save).</summary>
+        public const int SelfBuffModifierId = 1;
 
         /// <summary>Build the in-memory <see cref="AbilityDefinition"/> for a preset + its tuned params. Pure; produces
         /// a graph that passes <see cref="AbilityValidator"/> for any non-negative costs/cooldown and a real effect.</summary>
