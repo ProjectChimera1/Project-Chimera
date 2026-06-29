@@ -676,7 +676,13 @@ namespace ProjectChimera.UI
         /// </summary>
         public void IssueCastAbilityCommand(int casterId, int slot, int targetEntityId)
         {
-            if (!_world.IsAlive(casterId)) return;
+            // Story 2.4b review: re-validate the caster at the ISSUE seam, not just at arm time. The pending caster id
+            // (ArmCastTargeting) persists across frames and is NOT pruned like _selectedList, so the armed caster can
+            // die and its slot recycle to a different unit before the target-click. Refuse unless the caster is still
+            // alive AND locally owned (Player1 — the selection convention at :387/:732), so a recycled enemy slot can
+            // never be made to cast (offline this also re-seats expectedFaction to the local player, closing the
+            // self-comparison hole in OrderApplier's anti-cheat guard).
+            if (!_world.IsAlive(casterId) || _world.FactionOf[casterId] != Faction.Player1) return;
             // Online: EnqueueOrder returns false (queued). Offline (_lockstep == null): the ?? true yields apply-now.
             bool applyNow = _lockstep?.EnqueueOrder(casterId, UnitCommand.CastAbility,
                                                     Fixed.FromRaw(slot), Fixed.FromRaw(targetEntityId)) ?? true;

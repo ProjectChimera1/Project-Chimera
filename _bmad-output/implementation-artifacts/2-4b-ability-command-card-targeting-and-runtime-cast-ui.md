@@ -4,7 +4,7 @@ baseline_commit: d3636e2aa49b60832e523f0a3e71c27ceb69f518
 
 # Story 2.4b: Ability command card — runtime cast UI, TargetUnit targeting, and the in-game wiring that makes a cast reachable
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -275,11 +275,11 @@ claude-opus-4-8 (Claude Opus 4.8)
 
 _4-lens adversarial review (Blind Hunter · Edge Case Hunter · Acceptance Auditor · Determinism & Desync), Opus 4.8, fresh context, per-lens independent verification + orchestrator re-check against the live repo._ **0 Critical · 0 High.** _The determinism fence (AC5) is independently confirmed clean: `git diff --name-only d3636e2 HEAD` touches no golden / `SimChecksum` / `EntityWorld` / version-pin file; `AlgoVersion==7`; all 9 goldens byte-identical (golden harnesses are hermetic — worker-only rosters never spawn the mage, no golden loads `alpha_faction.json`); no presentation code writes a sim SoA; client↔server registry indices are identical (same dir, ordinal `OrderBy(Id)`). All 6 ACs MET except **AC6 (PARTIAL — verification rigor, not a code defect)**. 5 findings dismissed as verified false-positive / noise (mage JSON block DOES carry `fireball`; `Energy` IS seeded to `MaxEnergy` on spawn — in-engine showed 100/100; `FindNearestEnemyUnit` P1-assumption subsumed by D1; `SceneContext` field-vs-property immaterial; HUD energy line not P1-gated but selection is P1-only)._
 
-### Decisions (resolve before flipping to `done`)
+### Decisions (✅ both resolved 2026-06-28 — D1 patched, D2 accepted)
 
-- [ ] [Review][Decision] **Cast-arm survives caster death + slot-recycle — no local-faction re-validation at the issue seam** [`SelectionSystem.cs:677` `IssueCastAbilityCommand` / `:659` `ArmCastTargeting`] — `ArmCastTargeting` stores a raw `_pendingCastCasterId` that persists for unbounded frames until the target-click and is **never pruned of dead units** (unlike every other command path, which iterates the `PruneDeadUnits()`-cleaned `_selectedList`). If the armed caster dies and its id is recycled to a live unit before the target-click, `IssueCastAbilityCommand`'s only guard (`!IsAlive`) passes; **offline** it then passes `FactionOf[casterId]` (read from the *recycled* unit) as `expectedFaction`, so `OrderApplier`'s anti-cheat guard (`FactionOf[id] != expectedFaction`) compares the unit against itself and can never fire → a recycled-to-P2 slot lets the local player make an **enemy unit** cast. **Online is safe** (sender-attributed `expectedFaction` = `Player1` rejects it; identical on all peers → no desync). Bounded (refused if the stale slot ≥ the new unit's `AbilityCount`). Same defect-class as the Blind Hunter's `_lastFocusedCasterId` 1-frame focus window — both close with one seam-level guard. _Sources: edge+blind._
+- [x] [Review][Patch ✅ APPLIED 2026-06-28 → `SelectionSystem.cs:679` local-faction guard; build 0 err · Tier-1 424 pass/1 skip/0 fail · 9 goldens byte-identical] **Cast-arm survives caster death + slot-recycle — no local-faction re-validation at the issue seam** [`SelectionSystem.cs:677` `IssueCastAbilityCommand` / `:659` `ArmCastTargeting`] — `ArmCastTargeting` stores a raw `_pendingCastCasterId` that persists for unbounded frames until the target-click and is **never pruned of dead units** (unlike every other command path, which iterates the `PruneDeadUnits()`-cleaned `_selectedList`). If the armed caster dies and its id is recycled to a live unit before the target-click, `IssueCastAbilityCommand`'s only guard (`!IsAlive`) passes; **offline** it then passes `FactionOf[casterId]` (read from the *recycled* unit) as `expectedFaction`, so `OrderApplier`'s anti-cheat guard (`FactionOf[id] != expectedFaction`) compares the unit against itself and can never fire → a recycled-to-P2 slot lets the local player make an **enemy unit** cast. **Online is safe** (sender-attributed `expectedFaction` = `Player1` rejects it; identical on all peers → no desync). Bounded (refused if the stale slot ≥ the new unit's `AbilityCount`). Same defect-class as the Blind Hunter's `_lastFocusedCasterId` 1-frame focus window — both close with one seam-level guard. _Sources: edge+blind._
 
-- [ ] [Review][Decision] **AC6 in-engine verify bypassed the full `TargetUnit` button→arm→enemy-click flow** [Dev Agent Record → Debug Log References] — the documented in-engine cast was driven via `IssueCastAbilityCommand` (the terminal seam) directly, not the AC2/AC6 path (button press → `ArmCastTargeting` → enemy left-click → issue), and no screenshot artifact is attached. The click-through code path is correct by 4-lens inspection (AC2 MET), but the live demonstration AC6 specifies is unproven. _Source: auditor._
+- [x] [Review][Decision ✅ ACCEPTED 2026-06-28 — AC6 substantially met (click path verified by 4 lenses + runtime seam cast)] **AC6 in-engine verify bypassed the full `TargetUnit` button→arm→enemy-click flow** [Dev Agent Record → Debug Log References] — the documented in-engine cast was driven via `IssueCastAbilityCommand` (the terminal seam) directly, not the AC2/AC6 path (button press → `ArmCastTargeting` → enemy left-click → issue), and no screenshot artifact is attached. The click-through code path is correct by 4-lens inspection (AC2 MET), but the live demonstration AC6 specifies is unproven. _Source: auditor._
 
 ### Deferred (tracked, not blocking)
 
@@ -291,7 +291,8 @@ _4-lens adversarial review (Blind Hunter · Edge Case Hunter · Acceptance Audit
 
 ## Status
 
-review
+done
 
 _Ultimate context engine analysis completed — comprehensive developer guide created._
 _Dev-story complete 2026-06-28 (all 8 tasks, 6 ACs) → ready for code review._
+_Code review PASS 2026-06-28 (gds-code-review, 4-lens adversarial, fresh-context Opus 4.8): 0 Critical/0 High; determinism fence verified clean; 1 patch applied (cast-arm recycle guard), 2 deferred, 5 dismissed → **done**._
