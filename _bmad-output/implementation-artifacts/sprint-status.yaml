@@ -69,7 +69,7 @@ development_status:
   2-2b-d1-modifierstore-soa-store-with-apply-stack-refresh-expire-dot-hot-energy-cost-determinism: done
   2-3-abilitydefinition-data-model-and-validated-t-gate-with-static-validator-rules: done
   2-4a-ability-runtime-cast-spine-cooldown-soa-and-determinism-fold: done
-  2-4b-ability-command-card-targeting-and-runtime-cast-ui: ready-for-dev
+  2-4b-ability-command-card-targeting-and-runtime-cast-ui: review
   2-5-ability-editor-author-active-abilities-with-simple-preset-and-advanced-multi-effect-modes: backlog
   2-6-ability-editor-passive-ability-path-auras-on-hit-effects-stat-modifiers-trigger-conditions: backlog
   2-7-combatfeedbackprofile-profile-driven-feedback-presentation-only-excluded-from-checksum: backlog

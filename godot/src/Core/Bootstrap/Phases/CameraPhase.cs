@@ -47,6 +47,7 @@ namespace ProjectChimera.Core.Bootstrap
             var commandCard = new CommandCardSystem();
             _ctx.Scene.AddChild(commandCard);
             commandCard.Initialize(selection, _ctx.BuildSys, _ctx.Buildings, _ctx.Resources, _ctx.World);
+            commandCard.SetAbilityRegistry(_ctx.AbilityRegistry); // Story 2.4b: the card needs the registry for ability labels (set on ctx by MainScene._Ready, before this phase)
             commandCard.OnWorkerBuildRequested += _ctx.Scene.EnterBuildPlacementMode;
             _ctx.CommandCard = commandCard;
         }

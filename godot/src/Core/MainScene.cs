@@ -44,6 +44,9 @@ namespace ProjectChimera.Core
         // Active per-slot definitions — resolved by the presentation pre-pass (ResolveSlotFactionDefs) from
         // slot.FactionJson and shared IN PLACE with ScenarioApplier (Story 1.8b). Elements are null until resolved.
         private FactionDefinition?[] _slotFactionDefs = null!;
+        /// <summary>Story 2.4b: registry of validated abilities (built from <see cref="ABILITIES_DIR"/>), injected
+        /// into the host and published on <c>SceneContext</c> for the command card's label reads. Empty until _Ready builds it.</summary>
+        private AbilityRegistry _abilityRegistry = AbilityRegistry.Empty;
         private Combat.ProjectileStore  _projectiles = null!;
         private Combat.CombatEventQueue _combatEvents = null!;
         private Combat.DamageTable      _damageTable = null!;
@@ -179,6 +182,8 @@ namespace ProjectChimera.Core
         private const string P1_FACTION_JSON = "res://resources/data/factions/alpha_faction.json";
         private const string P2_FACTION_JSON = "res://resources/data/factions/beta_faction.json";
         private const string DAMAGE_TABLE_JSON = "res://resources/data/damage_table.json";
+        /// <summary>Story 2.4b: directory of validated ability JSONs, indexed into the AbilityRegistry (client + server).</summary>
+        private const string ABILITIES_DIR = "res://resources/data/abilities";
 
         // ── Lifecycle ─────────────────────────────────────────────────────────
 
@@ -248,6 +253,18 @@ namespace ProjectChimera.Core
                 ? FactionDefinition.LoadFromFile(faction2Abs)
                 : new FactionDefinition();
 
+            // Story 2.4b: build the ability registry from resources/data/abilities/ and resolve each loaded unit's
+            // ability ids → registry indices BEFORE the host (and any spawn). LoadFromDirectory takes an ABSOLUTE OS
+            // path (Directory.GetFiles) so res:// is resolved via GlobalizePath — the same pattern the faction load
+            // above uses. Resolving the SHARED UnitDefinition objects once per faction back-fills def.AbilityIndices,
+            // which ApplyUnitDefinition reads on every spawn (trained via BuildingSystem / editor via EntityPlacer);
+            // the per-slot scenario defs are resolved separately in ScenarioLoadPhase (a distinct loaded instance).
+            string abilitiesAbs = ProjectSettings.GlobalizePath(ABILITIES_DIR);
+            _abilityRegistry = AbilityRegistry.LoadFromDirectory(
+                abilitiesAbs, name => GD.Print($"[Abilities] skipped invalid {name}"));
+            foreach (var u in _factionDef.Units)  u.ResolveAbilities(_abilityRegistry);
+            foreach (var u in _factionDef2.Units) u.ResolveAbilities(_abilityRegistry);
+
             // Default slot assignments — overwritten per-slot by the ResolveSlotFactionDefs pre-pass
             _slotFactionDefs = new FactionDefinition?[5];
             _slotFactionDefs[(int)Faction.Player1] = _factionDef;
@@ -273,7 +290,8 @@ namespace ProjectChimera.Core
                 _factionDef,
                 _factionDef2,
                 _damageTable,
-                AiLevel);
+                AiLevel,
+                _abilityRegistry); // Story 2.4b: the 7th arg — makes AbilityCastSystem cast a real ability in-game (was Empty)
 
             _world            = _host.World;
             _nodes            = _host.Nodes;
@@ -301,6 +319,7 @@ namespace ProjectChimera.Core
                 Fog = _fog, Projectiles = _projectiles, CombatEvents = _combatEvents, DamageTable = _damageTable,
                 MatchStats = _matchStats, BuildSys = _buildSys, ScenarioDirector = _host.ScenarioDirector,
                 FactionDef = _factionDef, FactionDef2 = _factionDef2, SlotFactionDefs = _slotFactionDefs,
+                AbilityRegistry = _abilityRegistry, // Story 2.4b: the command card reads this for ability labels
             };
 
             // Single checksum sink (D5): ONE owner. Offline → log; online → also forward to lockstep
@@ -628,10 +647,21 @@ namespace ProjectChimera.Core
             int nodes    = CountActiveNodes();
             int bldgs    = CountAliveBuildings();
 
+            // Story 2.4b (AC4): show P1's Crystal balance (the scarce resource — its store/SoA existed and is folded,
+            // but was never displayed) and, when a caster is focused, its Energy pool — so a player can read WHY an
+            // ability button is greyed (the same affordability inputs the command card's disable predicate reads).
+            int p1Crystal = (int)_resources.Crystal[(int)Faction.Player1].ToFloat();
+
+            int focusId = _ctx.Selection.FocusId;
+            string energyLine = "";
+            if (focusId >= 0 && _world.IsAlive(focusId) && _world.MaxEnergy[focusId] > Fixed.Zero)
+                energyLine = $"\nEnergy: {_world.Energy[focusId].ToInt()} / {_world.MaxEnergy[focusId].ToInt()}";
+
             _ctx.ResourceLabel.Text =
-                $"P1  {p1Ore,5} ore   {p1Sup}/{p1SupCap} supply\n" +
+                $"P1  {p1Ore,5} ore   {p1Crystal,4} crystal   {p1Sup}/{p1SupCap} supply\n" +
                 $"P2  {p2Ore,5} ore   {p2Sup}/{p2SupCap} supply\n" +
-                $"Nodes: {nodes}   Buildings: {bldgs}";
+                $"Nodes: {nodes}   Buildings: {bldgs}" +
+                energyLine;
 
             // ── Controls strip: context-sensitive shortcut hints ──────────────
             if (_pendingBuildWorkerId >= 0)
@@ -1164,6 +1194,12 @@ namespace ProjectChimera.Core
             string dtAbs = ProjectSettings.GlobalizePath(DAMAGE_TABLE_JSON);
             var damageTable = System.IO.File.Exists(dtAbs) ? Combat.DamageTable.Load(dtAbs) : Combat.DamageTable.Default;
 
+            // Ability registry — mirror the client _Ready seeding (Story 2.4b). Built from the SAME files; ServerBootstrap
+            // resolves the slot defs' ability ids → identical ascending-Id indices (MP parity: a registry mismatch desyncs).
+            string abilitiesAbs = ProjectSettings.GlobalizePath(ABILITIES_DIR);
+            AbilityRegistry abilityRegistry = AbilityRegistry.LoadFromDirectory(
+                abilitiesAbs, name => GD.Print($"[Abilities] skipped invalid {name}"));
+
             // Scenario model from the configured path.
             string scnAbs = ProjectSettings.GlobalizePath(ScenarioPath);
             ScenarioData? model = ScenarioSerializer.LoadFromFile(scnAbs);
@@ -1185,7 +1221,7 @@ namespace ProjectChimera.Core
 
             // ServerBootstrap validates (fail-closed: invalid ⇒ null + log via the seam) and applies through the
             // shared spine. activeFactionCount=2 mirrors the client's new FactionRegistry(2) (1v1 today).
-            SimulationHost? host = ServerBootstrap.Build(model, slotDefs, damageTable, _logSink, activeFactionCount: 2);
+            SimulationHost? host = ServerBootstrap.Build(model, slotDefs, damageTable, _logSink, activeFactionCount: 2, abilityRegistry: abilityRegistry);
             if (host != null)
                 GD.Print("[ServerBootstrap] Validated server sim spine built + applied (AR-38).");
             return host;

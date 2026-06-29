@@ -51,6 +51,11 @@ namespace ProjectChimera.Core.Bootstrap
         public FactionDefinition  FactionDef   = null!;  // default P1 (alpha)
         public FactionDefinition  FactionDef2  = null!;  // default P2 (beta)
         public FactionDefinition?[] SlotFactionDefs = null!;
+        /// <summary>Story 2.4b: the validated ability registry (built by MainScene._Ready from the abilities dir).
+        /// The command card reads it to turn a per-entity <c>AbilityId</c> index into an <c>AbilityDefinition</c> for
+        /// labels, and <c>ScenarioLoadPhase</c> reads it to resolve per-slot defs — the <see cref="SimulationHost"/>
+        /// does NOT expose the registry (it lives privately inside <c>AbilityCastSystem</c>). Defaults to Empty.</summary>
+        public AbilityRegistry AbilityRegistry = AbilityRegistry.Empty;
 
         // ── Presentation handles (each produced by the phase named below; consumed by later phases / runtime) ─
         public RtsCameraController Cam        = null!;   // Camera

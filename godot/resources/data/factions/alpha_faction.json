@@ -121,7 +121,9 @@
       "mesh_scale": 1.0,
       "train_time": 12.0,
       "vision_range": 9.0,
-      "splash_radius": 1.5
+      "splash_radius": 1.5,
+      "abilities": ["fireball"],
+      "max_energy": 100
     },
     {
       "id": "siege_engine",

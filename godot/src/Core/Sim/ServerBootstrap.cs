@@ -31,13 +31,26 @@ namespace ProjectChimera.Core.Sim
         /// </summary>
         public static SimulationHost? Build(
             ScenarioData model, FactionDefinition?[] slotFactionDefs, DamageTable? damageTable,
-            ILogSink log, int activeFactionCount)
+            ILogSink log, int activeFactionCount, AbilityRegistry? abilityRegistry = null)
         {
+            AbilityRegistry registry = abilityRegistry ?? AbilityRegistry.Empty;
+
+            // Story 2.4b (server parity, MP-critical): resolve each slot faction's ability ids → registry indices
+            // BEFORE the applier spawns any unit (ApplyUnitDefinition reads UnitDefinition.AbilityIndices). The
+            // server MUST resolve from the SAME ability files into the SAME ascending-Id indices every client uses
+            // — the registry sorts by ability Id, so identical files yield identical indices — or its arbitrating
+            // checksum diverges from the peers'. Idempotent; drops unknown ids; null defs (unresolved slots) skip.
+            foreach (var def in slotFactionDefs)
+                if (def != null)
+                    foreach (var u in def.Units)
+                        u.ResolveAbilities(registry);
+
             // Same Create the client calls — null damageTable resolves to DamageTable.Default inside combat ctors.
+            // registry passed BY NAME so aiLevel keeps its default (the server's prior 5-arg behavior is preserved).
             var host = SimulationHost.Create(
                 log, new FactionRegistry(activeFactionCount),
                 slotFactionDefs[(int)Faction.Player1], slotFactionDefs[(int)Faction.Player2],
-                damageTable);
+                damageTable, registry: registry);
 
             // The ONLY way to obtain a Validated<ScenarioData> (the Proof ctor is internal + source-scanned).
             ValidationResult r = new ScenarioValidator().Validate(model);

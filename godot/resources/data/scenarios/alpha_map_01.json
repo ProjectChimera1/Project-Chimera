@@ -108,6 +108,12 @@
       "z": 3
     },
     {
+      "unit_id": "mage",
+      "slot": 0,
+      "x": -40,
+      "z": 0
+    },
+    {
       "unit_id": "worker",
       "slot": 1,
       "x": 42,

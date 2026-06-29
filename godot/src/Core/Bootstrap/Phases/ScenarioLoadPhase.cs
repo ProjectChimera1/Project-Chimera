@@ -97,7 +97,15 @@ namespace ProjectChimera.Core.Bootstrap
                 var faction = (Faction)(slot.Slot + 1); // slot 0 → Player1, slot 1 → Player2
                 string abs = ProjectSettings.GlobalizePath(slot.FactionJson);
                 if (System.IO.File.Exists(abs))
-                    _ctx.SlotFactionDefs[(int)faction] = FactionDefinition.LoadFromFile(abs);
+                {
+                    var def = FactionDefinition.LoadFromFile(abs);
+                    // Story 2.4b: back-fill this slot's freshly-loaded faction defs' ability ids → registry indices
+                    // BEFORE the applier spawns its units (ApplyUnitDefinition reads UnitDefinition.AbilityIndices,
+                    // empty until ResolveAbilities runs). The registry was built + published on the context by
+                    // MainScene._Ready, which runs before this phase (runtime position 12). Idempotent + drops unknown ids.
+                    foreach (var u in def.Units) u.ResolveAbilities(_ctx.AbilityRegistry);
+                    _ctx.SlotFactionDefs[(int)faction] = def;
+                }
             }
         }
 

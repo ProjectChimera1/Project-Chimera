@@ -100,6 +100,11 @@ namespace ProjectChimera.UI
         private bool _awaitingPatrolClick;
         /// <summary>True after F: the next left-click picks a friendly unit to follow (Story 1.12).</summary>
         private bool _awaitingFollowClick;
+        /// <summary>True after a TargetUnit ability button arms a cast: the next left-click picks the target (Story 2.4b).</summary>
+        private bool _awaitingCastClick;
+        /// <summary>The caster + ability slot a pending cast-target click will fire (set by <see cref="ArmCastTargeting"/>; -1 = none).</summary>
+        private int _pendingCastCasterId = -1;
+        private int _pendingCastSlot     = -1;
 
         /// <summary>
         /// Optional lockstep coordinator. When set (online mode), all player commands
@@ -228,6 +233,23 @@ namespace ProjectChimera.UI
                         return;
                     }
 
+                    // Cast-target pending (Story 2.4b): the player armed a TargetUnit ability on the command card;
+                    // this left-click picks the nearest enemy as the target and issues the cast (Decision B = enemy-only,
+                    // 2.4b's lone TargetUnit sample is offensive). A click hitting no enemy just disarms; an
+                    // unfulfillable target is refused atomically by AbilityCastSystem (no spend, no cooldown).
+                    if (_awaitingCastClick)
+                    {
+                        if (RaycastGround(lmb.Position, out Vector3 cHit))
+                        {
+                            int targetId = FindNearestEnemyUnit(cHit, PICK_RADIUS);
+                            if (targetId >= 0)
+                                IssueCastAbilityCommand(_pendingCastCasterId, _pendingCastSlot, targetId);
+                        }
+                        ResetPendingCommandClicks();
+                        GetViewport().SetInputAsHandled();
+                        return;
+                    }
+
                     _lmbHeld     = true;
                     _isDragging  = false;
                     _dragStart   = lmb.Position;
@@ -259,7 +281,12 @@ namespace ProjectChimera.UI
                 && rmb.ButtonIndex == MouseButton.Right
                 && rmb.Pressed)
             {
-                if (_selectedSet.Count > 0)
+                // Story 2.4b: right-click cancels a pending cast-target click (no cast, no move command).
+                if (_awaitingCastClick)
+                {
+                    ResetPendingCommandClicks();
+                }
+                else if (_selectedSet.Count > 0)
                 {
                     // Story 1.12: right-click an ENEMY → single-target Attack (force-fire); ground/friendly → Move.
                     int enemyId = RaycastGround(rmb.Position, out Vector3 hit)
@@ -285,35 +312,35 @@ namespace ProjectChimera.UI
                 }
                 else if (key.Keycode == Key.S && _selectedSet.Count > 0)
                 {
-                    _awaitingAttackMoveClick = false; _awaitingPatrolClick = false; _awaitingFollowClick = false;
+                    ResetPendingCommandClicks();
                     IssueStopCommand();
                 }
                 else if (key.Keycode == Key.H && _selectedSet.Count > 0)
                 {
-                    _awaitingAttackMoveClick = false; _awaitingPatrolClick = false; _awaitingFollowClick = false;
+                    ResetPendingCommandClicks();
                     IssueHoldCommand();
                 }
                 else if (key.Keycode == Key.Q && _selectedSet.Count > 0)
                 {
+                    ResetPendingCommandClicks();
                     _awaitingAttackMoveClick = true;
-                    _awaitingPatrolClick = false; _awaitingFollowClick = false;
                     GD.Print("[Selection] Attack-Move: click a destination.");
                 }
                 else if (key.Keycode == Key.P && _selectedSet.Count > 0)
                 {
+                    ResetPendingCommandClicks();
                     _awaitingPatrolClick = true;
-                    _awaitingAttackMoveClick = false; _awaitingFollowClick = false;
                     GD.Print("[Selection] Patrol: click a waypoint (hold Shift and click to add more).");
                 }
                 else if (key.Keycode == Key.F && _selectedSet.Count > 0)
                 {
+                    ResetPendingCommandClicks();
                     _awaitingFollowClick = true;
-                    _awaitingAttackMoveClick = false; _awaitingPatrolClick = false;
                     GD.Print("[Selection] Follow: click a friendly unit to escort.");
                 }
                 else if (key.Keycode == Key.Escape)
                 {
-                    _awaitingAttackMoveClick = false; _awaitingPatrolClick = false; _awaitingFollowClick = false;
+                    ResetPendingCommandClicks();
                     ClearSelection();
                 }
             }
@@ -603,6 +630,59 @@ namespace ProjectChimera.UI
                 OrderApplier.Apply(_world, in followOrder, _world.FactionOf[id]);
             }
             GD.Print($"[Selection] Follow issued on friendly {friendlyId} to {_selectedList.Count} unit(s).");
+        }
+
+        // ── Ability cast (Story 2.4b) ───────────────────────────────────────────────
+
+        /// <summary>
+        /// Clear ALL pending click-arm states (attack-move / patrol / follow / cast-target) and the cast's pending
+        /// caster+slot. Called before arming any one of them (mutual exclusion — only one click-arm is ever live at a
+        /// time) and on Stop/Hold/Escape. Centralising the reset means a NEW arm flag can never be forgotten at a
+        /// clear site (the missed-spot defect class). Story 2.4b folded the cast-target arm into this set.
+        /// </summary>
+        private void ResetPendingCommandClicks()
+        {
+            _awaitingAttackMoveClick = false;
+            _awaitingPatrolClick     = false;
+            _awaitingFollowClick     = false;
+            _awaitingCastClick       = false;
+            _pendingCastCasterId     = -1;
+            _pendingCastSlot         = -1;
+        }
+
+        /// <summary>
+        /// Arm a TargetUnit cast (Story 2.4b): the command card calls this when the player presses a TargetUnit
+        /// ability button. The NEXT left-click picks the nearest enemy as the target and issues the cast; right-click
+        /// or Escape cancels. Stores the caster + ability slot (a cast needs BOTH, unlike the other click-arms which
+        /// act on the whole selection). SelectionSystem stays ability-data-free — the card supplies caster+slot.
+        /// </summary>
+        public void ArmCastTargeting(int casterId, int slot)
+        {
+            ResetPendingCommandClicks();
+            _pendingCastCasterId = casterId;
+            _pendingCastSlot     = slot;
+            _awaitingCastClick   = true;
+            GD.Print("[Selection] Cast: click an enemy target.");
+        }
+
+        /// <summary>
+        /// Issue a single-caster ability cast (Story 2.4b). Mirrors <see cref="IssueAttackTargetCommand"/> but on ONE
+        /// caster and packs BOTH values into the shipped 11-byte wire: the ability slot in TargetX and the target
+        /// entity id in TargetZ, each a RAW int via <see cref="Fixed.FromRaw"/> — NEVER <c>Fixed.FromFloat</c> (it
+        /// scales by 65536 and corrupts the packed ints — the 1.12 lesson). Self/None casts pass targetEntityId = -1
+        /// (issued directly from the card, no arming). Online → queued via <c>EnqueueOrder</c> (Flush applies later);
+        /// offline (<c>_lockstep == null</c>) → applied now through the SAME shared <see cref="OrderApplier"/> the
+        /// lockstep/replay paths use, so live/replay/offline cast application can never diverge.
+        /// </summary>
+        public void IssueCastAbilityCommand(int casterId, int slot, int targetEntityId)
+        {
+            if (!_world.IsAlive(casterId)) return;
+            // Online: EnqueueOrder returns false (queued). Offline (_lockstep == null): the ?? true yields apply-now.
+            bool applyNow = _lockstep?.EnqueueOrder(casterId, UnitCommand.CastAbility,
+                                                    Fixed.FromRaw(slot), Fixed.FromRaw(targetEntityId)) ?? true;
+            if (!applyNow) return; // online: LockstepManager.Flush will apply it later
+            var order = new UnitOrder(casterId, UnitCommand.CastAbility, Fixed.FromRaw(slot), Fixed.FromRaw(targetEntityId));
+            OrderApplier.Apply(_world, in order, _world.FactionOf[casterId]);
         }
 
         /// <summary>
