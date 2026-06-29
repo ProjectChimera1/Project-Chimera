@@ -120,18 +120,28 @@ namespace ProjectChimera.Effects
             if (!_resources.CanAffordOre(faction, oreCost)) return;
             if (!_resources.CanAffordCrystal(faction, crystalCost)) return;
 
+            // Resolve + VALIDATE the target BEFORE any debit, so an unfulfillable cast refuses atomically (nothing
+            // debited, no cooldown started) — the same contract as the cooldown/affordability refusals (AC6).
+            //   Self/None  → the caster is the primary target (auras, self-buffs like battle_fury).
+            //   TargetUnit/GroundPoint with no valid LIVING target → atomic no-op. NEVER redirect an offensive cast
+            //   (e.g. fireball) onto the caster — a target can die in the lockstep input-delay window before this
+            //   tick consumes the intent, or the order can carry -1; self-harming the caster + spending the cost is
+            //   wrong (it would violate AC6's "an unfulfillable cast changes nothing").
+            int target = world.PendingCastTarget[id];
+            if (ab.ParsedTargeting == AbilityTargeting.Self || ab.ParsedTargeting == AbilityTargeting.None)
+                target = id;
+            else if (target < 0 || !world.IsAlive(target))
+                return;
+
             // Debit ALL (every gate passed → each refuse-when-insufficient call necessarily succeeds; atomic).
             _modifiers.TryDebitEnergy(id, ab.CostEnergy);
             _resources.SpendOre(faction, oreCost);
             _resources.SpendCrystal(faction, crystalCost);
 
-            // Execute the validated effect graph (mirrors ModifierStore.RunEffect). Self / no-target / dead-target
-            // → the caster is the primary target. Rebuild the spatial hash so a SearchArea (e.g. fireball) queries
-            // CURRENT positions; harmless for non-SearchArea graphs (they ignore ctx.Spatial). Passing the modifier
-            // store is MANDATORY — an ApplyModifier/Persistent leaf throws on a null store (battle_fury is one).
-            int target = world.PendingCastTarget[id];
-            if (ab.ParsedTargeting == AbilityTargeting.Self || target < 0 || !world.IsAlive(target))
-                target = id;
+            // Execute the validated effect graph (mirrors ModifierStore.RunEffect). Rebuild the spatial hash so a
+            // SearchArea (e.g. fireball) queries CURRENT positions; harmless for non-SearchArea graphs (they ignore
+            // ctx.Spatial). Passing the modifier store is MANDATORY — an ApplyModifier/Persistent leaf throws on a
+            // null store (battle_fury is one).
             _spatial.Rebuild(world);
             var ctx = new EffectContext(world, casterId: id, primaryTargetId: target, casterFaction: faction,
                                         _damageTable, spatial: _spatial, _events, _stats, modifierStore: _modifiers);

@@ -62,6 +62,54 @@ namespace ProjectChimera.Sim.Tests.Effects
         }
 
         [Fact]
+        public void TargetUnitCast_AtDeadTarget_RefusesAtomically_NoSelfHarm()
+        {
+            // Regression (code review 2026-06-28): a TargetUnit offensive cast whose target died before the intent is
+            // consumed must be an atomic no-op — NOT redirected onto the caster. The previous dead-target fallback
+            // shared the Self branch and nuked the caster AFTER the cost was already debited.
+            var h = new CastHarness(AbilityTestAbilities.FireballSingle());
+            int caster = h.Caster("fireball", energy: 50, pos: V(0, 0, 0));
+            int target = h.World.Create(V(3, 0, 0), Faction.Player2, Fixed.FromInt(200), Fixed.FromInt(3));
+            h.World.Destroy(target); // dies in the lockstep input-delay window, before this tick consumes the cast
+
+            h.IssueAndTick(caster, target);
+
+            Assert.Equal(Fixed.FromInt(100).Raw, h.World.Health[caster].Raw); // caster un-self-harmed
+            Assert.Equal(Fixed.FromInt(50).Raw,  h.World.Energy[caster].Raw);  // energy NOT debited (atomic refuse)
+            Assert.Equal(0, h.Cooldown(caster));                              // cooldown NOT started
+            Assert.Equal(EntityWorld.NO_PENDING_CAST, h.World.PendingCastSlot[caster]); // intent still consumed (one-shot)
+        }
+
+        [Fact]
+        public void TargetUnitCast_WithNoTarget_RefusesAtomically()
+        {
+            // A TargetUnit cast carrying target -1 (no unit chosen) is unfulfillable → atomic no-op, not a self-cast.
+            var h = new CastHarness(AbilityTestAbilities.FireballSingle());
+            int caster = h.Caster("fireball", energy: 50, pos: V(0, 0, 0));
+
+            h.IssueAndTick(caster, -1);
+
+            Assert.Equal(Fixed.FromInt(100).Raw, h.World.Health[caster].Raw);
+            Assert.Equal(Fixed.FromInt(50).Raw,  h.World.Energy[caster].Raw);
+            Assert.Equal(0, h.Cooldown(caster));
+        }
+
+        [Fact]
+        public void GroundPointCast_IsRefused_NotSelfCast()
+        {
+            // AC6 fence: GroundPoint casting is out of scope for 2.4a. A GroundPoint ability must refuse as a no-op
+            // (there is no ground (x,z) plumbing) — it must NOT fall through to a self-cast.
+            var h = new CastHarness(AbilityTestAbilities.GroundPointDamage());
+            int caster = h.Caster("ground_nuke", energy: 50, pos: V(0, 0, 0));
+
+            h.IssueAndTick(caster, -1);
+
+            Assert.Equal(Fixed.FromInt(100).Raw, h.World.Health[caster].Raw); // no self-damage
+            Assert.Equal(Fixed.FromInt(50).Raw,  h.World.Energy[caster].Raw);  // no spend
+            Assert.Equal(0, h.Cooldown(caster));                              // no cooldown
+        }
+
+        [Fact]
         public void Cast_PreservesTheCasterCommandState()
         {
             var h = new CastHarness(AbilityTestAbilities.BattleFury());

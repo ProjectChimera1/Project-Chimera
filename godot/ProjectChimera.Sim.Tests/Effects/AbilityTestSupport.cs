@@ -43,6 +43,15 @@ namespace ProjectChimera.Sim.Tests.Effects
             EffectGraph = new DamageEffect(Fixed.FromInt(80), DamageType.Magic),
         };
 
+        /// <summary>A GroundPoint Damage ability — the AC6 out-of-scope fence. Used to prove a GroundPoint cast
+        /// refuses as a no-op (no ground (x,z) plumbing in 2.4a) rather than falling through to a self-cast.</summary>
+        public static AbilityDefinition GroundPointDamage() => new AbilityDefinition
+        {
+            Id = "ground_nuke", DisplayName = "Ground Nuke", Targeting = "GroundPoint",
+            CostEnergy = Fixed.FromInt(40), Cooldown = Fixed.FromInt(8),
+            EffectGraph = new DamageEffect(Fixed.FromInt(80), DamageType.Magic),
+        };
+
         /// <summary>A custom Self heal with explicit costs/cooldown for the affordability + cooldown-boundary tests.</summary>
         public static AbilityDefinition SelfHeal(int costEnergy, int costOre, int costCrystal, int cooldownSec, int heal) =>
             new AbilityDefinition
