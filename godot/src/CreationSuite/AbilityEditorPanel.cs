@@ -4,9 +4,7 @@ using System.IO;
 using System.Text.Json;
 using Godot;
 using ProjectChimera.Core;              // Fixed, ScenarioData
-using ProjectChimera.Combat;            // DamageType (lossless preset detection)
-using ProjectChimera.Core.Definitions;  // AbilityDefinition, AbilityPresets, AbilityValidator, AbilityLoader, ContentJson, AbilityRegistry
-using ProjectChimera.Effects;           // EffectNode shapes (preset round-trip detection)
+using ProjectChimera.Core.Definitions;  // AbilityDefinition, AbilityPresets, AbilityPresetMatcher, AbilityValidator, AbilityLoader, ContentJson, AbilityRegistry
 using ProjectChimera.UI;                // GameState, GameMode
 
 namespace ProjectChimera.CreationSuite
@@ -231,7 +229,9 @@ namespace ProjectChimera.CreationSuite
             _simpleBtn.AddThemeFontSizeOverride("font_size", 13);
             _advancedBtn.AddThemeFontSizeOverride("font_size", 13);
             _simpleBtn.Pressed   += SwitchToSimpleFromAdvanced;
-            _advancedBtn.Pressed += () => { SwitchMode(simple: false); ShowJson(); };
+            // Re-entry guard (mirrors SwitchToSimpleFromAdvanced): re-clicking the ALREADY-active Advanced pill must
+            // NOT re-run ShowJson — that would re-render from the Simple model and clobber hand-edited raw JSON.
+            _advancedBtn.Pressed += () => { if (!_simpleMode) return; SwitchMode(simple: false); ShowJson(); };
             pillRow.AddChild(_simpleBtn);
             pillRow.AddChild(_advancedBtn);
         }
@@ -310,7 +310,7 @@ namespace ProjectChimera.CreationSuite
                 _advancedBtn.ButtonPressed = true;   // revert the pill; stay in Advanced (programmatic set ≠ Pressed)
                 return;
             }
-            if (!TryDetectPreset(r.Value.Value, out _, out _))
+            if (!AbilityPresetMatcher.TryDetectPreset(r.Value.Value, out _, out _))
             {
                 ShowError("This effect graph has no Simple preset form — keep editing it in Advanced (raw JSON).");
                 _advancedBtn.ButtonPressed = true;
@@ -427,7 +427,7 @@ namespace ProjectChimera.CreationSuite
             _nameEdit.Text = def.DisplayName;
             SetTargeting(def.Targeting);
 
-            if (TryDetectPreset(def, out AbilityPresets.Kind kind, out AbilityPresets.Params p))
+            if (AbilityPresetMatcher.TryDetectPreset(def, out AbilityPresets.Kind kind, out AbilityPresets.Params p))
             {
                 _presetKind = kind;
                 _params = p;
@@ -438,59 +438,8 @@ namespace ProjectChimera.CreationSuite
             // graph remains fully editable through the raw-JSON pane (that IS the advanced path in 2.5a).
         }
 
-        /// <summary>
-        /// LOSSLESS preset detection from a parsed graph: a preset matches only when the graph carries EXACTLY the
-        /// shape AND the fixed (non-tunable) field values that <see cref="AbilityPresets.Build"/> would emit — so
-        /// reflecting it into the Simple form and re-saving can never silently drop or rewrite a field (a non-Magic
-        /// damage type, a self-buff's move-speed delta or modifier id, a non-Enemy AoE filter, …). A graph that can't
-        /// be faithfully represented returns false and stays in the raw-JSON (Advanced) pane — its only safe editor.
-        /// Only the genuinely tunable fields (amount, radius, duration, costs, cooldown) vary across a preset.
-        /// </summary>
-        private static bool TryDetectPreset(AbilityDefinition def, out AbilityPresets.Kind kind, out AbilityPresets.Params p)
-        {
-            p = new AbilityPresets.Params
-            {
-                Id = def.Id, DisplayName = def.DisplayName,
-                CostEnergy = def.CostEnergy, CostOre = def.CostOre, CostCrystal = def.CostCrystal, Cooldown = def.Cooldown,
-            };
-            switch (def.EffectGraph)
-            {
-                // Targeted Damage: a single damage leaf — Magic only (the preset forces Magic; another type would be lost).
-                case DamageEffect { Type: DamageType.Magic } d:
-                    kind = AbilityPresets.Kind.TargetedDamage; p.Amount = d.Amount; return true;
-
-                // Heal: a single heal leaf (Amount is its only field — always faithfully representable).
-                case HealEffect h:
-                    kind = AbilityPresets.Kind.Heal; p.Amount = h.Amount; return true;
-
-                // Self Buff: apply_modifier, but only if every NON-tunable modifier field matches the preset's fixed shape.
-                case ApplyModifierEffect am when IsSimpleSelfBuff(am.Modifier):
-                    kind = AbilityPresets.Kind.SelfBuff;
-                    p.Amount = am.Modifier.AttackDamageDelta; p.DurationTicks = am.Modifier.DurationTicks; return true;
-
-                // AoE Nuke: search_area(Enemy) → damage(Magic); both the filter and the child damage type must match.
-                case SearchAreaEffect { Filter: TargetFilter.Enemy, Child: DamageEffect { Type: DamageType.Magic } cd } sa:
-                    kind = AbilityPresets.Kind.AoeNuke; p.Amount = cd.Amount; p.Radius = sa.Radius; return true;
-
-                default:
-                    kind = AbilityPresets.Kind.TargetedDamage; return false;   // no lossless Simple form → edit via raw JSON
-            }
-        }
-
-        /// <summary>True only when the modifier carries EXACTLY the Self Buff preset's fixed (non-tunable) fields, so
-        /// reflecting it into Simple and re-saving preserves it byte-for-byte (only attack-damage delta + duration tune).
-        /// Guards the data-loss footgun: a modifier with a different id, a move-speed/max-health delta, stacking, status,
-        /// or a periodic effect is NOT Simple-representable and must stay in raw JSON.</summary>
-        private static bool IsSimpleSelfBuff(Modifier m) =>
-            m != null
-            && m.Id == AbilityPresets.SelfBuffModifierId
-            && m.MaxStacks == 1
-            && m.Stacking == StackRule.Refresh
-            && m.Status == StatusFlags.None
-            && m.MaxHealthDelta.Raw == 0
-            && m.MoveSpeedDelta.Raw == 0
-            && m.PeriodEffect is null
-            && m.PeriodTicks == 0;
+        // Preset detection (TryDetectPreset / IsSimpleSelfBuff — the LOSSLESS data-loss guard) lives in the Godot-free
+        // AbilityPresetMatcher (src/Core/Definitions) so it is Tier-1-testable; the panel + Story 2.5b share it.
 
         // ── Validate-gated save (AC1, AC3) ──────────────────────────────────────
 
@@ -525,6 +474,16 @@ namespace ProjectChimera.CreationSuite
             try
             {
                 string json = JsonSerializer.Serialize(def, IndentedOptions);
+                // Save-time round-trip self-check: re-parse the EXACT bytes about to hit disk. Guards the rare case
+                // where a Fixed near the 16.16 ceiling serializes (via the converter's 32-bit ToFloat) to a magnitude
+                // AbilityLoader rejects on reload — so the editor never reports "Saved" for a file that won't load
+                // next match (honours the story's fail-closed "no invalid ability ever reaches a game" promise).
+                AbilityValidationResult roundTrip = AbilityLoader.Load(json, CurrentEditorId());
+                if (!roundTrip.Ok)
+                {
+                    ShowError($"Could not save — the ability did not round-trip and would not reload: {roundTrip.Error}");
+                    return;   // nothing written: no temp file, no move
+                }
                 File.WriteAllText(tmp, json);   // atomic: write to temp, then replace
                 File.Move(tmp, abs, overwrite: true);
                 GD.Print($"[AbilityEditor] Saved {abs}");
@@ -587,7 +546,7 @@ namespace ProjectChimera.CreationSuite
         {
             ReflectModelIntoForm(def);
             _jsonPane.Text = JsonSerializer.Serialize(def, IndentedOptions);
-            bool isPreset = TryDetectPreset(def, out _, out _);
+            bool isPreset = AbilityPresetMatcher.TryDetectPreset(def, out _, out _);
             SwitchMode(simple: isPreset);
             ShowValid($"Loaded '{def.Id}' for editing.");
         }

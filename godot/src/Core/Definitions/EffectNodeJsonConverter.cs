@@ -77,6 +77,12 @@ namespace ProjectChimera.Core.Definitions
 
         private static void WriteNode(Utf8JsonWriter writer, EffectNode node, JsonSerializerOptions options)
         {
+            // Fail-closed on a null child. Read never yields a null child, but the SequenceEffect/SearchAreaEffect
+            // ctors + the validator's walk tolerate one, so a directly-constructed malformed graph could carry it —
+            // surface a located JsonException, never an NRE from the default branch's node.GetType() (keeps the
+            // "exact inverse of Read" contract honest and authoring-only Write fail-closed).
+            if (node is null)
+                throw new JsonException("Cannot serialize a null effect node (malformed graph: a Sequence/SearchArea child is null).");
             writer.WriteStartObject();
             switch (node)
             {
