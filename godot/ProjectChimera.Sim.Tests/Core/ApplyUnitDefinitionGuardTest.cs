@@ -36,6 +36,8 @@ namespace ProjectChimera.Sim.Tests.Core
             AttackSpeed = 1.25f, SplashRadius = 2.5f, Supply = 3,
             DamageType = "Pierce", ArmorType = "Heavy", Armor = 7f,
             CollisionRadius = 0.5f, SeparationPriority = "Push",
+            // Story 2.7: a non-null presentation override so the FeedbackProfile mapper teeth bite (Create default = null).
+            CombatFeedback = new CombatFeedbackProfile { HitFreezeFrames = 4 },
         };
 
         [Fact]
@@ -65,12 +67,15 @@ namespace ProjectChimera.Sim.Tests.Core
             Assert.Equal(EntityWorld.ClampCollisionRadius(def.CollisionRadius).Raw, w.CollisionRadius[id].Raw);
             Assert.Equal(def.ParsedSeparationPriority,          w.SeparationPriorityOf[id]);
             Assert.Equal(def.ParsedCategory,                    w.CategoryOf[id]);
+            // Story 2.7: the presentation-read feedback override is copied (by reference) through the single mapper.
+            Assert.Same(def.CombatFeedback,                     w.FeedbackProfile[id]);
 
             // Teeth: prove the mapped values are NOT coincidentally the Create defaults.
             Assert.NotEqual(Fixed.Zero.Raw,            w.BaseAttackDamage[id].Raw);    // default 0
             Assert.NotEqual(Fixed.Zero.Raw,            w.BaseArmor[id].Raw);           // default 0 (Story 2.6)
             Assert.NotEqual(UnitCategory.Melee,        w.CategoryOf[id]);              // default Melee
             Assert.NotEqual(SeparationPriority.Normal, w.SeparationPriorityOf[id]);    // default Normal
+            Assert.NotNull(w.FeedbackProfile[id]);                                     // default null (Story 2.7)
         }
 
         [Fact]
@@ -117,6 +122,8 @@ namespace ProjectChimera.Sim.Tests.Core
             Assert.Equal(refWorld.ArmorTypeOf[refId],          w.ArmorTypeOf[id]);
             Assert.Equal(refWorld.SeparationPriorityOf[refId], w.SeparationPriorityOf[id]);
             Assert.Equal(refWorld.CategoryOf[refId],           w.CategoryOf[id]);
+            // Story 2.7: SpawnUnit routes the feedback override through the mapper (same def instance ⇒ same reference).
+            Assert.Same(refWorld.FeedbackProfile[refId],       w.FeedbackProfile[id]);
         }
 
         // ── Story 2.4a — the FIRST per-entity ability state flows through ApplyUnitDefinition (A2), and a recycled
@@ -246,6 +253,28 @@ namespace ProjectChimera.Sim.Tests.Core
             Assert.Equal(-1, w.SelfPassiveAbilityIndex[reused]);
             Assert.Equal(Fixed.Zero.Raw, w.BaseArmor[reused].Raw);
             Assert.Equal(Fixed.Zero.Raw, w.EffectiveArmor[reused].Raw);
+        }
+
+        // ── Story 2.7 — FeedbackProfile is EntityWorld's FIRST reference-typed per-entity SoA. A recycled slot must be
+        //    null-reset in Create() so a new occupant can never inherit (and render) a prior unit's feedback override —
+        //    the same SoA-recycle trap that bit 1.12/1.13/2.6, now for a reference field (a stale ref would also leak GC). ──
+
+        [Fact]
+        public void RecycledSlot_CarriesNoPriorFeedbackProfile()
+        {
+            UnitDefinition def = CombatDef(); // carries a non-null CombatFeedback override
+
+            var w = new EntityWorld();
+            int first = w.Create(FixedVec3.Zero, Faction.Player1, Fixed.FromInt(100), Fixed.FromInt(3));
+            w.ApplyUnitDefinition(first, def);
+            Assert.Same(def.CombatFeedback, w.FeedbackProfile[first]); // populated for the first occupant
+
+            w.Destroy(first);
+            int reused = w.Create(FixedVec3.Zero, Faction.Player2, Fixed.FromInt(50), Fixed.FromInt(3));
+            Assert.Equal(first, reused); // same id off the free list
+
+            // The new occupant (NO def applied) must carry NO prior feedback profile.
+            Assert.Null(w.FeedbackProfile[reused]);
         }
     }
 }

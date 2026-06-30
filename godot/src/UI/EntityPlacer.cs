@@ -452,6 +452,7 @@ namespace ProjectChimera.UI
                 _world.CollisionRadius[id]      = EntityWorld.ClampCollisionRadius(def.CollisionRadius);
                 _world.SeparationPriorityOf[id] = def.ParsedSeparationPriority;
                 _world.CategoryOf[id]           = def.ParsedCategory;
+                _world.FeedbackProfile[id]      = def.CombatFeedback; // Story 2.7: workers bypass ApplyUnitDefinition, so hand-copy the override too (else a placed worker's death-effect override would be inert).
             }
 
             int workerMesh = def != null ? (fdef?.IndexOfUnit(def.Id) ?? -1) : -1;

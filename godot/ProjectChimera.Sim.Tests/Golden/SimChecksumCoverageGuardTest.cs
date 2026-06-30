@@ -26,6 +26,14 @@ namespace ProjectChimera.Sim.Tests.Golden
     /// branch the tick — observational scoreboard data (analogous to the hash-excluded CombatFeedbackProfile).
     /// The reflection scan below only sees PUBLIC fields, so MatchStats is invisible to it regardless; this note
     /// exists so a future dev does not "helpfully" fold it in.
+    ///
+    /// Story 2.7 made the once-hypothetical "hash-excluded CombatFeedbackProfile" real: a presentation-read
+    /// <c>EntityWorld.FeedbackProfile</c> (the first reference-typed per-entity SoA) plus a <c>CombatEvent.Feedback</c>
+    /// reference on the (never-hashed) <c>CombatEventQueue</c> and a <c>ProjectileStore.Feedback</c> slot. ALL are
+    /// deliberately NOT folded — presentation-read only, exactly like <see cref="EntityWorld.MeshType"/>/CategoryOf —
+    /// so AlgoVersion stays 8 and the 10 goldens stay byte-identical. The reflection scan (ResourceStore-only) and the
+    /// enumerated EntityWorld guard below both correctly ignore them; the dedicated exclusion teeth (a FeedbackProfile
+    /// must not move Compute; draining the event queue must not perturb the sim) live in CombatFeedbackProfileTests.
     /// </summary>
     public class SimChecksumCoverageGuardTest
     {

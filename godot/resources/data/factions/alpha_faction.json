@@ -44,7 +44,15 @@
       "supply": 1,
       "mesh_scale": 1.0,
       "train_time": 8.0,
-      "vision_range": 8.0
+      "vision_range": 8.0,
+      "combat_feedback": {
+        "hit_flash": { "color_rgb": [0.10, 1.0, 0.35], "emission_mult": 6.0, "scale": 2.5, "duration_sec": 0.7 },
+        "impact_sound": "melee_hit.ogg",
+        "shake": { "duration_sec": 0.15, "strength": 0.3 },
+        "hit_freeze_frames": 8,
+        "death_flash": { "color_rgb": [0.2, 1.0, 0.5], "emission_mult": 8.0, "scale": 3.0, "duration_sec": 1.0 },
+        "death_sound": "unit_killed.ogg"
+      }
     },
     {
       "id": "scout",

@@ -63,6 +63,17 @@ namespace ProjectChimera.Core.Definitions
         [JsonPropertyName("effect")]
         public EffectNode? EffectGraph { get; set; }
 
+        /// <summary>
+        /// Optional per-ability combat-feedback override (Story 2.7, SD-3/SD-6) — the look/sound/shake/freeze the
+        /// cast plays (consumed by Story 2.10). Presentation-domain — EXCLUDED from the determinism hash; the cast
+        /// only pushes the reference on an <c>AbilityCast</c> <c>CombatEvent</c>, never reading the values. A declared
+        /// flat auto-prop, so it is <c>UnmappedMemberHandling.Disallow</c>-safe and round-trips through
+        /// <c>ContentJson.Options</c> in the 2.5a editor (NOT a computed getter — those need <c>[JsonIgnore]</c>).
+        /// Every sub-field of the profile is a declared property, so Disallow accepts the nested POCO.
+        /// </summary>
+        [JsonPropertyName("combat_feedback")]
+        public CombatFeedbackProfile? CombatFeedback { get; set; }
+
         // ── Enum conversion ─────────────────────────────────────────────────────
 
         /// <summary>

@@ -17,5 +17,11 @@
         "child": { "kind": "damage", "amount": 30, "damage_type": "Magic" }
       }
     ]
+  },
+  "combat_feedback": {
+    "hit_flash": { "color_rgb": [0.95, 0.35, 0.05], "emission_mult": 7.0, "scale": 2.2, "duration_sec": 0.6 },
+    "impact_sound": "explosion.ogg",
+    "shake": { "duration_sec": 0.25, "strength": 0.5 },
+    "hit_freeze_frames": 6
   }
 }

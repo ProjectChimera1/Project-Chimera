@@ -1,4 +1,6 @@
+#nullable enable
 using ProjectChimera.Core;
+using ProjectChimera.Core.Definitions; // CombatFeedbackProfile (presentation-only ref snapshotted at fire time — Story 2.7 SD-4)
 
 namespace ProjectChimera.Combat
 {
@@ -24,6 +26,13 @@ namespace ProjectChimera.Combat
         public readonly Faction[]    Owner         = new Faction[MAX_PROJECTILES];
         /// <summary>AoE splash radius (0 = no splash). Copied from EntityWorld.SplashRadius at fire time.</summary>
         public readonly Fixed[]      SplashRadius  = new Fixed[MAX_PROJECTILES];
+        /// <summary>
+        /// Presentation-only feedback override snapshotted from the FIRING unit at Spawn time (Story 2.7 SD-4). The
+        /// attacker entity id is unrecoverable at impact (ProjectileSystem.ApplyHit has only projId/targetId), so the
+        /// ranged/splash hit event reads this slot to honour a ranged unit's override. Null ⇒ default look. NOT folded
+        /// (ProjectileStore is never an input to SimChecksum).
+        /// </summary>
+        public readonly CombatFeedbackProfile?[] Feedback = new CombatFeedbackProfile?[MAX_PROJECTILES];
 
         private readonly int[] _freeList  = new int[MAX_PROJECTILES];
         private int            _freeCount;
@@ -43,7 +52,8 @@ namespace ProjectChimera.Combat
             DamageType dmgType,
             ArmorType  targetArmor,
             Faction    owner,
-            Fixed      splashRadius = default)
+            Fixed      splashRadius = default,
+            CombatFeedbackProfile? feedback = null)
         {
             int id;
             if (_freeCount > 0)
@@ -62,6 +72,7 @@ namespace ProjectChimera.Combat
             TargetArmor[id]   = targetArmor;
             Owner[id]         = owner;
             SplashRadius[id]  = splashRadius;
+            Feedback[id]      = feedback;
             return id;
         }
 

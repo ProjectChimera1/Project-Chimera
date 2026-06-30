@@ -1,22 +1,28 @@
 #nullable enable
+using System.Collections.Generic;
 using Godot;
 using ProjectChimera.Combat;
+using ProjectChimera.Core.Definitions; // CombatFeedbackProfile, FlashSpec, ShakeSpec, CombatFeedbackDefaults (Story 2.7)
 
 namespace ProjectChimera.UI
 {
     /// <summary>
-    /// Presentation-layer bridge that converts CombatEventQueue entries into pooled visual effects.
-    ///
-    /// Each frame:
+    /// Presentation-layer bridge that converts CombatEventQueue entries into pooled visual effects (Story 2.7:
+    /// profile-driven). Each frame:
     ///   1. Drains the event queue and spawns a hit-flash MeshInstance3D from a pre-allocated pool.
-    ///   2. Ticks active flashes: scales them down and hides them when expired.
-    ///   3. Kill events additionally trigger a brief camera shake via RtsCameraController.
+    ///   2. Resolves each event's look two-level: <c>evt.Feedback?.HitFlash/DeathFlash/Shake ?? the tuned default</c>
+    ///      (the embedded <see cref="CombatFeedbackDefaults"/> — byte-for-byte today's as-built constants).
+    ///   3. Ticks active flashes: scales them down and hides them when expired.
+    ///   4. Kill events additionally trigger a camera shake; AbilityCast events render only if the ability opted in.
+    ///   5. Optional presentation-only HIT-FREEZE (SD-7) holds the flash shrink for N render frames — it NEVER pauses
+    ///      the simulation (the drain + the single Clear() run unconditionally every frame; only the shrink dt is zeroed).
     ///
-    /// Flash types:
-    ///   MeleeHit   — small orange burst  (scale 0.9, 0.18 s)
-    ///   RangedHit  — small yellow burst  (scale 0.7, 0.15 s)
-    ///   SplashHit  — large red burst     (scale 1.8, 0.28 s)
-    ///   UnitKilled — medium white burst  (scale 1.2, 0.25 s) + camera shake
+    /// Default looks (null profile ⇒ today's exact behaviour):
+    ///   MeleeHit   — orange  (scale 0.9, 0.18 s)   RangedHit  — yellow (scale 0.7, 0.15 s)
+    ///   SplashHit  — red     (scale 1.8, 0.28 s)   UnitKilled — white  (scale 1.2, 0.25 s) + shake(0.12, 0.22)
+    ///
+    /// The CombatFeedbackProfile carried on each event is presentation-domain — the simulation never reads it and it
+    /// is excluded from SimChecksum/the canonical hash. This node and its Dictionary cache live entirely in presentation.
     /// </summary>
     public partial class CombatFeedbackBridge : Node3D
     {
@@ -30,20 +36,26 @@ namespace ProjectChimera.UI
         private float[]          _flashDuration = new float[MAX_FLASHES];
         private float[]          _flashScale    = new float[MAX_FLASHES];
 
-        private StandardMaterial3D _matMelee   = null!;
-        private StandardMaterial3D _matRanged  = null!;
-        private StandardMaterial3D _matSplash  = null!;
-        private StandardMaterial3D _matDeath   = null!;
+        /// <summary>Presentation-only material cache keyed by FlashSpec reference: the four default looks are pre-warmed
+        /// in <see cref="Initialize"/> and each distinct authored override look builds one material on first use
+        /// (sources share the same FlashSpec instance). A Dictionary is fine here — this is presentation, not sim.</summary>
+        private readonly Dictionary<FlashSpec, StandardMaterial3D> _matCache = new();
+
+        /// <summary>Story 2.7 (SD-7): render frames remaining in the hit-freeze hold. While &gt; 0, the flash-shrink dt
+        /// is forced to 0 so flashes hold; the queue drain + Clear() are UNAFFECTED. Default 0 = off (today's look).</summary>
+        private int _freezeFrames;
 
         public void Initialize(CombatEventQueue events, RtsCameraController camCtrl)
         {
             _events  = events;
             _camCtrl = camCtrl;
 
-            _matMelee  = MakeMat(new Color(1.0f, 0.50f, 0.10f), 3.0f); // orange
-            _matRanged = MakeMat(new Color(1.0f, 0.85f, 0.10f), 2.5f); // yellow
-            _matSplash = MakeMat(new Color(1.0f, 0.20f, 0.05f), 4.0f); // red
-            _matDeath  = MakeMat(new Color(1.0f, 0.95f, 0.80f), 5.0f); // white
+            // Pre-warm the four default looks. Byte-identical to the former inline MakeMat constants, now sourced from
+            // the embedded CombatFeedbackDefaults — the SAME set the Tier-1 "default-equals-constants" test pins.
+            MaterialFor(CombatFeedbackDefaults.Melee);
+            MaterialFor(CombatFeedbackDefaults.Ranged);
+            MaterialFor(CombatFeedbackDefaults.Splash);
+            MaterialFor(CombatFeedbackDefaults.Kill);
 
             // Shared low-poly sphere mesh for all flash slots
             var mesh = new SphereMesh();
@@ -66,7 +78,7 @@ namespace ProjectChimera.UI
         {
             if (_events == null) return;
 
-            // ── Spawn flashes for new events ──────────────────────────────────
+            // ── Spawn flashes for new events (profile-driven; null profile/sub-spec ⇒ the tuned event-type default) ──
             int evtCount = _events.Count;
             for (int e = 0; e < evtCount; e++)
             {
@@ -74,30 +86,53 @@ namespace ProjectChimera.UI
                 Vector3 pos = evt.Position.ToGodotVector3();
                 pos.Y += 0.5f; // lift slightly above ground
 
+                CombatFeedbackProfile? fb = evt.Feedback;
+
                 switch (evt.Type)
                 {
                     case CombatEventType.MeleeHit:
-                        SpawnFlash(pos, 0.9f, 0.18f, _matMelee);
+                        SpawnFlashFromSpec(pos, fb?.HitFlash ?? CombatFeedbackDefaults.Melee);
                         break;
 
                     case CombatEventType.RangedHit:
-                        SpawnFlash(pos, 0.7f, 0.15f, _matRanged);
+                        SpawnFlashFromSpec(pos, fb?.HitFlash ?? CombatFeedbackDefaults.Ranged);
                         break;
 
                     case CombatEventType.SplashHit:
-                        SpawnFlash(pos, 1.8f, 0.28f, _matSplash);
+                        SpawnFlashFromSpec(pos, fb?.HitFlash ?? CombatFeedbackDefaults.Splash);
                         break;
 
                     case CombatEventType.UnitKilled:
-                        SpawnFlash(pos, 1.2f, 0.25f, _matDeath);
-                        _camCtrl?.SetShake(0.12f, 0.22f);
+                        SpawnFlashFromSpec(pos, fb?.DeathFlash ?? CombatFeedbackDefaults.Kill);
+                        ApplyShake(fb?.Shake ?? CombatFeedbackDefaults.KillShake);
+                        break;
+
+                    case CombatEventType.AbilityCast:
+                        // Abilities opt INTO cast juice via their profile — a null HitFlash/Shake ⇒ no extra effect
+                        // (there is no default cast look, mirroring AudioManager's no default cast clip).
+                        if (fb?.HitFlash != null) SpawnFlashFromSpec(pos, fb.HitFlash);
+                        if (fb?.Shake != null)    ApplyShake(fb.Shake);
                         break;
                 }
+
+                // Hit-freeze accrues from any event's profile (take the strongest this frame). 0 = off (today's look).
+                int frames = fb?.HitFreezeFrames ?? 0;
+                if (frames > _freezeFrames) _freezeFrames = frames;
             }
-            _events.Clear();
+            _events.Clear(); // CRITICAL: the bridge owns the single Clear(). It runs EVERY frame — NEVER gated by the freeze.
 
             // ── Tick active flashes: shrink and hide when expired ─────────────
+            // Hit-freeze (SD-7): hold the shrink by forcing dt = 0 for _freezeFrames frames. The drain + Clear above
+            // already ran unconditionally, so a freeze NEVER starves AudioManager (second consumer) or overflows the
+            // 256-slot queue. The sim is wholly separate (MainScene._Process drives StepOnce/Update) — this never
+            // touches Engine.TimeScale / GetTree().Paused / _host; it is pure presentation timing.
             float dt = (float)delta;
+            if (_freezeFrames > 0)
+            {
+                _freezeFrames--;
+                dt = 0f;
+            }
+
             for (int i = 0; i < MAX_FLASHES; i++)
             {
                 if (_flashTimer[i] <= 0f) continue;
@@ -115,6 +150,13 @@ namespace ProjectChimera.UI
                 _flashNodes[i].Scale = Vector3.One * (_flashScale[i] * t);
             }
         }
+
+        /// <summary>Apply a shake spec to the camera — note the camera takes (duration, strength) in THAT order.</summary>
+        private void ApplyShake(ShakeSpec shake) => _camCtrl?.SetShake(shake.DurationSec, shake.Strength);
+
+        /// <summary>Spawn a flash from a resolved <see cref="FlashSpec"/> (override or default look).</summary>
+        private void SpawnFlashFromSpec(Vector3 pos, FlashSpec spec)
+            => SpawnFlash(pos, spec.Scale, spec.DurationSec, MaterialFor(spec));
 
         /// <summary>Claims the next free flash slot and starts the effect.</summary>
         private void SpawnFlash(Vector3 pos, float baseScale, float duration, StandardMaterial3D mat)
@@ -134,6 +176,24 @@ namespace ProjectChimera.UI
                 return;
             }
             // Pool exhausted — silently drop (non-critical cosmetic)
+        }
+
+        /// <summary>Resolve (and cache by reference) the Unshaded emissive material for a flash look.</summary>
+        private StandardMaterial3D MaterialFor(FlashSpec spec)
+        {
+            if (_matCache.TryGetValue(spec, out StandardMaterial3D? cached)) return cached;
+            StandardMaterial3D mat = MakeMat(ColorOf(spec.ColorRgb), spec.EmissionMult);
+            _matCache[spec] = mat;
+            return mat;
+        }
+
+        /// <summary>Convert a presentation-domain float[] colour to a Godot Color (defaults to white if unspecified).</summary>
+        private static Color ColorOf(float[]? rgb)
+        {
+            float r = rgb != null && rgb.Length > 0 ? rgb[0] : 1f;
+            float g = rgb != null && rgb.Length > 1 ? rgb[1] : 1f;
+            float b = rgb != null && rgb.Length > 2 ? rgb[2] : 1f;
+            return new Color(r, g, b);
         }
 
         private static StandardMaterial3D MakeMat(Color color, float emissionMult)

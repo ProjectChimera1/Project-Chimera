@@ -1,4 +1,6 @@
+#nullable enable
 using ProjectChimera.Core;
+using ProjectChimera.Core.Definitions; // CombatFeedbackProfile (presentation-only ref carried on the event — Story 2.7)
 
 namespace ProjectChimera.Combat
 {
@@ -8,7 +10,11 @@ namespace ProjectChimera.Combat
         MeleeHit,   // instant melee damage dealt
         RangedHit,  // projectile hit
         SplashHit,  // AoE detonation centre
-        UnitKilled  // entity destroyed (any cause)
+        UnitKilled, // entity destroyed (any cause)
+        // ── Story 2.7 (SD-3): appended AFTER UnitKilled. Presentation-only ability-cast feedback, pushed by
+        // AbilityCastSystem on a committed cast and carrying the ability's CombatFeedbackProfile. Never folded —
+        // CombatEventQueue is not an input to SimChecksum, so appending an enum value cannot move any golden. ──
+        AbilityCast
     }
 
     /// <summary>Lightweight event written by sim systems each tick.</summary>
@@ -16,15 +22,24 @@ namespace ProjectChimera.Combat
     {
         public CombatEventType Type;
         public FixedVec3       Position; // world position of the event
+
+        /// <summary>
+        /// Optional per-source feedback override (Story 2.7), resolved AT PUSH TIME because the source entity may be
+        /// dead/recycled by the time the presentation bridge drains the queue (so its identity can't be looked up
+        /// later). Null ⇒ the bridge/audio use the tuned event-type default. Presentation-domain reference — the
+        /// simulation never reads it, and the queue is NOT an input to SimChecksum, so this field is excluded from
+        /// the determinism hash by construction.
+        /// </summary>
+        public CombatFeedbackProfile? Feedback;
     }
 
     /// <summary>
-    /// Sim-layer ring buffer for combat feedback events.
+    /// Sim-layer event buffer for combat feedback.
     ///
-    /// Written by CombatSystem / ProjectileSystem each simulation tick.
-    /// Drained once per frame by CombatFeedbackBridge, then cleared.
+    /// Written by CombatSystem / ProjectileSystem / DamageResolver / AbilityCastSystem each simulation tick.
+    /// Drained once per frame by CombatFeedbackBridge (which owns the single Clear()) and read again by AudioManager.
     ///
-    /// Pure C# — no Godot dependency.
+    /// Pure C# — no Godot dependency. Never folded into SimChecksum (it is not a Compute input).
     /// </summary>
     public class CombatEventQueue
     {
@@ -38,11 +53,19 @@ namespace ProjectChimera.Combat
         /// <summary>Returns the event at index <paramref name="i"/>. No bounds checking.</summary>
         public CombatEvent Get(int i) => _buf[i];
 
-        /// <summary>Appends an event. Silently drops if the buffer is full (non-critical visual).</summary>
+        /// <summary>Appends an event with no feedback override (today's default look). Silently drops if full.</summary>
         public void Push(CombatEventType type, FixedVec3 position)
+            => Push(type, position, null);
+
+        /// <summary>
+        /// Appends an event carrying an optional presentation-only feedback override (Story 2.7). Resolve
+        /// <paramref name="feedback"/> at the push site while the source is still alive — the bridge cannot recover
+        /// source identity at drain time. Silently drops if the buffer is full (non-critical visual).
+        /// </summary>
+        public void Push(CombatEventType type, FixedVec3 position, CombatFeedbackProfile? feedback)
         {
             if (_count < MAX_EVENTS)
-                _buf[_count++] = new CombatEvent { Type = type, Position = position };
+                _buf[_count++] = new CombatEvent { Type = type, Position = position, Feedback = feedback };
         }
 
         /// <summary>Resets the buffer so the next frame starts fresh.</summary>

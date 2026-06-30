@@ -479,13 +479,14 @@ namespace ProjectChimera.Combat
                     world.DamageTypeOf[attacker],
                     world.ArmorTypeOf[target],
                     world.FactionOf[attacker],
-                    world.SplashRadius[attacker]);
+                    world.SplashRadius[attacker],
+                    world.FeedbackProfile[attacker]); // Story 2.7 SD-4: snapshot the firing unit's override (attacker id is lost by impact)
             }
             else
             {
                 // Melee — instant damage. Event BEFORE Apply; attacker-cleanup AFTER, gated on death —
                 // operation order preserved exactly so the golden checksums stay byte-identical (Story 1.6 AC2).
-                _events?.Push(CombatEventType.MeleeHit, world.Position[target]);
+                _events?.Push(CombatEventType.MeleeHit, world.Position[target], world.FeedbackProfile[attacker]); // Story 2.7
 
                 var ctx = new DamageContext(world, target, world.ArmorTypeOf[target],
                                             world.FactionOf[attacker], _table, _events, _stats);

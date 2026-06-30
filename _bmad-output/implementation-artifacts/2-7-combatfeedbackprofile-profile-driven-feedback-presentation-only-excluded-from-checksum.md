@@ -4,7 +4,7 @@ baseline_commit: 7615cd3c9183bf92cbdd17df1470b7ea695d5abb
 
 # Story 2.7: CombatFeedbackProfile — profile-driven feedback, presentation-only, excluded from checksum
 
-Status: in-progress
+Status: review
 
 <!-- Context engineered by gds-create-story (ultracode: 6-analyst parallel artifact analysis). Comprehensive developer guide — the dev agent will have ONLY this file. -->
 
@@ -59,60 +59,60 @@ _Covers: FR-12a, AR-29, UX-DR51. Depends on: 2.1, 2.4 (both DONE)._
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1 — `CombatFeedbackProfile` DTO (Godot-free, presentation-domain)** (AC: 1, 2)
-  - [ ] Create `godot/src/Core/Definitions/CombatFeedbackProfile.cs` — `#nullable enable`, **NO `using Godot;`**, plain primitives only (`float`, `float[]`, `int`, `string?`; **never** `Godot.Color`/`Vector3`/`AudioStream`, **never** `Core.Fixed`). PascalCase auto-props + snake_case `[JsonPropertyName]`. Per the DTO schema in Dev Notes §"DTO schema".
-  - [ ] Sensible defaults on every field so an unauthored profile is harmless; nested sub-objects (`HitFlash`, `DeathFlash`, `Shake`) are their own small POCOs in the same file (declared members so the strict ability loader's `Disallow` accepts them).
-  - [ ] Comment the class header: presentation-domain, excluded from `SimChecksum`/`CanonicalModelHash`, translated to Godot types only at the presentation boundary.
-  - [ ] Verify `SimSources.props` already globs `src/Core/Definitions/**` (it does) — the DTO is auto-covered by Tier-1 + the analyzer; **no props edit**.
+- [x] **Task 1 — `CombatFeedbackProfile` DTO (Godot-free, presentation-domain)** (AC: 1, 2)
+  - [x] Create `godot/src/Core/Definitions/CombatFeedbackProfile.cs` — `#nullable enable`, **NO `using Godot;`**, plain primitives only (`float`, `float[]`, `int`, `string?`; **never** `Godot.Color`/`Vector3`/`AudioStream`, **never** `Core.Fixed`). PascalCase auto-props + snake_case `[JsonPropertyName]`. Per the DTO schema in Dev Notes §"DTO schema".
+  - [x] Sensible defaults on every field so an unauthored profile is harmless; nested sub-objects (`HitFlash`, `DeathFlash`, `Shake`) are their own small POCOs in the same file (declared members so the strict ability loader's `Disallow` accepts them).
+  - [x] Comment the class header: presentation-domain, excluded from `SimChecksum`/`CanonicalModelHash`, translated to Godot types only at the presentation boundary.
+  - [x] Verify `SimSources.props` already globs `src/Core/Definitions/**` (it does) — the DTO is auto-covered by Tier-1 + the analyzer; **no props edit**.
 
-- [ ] **Task 2 — Attach the profile to definitions** (AC: 1, 2)
-  - [ ] `UnitDefinition.cs`: add `[JsonPropertyName("combat_feedback")] public CombatFeedbackProfile? CombatFeedback { get; set; }` (nullable ⇒ omittable ⇒ existing JSON unaffected). Loads via `FactionDefinition`'s lenient options — no converter work.
-  - [ ] `AbilityDefinition.cs`: add the same flat member. It deserializes through `ContentJson.Options` (`UnmappedMemberHandling.Disallow`) — a **declared** flat member is Disallow-safe; do NOT add any computed getter unless `[JsonIgnore]` (the `ParsedTargeting`/`ParsedActivation` lesson, else the 2.5a editor round-trip rejects the re-emitted member).
-  - [ ] Confirm the 2.5a ability-editor round-trip (`new(ContentJson.Options){WriteIndented=true}`) still serializes/deserializes an ability carrying a profile (plain POCO via default reflection — expected OK; add a round-trip Tier-1 test).
+- [x] **Task 2 — Attach the profile to definitions** (AC: 1, 2)
+  - [x] `UnitDefinition.cs`: add `[JsonPropertyName("combat_feedback")] public CombatFeedbackProfile? CombatFeedback { get; set; }` (nullable ⇒ omittable ⇒ existing JSON unaffected). Loads via `FactionDefinition`'s lenient options — no converter work.
+  - [x] `AbilityDefinition.cs`: add the same flat member. It deserializes through `ContentJson.Options` (`UnmappedMemberHandling.Disallow`) — a **declared** flat member is Disallow-safe; do NOT add any computed getter unless `[JsonIgnore]` (the `ParsedTargeting`/`ParsedActivation` lesson, else the 2.5a editor round-trip rejects the re-emitted member).
+  - [x] Confirm the 2.5a ability-editor round-trip (`new(ContentJson.Options){WriteIndented=true}`) still serializes/deserializes an ability carrying a profile (plain POCO via default reflection — expected OK; add a round-trip Tier-1 test).
 
-- [ ] **Task 3 — Ship the tuned default (embedded constant set)** (AC: 1)
-  - [ ] Encode today's four event-type looks (Dev Notes §"Exact default constants") as an **embedded C# default set** (the canonical source of truth). Values MUST equal today's constants byte-for-byte. **Embed it (not a `res://` JSON), so the Godot-free Tier-1 "default-equals-constants" test in Task 8 can read it** — a `res://`-loaded JSON is unreadable from the Godot-free test assembly. (Feedback is cosmetic, not balance, and is fully overridable per unit/ability, so an embedded default still honors the data-driven rule — creators reach it via override. An optional `resources/data/feedback/default_feedback.json` in-engine override is fine but is NOT the source of truth the Tier-1 test checks.)
-  - [ ] Inject the default at the bridge's construction site (`RenderingPhase.cs:43-45`) into a widened `CombatFeedbackBridge.Initialize(...)` (and the audio default at `AudioPhase.cs:23`). (Per unit/ability profiles are resolved via SD-1's event reference, NOT a per-faction table at the bridge — so no post-ScenarioLoad re-wire is needed.)
+- [x] **Task 3 — Ship the tuned default (embedded constant set)** (AC: 1)
+  - [x] Encode today's four event-type looks (Dev Notes §"Exact default constants") as an **embedded C# default set** (the canonical source of truth). Values MUST equal today's constants byte-for-byte. **Embed it (not a `res://` JSON), so the Godot-free Tier-1 "default-equals-constants" test in Task 8 can read it** — a `res://`-loaded JSON is unreadable from the Godot-free test assembly. (Feedback is cosmetic, not balance, and is fully overridable per unit/ability, so an embedded default still honors the data-driven rule — creators reach it via override. An optional `resources/data/feedback/default_feedback.json` in-engine override is fine but is NOT the source of truth the Tier-1 test checks.)
+  - [x] Inject the default at the bridge's construction site (`RenderingPhase.cs:43-45`) into a widened `CombatFeedbackBridge.Initialize(...)` (and the audio default at `AudioPhase.cs:23`). (Per unit/ability profiles are resolved via SD-1's event reference, NOT a per-faction table at the bridge — so no post-ScenarioLoad re-wire is needed.)
 
-- [ ] **Task 4 — Carry the source profile to the event (SD-1)** (AC: 2)
-  - [ ] `EntityWorld`: add a presentation-read `CombatFeedbackProfile?[] FeedbackProfile` array. Set it in **`ApplyUnitDefinition`** from `def.CombatFeedback` (A2 single-mapper rule); default **null** in `Create()` (recycle safety). Document at the declaration: presentation-read, **NOT folded**. ⚠ Only the **not-folded posture** carries over from `MeshType`/`CategoryOf` — those are value-type arrays (`byte[]`/`UnitCategory[]`); this is **EntityWorld's first reference-typed SoA array** (GC-tracked, mostly-null, negligible at ~2k entities; determinism-safe — never hashed, the coverage guard scans only `ResourceStore`). Value-type-consistent **alternative** (SD-1): an `int[] FeedbackProfileId` + a presentation-side profile table — both determinism-neutral; pick one and note it in the Dev Record.
-  - [ ] Extend `ApplyUnitDefinitionGuardTest` so a recycled slot cannot inherit a prior occupant's `FeedbackProfile` (the 1.12/1.13/2.6 zombie-state defect class). Do **NOT** add it to any folded/checksum assertion.
-  - [ ] **Spawn-path completeness (pre-empt the 2.6 Edge-Case-Hunter HIGH):** the 3 primary in-match def-based spawns route through `ApplyUnitDefinition` (`ScenarioApplier.SpawnUnit:210`, `BuildingSystem.SpawnTrainedUnit:174`, `EntityPlacer.DoSpawnCombatUnit:486`) → `FeedbackProfile` populated, overrides work for built armies. BUT `EntityPlacer.DoSpawnWorker` (`:432-462`) and `RestoreUnit` (`EntityWorld.cs:374`) do **NOT** call `ApplyUnitDefinition` → `FeedbackProfile` stays null there (a worker's death-effect override is inert when editor-placed / undo-restored). Presentation-only and consistent with the 1.13 worker posture — **DEFER is acceptable; state it in the Dev Record.** If worker death overrides are wanted, set `FeedbackProfile` directly in `DoSpawnWorker` alongside the separation fields (and widen `UnitSnapshot` for `RestoreUnit`).
-  - [ ] `CombatEventQueue.cs`: add `CombatFeedbackProfile? Feedback` to `CombatEvent`; add an overload/param to `Push(...)` to set it (default null keeps the existing 2-arg call shape working). Preserve drop-on-full + the bridge-owns-`Clear()` contract.
-  - [ ] `ProjectileStore`: add `CombatFeedbackProfile? Feedback`; set it in `Spawn(...)` from the attacker (SD-4). (`ProjectileStore` is never folded — determinism-neutral.)
-  - [ ] Stamp the profile at the 3 push sites, preserving the **Story 1.6 AC2 event-before-Apply ordering**:
+- [x] **Task 4 — Carry the source profile to the event (SD-1)** (AC: 2)
+  - [x] `EntityWorld`: add a presentation-read `CombatFeedbackProfile?[] FeedbackProfile` array. Set it in **`ApplyUnitDefinition`** from `def.CombatFeedback` (A2 single-mapper rule); default **null** in `Create()` (recycle safety). Document at the declaration: presentation-read, **NOT folded**. ⚠ Only the **not-folded posture** carries over from `MeshType`/`CategoryOf` — those are value-type arrays (`byte[]`/`UnitCategory[]`); this is **EntityWorld's first reference-typed SoA array** (GC-tracked, mostly-null, negligible at ~2k entities; determinism-safe — never hashed, the coverage guard scans only `ResourceStore`). Value-type-consistent **alternative** (SD-1): an `int[] FeedbackProfileId` + a presentation-side profile table — both determinism-neutral; pick one and note it in the Dev Record.
+  - [x] Extend `ApplyUnitDefinitionGuardTest` so a recycled slot cannot inherit a prior occupant's `FeedbackProfile` (the 1.12/1.13/2.6 zombie-state defect class). Do **NOT** add it to any folded/checksum assertion.
+  - [x] **Spawn-path completeness (pre-empt the 2.6 Edge-Case-Hunter HIGH):** the 3 primary in-match def-based spawns route through `ApplyUnitDefinition` (`ScenarioApplier.SpawnUnit:210`, `BuildingSystem.SpawnTrainedUnit:174`, `EntityPlacer.DoSpawnCombatUnit:486`) → `FeedbackProfile` populated, overrides work for built armies. BUT `EntityPlacer.DoSpawnWorker` (`:432-462`) and `RestoreUnit` (`EntityWorld.cs:374`) do **NOT** call `ApplyUnitDefinition` → `FeedbackProfile` stays null there (a worker's death-effect override is inert when editor-placed / undo-restored). Presentation-only and consistent with the 1.13 worker posture — **DEFER is acceptable; state it in the Dev Record.** If worker death overrides are wanted, set `FeedbackProfile` directly in `DoSpawnWorker` alongside the separation fields (and widen `UnitSnapshot` for `RestoreUnit`).
+  - [x] `CombatEventQueue.cs`: add `CombatFeedbackProfile? Feedback` to `CombatEvent`; add an overload/param to `Push(...)` to set it (default null keeps the existing 2-arg call shape working). Preserve drop-on-full + the bridge-owns-`Clear()` contract.
+  - [x] `ProjectileStore`: add `CombatFeedbackProfile? Feedback`; set it in `Spawn(...)` from the attacker (SD-4). (`ProjectileStore` is never folded — determinism-neutral.)
+  - [x] Stamp the profile at the 3 push sites, preserving the **Story 1.6 AC2 event-before-Apply ordering**:
     - Melee — `CombatSystem.cs:488`: from `world.FeedbackProfile[attacker]`.
     - Ranged/Splash — `ProjectileSystem.cs:83`: from `_store.Feedback[projId]`.
     - Kill — `DamageResolver.cs:70`: from `world.FeedbackProfile[t]` (read BEFORE `world.Destroy(t)` on :72).
 
-- [ ] **Task 5 — Make `CombatFeedbackBridge` profile-driven** (AC: 1, 2, 3)
-  - [ ] Rewrite the `switch (evt.Type)` in `_Process` to use **two-level resolution** (the sub-flash specs are nullable, so a profile that authored only a sound must not NPE / render a blank flash):
+- [x] **Task 5 — Make `CombatFeedbackBridge` profile-driven** (AC: 1, 2, 3)
+  - [x] Rewrite the `switch (evt.Type)` in `_Process` to use **two-level resolution** (the sub-flash specs are nullable, so a profile that authored only a sound must not NPE / render a blank flash):
     - `hitLook  = evt.Feedback?.HitFlash  ?? <default look for evt.Type>` (melee / ranged / splash / `AbilityCast`)
     - `deathLook = evt.Feedback?.DeathFlash ?? <default kill look>` (`UnitKilled`)
     - `shake     = evt.Feedback?.Shake     ?? <default kill shake>` (applied on kill)
     When the whole profile OR a sub-spec is null, reproduce today's exact look (orange/yellow/red/white + `SetShake(0.12f, 0.22f)` on kill). `AbilityCast` uses `HitFlash` with a **no-flash** default (abilities opt into cast juice via their profile).
-  - [ ] Move the hardcoded constants into the default set (Task 3). Preserve: 48-slot pool + silent drop, shared `SphereMesh`, `pos.Y += 0.5f` lift, linear shrink-to-zero, the single `_events.Clear()` at end of `_Process`.
-  - [ ] Implement **hit-freeze (SD-7)**: a presentation-only frame counter that briefly holds the hit flash's shrink animation (and optionally the struck unit's interpolation). Drive it from `evt.Feedback?.HitFreezeFrames` (default 0 = off). It must NOT touch `_host`/`MainScene._Process`/`Engine.TimeScale`/`GetTree().Paused`. **CRITICAL regression guard — the freeze gates ONLY the per-slot flash-shrink loop (`CombatFeedbackBridge.cs:101-116`); the queue drain and the single `_events.Clear()` (`:97`) MUST run every frame unconditionally.** A freeze that early-returns out of `_Process` would leave the queue uncleared → `AudioManager` (second consumer, never clears) replays the same events every frozen frame (duplicate SFX) and the 256-slot queue overflows and silently drops new events.
-  - [ ] Handle the new `AbilityCast` event type (SD-3): render the ability's profile (flash/shake/freeze); null profile ⇒ no extra juice.
+  - [x] Move the hardcoded constants into the default set (Task 3). Preserve: 48-slot pool + silent drop, shared `SphereMesh`, `pos.Y += 0.5f` lift, linear shrink-to-zero, the single `_events.Clear()` at end of `_Process`.
+  - [x] Implement **hit-freeze (SD-7)**: a presentation-only frame counter that briefly holds the hit flash's shrink animation (and optionally the struck unit's interpolation). Drive it from `evt.Feedback?.HitFreezeFrames` (default 0 = off). It must NOT touch `_host`/`MainScene._Process`/`Engine.TimeScale`/`GetTree().Paused`. **CRITICAL regression guard — the freeze gates ONLY the per-slot flash-shrink loop (`CombatFeedbackBridge.cs:101-116`); the queue drain and the single `_events.Clear()` (`:97`) MUST run every frame unconditionally.** A freeze that early-returns out of `_Process` would leave the queue uncleared → `AudioManager` (second consumer, never clears) replays the same events every frozen frame (duplicate SFX) and the 256-slot queue overflows and silently drops new events.
+  - [x] Handle the new `AbilityCast` event type (SD-3): render the ability's profile (flash/shake/freeze); null profile ⇒ no extra juice.
 
-- [ ] **Task 6 — Make `AudioManager` profile-driven (SD-2)** (AC: 2)
-  - [ ] Restructure `AudioManager._Process` **profile-first**: if `evt.Feedback != null`, play its `ImpactSoundId` (or `DeathSoundId` for the kill look) — graceful-silent when the id is null — for ANY event, **including the new `AbilityCast` type**. The existing `switch (evt.Type)` over the 4 legacy clips becomes the **null fallback** only. (Today's switch is 4-case type-gated, `AudioManager.cs:106-112`; a bare `AbilityCast` event would otherwise fall through to silence — and there is NO default cast clip, so the override's `ImpactSoundId` is the ONLY sound an ability cast can make. Required by AC2's "sound" + the 2.10 contract. Mirror Task 5's explicit `AbilityCast` handling so the two consumers are symmetric.)
-  - [ ] Preserve graceful-silence on missing assets and the **must-NOT-clear** contract (`AudioManager.cs:114` — the bridge owns the single `Clear()`); `/godot-verify` (Task 9) should explicitly confirm an ability-cast override's sound plays.
+- [x] **Task 6 — Make `AudioManager` profile-driven (SD-2)** (AC: 2)
+  - [x] Restructure `AudioManager._Process` **profile-first**: if `evt.Feedback != null`, play its `ImpactSoundId` (or `DeathSoundId` for the kill look) — graceful-silent when the id is null — for ANY event, **including the new `AbilityCast` type**. The existing `switch (evt.Type)` over the 4 legacy clips becomes the **null fallback** only. (Today's switch is 4-case type-gated, `AudioManager.cs:106-112`; a bare `AbilityCast` event would otherwise fall through to silence — and there is NO default cast clip, so the override's `ImpactSoundId` is the ONLY sound an ability cast can make. Required by AC2's "sound" + the 2.10 contract. Mirror Task 5's explicit `AbilityCast` handling so the two consumers are symmetric.)
+  - [x] Preserve graceful-silence on missing assets and the **must-NOT-clear** contract (`AudioManager.cs:114` — the bridge owns the single `Clear()`); `/godot-verify` (Task 9) should explicitly confirm an ability-cast override's sound plays.
 
-- [ ] **Task 7 — Ability-cast feedback emission (SD-3)** (AC: 2)
-  - [ ] Add `AbilityCast` to `CombatEventType`. In `AbilityCastSystem`, on a committed cast push a feedback event at the primary-target (fallback caster) position carrying `ability.CombatFeedback`. Use the `EffectContext.Events` queue already wired in 2.4a. Presentation-only — never folded; do not branch the tick on it.
+- [x] **Task 7 — Ability-cast feedback emission (SD-3)** (AC: 2)
+  - [x] Add `AbilityCast` to `CombatEventType`. In `AbilityCastSystem`, on a committed cast push a feedback event at the primary-target (fallback caster) position carrying `ability.CombatFeedback`. Use the `EffectContext.Events` queue already wired in 2.4a. Presentation-only — never folded; do not branch the tick on it.
 
-- [ ] **Task 8 — Tier-1 tests (Godot-free) + determinism teeth** (AC: 1, 3)
-  - [ ] `Definitions/` tests: profile JSON round-trip (both loaders); the **embedded default's values equal today's constants** (byte-for-byte, per Task 3); ability carrying a profile round-trips through `ContentJson.Options`.
-  - [ ] **Exclusion tooth (A3 discipline):** prove that adding/varying a `CombatFeedbackProfile` (and the new `CombatEvent.Feedback`/`EntityWorld.FeedbackProfile`) does NOT move `SimChecksum.Compute`; assert `AlgoVersion == 8`; assert the 10 goldens byte-identical. Add the CategoryOf-style exclusion note in `SimChecksumCoverageGuardTest`. Prove the tooth has teeth: inject-violation (temporarily fold the profile) → observe RED → revert.
-  - [ ] **AC3 sim-advances assertion (concrete):** Tier-1 is Godot-free and CANNOT build the `Node3D` bridge, so there is no literal in-engine rendered-vs-headless checksum diff to write here. Instead assert that **draining + clearing the `CombatEventQueue` each tick (mimicking the bridge) yields a byte-identical checksum to NOT draining it** — proving the feedback path cannot perturb the sim. The literal **"with rendering" leg of AC3 is the `/godot-verify` run (Task 9)**, not a Tier-1 test.
-  - [ ] Run the full suite: `dotnet test godot/ProjectChimera.Sim.Tests/ProjectChimera.Sim.Tests.csproj -c Release` — expect baseline ~495 pass/1 skip to RISE by the new tests, **0 fail**, and **zero golden drift**.
+- [x] **Task 8 — Tier-1 tests (Godot-free) + determinism teeth** (AC: 1, 3)
+  - [x] `Definitions/` tests: profile JSON round-trip (both loaders); the **embedded default's values equal today's constants** (byte-for-byte, per Task 3); ability carrying a profile round-trips through `ContentJson.Options`.
+  - [x] **Exclusion tooth (A3 discipline):** prove that adding/varying a `CombatFeedbackProfile` (and the new `CombatEvent.Feedback`/`EntityWorld.FeedbackProfile`) does NOT move `SimChecksum.Compute`; assert `AlgoVersion == 8`; assert the 10 goldens byte-identical. Add the CategoryOf-style exclusion note in `SimChecksumCoverageGuardTest`. Prove the tooth has teeth: inject-violation (temporarily fold the profile) → observe RED → revert.
+  - [x] **AC3 sim-advances assertion (concrete):** Tier-1 is Godot-free and CANNOT build the `Node3D` bridge, so there is no literal in-engine rendered-vs-headless checksum diff to write here. Instead assert that **draining + clearing the `CombatEventQueue` each tick (mimicking the bridge) yields a byte-identical checksum to NOT draining it** — proving the feedback path cannot perturb the sim. The literal **"with rendering" leg of AC3 is the `/godot-verify` run (Task 9)**, not a Tier-1 test.
+  - [x] Run the full suite: `dotnet test godot/ProjectChimera.Sim.Tests/ProjectChimera.Sim.Tests.csproj -c Release` — expect baseline ~495 pass/1 skip to RISE by the new tests, **0 fail**, and **zero golden drift**.
 
-- [ ] **Task 9 — In-engine verification (`/godot-verify`)** (AC: 1, 2, 3)
-  - [ ] `dotnet build godot/godot.sln` (0 errors) → run the scene via godot-mcp → screenshot + judge: (a) AC1 default flashes (orange/yellow/red/white) + kill shake look unchanged; (b) AC2 a unit/ability override renders different feedback; (c) AC3 a configured hit-freeze plays while the sim keeps advancing. Append the verification result (with screenshots) to the Dev Agent Record. Run BEFORE the code-review marks the story done.
+- [x] **Task 9 — In-engine verification (`/godot-verify`)** (AC: 1, 2, 3)
+  - [x] `dotnet build godot/godot.sln` (0 errors) → run the scene via godot-mcp → screenshot + judge: (a) AC1 default flashes (orange/yellow/red/white) + kill shake look unchanged; (b) AC2 a unit/ability override renders different feedback; (c) AC3 a configured hit-freeze plays while the sim keeps advancing. Append the verification result (with screenshots) to the Dev Agent Record. Run BEFORE the code-review marks the story done.
 
-- [ ] **Task 10 — Determinism fence assertions (state in Dev Record)** (AC: 1, 3)
-  - [ ] Confirm UNTOUCHED: `SimChecksum.cs` fold set + `AlgoVersion` (8) + `ExpectedV8Hash` (0x983D39AE), `CanonicalModelHash.cs` (`AlgoVersion` 2), `SystemOrderTest.cs`, `VersionStampConsistencyTests`, `ReplayRecorder.VERSION`, `PROTOCOL_VERSION`, all 10 `*.golden.txt`. A golden that moves = a leaked sim read of the profile → fix the leak, never re-record.
+- [x] **Task 10 — Determinism fence assertions (state in Dev Record)** (AC: 1, 3)
+  - [x] Confirm UNTOUCHED: `SimChecksum.cs` fold set + `AlgoVersion` (8) + `ExpectedV8Hash` (0x983D39AE), `CanonicalModelHash.cs` (`AlgoVersion` 2), `SystemOrderTest.cs`, `VersionStampConsistencyTests`, `ReplayRecorder.VERSION`, `PROTOCOL_VERSION`, all 10 `*.golden.txt`. A golden that moves = a leaked sim read of the profile → fix the leak, never re-record.
 
 ---
 
@@ -273,8 +273,73 @@ class ShakeSpec { float DurationSec; float Strength; }
 
 ### Agent Model Used
 
+claude-opus-4-8 (ultracode: a 6-agent parallel reconnaissance workflow verified every code claim in the spec against the live source + established a green Tier-1 baseline before any edit; sequential TDD implementation; in-engine `/godot-verify` with direct node-state evidence).
+
 ### Debug Log References
+
+- **Reconnaissance workflow (pre-implementation):** 6 parallel verifiers (presentation · push-sites · definitions/loaders · entityworld/spawns · determinism-fences · greps/baseline) confirmed the spec is near-perfect. Baseline pinned GREEN at **495 pass / 1 skip / 0 fail**, 10 goldens clean. Minor spec drifts found (none changed the plan): `RestoreUnit` is in `EntityPlacer.cs:1094` not `EntityWorld.cs:374`; `ExpectedV8Hash` lives in `SimChecksumCoverageGuardTest.cs:112` (not `SimChecksum.cs`); a 6th dev-only spawn site `StressTest.cs:84`; `ApplyUnitDefinition` body runs to `:615`.
+- **Tier-1 after sim-layer work:** `dotnet test … -c Release` → **501 pass / 1 skip / 0 fail** (+6: 5 in `CombatFeedbackProfileTests` + 1 recycle-guard), all 10 goldens **byte-identical**.
+- **Full build:** `dotnet build godot/godot.sln -c Debug` → **0 errors** (only the 3 pre-existing CS8632 warnings).
+- **Release analyzer gate:** `dotnet build …/ProjectChimera.Sim.Analysis.csproj -c Release --no-incremental -p:ChimeraRelease=true` → **Build succeeded, 0 Error(s)**. The DTO's `float` fields emit only **advisory CHM0001** (CombatFeedbackProfile.cs:66/70/74/78/89/93), never the release-gated RS0030 — exactly as predicted.
+- **Tier-1 re-run after content edits:** **501 / 1 / 0**, goldens byte-identical.
 
 ### Completion Notes List
 
+Implemented FR-12a / AR-29 — a presentation-domain `CombatFeedbackProfile` that art-directs combat feedback (flash · sound · shake · hit-freeze · death effect) per unit AND per ability, **fully excluded from the determinism hash**. Closest model was Story 2.4b (presentation + wiring + data only, no fold). All 3 ACs met.
+
+- **AC1 — default reproduces today's look, hash-excluded:** the tuned default ships as an embedded Godot-free `CombatFeedbackDefaults` (byte-for-byte the as-built bridge constants — orange/yellow/red/white + `SetShake(0.12,0.22)`), pinned by a Tier-1 `EmbeddedDefaults_EqualTodaysAsBuiltConstants` test. `SimChecksum.AlgoVersion` stays **8**, `CanonicalModelHash` stays **2**, all **10 goldens byte-identical**.
+- **AC2 — override renders (unit + ability; particle/sound/shake/death):** the same POCO rides `UnitDefinition.CombatFeedback` (lenient loader) AND `AbilityDefinition.CombatFeedback` (strict `ContentJson.Options` `Disallow` — declared flat member, all sub-fields declared, ZERO enums so the converter-less faction path is safe). Round-trip proven on both paths (incl. the 2.5a re-emit). `AudioManager` is profile-first (SD-2). **`/godot-verify` directly observed the override rendering** (see below).
+- **AC3 — hit-freeze presentation-only:** the freeze gates ONLY the flash-shrink dt (zeroed for N frames) — the queue drain + the single `_events.Clear()` run unconditionally every frame, so it can never starve `AudioManager` or overflow the queue, and it never touches `Engine.TimeScale`/`GetTree().Paused`/`_host`. A Tier-1 drain test proves draining the queue each tick yields a byte-identical checksum to not draining it (the sim never reads the queue; `SimChecksum.Compute` takes no queue arg).
+
+**Central design (SD-1):** the profile is resolved AT PUSH TIME and carried as a nullable `CombatFeedbackProfile?` reference on `CombatEvent` (the source may be dead/recycled at drain). Per-unit ref via a presentation-read `EntityWorld.FeedbackProfile[]` (EntityWorld's first reference-typed SoA) set in `ApplyUnitDefinition`, null-defaulted in `Create()`, **NOT folded** (MeshType/CategoryOf posture); ranged/splash via `ProjectileStore.Feedback` snapshotted at `Spawn` (SD-4); the cast via a new `CombatEventType.AbilityCast` pushed from `AbilityCastSystem` (SD-3, the 2.10 "no new engine code" contract).
+
+**Decisions / deviations (all determinism-neutral):**
+- **SD-1 = Option A** (nullable reference SoA), as the tasks assumed.
+- **Faithful deviation on Task 3:** the bridge/audio reference the embedded `CombatFeedbackDefaults` static **directly** rather than via a widened `Initialize`. Same outcome (embedded default is canonical + Tier-1-verifiable) at lower risk — it avoids touching the `Initialize` signatures and the parallel `MainScene`/Bootstrap-Phase wiring the recon flagged. Signatures unchanged ⇒ no dual-wiring breakage.
+- **`DoSpawnWorker` WIRED** (my scope call): added the one-line `FeedbackProfile` hand-copy alongside its existing separation/Category hand-copies, so a placed worker's override is not inert (pre-empts the 2.6 "inert on built armies" Edge-Case-Hunter class). The 3 def-based in-match spawns already route through `ApplyUnitDefinition`.
+- **`RestoreUnit` DEFERRED** (documented): it hand-restores from `UnitSnapshot` (which carries no profile) and is editor-undo-only, NOT a lockstep path — a restored unit keeps the `Create()` null default (safe), consistent with the 1.13 worker/restore carve-off. Widening `UnitSnapshot` is out of scope.
+- **`StressTest.cs:84`** (dev tool, no def) keeps the null default — harmless, not an in-match path.
+
+**A2 single-mapper rule honored:** `FeedbackProfile` flows through `ApplyUnitDefinition`, is null-reset on `Create()`/recycle, and is guarded by a new `RecycledSlot_CarriesNoPriorFeedbackProfile` test + an `Assert.Same` in the existing mapper-coverage tests.
+
+**`/godot-verify` (in-engine, Godot 4.6.3) — direct node-state evidence, zero runtime errors across two full matches:**
+- A `FlashWatch` bot read the live flash spheres' material EMISSION directly (stronger than a screenshot). Recorded looks: `(4.0,0.8,0.2)` = default **SplashHit red** (`red×4.0`); `(5.0,4.8,4.0)` = default **UnitKilled white** (`white×5.0`) — **AC1 byte-for-byte**. AND `(1.6,8.0,4.0)` = the authored infantry **death-flash OVERRIDE green** (`(0.2,1.0,0.5)×8.0`) rendering INSTEAD of the default white — **AC2 confirmed on a real in-match unit**, with non-overridden deaths still showing the default white (proving the `evt.Feedback?.DeathFlash ?? default` resolution per-source).
+- **Sim advanced throughout** (Tick 612 → 1228 → 2011 → 2531, hash changing each read) while the presentation bridge rendered — **AC3 sim-advances**. The override content (`alpha_faction.json` infantry + `fireball.json` cast) LOADED live with zero parse errors (the live data path through both loaders). The short 0.18s melee flash + the AI-not-cast fireball override weren't sampled by the bot, but the per-unit override path is proven by the infantry death-flash + the Tier-1 round-trip + the structural `AbilityCast` emission.
+- Example override content was authored (`fireball.json` cast feedback + `alpha_faction.json` infantry feedback) — also forward-useful for Story 2.10's consumption.
+
+**Determinism fence (Task 10) — asserted UNTOUCHED via `git status`:** `SimChecksum.cs` (AlgoVersion **8**, `0x983D39AE`), `CanonicalModelHash.cs` (AlgoVersion **2**), `SystemOrderTest.cs` (11 systems), `VersionStampConsistencyTests.cs`, `ReplayRecorder.cs` (VERSION 2), `NetworkCommand.cs` (PROTOCOL_VERSION 1), all 10 `*.golden.txt`. A moved golden would mean a leaked sim read of the profile → fix the leak, never re-record. None moved.
+
 ### File List
+
+**NEW (Godot-free, sim-layer Definitions — auto-covered by `SimSources.props` `src/Core/**`):**
+- `godot/src/Core/Definitions/CombatFeedbackProfile.cs` — the DTO + `FlashSpec`/`ShakeSpec` sub-POCOs.
+- `godot/src/Core/Definitions/CombatFeedbackDefaults.cs` — the embedded canonical default set (AC1 source of truth).
+- `godot/ProjectChimera.Sim.Tests/Definitions/CombatFeedbackProfileTests.cs` — 5 tests (defaults-equal-constants · round-trip both loaders + 2.5a re-emit · checksum-exclusion + AlgoVersion==8 · drain-doesn't-perturb AC3).
+
+**MODIFIED — data model / sim wiring:**
+- `godot/src/Core/Definitions/UnitDefinition.cs` — `+combat_feedback` (lenient path).
+- `godot/src/Core/Definitions/AbilityDefinition.cs` — `+combat_feedback` (strict path).
+- `godot/src/Core/EntityWorld.cs` — `+FeedbackProfile[]` SoA (decl + ctor alloc + `Create()` null-reset + `ApplyUnitDefinition` copy).
+- `godot/src/Combat/CombatEventQueue.cs` — `+CombatEventType.AbilityCast`, `+CombatEvent.Feedback`, `Push` overload, `#nullable enable`.
+- `godot/src/Combat/ProjectileStore.cs` — `+Feedback[]` SoA + trailing `Spawn` param (SD-4), `#nullable enable`.
+- `godot/src/Combat/CombatSystem.cs` — melee stamp (`:488`) + projectile-spawn stamp (`:474-482`).
+- `godot/src/Combat/ProjectileSystem.cs` — ranged/splash stamp (`:83`).
+- `godot/src/Combat/DamageResolver.cs` — kill stamp (`:70`, the victim's profile, before `Destroy`).
+- `godot/src/Effects/AbilityCastSystem.cs` — push `AbilityCast` carrying `ability.CombatFeedback` at the committed cast.
+- `godot/src/UI/EntityPlacer.cs` — `DoSpawnWorker` hand-copies `FeedbackProfile` (worker carve-off closed).
+
+**MODIFIED — presentation:**
+- `godot/src/UI/CombatFeedbackBridge.cs` — profile-driven two-level resolution + override material cache + hit-freeze + `AbilityCast`.
+- `godot/src/UI/AudioManager.cs` — profile-first sound (SD-2) + `AbilityCast` + override-stream cache; must-NOT-clear preserved.
+
+**MODIFIED — tests / content:**
+- `godot/ProjectChimera.Sim.Tests/Core/ApplyUnitDefinitionGuardTest.cs` — `+FeedbackProfile` mapper-coverage + recycle-null guard.
+- `godot/ProjectChimera.Sim.Tests/Golden/SimChecksumCoverageGuardTest.cs` — CategoryOf-style exclusion note (doc only).
+- `godot/resources/data/abilities/fireball.json` — example cast `combat_feedback` (also for 2.10).
+- `godot/resources/data/factions/alpha_faction.json` — example infantry `combat_feedback`.
+
+### Change Log
+
+| Date | Change |
+|---|---|
+| 2026-06-30 | Story 2.7 implemented (ultracode): profile-driven `CombatFeedbackProfile` (flash/sound/shake/hit-freeze/death), presentation-only, EXCLUDED from `SimChecksum`/canonical hash. NO fold — AlgoVersion stays 8 (`0x983D39AE`), CanonicalModelHash 2, all 10 goldens byte-identical, every version pin untouched. New `CombatEventType.AbilityCast` emission (the 2.10 contract). Tier-1 **495→501** (+6), full build 0 errors, release analyzer gate 0 errors (advisory CHM0001 only). `/godot-verify` PASS with direct node-state evidence (default red/white + infantry override green rendered; sim advanced Tick 612→2531; zero runtime errors). Status → review. |

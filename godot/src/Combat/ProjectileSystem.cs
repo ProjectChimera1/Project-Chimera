@@ -81,7 +81,7 @@ namespace ProjectChimera.Combat
 
             // Emit hit event at the impact position — BEFORE Apply, to preserve event order (Story 1.6 AC2).
             _events?.Push(isSplash ? CombatEventType.SplashHit : CombatEventType.RangedHit,
-                          _store.Position[projId]);
+                          _store.Position[projId], _store.Feedback[projId]); // Story 2.7 SD-4: the firing unit's override, snapshotted at Spawn
 
             // Primary hit uses the armor SNAPSHOT captured at spawn (_store.TargetArmor), not live armor.
             var ctx = new DamageContext(world, targetId, _store.TargetArmor[projId],

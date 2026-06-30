@@ -67,7 +67,7 @@ namespace ProjectChimera.Combat
             world.Health[t] = world.Health[t] - damage;
             if (world.Health[t] <= Fixed.Zero)
             {
-                ctx.Events?.Push(CombatEventType.UnitKilled, world.Position[t]);
+                ctx.Events?.Push(CombatEventType.UnitKilled, world.Position[t], world.FeedbackProfile[t]); // Story 2.7: the dying unit's death-flash/death-sound override (read BEFORE Destroy)
                 ctx.Stats?.RecordKill(world.FactionOf[t], ctx.Killer); // RecordKill is (victim, killer)
                 world.Destroy(t);
                 return true;

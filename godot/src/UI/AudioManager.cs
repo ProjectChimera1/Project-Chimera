@@ -1,6 +1,8 @@
 #nullable enable
+using System.Collections.Generic;
 using Godot;
 using ProjectChimera.Combat;
+using ProjectChimera.Core.Definitions; // CombatFeedbackProfile (presentation-only override carried on the event — Story 2.7)
 
 namespace ProjectChimera.UI
 {
@@ -44,6 +46,10 @@ namespace ProjectChimera.UI
         // ── State ─────────────────────────────────────────────────────────────
 
         private CombatEventQueue? _events;
+
+        /// <summary>Story 2.7: cache of override streams keyed by sound id (caches null too, so a missing asset is
+        /// probed once and is graceful-silent thereafter). Presentation-only.</summary>
+        private readonly Dictionary<string, AudioStream?> _overrideCache = new();
 
         private AudioStreamPlayer[] _pool    = null!;
         private int                 _poolIdx = 0;
@@ -103,6 +109,23 @@ namespace ProjectChimera.UI
             for (int i = 0; i < count; i++)
             {
                 var evt = _events.Get(i);
+                CombatFeedbackProfile? fb = evt.Feedback;
+
+                // Story 2.7 (SD-2): profile-first. An override's sound id plays for ANY event type — including the new
+                // AbilityCast (which has NO default clip, so the override's ImpactSoundId is the ONLY sound a cast makes).
+                if (fb != null)
+                {
+                    string? id = evt.Type == CombatEventType.UnitKilled ? fb.DeathSoundId : fb.ImpactSoundId;
+                    if (id != null)
+                    {
+                        bool pitch = evt.Type == CombatEventType.MeleeHit || evt.Type == CombatEventType.RangedHit;
+                        PlayOneShot(ResolveOverrideStream(id), VolumeFor(evt.Type), pitch); // graceful-silent if absent
+                        continue;
+                    }
+                }
+
+                // Fallback: today's per-event legacy clips. AbilityCast is intentionally absent → silence unless the
+                // ability authored an ImpactSoundId above (mirrors CombatFeedbackBridge's no-default-cast-flash).
                 switch (evt.Type)
                 {
                     case CombatEventType.MeleeHit:   PlayOneShot(_sndMeleeHit,   0.9f, true);  break;
@@ -150,6 +173,31 @@ namespace ProjectChimera.UI
         }
 
         // ── Helpers ───────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// Resolve (and cache) an override sound stream by its profile sound id. A bare id resolves under
+        /// <see cref="SFX_ROOT"/>; a full <c>res://</c> path is used verbatim. Null (missing asset) is cached too,
+        /// so the probe happens once and playback is graceful-silent thereafter.
+        /// </summary>
+        private AudioStream? ResolveOverrideStream(string id)
+        {
+            if (_overrideCache.TryGetValue(id, out AudioStream? cached)) return cached;
+            string path = id.StartsWith("res://") ? id : SFX_ROOT + id;
+            AudioStream? stream = TryLoad(path);
+            _overrideCache[id] = stream;
+            return stream;
+        }
+
+        /// <summary>Playback volume for an override sound — matches the per-event-type default so an override melee is
+        /// mixed like a melee. AbilityCast (and any future type) plays at unity.</summary>
+        private static float VolumeFor(CombatEventType type) => type switch
+        {
+            CombatEventType.MeleeHit   => 0.9f,
+            CombatEventType.RangedHit  => 0.8f,
+            CombatEventType.SplashHit  => 1.0f,
+            CombatEventType.UnitKilled => 0.85f,
+            _                          => 1.0f,
+        };
 
         /// <summary>
         /// Attempts to load an audio stream from <paramref name="path"/>.

@@ -257,6 +257,18 @@ namespace ProjectChimera.Core
         /// </summary>
         public readonly byte[] MeshType;
 
+        /// <summary>
+        /// Per-unit combat-feedback override resolved from <c>UnitDefinition.CombatFeedback</c> (Story 2.7).
+        /// Presentation-read ONLY — the simulation never reads it; NOT folded into the determinism checksum
+        /// (exactly like <see cref="MeshType"/>/<see cref="CategoryOf"/>). This is EntityWorld's FIRST reference-typed
+        /// per-entity SoA array: a recycled slot MUST be null-reset in <see cref="Create"/> so it can never inherit a
+        /// prior occupant's profile (the 1.12/1.13/2.6 SoA-recycle trap). Elements are null when the unit authored no
+        /// override (⇒ the tuned event-type defaults play). Written via the single <see cref="ApplyUnitDefinition"/>
+        /// mapper (A2). The type is non-nullable-annotated because EntityWorld opts out of the nullable context; null
+        /// elements are the natural reference default and every read site null-guards.
+        /// </summary>
+        public readonly CombatFeedbackProfile[] FeedbackProfile;
+
         // --- Command state ---
         /// <summary>Active order governing autonomous combat behaviour (set by player commands).</summary>
         public readonly UnitCommand[] CommandState;
@@ -420,6 +432,7 @@ namespace ProjectChimera.Core
             CategoryOf           = new UnitCategory[MAX_ENTITIES];       // Story 1.13 (NOT folded — presentation-read)
             SupplyCost     = new byte[MAX_ENTITIES];
             MeshType       = new byte[MAX_ENTITIES];
+            FeedbackProfile = new CombatFeedbackProfile[MAX_ENTITIES];   // Story 2.7 (presentation-read — NOT folded; first ref-typed SoA)
             CommandState   = new UnitCommand[MAX_ENTITIES];
             CommandGoal    = new FixedVec3[MAX_ENTITIES];
             CommandTarget   = new int[MAX_ENTITIES];
@@ -515,6 +528,7 @@ namespace ProjectChimera.Core
             CategoryOf[id]           = UnitCategory.Melee;
             SupplyCost[id]    = 0;
             MeshType[id]      = 0;
+            FeedbackProfile[id] = null;  // Story 2.7: ref-typed SoA — clear on (re)alloc so a recycled slot never inherits a prior occupant's profile.
             CommandState[id]  = UnitCommand.Idle;
             CommandGoal[id]   = position;
             // Story 1.12: reset persistent command target + patrol route on (re)allocation. Skipping this is
@@ -587,6 +601,11 @@ namespace ProjectChimera.Core
             CollisionRadius[id]      = ClampCollisionRadius(def.CollisionRadius);
             SeparationPriorityOf[id] = def.ParsedSeparationPriority;
             CategoryOf[id]           = def.ParsedCategory;
+
+            // Story 2.7 (A2): the per-unit combat-feedback override — presentation-read, NOT folded (the
+            // MeshType/CategoryOf posture). Reaches built armies automatically because the primary in-match spawn
+            // (BuildingSystem.SpawnTrainedUnit) routes through this single mapper. Null def.CombatFeedback ⇒ defaults.
+            FeedbackProfile[id]      = def.CombatFeedback;
 
             // Story 2.4a (A2): the FIRST per-entity ability state flows through this single mapper — never hand-copied
             // in a spawn path (the retro-A2 rule that closed the 1.12/1.13 spawn-path defect class). MaxEnergy is the

@@ -136,6 +136,17 @@ namespace ProjectChimera.Core.Definitions
         public float MaxEnergy { get; set; } = 0f;
 
         /// <summary>
+        /// Optional per-unit combat-feedback override (Story 2.7, FR-12a). Presentation-domain — EXCLUDED from
+        /// <see cref="ProjectChimera.Core.SimChecksum"/> and the canonical hash; the sim only carries the reference
+        /// (copied to <c>EntityWorld.FeedbackProfile</c> in <see cref="ProjectChimera.Core.EntityWorld.ApplyUnitDefinition"/>),
+        /// it never reads the values. Nullable ⇒ omittable ⇒ existing faction JSON is unaffected; null ⇒ the tuned
+        /// event-type defaults play. A declared auto-prop (not a computed getter) so it round-trips cleanly on the
+        /// strict ability path too (the same POCO rides <see cref="AbilityDefinition.CombatFeedback"/>).
+        /// </summary>
+        [JsonPropertyName("combat_feedback")]
+        public CombatFeedbackProfile? CombatFeedback { get; set; }
+
+        /// <summary>
         /// Registry indices of <see cref="Abilities"/>, back-filled ONCE at scenario link by
         /// <see cref="ResolveAbilities"/>. Unlike <see cref="ParsedCategory"/> (a pure computed prop) this needs the
         /// <see cref="AbilityRegistry"/>, so it is an explicit resolve step run before any spawn. Excluded from JSON.

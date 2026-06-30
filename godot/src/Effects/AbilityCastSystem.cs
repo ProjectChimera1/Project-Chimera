@@ -208,6 +208,13 @@ namespace ProjectChimera.Effects
 
             // Start the cooldown (integer remaining-ticks; Decision #4). Next tick's (a) begins counting it down.
             world.AbilityCooldownTicks[abBase + slot] = SecondsToTicks(ab.Cooldown);
+
+            // Story 2.7 (SD-3): the cast fired → push a presentation-only AbilityCast feedback event carrying the
+            // ability's profile (the Story 2.10 "cast plays its CombatFeedbackProfile" / "no new engine code"
+            // contract). Position = the primary target (self/none casts resolved target=id above, so it's the caster).
+            // Emits exactly ONCE per committed cast — every refusal already returned. Null profile ⇒ no extra juice.
+            // Never folded: CombatEventQueue is not a SimChecksum input, so this cannot perturb the deterministic tick.
+            _events?.Push(CombatEventType.AbilityCast, world.Position[target], ab.CombatFeedback);
         }
     }
 }
