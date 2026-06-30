@@ -73,7 +73,7 @@ development_status:
   2-5a-ability-editor-godot-free-core-simple-preset-and-raw-json-escape-hatch: done
   2-5b-ability-editor-advanced-structured-multi-effect-graph-composer: done
   2-6-ability-editor-passive-ability-path-auras-on-hit-effects-stat-modifiers-trigger-conditions: done
-  2-7-combatfeedbackprofile-profile-driven-feedback-presentation-only-excluded-from-checksum: ready-for-dev
+  2-7-combatfeedbackprofile-profile-driven-feedback-presentation-only-excluded-from-checksum: in-progress
   2-8-combat-reachability-i-per-unit-production-selection-ui-and-air-production-building-category: backlog
   2-9a-combat-reachability-air-ground-targetfilter-anti-building-combat: backlog
   2-9b-combat-reachability-worker-cast-ability-path-multi-resource-crystal-cost: backlog

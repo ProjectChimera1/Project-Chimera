@@ -1,6 +1,10 @@
+---
+baseline_commit: 7615cd3c9183bf92cbdd17df1470b7ea695d5abb
+---
+
 # Story 2.7: CombatFeedbackProfile — profile-driven feedback, presentation-only, excluded from checksum
 
-Status: ready-for-dev
+Status: in-progress
 
 <!-- Context engineered by gds-create-story (ultracode: 6-analyst parallel artifact analysis). Comprehensive developer guide — the dev agent will have ONLY this file. -->
 
