@@ -93,6 +93,44 @@ namespace ProjectChimera.Sim.Tests.Definitions
             Assert.Contains("effect.child", r.Error!);
         }
 
+        [Fact]
+        public void Aura_PermanentModifier_IsRejected()
+        {
+            // Teeth (Story 2.6 review): the aura grant is re-applied each tick, so it must be SHORT — a permanent
+            // (duration_ticks < 0) grant never lapses when an ally leaves the radius (breaks AC1). Remove the
+            // duration check → this passes → RED.
+            var sa = new SearchAreaEffect(Fixed.FromInt(5), TargetFilter.Ally,
+                new ApplyModifierEffect(new Modifier(2002, -1, StackRule.Refresh, 1,
+                    Fixed.Zero, Fixed.Zero, Fixed.Zero, StatusFlags.None, null, 0, armorDelta: Fixed.FromInt(5))));
+            AbilityValidationResult r = V.Validate(Passive("aura", sa));
+            Assert.False(r.Ok);
+            Assert.Contains("duration_ticks", r.Error!);
+        }
+
+        [Fact]
+        public void Aura_OneShotModifier_IsRejected()
+        {
+            // Teeth: duration_ticks == 0 (one-shot) is also rejected — only a finite POSITIVE duration is a valid aura grant.
+            var sa = new SearchAreaEffect(Fixed.FromInt(5), TargetFilter.Ally,
+                new ApplyModifierEffect(new Modifier(2003, 0, StackRule.Refresh, 1,
+                    Fixed.Zero, Fixed.Zero, Fixed.Zero, StatusFlags.None, null, 0, armorDelta: Fixed.FromInt(5))));
+            AbilityValidationResult r = V.Validate(Passive("aura", sa));
+            Assert.False(r.Ok);
+            Assert.Contains("duration_ticks", r.Error!);
+        }
+
+        [Fact]
+        public void Aura_StackingModifier_IsRejected()
+        {
+            // Teeth: the per-tick re-apply must REFRESH — a Stack rule escalates the buff every tick. Reject non-Refresh.
+            var sa = new SearchAreaEffect(Fixed.FromInt(5), TargetFilter.Ally,
+                new ApplyModifierEffect(new Modifier(2004, 2, StackRule.Stack, 5,
+                    Fixed.Zero, Fixed.Zero, Fixed.Zero, StatusFlags.None, null, 0, armorDelta: Fixed.FromInt(5))));
+            AbilityValidationResult r = V.Validate(Passive("aura", sa));
+            Assert.False(r.Ok);
+            Assert.Contains("Refresh", r.Error!);
+        }
+
         // ── AC2 on-hit shape ──
 
         [Fact]
@@ -150,6 +188,18 @@ namespace ProjectChimera.Sim.Tests.Definitions
             AbilityValidationResult r = V.Validate(Passive("while_alive", dead, targeting: "Self"));
             Assert.False(r.Ok);
             Assert.Contains("period_ticks", r.Error!);
+        }
+
+        [Fact]
+        public void WhileAlive_PersistentWithPeriodButZeroPeriodCount_IsRejected()
+        {
+            // Teeth (Story 2.6 review — the period_count sibling of the period_ticks rule): period_count == 0 expires
+            // the Persistent immediately (InstallPersistent sets _periodsRemaining = period_count) → a validated-but-dead
+            // HoT. period_ticks > 0 here isolates the period_count rule.
+            var dead = new PersistentEffect(null, new HealEffect(Fixed.FromInt(2)), null, periodTicks: 5, periodCount: 0);
+            AbilityValidationResult r = V.Validate(Passive("while_alive", dead, targeting: "Self"));
+            Assert.False(r.Ok);
+            Assert.Contains("period_count", r.Error!);
         }
 
         [Fact]

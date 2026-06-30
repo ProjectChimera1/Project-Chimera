@@ -227,11 +227,13 @@ namespace ProjectChimera.Core.Definitions
         /// Story 2.6 AC5 passive effect-root shape rules (only reached for a non-Active activation). The generic
         /// checks (≥ 1 node, EffectBounds, WalkGraph re-entrancy/period-shape) have already passed; this constrains
         /// the ROOT shape to what each passive driver can actually run:
-        ///   • aura ⇒ a <c>SearchArea</c> whose <c>Child</c> is an <c>ApplyModifier</c> (the per-tick grant).
+        ///   • aura ⇒ a <c>SearchArea</c> whose <c>Child</c> is an <c>ApplyModifier</c> granting a SHORT, Refresh
+        ///     modifier (finite positive <c>duration_ticks</c>, <c>stacking Refresh</c>) — the per-tick re-apply
+        ///     contract (Story 2.6 review; the mirror of the while_alive permanence rule).
         ///   • on_hit ⇒ any non-empty rider (already guaranteed by the ≥ 1-node floor) — no further constraint.
         ///   • while_alive ⇒ a PERMANENT <c>ApplyModifier</c> (duration_ticks &lt; 0) OR a <c>Persistent</c> with ≥ 1
-        ///     phase, and <c>period_ticks &gt; 0</c> whenever a <c>period_effect</c> is present (closes 2.5b deferred
-        ///     #1/#2 at the validator for passives).
+        ///     phase, and (when a <c>period_effect</c> is present) both <c>period_ticks &gt; 0</c> AND
+        ///     <c>period_count &gt; 0</c> (closes 2.5b deferred #1/#2 + the period_count sibling at the validator).
         /// </summary>
         private static string? ValidatePassiveShape(string id, PassiveActivation activation, EffectNode root)
         {
@@ -241,9 +243,21 @@ namespace ProjectChimera.Core.Definitions
                     if (root is not SearchAreaEffect sa)
                         return Located(id, "effect",
                             "an 'aura' passive's effect root must be a SearchArea (it grants a modifier to units in radius each tick).");
-                    if (sa.Child is not ApplyModifierEffect)
+                    if (sa.Child is not ApplyModifierEffect auraGrant)
                         return Located(id, "effect.child",
                             "an 'aura' passive's SearchArea must apply a modifier to each match (SearchArea → ApplyModifier).");
+                    // Story 2.6 review: the aura re-applies its modifier EVERY tick (AbilityCastSystem.TickAuras), and
+                    // expiry-by-non-refresh — the no-fold design (architecture: "a short Modifier re-applied each tick") —
+                    // only holds if that modifier is a SHORT, Refresh grant. A permanent (duration_ticks < 0) or one-shot
+                    // (0) grant never lapses when an ally leaves the radius (breaks AC1's "removes it when they leave");
+                    // a Stack rule escalates the buff every tick. This is the MIRROR of the while_alive ApplyModifier rule
+                    // below, which REQUIRES permanence — the aura requires the opposite.
+                    if (auraGrant.Modifier is null || auraGrant.Modifier.DurationTicks <= 0)
+                        return Located(id, "effect.child",
+                            "an 'aura' passive's modifier must have a finite positive duration_ticks (it is re-applied each tick; a permanent or one-shot grant never lapses when a unit leaves the radius).");
+                    if (auraGrant.Modifier.Stacking != StackRule.Refresh)
+                        return Located(id, "effect.child",
+                            "an 'aura' passive's modifier must use stacking Refresh (the per-tick re-apply refreshes the buff; Stack would escalate it and Ignore would pin the first grant).");
                     return null;
 
                 case PassiveActivation.OnHit:
@@ -265,6 +279,12 @@ namespace ProjectChimera.Core.Definitions
                         if (p.PeriodEffect is not null && p.PeriodTicks <= 0)
                             return Located(id, "effect.period_ticks",
                                 "a 'while_alive' Persistent with a period_effect must set period_ticks > 0 (else the period never fires).");
+                        // Story 2.6 review: period_count is the sibling of period_ticks — it defaults to 0 in the
+                        // converter, and InstallPersistent sets _periodsRemaining = period_count, so a 0 count expires
+                        // the Persistent immediately (a validated-but-dead HoT/DoT). Reject it the same way.
+                        if (p.PeriodEffect is not null && p.PeriodCount <= 0)
+                            return Located(id, "effect.period_count",
+                                "a 'while_alive' Persistent with a period_effect must set period_count > 0 (else the period never fires).");
                         return null;
                     }
                     return Located(id, "effect",
