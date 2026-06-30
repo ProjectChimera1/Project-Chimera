@@ -28,6 +28,11 @@ namespace ProjectChimera.UI
     {
         private const int MAX_FLASHES = 48;
 
+        /// <summary>Story 2.7 review: cap for the presentation hit-freeze (~0.5 s @ 60 fps). HitFreezeFrames is
+        /// unbounded creator data; clamping here stops a huge authored value from freezing every flash and starving
+        /// the pool. Purely cosmetic — the sim is never touched.</summary>
+        private const int MAX_FREEZE_FRAMES = 30;
+
         private CombatEventQueue?    _events;
         private RtsCameraController? _camCtrl;
 
@@ -49,6 +54,8 @@ namespace ProjectChimera.UI
         {
             _events  = events;
             _camCtrl = camCtrl;
+
+            _matCache.Clear(); // Story 2.7 review: idempotent re-init — drop any prior-session override materials so a re-Initialize cannot accumulate them.
 
             // Pre-warm the four default looks. Byte-identical to the former inline MakeMat constants, now sourced from
             // the embedded CombatFeedbackDefaults — the SAME set the Tier-1 "default-equals-constants" test pins.
@@ -116,7 +123,10 @@ namespace ProjectChimera.UI
                 }
 
                 // Hit-freeze accrues from any event's profile (take the strongest this frame). 0 = off (today's look).
+                // Clamp to MAX_FREEZE_FRAMES — HitFreezeFrames is unbounded creator data (negatives are naturally
+                // ignored by the > comparison below; a huge value would otherwise freeze every flash and starve the pool).
                 int frames = fb?.HitFreezeFrames ?? 0;
+                if (frames > MAX_FREEZE_FRAMES) frames = MAX_FREEZE_FRAMES;
                 if (frames > _freezeFrames) _freezeFrames = frames;
             }
             _events.Clear(); // CRITICAL: the bridge owns the single Clear(). It runs EVERY frame — NEVER gated by the freeze.
@@ -161,6 +171,11 @@ namespace ProjectChimera.UI
         /// <summary>Claims the next free flash slot and starts the effect.</summary>
         private void SpawnFlash(Vector3 pos, float baseScale, float duration, StandardMaterial3D mat)
         {
+            // Story 2.7 review: floor a non-positive authored duration_sec. Otherwise the flash spawns Visible=true with
+            // timer<=0, the shrink loop skips it (its guard is timer<=0), and it stays stuck on screen until the slot is
+            // reused. A small floor guarantees every flash animates out and frees its slot. Cosmetic-only.
+            if (duration <= 0f) duration = 0.05f;
+
             for (int i = 0; i < MAX_FLASHES; i++)
             {
                 if (_flashTimer[i] > 0f) continue;

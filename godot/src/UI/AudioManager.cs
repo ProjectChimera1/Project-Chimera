@@ -116,7 +116,9 @@ namespace ProjectChimera.UI
                 if (fb != null)
                 {
                     string? id = evt.Type == CombatEventType.UnitKilled ? fb.DeathSoundId : fb.ImpactSoundId;
-                    if (id != null)
+                    // Story 2.7 review: treat "" like null — an empty id falls back to the default clip below instead of
+                    // forcing silence AND suppressing the default (null ⇒ default is the documented contract).
+                    if (!string.IsNullOrEmpty(id))
                     {
                         bool pitch = evt.Type == CombatEventType.MeleeHit || evt.Type == CombatEventType.RangedHit;
                         PlayOneShot(ResolveOverrideStream(id), VolumeFor(evt.Type), pitch); // graceful-silent if absent

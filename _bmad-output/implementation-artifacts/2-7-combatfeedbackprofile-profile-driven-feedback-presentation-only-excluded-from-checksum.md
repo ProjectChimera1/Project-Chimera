@@ -4,7 +4,7 @@ baseline_commit: 7615cd3c9183bf92cbdd17df1470b7ea695d5abb
 
 # Story 2.7: CombatFeedbackProfile — profile-driven feedback, presentation-only, excluded from checksum
 
-Status: review
+Status: done
 
 <!-- Context engineered by gds-create-story (ultracode: 6-analyst parallel artifact analysis). Comprehensive developer guide — the dev agent will have ONLY this file. -->
 
@@ -360,8 +360,10 @@ Implemented FR-12a / AR-29 — a presentation-domain `CombatFeedbackProfile` tha
 
 **Patch — all Low, presentation-only, non-blocking creator-input hardening:**
 
-- [ ] [Review][Patch] Non-positive `FlashSpec.DurationSec` leaves a flash sphere stuck visible until its pool slot is reused [godot/src/UI/CombatFeedbackBridge.cs:162-179] — clamp `DurationSec` to a small positive floor at spawn (or hide-on-spawn when ≤0). Defaults use 0.15–0.28s; only an authored `duration_sec ≤ 0` triggers it. _(edge)_
-- [ ] [Review][Patch] Empty-string `ImpactSoundId`/`DeathSoundId` forces silence AND suppresses the default clip [godot/src/UI/AudioManager.cs:112-124] — guard with `!string.IsNullOrEmpty(id)` so `""` falls back to the default clip exactly like `null`. _(edge)_
-- [ ] [Review][Patch] Unclamped `HitFreezeFrames` freezes ALL flashes globally and can starve the 48-slot pool [godot/src/UI/CombatFeedbackBridge.cs:118-134] — clamp the accrued freeze to a sane cap (e.g. a handful of frames). Self-healing + cosmetic; never touches the sim. _(edge)_
-- [ ] [Review][Patch] `CombatFeedbackBridge._matCache` (FlashSpec-reference keyed) is never evicted [godot/src/UI/CombatFeedbackBridge.cs:181-188] — bounded per match and freed with the per-scenario node, so negligible; optionally clear on re-init. _(blind)_
-- [ ] [Review][Patch] Lenient-loader round-trip test reconstructs `FactionDefinition` JSON options instead of using the real loader [godot/ProjectChimera.Sim.Tests/Definitions/CombatFeedbackProfileTests.cs:333] — drive the unit-path test through the real faction loader to remove the replica's blind spot (the live path is already exercised by `/godot-verify`). _(blind)_
+- [x] [Review][Patch] Non-positive `FlashSpec.DurationSec` leaves a flash sphere stuck visible until its pool slot is reused [godot/src/UI/CombatFeedbackBridge.cs:162-179] — clamp `DurationSec` to a small positive floor at spawn (or hide-on-spawn when ≤0). Defaults use 0.15–0.28s; only an authored `duration_sec ≤ 0` triggers it. _(edge)_
+- [x] [Review][Patch] Empty-string `ImpactSoundId`/`DeathSoundId` forces silence AND suppresses the default clip [godot/src/UI/AudioManager.cs:112-124] — guard with `!string.IsNullOrEmpty(id)` so `""` falls back to the default clip exactly like `null`. _(edge)_
+- [x] [Review][Patch] Unclamped `HitFreezeFrames` freezes ALL flashes globally and can starve the 48-slot pool [godot/src/UI/CombatFeedbackBridge.cs:118-134] — clamp the accrued freeze to a sane cap (e.g. a handful of frames). Self-healing + cosmetic; never touches the sim. _(edge)_
+- [x] [Review][Patch] `CombatFeedbackBridge._matCache` (FlashSpec-reference keyed) is never evicted [godot/src/UI/CombatFeedbackBridge.cs:181-188] — bounded per match and freed with the per-scenario node, so negligible; optionally clear on re-init. _(blind)_
+- [x] [Review][Patch] Lenient-loader round-trip test reconstructs `FactionDefinition` JSON options instead of using the real loader [godot/ProjectChimera.Sim.Tests/Definitions/CombatFeedbackProfileTests.cs:333] — drive the unit-path test through the real faction loader to remove the replica's blind spot (the live path is already exercised by `/godot-verify`). _(blind)_
+
+**Update — patches applied 2026-06-30:** all 5 patch findings fixed — `DurationSec` floored, empty-string sound id treated as null, `HitFreezeFrames` clamped to `MAX_FREEZE_FRAMES=30`, `_matCache.Clear()` on re-init, and the test now shares the real `FactionDefinition.JsonOptions` (newly made public). Full `godot.sln` build **0 errors**; Tier-1 re-run **501 pass / 1 skip / 0 fail**; all 10 goldens byte-identical (presentation/test/public-API only — no fold, no version-pin movement). Story → `done`.

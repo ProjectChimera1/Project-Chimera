@@ -76,7 +76,10 @@ namespace ProjectChimera.Core.Definitions
 
         // ── Deserialization ─────────────────────────────────────────────────────
 
-        private static readonly JsonSerializerOptions _jsonOptions = new()
+        /// <summary>The lenient JSON options the faction/unit loader uses (comments + trailing commas tolerated; no
+        /// Disallow, no converters). Public so tests and other unit-definition readers share ONE source of truth
+        /// instead of a hand-rolled replica that could silently drift from this loader (Story 2.7 review).</summary>
+        public static readonly JsonSerializerOptions JsonOptions = new()
         {
             ReadCommentHandling = JsonCommentHandling.Skip,
             AllowTrailingCommas = true,
@@ -90,7 +93,7 @@ namespace ProjectChimera.Core.Definitions
         public static FactionDefinition LoadFromFile(string absolutePath)
         {
             string json = File.ReadAllText(absolutePath);
-            return JsonSerializer.Deserialize<FactionDefinition>(json, _jsonOptions)
+            return JsonSerializer.Deserialize<FactionDefinition>(json, JsonOptions)
                    ?? new FactionDefinition();
         }
     }

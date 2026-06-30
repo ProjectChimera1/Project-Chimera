@@ -52,12 +52,10 @@ namespace ProjectChimera.Sim.Tests.Definitions
 
         // ── AC2: the SAME POCO must load on BOTH content paths ──
 
-        /// <summary>Mirrors FactionDefinition._jsonOptions (the lenient unit/faction loader): no Disallow, no converters.</summary>
-        private static readonly JsonSerializerOptions LenientUnitOptions = new()
-        {
-            ReadCommentHandling = System.Text.Json.JsonCommentHandling.Skip,
-            AllowTrailingCommas = true,
-        };
+        /// <summary>The REAL lenient unit/faction loader options — Story 2.7 review: reference the production object
+        /// (<see cref="FactionDefinition.JsonOptions"/>) directly so this test can never pass against a replica that
+        /// has drifted from the actual faction loader.</summary>
+        private static readonly JsonSerializerOptions LenientUnitOptions = FactionDefinition.JsonOptions;
 
         [Fact]
         public void Profile_RoundTrips_OnTheLenientUnitPath()
