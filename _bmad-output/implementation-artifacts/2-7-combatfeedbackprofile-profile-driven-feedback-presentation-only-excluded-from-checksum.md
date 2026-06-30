@@ -343,3 +343,25 @@ Implemented FR-12a / AR-29 — a presentation-domain `CombatFeedbackProfile` tha
 | Date | Change |
 |---|---|
 | 2026-06-30 | Story 2.7 implemented (ultracode): profile-driven `CombatFeedbackProfile` (flash/sound/shake/hit-freeze/death), presentation-only, EXCLUDED from `SimChecksum`/canonical hash. NO fold — AlgoVersion stays 8 (`0x983D39AE`), CanonicalModelHash 2, all 10 goldens byte-identical, every version pin untouched. New `CombatEventType.AbilityCast` emission (the 2.10 contract). Tier-1 **495→501** (+6), full build 0 errors, release analyzer gate 0 errors (advisory CHM0001 only). `/godot-verify` PASS with direct node-state evidence (default red/white + infantry override green rendered; sim advanced Tick 612→2531; zero runtime errors). Status → review. |
+
+---
+
+## Review Findings
+
+### Code Review — 2026-06-30 (`gds-code-review`, 3-layer adversarial)
+
+**Verdict: ✅ PASS** — 0 Critical / 0 High / 0 Medium / 5 Low (all presentation-only, non-blocking). All 3 ACs MET; SD-1…SD-10 honored; A2 single-mapper rule + determinism fence independently re-verified.
+
+- **Independent determinism re-verification (lead reviewer):** Tier-1 `dotnet test -c Release` re-run → **501 pass / 1 skip / 0 fail**; all 10 goldens byte-identical; `SimChecksum.AlgoVersion`=8, `ExpectedV8Hash`=0x983D39AE, `CanonicalModelHash`=2 — and every fence/golden file is absent from the diff. Spawn-completeness trap **closed** (all 3 def-based spawns route through `ApplyUnitDefinition` — `ScenarioApplier:210`, `BuildingSystem:174`, `EntityPlacer:487`; `DoSpawnWorker` hand-copies; `RestoreUnit`/`StressTest` null-default by design). Recycle trap **closed** (`Create()` null-reset + `RecycledSlot_CarriesNoPriorFeedbackProfile`). Hit-freeze gates ONLY the flash-shrink `dt`; drain + single `_events.Clear()` run unconditionally (no AudioManager starvation / no queue overflow).
+- **Layers:** Blind Hunter (diff-only) + Edge Case Hunter (diff+source) ran as parallel Opus subagents; Acceptance Auditor ran **inline** by the lead reviewer (two subagent launches returned 0-tool / no findings, so the AC-conformance pass was re-driven directly with full spec + source reads).
+
+**Dismissed (1):**
+- ~~[High] `AbilityCast` → `world.Position[target]` crash on ground-point/no-entity casts~~ — **FALSE POSITIVE (Blind Hunter, diff-blind).** `target` is validated `≥0 && IsAlive(target)` at `AbilityCastSystem.cs:189-193` (Self/None → caster; else `return`); `IsAlive` is fully bounds-checked (`EntityWorld.cs:670` — `id >= 0 && id < _nextId`); and the same `target` already feeds the effect executor at `:205-207`, so 2.7 adds no new exposure. Sighted Edge Case Hunter independently concurred (stale-but-valid position at worst, cosmetic).
+
+**Patch — all Low, presentation-only, non-blocking creator-input hardening:**
+
+- [ ] [Review][Patch] Non-positive `FlashSpec.DurationSec` leaves a flash sphere stuck visible until its pool slot is reused [godot/src/UI/CombatFeedbackBridge.cs:162-179] — clamp `DurationSec` to a small positive floor at spawn (or hide-on-spawn when ≤0). Defaults use 0.15–0.28s; only an authored `duration_sec ≤ 0` triggers it. _(edge)_
+- [ ] [Review][Patch] Empty-string `ImpactSoundId`/`DeathSoundId` forces silence AND suppresses the default clip [godot/src/UI/AudioManager.cs:112-124] — guard with `!string.IsNullOrEmpty(id)` so `""` falls back to the default clip exactly like `null`. _(edge)_
+- [ ] [Review][Patch] Unclamped `HitFreezeFrames` freezes ALL flashes globally and can starve the 48-slot pool [godot/src/UI/CombatFeedbackBridge.cs:118-134] — clamp the accrued freeze to a sane cap (e.g. a handful of frames). Self-healing + cosmetic; never touches the sim. _(edge)_
+- [ ] [Review][Patch] `CombatFeedbackBridge._matCache` (FlashSpec-reference keyed) is never evicted [godot/src/UI/CombatFeedbackBridge.cs:181-188] — bounded per match and freed with the per-scenario node, so negligible; optionally clear on re-init. _(blind)_
+- [ ] [Review][Patch] Lenient-loader round-trip test reconstructs `FactionDefinition` JSON options instead of using the real loader [godot/ProjectChimera.Sim.Tests/Definitions/CombatFeedbackProfileTests.cs:333] — drive the unit-path test through the real faction loader to remove the replica's blind spot (the live path is already exercised by `/godot-verify`). _(blind)_
