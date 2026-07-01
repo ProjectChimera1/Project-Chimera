@@ -8,9 +8,10 @@ namespace ProjectChimera.Effects
     /// entities its child fans out to. The allegiance bits (Self/Ally/Enemy/Neutral) are an OR-group: a
     /// candidate is selected if it matches ANY set allegiance bit. <see cref="Alive"/> is an AND-constraint.
     ///
-    /// 2.1 evaluates only Self / Ally / Enemy / Neutral / Alive (faction comparison + IsAlive). The
-    /// <see cref="Air"/>/<see cref="Ground"/>/<see cref="Structure"/> bits are RESERVED — their evaluation
-    /// (which needs per-entity movement/structure classification) lands in Story 2.9a. Do not author them yet.
+    /// The allegiance bits + Alive are joined as described above. The
+    /// <see cref="Air"/>/<see cref="Ground"/>/<see cref="Structure"/> domain bits are an AND-constraint evaluated
+    /// since Story 2.9a (via the shared <c>DomainClassifier</c>): if any is set, the candidate's domain must be among
+    /// them; if none is set, every domain is eligible (so pre-2.9a filters are unchanged).
     /// </summary>
     [Flags]
     public enum TargetFilter : byte
@@ -30,12 +31,12 @@ namespace ProjectChimera.Effects
         /// <summary>AND-constraint: the candidate must be alive (redundant with the spatial-hash snapshot, but explicit).</summary>
         Alive = 1 << 4,
 
-        // ── RESERVED for Story 2.9a (do not evaluate in 2.1) ──
-        /// <summary>RESERVED (2.9a): air units.</summary>
+        // ── Domain AND-constraint (evaluated since Story 2.9a) ──
+        /// <summary>Air units (candidate <c>CategoryOf == Air</c>).</summary>
         Air = 1 << 5,
-        /// <summary>RESERVED (2.9a): ground units.</summary>
+        /// <summary>Ground units (candidate <c>CategoryOf</c> is Worker/Melee/Ranged/Siege).</summary>
         Ground = 1 << 6,
-        /// <summary>RESERVED (2.9a): structures/buildings.</summary>
+        /// <summary>Structures/buildings (candidate <c>CategoryOf == Structure</c>).</summary>
         Structure = 1 << 7,
     }
 }

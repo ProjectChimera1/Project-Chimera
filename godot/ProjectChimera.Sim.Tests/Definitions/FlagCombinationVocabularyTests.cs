@@ -12,8 +12,8 @@ namespace ProjectChimera.Sim.Tests.Definitions
     /// Story 2.6 (Task 8 / AC5) — the closed-vocabulary + flag-combination teeth for the editor's new multi-select
     /// checkbox UI (<c>AddFlagChecks</c>). The UI itself is Godot and verified via <c>/godot-verify</c> (Task 9), but
     /// the two GUARANTEES it rests on are Godot-free and pinned here:
-    ///   1. the OFFERED filter/status bits are the CLOSED sets — the reserved <see cref="TargetFilter.Air"/>/
-    ///      <see cref="TargetFilter.Ground"/>/<see cref="TargetFilter.Structure"/> bits are NEVER offered (Story 2.9a);
+    ///   1. the OFFERED filter/status bits are the CLOSED sets — since Story 2.9a the filter set INCLUDES the
+    ///      <see cref="TargetFilter.Air"/>/<see cref="TargetFilter.Ground"/>/<see cref="TargetFilter.Structure"/> domain bits;
     ///   2. a composed <c>[Flags]</c> COMBINATION round-trips through <see cref="ContentJson.Options"/> +
     ///      <see cref="AbilityLoader"/> with both bits intact (the checkbox set ORs bits together — the file must keep them).
     /// Because the composer can only build a value from <see cref="DraftVocabulary"/>, (1) is the load-bearing AC5
@@ -24,17 +24,18 @@ namespace ProjectChimera.Sim.Tests.Definitions
         // ── (1) Closed-set teeth — the offered bits exclude the reserved ones (AC5). ──
 
         [Fact]
-        public void DraftVocabulary_FilterSet_IsTheClosedAllegianceSet_ExcludingReservedBits()
+        public void DraftVocabulary_FilterSet_IsTheClosedAllegiancePlusDomainSet()
         {
-            // The reserved Story-2.9a bits are NEVER offered to the creator.
-            Assert.DoesNotContain(TargetFilter.Air,       DraftVocabulary.Filters);
-            Assert.DoesNotContain(TargetFilter.Ground,    DraftVocabulary.Filters);
-            Assert.DoesNotContain(TargetFilter.Structure, DraftVocabulary.Filters);
+            // Story 2.9a: the domain bits ARE now offered to the creator (evaluated by TargetMatcher).
+            Assert.Contains(TargetFilter.Air,       DraftVocabulary.Filters);
+            Assert.Contains(TargetFilter.Ground,    DraftVocabulary.Filters);
+            Assert.Contains(TargetFilter.Structure, DraftVocabulary.Filters);
 
-            // Exactly the allegiance + Alive set is offered.
+            // Exactly the allegiance + Alive + domain set is offered (closed vocabulary).
             Assert.Equal(
                 new[] { TargetFilter.None, TargetFilter.Self, TargetFilter.Ally, TargetFilter.Enemy,
-                        TargetFilter.Neutral, TargetFilter.Alive },
+                        TargetFilter.Neutral, TargetFilter.Alive,
+                        TargetFilter.Air, TargetFilter.Ground, TargetFilter.Structure },
                 DraftVocabulary.Filters);
         }
 

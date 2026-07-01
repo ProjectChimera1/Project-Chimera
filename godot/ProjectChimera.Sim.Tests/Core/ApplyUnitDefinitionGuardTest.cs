@@ -38,6 +38,8 @@ namespace ProjectChimera.Sim.Tests.Core
             CollisionRadius = 0.5f, SeparationPriority = "Push",
             // Story 2.7: a non-null presentation override so the FeedbackProfile mapper teeth bite (Create default = null).
             CombatFeedback = new CombatFeedbackProfile { HitFreezeFrames = 4 },
+            // Story 2.9a: a restricted attack-domain so the AttackDomainOf mapper teeth bite (Create default = All).
+            AttackDomains = new[] { "Air" },
         };
 
         [Fact]
@@ -67,6 +69,8 @@ namespace ProjectChimera.Sim.Tests.Core
             Assert.Equal(EntityWorld.ClampCollisionRadius(def.CollisionRadius).Raw, w.CollisionRadius[id].Raw);
             Assert.Equal(def.ParsedSeparationPriority,          w.SeparationPriorityOf[id]);
             Assert.Equal(def.ParsedCategory,                    w.CategoryOf[id]);
+            // Story 2.9a: the authored attack-domain capability is written through the single mapper.
+            Assert.Equal(def.ParsedAttackDomains,               w.AttackDomainOf[id]);
             // Story 2.7: the presentation-read feedback override is copied (by reference) through the single mapper.
             Assert.Same(def.CombatFeedback,                     w.FeedbackProfile[id]);
 
@@ -75,6 +79,7 @@ namespace ProjectChimera.Sim.Tests.Core
             Assert.NotEqual(Fixed.Zero.Raw,            w.BaseArmor[id].Raw);           // default 0 (Story 2.6)
             Assert.NotEqual(UnitCategory.Melee,        w.CategoryOf[id]);              // default Melee
             Assert.NotEqual(SeparationPriority.Normal, w.SeparationPriorityOf[id]);    // default Normal
+            Assert.NotEqual(AttackDomain.All,          w.AttackDomainOf[id]);          // default All (Story 2.9a)
             Assert.NotNull(w.FeedbackProfile[id]);                                     // default null (Story 2.7)
         }
 
@@ -122,6 +127,8 @@ namespace ProjectChimera.Sim.Tests.Core
             Assert.Equal(refWorld.ArmorTypeOf[refId],          w.ArmorTypeOf[id]);
             Assert.Equal(refWorld.SeparationPriorityOf[refId], w.SeparationPriorityOf[id]);
             Assert.Equal(refWorld.CategoryOf[refId],           w.CategoryOf[id]);
+            // Story 2.9a: SpawnUnit routes the attack-domain capability through the same single mapper.
+            Assert.Equal(refWorld.AttackDomainOf[refId],       w.AttackDomainOf[id]);
             // Story 2.7: SpawnUnit routes the feedback override through the mapper (same def instance ⇒ same reference).
             Assert.Same(refWorld.FeedbackProfile[refId],       w.FeedbackProfile[id]);
         }

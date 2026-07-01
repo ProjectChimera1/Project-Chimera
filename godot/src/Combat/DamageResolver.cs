@@ -59,17 +59,42 @@ namespace ProjectChimera.Combat
             // FUTURE caller (ability, DoT, second same-tick hit) can't produce a phantom UnitKilled
             // event or an inflated RecordKill by hitting an already-dead target.
             if (!world.IsAlive(t)) return false;
-            Fixed multiplier = ctx.Table.Get(type, ctx.TargetArmor);
             // Story 2.6 (Decision #6): flat post-matrix armor subtraction, floored at 0 so a hit never heals. With the
             // default BaseArmor=0 (and no armor modifier) EffectiveArmor=0 → the term is −0, leaving every pre-2.6
             // combat outcome unchanged; the goldens move ONLY from the EffectiveArmor checksum fold (v8), not the math.
-            Fixed damage = Fixed.Max(Fixed.Zero, amount * multiplier - world.EffectiveArmor[t]);
+            // Story 2.9a: the matrix+floor math is now the shared DamageTable.FinalDamage helper (building damage reuses it).
+            Fixed damage = ctx.Table.FinalDamage(amount, type, ctx.TargetArmor, world.EffectiveArmor[t]);
             world.Health[t] = world.Health[t] - damage;
             if (world.Health[t] <= Fixed.Zero)
             {
                 ctx.Events?.Push(CombatEventType.UnitKilled, world.Position[t], world.FeedbackProfile[t]); // Story 2.7: the dying unit's death-flash/death-sound override (read BEFORE Destroy)
                 ctx.Stats?.RecordKill(world.FactionOf[t], ctx.Killer); // RecordKill is (victim, killer)
                 world.Destroy(t);
+                return true;
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// Story 2.9a (AC2): apply matrix damage to a <b>building</b> in <paramref name="buildings"/> — the parallel
+        /// path to <see cref="Apply"/> (which is hard-bound to <see cref="EntityWorld"/> and cannot target a building).
+        /// This is the SINGLE building-damage entry point shared by the melee instant path (Task 6) and the ranged
+        /// projectile impact (Task 4b), so the two can never drift. Buildings use <see cref="ArmorType.Fortified"/> and
+        /// have no flat armor (flat term = <see cref="Fixed.Zero"/>). Bounds/Alive are guarded defensively here so a
+        /// stale id is a harmless no-op; the friendly-faction / domain checks live at the CALL site (in-tick, before
+        /// this is reached). Returns <c>true</c> if the building died this call. Writes only <c>buildings.Health</c> /
+        /// <c>buildings.Alive</c>, which are already folded into <see cref="SimChecksum"/> — no new fold.
+        /// </summary>
+        public static bool ApplyToBuilding(BuildingStore buildings, int b, Fixed amount, DamageType type,
+                                           DamageTable table, CombatEventQueue? events = null)
+        {
+            if (b < 0 || b >= buildings.Count || !buildings.Alive[b]) return false;
+            Fixed damage = table.FinalDamage(amount, type, ArmorType.Fortified, Fixed.Zero);
+            buildings.Health[b] = buildings.Health[b] - damage;
+            if (buildings.Health[b] <= Fixed.Zero)
+            {
+                events?.Push(CombatEventType.BuildingDestroyed, buildings.Position[b]);
+                buildings.Destroy(b);
                 return true;
             }
             return false;

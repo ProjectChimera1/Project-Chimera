@@ -68,6 +68,17 @@
          compared on both CI legs. NEW file; goldens above are re-baselined once for the v8 fold. -->
     <None Remove="Golden\passive-scenario.golden.txt" />
     <EmbeddedResource Include="Golden\passive-scenario.golden.txt" />
+    <!-- Story 2.9a (AC3.4) — THREE new goldens (goldens above are NOT re-recorded; AlgoVersion stays 8, no fold):
+         combat-air-ground (an AttackDomain=Air unit ignoring a nearer ground enemy), anti-building (melee+ranged
+         Siege razing a Neutral building, incl. a real projectile), and ability-domain-filter (a SearchArea(Air) cast
+         sparing a co-located ground unit). All integer/Fixed, Neutral targets, Player2 empty → CROSS-PLATFORM SAFE,
+         compared on both CI legs. -->
+    <None Remove="Golden\combat-air-ground-scenario.golden.txt" />
+    <EmbeddedResource Include="Golden\combat-air-ground-scenario.golden.txt" />
+    <None Remove="Golden\anti-building-scenario.golden.txt" />
+    <EmbeddedResource Include="Golden\anti-building-scenario.golden.txt" />
+    <None Remove="Golden\ability-domain-filter-scenario.golden.txt" />
+    <EmbeddedResource Include="Golden\ability-domain-filter-scenario.golden.txt" />
   </ItemGroup>
 
   <ItemGroup>

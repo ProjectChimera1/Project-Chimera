@@ -171,15 +171,16 @@ namespace ProjectChimera.Sim.Tests.Definitions
         }
 
         [Fact]
-        public void ReservedTargetFilterBit_IsLocatedReject()
+        public void DomainTargetFilterBit_IsAcceptedAndEvaluated()
         {
-            // Air/Ground/Structure are reserved (2.9a) and unevaluated — authoring one fails OPEN (matches all). The
-            // converter rejects it fail-closed. RED if the reserved-bit guard is removed.
+            // Story 2.9a: Air/Ground/Structure are now EVALUATED by TargetMatcher (via the shared DomainClassifier),
+            // so an authored SearchArea domain filter deserializes — the 2.1 fail-closed reject is lifted. RED if the
+            // reject is ever re-introduced.
             AbilityValidationResult r = AbilityLoader.Load(
                 """{ "id": "air", "targeting": "Self", "effect": { "kind": "search_area", "radius": 4, "filter": "Air", "child": { "kind": "heal", "amount": 1 } } }""", "air");
-            Assert.False(r.Ok);
-            Assert.Contains("filter", r.Error!);
-            Assert.Contains("reserved", r.Error!);
+            Assert.True(r.Ok, r.Error);
+            var sa = Assert.IsType<SearchAreaEffect>(r.Value.Value.EffectGraph);
+            Assert.Equal(TargetFilter.Air, sa.Filter); // the domain bit survives to the parsed effect
         }
 
         [Fact]

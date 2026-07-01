@@ -124,8 +124,9 @@ namespace ProjectChimera.Core.Sim
                 modSys,                                                                   // [4] ModifierSystem    (Effects, AR-9)
                 // Story 2.6: the on-hit rider needs the ability registry (index→graph) + the ModifierStore (apply leaf).
                 new CombatSystem(Projectiles, CombatEvents, MatchStats, damageTable,
-                                 registry ?? AbilityRegistry.Empty, Modifiers),            // [5] (null table → DamageTable.Default)
-                new ProjectileSystem(Projectiles, CombatEvents, MatchStats, damageTable), // [6] ProjectileSystem  (Combat)
+                                 registry ?? AbilityRegistry.Empty, Modifiers, Buildings), // [5] Buildings (Story 2.9a): anti-building combat
+                new ProjectileSystem(Projectiles, CombatEvents, MatchStats, damageTable,
+                                     Buildings),                                          // [6] Buildings (Story 2.9a): ranged-vs-building shells
                 new SupplySystem(Resources),                                              // [7] SupplySystem      (Economy)
                 Fog,                                                                      // [8] FogOfWarSystem    (Core)
                 new AiOpponentSystem(Buildings, Resources, BuildSys, aiLevel),            // [9] AI opponent (plays Player2)

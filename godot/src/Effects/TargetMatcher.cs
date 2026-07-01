@@ -5,12 +5,20 @@ namespace ProjectChimera.Effects
 {
     /// <summary>
     /// Evaluates a <see cref="TargetFilter"/> against a candidate entity, relative to the caster. Pure,
-    /// allocation-free, deterministic — called inside the executor's zero-alloc <c>Run</c> path. Only the 2.1
-    /// predicates (Self/Ally/Enemy/Neutral/Alive) are evaluated; the reserved Air/Ground/Structure bits are
-    /// ignored here and wired in Story 2.9a.
+    /// allocation-free, deterministic — called inside the executor's zero-alloc <c>Run</c> path. Evaluates the
+    /// allegiance predicates (Self/Ally/Enemy/Neutral), the Alive AND-constraint, and (Story 2.9a) the
+    /// Air/Ground/Structure domain AND-constraint via the shared <see cref="DomainClassifier"/>.
     /// </summary>
     internal static class TargetMatcher
     {
+        // Story 2.9a (AC6): the TargetFilter bit for a candidate's domain — the ability-side counterpart to
+        // AttackDomain, mapping the SHARED DomainClassifier.Of() result onto this enum's Air/Ground/Structure bits.
+        private static TargetFilter DomainBit(Domain d) => d switch
+        {
+            Domain.Air       => TargetFilter.Air,
+            Domain.Structure => TargetFilter.Structure,
+            _                => TargetFilter.Ground,
+        };
         /// <summary>
         /// True when <paramref name="candidateId"/> satisfies <paramref name="filter"/> for a caster of
         /// <paramref name="casterFaction"/> / id <paramref name="casterId"/>. Allegiance bits are OR-ed; an
@@ -24,6 +32,17 @@ namespace ProjectChimera.Effects
             // AND-constraint: explicit alive check when requested. (Dead ids never enter the spatial-hash
             // snapshot, but a leaf chained after a lethal sibling could re-reference a now-dead id.)
             if ((filter & TargetFilter.Alive) != 0 && !world.IsAlive(candidateId))
+                return false;
+
+            // Story 2.9a (AC6): domain AND-constraint, placed BEFORE the allegiance OR-group (which returns true
+            // early). If the filter sets ANY of Air/Ground/Structure, the candidate's domain — from the SAME
+            // CategoryOf→Domain classifier the combat AC1 filter uses, so the two can never disagree on "a flyer" —
+            // must be among them. If it sets NONE (every existing SearchArea, domain=0), the check is a no-op, so
+            // every pre-2.9a filter behaves byte-identically (AC6.1).
+            const TargetFilter domains = TargetFilter.Air | TargetFilter.Ground | TargetFilter.Structure;
+            TargetFilter wantedDomains = filter & domains;
+            if (wantedDomains != TargetFilter.None
+                && (wantedDomains & DomainBit(DomainClassifier.Of(world.CategoryOf[candidateId]))) == TargetFilter.None)
                 return false;
 
             const TargetFilter allegiance = TargetFilter.Self | TargetFilter.Ally

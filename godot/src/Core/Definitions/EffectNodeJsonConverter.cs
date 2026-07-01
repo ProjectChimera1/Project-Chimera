@@ -240,13 +240,10 @@ namespace ProjectChimera.Core.Definitions
                     GuardDepth(depth, path);
                     Fixed radius = ReadFixed(el, "radius", path, options);
                     TargetFilter filter = ReadEnum<TargetFilter>(el, "filter", path, options, required: true);
-                    // Air/Ground/Structure are RESERVED for Story 2.9a and NOT yet evaluated by TargetMatcher — an
-                    // authored reserved bit would fail OPEN (no allegiance bit set → matches every in-radius entity).
-                    // Reject fail-closed until 2.9a wires their evaluation.
-                    const TargetFilter reserved = TargetFilter.Air | TargetFilter.Ground | TargetFilter.Structure;
-                    if ((filter & reserved) != 0)
-                        throw new JsonException(
-                            $"{path}.filter: Air/Ground/Structure are reserved (Story 2.9a) and not yet evaluated — remove them.");
+                    // Story 2.9a: Air/Ground/Structure are now EVALUATED by TargetMatcher (via the shared
+                    // DomainClassifier), so the fail-closed reject that stood here in 2.1 is lifted — an authored
+                    // SearchArea filter carrying a domain bit deserializes and filters by domain. ("No domain bit set"
+                    // still means all domains, so pre-2.9a filters are unchanged.)
                     EffectNode child = ReadRequiredChild(el, "child", options, depth + 1, $"{path}.child");
                     return new SearchAreaEffect(radius, filter, child);
                 }

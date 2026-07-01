@@ -288,12 +288,18 @@ namespace ProjectChimera.UI
                 }
                 else if (_selectedSet.Count > 0)
                 {
-                    // Story 1.12: right-click an ENEMY → single-target Attack (force-fire); ground/friendly → Move.
-                    int enemyId = RaycastGround(rmb.Position, out Vector3 hit)
-                        ? FindNearestEnemyUnit(hit, PICK_RADIUS)
-                        : -1;
-                    if (enemyId >= 0) IssueAttackTargetCommand(enemyId);
-                    else              IssueMoveCommand(rmb.Position);
+                    // Right-click dispatch (Story 1.12 + 2.9a): enemy UNIT → single-target Attack (force-fire);
+                    // else enemy BUILDING → AttackBuilding; else ground/friendly → Move. A friendly-building pick
+                    // must FALL THROUGH to Move (not swallow the click into a dead no-op).
+                    if (RaycastGround(rmb.Position, out Vector3 hit))
+                    {
+                        int enemyId = FindNearestEnemyUnit(hit, PICK_RADIUS);
+                        int enemyBuildingId = enemyId < 0 ? FindNearestEnemyBuilding(hit, BUILDING_PICK_RADIUS) : -1;
+                        if (enemyId >= 0)              IssueAttackTargetCommand(enemyId);
+                        else if (enemyBuildingId >= 0) IssueAttackBuildingCommand(enemyBuildingId);
+                        else                           IssueMoveCommand(rmb.Position);
+                    }
+                    else IssueMoveCommand(rmb.Position);
                 }
                 else if (SelectedBuildingId >= 0 && _buildingStore != null)
                     SetRallyPoint(SelectedBuildingId, rmb.Position);
@@ -593,6 +599,27 @@ namespace ProjectChimera.UI
         }
 
         /// <summary>
+        /// Force every selected COMBAT unit to attack ONE specific enemy building (Story 2.9a): chase its centre point
+        /// and raze it. Mirrors <see cref="IssueAttackTargetCommand"/> but (a) uses <see cref="UnitCommand.AttackBuilding"/>
+        /// with the BUILDING id, and (b) issues ONLY to combat units (<c>EffectiveAttackDamage &gt; 0</c>) so workers /
+        /// non-combatants — which CombatSystem skips and thus never self-revert — aren't left in a dangling AttackBuilding
+        /// state. Issued by right-clicking an enemy building. Presentation issues an INTENT only; the tick validates it.
+        /// </summary>
+        private void IssueAttackBuildingCommand(int buildingId)
+        {
+            foreach (int id in _selectedList)
+            {
+                if (!_world.IsAlive(id)) continue;
+                if (_world.EffectiveAttackDamage[id] <= Fixed.Zero) continue; // combat units only
+                if (!EnqueueTargetedCommand(id, UnitCommand.AttackBuilding, buildingId)) continue; // online: queued
+                // Offline: apply through the SAME shared OrderApplier — identical to the AttackTarget call, NO buildings arg.
+                var atkOrder = new UnitOrder(id, UnitCommand.AttackBuilding, Fixed.FromRaw(buildingId), Fixed.Zero);
+                OrderApplier.Apply(_world, in atkOrder, _world.FactionOf[id]);
+            }
+            GD.Print($"[Selection] Attack-building issued on building {buildingId} to {_selectedList.Count} unit(s).");
+        }
+
+        /// <summary>
         /// Patrol (Story 1.12): a plain click starts a fresh route [current position, clicked point]; each
         /// subsequent Shift+click appends a waypoint (PatrolAppend) up to MAX_PATROL_WAYPOINTS. Single
         /// destination — NO formation grid here (that is Story 1.13). The offline path applies through the SAME
@@ -779,6 +806,32 @@ namespace ProjectChimera.UI
             for (int i = 0; i < _buildingStore.Count; i++)
             {
                 if (!_buildingStore.Alive[i]) continue;
+                var pos = _buildingStore.Position[i];
+                float dx = pos.X.ToFloat() - worldHit.X;
+                float dz = pos.Z.ToFloat() - worldHit.Z;
+                float sqDist = dx * dx + dz * dz;
+                if (sqDist < bestSqDist) { bestSqDist = sqDist; bestId = i; }
+            }
+            return bestId;
+        }
+
+        /// <summary>
+        /// Nearest ENEMY building to the world hit within radius (Story 2.9a). Enemy = alive and NOT the local
+        /// player's faction (Player1). Clone of <see cref="FindNearestBuilding"/> (faction-agnostic) with a
+        /// local-faction exclusion only — Neutral buildings stay targetable when explicitly ordered (AC2.5), so we
+        /// do NOT copy <see cref="FindNearestEnemyUnit"/>'s Neutral skip.
+        /// </summary>
+        private int FindNearestEnemyBuilding(Vector3 worldHit, float radius)
+        {
+            if (_buildingStore == null) return -1;
+
+            int   bestId     = -1;
+            float bestSqDist = radius * radius;
+
+            for (int i = 0; i < _buildingStore.Count; i++)
+            {
+                if (!_buildingStore.Alive[i]) continue;
+                if (_buildingStore.FactionOf[i] == Faction.Player1) continue; // exclude ONLY the local player's buildings
                 var pos = _buildingStore.Position[i];
                 float dx = pos.X.ToFloat() - worldHit.X;
                 float dz = pos.Z.ToFloat() - worldHit.Z;

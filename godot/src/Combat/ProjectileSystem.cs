@@ -23,14 +23,16 @@ namespace ProjectChimera.Combat
         private readonly CombatEventQueue? _events;
         private readonly MatchStats?        _stats;
         private readonly DamageTable        _table;
+        private readonly BuildingStore?     _buildings; // Story 2.9a (D-4) — building-target projectiles; null ⇒ no building hits
 
         public ProjectileSystem(ProjectileStore store, CombatEventQueue? events = null, MatchStats? stats = null,
-            DamageTable? table = null)
+            DamageTable? table = null, BuildingStore? buildings = null)
         {
-            _store  = store;
-            _events = events;
-            _stats  = stats;
-            _table  = table ?? DamageTable.Default;
+            _store     = store;
+            _events    = events;
+            _stats     = stats;
+            _table     = table ?? DamageTable.Default;
+            _buildings = buildings;
         }
 
         public void Tick(EntityWorld world, Fixed dt)
@@ -41,18 +43,39 @@ namespace ProjectChimera.Combat
                 if (!_store.Alive[i]) continue;
 
                 int  targetId    = _store.TargetId[i];
-                bool targetAlive = world.IsAlive(targetId);
-
-                // Track target: refresh goal while target is alive
+                bool isBuilding  = _store.TargetIsBuilding[i]; // Story 2.9a: TargetId indexes BuildingStore, not EntityWorld
+                bool targetAlive;
                 FixedVec3 goalPos;
-                if (targetAlive)
+
+                // Track target: refresh goal while target is alive; on death fly toward its last known position and
+                // drop harmlessly (targetAlive == false → no hit resolved on arrival).
+                if (isBuilding)
                 {
-                    _store.LastKnownPos[i] = world.Position[targetId];
-                    goalPos = world.Position[targetId];
+                    // Buildings have NO IsAlive OOB short-circuit — bounds-check before indexing Alive[targetId].
+                    targetAlive = _buildings != null && targetId >= 0 && targetId < _buildings.Count
+                                  && _buildings.Alive[targetId];
+                    if (targetAlive)
+                    {
+                        _store.LastKnownPos[i] = _buildings!.Position[targetId];
+                        goalPos = _buildings.Position[targetId];
+                    }
+                    else
+                    {
+                        goalPos = _store.LastKnownPos[i];
+                    }
                 }
                 else
                 {
-                    goalPos = _store.LastKnownPos[i];
+                    targetAlive = world.IsAlive(targetId);
+                    if (targetAlive)
+                    {
+                        _store.LastKnownPos[i] = world.Position[targetId];
+                        goalPos = world.Position[targetId];
+                    }
+                    else
+                    {
+                        goalPos = _store.LastKnownPos[i];
+                    }
                 }
 
                 FixedVec3 delta   = goalPos - _store.Position[i];
@@ -61,7 +84,10 @@ namespace ProjectChimera.Combat
                 if (distSqr <= HIT_SQR)
                 {
                     if (targetAlive)
-                        ApplyHit(world, i, targetId);
+                    {
+                        if (isBuilding) ApplyBuildingHit(i, targetId);
+                        else            ApplyHit(world, i, targetId);
+                    }
                     _store.Destroy(i);
                     continue;
                 }
@@ -91,6 +117,19 @@ namespace ProjectChimera.Combat
             // AoE splash: deal same damage to all other enemies within splash radius
             if (isSplash)
                 ApplySplash(world, projId, targetId, splashRadius);
+        }
+
+        /// <summary>
+        /// Story 2.9a (AC2.6 / D-4): resolve a ranged hit on a BUILDING. Fortified matrix damage via the SAME shared
+        /// <see cref="DamageResolver.ApplyToBuilding"/> helper the melee path uses (no drift), and NO splash against a
+        /// building target. The caller has already confirmed the building is alive and in range this tick.
+        /// </summary>
+        private void ApplyBuildingHit(int projId, int buildingId)
+        {
+            // Impact event at the shell's position — BEFORE damage, preserving event order (Story 1.6 AC2).
+            _events?.Push(CombatEventType.RangedHit, _store.Position[projId], _store.Feedback[projId]);
+            DamageResolver.ApplyToBuilding(_buildings!, buildingId, _store.Damage[projId], _store.DmgType[projId],
+                                           _table, _events);
         }
 
         /// <summary>

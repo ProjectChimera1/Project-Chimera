@@ -28,9 +28,9 @@ namespace ProjectChimera.Core.Definitions
     /// The closed sets of values the structured composer is allowed to OFFER on its new dropdowns (AC5-COMPOSER).
     /// Hosted Godot-free so the closed-vocabulary guarantee is Tier-1-testable (and the panel builds its dropdowns
     /// from these — one source of truth, no parallel list to drift): the <c>damage_type</c> set excludes the
-    /// internal sentinel <see cref="DamageType.COUNT"/>; the <c>filter</c> set excludes the reserved
-    /// <see cref="TargetFilter.Air"/>/<see cref="TargetFilter.Ground"/>/<see cref="TargetFilter.Structure"/> bits
-    /// (Story 2.9a). Because the composer can only ever CONSTRUCT a node from these, it can never build a node the
+    /// internal sentinel <see cref="DamageType.COUNT"/>; the <c>filter</c> set now INCLUDES the
+    /// <see cref="TargetFilter.Air"/>/<see cref="TargetFilter.Ground"/>/<see cref="TargetFilter.Structure"/> domain bits
+    /// (Story 2.9a — evaluated by <see cref="TargetMatcher"/>). Because the composer can only ever CONSTRUCT a node from these, it can never build a node the
     /// converter's <c>Read</c> rejects (the load-bearing AC5 defense — Decision #9's Write-side guard kept at its
     /// default OFF, so this list IS the guarantee).
     /// </summary>
@@ -49,11 +49,12 @@ namespace ProjectChimera.Core.Definitions
             DamageType.Normal, DamageType.Pierce, DamageType.Siege, DamageType.Magic, DamageType.Hero,
         };
 
-        /// <summary>Authorable target filters — allegiance + Alive; the reserved Air/Ground/Structure bits are excluded (Story 2.9a).</summary>
+        /// <summary>Authorable target filters — allegiance + Alive + the Air/Ground/Structure domain bits (Story 2.9a, now evaluated).</summary>
         public static readonly TargetFilter[] Filters =
         {
             TargetFilter.None, TargetFilter.Self, TargetFilter.Ally, TargetFilter.Enemy,
             TargetFilter.Neutral, TargetFilter.Alive,
+            TargetFilter.Air, TargetFilter.Ground, TargetFilter.Structure,
         };
 
         /// <summary>Authorable stacking rules (the full closed <see cref="StackRule"/> set).</summary>

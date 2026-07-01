@@ -127,6 +127,18 @@ namespace ProjectChimera.Core.Definitions
         public string[] Abilities { get; set; } = System.Array.Empty<string>();
 
         /// <summary>
+        /// The target domains this unit can attack, as a snake_case JSON string array of <c>"Ground"</c> / <c>"Air"</c> /
+        /// <c>"Structure"</c> (Story 2.9a, FR-11/FR-12). This is an <b>attacker-capability</b> axis, independent of the
+        /// unit's own <see cref="Category"/>: <c>["Air"]</c> makes an anti-air-only unit; omitting the field (or an empty
+        /// array, or listing all three) means <see cref="AttackDomain.All"/> — every domain, exactly as before. Resolved
+        /// via <see cref="ParsedAttackDomains"/> and written to <c>EntityWorld.AttackDomainOf</c> in
+        /// <see cref="ProjectChimera.Core.EntityWorld.ApplyUnitDefinition"/> (the single def→SoA mapper). Nullable so
+        /// "unauthored" is distinguishable from "authored empty" — both fold to <see cref="AttackDomain.All"/>.
+        /// </summary>
+        [JsonPropertyName("attack_domains")]
+        public string[]? AttackDomains { get; set; }
+
+        /// <summary>
         /// Maximum ability-resource (energy) pool for this unit type (authored float, quantized once to
         /// <see cref="ProjectChimera.Core.Fixed"/> in <see cref="ProjectChimera.Core.EntityWorld.ApplyUnitDefinition"/>
         /// — the single float→Fixed boundary, like the other stats). 0 = no energy pool (cannot cast energy-cost
@@ -261,5 +273,30 @@ namespace ProjectChimera.Core.Definitions
             "Structure" => UnitCategory.Structure,
             _           => UnitCategory.Melee,
         };
+
+        /// <summary>
+        /// attack_domains strings OR-folded to the capability flag set (Story 2.9a). Null / empty / all-unknown →
+        /// <see cref="AttackDomain.All"/> (attacks every domain, the unauthored default — so no existing unit changes
+        /// behaviour and no golden moves); any recognized subset restricts to exactly those domains (author opt-in).
+        /// </summary>
+        public AttackDomain ParsedAttackDomains
+        {
+            get
+            {
+                if (AttackDomains == null || AttackDomains.Length == 0) return AttackDomain.All;
+                AttackDomain result = AttackDomain.None;
+                foreach (string s in AttackDomains)
+                {
+                    result |= s switch
+                    {
+                        "Ground"    => AttackDomain.Ground,
+                        "Air"       => AttackDomain.Air,
+                        "Structure" => AttackDomain.Structure,
+                        _           => AttackDomain.None,
+                    };
+                }
+                return result == AttackDomain.None ? AttackDomain.All : result;
+            }
+        }
     }
 }

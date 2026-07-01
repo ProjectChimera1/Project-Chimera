@@ -184,6 +184,19 @@ namespace ProjectChimera.Multiplayer
                     ClearPatrolRoute(world, id);
                     break;
                 }
+                case UnitCommand.AttackBuilding:
+                {
+                    // Story 2.9a: the enemy BUILDING id rides in TargetX as a RAW int (Fixed.FromRaw at issue). Blind-store
+                    // it in CommandTarget (disambiguated by CommandState==AttackBuilding, exactly like AttackTarget/Follow
+                    // share CommandTarget) — CombatSystem.TickAttackBuildingCombat validates it (bounds/Alive/friendly/
+                    // Structure-domain) in-tick. Set AttackTarget[id] = -1: a building id must NEVER enter the entity-space
+                    // AttackTarget[] array (that would make world.IsAlive/FactionOf misread a building id as an entity).
+                    world.CommandTarget[id] = o.TargetX;
+                    world.AttackTarget[id]  = -1;
+                    world.Flags[id]        &= ~EntityFlags.Attacking;
+                    ClearPatrolRoute(world, id);
+                    break;
+                }
                 case UnitCommand.Follow:
                 {
                     // Friendly id packed in TargetX as a raw int. CombatSystem.TickFollowCombat drives movement.

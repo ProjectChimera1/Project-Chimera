@@ -163,14 +163,18 @@ namespace ProjectChimera.Sim.Tests.Definitions
         }
 
         [Fact]
-        public void Vocabulary_Filters_ExcludeTheReservedBits()
+        public void Vocabulary_Filters_IncludeTheDomainBits()
         {
-            const TargetFilter reserved = TargetFilter.Air | TargetFilter.Ground | TargetFilter.Structure;
-            Assert.DoesNotContain(TargetFilter.Air, DraftVocabulary.Filters);
-            Assert.DoesNotContain(TargetFilter.Ground, DraftVocabulary.Filters);
-            Assert.DoesNotContain(TargetFilter.Structure, DraftVocabulary.Filters);
+            // Story 2.9a: the Air/Ground/Structure domain bits are now offered (evaluated by TargetMatcher).
+            Assert.Contains(TargetFilter.Air, DraftVocabulary.Filters);
+            Assert.Contains(TargetFilter.Ground, DraftVocabulary.Filters);
+            Assert.Contains(TargetFilter.Structure, DraftVocabulary.Filters);
+            // Each offered filter is still a single power-of-two bit (or None), so the checkbox set can OR any subset.
             foreach (TargetFilter f in DraftVocabulary.Filters)
-                Assert.Equal((TargetFilter)0, f & reserved);       // no offered filter carries a reserved bit
+            {
+                int bits = (int)f;
+                Assert.True(bits == 0 || (bits & (bits - 1)) == 0, $"{f} is not a single bit — the checkbox set assumes single flags.");
+            }
         }
 
         [Fact]

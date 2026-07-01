@@ -26,6 +26,8 @@ namespace ProjectChimera.Core
         CastAbility  = 10, // Cast the ability in slot TargetX (raw int) at target entity TargetZ (raw int, -1 = Self/None). A fire-and-forget INTENT: OrderApplier writes PendingCast*, AbilityCastSystem consumes it inside the tick — it does NOT persist as a CommandState (the caster's Move/Attack order is preserved).
         // ── Story 2.8 (D-1 / FR-11): appended AFTER CastAbility. Values 0-10 stay FROZEN for replay back-compat. ──
         Train        = 11, // Train a unit at a production BUILDING. WIRE: UnitId = buildingId, TargetX = chosen unit index (raw int, -1 = first-of-category). Handled by OrderApplier BEFORE the entity-ownership guard (UnitId names a building, not an entity); ore/supply spend happens at exec-tick via BuildingSystem.TrainUnitCommand. Never persists as a CommandState.
+        // ── Story 2.9a (FR-11/FR-12): appended AFTER Train. Values 0-11 stay FROZEN for replay back-compat. ──
+        AttackBuilding = 12, // Force-attack ONE specific enemy BUILDING. WIRE: UnitId = attacker entity, TargetX = building id (raw int). Handled AFTER the entity-ownership guard (UnitId names an entity); OrderApplier blind-stores the building id in CommandTarget, and CombatSystem.TickAttackBuildingCombat validates (bounds/Alive/friendly/Structure-domain) in-tick. Persists as a CommandState.
     }
 
     /// <summary>
@@ -245,6 +247,16 @@ namespace ProjectChimera.Core
         /// </summary>
         public readonly UnitCategory[] CategoryOf;
 
+        /// <summary>
+        /// Per-unit attacker capability — which target domains this unit may attack (Story 2.9a, FR-11/FR-12), parsed
+        /// from <c>UnitDefinition.attack_domains</c> at spawn. Read in-sim by target selection (both SpatialHash acquire
+        /// paths and the anti-building tick). Default <see cref="AttackDomain.All"/>. NOT folded into the determinism
+        /// checksum — it is an authored-immutable, combat-read field, exactly like <see cref="CategoryOf"/> /
+        /// <see cref="DamageTypeOf"/> / <see cref="ArmorTypeOf"/> (a divergent authored choice changes which target is
+        /// hit → the affected entity's already-folded Position/Health moves, caught transitively).
+        /// </summary>
+        public readonly AttackDomain[] AttackDomainOf;
+
         // --- Supply ---
         /// <summary>Supply population this entity occupies (0 = workers/buildings, 1+ = combat).</summary>
         public readonly byte[] SupplyCost;
@@ -432,6 +444,7 @@ namespace ProjectChimera.Core
             CollisionRadius      = new Fixed[MAX_ENTITIES];              // Story 1.13 (folded v5)
             SeparationPriorityOf = new SeparationPriority[MAX_ENTITIES]; // Story 1.13 (folded v5)
             CategoryOf           = new UnitCategory[MAX_ENTITIES];       // Story 1.13 (NOT folded — presentation-read)
+            AttackDomainOf       = new AttackDomain[MAX_ENTITIES];       // Story 2.9a (NOT folded — authored combat-read)
             SupplyCost     = new byte[MAX_ENTITIES];
             MeshType       = new byte[MAX_ENTITIES];
             FeedbackProfile = new CombatFeedbackProfile[MAX_ENTITIES];   // Story 2.7 (presentation-read — NOT folded; first ref-typed SoA)
@@ -528,6 +541,7 @@ namespace ProjectChimera.Core
             CollisionRadius[id]      = DEFAULT_COLLISION_RADIUS;
             SeparationPriorityOf[id] = SeparationPriority.Normal;
             CategoryOf[id]           = UnitCategory.Melee;
+            AttackDomainOf[id]       = AttackDomain.All;   // Story 2.9a: recycled/non-def slots attack every domain (as before).
             SupplyCost[id]    = 0;
             MeshType[id]      = 0;
             FeedbackProfile[id] = null;  // Story 2.7: ref-typed SoA — clear on (re)alloc so a recycled slot never inherits a prior occupant's profile.
@@ -603,6 +617,7 @@ namespace ProjectChimera.Core
             CollisionRadius[id]      = ClampCollisionRadius(def.CollisionRadius);
             SeparationPriorityOf[id] = def.ParsedSeparationPriority;
             CategoryOf[id]           = def.ParsedCategory;
+            AttackDomainOf[id]       = def.ParsedAttackDomains;   // Story 2.9a (A2 single mapper; authored, NOT folded).
 
             // Story 2.7 (A2): the per-unit combat-feedback override — presentation-read, NOT folded (the
             // MeshType/CategoryOf posture). Reaches built armies automatically because the primary in-match spawn

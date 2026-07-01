@@ -14,7 +14,10 @@ namespace ProjectChimera.Combat
         // ── Story 2.7 (SD-3): appended AFTER UnitKilled. Presentation-only ability-cast feedback, pushed by
         // AbilityCastSystem on a committed cast and carrying the ability's CombatFeedbackProfile. Never folded —
         // CombatEventQueue is not an input to SimChecksum, so appending an enum value cannot move any golden. ──
-        AbilityCast
+        AbilityCast,
+        // ── Story 2.9a: appended AFTER AbilityCast. Pushed when a building is razed by combat (melee or projectile
+        // impact). Same not-folded property — appending is golden-safe. ──
+        BuildingDestroyed
     }
 
     /// <summary>Lightweight event written by sim systems each tick.</summary>

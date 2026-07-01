@@ -55,6 +55,15 @@ namespace ProjectChimera.Combat
         public Fixed Get(DamageType d, ArmorType a) => _cells[(int)d, (int)a];
 
         /// <summary>
+        /// The canonical final-damage formula, floored at 0: <c>max(0, amount * Get(type, targetArmor) − flatArmor)</c>
+        /// (Story 2.9a). Single-sourced so entity damage (<see cref="DamageResolver.Apply"/>, passing
+        /// <c>EffectiveArmor</c>) and building damage (<see cref="DamageResolver.ApplyToBuilding"/>, passing
+        /// <c>Fixed.Zero</c> — buildings have no flat armor) can never drift. Pure <see cref="Fixed"/>, no float.
+        /// </summary>
+        public Fixed FinalDamage(Fixed amount, DamageType type, ArmorType targetArmor, Fixed flatArmor)
+            => Fixed.Max(Fixed.Zero, amount * Get(type, targetArmor) - flatArmor);
+
+        /// <summary>
         /// The canonical in-code table — built from the SAME float literals as the retired
         /// <c>DamageMatrix</c> static ctor, so the original 4x5 cells are bit-identical by construction
         /// (Story 1.6 AC1). The Hero row and Hero column are neutral 1.0 placeholders, tuned when heroes

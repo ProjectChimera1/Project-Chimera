@@ -105,6 +105,10 @@ namespace ProjectChimera.Navigation
                         int j = _sortedIds[start + k];
                         if (j == id) continue;
                         if (world.FactionOf[j] == myFaction) continue;
+                        // Story 2.9a (AC1): honor the attacker's domain capability — prune targets it can never damage
+                        // (e.g. an anti-air-only unit skips ground candidates) BEFORE the strict-nearest compare, so
+                        // ascending-id tie-break stability is preserved. Integer bit-AND, no float.
+                        if (!DomainClassifier.CanAttack(world.AttackDomainOf[id], world.CategoryOf[j])) continue;
 
                         Fixed sqrDist = FixedVec3.SqrDistance(pos, world.Position[j]);
                         if (sqrDist <= sqrRange && sqrDist < bestSqrDist)
@@ -137,6 +141,9 @@ namespace ProjectChimera.Navigation
                 if (j == id) continue;
                 if (!world.IsAlive(j)) continue;
                 if (world.FactionOf[j] == myFaction) continue;
+                // Story 2.9a (AC1.1): the SAME domain prune on the chase-to-contact path, so an anti-air-only unit
+                // with no valid air target does NOT march toward a ground enemy it can never damage.
+                if (!DomainClassifier.CanAttack(world.AttackDomainOf[id], world.CategoryOf[j])) continue;
 
                 Fixed sqrDist = FixedVec3.SqrDistance(pos, world.Position[j]);
                 if (sqrDist < bestSqrDist)

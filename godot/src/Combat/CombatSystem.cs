@@ -41,6 +41,11 @@ namespace ProjectChimera.Combat
         private readonly ModifierStore?    _modifiers;
         private readonly EffectExecutor    _onHitExecutor = new EffectExecutor();
 
+        // Story 2.9a — the building store, threaded so an explicit AttackBuilding order can damage/raze structures.
+        // Optional: null in bare combat tests (building-attack orders no-op when it is absent). Only the public
+        // Alive/FactionOf/Position/Health/Count/Destroy members are used (all on BuildingStore, no BuildingSystem).
+        private readonly BuildingStore?    _buildings;
+
         /// <summary>
         /// Units with AttackRange above this value use projectiles; at or below it use instant melee damage.
         /// Matches the highest melee range in alpha_faction.json (griffin = 2.0u).
@@ -48,7 +53,8 @@ namespace ProjectChimera.Combat
         private static readonly Fixed MELEE_THRESHOLD = Fixed.FromFloat(2.5f);
 
         public CombatSystem(ProjectileStore projectiles, CombatEventQueue? events = null, MatchStats? stats = null,
-            DamageTable? table = null, AbilityRegistry? registry = null, ModifierStore? modifiers = null)
+            DamageTable? table = null, AbilityRegistry? registry = null, ModifierStore? modifiers = null,
+            BuildingStore? buildings = null)
         {
             _projectiles = projectiles;
             _events      = events;
@@ -56,6 +62,7 @@ namespace ProjectChimera.Combat
             _table       = table ?? DamageTable.Default;
             _registry    = registry;   // Story 2.6 (optional — the on-hit rider runs only when both are wired)
             _modifiers   = modifiers;
+            _buildings   = buildings;   // Story 2.9a (optional — building attacks no-op when absent, e.g. bare tests)
         }
 
         // Squared arrive threshold for AttackMove goal detection (0.5 world units)
@@ -91,7 +98,8 @@ namespace ProjectChimera.Combat
                         world.CommandState[i] == UnitCommand.AttackTarget ||
                         world.CommandState[i] == UnitCommand.Patrol ||
                         world.CommandState[i] == UnitCommand.Follow ||
-                        world.CommandState[i] == UnitCommand.PatrolAppend)
+                        world.CommandState[i] == UnitCommand.PatrolAppend ||
+                        world.CommandState[i] == UnitCommand.AttackBuilding) // Story 2.9a
                         world.CommandState[i] = UnitCommand.Idle;
                     continue;
                 }
@@ -121,6 +129,10 @@ namespace ProjectChimera.Combat
 
                     case UnitCommand.AttackTarget:
                         TickAttackTargetCombat(world, i, dt);
+                        break;
+
+                    case UnitCommand.AttackBuilding: // Story 2.9a — force-attack an enemy building
+                        TickAttackBuildingCombat(world, i, dt);
                         break;
 
                     case UnitCommand.Patrol:
@@ -264,6 +276,47 @@ namespace ProjectChimera.Combat
 
             world.Flags[i] = (world.Flags[i] | EntityFlags.Attacking) & ~EntityFlags.Moving;
             TryDealDamage(world, i, forced);
+        }
+
+        // ── AttackBuilding (Story 2.9a, AC2) ───────────────────────────────────────
+        // Force-attack ONE specific enemy building (CommandTarget holds the building id under
+        // CommandState==AttackBuilding). Chase the building's centre point, then deal matrix damage (Fortified) —
+        // melee instant, ranged via a real projectile (Task 4b). Explicit-order-only: nothing auto-acquires buildings.
+
+        private void TickAttackBuildingCombat(EntityWorld world, int i, Fixed dt)
+        {
+            int b = world.CommandTarget[i];
+            // VALIDATE FIRST — the bounds guard is MANDATORY. BuildingStore has NO IsAlive-style OOB short-circuit
+            // (unlike EntityWorld.IsAlive), and the apply case blind-stores an UNVALIDATED building id, so a stale/-1/
+            // ≥Count id would IndexOutOfRange-crash the tick (identically on every peer) if we indexed Alive[b]
+            // unguarded. This single guard enforces AC2 (a friendly building is NEVER targeted), AC2.4 (the
+            // Structure-domain gate), and crash-safety, reverting a rejected/stale/-1 order cleanly to Idle with NO
+            // attack spent (no TickIdleCombat this tick — that would let it acquire+hit a nearby unit, violating AC2.4).
+            if (_buildings == null || b < 0 || b >= _buildings.Count || !_buildings.Alive[b]
+                || _buildings.FactionOf[b] == world.FactionOf[i]
+                || (world.AttackDomainOf[i] & AttackDomain.Structure) == AttackDomain.None)
+            {
+                world.CommandState[i]  = UnitCommand.Idle;
+                world.CommandTarget[i] = -1;
+                world.Flags[i]        &= ~EntityFlags.Attacking;
+                return;
+            }
+
+            TickCooldown(world, i, dt);
+
+            Fixed sqrDist  = FixedVec3.SqrDistance(world.Position[i], _buildings.Position[b]);
+            Fixed sqrRange = world.AttackRange[i] * world.AttackRange[i];
+
+            if (sqrDist > sqrRange)
+            {
+                // Out of range — chase the building's (static) Fixed centre point (AC2.3).
+                world.MoveTarget[i] = _buildings.Position[b];
+                world.Flags[i]      = (world.Flags[i] | EntityFlags.Moving) & ~EntityFlags.Attacking;
+                return;
+            }
+
+            world.Flags[i] = (world.Flags[i] | EntityFlags.Attacking) & ~EntityFlags.Moving;
+            TryDealBuildingDamage(world, i, b);
         }
 
         // ── Patrol (Story 1.12) ────────────────────────────────────────────────────
@@ -500,6 +553,49 @@ namespace ProjectChimera.Combat
                 // the same AttackCooldown gate above — no new counter). primaryTarget = the struck unit; runs AFTER the
                 // base damage resolves, so a lethal base hit leaves the rider's IsAlive-guarded leaves as safe no-ops.
                 RunOnHit(world, attacker, target);
+            }
+        }
+
+        /// <summary>
+        /// Story 2.9a (AC2/AC2.6) — deal cooldown-gated damage to a BUILDING, mirroring <see cref="TryDealDamage"/>'s
+        /// melee/ranged split. Melee (<c>AttackRange ≤ MELEE_THRESHOLD</c>) resolves instant matrix damage via the shared
+        /// <see cref="DamageResolver.ApplyToBuilding"/> helper; ranged spawns a real building-target projectile that flies
+        /// to the building and resolves on impact (<see cref="ProjectileSystem"/>, D-4). Buildings are always
+        /// <see cref="ArmorType.Fortified"/> (D-3) with no flat armor. Caller guarantees <c>_buildings != null</c> and a
+        /// valid, alive, in-range <paramref name="b"/> (validated in <see cref="TickAttackBuildingCombat"/>).
+        /// </summary>
+        private void TryDealBuildingDamage(EntityWorld world, int attacker, int b)
+        {
+            if (world.AttackCooldown[attacker] > Fixed.Zero) return;
+
+            world.AttackCooldown[attacker] = world.AttackSpeed[attacker];
+
+            if (world.AttackRange[attacker] > MELEE_THRESHOLD)
+            {
+                // Ranged — spawn a projectile that flies to the building and resolves Fortified matrix damage on impact.
+                _projectiles.Spawn(
+                    world.Position[attacker],
+                    b,                              // the building id (targetIsBuilding disambiguates it from an entity id)
+                    _buildings!.Position[b],
+                    world.EffectiveAttackDamage[attacker],
+                    world.DamageTypeOf[attacker],
+                    ArmorType.Fortified,            // D-3: 100% of building JSON authors Fortified; no per-building armor SoA
+                    world.FactionOf[attacker],
+                    world.SplashRadius[attacker],
+                    world.FeedbackProfile[attacker],
+                    targetIsBuilding: true);        // Story 2.9a (Task 4b)
+            }
+            else
+            {
+                // Melee — instant matrix damage via the SINGLE shared building-damage entry point.
+                _events?.Push(CombatEventType.MeleeHit, _buildings!.Position[b], world.FeedbackProfile[attacker]);
+                if (DamageResolver.ApplyToBuilding(_buildings!, b, world.EffectiveAttackDamage[attacker],
+                                                   world.DamageTypeOf[attacker], _table, _events))
+                {
+                    // Building razed — drop the Attacking flag now; the next tick's guard reverts CommandState to Idle
+                    // (BuildingStore has no IsAlive to catch it, but the in-tick bounds+Alive guard does — see above).
+                    world.Flags[attacker] &= ~EntityFlags.Attacking;
+                }
             }
         }
 

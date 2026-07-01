@@ -33,6 +33,12 @@ namespace ProjectChimera.Combat
         /// (ProjectileStore is never an input to SimChecksum).
         /// </summary>
         public readonly CombatFeedbackProfile?[] Feedback = new CombatFeedbackProfile?[MAX_PROJECTILES];
+        /// <summary>
+        /// Story 2.9a (D-4): true ⇒ <see cref="TargetId"/> is a BUILDING id (into BuildingStore), false ⇒ an entity id
+        /// (into EntityWorld) — the existing default. Set at Spawn; a recycled slot is always overwritten (no stale
+        /// flag). NOT folded (ProjectileStore is never an input to SimChecksum), so this discriminator is fold-neutral.
+        /// </summary>
+        public readonly bool[]       TargetIsBuilding = new bool[MAX_PROJECTILES];
 
         private readonly int[] _freeList  = new int[MAX_PROJECTILES];
         private int            _freeCount;
@@ -53,7 +59,8 @@ namespace ProjectChimera.Combat
             ArmorType  targetArmor,
             Faction    owner,
             Fixed      splashRadius = default,
-            CombatFeedbackProfile? feedback = null)
+            CombatFeedbackProfile? feedback = null,
+            bool       targetIsBuilding = false)
         {
             int id;
             if (_freeCount > 0)
@@ -63,16 +70,17 @@ namespace ProjectChimera.Combat
             else
                 return -1; // full
 
-            Alive[id]         = true;
-            Position[id]      = position;
-            TargetId[id]      = targetId;
-            LastKnownPos[id]  = targetPos;
-            Damage[id]        = damage;
-            DmgType[id]       = dmgType;
-            TargetArmor[id]   = targetArmor;
-            Owner[id]         = owner;
-            SplashRadius[id]  = splashRadius;
-            Feedback[id]      = feedback;
+            Alive[id]            = true;
+            Position[id]         = position;
+            TargetId[id]         = targetId;
+            LastKnownPos[id]     = targetPos;
+            Damage[id]           = damage;
+            DmgType[id]          = dmgType;
+            TargetArmor[id]      = targetArmor;
+            Owner[id]            = owner;
+            SplashRadius[id]     = splashRadius;
+            Feedback[id]         = feedback;
+            TargetIsBuilding[id] = targetIsBuilding; // Story 2.9a — always overwritten (recycled slot never inherits)
             return id;
         }
 
