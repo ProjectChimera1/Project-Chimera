@@ -15,7 +15,8 @@ namespace ProjectChimera.Sim.Tests.Definitions
     /// without Godot: a draft tree MATERIALISES to the immutable runtime graph, serialises through the canonical
     /// <see cref="ContentJson.Options"/>, re-loads via <see cref="AbilityLoader"/>, and round-trips on
     /// <c>Fixed.Raw</c> + structure (judged by the shared <see cref="EffectGraphAssert"/>). The closed authorable
-    /// sets are asserted to exclude the reserved values (the load-bearing AC5 defense), and every gate ships with
+    /// sets are asserted to be the closed authorable vocabulary — still excluding the internal <c>DamageType.COUNT</c>
+    /// sentinel, and (Story 2.9a) now INCLUDING the Air/Ground/Structure domain bits (the load-bearing AC5 defense), and every gate ships with
     /// teeth (a 0-child sequence is rejected by the real validator; an incomplete Search Area refuses to materialise).
     /// </summary>
     public class AbilityDraftTests

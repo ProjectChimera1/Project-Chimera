@@ -298,7 +298,11 @@ namespace ProjectChimera.Combat
             {
                 world.CommandState[i]  = UnitCommand.Idle;
                 world.CommandTarget[i] = -1;
-                world.Flags[i]        &= ~EntityFlags.Attacking;
+                // Clear BOTH flags: if the building became invalid while this unit was out-of-range CHASING it
+                // (Moving set at the chase branch below), leaving Moving set would drift the unit to the razed
+                // building's stale centre for one path. Mirrors TickFollowCombat's revert (:411). (Code-review
+                // 2.9a — golden-safe: the anti-building golden reverts from IN range, so Moving is already clear.)
+                world.Flags[i]        &= ~(EntityFlags.Moving | EntityFlags.Attacking);
                 return;
             }
 

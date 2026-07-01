@@ -21,7 +21,8 @@ namespace ProjectChimera.Sim.Tests.Definitions
     /// </summary>
     public class FlagCombinationVocabularyTests
     {
-        // ── (1) Closed-set teeth — the offered bits exclude the reserved ones (AC5). ──
+        // ── (1) Closed-set teeth — the offered filter set IS the closed allegiance+Alive+domain set (AC5). Story
+        //        2.9a: the Air/Ground/Structure bits are now OFFERED (evaluated by TargetMatcher), no longer reserved. ──
 
         [Fact]
         public void DraftVocabulary_FilterSet_IsTheClosedAllegiancePlusDomainSet()
