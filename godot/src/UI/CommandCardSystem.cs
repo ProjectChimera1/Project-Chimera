@@ -42,6 +42,13 @@ namespace ProjectChimera.UI
         private const int MAX_TRAIN_OPTIONS = 4;
         private Button[] _trainBtns        = System.Array.Empty<Button>();  // Production buildings (per-unit picker)
         private readonly int[] _trainUnitIndices = new int[MAX_TRAIN_OPTIONS]; // button slot → Units index it trains (-1 = empty)
+        // Story 2.8 review: log the "category exceeds MAX_TRAIN_OPTIONS" creator warning once per (faction, building
+        // type), not every RefreshCard frame. Presentation-only — never read by the sim, so a HashSet is fine here.
+        private readonly System.Collections.Generic.HashSet<(Faction, BuildingType)> _trainCapWarned = new();
+        // Story 2.8 review (AC4): shared font with OpenType tabular figures so the numeric columns and the ticking
+        // countdown use fixed-width digits and don't jitter. Built in BuildPanel, applied to the train buttons +
+        // status label. FontVariation with no BaseFont derives from the default project font (documented fallback).
+        private FontVariation _tabularFont       = null!;
         private Label  _trainStatus        = null!;  // "Training…  Xs" in-flight label
         private Label  _constructionLabel  = null!;  // "Under Construction  Xs"
 
@@ -224,6 +231,14 @@ namespace ProjectChimera.UI
                 // One button per unit of THIS building's category, for its ACTUAL faction (not the P1 default) — so a
                 // selected P2 producer shows P2's roster. Order follows the faction Units JSON.
                 var options = _buildSys.GetProductionUnits(bType, faction);
+                // Story 2.8 review (creator-content guard): the picker renders a fixed MAX_TRAIN_OPTIONS-slot grid, so
+                // a category defining more units than that silently loses the extras. Warn once per (faction, building
+                // type) so a creator is told rather than losing a unit invisibly. Presentation-only, no sim impact.
+                if (options.Count > _trainBtns.Length && _trainCapWarned.Add((faction, bType)))
+                    GD.PrintErr($"[CommandCard] {faction} {bType} defines {options.Count} trainable units but the " +
+                                $"production picker shows only {_trainBtns.Length}; units beyond the first " +
+                                $"{_trainBtns.Length} are not reachable via the command card " +
+                                $"(raise MAX_TRAIN_OPTIONS or split the category).");
                 bool isTraining = _buildings.ProductionQueue[bId] != 0;
 
                 _trainStatus.Visible = isTraining;
@@ -321,6 +336,17 @@ namespace ProjectChimera.UI
 
             var vpSize = GetViewport().GetVisibleRect().Size;
 
+            // Story 2.8 review (AC4): tabular-figures font shared by the train grid + countdown so digits are
+            // fixed-width and don't jitter. No BaseFont → derives from the default project font (documented
+            // fallback), so text still renders even if the font lacks the feature.
+            _tabularFont = new FontVariation
+            {
+                OpentypeFeatures = new Godot.Collections.Dictionary
+                {
+                    { TextServerManager.GetPrimaryInterface().NameToTag("tnum"), 1 },
+                },
+            };
+
             // ── Outer panel ───────────────────────────────────────────────────
             _panel = new Panel();
             // Story 2.8: taller (140 → 175) and raised (−150 → −185) to hold the per-unit train grid, matching the
@@ -366,6 +392,7 @@ namespace ProjectChimera.UI
             // ── Training status (in-flight "Training… Xs", above the grid) ────
             _trainStatus = MakeLabel(new Vector2(10f, 52f), 13,
                                     new Color(0.95f, 0.75f, 0.20f));
+            _trainStatus.AddThemeFontOverride("font", _tabularFont); // AC4: fixed-width ticking countdown
             _trainStatus.Visible = false;
             _panel.AddChild(_trainStatus);
 
@@ -381,6 +408,7 @@ namespace ProjectChimera.UI
                 btn.Size         = new Vector2(98f, 70f);
                 btn.Visible      = false;
                 btn.AutowrapMode = TextServer.AutowrapMode.WordSmart; // long unit names wrap instead of clipping
+                btn.AddThemeFontOverride("font", _tabularFont); // AC4: tabular figures so cost/train-time align
                 int slot = i; // capture per-iteration for the lambda
                 btn.Pressed += () => OnTrainSlotPressed(slot);
                 _panel.AddChild(btn);

@@ -4,7 +4,7 @@ baseline_commit: 7e7f3b25e5db77932a4e9800f9d0ea1095de8979
 
 # Story 2.8: Combat Reachability I — Per-Unit Production Selection UI and Air Production Building/Category
 
-Status: review
+Status: done
 
 <!-- Validation: optional. Created via gds-create-story [ultracode]: 6-analyst parallel codebase+artifact recon + direct source grounding + a 3-validator adversarial panel. -->
 
@@ -147,8 +147,8 @@ _Code review 2026-07-01 (`gds-code-review`, 3-layer adversarial: Blind Hunter ·
 
 - [x] [Review][Decision→Patch] Production picker hard-caps a category at 4 units (`MAX_TRAIN_OPTIONS = 4`) — flagged by ALL 3 layers. `BuildingSystem.GetProductionUnits` returns every unit in the category, but the fixed 4-slot `_trainBtns` grid renders only `options[0..3]`; a creator faction defining 5+ units in one category silently loses the 5th+ button (no crash, no determinism impact). Inert for 2.8 (every shipped alpha/beta category is ≤3 units, so all ACs + both factions are fully satisfied) but bites Chimera's creator-extensible identity. **RESOLVED (Alec, 2026-07-01): chose option (b) — emit a fail-loud content-validation warning when a category exceeds the cap (no layout change, no in-engine re-verify needed). Options (a) dynamic grid + HUD overflow and (c) accept-and-document were declined. See the patch below.** [godot/src/UI/CommandCardSystem.cs:42,233]
 
-- [ ] [Review][Patch] Warn (once per faction+building type) in `RefreshCard` when a production category defines more units than `MAX_TRAIN_OPTIONS`, so a creator is told the 5th+ unit is untrainable via the picker instead of losing it silently (resolves the decision above, option b). Presentation-layer `GD.PrintErr` with a dedup guard — no sim/determinism impact. [godot/src/UI/CommandCardSystem.cs `RefreshCard`]
-- [ ] [Review][Patch] AC4 tabular-nums not applied — the ticking `Training…  {t:F1}s` countdown label uses proportional figures, so the digit can horizontally jitter as it counts down (AC4 requires tabular-nums "so labels don't jitter"). Cosmetic only, no functional/determinism impact; AC4 was marked MET without this sub-requirement. [godot/src/UI/CommandCardSystem.cs:231]
+- [x] [Review][Patch] ✅ APPLIED (2026-07-01) — Warn (once per faction+building type) in `RefreshCard` when a production category defines more units than `MAX_TRAIN_OPTIONS`, so a creator is told the 5th+ unit is untrainable via the picker instead of losing it silently (resolves the decision above, option b). Presentation-layer `GD.PrintErr` guarded by a `_trainCapWarned` dedup HashSet — no sim/determinism impact. Build 0 errors. [godot/src/UI/CommandCardSystem.cs `RefreshCard`, fields ~:44]
+- [x] [Review][Patch] ✅ APPLIED (2026-07-01) — AC4 tabular-nums: a shared `FontVariation` with the OpenType `tnum` feature is applied to the train buttons + the ticking `Training…  {t:F1}s` countdown label (no BaseFont → derives from the default project font, documented fallback, so text still renders if the font lacks the feature). Build 0 errors. ⚠ Visual result is font-dependent — needs an in-engine eyeball to confirm the figures render tabular (flagged + accepted at apply-time; cosmetic Low, non-blocking). [godot/src/UI/CommandCardSystem.cs BuildPanel + fields ~:48]
 
 - [x] [Review][Defer] Local player hardcoded to `Faction.Player1` in `IssueTrainCommand` (blind+edge) [godot/src/UI/CommandCardSystem.cs:~1109] — deferred, pre-existing project-wide convention (mirrors `SelectionSystem` select/move/cast); not a regression, unreachable while the local human is always P1; revisit when P2-local / >2-player assignment lands.
 - [x] [Review][Defer] `ProductionQueueValue` clamps a stored index ≥254 to the `255` fallback sentinel → ore spent but the fallback unit spawns (blind) [godot/src/Economy/BuildingSystem.cs `ProductionQueueValue`] — deferred, accepted byte-reuse design boundary (Decision 1 assumes index ≪ 254; requires ≥255 units in one faction category to reach — absurd vs ~8-unit rosters).
