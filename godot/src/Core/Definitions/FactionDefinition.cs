@@ -69,6 +69,23 @@ namespace ProjectChimera.Core.Definitions
         }
 
         /// <summary>
+        /// Every unit whose category matches (case-insensitive), in ascending <see cref="Units"/>-list order,
+        /// each paired with its list index. The index is the SAME coordinate as <see cref="IndexOfUnit"/> /
+        /// <c>EntityWorld.MeshType</c>, so callers can persist a chosen unit by index and resolve it back with a
+        /// plain <c>Units[idx]</c>. Introduced for the per-unit production picker (Story 2.8) so a building can
+        /// train ANY unit of its category, not just the first. Deterministic ascending iteration — no
+        /// <c>Dictionary</c>/<c>HashSet</c>, no sort. Empty list when no unit has that category.
+        /// </summary>
+        public List<(int Index, UnitDefinition Def)> GetUnitsByCategory(string category)
+        {
+            var matches = new List<(int, UnitDefinition)>();
+            for (int i = 0; i < Units.Count; i++)
+                if (string.Equals(Units[i].Category, category, System.StringComparison.OrdinalIgnoreCase))
+                    matches.Add((i, Units[i]));
+            return matches;
+        }
+
+        /// <summary>
         /// First unit in the list — used as the default mesh when a MultiMesh
         /// renders "all units of this faction" without per-type differentiation.
         /// </summary>

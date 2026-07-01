@@ -257,6 +257,28 @@
       "prerequisites": [
         "archery_range"
       ]
+    },
+    {
+      "id": "aviary",
+      "display_name": "Bonded Aerie",
+      "category": "Structure",
+      "mesh_path": "res://assets/models/factions/alpha/bonded_aerie.glb",
+      "hp": 700,
+      "speed": 0,
+      "attack_damage": 0,
+      "attack_range": 0,
+      "attack_speed": 0,
+      "damage_type": "Normal",
+      "armor_type": "Fortified",
+      "cost_ore": 200,
+      "cost_crystal": 0,
+      "supply": 0,
+      "mesh_scale": 2.8,
+      "train_time": 0,
+      "vision_range": 0,
+      "prerequisites": [
+        "siege_workshop"
+      ]
     }
   ]
 }

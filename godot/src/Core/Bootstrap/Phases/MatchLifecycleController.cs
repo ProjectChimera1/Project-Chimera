@@ -66,6 +66,11 @@ namespace ProjectChimera.Core.Bootstrap
 
             // Route SelectionSystem commands through lockstep
             _ctx.Selection.SetLockstep(_ctx.Lockstep);
+            // Story 2.8 (D-1): route the command-card Train action through lockstep, and give the manager the
+            // production system so a Train order EXECUTES at exec-tick (the deterministic spend + queue on the
+            // canonical BuildingStore/ResourceStore). Same instance the replay/offline paths use → no divergence.
+            _ctx.CommandCard.SetLockstep(_ctx.Lockstep);
+            _ctx.Lockstep.Buildings = _ctx.BuildSys;
 
             if (localFaction == Faction.Neutral)
             {
@@ -164,6 +169,9 @@ namespace ProjectChimera.Core.Bootstrap
                 _ctx.ReplayPlayer.OnRequestPath       = (id, x, z) => _ctx.FlowFieldBridge.RequestPath(id, new Vector3(x, 0f, z));
                 _ctx.ReplayPlayer.OnRequestAttackMove = (id, x, z) => _ctx.FlowFieldBridge.RequestAttackMove(id, new Vector3(x, 0f, z));
                 _ctx.ReplayPlayer.OnCancelPath        = id => _ctx.FlowFieldBridge.CancelPath(id);
+                // Story 2.8 (D-1): give the replay the production system so a recorded Train order re-executes
+                // identically to the live match (spend + queue on the canonical stores).
+                _ctx.ReplayPlayer.Buildings = _ctx.BuildSys;
 
                 // The replay embeds the scenario path — warn if it differs from the currently-loaded scenario.
                 if (_ctx.ReplayPlayer.ScenarioPath != _ctx.Scene.ScenarioPath)

@@ -1,4 +1,5 @@
 #nullable enable
+using System.Collections.Generic;
 using ProjectChimera.Core;
 using ProjectChimera.Core.Definitions;
 
@@ -13,10 +14,12 @@ namespace ProjectChimera.Economy
     /// 2. Production — ticks training timers; when a timer expires, spawns the
     ///    queued unit near the building's position.
     ///
-    /// Building type → unit category mapping:
-    ///   Barracks      → first "Melee"  unit in faction
-    ///   ArcheryRange  → first "Ranged" unit in faction
-    ///   SiegeWorkshop → first "Siege"  unit in faction
+    /// Building type → unit category mapping (Story 2.8: the player picks WHICH unit of the
+    /// category to train via the command card, not just the first):
+    ///   Barracks      → "Melee"  units
+    ///   ArcheryRange  → "Ranged" units
+    ///   SiegeWorkshop → "Siege"  units
+    ///   Aviary        → "Air"    units
     ///
     /// Run BEFORE SupplySystem so SupplyCap is up-to-date when supply is checked.
     /// </summary>
@@ -30,6 +33,15 @@ namespace ProjectChimera.Economy
         private const float FALLBACK_ATTACK_RNG  = 5f;
         private const float FALLBACK_ATTACK_SPD  = 1f;
         private const int   FALLBACK_COST_ORE    = 100;
+
+        /// <summary>
+        /// ProductionQueue sentinel (Story 2.8). A producer whose category has ZERO units still trains a graceful
+        /// FALLBACK unit — that case is persisted as this reserved value, NOT 0, because 0 must keep meaning "idle"
+        /// (the already-training guard at TrainUnit / the skip at TickProduction). Real chosen units are stored as
+        /// (Units-list index + 1); the category guard bounds real indices well under 254, so index+1 never collides
+        /// with 255.
+        /// </summary>
+        private const byte PRODUCTION_FALLBACK = byte.MaxValue;
 
         // Spawn offset (world units) from building centre
         private static readonly Fixed SPAWN_OFFSET = Fixed.FromFloat(3f);
@@ -141,7 +153,27 @@ namespace ProjectChimera.Economy
         private void SpawnTrainedUnit(EntityWorld world, int buildingId)
         {
             Faction faction = _buildings.FactionOf[buildingId];
-            var def = GetProductionUnit(_buildings.Type[buildingId], faction);
+
+            // Story 2.8: train the CONCRETE unit chosen at TrainUnit time — persisted in ProductionQueue as
+            // (Units index + 1), or PRODUCTION_FALLBACK for an empty-category producer. Read it here instead of
+            // re-deriving first-of-category. Explicitly bounds-check the List indexer: the null-conditional
+            // guards only a null FactionDefinition, NOT an out-of-range index (which would throw
+            // ArgumentOutOfRangeException inside the tick — a "never throw in the tick" violation).
+            byte q = _buildings.ProductionQueue[buildingId];
+            var fdef = GetFactionDef(faction);
+            UnitDefinition? def = null;
+            int meshType = -1;
+            if (q != PRODUCTION_FALLBACK && q != 0 && fdef != null)
+            {
+                int idx = q - 1;
+                if (idx >= 0 && idx < fdef.Units.Count)
+                {
+                    def = fdef.Units[idx];
+                    meshType = idx; // the Units index IS the MeshType coordinate (== IndexOfUnit)
+                }
+            }
+            // def == null → the graceful FALLBACK branch below (the 255 sentinel, or a stale index after a
+            // SetFactionDef faction swap). Never throws.
 
             float hp    = def?.Hp    ?? FALLBACK_HP;
             float speed = def?.Speed ?? FALLBACK_SPEED;
@@ -188,8 +220,8 @@ namespace ProjectChimera.Economy
                 world.SplashRadius[id] = Fixed.FromFloat(0f);
             }
 
-            // Presentation: tag the unit type so MultiMeshBridge renders the right mesh.
-            int meshType = def != null ? (GetFactionDef(faction)?.IndexOfUnit(def.Id) ?? -1) : -1;
+            // Presentation: tag the unit type so MultiMeshBridge renders the right mesh (meshType resolved above
+            // from the persisted Units index — the same coordinate IndexOfUnit returns).
             world.MeshType[id] = (byte)(meshType < 0 ? 0 : meshType);
 
             // Walk to rally point if the building has one set
@@ -215,6 +247,7 @@ namespace ProjectChimera.Economy
             BuildingType.Barracks      => "Melee",
             BuildingType.ArcheryRange  => "Ranged",
             BuildingType.SiegeWorkshop => "Siege",
+            BuildingType.Aviary        => "Air",       // Story 2.8 — MUST exist or the _ => "Melee" default silently trains Melee at the Aviary.
             BuildingType.CommandCenter => "Worker",
             _                          => "Melee",
         };
@@ -234,12 +267,35 @@ namespace ProjectChimera.Economy
         }
 
         /// <summary>
-        /// Queue a unit for training at the given production building.
-        /// Returns true if training was accepted (building alive, idle, prereqs met, faction can afford).
-        /// Automatically picks the correct unit type for the building (Barracks→Melee,
-        /// ArcheryRange→Ranged, SiegeWorkshop→Siege).
+        /// Every unit the given building type can train for the faction, as (Units-list index, def) pairs in
+        /// deterministic list order (Story 2.8, per-unit production picker). Empty when the type produces nothing
+        /// (CommandCenter) or the faction has no unit of that category. Lets the command card enumerate every
+        /// trainable option without reaching into <see cref="FactionDefinition"/> directly (it holds only _buildSys).
+        /// The pair index is the <see cref="FactionDefinition.IndexOfUnit"/> coordinate — the value TrainUnit stores.
         /// </summary>
-        public bool TrainUnit(int buildingId, ResourceStore resources)
+        public List<(int Index, UnitDefinition Def)> GetProductionUnits(BuildingType type,
+                                                                        Faction faction = Faction.Player1)
+        {
+            if (type == BuildingType.CommandCenter)
+                return new List<(int, UnitDefinition)>();
+            var fdef = GetFactionDef(faction);
+            if (fdef == null)
+                return new List<(int, UnitDefinition)>();
+            return fdef.GetUnitsByCategory(CategoryForBuilding(type));
+        }
+
+        /// <summary>
+        /// Queue a unit for training at the given production building.
+        /// Returns true if training was accepted (building alive, idle, chosen unit valid, prereqs met, faction can afford).
+        ///
+        /// <paramref name="chosenUnitIndex"/> selects WHICH unit of the building's category to train, as an index
+        /// into the faction's full <see cref="FactionDefinition.Units"/> list (Story 2.8). The default -1 means
+        /// "first-of-category" — today's behaviour — so the AI caller and any 2-arg call compile and behave
+        /// byte-identically. A chosen index that is out of range, or whose unit's category does not match the one
+        /// this building produces, is HARD-REJECTED (returns false, spends nothing, queues nothing) — never train
+        /// cross-category from a crafted or stale index (the Story 1.12 faction-guard lesson).
+        /// </summary>
+        public bool TrainUnit(int buildingId, ResourceStore resources, int chosenUnitIndex = -1)
         {
             if (buildingId < 0 || buildingId >= _buildings.Count) return false;
             if (!_buildings.Alive[buildingId]) return false;
@@ -249,7 +305,23 @@ namespace ProjectChimera.Economy
             if (_buildings.ProductionQueue[buildingId] != 0) return false; // already training
 
             Faction faction = _buildings.FactionOf[buildingId];
-            var def = GetProductionUnit(bType, faction);
+
+            // Resolve the def to train: an explicit chosen unit (bounds- + category-checked) or, for the
+            // default -1, the first-of-category unit (unchanged behaviour; may be null for an empty category).
+            UnitDefinition? def;
+            if (chosenUnitIndex >= 0)
+            {
+                var fdef = GetFactionDef(faction);
+                if (fdef == null || chosenUnitIndex >= fdef.Units.Count) return false; // out-of-range → reject, no spend
+                def = fdef.Units[chosenUnitIndex];
+                // Category-match guard: the chosen unit must belong to the category this building produces.
+                if (!string.Equals(def.Category, CategoryForBuilding(bType), System.StringComparison.OrdinalIgnoreCase))
+                    return false;
+            }
+            else
+            {
+                def = GetProductionUnit(bType, faction);
+            }
 
             // Tech tree: check prerequisites before spending resources
             if (def != null && !TechTreeChecker.AreMet(_buildings, faction, def.Prerequisites))
@@ -262,10 +334,47 @@ namespace ProjectChimera.Economy
             float costOre = def?.CostOre ?? FALLBACK_COST_ORE;
             if (!resources.SpendOre(faction, Fixed.FromFloat(costOre))) return false;
 
-            _buildings.ProductionQueue[buildingId] = 1;
+            // Persist the CONCRETE unit so SpawnTrainedUnit trains exactly this one (not a re-derived
+            // first-of-category). Stored as (Units index + 1) so 0 stays "idle". An empty-category default
+            // (def == null) stores the reserved fallback sentinel, preserving today's graceful fallback spawn.
+            _buildings.ProductionQueue[buildingId] = ProductionQueueValue(faction, def, chosenUnitIndex);
             float trainTime = def?.TrainTime ?? FALLBACK_TRAIN_TIME;
             _buildings.ProductionTimer[buildingId] = Fixed.FromFloat(trainTime);
             return true;
+        }
+
+        /// <summary>
+        /// Encode the trained unit as the <see cref="BuildingStore.ProductionQueue"/> byte (Story 2.8): the chosen
+        /// unit's <see cref="FactionDefinition.Units"/> index + 1 (so 0 stays "idle"), or <see cref="PRODUCTION_FALLBACK"/>
+        /// when no def resolved (an empty-category producer's graceful fallback). The chosen path already
+        /// bounds-checked the index; the default path's def came from this faction's Units list so its index is
+        /// valid — the defensive clamp only guards a data-integrity impossibility, never a real training request.
+        /// </summary>
+        private byte ProductionQueueValue(Faction faction, UnitDefinition? def, int chosenUnitIndex)
+        {
+            if (def == null) return PRODUCTION_FALLBACK;
+            int storeIdx = chosenUnitIndex >= 0
+                ? chosenUnitIndex
+                : (GetFactionDef(faction)?.IndexOfUnit(def.Id) ?? -1);
+            if (storeIdx < 0 || storeIdx >= PRODUCTION_FALLBACK - 1) return PRODUCTION_FALLBACK;
+            return (byte)(storeIdx + 1);
+        }
+
+        /// <summary>
+        /// Apply a lockstep <see cref="UnitCommand.Train"/> command at exec-tick (Story 2.8, D-1). Validates
+        /// BUILDING ownership — a player may train ONLY at a building of their OWN faction (the anti-cheat
+        /// building-command analogue of the entity-ownership guard, which is meaningless for a building id) —
+        /// then runs the normal <see cref="TrainUnit"/> gate/spend against this system's own BuildingStore and
+        /// ResourceStore. Called from the shared <c>OrderApplier</c> so live == replay == offline all execute this
+        /// one method; the deterministic ore/supply spend therefore happens HERE, at exec-tick, exactly once
+        /// (never at UI click-time). Returns true if training was queued.
+        /// </summary>
+        public bool TrainUnitCommand(int buildingId, Faction expectedFaction, int chosenUnitIndex)
+        {
+            if (buildingId < 0 || buildingId >= _buildings.Count) return false;
+            if (!_buildings.Alive[buildingId]) return false;
+            if (_buildings.FactionOf[buildingId] != expectedFaction) return false; // anti-cheat: own building only
+            return TrainUnit(buildingId, _resources, chosenUnitIndex);
         }
 
         /// <summary>
@@ -412,6 +521,21 @@ namespace ProjectChimera.Economy
             var def = GetProductionUnit(_buildings.Type[buildingId], faction);
             if (def == null) return null;
             return TechTreeChecker.FirstMissing(_buildings, faction, def.Prerequisites);
+        }
+
+        /// <summary>
+        /// Display name of the first unmet tech prerequisite for a SPECIFIC candidate unit (by its
+        /// <see cref="FactionDefinition.Units"/> index), or null if all prerequisites are satisfied / the index is
+        /// invalid. Used by the Story 2.8 per-unit production picker so each unit button shows its own "[need: X]"
+        /// (the parameterless overload re-derives first-of-category and can't distinguish siblings).
+        /// </summary>
+        public string? GetUnmetPrereq(int buildingId, int unitIndex)
+        {
+            if (buildingId < 0 || buildingId >= _buildings.Count) return null;
+            Faction faction = _buildings.FactionOf[buildingId];
+            var fdef = GetFactionDef(faction);
+            if (fdef == null || unitIndex < 0 || unitIndex >= fdef.Units.Count) return null;
+            return TechTreeChecker.FirstMissing(_buildings, faction, fdef.Units[unitIndex].Prerequisites);
         }
     }
 }

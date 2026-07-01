@@ -52,6 +52,11 @@ namespace ProjectChimera.Multiplayer
         /// <summary>Called when a Stop or Hold order should cancel any pending path.</summary>
         public Action<int>? OnCancelPath;
 
+        /// <summary>Story 2.8 (D-1): the production system the shared OrderApplier uses to EXECUTE a replayed Train
+        /// command (spend + queue on the canonical stores), so a recorded .chmr trains identically to the live match.
+        /// Wired alongside the path delegates; null in the Tier-1 golden harness where Train no-ops.</summary>
+        public ProjectChimera.Economy.BuildingSystem? Buildings;
+
         // ── Replay data ───────────────────────────────────────────────────────────
 
         // Key = simulation tick; value = list of (faction, orders[]) for that tick.
@@ -172,7 +177,7 @@ namespace ProjectChimera.Multiplayer
             // are null in the Tier-1 golden harness.
             for (int i = 0; i < count; i++)
                 OrderApplier.Apply(_world, in orders[i], expectedFaction,
-                    OnRequestPath, OnRequestAttackMove, OnCancelPath);
+                    OnRequestPath, OnRequestAttackMove, OnCancelPath, Buildings);
         }
     }
 }

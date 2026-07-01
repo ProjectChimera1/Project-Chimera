@@ -24,6 +24,8 @@ namespace ProjectChimera.Core
         PatrolAppend = 9, // WIRE-ONLY: append a waypoint to the patrol route, then rewritten to Patrol on apply (CombatSystem never sees it).
         // ── Story 2.4a (FR-11): appended AFTER PatrolAppend. Values 0–9 stay FROZEN for replay back-compat. ──
         CastAbility  = 10, // Cast the ability in slot TargetX (raw int) at target entity TargetZ (raw int, -1 = Self/None). A fire-and-forget INTENT: OrderApplier writes PendingCast*, AbilityCastSystem consumes it inside the tick — it does NOT persist as a CommandState (the caster's Move/Attack order is preserved).
+        // ── Story 2.8 (D-1 / FR-11): appended AFTER CastAbility. Values 0-10 stay FROZEN for replay back-compat. ──
+        Train        = 11, // Train a unit at a production BUILDING. WIRE: UnitId = buildingId, TargetX = chosen unit index (raw int, -1 = first-of-category). Handled by OrderApplier BEFORE the entity-ownership guard (UnitId names a building, not an entity); ore/supply spend happens at exec-tick via BuildingSystem.TrainUnitCommand. Never persists as a CommandState.
     }
 
     /// <summary>

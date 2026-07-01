@@ -678,6 +678,7 @@ namespace ProjectChimera.Core
                     BuildingType.Barracks      => "Barracks",
                     BuildingType.ArcheryRange  => "Archery Range",
                     BuildingType.SiegeWorkshop => "Siege Workshop",
+                    BuildingType.Aviary        => "Aviary",
                     _ => "Building"
                 };
                 _ctx.ControlsLabel.Text = $"Placing {bName} — Left-click to place   Right-click / Esc to cancel";
@@ -732,6 +733,7 @@ namespace ProjectChimera.Core
                 BuildingType.Barracks      => "Barracks",
                 BuildingType.ArcheryRange  => "Archery Range",
                 BuildingType.SiegeWorkshop => "Siege Workshop",
+                BuildingType.Aviary        => "Aviary",
                 _ => "Building"
             };
             GD.Print($"[MainScene] Placement mode: {bName} (worker {workerId}) — click to place.");

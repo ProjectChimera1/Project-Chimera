@@ -9,6 +9,7 @@ namespace ProjectChimera.Core
         Barracks      = 1,  // Produces infantry combat units
         ArcheryRange  = 2,  // Produces ranged combat units (future)
         SiegeWorkshop = 3,  // Produces siege units (future)
+        Aviary        = 4,  // Produces Air combat units (Story 2.8). APPEND-ONLY: values 0-3 are byte-serialized into replays/scenarios — never renumber.
     }
 
     /// <summary>
@@ -122,6 +123,14 @@ namespace ProjectChimera.Core
                 case BuildingType.SiegeWorkshop:
                     Health[id]              = Fixed.FromFloat(400f);
                     MaxHealth[id]           = Fixed.FromFloat(400f);
+                    SupplyBonus[id]         = 0;
+                    ConstructionDuration[id] = Fixed.FromFloat(12f);
+                    break;
+                case BuildingType.Aviary:
+                    // Story 2.8, D-2 (Alec): mirrors the Siege Workshop (top-tier gate). HP/supply/construction
+                    // come from HERE, not the JSON (building `hp` is vestigial).
+                    Health[id]              = Fixed.FromFloat(350f);
+                    MaxHealth[id]           = Fixed.FromFloat(350f);
                     SupplyBonus[id]         = 0;
                     ConstructionDuration[id] = Fixed.FromFloat(12f);
                     break;

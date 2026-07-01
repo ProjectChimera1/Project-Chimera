@@ -2,6 +2,7 @@
 using System;
 using System.Runtime.InteropServices;
 using ProjectChimera.Core;
+using ProjectChimera.Economy; // BuildingSystem (Story 2.8: Train command applies at exec-tick)
 
 namespace ProjectChimera.Multiplayer
 {
@@ -115,8 +116,22 @@ namespace ProjectChimera.Multiplayer
         public static void Apply(EntityWorld world, in UnitOrder o, Faction expectedFaction,
             Action<int, float, float>? onRequestPath = null,
             Action<int, float, float>? onRequestAttackMove = null,
-            Action<int>? onCancelPath = null)
+            Action<int>? onCancelPath = null,
+            BuildingSystem? buildings = null)
         {
+            // Story 2.8 (D-1): Train names a BUILDING (UnitId = buildingId), not an entity — handle it BEFORE the
+            // entity-ownership guard below, which would misread the building id as an EntityWorld slot (rejecting or
+            // corrupting whatever entity shares that index) and clobber its CommandState. The building-ownership
+            // guard + the deterministic exec-tick ore/supply spend live in BuildingSystem.TrainUnitCommand.
+            // `buildings` is null on headless/golden/replay-without-buildings paths → Train is a deterministic
+            // no-op (goldens never train via the wire). TargetX carries the chosen unit index as a RAW int (read
+            // directly; NEVER via .ToFloat() — the 1.12/2.4a packed-int lesson).
+            if (o.Command == UnitCommand.Train)
+            {
+                buildings?.TrainUnitCommand(o.UnitId, expectedFaction, o.TargetX);
+                return;
+            }
+
             int id = o.UnitId;
             if (!world.IsAlive(id)) return;
             if (world.FactionOf[id] != expectedFaction) return; // anti-cheat: only command your own units

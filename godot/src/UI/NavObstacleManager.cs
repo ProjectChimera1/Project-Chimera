@@ -37,6 +37,7 @@ namespace ProjectChimera.UI
             new(5f, 3f, 5f), // Barracks
             new(4f, 3f, 5f), // ArcheryRange
             new(5f, 3f, 7f), // SiegeWorkshop
+            new(5f, 3f, 7f), // Aviary (Story 2.8 — must stay length == BuildingType count; indexed by (int)Type each frame, else IndexOutOfRange)
         };
 
         // Half-extent of the nav bake AABB — must cover the full walkable map

@@ -52,6 +52,7 @@ namespace ProjectChimera.Core
             BuildingType.Barracks      => "barracks",
             BuildingType.ArcheryRange  => "archery_range",
             BuildingType.SiegeWorkshop => "siege_workshop",
+            BuildingType.Aviary        => "aviary",        // Story 2.8 — else "" → GetBuilding("") misses the aviary def (no cost/prereq).
             _                          => "",
         };
 
@@ -76,6 +77,7 @@ namespace ProjectChimera.Core
             "barracks"       => BuildingType.Barracks,
             "archery_range"  => BuildingType.ArcheryRange,
             "siege_workshop" => BuildingType.SiegeWorkshop,
+            "aviary"         => BuildingType.Aviary,       // Story 2.8 — else null → an "aviary" prereq can never be satisfied.
             _                => null,
         };
 
@@ -85,6 +87,7 @@ namespace ProjectChimera.Core
             BuildingType.Barracks      => "Barracks",
             BuildingType.ArcheryRange  => "Archery Range",
             BuildingType.SiegeWorkshop => "Siege Workshop",
+            BuildingType.Aviary        => "Aviary",
             _                          => null,
         };
     }

@@ -3,6 +3,7 @@ using Godot;
 using ProjectChimera.Core;
 using ProjectChimera.Core.Definitions;
 using ProjectChimera.Economy;
+using ProjectChimera.Multiplayer; // LockstepManager / OrderApplier / UnitOrder (Story 2.8: Train rides the command stream)
 
 namespace ProjectChimera.UI
 {
@@ -28,6 +29,7 @@ namespace ProjectChimera.UI
         private BuildingStore   _buildings  = null!;
         private ResourceStore   _resources  = null!;
         private EntityWorld     _world      = null!;
+        private LockstepManager? _lockstep;  // Story 2.8: null offline (apply Train now) / set online (enqueue for exec-tick)
 
         // ── Building card UI nodes ─────────────────────────────────────────────
 
@@ -35,8 +37,12 @@ namespace ProjectChimera.UI
         private Label  _titleLabel         = null!;
         private Label  _hpLabel            = null!;
         private Label  _supplyLabel        = null!;  // CommandCenter only
-        private Button _trainBtn           = null!;  // Production buildings
-        private Label  _trainStatus        = null!;  // "Training…  Xs" label
+        // Story 2.8: per-unit production picker — a grid of train buttons (one per unit of the selected building's
+        // category), replacing the single _trainBtn. Fixed-size grid; slots past the category's unit count are hidden.
+        private const int MAX_TRAIN_OPTIONS = 4;
+        private Button[] _trainBtns        = System.Array.Empty<Button>();  // Production buildings (per-unit picker)
+        private readonly int[] _trainUnitIndices = new int[MAX_TRAIN_OPTIONS]; // button slot → Units index it trains (-1 = empty)
+        private Label  _trainStatus        = null!;  // "Training…  Xs" in-flight label
         private Label  _constructionLabel  = null!;  // "Under Construction  Xs"
 
         // ── Worker card UI nodes ──────────────────────────────────────────────
@@ -68,6 +74,7 @@ namespace ProjectChimera.UI
             BuildingType.Barracks,
             BuildingType.ArcheryRange,
             BuildingType.SiegeWorkshop,
+            BuildingType.Aviary, // Story 2.8 — Air producer is worker-buildable (AC2.2). Grows the build grid to 5 (panel widened to fit).
         };
 
         // ── Event ─────────────────────────────────────────────────────────────
@@ -97,6 +104,14 @@ namespace ProjectChimera.UI
         /// <c>SelectionSystem.SetLockstep</c> and keeps the CameraPhase Initialize call undisturbed. Called by CameraPhase.
         /// </summary>
         public void SetAbilityRegistry(AbilityRegistry registry) => _registry = registry;
+
+        /// <summary>
+        /// Inject the per-match lockstep manager (Story 2.8, D-1). Null offline (single-player skirmish) → Train
+        /// applies immediately; set online → Train is enqueued and executed at exec-tick. Mirrors
+        /// <c>SelectionSystem.SetLockstep</c>; wired per match at match start (NOT in CameraPhase, where the live
+        /// per-match manager does not yet exist).
+        /// </summary>
+        public void SetLockstep(LockstepManager? lockstep) => _lockstep = lockstep;
 
         public override void _Ready()
         {
@@ -166,6 +181,7 @@ namespace ProjectChimera.UI
                 BuildingType.Barracks      => "Barracks",
                 BuildingType.ArcheryRange  => "Archery Range",
                 BuildingType.SiegeWorkshop => "Siege Workshop",
+                BuildingType.Aviary        => "Aviary",
                 _ => "Building"
             };
 
@@ -180,7 +196,7 @@ namespace ProjectChimera.UI
                 float progress  = duration > 0f ? (1f - remaining / duration) * 100f : 100f;
                 _constructionLabel.Text    = $"Under Construction  {remaining:F1}s  ({progress:F0}%)";
                 _constructionLabel.Visible = true;
-                _trainBtn.Visible          = false;
+                HideTrainButtons();
                 _trainStatus.Visible       = false;
                 _supplyLabel.Visible       = false;
                 return;
@@ -191,11 +207,10 @@ namespace ProjectChimera.UI
             bool isCC = bType == BuildingType.CommandCenter;
             bool canProduce = bType == BuildingType.Barracks
                            || bType == BuildingType.ArcheryRange
-                           || bType == BuildingType.SiegeWorkshop;
+                           || bType == BuildingType.SiegeWorkshop
+                           || bType == BuildingType.Aviary;
 
             _supplyLabel.Visible = isCC;
-            _trainBtn.Visible    = canProduce;
-            _trainStatus.Visible = canProduce;
 
             if (isCC)
             {
@@ -206,47 +221,95 @@ namespace ProjectChimera.UI
 
             if (canProduce)
             {
-                var unitDef      = _buildSys.GetProductionUnit(bType);
-                string unitName  = unitDef?.DisplayName ?? "Unit";
-                int    costOre   = unitDef?.CostOre  ?? 100;
-                float  trainTime = unitDef?.TrainTime ?? 8f;
-                byte   supply    = (byte)(unitDef?.Supply ?? 1);
-
+                // One button per unit of THIS building's category, for its ACTUAL faction (not the P1 default) — so a
+                // selected P2 producer shows P2's roster. Order follows the faction Units JSON.
+                var options = _buildSys.GetProductionUnits(bType, faction);
                 bool isTraining = _buildings.ProductionQueue[bId] != 0;
 
+                _trainStatus.Visible = isTraining;
                 if (isTraining)
-                {
-                    float remaining  = _buildings.ProductionTimer[bId].ToFloat();
-                    _trainStatus.Text     = $"Training…  {remaining:F1}s";
-                    _trainBtn.Disabled    = true;
-                    _trainBtn.Text        = $"Train {unitName}\n{costOre} ore  ·  {trainTime:F0}s";
-                }
-                else
-                {
-                    _trainStatus.Text = string.Empty;
-                    var   costFixed   = Fixed.FromFloat(costOre);
-                    bool  canAfford   = _resources.CanAffordOre(faction, costFixed);
-                    bool  hasSupply   = _resources.HasSupply(faction, supply);
-                    string? missingPrereq = _buildSys.GetUnmetPrereq(bId);
-                    bool  prereqsMet  = missingPrereq == null;
+                    _trainStatus.Text = $"Training…  {_buildings.ProductionTimer[bId].ToFloat():F1}s";
 
-                    _trainBtn.Disabled = !prereqsMet || !canAfford || !hasSupply;
-                    string note = !prereqsMet ? $"\n[need: {missingPrereq}]"
-                                : !canAfford  ? "\n[need ore]"
-                                : !hasSupply  ? "\n[supply full]"
-                                : $"\n{costOre} ore  ·  {trainTime:F0}s";
-                    _trainBtn.Text = $"Train {unitName}{note}";
+                for (int i = 0; i < _trainBtns.Length; i++)
+                {
+                    if (i >= options.Count)
+                    {
+                        _trainBtns[i].Visible = false;
+                        _trainUnitIndices[i]  = -1;
+                        continue;
+                    }
+
+                    var (unitIndex, def) = options[i];
+                    _trainUnitIndices[i]  = unitIndex;
+
+                    int   costOre   = def.CostOre;
+                    float trainTime = def.TrainTime;
+                    byte  supply    = (byte)def.Supply;
+
+                    bool    canAfford     = _resources.CanAffordOre(faction, Fixed.FromFloat(costOre));
+                    bool    hasSupply     = _resources.HasSupply(faction, supply);
+                    string? missingPrereq = _buildSys.GetUnmetPrereq(bId, unitIndex); // per-candidate prereq
+                    bool    prereqsMet    = missingPrereq == null;
+
+                    // Same predicate TrainUnit uses (prereq → supply → ore), plus the single in-flight job. The
+                    // spend itself happens deterministically at exec-tick, not here (this grey-out is prediction only).
+                    _trainBtns[i].Disabled = isTraining || !prereqsMet || !canAfford || !hasSupply;
+                    // Dim prereq-locked options (don't hide them) so the player sees what unlocks later.
+                    _trainBtns[i].Modulate  = prereqsMet ? Colors.White : new Color(1f, 1f, 1f, 0.6f);
+
+                    string note = !prereqsMet ? $"[need: {missingPrereq}]"
+                                : !canAfford  ? "[need ore]"
+                                : !hasSupply  ? "[supply full]"
+                                : $"{costOre} ore · {trainTime:F0}s";
+                    _trainBtns[i].Text        = $"{def.DisplayName}\n{note}";
+                    _trainBtns[i].TooltipText = $"{def.DisplayName} — {costOre} ore, {trainTime:F0}s train"; // NFR-2
+                    _trainBtns[i].Visible     = true;
                 }
+            }
+            else
+            {
+                HideTrainButtons();
+                _trainStatus.Visible = false;
             }
         }
 
         // ── Button callbacks ──────────────────────────────────────────────────
 
-        private void OnTrainBtnPressed()
+        private void OnTrainSlotPressed(int slot)
         {
-            int bId = _selection.SelectedBuildingId;
-            if (bId < 0) return;
-            _buildSys.TrainUnit(bId, _resources);
+            // Resolve the button slot → the Units index it currently trains (mapped in RefreshCard). A hidden/empty
+            // slot holds -1 and can't be pressed, but guard anyway.
+            if (slot < 0 || slot >= _trainUnitIndices.Length) return;
+            int unitIndex = _trainUnitIndices[slot];
+            if (unitIndex < 0) return;
+            IssueTrainCommand(_selection.SelectedBuildingId, unitIndex);
+        }
+
+        /// <summary>Hide every train-picker button (used when the selection is not a ready producer).</summary>
+        private void HideTrainButtons()
+        {
+            for (int i = 0; i < _trainBtns.Length; i++)
+                _trainBtns[i].Visible = false;
+        }
+
+        /// <summary>
+        /// Issue a Train command for <paramref name="chosenUnitIndex"/> (−1 = first-of-category) at building
+        /// <paramref name="bId"/> (Story 2.8, D-1). Routes through the shared lockstep seam — online it is ENQUEUED
+        /// (executed at exec-tick by LockstepManager, so the ore/supply spend happens once, THERE — the picker's
+        /// grey-out is only a local prediction); offline it applies immediately via the SAME OrderApplier the
+        /// replay/online paths use (structural parity). Only the LOCAL player's (Player1) own building trains,
+        /// mirroring SelectionSystem's cast/selection convention.
+        /// </summary>
+        private void IssueTrainCommand(int bId, int chosenUnitIndex)
+        {
+            if (bId < 0 || bId >= _buildings.Count) return;
+            if (!_buildings.Alive[bId] || _buildings.FactionOf[bId] != Faction.Player1) return;
+            // Online: EnqueueOrder returns false (queued). Offline (_lockstep == null): the ?? true yields apply-now.
+            bool applyNow = _lockstep?.EnqueueOrder(bId, UnitCommand.Train,
+                                                    Fixed.FromRaw(chosenUnitIndex), Fixed.Zero) ?? true;
+            if (!applyNow) return; // online: LockstepManager.Flush applies it at exec-tick (spend happens THERE, once)
+            var order = new UnitOrder(bId, UnitCommand.Train, Fixed.FromRaw(chosenUnitIndex), Fixed.Zero);
+            OrderApplier.Apply(_world, in order, Faction.Player1, buildings: _buildSys);
         }
 
         // ── Panel construction ────────────────────────────────────────────────
@@ -260,8 +323,10 @@ namespace ProjectChimera.UI
 
             // ── Outer panel ───────────────────────────────────────────────────
             _panel = new Panel();
-            _panel.Size     = new Vector2(420f, 140f);
-            _panel.Position = new Vector2(10f, vpSize.Y - 150f);
+            // Story 2.8: taller (140 → 175) and raised (−150 → −185) to hold the per-unit train grid, matching the
+            // worker/ability cards (which sit at −185 for their 175px height and share this HUD region).
+            _panel.Size     = new Vector2(420f, 175f);
+            _panel.Position = new Vector2(10f, vpSize.Y - 185f);
             _panel.Visible  = false;
             // Consume mouse events — prevent clicks inside the card from deselecting
             _panel.MouseFilter = Control.MouseFilterEnum.Stop;
@@ -298,20 +363,30 @@ namespace ProjectChimera.UI
             _supplyLabel.Visible = false;
             _panel.AddChild(_supplyLabel);
 
-            // ── Train button (Barracks / ArcheryRange / SiegeWorkshop) ────────
-            _trainBtn = new Button();
-            _trainBtn.Position = new Vector2(10f, 52f);
-            _trainBtn.Size     = new Vector2(200f, 58f);
-            _trainBtn.Text     = "Train Unit";
-            _trainBtn.Visible  = false;
-            _trainBtn.Pressed += OnTrainBtnPressed;
-            _panel.AddChild(_trainBtn);
-
-            // ── Training status (beside button) ───────────────────────────────
-            _trainStatus = MakeLabel(new Vector2(220f, 72f), 13,
+            // ── Training status (in-flight "Training… Xs", above the grid) ────
+            _trainStatus = MakeLabel(new Vector2(10f, 52f), 13,
                                     new Color(0.95f, 0.75f, 0.20f));
             _trainStatus.Visible = false;
             _panel.AddChild(_trainStatus);
+
+            // ── Train buttons — per-unit production picker (Story 2.8) ─────────
+            // One button per unit of the selected building's category (grid mirrors the worker/ability grids:
+            // 10 + i*102 wide 98). Each slot's target unit index is resolved per-refresh into _trainUnitIndices,
+            // so the captured-loop-var lambda carries only the BUTTON slot (the ability-grid pattern).
+            _trainBtns = new Button[MAX_TRAIN_OPTIONS];
+            for (int i = 0; i < MAX_TRAIN_OPTIONS; i++)
+            {
+                var btn = new Button();
+                btn.Position     = new Vector2(10f + i * 102f, 74f);
+                btn.Size         = new Vector2(98f, 70f);
+                btn.Visible      = false;
+                btn.AutowrapMode = TextServer.AutowrapMode.WordSmart; // long unit names wrap instead of clipping
+                int slot = i; // capture per-iteration for the lambda
+                btn.Pressed += () => OnTrainSlotPressed(slot);
+                _panel.AddChild(btn);
+                _trainBtns[i] = btn;
+                _trainUnitIndices[i] = -1;
+            }
         }
 
         private static Label MakeLabel(Vector2 pos, int fontSize, Color color)
@@ -333,7 +408,9 @@ namespace ProjectChimera.UI
             var vpSize = GetViewport().GetVisibleRect().Size;
 
             _workerPanel = new Panel();
-            _workerPanel.Size     = new Vector2(420f, 175f);
+            // Story 2.8: widened 420 → 530 so the 5th build button (Aviary) fits. Buttons lay at 10 + i*102 (width
+            // 98), so button i=4 spans [418, 516] — the old 420-wide panel clipped it past the border.
+            _workerPanel.Size     = new Vector2(530f, 175f);
             _workerPanel.Position = new Vector2(10f, vpSize.Y - 185f);
             _workerPanel.Visible  = false;
             _workerPanel.MouseFilter = Control.MouseFilterEnum.Stop;
@@ -593,6 +670,7 @@ namespace ProjectChimera.UI
             BuildingType.Barracks      => "Barracks",
             BuildingType.ArcheryRange  => "Archery Range",
             BuildingType.SiegeWorkshop => "Siege Workshop",
+            BuildingType.Aviary        => "Aviary",
             _ => "Building"
         };
     }

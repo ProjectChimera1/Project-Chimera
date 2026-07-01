@@ -48,8 +48,9 @@ namespace ProjectChimera.UI
             new Vector3(5f, 3f, 5f), // Barracks
             new Vector3(4f, 3f, 5f), // ArcheryRange
             new Vector3(5f, 3f, 7f), // SiegeWorkshop
+            new Vector3(5f, 3f, 7f), // Aviary (Story 2.8 — must move in lockstep with TYPE_COUNT below, indexed as TYPE_FALLBACK[t] in the t<TYPE_COUNT loop)
         };
-        private const int TYPE_COUNT = 4;
+        private const int TYPE_COUNT = 5; // Story 2.8: CommandCenter/Barracks/ArcheryRange/SiegeWorkshop/Aviary
 
         private static readonly Color P1_COLOR = new Color(0.2f, 0.5f, 1.0f);
         private static readonly Color P2_COLOR = new Color(1.0f, 0.3f, 0.2f);

@@ -89,6 +89,12 @@ namespace ProjectChimera.Multiplayer
         /// <summary>Called when Stop or Hold should cancel any pending path.</summary>
         public Action<int>? OnCancelPath;
 
+        /// <summary>Story 2.8 (D-1): the production system the shared OrderApplier uses to EXECUTE a Train command at
+        /// exec-tick (the deterministic spend + queue on the canonical BuildingStore/ResourceStore). Wired by MainScene
+        /// per match; null in headless/tests where Train no-ops. Must be the SAME instance the replay/offline paths use,
+        /// or human-vs-human training diverges.</summary>
+        public ProjectChimera.Economy.BuildingSystem? Buildings;
+
         // ── Public state ──────────────────────────────────────────────────────
 
         public bool IsOnline   { get; private set; }
@@ -655,7 +661,7 @@ namespace ProjectChimera.Multiplayer
             // delegates are this manager's presentation hooks (wired by MainScene; null in headless/tests).
             for (int i = 0; i < count; i++)
                 OrderApplier.Apply(_world, in buf[baseIdx + i], expectedFaction,
-                    OnRequestPath, OnRequestAttackMove, OnCancelPath);
+                    OnRequestPath, OnRequestAttackMove, OnCancelPath, Buildings);
         }
     }
 }

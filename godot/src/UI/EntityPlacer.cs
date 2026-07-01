@@ -40,7 +40,7 @@ namespace ProjectChimera.UI
 
         private const int NODE_MAX_GATHERERS = 4;
 
-        private static readonly float[] BUILDING_COSTS = { 150f, 100f, 120f, 200f };
+        private static readonly float[] BUILDING_COSTS = { 150f, 100f, 120f, 200f, 200f }; // …, Aviary=200 (Story 2.8 — indexed by (int)BuildingType; a missing entry crashes editor place/delete)
 
         // Modes displayed left-to-right in the palette (order must match _modeBtns array)
         private static readonly PlacementMode[] MODE_ORDER =
@@ -630,7 +630,8 @@ namespace ProjectChimera.UI
                 BuildingType.CommandCenter => BuildingType.Barracks,
                 BuildingType.Barracks      => BuildingType.ArcheryRange,
                 BuildingType.ArcheryRange  => BuildingType.SiegeWorkshop,
-                BuildingType.SiegeWorkshop => BuildingType.CommandCenter,
+                BuildingType.SiegeWorkshop => BuildingType.Aviary,
+                BuildingType.Aviary        => BuildingType.CommandCenter,
                 _                          => BuildingType.CommandCenter,
             };
         }
@@ -824,6 +825,7 @@ namespace ProjectChimera.UI
                     ("Barracks", BuildingType.Barracks),
                     ("Archery",  BuildingType.ArcheryRange),
                     ("Siege",    BuildingType.SiegeWorkshop),
+                    ("Aviary",   BuildingType.Aviary),
                 })
                 {
                     var btn = new Button

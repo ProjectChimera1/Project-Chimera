@@ -239,6 +239,7 @@ namespace ProjectChimera.Core.Sim
             "Barracks"      => BuildingType.Barracks,
             "ArcheryRange"  => BuildingType.ArcheryRange,
             "SiegeWorkshop" => BuildingType.SiegeWorkshop,
+            "Aviary"        => BuildingType.Aviary,        // Story 2.8 — else a scenario-placed Aviary silently mis-places as a CommandCenter.
             _               => BuildingType.CommandCenter,
         };
     }
