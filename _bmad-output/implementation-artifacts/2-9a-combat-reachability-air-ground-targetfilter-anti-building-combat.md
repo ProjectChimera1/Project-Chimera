@@ -1,6 +1,10 @@
+---
+baseline_commit: 4206fc11a5b7f4f1238850c526d1598c3a34d58f
+---
+
 # Story 2.9a: Combat reachability — air/ground TargetFilter + anti-building combat
 
-Status: ready-for-dev
+Status: in-progress
 
 <!-- Validation: optional. Created via gds-create-story [ultracode]: 6-analyst parallel live-source recon (combat target-selection · entityworld air-tag · buildingstore-as-target · determinism/goldens · data-defs/TargetFilter · continuity/wire/arch) + direct source grounding + a 3-validator adversarial panel whose findings were applied. -->
 
