@@ -122,7 +122,7 @@ workflow's job. Features (§4) reference these by ID.*
 > §4.12 holds cross-cutting NFRs. Implementation detail lives in `addendum.md`. Items marked
 > `[v2 — out of 1.0]` are explicitly deferred. **FR numbering:** FR-1..FR-52 are stable global IDs;
 > a lettered insert (e.g. FR-7a) is an intentional in-place addition — treat it as its own requirement.
-> **FR-53–FR-61** are the 2026-06-21 readiness-triage additions (§4.13), tracked upstream as DG-1…DG-9 in `epics.md`.
+> **FR-53–FR-61** are the 2026-06-21 readiness-triage additions (§4.13), tracked upstream as DG-1…DG-9 in `epics.md`. **FR-62–FR-78** are the 2026-07-01 gap-closure additions (§4.14), ratified by the approved sprint-change proposal.
 > **Layered complexity applies everywhere:** every editor's *advanced mode* retains direct raw-data
 > (JSON) access for power users — the in-app editors augment JSON authoring, they do not remove the
 > expert escape hatch (GDD pillar).
@@ -341,6 +341,39 @@ code check found already built) are folded into the relevant epic's verification
 
 **Notes:** `[NOTE FOR PM]` Ratified during the 2026-06-21 design-gap triage (readiness report §7). DG-10 (true server-enforced anti-maphack fog) is **deferred post-1.0** — see §5; it is incompatible with the as-built deterministic lockstep.
 
+### 4.14 Gap-Closure Additions — "Make It a Game" *(in 1.0)*
+**Description:** These seventeen FRs (**FR-62…FR-78**) back-fill the gaps between the planned epics and
+the stated 1.0 bar ("fully playable, no unpolished feel, WC3 World Editor-class editor, fully
+operational UI"), surfaced by the **2026-07-01 full-plan gap analysis**
+(`gap-analysis-1.0-vs-wc3-2026-07-01.md`; 127 findings, 13/13 adversarially-verified findings
+confirmed) and ratified by the approved **`sprint-change-proposal-2026-07-01.md`** with these scope
+decisions: full hero depth **including items** · **4-player + teams** (8 = post-1.0 fast-follow) ·
+**3-mission prologue campaign** · full World-Editor parity floor · GDD trigger vocabulary + debugging ·
+**mid-match SP save/load IN 1.0** (reverses the GDD's 2026-06-21 deferral) · full asset import pipeline
+incl. MP sync. Homed in the gap-closure stories across Epics 2/3/4/6/7/9/10 and the new Epics 11–13;
+sim-mutating items obey the determinism rules and re-baseline goldens per the checksum-fold timing rule.
+
+**Functional Requirements:**
+- **FR-62** *(→ Epic 3 / Stories 3.13–3.14)* — **Hero runtime**: in-match XP gain (kill credit + share radius), leveling per the authored curve with stat growth via the modifier pipeline, and a data-driven hero **death/revival** rule.
+- **FR-63** *(→ Epic 4 / Stories 4.8–4.9)* — **Research/upgrades**: data-driven research definitions queued at buildings, timed, applying permanent faction-scoped modifiers to current and future units; authored in the tech-tree editor; repeatable levels.
+- **FR-64** *(→ Epic 3 / Stories 3.15–3.16)* — **Items**: map-placed/dropped items, hero inventory slots, stat items via modifiers, charged consumables executing effect-graphs, an item editor, and `sells_items` shop buildings.
+- **FR-65** *(→ Epics 7/9 / Stories 7.11, 9.14–9.17, 6.9, 11.1)* — **Match scale honesty at 4 players**: N-faction victory/elimination, sim alliance model + lobby teams (2v2, allied vision/victory), local-faction parameterization (no P1 hardcodes), 4-player verified end-to-end, full-content pre-match hash handshake, 2–4 start-position authoring.
+- **FR-66** *(→ Epic 11 / Stories 11.2–11.4, 11.12)* — **Session shell**: in-match menu, true SP pause, SP game-speed control, concede/leave flow, victory/defeat + score screen, video/display settings.
+- **FR-67** *(→ Epic 11 / Stories 11.6–11.7)* — **Mid-match SP save/load**: versioned full-world serializer with a checksum-verified resume (save→load→resume = byte-identical checksum stream), slots UI + autosave.
+- **FR-68** *(→ Epic 11 / Stories 11.1, 11.5)* — **Match entry**: a real skirmish setup screen (map pick + per-slot config) and a staged loading screen with fail-safe error return.
+- **FR-69** *(→ Epic 6 / Stories 6.6–6.11)* — **World-Editor parity floor**: named regions, impassable-terrain/pathability paint + overlay, doodads/props, map properties + New-Map flow + minimap preview, editor multi-select/copy-paste/rotation, named cameras, cheap water.
+- **FR-70** *(→ Epic 7 / Stories 7.12–7.15)* — **Trigger vocabulary v2**: expression state-reads, RandomChoice, trigger enable/disable/run, OrderUnits/MoveCamera/PlaySound/PlayVfx actions, UnitDamaged/UnitTrained/AbilityCast/HeroLevel/PlayerChat events, objectives/quest-log + briefing surface.
+- **FR-71** *(→ Epic 7 / Story 7.16)* — **Trigger debugging**: playtest variable watch, tick-stamped fired-trigger log, fire counters — read-only, checksum-neutral.
+- **FR-72** *(→ Epic 12 / Stories 12.1–12.4)* — **Import Manager + content sync**: import .glb/.png/.ogg with validation caps → hash-covered packaging → runtime ingest wired to model/icon/sound/projectile assignment → mod.io-mediated MP "Update Required" one-click sync.
+- **FR-73** *(→ Epic 13 / Stories 13.1–13.4)* — **Prologue campaign**: campaign framework (sequence/unlock/briefings/autosave) + 3 scripted tutorial missions authored in the creation suite on the FR-70 vocabulary.
+- **FR-74** *(→ Epics 2/11 / Stories 2.12–2.13, 11.8–11.11)* — **Match-feedback floor**: shift-queued waypoints, lockstep-replicated rally points, under-attack alerts + minimap pings + camera box, denial + acknowledgment feedback, buff/debuff icons + subgroup tabs, production queue depth-5 with display + cancel/refund, and the combat/store defect batch.
+- **FR-75** *(→ Epic 10 / Stories 10.14–10.15)* — **Unit animation**: a spike-gated VAT (vertex-animation texture) pipeline on MultiMesh, idle/walk/attack/death driven from sim state, corpse fade; presentation-only.
+- **FR-76** *(→ Epic 10 / Stories 10.12–10.13)* — **Deterministic multi-AI**: AI instanced per slot (2–4 players), decision math migrated float→Fixed (closes debt D2), AI-active golden joins the cross-platform gate, MP lobby AI slots legal.
+- **FR-77** *(→ Epic 9 / Story 9.18)* — **Replay UX**: in-app replay browser, playback controls (pause/speed/seek-forward), player-perspective + fog toggle.
+- **FR-78** *(→ Epic 10 / Story 10.17)* — **Human playtest gates**: documented go/no-go protocols + executed passes for melee fun, creator usability, and human balance validation; failures spawn correct-course.
+
+**Notes:** `[NOTE FOR PM]` Descopes ratified alongside: Mode Select ranked/MMR/live-count placeholders REMOVED (honesty strip, Story 11.12); 8-player remains post-1.0 fast-follow; anti-maphack (DG-10) and MP reconnect/AI-takeover stay deferred as already documented; MP mid-match save is post-1.0. The GDD is reconciled in the same pass (campaign 5–8 → 3-mission prologue; SP save/load moved back into 1.0; 1.0 verified at 2–4 players).
+
 ## 5. Non-Goals (Explicit)
 
 - **No arbitrary scripting language.** Creator logic is the declarative DSL only — never raw scripts (preserves determinism + server validation). `[NON-GOAL for 1.0 and by design]`
@@ -363,11 +396,13 @@ nothing until 1.0, but keep the build in an always-working state via internal mi
 integration risk surfaces early. Treat the milestones below as the recommended order for the
 epics/stories workflow — adjust freely.*
 
-### 6.1 In Scope — All of §4.1–§4.13
+### 6.1 In Scope — All of §4.1–§4.14
 Everything specified in §4 is 1.0 scope, including all four formerly-fast-follow items:
 T3 visual node-graph triggers (FR-28), custom runtime UI in triggers (FR-26), full economy-model
 authoring (FR-15/16), and >2-player matchmaking (FR-40) — plus the nine readiness-triage additions in
-§4.13 (FR-53–FR-61 = DG-1…DG-9), ratified in-1.0 by the 2026-06-21 design-gap triage.
+§4.13 (FR-53–FR-61 = DG-1…DG-9), ratified in-1.0 by the 2026-06-21 design-gap triage, and the seventeen
+gap-closure additions in §4.14 (FR-62–FR-78), ratified in-1.0 by the approved 2026-07-01 sprint-change
+proposal (multiplayer scale qualifier: verified at ≤4 players; 8 = post-1.0 fast-follow).
 
 ### 6.2 Recommended Build Sequencing *(internal milestones — always shippable state)*
 - **M0 — Integration hygiene (do alongside M1).** `MainScene.cs` is a ~2,200 LOC composition root (~25 `SetupXxx()`) and the single point every new system wires into — M2/M3 add ~6 editors + hero sim + a major DSL expansion all threading through it. Decompose/modularize the wiring **before** piling on, or it becomes the integration chokepoint. Also: `PathRequestSystem` still owns the Move→Stop transition (dodging a historical stutter bug) — its Move→Stop logic must migrate to `FlowFieldBridge` before it can be removed; don't delete it blindly during FR-39 work.

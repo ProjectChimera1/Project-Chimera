@@ -1,8 +1,8 @@
 ---
 stepsCompleted: [1, 2, 3, 4]
 status: complete
-epicCount: 10
-storyCount: 121
+epicCount: 13
+storyCount: 173
 validation: "FR coverage 60/60; NFR-1..6 covered; no residual placeholders; no within-epic forward dependencies (verified 2026-06-21). Readiness-check corrections applied 2026-06-21: (1) relocated Story 1.5's forbidden-until-SimRng AC into Story 1.7 to break a 1.5<->1.7 logical cycle — the claim now holds; (2) corrected Story 2.10's dangling 'Depends on: 2.9' to '2.9a, 2.9b' — the dangling reference is resolved. Readiness-triage stories added 2026-06-21: +9 in-1.0 build stories tagged DG-1..DG-9 (across Epics 1/2/3/4/6/7/9/10); DG-10 deferred post-1.0; objective-AC fixes applied to Stories 5.7/9.6/10.1/10.3. Story-splitting pass 2026-06-22: split the 11 oversized stories (1.8/1.10/2.2/3.1/5.5/7.1b/7.8/8.6/9.3/10.2/10.9) into lettered sub-stories via an adversarially-verified workflow (storyCount 106->121); re-pointed every downstream Depends-on to the terminal sub-story and fixed pre-existing dangling refs left by earlier splits (1.4->1.3b, 1.10a->1.9b, 7.2->7.1b-2, 8.4/8.5/8.6a/8.7->8.3b) — the 'no dangling references' claim now holds."
 inputDocuments:
   - "_bmad-output/planning-artifacts/prds/prd-Project_Chimera-2026-06-05/prd.md"   # FR/NFR source (Road-to-1.0 PRD)
@@ -13,7 +13,7 @@ inputDocuments:
   - "_bmad-output/planning-artifacts/ux-designs/ux-Project_Chimera-2026-06-20/EXPERIENCE.md" # UX-DR source (behavioral spine)
   - "Project_Chimera_GDD.md"                                                       # design context (not a numbered-req source)
   - "_bmad-output/fma-faction-design.md"                                           # showcase-faction content context
-frNumberingNote: "FR IDs preserved verbatim from the PRD (FR-1..FR-52; lettered inserts FR-7a..e, FR-12a, FR-38a, FR-49a are each their own requirement; FR-53..FR-61 = the readiness-triage DG-1..DG-9 additions back-filled to the PRD 2026-06-22 / PRD §4.13). NFR-1..NFR-6 are the PRD's canonical cross-cutting NFRs."
+frNumberingNote: "FR IDs preserved verbatim from the PRD (FR-1..FR-52; lettered inserts FR-7a..e, FR-12a, FR-38a, FR-49a are each their own requirement; FR-53..FR-61 = the readiness-triage DG-1..DG-9 additions back-filled to the PRD 2026-06-22 / PRD §4.13; FR-62..FR-78 = the 1.0 gap-closure additions from the 2026-07-01 gap analysis / sprint-change proposal, back-filled to the PRD §4.14). NFR-1..NFR-6 are the PRD's canonical cross-cutting NFRs."
 scope: "gap-to-1.0 (brownfield). §4.0 PRD Built Foundation is reference-only, NOT 1.0 scope."
 ---
 
@@ -361,9 +361,33 @@ Items flagged ⚠ are under-specified in the source and need a concrete value/de
 
 ---
 
+### Gap-closure requirements (2026-07-01 — FR-62…FR-78)
+
+_Added by the approved sprint-change proposal (`sprint-change-proposal-2026-07-01.md`), sourced from the 1.0 gap analysis vs the WC3/World-Editor bar (`gap-analysis-1.0-vs-wc3-2026-07-01.md`; 13/13 adversarially verified findings CONFIRMED). Back-filled to the PRD as §4.14. Scope decisions locked by Alec 2026-07-01: full hero depth incl. items · 4-player + teams (8 = fast-follow) · 3-mission prologue campaign · full editor parity floor · GDD trigger vocabulary + debugging · SP save/load IN 1.0 · full asset import pipeline incl. MP sync._
+
+- **FR-62** — Hero runtime: in-match XP gain (kill credit + share radius), leveling per the authored curve (stat growth via ModifierSystem), and a data-driven death/revival rule. Closes the verified blocker "authored heroes never gain XP".
+- **FR-63** — Research/upgrades: data-driven `ResearchDefinition`s queued at buildings, timed, applying permanent faction-scoped modifiers to current and future units; authored in the tech-tree editor; repeatable levels.
+- **FR-64** — Items: map-placed/dropped items, hero inventory slots, stat items via ModifierSystem, charged consumables executing Effect-Graphs, item editor + `sells_items` shop buildings; persistence-manifest "inventory" becomes real (FR-7a).
+- **FR-65** — Match scale honesty: N-faction victory/elimination resolution, sim alliance model + lobby teams (2v2, allied vision/victory), local-faction parameterization (no P1 hardcodes in presentation), 4-player verified end-to-end, full-content pre-match hash handshake, editor 2–4 start positions.
+- **FR-66** — Session shell: in-match menu (Esc/F10), true SP pause, SP game-speed control, concede/surrender + leave flow, victory/defeat + score screen with end-of-match stats, video/display settings.
+- **FR-67** — Mid-match SP save/load: versioned full-world serializer with checksum-verified resume (save→load→resume = byte-identical `SimChecksum` stream), slots UI + autosave. Reverses the GDD's 2026-06-21 post-1.0 deferral.
+- **FR-68** — Match entry: real skirmish setup screen (map pick w/ previews, per-slot open/AI-difficulty/faction/team/color) and a staged loading screen with fail-safe error return.
+- **FR-69** — World-Editor parity floor: named regions (data model + draw tool + events), impassable-terrain/pathability paint + view overlay, doodads/props (`props.json`), map properties + New-Map flow + 2–4 start positions + minimap preview generation, editor multi-select/copy-paste/rotation, named cameras, cheap water (visual plane + impassable).
+- **FR-70** — Trigger vocabulary v2: expression state-reads (entity/player/region queries), `RandomChoice` (SimRng), trigger enable/disable/run, action leaves `OrderUnits`/`MoveCamera`/`PlaySound`/`PlayVfx`, events `UnitDamaged`/`UnitTrained`/`AbilityCast`/`HeroLevel`/`PlayerChat`, and an objectives/quest-log surface (`objectives.json` + in-match panel + briefing screen).
+- **FR-71** — Trigger debugging: playtest variable watch, fired-trigger log with tick stamps, per-trigger fire counters — read-only (checksum-neutral).
+- **FR-72** — Import Manager + content sync: import .glb/.png/.ogg with validation caps → bundle into `.chimera.zip` (hash-covered) → runtime ingest (GLTFDocument path) wired to model/icon/sound/projectile assignment → mod.io-mediated MP "Update Required" one-click sync.
+- **FR-73** — Prologue campaign: campaign framework (sequence/unlock/briefing/autosave) + 3 scripted tutorial missions built on the FR-70 vocabulary; Mode Select binds to the real mission count.
+- **FR-74** — Match-feedback floor: shift-queued command waypoints, lockstep-replicated rally points, "under attack" alerts + minimap pings/camera box, denial feedback (resources/supply/placement) + acknowledgment sounds + order-confirmed marker, buff/debuff icons + multi-select subgroup tabs, production queue depth-5 with queue display + cancel/refund.
+- **FR-75** — Unit animation: VAT (vertex-animation texture) pipeline on MultiMesh (spike-gated with recorded fallback), idle/walk/attack/death driven from sim state, corpse fade; presentation-only, checksum-neutral.
+- **FR-76** — Deterministic multi-AI: AI instanced per slot (fill any open slot, 2–4 players), utility scoring migrated float→Fixed (closes debt D2), AI-active golden joins the cross-platform gate, MP lobby AI slots legal.
+- **FR-77** — Replay UX: in-app replay browser, playback controls (pause/speed/seek-forward), player-perspective + fog toggle; makes FR-38a's "viewable" real.
+- **FR-78** — Human playtest gates: documented go/no-go protocols + executed passes for melee fun, creator usability, and human balance validation; failures spawn correct-course.
+
+---
+
 ### FR Coverage Map
 
-*Every FR maps to exactly one epic. (NFRs and the AR-* technical requirements are cross-cutting and woven into the relevant epic's stories; they are not single-epic-owned.) FR-53–FR-61 are the readiness-triage additions (PRD §4.13), tracked as DG-1…DG-9 and homed in the DG stories.*
+*Every FR maps to exactly one epic. (NFRs and the AR-* technical requirements are cross-cutting and woven into the relevant epic's stories; they are not single-epic-owned.) FR-53–FR-61 are the readiness-triage additions (PRD §4.13), tracked as DG-1…DG-9 and homed in the DG stories. FR-62–FR-78 are the 2026-07-01 gap-closure additions (PRD §4.14), homed in the stories added by the approved sprint-change proposal.*
 
 | FR | Epic | Capability |
 |----|------|-----------|
@@ -436,6 +460,23 @@ Items flagged ⚠ are under-specified in the source and need a concrete value/de
 | FR-59 | Epic 10 | Adaptive AI: pattern-tracking + counter-weighting + overlay (DG-7, Story 10.11) |
 | FR-60 | Epic 7 | Win-condition preset templates + sim WinConditionSystem (DG-8, Story 7.10) |
 | FR-61 | Epic 6 | Sim-side terrain elevation + height-advantage vision (DG-9, Story 6.5) |
+| FR-62 | Epic 3 | Hero runtime: XP/leveling/stat growth + death/revival (Stories 3.13, 3.14) |
+| FR-63 | Epic 4 | Research/upgrade system + authoring (Stories 4.8, 4.9) |
+| FR-64 | Epic 3 | Items: inventory sim + item editor + shops (Stories 3.15, 3.16) |
+| FR-65 | Epic 7/9 | N-faction victory + teams/alliances + local-faction + 4-player verify + full-content handshake (Stories 7.11, 9.14–9.17, 6.9) |
+| FR-66 | Epic 11 | Session shell: menu/pause/speed/concede/score/video settings (Stories 11.2–11.4, 11.12) |
+| FR-67 | Epic 11 | Mid-match SP save/load, checksum-verified (Stories 11.6, 11.7) |
+| FR-68 | Epic 11 | Skirmish setup screen + loading screen (Stories 11.1, 11.5) |
+| FR-69 | Epic 6 | World-Editor parity floor (Stories 6.6–6.11) |
+| FR-70 | Epic 7 | Trigger vocabulary v2 + objectives/briefing (Stories 7.12–7.15) |
+| FR-71 | Epic 7 | Trigger debugging: variable watch + fired-trigger log (Story 7.16) |
+| FR-72 | Epic 12 | Import Manager + mod.io content sync (Stories 12.1–12.4) |
+| FR-73 | Epic 13 | Prologue campaign framework + 3 missions (Stories 13.1–13.4) |
+| FR-74 | Epic 2/11 | Match-feedback floor: shift-queue/rally (2.12), defect batch (2.13), alerts/denial/buff-icons/queue UI (11.8–11.11) |
+| FR-75 | Epic 10 | VAT unit animation: spike gate + integration (Stories 10.14, 10.15) |
+| FR-76 | Epic 10 | Deterministic multi-AI: per-slot instances + float→Fixed D2 close (Stories 10.12, 10.13) |
+| FR-77 | Epic 9 | Replay UX: browser + playback controls + perspective (Story 9.18) |
+| FR-78 | Epic 10 | Human playtest gates: fun/usability/balance (Story 10.17) |
 
 ## Epic List
 
@@ -445,15 +486,15 @@ Multiplayer provably stays in sync across two machines (the #1 ship risk, retire
 
 ### Epic 2: Living Combat — Effect Engine, Modifiers & Ability Authoring
 The sim engine can express buffs, auras, DoT/HoT, summons, and multi-effect abilities deterministically; creators author active and passive abilities in-app; and the showcase factions' signature mechanics finally *run* with satisfying combat feedback. *(PRD M2; arch D1 — single Effect-Graph surface + Modifier subsystem + Energy/Mana SoA; unblocks the combat-reachability gaps the FMA factions need: per-unit production-selection UI, Air building/category, anti-air/ground TargetFilter, anti-building combat, worker-cast path, crystal-spend wiring; `CombatFeedbackProfile`.)*
-**FRs covered:** FR-8, FR-9, FR-10, FR-11, FR-12, FR-12a · **DG:** DG-4 (unit tags, 2.11)
+**FRs covered:** FR-8, FR-9, FR-10, FR-11, FR-12, FR-12a · **DG:** DG-4 (unit tags, 2.11) · **Gap-closure (2026-07-01):** FR-74 order-pipeline share (2.12) + combat/store defect batch (2.13)
 
 ### Epic 3: Author Units & Heroes (incl. Save/Load)
 A creator builds units and heroes in one consolidated Unit Card Editor with no JSON, and players save/load hero progression between custom games via a hero-picker interface. *(PRD M2; arch D4 offline hero-persistence rail. The shared **UI design-system Godot Theme + reusable component kit** (UX-DR1–32) is delivered here and reused by every later editor surface. FR-7c online rail → Epic 9.)*
-**FRs covered:** FR-1, FR-2, FR-3, FR-4, FR-5, FR-6, FR-7, FR-7a, FR-7b, FR-7d, FR-7e · **DG:** DG-5 (attack-delivery flag, 3.12)
+**FRs covered:** FR-1, FR-2, FR-3, FR-4, FR-5, FR-6, FR-7, FR-7a, FR-7b, FR-7d, FR-7e · **DG:** DG-5 (attack-delivery flag, 3.12) · **Gap-closure (2026-07-01):** FR-62 hero runtime (3.13/3.14), FR-64 items (3.15/3.16), editor-undo fidelity (3.17)
 
 ### Epic 4: Author Buildings, Tech Trees & Economy
 A creator authors building definitions, drag-builds a visual tech tree that gates production at runtime, and configures resources and the supply model as data — closing the hardcoded-economy gap so creators aren't locked to Ore+Crystal. *(PRD M2; arch D3 data-drive tables — N-resource registry, tech-tree prerequisites, supply/cap.)*
-**FRs covered:** FR-13, FR-14, FR-15, FR-16 · **DG:** DG-3 (collection models + Crystal, 4.7)
+**FRs covered:** FR-13, FR-14, FR-15, FR-16 · **DG:** DG-3 (collection models + Crystal, 4.7) · **Gap-closure (2026-07-01):** FR-63 research/upgrades (4.8/4.9)
 
 ### Epic 5: Faction Definer & the Asymmetric Showcase Factions
 A creator assembles authored units/heroes/buildings/tech into a complete, playable faction through a guided wizard, and the two showcase factions become genuinely asymmetric with their FMA identities landed and playtest-validated. *(PRD M2; consumes Epics 2–4; lands revised FMA stats, `display_names`, and themed mesh filenames into the alpha/beta faction JSON.)*
@@ -461,11 +502,11 @@ A creator assembles authored units/heroes/buildings/tech into a complete, playab
 
 ### Epic 6: Map & Terrain Editor
 A creator sculpts and texture-paints terrain with textures that persist correctly on save/load (fixing the current procedural-texture defect), and places entities, start positions, resource nodes, and win conditions to a ship-quality bar. *(PRD §4.5 polish; largely verification + the terrain-persistence fix.)*
-**FRs covered:** FR-21, FR-22 · **DG:** DG-9 (terrain elevation + high-ground vision, 6.5)
+**FRs covered:** FR-21, FR-22 · **DG:** DG-9 (terrain elevation + high-ground vision, 6.5) · **Gap-closure (2026-07-01):** FR-69 World-Editor parity floor (6.6–6.11)
 
 ### Epic 7: Rich Trigger DSL & Custom Runtime UI
 "Build any game": the trigger DSL gains variables, arithmetic, collections, loops, timers, and custom events, plus trigger-driven custom runtime UI — authored across four interoperating tiers (preset / ECA / visual node-graph / natural-language) on one underlying representation, all deterministic and server-validatable. *(PRD M3; arch D2 typed event/dataflow graph IR containing D1 effect subgraphs + bounded-loop model + two-rail custom UI; arch D3 serialization contract — single ContentLoader, `NodeBase` converter, canonical-model hash, versioning/migration.)*
-**FRs covered:** FR-23, FR-24, FR-25, FR-26, FR-27, FR-28 · **DG:** DG-8 (win-condition presets + sim WinConditionSystem, 7.10)
+**FRs covered:** FR-23, FR-24, FR-25, FR-26, FR-27, FR-28 · **DG:** DG-8 (win-condition presets + sim WinConditionSystem, 7.10) · **Gap-closure (2026-07-01):** FR-65 N-faction victory (7.11), FR-70 vocabulary v2 + objectives (7.12–7.15), FR-71 debugging (7.16)
 
 ### Epic 8: AI-Assisted Creation
 An AI collaborator is available across every editor — provider configuration (OpenRouter / Claude / local Ollama), generation of triggers, maps, units, abilities, heroes and factions as editable data, and faction/scenario balance analysis — degrading gracefully to a fully-usable manual suite when no provider is available. *(PRD M4; arch D6 hand-rolled `ILLMProvider` + `ISecretStore`; relax the AI-gen validator clamps for non-RTS scenario types; all AI output passes the same content-validation gate.)*
@@ -473,11 +514,23 @@ An AI collaborator is available across every editor — provider configuration (
 
 ### Epic 9: Share, Discover & Multiplayer at Scale
 Creators package and publish scenarios to mod.io (gated by proof-of-play, with IP ownership surfaced), players browse/subscribe/rate them, and multiplayer scales to a verified ≤4 players (8 as a fast-follow) with matchmaking, parties, viewable/shareable replays, and server-validated online hero persistence. *(PRD M5; arch D5 — invert the pure relay into stateful server authority with canonical multi-hash handshake, majority-vote desync attribution, replay v2; arch D4 online hero rail = FR-7c.)*
-**FRs covered:** FR-35, FR-36, FR-37, FR-38, FR-38a, FR-40, FR-41, FR-7c · **DG:** DG-6 (command rate-limiting, 9.13)
+**FRs covered:** FR-35, FR-36, FR-37, FR-38, FR-38a, FR-40, FR-41, FR-7c · **DG:** DG-6 (command rate-limiting, 9.13) · **Gap-closure (2026-07-01):** FR-65 local-faction/teams/4-player/handshake (9.14–9.17), FR-77 replay UX (9.18)
 
 ### Epic 10: Release Readiness — Content, Balance, Performance & Ship
 The concrete finishing work to ship: audio assets wired, Iron Pact's placeholder art replaced and held coherent by an art-style consistency layer, the performance pass, final faction balance, the Linux export, the accessibility baseline, and release to both Steam and a direct DRM-free channel. *(PRD M6; arch P1 art-style layer; closes the two primary 1.0 quality gates alongside Epics 1 & 5.)*
-**FRs covered:** FR-42, FR-43, FR-46, FR-48, FR-49, FR-49a, FR-50, FR-51, FR-52 · **DG:** DG-7 (adaptive AI, 10.11)
+**FRs covered:** FR-42, FR-43, FR-46, FR-48, FR-49, FR-49a, FR-50, FR-51, FR-52, FR-75, FR-76, FR-78 · **DG:** DG-7 (adaptive AI, 10.11) · **Gap-closure (2026-07-01):** 10.12–10.17
+
+### Epic 11: Fully Operational Match & Shell
+Everything between "click Play" and "back at the menu with a score screen": the real skirmish setup screen, in-match menu with true SP pause and game-speed control, concede/leave flow, victory/defeat + score screen, staged loading screen, checksum-verified mid-match SP save/load, under-attack alerts + minimap pings, denial/acknowledgment feedback, buff icons + subgroup tabs, production queue depth-5 with cancel/refund, and video settings + the Mode Select honesty strip. *(2026-07-01 sprint-change proposal; closes the session-layer blocker cluster from the gap analysis. Sequenced BEFORE Epic 9 — MP verification needs this shell to exist.)*
+**FRs covered:** FR-66, FR-67, FR-68, FR-74 (11.8–11.11)
+
+### Epic 12: Import Manager & Content Sync
+WC3 Import Manager parity: creators import custom models/images/audio with validation caps, assets bundle into the hash-covered `.chimera.zip`, runtime ingests them (GLTFDocument path per the forward architecture) into model/icon/sound/projectile assignment, and multiplayer lobbies resolve content mismatches with the GDD-canonical mod.io "Update Required" one-click download. *(2026-07-01 sprint-change proposal; makes the Share pillar real for custom-art content.)*
+**FRs covered:** FR-72
+
+### Epic 13: Prologue Campaign
+A 3-mission scripted tutorial arc (basics → economy/combat/heroes → full match) built on the Epic 7 trigger vocabulary as its proving ground, with a campaign framework (mission sequence, unlock state, briefings, per-mission autosave) and the Mode Select entry bound to the real mission count. *(2026-07-01 sprint-change proposal; GDD reconciled from "5–8 missions" to a 3-mission 1.0 prologue that grows post-1.0.)*
+**FRs covered:** FR-73
 
 ---
 
@@ -1071,6 +1124,46 @@ _Covers: DG-4, AR-8. Depends on: 2.1, 2.3._
 
 > BROWNFIELD: UnitDefinition.cs today has DamageType (Normal/Pierce/Siege/Magic), ArmorType (Unarmored/Light/Medium/Heavy/Fortified), and a non-combat Category archetype string, but NO tag/classification field — BUILD a new authorable dimension here. The damage_type x armor_type DamageMatrix is a different axis and is explicitly NOT a substitute: tags are an orthogonal targeting/counter facet, so do not overload Category or the matrix. VERIFY the 2.1 effect-graph executor + SearchArea composition node and the 2.3 AbilityDefinition+Validated<T> gate exist as the consumers; BUILD: `[Flags] enum UnitTag { None, Organic, Mechanical, Magical }` (or validated string[] resolving to it), a `tags` JSON field + ParsedTags accessor mirroring the existing ParsedDamageType/ParsedArmorType pattern, a new parallel tag SoA array on EntityWorld, a SearchArea tag predicate, and tag-conditional effect/modifier application. The Validated<T> gate must reject any tag outside the closed set with a LOCATED error (unit id + token), per AR-8. DETERMINISM: this mutates sim state — iterate candidates in ascending-id order, all math in Fixed (never float/double/Mathf), randomness only via seeded SimRng, no wall-clock; the new tag array MUST fold into SimChecksum, which WILL RE-BASELINE the golden checksum (regenerate and commit the new golden after this story). Presentation stays separate — no Godot types in the sim. SCOPE LIMIT: this story ships only the data model, JSON schema, validator, EntityWorld array, and the effect-engine filter/counter consumption; the authoring/editor UI for tags lands in Epic 3 (do not build editor UI here).
 
+### Story 2.12: Shift-queued command waypoints + lockstep-replicated rally points
+
+As an RTS player,
+I want to Shift-queue orders into waypoint chains and have rally-point changes ride the same replicated order stream as every other command,
+So that multi-step orders work the way every RTS since WC3 works and rally state can never silently drift between lockstep peers.
+
+**Acceptance Criteria:**
+
+**Given** a unit is selected **When** I Shift+right-click three points (or Shift-issue attack-move/patrol/ability orders) **Then** a bounded per-entity order queue (SoA ring buffer, cap 8) stores them and each order dispatches through the shared `OrderApplier` on completion of the previous one **And** a plain (non-Shift) order clears the queue and replaces it
+
+**Given** the order queue is sim state that mutates mid-match **When** the queue arrays are added to `EntityWorld` **Then** they fold into `SimChecksum` (ascending-id, count-driven, recycle-reset in `Create()`) with the AlgoVersion bumped once and ALL goldens re-baselined explicitly in this story **And** a replayed match with queued orders is byte-identical to the live run
+
+**Given** a rally point is set or changed on a building in an online or replay context **When** the change is issued **Then** it rides the `UnitOrder` wire format (a new `UnitCommand` id, no PROTOCOL/ReplayRecorder.VERSION bump if a spare id fits the existing byte) through all three apply sites (lockstep/replay/offline) **And** a two-client loopback run where both clients set rallies stays checksum-identical for 300+ ticks
+
+**Given** a full 8-deep queue **When** a ninth order is Shift-issued **Then** it is rejected deterministically (no crash, no desync, denial feedback event emitted for 11.9 to consume when it lands)
+
+_Covers: FR-74. Depends on: 1.12._
+
+> Gap-closure (2026-07-01): closes verified majors "no shift-queue waypoints" and "rally points not lockstep-replicated (logged desync vector)". Rally is today local-only presentation state. Queue dispatch MUST reuse `OrderApplier.Apply` (the 1.12 structural-parity rule) — no second dispatch path. Per-entity queue arrays follow the A2 single-mapper/recycle rules. ⚑ One fold + golden re-baseline, stated per the checksum-fold timing rule.
+
+### Story 2.13: Combat & store defect batch — attack-move building acquisition, arrival hover deadlock, BuildingStore recycling, lifelong-HoT pulse cap
+
+As a player,
+I want armies to finish fights against buildings, never freeze on arrival, and long matches to stay stable,
+So that DestroyAllBuildings is winnable by anyone (including the AI) and late-game has no structural glitches.
+
+**Acceptance Criteria:**
+
+**Given** an attack-moving or idle combat unit with no enemy units in acquisition range but an enemy building in range **When** acquisition runs **Then** the unit acquires and attacks the building (`AttackBuilding` path), and the AI issues building attacks when no units remain **And** a headless AI-vs-AI match on DestroyAllBuildings CONCLUDES with a winner instead of stalling
+
+**Given** the known AttackMove arrival-hover defect reproduction scenario **When** the fixed build runs it **Then** units settle or engage instead of hovering indefinitely, guarded by a Tier-1 regression test
+
+**Given** a long match where more than 64 buildings are placed and destroyed sequentially **When** the free-list recycling added to `BuildingStore` reuses dead slots **Then** placement keeps working past the old 64-slot exhaustion, recycled slots carry zero stale state (the SoA-recycle trap test extended to `BuildingStore`), and the count-driven checksum fold stays consistent — goldens re-baselined ONLY if observed behavior actually shifts, with the disposition stated
+
+**Given** a `while_alive` lifelong HoT/aura (Sanguine Furnace) running past the 256-pulse cap window (~43s at its period) **When** a soak scenario runs to 3× the cap window **Then** the effect is still pulsing (cap re-arm or counter widening, disposition documented) and the 2.10 furnace metrics hold at long duration
+
+_Covers: FR-74 (feel floor, bug-class). Depends on: 2.9a, 2.10._
+
+> Gap-closure (2026-07-01): four confirmed bug-class findings with no prior owner (attack-move never acquires buildings / AI cannot win DestroyAllBuildings · arrival hover deadlock · BuildingStore 64-slot append-only exhaustion · 256-pulse cap kills lifelong HoTs, the 2.10 "furnace risk" deferred from 2.6 review). Sim-layer fixes; deterministic; each fix carries its own negative/regression test.
+
 ## Epic 3: Author Units & Heroes (incl. Save/Load)
 
 _A creator builds units and heroes in one consolidated Unit Card Editor with no JSON, players save/load hero progression, and the shared UI design-system (Godot Theme + component kit) is delivered for reuse by every later editor._
@@ -1291,7 +1384,7 @@ So that the product front end is coherent and shippable, not a placeholder.
 
 **Given** the Title screen **When** the game launches **Then** it renders to the Theme with nav (Play / Create / Browse / Settings / Quit), a version/build footer, and the tagline 'Build the game. Then play it.' (UX-DR67)
 
-**Given** the Mode Select screen **When** I choose 'Play' **Then** it shows Skirmish (1–8, offline) / Multiplayer / Campaign & Tutorial (N/12) / Create / My Content with a breadcrumb + account chip (UX-DR68)
+**Given** the Mode Select screen **When** I choose 'Play' **Then** it shows Skirmish (1–4, offline) / Multiplayer / Campaign & Tutorial (N/3, bound to the real shipped mission count) / Create / My Content with a breadcrumb + account chip (UX-DR68 as amended by the 2026-07-01 sprint-change proposal: player-count honesty trim to 4, campaign denominator bound to Epic 13's mission count, and NO ranked/MMR/live-online-count placeholder elements — nothing on this screen may advertise an unbuilt system)
 
 **Given** the Settings overlay **When** I open it from either the Commander or Creator branch **Then** it presents the tabs Gameplay / Graphics / Audio / Controls / Accessibility and is reachable from both branches (UX-DR73)
 
@@ -1322,6 +1415,100 @@ So that I can build a long-range instant-hit sniper or a slow short-range projec
 _Covers: DG-5, UX-DR77. Depends on: 3.4._
 
 > VERIFY vs BUILD: splash_radius is already fully built and authorable (UnitDefinition.cs:82-83 with real values in alpha/beta_faction.json; EntityWorld.SplashRadius SoA; ProjectileSystem.ApplySplash:103-131) — this story only confirms it, it adds NO splash field. BUILD: a new `delivery` enum (Hitscan | Projectile) and optional `projectile_speed` on UnitDefinition, two new parallel SoA arrays on EntityWorld (Delivery, ProjectileSpeed), and the replacement of the implicit `world.AttackRange[attacker] > MELEE_THRESHOLD` branch (CombatSystem.cs:254; MELEE_THRESHOLD at :31) with an explicit `world.Delivery[attacker]` check so delivery is decoupled from range. No "hitscan" symbol exists today — introduce it. Per-unit ProjectileSpeed replaces the hardcoded global PROJECTILE_SPEED=18 (CombatSystem.cs:31 / ProjectileSystem.cs:17), which becomes the fallback default only. Determinism: ProjectileSpeed stored and applied as the custom 16.16 Fixed (never float/double/Mathf in sim), enum default chosen so legacy JSON reproduces current behavior, ascending-id iteration preserved, seeded SimRng only, no wall-clock. Both new SoA arrays MUST fold into SimChecksum, which RE-BASELINES the golden checksum (regenerate and commit the new golden value as part of this story). Presentation stays separate — no Godot types in the sim layer; the editor control lives in the UI layer. Scope limit: delivery is a binary Hitscan/Projectile choice only — no beam/arc/ballistic-arc variants, and projectile visuals/tracking behavior are unchanged beyond honoring the per-unit speed.
+
+### Story 3.13: HeroXpSystem — kill-credit XP, leveling, and stat growth at runtime
+
+As a Commander,
+I want my hero to gain XP from kills and level up mid-match, applying its authored leveling curve,
+So that heroes actually progress during play instead of being dead data.
+
+**Acceptance Criteria:**
+
+**Given** a hero (or a hero within the data-driven XP-share radius of the kill) **When** an enemy unit dies with kill attribution **Then** the hero gains XP per the victim's authored `xp_bounty` (default derived from cost), processed in ascending-id order **And** at the authored curve thresholds the hero levels up and the curve's per-level stat deltas apply via `ModifierSystem` as a permanent, non-dispellable modifier source
+
+**Given** hero level/XP are sim state mutating mid-match **When** the `HeroStore` level/XP arrays first become mutable **Then** they fold into `SimChecksum` with one AlgoVersion bump and all goldens re-baselined explicitly (revival state from 3.14 reserves its fields in this same fold to avoid a second bump)
+
+**Given** the offline persistence rail (3.9) and playtest loop (3.10) **When** a match ends **Then** the hero picker reads REAL end-of-match level/XP through the manifest gate (3.10's "playtest XP is discarded" rule unchanged — it now discards real values)
+
+**Given** a hero at the curve's max level **When** further XP is earned **Then** it is ignored deterministically (clamped, no overflow, no exception)
+
+_Covers: FR-62, FR-5. Depends on: 3.7, 3.2, 2.2b._
+
+> Gap-closure (2026-07-01): closes the VERIFIED BLOCKER "hero XP/leveling runtime unowned" — 3.7's note punted the runtime and no story owned it; the whole FR-7 persistence rail carried state nothing changed. Kill attribution comes from CombatSystem's kill event (shared with 7.14's event source — build the attribution hook once). Fixed math only; XP-share radius via the sim SpatialHash. ⚑ One fold covering 3.13+3.14 state.
+
+### Story 3.14: Hero death & revival
+
+As a Commander,
+I want a fallen hero to be revivable at a producing building for a scaled cost and time,
+So that hero death is a strategic setback, not a permanent deletion.
+
+**Acceptance Criteria:**
+
+**Given** a per-scenario/per-faction revival rule (authored: enabled flag, cost curve by level, time curve, revive HP fraction) **When** a hero dies **Then** it enters an "awaiting revival" state (identity + level/XP/items retained, slot not recycled) instead of permanent removal, and the death is announced via the CombatEventQueue
+
+**Given** an eligible production building **When** the revival order is issued from its command card **Then** it rides the shared `OrderApplier` path (all three apply sites), spends at exec-tick with ownership/affordability guards (the 2.8 Train pattern), and after the timed revival the hero respawns at the building with retained level/XP/items and the authored HP fraction
+
+**Given** revival is disabled for the scenario **When** a hero dies **Then** it dies like any unit (manifest-persisted attributes still finalize per FR-7a rules)
+
+_Covers: FR-62. Depends on: 3.13._
+
+> Gap-closure (2026-07-01). Revival state lives in the 3.13 fold (fields reserved there — no second AlgoVersion bump). WC3 Altar model generalized to data: any building type can be flagged `revives_heroes`. Deterministic timers in ticks.
+
+### Story 3.15: Item & inventory sim — pickups, slots, stat effects, charges
+
+As a Commander,
+I want heroes to pick up, carry, and use items that modify stats or grant consumable effects,
+So that item play exists the way WC3 players expect.
+
+**Acceptance Criteria:**
+
+**Given** items placed on the map (editor palette) or dropped on hero death (per 3.14 rule) **When** a hero is ordered onto an item **Then** pickup resolves deterministically (move-to + proximity claim, ascending-id tie-break) into the hero's inventory (default 6 slots, per-scenario configurable), and a full inventory rejects the pickup with a denial event
+
+**Given** a stat item (authored modifier deltas) **When** it is carried **Then** its modifiers apply via `ModifierSystem` and are removed on drop; **Given** a charged consumable (authored Effect-Graph + charge count) **When** used from the inventory UI/hotkey **Then** the effect executes through the same validated executor as abilities, charges decrement, and the item deletes at zero
+
+**Given** the ItemStore and per-hero inventory are mid-match-mutable sim state **When** they land **Then** they fold into `SimChecksum` (one bump, goldens re-baselined explicitly), item definitions pass the same `Validated<T>` content gate, and item state participates in the canonical content/start-state hash
+
+**Given** a replayed match with pickups, drops, and consumable use **When** compared to the live run **Then** checksums are byte-identical
+
+_Covers: FR-64, FR-7a. Depends on: 3.13, 2.1, 2.3._
+
+> Gap-closure (2026-07-01): closes "no item/inventory system though the persistence manifest promises 'inventory/items'". ItemStore = new SoA store (free-list, recycle-guarded). Consumable effects are Effect-Graphs — no new execution engine (the 2.1 executor is the only effect surface). Items are content-gated data like abilities. ⚑ One fold.
+
+### Story 3.16: Item authoring, shop buildings, and inventory UI
+
+As a creator,
+I want to author items in a consolidated card editor and sell them from shop buildings, and as a player I want a visible inventory,
+So that item play is authorable, purchasable, and operable without JSON.
+
+**Acceptance Criteria:**
+
+**Given** the item editor (consolidated card: name/icon/cost/charges/modifier deltas/effect ref) **When** I create/edit/duplicate/delete an item **Then** it validates through the same fail-closed gate (dangling effect/icon refs rejected with actionable messages) and persists into the scenario/faction data
+
+**Given** a building flagged `sells_items` with an authored stock list **When** a hero is selected near it (data-driven shop radius) **Then** the shop panel lists items with cost/stock, purchase rides the `OrderApplier` command path with ownership/affordability guards, and the item lands in the hero's inventory at exec-tick
+
+**Given** a hero is selected **When** the unit panel renders **Then** an inventory grid shows carried items with charges, tooltips, and use-hotkeys (design-system components), and the hero picker (3.9) displays persisted inventory when the manifest carries it
+
+_Covers: FR-64, FR-7a, FR-7d. Depends on: 3.15, 3.4._
+
+> Gap-closure (2026-07-01). Editor reuses the Epic 3 creation-suite shell + 3.1x kit (UX-DR70 pattern). Shop purchase = the 2.8 Train-command pattern (building-scoped wire order, spend at exec). Presentation reads sim arrays only.
+
+### Story 3.17: Editor undo/RestoreUnit fidelity — widen UnitSnapshot to full authored state
+
+As a creator,
+I want editor delete-undo to restore a unit exactly as I authored it,
+So that undo never silently reverts my content to defaults.
+
+**Acceptance Criteria:**
+
+**Given** a placed unit with non-default authored state (armor, passives, feedback profile, tags, attack domain, category, collision radius, separation priority, hero fields) **When** I delete it and press Ctrl+Z **Then** the restored unit is field-identical to the pre-delete state (byte-equal on every authored SoA field)
+
+**Given** the widened `UnitSnapshot` **When** a future story adds a new per-unit SoA field without adding it to the snapshot **Then** a Tier-1 field-coverage guard test goes RED (the `ApplyUnitDefinitionGuardTest` pattern applied to snapshot/restore)
+
+**Given** this is editor-only state flow **When** the change lands **Then** sim behavior and `SimChecksum` are untouched (no fold, goldens byte-identical)
+
+_Covers: editor-fidelity debt (deferred-work §1.13/§2.7/§2.9a). Depends on: 3.4._
+
+> Gap-closure (2026-07-01): closes the accumulating "RestoreUnit drops authored state" debt tracked across six stories in deferred-work.md. Route restore through `ApplyUnitDefinition` where the field derives from the definition (A2 rule); snapshot only the residue.
 
 ## Epic 4: Author Buildings, Tech Trees & Economy
 
@@ -1460,6 +1647,44 @@ So that I can author idle/tower-defense economies, base-fed streaming economies,
 _Covers: DG-3, FR-15. Depends on: 4.3._
 
 > DG-3 / FR-15. Brownfield as-built: GatheringSystem.cs is a single GATHER round-trip only (TickIdle→TickMovingToResource→TickGathering→TickMovingToBase, deposit gated on physical arrival at FactionBase cs:135-143 via AddOre). VERIFY-ONLY: max_gatherers is fully built (ResourceNodeStore.MaxGatherers/AssignedGatherers, FindBestNode skips saturated nodes cs:189, max_gatherers present in every scenario JSON) — do not rebuild it, only assert it. BUILD: a collection_model selector (GATHER|INCOME|STREAMING, default GATHER for back-compat) + requires_structure field on ScenarioResourceNode and the parallel SoA arrays on ResourceNodeStore; the INCOME path (periodic flat trickle, no workers, no entity routing) and STREAMING path (credit at node each Gathering tick, no MovingToBase/CarryAmount leg); the structure-proximity/ownership gate folded into FindBestNode + INCOME/STREAMING eligibility; and ResourceStore.AddCrystal/SpendCrystal to close the real dead path (Crystal[] declared cs:13, consumed via UnitDefinition.CostCrystal, never produced today). DETERMINISM: this mutates sim state — all credit math stays in the 16.16 Fixed type, INCOME periods are integer-tick counters (never wall-clock), iterate nodes/entities in ascending id, any randomness only via SimRng; new per-node fields are new parallel SoA arrays on ResourceNodeStore and every new Crystal/period-accumulator value MUST fold into SimChecksum — this RE-BASELINES the golden checksum (record the new baseline as part of this story per AR-15/AR-16). SCOPE: GATHER behavior and existing scenarios are unchanged (default model = GATHER); presentation stays separate (no Godot types added to sim); requires_structure resolves against owned structures only (no shared/ally visibility in 1.0).
+
+### Story 4.8: ResearchSystem — faction-wide timed upgrades
+
+As a player,
+I want to research upgrades at buildings that permanently improve my faction's units,
+So that the tech tree does more than gate production — it carries the WC3-class upgrade game.
+
+**Acceptance Criteria:**
+
+**Given** `ResearchDefinition` JSON (id, cost map, research time, repeatable `max_levels`, per-level modifier deltas, prerequisites) **When** content loads **Then** it passes the `Validated<T>` gate with cycle/referential lint (the 4.2 pattern) and folds into the canonical content hash
+
+**Given** a research order at an eligible building **When** issued **Then** it rides the wire through the shared `OrderApplier` (the 2.8 Train pattern: ownership/affordability/prereq/not-already-researching guards encapsulated in `BuildingSystem`), spends at exec-tick, and on timed completion applies a permanent faction-scoped modifier via `ModifierSystem` affecting all CURRENT and FUTURE units of the faction (future units acquire it through the Base/Effective recompute at spawn — no per-entity copies)
+
+**Given** a repeatable research (e.g. Attack +1/+2/+3) **When** each level completes **Then** levels stack per the definition and the next level's cost/time apply; cancel refunds per the authored policy
+
+**Given** per-faction research state (in-progress + completed levels) is mid-match-mutable sim state **When** it lands **Then** it folds into `SimChecksum` with one bump and explicit golden re-baseline, and a replayed research-heavy match is byte-identical
+
+_Covers: FR-63. Depends on: 4.2, 2.2b._
+
+> Gap-closure (2026-07-01): closes the VERIFIED major "no research/upgrade system — tech tree gates production only". Key design: research = faction-scoped permanent modifier source in `ModifierStore` (no new stat pipeline — reuse 2.2a/b). Fixed math, deterministic timers in ticks. ⚑ One fold.
+
+### Story 4.9: Research authoring, command-card research buttons, and upgrade display
+
+As a creator and player,
+I want to author research in the tech-tree editor and run it from building command cards with visible results,
+So that upgrades are authorable without JSON and legible in-match.
+
+**Acceptance Criteria:**
+
+**Given** the visual tech-tree editor (4.6) **When** I add research nodes **Then** they drag into the dependency chain like buildings/units, prereq-lint applies, and saved research definitions round-trip
+
+**Given** an eligible building is selected **When** the command card renders **Then** research buttons show cost/time/level state (dim when unaffordable/capped/prereq-missing — the 2.4b affordability pattern), an in-progress research shows progress, and completion emits a chime/toast event on the CombatEventQueue bus (consumed by 11.8 when it lands)
+
+**Given** a unit benefiting from completed research **When** its panel renders **Then** the aggregate upgrade contribution is visible (e.g. "+2 Atk" beside the base stat)
+
+_Covers: FR-63. Depends on: 4.8, 4.6._
+
+> Gap-closure (2026-07-01). Pure authoring/presentation over 4.8's sim; design-system components; no new sim state.
 
 ## Epic 5: Faction Definer & the Asymmetric Showcase Factions
 
@@ -1607,7 +1832,7 @@ So that I get an instant author->play loop and can validate my faction right awa
 
 **Given** the new faction is assigned to a player slot and a match starts **When** the match boots **Then** that slot loads the chosen FactionDefinition through the FactionRegistry and its units/buildings are produced/rendered correctly
 
-**Given** the skirmish setup with up to 8 player slots **When** factions are assigned per slot **Then** assignment uses the registry's PLAYER_COUNT-aware API (no hardcoded 2-slot assumption) and the showcase factions remain selectable alongside authored ones
+**Given** the skirmish setup with up to 4 player slots (1.0 verified scale per the 2026-07-01 sprint-change proposal; 8 remains the post-1.0 fast-follow constant-bump) **When** factions are assigned per slot **Then** assignment uses the registry's PLAYER_COUNT-aware API (no hardcoded 2-slot assumption) and the showcase factions remain selectable alongside authored ones
 
 **Given** a faction file that fails validation present in the data folder **When** the setup list is built **Then** it is either excluded or shown as non-selectable with a reason (a broken faction cannot be launched into a match)
 
@@ -1762,6 +1987,114 @@ So that Commanders gain a real tactical reason to seize high ground while determ
 _Covers: DG-9, AR-5. Depends on: 6.2._
 
 > Brownfield/as-built: FogOfWarSystem.cs is FULLY BUILT (3-state 128×128 byte Grid, Visible→Explored demote then per-unit StampCircle keyed on world.VisionRange, registered as ISimSystem, rendered via FogOfWarBridge GPU R8 + shader and MinimapBridge, spectator RevealAll) — VERIFY it, do not rebuild it. StampCircle today reads ONLY world X/Z; Position.Y is never read, and the sim terrain is FLAT (MainScene.cs:753-760 imports an all-zero RF heightmap at Y=0) so no elevation reaches the sim, and a height-advantage grep returns 0 hits. BUILD: (1) a new parallel `Fixed[] Elevation` SoA array on EntityWorld populated by a deterministic heightmap sample at spawn (Fixed math only — no float/double/Mathf in sim, sample via clamped integer cell lookup, not Godot Image interpolation in the sim layer); (2) a `HeightAdvantageVision` per-scenario creator toggle (ScenarioData, default OFF) plus a configurable per-step bonus; (3) the bonus term inside StampCircle computed in Fixed and added to base VisionRange only when the toggle is on. Determinism: Elevation is Fixed, sampled deterministically, and MUST fold into SimChecksum.Compute (currently Position.X/Y/Z.Raw + Health.Raw per alive entity, ascending id) — this RE-BASELINES the golden checksum; state the re-baseline explicitly and commit the new golden value. SCOPE LIMIT — vision-only coupling for 1.0: elevation feeds the fog/vision radius ONLY and MUST NOT silently alter pathfinding/flow-field results. If sampling or storing elevation is found to feed the NavMesh bake or flow-fields in any way, STOP and call it out rather than changing pathfinding determinism in this story. Presentation stays separate (no Godot types in sim). Advances DG-9 (vision/high-ground) and AR-5 (deterministic sim state).
+
+### Story 6.6: Regions — named areas as a first-class map/trigger primitive
+
+As a map creator,
+I want to draw, name, and edit regions on my map and drive triggers from them,
+So that "unit enters region" scenarios — the backbone of WC3 custom maps — are authorable.
+
+**Acceptance Criteria:**
+
+**Given** the region tool in Edit mode **When** I draw, resize, rename, or delete a named rectangular region **Then** it renders as a labeled overlay (toggleable), participates in editor undo/redo, and persists in `ScenarioData` (Fixed coordinates) through save/load/package round-trips, covered by the scenario/start-state hash
+
+**Given** triggers referencing regions **When** the fail-closed trigger validation pass (1.11) runs **Then** dangling region references are rejected with actionable messages, and the `RegionEnter`/`RegionLeave` event sources fire deterministically at tick boundaries (ascending-id, boundary-crossing semantics documented) for the Scenario Director
+
+**Given** the 7.10 win-condition presets that require zones (King of the Hill) **When** regions exist **Then** the preset binds to an author-drawn region instead of a hardcoded zone
+
+_Covers: FR-69, FR-60 (dependency fix). Depends on: 6.4._
+
+> Gap-closure (2026-07-01): closes the VERIFIED plan inconsistency "7.10 requires regions, no story ships them, no editor tool draws them". Sim-side region containment math is Fixed-only; events integrate with the as-built ScenarioDirector event path (Epic 7 extends them further in 7.12–7.14). Rect-only for 1.0 (circles/polys post-1.0, documented).
+
+### Story 6.7: Impassable terrain — pathability paint, deterministic blocking, and the pathability overlay
+
+As a map creator,
+I want to paint unwalkable terrain and see a pathability overlay,
+So that maps have real chokepoints, walls, and cliffs instead of being open fields.
+
+**Acceptance Criteria:**
+
+**Given** the pathability brush **When** I paint/erase blocked cells **Then** the layer persists in the map package, renders as a toggleable editor overlay (the WC3 'P' view), and participates in undo/redo
+
+**Given** a map with blocked cells **When** the NavMesh bakes and flow fields compute **Then** blocked cells are excluded deterministically (identical bake/field results across two loads — the 6.2 pattern), units never path into them (harness scenario proves it), and the affected goldens are re-baselined once with the change stated
+
+**Given** an optional slope-derived auto-blocking threshold (per-map, default OFF) **When** enabled on a sculpted map **Then** steep cells auto-block consistently with the painted layer; a flat/legacy map with the toggle off behaves byte-identically to pre-feature behavior
+
+**Given** the `ScenarioValidator` **When** a spawn/start position lands in a blocked cell **Then** validation fails closed with a clear message
+
+_Covers: FR-69. Depends on: 6.2, 6.5._
+
+> Gap-closure (2026-07-01): closes the blocker "terrain can never block movement". This story formally LIFTS the 6.5 vision-only scope limit — elevation/pathing interaction is now intentional; document it against 6.5's stop-and-call-out note. Blocking feeds sim pathing → this IS a sim-behavior change: goldens re-baseline once. Flat maps without painted cells must stay byte-identical (no regression).
+
+### Story 6.8: Doodads & props — decorative object placement with props.json
+
+As a map creator,
+I want to place, rotate, and scale decorative props,
+So that maps look authored instead of barren.
+
+**Acceptance Criteria:**
+
+**Given** the prop palette (starter library ships; placeholder-art rule applies) **When** I place/rotate/scale props with variation support **Then** they render via MultiMesh (no per-prop nodes), participate in undo/redo and (with 6.10) multi-select, and persist to `props.json` in the package per the GDD schema, round-tripping save/load/package/import
+
+**Given** a prop flagged `blocks_pathing` **When** placed **Then** it stamps blocked cells into the 6.7 pathability layer deterministically (moving/deleting the prop un-stamps), and non-blocking props never touch sim state or the checksum
+
+**Given** a scenario with hundreds of props **When** a match runs **Then** frame rate impact stays within the 10.3 budget (props are presentation-only instances)
+
+_Covers: FR-69. Depends on: 6.2, 6.7._
+
+> Gap-closure (2026-07-01): closes "no doodads/decorations of any kind (GDD-promised — `props.json` is in the package schema; UX designed them)". Blocking props are the ONLY sim-touching path and ride 6.7's layer — no separate collision system.
+
+### Story 6.9: Map properties, New-Map flow, 2–4 start positions, and minimap preview
+
+As a map creator,
+I want to create a new map with chosen properties and author it for 2–4 players,
+So that maps are self-describing and support the shipped multiplayer scale.
+
+**Acceptance Criteria:**
+
+**Given** the New Map dialog **When** I set name/author/description/suggested-players and pick a size from the supported set **Then** a blank map of that size is created with fog/nav/flow-field/spatial-hash grids consistent (each dimension-coupled system guarded by a test), and properties remain editable later and persist into the manifest
+
+**Given** start positions **When** I place 2–4 start-position markers with per-slot starting units/resources (GDD §5) **Then** validation warns when the count is below suggested-players, and slots map to factions through the PLAYER_COUNT-aware registry API
+
+**Given** a map is saved **When** the package writes **Then** a minimap preview auto-generates into `preview/` and is consumed by the skirmish setup (11.1), the MP lobby (9.6), and the content browser (9.10)
+
+_Covers: FR-69, FR-65. Depends on: 6.2._
+
+> Gap-closure (2026-07-01): closes "editor can only author 2-player maps" + "no New-Map flow/map-size control" + "no minimap preview". RISK NOTE: map-size generalization is the riskiest slice (the as-built fog grid is a 128×128 assumption; spatial-hash and flow-field dims may couple). If a hard coupling blocks, ship the fixed-size option set that works (e.g. 128/192/256) and escalate the rest via correct-course — do NOT silently hardcode one size.
+
+### Story 6.10: Editor multi-select, copy/paste, and entity rotation
+
+As a map creator,
+I want to marquee-select groups, copy/paste them, and rotate placements,
+So that building a real map doesn't require one-click-at-a-time placement.
+
+**Acceptance Criteria:**
+
+**Given** Edit mode **When** I marquee-select (with Shift-add) placed units/buildings/nodes/props **Then** group move/delete/duplicate work with full undo/redo integrity across interleaved operations (the 6.3 interleave test extended to groups)
+
+**Given** a selection **When** I copy and paste **Then** the group pastes at the cursor with grid-snapped relative offsets preserved, across all placeable categories
+
+**Given** a placement (unit/building/prop) **When** I rotate it (R-key step rotation) **Then** rotation persists in `ScenarioData` (the GDD says placement stores rotation — today it is not authorable), applies as presentation yaw at spawn, and does NOT alter sim behavior for 1.0 (footprints stay axis-aligned; rotated rectangular footprints are documented post-1.0)
+
+_Covers: FR-69. Depends on: 6.4, 6.8._
+
+> Gap-closure (2026-07-01): closes "no multi-select/copy-paste" + "placed entities have no rotation/facing". Rotation is presentation-only for 1.0 — state that in the editor tooltip so creators aren't surprised.
+
+### Story 6.11: Named cameras + the water floor
+
+As a map creator,
+I want to author named camera positions and place water,
+So that cinematic triggers have targets and maps can use water as terrain.
+
+**Acceptance Criteria:**
+
+**Given** the camera tool **When** I create/name/preview camera positions (position/target/FOV) **Then** they persist in the scenario package and are listed for the 7.13 `MoveCamera` action and Epic 13 cinematics; "view through camera" preview works in-editor
+
+**Given** the water tool **When** I place a water volume **Then** it renders as a visual plane, auto-stamps impassable cells into the 6.7 layer (removing the volume un-stamps), and persists/packages — no sim fluid simulation exists or is implied
+
+_Covers: FR-69. Depends on: 6.7. Pairs with: 7.13._
+
+> Gap-closure (2026-07-01): closes "no trigger camera actions or named-camera authoring (GDD-promised)" (authoring half — the action leaf is 7.13) and "no water" via the cheap-water decision (visual + blocking only), documented as such.
 
 ## Epic 7: Rich Trigger DSL & Custom Runtime UI
 
@@ -1990,6 +2323,122 @@ So that multiplayer victory is server-checkable and identical on every client, a
 _Covers: DG-8, FR-28, FR-22. Depends on: 7.2._
 
 > Brownfield: only 2 win conditions exist (ScenarioData.cs:10-16) and win-eval is mis-located in presentation (MainScene.CheckWinCondition:2176-2213). VERIFY the 2 built-ins behave identically after the move; BUILD the sim-layer WinConditionSystem and the 4 named T1 presets (all grep-absent today). This story MUTATES sim state: win counters/deadlines are new parallel SoA arrays on EntityWorld / a sibling win store, integer ticks only, all math via the 16.16 `Fixed` type, entities iterated in ascending-id order, any randomness only via seeded SimRng, no wall-clock — and the new state MUST fold into SimChecksum, which RE-BASELINES the golden checksum (call it out in the dev log). Presentation stays separate: MainScene only reads the verdict; no Godot types enter the sim. Scope limit: T1 tier only — these four are turnkey presets composed from Epic-7 DSL primitives (7.2), not a new generic win-condition engine; the ScenarioDirector OnVictory action (cs:322-327) stays as the T3 escape hatch and is not reworked here. Multi-team (>2 faction) free-for-all resolution beyond the existing P1/P2 two-faction assumption is out of scope.
+
+### Story 7.11: N-faction victory resolution and per-player elimination
+
+As a player in a 3–4 player match,
+I want defeated players eliminated while the match continues, and victory to resolve for the last team standing,
+So that matches beyond 1v1 can actually conclude.
+
+**Acceptance Criteria:**
+
+**Given** the sim `WinConditionSystem` (7.10) **When** generalized to N active factions **Then** it evaluates every active faction against the win condition using a sim-owned alliance mask (defaulting to teams-of-1 = FFA; populated from the lobby/setup by 9.15), and the hardcoded P1/P2 game-over path in `MainScene` is replaced by consuming the system's verdicts
+
+**Given** a faction loses its win-condition-relevant assets **When** elimination triggers **Then** a per-player defeat verdict is emitted at a deterministic tick, the eliminated faction's remaining entities resolve per the preset's rule (removed or neutral — documented per preset), the local eliminated player switches to the existing spectator/RevealAll view with a defeat banner, and the match CONTINUES for the rest
+
+**Given** the four 7.10 presets **When** run with 3–4 factions **Then** each resolves correctly for last-TEAM-standing (KotH cumulative time per team, Assassination per-team leader, etc.), verified headless per preset
+
+**Given** the alliance mask + per-faction verdict state are sim state **When** they land **Then** they fold into `SimChecksum` with one bump and explicit golden re-baseline, and a replayed 4-faction match is byte-identical
+
+_Covers: FR-65. Depends on: 7.10._
+
+> Gap-closure (2026-07-01): closes the VERIFIED BLOCKER "3+ player matches cannot conclude" — 7.10's own scope note excluded >2-faction resolution while setup UIs advertised up to 8 players. The alliance MASK (sim data model) is owned HERE so the sim never depends on Epic 9; 9.15 only wires lobby teams into it. ⚑ One fold.
+
+### Story 7.12: Expression state-reads, RandomChoice, and trigger enable/disable/run
+
+As a scenario creator,
+I want triggers that can READ game state, roll dice, and control other triggers,
+So that real custom-game logic (checks, chances, phases) is authorable.
+
+**Acceptance Criteria:**
+
+**Given** the expression layer **When** the read-accessor leaves land **Then** a trigger can read: an entity's HP/position/owner (by stable reference), a player's unit count (filterable by tag/category), a player's resource amount, and a region's unit count — all bounded snapshot reads validated by the fail-closed gate, evaluated deterministically at tick boundaries
+
+**Given** a `RandomChoice` node (weighted branches) **When** it evaluates **Then** it draws via seeded `SimRng` (ascending-ID pre-sort rule), replays byte-identically, and the validator forbids it until its SimRng wiring is proven (the 1.5/1.7 posture)
+
+**Given** `EnableTrigger`/`DisableTrigger`/`RunTrigger` actions **When** authored **Then** they act at deterministic points with a run-depth cap (named constant, folded into `rulesetHash`) and the validator lints direct self-run cycles
+
+**Given** the four authoring tiers **When** the vocabulary grows **Then** the ECA sentence-builder, node-graph palette, and the Tier-4 NL schema/registry all expose the new nodes (one underlying representation — no tier drift), with schema docs updated for 8.x
+
+_Covers: FR-70. Depends on: Epic 7 core DSL stories (7.2–7.5), 6.6._
+
+> Gap-closure (2026-07-01): closes "expression layer cannot READ game state" + "no Random node" + "no trigger on/off". Everything stays inside the single typed event/dataflow graph (arch D2) — no scripting escape hatch.
+
+### Story 7.13: Action leaves — OrderUnits, MoveCamera, PlaySound/PlayVfx
+
+As a scenario creator,
+I want triggers to order units around, move the camera, and play sounds and effects,
+So that scripted encounters and cinematic beats — the GDD's own Tier-2 vocabulary — are authorable.
+
+**Acceptance Criteria:**
+
+**Given** an `OrderUnits` action (select units by region+owner+filter → issue move/attack-move/patrol to a point or region) **When** it executes **Then** orders apply inside the sim tick deterministically on all clients (trigger execution is already replicated state — no wire traffic), reusing the `OrderApplier` order semantics, with a capped selection size (named constant in `rulesetHash`)
+
+**Given** `MoveCamera`/`CinematicMode` leaves (pan to a 6.11 named camera, letterbox on/off, per-player targeting) **When** validated **Then** they are statically proven presentation-only (the FR-26 local-rail class — untouchable by sim state), and a checksum comparison with cameras firing vs suppressed is byte-identical
+
+**Given** `PlaySound`/`PlayVfx` leaves (profile/sound refs validated against loaded content) **When** they fire **Then** they ride the CombatEventQueue presentation bus (the 2.7 pattern) with per-player targeting (all/owner-only), and dangling refs are rejected at validation
+
+**Given** the GDD §3 Tier-2 action list (Spawn Unit, Display Message, Set Variable, Victory/Defeat, Create Timer, Play Sound, Move Camera) **When** this story completes **Then** every named action exists in the vocabulary — the completeness check is documented against the GDD list
+
+_Covers: FR-70. Depends on: 7.12, 6.11, 2.7._
+
+> Gap-closure (2026-07-01): closes "no trigger action to ORDER UNITS" + "no camera control/cinematic toolkit" + "no PlaySound/PlayVfx anywhere". The sim/presentation split is the design: OrderUnits mutates sim deterministically; camera/sound/vfx are validated presentation leaves that CANNOT touch sim.
+
+### Story 7.14: Event breadth — UnitDamaged, UnitTrained, AbilityCast, HeroLevel, PlayerChat
+
+As a scenario creator,
+I want triggers to react to damage, production, casts, hero levels, and chat commands,
+So that the event vocabulary covers the WC3-class custom-map staples.
+
+**Acceptance Criteria:**
+
+**Given** the five new event sources **When** each fires **Then** payloads carry the relevant data (damage amount/source/target; trained unit id/type/building; cast ability id/caster; hero id/new level; matched chat command) and delivery is deterministic at tick boundaries in ascending-id order
+
+**Given** `UnitDamaged` (high-frequency) **When** many hits land in one tick **Then** per-tick batching semantics are documented and a per-trigger evaluation cap (named constant, `rulesetHash`) prevents pathological scans
+
+**Given** `PlayerChat` events in multiplayer **When** a player types a matched "-command" **Then** the trigger-visible chat rides a tick-stamped replicated path (routed through the order stream if the as-built chat channel is not tick-synchronized — decide and document), so all clients evaluate the event on the same tick
+
+**Given** the validator and all four authoring tiers **When** the events land **Then** each is authorable in ECA + node-graph and present in the Tier-4 NL schema
+
+_Covers: FR-70. Depends on: 7.12, 3.13 (HeroLevel), 2.7 (AbilityCast emission exists)._
+
+> Gap-closure (2026-07-01): closes "event breadth stays at the as-built 6". The kill/damage attribution hook is shared with 3.13 — build once. PlayerChat determinism is the one wire-touching decision; state it explicitly in the story spec at create time.
+
+### Story 7.15: Objectives, quest log, and the match briefing surface
+
+As a player,
+I want to see what I'm supposed to do — before the match and during it,
+So that win conditions and scripted goals are never invisible.
+
+**Acceptance Criteria:**
+
+**Given** `objectives.json` authoring (id/title/description/initial state) per the GDD package schema **When** triggers use `ShowObjective`/`CompleteObjective`/`FailObjective` actions **Then** the in-match quest-log panel (toggle key + new-objective toast, design-system components) reflects state live, and objective state replays identically
+
+**Given** a match starts **When** the briefing surface shows (between loading and the first tick, skippable) **Then** it presents map name/description, the objective list, and faction blurb; Epic 13 campaign missions reuse it for mission briefings with 10.8c subtitles
+
+**Given** a scenario with only a win-condition preset and no authored objectives **When** the match starts **Then** a default objective is auto-emitted from the preset (e.g. "Destroy all enemy buildings") — every match shows its goal
+
+_Covers: FR-70, FR-73 (support). Depends on: 7.10, 7.12._
+
+> Gap-closure (2026-07-01): closes "win conditions invisible to players" + "objectives.json pipeline absent". Objective state is DSL-variable-class sim state (folded via the existing DSL store fold — no new bump if it rides that store; state the disposition).
+
+### Story 7.16: Trigger debugging — variable watch, fired-trigger log, fire counters
+
+As a scenario creator,
+I want to watch variables and see which triggers fired while playtesting,
+So that I can debug my logic without guess-and-replay loops.
+
+**Acceptance Criteria:**
+
+**Given** the F5 playtest loop (3.10) **When** the debug overlay is toggled **Then** it shows live DSL variable values, a tick-stamped fired-trigger log (last N entries), per-trigger fire counters, and each trigger's enabled state, with filter/search
+
+**Given** the overlay is presentation-only **When** a run executes with it open vs closed **Then** `SimChecksum` streams are byte-identical (the 10.11 overlay precedent test)
+
+**Given** a fired-log entry **When** clicked after the playtest ends **Then** the editor navigates to that trigger
+
+_Covers: FR-71. Depends on: 7.12, 3.10._
+
+> Gap-closure (2026-07-01): closes "no runtime trigger observability". Read-only by construction; zero sim writes.
 
 ## Epic 8: AI-Assisted Creation
 
@@ -2445,6 +2894,98 @@ _Covers: DG-6. Depends on: 9.3c._
 
 > Server/validation-layer concern ONLY — must NOT touch the sim or determinism. VERIFY (as-built): RelayTickCommands (DedicatedServer.cs:199-221) validates only `claimedFaction==SLOT_FACTION[fromSlot]` then relays unconditionally ("we trust the sender"); grep-confirmed NO rate/throttle/token-bucket anywhere; MAX_ORDERS=32 (NetworkCommand.cs:81) is a per-packet size bound, not a rate cap; Chat relay (DedicatedServer.cs:159-160) broadcasts to all peers unconditionally. BUILD: net-new per-slot token-bucket/rolling-window keyed on `fromSlot` with configurable cap + penalty threshold, drop-before-relay, escalating penalty → single-slot disconnect with a surfaced reason, and an optional chat-rate cap on the Chat case. SCOPE: 1v1 trusted friends/family EA + spectators, so the blast radius is limited and the cap is anti-spam/anti-bug, not full anti-cheat; cap must sit above worst-case legitimate play (full 32-order packet per tick at dictated delay) so honest peers never trip it. Disconnect leans on 9.5's deterministic freeze-and-continue for the dropped slot. Determinism: because dropped packets are simply never relayed and in-budget packets are relayed unmodified, the honest command stream is unchanged — golden re-baseline NOT required; instead a flood-vs-no-flood golden equality test (honest peers byte-identical) is the gate. Cap/threshold values data-driven, not hardcoded.
 
+### Story 9.14: Local-faction parameterization — remove every Player1 hardcode from the presentation layer
+
+As the second player in a multiplayer match,
+I want my client's fog, selection, command card, and training to operate on MY faction,
+So that a non-host player can actually see and command their own army.
+
+**Acceptance Criteria:**
+
+**Given** the assigned local faction from the lobby (`LockstepManager.LocalFaction` / `LobbyUi` assignment) **When** a match runs **Then** `FogOfWarSystem` construction, `SelectionSystem` selection rules, `CommandCardSystem` focus/train gates (the `== Faction.Player1` checks at cs:153/164/321), `EntityPlacer` worker paths, and alert routing all key off the local faction — zero behavioral references to a literal `Faction.Player1` remain in presentation command paths
+
+**Given** a two-client loopback match **When** the P2-assigned client plays **Then** it selects, commands, casts, and trains ONLY with its own faction's assets, sees its own fog, and the run stays checksum-identical for 300+ ticks
+
+**Given** spectator and replay modes **When** they run **Then** RevealAll/perspective behavior is unchanged (Neutral/spectator paths untouched)
+
+**Given** future regressions **When** CI runs **Then** a guard (analyzer rule or test sweep) fails on new hardcoded `Faction.Player1` comparisons in `src/UI` command paths, with an allow-list for legitimately P1-scoped sites
+
+_Covers: FR-65. Depends on: 1.9b. Sequenced BEFORE 9.5/9.6 in sprint order._
+
+> Gap-closure (2026-07-01): closes the code-evidenced finding "local player hardcoded P1 — the non-host MP player is blind and cannot command" (`CommandCardSystem.cs:321`, `FogOfWarSystem.cs:44`). Presentation-only change (sim already faction-parameterized via the order stream); the loopback AC is the proof.
+
+### Story 9.15: Teams & alliances — lobby teams wired into the sim alliance model
+
+As a player,
+I want to play 2v2 with a friend against two opponents with shared victory,
+So that team RTS — the GDD's Phase-3 promise — exists.
+
+**Acceptance Criteria:**
+
+**Given** the lobby and skirmish setup **When** slots are assigned teams (up to 4 slots: 2v2, 1v1v1v1, 3v1) **Then** team choice shows colorblind-safe glyphs (10.8 palette rules), the team tuple joins the match-start handshake and start-state hash, and the sim alliance mask (owned by 7.11) is populated from it
+
+**Given** allied factions in a match **When** combat and vision run **Then** `TargetMatcher` excludes allies from hostile acquisition/force-fire (Neutral force-fire preserved per 1.12), the shared-team-vision toggle unions allied fog when enabled, and allied victory resolves via 7.11 (both winners on the score screen)
+
+**Given** a 2v2 two-client loopback (2 humans + 2 AI slots if 10.13 has landed, else 4-human loopback) **When** the match completes **Then** elimination and team victory resolve correctly with zero desync
+
+_Covers: FR-65. Depends on: 7.11, 9.6, 11.1._
+
+> Gap-closure (2026-07-01): closes the VERIFIED "no team/alliance model — 2v2 impossible". FFA = teams-of-1 (no in-match diplomacy in 1.0, documented). Alliance data model already exists from 7.11 — this story is lobby/UI wiring + targeting/vision/victory integration.
+
+### Story 9.16: Four-player verified end-to-end
+
+As the developer,
+I want one story that proves the entire 4-player promise as a single flow,
+So that "supports 4 players" is a verified fact, not an aggregate assumption.
+
+**Acceptance Criteria:**
+
+**Given** a 4-start-position map (6.9) **When** a 4-client loopback runs lobby → load → play → one elimination → team/FFA victory → score screen **Then** both 2v2 and 4-FFA configurations complete with zero desync (server quorum green throughout) and every screen shows 4-slot-correct data
+
+**Given** the 8-player fast-follow posture **When** this story closes **Then** the registry/lobby constants are asserted PLAYER_COUNT-aware (no new hardcoded 4s) and the 8-player bump remains documented as constant-change + re-verification
+
+**Given** 4-player late-game load **When** measured **Then** the perf numbers are recorded as input to 10.3 (not gated here)
+
+_Covers: FR-65. Depends on: 9.14, 9.15, 6.9._
+
+> Gap-closure (2026-07-01): the single verify-story pattern (1.9b/10.1 precedent) for the chosen 1.0 scale. Supersedes the 8-slot claims edited out of 5.6/3.11.
+
+### Story 9.17: Full-content pre-match hash handshake
+
+As a multiplayer player,
+I want the match to refuse to start unless every peer has byte-identical content — all of it,
+So that content-mismatch desyncs are impossible by construction.
+
+**Acceptance Criteria:**
+
+**Given** the pre-match handshake `{scenarioHash, rulesetHash, startStateHash}` **When** its inputs are widened **Then** the canonical-model hash covers ALL sim-relevant loaded content: factions, units, abilities, items (3.15), research (4.8), triggers/regions/objectives, damage tables, and blocking props/pathability — while presentation-only content (CombatFeedbackProfile per the 2.7 no-fold rule) stays excluded and documented
+
+**Given** a single-byte difference in any covered file on one peer **When** the lobby gate runs **Then** the mismatch is rejected fail-closed pre-tick (hash≠ → no match), surfaced with WHICH domain mismatched, and the 12.4 Update-Required flow is offered when the content is mod.io-resolvable
+
+**Given** matching content **When** the match starts **Then** handshake time stays within the existing lobby budget (hashing is load-time incremental, not a start-button stall)
+
+_Covers: FR-65 (desync-vector close). Depends on: 9.1; consumes 3.15/4.8 content models as they land._
+
+> Gap-closure (2026-07-01): closes the logged known desync vector "handshake does not cover faction and ability JSON". Extends the 1.7 canonical FNV-64 model hash — no file-byte hashing (the AI-gen stale-file lesson).
+
+### Story 9.18: Replay UX — browser, playback controls, and perspective
+
+As a player,
+I want to browse my replays and watch them with real controls,
+So that replays are a feature I use, not a file format.
+
+**Acceptance Criteria:**
+
+**Given** the replay browser (main-menu entry) **When** it lists `.chmr` files **Then** each shows metadata (map, players/factions, date, duration, result), supports rename/delete, and a version-mismatched replay shows a clear "recorded on an older version" message instead of failing opaquely
+
+**Given** playback **When** watching **Then** pause/resume, speed steps (1×/2×/4×/8× — sim fast-forward), and seek-forward-to-tick work; current tick/clock displays; no rewind in 1.0 (documented — deterministic re-sim from tick 0 is the seek mechanism)
+
+**Given** perspective controls **When** toggled **Then** I can view any player's fog or reveal-all (spectator demux from 9.11), and the post-match score screen offers "Save replay"
+
+_Covers: FR-77, FR-38a, FR-40 (share loop). Depends on: 9.3c, 9.11._
+
+> Gap-closure (2026-07-01): closes "replays 'viewable' with no storied UI". Playback = the existing deterministic replay engine + presentation chrome; zero new sim state.
+
 ## Epic 10: Release Readiness — Content, Balance, Performance & Ship
 
 _The finishing work to ship: audio, real art + style-consistency, the performance pass, faction balance, Linux export, accessibility baseline, and release to Steam + a DRM-free channel._
@@ -2757,4 +3298,482 @@ So that skirmishes feel reactive instead of scripted and I can see exactly why t
 
 _Covers: DG-7. Depends on: 10.2b._
 
-> Brownfield: `AiOpponentSystem.cs` is pure static utility scoring — Score* methods (cs:200-249) read ONLY the AI's own `AiSnapshot`, weights (`_aggressionWeight`/`_techWeight`/`_attackThreshold`/`_attackCooldownMax`) are set once in the ctor from a fixed `AiDifficulty` preset and never mutate, `ExecuteBestAction` (cs:264-290) computes scores then DISCARDS them, and P1 exists only as the static `P1_BASE` constant. VERIFY this static path and the 10.2 baseline still pass; BUILD (1) deterministic P1-observation pattern counters, (2) bounded counter-strategy modifiers feeding the existing Score* layer (clean integration point — do not rewrite the scorer), (3) the read-only Tinkerer overlay surfacing the already-computed scores. Determinism: pattern counters are SIM state — store as new parallel SoA arrays on `EntityWorld` (or a sim-owned AI-state struct, no Godot types), use `Fixed` 16.16 math only (no float/double/Mathf in the counter/threshold math; existing Score* float weights are unchanged), iterate ascending-id, no wall-clock, randomness (if any) only via seeded `SimRng`. The counters MUST fold into `SimChecksum.Compute` (which today hashes only EntityWorld pos/health, BuildingStore, and faction Ore — it does NOT yet hash any AI internal state), so this WILL re-baseline the golden checksum — regenerate and commit the new golden, replacing the old. The overlay is presentation-only (`src/UI/`, Godot Control), reads sim arrays, never mutates — its presence must not perturb the checksum. Scope: only the existing two-player P1-vs-AI skirmish path and the existing rush/turtle axes — no new strategic actions, no multi-opponent or team adaptation, no ML/persistence across matches.
+> Brownfield: `AiOpponentSystem.cs` is pure static utility scoring — Score* methods (cs:200-249) read ONLY the AI's own `AiSnapshot`, weights (`_aggressionWeight`/`_techWeight`/`_attackThreshold`/`_attackCooldownMax`) are set once in the ctor from a fixed `AiDifficulty` preset and never mutate, `ExecuteBestAction` (cs:264-290) computes scores then DISCARDS them, and P1 exists only as the static `P1_BASE` constant. VERIFY this static path and the 10.2 baseline still pass; BUILD (1) deterministic P1-observation pattern counters, (2) bounded counter-strategy modifiers feeding the existing Score* layer (clean integration point — do not rewrite the scorer), (3) the read-only Tinkerer overlay surfacing the already-computed scores. Determinism: pattern counters are SIM state — store as new parallel SoA arrays on `EntityWorld` (or a sim-owned AI-state struct, no Godot types), use `Fixed` 16.16 math only (no float/double/Mathf in the counter/threshold math; existing Score* float weights are unchanged), iterate ascending-id, no wall-clock, randomness (if any) only via seeded `SimRng`. The counters MUST fold into `SimChecksum.Compute` (which today hashes only EntityWorld pos/health, BuildingStore, and faction Ore — it does NOT yet hash any AI internal state), so this WILL re-baseline the golden checksum — regenerate and commit the new golden, replacing the old. The overlay is presentation-only (`src/UI/`, Godot Control), reads sim arrays, never mutates — its presence must not perturb the checksum. Scope: only the existing two-player P1-vs-AI skirmish path and the existing rush/turtle axes — no new strategic actions, no multi-opponent or team adaptation, no ML/persistence across matches. *(The multi-opponent limit is lifted by gap-closure Story 10.12.)*
+
+### Story 10.12: Multi-instance AI — fill any open slot
+
+As a player,
+I want AI opponents in any open slot of a 2–4 player game,
+So that skirmish beyond 1v1 is playable without humans.
+
+**Acceptance Criteria:**
+
+**Given** `AiOpponentSystem` **When** instanced per AI slot **Then** the P1_BASE/P2 hardcodes are replaced by per-instance faction/difficulty/base-anchor parameters, and instances tick in ascending faction order (deterministic)
+
+**Given** a 1-human + 3-AI skirmish (11.1 setup exposes per-slot difficulty) **When** the match runs **Then** AIs acquire and fight ALL hostile factions (not only the human), elimination and victory resolve via 7.11, and the match concludes
+
+**Given** the same seed and slot configuration **When** run twice **Then** the multi-AI match is byte-identical (single-machine; cross-platform joins the gate via 10.13)
+
+_Covers: FR-76. Depends on: 7.11, 11.1, 10.1._
+
+> Gap-closure (2026-07-01): closes "AI fills only one slot / skirmish advertises players nothing can fill". Instance state joins the 10.11 counter fold (extend, don't re-bump if sequenced together — state the disposition).
+
+### Story 10.13: AI float→Fixed — close debt D2, make AI legal in lockstep multiplayer
+
+As the developer,
+I want the utility AI's decision math migrated to Fixed,
+So that AI is deterministic cross-platform and can legally fill multiplayer lobby slots.
+
+**Acceptance Criteria:**
+
+**Given** the AI decision path (Score* weights, thresholds, 10.11 counters — the last float island in sim-affecting code) **When** migrated to `Fixed` **Then** the determinism analyzer is clean over `src/AI` sim-side (CHM0001 advisory count = 0 on the decision path) and no float/double remains in any sim-outcome-affecting AI code
+
+**Given** the AI-active golden (1.11, currently same-machine-only) **When** the migration lands **Then** it joins the WSL cross-platform golden gate (the Windows-only carve-out documented in 1.11/1.10c is removed)
+
+**Given** MP lobby AI slots (9.15 UI) **When** a loopback MP match runs with 1+ AI slot **Then** it completes desync-free (AI decisions identical on every peer), making AI-in-MP legal for the first time
+
+**Given** behavior drift from quantization **When** 10.1's difficulty matrix and 10.2's balance batch re-run **Then** results hold within recorded tolerance, or the weights are re-tuned and every affected baseline re-recorded explicitly
+
+_Covers: FR-76. Depends on: 10.11, 10.12._
+
+> Gap-closure (2026-07-01): closes debt D2 (tracked since 1.10c/1.11) and the "lobby AI slots are dead UI or guaranteed desync" finding. Expect a golden re-baseline (AI-active goldens) — quantized scores WILL shift some decisions; that is the accepted cost, stated per the fold/re-baseline rule.
+
+### Story 10.14: Unit animation spike — the VAT gate
+
+As the developer,
+I want a proven vertex-animation-texture path on MultiMesh before committing to full animation integration,
+So that the one open architecture question is answered by evidence, not hope.
+
+**Acceptance Criteria:**
+
+**Given** two rigged clips (idle/walk; placeholder rigs acceptable) **When** baked to vertex-animation textures and played on `MultiMeshInstance3D` via a custom shader with per-instance custom data (clip index + phase) **Then** 1,000 animated instances hold ≥60 FPS on the reference machine alongside the 10.3 load profile
+
+**Given** the spike result **When** evaluated **Then** a GATE decision is recorded in this story's Change Log: VAT viable → 10.15 proceeds on VAT; NOT viable → the fallback (pooled skeletal proxies for the nearest N on-screen units) is chosen via correct-course BEFORE 10.15 starts — no silent drift into either path
+
+**Given** the bake tooling **When** the spike closes **Then** baking is a scripted, repeatable step over GLB inputs (usable for the shipped roster now; creator/AI-gen models post-1.0), documented in the pipeline docs
+
+_Covers: FR-75. Depends on: none hard (runs any time after Epic 5 content exists)._
+
+> Gap-closure (2026-07-01): closes the architecture hole behind "no unit animation system of any kind". MultiMesh cannot do skeletal animation — VAT (positions baked into textures, decoded in the vertex shader) is the standard RTS answer and preserves the one-draw-call-per-type rule. Presentation-only; zero sim coupling.
+
+### Story 10.15: Animation integration — idle/walk/attack/death driven from sim state
+
+As a player,
+I want units that visibly walk, swing, and die,
+So that the game reads as alive instead of chess pieces sliding on a board.
+
+**Acceptance Criteria:**
+
+**Given** the per-unit-type clip map (data-driven: unit def → idle/walk/attack/death clip ids) **When** the presentation layer maps sim state each frame **Then** velocity>0 plays walk, the attack-cooldown window plays attack (synced so the hit lands near the strike frame), death plays the death clip followed by a data-driven corpse fade replacing today's pop-out, and idle otherwise — for every shipped roster unit
+
+**Given** the 30 Hz sim / 60 FPS interpolation contract **When** animation runs **Then** interpolation is unaffected, animation state is derived (never stored in sim), and a run with animation on vs off is `SimChecksum`-byte-identical
+
+**Given** MultiMesh instance lifecycle **When** units die mid-fade **Then** instance slots recycle without visual corpses vanishing early or slot leaks (soak-tested over hundreds of deaths)
+
+_Covers: FR-75. Depends on: 10.14._
+
+> Gap-closure (2026-07-01). Clip assignment rides `UnitDefinition` (creator-overridable per the data-driven rule); the sim/presentation boundary stays sacred — this story reads sim arrays, writes nothing back.
+
+### Story 10.16: Pathfinding quality bar — chokepoint flow, stuck-unit watchdog, arrival stability
+
+As a player,
+I want groups to flow through chokes and never wedge permanently,
+So that movement feels like a finished RTS instead of a physics demo.
+
+**Acceptance Criteria:**
+
+**Given** a quality harness (Tier-1 headless scenarios: 50-unit funnel through a 1-wide choke, blocked-cliff detour over 6.7 terrain, crowded arrival at a shared target) **When** it runs in CI **Then** measurable bars hold: zero permanently-stuck units, per-unit stuck-time below a named-constant threshold, funnel throughput above a recorded floor
+
+**Given** a sim-deterministic stuck-unit watchdog (no path progress for N ticks → bounded local re-path/nudge rule, Fixed math, ascending-id) **When** it lands **Then** it is tuned to never fire on the existing goldens (byte-identical, no re-baseline) while demonstrably resolving the harness's wedge cases
+
+**Given** formation arrival (1.13 planner) **When** a group reaches its slot targets **Then** units settle without orbiting/jitter (an explicit arrival-stability case in the harness)
+
+_Covers: quality bar (gap register "no pathfinding-quality bar"). Depends on: 6.7, 1.13._
+
+> Gap-closure (2026-07-01). The watchdog is sim behavior — designing it to be golden-neutral is an explicit AC so the fold rule is honored without a re-baseline; if tuning cannot avoid golden impact, stop and re-baseline explicitly with the change stated.
+
+### Story 10.17: Human playtest gates — fun, usability, and balance verdicts on record
+
+As the developer,
+I want structured human playtests with written go/no-go criteria at the three points that matter,
+So that "plays well" is a recorded verdict, not an assumption made by test suites.
+
+**Acceptance Criteria:**
+
+**Given** the melee fun gate (the GDD Phase-1 risk checkpoint, run retroactively now that Epic 5 content exists) **When** executed per its written protocol (blind sessions, session-length + "want to play more?" instruments) **Then** the verdict + evidence are filed in implementation-artifacts, and a NO spawns a correct-course rather than being absorbed silently
+
+**Given** the creator usability gate **When** a fresh-eyes participant builds "Your First Scenario" (5.8) **Then** completion time vs the ≤15-minute NFR, obstacles hit, and abandonment points are logged with the same go/no-go discipline
+
+**Given** the human balance pass **When** run alongside 10.2's self-play numbers **Then** blind faction-preference and perceived-fairness results (n≥3 sessions) are recorded against FR-42/FR-49a, with divergences between human feel and the 45–55% metric explicitly reconciled
+
+_Covers: FR-78, FR-49a (support). Depends on: Epic 5 (fun gate), 5.8 (usability), 10.2b (balance)._
+
+> Gap-closure (2026-07-01): closes the VERIFIED "zero human playtest gates in 121 stories". The GDD itself mandates the Phase-1 checkpoint ("if the core loop is not fun, stop everything") — this story makes that clause executable.
+
+## Epic 11: Fully Operational Match & Shell
+
+_Everything between "click Play" and "back at the menu with a score screen". Added by the 2026-07-01 sprint-change proposal; closes the session-layer blocker cluster. **Sequenced BEFORE Epic 9** — multiplayer verification needs this shell to exist. All UI built from the 3.1x design system (UX-DR70); UX-DR addenda authored per-story (the 3.11 precedent)._
+
+### Story 11.1: The real skirmish setup screen
+
+As a player,
+I want a skirmish setup screen with map selection and per-slot configuration,
+So that starting a custom match is an actual flow, not an assumption other stories reference.
+
+**Acceptance Criteria:**
+
+**Given** Mode Select → Skirmish **When** the setup screen opens **Then** it lists shipped + subscribed + local maps with 6.9 minimap previews and map properties (name/author/suggested players), and selecting a map exposes its 2–4 slots
+
+**Given** the slot grid **When** configured **Then** each slot supports Open/Closed/AI (with per-slot difficulty via 10.1's AiDifficulty)/Human-local, faction pick (5.6 registry list incl. authored factions), team assignment (9.15 model), and color; validation blocks launch on broken configs (no faction, all-same-team, fewer start positions than filled slots) with actionable messages
+
+**Given** a valid config **When** Start is pressed **Then** the match boots through the standard load path (11.5) with the chosen setup applied via the PLAYER_COUNT-aware registry — and 10.1/10.11's references to "the skirmish setup UI" now point at a real, storied screen
+
+_Covers: FR-68, FR-65. Depends on: 3.11, 6.9, 5.6._
+
+> Gap-closure (2026-07-01): closes the code-referenced-but-never-built setup screen (5.6/10.1/10.11 all assume it). Design-system components; per-slot AI wiring consumed by 10.12.
+
+### Story 11.2: In-match menu, true SP pause, and game-speed control
+
+As a player,
+I want Esc to open a real game menu, pause the game in single-player, and control game speed,
+So that the basic session controls every RTS has since the 90s exist.
+
+**Acceptance Criteria:**
+
+**Given** an offline match **When** I press Esc/F10 **Then** a menu overlay opens (Resume / Settings / Save / Load / Concede / Quit to Menu) with the sim TRULY paused (tick loop halted, not hidden), input to the world blocked, and Resume returning cleanly; Settings opens the existing overlay in-context
+
+**Given** SP game-speed control (menu slider + hotkeys, 0.5×–3×) **When** changed **Then** the tick-rate scale applies deterministically (speed changes are tick-stamped so a recorded replay reproduces the run; sim math per tick is unchanged — only cadence scales), and the current speed shows on the HUD clock
+
+**Given** a multiplayer match **When** Esc opens the menu **Then** Save/Load and speed controls are absent/disabled (MP pause is Epic 9 territory per the server-authority inversion — documented), while Settings/Concede/Quit remain available
+
+_Covers: FR-66. Depends on: 3.11._
+
+> Gap-closure (2026-07-01): closes the VERIFIED "no in-match pause/resume or game-speed control anywhere" + "no in-match game menu". Pause/speed are presentation-loop controls over the fixed-timestep driver — the 30 Hz sim contract itself is untouched; replay stamps make speed deterministic-by-record.
+
+### Story 11.3: Concede, surrender, and the leave-match flow
+
+As a player,
+I want to concede a lost game or leave cleanly, and see opponents' departures handled,
+So that matches end by decision as well as by destruction.
+
+**Acceptance Criteria:**
+
+**Given** the in-match menu **When** I Concede (confirm dialog) **Then** a defeat verdict for my faction resolves through 7.11 (entities per preset rule), the score screen (11.4) follows, and in MP the concession rides the order stream so all peers resolve it identically
+
+**Given** an MP opponent leaves or drops **When** the 9.5 freeze-floor handling completes **Then** the departure is announced in-match (chat/system line + toast), and when only one team remains connected-and-alive, victory resolves for it rather than the match idling forever
+
+**Given** quit-to-menu in SP **When** confirmed without concede **Then** the match ends locally (no verdict recorded) and the shell returns to Mode Select with no leaked match state (clean re-entry into a new match verified)
+
+_Covers: FR-66. Depends on: 11.2, 7.11; MP announcements integrate with 9.5._
+
+> Gap-closure (2026-07-01): closes "no leave/surrender flow and no victory when the last opponent leaves; drops are not announced". Concede-as-order keeps lockstep clean; the "last team standing wins on abandonment" rule is stated per-preset.
+
+### Story 11.4: Victory/defeat + score screen
+
+As a player,
+I want a real end-of-match screen with stats,
+So that matches end with a payoff instead of a dead HUD.
+
+**Acceptance Criteria:**
+
+**Given** a match verdict (7.11 or concede) **When** the match ends **Then** a victory/defeat screen shows per-player rows: units built/lost/killed, buildings razed, resources gathered, army-value-over-time graph (dataviz-styled, from sim counters recorded during play), match duration, and winning team
+
+**Given** the stats source **When** counters are recorded **Then** they are sim-side deterministic counters (folded or derived-at-verdict — disposition stated; identical across peers in MP so every player sees the same numbers)
+
+**Given** the screen's actions **When** offered **Then** Continue (SP: back to setup with same config — the rematch loop), Save Replay (9.18 when landed; hidden before), and Quit to Menu all work, and in MP the screen shows correctly on ALL clients including the eliminated ones
+
+_Covers: FR-66. Depends on: 7.11, 11.1._
+
+> Gap-closure (2026-07-01): closes "end-of-match flow is thin: no score screen". WC3-class summary, not APM analytics; counters are cheap per-tick increments in existing systems.
+
+### Story 11.5: Loading screen and match-start flow
+
+As a player,
+I want a staged loading screen instead of a frozen frame,
+So that match start looks intentional and failures return me safely.
+
+**Acceptance Criteria:**
+
+**Given** match launch from any entry (skirmish, MP lobby, campaign, F5 playtest excluded) **When** loading runs **Then** a loading screen shows staged progress (validate content → terrain → nav bake → spawn/init) with the map name/author and 6.9 loading text, driven by real phase completion (the 1.8c `ISetupPhase` spine), not a fake bar
+
+**Given** a load failure (validation reject, missing content) **When** it occurs **Then** the flow fail-safes back to the originating screen with the actual `Validated<T>` error surfaced — never a hang or a black screen
+
+**Given** MP **When** peers load at different speeds **Then** the existing match-start sync holds (all peers ready → first tick), with per-peer readiness visible on the loading screen
+
+_Covers: FR-68. Depends on: 11.1; MP readiness integrates with 9.6._
+
+> Gap-closure (2026-07-01): closes "no match loading screen with progress". Presentation over the existing phase runner; zero sim change.
+
+### Story 11.6: SP save/load I — the full-world serializer
+
+As a player,
+I want to save a single-player match mid-game and resume it exactly,
+So that long matches and campaign missions respect my time.
+
+**Acceptance Criteria:**
+
+**Given** an offline match **When** I save **Then** a versioned snapshot serializes ALL sim state: every `EntityWorld` SoA array (incl. free list), `BuildingStore`, `ModifierStore`, `ItemStore`/`HeroStore`(as landed), projectile store, DSL variable store + trigger runtime state (fired/enabled/cooldowns), research/alliance/win-condition state, `SimRng` internal state, tick counter, and per-faction economy — plus the scenario/content references needed to reload
+
+**Given** a saved game **When** loaded **Then** the sim resumes at the saved tick and **the next 300+ ticks produce a byte-identical `SimChecksum` stream versus an uninterrupted reference run of the same match** — the determinism proof is the acceptance test, run headless in Tier-1
+
+**Given** presentation state **When** resuming **Then** camera, selection, and fog EXPLORED-cell memory restore to a sensible state (documented what restores exactly vs. approximately — fog explored map restores exactly; selection may clear)
+
+**Given** MP **When** in any online match **Then** save is unavailable (documented; MP save is post-1.0)
+
+_Covers: FR-67. Depends on: 1.8a (SimulationHost), 11.2._
+
+> Gap-closure (2026-07-01): reverses the GDD's post-1.0 deferral per the approved proposal. The pure-SoA sim makes this tractable: serialization is array dumps + store states, no object graphs. Format: versioned binary with per-section headers (fail-closed on unknown sections). The checksum-stream AC is the whole point — do not ship a save that "mostly" resumes.
+
+### Story 11.7: SP save/load II — slots UI, autosave, and format stability
+
+As a player,
+I want save slots, autosaves, and saves that survive patches predictably,
+So that saving is a trustworthy feature, not a lucky one.
+
+**Acceptance Criteria:**
+
+**Given** the in-match menu and a load entry on Mode Select **When** used **Then** save slots (named + timestamped + map thumbnail) support save/load/overwrite/delete with confirm dialogs (design-system), and quick-save/quick-load hotkeys exist
+
+**Given** autosave **When** enabled (default on, interval configurable) **Then** a rolling autosave slot writes without a frame hitch beyond budget (measured), and campaign missions (13.1) autosave at mission start
+
+**Given** format versioning **When** a save from a different format version loads **Then** the version guard rejects incompatible saves with a clear message (negative tests per the 1.4/1.7 pattern), the policy (no cross-version guarantees in 1.0; version bump = documented save-break) is stated in-UI, and a long-match soak (save/load at tick 50k+) passes
+
+_Covers: FR-67. Depends on: 11.6._
+
+> Gap-closure (2026-07-01). The honesty policy beats silent corruption: WC3 broke saves across patches too — the sin is failing opaquely, not the break itself.
+
+### Story 11.8: Under-attack alerts, minimap pings, and event cues
+
+As a player,
+I want the game to tell me when something needs my attention — and where,
+So that I stop losing bases I never knew were burning.
+
+**Acceptance Criteria:**
+
+**Given** my units/buildings take damage outside my current viewport **When** the event fires **Then** an "under attack" alert plays (audio cue + text + minimap flash at the location), throttled per region/time window (named constants) so a sustained raid produces one alert stream, not spam
+
+**Given** minimap interactions **When** I Alt-click (ping) **Then** allies in MP see the ping (a presentation event on the replicated stream — tick-stamped, sim-untouched), and the minimap always shows the camera-view box; production/research completion plays a completion cue (consuming 4.9/2.8 events)
+
+**Given** the CombatEventQueue bus **When** these alerts ride it **Then** a run with alerts on/off is `SimChecksum`-byte-identical (2.7 posture), and every cue respects the audio settings buses
+
+_Covers: FR-74. Depends on: 2.7; ping replication integrates with the existing chat/order channel._
+
+> Gap-closure (2026-07-01): closes "no 'under attack' alert, minimap event pings, or camera box — designed in the approved HUD, dropped from stories". GDD §6 promises exactly this feedback loop.
+
+### Story 11.9: Denial and acknowledgment feedback
+
+As a player,
+I want the game to acknowledge my orders and tell me when they're refused and why,
+So that the interface feels responsive instead of mute.
+
+**Acceptance Criteria:**
+
+**Given** an unaffordable action (train/build/research/cast/shop) **When** attempted **Then** denial feedback fires: "Not enough Ore/Crystal" (resource-specific), "Supply capped", or "Invalid location" as text + denial sound, sourced from the same guard that rejected it (one truth source — the guard emits the reason; UI never re-derives it)
+
+**Given** a movement/attack order to selected units **When** issued **Then** an acknowledgment sound plays (per-unit data-driven sound-set ref on `UnitDefinition` — asset production out of scope, the hook + default set in) and an order-confirmed ground marker flashes at the target (the GDD §6 immediate-feedback promise)
+
+**Given** lockstep input delay **When** feedback plays **Then** it plays at ISSUE time (masking the delay per GDD §6), while sim effects still occur at exec-tick — and none of this touches sim state (checksum-identical on/off)
+
+_Covers: FR-74. Depends on: 2.7, 2.8 (guards emit reasons)._
+
+> Gap-closure (2026-07-01): closes "no denial feedback" + "no ack sounds/order marker". The guard-emits-reason design keeps replay/live parity: guards already run in the shared apply path; the presentation layer only renders the reason codes.
+
+### Story 11.10: Buff icons, multi-select panel, and subgroup tabs
+
+As a player,
+I want to see what's affecting my units and manage mixed selections,
+So that the modifier system built in Epic 2 is visible and armies are manageable.
+
+**Acceptance Criteria:**
+
+**Given** a selected unit with active modifiers **When** the unit panel renders **Then** buff/debuff icons show (from `ModifierStore`: source ability icon, stacks, remaining duration on hover), updating live and correctly on Refresh/Expire
+
+**Given** a mixed multi-selection **When** the panel renders **Then** a type-grouped grid shows counts per unit type with per-unit health tints, clicking a group sub-selects it, and Tab cycles subgroups (WC3 semantics) with the command card showing the active subgroup's commands
+
+**Given** presentation-only reads **When** the panel operates **Then** zero sim writes (checksum-identical with panel open/closed), and it composes from the 3.1x kit
+
+_Covers: FR-74. Depends on: 2.2b, 3.1c._
+
+> Gap-closure (2026-07-01): closes "buffs invisible to players" + "no multi-unit selection display / subgroup tabs". Selection sub-grouping is presentation-layer selection state — the sim never sees "subgroups".
+
+### Story 11.11: Production queue depth-5 with queue display and cancel/refund
+
+As a player,
+I want to queue five units at a building, see the queue, and cancel with refunds,
+So that production management works like every RTS since StarCraft.
+
+**Acceptance Criteria:**
+
+**Given** a production building **When** I queue up to 5 trains (2.8 picker semantics preserved) **Then** the queue processes FIFO with spend-at-queue + refund-on-cancel (WC3 model, stated), rally-on-queue preserved, and a 6th attempt denied via 11.9 feedback
+
+**Given** the widened per-building queue is mid-match-mutable sim state **When** it replaces the single `ProductionQueue` byte **Then** it folds into `SimChecksum` (one bump, goldens re-baselined explicitly — this touches the UNFOLDED byte from 2.8, so the fold-timing rule now requires the fold), and queue orders ride the existing Train wire command through all three apply sites
+
+**Given** the command card **When** a building with a queue is selected **Then** a queue strip shows queued portraits with per-slot click-cancel and the in-progress item's progress bar
+
+_Covers: FR-74. Depends on: 2.8._
+
+> Gap-closure (2026-07-01): closes the VERIFIED "production queue is depth-1 with no queue display or cancel/refund". 2.8 deliberately left `ProductionQueue` unfolded while dormant-depth-1; widening it to a real queue makes it fold-mandatory — the scheduled fold arrives with the feature per the timing rule.
+
+### Story 11.12: Video settings + the Mode Select honesty strip
+
+As a player,
+I want real video settings and a front end that only advertises what exists,
+So that the shell is fully operational and honest.
+
+**Acceptance Criteria:**
+
+**Given** the Settings Graphics tab (3.11 shell) **When** opened **Then** resolution, window mode (fullscreen/borderless/windowed), vsync, quality preset (shadow/effects tiers), and UI scale (binding 10.8b-1) all apply live, persist, and restore on relaunch, with safe-revert (15s confirm) on display-mode changes
+
+**Given** the Mode Select screen **When** this story lands **Then** the ranked/MMR/live-online-count placeholder elements are REMOVED (per the amended 3.11 AC), Campaign shows the real N/3 binding (13.1), Skirmish says 1–4, and a UI sweep confirms NO front-end element advertises an unbuilt system (the honesty invariant, checked against the shipped feature list)
+
+**Given** window resize/DPI changes mid-session **When** they occur **Then** HUD and editor layouts reflow within the supported range without overlap or clipped controls (spot matrix: 1080p/1440p/4K + 2 scale factors)
+
+_Covers: FR-66. Depends on: 3.11, 10.8b-1._
+
+> Gap-closure (2026-07-01): closes the VERIFIED "no video/display settings" and executes the Mode Select strip decision. The honesty invariant is the epic's exit criterion in miniature.
+
+## Epic 12: Import Manager & Content Sync
+
+_WC3 Import Manager parity: custom binary assets flow import → package → runtime ingest → multiplayer sync. Added by the 2026-07-01 sprint-change proposal. The GDD package schema (`assets/` models/sprites/audio/portraits) and the architecture's runtime-ingest path (GLTFDocument, not GD.Load) already specify this — no story owned it._
+
+### Story 12.1: Import UI with validation caps
+
+As a creator,
+I want to import my own models, images, and sounds into a scenario package,
+So that my content can look and sound like mine.
+
+**Acceptance Criteria:**
+
+**Given** the Import Manager panel (creation-suite shell) **When** I import `.glb` / `.png` / `.ogg` files **Then** they validate against named-constant caps (triangle count, texture dimensions, audio duration, per-file + per-package size) with actionable rejection messages, land in the package's `assets/` subdirs per the GDD schema, and show in a browsable imported-assets list with preview (model turntable / image / audio play)
+
+**Given** an import **When** confirmed **Then** a license-attestation checkbox ("I have the rights to distribute this") is required once per package (stored in the manifest — the FR-38 IP-consent posture extended to assets)
+
+**Given** re-import of a same-named asset **When** confirmed **Then** it replaces cleanly with references intact; delete warns when the asset is referenced
+
+_Covers: FR-72. Depends on: 3.1c (shell/kit)._
+
+> Gap-closure (2026-07-01). Validation caps are data (named constants folded into rulesetHash where sim-relevant — blocking props excepted; pure-visual assets are NOT sim state). Files are staged into the package workspace, not the global data folder.
+
+### Story 12.2: Runtime ingest and assignment wiring
+
+As a creator,
+I want imported assets assignable everywhere stock assets are,
+So that custom content is first-class, not decorative.
+
+**Acceptance Criteria:**
+
+**Given** an imported `.glb` **When** assigned in the Unit Card Editor (3.5's browse path) or the building editor (closing the building-model assignment gap) **Then** it loads at runtime via the GLTFDocument ingest path (non-editor builds included — the arch-specified rail), renders in MultiMesh with team tint, and falls back to the placeholder mesh with a logged warning if ingest fails (never a crash)
+
+**Given** imported images/audio **When** assigned **Then** icons/portraits appear in the command card and hero picker, and audio refs slot into `CombatFeedbackProfile` and the 11.9 unit sound sets
+
+**Given** `projectiles.json` **When** authored **Then** projectile visuals (mesh/scale/trail ref) are assignable per unit attack (the 3.12 delivery flag's visual half) — the GDD package schema's projectile file finally has an owner
+
+_Covers: FR-72. Depends on: 12.1, 3.5, 2.7._
+
+> Gap-closure (2026-07-01). Ingest is presentation-only (meshes/textures/sounds are never sim state); determinism untouched. VAT baking for animated imports is post-1.0 (imports render with idle-static fallback under 10.15 — documented limitation).
+
+### Story 12.3: Packaging and hash coverage
+
+As a creator,
+I want my assets to travel inside the scenario package with integrity guarantees,
+So that what I publish is exactly what players receive.
+
+**Acceptance Criteria:**
+
+**Given** a package export **When** `.chimera.zip` writes **Then** `assets/` is bundled per the GDD schema, `checksum.sha256` covers asset bytes, the manifest records per-asset hashes + the attestation, and package size respects the 12.1 cap with a pre-publish size report
+
+**Given** an import of a packaged scenario on a fresh install **When** loaded **Then** assets ingest from the package (no global-folder dependency), and a tampered asset (hash mismatch) fails closed with a clear message
+
+**Given** the publish flow (9.7/9.8) **When** a package with custom assets publishes **Then** the mod.io upload includes them and the quality-gate thumbnail/screenshot requirements can be satisfied from imported images
+
+_Covers: FR-72. Depends on: 12.1, 12.2; integrates with 9.7/9.8._
+
+> Gap-closure (2026-07-01): closes "author→publish asset bundling is severed — no AC ever copies custom assets into the zip".
+
+### Story 12.4: Multiplayer content sync — the "Update Required" flow
+
+As a multiplayer player,
+I want mismatched content to fix itself with one click,
+So that "content synced" is a real gate, not a label.
+
+**Acceptance Criteria:**
+
+**Given** an MP lobby on a scenario I lack or have at the wrong version **When** the 9.6/9.17 content gate detects it **Then** an "Update Required" affordance offers a one-click mod.io download of the exact version (mod ID + file version + hash per the GDD flow), with progress, and re-verifies the hash before flipping my slot to synced
+
+**Given** a host selecting an UNPUBLISHED custom-asset scenario for MP **When** the lobby builds **Then** hosting is blocked with a "Publish first (unlisted is fine)" affordance that deep-links the 9.7 publish flow — the mod.io-mediated sync decision, documented (no peer-to-peer file transfer protocol in 1.0)
+
+**Given** all peers synced **When** Start fires **Then** the 9.17 full-content handshake passes by construction (download → identical bytes → identical canonical hash), negative-tested with a stale-version peer
+
+_Covers: FR-72. Depends on: 12.3, 9.10 (browser/subscribe), 9.17._
+
+> Gap-closure (2026-07-01): closes "'All content synced' is a gate with no sync" + "no in-lobby content acquisition (GDD's Update Required flow)". mod.io-mediated beats P2P transfer for a solo-dev 1.0: one distribution rail, one moderation rail.
+
+## Epic 13: Prologue Campaign
+
+_A 3-mission scripted tutorial arc built on the Epic 7 vocabulary as its proving ground. Added by the 2026-07-01 sprint-change proposal; GDD reconciled from "5–8 missions" to a 3-mission 1.0 prologue that grows post-1.0. Missions are authored IN the creation suite (dogfooding: if the editor can't build the campaign, the editor isn't done)._
+
+### Story 13.1: Campaign framework — sequence, unlock, briefings, autosave
+
+As a player,
+I want a campaign entry that tracks my progress through ordered missions,
+So that the Campaign button leads somewhere real.
+
+**Acceptance Criteria:**
+
+**Given** the campaign manifest (ordered mission list: scenario ref + title + briefing text + unlock rule) **When** Mode Select → Campaign opens **Then** a mission-select screen shows the 3 missions with locked/unlocked/completed states, completion persists across sessions, and the Mode Select denominator binds to the manifest count (N/3)
+
+**Given** a mission launch **When** it starts **Then** the 7.15 briefing surface presents the mission briefing (with 10.8c subtitles), an 11.7 autosave writes at mission start, and mission completion (Victory verdict) marks progress + unlocks the next mission with a completion card
+
+**Given** a mission failure (Defeat verdict) **When** it resolves **Then** Retry / Load / Quit options present, and Retry restarts the mission cleanly
+
+_Covers: FR-73. Depends on: 7.15, 11.4, 11.7._
+
+> Gap-closure (2026-07-01): closes the VERIFIED blocker "Campaign & Tutorial is a shipped dead-end button". Framework is data-driven (a campaign is a manifest — creators can author campaigns post-1.0 with the same file).
+
+### Story 13.2: Mission 1 — "First Exchange" (movement, vision, and the first fight)
+
+As a new Commander,
+I want a first mission that teaches camera, selection, movement, and a guarded first skirmish,
+So that I learn the game by playing it.
+
+**Acceptance Criteria:**
+
+**Given** mission 1 (authored in the creation suite with 7.x triggers/objectives/regions/cameras — zero engine-side special cases) **When** played **Then** it tutorializes camera control, selection, move/attack-move, and fog (staged objectives with 7.15 display, region-gated progression, `MoveCamera` beats, hint messages), ending in a scripted small fight and Victory
+
+**Given** a fresh player profile **When** they complete the mission **Then** completion time lands in the target band (~10 minutes), and every objective is completable without prior RTS knowledge (validated in the 10.17 usability protocol)
+
+_Covers: FR-73. Depends on: 13.1, 7.13, 7.15, 6.6, 6.11._
+
+> Gap-closure (2026-07-01). The dogfood rule is the point: this mission is the acceptance test for the trigger/camera/objective vocabulary.
+
+### Story 13.3: Mission 2 — economy, production, and heroes
+
+As a new Commander,
+I want a second mission that teaches base-building, the two resources, production choice, and my first hero,
+So that the core loop and the hero game are learned in play.
+
+**Acceptance Criteria:**
+
+**Given** mission 2 **When** played **Then** staged objectives teach worker/gathering (Ore then Crystal), supply, production picker (2.8), a research (4.8), and a hero with XP/level-up and a first item pickup (3.13/3.15) — each beat trigger-verified before the next unlocks
+
+**Given** the mission's combat beats **When** they run **Then** denial/ack/alert feedback (11.8/11.9) is exercised naturally (scripted raid triggers the under-attack alert), ending in a defended base + counter-push Victory
+
+_Covers: FR-73. Depends on: 13.2, 3.13, 3.15, 4.8._
+
+> Gap-closure (2026-07-01). Mission 2 is deliberately the integration test for the hero/research/item runtimes in a guided setting.
+
+### Story 13.4: Mission 3 — the full match + campaign polish pass
+
+As a new Commander,
+I want a finale that is a real match against the AI with light scripting,
+So that finishing the prologue means I can play skirmish.
+
+**Acceptance Criteria:**
+
+**Given** mission 3 (full 1v1 vs Normal AI on a shipped map with opening guidance triggers, then hands-off) **When** completed **Then** the campaign completes with a closing card that points to Skirmish and Create, and campaign completion state reflects on Mode Select
+
+**Given** the whole arc **When** the campaign polish pass runs **Then** an end-to-end playthrough (all 3 missions, fresh profile) is executed as a recorded 10.17-style gate: pacing/difficulty/clarity verdicts filed, blockers fixed before the epic closes, and briefings/outros read cleanly with subtitles on
+
+_Covers: FR-73. Depends on: 13.3, 10.1._
+
+> Gap-closure (2026-07-01). The prologue exit bar: a person who has never played an RTS finishes mission 3 and knows how to start a skirmish. That is the 1.0 onboarding promise.

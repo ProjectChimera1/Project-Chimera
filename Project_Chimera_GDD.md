@@ -177,7 +177,7 @@ Beyond the in-match Hero archetype, Chimera supports **persistent artifacts** �
 - **Deterministic load, multiplayer-safe.** At match start a player's saved profile is applied as **deterministic initial state** (init-time data, never a mid-game snapshot), so persistence works in online/multiplayer games without breaking lockstep determinism. Online profiles are **stored and validated server-side** (not raw client save-codes) to prevent tampering — consistent with the server-authoritative command-validation model (§6).
 - **Save/Load Interface (hero picker).** A platform-provided UI — a visual hero picker, not text codes — lets a player manage saved heroes/profiles for a scenario or scenario family (each slot shows portrait, level, signature ability) and load/save/overwrite with confirmation; multiple saved heroes per player. The creator enables and configures it per scenario.
 
-This is distinct from a full mid-game single-player save/resume (full-world serializer), which is a separate, post-1.0 capability.
+This is distinct from a full mid-game single-player save/resume (full-world serializer) — which *[updated 2026-07-01, approved sprint-change proposal]* now **ships in 1.0** (Epic 11, Stories 11.6/11.7: versioned full-world snapshot with a checksum-verified resume, SP only; multiplayer mid-match save remains post-1.0).
 
 ### Movement and command system
 
@@ -290,7 +290,7 @@ The MVP creation suite contains six essential tools:
 
 **Entity Placer.** Drag from a palette panel, place in world. Raycast from mouse position to terrain collision, instantiate a preview ghost, confirm placement on click. Grid snap and free placement modes toggle via hotkey. Placed entities store position, rotation, owner, and type ID in the scenario data.
 
-**Start Position Definer.** Simple flag markers assigned to player numbers. Minimum 2, maximum 8. Each start position includes a configurable starting unit/building list and starting resource amounts.
+**Start Position Definer.** Simple flag markers assigned to player numbers. Minimum 2, maximum 8. Each start position includes a configurable starting unit/building list and starting resource amounts. *[1.0 reconciliation (sprint-change proposal 2026-07-01): 1.0 authors and verifies **2–4** start positions (Story 6.9), matching the verified ≤4-player multiplayer scale; 5–8 is the post-1.0 fast-follow alongside 8-player matches.]*
 
 **Resource Node Placer.** Select from a palette of resource node types (Ore Deposit, Crystal Formation, or creator-defined types). Place on terrain with configurable total supply per node.
 
@@ -535,7 +535,7 @@ The roadmap spans **19–31 months** across six phases. Each phase ends with a p
 
 **Objective:** Build a compelling single-player RTS that is fun on its own merits, independent of any creation tools.
 
-**Deliverables:** One complete faction with **8–12 units and 4–6 buildings**. Resource gathering with two resource types. Base building with construction mechanics. Combat system with damage/armor matrix. AI opponent with finite state machine behavior at 2 difficulty levels. Fog of war. 3–5 hand-crafted skirmish maps. A guided tutorial campaign of 5–8 missions. *[1.0 reconciliation (readiness 2026-06-21): 5–8 is the canonical campaign scope; the UX Mode-Select "Campaign N/12" denominator (UX-DR68) is a placeholder mockup value and should be bound to the real shipped mission count, not a hardcoded 12.]* UI for selection, commands, build menus, minimap. Save/load game state.
+**Deliverables:** One complete faction with **8–12 units and 4–6 buildings**. Resource gathering with two resource types. Base building with construction mechanics. Combat system with damage/armor matrix. AI opponent with finite state machine behavior at 2 difficulty levels. Fog of war. 3–5 hand-crafted skirmish maps. A guided tutorial campaign of 5–8 missions. *[1.0 reconciliation (readiness 2026-06-21): 5–8 is the canonical campaign scope; the UX Mode-Select "Campaign N/12" denominator (UX-DR68) is a placeholder mockup value and should be bound to the real shipped mission count, not a hardcoded 12.]* *[1.0 re-reconciliation (sprint-change proposal 2026-07-01, approved): the 1.0 campaign is a **3-mission prologue** (Epic 13 — basics → economy/combat/heroes → full match), authored in the creation suite on the Epic 7 trigger vocabulary; the 5–8 mission arc is the post-1.0 growth target. Mode Select binds to the real count (N/3).]* UI for selection, commands, build menus, minimap. Save/load game state.
 
 **Success criteria:** External playtesters find the core loop fun in blind tests. Average session length exceeds 30 minutes. The question "when can I play more?" emerges organically.
 
@@ -557,7 +557,7 @@ The roadmap spans **19–31 months** across six phases. Each phase ends with a p
 
 ### Phase 3 — Multiplayer (months 14–20)
 
-**Objective:** Add networked play for 2–8 players with full anti-cheat.
+**Objective:** Add networked play for 2–8 players with full anti-cheat. *[1.0 reconciliation (2026-07-01): 1.0 ships verified 2–4 player multiplayer WITH teams/alliances (2v2 — Stories 7.11/9.15/9.16); 8-player is the post-1.0 constant-bump fast-follow. Anti-cheat = server-authoritative command validation per the §6 lockstep reconciliation note.]*
 
 **Deliverables:** Deterministic simulation layer with fixed-point math. Server-authoritative command-based networking via ENet. Dedicated server builds (Linux Docker). Nakama integration for lobby, matchmaking, and authentication. 1v1 and 2v2 support. Spectator mode. Replay system (nearly free with deterministic simulation — record the command stream, replay it). Basic anti-cheat (server fog of war, command validation, content hashing). 3–5 competitive maps balanced for multiplayer.
 

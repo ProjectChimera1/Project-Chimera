@@ -199,3 +199,27 @@ surface proves one is missing (log it if so).
 - **Don't** convey state by color alone — pair `{colors.ok}`/`warn`/`danger` with icon/label.
 - **Don't** introduce rounded corners (radius) — the language is chamfered. `.kbd` is the sole, intentional exception.
 - **Don't** reintroduce the shelved bio-alchemy retheme; the Chimera Seal mark is the agreed extent of the motif.
+
+---
+
+## Addendum 2026-07-01 — Gap-closure screens (approved sprint-change proposal)
+
+Ratified by `sprint-change-proposal-2026-07-01.md`. Full UX-DR authoring happens per-story (the 3.11 precedent); this addendum records the NEW screens/surfaces the design system must cover and two amendments to existing specs:
+
+**Amendments to existing spec:**
+- **UX-DR68 (Mode Select) amended:** Skirmish reads 1–4 (not 1–8); Campaign & Tutorial binds to the real mission count (N/3, Epic 13); the ranked/MMR/live-online-count placeholder elements are REMOVED — the honesty invariant: no front-end element may advertise an unbuilt system (enforced by Story 11.12).
+- **Player-count surfaces:** all slot grids (lobby UX-DR69, skirmish setup) render 2–4 slots for 1.0; 8 is post-1.0.
+
+**New screens/surfaces (design-system components, tooltip mandate applies):**
+- Skirmish setup screen — map list w/ minimap previews + per-slot Open/AI(difficulty)/faction/team/color (11.1)
+- In-match menu overlay (Esc/F10) w/ SP pause + game-speed; Save/Load slots UI + autosave indicator (11.2, 11.6, 11.7)
+- Victory/defeat + score screen w/ per-player stats + army-value graph (11.4); concede/leave confirms (11.3)
+- Staged loading screen + briefing surface w/ objectives + subtitles (11.5, 7.15)
+- Under-attack alert + minimap ping/camera-box + denial/ack feedback + order-confirmed marker (11.8, 11.9)
+- Buff/debuff icons + multi-select type-grouped panel + subgroup tabs (11.10); production queue strip w/ cancel (11.11)
+- Settings Graphics tab: resolution/window mode/vsync/quality/UI scale (11.12)
+- Editor: region draw tool + pathability overlay + prop palette + New-Map dialog + multi-select/copy-paste + camera tool (6.6–6.11)
+- Trigger debugger overlay: variable watch + fired-trigger log (7.16); quest-log panel + objective toasts (7.15)
+- Item editor card + shop panel + hero inventory grid (3.16); research nodes in tech-tree editor + research buttons (4.9)
+- Import Manager panel w/ validation errors + previews + attestation (12.1); lobby "Update Required" one-click download states (12.4)
+- Replay browser + playback controls + perspective toggle (9.18); campaign mission-select w/ lock/complete states (13.1)
