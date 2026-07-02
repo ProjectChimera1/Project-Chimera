@@ -636,6 +636,7 @@ claude-opus-4-8 (`gds-dev-story`).
 - **AC3.2 ordering:** `DoSpawnWorker` now applies `SupplyCost=0`/`GatherState`/`CarryCapacity` **after** `ApplyUnitDefinition` (the mapper sets `SupplyCost = def.Supply = 1`, which the free-supply override must supersede) — editor-placed workers stay free-supply, byte-for-byte.
 - **AC2.3 no-regression:** `costSuffix` is empty for every `cost_crystal:0` unit, so their train-button text is byte-for-byte unchanged; the new `CanAffordCrystal(0)`/`SpendCrystal(0)` are no-ops. Proven by `TrainUnit_ZeroCrystalUnit_UnaffectedByNewCheck_EvenWithZeroCrystalBank_Regression`.
 - All 5 ACs met; 14 new Tier-1 tests + 1 new golden (the 14th).
+- **AC1.1 human-confirmed in-engine (2026-07-02):** developer performed the manual selection gesture himself in a live Play-mode skirmish — clicked a P1 Alpha Acolyte and visually verified the "Matter Infusion" ability card renders stacked, non-overlapping, above the worker's build card. The button correctly showed greyed `"[need crystal]"` (map P1 starts with 0 crystal), corroborating both the co-display (AC1.1) and the affordability-text wiring (AC2.2) beyond the automated `/godot-verify` node-state read.
 
 ### File List
 
