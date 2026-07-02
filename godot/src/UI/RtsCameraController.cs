@@ -17,8 +17,9 @@ namespace ProjectChimera.UI
     {
         [Export] public float PanSpeed { get; set; } = 30.0f;
         [Export] public float EdgeScrollMargin { get; set; } = 20.0f; // px
-        /// <summary>Whether edge-of-screen panning is active. Toggled in-game with E.</summary>
-        [Export] public bool EdgeScrollEnabled { get; set; } = true;
+        /// <summary>Whether edge-of-screen panning is active. Off by default (avoids the camera flinging
+        /// to a corner on load); toggle it on in-game with E.</summary>
+        [Export] public bool EdgeScrollEnabled { get; set; } = false;
         [Export] public float ZoomStep { get; set; } = 8.0f;
 
         /// <summary>Multiplier applied on top of PanSpeed. Set from SettingsManager.</summary>
