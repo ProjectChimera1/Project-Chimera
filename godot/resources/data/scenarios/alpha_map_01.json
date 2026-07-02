@@ -9,6 +9,7 @@
       "slot": 0,
       "faction_json": "res://resources/data/factions/alpha_faction.json",
       "start_ore": 200,
+      "start_crystal": 100,
       "base_x": -38.88743,
       "base_z": 0.047416687
     },
@@ -16,6 +17,7 @@
       "slot": 1,
       "faction_json": "res://resources/data/factions/alpha_faction.json",
       "start_ore": 200,
+      "start_crystal": 100,
       "base_x": 38.93686,
       "base_z": -1.5269203
     }

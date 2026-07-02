@@ -56,6 +56,18 @@ namespace ProjectChimera.Sim.Tests.Validation
         }
 
         [Fact]
+        public void NegativeStartCrystal_IsRejected_LocatingStartCrystal()
+        {
+            // start_crystal reuses the same CheckNonNeg guard as start_ore (rejects negative AND NaN). Slot [1] proves
+            // the crystal check reports the correct per-slot location, not a hardcoded index.
+            var m = ValidModel();
+            m.PlayerSlots[1].StartCrystal = -1f;
+            ValidationResult r = NewValidator().Validate(m);
+            Assert.False(r.Ok);
+            Assert.Contains("player_slots[1].start_crystal", r.Error!);
+        }
+
+        [Fact]
         public void InfiniteBaseX_IsRejected_LocatingBaseX()
         {
             var m = ValidModel();

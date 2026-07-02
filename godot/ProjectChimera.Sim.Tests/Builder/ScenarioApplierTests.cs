@@ -204,6 +204,43 @@ namespace ProjectChimera.Sim.Tests.Builder
         }
 
         [Fact]
+        public void Apply_SeedsStartingCrystal_PerSlot_FromStartCrystalField()
+        {
+            // Starting crystal is now data-driven per slot (so worker abilities like matter_infusion are affordable at
+            // match start). Asymmetric values prove the value is mapped per-slot, not a shared constant.
+            ScenarioData model = BuildAlphaModel();
+            model.PlayerSlots[0].StartCrystal = 100f;
+            model.PlayerSlots[1].StartCrystal =  50f;
+            var (host, applier) = NewHostAndApplier();
+
+            ValidationResult r = new ScenarioValidator().Validate(model);
+            Assert.True(r.Ok, r.Error);
+            applier.Apply(r.Value);
+
+            Assert.Equal(Fixed.FromFloat(100f), host.Resources.Crystal[(int)Faction.Player1]);
+            Assert.Equal(Fixed.FromFloat( 50f), host.Resources.Crystal[(int)Faction.Player2]);
+            // Ore is unaffected by the crystal seed (independent resource pool).
+            Assert.Equal(Fixed.FromFloat(200f), host.Resources.Ore[(int)Faction.Player1]);
+        }
+
+        [Fact]
+        public void Apply_DefaultStartCrystalIsZero_AddsNoCrystal_GoldenSafetyInvariant()
+        {
+            // The applier golden's in-code model omits StartCrystal (defaults to 0). This pins that a 0 seed is a
+            // no-op AddCrystal, so that golden's SimChecksum cannot move. If this ever fails, the golden — and any
+            // other crystal-free pinned baseline — must be deliberately re-recorded.
+            ScenarioData model = BuildAlphaModel(); // StartCrystal unset → 0f on both slots
+            var (host, applier) = NewHostAndApplier();
+
+            ValidationResult r = new ScenarioValidator().Validate(model);
+            Assert.True(r.Ok, r.Error);
+            applier.Apply(r.Value);
+
+            Assert.Equal(Fixed.Zero, host.Resources.Crystal[(int)Faction.Player1]);
+            Assert.Equal(Fixed.Zero, host.Resources.Crystal[(int)Faction.Player2]);
+        }
+
+        [Fact]
         public void SpawnUnit_AllocatesZeroBytes_AfterWarmup()
         {
             var (_, applier) = NewHostAndApplier();

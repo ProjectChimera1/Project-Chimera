@@ -33,6 +33,17 @@ namespace ProjectChimera.Core.Definitions
         [JsonPropertyName("start_ore")]
         public float StartOre { get; set; } = 200f;
 
+        /// <summary>Starting crystal balance for this slot's faction. Defaults to 0 and is OMITTED from serialization
+        /// when 0 (<see cref="JsonIgnoreCondition.WhenWritingDefault"/>), so pre-existing scenarios, procedurally
+        /// generated maps, and the in-code golden/hash mirrors that never set it serialize byte-for-byte identically —
+        /// no map-identity or golden hash moves. The 0f initializer equals the float type-default, so omit-then-restore
+        /// round-trips exactly. NOTE: intentionally NOT folded into <see cref="CanonicalModelHash"/> yet; see the
+        /// documented-exclusions note there (deferred alongside the Triggers gap until lockstep MP makes the lobby
+        /// start-state handshake load-bearing).</summary>
+        [JsonPropertyName("start_crystal")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+        public float StartCrystal { get; set; } = 0f;
+
         /// <summary>World X of the faction deposit / rally base point.</summary>
         [JsonPropertyName("base_x")]
         public float BaseX { get; set; }

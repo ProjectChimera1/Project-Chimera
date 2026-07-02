@@ -112,6 +112,7 @@ namespace ProjectChimera.Core.Definitions
                         $"scenario.player_slots[{i}].slot={s.Slot} is a duplicate.", validated);
 
                 string? e = CheckNonNeg($"scenario.player_slots[{i}].start_ore", s.StartOre)
+                         ?? CheckNonNeg($"scenario.player_slots[{i}].start_crystal", s.StartCrystal)
                          ?? CheckCoord($"scenario.player_slots[{i}].base_x", s.BaseX, bounds)
                          ?? CheckCoord($"scenario.player_slots[{i}].base_z", s.BaseZ, bounds);
                 if (e != null) return ValidationResult.Fail(e, validated);

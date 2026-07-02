@@ -21,9 +21,12 @@ namespace ProjectChimera.Core.Definitions
         [JsonPropertyName("camera_zoom_speed")]
         public float CameraZoomSpeed { get; set; } = 1.0f;
 
-        /// <summary>Whether edge-of-screen scrolling is enabled at session start.</summary>
+        /// <summary>Whether edge-of-screen scrolling is enabled at session start. Defaults OFF so a fresh start does
+        /// not fling the camera to a corner when the cursor rests near a screen edge; toggle it on in-game with E or
+        /// in Settings. This is the AUTHORITATIVE default — CameraPhase pushes it onto RtsCameraController at boot, so
+        /// the property initializer on the controller never governs.</summary>
         [JsonPropertyName("edge_scroll_enabled")]
-        public bool EdgeScrollEnabled { get; set; } = true;
+        public bool EdgeScrollEnabled { get; set; } = false;
 
         // ── Audio ─────────────────────────────────────────────────────────────
 

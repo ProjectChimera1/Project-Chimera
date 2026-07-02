@@ -85,6 +85,7 @@ namespace ProjectChimera.Core.Sim
                 if (def != null) _host.BuildSys.SetFactionDef(faction, def);
 
                 _host.Resources.AddOre(faction, Fixed.FromFloat(slot.StartOre));
+                _host.Resources.AddCrystal(faction, Fixed.FromFloat(slot.StartCrystal));
                 SetFactionBase(faction, new FixedVec3(
                     Fixed.FromFloat(slot.BaseX), Fixed.Zero, Fixed.FromFloat(slot.BaseZ)));
             }
@@ -150,9 +151,13 @@ namespace ProjectChimera.Core.Sim
             SetFactionBase(Faction.Player1, new FixedVec3(Fixed.FromFloat(-45f), Fixed.Zero, Fixed.Zero));
             SetFactionBase(Faction.Player2, new FixedVec3(Fixed.FromFloat(+45f), Fixed.Zero, Fixed.Zero));
 
-            // Starting ore
+            // Starting ore + crystal. Crystal is seeded here too so worker abilities (e.g. matter_infusion) are
+            // testable on the fallback map; keep these literals in sync with alpha_map_01.json's start_crystal and
+            // ScenarioLoadPhase.BuildFallbackMirror's StartCrystal.
             _host.Resources.AddOre(Faction.Player1, Fixed.FromFloat(200f));
             _host.Resources.AddOre(Faction.Player2, Fixed.FromFloat(200f));
+            _host.Resources.AddCrystal(Faction.Player1, Fixed.FromFloat(100f));
+            _host.Resources.AddCrystal(Faction.Player2, Fixed.FromFloat(100f));
 
             // Resource nodes
             var rate = Fixed.FromFloat(5f);

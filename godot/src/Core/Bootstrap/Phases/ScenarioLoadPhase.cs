@@ -150,8 +150,8 @@ namespace ProjectChimera.Core.Bootstrap
             WinCondition = WinCondition.DestroyAllBuildings,
             PlayerSlots = new[]
             {
-                new ScenarioPlayerSlot { Slot = 0, StartOre = 200f, BaseX = -45f, BaseZ = 0f },
-                new ScenarioPlayerSlot { Slot = 1, StartOre = 200f, BaseX =  45f, BaseZ = 0f },
+                new ScenarioPlayerSlot { Slot = 0, StartOre = 200f, StartCrystal = 100f, BaseX = -45f, BaseZ = 0f },
+                new ScenarioPlayerSlot { Slot = 1, StartOre = 200f, StartCrystal = 100f, BaseX =  45f, BaseZ = 0f },
             },
             ResourceNodes = new[]
             {

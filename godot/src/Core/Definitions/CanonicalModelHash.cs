@@ -15,7 +15,12 @@ namespace ProjectChimera.Core.Definitions
     ///   • collections SORTED by a stable key, so JSON array order cannot change the hash;
     ///   • enums folded by NAME and strings by UTF-8 bytes (ordinal drifts on enum insert);
     ///   • cosmetic <c>Id</c>/<c>DisplayName</c> EXCLUDED, and <c>Triggers</c> EXCLUDED (trigger/effect
-    ///     canonicalization is Epic 7 / D3.4 — a known, bounded handshake gap documented in the story).
+    ///     canonicalization is Epic 7 / D3.4 — a known, bounded handshake gap documented in the story);
+    ///   • <c>ScenarioPlayerSlot.StartCrystal</c> EXCLUDED for now — same bounded-gap treatment as Triggers. It IS
+    ///     sim-affecting (Crystal is folded in SimChecksum), so it MUST be folded here — bumping AlgoVersion 2→3 and
+    ///     re-recording the two pinned-hash baselines (CanonicalModelHashTests byte-exact + ScenarioApplierTests) in
+    ///     the same commit — BEFORE lockstep MP makes this lobby handshake load-bearing. Harmless while MP is
+    ///     inactive; today two clients with mismatched start_crystal would hash-equal here and then desync in-sim.
     /// A <c>0 → 1</c> sentinel guarantees a valid model never hashes to the "no hash" value the fail-open
     /// handshake treats as a skip. The 64-bit <see cref="Compute"/> is exposed for Epic 9 to attest later;
     /// <see cref="ToWire"/> folds it to the existing 32-bit Ready-packet wire used today.
