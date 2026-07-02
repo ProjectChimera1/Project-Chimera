@@ -342,5 +342,84 @@ namespace ProjectChimera.Sim.Tests.Economy
 
             Assert.Equal(UnitCommand.Move, world.CommandState[e]); // untouched: Train never wrote CommandState[b]
         }
+
+        // ── Story 2.9b (AC2) — TrainUnit multi-resource (ore + crystal) atomicity ───────────────────────
+        // A unit that costs BOTH ore and crystal must be refused unless the faction can afford BOTH, and must debit
+        // both exactly once on success — with NO partial spend if either is short (check-both-before-spend-either).
+
+        /// <summary>A faction whose Melee category has a crystal-costed unit (index 1) AND a crystal-free one
+        /// (index 2), so both the multi-resource spend and the cost_crystal:0 regression are exercisable.</summary>
+        private static FactionDefinition CrystalFaction()
+        {
+            var f = new FactionDefinition { Id = "cf", DisplayName = "Crystal" };
+            f.Units.Add(new UnitDefinition { Id = "worker",        Category = "Worker", Hp = 50f });                                   // 0
+            f.Units.Add(new UnitDefinition { Id = "crystal_melee", Category = "Melee",  Hp = 100f, CostOre = 50, CostCrystal = 30 });  // 1
+            f.Units.Add(new UnitDefinition { Id = "free_melee",    Category = "Melee",  Hp = 100f, CostOre = 50, CostCrystal = 0 });   // 2
+            return f;
+        }
+
+        private static (BuildingSystem sys, BuildingStore buildings, ResourceStore resources)
+            CrystalHarness(int ore, int crystal)
+        {
+            var buildings = new BuildingStore();
+            var resources = new ResourceStore(Fixed.Zero);
+            resources.Ore[(int)Faction.Player1]       = Fixed.FromInt(ore);
+            resources.Crystal[(int)Faction.Player1]   = Fixed.FromInt(crystal);
+            resources.SupplyCap[(int)Faction.Player1] = 500;
+            var sys = new BuildingSystem(buildings, resources, CrystalFaction());
+            return (sys, buildings, resources);
+        }
+
+        [Fact]
+        public void TrainUnit_AffordingOreAndCrystal_TrainsAndSpendsBothExactlyOnce()
+        {
+            var (sys, buildings, resources) = CrystalHarness(ore: 100, crystal: 100);
+            int b = sys.PlaceBuildingDirect(BuildingType.Barracks, Faction.Player1, FixedVec3.Zero, preBuilt: true);
+
+            Assert.True(sys.TrainUnit(b, resources, chosenUnitIndex: 1)); // crystal_melee: 50 ore + 30 crystal
+            Assert.NotEqual(0, buildings.ProductionQueue[b]);                                          // queued
+            Assert.Equal(Fixed.FromInt(50).Raw, resources.Ore[(int)Faction.Player1].Raw);     // 100 - 50 (exactly once)
+            Assert.Equal(Fixed.FromInt(70).Raw, resources.Crystal[(int)Faction.Player1].Raw); // 100 - 30 (exactly once)
+        }
+
+        [Fact]
+        public void TrainUnit_SufficientOre_InsufficientCrystal_Refuses_SpendsNEITHER()
+        {
+            // The partial-spend regression this task's ordering prevents: ore passes, crystal fails → spend NOTHING.
+            // A test that only checked "training refused" without checking "ore stayed unspent" would miss this bug.
+            var (sys, buildings, resources) = CrystalHarness(ore: 100, crystal: 10); // 10 < 30 crystal
+            int b = sys.PlaceBuildingDirect(BuildingType.Barracks, Faction.Player1, FixedVec3.Zero, preBuilt: true);
+
+            Assert.False(sys.TrainUnit(b, resources, chosenUnitIndex: 1));
+            Assert.Equal(Fixed.FromInt(100).Raw, resources.Ore[(int)Faction.Player1].Raw);      // ore NOT spent
+            Assert.Equal(Fixed.FromInt(10).Raw,  resources.Crystal[(int)Faction.Player1].Raw);  // crystal NOT spent
+            Assert.Equal(0, buildings.ProductionQueue[b]);                                       // nothing queued
+        }
+
+        [Fact]
+        public void TrainUnit_SufficientCrystal_InsufficientOre_Refuses_SpendsNeither()
+        {
+            var (sys, buildings, resources) = CrystalHarness(ore: 20, crystal: 100); // 20 < 50 ore
+            int b = sys.PlaceBuildingDirect(BuildingType.Barracks, Faction.Player1, FixedVec3.Zero, preBuilt: true);
+
+            Assert.False(sys.TrainUnit(b, resources, chosenUnitIndex: 1));
+            Assert.Equal(Fixed.FromInt(20).Raw,  resources.Ore[(int)Faction.Player1].Raw);      // ore NOT spent
+            Assert.Equal(Fixed.FromInt(100).Raw, resources.Crystal[(int)Faction.Player1].Raw);  // crystal NOT spent
+            Assert.Equal(0, buildings.ProductionQueue[b]);
+        }
+
+        [Fact]
+        public void TrainUnit_ZeroCrystalUnit_UnaffectedByNewCheck_EvenWithZeroCrystalBank_Regression()
+        {
+            // AC2.3: a cost_crystal:0 unit trains exactly as before even with an empty crystal bank — the new check is
+            // a no-op for it (CanAffordCrystal(0) is always true, SpendCrystal(0) debits nothing).
+            var (sys, buildings, resources) = CrystalHarness(ore: 100, crystal: 0);
+            int b = sys.PlaceBuildingDirect(BuildingType.Barracks, Faction.Player1, FixedVec3.Zero, preBuilt: true);
+
+            Assert.True(sys.TrainUnit(b, resources, chosenUnitIndex: 2)); // free_melee: 50 ore, 0 crystal
+            Assert.NotEqual(0, buildings.ProductionQueue[b]);
+            Assert.Equal(Fixed.FromInt(50).Raw, resources.Ore[(int)Faction.Player1].Raw);   // 100 - 50 ore
+            Assert.Equal(Fixed.Zero.Raw,        resources.Crystal[(int)Faction.Player1].Raw); // crystal untouched
+        }
     }
 }

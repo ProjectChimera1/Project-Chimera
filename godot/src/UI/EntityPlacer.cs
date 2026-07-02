@@ -439,21 +439,23 @@ namespace ProjectChimera.UI
             int id = _world.Create(pos, faction, Fixed.FromFloat(hp), Fixed.FromFloat(speed));
             if (id < 0) { GD.PrintErr("[EntityPlacer] EntityWorld full."); return -1; }
 
+            // Story 2.9b (AC3): route through the single def→SoA mapper (A2 rule) so a placed worker gets its authored
+            // abilities/max_energy — and Category/CollisionRadius/SeparationPriorityOf/FeedbackProfile exactly as
+            // before — like ScenarioApplier.SpawnUnit and DoSpawnCombatUnit already do. Supersedes the Story 1.13
+            // hand-copy exception, whose "workers carry no combat stats" rationale no longer holds now that a worker
+            // can cast. With no def, the Create() defaults stand.
+            if (def != null)
+            {
+                _world.ApplyUnitDefinition(id, def);
+            }
+
+            // Worker-specific state, applied AFTER the mapper so these intentionally OVERRIDE it: an editor-placed
+            // worker is always FREE supply (ApplyUnitDefinition set SupplyCost = def.Supply = 1) — a deliberate,
+            // pre-existing divergence from ScenarioApplier.SpawnUnit, out of scope to reconcile here — plus the
+            // gather-loop starting state. MUST come after the mapper (AC3.2), else SupplyCost silently becomes 1.
             _world.SupplyCost[id]    = 0;
             _world.GatherState[id]   = GatherState.Idle;
             _world.CarryCapacity[id] = Fixed.FromFloat(WORKER_CARRY);
-
-            // Story 1.13 (review fix): workers carry no combat stats, so they take only the per-unit separation/
-            // formation fields directly (not the full ApplyUnitDefinition combat copy) — a placed worker still gets
-            // its authored collision_radius / separation_priority and Category=Worker (back-line) instead of the
-            // Create() Melee/default. With no def, the Create defaults stand.
-            if (def != null)
-            {
-                _world.CollisionRadius[id]      = EntityWorld.ClampCollisionRadius(def.CollisionRadius);
-                _world.SeparationPriorityOf[id] = def.ParsedSeparationPriority;
-                _world.CategoryOf[id]           = def.ParsedCategory;
-                _world.FeedbackProfile[id]      = def.CombatFeedback; // Story 2.7: workers bypass ApplyUnitDefinition, so hand-copy the override too (else a placed worker's death-effect override would be inert).
-            }
 
             int workerMesh = def != null ? (fdef?.IndexOfUnit(def.Id) ?? -1) : -1;
             _world.MeshType[id] = (byte)(workerMesh < 0 ? 0 : workerMesh);

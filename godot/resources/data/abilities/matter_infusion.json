@@ -1,0 +1,20 @@
+{
+  "id": "matter_infusion",
+  "display_name": "Matter Infusion",
+  "targeting": "Self",
+  "cost_energy": 15,
+  "cost_ore": 15,
+  "cost_crystal": 10,
+  "cooldown": 20,
+  "effect": {
+    "kind": "apply_modifier",
+    "modifier": {
+      "id": 1002,
+      "duration_ticks": 90,
+      "stacking": "Refresh",
+      "max_stacks": 1,
+      "move_speed_delta": 1,
+      "status": "None"
+    }
+  }
+}

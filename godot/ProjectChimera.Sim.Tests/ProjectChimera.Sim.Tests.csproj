@@ -79,6 +79,12 @@
     <EmbeddedResource Include="Golden\anti-building-scenario.golden.txt" />
     <None Remove="Golden\ability-domain-filter-scenario.golden.txt" />
     <EmbeddedResource Include="Golden\ability-domain-filter-scenario.golden.txt" />
+    <!-- Story 2.9b (AC4.2) — worker-cast + crystal-cost golden (a gathering P1 worker casts a crystal-costed Self
+         ability at tick 1; Player2 empty so the AI no-ops). First golden with a WORKER cast AND a crystal debit.
+         Integer/Fixed-only → CROSS-PLATFORM SAFE, compared on both CI legs. NEW file; the 13 goldens above are NOT
+         re-recorded (AlgoVersion stays 8, no fold). -->
+    <None Remove="Golden\worker-cast-crystal-cost-scenario.golden.txt" />
+    <EmbeddedResource Include="Golden\worker-cast-crystal-cost-scenario.golden.txt" />
   </ItemGroup>
 
   <ItemGroup>

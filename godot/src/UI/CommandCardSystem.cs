@@ -75,6 +75,12 @@ namespace ProjectChimera.UI
         /// <summary>Entity ID of the last focused caster whose ability card was refreshed. Read by button callbacks.</summary>
         private int _lastFocusedCasterId = -1;
 
+        /// <summary>Cached ability-panel positions (Story 2.9b). Normal = the shared HUD slot (a standalone combat
+        /// caster keeps this). Stacked = raised one worker-card height + an 8px gap so the ability card sits ABOVE the
+        /// co-displayed worker (build) card. Computed ONCE in <see cref="BuildAbilityPanel"/>, not per-frame.</summary>
+        private Vector2 _abilityPanelNormalPos;
+        private Vector2 _abilityPanelStackedPos;
+
         private static readonly BuildingType[] WORKER_BUILD_TYPES =
         {
             BuildingType.CommandCenter,
@@ -153,11 +159,12 @@ namespace ProjectChimera.UI
                 && _world.FactionOf[focusId] == Faction.Player1
                 && _world.GatherState[focusId] != GatherState.Inactive;
 
-            // Story 2.4b: a focused P1 combat caster (≥1 resolved ability) shows the ability card. A unit that is BOTH
-            // a gatherer and ability-bearing → the worker card wins (Decision C; worker-cast is Story 2.9b), hence
-            // the !workerSelected guard. Reads the per-entity AbilityCount SoA directly (set by ApplyUnitDefinition).
+            // Story 2.9b (AC1.1): a focused P1 unit with ≥1 resolved ability shows the ability card — INCLUDING a
+            // worker. Decision C is reversed now that worker-cast ships: the old `&& !workerSelected` term (which
+            // suppressed a worker's ability card in favour of its build card) is dropped, so a worker that is BOTH a
+            // gatherer and ability-bearing shows the ability card TOGETHER WITH the worker card (stacked, not
+            // overlapping — see the reposition below). Reads the per-entity AbilityCount SoA directly (set by ApplyUnitDefinition).
             bool abilitySelected = !buildingSelected
-                && !workerSelected
                 && _world != null
                 && focusId >= 0
                 && _world.IsAlive(focusId)
@@ -166,6 +173,11 @@ namespace ProjectChimera.UI
 
             _panel.Visible        = buildingSelected;
             _workerPanel.Visible  = workerSelected;
+            // Story 2.9b (AC1.1): when co-displayed with the worker card, stack the ability card ABOVE it (non-
+            // overlapping); a standalone combat caster keeps it at the normal HUD slot. Repositioned only while
+            // visible, right before the visibility flip.
+            if (abilitySelected)
+                _abilityPanel.Position = workerSelected ? _abilityPanelStackedPos : _abilityPanelNormalPos;
             _abilityPanel.Visible = abilitySelected;
 
             if (buildingSelected) RefreshCard(bId);
@@ -257,25 +269,34 @@ namespace ProjectChimera.UI
                     var (unitIndex, def) = options[i];
                     _trainUnitIndices[i]  = unitIndex;
 
-                    int   costOre   = def.CostOre;
-                    float trainTime = def.TrainTime;
-                    byte  supply    = (byte)def.Supply;
+                    int   costOre     = def.CostOre;
+                    int   costCrystal = def.CostCrystal;   // Story 2.9b (AC2.2)
+                    float trainTime   = def.TrainTime;
+                    byte  supply      = (byte)def.Supply;
 
                     bool    canAfford     = _resources.CanAffordOre(faction, Fixed.FromFloat(costOre));
+                    // Story 2.9b (AC2.2): crystal-affordability preview — IDENTICAL to TrainUnit's sim check, in this
+                    // method's own Fixed.FromFloat(cost) local convention (not RefreshAbilityCard's Fixed.FromInt), so
+                    // the greyed-out button never diverges from what the sim would refuse.
+                    bool    crystalOk     = _resources.CanAffordCrystal(faction, Fixed.FromFloat(costCrystal));
                     bool    hasSupply     = _resources.HasSupply(faction, supply);
                     string? missingPrereq = _buildSys.GetUnmetPrereq(bId, unitIndex); // per-candidate prereq
                     bool    prereqsMet    = missingPrereq == null;
 
-                    // Same predicate TrainUnit uses (prereq → supply → ore), plus the single in-flight job. The
-                    // spend itself happens deterministically at exec-tick, not here (this grey-out is prediction only).
-                    _trainBtns[i].Disabled = isTraining || !prereqsMet || !canAfford || !hasSupply;
+                    // Same predicate TrainUnit uses (prereq → supply → ore → crystal), plus the single in-flight job.
+                    // The spend itself happens deterministically at exec-tick, not here (this grey-out is prediction only).
+                    _trainBtns[i].Disabled = isTraining || !prereqsMet || !canAfford || !hasSupply || !crystalOk;
                     // Dim prereq-locked options (don't hide them) so the player sees what unlocks later.
                     _trainBtns[i].Modulate  = prereqsMet ? Colors.White : new Color(1f, 1f, 1f, 0.6f);
 
+                    // Story 2.9b (AC2.3): the crystal suffix appears ONLY for a nonzero cost, so every existing
+                    // cost_crystal:0 unit's button text is byte-for-byte unchanged.
+                    string costSuffix = costCrystal > 0 ? $" · {costCrystal} crystal" : "";
                     string note = !prereqsMet ? $"[need: {missingPrereq}]"
                                 : !canAfford  ? "[need ore]"
+                                : !crystalOk  ? "[need crystal]"
                                 : !hasSupply  ? "[supply full]"
-                                : $"{costOre} ore · {trainTime:F0}s";
+                                : $"{costOre} ore{costSuffix} · {trainTime:F0}s";
                     _trainBtns[i].Text        = $"{def.DisplayName}\n{note}";
                     _trainBtns[i].TooltipText = $"{def.DisplayName} — {costOre} ore, {trainTime:F0}s train"; // NFR-2
                     _trainBtns[i].Visible     = true;
@@ -551,10 +572,15 @@ namespace ProjectChimera.UI
 
             var vpSize = GetViewport().GetVisibleRect().Size;
 
-            // Same command-card region as the worker panel — only one of building/worker/ability shows at a time.
+            // Story 2.9b: cache the ability panel's two Y positions once (not per-frame). Normal = the shared HUD slot
+            // (the sole pre-2.9b position — a standalone combat caster keeps it). Stacked = raised one worker-card
+            // height (175) + an 8px gap (D-3) so the ability card sits ABOVE a co-displayed worker (build) card
+            // instead of overlapping it. (Pre-2.9b only ONE of building/worker/ability showed at a time; worker+ability now co-display.)
+            _abilityPanelNormalPos  = new Vector2(10f, vpSize.Y - 185f);
+            _abilityPanelStackedPos = new Vector2(10f, vpSize.Y - 185f - 175f - 8f); // D-3: 8px gap above the worker card
             _abilityPanel = new Panel();
             _abilityPanel.Size     = new Vector2(420f, 175f);
-            _abilityPanel.Position = new Vector2(10f, vpSize.Y - 185f);
+            _abilityPanel.Position = _abilityPanelNormalPos;
             _abilityPanel.Visible  = false;
             _abilityPanel.MouseFilter = Control.MouseFilterEnum.Stop; // consume clicks so they don't deselect
 

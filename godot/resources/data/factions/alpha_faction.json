@@ -25,7 +25,9 @@
       "supply": 1,
       "mesh_scale": 0.95,
       "train_time": 8.0,
-      "vision_range": 7.0
+      "vision_range": 7.0,
+      "abilities": ["matter_infusion"],
+      "max_energy": 20
     },
     {
       "id": "infantry",

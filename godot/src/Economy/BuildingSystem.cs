@@ -331,8 +331,18 @@ namespace ProjectChimera.Economy
             byte supply = (byte)(def?.Supply ?? 1);
             if (!resources.HasSupply(faction, supply)) return false;
 
-            float costOre = def?.CostOre ?? FALLBACK_COST_ORE;
-            if (!resources.SpendOre(faction, Fixed.FromFloat(costOre))) return false;
+            // Story 2.9b (AC2): multi-resource cost — check BOTH ore and crystal BEFORE spending EITHER, mirroring
+            // AbilityCastSystem.TryCast's check-all-then-debit-all contract. A unit whose ore passes but crystal
+            // fails must spend NOTHING (the partial-spend bug this ordering prevents). No FALLBACK_COST_CRYSTAL
+            // exists, so a null def defaults crystal to 0 (symmetric with the costOre null-coalesce — defensive; an
+            // unresolvable/empty-category def already returns before this point in practice). Every existing
+            // cost_crystal:0 unit is a no-op here (CanAfford/Spend of 0 always succeeds) — AC2.3, byte-for-byte.
+            float costOre     = def?.CostOre     ?? FALLBACK_COST_ORE;
+            float costCrystal = def?.CostCrystal ?? 0f;
+            if (!resources.CanAffordOre(faction, Fixed.FromFloat(costOre)))         return false;
+            if (!resources.CanAffordCrystal(faction, Fixed.FromFloat(costCrystal))) return false;
+            resources.SpendOre(faction, Fixed.FromFloat(costOre));
+            resources.SpendCrystal(faction, Fixed.FromFloat(costCrystal));
 
             // Persist the CONCRETE unit so SpawnTrainedUnit trains exactly this one (not a re-derived
             // first-of-category). Stored as (Units index + 1) so 0 stays "idle". An empty-category default
