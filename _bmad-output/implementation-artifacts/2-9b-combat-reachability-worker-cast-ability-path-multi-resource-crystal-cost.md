@@ -172,10 +172,10 @@ again in-engine).
    v2, `AbilityCooldownTicks` since v7) or already correctly unfolded (`CommandState`/`GatherState`, reached only
    transitively) — this story only adds new call sites into existing, already-hashed machinery, exactly like Story
    2.1's `DirectHpDelta` mutating already-hashed `Health` added no fold. ([[chimera-checksum-fold-timing-rule]])
-6. **The new golden/Tier-1 proof-ability reuses the existing `AbilityTestSupport.SelfHeal(costEnergy, costOre,
-   costCrystal, cooldownSec, heal)` helper** (`AbilityTestSupport.cs:56-62`) — it already parametrizes crystal cost;
-   no new C# test-support code is needed. (It need not match `matter_infusion.json`'s shape — the shipped content
-   and the test fixture serve different purposes, exactly like `battle_fury.json` vs.
+6. **The new golden/Tier-1 proof-ability reuses the existing `AbilityTestAbilities.SelfHeal(costEnergy, costOre,
+   costCrystal, cooldownSec, heal)` helper** (defined in `AbilityTestSupport.cs:56-62`) — it already parametrizes
+   crystal cost; no new C# test-support code is needed. (It need not match `matter_infusion.json`'s shape — the
+   shipped content and the test fixture serve different purposes, exactly like `battle_fury.json` vs.
    `AbilityTestAbilities.BattleFury()` are separate, not derived from one another.)
 
 **Needs Alec's confirmation (recommended defaults baked in so the dev can start):**
@@ -272,14 +272,15 @@ again in-engine).
     Fold into the existing `Disabled`/`note` computation (`:271-278`):
     ```csharp
     _trainBtns[i].Disabled = isTraining || !prereqsMet || !canAfford || !hasSupply || !crystalOk;
+    string costSuffix = costCrystal > 0 ? $" · {costCrystal} crystal" : ""; // AC2.3: unchanged text when free
     string note = !prereqsMet ? $"[need: {missingPrereq}]"
                 : !canAfford  ? "[need ore]"
                 : !crystalOk  ? "[need crystal]"
                 : !hasSupply  ? "[supply full]"
-                : $"{costOre} ore · {trainTime:F0}s";
+                : $"{costOre} ore{costSuffix} · {trainTime:F0}s";
     ```
-    (Only append `· N crystal` to the affordable-case text if `costCrystal > 0`, so zero-crystal units' button text
-    is unchanged — AC2.3.)
+    `costSuffix` is empty for every existing `cost_crystal: 0` unit, so their button text is byte-for-byte
+    unchanged — AC2.3.
 
 - [ ] **Task 4 — Presentation: `EntityPlacer.DoSpawnWorker` routes through `ApplyUnitDefinition`** (AC: 3, 3.1, 3.2)
   - [ ] Replace the 4-field hand-copy block (`EntityPlacer.cs:446-456`) with a call to `_world.ApplyUnitDefinition(id,
@@ -309,7 +310,8 @@ again in-engine).
 
 - [ ] **Task 5 — Tier-1 tests (xUnit, Godot-free)** (AC: 1.2, 1.3, 1.4, 2.1, 2.3, 4)
   - [ ] **Worker-cast affordability + atomicity** (new file `godot/ProjectChimera.Sim.Tests/Effects/WorkerCastTests.cs`,
-    reusing the `AbilityTestSupport` harness — mirror `AbilityAffordabilityTests.cs`'s construction pattern): a
+    reusing `AbilityTestAbilities.SelfHeal(...)` and the existing ability-cast test scaffolding in
+    `AbilityTestSupport.cs` — mirror `AbilityAffordabilityTests.cs`'s construction pattern): a
     `GatherState.Idle` (or `.Gathering`) worker entity with `AbilityTestAbilities.SelfHeal(costEnergy:15, costOre:15,
     costCrystal:10, cooldownSec:20, heal:20)` registered and affordable → casts, all three resources debited exactly
     once, `Health` moves. **Refusal + atomicity:** crystal short (ore/energy sufficient) → refused, **all three**
@@ -496,9 +498,9 @@ scenario.golden.txt` is expected; touching any of the 13 is not.
 - **`RefreshAbilityCard`'s crystal-afford display pattern** (`CommandCardSystem.cs:626-627`) — `RefreshCard`'s
   train-button fix (Task 3) mirrors the same idea in that method's own existing `Fixed.FromFloat` local style, not
   a copy-paste of `RefreshAbilityCard`'s `Fixed.FromInt` style (different method, keep its existing convention).
-- **`AbilityTestSupport.SelfHeal(costEnergy, costOre, costCrystal, cooldownSec, heal)`** (`AbilityTestSupport.cs:
-  56-62`) — already parametrized for crystal cost; use it directly for both Task 5's unit tests and Task 6's
-  golden. Do not add a new `MatterInfusion()` C# test-fixture method — it isn't needed.
+- **`AbilityTestAbilities.SelfHeal(costEnergy, costOre, costCrystal, cooldownSec, heal)`** (defined in
+  `AbilityTestSupport.cs:56-62`) — already parametrized for crystal cost; use it directly for both Task 5's unit
+  tests and Task 6's golden. Do not add a new `MatterInfusion()` C# test-fixture method — it isn't needed.
 - **`ScenarioApplier.SpawnUnit`'s `ApplyUnitDefinition`-then-Worker-extras shape** (`ScenarioApplier.cs:210-224`) —
   the exact template `DoSpawnWorker`'s fix (Task 4) follows, adapted to preserve the existing `SupplyCost=0`
   override (a documented, deliberate divergence — see Regression risks).
@@ -527,12 +529,12 @@ scenario.golden.txt` is expected; touching any of the 13 is not.
   `!workerSelected` term did. No other code needs updating for this reason.
 - **Do not touch `EntityPlacer.RestoreUnit`** (editor undo/redo) — it has the same `ApplyUnitDefinition`-bypass
   gap for ability/energy state as `DoSpawnWorker` had, but it is a separate, larger, already-tracked concern
-  (`UnitSnapshot` widening, `EntityPlacer.cs:1104-1105`'s own comment, and 2.9a's precedent of deferring the
+  (`UnitSnapshot` widening, `EntityPlacer.cs:1120-1123`'s own comment, and 2.9a's precedent of deferring the
   identical class of gap for `AttackDomainOf`). Out of scope here.
-- **`BuildingSystem.SpawnTrainedUnit`** already calls `ApplyUnitDefinition` unconditionally (`BuildingSystem.cs:
-  206`) — it needs no change. (It is currently moot for workers specifically, since `GetProductionUnits` returns
-  empty for `BuildingType.CommandCenter` — no live UI path trains additional workers today; not this story's
-  concern to change.)
+- **`BuildingSystem.SpawnTrainedUnit`** already calls `ApplyUnitDefinition` for any resolved def
+  (`BuildingSystem.cs:204-221`, `if (def != null)` with an else-fallback) — it needs no change. (It is currently
+  moot for workers specifically, since `GetProductionUnits` returns empty for `BuildingType.CommandCenter` — no
+  live UI path trains additional workers today; not this story's concern to change.)
 
 ### Testing standards
 
