@@ -258,8 +258,10 @@ namespace ProjectChimera.Sim.Tests.Builder
                 $"ScenarioApplier.SpawnUnit allocated {after - before} bytes across 256 calls — the spawn path must be allocation-free (AC3).");
         }
 
-        // Pinned canonical-model hash of BuildAlphaModel(). Recorded once from CanonicalModelHash.Compute; an
-        // accidental change to the in-code model (or a hash-algorithm change) flips this and the test fails.
-        private const ulong ExpectedCanonicalHash = 12401609732849360762UL;
+        // Pinned canonical-model hash of BuildAlphaModel(). Recorded from CanonicalModelHash.Compute; an accidental
+        // change to the in-code model (or a hash-algorithm change) flips this and the test fails. Re-recorded
+        // 2026-07-02 for AlgoVersion 3 (Story 2.9b follow-up: StartCrystal folded into the canonical hash — the model
+        // leaves start_crystal at its 0 default, but the AlgoVersion bump alone moves every hash). [gds-code-review]
+        private const ulong ExpectedCanonicalHash = 8107768752238097581UL;
     }
 }

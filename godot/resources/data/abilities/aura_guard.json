@@ -3,6 +3,10 @@
   "display_name": "Guardian Aura",
   "targeting": "None",
   "activation": "aura",
+  "cost_energy": 0,
+  "cost_ore": 0,
+  "cost_crystal": 0,
+  "cooldown": 0,
   "effect": {
     "kind": "search_area",
     "radius": 5,
@@ -14,9 +18,14 @@
         "duration_ticks": 2,
         "stacking": "Refresh",
         "max_stacks": 1,
+        "max_health_delta": 0,
+        "attack_damage_delta": 0,
+        "move_speed_delta": 0,
         "armor_delta": 5,
-        "status": "None"
+        "status": "Stunned",
+        "period_ticks": 0
       }
     }
-  }
+  },
+  "combat_feedback": null
 }

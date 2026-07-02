@@ -298,7 +298,9 @@ namespace ProjectChimera.UI
                                 : !hasSupply  ? "[supply full]"
                                 : $"{costOre} ore{costSuffix} · {trainTime:F0}s";
                     _trainBtns[i].Text        = $"{def.DisplayName}\n{note}";
-                    _trainBtns[i].TooltipText = $"{def.DisplayName} — {costOre} ore, {trainTime:F0}s train"; // NFR-2
+                    // Story 2.9b (review patch): surface crystal in the tooltip too, mirroring the button-face costSuffix,
+                    // so a crystal-costed unit's hover text matches what the sim charges (empty for cost_crystal:0 units).
+                    _trainBtns[i].TooltipText = $"{def.DisplayName} — {costOre} ore{costSuffix}, {trainTime:F0}s train"; // NFR-2
                     _trainBtns[i].Visible     = true;
                 }
             }

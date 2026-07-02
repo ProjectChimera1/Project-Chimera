@@ -50,8 +50,9 @@ namespace ProjectChimera.Sim.Tests.Meta
         /// the ModifierStore instance state.</summary>
         private const int ExpectedSimChecksumAlgoVersion = 8;
 
-        /// <summary>Load-time canonical start-state hash algorithm version (lobby handshake value).</summary>
-        private const int ExpectedCanonicalModelHashAlgoVersion = 2;
+        /// <summary>Load-time canonical start-state hash algorithm version (lobby handshake value).
+        /// v3 (Story 2.9b follow-up): folded ScenarioPlayerSlot.StartCrystal (sim-affecting per-slot start-state).</summary>
+        private const int ExpectedCanonicalModelHashAlgoVersion = 3;
 
         /// <summary>Lockstep Hello-handshake wire protocol version.</summary>
         private const ushort ExpectedProtocolVersion = 1;

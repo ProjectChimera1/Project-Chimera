@@ -23,8 +23,8 @@ namespace ProjectChimera.Sim.Tests.Validation
         {
             var slots = new[]
             {
-                new ScenarioPlayerSlot { Slot = 0, FactionJson = "res://a.json", StartOre = 200f, BaseX = -45f, BaseZ = 0f },
-                new ScenarioPlayerSlot { Slot = 1, FactionJson = "res://b.json", StartOre = 150f, BaseX =  45f, BaseZ = 0f },
+                new ScenarioPlayerSlot { Slot = 0, FactionJson = "res://a.json", StartOre = 200f, StartCrystal = 50f, BaseX = -45f, BaseZ = 0f },
+                new ScenarioPlayerSlot { Slot = 1, FactionJson = "res://b.json", StartOre = 150f, StartCrystal = 30f, BaseX =  45f, BaseZ = 0f },
             };
             var nodes = new[]
             {
@@ -63,7 +63,7 @@ namespace ProjectChimera.Sim.Tests.Validation
         }
 
         [Fact]
-        public void AlgoVersion_IsTwo() => Assert.Equal(2, CanonicalModelHash.AlgoVersion);
+        public void AlgoVersion_IsThree() => Assert.Equal(3, CanonicalModelHash.AlgoVersion);
 
         [Fact]
         public void ReorderedCollections_HashEqual()
@@ -97,6 +97,19 @@ namespace ProjectChimera.Sim.Tests.Validation
             var baseModel = BuildModel(false);
             var changed = BuildModel(false);
             changed.ResourceNodes[0].Supply += 100f; // a real gameplay change
+            Assert.NotEqual(CanonicalModelHash.Compute(baseModel), CanonicalModelHash.Compute(changed));
+        }
+
+        [Fact]
+        public void ChangedStartCrystal_HashDiffers()
+        {
+            // StartCrystal is sim-affecting (Crystal is folded into SimChecksum, and alpha_map_01.json now ships a
+            // nonzero start_crystal), so two models differing ONLY in a slot's start_crystal MUST hash differently —
+            // else the lobby start-state handshake would compare EQUAL and the match then desyncs in-sim from tick 1.
+            // Teeth for the Story-2.9b-follow-up fold (AlgoVersion 2→3); this test would be RED against v2. [gds-code-review]
+            var baseModel = BuildModel(false);
+            var changed = BuildModel(false);
+            changed.PlayerSlots[0].StartCrystal += 25f; // a real start-state change on exactly one slot
             Assert.NotEqual(CanonicalModelHash.Compute(baseModel), CanonicalModelHash.Compute(changed));
         }
 
@@ -147,7 +160,7 @@ namespace ProjectChimera.Sim.Tests.Validation
             // Build the documented canonical byte stream (D5 fixed order) INDEPENDENTLY of MixInt/MixStr, then
             // fold it with a textbook FNV-64. This pins the algorithm without a self-tautology.
             var buf = new List<byte>();
-            AppendInt(buf, CanonicalModelHash.AlgoVersion);  // AlgoVersion (= 2)
+            AppendInt(buf, CanonicalModelHash.AlgoVersion);  // AlgoVersion (= 3)
             AppendInt(buf, Fixed.FromFloat(120f).Raw);       // MapBounds quantized (= 7,864,320)
             AppendStr(buf, "DestroyAllBuildings");           // WinCondition by NAME
             AppendStr(buf, "");                              // TerrainRef
