@@ -106,6 +106,73 @@ namespace ProjectChimera.Sim.Tests.Definitions
             }
         }
 
+        // ── Story 2.10 shape teeth-tests: the shipped Equal Exchange + Sanguine Furnace content loads through the
+        //    Validated<AbilityDefinition> gate with the EXACT node shape each mechanic's contract requires. A test that
+        //    only checked "loads Ok" would pass even if the HP cost were authored as a matrix `damage` leaf or via
+        //    cost_ore/cost_crystal — so these assert the armor-independent single-price contract by construction. ──
+
+        [Fact]
+        public void SpikeTransmutation_IsEqualExchange_SelfBuffThenFlatArmorIndependentHpCost()
+        {
+            string path = Path.Combine(AbilitiesResourceDir(), "spike_transmutation.json");
+            AbilityValidationResult r = AbilityLoader.LoadFromFile(path);
+            Assert.True(r.Ok, r.Error);
+            AbilityDefinition def = r.Value.Value;
+
+            // Self-targeted, and the vitality-price path charges NO matter — HP is the sole cost (AC1.3 HP-XOR-matter).
+            Assert.Equal(AbilityTargeting.Self, def.ParsedTargeting);
+            Assert.Equal(0, def.CostOre);
+            Assert.Equal(0, def.CostCrystal);
+
+            // Sequence[ apply_modifier (beneficial self-buff), direct_hp_delta (negative flat cost) ] — exactly 2 children.
+            var seq = Assert.IsType<SequenceEffect>(def.EffectGraph);
+            Assert.Equal(2, seq.Children.Length);
+            Assert.IsType<ApplyModifierEffect>(seq.Children[0]);
+
+            // The cost is the FLAT armor-independent direct_hp_delta leaf (NOT the matrix `damage` leaf) with a negative
+            // delta — the AC1.2 contract that two casters of different armor_type pay the identical flat HP price.
+            var cost = Assert.IsType<DirectHpDeltaEffect>(seq.Children[1]);
+            Assert.True(cost.Delta.Raw < 0, $"Equal Exchange HP cost must be a negative flat delta; was {cost.Delta.Raw} raw.");
+        }
+
+        [Fact]
+        public void MendMatter_IsEqualExchange_SelfBuffThenFlatHpCost()
+        {
+            string path = Path.Combine(AbilitiesResourceDir(), "mend_matter.json");
+            AbilityValidationResult r = AbilityLoader.LoadFromFile(path);
+            Assert.True(r.Ok, r.Error);
+            AbilityDefinition def = r.Value.Value;
+
+            // The Acolyte's HP-priced Equal Exchange — the vitality sibling of matter_infusion; never both prices (AC1.3).
+            Assert.Equal(AbilityTargeting.Self, def.ParsedTargeting);
+            Assert.Equal(0, def.CostOre);
+            Assert.Equal(0, def.CostCrystal);
+
+            var seq = Assert.IsType<SequenceEffect>(def.EffectGraph);
+            Assert.Equal(2, seq.Children.Length);
+            Assert.IsType<ApplyModifierEffect>(seq.Children[0]);
+            var cost = Assert.IsType<DirectHpDeltaEffect>(seq.Children[1]);
+            Assert.True(cost.Delta.Raw < 0, $"Mend Matter HP cost must be a negative flat delta; was {cost.Delta.Raw} raw.");
+        }
+
+        [Fact]
+        public void FurnacePour_IsWhileAlivePersistentHeal()
+        {
+            string path = Path.Combine(AbilitiesResourceDir(), "furnace_pour.json");
+            AbilityValidationResult r = AbilityLoader.LoadFromFile(path);
+            Assert.True(r.Ok, r.Error);
+            AbilityDefinition def = r.Value.Value;
+
+            // Auto-installs at spawn via the OnUnitDefinitionApplied → InstallSelfPassive seam (AC2.1) — a while_alive
+            // Persistent whose period pulse is a Heal, bounded within the 256-pulse EffectCaps window (AC2.6).
+            Assert.Equal(PassiveActivation.WhileAlive, def.ParsedActivation);
+            var persistent = Assert.IsType<PersistentEffect>(def.EffectGraph);
+            Assert.IsType<HealEffect>(persistent.PeriodEffect);
+            Assert.True(persistent.PeriodTicks > 0, "Furnace HoT must pulse on a positive period.");
+            Assert.True(persistent.PeriodCount > 0 && persistent.PeriodCount <= 256,
+                "period_count must be in (0, 256] — the EffectCaps.MaxPersistentPeriods window (AC2.1/AC2.6).");
+        }
+
         // <repo>/godot/ProjectChimera.Sim.Tests/Definitions/THIS.cs → <repo>/godot/resources/data/abilities
         private static string AbilitiesResourceDir([CallerFilePath] string thisFile = "")
         {

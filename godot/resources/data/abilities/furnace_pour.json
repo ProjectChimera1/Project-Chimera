@@ -1,11 +1,11 @@
 {
-  "id": "furnace_trickle",
-  "display_name": "Furnace Trickle",
+  "id": "furnace_pour",
+  "display_name": "Sanguine Furnace (Pour)",
   "targeting": "Self",
   "activation": "while_alive",
   "effect": {
     "kind": "persistent",
-    "period_effect": { "kind": "heal", "amount": 3 },
+    "period_effect": { "kind": "heal", "amount": 6 },
     "period_ticks": 15,
     "period_count": 256
   }

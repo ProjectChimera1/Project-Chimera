@@ -1,0 +1,30 @@
+{
+  "id": "spike_transmutation",
+  "display_name": "Spike Transmutation",
+  "targeting": "Self",
+  "cost_energy": 0,
+  "cost_ore": 0,
+  "cost_crystal": 0,
+  "cooldown": 10,
+  "effect": {
+    "kind": "sequence",
+    "children": [
+      {
+        "kind": "apply_modifier",
+        "modifier": {
+          "id": 1100,
+          "duration_ticks": 120,
+          "stacking": "Refresh",
+          "max_stacks": 1,
+          "attack_damage_delta": 15,
+          "move_speed_delta": 0,
+          "status": "None"
+        }
+      },
+      { "kind": "direct_hp_delta", "delta": -25 }
+    ]
+  },
+  "combat_feedback": {
+    "hit_flash": { "color_rgb": [0.10, 1.0, 0.35], "emission_mult": 6.0, "scale": 2.2, "duration_sec": 0.6 }
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "id": "mend_matter",
+  "display_name": "Mend Matter",
+  "targeting": "Self",
+  "cost_energy": 0,
+  "cost_ore": 0,
+  "cost_crystal": 0,
+  "cooldown": 15,
+  "effect": {
+    "kind": "sequence",
+    "children": [
+      {
+        "kind": "apply_modifier",
+        "modifier": {
+          "id": 1101,
+          "duration_ticks": 90,
+          "stacking": "Refresh",
+          "max_stacks": 1,
+          "armor_delta": 5,
+          "status": "None"
+        }
+      },
+      { "kind": "direct_hp_delta", "delta": -10 }
+    ]
+  }
+}

@@ -85,6 +85,13 @@
          re-recorded (AlgoVersion stays 8, no fold). -->
     <None Remove="Golden\worker-cast-crystal-cost-scenario.golden.txt" />
     <EmbeddedResource Include="Golden\worker-cast-crystal-cost-scenario.golden.txt" />
+    <!-- Story 2.10 (AC4 / D-5) — equal-exchange golden (one stationary P1 caster casts a Self
+         Sequence[apply_modifier, direct_hp_delta] Equal Exchange ability at tick 1; Player2 empty so the AI no-ops).
+         First golden pinning a Sequence with a FLAT armor-independent HP self-cost. Integer/Fixed-only →
+         CROSS-PLATFORM SAFE, compared on both CI legs. NEW file; the 14 goldens above are NOT re-recorded
+         (AlgoVersion stays 8, no fold). -->
+    <None Remove="Golden\equal-exchange-scenario.golden.txt" />
+    <EmbeddedResource Include="Golden\equal-exchange-scenario.golden.txt" />
   </ItemGroup>
 
   <ItemGroup>

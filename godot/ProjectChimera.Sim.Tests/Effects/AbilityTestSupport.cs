@@ -60,6 +60,21 @@ namespace ProjectChimera.Sim.Tests.Effects
                 CostEnergy = Fixed.FromInt(costEnergy), CostOre = costOre, CostCrystal = costCrystal,
                 Cooldown = Fixed.FromInt(cooldownSec), EffectGraph = new HealEffect(Fixed.FromInt(heal)),
             };
+
+        /// <summary>equal_exchange (Story 2.10): the Equal Exchange VITALITY-price shape — Self, no matter cost
+        /// (cost_* all 0), a Sequence of a beneficial +15 atk self-buff (120-tick Refresh) THEN a FLAT
+        /// armor-independent −25 direct_hp_delta self-cost. Mirrors the shipped spike_transmutation.json so the
+        /// equal-exchange golden fixture doubles as a check on that content. (Modifier ctor order matches BattleFury.)</summary>
+        public static AbilityDefinition EqualExchange() => new AbilityDefinition
+        {
+            Id = "equal_exchange", DisplayName = "Equal Exchange", Targeting = "Self",
+            CostEnergy = Fixed.Zero, Cooldown = Fixed.FromInt(10),
+            EffectGraph = new SequenceEffect(
+                new ApplyModifierEffect(new Modifier(
+                    1100, 120, StackRule.Refresh, 1, Fixed.Zero, Fixed.FromInt(15), Fixed.Zero,
+                    StatusFlags.None, null, 0)),
+                new DirectHpDeltaEffect(Fixed.FromInt(-25))),
+        };
     }
 
     /// <summary>

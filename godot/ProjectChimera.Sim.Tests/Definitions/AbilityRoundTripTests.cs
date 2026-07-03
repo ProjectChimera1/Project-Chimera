@@ -28,6 +28,9 @@ namespace ProjectChimera.Sim.Tests.Definitions
         [InlineData("aura_guard.json")]      // Story 2.6 aura: search_area(Ally) → apply_modifier(+armor)
         [InlineData("onhit_searing.json")]   // Story 2.6 on_hit: a single damage rider
         [InlineData("furnace_trickle.json")] // Story 2.6 while_alive: persistent HoT
+        [InlineData("spike_transmutation.json")] // Story 2.10 Equal Exchange: sequence → [ apply_modifier, direct_hp_delta ] + combat_feedback
+        [InlineData("mend_matter.json")]         // Story 2.10 Equal Exchange (Acolyte HP-cost sibling of matter_infusion)
+        [InlineData("furnace_pour.json")]        // Story 2.10 while_alive: persistent HoT (elite/immortal "pour" tier)
         public void SampleAbility_SurvivesSerializeRoundTrip_WithIdenticalGraph(string fileName)
         {
             string path = Path.Combine(AbilitiesResourceDir(), fileName);

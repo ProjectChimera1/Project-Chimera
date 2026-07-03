@@ -7,6 +7,7 @@
     1.0,
     1.0
   ],
+  "signature_mechanic": "equal_exchange",
   "units": [
     {
       "id": "worker",
@@ -26,7 +27,7 @@
       "mesh_scale": 0.95,
       "train_time": 8.0,
       "vision_range": 7.0,
-      "abilities": ["matter_infusion"],
+      "abilities": ["matter_infusion", "mend_matter"],
       "max_energy": 20
     },
     {
@@ -47,6 +48,8 @@
       "mesh_scale": 1.0,
       "train_time": 8.0,
       "vision_range": 8.0,
+      "abilities": ["spike_transmutation"],
+      "max_energy": 0,
       "combat_feedback": {
         "hit_flash": { "color_rgb": [0.10, 1.0, 0.35], "emission_mult": 6.0, "scale": 2.5, "duration_sec": 0.7 },
         "impact_sound": "melee_hit.ogg",

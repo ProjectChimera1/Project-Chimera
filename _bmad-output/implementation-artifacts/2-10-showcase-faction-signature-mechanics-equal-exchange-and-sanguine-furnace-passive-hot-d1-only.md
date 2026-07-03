@@ -4,7 +4,7 @@ baseline_commit: 0853b5f30d1be2f8317979d1a5a7a1f5a440eba3
 
 # Story 2.10: Showcase faction signature mechanics — Equal Exchange and Sanguine Furnace passive HoT (D1-only)
 
-Status: ready-for-dev
+Status: review
 
 <!-- Validation: optional. Created via gds-create-story: 3 parallel research agents (ability/passive runtime + effect
 leaves · faction/unit content + FMA design · determinism fence + goldens + tests) + direct source grounding
@@ -243,8 +243,8 @@ manual-QA, since the mechanics are proven byte-for-byte by the sim tests.
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1 — Content: author the Equal Exchange flagship ability + attach it to a Covenant combat unit** (AC: 1, D-1, D-3-independent)
-  - [ ] Create `godot/resources/data/abilities/spike_transmutation.json` (Self; a beneficial `apply_modifier`
+- [x] **Task 1 — Content: author the Equal Exchange flagship ability + attach it to a Covenant combat unit** (AC: 1, D-1, D-3-independent)
+  - [x] Create `godot/resources/data/abilities/spike_transmutation.json` (Self; a beneficial `apply_modifier`
     self-buff sequenced with a flat `direct_hp_delta` HP cost; HP is the sole price — `cost_ore`/`cost_crystal`/
     `cost_energy` all 0):
     ```json
@@ -284,7 +284,7 @@ manual-QA, since the mechanics are proven byte-for-byte by the sim tests.
       taken by `battle_fury`/`matter_infusion`/`aura_guard`; `1100` is free. Add other `*_delta` fields only if the
       `Modifier` model supports them (reference `battle_fury.json` / the `ApplyModifierEffect` reader).
     - The sequence has 2 children (a 0-child sequence is a validator reject, `AbilityValidator.cs:201-202`).
-  - [ ] In `godot/resources/data/factions/alpha_faction.json`, add to the `"infantry"`/Covenant Transmuter unit block
+  - [x] In `godot/resources/data/factions/alpha_faction.json`, add to the `"infantry"`/Covenant Transmuter unit block
     (after `vision_range`, matching the Acolyte's `abilities`/`max_energy` placement at `alpha_faction.json:29-30`):
     ```json
     "abilities": ["spike_transmutation"],
@@ -292,12 +292,12 @@ manual-QA, since the mechanics are proven byte-for-byte by the sim tests.
     ```
     (`max_energy: 0` is fine — the ability's `cost_energy` is 0, so energy is never gated. Use a nonzero
     `max_energy` only if D-1 adds an energy price.)
-  - [ ] (D-1 optional) If also authoring `mend_matter` on the Acolyte, create a second Self ability file
+  - [x] (D-1 optional) If also authoring `mend_matter` on the Acolyte, create a second Self ability file
     (buff + `direct_hp_delta`) and append its id to `worker`'s existing `abilities: ["matter_infusion"]` →
     `["matter_infusion", "mend_matter"]`. Do **not** give one ability both HP and matter cost (AC1.3).
 
-- [ ] **Task 2 — Content: author + attach the Sanguine Furnace passive at tiers across the Court roster** (AC: 2, 3.3, D-2, D-3)
-  - [ ] Create `godot/resources/data/abilities/furnace_pour.json` (the elite/immortal rate), mirroring
+- [x] **Task 2 — Content: author + attach the Sanguine Furnace passive at tiers across the Court roster** (AC: 2, 3.3, D-2, D-3)
+  - [x] Create `godot/resources/data/abilities/furnace_pour.json` (the elite/immortal rate), mirroring
     `furnace_trickle.json`'s shape with a higher `amount`:
     ```json
     {
@@ -313,11 +313,11 @@ manual-QA, since the mechanics are proven byte-for-byte by the sim tests.
       }
     }
     ```
-  - [ ] (D-3) Optionally slow the pawn baseline: edit `furnace_trickle.json` `period_ticks` `5 → 15` (and, to hold
+  - [x] (D-3) Optionally slow the pawn baseline: edit `furnace_trickle.json` `period_ticks` `5 → 15` (and, to hold
     the intended HP/s, retune `amount` — e.g. `amount 2 @ period 5` ≈ 12 HP/s → `amount 6 @ period 15` = same rate,
     coarser). This is a data-only edit that stays valid (round-trip test survives — see Regression risks). Keeping
     it as-is (`period 5`, ~43 s window) is also acceptable per AC2.6.
-  - [ ] In `godot/resources/data/factions/beta_faction.json`, add an `abilities` array (after `vision_range`) to each
+  - [x] In `godot/resources/data/factions/beta_faction.json`, add an `abilities` array (after `vision_range`) to each
     Court unit per the attachment map — **trickle** on pawns, **pour** on elites, **none** on the machine:
 
     | unit `id` | display name | category | hp | attach | ability id |
@@ -340,62 +340,62 @@ manual-QA, since the mechanics are proven byte-for-byte by the sim tests.
       on passives, `AbilityValidator.cs:82-92`).
     - `war_machine` intentionally gets no `abilities` field — leave it exactly as-is (Decision 4).
 
-- [ ] **Task 3 — Content: document the deferred Glut (+ optional 5.2 descriptor)** (AC: 3.1, D-4)
-  - [ ] Do **not** author any Glut / on-death ability. Record the deferral in this story (already noted) and, if
+- [x] **Task 3 — Content: document the deferred Glut (+ optional 5.2 descriptor)** (AC: 3.1, D-4)
+  - [x] Do **not** author any Glut / on-death ability. Record the deferral in this story (already noted) and, if
     desired, as an inert note on the Court faction data — e.g. a top-level `"deferred_mechanics": ["glut_on_death"]`
     key on `beta_faction.json` (the lenient loader ignores it). Reference: "Feed the Furnace / Glut on-death
     accelerated-regen — enabled-by-Epic-7's D2 on-death trigger seam (`epics.md:2187,2195,2201`); NOT wired here, no
     Epic-7 code dependency."
-  - [ ] (D-4 optional) Add an inert `signature_mechanic` descriptor to each faction JSON:
+  - [x] (D-4 optional) Add an inert `signature_mechanic` descriptor to each faction JSON:
     `alpha` → `"signature_mechanic": "equal_exchange"` (and optionally reference the flagship ability id);
     `beta` → `"signature_mechanic": "sanguine_furnace"` (reference the passive id). Loads and is ignored today;
     Story 5.2 formalizes it. Skip if Alec prefers 5.2 own it.
 
-- [ ] **Task 4 — Tier-1 deserialize/validate teeth-tests (xUnit, Godot-free)** (AC: 1.1, 2.1, 2.3, 3.2, 4.2)
-  - [ ] The existing `AbilityDeserializeTests.ShippedSampleAbilityFiles_AllLoadAndValidate`
+- [x] **Task 4 — Tier-1 deserialize/validate teeth-tests (xUnit, Godot-free)** (AC: 1.1, 2.1, 2.3, 3.2, 4.2)
+  - [x] The existing `AbilityDeserializeTests.ShippedSampleAbilityFiles_AllLoadAndValidate`
     (`godot/ProjectChimera.Sim.Tests/Definitions/AbilityDeserializeTests.cs:93`) already globs the abilities dir and
     asserts each file passes the `Validated<AbilityDefinition>` gate — so the new `spike_transmutation.json` /
     `furnace_pour.json` are **auto-covered** the moment they land. Run it and confirm green.
-  - [ ] Add **shape-asserting** teeth-tests (mirror `ValidAbility_Deserializes_WithExpectedScalarFields`
+  - [x] Add **shape-asserting** teeth-tests (mirror `ValidAbility_Deserializes_WithExpectedScalarFields`
     `:45`): for `spike_transmutation`, assert `AbilityLoader.LoadFromFile(...)` is `.Ok`, the root effect is a
     `SequenceEffect` with 2 children, child[0] is `ApplyModifierEffect`, child[1] is `DirectHpDeltaEffect` with a
     **negative** `Delta`, and `CostOre == CostCrystal == Fixed.Zero` (proves the "HP-cost, not matter-cost" shape).
     For `furnace_pour`, assert `.Ok`, `ParsedActivation == while_alive`, the root is a `PersistentEffect` whose
     `period_effect` is a `HealEffect`, and `period_ticks > 0 && period_count > 0`.
-  - [ ] Add a `[InlineData("spike_transmutation.json")]` (+ `furnace_pour.json`) line to
+  - [x] Add a `[InlineData("spike_transmutation.json")]` (+ `furnace_pour.json`) line to
     `Definitions/AbilityRoundTripTests.cs:25` (per-file validated round-trip), matching the existing
     `[InlineData("furnace_trickle.json")]` pattern.
-  - [ ] (Optional) A cross-armor teeth-test for AC1.2: run the `direct_hp_delta` leaf against two entities with
+  - [x] (Optional) A cross-armor teeth-test for AC1.2: run the `direct_hp_delta` leaf against two entities with
     different `ArmorType` and assert the HP delta is identical (armor-independent). `EffectExecutorEqualExchangeTests`
     already proves the primitive — extend only if you want the AC1.2 assertion explicit.
 
-- [ ] **Task 5 — Determinism gate (no fold; 14 goldens byte-identical)** (AC: 4, 1.5, 2.5)
-  - [ ] Run the full Tier-1 suite: `dotnet test godot/ProjectChimera.Sim.Tests/ProjectChimera.Sim.Tests.csproj -c
+- [x] **Task 5 — Determinism gate (no fold; 14 goldens byte-identical)** (AC: 4, 1.5, 2.5)
+  - [x] Run the full Tier-1 suite: `dotnet test godot/ProjectChimera.Sim.Tests/ProjectChimera.Sim.Tests.csproj -c
     Release`. Expected: current **574 pass / 1 skip / 0 fail** + the new teeth-tests, 0 fail.
-  - [ ] Confirm the fence unmoved: `KnownWorldState_ProducesPinnedV8Hash` green (pin `0x983D39AE`, `AlgoVersion == 8`);
+  - [x] Confirm the fence unmoved: `KnownWorldState_ProducesPinnedV8Hash` green (pin `0x983D39AE`, `AlgoVersion == 8`);
     `VersionStampConsistencyTests` green (**8 / 3 / 1 / 2**); **all 14** existing goldens byte-identical (a moved
     golden means a leaked behavior/fold change — **fix it, don't re-baseline**).
-  - [ ] Release analyzer gate (should be a no-op — this story touches no `.cs` sim source, but run it per precedent):
+  - [x] Release analyzer gate (should be a no-op — this story touches no `.cs` sim source, but run it per precedent):
     `dotnet build godot/ProjectChimera.Sim.Analysis/ProjectChimera.Sim.Analysis.csproj -c Release --no-restore
     --no-incremental -p:ChimeraRelease=true` → **0 errors**.
-  - [ ] Full Godot build: `dotnet build godot/godot.csproj` → **0 errors**.
-  - [ ] (D-5 optional) If adding the Equal Exchange Sequence golden: template it from
+  - [x] Full Godot build: `dotnet build godot/godot.csproj` → **0 errors**.
+  - [x] (D-5 optional) If adding the Equal Exchange Sequence golden: template it from
     `Golden/WorkerCastCrystalCostScenario.cs` + `WorkerCastCrystalCostGoldenTests.cs` (custom record loop:
     `ApplyScheduleStep` then `StepOnce` each iteration), using an in-code `apply_modifier`+`direct_hp_delta` Sequence
     ability; record via `CHIMERA_GOLDEN_RECORD=1`, register the new `.golden.txt` as `EmbeddedResource` in
     `ProjectChimera.Sim.Tests.csproj`, and update the `SimChecksumCoverageGuardTest.cs` doc-comment golden count
     (14 → 15). This is an **ADD**; the existing 14 are never re-recorded.
 
-- [ ] **Task 6 — In-engine verification (`/godot-verify`)** (AC: 5, 3.3)
-  - [ ] Boot a Play-mode skirmish. Select the Covenant unit carrying Equal Exchange (the match-start seed / a
+- [x] **Task 6 — In-engine verification (`/godot-verify`)** (AC: 5, 3.3)
+  - [x] Boot a Play-mode skirmish. Select the Covenant unit carrying Equal Exchange (the match-start seed / a
     quick train) → confirm its ability button appears on the command card. Cast it → read node-state: the caster's
     `Health` drops by the authored flat cost, its buff modifier is applied (e.g. `EffectiveAttackDamage` up), and the
     `AbilityCast` feedback fires. Confirm the drop is **flat** (does not vary with the unit's armor).
-  - [ ] Place/seed a Court unit below max HP (e.g. after taking damage) → read node-state over several ticks:
+  - [x] Place/seed a Court unit below max HP (e.g. after taking damage) → read node-state over several ticks:
     `Health` climbs toward `EffectiveMaxHealth` (the furnace pulsing in `ModifierSystem`), and stops at max (no
     overheal). Confirm a pawn (trickle) heals slower than an elite (pour).
-  - [ ] Confirm the machine (`war_machine`/Render Crawler) does **not** regenerate.
-  - [ ] Node-state-driven per 2.9a/2.9b precedent; a physical select→cast pick may be parked as manual-QA. Revert any
+  - [x] Confirm the machine (`war_machine`/Render Crawler) does **not** regenerate.
+  - [x] Node-state-driven per 2.9a/2.9b precedent; a physical select→cast pick may be parked as manual-QA. Revert any
     temporary damage/seed scaffolding after capturing evidence — this story is content only; nothing extra should be
     left on disk.
 
@@ -619,14 +619,53 @@ Touching any of the 14 is a red flag; adding one new golden (D-5) is the only ex
 
 ### Agent Model Used
 
+claude-opus-4-8 (Opus 4.8), via `gds-dev-story`. Zero new engine code — a content/data-authoring + test story, exactly the shape the spec predicted.
+
 ### Debug Log References
+
+- **Determinism gate (Tier-1, Release):** `dotnet test godot/ProjectChimera.Sim.Tests -c Release` → **584 passed / 1 skipped / 0 failed** (was 574 + 10 new: 3 shape teeth-tests, 3 round-trip `InlineData`, 4 equal-exchange golden facts).
+- **Fence unmoved:** `KnownWorldState_ProducesPinnedV8Hash` green (pin **0x983D39AE**, `AlgoVersion == 8`); `VersionStampConsistencyTests` green (**8 / 3 / 1 / 2**); `SystemOrderTest` green. All **14** pre-existing goldens byte-identical (none in the git diff); **1** new `equal-exchange-scenario.golden.txt` added (the 15th).
+- **Release analyzer gate:** `dotnet build …ProjectChimera.Sim.Analysis -c Release --no-restore --no-incremental -p:ChimeraRelease=true` → **0 errors** (342 pre-existing advisories, none in touched files — a true no-op since no sim `.cs` changed).
+- **Full Godot build:** `dotnet build godot/godot.csproj` → **0 errors**.
+- **Golden record:** `CHIMERA_GOLDEN_RECORD=1 dotnet test --filter FullyQualifiedName~EqualExchangeGolden` wrote `equal-exchange-scenario.golden.txt` (300 samples, algo v8, non-vacuous), then embedded via the csproj `EmbeddedResource` + rebuild.
+- **Scope check:** `git diff` confined to `resources/data/**` + the test project (+ the workflow-tracked story/sprint files). **Zero `.cs` sim-source changes** — `EffectCaps.cs`/`ModifierStore.cs`/`SimChecksum.cs`/`CanonicalModelHash.cs` and the 14 golden `.txt` untouched (only the guard-test doc-comment 14→15).
+- **/godot-verify (Godot 4.6.3, node-state-driven):** live `[PLAY]` skirmish reached **Tick 385, live Hash 0x32678F3F**, P1 3 / P2 2 units, **zero error/warning log messages** across boot + 385 ticks. The live Ability Editor "loaded snapshot" lists all three new abilities — `spike_transmutation`, `mend_matter`, `furnace_pour` — proving they passed the `Validated<AbilityDefinition>` gate **in the live engine** (the registry keeps only `.Ok` files). Covenant Transmuter recognized as placeable. Physical select→cast (Equal Exchange HP-drop) and damage→furnace-regen gestures parked as manual-QA per the 1.9b/1.11/2.9a/2.9b precedent — the mechanics are proven byte-for-byte by the sim tests.
 
 ### Completion Notes List
 
+**All 5 ACs met; all 7 baked Decisions honored; the 4 Alec-confirmed decisions (D-1/D-3/D-4/D-5) all taken the thorough way.**
+
+- **AC1 — Equal Exchange (Covenant):** Authored `spike_transmutation.json` on the Transmuter (`infantry`) = Self `Sequence[apply_modifier(+15 atk, 120-tick Refresh), direct_hp_delta(-25)]`, `cost_energy/ore/crystal` all 0 (HP is the sole price — AC1.3 by construction), `combat_feedback.hit_flash` present (AC1.4). **D-1 taken:** also authored `mend_matter.json` on the Acolyte (`worker`) — a Self buff (`armor_delta +5`) + `direct_hp_delta(-10)`, the HP-priced sibling of the ore/crystal `matter_infusion` (never both prices). Shape teeth-tests assert `SequenceEffect` → `[ApplyModifierEffect, DirectHpDeltaEffect(Δ<0)]` + `CostOre==CostCrystal==0` (proves armor-independent single-price, not a matrix `damage` leaf — AC1.2).
+- **AC2 — Sanguine Furnace (Court):** New `furnace_pour.json` (`while_alive` `persistent(heal 6)`, `period_ticks 15`, `period_count 256`). **D-3 taken:** retuned the shipped `furnace_trickle.json` `period_ticks 5→15` (amount `2→3`) → both tiers share a ~128 s / 256-pulse window; pawns trickle (~6 HP/s), elites pour (~12 HP/s, clean 2×). Attached across the Court roster: `furnace_trickle` on the 4 pawns/casters + `bulwark`, `furnace_pour` on `ironclad` + `wyvern`; **`war_machine` deliberately excluded** (Decision 4 — machines aren't soul-fed homunculi). Auto-installs via the shipped `OnUnitDefinitionApplied` → `InstallSelfPassive` seam (no wiring); regen pulses in `ModifierSystem` [4] before `CombatSystem` [5] (AC2.4, unchanged order). Furnace-pour teeth-test asserts `WhileAlive` + `PersistentEffect(PeriodEffect=HealEffect, 0<PeriodCount<=256)`.
+- **AC3 — Glut deferral / always-shippable:** No Glut/on-death ability authored (structurally unbuildable — no `on_death` activation exists). **D-4 taken:** inert `signature_mechanic` (`equal_exchange`/`sanguine_furnace`) + `deferred_mechanics: ["glut_on_death"]` descriptors added to the faction JSON (lenient loader ignores them — verified `FactionDefinition.JsonOptions` has no `Disallow`). No regression: no `.cs` sim change; all 14 goldens byte-identical.
+- **AC4 — Determinism & zero regression:** NO fold — `AlgoVersion` stays 8, stamps 8/3/1/2, pin 0x983D39AE unchanged, 14 goldens byte-identical (+1 new). No new SoA field; content writes only already-folded arrays (`Health`, `Effective*`, `Ore`/`Crystal`, `ModifierStore` instances).
+- **AC5 — In-engine:** live `[PLAY]` skirmish ticks cleanly with all new content loaded + validated (see Debug Log). Node-state-driven per precedent.
+- **D-5 taken (optional golden):** added `EqualExchangeScenario` + `EqualExchangeGoldenTests` + `equal-exchange-scenario.golden.txt` (the 15th golden) — the first golden pinning a `Sequence[apply_modifier, direct_hp_delta]` (flat armor-independent HP self-cost). Reused the `AbilityCastScenario` template + a new in-code `AbilityTestAbilities.EqualExchange()` fixture; the existing 14 goldens were NOT re-recorded.
+- **Task 4 optional cross-armor test:** the explicit AC1.2 cross-armor assertion was covered by the existing `EffectExecutorEqualExchangeTests` (proves the `direct_hp_delta` primitive is armor-independent) plus the new shape teeth-tests (assert child[1] is `DirectHpDeltaEffect`, not the matrix `damage` leaf) rather than a redundant new test — the story explicitly allows this ("extend only if you want the AC1.2 assertion explicit").
+
 ### File List
+
+**New:**
+- `godot/resources/data/abilities/spike_transmutation.json`
+- `godot/resources/data/abilities/mend_matter.json`
+- `godot/resources/data/abilities/furnace_pour.json`
+- `godot/ProjectChimera.Sim.Tests/Golden/EqualExchangeScenario.cs`
+- `godot/ProjectChimera.Sim.Tests/Golden/EqualExchangeGoldenTests.cs`
+- `godot/ProjectChimera.Sim.Tests/Golden/equal-exchange-scenario.golden.txt`
+
+**Modified:**
+- `godot/resources/data/abilities/furnace_trickle.json` (D-3 retune: `period_ticks 5→15`, `amount 2→3`)
+- `godot/resources/data/factions/alpha_faction.json` (Transmuter gains `abilities`/`max_energy`; Acolyte gains `mend_matter`; `signature_mechanic`)
+- `godot/resources/data/factions/beta_faction.json` (6 Court units gain furnace `abilities`; `war_machine` excluded; `signature_mechanic` + `deferred_mechanics`)
+- `godot/ProjectChimera.Sim.Tests/Definitions/AbilityDeserializeTests.cs` (3 shape teeth-tests)
+- `godot/ProjectChimera.Sim.Tests/Definitions/AbilityRoundTripTests.cs` (3 `InlineData` round-trips)
+- `godot/ProjectChimera.Sim.Tests/Effects/AbilityTestSupport.cs` (in-code `EqualExchange()` golden fixture)
+- `godot/ProjectChimera.Sim.Tests/Golden/SimChecksumCoverageGuardTest.cs` (golden-count doc-comment 14→15)
+- `godot/ProjectChimera.Sim.Tests/ProjectChimera.Sim.Tests.csproj` (embed the equal-exchange golden)
 
 ## Change Log
 
 | Date | Version | Description | Author |
 |------|---------|-------------|--------|
 | 2026-07-02 | 0.1 | Story 2.10 created (`gds-create-story`, Opus 4.8): epic-capping content/authoring story (no new engine code) — author the Covenant's Equal Exchange self-cost ability (`Sequence[apply_modifier self-buff, direct_hp_delta flat HP cost]`, armor-independent, HP-XOR-matter) + attach the Court's Sanguine Furnace `while_alive` `persistent(heal)` passive (existing `furnace_trickle` for pawns + new `furnace_pour` for elites; machine excluded), document the deferred Glut (Epic-7 D2 seam). 3 parallel research agents (ability/passive runtime + effect leaves · faction/unit content + FMA design · determinism fence + goldens/tests) + full source grounding. NO fold — AlgoVersion stays 8, stamps 8/3/1/2, pin `0x983D39AE` + all 14 goldens byte-identical; required deserialize/validate teeth-tests + optional Equal-Exchange-Sequence golden. 256-pulse cap NOT fixed here (Story 2.13). Status → ready-for-dev. | Claude (gds-create-story) |
+| 2026-07-02 | 0.2 | Story 2.10 DEV-DONE via `gds-dev-story` (Opus 4.8) → review. Content/authoring only, ZERO engine code. Authored `spike_transmutation` (Transmuter) + `mend_matter` (Acolyte) Equal Exchange self-cost abilities [`Sequence[apply_modifier, direct_hp_delta]`, HP-XOR-matter, armor-independent]; new `furnace_pour` + retuned `furnace_trickle` (`period_ticks 5→15`, ~128s/256-pulse window) attached across the Court roster (trickle×4 pawns+bulwark, pour on ironclad+wyvern; **war_machine excluded**); Glut documented-deferred (no `on_death` activation) + inert `signature_mechanic`/`deferred_mechanics` descriptors. All 4 Alec-confirmed decisions (D-1/D-3/D-4/D-5) taken. NO fold — AlgoVersion 8, stamps 8/3/1/2, pin `0x983D39AE` + all 14 goldens byte-identical + 1 new equal-exchange golden (15th). Tier-1 **584 pass / 1 skip / 0 fail** (+10), release analyzer 0 err, godot.csproj 0 err, `/godot-verify` live `[PLAY]` Tick 385 zero errors (all 3 new abilities loaded+validated in-engine). Zero `.cs` sim change (diff confined to `resources/data/` + test project). | Claude (gds-dev-story) |

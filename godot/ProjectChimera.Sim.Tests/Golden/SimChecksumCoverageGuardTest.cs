@@ -31,7 +31,7 @@ namespace ProjectChimera.Sim.Tests.Golden
     /// <c>EntityWorld.FeedbackProfile</c> (the first reference-typed per-entity SoA) plus a <c>CombatEvent.Feedback</c>
     /// reference on the (never-hashed) <c>CombatEventQueue</c> and a <c>ProjectileStore.Feedback</c> slot. ALL are
     /// deliberately NOT folded — presentation-read only, exactly like <see cref="EntityWorld.MeshType"/>/CategoryOf —
-    /// so AlgoVersion stays 8 and the 14 goldens stay byte-identical. The reflection scan (ResourceStore-only) and the
+    /// so AlgoVersion stays 8 and the 15 goldens stay byte-identical. The reflection scan (ResourceStore-only) and the
     /// enumerated EntityWorld guard below both correctly ignore them; the dedicated exclusion teeth (a FeedbackProfile
     /// must not move Compute; draining the event queue must not perturb the sim) live in CombatFeedbackProfileTests.
     /// </summary>
