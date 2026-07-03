@@ -388,6 +388,26 @@ namespace ProjectChimera.Economy
         }
 
         /// <summary>
+        /// Apply a lockstep <see cref="UnitCommand.SetRally"/> command at exec-tick (Story 2.12, AC3). Validates
+        /// BUILDING ownership — a player may set a rally point ONLY on a building of their OWN faction (the anti-cheat
+        /// building-command analogue of the entity-ownership guard, meaningless for a building id) — then writes the
+        /// canonical <see cref="BuildingStore.RallyPoint"/>/<see cref="BuildingStore.HasRallyPoint"/>. Called from the
+        /// shared <c>OrderApplier</c> so live == replay == offline all execute this one method; the deterministic rally
+        /// write therefore happens HERE, at exec-tick, on the folded (v9) store — never as a direct presentation write
+        /// (the pre-2.12 desync path). The rally point is a ground point (X/Z from the wire, Y anchored to 0, exactly
+        /// like <c>SpawnTrainedUnit</c> reads it). Returns true when the rally was written.
+        /// </summary>
+        public bool SetRallyCommand(int buildingId, Faction expectedFaction, Fixed x, Fixed z)
+        {
+            if (buildingId < 0 || buildingId >= _buildings.Count) return false;
+            if (!_buildings.Alive[buildingId]) return false;
+            if (_buildings.FactionOf[buildingId] != expectedFaction) return false; // anti-cheat: own building only
+            _buildings.RallyPoint[buildingId]    = new FixedVec3(x, Fixed.Zero, z);
+            _buildings.HasRallyPoint[buildingId] = true;
+            return true;
+        }
+
+        /// <summary>
         /// Place a building on behalf of a scenario loader or editor tool.
         /// Bypasses ore cost. When <paramref name="preBuilt"/> is true the construction
         /// timer is set to zero so the building is immediately operational.

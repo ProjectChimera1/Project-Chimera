@@ -17,7 +17,7 @@ namespace ProjectChimera.Sim.Tests.Golden
     ///      mutation. If a future story adds a public per-faction array to ResourceStore but forgets to fold it
     ///      into the checksum, mutating that array leaves the hash unchanged and this test FAILS, naming the
     ///      uncovered field. This proves *actual* coverage instead of a hand-maintained list that silently drifts.
-    ///   2. <see cref="KnownWorldState_ProducesPinnedV8Hash"/> — a snapshot/tripwire: a hand-built fixed world
+    ///   2. <see cref="KnownWorldState_ProducesPinnedV9Hash"/> — a snapshot/tripwire: a hand-built fixed world
     ///      hashes to a committed constant. Any unintended change to the algorithm (reordering mixes, adding or
     ///      dropping a field) moves the constant and turns this red, forcing a conscious re-pin + AlgoVersion bump.
     ///
@@ -31,9 +31,11 @@ namespace ProjectChimera.Sim.Tests.Golden
     /// <c>EntityWorld.FeedbackProfile</c> (the first reference-typed per-entity SoA) plus a <c>CombatEvent.Feedback</c>
     /// reference on the (never-hashed) <c>CombatEventQueue</c> and a <c>ProjectileStore.Feedback</c> slot. ALL are
     /// deliberately NOT folded — presentation-read only, exactly like <see cref="EntityWorld.MeshType"/>/CategoryOf —
-    /// so AlgoVersion stays 8 and the 16 goldens stay byte-identical. The reflection scan (ResourceStore-only) and the
-    /// enumerated EntityWorld guard below both correctly ignore them; the dedicated exclusion teeth (a FeedbackProfile
-    /// must not move Compute; draining the event queue must not perturb the sim) live in CombatFeedbackProfileTests.
+    /// so they add NO fold of their own: a presentation field never moves AlgoVersion or a golden (the version is 9
+    /// and there are 17 goldens as of Story 2.12, both moved only by REAL folds like the order-queue + rally fold).
+    /// The reflection scan (ResourceStore-only) and the enumerated EntityWorld guard below both correctly ignore them;
+    /// the dedicated exclusion teeth (a FeedbackProfile must not move Compute; draining the event queue must not
+    /// perturb the sim) live in CombatFeedbackProfileTests.
     /// </summary>
     public class SimChecksumCoverageGuardTest
     {
@@ -106,21 +108,22 @@ namespace ProjectChimera.Sim.Tests.Golden
         /// hash still moves.)
         /// </summary>
         [Fact]
-        public void KnownWorldState_ProducesPinnedV8Hash()
+        public void KnownWorldState_ProducesPinnedV9Hash()
         {
-            // Algorithm version must be exactly 8 (Story 2.6's EffectiveArmor fold). If this fails, the const below is stale.
-            Assert.Equal(8, SimChecksum.AlgoVersion);
+            // Algorithm version must be exactly 9 (Story 2.12's order-queue + rally fold). If this fails, the const below is stale.
+            Assert.Equal(9, SimChecksum.AlgoVersion);
 
             uint actual = ComputeKnownStateHash();
 
-            // ── Pinned v8 hash for the fixed world built by ComputeKnownStateHash() ───────────────────────────
+            // ── Pinned v9 hash for the fixed world built by ComputeKnownStateHash() ───────────────────────────
             // An intentional SimChecksum algorithm change must update this value AND bump SimChecksum.AlgoVersion.
-            // The known-state world has no armor (EffectiveArmor == 0 per entity, the Create default), so the v8
-            // fold adds one Mix(0) per alive entity — the hash moves from v7 purely by the added field mixes.
-            const uint ExpectedV8Hash = 0x983D39AE; // recorded from a green v8 run; re-pin only on an intentional algo change
-            Assert.True(actual == ExpectedV8Hash,
-                $"Known-state v8 checksum changed: expected 0x{ExpectedV8Hash:X8}, actual 0x{actual:X8}. " +
-                $"If this is an INTENTIONAL algorithm change, re-pin ExpectedV8Hash to 0x{actual:X8} and bump " +
+            // The known-state world has an EMPTY order queue (OrderQueueCount == 0 per entity) and the ONE building
+            // has no rally (HasRallyPoint == false, RallyPoint == Zero, the Create default), so the v9 fold adds a
+            // Mix(0) per entity + a Mix(0)/Mix(0)/Mix(0) per building — the hash moves from v8 purely by those mixes.
+            const uint ExpectedV9Hash = 0xFD72E97E; // recorded from a green v9 run; re-pin only on an intentional algo change
+            Assert.True(actual == ExpectedV9Hash,
+                $"Known-state v9 checksum changed: expected 0x{ExpectedV9Hash:X8}, actual 0x{actual:X8}. " +
+                $"If this is an INTENTIONAL algorithm change, re-pin ExpectedV9Hash to 0x{actual:X8} and bump " +
                 $"SimChecksum.AlgoVersion. If not, you broke the deterministic checksum — investigate.");
         }
 
@@ -250,6 +253,38 @@ namespace ProjectChimera.Sim.Tests.Golden
                 return () => w.AbilityCooldownTicks[e * EntityWorld.MAX_ABILITIES_PER_UNIT + 0] = 42;
             });
 
+            // ── v9 (Story 2.12): the shift-queue order ring is folded (count-driven — set OrderQueueCount > 0 first so
+            //    slot 0 is part of the hashed set, exactly like AbilityCooldownTicks needs AbilityCount > 0). A non-zero
+            //    command byte AND a non-zero target field each MUST move the hash; a no-move means the fold is not
+            //    reading the field. Two separate assertions so a fold that reads Cmd but forgets a Target (or vice versa)
+            //    still goes RED. ──
+            AssertFieldFoldedIntoChecksum(buildings, resources, registry, w =>
+            {
+                int e = w.Create(new FixedVec3(Fixed.FromInt(1), Fixed.Zero, Fixed.FromInt(2)),
+                                 Faction.Player1, Fixed.FromInt(10), Fixed.FromInt(3));
+                w.OrderQueueCount[e] = 1; // make slot 0 part of the count-driven hashed set
+                return () => w.OrderQueueCmd[e * EntityWorld.MAX_ORDER_QUEUE + 0] = (byte)UnitCommand.Move;
+            });
+            AssertFieldFoldedIntoChecksum(buildings, resources, registry, w =>
+            {
+                int e = w.Create(new FixedVec3(Fixed.FromInt(1), Fixed.Zero, Fixed.FromInt(2)),
+                                 Faction.Player1, Fixed.FromInt(10), Fixed.FromInt(3));
+                w.OrderQueueCount[e] = 1;
+                return () => w.OrderQueueTargetX[e * EntityWorld.MAX_ORDER_QUEUE + 0] = 12345;
+            });
+            AssertFieldFoldedIntoChecksum(buildings, resources, registry, w =>
+            {
+                int e = w.Create(new FixedVec3(Fixed.FromInt(1), Fixed.Zero, Fixed.FromInt(2)),
+                                 Faction.Player1, Fixed.FromInt(10), Fixed.FromInt(3));
+                w.OrderQueueCount[e] = 1;
+                return () => w.OrderQueueTargetZ[e * EntityWorld.MAX_ORDER_QUEUE + 0] = -6789;
+            });
+
+            // ── v9 (Story 2.12, D-1): the per-building rally point is folded — HasRallyPoint AND the RallyPoint X/Z.
+            //    Rally lives on BuildingStore (not EntityWorld), so it needs its own teeth (the EntityWorld helper above
+            //    only mutates entity fields). Each of the three mixes must move the hash. ──
+            AssertRallyPointFoldedIntoChecksum(registry);
+
             // ── v6 (Story 2.2b): the ModifierStore per-instance state is folded ──
             // Installing a modifier on a live entity MUST move the hash; advancing a tick (which changes
             // remainingTicks/ticksUntilPeriod) MUST move it again. A no-move means store state escaped the fold.
@@ -286,6 +321,35 @@ namespace ProjectChimera.Sim.Tests.Golden
             uint advanced = SimChecksum.Compute(world, buildings, resources, registry, store);
             Assert.True(installed != advanced,
                 "Advancing the ModifierStore one tick did NOT move the checksum — countdown fields are not folded.");
+        }
+
+        /// <summary>
+        /// Story 2.12 (D-1) coverage teeth: the per-building rally point must move the checksum. Builds an empty world
+        /// + a single building, hashes with no rally, then (1) sets HasRallyPoint (hash must move) and (2) moves the
+        /// RallyPoint X/Z (hash must move again). A no-move at either step means a rally field escaped the v9 fold — a
+        /// silent desync surface, since SpawnTrainedUnit reads rally in-tick to send a trained unit Move→rally.
+        /// </summary>
+        private static void AssertRallyPointFoldedIntoChecksum(FactionRegistry registry)
+        {
+            var world     = new EntityWorld();          // empty — isolates the building contribution
+            var resources = new ResourceStore(Fixed.Zero);
+            var buildings = new BuildingStore();
+            int b = buildings.Create(new FixedVec3(Fixed.FromInt(-14), Fixed.Zero, Fixed.Zero),
+                                     Faction.Player1, BuildingType.Barracks);
+
+            uint noRally = SimChecksum.Compute(world, buildings, resources, registry);
+
+            // HasRallyPoint flips the folded flag.
+            buildings.HasRallyPoint[b] = true;
+            uint flagged = SimChecksum.Compute(world, buildings, resources, registry);
+            Assert.True(noRally != flagged,
+                "BuildingStore.HasRallyPoint is NOT folded into SimChecksum: setting it left the checksum unchanged (v9 D-1 fold).");
+
+            // Moving the rally coordinate must ALSO move the hash (proves RallyPoint X/Z are read, not just the flag).
+            buildings.RallyPoint[b] = new FixedVec3(Fixed.FromInt(9), Fixed.Zero, Fixed.FromInt(-7));
+            uint moved = SimChecksum.Compute(world, buildings, resources, registry);
+            Assert.True(flagged != moved,
+                "BuildingStore.RallyPoint is NOT folded into SimChecksum: moving the rally coordinate left the checksum unchanged (v9 D-1 fold).");
         }
 
         /// <summary>

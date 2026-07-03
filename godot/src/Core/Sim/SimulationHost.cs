@@ -13,10 +13,10 @@ namespace ProjectChimera.Core.Sim
 {
     /// <summary>
     /// Net-new, Godot-free composition root for the simulation (Story 1.8a / AR-6). It owns the SoA stores,
-    /// the canonical 11-system tick order (with <c>AbilityCastSystem</c> at index 3 and <c>ModifierSystem</c> at
-    /// index 4 — both immediately before <see cref="CombatSystem"/>; the ability-cast spine landed in Story 2.4a /
-    /// FR-11, the AR-9 effective-stat recompute in Story 2.2a), the <see cref="SimulationLoop"/> it wraps, and the
-    /// single checksum sink. Because it has zero Godot dependency it compiles into the Godot-free Tier-1 test
+    /// the canonical 12-system tick order (with <c>OrderQueueSystem</c> at index 3 [Story 2.12 / FR-74], then
+    /// <c>AbilityCastSystem</c> at index 4 and <c>ModifierSystem</c> at index 5 — both immediately before
+    /// <see cref="CombatSystem"/>; the ability-cast spine landed in Story 2.4a / FR-11, the AR-9 effective-stat
+    /// recompute in Story 2.2a), the <see cref="SimulationLoop"/> it wraps, and the single checksum sink. Because it has zero Godot dependency it compiles into the Godot-free Tier-1 test
     /// project and (Story 1.9a) the headless ServerBootstrap reuses it verbatim.
     ///
     /// This is a behavior-preserving extraction: the construction performed here is byte-for-byte equivalent
@@ -107,30 +107,35 @@ namespace ProjectChimera.Core.Sim
             // with no self-passive (SelfPassiveAbilityIndex = -1) is a no-op, so existing scenarios stay identical.
             World.OnUnitDefinitionApplied += id => abilitySys.InstallSelfPassive(World, id);
 
-            // ── The canonical 11-system tick order. The registration order IS the determinism contract;
-            //    SystemOrderTest FAILS on any reorder/add/remove. ──
+            // ── The canonical 12-system tick order (Story 2.12 inserted OrderQueueSystem at index 3). The
+            //    registration order IS the determinism contract; SystemOrderTest FAILS on any reorder/add/remove. ──
             _systems = new ISimSystem[]
             {
                 BuildSys,                                                                 // [0] BuildingSystem    (Economy)
                 new GatheringSystem(Nodes, Resources, MatchStats),                        // [1] GatheringSystem   (Economy)
                 new MovementSystem(),                                                     // [2] MovementSystem    (Navigation)
-                // ── Story 2.4a ability-cast spine. At index 3, immediately BEFORE ModifierSystem, so a cast that
-                //    installs a buff is recomputed by ModifierSystem (index 4) and read by CombatSystem (index 5) the
+                // ── Story 2.12 shift-queue advance. At index 3, immediately AFTER MovementSystem so a queued
+                //    movement order's arrival is detected fresh THIS tick, and BEFORE AbilityCastSystem so a popped
+                //    CastAbility order fires the same tick. Pops the head of each unit's completed order and dispatches
+                //    it through the shared OrderApplier.ApplyActiveOrder (no second command→state path — FR-74/AC1). ──
+                new OrderQueueSystem(),                                                    // [3] OrderQueueSystem  (Core, FR-74)
+                // ── Story 2.4a ability-cast spine. At index 4, immediately BEFORE ModifierSystem, so a cast that
+                //    installs a buff is recomputed by ModifierSystem (index 5) and read by CombatSystem (index 6) the
                 //    SAME tick. Ticks per-slot cooldowns down, consumes the pending-cast intent, runs the effect graph. ──
-                abilitySys,                                                               // [3] AbilityCastSystem  (Effects, FR-11)
+                abilitySys,                                                               // [4] AbilityCastSystem  (Effects, FR-11)
                 // ── AR-9 effective-stat recompute. Immediately before CombatSystem, so combat & projectile-spawn
                 //    damage read freshly-recomputed Effective* stats the SAME tick a modifier changes them. Drives the
                 //    ModifierStore (Story 2.2b) each tick (periods/expiry) then recomputes. ──
-                modSys,                                                                   // [4] ModifierSystem    (Effects, AR-9)
+                modSys,                                                                   // [5] ModifierSystem    (Effects, AR-9)
                 // Story 2.6: the on-hit rider needs the ability registry (index→graph) + the ModifierStore (apply leaf).
                 new CombatSystem(Projectiles, CombatEvents, MatchStats, damageTable,
-                                 registry ?? AbilityRegistry.Empty, Modifiers, Buildings), // [5] Buildings (Story 2.9a): anti-building combat
+                                 registry ?? AbilityRegistry.Empty, Modifiers, Buildings), // [6] Buildings (Story 2.9a): anti-building combat
                 new ProjectileSystem(Projectiles, CombatEvents, MatchStats, damageTable,
-                                     Buildings),                                          // [6] Buildings (Story 2.9a): ranged-vs-building shells
-                new SupplySystem(Resources),                                              // [7] SupplySystem      (Economy)
-                Fog,                                                                      // [8] FogOfWarSystem    (Core)
-                new AiOpponentSystem(Buildings, Resources, BuildSys, aiLevel),            // [9] AI opponent (plays Player2)
-                ScenarioDirector,                                                         // [10] ScenarioDirector — runs LAST
+                                     Buildings),                                          // [7] Buildings (Story 2.9a): ranged-vs-building shells
+                new SupplySystem(Resources),                                              // [8] SupplySystem      (Economy)
+                Fog,                                                                      // [9] FogOfWarSystem    (Core)
+                new AiOpponentSystem(Buildings, Resources, BuildSys, aiLevel),            // [10] AI opponent (plays Player2)
+                ScenarioDirector,                                                         // [11] ScenarioDirector — runs LAST
             };
 
             _loop = new SimulationLoop(World, _systems);
@@ -139,7 +144,7 @@ namespace ProjectChimera.Core.Sim
             // The sim spine's only host-side log in 1.8a: a one-shot construction diagnostic through the
             // injected seam. NullLogSink no-ops it (tests/server → zero effect on the golden); GodotLogSink
             // prints it for MainScene. NEVER a per-tick log (D6).
-            _log.Info("[SimulationHost] Sim spine constructed (11 systems; AbilityCastSystem at index 3, ModifierSystem at index 4).");
+            _log.Info("[SimulationHost] Sim spine constructed (12 systems; OrderQueueSystem at index 3, AbilityCastSystem at index 4, ModifierSystem at index 5).");
         }
 
         /// <summary>Advance exactly one tick (lockstep / replay / golden path). Wraps SimulationLoop.StepOnce.</summary>

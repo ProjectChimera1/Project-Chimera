@@ -71,6 +71,9 @@ namespace ProjectChimera.Core.Bootstrap
             // canonical BuildingStore/ResourceStore). Same instance the replay/offline paths use → no divergence.
             _ctx.CommandCard.SetLockstep(_ctx.Lockstep);
             _ctx.Lockstep.Buildings = _ctx.BuildSys;
+            // Story 2.12: also give the manager the event bus so a full-ring queued-order reject can emit OrderDenied
+            // feedback on the online path (the same bus the offline SelectionSystem path uses); presentation-only.
+            _ctx.Lockstep.CombatEvents = _ctx.CombatEvents;
 
             if (localFaction == Faction.Neutral)
             {

@@ -1,6 +1,7 @@
 #nullable enable
 using System.IO;
 using ProjectChimera.Core;
+using ProjectChimera.Economy;   // BuildingSystem (Story 2.12: SetRally replay round-trip)
 using ProjectChimera.Multiplayer;
 using Xunit;
 
@@ -277,6 +278,65 @@ namespace ProjectChimera.Sim.Tests.Multiplayer
                 Assert.Equal(live.PendingCastTarget[liveCaster], world.PendingCastTarget[caster]);
                 Assert.Equal((byte)0, world.PendingCastSlot[caster]);
                 Assert.Equal(3, world.PendingCastTarget[caster]); // packed target id round-tripped through the file
+            }
+            finally
+            {
+                File.Delete(path);
+            }
+        }
+
+        [Fact]
+        public void ReplayFile_RoundTrips_ShiftQueue_ThroughSharedApplier_NoVersionBump()
+        {
+            // Story 2.12: the queued flag + SetRally reuse the unchanged 11-byte wire — NO replay-format bump.
+            Assert.Equal(2, ReplayRecorder.VERSION);
+
+            string path = Path.GetTempFileName();
+            try
+            {
+                // Record a tick carrying a QUEUED Move (0x80-flagged, id 0) and a SetRally on building 0.
+                var queuedMove = new UnitOrder(0, (UnitCommand)((byte)UnitCommand.Move | UnitOrderFlags.Queued),
+                                               Fixed.FromInt(12), Fixed.FromInt(-3));
+                var setRally   = new UnitOrder(0, UnitCommand.SetRally, Fixed.FromInt(16), Fixed.FromInt(-4));
+                using (var rec = new ReplayRecorder(path, "test://shift-queue", EntityWorld.DEFAULT_RNG_SEED))
+                {
+                    var orders = new[] { queuedMove, setRally };
+                    rec.RecordTick(1, Faction.Player1, orders, 0, orders.Length);
+                }
+
+                // Replayed world + its own building store/system (ReplayPlayer threads Buildings into OrderApplier).
+                var world  = new EntityWorld();
+                int rUnit  = world.Create(V(0, 0, 0), Faction.Player1, Fixed.FromInt(100), Fixed.FromInt(3));
+                Assert.Equal(0, rUnit);
+                var rBuildings = new BuildingStore();
+                var rBuildSys  = new BuildingSystem(rBuildings, new ResourceStore(Fixed.Zero));
+                int rB = rBuildSys.PlaceBuildingDirect(BuildingType.Barracks, Faction.Player1, V(10, 0, -10), preBuilt: true);
+                Assert.Equal(0, rB);
+
+                var player = new ReplayPlayer(path, world) { Buildings = rBuildSys };
+                player.Flush(1); // ReplayPlayer.ApplyOrders → OrderApplier.Apply (the SAME switch the live path uses)
+
+                // LIVE reference: apply the identical orders directly through the shared applier.
+                var live  = new EntityWorld();
+                int lUnit = live.Create(V(0, 0, 0), Faction.Player1, Fixed.FromInt(100), Fixed.FromInt(3));
+                var lBuildings = new BuildingStore();
+                var lBuildSys  = new BuildingSystem(lBuildings, new ResourceStore(Fixed.Zero));
+                int lB = lBuildSys.PlaceBuildingDirect(BuildingType.Barracks, Faction.Player1, V(10, 0, -10), preBuilt: true);
+                OrderApplier.Apply(live, queuedMove, Faction.Player1);
+                OrderApplier.Apply(live, setRally, Faction.Player1, buildings: lBuildSys);
+
+                // Byte-identical post-state: the queued Move appended (count + slot) and the rally wrote, on BOTH paths.
+                Assert.Equal(live.OrderQueueCount[lUnit], world.OrderQueueCount[rUnit]);
+                Assert.Equal((byte)1, world.OrderQueueCount[rUnit]);
+                Assert.Equal(live.OrderQueueCmd[lUnit * EntityWorld.MAX_ORDER_QUEUE + 0],
+                             world.OrderQueueCmd[rUnit * EntityWorld.MAX_ORDER_QUEUE + 0]);
+                Assert.Equal(live.OrderQueueTargetX[lUnit * EntityWorld.MAX_ORDER_QUEUE + 0],
+                             world.OrderQueueTargetX[rUnit * EntityWorld.MAX_ORDER_QUEUE + 0]);
+                Assert.Equal(lBuildings.HasRallyPoint[lB], rBuildings.HasRallyPoint[rB]);
+                Assert.True(rBuildings.HasRallyPoint[rB]);
+                Assert.Equal(lBuildings.RallyPoint[lB].X.Raw, rBuildings.RallyPoint[rB].X.Raw);
+                Assert.Equal(lBuildings.RallyPoint[lB].Z.Raw, rBuildings.RallyPoint[rB].Z.Raw);
+                Assert.Equal(UnitCommand.Idle, world.CommandState[rUnit]); // queued → CommandState untouched on both paths
             }
             finally
             {

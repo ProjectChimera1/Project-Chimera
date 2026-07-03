@@ -314,5 +314,34 @@ namespace ProjectChimera.Sim.Tests.Core
             // The new occupant (NO def applied) must carry NO prior tag — proves the mandatory Create() recycle-reset.
             Assert.Equal(UnitTag.None, w.TagsOf[reused]);
         }
+
+        // ── Story 2.12 — the shift-queue order ring is runtime state (Decision #1: NOT def-derived, so it is NOT written
+        //    by ApplyUnitDefinition and NOT guarded by the mapper tests above — it is defaulted in Create and mutated by
+        //    OrderApplier/OrderQueueSystem, the PatrolWaypoints posture). A recycled slot must be reset in Create() so a
+        //    new occupant never inherits a prior unit's queued orders (the SoA-recycle trap). This is the ONLY teeth on
+        //    that mandatory Create() reset: the SimChecksum fold teeth run on FRESH zero-init slots and pass even if the
+        //    reset line were omitted (default(byte)==0), and a stale non-zero count would drive ghost orders + a desync. ──
+        [Fact]
+        public void RecycledSlot_CarriesNoPriorOrderQueue()
+        {
+            var w = new EntityWorld();
+            int first = w.Create(FixedVec3.Zero, Faction.Player1, Fixed.FromInt(100), Fixed.FromInt(3));
+            // Dirty the ring on the first occupant, as if a Shift order had been appended.
+            int slot0 = first * EntityWorld.MAX_ORDER_QUEUE + 0;
+            w.OrderQueueCount[first]   = 1;
+            w.OrderQueueCmd[slot0]     = (byte)UnitCommand.Move;
+            w.OrderQueueTargetX[slot0] = 42;
+            w.OrderQueueTargetZ[slot0] = -17;
+            Assert.Equal((byte)1, w.OrderQueueCount[first]);
+
+            w.Destroy(first);
+            int reused = w.Create(FixedVec3.Zero, Faction.Player2, Fixed.FromInt(50), Fixed.FromInt(3));
+            Assert.Equal(first, reused); // same id off the free list
+
+            // The new occupant must carry NO prior queued orders — proves the mandatory Create() recycle-reset. The
+            // count is the load-bearing field (the fold + OrderQueueSystem are both count-driven, so slots past the
+            // count are unread); with count == 0 the stale Cmd/Target slots are inert.
+            Assert.Equal((byte)0, w.OrderQueueCount[reused]);
+        }
     }
 }

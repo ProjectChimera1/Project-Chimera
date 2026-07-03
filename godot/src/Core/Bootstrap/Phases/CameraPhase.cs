@@ -41,7 +41,8 @@ namespace ProjectChimera.Core.Bootstrap
 
             var selection = new SelectionSystem();
             _ctx.Scene.AddChild(selection);
-            selection.Initialize(cam, _ctx.World, _ctx.FlowFieldBridge, _ctx.Buildings);
+            // Story 2.12: pass BuildSys (offline SetRally apply site) + CombatEvents (OrderDenied feedback bus).
+            selection.Initialize(cam, _ctx.World, _ctx.FlowFieldBridge, _ctx.Buildings, _ctx.BuildSys, _ctx.CombatEvents);
             _ctx.Selection = selection;
 
             var commandCard = new CommandCardSystem();

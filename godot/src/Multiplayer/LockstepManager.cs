@@ -92,8 +92,13 @@ namespace ProjectChimera.Multiplayer
         /// <summary>Story 2.8 (D-1): the production system the shared OrderApplier uses to EXECUTE a Train command at
         /// exec-tick (the deterministic spend + queue on the canonical BuildingStore/ResourceStore). Wired by MainScene
         /// per match; null in headless/tests where Train no-ops. Must be the SAME instance the replay/offline paths use,
-        /// or human-vs-human training diverges.</summary>
+        /// or human-vs-human training diverges. Story 2.12: ALSO the SetRally exec-tick handler (SetRallyCommand).</summary>
         public ProjectChimera.Economy.BuildingSystem? Buildings;
+
+        /// <summary>Story 2.12 (AC4): the presentation event bus the shared OrderApplier pushes an OrderDenied event to
+        /// when a Shift-queued order is rejected on a full ring. Wired by MainScene per match; null → the reject is still
+        /// deterministic (it reads the folded OrderQueueCount), only the visual feedback is skipped. Presentation-only.</summary>
+        public ProjectChimera.Combat.CombatEventQueue? CombatEvents;
 
         // ── Public state ──────────────────────────────────────────────────────
 
@@ -661,7 +666,7 @@ namespace ProjectChimera.Multiplayer
             // delegates are this manager's presentation hooks (wired by MainScene; null in headless/tests).
             for (int i = 0; i < count; i++)
                 OrderApplier.Apply(_world, in buf[baseIdx + i], expectedFaction,
-                    OnRequestPath, OnRequestAttackMove, OnCancelPath, Buildings);
+                    OnRequestPath, OnRequestAttackMove, OnCancelPath, Buildings, CombatEvents);
         }
     }
 }

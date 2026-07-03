@@ -2,6 +2,8 @@
 using System.Collections.Generic;
 using Godot;
 using ProjectChimera.Core;
+using ProjectChimera.Combat;     // CombatEventQueue (Story 2.12: OrderDenied feedback on a full-ring reject)
+using ProjectChimera.Economy;    // BuildingSystem (Story 2.12: rally rides the wire via BuildingSystem.SetRallyCommand)
 using ProjectChimera.Multiplayer;
 using ProjectChimera.Navigation; // FormationPlanner (Story 1.13)
 
@@ -61,6 +63,12 @@ namespace ProjectChimera.UI
         private EntityWorld         _world         = null!;
         private FlowFieldBridge?    _pathSystem    = null;
         private BuildingStore?      _buildingStore = null;
+        // Story 2.12: the production system the shared OrderApplier uses to EXECUTE a SetRally command (the offline
+        // apply site — online routes through LockstepManager which holds its own BuildSys). Null in tests/menus.
+        private BuildingSystem?     _buildSys      = null;
+        // Story 2.12: the presentation event bus for the OrderDenied feedback on a full-ring reject (AC4). Optional —
+        // a null sink still rejects deterministically (the reject reads the folded OrderQueueCount); only the visual is skipped.
+        private CombatEventQueue?   _combatEvents  = null;
 
         // ── Building selection ─────────────────────────────────────────────────────
 
@@ -133,12 +141,16 @@ namespace ProjectChimera.UI
 
         public void Initialize(RtsCameraController camCtrl, EntityWorld world,
                               FlowFieldBridge? pathSystem = null,
-                              BuildingStore? buildingStore = null)
+                              BuildingStore? buildingStore = null,
+                              BuildingSystem? buildSys = null,
+                              CombatEventQueue? combatEvents = null)
         {
             _camCtrl       = camCtrl;
             _world         = world;
             _pathSystem    = pathSystem;
             _buildingStore = buildingStore;
+            _buildSys      = buildSys;      // Story 2.12: offline SetRally apply site
+            _combatEvents  = combatEvents;  // Story 2.12: OrderDenied feedback bus (optional)
         }
 
         /// <summary>
@@ -172,6 +184,25 @@ namespace ProjectChimera.UI
         private bool EnqueueTargetedCommand(int unitId, UnitCommand cmd, int targetEntityId)
             => _lockstep?.EnqueueOrder(unitId, cmd, Fixed.FromRaw(targetEntityId), Fixed.Zero) ?? true;
 
+        /// <summary>
+        /// Issue a Shift-queued (append) order (Story 2.12, AC1.2). Sets the wire's <see cref="UnitOrderFlags.Queued"/>
+        /// high bit on the command byte so <c>OrderApplier</c> APPENDS it to the entity's ring instead of touching
+        /// CommandState — routed through the SAME shared applier online (deferred via lockstep) and offline (applied
+        /// now), so live == replay == offline. <paramref name="tx"/>/<paramref name="tz"/> are the wire targets already
+        /// in <see cref="Fixed"/> (a ground point via FromFloat at the issue seam, or a packed id via FromRaw). The
+        /// queue itself lives in the sim (EntityWorld ring) — SelectionSystem only ships an individual flagged order.
+        /// </summary>
+        private void IssueQueuedOrder(int unitId, UnitCommand cmd, Fixed tx, Fixed tz)
+        {
+            var wireCmd = (UnitCommand)((byte)cmd | UnitOrderFlags.Queued);
+            // Online: EnqueueOrder returns false (deferred to Flush). Offline (_lockstep == null): the ?? true applies now.
+            if (_lockstep?.EnqueueOrder(unitId, wireCmd, tx, tz) ?? true)
+            {
+                var order = new UnitOrder(unitId, wireCmd, tx, tz);
+                OrderApplier.Apply(_world, in order, _world.FactionOf[unitId], events: _combatEvents);
+            }
+        }
+
         public override void _Ready()
         {
             SetupRings();
@@ -201,11 +232,13 @@ namespace ProjectChimera.UI
             {
                 if (lmb.Pressed)
                 {
-                    // Attack-move pending: consume this click as the command destination
+                    // Attack-move pending: consume this click as the command destination. Story 2.12: a Shift-held
+                    // click QUEUES the attack-move (append) instead of replacing; Shift also keeps the arm live so
+                    // Q, click, shift-click, shift-click… chains attack-move waypoints (mirrors the patrol-arm idiom).
                     if (_awaitingAttackMoveClick)
                     {
-                        IssueAttackMoveCommand(lmb.Position);
-                        _awaitingAttackMoveClick = false;
+                        IssueAttackMoveCommand(lmb.Position, queued: lmb.ShiftPressed);
+                        if (!lmb.ShiftPressed) _awaitingAttackMoveClick = false;
                         GetViewport().SetInputAsHandled();
                         return;
                     }
@@ -291,15 +324,18 @@ namespace ProjectChimera.UI
                     // Right-click dispatch (Story 1.12 + 2.9a): enemy UNIT → single-target Attack (force-fire);
                     // else enemy BUILDING → AttackBuilding; else ground/friendly → Move. A friendly-building pick
                     // must FALL THROUGH to Move (not swallow the click into a dead no-op).
+                    // Story 2.12: Shift+RMB QUEUES the order (append to the ring) instead of replacing — the WC3
+                    // waypoint-chain gesture. Distinct from Shift+LMB-Patrol-append (the P-armed path below).
+                    bool queued = rmb.ShiftPressed;
                     if (RaycastGround(rmb.Position, out Vector3 hit))
                     {
                         int enemyId = FindNearestEnemyUnit(hit, PICK_RADIUS);
                         int enemyBuildingId = enemyId < 0 ? FindNearestEnemyBuilding(hit, BUILDING_PICK_RADIUS) : -1;
-                        if (enemyId >= 0)              IssueAttackTargetCommand(enemyId);
-                        else if (enemyBuildingId >= 0) IssueAttackBuildingCommand(enemyBuildingId);
-                        else                           IssueMoveCommand(rmb.Position);
+                        if (enemyId >= 0)              IssueAttackTargetCommand(enemyId, queued);
+                        else if (enemyBuildingId >= 0) IssueAttackBuildingCommand(enemyBuildingId, queued);
+                        else                           IssueMoveCommand(rmb.Position, queued);
                     }
-                    else IssueMoveCommand(rmb.Position);
+                    else IssueMoveCommand(rmb.Position, queued);
                 }
                 else if (SelectedBuildingId >= 0 && _buildingStore != null)
                     SetRallyPoint(SelectedBuildingId, rmb.Position);
@@ -427,7 +463,7 @@ namespace ProjectChimera.UI
         /// <summary>Spacing (world units) between adjacent units' destinations in a formation (Story 1.13).</summary>
         private static readonly Fixed FORMATION_SPACING = Fixed.FromInt(2);
 
-        private void IssueMoveCommand(Vector2 screenPos)
+        private void IssueMoveCommand(Vector2 screenPos, bool queued = false)
         {
             Vector3 target;
             if (!RaycastGround(screenPos, out target)) return;
@@ -442,7 +478,17 @@ namespace ProjectChimera.UI
                 FixedVec3 fd = dests[k];
                 var dest = new Vector3(fd.X.ToFloat(), 0f, fd.Z.ToFloat());
 
-                if (!EnqueueCommand(id, UnitCommand.Move, dest)) continue; // online: queued, not applied yet
+                // Story 2.12: a Shift-queued Move APPENDS to the ring through the shared applier (no flow-field path
+                // request — a popped queued move direct-steers via MoveTarget, since OrderQueueSystem is sim-side and
+                // cannot call a presentation path hook). A plain Move replaces: clear the ring, then apply as before.
+                if (queued)
+                {
+                    IssueQueuedOrder(id, UnitCommand.Move, Fixed.FromFloat(dest.X), Fixed.FromFloat(dest.Z));
+                    continue;
+                }
+
+                if (!EnqueueCommand(id, UnitCommand.Move, dest)) continue; // online plain: deferred to Flush (OrderApplier clears the ring there)
+                _world.OrderQueueCount[id] = 0; // offline plain = replace: this direct-write path bypasses OrderApplier, so clear the ring here
 
                 if (_pathSystem != null)
                 {
@@ -547,7 +593,7 @@ namespace ProjectChimera.UI
         /// Attack Move: units navigate to the click destination, engaging enemies they encounter.
         /// After each kill they resume toward the destination.
         /// </summary>
-        private void IssueAttackMoveCommand(Vector2 screenPos)
+        private void IssueAttackMoveCommand(Vector2 screenPos, bool queued = false)
         {
             Vector3 target;
             if (!RaycastGround(screenPos, out target)) return;
@@ -561,7 +607,15 @@ namespace ProjectChimera.UI
                 FixedVec3 fd = dests[k];
                 var dest = new Vector3(fd.X.ToFloat(), 0f, fd.Z.ToFloat());
 
-                if (!EnqueueCommand(id, UnitCommand.AttackMove, dest)) continue; // online: queued
+                // Story 2.12: Shift-queued attack-move appends (shared applier, no path request); plain replaces (clear ring).
+                if (queued)
+                {
+                    IssueQueuedOrder(id, UnitCommand.AttackMove, Fixed.FromFloat(dest.X), Fixed.FromFloat(dest.Z));
+                    continue;
+                }
+
+                if (!EnqueueCommand(id, UnitCommand.AttackMove, dest)) continue; // online plain: deferred to Flush
+                _world.OrderQueueCount[id] = 0; // offline plain = replace: this direct-write path bypasses OrderApplier
 
                 if (_pathSystem != null)
                 {
@@ -584,14 +638,20 @@ namespace ProjectChimera.UI
         /// Single-target Attack (Story 1.12): force every selected unit to attack ONE specific enemy, chasing
         /// only it and ignoring nearer enemies. Issued by right-clicking an enemy unit.
         /// </summary>
-        private void IssueAttackTargetCommand(int enemyId)
+        private void IssueAttackTargetCommand(int enemyId, bool queued = false)
         {
             foreach (int id in _selectedList)
             {
                 if (!_world.IsAlive(id)) continue;
-                if (!EnqueueTargetedCommand(id, UnitCommand.AttackTarget, enemyId)) continue; // online: queued
-                // Offline: apply through the SAME shared OrderApplier the lockstep/replay paths use (Review,
-                // Story 1.12) — never a hand-rolled copy that could silently drift from production apply logic.
+                // Story 2.12: a Shift-queued attack appends to the ring (the enemy id packs into TargetX as a raw int).
+                if (queued)
+                {
+                    IssueQueuedOrder(id, UnitCommand.AttackTarget, Fixed.FromRaw(enemyId), Fixed.Zero);
+                    continue;
+                }
+                if (!EnqueueTargetedCommand(id, UnitCommand.AttackTarget, enemyId)) continue; // online plain: queued
+                // Offline plain: apply through the SAME shared OrderApplier the lockstep/replay paths use (Review,
+                // Story 1.12) — never a hand-rolled copy that could silently drift. The applier clears the ring (replace).
                 var atkOrder = new UnitOrder(id, UnitCommand.AttackTarget, Fixed.FromRaw(enemyId), Fixed.Zero);
                 OrderApplier.Apply(_world, in atkOrder, _world.FactionOf[id]);
             }
@@ -605,14 +665,20 @@ namespace ProjectChimera.UI
         /// non-combatants — which CombatSystem skips and thus never self-revert — aren't left in a dangling AttackBuilding
         /// state. Issued by right-clicking an enemy building. Presentation issues an INTENT only; the tick validates it.
         /// </summary>
-        private void IssueAttackBuildingCommand(int buildingId)
+        private void IssueAttackBuildingCommand(int buildingId, bool queued = false)
         {
             foreach (int id in _selectedList)
             {
                 if (!_world.IsAlive(id)) continue;
                 if (_world.EffectiveAttackDamage[id] <= Fixed.Zero) continue; // combat units only
-                if (!EnqueueTargetedCommand(id, UnitCommand.AttackBuilding, buildingId)) continue; // online: queued
-                // Offline: apply through the SAME shared OrderApplier — identical to the AttackTarget call, NO buildings arg.
+                // Story 2.12: a Shift-queued anti-building attack appends (building id packs into TargetX as a raw int).
+                if (queued)
+                {
+                    IssueQueuedOrder(id, UnitCommand.AttackBuilding, Fixed.FromRaw(buildingId), Fixed.Zero);
+                    continue;
+                }
+                if (!EnqueueTargetedCommand(id, UnitCommand.AttackBuilding, buildingId)) continue; // online plain: queued
+                // Offline plain: apply through the SAME shared OrderApplier — identical to AttackTarget (clears the ring).
                 var atkOrder = new UnitOrder(id, UnitCommand.AttackBuilding, Fixed.FromRaw(buildingId), Fixed.Zero);
                 OrderApplier.Apply(_world, in atkOrder, _world.FactionOf[id]);
             }
@@ -719,17 +785,28 @@ namespace ProjectChimera.UI
         }
 
         /// <summary>
-        /// Set the rally point for a building to the world position the player right-clicked.
-        /// Newly trained units from this building will walk to this point on spawn.
+        /// Set the rally point for a building to the world position the player right-clicked (Story 2.12, AC3).
+        /// Newly trained units from this building will walk to this point on spawn. Now rides the UnitOrder wire
+        /// (<see cref="UnitCommand.SetRally"/>) through the SAME shared <see cref="OrderApplier"/> the lockstep/replay
+        /// paths use — so the rally change is lockstep-replicated, replayable, and folded (v9), NOT a direct store
+        /// write (the pre-2.12 desync path). One issue-side <see cref="Fixed.FromFloat"/> quantization of the raycast
+        /// hit (like <c>IssueMoveCommand</c>): the local peer resolves its screen-ray, ships the Fixed raw, and every
+        /// peer applies the identical value. UnitId = buildingId (handled before the entity guard, like Train).
         /// </summary>
         private void SetRallyPoint(int buildingId, Vector2 screenPos)
         {
-            if (_buildingStore == null) return;
             if (!RaycastGround(screenPos, out Vector3 hit)) return;
 
-            _buildingStore.RallyPoint[buildingId]    = new FixedVec3(
-                Fixed.FromFloat(hit.X), Fixed.Zero, Fixed.FromFloat(hit.Z));
-            _buildingStore.HasRallyPoint[buildingId] = true;
+            var tx = Fixed.FromFloat(hit.X);
+            var tz = Fixed.FromFloat(hit.Z);
+            // Online: EnqueueOrder defers to Flush (LockstepManager applies with its own BuildSys). Offline
+            // (_lockstep == null): apply now through the shared OrderApplier, wiring THIS scene's BuildSys so the
+            // deterministic store write (BuildingSystem.SetRallyCommand) runs. A null BuildSys → deterministic no-op.
+            if (_lockstep?.EnqueueOrder(buildingId, UnitCommand.SetRally, tx, tz) ?? true)
+            {
+                var order = new UnitOrder(buildingId, UnitCommand.SetRally, tx, tz);
+                OrderApplier.Apply(_world, in order, Faction.Player1, buildings: _buildSys);
+            }
 
             GD.Print($"[Selection] Rally point → building {buildingId} at ({hit.X:F1}, {hit.Z:F1})");
         }

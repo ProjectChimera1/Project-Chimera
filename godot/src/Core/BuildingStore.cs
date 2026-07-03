@@ -98,6 +98,12 @@ namespace ProjectChimera.Core
             ProductionTimer[id] = Fixed.Zero;
             ProductionQueue[id] = 0;
             TrainedCount[id]    = 0;
+            // Story 2.12: reset the rally point on (re)allocation. Rally is FOLDED into SimChecksum (v9, D-1) and
+            // read unconditionally, so a recycled slot must never inherit the prior building's rally (the SoA-recycle
+            // trap). Harmless today under the append-only BuildingStore (Count only grows), but forward-safe for the
+            // Story 2.13 slot recycling — and it keeps the unconditional fold deterministic if slots ever reuse.
+            RallyPoint[id]      = FixedVec3.Zero;
+            HasRallyPoint[id]   = false;
 
             // Per-type defaults
             switch (type)

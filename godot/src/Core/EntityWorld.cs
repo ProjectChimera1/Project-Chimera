@@ -28,6 +28,23 @@ namespace ProjectChimera.Core
         Train        = 11, // Train a unit at a production BUILDING. WIRE: UnitId = buildingId, TargetX = chosen unit index (raw int, -1 = first-of-category). Handled by OrderApplier BEFORE the entity-ownership guard (UnitId names a building, not an entity); ore/supply spend happens at exec-tick via BuildingSystem.TrainUnitCommand. Never persists as a CommandState.
         // ── Story 2.9a (FR-11/FR-12): appended AFTER Train. Values 0-11 stay FROZEN for replay back-compat. ──
         AttackBuilding = 12, // Force-attack ONE specific enemy BUILDING. WIRE: UnitId = attacker entity, TargetX = building id (raw int). Handled AFTER the entity-ownership guard (UnitId names an entity); OrderApplier blind-stores the building id in CommandTarget, and CombatSystem.TickAttackBuildingCombat validates (bounds/Alive/friendly/Structure-domain) in-tick. Persists as a CommandState.
+        // ── Story 2.12 (FR-74): appended AFTER AttackBuilding. Values 0-12 stay FROZEN for replay back-compat. ──
+        SetRally = 13, // Set/change a production BUILDING's rally point. WIRE: UnitId = buildingId, TargetX/TargetZ = rally ground point (Fixed raw, the Move encoding). Handled by OrderApplier BEFORE the entity-ownership guard (UnitId names a building, like Train); it writes BuildingStore.RallyPoint/HasRallyPoint via BuildingSystem.SetRallyCommand (bounds + Alive + faction anti-cheat) and NEVER persists as a CommandState. Rides the queued-flag mask harmlessly (a rally is never Shift-queued; the flag is masked off before this compare).
+    }
+
+    /// <summary>
+    /// Wire-level flag bits OR'd onto the <see cref="UnitCommand"/> byte of a <see cref="Multiplayer.UnitOrder"/>
+    /// (Story 2.12, Decision #2). <see cref="UnitCommand"/> uses values 0-13, so bits 6-7 are free; a Shift-issued
+    /// (queued) order sets <see cref="Queued"/> on the wire and <c>OrderApplier</c> masks it off with
+    /// <see cref="CommandMask"/> before the command→state switch. Wire-only — a flagged byte NEVER reaches
+    /// <c>CommandState</c> (only 0-13 are valid enum values there) or <see cref="SimChecksum"/>.
+    /// </summary>
+    public static class UnitOrderFlags
+    {
+        /// <summary>High bit (0x80): this order is APPENDED to the entity's order queue instead of applied now.</summary>
+        public const byte Queued = 0x80;
+        /// <summary>Low 7 bits (0x7F): recovers the real <see cref="UnitCommand"/> from a possibly-flagged wire byte.</summary>
+        public const byte CommandMask = 0x7F;
     }
 
     /// <summary>
@@ -81,6 +98,18 @@ namespace ProjectChimera.Core
         /// so the determinism analyzer's CHM0004 (bare-cap) advisory stays clean.
         /// </summary>
         public const int MAX_PATROL_WAYPOINTS = 8;
+
+        /// <summary>
+        /// Maximum pending orders in a single unit's shift-queue (Story 2.12, FR-74) — both the per-entity queue
+        /// depth AND the stride of the flat order-ring buffers (<see cref="OrderQueueCmd"/>,
+        /// <see cref="OrderQueueTargetX"/>, <see cref="OrderQueueTargetZ"/>), indexed
+        /// <c>id * MAX_ORDER_QUEUE + slot</c> — the SoA-safe fixed-capacity ring, exactly like
+        /// <see cref="MAX_PATROL_WAYPOINTS"/> / <see cref="MAX_ABILITIES_PER_UNIT"/>. Named so the determinism
+        /// analyzer's CHM0004 (bare-cap) advisory stays clean. Freely RAISABLE later at ZERO determinism cost: the
+        /// v9 order-queue fold is count-driven (it hashes each unit's <see cref="OrderQueueCount"/> + only its USED
+        /// slots, never the stride or empty slots), so raising this moves no golden.
+        /// </summary>
+        public const int MAX_ORDER_QUEUE = 8;
 
         /// <summary>
         /// Maximum active abilities a single unit can carry (Story 2.4a, FR-11) — both the per-entity ability-slot
@@ -329,6 +358,31 @@ namespace ProjectChimera.Core
         /// <summary>Patrol walk direction: +1 forward / -1 back (reverse-at-ends). Folded into <see cref="SimChecksum"/> (v4).</summary>
         public readonly sbyte[] PatrolDir;
 
+        // --- Shift-queued order ring (Story 2.12, FR-74) — flat per-slot buffers indexed id * MAX_ORDER_QUEUE + slot ---
+        /// <summary>
+        /// Flat order-queue ring (the masked <see cref="UnitCommand"/> per pending order), indexed
+        /// <c>id * MAX_ORDER_QUEUE + slot</c>. A consume-once FIFO (distinct from the looping <see cref="PatrolWaypoints"/>
+        /// route): <c>OrderApplier</c> APPENDS a Shift-issued order here, and <c>OrderQueueSystem</c> POPS the head when
+        /// the active order completes and dispatches it through the shared <c>OrderApplier.ApplyActiveOrder</c> core.
+        /// Runtime-mutable mid-match → <b>FOLDED into <see cref="SimChecksum"/> (v9)</b>, count-driven by
+        /// <see cref="OrderQueueCount"/> (slots past the count are unread/unhashed, the <see cref="PatrolCount"/>
+        /// discipline). Only the low-7-bit command is stored (the wire's 0x80 queued flag is masked before append).
+        /// </summary>
+        public readonly byte[] OrderQueueCmd;
+        /// <summary>Flat order-queue target X per pending order (<see cref="Fixed"/> raw / packed id, the wire's TargetX),
+        /// indexed <c>id * MAX_ORDER_QUEUE + slot</c>. Folded v9, count-driven (Story 2.12).</summary>
+        public readonly int[] OrderQueueTargetX;
+        /// <summary>Flat order-queue target Z per pending order (<see cref="Fixed"/> raw, the wire's TargetZ), indexed
+        /// <c>id * MAX_ORDER_QUEUE + slot</c>. Folded v9, count-driven (Story 2.12).</summary>
+        public readonly int[] OrderQueueTargetZ;
+        /// <summary>
+        /// Number of pending queued orders per entity (0 = empty). Runtime-mutable mid-match → FOLDED into
+        /// <see cref="SimChecksum"/> (v9) as the count itself AND as the cross-platform-safe count-driven loop bound
+        /// (exactly like <see cref="PatrolCount"/> / <see cref="AbilityCount"/>). MANDATORY <see cref="Create"/> reset:
+        /// a recycled slot must never inherit the prior occupant's queued orders (the SoA-recycle trap).
+        /// </summary>
+        public readonly byte[] OrderQueueCount;
+
         // --- Abilities (Story 2.4a, FR-11) — flat per-slot buffers indexed id * MAX_ABILITIES_PER_UNIT + slot ---
         /// <summary>
         /// Registry index of the ability in each slot (−1 = empty), indexed <c>id * MAX_ABILITIES_PER_UNIT + slot</c>.
@@ -468,6 +522,10 @@ namespace ProjectChimera.Core
             PatrolCount     = new byte[MAX_ENTITIES];
             PatrolIndex     = new byte[MAX_ENTITIES];
             PatrolDir       = new sbyte[MAX_ENTITIES];
+            OrderQueueCmd     = new byte[MAX_ENTITIES * MAX_ORDER_QUEUE];  // Story 2.12 (folded v9; 0 = empty, no Array.Fill needed)
+            OrderQueueTargetX = new int[MAX_ENTITIES * MAX_ORDER_QUEUE];   // Story 2.12 (folded v9)
+            OrderQueueTargetZ = new int[MAX_ENTITIES * MAX_ORDER_QUEUE];   // Story 2.12 (folded v9)
+            OrderQueueCount   = new byte[MAX_ENTITIES];                    // Story 2.12 (folded v9; count-driven loop bound)
             AbilityId            = new int[MAX_ENTITIES * MAX_ABILITIES_PER_UNIT];  // Story 2.4a (authored — NOT folded)
             AbilityCooldownTicks = new int[MAX_ENTITIES * MAX_ABILITIES_PER_UNIT];  // Story 2.4a (folded v7)
             AbilityCount         = new byte[MAX_ENTITIES];                          // Story 2.4a (v7 fold loop bound)
@@ -569,6 +627,12 @@ namespace ProjectChimera.Core
             PatrolCount[id]   = 0;
             PatrolIndex[id]   = 0;
             PatrolDir[id]     = 1;
+            // Story 2.12: MANDATORY recycle-reset of the shift-queue ring. A recycled slot must NEVER inherit the prior
+            // occupant's queued orders (the 1.12/1.13/2.6 SoA-recycle defect class). Count-only reset suffices — slots
+            // past OrderQueueCount are unread and unhashed (the PatrolCount discipline), so the ring buffer needs no
+            // per-slot clear. The ONLY teeth on this line are RecycledSlot_CarriesNoPriorOrderQueue (default(byte)==0
+            // makes it look redundant, but a reused slot with a stale count would drive ghost orders + a desync).
+            OrderQueueCount[id] = 0;
             // Story 2.4a: reset the per-entity ability slots + cooldowns + transient cast intent on (re)allocation —
             // a recycled slot must NEVER carry the prior occupant's abilities/cooldowns (the SoA-recycle trap the A2
             // guard catches). ApplyUnitDefinition overwrites AbilityId/AbilityCount/MaxEnergy/Energy for def-based units.

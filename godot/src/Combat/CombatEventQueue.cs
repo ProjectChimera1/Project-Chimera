@@ -17,7 +17,12 @@ namespace ProjectChimera.Combat
         AbilityCast,
         // ── Story 2.9a: appended AFTER AbilityCast. Pushed when a building is razed by combat (melee or projectile
         // impact). Same not-folded property — appending is golden-safe. ──
-        BuildingDestroyed
+        BuildingDestroyed,
+        // ── Story 2.12 (AC4): appended AFTER BuildingDestroyed. Pushed by OrderApplier when a Shift-queued order is
+        // rejected because the entity's order ring is already full (OrderQueueCount == MAX_ORDER_QUEUE). Presentation
+        // feedback ONLY — the deterministic reject is the folded OrderQueueCount, so a null event sink (replay) still
+        // rejects identically. Story 11.9 consumes this; same not-folded property → appending is golden-safe. ──
+        OrderDenied
     }
 
     /// <summary>Lightweight event written by sim systems each tick.</summary>

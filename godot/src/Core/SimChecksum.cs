@@ -33,6 +33,11 @@ namespace ProjectChimera.Core
     ///     (int ticks) — added v7 (Story 2.4a), the first ability array that mutates mid-match (a cast starts a
     ///     cooldown; it ticks down each frame). AbilityId / MaxEnergy / PendingCast* are NOT hashed (authored /
     ///     transient); AbilityCount is folded ONLY as the cross-platform-safe count-driven loop bound (like PatrolCount).
+    ///   - EntityWorld shift-queue: per alive entity, OrderQueueCount then count-driven OrderQueueCmd/TargetX/TargetZ
+    ///     — added v9 (Story 2.12), the per-entity pending-order ring (OrderApplier appends a Shift order; OrderQueueSystem
+    ///     pops the head on completion) → runtime-mutable sim truth. Count-driven (only populated slots hashed).
+    ///   - BuildingStore rally point: per building, HasRallyPoint then RallyPoint X/Z — added v9 (Story 2.12, D-1), now
+    ///     that rally is wire-driven (UnitCommand.SetRally) and read in-tick by SpawnTrainedUnit (mutable sim truth).
     ///
     /// Versioned by <see cref="AlgoVersion"/> — bump on any change to the hashed set/order
     /// (forces an intentional golden re-baseline). MatchStats is deliberately NOT hashed
@@ -73,8 +78,14 @@ namespace ProjectChimera.Core
         ///        posture). The passive DRIVERS (aura / on-hit / self-passive) add NO new folded state — they reuse
         ///        ModifierStore v6 / Health / Effective* and register passives via authored, not-folded SoA. One
         ///        scheduled re-baseline of all goldens (the existing combat is unchanged since BaseArmor=0 → −0).
+        ///   v9 — Story 2.12: fold (a) the per-entity shift-queued order ring (OrderQueueCount + count-driven
+        ///        OrderQueueCmd/TargetX/TargetZ) — runtime-mutable pending orders (append/pop mid-match); AND
+        ///        (b) the per-building rally point (HasRallyPoint + RallyPoint X/Z) — now wire-driven (UnitCommand.SetRally)
+        ///        and read in-tick by SpawnTrainedUnit, so genuinely mutable sim truth (D-1). Both count/flag-driven,
+        ///        all int/Fixed.Raw → cross-platform. One scheduled re-baseline of ALL goldens (the known-state world
+        ///        has an empty queue + no rally, so the pin moves purely by the added Mix(0) per entity/building).
         /// </summary>
-        public const int AlgoVersion = 8;
+        public const int AlgoVersion = 9;
 
         /// <summary>
         /// Compute a full-state checksum for desync detection.
@@ -176,6 +187,24 @@ namespace ProjectChimera.Core
                 int abBase = i * EntityWorld.MAX_ABILITIES_PER_UNIT;
                 for (int s = 0; s < abCount; s++)
                     hash = Mix(hash, world.AbilityCooldownTicks[abBase + s]);
+
+                // ── Shift-queued order ring (v9, Story 2.12) — count-driven, ascending slot ──
+                // The per-entity order queue MUTATES mid-match (OrderApplier appends a Shift order; OrderQueueSystem
+                // pops the head on completion), so it is peer-divergent sim truth and must fold. Count-driven by
+                // OrderQueueCount (the cross-platform-safe loop bound, like PatrolCount) — only the populated slots are
+                // hashed, never the stride or empty slots, so raising MAX_ORDER_QUEUE later moves no golden. The command
+                // byte is the masked 0-13 value (the wire's 0x80 queued flag never reaches here); targets are Fixed.Raw /
+                // packed ints. All int → cross-platform safe (the shift-queue golden is compared on both CI legs).
+                int oqCount = world.OrderQueueCount[i];
+                if (oqCount > EntityWorld.MAX_ORDER_QUEUE) oqCount = EntityWorld.MAX_ORDER_QUEUE; // defensive
+                hash = Mix(hash, oqCount);
+                int oqBase = i * EntityWorld.MAX_ORDER_QUEUE;
+                for (int s = 0; s < oqCount; s++)
+                {
+                    hash = Mix(hash, world.OrderQueueCmd[oqBase + s]);
+                    hash = Mix(hash, world.OrderQueueTargetX[oqBase + s]);
+                    hash = Mix(hash, world.OrderQueueTargetZ[oqBase + s]);
+                }
             }
 
             // ── Building state ────────────────────────────────────────────────────
@@ -185,6 +214,14 @@ namespace ProjectChimera.Core
                 hash = Mix(hash, buildings.Alive[i] ? 1 : 0);
                 hash = Mix(hash, buildings.Health[i].Raw);
                 hash = Mix(hash, buildings.ConstructionTimer[i].Raw);
+                // ── Rally point (v9, Story 2.12, D-1) — the one in-tick-read BuildingStore field that was NOT folded.
+                // Once rally is wire-driven (UnitCommand.SetRally) it becomes genuinely mutable-mid-match sim truth:
+                // SpawnTrainedUnit reads it to send a trained unit Move→rally, so a peer divergence must desync
+                // detectably (and directly, not only once a unit spawns and its Position drifts). RallyPoint is reset
+                // to Zero in BuildingStore.Create, so an unset rally folds a stable Zero. All Fixed.Raw/int → x-platform.
+                hash = Mix(hash, buildings.HasRallyPoint[i] ? 1 : 0);
+                hash = Mix(hash, buildings.RallyPoint[i].X.Raw);
+                hash = Mix(hash, buildings.RallyPoint[i].Z.Raw);
             }
 
             // ── Faction resources (all per-faction stores, active factions, ascending slot order) ──

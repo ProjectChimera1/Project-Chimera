@@ -134,10 +134,12 @@ namespace ProjectChimera.Sim.Tests.Definitions
         // ── AC1/AC3 determinism teeth: the profile is excluded from the hash by construction ──
 
         [Fact]
-        public void FeedbackProfile_IsExcludedFromSimChecksum_AndAlgoVersionStays8()
+        public void FeedbackProfile_IsExcludedFromSimChecksum_AndAlgoVersionIs9()
         {
-            // 2.7 ships NO fold — the version must NOT move (mirrors the 2.4b posture).
-            Assert.Equal(8, SimChecksum.AlgoVersion);
+            // 2.7 added NO fold of its own (FeedbackProfile is presentation-read, never hashed). The version has since
+            // moved to 9 for UNRELATED folds (2.12's order-queue + rally); the FeedbackProfile exclusion teeth below are
+            // the real assertion — the version pin just tracks the current value (canonically pinned elsewhere).
+            Assert.Equal(9, SimChecksum.AlgoVersion);
 
             var registry  = new FactionRegistry(2);
             var buildings = new BuildingStore();

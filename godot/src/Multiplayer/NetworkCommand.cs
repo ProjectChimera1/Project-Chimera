@@ -2,7 +2,8 @@
 using System;
 using System.Runtime.InteropServices;
 using ProjectChimera.Core;
-using ProjectChimera.Economy; // BuildingSystem (Story 2.8: Train command applies at exec-tick)
+using ProjectChimera.Combat;  // CombatEventQueue / CombatEventType (Story 2.12: OrderDenied on a full-ring reject)
+using ProjectChimera.Economy; // BuildingSystem (Story 2.8: Train command applies at exec-tick; 2.12: SetRally)
 
 namespace ProjectChimera.Multiplayer
 {
@@ -117,8 +118,17 @@ namespace ProjectChimera.Multiplayer
             Action<int, float, float>? onRequestPath = null,
             Action<int, float, float>? onRequestAttackMove = null,
             Action<int>? onCancelPath = null,
-            BuildingSystem? buildings = null)
+            BuildingSystem? buildings = null,
+            CombatEventQueue? events = null)
         {
+            // Story 2.12 (Decision #2): mask the wire's queued flag (0x80) off the Command byte FIRST, so every
+            // downstream compare + the command→state switch sees only the real 0-13 UnitCommand — never a flagged
+            // 0x80|cmd value (which is not a valid enum member and must never reach CommandState or SimChecksum).
+            // `queued` then decides append-vs-replace. A rally/train byte is never Shift-issued, so masking is a
+            // harmless no-op for them (the flag is off), but we mask before the early-returns for uniform safety.
+            var cmd    = (UnitCommand)((byte)o.Command & UnitOrderFlags.CommandMask);
+            bool queued = ((byte)o.Command & UnitOrderFlags.Queued) != 0;
+
             // Story 2.8 (D-1): Train names a BUILDING (UnitId = buildingId), not an entity — handle it BEFORE the
             // entity-ownership guard below, which would misread the building id as an EntityWorld slot (rejecting or
             // corrupting whatever entity shares that index) and clobber its CommandState. The building-ownership
@@ -126,9 +136,19 @@ namespace ProjectChimera.Multiplayer
             // `buildings` is null on headless/golden/replay-without-buildings paths → Train is a deterministic
             // no-op (goldens never train via the wire). TargetX carries the chosen unit index as a RAW int (read
             // directly; NEVER via .ToFloat() — the 1.12/2.4a packed-int lesson).
-            if (o.Command == UnitCommand.Train)
+            if (cmd == UnitCommand.Train)
             {
                 buildings?.TrainUnitCommand(o.UnitId, expectedFaction, o.TargetX);
+                return;
+            }
+
+            // Story 2.12 (AC3): SetRally ALSO names a BUILDING (UnitId = buildingId) — handle it beside Train, BEFORE
+            // the entity guard, for the same reason. The rally point rides TargetX/TargetZ as Fixed raw (the Move
+            // encoding); BuildingSystem.SetRallyCommand does the bounds + Alive + faction anti-cheat check then writes
+            // the store. It NEVER persists as a CommandState. `buildings` null → deterministic no-op (golden/replay).
+            if (cmd == UnitCommand.SetRally)
+            {
+                buildings?.SetRallyCommand(o.UnitId, expectedFaction, Fixed.FromRaw(o.TargetX), Fixed.FromRaw(o.TargetZ));
                 return;
             }
 
@@ -136,31 +156,59 @@ namespace ProjectChimera.Multiplayer
             if (!world.IsAlive(id)) return;
             if (world.FactionOf[id] != expectedFaction) return; // anti-cheat: only command your own units
 
-            UnitCommand prior = world.CommandState[id]; // captured for CastAbility's restore (a cast must not clobber the order)
-            world.CommandState[id] = o.Command;
+            // Story 2.12 (AC1.2): a Shift-issued (queued) order APPENDS to the entity's order ring and does NOT touch
+            // CommandState — OrderQueueSystem pops + dispatches it when the active order completes. A plain (non-flagged)
+            // order CLEARS the ring (replace semantics) then applies immediately through the shared core, so a fresh
+            // plain command always wipes any stale queued orders (WC3 behaviour).
+            if (queued)
+            {
+                AppendOrder(world, id, cmd, o.TargetX, o.TargetZ, events);
+                return;
+            }
+            world.OrderQueueCount[id] = 0; // plain (replace) — discard any pending queued orders before applying
+            ApplyActiveOrder(world, id, cmd, o.TargetX, o.TargetZ, onRequestPath, onRequestAttackMove, onCancelPath);
+        }
 
-            switch (o.Command)
+        /// <summary>
+        /// Apply an ACTIVE (non-queued) order to a live, owned entity — the SINGLE command→<c>CommandState</c> mapping
+        /// shared by the wire-entry <see cref="Apply"/> (plain/replace path) AND <c>OrderQueueSystem</c> (queue
+        /// pop→dispatch). Extracted in Story 2.12 (Decision #4) so a popped queued order and a directly-issued one can
+        /// NEVER diverge (the 1.12 one-switch rule — a second dispatch path is the epic's #1 desync trap). Callers
+        /// guarantee <paramref name="id"/> is alive and owned; <paramref name="cmd"/> is the MASKED 0-13 command (a
+        /// flagged 0x80 byte must never reach here). The pop path calls THIS directly (never the flag-wrapping
+        /// <see cref="Apply"/>), so dispatching queued order 1 of N does not re-clear the ring. The path-request
+        /// delegates are presentation hooks — null on the pop and all headless/golden/replay paths.
+        /// </summary>
+        public static void ApplyActiveOrder(EntityWorld world, int id, UnitCommand cmd, int targetX, int targetZ,
+            Action<int, float, float>? onRequestPath = null,
+            Action<int, float, float>? onRequestAttackMove = null,
+            Action<int>? onCancelPath = null)
+        {
+            UnitCommand prior = world.CommandState[id]; // captured for CastAbility's restore (a cast must not clobber the order)
+            world.CommandState[id] = cmd;
+
+            switch (cmd)
             {
                 case UnitCommand.Move:
                 {
-                    var target = new FixedVec3(Fixed.FromRaw(o.TargetX), Fixed.Zero, Fixed.FromRaw(o.TargetZ));
+                    var target = new FixedVec3(Fixed.FromRaw(targetX), Fixed.Zero, Fixed.FromRaw(targetZ));
                     world.CommandGoal[id]  = target;
                     world.MoveTarget[id]   = target;
                     world.Flags[id]        = (world.Flags[id] | EntityFlags.Moving) & ~EntityFlags.Attacking;
                     world.AttackTarget[id] = -1;
                     ClearPatrolRoute(world, id);
-                    onRequestPath?.Invoke(id, Fixed.FromRaw(o.TargetX).ToFloat(), Fixed.FromRaw(o.TargetZ).ToFloat());
+                    onRequestPath?.Invoke(id, Fixed.FromRaw(targetX).ToFloat(), Fixed.FromRaw(targetZ).ToFloat());
                     break;
                 }
                 case UnitCommand.AttackMove:
                 {
-                    var target = new FixedVec3(Fixed.FromRaw(o.TargetX), Fixed.Zero, Fixed.FromRaw(o.TargetZ));
+                    var target = new FixedVec3(Fixed.FromRaw(targetX), Fixed.Zero, Fixed.FromRaw(targetZ));
                     world.CommandGoal[id]  = target;
                     world.MoveTarget[id]   = target;
                     world.Flags[id]        = (world.Flags[id] | EntityFlags.Moving) & ~EntityFlags.Attacking;
                     world.AttackTarget[id] = -1;
                     ClearPatrolRoute(world, id);
-                    onRequestAttackMove?.Invoke(id, Fixed.FromRaw(o.TargetX).ToFloat(), Fixed.FromRaw(o.TargetZ).ToFloat());
+                    onRequestAttackMove?.Invoke(id, Fixed.FromRaw(targetX).ToFloat(), Fixed.FromRaw(targetZ).ToFloat());
                     break;
                 }
                 case UnitCommand.Stop:
@@ -178,8 +226,8 @@ namespace ProjectChimera.Multiplayer
                     // back directly, never via .ToFloat() (that path is float and would corrupt the id). Seed the
                     // transient AttackTarget too; CombatSystem.TickAttackTargetCombat drives MoveTarget each tick
                     // (the target moves), so we do NOT request a one-shot path here.
-                    world.CommandTarget[id] = o.TargetX;
-                    world.AttackTarget[id]  = o.TargetX;
+                    world.CommandTarget[id] = targetX;
+                    world.AttackTarget[id]  = targetX;
                     world.Flags[id]        &= ~EntityFlags.Attacking;
                     ClearPatrolRoute(world, id);
                     break;
@@ -191,7 +239,7 @@ namespace ProjectChimera.Multiplayer
                     // share CommandTarget) — CombatSystem.TickAttackBuildingCombat validates it (bounds/Alive/friendly/
                     // Structure-domain) in-tick. Set AttackTarget[id] = -1: a building id must NEVER enter the entity-space
                     // AttackTarget[] array (that would make world.IsAlive/FactionOf misread a building id as an entity).
-                    world.CommandTarget[id] = o.TargetX;
+                    world.CommandTarget[id] = targetX;
                     world.AttackTarget[id]  = -1;
                     world.Flags[id]        &= ~EntityFlags.Attacking;
                     ClearPatrolRoute(world, id);
@@ -200,7 +248,7 @@ namespace ProjectChimera.Multiplayer
                 case UnitCommand.Follow:
                 {
                     // Friendly id packed in TargetX as a raw int. CombatSystem.TickFollowCombat drives movement.
-                    world.CommandTarget[id] = o.TargetX;
+                    world.CommandTarget[id] = targetX;
                     world.Flags[id]        &= ~EntityFlags.Attacking;
                     ClearPatrolRoute(world, id);
                     break;
@@ -211,7 +259,7 @@ namespace ProjectChimera.Multiplayer
                     // point. PatrolIndex=1 heads toward the clicked point first; dir=+1. (N=2 is the classic
                     // ping-pong.) TargetX/TargetZ are a Fixed.Raw ground point, exactly like Move.
                     int baseIdx = id * EntityWorld.MAX_PATROL_WAYPOINTS;
-                    var clicked = new FixedVec3(Fixed.FromRaw(o.TargetX), Fixed.Zero, Fixed.FromRaw(o.TargetZ));
+                    var clicked = new FixedVec3(Fixed.FromRaw(targetX), Fixed.Zero, Fixed.FromRaw(targetZ));
                     world.PatrolWaypoints[baseIdx + 0] = world.Position[id];
                     world.PatrolWaypoints[baseIdx + 1] = clicked;
                     world.PatrolCount[id]  = 2;
@@ -228,9 +276,9 @@ namespace ProjectChimera.Multiplayer
                     // APPEND a waypoint to the far end of an existing route, WITHOUT disturbing the current leg
                     // (PatrolIndex/MoveTarget untouched). If not already patrolling, behave like a fresh Patrol.
                     // Appends past the cap are silently ignored (deterministic no-op). Then force CommandState
-                    // back to Patrol (overriding the o.Command set above) so CombatSystem never sees PatrolAppend.
+                    // back to Patrol (overriding the cmd set above) so CombatSystem never sees PatrolAppend.
                     int baseIdx = id * EntityWorld.MAX_PATROL_WAYPOINTS;
-                    var clicked = new FixedVec3(Fixed.FromRaw(o.TargetX), Fixed.Zero, Fixed.FromRaw(o.TargetZ));
+                    var clicked = new FixedVec3(Fixed.FromRaw(targetX), Fixed.Zero, Fixed.FromRaw(targetZ));
                     int n = world.PatrolCount[id];
                     if (n >= 2 && n < EntityWorld.MAX_PATROL_WAYPOINTS)
                     {
@@ -258,7 +306,7 @@ namespace ProjectChimera.Multiplayer
                 {
                     // Story 2.4a (FR-11): a fire-and-forget cast INTENT. The ability slot rides in TargetX (raw int,
                     // packed at issue time via Fixed.FromRaw(slot)) and the target entity id in TargetZ (raw int,
-                    // -1 = Self/None) — read back directly as o.TargetX/o.TargetZ, NEVER via .ToFloat() (that path is
+                    // -1 = Self/None) — read back directly as targetX/targetZ, NEVER via .ToFloat() (that path is
                     // float and would corrupt the packed int — the 1.12 AttackTarget lesson). We write ONLY the
                     // pending-cast SoA; the effect graph runs in AbilityCastSystem INSIDE the tick. Running it here
                     // would advance the shared SimRng / query a stale SpatialHash off-tick (OrderApplier runs at input
@@ -266,13 +314,38 @@ namespace ProjectChimera.Multiplayer
                     // must not interrupt the unit's order, so restore CommandState to its prior value (mirrors how
                     // PatrolAppend rewrites CommandState back to Patrol above).
                     world.CommandState[id] = prior;
-                    int slot = o.TargetX;
+                    int slot = targetX;
                     if (slot < 0 || slot >= world.AbilityCount[id]) break; // no such slot → deterministic no-op
                     world.PendingCastSlot[id]   = (byte)slot;
-                    world.PendingCastTarget[id] = o.TargetZ;
+                    world.PendingCastTarget[id] = targetZ;
                     break;
                 }
             }
+        }
+
+        /// <summary>
+        /// Append a Shift-queued order to the entity's ring (Story 2.12, AC1.2 / AC4). Rejects DETERMINISTICALLY when
+        /// the ring is already full (<see cref="EntityWorld.OrderQueueCount"/> == <see cref="EntityWorld.MAX_ORDER_QUEUE"/>):
+        /// no append, no overflow, no crash — state unchanged. On the paths that wire a live <paramref name="events"/>
+        /// sink it also pushes a presentation-only <see cref="CombatEventType.OrderDenied"/> at the entity's position
+        /// (Story 11.9 consumes it). The reject DECISION reads the FOLDED OrderQueueCount, so every peer rejects
+        /// identically and a null sink (replay) rejects the same way — only the visual feedback is skipped. Called ONLY
+        /// from the single wire-entry <see cref="Apply"/> (never the pop path), so appending never touches CommandState.
+        /// </summary>
+        private static void AppendOrder(EntityWorld world, int id, UnitCommand cmd, int targetX, int targetZ,
+            CombatEventQueue? events)
+        {
+            int count = world.OrderQueueCount[id];
+            if (count >= EntityWorld.MAX_ORDER_QUEUE)
+            {
+                events?.Push(CombatEventType.OrderDenied, world.Position[id]);
+                return; // ring full — deterministic reject (mirrors PatrolAppend's "route full → ignore", plus the event)
+            }
+            int slot = id * EntityWorld.MAX_ORDER_QUEUE + count;
+            world.OrderQueueCmd[slot]     = (byte)cmd; // the MASKED 0-13 command (the 0x80 wire flag is already stripped)
+            world.OrderQueueTargetX[slot] = targetX;
+            world.OrderQueueTargetZ[slot] = targetZ;
+            world.OrderQueueCount[id]     = (byte)(count + 1);
         }
 
         /// <summary>

@@ -99,6 +99,13 @@
          above are NOT re-recorded (AlgoVersion stays 8, no fold). -->
     <None Remove="Golden\tag-filter-scenario.golden.txt" />
     <EmbeddedResource Include="Golden\tag-filter-scenario.golden.txt" />
+    <!-- Story 2.12 (AC2.4 / AC3.5) — shift-queue golden (a Shift-queued 3-waypoint Move chain drained by
+         OrderQueueSystem + a P1 Barracks issued SetRally + Train so a grunt walks to rally; Player2 empty so the AI
+         no-ops). First golden exercising the v9 per-entity order-queue fold + the per-building rally fold (D-1).
+         Integer/Fixed-only → CROSS-PLATFORM SAFE, compared on both CI legs. NEW file; the 16 goldens above ARE
+         re-recorded once for the v9 fold (algo_version 8→9, every hash moves, sample count unchanged). -->
+    <None Remove="Golden\shift-queue-scenario.golden.txt" />
+    <EmbeddedResource Include="Golden\shift-queue-scenario.golden.txt" />
   </ItemGroup>
 
   <ItemGroup>

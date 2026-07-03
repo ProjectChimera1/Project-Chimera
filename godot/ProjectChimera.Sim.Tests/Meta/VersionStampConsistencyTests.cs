@@ -31,7 +31,7 @@ namespace ProjectChimera.Sim.Tests.Meta
     /// scenario <c>schema_version</c> is added so it cannot land outside this consistency surface.
     ///
     /// NOTE: <see cref="SimChecksum.AlgoVersion"/> is ALSO canonically pinned (with a known-state hash) by
-    /// <c>SimChecksumCoverageGuardTest.KnownWorldState_ProducesPinnedV5Hash</c>. It is repeated here for a complete
+    /// <c>SimChecksumCoverageGuardTest.KnownWorldState_ProducesPinnedV9Hash</c>. It is repeated here for a complete
     /// single-view registry; a deliberate bump must update BOTH guards (and re-baseline the goldens) in one commit.
     ///
     /// All five stamps are reachable from this Godot-free Tier-1 assembly: <c>src/Core/**</c> (SimChecksum,
@@ -45,10 +45,11 @@ namespace ProjectChimera.Sim.Tests.Meta
         //    same commit as the source change — that edit is the "did the siblings + goldens move too?" checkpoint.
 
         /// <summary>Runtime desync-checksum algorithm version. Bump ⇒ re-baseline ALL goldens (same commit).
-        /// v8 (Story 2.6): folded per-entity EffectiveArmor (the buffable armor stat). v7 (Story 2.4a): folded
+        /// v9 (Story 2.12): folded the per-entity shift-queue order ring (count-driven) + the per-building rally point
+        /// (D-1). v8 (Story 2.6): folded per-entity EffectiveArmor (the buffable armor stat). v7 (Story 2.4a): folded
         /// per-entity AbilityCooldownTicks (count-driven). v6 (Story 2.2b): Effective* / Energy / StatusFlagsOf +
         /// the ModifierStore instance state.</summary>
-        private const int ExpectedSimChecksumAlgoVersion = 8;
+        private const int ExpectedSimChecksumAlgoVersion = 9;
 
         /// <summary>Load-time canonical start-state hash algorithm version (lobby handshake value).
         /// v3 (Story 2.9b follow-up): folded ScenarioPlayerSlot.StartCrystal (sim-affecting per-slot start-state).</summary>
