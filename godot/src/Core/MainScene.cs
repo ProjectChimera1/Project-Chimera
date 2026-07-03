@@ -265,6 +265,17 @@ namespace ProjectChimera.Core
             foreach (var u in _factionDef.Units)  u.ResolveAbilities(_abilityRegistry);
             foreach (var u in _factionDef2.Units) u.ResolveAbilities(_abilityRegistry);
 
+            // Story 2.11 (review C1): tag-validate the DEFAULT-SEEDED faction defs on the client too, mirroring the
+            // server's validate-every-def posture (ServerBootstrap). ResolveSlotFactionDefs only validates slots that
+            // carry an explicit faction_json file, so without this a default/fallback slot would spawn an unknown-tag
+            // unit the arbitrating server drops → client/server roster desync (AC2.1). No-op on today's tag-free defs.
+            // (The headless dedicated server already returned above and validates via ServerBootstrap, so this is
+            // client-only; the drop mutates the shared _factionDef/_factionDef2 BEFORE they seed _slotFactionDefs below.)
+            foreach (string err in UnitTagValidator.ValidateAndDropUnits(_factionDef))
+                GD.PrintErr($"[UnitTagValidator] {err} (unit dropped)");
+            foreach (string err in UnitTagValidator.ValidateAndDropUnits(_factionDef2))
+                GD.PrintErr($"[UnitTagValidator] {err} (unit dropped)");
+
             // Default slot assignments — overwritten per-slot by the ResolveSlotFactionDefs pre-pass
             _slotFactionDefs = new FactionDefinition?[5];
             _slotFactionDefs[(int)Faction.Player1] = _factionDef;

@@ -37,23 +37,31 @@ namespace ProjectChimera.Core.Definitions
         }
 
         /// <summary>
-        /// The FIRST token in <paramref name="def"/>'s raw <c>Tags</c> that is not in the closed set, or null when every
-        /// tag is valid (including the null/empty back-compat case). Scans the raw strings (NOT <see cref="UnitDefinition.ParsedTags"/>,
-        /// which would silently swallow the bad token to <see cref="UnitTag.None"/>) so the exact offending string can be named.
+        /// Finds the FIRST tag on <paramref name="def"/> that is not in the closed set and reports it via
+        /// <paramref name="token"/>. Returns <c>true</c> when an offender is found (the offender MAY itself be
+        /// <c>null</c> — a JSON <c>[null]</c> element is not a known tag); returns <c>false</c> only when EVERY tag is
+        /// valid (including the null/empty back-compat case). The bool decouples "found an offender" from the offender's
+        /// VALUE, so a <c>null</c> array element can never masquerade as the all-valid result (Story 2.11 review C2: the
+        /// earlier <c>string?</c>-returning shape used <c>null</c> for BOTH "all valid" and "the offender is null", so
+        /// <c>tags:[null,"Undead"]</c> silently passed fail-closed validation AND masked the co-located real typo).
+        /// Scans the raw strings (NOT <see cref="UnitDefinition.ParsedTags"/>, which would silently swallow the bad token
+        /// to <see cref="UnitTag.None"/>) so the exact offending string can be named.
         /// </summary>
-        public static string? FirstInvalidTag(UnitDefinition def)
+        public static bool TryFindInvalidTag(UnitDefinition def, out string? token)
         {
+            token = null;
             string[]? tags = def.Tags;
-            if (tags == null) return null;
+            if (tags == null) return false;
             for (int i = 0; i < tags.Length; i++)
-                if (!InSet(tags[i])) return tags[i];
-            return null;
+                if (!InSet(tags[i])) { token = tags[i]; return true; }
+            return false;
         }
 
         /// <summary>The located error for a bad tag, mirroring <c>AbilityValidator.Located</c> ("ability '{id}'.{path}: {reason}")
-        /// but for the unit axis — names BOTH the unit id and the offending token (AC2.2).</summary>
+        /// but for the unit axis — names BOTH the unit id and the offending token (AC2.2). A <c>null</c> token (a JSON
+        /// <c>[null]</c> element) renders as <c>(null)</c> so the message stays readable.</summary>
         public static string Located(string unitId, string? token) =>
-            $"unit '{unitId}'.tags: '{token}' is not a known unit tag (Organic|Mechanical|Magical).";
+            $"unit '{unitId}'.tags: '{token ?? "(null)"}' is not a known unit tag (Organic|Mechanical|Magical).";
 
         /// <summary>
         /// Validate every unit in <paramref name="faction"/>'s <c>Units</c> list and DROP each one carrying an unknown
@@ -73,13 +81,12 @@ namespace ProjectChimera.Core.Definitions
             // First pass: identify offenders (read-only — do NOT mutate faction.Units here).
             foreach (UnitDefinition u in faction.Units)
             {
-                string? bad = FirstInvalidTag(u);
-                if (bad != null) errors.Add(Located(u.Id, bad));
+                if (TryFindInvalidTag(u, out string? bad)) errors.Add(Located(u.Id, bad));
             }
             // Second pass: drop every unit carrying an invalid tag (RemoveAll does its own safe in-place compaction —
             // it is NOT a foreach over the list, so this does not hit the mid-enumeration-mutation trap).
             if (errors.Count > 0)
-                faction.Units.RemoveAll(u => FirstInvalidTag(u) != null);
+                faction.Units.RemoveAll(u => TryFindInvalidTag(u, out _));
             return errors;
         }
     }

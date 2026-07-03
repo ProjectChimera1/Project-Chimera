@@ -91,5 +91,17 @@ namespace ProjectChimera.Sim.Tests.Definitions
             Assert.False(r.Ok);
             Assert.Contains("require_tag", r.Error!);
         }
+
+        [Fact]
+        public void ApplyModifier_RequireTag_RoundTripsIdentity()   // review C4 — apply_modifier's OWN converter branch (Write + Read allow-list)
+        {
+            // apply_modifier is a DISTINCT converter Write/Read case (not shared with the other leaves), so its
+            // require_tag wiring needs its own round-trip: Write emits require_tag; Read allow-lists + parses it.
+            var original = new ApplyModifierEffect(
+                new Modifier(7, 90, StackRule.Refresh, 1, Fixed.Zero, Fixed.FromInt(5), Fixed.Zero, StatusFlags.None, null, 0),
+                UnitTag.Organic);
+            var rt = Assert.IsType<ApplyModifierEffect>(RoundTrip(original));
+            Assert.Equal(UnitTag.Organic, rt.RequireTag);   // RED if WriteRequireTag is dropped from the apply_modifier Write, or require_tag from its Read allow-list
+        }
     }
 }

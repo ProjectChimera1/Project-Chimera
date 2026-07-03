@@ -79,6 +79,27 @@ namespace ProjectChimera.Sim.Tests.Server
             Assert.Contains(log.Warns, m => m.Contains("REJECTED"));
         }
 
+        [Fact]
+        public void Build_DropsUnknownTagUnit_AndLogsLocatedWarn()   // Story 2.11 review C5 — guards the server-leg validator wiring
+        {
+            var log = new CapturingLogSink();
+
+            // A valid faction + one EXTRA unit carrying an unknown tag ("Undead") the closed-set validator must drop.
+            FactionDefinition faction = GoldenApplierScenario.BuildFaction();
+            faction.Units.Add(new UnitDefinition { Id = "spectre", Tags = new[] { "Undead" } });
+
+            var slotDefs = new FactionDefinition?[5];
+            slotDefs[(int)Faction.Player1] = faction;
+            slotDefs[(int)Faction.Player2] = GoldenApplierScenario.BuildFaction();
+
+            SimulationHost? host = ServerBootstrap.Build(
+                GoldenApplierScenario.BuildModel(), slotDefs, damageTable: null, log, activeFactionCount: 2);
+
+            Assert.NotNull(host);                     // the SCENARIO is valid — the bad UNIT is dropped, not the scenario (fail-closed does NOT trip)
+            Assert.Null(faction.GetUnit("spectre"));  // dropped from the roster at load → no spawnable entity (AC2.3)
+            Assert.Contains(log.Warns, m => m.Contains("spectre") && m.Contains("Undead") && m.Contains("unit dropped"));
+        }
+
         /// <summary>Test ILogSink that captures messages so the fail-closed warn can be asserted.</summary>
         private sealed class CapturingLogSink : ILogSink
         {

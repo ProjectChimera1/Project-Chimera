@@ -91,5 +91,27 @@ namespace ProjectChimera.Sim.Tests.Definitions
             Assert.Single(UnitTagValidator.ValidateAndDropUnits(faction));
             Assert.Null(faction.GetUnit("u"));
         }
+
+        [Fact]
+        public void NullTagElement_IsRejected_NotMaskedAsValid()   // Story 2.11 review C2 — a null element must NOT pass as "all valid"
+        {
+            // JSON `tags:[null,"Undead"]`. Before the fix, the null element returned the same null the all-valid case
+            // used, so the unit passed fail-closed validation AND the co-located "Undead" typo was never scanned.
+            FactionDefinition faction = Faction(new UnitDefinition { Id = "spectre", Tags = new string[] { null!, "Undead" } });
+
+            var errors = UnitTagValidator.ValidateAndDropUnits(faction);
+
+            Assert.Single(errors);                    // the null element is caught (not silently passed)
+            Assert.Null(faction.GetUnit("spectre"));  // and the unit is dropped — fail-closed holds
+        }
+
+        [Fact]
+        public void SoleNullTagElement_IsRejected()   // Story 2.11 review C2 — `tags:[null]` alone is still an invalid tag
+        {
+            FactionDefinition faction = Faction(new UnitDefinition { Id = "ghost", Tags = new string[] { null! } });
+
+            Assert.Single(UnitTagValidator.ValidateAndDropUnits(faction));
+            Assert.Null(faction.GetUnit("ghost"));
+        }
     }
 }

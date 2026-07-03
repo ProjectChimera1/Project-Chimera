@@ -104,6 +104,35 @@ namespace ProjectChimera.Sim.Tests.Effects
             Assert.True(mechHp.Raw < plainHp.Raw);              // teeth: bonus landed ONLY on the Mechanical target
         }
 
+        // ── SINGLE-TARGET (D-4) — apply_modifier leaf gate (the SEPARATE EffectExecutor dispatch case, review C3) ──
+
+        [Fact]
+        public void SingleTarget_ApplyModifierRequireOrganic_NoOpsOnMechanical_InstallsOnOrganic()
+        {
+            var w = new EntityWorld();
+            var sys = new ModifierSystem();
+            var store = new ModifierStore(w, sys);
+            sys.AttachStore(store);
+
+            int caster  = w.Create(FixedVec3.Zero, Faction.Player1, Fixed.FromInt(100), Fixed.FromInt(3));
+            int organic = w.Create(FixedVec3.Zero, Faction.Player1, Fixed.FromInt(100), Fixed.FromInt(3));
+            w.TagsOf[organic] = UnitTag.Organic;
+            int mech    = w.Create(FixedVec3.Zero, Faction.Player1, Fixed.FromInt(100), Fixed.FromInt(3));
+            w.TagsOf[mech] = UnitTag.Mechanical;
+
+            // "buff only Organic" as a single-target apply_modifier leaf gate. apply_modifier is dispatched by its OWN
+            // executor case (before the generic LeafEffect case), so this is the ONLY teeth on that gate site.
+            var buff = new ApplyModifierEffect(
+                new Modifier(1, 10, StackRule.Refresh, 1, Fixed.Zero, Fixed.FromInt(5), Fixed.Zero, StatusFlags.None, null, 0),
+                UnitTag.Organic);
+
+            RunSingleWithStore(buff, w, caster, organic, store);
+            Assert.Equal(1, store.CountAt(organic)); // Organic target buffed
+
+            RunSingleWithStore(buff, w, caster, mech, store);
+            Assert.Equal(0, store.CountAt(mech));    // teeth: Mechanical target is a whole no-op (RED if EffectExecutor's apply_modifier gate is removed)
+        }
+
         // ── helpers ────────────────────────────────────────────────────────────────────────────────────────
 
         private static void Run(EffectNode graph, EntityWorld w, int caster, Faction f, SpatialHash sh)
@@ -118,6 +147,15 @@ namespace ProjectChimera.Sim.Tests.Effects
             var ex = new EffectExecutor();
             var ctx = new EffectContext(w, caster, target, f, DamageTable.Default); // PrimaryTargetId = the single target
             ex.Run(leafOrGraph, in ctx);
+        }
+
+        // Single-target run WITH a ModifierStore in context (for the apply_modifier leaf gate, review C3).
+        private static void RunSingleWithStore(EffectNode leaf, EntityWorld w, int caster, int target, ModifierStore store)
+        {
+            var ex = new EffectExecutor();
+            var ctx = new EffectContext(w, casterId: caster, primaryTargetId: target, casterFaction: Faction.Player1,
+                                        damageTable: DamageTable.Default, spatial: null, events: null, stats: null, modifierStore: store);
+            ex.Run(leaf, in ctx);
         }
 
         /// <summary>Run <paramref name="graph"/> single-target against a fresh 500-HP Unarmored enemy of the given tag; return its Health.</summary>
