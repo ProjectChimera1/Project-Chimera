@@ -119,15 +119,22 @@ namespace ProjectChimera.Sim.Tests.Definitions
             Assert.True(r.Ok, r.Error);
             AbilityDefinition def = r.Value.Value;
 
-            // Self-targeted, and the vitality-price path charges NO matter — HP is the sole cost (AC1.3 HP-XOR-matter).
+            // Self-targeted, and the vitality-price path charges NO matter AND no energy — HP is the sole cost
+            // (AC1.3 HP-XOR-matter). CostEnergy is asserted too so a stray cost_energy leak cannot slip past a test
+            // whose whole point is "HP is the sole price" (the Transmuter runs at max_energy 0, but assert regardless).
             Assert.Equal(AbilityTargeting.Self, def.ParsedTargeting);
             Assert.Equal(0, def.CostOre);
             Assert.Equal(0, def.CostCrystal);
+            Assert.Equal(0, def.CostEnergy.Raw);
 
             // Sequence[ apply_modifier (beneficial self-buff), direct_hp_delta (negative flat cost) ] — exactly 2 children.
             var seq = Assert.IsType<SequenceEffect>(def.EffectGraph);
             Assert.Equal(2, seq.Children.Length);
-            Assert.IsType<ApplyModifierEffect>(seq.Children[0]);
+            var buff = Assert.IsType<ApplyModifierEffect>(seq.Children[0]);
+            // BENEFICIAL: a POSITIVE attack-damage delta. A 0 (no-op) or negative (self-debuff) delta would satisfy the
+            // shape-only IsType check while contradicting "beneficial self-buff", so pin the sign of the payload.
+            Assert.True(buff.Modifier.AttackDamageDelta.Raw > 0,
+                $"Spike Transmutation buff must be a beneficial (positive) attack-damage delta; was {buff.Modifier.AttackDamageDelta.Raw} raw.");
 
             // The cost is the FLAT armor-independent direct_hp_delta leaf (NOT the matrix `damage` leaf) with a negative
             // delta — the AC1.2 contract that two casters of different armor_type pay the identical flat HP price.
@@ -144,13 +151,20 @@ namespace ProjectChimera.Sim.Tests.Definitions
             AbilityDefinition def = r.Value.Value;
 
             // The Acolyte's HP-priced Equal Exchange — the vitality sibling of matter_infusion; never both prices (AC1.3).
+            // CostEnergy is asserted 0 too: the Acolyte carries max_energy 20, so a stray cost_energy on this ability
+            // WOULD gate/charge energy — a real leak this "HP is the sole price" test must catch, not just ore/crystal.
             Assert.Equal(AbilityTargeting.Self, def.ParsedTargeting);
             Assert.Equal(0, def.CostOre);
             Assert.Equal(0, def.CostCrystal);
+            Assert.Equal(0, def.CostEnergy.Raw);
 
             var seq = Assert.IsType<SequenceEffect>(def.EffectGraph);
             Assert.Equal(2, seq.Children.Length);
-            Assert.IsType<ApplyModifierEffect>(seq.Children[0]);
+            var buff = Assert.IsType<ApplyModifierEffect>(seq.Children[0]);
+            // BENEFICIAL: Mend Matter grants ARMOR (not attack), so pin a POSITIVE armor delta — a 0/negative delta
+            // would pass the shape-only IsType check while contradicting the claimed beneficial self-buff.
+            Assert.True(buff.Modifier.ArmorDelta.Raw > 0,
+                $"Mend Matter buff must be a beneficial (positive) armor delta; was {buff.Modifier.ArmorDelta.Raw} raw.");
             var cost = Assert.IsType<DirectHpDeltaEffect>(seq.Children[1]);
             Assert.True(cost.Delta.Raw < 0, $"Mend Matter HP cost must be a negative flat delta; was {cost.Delta.Raw} raw.");
         }
@@ -163,14 +177,30 @@ namespace ProjectChimera.Sim.Tests.Definitions
             Assert.True(r.Ok, r.Error);
             AbilityDefinition def = r.Value.Value;
 
-            // Auto-installs at spawn via the OnUnitDefinitionApplied → InstallSelfPassive seam (AC2.1) — a while_alive
-            // Persistent whose period pulse is a Heal, bounded within the 256-pulse EffectCaps window (AC2.6).
+            // A while_alive Persistent whose period pulse is a Heal, bounded within the 256-pulse EffectCaps window
+            // (AC2.6). (The OnUnitDefinitionApplied -> InstallSelfPassive spawn seam itself is a RUNTIME concern
+            // exercised by the passive-runtime tests / Story 2.6 — this is a load-and-inspect shape test, no unit spawns.)
             Assert.Equal(PassiveActivation.WhileAlive, def.ParsedActivation);
             var persistent = Assert.IsType<PersistentEffect>(def.EffectGraph);
-            Assert.IsType<HealEffect>(persistent.PeriodEffect);
+            var pourHeal = Assert.IsType<HealEffect>(persistent.PeriodEffect);
             Assert.True(persistent.PeriodTicks > 0, "Furnace HoT must pulse on a positive period.");
             Assert.True(persistent.PeriodCount > 0 && persistent.PeriodCount <= 256,
                 "period_count must be in (0, 256] — the EffectCaps.MaxPersistentPeriods window (AC2.1/AC2.6).");
+            // A PURE period-heal: no install/expire burst — 'pour' is a clean HoT, not a shaped ability.
+            Assert.Null(persistent.InitialEffect);
+            Assert.Null(persistent.ExpireEffect);
+
+            // AC2.2 — 'pour' (elites) MUST regenerate at a higher rate than 'trickle' (pawns). Both share period_ticks
+            // by design, so the tier ordering lives entirely in the heal amount; assert pour > trickle so a balance or
+            // merge edit that equalizes/zeroes the pour amount can't ship green (the whole reason furnace_pour exists).
+            string tricklePath = Path.Combine(AbilitiesResourceDir(), "furnace_trickle.json");
+            AbilityValidationResult tr = AbilityLoader.LoadFromFile(tricklePath);
+            Assert.True(tr.Ok, tr.Error);
+            var trickleHeal = Assert.IsType<HealEffect>(
+                Assert.IsType<PersistentEffect>(tr.Value.Value.EffectGraph).PeriodEffect);
+            Assert.True(pourHeal.Amount.Raw > trickleHeal.Amount.Raw,
+                $"Sanguine Furnace 'pour' ({pourHeal.Amount.Raw} raw) must heal MORE per pulse than 'trickle' " +
+                $"({trickleHeal.Amount.Raw} raw) — AC2.2 tier ordering.");
         }
 
         // <repo>/godot/ProjectChimera.Sim.Tests/Definitions/THIS.cs → <repo>/godot/resources/data/abilities

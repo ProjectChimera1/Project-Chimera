@@ -9,8 +9,13 @@ namespace ProjectChimera.Sim.Tests.Effects
     /// <summary>
     /// Story 2.6 — in-code passive ability definitions for the passive-runtime tests + the passive golden,
     /// mirroring the three shipped sample JSONs (<c>aura_guard</c> / <c>onhit_searing</c> / <c>furnace_trickle</c>)
-    /// but built deterministically in code so tests stay hermetic (no filesystem). The values match the JSONs, so
-    /// these double as a sanity check on the sample data (the <see cref="AbilityTestAbilities"/> pattern).
+    /// but built deterministically in code so tests stay hermetic (no filesystem). <c>aura_guard</c> / <c>onhit_searing</c>
+    /// still mirror their JSONs exactly (the <see cref="AbilityTestAbilities"/> pattern).
+    ///
+    /// WARNING — <c>furnace_trickle</c> is DELIBERATELY DIVERGED (Story 2.10, D-3): <c>furnace_trickle.json</c> was
+    /// retuned to Heal 3 / period 15, but this fixture stays FROZEN at Heal 2 / period 5 to keep the Story 2.6
+    /// passive-scenario golden byte-identical (AC4). Do NOT "re-sync" it to the JSON — that silently moves the passive
+    /// golden and forces a surprise re-baseline (the exact trap this note exists to prevent).
     ///
     /// These do NOT need to pass <c>AbilityValidator</c> — that gate runs at load/save, proven by
     /// <c>PassiveAbilityValidationTests</c> against the JSONs. Here the graphs are run directly by the executor.
@@ -43,7 +48,9 @@ namespace ProjectChimera.Sim.Tests.Effects
         };
 
         /// <summary>furnace_trickle: activation WhileAlive, Self targeting, Persistent(period Heal 2 every 5 ticks,
-        /// 256 periods) — the continuous self-regen installed at spawn.</summary>
+        /// 256 periods) — the continuous self-regen installed at spawn. NOTE: frozen at 2/5 ON PURPOSE — the shipped
+        /// furnace_trickle.json was retuned to 3/15 in Story 2.10 (D-3); this fixture must NOT follow it or the Story 2.6
+        /// passive golden moves (see the class-level WARNING).</summary>
         public static AbilityDefinition FurnaceTrickle() => new AbilityDefinition
         {
             Id = "furnace_trickle", DisplayName = "Furnace Trickle", Targeting = "Self", Activation = "while_alive",
