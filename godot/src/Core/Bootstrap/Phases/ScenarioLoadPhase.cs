@@ -104,6 +104,11 @@ namespace ProjectChimera.Core.Bootstrap
                     // empty until ResolveAbilities runs). The registry was built + published on the context by
                     // MainScene._Ready, which runs before this phase (runtime position 12). Idempotent + drops unknown ids.
                     foreach (var u in def.Units) u.ResolveAbilities(_ctx.AbilityRegistry);
+                    // Story 2.11 (AC2): closed-set tag validation — drop any unit carrying an unknown tag (fail-closed,
+                    // located error). Runs on BOTH legs (here + ServerBootstrap) so client/server stay in parity before
+                    // any SpawnUnit; a dropped unit → GetUnit null → the applier's def==null skip → no EntityWorld slot.
+                    foreach (string err in UnitTagValidator.ValidateAndDropUnits(def))
+                        GD.PrintErr($"[UnitTagValidator] {err} (unit dropped)");
                     _ctx.SlotFactionDefs[(int)faction] = def;
                 }
             }

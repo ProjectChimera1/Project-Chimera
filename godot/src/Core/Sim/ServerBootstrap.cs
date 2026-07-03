@@ -41,9 +41,16 @@ namespace ProjectChimera.Core.Sim
             // — the registry sorts by ability Id, so identical files yield identical indices — or its arbitrating
             // checksum diverges from the peers'. Idempotent; drops unknown ids; null defs (unresolved slots) skip.
             foreach (var def in slotFactionDefs)
-                if (def != null)
-                    foreach (var u in def.Units)
-                        u.ResolveAbilities(registry);
+            {
+                if (def == null) continue;
+                foreach (var u in def.Units)
+                    u.ResolveAbilities(registry);
+                // Story 2.11 (AC2): closed-set tag validation — drop unknown-tag units (fail-closed, located error).
+                // Runs the IDENTICAL drop as the client pre-pass (ScenarioLoadPhase) so the arbitrating server stays
+                // in parity — a divergent roster between server + client would desync from tick 1.
+                foreach (string err in UnitTagValidator.ValidateAndDropUnits(def))
+                    log.Warn($"[UnitTagValidator] {err} (unit dropped)");
+            }
 
             // Same Create the client calls — null damageTable resolves to DamageTable.Default inside combat ctors.
             // registry passed BY NAME so aiLevel keeps its default (the server's prior 5-arg behavior is preserved).

@@ -15,8 +15,9 @@ namespace ProjectChimera.Effects
         /// <summary>Flat heal amount (expected &gt;= 0).</summary>
         public readonly Fixed Amount;
 
-        /// <summary>Construct a heal leaf.</summary>
-        public HealEffect(Fixed amount) => Amount = amount;
+        /// <summary>Construct a heal leaf. <paramref name="requireTag"/> (Story 2.11, default None) gates the apply on
+        /// the target's tag — e.g. "heal only Organic" is <c>heal{require_tag:Organic}</c>; omit for byte-identical 2.1 behaviour.</summary>
+        public HealEffect(Fixed amount, UnitTag requireTag = UnitTag.None) : base(requireTag) => Amount = amount;
 
         /// <inheritdoc />
         internal override void Apply(in EffectContext ctx)

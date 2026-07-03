@@ -1,5 +1,6 @@
 #nullable enable
 using System;
+using ProjectChimera.Core;
 
 namespace ProjectChimera.Effects
 {
@@ -16,8 +17,9 @@ namespace ProjectChimera.Effects
         /// <summary>The modifier descriptor to install into the store.</summary>
         public readonly Modifier Modifier;
 
-        /// <summary>Construct an apply-modifier leaf.</summary>
-        public ApplyModifierEffect(Modifier modifier) => Modifier = modifier;
+        /// <summary>Construct an apply-modifier leaf. <paramref name="requireTag"/> (Story 2.11, default None) gates the
+        /// single-target install on the target's tag; omit for byte-identical 2.2b behaviour.</summary>
+        public ApplyModifierEffect(Modifier modifier, UnitTag requireTag = UnitTag.None) : base(requireTag) => Modifier = modifier;
 
         /// <inheritdoc />
         internal override void Apply(in EffectContext ctx)

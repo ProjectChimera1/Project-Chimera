@@ -22,12 +22,23 @@ namespace ProjectChimera.Effects
         /// <summary>The single effect fanned out to each matched entity.</summary>
         public readonly EffectNode Child;
 
-        /// <summary>Construct an area-search node.</summary>
-        public SearchAreaEffect(Fixed radius, TargetFilter filter, EffectNode child)
+        /// <summary>
+        /// Story 2.11 (AC3): OPTIONAL tag predicate. Default <see cref="UnitTag.None"/> = no constraint (every pre-2.11
+        /// SearchArea is byte-identical). When non-None, a candidate is collected ONLY if its <c>EntityWorld.TagsOf</c>
+        /// INTERSECTS these bits (match if ANY required bit is set) — an AND-constraint beside <see cref="Filter"/>,
+        /// evaluated in <see cref="TargetMatcher"/> via the shared <see cref="TagGate"/>. A distinct axis from
+        /// <see cref="Filter"/> (<c>TargetFilter : byte</c> is full — all 8 bits used), so it is a separate field.
+        /// </summary>
+        public readonly UnitTag RequireTag;
+
+        /// <summary>Construct an area-search node. <paramref name="requireTag"/> (Story 2.11, default None) is a
+        /// trailing-optional tag AND-constraint; omit it and every pre-2.11 SearchArea behaves byte-identically.</summary>
+        public SearchAreaEffect(Fixed radius, TargetFilter filter, EffectNode child, UnitTag requireTag = UnitTag.None)
         {
             Radius = radius;
             Filter = filter;
             Child = child;
+            RequireTag = requireTag;
         }
 
         /// <summary>
@@ -62,7 +73,7 @@ namespace ProjectChimera.Effects
             for (int r = 0; r < count; r++)
             {
                 int id = hitBuffer[r];
-                if (TargetMatcher.Matches(Filter, world, ctx.CasterId, ctx.CasterFaction, id))
+                if (TargetMatcher.Matches(Filter, world, ctx.CasterId, ctx.CasterFaction, id, RequireTag))
                     hitBuffer[w++] = id;
             }
             count = w;

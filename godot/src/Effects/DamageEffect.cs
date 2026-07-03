@@ -22,8 +22,10 @@ namespace ProjectChimera.Effects
         /// <summary>The damage type, indexing the damage matrix against the target's armor.</summary>
         public readonly DamageType Type;
 
-        /// <summary>Construct a matrix-damage leaf.</summary>
-        public DamageEffect(Fixed amount, DamageType type)
+        /// <summary>Construct a matrix-damage leaf. <paramref name="requireTag"/> (Story 2.11, default None) gates the
+        /// single-target apply on the target's tag — e.g. single-target "+X vs Mechanical" bonus term; omit for
+        /// byte-identical 2.1 behaviour. The tag gate is a target-selection predicate; it does NOT touch the damage matrix.</summary>
+        public DamageEffect(Fixed amount, DamageType type, UnitTag requireTag = UnitTag.None) : base(requireTag)
         {
             Amount = amount;
             Type = type;

@@ -257,6 +257,18 @@ namespace ProjectChimera.Core
         /// </summary>
         public readonly AttackDomain[] AttackDomainOf;
 
+        /// <summary>
+        /// Per-unit classification tags (Organic/Mechanical/Magical) — Story 2.11 (DG-4 / FR-56), parsed from
+        /// <c>UnitDefinition.tags</c> at spawn. Read in-sim by the effect engine's target selection (the
+        /// <c>SearchArea.require_tag</c> predicate via <c>TargetMatcher</c>, and the single-target <c>LeafEffect</c>
+        /// gate via <c>EffectExecutor</c>). Default <see cref="UnitTag.None"/> (an untagged unit is matched by no tag
+        /// predicate). NOT folded into the determinism checksum — an authored-immutable, effect-read field, exactly
+        /// like <see cref="AttackDomainOf"/> / <see cref="CategoryOf"/> / <see cref="DamageTypeOf"/> (a divergent
+        /// authored tag changes which target an effect selects → the affected entity's already-folded
+        /// Health/ModifierStore/Position moves, caught transitively).
+        /// </summary>
+        public readonly UnitTag[] TagsOf;
+
         // --- Supply ---
         /// <summary>Supply population this entity occupies (0 = workers/buildings, 1+ = combat).</summary>
         public readonly byte[] SupplyCost;
@@ -445,6 +457,7 @@ namespace ProjectChimera.Core
             SeparationPriorityOf = new SeparationPriority[MAX_ENTITIES]; // Story 1.13 (folded v5)
             CategoryOf           = new UnitCategory[MAX_ENTITIES];       // Story 1.13 (NOT folded — presentation-read)
             AttackDomainOf       = new AttackDomain[MAX_ENTITIES];       // Story 2.9a (NOT folded — authored combat-read)
+            TagsOf               = new UnitTag[MAX_ENTITIES];            // Story 2.11 (NOT folded — authored effect-read; UnitTag.None == 0, no Array.Fill needed)
             SupplyCost     = new byte[MAX_ENTITIES];
             MeshType       = new byte[MAX_ENTITIES];
             FeedbackProfile = new CombatFeedbackProfile[MAX_ENTITIES];   // Story 2.7 (presentation-read — NOT folded; first ref-typed SoA)
@@ -542,6 +555,7 @@ namespace ProjectChimera.Core
             SeparationPriorityOf[id] = SeparationPriority.Normal;
             CategoryOf[id]           = UnitCategory.Melee;
             AttackDomainOf[id]       = AttackDomain.All;   // Story 2.9a: recycled/non-def slots attack every domain (as before).
+            TagsOf[id]               = UnitTag.None;       // Story 2.11: MANDATORY recycle-reset — a reused slot must never inherit the prior occupant's tag (SoA-recycle trap; the ONLY teeth are RecycledSlot_CarriesNoPriorTag, since default(UnitTag)==None makes this line look redundant).
             SupplyCost[id]    = 0;
             MeshType[id]      = 0;
             FeedbackProfile[id] = null;  // Story 2.7: ref-typed SoA — clear on (re)alloc so a recycled slot never inherits a prior occupant's profile.
@@ -618,6 +632,7 @@ namespace ProjectChimera.Core
             SeparationPriorityOf[id] = def.ParsedSeparationPriority;
             CategoryOf[id]           = def.ParsedCategory;
             AttackDomainOf[id]       = def.ParsedAttackDomains;   // Story 2.9a (A2 single mapper; authored, NOT folded).
+            TagsOf[id]               = def.ParsedTags;            // Story 2.11 (A2 single mapper; authored effect-read, NOT folded).
 
             // Story 2.7 (A2): the per-unit combat-feedback override — presentation-read, NOT folded (the
             // MeshType/CategoryOf posture). Reaches built armies automatically because the primary in-match spawn

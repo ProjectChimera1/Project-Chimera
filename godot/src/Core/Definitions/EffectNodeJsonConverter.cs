@@ -90,23 +90,27 @@ namespace ProjectChimera.Core.Definitions
                 case DirectHpDeltaEffect d:
                     writer.WriteString("kind", KindDirectHpDelta);
                     WriteFixed(writer, "delta", d.Delta, options);
+                    WriteRequireTag(writer, d.RequireTag, options);   // Story 2.11 (omit-when-None)
                     break;
 
                 case HealEffect h:
                     writer.WriteString("kind", KindHeal);
                     WriteFixed(writer, "amount", h.Amount, options);
+                    WriteRequireTag(writer, h.RequireTag, options);   // Story 2.11 (omit-when-None)
                     break;
 
                 case DamageEffect dm:
                     writer.WriteString("kind", KindDamage);
                     WriteFixed(writer, "amount", dm.Amount, options);
                     WriteEnum(writer, "damage_type", dm.Type, options);   // accessor is .Type (NOT .DamageType); mirrors Read
+                    WriteRequireTag(writer, dm.RequireTag, options);   // Story 2.11 (omit-when-None)
                     break;
 
                 case ApplyModifierEffect am:
                     writer.WriteString("kind", KindApplyModifier);
                     writer.WritePropertyName("modifier");
                     WriteModifier(writer, am.Modifier, options);
+                    WriteRequireTag(writer, am.RequireTag, options);   // Story 2.11 (omit-when-None)
                     break;
 
                 // ── Composition nodes ──
@@ -123,6 +127,7 @@ namespace ProjectChimera.Core.Definitions
                     writer.WriteString("kind", KindSearchArea);
                     WriteFixed(writer, "radius", sa.Radius, options);
                     WriteEnum(writer, "filter", sa.Filter, options);
+                    WriteRequireTag(writer, sa.RequireTag, options);   // Story 2.11 (omit-when-None)
                     writer.WritePropertyName("child");
                     WriteNode(writer, sa.Child, options);
                     break;
@@ -182,6 +187,14 @@ namespace ProjectChimera.Core.Definitions
             JsonSerializer.Serialize(writer, value, options);   // → JsonStringEnumConverter (name-only, allowIntegerValues:false)
         }
 
+        // Story 2.11 (D-4 / AC3.4): the optional tag gate shared by search_area AND every leaf kind. OMIT-WHEN-None so
+        // every pre-2.11 node round-trips byte-identically (Read treats missing require_tag as None) — the "Write is the
+        // exact inverse of Read" contract (2.5a). require_tag is emitted as a single UnitTag enum name ("Mechanical").
+        private static void WriteRequireTag(Utf8JsonWriter writer, UnitTag requireTag, JsonSerializerOptions options)
+        {
+            if (requireTag != UnitTag.None) WriteEnum(writer, "require_tag", requireTag, options);
+        }
+
         // ── Node dispatch ────────────────────────────────────────────────────────
 
         private static EffectNode ReadNode(JsonElement el, JsonSerializerOptions options, int depth, string path)
@@ -196,29 +209,31 @@ namespace ProjectChimera.Core.Definitions
                 // ── Leaves (no composition depth; no child-node recursion except the modifier's period effect) ──
                 case KindDirectHpDelta:
                 {
-                    RejectUnknownProperties(el, path, "kind", "delta");
-                    return new DirectHpDeltaEffect(ReadFixed(el, "delta", path, options));
+                    RejectUnknownProperties(el, path, "kind", "delta", "require_tag");
+                    Fixed delta = ReadFixed(el, "delta", path, options);
+                    return new DirectHpDeltaEffect(delta, ReadRequireTag(el, path, options));
                 }
                 case KindHeal:
                 {
-                    RejectUnknownProperties(el, path, "kind", "amount");
-                    return new HealEffect(ReadFixed(el, "amount", path, options));
+                    RejectUnknownProperties(el, path, "kind", "amount", "require_tag");
+                    Fixed amount = ReadFixed(el, "amount", path, options);
+                    return new HealEffect(amount, ReadRequireTag(el, path, options));
                 }
                 case KindDamage:
                 {
-                    RejectUnknownProperties(el, path, "kind", "amount", "damage_type");
+                    RejectUnknownProperties(el, path, "kind", "amount", "damage_type", "require_tag");
                     Fixed amount = ReadFixed(el, "amount", path, options);
                     DamageType type = ReadEnum<DamageType>(el, "damage_type", path, options, required: true);
                     if (type == DamageType.COUNT)
                         throw new JsonException($"{path}.damage_type: 'COUNT' is an internal sentinel, not an authorable damage type.");
-                    return new DamageEffect(amount, type);
+                    return new DamageEffect(amount, type, ReadRequireTag(el, path, options));
                 }
                 case KindApplyModifier:
                 {
-                    RejectUnknownProperties(el, path, "kind", "modifier");
+                    RejectUnknownProperties(el, path, "kind", "modifier", "require_tag");
                     if (!el.TryGetProperty("modifier", out JsonElement modEl))
                         throw new JsonException($"{path}: apply_modifier is missing its required 'modifier' object.");
-                    return new ApplyModifierEffect(ReadModifier(modEl, options, depth, $"{path}.modifier"));
+                    return new ApplyModifierEffect(ReadModifier(modEl, options, depth, $"{path}.modifier"), ReadRequireTag(el, path, options));
                 }
 
                 // ── Composition nodes (carry the parse-time depth guard, mirroring EffectBounds' threshold) ──
@@ -236,7 +251,7 @@ namespace ProjectChimera.Core.Definitions
                 }
                 case KindSearchArea:
                 {
-                    RejectUnknownProperties(el, path, "kind", "radius", "filter", "child");
+                    RejectUnknownProperties(el, path, "kind", "radius", "filter", "child", "require_tag");
                     GuardDepth(depth, path);
                     Fixed radius = ReadFixed(el, "radius", path, options);
                     TargetFilter filter = ReadEnum<TargetFilter>(el, "filter", path, options, required: true);
@@ -244,8 +259,11 @@ namespace ProjectChimera.Core.Definitions
                     // DomainClassifier), so the fail-closed reject that stood here in 2.1 is lifted — an authored
                     // SearchArea filter carrying a domain bit deserializes and filters by domain. ("No domain bit set"
                     // still means all domains, so pre-2.9a filters are unchanged.)
+                    // Story 2.11 (AC3.4): optional tag AND-constraint (a single UnitTag enum string, "Mechanical");
+                    // missing → None (back-compat); an unknown token is rejected fail-closed by the enum converter.
+                    UnitTag requireTag = ReadRequireTag(el, path, options);
                     EffectNode child = ReadRequiredChild(el, "child", options, depth + 1, $"{path}.child");
-                    return new SearchAreaEffect(radius, filter, child);
+                    return new SearchAreaEffect(radius, filter, child, requireTag);
                 }
                 case KindPersistent:
                 {
@@ -341,6 +359,12 @@ namespace ProjectChimera.Core.Definitions
             try { return el.Deserialize<TEnum>(options); }            // routes through JsonStringEnumConverter (name-only)
             catch (JsonException ex) { throw new JsonException($"{path}.{prop}: {ex.Message}"); }
         }
+
+        // Story 2.11 (D-4 / AC3.4): the optional single-target/area tag gate, shared by every leaf kind + search_area.
+        // A single UnitTag enum string ("Mechanical"); missing → None (back-compat); an UNKNOWN token (e.g. "Undead")
+        // is rejected fail-closed here by ContentJson's name-only enum converter (allowIntegerValues:false), located.
+        private static UnitTag ReadRequireTag(JsonElement el, string path, JsonSerializerOptions options)
+            => ReadEnum<UnitTag>(el, "require_tag", path, options, required: false, fallback: UnitTag.None);
 
         private static EffectNode ReadRequiredChild(JsonElement parent, string prop, JsonSerializerOptions options, int depth, string path)
         {

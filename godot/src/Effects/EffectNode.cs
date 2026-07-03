@@ -1,4 +1,6 @@
 #nullable enable
+using ProjectChimera.Core;
+
 namespace ProjectChimera.Effects
 {
     /// <summary>
@@ -36,7 +38,19 @@ namespace ProjectChimera.Effects
     /// </summary>
     public abstract class LeafEffect : EffectNode
     {
-        private protected LeafEffect() { }
+        /// <summary>
+        /// Story 2.11 (D-4): OPTIONAL single-target tag gate. Default <see cref="UnitTag.None"/> = no gate (every
+        /// pre-2.11 leaf is byte-identical). When non-None, the executor applies this leaf ONLY if the primary
+        /// target's <c>EntityWorld.TagsOf</c> intersects these bits — a closed <see cref="UnitTag"/> enum predicate
+        /// PARAMETERIZING the existing closed leaf (AR-8-clean: no new node, no open/scripted term). Evaluated through
+        /// the shared <see cref="TagGate"/>, so this single-target path and the area path (<c>SearchArea.RequireTag</c>)
+        /// can never disagree on "has the tag." So single-target "+X vs Mechanical" is
+        /// <c>sequence[ damage{base}, damage{require_tag:Mechanical, bonus} ]</c>, and "heal only Organic" is
+        /// <c>heal{require_tag:Organic}</c> (a whole no-op on a non-Organic target).
+        /// </summary>
+        public readonly UnitTag RequireTag;
+
+        private protected LeafEffect(UnitTag requireTag = UnitTag.None) { RequireTag = requireTag; }
 
         /// <summary>
         /// Apply this leaf's mutation to <c>ctx.PrimaryTargetId</c>. Implementations MUST guard

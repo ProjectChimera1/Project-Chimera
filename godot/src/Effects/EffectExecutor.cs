@@ -129,11 +129,19 @@ namespace ProjectChimera.Effects
                         if (f.Ctx.ModifierStore is null)
                             throw new NotSupportedException(
                                 "ApplyModifierEffect requires a ModifierStore in the EffectContext (Story 2.2b).");
+                        // Story 2.11 (D-4): single-target tag gate. apply_modifier is dispatched by THIS case (not the
+                        // generic LeafEffect case below), so the leaf RequireTag gate must live here too — no-op when
+                        // the primary target's tag doesn't match. Single-sourced with every other site via TagGate.
+                        if (!TagGate.Passes(f.Ctx.World, f.Ctx.PrimaryTargetId, applyMod.RequireTag)) break;
                         f.Ctx.ModifierStore.Apply(
                             f.Ctx.PrimaryTargetId, applyMod.Modifier, f.Ctx.CasterId, f.Ctx.CasterFaction);
                         break;
 
                     case LeafEffect leaf:
+                        // Story 2.11 (D-4): single-target tag gate — apply the leaf ONLY if the primary target's tag
+                        // intersects RequireTag (no-op/back-compat when None). One check covers DirectHpDelta/Heal/Damage
+                        // (apply_modifier is gated in its own case above); single-sourced via TagGate. Pure integer bit-AND.
+                        if (!TagGate.Passes(f.Ctx.World, f.Ctx.PrimaryTargetId, leaf.RequireTag)) break;
                         leaf.Apply(in f.Ctx); // guards IsAlive / faction internally
                         break;
 

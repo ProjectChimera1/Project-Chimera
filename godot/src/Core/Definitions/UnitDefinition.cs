@@ -139,6 +139,23 @@ namespace ProjectChimera.Core.Definitions
         public string[]? AttackDomains { get; set; }
 
         /// <summary>
+        /// The classification tags this unit carries, as a snake_case JSON string array of <c>"Organic"</c> /
+        /// <c>"Mechanical"</c> / <c>"Magical"</c> (Story 2.11, DG-4 / FR-56). An orthogonal effect-targeting &amp;
+        /// counter axis, independent of <see cref="DamageType"/> / <see cref="ArmorType"/> / <see cref="Category"/>:
+        /// the effect engine filters/counters by it (<c>SearchArea.require_tag</c> + the single-target leaf gate)
+        /// WITHOUT abusing the damage/armor matrix. A unit MAY carry several tags (OR-folded via <see cref="ParsedTags"/>).
+        /// Nullable so "unauthored" is distinguishable from "authored empty" — BOTH fold to <see cref="UnitTag.None"/>
+        /// (the CRITICAL divergence from <see cref="AttackDomains"/>, which defaults to <c>All</c>: an untagged unit is
+        /// matched by NO tag predicate, so no shipping unit gains a tag by omission). Resolved via <see cref="ParsedTags"/>
+        /// and written to <c>EntityWorld.TagsOf</c> in <see cref="ProjectChimera.Core.EntityWorld.ApplyUnitDefinition"/>
+        /// (the single def→SoA mapper). Loaded through the LENIENT faction loader, so it MUST be <c>string[]?</c> (an
+        /// enum-typed field would throw on that path); an unknown token is rejected fail-closed by the closed-set
+        /// unit-tag validator (AC2), NOT silently by <see cref="ParsedTags"/>.
+        /// </summary>
+        [JsonPropertyName("tags")]
+        public string[]? Tags { get; set; }
+
+        /// <summary>
         /// Maximum ability-resource (energy) pool for this unit type (authored float, quantized once to
         /// <see cref="ProjectChimera.Core.Fixed"/> in <see cref="ProjectChimera.Core.EntityWorld.ApplyUnitDefinition"/>
         /// — the single float→Fixed boundary, like the other stats). 0 = no energy pool (cannot cast energy-cost
@@ -296,6 +313,36 @@ namespace ProjectChimera.Core.Definitions
                     };
                 }
                 return result == AttackDomain.None ? AttackDomain.All : result;
+            }
+        }
+
+        /// <summary>
+        /// tags strings OR-folded to the <see cref="UnitTag"/> classification set (Story 2.11). Null / empty /
+        /// all-unknown → <see cref="UnitTag.None"/> — the CRITICAL divergence from <see cref="ParsedAttackDomains"/>
+        /// (which defaults to <c>All</c>): an untagged unit is matched by NO tag predicate, so no existing unit gains a
+        /// tag by omission and no golden moves. Any recognized subset ORs to exactly those bits (author opt-in; a unit
+        /// can be <c>Organic|Magical</c>). LENIENT — an unknown token contributes <see cref="UnitTag.None"/> (fail-open);
+        /// the closed-set REJECT is the validator's job (AC2), NOT this accessor's (the deliberate accessor/validator
+        /// split the codebase already uses for <c>AbilityDefinition.ParsedTargeting</c>). Getter-only, and the lenient
+        /// faction loader never re-serializes it, so no <c>[JsonIgnore]</c> is needed (matches <see cref="ParsedDamageType"/>).
+        /// </summary>
+        public UnitTag ParsedTags
+        {
+            get
+            {
+                if (Tags == null || Tags.Length == 0) return UnitTag.None;
+                UnitTag result = UnitTag.None;
+                foreach (string s in Tags)
+                {
+                    result |= s switch
+                    {
+                        "Organic"    => UnitTag.Organic,
+                        "Mechanical" => UnitTag.Mechanical,
+                        "Magical"    => UnitTag.Magical,
+                        _            => UnitTag.None,
+                    };
+                }
+                return result;   // None if nothing recognized (NOT All) — the untagged/back-compat default (AC5.1).
             }
         }
     }

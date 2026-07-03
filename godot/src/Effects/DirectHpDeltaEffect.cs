@@ -19,8 +19,9 @@ namespace ProjectChimera.Effects
         /// <summary>Flat HP change (negative = cost, positive = restore). Armor-independent.</summary>
         public readonly Fixed Delta;
 
-        /// <summary>Construct a flat HP-delta leaf.</summary>
-        public DirectHpDeltaEffect(Fixed delta) => Delta = delta;
+        /// <summary>Construct a flat HP-delta leaf. <paramref name="requireTag"/> (Story 2.11, default None) gates the
+        /// single-target apply on the primary target's tag; omit for the pre-2.11 byte-identical behaviour.</summary>
+        public DirectHpDeltaEffect(Fixed delta, UnitTag requireTag = UnitTag.None) : base(requireTag) => Delta = delta;
 
         /// <inheritdoc />
         internal override void Apply(in EffectContext ctx)

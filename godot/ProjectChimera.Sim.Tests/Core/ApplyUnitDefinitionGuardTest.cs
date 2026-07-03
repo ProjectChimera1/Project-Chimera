@@ -40,6 +40,8 @@ namespace ProjectChimera.Sim.Tests.Core
             CombatFeedback = new CombatFeedbackProfile { HitFreezeFrames = 4 },
             // Story 2.9a: a restricted attack-domain so the AttackDomainOf mapper teeth bite (Create default = All).
             AttackDomains = new[] { "Air" },
+            // Story 2.11: a classification tag so the TagsOf mapper teeth bite (Create default = None).
+            Tags = new[] { "Mechanical" },
         };
 
         [Fact]
@@ -71,6 +73,8 @@ namespace ProjectChimera.Sim.Tests.Core
             Assert.Equal(def.ParsedCategory,                    w.CategoryOf[id]);
             // Story 2.9a: the authored attack-domain capability is written through the single mapper.
             Assert.Equal(def.ParsedAttackDomains,               w.AttackDomainOf[id]);
+            // Story 2.11: the authored classification tags are written through the single mapper.
+            Assert.Equal(def.ParsedTags,                        w.TagsOf[id]);
             // Story 2.7: the presentation-read feedback override is copied (by reference) through the single mapper.
             Assert.Same(def.CombatFeedback,                     w.FeedbackProfile[id]);
 
@@ -80,6 +84,7 @@ namespace ProjectChimera.Sim.Tests.Core
             Assert.NotEqual(UnitCategory.Melee,        w.CategoryOf[id]);              // default Melee
             Assert.NotEqual(SeparationPriority.Normal, w.SeparationPriorityOf[id]);    // default Normal
             Assert.NotEqual(AttackDomain.All,          w.AttackDomainOf[id]);          // default All (Story 2.9a)
+            Assert.NotEqual(UnitTag.None,              w.TagsOf[id]);                  // default None (Story 2.11)
             Assert.NotNull(w.FeedbackProfile[id]);                                     // default null (Story 2.7)
         }
 
@@ -129,6 +134,8 @@ namespace ProjectChimera.Sim.Tests.Core
             Assert.Equal(refWorld.CategoryOf[refId],           w.CategoryOf[id]);
             // Story 2.9a: SpawnUnit routes the attack-domain capability through the same single mapper.
             Assert.Equal(refWorld.AttackDomainOf[refId],       w.AttackDomainOf[id]);
+            // Story 2.11: SpawnUnit routes the classification tags through the same single mapper.
+            Assert.Equal(refWorld.TagsOf[refId],               w.TagsOf[id]);
             // Story 2.7: SpawnUnit routes the feedback override through the mapper (same def instance ⇒ same reference).
             Assert.Same(refWorld.FeedbackProfile[refId],       w.FeedbackProfile[id]);
         }
@@ -282,6 +289,30 @@ namespace ProjectChimera.Sim.Tests.Core
 
             // The new occupant (NO def applied) must carry NO prior feedback profile.
             Assert.Null(w.FeedbackProfile[reused]);
+        }
+
+        // ── Story 2.11 — TagsOf is the authored-immutable classification SoA. A recycled slot must be reset in Create()
+        //    so a new (no-def) occupant never inherits a prior unit's tag (the SoA-recycle trap). This is the ONLY test
+        //    with teeth on the mandatory Create() reset: the mapper-coverage + spawn-parity tests run on FRESH (zero-init
+        //    None) slots and pass even if the Create() line were omitted, and default(UnitTag)==None makes that line look
+        //    redundant — so without this test an omission would ship silently (mis-targeting require_tag effects on a
+        //    recycled slot). This is the fold-substitute: TagsOf is not in SimChecksum, so the guard IS the coverage. ──
+        [Fact]
+        public void RecycledSlot_CarriesNoPriorTag()
+        {
+            UnitDefinition def = CombatDef(); // carries Tags = ["Mechanical"] ⇒ ParsedTags = Mechanical
+
+            var w = new EntityWorld();
+            int first = w.Create(FixedVec3.Zero, Faction.Player1, Fixed.FromInt(100), Fixed.FromInt(3));
+            w.ApplyUnitDefinition(first, def);
+            Assert.Equal(UnitTag.Mechanical, w.TagsOf[first]); // populated for the first occupant
+
+            w.Destroy(first);
+            int reused = w.Create(FixedVec3.Zero, Faction.Player2, Fixed.FromInt(50), Fixed.FromInt(3));
+            Assert.Equal(first, reused); // same id off the free list
+
+            // The new occupant (NO def applied) must carry NO prior tag — proves the mandatory Create() recycle-reset.
+            Assert.Equal(UnitTag.None, w.TagsOf[reused]);
         }
     }
 }

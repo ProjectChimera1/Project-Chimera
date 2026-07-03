@@ -27,7 +27,8 @@ namespace ProjectChimera.Effects
         /// guards <see cref="EntityWorld.IsAlive"/> when the Alive bit is set.
         /// </summary>
         internal static bool Matches(TargetFilter filter, EntityWorld world, int casterId,
-                                     Faction casterFaction, int candidateId)
+                                     Faction casterFaction, int candidateId,
+                                     UnitTag requireTag = UnitTag.None)
         {
             // AND-constraint: explicit alive check when requested. (Dead ids never enter the spatial-hash
             // snapshot, but a leaf chained after a lethal sibling could re-reference a now-dead id.)
@@ -43,6 +44,14 @@ namespace ProjectChimera.Effects
             TargetFilter wantedDomains = filter & domains;
             if (wantedDomains != TargetFilter.None
                 && (wantedDomains & DomainBit(DomainClassifier.Of(world.CategoryOf[candidateId]))) == TargetFilter.None)
+                return false;
+
+            // Story 2.11 (AC3.2): tag AND-constraint, beside the 2.9a domain block. If a require_tag is set, the
+            // candidate's TagsOf must INTERSECT it (match if ANY required bit is set); None (every pre-2.11 SearchArea)
+            // is a no-op → byte-identical. Single-sourced with the single-target leaf gate via TagGate.Intersects, so
+            // the two consumption sites can never disagree. Pure integer bit-AND — no Fixed/float/RNG. (candidateId is a
+            // live spatial-hash snapshot id, so the TagsOf read is in-bounds, like the CategoryOf read above.)
+            if (!TagGate.Intersects(world.TagsOf[candidateId], requireTag))
                 return false;
 
             const TargetFilter allegiance = TargetFilter.Self | TargetFilter.Ally

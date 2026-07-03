@@ -79,7 +79,7 @@ development_status:
   2-9a-combat-reachability-air-ground-targetfilter-anti-building-combat: done
   2-9b-combat-reachability-worker-cast-ability-path-multi-resource-crystal-cost: done
   2-10-showcase-faction-signature-mechanics-equal-exchange-and-sanguine-furnace-passive-hot-d1-only: done
-  2-11-authorable-unit-tags-organic-mechanical-magical-as-an-effect-targeting-counter-axis: ready-for-dev
+  2-11-authorable-unit-tags-organic-mechanical-magical-as-an-effect-targeting-counter-axis: review
   2-12-shift-queued-command-waypoints-lockstep-replicated-rally-points: backlog
   2-13-combat-store-defect-batch-attack-move-buildings-hover-deadlock-buildingstore-recycle-hot-pulse-cap: backlog
   epic-2-retrospective: optional
