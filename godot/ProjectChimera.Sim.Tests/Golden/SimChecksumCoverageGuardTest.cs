@@ -345,11 +345,17 @@ namespace ProjectChimera.Sim.Tests.Golden
             Assert.True(noRally != flagged,
                 "BuildingStore.HasRallyPoint is NOT folded into SimChecksum: setting it left the checksum unchanged (v9 D-1 fold).");
 
-            // Moving the rally coordinate must ALSO move the hash (proves RallyPoint X/Z are read, not just the flag).
+            // Moving each rally coordinate must move the hash — split X-alone then Z-alone (mirroring the OrderQueue
+            // teeth above) so a fold that reads one coordinate but forgets the other still goes RED (review R4).
+            buildings.RallyPoint[b] = new FixedVec3(Fixed.FromInt(9), Fixed.Zero, Fixed.Zero);
+            uint movedX = SimChecksum.Compute(world, buildings, resources, registry);
+            Assert.True(flagged != movedX,
+                "BuildingStore.RallyPoint.X is NOT folded into SimChecksum: moving X alone left the checksum unchanged (v9 D-1 fold).");
+
             buildings.RallyPoint[b] = new FixedVec3(Fixed.FromInt(9), Fixed.Zero, Fixed.FromInt(-7));
-            uint moved = SimChecksum.Compute(world, buildings, resources, registry);
-            Assert.True(flagged != moved,
-                "BuildingStore.RallyPoint is NOT folded into SimChecksum: moving the rally coordinate left the checksum unchanged (v9 D-1 fold).");
+            uint movedZ = SimChecksum.Compute(world, buildings, resources, registry);
+            Assert.True(movedX != movedZ,
+                "BuildingStore.RallyPoint.Z is NOT folded into SimChecksum: moving Z alone left the checksum unchanged (v9 D-1 fold).");
         }
 
         /// <summary>

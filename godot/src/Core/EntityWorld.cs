@@ -383,6 +383,19 @@ namespace ProjectChimera.Core
         /// </summary>
         public readonly byte[] OrderQueueCount;
 
+        /// <summary>
+        /// Story 2.12 (R1 fix): the sim-authoritative ACTIVE order per entity — the last order dispatched by
+        /// <c>OrderApplier.ApplyActiveOrder</c>, stored as the final masked 0-13 <see cref="UnitCommand"/> byte.
+        /// <see cref="OrderQueueSystem"/> keys completion on THIS, never on <see cref="CommandState"/>, because
+        /// presentation (FlowFieldBridge/PathRequestSystem, <c>src/UI</c>) mutates <see cref="CommandState"/> off-tick —
+        /// it flips an arrived Move→Stop at the flow field's wider 1.5u radius, BEFORE the queue's 0.5u pop — which would
+        /// strand every order queued behind a plain Move. Written ONLY by the deterministic dispatch (same on every peer),
+        /// so — exactly like <see cref="CommandState"/>/<see cref="CommandGoal"/>/<see cref="MoveTarget"/> — it is NOT
+        /// folded into <see cref="SimChecksum"/> (a divergence is caught transitively via the folded
+        /// <see cref="OrderQueueCount"/> + <see cref="Position"/>). MANDATORY <see cref="Create"/> reset (0 = Idle = ready).
+        /// </summary>
+        public readonly byte[] ActiveOrderCmd;
+
         // --- Abilities (Story 2.4a, FR-11) — flat per-slot buffers indexed id * MAX_ABILITIES_PER_UNIT + slot ---
         /// <summary>
         /// Registry index of the ability in each slot (−1 = empty), indexed <c>id * MAX_ABILITIES_PER_UNIT + slot</c>.
@@ -526,6 +539,7 @@ namespace ProjectChimera.Core
             OrderQueueTargetX = new int[MAX_ENTITIES * MAX_ORDER_QUEUE];   // Story 2.12 (folded v9)
             OrderQueueTargetZ = new int[MAX_ENTITIES * MAX_ORDER_QUEUE];   // Story 2.12 (folded v9)
             OrderQueueCount   = new byte[MAX_ENTITIES];                    // Story 2.12 (folded v9; count-driven loop bound)
+            ActiveOrderCmd    = new byte[MAX_ENTITIES];                    // Story 2.12 R1 (sim-authoritative active order; NOT folded — the CommandState posture)
             AbilityId            = new int[MAX_ENTITIES * MAX_ABILITIES_PER_UNIT];  // Story 2.4a (authored — NOT folded)
             AbilityCooldownTicks = new int[MAX_ENTITIES * MAX_ABILITIES_PER_UNIT];  // Story 2.4a (folded v7)
             AbilityCount         = new byte[MAX_ENTITIES];                          // Story 2.4a (v7 fold loop bound)
@@ -633,6 +647,7 @@ namespace ProjectChimera.Core
             // per-slot clear. The ONLY teeth on this line are RecycledSlot_CarriesNoPriorOrderQueue (default(byte)==0
             // makes it look redundant, but a reused slot with a stale count would drive ghost orders + a desync).
             OrderQueueCount[id] = 0;
+            ActiveOrderCmd[id]  = (byte)UnitCommand.Idle; // Story 2.12 R1: a recycled slot starts "ready" (Idle), never inheriting a prior active order (SoA-recycle rule)
             // Story 2.4a: reset the per-entity ability slots + cooldowns + transient cast intent on (re)allocation —
             // a recycled slot must NEVER carry the prior occupant's abilities/cooldowns (the SoA-recycle trap the A2
             // guard catches). ApplyUnitDefinition overwrites AbilityId/AbilityCount/MaxEnergy/Energy for def-based units.

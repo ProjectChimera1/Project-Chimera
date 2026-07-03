@@ -48,23 +48,38 @@ namespace ProjectChimera.Core
         }
 
         /// <summary>
-        /// True when entity <paramref name="i"/>'s ACTIVE order has finished, so the queue's head may dispatch. Keyed
-        /// on <see cref="EntityWorld.CommandState"/> only (pure sim): Idle = ready; Move/AttackMove = arrived within
-        /// <see cref="ORDER_ARRIVE_SQR"/> of <see cref="EntityWorld.CommandGoal"/>; everything else stalls (Decision #5).
+        /// True when entity <paramref name="i"/>'s ACTIVE order has finished, so the queue's head may dispatch. Keyed on
+        /// the sim-authoritative <see cref="EntityWorld.ActiveOrderCmd"/> (NOT the presentation-mutable CommandState — R1):
+        /// Idle = ready; Move/AttackMove = arrived within <see cref="ORDER_ARRIVE_SQR"/> of <see cref="EntityWorld.CommandGoal"/>;
+        /// a tracking order (AttackTarget/AttackBuilding/Follow) = the sim wrote CommandState=Idle on target-loss;
+        /// everything else (Stop/Hold/Patrol) stalls (Decision #5).
         /// </summary>
         private static bool CurrentOrderComplete(EntityWorld world, int i)
         {
-            switch (world.CommandState[i])
+            // Key on ActiveOrderCmd, NOT CommandState: presentation (FlowFieldBridge/PathRequestSystem, src/UI) flips an
+            // arrived Move→Stop at the flow field's wider 1.5u radius BEFORE the unit reaches this 0.5u pop, so reading
+            // CommandState would strand every order queued behind a plain Move (R1). ActiveOrderCmd is written only by
+            // the deterministic OrderApplier dispatch, so it survives the presentation flip.
+            switch ((UnitCommand)world.ActiveOrderCmd[i])
             {
                 case UnitCommand.Idle:
-                    return true; // resting / target-loss → dispatch the next queued order
+                    return true; // resting → dispatch the next queued order
                 case UnitCommand.Move:
                 case UnitCommand.AttackMove:
+                    // Pure-sim arrival: Position vs the sim-owned CommandGoal (presentation-immune). MovementSystem
+                    // drives the unit into ORDER_ARRIVE_SQR even after the presentation Stop-flip (FlowFieldBridge hands
+                    // the last stretch to the sim while orders are queued), so a movement order reliably completes.
                     return FixedVec3.SqrDistance(world.Position[i], world.CommandGoal[i]) <= ORDER_ARRIVE_SQR;
+                case UnitCommand.AttackTarget:
+                case UnitCommand.AttackBuilding:
+                case UnitCommand.Follow:
+                    // A tracking order completes when the sim (CombatSystem) writes CommandState=Idle on target-loss.
+                    // That transition is sim-owned (presentation never flips a tracking order), so it is safe to read.
+                    return world.CommandState[i] == UnitCommand.Idle;
                 default:
-                    // Stop / HoldPosition / Patrol / Follow / AttackTarget / AttackBuilding / Build / CastAbility:
-                    // terminal, looping, tracking, or transient — the queue does not advance past them (they complete
-                    // by flipping CommandState to Idle when the sim itself decides, which the Idle case above catches).
+                    // Stop / HoldPosition / Patrol / Build: terminal or looping — the queue STALLS past them (Decision #5).
+                    // (CastAbility never lands here: ApplyActiveOrder restores CommandState=prior for a transient cast,
+                    // so ActiveOrderCmd reflects the prior order, not the cast.)
                     return false;
             }
         }

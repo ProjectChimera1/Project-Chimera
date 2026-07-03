@@ -321,6 +321,12 @@ namespace ProjectChimera.Multiplayer
                     break;
                 }
             }
+
+            // Story 2.12 (R1 fix): stamp the sim-authoritative ACTIVE order = the FINAL CommandState (post the
+            // CastAbility "restore prior" and PatrolAppend "rewrite to Patrol" cases). OrderQueueSystem reads this,
+            // NOT CommandState, so a presentation Move→Stop flip can never strand queued orders. Presentation never
+            // writes ActiveOrderCmd, so it holds the true active order until the next deterministic dispatch.
+            world.ActiveOrderCmd[id] = (byte)world.CommandState[id];
         }
 
         /// <summary>

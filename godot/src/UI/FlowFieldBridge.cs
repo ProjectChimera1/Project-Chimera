@@ -154,10 +154,25 @@ namespace ProjectChimera.UI
                 if (field.HasArrived(pos.X, pos.Z))
                 {
                     _fields[i] = null;
-                    // Move → Stop (hold position, attack in range only — same as PathRequestSystem).
-                    // AttackMove arrival: CombatSystem.ResumeAttackMove owns the →Idle transition.
                     if (cmd == UnitCommand.Move)
-                        _world.CommandState[i] = UnitCommand.Stop;
+                    {
+                        // Story 2.12 (R1 fix): the flow field arrives at its 1.5u radius — WIDER than OrderQueueSystem's
+                        // 0.5u completion. If orders are queued behind this Move, do NOT flip it to Stop here (that would
+                        // strand the queue). Instead hand the last stretch to the sim: aim MoveTarget at the true
+                        // CommandGoal and keep Moving, so MovementSystem drives the unit into the 0.5u pop radius and the
+                        // queue advances (WC3 waypoint chaining). With no queue, flip to Stop exactly as before — so a
+                        // plain (non-queued) Move stays byte-identical to pre-2.12 behaviour.
+                        if (_world.OrderQueueCount[i] > 0)
+                        {
+                            _world.MoveTarget[i] = _world.CommandGoal[i];
+                            _world.Flags[i]      = (_world.Flags[i] | EntityFlags.Moving) & ~EntityFlags.Attacking;
+                        }
+                        else
+                        {
+                            _world.CommandState[i] = UnitCommand.Stop;
+                        }
+                    }
+                    // AttackMove arrival: CombatSystem.ResumeAttackMove owns the →Idle transition.
                     continue;
                 }
 

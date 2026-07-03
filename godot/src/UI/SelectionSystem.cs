@@ -276,7 +276,7 @@ namespace ProjectChimera.UI
                         {
                             int targetId = FindNearestEnemyUnit(cHit, PICK_RADIUS);
                             if (targetId >= 0)
-                                IssueCastAbilityCommand(_pendingCastCasterId, _pendingCastSlot, targetId);
+                                IssueCastAbilityCommand(_pendingCastCasterId, _pendingCastSlot, targetId, queued: lmb.ShiftPressed);
                         }
                         ResetPendingCommandClicks();
                         GetViewport().SetInputAsHandled();
@@ -562,6 +562,7 @@ namespace ProjectChimera.UI
             {
                 if (!_world.IsAlive(id)) continue;
                 if (!EnqueueStationary(id, UnitCommand.Stop)) continue; // online: queued
+                _world.OrderQueueCount[id] = 0; // offline plain = replace: this direct-write path bypasses OrderApplier, so clear the ring here (AC1.2, review R2)
 
                 _world.Flags[id]        = _world.Flags[id] & ~(EntityFlags.Moving | EntityFlags.Attacking);
                 _world.AttackTarget[id] = -1;
@@ -580,6 +581,7 @@ namespace ProjectChimera.UI
             {
                 if (!_world.IsAlive(id)) continue;
                 if (!EnqueueStationary(id, UnitCommand.HoldPosition)) continue; // online: queued
+                _world.OrderQueueCount[id] = 0; // offline plain = replace: this direct-write path bypasses OrderApplier, so clear the ring here (AC1.2, review R2)
 
                 _world.Flags[id]        = _world.Flags[id] & ~(EntityFlags.Moving | EntityFlags.Attacking);
                 _world.AttackTarget[id] = -1;
@@ -767,7 +769,7 @@ namespace ProjectChimera.UI
         /// offline (<c>_lockstep == null</c>) → applied now through the SAME shared <see cref="OrderApplier"/> the
         /// lockstep/replay paths use, so live/replay/offline cast application can never diverge.
         /// </summary>
-        public void IssueCastAbilityCommand(int casterId, int slot, int targetEntityId)
+        public void IssueCastAbilityCommand(int casterId, int slot, int targetEntityId, bool queued = false)
         {
             // Story 2.4b review: re-validate the caster at the ISSUE seam, not just at arm time. The pending caster id
             // (ArmCastTargeting) persists across frames and is NOT pruned like _selectedList, so the armed caster can
@@ -776,11 +778,16 @@ namespace ProjectChimera.UI
             // never be made to cast (offline this also re-seats expectedFaction to the local player, closing the
             // self-comparison hole in OrderApplier's anti-cheat guard).
             if (!_world.IsAlive(casterId) || _world.FactionOf[casterId] != Faction.Player1) return;
+            // Story 2.12 (review R3): a Shift-held cast APPENDS to the order ring (queued flag on the wire byte) instead
+            // of replacing — OrderApplier masks 0x80 off before the CastAbility case, and a popped cast dispatches through
+            // the shared ApplyActiveOrder core. A plain (non-Shift) cast is unflagged → clears the ring + casts now.
+            var wireCmd = queued ? (UnitCommand)((byte)UnitCommand.CastAbility | UnitOrderFlags.Queued)
+                                 : UnitCommand.CastAbility;
             // Online: EnqueueOrder returns false (queued). Offline (_lockstep == null): the ?? true yields apply-now.
-            bool applyNow = _lockstep?.EnqueueOrder(casterId, UnitCommand.CastAbility,
+            bool applyNow = _lockstep?.EnqueueOrder(casterId, wireCmd,
                                                     Fixed.FromRaw(slot), Fixed.FromRaw(targetEntityId)) ?? true;
             if (!applyNow) return; // online: LockstepManager.Flush will apply it later
-            var order = new UnitOrder(casterId, UnitCommand.CastAbility, Fixed.FromRaw(slot), Fixed.FromRaw(targetEntityId));
+            var order = new UnitOrder(casterId, wireCmd, Fixed.FromRaw(slot), Fixed.FromRaw(targetEntityId));
             OrderApplier.Apply(_world, in order, _world.FactionOf[casterId]);
         }
 

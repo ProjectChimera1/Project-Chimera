@@ -148,6 +148,41 @@ namespace ProjectChimera.Sim.Tests.Multiplayer
             Assert.Equal((byte)1, w.OrderQueueCount[u]); // Stop never completes → the Move never pops
         }
 
+        [Fact]
+        public void OrderQueueSystem_CompletesMove_EvenWhenPresentationFlipsCommandStateToStop()
+        {
+            // R1 (Option B — sim-owned completion): the queue keys on the sim-authoritative ActiveOrderCmd, NOT the
+            // presentation-mutable CommandState. In the live client a plain Move is flow-field-steered and FlowFieldBridge
+            // (presentation) flips its CommandState Move→Stop at the WIDER 1.5u arrival — BEFORE the unit reaches the
+            // queue's 0.5u pop. Simulating that flip, the queue MUST still complete the Move on the pure-sim arrival and
+            // pop the next order. Pre-fix (keying on CommandState==Stop) this stranded the queue forever.
+            var w = new EntityWorld();
+            var sys = new OrderQueueSystem();
+            int u = w.Create(V(0, 0, 0), Faction.Player1, Fixed.FromInt(100), Fixed.FromInt(3));
+
+            // Active plain Move to (10,0,0), then a queued Move to (20,0,0) behind it.
+            OrderApplier.Apply(w, new UnitOrder(u, UnitCommand.Move, Fixed.FromInt(10), Fixed.Zero), Faction.Player1);
+            OrderApplier.Apply(w, Queued(u, UnitCommand.Move, Fixed.FromInt(20), Fixed.Zero), Faction.Player1);
+            Assert.Equal(UnitCommand.Move, w.CommandState[u]);
+            Assert.Equal((byte)UnitCommand.Move, w.ActiveOrderCmd[u]); // dispatch stamped the sim-authoritative active order
+            Assert.Equal((byte)1, w.OrderQueueCount[u]);
+
+            // Presentation flips the arrived Move → Stop at 1.5u (the bug trigger). ActiveOrderCmd stays Move.
+            w.CommandState[u] = UnitCommand.Stop;
+
+            // Not yet at the goal → the queue must NOT advance (the Stop must not masquerade as completion, and the
+            // terminal-Stop stall must NOT fire for a presentation-flipped Move — teeth on the "arrived" gate).
+            sys.Tick(w, Fixed.Zero);
+            Assert.Equal((byte)1, w.OrderQueueCount[u]);
+
+            // The sim finishes the approach (MovementSystem hand-off). The queue completes on the pure-sim
+            // SqrDistance(Position, CommandGoal) DESPITE CommandState==Stop, and pops the queued Move.
+            w.Position[u] = V(10, 0, 0);
+            sys.Tick(w, Fixed.Zero);
+            Assert.Equal(Fixed.FromInt(20).Raw, w.CommandGoal[u].X.Raw); // queued Move dispatched
+            Assert.Equal((byte)0, w.OrderQueueCount[u]);
+        }
+
         // ── AC4 — full ring rejects deterministically + emits one OrderDenied ─────────────────────────────────
 
         [Fact]
