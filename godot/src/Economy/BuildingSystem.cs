@@ -446,12 +446,12 @@ namespace ProjectChimera.Economy
                 if (!world.IsAlive(i)) continue;
                 if (world.CommandState[i] != UnitCommand.Build) continue;
 
-                int bId = world.BuildTarget[i];
-
-                // Target building destroyed — cancel silently
-                if (bId < 0 || !_buildings.Alive[bId])
+                // Story 2.13 (AC3.4): BuildTarget holds a PACKED building ref — TryResolveRef validates bounds + Alive
+                // + GENERATION, so a worker whose under-construction target was razed AND its slot recycled into a new
+                // building cancels cleanly instead of "arriving" at the new occupant. The -1 sentinel resolves false.
+                if (!_buildings.TryResolveRef(world.BuildTarget[i], out int bId))
                 {
-                    ClearWorkerBuild(world, i);
+                    ClearWorkerBuild(world, i); // target destroyed / recycled — cancel silently
                     continue;
                 }
 
@@ -509,7 +509,7 @@ namespace ProjectChimera.Economy
             world.GatherTarget[workerId] = -1;
 
             // Issue Build command — MovementSystem moves the worker, GatheringSystem skips them
-            world.BuildTarget[workerId]  = bId;
+            world.BuildTarget[workerId]  = _buildings.PackRef(bId); // Story 2.13 D-3: packed ref (golden-neutral at gen 0)
             world.CommandState[workerId] = UnitCommand.Build;
             world.MoveTarget[workerId]   = position;
             world.Flags[workerId]       |= EntityFlags.Moving;

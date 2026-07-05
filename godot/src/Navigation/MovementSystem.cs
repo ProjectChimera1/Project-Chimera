@@ -14,7 +14,12 @@ namespace ProjectChimera.Navigation
     /// </summary>
     public class MovementSystem : ISimSystem
     {
-        // Arrive: stop when squared distance to target is below this
+        // Arrive: stop when squared distance to target is below this. Story 2.13 (AC2) DELIBERATELY keeps this at
+        // 0.5u — the LOW-LEVEL physical stop for any moving unit, including a combat chaser. Widening it to the 2u
+        // goal-arrive radius (ArrivalTuning) would halt every melee unit (attack_range 1.5 < 2) OUTSIDE its strike
+        // range → it could never close (MeleeUnitBelowArriveRadius_StillClosesAndStrikes guards this). The wave /
+        // queued-Move deadlock is fixed by the two GOAL thresholds (CombatSystem.AMOVE_ARRIVE_SQR / OrderQueueSystem.
+        // ORDER_ARRIVE_SQR), which gate on distance-to-CommandGoal and are independent of this physical stop.
         private static readonly Fixed ARRIVE_THRESHOLD_SQR =
             Fixed.FromFloat(0.5f) * Fixed.FromFloat(0.5f);
 

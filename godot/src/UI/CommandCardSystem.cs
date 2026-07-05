@@ -519,9 +519,10 @@ namespace ProjectChimera.UI
             bool isBuilding = _world.CommandState[focusId] == UnitCommand.Build;
             if (isBuilding)
             {
-                int bId    = _world.BuildTarget[focusId];
-                string bName = (bId >= 0 && bId < _buildings.Count)
-                    ? BuildingTypeName(_buildings.Type[bId]) : "building";
+                // Story 2.13 (AC3.4): BuildTarget is a PACKED building ref — resolve it (bounds + Alive + generation)
+                // for the display, so a stale/recycled ref just shows the generic label instead of misreading a slot.
+                string bName = _buildings.TryResolveRef(_world.BuildTarget[focusId], out int bSlot)
+                    ? BuildingTypeName(_buildings.Type[bSlot]) : "building";
                 _workerStatusLabel.Text = $"Building {bName}…";
             }
             else

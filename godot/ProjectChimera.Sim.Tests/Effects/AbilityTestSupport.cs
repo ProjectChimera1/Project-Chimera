@@ -61,19 +61,20 @@ namespace ProjectChimera.Sim.Tests.Effects
                 Cooldown = Fixed.FromInt(cooldownSec), EffectGraph = new HealEffect(Fixed.FromInt(heal)),
             };
 
-        /// <summary>equal_exchange (Story 2.10): the Equal Exchange VITALITY-price shape — Self, no matter cost
-        /// (cost_* all 0), a Sequence of a beneficial +15 atk self-buff (120-tick Refresh) THEN a FLAT
-        /// armor-independent −25 direct_hp_delta self-cost. Mirrors the shipped spike_transmutation.json so the
-        /// equal-exchange golden fixture doubles as a check on that content. (Modifier ctor order matches BattleFury.)</summary>
+        /// <summary>equal_exchange (Story 2.10; Story 2.13 self-cost migration): the Equal Exchange VITALITY-price
+        /// shape — Self, no matter cost, a beneficial +15 atk self-buff (120-tick Refresh) plus a FLAT −25 HP self-cost.
+        /// Story 2.13 (D-4) moves that self-cost from a graph <c>direct_hp_delta(-25)</c> leaf to the first-class
+        /// <c>cost_health: 25</c> field (one source of truth; <c>allow_self_lethal: false</c> so a would-be-lethal cast
+        /// is refused). The tick-1 Health 100→75 drop is UNCHANGED (byte-identical golden). Mirrors the shipped
+        /// spike_transmutation.json. (Modifier ctor order matches BattleFury.)</summary>
         public static AbilityDefinition EqualExchange() => new AbilityDefinition
         {
             Id = "equal_exchange", DisplayName = "Equal Exchange", Targeting = "Self",
             CostEnergy = Fixed.Zero, Cooldown = Fixed.FromInt(10),
-            EffectGraph = new SequenceEffect(
-                new ApplyModifierEffect(new Modifier(
-                    1100, 120, StackRule.Refresh, 1, Fixed.Zero, Fixed.FromInt(15), Fixed.Zero,
-                    StatusFlags.None, null, 0)),
-                new DirectHpDeltaEffect(Fixed.FromInt(-25))),
+            CostHealth = 25, AllowSelfLethal = false, // Story 2.13: self-cost migrated from the direct_hp_delta leaf
+            EffectGraph = new ApplyModifierEffect(new Modifier(
+                1100, 120, StackRule.Refresh, 1, Fixed.Zero, Fixed.FromInt(15), Fixed.Zero,
+                StatusFlags.None, null, 0)),
         };
     }
 

@@ -59,7 +59,26 @@ namespace ProjectChimera.Core
         public readonly int[]          TrainedCount;
 
         // ── Management ─────────────────────────────────────────────────────────
+        /// <summary>One past the highest slot ever allocated — the iteration/fold upper bound (SimChecksum folds
+        /// <c>0..Count</c>). A monotonic high-water mark: recycling reuses dead slots BELOW Count, so Count only grows.</summary>
         public int Count { get; private set; }
+
+        // ── Free-list recycling (Story 2.13, AC3.1) ────────────────────────────
+        // Deterministic LIFO stack of dead slots available for reuse, mirroring ProjectileStore._freeList exactly.
+        // UNFOLDED internal bookkeeping — NEVER a SimChecksum input (the Count-driven fold already covers 0..Count and
+        // recycled slots are < Count, so the fold sees no new state). Create() pops a free slot before appending a new
+        // one; Destroy() pushes the freed slot. LIFO from the deterministic tick ⇒ every peer maps slot→building alike.
+        private readonly int[] _freeList = new int[MAX_BUILDINGS];
+        private int            _freeCount;
+
+        // ── Generation counter (Story 2.13, AC3.4 / Decision D-3) ──────────────
+        // Per-slot recycle generation, bumped each time Create() reuses a dead slot. UNFOLDED (never a SimChecksum
+        // input) — deterministic (the recycle sequence is deterministic) and caught transitively via the folded
+        // Alive/Count. Every cross-tick building reference is PACKED as (Generation[slot] << 8) | slot and validated on
+        // deref by TryResolveRef, so a stale ref to a since-recycled slot reverts CLEANLY instead of ABA-retargeting a
+        // NEW building (restoring Story 2.9a's "stale → clean revert"). Golden-neutral: generation starts at 0, so
+        // PackRef(slot) == slot for every never-recycled building ⇒ existing folded CommandTarget/wire values unchanged.
+        public readonly int[] Generation = new int[MAX_BUILDINGS];
 
         public BuildingStore()
         {
@@ -87,9 +106,19 @@ namespace ProjectChimera.Core
         /// </summary>
         public int Create(FixedVec3 position, Faction faction, BuildingType type)
         {
-            if (Count >= MAX_BUILDINGS) return -1;
-
-            int id = Count++;
+            // Story 2.13 (AC3.1) — recycle a dead slot first, else append a fresh one. The store is "full" (returns
+            // -1) only when all MAX_BUILDINGS slots are SIMULTANEOUSLY live (free-list empty AND high-water at the cap),
+            // not cumulatively — so a long match of build/destroy no longer silently exhausts the store.
+            int id;
+            if (_freeCount > 0)
+            {
+                id = _freeList[--_freeCount];    // reuse a dead slot (LIFO, deterministic)
+                Generation[id]++;                // bump generation so stale packed refs to the prior occupant fail TryResolveRef
+            }
+            else if (Count < MAX_BUILDINGS)
+                id = Count++;                    // append a fresh slot (Generation stays 0 — never recycled)
+            else
+                return -1;                       // all MAX_BUILDINGS slots are simultaneously live
 
             Alive[id]           = true;
             Position[id]        = position;
@@ -104,6 +133,11 @@ namespace ProjectChimera.Core
             // Story 2.13 slot recycling — and it keeps the unconditional fold deterministic if slots ever reuse.
             RallyPoint[id]      = FixedVec3.Zero;
             HasRallyPoint[id]   = false;
+            // Story 2.13 (AC3.2, Decision 6) — zero SupplyBonus on EVERY (re)allocation, BEFORE the switch. The
+            // `default:` branch below does NOT set it, so a recycled slot that was a CommandCenter (SupplyBonus=10)
+            // would otherwise leak +10 supply into a default-typed building — the SoA-recycle trap. The CommandCenter
+            // branch re-sets 10 explicitly; zeroing here is the robust guard (a future building type can't leak either).
+            SupplyBonus[id]     = 0;
 
             // Per-type defaults
             switch (type)
@@ -152,11 +186,34 @@ namespace ProjectChimera.Core
             return id;
         }
 
-        /// <summary>Destroy a building (marks slot as dead; slot is not reused in Phase 1).</summary>
+        /// <summary>Destroy a building — marks the slot dead and returns it to the free-list for reuse (Story 2.13, AC3.1).</summary>
         public void Destroy(int id)
         {
-            if (id < 0 || id >= Count) return;
+            // Bounds + double-free guard (mirrors ProjectileStore.Destroy): never push a slot onto the free-list twice,
+            // which would hand the same slot to two future Create() calls and corrupt the store.
+            if (id < 0 || id >= Count || !Alive[id]) return;
             Alive[id] = false;
+            _freeList[_freeCount++] = id;
+        }
+
+        /// <summary>
+        /// Story 2.13 (AC3.4) — pack a live building id into a generation-stamped CROSS-TICK reference
+        /// <c>(Generation[slot] &lt;&lt; 8) | slot</c> (slot 0–63 = low 8 bits; generation = upper 24). Every holder that
+        /// carries a building id across ticks stores this instead of the bare slot and validates it via
+        /// <see cref="TryResolveRef"/> on deref. GOLDEN-NEUTRAL: at generation 0, <c>PackRef(slot) == slot</c>.
+        /// </summary>
+        public int PackRef(int slot) => (Generation[slot] << 8) | slot;
+
+        /// <summary>
+        /// Story 2.13 (AC3.4) — resolve a packed building reference back to a live slot. Returns true and the slot iff
+        /// it is in bounds, ALIVE, and the generation still matches (the SAME building occupies it). A stale ref — the
+        /// slot was recycled (generation bumped) or freed — returns false, so the holder reverts cleanly and NEVER
+        /// retargets the new occupant (Story 2.9a's "stale → clean revert"). The -1 sentinel resolves false (255 ≥ Count).
+        /// </summary>
+        public bool TryResolveRef(int packed, out int slot)
+        {
+            slot = packed & 0xFF;                    // low 8 bits — always 0–255, so slot ≥ 0
+            return slot < Count && Alive[slot] && Generation[slot] == (packed >> 8);
         }
     }
 }

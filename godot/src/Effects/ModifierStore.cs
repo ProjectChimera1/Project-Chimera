@@ -255,7 +255,21 @@ namespace ProjectChimera.Effects
                     // 2. Expiry — Persistent: lifetime = its period count; Modifier: its duration countdown.
                     bool expired;
                     if (_persistent[slot] != null)
-                        expired = _periodsRemaining[slot] <= 0 || !HasPeriod(slot); // periodless persistent expires at once
+                    {
+                        // Story 2.13 (AC4.1): a LIFELONG persistent (a while_alive self-passive, e.g. the Sanguine
+                        // Furnace HoT) never expires at the MaxPersistentPeriods cap — RE-ARM the SAME slot's already-
+                        // folded period fields in place (never re-InstallPersistent, which has no same-id dedup and
+                        // would stack a second concurrent HoT + exhaust the 8-slot ring). Death/recycle still clears it
+                        // via OnDestroy→ClearEntity; a periodless persistent still expires at once (lifelong ignored).
+                        if (_persistent[slot]!.Lifelong && HasPeriod(slot) && _periodsRemaining[slot] <= 0)
+                        {
+                            _periodsRemaining[slot] = EffectCaps.MaxPersistentPeriods;
+                            _ticksUntilPeriod[slot] = PeriodLengthOf(slot);
+                            expired = false;
+                        }
+                        else
+                            expired = _periodsRemaining[slot] <= 0 || !HasPeriod(slot); // periodless persistent expires at once
+                    }
                     else if (_remainingTicks[slot] == PERMANENT)
                         expired = false;
                     else

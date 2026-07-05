@@ -7,6 +7,7 @@
     "kind": "persistent",
     "period_effect": { "kind": "heal", "amount": 6 },
     "period_ticks": 15,
-    "period_count": 256
+    "period_count": 256,
+    "lifelong": true
   }
 }

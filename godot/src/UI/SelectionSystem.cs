@@ -669,19 +669,24 @@ namespace ProjectChimera.UI
         /// </summary>
         private void IssueAttackBuildingCommand(int buildingId, bool queued = false)
         {
+            // Story 2.13 (AC3.4): carry a PACKED, generation-stamped building ref so a since-recycled slot fails
+            // TryResolveRef in the tick (clean revert) instead of ABA-retargeting the new building — AND so the player
+            // CAN still target a legitimately-recycled (generation ≥ 1) base. Golden-neutral at generation 0 (packed
+            // == id). _buildingStore is non-null whenever FindNearestEnemyBuilding returned a valid id.
+            int packedRef = _buildingStore != null ? _buildingStore.PackRef(buildingId) : buildingId;
             foreach (int id in _selectedList)
             {
                 if (!_world.IsAlive(id)) continue;
                 if (_world.EffectiveAttackDamage[id] <= Fixed.Zero) continue; // combat units only
-                // Story 2.12: a Shift-queued anti-building attack appends (building id packs into TargetX as a raw int).
+                // Story 2.12: a Shift-queued anti-building attack appends (the packed ref rides TargetX as a raw int).
                 if (queued)
                 {
-                    IssueQueuedOrder(id, UnitCommand.AttackBuilding, Fixed.FromRaw(buildingId), Fixed.Zero);
+                    IssueQueuedOrder(id, UnitCommand.AttackBuilding, Fixed.FromRaw(packedRef), Fixed.Zero);
                     continue;
                 }
-                if (!EnqueueTargetedCommand(id, UnitCommand.AttackBuilding, buildingId)) continue; // online plain: queued
+                if (!EnqueueTargetedCommand(id, UnitCommand.AttackBuilding, packedRef)) continue; // online plain: queued
                 // Offline plain: apply through the SAME shared OrderApplier — identical to AttackTarget (clears the ring).
-                var atkOrder = new UnitOrder(id, UnitCommand.AttackBuilding, Fixed.FromRaw(buildingId), Fixed.Zero);
+                var atkOrder = new UnitOrder(id, UnitCommand.AttackBuilding, Fixed.FromRaw(packedRef), Fixed.Zero);
                 OrderApplier.Apply(_world, in atkOrder, _world.FactionOf[id]);
             }
             GD.Print($"[Selection] Attack-building issued on building {buildingId} to {_selectedList.Count} unit(s).");

@@ -51,6 +51,24 @@ namespace ProjectChimera.Core.Definitions
         [JsonPropertyName("cost_crystal")]
         public int CostCrystal { get; set; } = 0;
 
+        /// <summary>
+        /// Story 2.13 (AC5.2, D-4) — self HP-cost, parallel to <see cref="CostEnergy"/>/<see cref="CostOre"/>/
+        /// <see cref="CostCrystal"/> (unfolded authored int). The cast debits it AFTER the effect graph resolves; a
+        /// cast whose debit would bring the caster to ≤0 HP is REFUSED unless <see cref="AllowSelfLethal"/>. This is the
+        /// LETHAL-capable self-cost; <c>direct_hp_delta</c> stays the non-lethal Story-2.1 primitive. Default 0 ⇒ no cost.
+        /// </summary>
+        [JsonPropertyName("cost_health")]
+        public int CostHealth { get; set; } = 0;
+
+        /// <summary>
+        /// Story 2.13 (AC5.1, D-4) — when true, a cast whose <see cref="CostHealth"/> would kill the caster is ALLOWED
+        /// (an intentional "suicide-bomber"): the effect graph runs, THEN the caster dies via the existing entity-death
+        /// sequence. Default false ⇒ every existing ability is PROTECTED (the min-HP gate refuses a would-be-lethal
+        /// self-cast, closing the §2.10 0-HP-alive strand). Unfolded / peer-identical (the CostEnergy/Cooldown posture).
+        /// </summary>
+        [JsonPropertyName("allow_self_lethal")]
+        public bool AllowSelfLethal { get; set; } = false;
+
         /// <summary>Cooldown in SECONDS (Fixed). Story 2.4 converts seconds→ticks and owns the per-ability cooldown SoA.</summary>
         [JsonPropertyName("cooldown")]
         public Fixed Cooldown { get; set; } = Fixed.Zero;

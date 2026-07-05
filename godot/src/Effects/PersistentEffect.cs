@@ -29,15 +29,25 @@ namespace ProjectChimera.Effects
         /// <summary>Number of periodic pulses (bounded by <c>EffectCaps.MaxPersistentPeriods</c> in 2.2b).</summary>
         public readonly int PeriodCount;
 
+        /// <summary>
+        /// Story 2.13 (AC4.2) — when true, the periodic pulse is LIFELONG: on reaching the
+        /// <c>EffectCaps.MaxPersistentPeriods</c> cap, <c>ModifierStore.Advance</c> refills the SAME slot in place
+        /// instead of expiring, so a <c>while_alive</c> self-passive (e.g. the Sanguine Furnace HoT) keeps pulsing
+        /// until the host dies/recycles. Authored / peer-identical — NOT folded (the PeriodTicks/PeriodCount posture).
+        /// Default false ⇒ every existing persistent still expires at the cap exactly as before.
+        /// </summary>
+        public readonly bool Lifelong;
+
         /// <summary>Construct a persistent (time-axis) effect descriptor.</summary>
         public PersistentEffect(EffectNode? initialEffect, EffectNode? periodEffect, EffectNode? expireEffect,
-                                int periodTicks, int periodCount)
+                                int periodTicks, int periodCount, bool lifelong = false)
         {
             InitialEffect = initialEffect;
             PeriodEffect = periodEffect;
             ExpireEffect = expireEffect;
             PeriodTicks = periodTicks;
             PeriodCount = periodCount;
+            Lifelong = lifelong;
         }
     }
 }

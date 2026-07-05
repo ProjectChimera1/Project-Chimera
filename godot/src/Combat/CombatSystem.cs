@@ -65,8 +65,12 @@ namespace ProjectChimera.Combat
             _buildings   = buildings;   // Story 2.9a (optional — building attacks no-op when absent, e.g. bare tests)
         }
 
-        // Squared arrive threshold for AttackMove goal detection (0.5 world units)
-        private static readonly Fixed AMOVE_ARRIVE_SQR = Fixed.FromFloat(0.5f) * Fixed.FromFloat(0.5f);
+        // Squared arrive threshold for AttackMove→Idle + Patrol waypoint advance. Story 2.13 (AC2, D-1): widened
+        // from 0.5u to the shared 2u goal-arrival radius so a crowded wave clears the ~1.0u separation-vs-seek
+        // equilibrium ring (deferred-work #7) instead of hovering. Single-sourced with OrderQueueSystem so they
+        // cannot drift; deliberately NOT MovementSystem's physical stop (that stays 0.5u to preserve melee — see
+        // ArrivalTuning). This is a goal-distance transition, never a combat-range gate, so melee is unaffected.
+        private static readonly Fixed AMOVE_ARRIVE_SQR = ArrivalTuning.GoalArriveRadiusSqr;
 
         public void Tick(EntityWorld world, Fixed dt)
         {
@@ -163,6 +167,19 @@ namespace ProjectChimera.Combat
 
             if (target < 0)
             {
+                // Story 2.13 (AC1.2) — no enemy UNIT in range: try to AUTO-ACQUIRE an in-range enemy BUILDING
+                // before falling through to the global unit-chase. Reuses TickAttackBuildingCombat verbatim (set
+                // state + building ref; clear the entity-space AttackTarget, which must never hold a building id);
+                // the next tick's switch drives the chase/damage/revert.
+                int bId = FindNearestEnemyBuildingInRange(world, i);
+                if (bId >= 0)
+                {
+                    world.CommandState[i]  = UnitCommand.AttackBuilding;
+                    world.CommandTarget[i] = _buildings!.PackRef(bId); // Story 2.13 D-3: packed ref (golden-neutral at gen 0)
+                    world.AttackTarget[i]  = -1;
+                    return;
+                }
+
                 // No enemy in attack range — advance toward nearest enemy anywhere
                 int anyEnemy = _spatialHash.FindNearestEnemyGlobal(world, i);
                 if (anyEnemy >= 0)
@@ -278,21 +295,24 @@ namespace ProjectChimera.Combat
             TryDealDamage(world, i, forced);
         }
 
-        // ── AttackBuilding (Story 2.9a, AC2) ───────────────────────────────────────
-        // Force-attack ONE specific enemy building (CommandTarget holds the building id under
+        // ── AttackBuilding (Story 2.9a, AC2; auto-acquire Story 2.13, AC1) ─────────
+        // Force-attack ONE specific enemy building (CommandTarget holds the building REF under
         // CommandState==AttackBuilding). Chase the building's centre point, then deal matrix damage (Fortified) —
-        // melee instant, ranged via a real projectile (Task 4b). Explicit-order-only: nothing auto-acquires buildings.
+        // melee instant, ranged via a real projectile (Task 4b). ENTERED BY: an explicit AttackBuilding order
+        // (SelectionSystem picker / AI raze), OR Story 2.13 Idle+AttackMove AUTO-ACQUISITION — when a unit has no
+        // enemy UNIT in range but an in-range enemy building, TickIdleCombat/TickAttackMoveCombat set it here
+        // (Decision D-6 scopes auto-acquire to Idle+AttackMove; Stop/Hold/Patrol still never auto-acquire buildings).
 
         private void TickAttackBuildingCombat(EntityWorld world, int i, Fixed dt)
         {
-            int b = world.CommandTarget[i];
-            // VALIDATE FIRST — the bounds guard is MANDATORY. BuildingStore has NO IsAlive-style OOB short-circuit
-            // (unlike EntityWorld.IsAlive), and the apply case blind-stores an UNVALIDATED building id, so a stale/-1/
-            // ≥Count id would IndexOutOfRange-crash the tick (identically on every peer) if we indexed Alive[b]
-            // unguarded. This single guard enforces AC2 (a friendly building is NEVER targeted), AC2.4 (the
-            // Structure-domain gate), and crash-safety, reverting a rejected/stale/-1 order cleanly to Idle with NO
-            // attack spent (no TickIdleCombat this tick — that would let it acquire+hit a nearby unit, violating AC2.4).
-            if (_buildings == null || b < 0 || b >= _buildings.Count || !_buildings.Alive[b]
+            // VALIDATE FIRST — the guard is MANDATORY. CommandTarget holds a PACKED building ref (Story 2.13 D-3);
+            // TryResolveRef validates bounds + Alive + GENERATION in one call, so a stale ref to a since-recycled slot
+            // (generation mismatch) or the -1 sentinel fails HERE and reverts cleanly — never ABA-retargeting the new
+            // occupant, and never IndexOutOfRange-crashing (BuildingStore has no IsAlive short-circuit). The
+            // friendly-faction guard enforces AC2 (a friendly building is NEVER targeted) and AC2.4 gates the
+            // Structure domain; a rejected order reverts to Idle with NO attack spent (no TickIdleCombat this tick —
+            // that would let it acquire+hit a nearby unit, violating AC2.4).
+            if (_buildings == null || !_buildings.TryResolveRef(world.CommandTarget[i], out int b)
                 || _buildings.FactionOf[b] == world.FactionOf[i]
                 || (world.AttackDomainOf[i] & AttackDomain.Structure) == AttackDomain.None)
             {
@@ -443,6 +463,19 @@ namespace ProjectChimera.Combat
 
             if (target < 0)
             {
+                // Story 2.13 (AC1.3) — no enemy UNIT in range: try to AUTO-ACQUIRE an in-range enemy BUILDING
+                // before resuming toward the goal. Per Decision D-2 the raze reverts to Idle (the AttackBuilding
+                // guard's →Idle), not back to AttackMove; the AI re-waves idle units.
+                int bId = FindNearestEnemyBuildingInRange(world, i);
+                if (bId >= 0)
+                {
+                    world.CommandState[i]  = UnitCommand.AttackBuilding;
+                    world.CommandTarget[i] = _buildings!.PackRef(bId); // Story 2.13 D-3: packed ref (golden-neutral at gen 0)
+                    world.AttackTarget[i]  = -1;
+                    world.Flags[i]        &= ~EntityFlags.Attacking;
+                    return;
+                }
+
                 // No enemy in range — resume toward goal
                 world.Flags[i] &= ~EntityFlags.Attacking;
                 ResumeAttackMove(world, i);
@@ -509,6 +542,40 @@ namespace ProjectChimera.Combat
                 return -1;
             }
             return target;
+        }
+
+        /// <summary>
+        /// Story 2.13 (AC1.1) — deterministic sim-side nearest-enemy-BUILDING search for Idle/AttackMove
+        /// auto-acquisition. Linear ascending-id O(≤64) scan of the threaded <see cref="_buildings"/> store,
+        /// <see cref="Fixed"/>/int only (the presentation <c>SelectionSystem.FindNearestEnemyBuilding</c> is
+        /// Godot/<c>float</c>/<c>Player1</c>-hardcoded and sim-illegal — deliberately NOT reused). Returns the
+        /// nearest IN-RANGE, alive, enemy (<c>FactionOf != mine</c>), Structure-attackable building for entity
+        /// <paramref name="i"/>, tie-broken by ASCENDING ID (never a float distance); -1 if none, no store, or the
+        /// unit cannot hit structures. Range gate: <c>SqrDistance(Position, building.Position) &lt;= AttackRange²</c>.
+        /// </summary>
+        private int FindNearestEnemyBuildingInRange(EntityWorld world, int i)
+        {
+            if (_buildings == null) return -1;
+            // A unit whose attack_domains exclude Structure never auto-acquires a building (matches the explicit
+            // AttackBuilding guard's Structure-domain gate — TickAttackBuildingCombat).
+            if ((world.AttackDomainOf[i] & AttackDomain.Structure) == AttackDomain.None) return -1;
+
+            Fixed   sqrRange  = world.AttackRange[i] * world.AttackRange[i];
+            Faction myFaction = world.FactionOf[i];
+            FixedVec3 myPos   = world.Position[i];
+
+            int   best    = -1;
+            Fixed bestSqr = Fixed.Zero;
+            int   count   = _buildings.Count;
+            for (int b = 0; b < count; b++)
+            {
+                if (!_buildings.Alive[b]) continue;
+                if (_buildings.FactionOf[b] == myFaction) continue;              // enemy or Neutral only
+                Fixed sqrDist = FixedVec3.SqrDistance(myPos, _buildings.Position[b]);
+                if (sqrDist > sqrRange) continue;                                // out of attack range
+                if (best < 0 || sqrDist < bestSqr) { best = b; bestSqr = sqrDist; } // strict < ⇒ ascending-id tie-break
+            }
+            return best;
         }
 
         /// <summary>
@@ -579,7 +646,7 @@ namespace ProjectChimera.Combat
                 // Ranged — spawn a projectile that flies to the building and resolves Fortified matrix damage on impact.
                 _projectiles.Spawn(
                     world.Position[attacker],
-                    b,                              // the building id (targetIsBuilding disambiguates it from an entity id)
+                    _buildings!.PackRef(b),         // Story 2.13 D-3: PACKED building ref (targetIsBuilding disambiguates it from an entity id)
                     _buildings!.Position[b],
                     world.EffectiveAttackDamage[attacker],
                     world.DamageTypeOf[attacker],

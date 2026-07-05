@@ -25,14 +25,16 @@ namespace ProjectChimera.Core
     public sealed class OrderQueueSystem : ISimSystem
     {
         /// <summary>
-        /// Squared arrive threshold for a queued MOVEMENT order's completion (0.5 world units, so 0.25 squared) —
-        /// equal to <c>CombatSystem.AMOVE_ARRIVE_SQR</c> and <c>MovementSystem.ARRIVE_THRESHOLD_SQR</c>, so a unit that
-        /// MovementSystem has stopped at its goal reliably satisfies this the same tick. Built from
-        /// <see cref="Fixed.Half"/> (the exact 16.16 half — byte-identical to <c>FromFloat(0.5f)*FromFloat(0.5f)</c>)
-        /// so no <c>Fixed.FromFloat</c> appears in this tick-reachable sim file (CHM0005-clean). Named constant, not a
-        /// bare literal (CHM0004-clean).
+        /// Squared arrive threshold for a queued MOVEMENT order's completion. Story 2.13 (AC2, D-1): widened from 0.5u
+        /// to the shared 2u goal-arrival radius (single-sourced with <c>CombatSystem.AMOVE_ARRIVE_SQR</c> via
+        /// <see cref="ArrivalTuning.GoalArriveRadiusSqr"/> so they cannot drift), so a queued Move behind a wave — or a
+        /// wave of queued Moves — completes at the ~1.0u equilibrium ring instead of stranding on the old 0.5u radius
+        /// (INSIDE the ring). This gates on distance to the sim-owned CommandGoal, so it does NOT depend on
+        /// MovementSystem's physical stop (which stays 0.5u to preserve melee — see <see cref="ArrivalTuning"/>): the
+        /// unit passes through the 2u zone on its approach and the pop fires there. Built from <see cref="Fixed.FromInt"/>
+        /// (exact 16.16), no <c>Fixed.FromFloat</c> in this tick-reachable file (CHM0005-clean).
         /// </summary>
-        private static readonly Fixed ORDER_ARRIVE_SQR = Fixed.Half * Fixed.Half;
+        private static readonly Fixed ORDER_ARRIVE_SQR = ArrivalTuning.GoalArriveRadiusSqr;
 
         public void Tick(EntityWorld world, Fixed dt)
         {

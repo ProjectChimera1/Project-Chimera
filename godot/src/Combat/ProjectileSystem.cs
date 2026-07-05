@@ -42,22 +42,24 @@ namespace ProjectChimera.Combat
             {
                 if (!_store.Alive[i]) continue;
 
-                int  targetId    = _store.TargetId[i];
+                int  targetId    = _store.TargetId[i]; // entity id, OR (Story 2.13) a PACKED building ref when isBuilding
                 bool isBuilding  = _store.TargetIsBuilding[i]; // Story 2.9a: TargetId indexes BuildingStore, not EntityWorld
                 bool targetAlive;
                 FixedVec3 goalPos;
+                int  buildingSlot = -1; // Story 2.13: the resolved live slot for a building-target projectile
 
                 // Track target: refresh goal while target is alive; on death fly toward its last known position and
                 // drop harmlessly (targetAlive == false → no hit resolved on arrival).
                 if (isBuilding)
                 {
-                    // Buildings have NO IsAlive OOB short-circuit — bounds-check before indexing Alive[targetId].
-                    targetAlive = _buildings != null && targetId >= 0 && targetId < _buildings.Count
-                                  && _buildings.Alive[targetId];
+                    // Story 2.13 (AC3.4): TargetId holds a PACKED building ref — TryResolveRef validates bounds + Alive
+                    // + GENERATION, so a shell in flight when its building is razed AND its slot recycled into a new
+                    // building drops harmlessly (stale generation ⇒ unresolved) instead of striking the new occupant.
+                    targetAlive = _buildings != null && _buildings.TryResolveRef(targetId, out buildingSlot);
                     if (targetAlive)
                     {
-                        _store.LastKnownPos[i] = _buildings!.Position[targetId];
-                        goalPos = _buildings.Position[targetId];
+                        _store.LastKnownPos[i] = _buildings!.Position[buildingSlot];
+                        goalPos = _buildings.Position[buildingSlot];
                     }
                     else
                     {
@@ -85,7 +87,7 @@ namespace ProjectChimera.Combat
                 {
                     if (targetAlive)
                     {
-                        if (isBuilding) ApplyBuildingHit(i, targetId);
+                        if (isBuilding) ApplyBuildingHit(i, buildingSlot); // resolved live slot, not the packed ref
                         else            ApplyHit(world, i, targetId);
                     }
                     _store.Destroy(i);

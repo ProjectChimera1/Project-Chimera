@@ -67,12 +67,24 @@ namespace ProjectChimera.Combat
             world.Health[t] = world.Health[t] - damage;
             if (world.Health[t] <= Fixed.Zero)
             {
-                ctx.Events?.Push(CombatEventType.UnitKilled, world.Position[t], world.FeedbackProfile[t]); // Story 2.7: the dying unit's death-flash/death-sound override (read BEFORE Destroy)
-                ctx.Stats?.RecordKill(world.FactionOf[t], ctx.Killer); // RecordKill is (victim, killer)
-                world.Destroy(t);
+                KillEntity(world, t, ctx.Killer, ctx.Events, ctx.Stats);
                 return true;
             }
             return false;
+        }
+
+        /// <summary>
+        /// The single ENTITY-DEATH sequence (Story 2.13 extract): push <see cref="CombatEventType.UnitKilled"/> (reading
+        /// the dying unit's Position/feedback override BEFORE Destroy — Story 2.7), record the kill (victim, killer), and
+        /// <see cref="EntityWorld.Destroy"/> the entity. Reused verbatim by <see cref="Apply"/> on lethal damage AND by
+        /// <c>AbilityCastSystem</c> when a <c>cost_health</c> self-cost brings the caster to ≤0 (AC5.4) — so a self-lethal
+        /// cast dies through the EXACT same path, never an invented one. Caller ensures Health has already reached ≤0.
+        /// </summary>
+        public static void KillEntity(EntityWorld world, int id, Faction killer, CombatEventQueue? events, MatchStats? stats)
+        {
+            events?.Push(CombatEventType.UnitKilled, world.Position[id], world.FeedbackProfile[id]);
+            stats?.RecordKill(world.FactionOf[id], killer);
+            world.Destroy(id);
         }
 
         /// <summary>

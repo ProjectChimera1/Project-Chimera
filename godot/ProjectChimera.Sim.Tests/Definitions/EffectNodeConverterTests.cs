@@ -37,6 +37,29 @@ namespace ProjectChimera.Sim.Tests.Definitions
         public void Heal_Compiles() =>
             Assert.IsType<HealEffect>(Compile("""{ "kind": "heal", "amount": 25 }"""));
 
+        // Story 2.13 (AC4.2) — the authored `lifelong` flag on a Persistent reads through the converter.
+        [Fact]
+        public void Persistent_LifelongTrue_ReadsAndRoundTrips()
+        {
+            const string js = """{ "kind": "persistent", "period_effect": { "kind": "heal", "amount": 3 }, "period_ticks": 15, "period_count": 256, "lifelong": true }""";
+            var p = Assert.IsType<PersistentEffect>(Compile(js));
+            Assert.True(p.Lifelong);
+            // round-trip: serialize the graph back out and re-read — the flag survives (conditional write emits it when true)
+            string json = System.Text.Json.JsonSerializer.Serialize<EffectNode>(p, ContentJson.Options);
+            Assert.Contains("\"lifelong\"", json);
+            Assert.True(((PersistentEffect)System.Text.Json.JsonSerializer.Deserialize<EffectNode>(json, ContentJson.Options)!).Lifelong);
+        }
+
+        [Fact]
+        public void Persistent_NoLifelongField_DefaultsFalse_AndOmitsOnWrite()
+        {
+            var p = Assert.IsType<PersistentEffect>(Compile(
+                """{ "kind": "persistent", "period_effect": { "kind": "heal", "amount": 3 }, "period_ticks": 15, "period_count": 256 }"""));
+            Assert.False(p.Lifelong);
+            // conditional write ⇒ a non-lifelong Persistent serializes WITHOUT the key (existing content byte-identical)
+            Assert.DoesNotContain("\"lifelong\"", System.Text.Json.JsonSerializer.Serialize<EffectNode>(p, ContentJson.Options));
+        }
+
         [Fact]
         public void Damage_Compiles_WithEnumByName()
         {

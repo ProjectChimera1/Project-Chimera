@@ -178,6 +178,10 @@ namespace ProjectChimera.Effects
             if (world.Energy[id] < ab.CostEnergy) return;
             if (!_resources.CanAffordOre(faction, oreCost)) return;
             if (!_resources.CanAffordCrystal(faction, crystalCost)) return;
+            // Story 2.13 (AC5.3, D-4): a self HP-cost cast that would bring the caster to ≤0 HP is REFUSED — UNLESS the
+            // ability is an intentional self-lethal ("suicide-bomber"). Checked BEFORE any debit (atomic refuse, reading
+            // the folded Health), closing the §2.10 repeated-self-cast 0-HP-alive strand for every protected ability.
+            if (!ab.AllowSelfLethal && world.Health[id] <= Fixed.FromInt(ab.CostHealth)) return;
 
             // Resolve + VALIDATE the target BEFORE any debit, so an unfulfillable cast refuses atomically (nothing
             // debited, no cooldown started) — the same contract as the cooldown/affordability refusals (AC6).
@@ -205,6 +209,21 @@ namespace ProjectChimera.Effects
             var ctx = new EffectContext(world, casterId: id, primaryTargetId: target, casterFaction: faction,
                                         _damageTable, spatial: _spatial, _events, _stats, modifierStore: _modifiers);
             _executor.Run(ab.EffectGraph, in ctx);
+
+            // Story 2.13 (AC5.4, D-4): the self HP-cost is debited AFTER the effect graph resolves (matching the
+            // migrated abilities' old graph-tail direct_hp_delta point → the Health trajectory stays byte-identical),
+            // then the DEFERRED self-death fires via the SAME entity-death sequence combat uses (the suicide's effect
+            // already ran; the caster is never destroyed mid-its-own-effect). The gate above guarantees this only
+            // reaches ≤0 when allow_self_lethal. A killed caster starts no cooldown and emits no cast feedback.
+            if (ab.CostHealth > 0)
+            {
+                world.Health[id] -= Fixed.FromInt(ab.CostHealth);
+                if (world.Health[id] <= Fixed.Zero)
+                {
+                    DamageResolver.KillEntity(world, id, faction, _events, _stats);
+                    return;
+                }
+            }
 
             // Start the cooldown (integer remaining-ticks; Decision #4). Next tick's (a) begins counting it down.
             world.AbilityCooldownTicks[abBase + slot] = SecondsToTicks(ab.Cooldown);

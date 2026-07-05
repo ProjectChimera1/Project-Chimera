@@ -101,10 +101,12 @@ namespace ProjectChimera.AI
             PruneDeadBuildings();
 
             // Continuous training — always drain idle production buildings first.
-            foreach (int id in _productionBuildingIds)
+            foreach (int packed in _productionBuildingIds)
             {
-                if (_buildings.Alive[id] && !_buildings.IsUnderConstruction(id))
-                    _buildSys.TrainUnit(id, _resources);
+                // Story 2.13 (AC3.4): resolve the PACKED ref (bounds + Alive + generation) so a recycled production
+                // slot — now a different or even enemy building — is NEVER trained from.
+                if (_buildings.TryResolveRef(packed, out int slot) && !_buildings.IsUnderConstruction(slot))
+                    _buildSys.TrainUnit(slot, _resources);
             }
 
             // Tick attack cooldown.
@@ -122,6 +124,8 @@ namespace ProjectChimera.AI
         {
             public int  SupplyHeadroom;
             public int  AvailableCombatUnits; // Idle or Stop — not under orders, conscriptable into a wave
+            public bool EnemyThreatRemains;   // Story 2.13 — any alive enemy (non-Neutral) combat unit still defends
+            public bool EnemyBuildingExists;  // Story 2.13 — any alive enemy (non-Neutral) building left to raze
             public bool HasLiveBarracks;
             public bool HasCompleteBarracks;
             public bool HasLiveArcheryRange;
@@ -143,11 +147,17 @@ namespace ProjectChimera.AI
             int fIdx = (int)AI_FACTION;
             snap.SupplyHeadroom = _resources.SupplyCap[fIdx] - _resources.SupplyUsed[fIdx];
 
-            // Scan buildings for tech coverage.
+            // Scan buildings for tech coverage (and, Story 2.13, whether any enemy base remains to raze).
             int barracksComplete = 0;
             for (int i = 0; i < _buildings.Count; i++)
             {
-                if (!_buildings.Alive[i] || _buildings.FactionOf[i] != AI_FACTION) continue;
+                if (!_buildings.Alive[i]) continue;
+                Faction bf = _buildings.FactionOf[i];
+                if (bf != AI_FACTION)
+                {
+                    if (bf != Faction.Neutral) snap.EnemyBuildingExists = true; // a real enemy base — a raze target
+                    continue;
+                }
                 bool complete = !_buildings.IsUnderConstruction(i);
                 switch (_buildings.Type[i])
                 {
@@ -166,7 +176,7 @@ namespace ProjectChimera.AI
                 }
             }
             snap.HasSecondBarracks = barracksComplete >= 2;
-            snap.HasCCExpansion    = _cmdCenterExpId >= 0 && _buildings.Alive[_cmdCenterExpId];
+            snap.HasCCExpansion    = _cmdCenterExpId >= 0 && _buildings.TryResolveRef(_cmdCenterExpId, out _); // Story 2.13: packed ref
 
             // Count P2 combat units (non-workers) available for a wave.
             // Freshly trained units hold position (Stop) at the spawn point;
@@ -176,7 +186,16 @@ namespace ProjectChimera.AI
             for (int i = 0; i < hwm; i++)
             {
                 if (!world.IsAlive(i)) continue;
-                if (world.FactionOf[i]   != AI_FACTION)         continue;
+                Faction uf = world.FactionOf[i];
+                if (uf != AI_FACTION)
+                {
+                    // Story 2.13 (AC1.5) — a live enemy defender (non-Neutral, non-gatherer, damage-bearing). While
+                    // ANY remains, the AI fights the army rather than tunnel-visioning a building past live defenders.
+                    if (uf != Faction.Neutral && world.GatherState[i] == GatherState.Inactive
+                        && world.EffectiveAttackDamage[i] > Fixed.Zero)
+                        snap.EnemyThreatRemains = true;
+                    continue;
+                }
                 if (world.GatherState[i] != GatherState.Inactive) continue;
                 if (world.CommandState[i] == UnitCommand.Idle ||
                     world.CommandState[i] == UnitCommand.Stop)
@@ -248,6 +267,25 @@ namespace ProjectChimera.AI
             return _aggressionWeight * ratio;
         }
 
+        /// <summary>
+        /// Story 2.13 (AC1.5) — the RAZE fallback. When the enemy army is gone (no live defenders) but an enemy
+        /// base still stands and the AI has a free unit, send it to raze — otherwise an assault that killed every
+        /// defender stands INERT next to enemy structures forever (deferred-work #7), and a DestroyAllBuildings
+        /// match never concludes. Flat-high so it dominates build/expand once razing is possible (the game is won —
+        /// finish it); returns 0 while any defender remains (fight the army first) or nothing is left to raze.
+        /// </summary>
+        private float ScoreRazeBuildings(in AiSnapshot s)
+        {
+            // Commit a raze wave only at ATTACK strength (same bar as ScoreLaunchAttack), not at a single unit. This
+            // keeps the deliberately-starved core goldens (GoldenScenario/MultiFactionScenario hold 3 < the Normal
+            // threshold of 5) INERT — so the float AI never wakes inside a cross-platform golden (determinism fence,
+            // AC6.1) — while the AiActiveScenario wave (5 = threshold) still razes to conclude AC1.6.
+            if (s.AvailableCombatUnits < _attackThreshold) return 0f; // not enough free units to commit
+            if (s.EnemyThreatRemains)   return 0f; // fight live defenders first — never tunnel-vision a building
+            if (!s.EnemyBuildingExists) return 0f; // nothing left to raze
+            return 0.90f;
+        }
+
         // ── Action dispatch ───────────────────────────────────────────────────
 
         private enum StrategicAction
@@ -259,6 +297,7 @@ namespace ProjectChimera.AI
             BuildSiegeWorkshop,
             BuildSecondBarracks,
             LaunchAttack,
+            RazeBuildings,   // Story 2.13 — send free units to raze the undefended enemy base
         }
 
         private void ExecuteBestAction(in AiSnapshot snap, EntityWorld world)
@@ -277,6 +316,7 @@ namespace ProjectChimera.AI
             Consider(StrategicAction.BuildSiegeWorkshop,  ScoreBuildSiegeWorkshop(snap));
             Consider(StrategicAction.BuildSecondBarracks, ScoreBuildSecondBarracks(snap));
             Consider(StrategicAction.LaunchAttack,        ScoreLaunchAttack(snap));
+            Consider(StrategicAction.RazeBuildings,        ScoreRazeBuildings(snap)); // Story 2.13
 
             switch (chosen)
             {
@@ -286,6 +326,7 @@ namespace ProjectChimera.AI
                 case StrategicAction.BuildSiegeWorkshop:  DoBuildSiege();         break;
                 case StrategicAction.BuildSecondBarracks: DoBuildBarracks(true);  break;
                 case StrategicAction.LaunchAttack:        DoLaunchAttack(world);  break;
+                case StrategicAction.RazeBuildings:        DoRazeBuildings(world); break; // Story 2.13
             }
         }
 
@@ -296,7 +337,7 @@ namespace ProjectChimera.AI
             if (!_resources.SpendOre(AI_FACTION, COST_CC)) return;
             int id = _buildings.Create(POS_CC_EXPANSION, AI_FACTION, BuildingType.CommandCenter);
             if (id < 0) _resources.AddOre(AI_FACTION, COST_CC); // store full — refund
-            else        _cmdCenterExpId = id;
+            else        _cmdCenterExpId = _buildings.PackRef(id); // Story 2.13: packed ref (golden-neutral at gen 0)
         }
 
         private void DoBuildBarracks(bool isSecond)
@@ -305,7 +346,7 @@ namespace ProjectChimera.AI
             FixedVec3 pos = isSecond ? POS_BARRACKS_2 : POS_BARRACKS_1;
             int id = _buildings.Create(pos, AI_FACTION, BuildingType.Barracks);
             if (id < 0) _resources.AddOre(AI_FACTION, COST_BARRACKS);
-            else        _productionBuildingIds.Add(id);
+            else        _productionBuildingIds.Add(_buildings.PackRef(id));
         }
 
         private void DoBuildArcheryRange()
@@ -313,7 +354,7 @@ namespace ProjectChimera.AI
             if (!_resources.SpendOre(AI_FACTION, COST_ARCHERY)) return;
             int id = _buildings.Create(POS_ARCHERY, AI_FACTION, BuildingType.ArcheryRange);
             if (id < 0) _resources.AddOre(AI_FACTION, COST_ARCHERY);
-            else        _productionBuildingIds.Add(id);
+            else        _productionBuildingIds.Add(_buildings.PackRef(id));
         }
 
         private void DoBuildSiege()
@@ -321,7 +362,7 @@ namespace ProjectChimera.AI
             if (!_resources.SpendOre(AI_FACTION, COST_SIEGE)) return;
             int id = _buildings.Create(POS_SIEGE, AI_FACTION, BuildingType.SiegeWorkshop);
             if (id < 0) _resources.AddOre(AI_FACTION, COST_SIEGE);
-            else        _productionBuildingIds.Add(id);
+            else        _productionBuildingIds.Add(_buildings.PackRef(id));
         }
 
         private void DoLaunchAttack(EntityWorld world)
@@ -341,13 +382,64 @@ namespace ProjectChimera.AI
             _attackCooldown = _attackCooldownMax;
         }
 
+        /// <summary>
+        /// Story 2.13 (AC1.5) — issue an explicit <see cref="UnitCommand.AttackBuilding"/> at the nearest enemy
+        /// base for every free Structure-capable unit, so the assault razes it instead of standing inert. Sets
+        /// <see cref="EntityWorld.CommandTarget"/> (NOT CommandGoal — <c>TickAttackBuildingCombat</c> reads
+        /// CommandTarget); the combat tick then chases into range and applies Fortified matrix damage. Runs inside
+        /// the existing float scorer — the building PICK is <see cref="Fixed"/> (deterministic) but no float→Fixed
+        /// migration of the scorer itself (Decision 4; the AC1.6 test asserts termination, not byte-determinism).
+        /// </summary>
+        private void DoRazeBuildings(EntityWorld world)
+        {
+            int hwm = world.HighWaterMark;
+            for (int i = 0; i < hwm; i++)
+            {
+                if (!world.IsAlive(i))                              continue;
+                if (world.FactionOf[i]   != AI_FACTION)            continue;
+                if (world.GatherState[i] != GatherState.Inactive)  continue;
+                if (world.CommandState[i] != UnitCommand.Idle &&
+                    world.CommandState[i] != UnitCommand.Stop)     continue;
+                // Prefer Structure-capable units; one that cannot hit structures would just self-revert via the
+                // AttackBuilding guard, so skip it and leave it available (default AttackDomain is All).
+                if ((world.AttackDomainOf[i] & AttackDomain.Structure) == AttackDomain.None) continue;
+
+                int b = FindNearestEnemyBuilding(world.Position[i]);
+                if (b < 0) continue; // no enemy base left for this unit to raze
+                world.CommandState[i]  = UnitCommand.AttackBuilding;
+                world.CommandTarget[i] = _buildings.PackRef(b); // Story 2.13 D-3: packed building ref (golden-neutral at gen 0)
+                world.AttackTarget[i]  = -1;   // a building id must never enter entity-space AttackTarget
+            }
+        }
+
+        /// <summary>
+        /// Story 2.13 — nearest alive ENEMY (non-AI, non-Neutral) building to <paramref name="from"/>, by
+        /// <see cref="Fixed"/> squared distance, ascending-id tie-break; -1 if none.
+        /// </summary>
+        private int FindNearestEnemyBuilding(FixedVec3 from)
+        {
+            int   best    = -1;
+            Fixed bestSqr = Fixed.Zero;
+            for (int b = 0; b < _buildings.Count; b++)
+            {
+                if (!_buildings.Alive[b]) continue;
+                Faction f = _buildings.FactionOf[b];
+                if (f == AI_FACTION || f == Faction.Neutral) continue;
+                Fixed sqrDist = FixedVec3.SqrDistance(from, _buildings.Position[b]);
+                if (best < 0 || sqrDist < bestSqr) { best = b; bestSqr = sqrDist; } // strict < ⇒ ascending-id tie-break
+            }
+            return best;
+        }
+
         // ── Helpers ───────────────────────────────────────────────────────────
 
         private void PruneDeadBuildings()
         {
             for (int i = _productionBuildingIds.Count - 1; i >= 0; i--)
             {
-                if (!_buildings.Alive[_productionBuildingIds[i]])
+                // Story 2.13 (AC3.4): drop any ref that no longer RESOLVES — dead OR recycled (generation bumped) — so
+                // the training loop never fires on a slot the AI no longer owns.
+                if (!_buildings.TryResolveRef(_productionBuildingIds[i], out _))
                     _productionBuildingIds.RemoveAt(i);
             }
         }
@@ -363,7 +455,7 @@ namespace ProjectChimera.AI
                 if (!_buildings.Alive[i] || _buildings.FactionOf[i] != AI_FACTION) continue;
                 var t = _buildings.Type[i];
                 if (t == BuildingType.Barracks || t == BuildingType.ArcheryRange || t == BuildingType.SiegeWorkshop)
-                    _productionBuildingIds.Add(i);
+                    _productionBuildingIds.Add(_buildings.PackRef(i)); // Story 2.13: packed ref (gen 0 at adopt ⇒ == i)
             }
         }
     }

@@ -139,6 +139,7 @@ namespace ProjectChimera.Core.Definitions
                     WriteOptionalChild(writer, "expire_effect",  p.ExpireEffect,  options);
                     writer.WriteNumber("period_ticks", p.PeriodTicks);
                     writer.WriteNumber("period_count", p.PeriodCount);
+                    if (p.Lifelong) writer.WriteBoolean("lifelong", true); // Story 2.13 — omit when false (existing content byte-identical)
                     break;
 
                 default:
@@ -268,14 +269,17 @@ namespace ProjectChimera.Core.Definitions
                 case KindPersistent:
                 {
                     RejectUnknownProperties(el, path, "kind",
-                        "initial_effect", "period_effect", "expire_effect", "period_ticks", "period_count");
+                        "initial_effect", "period_effect", "expire_effect", "period_ticks", "period_count", "lifelong");
                     GuardDepth(depth, path);
                     EffectNode? initial = ReadOptionalChild(el, "initial_effect", options, depth + 1, $"{path}.initial_effect");
                     EffectNode? period  = ReadOptionalChild(el, "period_effect",  options, depth + 1, $"{path}.period_effect");
                     EffectNode? expire  = ReadOptionalChild(el, "expire_effect",  options, depth + 1, $"{path}.expire_effect");
                     int periodTicks = ReadInt(el, "period_ticks", path, 0);
                     int periodCount = ReadInt(el, "period_count", path, 0);
-                    return new PersistentEffect(initial, period, expire, periodTicks, periodCount);
+                    // Story 2.13 (AC4.2): optional lifelong flag (missing/false → expires at the cap as before; only
+                    // `true` re-arms). Read leniently — present-and-true ⇒ true.
+                    bool lifelong = el.TryGetProperty("lifelong", out var lifeEl) && lifeEl.ValueKind == JsonValueKind.True;
+                    return new PersistentEffect(initial, period, expire, periodTicks, periodCount, lifelong);
                 }
 
                 default:

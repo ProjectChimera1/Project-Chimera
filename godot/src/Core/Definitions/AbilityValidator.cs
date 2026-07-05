@@ -74,6 +74,10 @@ namespace ProjectChimera.Core.Definitions
                 return Fail(id, "cost_ore", $"={def.CostOre} must be >= 0.");
             if (def.CostCrystal < 0)
                 return Fail(id, "cost_crystal", $"={def.CostCrystal} must be >= 0.");
+            // Story 2.13 (AC5.2): a negative self HP-cost would be a heal — that is the direct_hp_delta/heal primitive's
+            // job, not cost_health. Reject it fail-closed (cost_health is a lethal-CAPABLE debit, never a grant).
+            if (def.CostHealth < 0)
+                return Fail(id, "cost_health", $"={def.CostHealth} must be >= 0 (a negative self-cost is a heal — use direct_hp_delta/heal).");
             if (def.Cooldown.Raw < 0)
                 return Fail(id, "cooldown", $"raw {def.Cooldown.Raw} must be >= 0.");
 
@@ -285,6 +289,11 @@ namespace ProjectChimera.Core.Definitions
                         if (p.PeriodEffect is not null && p.PeriodCount <= 0)
                             return Located(id, "effect.period_count",
                                 "a 'while_alive' Persistent with a period_effect must set period_count > 0 (else the period never fires).");
+                        // Story 2.13 (AC4.2): the lifelong flag only re-arms a PERIODIC pulse — reject it on a persistent
+                        // with no period_effect (nothing to keep alive; the flag would silently do nothing).
+                        if (p.Lifelong && p.PeriodEffect is null)
+                            return Located(id, "effect.lifelong",
+                                "a 'lifelong' Persistent must declare a period_effect (lifelong re-arms the periodic pulse).");
                         return null;
                     }
                     return Located(id, "effect",

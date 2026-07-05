@@ -127,19 +127,18 @@ namespace ProjectChimera.Sim.Tests.Definitions
             Assert.Equal(0, def.CostCrystal);
             Assert.Equal(0, def.CostEnergy.Raw);
 
-            // Sequence[ apply_modifier (beneficial self-buff), direct_hp_delta (negative flat cost) ] — exactly 2 children.
-            var seq = Assert.IsType<SequenceEffect>(def.EffectGraph);
-            Assert.Equal(2, seq.Children.Length);
-            var buff = Assert.IsType<ApplyModifierEffect>(seq.Children[0]);
+            // Story 2.13 (D-4): the self-cost migrated from a graph direct_hp_delta leaf to the FIRST-CLASS cost_health
+            // field (one source of truth). The effect graph is now the bare beneficial buff (no Sequence wrapper).
+            var buff = Assert.IsType<ApplyModifierEffect>(def.EffectGraph);
             // BENEFICIAL: a POSITIVE attack-damage delta. A 0 (no-op) or negative (self-debuff) delta would satisfy the
             // shape-only IsType check while contradicting "beneficial self-buff", so pin the sign of the payload.
             Assert.True(buff.Modifier.AttackDamageDelta.Raw > 0,
                 $"Spike Transmutation buff must be a beneficial (positive) attack-damage delta; was {buff.Modifier.AttackDamageDelta.Raw} raw.");
 
-            // The cost is the FLAT armor-independent direct_hp_delta leaf (NOT the matrix `damage` leaf) with a negative
-            // delta — the AC1.2 contract that two casters of different armor_type pay the identical flat HP price.
-            var cost = Assert.IsType<DirectHpDeltaEffect>(seq.Children[1]);
-            Assert.True(cost.Delta.Raw < 0, $"Equal Exchange HP cost must be a negative flat delta; was {cost.Delta.Raw} raw.");
+            // The FLAT armor-independent HP price is now the authored cost_health (lethal-capable), and allow_self_lethal
+            // is false so a would-be-lethal Spike is REFUSED (not clamped to 0-HP-alive — the §2.10 strand, closed).
+            Assert.Equal(25, def.CostHealth);
+            Assert.False(def.AllowSelfLethal);
         }
 
         [Fact]
