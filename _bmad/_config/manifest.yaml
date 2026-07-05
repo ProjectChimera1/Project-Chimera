@@ -1,30 +1,39 @@
 installation:
   version: 6.10.0
   installDate: 2026-06-05T03:27:04.066Z
-  lastUpdated: 2026-07-05T12:13:38.437Z
+  lastUpdated: 2026-07-05T12:24:07.668Z
 modules:
   - name: core
     version: 6.10.0
     installDate: 2026-06-05T03:27:03.542Z
-    lastUpdated: 2026-07-05T12:13:38.433Z
+    lastUpdated: 2026-07-05T12:24:07.657Z
     source: built-in
     npmPackage: null
     repoUrl: null
   - name: bmm
     version: 6.10.0
     installDate: 2026-06-05T03:27:03.711Z
-    lastUpdated: 2026-07-05T12:13:38.434Z
+    lastUpdated: 2026-07-05T12:24:07.659Z
     source: built-in
     npmPackage: null
     repoUrl: null
   - name: gds
     version: v0.6.0
     installDate: 2026-06-05T03:27:03.985Z
-    lastUpdated: 2026-07-05T12:13:38.437Z
+    lastUpdated: 2026-07-05T12:24:07.663Z
     source: external
     npmPackage: bmad-game-dev-studio
     repoUrl: https://github.com/bmad-code-org/bmad-module-game-dev-studio.git
     channel: stable
     sha: 966fbc54db686f77fd0d68cae4164dce8cc98113
+  - name: bmad-loop
+    version: v0.8.0
+    installDate: 2026-07-05T12:24:07.535Z
+    lastUpdated: 2026-07-05T12:24:07.668Z
+    source: external
+    npmPackage: null
+    repoUrl: https://github.com/bmad-code-org/bmad-loop
+    channel: stable
+    sha: 648b407ebffdf374bc0ede1a0247980c1b6add9e
 ides:
   - claude-code
