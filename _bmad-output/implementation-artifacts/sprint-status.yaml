@@ -81,7 +81,7 @@ development_status:
   2-10-showcase-faction-signature-mechanics-equal-exchange-and-sanguine-furnace-passive-hot-d1-only: done
   2-11-authorable-unit-tags-organic-mechanical-magical-as-an-effect-targeting-counter-axis: done
   2-12-shift-queued-command-waypoints-lockstep-replicated-rally-points: done
-  2-13-combat-store-defect-batch-attack-move-buildings-hover-deadlock-buildingstore-recycle-hot-pulse-cap: review
+  2-13-combat-store-defect-batch-attack-move-buildings-hover-deadlock-buildingstore-recycle-hot-pulse-cap: done
   epic-2-retrospective: optional
   epic-3: backlog
   3-1a-resolve-open-design-decisions-author-the-canonical-godot-theme-resource: backlog

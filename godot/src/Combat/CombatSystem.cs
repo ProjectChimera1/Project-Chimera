@@ -549,7 +549,7 @@ namespace ProjectChimera.Combat
         /// auto-acquisition. Linear ascending-id O(≤64) scan of the threaded <see cref="_buildings"/> store,
         /// <see cref="Fixed"/>/int only (the presentation <c>SelectionSystem.FindNearestEnemyBuilding</c> is
         /// Godot/<c>float</c>/<c>Player1</c>-hardcoded and sim-illegal — deliberately NOT reused). Returns the
-        /// nearest IN-RANGE, alive, enemy (<c>FactionOf != mine</c>), Structure-attackable building for entity
+        /// nearest IN-RANGE, alive, enemy (<c>FactionOf != mine, never Neutral</c>), Structure-attackable building for entity
         /// <paramref name="i"/>, tie-broken by ASCENDING ID (never a float distance); -1 if none, no store, or the
         /// unit cannot hit structures. Range gate: <c>SqrDistance(Position, building.Position) &lt;= AttackRange²</c>.
         /// </summary>
@@ -570,7 +570,7 @@ namespace ProjectChimera.Combat
             for (int b = 0; b < count; b++)
             {
                 if (!_buildings.Alive[b]) continue;
-                if (_buildings.FactionOf[b] == myFaction) continue;              // enemy or Neutral only
+                if (_buildings.FactionOf[b] == myFaction || _buildings.FactionOf[b] == Faction.Neutral) continue; // enemy ONLY — never me, never Neutral (2.13 review, Alec): matches the AI raze picker + SelectionSystem convention; Neutral is use/claim, not auto-attack
                 Fixed sqrDist = FixedVec3.SqrDistance(myPos, _buildings.Position[b]);
                 if (sqrDist > sqrRange) continue;                                // out of attack range
                 if (best < 0 || sqrDist < bestSqr) { best = b; bestSqr = sqrDist; } // strict < ⇒ ascending-id tie-break

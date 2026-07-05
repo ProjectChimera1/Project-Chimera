@@ -217,6 +217,10 @@ namespace ProjectChimera.Effects
             // reaches ≤0 when allow_self_lethal. A killed caster starts no cooldown and emits no cast feedback.
             if (ab.CostHealth > 0)
             {
+                // Story 2.13 review (patch): the effect graph above could already have killed the caster (a future
+                // creator-authored Self/SearchArea damage leaf). Mirror ModifierStore.Advance's IsAlive guard so we
+                // never debit a dead/recycled slot or fire a SECOND entity-death (duplicate UnitKilled + double RecordKill).
+                if (!world.IsAlive(id)) return;
                 world.Health[id] -= Fixed.FromInt(ab.CostHealth);
                 if (world.Health[id] <= Fixed.Zero)
                 {

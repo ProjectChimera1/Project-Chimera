@@ -126,6 +126,9 @@ namespace ProjectChimera.AI
             public int  AvailableCombatUnits; // Idle or Stop — not under orders, conscriptable into a wave
             public bool EnemyThreatRemains;   // Story 2.13 — any alive enemy (non-Neutral) combat unit still defends
             public bool EnemyBuildingExists;  // Story 2.13 — any alive enemy (non-Neutral) building left to raze
+            public bool HasLiveCommandCenter; // Story 2.13 review — AI owns a live CommandCenter (a base); the fence
+                                              // discriminator for the below-threshold raze stall-breaker (real bases
+                                              // always have one; the starved cross-platform goldens' Player2 has none).
             public bool HasLiveBarracks;
             public bool HasCompleteBarracks;
             public bool HasLiveArcheryRange;
@@ -161,6 +164,9 @@ namespace ProjectChimera.AI
                 bool complete = !_buildings.IsUnderConstruction(i);
                 switch (_buildings.Type[i])
                 {
+                    case BuildingType.CommandCenter:
+                        snap.HasLiveCommandCenter = true; // Story 2.13 review — a live AI base (below-threshold raze gate)
+                        break;
                     case BuildingType.Barracks:
                         snap.HasLiveBarracks = true;
                         if (complete) { snap.HasCompleteBarracks = true; barracksComplete++; }
@@ -269,21 +275,41 @@ namespace ProjectChimera.AI
 
         /// <summary>
         /// Story 2.13 (AC1.5) — the RAZE fallback. When the enemy army is gone (no live defenders) but an enemy
-        /// base still stands and the AI has a free unit, send it to raze — otherwise an assault that killed every
-        /// defender stands INERT next to enemy structures forever (deferred-work #7), and a DestroyAllBuildings
-        /// match never concludes. Flat-high so it dominates build/expand once razing is possible (the game is won —
-        /// finish it); returns 0 while any defender remains (fight the army first) or nothing is left to raze.
+        /// base still stands, send free units to raze it — otherwise an assault that killed every defender stands
+        /// INERT next to enemy structures forever (deferred-work #7), and a DestroyAllBuildings match never
+        /// concludes. Flat-high so it dominates build/expand once razing is possible (the game is won — finish it);
+        /// returns 0 while any defender remains (fight the army first) or nothing is left to raze.
+        ///
+        /// Two commit bars: a FULL WAVE at/above the attack threshold (the common case), OR — Story 2.13 review
+        /// (Alec) — a below-threshold STALL-BREAKER for a winning AI that is genuinely stuck (a remnant below the
+        /// wave threshold, no production building and no ore to build one), so a starved-but-winning AI still
+        /// concludes instead of hanging next to the last enemy base. The stall-breaker is gated on owning a live
+        /// CommandCenter — every real faction has its base, but the deliberately-starved cross-platform goldens
+        /// (GoldenScenario/MultiFactionScenario give Player2 NO base) never do, so they stay INERT and
+        /// byte-identical (determinism fence, AC6.1). AiActiveScenario is unaffected (it has a barracks + a full
+        /// wave → it razes via the >= threshold path above, never this branch).
         /// </summary>
         private float ScoreRazeBuildings(in AiSnapshot s)
         {
-            // Commit a raze wave only at ATTACK strength (same bar as ScoreLaunchAttack), not at a single unit. This
-            // keeps the deliberately-starved core goldens (GoldenScenario/MultiFactionScenario hold 3 < the Normal
-            // threshold of 5) INERT — so the float AI never wakes inside a cross-platform golden (determinism fence,
-            // AC6.1) — while the AiActiveScenario wave (5 = threshold) still razes to conclude AC1.6.
-            if (s.AvailableCombatUnits < _attackThreshold) return 0f; // not enough free units to commit
             if (s.EnemyThreatRemains)   return 0f; // fight live defenders first — never tunnel-vision a building
             if (!s.EnemyBuildingExists) return 0f; // nothing left to raze
-            return 0.90f;
+
+            // Full-strength raze wave — commit at ATTACK strength (same bar as ScoreLaunchAttack). The starved core
+            // goldens hold 3 < the Normal threshold of 5, so they never reach this line.
+            if (s.AvailableCombatUnits >= _attackThreshold) return 0.90f;
+
+            // Below-threshold STALL-BREAKER (Story 2.13 review, Alec): a remnant below the wave threshold, with NO
+            // production building and no ore to build one → the AI can never grow back to a full wave, so it commits
+            // its remnant to raze rather than stall forever (the >= threshold gate alone leaves this exact case
+            // hanging). FENCE-SAFE via the live-CommandCenter gate: a real base always has its CC, but the starved
+            // cross-platform goldens (Player2 has no base) never satisfy it → they stay INERT / byte-identical.
+            if (s.AvailableCombatUnits > 0
+                && s.HasLiveCommandCenter
+                && !s.HasLiveBarracks && !s.HasLiveArcheryRange && !s.HasLiveSiegeWorkshop
+                && !s.CanAffordBarracks && !s.CanAffordArchery && !s.CanAffordSiege)
+                return 0.90f;
+
+            return 0f;
         }
 
         // ── Action dispatch ───────────────────────────────────────────────────

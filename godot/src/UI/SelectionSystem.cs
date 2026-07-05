@@ -73,10 +73,26 @@ namespace ProjectChimera.UI
         // ── Building selection ─────────────────────────────────────────────────────
 
         /// <summary>
-        /// Building ID currently selected in Play mode, or -1 if none.
-        /// Read by CommandCardSystem to show/update the command card panel.
+        /// Building ID currently selected in Play mode, or -1 if none — or if the selection is now STALE (its slot was
+        /// destroyed, or recycled into a DIFFERENT building). Read by CommandCardSystem to show/update the command card.
+        /// Story 2.13 review (patch): the raw slot is generation-stamped at selection and re-validated on every read, so
+        /// a razed-then-recycled slot (a new building at the same index — now possible under 2.13's free-list recycling)
+        /// never inherits the old selection; a rally/train issued on a stale selection would otherwise silently mis-target
+        /// the recycled occupant. Mirrors the D-3 packed-ref armor for the presentation-side holder the story didn't cover.
         /// </summary>
-        public int SelectedBuildingId { get; private set; } = -1;
+        public int SelectedBuildingId
+        {
+            get
+            {
+                if (_selectedBuildingSlot < 0 || _buildingStore == null) return -1;
+                if (!_buildingStore.Alive[_selectedBuildingSlot] ||
+                    _buildingStore.Generation[_selectedBuildingSlot] != _selectedBuildingGen)
+                    return -1;
+                return _selectedBuildingSlot;
+            }
+        }
+        private int _selectedBuildingSlot = -1;
+        private int _selectedBuildingGen  = -1;
 
         // ── Unit selection state ───────────────────────────────────────────────────
 
@@ -410,7 +426,12 @@ namespace ProjectChimera.UI
             {
                 int bId = FindNearestBuilding(hit, BUILDING_PICK_RADIUS);
                 if (bId >= 0)
-                    SelectedBuildingId = bId;  // ClearSelection already set it to -1
+                {
+                    // Story 2.13 review (patch): stamp the current generation so a later recycle of this slot
+                    // invalidates the selection (see SelectedBuildingId). ClearSelection already reset both fields.
+                    _selectedBuildingSlot = bId;
+                    _selectedBuildingGen  = _buildingStore.Generation[bId];
+                }
             }
         }
 
@@ -453,7 +474,8 @@ namespace ProjectChimera.UI
             _selectedList.Clear();
             _focusId = -1;
             ActiveGroupIndex   = -1;
-            SelectedBuildingId = -1;
+            _selectedBuildingSlot = -1;  // clears SelectedBuildingId (generation-validated computed getter)
+            _selectedBuildingGen  = -1;
             _barRoot.Visible    = false;
             _multiLabel.Visible = false;
         }
