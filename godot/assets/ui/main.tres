@@ -1,0 +1,75 @@
+[gd_resource type="Theme" format=3]
+
+[ext_resource type="FontFile" path="res://assets/ui/fonts/chakra-petch/ChakraPetch-Regular.ttf" id="1_7w1mg"]
+[ext_resource type="FontFile" path="res://assets/ui/fonts/jetbrains-mono/JetBrainsMono-VariableFont_wght.ttf" id="2_jvjd8"]
+[ext_resource type="FontFile" path="res://assets/ui/fonts/space-grotesk/SpaceGrotesk-VariableFont_wght.ttf" id="3_2ghvr"]
+
+[sub_resource type="FontVariation" id="FontVariation_h7qj4"]
+base_font = ExtResource("2_jvjd8")
+opentype_features = {
+1953396077: 1
+}
+
+[resource]
+default_font = ExtResource("3_2ghvr")
+default_font_size = 15
+Chimera/colors/accent = Color(0.11764706, 0.81960785, 0.8039216, 1)
+Chimera/colors/accent_bright = Color(0.29803923, 0.9254902, 0.90588236, 1)
+Chimera/colors/accent_dim = Color(0.12156863, 0.6, 0.5882353, 1)
+Chimera/colors/accent_glow = Color(0.11764706, 0.81960785, 0.8039216, 0.2784314)
+Chimera/colors/accent_ink = Color(0.015686275, 0.1254902, 0.11764706, 1)
+Chimera/colors/accent_wash = Color(0.11764706, 0.81960785, 0.8039216, 0.12156863)
+Chimera/colors/danger = Color(0.9411765, 0.3372549, 0.3254902, 1)
+Chimera/colors/danger_ink = Color(0.16470589, 0.023529412, 0.023529412, 1)
+Chimera/colors/edge_light = Color(0.2901961, 0.33333334, 0.38431373, 1)
+Chimera/colors/info = Color(0.39607844, 0.7058824, 0.9137255, 1)
+Chimera/colors/line = Color(0.16470589, 0.1882353, 0.21960784, 1)
+Chimera/colors/line_strong = Color(0.22745098, 0.25882354, 0.3019608, 1)
+Chimera/colors/ok = Color(0.43137255, 0.8235294, 0.45490196, 1)
+Chimera/colors/ok_ink = Color(0.023529412, 0.12941177, 0.05882353, 1)
+Chimera/colors/surface_0 = Color(0.05882353, 0.07058824, 0.08627451, 1)
+Chimera/colors/surface_1 = Color(0.078431375, 0.09411765, 0.11372549, 1)
+Chimera/colors/surface_2 = Color(0.101960786, 0.12156863, 0.14901961, 1)
+Chimera/colors/surface_3 = Color(0.13333334, 0.15686275, 0.19215687, 1)
+Chimera/colors/surface_4 = Color(0.17254902, 0.2, 0.23921569, 1)
+Chimera/colors/team_1 = Color(0.16470589, 0.49803922, 0.83137256, 1)
+Chimera/colors/team_2 = Color(0.8784314, 0.41568628, 0.105882354, 1)
+Chimera/colors/team_3 = Color(0.08627451, 0.6392157, 0.47843137, 1)
+Chimera/colors/team_4 = Color(0.8117647, 0.44705883, 0.6784314, 1)
+Chimera/colors/team_5 = Color(0.36078432, 0.72156864, 0.9254902, 1)
+Chimera/colors/team_6 = Color(0.9411765, 0.7529412, 0, 1)
+Chimera/colors/team_7 = Color(0.6039216, 0.42352942, 0.9411765, 1)
+Chimera/colors/team_8 = Color(0.6039216, 0.6392157, 0.6784314, 1)
+Chimera/colors/text_disabled = Color(0.29411766, 0.32941177, 0.37254903, 1)
+Chimera/colors/text_hi = Color(0.93333334, 0.9490196, 0.9647059, 1)
+Chimera/colors/text_lo = Color(0.44705883, 0.4862745, 0.53333336, 1)
+Chimera/colors/text_mid = Color(0.68235296, 0.7176471, 0.7607843, 1)
+Chimera/colors/void = Color(0.039215688, 0.047058824, 0.05882353, 1)
+Chimera/colors/warn = Color(0.9411765, 0.69411767, 0.20784314, 1)
+Chimera/colors/warn_ink = Color(0.14117648, 0.09411765, 0.011764706, 1)
+Chimera/constants/cut = 8
+Chimera/constants/cut_lg = 14
+Chimera/constants/cut_sm = 5
+Chimera/constants/s1 = 4
+Chimera/constants/s2 = 8
+Chimera/constants/s3 = 12
+Chimera/constants/s4 = 16
+Chimera/constants/s5 = 24
+Chimera/constants/s6 = 32
+Chimera/constants/s7 = 48
+Chimera/constants/s8 = 64
+Chimera/constants/speed = 130
+Chimera/font_sizes/t_2xl = 29
+Chimera/font_sizes/t_2xs = 11
+Chimera/font_sizes/t_3xl = 37
+Chimera/font_sizes/t_4xl = 52
+Chimera/font_sizes/t_5xl = 72
+Chimera/font_sizes/t_lg = 18
+Chimera/font_sizes/t_md = 15
+Chimera/font_sizes/t_sm = 13
+Chimera/font_sizes/t_xl = 23
+Chimera/font_sizes/t_xs = 12
+Chimera/fonts/font_display = ExtResource("1_7w1mg")
+Chimera/fonts/font_mono = ExtResource("2_jvjd8")
+Chimera/fonts/font_ui = ExtResource("3_2ghvr")
+Chimera/fonts/mono_tnum = SubResource("FontVariation_h7qj4")

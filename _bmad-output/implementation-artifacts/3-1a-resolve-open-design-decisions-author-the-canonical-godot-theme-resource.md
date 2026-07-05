@@ -1,6 +1,10 @@
+---
+baseline_commit: a56d11de5001f941e35ad0c5b4cdcbae5853b6ab
+---
+
 # Story 3.1a: Resolve open design decisions + author the canonical Godot Theme resource
 
-Status: ready-for-dev
+Status: review
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -56,34 +60,34 @@ Following the Epic 2 recommended-default pattern. Each is the recommendation; al
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1 — Resolve + document the two decisions (AC1)**
-  - [ ] Write a short `godot/assets/ui/DESIGN-DECISIONS.md` (or XML doc comments on the theme-owning class) recording D-1/D-2 (UX-DR9 = `StyleBoxFlat` `corner_detail=1`, TL+BR cut, rationale) and D-3 (UX-DR4 = live-Theme accent-color mutation, rationale + the StyleBox caveat).
-  - [ ] Confirm the recommended defaults with Alec if he hasn't already signed off (they can be taken as written otherwise).
-- [ ] **Task 2 — Add the 3 fonts (AC5, prerequisite)**
-  - [ ] Fetch the OFL TTFs at the weights in D-6 (Chakra Petch, Space Grotesk, JetBrains Mono) — from Google Fonts or the upstream OFL repos.
-  - [ ] Place under `godot/assets/ui/fonts/` (one subfolder per family); include each `OFL.txt`. Let Godot import them (creates `FontFile` + `.import` sidecars).
-  - [ ] Verify each imports as a usable `FontFile` (no import errors in the editor log).
-- [ ] **Task 3 — Author `main.theme` token vault (AC4, AC5)**
-  - [ ] Create `godot/assets/ui/main.theme` (text `.tres`, `type="Theme"`).
-  - [ ] Add every color token from the **Canonical Token Table** under the `"Chimera"` theme type via `SetColor(name, "Chimera", Color.Html("#..."))` — surfaces (UX-DR1), lines (UX-DR2), text (UX-DR3), accent-teal (UX-DR4, the default palette), semantic + `*-ink` (UX-DR5), and the 8 team colors (UX-DR6, **reserved — do not style any chrome with them**).
-  - [ ] Set `default_font = Space Grotesk`, `default_font_size = 15` (t-md); register the 3 font roles (`font-display`/`font-ui`/`font-mono`) as named `Font` items under `"Chimera"`.
-  - [ ] Encode the UX-DR8 type scale as `font_size` items (`t-2xs 11 … t-5xl 72`) and UX-DR10 spacing (`s1 4 … s8 64`), UX-DR9 cut sizes (`cut 8 / cut-sm 5 / cut-lg 14`), and the motion constant (`speed 130`) as `constant` items under `"Chimera"`.
-  - [ ] Record the UX-DR11 shadow recipes (`shadow-1/2/pop` → `shadow_size`/`shadow_offset`/`shadow_color`, values in the table) as documented constants; realize `shadow-1` on the preview panel in Task 6 (full per-component shadows are 3.1b).
-- [ ] **Task 4 — UX-DR34 mono tabular role (AC5)**
-  - [ ] Define the mono readout role as a `FontVariation` over **JetBrains Mono** with OpenType `tnum = 1` (reuse the exact pattern at `CommandCardSystem.cs:362-371`, but based on JetBrains Mono instead of the default font). Store it as a named `Font` item (e.g. `mono-tnum`) under `"Chimera"`.
-- [ ] **Task 5 — Accent-switch mechanism (AC1, AC3) — the UX-DR4 deliverable**
-  - [ ] Add `godot/src/UI/Theme/ThemeTokens.cs` (or similar): `StringName` constants for token names + the **3 accent palettes** as data (teal/amber/violet, 6 colors each — values in the table).
-  - [ ] Add `AccentController` (a small node/service): `SwitchAccent(name)` rewrites the 6 accent `Color` items on the live `main.theme` (`accent`, `accent-bright`, `accent-dim`, `accent-ink`, `accent-glow`, `accent-wash`).
-  - [ ] **CRITICAL:** also retint any **accent-tinted `StyleBoxFlat`** — its `BgColor`/`BorderColor` are sub-resource properties, **not** theme Color tokens, so they do NOT follow the accent Color entries. `AccentController` must own/register those styleboxes and set their colors in the same switch (mutating a StyleBox also emits `changed` and rides the same repaint). This is where "everything reads the accent" silently breaks if missed.
-- [ ] **Task 6 — Preview/verify scene (AC2, AC3, AC6)**
-  - [ ] Build a throwaway preview scene (e.g. `godot/scenes/theme_preview.tscn` or a code-built scene) that assigns `main.theme`, then shows: a swatch grid of every token; a `PanelContainer` styled with the faceted chamfer StyleBox (proving AC2); Labels in all 3 fonts + a mono tabular readout (e.g. `1234567890` aligned); and three buttons that call `AccentController.SwitchAccent`.
-  - [ ] This scene is a proof harness, not a shipped surface — keep it minimal; the real gallery is 3.1c.
-- [ ] **Task 7 — Build + `/godot-verify` (AC6)**
-  - [ ] `dotnet build godot/godot.csproj` → 0 errors.
-  - [ ] Run `/godot-verify` on the preview scene. Capture screenshots of the chamfered panel (AC2 — faceted, not rounded) and of all three accent states (AC3). Confirm fonts render and token colors match.
-  - [ ] **A3 teeth (prove the gate has teeth):** momentarily set `corner_detail = 8` (or a nonzero radius with detail 8) to show the corner goes *rounded* → revert; and capture the accent actually changing across all 3 states (not a static screenshot). Record the inject→observe→revert in the Dev Record.
-- [ ] **Task 8 — Scope-fence check (AC6)**
-  - [ ] `git diff --stat` confirms: only `godot/assets/ui/**`, the new `src/UI/Theme/**`, the preview scene, and docs changed. **Zero** files under `src/Core`, `src/Combat`, `src/Economy`, `src/Navigation`, `src/Multiplayer` or any test golden. No `project.godot` `gui/theme` change. No existing panel `.cs` restyled.
+- [x] **Task 1 — Resolve + document the two decisions (AC1)**
+  - [x] Write a short `godot/assets/ui/DESIGN-DECISIONS.md` (or XML doc comments on the theme-owning class) recording D-1/D-2 (UX-DR9 = `StyleBoxFlat` `corner_detail=1`, TL+BR cut, rationale) and D-3 (UX-DR4 = live-Theme accent-color mutation, rationale + the StyleBox caveat).
+  - [x] Confirm the recommended defaults with Alec if he hasn't already signed off (they can be taken as written otherwise).
+- [x] **Task 2 — Add the 3 fonts (AC5, prerequisite)**
+  - [x] Fetch the OFL TTFs at the weights in D-6 (Chakra Petch, Space Grotesk, JetBrains Mono) — from Google Fonts or the upstream OFL repos.
+  - [x] Place under `godot/assets/ui/fonts/` (one subfolder per family); include each `OFL.txt`. Let Godot import them (creates `FontFile` + `.import` sidecars).
+  - [x] Verify each imports as a usable `FontFile` (no import errors in the editor log).
+- [x] **Task 3 — Author `main.theme` token vault (AC4, AC5)**
+  - [x] Create `godot/assets/ui/main.theme` (text `.tres`, `type="Theme"`).
+  - [x] Add every color token from the **Canonical Token Table** under the `"Chimera"` theme type via `SetColor(name, "Chimera", Color.Html("#..."))` — surfaces (UX-DR1), lines (UX-DR2), text (UX-DR3), accent-teal (UX-DR4, the default palette), semantic + `*-ink` (UX-DR5), and the 8 team colors (UX-DR6, **reserved — do not style any chrome with them**).
+  - [x] Set `default_font = Space Grotesk`, `default_font_size = 15` (t-md); register the 3 font roles (`font-display`/`font-ui`/`font-mono`) as named `Font` items under `"Chimera"`.
+  - [x] Encode the UX-DR8 type scale as `font_size` items (`t-2xs 11 … t-5xl 72`) and UX-DR10 spacing (`s1 4 … s8 64`), UX-DR9 cut sizes (`cut 8 / cut-sm 5 / cut-lg 14`), and the motion constant (`speed 130`) as `constant` items under `"Chimera"`.
+  - [x] Record the UX-DR11 shadow recipes (`shadow-1/2/pop` → `shadow_size`/`shadow_offset`/`shadow_color`, values in the table) as documented constants; realize `shadow-1` on the preview panel in Task 6 (full per-component shadows are 3.1b).
+- [x] **Task 4 — UX-DR34 mono tabular role (AC5)**
+  - [x] Define the mono readout role as a `FontVariation` over **JetBrains Mono** with OpenType `tnum = 1` (reuse the exact pattern at `CommandCardSystem.cs:362-371`, but based on JetBrains Mono instead of the default font). Store it as a named `Font` item (e.g. `mono-tnum`) under `"Chimera"`.
+- [x] **Task 5 — Accent-switch mechanism (AC1, AC3) — the UX-DR4 deliverable**
+  - [x] Add `godot/src/UI/Theme/ThemeTokens.cs` (or similar): `StringName` constants for token names + the **3 accent palettes** as data (teal/amber/violet, 6 colors each — values in the table).
+  - [x] Add `AccentController` (a small node/service): `SwitchAccent(name)` rewrites the 6 accent `Color` items on the live `main.theme` (`accent`, `accent-bright`, `accent-dim`, `accent-ink`, `accent-glow`, `accent-wash`).
+  - [x] **CRITICAL:** also retint any **accent-tinted `StyleBoxFlat`** — its `BgColor`/`BorderColor` are sub-resource properties, **not** theme Color tokens, so they do NOT follow the accent Color entries. `AccentController` must own/register those styleboxes and set their colors in the same switch (mutating a StyleBox also emits `changed` and rides the same repaint). This is where "everything reads the accent" silently breaks if missed.
+- [x] **Task 6 — Preview/verify scene (AC2, AC3, AC6)**
+  - [x] Build a throwaway preview scene (e.g. `godot/scenes/theme_preview.tscn` or a code-built scene) that assigns `main.theme`, then shows: a swatch grid of every token; a `PanelContainer` styled with the faceted chamfer StyleBox (proving AC2); Labels in all 3 fonts + a mono tabular readout (e.g. `1234567890` aligned); and three buttons that call `AccentController.SwitchAccent`.
+  - [x] This scene is a proof harness, not a shipped surface — keep it minimal; the real gallery is 3.1c.
+- [x] **Task 7 — Build + `/godot-verify` (AC6)**
+  - [x] `dotnet build godot/godot.csproj` → 0 errors.
+  - [x] Run `/godot-verify` on the preview scene. Capture screenshots of the chamfered panel (AC2 — faceted, not rounded) and of all three accent states (AC3). Confirm fonts render and token colors match.
+  - [x] **A3 teeth (prove the gate has teeth):** momentarily set `corner_detail = 8` (or a nonzero radius with detail 8) to show the corner goes *rounded* → revert; and capture the accent actually changing across all 3 states (not a static screenshot). Record the inject→observe→revert in the Dev Record.
+- [x] **Task 8 — Scope-fence check (AC6)**
+  - [x] `git diff --stat` confirms: only `godot/assets/ui/**`, the new `src/UI/Theme/**`, the preview scene, and docs changed. **Zero** files under `src/Core`, `src/Combat`, `src/Economy`, `src/Navigation`, `src/Multiplayer` or any test golden. No `project.godot` `gui/theme` change. No existing panel `.cs` restyled.
 
 ## Dev Notes
 
@@ -185,9 +189,84 @@ Runtime switch = mutate the ~6 accent `Color` items on the one live `main.theme`
 ## Dev Agent Record
 
 ### Agent Model Used
+claude-opus-4-8 (Claude Opus 4.8), gds-dev-story workflow.
 
 ### Debug Log References
+Two engine defects surfaced during in-engine verification and were fixed (both are documented in
+`godot/assets/ui/DESIGN-DECISIONS.md` for 3.1b/3.1c):
+
+1. **Hyphenated Theme item names are silently dropped.** The first `main.theme` save contained only the
+   non-hyphen tokens (7 colors / 0 font_sizes / 10 constants). Root cause confirmed via `godot_exec`:
+   `Theme::set_color("with-hyphen", …)` → `[theme.cpp:752] Invalid item name: 'with-hyphen'` and
+   `has_color` = false; the underscore variant is accepted. Godot's `is_valid_item_name()` rejects `-`.
+   **Fix:** all CSS token names map to underscore names (`surface-1` → `surface_1`, `t-md` → `t_md`,
+   `accent-bright` → `accent_bright`) in `ThemeTokens`. Post-fix the theme has 34 colors / 4 fonts /
+   10 font_sizes / 12 constants, 0 missing.
+2. **`.theme` is Godot's binary extension.** `ResourceSaver.Save(theme, "…/main.theme")` wrote a binary
+   `RSRC` blob (not git-diffable). **Fix:** the committed artifact is the text `.tres`
+   (`[gd_resource type="Theme" format=3]`) at `godot/assets/ui/main.tres`.
+3. Minor: `Color.Html` is GDScript; the C# name is `Color.FromHtml` (compile fix). The mandated
+   namespace `ProjectChimera.UI.Theme` shadows the bare type `Theme`, so `Godot.Theme` is fully
+   qualified in these files.
 
 ### Completion Notes List
+- **What shipped:** the canonical `main.tres` token vault (UX-DR1..12 + UX-DR34, dark theme, teal
+  default) built by a reproducible C# `ThemeBuilder` from a single `ThemeTokens` source of truth; the
+  two open decisions resolved **as working code** — `ChimeraStyleBox.Chamfer` (UX-DR9 = `StyleBoxFlat`
+  `corner_detail=1`, TL+BR cut) and `AccentController.SwitchAccent` (UX-DR4 = mutate the 6 accent Color
+  items on the one live theme, **plus** retint registered accent StyleBoxes — the seam); the 3 OFL fonts
+  bundled + imported; and a throwaway `theme_preview` proof scene.
+- **All 6 ACs verified in-engine** (build 0 errors; ran `theme_preview` via the Godot MCP — the
+  `/godot-verify` procedure):
+  - AC2 — the surface panel renders a faceted 45° TL+BR chamfer; **A3 teeth**: toggled `corner_detail`
+    1→8 to show the corner go *rounded* (screenshot contrast), then reverted. Inject→observe→revert done.
+  - AC3 — teal→amber→violet each retint every accent surface in one op; the accent-filled chamfered
+    button (the StyleBox seam) retints across all three (a Color-token-only switch would leave it stale);
+    live token values match the table (amber `#f2af48`, violet `#b296ff`/`#cfb2ff`/wash `#b296ff21`).
+  - AC4 — 34 colors + 12 constants + 10 font_sizes present with exact table values (verified via
+    `godot_exec` + the swatch grid); team colors present in the vault, applied to **no** chrome.
+  - AC5 — Chakra Petch / Space Grotesk / JetBrains Mono render as display/ui/mono; `mono_tnum`
+    tabular-figure role aligns digit columns.
+  - AC6 — `godot.csproj` builds 0 errors; the preview loads the committed `main.tres`.
+- **Decisions (recommended defaults, taken as written per the Epic-2 pattern — flagged for Alec's veto):**
+  D-1..D-5, D-7, D-8 as specified. **D-6 deviation:** Chakra Petch bundled as 4 static weights
+  (400/500/600/700) as recommended, but Space Grotesk and JetBrains Mono ship as **variable fonts** in
+  the canonical `google/fonts` repo, so one VF per family is bundled (covers all mock weights; smaller
+  footprint; Godot pins weight via `FontVariation`). Documented in DESIGN-DECISIONS.md §D-6.
+- **Shadow recipes (UX-DR11):** stored as reusable data in `ThemeTokens.ShadowRecipes` +
+  `ChimeraStyleBox.WithShadow` (a shadow = size+offset+color, which does not fit a single int Theme
+  `constant`); `shadow_1` is realized on the preview panel.
+- **Scope fence honored:** only `godot/assets/ui/**`, `godot/src/UI/Theme/**`, the preview scene, and the
+  workflow tracking files changed. Zero `src/Core|Combat|Economy|Navigation|Multiplayer`, zero golden
+  logic, no `project.godot` `gui/theme`, no existing panel restyled, no global default theme set.
+  *Incidental:* the editor's rescan generated `ProjectChimera.Sim.Tests/Golden/AiBelowThresholdRazeTests.cs.uid`
+  (a UID sidecar for a pre-existing 2.13 test — the `.cs` is byte-unchanged); not a golden-logic change.
 
 ### File List
+**New — theme + assets:**
+- `godot/assets/ui/main.tres` — the committed canonical Theme (text, format=3)
+- `godot/assets/ui/DESIGN-DECISIONS.md` — D-1/D-2/D-3 rationale + engine gotchas
+- `godot/assets/ui/fonts/chakra-petch/ChakraPetch-{Regular,Medium,SemiBold,Bold}.ttf` (+ `.import`) + `OFL.txt`
+- `godot/assets/ui/fonts/space-grotesk/SpaceGrotesk-VariableFont_wght.ttf` (+ `.import`) + `OFL.txt`
+- `godot/assets/ui/fonts/jetbrains-mono/JetBrainsMono-VariableFont_wght.ttf` (+ `.import`) + `OFL.txt`
+
+**New — code (`ProjectChimera.UI.Theme`):**
+- `godot/src/UI/Theme/ThemeTokens.cs` — token vocabulary (StringName constants) + canonical values + 3 accent palettes
+- `godot/src/UI/Theme/ChimeraStyleBox.cs` — the chamfer recipe (D-1/D-2) as working code
+- `godot/src/UI/Theme/ThemeBuilder.cs` — reproducible builder → `main.tres`
+- `godot/src/UI/Theme/AccentController.cs` — the accent-switch mechanism (D-3) + StyleBox-seam registry
+- `godot/src/UI/Theme/ThemePreview.cs` — throwaway in-engine proof harness
+- (each `.cs` has an editor-generated `.cs.uid` sidecar)
+
+**New — scene:**
+- `godot/scenes/theme_preview.tscn` — proof scene (loads `ThemePreview.cs`)
+
+**Modified — workflow tracking:**
+- `_bmad-output/implementation-artifacts/3-1a-...-godot-theme-resource.md` (this file; + `baseline_commit`)
+- `_bmad-output/implementation-artifacts/sprint-status.yaml` (status → in-progress → review)
+
+## Change Log
+- 2026-07-05 — Story 3.1a implemented: resolved UX-DR4 (accent-switch) + UX-DR9 (chamfer) as working
+  code; authored `main.tres` token vault (UX-DR1..12 + UX-DR34); bundled the 3 OFL fonts; built the
+  `theme_preview` proof scene. Fixed 2 engine defects (hyphenated Theme names rejected → underscores;
+  `.theme` binary → `.tres` text). All 6 ACs verified in-engine. Status → review.
