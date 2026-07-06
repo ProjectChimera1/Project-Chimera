@@ -100,6 +100,21 @@ Following the Epic 2 / 3.1a recommended-default pattern. Each is the recommendat
 - [x] **Task 11 — scope-fence check (AC7)**
   - [x] `git diff --stat`: only `godot/src/UI/Components/**`, `godot/src/UI/Theme/ChimeraStyleBox.cs` + `AccentController.cs` (the two fixes), `godot/scenes/component_preview.tscn` + `ComponentPreview.cs`, and workflow tracking. **Zero** `src/Core|Combat|Economy|Navigation|Multiplayer`, zero golden, no `project.godot` gui/theme, no existing panel `.cs` restyled, no `main.tres`/`ThemeTokens.cs`/`ThemeBuilder.cs` change (unless D-1's alternative is chosen).
 
+### Review Findings (gds-code-review, 2026-07-06 — Opus 4.8, 3-layer adversarial: Blind / Edge-Case / Acceptance)
+
+_Verdict: **PASS-quality.** All 7 ACs functionally met, `/godot-verify` gate held, scope clean, no sim/checksum/golden touched. **No High/Critical from any layer.** Findings are robustness-under-churn + two letter-of-spec deviations; none break the in-engine proof. 1 decision + 6 patches; 0 deferred; 0 dismissed. Three independent layers converged on the accent-handler lifecycle (anchor finding)._
+
+**Decision needed:**
+- [ ] [Review][Decision] **Accent text/icon handler teardown (per-control, Med)** — `_accentColorHandlers` grows one entry per accent-bound control (Input caret, primary Button, active IconButton, accent Tag, ChimeraTabs) and is only ever cleared wholesale by `Reset()`. Between `Reset()`s, freeing a control leaves its `AccentChanged` closure subscribed forever: use-after-free is guarded (`IsInstanceValid` → no crash), but the list + multicast delegate grow unbounded and every dead handler re-fires on each `SwitchAccent`. This is the D-4 leak class — closed for the stylebox registry (`Unregister`), left open for the text/icon seam that D-3 introduced. Options: (1) harden now — store each handler with its target ref, prune freed targets on each `SwitchAccent` (~15-20 lines, no reparent footgun); (2) fix `Initialize` now (see patch) + defer per-control pruning to 3.1c which owns the kit lifecycle contract; (3) defer all to 3.1c. [ChimeraComponents.cs:68,197-225 · Controls.cs:282-307] (blind+edge)
+
+**Patches:**
+- [ ] [Review][Patch] `Initialize()` orphans handlers on same-controller re-init — clears `_accentColorHandlers` without unsubscribing from the live `AccentController`; re-init on the same controller strands them permanently. Fix: call `Reset()` first. [ChimeraComponents.cs:78] (blind+edge)
+- [ ] [Review][Patch] `ChimeraListRow.SetSelected` bypasses `ListRowGroup` single-select — the public setter never notifies the group, so mixing it with grouped rows shows two selected rows, and a direct deselect strands `group._selected` (row can't be re-selected via click). [ChimeraListRow.cs:105] (edge)
+- [ ] [Review][Patch] Slider thumb ↔ num-input persistently diverge when `min` is not a multiple of `step` — `SliderTrack` snaps zero-relative (`Round(v/step)*step`), Godot `SpinBox` snaps min-relative; the `_syncing` guard suppresses the correction. Fix: snap min-relative. [ChimeraSlider.cs:158] (edge)
+- [ ] [Review][Patch] `ChimeraSlider.Create(min>max)` throws uncaught `ArgumentException` via `System.Math.Clamp` synchronously during UI build (standalone `NumInput` tolerates it — slider-specific). Fix: normalize/guard bounds. [ChimeraSlider.cs:157] (edge)
+- [ ] [Review][Patch] AC2: inline paddings duplicate spacing tokens (btn `16`=S4 / `24`=S5, Input & Select `12`=S3, NumInput `8`=S2) while sibling components (panel/chip/tag/list-row) correctly read `Const(Sx)`. Read the token-valued ones via `Const`. [ChimeraComponents.Controls.cs btn switch / Input / Select / NumInput] (auditor)
+- [ ] [Review][Patch] AC5: segment tab labels not uppercased — mock `.segment>button` is `text-transform:uppercase; font-size:var(--t-xs)`; code `Up()`-cases underline/boxed but excludes segment, and uses `Tsm`(13) not `Txs`(12). [ChimeraTabs.cs:98,100] (auditor)
+
 ## Dev Notes
 
 ### Verification posture — same reset as 3.1a
