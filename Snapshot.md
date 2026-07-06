@@ -15,7 +15,7 @@ status: Active
 Phases 0–4 are code-complete. Phase 5 is underway. Session 20 shipped worker-placed buildings + UI bug sweep. Session 21 (remote, away from computer) shipped Utility AI + Adaptive Input Delay.
 
 ## Next Action
-Update the cross-session memory pointer in `MEMORY.md` from "NEXT — create-story on 3-1b" to "3-1b review-ready; next is 3-1c composites + gallery" — then flag the story for human review.
+Update the session-continuity tracker (MEMORY.md) to mark
 
 ---
 
