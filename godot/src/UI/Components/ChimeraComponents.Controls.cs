@@ -205,7 +205,10 @@ namespace ProjectChimera.UI.Components
 
         /// <summary>
         /// The input's <c>.select</c> chevron variant: a themed <see cref="OptionButton"/> (surface-3,
-        /// cut-sm, extra right padding for its built-in chevron). Its dropdown popup styling is Story 3.1c.
+        /// cut-sm, extra right padding for its built-in chevron). Its native dropdown popup is styled to the
+        /// menu look here (Story 3.1c AC7 — closes the former Controls.cs punt): a chamfered surface-2 panel
+        /// with a surface-4 hover, so <c>.select</c> matches <see cref="ChimeraMenu"/> (same look, different
+        /// node — this styles the internal <see cref="PopupMenu"/>, not a PopupPanel).
         /// </summary>
         public static OptionButton Select(params string[] items)
         {
@@ -223,7 +226,32 @@ namespace ProjectChimera.UI.Components
             box.ContentMarginRight = 30; // room for the chevron (CSS padding-right 30)
             foreach (var st in new[] { "normal", "hover", "pressed", "focus", "disabled" })
                 ob.AddThemeStyleboxOverride(st, box);
+
+            StyleThemedPopup(ob.GetPopup());
             return ob;
+        }
+
+        /// <summary>
+        /// Style a native <see cref="PopupMenu"/> (an OptionButton dropdown, or any menu-like popup) to the
+        /// Chimera menu look: a chamfered surface-2 panel with shadow_pop + inset line_strong hairline, a
+        /// surface-4 hover item, and text_mid / text_hi item colors. The <see cref="ChimeraMenu"/> component
+        /// owns a VBox popover for accent-active items; this is the lighter path for Godot's built-in popup.
+        /// </summary>
+        internal static void StyleThemedPopup(PopupMenu popup)
+        {
+            int cut = Const(ThemeTokens.CutSm);
+            var panel = ChimeraStyleBox.Chamfer(cut, Col(ThemeTokens.Surface2), Col(ThemeTokens.LineStrong), 1);
+            panel.WithContentMargins(ComponentMetrics.MenuPanelPad, ComponentMetrics.MenuPanelPad)
+                 .WithShadow(ThemeTokens.GetShadow(ThemeTokens.ShadowPop));
+            popup.AddThemeStyleboxOverride("panel", panel);
+
+            var hover = ChimeraStyleBox.Chamfer(0, Col(ThemeTokens.Surface4), Col(ThemeTokens.Surface4), 0);
+            popup.AddThemeStyleboxOverride("hover", hover);
+
+            popup.AddThemeFontOverride("font", FontOf(ThemeTokens.FontUi));
+            popup.AddThemeFontSizeOverride("font_size", SizeOf(ThemeTokens.Tsm));
+            popup.AddThemeColorOverride("font_color", Col(ThemeTokens.TextMid));
+            popup.AddThemeColorOverride("font_hover_color", Col(ThemeTokens.TextHi));
         }
 
         /// <summary>An uppercase display field-label (11px, tracked, text-lo) to sit above an input.</summary>

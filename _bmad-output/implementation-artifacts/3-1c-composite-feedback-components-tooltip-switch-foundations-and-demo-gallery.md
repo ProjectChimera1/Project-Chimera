@@ -4,7 +4,7 @@ baseline_commit: 03ea1448b198b6b2f14bebcf051514b714698802
 
 # Story 3.1c: Composite + feedback components, tooltip/switch foundations, and demo gallery
 
-Status: ready-for-dev
+Status: review
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -68,42 +68,42 @@ Following the Epic 2 / 3.1a / 3.1b recommended-default pattern. Each is the reco
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1 — Scaffold + motion seam (AC1, AC2, AC5, D-7, D-8)**
-  - [ ] Add new intrinsic dims to `godot/src/UI/Components/ComponentMetrics.cs` (documented from CSS): switch track 42×24 / knob 18 / cuts 5+3, toast width 300 / accent-bar 3 / icon 22, tooltip max-width 240 (pop) + 200 (field) / cut 4, menu min-width 180 / item pad 8×10, spinner sizes 22/48/96, dialog width `min(560,90%)` / cut 14, and the toast-slide 250ms + spinner 2600/5200/1300ms + `.f-tip` 120ms durations.
-  - [ ] Add `ChimeraMotion` (static): `bool ReducedMotion = false` + a small helper (e.g. `Duration(msToken)` that returns 0 when reduced). All 3.1c animations route through it.
-  - [ ] Create the new-file skeletons under `Components/` per D-8, `#nullable enable`, `using Godot; using ProjectChimera.UI.Theme;` (remember: **`Godot.Theme` must be fully qualified** — the namespace shadows the type), `partial` on Godot-derived classes.
-- [ ] **Task 2 — overlay/z-order layer (AC1, AC8, D-2/D-3/D-4/D-6)**
-  - [ ] Establish the shared transient-overlay `CanvasLayer` strategy: tooltip/dialog-scrim/toast-host sit on a **high** `CanvasLayer` (above the base UI's ≈14 — use e.g. **100/101/102**) so they float over panels; menu/`.select` use `PopupPanel`'s native popup layer (no manual CanvasLayer). Document this in a Dev Notes subsection and keep one small helper for "add a Control as a top-level overlay."
-- [ ] **Task 3 — switch (UX-DR31/54) (AC1, AC2, AC4, AC5, AC6, D-5)**
-  - [ ] `ChimeraSwitch : Button` (toggle_mode), static `Create(bool on = false)` + `Build()`. 42×24 faceted track stylebox `surface_4` (off) / `accent` (on, `SharedAccentBox` + register fill); 18×18 **faceted square** knob child `text_mid`→`accent_ink`.
-  - [ ] Animate the knob `left 3→21` + track color over the `speed` token via `CreateTween().TweenProperty` (gate on `ChimeraMotion`); expose `bool On`, `SetOn(bool, animate)`, `[Signal] Toggled(bool)`.
-  - [ ] Inline reveal: a `Reveal(Control fields)` / callback that shows/hides dependent fields on toggle (demonstrated in the gallery). Keyboard: verify Space toggles (inherited from `Button`).
-- [ ] **Task 4 — tooltip (UX-DR26/53/45) (AC1, AC2, AC3, AC6, D-4)**
-  - [ ] `ChimeraTooltip.Attach(Control ctrl, string term, string body)`: wire `MouseEntered`(+short hover `Timer`)/`MouseExited` **and** `FocusEntered`/`FocusExited` to one show/hide path.
-  - [ ] The tooltip visual: a plain `Control` (NOT a `Popup` — must not steal focus) on the overlay `CanvasLayer`, `surface_3` + `cut 4` stylebox + `shadow_pop` + `line_strong` inset; a RichText/Label pair with **bold term = `accent_bright` + `font_display`** (`BindAccentColor` the term) + a `text_hi`/`text_mid` body; positioned **above** `ctrl` (clamp on-screen).
-  - [ ] Track handlers for cleanup (freed-target-guarded, unsubscribed on `ChimeraComponents.Reset` / helper teardown) — reuse the established handler-tracking discipline.
-- [ ] **Task 5 — menu + `.select` dropdown (UX-DR23) (AC1, AC2, AC6, AC7, D-2)**
-  - [ ] `ChimeraMenu`: build a `PopupPanel` (chamfered `cut_sm`, `surface_2`, `shadow_pop` + `line_strong` inset) holding a VBox of themed **menu-item** Buttons (hover `surface_4`+`text_hi`; `is-active` = `accent_bright` text via `BindAccentColor`); items gap `s3`, pad 8×10, `t_sm`. API: add items with id + optional leading check glyph; `[Signal] IdPressed`; open anchored to a trigger (`PopupOnParent`/`Popup(rect)`).
-  - [ ] **Close the 3.1b punt (AC7):** style the 3.1b `Select()` OptionButton's native dropdown `PopupMenu` (via `optionButton.GetPopup()` → its `panel`/`hover` styleboxes + `font_color`/`font_hover_color`) so `.select` matches the menu look. This styles the native `PopupMenu`, NOT the `PopupPanel` menu component — same look, different node. (Minimal edit inside `Components/`; no other panel touched.)
-- [ ] **Task 6 — dialog (UX-DR27/45) (AC1, AC2, AC5, AC6, D-3)**
-  - [ ] `ChimeraDialog`: a `CanvasLayer` (high) + full-rect `ColorRect` scrim (`rgba(6,8,11,~0.8)` solid-dim approx of blur, `MouseFilter=Stop`) + centered chamfered `PanelContainer` (`cut_lg`, gradient→**solid** `surface_2`, `shadow_pop`, `edge_light` hairline). Head (pad 20/24 + bottom `line` + an `Esc` `Kbd`) / Body (pad 24) / Foot (pad 16/24, buttons **right-aligned** gap `s3`).
-  - [ ] Modal + focus trap: `GrabFocus` on open; wrap foot-button focus neighbors; `Esc` + scrim-click (for non-destructive) close; a **destructive** action uses a `danger` primary + requires explicit confirm. `[Signal]` confirmed/dismissed. Fade the scrim in over `speed` (gated on `ChimeraMotion`).
-- [ ] **Task 7 — toast + banner-stall (UX-DR28/64) (AC1, AC2, AC5, AC6, D-6)**
-  - [ ] `ChimeraToastHost : CanvasLayer` (high): top-left VBox stack (gap `s2`, width 300). `Show(string title, string msg, ToastVariant variant, float seconds)` → faceted toast (`surface_2`, `cut_sm`, `shadow_2` + `line_strong` inset, **3px left accent bar** `::after`-equivalent, 22px icon + `font_display` 600 `t_sm` title + `t_xs` `text_lo` msg).
-  - [ ] Slide-in from left (~250ms `Tween` on Position+Modulate, gated), auto-dismiss after `seconds` (`TweenInterval`→fade→`QueueFree`). Variant bars = semantic `danger/warn/ok` (fixed) or default `accent` (register for retint).
-  - [ ] `banner-stall`: a centered warn pill (`warn`-tinted bg + `warn` inset border + `font_display`) containing a `sm` spinner whose accent is overridden to `warn`; copy "Waiting for peer…". Visual only.
-- [ ] **Task 8 — spinner (UX-DR29/52) (AC1, AC2, AC5, AC6, D-1)**
-  - [ ] `ChimeraSpinner : Control` (procedural `_Draw`): 3 layers — outer ring (`accent_dim` faint ring + `accent` arc + 4 ticks), fire/water triangles (`accent` / `accent_dim`), `accent` core + `accent_bright` vertex nodes. Geometry per the Spec Table. Sizes sm 22 / default 48 / lg 96 (`PivotOffset` = center).
-  - [ ] Animate: ring CW 2.6s, triangles CCW 5.2s, core pulse 1.3s — via `CreateTween().SetLoops()` on `Rotation`/`Scale`/`Modulate` (or `_Process`), **gated on `ChimeraMotion.ReducedMotion`** (static when reduced). `SubscribeAccentChanged` → `QueueRedraw`. `role`-equivalent accessible name.
-- [ ] **Task 9 — mark (UX-DR30) (AC1, AC2, AC6, D-1)**
-  - [ ] `ChimeraMark : Control` (procedural `_Draw`): the Chimera Seal — outer ring `r42` + inner ring `r33` + fire up-triangle + ghosted water down-triangle + `r7.2` nucleus + 3 `accent_bright` vertex nodes, all from accent tokens. Geometry per the Spec Table.
-  - [ ] `.triad` heavy-stroke reduced variant for ≤24px (drops inner ring + water triangle + vertex nodes). Static (no motion). `SubscribeAccentChanged` → `QueueRedraw`. (This is the sole shipping alchemy motif — UX-DR30/38.)
-- [ ] **Task 10 — component_gallery scene + /godot-verify (AC1, AC6, AC7, AC8, D-9)**
-  - [ ] `godot/scenes/component_gallery.tscn` + `godot/src/UI/Components/ComponentGallery.cs`: reuse the `ComponentPreview` scaffold (load `main.tres` `CacheMode.Ignore`, `new AccentController`, `ChimeraComponents.Initialize`, scroll/VBox, accent-switch Button row). Add `Build*` sections instantiating **every** 3.1b component **and** all 7 new ones, with interaction-trigger **Buttons** (open-dialog / show-toast(each variant) / toggle-switch / hover-and-focus a tooltip'd field) whose `pressed` signal `/godot-verify` can emit.
-  - [ ] `dotnet build godot/godot.csproj` → 0 err. Run `/godot-verify` on `component_gallery`: capture the full kit rendering, the whole-kit accent retint (teal→amber→violet, incl. spinner/mark redraw + switch/menu/tooltip/toast/dialog accent), switch animate+reveal, modal dialog over scrim, a toast slide+dismiss, spinner rotating, tooltip on focus. Drive via emitted `pressed` signals + `godot_exec` reads; record inject→observe in the Dev Record.
-- [ ] **Task 11 — scope-fence check (AC7, AC8)**
-  - [ ] `git diff --stat`: only `godot/src/UI/Components/**` (new component files + `ComponentMetrics.cs` + the `Select` dropdown-styling edit), `godot/scenes/component_gallery.tscn` + `ComponentGallery.cs`, and workflow tracking. **Zero** `src/Core|Combat|Economy|Navigation|Multiplayer|AI|Effects`, zero golden, no `project.godot` gui/theme, no existing panel `.cs` restyled, **no `main.tres`/`ThemeTokens.cs`/`ThemeBuilder.cs`/`AccentController.cs`/`ChimeraStyleBox.cs` change**.
-  - [ ] If any gap surface's needs proved a missing primitive, log it (UX-DR33) in the Dev Record + `deferred-work.md`.
+- [x] **Task 1 — Scaffold + motion seam (AC1, AC2, AC5, D-7, D-8)**
+  - [x] Add new intrinsic dims to `godot/src/UI/Components/ComponentMetrics.cs` (documented from CSS): switch track 42×24 / knob 18 / cuts 5+3, toast width 300 / accent-bar 3 / icon 22, tooltip max-width 240 (pop) + 200 (field) / cut 4, menu min-width 180 / item pad 8×10, spinner sizes 22/48/96, dialog width `min(560,90%)` / cut 14, and the toast-slide 250ms + spinner 2600/5200/1300ms + `.f-tip` 120ms durations.
+  - [x] Add `ChimeraMotion` (static): `bool ReducedMotion = false` + a small helper (e.g. `Duration(msToken)` that returns 0 when reduced). All 3.1c animations route through it.
+  - [x] Create the new-file skeletons under `Components/` per D-8, `#nullable enable`, `using Godot; using ProjectChimera.UI.Theme;` (remember: **`Godot.Theme` must be fully qualified** — the namespace shadows the type), `partial` on Godot-derived classes.
+- [x] **Task 2 — overlay/z-order layer (AC1, AC8, D-2/D-3/D-4/D-6)**
+  - [x] Establish the shared transient-overlay `CanvasLayer` strategy: tooltip/dialog-scrim/toast-host sit on a **high** `CanvasLayer` (above the base UI's ≈14 — use e.g. **100/101/102**) so they float over panels; menu/`.select` use `PopupPanel`'s native popup layer (no manual CanvasLayer). Document this in a Dev Notes subsection and keep one small helper for "add a Control as a top-level overlay."
+- [x] **Task 3 — switch (UX-DR31/54) (AC1, AC2, AC4, AC5, AC6, D-5)**
+  - [x] `ChimeraSwitch : Button` (toggle_mode), static `Create(bool on = false)` + `Build()`. 42×24 faceted track stylebox `surface_4` (off) / `accent` (on, `SharedAccentBox` + register fill); 18×18 **faceted square** knob child `text_mid`→`accent_ink`.
+  - [x] Animate the knob `left 3→21` + track color over the `speed` token via `CreateTween().TweenProperty` (gate on `ChimeraMotion`); expose `bool On`, `SetOn(bool, animate)`, `[Signal] Toggled(bool)`.
+  - [x] Inline reveal: a `Reveal(Control fields)` / callback that shows/hides dependent fields on toggle (demonstrated in the gallery). Keyboard: verify Space toggles (inherited from `Button`).
+- [x] **Task 4 — tooltip (UX-DR26/53/45) (AC1, AC2, AC3, AC6, D-4)**
+  - [x] `ChimeraTooltip.Attach(Control ctrl, string term, string body)`: wire `MouseEntered`(+short hover `Timer`)/`MouseExited` **and** `FocusEntered`/`FocusExited` to one show/hide path.
+  - [x] The tooltip visual: a plain `Control` (NOT a `Popup` — must not steal focus) on the overlay `CanvasLayer`, `surface_3` + `cut 4` stylebox + `shadow_pop` + `line_strong` inset; a RichText/Label pair with **bold term = `accent_bright` + `font_display`** (`BindAccentColor` the term) + a `text_hi`/`text_mid` body; positioned **above** `ctrl` (clamp on-screen).
+  - [x] Track handlers for cleanup (freed-target-guarded, unsubscribed on `ChimeraComponents.Reset` / helper teardown) — reuse the established handler-tracking discipline.
+- [x] **Task 5 — menu + `.select` dropdown (UX-DR23) (AC1, AC2, AC6, AC7, D-2)**
+  - [x] `ChimeraMenu`: build a `PopupPanel` (chamfered `cut_sm`, `surface_2`, `shadow_pop` + `line_strong` inset) holding a VBox of themed **menu-item** Buttons (hover `surface_4`+`text_hi`; `is-active` = `accent_bright` text via `BindAccentColor`); items gap `s3`, pad 8×10, `t_sm`. API: add items with id + optional leading check glyph; `[Signal] IdPressed`; open anchored to a trigger (`PopupOnParent`/`Popup(rect)`).
+  - [x] **Close the 3.1b punt (AC7):** style the 3.1b `Select()` OptionButton's native dropdown `PopupMenu` (via `optionButton.GetPopup()` → its `panel`/`hover` styleboxes + `font_color`/`font_hover_color`) so `.select` matches the menu look. This styles the native `PopupMenu`, NOT the `PopupPanel` menu component — same look, different node. (Minimal edit inside `Components/`; no other panel touched.)
+- [x] **Task 6 — dialog (UX-DR27/45) (AC1, AC2, AC5, AC6, D-3)**
+  - [x] `ChimeraDialog`: a `CanvasLayer` (high) + full-rect `ColorRect` scrim (`rgba(6,8,11,~0.8)` solid-dim approx of blur, `MouseFilter=Stop`) + centered chamfered `PanelContainer` (`cut_lg`, gradient→**solid** `surface_2`, `shadow_pop`, `edge_light` hairline). Head (pad 20/24 + bottom `line` + an `Esc` `Kbd`) / Body (pad 24) / Foot (pad 16/24, buttons **right-aligned** gap `s3`).
+  - [x] Modal + focus trap: `GrabFocus` on open; wrap foot-button focus neighbors; `Esc` + scrim-click (for non-destructive) close; a **destructive** action uses a `danger` primary + requires explicit confirm. `[Signal]` confirmed/dismissed. Fade the scrim in over `speed` (gated on `ChimeraMotion`).
+- [x] **Task 7 — toast + banner-stall (UX-DR28/64) (AC1, AC2, AC5, AC6, D-6)**
+  - [x] `ChimeraToastHost : CanvasLayer` (high): top-left VBox stack (gap `s2`, width 300). `Show(string title, string msg, ToastVariant variant, float seconds)` → faceted toast (`surface_2`, `cut_sm`, `shadow_2` + `line_strong` inset, **3px left accent bar** `::after`-equivalent, 22px icon + `font_display` 600 `t_sm` title + `t_xs` `text_lo` msg).
+  - [x] Slide-in from left (~250ms `Tween` on Position+Modulate, gated), auto-dismiss after `seconds` (`TweenInterval`→fade→`QueueFree`). Variant bars = semantic `danger/warn/ok` (fixed) or default `accent` (register for retint).
+  - [x] `banner-stall`: a centered warn pill (`warn`-tinted bg + `warn` inset border + `font_display`) containing a `sm` spinner whose accent is overridden to `warn`; copy "Waiting for peer…". Visual only.
+- [x] **Task 8 — spinner (UX-DR29/52) (AC1, AC2, AC5, AC6, D-1)**
+  - [x] `ChimeraSpinner : Control` (procedural `_Draw`): 3 layers — outer ring (`accent_dim` faint ring + `accent` arc + 4 ticks), fire/water triangles (`accent` / `accent_dim`), `accent` core + `accent_bright` vertex nodes. Geometry per the Spec Table. Sizes sm 22 / default 48 / lg 96 (`PivotOffset` = center).
+  - [x] Animate: ring CW 2.6s, triangles CCW 5.2s, core pulse 1.3s — via `CreateTween().SetLoops()` on `Rotation`/`Scale`/`Modulate` (or `_Process`), **gated on `ChimeraMotion.ReducedMotion`** (static when reduced). `SubscribeAccentChanged` → `QueueRedraw`. `role`-equivalent accessible name.
+- [x] **Task 9 — mark (UX-DR30) (AC1, AC2, AC6, D-1)**
+  - [x] `ChimeraMark : Control` (procedural `_Draw`): the Chimera Seal — outer ring `r42` + inner ring `r33` + fire up-triangle + ghosted water down-triangle + `r7.2` nucleus + 3 `accent_bright` vertex nodes, all from accent tokens. Geometry per the Spec Table.
+  - [x] `.triad` heavy-stroke reduced variant for ≤24px (drops inner ring + water triangle + vertex nodes). Static (no motion). `SubscribeAccentChanged` → `QueueRedraw`. (This is the sole shipping alchemy motif — UX-DR30/38.)
+- [x] **Task 10 — component_gallery scene + /godot-verify (AC1, AC6, AC7, AC8, D-9)**
+  - [x] `godot/scenes/component_gallery.tscn` + `godot/src/UI/Components/ComponentGallery.cs`: reuse the `ComponentPreview` scaffold (load `main.tres` `CacheMode.Ignore`, `new AccentController`, `ChimeraComponents.Initialize`, scroll/VBox, accent-switch Button row). Add `Build*` sections instantiating **every** 3.1b component **and** all 7 new ones, with interaction-trigger **Buttons** (open-dialog / show-toast(each variant) / toggle-switch / hover-and-focus a tooltip'd field) whose `pressed` signal `/godot-verify` can emit.
+  - [x] `dotnet build godot/godot.csproj` → 0 err. Run `/godot-verify` on `component_gallery`: capture the full kit rendering, the whole-kit accent retint (teal→amber→violet, incl. spinner/mark redraw + switch/menu/tooltip/toast/dialog accent), switch animate+reveal, modal dialog over scrim, a toast slide+dismiss, spinner rotating, tooltip on focus. Drive via emitted `pressed` signals + `godot_exec` reads; record inject→observe in the Dev Record.
+- [x] **Task 11 — scope-fence check (AC7, AC8)**
+  - [x] `git diff --stat`: only `godot/src/UI/Components/**` (new component files + `ComponentMetrics.cs` + the `Select` dropdown-styling edit), `godot/scenes/component_gallery.tscn` + `ComponentGallery.cs`, and workflow tracking. **Zero** `src/Core|Combat|Economy|Navigation|Multiplayer|AI|Effects`, zero golden, no `project.godot` gui/theme, no existing panel `.cs` restyled, **no `main.tres`/`ThemeTokens.cs`/`ThemeBuilder.cs`/`AccentController.cs`/`ChimeraStyleBox.cs` change**.
+  - [x] If any gap surface's needs proved a missing primitive, log it (UX-DR33) in the Dev Record + `deferred-work.md`.
 
 ## Dev Notes
 
@@ -197,8 +197,57 @@ The 3.1b kit has **zero** Popup/Tween/scrim/z-order code (grep-confirmed). 3.1c 
 
 ### Agent Model Used
 
+claude-opus-4-8 (Opus 4.8) — gds-dev-story.
+
 ### Debug Log References
+
+- **Build:** `dotnet build godot/godot.csproj` → **0 errors, 0 new warnings** (3 pre-existing `CS8632` in `GatheringSystem`/`FlowFieldSystem`, unrelated, as the story notes). One typo caught + fixed on first build: `ChimeraSpinner` referenced `ComponentMetrics.SpinnerViewBox`; renamed the constant reference to `SealViewBox` (the shared seal+spinner 96 viewBox).
+- **Tier-1 regression sanity:** `dotnet test ProjectChimera.Sim.Tests` → **667 pass / 1 skip / 0 fail** — the exact carry-forward baseline, zero change (UI code is not in the sim test set; zero Tier-1 tests added, per the story's verification posture).
+- **`/godot-verify` (sole gate):** Godot 4.6.3, addon 4.1.0. Ran `scenes/component_gallery.tscn`; drove every interaction by emitting Button `pressed` signals + reading node state via `godot_exec` (no absolute-mouse click). **Zero runtime errors/warnings** in the editor log across the whole session; every `godot_exec` returned clean.
+- **One in-engine defect found + fixed (switch accent race):** while verifying AC6, toggling the hero switch on and switching the accent within the same frame left the on-track stale (amber instead of violet). Root cause: the 130ms toggle color-tween captured the *old* accent as its target and completed *after* the `AccentChanged` retint, overwriting it. Fix (`ChimeraSwitch`): track the in-flight `Tween`; kill it before a new toggle AND in the accent handler (then snap track/knob color + knob offset to the on-state). Re-verified in-engine: toggle-on → mid-tween `SwitchAccent("amber")` → track ends `(0.949,0.686,0.282)` = amber, `knobLeft=21`, no stale. (This is the stateful-two-color-surface analog of the tab/list-row accent seam the two prior 3.1 reviews converged on.)
 
 ### Completion Notes List
 
+**Story COMPLETE — all 8 ACs verified in-engine; `/godot-verify` PASS.** Pure presentation: **no** sim/`SimChecksum`/golden/fold/`AlgoVersion`/stamp touched; `main.tres`/`ThemeTokens.cs`/`ThemeBuilder.cs`/`AccentController.cs`/`ChimeraStyleBox.cs` **unchanged**; no existing panel restyled; no `project.godot` gui/theme change; no light theme.
+
+- **AC1 (7 components exist, Theme-styled):** `ChimeraMenu`, `ChimeraTooltip`, `ChimeraDialog`, `ChimeraToastHost` (+ `banner-stall`), `ChimeraSpinner`, `ChimeraMark`, `ChimeraSwitch` — each instantiable in one call, styled only via `ThemeTokens`/`"Chimera"`. ✅ all render on-brand in the gallery.
+- **AC2 (no hardcoded token-valued color/size):** every color via `Col`, spacing/cut via `Const`, font/size via `FontOf`/`SizeOf`; component-intrinsic dims added to `ComponentMetrics` (switch 42×24/knob 18, toast 300/bar 3/icon 22, tooltip 240/200/cut 4, menu 180/pad 8×10, spinner 22/48/96 + loop ms, dialog 560/head-pad 20, banner-stall cut 6, viewBoxes). ✅
+- **AC3 (tooltip hover AND keyboard focus):** `ChimeraTooltip.Attach` wires MouseEntered(+hover Timer)/MouseExited AND FocusEntered/FocusExited to one path; a plain Control (NOT a Popup) on CanvasLayer 102, above the target, surface_3+cut4+shadow_pop+line_strong, bold accent_bright term + plain body, no focus-steal. ✅ verified: emitting "Focus the field" grabbed input focus → tooltip appeared.
+- **AC4 (switch faceted on/off + reveal):** toggle `Button` (inherits focus+Space+`Toggled(bool)`), 42×24 track (surface_4→accent), 18×18 **faceted-square** knob (text_mid→accent_ink) sliding 3→21 over `speed`; `BindReveal` inline-reveals the Promote-to-Hero fields. ✅ verified `knobLeft=21` + `heroFieldsVisible=true` on toggle; knob is a square, never a dot.
+- **AC5 (mechanical motion + reduced-motion):** switch/tooltip/dialog read `speed` (130); toast slides 250ms; spinner ring CW 2.6s / tri CCW 5.2s / core pulse 1.3s. All routed through `ChimeraMotion.Seconds()`/`.ReducedMotion` (default off; a gallery button flips it). Tweens only, no busy loops. ✅
+- **AC6 (whole-kit accent switch, zero stale):** verified teal→amber→violet retints the procedural mark + spinner (`_Draw` re-reads on `AccentChanged`→`QueueRedraw`), switch on-state, menu is-active, tooltip term, toast default bar, dialog primary button — while semantic toast bars (danger/warn/ok) + banner-stall correctly did NOT move. ✅ (the mid-tween switch race that would have left one stale surface was found and fixed).
+- **AC7 (compose-from-kit, logged):** the gallery instantiates every 3.1b AND 3.1c component using only the public kit API — no ad-hoc primitive. The 3.1b `.select` dropdown popup punt (`Controls.cs:207-209`) is closed via a new `StyleThemedPopup` helper styling `OptionButton.GetPopup()`. **No missing primitive surfaced** — nothing new logged to `deferred-work.md`.
+- **AC8 (clean scope + in-engine proof):** `git diff` confined to `godot/src/UI/Components/**` (new component files + `ComponentMetrics.cs` + the `Select` popup-styling edit), `godot/scenes/component_gallery.tscn` + `ComponentGallery.cs`, and workflow tracking. Build 0-err/0-new-warn; `/godot-verify` PASS.
+
+**Decisions:** all 9 recommended-default decisions (D-1..D-9) taken as written. Documented spec-sanctioned approximations (as in 3.1b): dialog gradient→solid surface_2 + `edge_light` single hairline + blur→solid scrim `rgba(6,8,11,0.82)`; toast/mock accent gradients→solid. One deviation from D-5's literal "register the on-state fill": the switch track/knob are STATEFUL two-color surfaces that must both tween AND retint, so they use a per-instance tweened stylebox + a tracked `SubscribeAccentChanged` conditional retint (the `ChimeraTabs` active-label pattern), NOT a registered shared box (which would go stale in the off state). Rationale recorded in `ChimeraSwitch` XML docs.
+
+**Verification note:** two screenshots initially caught mid-fade/mid-slide frames (dialog + toast) and appeared empty; node-state reads (`godot_exec`) confirmed the components were present and correctly positioned, and re-captures after the tween window showed them — a screenshot-timing artifact, not a defect.
+
 ### File List
+
+**New (all `godot/src/UI/Components/`, namespace `ProjectChimera.UI.Components`, `#nullable enable`):**
+- `ChimeraMotion.cs` — static reduced-motion gate (`ReducedMotion`, `Seconds(ms)`, `SpeedSeconds()`).
+- `ChimeraComponents.Feedback.cs` — partial: transient-overlay z-order constants (100/101/102) + `GetOverlayLayer` helper.
+- `ChimeraMark.cs` — procedural Chimera Seal + `.triad` variant.
+- `ChimeraSpinner.cs` — procedural transmute spinner (3 layers, override-color for the stall).
+- `ChimeraSwitch.cs` — faceted toggle + inline reveal.
+- `ChimeraTooltip.cs` — hover+focus attach helper.
+- `ChimeraMenu.cs` — PopupPanel dropdown popover.
+- `ChimeraDialog.cs` — CanvasLayer modal + scrim + focus-trap.
+- `ChimeraToastHost.cs` — CanvasLayer toast stack (+ `StallBanner`).
+- `ComponentGallery.cs` — the UX-DR33 full-kit demo gallery.
+
+**New scene:**
+- `godot/scenes/component_gallery.tscn`.
+
+**Edited (minimal, inside `Components/`):**
+- `godot/src/UI/Components/ComponentMetrics.cs` — added the 3.1c intrinsic dims.
+- `godot/src/UI/Components/ChimeraComponents.Controls.cs` — `Select()` now styles its dropdown popup via the new `StyleThemedPopup` (closes the 3.1b punt).
+
+**Untouched (as required):** `main.tres`, `ThemeTokens.cs`, `ThemeBuilder.cs`, `AccentController.cs`, `ChimeraStyleBox.cs`, `component_preview.tscn`/`ComponentPreview.cs`, all existing panels, `project.godot`, all `src/Core|Combat|Economy|Navigation|Multiplayer|AI|Effects/*`.
+
+## Change Log
+
+| Date | Change |
+|---|---|
+| 2026-07-06 | Story 3.1c implemented — 7 composite/feedback components (menu/tooltip/dialog/toast/spinner/mark/switch) + tooltip(hover+focus)/switch foundations + `ChimeraMotion` reduced-motion seam + the `component_gallery` UX-DR33 demo; closed the 3.1b `.select` popup punt. Build 0-err/0-new-warn; Tier-1 667/1/0 (unchanged); `/godot-verify` PASS (all 8 ACs). One in-engine fix: `ChimeraSwitch` accent-mid-tween race. Status → review. |
