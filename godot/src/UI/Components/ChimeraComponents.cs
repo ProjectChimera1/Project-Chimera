@@ -70,8 +70,11 @@ namespace ProjectChimera.UI.Components
         // under high-churn per-show binders (tooltip term / default-toast bar) between switches (3.1b + 3.1c).
         private static readonly List<(AccentController.AccentChangedEventHandler Handler, GodotObject Target)> _accentColorHandlers = new();
 
-        /// <summary>True once <see cref="Initialize"/> has bound a theme + accent controller.</summary>
-        public static bool IsInitialized => _theme != null && _accent != null;
+        /// <summary>True once <see cref="Initialize"/> has bound a theme + a LIVE accent controller. Uses
+        /// <see cref="GodotObject.IsInstanceValid"/> (not a plain null check) so a controller freed by a scene
+        /// reload reads as un-initialized and the next in-scene consumer re-initializes the factory instead of
+        /// binding to the freed node. (Story 3.3 review — closes the 3.1c-deferred reload-safety root.)</summary>
+        public static bool IsInitialized => _theme != null && GodotObject.IsInstanceValid(_accent);
 
         /// <summary>
         /// Bind the factory to the loaded canonical theme and the app's single accent controller. Call
@@ -98,7 +101,11 @@ namespace ProjectChimera.UI.Components
         /// </summary>
         public static void Reset()
         {
-            if (_accent != null)
+            // IsInstanceValid (not a plain != null): after a scene reload the static _accent can reference a
+            // FREED controller whose C# wrapper is still non-null — unsubscribing / Clear() on it throws
+            // ObjectDisposedException. Skip the controller teardown when it's freed, but still drop the lists /
+            // caches below unconditionally so a re-Initialize rebinds cleanly. (Story 3.3 review.)
+            if (_accent != null && GodotObject.IsInstanceValid(_accent))
             {
                 _accent.AccentChanged -= OnAccentChangedPrune;
                 foreach (var (handler, _) in _accentColorHandlers)

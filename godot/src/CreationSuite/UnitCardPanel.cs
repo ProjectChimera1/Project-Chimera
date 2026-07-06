@@ -442,7 +442,13 @@ namespace ProjectChimera.CreationSuite
                 var list = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
                 list.AddThemeConstantOverride("separation", ChimeraComponents.Const(ThemeTokens.S1));
                 foreach (string label in labels)
-                    list.AddChild(ChimeraListRow.Create(label));   // inert: no group, no selection wiring (D-9)
+                {
+                    var row = ChimeraListRow.Create(label);
+                    // D-9 "inert": no group, no selection wiring — AND mouse-inert, so these read-only rows can't
+                    // hover-highlight or latch a click "selected" ring (ChimeraListRow is interactive by default).
+                    row.MouseFilter = Control.MouseFilterEnum.Ignore;
+                    list.AddChild(row);
+                }
                 _bodyHost.AddChild(list);
             }
         }
