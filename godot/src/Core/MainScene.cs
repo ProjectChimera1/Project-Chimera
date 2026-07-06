@@ -375,6 +375,7 @@ namespace ProjectChimera.Core
                 new TriggerEditorPhase(_ctx),
                 new MapGeneratorPhase(_ctx),
                 new AbilityEditorPhase(_ctx),
+                new UnitCardPhase(_ctx),
             };
             new ScenePhaseRunner(phases).Run();
 
@@ -528,6 +529,11 @@ namespace ProjectChimera.Core
             else if (key.Keycode == Key.K)
             {
                 _ctx.AbilityEditorPanel.Toggle();
+                GetViewport().SetInputAsHandled();
+            }
+            else if (key.Keycode == Key.J)
+            {
+                _ctx.UnitCardPanel.Toggle();
                 GetViewport().SetInputAsHandled();
             }
         }

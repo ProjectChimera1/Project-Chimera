@@ -88,7 +88,7 @@ development_status:
   3-1b-core-reusable-component-kit-simple-controls-styled-from-the-theme: done
   3-1c-composite-feedback-components-tooltip-switch-foundations-and-demo-gallery: done
   3-2-herostore-soa-stable-hero-identity-folded-into-simchecksum-startstatehash: done
-  3-3-read-only-unit-card-panel-stats-combat-type-archetype-model-preview: ready-for-dev
+  3-3-read-only-unit-card-panel-stats-combat-type-archetype-model-preview: review
   3-4-unit-card-editor-edit-create-duplicate-delete-with-inline-validation-persisted-to-faction-data: backlog
   3-5-in-editor-model-assignment-preview-box-placeholder-glb-browse: backlog
   3-6-archetype-orthogonal-ability-behavior-composition-no-subclassing: backlog
