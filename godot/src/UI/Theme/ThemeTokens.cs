@@ -180,6 +180,7 @@ namespace ProjectChimera.UI.Theme
         {
             foreach (var s in ShadowRecipes)
                 if (s.Name == name) return s;
+            GD.PrintErr($"[ThemeTokens] Unknown shadow '{name}'; falling back to '{ShadowRecipes[0].Name}'.");
             return ShadowRecipes[0];
         }
 
@@ -220,6 +221,21 @@ namespace ProjectChimera.UI.Theme
             }
             palette = AccentPalettes[0];
             return false;
+        }
+
+        /// <summary>
+        /// The sRGB hex for a specific accent token within a palette. <paramref name="token"/> must be one
+        /// of <see cref="AccentTokens"/>; an unrecognized token falls back to the base <c>accent</c> hex.
+        /// </summary>
+        public static string AccentHexFor(in AccentPalette palette, StringName token)
+        {
+            if (token == Accent)       return palette.Accent;
+            if (token == AccentBright) return palette.Bright;
+            if (token == AccentDim)    return palette.Dim;
+            if (token == AccentInk)    return palette.Ink;
+            if (token == AccentGlow)   return palette.Glow;
+            if (token == AccentWash)   return palette.Wash;
+            return palette.Accent;
         }
     }
 }

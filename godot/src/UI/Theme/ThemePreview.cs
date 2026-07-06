@@ -7,9 +7,9 @@ namespace ProjectChimera.UI.Theme
     /// <summary>
     /// Throwaway proof harness for Story 3.1a (NOT a shipped surface — the real gallery is 3.1c).
     ///
-    /// On ready it (1) builds the token vault via <see cref="ThemeBuilder"/>, (2) saves it to the
-    /// committed <c>main.theme</c>, (3) reloads that committed file from disk (proving it round-trips),
-    /// then renders proofs for every acceptance criterion:
+    /// On ready it loads the committed <c>main.tres</c> (the artifact 3.1b+ consume) and applies it —
+    /// it does NOT regenerate/overwrite that file; regeneration is <see cref="ThemeBuilder"/>'s explicit
+    /// job, never a side effect of previewing. It then renders proofs for every acceptance criterion:
     ///   • AC4 — a swatch of every color token (surfaces/lines/text/accent/semantic/team).
     ///   • AC5 — labels in all 3 fonts + a JetBrains-Mono tabular-figure readout that stays aligned.
     ///   • AC2 — a chamfered panel (faceted, not rounded) + a "corner_detail 1↔8" teeth toggle that
@@ -41,15 +41,14 @@ namespace ProjectChimera.UI.Theme
 
         public override void _Ready()
         {
-            // ── 1) Build → save committed artifact → reload from disk (proves the .theme round-trips) ──
-            var built = ThemeBuilder.Build();
-            Error saveErr = ThemeBuilder.Save(built);
-            if (saveErr != Error.Ok)
-                GD.PrintErr($"[ThemePreview] Failed to save {ThemeBuilder.ThemePath}: {saveErr}");
-
+            // ── Load the committed canonical theme (the artifact 3.1b+ consume). Do NOT regenerate/
+            //    overwrite it here — running this throwaway proof must never churn the git-tracked
+            //    main.tres (ResourceSaver re-mints resource IDs on every save); regeneration is the
+            //    explicit job of ThemeBuilder.Build/Save. Fall back to an in-memory build (no disk
+            //    write) only if the committed file is somehow missing. ──
             _theme = ResourceLoader.Load<Godot.Theme>(
                          ThemeBuilder.ThemePath, cacheMode: ResourceLoader.CacheMode.Ignore)
-                     ?? built;
+                     ?? ThemeBuilder.Build();
             Theme = _theme; // apply to the whole subtree
 
             _accent = new AccentController { Name = "AccentController" };

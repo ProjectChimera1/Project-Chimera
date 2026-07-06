@@ -4,7 +4,7 @@ baseline_commit: a56d11de5001f941e35ad0c5b4cdcbae5853b6ab
 
 # Story 3.1a: Resolve open design decisions + author the canonical Godot Theme resource
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -265,8 +265,46 @@ Two engine defects surfaced during in-engine verification and were fixed (both a
 - `_bmad-output/implementation-artifacts/3-1a-...-godot-theme-resource.md` (this file; + `baseline_commit`)
 - `_bmad-output/implementation-artifacts/sprint-status.yaml` (status → in-progress → review)
 
+### Review Findings
+
+_gds-code-review 2026-07-05 (3 parallel adversarial layers — Blind Hunter · Edge Case Hunter · Acceptance Auditor, all Opus 4.8, fresh context — + independent lead verification of every finding against live source + build)._
+
+**Outcome — all 6 ACs met and independently re-verified.** Build 0 errors / **0 new warnings** (the only 3 warnings are pre-existing `CS8632` in `GatheringSystem`/`FlowFieldSystem`, none in theme files); `main.tres` = **34 colors / 4 fonts / 10 font_sizes / 12 constants**, every value exact vs the Canonical Token Table (all 34 hex→`Color` floats reverse-checked incl. 8-digit glow/wash alpha); `tnum` tag `1953396077` = "tnum"; fonts wired display/ui/mono + `mono_tnum`; scope fence clean (no sim/Combat/Economy/Navigation/Multiplayer/golden-logic, no `project.godot` gui/theme, no panel restyled). **14 raw findings → 10 unique → 1 decision · 3 patch · 4 defer · 2 dismissed. No Critical, no correctness bug in 3.1a's own deliverables** — every survivor is forward-looking robustness of the two mechanisms (accent switch, chamfer) that 3.1b/3.1c build on, plus one live artifact-churn issue.
+
+**Resolution (2026-07-05):** decision D1 → **(A) harden now**; **all 4 patches APPLIED + re-verified** — `godot.csproj` build **0 err / 0 new warnings** (the 3 warnings are pre-existing `CS8632` in GatheringSystem/FlowFieldSystem), and an in-engine `/godot-verify` (theme_preview, Godot 4.6.3) **PASS**: switching teal→amber retints BOTH the `accent` Color token (`1ed1cd`→`f2af48`) AND the registered stylebox seam (`1ed1cd`→`f2af48`), `CurrentAccent`→`amber`, zero runtime/editor errors. AccentController generalized to per-variant accent tracking (`RegisterAccentBox(box, property, token)`); the proof scene now loads the committed `main.tres` instead of overwriting it. 4 defers carried to `deferred-work.md`. **Status → done.**
+
+**Decision needed**
+
+- [x] [Review][Decision→Patch] AccentController seam tracks only the BASE `accent`, not the other 5 variants — `SwitchAccent` retints every registered stylebox to `Color.FromHtml(palette.Accent)` (base), and `RegisterAccentFill`/`RegisterAccentBorder` are the only entry points [AccentController.cs:302-314,340-344]. The stated D-3 contract is "retint every accent surface in one op," but a 3.1b button whose hover/border uses `accent_bright`/`accent_dim`/`accent_glow` can't be registered to track its variant → left stale on switch (AC3-class failure) or forced to the base shade (wrong). 3.1a's own AC3 passes — its proof only exercises a base-`accent` fill. Sources: blind+edge (Blind=Med, Edge=High). **RESOLVED (Alec 2026-07-05): (A) harden now** → tracked as Patch (P4) below.
+
+**Patches**
+
+- [x] [Review][Patch] Proof scene overwrites & churns the committed `main.tres` [ThemePreview.cs:607-616 · ThemeBuilder.cs:478,548] — `_Ready` unconditionally `Build()`→`Save()`s over `res://assets/ui/main.tres`; ResourceSaver re-mints ext/sub-resource IDs each run → a spurious git diff on every `/godot-verify` (undercuts the "git-diffable" goal), silently reverts any hand-edit, and is the only regen path with no `main.tres == Build()` assertion (drift/first-switch color-pop if `ThemeTokens` is edited without re-running). Fix: load the committed `main.tres` for the proof; if the round-trip check is kept, target a throwaway `user://` path, not the committed artifact. Sources: blind+edge.
+- [x] [Review][Patch] Silent wrong-value fallbacks [ThemeTokens.cs:1032-1037 `GetShadow` · ThemeBuilder.cs:531 `TryGetPalette`] — `GetShadow(unknown)` returns `shadow_1` with no signal; `Build` discards `TryGetPalette`'s `false`, so a bad `DefaultAccent` would silently bake teal. Benign today (all names valid). Fix: `GD.PrintErr` on the `GetShadow` fallback (or return a bool), and check+log `TryGetPalette`'s return in `Build`. Sources: blind+edge.
+- [x] [Review][Patch] Doc comments reference the stale filename `main.theme` [AccentController.cs class doc · ThemeBuilder.cs class doc] — committed artifact is `main.tres` (the `.theme`-is-binary fix); `ThemePath` is correct, only two XML doc comments say "main.theme". Fix: s/`main.theme`/`main.tres`/ in the two class docs. Source: auditor.
+- [x] [Review][Patch] (P4 — from the resolved Decision) AccentController: generalize the accent-stylebox registry to per-variant tracking [AccentController.cs] — register each box against a named accent token (accent/bright/dim/ink/glow/wash) + which property (BgColor/BorderColor); `SwitchAccent` re-reads each box's token value from the new palette. Closes the D-3 "retint every accent surface in one op" contract for all 6 variants, not just base. Presentation-only, no sim/test/golden impact.
+
+**Deferred** (real, not actionable in 3.1a — see `deferred-work.md`)
+
+- [x] [Review][Defer] AccentController registry has no unregister/clear → leak in the long-lived controller [AccentController.cs:292-314] — deferred, fix coupled to 3.1b component lifecycle. Source: edge.
+- [x] [Review][Defer] UX-DR11 shadow tokens absent from `main.tres` — AC4-literal gap [main.tres] — stored as `ThemeTokens.ShadowRecipes` C# data + realized on the preview panel; a Theme `constant` is int-only (can't hold size+offset+float-alpha), Task 3 softened to "documented constants". **Recommend accept.** Source: auditor.
+- [x] [Review][Defer] `ChimeraStyleBox.Chamfer` has no `cut` bounds guard [ChimeraStyleBox.cs:390-413] — safe for internal 5/8/14 callers; matters when 3.1b passes author-supplied cuts. Source: edge.
+- [x] [Review][Defer] `cut-lg` (14) not rendered in the in-engine proof [ThemePreview.cs] — AC2 names cut/cut-sm/cut-lg; proof shows cut(8)+cut-sm(5); `Chamfer` is size-parametric so cut-lg is identical. Source: auditor.
+
+**Dismissed** (verified false-positive / by-design) — 2
+
+- glow/wash alpha "inconsistency" across accents — VERIFIED faithful to the source (`chimera.css` dark theme: teal glow `/0.28`, amber/violet `/0.30`; teal/amber wash `/0.12`, violet `/0.13`) → per-accent alpha is by design, correctly transcribed. (Blind F4)
+- `AiBelowThresholdRazeTests.cs.uid` added under `Golden/` — benign editor UID sidecar for a pre-existing 2.13 test (`.cs` byte-unchanged), disclosed in the Dev Record; not a golden-logic/determinism change. (Auditor A3)
+
 ## Change Log
 - 2026-07-05 — Story 3.1a implemented: resolved UX-DR4 (accent-switch) + UX-DR9 (chamfer) as working
   code; authored `main.tres` token vault (UX-DR1..12 + UX-DR34); bundled the 3 OFL fonts; built the
   `theme_preview` proof scene. Fixed 2 engine defects (hyphenated Theme names rejected → underscores;
   `.theme` binary → `.tres` text). All 6 ACs verified in-engine. Status → review.
+- 2026-07-05 — gds-code-review PASS (3-layer adversarial: Blind Hunter · Edge Case Hunter · Acceptance
+  Auditor, Opus 4.8, fresh context + independent lead verification against source + build). All 6 ACs met;
+  14 raw findings → 10 unique → 1 decision + 3 patch + 4 defer + 2 dismissed. Decision (accent seam →
+  harden now) + all 4 patches APPLIED + re-verified (build 0-err/0-new-warn; in-engine accent-switch PASS —
+  token AND stylebox seam retint teal→amber). AccentController generalized to per-variant accent tracking;
+  proof scene no longer overwrites the committed main.tres; silent GetShadow/TryGetPalette fallbacks now log;
+  stale `main.theme` doc comments fixed. 4 deferred → deferred-work.md, 2 dismissed. Status → done.

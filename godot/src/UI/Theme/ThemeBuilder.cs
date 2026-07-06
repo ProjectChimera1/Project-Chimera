@@ -4,9 +4,9 @@ using Godot;
 namespace ProjectChimera.UI.Theme
 {
     /// <summary>
-    /// Assembles the canonical <c>main.theme</c> from <see cref="ThemeTokens"/> + the bundled fonts
+    /// Assembles the canonical <c>main.tres</c> from <see cref="ThemeTokens"/> + the bundled fonts
     /// (Story 3.1a, decision D-4). This is the reproducible, reviewable source for the committed
-    /// artifact: run <see cref="Build"/> → <see cref="Save"/> to regenerate the text <c>.theme</c>.
+    /// artifact: run <see cref="Build"/> → <see cref="Save"/> to regenerate the text <c>.tres</c>.
     ///
     /// Every token is stored under the one custom theme type <see cref="ThemeTokens.Type"/> ("Chimera")
     /// so components read them by name (<c>GetThemeColor("surface-1", "Chimera")</c>). Stock control
@@ -76,7 +76,9 @@ namespace ProjectChimera.UI.Theme
                 theme.SetColor(name, ThemeTokens.Type, Color.FromHtml(hex));
 
             // ── Default accent palette = teal (UX-DR4). Switchable at runtime by AccentController. ──
-            ThemeTokens.TryGetPalette(ThemeTokens.DefaultAccent, out var accent);
+            if (!ThemeTokens.TryGetPalette(ThemeTokens.DefaultAccent, out var accent))
+                GD.PrintErr($"[ThemeBuilder] DefaultAccent '{ThemeTokens.DefaultAccent}' is not a known " +
+                            $"palette; baked the '{accent.Name}' fallback instead.");
             string[] accentHex = accent.HexInTokenOrder;
             for (int i = 0; i < ThemeTokens.AccentTokens.Length; i++)
                 theme.SetColor(ThemeTokens.AccentTokens[i], ThemeTokens.Type, Color.FromHtml(accentHex[i]));
