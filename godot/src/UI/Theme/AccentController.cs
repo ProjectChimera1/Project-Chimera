@@ -35,6 +35,16 @@ namespace ProjectChimera.UI.Theme
         /// <summary>One tracked stylebox: which property mirrors which accent token.</summary>
         private readonly record struct AccentBinding(StyleBoxFlat Box, AccentProperty Property, StringName Token);
 
+        /// <summary>
+        /// Fired at the end of every successful <see cref="SwitchAccent"/>, carrying the new accent name
+        /// (Story 3.1b D-3). Registered STYLEBOXES are already retinted inside the switch; this signal is
+        /// for the OTHER accent seam — accent-bound TEXT/ICON colors (a Label <c>font_color</c>, a
+        /// TextureRect <c>modulate</c>) are baked values that do NOT follow the theme's accent Color
+        /// tokens. Subscribers re-read their token here so the whole kit retints in one op (AC4).
+        /// </summary>
+        [Signal]
+        public delegate void AccentChangedEventHandler(string accentName);
+
         private Godot.Theme? _theme;
 
         // Accent-tinted styleboxes whose colors must be rewritten in lock-step with the accent tokens.
@@ -67,6 +77,16 @@ namespace ProjectChimera.UI.Theme
                     return; // already tracking this property on this box
             _accentBoxes.Add(new AccentBinding(box, property, accentToken));
         }
+
+        /// <summary>
+        /// Stop tracking a stylebox: drop ALL bindings for <paramref name="box"/> (both Fill and Border
+        /// if it was registered for both). Call from component/panel teardown so the registry does not
+        /// grow unbounded as UI churns (Story 3.1b D-4). Returns true if at least one binding was removed.
+        /// </summary>
+        public bool Unregister(StyleBoxFlat box) => _accentBoxes.RemoveAll(b => b.Box == box) > 0;
+
+        /// <summary>Drop every accent-stylebox binding (full UI teardown / scene swap). D-4.</summary>
+        public void Clear() => _accentBoxes.Clear();
 
         /// <summary>
         /// Switch the whole UI to the named accent (teal / amber / violet) in one operation: rewrite the
@@ -104,6 +124,11 @@ namespace ProjectChimera.UI.Theme
             }
 
             CurrentAccent = palette.Name;
+
+            // 3) Fire the seam signal for accent-bound text/icon colors that stylebox retinting can't
+            //    reach (D-3). Emitted AFTER CurrentAccent updates so a handler that reads it sees the new
+            //    value. Stateless subscribers just re-read GetThemeColor(accent…).
+            EmitSignal(SignalName.AccentChanged, palette.Name);
             return true;
         }
     }

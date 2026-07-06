@@ -4,7 +4,7 @@ baseline_commit: fb28cb935ea83a356f598f25d0f00ff05f087d05
 
 # Story 3.1b: Core reusable component kit (simple controls) styled from the Theme
 
-Status: ready-for-dev
+Status: review
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -64,41 +64,41 @@ Following the Epic 2 / 3.1a recommended-default pattern. Each is the recommendat
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1 — Scaffold + fold the two 3.1a deferred fixes (AC7, D-4, D-5, D-6)**
-  - [ ] Create `godot/src/UI/Components/` + `ChimeraComponents.cs` (static factory skeleton, `ProjectChimera.UI.Components`, `#nullable enable`) + `ComponentMetrics.cs` (CSS-derived intrinsic dims — see Per-Component Spec Table).
-  - [ ] **D-5:** in `ChimeraStyleBox.Chamfer` clamp `cut = Mathf.Max(0, cut)` (single line; the recipe is the one place chamfers are built).
-  - [ ] **D-4:** add `AccentController.Unregister(StyleBoxFlat box)` (remove all bindings for the box) + `Clear()`. **D-3:** add `[Signal] public delegate void AccentChangedEventHandler(string accentName)` and `EmitSignal(SignalName.AccentChanged, palette.Name)` at the end of `SwitchAccent`. Keep the existing `RegisterAccentBox`/`RegisterAccentFill`/`RegisterAccentBorder` API intact.
-  - [ ] Establish the factory's shared accent-stylebox cache keyed by (variant, cut) so repeated calls register ONE box (D-4 bound).
-- [ ] **Task 2 — panel (UX-DR13) (AC1, AC3, AC6)**
-  - [ ] `Panel(variant)` → `PanelContainer` with a `ChimeraStyleBox.Chamfer(cut=8, surface_1, edge_light)` + `shadow_1` (`.WithShadow(ThemeTokens.GetShadow(Shadow1))`). Variants: `--2` (surface-2), `--flat` (no shadow), `--accent` (accent-bright/dim border — register the border box).
-  - [ ] Approximate the two-layer cel-shade border: lighter top (`edge_light`), darker sides/bottom (`line`). See Per-Component Spec Table note.
-- [ ] **Task 3 — buttons: btn (UX-DR14) + icon-btn (UX-DR15) (AC1, AC3, AC5, AC6, D-8)**
-  - [ ] `Button(text, variant, size)` → `Button`, display font uppercase 13px/600 tracking 0.04em, `cut-sm`=5 stylebox, states normal/hover/pressed/focus/disabled. Variants primary/secondary/ghost/danger; sizes sm/lg/block (see table for exact colors/padding). Primary/danger fill = accent/danger (register fill+border). `:active` 1px depress: on `pressed`, offset content margins / translate by 1px.
-  - [ ] `IconButton(icon, isActive)` → 36×36 `Button` (no text, `.Icon`), 18px glyph, `cut-sm`, `is-active` = accent fill (registered) + accent-ink glyph, hover, **disabled (D-8)**.
-- [ ] **Task 4 — kbd (UX-DR16) (AC1, AC3, AC5) — the SOLE radiused element**
-  - [ ] `Kbd(text)` → a `PanelContainer`/`Label` with a **rounded** `StyleBoxFlat` (`corner_radius`=3, `corner_detail` DEFAULT — **not** `ChimeraStyleBox.Chamfer`), surface-3 bg, `line_strong` border with `border_width_bottom=2`, mono 11px/700 centered, min-width 18px, padding 1×5.
-- [ ] **Task 5 — readout trio: chip (DR17), readout (DR18), tag (DR19) (AC1, AC3, AC5, AC6)**
-  - [ ] `Chip(...)` → surface-2, `cut-sm`, inset `line` border, holds a mono `.num` label; padding 5×10 gap s2.
-  - [ ] `Readout(iconColor, value, label)` → HBox: 22×22 faceted (cut 3) icon plate + mono-tnum value (text-hi, 18px/700) + uppercase label (text-lo, 11px, tracking 0.12em).
-  - [ ] `Tag(text, variant)` → uppercase display 11px/600 pill, cut 3, variants neutral/--lock(warn)/--ok(ok)/--accent(accent-bright text on accent-wash — register)/--danger; tinted-bg + colored-text pairs (see table).
-- [ ] **Task 6 — progress (UX-DR20) (AC1, AC3, AC4, AC6)**
-  - [ ] `Progress(variant)` → `ProgressBar` (NEW — today's bars are 3D meshes, not Controls), 8px track surface-3 (cut 2), fill = accent gradient + glow (register fill box). Variants `--ok` (green, no glow), `--xp` (45° striped accent).
-- [ ] **Task 7 — inputs: input (DR22) + num-input (DR32) + slider (DR21) (AC1, AC3, AC5, AC6, D-2)**
-  - [ ] `Input(...)` → `LineEdit`, surface-3, `cut-sm`, inset `line` border, 9×12 padding, 13px; **focus = accent ring + accent-wash** (register the focus box, or re-apply on `AccentChanged`); `.select` chevron variant (OptionButton or LineEdit+chevron, `padding-right` 30); uppercase field-label helper.
-  - [ ] `NumInput(...)` → mono, right-aligned 64px wide `SpinBox`/styled `LineEdit`, cut 3, surface-3, mono-tnum 700; **focus = accent ring ONLY (no wash)** — the deliberate difference from `input`. Reach the SpinBox's internal LineEdit for full styling.
-  - [ ] `Slider(...)` (component class) → `HSlider` 6px track (surface-3, inset line, `accent_color`), 14×18 thumb (accent gradient, cut 4 — register), paired with a `NumInput` synced bidirectionally.
-- [ ] **Task 8 — structure: tabs (DR24) + list-row (DR25) (AC1, AC3, AC4, AC6, D-2)**
-  - [ ] `Tabs(...)` (component class) → underline variant (accent bar under `is-active`, register glow), `--boxed` variant, and the **segment** pill-group (the Simple/Advanced disclosure toggle 3.4+ needs — `is-active` child = accent-ink on accent fill). Track active index.
-  - [ ] `ListRow(...)` (component class) → surface-1 inset, cut 5; `SetSelected` = accent ring + accent-wash (register), `SetLocked` = 0.6 opacity + `MouseFilter=Ignore`; hover = surface-2; single-select within a group.
-- [ ] **Task 9 — accent wiring across the whole kit (AC4, D-3, D-4)**
-  - [ ] Every accent-tinted stylebox in the kit is registered with `AccentController` via `RegisterAccentBox(box, Fill|Border, token)` binding the right variant (hover→`accent_bright`, pressed→`accent_dim`, glow→`accent_glow`, wash→`accent_wash`).
-  - [ ] Accent-bound text/icon colors subscribe to `AccentChanged` and re-read the token.
-  - [ ] Verify one `SwitchAccent` retints the ENTIRE instantiated kit (no stale surface).
-- [ ] **Task 10 — component_preview proof scene + /godot-verify (AC7, D-7)**
-  - [ ] `godot/scenes/component_preview.tscn` + `ComponentPreview.cs`: load `main.tres`, `new AccentController`, instantiate ALL 13 components across their variants/states (incl. a `cut-lg`=14 surface, closing 3.1a deferred #4), + 3 accent buttons calling `SwitchAccent`.
-  - [ ] `dotnet build godot/godot.csproj` → 0 errors. Run `/godot-verify`: capture the kit rendering, faceted chamfers (kbd rounded, for contrast), the three accent states (whole-kit retint), and mono-tabular alignment. Record inject→observe in the Dev Record.
-- [ ] **Task 11 — scope-fence check (AC7)**
-  - [ ] `git diff --stat`: only `godot/src/UI/Components/**`, `godot/src/UI/Theme/ChimeraStyleBox.cs` + `AccentController.cs` (the two fixes), `godot/scenes/component_preview.tscn` + `ComponentPreview.cs`, and workflow tracking. **Zero** `src/Core|Combat|Economy|Navigation|Multiplayer`, zero golden, no `project.godot` gui/theme, no existing panel `.cs` restyled, no `main.tres`/`ThemeTokens.cs`/`ThemeBuilder.cs` change (unless D-1's alternative is chosen).
+- [x] **Task 1 — Scaffold + fold the two 3.1a deferred fixes (AC7, D-4, D-5, D-6)**
+  - [x] Create `godot/src/UI/Components/` + `ChimeraComponents.cs` (static factory skeleton, `ProjectChimera.UI.Components`, `#nullable enable`) + `ComponentMetrics.cs` (CSS-derived intrinsic dims — see Per-Component Spec Table).
+  - [x] **D-5:** in `ChimeraStyleBox.Chamfer` clamp `cut = Mathf.Max(0, cut)` (single line; the recipe is the one place chamfers are built).
+  - [x] **D-4:** add `AccentController.Unregister(StyleBoxFlat box)` (remove all bindings for the box) + `Clear()`. **D-3:** add `[Signal] public delegate void AccentChangedEventHandler(string accentName)` and `EmitSignal(SignalName.AccentChanged, palette.Name)` at the end of `SwitchAccent`. Keep the existing `RegisterAccentBox`/`RegisterAccentFill`/`RegisterAccentBorder` API intact.
+  - [x] Establish the factory's shared accent-stylebox cache keyed by (variant, cut) so repeated calls register ONE box (D-4 bound).
+- [x] **Task 2 — panel (UX-DR13) (AC1, AC3, AC6)**
+  - [x] `Panel(variant)` → `PanelContainer` with a `ChimeraStyleBox.Chamfer(cut=8, surface_1, edge_light)` + `shadow_1` (`.WithShadow(ThemeTokens.GetShadow(Shadow1))`). Variants: `--2` (surface-2), `--flat` (no shadow), `--accent` (accent-bright/dim border — register the border box).
+  - [x] Approximate the two-layer cel-shade border: lighter top (`edge_light`), darker sides/bottom (`line`). See Per-Component Spec Table note.
+- [x] **Task 3 — buttons: btn (UX-DR14) + icon-btn (UX-DR15) (AC1, AC3, AC5, AC6, D-8)**
+  - [x] `Button(text, variant, size)` → `Button`, display font uppercase 13px/600 tracking 0.04em, `cut-sm`=5 stylebox, states normal/hover/pressed/focus/disabled. Variants primary/secondary/ghost/danger; sizes sm/lg/block (see table for exact colors/padding). Primary/danger fill = accent/danger (register fill+border). `:active` 1px depress: on `pressed`, offset content margins / translate by 1px.
+  - [x] `IconButton(icon, isActive)` → 36×36 `Button` (no text, `.Icon`), 18px glyph, `cut-sm`, `is-active` = accent fill (registered) + accent-ink glyph, hover, **disabled (D-8)**.
+- [x] **Task 4 — kbd (UX-DR16) (AC1, AC3, AC5) — the SOLE radiused element**
+  - [x] `Kbd(text)` → a `PanelContainer`/`Label` with a **rounded** `StyleBoxFlat` (`corner_radius`=3, `corner_detail` DEFAULT — **not** `ChimeraStyleBox.Chamfer`), surface-3 bg, `line_strong` border with `border_width_bottom=2`, mono 11px/700 centered, min-width 18px, padding 1×5.
+- [x] **Task 5 — readout trio: chip (DR17), readout (DR18), tag (DR19) (AC1, AC3, AC5, AC6)**
+  - [x] `Chip(...)` → surface-2, `cut-sm`, inset `line` border, holds a mono `.num` label; padding 5×10 gap s2.
+  - [x] `Readout(iconColor, value, label)` → HBox: 22×22 faceted (cut 3) icon plate + mono-tnum value (text-hi, 18px/700) + uppercase label (text-lo, 11px, tracking 0.12em).
+  - [x] `Tag(text, variant)` → uppercase display 11px/600 pill, cut 3, variants neutral/--lock(warn)/--ok(ok)/--accent(accent-bright text on accent-wash — register)/--danger; tinted-bg + colored-text pairs (see table).
+- [x] **Task 6 — progress (UX-DR20) (AC1, AC3, AC4, AC6)**
+  - [x] `Progress(variant)` → `ProgressBar` (NEW — today's bars are 3D meshes, not Controls), 8px track surface-3 (cut 2), fill = accent gradient + glow (register fill box). Variants `--ok` (green, no glow), `--xp` (45° striped accent).
+- [x] **Task 7 — inputs: input (DR22) + num-input (DR32) + slider (DR21) (AC1, AC3, AC5, AC6, D-2)**
+  - [x] `Input(...)` → `LineEdit`, surface-3, `cut-sm`, inset `line` border, 9×12 padding, 13px; **focus = accent ring + accent-wash** (register the focus box, or re-apply on `AccentChanged`); `.select` chevron variant (OptionButton or LineEdit+chevron, `padding-right` 30); uppercase field-label helper.
+  - [x] `NumInput(...)` → mono, right-aligned 64px wide `SpinBox`/styled `LineEdit`, cut 3, surface-3, mono-tnum 700; **focus = accent ring ONLY (no wash)** — the deliberate difference from `input`. Reach the SpinBox's internal LineEdit for full styling.
+  - [x] `Slider(...)` (component class) → `HSlider` 6px track (surface-3, inset line, `accent_color`), 14×18 thumb (accent gradient, cut 4 — register), paired with a `NumInput` synced bidirectionally.
+- [x] **Task 8 — structure: tabs (DR24) + list-row (DR25) (AC1, AC3, AC4, AC6, D-2)**
+  - [x] `Tabs(...)` (component class) → underline variant (accent bar under `is-active`, register glow), `--boxed` variant, and the **segment** pill-group (the Simple/Advanced disclosure toggle 3.4+ needs — `is-active` child = accent-ink on accent fill). Track active index.
+  - [x] `ListRow(...)` (component class) → surface-1 inset, cut 5; `SetSelected` = accent ring + accent-wash (register), `SetLocked` = 0.6 opacity + `MouseFilter=Ignore`; hover = surface-2; single-select within a group.
+- [x] **Task 9 — accent wiring across the whole kit (AC4, D-3, D-4)**
+  - [x] Every accent-tinted stylebox in the kit is registered with `AccentController` via `RegisterAccentBox(box, Fill|Border, token)` binding the right variant (hover→`accent_bright`, pressed→`accent_dim`, glow→`accent_glow`, wash→`accent_wash`).
+  - [x] Accent-bound text/icon colors subscribe to `AccentChanged` and re-read the token.
+  - [x] Verify one `SwitchAccent` retints the ENTIRE instantiated kit (no stale surface).
+- [x] **Task 10 — component_preview proof scene + /godot-verify (AC7, D-7)**
+  - [x] `godot/scenes/component_preview.tscn` + `ComponentPreview.cs`: load `main.tres`, `new AccentController`, instantiate ALL 13 components across their variants/states (incl. a `cut-lg`=14 surface, closing 3.1a deferred #4), + 3 accent buttons calling `SwitchAccent`.
+  - [x] `dotnet build godot/godot.csproj` → 0 errors. Run `/godot-verify`: capture the kit rendering, faceted chamfers (kbd rounded, for contrast), the three accent states (whole-kit retint), and mono-tabular alignment. Record inject→observe in the Dev Record.
+- [x] **Task 11 — scope-fence check (AC7)**
+  - [x] `git diff --stat`: only `godot/src/UI/Components/**`, `godot/src/UI/Theme/ChimeraStyleBox.cs` + `AccentController.cs` (the two fixes), `godot/scenes/component_preview.tscn` + `ComponentPreview.cs`, and workflow tracking. **Zero** `src/Core|Combat|Economy|Navigation|Multiplayer`, zero golden, no `project.godot` gui/theme, no existing panel `.cs` restyled, no `main.tres`/`ThemeTokens.cs`/`ThemeBuilder.cs` change (unless D-1's alternative is chosen).
 
 ## Dev Notes
 
@@ -187,10 +187,53 @@ The kit is built fresh; migrating these is **3.11 + 3.3–3.7**, NOT this story.
 
 ### Agent Model Used
 
-{{agent_model_name_version}}
+claude-opus-4-8 (Opus 4.8)
 
 ### Debug Log References
 
+- `dotnet build godot/godot.csproj` → **0 errors** (3 pre-existing CS8632 warnings in `GatheringSystem.cs`/`FlowFieldSystem.cs`, unrelated to this story).
+- Release analyzer gate `dotnet build godot/godot.csproj -p:ChimeraRelease=true --no-incremental` → **0 errors / 0 RS0030 / 0 CHM****** (pure-presentation `src/UI` code raises no determinism banned-API violations).
+- `/godot-verify` on `component_preview.tscn` (Godot 4.6.3, addon 4.1.0): scene ran with **zero runtime error messages** across startup, render, two live accent switches, and the `_Process` counter. All 13 components captured rendering; accent driven teal→amber→violet by emitting the accent Buttons' `pressed` signal, re-captured top/mid/bottom in each state.
+- Two build errors found + fixed mid-dev: (1) `BoxContainer.AlignmentModeEnum` → the property is `Alignment`, the enum `BoxContainer.AlignmentMode`; (2) the nested enum `TabsVariant` referenced bare from the separate `ChimeraTabs` class → qualified as `ChimeraComponents.TabsVariant`. One correctness fix pre-build: `SetValue` used float-only `Mathf.Clamp/Round` on `double` values → switched to `System.Math`.
+
 ### Completion Notes List
 
+**All 8 decisions taken at their recommended defaults** (D-1 confirmed by Alec = C# factory / per-instance styling, `main.tres` unchanged; D-2..D-8 accepted as written).
+
+- **Two 3.1a deferred fixes folded** (the only edits to 3.1a code): **D-5** — `ChimeraStyleBox.Chamfer` now clamps `cut = Mathf.Max(0, cut)`; **D-3/D-4** — `AccentController` gained a `[Signal] AccentChanged(string)` emitted at the end of `SwitchAccent`, plus `Unregister(StyleBoxFlat)` (drops all bindings for a box) and `Clear()`. Existing `RegisterAccentBox`/`Fill`/`Border` API left intact.
+- **13 components** delivered via a static `ChimeraComponents` factory (partial, split core/Surfaces/Controls) + 3 thin stateful classes (`ChimeraTabs`, `ChimeraListRow`, `ChimeraSlider`) per D-2. `ComponentMetrics` holds the CSS-derived non-token intrinsic dims (icon-btn 36, readout-ic 22, progress track 8, slider thumb 14×18, kbd radius 3, num-input 64, micro-cuts 2/3/4) so AC2 has no magic numbers.
+- **Accent seam handled two ways** (AC4): accent-tinted **styleboxes** are shared per (variant, cut) via a keyed cache and registered once with `AccentController` (bounded registry, D-4) → auto-retint; accent-bound **text/icon** colors (btn-primary ink, tab active label/ink, tag `--accent` text) subscribe to `AccentChanged` through tracked, use-after-free-guarded handlers that `Reset()` unsubscribes. In-engine: one `SwitchAccent` flips **every** accent surface (primary/block buttons, panel `--accent` border, icon-btn active, progress accent/`--xp` fill, tag `--accent`, slider thumb, tabs underline/segment, list-row selected ring) across teal→amber→violet with **zero stale surfaces**; non-accent surfaces (danger, secondary/ghost, `--ok` progress, semantic tags, readout plates) correctly stay put.
+- **kbd is the sole rounded element** (AC3) — built with a raw `StyleBoxFlat` (`corner_radius=3`, default `corner_detail`), never `Chamfer`; the in-engine capture shows the clear rounded-vs-faceted contrast. A `cut-lg=14` surface is exercised in the proof (closes 3.1a deferred #4).
+- **Typography** (AC5): display font uses `FontVariation` glyph-spacing for tracking (Godot 4 has no per-Control letter-spacing) + `ToUpperInvariant()` for the CSS `text-transform`. Live numbers use the `mono_tnum` role (and a 700-weight variable-font variation for readout/num-input values); the proof's twin `1111111111`/`1234567890` rows render at identical width (columns align, no jitter).
+
+**Documented approximations (all spec-sanctioned, none AC-blocking):** accent *gradients* (btn-primary/progress/slider) ported as **solid** accent fills — `StyleBoxFlat` has no gradient (a real gradient needs a texture/shader, out of 3.1b scope). Accent **glow** omitted on accent surfaces — a stylebox shadow color is not a registerable accent property (`AccentProperty` is Fill/Border only, and extending it is out of the two assigned fixes), so a baked accent-glow would go stale on a switch; the fill/border retint correctly. `--xp` 45° stripe → solid accent (same pattern limitation). Panel two-layer cel-shade border → single `edge_light` hairline (one `StyleBoxFlat` carries one border color; a nested backplate is a later refinement, explicitly "not required for AC"). Display 600-weight not applied (Chakra Petch is bundled Regular/static — no weight axis); mono 700 IS applied (JetBrains Mono is variable).
+
+**Verification posture:** exactly as 3.1a — no `SimChecksum`/golden/fold/`AlgoVersion`/stamp exists or was touched; Tier-1 xUnit is Godot-free and cannot instantiate a `Control`/`Theme`, and `godot/tests/` has no GdUnit4 harness, so `/godot-verify` on the throwaway `component_preview` scene is the sole practical gate (PASS). Determinism stamps unchanged.
+
 ### File List
+
+**New — component kit (`godot/src/UI/Components/`):**
+- `ChimeraComponents.cs` — static factory core: context/`Initialize`/`Reset`, variant enums, theme accessors, tracked-display + bold-tnum font helpers, the shared accent-stylebox cache (`SharedAccentBox`), and the `AccentChanged` text/icon binders.
+- `ChimeraComponents.Surfaces.cs` — panel (DR13), kbd (DR16), chip (DR17), readout (DR18), tag (DR19), progress (DR20).
+- `ChimeraComponents.Controls.cs` — btn (DR14), icon-btn (DR15), input (DR22) + `.select`, num-input (DR32), field-label; `BindAccentColorMulti` + `SubscribeAccentChanged` helpers.
+- `ComponentMetrics.cs` — CSS-derived non-token intrinsic dimensions.
+- `ChimeraTabs.cs` — tabs (DR24): underline / boxed / segment, active tracking (D-2).
+- `ChimeraListRow.cs` — list-row (DR25) + `ListRowGroup` single-select (D-2).
+- `ChimeraSlider.cs` — slider (DR21): custom composite track + accent thumb + paired num-input (D-2); `SliderTrack` helper node.
+- `ComponentPreview.cs` — throwaway `/godot-verify` proof harness (D-7).
+
+**New — proof scene:**
+- `godot/scenes/component_preview.tscn`
+
+**Modified — the two assigned 3.1a fixes only:**
+- `godot/src/UI/Theme/ChimeraStyleBox.cs` — D-5 `cut` clamp.
+- `godot/src/UI/Theme/AccentController.cs` — D-3 `AccentChanged` signal + D-4 `Unregister`/`Clear`.
+
+**Workflow tracking:**
+- `_bmad-output/implementation-artifacts/sprint-status.yaml` — status → in-progress → review.
+
+### Change Log
+
+| Date | Change |
+|---|---|
+| 2026-07-05 | Story 3.1b implemented: 13 Theme-styled reusable components via the `ChimeraComponents` factory + 3 stateful classes; folded 3.1a deferred fixes D-4 (AccentController lifecycle+`AccentChanged`) and D-5 (Chamfer clamp). Build 0-err, release analyzer gate 0-err, `/godot-verify` PASS on `component_preview` (all 13 render, faceted chamfers w/ kbd rounded, whole-kit accent retint teal→amber→violet, mono tabular). No sim/checksum/golden touched. Status → review. |

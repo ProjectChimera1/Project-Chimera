@@ -26,6 +26,13 @@ namespace ProjectChimera.UI.Theme
         /// <param name="borderWidth">Cel-shade hairline width in px (default 1; 0 = no border).</param>
         public static StyleBoxFlat Chamfer(int cut, Color bg, Color border, int borderWidth = 1)
         {
+            // D-5 (Story 3.1b, folds 3.1a deferred #3): a negative author-supplied cut (e.g. an
+            // arithmetic underflow, or a cut-lg=14 subtracted below zero) would assign a negative corner
+            // radius and degenerate the facet silently. Clamp the low end here — the ONE place chamfers
+            // are built. Godot already caps an oversized radius to half the box at draw time, so only the
+            // floor needs a guard.
+            cut = Mathf.Max(0, cut);
+
             var sb = new StyleBoxFlat
             {
                 BgColor = bg,

@@ -85,7 +85,7 @@ development_status:
   epic-2-retrospective: done
   epic-3: in-progress
   3-1a-resolve-open-design-decisions-author-the-canonical-godot-theme-resource: done
-  3-1b-core-reusable-component-kit-simple-controls-styled-from-the-theme: ready-for-dev
+  3-1b-core-reusable-component-kit-simple-controls-styled-from-the-theme: review
   3-1c-composite-feedback-components-tooltip-switch-foundations-and-demo-gallery: backlog
   3-2-herostore-soa-stable-hero-identity-folded-into-simchecksum-startstatehash: backlog
   3-3-read-only-unit-card-panel-stats-combat-type-archetype-model-preview: backlog
