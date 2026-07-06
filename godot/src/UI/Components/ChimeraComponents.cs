@@ -65,8 +65,9 @@ namespace ProjectChimera.UI.Components
         private static readonly Dictionary<int, FontVariation> _trackedDisplay = new();
 
         // Accent-bound text/icon subscriptions (D-3), each paired with its target node. Freed targets are
-        // pruned on every accent switch (3.1b review) — the text/icon analog of the D-4 stylebox registry
-        // bound, so the list stays bounded to live controls even without a full Reset() between UI churns.
+        // pruned on every accent switch AND opportunistically on every new bind (TrackHandler) — the
+        // text/icon analog of the D-4 stylebox registry, so the list stays bounded to live controls even
+        // under high-churn per-show binders (tooltip term / default-toast bar) between switches (3.1b + 3.1c).
         private static readonly List<(AccentController.AccentChangedEventHandler Handler, GodotObject Target)> _accentColorHandlers = new();
 
         /// <summary>True once <see cref="Initialize"/> has bound a theme + accent controller.</summary>
@@ -112,6 +113,12 @@ namespace ProjectChimera.UI.Components
         // Subscribe an accent handler AND track its target so a later switch can prune it once freed.
         private static void TrackHandler(GodotObject target, AccentController.AccentChangedEventHandler handler)
         {
+            // Opportunistically drop already-freed entries before adding, so high-churn per-show binders
+            // (tooltip term / default-toast bar+icon, rebound on every reveal) can't grow the registry
+            // unbounded between accent switches — the "bounded to live controls" invariant then holds at all
+            // times, not only right after a SwitchAccent. Binds are off the hot path (on show, not per-frame),
+            // so the O(live) scan is cheap. (3.1c review — the per-show-binder turn of the accent seam.)
+            PruneAccentHandlers();
             Accent.AccentChanged += handler;
             _accentColorHandlers.Add((handler, target));
         }

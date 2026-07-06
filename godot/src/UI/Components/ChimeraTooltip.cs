@@ -33,6 +33,7 @@ namespace ProjectChimera.UI.Components
 
         private Timer _hoverTimer = null!;
         private PanelContainer? _current;
+        private Tween? _tween; // the in-flight fade-in for _current, killed before a fade-out (3.1c review)
 
         /// <summary>
         /// Attach a hover-and-focus tooltip to <paramref name="ctrl"/>. <paramref name="term"/> renders bold
@@ -70,6 +71,7 @@ namespace ProjectChimera.UI.Components
         {
             // The shown tooltip lives on the shared overlay (not under the target), so free it explicitly
             // when this manager leaves the tree (e.g. the target was freed).
+            KillShowTween();
             if (_current != null && GodotObject.IsInstanceValid(_current)) _current.QueueFree();
             _current = null;
         }
@@ -80,6 +82,8 @@ namespace ProjectChimera.UI.Components
             if (!GodotObject.IsInstanceValid(_target)) return;
             if (_current != null && GodotObject.IsInstanceValid(_current)) return;
             if (!ChimeraComponents.IsInitialized) return;
+
+            KillShowTween(); // drop any stale fade-in before revealing a fresh tip
 
             var layer = ChimeraComponents.GetOverlayLayer(_target, OverlayName, ChimeraComponents.OverlayLayerTooltip);
             var tip = BuildTooltip();
@@ -112,9 +116,11 @@ namespace ProjectChimera.UI.Components
             {
                 tip.Position = new Vector2(x, yTarget + ComponentMetrics.TooltipRiseY);
                 tip.Modulate = new Color(1, 1, 1, 0);
-                var tw = tip.CreateTween().SetParallel(true);
+                var tw = tip.CreateTween().SetParallel(true)
+                    .SetTrans(Tween.TransitionType.Cubic).SetEase(Tween.EaseType.Out);
                 tw.TweenProperty(tip, "modulate", Colors.White, dur);
                 tw.TweenProperty(tip, "position", new Vector2(x, yTarget), dur);
+                _tween = tw;
             }
         }
 
@@ -124,12 +130,20 @@ namespace ProjectChimera.UI.Components
             if (_current == null || !GodotObject.IsInstanceValid(_current)) { _current = null; return; }
             var tip = _current;
             _current = null; // clear first so a re-show can't reuse the fading node
+            KillShowTween();  // stop the in-flight fade-in so it can't fight the fade-out (3.1c review)
 
             double dur = ChimeraMotion.SpeedSeconds();
             if (dur <= 0.0) { tip.QueueFree(); return; }
-            var tw = tip.CreateTween();
+            var tw = tip.CreateTween().SetTrans(Tween.TransitionType.Cubic).SetEase(Tween.EaseType.Out);
             tw.TweenProperty(tip, "modulate", new Color(1, 1, 1, 0), dur);
             tw.TweenCallback(Callable.From(tip.QueueFree));
+        }
+
+        // Kill + drop the in-flight fade-in tween (never the fade-out, which owns the tip's QueueFree).
+        private void KillShowTween()
+        {
+            if (_tween != null && _tween.IsValid()) _tween.Kill();
+            _tween = null;
         }
 
         // The themed tooltip surface: surface_3 + cut 4 + shadow_pop + line_strong inset hairline, a bold

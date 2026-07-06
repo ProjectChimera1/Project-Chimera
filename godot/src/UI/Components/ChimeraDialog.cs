@@ -34,6 +34,7 @@ namespace ProjectChimera.UI.Components
         private HBoxContainer _foot = null!;
         private bool _destructive;
         private bool _closing;
+        private Tween? _tween; // the in-flight open fade, killed before the close fade (3.1c review)
 
         /// <summary>Build a dialog with a title + body sentence. Add actions with <see cref="AddConfirm"/> /
         /// <see cref="AddCancel"/>, then <see cref="Open"/> it under a parent node.</summary>
@@ -164,9 +165,10 @@ namespace ProjectChimera.UI.Components
             if (dur <= 0.0) return;
             _scrim.Color = new Color(ScrimColor.R, ScrimColor.G, ScrimColor.B, 0);
             _panel.Modulate = new Color(1, 1, 1, 0);
-            var tw = CreateTween().SetParallel(true);
+            var tw = CreateTween().SetParallel(true).SetTrans(Tween.TransitionType.Cubic).SetEase(Tween.EaseType.Out);
             tw.TweenProperty(_scrim, "color", ScrimColor, dur);
             tw.TweenProperty(_panel, "modulate", Colors.White, dur);
+            _tween = tw;
         }
 
         private void WireFocusTrap()
@@ -212,9 +214,14 @@ namespace ProjectChimera.UI.Components
             _closing = true;
             EmitSignal(confirmed ? SignalName.Confirmed : SignalName.Dismissed);
 
+            // Stop the in-flight open fade so it can't fight the close fade (e.g. a reflexive Esc right after
+            // Open) — the ChimeraSwitch kill-before-retween discipline, applied to the overlay (3.1c review).
+            if (_tween != null && _tween.IsValid()) _tween.Kill();
+            _tween = null;
+
             double dur = ChimeraMotion.SpeedSeconds();
             if (dur <= 0.0) { QueueFree(); return; }
-            var tw = CreateTween().SetParallel(true);
+            var tw = CreateTween().SetParallel(true).SetTrans(Tween.TransitionType.Cubic).SetEase(Tween.EaseType.Out);
             tw.TweenProperty(_scrim, "color", new Color(ScrimColor.R, ScrimColor.G, ScrimColor.B, 0), dur);
             tw.TweenProperty(_panel, "modulate", new Color(1, 1, 1, 0), dur);
             tw.Chain().TweenCallback(Callable.From(QueueFree));

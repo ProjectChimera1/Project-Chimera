@@ -140,7 +140,7 @@ namespace ProjectChimera.UI.Components
             }
             else
             {
-                _tween = CreateTween().SetParallel(true);
+                _tween = CreateTween().SetParallel(true).SetTrans(Tween.TransitionType.Cubic).SetEase(Tween.EaseType.Out);
                 _tween.TweenProperty(_trackBox, "bg_color", trackTo, dur);
                 _tween.TweenProperty(_knobBox, "bg_color", knobTo, dur);
                 _tween.TweenProperty(_knob, "offset_left", knobLeft, dur);

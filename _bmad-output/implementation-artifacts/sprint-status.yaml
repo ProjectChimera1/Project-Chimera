@@ -86,7 +86,7 @@ development_status:
   epic-3: in-progress
   3-1a-resolve-open-design-decisions-author-the-canonical-godot-theme-resource: done
   3-1b-core-reusable-component-kit-simple-controls-styled-from-the-theme: done
-  3-1c-composite-feedback-components-tooltip-switch-foundations-and-demo-gallery: review
+  3-1c-composite-feedback-components-tooltip-switch-foundations-and-demo-gallery: done
   3-2-herostore-soa-stable-hero-identity-folded-into-simchecksum-startstatehash: backlog
   3-3-read-only-unit-card-panel-stats-combat-type-archetype-model-preview: backlog
   3-4-unit-card-editor-edit-create-duplicate-delete-with-inline-validation-persisted-to-faction-data: backlog

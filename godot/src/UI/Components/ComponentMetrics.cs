@@ -134,6 +134,9 @@ namespace ProjectChimera.UI.Components
         public const int ToastPadV = 12;
         /// <summary>toast slide-in duration (~250ms — NOT the 130ms speed token; HUD.html slideIn keyframe).</summary>
         public const int ToastSlideMs = 250;
+        /// <summary>Toast stack offset from the top-left screen corner (a host-position intrinsic; equals s5=24
+        /// but is a layout anchor, not the spacing token — see .alerts top/left in HUD.html).</summary>
+        public const int ToastHostMargin = 24;
         /// <summary>banner-stall horizontal padding (22px). Vertical 12px.</summary>
         public const int BannerStallPadH = 22;
         /// <summary>banner-stall vertical padding (12px).</summary>

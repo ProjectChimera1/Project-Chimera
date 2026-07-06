@@ -24,10 +24,13 @@ namespace ProjectChimera.UI.Components
         /// <summary>Toast variants: default (accent bar) + the three semantic bars.</summary>
         public enum ToastVariant { Default, Danger, Warn, Ok }
 
-        private const int LeftMargin = 24;
-        private const int TopMargin = 24;
+        private const int LeftMargin = ComponentMetrics.ToastHostMargin;
+        private const int TopMargin = ComponentMetrics.ToastHostMargin;
 
         private readonly List<Control> _toasts = new();
+        // Active per-toast reflow (position:y) tweens, killed + rebuilt each Reflow so a rapid burst of
+        // dismissals can't stack competing y-tweens on one toast (3.1c review). Slide-in/out use position:x.
+        private readonly Dictionary<Control, Tween> _reflowTweens = new();
 
         /// <summary>Create a toast host. Add it to the tree once; it lives for the UI session.</summary>
         public static ChimeraToastHost Create()
@@ -60,7 +63,8 @@ namespace ProjectChimera.UI.Components
                 // Start off-screen to the left, fully transparent, then slide + fade to rest.
                 toast.Position = new Vector2(restX - toast.Size.X - 8f, y);
                 toast.Modulate = new Color(1, 1, 1, 0);
-                var tw = toast.CreateTween().SetParallel(true);
+                var tw = toast.CreateTween().SetParallel(true)
+                    .SetTrans(Tween.TransitionType.Cubic).SetEase(Tween.EaseType.Out);
                 tw.TweenProperty(toast, "position:x", restX, dur);
                 tw.TweenProperty(toast, "modulate", Colors.White, dur);
             }
@@ -87,7 +91,8 @@ namespace ProjectChimera.UI.Components
 
             double dur = ChimeraMotion.Seconds(ComponentMetrics.ToastSlideMs);
             if (dur <= 0.0) { toast.QueueFree(); Reflow(); return; }
-            var tw = toast.CreateTween().SetParallel(true);
+            var tw = toast.CreateTween().SetParallel(true)
+                .SetTrans(Tween.TransitionType.Cubic).SetEase(Tween.EaseType.Out);
             tw.TweenProperty(toast, "position:x", LeftMargin - toast.Size.X - 8f, dur);
             tw.TweenProperty(toast, "modulate", new Color(1, 1, 1, 0), dur);
             tw.Chain().TweenCallback(Callable.From(() => { toast.QueueFree(); Reflow(); }));
@@ -96,14 +101,29 @@ namespace ProjectChimera.UI.Components
         // Re-stack remaining toasts upward after one leaves (slide Y up, or snap under reduced-motion).
         private void Reflow()
         {
+            // Kill any in-flight reflow tweens first so a rapid burst of dismissals can't stack competing
+            // position:y tweens on the same toast (3.1c review). Slide-in/out animate position:x, so they
+            // never conflict with these. The dict is rebuilt below from the current live stack.
+            foreach (var kv in _reflowTweens)
+                if (kv.Value != null && kv.Value.IsValid()) kv.Value.Kill();
+            _reflowTweens.Clear();
+
             float y = TopMargin;
             int gap = ChimeraComponents.Const(ThemeTokens.S2);
             double dur = ChimeraMotion.Seconds(ComponentMetrics.ToastSlideMs);
             foreach (var t in _toasts)
             {
                 if (!GodotObject.IsInstanceValid(t)) continue;
-                if (dur <= 0.0) t.Position = new Vector2(t.Position.X, y);
-                else t.CreateTween().TweenProperty(t, "position:y", y, dur);
+                if (dur <= 0.0)
+                {
+                    t.Position = new Vector2(t.Position.X, y);
+                }
+                else
+                {
+                    var tw = t.CreateTween().SetTrans(Tween.TransitionType.Cubic).SetEase(Tween.EaseType.Out);
+                    tw.TweenProperty(t, "position:y", y, dur);
+                    _reflowTweens[t] = tw;
+                }
                 y += t.Size.Y + gap;
             }
         }

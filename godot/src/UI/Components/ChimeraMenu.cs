@@ -106,9 +106,19 @@ namespace ProjectChimera.UI.Components
         public void OpenBelow(Control trigger)
         {
             Rect2 gr = trigger.GetGlobalRect();
-            var pos = new Vector2I((int)gr.Position.X, (int)(gr.Position.Y + gr.Size.Y + 4));
             int width = (int)Mathf.Max(ComponentMetrics.MenuMinWidth, gr.Size.X);
-            Popup(new Rect2I(pos, new Vector2I(width, 0)));
+
+            // Measure the content height so a bottom-edge trigger flips the menu ABOVE (or clamps on-screen)
+            // instead of spilling off the bottom — the sibling tooltip clamps X+Y; the menu must too (3.1c
+            // review). Height 0 in Popup() keeps the popover auto-sized to its contents.
+            float h = GetContentsMinimumSize().Y;
+            Vector2 vp = trigger.GetViewportRect().Size;
+            float below = gr.Position.Y + gr.Size.Y + 4f;
+            float above = gr.Position.Y - h - 4f;
+            float x = Mathf.Clamp(gr.Position.X, 0f, Mathf.Max(0f, vp.X - width));
+            float y = below + h <= vp.Y ? below : (above >= 0f ? above : Mathf.Max(0f, vp.Y - h));
+
+            Popup(new Rect2I(new Vector2I((int)x, (int)y), new Vector2I(width, 0)));
         }
     }
 }

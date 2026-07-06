@@ -4,7 +4,7 @@ baseline_commit: 03ea1448b198b6b2f14bebcf051514b714698802
 
 # Story 3.1c: Composite + feedback components, tooltip/switch foundations, and demo gallery
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -251,3 +251,37 @@ claude-opus-4-8 (Opus 4.8) — gds-dev-story.
 | Date | Change |
 |---|---|
 | 2026-07-06 | Story 3.1c implemented — 7 composite/feedback components (menu/tooltip/dialog/toast/spinner/mark/switch) + tooltip(hover+focus)/switch foundations + `ChimeraMotion` reduced-motion seam + the `component_gallery` UX-DR33 demo; closed the 3.1b `.select` popup punt. Build 0-err/0-new-warn; Tier-1 667/1/0 (unchanged); `/godot-verify` PASS (all 8 ACs). One in-engine fix: `ChimeraSwitch` accent-mid-tween race. Status → review. |
+| 2026-07-06 | gds-code-review **PASS** (3 parallel adversarial layers — Blind/Edge/Acceptance, Opus 4.8, fresh context — + lead-verify against source + in-engine re-verify). No Critical/High, all 8 ACs held, scope-fence git-verified clean. 1 decision (AC5 easing → add cubic ease-out) + 4 patch (accent-registry prune [Med] · overlay tween-kill · menu off-screen clamp/flip · toast-margin token) — **all 5 APPLIED**; 3 defer (logged), 2 dismissed (toast-overlap = false positive, settled in-engine). Build 0-err/0-new-warn; `/godot-verify` PASS, zero runtime errors. Status → done. |
+
+## Review Findings
+
+_gds-code-review (3 parallel adversarial layers — Blind Hunter · Edge Case Hunter · Acceptance Auditor, all Opus 4.8, fresh context) + independent lead verification of every finding against live source. **PASS — all 8 ACs met, scope-fence provably clean (git baseline→HEAD confirms `main.tres`/`ThemeTokens.cs`/`ThemeBuilder.cs`/`AccentController.cs`/`ChimeraStyleBox.cs` untouched), no Critical/High, no crash, no AC failure.** Third pure-presentation story: no sim/checksum/golden/fence (correctly). The auditor confirmed every Per-Component-Spec-Table value 1:1 and verified the one documented D-5 deviation (switch per-instance tweened box) is sound; the blind layer independently CLEARED the switch mid-tween race (fixed in dev), all accent-callback `IsInstanceValid` guards, the dialog focus-trap, tooltip `_ExitTree` freeing, and spinner draw-gating. The lone Medium is the latest turn of the accent-seam-lifecycle class both prior 3.1 reviews converged on (3.1a deferred #1 → closed in 3.1b): the accent-handler registry's documented "bounded to live controls" invariant holds only for once-per-instance binders; the new **per-show** binders (tooltip term, default-toast bar/icon) break it between accent switches. ~10 raw → 8 unique → **1 decision + 4 patch + 3 defer + 2 dismissed.**
+
+### Decision (resolved)
+- [x] [Review][Decision] **AC5 easing — linear vs cubic-bezier. RESOLVED (Alec, 2026-07-06): add cubic ease-out** → promoted to Patch #5 below. (Spinner rotation stays linear/constant-velocity — correct.)
+
+### Patches
+- [x] [Review][Patch] **Accent-handler registry grows unbounded for per-show binders (Medium)** — `ChimeraTooltip.BuildTooltip` binds the term (`BindAccentColor`) on **every `Show()`**, and `ChimeraToastHost.BuildToast` binds the default bar+icon (`BindAccentModulate`/`BindAccentColor`) on **every toast**; each adds a permanent `_accentColorHandlers` entry pruned only on the next accent switch → the registry grows O(hovers+toasts) in a tooltip/toast-dense session, violating its own "bounded to live controls" invariant (`ChimeraComponents.cs:67-69`). No crash (all handlers `IsInstanceValid`-guarded). Fix: opportunistic prune in `TrackHandler` (drop freed entries before adding) — one central fix covering all high-churn callers. [godot/src/UI/Components/ChimeraComponents.cs:113 · ChimeraTooltip.cs:158 · ChimeraToastHost.cs:134,164]
+- [x] [Review][Patch] **Competing show/hide/reflow tweens not mutually killed → cosmetic flicker (Low)** — the `ChimeraSwitch` "kill the in-flight tween before re-tweening the same property" discipline is not applied to: tooltip Show-fade-in vs Hide-fade-out (`modulate`); dialog Open-fade-in vs CloseWith-fade-out (`scrim.color`+`panel.modulate`, reachable via a reflexive Esc right after Open); toast `Reflow` (a fresh `position:y` tween per call, per toast, on rapid dismissal). End-state is always correct; only a brief flicker/jitter. Fix: track + `Kill()` the in-flight tween at the top of the competing path. [ChimeraTooltip.cs:115/130 · ChimeraDialog.cs:167/217 · ChimeraToastHost.cs:106]
+- [x] [Review][Patch] **ChimeraMenu.OpenBelow has no off-screen vertical clamp/flip (Low)** — opens at `trigger.bottom + 4` with the width clamped but no viewport clamp; a bottom-edge trigger opens the popover partly below the screen. The sibling tooltip explicitly clamps X **and** Y; the menu does not. Fix: clamp the popup Y to the viewport, flipping above the trigger on overflow. [godot/src/UI/Components/ChimeraMenu.cs:106]
+- [x] [Review][Patch] **Toast host screen margins are inline literal `24` (== `s5` token) (Low, AC2 hygiene)** — `LeftMargin`/`TopMargin = 24` are bare local consts rather than a named `ComponentMetrics` intrinsic or `Const(S5)`. Fix: name them in `ComponentMetrics` (host-position intrinsic) or read the token. [godot/src/UI/Components/ChimeraToastHost.cs:27-28]
+- [x] [Review][Patch] **AC5 easing: add cubic ease-out (from the resolved decision) (Low)** — add `.SetTrans(Tween.TransitionType.Cubic).SetEase(Tween.EaseType.Out)` to the switch knob-slide/track, tooltip fade+rise, dialog scrim+panel fade, and toast slide-in/out tweens; leave the spinner rotation linear. [ChimeraSwitch.cs · ChimeraTooltip.cs:115 · ChimeraDialog.cs:167,217 · ChimeraToastHost.cs:63,90]
+
+### Deferred (also logged to deferred-work.md)
+- [x] [Review][Defer] **Tooltip position is a one-shot snapshot; a keyboard-focus tip doesn't re-anchor when its target scrolls** [ChimeraTooltip.cs:90] — new 3.1c code; forward-punt to when tooltips are wired into the real scrolling editors (3.3+), where hide-on-scroll vs re-anchor is the clearer call.
+- [x] [Review][Defer] **Toast stack is uncapped (burst spam can grow it off-screen)** [ChimeraToastHost.cs:75] — new 3.1c code; forward-punt to Epic 11 (toast↔real-event wiring), where the cap/evict/coalesce policy belongs.
+- [x] [Review][Defer] **Pre-existing: `ChimeraComponents.Reset()` can call into a freed `AccentController` on in-process re-Initialize** [ChimeraComponents.cs:98-110] — `component_preview` already exercised this in 3.1b; `/godot-verify`'s fresh process starts with `_accent==null` so never hits it; an in-editor scene reload could. Fix = an `IsInstanceValid(_accent)` guard in `Reset`. Outside this diff (the Initialize/Reset logic predates 3.1c).
+
+### Dismissed as noise (2)
+- **Toast burst overlap (blind, Medium-if-real) — FALSE POSITIVE.** `toast.ResetSize()` forces a synchronous combined-min-size computation (the min-size getter recomputes on demand; only child *layout/sort* is deferred), so `Size.Y` is valid the same frame, and `NextY` reads each prior toast's own `ResetSize`'d height. Same-frame double-`Show` is also unreachable by any current caller. Belt-and-suspenders confirmation folded into the post-patch `/godot-verify`.
+- **Menu within-item "gap s3" rendered as two spaces in the button text (auditor)** — cosmetic; a text glyph gap does not warrant a separate HBox child.
+
+### Resolution (2026-07-06)
+**All 5 patches APPLIED** (build **0-err / 0-new-warn** — only the 3 pre-existing `CS8632`) and **re-verified in-engine** via `/godot-verify` on `component_gallery` (Godot 4.6.3, **zero runtime errors** across the whole session):
+- **Patch #1 (accent registry prune)** — non-regressive: AC6 whole-kit accent **teal→amber→violet** retints zero-stale (procedural mark/spinner via `QueueRedraw`, switch track+knob); the dev's switch mid-tween race fix still holds (toggle-on + accent same-frame → `track=(0.949,0.686,0.282)` amber, `knobLeft=21`); three consecutive switches stay clean (violet track `(0.698,0.588,1.0)`).
+- **Patch #2 (tween-kill) + #5 (cubic ease-out)** — dialog opens modal over scrim (chamfered, Esc kbd, CANCEL/APPLY foot) and **closes clean (0 remaining)**; tooltip reveals on keyboard focus (overlay layer 102, 240×69); switch rapid-toggle + toast slide — **no runtime errors** on any tween-kill path.
+- **Patch #3 (menu clamp/flip)** — a synthetic bottom-edge trigger (y=470) opens the menu **above** it (y=265), fully on-screen; renders on-brand with the `is-active` accent item.
+- **Patch #4 (toast margin token)** — toasts stack from `ComponentMetrics.ToastHostMargin` (y=24).
+- **Dismissed toast-overlap — empirically settled:** two same-frame `Show()` calls landed at **y=24** and **y=131** (= 24 + 99 + 8-gap) — no overlap; `ResetSize()` is synchronous, exactly as reasoned. False positive confirmed.
+
+**Story → done.** Scope-fence held: patches touched only `godot/src/UI/Components/**` (the 7 component files + `ComponentMetrics.cs`), **no** Theme-layer file (`main.tres`/`ThemeTokens`/`ThemeBuilder`/`AccentController`/`ChimeraStyleBox`) and **no** sim/checksum/golden.
