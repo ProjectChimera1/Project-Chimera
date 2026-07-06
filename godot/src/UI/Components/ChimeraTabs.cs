@@ -92,12 +92,15 @@ namespace ProjectChimera.UI.Components
             _inactiveBox = new StyleBoxFlat { BgColor = new Color(0, 0, 0, 0) };
             _inactiveBox.WithContentMargins(padH, padV);
 
+            // All tab labels are uppercased display type (mock: .tab AND .segment>button are text-transform:
+            // uppercase). Segment pills use the smaller t-xs face; underline/boxed use t-sm.
+            StringName tabSize = variant == ChimeraComponents.TabsVariant.Segment ? ThemeTokens.Txs : ThemeTokens.Tsm;
             for (int i = 0; i < labels.Length; i++)
             {
                 int idx = i;
-                var tab = new Button { Text = variant == ChimeraComponents.TabsVariant.Segment ? labels[i] : ChimeraComponents.Up(labels[i]) };
+                var tab = new Button { Text = ChimeraComponents.Up(labels[i]) };
                 tab.AddThemeFontOverride("font", ChimeraComponents.DisplayTracked(1));
-                tab.AddThemeFontSizeOverride("font_size", ChimeraComponents.SizeOf(ThemeTokens.Tsm));
+                tab.AddThemeFontSizeOverride("font_size", ChimeraComponents.SizeOf(tabSize));
                 tab.FocusMode = FocusModeEnum.None; // tabs manage their own selection, no focus ring
                 tab.Pressed += () => SetActive(idx);
                 _tabs.Add(tab);
@@ -105,7 +108,7 @@ namespace ProjectChimera.UI.Components
             }
 
             // Re-style the active tab's accent-bound text on an accent switch (registered boxes self-retint).
-            ChimeraComponents.SubscribeAccentChanged(_ =>
+            ChimeraComponents.SubscribeAccentChanged(this, _ =>
             {
                 if (GodotObject.IsInstanceValid(this)) Restyle();
             });

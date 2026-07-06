@@ -36,6 +36,10 @@ namespace ProjectChimera.UI.Components
         /// <summary>Build a slider + paired num-input over [min, max] with the given step.</summary>
         public static ChimeraSlider Create(double value = 0, double min = 0, double max = 100, double step = 1)
         {
+            // Guard inverted bounds: System.Math.Clamp (SliderTrack.SetValue) throws when min > max, and it
+            // fires synchronously during Create — unlike NumInput's Godot Range, which tolerates it.
+            if (max < min) max = min;
+
             var s = new ChimeraSlider();
             s.AddThemeConstantOverride("separation", ChimeraComponents.Const(ThemeTokens.S3));
 
@@ -155,7 +159,9 @@ namespace ProjectChimera.UI.Components
         {
             // double math — Godot's Mathf is float-only, so use System.Math for the value domain.
             double clamped = System.Math.Clamp(value, MinValue, MaxValue);
-            if (Step > 0) clamped = System.Math.Round(clamped / Step) * Step;
+            // Snap MIN-relative (not zero-relative) to match Godot's Range/SpinBox grid, so the thumb and the
+            // paired num-input agree even when MinValue is not an integer multiple of Step (3.1b review).
+            if (Step > 0) clamped = MinValue + System.Math.Round((clamped - MinValue) / Step) * Step;
             clamped = System.Math.Clamp(clamped, MinValue, MaxValue);
             if (System.Math.Abs(clamped - _value) < 1e-9) { UpdateThumb(); return; }
             _value = clamped;

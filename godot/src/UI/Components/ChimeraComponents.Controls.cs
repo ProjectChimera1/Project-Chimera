@@ -27,11 +27,13 @@ namespace ProjectChimera.UI.Components
                                     ButtonSize size = ButtonSize.Default)
         {
             // Size → (font-size token, horizontal pad, vertical pad). Block reuses Default's metrics.
+            // AC2: token-valued paddings are read from the theme (24=s5, 16=s4). The sub-grid values
+            // (11/6/13/9) are CSS-exact per-component dims with no matching spacing token, kept literal.
             (StringName fontSize, int padH, int padV) = size switch
             {
                 ButtonSize.Sm => (ThemeTokens.T2xs, 11, 6),
-                ButtonSize.Lg => (ThemeTokens.Tmd, 24, 13),
-                _             => (ThemeTokens.Tsm, 16, 9),
+                ButtonSize.Lg => (ThemeTokens.Tmd, Const(ThemeTokens.S5), 13),
+                _             => (ThemeTokens.Tsm, Const(ThemeTokens.S4), 9),
             };
 
             var btn = new Godot.Button { Text = Up(text) };
@@ -186,7 +188,7 @@ namespace ProjectChimera.UI.Components
 
             int cut = Const(ThemeTokens.CutSm);
             var normal = ChimeraStyleBox.Chamfer(cut, Col(ThemeTokens.Surface3), Col(ThemeTokens.Line));
-            normal.WithContentMargins(12, 9);
+            normal.WithContentMargins(Const(ThemeTokens.S3), 9);
             le.AddThemeStyleboxOverride("normal", normal);
             le.AddThemeStyleboxOverride("read_only", normal);
 
@@ -194,7 +196,7 @@ namespace ProjectChimera.UI.Components
             var focus = SharedAccentBox("input/focus", () =>
             {
                 var b = ChimeraStyleBox.Chamfer(cut, Col(ThemeTokens.AccentWash), Col(ThemeTokens.Accent), 2);
-                b.WithContentMargins(12, 9);
+                b.WithContentMargins(Const(ThemeTokens.S3), 9);
                 return b;
             }, Fill(ThemeTokens.AccentWash), Border(ThemeTokens.Accent));
             le.AddThemeStyleboxOverride("focus", focus);
@@ -215,7 +217,7 @@ namespace ProjectChimera.UI.Components
 
             int cut = Const(ThemeTokens.CutSm);
             var box = ChimeraStyleBox.Chamfer(cut, Col(ThemeTokens.Surface3), Col(ThemeTokens.Line));
-            box.ContentMarginLeft = 12;
+            box.ContentMarginLeft = Const(ThemeTokens.S3);
             box.ContentMarginTop = 9;
             box.ContentMarginBottom = 9;
             box.ContentMarginRight = 30; // room for the chevron (CSS padding-right 30)
@@ -260,7 +262,7 @@ namespace ProjectChimera.UI.Components
 
             int cut = ComponentMetrics.CutMicro; // 3
             var normal = ChimeraStyleBox.Chamfer(cut, Col(ThemeTokens.Surface3), Col(ThemeTokens.Line));
-            normal.WithContentMargins(8, 6);
+            normal.WithContentMargins(Const(ThemeTokens.S2), 6);
             le.AddThemeStyleboxOverride("normal", normal);
             le.AddThemeStyleboxOverride("read_only", normal);
 
@@ -268,7 +270,7 @@ namespace ProjectChimera.UI.Components
             var focus = SharedAccentBox("numinput/focus", () =>
             {
                 var b = ChimeraStyleBox.Chamfer(cut, Clear, Col(ThemeTokens.Accent), 2);
-                b.WithContentMargins(8, 6);
+                b.WithContentMargins(Const(ThemeTokens.S2), 6);
                 return b;
             }, Border(ThemeTokens.Accent));
             le.AddThemeStyleboxOverride("focus", focus);
@@ -290,20 +292,19 @@ namespace ProjectChimera.UI.Components
             }
             AccentController.AccentChangedEventHandler handler = _ => Apply();
             Apply();
-            Accent.AccentChanged += handler;
-            _accentColorHandlers.Add(handler);
+            TrackHandler(ctrl, handler);
         }
 
         /// <summary>
-        /// Subscribe a raw handler to the accent switch, tracked so <see cref="Reset"/> unsubscribes it.
-        /// For stateful components (tabs, slider) that must re-style their OWN active/registered surfaces
-        /// on a switch beyond what a single color override covers. The handler should guard the node with
+        /// Subscribe a raw handler to the accent switch, tracked against <paramref name="owner"/> so it is
+        /// unsubscribed by <see cref="Reset"/> AND pruned once <paramref name="owner"/> is freed. For
+        /// stateful components (tabs, slider) that must re-style their OWN active/registered surfaces on a
+        /// switch beyond what a single color override covers. The handler should still guard the node with
         /// <c>IsInstanceValid</c>.
         /// </summary>
-        internal static void SubscribeAccentChanged(AccentController.AccentChangedEventHandler handler)
+        internal static void SubscribeAccentChanged(GodotObject owner, AccentController.AccentChangedEventHandler handler)
         {
-            Accent.AccentChanged += handler;
-            _accentColorHandlers.Add(handler);
+            TrackHandler(owner, handler);
         }
     }
 }

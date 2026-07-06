@@ -64,8 +64,10 @@ namespace ProjectChimera.UI.Components
         // Cached tracked-display FontVariations (UX-DR7 "display + tracking"), keyed by glyph spacing px.
         private static readonly Dictionary<int, FontVariation> _trackedDisplay = new();
 
-        // Accent-bound text/icon subscriptions (D-3) held so Reset() can fully unsubscribe them.
-        private static readonly List<AccentController.AccentChangedEventHandler> _accentColorHandlers = new();
+        // Accent-bound text/icon subscriptions (D-3), each paired with its target node. Freed targets are
+        // pruned on every accent switch (3.1b review) — the text/icon analog of the D-4 stylebox registry
+        // bound, so the list stays bounded to live controls even without a full Reset() between UI churns.
+        private static readonly List<(AccentController.AccentChangedEventHandler Handler, GodotObject Target)> _accentColorHandlers = new();
 
         /// <summary>True once <see cref="Initialize"/> has bound a theme + accent controller.</summary>
         public static bool IsInitialized => _theme != null && _accent != null;
@@ -77,11 +79,15 @@ namespace ProjectChimera.UI.Components
         /// </summary>
         public static void Initialize(Godot.Theme theme, AccentController accent)
         {
+            // Cleanly tear down any prior binding FIRST — Reset() unsubscribes the tracked handlers + the
+            // prune hook from the OLD controller and clears its registry, so re-initializing (even on the
+            // SAME live controller) never orphans a subscription (3.1b review). Reset() also drops the
+            // shared caches, so boxes rebuild from the new theme.
+            Reset();
             _theme = theme;
             _accent = accent;
-            _accentBoxCache.Clear();
-            _trackedDisplay.Clear();
-            _accentColorHandlers.Clear();
+            // One persistent, non-tracked subscription that prunes freed targets on every accent switch.
+            accent.AccentChanged += OnAccentChangedPrune;
         }
 
         /// <summary>
@@ -93,13 +99,40 @@ namespace ProjectChimera.UI.Components
         {
             if (_accent != null)
             {
-                foreach (var h in _accentColorHandlers)
-                    _accent.AccentChanged -= h;
+                _accent.AccentChanged -= OnAccentChangedPrune;
+                foreach (var (handler, _) in _accentColorHandlers)
+                    _accent.AccentChanged -= handler;
                 _accent.Clear();
             }
             _accentColorHandlers.Clear();
             _accentBoxCache.Clear();
             _trackedDisplay.Clear();
+        }
+
+        // Subscribe an accent handler AND track its target so a later switch can prune it once freed.
+        private static void TrackHandler(GodotObject target, AccentController.AccentChangedEventHandler handler)
+        {
+            Accent.AccentChanged += handler;
+            _accentColorHandlers.Add((handler, target));
+        }
+
+        // Persistent prune hook (subscribed in Initialize, dropped in Reset): on every accent switch, drop
+        // handlers whose target Control/CanvasItem was freed — unsubscribing them from the controller and
+        // removing them from the list. Bounds the registry to live accent-bound controls (3.1b review).
+        // Disconnecting mid-emit is safe: Godot iterates a snapshot of the connection list per emission.
+        private static void OnAccentChangedPrune(string _) => PruneAccentHandlers();
+
+        private static void PruneAccentHandlers()
+        {
+            if (_accent == null) return;
+            for (int i = _accentColorHandlers.Count - 1; i >= 0; i--)
+            {
+                if (!GodotObject.IsInstanceValid(_accentColorHandlers[i].Target))
+                {
+                    _accent.AccentChanged -= _accentColorHandlers[i].Handler;
+                    _accentColorHandlers.RemoveAt(i);
+                }
+            }
         }
 
         // ── Theme accessors (fail fast with a clear message if the factory was not initialized) ──
@@ -203,8 +236,7 @@ namespace ProjectChimera.UI.Components
             }
             AccentController.AccentChangedEventHandler handler = _ => Apply();
             Apply();
-            Accent.AccentChanged += handler;
-            _accentColorHandlers.Add(handler);
+            TrackHandler(ctrl, handler);
         }
 
         /// <summary>
@@ -220,8 +252,7 @@ namespace ProjectChimera.UI.Components
             }
             AccentController.AccentChangedEventHandler handler = _ => Apply();
             Apply();
-            Accent.AccentChanged += handler;
-            _accentColorHandlers.Add(handler);
+            TrackHandler(item, handler);
         }
 
         // ── Small shared helpers ──

@@ -101,8 +101,25 @@ namespace ProjectChimera.UI.Components
             if (!_isSelected && !_isLocked) AddThemeStyleboxOverride("panel", _normal);
         }
 
-        /// <summary>Set the selected state (accent ring + wash) directly.</summary>
+        /// <summary>
+        /// Set the selected state (accent ring + wash). When the row belongs to a <see cref="ListRowGroup"/>
+        /// this routes through the group so the single-select invariant is preserved (selecting deselects
+        /// the previous row; deselecting clears the group). Standalone rows apply the state directly.
+        /// </summary>
         public void SetSelected(bool selected)
+        {
+            if (_group != null)
+            {
+                if (selected) _group.Select(this);
+                else _group.Deselect(this);
+                return;
+            }
+            ApplySelected(selected);
+        }
+
+        // Raw state + stylebox change with NO group interaction — the group calls this (via
+        // SetSelectedFromGroup) to apply selection without re-entering its own Select/Deselect (no recursion).
+        private void ApplySelected(bool selected)
         {
             _isSelected = selected;
             AddThemeStyleboxOverride("panel", selected ? _selectedBox : _normal);
@@ -117,7 +134,7 @@ namespace ProjectChimera.UI.Components
         }
 
         // Called by the owning group to flip selection state without re-entering group logic.
-        internal void SetSelectedFromGroup(bool selected) => SetSelected(selected);
+        internal void SetSelectedFromGroup(bool selected) => ApplySelected(selected);
     }
 
     /// <summary>
@@ -139,6 +156,15 @@ namespace ProjectChimera.UI.Components
                 _selected.SetSelectedFromGroup(false);
             _selected = row;
             row.SetSelectedFromGroup(true);
+        }
+
+        /// <summary>Deselect <paramref name="row"/> if it is the current selection (clears the group).</summary>
+        public void Deselect(ChimeraListRow row)
+        {
+            if (_selected != row) return;
+            if (GodotObject.IsInstanceValid(_selected))
+                _selected.SetSelectedFromGroup(false);
+            _selected = null;
         }
     }
 }
