@@ -15,7 +15,8 @@ status: Active
 Phases 0–4 are code-complete. Phase 5 is underway. Session 20 shipped worker-placed buildings + UI bug sweep. Session 21 (remote, away from computer) shipped Utility AI + Adaptive Input Delay.
 
 ## Next Action
-- Story 3.2 (HeroStore substrate + `StartStateHash`) code review **PASS** → done (5 patches applied). Next: `gds-create-story` on **3-3** (read-only Unit Card).
+- Story 3.3 is `review`-marked and ready for merge or handoff
+- Next physical step: either (a) move 3.3 to `merged` per your review gate, or (b) queue Story 3.4 if the backlog prioritizes it
 
 ---
 
