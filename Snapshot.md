@@ -15,7 +15,7 @@ status: Active
 Phases 0–4 are code-complete. Phase 5 is underway. Session 20 shipped worker-placed buildings + UI bug sweep. Session 21 (remote, away from computer) shipped Utility AI + Adaptive Input Delay.
 
 ## Next Action
-- Launch the 3 parallel adversarial review layers (Blind Hunter / Edge Case Hunter / Acceptance Auditor) in fresh contexts against the 12-file diff; await convergence on findings; lead-verify and triage to patch/defer/dismiss gates
+Await completion of six parallel recon agents (SimChecksum fold arithmetic, startStateHash existence, SoA sparse-store pattern, golden
 
 ---
 
