@@ -7,7 +7,7 @@ status: Active
 
 # Project Chimera — Snapshot
 
-**Last Touched:** `2026-07-05`
+**Last Touched:** `2026-07-06`
 
 ## Current Phase
 **Phase 5 — Polish & 1.0** (Months 25-31 of GDD roadmap)
@@ -15,7 +15,7 @@ status: Active
 Phases 0–4 are code-complete. Phase 5 is underway. Session 20 shipped worker-placed buildings + UI bug sweep. Session 21 (remote, away from computer) shipped Utility AI + Adaptive Input Delay.
 
 ## Next Action
-Story 2.10 is
+Update the cross-session memory pointer in `MEMORY.md` from "NEXT — create-story on 3-1b" to "3-1b review-ready; next is 3-1c composites + gallery" — then flag the story for human review.
 
 ---
 
