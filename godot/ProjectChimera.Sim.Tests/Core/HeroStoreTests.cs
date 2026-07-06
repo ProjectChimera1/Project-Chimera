@@ -188,5 +188,35 @@ namespace ProjectChimera.Sim.Tests.Core
             Assert.True(new HeroId(42) != new HeroId(43));
             Assert.NotEqual(new HeroId(42), new HeroId(43));
         }
+
+        [Fact]
+        public void Mint_RefusesDuplicateLiveHeroId()
+        {
+            // FoldOrder's producer-independence (AC2) requires HeroId UNIQUE across live rows — a duplicate would fold
+            // in mint-order-dependent slot order. Mint hard-rejects a duplicate LIVE id with -1 and must not perturb the
+            // store; once the original is destroyed the id is free again (uniqueness is over live rows only).
+            var s = new HeroStore();
+            int first = s.Mint(new HeroId(42), entityId: 1, level: 3, xp: Fixed.FromInt(100));
+            Assert.True(first >= 0);
+
+            int dup = s.Mint(new HeroId(42), entityId: 2, level: 9, xp: Fixed.FromInt(500));
+            Assert.Equal(-1, dup);                       // refused
+            Assert.Equal(1, s.Count);                    // no slot consumed
+            Assert.Equal(3, s.Level[first]);             // original row untouched...
+            Assert.Equal(1, s.EntityId[first]);
+            Assert.Equal(Fixed.FromInt(100).Raw, s.Xp[first].Raw);
+
+            s.Destroy(first);
+            Assert.True(s.Mint(new HeroId(42), entityId: 7, level: 1, xp: Xp0) >= 0); // dead id is re-mintable
+        }
+
+        [Fact]
+        public void MaxHeroes_FitsPackRefSlotField()
+        {
+            // PackRef packs the slot into the low 8 bits (TryResolveRef reads packed & 0xFF); the cap MUST fit in 256 or
+            // slot bits alias the generation field (ABA-unsafe). Tripwire: widen PackRef/TryResolveRef before bumping.
+            Assert.True(HeroStore.MAX_HEROES <= 256,
+                "MAX_HEROES exceeds the 8-bit PackRef slot field; widen the pack encoding first.");
+        }
     }
 }

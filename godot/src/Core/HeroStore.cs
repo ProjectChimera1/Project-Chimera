@@ -116,7 +116,8 @@ namespace ProjectChimera.Core
 
         /// <summary>
         /// Mint a new hero row for the stable <paramref name="id"/>, linked to entity <paramref name="entityId"/>,
-        /// at the given <paramref name="level"/> / <paramref name="xp"/>. Returns the slot, or -1 if the store is full.
+        /// at the given <paramref name="level"/> / <paramref name="xp"/>. Returns the slot, or -1 if the store is full
+        /// OR <paramref name="id"/> is already live (the ascending-identity fold requires UNIQUE live ids — see the guard).
         /// Recycles a dead slot first (bumping its generation so stale packed refs to the prior occupant fail
         /// <see cref="TryResolveRef"/>), else appends a fresh one. EVERY live field is written here (there is no
         /// separate reset step — a recycled slot therefore carries NONE of the prior hero's state, the SoA-recycle
@@ -124,6 +125,16 @@ namespace ProjectChimera.Core
         /// </summary>
         public int Mint(HeroId id, int entityId, int level, Fixed xp)
         {
+            // Contract (AC2 / FoldOrder producer-independence): a HeroId is UNIQUE across LIVE rows. FoldOrder sorts by
+            // HeroId with a strict-'>' (stable) insertion sort, so two live rows sharing an id would fold in mint-order-
+            // dependent SLOT order → a cross-producer StartStateHash divergence now, and a silent SimChecksum desync once
+            // Story 3.13 reuses FoldOrder for the per-tick fold. Hard-reject a duplicate live id (deterministic, all
+            // builds; the same -1 "mint refused" signal as a full store). Uniqueness is over LIVE rows only — a destroyed
+            // row's id is free to re-mint (the fold skips dead slots).
+            for (int i = 0; i < Count; i++)
+                if (Alive[i] && Id[i].Value == id.Value)
+                    return -1;
+
             int slot;
             if (_freeCount > 0)
             {

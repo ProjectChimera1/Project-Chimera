@@ -70,6 +70,30 @@ namespace ProjectChimera.Sim.Tests.Validation
         }
 
         [Fact]
+        public void TwoHeroes_MatchIndependentlyComputedFnv64()
+        {
+            // Extends the anti-tautology pin to the HERO ROWS. The empty-store pin above covers only AlgoVersion+seed;
+            // the hero-row byte layout was otherwise pinned ONLY by the self-recorded golden (a transposition would bake
+            // in and pass). Rebuild the FULL documented byte stream INDEPENDENTLY of MixInt/MixULong — AlgoVersion, seed
+            // low/high, then each row ASCENDING BY HeroId as {Id low, Id high, Level, Xp.Raw} — so a row-fold transposition
+            // breaks THIS test, not just a golden.
+            var model = BuildModel();
+            var heroes = TwoHeroes(); // ids 1_000_000_007 (lvl4/xp250) then 2_000_000_011 (lvl1/xp0) — already ascending
+
+            ulong seed = CanonicalModelHash.Compute(model);
+            var buf = new List<byte>();
+            AppendInt(buf, StartStateHash.AlgoVersion);
+            AppendInt(buf, (int)(seed & 0xFFFFFFFFUL));
+            AppendInt(buf, (int)(seed >> 32));
+            AppendHero(buf, 1_000_000_007UL, level: 4, xpRaw: Fixed.FromInt(250).Raw);
+            AppendHero(buf, 2_000_000_011UL, level: 1, xpRaw: Fixed.FromInt(0).Raw);
+            ulong expected = IndependentFnv64(buf.ToArray());
+            if (expected == 0UL) expected = 1UL;
+
+            Assert.Equal(expected, StartStateHash.Compute(model, heroes));
+        }
+
+        [Fact]
         public void IdenticalInit_IsByteIdentical()
         {
             // Two independent computations from identical input agree — the determinism guarantee (AC2).
@@ -186,6 +210,14 @@ namespace ProjectChimera.Sim.Tests.Validation
             buf.Add((byte)((v >> 8) & 0xFF));
             buf.Add((byte)((v >> 16) & 0xFF));
             buf.Add((byte)((v >> 24) & 0xFF));
+        }
+
+        private static void AppendHero(List<byte> buf, ulong id, int level, int xpRaw)
+        {
+            AppendInt(buf, (int)(id & 0xFFFFFFFFUL)); // HeroId low 32
+            AppendInt(buf, (int)(id >> 32));          // HeroId high 32
+            AppendInt(buf, level);
+            AppendInt(buf, xpRaw);
         }
     }
 }
