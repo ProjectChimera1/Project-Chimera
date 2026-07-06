@@ -343,5 +343,28 @@ namespace ProjectChimera.Sim.Tests.Core
             // count are unread); with count == 0 the stale Cmd/Target slots are inert.
             Assert.Equal((byte)0, w.OrderQueueCount[reused]);
         }
+
+        // ── Story 3.2 — HeroIndex (the EntityWorld↔HeroStore link, D-8) is RUNTIME state (established when a hero
+        //    spawns + a HeroStore row is minted), NOT def-derived — so, like the shift-queue ring, it is defaulted in
+        //    Create (to HERO_NONE) and NOT written by ApplyUnitDefinition. A recycled slot must be reset in Create so a
+        //    new occupant never inherits a stale packed hero handle (which would ABA-alias a hero row). This is the SOLE
+        //    teeth on that mandatory reset: HeroIndex is UNFOLDED (the store is dormant in 3.2 — D-1), so no checksum
+        //    fold catches an omission, and default(int)==0 would silently alias HeroStore slot 0. ──
+        [Fact]
+        public void RecycledSlot_CarriesNoPriorHeroLink()
+        {
+            var w = new EntityWorld();
+            int first = w.Create(FixedVec3.Zero, Faction.Player1, Fixed.FromInt(100), Fixed.FromInt(3));
+            // Dirty the link on the first occupant, as if a hero row had been minted + PackRef-linked at spawn.
+            w.HeroIndex[first] = 12345; // a non-sentinel packed handle
+            Assert.NotEqual(EntityWorld.HERO_NONE, w.HeroIndex[first]);
+
+            w.Destroy(first);
+            int reused = w.Create(FixedVec3.Zero, Faction.Player2, Fixed.FromInt(50), Fixed.FromInt(3));
+            Assert.Equal(first, reused); // same id off the free list
+
+            // The new occupant must carry NO prior hero link — proves the mandatory Create() recycle-reset to HERO_NONE.
+            Assert.Equal(EntityWorld.HERO_NONE, w.HeroIndex[reused]);
+        }
     }
 }

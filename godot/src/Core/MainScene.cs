@@ -393,6 +393,16 @@ namespace ProjectChimera.Core
                 : 0u;
             GD.Print($"[MainScene] Scenario hash: 0x{_ctx.LobbyUi.ScenarioHash:X8}");
 
+            // Story 3.2 (AC3, D-3): compute the canonical START-STATE hash over the applied model + the HeroStore init
+            // state (empty until Story 3.9's load path). Its own FNV-64 / AlgoVersion, distinct from the scenario hash
+            // above. COMPUTED + logged here (the CanonicalModelHash precedent, Story 1.7); it is deliberately NOT put in
+            // the Ready packet — wiring it into the server-attested multi-hash handshake is Epic 9 / M5 (D-3), so
+            // PROTOCOL_VERSION is untouched. Fail-closed to 0 for an unapplied model, mirroring the scenario hash.
+            ulong startStateHash = (_ctx.ScenarioApplied && hashModel != null)
+                ? Definitions.StartStateHash.Compute(hashModel, _host.Heroes)
+                : 0UL;
+            GD.Print($"[MainScene] Start-state hash (algo v{Definitions.StartStateHash.AlgoVersion}): 0x{startStateHash:X16}");
+
             // If a replay file is specified via the Inspector, load it now and
             // enter Play mode immediately — no lobby, no network required.
             if (!string.IsNullOrEmpty(ReplayPath))

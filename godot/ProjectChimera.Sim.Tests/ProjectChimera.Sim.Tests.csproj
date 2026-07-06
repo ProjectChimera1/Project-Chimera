@@ -106,6 +106,12 @@
          re-recorded once for the v9 fold (algo_version 8→9, every hash moves, sample count unchanged). -->
     <None Remove="Golden\shift-queue-scenario.golden.txt" />
     <EmbeddedResource Include="Golden\shift-queue-scenario.golden.txt" />
+    <!-- Story 3.2 (AC3 / Task 5) — hero start-state golden. NOT a per-tick SimChecksum sequence: it pins the single
+         64-bit FNV-64 StartStateHash over the HeroStartStateScenario fixture (2-slot model + 2 minted heroes) — the
+         recorded model-layout pin (AC3's 2nd pin). Integer/Fixed.Raw only → CROSS-PLATFORM SAFE, compared on both CI
+         legs. NEW file; the 17 per-tick goldens above are NOT re-recorded (SimChecksum AlgoVersion stays 9, no fold). -->
+    <None Remove="Golden\hero-start-state.golden.txt" />
+    <EmbeddedResource Include="Golden\hero-start-state.golden.txt" />
   </ItemGroup>
 
   <ItemGroup>

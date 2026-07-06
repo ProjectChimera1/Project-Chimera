@@ -36,6 +36,14 @@ namespace ProjectChimera.Core.Sim
         public ResourceStore Resources { get; }
         public BuildingStore Buildings { get; }
         public ProjectileStore Projectiles { get; }
+        /// <summary>
+        /// The Story 3.2 (AR-12) persistent hero substrate — a sparse SoA keyed by a stable cross-match
+        /// <see cref="ProjectChimera.Core.HeroId"/>. DORMANT in 3.2: no system mutates it mid-match (XP is Story 3.13,
+        /// load is Story 3.9), so it is NOT folded into the per-tick <see cref="SimChecksum"/> (D-1) and adding it does
+        /// not move any golden. It IS hashed at match start by <see cref="Definitions.StartStateHash"/>. Exposed like
+        /// <see cref="Buildings"/> so the 3.9 load path and the start-state hash read host truth (no parallel copies).
+        /// </summary>
+        public HeroStore Heroes { get; }
         /// <summary>The Story 2.2b AR-9 modifier store (driven by the index-3 ModifierSystem; folded into the checksum). Exposed like <see cref="Projectiles"/> for the 2.4 ability-cast path.</summary>
         public ModifierStore Modifiers { get; }
         public CombatEventQueue CombatEvents { get; }
@@ -82,6 +90,7 @@ namespace ProjectChimera.Core.Sim
             Resources        = new ResourceStore(Fixed.Zero);
             Buildings        = new BuildingStore();
             Projectiles      = new ProjectileStore();
+            Heroes           = new HeroStore();   // Story 3.2 — the AR-12 hero substrate; DORMANT (NOT a checksum input, D-1), populated by Story 3.9.
             CombatEvents     = new CombatEventQueue();
             MatchStats       = new MatchStats();
             Fog              = new FogOfWarSystem(Faction.Player1);

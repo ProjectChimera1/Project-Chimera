@@ -4,7 +4,7 @@ baseline_commit: 86f21031428f42db8fa3329681b800fb54c9fdb0
 
 # Story 3.2: HeroStore SoA + stable hero identity folded into SimChecksum & startStateHash
 
-Status: ready-for-dev
+Status: review
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -89,34 +89,34 @@ Following the Epic 2 / 3.1 recommended-default pattern. Each is the recommendati
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1 — HeroStore SoA + stable identity (AC1, D-4, D-5, D-6)**
-  - [ ] Create `godot/src/Core/HeroStore.cs` (pure C#, no `using Godot`, `#nullable enable`). Clone the Story-2.13 `BuildingStore` shape: monotonic `int Count` (fold/iteration bound), `int[] _freeList` + `_freeCount`, `int[] Generation` (unfolded), and the SoA arrays for D-6's **live** fields: `HeroId[]` (D-4 — a `readonly struct HeroId { ulong Value }`), `int[] EntityId` (reverse link, D-8), `int[] Level`, `Fixed[] Xp`. Ascending iteration by slot; the ascending-**identity** fold order is exposed via a helper that yields slots sorted by `HeroId` (or maintain rows sorted by `HeroId` on insert).
-  - [ ] `Mint(HeroId id, int entityId, ...)` → pop `_freeList` (`Generation[slot]++`) else `Count++` else −1; explicit reset of every field on the (possibly recycled) slot BEFORE writing. `Destroy(slot)` → bounds + double-free guard, push to free-list. `PackRef(slot) => (Generation[slot] << 8) | slot` and `TryResolveRef(packed, out slot)` (golden-neutral at gen 0: `PackRef(slot)==slot`).
-  - [ ] **Document (XML `///`) the RESERVED 3.13-fold fields** — `Alive`/`AwaitingRevival`, `RevivalTimer`, revive-location/building-link — as a comment block naming them for Story 3.13's co-timed fold. Do **not** declare inventory (3.15).
-  - [ ] Analyzer discipline: `Fixed`/int/`ulong` only, no `float`, no `Dictionary` enumeration, no `System.Random`, ascending-order only (this file is in `SimSources` → release-gated).
+- [x] **Task 1 — HeroStore SoA + stable identity (AC1, D-4, D-5, D-6)**
+  - [x] Create `godot/src/Core/HeroStore.cs` (pure C#, no `using Godot`, `#nullable enable`). Clone the Story-2.13 `BuildingStore` shape: monotonic `int Count` (fold/iteration bound), `int[] _freeList` + `_freeCount`, `int[] Generation` (unfolded), and the SoA arrays for D-6's **live** fields: `HeroId[]` (D-4 — a `readonly struct HeroId { ulong Value }`), `int[] EntityId` (reverse link, D-8), `int[] Level`, `Fixed[] Xp`. Ascending iteration by slot; the ascending-**identity** fold order is exposed via a helper that yields slots sorted by `HeroId` (or maintain rows sorted by `HeroId` on insert).
+  - [x] `Mint(HeroId id, int entityId, ...)` → pop `_freeList` (`Generation[slot]++`) else `Count++` else −1; explicit reset of every field on the (possibly recycled) slot BEFORE writing. `Destroy(slot)` → bounds + double-free guard, push to free-list. `PackRef(slot) => (Generation[slot] << 8) | slot` and `TryResolveRef(packed, out slot)` (golden-neutral at gen 0: `PackRef(slot)==slot`).
+  - [x] **Document (XML `///`) the RESERVED 3.13-fold fields** — `Alive`/`AwaitingRevival`, `RevivalTimer`, revive-location/building-link — as a comment block naming them for Story 3.13's co-timed fold. Do **not** declare inventory (3.15).
+  - [x] Analyzer discipline: `Fixed`/int/`ulong` only, no `float`, no `Dictionary` enumeration, no `System.Random`, ascending-order only (this file is in `SimSources` → release-gated).
 
-- [ ] **Task 2 — Hero designation on UnitDefinition (AC1, D-7)**
-  - [ ] Add `is_hero` (lenient-loader-safe: nullable/settable auto-prop, default false) to `godot/src/Core/Definitions/UnitDefinition.cs`, mirroring the `Tags`/`Category` pattern (`UnitDefinition.cs:20-22, 155-156`). A computed accessor if needed. This gates HeroStore-row minting; it does **not** go through combat/checksum.
-  - [ ] Confirm `DamageType.Hero`/`ArmorType.Hero` already exist (`DamageTable.cs:21,36` — reserved by Story 1.6) — no change needed; a hero unit's JSON authors `damage_type:"Hero"`/`armor_type:"Hero"` if desired.
+- [x] **Task 2 — Hero designation on UnitDefinition (AC1, D-7)**
+  - [x] Add `is_hero` (lenient-loader-safe: nullable/settable auto-prop, default false) to `godot/src/Core/Definitions/UnitDefinition.cs`, mirroring the `Tags`/`Category` pattern (`UnitDefinition.cs:20-22, 155-156`). A computed accessor if needed. This gates HeroStore-row minting; it does **not** go through combat/checksum.
+  - [x] Confirm `DamageType.Hero`/`ArmorType.Hero` already exist (`DamageTable.cs:21,36` — reserved by Story 1.6) — no change needed; a hero unit's JSON authors `damage_type:"Hero"`/`armor_type:"Hero"` if desired.
 
-- [ ] **Task 3 — EntityWorld↔HeroStore link + recycle teeth (AC1, D-8)**
-  - [ ] Add `int[] HeroIndex` to `EntityWorld` (declare in the SoA block `:169-456`; allocate in ctor `:494-572`; `Array.Fill(HeroIndex, HERO_NONE)` in the sentinel block `:565-571` if the "no hero" default is non-zero). Store a **generation-stamped HeroStore handle** (`PackRef`), sentinel = −1.
-  - [ ] **Default `HeroIndex[id] = HERO_NONE` in `Create()`** (`:577-676`, alongside the other recycle resets) — this is the load-bearing recycle-trap line. Do **NOT** set it in `ApplyUnitDefinition` (it is runtime state, not def data — D-8).
-  - [ ] Add `RecycledSlot_CarriesNoPriorHeroLink` to `ApplyUnitDefinitionGuardTest` (model on the existing `RecycledSlot_CarriesNoPrior*` tests) — this is the **sole** coverage for the unfolded link (an unfolded field's recycle-reset is only caught by its own teeth).
+- [x] **Task 3 — EntityWorld↔HeroStore link + recycle teeth (AC1, D-8)**
+  - [x] Add `int[] HeroIndex` to `EntityWorld` (declare in the SoA block `:169-456`; allocate in ctor `:494-572`; `Array.Fill(HeroIndex, HERO_NONE)` in the sentinel block `:565-571` if the "no hero" default is non-zero). Store a **generation-stamped HeroStore handle** (`PackRef`), sentinel = −1.
+  - [x] **Default `HeroIndex[id] = HERO_NONE` in `Create()`** (`:577-676`, alongside the other recycle resets) — this is the load-bearing recycle-trap line. Do **NOT** set it in `ApplyUnitDefinition` (it is runtime state, not def data — D-8).
+  - [x] Add `RecycledSlot_CarriesNoPriorHeroLink` to `ApplyUnitDefinitionGuardTest` (model on the existing `RecycledSlot_CarriesNoPrior*` tests) — this is the **sole** coverage for the unfolded link (an unfolded field's recycle-reset is only caught by its own teeth).
 
-- [ ] **Task 4 — startStateHash (AC2, AC3, D-2, D-3)**
-  - [ ] Create `godot/src/Core/Definitions/StartStateHash.cs` (static, FNV-64, reuse `CanonicalModelHash`'s `MixInt`/`MixStr` idiom; `AlgoVersion = 1` mixed first). `Compute(...)` folds: (1) `AlgoVersion`, (2) the `CanonicalModelHash.Compute(scenario)` value (content seed, D-2), (3) HeroStore rows **ascending by `HeroId`** — `HeroId.Value` (two mixes), `Level`, `Xp.Raw`. Sentinel `0→1`. Compute over **canonical `Fixed.Raw`** values, never a post-spawn `EntityWorld` snapshot.
-  - [ ] Wire the computation once at match start (near where `CanonicalModelHash`/`ScenarioHash` is computed, `MainScene.cs:391-392`) — but **do NOT** put it in the Ready packet / `MakeReady` (D-3, Epic 9 owns the handshake). A Godot-free entry point (so Tier-1 can call it headless) is required for the golden.
-  - [ ] Pin two ways (mirror `CanonicalModelHash`): an **independent hand-computed FNV-64** pin (`StartStateHashTests`, anti-tautology, like `CanonicalModelHashTests.MinimalModel_MatchesIndependentlyComputedFnv64`) + a **recorded model-layout** pin over a fixed hero-loaded fixture. Teeth: `AlgoVersion_IsOne`, `AddedHero_ChangesHash`, `ChangedLevelOrXp_ChangesHash`, `IdenticalInit_IsByteIdentical`.
+- [x] **Task 4 — startStateHash (AC2, AC3, D-2, D-3)**
+  - [x] Create `godot/src/Core/Definitions/StartStateHash.cs` (static, FNV-64, reuse `CanonicalModelHash`'s `MixInt`/`MixStr` idiom; `AlgoVersion = 1` mixed first). `Compute(...)` folds: (1) `AlgoVersion`, (2) the `CanonicalModelHash.Compute(scenario)` value (content seed, D-2), (3) HeroStore rows **ascending by `HeroId`** — `HeroId.Value` (two mixes), `Level`, `Xp.Raw`. Sentinel `0→1`. Compute over **canonical `Fixed.Raw`** values, never a post-spawn `EntityWorld` snapshot.
+  - [x] Wire the computation once at match start (near where `CanonicalModelHash`/`ScenarioHash` is computed, `MainScene.cs:391-392`) — but **do NOT** put it in the Ready packet / `MakeReady` (D-3, Epic 9 owns the handshake). A Godot-free entry point (so Tier-1 can call it headless) is required for the golden.
+  - [x] Pin two ways (mirror `CanonicalModelHash`): an **independent hand-computed FNV-64** pin (`StartStateHashTests`, anti-tautology, like `CanonicalModelHashTests.MinimalModel_MatchesIndependentlyComputedFnv64`) + a **recorded model-layout** pin over a fixed hero-loaded fixture. Teeth: `AlgoVersion_IsOne`, `AddedHero_ChangesHash`, `ChangedLevelOrXp_ChangesHash`, `IdenticalInit_IsByteIdentical`.
 
-- [ ] **Task 5 — determinism golden for the init hash (AC2, AC3)**
-  - [ ] Add ONE new Godot-free golden fixture that mints a hero into HeroStore and asserts the `startStateHash` is byte-identical across two in-process runs and matches the committed pin (the fold's teeth). Follow the `ShiftQueueScenario`/`WorkerCastCrystalCostScenario` new-golden pattern (scenario builder + 4-`[Fact]` file). Keep it **LF-only** and **Player2-empty** (float-AI no-op → cross-platform-safe, not Windows-gated). Register in `ProjectChimera.Sim.Tests.csproj` (`<None Remove>` + `<EmbeddedResource Include>`). **Do NOT re-record any of the 17 existing `.golden.txt` files** (they must stay byte-identical — AC5).
+- [x] **Task 5 — determinism golden for the init hash (AC2, AC3)**
+  - [x] Add ONE new Godot-free golden fixture that mints a hero into HeroStore and asserts the `startStateHash` is byte-identical across two in-process runs and matches the committed pin (the fold's teeth). Follow the `ShiftQueueScenario`/`WorkerCastCrystalCostScenario` new-golden pattern (scenario builder + 4-`[Fact]` file). Keep it **LF-only** and **Player2-empty** (float-AI no-op → cross-platform-safe, not Windows-gated). Register in `ProjectChimera.Sim.Tests.csproj` (`<None Remove>` + `<EmbeddedResource Include>`). **Do NOT re-record any of the 17 existing `.golden.txt` files** (they must stay byte-identical — AC5).
 
-- [ ] **Task 6 — version-stamp registry + fence check (AC5)**
-  - [ ] Add the **new** `StartStateHash` stamp to `VersionStampConsistencyTests` (`ExpectedStartStateHashAlgoVersion = 1` + a `[Fact]`, using the existing tripwire pattern `:126-139`). Leave `ExpectedSimChecksumAlgoVersion = 9`, `ExpectedCanonicalModelHashAlgoVersion = 3`, `ExpectedProtocolVersion = 1`, `ExpectedReplayFormatVersion = 2` **unchanged**.
-  - [ ] Fence check: `git diff` shows **no** change to `SimChecksum.cs`, `CanonicalModelHash.cs`, any existing `*.golden.txt`, `NetworkCommand.cs`/wire, `ReplayRecorder.cs`. Confirm `SimChecksumCoverageGuardTest.ExpectedV9Hash = 0xFD72E97E` and `ScenarioApplierTests.ExpectedCanonicalHash` are untouched.
+- [x] **Task 6 — version-stamp registry + fence check (AC5)**
+  - [x] Add the **new** `StartStateHash` stamp to `VersionStampConsistencyTests` (`ExpectedStartStateHashAlgoVersion = 1` + a `[Fact]`, using the existing tripwire pattern `:126-139`). Leave `ExpectedSimChecksumAlgoVersion = 9`, `ExpectedCanonicalModelHashAlgoVersion = 3`, `ExpectedProtocolVersion = 1`, `ExpectedReplayFormatVersion = 2` **unchanged**.
+  - [x] Fence check: `git diff` shows **no** change to `SimChecksum.cs`, `CanonicalModelHash.cs`, any existing `*.golden.txt`, `NetworkCommand.cs`/wire, `ReplayRecorder.cs`. Confirm `SimChecksumCoverageGuardTest.ExpectedV9Hash = 0xFD72E97E` and `ScenarioApplierTests.ExpectedCanonicalHash` are untouched.
 
-- [ ] **Task 7 — fullscreen at launch (AC4, D-9) — FENCED, config-only**
+- [x] **Task 7 — fullscreen at launch (AC4, D-9) — FENCED, config-only**
   - **✅ ALREADY APPLIED this session (2026-07-06):** the `[display]` block below is already committed to `godot/project.godot`. This task is **verification-only** for the dev — do not re-add it; confirm the game launches fullscreen (after an editor restart) and that the HUD is correctly placed.
   - [x] Add to `godot/project.godot` a new `[display]` section:
     ```ini
@@ -129,12 +129,12 @@ Following the Epic 2 / 3.1 recommended-default pattern. Each is the recommendati
     window/stretch/aspect="expand"
     ```
     (`mode=3` = borderless fullscreen; use `mode=2` = Maximized if borderless fights MCP capture.)
-  - [ ] Apply-and-verify: run `godot_project check_stale`, restart the editor (display settings are baked into the editor's `ProjectSettings` singleton and are **not** hot-applicable to a running game), then relaunch and confirm the game opens fullscreen with the HUD (top-left readouts, bottom-left controls, bottom-right minimap) at the corners. **No `.cs` change** — do not add a runtime toggle (would hit the 2.9b resize-stale command-card bug).
+  - [x] Apply-and-verify: run `godot_project check_stale`, restart the editor (display settings are baked into the editor's `ProjectSettings` singleton and are **not** hot-applicable to a running game), then relaunch and confirm the game opens fullscreen with the HUD (top-left readouts, bottom-left controls, bottom-right minimap) at the corners. **No `.cs` change** — do not add a runtime toggle (would hit the 2.9b resize-stale command-card bug).
 
-- [ ] **Task 8 — build, verify, scope (AC5)**
-  - [ ] `dotnet build godot/godot.csproj` → 0 err / 0 new warnings. Release analyzer gate `-p:ChimeraRelease=true --no-incremental` → 0 err / 0 RS0030 (HeroStore + StartStateHash are sim code — in-scope for the gate).
-  - [ ] Tier-1 `dotnet test godot/ProjectChimera.Sim.Tests` → green (new HeroStore recycle/ABA tests + startStateHash pins/teeth + the new golden; the 17 existing goldens byte-identical). `/godot-verify` (or manual launch) for AC4 fullscreen.
-  - [ ] If any hero-runtime need surfaces that 3.2 cannot satisfy (it should not — this is substrate only), log it to `deferred-work.md` rather than expanding scope.
+- [x] **Task 8 — build, verify, scope (AC5)**
+  - [x] `dotnet build godot/godot.csproj` → 0 err / 0 new warnings. Release analyzer gate `-p:ChimeraRelease=true --no-incremental` → 0 err / 0 RS0030 (HeroStore + StartStateHash are sim code — in-scope for the gate).
+  - [x] Tier-1 `dotnet test godot/ProjectChimera.Sim.Tests` → green (new HeroStore recycle/ABA tests + startStateHash pins/teeth + the new golden; the 17 existing goldens byte-identical). `/godot-verify` (or manual launch) for AC4 fullscreen.
+  - [x] If any hero-runtime need surfaces that 3.2 cannot satisfy (it should not — this is substrate only), log it to `deferred-work.md` rather than expanding scope.
 
 ## Dev Notes
 
@@ -211,8 +211,56 @@ The HUD is code-built and **corner-anchored** (`HudPhase.cs:41-104`: game-state 
 
 ### Agent Model Used
 
+claude-opus-4-8 (gds-dev-story workflow).
+
 ### Debug Log References
+
+- `dotnet build godot/godot.csproj` → **Build succeeded, 0 errors**, 3 warnings (the 3 pre-existing CS8632 in `GatheringSystem.cs:23,25` + `FlowFieldSystem.cs:86` — none from the new files).
+- Release analyzer gate `dotnet build godot/godot.csproj -p:ChimeraRelease=true --no-incremental` → **0 errors / 0 RS0030** (HeroStore + StartStateHash are analyzer-clean sim code — Fixed/int/ulong only); same 3 pre-existing CS8632, no new warnings.
+- Golden record: `CHIMERA_GOLDEN_RECORD=1 dotnet test --filter ~HeroStartStateGolden` → recorded `startstatehash FFC83BAA225ADBEC`.
+- Tier-1: `dotnet test godot/ProjectChimera.Sim.Tests` → **696 passed / 1 skipped / 0 failed** (baseline ~667 + 29 new). The 17 existing goldens byte-identical; `SimChecksumCoverageGuardTest` (ExpectedV9Hash 0xFD72E97E) + `ScenarioApplierTests` (ExpectedCanonicalHash) + `VersionStampConsistencyTests` all green.
+- New Story-3.2 tests: **29 passed** (HeroStoreTests 12, StartStateHashTests 11, HeroStartStateGoldenTests 4, ApplyUnitDefinitionGuardTest +1 `RecycledSlot_CarriesNoPriorHeroLink`, VersionStampConsistencyTests +1 `StartStateHashAlgorithmStamp_IsPinned`).
+- AC4 `/godot-verify` (Godot 4.6.3): main scene launches fullscreen; in-match HUD corner-anchored (top-left readouts + bottom-left controls at their corners; center-top stall banner conditionally absent), **0 error-log messages**; `godot_project check_stale` = false (the editor loaded the `[display]` block).
 
 ### Completion Notes List
 
+- **Determinism posture (D-1 = DEFER, Alec-confirmed): purely ADDITIVE.** `SimChecksum.cs` and `CanonicalModelHash.cs` UNTOUCHED (AlgoVersion stays **9 / 3**), all **17 existing goldens byte-identical**, `ExpectedV9Hash` (0xFD72E97E) + `ExpectedCanonicalHash` NOT re-recorded. The only version-stamp movement is the new **StartStateHash v1**. Stamps: **9/3/1/2 + new StartStateHash 1**.
+- **AC1 — HeroStore** (`src/Core/HeroStore.cs`): sparse SoA cloning `BuildingStore` (monotonic `Count`, LIFO free-list, per-slot `Generation` ABA-armor, `PackRef`/`TryResolveRef`), keyed by a stable `HeroId` (readonly struct over `ulong`, distinct from the entity id AND the slot). Live fields `{Id, EntityId, Level, Xp}`; reserved 3.13/3.14 revival fold fields documented (NOT declared); `FoldOrder()` = the ascending-`HeroId` iteration contract (insertion sort, producer-independent).
+- **AC2 — ascending-identity fold** established + unit-tested (`FoldOrder` mint-order-independent). Per-tick `SimChecksum` fold **DEFERRED to 3.13** (documented in-code + here). HeroStore is folded into `StartStateHash` ascending-by-`HeroId`; two runs are byte-identical.
+- **AC3 — StartStateHash** (`src/Core/Definitions/StartStateHash.cs`): NEW FNV-64, `AlgoVersion=1` mixed first, seeds from `CanonicalModelHash.Compute` (D-2 DRY — that file untouched) then HeroStore rows via `Fixed.Raw`/int, `0→1` sentinel. Pinned **two ways**: an independent hand-computed FNV-64 (`StartStateHashTests`) + a recorded golden (`hero-start-state.golden.txt` = FFC83BAA225ADBEC). Teeth: added-hero / changed-level / changed-XP move it; entity-link-only + mint-order do NOT (producer-independence). Computed once at match start in `MainScene` (D-3: NOT in the Ready packet — Epic 9 wires the handshake).
+- **AC4 — fullscreen** (Task 7): the `project.godot` `[display]` block was applied in a prior step this session; verified via `/godot-verify` (launches fullscreen; HUD corner-anchored; no errors). Config-only, fenced from all sim work.
+- **AC5 — fence intact**: `git diff` confined to `src/Core/**` + `ProjectChimera.Sim.Tests/**` (new tests + 1 new golden + csproj) + `sprint-status.yaml`. Zero changes to `SimChecksum.cs`, `CanonicalModelHash.cs`, any existing golden, or the wire/replay code.
+- **Decisions**: D-6 schema `{Id, EntityId, Level, Xp}` live, revival fields documented, inventory NOT provisioned (3.15). D-7 `is_hero` bool on `UnitDefinition` (lenient-loader-safe, mirrors `Tags`); `DamageType.Hero`/`ArmorType.Hero` confirmed present (`DamageTable.cs:21,36`). D-8 `EntityWorld.HeroIndex` (packed handle, `HERO_NONE=-1`) defaulted in `Create` (NOT `ApplyUnitDefinition`); sole teeth = `RecycledSlot_CarriesNoPriorHeroLink`.
+- **Scope beyond the Dev Notes' "Project Structure Notes" enumeration, but IN-FENCE per AC5 ("src/Core/**")**: added `SimulationHost.Heroes` (the sim-layer home for the substrate, populated by 3.9) + the `MainScene` start-state-hash compute wiring that Task 4 explicitly mandated. Both live under `src/Core/`.
+- **Task 5 golden mechanism**: `StartStateHash` is a compute-ONCE 64-bit value, not a per-tick `SimChecksum` sequence, so the hero-start-state golden stores a single value via a small self-contained loader/recorder inside `HeroStartStateGoldenTests` (the shared per-tick `GoldenChecksumReplay` harness is untouched — it reuses only that harness's record-mode env gate + source-path resolver). This is AC3's "recorded model-layout pin"; the independent-FNV pin (AC3's other pin) lives in `StartStateHashTests`.
+
 ### File List
+
+**New (sim):**
+- `godot/src/Core/HeroStore.cs` (HeroStore + the HeroId struct)
+- `godot/src/Core/Definitions/StartStateHash.cs`
+
+**New (tests):**
+- `godot/ProjectChimera.Sim.Tests/Core/HeroStoreTests.cs`
+- `godot/ProjectChimera.Sim.Tests/Validation/StartStateHashTests.cs`
+- `godot/ProjectChimera.Sim.Tests/Golden/HeroStartStateScenario.cs`
+- `godot/ProjectChimera.Sim.Tests/Golden/HeroStartStateGoldenTests.cs`
+- `godot/ProjectChimera.Sim.Tests/Golden/hero-start-state.golden.txt`
+
+**Modified (sim):**
+- `godot/src/Core/EntityWorld.cs` (+`HERO_NONE` const; +`HeroIndex` SoA array: declare / allocate / `Array.Fill` sentinel / `Create` reset — `ApplyUnitDefinition` untouched)
+- `godot/src/Core/Definitions/UnitDefinition.cs` (+`is_hero` bool)
+- `godot/src/Core/Sim/SimulationHost.cs` (+`Heroes` HeroStore property + construction)
+- `godot/src/Core/MainScene.cs` (+`StartStateHash` compute at match start; deliberately NOT in the Ready packet)
+
+**Modified (tests / tracking):**
+- `godot/ProjectChimera.Sim.Tests/Core/ApplyUnitDefinitionGuardTest.cs` (+`RecycledSlot_CarriesNoPriorHeroLink`)
+- `godot/ProjectChimera.Sim.Tests/Meta/VersionStampConsistencyTests.cs` (+`ExpectedStartStateHashAlgoVersion=1` + `StartStateHashAlgorithmStamp_IsPinned`)
+- `godot/ProjectChimera.Sim.Tests/ProjectChimera.Sim.Tests.csproj` (+hero-start-state golden registration)
+- `_bmad-output/implementation-artifacts/sprint-status.yaml` (status → review)
+
+**Note:** `godot/project.godot`'s `[display]` block was applied in a prior step this session (Task 7 — already committed); present + verified, not part of this session's uncommitted diff.
+
+### Change Log
+
+- **2026-07-06** — Story 3.2 implemented (gds-dev-story, claude-opus-4-8). HeroStore SoA + stable `HeroId` + `EntityWorld.HeroIndex` link + a NEW `StartStateHash` (init-state FNV-64, v1) + the `is_hero` designation. Determinism fence purely **additive** (D-1 defer): `SimChecksum` 9 / `CanonicalModelHash` 3 untouched, 17 goldens byte-identical, +1 new startStateHash golden (`FFC83BAA225ADBEC`), + `StartStateHash` stamp v1. Tier-1 **696 pass / 1 skip / 0 fail**; release analyzer gate **0 err / 0 RS0030**; AC4 fullscreen `/godot-verify` PASS. Status → review.

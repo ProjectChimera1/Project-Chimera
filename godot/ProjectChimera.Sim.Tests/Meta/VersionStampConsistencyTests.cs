@@ -55,6 +55,13 @@ namespace ProjectChimera.Sim.Tests.Meta
         /// v3 (Story 2.9b follow-up): folded ScenarioPlayerSlot.StartCrystal (sim-affecting per-slot start-state).</summary>
         private const int ExpectedCanonicalModelHashAlgoVersion = 3;
 
+        /// <summary>Load-time canonical START-STATE hash algorithm version (Story 3.2, AC3) — a NEW, distinct FNV-64
+        /// over the full init state = the <see cref="CanonicalModelHash"/> content seed PLUS the HeroStore rows.
+        /// v1 = initial. Its arrival is purely ADDITIVE: it did NOT move <see cref="SimChecksum"/> (9) or
+        /// <see cref="CanonicalModelHash"/> (3). Wiring it into the server-attested handshake is Epic 9 (D-3); the
+        /// value itself is pinned by the independent-FNV pin (StartStateHashTests) + the hero-start-state golden.</summary>
+        private const int ExpectedStartStateHashAlgoVersion = 1;
+
         /// <summary>Lockstep Hello-handshake wire protocol version.</summary>
         private const ushort ExpectedProtocolVersion = 1;
 
@@ -82,6 +89,19 @@ namespace ProjectChimera.Sim.Tests.Meta
                 $"{ExpectedCanonicalModelHashAlgoVersion}. This is the lobby start-state handshake hash; a bump " +
                 $"changes the value old clients computed. Confirm the handshake/migration impact and update " +
                 $"{nameof(ExpectedCanonicalModelHashAlgoVersion)} in the same commit.");
+        }
+
+        [Fact]
+        public void StartStateHashAlgorithmStamp_IsPinned()
+        {
+            // Story 3.2 (AC3 / AC5): the NEW init-state hash (heroes + content seed). Its arrival is ADDITIVE — it did
+            // NOT move SimChecksum (9) or CanonicalModelHash (3). A bump here changes the value old clients would
+            // compute for the (Epic 9) start-state handshake, so it must re-record the hero-start-state golden AND the
+            // independent-FNV pin (StartStateHashTests) in the SAME commit.
+            Assert.True(StartStateHash.AlgoVersion == ExpectedStartStateHashAlgoVersion,
+                $"StartStateHash.AlgoVersion is {StartStateHash.AlgoVersion}, expected {ExpectedStartStateHashAlgoVersion}. " +
+                $"This is the Story 3.2 init-state hash (heroes + content). A bump must re-record the hero-start-state " +
+                $"golden AND update {nameof(ExpectedStartStateHashAlgoVersion)} here in the same commit.");
         }
 
         [Fact]

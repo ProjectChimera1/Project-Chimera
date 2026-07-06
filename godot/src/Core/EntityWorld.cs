@@ -131,6 +131,13 @@ namespace ProjectChimera.Core
         public const byte NO_PENDING_CAST = byte.MaxValue;
 
         /// <summary>
+        /// <see cref="HeroIndex"/> sentinel for "this entity is not a hero" (Story 3.2, D-8). −1, distinct from any
+        /// valid packed <see cref="HeroStore"/> handle (a live pack is <c>(Generation &lt;&lt; 8) | slot</c> ≥ 0).
+        /// Named so the determinism analyzer's CHM0004 magic-number advisory stays clean.
+        /// </summary>
+        public const int HERO_NONE = -1;
+
+        /// <summary>
         /// Default per-unit separation radius (Story 1.13) applied when <c>collision_radius</c> is omitted or
         /// authored &lt;= 0. Chosen as 1.0 so two default units sum to a 2.0 contact distance — identical to the
         /// legacy flat <c>MovementSystem.SEPARATION_QUERY_RADIUS</c>, so unauthored units keep their pre-1.13
@@ -442,6 +449,21 @@ namespace ProjectChimera.Core
         /// <summary>Registry index of this unit's WHILE-ALIVE self-passive installed at spawn (−1 = none). NOT folded (authored).</summary>
         public readonly int[] SelfPassiveAbilityIndex;
 
+        // --- Hero link (Story 3.2, D-8 / AR-12) ---
+        /// <summary>
+        /// Per-entity link to this entity's persistent <see cref="HeroStore"/> row — a GENERATION-STAMPED packed
+        /// handle (<see cref="HeroStore.PackRef"/>), or <see cref="HERO_NONE"/> (−1) for a non-hero. Established when
+        /// a hero unit spawns and a HeroStore row is minted (the load path is Story 3.9); resolved back to a live slot
+        /// via <see cref="HeroStore.TryResolveRef"/>, so a reference that outlived a recycle resolves FALSE instead of
+        /// ABA-retargeting a DIFFERENT hero — entity ids have no generation counter of their own, so a bare slot would
+        /// be ABA-unsafe across recycle (the exact hazard 2.13's PackRef solved). RUNTIME state, NOT def-derived:
+        /// defaulted in <see cref="Create"/> (the mandatory recycle-trap reset), set by the spawn/mint path — it does
+        /// NOT go through <see cref="ApplyUnitDefinition"/> (the PatrolWaypoints/OrderQueue posture, NOT the A2
+        /// def-mapper posture). NOT folded into <see cref="SimChecksum"/> in Story 3.2 (the store is dormant — D-1);
+        /// its SOLE recycle coverage is the RecycledSlot_CarriesNoPriorHeroLink guard test.
+        /// </summary>
+        public readonly int[] HeroIndex;
+
         // --- Gatherer data (workers only; Inactive for all other units) ---
         public readonly GatherState[] GatherState;
         public readonly int[]         GatherTarget;   // ResourceNodeStore index (-1 = none)
@@ -548,6 +570,7 @@ namespace ProjectChimera.Core
             AuraAbilityIndex        = new int[MAX_ENTITIES];                        // Story 2.6 (authored — NOT folded)
             OnHitAbilityIndex       = new int[MAX_ENTITIES];                        // Story 2.6 (authored — NOT folded)
             SelfPassiveAbilityIndex = new int[MAX_ENTITIES];                        // Story 2.6 (authored — NOT folded)
+            HeroIndex               = new int[MAX_ENTITIES];                        // Story 3.2 (packed HeroStore handle; sentinel −1 via Array.Fill below; NOT folded)
             GatherState    = new GatherState[MAX_ENTITIES];
             GatherTarget   = new int[MAX_ENTITIES];
             CarryAmount    = new Fixed[MAX_ENTITIES];
@@ -569,6 +592,7 @@ namespace ProjectChimera.Core
             Array.Fill(AbilityId,         -1);              // Story 2.4a: -1 = empty ability slot
             Array.Fill(PendingCastSlot,   NO_PENDING_CAST); // Story 2.4a: 255 = no cast queued
             Array.Fill(PendingCastTarget, -1);
+            Array.Fill(HeroIndex, HERO_NONE);               // Story 3.2: −1 = "not a hero" (default int 0 would falsely alias HeroStore slot 0)
         }
 
         /// <summary>
@@ -659,6 +683,11 @@ namespace ProjectChimera.Core
             AuraAbilityIndex[id]        = -1;
             OnHitAbilityIndex[id]       = -1;
             SelfPassiveAbilityIndex[id] = -1;
+            // Story 3.2 (D-8): a recycled slot must NEVER inherit the prior occupant's HeroStore link — a stale
+            // packed handle would ABA-alias a hero row. HERO_NONE (−1) = not a hero. Set by the spawn/mint path for
+            // hero units (Story 3.9), NOT by ApplyUnitDefinition (runtime state, not def data). The load-bearing
+            // recycle-trap line: its ONLY teeth are RecycledSlot_CarriesNoPriorHeroLink (unfolded → the guard IS the coverage).
+            HeroIndex[id] = HERO_NONE;
             int abResetBase = id * MAX_ABILITIES_PER_UNIT;
             for (int s = 0; s < MAX_ABILITIES_PER_UNIT; s++)
             {

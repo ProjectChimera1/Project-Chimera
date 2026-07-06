@@ -156,6 +156,23 @@ namespace ProjectChimera.Core.Definitions
         public string[]? Tags { get; set; }
 
         /// <summary>
+        /// Marks this unit type as a HERO (Story 3.2, D-7 / AR-12) — an orthogonal designation that gates minting a
+        /// persistent <see cref="ProjectChimera.Core.HeroStore"/> row (with a stable cross-match identity) when the
+        /// unit spawns. Deliberately NOT a 7th <see cref="ProjectChimera.Core.UnitCategory"/>: a hero is orthogonal to
+        /// the movement/formation archetype (a hero may be Melee or Ranged), and a new category member would also trip
+        /// the enum-indexed-array touch-site rule. Mirrors the Story-2.11 <see cref="Tags"/> precedent (an orthogonal
+        /// axis added without abusing an existing enum). A plain settable value-type auto-prop (like <see cref="Armor"/>),
+        /// default false — lenient-loader-safe (no enum-typed field on the faction-loader path; an omitted key stays
+        /// false = not a hero, so no existing unit becomes a hero by omission and no faction JSON changes). NOT
+        /// combat/checksum state: read ONLY at spawn to decide whether to mint a hero row. A hero unit MAY additionally
+        /// author <c>damage_type:"Hero"</c> / <c>armor_type:"Hero"</c> (the Hero rows reserved by Story 1.6), but that
+        /// is independent of this flag. The full load-and-populate path (from PlayerProfile) is Story 3.9; 3.2 defines
+        /// the designation + the minting API.
+        /// </summary>
+        [JsonPropertyName("is_hero")]
+        public bool IsHero { get; set; } = false;
+
+        /// <summary>
         /// Maximum ability-resource (energy) pool for this unit type (authored float, quantized once to
         /// <see cref="ProjectChimera.Core.Fixed"/> in <see cref="ProjectChimera.Core.EntityWorld.ApplyUnitDefinition"/>
         /// — the single float→Fixed boundary, like the other stats). 0 = no energy pool (cannot cast energy-cost
