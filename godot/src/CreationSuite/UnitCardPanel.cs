@@ -1,41 +1,39 @@
 #nullable enable
+using System.Collections.Generic;
 using Godot;
-using ProjectChimera.Core.Definitions;   // UnitDefinition, FactionDefinition, AbilityRegistry, UnitCardText
+using ProjectChimera.Core.Definitions;   // UnitDefinition, FactionDefinition, AbilityRegistry, UnitCardText, UnitDefinitionValidator
 using ProjectChimera.UI;                  // GameState, GameMode, MeshLoader
-using ProjectChimera.UI.Components;        // ChimeraComponents, ChimeraListRow, ChimeraTooltip
+using ProjectChimera.UI.Components;        // ChimeraComponents, ChimeraTabs, ChimeraTooltip, ChimeraValidationBadge
 using ProjectChimera.UI.Theme;             // ThemeTokens, ThemeBuilder, AccentController
 using GodotTheme = Godot.Theme;            // the ProjectChimera.UI.Theme namespace shadows the bare Theme type
-using System.Globalization;
 
 namespace ProjectChimera.CreationSuite
 {
     /// <summary>
-    /// Story 3.3 — the READ-ONLY Unit Card panel (UX-DR77). A single consolidated WC3-style card that renders an
-    /// existing <see cref="UnitDefinition"/>'s stats, combat type, archetype, model preview, and attached abilities.
-    /// It <b>mutates nothing</b>: editing / Save / model-browse / archetype-and-ability authoring / Promote-to-Hero all
-    /// arrive in later stories (3.4–3.7). Built ENTIRELY from the Story-3.1 component kit (<see cref="ChimeraComponents"/>
-    /// + <see cref="ChimeraListRow"/> + <see cref="ChimeraTooltip"/>) styled by <c>res://assets/ui/main.tres</c> — no
-    /// hardcoded house palette (the clone target, AbilityEditorPanel, predates the Theme; only its lifecycle SHAPE is reused).
+    /// Story 3.3/3.4 — the Unit Card Editor (UX-DR77). Story 3.3 shipped the read-only card; <b>3.4 makes that same
+    /// panel editable in place</b> (D-2): the readouts become <see cref="ChimeraComponents"/> inputs bound to the live
+    /// <see cref="UnitDefinition"/>, and the panel gains Save / New / Duplicate / Delete, a Simple/Advanced disclosure
+    /// with a raw-JSON escape hatch, fail-closed inline validation with per-field located badges (UX-DR55), undo/redo,
+    /// and write-back to the faction JSON on disk. It reuses the 3.3 browse (<c>_faction.Units</c> + <c>_index</c>), the
+    /// 3D preview, the kit bootstrap, and the read-only header — it does not clone them (see 3.4 story, D-2).
     ///
-    /// <para><b>Determinism posture — PURE PRESENTATION, zero fold.</b> The card reads a content POCO (further from the
-    /// sim than a live entity), touches no <c>EntityWorld</c>/store/sim array, and moves no golden or checksum. The only
-    /// <c>src/Core</c> touch is the Godot-free <see cref="UnitCardText"/> formatter (so Tier-1 can compile it). Stamps stay
-    /// 9/3/1/2 + StartStateHash 1.</para>
+    /// <para><b>This file</b> is the shell + the preserved 3.3 surfaces (kit bootstrap, browse, 3D preview, read-only
+    /// header, tooltips). The 3.4 edit surface — editable fields, disclosure, raw-JSON hatch, validation, persistence,
+    /// undo/redo, toolbar, input — lives in the partial <see cref="UnitCardPanel"/> file <c>UnitCardPanel.Edit.cs</c>.</para>
     ///
-    /// <para><b>Kit bootstrap (D-2).</b> This panel is the FIRST in-scene consumer of the kit — <c>ChimeraComponents.Initialize</c>
-    /// ran only in the two 3.1 demo scenes before now, never in <c>MainScene</c>. So the panel self-initializes the factory:
-    /// it ALWAYS loads <c>main.tres</c> (the inner <see cref="PanelContainer"/> needs it regardless), and guards ONLY the
-    /// one-time <see cref="AccentController"/> + <c>Initialize</c> behind <c>!IsInitialized</c> so a future startup phase
-    /// (Story 3.11) makes it a clean no-op.</para>
+    /// <para><b>Determinism posture — PURE AUTHORING-TIME, zero fold.</b> Editing a content POCO and rewriting a JSON
+    /// file touches no <c>EntityWorld</c>/store/sim array and moves no checksum or golden (<c>CanonicalModelHash</c>
+    /// folds ScenarioData by path-string + unit-id, never by unit stats). The only <c>src/Core</c> touches are the new
+    /// Godot-free <see cref="UnitDefinitionValidator"/> + <see cref="FactionWriter"/>. Stamps stay 9/3/1/2 + StartStateHash 1.</para>
     /// </summary>
     public partial class UnitCardPanel : Node
     {
-        // ── Layout constants (component-intrinsic dims; the spacing/color TOKENS are read from the theme, per AC4) ──
-        private const float PANEL_W = 460f;
-        private const float PANEL_H = 640f;
+        // ── Layout constants (component-intrinsic dims; the spacing/color TOKENS are read from the theme) ──
+        private const float PANEL_W = 480f;
+        private const float PANEL_H = 700f;
         private const float MARGIN  = 12f;
-        private const int   PREVIEW_W = 260;
-        private const int   PREVIEW_H = 200;
+        private const int   PREVIEW_W = 240;
+        private const int   PREVIEW_H = 180;
         private const float TURNTABLE_SPEED = 30f; // deg/sec (AssetPreviewScene value, D-8)
 
         // ── Kit context (self-owned; _accent only created when this panel is the first consumer) ──
@@ -43,26 +41,47 @@ namespace ProjectChimera.CreationSuite
         private AccentController?  _accent;
 
         // ── Deps (wired by UnitCardPhase after AddChild) ──
-        private FactionDefinition? _faction;               // the unit source (Units only — D-10); the panel never reaches _ctx
+        private FactionDefinition? _faction;               // the unit source (Units only — D-10)
         private GameState?         _gameState;
         private AbilityRegistry    _registry = AbilityRegistry.Empty;
         private int                _index;                 // browse cursor into _faction.Units
+        private string             _factionJsonPath = "";  // res:// path of the faction file to write edits back to (D-8)
+
+        // ── Edit state (Story 3.4) ──
+        private UnitDefinition?    _current;               // the unit currently bound/edited (== _faction.Units[_index])
+        private string             _originalId = "";       // the bound unit's id at Bind time — the PatchFactionJson target (survives an id rename)
+        private readonly EditorHistory            _history   = new();   // own instance (D-6); reused by Ctrl+Z/Y when visible
+        private readonly UnitDefinitionValidator  _validator = new();   // the Godot-free AR-39 gate (D-9)
+        private readonly Dictionary<string, ChimeraValidationBadge> _badges = new();  // JSON key → located badge (UX-DR55)
+        private bool _building;                            // guard: suppress live handlers while (re)building controls
 
         // ── Shell ──
         private CanvasLayer    _canvas = null!;
         private PanelContainer _panel  = null!;
-        private VBoxContainer  _headerHost = null!;        // refilled per unit (above the preview)
-        private VBoxContainer  _bodyHost   = null!;        // refilled per unit (model-ref + combat + stats + economy + abilities)
+        private VBoxContainer  _headerHost = null!;        // read-only header (refilled per unit)
+        private VBoxContainer  _bodyHost   = null!;        // editable fields (refilled per unit)
         private Label          _counterLabel = null!;
         private Godot.Button   _prevBtn = null!;
         private Godot.Button   _nextBtn = null!;
+
+        // ── Disclosure + edit chrome (built once) ──
+        private ChimeraTabs    _segment = null!;           // Simple / Advanced (UX-DR54, Segment — D-3)
+        private VBoxContainer?  _advancedHost;             // advanced-fields + raw-JSON subtree (rebuilt per unit; visibility = segment)
+        private TextEdit?       _jsonPane;                 // raw-JSON escape hatch over the single unit (D-5)
+        private bool            _paneDirty;                // the raw-JSON pane has manual edits not yet folded back
+        private bool            _suppressPaneDirty;        // a programmatic SetPaneText must not mark the pane dirty
+        private Label           _statusLabel = null!;      // save/validation status line
+        private Godot.Button    _saveBtn   = null!;
+        private Godot.Button    _newBtn    = null!;
+        private Godot.Button    _dupBtn    = null!;
+        private Godot.Button    _deleteBtn = null!;
 
         // ── Preview (built ONCE; only the mesh swaps per unit) ──
         private SubViewport _subViewport = null!;
         private Camera3D    _camera      = null!;
         private Node3D      _turntable   = null!;
 
-        // ── Lifecycle (mirrors AbilityEditorPanel's SHAPE: _Ready builds, the phase calls Initialize after AddChild) ──
+        // ── Lifecycle ─────────────────────────────────────────────────────────────
 
         /// <inheritdoc/>
         public override void _Ready()
@@ -72,29 +91,25 @@ namespace ProjectChimera.CreationSuite
         }
 
         /// <summary>
-        /// Bind the panel to the current scenario's faction + game state + validated ability registry. Called by
-        /// <c>UnitCardPhase</c> AFTER <c>AddChild</c> (so the UI built in <see cref="_Ready"/> exists). Starts hidden;
-        /// shown by the <c>J</c> toggle in Edit mode. The unit source is the <see cref="FactionDefinition"/> itself — a
-        /// plain <see cref="Node"/> panel can't reach the SceneContext, and <c>ScenarioData</c> carries only a faction
-        /// JSON <em>path</em>, not parsed units.
+        /// Bind the panel to the current scenario's faction + game state + validated ability registry + the faction
+        /// file <c>res://</c> path to persist edits to (D-8). Called by <c>UnitCardPhase</c> AFTER <c>AddChild</c>.
+        /// Starts hidden; shown by the <c>J</c> toggle in Edit mode.
         /// </summary>
-        public void Initialize(FactionDefinition? faction, GameState gameState, AbilityRegistry registry)
+        public void Initialize(FactionDefinition? faction, GameState gameState, AbilityRegistry registry, string factionJsonPath = "")
         {
-            _faction   = faction;
-            _gameState = gameState;
-            _registry  = registry ?? AbilityRegistry.Empty;
-            _index     = 0;
+            _faction         = faction;
+            _gameState       = gameState;
+            _registry        = registry ?? AbilityRegistry.Empty;
+            _factionJsonPath = factionJsonPath ?? "";
+            _index           = 0;
 
             _gameState.ModeChanged += OnModeChanged;   // authoring is Edit-only — hide in Play
             _panel.Visible = false;
         }
 
         /// <summary>
-        /// D-1 standalone-harness entry point: load a faction JSON by <c>res://</c> path and rebind the card to it
-        /// (Units only — D-10), opening at the first unit. This is the vehicle D-1/Task-8 call for so the
-        /// <c>/godot-verify</c> harness can feed the <c>_unitcard_sample</c> fixture and demonstrate the AC2
-        /// box-placeholder branch without the (3.4+) real select flow. Presentation-only — it loads a content POCO
-        /// through the same <see cref="FactionDefinition.LoadFromFile"/> path the game uses; it mutates no sim state.
+        /// Standalone-harness entry point (D-1 / <c>/godot-verify</c>): load a faction JSON by <c>res://</c> path,
+        /// rebind the card to it (Units only), and set it as the write-back target. Presentation-only.
         /// </summary>
         public void LoadFactionFromPath(string resPath)
         {
@@ -104,15 +119,15 @@ namespace ProjectChimera.CreationSuite
                 GD.PrintErr($"[UnitCard] LoadFactionFromPath: '{abs}' not found.");
                 return;
             }
-            _faction = FactionDefinition.LoadFromFile(abs);
-            _index = 0;
-            _panel.Visible = true;
+            _faction         = FactionDefinition.LoadFromFile(abs);
+            _factionJsonPath = resPath;   // persist edits back to the same file
+            _index           = 0;
+            _panel.Visible   = true;
             _subViewport.RenderTargetUpdateMode = SubViewport.UpdateMode.Always;
             Refresh();
         }
 
-        /// <summary>Toggle visibility (J key, Edit mode only). On open: enable the preview render + (re)bind the current
-        /// unit. On close: disable the preview render so a hidden card renders no 3D frame.</summary>
+        /// <summary>Toggle visibility (J key, Edit mode only). On open: enable the preview render + (re)bind the current unit.</summary>
         public void Toggle()
         {
             _panel.Visible = !_panel.Visible;
@@ -150,14 +165,11 @@ namespace ProjectChimera.CreationSuite
 
         private void EnsureKitInitialized()
         {
-            // ALWAYS load the theme (the inner PanelContainer.Theme needs it regardless of factory state). CacheMode.Ignore
-            // so we never mutate/re-mint the committed main.tres; ThemeBuilder.Build() is the in-memory fallback.
+            // ALWAYS load the theme (the inner PanelContainer.Theme needs it regardless of factory state).
             _theme = ResourceLoader.Load<GodotTheme>(ThemeBuilder.ThemePath, cacheMode: ResourceLoader.CacheMode.Ignore)
                      ?? ThemeBuilder.Build();
 
-            // Guard ONLY the one-time factory bootstrap so a future startup phase (3.11) that already initialized the kit
-            // makes this a clean no-op (ChimeraComponents.Initialize also guards double-init, but skipping the extra
-            // AccentController node keeps the tree clean). This panel is the FIRST in-scene consumer today.
+            // Guard ONLY the one-time factory bootstrap so a future startup phase (3.11) makes this a clean no-op.
             if (!ChimeraComponents.IsInitialized)
             {
                 _accent = new AccentController { Name = "AccentController" };
@@ -171,10 +183,9 @@ namespace ProjectChimera.CreationSuite
 
         private void BuildUi()
         {
-            _canvas = new CanvasLayer { Layer = 11 };   // 11 verified free (16 also free)
+            _canvas = new CanvasLayer { Layer = 11 };
             AddChild(_canvas);
 
-            // Root surface = the kit's chamfered panel (AC4 — no hand-rolled house palette).
             _panel = ChimeraComponents.Panel(ChimeraComponents.PanelVariant.Default);
             _panel.SetAnchorsPreset(Control.LayoutPreset.CenterRight);
             _panel.CustomMinimumSize = new Vector2(PANEL_W, PANEL_H);
@@ -191,7 +202,7 @@ namespace ProjectChimera.CreationSuite
             titleRow.AddThemeConstantOverride("separation", ChimeraComponents.Const(ThemeTokens.S2));
             root.AddChild(titleRow);
 
-            var titleLbl = Heading("Unit Card", ThemeTokens.Tlg);
+            var titleLbl = Heading("Unit Editor", ThemeTokens.Tlg);
             titleLbl.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
             titleLbl.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
             titleRow.AddChild(titleLbl);
@@ -202,7 +213,7 @@ namespace ProjectChimera.CreationSuite
 
             _counterLabel = Body("—", ThemeTokens.TextMid);
             _counterLabel.HorizontalAlignment = HorizontalAlignment.Center;
-            _counterLabel.CustomMinimumSize = new Vector2(96, 0);
+            _counterLabel.CustomMinimumSize = new Vector2(88, 0);
             _counterLabel.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
             titleRow.AddChild(_counterLabel);
 
@@ -228,21 +239,35 @@ namespace ProjectChimera.CreationSuite
             contentCol.AddThemeConstantOverride("separation", ChimeraComponents.Const(ThemeTokens.S3));
             scroll.AddChild(contentCol);
 
-            // Header (refilled per unit) → Preview (persistent) → Body (refilled per unit).
+            // Read-only header → Preview (persistent) → disclosure Segment → editable body (refilled per unit).
             _headerHost = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
             _headerHost.AddThemeConstantOverride("separation", ChimeraComponents.Const(ThemeTokens.S1));
             contentCol.AddChild(_headerHost);
 
             contentCol.AddChild(BuildPreviewHost());
 
+            // Simple / Advanced disclosure (UX-DR54 Segment — D-3), built once above the fields.
+            _segment = ChimeraTabs.Create(ChimeraComponents.TabsVariant.Segment, "Simple", "Advanced");
+            _segment.SizeFlagsHorizontal = Control.SizeFlags.ShrinkCenter;
+            _segment.TabChanged += OnSegmentChanged;
+            contentCol.AddChild(_segment);
+
             _bodyHost = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
             _bodyHost.AddThemeConstantOverride("separation", ChimeraComponents.Const(ThemeTokens.S2));
             contentCol.AddChild(_bodyHost);
 
-            _panel.Visible = false;   // hidden until the first J toggle (avoids a one-frame flash before Initialize)
+            // Status line + toolbar (fixed below the scroll — the AbilityEditor save-row shape).
+            _statusLabel = Body("", ThemeTokens.TextLo);
+            _statusLabel.AutowrapMode = TextServer.AutowrapMode.Word;
+            _statusLabel.Visible = false;
+            root.AddChild(_statusLabel);
+
+            root.AddChild(BuildToolbar());
+
+            _panel.Visible = false;   // hidden until the first J toggle
         }
 
-        /// <summary>Build the isolated 3D preview host ONCE (Task 5). The mesh inside swaps per unit; the host persists.</summary>
+        /// <summary>Build the isolated 3D preview host ONCE. The mesh inside swaps per unit; the host persists.</summary>
         private Control BuildPreviewHost()
         {
             _subViewport = new SubViewport
@@ -250,14 +275,12 @@ namespace ProjectChimera.CreationSuite
                 Size                   = new Vector2I(PREVIEW_W, PREVIEW_H),
                 RenderTargetClearMode  = SubViewport.ClearMode.Always,
                 RenderTargetUpdateMode = SubViewport.UpdateMode.Disabled, // starts hidden → renders nothing
-                OwnWorld3D             = true, // ISOLATED world — do NOT share GetViewport().World3D (that renders the game)
+                OwnWorld3D             = true, // ISOLATED world — do NOT share the game world
             };
 
             _camera = new Camera3D { Position = new Vector3(0f, 1.2f, 3.5f) };
             _subViewport.AddChild(_camera);
 
-            // Studio key + fill directional lights (values from AssetPreviewScene). A fill opposing the key lifts the
-            // shadow side without SDFGI (the isolated world has none), per the godot-mcp lighting note.
             var key = new DirectionalLight3D { LightEnergy = 1.4f };
             key.RotationDegrees = new Vector3(-45f, 45f, 0f);
             _subViewport.AddChild(key);
@@ -266,7 +289,6 @@ namespace ProjectChimera.CreationSuite
             fill.RotationDegrees = new Vector3(-20f, -120f, 0f);
             _subViewport.AddChild(fill);
 
-            // Ambient + solid themed backdrop so shadowed sides aren't pure black.
             var worldEnv = new WorldEnvironment();
             var env = new Godot.Environment
             {
@@ -296,24 +318,29 @@ namespace ProjectChimera.CreationSuite
 
         // ── Per-unit binding ─────────────────────────────────────────────────────
 
-        /// <summary>Rebuild every region for <paramref name="def"/> and refresh the 3D preview.</summary>
+        /// <summary>Rebuild every region for <paramref name="def"/>: read-only header, editable body, and the 3D preview.</summary>
         private void Bind(UnitDefinition def)
         {
+            _current    = def;
+            _originalId = def.Id;
             ClearHosts();
             BuildHeader(def);
-            BuildBody(def);
+            BuildEditableBody(def);   // Story 3.4 (UnitCardPanel.Edit.cs) — replaces the 3.3 read-only readouts
             UpdatePreview(def);
+            RevalidateAndReflect();   // paint any badges + set the Save/Delete enabled state for the freshly-bound unit
         }
 
-        /// <summary>Bind the unit at <see cref="_index"/>, or show an empty state if the faction has no units (D-1/D-10 guard).</summary>
+        /// <summary>Bind the unit at <see cref="_index"/>, or show an empty state if the faction has no units.</summary>
         private void Refresh()
         {
             if (_faction is null || _faction.Units.Count == 0)
             {
+                _current = null;
                 ClearHosts();
                 BuildEmptyState();
                 ClearPreview();
                 UpdateCounter(0, 0);
+                UpdateToolbarEnabled();
                 return;
             }
             if (_index < 0 || _index >= _faction.Units.Count) _index = 0;
@@ -341,18 +368,26 @@ namespace ProjectChimera.CreationSuite
         {
             foreach (Node c in _headerHost.GetChildren()) { _headerHost.RemoveChild(c); c.QueueFree(); }
             foreach (Node c in _bodyHost.GetChildren())   { _bodyHost.RemoveChild(c);   c.QueueFree(); }
+            // The badge/pane/advanced-host nodes lived under _bodyHost — they are freed above; drop the stale refs.
+            _badges.Clear();
+            _advancedHost = null;
+            _jsonPane = null;
+            _paneDirty = false;
         }
 
         private void BuildEmptyState()
         {
-            _headerHost.AddChild(Heading("Unit Card", ThemeTokens.Txl));
-            _bodyHost.AddChild(Body(_faction is null ? "No faction bound." : "This faction has no units.", ThemeTokens.TextLo));
+            _segment.Visible = false;
+            _headerHost.AddChild(Heading("Unit Editor", ThemeTokens.Txl));
+            _bodyHost.AddChild(Body(_faction is null ? "No faction bound." : "This faction has no units — press New to add one.", ThemeTokens.TextLo));
         }
 
-        // ── Header region (AC1, AC3; D-6) ────────────────────────────────────────
+        // ── Read-only header (kept from 3.3; HERO tag stays read-only — Promote-to-Hero is 3.7) ──
 
         private void BuildHeader(UnitDefinition def)
         {
+            _segment.Visible = true;
+
             var title = Heading(string.IsNullOrEmpty(def.DisplayName) ? def.Id : def.DisplayName, ThemeTokens.T2xl);
             title.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
             title.AutowrapMode = TextServer.AutowrapMode.Word;
@@ -366,10 +401,10 @@ namespace ProjectChimera.CreationSuite
             tags.AddThemeConstantOverride("separation", ChimeraComponents.Const(ThemeTokens.S2));
 
             var arch = ChimeraComponents.Tag(def.Category);
-            AttachTip(arch, "Archetype", "The unit's movement & role class — one of six (Worker, Melee, Ranged, Siege, Air, Structure).");
+            AttachTip(arch, "Archetype", "The unit's movement & role class — edit it in the Archetype field below.");
             tags.AddChild(arch);
 
-            if (def.IsHero)   // D-6 — passive, non-interactive HERO tag when the def is flagged (added 3.2)
+            if (def.IsHero)   // passive, read-only HERO tag (added 3.2; the Promote-to-Hero switch is 3.7)
             {
                 var hero = ChimeraComponents.Tag("HERO", ChimeraComponents.TagVariant.Accent);
                 AttachTip(hero, "Hero", "A hero unit — mints a persistent, cross-match hero identity when it spawns.");
@@ -378,88 +413,13 @@ namespace ProjectChimera.CreationSuite
             _headerHost.AddChild(tags);
         }
 
-        // ── Body regions: model ref + combat + stats + economy + abilities (AC1, AC3; D-3/D-4/D-5/D-7/D-9) ──
-
-        private void BuildBody(UnitDefinition def)
-        {
-            // ── Model reference (AC1 "model reference" item) — matches what the preview actually shows. ──
-            _bodyHost.AddChild(ChimeraComponents.FieldLabel("Model"));
-            string meshPath = def.MeshPath ?? "";
-            bool   resolves = meshPath.Length > 0 && ResourceLoader.Exists(meshPath);
-            string modelValue = resolves ? FileNameOf(meshPath) : "— (box placeholder)";
-            string modelBody = resolves
-                ? $"Renders {meshPath}."
-                : (meshPath.Length == 0
-                    ? "No mesh assigned — showing a box placeholder."
-                    : $"Mesh '{meshPath}' isn't imported — showing a box placeholder.");
-            var modelReadout = ChimeraComponents.Readout(Tok(ThemeTokens.Info), modelValue, "Mesh");
-            AttachTip(modelReadout, "Model", modelBody);
-            _bodyHost.AddChild(modelReadout);
-
-            // ── Combat: damage/armor type tags + attack/range/interval readouts. ──
-            _bodyHost.AddChild(ChimeraComponents.FieldLabel("Combat"));
-            var combatTags = new HBoxContainer();
-            combatTags.AddThemeConstantOverride("separation", ChimeraComponents.Const(ThemeTokens.S2));
-            var dmg = ChimeraComponents.Tag(def.DamageType);
-            AttachTip(dmg, "Damage Type", $"{def.DamageType} damage — the matrix row that picks the multiplier vs each armor class.");
-            combatTags.AddChild(dmg);
-            var arm = ChimeraComponents.Tag(def.ArmorType);
-            AttachTip(arm, "Armor Type", $"{def.ArmorType} armor — the matrix column that scales the damage this unit takes by type.");
-            combatTags.AddChild(arm);
-            _bodyHost.AddChild(combatTags);
-
-            var combatStats = ReadoutRow();
-            combatStats.AddChild(StatReadout(ThemeTokens.Danger, def.AttackDamage, "Attack", "Attack Damage", "Base damage per hit, before the type matrix and armor."));
-            combatStats.AddChild(StatReadout(ThemeTokens.Info, def.AttackRange, "Range", "Attack Range", "0 ≈ melee. Distance the unit can strike from."));
-            combatStats.AddChild(IntervalReadout(def.AttackSpeed));   // D-7
-            _bodyHost.AddChild(combatStats);
-
-            // ── Stats. ──
-            _bodyHost.AddChild(ChimeraComponents.FieldLabel("Stats"));
-            var stats = ReadoutRow();
-            stats.AddChild(StatReadout(ThemeTokens.Ok, def.Hp, "HP", "Hit Points", "The unit's health pool. It dies at 0."));
-            stats.AddChild(StatReadout(ThemeTokens.Info, def.Speed, "Speed", "Move Speed", "World units per second the unit travels."));
-            stats.AddChild(StatReadout(ThemeTokens.Accent, def.Supply, "Supply", "Supply", "Population this unit draws from your supply cap."));
-            stats.AddChild(StatReadout(ThemeTokens.Info, def.VisionRange, "Vision", "Vision Range", "How far the unit reveals the map."));
-            _bodyHost.AddChild(stats);
-
-            // ── Economy (D-4: ore + crystal, both shown WC3-style; crystal shown even at 0). ──
-            _bodyHost.AddChild(ChimeraComponents.FieldLabel("Economy"));
-            var econ = ReadoutRow();
-            econ.AddChild(StatReadout(ThemeTokens.Warn, def.CostOre, "Ore", "Ore Cost", "Ore spent to train this unit."));
-            econ.AddChild(StatReadout(ThemeTokens.Info, def.CostCrystal, "Crystal", "Crystal Cost", "Crystal spent to train this unit — crystal is the scarce resource."));
-            _bodyHost.AddChild(econ);
-
-            // ── Attached abilities (D-3: resolve id→name, include ALL incl. passives; D-9: inert rows). ──
-            _bodyHost.AddChild(ChimeraComponents.FieldLabel("Abilities"));
-            string[] labels = UnitCardText.ResolveAbilityLabels(def.Abilities, _registry);
-            if (labels.Length == 0)
-            {
-                _bodyHost.AddChild(Body("No abilities", ThemeTokens.TextLo));   // never leave the region blank
-            }
-            else
-            {
-                var list = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
-                list.AddThemeConstantOverride("separation", ChimeraComponents.Const(ThemeTokens.S1));
-                foreach (string label in labels)
-                {
-                    var row = ChimeraListRow.Create(label);
-                    // D-9 "inert": no group, no selection wiring — AND mouse-inert, so these read-only rows can't
-                    // hover-highlight or latch a click "selected" ring (ChimeraListRow is interactive by default).
-                    row.MouseFilter = Control.MouseFilterEnum.Ignore;
-                    list.AddChild(row);
-                }
-                _bodyHost.AddChild(list);
-            }
-        }
-
-        // ── 3D preview (AC2; D-8) ────────────────────────────────────────────────
+        // ── 3D preview (kept from 3.3; D-8) ──────────────────────────────────────
 
         private void UpdatePreview(UnitDefinition def)
         {
             ClearPreview();
             Color tint = FactionTint();
-            // Crash-proof: MeshLoader returns a box placeholder when the path is empty/missing/unloadable (AC2 clause 2).
+            // Crash-proof: MeshLoader returns a box placeholder when the path is empty/missing/unloadable.
             Mesh mesh = MeshLoader.LoadFromGlb(def.MeshPath ?? "", new Vector3(0.8f, 1.6f, 0.8f), tint);
             var mi = new MeshInstance3D { Mesh = mesh };
             mi.Scale = MeshLoader.ScaleFromDefinition(def.MeshScale);
@@ -474,16 +434,15 @@ namespace ProjectChimera.CreationSuite
             _turntable.Rotation = Vector3.Zero;
         }
 
-        /// <summary>Frame the mesh with a minimal AABB-based camera fit so large meshes (Siege/Structure) don't clip the
-        /// fixed frame (D-8). Uses the bounding-sphere radius so the framing stays correct as the turntable rotates.</summary>
+        /// <summary>Frame the mesh with a minimal AABB-based camera fit so large meshes don't clip the fixed frame (D-8).</summary>
         private void FitCamera(Aabb aabb, float meshScale)
         {
             Vector3 size   = aabb.Size * meshScale;
-            Vector3 center = (aabb.Position + aabb.Size * 0.5f) * meshScale;   // MeshInstance3D scales about its origin
+            Vector3 center = (aabb.Position + aabb.Size * 0.5f) * meshScale;
             float radius   = Mathf.Max(0.1f, size.Length() * 0.5f);
             float fovRad   = Mathf.DegToRad(_camera.Fov);
-            float dist     = radius / Mathf.Sin(fovRad * 0.5f) * 1.2f;         // bounding-sphere fit + 20% margin
-            Vector3 camPos = center + new Vector3(0f, size.Y * 0.15f, dist);   // slightly above center, backed off +Z
+            float dist     = radius / Mathf.Sin(fovRad * 0.5f) * 1.2f;
+            Vector3 camPos = center + new Vector3(0f, size.Y * 0.15f, dist);
             _camera.LookAtFromPosition(camPos, center, Vector3.Up);
             _camera.Near = 0.05f;
             _camera.Far  = dist + radius * 4f + 10f;
@@ -493,41 +452,10 @@ namespace ProjectChimera.CreationSuite
         {
             if (_faction?.Color is { Length: >= 3 } c)
                 return new Color(c[0], c[1], c[2]);
-            return new Color(0.6f, 0.7f, 0.9f);   // neutral fallback tint for the box placeholder
+            return new Color(0.6f, 0.7f, 0.9f);
         }
 
-        // ── Small shared builders ────────────────────────────────────────────────
-
-        private HBoxContainer ReadoutRow()
-        {
-            var row = new HBoxContainer();
-            row.AddThemeConstantOverride("separation", ChimeraComponents.Const(ThemeTokens.S5)); // 24, matches the gallery
-            return row;
-        }
-
-        /// <summary>A float-stat mono readout (UX-DR34) + hover/focus tooltip (AC3).</summary>
-        private HBoxContainer StatReadout(StringName iconToken, float value, string label, string term, string body)
-        {
-            var r = ChimeraComponents.Readout(Tok(iconToken), UnitCardText.FormatStat(value), label);
-            AttachTip(r, term, body);
-            return r;
-        }
-
-        /// <summary>An int-stat mono readout (ore/crystal/supply — no decimals) + tooltip.</summary>
-        private HBoxContainer StatReadout(StringName iconToken, int value, string label, string term, string body)
-        {
-            var r = ChimeraComponents.Readout(Tok(iconToken), value.ToString(CultureInfo.InvariantCulture), label);
-            AttachTip(r, term, body);
-            return r;
-        }
-
-        /// <summary>The attack-interval readout (D-7): seconds between attacks, "s" suffix, clarifying tooltip.</summary>
-        private HBoxContainer IntervalReadout(float attackSpeed)
-        {
-            var r = ChimeraComponents.Readout(Tok(ThemeTokens.Warn), UnitCardText.FormatStat(attackSpeed) + "s", "Atk Interval");
-            AttachTip(r, "Attack Interval", "Seconds between attacks — lower is faster.");
-            return r;
-        }
+        // ── Small shared builders (kept from 3.3) ────────────────────────────────
 
         private Label Heading(string text, StringName sizeToken)
         {
@@ -554,13 +482,9 @@ namespace ProjectChimera.CreationSuite
             return slash >= 0 ? path[(slash + 1)..] : path;
         }
 
-        /// <summary>
-        /// Attach a hover-AND-keyboard-focus tooltip (AC3 / UX-DR53 / NFR-2). <see cref="ChimeraTooltip"/> reveals on
-        /// <c>MouseEntered</c> (needs <c>MouseFilter = Stop</c>) and on <c>FocusEntered</c> (needs <c>FocusMode = All</c> —
-        /// a Readout HBox / Tag PanelContainer defaults to <c>FocusMode.None</c>, so without this the keyboard half of AC3
-        /// is silently dead). The composite's descendants are made mouse-transparent so the composite itself is the
-        /// unambiguous hover target (a display child at its default Stop would otherwise eat the hover).
-        /// </summary>
+        /// <summary>Attach a hover-AND-keyboard-focus tooltip (AC3 / UX-DR53 / NFR-2). The keyboard half needs
+        /// <c>FocusMode.All</c> (a Readout/Tag defaults to None); the descendants are made mouse-transparent so the
+        /// composite itself is the unambiguous hover target (the 3.3 lesson).</summary>
         private void AttachTip(Control target, string term, string body, ChimeraTooltip.TooltipRole role = ChimeraTooltip.TooltipRole.Pop)
         {
             target.MouseFilter = Control.MouseFilterEnum.Stop;

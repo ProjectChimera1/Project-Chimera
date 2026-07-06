@@ -179,7 +179,8 @@ namespace ProjectChimera.Core
 
         // ── Constants ─────────────────────────────────────────────────────────
 
-        private const string P1_FACTION_JSON = "res://resources/data/factions/alpha_faction.json";
+        // internal so UnitCardPhase (Story 3.4) can thread the default P1 faction path into the Unit Card Editor for write-back.
+        internal const string P1_FACTION_JSON = "res://resources/data/factions/alpha_faction.json";
         private const string P2_FACTION_JSON = "res://resources/data/factions/beta_faction.json";
         private const string DAMAGE_TABLE_JSON = "res://resources/data/damage_table.json";
         /// <summary>Story 2.4b: directory of validated ability JSONs, indexed into the AbilityRegistry (client + server).</summary>

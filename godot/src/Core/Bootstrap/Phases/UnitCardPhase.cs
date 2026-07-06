@@ -5,11 +5,14 @@ using ProjectChimera.CreationSuite;
 namespace ProjectChimera.Core.Bootstrap
 {
     /// <summary>
-    /// Story 3.3 "UnitCard" phase (runtime position 24, last). Creates the read-only Unit Card panel and wires it to
+    /// Story 3.3/3.4 "UnitCard" phase (runtime position 24, last). Creates the Unit Card Editor panel and wires it to
     /// the current scenario's faction (<c>ctx.FactionDef</c>, the default alpha, populated by <c>ScenarioLoadPhase</c>
     /// well before this phase) + game state + validated ability registry, then publishes <c>ctx.UnitCardPanel</c>.
-    /// Toggle with J in Edit mode. Clones <see cref="AbilityEditorPhase"/>'s shape; the panel is display-only — it reads
-    /// a <c>FactionDefinition</c> + the registry and mutates nothing (the sacred sim/presentation boundary).
+    /// Toggle with J in Edit mode. Clones <see cref="AbilityEditorPhase"/>'s shape.
+    ///
+    /// <para>Story 3.4 threads the faction file <c>res://</c> path in so the editor can write edits back (D-8): the
+    /// scenario's slot-0 <c>faction_json</c> when a scenario is loaded, else the default P1 alpha path. The panel holds
+    /// only the parsed <c>FactionDefinition</c>, so the phase supplies the path (authoring-time file I/O; no sim state).</para>
     /// </summary>
     public sealed class UnitCardPhase : ISetupPhase
     {
@@ -23,9 +26,16 @@ namespace ProjectChimera.Core.Bootstrap
             _ctx.UnitCardPanel = new UnitCardPanel();
             _ctx.Scene.AddChild(_ctx.UnitCardPanel);
 
-            _ctx.UnitCardPanel.Initialize(_ctx.FactionDef, _ctx.GameState, _ctx.AbilityRegistry);
+            // D-8: the source faction file to persist edits to — the scenario's slot-0 faction when loaded, else the
+            // default P1 alpha faction the panel is bound to.
+            string factionPath =
+                _ctx.Scenario?.PlayerSlots is { Length: > 0 } slots && !string.IsNullOrEmpty(slots[0].FactionJson)
+                    ? slots[0].FactionJson
+                    : MainScene.P1_FACTION_JSON;
 
-            GD.Print("[UnitCard] Initialized — press J in Edit mode to open.");
+            _ctx.UnitCardPanel.Initialize(_ctx.FactionDef, _ctx.GameState, _ctx.AbilityRegistry, factionPath);
+
+            GD.Print("[UnitCard] Initialized — press J in Edit mode to open (edit/create/duplicate/delete).");
         }
     }
 }
