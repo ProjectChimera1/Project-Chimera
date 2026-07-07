@@ -185,6 +185,55 @@ namespace ProjectChimera.Sim.Tests.Builder
         }
 
         [Fact]
+        public void Apply_RecordsScenarioPlacedHeroes_NotNonHeroes_AndClearsOnReapply()
+        {
+            // Story 3.9: LastAppliedHeroes is the load-bearing bridge feeding HeroProfileLoader.LoadInto — it must
+            // record EXACTLY the scenario-placed IsHero units (entity id + unit id) and be replaced (not appended) on
+            // re-Apply. A faction with a hero unit beside the scout/worker; ScenarioValidator does not deep-validate the
+            // placed unit's hero block (only position/slot), so a minimal IsHero+Hero pairing is enough.
+            var faction = new FactionDefinition
+            {
+                Id = "alpha", DisplayName = "Alpha",
+                Units =
+                {
+                    new UnitDefinition { Id = "scout", Category = "Ranged" },
+                    WorkerDef(),
+                    new UnitDefinition
+                    {
+                        Id = "warchief", DisplayName = "War Chief", Category = "Ranged",
+                        Hp = 200f, Speed = 3f, IsHero = true,
+                        Hero = new HeroDefinition { MaxLevel = 5, BaseXp = 100f, XpGrowth = 1.5f, XpPerKill = 10f },
+                    },
+                },
+            };
+            var slotDefs = SlotDefs(faction);
+            var host = SimulationHost.Create(NullLogSink.Instance, new FactionRegistry(2), faction, faction);
+            var applier = new ScenarioApplier(host, NullLogSink.Instance, slotDefs);
+
+            ScenarioData model = BuildAlphaModel();
+            // One non-hero worker (entity 0) then the hero (entity 1), both in slot 0.
+            model.Units = new[]
+            {
+                new ScenarioUnit { UnitId = "worker",   Slot = 0, X = -40f, Z = 0f },
+                new ScenarioUnit { UnitId = "warchief", Slot = 0, X = -38f, Z = 0f },
+            };
+
+            ValidationResult r = new ScenarioValidator().Validate(model);
+            Assert.True(r.Ok, r.Error);
+            applier.Apply(r.Value);
+
+            // Exactly the hero is recorded (the worker is not), with its entity id (spawned 2nd → id 1) + unit id.
+            Assert.Single(applier.LastAppliedHeroes);
+            Assert.Equal("warchief", applier.LastAppliedHeroes[0].UnitId);
+            Assert.Equal(1,          applier.LastAppliedHeroes[0].EntityId);
+
+            // Re-Apply replaces the record (Clear at the top of Apply), it does not append.
+            applier.Apply(r.Value);
+            Assert.Single(applier.LastAppliedHeroes);
+            Assert.Equal("warchief", applier.LastAppliedHeroes[0].UnitId);
+        }
+
+        [Fact]
         public void Apply_ModelProducesStableNonZeroCanonicalHash()
         {
             ScenarioData model = BuildAlphaModel();

@@ -1,7 +1,8 @@
 #nullable enable
 using System;                            // StringComparison
+using System.Collections.Generic;       // List<PlacedHero>
 using ProjectChimera.Core;              // Faction, Fixed, FixedVec3, BuildingType, GatherState (parent namespace)
-using ProjectChimera.Core.Definitions;  // ScenarioData & sub-types, FactionDefinition, UnitDefinition, Validated<T>
+using ProjectChimera.Core.Definitions;  // ScenarioData & sub-types, FactionDefinition, UnitDefinition, Validated<T>, HeroProfileLoader.PlacedHero
 
 namespace ProjectChimera.Core.Sim
 {
@@ -35,6 +36,18 @@ namespace ProjectChimera.Core.Sim
         // runtime OnSpawnUnit trigger delegate all read this one array. (D1/D4)
         private readonly FactionDefinition?[] _slotFactionDefs;
 
+        // Story 3.9: the placed HERO entities recorded during the last Apply (cleared at the start of Apply). The
+        // init-time Apply UNITS LOOP appends one per scenario-placed UnitDefinition.IsHero unit — deliberately NOT the
+        // shared SpawnUnit (which the runtime ScenarioDirector.OnSpawnUnit trigger delegate also calls, so a mid-match
+        // hero spawn must NOT pollute this init-time record). MainScene reads this AFTER Apply and BEFORE
+        // StartStateHash.Compute so HeroProfileLoader can mint a deployed profile into HeroStore for the right entities.
+        // Additive-only — no spawn-behavior change.
+        private readonly List<HeroProfileLoader.PlacedHero> _lastAppliedHeroes = new();
+
+        /// <summary>The hero entities placed during the most recent <see cref="Apply"/> (entity id + unit id), for
+        /// Story 3.9's init-time hero mint. Cleared at the start of each <see cref="Apply"/>.</summary>
+        public IReadOnlyList<HeroProfileLoader.PlacedHero> LastAppliedHeroes => _lastAppliedHeroes;
+
         /// <summary>
         /// Construct the applier over a wired 1.8a host.
         /// </summary>
@@ -59,6 +72,7 @@ namespace ProjectChimera.Core.Sim
         /// </summary>
         public void Apply(Validated<ScenarioData> v)
         {
+            _lastAppliedHeroes.Clear(); // Story 3.9: fresh record of placed heroes for this apply
             ScenarioData s = v.Value; // as-built property name (NOT .Model)
             if (s is null)
             {
@@ -119,7 +133,14 @@ namespace ProjectChimera.Core.Sim
                     _log.Warn($"[ScenarioApplier] Scenario unit_id '{u.UnitId}' not found in faction (or out-of-range slot) — skipped.");
                     continue;
                 }
-                SpawnUnit(def, faction, u.X, u.Z);
+                int spawnedId = SpawnUnit(def, faction, u.X, u.Z);
+
+                // Story 3.9: record a scenario-PLACED hero (init-time only) so MainScene/HeroPickerPhase can mint a
+                // deployed PlayerProfile into HeroStore before the start-state hash. Recorded HERE (not in the shared
+                // SpawnUnit) so the runtime OnSpawnUnit trigger delegate never appends to the init-time record. A
+                // non-hero same-id unit is never recorded, so it can never receive hero state (D-3).
+                if (spawnedId >= 0 && def.IsHero)
+                    _lastAppliedHeroes.Add(new HeroProfileLoader.PlacedHero(spawnedId, def.Id));
             }
 
             // ── 5. Triggers ────────────────────────────────────────────────────
@@ -227,6 +248,10 @@ namespace ProjectChimera.Core.Sim
                 world.GatherState[id]   = GatherState.Idle;
                 world.CarryCapacity[id] = Fixed.FromFloat(20f);
             }
+
+            // NOTE (Story 3.9): hero recording is intentionally NOT here — this primitive is shared with the runtime
+            // ScenarioDirector.OnSpawnUnit trigger delegate. The init-time hero record is populated by the Apply units
+            // loop above, so a mid-match trigger spawn can never pollute LastAppliedHeroes.
             return id;
         }
 

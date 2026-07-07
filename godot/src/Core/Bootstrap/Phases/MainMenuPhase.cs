@@ -24,9 +24,10 @@ namespace ProjectChimera.Core.Bootstrap
 
             _ctx.MainMenu.OnPlaySkirmish += () =>
             {
-                // Enter Play mode immediately with whatever scenario is loaded.
-                if (_ctx.GameState.Mode != GameMode.Play)
-                    _ctx.GameState.Toggle();
+                // Story 3.9: single launch authority. Delegate to the hero picker — it shows the offline hero-picker
+                // overlay when the loaded scenario's persistence manifest is Enabled, else toggles straight to Play
+                // exactly as today (no double-toggle). The picker owns the PendingHeroProfile stash + mint.
+                _ctx.HeroPicker.RequestSkirmishLaunch();
             };
 
             _ctx.MainMenu.OnCreate += () =>

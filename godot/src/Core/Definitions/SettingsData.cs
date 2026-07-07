@@ -68,5 +68,12 @@ namespace ProjectChimera.Core.Definitions
         /// (no migration needed — the field defaults).</summary>
         [JsonPropertyName("last_used_asset_folder")]
         public string LastUsedAssetFolder { get; set; } = "";
+
+        /// <summary>Story 3.9 (AR-5): the folder the offline hero-persistence rail (<c>LocalProfileSource</c>) saves and
+        /// loads hero profiles from. Defaults to <c>user://hero_profiles</c>; the Godot layer globalizes it before
+        /// handing it to the Godot-free <c>LocalProfileSource</c> (mirrors <see cref="LastUsedAssetFolder"/>). Absent in
+        /// an older settings file → the default (no migration needed).</summary>
+        [JsonPropertyName("hero_profile_folder")]
+        public string HeroProfileFolder { get; set; } = "user://hero_profiles";
     }
 }

@@ -392,6 +392,7 @@ namespace ProjectChimera.Core
                 new AbilityEditorPhase(_ctx),
                 new UnitCardPhase(_ctx),
                 new PersistenceManifestPhase(_ctx),
+                new HeroPickerPhase(_ctx),
             };
             new ScenePhaseRunner(phases).Run();
 
@@ -415,6 +416,11 @@ namespace ProjectChimera.Core
             // above. COMPUTED + logged here (the CanonicalModelHash precedent, Story 1.7); it is deliberately NOT put in
             // the Ready packet — wiring it into the server-attested multi-hash handshake is Epic 9 / M5 (D-3), so
             // PROTOCOL_VERSION is untouched. Fail-closed to 0 for an unapplied model, mirroring the scenario hash.
+            // Story 3.9 (D-1): mint the DEPLOYED profile (if any) into HeroStore AFTER ScenarioApplier.Apply and BEFORE
+            // StartStateHash.Compute, so the persisted level/xp fold into the hash automatically. At first boot
+            // PendingHeroProfile is null → nothing minted → HeroStore stays empty → every golden/stamp is byte-identical
+            // (no-profile flows are unchanged). The player-facing Deploy path mints + recomputes at launch time.
+            Definitions.HeroProfileLoader.LoadInto(_host.Heroes, _applier.LastAppliedHeroes, _ctx.PendingHeroProfile);
             ulong startStateHash = (_ctx.ScenarioApplied && hashModel != null)
                 ? Definitions.StartStateHash.Compute(hashModel, _host.Heroes)
                 : 0UL;

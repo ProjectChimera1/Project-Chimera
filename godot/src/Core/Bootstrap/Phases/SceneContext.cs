@@ -109,6 +109,11 @@ namespace ProjectChimera.Core.Bootstrap
         public CreationSuite.AbilityEditorPanel AbilityEditorPanel = null!;  // Story 2.5a (AbilityEditor phase)
         public CreationSuite.UnitCardPanel      UnitCardPanel      = null!;  // Story 3.3 (UnitCard phase)
         public CreationSuite.PersistenceManifestPanel PersistenceManifestPanel = null!;  // Story 3.8 (PersistenceManifest phase)
+        public UI.HeroPickerOverlay HeroPicker = null!;  // Story 3.9 (HeroPicker phase) — offline Play-Skirmish hero picker + launch authority
+        /// <summary>Story 3.9: the profile the player Deployed at the offline skirmish start, handed off to
+        /// <c>HeroProfileLoader.LoadInto</c> to mint into <c>HeroStore</c> as init state; cleared after mint. Null ⇒
+        /// nothing minted ("play without a saved hero" / persistence disabled).</summary>
+        public Definitions.PlayerProfile? PendingHeroProfile;
         public AI.LLMService          LlmService     = null!;
         public Label?                 ToastLabel;
 

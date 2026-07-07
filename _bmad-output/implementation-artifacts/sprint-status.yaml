@@ -95,7 +95,7 @@ development_status:
   3-6-archetype-orthogonal-ability-behavior-composition-no-subclassing: done
   3-7-promote-to-hero-leveling-curve-xp-signature-ultimate-abilities: done
   3-8-persistence-manifest-authoring-which-attributes-carry-forward-through-the-validate-gate: done
-  3-9-offline-hero-persistence-rail-save-load-hero-picker-deterministic-init-time-apply: backlog
+  3-9-offline-hero-persistence-rail-save-load-hero-picker-deterministic-init-time-apply: done
   3-10-added-edit-play-round-trip-loop-no-restart-playtest: backlog
   3-11-added-apply-the-design-system-to-the-front-end-shell-title-mode-select-settings: backlog
   3-12-authorable-attack-delivery-flag-hitscan-vs-projectile-per-unit-projectile-speed: backlog
