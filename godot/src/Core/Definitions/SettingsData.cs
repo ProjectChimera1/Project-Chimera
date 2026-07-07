@@ -60,5 +60,13 @@ namespace ProjectChimera.Core.Definitions
         /// </summary>
         [JsonPropertyName("colorblind_mode")]
         public bool ColorblindMode { get; set; } = false;
+
+        // ── Creation Suite ─────────────────────────────────────────────────────
+
+        /// <summary>Story 3.5 (AR-5): the res:// folder the Unit Card model Browse dialog last opened, so it
+        /// reopens there next time. Empty = open at the default root. Absent in an older settings file → ""
+        /// (no migration needed — the field defaults).</summary>
+        [JsonPropertyName("last_used_asset_folder")]
+        public string LastUsedAssetFolder { get; set; } = "";
     }
 }

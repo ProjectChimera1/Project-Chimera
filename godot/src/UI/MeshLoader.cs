@@ -19,6 +19,16 @@ namespace ProjectChimera.UI
         /// Returns a box placeholder if the file is missing or fails to load.
         /// </summary>
         public static Mesh LoadFromGlb(string resPath, Vector3 fallbackSize, Color fallbackColor)
+            => LoadFromGlb(resPath, fallbackSize, fallbackColor, out _);
+
+        /// <summary>
+        /// Load a Mesh from a GLB at the given res:// path, reporting whether the box placeholder was used.
+        /// <paramref name="usedPlaceholder"/> is set true whenever the box is returned — because the path was
+        /// empty/missing OR because the GLB loaded but yielded no <see cref="MeshInstance3D"/>. This lets the
+        /// in-panel preview flag a model that fails to load, not just a missing path (Story 3.5, D-3). The
+        /// 3-arg overload delegates here, so world-spawn callers (MultiMeshBridge/BuildingBridge) are untouched.
+        /// </summary>
+        public static Mesh LoadFromGlb(string resPath, Vector3 fallbackSize, Color fallbackColor, out bool usedPlaceholder)
         {
             if (!string.IsNullOrEmpty(resPath) && ResourceLoader.Exists(resPath))
             {
@@ -30,7 +40,10 @@ namespace ProjectChimera.UI
                     instance.Free();
 
                     if (mesh != null)
+                    {
+                        usedPlaceholder = false;
                         return mesh;
+                    }
                 }
                 GD.PrintErr($"[MeshLoader] GLB loaded but contained no MeshInstance3D: {resPath}");
             }
@@ -39,6 +52,7 @@ namespace ProjectChimera.UI
                 GD.Print($"[MeshLoader] '{resPath}' not found — using box placeholder.");
             }
 
+            usedPlaceholder = true;
             return MakePlaceholder(fallbackSize, fallbackColor);
         }
 

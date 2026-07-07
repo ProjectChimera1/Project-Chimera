@@ -54,6 +54,8 @@ namespace ProjectChimera.CreationSuite
         private readonly UnitDefinitionValidator  _validator = new();   // the Godot-free AR-39 gate (D-9)
         private readonly Dictionary<string, ChimeraValidationBadge> _badges = new();  // JSON key → located badge (UX-DR55)
         private bool _building;                            // guard: suppress live handlers while (re)building controls
+        private LineEdit? _meshPathInput;                  // the Model row's text field (Story 3.5 — Browse/Box write .Text here)
+        private bool _lastMeshMissing;                     // last UpdatePreview fell back to the box for a NON-blank path (missing OR failed-to-load — D-3)
 
         // ── Shell ──
         private CanvasLayer    _canvas = null!;
@@ -372,6 +374,7 @@ namespace ProjectChimera.CreationSuite
             _badges.Clear();
             _advancedHost = null;
             _jsonPane = null;
+            _meshPathInput = null;   // the Model row's LineEdit was freed with the body subtree (Story 3.5)
             _paneDirty = false;
         }
 
@@ -420,7 +423,10 @@ namespace ProjectChimera.CreationSuite
             ClearPreview();
             Color tint = FactionTint();
             // Crash-proof: MeshLoader returns a box placeholder when the path is empty/missing/unloadable.
-            Mesh mesh = MeshLoader.LoadFromGlb(def.MeshPath ?? "", new Vector3(0.8f, 1.6f, 0.8f), tint);
+            // usedPlaceholder distinguishes a real load from a fallback so the badge can flag a model that
+            // fails to load, not just a missing path (Story 3.5, D-3).
+            Mesh mesh = MeshLoader.LoadFromGlb(def.MeshPath ?? "", new Vector3(0.8f, 1.6f, 0.8f), tint, out bool usedPlaceholder);
+            _lastMeshMissing = usedPlaceholder && !string.IsNullOrEmpty(def.MeshPath);
             var mi = new MeshInstance3D { Mesh = mesh };
             mi.Scale = MeshLoader.ScaleFromDefinition(def.MeshScale);
             _turntable.AddChild(mi);

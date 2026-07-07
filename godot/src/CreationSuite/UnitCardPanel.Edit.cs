@@ -4,7 +4,8 @@ using System.IO;
 using System.Linq;
 using System.Text.Json;
 using Godot;
-using ProjectChimera.Core.Definitions;   // UnitDefinition, FactionDefinition, UnitDefinitionValidator, FactionWriter, UnitValidationResult
+using ProjectChimera.Core.Definitions;   // UnitDefinition, FactionDefinition, UnitDefinitionValidator, FactionWriter, UnitValidationResult, ModelAssignment
+using ProjectChimera.UI;                   // MeshLoader, SettingsManager (Story 3.5 — AR-5 last-used folder)
 using ProjectChimera.UI.Components;        // ChimeraComponents, ChimeraDialog, ChimeraTooltip, ChimeraValidationBadge
 using ProjectChimera.UI.Theme;             // ThemeTokens
 
@@ -71,9 +72,7 @@ namespace ProjectChimera.CreationSuite
                 () => def.DisplayName, v => def.DisplayName = v, def);
             AddSelect(_bodyHost, "Archetype", "category", "Archetype", "The movement & role class (one of six).",
                 Categories, () => def.Category, v => def.Category = v, def);
-            AddText(_bodyHost, "Model", "mesh_path", "Model",
-                "res:// path to the unit's GLB. Blank = box placeholder. (A browse button arrives in Story 3.5.)",
-                () => def.MeshPath ?? "", v => def.MeshPath = string.IsNullOrEmpty(v) ? null : v, def);
+            AddModelRow(_bodyHost, def);   // Story 3.5 — LineEdit + Browse + Box placeholder (replaces the 3.4 AddText stub)
 
             AddSection(_bodyHost, "Combat");
             AddSelect(_bodyHost, "Damage type", "damage_type", "Damage Type",
@@ -119,7 +118,7 @@ namespace ProjectChimera.CreationSuite
                 0.5, () => def.SplashRadius, v => def.SplashRadius = v, def);
             AddNumFloat(_advancedHost, "Collision radius", "collision_radius", "Collision Radius", "Per-unit separation radius (default 1).",
                 0.1, () => def.CollisionRadius, v => def.CollisionRadius = v, def);
-            AddNumFloat(_advancedHost, "Mesh scale", "mesh_scale", "Mesh Scale", "Visual scale of the model. (Live re-render is Story 3.5.)",
+            AddNumFloat(_advancedHost, "Mesh scale", "mesh_scale", "Mesh Scale", "Visual scale of the model — the preview re-renders live as you change it.",
                 0.05, () => def.MeshScale, v => def.MeshScale = v, def);
             AddNumFloat(_advancedHost, "Max energy", "max_energy", "Max Energy", "Ability-resource pool (0 = cannot cast energy abilities).",
                 1, () => def.MaxEnergy, v => def.MaxEnergy = v, def);
@@ -191,6 +190,104 @@ namespace ProjectChimera.CreationSuite
             input.FocusExited += () => { CommitStr(key, snap, get(), set, def); snap = get(); };
             AttachFieldTip(input, term, body);
             AddFieldRow(parent, label, input, MakeBadge(key));
+        }
+
+        // ── Model row (Story 3.5): LineEdit + Browse (res:// *.glb dialog) + Box placeholder button ──
+
+        /// <summary>
+        /// The Model field: the 3.4 typed LineEdit (kept, same commit path) plus a <b>Browse</b> button (opens a
+        /// <c>res://</c>-rooted <c>*.glb</c> FileDialog) and a <b>Box placeholder</b> button. Browse/Box both route
+        /// through <see cref="AssignMeshPath"/> — one path to set→preview→undo→badge — so a picked model re-renders
+        /// the in-panel preview immediately, is undoable, and persists on Save. "Box" = the explicit cleared state
+        /// (<c>MeshPath = null</c>), which <c>MeshLoader</c> renders as the box.
+        /// </summary>
+        private void AddModelRow(Control parent, UnitDefinition def)
+        {
+            const string key = "mesh_path";
+            Func<string> get = () => def.MeshPath ?? "";
+            Action<string> set = v => def.MeshPath = ModelAssignment.NormalizeMeshPath(v);   // blank → null (box)
+
+            LineEdit input = ChimeraComponents.Input(placeholder: "res://…/model.glb", text: get());
+            _meshPathInput = input;
+            string snap = get();
+            input.FocusEntered += () => snap = get();
+            input.TextChanged += t => { if (_building) return; set(t); OnLiveChanged(key); };
+            input.TextSubmitted += _ => { CommitStr(key, snap, get(), set, def); snap = get(); };
+            input.FocusExited += () => { CommitStr(key, snap, get(), set, def); snap = get(); };
+            AttachFieldTip(input, "Model",
+                "res:// path to the unit's GLB. Blank = box placeholder. Use Browse to pick a GLB, or Box for the placeholder.");
+
+            var browse = ChimeraComponents.Button("Browse", ChimeraComponents.ButtonVariant.Secondary, ChimeraComponents.ButtonSize.Sm);
+            browse.Pressed += () => OpenMeshBrowseDialog(def);
+            AttachFieldTip(browse, "Browse models", "Pick a GLB from the project (res://). Sets this unit's model and re-renders the preview.");
+
+            var box = ChimeraComponents.Button("Box", ChimeraComponents.ButtonVariant.Ghost, ChimeraComponents.ButtonSize.Sm);
+            box.Pressed += () => AssignMeshPath(null, def);
+            AttachFieldTip(box, "Box placeholder", "Clear the model and use the box placeholder (undoable).");
+
+            // Composite control: the LineEdit expands, the two buttons keep their natural size.
+            var composite = new HBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+            composite.AddThemeConstantOverride("separation", ChimeraComponents.Const(ThemeTokens.S1));
+            input.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+            composite.AddChild(input);
+            composite.AddChild(browse);
+            composite.AddChild(box);
+
+            AddFieldRow(parent, "Model", composite, MakeBadge(key));
+        }
+
+        /// <summary>
+        /// Set <c>mesh_path</c> to <paramref name="newPath"/> (null/blank = box placeholder) through the field's
+        /// existing set→live-preview→undo→badge path. Setting <see cref="LineEdit.Text"/> in code does NOT fire
+        /// <c>TextChanged</c> in Godot, so there is no double-commit (D-2). Called by the Browse and Box buttons.
+        /// </summary>
+        private void AssignMeshPath(string? newPath, UnitDefinition def)
+        {
+            if (_current == null || !ReferenceEquals(def, _current)) return;
+            Action<string> set = v => def.MeshPath = ModelAssignment.NormalizeMeshPath(v);
+            string oldVal = def.MeshPath ?? "";
+            set(ModelAssignment.NormalizeMeshPath(newPath) ?? "");   // apply now
+            string newVal = def.MeshPath ?? "";
+            if (_meshPathInput != null) _meshPathInput.Text = newVal;   // reflect in the field (no TextChanged)
+            CommitStr(key: "mesh_path", oldVal: oldVal, newVal: newVal, set: set, def: def);   // undo (no-op if unchanged)
+            OnLiveChanged("mesh_path");   // live: re-render preview + revalidate badge
+            RevalidateAndReflect();
+        }
+
+        /// <summary>Open a <c>res://</c>-rooted <c>*.glb</c> FileDialog under the panel's CanvasLayer; on select, assign
+        /// the path and remember its folder (AR-5). The dialog frees itself on select or cancel — no leak.</summary>
+        private void OpenMeshBrowseDialog(UnitDefinition def)
+        {
+            var dlg = new FileDialog
+            {
+                FileMode = FileDialog.FileModeEnum.OpenFile,
+                Access   = FileDialog.AccessEnum.Resources,   // res://-rooted — no arbitrary-filesystem ingest (Block-If)
+                Title    = "Select a GLB model",
+                Filters  = new[] { "*.glb ; GLTF Binary" },
+            };
+
+            // AR-5: reopen at the last-used folder when we have a valid one.
+            string lastFolder = SettingsManager.Instance?.Current.LastUsedAssetFolder ?? "";
+            if (!string.IsNullOrEmpty(lastFolder) && DirAccess.DirExistsAbsolute(lastFolder))
+                dlg.CurrentDir = lastFolder;
+
+            dlg.FileSelected += path =>
+            {
+                AssignMeshPath(path, def);
+                SaveLastUsedFolder(path);
+                dlg.QueueFree();
+            };
+            dlg.Canceled += () => dlg.QueueFree();
+            _canvas.AddChild(dlg);   // gate under the panel's CanvasLayer
+            dlg.PopupCentered(new Vector2I(900, 600));
+        }
+
+        private static void SaveLastUsedFolder(string resPath)
+        {
+            SettingsManager? mgr = SettingsManager.Instance;
+            if (mgr == null) return;   // absent in the standalone verify harness — best-effort only
+            mgr.Current.LastUsedAssetFolder = ModelAssignment.FolderOf(resPath);
+            mgr.Save();
         }
 
         private void AddNumFloat(Control parent, string label, string key, string term, string body,
@@ -393,12 +490,19 @@ namespace ProjectChimera.CreationSuite
             // else: no field control home for this key (should not happen); the status line still summarizes the count.
         }
 
-        /// <summary>The one validation rule that needs Godot (D-9): the mesh path must resolve, or be blank (box placeholder).</summary>
-        private static string? MeshError(UnitDefinition def)
+        /// <summary>The one validation rule that needs Godot (D-9): the mesh path must resolve to a real mesh, or be
+        /// blank (box placeholder). For the live-previewed unit we trust the actual render outcome (<see cref="_lastMeshMissing"/>),
+        /// so this flags both a MISSING path and an existing-but-corrupt GLB that yields no mesh (Story 3.5, D-3). For any
+        /// other def (e.g. the raw-JSON pane's parsed candidate, which has no live preview) we fall back to a path-existence
+        /// check.</summary>
+        private string? MeshError(UnitDefinition def)
         {
             string mp = def.MeshPath ?? "";
-            if (mp.Length > 0 && !ResourceLoader.Exists(mp))
-                return $"unit '{def.Id}'.mesh_path: '{mp}' isn't an imported resource (leave blank for a box placeholder).";
+            if (mp.Length == 0) return null;   // blank = box placeholder — always valid
+
+            bool bad = ReferenceEquals(def, _current) ? _lastMeshMissing : !ResourceLoader.Exists(mp);
+            if (bad)
+                return $"unit '{def.Id}'.mesh_path: '{mp}' didn't load a mesh (leave blank for a box placeholder).";
             return null;
         }
 
