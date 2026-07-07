@@ -108,6 +108,7 @@ namespace ProjectChimera.Core.Bootstrap
         public CreationSuite.MapGeneratorPanel  MapGenPanel  = null!;
         public CreationSuite.AbilityEditorPanel AbilityEditorPanel = null!;  // Story 2.5a (AbilityEditor phase)
         public CreationSuite.UnitCardPanel      UnitCardPanel      = null!;  // Story 3.3 (UnitCard phase)
+        public CreationSuite.PersistenceManifestPanel PersistenceManifestPanel = null!;  // Story 3.8 (PersistenceManifest phase)
         public AI.LLMService          LlmService     = null!;
         public Label?                 ToastLabel;
 

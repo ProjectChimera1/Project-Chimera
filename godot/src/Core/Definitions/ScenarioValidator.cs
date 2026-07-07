@@ -251,6 +251,21 @@ namespace ProjectChimera.Core.Definitions
             // effect is valid only if it draws from world.Rng") is a static check over the effect graph, enforced
             // by Epic 2's effect-validator (Story 2.3) — the first point an effect schema exists.
 
+            // ── Persistence manifest (Story 3.8, AR-12 / AR-39 / D-3) — the SAME rule core the editor Save uses, so a
+            // hand-edited/cheat manifest (an unknown, mid-game-only, or duplicate attribute key reachable only by
+            // editing the scenario JSON directly) is rejected fail-closed at the pre-tick D3 gate too. A null manifest
+            // (every existing scenario) ⇒ Valid ⇒ the pass path is unchanged (no golden/behavior move). Multi-error
+            // located list ⇒ first-fail here (mirroring the buildings/units/triggers loops); the message is already
+            // self-describing ("persistence_manifest.attributes.<key>: <reason>"). Authoring-only — deliberately NOT
+            // folded into any checksum/hash (D-2). ──
+            // Guard on non-null so the common case (every existing scenario has no manifest) allocates no validator on
+            // this pre-tick path; only a present manifest is validated (and only an ENABLED one has rules to fail).
+            if (m.PersistenceManifest != null)
+            {
+                var mr = new PersistenceManifestValidator().Validate(m.PersistenceManifest);
+                if (!mr.Ok) return ValidationResult.Fail(mr.Errors[0].Message, validated);
+            }
+
             return ValidationResult.Pass(validated);
         }
 

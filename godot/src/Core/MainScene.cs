@@ -391,6 +391,7 @@ namespace ProjectChimera.Core
                 new MapGeneratorPhase(_ctx),
                 new AbilityEditorPhase(_ctx),
                 new UnitCardPhase(_ctx),
+                new PersistenceManifestPhase(_ctx),
             };
             new ScenePhaseRunner(phases).Run();
 
@@ -549,6 +550,12 @@ namespace ProjectChimera.Core
             else if (key.Keycode == Key.J)
             {
                 _ctx.UnitCardPanel.Toggle();
+                GetViewport().SetInputAsHandled();
+            }
+            else if (key.Keycode == Key.V)
+            {
+                // V (not P — P is the Patrol command in SelectionSystem, active whenever units are selected in Edit mode).
+                _ctx.PersistenceManifestPanel.Toggle();
                 GetViewport().SetInputAsHandled();
             }
         }

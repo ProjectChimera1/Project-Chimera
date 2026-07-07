@@ -175,5 +175,19 @@ namespace ProjectChimera.Core.Definitions
         /// </summary>
         [JsonPropertyName("triggers")]
         public TriggerDefinition[] Triggers { get; set; } = System.Array.Empty<TriggerDefinition>();
+
+        /// <summary>
+        /// The per-scenario hero-persistence contract (Story 3.8): which attributes carry forward between matches +
+        /// a master enable toggle. NULL ⇒ persistence not configured (the default for every existing scenario), and
+        /// the block is OMITTED from serialization when null (<see cref="JsonIgnoreCondition.WhenWritingNull"/>, the
+        /// <see cref="ScenarioPlayerSlot.StartCrystal"/> omit-when-default precedent) — so a scenario with no manifest
+        /// serializes byte-for-byte identically, moving no golden. Authoring-only: no runtime consumer until Story 3.9,
+        /// so it is intentionally NOT folded into <see cref="CanonicalModelHash"/> / <see cref="StartStateHash"/> /
+        /// <c>SimChecksum</c> (D-2). Validated (fail-closed) by <see cref="PersistenceManifestValidator"/> at editor
+        /// Save AND at the pre-tick <see cref="ScenarioValidator"/> gate.
+        /// </summary>
+        [JsonPropertyName("persistence_manifest")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public PersistenceManifest? PersistenceManifest { get; set; }
     }
 }
