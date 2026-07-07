@@ -104,6 +104,11 @@ namespace ProjectChimera.CreationSuite
             AddNumInt(_bodyHost, "Crystal cost", "cost_crystal", "Crystal Cost", "Crystal (the scarce resource) spent to train this unit.",
                 () => def.CostCrystal, v => def.CostCrystal = v, def);
 
+            // Composition (Simple, UX-DR54): a preset role bundle fills the unit's abilities; Advanced holds the granular
+            // ability + behavior pickers. Story 3.6 (composition = archetype + abilities + behaviors, no subclass).
+            AddSection(_bodyHost, "Composition");
+            AddCompositionRow(_bodyHost, def);
+
             // ── Advanced (toggled by the Segment) ──
             _advancedHost = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill, Visible = _segment.Active == 1 };
             _advancedHost.AddThemeConstantOverride("separation", ChimeraComponents.Const(ThemeTokens.S2));
@@ -133,7 +138,18 @@ namespace ProjectChimera.CreationSuite
                 () => def.Tags, v => def.Tags = v, nullable: true, def);
             AddCommaList(_advancedHost, "Attack domains", "attack_domains", "Attack Domains", "Domains this unit can attack (Ground / Air / Structure). Blank = all.",
                 () => def.AttackDomains, v => def.AttackDomains = v, nullable: true, def);
-            AddAbilitiesRow(_advancedHost, def);
+
+            AddSection(_advancedHost, "Components");
+            AddComponentPicker(_advancedHost, "Abilities", "abilities", "+ Add ability…",
+                () => def.Abilities, v => def.Abilities = v ?? Array.Empty<string>(),
+                AbilityCatalog(), "Abilities",
+                "The active/passive abilities this unit can use. An undefined id blocks Save. Add or remove them here (undoable).",
+                def);
+            AddComponentPicker(_advancedHost, "Behaviors", "behaviors", "+ Add behavior…",
+                () => def.Behaviors, v => def.Behaviors = v ?? Array.Empty<string>(),
+                BehaviorCatalog(), "Behaviors",
+                "The role/AI behaviors this unit composes (e.g. support). An undefined or archetype-incompatible behavior blocks Save.",
+                def);
 
             AddSection(_advancedHost, "Raw JSON (this unit)");
             BuildRawPane(_advancedHost, def);
@@ -375,14 +391,172 @@ namespace ProjectChimera.CreationSuite
             AddFieldRow(parent, label, input, MakeBadge(key));
         }
 
-        private void AddAbilitiesRow(Control parent, UnitDefinition def)
+        // ── Structured component pickers (Story 3.6, D-3): chips + an "Add" Select over a registry catalog ──
+
+        /// <summary>One catalog entry the picker offers: the ref <paramref name="Id"/>, its display <paramref name="Label"/>,
+        /// and an optional <paramref name="Desc"/> for the remove-chip tooltip. Aligns abilities and behaviors on one shape.</summary>
+        private readonly record struct ComponentEntry(string Id, string Label, string Desc);
+
+        /// <summary>The ability catalog from the loaded <see cref="AbilityRegistry"/> (id + display name).</summary>
+        private System.Collections.Generic.List<ComponentEntry> AbilityCatalog()
         {
-            string txt = def.Abilities is { Length: > 0 } ? string.Join(", ", def.Abilities) : "(none)";
-            LineEdit display = ChimeraComponents.Input(text: txt);
-            display.Editable = false;   // read-only in 3.4 — the structured ability picker is Story 3.6; edit via Raw JSON
-            AttachFieldTip(display, "Abilities",
-                "The unit's abilities (read-only here — edit via Raw JSON; the ability picker is Story 3.6). An undefined id blocks Save.");
-            AddFieldRow(parent, "Abilities", display, MakeBadge("abilities"));
+            var list = new System.Collections.Generic.List<ComponentEntry>(_registry.Count);
+            foreach (AbilityDefinition a in _registry.All)
+                list.Add(new ComponentEntry(a.Id, string.IsNullOrEmpty(a.DisplayName) ? a.Id : a.DisplayName, ""));
+            return list;
+        }
+
+        /// <summary>The behavior catalog from the loaded <see cref="BehaviorRegistry"/> (id + display name + description).</summary>
+        private System.Collections.Generic.List<ComponentEntry> BehaviorCatalog()
+        {
+            var list = new System.Collections.Generic.List<ComponentEntry>(_behaviorRegistry.Count);
+            foreach (BehaviorDefinition b in _behaviorRegistry.All)
+                list.Add(new ComponentEntry(b.Id, string.IsNullOrEmpty(b.DisplayName) ? b.Id : b.DisplayName, b.Description));
+            return list;
+        }
+
+        /// <summary>
+        /// A structured multi-select over a registry: renders the attached ids as removable chips plus an "Add" Select of
+        /// not-yet-attached catalog entries. Each add/remove writes the whole <c>string[]</c> back through the field's
+        /// setter, pushes one undo entry, and routes through the live validate/save path — so undo, located badges, the raw
+        /// pane, and Save all work with no new plumbing (D-3). Replaces the 3.4 read-only abilities row.
+        /// </summary>
+        private void AddComponentPicker(Control parent, string label, string key, string addPrompt,
+                                        Func<string[]> get, Action<string[]?> set,
+                                        System.Collections.Generic.IReadOnlyList<ComponentEntry> catalog,
+                                        string tipTerm, string tipBody, UnitDefinition def)
+        {
+            string[] attached = get() ?? Array.Empty<string>();
+
+            var col = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+            col.AddThemeConstantOverride("separation", ChimeraComponents.Const(ThemeTokens.S1));
+
+            // Attached ids → chips (Tag + ✕). Empty → a muted "(none)".
+            if (attached.Length > 0)
+            {
+                var chips = new HFlowContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+                chips.AddThemeConstantOverride("h_separation", ChimeraComponents.Const(ThemeTokens.S1));
+                chips.AddThemeConstantOverride("v_separation", ChimeraComponents.Const(ThemeTokens.S1));
+                foreach (string id in attached)
+                {
+                    string cid = id;
+                    // Single null-safe lookup: FirstOrDefault yields default(ComponentEntry) (Id == null) on no match,
+                    // so a null/unknown cid falls through to the raw id instead of crashing on a second .First().
+                    ComponentEntry match = catalog.FirstOrDefault(c => c.Id == cid);
+                    bool known = cid != null && match.Id == cid;
+                    string disp = known ? match.Label : (cid ?? "");   // unknown/null id → raw id (still badged by the validator)
+                    string desc = known ? match.Desc : "";
+                    chips.AddChild(MakeComponentChip(cid, disp, desc, () => DetachComponent(key, get, set, cid, def)));
+                }
+                col.AddChild(chips);
+            }
+            else
+            {
+                col.AddChild(Body("(none)", ThemeTokens.TextLo));
+            }
+
+            // "Add" select: a leading no-op prompt at index 0, then every catalog entry not already attached.
+            var items = new System.Collections.Generic.List<string> { addPrompt };
+            var ids = new System.Collections.Generic.List<string?> { null };
+            foreach (ComponentEntry e in catalog)
+            {
+                if (Array.IndexOf(attached, e.Id) >= 0) continue;   // already attached — omit
+                items.Add(string.IsNullOrEmpty(e.Label) || e.Label == e.Id ? e.Id : $"{e.Label} ({e.Id})");
+                ids.Add(e.Id);
+            }
+            OptionButton add = ChimeraComponents.Select(items.ToArray());
+            add.Selected = 0;
+            add.Disabled = ids.Count <= 1;   // nothing left to add
+            add.ItemSelected += idx =>
+            {
+                if (_building) return;
+                int i = (int)idx;
+                if (i <= 0 || i >= ids.Count) return;
+                string? nid = ids[i];
+                if (nid != null) AttachComponent(key, get, set, nid, def);
+            };
+            AttachFieldTip(add, tipTerm, tipBody);
+            col.AddChild(add);
+
+            AddFieldRow(parent, label, col, MakeBadge(key));
+        }
+
+        /// <summary>An attached-component chip: a <see cref="ChimeraComponents.Tag"/> plus an ✕ <see cref="ChimeraComponents.IconButton"/> that detaches it.</summary>
+        private Control MakeComponentChip(string id, string display, string desc, Action onRemove)
+        {
+            var chip = new HBoxContainer();
+            chip.AddThemeConstantOverride("separation", ChimeraComponents.Const(ThemeTokens.S1));
+            var tag = ChimeraComponents.Tag(display);
+            tag.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
+            chip.AddChild(tag);
+            var x = ChimeraComponents.IconButton("✕");
+            x.Pressed += onRemove;
+            string tip = string.IsNullOrEmpty(desc)
+                ? $"Detach '{id}' from this unit (undoable)."
+                : $"{desc}\nDetach '{id}' from this unit (undoable).";
+            AttachFieldTip(x, "Remove", tip);
+            chip.AddChild(x);
+            return chip;
+        }
+
+        private void AttachComponent(string key, Func<string[]> get, Action<string[]?> set, string id, UnitDefinition def)
+        {
+            string[] old = get() ?? Array.Empty<string>();
+            if (Array.IndexOf(old, id) >= 0) return;
+            string[] nu = old.Append(id).ToArray();
+            ApplyComponentList(key, set, old, nu, def);
+        }
+
+        private void DetachComponent(string key, Func<string[]> get, Action<string[]?> set, string id, UnitDefinition def)
+        {
+            string[] old = get() ?? Array.Empty<string>();
+            string[] nu = old.Where(x => x != id).ToArray();
+            if (nu.Length == old.Length) return;
+            ApplyComponentList(key, set, old, nu, def);
+        }
+
+        /// <summary>Commit a component-list change: set the array, push one undo entry, revalidate + rebuild so chips reflect it.</summary>
+        private void ApplyComponentList(string key, Action<string[]?> set, string[] oldArr, string[] newArr, UnitDefinition def)
+        {
+            set(newArr);
+            UnitDefinition t = def;
+            PushHistory(() => { set(newArr); GoToUnit(t); }, () => { set(oldArr); GoToUnit(t); });
+            OnLiveChanged(key);
+            Refresh();   // re-render the chips + the "Add" list (the newly attached id drops out of it)
+        }
+
+        // ── Simple-mode composition preset (Story 3.6): a role bundle that fills def.Abilities ──
+
+        /// <summary>The Simple-mode "Composition" dropdown: preselected via <see cref="UnitCompositionPresets.Detect"/>
+        /// (so a hand-composed set reads back as <c>Custom</c>), and on pick applies the bundle's ids — filtered to what
+        /// the live <see cref="AbilityRegistry"/> actually has (lenient, D-3) — to <c>def.Abilities</c> through the
+        /// undo/validate/save path. Selecting <c>Custom</c> is a deliberate no-op (never wipes an authored set).</summary>
+        private void AddCompositionRow(Control parent, UnitDefinition def)
+        {
+            string[] labels = UnitCompositionPresets.All.Select(a => a.Label).ToArray();
+            OptionButton sel = ChimeraComponents.Select(labels);
+            UnitCompositionPresets.Kind detected = UnitCompositionPresets.Detect(def.Abilities);
+            int cur = Array.FindIndex(UnitCompositionPresets.All, a => a.Kind == detected);
+            if (cur >= 0) sel.Selected = cur;
+            sel.ItemSelected += idx =>
+            {
+                if (_building) return;
+                UnitCompositionPresets.Kind chosen = UnitCompositionPresets.All[(int)idx].Kind;
+                if (chosen == UnitCompositionPresets.Kind.Custom) return;   // no-op — keep the current set
+                string[] old = def.Abilities ?? Array.Empty<string>();
+                string[] bundle = UnitCompositionPresets.Bundle(chosen)
+                    .Where(id => _registry.IndexOf(id) >= 0).ToArray();   // drop ids absent from the live registry
+                if (bundle.Length == 0) return;   // every preset id filtered out (missing from this registry) — never wipe the authored set
+                if (old.SequenceEqual(bundle)) return;
+                def.Abilities = bundle;
+                UnitDefinition t = def;
+                PushHistory(() => { def.Abilities = bundle; GoToUnit(t); }, () => { def.Abilities = old; GoToUnit(t); });
+                OnLiveChanged("abilities");
+                Refresh();
+            };
+            AttachFieldTip(sel, "Composition",
+                "Pick a role preset (Healer / Bruiser / Caster) to fill this unit's abilities. Switch to Advanced for the individual ability & behavior pickers; Custom keeps your own set.");
+            AddFieldRow(parent, "Composition", sel, MakeBadge("composition"));
         }
 
         // Commit a string-field change to the undo stack (focus-session granularity).
@@ -470,7 +644,7 @@ namespace ProjectChimera.CreationSuite
 
             if (_current == null) { ClearStatus(); _lastValid = true; UpdateToolbarEnabled(); return true; }
 
-            UnitValidationResult res = _validator.Validate(_current, _registry, _faction?.Units);
+            UnitValidationResult res = _validator.Validate(_current, _registry, _behaviorRegistry, _faction?.Units);
             string? meshErr = MeshError(_current);
 
             foreach ((string key, string msg) in res.Errors) ShowBadge(key, msg);
@@ -648,8 +822,12 @@ namespace ProjectChimera.CreationSuite
             MeshScale = s.MeshScale, TrainTime = s.TrainTime, VisionRange = s.VisionRange,
             SplashRadius = s.SplashRadius, CollisionRadius = s.CollisionRadius, MaxEnergy = s.MaxEnergy,
             SeparationPriority = s.SeparationPriority,
-            Prerequisites = (string[])s.Prerequisites.Clone(),
-            Abilities = (string[])s.Abilities.Clone(),
+            // Null-guard each array: the property defaults are Array.Empty, but a raw-JSON hatch edit of
+            // "prerequisites"/"abilities"/"behaviors": null overrides the initializer with null, and an unguarded
+            // .Clone() would then NullReference-crash the Duplicate action.
+            Prerequisites = s.Prerequisites is null ? Array.Empty<string>() : (string[])s.Prerequisites.Clone(),
+            Abilities = s.Abilities is null ? Array.Empty<string>() : (string[])s.Abilities.Clone(),
+            Behaviors = s.Behaviors is null ? Array.Empty<string>() : (string[])s.Behaviors.Clone(),
             AttackDomains = s.AttackDomains?.Clone() as string[],
             Tags = s.Tags?.Clone() as string[],
             IsHero = s.IsHero,
@@ -683,7 +861,7 @@ namespace ProjectChimera.CreationSuite
 
             // Validate the parsed unit against the OTHER units (exclude the one it replaces) + the mesh check.
             var others = _faction.Units.Where(u => !ReferenceEquals(u, _current)).ToList();
-            UnitValidationResult res = _validator.Validate(parsed, _registry, others);
+            UnitValidationResult res = _validator.Validate(parsed, _registry, _behaviorRegistry, others);
             string? meshErr = MeshError(parsed);
             if (!res.Ok || meshErr != null)
             {

@@ -47,6 +47,10 @@ namespace ProjectChimera.Core
         /// <summary>Story 2.4b: registry of validated abilities (built from <see cref="ABILITIES_DIR"/>), injected
         /// into the host and published on <c>SceneContext</c> for the command card's label reads. Empty until _Ready builds it.</summary>
         private AbilityRegistry _abilityRegistry = AbilityRegistry.Empty;
+        /// <summary>Story 3.6: registry of behaviors (built from <see cref="BEHAVIORS_DIR"/>), published on
+        /// <c>SceneContext</c> for the Unit Card Editor's behavior picker + compat validation. Authoring-only (no host
+        /// injection, no sim consumer — D-2). Empty until _Ready builds it.</summary>
+        private BehaviorRegistry _behaviorRegistry = BehaviorRegistry.Empty;
         private Combat.ProjectileStore  _projectiles = null!;
         private Combat.CombatEventQueue _combatEvents = null!;
         private Combat.DamageTable      _damageTable = null!;
@@ -185,6 +189,9 @@ namespace ProjectChimera.Core
         private const string DAMAGE_TABLE_JSON = "res://resources/data/damage_table.json";
         /// <summary>Story 2.4b: directory of validated ability JSONs, indexed into the AbilityRegistry (client + server).</summary>
         private const string ABILITIES_DIR = "res://resources/data/abilities";
+        /// <summary>Story 3.6: directory of behavior JSONs, indexed into the BehaviorRegistry (authoring-only — the Unit
+        /// Card Editor reads it for the behavior picker + compat validation; no sim system consumes it).</summary>
+        private const string BEHAVIORS_DIR = "res://resources/data/behaviors";
 
         // ── Lifecycle ─────────────────────────────────────────────────────────
 
@@ -266,6 +273,12 @@ namespace ProjectChimera.Core
             foreach (var u in _factionDef.Units)  u.ResolveAbilities(_abilityRegistry);
             foreach (var u in _factionDef2.Units) u.ResolveAbilities(_abilityRegistry);
 
+            // Story 3.6: build the behavior registry from resources/data/behaviors/ (authoring-only — no Resolve loop,
+            // nothing in the sim consumes a behavior yet). The Unit Card Editor reads it via SceneContext.
+            string behaviorsAbs = ProjectSettings.GlobalizePath(BEHAVIORS_DIR);
+            _behaviorRegistry = BehaviorRegistry.LoadFromDirectory(
+                behaviorsAbs, name => GD.Print($"[Behaviors] skipped invalid {name}"));
+
             // Story 2.11 (review C1): tag-validate the DEFAULT-SEEDED faction defs on the client too, mirroring the
             // server's validate-every-def posture (ServerBootstrap). ResolveSlotFactionDefs only validates slots that
             // carry an explicit faction_json file, so without this a default/fallback slot would spawn an unknown-tag
@@ -332,6 +345,7 @@ namespace ProjectChimera.Core
                 MatchStats = _matchStats, BuildSys = _buildSys, ScenarioDirector = _host.ScenarioDirector,
                 FactionDef = _factionDef, FactionDef2 = _factionDef2, SlotFactionDefs = _slotFactionDefs,
                 AbilityRegistry = _abilityRegistry, // Story 2.4b: the command card reads this for ability labels
+                BehaviorRegistry = _behaviorRegistry, // Story 3.6: the Unit Card Editor reads this for the behavior picker + compat
             };
 
             // Single checksum sink (D5): ONE owner. Offline → log; online → also forward to lockstep

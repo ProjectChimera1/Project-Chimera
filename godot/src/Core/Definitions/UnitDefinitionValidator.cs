@@ -73,6 +73,20 @@ namespace ProjectChimera.Core.Definitions
             UnitDefinition def,
             AbilityRegistry? registry,
             IReadOnlyList<UnitDefinition>? siblings)
+            => Validate(def, registry, null, siblings);
+
+        /// <summary>
+        /// Story 3.6 overload: additionally validate the composed <c>behaviors[]</c> against
+        /// <paramref name="behaviorRegistry"/> (undefined ref + archetype-incompatible). A null
+        /// <paramref name="behaviorRegistry"/> SKIPS the behavior checks (mirrors the ability-null guard) so existing
+        /// callers/tests that pass no registry compile + behave unchanged; only the editor supplies it. Every rule of the
+        /// base overload still runs.
+        /// </summary>
+        public UnitValidationResult Validate(
+            UnitDefinition def,
+            AbilityRegistry? registry,
+            BehaviorRegistry? behaviorRegistry,
+            IReadOnlyList<UnitDefinition>? siblings)
         {
             var errors = new List<(string, string)>();
             if (def is null)
@@ -144,6 +158,27 @@ namespace ProjectChimera.Core.Definitions
                     if (registry.IndexOf(aid) < 0)
                         errors.Add(("abilities", Located(id, $"abilities[{i}]",
                             $"'{aid}' is not a defined ability (no matching ability in the loaded set).")));
+                }
+            }
+
+            // ── behaviors: each ref must resolve AND be compatible with this unit's archetype (Story 3.6, AC2) ──
+            string[]? behaviors = def.Behaviors;
+            if (behaviors != null && behaviorRegistry != null)
+            {
+                for (int i = 0; i < behaviors.Length; i++)
+                {
+                    string bid = behaviors[i] ?? "";
+                    int idx = behaviorRegistry.IndexOf(bid);
+                    if (idx < 0)
+                    {
+                        errors.Add(("behaviors", Located(id, $"behaviors[{i}]",
+                            $"'{bid}' is not a defined behavior (no matching behavior in the loaded set).")));
+                    }
+                    else if (!behaviorRegistry.Get(idx).IsCompatibleWith(def.Category))
+                    {
+                        errors.Add(("behaviors", Located(id, $"behaviors[{i}]",
+                            $"behavior '{bid}' is not compatible with the {def.Category} archetype.")));
+                    }
                 }
             }
 

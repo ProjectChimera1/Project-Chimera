@@ -127,6 +127,19 @@ namespace ProjectChimera.Core.Definitions
         public string[] Abilities { get; set; } = System.Array.Empty<string>();
 
         /// <summary>
+        /// Role/AI <b>behavior</b> ids this unit composes (each references a behavior JSON in
+        /// <c>resources/data/behaviors/</c>, indexed by <see cref="BehaviorRegistry"/>). The orthogonal composition axis
+        /// (Story 3.6): a "healer" = Ranged archetype + a heal ability + a <c>support</c> behavior — never a subclass.
+        /// Mirrors <see cref="Abilities"/> — a snake_case JSON string array, empty = no behaviors. Purely AUTHORING DATA:
+        /// no sim system resolves or consumes it yet (D-2 — no <c>Parsed*</c>/<c>Resolve</c>/<c>[JsonIgnore]</c> index and
+        /// no SoA fold), so an unread <c>behaviors</c> field moves no golden and no checksum. The
+        /// <see cref="UnitDefinitionValidator"/> rejects an undefined ref or an archetype-incompatible behavior at
+        /// authoring time (AC2).
+        /// </summary>
+        [JsonPropertyName("behaviors")]
+        public string[] Behaviors { get; set; } = System.Array.Empty<string>();
+
+        /// <summary>
         /// The target domains this unit can attack, as a snake_case JSON string array of <c>"Ground"</c> / <c>"Air"</c> /
         /// <c>"Structure"</c> (Story 2.9a, FR-11/FR-12). This is an <b>attacker-capability</b> axis, independent of the
         /// unit's own <see cref="Category"/>: <c>["Air"]</c> makes an anti-air-only unit; omitting the field (or an empty

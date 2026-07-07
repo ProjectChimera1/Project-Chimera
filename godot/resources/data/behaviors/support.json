@@ -1,0 +1,6 @@
+{
+  "id": "support",
+  "display_name": "Support",
+  "description": "Prioritizes aiding and protecting allied units.",
+  "compatible_archetypes": ["Worker", "Melee", "Ranged", "Siege", "Air", "Structure"]
+}

@@ -217,6 +217,7 @@ namespace ProjectChimera.Core.Definitions
 
             PutStringArray(obj, "prerequisites", d.Prerequisites, defaultsNull: false);
             PutStringArray(obj, "abilities", d.Abilities, defaultsNull: false);
+            PutStringArray(obj, "behaviors", d.Behaviors, defaultsNull: false);
             PutStringArray(obj, "attack_domains", d.AttackDomains, defaultsNull: true);
             PutStringArray(obj, "tags", d.Tags, defaultsNull: true);
 
@@ -351,7 +352,11 @@ namespace ProjectChimera.Core.Definitions
                 return;
             }
             var arr = new JsonArray();
-            foreach (string s in e) arr.Add(s);
+            // Add via the string→JsonNode implicit operator (a JsonValue PRIMITIVE), NOT the generic Add<T>(string)
+            // overload (which mints a JsonValueCustomized<string> that ToJsonString CANNOT serialize without a
+            // TypeInfoResolver on the options — the resolver-less IndentedOptions here). Same emitted JSON, but the
+            // primitive round-trips; the customized node throws. (The mesh-path string write already uses this path.)
+            foreach (string s in e) arr.Add((JsonNode)s);
             o[key] = arr;
         }
 

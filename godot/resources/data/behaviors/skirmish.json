@@ -1,0 +1,6 @@
+{
+  "id": "skirmish",
+  "display_name": "Skirmish",
+  "description": "Harasses at range and repositions to avoid being pinned. Requires mobility, so it is not available to immobile Structures.",
+  "compatible_archetypes": ["Worker", "Melee", "Ranged", "Siege", "Air"]
+}

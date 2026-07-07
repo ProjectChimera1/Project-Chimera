@@ -33,7 +33,7 @@ namespace ProjectChimera.Core.Bootstrap
                     ? slots[0].FactionJson
                     : MainScene.P1_FACTION_JSON;
 
-            _ctx.UnitCardPanel.Initialize(_ctx.FactionDef, _ctx.GameState, _ctx.AbilityRegistry, factionPath);
+            _ctx.UnitCardPanel.Initialize(_ctx.FactionDef, _ctx.GameState, _ctx.AbilityRegistry, _ctx.BehaviorRegistry, factionPath);
 
             GD.Print("[UnitCard] Initialized — press J in Edit mode to open (edit/create/duplicate/delete).");
         }

@@ -57,6 +57,11 @@ namespace ProjectChimera.Core.Bootstrap
         /// does NOT expose the registry (it lives privately inside <c>AbilityCastSystem</c>). Defaults to Empty.</summary>
         public AbilityRegistry AbilityRegistry = AbilityRegistry.Empty;
 
+        /// <summary>Story 3.6: the loaded behavior registry (built by MainScene._Ready from the behaviors dir). The Unit
+        /// Card Editor reads it to offer the behavior picker and to reject undefined / archetype-incompatible behavior
+        /// refs. Authoring-only — no sim system consumes it (D-2). Defaults to Empty.</summary>
+        public BehaviorRegistry BehaviorRegistry = BehaviorRegistry.Empty;
+
         // ── Presentation handles (each produced by the phase named below; consumed by later phases / runtime) ─
         public RtsCameraController Cam        = null!;   // Camera
         public EntityPlacer        Placer     = null!;   // Camera

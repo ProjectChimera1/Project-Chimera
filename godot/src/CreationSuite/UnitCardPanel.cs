@@ -44,6 +44,7 @@ namespace ProjectChimera.CreationSuite
         private FactionDefinition? _faction;               // the unit source (Units only — D-10)
         private GameState?         _gameState;
         private AbilityRegistry    _registry = AbilityRegistry.Empty;
+        private BehaviorRegistry   _behaviorRegistry = BehaviorRegistry.Empty;   // Story 3.6 — the behavior picker + compat source
         private int                _index;                 // browse cursor into _faction.Units
         private string             _factionJsonPath = "";  // res:// path of the faction file to write edits back to (D-8)
 
@@ -97,12 +98,14 @@ namespace ProjectChimera.CreationSuite
         /// file <c>res://</c> path to persist edits to (D-8). Called by <c>UnitCardPhase</c> AFTER <c>AddChild</c>.
         /// Starts hidden; shown by the <c>J</c> toggle in Edit mode.
         /// </summary>
-        public void Initialize(FactionDefinition? faction, GameState gameState, AbilityRegistry registry, string factionJsonPath = "")
+        public void Initialize(FactionDefinition? faction, GameState gameState, AbilityRegistry registry,
+                               BehaviorRegistry behaviorRegistry, string factionJsonPath = "")
         {
-            _faction         = faction;
-            _gameState       = gameState;
-            _registry        = registry ?? AbilityRegistry.Empty;
-            _factionJsonPath = factionJsonPath ?? "";
+            _faction          = faction;
+            _gameState        = gameState;
+            _registry         = registry ?? AbilityRegistry.Empty;
+            _behaviorRegistry = behaviorRegistry ?? BehaviorRegistry.Empty;
+            _factionJsonPath  = factionJsonPath ?? "";
             _index           = 0;
 
             _gameState.ModeChanged += OnModeChanged;   // authoring is Edit-only — hide in Play
