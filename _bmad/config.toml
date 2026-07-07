@@ -10,6 +10,11 @@
 # Those files are never touched by the installer.
 # ─────────────────────────────────────────────────────────────────
 
+[core]
+project_name = "Project_Chimera"
+document_output_language = "English"
+output_folder = "{project-root}/_bmad-output"
+
 [modules.bmm]
 planning_artifacts = "{project-root}/_bmad-output/planning-artifacts"
 implementation_artifacts = "{project-root}/_bmad-output/implementation-artifacts"
