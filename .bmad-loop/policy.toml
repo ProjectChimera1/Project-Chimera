@@ -87,7 +87,7 @@ clean_tmp = true             # let engine plugins clean their /tmp scratch on fi
 [scm]
 # Source-control isolation + merge-back. Defaults reproduce today's behavior:
 # work happens in place on the checked-out branch, with no branches.
-isolation = "none"           # none | worktree
+isolation = "worktree"           # none | worktree
 branch_per = "story"         # story | run (worktree mode only; "run" forces delete_branch = false)
 target_branch = ""           # "" = the branch checked out at run start
 merge_strategy = "merge"     # ff | merge | squash (worktree mode merges the unit branch into target locally)
