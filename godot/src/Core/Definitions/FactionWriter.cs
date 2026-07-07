@@ -67,6 +67,12 @@ namespace ProjectChimera.Core.Definitions
         /// <summary>Human-readable re-serialize options (2-space indent, matching the hand-authored faction files).</summary>
         private static readonly JsonSerializerOptions IndentedOptions = new() { WriteIndented = true };
 
+        /// <summary>Hero sub-object serialize options: omit null-valued optional slots (unset signature/ultimate) so a
+        /// default-promoted hero writes no <c>"signature_ability": null</c> noise — matching <see cref="ApplyFields"/>'s
+        /// omit-on-default discipline. Values round-trip identically (an omitted key deserializes back to null).</summary>
+        private static readonly JsonSerializerOptions HeroSerializeOptions =
+            new() { DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull };
+
         /// <summary>
         /// Apply one <paramref name="edit"/> to a faction JSON string and return the patched JSON. Pure — parses the
         /// input into a JsonNode DOM, mutates only the one affected <c>units[]</c> element, and re-serializes. Throws
@@ -222,7 +228,20 @@ namespace ProjectChimera.Core.Definitions
             PutStringArray(obj, "tags", d.Tags, defaultsNull: true);
 
             PutBool(obj, "is_hero", d.IsHero, false);
+            WriteHero(obj, d);
             WriteCombatFeedback(obj, d);
+        }
+
+        /// <summary>
+        /// Reconcile the <c>hero</c> block (Story 3.7 authoring data). Unlike <see cref="WriteCombatFeedback"/> the
+        /// <c>hero</c> block is fully FORM-owned (no raw-only sub-keys to preserve), so a deterministic POCO re-serialize
+        /// is correct: serialize <see cref="UnitDefinition.Hero"/> to <c>obj["hero"]</c> when non-null, else drop the key.
+        /// A non-hero unit therefore carries no <c>hero</c> block (no faction-JSON churn for existing units).
+        /// </summary>
+        private static void WriteHero(JsonObject obj, UnitDefinition d)
+        {
+            if (d.Hero == null) { obj.Remove("hero"); return; }
+            obj["hero"] = JsonNode.Parse(JsonSerializer.Serialize(d.Hero, HeroSerializeOptions));
         }
 
         /// <summary>

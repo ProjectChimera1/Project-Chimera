@@ -93,7 +93,7 @@ development_status:
   3-4-unit-card-editor-edit-create-duplicate-delete-with-inline-validation-persisted-to-faction-data: review
   3-5-in-editor-model-assignment-preview-box-placeholder-glb-browse: done
   3-6-archetype-orthogonal-ability-behavior-composition-no-subclassing: done
-  3-7-promote-to-hero-leveling-curve-xp-signature-ultimate-abilities: backlog
+  3-7-promote-to-hero-leveling-curve-xp-signature-ultimate-abilities: done
   3-8-persistence-manifest-authoring-which-attributes-carry-forward-through-the-validate-gate: backlog
   3-9-offline-hero-persistence-rail-save-load-hero-picker-deterministic-init-time-apply: backlog
   3-10-added-edit-play-round-trip-loop-no-restart-playtest: backlog

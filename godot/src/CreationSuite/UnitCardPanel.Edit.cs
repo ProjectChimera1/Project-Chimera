@@ -109,6 +109,15 @@ namespace ProjectChimera.CreationSuite
             AddSection(_bodyHost, "Composition");
             AddCompositionRow(_bodyHost, def);
 
+            // Promote to Hero (Simple, UX-DR54): a switch drives the EXISTING IsHero flag and reveals hero fields.
+            // On = Standard leveling preset; the Simple leveling dropdown shows once promoted. Advanced holds every
+            // raw hero field. Story 3.7 (a hero is a unit + XP component + leveling table + hero abilities — orthogonal
+            // to the archetype, no subclass).
+            AddSection(_bodyHost, "Promote to Hero");
+            AddHeroPromoteRow(_bodyHost, def);
+            if (def.IsHero && def.Hero != null)
+                AddHeroLevelingRow(_bodyHost, def);   // Simple: a leveling-curve preset dropdown
+
             // ── Advanced (toggled by the Segment) ──
             _advancedHost = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill, Visible = _segment.Active == 1 };
             _advancedHost.AddThemeConstantOverride("separation", ChimeraComponents.Const(ThemeTokens.S2));
@@ -150,6 +159,10 @@ namespace ProjectChimera.CreationSuite
                 BehaviorCatalog(), "Behaviors",
                 "The role/AI behaviors this unit composes (e.g. support). An undefined or archetype-incompatible behavior blocks Save.",
                 def);
+
+            // Advanced hero fields — only when this unit is a hero (revealed via the GoToUnit rebuild, D-4).
+            if (def.IsHero && def.Hero != null)
+                BuildHeroAdvanced(_advancedHost, def);
 
             AddSection(_advancedHost, "Raw JSON (this unit)");
             BuildRawPane(_advancedHost, def);
@@ -559,6 +572,144 @@ namespace ProjectChimera.CreationSuite
             AddFieldRow(parent, "Composition", sel, MakeBadge("composition"));
         }
 
+        // ── Promote to Hero (Story 3.7): a switch drives the existing IsHero + reveals hero fields ──
+
+        /// <summary>The Standard-preset default hero block instantiated when the creator flips the switch on.</summary>
+        private static HeroDefinition MakeDefaultHero()
+        {
+            HeroLevelingPresets.Curve c = HeroLevelingPresets.Bundle(HeroLevelingPresets.Kind.Standard);
+            return new HeroDefinition { MaxLevel = c.MaxLevel, BaseXp = c.BaseXp, XpGrowth = c.XpGrowth, XpPerKill = c.XpPerKill };
+        }
+
+        /// <summary>The Promote-to-Hero switch row (Simple, UX-DR54): a <see cref="ChimeraSwitch"/> bound to the EXISTING
+        /// <see cref="UnitDefinition.IsHero"/>. Toggling it mutates <c>IsHero</c>+<c>Hero</c> then rebuilds the body via
+        /// <see cref="GoToUnit"/> (the composition-preset precedent, D-4) so hero rows appear seeded / vanish cleared — one
+        /// undoable step. The <c>is_hero</c> coherence error badges on this row.</summary>
+        private void AddHeroPromoteRow(Control parent, UnitDefinition def)
+        {
+            ChimeraSwitch sw = ChimeraSwitch.Create(def.IsHero);
+            sw.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
+            sw.Toggled += on => { if (!_building) OnPromoteToggled(def, on); };
+            AttachFieldTip(sw, "Promote to Hero",
+                "Make this unit a hero: adds a leveling curve, an XP-gain rule, and signature/ultimate ability slots. Off clears them.");
+
+            // The switch would stretch under AddFieldRow's ExpandFill, so wrap it so it keeps its natural size at the left.
+            var holder = new HBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+            sw.SizeFlagsHorizontal = Control.SizeFlags.ShrinkBegin;
+            holder.AddChild(sw);
+            AddFieldRow(parent, "Hero", holder, MakeBadge("is_hero"));
+        }
+
+        /// <summary>Apply a Promote-to-Hero toggle: set <c>IsHero</c>+<c>Hero</c> together (on ⇒ Standard preset, off ⇒
+        /// null), push ONE undo entry, and rebuild so hero rows reveal/hide. Toggling off leaves a valid non-hero unit.</summary>
+        private void OnPromoteToggled(UnitDefinition def, bool on)
+        {
+            if (_current == null || !ReferenceEquals(def, _current)) return;
+            bool oldFlag = def.IsHero;
+            HeroDefinition? oldHero = def.Hero;
+            HeroDefinition? newHero = on ? (oldHero ?? MakeDefaultHero()) : null;
+            if (oldFlag == on && ReferenceEquals(oldHero, newHero)) return;   // already consistent — nothing to do
+
+            Action apply = () => { def.IsHero = on; def.Hero = newHero; };
+            Action revert = () => { def.IsHero = oldFlag; def.Hero = oldHero; };
+            apply();
+            UnitDefinition t = def;
+            PushHistory(() => { apply(); GoToUnit(t); }, () => { revert(); GoToUnit(t); });
+            GoToUnit(t);   // rebuild the body: hero rows appear (seeded) or disappear (cleared)
+        }
+
+        /// <summary>The Simple-mode "Leveling" dropdown: preselected via <see cref="HeroLevelingPresets.Detect"/> (a
+        /// hand-tuned curve reads back as <c>Custom</c>), applying the picked preset's four curve fields through the
+        /// undo/validate/save path. Custom is a deliberate no-op (never wipes an authored curve).</summary>
+        private void AddHeroLevelingRow(Control parent, UnitDefinition def)
+        {
+            HeroDefinition h = def.Hero!;
+            string[] labels = HeroLevelingPresets.All.Select(a => a.Label).ToArray();
+            OptionButton sel = ChimeraComponents.Select(labels);
+            HeroLevelingPresets.Kind detected = HeroLevelingPresets.Detect(h);
+            int cur = Array.FindIndex(HeroLevelingPresets.All, a => a.Kind == detected);
+            if (cur >= 0) sel.Selected = cur;
+            sel.ItemSelected += idx =>
+            {
+                if (_building) return;
+                HeroLevelingPresets.Kind chosen = HeroLevelingPresets.All[(int)idx].Kind;
+                if (chosen == HeroLevelingPresets.Kind.Custom) return;   // no-op — keep the current curve
+                HeroLevelingPresets.Curve c = HeroLevelingPresets.Bundle(chosen);
+                HeroLevelingPresets.Curve old = new(h.MaxLevel, h.BaseXp, h.XpGrowth, h.XpPerKill);
+                if (old == c) return;
+                Action applyNew = () => { h.MaxLevel = c.MaxLevel; h.BaseXp = c.BaseXp; h.XpGrowth = c.XpGrowth; h.XpPerKill = c.XpPerKill; };
+                Action applyOld = () => { h.MaxLevel = old.MaxLevel; h.BaseXp = old.BaseXp; h.XpGrowth = old.XpGrowth; h.XpPerKill = old.XpPerKill; };
+                applyNew();
+                UnitDefinition t = def;
+                PushHistory(() => { applyNew(); GoToUnit(t); }, () => { applyOld(); GoToUnit(t); });
+                OnLiveChanged("hero.leveling");
+                Refresh();   // reflect the applied curve in the Advanced hero fields
+            };
+            AttachFieldTip(sel, "Leveling",
+                "Pick a leveling-curve preset (Standard / Fast / Slow). Switch to Advanced for the individual max level / XP fields; Custom keeps your own curve.");
+            AddFieldRow(parent, "Leveling", sel, MakeBadge("hero.leveling"));
+        }
+
+        /// <summary>The Advanced "Hero" section: one row per raw hero field (numbers via <see cref="AddNumInt"/>/
+        /// <see cref="AddNumFloat"/>; signature/ultimate via an ability Select + "(none)"). Every row carries a
+        /// hover/focus tooltip + a located validation badge whose key matches the validator's <c>hero.*</c> keys.</summary>
+        private void BuildHeroAdvanced(Control parent, UnitDefinition def)
+        {
+            HeroDefinition h = def.Hero!;
+            AddSection(parent, "Hero");
+            AddNumInt(parent, "Max level", "hero.max_level", "Max Level", "The highest level this hero can reach (2–100).",
+                () => h.MaxLevel, v => h.MaxLevel = v, def);
+            AddNumFloat(parent, "Base XP", "hero.base_xp", "Base XP", "XP required for the first level-up (must be > 0).",
+                1, () => h.BaseXp, v => h.BaseXp = v, def);
+            AddNumFloat(parent, "XP growth", "hero.xp_growth", "XP Growth", "Per-level multiplier on the XP requirement (≥ 1).",
+                0.05, () => h.XpGrowth, v => h.XpGrowth = v, def);
+            AddNumFloat(parent, "XP per kill", "hero.xp_per_kill", "XP Per Kill", "XP granted per enemy kill credited to this hero.",
+                1, () => h.XpPerKill, v => h.XpPerKill = v, def);
+            AddHeroAbilityRow(parent, "Signature", "hero.signature_ability", "Signature Ability",
+                "The hero's signature ability (unlocked on level-up). Pick a defined ability or (none).",
+                () => h.SignatureAbility, v => h.SignatureAbility = v, def);
+            AddHeroAbilityRow(parent, "Ultimate", "hero.ultimate_ability", "Ultimate Ability",
+                "The hero's ultimate ability — must differ from the signature. Pick a defined ability or (none).",
+                () => h.UltimateAbility, v => h.UltimateAbility = v, def);
+        }
+
+        /// <summary>A hero ability-slot Select: a leading "(none)" (⇒ null, the unauthored/valid state) then every ability
+        /// in the catalog, storing the ability id (NOT its display label). An out-of-catalog current id (an unknown ref
+        /// from a raw-JSON edit) is appended so it stays selectable — the validator still badges it. On pick, sets the
+        /// slot, pushes one undo entry, and routes through the live validate/save path.</summary>
+        private void AddHeroAbilityRow(Control parent, string label, string key, string term, string body,
+                                       Func<string?> get, Action<string?> set, UnitDefinition def)
+        {
+            var items = new System.Collections.Generic.List<string> { "(none)" };
+            var ids = new System.Collections.Generic.List<string?> { null };
+            foreach (ComponentEntry e in AbilityCatalog())
+            {
+                items.Add(string.IsNullOrEmpty(e.Label) || e.Label == e.Id ? e.Id : $"{e.Label} ({e.Id})");
+                ids.Add(e.Id);
+            }
+            string? currentId = string.IsNullOrEmpty(get()) ? null : get();
+            if (currentId != null && !ids.Contains(currentId)) { items.Add(currentId); ids.Add(currentId); }
+
+            OptionButton sel = ChimeraComponents.Select(items.ToArray());
+            int curIdx = ids.IndexOf(currentId);
+            sel.Selected = curIdx >= 0 ? curIdx : 0;
+            sel.ItemSelected += idx =>
+            {
+                if (_building) return;
+                int i = (int)idx;
+                if (i < 0 || i >= ids.Count) return;
+                string? old = string.IsNullOrEmpty(get()) ? null : get();
+                string? nu = ids[i];
+                if (old == nu) return;
+                set(nu);
+                UnitDefinition t = def;
+                PushHistory(() => { set(nu); GoToUnit(t); }, () => { set(old); GoToUnit(t); });
+                OnLiveChanged(key);
+            };
+            AttachFieldTip(sel, term, body);
+            AddFieldRow(parent, label, sel, MakeBadge(key));
+        }
+
         // Commit a string-field change to the undo stack (focus-session granularity).
         private void CommitStr(string key, string oldVal, string newVal, Action<string> set, UnitDefinition def)
         {
@@ -831,6 +982,7 @@ namespace ProjectChimera.CreationSuite
             AttackDomains = s.AttackDomains?.Clone() as string[],
             Tags = s.Tags?.Clone() as string[],
             IsHero = s.IsHero,
+            Hero = s.Hero?.Clone(),   // deep-copy the hero block so the clone validates independently (Story 3.7)
             CombatFeedback = s.CombatFeedback,   // shared presentation-DTO ref (a raw-hatch edit re-parses a fresh POCO)
         };
 

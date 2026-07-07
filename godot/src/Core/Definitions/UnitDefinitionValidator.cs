@@ -54,6 +54,18 @@ namespace ProjectChimera.Core.Definitions
         /// spawn (<see cref="ProjectChimera.Core.EntityWorld.ApplyUnitDefinition"/>) — deferred-work #2.</summary>
         private const float Range = 32768f;
 
+        /// <summary>Minimum authorable hero <c>max_level</c> (Story 3.7) — a level-1 "hero" cannot level, so 2 is the
+        /// floor. See <see cref="HeroLevelMax"/>.</summary>
+        private const int HeroLevelMin = 2;
+
+        /// <summary>Maximum authorable hero <c>max_level</c> (Story 3.7). A sane ceiling well below the int/Fixed
+        /// bounds — a creator wanting more edits the raw JSON and re-tests balance.</summary>
+        private const int HeroLevelMax = 100;
+
+        /// <summary>Exclusive upper bound on hero <c>xp_growth</c> (Story 3.7). A per-level geometric multiplier this
+        /// large already makes the top level unreachable; the floor is 1 (no shrink).</summary>
+        private const float HeroGrowthCap = 100f;
+
         // The closed authorable sets, mirroring the string switches in UnitDefinition's Parsed* getters + the enum
         // members. Static → allocated once (the ScenarioValidator closed-set idiom), so the per-unit scan allocates
         // nothing. Case-sensitive exact match (an authored "melee" ≠ "Melee"; the lenient loader would fail-open it).
@@ -182,6 +194,9 @@ namespace ProjectChimera.Core.Definitions
                 }
             }
 
+            // ── hero: is_hero↔hero coherence + leveling-curve range + ability-slot refs + composition (Story 3.7, AC2) ──
+            ValidateHero(errors, id, def, registry);
+
             // ── tags: closed set — compose the existing UnitTagValidator so the two axes agree (AC2 "unknown tag") ──
             if (UnitTagValidator.TryFindInvalidTag(def, out string? badTag))
                 errors.Add(("tags", UnitTagValidator.Located(id, badTag)));
@@ -215,6 +230,68 @@ namespace ProjectChimera.Core.Definitions
                     $"={v} must be >= 0 (a negative cost ADDS that resource each time the unit is trained).")));
             else if (v >= (int)Range)
                 errors.Add((path, Located(id, path, $"={v} exceeds the maximum resource cost ({(int)Range}).")));
+        }
+
+        /// <summary>
+        /// The Story 3.7 hero rules (multi-error, D-9): (1) <c>is_hero</c>↔<c>hero</c> coherence — a hero MUST carry a
+        /// <c>hero</c> block and a <c>hero</c> block MUST have <c>is_hero:true</c> (fail-closed on either mismatch);
+        /// (2) the leveling curve in range; (3) each SET signature/ultimate ability ref must resolve in the registry
+        /// (skipped when <paramref name="registry"/> is null, mirroring the ability guard — an EMPTY slot is "not
+        /// authored yet" and always valid); (4) signature ≠ ultimate when both are set. A non-hero unit (Hero null,
+        /// IsHero false) adds no hero errors.
+        /// </summary>
+        private static void ValidateHero(List<(string, string)> errors, string id, UnitDefinition def, AbilityRegistry? registry)
+        {
+            HeroDefinition? h = def.Hero;
+
+            // Coherence: the flag and the block must agree. Report on `is_hero` and stop (the curve/slot rules below
+            // only make sense once the two are consistent).
+            if (def.IsHero && h == null)
+            {
+                errors.Add(("is_hero", Located(id, "is_hero",
+                    "is a hero (is_hero:true) but has no 'hero' block — author its leveling/abilities or turn the hero flag off.")));
+                return;
+            }
+            if (!def.IsHero && h != null)
+            {
+                errors.Add(("is_hero", Located(id, "is_hero",
+                    "has a 'hero' block but is not marked is_hero:true — set is_hero:true or remove the 'hero' block.")));
+                return;
+            }
+            if (h == null) return;   // non-hero unit — no hero rules apply
+
+            // Leveling curve — each field on its own located key.
+            if (h.MaxLevel < HeroLevelMin || h.MaxLevel > HeroLevelMax)
+                errors.Add(("hero.max_level", Located(id, "hero.max_level",
+                    $"={h.MaxLevel} must be in [{HeroLevelMin}, {HeroLevelMax}].")));
+            if (!float.IsFinite(h.BaseXp) || h.BaseXp <= 0f || h.BaseXp >= Range)
+                errors.Add(("hero.base_xp", Located(id, "hero.base_xp",
+                    $"={h.BaseXp} must be finite and in (0, {(int)Range}).")));
+            if (!float.IsFinite(h.XpGrowth) || h.XpGrowth < 1f || h.XpGrowth >= HeroGrowthCap)
+                errors.Add(("hero.xp_growth", Located(id, "hero.xp_growth",
+                    $"={h.XpGrowth} must be finite and in [1, {(int)HeroGrowthCap}).")));
+            if (!float.IsFinite(h.XpPerKill) || h.XpPerKill < 0f || h.XpPerKill >= Range)
+                errors.Add(("hero.xp_per_kill", Located(id, "hero.xp_per_kill",
+                    $"={h.XpPerKill} must be finite and in [0, {(int)Range}).")));
+
+            // Ability slots — a SET-but-undefined ref is rejected; an empty (null/"") slot is valid (not authored yet).
+            // Skip the ref lookup when there is no registry to validate against (mirrors the abilities[] guard).
+            string sig = h.SignatureAbility ?? "";
+            string ult = h.UltimateAbility ?? "";
+            if (registry != null)
+            {
+                if (sig.Length > 0 && registry.IndexOf(sig) < 0)
+                    errors.Add(("hero.signature_ability", Located(id, "hero.signature_ability",
+                        $"'{sig}' is not a defined ability (no matching ability in the loaded set).")));
+                if (ult.Length > 0 && registry.IndexOf(ult) < 0)
+                    errors.Add(("hero.ultimate_ability", Located(id, "hero.ultimate_ability",
+                        $"'{ult}' is not a defined ability (no matching ability in the loaded set).")));
+            }
+
+            // Composition rule: the signature and the ultimate must differ when both are authored.
+            if (sig.Length > 0 && ult.Length > 0 && sig == ult)
+                errors.Add(("hero.ultimate_ability", Located(id, "hero.ultimate_ability",
+                    "signature and ultimate ability must differ.")));
         }
 
         private static bool IsDuplicateId(UnitDefinition def, string id, IReadOnlyList<UnitDefinition> siblings)

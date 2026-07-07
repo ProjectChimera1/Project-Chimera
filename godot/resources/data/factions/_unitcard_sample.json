@@ -23,6 +23,14 @@
       "vision_range": 10.0,
       "abilities": ["fireball", "matter_infusion"],
       "is_hero": true,
+      "hero": {
+        "max_level": 10,
+        "base_xp": 100,
+        "xp_growth": 1.15,
+        "xp_per_kill": 100,
+        "signature_ability": "fireball",
+        "ultimate_ability": "matter_infusion"
+      },
       "max_energy": 100
     },
     {

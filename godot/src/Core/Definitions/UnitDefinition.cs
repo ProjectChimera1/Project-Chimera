@@ -206,6 +206,20 @@ namespace ProjectChimera.Core.Definitions
         public CombatFeedbackProfile? CombatFeedback { get; set; }
 
         /// <summary>
+        /// The authored HERO definition (Story 3.7, JSON <c>hero</c>) — the leveling curve, XP-gain rule, and
+        /// signature/ultimate ability slots the Promote-to-Hero switch reveals. Null on a non-hero unit; instantiated
+        /// with the Standard leveling preset when the creator promotes. Coupled to <see cref="IsHero"/> by the validator
+        /// (a hero MUST have this block and vice-versa), but ORTHOGONAL to it: <see cref="IsHero"/> stays the spawn-time
+        /// designation Story 3.2 reads to mint a <see cref="ProjectChimera.Core.HeroStore"/> row; this block is the
+        /// definition data Story 3.13 consumes at runtime. Purely AUTHORING DATA like <see cref="Behaviors"/> /
+        /// <see cref="CombatFeedback"/> (D-2): no <c>Parsed*</c>/<c>Resolve</c>/<c>[JsonIgnore]</c> index, no SoA fold —
+        /// nothing reads it this story, so an unread nullable POCO moves no golden and no checksum. Nullable ⇒ omittable
+        /// ⇒ existing faction JSON is unaffected (non-hero units carry no <c>hero</c> block).
+        /// </summary>
+        [JsonPropertyName("hero")]
+        public HeroDefinition? Hero { get; set; }
+
+        /// <summary>
         /// Registry indices of <see cref="Abilities"/>, back-filled ONCE at scenario link by
         /// <see cref="ResolveAbilities"/>. Unlike <see cref="ParsedCategory"/> (a pure computed prop) this needs the
         /// <see cref="AbilityRegistry"/>, so it is an explicit resolve step run before any spawn. Excluded from JSON.
