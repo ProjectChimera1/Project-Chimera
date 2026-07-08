@@ -1,20 +1,26 @@
 #nullable enable
 using Godot;
 using System;
+using System.Collections.Generic;
+using ProjectChimera.UI.Components; // ChimeraComponents, ChimeraTabs, ChimeraSlider, ChimeraSwitch, ChimeraTooltip
+using ProjectChimera.UI.Theme;       // ThemeTokens, ThemeBuilder, AccentController
+using GodotTheme = Godot.Theme;       // the ProjectChimera.UI.Theme namespace shadows the bare Theme type
 
 namespace ProjectChimera.UI
 {
     /// <summary>
-    /// In-game settings panel — shown/hidden with Escape or via HUD settings button.
-    /// Persists all changes immediately to user://settings.json.
+    /// In-game settings panel (Story 3.11 restyle — UX-DR73) — shown/hidden with Escape or the HUD settings
+    /// button, reachable from BOTH the Commander branch (Escape in Play) and the Creator branch (Escape in
+    /// Edit / Title → Settings). Drawn from the shared design system: a chamfered kit panel, a
+    /// <see cref="ChimeraTabs"/> header (Gameplay / Graphics / Audio / Controls / Accessibility) over a
+    /// per-tab content host, themed sliders/switches, and hover-and-focus field tooltips.
+    ///
+    /// Persists all changes to user://settings.json exactly as before — <see cref="ApplyAndSave"/> /
+    /// <see cref="ResetToDefaults"/> read and write the same <see cref="Core.Definitions.SettingsData"/>
+    /// fields. Graphics and Controls are honestly empty (live video / rebinding land in Story 11.12), not
+    /// padded with non-functional controls.
     ///
     /// Requires a <see cref="SettingsManager"/> node in the scene tree.
-    ///
-    /// Usage:
-    ///   var panel = new SettingsPanel();
-    ///   AddChild(panel);
-    ///   panel.Initialize(settingsManager);
-    ///
     /// Key: Escape toggles the panel (wired in MainScene).
     /// </summary>
     public partial class SettingsPanel : CanvasLayer
@@ -28,16 +34,23 @@ namespace ProjectChimera.UI
 
         private SettingsManager _settings = null!;
 
-        // Sliders / toggles — kept as fields so Apply() can read them.
-        private HSlider _cameraSpeedSlider  = null!;
-        private HSlider _zoomSpeedSlider    = null!;
-        private CheckButton _edgeScrollBtn  = null!;
-        private HSlider _masterVolSlider    = null!;
-        private HSlider _sfxVolSlider       = null!;
-        private HSlider _musicVolSlider     = null!;
-        private CheckButton _minimapBtn     = null!;
-        private CheckButton _fpsBtn         = null!;
-        private CheckButton _colorblindBtn  = null!;
+        // Kit context (self-owned; _accent only created when this overlay is the first kit consumer).
+        private GodotTheme        _theme  = null!;
+        private AccentController?  _accent;
+
+        // Tab pages, toggled on TabChanged.
+        private readonly List<Control> _pages = new();
+
+        // Sliders / switches — kept as fields so Apply()/Reset() can read/write them.
+        private ChimeraSlider _cameraSpeedSlider = null!;
+        private ChimeraSlider _zoomSpeedSlider   = null!;
+        private ChimeraSwitch _edgeScrollBtn     = null!;
+        private ChimeraSlider _masterVolSlider   = null!;
+        private ChimeraSlider _sfxVolSlider      = null!;
+        private ChimeraSlider _musicVolSlider    = null!;
+        private ChimeraSwitch _minimapBtn        = null!;
+        private ChimeraSwitch _fpsBtn            = null!;
+        private ChimeraSwitch _colorblindBtn     = null!;
 
         // ── Initialization ────────────────────────────────────────────────────
 
@@ -45,156 +58,204 @@ namespace ProjectChimera.UI
         public void Initialize(SettingsManager settings)
         {
             _settings = settings;
-            Layer     = 15; // above content browser (10), below nothing
+            Layer     = 15; // above content browser (10)
             Visible   = false;
 
-            // ── Anchor root ───────────────────────────────────────────────────
-            // Direct children of a CanvasLayer don't use the parent-based anchor
-            // system reliably, so we insert a full-rect Control as the anchor
-            // parent. It also acts as the primary input blocker so that no clicks
-            // reach the 3D scene or other UI layers behind the settings panel.
+            EnsureKitInitialized(); // MUST run before any ChimeraComponents.* call, or the factory throws
+
+            // ── Anchor root (full-rect Control; the primary input blocker; carries the Theme) ──
             var anchorRoot = new Control();
             anchorRoot.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
             anchorRoot.MouseFilter = Control.MouseFilterEnum.Stop;
+            anchorRoot.Theme = _theme; // a CanvasLayer has no Theme — apply on its root Control, which propagates
             AddChild(anchorRoot);
 
-            // ── Root panel (dark overlay) ─────────────────────────────────────
-            var root = new PanelContainer();
-            root.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
-            root.MouseFilter = Control.MouseFilterEnum.Stop;
-            root.AddThemeStyleboxOverride("panel", new StyleBoxFlat
-            {
-                BgColor = new Color(0.05f, 0.05f, 0.08f, 0.92f),
-            });
-            anchorRoot.AddChild(root);
+            // ── Scrim (void surface token, dimmed) so the scene behind reads as inactive ──
+            Color voidC = _theme.GetColor(ThemeTokens.SurfaceVoid, ThemeTokens.Type);
+            var scrim = new ColorRect { Color = new Color(voidC.R, voidC.G, voidC.B, 0.82f) };
+            scrim.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
+            scrim.MouseFilter = Control.MouseFilterEnum.Ignore;
+            anchorRoot.AddChild(scrim);
 
             // ── Centre card ───────────────────────────────────────────────────
-            var centreMargin = new MarginContainer();
-            centreMargin.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.Center);
-            centreMargin.CustomMinimumSize = new Vector2(520, 0);
-            root.AddChild(centreMargin);
+            var center = new CenterContainer { MouseFilter = Control.MouseFilterEnum.Ignore };
+            center.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
+            anchorRoot.AddChild(center);
 
-            // Actual visible card.
-            var card = new PanelContainer();
-            card.AddThemeStyleboxOverride("panel", new StyleBoxFlat
-            {
-                BgColor                 = new Color(0.12f, 0.13f, 0.18f, 1f),
-                BorderColor             = new Color(0.3f, 0.4f, 0.6f, 0.6f),
-                BorderWidthLeft = 1, BorderWidthRight  = 1,
-                BorderWidthTop  = 1, BorderWidthBottom = 1,
-                CornerRadiusTopLeft = 8, CornerRadiusTopRight    = 8,
-                CornerRadiusBottomLeft = 8, CornerRadiusBottomRight = 8,
-                ContentMarginLeft = 32, ContentMarginRight  = 32,
-                ContentMarginTop  = 28, ContentMarginBottom = 28,
-            });
-            centreMargin.AddChild(card);
+            var card = ChimeraComponents.Panel(ChimeraComponents.PanelVariant.Default);
+            card.CustomMinimumSize = new Vector2(560, 0);
+            center.AddChild(card);
 
             var vbox = new VBoxContainer();
-            vbox.AddThemeConstantOverride("separation", 14);
+            vbox.AddThemeConstantOverride("separation", ChimeraComponents.Const(ThemeTokens.S3));
             card.AddChild(vbox);
 
             // ── Title + close ─────────────────────────────────────────────────
             var titleRow = new HBoxContainer();
+            titleRow.AddThemeConstantOverride("separation", ChimeraComponents.Const(ThemeTokens.S3));
             vbox.AddChild(titleRow);
 
-            var title = new Label { Text = "Settings" };
-            title.AddThemeFontSizeOverride("font_size", 26);
-            title.AddThemeColorOverride("font_color", Colors.White);
+            var title = Heading("Settings", ThemeTokens.Txl);
             title.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+            title.SizeFlagsVertical   = Control.SizeFlags.ShrinkCenter;
             titleRow.AddChild(title);
 
-            var closeBtn = new Button { Text = "Close  [Esc]", CustomMinimumSize = new Vector2(110, 34) };
-            closeBtn.AddThemeFontSizeOverride("font_size", 13);
+            var closeBtn = ChimeraComponents.Button("Close  [Esc]", ChimeraComponents.ButtonVariant.Ghost,
+                                                    ChimeraComponents.ButtonSize.Sm);
             closeBtn.Pressed += Close;
+            ChimeraTooltip.Attach(closeBtn, "Close", "Close settings and return (Escape).", ChimeraTooltip.TooltipRole.Field);
             titleRow.AddChild(closeBtn);
 
-            vbox.AddChild(new HSeparator());
+            // ── Tab header (UX-DR73) ──────────────────────────────────────────
+            var tabs = ChimeraTabs.Create(ChimeraComponents.TabsVariant.Underline,
+                "Gameplay", "Graphics", "Audio", "Controls", "Accessibility");
+            vbox.AddChild(tabs);
 
-            // ── Camera ────────────────────────────────────────────────────────
-            AddSectionHeader(vbox, "CAMERA");
+            // ── Content host (pages swap on TabChanged) ───────────────────────
+            // A Container (not a bare Control) so the visible page's content height drives the card:
+            // the min height keeps the card stable across tabs, and a taller page (e.g. a longer
+            // localized string or larger font) grows the card instead of clipping into the footer below.
+            var host = new VBoxContainer { CustomMinimumSize = new Vector2(0, 300) };
+            host.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+            vbox.AddChild(host);
 
-            _cameraSpeedSlider = AddSliderRow(vbox, "Pan speed",
-                min: 0.25f, max: 3.0f, step: 0.05f,
-                value: _settings.Current.CameraSpeed,
-                format: "×{0:0.0#}");
+            _pages.Clear();
+            host.AddChild(BuildGameplayPage());
+            host.AddChild(BuildGraphicsPage());
+            host.AddChild(BuildAudioPage());
+            host.AddChild(BuildControlsPage());
+            host.AddChild(BuildAccessibilityPage());
+            ShowPage(0);
 
-            _zoomSpeedSlider = AddSliderRow(vbox, "Zoom speed",
-                min: 0.25f, max: 3.0f, step: 0.05f,
-                value: _settings.Current.CameraZoomSpeed,
-                format: "×{0:0.0#}");
+            tabs.TabChanged += OnTabChanged;
 
-            _edgeScrollBtn = AddToggleRow(vbox, "Edge scroll",
-                "Scroll camera when cursor reaches the screen edge.",
-                _settings.Current.EdgeScrollEnabled);
-
-            vbox.AddChild(new HSeparator());
-
-            // ── Audio ─────────────────────────────────────────────────────────
-            AddSectionHeader(vbox, "AUDIO");
-
-            _masterVolSlider = AddSliderRow(vbox, "Master volume",
-                min: 0f, max: 1f, step: 0.01f,
-                value: _settings.Current.MasterVolume,
-                format: "{0:0%}");
-
-            _sfxVolSlider = AddSliderRow(vbox, "SFX volume",
-                min: 0f, max: 1f, step: 0.01f,
-                value: _settings.Current.SfxVolume,
-                format: "{0:0%}");
-
-            _musicVolSlider = AddSliderRow(vbox, "Music volume",
-                min: 0f, max: 1f, step: 0.01f,
-                value: _settings.Current.MusicVolume,
-                format: "{0:0%}");
-
-            vbox.AddChild(new HSeparator());
-
-            // ── UI / HUD ──────────────────────────────────────────────────────
-            AddSectionHeader(vbox, "HUD");
-
-            _minimapBtn = AddToggleRow(vbox, "Show minimap",
-                "Show the overhead minimap in the lower-right corner.",
-                _settings.Current.ShowMinimap);
-
-            _fpsBtn = AddToggleRow(vbox, "Show FPS",
-                "Display the current frame rate in the HUD.",
-                _settings.Current.ShowFps);
-
-            vbox.AddChild(new HSeparator());
-
-            // ── Accessibility ─────────────────────────────────────────────────
-            AddSectionHeader(vbox, "ACCESSIBILITY");
-
-            _colorblindBtn = AddToggleRow(vbox, "Colorblind-friendly colors",
-                "Changes Player 2 units from red to orange so they are readable in red-green color blindness.",
-                _settings.Current.ColorblindMode);
-
-            vbox.AddChild(new HSeparator());
-
-            // ── Apply / Reset ─────────────────────────────────────────────────
+            // ── Apply / Reset footer ──────────────────────────────────────────
             var btnRow = new HBoxContainer();
-            btnRow.AddThemeConstantOverride("separation", 10);
+            btnRow.AddThemeConstantOverride("separation", ChimeraComponents.Const(ThemeTokens.S2));
             vbox.AddChild(btnRow);
 
             btnRow.AddChild(new Control { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill });
 
-            var resetBtn = new Button { Text = "Reset to Defaults", CustomMinimumSize = new Vector2(150, 34) };
-            resetBtn.AddThemeFontSizeOverride("font_size", 13);
+            var resetBtn = ChimeraComponents.Button("Reset to Defaults", ChimeraComponents.ButtonVariant.Secondary);
             resetBtn.Pressed += ResetToDefaults;
+            ChimeraTooltip.Attach(resetBtn, "Reset to Defaults",
+                "Restore every setting to its default value and save.", ChimeraTooltip.TooltipRole.Field);
             btnRow.AddChild(resetBtn);
 
-            var applyBtn = new Button { Text = "Apply & Save", CustomMinimumSize = new Vector2(130, 34) };
-            applyBtn.AddThemeFontSizeOverride("font_size", 13);
+            var applyBtn = ChimeraComponents.Button("Apply & Save", ChimeraComponents.ButtonVariant.Primary);
             applyBtn.Pressed += ApplyAndSave;
+            ChimeraTooltip.Attach(applyBtn, "Apply & Save",
+                "Apply changes live and persist them to disk.", ChimeraTooltip.TooltipRole.Field);
             btnRow.AddChild(applyBtn);
+        }
+
+        // ── Kit bootstrap (mirrors HeroPickerOverlay.EnsureKitInitialized) ─────────────────
+
+        private void EnsureKitInitialized()
+        {
+            _theme = ResourceLoader.Load<GodotTheme>(ThemeBuilder.ThemePath, cacheMode: ResourceLoader.CacheMode.Ignore)
+                     ?? ThemeBuilder.Build();
+
+            if (!ChimeraComponents.IsInitialized)
+            {
+                _accent = new AccentController { Name = "AccentController" };
+                AddChild(_accent);
+                _accent.Initialize(_theme);
+                ChimeraComponents.Initialize(_theme, _accent);
+            }
+        }
+
+        // ── Tab pages ─────────────────────────────────────────────────────────
+
+        private Control BuildGameplayPage()
+        {
+            var v = NewPage();
+
+            AddSectionHeader(v, "Camera");
+            _cameraSpeedSlider = AddSliderRow(v, "Pan speed",
+                "How fast the camera pans across the map.",
+                min: 0.25f, max: 3.0f, step: 0.05f, value: _settings.Current.CameraSpeed);
+            _zoomSpeedSlider = AddSliderRow(v, "Zoom speed",
+                "How fast the camera zooms in and out.",
+                min: 0.25f, max: 3.0f, step: 0.05f, value: _settings.Current.CameraZoomSpeed);
+            _edgeScrollBtn = AddToggleRow(v, "Edge scroll",
+                "Scroll the camera when the cursor reaches the screen edge.",
+                _settings.Current.EdgeScrollEnabled);
+
+            AddSectionHeader(v, "HUD");
+            _minimapBtn = AddToggleRow(v, "Show minimap",
+                "Show the overhead minimap in the lower-right corner.",
+                _settings.Current.ShowMinimap);
+            _fpsBtn = AddToggleRow(v, "Show FPS",
+                "Display the current frame rate in the HUD.",
+                _settings.Current.ShowFps);
+
+            return v;
+        }
+
+        private Control BuildGraphicsPage()
+        {
+            var v = NewPage();
+            AddEmptyState(v,
+                "No graphics settings yet. Live video options (resolution, quality, vsync) arrive in a later update.");
+            return v;
+        }
+
+        private Control BuildAudioPage()
+        {
+            var v = NewPage();
+            _masterVolSlider = AddSliderRow(v, "Master volume",
+                "Overall output level for all audio.",
+                min: 0f, max: 1f, step: 0.01f, value: _settings.Current.MasterVolume);
+            _sfxVolSlider = AddSliderRow(v, "SFX volume",
+                "Level for gameplay sound effects.",
+                min: 0f, max: 1f, step: 0.01f, value: _settings.Current.SfxVolume);
+            _musicVolSlider = AddSliderRow(v, "Music volume",
+                "Level for background music.",
+                min: 0f, max: 1f, step: 0.01f, value: _settings.Current.MusicVolume);
+            return v;
+        }
+
+        private Control BuildControlsPage()
+        {
+            var v = NewPage();
+            AddEmptyState(v,
+                "No rebindable controls yet. Key binding arrives in a later update.");
+            return v;
+        }
+
+        private Control BuildAccessibilityPage()
+        {
+            var v = NewPage();
+            _colorblindBtn = AddToggleRow(v, "Colorblind-friendly colors",
+                "Changes Player 2 units from red to orange so they read in red-green color blindness.",
+                _settings.Current.ColorblindMode);
+            return v;
+        }
+
+        private VBoxContainer NewPage()
+        {
+            // Laid out by the host Container (not FullRect-anchored) so the page's content height drives
+            // the host/card — a page taller than the host min grows the card rather than overflowing it.
+            var v = new VBoxContainer();
+            v.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+            v.SizeFlagsVertical   = Control.SizeFlags.ExpandFill;
+            v.AddThemeConstantOverride("separation", ChimeraComponents.Const(ThemeTokens.S3));
+            _pages.Add(v);
+            return v;
+        }
+
+        private void OnTabChanged(int index) => ShowPage(index);
+
+        private void ShowPage(int index)
+        {
+            for (int i = 0; i < _pages.Count; i++)
+                _pages[i].Visible = i == index;
         }
 
         // ── Public API ────────────────────────────────────────────────────────
 
-        public void ToggleVisible()
-        {
-            Visible = !Visible;
-        }
+        public void ToggleVisible() => Visible = !Visible;
 
         public void Close()
         {
@@ -204,8 +265,8 @@ namespace ProjectChimera.UI
 
         // ── Keyboard ──────────────────────────────────────────────────────────
 
-        // Use _Input (not _UnhandledInput) so the Escape keystroke is consumed
-        // before MainScene's _UnhandledInput can re-open menus behind the panel.
+        // Use _Input (not _UnhandledInput) so the Escape keystroke is consumed before MainScene's
+        // _UnhandledInput can re-open menus behind the panel.
         public override void _Input(InputEvent ev)
         {
             if (!Visible) return;
@@ -216,95 +277,93 @@ namespace ProjectChimera.UI
             }
         }
 
-        // ── Helpers ───────────────────────────────────────────────────────────
+        // ── Row builders ──────────────────────────────────────────────────────
 
-        private static void AddSectionHeader(Control parent, string text)
+        private void AddSectionHeader(Control parent, string text)
         {
-            var lbl = new Label { Text = text };
-            lbl.AddThemeFontSizeOverride("font_size", 11);
-            lbl.AddThemeColorOverride("font_color", new Color(0.5f, 0.6f, 0.8f));
+            var lbl = ChimeraComponents.FieldLabel(text); // uppercase display, text-lo (matches the kit)
             parent.AddChild(lbl);
         }
 
-        /// <summary>Add a labeled HSlider row; returns the slider for later reads.</summary>
-        private static HSlider AddSliderRow(Control parent, string label,
-                                            float min, float max, float step,
-                                            float value, string format)
+        /// <summary>Add a labeled themed slider row; returns the slider for later reads.</summary>
+        private ChimeraSlider AddSliderRow(Control parent, string label, string tip,
+                                           float min, float max, float step, float value)
         {
             var row = new HBoxContainer();
-            row.AddThemeConstantOverride("separation", 10);
+            row.AddThemeConstantOverride("separation", ChimeraComponents.Const(ThemeTokens.S3));
             parent.AddChild(row);
 
-            var nameLbl = new Label { Text = label, CustomMinimumSize = new Vector2(150, 0) };
-            nameLbl.AddThemeFontSizeOverride("font_size", 13);
-            nameLbl.AddThemeColorOverride("font_color", new Color(0.85f, 0.85f, 0.85f));
+            var nameLbl = Body(label, ThemeTokens.TextMid, ThemeTokens.Tsm);
+            nameLbl.CustomMinimumSize = new Vector2(150, 0);
+            AttachFieldTip(nameLbl, label, tip);
             row.AddChild(nameLbl);
 
-            var slider = new HSlider
-            {
-                MinValue              = min,
-                MaxValue              = max,
-                Step                  = step,
-                Value                 = value,
-                SizeFlagsHorizontal   = Control.SizeFlags.ExpandFill,
-                CustomMinimumSize     = new Vector2(0, 24),
-            };
+            var slider = ChimeraSlider.Create(value, min, max, step);
+            slider.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+            slider.SizeFlagsVertical   = Control.SizeFlags.ShrinkCenter;
             row.AddChild(slider);
-
-            // Value label that updates live.
-            var valLbl = new Label
-            {
-                Text              = string.Format(format, value),
-                CustomMinimumSize = new Vector2(55, 0),
-                HorizontalAlignment = HorizontalAlignment.Right,
-            };
-            valLbl.AddThemeFontSizeOverride("font_size", 13);
-            valLbl.AddThemeColorOverride("font_color", new Color(0.75f, 0.85f, 1.0f));
-            row.AddChild(valLbl);
-
-            string capturedFormat = format;
-            slider.ValueChanged += v => valLbl.Text = string.Format(capturedFormat, (float)v);
 
             return slider;
         }
 
-        /// <summary>Add a labeled CheckButton toggle row; returns the button for later reads.</summary>
-        private static CheckButton AddToggleRow(Control parent, string label,
-                                                 string tooltip, bool initialValue)
+        /// <summary>Add a labeled themed switch row; returns the switch for later reads.</summary>
+        private ChimeraSwitch AddToggleRow(Control parent, string label, string tip, bool initialValue)
         {
             var row = new HBoxContainer();
-            row.AddThemeConstantOverride("separation", 10);
+            row.AddThemeConstantOverride("separation", ChimeraComponents.Const(ThemeTokens.S3));
             parent.AddChild(row);
 
-            var nameLbl = new Label
-            {
-                Text            = label,
-                TooltipText     = tooltip,
-                CustomMinimumSize = new Vector2(150, 0),
-            };
-            nameLbl.AddThemeFontSizeOverride("font_size", 13);
-            nameLbl.AddThemeColorOverride("font_color", new Color(0.85f, 0.85f, 0.85f));
+            var nameLbl = Body(label, ThemeTokens.TextMid, ThemeTokens.Tsm);
+            nameLbl.CustomMinimumSize = new Vector2(150, 0);
+            nameLbl.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+            AttachFieldTip(nameLbl, label, tip);
             row.AddChild(nameLbl);
 
-            var toggle = new CheckButton
-            {
-                ButtonPressed   = initialValue,
-                TooltipText     = tooltip,
-            };
+            var toggle = ChimeraSwitch.Create(initialValue);
+            toggle.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
+            ChimeraTooltip.Attach(toggle, label, tip, ChimeraTooltip.TooltipRole.Field); // switch is a focusable Button
             row.AddChild(toggle);
 
-            // Hint text.
-            var hintLbl = new Label
-            {
-                Text              = tooltip,
-                AutowrapMode      = TextServer.AutowrapMode.Word,
-                SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
-            };
-            hintLbl.AddThemeFontSizeOverride("font_size", 11);
-            hintLbl.AddThemeColorOverride("font_color", new Color(0.5f, 0.5f, 0.55f));
-            row.AddChild(hintLbl);
-
             return toggle;
+        }
+
+        private void AddEmptyState(Control parent, string text)
+        {
+            var lbl = Body(text, ThemeTokens.TextLo, ThemeTokens.Tmd);
+            lbl.AutowrapMode = TextServer.AutowrapMode.Word;
+            lbl.SizeFlagsVertical = Control.SizeFlags.ExpandFill;
+            lbl.VerticalAlignment = VerticalAlignment.Center;
+            parent.AddChild(lbl);
+        }
+
+        // ── Small shared builders ───────────────────────────────────────────────
+
+        private Label Heading(string text, StringName sizeToken)
+        {
+            var l = new Label { Text = text };
+            l.AddThemeFontOverride("font", _theme.GetFont(ThemeTokens.FontDisplay, ThemeTokens.Type));
+            l.AddThemeFontSizeOverride("font_size", _theme.GetFontSize(sizeToken, ThemeTokens.Type));
+            l.AddThemeColorOverride("font_color", _theme.GetColor(ThemeTokens.TextHi, ThemeTokens.Type));
+            return l;
+        }
+
+        private Label Body(string text, StringName colorToken, StringName sizeToken)
+        {
+            var l = new Label { Text = text };
+            l.AddThemeFontOverride("font", _theme.GetFont(ThemeTokens.FontUi, ThemeTokens.Type));
+            l.AddThemeFontSizeOverride("font_size", _theme.GetFontSize(sizeToken, ThemeTokens.Type));
+            l.AddThemeColorOverride("font_color", _theme.GetColor(colorToken, ThemeTokens.Type));
+            l.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
+            return l;
+        }
+
+        // A hover-AND-keyboard-focus field tip attached to a row's label (UX-DR53 / NFR-2). The label is made
+        // a focus + hover target so the keyboard half fires; the interactive control beside it stays operable.
+        private void AttachFieldTip(Control target, string term, string body)
+        {
+            target.FocusMode  = Control.FocusModeEnum.All;
+            target.MouseFilter = Control.MouseFilterEnum.Stop;
+            ChimeraTooltip.Attach(target, term, body, ChimeraTooltip.TooltipRole.Field);
         }
 
         // ── Apply / Reset ─────────────────────────────────────────────────────
@@ -315,13 +374,13 @@ namespace ProjectChimera.UI
 
             s.CameraSpeed        = (float)_cameraSpeedSlider.Value;
             s.CameraZoomSpeed    = (float)_zoomSpeedSlider.Value;
-            s.EdgeScrollEnabled  = _edgeScrollBtn.ButtonPressed;
+            s.EdgeScrollEnabled  = _edgeScrollBtn.On;
             s.MasterVolume       = (float)_masterVolSlider.Value;
             s.SfxVolume          = (float)_sfxVolSlider.Value;
             s.MusicVolume        = (float)_musicVolSlider.Value;
-            s.ShowMinimap        = _minimapBtn.ButtonPressed;
-            s.ShowFps            = _fpsBtn.ButtonPressed;
-            s.ColorblindMode     = _colorblindBtn.ButtonPressed;
+            s.ShowMinimap        = _minimapBtn.On;
+            s.ShowFps            = _fpsBtn.On;
+            s.ColorblindMode     = _colorblindBtn.On;
 
             _settings.Apply();
             _settings.Save();
@@ -335,13 +394,13 @@ namespace ProjectChimera.UI
             // Re-sync all widgets to defaults.
             _cameraSpeedSlider.Value = _settings.Current.CameraSpeed;
             _zoomSpeedSlider.Value   = _settings.Current.CameraZoomSpeed;
-            _edgeScrollBtn.ButtonPressed  = _settings.Current.EdgeScrollEnabled;
+            _edgeScrollBtn.SetOn(_settings.Current.EdgeScrollEnabled, animate: false);
             _masterVolSlider.Value   = _settings.Current.MasterVolume;
             _sfxVolSlider.Value      = _settings.Current.SfxVolume;
             _musicVolSlider.Value    = _settings.Current.MusicVolume;
-            _minimapBtn.ButtonPressed     = _settings.Current.ShowMinimap;
-            _fpsBtn.ButtonPressed         = _settings.Current.ShowFps;
-            _colorblindBtn.ButtonPressed  = _settings.Current.ColorblindMode;
+            _minimapBtn.SetOn(_settings.Current.ShowMinimap, animate: false);
+            _fpsBtn.SetOn(_settings.Current.ShowFps, animate: false);
+            _colorblindBtn.SetOn(_settings.Current.ColorblindMode, animate: false);
 
             _settings.Apply();
             _settings.Save();

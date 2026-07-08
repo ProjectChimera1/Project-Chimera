@@ -1,34 +1,36 @@
 #nullable enable
 using Godot;
 using System;
+using ProjectChimera.UI.Components; // ChimeraComponents, ChimeraMark, ChimeraTooltip
+using ProjectChimera.UI.Theme;       // ThemeTokens, ThemeBuilder, AccentController
+using GodotTheme = Godot.Theme;       // the ProjectChimera.UI.Theme namespace shadows the bare Theme type
 
 namespace ProjectChimera.UI
 {
     /// <summary>
-    /// Full-screen main menu shown when the game first launches.
-    /// Dismissed when the player chooses a game mode.
+    /// Full-screen main menu shown when the game first launches (Story 3.11 restyle — UX-DR67). Dismissed
+    /// when the player chooses a game mode. Drawn entirely from the shared design system (main.tres Theme +
+    /// the ChimeraComponents kit): the Chimera seal, a display wordmark, the tagline
+    /// "Build the game. Then play it.", the primary nav (Play / Create / Browse / Settings / Quit) from the
+    /// themed button component, and a mono version/build footer.
+    ///
+    /// Honesty invariant (amended UX-DR68): nothing here advertises an unbuilt system — no ranked/MMR, no
+    /// live online count, no Multiplayer/Campaign destination. Skirmish is offline (vs AI, 1–4 players).
+    /// Multiplayer is owned by Epic 9, Campaign/Tutorial by Story 13.1, the final honesty sweep by 11.12.
     ///
     /// Modes:
-    ///   Skirmish  — enter Play mode immediately with the current scenario.
+    ///   Play      — enter Play mode immediately with the current scenario (offline, vs AI).
     ///   Create    — enter Edit mode (map/scenario editor).
     ///   Browse    — open ContentBrowserPanel to load a community map.
-    ///   Replay    — open system file picker to choose a .chmr replay file (stub).
+    ///   Generate Map (AI) — auxiliary editor entry (kept reachable, off the primary five).
     ///   Settings  — toggle the SettingsPanel.
     ///   Quit      — exit the application.
     ///
-    /// Usage (MainScene._Ready, before other setup):
-    ///   _mainMenu = new MainMenuOverlay();
-    ///   AddChild(_mainMenu);
-    ///   _mainMenu.Initialize(version: "0.1-alpha");
-    ///   _mainMenu.OnPlaySkirmish  += () => { /* enter Play mode */ };
-    ///   _mainMenu.OnCreate        += () => { /* enter Edit mode */ };
-    ///   _mainMenu.OnBrowse        += () => { _contentBrowser.ToggleVisible(); };
-    ///   _mainMenu.OnSettings      += () => { _settingsPanel.ToggleVisible(); };
-    ///   _mainMenu.OnQuit          += () => GetTree().Quit();
+    /// Usage (MainMenuPhase): new MainMenuOverlay(); AddChild(...); Initialize(version); wire the events.
     /// </summary>
     public partial class MainMenuOverlay : CanvasLayer
     {
-        // ── Events ────────────────────────────────────────────────────────────
+        // ── Events (public contract — preserved verbatim from the pre-restyle overlay) ──────────
 
         public event Action? OnPlaySkirmish;
         public event Action? OnCreate;
@@ -37,193 +39,168 @@ namespace ProjectChimera.UI
         public event Action? OnSettings;
         public event Action? OnQuit;
 
+        // ── Kit context (self-owned; _accent only created when this overlay is the first kit consumer) ──
+
+        private GodotTheme        _theme  = null!;
+        private AccentController?  _accent;
+
         // ── State ─────────────────────────────────────────────────────────────
 
         private Label _versionLabel = null!;
 
         // ── Initialization ────────────────────────────────────────────────────
 
-        /// <summary>Build the menu UI.</summary>
-        /// <param name="version">Version string shown in the lower-right corner, e.g. "0.1-alpha".</param>
+        /// <summary>Build the menu UI from the shared Theme/kit.</summary>
+        /// <param name="version">Version/build string shown in the footer, e.g. "0.1-alpha".</param>
         public void Initialize(string version = "0.1")
         {
             Layer   = 20; // topmost — above everything
             Visible = true;
 
-            // ── Dark full-screen backdrop ─────────────────────────────────────
-            var root = new ColorRect
-            {
-                Color = new Color(0.04f, 0.04f, 0.07f, 1f),
-            };
+            EnsureKitInitialized(); // MUST run before any ChimeraComponents.* call, or the factory throws
+
+            // ── Anchor root (a CanvasLayer has no Theme — apply it on the root Control, which propagates) ──
+            var root = new Control();
             root.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
+            root.MouseFilter = Control.MouseFilterEnum.Stop; // eat clicks so nothing behind the title reacts
+            root.Theme = _theme;
             AddChild(root);
 
-            // ── Grid background pattern (subtle) ─────────────────────────────
-            // A thin grid shader gives the feel of the game's terrain grid.
-            var gridRect = new ColorRect
-            {
-                Color = new Color(0.12f, 0.16f, 0.24f, 0.08f),
-            };
-            gridRect.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
-            root.AddChild(gridRect);
+            // ── Void backdrop (surface token, not a hardcoded color) ──────────
+            var backdrop = new ColorRect { Color = _theme.GetColor(ThemeTokens.SurfaceVoid, ThemeTokens.Type) };
+            backdrop.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
+            backdrop.MouseFilter = Control.MouseFilterEnum.Ignore;
+            root.AddChild(backdrop);
 
-            // ── Centered layout container ─────────────────────────────────────
-            var center = new VBoxContainer
-            {
-                Alignment = BoxContainer.AlignmentMode.Center,
-            };
+            // ── Centered brand + nav column ───────────────────────────────────
+            var center = new CenterContainer { MouseFilter = Control.MouseFilterEnum.Ignore };
             center.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
-            center.AddThemeConstantOverride("separation", 18);
             root.AddChild(center);
 
-            // Left-margin spacer for visual balance.
-            var innerMargin = new MarginContainer();
-            innerMargin.AddThemeConstantOverride("margin_left",  0);
-            innerMargin.AddThemeConstantOverride("margin_right", 0);
-            center.AddChild(innerMargin);
+            var col = new VBoxContainer { Alignment = BoxContainer.AlignmentMode.Center };
+            col.AddThemeConstantOverride("separation", ChimeraComponents.Const(ThemeTokens.S4));
+            center.AddChild(col);
 
-            var innerVbox = new VBoxContainer();
-            innerVbox.Alignment = BoxContainer.AlignmentMode.Center;
-            innerVbox.AddThemeConstantOverride("separation", 16);
-            innerVbox.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-            center.AddChild(innerVbox);
+            // Chimera seal.
+            var mark = ChimeraMark.Create(96);
+            mark.SizeFlagsHorizontal = Control.SizeFlags.ShrinkCenter;
+            col.AddChild(mark);
 
-            // ── Title ─────────────────────────────────────────────────────────
-            var title = new Label
-            {
-                Text                = "PROJECT CHIMERA",
-                HorizontalAlignment = HorizontalAlignment.Center,
-            };
-            title.AddThemeFontSizeOverride("font_size", 52);
-            title.AddThemeColorOverride("font_color", new Color(0.75f, 0.88f, 1.0f));
-            innerVbox.AddChild(title);
+            // Wordmark (display font) + tagline (body).
+            var wordmark = Heading("PROJECT CHIMERA", ThemeTokens.T4xl);
+            wordmark.HorizontalAlignment = HorizontalAlignment.Center;
+            col.AddChild(wordmark);
 
-            var subtitle = new Label
-            {
-                Text                = "RTS CREATION PLATFORM",
-                HorizontalAlignment = HorizontalAlignment.Center,
-            };
-            subtitle.AddThemeFontSizeOverride("font_size", 16);
-            subtitle.AddThemeColorOverride("font_color", new Color(0.45f, 0.58f, 0.75f));
-            innerVbox.AddChild(subtitle);
+            var tagline = Body("Build the game. Then play it.", ThemeTokens.TextMid, ThemeTokens.Tlg);
+            tagline.HorizontalAlignment = HorizontalAlignment.Center;
+            col.AddChild(tagline);
 
-            // Spacer.
-            innerVbox.AddChild(new Control { CustomMinimumSize = new Vector2(0, 30) });
+            // Spacer between brand and nav.
+            col.AddChild(new Control { CustomMinimumSize = new Vector2(0, ChimeraComponents.Const(ThemeTokens.S4)) });
 
-            // ── Menu buttons ──────────────────────────────────────────────────
-            var btnVbox = new VBoxContainer();
-            btnVbox.AddThemeConstantOverride("separation", 10);
-            btnVbox.SizeFlagsHorizontal = Control.SizeFlags.ShrinkCenter;
-            innerVbox.AddChild(btnVbox);
+            // ── Primary nav — Play / Create / Browse / Settings / Quit (UX-DR67) ──
+            var nav = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ShrinkCenter };
+            nav.AddThemeConstantOverride("separation", ChimeraComponents.Const(ThemeTokens.S2) + 2);
+            col.AddChild(nav);
 
-            AddMenuButton(btnVbox, "Play Skirmish",
-                "Load the current map and start a game against the AI.",
-                isPrimary: true,
-                onPress: () =>
-                {
-                    Visible = false;
-                    OnPlaySkirmish?.Invoke();
-                });
+            AddNavButton(nav, "Play", ChimeraComponents.ButtonVariant.Primary, ChimeraComponents.ButtonSize.Lg,
+                "Play Skirmish",
+                "Load the current map and start an offline match against the AI (1–4 players).",
+                () => { Visible = false; OnPlaySkirmish?.Invoke(); });
 
-            AddMenuButton(btnVbox, "Create / Editor",
+            AddNavButton(nav, "Create", ChimeraComponents.ButtonVariant.Secondary, ChimeraComponents.ButtonSize.Lg,
+                "Create",
                 "Open the map editor to build and test your own scenarios.",
-                isPrimary: false,
-                onPress: () =>
-                {
-                    Visible = false;
-                    OnCreate?.Invoke();
-                });
+                () => { Visible = false; OnCreate?.Invoke(); });
 
-            AddMenuButton(btnVbox, "Browse Community Maps",
+            AddNavButton(nav, "Browse", ChimeraComponents.ButtonVariant.Secondary, ChimeraComponents.ButtonSize.Lg,
+                "Browse",
                 "Download and play maps shared by other creators via mod.io.",
-                isPrimary: false,
-                onPress: () =>
-                {
-                    Visible = false;
-                    OnBrowse?.Invoke();
-                });
+                () => { Visible = false; OnBrowse?.Invoke(); });
 
-            AddMenuButton(btnVbox, "Generate Map (AI)",
+            AddNavButton(nav, "Settings", ChimeraComponents.ButtonVariant.Secondary, ChimeraComponents.ButtonSize.Lg,
+                "Settings",
+                "Adjust gameplay, audio, and accessibility options.",
+                () => OnSettings?.Invoke()); // does NOT close the menu
+
+            // Auxiliary editor entry — kept reachable, off the primary five (ghost, smaller).
+            var auxSep = new Control { CustomMinimumSize = new Vector2(0, ChimeraComponents.Const(ThemeTokens.S1)) };
+            nav.AddChild(auxSep);
+
+            AddNavButton(nav, "Generate Map (AI)", ChimeraComponents.ButtonVariant.Ghost, ChimeraComponents.ButtonSize.Default,
+                "Generate Map (AI)",
                 "Describe a map concept in plain English and let Claude build it.",
-                isPrimary: false,
-                onPress: () =>
-                {
-                    Visible = false;
-                    OnGenerateMap?.Invoke();
-                });
+                () => { Visible = false; OnGenerateMap?.Invoke(); });
 
-            AddMenuButton(btnVbox, "Settings",
-                "Adjust camera speed, audio volumes, accessibility options.",
-                isPrimary: false,
-                onPress: () => OnSettings?.Invoke()); // does NOT close menu
+            var quitSep = new Control { CustomMinimumSize = new Vector2(0, ChimeraComponents.Const(ThemeTokens.S1)) };
+            nav.AddChild(quitSep);
 
-            // Separator.
-            btnVbox.AddChild(new Control { CustomMinimumSize = new Vector2(0, 8) });
+            AddNavButton(nav, "Quit", ChimeraComponents.ButtonVariant.Danger, ChimeraComponents.ButtonSize.Lg,
+                "Quit",
+                "Exit Project Chimera.",
+                () => OnQuit?.Invoke());
 
-            AddMenuButton(btnVbox, "Quit",
-                "",
-                isPrimary: false,
-                isDangerous: true,
-                onPress: () => OnQuit?.Invoke());
-
-            // ── Version label (bottom-right corner) ───────────────────────────
+            // ── Version/build footer (mono, text-lo, lower-right) ─────────────
             _versionLabel = new Label { Text = $"v{version}" };
-            _versionLabel.AddThemeFontSizeOverride("font_size", 12);
-            _versionLabel.AddThemeColorOverride("font_color", new Color(0.35f, 0.35f, 0.4f));
+            _versionLabel.AddThemeFontOverride("font", _theme.GetFont(ThemeTokens.FontMono, ThemeTokens.Type));
+            _versionLabel.AddThemeFontSizeOverride("font_size", _theme.GetFontSize(ThemeTokens.Txs, ThemeTokens.Type));
+            _versionLabel.AddThemeColorOverride("font_color", _theme.GetColor(ThemeTokens.TextLo, ThemeTokens.Type));
             _versionLabel.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.BottomRight);
             _versionLabel.OffsetRight  = -16f;
             _versionLabel.OffsetBottom = -12f;
-            _versionLabel.OffsetLeft   = -120f;
+            _versionLabel.OffsetLeft   = -160f;
             _versionLabel.OffsetTop    = -32f;
             _versionLabel.HorizontalAlignment = HorizontalAlignment.Right;
+            _versionLabel.MouseFilter = Control.MouseFilterEnum.Ignore;
             root.AddChild(_versionLabel);
         }
 
-        // ── Helper ────────────────────────────────────────────────────────────
+        // ── Kit bootstrap (mirrors HeroPickerOverlay.EnsureKitInitialized) ─────────────────
 
-        private static void AddMenuButton(VBoxContainer parent, string label, string tooltip,
-                                          bool isPrimary, bool isDangerous = false,
-                                          Action? onPress = null)
+        private void EnsureKitInitialized()
         {
-            var btn = new Button
-            {
-                Text              = label,
-                TooltipText       = tooltip,
-                CustomMinimumSize = new Vector2(320, isPrimary ? 54 : 46),
-            };
-            btn.AddThemeFontSizeOverride("font_size", isPrimary ? 18 : 15);
+            _theme = ResourceLoader.Load<GodotTheme>(ThemeBuilder.ThemePath, cacheMode: ResourceLoader.CacheMode.Ignore)
+                     ?? ThemeBuilder.Build();
 
-            if (isPrimary)
+            if (!ChimeraComponents.IsInitialized)
             {
-                btn.AddThemeColorOverride("font_color", new Color(0.1f, 0.1f, 0.15f));
-                btn.AddThemeStyleboxOverride("normal", new StyleBoxFlat
-                {
-                    BgColor                 = new Color(0.45f, 0.72f, 1.0f, 0.9f),
-                    CornerRadiusTopLeft     = 8, CornerRadiusTopRight    = 8,
-                    CornerRadiusBottomLeft  = 8, CornerRadiusBottomRight = 8,
-                    ContentMarginLeft = 20, ContentMarginRight  = 20,
-                    ContentMarginTop  = 10, ContentMarginBottom = 10,
-                });
-                btn.AddThemeStyleboxOverride("hover", new StyleBoxFlat
-                {
-                    BgColor                 = new Color(0.6f, 0.85f, 1.0f, 1.0f),
-                    CornerRadiusTopLeft     = 8, CornerRadiusTopRight    = 8,
-                    CornerRadiusBottomLeft  = 8, CornerRadiusBottomRight = 8,
-                    ContentMarginLeft = 20, ContentMarginRight  = 20,
-                    ContentMarginTop  = 10, ContentMarginBottom = 10,
-                });
+                _accent = new AccentController { Name = "AccentController" };
+                AddChild(_accent);
+                _accent.Initialize(_theme);
+                ChimeraComponents.Initialize(_theme, _accent);
             }
-            else if (isDangerous)
-            {
-                btn.AddThemeColorOverride("font_color", new Color(0.85f, 0.35f, 0.35f));
-            }
-            else
-            {
-                btn.AddThemeColorOverride("font_color", new Color(0.82f, 0.88f, 0.95f));
-            }
+        }
 
-            if (onPress != null) btn.Pressed += onPress;
+        // ── Helpers ────────────────────────────────────────────────────────────
+
+        private void AddNavButton(VBoxContainer parent, string label,
+                                  ChimeraComponents.ButtonVariant variant, ChimeraComponents.ButtonSize size,
+                                  string tipTerm, string tipBody, Action onPress)
+        {
+            var btn = ChimeraComponents.Button(label, variant, size);
+            btn.CustomMinimumSize = new Vector2(340, 0);
+            btn.Pressed += onPress;
+            // Hover-AND-keyboard-focus tooltip (UX-DR53). A Button is already a focus + hover target.
+            ChimeraTooltip.Attach(btn, tipTerm, tipBody, ChimeraTooltip.TooltipRole.Field);
             parent.AddChild(btn);
+        }
+
+        private Label Heading(string text, StringName sizeToken)
+        {
+            var l = new Label { Text = text };
+            l.AddThemeFontOverride("font", _theme.GetFont(ThemeTokens.FontDisplay, ThemeTokens.Type));
+            l.AddThemeFontSizeOverride("font_size", _theme.GetFontSize(sizeToken, ThemeTokens.Type));
+            l.AddThemeColorOverride("font_color", _theme.GetColor(ThemeTokens.TextHi, ThemeTokens.Type));
+            return l;
+        }
+
+        private Label Body(string text, StringName colorToken, StringName sizeToken)
+        {
+            var l = new Label { Text = text };
+            l.AddThemeFontOverride("font", _theme.GetFont(ThemeTokens.FontUi, ThemeTokens.Type));
+            l.AddThemeFontSizeOverride("font_size", _theme.GetFontSize(sizeToken, ThemeTokens.Type));
+            l.AddThemeColorOverride("font_color", _theme.GetColor(colorToken, ThemeTokens.Type));
+            return l;
         }
     }
 }
