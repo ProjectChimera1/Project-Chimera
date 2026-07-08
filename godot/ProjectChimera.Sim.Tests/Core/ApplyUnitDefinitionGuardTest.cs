@@ -384,5 +384,221 @@ namespace ProjectChimera.Sim.Tests.Core
             // The new occupant must carry NO prior hero link — proves the mandatory Create() recycle-reset to HERO_NONE.
             Assert.Equal(EntityWorld.HERO_NONE, w.HeroIndex[reused]);
         }
+
+        // ── Story 3.17 — editor delete→undo restore fidelity. SnapshotUnit + RestoreUnit route a def-based unit back
+        //    through ApplyUnitDefinition (the A2 mapper), so every def-derived authored field is re-derived — never a
+        //    hand-copy that silently drops fields (the recurring RestoreUnit drop-debt). This Tier-1 round-trip guard
+        //    fails RED if a field would be dropped: it captures the post-ApplyUnitDefinition truth, destroys, restores,
+        //    and asserts byte-equality on every authored field PLUS NotEqual(CreateDefault) teeth so a dropped field
+        //    (which reverts to its Create default) is caught even where it would coincidentally match. ────────────────
+        [Fact]
+        public void SnapshotRestore_ReproducesEveryAuthoredField_OffCreateDefault()
+        {
+            // A def with the full authored surface: CombatDef's stats/armor/domain/tags/feedback/delivery/xp PLUS an
+            // active ability, all three passive kinds, and an energy pool — so passive indices + abilities + Energy are
+            // exercised too.
+            AbilityRegistry registry = PassiveRegistry();
+            UnitDefinition def = CombatDef();
+            def.MaxEnergy = 75f;
+            def.Abilities = new[] { "active_x", "aura_x", "onhit_x", "selfreg_x" };
+            def.ResolveAbilities(registry);
+
+            var w = new EntityWorld();
+            int original = w.Create(FixedVec3.Zero, Faction.Player1, Fixed.FromFloat(def.Hp), Fixed.FromFloat(def.Speed));
+            w.ApplyUnitDefinition(original, def);
+
+            // Caller-owned residue set OFF its Create default (mirrors DoSpawnWorker's post-mapper overrides + MeshType):
+            // SupplyCost 0 overrides def.Supply (3); GatherState/CarryCapacity are the worker gather state; MeshType 5.
+            w.SupplyCost[original]    = 0;
+            w.GatherState[original]   = GatherState.Idle;
+            w.CarryCapacity[original] = Fixed.FromFloat(20f);
+            w.MeshType[original]      = 5;
+
+            // Capture the post-ApplyUnitDefinition truth for EVERY authored field BEFORE destroy (the id is recycled,
+            // so its arrays are overwritten by Create+Restore — the expected values must live in locals).
+            int slot0 = original * EntityWorld.MAX_ABILITIES_PER_UNIT + 0;
+            long eBaseAtk = w.BaseAttackDamage[original].Raw,  eEffAtk = w.EffectiveAttackDamage[original].Raw;
+            long eBaseArm = w.BaseArmor[original].Raw,         eEffArm = w.EffectiveArmor[original].Raw;
+            long eRange   = w.AttackRange[original].Raw,       eAtkSpd = w.AttackSpeed[original].Raw;
+            long eVision  = w.VisionRange[original].Raw,       eSplash = w.SplashRadius[original].Raw;
+            long eColl    = w.CollisionRadius[original].Raw,   eProjSp = w.ProjectileSpeed[original].Raw;
+            long eXp      = w.XpBounty[original].Raw;
+            long eMaxEn   = w.MaxEnergy[original].Raw,         eEnergy = w.Energy[original].Raw;
+            long eMaxHp   = w.EffectiveMaxHealth[original].Raw, eSpeed = w.EffectiveMoveSpeed[original].Raw;
+            long eCarry   = w.CarryCapacity[original].Raw;
+            DamageType eDmgT = w.DamageTypeOf[original];       ArmorType eArmT = w.ArmorTypeOf[original];
+            SeparationPriority eSep = w.SeparationPriorityOf[original];
+            UnitCategory eCat = w.CategoryOf[original];        AttackDomain eDom = w.AttackDomainOf[original];
+            UnitTag eTags = w.TagsOf[original];                AttackDelivery eDel = w.Delivery[original];
+            var eFeedback = w.FeedbackProfile[original];       var eDef = w.SourceDefinition[original];
+            byte eAbCount = w.AbilityCount[original];          int eAbId0 = w.AbilityId[slot0];
+            int eAura = w.AuraAbilityIndex[original], eOnHit = w.OnHitAbilityIndex[original], eSelf = w.SelfPassiveAbilityIndex[original];
+            byte eSupply = w.SupplyCost[original],   eMesh = w.MeshType[original];
+            GatherState eGather = w.GatherState[original];
+            Faction eFaction = w.FactionOf[original];
+
+            UnitSnapshot snap = w.SnapshotUnit(original);
+            w.Destroy(original);
+            int restored = w.RestoreUnit(snap);
+            Assert.True(restored >= 0);
+            Assert.Equal(original, restored); // free-list reuse of the same id
+
+            // ── Byte-identical round-trip on every authored field (these ARE the teeth: a dropped field reverts to its
+            //    Create default, which differs from every captured value because CombatDef is hostile to defaults). ──
+            Assert.Equal(eBaseAtk, w.BaseAttackDamage[restored].Raw);
+            Assert.Equal(eEffAtk,  w.EffectiveAttackDamage[restored].Raw);
+            Assert.Equal(eBaseArm, w.BaseArmor[restored].Raw);
+            Assert.Equal(eEffArm,  w.EffectiveArmor[restored].Raw);
+            Assert.Equal(eRange,   w.AttackRange[restored].Raw);
+            Assert.Equal(eAtkSpd,  w.AttackSpeed[restored].Raw);
+            Assert.Equal(eVision,  w.VisionRange[restored].Raw);
+            Assert.Equal(eSplash,  w.SplashRadius[restored].Raw);
+            Assert.Equal(eColl,    w.CollisionRadius[restored].Raw);
+            Assert.Equal(eProjSp,  w.ProjectileSpeed[restored].Raw);
+            Assert.Equal(eXp,      w.XpBounty[restored].Raw);
+            Assert.Equal(eMaxEn,   w.MaxEnergy[restored].Raw);
+            Assert.Equal(eEnergy,  w.Energy[restored].Raw);
+            Assert.Equal(eMaxHp,   w.EffectiveMaxHealth[restored].Raw);
+            Assert.Equal(eSpeed,   w.EffectiveMoveSpeed[restored].Raw);
+            Assert.Equal(eDmgT,    w.DamageTypeOf[restored]);
+            Assert.Equal(eArmT,    w.ArmorTypeOf[restored]);
+            Assert.Equal(eSep,     w.SeparationPriorityOf[restored]);
+            Assert.Equal(eCat,     w.CategoryOf[restored]);
+            Assert.Equal(eDom,     w.AttackDomainOf[restored]);
+            Assert.Equal(eTags,    w.TagsOf[restored]);
+            Assert.Equal(eDel,     w.Delivery[restored]);
+            Assert.Same(eFeedback, w.FeedbackProfile[restored]);
+            Assert.Same(eDef,      w.SourceDefinition[restored]);
+            Assert.Equal(eAbCount, w.AbilityCount[restored]);
+            Assert.Equal(eAbId0,   w.AbilityId[restored * EntityWorld.MAX_ABILITIES_PER_UNIT + 0]);
+            Assert.Equal(eAura,    w.AuraAbilityIndex[restored]);
+            Assert.Equal(eOnHit,   w.OnHitAbilityIndex[restored]);
+            Assert.Equal(eSelf,    w.SelfPassiveAbilityIndex[restored]);
+            Assert.Equal(eFaction, w.FactionOf[restored]);
+            // Caller-owned residue replayed verbatim (worker overrides + MeshType survive the mapper).
+            Assert.Equal(eSupply,  w.SupplyCost[restored]);
+            Assert.Equal(eMesh,    w.MeshType[restored]);
+            Assert.Equal(eGather,  w.GatherState[restored]);
+            Assert.Equal(eCarry,   w.CarryCapacity[restored].Raw);
+
+            // ── Explicit teeth: prove the restored values are NOT coincidentally the Create defaults, so a silently
+            //    dropped field goes RED here (belt-and-suspenders over the byte-equality above). ──
+            Assert.NotEqual(Fixed.Zero.Raw,            w.BaseAttackDamage[restored].Raw);   // default 0
+            Assert.NotEqual(Fixed.Zero.Raw,            w.BaseArmor[restored].Raw);          // default 0
+            Assert.NotEqual(UnitCategory.Melee,        w.CategoryOf[restored]);             // default Melee
+            Assert.NotEqual(SeparationPriority.Normal, w.SeparationPriorityOf[restored]);   // default Normal
+            Assert.NotEqual(AttackDomain.All,          w.AttackDomainOf[restored]);         // default All
+            Assert.NotEqual(UnitTag.None,              w.TagsOf[restored]);                 // default None
+            Assert.NotNull(w.FeedbackProfile[restored]);                                    // default null
+            Assert.NotEqual(AttackDelivery.Hitscan,    w.Delivery[restored]);               // default Hitscan
+            Assert.NotEqual(ProjectileSystem.PROJECTILE_SPEED.Raw, w.ProjectileSpeed[restored].Raw); // default 18
+            Assert.NotEqual(Fixed.Zero.Raw,            w.XpBounty[restored].Raw);           // default 0
+            Assert.NotEqual(EntityWorld.DEFAULT_COLLISION_RADIUS.Raw, w.CollisionRadius[restored].Raw); // default 1.0
+            Assert.NotEqual(Fixed.Zero.Raw,            w.MaxEnergy[restored].Raw);          // default 0
+            Assert.NotEqual((byte)0,                   w.AbilityCount[restored]);           // default 0
+            Assert.NotEqual(-1,                        w.AuraAbilityIndex[restored]);       // default -1
+            Assert.NotEqual(-1,                        w.OnHitAbilityIndex[restored]);      // default -1
+            Assert.NotEqual(-1,                        w.SelfPassiveAbilityIndex[restored]);// default -1
+            // Residue teeth: SupplyCost 0 (worker override) != def.Supply (3); MeshType 5 != 0; GatherState != Inactive.
+            Assert.NotEqual((byte)def.Supply,          w.SupplyCost[restored]);
+            Assert.NotEqual((byte)0,                   w.MeshType[restored]);
+            Assert.NotEqual(GatherState.Inactive,      w.GatherState[restored]);
+        }
+
+        // ── Story 3.17 — SourceDefinition is a NON-FOLDED reference SoA (the FeedbackProfile precedent). A recycled
+        //    slot must be null-reset in Create() so a new (no-def) occupant never carries a prior occupant's def — else
+        //    a later restore would re-derive a STALE unit's authored state (the SoA-recycle trap). Unfolded ⇒ this
+        //    guard IS the coverage. ──
+        [Fact]
+        public void RecycledSlot_CarriesNoPriorSourceDefinition()
+        {
+            UnitDefinition def = CombatDef();
+
+            var w = new EntityWorld();
+            int first = w.Create(FixedVec3.Zero, Faction.Player1, Fixed.FromInt(100), Fixed.FromInt(3));
+            w.ApplyUnitDefinition(first, def);
+            Assert.Same(def, w.SourceDefinition[first]); // populated for the first occupant
+
+            w.Destroy(first);
+            int reused = w.Create(FixedVec3.Zero, Faction.Player2, Fixed.FromInt(50), Fixed.FromInt(3));
+            Assert.Equal(first, reused); // same id off the free list
+
+            // The new occupant (NO def applied) must carry NO prior def — proves the mandatory Create() recycle-reset.
+            Assert.Null(w.SourceDefinition[reused]);
+        }
+
+        // ── Story 3.17 — the def-less restore branch (SourceDefinition == null). A unit placed via the def-less spawn
+        //    fallback has no def to route through ApplyUnitDefinition, so RestoreUnit replays the snapshot's raw combat
+        //    stats + caller-owned residue (today's behavior — no regression). Covers the def-less row of the I/O matrix. ──
+        [Fact]
+        public void SnapshotRestore_DefLessUnit_RestoresRawStatsFromSnapshot()
+        {
+            var w = new EntityWorld();
+            int original = w.Create(FixedVec3.Zero, Faction.Player1, Fixed.FromInt(80), Fixed.FromInt(4));
+            // NO ApplyUnitDefinition ⇒ SourceDefinition stays null (a def-less spawn). Hand-set the raw combat stats +
+            // caller-owned residue OFF their Create defaults, mirroring the def-less DoSpawnCombatUnit fallback branch.
+            w.AttackRange[original]           = Fixed.FromInt(6);
+            w.BaseAttackDamage[original]      = Fixed.FromInt(13);
+            w.EffectiveAttackDamage[original] = Fixed.FromInt(13);
+            w.AttackSpeed[original]           = Fixed.FromFloat(1.5f);
+            w.DamageTypeOf[original]          = DamageType.Pierce;
+            w.ArmorTypeOf[original]           = ArmorType.Heavy;
+            w.VisionRange[original]           = Fixed.FromInt(12);
+            w.SplashRadius[original]          = Fixed.FromFloat(2.5f);
+            w.MeshType[original]              = 7;
+            w.GatherState[original]           = GatherState.Idle;
+            w.CarryCapacity[original]         = Fixed.FromInt(15);
+            w.SupplyCost[original]            = 4;
+            Assert.Null(w.SourceDefinition[original]); // def-less
+
+            long eRange = w.AttackRange[original].Raw,  eDmg = w.EffectiveAttackDamage[original].Raw;
+            long eSpd = w.AttackSpeed[original].Raw, eVis = w.VisionRange[original].Raw, eSplash = w.SplashRadius[original].Raw;
+
+            UnitSnapshot snap = w.SnapshotUnit(original);
+            Assert.Null(snap.Def); // def-less snapshot ⇒ RestoreUnit takes the raw-stat branch
+            w.Destroy(original);
+            int restored = w.RestoreUnit(snap);
+            Assert.True(restored >= 0);
+
+            // Raw combat stats replayed from the snapshot (the def-less branch), residue too.
+            Assert.Equal(eRange, w.AttackRange[restored].Raw);
+            Assert.Equal(eDmg,   w.BaseAttackDamage[restored].Raw);
+            Assert.Equal(eDmg,   w.EffectiveAttackDamage[restored].Raw);
+            Assert.Equal(eSpd,   w.AttackSpeed[restored].Raw);
+            Assert.Equal(DamageType.Pierce, w.DamageTypeOf[restored]);
+            Assert.Equal(ArmorType.Heavy,   w.ArmorTypeOf[restored]);
+            Assert.Equal(eVis,    w.VisionRange[restored].Raw);
+            Assert.Equal(eSplash, w.SplashRadius[restored].Raw);
+            Assert.Equal((byte)7, w.MeshType[restored]);
+            Assert.Equal(GatherState.Idle,      w.GatherState[restored]);
+            Assert.Equal(Fixed.FromInt(15).Raw, w.CarryCapacity[restored].Raw);
+            Assert.Equal((byte)4, w.SupplyCost[restored]);
+            // Health/speed flow through Create's ctor args on the def-less branch (no explicit Base/Effective write) —
+            // pin them so a future change to Create's ctor-arg handling can't silently regress def-less restore.
+            Assert.Equal(Fixed.FromInt(80).Raw, w.BaseMaxHealth[restored].Raw);
+            Assert.Equal(Fixed.FromInt(80).Raw, w.EffectiveMaxHealth[restored].Raw);
+            Assert.Equal(Fixed.FromInt(4).Raw,  w.BaseMoveSpeed[restored].Raw);
+            Assert.Null(w.SourceDefinition[restored]); // still def-less — no def fabricated on restore
+        }
+
+        // ── Story 3.17 — RestoreUnit is graceful when the world is at capacity: Create returns −1, so RestoreUnit
+        //    returns −1 with no partial state. Covers the world-full error-handling row of the I/O matrix. ──
+        [Fact]
+        public void RestoreUnit_WhenWorldFull_ReturnsMinusOneWithoutPartialState()
+        {
+            var w = new EntityWorld();
+            int seed = w.Create(FixedVec3.Zero, Faction.Player1, Fixed.FromInt(100), Fixed.FromInt(3));
+            w.ApplyUnitDefinition(seed, CombatDef());
+            UnitSnapshot snap = w.SnapshotUnit(seed);
+
+            // Fill the world to capacity so the next Create (inside RestoreUnit) fails.
+            int created = 1; // seed already took one slot
+            while (w.Create(FixedVec3.Zero, Faction.Player1, Fixed.FromInt(10), Fixed.FromInt(1)) >= 0)
+                created++;
+            Assert.Equal(EntityWorld.MAX_ENTITIES, created); // world is now full
+
+            int restored = w.RestoreUnit(snap);
+            Assert.Equal(-1, restored); // graceful — no slot to allocate, no partial state
+        }
     }
 }

@@ -89,26 +89,6 @@ namespace ProjectChimera.UI
         // Last valid 3D cursor position in world space (used by Delete key)
         private Vector3 _lastCursorWorld;
 
-        // ── Snapshot for unit delete undo ─────────────────────────────────────
-        private struct UnitSnapshot
-        {
-            public FixedVec3   Position;
-            public Faction     Faction;
-            public Fixed       MaxHealth;
-            public Fixed       Speed;
-            public Fixed       AttackRange;
-            public Fixed       AttackDamage;
-            public Fixed       AttackSpeed;
-            public DamageType  DamageType;
-            public ArmorType   ArmorType;
-            public Fixed       VisionRange;
-            public Fixed       SplashRadius;
-            public byte        SupplyCost;
-            public GatherState GatherState;
-            public Fixed       CarryCapacity;
-            public byte        MeshType;
-        }
-
         // ── Ghost preview mesh ────────────────────────────────────────────────
         private MeshInstance3D? _ghost;
 
@@ -1111,25 +1091,11 @@ namespace ProjectChimera.UI
 
         private void DeleteUnit(int id)
         {
-            // Snapshot all relevant fields before destroying
-            var snap = new UnitSnapshot
-            {
-                Position     = _world.Position[id],
-                Faction      = _world.FactionOf[id],
-                MaxHealth    = _world.EffectiveMaxHealth[id],
-                Speed        = _world.EffectiveMoveSpeed[id],
-                AttackRange  = _world.AttackRange[id],
-                AttackDamage = _world.EffectiveAttackDamage[id],
-                AttackSpeed  = _world.AttackSpeed[id],
-                DamageType   = _world.DamageTypeOf[id],
-                ArmorType    = _world.ArmorTypeOf[id],
-                VisionRange  = _world.VisionRange[id],
-                SplashRadius = _world.SplashRadius[id],
-                SupplyCost   = _world.SupplyCost[id],
-                GatherState  = _world.GatherState[id],
-                CarryCapacity = _world.CarryCapacity[id],
-                MeshType     = _world.MeshType[id],
-            };
+            // Story 3.17: capture the full authored residue via the Godot-free Core mapper. A def-based unit stores
+            // only its def reference; RestoreUnit re-derives every def-derived field through ApplyUnitDefinition, so
+            // armor/passives/abilities/feedback/tags/domain/delivery/collision/separation/category/XP no longer revert
+            // to Create defaults on undo (the recurring RestoreUnit drop-debt).
+            UnitSnapshot snap = _world.SnapshotUnit(id);
             _world.Destroy(id);
             GD.Print($"[EntityPlacer] Deleted unit id={id}");
 
@@ -1137,7 +1103,13 @@ namespace ProjectChimera.UI
             int[] box = { -1 };
             _history.Push(
                 redo: () => { if (box[0] >= 0) _world.Destroy(box[0]); },
-                undo: () => { box[0] = RestoreUnit(snap); });
+                undo: () =>
+                {
+                    box[0] = _world.RestoreUnit(snap);
+                    // RestoreUnit returns -1 only when EntityWorld is at capacity (graceful, no partial state). Surface
+                    // it — the Core method is Godot-free and cannot log, and the old EntityPlacer.RestoreUnit did.
+                    if (box[0] < 0) GD.PrintErr("[EntityPlacer] EntityWorld full — cannot restore deleted unit.");
+                });
         }
 
         private void DeleteResourceNode(int id)
@@ -1160,37 +1132,6 @@ namespace ProjectChimera.UI
                     capturedNodes.SupplyTotal[id]     = capturedTotal;
                     capturedNodes.GatherRate[id]      = capturedRate;
                 });
-        }
-
-        /// <summary>Re-create a unit from a snapshot. Returns the new entity id.</summary>
-        private int RestoreUnit(UnitSnapshot snap)
-        {
-            int id = _world.Create(snap.Position, snap.Faction, snap.MaxHealth, snap.Speed);
-            if (id < 0) { GD.PrintErr("[EntityPlacer] EntityWorld full — cannot restore deleted unit."); return -1; }
-
-            // Story 2.2a (A2): restore sets BOTH Base and Effective for the modifier-affected stats so a restored
-            // unit's authored base is correct for any future modifier recompute (MaxHealth also flows from Create's
-            // ctor arg above; this keeps Base authoritative). New 2.2a fields (Energy/MaxEnergy) and the 1.13
-            // separation fields are not in UnitSnapshot yet — deferred (see deferred-work.md).
-            _world.BaseMaxHealth[id]         = snap.MaxHealth;
-            _world.EffectiveMaxHealth[id]    = snap.MaxHealth;
-            _world.SupplyCost[id]   = snap.SupplyCost;
-            _world.AttackRange[id]  = snap.AttackRange;
-            _world.BaseAttackDamage[id]      = snap.AttackDamage;
-            _world.EffectiveAttackDamage[id] = snap.AttackDamage;
-            _world.AttackSpeed[id]  = snap.AttackSpeed;
-            _world.DamageTypeOf[id] = snap.DamageType;
-            _world.ArmorTypeOf[id]  = snap.ArmorType;
-            _world.VisionRange[id]  = snap.VisionRange;
-            _world.SplashRadius[id] = snap.SplashRadius;
-            _world.GatherState[id]  = snap.GatherState;
-            _world.CarryCapacity[id] = snap.CarryCapacity;
-            _world.MeshType[id]     = snap.MeshType;
-            // Story 1.13 (review follow-up): UnitSnapshot does not yet carry collision_radius / separation_priority /
-            // Category, so a restored unit keeps the Create() defaults (1.0 / Normal / Melee) for those — a known
-            // save/restore fidelity gap (editor undo / load only; NOT a lockstep path). Closing it means widening
-            // UnitSnapshot + this restore. Tracked in deferred-work.md (1.13 review).
-            return id;
         }
 
         // ── Nearest-entity scans (used by delete) ─────────────────────────────

@@ -378,6 +378,23 @@ namespace ProjectChimera.Core
         /// </summary>
         public readonly CombatFeedbackProfile[] FeedbackProfile;
 
+        /// <summary>
+        /// Per-unit reference to the <see cref="Core.Definitions.UnitDefinition"/> this entity was spawned from
+        /// (null for a def-less spawn / a fresh or recycled slot). Story 3.17: the editor delete→undo restore path
+        /// re-derives every def-derived authored field by routing this def back through the single
+        /// <see cref="ApplyUnitDefinition"/> mapper — so a widened snapshot never has to hand-copy the ~30 authored
+        /// fields (the recurring RestoreUnit drop-debt). The only VALUE-writing site is <see cref="ApplyUnitDefinition"/>
+        /// (the A2 channel every def-based spawn already uses, so it captures scenario/production/editor spawns
+        /// uniformly); it is null-reset in <see cref="Create"/> (so a recycled slot never carries a prior occupant's
+        /// def — the SoA-recycle trap) and bulk-cleared in <see cref="Clear"/>. A NON-FOLDED reference SoA — EXCLUDED
+        /// from <see cref="SimChecksum"/> / <c>CanonicalModelHash</c>
+        /// exactly like <see cref="FeedbackProfile"/> (editor-only state flow; the def is spawn-constant and
+        /// peer-identical, and every gameplay-affecting field it derives is already folded on its own). Non-nullable-
+        /// annotated because <see cref="EntityWorld"/> opts out of the nullable context; null elements are the natural
+        /// reference default and every read site null-guards.
+        /// </summary>
+        public readonly UnitDefinition[] SourceDefinition;
+
         // --- Command state ---
         /// <summary>Active order governing autonomous combat behaviour (set by player commands).</summary>
         public readonly UnitCommand[] CommandState;
@@ -545,8 +562,10 @@ namespace ProjectChimera.Core
         /// self-passive exactly once per def-based spawn, through the SINGLE def→SoA mapper — so it can never be
         /// forgotten in a spawn path (the A2 rule, symmetric with <see cref="OnDestroy"/>). A bare
         /// <c>Action&lt;int&gt;</c> so <c>EntityWorld</c> (Core) keeps zero dependency on the Effects layer. NOTE:
-        /// <c>RestoreUnit</c> (editor snapshot) does not call <see cref="ApplyUnitDefinition"/>, so restored units get
-        /// no passives — consistent with the standing <c>UnitSnapshot</c> carve-off (documented, not fixed here).
+        /// Story 3.17 routes the editor <see cref="RestoreUnit"/> path THROUGH <see cref="ApplyUnitDefinition"/> for a
+        /// def-based unit, so a restored unit's while-alive self-passive IS re-installed via this seam (the prior
+        /// carve-off that skipped restore is closed). <see cref="Destroy"/> cleared the entity's modifiers on delete,
+        /// so there is no double-install.
         /// </summary>
         public Action<int> OnUnitDefinitionApplied;
 
@@ -600,6 +619,7 @@ namespace ProjectChimera.Core
             SupplyCost     = new byte[MAX_ENTITIES];
             MeshType       = new byte[MAX_ENTITIES];
             FeedbackProfile = new CombatFeedbackProfile[MAX_ENTITIES];   // Story 2.7 (presentation-read — NOT folded; first ref-typed SoA)
+            SourceDefinition = new UnitDefinition[MAX_ENTITIES];          // Story 3.17 (restore-fidelity def ref — NOT folded; the FeedbackProfile precedent)
             CommandState   = new UnitCommand[MAX_ENTITIES];
             CommandGoal    = new FixedVec3[MAX_ENTITIES];
             CommandTarget   = new int[MAX_ENTITIES];
@@ -714,6 +734,7 @@ namespace ProjectChimera.Core
             SupplyCost[id]    = 0;
             MeshType[id]      = 0;
             FeedbackProfile[id] = null;  // Story 2.7: ref-typed SoA — clear on (re)alloc so a recycled slot never inherits a prior occupant's profile.
+            SourceDefinition[id] = null; // Story 3.17: ref-typed SoA — clear on (re)alloc so a recycled slot never carries a prior occupant's def (restore would re-derive stale authored state). ApplyUnitDefinition sets it for def-based spawns.
             CommandState[id]  = UnitCommand.Idle;
             CommandGoal[id]   = position;
             // Story 1.12: reset persistent command target + patrol route on (re)allocation. Skipping this is
@@ -818,6 +839,11 @@ namespace ProjectChimera.Core
             // (BuildingSystem.SpawnTrainedUnit) routes through this single mapper. Null def.CombatFeedback ⇒ defaults.
             FeedbackProfile[id]      = def.CombatFeedback;
 
+            // Story 3.17 (A2): remember the def this entity was spawned from so the editor delete→undo restore path can
+            // re-derive every def-derived authored field by routing it back through THIS mapper (never a hand-copy).
+            // Non-folded reference SoA (the FeedbackProfile precedent); null-reset in Create for recycle safety.
+            SourceDefinition[id]     = def;
+
             // Story 2.4a (A2): the FIRST per-entity ability state flows through this single mapper — never hand-copied
             // in a spawn path (the retro-A2 rule that closed the 1.12/1.13 spawn-path defect class). MaxEnergy is the
             // one float→Fixed boundary here (the CHM0005-allow-listed mapper site, like VisionRange/AttackRange above);
@@ -856,6 +882,86 @@ namespace ProjectChimera.Core
             if (r <= Fixed.Zero) r = DEFAULT_COLLISION_RADIUS;
             if (r > MAX_COLLISION_RADIUS) r = MAX_COLLISION_RADIUS;
             return r;
+        }
+
+        /// <summary>
+        /// Story 3.17: capture the minimal residue needed to faithfully restore a live entity — the def reference
+        /// (<see cref="SourceDefinition"/>, null for a def-less spawn), the <see cref="Create"/> ctor-arg fields, the
+        /// caller-owned fields the def mapper does not write (MeshType / gather state / carry capacity / supply), and
+        /// the raw combat stats read ONLY by the def-less restore branch. A def-based unit needs no per-field combat
+        /// capture: <see cref="RestoreUnit"/> re-derives all of it from the def through <see cref="ApplyUnitDefinition"/>.
+        /// Godot-free (Core layer) so it is reachable from a Tier-1 test. No allocation beyond the returned value.
+        /// </summary>
+        public UnitSnapshot SnapshotUnit(int id) => new UnitSnapshot
+        {
+            Def           = SourceDefinition[id],
+            Position      = Position[id],
+            Faction       = FactionOf[id],
+            // Capture the authored BASE health/speed (NOT Effective): RestoreUnit feeds these to Create (which sets
+            // Base = Effective = arg), and for a def-based unit the mapper's re-installed while-alive self-passive then
+            // recomputes Effective = Base + delta. Capturing Effective here would bake a live modifier's delta into the
+            // restored Base and the re-install would double-count it. Base == Effective when no modifier is active
+            // (every editor-placed unit today), so this is also correct for the def-less branch.
+            MaxHealth     = BaseMaxHealth[id],
+            Speed         = BaseMoveSpeed[id],
+            MeshType      = MeshType[id],
+            GatherState   = GatherState[id],
+            CarryCapacity = CarryCapacity[id],
+            SupplyCost    = SupplyCost[id],
+            // Raw combat stats — read ONLY by the def-less restore branch (a def-based unit re-derives these).
+            AttackRange  = AttackRange[id],
+            AttackDamage = EffectiveAttackDamage[id],
+            AttackSpeed  = AttackSpeed[id],
+            DamageType   = DamageTypeOf[id],
+            ArmorType    = ArmorTypeOf[id],
+            VisionRange  = VisionRange[id],
+            SplashRadius = SplashRadius[id],
+        };
+
+        /// <summary>
+        /// Story 3.17: re-create an entity captured by <see cref="SnapshotUnit"/> (the editor delete→undo path).
+        /// Returns the new entity id, or −1 if the world is full (graceful — no partial state). For a def-based unit
+        /// every def-derived authored field (armor, passives, abilities/Energy, feedback, tags, attack domain,
+        /// delivery/projectile speed, collision radius, separation priority, category, XP bounty, base/effective
+        /// stats) is re-derived by routing the def back through the single <see cref="ApplyUnitDefinition"/> mapper
+        /// (the A2 rule) — so this restore is future-proof against any new def-derived field. A def-less unit is
+        /// restored from the snapshot's raw stats (today's behavior). The caller-owned residue (MeshType / gather
+        /// state / carry capacity / supply) is replayed verbatim AFTER the mapper, so worker overrides survive —
+        /// identical to the <c>DoSpawnWorker</c>/<c>DoSpawnCombatUnit</c> place path.
+        /// </summary>
+        public int RestoreUnit(in UnitSnapshot snap)
+        {
+            int id = Create(snap.Position, snap.Faction, snap.MaxHealth, snap.Speed);
+            if (id < 0) return -1; // World full — caller logs; matches Create's contract.
+
+            if (snap.Def != null)
+            {
+                // A2: re-derive every def-derived authored field through the single mapper (fires the passive-install
+                // seam; Destroy already cleared the old modifiers, so no double-install).
+                ApplyUnitDefinition(id, snap.Def);
+            }
+            else
+            {
+                // Def-less fallback: restore the raw combat stats captured at delete time (today's behavior). Set BOTH
+                // Base and Effective for the modifier-affected stats (the A2 non-mapper-write rule).
+                AttackRange[id]           = snap.AttackRange;
+                BaseAttackDamage[id]      = snap.AttackDamage;
+                EffectiveAttackDamage[id] = snap.AttackDamage;
+                AttackSpeed[id]           = snap.AttackSpeed;
+                DamageTypeOf[id]          = snap.DamageType;
+                ArmorTypeOf[id]           = snap.ArmorType;
+                VisionRange[id]           = snap.VisionRange;
+                SplashRadius[id]          = snap.SplashRadius;
+            }
+
+            // Replay the caller-owned residue verbatim (worker SupplyCost=0/GatherState/CarryCapacity + MeshType) so
+            // it OVERRIDES the mapper — exactly as the editor place path applies these after ApplyUnitDefinition.
+            MeshType[id]      = snap.MeshType;
+            GatherState[id]   = snap.GatherState;
+            CarryCapacity[id] = snap.CarryCapacity;
+            SupplyCost[id]    = snap.SupplyCost;
+
+            return id;
         }
 
         /// <summary>
@@ -918,7 +1024,8 @@ namespace ProjectChimera.Core
             Array.Clear(XpBounty);              // Story 3.13 (0 == the fresh-ctor state)
             Array.Clear(SeparationPriorityOf);  Array.Clear(CategoryOf);            Array.Clear(AttackDomainOf);
             Array.Clear(TagsOf);                Array.Clear(SupplyCost);            Array.Clear(MeshType);
-            Array.Clear(FeedbackProfile);       Array.Clear(CommandState);          Array.Clear(CommandGoal);
+            Array.Clear(FeedbackProfile);       Array.Clear(SourceDefinition);      Array.Clear(CommandState);
+            Array.Clear(CommandGoal);
             Array.Clear(CommandTarget);         Array.Clear(PatrolWaypoints);       Array.Clear(PatrolCount);
             Array.Clear(PatrolIndex);           Array.Clear(PatrolDir);             Array.Clear(OrderQueueCmd);
             Array.Clear(OrderQueueTargetX);     Array.Clear(OrderQueueTargetZ);     Array.Clear(OrderQueueCount);

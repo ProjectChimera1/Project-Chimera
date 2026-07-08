@@ -177,6 +177,44 @@ namespace ProjectChimera.Sim.Tests.Effects
             Assert.Equal(Fixed.FromInt(50).Raw, w.Health[unit].Raw); // no install → no regen
         }
 
+        // ── Story 3.17 — editor delete→undo restore re-installs the while-alive self-passive ──────────────────
+
+        [Fact]
+        public void SelfPassive_ReInstalledExactlyOnce_AfterDeleteUndoRestore()
+        {
+            // The headline behavior of Story 3.17: RestoreUnit routes a def-based unit through ApplyUnitDefinition,
+            // which re-fires the OnUnitDefinitionApplied install seam — so a restored unit's while-alive self-passive
+            // is re-installed. Proven end-to-end through a WIRED SimulationHost (the seam is a null no-op under a bare
+            // EntityWorld). Destroy cleared the old modifiers, so the re-install must land EXACTLY ONCE.
+            var (host, reg) = NewHost(PassiveTestAbilities.FurnaceTrickle());
+            EntityWorld w = host.World;
+
+            var def = new UnitDefinition { Id = "regen_unit", DisplayName = "Regen Unit", Category = "Melee",
+                                           Hp = 100f, Speed = 0f, Abilities = new[] { "furnace_trickle" } };
+            def.ResolveAbilities(reg); // partition furnace_trickle (while_alive) → SelfPassiveAbilityIndex
+
+            // Original: spawn + install the HoT through the mapper (fires the seam), then snapshot / destroy / restore.
+            int original = w.Create(V(0, 0, 0), Faction.Player1, Fixed.FromInt(100), Fixed.Zero);
+            w.ApplyUnitDefinition(original, def);
+            UnitSnapshot snap = w.SnapshotUnit(original);
+            w.Destroy(original);              // OnDestroy → ModifierStore.ClearEntity removes the installed persistent
+            int restored = w.RestoreUnit(snap); // Create + ApplyUnitDefinition → seam RE-installs the HoT
+
+            // Control: a freshly spawned unit with the SAME passive — the single-install regen baseline.
+            int control = w.Create(V(10, 0, 0), Faction.Player1, Fixed.FromInt(100), Fixed.Zero);
+            w.ApplyUnitDefinition(control, def);
+
+            // Damage both equally, then tick: the restored unit must regen (seam re-fired on restore) at EXACTLY the
+            // control's rate — a double-install would heal ~2×, a dropped install would leave it pinned at 50.
+            w.Health[restored] = Fixed.FromInt(50);
+            w.Health[control]  = Fixed.FromInt(50);
+            for (int i = 0; i < 30; i++) host.StepOnce();
+
+            Assert.True(w.Health[restored] > Fixed.FromInt(50),
+                $"Restored unit did not regen — self-passive was NOT re-installed on restore: {w.Health[restored].Raw}");
+            Assert.Equal(w.Health[control].Raw, w.Health[restored].Raw); // exactly one install (no double, no drop)
+        }
+
         // ── Decision #6 — the armor term (DamageResolver) ────────────────────────────────────────────────────
 
         [Fact]
