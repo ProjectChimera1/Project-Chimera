@@ -26,8 +26,13 @@ namespace ProjectChimera.Core
         /// </summary>
         public readonly FixedVec3[] FactionBase;
 
+        // Story 3.10: retained so Clear() can reproduce the EXACT ctor state (the P1/P2 starting-ore seed) for the
+        // Edit↔Play reset — the inverse of the ctor without reallocating.
+        private readonly Fixed _startingOre;
+
         public ResourceStore(Fixed startingOre)
         {
+            _startingOre = startingOre;
             Ore         = new Fixed[FACTION_COUNT];
             Crystal     = new Fixed[FACTION_COUNT];
             SupplyUsed  = new int[FACTION_COUNT];
@@ -37,6 +42,27 @@ namespace ProjectChimera.Core
             Ore[(int)Faction.Player1] = startingOre;
             Ore[(int)Faction.Player2] = startingOre;
 
+            SupplyCap[(int)Faction.Player1] = STARTING_SUPPLY_CAP;
+            SupplyCap[(int)Faction.Player2] = STARTING_SUPPLY_CAP;
+        }
+
+        /// <summary>
+        /// Story 3.10 (UX-DR62): restore this store to its EXACT post-construction state for the Edit↔Play reset —
+        /// zero ore/crystal/supply-used/faction-base, then re-seed the ctor's starting ore and P1/P2 supply cap. A
+        /// cleared store is byte-for-byte equal to <c>new ResourceStore(_startingOre)</c>. The re-apply's additive
+        /// <see cref="AddOre"/>/<see cref="AddCrystal"/> writes require this pre-clear (they append, never overwrite).
+        /// </summary>
+        public void Clear()
+        {
+            System.Array.Clear(Ore);
+            System.Array.Clear(Crystal);
+            System.Array.Clear(SupplyUsed);
+            System.Array.Clear(SupplyCap);
+            System.Array.Clear(FactionBase);
+
+            // Reproduce the ctor seed exactly (the reset must equal a freshly-constructed store).
+            Ore[(int)Faction.Player1] = _startingOre;
+            Ore[(int)Faction.Player2] = _startingOre;
             SupplyCap[(int)Faction.Player1] = STARTING_SUPPLY_CAP;
             SupplyCap[(int)Faction.Player2] = STARTING_SUPPLY_CAP;
         }

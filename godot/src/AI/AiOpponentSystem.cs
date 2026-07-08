@@ -94,6 +94,23 @@ namespace ProjectChimera.AI
             AdoptPreplacedBuildings();
         }
 
+        /// <summary>
+        /// Story 3.10 — restore this system to its post-construction (fresh-boot) state for the in-place Edit↔Play
+        /// reset. <see cref="ProjectChimera.Core.Sim.SimulationHost.ClearForReset"/> calls this AFTER the stores are
+        /// cleared but BEFORE the scenario is re-applied, so <see cref="AdoptPreplacedBuildings"/> sees the
+        /// just-cleared (empty) building store — exactly as the ctor did at boot. Without this, the AI's per-match
+        /// decision state (<see cref="_productionBuildingIds"/>, <see cref="_cmdCenterExpId"/>,
+        /// <see cref="_attackCooldown"/>) survives the reset and makes the next Play diverge from a fresh boot,
+        /// desyncing the folded SimChecksum. Difficulty weights are readonly and intentionally preserved.
+        /// </summary>
+        public void ResetForMatch()
+        {
+            _productionBuildingIds.Clear();
+            _cmdCenterExpId = -1;
+            _attackCooldown = Fixed.Zero;
+            AdoptPreplacedBuildings();
+        }
+
         // ── ISimSystem ────────────────────────────────────────────────────────
 
         public void Tick(EntityWorld world, Fixed dt)

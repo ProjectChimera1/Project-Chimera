@@ -62,13 +62,23 @@ namespace ProjectChimera.Sim.Tests.Golden
                 aiLevel: PinnedDifficulty);
             host.ChecksumInterval = 1;   // checksum EVERY tick
 
+            int firstP2Unit = Populate(host);
+            return new GoldenHarness(host, firstP2Unit);
+        }
+
+        /// <summary>
+        /// Story 3.10 test seam — (re)establish this scenario's authored start on an existing host. Used to verify
+        /// <see cref="SimulationHost.ClearForReset"/> restores the AI's per-match decision state: a clear + this
+        /// repopulate must reproduce a fresh boot byte-for-byte. Also the single setup path <see cref="Build"/> uses.
+        /// </summary>
+        public static int Populate(SimulationHost host)
+        {
             int firstP2Unit = PopulateScenario(host.World, host.Buildings, host.Resources);
 
             // Mirror MainScene's director lifecycle (empty trigger state; ScenarioDirector.Tick early-returns
             // with no triggers — a faithful no-op).
             host.ScenarioDirector.LoadScenario(new ScenarioData());
-
-            return new GoldenHarness(host, firstP2Unit);
+            return firstP2Unit;
         }
 
         /// <summary>

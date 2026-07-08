@@ -85,6 +85,20 @@ namespace ProjectChimera.Core
         }
 
         /// <summary>
+        /// Story 3.10 (UX-DR62): reset the tick counter, last checksum, accumulator, and interpolation alpha to their
+        /// post-construction values for the in-place Edit↔Play reset — WITHOUT disturbing the <see cref="EnableChecksums"/>
+        /// store wiring (those refs are host-lifetime and stay valid across a reset). After this a re-applied world
+        /// steps from tick 0 with a fresh checksum, reproducing a from-boot run byte-for-byte.
+        /// </summary>
+        public void ResetTick()
+        {
+            CurrentTick        = 0;
+            LastChecksum       = 0;
+            _accumulator       = 0f;
+            InterpolationAlpha = 0f;
+        }
+
+        /// <summary>
         /// Advance exactly one simulation tick, bypassing the accumulator.
         /// Used by LockstepManager in online mode — tick advancement is
         /// gated on both peers' commands arriving, not wall-clock time.

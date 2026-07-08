@@ -50,5 +50,22 @@ namespace ProjectChimera.Core
             AssignedGatherers[id] = 0;
             return id;
         }
+
+        /// <summary>
+        /// Story 3.10 (UX-DR62): restore this store to its EXACT post-construction state for the Edit↔Play reset —
+        /// zero every SoA array and reset <see cref="Count"/> to 0. A cleared store is byte-for-byte equal to
+        /// <c>new ResourceNodeStore()</c>. The re-apply's <see cref="Create"/> loop re-adds the authored nodes.
+        /// </summary>
+        public void Clear()
+        {
+            System.Array.Clear(Active);
+            System.Array.Clear(Position);
+            System.Array.Clear(SupplyRemaining);
+            System.Array.Clear(SupplyTotal);
+            System.Array.Clear(GatherRate);
+            System.Array.Clear(MaxGatherers);
+            System.Array.Clear(AssignedGatherers);
+            _count = 0;
+        }
     }
 }

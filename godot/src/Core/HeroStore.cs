@@ -154,6 +154,27 @@ namespace ProjectChimera.Core
             return slot;
         }
 
+        /// <summary>
+        /// Story 3.10 (UX-DR62 / 3.9 deferred gap): bulk-clear the store to its EXACT post-construction state so the
+        /// Edit↔Play reset can re-mint the deployed profile NON-ADDITIVELY (the confirmed 3.9 defect: per-slot
+        /// <see cref="Destroy"/> + a monotonic <see cref="Count"/> could never empty the store, so re-deploying
+        /// accumulated stale live rows). Empties every row array + the free-list and zeroes <see cref="Count"/> /
+        /// <see cref="Generation"/>, so a cleared store is byte-for-byte equal to <c>new HeroStore()</c> and a re-mint
+        /// after clear places exactly one row per placed hero. Fires no hooks; pure integer bulk wipe.
+        /// </summary>
+        public void Clear()
+        {
+            System.Array.Clear(Alive);
+            System.Array.Clear(Id);
+            System.Array.Clear(EntityId);
+            System.Array.Clear(Level);
+            System.Array.Clear(Xp);
+            System.Array.Clear(Generation);
+            System.Array.Clear(_freeList);
+            _freeCount = 0;
+            Count      = 0;
+        }
+
         /// <summary>Destroy a hero row — marks the slot dead and returns it to the free-list for reuse. Bounds +
         /// double-free guarded (mirrors BuildingStore.Destroy): never push a slot twice, which would hand the same
         /// slot to two future Mint() calls and corrupt the store. The stable identity itself PERSISTS in the profile

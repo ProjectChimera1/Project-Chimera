@@ -1157,6 +1157,107 @@ namespace ProjectChimera.Core
 
 
         /// <summary>
+        /// Story 3.10 (NFR-1 / UX-DR62 / UX-DR83): the in-place Edit↔Play reset-to-authored-start. Restores the sim
+        /// world to a freshly-applied authored start WITHOUT a scene reload or host reconstruction, so BOTH F5 edges
+        /// route through it — Edit→Play starts the sim from a clean authored board that reflects trigger edits made in
+        /// Edit, and Play→Edit restores the authored board for editing. Sequence: (optional) snapshot live hero
+        /// rows → re-validate the live edited scenario (fail-closed veto) → <c>ClearForReset</c> → re-apply the
+        /// authored scenario (or <c>ApplyFallback</c>) against the cleared host → re-mint the deployed hero profile
+        /// (or the preserved snapshot) → recompute the start-state hash → fold in the lifecycle reset.
+        ///
+        /// <para>Fail-closed: if the edited <c>_ctx.Scenario</c> fails <see cref="ScenarioValidator"/> the reset ABORTS
+        /// BEFORE clearing anything (world unchanged), surfaces the located error, and returns false so the caller
+        /// vetoes the Edit→Play toggle — never entering Play on an invalid scenario (mirrors the F5 unit gate).</para>
+        ///
+        /// <param name="preserveHeroProgress">When false (default), re-mint the deployed profile's authored initial
+        /// Level/Xp (discarding runtime growth). When true (persistence-test), snapshot the live HeroStore Level/Xp per
+        /// stable HeroId before the clear and re-mint that snapshot. Pre-3.13 the two coincide (no runtime XP growth).</param>
+        /// <returns>True when the reset completed (or was a clean no-op); false when an invalid scenario vetoed it.</returns>
+        /// </summary>
+        internal bool ResetToAuthoredStart(bool preserveHeroProgress)
+        {
+            // 1. Snapshot the live deployed hero's Level/Xp BEFORE anything clears (preserve path only). Pre-3.13 this
+            //    equals the profile's authored values, but the seam is exercised now so Story 3.13 hooks in unchanged.
+            bool haveSnapshot = false;
+            int  snapLevel = 0;
+            Fixed snapXp = Fixed.Zero;
+            if (preserveHeroProgress && _ctx.PendingHeroProfile != null)
+            {
+                HeroId targetId = Definitions.HeroProfileLoader.MintId(_ctx.PendingHeroProfile);
+                HeroStore heroes = _host.Heroes;
+                for (int slot = 0; slot < heroes.Count; slot++)
+                {
+                    if (!heroes.Alive[slot] || heroes.Id[slot] != targetId) continue;
+                    haveSnapshot = true;
+                    snapLevel    = heroes.Level[slot];
+                    snapXp       = heroes.Xp[slot];
+                    break;
+                }
+            }
+
+            // 2. Fail-closed re-validation of the edited scenario (the Validated<> proof is not retained past boot).
+            //    Validate BEFORE the clear so an invalid edit leaves the world entirely unchanged (AC: fail closed).
+            Validated<ScenarioData> validated = default;
+            bool hasScenario = _ctx.Scenario != null;
+            if (hasScenario)
+            {
+                ValidationResult r = new ScenarioValidator().Validate(_ctx.Scenario!);
+                if (!r.Ok)
+                {
+                    GD.PrintErr($"[Reset] Edited scenario failed validation — staying in Edit: {r.Error}");
+                    ShowTriggerMessage($"Cannot enter Play — invalid scenario:\n{r.Error}", 5f);
+                    return false; // veto: nothing cleared, world unchanged
+                }
+                validated = r.Value;
+            }
+
+            // 3. Clear every store to its authored-start (post-ctor) state — in place, no host reconstruction.
+            _host.ClearForReset();
+
+            // 4. Re-apply the authored scenario against the cleared host. ScenarioApplier.Apply is additive/non-
+            //    idempotent, so it MUST run only after the clear; LoadScenario inside it rebuilds ScenarioDirector
+            //    (trigger/timer/variable) state, making Edit-side trigger add/remove/enable live this Play.
+            if (hasScenario) _applier.Apply(validated);
+            else             _applier.ApplyFallback();
+
+            // 5. Re-mint the deployed hero as deterministic init state (non-additive: the store was just cleared).
+            //    Discard path re-mints the profile's authored Level/Xp; preserve path re-mints the snapshot values.
+            if (preserveHeroProgress && haveSnapshot && _ctx.PendingHeroProfile != null)
+            {
+                var snapProfile = new Definitions.PlayerProfile
+                {
+                    ProfileId        = _ctx.PendingHeroProfile.ProfileId,
+                    HeroDefId        = _ctx.PendingHeroProfile.HeroDefId,
+                    FactionId        = _ctx.PendingHeroProfile.FactionId,
+                    DisplayName      = _ctx.PendingHeroProfile.DisplayName,
+                    SignatureAbility = _ctx.PendingHeroProfile.SignatureAbility,
+                    Values           = new System.Collections.Generic.List<Definitions.ProfileAttributeValue>
+                    {
+                        new("hero.level", snapLevel),
+                        new("hero.xp", snapXp.Raw),
+                    },
+                };
+                Definitions.HeroProfileLoader.LoadInto(_host.Heroes, _applier.LastAppliedHeroes, snapProfile, _logSink);
+            }
+            else
+            {
+                Definitions.HeroProfileLoader.LoadInto(_host.Heroes, _applier.LastAppliedHeroes, _ctx.PendingHeroProfile, _logSink);
+            }
+
+            // 6. Recompute + log the start-state hash so it reflects the re-applied board + re-minted heroes.
+            ScenarioData? hashModel = _ctx.Scenario ?? _ctx.FallbackMirror;
+            if (_ctx.ScenarioApplied && hashModel != null)
+            {
+                ulong h = Definitions.StartStateHash.Compute(hashModel, _host.Heroes);
+                GD.Print($"[Reset] Reset-to-authored-start (algo v{Definitions.StartStateHash.AlgoVersion}): 0x{h:X16}");
+            }
+
+            // 7. Fold in the existing match-lifecycle/presentation reset (game-over, play frames, stats, replay, fog).
+            ResetMatchOnReturnToEdit();
+            return true;
+        }
+
+        /// <summary>
         /// Story 1.8c — the return-to-Edit match reset (formerly inline in SetupWinConditionUi's ModeChanged
         /// handler). Wired by WinConditionPhase via ctx.Scene; kept on MainScene because it touches the match-
         /// lifecycle state MainScene retains (_gameOver / _playFrames / _matchStartMs / _matchStats).

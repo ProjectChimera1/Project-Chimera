@@ -18,6 +18,10 @@ namespace ProjectChimera.Core.Bootstrap
         private readonly SceneContext _ctx;
         public WinConditionPhase(SceneContext ctx) => _ctx = ctx;
 
+        // Story 3.10: re-entrancy guard so the invalid-scenario VETO (which reverts the mode via SetMode, re-emitting
+        // ModeChanged) does not recursively re-run the reset. Set only for the brief revert, cleared immediately after.
+        private bool _suppressReset;
+
         public string Name => "WinConditionUi";
 
         public void Run()
@@ -119,13 +123,45 @@ namespace ProjectChimera.Core.Bootstrap
             _ctx.WinConditionPanel = panel;
             _ctx.UiCanvas.AddChild(panel);
 
-            // Show only in Edit mode; reset game state on return from Play (the reset lives on MainScene — it
-            // touches the match-lifecycle state MainScene keeps).
+            // Story 3.10 (NFR-1 / UX-DR62): route BOTH F5 edges through the in-place reset-to-authored-start (the
+            // reset lives on MainScene — it touches match-lifecycle state MainScene keeps). Edit→Play starts the sim
+            // from a clean authored board reflecting Edit-side trigger edits; Play→Edit restores the authored board.
+            // On an invalid edited scenario the Edit→Play reset returns false → veto the toggle (revert to Edit,
+            // surface the located error), never entering Play on invalid content. The panel shows only in Edit.
             _ctx.GameState.ModeChanged += (mode) =>
             {
                 _ctx.WinConditionPanel.Visible = (mode == (int)GameMode.Edit);
-                if (mode == (int)GameMode.Edit)
-                    _ctx.Scene.ResetMatchOnReturnToEdit();
+                if (_suppressReset) return; // ignore the re-emit from the veto's SetMode revert
+
+                // Story 3.10 — the authored-start round-trip reset is the OFFLINE editor playtest loop ONLY. Online
+                // match-start (MatchLifecycleController.OnMatchStart) and replay playback (TryLoadReplay) also flip to
+                // Play via GameState.SetMode(Play), emitting this same signal — they must NOT clear+re-apply (that
+                // would re-apply mid-online-match and clobber the replay's restored RNG seed → desync). For those, keep
+                // the pre-3.10 behavior: lifecycle-only reset on return to Edit, nothing on entering Play.
+                bool offlineEditorLoop = _ctx.ReplayPlayer == null && !_ctx.Lockstep.IsOnline;
+
+                if (mode == (int)GameMode.Play)
+                {
+                    if (offlineEditorLoop && !_ctx.Scene.ResetToAuthoredStart(_ctx.PersistenceTestMode))
+                    {
+                        // The set-true → revert → set-false bracket is correct ONLY because GameState.SetMode emits
+                        // ModeChanged SYNCHRONOUSLY (GameState.cs) — the re-emitted Edit signal runs this handler and
+                        // hits the `_suppressReset` guard above BEFORE control returns here to clear the flag. If mode
+                        // emission ever becomes deferred/queued (CallDeferred), the flag would clear first and the
+                        // re-emit's → Edit branch would run ResetToAuthoredStart, clearing the world the veto protects.
+                        _suppressReset = true;
+                        _ctx.GameState.SetMode(GameMode.Edit); // veto: stay in Edit (world already left unchanged)
+                        _suppressReset = false;
+                    }
+                }
+                else // → Edit
+                {
+                    // Offline editor loop: restore the authored board. If re-validation somehow fails on the return
+                    // path (unreachable today — no editing happens during Play), still reset lifecycle state so we
+                    // never leave a played-out board in Edit. Online/replay: pre-3.10 lifecycle-only reset.
+                    if (!offlineEditorLoop || !_ctx.Scene.ResetToAuthoredStart(_ctx.PersistenceTestMode))
+                        _ctx.Scene.ResetMatchOnReturnToEdit();
+                }
             };
 
             _ctx.WinConditionPanel.Visible = (_ctx.GameState.Mode == GameMode.Edit);

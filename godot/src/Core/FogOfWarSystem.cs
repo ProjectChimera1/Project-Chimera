@@ -69,6 +69,13 @@ namespace ProjectChimera.Core
             }
         }
 
+        /// <summary>
+        /// Story 3.10 (UX-DR62): restore the fog to its post-construction state for the Edit↔Play reset — every cell
+        /// back to <see cref="UNEXPLORED"/> (a fresh <see cref="Grid"/> is all-zero). Not folded into SimChecksum, but
+        /// the reset must return the board — including visibility — to the authored start. Pure array wipe.
+        /// </summary>
+        public void Reset() => System.Array.Clear(Grid);
+
         // ── Helpers ───────────────────────────────────────────────────────────
 
         private void StampCircle(float worldX, float worldZ, float radius)

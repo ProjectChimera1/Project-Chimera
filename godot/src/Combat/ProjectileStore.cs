@@ -84,6 +84,22 @@ namespace ProjectChimera.Combat
             return id;
         }
 
+        /// <summary>
+        /// Story 3.10 (UX-DR62): restore this store to its EXACT post-construction state for the Edit↔Play reset —
+        /// zero every SoA array + the free-list and reset the high-water mark to 0. Projectiles are runtime-only (a
+        /// fresh authored start has none) and are NOT folded into SimChecksum, but the "cleared == fresh" contract
+        /// still requires a complete wipe. A cleared store equals a newly-constructed one.
+        /// </summary>
+        public void Clear()
+        {
+            System.Array.Clear(Alive);         System.Array.Clear(Position);      System.Array.Clear(TargetId);
+            System.Array.Clear(LastKnownPos);  System.Array.Clear(Damage);        System.Array.Clear(DmgType);
+            System.Array.Clear(TargetArmor);   System.Array.Clear(Owner);         System.Array.Clear(SplashRadius);
+            System.Array.Clear(Feedback);      System.Array.Clear(TargetIsBuilding); System.Array.Clear(_freeList);
+            _freeCount = 0;
+            _nextId    = 0;
+        }
+
         /// <summary>Mark a projectile slot as free, returning it to the pool.</summary>
         public void Destroy(int id)
         {

@@ -1,4 +1,5 @@
 #nullable enable
+using System;
 using ProjectChimera.Core;
 
 namespace ProjectChimera.Effects
@@ -113,6 +114,22 @@ namespace ProjectChimera.Effects
             _flatMoveSpeedBonus[id]    = Fixed.Zero;
             _flatArmorBonus[id]        = Fixed.Zero;   // Story 2.6
             _dirty[id] = false;
+        }
+
+        /// <summary>
+        /// Story 3.10 (UX-DR62): zero EVERY entity's external stat-bonus accumulators + dirty flags for the Edit↔Play
+        /// reset. These accumulators live OUTSIDE <see cref="EntityWorld"/> (so <see cref="EntityWorld.Clear"/> cannot
+        /// reach them — the same gap <see cref="ClearEntity"/> closes per-entity on recycle); the bulk reset is the
+        /// counterpart <see cref="ModifierStore.Clear"/> invokes so a cleared store's driver is also fresh. Not folded
+        /// into SimChecksum (a transient recompute optimisation), so this is behaviour-preserving for the tick loop.
+        /// </summary>
+        internal void ClearAll()
+        {
+            Array.Clear(_dirty);
+            Array.Clear(_flatAttackDamageBonus);
+            Array.Clear(_flatMaxHealthBonus);
+            Array.Clear(_flatMoveSpeedBonus);
+            Array.Clear(_flatArmorBonus);
         }
 
         /// <summary>

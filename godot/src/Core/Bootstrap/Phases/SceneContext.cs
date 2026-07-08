@@ -114,6 +114,12 @@ namespace ProjectChimera.Core.Bootstrap
         /// <c>HeroProfileLoader.LoadInto</c> to mint into <c>HeroStore</c> as init state; cleared after mint. Null ⇒
         /// nothing minted ("play without a saved hero" / persistence disabled).</summary>
         public Definitions.PlayerProfile? PendingHeroProfile;
+        /// <summary>Story 3.10 (UX-DR62): when false (default), the Edit↔Play reset DISCARDS playtest hero progress and
+        /// re-mints the deployed profile's authored initial Level/Xp on return-to-Edit; when true, it snapshots the
+        /// live <c>HeroStore</c> Level/Xp per stable <c>HeroId</c> before clearing and re-mints the snapshot (progress
+        /// kept). Pre-3.13 there is no runtime XP growth so both branches coincide — this is the tested seam Story 3.13
+        /// consumes. Sourced by <c>WinConditionPhase</c> for the <c>ResetToAuthoredStart(preserveHeroProgress)</c> call.</summary>
+        public bool PersistenceTestMode;
         public AI.LLMService          LlmService     = null!;
         public Label?                 ToastLabel;
 

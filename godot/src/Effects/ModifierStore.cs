@@ -345,6 +345,29 @@ namespace ProjectChimera.Effects
             _system?.ClearEntity(id);
         }
 
+        /// <summary>
+        /// Story 3.10 (UX-DR62): restore the store to its EXACT post-construction state for the Edit↔Play reset —
+        /// empty every per-slot array + per-entity count AND zero the external <see cref="ModifierSystem"/>
+        /// accumulators it drives (via <see cref="ModifierSystem.ClearAll"/>), so no residual buff can drift the
+        /// SimChecksum after a reset (the store IS folded). It does NOT touch <see cref="EntityWorld.StatusFlagsOf"/>
+        /// — <see cref="EntityWorld.Clear"/> owns that array and zeroes it in the same <c>ClearForReset</c>. A cleared
+        /// store is byte-for-byte equal to a freshly-constructed one (its fold reads only <c>[0,_count)</c>, now 0).
+        /// </summary>
+        public void Clear()
+        {
+            System.Array.Clear(_modifierId);
+            System.Array.Clear(_remainingTicks);
+            System.Array.Clear(_ticksUntilPeriod);
+            System.Array.Clear(_periodsRemaining);
+            System.Array.Clear(_stackCount);
+            System.Array.Clear(_modifier);
+            System.Array.Clear(_persistent);
+            System.Array.Clear(_casterId);
+            System.Array.Clear(_casterFaction);
+            System.Array.Clear(_count);
+            _system?.ClearAll(); // zero the external stat-bonus accumulators + dirty flags (the store's driver half)
+        }
+
         // ─────────────────────────────────────────────── Energy ─────────────────────────────────────────────────
 
         /// <summary>

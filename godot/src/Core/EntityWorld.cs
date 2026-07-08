@@ -817,5 +817,61 @@ namespace ProjectChimera.Core
         {
             Array.Copy(Position, PrevPosition, _nextId);
         }
+
+        /// <summary>
+        /// Story 3.10 (NFR-1 / UX-DR62): restore this world to its EXACT post-construction state for the in-place
+        /// Edit↔Play reset — the inverse of the constructor, WITHOUT reallocating (so every capture-once alias held by
+        /// a presentation bridge / system stays valid). Zeroes every SoA array, re-applies the ctor sentinel fills,
+        /// empties the free-list, resets <see cref="Count"/>/<see cref="HighWaterMark"/>/<see cref="AliveCount"/> to 0,
+        /// and RE-SEEDS the shared <see cref="Rng"/> to <see cref="DEFAULT_RNG_SEED"/> (the ctor value) so the folded
+        /// RNG state matches a fresh world. A cleared world is byte-for-byte equal to <c>new EntityWorld()</c>.
+        ///
+        /// Deterministically fires NOTHING: it does NOT call <see cref="Destroy"/> (so <see cref="OnDestroy"/> never
+        /// runs mid-clear) and it deliberately leaves the host-lifetime <see cref="OnDestroy"/> /
+        /// <see cref="OnUnitDefinitionApplied"/> subscriptions attached — they belong to the host, not the match.
+        /// Pure C# / integer-only (Array ops + a re-seed); ascending-order irrelevant (a bulk wipe).
+        /// </summary>
+        public void Clear()
+        {
+            // Zero every SoA array (matches the default-initialized ctor arrays).
+            Array.Clear(Flags);                 Array.Clear(Position);              Array.Clear(PrevPosition);
+            Array.Clear(Velocity);              Array.Clear(BaseMoveSpeed);         Array.Clear(EffectiveMoveSpeed);
+            Array.Clear(Health);                Array.Clear(BaseMaxHealth);         Array.Clear(EffectiveMaxHealth);
+            Array.Clear(FactionOf);             Array.Clear(MoveTarget);            Array.Clear(AttackTarget);
+            Array.Clear(AttackCooldown);        Array.Clear(AttackRange);           Array.Clear(BaseAttackDamage);
+            Array.Clear(EffectiveAttackDamage); Array.Clear(BaseArmor);             Array.Clear(EffectiveArmor);
+            Array.Clear(AttackSpeed);           Array.Clear(Energy);                Array.Clear(MaxEnergy);
+            Array.Clear(StatusFlagsOf);         Array.Clear(DamageTypeOf);          Array.Clear(ArmorTypeOf);
+            Array.Clear(VisionRange);           Array.Clear(SplashRadius);          Array.Clear(CollisionRadius);
+            Array.Clear(SeparationPriorityOf);  Array.Clear(CategoryOf);            Array.Clear(AttackDomainOf);
+            Array.Clear(TagsOf);                Array.Clear(SupplyCost);            Array.Clear(MeshType);
+            Array.Clear(FeedbackProfile);       Array.Clear(CommandState);          Array.Clear(CommandGoal);
+            Array.Clear(CommandTarget);         Array.Clear(PatrolWaypoints);       Array.Clear(PatrolCount);
+            Array.Clear(PatrolIndex);           Array.Clear(PatrolDir);             Array.Clear(OrderQueueCmd);
+            Array.Clear(OrderQueueTargetX);     Array.Clear(OrderQueueTargetZ);     Array.Clear(OrderQueueCount);
+            Array.Clear(ActiveOrderCmd);        Array.Clear(AbilityId);             Array.Clear(AbilityCooldownTicks);
+            Array.Clear(AbilityCount);          Array.Clear(PendingCastSlot);       Array.Clear(PendingCastTarget);
+            Array.Clear(AuraAbilityIndex);      Array.Clear(OnHitAbilityIndex);     Array.Clear(SelfPassiveAbilityIndex);
+            Array.Clear(HeroIndex);             Array.Clear(GatherState);           Array.Clear(GatherTarget);
+            Array.Clear(CarryAmount);           Array.Clear(CarryCapacity);         Array.Clear(BuildTarget);
+            Array.Clear(_freeList);
+
+            // Re-apply the ctor sentinel fills (a default 0 would falsely alias slot/id 0 for these).
+            Array.Fill(AttackTarget,  -1);
+            Array.Fill(CommandTarget, -1);
+            Array.Fill(GatherTarget,  -1);
+            Array.Fill(BuildTarget,   -1);
+            Array.Fill(AbilityId,         -1);
+            Array.Fill(PendingCastSlot,   NO_PENDING_CAST);
+            Array.Fill(PendingCastTarget, -1);
+            Array.Fill(HeroIndex, HERO_NONE);
+
+            _freeCount = 0;
+            _nextId    = 0;
+            AliveCount = 0;
+
+            // Re-seed the single shared deterministic RNG to the ctor seed (the folded state must equal a fresh world).
+            Rng.Seed(DEFAULT_RNG_SEED);
+        }
     }
 }

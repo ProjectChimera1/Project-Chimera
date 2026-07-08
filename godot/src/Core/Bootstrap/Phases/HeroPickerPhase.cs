@@ -54,7 +54,10 @@ namespace ProjectChimera.Core.Bootstrap
                          $"(algo v{StartStateHash.AlgoVersion}): 0x{h:X16}");
             }
 
-            _ctx.PendingHeroProfile = null; // the deploy→apply handoff is consumed
+            // Story 3.10: keep PendingHeroProfile SET past launch — the Edit↔Play reset (ResetToAuthoredStart) re-mints
+            // the deployed profile on EVERY round-trip (it clears HeroStore first, so the re-mint is non-additive), and
+            // a plain F5→Play does not pass back through here. The Edit→Play toggle below fires ModeChanged →
+            // ResetToAuthoredStart, which clears + re-applies + re-mints from this profile (idempotent with the mint above).
 
             if (_ctx.GameState.Mode != GameMode.Play)
                 _ctx.GameState.Toggle();

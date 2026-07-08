@@ -30,6 +30,10 @@ namespace ProjectChimera.Core.Sim
         // Held so SystemOrderTest can assert the order WITHOUT reaching into the untouched SimulationLoop.
         private readonly ISimSystem[] _systems;
 
+        // Story 3.10 — the AI opponent holds per-match decision state (production-building ids, expansion commit,
+        // attack cooldown) that is NOT in any store, so ClearForReset must reset it too or the next Play diverges.
+        private readonly AiOpponentSystem _ai;
+
         // ── Stores / field-held systems, exposed so callers read host truth (no parallel copies). ──
         public EntityWorld World { get; }
         public ResourceNodeStore Nodes { get; }
@@ -143,7 +147,7 @@ namespace ProjectChimera.Core.Sim
                                      Buildings),                                          // [7] Buildings (Story 2.9a): ranged-vs-building shells
                 new SupplySystem(Resources),                                              // [8] SupplySystem      (Economy)
                 Fog,                                                                      // [9] FogOfWarSystem    (Core)
-                new AiOpponentSystem(Buildings, Resources, BuildSys, aiLevel),            // [10] AI opponent (plays Player2)
+                _ai = new AiOpponentSystem(Buildings, Resources, BuildSys, aiLevel),      // [10] AI opponent (plays Player2)
                 ScenarioDirector,                                                         // [11] ScenarioDirector — runs LAST
             };
 
@@ -154,6 +158,36 @@ namespace ProjectChimera.Core.Sim
             // injected seam. NullLogSink no-ops it (tests/server → zero effect on the golden); GodotLogSink
             // prints it for MainScene. NEVER a per-tick log (D6).
             _log.Info("[SimulationHost] Sim spine constructed (12 systems; OrderQueueSystem at index 3, AbilityCastSystem at index 4, ModifierSystem at index 5).");
+        }
+
+        /// <summary>
+        /// Story 3.10 (NFR-1 / UX-DR62): restore EVERY owned store + the wrapped loop to its exact post-construction
+        /// state IN PLACE — the inverse of the constructor's store-build block above (<c>:88-151</c>), without
+        /// reconstructing the host. Reconstructing would orphan the ~30 capture-once aliases every presentation bridge
+        /// / UI system / <c>SceneContext</c> holds (they capture their store reference once at Initialize), so the
+        /// reset MUST mutate the store objects in place. After this call every store is byte-for-byte equal to a
+        /// freshly-constructed one and the loop is at tick 0 / checksum 0 — so a re-apply of the same authored
+        /// <c>ScenarioData</c> reproduces a from-boot run byte-for-byte (D-2, the determinism keystone).
+        ///
+        /// <para>Note: the ability cooldowns the <c>AbilityCastSystem</c> manages live in
+        /// <see cref="EntityWorld.AbilityCooldownTicks"/> (folded v7), so <see cref="EntityWorld.Clear"/> resets them;
+        /// the cast system itself holds no per-match state. <see cref="ScenarioDirector"/> trigger/timer/variable state
+        /// is NOT reset here — it is rebuilt by the re-apply's <c>ScenarioApplier.Apply → ScenarioDirector.LoadScenario</c>.</para>
+        /// </summary>
+        public void ClearForReset()
+        {
+            World.Clear();          // entity SoA + free-list + RNG re-seed (also zeroes AbilityCooldownTicks / StatusFlagsOf)
+            Nodes.Clear();
+            Resources.Clear();
+            Buildings.Clear();
+            Projectiles.Clear();
+            Heroes.Clear();         // Story 3.9 gap: bulk-empty so the re-mint after clear is non-additive
+            Modifiers.Clear();      // folded — also zeroes the ModifierSystem accumulators it drives
+            CombatEvents.Clear();
+            Fog.Reset();
+            MatchStats.Reset();
+            _ai.ResetForMatch();    // Story 3.10 — AI per-match decision state is not in any store; reset it too or the next Play desyncs
+            _loop.ResetTick();      // CurrentTick + LastChecksum → 0 (checksum store wiring untouched)
         }
 
         /// <summary>Advance exactly one tick (lockstep / replay / golden path). Wraps SimulationLoop.StepOnce.</summary>

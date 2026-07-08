@@ -186,6 +186,26 @@ namespace ProjectChimera.Core
             return id;
         }
 
+        /// <summary>
+        /// Story 3.10 (UX-DR62): restore this store to its EXACT post-construction state for the Edit↔Play reset —
+        /// zero every SoA array + the free-list + generation counters and reset <see cref="Count"/> to 0. A cleared
+        /// store is byte-for-byte equal to <c>new BuildingStore()</c> (buildings ARE folded into SimChecksum, so this
+        /// must be exact). The re-apply's <c>PlaceBuildingDirect</c> re-creates the authored buildings against it.
+        /// </summary>
+        public void Clear()
+        {
+            System.Array.Clear(Alive);                System.Array.Clear(Position);
+            System.Array.Clear(FactionOf);            System.Array.Clear(Type);
+            System.Array.Clear(Health);               System.Array.Clear(MaxHealth);
+            System.Array.Clear(SupplyBonus);          System.Array.Clear(ConstructionTimer);
+            System.Array.Clear(ConstructionDuration); System.Array.Clear(ProductionTimer);
+            System.Array.Clear(ProductionQueue);      System.Array.Clear(RallyPoint);
+            System.Array.Clear(HasRallyPoint);        System.Array.Clear(TrainedCount);
+            System.Array.Clear(Generation);           System.Array.Clear(_freeList);
+            _freeCount = 0;
+            Count      = 0;
+        }
+
         /// <summary>Destroy a building — marks the slot dead and returns it to the free-list for reuse (Story 2.13, AC3.1).</summary>
         public void Destroy(int id)
         {
