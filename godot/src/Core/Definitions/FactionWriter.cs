@@ -223,6 +223,8 @@ namespace ProjectChimera.Core.Definitions
             // omits at its 18f default so every existing ranged unit round-trips byte-identically.
             PutNullableString(obj, "delivery", d.Delivery);
             PutFloat(obj, "projectile_speed", d.ProjectileSpeed, 18f);
+            // Story 3.13: xp_bounty is nullable (omit when null — the derived cost default); an authored value writes.
+            PutNullableInt(obj, "xp_bounty", d.XpBounty);
 
             PutString(obj, "separation_priority", d.SeparationPriority, "Normal");
 
@@ -349,6 +351,16 @@ namespace ProjectChimera.Core.Definitions
             string current = o[key] is JsonNode n && n.GetValueKind() == JsonValueKind.String
                 ? n.GetValue<string>() : def;
             if (edited != current) o[key] = edited;
+        }
+
+        /// <summary>Story 3.13: write-back for a nullable int (xp_bounty) — omit the key when null (the derived default),
+        /// write it when authored, drop it when cleared. Mirrors <see cref="PutNullableString"/>.</summary>
+        private static void PutNullableInt(JsonObject o, string key, int? edited)
+        {
+            int? current = TryReadDouble(o, key, out double v) ? (int)v : (int?)null;
+            if (edited == current) return;                   // unchanged (incl. both absent) → preserve/absent
+            if (edited == null) { o.Remove(key); return; }   // cleared → drop the key (→ derived-from-cost default)
+            o[key] = edited.Value;
         }
 
         private static void PutNullableString(JsonObject o, string key, string? edited)

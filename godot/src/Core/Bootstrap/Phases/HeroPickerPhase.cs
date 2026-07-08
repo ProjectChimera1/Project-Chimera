@@ -31,6 +31,11 @@ namespace ProjectChimera.Core.Bootstrap
             _ctx.HeroPicker = new HeroPickerOverlay();
             _ctx.Scene.AddChild(_ctx.HeroPicker);
             _ctx.HeroPicker.Initialize(_ctx.Scenario, source, _ctx.SlotFactionDefs, Launch);
+            // Story 3.13 (D6): let Save/Overwrite read the harvested end-of-match Level/Xp for a hero unit id (captured
+            // into SceneContext on return-to-Edit before HeroStore is cleared), so the picker persists real grown values.
+            _ctx.HeroPicker.HeroProgressProvider = heroDefId =>
+                (_ctx.HasHarvestedHeroProgress && _ctx.HarvestedHeroDefId == heroDefId,
+                 _ctx.HarvestedHeroLevel, _ctx.HarvestedHeroXp);
 
             GD.Print("[HeroPicker] Initialized — offline Play-Skirmish hero picker (shown when the scenario's persistence manifest is enabled).");
         }
@@ -44,7 +49,8 @@ namespace ProjectChimera.Core.Bootstrap
         {
             _ctx.PendingHeroProfile = profile;
 
-            int minted = HeroProfileLoader.LoadInto(_ctx.Host.Heroes, _ctx.Applier.LastAppliedHeroes, profile, _ctx.Log);
+            int minted = HeroProfileLoader.LoadInto(_ctx.Host.Heroes, _ctx.Applier.LastAppliedHeroes, profile, _ctx.Log,
+                _ctx.Host.World); // Story 3.13: establish the entity→hero link (D-8) for the XP runtime
 
             ScenarioData? model = _ctx.Scenario ?? _ctx.FallbackMirror;
             if (_ctx.ScenarioApplied && model != null)

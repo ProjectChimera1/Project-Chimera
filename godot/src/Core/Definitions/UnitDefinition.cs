@@ -122,6 +122,19 @@ namespace ProjectChimera.Core.Definitions
         public float ProjectileSpeed { get; set; } = 18f;
 
         /// <summary>
+        /// The XP bounty (Story 3.13, D7) this unit awards to every hostile hero within that hero's
+        /// <c>xp_share_radius</c> when it dies. Nullable <c>int?</c>, default <b>null</b> (omitted) — resolved via
+        /// <see cref="ResolveXpBounty"/> to the authored value if set, else the derived default
+        /// <c>CostOre + CostCrystal</c> (both int gold-equivalents). Written to the per-entity
+        /// <c>EntityWorld.XpBounty</c> SoA (quantized to <see cref="ProjectChimera.Core.Fixed"/>) through the single
+        /// <see cref="ProjectChimera.Core.EntityWorld.ApplyUnitDefinition"/> mapper, folded into
+        /// <see cref="ProjectChimera.Core.SimChecksum"/> (v11). A non-finite/out-of-range authored value is rejected
+        /// fail-closed by <see cref="UnitDefinitionValidator"/> (AR-39).
+        /// </summary>
+        [JsonPropertyName("xp_bounty")]
+        public int? XpBounty { get; set; }
+
+        /// <summary>
         /// Per-unit collision/separation radius in world units (Story 1.13, DG-2 / FR-54). Summed with a
         /// neighbour's radius to form the per-pair contact threshold in <c>MovementSystem</c>'s separation
         /// (replacing the old flat constant). Default 1.0 so two unauthored units sum to a 2.0 contact distance
@@ -359,6 +372,27 @@ namespace ProjectChimera.Core.Definitions
         /// </summary>
         public string EffectiveDeliveryString() =>
             ResolveDelivery(Fixed.FromFloat(AttackRange)) == Combat.AttackDelivery.Projectile ? "Projectile" : "Hitscan";
+
+        /// <summary>The largest XP bounty representable as a 16.16 <see cref="ProjectChimera.Core.Fixed"/> via
+        /// <c>FromInt</c> (<c>32768 &lt;&lt; 16</c> overflows int32). The authored <see cref="XpBounty"/> is validator-bounded
+        /// to this range, but the DERIVED default (a cost SUM, each cost only individually bounded) can exceed it, so the
+        /// resolved value is clamped here — a very expensive unit simply awards the max bounty rather than overflowing to
+        /// a negative Fixed. Mirrors the authored-field fail-closed invariant (AR-39).</summary>
+        public const int XpBountyMax = 32767;
+
+        /// <summary>
+        /// Resolve the XP bounty (Story 3.13, D7) this unit awards on death: the authored <see cref="XpBounty"/> if set,
+        /// else the derived default <c>CostOre + CostCrystal</c>, clamped to <c>[0, <see cref="XpBountyMax"/>]</c> so the
+        /// derived cost-sum can never overflow the load-boundary <c>Fixed.FromInt</c> into a negative bounty. Returns a
+        /// plain <c>int</c> (gold-equivalent); the single float→<see cref="Fixed"/> quantization happens at the load
+        /// boundary (<see cref="ProjectChimera.Core.EntityWorld.ApplyUnitDefinition"/>), never inside a tick.
+        /// </summary>
+        public int ResolveXpBounty()
+        {
+            int b = XpBounty ?? (CostOre + CostCrystal);
+            if (b < 0) return 0;
+            return b > XpBountyMax ? XpBountyMax : b;
+        }
 
         /// <summary>DamageType string from JSON resolved to enum.</summary>
         public DamageType ParsedDamageType => DamageType switch

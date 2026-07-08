@@ -17,7 +17,7 @@ namespace ProjectChimera.Sim.Tests.Golden
     ///      mutation. If a future story adds a public per-faction array to ResourceStore but forgets to fold it
     ///      into the checksum, mutating that array leaves the hash unchanged and this test FAILS, naming the
     ///      uncovered field. This proves *actual* coverage instead of a hand-maintained list that silently drifts.
-    ///   2. <see cref="KnownWorldState_ProducesPinnedV10Hash"/> — a snapshot/tripwire: a hand-built fixed world
+    ///   2. <see cref="KnownWorldState_ProducesPinnedV11Hash"/> — a snapshot/tripwire: a hand-built fixed world
     ///      hashes to a committed constant. Any unintended change to the algorithm (reordering mixes, adding or
     ///      dropping a field) moves the constant and turns this red, forcing a conscious re-pin + AlgoVersion bump.
     ///
@@ -108,22 +108,22 @@ namespace ProjectChimera.Sim.Tests.Golden
         /// hash still moves.)
         /// </summary>
         [Fact]
-        public void KnownWorldState_ProducesPinnedV10Hash()
+        public void KnownWorldState_ProducesPinnedV11Hash()
         {
-            // Algorithm version must be exactly 10 (Story 3.12's Delivery + ProjectileSpeed fold). If this fails, the const below is stale.
-            Assert.Equal(10, SimChecksum.AlgoVersion);
+            // Algorithm version must be exactly 11 (Story 3.13's XpBounty + HeroStore fold). If this fails, the const below is stale.
+            Assert.Equal(11, SimChecksum.AlgoVersion);
 
             uint actual = ComputeKnownStateHash();
 
-            // ── Pinned v10 hash for the fixed world built by ComputeKnownStateHash() ──────────────────────────
+            // ── Pinned v11 hash for the fixed world built by ComputeKnownStateHash() ──────────────────────────
             // An intentional SimChecksum algorithm change must update this value AND bump SimChecksum.AlgoVersion.
-            // The known-state world's two entities are at their Create defaults for the v10 fields (Delivery == Hitscan,
-            // ProjectileSpeed == the 18 fallback), so the v10 fold adds a Mix((int)Hitscan) + a Mix(18.Raw) per entity —
-            // the hash moves from v9 purely by those two mixes per entity.
-            const uint ExpectedV10Hash = 0xFD627DAA; // recorded from a green v10 run; re-pin only on an intentional algo change
-            Assert.True(actual == ExpectedV10Hash,
-                $"Known-state v10 checksum changed: expected 0x{ExpectedV10Hash:X8}, actual 0x{actual:X8}. " +
-                $"If this is an INTENTIONAL algorithm change, re-pin ExpectedV10Hash to 0x{actual:X8} and bump " +
+            // The known-state world has NO heroes (empty HeroStore → Mix(0) hero-count) and its two entities are at their
+            // Create default for XpBounty (0), so the v11 fold adds a Mix(0) XpBounty per entity + one Mix(0) hero-count —
+            // the hash moves from v10 purely by those mixes.
+            const uint ExpectedV11Hash = 0x0AF691CA; // recorded from a green v11 run; re-pin only on an intentional algo change
+            Assert.True(actual == ExpectedV11Hash,
+                $"Known-state v11 checksum changed: expected 0x{ExpectedV11Hash:X8}, actual 0x{actual:X8}. " +
+                $"If this is an INTENTIONAL algorithm change, re-pin ExpectedV11Hash to 0x{actual:X8} and bump " +
                 $"SimChecksum.AlgoVersion. If not, you broke the deterministic checksum — investigate.");
         }
 
@@ -296,6 +296,20 @@ namespace ProjectChimera.Sim.Tests.Golden
                 return () => w.ProjectileSpeed[e] = Fixed.FromInt(6);
             });
 
+            // ── v11 (Story 3.13): the per-entity XpBounty is folded — mutate to a value != its Create default (0). A
+            //    non-zero bounty MUST move the hash; a no-move means the v11 entity-loop fold is not reading the field. ──
+            AssertFieldFoldedIntoChecksum(buildings, resources, registry, w =>
+            {
+                int e = w.Create(new FixedVec3(Fixed.FromInt(1), Fixed.Zero, Fixed.FromInt(2)),
+                                 Faction.Player1, Fixed.FromInt(10), Fixed.FromInt(3));
+                return () => w.XpBounty[e] = Fixed.FromInt(50);
+            });
+
+            // ── v11 (Story 3.13): the mutable HeroStore state is folded — minting a hero, then mutating Level / Xp /
+            //    GrowthStacksApplied, each MUST move the hash. Rally-point-style dedicated teeth (the store lives outside
+            //    EntityWorld, so the entity helper cannot reach it). ──
+            AssertHeroStoreFoldedIntoChecksum(registry);
+
             // ── v9 (Story 2.12, D-1): the per-building rally point is folded — HasRallyPoint AND the RallyPoint X/Z.
             //    Rally lives on BuildingStore (not EntityWorld), so it needs its own teeth (the EntityWorld helper above
             //    only mutates entity fields). Each of the three mixes must move the hash. ──
@@ -375,6 +389,42 @@ namespace ProjectChimera.Sim.Tests.Golden
         }
 
         /// <summary>
+        /// Story 3.13 (v11) coverage teeth: the mutable <see cref="HeroStore"/> state must move the checksum. Mints a
+        /// hero, hashes, then mutates Level / Xp / GrowthStacksApplied in turn — each MUST move the hash. A no-move means
+        /// a folded hero field escaped <see cref="SimChecksum"/> (a silent desync surface, since the XP runtime mutates
+        /// Level/Xp mid-match). The hero is folded in <see cref="HeroStore.FoldOrder"/> order, count-driven.
+        /// </summary>
+        private static void AssertHeroStoreFoldedIntoChecksum(FactionRegistry registry)
+        {
+            var world     = new EntityWorld();          // empty — isolates the hero contribution
+            var resources = new ResourceStore(Fixed.Zero);
+            var buildings = new BuildingStore();
+            var heroes    = new HeroStore();
+
+            uint empty = SimChecksum.Compute(world, buildings, resources, registry, null, heroes);
+
+            int slot = heroes.Mint(new HeroId(9_000_000_042UL), entityId: 3, level: 1, xp: Fixed.Zero);
+            uint minted = SimChecksum.Compute(world, buildings, resources, registry, null, heroes);
+            Assert.True(empty != minted,
+                "Minting a hero did NOT move the checksum — the HeroStore live count / rows are not folded into SimChecksum (v11).");
+
+            heroes.Level[slot] = 5;
+            uint leveled = SimChecksum.Compute(world, buildings, resources, registry, null, heroes);
+            Assert.True(minted != leveled,
+                "HeroStore.Level is NOT folded into SimChecksum: changing it left the checksum unchanged (v11 fold).");
+
+            heroes.Xp[slot] = Fixed.FromInt(123);
+            uint xpMoved = SimChecksum.Compute(world, buildings, resources, registry, null, heroes);
+            Assert.True(leveled != xpMoved,
+                "HeroStore.Xp is NOT folded into SimChecksum: changing it left the checksum unchanged (v11 fold).");
+
+            heroes.GrowthStacksApplied[slot] = 4;
+            uint growthMoved = SimChecksum.Compute(world, buildings, resources, registry, null, heroes);
+            Assert.True(xpMoved != growthMoved,
+                "HeroStore.GrowthStacksApplied is NOT folded into SimChecksum: changing it left the checksum unchanged (v11 fold).");
+        }
+
+        /// <summary>
         /// Build a fresh world via <paramref name="setup"/> (which returns a mutation thunk), checksum before,
         /// run the mutation, checksum after, and assert the hash moved. Buildings/resources/registry are shared
         /// constants so only the EntityWorld field under test varies.
@@ -439,7 +489,8 @@ namespace ProjectChimera.Sim.Tests.Golden
 
             // v6: pass an EMPTY ModifierStore (count 0 per entity) — the live host always passes a real store, so the
             // pin reflects the production fold path (null would hash identically via the ?? 0 count, but be explicit).
-            return SimChecksum.Compute(world, buildings, resources, new FactionRegistry(2), new ModifierStore(world));
+            // v11 (Story 3.13): pass an EMPTY HeroStore (no heroes → Mix(0) hero-count) — same explicit-production-path rationale.
+            return SimChecksum.Compute(world, buildings, resources, new FactionRegistry(2), new ModifierStore(world), new HeroStore());
         }
 
         /// <summary>

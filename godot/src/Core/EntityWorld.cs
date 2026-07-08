@@ -281,6 +281,19 @@ namespace ProjectChimera.Core
         /// </summary>
         public readonly Fixed[] ProjectileSpeed;
 
+        // --- Hero XP bounty (Story 3.13) ---
+        /// <summary>
+        /// Per-unit XP bounty (<see cref="Fixed"/>, world gold-equivalent) awarded to every hostile hero within that
+        /// hero's <c>xp_share_radius</c> when this unit dies (Story 3.13, D7). Set from
+        /// <c>Fixed.FromInt(def.ResolveXpBounty())</c> in <see cref="ApplyUnitDefinition"/> (the single mapper; authored
+        /// value else <c>CostOre + CostCrystal</c>). Recorded at the death choke point (<c>DamageResolver.KillEntity</c>)
+        /// into the transient <c>DeathFeed</c>, drained by <see cref="ProjectChimera.Combat.HeroXpSystem"/> which credits
+        /// hostile heroes in range. FOLDED into <see cref="SimChecksum"/> as <c>.Raw</c> (v11), following the Story 3.12
+        /// spawn-constant-folding convention (a peer divergence in a bounty changes XP/level outcomes). The <c>Create</c>
+        /// default is <see cref="Fixed.Zero"/> (a recycled/non-def slot awards nothing); <c>Array.Clear</c> restores 0.
+        /// </summary>
+        public readonly Fixed[] XpBounty;
+
         // --- Separation / formation (Story 1.13, DG-2 / FR-54) ---
         /// <summary>
         /// Per-unit separation radius. Summed with a neighbour's (<c>CollisionRadius[i] + CollisionRadius[j]</c>)
@@ -570,6 +583,7 @@ namespace ProjectChimera.Core
             SplashRadius   = new Fixed[MAX_ENTITIES];
             Delivery       = new AttackDelivery[MAX_ENTITIES];          // Story 3.12 (folded v10; Hitscan == 0, no Array.Fill needed)
             ProjectileSpeed = new Fixed[MAX_ENTITIES];                  // Story 3.12 (folded v10; Create-defaulted to the 18 fallback)
+            XpBounty       = new Fixed[MAX_ENTITIES];                    // Story 3.13 (folded v11; Create-defaulted to Zero)
             CollisionRadius      = new Fixed[MAX_ENTITIES];              // Story 1.13 (folded v5)
             SeparationPriorityOf = new SeparationPriority[MAX_ENTITIES]; // Story 1.13 (folded v5)
             CategoryOf           = new UnitCategory[MAX_ENTITIES];       // Story 1.13 (NOT folded — presentation-read)
@@ -678,6 +692,9 @@ namespace ProjectChimera.Core
             // overwrites both from the def (Delivery via ResolveDelivery, speed via the float→Fixed boundary).
             Delivery[id]        = AttackDelivery.Hitscan;
             ProjectileSpeed[id] = ProjectileSystem.PROJECTILE_SPEED;
+            // Story 3.13: a recycled/non-def slot awards no XP bounty on death. ApplyUnitDefinition overwrites it from
+            // the def (authored xp_bounty else ore+crystal cost, quantized at the single boundary).
+            XpBounty[id]        = Fixed.Zero;
             // Story 1.13: default separation/formation fields on (re)allocation. A recycled slot must never carry
             // the previous unit's radius/priority/category (the classic SoA bug — cf. the 1.12 zombie-route fix).
             // SpawnUnit overwrites these from the def; Create must default them for any spawn site that forgets.
@@ -773,6 +790,11 @@ namespace ProjectChimera.Core
             // boundary here (default 18f == the old global). Both are FOLDED into SimChecksum (v10).
             Delivery[id]        = def.ResolveDelivery(AttackRange[id]);
             ProjectileSpeed[id] = Fixed.FromFloat(def.ProjectileSpeed);
+
+            // Story 3.13 (A2 single mapper): the per-unit XP bounty this unit awards on death. ResolveXpBounty()
+            // returns the authored xp_bounty else CostOre+CostCrystal; this is the single int→Fixed boundary for it
+            // (never quantized inside a tick). FOLDED into SimChecksum (v11).
+            XpBounty[id]        = Fixed.FromInt(def.ResolveXpBounty());
 
             // Story 1.13 (DG-2 / FR-54): per-unit separation/formation fields. CollisionRadius mirrors the
             // SplashRadius float→Fixed load conversion, then is clamped (see ClampCollisionRadius). SeparationPriority
@@ -885,6 +907,7 @@ namespace ProjectChimera.Core
             Array.Clear(StatusFlagsOf);         Array.Clear(DamageTypeOf);          Array.Clear(ArmorTypeOf);
             Array.Clear(VisionRange);           Array.Clear(SplashRadius);          Array.Clear(CollisionRadius);
             Array.Clear(Delivery);              Array.Clear(ProjectileSpeed);       // Story 3.12 (Hitscan==0 / 0 speed == the fresh-ctor state)
+            Array.Clear(XpBounty);              // Story 3.13 (0 == the fresh-ctor state)
             Array.Clear(SeparationPriorityOf);  Array.Clear(CategoryOf);            Array.Clear(AttackDomainOf);
             Array.Clear(TagsOf);                Array.Clear(SupplyCost);            Array.Clear(MeshType);
             Array.Clear(FeedbackProfile);       Array.Clear(CommandState);          Array.Clear(CommandGoal);

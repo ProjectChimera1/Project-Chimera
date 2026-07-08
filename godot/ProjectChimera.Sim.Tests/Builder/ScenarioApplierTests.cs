@@ -234,6 +234,54 @@ namespace ProjectChimera.Sim.Tests.Builder
         }
 
         [Fact]
+        public void Apply_CapturesHeroCurveAndGrowthFields_QuantizedOntoPlacedHero()
+        {
+            // Story 3.13: the applier is the single production float→Fixed boundary for a deployed hero's curve/growth
+            // params (MaxLevel/BaseXp/XpGrowth/XpShareRadius/*PerLevel). LoadInto feeds these straight into
+            // HeroStore.Mint and HeroXpSystem reads them, so a dropped or transposed field silently ships heroes that
+            // level/grow wrong. Distinct non-default values per field make a swap detectable; each must arrive as
+            // Fixed.FromFloat(authored).
+            var faction = new FactionDefinition
+            {
+                Id = "alpha", DisplayName = "Alpha",
+                Units =
+                {
+                    new UnitDefinition { Id = "scout", Category = "Ranged" },
+                    WorkerDef(),
+                    new UnitDefinition
+                    {
+                        Id = "warchief", DisplayName = "War Chief", Category = "Ranged",
+                        Hp = 200f, Speed = 3f, IsHero = true,
+                        Hero = new HeroDefinition
+                        {
+                            MaxLevel = 7, BaseXp = 111f, XpGrowth = 1.25f, XpShareRadius = 13f,
+                            HealthPerLevel = 17f, DamagePerLevel = 3f, ArmorPerLevel = 2f, XpPerKill = 10f,
+                        },
+                    },
+                },
+            };
+            var slotDefs = SlotDefs(faction);
+            var host = SimulationHost.Create(NullLogSink.Instance, new FactionRegistry(2), faction, faction);
+            var applier = new ScenarioApplier(host, NullLogSink.Instance, slotDefs);
+
+            ScenarioData model = BuildAlphaModel();
+            model.Units = new[] { new ScenarioUnit { UnitId = "warchief", Slot = 0, X = -38f, Z = 0f } };
+
+            ValidationResult r = new ScenarioValidator().Validate(model);
+            Assert.True(r.Ok, r.Error);
+            applier.Apply(r.Value);
+
+            var placed = Assert.Single(applier.LastAppliedHeroes);
+            Assert.Equal(7,                       placed.MaxLevel);
+            Assert.Equal(Fixed.FromFloat(111f).Raw,  placed.BaseXp.Raw);
+            Assert.Equal(Fixed.FromFloat(1.25f).Raw, placed.XpGrowth.Raw);
+            Assert.Equal(Fixed.FromFloat(13f).Raw,   placed.XpShareRadius.Raw);
+            Assert.Equal(Fixed.FromFloat(17f).Raw,   placed.HealthPerLevel.Raw);
+            Assert.Equal(Fixed.FromFloat(3f).Raw,    placed.DamagePerLevel.Raw);
+            Assert.Equal(Fixed.FromFloat(2f).Raw,    placed.ArmorPerLevel.Raw);
+        }
+
+        [Fact]
         public void Apply_ModelProducesStableNonZeroCanonicalHash()
         {
             ScenarioData model = BuildAlphaModel();

@@ -120,6 +120,13 @@ namespace ProjectChimera.Core.Bootstrap
         /// kept). Pre-3.13 there is no runtime XP growth so both branches coincide — this is the tested seam Story 3.13
         /// consumes. Sourced by <c>WinConditionPhase</c> for the <c>ResetToAuthoredStart(preserveHeroProgress)</c> call.</summary>
         public bool PersistenceTestMode;
+        // ── Story 3.13 (D6): end-of-match harvest of the deployed hero's live Level/Xp, captured before HeroStore is
+        //    cleared on return-to-Edit, so the hero picker's Save/Overwrite persists the REAL grown values (routed
+        //    through the manifest shape) instead of the authored placeholders. Keyed by the deployed hero's unit id. ─
+        public bool                HasHarvestedHeroProgress;
+        public string?             HarvestedHeroDefId;
+        public int                 HarvestedHeroLevel;
+        public Fixed               HarvestedHeroXp;
         public AI.LLMService          LlmService     = null!;
         public Label?                 ToastLabel;
 

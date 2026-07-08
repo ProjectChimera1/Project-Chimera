@@ -29,15 +29,17 @@ namespace ProjectChimera.Combat
         private readonly MatchStats?        _stats;
         private readonly DamageTable        _table;
         private readonly BuildingStore?     _buildings; // Story 2.9a (D-4) — building-target projectiles; null ⇒ no building hits
+        private readonly DeathFeed?         _deaths;    // Story 3.13 — records a lethal projectile hit's victim for the XP runtime
 
         public ProjectileSystem(ProjectileStore store, CombatEventQueue? events = null, MatchStats? stats = null,
-            DamageTable? table = null, BuildingStore? buildings = null)
+            DamageTable? table = null, BuildingStore? buildings = null, DeathFeed? deaths = null)
         {
             _store     = store;
             _events    = events;
             _stats     = stats;
             _table     = table ?? DamageTable.Default;
             _buildings = buildings;
+            _deaths    = deaths;   // Story 3.13 (optional — XP credited only when wired)
         }
 
         public void Tick(EntityWorld world, Fixed dt)
@@ -118,7 +120,7 @@ namespace ProjectChimera.Combat
 
             // Primary hit uses the armor SNAPSHOT captured at spawn (_store.TargetArmor), not live armor.
             var ctx = new DamageContext(world, targetId, _store.TargetArmor[projId],
-                                        _store.Owner[projId], _table, _events, _stats);
+                                        _store.Owner[projId], _table, _events, _stats, _deaths);
             DamageResolver.Apply(in ctx, _store.Damage[projId], _store.DmgType[projId]);
 
             // AoE splash: deal same damage to all other enemies within splash radius
@@ -162,7 +164,7 @@ namespace ProjectChimera.Combat
                 if (distSqr > radiusSqr) continue;
 
                 // Secondary splash targets use LIVE armor (caller-supplied), and emit no pre-hit event.
-                var ctx = new DamageContext(world, i, world.ArmorTypeOf[i], owner, _table, _events, _stats);
+                var ctx = new DamageContext(world, i, world.ArmorTypeOf[i], owner, _table, _events, _stats, _deaths);
                 DamageResolver.Apply(in ctx, damage, dmgType);
             }
         }

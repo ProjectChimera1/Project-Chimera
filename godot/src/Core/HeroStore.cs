@@ -79,17 +79,41 @@ namespace ProjectChimera.Core
         /// <summary>Accumulated experience (<see cref="Fixed"/> 16.16). Init state loaded by 3.9; mutated by 3.13.</summary>
         public readonly Fixed[]  Xp       = new Fixed[MAX_HEROES];
 
-        // ── RESERVED for the Story 3.13 co-timed SimChecksum fold (D-6) — DO NOT declare these yet ────────────────
-        //   Story 3.13 AC2 folds HeroStore Level/Xp when the XP runtime first mutates them mid-match, and RESERVES
-        //   Story 3.14's revival fields in the SAME AlgoVersion bump (one bump, not two). When 3.13/3.14 land, add
-        //   these columns here (and reset them in Mint, alongside Level/Xp) so they ride that single fold:
-        //     • bool[]  Alive3_14      — hero-is-on-the-field vs awaiting revival (distinct from the SLOT Alive above)
-        //     • bool[]  AwaitingRevival — dead-but-persisted, counting down to respawn
-        //     • Fixed[] RevivalTimer    — seconds remaining until revival
-        //     • int[]   RevivalLink     — revive-location / building link (e.g. an Altar building id / spawn slot)
-        //   Inventory/items are NOT reserved here — Story 3.15 owns a separate free-list ItemStore (fold #2); pre-
-        //   declaring an Inventory[] saves no fold (the cost is triggered by first MUTATION, not declaration) and
-        //   3.15 has not designed the shape (default-6 slots, per-scenario-configurable, charges possibly on the item).
+        // ── Story 3.13 mutable growth-tracking (folded into SimChecksum v11) ─────────────────────────────────────
+        /// <summary>How many permanent per-level growth stacks have been applied to this hero's entity via
+        /// <c>ModifierStore.Apply</c> (Story 3.13, D-3). Converges to <c>Level - 1</c> each tick — the
+        /// <see cref="ProjectChimera.Combat.HeroXpSystem"/> applies <c>(Level-1) - GrowthStacksApplied</c> more stacks and
+        /// sets this to <c>Level-1</c>. Genuine mutable sim state → FOLDED into <see cref="SimChecksum"/> (v11).</summary>
+        public readonly int[]    GrowthStacksApplied = new int[MAX_HEROES];
+
+        // ── Story 3.13 per-hero runtime curve/growth/share CONSTANTS (def-derived at mint; NOT folded — the
+        //    AttackDamage/Delivery authored-constant posture; a divergence surfaces transitively via Level/Xp). ────
+        /// <summary>Max level this hero can reach (from <c>HeroDefinition.MaxLevel</c>). Set in <see cref="Mint"/>.</summary>
+        public readonly int[]    MaxLevelOf          = new int[MAX_HEROES];
+        /// <summary>Base XP for the first level-up (the geometric-curve base, <see cref="Fixed"/>). Set in <see cref="Mint"/>.</summary>
+        public readonly Fixed[]  BaseXpOf            = new Fixed[MAX_HEROES];
+        /// <summary>Per-level geometric multiplier on the XP requirement (<see cref="Fixed"/>). Set in <see cref="Mint"/>.</summary>
+        public readonly Fixed[]  XpGrowthOf          = new Fixed[MAX_HEROES];
+        /// <summary>Radius (world units, <see cref="Fixed"/>) within which a hostile death credits this hero. Set in <see cref="Mint"/>.</summary>
+        public readonly Fixed[]  XpShareRadiusOf     = new Fixed[MAX_HEROES];
+        /// <summary>Flat max-health growth per level above 1 (<see cref="Fixed"/>). Set in <see cref="Mint"/>.</summary>
+        public readonly Fixed[]  HealthPerLevelOf    = new Fixed[MAX_HEROES];
+        /// <summary>Flat attack-damage growth per level above 1 (<see cref="Fixed"/>). Set in <see cref="Mint"/>.</summary>
+        public readonly Fixed[]  DamagePerLevelOf    = new Fixed[MAX_HEROES];
+        /// <summary>Flat armor growth per level above 1 (<see cref="Fixed"/>). Set in <see cref="Mint"/>.</summary>
+        public readonly Fixed[]  ArmorPerLevelOf     = new Fixed[MAX_HEROES];
+
+        // ── RESERVED for Story 3.14 (death & revival), declared + folded NOW so 3.14 needs no second AlgoVersion bump
+        //    (Story 3.13 D-2). Written to their zero/false defaults in Mint; folded at defaults into SimChecksum v11. ─
+        /// <summary>Story 3.14 (reserved): hero is on the field (true) vs awaiting revival (false). Distinct from the
+        /// SLOT <see cref="Alive"/>. Declared + folded now at its default (true set in <see cref="Mint"/>); no 3.13 system reads it.</summary>
+        public readonly bool[]   Alive3_14           = new bool[MAX_HEROES];
+        /// <summary>Story 3.14 (reserved): dead-but-persisted, counting down to respawn. Default false. Folded v11.</summary>
+        public readonly bool[]   AwaitingRevival     = new bool[MAX_HEROES];
+        /// <summary>Story 3.14 (reserved): seconds remaining until revival (<see cref="Fixed"/>). Default Zero. Folded v11.</summary>
+        public readonly Fixed[]  RevivalTimer        = new Fixed[MAX_HEROES];
+        /// <summary>Story 3.14 (reserved): revive-location / building link (e.g. an Altar building id). Default 0. Folded v11.</summary>
+        public readonly int[]    RevivalLink         = new int[MAX_HEROES];
 
         // ── Management — the monotonic high-water fold/iteration bound (mirrors BuildingStore.Count). Recycling
         //    reuses dead slots BELOW Count, so Count only grows. ─────────────────────────────────────────────────
@@ -123,7 +147,9 @@ namespace ProjectChimera.Core
         /// separate reset step — a recycled slot therefore carries NONE of the prior hero's state, the SoA-recycle
         /// trap); the reserved 3.13/3.14 fields above must reset here too when they are declared.
         /// </summary>
-        public int Mint(HeroId id, int entityId, int level, Fixed xp)
+        public int Mint(HeroId id, int entityId, int level, Fixed xp,
+                        int maxLevel = 0, Fixed baseXp = default, Fixed xpGrowth = default, Fixed xpShareRadius = default,
+                        Fixed healthPerLevel = default, Fixed damagePerLevel = default, Fixed armorPerLevel = default)
         {
             // Contract (AC2 / FoldOrder producer-independence): a HeroId is UNIQUE across LIVE rows. FoldOrder sorts by
             // HeroId with a strict-'>' (stable) insertion sort, so two live rows sharing an id would fold in mint-order-
@@ -151,6 +177,22 @@ namespace ProjectChimera.Core
             EntityId[slot] = entityId;
             Level[slot]    = level;
             Xp[slot]       = xp;
+            // Story 3.13: per-hero runtime curve/growth/share constants (def-derived, passed at mint). Every live field
+            // is written here (the SoA-recycle contract) — a recycled slot carries NONE of the prior hero's curve.
+            MaxLevelOf[slot]       = maxLevel;
+            BaseXpOf[slot]         = baseXp;
+            XpGrowthOf[slot]       = xpGrowth;
+            XpShareRadiusOf[slot]  = xpShareRadius;
+            HealthPerLevelOf[slot] = healthPerLevel;
+            DamagePerLevelOf[slot] = damagePerLevel;
+            ArmorPerLevelOf[slot]  = armorPerLevel;
+            // Story 3.13 mutable growth-tracking + Story 3.14 reserved revival state — zeroed on (re)mint so a recycled
+            // slot never inherits prior growth/revival state (folded into SimChecksum v11).
+            GrowthStacksApplied[slot] = 0;
+            Alive3_14[slot]        = true;   // a freshly-minted hero is on the field
+            AwaitingRevival[slot]  = false;
+            RevivalTimer[slot]     = Fixed.Zero;
+            RevivalLink[slot]      = 0;
             return slot;
         }
 
@@ -169,6 +211,14 @@ namespace ProjectChimera.Core
             System.Array.Clear(EntityId);
             System.Array.Clear(Level);
             System.Array.Clear(Xp);
+            // Story 3.13 growth-tracking + curve constants.
+            System.Array.Clear(GrowthStacksApplied);
+            System.Array.Clear(MaxLevelOf);       System.Array.Clear(BaseXpOf);         System.Array.Clear(XpGrowthOf);
+            System.Array.Clear(XpShareRadiusOf);  System.Array.Clear(HealthPerLevelOf); System.Array.Clear(DamagePerLevelOf);
+            System.Array.Clear(ArmorPerLevelOf);
+            // Story 3.14 reserved revival state.
+            System.Array.Clear(Alive3_14);        System.Array.Clear(AwaitingRevival);  System.Array.Clear(RevivalTimer);
+            System.Array.Clear(RevivalLink);
             System.Array.Clear(Generation);
             System.Array.Clear(_freeList);
             _freeCount = 0;

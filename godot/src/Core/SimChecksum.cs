@@ -21,6 +21,11 @@ namespace ProjectChimera.Core
     ///     added v5 (Story 1.13). CategoryOf is deliberately NOT hashed (presentation-read, like MeshType).
     ///   - EntityWorld attack delivery: per alive entity, Delivery (int) + ProjectileSpeed (Raw) — added v10
     ///     (Story 3.12), the authorable Hitscan/Projectile axis + per-unit projectile speed that combat reads in-tick.
+    ///   - EntityWorld XP bounty: per alive entity, XpBounty (Raw) — added v11 (Story 3.13), the def-derived XP a unit
+    ///     awards on death (HeroXpSystem reads it via the DeathFeed).
+    ///   - HeroStore mutable state: ascending HeroId (FoldOrder) — live count, then per slot HeroId.Value (low/high),
+    ///     Level, Xp (Raw), GrowthStacksApplied, and the reserved Story 3.14 revival fields — added v11 (Story 3.13),
+    ///     now that the XP runtime mutates Level/Xp mid-match (dormant/not-folded since 3.2). A null store folds Mix(0).
     ///   - EntityWorld effective stats + ability/status: per alive entity, EffectiveAttackDamage, EffectiveMaxHealth,
     ///     EffectiveMoveSpeed, Energy (all Raw), and StatusFlagsOf (int) — added v6 (Story 2.2b), now that the
     ///     ModifierStore MUTATES them mid-match. Base* stays UNFOLDED (authored, in-tick-immutable).
@@ -93,15 +98,24 @@ namespace ProjectChimera.Core
         ///        ProjectileSpeed, so a peer divergence in either changes combat resolution and must desync detectably.
         ///        Both int/Fixed.Raw → cross-platform safe. One scheduled re-baseline of ALL goldens (existing units keep
         ///        their exact behaviour — Delivery infers the old MELEE_THRESHOLD partition, ProjectileSpeed defaults to 18).
+        ///   v11 — Story 3.13: the XP runtime first MUTATES HeroStore.Level/Xp mid-match, so fold (a) the per-entity
+        ///        def-derived XpBounty (.Raw) in the entity loop (the Story 3.12 spawn-constant convention), AND (b) the
+        ///        mutable HeroStore state — ascending HeroId (FoldOrder): live count, then per slot HeroId.Value (low/high),
+        ///        Level, Xp.Raw, GrowthStacksApplied, plus Story 3.14's RESERVED revival fields (Alive3_14/AwaitingRevival
+        ///        as int, RevivalTimer.Raw, RevivalLink) declared + folded now at their defaults so 3.14 needs no second
+        ///        bump. Curve constants (MaxLevelOf/BaseXpOf/…) are NOT folded (authored/def-derived, the Delivery posture).
+        ///        A null HeroStore folds Mix(0) count (dormant/legacy callers agree). All int/Fixed.Raw → cross-platform.
+        ///        One scheduled re-baseline of ALL goldens (existing goldens have no heroes + XpBounty defaults to 0, so
+        ///        the pin moves purely by the added Mix(0) hero-count + Mix(0) XpBounty per entity).
         /// </summary>
-        public const int AlgoVersion = 10;
+        public const int AlgoVersion = 11;
 
         /// <summary>
         /// Compute a full-state checksum for desync detection.
         /// Call after all systems have ticked for the current frame.
         /// </summary>
         public static uint Compute(EntityWorld world, BuildingStore buildings, ResourceStore resources,
-                                   FactionRegistry factions, ModifierStore? modifiers = null)
+                                   FactionRegistry factions, ModifierStore? modifiers = null, HeroStore? heroes = null)
         {
             // Contract guard for the registry param added in Story 1.3a: a future direct caller (e.g. the
             // 1.9a/9.1 server checksum collector) gets a clear error instead of an opaque NRE in the Ore loop.
@@ -158,6 +172,13 @@ namespace ProjectChimera.Core
                 // mandate (like AttackRange transitively via Position). int / Fixed.Raw → cross-platform safe.
                 hash = Mix(hash, (int)world.Delivery[i]);
                 hash = Mix(hash, world.ProjectileSpeed[i].Raw);
+
+                // ── XP bounty (v11, Story 3.13) ───────────────────────────────────
+                // The def-derived per-unit XP bounty this unit awards on death — read by HeroXpSystem when it drains the
+                // DeathFeed, so a peer divergence changes hero XP/level outcomes. Folded directly (the Story 3.12
+                // spawn-constant-folding convention: authored, but folded for a uniform re-baseline + coverage teeth).
+                // Fixed.Raw → cross-platform safe.
+                hash = Mix(hash, world.XpBounty[i].Raw);
 
                 // ── Effective stats + ability resource + status (v6, Story 2.2b) ──
                 // The ModifierStore now MUTATES these mid-match (a modifier changes Effective*; an ability debits
@@ -257,6 +278,38 @@ namespace ProjectChimera.Core
                 hash = Mix(hash, resources.FactionBase[idx].X.Raw); // FixedVec3 → three Fixed.Raw mixes
                 hash = Mix(hash, resources.FactionBase[idx].Y.Raw);
                 hash = Mix(hash, resources.FactionBase[idx].Z.Raw);
+            }
+
+            // ── HeroStore mutable state (v11, Story 3.13) — ascending HeroId (FoldOrder), count-driven ──
+            // The Story 3.13 XP runtime mutates HeroStore.Level/Xp mid-match (the store was DORMANT since 3.2), so it is
+            // now folded per-tick. Fold the live count, then per live slot IN FoldOrder ORDER (ascending HeroId — producer-
+            // independent): HeroId.Value (low/high 32 bits, the SimRng pattern), Level, Xp.Raw, GrowthStacksApplied, and
+            // the reserved Story 3.14 revival fields (declared + folded now at their defaults). Curve constants are NOT
+            // folded (authored/def-derived spawn constants — the Delivery/AttackDamage posture). A null store folds a
+            // single Mix(0) count (≡ an empty/dormant store), so a legacy 5-arg caller and an empty store agree.
+            if (heroes != null)
+            {
+                int[] hOrder = heroes.FoldOrder();
+                hash = Mix(hash, hOrder.Length);
+                for (int k = 0; k < hOrder.Length; k++)
+                {
+                    int slot = hOrder[k];
+                    ulong hid = heroes.Id[slot].Value;
+                    hash = Mix(hash, (int)(hid & 0xFFFFFFFFUL)); // low 32 bits
+                    hash = Mix(hash, (int)(hid >> 32));          // high 32 bits
+                    hash = Mix(hash, heroes.Level[slot]);
+                    hash = Mix(hash, heroes.Xp[slot].Raw);
+                    hash = Mix(hash, heroes.GrowthStacksApplied[slot]);
+                    // Story 3.14 reserved fields — folded at their Mint defaults (Alive3_14 == true) so 3.14 needs no bump.
+                    hash = Mix(hash, heroes.Alive3_14[slot] ? 1 : 0);
+                    hash = Mix(hash, heroes.AwaitingRevival[slot] ? 1 : 0);
+                    hash = Mix(hash, heroes.RevivalTimer[slot].Raw);
+                    hash = Mix(hash, heroes.RevivalLink[slot]);
+                }
+            }
+            else
+            {
+                hash = Mix(hash, 0); // null store ≡ empty (dormant): fold an identical count-0 mix
             }
 
             // ── RNG state (v3, Story 1.5) ─────────────────────────────────────────

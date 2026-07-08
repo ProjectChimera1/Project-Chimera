@@ -238,6 +238,54 @@ namespace ProjectChimera.Sim.Tests.Definitions
             Assert.DoesNotContain("delivery", UnitJson(b, "archer"));
         }
 
+        // ── xp_bounty + hero runtime fields (Story 3.13) ──
+
+        [Fact]
+        public void Update_AuthorsXpBounty_RoundTrips()
+        {
+            UnitDefinition edited = Parse(Faction).GetUnit("archer")!;
+            edited.XpBounty = 175;
+            string outJson = FactionWriter.PatchFactionJson(Faction,
+                new UnitEdit { Kind = UnitEditKind.Update, TargetId = "archer", Def = edited });
+
+            Assert.Contains("xp_bounty", UnitJson(outJson, "archer"));
+            UnitDefinition reloaded = Parse(outJson).GetUnit("archer")!;
+            Assert.Equal(175, reloaded.XpBounty);
+        }
+
+        [Fact]
+        public void Update_OmittedXpBounty_IsNotWritten()
+        {
+            // xp_bounty omitted (null → derived from cost) must NOT balloon the key.
+            UnitDefinition edited = Parse(Faction).GetUnit("archer")!;
+            edited.AttackDamage = 12f;   // touch a different field
+            edited.XpBounty = null;
+            string outJson = FactionWriter.PatchFactionJson(Faction,
+                new UnitEdit { Kind = UnitEditKind.Update, TargetId = "archer", Def = edited });
+
+            Assert.DoesNotContain("xp_bounty", UnitJson(outJson, "archer"));
+        }
+
+        [Fact]
+        public void Update_AuthorsHeroRuntimeFields_RoundTrip()
+        {
+            UnitDefinition edited = Parse(Faction).GetUnit("archer")!;
+            edited.IsHero = true;
+            edited.Hero = new HeroDefinition
+            {
+                XpShareRadius = 20f, HealthPerLevel = 15f, DamagePerLevel = 3f, ArmorPerLevel = 2f,
+            };
+            string outJson = FactionWriter.PatchFactionJson(Faction,
+                new UnitEdit { Kind = UnitEditKind.Update, TargetId = "archer", Def = edited });
+
+            UnitDefinition reloaded = Parse(outJson).GetUnit("archer")!;
+            Assert.NotNull(reloaded.Hero);
+            Assert.Equal(20f, reloaded.Hero!.XpShareRadius);
+            Assert.Equal(15f, reloaded.Hero!.HealthPerLevel);
+            Assert.Equal(3f,  reloaded.Hero!.DamagePerLevel);
+            Assert.Equal(2f,  reloaded.Hero!.ArmorPerLevel);
+        }
+
         // ── Create: appends a minimal new unit (only non-default fields) ──
 
         [Fact]

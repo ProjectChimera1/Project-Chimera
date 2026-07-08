@@ -45,11 +45,13 @@ namespace ProjectChimera.Sim.Tests.Meta
         //    same commit as the source change — that edit is the "did the siblings + goldens move too?" checkpoint.
 
         /// <summary>Runtime desync-checksum algorithm version. Bump ⇒ re-baseline ALL goldens (same commit).
+        /// v11 (Story 3.13): folded per-entity XpBounty + the mutable HeroStore state (Level/Xp/GrowthStacks + reserved
+        /// 3.14 revival fields). v10 (Story 3.12): folded per-entity Delivery + ProjectileSpeed.
         /// v9 (Story 2.12): folded the per-entity shift-queue order ring (count-driven) + the per-building rally point
         /// (D-1). v8 (Story 2.6): folded per-entity EffectiveArmor (the buffable armor stat). v7 (Story 2.4a): folded
         /// per-entity AbilityCooldownTicks (count-driven). v6 (Story 2.2b): Effective* / Energy / StatusFlagsOf +
         /// the ModifierStore instance state.</summary>
-        private const int ExpectedSimChecksumAlgoVersion = 10;
+        private const int ExpectedSimChecksumAlgoVersion = 11;
 
         /// <summary>Load-time canonical start-state hash algorithm version (lobby handshake value).
         /// v3 (Story 2.9b follow-up): folded ScenarioPlayerSlot.StartCrystal (sim-affecting per-slot start-state).</summary>

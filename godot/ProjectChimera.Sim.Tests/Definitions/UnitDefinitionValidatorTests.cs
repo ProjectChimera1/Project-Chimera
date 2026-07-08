@@ -229,6 +229,121 @@ namespace ProjectChimera.Sim.Tests.Definitions
             AssertError(Run(def), "projectile_speed", "grunt");
         }
 
+        // ── xp_bounty (Story 3.13): omitted (null) always valid; authored must be an int in [0, 32768) ──
+
+        [Fact]
+        public void XpBounty_Omitted_IsValid()
+        {
+            var def = Valid(); def.XpBounty = null;   // derived from cost
+            Assert.True(Run(def).Ok);
+        }
+
+        [Fact]
+        public void XpBounty_AuthoredInRange_IsValid()
+        {
+            var def = Valid(); def.XpBounty = 250;
+            Assert.True(Run(def).Ok);
+        }
+
+        [Fact]
+        public void XpBounty_Negative_IsRejected()
+        {
+            var def = Valid(); def.XpBounty = -5;
+            AssertError(Run(def), "xp_bounty", "grunt");
+        }
+
+        [Fact]
+        public void XpBounty_OverRange_IsRejected()
+        {
+            var def = Valid(); def.XpBounty = 32768;
+            AssertError(Run(def), "xp_bounty", "grunt");
+        }
+
+        // ── hero runtime fields (Story 3.13): xp_share_radius finite & [0, 128); *_per_level finite & [0, 256) —
+        //    tighter than the generic Range so the runtime's r*r / 99-stack-sum cannot overflow 16.16 Fixed ──
+
+        /// <summary>A valid hero unit (is_hero + a default-Standard hero block, coherent with the validator).</summary>
+        private static UnitDefinition ValidHero()
+        {
+            var def = Valid();
+            def.IsHero = true;
+            def.Hero = new HeroDefinition(); // defaults (MaxLevel 10, BaseXp 100, XpGrowth 1.15, XpShareRadius 12, zero growth)
+            return def;
+        }
+
+        [Fact]
+        public void ValidHero_PassesWithNoErrors()
+        {
+            UnitValidationResult r = Run(ValidHero());
+            Assert.True(r.Ok, r.Ok ? "" : string.Join(" | ", r.Errors.Select(e => e.Message)));
+        }
+
+        [Theory]
+        [InlineData("hero.xp_share_radius")]
+        [InlineData("hero.health_per_level")]
+        [InlineData("hero.damage_per_level")]
+        [InlineData("hero.armor_per_level")]
+        public void HeroRuntimeField_Negative_IsRejected(string field)
+        {
+            var def = ValidHero();
+            switch (field)
+            {
+                case "hero.xp_share_radius":  def.Hero!.XpShareRadius = -1f; break;
+                case "hero.health_per_level": def.Hero!.HealthPerLevel = -1f; break;
+                case "hero.damage_per_level": def.Hero!.DamagePerLevel = -1f; break;
+                case "hero.armor_per_level":  def.Hero!.ArmorPerLevel = -1f; break;
+            }
+            AssertError(Run(def), field, "grunt");
+        }
+
+        [Theory]
+        [InlineData("hero.xp_share_radius")]
+        [InlineData("hero.health_per_level")]
+        [InlineData("hero.damage_per_level")]
+        [InlineData("hero.armor_per_level")]
+        public void HeroRuntimeField_NonFinite_IsRejected(string field)
+        {
+            var def = ValidHero();
+            switch (field)
+            {
+                case "hero.xp_share_radius":  def.Hero!.XpShareRadius = float.NaN; break;
+                case "hero.health_per_level": def.Hero!.HealthPerLevel = float.PositiveInfinity; break;
+                case "hero.damage_per_level": def.Hero!.DamagePerLevel = float.NaN; break;
+                case "hero.armor_per_level":  def.Hero!.ArmorPerLevel = 32768f; break; // == ceiling (over-range)
+            }
+            AssertError(Run(def), field, "grunt");
+        }
+
+        [Theory]
+        [InlineData("hero.xp_share_radius", 200f)]   // > HeroShareRadiusMax (128): r*r would overflow Fixed
+        [InlineData("hero.health_per_level", 1000f)] // > HeroStatGrowthMax (256): the up-to-99-stack sum would overflow
+        [InlineData("hero.damage_per_level", 300f)]
+        [InlineData("hero.armor_per_level", 500f)]
+        public void HeroRuntimeField_AboveFixedSafeCap_IsRejected(string field, float value)
+        {
+            // These were VALID under the pre-fix generic [0, 32768) rule but overflow the runtime's squaring/stacking.
+            var def = ValidHero();
+            switch (field)
+            {
+                case "hero.xp_share_radius":  def.Hero!.XpShareRadius  = value; break;
+                case "hero.health_per_level": def.Hero!.HealthPerLevel = value; break;
+                case "hero.damage_per_level": def.Hero!.DamagePerLevel = value; break;
+                case "hero.armor_per_level":  def.Hero!.ArmorPerLevel  = value; break;
+            }
+            AssertError(Run(def), field, "grunt");
+        }
+
+        [Fact]
+        public void HeroRuntimeField_WithinFixedSafeCap_IsValid()
+        {
+            var def = ValidHero();
+            def.Hero!.XpShareRadius  = 100f; // < 128
+            def.Hero!.HealthPerLevel = 200f; // < 256
+            def.Hero!.DamagePerLevel = 50f;
+            def.Hero!.ArmorPerLevel  = 10f;
+            Assert.True(Run(def).Ok);
+        }
+
         [Fact]
         public void HeroDamageAndArmorType_AreValid()
         {

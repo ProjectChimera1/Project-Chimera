@@ -17,8 +17,12 @@ namespace ProjectChimera.Core.Definitions
     /// </summary>
     public static class HeroLevelingPresets
     {
-        /// <summary>The four authored curve fields a preset carries.</summary>
-        public readonly record struct Curve(int MaxLevel, float BaseXp, float XpGrowth, float XpPerKill);
+        /// <summary>The authored curve fields a preset carries — the four leveling fields (Story 3.7) plus the Story 3.13
+        /// share-radius + per-level growth fields, so a preset stays a COMPLETE authored bundle. All presets carry the
+        /// same 3.13 defaults (share 12, zero growth), so <see cref="Detect"/>'s whole-tuple equality still maps each
+        /// preset uniquely back to its <see cref="Kind"/> and round-trips a freshly-promoted hero.</summary>
+        public readonly record struct Curve(int MaxLevel, float BaseXp, float XpGrowth, float XpPerKill,
+                                            float XpShareRadius, float HealthPerLevel, float DamagePerLevel, float ArmorPerLevel);
 
         /// <summary>The closed leveling registry (display order = dropdown order). <see cref="Custom"/> = "no preset" —
         /// the fallback for any curve no bundle matches (incl. a null hero).</summary>
@@ -47,9 +51,11 @@ namespace ProjectChimera.Core.Definitions
         // (max_level ∈ [2,100], base_xp finite & > 0, xp_growth finite & ≥ 1, xp_per_kill finite & ≥ 0). The three
         // curve 4-tuples are pairwise distinct (they share xp_per_kill = 100 but differ in the other fields), so
         // Detect's whole-tuple equality maps each preset uniquely back to its Kind.
-        private static readonly Curve _standard = new Curve(10, 100f, 1.15f, 100f);   // the promote-on default
-        private static readonly Curve _fast     = new Curve(8,  60f,  1.10f, 100f);
-        private static readonly Curve _slow     = new Curve(15, 150f, 1.25f, 100f);
+        // The Story 3.13 fields (xp_share_radius 12, all *_per_level 0) match the HeroDefinition defaults and are shared
+        // by every preset, so they never break Detect's whole-tuple round-trip.
+        private static readonly Curve _standard = new Curve(10, 100f, 1.15f, 100f, 12f, 0f, 0f, 0f);   // the promote-on default
+        private static readonly Curve _fast     = new Curve(8,  60f,  1.10f, 100f, 12f, 0f, 0f, 0f);
+        private static readonly Curve _slow     = new Curve(15, 150f, 1.25f, 100f, 12f, 0f, 0f, 0f);
 
         /// <summary>The <see cref="Curve"/> for <paramref name="kind"/> (<see cref="Kind.Custom"/> ⇒ the Standard curve —
         /// Custom is a no-op in the panel, never applied, but a defined return keeps the mapping total).</summary>
@@ -71,7 +77,8 @@ namespace ProjectChimera.Core.Definitions
         public static Kind Detect(HeroDefinition? hero)
         {
             if (hero == null) return Kind.Custom;
-            var have = new Curve(hero.MaxLevel, hero.BaseXp, hero.XpGrowth, hero.XpPerKill);
+            var have = new Curve(hero.MaxLevel, hero.BaseXp, hero.XpGrowth, hero.XpPerKill,
+                                 hero.XpShareRadius, hero.HealthPerLevel, hero.DamagePerLevel, hero.ArmorPerLevel);
             foreach ((Kind kind, _) in All)
             {
                 if (kind == Kind.Custom) continue;

@@ -42,6 +42,11 @@ namespace ProjectChimera.UI
         private FactionDefinition?[]   _slotFactionDefs = System.Array.Empty<FactionDefinition?>();
         private Action<PlayerProfile?> _launch = _ => { };
 
+        /// <summary>Story 3.13 (D6): supplies the harvested end-of-match Level/Xp for a hero unit id — <c>Has</c> true
+        /// when the last playtest grew that hero, so Save/Overwrite persist the REAL grown values instead of the authored
+        /// placeholders. Wired by <c>HeroPickerPhase</c> to read the <c>SceneContext</c> harvest; null ⇒ placeholders.</summary>
+        public System.Func<string, (bool Has, int Level, Core.Fixed Xp)>? HeroProgressProvider;
+
         // ── Nodes ──
         private CanvasLayer     _canvas   = null!;
         private ColorRect       _scrim    = null!;
@@ -355,6 +360,19 @@ namespace ProjectChimera.UI
             _launch(chosen); // stash-and-launch: the phase sets PendingHeroProfile + mints before the hash
         }
 
+        /// <summary>Story 3.13 (D6): the harvested end-of-match Level/Xp for <paramref name="heroDefId"/> if the last
+        /// playtest grew that hero, else the supplied fallback (authored base for a fresh Save, or the profile's own
+        /// values for Overwrite). Keeps Save/Overwrite reading real grown values without coupling the picker to HeroStore.</summary>
+        private (int Level, Fixed Xp) ResolveHeroProgress(string heroDefId, int fallbackLevel, Fixed fallbackXp)
+        {
+            if (HeroProgressProvider != null)
+            {
+                (bool has, int level, Fixed xp) = HeroProgressProvider(heroDefId);
+                if (has) return (level, xp);
+            }
+            return (fallbackLevel, fallbackXp);
+        }
+
         private void OnSavePressed()
         {
             if (_source == null || _scenario?.PersistenceManifest == null) return;
@@ -364,11 +382,12 @@ namespace ProjectChimera.UI
                 return;
             }
 
-            // Fresh Save: authored base (level 1, 0 XP) captured through the manifest shape (D-5). 3.13 feeds richer
-            // live values into the same BuildProfile.
+            // Story 3.13 (D6): source the harvested end-of-match Level/Xp for this hero (if the last playtest grew it),
+            // else the authored base (level 1, 0 XP). Routed through the manifest shape → BuildProfile.
+            (int level, Fixed xp) = ResolveHeroProgress(unitId, fallbackLevel: 1, fallbackXp: Fixed.Zero);
             string profileId = _source.NextProfileId(unitId);
             PlayerProfile profile = HeroProfileLoader.BuildProfile(
-                profileId, unitId, factionId, display, sig, level: 1, xp: Fixed.Zero,
+                profileId, unitId, factionId, display, sig, level, xp,
                 _scenario.PersistenceManifest.DeriveProfileShape());
             _source.Save(profile);
 
@@ -388,11 +407,12 @@ namespace ProjectChimera.UI
             dialog.AddCancel("Cancel");
             dialog.Confirmed += () =>
             {
-                // Rebuild the SAME profile id, capturing the current (pre-3.13: the profile's own) level/xp through the
-                // manifest shape.
+                // Story 3.13 (D6): rebuild the SAME profile id, capturing the harvested end-of-match Level/Xp for this
+                // hero (if the last playtest grew it), else the profile's own values — through the manifest shape.
+                (int level, Fixed xp) = ResolveHeroProgress(target.HeroDefId, fallbackLevel: target.Level, fallbackXp: target.Xp);
                 PlayerProfile rebuilt = HeroProfileLoader.BuildProfile(
                     target.ProfileId, target.HeroDefId, target.FactionId, target.DisplayName, target.SignatureAbility,
-                    target.Level, target.Xp, _scenario.PersistenceManifest.DeriveProfileShape());
+                    level, xp, _scenario.PersistenceManifest.DeriveProfileShape());
                 _source.Save(rebuilt);
                 _toastHost.Show("Saved", "Saved hero overwritten.", ChimeraToastHost.ToastVariant.Ok);
                 Refresh();

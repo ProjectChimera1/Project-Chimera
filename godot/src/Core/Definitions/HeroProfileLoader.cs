@@ -27,7 +27,13 @@ namespace ProjectChimera.Core.Definitions
         /// <see cref="UnitDefinition.Id"/> it spawned from. The applier records one of these per spawned
         /// <see cref="UnitDefinition.IsHero"/> unit; <see cref="LoadInto"/> mints only the ones whose id matches the
         /// deployed profile (so a stray same-id NON-hero can never receive hero state — D-3).</summary>
-        public readonly record struct PlacedHero(int EntityId, string UnitId);
+        /// <summary>Story 3.13: the placed hero also carries the def-derived leveling curve / growth / share constants,
+        /// captured (float→<see cref="Fixed"/>) at the single load boundary by the applier, so <see cref="LoadInto"/>
+        /// seeds them into the widened <see cref="HeroStore.Mint"/> (the SoA-recycle contract) without a second def
+        /// lookup at load time. Defaulted so the pre-3.13 two-arg construction still compiles (persistence tests).</summary>
+        public readonly record struct PlacedHero(int EntityId, string UnitId,
+            int MaxLevel = 0, Fixed BaseXp = default, Fixed XpGrowth = default, Fixed XpShareRadius = default,
+            Fixed HealthPerLevel = default, Fixed DamagePerLevel = default, Fixed ArmorPerLevel = default);
 
         /// <summary>
         /// The DETERMINISTIC hero identity for <paramref name="profile"/> = FNV-64 of its stable <see cref="PlayerProfile.ProfileId"/>
@@ -48,7 +54,7 @@ namespace ProjectChimera.Core.Definitions
         /// order (ascending) — no nondeterministic enumeration.
         /// </summary>
         public static int LoadInto(HeroStore heroes, IReadOnlyList<PlacedHero> placedHeroes, PlayerProfile? profile,
-                                   ILogSink? log = null)
+                                   ILogSink? log = null, EntityWorld? world = null)
         {
             if (profile == null || placedHeroes == null) return 0;
 
@@ -62,8 +68,20 @@ namespace ProjectChimera.Core.Definitions
                 PlacedHero placed = placedHeroes[i];
                 if (placed.UnitId != profile.HeroDefId) continue; // only the deployed hero's placed units
 
-                int slot = heroes.Mint(id, placed.EntityId, level, xp);
-                if (slot >= 0) minted++;
+                // Story 3.13: mint with the def-derived curve/growth/share constants captured on the placed hero, so the
+                // HeroXpSystem can level + grow it (the SoA-recycle contract writes every live field in Mint).
+                int slot = heroes.Mint(id, placed.EntityId, level, xp,
+                                       placed.MaxLevel, placed.BaseXp, placed.XpGrowth, placed.XpShareRadius,
+                                       placed.HealthPerLevel, placed.DamagePerLevel, placed.ArmorPerLevel);
+                if (slot >= 0)
+                {
+                    minted++;
+                    // Story 3.13 (D-8): establish the entity→hero link so the XP system can ABA-safely validate the row.
+                    // EntityWorld.HeroIndex is otherwise never populated (only reset to HERO_NONE). Null world (Tier-1
+                    // persistence tests that don't run the XP system) skips it harmlessly.
+                    if (world != null && placed.EntityId >= 0 && placed.EntityId < EntityWorld.MAX_ENTITIES)
+                        world.HeroIndex[placed.EntityId] = heroes.PackRef(slot);
+                }
                 else log?.Warn($"[HeroProfileLoader] Mint refused for profile '{profile.ProfileId}' " +
                                $"(entity {placed.EntityId}) — duplicate live id or full store; skipped deterministically.");
             }

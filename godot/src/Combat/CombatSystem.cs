@@ -46,9 +46,13 @@ namespace ProjectChimera.Combat
         // Alive/FactionOf/Position/Health/Count/Destroy members are used (all on BuildingStore, no BuildingSystem).
         private readonly BuildingStore?    _buildings;
 
+        // Story 3.13 — the transient death feed the hero-XP runtime drains. Optional: null in bare combat tests (no XP
+        // credited). Threaded into every hitscan DamageContext so a lethal instant hit records the victim's death.
+        private readonly DeathFeed?        _deaths;
+
         public CombatSystem(ProjectileStore projectiles, CombatEventQueue? events = null, MatchStats? stats = null,
             DamageTable? table = null, AbilityRegistry? registry = null, ModifierStore? modifiers = null,
-            BuildingStore? buildings = null)
+            BuildingStore? buildings = null, DeathFeed? deaths = null)
         {
             _projectiles = projectiles;
             _events      = events;
@@ -57,6 +61,7 @@ namespace ProjectChimera.Combat
             _registry    = registry;   // Story 2.6 (optional — the on-hit rider runs only when both are wired)
             _modifiers   = modifiers;
             _buildings   = buildings;   // Story 2.9a (optional — building attacks no-op when absent, e.g. bare tests)
+            _deaths      = deaths;      // Story 3.13 (optional — XP credited only when wired)
         }
 
         // Squared arrive threshold for AttackMove→Idle + Patrol waypoint advance. Story 2.13 (AC2, D-1): widened
@@ -611,7 +616,7 @@ namespace ProjectChimera.Combat
                 _events?.Push(CombatEventType.MeleeHit, world.Position[target], world.FeedbackProfile[attacker]); // Story 2.7
 
                 var ctx = new DamageContext(world, target, world.ArmorTypeOf[target],
-                                            world.FactionOf[attacker], _table, _events, _stats);
+                                            world.FactionOf[attacker], _table, _events, _stats, _deaths);
                 if (DamageResolver.Apply(in ctx, world.EffectiveAttackDamage[attacker], world.DamageTypeOf[attacker]))
                 {
                     world.AttackTarget[attacker] = -1;

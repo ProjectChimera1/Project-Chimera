@@ -45,6 +45,8 @@ namespace ProjectChimera.Sim.Tests.Core
             // Story 3.12: an explicit Projectile delivery + a custom speed so the Delivery/ProjectileSpeed mapper teeth
             // bite (Create defaults = Hitscan / 18). ResolveDelivery("Projectile") wins regardless of AttackRange.
             Delivery = "Projectile", ProjectileSpeed = 6f,
+            // Story 3.13: an authored xp_bounty so the XpBounty mapper teeth bite (Create default = 0). 42 != 0.
+            XpBounty = 42,
         };
 
         [Fact]
@@ -83,6 +85,8 @@ namespace ProjectChimera.Sim.Tests.Core
             // Story 3.12: the authored delivery + projectile speed are written through the single mapper.
             Assert.Equal(def.ResolveDelivery(w.AttackRange[id]),   w.Delivery[id]);
             Assert.Equal(Fixed.FromFloat(def.ProjectileSpeed).Raw, w.ProjectileSpeed[id].Raw);
+            // Story 3.13: the resolved XP bounty (authored, else cost) is written through the single mapper.
+            Assert.Equal(Fixed.FromInt(def.ResolveXpBounty()).Raw, w.XpBounty[id].Raw);
 
             // Teeth: prove the mapped values are NOT coincidentally the Create defaults.
             Assert.NotEqual(Fixed.Zero.Raw,            w.BaseAttackDamage[id].Raw);    // default 0
@@ -94,6 +98,7 @@ namespace ProjectChimera.Sim.Tests.Core
             Assert.NotNull(w.FeedbackProfile[id]);                                     // default null (Story 2.7)
             Assert.NotEqual(AttackDelivery.Hitscan,          w.Delivery[id]);          // default Hitscan (Story 3.12)
             Assert.NotEqual(ProjectileSystem.PROJECTILE_SPEED.Raw, w.ProjectileSpeed[id].Raw); // default 18 (Story 3.12)
+            Assert.NotEqual(Fixed.Zero.Raw,                  w.XpBounty[id].Raw);      // default 0 (Story 3.13)
         }
 
         [Fact]
@@ -149,6 +154,8 @@ namespace ProjectChimera.Sim.Tests.Core
             // Story 3.12: SpawnUnit routes the delivery + projectile speed through the same single mapper.
             Assert.Equal(refWorld.Delivery[refId],             w.Delivery[id]);
             Assert.Equal(refWorld.ProjectileSpeed[refId].Raw,  w.ProjectileSpeed[id].Raw);
+            // Story 3.13: SpawnUnit routes the XP bounty through the same single mapper.
+            Assert.Equal(refWorld.XpBounty[refId].Raw,         w.XpBounty[id].Raw);
         }
 
         // ── Story 2.4a — the FIRST per-entity ability state flows through ApplyUnitDefinition (A2), and a recycled

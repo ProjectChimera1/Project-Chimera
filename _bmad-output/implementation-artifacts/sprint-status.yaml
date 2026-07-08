@@ -99,7 +99,7 @@ development_status:
   3-10-added-edit-play-round-trip-loop-no-restart-playtest: done
   3-11-added-apply-the-design-system-to-the-front-end-shell-title-mode-select-settings: done
   3-12-authorable-attack-delivery-flag-hitscan-vs-projectile-per-unit-projectile-speed: done
-  3-13-heroxpsystem-kill-credit-xp-leveling-stat-growth-runtime: backlog
+  3-13-heroxpsystem-kill-credit-xp-leveling-stat-growth-runtime: done
   3-14-hero-death-revival: backlog
   3-15-item-inventory-sim-pickups-slots-stat-effects-charges: backlog
   3-16-item-authoring-shop-buildings-inventory-ui: backlog

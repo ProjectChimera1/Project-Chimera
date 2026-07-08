@@ -13,7 +13,8 @@ namespace ProjectChimera.Core.Sim
 {
     /// <summary>
     /// Net-new, Godot-free composition root for the simulation (Story 1.8a / AR-6). It owns the SoA stores,
-    /// the canonical 12-system tick order (with <c>OrderQueueSystem</c> at index 3 [Story 2.12 / FR-74], then
+    /// the canonical 13-system tick order (Story 3.13 inserted <c>HeroXpSystem</c> at index 8, after
+    /// <c>ProjectileSystem</c>) — with <c>OrderQueueSystem</c> at index 3 [Story 2.12 / FR-74], then
     /// <c>AbilityCastSystem</c> at index 4 and <c>ModifierSystem</c> at index 5 — both immediately before
     /// <see cref="CombatSystem"/>; the ability-cast spine landed in Story 2.4a / FR-11, the AR-9 effective-stat
     /// recompute in Story 2.2a), the <see cref="SimulationLoop"/> it wraps, and the single checksum sink. Because it has zero Godot dependency it compiles into the Godot-free Tier-1 test
@@ -33,6 +34,11 @@ namespace ProjectChimera.Core.Sim
         // Story 3.10 — the AI opponent holds per-match decision state (production-building ids, expansion commit,
         // attack cooldown) that is NOT in any store, so ClearForReset must reset it too or the next Play diverges.
         private readonly AiOpponentSystem _ai;
+
+        // Story 3.13 — the host-owned transient death feed. Combat + projectile impacts push victim deaths here; the
+        // HeroXpSystem (index 8) drains + clears it each tick. Per-tick transient (empty at checksum time → NOT folded);
+        // ClearForReset empties it (like CombatEvents).
+        private readonly DeathFeed _deathFeed;
 
         // ── Stores / field-held systems, exposed so callers read host truth (no parallel copies). ──
         public EntityWorld World { get; }
@@ -94,8 +100,9 @@ namespace ProjectChimera.Core.Sim
             Resources        = new ResourceStore(Fixed.Zero);
             Buildings        = new BuildingStore();
             Projectiles      = new ProjectileStore();
-            Heroes           = new HeroStore();   // Story 3.2 — the AR-12 hero substrate; DORMANT (NOT a checksum input, D-1), populated by Story 3.9.
+            Heroes           = new HeroStore();   // Story 3.2 — the AR-12 hero substrate; folded into the per-tick checksum from Story 3.13 (XP runtime); populated by Story 3.9.
             CombatEvents     = new CombatEventQueue();
+            _deathFeed       = new DeathFeed();    // Story 3.13 — transient per-tick death buffer for the XP runtime
             MatchStats       = new MatchStats();
             Fog              = new FogOfWarSystem(Faction.Player1);
             BuildSys         = new BuildingSystem(Buildings, Resources, factionDef1, factionDef2, MatchStats);
@@ -110,7 +117,7 @@ namespace ProjectChimera.Core.Sim
             var modSys = new ModifierSystem();
             Modifiers = new ModifierStore(World, modSys, damageTable, CombatEvents, MatchStats);
             var abilitySys = new AbilityCastSystem(registry ?? AbilityRegistry.Empty, Resources, Modifiers,
-                                                   damageTable, CombatEvents, MatchStats);
+                                                   damageTable, CombatEvents, MatchStats, _deathFeed);
             modSys.AttachStore(Modifiers);
 
             // Story 2.6 — wire the WHILE-ALIVE self-passive installer to the spawn seam. EntityWorld fires
@@ -120,8 +127,9 @@ namespace ProjectChimera.Core.Sim
             // with no self-passive (SelfPassiveAbilityIndex = -1) is a no-op, so existing scenarios stay identical.
             World.OnUnitDefinitionApplied += id => abilitySys.InstallSelfPassive(World, id);
 
-            // ── The canonical 12-system tick order (Story 2.12 inserted OrderQueueSystem at index 3). The
-            //    registration order IS the determinism contract; SystemOrderTest FAILS on any reorder/add/remove. ──
+            // ── The canonical 13-system tick order (Story 2.12 inserted OrderQueueSystem at index 3; Story 3.13
+            //    inserted HeroXpSystem at index 8). The registration order IS the determinism contract;
+            //    SystemOrderTest FAILS on any reorder/add/remove. ──
             _systems = new ISimSystem[]
             {
                 BuildSys,                                                                 // [0] BuildingSystem    (Economy)
@@ -141,23 +149,28 @@ namespace ProjectChimera.Core.Sim
                 //    ModifierStore (Story 2.2b) each tick (periods/expiry) then recomputes. ──
                 modSys,                                                                   // [5] ModifierSystem    (Effects, AR-9)
                 // Story 2.6: the on-hit rider needs the ability registry (index→graph) + the ModifierStore (apply leaf).
+                // Story 3.13: the DeathFeed threads a lethal hitscan's victim to the XP runtime.
                 new CombatSystem(Projectiles, CombatEvents, MatchStats, damageTable,
-                                 registry ?? AbilityRegistry.Empty, Modifiers, Buildings), // [6] Buildings (Story 2.9a): anti-building combat
+                                 registry ?? AbilityRegistry.Empty, Modifiers, Buildings, _deathFeed), // [6] Buildings (2.9a): anti-building combat; DeathFeed (3.13)
                 new ProjectileSystem(Projectiles, CombatEvents, MatchStats, damageTable,
-                                     Buildings),                                          // [7] Buildings (Story 2.9a): ranged-vs-building shells
-                new SupplySystem(Resources),                                              // [8] SupplySystem      (Economy)
-                Fog,                                                                      // [9] FogOfWarSystem    (Core)
-                _ai = new AiOpponentSystem(Buildings, Resources, BuildSys, aiLevel),      // [10] AI opponent (plays Player2)
-                ScenarioDirector,                                                         // [11] ScenarioDirector — runs LAST
+                                     Buildings, _deathFeed),                              // [7] Buildings (2.9a): ranged shells; DeathFeed (3.13)
+                // ── Story 3.13 hero XP runtime. At index 8, immediately AFTER ProjectileSystem so it drains the SAME
+                //    tick's recorded deaths (combat + projectile impacts) → credits hostile heroes in range → advances
+                //    level → reconciles growth via the folded ModifierStore. Clears the feed at end-of-tick. ──
+                new HeroXpSystem(Heroes, Modifiers, _deathFeed),                          // [8] HeroXpSystem      (Combat, FR-7)
+                new SupplySystem(Resources),                                              // [9] SupplySystem      (Economy)
+                Fog,                                                                      // [10] FogOfWarSystem    (Core)
+                _ai = new AiOpponentSystem(Buildings, Resources, BuildSys, aiLevel),      // [11] AI opponent (plays Player2)
+                ScenarioDirector,                                                         // [12] ScenarioDirector — runs LAST
             };
 
             _loop = new SimulationLoop(World, _systems);
-            _loop.EnableChecksums(Buildings, Resources, checksumFactions, Modifiers); // fold the live modifier state (v6) + ability cooldowns (v7)
+            _loop.EnableChecksums(Buildings, Resources, checksumFactions, Modifiers, Heroes); // fold modifier state (v6) + ability cooldowns (v7) + mutable HeroStore (v11)
 
             // The sim spine's only host-side log in 1.8a: a one-shot construction diagnostic through the
             // injected seam. NullLogSink no-ops it (tests/server → zero effect on the golden); GodotLogSink
             // prints it for MainScene. NEVER a per-tick log (D6).
-            _log.Info("[SimulationHost] Sim spine constructed (12 systems; OrderQueueSystem at index 3, AbilityCastSystem at index 4, ModifierSystem at index 5).");
+            _log.Info("[SimulationHost] Sim spine constructed (13 systems; OrderQueueSystem at index 3, AbilityCastSystem at index 4, ModifierSystem at index 5, HeroXpSystem at index 8).");
         }
 
         /// <summary>
@@ -184,6 +197,7 @@ namespace ProjectChimera.Core.Sim
             Heroes.Clear();         // Story 3.9 gap: bulk-empty so the re-mint after clear is non-additive
             Modifiers.Clear();      // folded — also zeroes the ModifierSystem accumulators it drives
             CombatEvents.Clear();
+            _deathFeed.Clear();     // Story 3.13 — transient per-tick death buffer (empty at reset)
             Fog.Reset();
             MatchStats.Reset();
             _ai.ResetForMatch();    // Story 3.10 — AI per-match decision state is not in any store; reset it too or the next Play desyncs

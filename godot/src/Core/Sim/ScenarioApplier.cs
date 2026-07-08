@@ -140,7 +140,21 @@ namespace ProjectChimera.Core.Sim
                 // SpawnUnit) so the runtime OnSpawnUnit trigger delegate never appends to the init-time record. A
                 // non-hero same-id unit is never recorded, so it can never receive hero state (D-3).
                 if (spawnedId >= 0 && def.IsHero)
-                    _lastAppliedHeroes.Add(new HeroProfileLoader.PlacedHero(spawnedId, def.Id));
+                {
+                    // Story 3.13: capture the def-derived leveling curve / growth / share constants here — the SINGLE
+                    // float→Fixed load boundary for hero curves (never quantized inside a tick). def.Hero is coupled to
+                    // IsHero by the validator, but null-guard defensively (a degenerate unit yields zero curve → no leveling).
+                    HeroDefinition? hd = def.Hero;
+                    _lastAppliedHeroes.Add(new HeroProfileLoader.PlacedHero(
+                        spawnedId, def.Id,
+                        hd?.MaxLevel ?? 0,
+                        Fixed.FromFloat(hd?.BaseXp ?? 0f),
+                        Fixed.FromFloat(hd?.XpGrowth ?? 0f),
+                        Fixed.FromFloat(hd?.XpShareRadius ?? 0f),
+                        Fixed.FromFloat(hd?.HealthPerLevel ?? 0f),
+                        Fixed.FromFloat(hd?.DamagePerLevel ?? 0f),
+                        Fixed.FromFloat(hd?.ArmorPerLevel ?? 0f)));
+                }
             }
 
             // ── 5. Triggers ────────────────────────────────────────────────────

@@ -34,6 +34,7 @@ namespace ProjectChimera.Effects
         private readonly DamageTable _damageTable;
         private readonly CombatEventQueue? _events;
         private readonly MatchStats? _stats;
+        private readonly DeathFeed? _deaths;
 
         // Graph-running executor — NOT the ModifierStore's dedicated period executor (re-entrancy safety). Its own
         // pre-allocated work-stack; an ApplyModifier/Persistent leaf in a cast graph re-enters the STORE's executor.
@@ -48,7 +49,8 @@ namespace ProjectChimera.Effects
         /// <c>FactionRegistry</c> dep: the caster's faction is read directly from <see cref="EntityWorld.FactionOf"/>.)
         /// </summary>
         public AbilityCastSystem(AbilityRegistry registry, ResourceStore resources, ModifierStore modifiers,
-                                 DamageTable? damageTable = null, CombatEventQueue? events = null, MatchStats? stats = null)
+                                 DamageTable? damageTable = null, CombatEventQueue? events = null, MatchStats? stats = null,
+                                 DeathFeed? deaths = null)
         {
             _registry    = registry;
             _resources   = resources;
@@ -56,6 +58,7 @@ namespace ProjectChimera.Effects
             _damageTable = damageTable ?? DamageTable.Default;
             _events      = events;
             _stats       = stats;
+            _deaths      = deaths;
         }
 
         /// <summary>Ticks per second for the seconds→ticks cooldown conversion (the named sim rate, CHM0004-clean).</summary>
@@ -130,7 +133,7 @@ namespace ProjectChimera.Effects
                 // primaryTarget = the owner → the SearchArea centers on the owner's position; the owner's faction
                 // drives the Ally/Enemy filter. The store is MANDATORY (the aura's ApplyModifier leaf needs it).
                 var ctx = new EffectContext(world, casterId: id, primaryTargetId: id, casterFaction: world.FactionOf[id],
-                                            _damageTable, spatial: _spatial, _events, _stats, modifierStore: _modifiers);
+                                            _damageTable, spatial: _spatial, _events, _stats, modifierStore: _modifiers, deaths: _deaths);
                 _executor.Run(aura.EffectGraph, in ctx);
             }
         }
@@ -151,7 +154,7 @@ namespace ProjectChimera.Effects
             if (idx < 0 || idx >= _registry.Count) return;
             AbilityDefinition passive = _registry.Get(idx);
             var ctx = new EffectContext(world, casterId: id, primaryTargetId: id, casterFaction: world.FactionOf[id],
-                                        _damageTable, spatial: null, _events, _stats, modifierStore: _modifiers);
+                                        _damageTable, spatial: null, _events, _stats, modifierStore: _modifiers, deaths: _deaths);
             _executor.Run(passive.EffectGraph, in ctx);
         }
 
@@ -207,7 +210,7 @@ namespace ProjectChimera.Effects
             // null store (battle_fury is one).
             _spatial.Rebuild(world);
             var ctx = new EffectContext(world, casterId: id, primaryTargetId: target, casterFaction: faction,
-                                        _damageTable, spatial: _spatial, _events, _stats, modifierStore: _modifiers);
+                                        _damageTable, spatial: _spatial, _events, _stats, modifierStore: _modifiers, deaths: _deaths);
             _executor.Run(ab.EffectGraph, in ctx);
 
             // Story 2.13 (AC5.4, D-4): the self HP-cost is debited AFTER the effect graph resolves (matching the
@@ -224,7 +227,7 @@ namespace ProjectChimera.Effects
                 world.Health[id] -= Fixed.FromInt(ab.CostHealth);
                 if (world.Health[id] <= Fixed.Zero)
                 {
-                    DamageResolver.KillEntity(world, id, faction, _events, _stats);
+                    DamageResolver.KillEntity(world, id, faction, _events, _stats, _deaths);
                     return;
                 }
             }

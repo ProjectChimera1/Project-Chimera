@@ -51,6 +51,12 @@ namespace ProjectChimera.Effects
         /// </summary>
         public readonly ModifierStore? ModifierStore;
 
+        /// <summary>Story 3.13: optional transient death feed. A <see cref="DamageEffect"/> leaf that lands a lethal
+        /// (ability-delivered) hit records the victim here so <see cref="ProjectChimera.Combat.HeroXpSystem"/> credits
+        /// hostile heroes in range — so ability kills grant XP exactly like auto-attack kills. Null for graphs run
+        /// outside the XP-bearing sim (bare tests), which record no death. A reference, never copied by value.</summary>
+        public readonly DeathFeed? Deaths;
+
         /// <summary>
         /// Build a root context. <see cref="Rng"/> is taken from <paramref name="world"/> (the one shared stream);
         /// callers never pass a separate generator. <paramref name="primaryTargetId"/> defaults to the caster for
@@ -59,15 +65,15 @@ namespace ProjectChimera.Effects
         public EffectContext(EntityWorld world, int casterId, int primaryTargetId, Faction casterFaction,
                              DamageTable damageTable, SpatialHash? spatial = null,
                              CombatEventQueue? events = null, MatchStats? stats = null,
-                             ModifierStore? modifierStore = null)
-            : this(world, world.Rng, spatial, casterId, primaryTargetId, casterFaction, damageTable, events, stats, modifierStore)
+                             ModifierStore? modifierStore = null, DeathFeed? deaths = null)
+            : this(world, world.Rng, spatial, casterId, primaryTargetId, casterFaction, damageTable, events, stats, modifierStore, deaths)
         {
         }
 
         // All-field private ctor used by WithTarget (re-targets without re-reading world.Rng).
         private EffectContext(EntityWorld world, SimRng rng, SpatialHash? spatial, int casterId,
                               int primaryTargetId, Faction casterFaction, DamageTable damageTable,
-                              CombatEventQueue? events, MatchStats? stats, ModifierStore? modifierStore)
+                              CombatEventQueue? events, MatchStats? stats, ModifierStore? modifierStore, DeathFeed? deaths)
         {
             World = world;
             Rng = rng;
@@ -79,6 +85,7 @@ namespace ProjectChimera.Effects
             Events = events;
             Stats = stats;
             ModifierStore = modifierStore;
+            Deaths = deaths;
         }
 
         /// <summary>
@@ -87,6 +94,6 @@ namespace ProjectChimera.Effects
         /// the same RNG stream and modifier store.
         /// </summary>
         public EffectContext WithTarget(int targetId) =>
-            new EffectContext(World, Rng, Spatial, CasterId, targetId, CasterFaction, DamageTable, Events, Stats, ModifierStore);
+            new EffectContext(World, Rng, Spatial, CasterId, targetId, CasterFaction, DamageTable, Events, Stats, ModifierStore, Deaths);
     }
 }

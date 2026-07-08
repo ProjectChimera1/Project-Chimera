@@ -35,17 +35,49 @@ namespace ProjectChimera.Core.Definitions
         [JsonPropertyName("xp_growth")]
         public float XpGrowth { get; set; } = 1.15f;
 
-        /// <summary>XP granted per enemy kill credited to this hero. Validated finite &amp; &gt;= 0.</summary>
+        /// <summary>XP granted per enemy kill credited to this hero. Validated finite &amp; &gt;= 0.
+        /// <para>Story 3.13 (D5): SUPERSEDED, not removed. The runtime is victim-<c>xp_bounty</c> driven (each enemy
+        /// carries its own bounty on <see cref="UnitDefinition.XpBounty"/>), so this hero-centric field is the wrong
+        /// home for the same concept and is left untouched here (removing it would perturb 3.7's validator/editor/
+        /// writer/tests). The <see cref="ProjectChimera.Combat.HeroXpSystem"/> does NOT consume it; its cleanup is
+        /// deferred to a later reconciliation.</para></summary>
         [JsonPropertyName("xp_per_kill")]
         public float XpPerKill { get; set; } = 100f;
 
-        /// <summary>The signature ability id (unlocked on level-up by 3.13). Null/empty = not authored yet (valid);
-        /// a set-but-undefined ref is rejected by the validator.</summary>
+        /// <summary>Story 3.13: radius (world units) within which a hostile unit's death credits this hero its XP bounty
+        /// (proximity credit, not split — every hero in range gets the full bounty). Validated finite &amp; in
+        /// <c>[0, 128)</c> — TIGHTER than the generic stat Range so the runtime's squared-distance test (<c>r*r</c>) cannot
+        /// overflow 16.16 Fixed. Quantized to <see cref="ProjectChimera.Core.Fixed"/> at the single load boundary (the
+        /// applier's PlacedHero capture), never inside a tick. Default 12.</summary>
+        [JsonPropertyName("xp_share_radius")]
+        public float XpShareRadius { get; set; } = 12f;
+
+        /// <summary>Story 3.13: flat max-health added per hero level above 1 (applied through the folded
+        /// <c>ModifierStore</c> as a permanent, non-dispellable stacked modifier — total growth = <c>(Level-1)</c> stacks).
+        /// Validated finite &amp; in <c>[0, 256)</c> — TIGHTER than the generic Range so the up-to-99-stack sum cannot
+        /// overflow the Effective stat. Default 0 (no growth).</summary>
+        [JsonPropertyName("health_per_level")]
+        public float HealthPerLevel { get; set; } = 0f;
+
+        /// <summary>Story 3.13: flat attack-damage added per hero level above 1 (see <see cref="HealthPerLevel"/>).
+        /// Validated finite &amp; in <c>[0, 256)</c>. Default 0.</summary>
+        [JsonPropertyName("damage_per_level")]
+        public float DamagePerLevel { get; set; } = 0f;
+
+        /// <summary>Story 3.13: flat armor added per hero level above 1 (see <see cref="HealthPerLevel"/>).
+        /// Validated finite &amp; in <c>[0, 256)</c>. Default 0.</summary>
+        [JsonPropertyName("armor_per_level")]
+        public float ArmorPerLevel { get; set; } = 0f;
+
+        /// <summary>The signature ability id. Authoring only — the ability-UNLOCK-on-level-up runtime is NOT implemented by
+        /// Story 3.13 (which owns only numeric leveling + stat growth); it is chartered to a later story. Null/empty = not
+        /// authored yet (valid); a set-but-undefined ref is rejected by the validator.</summary>
         [JsonPropertyName("signature_ability")]
         public string? SignatureAbility { get; set; }
 
-        /// <summary>The ultimate ability id (unlocked at a high level by 3.13). Null/empty = not authored yet (valid);
-        /// a set-but-undefined ref, or one equal to <see cref="SignatureAbility"/>, is rejected by the validator.</summary>
+        /// <summary>The ultimate ability id. Authoring only — unlock-on-level-up is NOT implemented by Story 3.13 (see
+        /// <see cref="SignatureAbility"/>); chartered to a later story. Null/empty = not authored yet (valid); a
+        /// set-but-undefined ref, or one equal to <see cref="SignatureAbility"/>, is rejected by the validator.</summary>
         [JsonPropertyName("ultimate_ability")]
         public string? UltimateAbility { get; set; }
 
@@ -57,6 +89,10 @@ namespace ProjectChimera.Core.Definitions
             BaseXp = BaseXp,
             XpGrowth = XpGrowth,
             XpPerKill = XpPerKill,
+            XpShareRadius = XpShareRadius,      // Story 3.13
+            HealthPerLevel = HealthPerLevel,    // Story 3.13
+            DamagePerLevel = DamagePerLevel,    // Story 3.13
+            ArmorPerLevel = ArmorPerLevel,      // Story 3.13
             SignatureAbility = SignatureAbility,
             UltimateAbility = UltimateAbility,
         };

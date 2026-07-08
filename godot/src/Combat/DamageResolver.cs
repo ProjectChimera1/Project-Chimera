@@ -18,9 +18,13 @@ namespace ProjectChimera.Combat
         public readonly DamageTable Table;
         public readonly CombatEventQueue? Events;
         public readonly MatchStats? Stats;
+        /// <summary>Story 3.13: optional transient death feed. On a lethal hit, <see cref="KillEntity"/> records the
+        /// victim's <c>{position, faction, XpBounty}</c> here (BEFORE Destroy) so <see cref="HeroXpSystem"/> can credit
+        /// hostile heroes in range. Null in bare combat tests / non-XP call sites (no death is recorded).</summary>
+        public readonly DeathFeed? Deaths;
 
         public DamageContext(EntityWorld world, int targetId, ArmorType targetArmor, Faction killer,
-                             DamageTable table, CombatEventQueue? events, MatchStats? stats)
+                             DamageTable table, CombatEventQueue? events, MatchStats? stats, DeathFeed? deaths = null)
         {
             World = world;
             TargetId = targetId;
@@ -29,6 +33,7 @@ namespace ProjectChimera.Combat
             Table = table;
             Events = events;
             Stats = stats;
+            Deaths = deaths;
         }
     }
 
@@ -67,7 +72,7 @@ namespace ProjectChimera.Combat
             world.Health[t] = world.Health[t] - damage;
             if (world.Health[t] <= Fixed.Zero)
             {
-                KillEntity(world, t, ctx.Killer, ctx.Events, ctx.Stats);
+                KillEntity(world, t, ctx.Killer, ctx.Events, ctx.Stats, ctx.Deaths);
                 return true;
             }
             return false;
@@ -80,10 +85,14 @@ namespace ProjectChimera.Combat
         /// <c>AbilityCastSystem</c> when a <c>cost_health</c> self-cost brings the caster to ≤0 (AC5.4) — so a self-lethal
         /// cast dies through the EXACT same path, never an invented one. Caller ensures Health has already reached ≤0.
         /// </summary>
-        public static void KillEntity(EntityWorld world, int id, Faction killer, CombatEventQueue? events, MatchStats? stats)
+        public static void KillEntity(EntityWorld world, int id, Faction killer, CombatEventQueue? events,
+                                      MatchStats? stats, DeathFeed? deaths = null)
         {
             events?.Push(CombatEventType.UnitKilled, world.Position[id], world.FeedbackProfile[id]);
             stats?.RecordKill(world.FactionOf[id], killer);
+            // Story 3.13: record the death for the XP runtime BEFORE Destroy recycles the slot (the corpse's
+            // position/faction/bounty are unobservable afterward — D-1). Uniform for hitscan/projectile/self-lethal.
+            deaths?.Push(world.Position[id], world.FactionOf[id], world.XpBounty[id]);
             world.Destroy(id);
         }
 

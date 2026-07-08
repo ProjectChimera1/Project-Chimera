@@ -420,7 +420,8 @@ namespace ProjectChimera.Core
             // StartStateHash.Compute, so the persisted level/xp fold into the hash automatically. At first boot
             // PendingHeroProfile is null → nothing minted → HeroStore stays empty → every golden/stamp is byte-identical
             // (no-profile flows are unchanged). The player-facing Deploy path mints + recomputes at launch time.
-            Definitions.HeroProfileLoader.LoadInto(_host.Heroes, _applier.LastAppliedHeroes, _ctx.PendingHeroProfile);
+            Definitions.HeroProfileLoader.LoadInto(_host.Heroes, _applier.LastAppliedHeroes, _ctx.PendingHeroProfile,
+                world: _host.World); // Story 3.13: establish the entity→hero link (D-8) for the XP runtime
             ulong startStateHash = (_ctx.ScenarioApplied && hashModel != null)
                 ? Definitions.StartStateHash.Compute(hashModel, _host.Heroes)
                 : 0UL;
@@ -1181,7 +1182,11 @@ namespace ProjectChimera.Core
             bool haveSnapshot = false;
             int  snapLevel = 0;
             Fixed snapXp = Fixed.Zero;
-            if (preserveHeroProgress && _ctx.PendingHeroProfile != null)
+            // Story 3.10 preserve-snapshot AND Story 3.13 (D6) end-of-match harvest share this seam: read the deployed
+            // hero's LIVE Level/Xp BEFORE the store is cleared. The snapshot re-mints grown values in PersistenceTestMode;
+            // the harvest (always, when a hero is deployed) stashes them into SceneContext so the picker's Save/Overwrite
+            // persists the real grown values through the manifest shape.
+            if (_ctx.PendingHeroProfile != null)
             {
                 HeroId targetId = Definitions.HeroProfileLoader.MintId(_ctx.PendingHeroProfile);
                 HeroStore heroes = _host.Heroes;
@@ -1191,9 +1196,16 @@ namespace ProjectChimera.Core
                     haveSnapshot = true;
                     snapLevel    = heroes.Level[slot];
                     snapXp       = heroes.Xp[slot];
+                    // Story 3.13 (D6): harvest the live values for the picker Save/Overwrite (unconditional on preserve mode).
+                    _ctx.HasHarvestedHeroProgress = true;
+                    _ctx.HarvestedHeroDefId       = _ctx.PendingHeroProfile.HeroDefId;
+                    _ctx.HarvestedHeroLevel       = snapLevel;
+                    _ctx.HarvestedHeroXp          = snapXp;
                     break;
                 }
             }
+            // Story 3.10: the snapshot re-mint is gated on the persistence-test mode; the harvest above is not.
+            if (!preserveHeroProgress) haveSnapshot = false;
 
             // 2. Fail-closed re-validation of the edited scenario (the Validated<> proof is not retained past boot).
             //    Validate BEFORE the clear so an invalid edit leaves the world entirely unchanged (AC: fail closed).
@@ -1237,11 +1249,11 @@ namespace ProjectChimera.Core
                         new("hero.xp", snapXp.Raw),
                     },
                 };
-                Definitions.HeroProfileLoader.LoadInto(_host.Heroes, _applier.LastAppliedHeroes, snapProfile, _logSink);
+                Definitions.HeroProfileLoader.LoadInto(_host.Heroes, _applier.LastAppliedHeroes, snapProfile, _logSink, _host.World);
             }
             else
             {
-                Definitions.HeroProfileLoader.LoadInto(_host.Heroes, _applier.LastAppliedHeroes, _ctx.PendingHeroProfile, _logSink);
+                Definitions.HeroProfileLoader.LoadInto(_host.Heroes, _applier.LastAppliedHeroes, _ctx.PendingHeroProfile, _logSink, _host.World);
             }
 
             // 6. Recompute + log the start-state hash so it reflects the re-applied board + re-minted heroes.

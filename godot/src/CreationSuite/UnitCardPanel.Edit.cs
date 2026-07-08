@@ -113,6 +113,11 @@ namespace ProjectChimera.CreationSuite
                 () => def.CostOre, v => def.CostOre = v, def);
             AddNumInt(_bodyHost, "Crystal cost", "cost_crystal", "Crystal Cost", "Crystal (the scarce resource) spent to train this unit.",
                 () => def.CostCrystal, v => def.CostCrystal = v, def);
+            // Story 3.13 — XP bounty this unit awards on death to hostile heroes in range. Shows the resolved value
+            // (authored, else ore+crystal cost); editing sets an explicit override. Blank/null round-trips as the derived default.
+            AddNumInt(_bodyHost, "XP bounty", "xp_bounty", "XP Bounty",
+                "XP awarded to hostile heroes near this unit when it dies. Defaults to its ore + crystal cost.",
+                () => def.ResolveXpBounty(), v => def.XpBounty = v, def);
 
             // Composition (Simple, UX-DR54): a preset role bundle fills the unit's abilities; Advanced holds the granular
             // ability + behavior pickers. Story 3.6 (composition = archetype + abilities + behaviors, no subclass).
@@ -620,7 +625,12 @@ namespace ProjectChimera.CreationSuite
         private static HeroDefinition MakeDefaultHero()
         {
             HeroLevelingPresets.Curve c = HeroLevelingPresets.Bundle(HeroLevelingPresets.Kind.Standard);
-            return new HeroDefinition { MaxLevel = c.MaxLevel, BaseXp = c.BaseXp, XpGrowth = c.XpGrowth, XpPerKill = c.XpPerKill };
+            return new HeroDefinition
+            {
+                MaxLevel = c.MaxLevel, BaseXp = c.BaseXp, XpGrowth = c.XpGrowth, XpPerKill = c.XpPerKill,
+                XpShareRadius = c.XpShareRadius, HealthPerLevel = c.HealthPerLevel,   // Story 3.13
+                DamagePerLevel = c.DamagePerLevel, ArmorPerLevel = c.ArmorPerLevel,
+            };
         }
 
         /// <summary>The Promote-to-Hero switch row (Simple, UX-DR54): a <see cref="ChimeraSwitch"/> bound to the EXISTING
@@ -677,10 +687,13 @@ namespace ProjectChimera.CreationSuite
                 HeroLevelingPresets.Kind chosen = HeroLevelingPresets.All[(int)idx].Kind;
                 if (chosen == HeroLevelingPresets.Kind.Custom) return;   // no-op — keep the current curve
                 HeroLevelingPresets.Curve c = HeroLevelingPresets.Bundle(chosen);
-                HeroLevelingPresets.Curve old = new(h.MaxLevel, h.BaseXp, h.XpGrowth, h.XpPerKill);
+                HeroLevelingPresets.Curve old = new(h.MaxLevel, h.BaseXp, h.XpGrowth, h.XpPerKill,
+                                                    h.XpShareRadius, h.HealthPerLevel, h.DamagePerLevel, h.ArmorPerLevel);
                 if (old == c) return;
-                Action applyNew = () => { h.MaxLevel = c.MaxLevel; h.BaseXp = c.BaseXp; h.XpGrowth = c.XpGrowth; h.XpPerKill = c.XpPerKill; };
-                Action applyOld = () => { h.MaxLevel = old.MaxLevel; h.BaseXp = old.BaseXp; h.XpGrowth = old.XpGrowth; h.XpPerKill = old.XpPerKill; };
+                Action applyNew = () => { h.MaxLevel = c.MaxLevel; h.BaseXp = c.BaseXp; h.XpGrowth = c.XpGrowth; h.XpPerKill = c.XpPerKill;
+                                          h.XpShareRadius = c.XpShareRadius; h.HealthPerLevel = c.HealthPerLevel; h.DamagePerLevel = c.DamagePerLevel; h.ArmorPerLevel = c.ArmorPerLevel; };
+                Action applyOld = () => { h.MaxLevel = old.MaxLevel; h.BaseXp = old.BaseXp; h.XpGrowth = old.XpGrowth; h.XpPerKill = old.XpPerKill;
+                                          h.XpShareRadius = old.XpShareRadius; h.HealthPerLevel = old.HealthPerLevel; h.DamagePerLevel = old.DamagePerLevel; h.ArmorPerLevel = old.ArmorPerLevel; };
                 applyNew();
                 UnitDefinition t = def;
                 PushHistory(() => { applyNew(); GoToUnit(t); }, () => { applyOld(); GoToUnit(t); });
@@ -707,6 +720,19 @@ namespace ProjectChimera.CreationSuite
                 0.05, () => h.XpGrowth, v => h.XpGrowth = v, def);
             AddNumFloat(parent, "XP per kill", "hero.xp_per_kill", "XP Per Kill", "XP granted per enemy kill credited to this hero.",
                 1, () => h.XpPerKill, v => h.XpPerKill = v, def);
+            // Story 3.13 — the runtime XP-share radius + per-level stat growth.
+            AddNumFloat(parent, "XP share radius", "hero.xp_share_radius", "XP Share Radius",
+                "How close (world units) this hero must be to a hostile unit's death to earn its XP bounty. Each hero in range gets the full bounty.",
+                1, () => h.XpShareRadius, v => h.XpShareRadius = v, def);
+            AddNumFloat(parent, "Health / level", "hero.health_per_level", "Health Per Level",
+                "Extra max health granted per hero level above 1 (applied as a permanent stacked bonus).",
+                1, () => h.HealthPerLevel, v => h.HealthPerLevel = v, def);
+            AddNumFloat(parent, "Damage / level", "hero.damage_per_level", "Damage Per Level",
+                "Extra attack damage granted per hero level above 1.",
+                1, () => h.DamagePerLevel, v => h.DamagePerLevel = v, def);
+            AddNumFloat(parent, "Armor / level", "hero.armor_per_level", "Armor Per Level",
+                "Extra armor granted per hero level above 1.",
+                1, () => h.ArmorPerLevel, v => h.ArmorPerLevel = v, def);
             AddHeroAbilityRow(parent, "Signature", "hero.signature_ability", "Signature Ability",
                 "The hero's signature ability (unlocked on level-up). Pick a defined ability or (none).",
                 () => h.SignatureAbility, v => h.SignatureAbility = v, def);
@@ -1016,6 +1042,7 @@ namespace ProjectChimera.CreationSuite
             SplashRadius = s.SplashRadius, CollisionRadius = s.CollisionRadius, MaxEnergy = s.MaxEnergy,
             SeparationPriority = s.SeparationPriority,
             Delivery = s.Delivery, ProjectileSpeed = s.ProjectileSpeed,   // Story 3.12
+            XpBounty = s.XpBounty,   // Story 3.13 (Hero-block share/growth fields ride Hero.Clone() below)
             // Null-guard each array: the property defaults are Array.Empty, but a raw-JSON hatch edit of
             // "prerequisites"/"abilities"/"behaviors": null overrides the initializer with null, and an unguarded
             // .Clone() would then NullReference-crash the Duplicate action.

@@ -66,6 +66,18 @@ namespace ProjectChimera.Core.Definitions
         /// large already makes the top level unreachable; the floor is 1 (no shrink).</summary>
         private const float HeroGrowthCap = 100f;
 
+        /// <summary>Exclusive upper bound on hero <c>xp_share_radius</c> (Story 3.13). Tighter than the generic
+        /// <see cref="Range"/>: <see cref="ProjectChimera.Combat.HeroXpSystem"/> compares squared distances, so a legal
+        /// radius must satisfy <c>r*r &lt; 32768</c> in 16.16 <see cref="ProjectChimera.Core.Fixed"/> (r &lt; ~181) or the
+        /// range test overflows and inverts. 128 is well inside that AND far larger than any authored attack range.</summary>
+        private const float HeroShareRadiusMax = 128f;
+
+        /// <summary>Exclusive upper bound on each hero <c>*_per_level</c> growth delta (Story 3.13). Tighter than the
+        /// generic <see cref="Range"/>: growth is applied as up to <c>HeroLevelMax-1</c> (99) stacks summed into an
+        /// <c>Effective*</c> stat, so a legal delta must satisfy <c>99 * delta &lt; 32768</c> (delta &lt; ~331) or the
+        /// stat overflows. 256 keeps the summed growth in range with margin AND dwarfs any realistic per-level gain.</summary>
+        private const float HeroStatGrowthMax = 256f;
+
         // The closed authorable sets, mirroring the string switches in UnitDefinition's Parsed* getters + the enum
         // members. Static → allocated once (the ScenarioValidator closed-set idiom), so the per-unit scan allocates
         // nothing. Case-sensitive exact match (an authored "melee" ≠ "Melee"; the lenient loader would fail-open it).
@@ -184,6 +196,12 @@ namespace ProjectChimera.Core.Definitions
             CheckCost(errors, id, "cost_ore", def.CostOre);
             CheckCost(errors, id, "cost_crystal", def.CostCrystal);
 
+            // ── xp_bounty (Story 3.13): when AUTHORED, an int in [0, 32768) — it is quantized to Fixed + folded into
+            //    SimChecksum (v11), so it must satisfy the same [0, Range) invariant every other folded stat has.
+            //    Omitted (null) ⇒ derived from cost_ore+cost_crystal (already cost-validated) ⇒ always valid. ──
+            if (def.XpBounty.HasValue)
+                CheckIntBound(errors, id, "xp_bounty", def.XpBounty.Value);
+
             // ── every abilities[] id must resolve in the registry (AC2 "undefined ability reference") ──
             string[]? abilities = def.Abilities;
             if (abilities != null && registry != null)
@@ -237,6 +255,14 @@ namespace ProjectChimera.Core.Definitions
             // checksum input, so its number format is determinism-irrelevant; avoids the explicit float.ToString.
             if (!float.IsFinite(v) || v < 0f || v >= Range)
                 errors.Add((path, Located(id, path, $"={v} must be finite and in [0, {(int)Range}).")));
+        }
+
+        /// <summary>Finite &amp; in [0, <paramref name="max"/>) — a float stat with a tighter-than-<see cref="Range"/> ceiling
+        /// (Story 3.13 hero runtime fields whose downstream squaring/stacking would overflow Fixed at the generic Range).</summary>
+        private static void CheckStatMax(List<(string, string)> errors, string id, string path, float v, float max)
+        {
+            if (!float.IsFinite(v) || v < 0f || v >= max)
+                errors.Add((path, Located(id, path, $"={v} must be finite and in [0, {(int)max}).")));
         }
 
         /// <summary>An int stat bounded to [0, 32768) (supply).</summary>
@@ -297,6 +323,16 @@ namespace ProjectChimera.Core.Definitions
             if (!float.IsFinite(h.XpPerKill) || h.XpPerKill < 0f || h.XpPerKill >= Range)
                 errors.Add(("hero.xp_per_kill", Located(id, "hero.xp_per_kill",
                     $"={h.XpPerKill} must be finite and in [0, {(int)Range}).")));
+
+            // Story 3.13 runtime fields — finite & fail-closed to a Fixed-SAFE range (AR-39). Quantized to Fixed at the
+            // applier load boundary and consumed by HeroXpSystem (share radius, squared → r*r) / ModifierStore growth
+            // stacks (per-level deltas, summed up to 99×). Their ceilings are TIGHTER than the generic Range so the
+            // downstream squaring/stacking cannot overflow 16.16 Fixed (the pre-3.13 CheckStat allowed up to 32767, which
+            // r*r and 99× overflow — reviewer-found).
+            CheckStatMax(errors, id, "hero.xp_share_radius", h.XpShareRadius, HeroShareRadiusMax);
+            CheckStatMax(errors, id, "hero.health_per_level", h.HealthPerLevel, HeroStatGrowthMax);
+            CheckStatMax(errors, id, "hero.damage_per_level", h.DamagePerLevel, HeroStatGrowthMax);
+            CheckStatMax(errors, id, "hero.armor_per_level", h.ArmorPerLevel, HeroStatGrowthMax);
 
             // Ability slots — a SET-but-undefined ref is rejected; an empty (null/"") slot is valid (not authored yet).
             // Skip the ref lookup when there is no registry to validate against (mirrors the abilities[] guard).

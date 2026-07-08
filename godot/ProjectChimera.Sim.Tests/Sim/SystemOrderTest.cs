@@ -42,10 +42,11 @@ namespace ProjectChimera.Sim.Tests.Sim
             typeof(ModifierSystem),    // [5]  ← AR-9 effective-stat recompute (Story 2.2a), immediately before Combat
             typeof(CombatSystem),      // [6]
             typeof(ProjectileSystem),  // [7]
-            typeof(SupplySystem),      // [8]
-            typeof(FogOfWarSystem),    // [9]
-            typeof(AiOpponentSystem),  // [10]
-            typeof(ScenarioDirector),  // [11]  runs LAST
+            typeof(HeroXpSystem),      // [8]  ← Story 3.13 hero XP runtime, immediately after ProjectileSystem
+            typeof(SupplySystem),      // [9]
+            typeof(FogOfWarSystem),    // [10]
+            typeof(AiOpponentSystem),  // [11]
+            typeof(ScenarioDirector),  // [12]  runs LAST
         };
 
         /// <summary>
@@ -59,7 +60,7 @@ namespace ProjectChimera.Sim.Tests.Sim
             new FactionDefinition());
 
         [Fact]
-        public void Systems_AreTheTwelveCanonicalSystems_InExactOrder()
+        public void Systems_AreTheThirteenCanonicalSystems_InExactOrder()
         {
             IReadOnlyList<ISimSystem> systems = BuildHost().Systems;
 

@@ -118,6 +118,8 @@
          goldens above ARE re-baselined once for the v10 fold. -->
     <None Remove="Golden\delivery-scenario.golden.txt" />
     <EmbeddedResource Include="Golden\delivery-scenario.golden.txt" />
+    <None Remove="Golden\hero-xp-scenario.golden.txt" />
+    <EmbeddedResource Include="Golden\hero-xp-scenario.golden.txt" />
   </ItemGroup>
 
   <ItemGroup>

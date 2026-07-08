@@ -39,9 +39,10 @@ namespace ProjectChimera.Effects
             if (!world.IsAlive(t)) return;
 
             // The one damage path. Killer = caster faction; armor = the target's live armor; the optional
-            // event/stats sinks ride the context so AoE/ability kills feed the same feedback + scoreboard.
+            // event/stats/death sinks ride the context so AoE/ability kills feed the same feedback + scoreboard
+            // AND the Story 3.13 XP runtime (an ability kill grants hero XP exactly like a hitscan/projectile kill).
             var dc = new DamageContext(world, t, world.ArmorTypeOf[t], ctx.CasterFaction,
-                                       ctx.DamageTable, ctx.Events, ctx.Stats);
+                                       ctx.DamageTable, ctx.Events, ctx.Stats, ctx.Deaths);
             DamageResolver.Apply(in dc, Amount, Type);
         }
     }
