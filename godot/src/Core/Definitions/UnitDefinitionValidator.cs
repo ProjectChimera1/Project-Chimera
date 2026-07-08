@@ -114,6 +114,21 @@ namespace ProjectChimera.Core.Definitions
             AbilityRegistry? registry,
             BehaviorRegistry? behaviorRegistry,
             IReadOnlyList<UnitDefinition>? siblings)
+            => Validate(def, registry, behaviorRegistry, null, siblings);
+
+        /// <summary>
+        /// Story 3.16 overload: additionally validate the shop <c>shop_stock[]</c> ids against
+        /// <paramref name="itemRegistry"/> (a dangling id is a located error). A null <paramref name="itemRegistry"/>
+        /// SKIPS the stock-ref check (mirrors the ability-null guard) so existing callers/tests compile + behave
+        /// unchanged; only the item editor / item-aware faction load supplies it. Every base rule still runs, including
+        /// the Structure-gating of the shop trio (which needs no registry).
+        /// </summary>
+        public UnitValidationResult Validate(
+            UnitDefinition def,
+            AbilityRegistry? registry,
+            BehaviorRegistry? behaviorRegistry,
+            ItemRegistry? itemRegistry,
+            IReadOnlyList<UnitDefinition>? siblings)
         {
             var errors = new List<(string, string)>();
             if (def is null)
@@ -246,6 +261,31 @@ namespace ProjectChimera.Core.Definitions
             if (def.RevivesHeroes && def.Category != "Structure")
                 errors.Add(("revives_heroes", Located(id, "revives_heroes",
                     $"is set on a {def.Category} unit — only a Structure building can revive heroes.")));
+
+            // ── sells_items / shop_stock / shop_radius: an item-SHOP capability that only makes sense on a Structure
+            //    building (Story 3.16, mirroring revives_heroes). The trio is Structure-gated; a non-empty stock/radius on
+            //    a non-shop unit is an authoring error; and each shop_stock id must resolve in the loaded ItemRegistry
+            //    (a dangling id fails closed). Omitted (false/null/0) is always valid, so every existing unit is unaffected. ──
+            bool hasStock  = def.ShopStock != null && def.ShopStock.Length > 0;
+            bool hasRadius = def.ShopRadius != 0f;
+            if ((def.SellsItems || hasStock || hasRadius) && def.Category != "Structure")
+                errors.Add(("sells_items", Located(id, "sells_items",
+                    $"is set on a {def.Category} unit — only a Structure building can sell items.")));
+            if (!float.IsFinite(def.ShopRadius) || def.ShopRadius < 0f || def.ShopRadius >= Range)
+                errors.Add(("shop_radius", Located(id, "shop_radius",
+                    $"={def.ShopRadius} must be finite and in [0, {(int)Range}).")));
+            if (def.ShopStock != null)
+            {
+                for (int i = 0; i < def.ShopStock.Length; i++)
+                {
+                    string sid = def.ShopStock[i] ?? "";
+                    if (string.IsNullOrEmpty(sid))
+                        errors.Add(("shop_stock", Located(id, $"shop_stock[{i}]", "is an empty item id.")));
+                    else if (itemRegistry != null && itemRegistry.IndexOf(sid) < 0)
+                        errors.Add(("shop_stock", Located(id, $"shop_stock[{i}]",
+                            $"'{sid}' is not a defined item (no matching item in the loaded set).")));
+                }
+            }
 
             // ── tags: closed set — compose the existing UnitTagValidator so the two axes agree (AC2 "unknown tag") ──
             if (UnitTagValidator.TryFindInvalidTag(def, out string? badTag))

@@ -48,6 +48,8 @@ namespace ProjectChimera.Core.Definitions
                 "Carry each hero's level forward between matches. Loaded as deterministic starting state."),
             new PersistableAttribute("hero.xp", AttributeScope.Hero, "Accumulated XP",
                 "Carry each hero's accumulated experience forward between matches. Loaded as deterministic starting state."),
+            new PersistableAttribute("hero.inventory", AttributeScope.Hero, "Inventory",
+                "Carry each hero's carried items (by type + charges) forward between matches. Re-minted as deterministic starting state."),
         };
 
         /// <summary>

@@ -114,6 +114,36 @@ namespace ProjectChimera.Sim.Tests.Definitions
             Assert.Contains("MAX_ITEM_STAT_DELTA", r.Error!);
         }
 
+        // ── Shop costs (Story 3.16 review): the SIM gate must reject a negative/out-of-range cost, not just the editor
+        //    ValidateFields — a negative cost ADDS resource on buy (SpendOre(faction, -cost) refunds), an infinite-resource
+        //    exploit. The sim Validate is the sole Validated<> minter, so this is where it must fail closed. ──
+
+        [Fact]
+        public void NegativeCostOre_FailsClosed_SimGate()
+        {
+            var r = V(new ItemDefinition { Id = "free_money", Charges = 0,
+                MaxHealthDelta = Fixed.FromInt(10), CostOre = Fixed.FromInt(-100) });
+            Assert.False(r.Ok);
+            Assert.Contains("cost_ore", r.Error!);
+        }
+
+        [Fact]
+        public void NegativeCostCrystal_FailsClosed_SimGate()
+        {
+            var r = V(new ItemDefinition { Id = "free_crystal", Charges = 0,
+                MaxHealthDelta = Fixed.FromInt(10), CostCrystal = Fixed.FromInt(-1) });
+            Assert.False(r.Ok);
+            Assert.Contains("cost_crystal", r.Error!);
+        }
+
+        [Fact]
+        public void NonNegativeCosts_Pass_SimGate()
+        {
+            var r = V(new ItemDefinition { Id = "priced", Charges = 0,
+                MaxHealthDelta = Fixed.FromInt(10), CostOre = Fixed.FromInt(150), CostCrystal = Fixed.FromInt(25) });
+            Assert.True(r.Ok, r.Error);
+        }
+
         [Fact]
         public void FailedValidation_MintsNoUsableToken()
         {

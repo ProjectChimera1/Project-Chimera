@@ -125,6 +125,9 @@
     <!-- Story 3.15 — item / inventory golden (ItemStore + per-hero inventory fold, v12). NEW file. -->
     <None Remove="Golden\item-scenario.golden.txt" />
     <EmbeddedResource Include="Golden\item-scenario.golden.txt" />
+    <!-- Story 3.16 — shop-purchase golden (BuyItem mint/spend over the already-folded v12 stores; NO algo bump). NEW file. -->
+    <None Remove="Golden\shop-purchase-scenario.golden.txt" />
+    <EmbeddedResource Include="Golden\shop-purchase-scenario.golden.txt" />
   </ItemGroup>
 
   <ItemGroup>

@@ -462,5 +462,94 @@ namespace ProjectChimera.Sim.Tests.Multiplayer
                 File.Delete(path);
             }
         }
+
+        /// <summary>A world wired with an <see cref="ItemSystem"/> + a <see cref="BuildingSystem"/> shop + an owned hero
+        /// in range with a starting ore balance — the identical setup both the live and replay BuyItem paths run against.</summary>
+        private sealed class BuyParityWorld
+        {
+            public EntityWorld World = null!;
+            public ItemStore   Items = null!;
+            public HeroStore   Heroes = null!;
+            public ItemSystem  Sys = null!;
+            public BuildingStore Buildings = null!;
+            public BuildingSystem BuildSys = null!;
+            public ResourceStore Resources = null!;
+            public int Hero, HeroSlot, ShopId;
+        }
+
+        private static BuyParityWorld BuildBuyParityWorld()
+        {
+            var w = new BuyParityWorld
+            {
+                World = new EntityWorld(),
+                Items = new ItemStore(),
+                Heroes = new HeroStore(),
+                Buildings = new BuildingStore(),
+                Resources = new ResourceStore(Fixed.Zero),
+            };
+            var modSys = new ModifierSystem();
+            var modifiers = new ModifierStore(w.World, modSys);
+            modSys.AttachStore(modifiers);
+            var registry = new ItemRegistry(new[]
+            {
+                new ItemDefinition { Id = "ring", Charges = 0, MaxHealthDelta = Fixed.FromInt(50), CostOre = Fixed.FromInt(100) },
+            });
+            w.Sys = new ItemSystem(w.World, w.Heroes, w.Items, modifiers, registry, events: null);
+            w.BuildSys = new BuildingSystem(w.Buildings, w.Resources, null, null, null, w.Heroes, null);
+
+            w.Hero = w.World.Create(new FixedVec3(Fixed.FromInt(2), Fixed.Zero, Fixed.Zero),
+                                    Faction.Player1, Fixed.FromInt(100), Fixed.FromInt(3));
+            w.World.ApplyUnitDefinition(w.Hero, ParityHeroDef);
+            w.HeroSlot = w.Heroes.Mint(new HeroId(1), w.Hero, level: 1, xp: Fixed.Zero,
+                                       sourceDef: ParityHeroDef, ownerFaction: Faction.Player1);
+            w.World.HeroIndex[w.Hero] = w.Heroes.PackRef(w.HeroSlot);
+
+            w.ShopId = w.Buildings.Create(new FixedVec3(Fixed.Zero, Fixed.Zero, Fixed.Zero),
+                                          Faction.Player1, BuildingType.CommandCenter, revivesHeroes: false,
+                                          sellsItems: true, shopStock: new[] { "ring" }, shopRadius: Fixed.FromInt(10));
+            w.Buildings.ConstructionTimer[w.ShopId] = Fixed.Zero;
+            w.Resources.AddOre(Faction.Player1, Fixed.FromInt(300));
+            return w;
+        }
+
+        [Fact]
+        public void ReplayVsLive_BuyItem_ApplyIdentically_ThroughSharedApplier()
+        {
+            // Story 3.16: BuyItem spends ore + mints the item into the hero's inventory IDENTICALLY through the live apply
+            // site (OrderApplier.Apply with buildings: + items:) and the replay site (ReplayPlayer with Buildings + Items).
+            var buy = new UnitOrder(0, UnitCommand.BuyItem, Fixed.FromRaw(0), Fixed.FromRaw(0)); // shop id 0, stock 0, hero entity 0
+
+            var live = BuildBuyParityWorld();
+            Assert.Equal(0, live.ShopId);
+            Assert.Equal(0, live.Hero);
+            OrderApplier.Apply(live.World, buy, Faction.Player1, buildings: live.BuildSys, items: live.Sys);
+
+            string path = Path.GetTempFileName();
+            try
+            {
+                using (var rec = new ReplayRecorder(path, "test://buy-item", EntityWorld.DEFAULT_RNG_SEED))
+                {
+                    var orders = new[] { buy };
+                    rec.RecordTick(1, Faction.Player1, orders, 0, orders.Length);
+                }
+
+                var rep = BuildBuyParityWorld();
+                var player = new ReplayPlayer(path, rep.World) { Items = rep.Sys, Buildings = rep.BuildSys };
+                player.Flush(1);
+
+                // Both paths spent 100 ore and minted the ring into inventory slot 0.
+                Assert.Equal(live.Resources.Ore[(int)Faction.Player1].Raw, rep.Resources.Ore[(int)Faction.Player1].Raw);
+                Assert.Equal(200, live.Resources.Ore[(int)Faction.Player1].ToInt());
+                int liveRef = live.Heroes.Inventory[live.HeroSlot * HeroStore.INVENTORY_SLOTS + 0];
+                int repRef  = rep.Heroes.Inventory[rep.HeroSlot * HeroStore.INVENTORY_SLOTS + 0];
+                Assert.NotEqual(HeroStore.INVENTORY_EMPTY, liveRef);
+                Assert.Equal(liveRef, repRef);
+                Assert.Equal(live.World.EffectiveMaxHealth[live.Hero], rep.World.EffectiveMaxHealth[rep.Hero]);
+            }
+            finally
+            {
+                File.Delete(path);
+            }
+        }
     }
 }

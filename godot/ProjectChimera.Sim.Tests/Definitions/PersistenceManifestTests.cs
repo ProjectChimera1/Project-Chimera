@@ -27,13 +27,16 @@ namespace ProjectChimera.Sim.Tests.Definitions
         [Fact]
         public void Catalog_EligibleAttributes_AreHeroLevelAndXp_InScopeHero()
         {
-            Assert.Equal(2, PersistableAttributes.Eligible.Length);
-            Assert.Equal("hero.level", PersistableAttributes.Eligible[0].Key);
-            Assert.Equal("hero.xp",    PersistableAttributes.Eligible[1].Key);
+            // Story 3.16: hero.inventory joins hero.level/hero.xp as an init-time-eligible Hero attribute.
+            Assert.Equal(3, PersistableAttributes.Eligible.Length);
+            Assert.Equal("hero.level",     PersistableAttributes.Eligible[0].Key);
+            Assert.Equal("hero.xp",        PersistableAttributes.Eligible[1].Key);
+            Assert.Equal("hero.inventory", PersistableAttributes.Eligible[2].Key);
             Assert.All(PersistableAttributes.Eligible, a => Assert.Equal(AttributeScope.Hero, a.Scope));
 
             Assert.True(PersistableAttributes.IsEligible("hero.level"));
             Assert.True(PersistableAttributes.IsEligible("hero.xp"));
+            Assert.True(PersistableAttributes.IsEligible("hero.inventory"));
             Assert.False(PersistableAttributes.IsEligible("hero.bogus"));
         }
 
@@ -49,7 +52,7 @@ namespace ProjectChimera.Sim.Tests.Definitions
         [Fact]
         public void Catalog_ByScope_RendersOnlyPopulatedScopes()
         {
-            Assert.Equal(2, PersistableAttributes.ByScope(AttributeScope.Hero).Length);
+            Assert.Equal(3, PersistableAttributes.ByScope(AttributeScope.Hero).Length); // level, xp, inventory (Story 3.16)
             Assert.Empty(PersistableAttributes.ByScope(AttributeScope.Unit));    // no backing store yet (D-1)
             Assert.Empty(PersistableAttributes.ByScope(AttributeScope.Player));
         }

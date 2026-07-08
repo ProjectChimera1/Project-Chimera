@@ -72,6 +72,47 @@ namespace ProjectChimera.Combat
         /// <summary>The deterministic per-item modifier id for a carried stat item at packed ref <paramref name="itemRef"/>.</summary>
         public static int ItemModifierId(int itemRef) => ItemModifierIdBase + itemRef;
 
+        // ─────────────────────────────────────── Story 3.16 shop-buy surface (read for BuildingSystem.BuyItemCommand) ──
+
+        /// <summary>The item registry this system resolves defs against (Story 3.16 — the shop resolves stock ids here).</summary>
+        public ItemRegistry Registry => _registry;
+
+        /// <summary>Resolve a hero ENTITY id to its live <see cref="HeroStore"/> slot (alive + hero-linked). False for a
+        /// dead entity or a non-hero. The shop-buy guard uses this to validate the buyer.</summary>
+        public bool TryResolveHero(int heroEntityId, out int heroSlot) => ResolveHeroSlot(heroEntityId, out heroSlot);
+
+        /// <summary>The buyer's world position (Story 3.16 shop-radius proximity check). Caller must have resolved the hero.</summary>
+        public FixedVec3 HeroPosition(int heroEntityId) => _world.Position[heroEntityId];
+
+        /// <summary>The faction owning the hero entity (Story 3.16 owned-hero anti-cheat gate).</summary>
+        public Faction HeroFaction(int heroEntityId) => _world.FactionOf[heroEntityId];
+
+        /// <summary>True when the hero at <paramref name="heroSlot"/> has a free USABLE inventory slot (Story 3.16 — the
+        /// full-inventory reject checks this BEFORE any spend). Reuses the pickup <see cref="FirstFreeSlot"/> logic.</summary>
+        public bool HeroHasFreeSlot(int heroSlot) => FirstFreeSlot(heroSlot) >= 0;
+
+        /// <summary>Mint a PURCHASED item (def index <paramref name="defIndex"/>) directly into the buyer's first free
+        /// inventory slot (Story 3.16), REUSING the pickup claim block (ground→held flip, <c>Inventory[]</c> write,
+        /// stat-modifier apply). The caller (<c>BuildingSystem.BuyItemCommand</c>) must have already gated
+        /// ownership/capability/proximity/free-slot/affordability and SPENT the cost. Returns the packed <c>ItemStore</c>
+        /// ref, or -1 when the item store is full / the hero is no longer resolvable (caller then refunds — atomic).</summary>
+        public int GrantPurchasedItem(int heroEntityId, int defIndex)
+        {
+            if (!ResolveHeroSlot(heroEntityId, out int heroSlot)) return -1;
+            int free = FirstFreeSlot(heroSlot);
+            if (free < 0) return -1;
+            ItemDefinition? def = _registry.TryGet(defIndex);
+            if (def is null) return -1;
+            int itemRef = _items.Create(defIndex, def.Charges, _world.Position[heroEntityId]);
+            if (itemRef < 0) return -1; // item store full — caller refunds
+            if (!_items.TryResolveRef(itemRef, out int itemSlot)) return -1;
+            _items.Held[itemSlot]            = true;
+            _items.CarrierHeroSlot[itemSlot] = heroSlot;
+            _heroes.Inventory[heroSlot * HeroStore.INVENTORY_SLOTS + free] = itemRef;
+            ApplyStatModifierIfAny(heroEntityId, itemSlot, itemRef);
+            return itemRef;
+        }
+
         /// <summary>Configure the usable inventory slot count from <c>inventory_slot_count</c> (clamped <c>[1, INVENTORY_SLOTS]</c>).</summary>
         public void ConfigureUsableSlots(int slotCount)
         {
@@ -257,6 +298,17 @@ namespace ProjectChimera.Combat
         private void ApplyStatModifierIfAny(int entityId, int itemSlot, int itemRef)
         {
             ItemDefinition? def = _registry.TryGet(_items.DefId[itemSlot]);
+            ApplyItemStatModifier(_modifiers, _world, def, entityId, itemRef);
+        }
+
+        /// <summary>Story 3.16: the SHARED init/runtime stat-modifier apply, used by BOTH the pickup/buy runtime path
+        /// (<see cref="ApplyStatModifierIfAny"/>) and the persisted-inventory re-mint
+        /// (<c>HeroProfileLoader.ReMintInventory</c>), so a carried stat item applies the SAME deterministic per-item
+        /// modifier (<see cref="ItemModifierId"/>) whether it was picked up, bought, or reloaded from a saved profile.
+        /// A non-stat item (no non-zero delta) or a dead/unresolvable entity is a deterministic no-op.</summary>
+        public static void ApplyItemStatModifier(ModifierStore modifiers, EntityWorld world,
+                                                 ItemDefinition? def, int entityId, int itemRef)
+        {
             if (def is null || !def.HasStatModifier) return;
             var mod = new Modifier(
                 ItemModifierId(itemRef),
@@ -270,7 +322,7 @@ namespace ProjectChimera.Combat
                 periodEffect: null,
                 periodTicks: 0,
                 armorDelta:        def.ArmorDelta);
-            _modifiers.Apply(entityId, mod, entityId, _world.FactionOf[entityId]);
+            modifiers.Apply(entityId, mod, entityId, world.FactionOf[entityId]);
         }
 
         private int FirstFreeSlot(int heroSlot)

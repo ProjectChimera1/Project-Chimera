@@ -160,6 +160,13 @@ namespace ProjectChimera.UI
         private ItemStore?  _items;
         private ItemSystem? _itemSys;
 
+        // Story 3.16: the inventory grid slot the HUD has selected for a per-slot Use/Drop (retires the 3.15 hard-coded
+        // slot 0); -1 = none selected → the T hotkey falls back to slot 0. Set by CommandCardSystem's inventory grid.
+        private int _selectedInventorySlot = -1;
+        // Story 3.16: a hero mid-issuing a pickup that must be EXCLUDED from the rest-of-selection move/attack fall-through
+        // (so a mixed selection right-clicking a ground item no longer strands the non-pickup units — the 3.15 defer). -1 = none.
+        private int _pickupHeroExclusion = -1;
+
         public void Initialize(RtsCameraController camCtrl, EntityWorld world,
                               FlowFieldBridge? pathSystem = null,
                               BuildingStore? buildingStore = null,
@@ -218,9 +225,10 @@ namespace ProjectChimera.UI
             }
         }
 
-        /// <summary>Story 3.15: issue a UseItem order for an inventory slot (shared applier; offline passes the item
-        /// system so the consumable fires). The slot rides TargetX as a RAW int.</summary>
-        private void IssueUseItemCommand(int heroEntity, int slot)
+        /// <summary>Story 3.15/3.16: issue a UseItem order for an inventory slot (shared applier; offline passes the item
+        /// system so the consumable fires). The slot rides TargetX as a RAW int. Public so the HUD inventory grid can drive
+        /// a per-slot Use on the exact selected slot.</summary>
+        public void IssueUseItemCommand(int heroEntity, int slot)
         {
             if (_lockstep?.EnqueueOrder(heroEntity, UnitCommand.UseItem, Fixed.FromRaw(slot), Fixed.Zero) ?? true)
             {
@@ -228,6 +236,20 @@ namespace ProjectChimera.UI
                 OrderApplier.Apply(_world, in order, _world.FactionOf[heroEntity], events: _combatEvents, items: _itemSys);
             }
         }
+
+        /// <summary>Story 3.16: issue a DropItem order for an inventory slot (mirrors <see cref="IssueUseItemCommand"/>).
+        /// The slot rides TargetX as a RAW int. Public so the HUD inventory grid can drive a per-slot Drop.</summary>
+        public void IssueDropItemCommand(int heroEntity, int slot)
+        {
+            if (_lockstep?.EnqueueOrder(heroEntity, UnitCommand.DropItem, Fixed.FromRaw(slot), Fixed.Zero) ?? true)
+            {
+                var order = new UnitOrder(heroEntity, UnitCommand.DropItem, Fixed.FromRaw(slot), Fixed.Zero);
+                OrderApplier.Apply(_world, in order, _world.FactionOf[heroEntity], events: _combatEvents, items: _itemSys);
+            }
+        }
+
+        /// <summary>Story 3.16: the HUD inventory grid sets which slot a subsequent per-slot Use (T / grid button) targets.</summary>
+        public void SetSelectedInventorySlot(int slot) => _selectedInventorySlot = slot;
 
         /// <summary>
         /// Inject the lockstep manager for online play. Pass null to revert to offline mode.
@@ -405,17 +427,21 @@ namespace ProjectChimera.UI
                     bool queued = rmb.ShiftPressed;
                     if (RaycastGround(rmb.Position, out Vector3 hit))
                     {
-                        // Story 3.15: right-click a ground item with a hero selected → PickupItem (minimal affordance;
-                        // full inventory UI is Story 3.16). Takes priority over Move onto empty ground.
+                        // Story 3.15: right-click a ground item with a hero selected → PickupItem for the nearest hero.
+                        // Story 3.16: the REST of a mixed selection is NOT stranded — it falls through to the normal
+                        // move/attack path with the pickup hero EXCLUDED (closes the 3.15 "army stops near item" defer).
                         int heroForPickup = FirstSelectedHero();
                         int groundItem = heroForPickup >= 0 ? FindNearestGroundItem(hit, PICK_RADIUS) : -1;
-                        if (groundItem >= 0) { IssuePickupCommand(heroForPickup, groundItem); return; }
+                        if (groundItem >= 0) IssuePickupCommand(heroForPickup, groundItem);
 
+                        // Exclude the pickup hero from the remainder's move/attack (its PickupItem order must survive).
+                        _pickupHeroExclusion = groundItem >= 0 ? heroForPickup : -1;
                         int enemyId = FindNearestEnemyUnit(hit, PICK_RADIUS);
                         int enemyBuildingId = enemyId < 0 ? FindNearestEnemyBuilding(hit, BUILDING_PICK_RADIUS) : -1;
                         if (enemyId >= 0)              IssueAttackTargetCommand(enemyId, queued);
                         else if (enemyBuildingId >= 0) IssueAttackBuildingCommand(enemyBuildingId, queued);
                         else                           IssueMoveCommand(rmb.Position, queued);
+                        _pickupHeroExclusion = -1;
                     }
                     else IssueMoveCommand(rmb.Position, queued);
                 }
@@ -464,11 +490,11 @@ namespace ProjectChimera.UI
                 }
                 else if (key.Keycode == Key.T && _selectedSet.Count > 0 && _itemSys != null)
                 {
-                    // Story 3.15: minimal use-consumable affordance — use the item in the first hero's inventory slot 0
-                    // (a non-consumable / empty slot is a deterministic sim no-op). Full inventory-slot hotkeys are 3.16.
+                    // Story 3.16: use-consumable affordance — use the item in the HUD-selected inventory slot (retires the
+                    // 3.15 hard-coded slot 0). When no grid slot is selected, fall back to slot 0. Empty/non-consumable ⇒ no-op.
                     ResetPendingCommandClicks();
                     int hero = FirstSelectedHero();
-                    if (hero >= 0) IssueUseItemCommand(hero, 0);
+                    if (hero >= 0) IssueUseItemCommand(hero, _selectedInventorySlot >= 0 ? _selectedInventorySlot : 0);
                 }
                 else if (key.Keycode == Key.Escape)
                 {
@@ -550,6 +576,9 @@ namespace ProjectChimera.UI
             ActiveGroupIndex   = -1;
             _selectedBuildingSlot = -1;  // clears SelectedBuildingId (generation-validated computed getter)
             _selectedBuildingGen  = -1;
+            // Story 3.16 review: reset the HUD-selected inventory slot on every selection change, so slot 3 chosen for
+            // hero A never leaks into hero B (whose T-hotkey would otherwise Use its own slot 3). -1 = none → falls back to 0.
+            _selectedInventorySlot = -1;
             _barRoot.Visible    = false;
             _multiLabel.Visible = false;
         }
@@ -615,7 +644,7 @@ namespace ProjectChimera.UI
         {
             var idList = new List<int>(_selectedList.Count);
             foreach (int id in _selectedList)
-                if (_world.IsAlive(id)) idList.Add(id);
+                if (_world.IsAlive(id) && id != _pickupHeroExclusion) idList.Add(id); // Story 3.16: a pickup hero is excluded
             idList.Sort(); // ascending entity-id
             ids = idList.ToArray();
 
@@ -740,7 +769,7 @@ namespace ProjectChimera.UI
         {
             foreach (int id in _selectedList)
             {
-                if (!_world.IsAlive(id)) continue;
+                if (!_world.IsAlive(id) || id == _pickupHeroExclusion) continue; // Story 3.16: skip a pickup hero
                 // Story 2.12: a Shift-queued attack appends to the ring (the enemy id packs into TargetX as a raw int).
                 if (queued)
                 {
@@ -772,7 +801,7 @@ namespace ProjectChimera.UI
             int packedRef = _buildingStore != null ? _buildingStore.PackRef(buildingId) : buildingId;
             foreach (int id in _selectedList)
             {
-                if (!_world.IsAlive(id)) continue;
+                if (!_world.IsAlive(id) || id == _pickupHeroExclusion) continue; // Story 3.16: skip a pickup hero
                 if (_world.EffectiveAttackDamage[id] <= Fixed.Zero) continue; // combat units only
                 // Story 2.12: a Shift-queued anti-building attack appends (the packed ref rides TargetX as a raw int).
                 if (queued)

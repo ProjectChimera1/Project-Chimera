@@ -108,6 +108,7 @@ namespace ProjectChimera.Core.Bootstrap
         public CreationSuite.MapGeneratorPanel  MapGenPanel  = null!;
         public CreationSuite.AbilityEditorPanel AbilityEditorPanel = null!;  // Story 2.5a (AbilityEditor phase)
         public CreationSuite.UnitCardPanel      UnitCardPanel      = null!;  // Story 3.3 (UnitCard phase)
+        public CreationSuite.ItemCardPanel      ItemCardPanel      = null!;  // Story 3.16 (ItemCard phase)
         public CreationSuite.PersistenceManifestPanel PersistenceManifestPanel = null!;  // Story 3.8 (PersistenceManifest phase)
         public UI.HeroPickerOverlay HeroPicker = null!;  // Story 3.9 (HeroPicker phase) — offline Play-Skirmish hero picker + launch authority
         /// <summary>Story 3.9: the profile the player Deployed at the offline skirmish start, handed off to
@@ -127,6 +128,9 @@ namespace ProjectChimera.Core.Bootstrap
         public string?             HarvestedHeroDefId;
         public int                 HarvestedHeroLevel;
         public Fixed               HarvestedHeroXp;
+        // ── Story 3.16: the deployed hero's carried inventory (item-def id + charges), harvested at the same seam so the
+        //    picker Save/Overwrite persists the REAL loadout when the manifest carries hero.inventory. Null ⇒ empty. ─
+        public System.Collections.Generic.List<Definitions.ProfileInventoryItem>? HarvestedHeroInventory;
         public AI.LLMService          LlmService     = null!;
         public Label?                 ToastLabel;
 

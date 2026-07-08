@@ -44,6 +44,19 @@ namespace ProjectChimera.Core
         /// Default false; reset on (re)allocation and cleared on recycle (the SoA-recycle contract).</summary>
         public readonly bool[]         RevivesHeroes;
 
+        // ── Item shops (Story 3.16) ─────────────────────────────────────────────
+        /// <summary>True when this building is an item SHOP (from the authored <c>sells_items</c> flag, threaded at
+        /// placement — mirrors <see cref="RevivesHeroes"/>). A NON-FOLDED placement constant: read only by the shop
+        /// command-card affordance + <c>BuildingSystem.BuyItemCommand</c>'s guard; a divergence surfaces transitively via
+        /// the minted item / spent resources. Default false; reset on every (re)allocation (the SoA-recycle contract).</summary>
+        public readonly bool[]         SellsItems;
+        /// <summary>The authored item-def ids this shop stocks (parallel to <see cref="SellsItems"/>), resolved at
+        /// placement. A reference constant (never folded); an empty array for a non-shop / empty-stock building.</summary>
+        public readonly string[][]     ShopStock;
+        /// <summary>The <see cref="Fixed"/> buy radius (quantized from the authored float <c>shop_radius</c> at placement).
+        /// A non-folded placement constant; <see cref="Fixed.Zero"/> ⇒ the buy command uses a fallback radius.</summary>
+        public readonly Fixed[]        ShopRadius;
+
         // ── Construction ───────────────────────────────────────────────────────
         /// <summary>Seconds remaining until construction finishes (0 = complete).</summary>
         public readonly Fixed[]        ConstructionTimer;
@@ -105,6 +118,9 @@ namespace ProjectChimera.Core
             HasRallyPoint        = new bool[MAX_BUILDINGS];
             TrainedCount         = new int[MAX_BUILDINGS];
             RevivesHeroes        = new bool[MAX_BUILDINGS];
+            SellsItems           = new bool[MAX_BUILDINGS];
+            ShopStock            = new string[MAX_BUILDINGS][];
+            ShopRadius           = new Fixed[MAX_BUILDINGS];
         }
 
         /// <summary>Returns true while the building is still being constructed.</summary>
@@ -113,7 +129,8 @@ namespace ProjectChimera.Core
         /// <summary>
         /// Place a new building. Returns its ID, or -1 if the store is full.
         /// </summary>
-        public int Create(FixedVec3 position, Faction faction, BuildingType type, bool revivesHeroes = false)
+        public int Create(FixedVec3 position, Faction faction, BuildingType type, bool revivesHeroes = false,
+                          bool sellsItems = false, string[] shopStock = null, Fixed shopRadius = default)
         {
             // Story 2.13 (AC3.1) — recycle a dead slot first, else append a fresh one. The store is "full" (returns
             // -1) only when all MAX_BUILDINGS slots are SIMULTANEOUSLY live (free-list empty AND high-water at the cap),
@@ -145,6 +162,11 @@ namespace ProjectChimera.Core
             // Story 3.14: reset the revive-capability flag on EVERY (re)allocation (the SoA-recycle contract — a recycled
             // slot must never inherit the prior building's capability), then set it from the authored/threaded flag.
             RevivesHeroes[id]   = revivesHeroes;
+            // Story 3.16: reset the shop capability + stock + radius on EVERY (re)allocation (SoA-recycle contract — a
+            // recycled slot must never inherit the prior building's shop), then set from the authored/threaded values.
+            SellsItems[id]      = sellsItems;
+            ShopStock[id]       = shopStock ?? System.Array.Empty<string>();
+            ShopRadius[id]      = shopRadius;
             // Story 2.13 (AC3.2, Decision 6) — zero SupplyBonus on EVERY (re)allocation, BEFORE the switch. The
             // `default:` branch below does NOT set it, so a recycled slot that was a CommandCenter (SupplyBonus=10)
             // would otherwise leak +10 supply into a default-typed building — the SoA-recycle trap. The CommandCenter
@@ -214,6 +236,8 @@ namespace ProjectChimera.Core
             System.Array.Clear(ProductionQueue);      System.Array.Clear(RallyPoint);
             System.Array.Clear(HasRallyPoint);        System.Array.Clear(TrainedCount);
             System.Array.Clear(RevivesHeroes);
+            System.Array.Clear(SellsItems);           System.Array.Clear(ShopStock);
+            System.Array.Clear(ShopRadius);
             System.Array.Clear(Generation);           System.Array.Clear(_freeList);
             _freeCount = 0;
             Count      = 0;

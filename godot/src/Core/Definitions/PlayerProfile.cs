@@ -13,6 +13,18 @@ namespace ProjectChimera.Core.Definitions
         [property: JsonPropertyName("key")] string Key,
         [property: JsonPropertyName("raw")] int Raw);
 
+    /// <summary>One persisted inventory item in a <see cref="PlayerProfile"/> (Story 3.16): the item-def STRING id (never a
+    /// volatile packed <c>ItemStore</c> ref) + its remaining <c>Charges</c>. The <c>(key,int-raw)</c> <see cref="ProfileAttributeValue"/>
+    /// shape cannot express an ordered list of (id, charges) pairs, so <c>hero.inventory</c> rides its own serialized list;
+    /// re-mint resolves the id back to a registry index and creates a fresh <c>ItemStore</c> instance (D-4).</summary>
+    /// <para>Story 3.16 (review): <c>Slot</c> is the 0-based inventory grid index the item occupied at Save, so re-mint is
+    /// SLOT-FAITHFUL (an item in slot 2 comes back in slot 2, not repacked to slot 1). Defaults to <c>-1</c> for a legacy
+    /// profile that predates slot capture — re-mint then falls back to the first free slot (the old contiguous behaviour).</para>
+    public readonly record struct ProfileInventoryItem(
+        [property: JsonPropertyName("item_id")] string ItemId,
+        [property: JsonPropertyName("charges")] int Charges,
+        [property: JsonPropertyName("slot")] int Slot = -1);
+
     /// <summary>
     /// A saved hero, offline (Story 3.9, AR-12 M2 / FR-7b). The VALUE-bearing companion to Story 3.8's shape-only
     /// <see cref="PlayerProfileShape"/>: a Godot-free, deterministic value class the offline <see cref="LocalProfileSource"/>
@@ -66,6 +78,18 @@ namespace ProjectChimera.Core.Definitions
         }
         private List<ProfileAttributeValue> _values = new();
 
+        /// <summary>Story 3.16: the persisted per-hero inventory as ordered (item-def id + charges) pairs — never volatile
+        /// packed refs (D-4). Captured on Save when the manifest shape carries <c>hero.inventory</c>; re-minted into
+        /// <c>ItemStore</c> + <c>HeroStore.Inventory[]</c> at init-time before <see cref="StartStateHash.Compute"/>. The
+        /// setter coerces a hand-edited JSON <c>null</c> to an empty list. Omitted when empty (no faction/profile churn).</summary>
+        [JsonPropertyName("inventory")]
+        public List<ProfileInventoryItem> Inventory
+        {
+            get => _inventory;
+            set => _inventory = value ?? new List<ProfileInventoryItem>();
+        }
+        private List<ProfileInventoryItem> _inventory = new();
+
         /// <summary>The persisted <c>hero.level</c> (plain int), or 0 if the profile did not capture it.</summary>
         [JsonIgnore]
         public int Level => RawOf("hero.level");
@@ -94,6 +118,7 @@ namespace ProjectChimera.Core.Definitions
             DisplayName     = DisplayName,
             SignatureAbility = SignatureAbility,
             Values          = new List<ProfileAttributeValue>(_values),
+            Inventory       = new List<ProfileInventoryItem>(_inventory),
         };
     }
 }

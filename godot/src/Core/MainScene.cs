@@ -195,7 +195,7 @@ namespace ProjectChimera.Core
         /// <summary>Story 3.6: directory of behavior JSONs, indexed into the BehaviorRegistry (authoring-only — the Unit
         /// Card Editor reads it for the behavior picker + compat validation; no sim system consumes it).</summary>
         private const string BEHAVIORS_DIR = "res://resources/data/behaviors";
-        private const string ITEMS_DIR     = "res://resources/data/items"; // Story 3.15
+        internal const string ITEMS_DIR    = "res://resources/data/items"; // Story 3.15 (internal: the ItemCard phase reads it)
 
         // ── Lifecycle ─────────────────────────────────────────────────────────
 
@@ -406,6 +406,7 @@ namespace ProjectChimera.Core
                 new MapGeneratorPhase(_ctx),
                 new AbilityEditorPhase(_ctx),
                 new UnitCardPhase(_ctx),
+                new ItemCardPhase(_ctx),
                 new PersistenceManifestPhase(_ctx),
                 new HeroPickerPhase(_ctx),
             };
@@ -436,7 +437,9 @@ namespace ProjectChimera.Core
             // PendingHeroProfile is null → nothing minted → HeroStore stays empty → every golden/stamp is byte-identical
             // (no-profile flows are unchanged). The player-facing Deploy path mints + recomputes at launch time.
             Definitions.HeroProfileLoader.LoadInto(_host.Heroes, _applier.LastAppliedHeroes, _ctx.PendingHeroProfile,
-                world: _host.World); // Story 3.13: establish the entity→hero link (D-8) for the XP runtime
+                world: _host.World, // Story 3.13: establish the entity→hero link (D-8) for the XP runtime
+                items: _host.Items, registry: _host.ItemRegistry, // Story 3.16: re-mint persisted inventory before the hash
+                modifiers: _host.Modifiers, usableSlots: _host.ItemSys.UsableSlots); // Story 3.16 review: apply carried stat modifiers + honor the slot cap
             ulong startStateHash = (_ctx.ScenarioApplied && hashModel != null)
                 ? Definitions.StartStateHash.Compute(hashModel, _host.Heroes)
                 : 0UL;
@@ -572,6 +575,12 @@ namespace ProjectChimera.Core
             else if (key.Keycode == Key.J)
             {
                 _ctx.UnitCardPanel.Toggle();
+                GetViewport().SetInputAsHandled();
+            }
+            else if (key.Keycode == Key.G)
+            {
+                // Story 3.16: G opens the Item Card Editor (I is reserved for in-match Inventory, K for the Ability editor).
+                _ctx.ItemCardPanel.Toggle();
                 GetViewport().SetInputAsHandled();
             }
             else if (key.Keycode == Key.V)
@@ -1216,6 +1225,9 @@ namespace ProjectChimera.Core
                     _ctx.HarvestedHeroDefId       = _ctx.PendingHeroProfile.HeroDefId;
                     _ctx.HarvestedHeroLevel       = snapLevel;
                     _ctx.HarvestedHeroXp          = snapXp;
+                    // Story 3.16: harvest the live carried inventory (as item-def ids + charges) for the picker Save/Overwrite.
+                    _ctx.HarvestedHeroInventory   = Definitions.HeroProfileLoader.CaptureInventory(
+                        heroes, _host.Items, _host.ItemRegistry, slot);
                     break;
                 }
             }
@@ -1263,12 +1275,19 @@ namespace ProjectChimera.Core
                         new("hero.level", snapLevel),
                         new("hero.xp", snapXp.Raw),
                     },
+                    // Story 3.16 review: carry the preserved loadout too, so return-to-edit-with-preserve re-mints the
+                    // inventory consistently with the level/xp (the snapshot captured it above; else fall back to the
+                    // deployed profile's saved loadout). Without this the preserve branch dropped the inventory entirely.
+                    Inventory        = _ctx.HarvestedHeroInventory
+                                       ?? _ctx.PendingHeroProfile.Inventory,
                 };
-                Definitions.HeroProfileLoader.LoadInto(_host.Heroes, _applier.LastAppliedHeroes, snapProfile, _logSink, _host.World);
+                Definitions.HeroProfileLoader.LoadInto(_host.Heroes, _applier.LastAppliedHeroes, snapProfile, _logSink, _host.World,
+                    _host.Items, _host.ItemRegistry, _host.Modifiers, _host.ItemSys.UsableSlots); // Story 3.16
             }
             else
             {
-                Definitions.HeroProfileLoader.LoadInto(_host.Heroes, _applier.LastAppliedHeroes, _ctx.PendingHeroProfile, _logSink, _host.World);
+                Definitions.HeroProfileLoader.LoadInto(_host.Heroes, _applier.LastAppliedHeroes, _ctx.PendingHeroProfile, _logSink, _host.World,
+                    _host.Items, _host.ItemRegistry, _host.Modifiers, _host.ItemSys.UsableSlots); // Story 3.16: re-mint the deployed profile's persisted inventory + carried stat modifiers
             }
 
             // 6. Recompute + log the start-state hash so it reflects the re-applied board + re-minted heroes.

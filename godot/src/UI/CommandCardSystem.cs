@@ -2,6 +2,7 @@
 using Godot;
 using ProjectChimera.Core;
 using ProjectChimera.Core.Definitions;
+using ProjectChimera.Combat;       // ItemSystem (Story 3.16 shop/inventory affordances)
 using ProjectChimera.Economy;
 using ProjectChimera.Multiplayer; // LockstepManager / OrderApplier / UnitOrder (Story 2.8: Train rides the command stream)
 
@@ -60,6 +61,22 @@ namespace ProjectChimera.UI
         // Player1 hero, mapped per-refresh to its HeroStore slot (the captured-loop-var lambda carries the BUTTON slot).
         private Button[] _reviveBtns       = System.Array.Empty<Button>();
         private readonly int[] _reviveHeroSlots = new int[MAX_TRAIN_OPTIONS]; // button slot → HeroStore slot it revives (-1 = empty)
+
+        // ── Item shops + inventory (Story 3.16) ────────────────────────────────
+        // Injected via SetShopDeps (like SetReviveDeps). Null until wired → the shop/inventory affordances stay inert.
+        private ItemSystem?   _itemSys;
+        private ItemStore?    _items;
+        private ItemRegistry  _itemRegistry = ItemRegistry.Empty;
+        // Shop Buy grid — one button per shop-stock item, overlaying the train grid (a shop building is not a producer).
+        private Button[] _shopBtns          = System.Array.Empty<Button>();
+        private readonly int[] _shopStockIndices = new int[MAX_TRAIN_OPTIONS]; // button slot → ShopStock index (-1 = empty)
+        // Inventory panel (a focused P1 hero): a 6-slot grid with per-slot Use + Drop.
+        private const int INV_SLOTS = HeroStore.INVENTORY_SLOTS;
+        private Panel    _inventoryPanel    = null!;
+        private Label    _inventoryTitle    = null!;
+        private Button[] _invUseBtns        = System.Array.Empty<Button>();
+        private Button[] _invDropBtns       = System.Array.Empty<Button>();
+        private int      _lastFocusedHeroId = -1; // entity id whose inventory the grid last rendered (for callbacks)
 
         // ── Worker card UI nodes ──────────────────────────────────────────────
 
@@ -146,11 +163,22 @@ namespace ProjectChimera.UI
             _revival = revival;
         }
 
+        /// <summary>Story 3.16: inject the item system + store + registry so a <c>sells_items</c> building's card can list
+        /// stock + issue Buy, and a focused hero's card can render its inventory grid. A setter (like <see cref="SetReviveDeps"/>);
+        /// wired by CameraPhase off the host. Null until wired → the shop/inventory affordances stay inert.</summary>
+        public void SetShopDeps(ItemSystem itemSys, ItemStore items, ItemRegistry registry)
+        {
+            _itemSys      = itemSys;
+            _items        = items;
+            _itemRegistry = registry ?? ItemRegistry.Empty;
+        }
+
         public override void _Ready()
         {
             BuildPanel();
             BuildWorkerPanel();
             BuildAbilityPanel();
+            BuildInventoryPanel();
         }
 
         // ── Per-frame ─────────────────────────────────────────────────────────
@@ -159,9 +187,10 @@ namespace ProjectChimera.UI
         {
             if (GameState.Instance?.Mode != GameMode.Play)
             {
-                _panel.Visible        = false;
-                _workerPanel.Visible  = false;
-                _abilityPanel.Visible = false;
+                _panel.Visible          = false;
+                _workerPanel.Visible    = false;
+                _abilityPanel.Visible   = false;
+                _inventoryPanel.Visible = false;
                 return;
             }
 
@@ -200,9 +229,21 @@ namespace ProjectChimera.UI
                 _abilityPanel.Position = workerSelected ? _abilityPanelStackedPos : _abilityPanelNormalPos;
             _abilityPanel.Visible = abilitySelected;
 
+            // Story 3.16: a focused P1 HERO shows its inventory grid (independent of the ability card — a hero often has both).
+            bool inventorySelected = !buildingSelected
+                && _world != null
+                && _items != null
+                && _heroes != null
+                && focusId >= 0
+                && _world.IsAlive(focusId)
+                && _world.FactionOf[focusId] == Faction.Player1
+                && _world.HeroIndex[focusId] != EntityWorld.HERO_NONE;
+            _inventoryPanel.Visible = inventorySelected;
+
             if (buildingSelected) RefreshCard(bId);
             if (workerSelected)   RefreshWorkerCard(focusId);
             if (abilitySelected)  RefreshAbilityCard(focusId);
+            if (inventorySelected) RefreshInventoryCard(focusId);
         }
 
         // ── Card update ───────────────────────────────────────────────────────
@@ -237,6 +278,7 @@ namespace ProjectChimera.UI
                 _constructionLabel.Visible = true;
                 HideTrainButtons();
                 HideReviveButtons();       // Story 3.14: also clear any revive buttons left over from a prior selection
+                HideShopButtons();         // Story 3.16: clear any shop buttons left over from a prior selection
                 _trainStatus.Visible       = false;
                 _supplyLabel.Visible       = false;
                 return;
@@ -337,6 +379,84 @@ namespace ProjectChimera.UI
                 RefreshReviveButtons(bId, faction);
             else
                 HideReviveButtons();
+
+            // ── Item shop (Story 3.16): a sells_items building offers one Buy button per stock item for an owned hero in
+            //    range. Overlays the (hidden-for-a-non-producer) train grid, beside the revive grid. Inert until wired. ──
+            if (!canProduce && _buildings.SellsItems[bId] && _items != null && _itemSys != null)
+                RefreshShopButtons(bId, faction);
+            else
+                HideShopButtons();
+        }
+
+        /// <summary>Populate the shop Buy picker: one button per <c>ShopStock</c> item, priced from the item def, greyed
+        /// when unaffordable or no owned hero is in <c>shop_radius</c>. Slots past the grid cap are dropped (UI-only).</summary>
+        private void RefreshShopButtons(int bId, Faction faction)
+        {
+            string[] stock = _buildings.ShopStock[bId] ?? System.Array.Empty<string>();
+            Fixed radius = _buildings.ShopRadius[bId];
+            if (radius <= Fixed.Zero) radius = Fixed.FromInt(6);
+            int buyer = FindNearestOwnedHero(_buildings.Position[bId], radius, faction);
+            bool haveBuyer = buyer >= 0;
+            int shown = 0;
+            for (int i = 0; i < stock.Length && shown < _shopBtns.Length; i++)
+            {
+                int defIndex = _itemRegistry.IndexOf(stock[i]);
+                if (defIndex < 0) continue; // dangling stock id — skip (validation should have caught it)
+                var def = _itemRegistry.Get(defIndex);
+
+                int oreDisp     = (int)def.CostOre.ToFloat();
+                int crystalDisp = (int)def.CostCrystal.ToFloat();
+                bool affordable = _resources.CanAffordOre(faction, def.CostOre)
+                               && _resources.CanAffordCrystal(faction, def.CostCrystal);
+                string costSuffix = crystalDisp > 0 ? $" · {crystalDisp} crystal" : "";
+                string note = !haveBuyer  ? "[no hero in range]"
+                            : !affordable ? "[need resources]"
+                            : $"{oreDisp} ore{costSuffix}";
+
+                Button btn = _shopBtns[shown];
+                _shopStockIndices[shown] = i;
+                string name = string.IsNullOrEmpty(def.DisplayName) ? def.Id : def.DisplayName;
+                btn.Text        = $"{name}\n{note}";
+                btn.TooltipText = $"Buy {name} for {oreDisp} ore{costSuffix} for a nearby hero.";
+                btn.Disabled    = !haveBuyer || !affordable;
+                btn.Visible     = true;
+                shown++;
+            }
+            for (int i = shown; i < _shopBtns.Length; i++)
+            {
+                _shopBtns[i].Visible    = false;
+                _shopStockIndices[i]    = -1;
+            }
+        }
+
+        /// <summary>Hide every shop Buy button.</summary>
+        private void HideShopButtons()
+        {
+            for (int i = 0; i < _shopBtns.Length; i++)
+            {
+                _shopBtns[i].Visible = false;
+                _shopStockIndices[i] = -1;
+            }
+        }
+
+        /// <summary>The nearest alive Player-owned HERO entity within <paramref name="radius"/> of <paramref name="pos"/>,
+        /// or -1. Presentation-only (the sim re-checks proximity at exec-tick) — a linear scan of the entity high-water mark.</summary>
+        private int FindNearestOwnedHero(FixedVec3 pos, Fixed radius, Faction faction)
+        {
+            long rr = ((long)radius.Raw * radius.Raw) >> 16;
+            int best = -1; long bestSqr = long.MaxValue;
+            int hwm = _world.HighWaterMark;
+            for (int i = 0; i < hwm; i++)
+            {
+                if (!_world.IsAlive(i)) continue;
+                if (_world.FactionOf[i] != faction) continue;
+                if (_world.HeroIndex[i] == EntityWorld.HERO_NONE) continue;
+                long dxr = (long)_world.Position[i].X.Raw - pos.X.Raw;
+                long dzr = (long)_world.Position[i].Z.Raw - pos.Z.Raw;
+                long sqr = ((dxr * dxr) >> 16) + ((dzr * dzr) >> 16);
+                if (sqr <= rr && sqr < bestSqr) { bestSqr = sqr; best = i; }
+            }
+            return best;
         }
 
         /// <summary>Populate the revive-picker: one button per awaiting hero owned by <paramref name="faction"/>, priced
@@ -446,6 +566,88 @@ namespace ProjectChimera.UI
             OrderApplier.Apply(_world, in order, Faction.Player1, buildings: _buildSys);
         }
 
+        private void OnShopSlotPressed(int slot)
+        {
+            if (slot < 0 || slot >= _shopStockIndices.Length) return;
+            int stockIndex = _shopStockIndices[slot];
+            if (stockIndex < 0) return;
+            int bId = _selection.SelectedBuildingId;
+            if (bId < 0 || bId >= _buildings.Count) return;
+            Fixed radius = _buildings.ShopRadius[bId];
+            if (radius <= Fixed.Zero) radius = Fixed.FromInt(6);
+            int buyer = FindNearestOwnedHero(_buildings.Position[bId], radius, Faction.Player1);
+            if (buyer < 0) return; // no owned hero in range → no buyer
+            IssueBuyCommand(bId, stockIndex, buyer);
+        }
+
+        /// <summary>Issue a BuyItem command for <paramref name="stockIndex"/> at shop <paramref name="bId"/> for the hero
+        /// entity <paramref name="heroEntity"/> (Story 3.16). Mirrors <see cref="IssueReviveCommand"/>: online ENQUEUED
+        /// (spend + mint happen once at exec-tick); offline applied via the SAME OrderApplier the replay/online paths use,
+        /// passing BOTH <c>buildings</c> and <c>items</c> so the offline mint fires. WIRE: TargetX = stock index (raw int),
+        /// TargetZ = buying hero entity id (raw int). Only the LOCAL player's (Player1) own shop.</summary>
+        private void IssueBuyCommand(int bId, int stockIndex, int heroEntity)
+        {
+            if (bId < 0 || bId >= _buildings.Count) return;
+            if (!_buildings.Alive[bId] || _buildings.FactionOf[bId] != Faction.Player1) return;
+            bool applyNow = _lockstep?.EnqueueOrder(bId, UnitCommand.BuyItem,
+                                                    Fixed.FromRaw(stockIndex), Fixed.FromRaw(heroEntity)) ?? true;
+            if (!applyNow) return; // online: LockstepManager.Flush applies at exec-tick (spend + mint happen THERE, once)
+            var order = new UnitOrder(bId, UnitCommand.BuyItem, Fixed.FromRaw(stockIndex), Fixed.FromRaw(heroEntity));
+            OrderApplier.Apply(_world, in order, Faction.Player1, buildings: _buildSys, items: _itemSys);
+        }
+
+        // ── Inventory grid (Story 3.16) ───────────────────────────────────────
+
+        /// <summary>Render the focused hero's 6-slot inventory grid: each filled slot resolves
+        /// <c>Inventory[]</c>→<c>ItemStore</c>→<c>ItemRegistry</c> for name/charges; per-slot Use + Drop issue the sim
+        /// command on that EXACT slot (not a hard-coded slot 0). Empty slots render blank + disabled.</summary>
+        private void RefreshInventoryCard(int focusId)
+        {
+            _lastFocusedHeroId = focusId;
+            if (_items == null || _heroes == null || !_heroes.TryResolveRef(_world.HeroIndex[focusId], out int heroSlot))
+            {
+                for (int s = 0; s < _invUseBtns.Length; s++) { _invUseBtns[s].Disabled = true; _invUseBtns[s].Text = "—"; _invDropBtns[s].Disabled = true; }
+                return;
+            }
+            _inventoryTitle.Text = "Inventory";
+            int baseIdx = heroSlot * INV_SLOTS;
+            for (int s = 0; s < INV_SLOTS; s++)
+            {
+                int refPacked = _heroes.Inventory[baseIdx + s];
+                if (refPacked == HeroStore.INVENTORY_EMPTY || !_items.TryResolveRef(refPacked, out int itemSlot))
+                {
+                    _invUseBtns[s].Text        = "—";
+                    _invUseBtns[s].TooltipText  = "Empty slot";
+                    _invUseBtns[s].Disabled     = true;
+                    _invDropBtns[s].Disabled    = true;
+                    continue;
+                }
+                ItemDefinition? def = _itemRegistry.TryGet(_items.DefId[itemSlot]);
+                string name = def == null ? "?" : (string.IsNullOrEmpty(def.DisplayName) ? def.Id : def.DisplayName);
+                int charges = _items.Charges[itemSlot];
+                bool consumable = def?.EffectGraph != null && charges > 0;
+                _invUseBtns[s].Text        = charges > 0 ? $"{name}\nx{charges}" : name;
+                _invUseBtns[s].TooltipText  = def == null ? name
+                    : consumable ? $"{name} — click to USE (charges: {charges})"
+                                 : $"{name} — carried stat item (no use)";
+                // Story 3.16 review: enable Use ONLY for a consumable (charged + effect graph). A stat item's Use is a sim
+                // no-op, so enabling it flooded discarded lockstep orders — disable it; Drop stays enabled for every item.
+                _invUseBtns[s].Disabled     = !consumable;
+                _invDropBtns[s].Disabled    = false;
+            }
+        }
+
+        private void OnInventoryUsePressed(int slot)
+        {
+            _selection.SetSelectedInventorySlot(slot);
+            if (_lastFocusedHeroId >= 0) _selection.IssueUseItemCommand(_lastFocusedHeroId, slot);
+        }
+
+        private void OnInventoryDropPressed(int slot)
+        {
+            if (_lastFocusedHeroId >= 0) _selection.IssueDropItemCommand(_lastFocusedHeroId, slot);
+        }
+
         // ── Panel construction ────────────────────────────────────────────────
 
         private void BuildPanel()
@@ -551,6 +753,76 @@ namespace ProjectChimera.UI
                 _panel.AddChild(btn);
                 _reviveBtns[i] = btn;
                 _reviveHeroSlots[i] = -1;
+            }
+
+            // ── Shop Buy buttons (Story 3.16) — overlay the train grid (a shop building is not a producer). One per
+            //    stock item, mapped to its ShopStock index per-refresh (the captured lambda carries the BUTTON slot). ──
+            _shopBtns = new Button[MAX_TRAIN_OPTIONS];
+            for (int i = 0; i < MAX_TRAIN_OPTIONS; i++)
+            {
+                var btn = new Button();
+                btn.Position     = new Vector2(10f + i * 102f, 74f);
+                btn.Size         = new Vector2(98f, 70f);
+                btn.Visible      = false;
+                btn.AutowrapMode = TextServer.AutowrapMode.WordSmart;
+                btn.AddThemeFontOverride("font", _tabularFont);
+                int slot = i;
+                btn.Pressed += () => OnShopSlotPressed(slot);
+                _panel.AddChild(btn);
+                _shopBtns[i] = btn;
+                _shopStockIndices[i] = -1;
+            }
+        }
+
+        // ── Inventory panel construction (Story 3.16) ─────────────────────────
+
+        private void BuildInventoryPanel()
+        {
+            var canvas = new CanvasLayer();
+            AddChild(canvas);
+            var vpSize = GetViewport().GetVisibleRect().Size;
+
+            _inventoryPanel = new Panel();
+            _inventoryPanel.Size     = new Vector2(6 * 96f + 16f, 118f);
+            _inventoryPanel.Position = new Vector2(vpSize.X - (6 * 96f + 16f) - 10f, vpSize.Y - 128f);
+            _inventoryPanel.Visible  = false;
+            _inventoryPanel.MouseFilter = Control.MouseFilterEnum.Stop;
+            var bg = new StyleBoxFlat();
+            bg.BgColor     = new Color(0.05f, 0.07f, 0.05f, 0.88f);
+            bg.BorderColor = new Color(0.25f, 0.45f, 0.25f, 0.9f);
+            bg.BorderWidthTop = bg.BorderWidthBottom = bg.BorderWidthLeft = bg.BorderWidthRight = 2;
+            bg.CornerRadiusTopLeft = bg.CornerRadiusTopRight = bg.CornerRadiusBottomLeft = bg.CornerRadiusBottomRight = 4;
+            _inventoryPanel.AddThemeStyleboxOverride("panel", bg);
+            canvas.AddChild(_inventoryPanel);
+
+            _inventoryTitle = MakeLabel(new Vector2(10f, 6f), 14, new Color(0.95f, 0.90f, 0.60f));
+            _inventoryTitle.Text = "Inventory";
+            _inventoryPanel.AddChild(_inventoryTitle);
+
+            _invUseBtns  = new Button[INV_SLOTS];
+            _invDropBtns = new Button[INV_SLOTS];
+            for (int i = 0; i < INV_SLOTS; i++)
+            {
+                var use = new Button();
+                use.Position     = new Vector2(8f + i * 96f, 28f);
+                use.Size         = new Vector2(90f, 58f);
+                use.AutowrapMode = TextServer.AutowrapMode.WordSmart;
+                use.AddThemeFontOverride("font", _tabularFont);
+                use.Text = "—";
+                int s1 = i;
+                use.Pressed += () => OnInventoryUsePressed(s1);
+                _inventoryPanel.AddChild(use);
+                _invUseBtns[i] = use;
+
+                var drop = new Button();
+                drop.Position = new Vector2(8f + i * 96f, 88f);
+                drop.Size     = new Vector2(90f, 22f);
+                drop.Text     = "Drop";
+                drop.AddThemeFontSizeOverride("font_size", 11);
+                int s2 = i;
+                drop.Pressed += () => OnInventoryDropPressed(s2);
+                _inventoryPanel.AddChild(drop);
+                _invDropBtns[i] = drop;
             }
         }
 

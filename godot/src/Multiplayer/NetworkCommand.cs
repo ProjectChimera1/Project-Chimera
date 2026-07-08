@@ -164,6 +164,17 @@ namespace ProjectChimera.Multiplayer
                 return;
             }
 
+            // Story 3.16: BuyItem ALSO names a SHOP BUILDING (UnitId = buildingId) — handle it beside Train/Revive, BEFORE
+            // the entity guard, for the same reason. The stock index rides TargetX and the buying hero entity id rides
+            // TargetZ, both RAW ints (read directly, NEVER via .ToFloat()). BuildingSystem.BuyItemCommand does the
+            // building-ownership + sells_items + stock/proximity/free-slot/affordability guards and the atomic exec-tick
+            // spend + mint. NEVER persists as a CommandState. `buildings`/`items` null ⇒ deterministic no-op (golden/replay).
+            if (cmd == UnitCommand.BuyItem)
+            {
+                buildings?.BuyItemCommand(o.UnitId, expectedFaction, o.TargetX, o.TargetZ, items, events);
+                return;
+            }
+
             int id = o.UnitId;
             if (!world.IsAlive(id)) return;
             if (world.FactionOf[id] != expectedFaction) return; // anti-cheat: only command your own units

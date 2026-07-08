@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Text;
 using ProjectChimera.Core;      // Fixed, HeroStore, HeroId
 using ProjectChimera.Core.Sim;  // ILogSink
+using ProjectChimera.Combat;    // ItemSystem.ApplyItemStatModifier (shared carried-stat-item apply)
+using ProjectChimera.Effects;   // ModifierStore
 
 namespace ProjectChimera.Core.Definitions
 {
@@ -59,7 +61,9 @@ namespace ProjectChimera.Core.Definitions
         /// order (ascending) — no nondeterministic enumeration.
         /// </summary>
         public static int LoadInto(HeroStore heroes, IReadOnlyList<PlacedHero> placedHeroes, PlayerProfile? profile,
-                                   ILogSink? log = null, EntityWorld? world = null)
+                                   ILogSink? log = null, EntityWorld? world = null,
+                                   ItemStore? items = null, ItemRegistry? registry = null,
+                                   ModifierStore? modifiers = null, int usableSlots = HeroStore.INVENTORY_SLOTS)
         {
             if (profile == null || placedHeroes == null) return 0;
 
@@ -87,11 +91,118 @@ namespace ProjectChimera.Core.Definitions
                     // persistence tests that don't run the XP system) skips it harmlessly.
                     if (world != null && placed.EntityId >= 0 && placed.EntityId < EntityWorld.MAX_ENTITIES)
                         world.HeroIndex[placed.EntityId] = heroes.PackRef(slot);
+                    // Story 3.16: re-mint the persisted inventory into ItemStore + HeroStore.Inventory[] as deterministic
+                    // init state (AFTER Mint zeroes the row, BEFORE StartStateHash.Compute folds it). Skipped when the
+                    // stores are absent (pre-3.16 callers / persistence-only tests) — inventory stays empty then.
+                    if (items != null && registry != null)
+                        ReMintInventory(heroes, items, registry, slot, placed.EntityId, profile,
+                                        modifiers, world, usableSlots, log);
                 }
                 else log?.Warn($"[HeroProfileLoader] Mint refused for profile '{profile.ProfileId}' " +
                                $"(entity {placed.EntityId}) — duplicate live id or full store; skipped deterministically.");
             }
             return minted;
+        }
+
+        /// <summary>Story 3.16: re-mint a profile's persisted inventory into <paramref name="items"/> + the hero row's
+        /// <c>Inventory[]</c> at init-time — <see cref="ItemRegistry.IndexOf"/> → <see cref="ItemStore.Create"/> → mark
+        /// held + carrier → write the ring. SLOT-FAITHFUL: an item carrying a persisted <see cref="ProfileInventoryItem.Slot"/>
+        /// is restored to that exact grid slot (a legacy <c>Slot &lt; 0</c> falls back to the first free slot, the old
+        /// contiguous behaviour). Honors the active <paramref name="usableSlots"/> cap — a persisted item mapped beyond the
+        /// cap (or a duplicate/occupied slot) is a deterministic skip + optional log, never landed over-capacity. Charges are
+        /// clamped to <c>[0, def.Charges]</c> (a corrupt/hand-edited profile can't mint a negative- or over-charge item).
+        /// A held item's ground position is irrelevant (unread while held) so it is minted at the origin, deterministically.
+        /// After minting, each carried STAT item applies its per-item modifier (via the shared
+        /// <see cref="ItemSystem.ApplyItemStatModifier"/>, keyed by <see cref="ItemSystem.ItemModifierId"/>) in ASCENDING
+        /// slot order — deterministically, BEFORE <see cref="StartStateHash.Compute"/> — so a reloaded stat item is NOT inert
+        /// (its Effective* bonus matches the pickup/buy path). The modifier apply is skipped when no
+        /// <paramref name="modifiers"/>/<paramref name="world"/> is supplied (persistence-only tests).</summary>
+        private static void ReMintInventory(HeroStore heroes, ItemStore items, ItemRegistry registry, int heroSlot,
+                                            int entityId, PlayerProfile profile, ModifierStore? modifiers,
+                                            EntityWorld? world, int usableSlots, ILogSink? log)
+        {
+            var inv = profile.Inventory;
+            int baseIdx = heroSlot * HeroStore.INVENTORY_SLOTS;
+            int cap = usableSlots < 1 ? 1
+                    : usableSlots > HeroStore.INVENTORY_SLOTS ? HeroStore.INVENTORY_SLOTS : usableSlots;
+
+            for (int i = 0; i < inv.Count; i++)
+            {
+                ProfileInventoryItem entry = inv[i];
+
+                // Resolve the destination slot: a persisted index restores slot-faithfully (honouring the usable cap);
+                // a legacy/unspecified slot (< 0) falls back to the first free usable slot (the old contiguous pack).
+                int targetSlot;
+                if (entry.Slot >= 0)
+                {
+                    targetSlot = entry.Slot;
+                    if (targetSlot >= cap)
+                    {
+                        log?.Warn($"[HeroProfileLoader] Inventory item '{entry.ItemId}' for profile '{profile.ProfileId}' " +
+                                  $"maps to slot {targetSlot} beyond the usable cap {cap} — skipped deterministically.");
+                        continue;
+                    }
+                    if (heroes.Inventory[baseIdx + targetSlot] != HeroStore.INVENTORY_EMPTY)
+                    {
+                        log?.Warn($"[HeroProfileLoader] Inventory slot {targetSlot} for profile '{profile.ProfileId}' " +
+                                  "is already occupied (duplicate persisted slot) — skipped deterministically.");
+                        continue;
+                    }
+                }
+                else
+                {
+                    targetSlot = FirstFreeSlot(heroes, baseIdx, cap);
+                    if (targetSlot < 0) break; // no free usable slot — deterministic stop
+                }
+
+                int defIndex = registry.IndexOf(entry.ItemId);
+                if (defIndex < 0)
+                {
+                    log?.Warn($"[HeroProfileLoader] Inventory item '{entry.ItemId}' for profile '{profile.ProfileId}' " +
+                              "is not in the loaded item registry — skipped deterministically.");
+                    continue;
+                }
+                int charges = ClampCharges(entry.Charges, registry.TryGet(defIndex));
+                int itemRef = items.Create(defIndex, charges, FixedVec3.Zero);
+                if (itemRef < 0) break; // item store full — deterministic stop
+                if (!items.TryResolveRef(itemRef, out int itemSlot)) break;
+                items.Held[itemSlot]            = true;
+                items.CarrierHeroSlot[itemSlot] = heroSlot;
+                heroes.Inventory[baseIdx + targetSlot] = itemRef;
+            }
+
+            // Apply each carried stat item's modifier in ASCENDING slot order — deterministic, after all mints, before the
+            // start-state hash. No-op without a runtime store/world (Tier-1 persistence tests that only re-mint the ring).
+            if (modifiers != null && world != null)
+            {
+                for (int s = 0; s < HeroStore.INVENTORY_SLOTS; s++)
+                {
+                    int itemRef = heroes.Inventory[baseIdx + s];
+                    if (itemRef == HeroStore.INVENTORY_EMPTY) continue;
+                    if (!items.TryResolveRef(itemRef, out int itemSlot)) continue;
+                    ItemDefinition? def = registry.TryGet(items.DefId[itemSlot]);
+                    ItemSystem.ApplyItemStatModifier(modifiers, world, def, entityId, itemRef);
+                }
+            }
+        }
+
+        /// <summary>First free inventory slot in <c>[0, cap)</c> for the hero at <paramref name="baseIdx"/>, or −1 if the
+        /// usable ring is full — the deterministic contiguous fallback for a legacy (slot-less) persisted item.</summary>
+        private static int FirstFreeSlot(HeroStore heroes, int baseIdx, int cap)
+        {
+            for (int s = 0; s < cap; s++)
+                if (heroes.Inventory[baseIdx + s] == HeroStore.INVENTORY_EMPTY) return s;
+            return -1;
+        }
+
+        /// <summary>Clamp a persisted charge count to <c>[0, def.Charges]</c> — a corrupt/hand-edited profile (e.g.
+        /// <c>charges=-5</c>, or a stat item with authored 0 charges hand-set to 5) can never re-mint a negative- or
+        /// over-charge instance. A stat item (authored <c>Charges == 0</c>) always clamps back to 0.</summary>
+        private static int ClampCharges(int charges, ItemDefinition? def)
+        {
+            if (charges < 0) charges = 0;
+            if (def != null && def.Charges >= 0 && charges > def.Charges) charges = def.Charges;
+            return charges;
         }
 
         /// <summary>
@@ -103,9 +214,11 @@ namespace ProjectChimera.Core.Definitions
         /// </summary>
         public static PlayerProfile BuildProfile(string profileId, string heroDefId, string factionId,
                                                  string displayName, string? signatureAbility,
-                                                 int level, Fixed xp, PlayerProfileShape shape)
+                                                 int level, Fixed xp, PlayerProfileShape shape,
+                                                 IReadOnlyList<ProfileInventoryItem>? inventory = null)
         {
             var values = new List<ProfileAttributeValue>();
+            var inv    = new List<ProfileInventoryItem>();
             if (shape != null)
             {
                 for (int i = 0; i < shape.Slots.Count; i++)
@@ -113,7 +226,9 @@ namespace ProjectChimera.Core.Definitions
                     string key = shape.Slots[i].Key;
                     if (key == "hero.level")   values.Add(new ProfileAttributeValue(key, level));
                     else if (key == "hero.xp") values.Add(new ProfileAttributeValue(key, xp.Raw));
-                    // other keys: no backing store yet (only hero.level/hero.xp are eligible today) — skip.
+                    // Story 3.16: hero.inventory rides its own serialized list (the (key,raw) shape can't express it).
+                    else if (key == "hero.inventory" && inventory != null) inv.AddRange(inventory);
+                    // other keys: no backing store yet — skip.
                 }
             }
 
@@ -125,7 +240,31 @@ namespace ProjectChimera.Core.Definitions
                 DisplayName      = displayName,
                 SignatureAbility = signatureAbility,
                 Values           = values,
+                Inventory        = inv,
             };
+        }
+
+        /// <summary>Story 3.16: capture a live hero's carried inventory as (item-def id + charges) pairs for the Save path
+        /// — resolve each occupied <c>HeroStore.Inventory[]</c> ref through <see cref="ItemStore.TryResolveRef"/> →
+        /// <c>DefId</c> → <see cref="ItemRegistry"/> id (never the volatile packed ref). Ascending slot order. Godot-free.</summary>
+        public static List<ProfileInventoryItem> CaptureInventory(HeroStore heroes, ItemStore items,
+                                                                  ItemRegistry registry, int heroSlot)
+        {
+            var list = new List<ProfileInventoryItem>();
+            if (heroSlot < 0 || heroSlot >= HeroStore.MAX_HEROES) return list;
+            int baseIdx = heroSlot * HeroStore.INVENTORY_SLOTS;
+            for (int s = 0; s < HeroStore.INVENTORY_SLOTS; s++)
+            {
+                int refPacked = heroes.Inventory[baseIdx + s];
+                if (refPacked == HeroStore.INVENTORY_EMPTY) continue;
+                if (!items.TryResolveRef(refPacked, out int itemSlot)) continue;
+                ItemDefinition? def = registry.TryGet(items.DefId[itemSlot]);
+                if (def == null) continue;
+                // Slot-faithful (Story 3.16 review): persist the OCCUPIED grid index `s` so re-mint restores this exact
+                // slot (a non-contiguous loadout round-trips to the same slots, not repacked contiguously).
+                list.Add(new ProfileInventoryItem(def.Id, items.Charges[itemSlot], s));
+            }
+            return list;
         }
 
         /// <summary>FNV-64 over the UTF-8 bytes of <paramref name="s"/> — platform-independent (byte-exact) so the

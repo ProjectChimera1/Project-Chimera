@@ -243,6 +243,37 @@ namespace ProjectChimera.Core.Definitions
         public bool RevivesHeroes { get; set; } = false;
 
         /// <summary>
+        /// Marks this (Structure-category) building as an item SHOP (Story 3.16) — mirrors <see cref="RevivesHeroes"/>.
+        /// A creator-authored capability toggle: a shop building offers a per-item Buy affordance on its command card for
+        /// a selected owned hero within <see cref="ShopRadius"/>, and the buy order executes at it. Only valid on a
+        /// Structure unit — the <see cref="UnitDefinitionValidator"/> fails closed otherwise (the <see cref="RevivesHeroes"/>
+        /// precedent). Default false — an omitted key stays false so no existing building becomes a shop and no faction
+        /// JSON changes. NOT combat/checksum state: threaded to <see cref="ProjectChimera.Core.BuildingStore.SellsItems"/>
+        /// at placement (a non-folded placement constant).
+        /// </summary>
+        [JsonPropertyName("sells_items")]
+        public bool SellsItems { get; set; } = false;
+
+        /// <summary>
+        /// The authored item-definition ids this shop stocks (Story 3.16). Each entry names an <c>ItemDefinition.Id</c>
+        /// resolvable in the loaded <c>ItemRegistry</c>; a dangling id is a located <see cref="UnitDefinitionValidator"/>
+        /// error. Resolved to the per-building stock at placement. Null/empty ⇒ the shop stocks nothing. Only meaningful
+        /// when <see cref="SellsItems"/> is set (the validator gates the trio to Structure).
+        /// </summary>
+        [JsonPropertyName("shop_stock")]
+        public string[]? ShopStock { get; set; }
+
+        /// <summary>
+        /// The world-unit radius within which an owned hero may buy from this shop (Story 3.16). An AUTHORING float
+        /// (like every other <see cref="UnitDefinition"/> stat — the POCO carries no <see cref="ProjectChimera.Core.Fixed"/>,
+        /// the lenient faction loader has no <c>FixedJsonConverter</c>); quantized to <see cref="ProjectChimera.Core.Fixed"/>
+        /// once at placement into <c>BuildingStore.ShopRadius</c>, never in a tick. 0 (default) ⇒ a fallback radius is used
+        /// at buy time. The proximity check runs in-sim (anti-cheat), not just as a UI gate.
+        /// </summary>
+        [JsonPropertyName("shop_radius")]
+        public float ShopRadius { get; set; } = 0f;
+
+        /// <summary>
         /// Maximum ability-resource (energy) pool for this unit type (authored float, quantized once to
         /// <see cref="ProjectChimera.Core.Fixed"/> in <see cref="ProjectChimera.Core.EntityWorld.ApplyUnitDefinition"/>
         /// — the single float→Fixed boundary, like the other stats). 0 = no energy pool (cannot cast energy-cost

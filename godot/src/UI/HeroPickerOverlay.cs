@@ -47,6 +47,11 @@ namespace ProjectChimera.UI
         /// placeholders. Wired by <c>HeroPickerPhase</c> to read the <c>SceneContext</c> harvest; null ⇒ placeholders.</summary>
         public System.Func<string, (bool Has, int Level, Core.Fixed Xp)>? HeroProgressProvider;
 
+        /// <summary>Story 3.16: supplies the harvested carried inventory (item-def id + charges pairs) for a hero unit id
+        /// — so Save/Overwrite persist the REAL loadout the hero ended the last playtest with (when the manifest carries
+        /// <c>hero.inventory</c>). Wired by <c>HeroPickerPhase</c>; null / no capture ⇒ an empty loadout is saved.</summary>
+        public System.Func<string, IReadOnlyList<ProfileInventoryItem>?>? HeroInventoryProvider;
+
         // ── Nodes ──
         private CanvasLayer     _canvas   = null!;
         private ColorRect       _scrim    = null!;
@@ -300,6 +305,23 @@ namespace ProjectChimera.UI
             xpCol.AddChild(bar);
             row.Content.AddChild(xpCol);
 
+            // Story 3.16: saved inventory (item-def id + charges) — a compact count tag with the item list in a tooltip.
+            if (profile.Inventory != null && profile.Inventory.Count > 0)
+            {
+                var invTag = ChimeraComponents.Tag($"⛃ {profile.Inventory.Count}", ChimeraComponents.TagVariant.Accent);
+                invTag.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
+                var sb = new System.Text.StringBuilder();
+                for (int ii = 0; ii < profile.Inventory.Count; ii++)
+                {
+                    if (ii > 0) sb.Append(", ");
+                    var pit = profile.Inventory[ii];
+                    sb.Append(pit.ItemId);
+                    if (pit.Charges > 0) sb.Append(" (").Append(pit.Charges).Append(')');
+                }
+                AttachFieldTip(invTag, "Saved inventory", sb.ToString());
+                row.Content.AddChild(invTag);
+            }
+
             // Faction tag (card metadata — display only).
             if (!string.IsNullOrEmpty(profile.FactionId))
             {
@@ -388,7 +410,8 @@ namespace ProjectChimera.UI
             string profileId = _source.NextProfileId(unitId);
             PlayerProfile profile = HeroProfileLoader.BuildProfile(
                 profileId, unitId, factionId, display, sig, level, xp,
-                _scenario.PersistenceManifest.DeriveProfileShape());
+                _scenario.PersistenceManifest.DeriveProfileShape(),
+                HeroInventoryProvider?.Invoke(unitId)); // Story 3.16: capture the live loadout when the shape carries hero.inventory
             _source.Save(profile);
 
             _toastHost.Show("Saved", $"{display} saved as a new hero slot.", ChimeraToastHost.ToastVariant.Ok);
@@ -410,9 +433,14 @@ namespace ProjectChimera.UI
                 // Story 3.13 (D6): rebuild the SAME profile id, capturing the harvested end-of-match Level/Xp for this
                 // hero (if the last playtest grew it), else the profile's own values — through the manifest shape.
                 (int level, Fixed xp) = ResolveHeroProgress(target.HeroDefId, fallbackLevel: target.Level, fallbackXp: target.Xp);
+                // Story 3.16 review: the provider returns null when the harvested hero != this overwrite target — mirror the
+                // level/xp fallback and keep the target's PREVIOUSLY-SAVED loadout, rather than wiping it to an empty list.
+                IReadOnlyList<ProfileInventoryItem>? inventory =
+                    HeroInventoryProvider?.Invoke(target.HeroDefId) ?? target.Inventory;
                 PlayerProfile rebuilt = HeroProfileLoader.BuildProfile(
                     target.ProfileId, target.HeroDefId, target.FactionId, target.DisplayName, target.SignatureAbility,
-                    level, xp, _scenario.PersistenceManifest.DeriveProfileShape());
+                    level, xp, _scenario.PersistenceManifest.DeriveProfileShape(),
+                    inventory); // Story 3.16
                 _source.Save(rebuilt);
                 _toastHost.Show("Saved", "Saved hero overwritten.", ChimeraToastHost.ToastVariant.Ok);
                 Refresh();

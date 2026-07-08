@@ -237,6 +237,11 @@ namespace ProjectChimera.Core.Definitions
             PutBool(obj, "is_hero", d.IsHero, false);
             // Story 3.14: revives_heroes omits at its false default so every existing building round-trips byte-identically.
             PutBool(obj, "revives_heroes", d.RevivesHeroes, false);
+            // Story 3.16: the three shop fields omit at their false/null/0 defaults so every existing building round-trips
+            // byte-identically (only an authored shop building writes them).
+            PutBool(obj, "sells_items", d.SellsItems, false);
+            PutStringArray(obj, "shop_stock", d.ShopStock, defaultsNull: true);
+            PutFloat(obj, "shop_radius", d.ShopRadius, 0f);
             WriteHero(obj, d);
             WriteCombatFeedback(obj, d);
         }

@@ -58,6 +58,13 @@ namespace ProjectChimera.Core.Definitions
                             ?? CheckDelta(id, "armor_delta", def.ArmorDelta);
             if (deltaErr != null) return ItemValidationResult.Fail(deltaErr);
 
+            // ── (c2) Shop costs within [0, Range] (Story 3.16). A negative cost would ADD resource on buy
+            //        (BuildingSystem.BuyItemCommand SpendOre(faction, -CostOre) refunds), so it must fail CLOSED here —
+            //        the editor ValidateFields already rejects it; the sim gate must too (this is the sole minter). ──
+            string? costErr = CheckCost(id, "cost_ore", def.CostOre)
+                           ?? CheckCost(id, "cost_crystal", def.CostCrystal);
+            if (costErr != null) return ItemValidationResult.Fail(costErr);
+
             // ── (d) Consumable ⇔ effect graph coherence (fail-closed on a dangling or missing graph) ──
             EffectNode? root = def.EffectGraph;
             if (def.Charges > 0 && root is null)
@@ -79,6 +86,74 @@ namespace ProjectChimera.Core.Definitions
                 new Validated<ItemDefinition>(def, new ScenarioValidator.Proof()));
         }
 
+        /// <summary>
+        /// Story 3.16 EDITOR surface (D-2): the SAME rules as <see cref="Validate"/> but collecting EVERY located field
+        /// error (keyed by JSON <c>FieldPath</c>) for the item editor's per-field badges — mirrors
+        /// <c>UnitDefinitionValidator</c>. Additionally rejects a non-empty <see cref="ItemDefinition.Icon"/> whose file
+        /// does not exist (via the injected <paramref name="iconExists"/> presentation delegate — Godot's
+        /// <c>ResourceLoader.Exists</c>; null skips the icon check so Tier-1 callers stay Godot-free). Mints NO token —
+        /// the sim <see cref="Validate"/> is the sole minter; this is an authoring gate only.
+        /// </summary>
+        public ItemValidationResult ValidateFields(ItemDefinition? def, System.Func<string, bool>? iconExists = null)
+        {
+            var errors = new System.Collections.Generic.List<(string FieldPath, string Message)>();
+            if (def is null)
+            {
+                errors.Add(("item", "item is null."));
+                return ItemValidationResult.Fields(errors);
+            }
+
+            string id = def.Id ?? "";
+
+            if (string.IsNullOrEmpty(id))
+                errors.Add(("id", "item.id is null or empty."));
+
+            if (def.Charges < 0)
+                errors.Add(("charges", Located(id, "charges",
+                    $"={def.Charges} must be >= 0 (0 = a stat item; >0 = a consumable).")));
+
+            AddDelta(errors, id, "max_health_delta", def.MaxHealthDelta);
+            AddDelta(errors, id, "attack_damage_delta", def.AttackDamageDelta);
+            AddDelta(errors, id, "move_speed_delta", def.MoveSpeedDelta);
+            AddDelta(errors, id, "armor_delta", def.ArmorDelta);
+
+            // Costs (Story 3.16 shops): a negative cost would ADD resource on buy; keep them in the representable range.
+            if (def.CostOre < -Range || def.CostOre > Range)
+                errors.Add(("cost_ore", Located(id, "cost_ore", $"raw {def.CostOre.Raw} is out of range.")));
+            else if (def.CostOre < Fixed.Zero)
+                errors.Add(("cost_ore", Located(id, "cost_ore", "must be >= 0 (a negative cost ADDS resource on buy).")));
+            if (def.CostCrystal < -Range || def.CostCrystal > Range)
+                errors.Add(("cost_crystal", Located(id, "cost_crystal", $"raw {def.CostCrystal.Raw} is out of range.")));
+            else if (def.CostCrystal < Fixed.Zero)
+                errors.Add(("cost_crystal", Located(id, "cost_crystal", "must be >= 0 (a negative cost ADDS resource on buy).")));
+
+            EffectNode? root = def.EffectGraph;
+            if (def.Charges > 0 && root is null)
+                errors.Add(("effect", Located(id, "effect", "a charged consumable (charges > 0) must declare an effect graph.")));
+            if (def.Charges == 0 && root is not null)
+                errors.Add(("effect", Located(id, "effect",
+                    "a stat item (charges == 0) must NOT declare an effect graph (it would never fire).")));
+            if (root is not null)
+            {
+                EffectBoundsResult bounds = EffectBounds.Validate(root);
+                if (!bounds.IsValid)
+                    errors.Add(("effect", Located(id, "effect", bounds.Error!)));
+            }
+
+            // Missing-icon-file rejection (new, Story 3.16): a non-empty icon whose file does not exist fails closed with a
+            // field-located message. The check is presentation-supplied (ResourceLoader.Exists) so the sim stays Godot-free.
+            if (iconExists != null && !string.IsNullOrEmpty(def.Icon) && !iconExists(def.Icon))
+                errors.Add(("icon", Located(id, "icon", $"'{def.Icon}' does not exist under res:// (missing icon file).")));
+
+            return ItemValidationResult.Fields(errors);
+        }
+
+        private static void AddDelta(System.Collections.Generic.List<(string, string)> errors, string id, string path, Fixed delta)
+        {
+            string? err = CheckDelta(id, path, delta);
+            if (err != null) errors.Add((path, err));
+        }
+
         private static string? CheckDelta(string id, string path, Fixed delta)
         {
             if (delta > Range || delta < -Range)
@@ -88,6 +163,17 @@ namespace ProjectChimera.Core.Definitions
             if (delta > MAX_ITEM_STAT_DELTA || delta < -MAX_ITEM_STAT_DELTA)
                 return Located(id, path,
                     $"|delta| {Fixed.Abs(delta).ToInt()} exceeds MAX_ITEM_STAT_DELTA {MAX_ITEM_STAT_DELTA.ToInt()}");
+            return null;
+        }
+
+        /// <summary>Reject a shop cost outside <c>[0, Range]</c> — negative (would ADD resource on buy) or over the 16.16
+        /// representable ceiling — mirroring the <see cref="ValidateFields"/> editor rule. Returns a located error or null.</summary>
+        private static string? CheckCost(string id, string path, Fixed cost)
+        {
+            if (cost < -Range || cost > Range)
+                return Located(id, path, $"raw {cost.Raw} is out of range.");
+            if (cost < Fixed.Zero)
+                return Located(id, path, "must be >= 0 (a negative cost ADDS resource on buy).");
             return null;
         }
 

@@ -482,6 +482,97 @@ namespace ProjectChimera.Economy
             return true;
         }
 
+        /// <summary>Story 3.16: fallback shop radius used when a shop building authored no (or a zero) <c>shop_radius</c>.</summary>
+        private static readonly Fixed SHOP_FALLBACK_RADIUS = Fixed.FromInt(6);
+
+        /// <summary>
+        /// Apply a lockstep <see cref="UnitCommand.BuyItem"/> command at exec-tick (Story 3.16). Mirrors
+        /// <see cref="ReviveHeroCommand"/>: it names a SHOP BUILDING (<paramref name="buildingId"/>, dispatched BEFORE the
+        /// entity-ownership guard), and buys stock item <paramref name="stockIndex"/> for the owned hero embodied by
+        /// <paramref name="heroEntityId"/>. Full guard order (any post-ownership failure ⇒ <see cref="CombatEventType.OrderDenied"/>
+        /// at the shop, zero state change): building bounds+Alive; building owned by <paramref name="expectedFaction"/>
+        /// (anti-cheat — SILENT reject, no position leak); not under construction; <c>SellsItems</c>; stock index in range;
+        /// the stock id resolves in the <see cref="ItemRegistry"/>; the buyer is a live OWNED hero; the buyer is within
+        /// <c>shop_radius</c> (in-sim proximity — anti-cheat, not just a UI gate); a free inventory slot; and affordability
+        /// (check BOTH before debiting EITHER — the partial-spend contract). Only then spends ore+crystal atomically and
+        /// mints the item into the hero's first free slot (reusing the <see cref="ItemSystem"/> claim block). An item-store-
+        /// full mint failure after the spend REFUNDS (net-zero, deterministic). Returns true when an item was bought.
+        /// <paramref name="items"/> null ⇒ deterministic no-op (golden/replay-without-items paths, like <c>buildings</c>).
+        /// </summary>
+        public bool BuyItemCommand(int buildingId, Faction expectedFaction, int stockIndex, int heroEntityId,
+                                   ItemSystem? items, CombatEventQueue? events = null)
+        {
+            ResourceStore resources = _resources;
+            if (items == null) return false; // pre-3.16 caller / items not wired → deterministic no-op
+            if (buildingId < 0 || buildingId >= _buildings.Count) return false;
+            if (!_buildings.Alive[buildingId]) return false;
+            if (_buildings.FactionOf[buildingId] != expectedFaction) return false; // anti-cheat: own building only (silent)
+
+            // Past the ownership guard the order references the player's OWN building, so a subsequent rejection surfaces
+            // a presentation-only OrderDenied cue at the shop (no cross-faction position leak).
+            FixedVec3 shopPos = _buildings.Position[buildingId];
+            if (_buildings.IsUnderConstruction(buildingId)) { Deny(events, shopPos); return false; }
+            if (!_buildings.SellsItems[buildingId])          { Deny(events, shopPos); return false; }
+
+            string[] stock = _buildings.ShopStock[buildingId] ?? System.Array.Empty<string>();
+            if (stockIndex < 0 || stockIndex >= stock.Length) { Deny(events, shopPos); return false; }
+
+            int defIndex = items.Registry.IndexOf(stock[stockIndex]);
+            if (defIndex < 0) { Deny(events, shopPos); return false; } // dangling stock id (validation should have caught it)
+            ItemDefinition? def = items.Registry.TryGet(defIndex);
+            if (def == null) { Deny(events, shopPos); return false; }
+
+            // Buyer: a live hero owned by the same faction.
+            if (!items.TryResolveHero(heroEntityId, out int heroSlot)) { Deny(events, shopPos); return false; }
+            if (items.HeroFaction(heroEntityId) != expectedFaction)    { Deny(events, shopPos); return false; }
+
+            // Proximity: the buyer must be within shop_radius of the shop (long-widened raw squared distance — cannot
+            // overflow on a map-sized separation; the ItemSystem pickup-proximity form). Anti-cheat, not just a UI gate.
+            Fixed radius = _buildings.ShopRadius[buildingId];
+            if (radius <= Fixed.Zero) radius = SHOP_FALLBACK_RADIUS;
+            FixedVec3 hp = items.HeroPosition(heroEntityId);
+            long dxr = (long)hp.X.Raw - shopPos.X.Raw;
+            long dzr = (long)hp.Z.Raw - shopPos.Z.Raw;
+            long sqrDist = ((dxr * dxr) >> 16) + ((dzr * dzr) >> 16);
+            long rr = ((long)radius.Raw * radius.Raw) >> 16;
+            if (sqrDist > rr) { Deny(events, shopPos); return false; }
+
+            // Room BEFORE any spend, so a rejected buy is a pure no-op.
+            if (!items.HeroHasFreeSlot(heroSlot)) { Deny(events, shopPos); return false; }
+
+            // Affordability: check BOTH before debiting EITHER (the partial-spend contract).
+            if (!resources.CanAffordOre(expectedFaction, def.CostOre))     { Deny(events, shopPos); return false; }
+            if (!resources.CanAffordCrystal(expectedFaction, def.CostCrystal)) { Deny(events, shopPos); return false; }
+            resources.SpendOre(expectedFaction, def.CostOre);
+            resources.SpendCrystal(expectedFaction, def.CostCrystal);
+
+            int itemRef = items.GrantPurchasedItem(heroEntityId, defIndex);
+            if (itemRef < 0)
+            {
+                // Item store full (astronomically unlikely — free-slot already passed). Refund atomically → net zero.
+                resources.AddOre(expectedFaction, def.CostOre);
+                resources.AddCrystal(expectedFaction, def.CostCrystal);
+                Deny(events, shopPos);
+                return false;
+            }
+            events?.Push(CombatEventType.ItemPickedUp, hp); // reuse the pickup event for a bought item landing in inventory
+            return true;
+        }
+
+        private static void Deny(CombatEventQueue? events, FixedVec3 pos) =>
+            events?.Push(CombatEventType.OrderDenied, pos);
+
+        /// <summary>Story 3.16: resolve the authored shop capability + stock + radius for the faction's building
+        /// <paramref name="type"/> at placement (mirrors <see cref="ResolveRevivesHeroes"/>). Null faction/def ⇒ no shop.
+        /// The authored float <c>shop_radius</c> is quantized to <see cref="Fixed"/> once HERE (the placement boundary),
+        /// never in a tick.</summary>
+        private (bool Sells, string[] Stock, Fixed Radius) ResolveSellsItems(BuildingType type, Faction faction)
+        {
+            var bdef = GetFactionDef(faction)?.GetBuilding(TechTreeChecker.BuildingTypeId(type));
+            if (bdef == null) return (false, System.Array.Empty<string>(), Fixed.Zero);
+            return (bdef.SellsItems, bdef.ShopStock ?? System.Array.Empty<string>(), Fixed.FromFloat(bdef.ShopRadius));
+        }
+
         /// <summary>
         /// Place a building on behalf of a scenario loader or editor tool.
         /// Bypasses ore cost. When <paramref name="preBuilt"/> is true the construction
@@ -496,7 +587,8 @@ namespace ProjectChimera.Economy
             // Tier-1 tests — pass it explicitly and short-circuit). Without this the whole feature is unreachable in a
             // real match (no production path would ever set BuildingStore.RevivesHeroes).
             bool revives = revivesHeroes || ResolveRevivesHeroes(type, faction);
-            int id = _buildings.Create(position, faction, type, revives);
+            var (sells, stock, radius) = ResolveSellsItems(type, faction); // Story 3.16: resolve the authored shop capability
+            int id = _buildings.Create(position, faction, type, revives, sells, stock, radius);
             if (id < 0) return -1;
             if (preBuilt)
                 _buildings.ConstructionTimer[id] = Fixed.Zero;
@@ -586,7 +678,8 @@ namespace ProjectChimera.Economy
 
             // Place building (starts under construction). Story 3.14: carry the authored revives_heroes capability so a
             // player-built revive building (not just scenario-placed) actually works.
-            int bId = _buildings.Create(position, faction, type, ResolveRevivesHeroes(type, faction));
+            var (sells, stock, radius) = ResolveSellsItems(type, faction); // Story 3.16
+            int bId = _buildings.Create(position, faction, type, ResolveRevivesHeroes(type, faction), sells, stock, radius);
             if (bId < 0)
             {
                 if (costOre > 0f) resources.AddOre(faction, Fixed.FromFloat(costOre)); // refund

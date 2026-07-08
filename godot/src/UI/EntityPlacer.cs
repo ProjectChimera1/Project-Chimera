@@ -951,6 +951,44 @@ namespace ProjectChimera.UI
                 hint.AddThemeFontSizeOverride("font_size", 11);
                 _subRow.AddChild(hint);
             }
+            else if (_mode == PlacementMode.Item)
+            {
+                // Story 3.16: a per-item selector so the palette can place ANY registry item (closes the 3.15 defer where
+                // _itemIndex was never advanced — the palette could only ever place registry item 0). Also fixes the
+                // latent bug where Item mode fell into the ResourceNode branch below and showed ore-node spinners.
+                if (_itemRegistry == null || _itemRegistry.Count == 0)
+                {
+                    var hint = new Label { Text = "(no items loaded)" };
+                    hint.AddThemeFontSizeOverride("font_size", 12);
+                    _subRow.AddChild(hint);
+                    return;
+                }
+                var itemGroup = new ButtonGroup();
+                int clampedItem = _itemIndex % _itemRegistry.Count;
+                _itemIndex = clampedItem;
+                for (int i = 0; i < _itemRegistry.Count; i++)
+                {
+                    int capturedIdx = i;
+                    var idef = _itemRegistry.Get(i);
+                    var btn = new Button
+                    {
+                        Text          = string.IsNullOrEmpty(idef.DisplayName) ? idef.Id : idef.DisplayName,
+                        ToggleMode    = true,
+                        ButtonGroup   = itemGroup,
+                        ButtonPressed = (i == clampedItem),
+                    };
+                    btn.AddThemeFontSizeOverride("font_size", 12);
+                    btn.Pressed += () =>
+                    {
+                        _itemIndex = capturedIdx;
+                        GD.Print($"[EntityPlacer] Item: {_itemRegistry.Get(capturedIdx).Id}");
+                    };
+                    _subRow.AddChild(btn);
+                }
+                var hint2 = new Label { Text = " Click terrain" };
+                hint2.AddThemeFontSizeOverride("font_size", 11);
+                _subRow.AddChild(hint2);
+            }
             else // ResourceNode
             {
                 var supplyLabel = new Label { Text = "Supply:" };

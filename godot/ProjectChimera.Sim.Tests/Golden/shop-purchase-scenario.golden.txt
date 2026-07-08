@@ -1,0 +1,66 @@
+# Project Chimera — shop-purchase golden-checksum baseline (Story 3.16) — CROSS-PLATFORM SAFE (integer/Fixed only).
+# Format: "<tick> <hashHex8>" per line — tick decimal, hash 8 uppercase hex digits (no 0x).
+# checksum_algo_version: 12
+# Pins the SimChecksum (v12 — NO algo bump) sequence for ShopPurchaseScenario.Build() (a Player1 hero buying a stat item at a sells_items shop, spending ore + minting into inventory; Player2 empty so the AI no-ops) stepped via StepOnce at ChecksumInterval=1. All hashed fields integer/Fixed → byte-identical Win↔Linux.
+# Samples: 60 (one line per sim tick).
+# Re-baseline (intentional behavior change only): set CHIMERA_GOLDEN_RECORD=1, run `dotnet test --filter FullyQualifiedName~ShopPurchaseGolden`, then `dotnet build` (refreshes the embedded copy) and commit. DO NOT hand-edit.
+1 394D32EC
+2 394D32EC
+3 394D32EC
+4 394D32EC
+5 394D32EC
+6 D816B1DB
+7 D816B1DB
+8 D816B1DB
+9 D816B1DB
+10 D816B1DB
+11 D816B1DB
+12 D816B1DB
+13 D816B1DB
+14 D816B1DB
+15 D816B1DB
+16 D816B1DB
+17 D816B1DB
+18 D816B1DB
+19 D816B1DB
+20 D816B1DB
+21 D816B1DB
+22 D816B1DB
+23 D816B1DB
+24 D816B1DB
+25 D816B1DB
+26 D816B1DB
+27 D816B1DB
+28 D816B1DB
+29 D816B1DB
+30 D816B1DB
+31 D816B1DB
+32 D816B1DB
+33 D816B1DB
+34 D816B1DB
+35 D816B1DB
+36 D816B1DB
+37 D816B1DB
+38 D816B1DB
+39 D816B1DB
+40 D816B1DB
+41 D816B1DB
+42 D816B1DB
+43 D816B1DB
+44 D816B1DB
+45 D816B1DB
+46 D816B1DB
+47 D816B1DB
+48 D816B1DB
+49 D816B1DB
+50 D816B1DB
+51 D816B1DB
+52 D816B1DB
+53 D816B1DB
+54 D816B1DB
+55 D816B1DB
+56 D816B1DB
+57 D816B1DB
+58 D816B1DB
+59 D816B1DB
+60 D816B1DB

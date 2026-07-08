@@ -36,6 +36,10 @@ namespace ProjectChimera.Core.Bootstrap
             _ctx.HeroPicker.HeroProgressProvider = heroDefId =>
                 (_ctx.HasHarvestedHeroProgress && _ctx.HarvestedHeroDefId == heroDefId,
                  _ctx.HarvestedHeroLevel, _ctx.HarvestedHeroXp);
+            // Story 3.16: supply the harvested carried inventory for the same hero so Save/Overwrite persists the loadout.
+            _ctx.HeroPicker.HeroInventoryProvider = heroDefId =>
+                (_ctx.HasHarvestedHeroProgress && _ctx.HarvestedHeroDefId == heroDefId)
+                    ? _ctx.HarvestedHeroInventory : null;
 
             GD.Print("[HeroPicker] Initialized — offline Play-Skirmish hero picker (shown when the scenario's persistence manifest is enabled).");
         }
@@ -50,7 +54,9 @@ namespace ProjectChimera.Core.Bootstrap
             _ctx.PendingHeroProfile = profile;
 
             int minted = HeroProfileLoader.LoadInto(_ctx.Host.Heroes, _ctx.Applier.LastAppliedHeroes, profile, _ctx.Log,
-                _ctx.Host.World); // Story 3.13: establish the entity→hero link (D-8) for the XP runtime
+                _ctx.Host.World,                        // Story 3.13: establish the entity→hero link (D-8) for the XP runtime
+                _ctx.Host.Items, _ctx.Host.ItemRegistry, // Story 3.16: re-mint the persisted inventory before the hash below
+                _ctx.Host.Modifiers, _ctx.Host.ItemSys.UsableSlots); // Story 3.16 review: apply carried stat modifiers + honor the slot cap
 
             ScenarioData? model = _ctx.Scenario ?? _ctx.FallbackMirror;
             if (_ctx.ScenarioApplied && model != null)

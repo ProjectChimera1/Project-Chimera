@@ -52,6 +52,7 @@ namespace ProjectChimera.Core.Bootstrap
             commandCard.Initialize(selection, _ctx.BuildSys, _ctx.Buildings, _ctx.Resources, _ctx.World);
             commandCard.SetAbilityRegistry(_ctx.AbilityRegistry); // Story 2.4b: the card needs the registry for ability labels (set on ctx by MainScene._Ready, before this phase)
             commandCard.SetReviveDeps(_ctx.Host.Heroes, _ctx.Host.RevivalRuntime); // Story 3.14: the card enumerates awaiting heroes + prices a revive
+            commandCard.SetShopDeps(_ctx.Host.ItemSys, _ctx.Host.Items, _ctx.Host.ItemRegistry); // Story 3.16: shop Buy + inventory grid
             commandCard.OnWorkerBuildRequested += _ctx.Scene.EnterBuildPlacementMode;
             _ctx.CommandCard = commandCard;
         }
