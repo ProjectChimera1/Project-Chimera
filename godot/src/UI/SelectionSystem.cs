@@ -155,11 +155,17 @@ namespace ProjectChimera.UI
 
         // ── Init ──────────────────────────────────────────────────────────────────
 
+        // Story 3.15: item stores for the minimal pickup/use affordance (right-click a ground item → PickupItem;
+        // a hotkey → UseItem on a slot). Optional — null in headless / online-without-items paths.
+        private ItemStore?  _items;
+        private ItemSystem? _itemSys;
+
         public void Initialize(RtsCameraController camCtrl, EntityWorld world,
                               FlowFieldBridge? pathSystem = null,
                               BuildingStore? buildingStore = null,
                               BuildingSystem? buildSys = null,
-                              CombatEventQueue? combatEvents = null)
+                              CombatEventQueue? combatEvents = null,
+                              ItemStore? items = null, ItemSystem? itemSys = null)
         {
             _camCtrl       = camCtrl;
             _world         = world;
@@ -167,6 +173,60 @@ namespace ProjectChimera.UI
             _buildingStore = buildingStore;
             _buildSys      = buildSys;      // Story 2.12: offline SetRally apply site
             _combatEvents  = combatEvents;  // Story 2.12: OrderDenied feedback bus (optional)
+            _items         = items;         // Story 3.15
+            _itemSys       = itemSys;       // Story 3.15
+        }
+
+        /// <summary>Story 3.15: the packed <see cref="ItemStore"/> ref of the nearest ON-GROUND item within
+        /// <paramref name="radius"/> of world point <paramref name="hit"/>, or -1 (ascending-slot tie-break). Godot-side
+        /// pick helper for the pickup affordance.</summary>
+        private int FindNearestGroundItem(Vector3 hit, float radius)
+        {
+            if (_items == null) return -1;
+            int best = -1;
+            float bestSq = radius * radius;
+            for (int s = 0; s < _items.Count; s++)
+            {
+                if (!_items.Alive[s] || _items.Held[s]) continue;
+                float dx = _items.PosX[s].ToFloat() - hit.X;
+                float dz = _items.PosZ[s].ToFloat() - hit.Z;
+                float sq = dx * dx + dz * dz;
+                if (sq < bestSq) { bestSq = sq; best = _items.PackRef(s); }
+            }
+            return best;
+        }
+
+        /// <summary>Story 3.15: the first selected entity that is a hero (has a live HeroStore link), or -1.</summary>
+        private int FirstSelectedHero()
+        {
+            for (int i = 0; i < _selectedList.Count; i++)
+            {
+                int id = _selectedList[i];
+                if (_world.IsAlive(id) && _world.HeroIndex[id] != EntityWorld.HERO_NONE) return id;
+            }
+            return -1;
+        }
+
+        /// <summary>Story 3.15: issue a PickupItem order (routed through the shared applier — online via lockstep,
+        /// offline applied now). The target item's packed ref rides TargetX as a RAW int.</summary>
+        private void IssuePickupCommand(int heroEntity, int itemRef)
+        {
+            if (_lockstep?.EnqueueOrder(heroEntity, UnitCommand.PickupItem, Fixed.FromRaw(itemRef), Fixed.Zero) ?? true)
+            {
+                var order = new UnitOrder(heroEntity, UnitCommand.PickupItem, Fixed.FromRaw(itemRef), Fixed.Zero);
+                OrderApplier.Apply(_world, in order, _world.FactionOf[heroEntity], events: _combatEvents, items: _itemSys);
+            }
+        }
+
+        /// <summary>Story 3.15: issue a UseItem order for an inventory slot (shared applier; offline passes the item
+        /// system so the consumable fires). The slot rides TargetX as a RAW int.</summary>
+        private void IssueUseItemCommand(int heroEntity, int slot)
+        {
+            if (_lockstep?.EnqueueOrder(heroEntity, UnitCommand.UseItem, Fixed.FromRaw(slot), Fixed.Zero) ?? true)
+            {
+                var order = new UnitOrder(heroEntity, UnitCommand.UseItem, Fixed.FromRaw(slot), Fixed.Zero);
+                OrderApplier.Apply(_world, in order, _world.FactionOf[heroEntity], events: _combatEvents, items: _itemSys);
+            }
         }
 
         /// <summary>
@@ -345,6 +405,12 @@ namespace ProjectChimera.UI
                     bool queued = rmb.ShiftPressed;
                     if (RaycastGround(rmb.Position, out Vector3 hit))
                     {
+                        // Story 3.15: right-click a ground item with a hero selected → PickupItem (minimal affordance;
+                        // full inventory UI is Story 3.16). Takes priority over Move onto empty ground.
+                        int heroForPickup = FirstSelectedHero();
+                        int groundItem = heroForPickup >= 0 ? FindNearestGroundItem(hit, PICK_RADIUS) : -1;
+                        if (groundItem >= 0) { IssuePickupCommand(heroForPickup, groundItem); return; }
+
                         int enemyId = FindNearestEnemyUnit(hit, PICK_RADIUS);
                         int enemyBuildingId = enemyId < 0 ? FindNearestEnemyBuilding(hit, BUILDING_PICK_RADIUS) : -1;
                         if (enemyId >= 0)              IssueAttackTargetCommand(enemyId, queued);
@@ -395,6 +461,14 @@ namespace ProjectChimera.UI
                     ResetPendingCommandClicks();
                     _awaitingFollowClick = true;
                     GD.Print("[Selection] Follow: click a friendly unit to escort.");
+                }
+                else if (key.Keycode == Key.T && _selectedSet.Count > 0 && _itemSys != null)
+                {
+                    // Story 3.15: minimal use-consumable affordance — use the item in the first hero's inventory slot 0
+                    // (a non-consumable / empty slot is a deterministic sim no-op). Full inventory-slot hotkeys are 3.16.
+                    ResetPendingCommandClicks();
+                    int hero = FirstSelectedHero();
+                    if (hero >= 0) IssueUseItemCommand(hero, 0);
                 }
                 else if (key.Keycode == Key.Escape)
                 {

@@ -28,7 +28,14 @@ namespace ProjectChimera.Combat
         // when the countdown completes and the hero respawns at its revive building. Presentation-only — CombatEventQueue
         // is NOT a SimChecksum input, so appending enum values cannot move any golden. ──
         HeroFell,
-        HeroRevived
+        HeroRevived,
+        // ── Story 3.15 (item & inventory): appended AFTER HeroRevived. ItemPickedUp when a hero claims a ground item into
+        // a free slot; ItemUsed when a charged consumable fires; ItemDropped when a carried item returns to the ground
+        // (manual drop or death). Presentation-only — CombatEventQueue is NOT a SimChecksum input, so appending enum
+        // values cannot move any golden. The full-inventory reject reuses OrderDenied. ──
+        ItemPickedUp,
+        ItemUsed,
+        ItemDropped
     }
 
     /// <summary>Lightweight event written by sim systems each tick.</summary>

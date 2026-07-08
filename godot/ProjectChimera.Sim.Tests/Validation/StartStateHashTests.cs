@@ -46,7 +46,7 @@ namespace ProjectChimera.Sim.Tests.Validation
         }
 
         [Fact]
-        public void AlgoVersion_IsOne() => Assert.Equal(1, StartStateHash.AlgoVersion);
+        public void AlgoVersion_IsTwo() => Assert.Equal(2, StartStateHash.AlgoVersion); // Story 3.15: bumped 1→2 (inventory + placed items)
 
         [Fact]
         public void MinimalModel_NoHeroes_MatchesIndependentlyComputedFnv64()
@@ -60,9 +60,10 @@ namespace ProjectChimera.Sim.Tests.Validation
             // algorithm without a self-tautology (the seed itself is independently pinned by CanonicalModelHashTests).
             ulong seed = CanonicalModelHash.Compute(model);
             var buf = new List<byte>();
-            AppendInt(buf, StartStateHash.AlgoVersion);              // AlgoVersion (= 1), mixed FIRST
+            AppendInt(buf, StartStateHash.AlgoVersion);              // AlgoVersion (= 2), mixed FIRST
             AppendInt(buf, (int)(seed & 0xFFFFFFFFUL));              // seed low 32
             AppendInt(buf, (int)(seed >> 32));                      // seed high 32
+            AppendInt(buf, model.InventorySlotCount ?? HeroStore.INVENTORY_SLOTS); // Story 3.15 (v2): usable-slot cap
             ulong expected = IndependentFnv64(buf.ToArray());
             if (expected == 0UL) expected = 1UL;                     // mirror the documented 0 → 1 sentinel
 
@@ -85,6 +86,7 @@ namespace ProjectChimera.Sim.Tests.Validation
             AppendInt(buf, StartStateHash.AlgoVersion);
             AppendInt(buf, (int)(seed & 0xFFFFFFFFUL));
             AppendInt(buf, (int)(seed >> 32));
+            AppendInt(buf, model.InventorySlotCount ?? HeroStore.INVENTORY_SLOTS); // Story 3.15 (v2): usable-slot cap
             AppendHero(buf, 1_000_000_007UL, level: 4, xpRaw: Fixed.FromInt(250).Raw);
             AppendHero(buf, 2_000_000_011UL, level: 1, xpRaw: Fixed.FromInt(0).Raw);
             ulong expected = IndependentFnv64(buf.ToArray());
@@ -177,6 +179,42 @@ namespace ProjectChimera.Sim.Tests.Validation
         }
 
         [Fact]
+        public void PlacedItem_ChangesHash()
+        {
+            // Story 3.15 (v2): a placed map-item folds into the start-state hash, so a mismatched item loadout is
+            // rejectable at the handshake. Adding one placed item to an otherwise-identical model MUST move the hash.
+            var heroes = TwoHeroes();
+            var model = BuildModel();
+            var withItem = BuildModel();
+            withItem.Items = new[] { new ScenarioItem { ItemId = "ring_of_vigor", X = 5f, Z = -4f } };
+            Assert.NotEqual(StartStateHash.Compute(model, heroes), StartStateHash.Compute(withItem, heroes));
+        }
+
+        [Fact]
+        public void HeroInventoryContent_ChangesHash()
+        {
+            // Story 3.15 (v2): the per-hero inventory refs fold, so a hero carrying an item hashes differently from an
+            // empty-handed one (a mismatched carried loadout is rejectable at the handshake).
+            var model = BuildModel();
+            var empty = TwoHeroes();
+            var carrying = TwoHeroes();
+            carrying.Inventory[0 * HeroStore.INVENTORY_SLOTS + 0] = 3; // a non-empty ref in the first hero-row slot
+            Assert.NotEqual(StartStateHash.Compute(model, empty), StartStateHash.Compute(model, carrying));
+        }
+
+        [Fact]
+        public void ChangedInventorySlotCount_ChangesHash()
+        {
+            // Story 3.15 (P4, v2): the per-scenario usable inventory-slot cap folds into the start-state hash — it is
+            // sim-affecting (drives full-inventory pickup denial) and must be handshake-rejectable. Two models that
+            // differ ONLY in inventory_slot_count MUST hash differently.
+            var heroes = TwoHeroes();
+            var a = BuildModel(); a.InventorySlotCount = HeroStore.INVENTORY_SLOTS;
+            var b = BuildModel(); b.InventorySlotCount = 3;
+            Assert.NotEqual(StartStateHash.Compute(a, heroes), StartStateHash.Compute(b, heroes));
+        }
+
+        [Fact]
         public void DiffersFromRawCanonicalHash()
         {
             // StartStateHash is a DISTINCT hash, not CanonicalModelHash re-labelled: even with an empty HeroStore the
@@ -218,6 +256,10 @@ namespace ProjectChimera.Sim.Tests.Validation
             AppendInt(buf, (int)(id >> 32));          // HeroId high 32
             AppendInt(buf, level);
             AppendInt(buf, xpRaw);
+            // Story 3.15 (v2): the per-hero inventory refs. A hero minted without items (TwoHeroes) folds the
+            // INVENTORY_SLOTS empty sentinels (-1) — the byte layout a mismatched transposition must break.
+            for (int s = 0; s < HeroStore.INVENTORY_SLOTS; s++)
+                AppendInt(buf, HeroStore.INVENTORY_EMPTY);
         }
     }
 }

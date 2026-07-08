@@ -108,22 +108,21 @@ namespace ProjectChimera.Sim.Tests.Golden
         /// hash still moves.)
         /// </summary>
         [Fact]
-        public void KnownWorldState_ProducesPinnedV11Hash()
+        public void KnownWorldState_ProducesPinnedV12Hash()
         {
-            // Algorithm version must be exactly 11 (Story 3.13's XpBounty + HeroStore fold). If this fails, the const below is stale.
-            Assert.Equal(11, SimChecksum.AlgoVersion);
+            // Algorithm version must be exactly 12 (Story 3.15's ItemStore + inventory fold). If this fails, the const below is stale.
+            Assert.Equal(12, SimChecksum.AlgoVersion);
 
             uint actual = ComputeKnownStateHash();
 
-            // ── Pinned v11 hash for the fixed world built by ComputeKnownStateHash() ──────────────────────────
+            // ── Pinned v12 hash for the fixed world built by ComputeKnownStateHash() ──────────────────────────
             // An intentional SimChecksum algorithm change must update this value AND bump SimChecksum.AlgoVersion.
-            // The known-state world has NO heroes (empty HeroStore → Mix(0) hero-count) and its two entities are at their
-            // Create default for XpBounty (0), so the v11 fold adds a Mix(0) XpBounty per entity + one Mix(0) hero-count —
-            // the hash moves from v10 purely by those mixes.
-            const uint ExpectedV11Hash = 0x0AF691CA; // recorded from a green v11 run; re-pin only on an intentional algo change
-            Assert.True(actual == ExpectedV11Hash,
-                $"Known-state v11 checksum changed: expected 0x{ExpectedV11Hash:X8}, actual 0x{actual:X8}. " +
-                $"If this is an INTENTIONAL algorithm change, re-pin ExpectedV11Hash to 0x{actual:X8} and bump " +
+            // The known-state world has NO heroes (empty HeroStore → no inventory folds) and NO items (empty ItemStore →
+            // one Mix(0) item-count), so the v12 fold moves the hash from v11 purely by that single Mix(0) item-count.
+            const uint ExpectedV12Hash = 0xAFB46F6A; // recorded from a green v12 run; re-pin only on an intentional algo change
+            Assert.True(actual == ExpectedV12Hash,
+                $"Known-state v12 checksum changed: expected 0x{ExpectedV12Hash:X8}, actual 0x{actual:X8}. " +
+                $"If this is an INTENTIONAL algorithm change, re-pin ExpectedV12Hash to 0x{actual:X8} and bump " +
                 $"SimChecksum.AlgoVersion. If not, you broke the deterministic checksum — investigate.");
         }
 
@@ -310,6 +309,11 @@ namespace ProjectChimera.Sim.Tests.Golden
             //    EntityWorld, so the entity helper cannot reach it). ──
             AssertHeroStoreFoldedIntoChecksum(registry);
 
+            // ── v12 (Story 3.15): the mutable ItemStore is folded — creating an item, then mutating DefId / Charges /
+            //    PosX / PosZ / Held / CarrierHeroSlot, each MUST move the hash. Dedicated teeth (the store lives outside
+            //    EntityWorld/HeroStore). ──
+            AssertItemStoreFoldedIntoChecksum(registry);
+
             // ── v9 (Story 2.12, D-1): the per-building rally point is folded — HasRallyPoint AND the RallyPoint X/Z.
             //    Rally lives on BuildingStore (not EntityWorld), so it needs its own teeth (the EntityWorld helper above
             //    only mutates entity fields). Each of the three mixes must move the hash. ──
@@ -444,6 +448,60 @@ namespace ProjectChimera.Sim.Tests.Golden
             uint linkMoved = SimChecksum.Compute(world, buildings, resources, registry, null, heroes);
             Assert.True(timerMoved != linkMoved,
                 "HeroStore.RevivalLink is NOT folded into SimChecksum: changing it left the checksum unchanged (v11 fold).");
+
+            // Story 3.15 (v12) — the per-hero inventory refs fold in the same hero-row loop. Changing one slot's ref MUST
+            // move the hash (a pickup/drop mutates these). Fixed-stride (not count-driven), so any slot moves it.
+            heroes.Inventory[slot * HeroStore.INVENTORY_SLOTS + 0] = 7;
+            uint invMoved = SimChecksum.Compute(world, buildings, resources, registry, null, heroes);
+            Assert.True(linkMoved != invMoved,
+                "HeroStore.Inventory is NOT folded into SimChecksum: changing an inventory ref left the checksum unchanged (v12 fold).");
+        }
+
+        /// <summary>
+        /// Story 3.15 (v12) coverage teeth: the mutable <see cref="ItemStore"/> state must move the checksum. Creates a
+        /// ground item, then mutates each folded field (DefId / Charges / PosX / PosZ / Held / CarrierHeroSlot) in turn —
+        /// each MUST move the hash. A no-move means a folded item field escaped <see cref="SimChecksum"/> (a silent desync
+        /// surface, since pickup/use/drop mutate the store mid-match). The ItemStore lives outside EntityWorld/HeroStore,
+        /// so it needs its own teeth (passed as the trailing Compute param).
+        /// </summary>
+        private static void AssertItemStoreFoldedIntoChecksum(FactionRegistry registry)
+        {
+            var world     = new EntityWorld();          // empty — isolates the item contribution
+            var resources = new ResourceStore(Fixed.Zero);
+            var buildings = new BuildingStore();
+            var items     = new ItemStore();
+
+            uint empty = SimChecksum.Compute(world, buildings, resources, registry, null, null, items);
+
+            int itemRef = items.Create(defId: 2, charges: 3, new FixedVec3(Fixed.FromInt(5), Fixed.Zero, Fixed.FromInt(-4)));
+            Assert.True(items.TryResolveRef(itemRef, out int s));
+            uint created = SimChecksum.Compute(world, buildings, resources, registry, null, null, items);
+            Assert.True(empty != created,
+                "Creating an item did NOT move the checksum — the ItemStore live count / rows are not folded into SimChecksum (v12).");
+
+            items.DefId[s] = 4;
+            uint defMoved = SimChecksum.Compute(world, buildings, resources, registry, null, null, items);
+            Assert.True(created != defMoved, "ItemStore.DefId is NOT folded into SimChecksum (v12).");
+
+            items.Charges[s] = 1;
+            uint chMoved = SimChecksum.Compute(world, buildings, resources, registry, null, null, items);
+            Assert.True(defMoved != chMoved, "ItemStore.Charges is NOT folded into SimChecksum (v12).");
+
+            items.PosX[s] = Fixed.FromInt(9);
+            uint pxMoved = SimChecksum.Compute(world, buildings, resources, registry, null, null, items);
+            Assert.True(chMoved != pxMoved, "ItemStore.PosX is NOT folded into SimChecksum (v12).");
+
+            items.PosZ[s] = Fixed.FromInt(-9);
+            uint pzMoved = SimChecksum.Compute(world, buildings, resources, registry, null, null, items);
+            Assert.True(pxMoved != pzMoved, "ItemStore.PosZ is NOT folded into SimChecksum (v12).");
+
+            items.Held[s] = true;
+            uint heldMoved = SimChecksum.Compute(world, buildings, resources, registry, null, null, items);
+            Assert.True(pzMoved != heldMoved, "ItemStore.Held is NOT folded into SimChecksum (v12).");
+
+            items.CarrierHeroSlot[s] = 2;
+            uint carrierMoved = SimChecksum.Compute(world, buildings, resources, registry, null, null, items);
+            Assert.True(heldMoved != carrierMoved, "ItemStore.CarrierHeroSlot is NOT folded into SimChecksum (v12).");
         }
 
         /// <summary>
@@ -512,7 +570,8 @@ namespace ProjectChimera.Sim.Tests.Golden
             // v6: pass an EMPTY ModifierStore (count 0 per entity) — the live host always passes a real store, so the
             // pin reflects the production fold path (null would hash identically via the ?? 0 count, but be explicit).
             // v11 (Story 3.13): pass an EMPTY HeroStore (no heroes → Mix(0) hero-count) — same explicit-production-path rationale.
-            return SimChecksum.Compute(world, buildings, resources, new FactionRegistry(2), new ModifierStore(world), new HeroStore());
+            // v12 (Story 3.15): pass an EMPTY ItemStore (no items → Mix(0) item-count) — same explicit-production-path rationale.
+            return SimChecksum.Compute(world, buildings, resources, new FactionRegistry(2), new ModifierStore(world), new HeroStore(), new ItemStore());
         }
 
         /// <summary>

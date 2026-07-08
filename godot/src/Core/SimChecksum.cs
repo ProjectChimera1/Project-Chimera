@@ -107,15 +107,23 @@ namespace ProjectChimera.Core
         ///        A null HeroStore folds Mix(0) count (dormant/legacy callers agree). All int/Fixed.Raw → cross-platform.
         ///        One scheduled re-baseline of ALL goldens (existing goldens have no heroes + XpBounty defaults to 0, so
         ///        the pin moves purely by the added Mix(0) hero-count + Mix(0) XpBounty per entity).
+        ///   v12 — Story 3.15: the item/inventory sim first MUTATES mid-match, so fold (a) the mutable ItemStore — live
+        ///        count, then per live slot (ascending slot) DefId, Charges, PosX.Raw, PosZ.Raw, Held (int), CarrierHeroSlot;
+        ///        AND (b) the per-hero inventory — the INVENTORY_SLOTS packed ItemStore refs, in the same HeroStore
+        ///        FoldOrder loop after the reserved revival fields. A null ItemStore folds a single Mix(0) count (dormant/
+        ///        legacy callers agree). All int/Fixed.Raw → cross-platform. One scheduled re-baseline of ALL goldens
+        ///        (existing goldens have no items + empty inventories, so the pin moves purely by the added Mix(0)
+        ///        item-count + the INVENTORY_SLOTS Mix(-1) empty-slot refs per hero — of which existing goldens have none).
         /// </summary>
-        public const int AlgoVersion = 11;
+        public const int AlgoVersion = 12;
 
         /// <summary>
         /// Compute a full-state checksum for desync detection.
         /// Call after all systems have ticked for the current frame.
         /// </summary>
         public static uint Compute(EntityWorld world, BuildingStore buildings, ResourceStore resources,
-                                   FactionRegistry factions, ModifierStore? modifiers = null, HeroStore? heroes = null)
+                                   FactionRegistry factions, ModifierStore? modifiers = null, HeroStore? heroes = null,
+                                   ItemStore? items = null)
         {
             // Contract guard for the registry param added in Story 1.3a: a future direct caller (e.g. the
             // 1.9a/9.1 server checksum collector) gets a clear error instead of an opaque NRE in the Ore loop.
@@ -305,11 +313,44 @@ namespace ProjectChimera.Core
                     hash = Mix(hash, heroes.AwaitingRevival[slot] ? 1 : 0);
                     hash = Mix(hash, heroes.RevivalTimer[slot].Raw);
                     hash = Mix(hash, heroes.RevivalLink[slot]);
+                    // ── Per-hero inventory (v12, Story 3.15) — the INVENTORY_SLOTS packed ItemStore refs on this row.
+                    //    Fixed-stride (not count-driven): empty slots fold their -1 sentinel, so a pickup/drop that changes
+                    //    a ref moves the hash. Ascending slot within the (already ascending-HeroId) fold order. ──
+                    int invBase = slot * HeroStore.INVENTORY_SLOTS;
+                    for (int s = 0; s < HeroStore.INVENTORY_SLOTS; s++)
+                        hash = Mix(hash, heroes.Inventory[invBase + s]);
                 }
             }
             else
             {
                 hash = Mix(hash, 0); // null store ≡ empty (dormant): fold an identical count-0 mix
+            }
+
+            // ── ItemStore mutable state (v12, Story 3.15) — live count, then per live slot (ascending slot) ──
+            // The item/inventory sim mutates the ItemStore mid-match (placement, pickup ground→held, use/charge, drop),
+            // so it is peer-divergent sim truth and must fold. Count-driven over 0..Count (a recycled slot is < Count and
+            // skipped by Alive), all int / Fixed.Raw → cross-platform. A null store folds a single Mix(0) count (dormant/
+            // legacy callers agree with an empty store).
+            if (items != null)
+            {
+                int liveItems = 0;
+                for (int i = 0; i < items.Count; i++)
+                    if (items.Alive[i]) liveItems++;
+                hash = Mix(hash, liveItems);
+                for (int i = 0; i < items.Count; i++)
+                {
+                    if (!items.Alive[i]) continue;
+                    hash = Mix(hash, items.DefId[i]);
+                    hash = Mix(hash, items.Charges[i]);
+                    hash = Mix(hash, items.PosX[i].Raw);
+                    hash = Mix(hash, items.PosZ[i].Raw);
+                    hash = Mix(hash, items.Held[i] ? 1 : 0);
+                    hash = Mix(hash, items.CarrierHeroSlot[i]);
+                }
+            }
+            else
+            {
+                hash = Mix(hash, 0); // null store ≡ empty: fold an identical count-0 mix
             }
 
             // ── RNG state (v3, Story 1.5) ─────────────────────────────────────────

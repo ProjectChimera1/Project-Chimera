@@ -230,6 +230,13 @@ namespace ProjectChimera.Sim.Tests.Sim
             var (host, applier, model) = BuildApplied();
             RunTicks(host, 60); // run a match: units move, ore spent, RNG advances
 
+            // Story 3.15: the golden fixture places no items, so a missing Items.Clear() (or a dropped
+            // HeroStore.Inventory reset) in ClearForReset would still leave every OTHER store equal to fresh and pass
+            // vacuously. Populate the v12-folded item state directly so this keystone has teeth on it — a live
+            // ItemStore instance + a non-default per-hero inventory ref that ClearForReset MUST wipe back to fresh.
+            host.Items.Create(defId: 0, charges: 3, new FixedVec3(Fixed.FromInt(5), Fixed.Zero, Fixed.FromInt(7)));
+            host.Heroes.Inventory[0] = 7; // non-default marker; HeroStore.Clear's Array.Clear(Inventory) must zero it
+
             host.ClearForReset();
 
             // A newly-constructed host (NOT applied) is the byte-for-byte reference.
@@ -271,6 +278,14 @@ namespace ProjectChimera.Sim.Tests.Sim
             Assert.Equal(fresh.Nodes.Active,          host.Nodes.Active);
             Assert.Equal(fresh.Heroes.Alive,          host.Heroes.Alive);
             Assert.Equal(fresh.Fog.Grid,              host.Fog.Grid);
+
+            // Story 3.15: the v12-folded ItemStore + per-hero inventory reset to fresh (teeth for the Items.Clear()
+            // and the HeroStore.Inventory reset in ClearForReset — see the direct population above; without either,
+            // host would diverge from a fresh boot and the "reset == fresh boot" determinism guarantee would break).
+            Assert.Equal(0, host.Items.Count);
+            Assert.Equal(fresh.Items.Alive,           host.Items.Alive);
+            Assert.Equal(fresh.Items.Generation,      host.Items.Generation);
+            Assert.Equal(fresh.Heroes.Inventory,      host.Heroes.Inventory);
         }
 
         // ── I/O matrix: HeroStore non-additive on re-deploy (the 3.9 deferred gap) ─────────────
@@ -420,9 +435,9 @@ namespace ProjectChimera.Sim.Tests.Sim
         [Fact]
         public void HashAlgoVersions_AreUnchanged()
         {
-            Assert.Equal(11, SimChecksum.AlgoVersion);   // Story 3.13: XpBounty + HeroStore fold
+            Assert.Equal(12, SimChecksum.AlgoVersion);   // Story 3.15: ItemStore + per-hero inventory fold (11→12)
             Assert.Equal(3, CanonicalModelHash.AlgoVersion);
-            Assert.Equal(1, StartStateHash.AlgoVersion);
+            Assert.Equal(2, StartStateHash.AlgoVersion);
         }
 
         // ── Hero fixture + helpers ─────────────────────────────────────────────────────────────

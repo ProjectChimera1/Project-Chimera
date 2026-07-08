@@ -57,6 +57,11 @@ namespace ProjectChimera.Multiplayer
         /// Wired alongside the path delegates; null in the Tier-1 golden harness where Train no-ops.</summary>
         public ProjectChimera.Economy.BuildingSystem? Buildings;
 
+        /// <summary>Story 3.15: the item/inventory runtime the shared OrderApplier uses to EXECUTE a replayed UseItem /
+        /// DropItem command, so a recorded .chmr uses/drops items identically to the live match. Wired alongside
+        /// <see cref="Buildings"/>; null in the Tier-1 golden harness where item commands no-op.</summary>
+        public ProjectChimera.Combat.ItemSystem? Items;
+
         // ── Replay data ───────────────────────────────────────────────────────────
 
         // Key = simulation tick; value = list of (faction, orders[]) for that tick.
@@ -177,7 +182,7 @@ namespace ProjectChimera.Multiplayer
             // are null in the Tier-1 golden harness.
             for (int i = 0; i < count; i++)
                 OrderApplier.Apply(_world, in orders[i], expectedFaction,
-                    OnRequestPath, OnRequestAttackMove, OnCancelPath, Buildings);
+                    OnRequestPath, OnRequestAttackMove, OnCancelPath, Buildings, null, Items);
         }
     }
 }

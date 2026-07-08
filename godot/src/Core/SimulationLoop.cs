@@ -63,6 +63,7 @@ namespace ProjectChimera.Core
         private FactionRegistry? _checksumFactions;
         private ModifierStore?   _checksumModifiers; // Story 2.2b (Option B): folds active modifier state (null ≡ empty)
         private HeroStore?       _checksumHeroes;    // Story 3.13: folds mutable HeroStore state (Level/Xp/growth) (null ≡ empty)
+        private ItemStore?       _checksumItems;     // Story 3.15: folds mutable ItemStore + per-hero inventory (null ≡ empty)
 
         public SimulationLoop(EntityWorld world, params ISimSystem[] systems)
         {
@@ -77,13 +78,14 @@ namespace ProjectChimera.Core
         /// Call once after construction, before the first Update().
         /// </summary>
         public void EnableChecksums(BuildingStore buildings, ResourceStore resources, FactionRegistry factions,
-                                    ModifierStore? modifiers = null, HeroStore? heroes = null)
+                                    ModifierStore? modifiers = null, HeroStore? heroes = null, ItemStore? items = null)
         {
             _checksumBuildings = buildings;
             _checksumResources = resources;
             _checksumFactions  = factions;
             _checksumModifiers = modifiers; // Story 2.2b — folds the live store's active modifier state (null ≡ empty)
             _checksumHeroes    = heroes;    // Story 3.13 — folds the live store's mutable hero state (null ≡ empty)
+            _checksumItems     = items;     // Story 3.15 — folds the live ItemStore + per-hero inventory (null ≡ empty)
         }
 
         /// <summary>
@@ -118,7 +120,7 @@ namespace ProjectChimera.Core
             if (ChecksumInterval > 0 && CurrentTick % (uint)ChecksumInterval == 0
                 && _checksumBuildings != null && _checksumResources != null && _checksumFactions != null)
             {
-                LastChecksum = SimChecksum.Compute(World, _checksumBuildings, _checksumResources, _checksumFactions, _checksumModifiers, _checksumHeroes);
+                LastChecksum = SimChecksum.Compute(World, _checksumBuildings, _checksumResources, _checksumFactions, _checksumModifiers, _checksumHeroes, _checksumItems);
                 OnChecksum?.Invoke(CurrentTick, LastChecksum);
             }
         }
@@ -155,7 +157,7 @@ namespace ProjectChimera.Core
                 if (ChecksumInterval > 0 && CurrentTick % (uint)ChecksumInterval == 0
                     && _checksumBuildings != null && _checksumResources != null && _checksumFactions != null)
                 {
-                    LastChecksum = SimChecksum.Compute(World, _checksumBuildings, _checksumResources, _checksumFactions, _checksumModifiers, _checksumHeroes);
+                    LastChecksum = SimChecksum.Compute(World, _checksumBuildings, _checksumResources, _checksumFactions, _checksumModifiers, _checksumHeroes, _checksumItems);
                     OnChecksum?.Invoke(CurrentTick, LastChecksum);
                 }
             }

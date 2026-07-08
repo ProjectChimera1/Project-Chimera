@@ -51,6 +51,9 @@ namespace ProjectChimera.Core
         /// <c>SceneContext</c> for the Unit Card Editor's behavior picker + compat validation. Authoring-only (no host
         /// injection, no sim consumer — D-2). Empty until _Ready builds it.</summary>
         private BehaviorRegistry _behaviorRegistry = BehaviorRegistry.Empty;
+        /// <summary>Story 3.15: registry of validated items (built from <see cref="ITEMS_DIR"/>), injected into the host
+        /// so scenario item placement + the editor Item palette resolve item ids. Empty until _Ready builds it.</summary>
+        private ItemRegistry _itemRegistry = ItemRegistry.Empty;
         private Combat.ProjectileStore  _projectiles = null!;
         private Combat.CombatEventQueue _combatEvents = null!;
         private Combat.DamageTable      _damageTable = null!;
@@ -192,6 +195,7 @@ namespace ProjectChimera.Core
         /// <summary>Story 3.6: directory of behavior JSONs, indexed into the BehaviorRegistry (authoring-only — the Unit
         /// Card Editor reads it for the behavior picker + compat validation; no sim system consumes it).</summary>
         private const string BEHAVIORS_DIR = "res://resources/data/behaviors";
+        private const string ITEMS_DIR     = "res://resources/data/items"; // Story 3.15
 
         // ── Lifecycle ─────────────────────────────────────────────────────────
 
@@ -279,6 +283,12 @@ namespace ProjectChimera.Core
             _behaviorRegistry = BehaviorRegistry.LoadFromDirectory(
                 behaviorsAbs, name => GD.Print($"[Behaviors] skipped invalid {name}"));
 
+            // Story 3.15: build the item registry from resources/data/items/ (fail-closed per file), injected into the
+            // host so scenario item placement + the editor Item palette resolve item ids. Empty when the dir is absent.
+            string itemsAbs = ProjectSettings.GlobalizePath(ITEMS_DIR);
+            _itemRegistry = ItemRegistry.LoadFromDirectory(
+                itemsAbs, name => GD.Print($"[Items] skipped invalid {name}"));
+
             // Story 2.11 (review C1): tag-validate the DEFAULT-SEEDED faction defs on the client too, mirroring the
             // server's validate-every-def posture (ServerBootstrap). ResolveSlotFactionDefs only validates slots that
             // carry an explicit faction_json file, so without this a default/fallback slot would spawn an unknown-tag
@@ -316,7 +326,8 @@ namespace ProjectChimera.Core
                 _factionDef2,
                 _damageTable,
                 AiLevel,
-                _abilityRegistry); // Story 2.4b: the 7th arg — makes AbilityCastSystem cast a real ability in-game (was Empty)
+                _abilityRegistry, // Story 2.4b: the 7th arg — makes AbilityCastSystem cast a real ability in-game (was Empty)
+                _itemRegistry);   // Story 3.15: the 8th arg — item placement + pickup/use resolve real item defs (was Empty)
 
             _world            = _host.World;
             _nodes            = _host.Nodes;

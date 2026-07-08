@@ -70,6 +70,29 @@ namespace ProjectChimera.Sim.Tests.Core
         }
 
         [Fact]
+        public void RecycledSlot_CarriesNoPriorInventory()
+        {
+            // Story 3.15 (P7): mirror ItemStoreTests.RecycledSlot_CarriesNoPriorDefOrCharges for the hero INVENTORY.
+            // A recycled hero slot must NOT inherit the prior occupant's held item refs — else a revived/re-minted hero
+            // would resurrect the dead hero's loadout (the SoA-recycle trap applied to the inventory ring).
+            var s = new HeroStore();
+            int a = s.Mint(new HeroId(777), entityId: 9, level: 5, xp: Fixed.FromInt(999));
+            // Fill hero A's entire inventory stride with (arbitrary) held item refs.
+            int aBase = a * HeroStore.INVENTORY_SLOTS;
+            for (int slot = 0; slot < HeroStore.INVENTORY_SLOTS; slot++)
+                s.Inventory[aBase + slot] = 500 + slot;
+
+            s.Destroy(a);
+            int b = s.Mint(new HeroId(888), entityId: 2, level: 1, xp: Fixed.FromInt(0));
+            Assert.Equal(a, b); // same physical slot off the free-list
+
+            // Every one of hero B's inventory slots reads the empty sentinel — none of A's refs survived.
+            int bBase = b * HeroStore.INVENTORY_SLOTS;
+            for (int slot = 0; slot < HeroStore.INVENTORY_SLOTS; slot++)
+                Assert.Equal(HeroStore.INVENTORY_EMPTY, s.Inventory[bBase + slot]);
+        }
+
+        [Fact]
         public void PackRef_RoundTrips_ForLiveSlot_AndIsGoldenNeutralAtGenZero()
         {
             var s = new HeroStore();

@@ -1,0 +1,9 @@
+{
+  "id": "potion_of_healing",
+  "display_name": "Potion of Healing",
+  "icon": "",
+  "charges": 3,
+  "cost_ore": 100,
+  "cost_crystal": 0,
+  "effect": { "kind": "heal", "amount": 75 }
+}

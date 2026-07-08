@@ -25,7 +25,7 @@ namespace ProjectChimera.UI
     /// </summary>
     public partial class EntityPlacer : Node
     {
-        public enum PlacementMode { P1Unit, P2Unit, ResourceNode, Building, StartPos }
+        public enum PlacementMode { P1Unit, P2Unit, ResourceNode, Building, StartPos, Item }
 
         // ── Fallback stats ────────────────────────────────────────────────────
         private const float HEALTH       = 100f;
@@ -44,8 +44,8 @@ namespace ProjectChimera.UI
 
         // Modes displayed left-to-right in the palette (order must match _modeBtns array)
         private static readonly PlacementMode[] MODE_ORDER =
-            { PlacementMode.P1Unit, PlacementMode.P2Unit, PlacementMode.ResourceNode, PlacementMode.Building, PlacementMode.StartPos };
-        private static readonly string[] MODE_LABELS = { "P1 Unit", "P2 Unit", "Ore Node", "Building", "Start Pos" };
+            { PlacementMode.P1Unit, PlacementMode.P2Unit, PlacementMode.ResourceNode, PlacementMode.Building, PlacementMode.StartPos, PlacementMode.Item };
+        private static readonly string[] MODE_LABELS = { "P1 Unit", "P2 Unit", "Ore Node", "Building", "Start Pos", "Item" };
 
         // ── Dependencies ──────────────────────────────────────────────────────
         private RtsCameraController _camCtrl   = null!;
@@ -53,6 +53,9 @@ namespace ProjectChimera.UI
         private ResourceNodeStore?  _nodes;
         private ResourceStore?      _resources;
         private BuildingStore?      _buildings;
+        private ItemStore?          _items;         // Story 3.15 — ground item instances (Item placement mode)
+        private ItemRegistry?       _itemRegistry;  // Story 3.15 — id→index over validated item defs
+        private int                 _itemIndex = 0; // Story 3.15 — which registry item to place (cycled by re-clicking the Item mode)
         private FactionDefinition?  _faction;   // Player1
         private FactionDefinition?  _faction2;  // Player2
 
@@ -151,13 +154,16 @@ namespace ProjectChimera.UI
                                ResourceNodeStore? nodes = null, ResourceStore? resources = null,
                                BuildingStore? buildings = null, FactionDefinition? faction = null,
                                System.Action<int, Vector3, float>? onStartPosMoved = null,
-                               FactionDefinition? faction2 = null)
+                               FactionDefinition? faction2 = null,
+                               ItemStore? items = null, ItemRegistry? itemRegistry = null)
         {
             _camCtrl          = camCtrl;
             _world            = world;
             _nodes            = nodes;
             _resources        = resources;
             _buildings        = buildings;
+            _items            = items;         // Story 3.15
+            _itemRegistry     = itemRegistry;  // Story 3.15
             _faction          = faction;
             _faction2         = faction2;
             _onStartPosMoved  = onStartPosMoved;
@@ -392,10 +398,28 @@ namespace ProjectChimera.UI
                 case PlacementMode.StartPos:
                     MoveStartPosition(hit);
                     break;
+                case PlacementMode.Item:
+                    PlaceItem(fixedPos);
+                    break;
                 default:
                     PlaceUnit(fixedPos, shiftHeld);
                     break;
             }
+        }
+
+        /// <summary>Story 3.15 — place a ground <see cref="ItemStore"/> instance of the currently-selected registry item
+        /// (the minimal in-game item placement surface; full item authoring is Story 3.16). No-op when no item registry
+        /// is wired or it is empty. Undo destroys the created instance.</summary>
+        private void PlaceItem(FixedVec3 pos)
+        {
+            if (_items == null || _itemRegistry == null || _itemRegistry.Count == 0) return;
+            int defId = _itemIndex % _itemRegistry.Count;
+            int charges = _itemRegistry.Get(defId).Charges;
+            int packed = _items.Create(defId, charges, pos);
+            if (packed < 0) return;
+            _history.Push(
+                redo: () => _items.Create(defId, charges, pos),
+                undo: () => { if (_items.TryResolveRef(packed, out int slot)) _items.Destroy(slot); });
         }
 
         private void PlaceUnit(FixedVec3 pos, bool asWorker)

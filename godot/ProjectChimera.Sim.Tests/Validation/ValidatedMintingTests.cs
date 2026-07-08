@@ -48,8 +48,9 @@ namespace ProjectChimera.Sim.Tests.Validation
             // proof-of-validation type; adding to this set is a deliberate, reviewed act (never incidental).
             var minters = new HashSet<string>(System.StringComparer.Ordinal)
             {
-                "ScenarioValidator.cs",  // Validated<ScenarioData>   (Story 1.7)
-                "AbilityValidator.cs",   // Validated<AbilityDefinition> (Story 2.3)
+                "ScenarioValidator.cs",       // Validated<ScenarioData>     (Story 1.7)
+                "AbilityValidator.cs",        // Validated<AbilityDefinition> (Story 2.3)
+                "ItemDefinitionValidator.cs", // Validated<ItemDefinition>   (Story 3.15)
             };
 
             // Whitespace-tolerant so `new  Validated<` / `new\nValidated<` cannot evade the scan — a missed mint

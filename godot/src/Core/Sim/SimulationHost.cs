@@ -13,8 +13,8 @@ namespace ProjectChimera.Core.Sim
 {
     /// <summary>
     /// Net-new, Godot-free composition root for the simulation (Story 1.8a / AR-6). It owns the SoA stores,
-    /// the canonical 13-system tick order (Story 3.13 inserted <c>HeroXpSystem</c> at index 8, after
-    /// <c>ProjectileSystem</c>) — with <c>OrderQueueSystem</c> at index 3 [Story 2.12 / FR-74], then
+    /// the canonical 14-system tick order (Story 3.13 inserted <c>HeroXpSystem</c> at index 8, after
+    /// <c>ProjectileSystem</c>; Story 3.15 inserted <c>ItemSystem</c> at index 9) — with <c>OrderQueueSystem</c> at index 3 [Story 2.12 / FR-74], then
     /// <c>AbilityCastSystem</c> at index 4 and <c>ModifierSystem</c> at index 5 — both immediately before
     /// <see cref="CombatSystem"/>; the ability-cast spine landed in Story 2.4a / FR-11, the AR-9 effective-stat
     /// recompute in Story 2.2a), the <see cref="SimulationLoop"/> it wraps, and the single checksum sink. Because it has zero Godot dependency it compiles into the Godot-free Tier-1 test
@@ -65,6 +65,16 @@ namespace ProjectChimera.Core.Sim
         /// <see cref="Buildings"/> so the 3.9 load path and the start-state hash read host truth (no parallel copies).
         /// </summary>
         public HeroStore Heroes { get; }
+        /// <summary>Story 3.15 — the item-instance store (ground + held). Folded into the per-tick <see cref="SimChecksum"/>
+        /// (v12) alongside the per-hero inventory; populated by scenario placement + pickups.</summary>
+        public ItemStore Items { get; }
+        /// <summary>Story 3.15 — the item / inventory tick system (pickup proximity claim, consumable use, drop, death-drop).
+        /// Exposed so apply sites can route <c>OrderApplier.Apply(..., items: ItemSys)</c> and the applier can configure
+        /// its usable-slot count.</summary>
+        public ItemSystem ItemSys { get; }
+        /// <summary>Story 3.15 — the loaded item registry (id→index over validated <c>ItemDefinition</c>s). The host takes
+        /// a pre-built registry (or <see cref="Definitions.ItemRegistry.Empty"/>); scenario placement resolves item_ids through it.</summary>
+        public Definitions.ItemRegistry ItemRegistry { get; }
         /// <summary>Story 3.14 — the resolved revival rule shared with BuildingSystem + HeroXpSystem. The scenario-apply
         /// path calls <see cref="RevivalRuleRuntime.Configure"/> on it from the applied <c>ScenarioData.RevivalRule</c>.</summary>
         public RevivalRuleRuntime RevivalRuntime => _revivalRuntime;
@@ -97,12 +107,13 @@ namespace ProjectChimera.Core.Sim
             FactionDefinition? factionDef2 = null,
             DamageTable? damageTable = null,
             AiDifficulty aiLevel = AiDifficulty.Normal,
-            AbilityRegistry? registry = null)
-            => new SimulationHost(log, checksumFactions, factionDef1, factionDef2, damageTable, aiLevel, registry);
+            AbilityRegistry? registry = null,
+            ItemRegistry? itemRegistry = null)
+            => new SimulationHost(log, checksumFactions, factionDef1, factionDef2, damageTable, aiLevel, registry, itemRegistry);
 
         private SimulationHost(ILogSink log, FactionRegistry checksumFactions,
             FactionDefinition? factionDef1, FactionDefinition? factionDef2,
-            DamageTable? damageTable, AiDifficulty aiLevel, AbilityRegistry? registry)
+            DamageTable? damageTable, AiDifficulty aiLevel, AbilityRegistry? registry, ItemRegistry? itemRegistry)
         {
             _log = log;
 
@@ -115,6 +126,8 @@ namespace ProjectChimera.Core.Sim
             Buildings        = new BuildingStore();
             Projectiles      = new ProjectileStore();
             Heroes           = new HeroStore();   // Story 3.2 — the AR-12 hero substrate; folded into the per-tick checksum from Story 3.13 (XP runtime); populated by Story 3.9.
+            Items            = new ItemStore();    // Story 3.15 — item instances (ground + held); folded into the per-tick checksum (v12).
+            ItemRegistry     = itemRegistry ?? Definitions.ItemRegistry.Empty; // Story 3.15 — a null registry → Empty, so existing callers stay scenario-identical.
             CombatEvents     = new CombatEventQueue();
             _deathFeed       = new DeathFeed();    // Story 3.13 — transient per-tick death buffer for the XP runtime
             _revivalRuntime  = new RevivalRuleRuntime(); // Story 3.14 — resolved from RevivalRule.Default until a scenario reconfigures it
@@ -134,6 +147,11 @@ namespace ProjectChimera.Core.Sim
             var abilitySys = new AbilityCastSystem(registry ?? AbilityRegistry.Empty, Resources, Modifiers,
                                                    damageTable, CombatEvents, MatchStats, _deathFeed);
             modSys.AttachStore(Modifiers);
+
+            // Story 3.15 — the item / inventory tick system. Constructed AFTER Modifiers (it applies/removes carried stat
+            // modifiers) and it subscribes World.OnDestroy for the death-drop AFTER ModifierStore.ClearEntity (so a hero's
+            // stat modifiers are already reverted when its items drop — a harmless no-op removal). Uses the shared registry.
+            ItemSys = new ItemSystem(World, Heroes, Items, Modifiers, ItemRegistry, CombatEvents, damageTable);
 
             // Story 2.6 — wire the WHILE-ALIVE self-passive installer to the spawn seam. EntityWorld fires
             // OnUnitDefinitionApplied once per def-based spawn (after the SoA is written); the cast system installs the
@@ -175,19 +193,24 @@ namespace ProjectChimera.Core.Sim
                 // Story 3.14: also drives hero death-detection, the revival countdown, and respawn (via the shared spawn
                 // hook + the resolved revival rule + BuildingStore); announcements ride CombatEvents.
                 new HeroXpSystem(Heroes, Modifiers, _deathFeed, Buildings, _revivalRuntime, ReviveSpawn, CombatEvents), // [8] HeroXpSystem (Combat, FR-7)
-                new SupplySystem(Resources),                                              // [9] SupplySystem      (Economy)
-                Fog,                                                                      // [10] FogOfWarSystem    (Core)
-                _ai = new AiOpponentSystem(Buildings, Resources, BuildSys, aiLevel),      // [11] AI opponent (plays Player2)
-                ScenarioDirector,                                                         // [12] ScenarioDirector — runs LAST
+                // ── Story 3.15 item / inventory. At index 9, AFTER the combat/projectile/hero-XP cluster: death-drops
+                //    happen synchronously at KillEntity (via the OnDestroy hook, during index 6/7) and hero respawn happens
+                //    in HeroXpSystem (index 8), so a revived hero is already empty when this resolves pickups. Runs after
+                //    MovementSystem (index 2) so it steers a pickup-bound hero from a current position. ──
+                ItemSys,                                                                  // [9] ItemSystem       (Combat, FR-64)
+                new SupplySystem(Resources),                                              // [10] SupplySystem      (Economy)
+                Fog,                                                                      // [11] FogOfWarSystem    (Core)
+                _ai = new AiOpponentSystem(Buildings, Resources, BuildSys, aiLevel),      // [12] AI opponent (plays Player2)
+                ScenarioDirector,                                                         // [13] ScenarioDirector — runs LAST
             };
 
             _loop = new SimulationLoop(World, _systems);
-            _loop.EnableChecksums(Buildings, Resources, checksumFactions, Modifiers, Heroes); // fold modifier state (v6) + ability cooldowns (v7) + mutable HeroStore (v11)
+            _loop.EnableChecksums(Buildings, Resources, checksumFactions, Modifiers, Heroes, Items); // fold modifier state (v6) + ability cooldowns (v7) + mutable HeroStore (v11) + ItemStore/inventory (v12)
 
             // The sim spine's only host-side log in 1.8a: a one-shot construction diagnostic through the
             // injected seam. NullLogSink no-ops it (tests/server → zero effect on the golden); GodotLogSink
             // prints it for MainScene. NEVER a per-tick log (D6).
-            _log.Info("[SimulationHost] Sim spine constructed (13 systems; OrderQueueSystem at index 3, AbilityCastSystem at index 4, ModifierSystem at index 5, HeroXpSystem at index 8).");
+            _log.Info("[SimulationHost] Sim spine constructed (14 systems; OrderQueueSystem at index 3, AbilityCastSystem at index 4, ModifierSystem at index 5, HeroXpSystem at index 8, ItemSystem at index 9).");
         }
 
         /// <summary>
@@ -212,6 +235,7 @@ namespace ProjectChimera.Core.Sim
             Buildings.Clear();
             Projectiles.Clear();
             Heroes.Clear();         // Story 3.9 gap: bulk-empty so the re-mint after clear is non-additive
+            Items.Clear();          // Story 3.15 — folded ItemStore; bulk-empty so a re-apply re-places items non-additively
             Modifiers.Clear();      // folded — also zeroes the ModifierSystem accumulators it drives
             CombatEvents.Clear();
             _deathFeed.Clear();     // Story 3.13 — transient per-tick death buffer (empty at reset)

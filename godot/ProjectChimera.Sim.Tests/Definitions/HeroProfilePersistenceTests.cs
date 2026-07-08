@@ -221,9 +221,9 @@ namespace ProjectChimera.Sim.Tests.Definitions
         [Fact]
         public void HashAlgoVersions_AreUnchanged()
         {
-            Assert.Equal(11, SimChecksum.AlgoVersion);
+            Assert.Equal(12, SimChecksum.AlgoVersion);
             Assert.Equal(3, CanonicalModelHash.AlgoVersion);
-            Assert.Equal(1, StartStateHash.AlgoVersion);
+            Assert.Equal(2, StartStateHash.AlgoVersion);
         }
 
         // ── Helpers ────────────────────────────────────────────────────────────────────────

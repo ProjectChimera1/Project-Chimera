@@ -36,13 +36,15 @@ namespace ProjectChimera.Core.Bootstrap
             var placer = new EntityPlacer();
             _ctx.Scene.AddChild(placer);
             placer.Initialize(cam, _ctx.World, _ctx.Nodes, _ctx.Resources, _ctx.Buildings, _ctx.FactionDef,
-                              _ctx.Scene.MoveStartPosition, _ctx.FactionDef2);
+                              _ctx.Scene.MoveStartPosition, _ctx.FactionDef2,
+                              _ctx.Host.Items, _ctx.Host.ItemRegistry); // Story 3.15 — Item placement mode
             _ctx.Placer = placer;
 
             var selection = new SelectionSystem();
             _ctx.Scene.AddChild(selection);
             // Story 2.12: pass BuildSys (offline SetRally apply site) + CombatEvents (OrderDenied feedback bus).
-            selection.Initialize(cam, _ctx.World, _ctx.FlowFieldBridge, _ctx.Buildings, _ctx.BuildSys, _ctx.CombatEvents);
+            selection.Initialize(cam, _ctx.World, _ctx.FlowFieldBridge, _ctx.Buildings, _ctx.BuildSys, _ctx.CombatEvents,
+                                  _ctx.Host.Items, _ctx.Host.ItemSys); // Story 3.15 — pickup/use affordance
             _ctx.Selection = selection;
 
             var commandCard = new CommandCardSystem();

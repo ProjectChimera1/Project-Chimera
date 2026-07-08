@@ -162,6 +162,27 @@ namespace ProjectChimera.Core.Sim
                 }
             }
 
+            // ── 4b. Items (Story 3.15) — place ground items + configure the usable inventory-slot cap ────────────
+            // Configure the per-scenario usable inventory count (NULL ⇒ the full HeroStore.INVENTORY_SLOTS stride).
+            _host.ItemSys.ConfigureUsableSlots(s.InventorySlotCount ?? HeroStore.INVENTORY_SLOTS);
+            foreach (var it in s.Items ?? System.Array.Empty<ScenarioItem>())
+            {
+                int defId = _host.ItemRegistry.IndexOf(it.ItemId);
+                if (defId < 0)
+                {
+                    _log.Warn($"[ScenarioApplier] Scenario item_id '{it.ItemId}' not found in the item registry — skipped.");
+                    continue;
+                }
+                var pos = new FixedVec3(Fixed.FromFloat(it.X), Fixed.Zero, Fixed.FromFloat(it.Z));
+                int itemSlot = _host.Items.Create(defId, _host.ItemRegistry.Get(defId).Charges, pos);
+                if (itemSlot < 0)
+                {
+                    // Store full (> MAX_ITEMS) — warn + skip rather than silently discard (mirrors the IndexOf < 0 path above).
+                    _log.Warn($"[ScenarioApplier] Scenario item_id '{it.ItemId}' could not be placed — the item store is full (> {ItemStore.MAX_ITEMS}) — skipped.");
+                    continue;
+                }
+            }
+
             // ── 5. Triggers ────────────────────────────────────────────────────
             _host.ScenarioDirector.LoadScenario(s); // triggers last (same as today)
         }

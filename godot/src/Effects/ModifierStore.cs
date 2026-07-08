@@ -389,6 +389,32 @@ namespace ProjectChimera.Effects
             return false; // insufficient → refuse WITHOUT mutating Energy
         }
 
+        /// <summary>
+        /// Story 3.15: remove exactly the one active <see cref="Modifier"/> instance on <paramref name="hostId"/> whose
+        /// <see cref="Modifier.Id"/> equals <paramref name="modifierId"/> — reverting its full stat contribution through
+        /// the shared <see cref="RemoveSlot"/> path (deltas × stack count, status-union recompute, swap-compact) WITHOUT
+        /// destroying the host. Used when a carried stat item leaves the inventory (manual drop / death / consume-to-zero):
+        /// the item's modifier uses a deterministic per-item <see cref="Modifier.Id"/>, so this reverts precisely that
+        /// item's bonus. Returns true iff a matching instance was found + removed. A dead/stale host or an absent id is a
+        /// harmless no-op (false) — e.g. death-drop after <see cref="ClearEntity"/> already wiped the entity's modifiers.
+        /// </summary>
+        public bool RemoveByModifierId(int hostId, int modifierId)
+        {
+            if (!_world.IsAlive(hostId)) return false; // IsAlive also bounds-checks the id
+            int @base = hostId * EffectCaps.MaxModifiersPerEntity;
+            int n = _count[hostId];
+            for (int s = 0; s < n; s++)
+            {
+                int sl = @base + s;
+                if (_modifier[sl] != null && _modifierId[sl] == modifierId)
+                {
+                    RemoveSlot(hostId, sl);
+                    return true;
+                }
+            }
+            return false;
+        }
+
         // ─────────────────────────────────────── Checksum fold accessors ────────────────────────────────────────
         // Cheap flat-array index reads (CHM0002-clean — no Dictionary/HashSet enumeration). SimChecksum.Compute folds
         // [0, CountAt(id)) per entity, ascending owner-id then slot. The descriptor refs + caster id/faction are NOT

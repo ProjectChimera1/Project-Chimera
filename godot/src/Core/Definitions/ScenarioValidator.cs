@@ -306,6 +306,14 @@ namespace ProjectChimera.Core.Definitions
                         $"scenario.revival_rule.revive_hp_fraction={r.ReviveHpFraction} must be finite and in (0, 1] and quantize to a positive 16.16 value.", validated);
             }
 
+            // ── Inventory slot count (Story 3.15, AR-39) — fail-closed when present so a hand-edited/cheat count outside
+            // [1, INVENTORY_SLOTS] (a hero with 0 or > the physical stride of usable slots) is rejected. NULL ⇒ the full
+            // stride (no rule to validate). Authoring-only — NOT folded into any checksum. ──
+            if (m.InventorySlotCount is int isc
+                && (isc < 1 || isc > ProjectChimera.Core.HeroStore.INVENTORY_SLOTS))
+                return ValidationResult.Fail(
+                    $"scenario.inventory_slot_count={isc} must be in [1, {ProjectChimera.Core.HeroStore.INVENTORY_SLOTS}].", validated);
+
             return ValidationResult.Pass(validated);
         }
 

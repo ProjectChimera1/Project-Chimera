@@ -1,4 +1,6 @@
 #nullable enable
+using System;
+using System.Linq;
 using ProjectChimera.Core; // Fixed, HeroStore, HeroId
 
 namespace ProjectChimera.Core.Definitions
@@ -37,9 +39,10 @@ namespace ProjectChimera.Core.Definitions
     public static class StartStateHash
     {
         /// <summary>Algorithm version of THIS hash (independent of <see cref="CanonicalModelHash.AlgoVersion"/> and
-        /// <see cref="SimChecksum.AlgoVersion"/>). 1 = content seed + HeroStore {HeroId, Level, Xp} (Story 3.2).
-        /// Bump only when the folded set/order of the START-STATE hash itself changes.</summary>
-        public const int AlgoVersion = 1;
+        /// <see cref="SimChecksum.AlgoVersion"/>). 1 = content seed + HeroStore {HeroId, Level, Xp} (Story 3.2);
+        /// 2 = additionally folds the per-hero inventory (INVENTORY_SLOTS refs) + the placed map-items (Story 3.15) so a
+        /// mismatched initial item loadout is rejectable at the handshake. Bump only when the folded set/order changes.</summary>
+        public const int AlgoVersion = 2;
 
         private const ulong Offset = 14695981039346656037UL; // FNV-64 offset basis (same primitive as CanonicalModelHash)
         private const ulong Prime  = 1099511628211UL;        // FNV-64 prime
@@ -58,6 +61,13 @@ namespace ProjectChimera.Core.Definitions
             h = MixInt(h, AlgoVersion);                             // namespaces the hash; a bump moves the value alone
             h = MixULong(h, CanonicalModelHash.Compute(model));     // content SEED (D-2 — DRY; CanonicalModelHash untouched, stays v3)
 
+            // Story 3.15 (v2): the per-scenario USABLE inventory-slot cap (NULL ⇒ the full HeroStore.INVENTORY_SLOTS
+            // stride). It is sim-affecting (drives the full-inventory pickup denial via ItemSystem.UsableSlots), so two
+            // clients starting from mismatched caps would diverge — it MUST be handshake-rejectable. Folded here as its
+            // resolved default (mirrors ScenarioApplier's ConfigureUsableSlots argument) so the same effective cap hashes
+            // identically whether authored explicitly or omitted.
+            h = MixInt(h, model.InventorySlotCount ?? HeroStore.INVENTORY_SLOTS);
+
             // HeroStore rows, ASCENDING BY HeroId (producer-independent). Fold only the CANONICAL persisted state —
             // the stable identity + the progression init state (Level/Xp). EntityId (the runtime entity link) is
             // deliberately NOT folded: it is which entity currently embodies the hero this match, would differ between
@@ -68,6 +78,23 @@ namespace ProjectChimera.Core.Definitions
                 h = MixULong(h, heroes.Id[slot].Value);   // stable identity: two 32-bit mixes (low/high), like SimRng state (D-4)
                 h = MixInt(h, heroes.Level[slot]);        // hero level (init state; mutated mid-match from Story 3.13)
                 h = MixInt(h, heroes.Xp[slot].Raw);       // accumulated XP as its canonical Fixed.Raw integer
+                // Story 3.15 (v2): the per-hero inventory refs. In 3.15 hero inventory starts EMPTY each match, so these
+                // fold their -1 sentinel — but the fold makes a scenario that DOES seed a hero loadout (future) rejectable.
+                int invBase = slot * HeroStore.INVENTORY_SLOTS;
+                for (int s = 0; s < HeroStore.INVENTORY_SLOTS; s++)
+                    h = MixInt(h, heroes.Inventory[invBase + s]);
+            }
+
+            // Story 3.15 (v2): placed map-items — sorted by a TOTAL order (item_id ordinal, then quantized X/Z Raw) so
+            // neither JSON array order nor a tie on a partial key can move the hash (the CanonicalModelHash placement-walk
+            // convention). Fold item_id (UTF-8, length-prefixed) + the quantized X/Z the sim will place at.
+            foreach (ScenarioItem it in (model.Items ?? Array.Empty<ScenarioItem>())
+                         .OrderBy(x => x.ItemId, StringComparer.Ordinal)
+                         .ThenBy(x => Fixed.FromFloat(x.X).Raw).ThenBy(x => Fixed.FromFloat(x.Z).Raw))
+            {
+                h = MixStr(h, it.ItemId);
+                h = MixInt(h, Fixed.FromFloat(it.X).Raw);
+                h = MixInt(h, Fixed.FromFloat(it.Z).Raw);
             }
 
             return h == 0UL ? 1UL : h; // sentinel: a valid init-state must never hash to the fail-open "no hash" value
@@ -90,6 +117,20 @@ namespace ProjectChimera.Core.Definitions
         {
             h = MixInt(h, (int)(value & 0xFFFFFFFFUL)); // low 32 bits
             h = MixInt(h, (int)(value >> 32));          // high 32 bits
+            return h;
+        }
+
+        /// <summary>FNV-64 fold of a string (Story 3.15): a length prefix (so "ab"+"c" != "a"+"bc", and null != "")
+        /// followed by the UTF-8 bytes — mirrors <see cref="CanonicalModelHash"/>.MixStr.</summary>
+        private static ulong MixStr(ulong h, string? s)
+        {
+            h = MixInt(h, s?.Length ?? -1);
+            if (s == null) return h;
+            foreach (byte by in System.Text.Encoding.UTF8.GetBytes(s))
+            {
+                h ^= by;
+                h *= Prime;
+            }
             return h;
         }
     }

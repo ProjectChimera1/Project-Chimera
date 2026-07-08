@@ -122,6 +122,9 @@
     <EmbeddedResource Include="Golden\hero-xp-scenario.golden.txt" />
     <None Remove="Golden\hero-revival-scenario.golden.txt" />
     <EmbeddedResource Include="Golden\hero-revival-scenario.golden.txt" />
+    <!-- Story 3.15 — item / inventory golden (ItemStore + per-hero inventory fold, v12). NEW file. -->
+    <None Remove="Golden\item-scenario.golden.txt" />
+    <EmbeddedResource Include="Golden\item-scenario.golden.txt" />
   </ItemGroup>
 
   <ItemGroup>

@@ -95,6 +95,12 @@ namespace ProjectChimera.Multiplayer
         /// or human-vs-human training diverges. Story 2.12: ALSO the SetRally exec-tick handler (SetRallyCommand).</summary>
         public ProjectChimera.Economy.BuildingSystem? Buildings;
 
+        /// <summary>Story 3.15: the item/inventory runtime the shared OrderApplier uses to EXECUTE a UseItem / DropItem
+        /// command (the deterministic charge-decrement / heal / ground-return on the canonical ItemStore/HeroStore).
+        /// Wired by MainScene per match; null in headless/tests where UseItem/DropItem no-op. Must be the SAME instance
+        /// the replay/offline paths use, or item use/drop diverges between live and replay.</summary>
+        public ProjectChimera.Combat.ItemSystem? Items;
+
         /// <summary>Story 2.12 (AC4): the presentation event bus the shared OrderApplier pushes an OrderDenied event to
         /// when a Shift-queued order is rejected on a full ring. Wired by MainScene per match; null → the reject is still
         /// deterministic (it reads the folded OrderQueueCount), only the visual feedback is skipped. Presentation-only.</summary>
@@ -666,7 +672,7 @@ namespace ProjectChimera.Multiplayer
             // delegates are this manager's presentation hooks (wired by MainScene; null in headless/tests).
             for (int i = 0; i < count; i++)
                 OrderApplier.Apply(_world, in buf[baseIdx + i], expectedFaction,
-                    OnRequestPath, OnRequestAttackMove, OnCancelPath, Buildings, CombatEvents);
+                    OnRequestPath, OnRequestAttackMove, OnCancelPath, Buildings, CombatEvents, Items);
         }
     }
 }

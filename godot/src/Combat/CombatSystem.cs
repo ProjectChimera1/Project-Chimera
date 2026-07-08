@@ -118,6 +118,9 @@ namespace ProjectChimera.Combat
                     case UnitCommand.Move:
                         continue; // pure navigation — no combat processing
 
+                    case UnitCommand.PickupItem:
+                        continue; // Story 3.15: a hero walking to a ground item ignores enemies (like Move); ItemSystem drives MoveTarget + the proximity claim
+
                     case UnitCommand.Stop:
                         TickStopCombat(world, i, dt);
                         break;

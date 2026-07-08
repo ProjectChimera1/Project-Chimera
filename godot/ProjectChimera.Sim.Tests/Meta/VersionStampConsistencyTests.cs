@@ -51,7 +51,7 @@ namespace ProjectChimera.Sim.Tests.Meta
         /// (D-1). v8 (Story 2.6): folded per-entity EffectiveArmor (the buffable armor stat). v7 (Story 2.4a): folded
         /// per-entity AbilityCooldownTicks (count-driven). v6 (Story 2.2b): Effective* / Energy / StatusFlagsOf +
         /// the ModifierStore instance state.</summary>
-        private const int ExpectedSimChecksumAlgoVersion = 11;
+        private const int ExpectedSimChecksumAlgoVersion = 12;
 
         /// <summary>Load-time canonical start-state hash algorithm version (lobby handshake value).
         /// v3 (Story 2.9b follow-up): folded ScenarioPlayerSlot.StartCrystal (sim-affecting per-slot start-state).</summary>
@@ -62,7 +62,7 @@ namespace ProjectChimera.Sim.Tests.Meta
         /// v1 = initial. Its arrival is purely ADDITIVE: it did NOT move <see cref="SimChecksum"/> (9) or
         /// <see cref="CanonicalModelHash"/> (3). Wiring it into the server-attested handshake is Epic 9 (D-3); the
         /// value itself is pinned by the independent-FNV pin (StartStateHashTests) + the hero-start-state golden.</summary>
-        private const int ExpectedStartStateHashAlgoVersion = 1;
+        private const int ExpectedStartStateHashAlgoVersion = 2;
 
         /// <summary>Lockstep Hello-handshake wire protocol version.</summary>
         private const ushort ExpectedProtocolVersion = 1;

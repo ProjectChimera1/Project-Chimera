@@ -71,6 +71,9 @@ namespace ProjectChimera.Core.Bootstrap
             // canonical BuildingStore/ResourceStore). Same instance the replay/offline paths use → no divergence.
             _ctx.CommandCard.SetLockstep(_ctx.Lockstep);
             _ctx.Lockstep.Buildings = _ctx.BuildSys;
+            // Story 3.15: give the manager the item runtime so an online UseItem / DropItem EXECUTES at exec-tick (the
+            // deterministic charge/heal/ground-return) — the SAME ItemSystem instance the offline SelectionSystem uses.
+            _ctx.Lockstep.Items = _ctx.Host.ItemSys;
             // Story 2.12: also give the manager the event bus so a full-ring queued-order reject can emit OrderDenied
             // feedback on the online path (the same bus the offline SelectionSystem path uses); presentation-only.
             _ctx.Lockstep.CombatEvents = _ctx.CombatEvents;
@@ -175,6 +178,9 @@ namespace ProjectChimera.Core.Bootstrap
                 // Story 2.8 (D-1): give the replay the production system so a recorded Train order re-executes
                 // identically to the live match (spend + queue on the canonical stores).
                 _ctx.ReplayPlayer.Buildings = _ctx.BuildSys;
+                // Story 3.15: give the replay the item runtime so a recorded UseItem / DropItem re-executes identically
+                // to the live match (charge-decrement / heal / ground-return on the canonical stores).
+                _ctx.ReplayPlayer.Items = _ctx.Host.ItemSys;
 
                 // The replay embeds the scenario path — warn if it differs from the currently-loaded scenario.
                 if (_ctx.ReplayPlayer.ScenarioPath != _ctx.Scene.ScenarioPath)

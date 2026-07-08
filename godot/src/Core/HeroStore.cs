@@ -65,6 +65,14 @@ namespace ProjectChimera.Core
         /// <c>RevivalLink != REVIVAL_NONE</c>. Mint leaves the field at its 0 default (an on-field hero ignores it).</summary>
         public const int REVIVAL_NONE = -1;
 
+        /// <summary>Story 3.15: the fixed per-hero inventory STRIDE (WC3's 6 slots) — both the physical <see cref="Inventory"/>
+        /// ring width AND the default usable count. The per-scenario <c>inventory_slot_count ∈ [1,6]</c> caps the USABLE
+        /// slots below this ceiling; a ceiling above 6 is a future stride bump (out of scope).</summary>
+        public const int INVENTORY_SLOTS = 6;
+
+        /// <summary>Story 3.15: the <see cref="Inventory"/> "empty slot" sentinel (no held item ref).</summary>
+        public const int INVENTORY_EMPTY = -1;
+
         // ── Live per-hero data (D-6) — the fields that either mutate mid-match (folded from 3.13) or load as
         //    deterministic init state (covered by StartStateHash now). Kept deliberately LEAN (see the class doc):
         //    stat growth is a ModifierStore source, energy/mana is the existing entity SoA, and the leveling curve /
@@ -132,6 +140,17 @@ namespace ProjectChimera.Core
         /// <summary>Story 3.14: the faction that owns this hero — the anti-cheat check for a revive order (the order's
         /// <c>expectedFaction</c> must equal this) and the faction the respawn is created under. NOT folded (authored).</summary>
         public readonly Faction[] OwnerFaction       = new Faction[MAX_HEROES];
+
+        // ── Story 3.15 per-hero INVENTORY (lives on the PERSISTED row so it survives death→revival by construction —
+        //    the D-1 obligation carried forward from Story 3.14). Fixed-stride flat ring indexed
+        //    slot * INVENTORY_SLOTS + s, holding PACKED ItemStore refs (INVENTORY_EMPTY = -1). FOLDED into SimChecksum
+        //    (v12) in the per-hero FoldOrder loop; reset to all-empty on (re)Mint + Clear (the SoA-recycle contract —
+        //    a re-minted row must never carry a prior hero's inventory). Hero inventory starts EMPTY each match (3.15;
+        //    cross-match item persistence is Story 3.16). ─────────────────────────────────────────────────────────────
+        /// <summary>Story 3.15: the per-hero inventory ring of PACKED <c>ItemStore</c> refs (<see cref="INVENTORY_EMPTY"/>
+        /// = -1), indexed <c>slot * INVENTORY_SLOTS + s</c>. Folded into <see cref="SimChecksum"/> (v12) + init-time
+        /// <see cref="Definitions.StartStateHash"/> (v2). Reset to all-empty on (re)Mint (the SoA-recycle contract).</summary>
+        public readonly int[]     Inventory          = new int[MAX_HEROES * INVENTORY_SLOTS];
 
         // ── Management — the monotonic high-water fold/iteration bound (mirrors BuildingStore.Count). Recycling
         //    reuses dead slots BELOW Count, so Count only grows. ─────────────────────────────────────────────────
@@ -215,6 +234,11 @@ namespace ProjectChimera.Core
             // Story 3.14 non-folded constants (respawn def + owner faction) — written here per the SoA-recycle contract.
             SourceDef[slot]        = sourceDef;
             OwnerFaction[slot]     = ownerFaction;
+            // Story 3.15: a freshly-minted hero carries an EMPTY inventory (3.15 has no cross-match item persistence).
+            // Reset every stride slot so a recycled row never inherits a prior hero's held-item refs (SoA-recycle contract).
+            int invBase = slot * INVENTORY_SLOTS;
+            for (int s = 0; s < INVENTORY_SLOTS; s++)
+                Inventory[invBase + s] = INVENTORY_EMPTY;
             return slot;
         }
 
@@ -241,6 +265,10 @@ namespace ProjectChimera.Core
             // Story 3.14 reserved revival state + non-folded constants.
             System.Array.Clear(Alive3_14);        System.Array.Clear(AwaitingRevival);  System.Array.Clear(RevivalTimer);
             System.Array.Clear(RevivalLink);      System.Array.Clear(SourceDef);        System.Array.Clear(OwnerFaction);
+            // Story 3.15: reset inventory. Array.Clear (→0) matches the ctor's zero-init, so a cleared store equals
+            // `new HeroStore()`. The fold is count-driven over LIVE slots only (all reset to INVENTORY_EMPTY in Mint),
+            // so the 0-vs-(-1) choice of the (never-folded) dead region is invisible; Clear keeps new-equality exact.
+            System.Array.Clear(Inventory);
             System.Array.Clear(Generation);
             System.Array.Clear(_freeList);
             _freeCount = 0;

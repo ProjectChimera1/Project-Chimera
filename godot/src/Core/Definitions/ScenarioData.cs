@@ -127,6 +127,24 @@ namespace ProjectChimera.Core.Definitions
     }
 
     /// <summary>
+    /// A pre-placed item entry in a scenario (Story 3.15). The item_id must match an entry in the loaded
+    /// <see cref="ItemRegistry"/>; the item is created on the ground at (x, z) with its authored charge count.
+    /// Mirrors <see cref="ScenarioUnit"/>.
+    /// </summary>
+    public class ScenarioItem
+    {
+        /// <summary>Matches <see cref="ItemDefinition.Id"/> in the loaded item registry.</summary>
+        [JsonPropertyName("item_id")]
+        public string ItemId { get; set; } = "";
+
+        [JsonPropertyName("x")]
+        public float X { get; set; }
+
+        [JsonPropertyName("z")]
+        public float Z { get; set; }
+    }
+
+    /// <summary>
     /// Full scenario definition. Contains everything needed to reconstruct a match:
     /// terrain reference, player faction assignments, resource node layout,
     /// pre-placed buildings and units, and the win condition.
@@ -203,5 +221,26 @@ namespace ProjectChimera.Core.Definitions
         [JsonPropertyName("revival_rule")]
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public RevivalRule? RevivalRule { get; set; }
+
+        /// <summary>
+        /// Pre-placed map items (Story 3.15). Created on the ground at scenario-apply via the <see cref="ItemRegistry"/>.
+        /// NULL (the default) ⇒ no items, and the block is OMITTED from serialization when null
+        /// (<see cref="JsonIgnoreCondition.WhenWritingNull"/>) so every existing scenario serializes byte-for-byte
+        /// identically (moving no map-identity / procedural-generator hash). Read as <c>Items ?? Array.Empty</c>. Folded
+        /// into <see cref="StartStateHash"/> (v2) so a mismatched placed-item loadout is rejectable at the handshake.
+        /// </summary>
+        [JsonPropertyName("items")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public ScenarioItem[]? Items { get; set; }
+
+        /// <summary>
+        /// The per-scenario USABLE hero inventory slot count (Story 3.15, D-6) ∈ <c>[1, 6]</c>. NULL ⇒ the full
+        /// <see cref="HeroStore.INVENTORY_SLOTS"/> stride (6), and the field is OMITTED from serialization when null
+        /// (<see cref="JsonIgnoreCondition.WhenWritingNull"/>, the <see cref="RevivalRule"/> omit-when-null precedent) —
+        /// so an existing scenario serializes byte-identically. Validated fail-closed by <see cref="ScenarioValidator"/>.
+        /// </summary>
+        [JsonPropertyName("inventory_slot_count")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public int? InventorySlotCount { get; set; }
     }
 }

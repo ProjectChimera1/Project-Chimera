@@ -119,7 +119,8 @@ namespace ProjectChimera.Multiplayer
             Action<int, float, float>? onRequestAttackMove = null,
             Action<int>? onCancelPath = null,
             BuildingSystem? buildings = null,
-            CombatEventQueue? events = null)
+            CombatEventQueue? events = null,
+            ItemSystem? items = null)
         {
             // Story 2.12 (Decision #2): mask the wire's queued flag (0x80) off the Command byte FIRST, so every
             // downstream compare + the command→state switch sees only the real 0-13 UnitCommand — never a flagged
@@ -166,6 +167,24 @@ namespace ProjectChimera.Multiplayer
             int id = o.UnitId;
             if (!world.IsAlive(id)) return;
             if (world.FactionOf[id] != expectedFaction) return; // anti-cheat: only command your own units
+
+            // Story 3.15: UseItem / DropItem name the HERO ENTITY (== id, not a building like Train/Revive), so they are
+            // gated by the ownership guard ABOVE — NOT dispatched by the building-command pre-guard pattern. Placing them
+            // AFTER the guard prevents a player from forcing an ENEMY hero to use/drop items (anti-cheat). ItemSystem then
+            // does its own hero-resolution + validation. The inventory slot rides TargetX as a RAW int (read directly,
+            // NEVER via .ToFloat()). `items` null → deterministic no-op (golden/replay-without-items paths), exactly like
+            // `buildings == null`. They never persist as a CommandState (each returns). PickupItem is different: it DOES
+            // persist as a CommandState, so it rides ApplyActiveOrder (below) through this same guard.
+            if (cmd == UnitCommand.UseItem)
+            {
+                items?.UseItemCommand(id, o.TargetX, events);
+                return;
+            }
+            if (cmd == UnitCommand.DropItem)
+            {
+                items?.DropItemCommand(id, o.TargetX, events);
+                return;
+            }
 
             // Story 2.12 (AC1.2): a Shift-issued (queued) order APPENDS to the entity's order ring and does NOT touch
             // CommandState — OrderQueueSystem pops + dispatches it when the active order completes. A plain (non-flagged)
@@ -311,6 +330,21 @@ namespace ProjectChimera.Multiplayer
                     }
                     // else: route is full — silently ignore the extra waypoint.
                     world.CommandState[id] = UnitCommand.Patrol;
+                    break;
+                }
+                case UnitCommand.PickupItem:
+                {
+                    // Story 3.15: the target ground-item's PACKED ItemStore ref rides in TargetX as a RAW int (read
+                    // directly, NEVER via .ToFloat() — the AttackTarget/packed-int lesson). Blind-store it in CommandTarget
+                    // (disambiguated by CommandState==PickupItem, like AttackTarget/Follow/AttackBuilding share it);
+                    // ItemSystem resolves it each tick, drives MoveTarget toward the item, and claims on proximity. Set
+                    // Moving; hold at the current position until ItemSystem redirects (it runs after MovementSystem, so the
+                    // first steer lands next tick). AttackTarget = -1: an item ref must never enter the entity-space array.
+                    world.CommandTarget[id] = targetX;
+                    world.MoveTarget[id]    = world.Position[id];
+                    world.Flags[id]         = (world.Flags[id] | EntityFlags.Moving) & ~EntityFlags.Attacking;
+                    world.AttackTarget[id]  = -1;
+                    ClearPatrolRoute(world, id);
                     break;
                 }
                 case UnitCommand.CastAbility:

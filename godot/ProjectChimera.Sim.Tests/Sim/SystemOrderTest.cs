@@ -43,10 +43,11 @@ namespace ProjectChimera.Sim.Tests.Sim
             typeof(CombatSystem),      // [6]
             typeof(ProjectileSystem),  // [7]
             typeof(HeroXpSystem),      // [8]  ← Story 3.13 hero XP runtime, immediately after ProjectileSystem
-            typeof(SupplySystem),      // [9]
-            typeof(FogOfWarSystem),    // [10]
-            typeof(AiOpponentSystem),  // [11]
-            typeof(ScenarioDirector),  // [12]  runs LAST
+            typeof(ItemSystem),        // [9]  ← Story 3.15 item / inventory, after the combat/projectile/hero-XP cluster
+            typeof(SupplySystem),      // [10]
+            typeof(FogOfWarSystem),    // [11]
+            typeof(AiOpponentSystem),  // [12]
+            typeof(ScenarioDirector),  // [13]  runs LAST
         };
 
         /// <summary>
@@ -60,7 +61,7 @@ namespace ProjectChimera.Sim.Tests.Sim
             new FactionDefinition());
 
         [Fact]
-        public void Systems_AreTheThirteenCanonicalSystems_InExactOrder()
+        public void Systems_AreTheFourteenCanonicalSystems_InExactOrder()
         {
             IReadOnlyList<ISimSystem> systems = BuildHost().Systems;
 

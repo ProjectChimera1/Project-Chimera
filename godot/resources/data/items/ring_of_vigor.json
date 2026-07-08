@@ -1,0 +1,12 @@
+{
+  "id": "ring_of_vigor",
+  "display_name": "Ring of Vigor",
+  "icon": "",
+  "charges": 0,
+  "max_health_delta": 50,
+  "attack_damage_delta": 5,
+  "move_speed_delta": 0,
+  "armor_delta": 2,
+  "cost_ore": 150,
+  "cost_crystal": 0
+}

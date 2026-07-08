@@ -1,7 +1,10 @@
 #nullable enable
 using System.IO;
 using ProjectChimera.Core;
+using ProjectChimera.Core.Definitions; // ItemRegistry / ItemDefinition (Story 3.15: item-command replay parity)
+using ProjectChimera.Combat;    // ItemSystem / ItemStore / ModifierStore (Story 3.15)
 using ProjectChimera.Economy;   // BuildingSystem (Story 2.12: SetRally replay round-trip)
+using ProjectChimera.Effects;   // HealEffect / ModifierSystem (Story 3.15 consumable graph)
 using ProjectChimera.Multiplayer;
 using Xunit;
 
@@ -337,6 +340,122 @@ namespace ProjectChimera.Sim.Tests.Multiplayer
                 Assert.Equal(lBuildings.RallyPoint[lB].X.Raw, rBuildings.RallyPoint[rB].X.Raw);
                 Assert.Equal(lBuildings.RallyPoint[lB].Z.Raw, rBuildings.RallyPoint[rB].Z.Raw);
                 Assert.Equal(UnitCommand.Idle, world.CommandState[rUnit]); // queued → CommandState untouched on both paths
+            }
+            finally
+            {
+                File.Delete(path);
+            }
+        }
+
+        // ── Story 3.15 (P3) — UseItem / DropItem apply IDENTICALLY through the live + replay paths ──────────────
+
+        /// <summary>A world wired with an <see cref="ItemSystem"/> + one hero carrying a 3-charge potion (inv slot 0)
+        /// and a stat ring (inv slot 1) — the identical setup both the live and replay paths run against.</summary>
+        private sealed class ItemParityWorld
+        {
+            public EntityWorld World = null!;
+            public ItemStore   Items = null!;
+            public HeroStore   Heroes = null!;
+            public ItemSystem  Sys = null!;
+            public int Hero, HeroSlot, PotionRef, RingRef;
+        }
+
+        private static readonly UnitDefinition ParityHeroDef = new UnitDefinition
+        {
+            Id = "hero", Category = "Melee", IsHero = true,
+            Hp = 100, Speed = 3, AttackDamage = 20, AttackRange = 5, AttackSpeed = 1, Armor = 0,
+        };
+
+        private static ItemParityWorld BuildItemParityWorld()
+        {
+            var w = new ItemParityWorld
+            {
+                World = new EntityWorld(),
+                Items = new ItemStore(),
+                Heroes = new HeroStore(),
+            };
+            var modSys = new ModifierSystem();
+            var modifiers = new ModifierStore(w.World, modSys);
+            modSys.AttachStore(modifiers);
+            var registry = new ItemRegistry(new[]
+            {
+                new ItemDefinition { Id = "potion", Charges = 3, EffectGraph = new HealEffect(Fixed.FromInt(75)) },
+                new ItemDefinition { Id = "ring",   Charges = 0, MaxHealthDelta = Fixed.FromInt(50) },
+            });
+            w.Sys = new ItemSystem(w.World, w.Heroes, w.Items, modifiers, registry, events: null);
+
+            // Mint a Player1 hero at (7,8) with 20/100 health (so the potion heal is observable).
+            w.Hero = w.World.Create(new FixedVec3(Fixed.FromInt(7), Fixed.Zero, Fixed.FromInt(8)),
+                                    Faction.Player1, Fixed.FromInt(100), Fixed.FromInt(3));
+            w.World.ApplyUnitDefinition(w.Hero, ParityHeroDef);
+            w.HeroSlot = w.Heroes.Mint(new HeroId(1), w.Hero, level: 1, xp: Fixed.Zero,
+                                       sourceDef: ParityHeroDef, ownerFaction: Faction.Player1);
+            w.World.HeroIndex[w.Hero] = w.Heroes.PackRef(w.HeroSlot);
+            w.World.Health[w.Hero] = Fixed.FromInt(20);
+
+            // Potion → inventory slot 0 (charges 3); ring → inventory slot 1 (held).
+            w.PotionRef = w.Items.Create(registry.IndexOf("potion"), 3, new FixedVec3(Fixed.Zero, Fixed.Zero, Fixed.Zero));
+            w.Items.TryResolveRef(w.PotionRef, out int ps); w.Items.Held[ps] = true;
+            w.Heroes.Inventory[w.HeroSlot * HeroStore.INVENTORY_SLOTS + 0] = w.PotionRef;
+
+            w.RingRef = w.Items.Create(registry.IndexOf("ring"), 0, new FixedVec3(Fixed.Zero, Fixed.Zero, Fixed.Zero));
+            w.Items.TryResolveRef(w.RingRef, out int rs); w.Items.Held[rs] = true;
+            w.Heroes.Inventory[w.HeroSlot * HeroStore.INVENTORY_SLOTS + 1] = w.RingRef;
+            return w;
+        }
+
+        [Fact]
+        public void ReplayVsLive_UseAndDropItem_ApplyIdentically_ThroughSharedApplier()
+        {
+            // Story 3.15 (P3): the regression guard for P2 — UseItem decrements a consumable's charge + fires its heal,
+            // and DropItem returns the item to the ground, IDENTICALLY through the live apply site (OrderApplier.Apply
+            // with items:, the exact line LockstepManager.ApplyOrders calls) and the replay site (ReplayPlayer, Items
+            // wired). If EITHER apply site stops forwarding `items`, the item command becomes a no-op and this fails.
+            Assert.Equal(2, ReplayRecorder.VERSION); // unchanged 11-byte wire — no format bump
+
+            var useOrder  = new UnitOrder(0, UnitCommand.UseItem,  Fixed.FromRaw(0), Fixed.Zero); // inv slot 0 = potion
+            var dropOrder = new UnitOrder(0, UnitCommand.DropItem, Fixed.FromRaw(1), Fixed.Zero); // inv slot 1 = ring
+
+            // LIVE: apply both orders directly through the shared applier with the ItemSystem wired.
+            var live = BuildItemParityWorld();
+            Assert.Equal(0, live.Hero); // hero is entity 0 (order UnitId matches)
+            OrderApplier.Apply(live.World, useOrder,  Faction.Player1, items: live.Sys);
+            OrderApplier.Apply(live.World, dropOrder, Faction.Player1, items: live.Sys);
+
+            // REPLAY: record the same two orders, then replay them through ReplayPlayer with Items wired.
+            string path = Path.GetTempFileName();
+            try
+            {
+                using (var rec = new ReplayRecorder(path, "test://item-use-drop", EntityWorld.DEFAULT_RNG_SEED))
+                {
+                    var orders = new[] { useOrder, dropOrder };
+                    rec.RecordTick(1, Faction.Player1, orders, 0, orders.Length);
+                }
+
+                var rep = BuildItemParityWorld();
+                var player = new ReplayPlayer(path, rep.World) { Items = rep.Sys };
+                player.Flush(1); // ReplayPlayer.ApplyOrders → OrderApplier.Apply(..., items: Items)
+
+                // UseItem: the potion's charge decremented 3 → 2 and the heal (20 + 75 = 95) fired — on BOTH paths.
+                Assert.True(live.Items.TryResolveRef(live.PotionRef, out int lps));
+                Assert.True(rep.Items.TryResolveRef(rep.PotionRef, out int rps));
+                Assert.Equal(2, live.Items.Charges[lps]);
+                Assert.Equal(live.Items.Charges[lps], rep.Items.Charges[rps]);
+                Assert.Equal(Fixed.FromInt(95), live.World.Health[live.Hero]);
+                Assert.Equal(live.World.Health[live.Hero], rep.World.Health[rep.Hero]);
+
+                // DropItem: the ring returned to the ground at the hero's position + the inv slot cleared — on BOTH paths.
+                Assert.True(live.Items.TryResolveRef(live.RingRef, out int lrs));
+                Assert.True(rep.Items.TryResolveRef(rep.RingRef, out int rrs));
+                Assert.False(live.Items.Held[lrs]);
+                Assert.Equal(live.Items.Held[lrs], rep.Items.Held[rrs]);
+                Assert.Equal(Fixed.FromInt(7), live.Items.PosX[lrs]);
+                Assert.Equal(live.Items.PosX[lrs], rep.Items.PosX[rrs]);
+                Assert.Equal(live.Items.PosZ[lrs], rep.Items.PosZ[rrs]);
+                Assert.Equal(HeroStore.INVENTORY_EMPTY,
+                             live.Heroes.Inventory[live.HeroSlot * HeroStore.INVENTORY_SLOTS + 1]);
+                Assert.Equal(HeroStore.INVENTORY_EMPTY,
+                             rep.Heroes.Inventory[rep.HeroSlot * HeroStore.INVENTORY_SLOTS + 1]);
             }
             finally
             {

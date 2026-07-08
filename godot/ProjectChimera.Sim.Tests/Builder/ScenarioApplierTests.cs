@@ -338,6 +338,45 @@ namespace ProjectChimera.Sim.Tests.Builder
         }
 
         [Fact]
+        public void Apply_PlacesScenarioItem_AndConfiguresUsableSlotCap()
+        {
+            // Story 3.15 (P6): the production item-placement path (registry lookup → Items.Create → ConfigureUsableSlots)
+            // is otherwise reached only via direct ItemStore.Create in unit tests. Drive it through ScenarioApplier.Apply:
+            // a model carrying one ScenarioItem (a valid registered item_id) + InventorySlotCount = 3 must place the item
+            // with the registry's DefId/Charges at the authored position AND cap ItemSystem.UsableSlots at 3.
+            var faction = AlphaFaction();
+            var slotDefs = SlotDefs(faction);
+            var itemRegistry = new ItemRegistry(new[]
+            {
+                new ItemDefinition { Id = "ring_of_vigor", Charges = 5, MaxHealthDelta = Fixed.FromInt(50) },
+            });
+            var host = SimulationHost.Create(NullLogSink.Instance, new FactionRegistry(2), faction, faction,
+                                             itemRegistry: itemRegistry);
+            var applier = new ScenarioApplier(host, NullLogSink.Instance, slotDefs);
+
+            ScenarioData model = BuildAlphaModel();
+            model.InventorySlotCount = 3;
+            model.Items = new[] { new ScenarioItem { ItemId = "ring_of_vigor", X = 12f, Z = -7f } };
+
+            ValidationResult r = new ScenarioValidator().Validate(model);
+            Assert.True(r.Ok, r.Error);
+            applier.Apply(r.Value);
+
+            // Exactly one item placed on the ground, carrying the registry's DefId + Charges at the authored position.
+            Assert.Equal(1, host.Items.Count);
+            int expectedDefId = itemRegistry.IndexOf("ring_of_vigor");
+            Assert.True(host.Items.Alive[0]);
+            Assert.False(host.Items.Held[0]);
+            Assert.Equal(expectedDefId, host.Items.DefId[0]);
+            Assert.Equal(5, host.Items.Charges[0]);
+            Assert.Equal(Fixed.FromFloat(12f), host.Items.PosX[0]);
+            Assert.Equal(Fixed.FromFloat(-7f), host.Items.PosZ[0]);
+
+            // The usable-slot cap was configured from inventory_slot_count.
+            Assert.Equal(3, host.ItemSys.UsableSlots);
+        }
+
+        [Fact]
         public void SpawnUnit_AllocatesZeroBytes_AfterWarmup()
         {
             var (_, applier) = NewHostAndApplier();
