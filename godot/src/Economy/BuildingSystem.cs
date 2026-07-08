@@ -588,7 +588,19 @@ namespace ProjectChimera.Economy
             // real match (no production path would ever set BuildingStore.RevivesHeroes).
             bool revives = revivesHeroes || ResolveRevivesHeroes(type, faction);
             var (sells, stock, radius) = ResolveSellsItems(type, faction); // Story 3.16: resolve the authored shop capability
-            int id = _buildings.Create(position, faction, type, revives, sells, stock, radius);
+            // Story 4.1 (AC1/AC2): resolve the authored BuildingDefinition (if any) and thread its Hp/SupplyBonus/
+            // ConstructionTime into Create's resolved-stats params — the data-driven path. A null bdef (no matching
+            // def), or one whose ConstructionTime/SupplyBonus weren't populated (a def built outside LoadFromFile's
+            // validation gate — review-pass fix), null-propagates the affected param(s) to null; Create's all-three-
+            // or-none gate then falls back to the untouched per-type switch — byte-identical to pre-4.1 behavior for
+            // every caller with no fully-resolved def. Never force-unwrap ConstructionTime — a partially-populated
+            // bdef must degrade gracefully, not throw.
+            BuildingDefinition? bdef = GetFactionDef(faction)?.GetBuilding(TechTreeChecker.BuildingTypeId(type));
+            int id = _buildings.Create(position, faction, type, revives, sells, stock, radius,
+                buildingId: bdef?.Id,
+                health: bdef != null ? Fixed.FromFloat(bdef.Hp) : (Fixed?)null,
+                supplyBonus: bdef?.SupplyBonus,
+                constructionDuration: bdef?.ConstructionTime is float ct ? Fixed.FromFloat(ct) : (Fixed?)null);
             if (id < 0) return -1;
             if (preBuilt)
                 _buildings.ConstructionTimer[id] = Fixed.Zero;
@@ -668,8 +680,8 @@ namespace ProjectChimera.Economy
             if (world.GatherState[workerId] == GatherState.Inactive) return -1; // not a worker
 
             // Prerequisite check
-            string[]? prereqs = GetFactionDef(faction)
-                ?.GetBuilding(TechTreeChecker.BuildingTypeId(type))?.Prerequisites;
+            BuildingDefinition? bdef = GetFactionDef(faction)?.GetBuilding(TechTreeChecker.BuildingTypeId(type));
+            string[]? prereqs = bdef?.Prerequisites;
             if (!TechTreeChecker.AreMet(_buildings, faction, prereqs)) return -1;
 
             // Ore cost
@@ -677,9 +689,16 @@ namespace ProjectChimera.Economy
             if (costOre > 0f && !resources.SpendOre(faction, Fixed.FromFloat(costOre))) return -1;
 
             // Place building (starts under construction). Story 3.14: carry the authored revives_heroes capability so a
-            // player-built revive building (not just scenario-placed) actually works.
+            // player-built revive building (not just scenario-placed) actually works. Story 4.1 (AC1/AC2): thread the
+            // resolved def's Hp/SupplyBonus/ConstructionTime the same way PlaceBuildingDirect does — a null bdef, or
+            // one missing ConstructionTime/SupplyBonus (built outside LoadFromFile's gate), null-propagates to the
+            // switch fallback rather than throwing (review-pass fix — never force-unwrap ConstructionTime).
             var (sells, stock, radius) = ResolveSellsItems(type, faction); // Story 3.16
-            int bId = _buildings.Create(position, faction, type, ResolveRevivesHeroes(type, faction), sells, stock, radius);
+            int bId = _buildings.Create(position, faction, type, ResolveRevivesHeroes(type, faction), sells, stock, radius,
+                buildingId: bdef?.Id,
+                health: bdef != null ? Fixed.FromFloat(bdef.Hp) : (Fixed?)null,
+                supplyBonus: bdef?.SupplyBonus,
+                constructionDuration: bdef?.ConstructionTime is float ct ? Fixed.FromFloat(ct) : (Fixed?)null);
             if (bId < 0)
             {
                 if (costOre > 0f) resources.AddOre(faction, Fixed.FromFloat(costOre)); // refund

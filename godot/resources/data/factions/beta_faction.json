@@ -178,7 +178,7 @@
       "display_name": "The Sanguine Furnace",
       "category": "Structure",
       "mesh_path": "res://assets/models/factions/beta/sanguine_furnace.glb",
-      "hp": 1800,
+      "hp": 500,
       "speed": 0,
       "attack_damage": 0,
       "attack_range": 0,
@@ -191,6 +191,9 @@
       "mesh_scale": 3.0,
       "train_time": 0,
       "vision_range": 0,
+      "construction_time": 15,
+      "supply_bonus": 10,
+      "produces_category": "Worker",
       "prerequisites": []
     },
     {
@@ -198,7 +201,7 @@
       "display_name": "The Thrall Yards",
       "category": "Structure",
       "mesh_path": "res://assets/models/factions/beta/thrall_yards.glb",
-      "hp": 1000,
+      "hp": 300,
       "speed": 0,
       "attack_damage": 0,
       "attack_range": 0,
@@ -211,6 +214,9 @@
       "mesh_scale": 2.5,
       "train_time": 0,
       "vision_range": 0,
+      "construction_time": 10,
+      "supply_bonus": 0,
+      "produces_category": "Melee",
       "prerequisites": []
     },
     {
@@ -218,7 +224,7 @@
       "display_name": "The Bolt Sanctum",
       "category": "Structure",
       "mesh_path": "res://assets/models/factions/beta/bolt_sanctum.glb",
-      "hp": 900,
+      "hp": 300,
       "speed": 0,
       "attack_damage": 0,
       "attack_range": 0,
@@ -231,6 +237,9 @@
       "mesh_scale": 2.5,
       "train_time": 0,
       "vision_range": 0,
+      "construction_time": 10,
+      "supply_bonus": 0,
+      "produces_category": "Ranged",
       "prerequisites": [
         "barracks"
       ]
@@ -240,7 +249,7 @@
       "display_name": "The Render Works",
       "category": "Structure",
       "mesh_path": "res://assets/models/factions/beta/render_works.glb",
-      "hp": 900,
+      "hp": 400,
       "speed": 0,
       "attack_damage": 0,
       "attack_range": 0,
@@ -253,6 +262,9 @@
       "mesh_scale": 2.8,
       "train_time": 0,
       "vision_range": 0,
+      "construction_time": 12,
+      "supply_bonus": 0,
+      "produces_category": "Siege",
       "prerequisites": [
         "archery_range"
       ]
@@ -262,7 +274,7 @@
       "display_name": "The Wraithwing Brood",
       "category": "Structure",
       "mesh_path": "res://assets/models/factions/beta/wraithwing_brood.glb",
-      "hp": 900,
+      "hp": 350,
       "speed": 0,
       "attack_damage": 0,
       "attack_range": 0,
@@ -275,6 +287,9 @@
       "mesh_scale": 2.8,
       "train_time": 0,
       "vision_range": 0,
+      "construction_time": 12,
+      "supply_bonus": 0,
+      "produces_category": "Air",
       "prerequisites": [
         "siege_workshop"
       ]

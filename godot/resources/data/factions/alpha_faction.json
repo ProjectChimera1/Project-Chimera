@@ -227,7 +227,7 @@
       "display_name": "Covenant Sanctum",
       "category": "Structure",
       "mesh_path": "res://assets/models/factions/alpha/covenant_sanctum.glb",
-      "hp": 1500,
+      "hp": 500,
       "speed": 0,
       "attack_damage": 0,
       "attack_range": 0,
@@ -240,6 +240,9 @@
       "mesh_scale": 3.0,
       "train_time": 0,
       "vision_range": 0,
+      "construction_time": 15,
+      "supply_bonus": 10,
+      "produces_category": "Worker",
       "prerequisites": []
     },
     {
@@ -247,7 +250,7 @@
       "display_name": "Crucible Hall",
       "category": "Structure",
       "mesh_path": "res://assets/models/factions/alpha/crucible_hall.glb",
-      "hp": 800,
+      "hp": 300,
       "speed": 0,
       "attack_damage": 0,
       "attack_range": 0,
@@ -260,6 +263,9 @@
       "mesh_scale": 2.5,
       "train_time": 0,
       "vision_range": 0,
+      "construction_time": 10,
+      "supply_bonus": 0,
+      "produces_category": "Melee",
       "prerequisites": []
     },
     {
@@ -267,7 +273,7 @@
       "display_name": "Sigil Foundry",
       "category": "Structure",
       "mesh_path": "res://assets/models/factions/alpha/sigil_foundry.glb",
-      "hp": 700,
+      "hp": 300,
       "speed": 0,
       "attack_damage": 0,
       "attack_range": 0,
@@ -280,6 +286,9 @@
       "mesh_scale": 2.5,
       "train_time": 0,
       "vision_range": 0,
+      "construction_time": 10,
+      "supply_bonus": 0,
+      "produces_category": "Ranged",
       "prerequisites": [
         "barracks"
       ]
@@ -289,7 +298,7 @@
       "display_name": "Transmutation Forge",
       "category": "Structure",
       "mesh_path": "res://assets/models/factions/alpha/transmutation_forge.glb",
-      "hp": 700,
+      "hp": 400,
       "speed": 0,
       "attack_damage": 0,
       "attack_range": 0,
@@ -302,6 +311,9 @@
       "mesh_scale": 2.8,
       "train_time": 0,
       "vision_range": 0,
+      "construction_time": 12,
+      "supply_bonus": 0,
+      "produces_category": "Siege",
       "prerequisites": [
         "archery_range"
       ]
@@ -311,7 +323,7 @@
       "display_name": "Bonded Aerie",
       "category": "Structure",
       "mesh_path": "res://assets/models/factions/alpha/bonded_aerie.glb",
-      "hp": 700,
+      "hp": 350,
       "speed": 0,
       "attack_damage": 0,
       "attack_range": 0,
@@ -324,6 +336,9 @@
       "mesh_scale": 2.8,
       "train_time": 0,
       "vision_range": 0,
+      "construction_time": 12,
+      "supply_bonus": 0,
+      "produces_category": "Air",
       "prerequisites": [
         "siege_workshop"
       ]

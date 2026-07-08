@@ -389,9 +389,13 @@ namespace ProjectChimera.Sim.Tests.Combat
             var resources = new ResourceStore(Fixed.Zero);
             var buildSys  = new BuildingSystem(buildings, resources, null, null, null, new HeroStore(), new RevivalRuleRuntime());
 
-            // A faction whose authored command_center building is flagged revives_heroes.
+            // A faction whose authored command_center building is flagged revives_heroes. Story 4.1: BuildingDefinition
+            // fields ConstructionTime/SupplyBonus are required by the new resolved-stats Create() path (bdef.
+            // ConstructionTime!.Value is dereferenced unconditionally once bdef resolves) — authored here so
+            // PlaceBuildingDirect's def-driven threading doesn't NRE; their values are irrelevant to this RevivesHeroes-only test.
             var fdef = new FactionDefinition();
-            fdef.Buildings.Add(new UnitDefinition { Id = "command_center", Category = "Structure", RevivesHeroes = true });
+            fdef.Buildings.Add(new BuildingDefinition { Id = "command_center", Category = "Structure", RevivesHeroes = true,
+                ConstructionTime = 15f, SupplyBonus = 10, ProducesCategory = "Worker" });
             buildSys.SetFactionDef(Faction.Player1, fdef);
 
             // Placed WITHOUT an explicit flag → the capability must be resolved from the faction def (else the whole
@@ -401,7 +405,8 @@ namespace ProjectChimera.Sim.Tests.Combat
 
             // A faction without the flag resolves to false.
             var plain = new FactionDefinition();
-            plain.Buildings.Add(new UnitDefinition { Id = "command_center", Category = "Structure" });
+            plain.Buildings.Add(new BuildingDefinition { Id = "command_center", Category = "Structure",
+                ConstructionTime = 15f, SupplyBonus = 10, ProducesCategory = "Worker" });
             buildSys.SetFactionDef(Faction.Player2, plain);
             int bId2 = buildSys.PlaceBuildingDirect(BuildingType.CommandCenter, Faction.Player2, FixedVec3.Zero, preBuilt: true);
             Assert.False(buildings.RevivesHeroes[bId2]);
@@ -415,9 +420,11 @@ namespace ProjectChimera.Sim.Tests.Combat
             var resources = new ResourceStore(Fixed.Zero);
             var buildSys  = new BuildingSystem(buildings, resources, null, null, null, new HeroStore(), new RevivalRuleRuntime());
 
-            // A faction whose authored command_center is flagged revives_heroes, free to build.
+            // A faction whose authored command_center is flagged revives_heroes, free to build. Story 4.1: authored with
+            // ConstructionTime/SupplyBonus/ProducesCategory so QueueWorkerBuild's def-driven Create() threading doesn't NRE.
             var fdef = new FactionDefinition();
-            fdef.Buildings.Add(new UnitDefinition { Id = "command_center", Category = "Structure", RevivesHeroes = true, CostOre = 0 });
+            fdef.Buildings.Add(new BuildingDefinition { Id = "command_center", Category = "Structure", RevivesHeroes = true, CostOre = 0,
+                ConstructionTime = 15f, SupplyBonus = 10, ProducesCategory = "Worker" });
             buildSys.SetFactionDef(Faction.Player1, fdef);
 
             // A live worker (GatherState != Inactive) constructs the building. The PLAYER-BUILT path must resolve the

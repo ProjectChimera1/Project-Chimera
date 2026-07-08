@@ -26,12 +26,12 @@ namespace ProjectChimera.Core.Definitions
         public List<UnitDefinition> Units { get; set; } = new();
 
         [JsonPropertyName("buildings")]
-        public List<UnitDefinition> Buildings { get; set; } = new();
+        public List<BuildingDefinition> Buildings { get; set; } = new();
 
         // ── Lookup helpers ──────────────────────────────────────────────────────
 
         /// <summary>Find a building definition by ID, or null if not found.</summary>
-        public UnitDefinition? GetBuilding(string id)
+        public BuildingDefinition? GetBuilding(string id)
         {
             foreach (var b in Buildings)
                 if (b.Id == id) return b;
@@ -106,12 +106,32 @@ namespace ProjectChimera.Core.Definitions
         /// Load a FactionDefinition from a JSON file on disk.
         /// Pass the absolute OS path (not a res:// path — call from presentation layer after
         /// resolving with ProjectSettings.GlobalizePath).
+        ///
+        /// Story 4.1 (AC1): after deserializing, every <see cref="Buildings"/> entry runs through
+        /// <see cref="BuildingDefinitionValidator"/>. A building missing <c>construction_time</c>/<c>supply_bonus</c>/
+        /// <c>produces_category</c> fails the WHOLE load — throws with every located error (across every bad building)
+        /// joined by newlines, so a creator sees all offending fields at once instead of fixing one and re-running to
+        /// find the next. Units remain unvalidated at load (unchanged — Story 3.4 gates units only at the editor's
+        /// Save/Playtest, not at faction load).
         /// </summary>
         public static FactionDefinition LoadFromFile(string absolutePath)
         {
             string json = File.ReadAllText(absolutePath);
-            return JsonSerializer.Deserialize<FactionDefinition>(json, JsonOptions)
-                   ?? new FactionDefinition();
+            FactionDefinition def = JsonSerializer.Deserialize<FactionDefinition>(json, JsonOptions)
+                                     ?? new FactionDefinition();
+
+            var errors = new List<string>();
+            foreach (BuildingDefinition b in def.Buildings)
+            {
+                BuildingValidationResult result = BuildingDefinitionValidator.Validate(b);
+                if (!result.Ok)
+                    foreach ((string _, string message) in result.Errors)
+                        errors.Add(message);
+            }
+            if (errors.Count > 0)
+                throw new System.InvalidOperationException(string.Join("\n", errors));
+
+            return def;
         }
     }
 }

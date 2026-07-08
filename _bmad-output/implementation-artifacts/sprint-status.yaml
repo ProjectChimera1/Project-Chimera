@@ -106,7 +106,7 @@ development_status:
   3-17-editor-undo-restoreunit-fidelity-widen-unitsnapshot: done
   epic-3-retrospective: done
   epic-4: backlog
-  4-1-data-drive-the-building-definition-runtime-building-store: backlog
+  4-1-data-drive-the-building-definition-runtime-building-store: done
   4-2-data-driven-tech-prerequisite-resolution-with-import-time-cycle-referential-lint: backlog
   4-3-n-resource-registry-with-sparse-cost-maps-generalize-ore-crystal: backlog
   4-4-data-driven-supply-cap-model-per-scenario: backlog

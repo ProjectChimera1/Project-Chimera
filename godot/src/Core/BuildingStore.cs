@@ -10,6 +10,18 @@ namespace ProjectChimera.Core
         ArcheryRange  = 2,  // Produces ranged combat units (future)
         SiegeWorkshop = 3,  // Produces siege units (future)
         Aviary        = 4,  // Produces Air combat units (Story 2.8). APPEND-ONLY: values 0-3 are byte-serialized into replays/scenarios — never renumber.
+        /// <summary>Story 4.1: a data-defined building with no dedicated enum member (its id has no
+        /// <see cref="TechTreeChecker"/> mapping). Sentinel — carries no baked stats of its own; must be placed via
+        /// <see cref="BuildingStore.Create"/>'s resolved-stats params directly (the per-type switch has no case for
+        /// it and would fall to its <c>default:</c> branch). Review-pass correction: <c>BuildingSystem.
+        /// PlaceBuildingDirect</c>/<c>QueueWorkerBuild</c> resolve a definition via <c>TechTreeChecker.
+        /// BuildingTypeId(type)</c>, which has no case for <see cref="Custom"/> and returns <c>""</c> — so a
+        /// <see cref="Custom"/> building placed through <c>BuildingSystem</c> today resolves no definition and falls
+        /// to the switch <c>default:</c> branch, NOT the resolved-stats path. Reachable with real stats only via a
+        /// direct <see cref="BuildingStore.Create"/> call (e.g. future authoring tooling); wiring an end-to-end
+        /// placement route through <c>BuildingSystem</c>/the editor is deferred to later stories (4.5/4.6).
+        /// APPEND-ONLY: appended after Aviary, never renumbered.</summary>
+        Custom        = 5,
     }
 
     /// <summary>
@@ -56,6 +68,14 @@ namespace ProjectChimera.Core
         /// <summary>The <see cref="Fixed"/> buy radius (quantized from the authored float <c>shop_radius</c> at placement).
         /// A non-folded placement constant; <see cref="Fixed.Zero"/> ⇒ the buy command uses a fallback radius.</summary>
         public readonly Fixed[]        ShopRadius;
+
+        // ── Data-driven identity (Story 4.1) ────────────────────────────────────
+        /// <summary>The authored building-definition id for this slot (e.g. <c>"command_center"</c>, or
+        /// <c>"watchtower"</c> for a <see cref="BuildingType.Custom"/> building with no enum member). A NON-FOLDED
+        /// placement constant — set at <see cref="Create"/> to the passed <c>buildingId</c>, or (when omitted, the
+        /// legacy no-def path) <see cref="TechTreeChecker.BuildingTypeId"/> of the enum <c>type</c>, so every existing
+        /// enum-backed building still resolves a stable id. Reset on every (re)allocation (the SoA-recycle contract).</summary>
+        public readonly string[]       DefinitionId;
 
         // ── Construction ───────────────────────────────────────────────────────
         /// <summary>Seconds remaining until construction finishes (0 = complete).</summary>
@@ -121,6 +141,7 @@ namespace ProjectChimera.Core
             SellsItems           = new bool[MAX_BUILDINGS];
             ShopStock            = new string[MAX_BUILDINGS][];
             ShopRadius           = new Fixed[MAX_BUILDINGS];
+            DefinitionId         = new string[MAX_BUILDINGS];
         }
 
         /// <summary>Returns true while the building is still being constructed.</summary>
@@ -130,7 +151,9 @@ namespace ProjectChimera.Core
         /// Place a new building. Returns its ID, or -1 if the store is full.
         /// </summary>
         public int Create(FixedVec3 position, Faction faction, BuildingType type, bool revivesHeroes = false,
-                          bool sellsItems = false, string[] shopStock = null, Fixed shopRadius = default)
+                          bool sellsItems = false, string[] shopStock = null, Fixed shopRadius = default,
+                          string buildingId = null, Fixed? health = null, int? supplyBonus = null,
+                          Fixed? constructionDuration = null)
         {
             // Story 2.13 (AC3.1) — recycle a dead slot first, else append a fresh one. The store is "full" (returns
             // -1) only when all MAX_BUILDINGS slots are SIMULTANEOUSLY live (free-list empty AND high-water at the cap),
@@ -167,11 +190,30 @@ namespace ProjectChimera.Core
             SellsItems[id]      = sellsItems;
             ShopStock[id]       = shopStock ?? System.Array.Empty<string>();
             ShopRadius[id]      = shopRadius;
+            // Story 4.1: the authored definition id for this slot — the passed id, or (legacy no-def callers) the
+            // enum's canonical id, so every existing enum-backed building still resolves a stable DefinitionId.
+            // Reset on EVERY (re)allocation (the SoA-recycle contract — mirrors RevivesHeroes/SellsItems above).
+            DefinitionId[id]    = buildingId ?? TechTreeChecker.BuildingTypeId(type);
             // Story 2.13 (AC3.2, Decision 6) — zero SupplyBonus on EVERY (re)allocation, BEFORE the switch. The
             // `default:` branch below does NOT set it, so a recycled slot that was a CommandCenter (SupplyBonus=10)
             // would otherwise leak +10 supply into a default-typed building — the SoA-recycle trap. The CommandCenter
             // branch re-sets 10 explicitly; zeroing here is the robust guard (a future building type can't leak either).
             SupplyBonus[id]     = 0;
+
+            // Story 4.1 (AC2): a data-defined building resolved from a loaded BuildingDefinition — read stats from the
+            // caller-supplied resolved values instead of the per-type switch below. All three must be supplied together
+            // (the production callers in BuildingSystem either resolve all three from a def or none, preserving the
+            // switch-fallback null-propagation contract); a Custom building has no switch case to fall back to, so this
+            // is its ONLY path to non-default stats.
+            if (health.HasValue && supplyBonus.HasValue && constructionDuration.HasValue)
+            {
+                Health[id]               = health.Value;
+                MaxHealth[id]             = health.Value;
+                SupplyBonus[id]           = supplyBonus.Value;
+                ConstructionDuration[id]  = constructionDuration.Value;
+                ConstructionTimer[id]     = ConstructionDuration[id];
+                return id;
+            }
 
             // Per-type defaults
             switch (type)
@@ -201,8 +243,12 @@ namespace ProjectChimera.Core
                     ConstructionDuration[id] = Fixed.FromFloat(12f);
                     break;
                 case BuildingType.Aviary:
-                    // Story 2.8, D-2 (Alec): mirrors the Siege Workshop (top-tier gate). HP/supply/construction
-                    // come from HERE, not the JSON (building `hp` is vestigial).
+                    // Story 2.8, D-2 (Alec): mirrors the Siege Workshop (top-tier gate). This branch is the
+                    // switch-fallback default (used only when the caller has no resolved BuildingDefinition — see
+                    // the resolved-stats short-circuit above, Story 4.1). It is NOT a source-of-truth override of
+                    // JSON: since alpha/beta_faction.json now author matching hp/supply_bonus/construction_time for
+                    // aviary, any Aviary placed through BuildingSystem's def-resolving call sites reads these exact
+                    // values from data instead, and only a caller that never resolves a def hits this switch case.
                     Health[id]              = Fixed.FromFloat(350f);
                     MaxHealth[id]           = Fixed.FromFloat(350f);
                     SupplyBonus[id]         = 0;
@@ -237,7 +283,7 @@ namespace ProjectChimera.Core
             System.Array.Clear(HasRallyPoint);        System.Array.Clear(TrainedCount);
             System.Array.Clear(RevivesHeroes);
             System.Array.Clear(SellsItems);           System.Array.Clear(ShopStock);
-            System.Array.Clear(ShopRadius);
+            System.Array.Clear(ShopRadius);           System.Array.Clear(DefinitionId);
             System.Array.Clear(Generation);           System.Array.Clear(_freeList);
             _freeCount = 0;
             Count      = 0;
