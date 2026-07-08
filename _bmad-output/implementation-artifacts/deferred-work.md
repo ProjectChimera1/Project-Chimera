@@ -764,7 +764,9 @@ origin: migrated from legacy ledger ("Deferred from: code review of story-3.17 (
 source_spec: `_bmad-output/implementation-artifacts/spec-3-17-editor-undo-restoreunit-fidelity-widen-unitsnapshot.md`
 location: n/a
 reason: summary: Editor delete→undo restores a unit at full HP and full Energy — `SnapshotUnit` captures `BaseMaxHealth` (fed to `Create`, which sets `Health = MaxHealth`) and no current `Health`, and the def path re-derives `Energy = MaxEnergy`, so a damaged / energy-spent unit round-trips to full. evidence: Matches the pre-existing `EntityPlacer.RestoreUnit` behavior (not a regression) and is inert for editor-placed units (always full HP/energy, no combat in Edit mode). Only observable if delete→undo runs on a unit that took damage or spent energy during a playtest — a deliberate "should editor undo preserve current HP/energy?" decision worth making when the Edit↔Play loop's runtime-state semantics are revisited. Flagged by the Blind Hunter, Edge Case Hunter, and Verification-Gap review layers.
-status: open
+status: done 2026-07-08
+resolution: closed by human decision: Accept the full restore — it is inert for editor-placed units and consistent with 'playtest runtime state is discarded'; no change needed.
+decision: 2026-07-08 Accept full-HP/Energy restore — Accept the full restore — it is inert for editor-placed units and consistent with 'playtest runtime state is discarded'; no change needed.
 
 ### DW-54: `UnitSnapshot` pins the source `UnitDefinition` by reference for the entire undo-history lifetime and `RestoreUnit` re-applies it assuming its `AbilityIndices` are still resolved; nothing guarantees the def object stays alive/unmutated/resolved across a long editor session (e.g. an in-place reload/replace of the def).
 origin: migrated from legacy ledger ("Deferred from: code review of story-3.17 (2026-07-08)"), 2026-07-08
