@@ -162,6 +162,48 @@ namespace ProjectChimera.Sim.Tests.Economy
         }
 
         [Fact]
+        public void GetUnmetPrereq_TwoArgOverload_ResolvesAuthoredDisplayName_NotRawId()
+        {
+            // Review-pass fix (Story 4.2): TrainUnit_UnmetPrereq_SpendsNoOre's TestFaction() never populates
+            // Buildings, so GetFactionDef(faction).GetBuilding("archery_range") is always null there and the
+            // resolution line falls through to `?? missing` regardless of whether the resolution logic is
+            // correct — that test could not have caught a regression in GetUnmetPrereq(int,int)'s display-name
+            // resolution. This test populates Buildings so the assertion can actually distinguish "resolved to
+            // the authored display_name" from "fell back to the raw id".
+            var faction = TestFaction();
+            faction.Units[2].Prerequisites = new[] { "archery_range" };
+            faction.Buildings.Add(new BuildingDefinition
+            {
+                Id = "archery_range", DisplayName = "Archery Range", Category = "Structure",
+                ConstructionTime = 10f, SupplyBonus = 0, ProducesCategory = "Ranged",
+            });
+            var (sys, _, _, _) = Harness(faction);
+            int b = sys.PlaceBuildingDirect(BuildingType.Barracks, Faction.Player1, FixedVec3.Zero, preBuilt: true);
+
+            Assert.Equal("Archery Range", sys.GetUnmetPrereq(b, 2));
+        }
+
+        [Fact]
+        public void GetUnmetPrereq_MissingBuildingHasEmptyDisplayName_FallsBackToRawId_NotBlankString()
+        {
+            // Review-pass fix (Story 4.2): DisplayName is a non-nullable string defaulting to "" (inherited from
+            // UnitDefinition), and no validator requires it to be authored/non-empty. `?? missing` only catches a
+            // NULL DisplayName, so an unauthored (empty) one would previously surface as a blank "[need: ]" UI
+            // string instead of the raw id — worse than the retired hardcoded switch's null->raw-id fallback.
+            var faction = TestFaction();
+            faction.Units[2].Prerequisites = new[] { "archery_range" };
+            faction.Buildings.Add(new BuildingDefinition
+            {
+                Id = "archery_range", DisplayName = "", Category = "Structure",
+                ConstructionTime = 10f, SupplyBonus = 0, ProducesCategory = "Ranged",
+            });
+            var (sys, _, _, _) = Harness(faction);
+            int b = sys.PlaceBuildingDirect(BuildingType.Barracks, Faction.Player1, FixedVec3.Zero, preBuilt: true);
+
+            Assert.Equal("archery_range", sys.GetUnmetPrereq(b, 2));
+        }
+
+        [Fact]
         public void TrainUnit_OverSupply_SpendsNoOre()
         {
             var (sys, buildings, resources, _) = Harness(TestFaction());
@@ -237,24 +279,48 @@ namespace ProjectChimera.Sim.Tests.Economy
             Assert.True(u >= 0);                                   // a fallback unit still spawns
         }
 
-        // ── Task 5 — the Aviary BuildingType round-trips through TechTreeChecker + resolves a display name ──
+        // ── Task 5 — Story 4.2: TechTreeChecker.FirstMissing now returns the RAW id (no enum/DisplayName switch);
+        //    display-name resolution moved to BuildingSystem, which still resolves to the authored display_name ──
 
         [Fact]
-        public void TechTreeChecker_Aviary_RoundTripsIdAndResolvesDisplayName()
+        public void TechTreeChecker_Aviary_RoundTripsId_FirstMissingReturnsRawId_NotDisplayName()
         {
-            // enum → snake_case json id.
+            // enum → snake_case json id (unchanged — BuildingTypeId is untouched by Story 4.2).
             Assert.Equal("aviary", TechTreeChecker.BuildingTypeId(BuildingType.Aviary));
 
-            // An UNMET "aviary" prereq surfaces the DISPLAY name "Aviary" (not the raw id) — proving BOTH the
-            // ParseBuildingType("aviary") arm resolved AND the DisplayName(Aviary) arm is non-null. A missing arm
-            // would fall back to the raw "aviary".
+            // A bare BuildingStore has no FactionDefinition in scope — FirstMissing now returns the raw id
+            // "aviary" unchanged, NOT the retired "Aviary" display-name lookup (the switch this story retires).
             var buildings = new BuildingStore();
-            Assert.Equal("Aviary", TechTreeChecker.FirstMissing(buildings, Faction.Player1, new[] { "aviary" }));
+            Assert.Equal("aviary", TechTreeChecker.FirstMissing(buildings, Faction.Player1, new[] { "aviary" }));
 
-            // A completed Aviary satisfies the prereq (round-trip closes: id → enum → alive-building check).
+            // A completed Aviary satisfies the prereq via string DefinitionId match (round-trip: id → DefinitionId
+            // → alive-building check — no enum parse step).
             int b = buildings.Create(FixedVec3.Zero, Faction.Player1, BuildingType.Aviary);
             buildings.ConstructionTimer[b] = Fixed.Zero; // mark construction complete
             Assert.True(TechTreeChecker.AreMet(buildings, Faction.Player1, new[] { "aviary" }));
+        }
+
+        [Fact]
+        public void BuildingSystem_GetBuildingPlacePrereq_StillResolvesDisplayName_ForShippedContent()
+        {
+            // BuildingSystem-level assertion (Story 4.2): with a FactionDefinition in scope, GetBuildingPlacePrereq
+            // still resolves the missing prereq's id to its authored display_name — preserving today's
+            // "[need: Command Center]"-style UI text now that TechTreeChecker itself only returns raw ids.
+            var faction = TestFaction();
+            faction.Buildings.Add(new BuildingDefinition
+            {
+                Id = "aviary", DisplayName = "Aviary", Category = "Structure",
+                ConstructionTime = 12f, SupplyBonus = 0, ProducesCategory = "Air",
+                Prerequisites = new[] { "command_center" },
+            });
+            faction.Buildings.Add(new BuildingDefinition
+            {
+                Id = "command_center", DisplayName = "Command Center", Category = "Structure",
+                ConstructionTime = 15f, SupplyBonus = 10, ProducesCategory = "Worker",
+            });
+            var (sys, _, _, _) = Harness(faction);
+
+            Assert.Equal("Command Center", sys.GetBuildingPlacePrereq(BuildingType.Aviary, Faction.Player1));
         }
 
         // ── Task 9 — lockstep Train command (D-1): rides the shared OrderApplier, spends once at exec-tick ──

@@ -735,8 +735,10 @@ namespace ProjectChimera.Economy
         public string? GetBuildingPlacePrereq(BuildingType type, Faction faction)
         {
             string id = TechTreeChecker.BuildingTypeId(type);
-            var prereqs = GetFactionDef(faction)?.GetBuilding(id)?.Prerequisites;
-            return TechTreeChecker.FirstMissing(_buildings, faction, prereqs);
+            var fdef = GetFactionDef(faction);
+            var prereqs = fdef?.GetBuilding(id)?.Prerequisites;
+            string? missing = TechTreeChecker.FirstMissing(_buildings, faction, prereqs);
+            return ResolveMissingDisplayName(fdef, missing);
         }
 
         /// <summary>
@@ -750,8 +752,22 @@ namespace ProjectChimera.Economy
             Faction faction = _buildings.FactionOf[buildingId];
             var def = GetProductionUnit(_buildings.Type[buildingId], faction);
             if (def == null) return null;
-            return TechTreeChecker.FirstMissing(_buildings, faction, def.Prerequisites);
+            string? missing = TechTreeChecker.FirstMissing(_buildings, faction, def.Prerequisites);
+            return ResolveMissingDisplayName(GetFactionDef(faction), missing);
         }
+
+        /// <summary>
+        /// Story 4.2: <see cref="TechTreeChecker"/> now returns the raw missing prereq id (it has no
+        /// <see cref="FactionDefinition"/> in scope) — this resolves it to the authored <c>display_name</c> at the
+        /// caller, preserving today's "[need: Command Center]"-style UI text byte-for-byte for shipped content.
+        /// Guards against a building whose <c>display_name</c> resolves but is empty (unauthored) — falling back to
+        /// the raw id in that case too, not an empty string (review-pass fix: a bare <c>?? missing</c> only catches
+        /// a NULL DisplayName, not an empty one, since <see cref="UnitDefinition.DisplayName"/> defaults to <c>""</c>).
+        /// </summary>
+        private string? ResolveMissingDisplayName(FactionDefinition? fdef, string? missing) =>
+            missing == null
+                ? null
+                : (fdef?.GetBuilding(missing)?.DisplayName is { Length: > 0 } dn ? dn : missing);
 
         /// <summary>
         /// Display name of the first unmet tech prerequisite for a SPECIFIC candidate unit (by its
@@ -765,7 +781,8 @@ namespace ProjectChimera.Economy
             Faction faction = _buildings.FactionOf[buildingId];
             var fdef = GetFactionDef(faction);
             if (fdef == null || unitIndex < 0 || unitIndex >= fdef.Units.Count) return null;
-            return TechTreeChecker.FirstMissing(_buildings, faction, fdef.Units[unitIndex].Prerequisites);
+            string? missing = TechTreeChecker.FirstMissing(_buildings, faction, fdef.Units[unitIndex].Prerequisites);
+            return ResolveMissingDisplayName(fdef, missing);
         }
     }
 }

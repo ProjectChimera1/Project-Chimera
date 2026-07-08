@@ -557,7 +557,11 @@ namespace ProjectChimera.UI
                 string? missing = TechTreeChecker.FirstMissing(_buildings, faction, buildingDef.Prerequisites);
                 if (missing != null)
                 {
-                    GD.Print($"[EntityPlacer] Cannot place {_buildingType}: requires {missing}.");
+                    // Story 4.2: TechTreeChecker now returns the raw id — resolve it to a display name here
+                    // (the editor's direct-placement path already has _faction in scope), same as BuildingSystem.
+                    // An empty (unauthored) DisplayName falls back to the raw id too, not a blank string.
+                    string missingName = _faction?.GetBuilding(missing)?.DisplayName is { Length: > 0 } dn ? dn : missing;
+                    GD.Print($"[EntityPlacer] Cannot place {_buildingType}: requires {missingName}.");
                     return;
                 }
             }

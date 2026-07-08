@@ -111,8 +111,14 @@ namespace ProjectChimera.Core.Definitions
         /// <see cref="BuildingDefinitionValidator"/>. A building missing <c>construction_time</c>/<c>supply_bonus</c>/
         /// <c>produces_category</c> fails the WHOLE load — throws with every located error (across every bad building)
         /// joined by newlines, so a creator sees all offending fields at once instead of fixing one and re-running to
-        /// find the next. Units remain unvalidated at load (unchanged — Story 3.4 gates units only at the editor's
-        /// Save/Playtest, not at faction load).
+        /// find the next. Beyond that check and Story 4.2's prerequisite lint below, units remain unvalidated at
+        /// load (unchanged — Story 3.4 gates full unit-field validation only at the editor's Save/Playtest, not
+        /// at faction load).
+        ///
+        /// Story 4.2 (AC1/AC2): additively, <see cref="TechTreeValidator"/> runs over the SAME aggregate
+        /// <c>errors</c> list — a duplicate building id, a <c>Buildings[]</c>/<c>Units[]</c> <c>prerequisites</c>
+        /// entry referencing an unknown building id, or a prerequisite cycle among buildings (direct or self),
+        /// each fails the whole load exactly like a missing required building field, list-all, joined by newlines.
         /// </summary>
         public static FactionDefinition LoadFromFile(string absolutePath)
         {
@@ -128,6 +134,7 @@ namespace ProjectChimera.Core.Definitions
                     foreach ((string _, string message) in result.Errors)
                         errors.Add(message);
             }
+            errors.AddRange(TechTreeValidator.Validate(def));
             if (errors.Count > 0)
                 throw new System.InvalidOperationException(string.Join("\n", errors));
 
