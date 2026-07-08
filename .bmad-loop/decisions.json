@@ -1,0 +1,11 @@
+{
+  "DW-26": {
+    "answered_at": "2026-07-08",
+    "bundle_name": "",
+    "effect": "build",
+    "intent": "Give xp_per_kill runtime meaning again \u2014 e.g. a per-hero XP-gain multiplier or a per-hero bounty override layered onto the victim's XpBounty \u2014 so the authoring knob is no longer misleading.",
+    "key": "2",
+    "label": "Repurpose it",
+    "resolution": ""
+  }
+}
