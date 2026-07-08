@@ -7,5 +7,14 @@
     "key": "2",
     "label": "Repurpose it",
     "resolution": ""
+  },
+  "DW-38": {
+    "answered_at": "2026-07-08",
+    "bundle_name": "",
+    "effect": "build",
+    "intent": "Soften the ItemDefinition/validator docstrings to allow buff-consumables (WC3-style: a charged item that also grants a passive stat bonus) and add coverage for the hybrid apply/consume path. Least restrictive for creators; matches what the runtime already does.",
+    "key": "1",
+    "label": "Permit hybrids + document",
+    "resolution": ""
   }
 }
