@@ -36,6 +36,14 @@ namespace ProjectChimera.Core
         /// <summary>Amount this building adds to its faction's SupplyCap when alive.</summary>
         public readonly int[]          SupplyBonus;
 
+        // ── Hero revival (Story 3.14) ───────────────────────────────────────────
+        /// <summary>True when this building can revive fallen heroes (from the authored <c>revives_heroes</c> flag,
+        /// threaded at placement). A NON-FOLDED placement constant (like the Story 3.13 curve constants / MeshType):
+        /// read only by the revive command-card affordance + <c>BuildingSystem.ReviveHeroCommand</c>'s guard, so a
+        /// divergence surfaces transitively via the hero's revival state — it never itself enters the checksum.
+        /// Default false; reset on (re)allocation and cleared on recycle (the SoA-recycle contract).</summary>
+        public readonly bool[]         RevivesHeroes;
+
         // ── Construction ───────────────────────────────────────────────────────
         /// <summary>Seconds remaining until construction finishes (0 = complete).</summary>
         public readonly Fixed[]        ConstructionTimer;
@@ -96,6 +104,7 @@ namespace ProjectChimera.Core
             RallyPoint           = new FixedVec3[MAX_BUILDINGS];
             HasRallyPoint        = new bool[MAX_BUILDINGS];
             TrainedCount         = new int[MAX_BUILDINGS];
+            RevivesHeroes        = new bool[MAX_BUILDINGS];
         }
 
         /// <summary>Returns true while the building is still being constructed.</summary>
@@ -104,7 +113,7 @@ namespace ProjectChimera.Core
         /// <summary>
         /// Place a new building. Returns its ID, or -1 if the store is full.
         /// </summary>
-        public int Create(FixedVec3 position, Faction faction, BuildingType type)
+        public int Create(FixedVec3 position, Faction faction, BuildingType type, bool revivesHeroes = false)
         {
             // Story 2.13 (AC3.1) — recycle a dead slot first, else append a fresh one. The store is "full" (returns
             // -1) only when all MAX_BUILDINGS slots are SIMULTANEOUSLY live (free-list empty AND high-water at the cap),
@@ -133,6 +142,9 @@ namespace ProjectChimera.Core
             // Story 2.13 slot recycling — and it keeps the unconditional fold deterministic if slots ever reuse.
             RallyPoint[id]      = FixedVec3.Zero;
             HasRallyPoint[id]   = false;
+            // Story 3.14: reset the revive-capability flag on EVERY (re)allocation (the SoA-recycle contract — a recycled
+            // slot must never inherit the prior building's capability), then set it from the authored/threaded flag.
+            RevivesHeroes[id]   = revivesHeroes;
             // Story 2.13 (AC3.2, Decision 6) — zero SupplyBonus on EVERY (re)allocation, BEFORE the switch. The
             // `default:` branch below does NOT set it, so a recycled slot that was a CommandCenter (SupplyBonus=10)
             // would otherwise leak +10 supply into a default-typed building — the SoA-recycle trap. The CommandCenter
@@ -201,6 +213,7 @@ namespace ProjectChimera.Core
             System.Array.Clear(ConstructionDuration); System.Array.Clear(ProductionTimer);
             System.Array.Clear(ProductionQueue);      System.Array.Clear(RallyPoint);
             System.Array.Clear(HasRallyPoint);        System.Array.Clear(TrainedCount);
+            System.Array.Clear(RevivesHeroes);
             System.Array.Clear(Generation);           System.Array.Clear(_freeList);
             _freeCount = 0;
             Count      = 0;

@@ -239,6 +239,14 @@ namespace ProjectChimera.Core.Definitions
             // ── hero: is_hero↔hero coherence + leveling-curve range + ability-slot refs + composition (Story 3.7, AC2) ──
             ValidateHero(errors, id, def, registry);
 
+            // ── revives_heroes: a HERO-REVIVAL capability that only makes sense on a Structure building (Story 3.14). A
+            //    Worker/Melee/etc. unit can't host a revive command card, so the flag on a non-Structure unit is an
+            //    authoring error — fail closed with a located badge (the is_hero-coherence precedent). Omitted (false)
+            //    is always valid, so every existing unit is unaffected. ──
+            if (def.RevivesHeroes && def.Category != "Structure")
+                errors.Add(("revives_heroes", Located(id, "revives_heroes",
+                    $"is set on a {def.Category} unit — only a Structure building can revive heroes.")));
+
             // ── tags: closed set — compose the existing UnitTagValidator so the two axes agree (AC2 "unknown tag") ──
             if (UnitTagValidator.TryFindInvalidTag(def, out string? badTag))
                 errors.Add(("tags", UnitTagValidator.Located(id, badTag)));

@@ -40,6 +40,17 @@ namespace ProjectChimera.Core.Sim
         // ClearForReset empties it (like CombatEvents).
         private readonly DeathFeed _deathFeed;
 
+        // Story 3.14 — the resolved revival rule (float→Fixed at the load boundary). Owned here and shared BY REFERENCE
+        // with BuildingSystem (revive-order cost) + HeroXpSystem (countdown/respawn); the scenario-apply path reconfigures
+        // it in place from the applied ScenarioData.RevivalRule (or Default when omitted).
+        private readonly RevivalRuleRuntime _revivalRuntime;
+
+        // Story 3.14 — the respawn spawn hook. Defaults to a host closure that reuses the SINGLE unit-spawn path
+        // (World.Create + World.ApplyUnitDefinition mapper); production (the bootstrap) overrides it with the applier's
+        // ScenarioApplier.SpawnUnit so a revived hero also gets its MeshType/worker wiring. Determinism-identical either
+        // way (both go through the one ApplyUnitDefinition mapper).
+        private System.Func<Definitions.UnitDefinition, Faction, Fixed, Fixed, int>? _reviveSpawnOverride;
+
         // ── Stores / field-held systems, exposed so callers read host truth (no parallel copies). ──
         public EntityWorld World { get; }
         public ResourceNodeStore Nodes { get; }
@@ -54,6 +65,9 @@ namespace ProjectChimera.Core.Sim
         /// <see cref="Buildings"/> so the 3.9 load path and the start-state hash read host truth (no parallel copies).
         /// </summary>
         public HeroStore Heroes { get; }
+        /// <summary>Story 3.14 — the resolved revival rule shared with BuildingSystem + HeroXpSystem. The scenario-apply
+        /// path calls <see cref="RevivalRuleRuntime.Configure"/> on it from the applied <c>ScenarioData.RevivalRule</c>.</summary>
+        public RevivalRuleRuntime RevivalRuntime => _revivalRuntime;
         /// <summary>The Story 2.2b AR-9 modifier store (driven by the index-3 ModifierSystem; folded into the checksum). Exposed like <see cref="Projectiles"/> for the 2.4 ability-cast path.</summary>
         public ModifierStore Modifiers { get; }
         public CombatEventQueue CombatEvents { get; }
@@ -103,9 +117,10 @@ namespace ProjectChimera.Core.Sim
             Heroes           = new HeroStore();   // Story 3.2 — the AR-12 hero substrate; folded into the per-tick checksum from Story 3.13 (XP runtime); populated by Story 3.9.
             CombatEvents     = new CombatEventQueue();
             _deathFeed       = new DeathFeed();    // Story 3.13 — transient per-tick death buffer for the XP runtime
+            _revivalRuntime  = new RevivalRuleRuntime(); // Story 3.14 — resolved from RevivalRule.Default until a scenario reconfigures it
             MatchStats       = new MatchStats();
             Fog              = new FogOfWarSystem(Faction.Player1);
-            BuildSys         = new BuildingSystem(Buildings, Resources, factionDef1, factionDef2, MatchStats);
+            BuildSys         = new BuildingSystem(Buildings, Resources, factionDef1, factionDef2, MatchStats, Heroes, _revivalRuntime);
             ScenarioDirector = new ScenarioDirector(Buildings, Resources);
 
             // AR-9 effective-stat recompute (Story 2.2a), the Story 2.2b ModifierStore it drives, and the Story 2.4a
@@ -157,7 +172,9 @@ namespace ProjectChimera.Core.Sim
                 // ── Story 3.13 hero XP runtime. At index 8, immediately AFTER ProjectileSystem so it drains the SAME
                 //    tick's recorded deaths (combat + projectile impacts) → credits hostile heroes in range → advances
                 //    level → reconciles growth via the folded ModifierStore. Clears the feed at end-of-tick. ──
-                new HeroXpSystem(Heroes, Modifiers, _deathFeed),                          // [8] HeroXpSystem      (Combat, FR-7)
+                // Story 3.14: also drives hero death-detection, the revival countdown, and respawn (via the shared spawn
+                // hook + the resolved revival rule + BuildingStore); announcements ride CombatEvents.
+                new HeroXpSystem(Heroes, Modifiers, _deathFeed, Buildings, _revivalRuntime, ReviveSpawn, CombatEvents), // [8] HeroXpSystem (Combat, FR-7)
                 new SupplySystem(Resources),                                              // [9] SupplySystem      (Economy)
                 Fog,                                                                      // [10] FogOfWarSystem    (Core)
                 _ai = new AiOpponentSystem(Buildings, Resources, BuildSys, aiLevel),      // [11] AI opponent (plays Player2)
@@ -203,6 +220,30 @@ namespace ProjectChimera.Core.Sim
             _ai.ResetForMatch();    // Story 3.10 — AI per-match decision state is not in any store; reset it too or the next Play desyncs
             _loop.ResetTick();      // CurrentTick + LastChecksum → 0 (checksum store wiring untouched)
         }
+
+        /// <summary>
+        /// Story 3.14 — the respawn hook HeroXpSystem calls when a revival countdown completes. Routes to the
+        /// bootstrap-supplied override (<see cref="SetReviveSpawn"/> → <c>ScenarioApplier.SpawnUnit</c>, which also wires
+        /// MeshType) when present, else a host-default closure that reuses the SINGLE spawn path (<see cref="EntityWorld.Create"/>
+        /// + the <see cref="EntityWorld.ApplyUnitDefinition"/> mapper — never a duplicated mapper). Both are
+        /// determinism-identical for the folded SoA; MeshType is presentation-only (unfolded). Returns the new entity id
+        /// or -1 when the world is full.
+        /// </summary>
+        private int ReviveSpawn(Definitions.UnitDefinition def, Faction faction, Fixed x, Fixed z)
+        {
+            if (_reviveSpawnOverride != null) return _reviveSpawnOverride(def, faction, x, z);
+            int id = World.Create(new FixedVec3(x, Fixed.Zero, z), faction,
+                                  Fixed.FromFloat(def.Hp), Fixed.FromFloat(def.Speed));
+            if (id < 0) return id;
+            World.ApplyUnitDefinition(id, def); // the one shared mapper — never re-implemented
+            return id;
+        }
+
+        /// <summary>Story 3.14 — override the revive respawn hook (the bootstrap wires it to
+        /// <c>ScenarioApplier.SpawnUnit</c> so a revived hero also gets MeshType/worker wiring). Idempotent; safe to call
+        /// once after the applier is built.</summary>
+        public void SetReviveSpawn(System.Func<Definitions.UnitDefinition, Faction, Fixed, Fixed, int> fn)
+            => _reviveSpawnOverride = fn;
 
         /// <summary>Advance exactly one tick (lockstep / replay / golden path). Wraps SimulationLoop.StepOnce.</summary>
         public void StepOnce() => _loop.StepOnce();

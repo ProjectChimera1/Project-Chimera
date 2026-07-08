@@ -1,5 +1,6 @@
 #nullable enable
 using System.Collections.Generic;
+using ProjectChimera.Combat;
 using ProjectChimera.Core;
 using ProjectChimera.Core.Definitions;
 
@@ -54,15 +55,23 @@ namespace ProjectChimera.Economy
         // Per-faction definitions indexed by (int)Faction. Slot 0 = Neutral (unused).
         private readonly FactionDefinition?[] _factions;
         private readonly MatchStats?           _stats;
+        // Story 3.14 — the persistent hero substrate + the resolved revival rule, for ReviveHeroCommand (nullable so the
+        // pre-3.14 golden/test callers that pass neither still compile and no-op the revive path deterministically).
+        private readonly HeroStore?            _heroes;
+        private readonly RevivalRuleRuntime?   _revival;
 
         public BuildingSystem(BuildingStore buildings, ResourceStore resources,
                               FactionDefinition? p1Faction = null,
                               FactionDefinition? p2Faction = null,
-                              MatchStats?        stats     = null)
+                              MatchStats?        stats     = null,
+                              HeroStore?         heroes    = null,
+                              RevivalRuleRuntime? revival  = null)
         {
             _buildings = buildings;
             _resources = resources;
             _stats     = stats;
+            _heroes    = heroes;
+            _revival   = revival;
             _factions  = new FactionDefinition?[5]; // indices 0-4; Faction enum is 0-4
             _factions[(int)Faction.Player1] = p1Faction;
             _factions[(int)Faction.Player2] = p2Faction;
@@ -414,20 +423,92 @@ namespace ProjectChimera.Economy
         }
 
         /// <summary>
+        /// Apply a lockstep <see cref="UnitCommand.ReviveHero"/> command at exec-tick (Story 3.14, D-4). Mirrors
+        /// <see cref="TrainUnitCommand"/>: it names a BUILDING (dispatched BEFORE the entity-ownership guard), validates
+        /// building ownership (anti-cheat: own building only) + the <c>revives_heroes</c> capability, resolves the
+        /// awaiting hero named in the wire (<paramref name="heroSlotRaw"/> = <c>Fixed.FromRaw(slot)</c>), re-checks the
+        /// hero is Alive + AwaitingRevival + owned by <paramref name="expectedFaction"/> + NOT already counting
+        /// (<c>RevivalLink == REVIVAL_NONE</c>), then spends the level-scaled cost check-both-then-debit-both and starts
+        /// the deterministic countdown by writing <c>RevivalTimer</c>/<c>RevivalLink</c> on the hero row. The spend
+        /// therefore happens HERE, at exec-tick, exactly once (never at UI click-time), on the shared OrderApplier path
+        /// so live == replay == offline. Returns true when a countdown was started; any guard/affordability failure
+        /// spends nothing.
+        /// </summary>
+        public bool ReviveHeroCommand(int buildingId, Faction expectedFaction, Fixed heroSlotRaw,
+                                      CombatEventQueue? events = null)
+        {
+            if (_heroes == null || _revival == null) return false; // pre-3.14 caller / revival not wired → deterministic no-op
+            if (buildingId < 0 || buildingId >= _buildings.Count) return false;
+            if (!_buildings.Alive[buildingId]) return false;
+            if (_buildings.FactionOf[buildingId] != expectedFaction) return false; // anti-cheat: own building only
+            if (_buildings.IsUnderConstruction(buildingId)) return false;          // guard-parity with TrainUnit: a still-
+                                                                                   // constructing building cannot revive
+            if (!_buildings.RevivesHeroes[buildingId]) return false;               // building lacks the capability
+
+            int slot = heroSlotRaw.Raw; // the awaiting-hero slot rides raw in TargetX (never via .ToFloat())
+            if (slot < 0 || slot >= _heroes.Count) return false;
+            if (!_heroes.Alive[slot]) return false;
+            if (!_heroes.AwaitingRevival[slot]) return false;                       // hero must be fallen & awaiting
+            if (_heroes.OwnerFaction[slot] != expectedFaction) return false;        // anti-cheat: own hero only
+            if (_heroes.SourceDef[slot] == null) return false;                     // cannot respawn without a def → reject
+                                                                                   // the order (else a spent-but-never-
+                                                                                   // respawnable pay-for-nothing loop)
+            if (_heroes.RevivalLink[slot] != HeroStore.REVIVAL_NONE) return false;  // already counting down → reject
+
+            int level = _heroes.Level[slot];
+            Fixed costOre     = _revival.CostOre(level);
+            Fixed costCrystal = _revival.CostCrystal(level);
+            // Check BOTH before debiting EITHER (the TrainUnit partial-spend contract) — an ore-passes/crystal-fails
+            // order must spend nothing. All ownership/capability guards above have already passed, so an affordability
+            // failure is a LEGIT player order that simply cannot be paid → surface a presentation-only OrderDenied cue
+            // (Story 2.12 convention) at the building. The ownership/capability rejections above stay silent (they are
+            // crafted/anti-cheat orders — no feedback, no position leak).
+            if (!_resources.CanAffordOre(expectedFaction, costOre))
+            {
+                events?.Push(CombatEventType.OrderDenied, _buildings.Position[buildingId]);
+                return false;
+            }
+            if (!_resources.CanAffordCrystal(expectedFaction, costCrystal))
+            {
+                events?.Push(CombatEventType.OrderDenied, _buildings.Position[buildingId]);
+                return false;
+            }
+            _resources.SpendOre(expectedFaction, costOre);
+            _resources.SpendCrystal(expectedFaction, costCrystal);
+
+            // Start the deterministic countdown, linking the hero to THIS building (a packed ref, ABA-safe).
+            _heroes.RevivalTimer[slot] = _revival.TimeSeconds(level);
+            _heroes.RevivalLink[slot]  = _buildings.PackRef(buildingId);
+            return true;
+        }
+
+        /// <summary>
         /// Place a building on behalf of a scenario loader or editor tool.
         /// Bypasses ore cost. When <paramref name="preBuilt"/> is true the construction
         /// timer is set to zero so the building is immediately operational.
         /// Returns the building ID, or -1 if the store is full.
         /// </summary>
         public int PlaceBuildingDirect(BuildingType type, Faction faction,
-                                       FixedVec3 position, bool preBuilt)
+                                       FixedVec3 position, bool preBuilt, bool revivesHeroes = false)
         {
-            int id = _buildings.Create(position, faction, type);
+            // Story 3.14: the revive capability is AUTHORED on the building's UnitDefinition. Resolve it from the faction
+            // def at placement so a scenario-placed building actually revives (callers that already know the flag —
+            // Tier-1 tests — pass it explicitly and short-circuit). Without this the whole feature is unreachable in a
+            // real match (no production path would ever set BuildingStore.RevivesHeroes).
+            bool revives = revivesHeroes || ResolveRevivesHeroes(type, faction);
+            int id = _buildings.Create(position, faction, type, revives);
             if (id < 0) return -1;
             if (preBuilt)
                 _buildings.ConstructionTimer[id] = Fixed.Zero;
             return id;
         }
+
+        /// <summary>Story 3.14: does the faction's authored definition for <paramref name="type"/> flag
+        /// <c>revives_heroes</c>? The capability is authored on the building's <see cref="UnitDefinition"/> in
+        /// <c>FactionDefinition.Buildings</c>; resolve it via the same <c>BuildingType</c>→def-id mapping the
+        /// prerequisite check uses (<see cref="TechTreeChecker.BuildingTypeId"/>). Null faction/def/building ⇒ false.</summary>
+        private bool ResolveRevivesHeroes(BuildingType type, Faction faction) =>
+            GetFactionDef(faction)?.GetBuilding(TechTreeChecker.BuildingTypeId(type))?.RevivesHeroes ?? false;
 
         // ── Worker construction ───────────────────────────────────────────────
 
@@ -503,8 +584,9 @@ namespace ProjectChimera.Economy
             float costOre = GetBuildingCost(type, faction);
             if (costOre > 0f && !resources.SpendOre(faction, Fixed.FromFloat(costOre))) return -1;
 
-            // Place building (starts under construction)
-            int bId = _buildings.Create(position, faction, type);
+            // Place building (starts under construction). Story 3.14: carry the authored revives_heroes capability so a
+            // player-built revive building (not just scenario-placed) actually works.
+            int bId = _buildings.Create(position, faction, type, ResolveRevivesHeroes(type, faction));
             if (bId < 0)
             {
                 if (costOre > 0f) resources.AddOre(faction, Fixed.FromFloat(costOre)); // refund

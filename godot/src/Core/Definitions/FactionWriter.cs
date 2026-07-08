@@ -235,6 +235,8 @@ namespace ProjectChimera.Core.Definitions
             PutStringArray(obj, "tags", d.Tags, defaultsNull: true);
 
             PutBool(obj, "is_hero", d.IsHero, false);
+            // Story 3.14: revives_heroes omits at its false default so every existing building round-trips byte-identically.
+            PutBool(obj, "revives_heroes", d.RevivesHeroes, false);
             WriteHero(obj, d);
             WriteCombatFeedback(obj, d);
         }

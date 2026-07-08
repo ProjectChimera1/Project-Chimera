@@ -481,6 +481,30 @@ namespace ProjectChimera.Sim.Tests.Definitions
             Assert.Contains("tags", paths);
         }
 
+        // ── revives_heroes coherence (Story 3.14) ──
+
+        [Fact]
+        public void RevivesHeroes_OnNonStructure_IsRejected()
+        {
+            var def = Valid(); def.Category = "Melee"; def.RevivesHeroes = true;
+            AssertError(Run(def), "revives_heroes", "grunt");
+        }
+
+        [Fact]
+        public void RevivesHeroes_OnStructure_IsValid()
+        {
+            var def = Valid(); def.Category = "Structure"; def.RevivesHeroes = true;
+            UnitValidationResult r = Run(def);
+            Assert.True(r.Ok, r.Ok ? "" : string.Join(" | ", r.Errors.Select(e => e.Message)));
+        }
+
+        [Fact]
+        public void RevivesHeroes_OmittedFalse_AddsNoError()
+        {
+            var def = Valid(); def.Category = "Melee"; def.RevivesHeroes = false;
+            Assert.True(Run(def).Ok);
+        }
+
         // ── SanitizeId helper (shared with the panel's id-minting) ──
 
         [Theory]

@@ -333,6 +333,10 @@ namespace ProjectChimera.Core
             // Story 1.8b: the sole Godot-free writer of sim truth. It shares the _slotFactionDefs array (the
             // presentation pre-pass fills it in place before each apply) and the presentation log seam.
             _applier = new ScenarioApplier(_host, _logSink, _slotFactionDefs);
+            // Story 3.14: route hero-revival respawns through the shared applier spawn path (so a revived hero also gets
+            // MeshType/worker wiring), reusing the one ApplyUnitDefinition mapper. Determinism-identical to the host's
+            // default closure; only the presentation MeshType differs.
+            _host.SetReviveSpawn(_applier.SpawnUnitAt);
 
             // Story 1.8c: build the presentation composition-root context. Sim-spine handles are populated now
             // (host/applier + the store aliases); each ISetupPhase fills in its presentation products as it runs,

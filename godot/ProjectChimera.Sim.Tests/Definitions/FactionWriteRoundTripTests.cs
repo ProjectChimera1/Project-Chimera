@@ -286,6 +286,34 @@ namespace ProjectChimera.Sim.Tests.Definitions
             Assert.Equal(2f,  reloaded.Hero!.ArmorPerLevel);
         }
 
+        // ── revives_heroes (Story 3.14) ──
+
+        [Fact]
+        public void Update_AuthorsRevivesHeroes_RoundTrips()
+        {
+            UnitDefinition edited = Parse(Faction).GetUnit("archer")!;
+            edited.RevivesHeroes = true;
+            string outJson = FactionWriter.PatchFactionJson(Faction,
+                new UnitEdit { Kind = UnitEditKind.Update, TargetId = "archer", Def = edited });
+
+            Assert.Contains("revives_heroes", UnitJson(outJson, "archer"));
+            UnitDefinition reloaded = Parse(outJson).GetUnit("archer")!;
+            Assert.True(reloaded.RevivesHeroes);
+        }
+
+        [Fact]
+        public void Update_OmittedRevivesHeroes_IsNotWritten()
+        {
+            // false (the default) must NOT balloon the key — every existing building round-trips byte-identically.
+            UnitDefinition edited = Parse(Faction).GetUnit("archer")!;
+            edited.AttackDamage = 12f;      // touch a different field
+            edited.RevivesHeroes = false;
+            string outJson = FactionWriter.PatchFactionJson(Faction,
+                new UnitEdit { Kind = UnitEditKind.Update, TargetId = "archer", Def = edited });
+
+            Assert.DoesNotContain("revives_heroes", UnitJson(outJson, "archer"));
+        }
+
         // ── Create: appends a minimal new unit (only non-default fields) ──
 
         [Fact]

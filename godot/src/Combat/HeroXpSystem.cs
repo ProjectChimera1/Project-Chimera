@@ -1,5 +1,7 @@
 #nullable enable
+using System; // Func (the injected respawn delegate — Story 3.14)
 using ProjectChimera.Core;
+using ProjectChimera.Core.Definitions; // UnitDefinition (respawn def)
 using ProjectChimera.Effects; // ModifierStore / Modifier / StackRule (permanent growth modifier)
 
 namespace ProjectChimera.Combat
@@ -43,11 +45,28 @@ namespace ProjectChimera.Combat
         private readonly ModifierStore _modifiers;
         private readonly DeathFeed     _deaths;
 
-        public HeroXpSystem(HeroStore heroes, ModifierStore modifiers, DeathFeed deaths)
+        // ── Story 3.14 (hero death & revival) — nullable so the pre-3.14 XP-only callers (HeroXpTests, HeroXpScenario)
+        //    that pass none still compile and the revival state machine stays inert for them (behaves exactly as 3.13). ──
+        private readonly BuildingStore?      _buildings;
+        private readonly RevivalRuleRuntime? _revival;
+        /// <summary>The injected respawn delegate — the shared unit-spawn path (world.Create + ApplyUnitDefinition +
+        /// MeshType, as ScenarioApplier.SpawnUnit does), taking (def, faction, x, z) and returning the new entity id or
+        /// -1. Injected (never duplicated) for Godot-free testability.</summary>
+        private readonly Func<UnitDefinition, Faction, Fixed, Fixed, int>? _spawn;
+        private readonly CombatEventQueue?   _events;
+
+        public HeroXpSystem(HeroStore heroes, ModifierStore modifiers, DeathFeed deaths,
+                            BuildingStore? buildings = null, RevivalRuleRuntime? revival = null,
+                            Func<UnitDefinition, Faction, Fixed, Fixed, int>? spawn = null,
+                            CombatEventQueue? events = null)
         {
             _heroes    = heroes;
             _modifiers = modifiers;
             _deaths    = deaths;
+            _buildings = buildings;
+            _revival   = revival;
+            _spawn     = spawn;
+            _events    = events;
         }
 
         public void Tick(EntityWorld world, Fixed dt)
@@ -94,21 +113,142 @@ namespace ProjectChimera.Combat
                 }
             }
 
-            // ── 2 + 3. Advance levels and reconcile growth for every live hero (runs even with no deaths so the
-            //           deploy-at-level-N catch-up applies growth on the first tick) ────────────────────────────────
+            // ── 2 + 3 (+ Story 3.14 death/countdown/respawn). Advance levels + reconcile growth for on-field heroes; run
+            //           the revival state machine for the rest. Runs even with no deaths so the deploy-at-level-N growth
+            //           catch-up applies on the first tick. ────────────────────────────────────────────────────────────
             for (int oi = 0; oi < order.Length; oi++)
             {
                 int slot = order[oi];
-                // A hero whose entity is dead / link-stale (awaiting revival is Story 3.14) must NOT keep leveling from
-                // previously-banked XP — that would mutate (and fold) the level of a hero not on the field. Gate the
-                // whole level+grow step on the live link (ReconcileGrowth re-checks internally; this also gates AdvanceLevels).
-                if (!IsLiveLinkedHero(world, slot, _heroes.EntityId[slot])) continue;
+                bool live = IsLiveLinkedHero(world, slot, _heroes.EntityId[slot]);
+
+                // Story 3.14: the revival state machine is active only when a RevivalRuleRuntime is wired (the pre-3.14
+                // XP-only callers pass none → the store stays inert and behaves exactly as Story 3.13).
+                if (_revival != null)
+                {
+                    // (a) DEATH DETECTION — an on-field hero whose entity just died (link stale) transitions off-field.
+                    if (_heroes.Alive3_14[slot] && !live) { HandleHeroDeath(slot); continue; }
+                    // (b) A fallen hero: run the revival countdown (only when awaiting AND a revive was ordered).
+                    if (!_heroes.Alive3_14[slot])
+                    {
+                        if (_heroes.AwaitingRevival[slot] && _heroes.RevivalLink[slot] != HeroStore.REVIVAL_NONE)
+                            TickRevivalCountdown(world, slot, dt);
+                        continue;
+                    }
+                }
+                else if (!live)
+                {
+                    // Pre-3.14 behaviour: a hero whose entity is dead / link-stale must NOT keep leveling from banked XP.
+                    continue;
+                }
+
+                // On-field & live: level + reconcile growth (ReconcileGrowth re-checks the live link internally).
                 AdvanceLevels(slot);
                 ReconcileGrowth(world, slot);
             }
 
             // ── Feed is per-tick transient: clear so it is empty at the checksum boundary (NOT folded). ──
             _deaths.Clear();
+        }
+
+        /// <summary>Story 3.14: an on-field hero's entity has died. Transition the PERSISTED row (never recycled) into
+        /// the awaiting-revival state (revival enabled) or simply off-field (disabled) — leaving Level/Xp intact so the
+        /// row still finalizes for persistence (FR-7a). The fall's presentation announcement is pushed separately at
+        /// <see cref="DamageResolver.KillEntity"/> (which owns the death position, D-1); here we only mutate the folded
+        /// state deterministically off the entity↔hero link scan.</summary>
+        private void HandleHeroDeath(int slot)
+        {
+            _heroes.Alive3_14[slot] = false; // off the field either way
+            if (_revival!.Enabled)
+            {
+                _heroes.AwaitingRevival[slot] = true;
+                _heroes.RevivalTimer[slot]    = Fixed.Zero;
+                _heroes.RevivalLink[slot]     = HeroStore.REVIVAL_NONE; // dead-no-order (0 is a valid PackRef → use -1)
+            }
+            else
+            {
+                // Disabled: leaves the field like any unit; NOT awaiting. The row stays HeroStore.Alive so persistence
+                // still snapshots its grown Level/Xp at match end (D-7).
+                _heroes.AwaitingRevival[slot] = false;
+                _heroes.RevivalTimer[slot]    = Fixed.Zero;
+                _heroes.RevivalLink[slot]     = HeroStore.REVIVAL_NONE;
+            }
+        }
+
+        /// <summary>Story 3.14: tick one awaiting hero's revival countdown. Cancels deterministically (no refund, D-8) if
+        /// the linked revive building is gone; otherwise decrements <see cref="HeroStore.RevivalTimer"/> by the shared
+        /// <paramref name="dt"/> and, on reaching ≤0, respawns the hero at the building.</summary>
+        private void TickRevivalCountdown(EntityWorld world, int slot, Fixed dt)
+        {
+            // The revive building must still exist (ABA-safe via the packed ref). Lost mid-countdown → cancel, stay
+            // awaiting so the player can re-order elsewhere. No gold refund (storing the committed cost would need a
+            // fifth folded field → v12 bump, out of bounds — D-8).
+            if (_buildings == null || !_buildings.TryResolveRef(_heroes.RevivalLink[slot], out int bId))
+            {
+                _heroes.RevivalTimer[slot] = Fixed.Zero;
+                _heroes.RevivalLink[slot]  = HeroStore.REVIVAL_NONE;
+                return;
+            }
+
+            _heroes.RevivalTimer[slot] = _heroes.RevivalTimer[slot] - dt;
+            if (_heroes.RevivalTimer[slot] > Fixed.Zero) return; // still counting
+
+            RespawnHero(world, slot, bId);
+        }
+
+        /// <summary>Story 3.14: the countdown reached zero with the building alive — respawn a FRESH entity at the
+        /// building through the shared spawn path, restore the hero's identity/Level/Xp onto it at the authored HP
+        /// fraction, reset <see cref="HeroStore.GrowthStacksApplied"/> to 0 then re-apply Level-1 growth onto the new
+        /// entity in-tick (the D-3 binding obligation), re-link <c>EntityId</c>/<c>HeroIndex</c>, and clear the
+        /// revival state back to on-field. A spawn failure (no def / delegate / world full) cancels deterministically
+        /// (stays awaiting, no refund) so the player can re-order.</summary>
+        private void RespawnHero(EntityWorld world, int slot, int bId)
+        {
+            UnitDefinition? def = _heroes.SourceDef[slot];
+            if (def == null || _spawn == null)
+            {
+                // Cannot respawn (Tier-1 mint without a def, or no delegate) → cancel this attempt deterministically.
+                _heroes.RevivalTimer[slot] = Fixed.Zero;
+                _heroes.RevivalLink[slot]  = HeroStore.REVIVAL_NONE;
+                return;
+            }
+
+            FixedVec3 bpos = _buildings!.Position[bId];
+            Faction faction = _buildings.FactionOf[bId]; // equals the validated OwnerFaction[slot]
+            int newEntity = _spawn(def, faction, bpos.X, bpos.Z);
+            if (newEntity < 0)
+            {
+                // World full THIS tick — do NOT cancel: that would silently drop an already-paid revival and force the
+                // player to pay again. Keep the building link and pin the timer at zero so the countdown re-attempts the
+                // respawn next tick at no extra cost, reviving as soon as an entity slot frees (or cancelling if the
+                // building is lost, handled in TickRevivalCountdown).
+                _heroes.RevivalTimer[slot] = Fixed.Zero;
+                return;
+            }
+
+            // Re-link the persisted row to the fresh entity + reset growth so it re-materializes onto the new entity.
+            _heroes.EntityId[slot]            = newEntity;
+            world.HeroIndex[newEntity]        = _heroes.PackRef(slot);
+            _heroes.GrowthStacksApplied[slot] = 0;
+
+            // Back on the field; clear the revival state.
+            _heroes.Alive3_14[slot]       = true;
+            _heroes.AwaitingRevival[slot] = false;
+            _heroes.RevivalTimer[slot]    = Fixed.Zero;
+            _heroes.RevivalLink[slot]     = 0; // on-field default (matches Mint); the countdown reads REVIVAL_NONE only
+
+            // Re-materialize per-level growth onto the fresh entity NOW (same tick), THEN set current Health to the
+            // authored fraction of the hero's GROWN max. Order is load-bearing: ReconcileGrowth applies (Level-1) stacks
+            // and each positive-MaxHealth stack HEALS current Health by +HealthPerLevel (ModifierStore.ApplyStatDeltas,
+            // Decision #3). If the fraction were applied first (growth deferred to next tick), those (Level-1) heals would
+            // stack on top of the already fraction-scaled Health and the hero would settle FAR above the authored fraction
+            // (a level-N hero at 0.5 would end near full). Reconciling first makes EffectiveMaxHealth the true grown max;
+            // scaling by the fraction lands the settled HP at exactly fraction × grown max, and next tick's ReconcileGrowth
+            // is a no-op. EffectiveMaxHealth (already saturated + stack-capped) is the single grown-max source — no second
+            // HP formula that could drift from ReconcileGrowth's stack cap.
+            ReconcileGrowth(world, slot);
+            world.Health[newEntity] = world.EffectiveMaxHealth[newEntity] * _revival!.HpFraction;
+
+            _events?.Push(CombatEventType.HeroRevived, bpos);
         }
 
         /// <summary>True iff the hero at <paramref name="slot"/> is alive and its entity link still resolves to THIS

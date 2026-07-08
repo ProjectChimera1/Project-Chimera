@@ -45,6 +45,11 @@ namespace ProjectChimera.Core.Definitions
         /// </summary>
         private const float Range = 32768f;
 
+        /// <summary>Worst-case hero level a revival cost/time curve is evaluated at (mirrors the global
+        /// <c>UnitDefinitionValidator.HeroLevelMax</c>). The linear curve <c>base + perLevel × level</c> must stay in the
+        /// 16.16 range at this level or the runtime quantize overflows and wraps negative (Story 3.14 / 3.13 class).</summary>
+        private const int MaxRevivableLevel = 100;
+
         // Exact set of BuildingType NAMES the applier (MainScene.ParseBuildingType) recognizes. Cached so the
         // building-type check allocates nothing. Validating by name (not Enum.TryParse, which also accepts
         // numeric strings like "5") matches how scenario JSON is authored and rejects unknown names instead of
@@ -266,12 +271,52 @@ namespace ProjectChimera.Core.Definitions
                 if (!mr.Ok) return ValidationResult.Fail(mr.Errors[0].Message, validated);
             }
 
+            // ── Revival rule (Story 3.14, AR-39) — fail-closed when present so a hand-edited/cheat rule (non-finite or
+            // out-of-range cost/time, or a revive_hp_fraction outside (0,1] that would spawn a 0-HP dead-on-arrival or
+            // over-max hero) is rejected at the editor Save AND the pre-tick gate. A null rule (every existing scenario)
+            // ⇒ use RevivalRule.Default ⇒ no rule to validate ⇒ the pass path is unchanged (no golden/behavior move).
+            // Costs/times must be finite & in [0, Range) (they quantize to Fixed); the HP fraction must be finite & in
+            // (0, 1] (Fixed-safe, and a positive spawn HP). Authoring-only — NOT folded into any checksum/hash. ──
+            if (m.RevivalRule != null)
+            {
+                RevivalRule r = m.RevivalRule;
+                string? e =
+                       CheckNonNeg("scenario.revival_rule.cost_ore_base", r.CostOreBase)
+                    ?? CheckNonNeg("scenario.revival_rule.cost_ore_per_level", r.CostOrePerLevel)
+                    ?? CheckNonNeg("scenario.revival_rule.cost_crystal_base", r.CostCrystalBase)
+                    ?? CheckNonNeg("scenario.revival_rule.cost_crystal_per_level", r.CostCrystalPerLevel)
+                    ?? CheckNonNeg("scenario.revival_rule.time_base_seconds", r.TimeBaseSeconds)
+                    ?? CheckNonNeg("scenario.revival_rule.time_per_level_seconds", r.TimePerLevelSeconds);
+                if (e != null) return ValidationResult.Fail(e, validated);
+                // The FIELDS are non-negative, but the COMPOSED curve base + perLevel × level is evaluated at the hero's
+                // level (up to MaxRevivableLevel) and quantizes to Fixed — so the curve AT MAX LEVEL must stay in the
+                // 16.16 range, else the runtime cost/timer overflows and wraps negative (free-money / instant-revive, the
+                // Story 3.13 overflow class the per-field non-neg check does NOT catch).
+                if (RevivalCurveOverflows(r.CostOreBase, r.CostOrePerLevel))
+                    return ValidationResult.Fail($"scenario.revival_rule ore cost (base {r.CostOreBase} + {r.CostOrePerLevel}/level) exceeds the 16.16 range [0, {Range}) at level {MaxRevivableLevel}.", validated);
+                if (RevivalCurveOverflows(r.CostCrystalBase, r.CostCrystalPerLevel))
+                    return ValidationResult.Fail($"scenario.revival_rule crystal cost (base {r.CostCrystalBase} + {r.CostCrystalPerLevel}/level) exceeds the 16.16 range [0, {Range}) at level {MaxRevivableLevel}.", validated);
+                if ((double)r.TimeBaseSeconds + (double)r.TimePerLevelSeconds * MaxRevivableLevel >= Range)
+                    return ValidationResult.Fail($"scenario.revival_rule time (base {r.TimeBaseSeconds} + {r.TimePerLevelSeconds}/level) exceeds the 16.16 range [0, {Range}) at level {MaxRevivableLevel}.", validated);
+                // Reject a fraction that is positive-but-quantizes-to-Fixed.Zero (e.g. 1e-5) — the pre-quantization (0,1]
+                // check alone would let it through and respawn a 0-HP dead-on-arrival hero (validate the QUANTIZED value).
+                if (!Finite(r.ReviveHpFraction) || r.ReviveHpFraction <= 0f || r.ReviveHpFraction > 1f
+                    || ProjectChimera.Core.Fixed.FromFloat(r.ReviveHpFraction) <= ProjectChimera.Core.Fixed.Zero)
+                    return ValidationResult.Fail(
+                        $"scenario.revival_rule.revive_hp_fraction={r.ReviveHpFraction} must be finite and in (0, 1] and quantize to a positive 16.16 value.", validated);
+            }
+
             return ValidationResult.Pass(validated);
         }
 
         // ── Helpers (return a located error string, or null when the field is OK) ──
 
         private static bool Finite(float v) => !float.IsNaN(v) && !float.IsInfinity(v);
+
+        /// <summary>True when the linear integer curve <c>base + perLevel × MaxRevivableLevel</c> reaches the 16.16 ceiling
+        /// (computed in <c>long</c> so the check itself never overflows).</summary>
+        private static bool RevivalCurveOverflows(int baseVal, int perLevel) =>
+            (long)baseVal + (long)perLevel * MaxRevivableLevel >= (long)Range;
 
         /// <summary>In the 16.16 representable range [-Range, Range) and finite — mirrors FixedJsonConverter.</summary>
         private static bool InRange(float v) => Finite(v) && v >= -Range && v < Range;

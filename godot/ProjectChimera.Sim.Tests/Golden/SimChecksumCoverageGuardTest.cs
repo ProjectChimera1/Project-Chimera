@@ -422,6 +422,28 @@ namespace ProjectChimera.Sim.Tests.Golden
             uint growthMoved = SimChecksum.Compute(world, buildings, resources, registry, null, heroes);
             Assert.True(xpMoved != growthMoved,
                 "HeroStore.GrowthStacksApplied is NOT folded into SimChecksum: changing it left the checksum unchanged (v11 fold).");
+
+            // Story 3.14 — the four reserved revival fields now mutate mid-match (death → awaiting → countdown → respawn),
+            // so each must fold (they were declared + folded at defaults in v11; 3.14 needs no second bump). Coverage teeth.
+            heroes.Alive3_14[slot] = false;
+            uint aliveMoved = SimChecksum.Compute(world, buildings, resources, registry, null, heroes);
+            Assert.True(growthMoved != aliveMoved,
+                "HeroStore.Alive3_14 is NOT folded into SimChecksum: changing it left the checksum unchanged (v11 fold).");
+
+            heroes.AwaitingRevival[slot] = true;
+            uint awaitingMoved = SimChecksum.Compute(world, buildings, resources, registry, null, heroes);
+            Assert.True(aliveMoved != awaitingMoved,
+                "HeroStore.AwaitingRevival is NOT folded into SimChecksum: changing it left the checksum unchanged (v11 fold).");
+
+            heroes.RevivalTimer[slot] = Fixed.FromInt(7);
+            uint timerMoved = SimChecksum.Compute(world, buildings, resources, registry, null, heroes);
+            Assert.True(awaitingMoved != timerMoved,
+                "HeroStore.RevivalTimer is NOT folded into SimChecksum: changing it left the checksum unchanged (v11 fold).");
+
+            heroes.RevivalLink[slot] = 9;
+            uint linkMoved = SimChecksum.Compute(world, buildings, resources, registry, null, heroes);
+            Assert.True(timerMoved != linkMoved,
+                "HeroStore.RevivalLink is NOT folded into SimChecksum: changing it left the checksum unchanged (v11 fold).");
         }
 
         /// <summary>

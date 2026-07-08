@@ -30,6 +30,8 @@ namespace ProjectChimera.Core
         AttackBuilding = 12, // Force-attack ONE specific enemy BUILDING. WIRE: UnitId = attacker entity, TargetX = building id (raw int). Handled AFTER the entity-ownership guard (UnitId names an entity); OrderApplier blind-stores the building id in CommandTarget, and CombatSystem.TickAttackBuildingCombat validates (bounds/Alive/friendly/Structure-domain) in-tick. Persists as a CommandState.
         // ── Story 2.12 (FR-74): appended AFTER AttackBuilding. Values 0-12 stay FROZEN for replay back-compat. ──
         SetRally = 13, // Set/change a production BUILDING's rally point. WIRE: UnitId = buildingId, TargetX/TargetZ = rally ground point (Fixed raw, the Move encoding). Handled by OrderApplier BEFORE the entity-ownership guard (UnitId names a building, like Train); it writes BuildingStore.RallyPoint/HasRallyPoint via BuildingSystem.SetRallyCommand (bounds + Alive + faction anti-cheat) and NEVER persists as a CommandState. Rides the queued-flag mask harmlessly (a rally is never Shift-queued; the flag is masked off before this compare).
+        // ── Story 3.14 (hero death & revival): appended AFTER SetRally. Values 0-13 stay FROZEN for replay back-compat. ──
+        ReviveHero = 14, // Order a REVIVE at a building flagged revives_heroes. WIRE: UnitId = buildingId, TargetX = awaiting-hero slot (raw int, Fixed.FromRaw(slot)). Handled by OrderApplier BEFORE the entity-ownership guard (UnitId names a building, like Train/SetRally); the building-ownership + affordability guards and the level-scaled spend live in BuildingSystem.ReviveHeroCommand at exec-tick. NEVER persists as a CommandState. Enum stays <= 0x3F (bits 6-7 are the wire queued flag).
     }
 
     /// <summary>

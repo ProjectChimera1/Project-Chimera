@@ -152,6 +152,17 @@ namespace ProjectChimera.Multiplayer
                 return;
             }
 
+            // Story 3.14 (D-4): ReviveHero ALSO names a BUILDING (UnitId = buildingId) — handle it beside Train/SetRally,
+            // BEFORE the entity guard, for the same reason. The awaiting-hero slot rides TargetX as a RAW int (read
+            // directly, NEVER via .ToFloat()). BuildingSystem.ReviveHeroCommand does the building-ownership + capability
+            // + affordability guards and the deterministic exec-tick spend + countdown start. It NEVER persists as a
+            // CommandState. `buildings` null → deterministic no-op (golden/replay-without-buildings paths).
+            if (cmd == UnitCommand.ReviveHero)
+            {
+                buildings?.ReviveHeroCommand(o.UnitId, expectedFaction, Fixed.FromRaw(o.TargetX), events);
+                return;
+            }
+
             int id = o.UnitId;
             if (!world.IsAlive(id)) return;
             if (world.FactionOf[id] != expectedFaction) return; // anti-cheat: only command your own units

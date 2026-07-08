@@ -4,7 +4,7 @@ baseline_commit: f7a54ef30bf137e74a4425d97619bc15214f3a24
 
 # Story 3.4: Unit Card Editor — edit/create/duplicate/delete with inline validation, persisted to faction data
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 

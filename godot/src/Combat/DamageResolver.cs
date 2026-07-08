@@ -93,6 +93,11 @@ namespace ProjectChimera.Combat
             // Story 3.13: record the death for the XP runtime BEFORE Destroy recycles the slot (the corpse's
             // position/faction/bounty are unobservable afterward — D-1). Uniform for hitscan/projectile/self-lethal.
             deaths?.Push(world.Position[id], world.FactionOf[id], world.XpBounty[id]);
+            // Story 3.14 (D-1): announce a HERO's fall at its death position (still valid pre-Destroy). HeroIndex cheaply
+            // identifies a hero entity with no HeroStore threading into this static kill path; the awaiting-revival STATE
+            // transition is done separately (deterministically) by HeroXpSystem's link-based scan. Presentation-only event.
+            if (world.HeroIndex[id] != EntityWorld.HERO_NONE)
+                events?.Push(CombatEventType.HeroFell, world.Position[id], world.FeedbackProfile[id]);
             world.Destroy(id);
         }
 

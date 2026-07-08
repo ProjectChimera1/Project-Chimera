@@ -31,9 +31,14 @@ namespace ProjectChimera.Core.Definitions
         /// captured (float→<see cref="Fixed"/>) at the single load boundary by the applier, so <see cref="LoadInto"/>
         /// seeds them into the widened <see cref="HeroStore.Mint"/> (the SoA-recycle contract) without a second def
         /// lookup at load time. Defaulted so the pre-3.13 two-arg construction still compiles (persistence tests).</summary>
+        /// <summary>Story 3.14: the placed hero also carries the <see cref="UnitDefinition"/> it spawned from and its
+        /// owning <see cref="Faction"/>, so the widened <see cref="HeroStore.Mint"/> can store them as the respawn def +
+        /// ownership constant (a revival re-spawns a fresh entity from that def, owned by that faction). Defaulted so the
+        /// pre-3.14 construction still compiles.</summary>
         public readonly record struct PlacedHero(int EntityId, string UnitId,
             int MaxLevel = 0, Fixed BaseXp = default, Fixed XpGrowth = default, Fixed XpShareRadius = default,
-            Fixed HealthPerLevel = default, Fixed DamagePerLevel = default, Fixed ArmorPerLevel = default);
+            Fixed HealthPerLevel = default, Fixed DamagePerLevel = default, Fixed ArmorPerLevel = default,
+            UnitDefinition? SourceDef = null, Faction OwnerFaction = default);
 
         /// <summary>
         /// The DETERMINISTIC hero identity for <paramref name="profile"/> = FNV-64 of its stable <see cref="PlayerProfile.ProfileId"/>
@@ -72,7 +77,8 @@ namespace ProjectChimera.Core.Definitions
                 // HeroXpSystem can level + grow it (the SoA-recycle contract writes every live field in Mint).
                 int slot = heroes.Mint(id, placed.EntityId, level, xp,
                                        placed.MaxLevel, placed.BaseXp, placed.XpGrowth, placed.XpShareRadius,
-                                       placed.HealthPerLevel, placed.DamagePerLevel, placed.ArmorPerLevel);
+                                       placed.HealthPerLevel, placed.DamagePerLevel, placed.ArmorPerLevel,
+                                       placed.SourceDef, placed.OwnerFaction); // Story 3.14: respawn def + owner faction
                 if (slot >= 0)
                 {
                     minted++;

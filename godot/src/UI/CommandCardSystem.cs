@@ -52,6 +52,15 @@ namespace ProjectChimera.UI
         private Label  _trainStatus        = null!;  // "Training…  Xs" in-flight label
         private Label  _constructionLabel  = null!;  // "Under Construction  Xs"
 
+        // ── Hero revival (Story 3.14) ──────────────────────────────────────────
+        // Injected via SetReviveDeps (like SetLockstep). Null until wired → the revive affordance is inert.
+        private HeroStore?          _heroes;
+        private RevivalRuleRuntime? _revival;
+        // A revive-button grid overlaying the (unused-for-a-revive-building) train grid area. One button per awaiting
+        // Player1 hero, mapped per-refresh to its HeroStore slot (the captured-loop-var lambda carries the BUTTON slot).
+        private Button[] _reviveBtns       = System.Array.Empty<Button>();
+        private readonly int[] _reviveHeroSlots = new int[MAX_TRAIN_OPTIONS]; // button slot → HeroStore slot it revives (-1 = empty)
+
         // ── Worker card UI nodes ──────────────────────────────────────────────
 
         private Panel    _workerPanel       = null!;
@@ -125,6 +134,17 @@ namespace ProjectChimera.UI
         /// per-match manager does not yet exist).
         /// </summary>
         public void SetLockstep(LockstepManager? lockstep) => _lockstep = lockstep;
+
+        /// <summary>
+        /// Inject the hero substrate + resolved revival rule (Story 3.14) so a <c>revives_heroes</c> building's card can
+        /// enumerate awaiting heroes and price a revive. A setter (like <see cref="SetLockstep"/>) — wired by CameraPhase
+        /// off the host. Null until wired → the revive affordance stays inert (no buttons).
+        /// </summary>
+        public void SetReviveDeps(HeroStore heroes, RevivalRuleRuntime revival)
+        {
+            _heroes  = heroes;
+            _revival = revival;
+        }
 
         public override void _Ready()
         {
@@ -216,6 +236,7 @@ namespace ProjectChimera.UI
                 _constructionLabel.Text    = $"Under Construction  {remaining:F1}s  ({progress:F0}%)";
                 _constructionLabel.Visible = true;
                 HideTrainButtons();
+                HideReviveButtons();       // Story 3.14: also clear any revive buttons left over from a prior selection
                 _trainStatus.Visible       = false;
                 _supplyLabel.Visible       = false;
                 return;
@@ -309,6 +330,55 @@ namespace ProjectChimera.UI
                 HideTrainButtons();
                 _trainStatus.Visible = false;
             }
+
+            // ── Hero revival (Story 3.14): a revives_heroes building offers one revive button per awaiting hero of its
+            //    faction. Overlays the (hidden-for-a-non-producer) train grid. Inert until SetReviveDeps is wired. ──
+            if (!canProduce && _buildings.RevivesHeroes[bId] && _heroes != null && _revival != null)
+                RefreshReviveButtons(bId, faction);
+            else
+                HideReviveButtons();
+        }
+
+        /// <summary>Populate the revive-picker: one button per awaiting hero owned by <paramref name="faction"/>, priced
+        /// at the level-scaled cost, greyed when unaffordable. Slots past <see cref="MAX_TRAIN_OPTIONS"/> are dropped
+        /// (deterministic UI cap; the sim is unaffected).</summary>
+        private void RefreshReviveButtons(int bId, Faction faction)
+        {
+            HeroStore heroes = _heroes!;
+            RevivalRuleRuntime revival = _revival!;
+            int shown = 0;
+            for (int slot = 0; slot < heroes.Count && shown < _reviveBtns.Length; slot++)
+            {
+                if (!heroes.Alive[slot] || !heroes.AwaitingRevival[slot]) continue;
+                if (heroes.OwnerFaction[slot] != faction) continue;
+
+                int level = heroes.Level[slot];
+                Fixed costOre     = revival.CostOre(level);
+                Fixed costCrystal = revival.CostCrystal(level);
+                bool counting = heroes.RevivalLink[slot] != HeroStore.REVIVAL_NONE;
+                bool affordable = _resources.CanAffordOre(faction, costOre)
+                               && _resources.CanAffordCrystal(faction, costCrystal);
+
+                int oreDisp = (int)costOre.ToFloat();
+                int crystalDisp = (int)costCrystal.ToFloat();
+                string costSuffix = crystalDisp > 0 ? $" · {crystalDisp} crystal" : "";
+                string note = counting   ? $"reviving… {heroes.RevivalTimer[slot].ToFloat():F1}s"
+                            : !affordable ? "[need ore]"
+                            : $"{oreDisp} ore{costSuffix}";
+
+                Button btn = _reviveBtns[shown];
+                _reviveHeroSlots[shown] = slot;
+                btn.Text        = $"Revive Lv{level}\n{note}";
+                btn.TooltipText = $"Revive this fallen hero here for {oreDisp} ore{costSuffix} after a countdown.";
+                btn.Disabled    = counting || !affordable; // a counting revival can't be re-ordered; unaffordable is blocked
+                btn.Visible     = true;
+                shown++;
+            }
+            for (int i = shown; i < _reviveBtns.Length; i++)
+            {
+                _reviveBtns[i].Visible = false;
+                _reviveHeroSlots[i]    = -1;
+            }
         }
 
         // ── Button callbacks ──────────────────────────────────────────────────
@@ -347,6 +417,32 @@ namespace ProjectChimera.UI
                                                     Fixed.FromRaw(chosenUnitIndex), Fixed.Zero) ?? true;
             if (!applyNow) return; // online: LockstepManager.Flush applies it at exec-tick (spend happens THERE, once)
             var order = new UnitOrder(bId, UnitCommand.Train, Fixed.FromRaw(chosenUnitIndex), Fixed.Zero);
+            OrderApplier.Apply(_world, in order, Faction.Player1, buildings: _buildSys);
+        }
+
+        private void OnReviveSlotPressed(int slot)
+        {
+            if (slot < 0 || slot >= _reviveHeroSlots.Length) return;
+            int heroSlot = _reviveHeroSlots[slot];
+            if (heroSlot < 0) return;
+            IssueReviveCommand(_selection.SelectedBuildingId, heroSlot);
+        }
+
+        /// <summary>
+        /// Issue a ReviveHero command for the awaiting hero at <paramref name="heroSlot"/> from building
+        /// <paramref name="bId"/> (Story 3.14, D-4). Mirrors <see cref="IssueTrainCommand"/>: online it is ENQUEUED
+        /// (executed at exec-tick by LockstepManager, so the level-scaled spend happens once, THERE); offline it applies
+        /// immediately via the SAME OrderApplier the replay/online paths use (structural parity). Only the LOCAL player's
+        /// (Player1) own building revives its own hero.
+        /// </summary>
+        private void IssueReviveCommand(int bId, int heroSlot)
+        {
+            if (bId < 0 || bId >= _buildings.Count) return;
+            if (!_buildings.Alive[bId] || _buildings.FactionOf[bId] != Faction.Player1) return;
+            bool applyNow = _lockstep?.EnqueueOrder(bId, UnitCommand.ReviveHero,
+                                                    Fixed.FromRaw(heroSlot), Fixed.Zero) ?? true;
+            if (!applyNow) return; // online: LockstepManager.Flush applies it at exec-tick (spend happens THERE, once)
+            var order = new UnitOrder(bId, UnitCommand.ReviveHero, Fixed.FromRaw(heroSlot), Fixed.Zero);
             OrderApplier.Apply(_world, in order, Faction.Player1, buildings: _buildSys);
         }
 
@@ -437,6 +533,34 @@ namespace ProjectChimera.UI
                 _panel.AddChild(btn);
                 _trainBtns[i] = btn;
                 _trainUnitIndices[i] = -1;
+            }
+
+            // ── Revive buttons (Story 3.14) — overlay the train grid (a revive building is not a producer, so the two
+            //    are never both visible). One per awaiting Player1 hero, mapped to its HeroStore slot per-refresh. ──
+            _reviveBtns = new Button[MAX_TRAIN_OPTIONS];
+            for (int i = 0; i < MAX_TRAIN_OPTIONS; i++)
+            {
+                var btn = new Button();
+                btn.Position     = new Vector2(10f + i * 102f, 74f);
+                btn.Size         = new Vector2(98f, 70f);
+                btn.Visible      = false;
+                btn.AutowrapMode = TextServer.AutowrapMode.WordSmart;
+                btn.AddThemeFontOverride("font", _tabularFont);
+                int slot = i; // capture per-iteration for the lambda (carries the BUTTON slot, not the hero slot)
+                btn.Pressed += () => OnReviveSlotPressed(slot);
+                _panel.AddChild(btn);
+                _reviveBtns[i] = btn;
+                _reviveHeroSlots[i] = -1;
+            }
+        }
+
+        /// <summary>Hide every revive-picker button (used when the selection can't revive or has no awaiting heroes).</summary>
+        private void HideReviveButtons()
+        {
+            for (int i = 0; i < _reviveBtns.Length; i++)
+            {
+                _reviveBtns[i].Visible = false;
+                _reviveHeroSlots[i]    = -1;
             }
         }
 

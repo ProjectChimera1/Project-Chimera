@@ -5,7 +5,7 @@ mode = "per-epic"            # none | per-epic | per-story-spec-approval
 retrospective = "notify"     # never | notify | auto (auto unsupported in v1)
 
 [limits]
-max_review_cycles = 3
+max_review_cycles = 1
 max_dev_attempts = 2
 session_timeout_min = 90
 stop_without_result_nudges = 1
@@ -39,7 +39,10 @@ trigger = "recommended"
 
 [adapter]
 name = "claude"              # claude | codex | gemini | <custom .bmad-loop/profiles/*.toml>
-model = ""                   # empty = CLI default model
+model = ""                   # empty = CLI default model (opus[1m] = Opus 4.8, inherited from global settings)
+# Loop sessions run at effort=high instead of the global xhigh, to cut tokens.
+# extra_args REPLACES the profile's permission-bypass flags, so re-include them here.
+extra_args = ["--permission-mode", "bypassPermissions", "--effort", "high"]
 cleanup_session_on_finish = true  # kill the run's tmux session when it finishes (false keeps it for inspection)
 # extra_args replaces the profile's default permission-bypass flags when set:
 # extra_args = ["--permission-mode", "bypassPermissions"]
@@ -54,6 +57,10 @@ cleanup_session_on_finish = true  # kill the run's tmux session when it finishes
 # switches client falls back to that profile's defaults instead (model and
 # extra_args are client-specific). Stage tables must come after the [adapter]
 # keys above.
+[adapter.dev]
+model = "sonnet[1m]"         # dev pass on Sonnet w/ 1M context (~1/5 Opus $/token); same client, so it
+                             # inherits [adapter] extra_args (--effort high + bypass). Review has NO
+                             # [adapter.review] table -> inherits [adapter] model="" = opus[1m] (Opus 4.8) @ high.
 # [adapter.dev]
 # model = "opus"
 # [adapter.review]

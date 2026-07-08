@@ -230,6 +230,19 @@ namespace ProjectChimera.Core.Definitions
         public bool IsHero { get; set; } = false;
 
         /// <summary>
+        /// Marks this (Structure-category) building as able to REVIVE fallen heroes (Story 3.14). A creator-authored
+        /// capability toggle: a building with this flag offers a revive affordance on its command card for any of its
+        /// faction's awaiting heroes, and the revive order executes at it. Only valid on a Structure unit — the
+        /// <see cref="UnitDefinitionValidator"/> fails closed with a located error otherwise (the <see cref="IsHero"/>
+        /// coherence precedent). A plain settable bool auto-prop, default false — lenient-loader-safe (an omitted key
+        /// stays false, so no existing building gains the capability by omission and no faction JSON changes). NOT
+        /// combat/checksum state: threaded to <see cref="ProjectChimera.Core.BuildingStore.RevivesHeroes"/> at placement,
+        /// which is a non-folded placement constant.
+        /// </summary>
+        [JsonPropertyName("revives_heroes")]
+        public bool RevivesHeroes { get; set; } = false;
+
+        /// <summary>
         /// Maximum ability-resource (energy) pool for this unit type (authored float, quantized once to
         /// <see cref="ProjectChimera.Core.Fixed"/> in <see cref="ProjectChimera.Core.EntityWorld.ApplyUnitDefinition"/>
         /// — the single float→Fixed boundary, like the other stats). 0 = no energy pool (cannot cast energy-cost

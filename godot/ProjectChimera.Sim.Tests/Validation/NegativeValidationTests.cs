@@ -251,5 +251,90 @@ namespace ProjectChimera.Sim.Tests.Validation
             Assert.False(r.Ok);
             Assert.Contains(field, r.Error!);
         }
+
+        // ── revival_rule (Story 3.14) — fail-closed range checks; a null rule (every existing scenario) passes ──
+
+        [Fact]
+        public void ValidRevivalRule_Passes()
+        {
+            var m = ValidModel();
+            m.RevivalRule = new RevivalRule(); // defaults are all in-range
+            Assert.True(NewValidator().Validate(m).Ok);
+        }
+
+        [Fact]
+        public void NegativeRevivalCost_IsRejected_LocatingTheField()
+        {
+            var m = ValidModel();
+            m.RevivalRule = new RevivalRule { CostOreBase = -1 };
+            ValidationResult r = NewValidator().Validate(m);
+            Assert.False(r.Ok);
+            Assert.Contains("revival_rule.cost_ore_base", r.Error!);
+        }
+
+        [Fact]
+        public void NaNRevivalTime_IsRejected_LocatingTheField()
+        {
+            var m = ValidModel();
+            m.RevivalRule = new RevivalRule { TimeBaseSeconds = float.NaN };
+            ValidationResult r = NewValidator().Validate(m);
+            Assert.False(r.Ok);
+            Assert.Contains("revival_rule.time_base_seconds", r.Error!);
+        }
+
+        [Theory]
+        [InlineData(0f)]     // (0, 1] excludes 0 — a 0-HP spawn would be dead on arrival
+        [InlineData(1.5f)]   // > 1 — an over-max spawn
+        [InlineData(float.NaN)]
+        public void OutOfRangeReviveHpFraction_IsRejected_LocatingTheField(float fraction)
+        {
+            var m = ValidModel();
+            m.RevivalRule = new RevivalRule { ReviveHpFraction = fraction };
+            ValidationResult r = NewValidator().Validate(m);
+            Assert.False(r.Ok);
+            Assert.Contains("revival_rule.revive_hp_fraction", r.Error!);
+        }
+
+        [Fact]
+        public void ReviveHpFractionOfOne_IsValid()
+        {
+            var m = ValidModel();
+            m.RevivalRule = new RevivalRule { ReviveHpFraction = 1f }; // (0, 1] includes 1
+            Assert.True(NewValidator().Validate(m).Ok);
+        }
+
+        [Fact]
+        public void RevivalOreCostCurve_OverflowsAtMaxLevel_IsRejected()
+        {
+            // Each field is individually non-negative, but base + perLevel*100 = 40000 exceeds the 16.16 range and would
+            // wrap NEGATIVE at runtime (free-money exploit) — the composed-curve check must fail closed.
+            var m = ValidModel();
+            m.RevivalRule = new RevivalRule { CostOreBase = 0, CostOrePerLevel = 400 };
+            ValidationResult r = NewValidator().Validate(m);
+            Assert.False(r.Ok);
+            Assert.Contains("ore cost", r.Error!);
+        }
+
+        [Fact]
+        public void RevivalTimeCurve_OverflowsAtMaxLevel_IsRejected()
+        {
+            var m = ValidModel();
+            m.RevivalRule = new RevivalRule { TimeBaseSeconds = 0f, TimePerLevelSeconds = 400f }; // 400*100 = 40000 > range
+            ValidationResult r = NewValidator().Validate(m);
+            Assert.False(r.Ok);
+            Assert.Contains("time", r.Error!);
+        }
+
+        [Fact]
+        public void ReviveHpFraction_PositiveButQuantizesToZero_IsRejected()
+        {
+            // 1e-5 is > 0 and <= 1 (passes the raw float bound) but quantizes to Fixed.Zero → a 0-HP dead-on-arrival
+            // hero. The QUANTIZED value must be validated, not just the float.
+            var m = ValidModel();
+            m.RevivalRule = new RevivalRule { ReviveHpFraction = 1e-5f };
+            ValidationResult r = NewValidator().Validate(m);
+            Assert.False(r.Ok);
+            Assert.Contains("revive_hp_fraction", r.Error!);
+        }
     }
 }

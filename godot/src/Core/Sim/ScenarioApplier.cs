@@ -74,6 +74,9 @@ namespace ProjectChimera.Core.Sim
         {
             _lastAppliedHeroes.Clear(); // Story 3.9: fresh record of placed heroes for this apply
             ScenarioData s = v.Value; // as-built property name (NOT .Model)
+            // Story 3.14: resolve the scenario's revival rule (or Default when omitted) into the shared runtime the sim
+            // systems hold — the single float→Fixed boundary, done once at apply, never inside a tick.
+            _host.RevivalRuntime.Configure(s?.RevivalRule);
             if (s is null)
             {
                 // A default/unproven Validated<ScenarioData> carries a null model (the token-less Fail path used
@@ -153,7 +156,9 @@ namespace ProjectChimera.Core.Sim
                         Fixed.FromFloat(hd?.XpShareRadius ?? 0f),
                         Fixed.FromFloat(hd?.HealthPerLevel ?? 0f),
                         Fixed.FromFloat(hd?.DamagePerLevel ?? 0f),
-                        Fixed.FromFloat(hd?.ArmorPerLevel ?? 0f)));
+                        Fixed.FromFloat(hd?.ArmorPerLevel ?? 0f),
+                        def,        // Story 3.14: the respawn def (a revival re-spawns a fresh entity from it)
+                        faction));  // Story 3.14: the owning faction (revive-order anti-cheat + respawn ownership)
                 }
             }
 
@@ -237,8 +242,19 @@ namespace ProjectChimera.Core.Sim
         /// is full. Allocation-free: pre-resolved def, value-type structs, no LINQ/closures/boxing/string alloc.
         /// </summary>
         public int SpawnUnit(UnitDefinition def, Faction faction, float x, float z)
+            => SpawnUnitAt(def, faction, Fixed.FromFloat(x), Fixed.FromFloat(z));
+
+        /// <summary>
+        /// Story 3.14: the <see cref="Fixed"/>-native spawn primitive — the shared body of <see cref="SpawnUnit"/> AND
+        /// the revive-respawn path (a hero respawns at a building's <see cref="Fixed"/> position; the float path would
+        /// round-trip float→Fixed→float→Fixed and risk a 1-raw drift). Named distinctly (not an overload) because
+        /// <c>Fixed</c> has an implicit <c>int</c> conversion that would make integer-literal <c>SpawnUnit</c> calls
+        /// ambiguous. <see cref="SpawnUnit"/> delegates here after its single <c>Fixed.FromFloat</c>, so its callers stay
+        /// byte-identical. Never duplicates <see cref="EntityWorld.ApplyUnitDefinition"/> — it reuses the one mapper.
+        /// </summary>
+        public int SpawnUnitAt(UnitDefinition def, Faction faction, Fixed x, Fixed z)
         {
-            var pos = new FixedVec3(Fixed.FromFloat(x), Fixed.Zero, Fixed.FromFloat(z));
+            var pos = new FixedVec3(x, Fixed.Zero, z);
             var world = _host.World;
             int id  = world.Create(pos, faction,
                                    Fixed.FromFloat(def.Hp), Fixed.FromFloat(def.Speed));

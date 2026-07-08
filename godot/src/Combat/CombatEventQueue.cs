@@ -22,7 +22,13 @@ namespace ProjectChimera.Combat
         // rejected because the entity's order ring is already full (OrderQueueCount == MAX_ORDER_QUEUE). Presentation
         // feedback ONLY — the deterministic reject is the folded OrderQueueCount, so a null event sink (replay) still
         // rejects identically. Story 11.9 consumes this; same not-folded property → appending is golden-safe. ──
-        OrderDenied
+        OrderDenied,
+        // ── Story 3.14 (hero death & revival): appended AFTER OrderDenied. HeroFell is pushed at DamageResolver.KillEntity
+        // when a HERO entity dies (its fall is announced at the death position); HeroRevived is pushed by HeroXpSystem
+        // when the countdown completes and the hero respawns at its revive building. Presentation-only — CombatEventQueue
+        // is NOT a SimChecksum input, so appending enum values cannot move any golden. ──
+        HeroFell,
+        HeroRevived
     }
 
     /// <summary>Lightweight event written by sim systems each tick.</summary>

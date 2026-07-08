@@ -1,5 +1,6 @@
 #nullable enable
 using System;
+using ProjectChimera.Core.Definitions; // UnitDefinition (Story 3.14 SourceDef — the respawn def carried per hero)
 
 namespace ProjectChimera.Core
 {
@@ -59,6 +60,11 @@ namespace ProjectChimera.Core
         /// (past that the pack width must widen). Ample for playable-faction × heroes-per-player today.</summary>
         public const int MAX_HEROES = 64;
 
+        /// <summary>Story 3.14 (D-6): the <see cref="RevivalLink"/> "no link" sentinel. Default 0 is a valid building
+        /// <c>PackRef</c>, so a hero that dies WITHOUT a revive order sets this instead; the countdown fires only while
+        /// <c>RevivalLink != REVIVAL_NONE</c>. Mint leaves the field at its 0 default (an on-field hero ignores it).</summary>
+        public const int REVIVAL_NONE = -1;
+
         // ── Live per-hero data (D-6) — the fields that either mutate mid-match (folded from 3.13) or load as
         //    deterministic init state (covered by StartStateHash now). Kept deliberately LEAN (see the class doc):
         //    stat growth is a ModifierStore source, energy/mana is the existing entity SoA, and the leveling curve /
@@ -112,8 +118,20 @@ namespace ProjectChimera.Core
         public readonly bool[]   AwaitingRevival     = new bool[MAX_HEROES];
         /// <summary>Story 3.14 (reserved): seconds remaining until revival (<see cref="Fixed"/>). Default Zero. Folded v11.</summary>
         public readonly Fixed[]  RevivalTimer        = new Fixed[MAX_HEROES];
-        /// <summary>Story 3.14 (reserved): revive-location / building link (e.g. an Altar building id). Default 0. Folded v11.</summary>
+        /// <summary>Story 3.14 (reserved): revive-location / building link (e.g. an Altar building id, PACKED). Default 0.
+        /// Folded v11. A hero not counting down carries <see cref="REVIVAL_NONE"/> (-1) here (set at the death transition).</summary>
         public readonly int[]    RevivalLink         = new int[MAX_HEROES];
+
+        // ── Story 3.14 per-hero NON-FOLDED constants (respawn def + owner faction; the AttackDamage/curve-constant
+        //    posture — authored/def-derived, so a divergence surfaces transitively via the folded revival state). Written
+        //    in Mint (the SoA-recycle contract) — a recycled slot carries none of the prior hero's def/owner. ───────────
+        /// <summary>Story 3.14: the <see cref="UnitDefinition"/> this hero spawned from, kept so a revival can re-spawn a
+        /// fresh entity through the shared unit-spawn path (never duplicating <c>ApplyUnitDefinition</c>). Null when the
+        /// hero was minted without a def (Tier-1 persistence tests) → those heroes cannot respawn. NOT folded (a class ref).</summary>
+        public readonly UnitDefinition?[] SourceDef  = new UnitDefinition?[MAX_HEROES];
+        /// <summary>Story 3.14: the faction that owns this hero — the anti-cheat check for a revive order (the order's
+        /// <c>expectedFaction</c> must equal this) and the faction the respawn is created under. NOT folded (authored).</summary>
+        public readonly Faction[] OwnerFaction       = new Faction[MAX_HEROES];
 
         // ── Management — the monotonic high-water fold/iteration bound (mirrors BuildingStore.Count). Recycling
         //    reuses dead slots BELOW Count, so Count only grows. ─────────────────────────────────────────────────
@@ -149,7 +167,8 @@ namespace ProjectChimera.Core
         /// </summary>
         public int Mint(HeroId id, int entityId, int level, Fixed xp,
                         int maxLevel = 0, Fixed baseXp = default, Fixed xpGrowth = default, Fixed xpShareRadius = default,
-                        Fixed healthPerLevel = default, Fixed damagePerLevel = default, Fixed armorPerLevel = default)
+                        Fixed healthPerLevel = default, Fixed damagePerLevel = default, Fixed armorPerLevel = default,
+                        UnitDefinition? sourceDef = null, Faction ownerFaction = default)
         {
             // Contract (AC2 / FoldOrder producer-independence): a HeroId is UNIQUE across LIVE rows. FoldOrder sorts by
             // HeroId with a strict-'>' (stable) insertion sort, so two live rows sharing an id would fold in mint-order-
@@ -192,7 +211,10 @@ namespace ProjectChimera.Core
             Alive3_14[slot]        = true;   // a freshly-minted hero is on the field
             AwaitingRevival[slot]  = false;
             RevivalTimer[slot]     = Fixed.Zero;
-            RevivalLink[slot]      = 0;
+            RevivalLink[slot]      = 0;      // Mint default stays 0 (golden-neutral); the death transition sets REVIVAL_NONE
+            // Story 3.14 non-folded constants (respawn def + owner faction) — written here per the SoA-recycle contract.
+            SourceDef[slot]        = sourceDef;
+            OwnerFaction[slot]     = ownerFaction;
             return slot;
         }
 
@@ -216,9 +238,9 @@ namespace ProjectChimera.Core
             System.Array.Clear(MaxLevelOf);       System.Array.Clear(BaseXpOf);         System.Array.Clear(XpGrowthOf);
             System.Array.Clear(XpShareRadiusOf);  System.Array.Clear(HealthPerLevelOf); System.Array.Clear(DamagePerLevelOf);
             System.Array.Clear(ArmorPerLevelOf);
-            // Story 3.14 reserved revival state.
+            // Story 3.14 reserved revival state + non-folded constants.
             System.Array.Clear(Alive3_14);        System.Array.Clear(AwaitingRevival);  System.Array.Clear(RevivalTimer);
-            System.Array.Clear(RevivalLink);
+            System.Array.Clear(RevivalLink);      System.Array.Clear(SourceDef);        System.Array.Clear(OwnerFaction);
             System.Array.Clear(Generation);
             System.Array.Clear(_freeList);
             _freeCount = 0;

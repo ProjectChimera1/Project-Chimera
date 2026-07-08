@@ -7,7 +7,7 @@ status: Active
 
 # Project Chimera — Snapshot
 
-**Last Touched:** `2026-07-07`
+**Last Touched:** `2026-07-08`
 
 ## Current Phase
 **Phase 5 — Polish & 1.0** (Months 25-31 of GDD roadmap)
@@ -15,7 +15,7 @@ status: Active
 Phases 0–4 are code-complete. Phase 5 is underway. Session 20 shipped worker-placed buildings + UI bug sweep. Session 21 (remote, away from computer) shipped Utility AI + Adaptive Input Delay.
 
 ## Next Action
--
+Complete the deferred WSL2 mirroring note (if that scenario becomes real), but no immediate action needed — bind mode is correct and architecture is properly isolated.
 
 ---
 

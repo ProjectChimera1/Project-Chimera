@@ -189,5 +189,19 @@ namespace ProjectChimera.Core.Definitions
         [JsonPropertyName("persistence_manifest")]
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public PersistenceManifest? PersistenceManifest { get; set; }
+
+        /// <summary>
+        /// The per-scenario hero-revival rule (Story 3.14): the level-scaled cost/time/HP-fraction a fallen hero is
+        /// revived with + a master <c>enabled</c> toggle. NULL ⇒ use <see cref="RevivalRule.Default"/> (revival enabled
+        /// with sensible defaults — every existing scenario behaves the same), and the block is OMITTED from
+        /// serialization when null (<see cref="JsonIgnoreCondition.WhenWritingNull"/>, the
+        /// <see cref="PersistenceManifest"/> omit-when-null precedent) — so a scenario with no rule serializes
+        /// byte-for-byte identically, moving no golden. Authoring-only: resolved once (float→Fixed) into
+        /// <see cref="RevivalRuleRuntime"/> at scenario-apply, never folded into any checksum/hash. Validated
+        /// (fail-closed) by <see cref="ScenarioValidator"/> when present.
+        /// </summary>
+        [JsonPropertyName("revival_rule")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public RevivalRule? RevivalRule { get; set; }
     }
 }

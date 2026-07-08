@@ -133,6 +133,15 @@ namespace ProjectChimera.CreationSuite
             if (def.IsHero && def.Hero != null)
                 AddHeroLevelingRow(_bodyHost, def);   // Simple: a leveling-curve preset dropdown
 
+            // Hero revival (Story 3.14): a Structure-only capability toggle. Only a Structure building can host a revive
+            // command card, so the switch appears solely for Structures; the validator badges revives_heroes on a
+            // non-Structure unit (a stale flag left after changing the category) via the same MakeBadge key.
+            if (def.Category == "Structure")
+            {
+                AddSection(_bodyHost, "Hero revival");
+                AddRevivesHeroesRow(_bodyHost, def);
+            }
+
             // ── Advanced (toggled by the Segment) ──
             _advancedHost = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill, Visible = _segment.Active == 1 };
             _advancedHost.AddThemeConstantOverride("separation", ChimeraComponents.Const(ThemeTokens.S2));
@@ -670,6 +679,39 @@ namespace ProjectChimera.CreationSuite
             GoToUnit(t);   // rebuild the body: hero rows appear (seeded) or disappear (cleared)
         }
 
+        /// <summary>The Story 3.14 revives-heroes switch row (Structure-only): a <see cref="ChimeraSwitch"/> bound to
+        /// <see cref="UnitDefinition.RevivesHeroes"/>. Toggling it flips the flag through the undo/validate path and
+        /// badges the <c>revives_heroes</c> coherence error on this row (e.g. a stale flag on a non-Structure).</summary>
+        private void AddRevivesHeroesRow(Control parent, UnitDefinition def)
+        {
+            ChimeraSwitch sw = ChimeraSwitch.Create(def.RevivesHeroes);
+            sw.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
+            sw.Toggled += on => { if (!_building) OnRevivesHeroesToggled(def, on); };
+            AttachFieldTip(sw, "Revives heroes",
+                "Let this building revive fallen heroes of its faction: their command card offers a revive that respawns " +
+                "the hero here after a countdown, for the scenario's authored, level-scaled cost.");
+
+            var holder = new HBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+            sw.SizeFlagsHorizontal = Control.SizeFlags.ShrinkBegin;
+            holder.AddChild(sw);
+            AddFieldRow(parent, "Revives heroes", holder, MakeBadge("revives_heroes"));
+        }
+
+        /// <summary>Apply a revives-heroes toggle: flip the flag, push ONE undo entry, and rebuild so the switch reflects
+        /// on undo/redo (the Promote-toggle precedent).</summary>
+        private void OnRevivesHeroesToggled(UnitDefinition def, bool on)
+        {
+            if (_current == null || !ReferenceEquals(def, _current)) return;
+            bool old = def.RevivesHeroes;
+            if (old == on) return;
+            Action apply = () => def.RevivesHeroes = on;
+            Action revert = () => def.RevivesHeroes = old;
+            apply();
+            UnitDefinition t = def;
+            PushHistory(() => { apply(); GoToUnit(t); }, () => { revert(); GoToUnit(t); });
+            GoToUnit(t);
+        }
+
         /// <summary>The Simple-mode "Leveling" dropdown: preselected via <see cref="HeroLevelingPresets.Detect"/> (a
         /// hand-tuned curve reads back as <c>Custom</c>), applying the picked preset's four curve fields through the
         /// undo/validate/save path. Custom is a deliberate no-op (never wipes an authored curve).</summary>
@@ -1052,6 +1094,7 @@ namespace ProjectChimera.CreationSuite
             AttackDomains = s.AttackDomains?.Clone() as string[],
             Tags = s.Tags?.Clone() as string[],
             IsHero = s.IsHero,
+            RevivesHeroes = s.RevivesHeroes,   // Story 3.14: copy the revive-capability flag
             Hero = s.Hero?.Clone(),   // deep-copy the hero block so the clone validates independently (Story 3.7)
             CombatFeedback = s.CombatFeedback,   // shared presentation-DTO ref (a raw-hatch edit re-parses a fresh POCO)
         };

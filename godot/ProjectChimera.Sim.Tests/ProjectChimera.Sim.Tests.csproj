@@ -120,6 +120,8 @@
     <EmbeddedResource Include="Golden\delivery-scenario.golden.txt" />
     <None Remove="Golden\hero-xp-scenario.golden.txt" />
     <EmbeddedResource Include="Golden\hero-xp-scenario.golden.txt" />
+    <None Remove="Golden\hero-revival-scenario.golden.txt" />
+    <EmbeddedResource Include="Golden\hero-revival-scenario.golden.txt" />
   </ItemGroup>
 
   <ItemGroup>
