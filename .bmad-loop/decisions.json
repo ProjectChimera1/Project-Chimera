@@ -16,5 +16,14 @@
     "key": "1",
     "label": "Permit hybrids + document",
     "resolution": ""
+  },
+  "DW-52": {
+    "answered_at": "2026-07-08",
+    "bundle_name": "",
+    "effect": "build",
+    "intent": "In the editor delete path, free the HeroStore row and clear its EntityId back-reference (assumes DW-51 resolves to 'restore as plain unit'). Pairs with DW-51 option 2.",
+    "key": "1",
+    "label": "Free the row on delete",
+    "resolution": ""
   }
 }

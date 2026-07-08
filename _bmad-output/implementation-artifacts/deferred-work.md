@@ -757,6 +757,7 @@ source_spec: `_bmad-output/implementation-artifacts/spec-3-17-editor-undo-restor
 location: n/a
 reason: summary: Deleting a hero-linked unit in the editor orphans its `HeroStore` row — `EntityWorld.Destroy` does not free the row nor clear the store's back-reference `EntityId`, so the row leaks and its `EntityId` dangles at a dead/recycled entity. evidence: Pre-existing (`Destroy` never touched `HeroStore`; Story 3.17 did not change `Destroy`), surfaced incidentally by the hero-fields review. Inert while no editor flow deletes a re-minted hero, but couples with the hero-link-drop entry above — both want a defined lifecycle for "a hero unit is removed in the editor." Flagged by the Edge Case Hunter review layer.
 status: open
+decision: 2026-07-08 Free the row on delete — In the editor delete path, free the HeroStore row and clear its EntityId back-reference (assumes DW-51 resolves to 'restore as plain unit'). Pairs with DW-51 option 2.
 
 ### DW-53: Editor delete→undo restores a unit at full HP and full Energy — `SnapshotUnit` captures `BaseMaxHealth` (fed to `Create`, which sets `Health = MaxHealth`) and no current `Health`, and the def path re-derives `Energy = MaxEnergy`, so a damaged / energy-spent unit round-trips to full.
 origin: migrated from legacy ledger ("Deferred from: code review of story-3.17 (2026-07-08)"), 2026-07-08
