@@ -425,7 +425,8 @@ origin: migrated from legacy ledger ("Deferred from: dev of story-3.4 (2026-07-0
 source_spec: `_bmad-output/implementation-artifacts/spec-3-9-offline-hero-persistence-rail-save-load-hero-picker-deterministic-init-time-apply.md`
 location: HeroStore.cs:126
 reason: summary: HeroStore is additive across re-deploys with no clear on return-to-Edit; a re-deployed profile would leave stale live hero rows in the store (and hash). evidence: HeroStore.Mint (HeroStore.cs:126) is purely additive and MainScene.ResetMatchOnReturnToEdit never touches Host.Heroes. Not reachable in Story 3.9 (no in-session re-deploy path — the F5 Edit↔Play loop is Story 3.10), and match-state reset including the hero store is Story 3.10's defined scope.
-status: open
+status: done 2026-07-08
+resolution: already resolved: Edit↔Play reset now clears the HeroStore: SimulationHost.ClearForReset() calls Heroes.Clear() (SimulationHost.cs:237), HeroStore.Clear() bulk-wipes all arrays + free-list (HeroStore.cs:253-276), and ResetToAuthoredStart calls _host.ClearForReset() before the non-additive re-mint (MainScene.cs:1254). Test asserts LiveHeroCount==1 after round-trips (SimResetTests.cs:302). Story 3.10 (its named scope) is done.
 
 ### DW-12: On-disk PlayerProfile level/xp values are minted into HeroStore with no range/cap validation — a cheat/invalid-state vector once a runtime consumer exists.
 origin: migrated from legacy ledger ("Deferred from: dev of story-3.4 (2026-07-06)"), 2026-07-08
@@ -460,7 +461,8 @@ origin: migrated from legacy ledger ("Deferred from: dev of story-3.4 (2026-07-0
 source_spec: `_bmad-output/implementation-artifacts/spec-3-10-added-edit-play-round-trip-loop-no-restart-playtest.md`
 location: n/a
 reason: summary: The preserve-hero-progress branch silently loses a hero's progress if that hero died during the playtest (no live HeroStore row to snapshot), falling through to the authored base values. evidence: The snapshot loop reads live HeroStore rows keyed by HeroId before ClearForReset; a dead hero has no live row, so persistence-test mode reverts it to the authored base. Hero death/revival is Story 3.14 and the preserve path is inert pre-3.13, so this is unreachable today; the dead-hero preserve semantics should be defined when 3.14 lands.
-status: open
+status: done 2026-07-08
+resolution: already resolved: Story 3.14 (done) fixed this: a hero that dies during playtest keeps its persisted row — HeroXpSystem sets AwaitingRevival[slot]=true (HeroXpSystem.cs:163) and never calls Heroes.Destroy, so Alive[slot] stays true and the harvest snapshot guard (MainScene.cs:1219) still finds it. Progress no longer lost.
 
 ### DW-17: When Epic 9 adds match-seed plumbing / non-default replay seeds, the in-place reset must reseed the RNG to the live match seed, not the hardcoded DEFAULT_RNG_SEED.
 origin: migrated from legacy ledger ("Deferred from: dev of story-3.4 (2026-07-06)"), 2026-07-08
@@ -474,7 +476,8 @@ origin: migrated from legacy ledger ("Deferred from: dev of story-3.4 (2026-07-0
 source_spec: `_bmad-output/implementation-artifacts/spec-3-10-added-edit-play-round-trip-loop-no-restart-playtest.md`
 location: n/a
 reason: summary: An in-place reset collapses every store's live/high-water count to 0 then repopulates within one frame; a presentation bridge that caches an instance count (rather than reading HighWaterMark each frame) could leave ghost MultiMesh instances after an Edit↔Play round-trip. evidence: ClearForReset zeroes AliveCount/HighWaterMark then the re-apply repopulates, a count-collapse no prior code path produced. The bridges read capture-once store references and recompute from HighWaterMark each frame (so they should reconcile), but this is presentation, untested at Tier-1, and belongs on the /godot-verify manual checklist for the F5 loop.
-status: open
+status: done 2026-07-08
+resolution: already resolved: MultiMeshBridge reads world.HighWaterMark fresh each frame (MultiMeshBridge.cs:143), recomputes _counts from the live sim (146-151), and reconciles InstanceCount whenever it differs from _lastCount (155-160), so the transient reset collapse-to-0 is picked up next frame — no ghost MultiMesh instances persist.
 
 ### DW-19: The cleared-store==freshly-constructed test compares only ~11 of EntityWorld's ~60 SoA arrays, so a future SoA field that is folded/read but omitted from EntityWorld.Clear (and not re-defaulted by ScenarioApplier) would not be caught by the reset tests.
 origin: migrated from legacy ledger ("Deferred from: dev of story-3.4 (2026-07-06)"), 2026-07-08
@@ -522,7 +525,8 @@ origin: migrated from legacy ledger ("Deferred from: code review of story-3.12 (
 source_spec: `_bmad-output/implementation-artifacts/spec-3-12-authorable-attack-delivery-flag-hitscan-vs-projectile-per-unit-projectile-speed.md`
 location: EntityPlacer.cs:90-107
 reason: summary: Editor delete+undo of a placed unit (`EntityPlacer.RestoreUnit` / `UnitSnapshot`) does not carry the new `Delivery`/`ProjectileSpeed` fields, so undoing a deleted Projectile unit silently reverts it to the Create-default Hitscan (losing its custom projectile speed). evidence: `UnitSnapshot` (EntityPlacer.cs:90-107) captures AttackRange/SplashRadius etc. but not Delivery/ProjectileSpeed, and `RestoreUnit` (EntityPlacer.cs:1099-1127) calls `Create` then restores fields directly without `ApplyUnitDefinition`. This is the SAME pre-existing incomplete-snapshot class already documented at EntityPlacer.cs:1122 (collision_radius / separation_priority / category / attack_domains / tags / energy are ALL dropped on restore today) and explicitly chartered to Story 3.17 ("widen UnitSnapshot to full authored state"). Story 3.12 extends the gap by two fields; the intent's editor-reversibility (AC5) is satisfied by the Unit Card Editor form-undo (EditorHistory), a distinct path that IS implemented and pattern-verified. Fixing piecemeal here (2 of ~8 dropped fields) would be an inconsistent band-aid; 3.17 closes the whole class. Flagged by the Blind Hunter + Edge Case review layers.
-status: open
+status: done 2026-07-08
+resolution: already resolved: Closed by Story 3.17 (done): UnitSnapshot now carries the source def (UnitSnapshot.cs:27 `public UnitDefinition? Def;`, set in EntityWorld.SnapshotUnit:897), and RestoreUnit routes a def-based unit through ApplyUnitDefinition (EntityWorld.cs:937-942) which sets Delivery/ProjectileSpeed (EntityWorld.cs:820-821). Palette-placed combat units always carry a def (EntityPlacer.cs:422-426), so the chartered Projectile-unit case is restored correctly.
 
 ## Deferred from: follow-up code review of story-3.12 (2026-07-07)
 
@@ -563,7 +567,8 @@ origin: migrated from legacy ledger ("Deferred from: follow-up code review of st
 source_spec: `_bmad-output/implementation-artifacts/spec-3-13-heroxpsystem-kill-credit-xp-leveling-stat-growth-runtime.md`
 location: n/a
 reason: summary: Hero stat growth is tracked by a per-row COUNT (`HeroStore.GrowthStacksApplied`), not by presence-of-modifier on the live entity, so when Story 3.14 revives a hero onto a NEW entity (which carries no modifiers) `ReconcileGrowth` will early-return (`desired = Level-1 <= GrowthStacksApplied`) and the revived hero silently gets ZERO stat growth — a level-N hero fighting with level-1 stats. evidence: `HeroXpSystem.ReconcileGrowth` returns when `desired <= GrowthStacksApplied`; `GrowthStacksApplied` persists on the `HeroStore` row across a revival while the growth `Modifier` lives on the (destroyed) entity's `ModifierStore` slot. Story 3.13 is single-entity-per-hero so this is correct today (no revival exists — revival is explicitly out of 3.13 scope, and the reserved 3.14 fields are folded-at-default only). But 3.14's revival must reset `GrowthStacksApplied` to 0 (or reconcile against actual modifier presence on the new entity) at re-mint, or the whole growth stack is dropped for every revived hero. Captured as a binding obligation for Story 3.14. Flagged by the Blind Hunter review layer (follow-up finding #3).
-status: open
+status: done 2026-07-08
+resolution: already resolved: Obligation fulfilled by Story 3.14 (done): HeroXpSystem.RespawnHero resets _heroes.GrowthStacksApplied[slot]=0 (HeroXpSystem.cs:231) then calls ReconcileGrowth (line 248), re-applying Level-1 growth stacks onto the fresh revived entity — revived hero regains full stat growth.
 
 ## Deferred from: code review of story-3.14 (2026-07-08)
 
@@ -572,7 +577,8 @@ origin: migrated from legacy ledger ("Deferred from: code review of story-3.14 (
 source_spec: `_bmad-output/implementation-artifacts/spec-3-14-hero-death-revival.md`
 location: n/a
 reason: summary: Revival respawns a FRESH `EntityWorld` entity from the hero's `SourceDef`, restoring only Level/Xp/growth onto the persisted `HeroStore` row — so when Story 3.15 adds items/inventory, any inventory hung off the ENTITY (rather than the persisted hero row) will be silently dropped on every revival, violating AC1/AC2's "items retained". evidence: `HeroXpSystem.RespawnHero` calls the spawn delegate (`world.Create` + `ApplyUnitDefinition`) and re-links `EntityId`/`HeroIndex` + resets `GrowthStacksApplied`, but nothing carries per-entity inventory across the death→respawn gap; item state does not exist yet (Story 3.15). This is the exact mirror of the 3.13→3.14 `GrowthStacksApplied` obligation: 3.15 must store hero inventory on the persisted `HeroStore` row (survives by construction) OR have revival explicitly re-attach it to the new entity. Binding obligation for Story 3.15. Flagged by the Intent-Alignment review layer.
-status: open
+status: done 2026-07-08
+resolution: already resolved: Obligation fulfilled by Story 3.15 (done): hero inventory lives on the persisted HeroStore row (HeroStore.Inventory flat ring, HeroStore.cs:144-153), and RespawnHero re-LINKS the existing row to the new entity (EntityId[slot]=newEntity) without re-Minting, so inventory refs survive death→revival by construction (documented HeroStore.cs:144-149).
 
 ### DW-31: The command-card revive buttons render only in the `!canProduce` branch (`CommandCardSystem.RefreshCard`), so a building that BOTH produces units AND is flagged `revives_heroes` exposes no revive button in-UI — AC2's canonical "eligible production building" has no affordance for a dual-capability building (the sim + a dedicated non-producing revive building both work).
 origin: migrated from legacy ledger ("Deferred from: code review of story-3.14 (2026-07-08)"), 2026-07-08
@@ -646,14 +652,16 @@ origin: migrated from legacy ledger ("Deferred from: code review of story-3.15 (
 source_spec: `_bmad-output/implementation-artifacts/spec-3-15-item-inventory-sim-pickups-slots-stat-effects-charges.md`
 location: n/a
 reason: summary: Manual `DropItem` has no player-facing UI trigger and no replay/golden coverage — `SelectionSystem` wires right-click→pickup and `T`→use but nothing issues a `DropItem` order, so in-game drop is reachable only via hero death; the AC4 replay/golden covers drop only as death-drop, not a manual `DropItem` order. evidence: The `DropItem` sim command + `NetworkCommand` dispatch + the drop primitive are implemented and unit-tested (`DropStatItem_RemovesModifier_AndReturnsToGround`), but the player-facing drop affordance and the full inventory-grid UI are Story 3.16. Closure: 3.16 adds the inventory-grid drop button + a manual-drop replay case. Flagged by the Intent-Alignment review layer (C).
-status: open
+status: done 2026-07-08
+resolution: already resolved: Story 3.16 (done) added the player-facing DropItem UI trigger: per-slot Drop buttons (CommandCardSystem.cs:827 → OnInventoryDropPressed:649 → SelectionSystem.IssueDropItemCommand:242, lockstep-enqueued), and manual DropItem replay coverage exists (CommandApplyParityTests.cs:408 ReplayVsLive_UseAndDropItem_ApplyIdentically + ItemSystemTests.cs:142). The 'no UI trigger / no coverage' gap is closed.
 
 ### DW-41: The shipped use-hotkey hard-codes inventory slot 0 (`IssueUseItemCommand(hero, 0)`) so the golden's slot-1 use is unreachable from the UI, and the `StartStateHash` placed-item byte layout (`MixStr(item_id)` + X/Z Raw, sorted) is not independently pinned — `PlacedItem_ChangesHash` only asserts inequality and the independent-FNV test folds only the inventory empties.
 origin: migrated from legacy ledger ("Deferred from: code review of story-3.15 (2026-07-08)"), 2026-07-08
 source_spec: `_bmad-output/implementation-artifacts/spec-3-15-item-inventory-sim-pickups-slots-stat-effects-charges.md`
 location: n/a
 reason: summary: The shipped use-hotkey hard-codes inventory slot 0 (`IssueUseItemCommand(hero, 0)`) so the golden's slot-1 use is unreachable from the UI, and the `StartStateHash` placed-item byte layout (`MixStr(item_id)` + X/Z Raw, sorted) is not independently pinned — `PlacedItem_ChangesHash` only asserts inequality and the independent-FNV test folds only the inventory empties. evidence: Both are low-consequence: the general slot-selecting use UI is Story 3.16 (the command surface accepts any slot and is tested at slots 0/1/2), and `StartStateHash` is not yet consumed in production (handshake wiring is Epic 9). Closure: 3.16 ships the inventory-grid use with per-slot selection; a follow-up extends the independent-FNV recomputation to the placed-item fold. Flagged by the Intent-Alignment (D) + Verification-Gap review layers.
-status: open
+status: done 2026-07-08
+resolution: already resolved: Both facets closed by Story 3.16 (done): per-slot inventory use ships (CommandCardSystem.cs:643 OnInventoryUsePressed → SetSelectedInventorySlot + IssueUseItemCommand(hero, slot); T-hotkey reads the selected slot, SelectionSystem.cs:497), and the placed-item StartStateHash byte layout is independently pinned (StartStateHashTests.cs:182 PlacedItem_ChangesHash + the anti-tautology independent-FNV rebuild at :57-89).
 
 ## Deferred from: follow-up review of story-3.15 (2026-07-08)
 
@@ -678,14 +686,16 @@ origin: migrated from legacy ledger ("Deferred from: follow-up review of story-3
 source_spec: `_bmad-output/implementation-artifacts/spec-3-15-item-inventory-sim-pickups-slots-stat-effects-charges.md`
 location: n/a
 reason: summary: In `SelectionSystem`, a right-click within `PICK_RADIUS` of a ground item issues `PickupItem` to only the first hero in a mixed selection and `return`s, so the other N selected units receive no move order at all (and it takes priority over an attack-move onto a nearby enemy) — "my army randomly stops moving near an item." evidence: `if (groundItem >= 0) { IssuePickupCommand(heroForPickup, groundItem); return; }` short-circuits the normal move/attack-move dispatch for the whole selection. Presentation-only (no sim/determinism impact), but a real UX regression. Closure (3.16 UI pass): issue the pickup to the nearest eligible hero AND still route the remaining selection through the normal move/attack-move path, or gate the pickup shortcut on a single-hero selection. Flagged by the Blind Hunter review layer (F7).
-status: open
+status: done 2026-07-08
+resolution: already resolved: Resolved: the SelectionSystem right-click pickup branch no longer strands the rest of a mixed selection — only the pickup hero is excluded and the remaining units fall through to the normal move/attack dispatch (SelectionSystem.cs:437-444).
 
 ### DW-45: `EntityPlacer.PlaceItem` reads `_itemIndex % _itemRegistry.Count` but `_itemIndex` is never incremented anywhere, so the editor's Item palette can only ever place registry item 0 — its own field comment ("cycled by re-clicking the Item mode") describes cycling that is not implemented.
 origin: migrated from legacy ledger ("Deferred from: follow-up review of story-3.15 (2026-07-08)"), 2026-07-08
 source_spec: `_bmad-output/implementation-artifacts/spec-3-15-item-inventory-sim-pickups-slots-stat-effects-charges.md`
 location: n/a
 reason: summary: `EntityPlacer.PlaceItem` reads `_itemIndex % _itemRegistry.Count` but `_itemIndex` is never incremented anywhere, so the editor's Item palette can only ever place registry item 0 — its own field comment ("cycled by re-clicking the Item mode") describes cycling that is not implemented. evidence: Editor-only (Godot `Node`, headless-unverifiable, no sim/determinism impact); scenarios seed varied items via JSON through `ScenarioApplier` (tests use that path), so only the interactive palette is limited. Closure: increment `_itemIndex` on Item-mode (re-)selection — folds naturally into the Story 3.16 full item-authoring/placement UI. Flagged by the Edge Case review layer (#4).
-status: open
+status: done 2026-07-08
+resolution: already resolved: Resolved: EntityPlacer's _itemIndex is now advanced/cycled on Item-mode reselection (EntityPlacer.cs:951-967, `_itemIndex = capturedIdx`), so the editor Item palette can place items beyond registry index 0.
 
 ## Deferred from: story-3.16 review (2026-07-08)
 
