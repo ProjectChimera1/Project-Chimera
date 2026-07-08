@@ -492,6 +492,11 @@ namespace ProjectChimera.UI
             {
                 _world.SupplyCost[id]   = supply;
                 _world.AttackRange[id]  = Fixed.FromFloat(ATTACK_RANGE);
+                // Story 3.12: def-less spawn bypasses ApplyUnitDefinition, so mirror the old range→delivery inference
+                // (deleted from CombatSystem) — else this ranged (range 5 > 2.5) fallback unit regresses from projectile
+                // to the Create-default Hitscan. ProjectileSpeed keeps the Create default (== the old global 18).
+                _world.Delivery[id] = _world.AttackRange[id] > UnitDefinition.LegacyDeliveryThreshold
+                    ? AttackDelivery.Projectile : AttackDelivery.Hitscan;
                 // Story 2.2a (A2): a non-mapper write must set BOTH Base (authored source) and Effective, so a later
                 // modifier recomputes Effective = Base + delta correctly instead of from a stale Zero base.
                 _world.BaseAttackDamage[id]      = Fixed.FromFloat(ATTACK_DMG);

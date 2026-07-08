@@ -255,6 +255,32 @@ namespace ProjectChimera.Core
         /// </summary>
         public readonly Fixed[] SplashRadius;
 
+        // --- Attack delivery (Story 3.12) ---
+        /// <summary>
+        /// Per-unit attack delivery — <see cref="AttackDelivery.Hitscan"/> (instant damage, no projectile) or
+        /// <see cref="AttackDelivery.Projectile"/> (spawns a tracking projectile) — decoupled from
+        /// <see cref="AttackRange"/> (Story 3.12). Set from <c>UnitDefinition.ResolveDelivery(AttackRange[id])</c> in
+        /// <see cref="ApplyUnitDefinition"/> (the single mapper), read in-sim EVERY combat tick by
+        /// <see cref="ProjectChimera.Combat.CombatSystem"/> to branch instant-vs-projectile (replacing the deleted
+        /// range-threshold). FOLDED into <see cref="SimChecksum"/> as <c>(int)</c> (v10) — a peer divergence in which
+        /// delivery a unit uses changes combat resolution and must desync detectably (the mandate of Story 3.12). The
+        /// <c>Create</c> default is <see cref="AttackDelivery.Hitscan"/> (a recycled/non-def slot never inherits a prior
+        /// delivery); <see cref="AttackDelivery.Hitscan"/> == 0 so <c>Array.Clear</c> restores the default.
+        /// </summary>
+        public readonly AttackDelivery[] Delivery;
+
+        /// <summary>
+        /// Per-unit projectile speed (world units/second, <see cref="Fixed"/>) applied to a spawned projectile when
+        /// <see cref="Delivery"/> is <see cref="AttackDelivery.Projectile"/> (Story 3.12). Set from
+        /// <c>Fixed.FromFloat(def.ProjectileSpeed)</c> in <see cref="ApplyUnitDefinition"/> (the single float→Fixed
+        /// boundary), copied to <c>ProjectileStore.Speed</c> at fire time and honoured at the projectile advance step.
+        /// FOLDED into <see cref="SimChecksum"/> as <c>.Raw</c> (v10, the story mandate) even though it is an authored
+        /// spawn-constant. The <c>Create</c> default is <see cref="ProjectChimera.Combat.ProjectileSystem.PROJECTILE_SPEED"/>
+        /// (18, the old global) so a recycled/non-def slot fires at the documented fallback speed; <c>Array.Clear</c>
+        /// restores 0, matching a fresh (pre-<c>Create</c>) world.
+        /// </summary>
+        public readonly Fixed[] ProjectileSpeed;
+
         // --- Separation / formation (Story 1.13, DG-2 / FR-54) ---
         /// <summary>
         /// Per-unit separation radius. Summed with a neighbour's (<c>CollisionRadius[i] + CollisionRadius[j]</c>)
@@ -542,6 +568,8 @@ namespace ProjectChimera.Core
 
             VisionRange    = new Fixed[MAX_ENTITIES];
             SplashRadius   = new Fixed[MAX_ENTITIES];
+            Delivery       = new AttackDelivery[MAX_ENTITIES];          // Story 3.12 (folded v10; Hitscan == 0, no Array.Fill needed)
+            ProjectileSpeed = new Fixed[MAX_ENTITIES];                  // Story 3.12 (folded v10; Create-defaulted to the 18 fallback)
             CollisionRadius      = new Fixed[MAX_ENTITIES];              // Story 1.13 (folded v5)
             SeparationPriorityOf = new SeparationPriority[MAX_ENTITIES]; // Story 1.13 (folded v5)
             CategoryOf           = new UnitCategory[MAX_ENTITIES];       // Story 1.13 (NOT folded — presentation-read)
@@ -644,6 +672,12 @@ namespace ProjectChimera.Core
             ArmorTypeOf[id]   = ArmorType.Unarmored;
             VisionRange[id]   = Fixed.FromFloat(8f);
             SplashRadius[id]  = Fixed.Zero;
+            // Story 3.12: default attack-delivery fields on (re)allocation. A recycled/non-def slot must never carry the
+            // prior occupant's delivery/speed (the SoA-recycle trap). Hitscan == instant (the safe default for a unit
+            // with no def); ProjectileSpeed defaults to the documented 18 fallback (== the old global). ApplyUnitDefinition
+            // overwrites both from the def (Delivery via ResolveDelivery, speed via the float→Fixed boundary).
+            Delivery[id]        = AttackDelivery.Hitscan;
+            ProjectileSpeed[id] = ProjectileSystem.PROJECTILE_SPEED;
             // Story 1.13: default separation/formation fields on (re)allocation. A recycled slot must never carry
             // the previous unit's radius/priority/category (the classic SoA bug — cf. the 1.12 zombie-route fix).
             // SpawnUnit overwrites these from the def; Create must default them for any spawn site that forgets.
@@ -732,6 +766,13 @@ namespace ProjectChimera.Core
             ArmorTypeOf[id]  = def.ParsedArmorType;
             SplashRadius[id] = Fixed.FromFloat(def.SplashRadius);
             SupplyCost[id]   = (byte)def.Supply;
+
+            // Story 3.12 (A2 single mapper): the authorable attack delivery + per-unit projectile speed. Delivery is
+            // resolved from the ALREADY-quantized AttackRange[id] above (so a null/unknown string infers the exact old
+            // MELEE_THRESHOLD partition — byte-identical to legacy behaviour). ProjectileSpeed is the one float→Fixed
+            // boundary here (default 18f == the old global). Both are FOLDED into SimChecksum (v10).
+            Delivery[id]        = def.ResolveDelivery(AttackRange[id]);
+            ProjectileSpeed[id] = Fixed.FromFloat(def.ProjectileSpeed);
 
             // Story 1.13 (DG-2 / FR-54): per-unit separation/formation fields. CollisionRadius mirrors the
             // SplashRadius float→Fixed load conversion, then is clamped (see ClampCollisionRadius). SeparationPriority
@@ -843,6 +884,7 @@ namespace ProjectChimera.Core
             Array.Clear(AttackSpeed);           Array.Clear(Energy);                Array.Clear(MaxEnergy);
             Array.Clear(StatusFlagsOf);         Array.Clear(DamageTypeOf);          Array.Clear(ArmorTypeOf);
             Array.Clear(VisionRange);           Array.Clear(SplashRadius);          Array.Clear(CollisionRadius);
+            Array.Clear(Delivery);              Array.Clear(ProjectileSpeed);       // Story 3.12 (Hitscan==0 / 0 speed == the fresh-ctor state)
             Array.Clear(SeparationPriorityOf);  Array.Clear(CategoryOf);            Array.Clear(AttackDomainOf);
             Array.Clear(TagsOf);                Array.Clear(SupplyCost);            Array.Clear(MeshType);
             Array.Clear(FeedbackProfile);       Array.Clear(CommandState);          Array.Clear(CommandGoal);

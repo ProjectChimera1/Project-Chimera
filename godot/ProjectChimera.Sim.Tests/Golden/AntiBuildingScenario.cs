@@ -57,6 +57,9 @@ namespace ProjectChimera.Sim.Tests.Golden
             int id = w.Create(pos, f, Fixed.FromInt(100), Fixed.FromInt(3));
             w.EffectiveAttackDamage[id] = Fixed.FromInt(dmg);
             w.AttackRange[id]  = Fixed.FromInt(range);
+            // Story 3.12: mirror the old range→delivery inference (direct-SoA units skip ApplyUnitDefinition) so the
+            // ranged siege unit still fires projectiles at the building (Create default is now Hitscan).
+            w.Delivery[id] = w.AttackRange[id] > Fixed.FromFloat(2.5f) ? AttackDelivery.Projectile : AttackDelivery.Hitscan;
             w.AttackSpeed[id]  = Fixed.FromInt(1);
             w.DamageTypeOf[id] = dtype;
             return id;

@@ -128,6 +128,107 @@ namespace ProjectChimera.Sim.Tests.Definitions
             AssertError(Run(def), "separation_priority", "grunt");
         }
 
+        // ── delivery (Story 3.12): null legal (legacy inference); a non-null value must be Hitscan|Projectile ──
+
+        [Fact]
+        public void NullDelivery_IsValid()
+        {
+            var def = Valid(); def.Delivery = null;   // legacy: infers via range — no error
+            Assert.True(Run(def).Ok);
+        }
+
+        [Theory]
+        [InlineData("Hitscan")]
+        [InlineData("Projectile")]
+        public void KnownDelivery_IsValid(string delivery)
+        {
+            var def = Valid(); def.Delivery = delivery;
+            if (delivery == "Projectile") def.ProjectileSpeed = 18f;   // valid positive speed
+            Assert.True(Run(def).Ok, string.Join(" | ", Run(def).Errors.Select(e => e.Message)));
+        }
+
+        [Fact]
+        public void UnknownDelivery_IsRejected()
+        {
+            var def = Valid(); def.Delivery = "Beam";
+            AssertError(Run(def), "delivery", "grunt");
+        }
+
+        // ── projectile_speed (Story 3.12): strictly positive, but ONLY constrained for a Projectile unit ──
+
+        [Theory]
+        [InlineData(0f)]
+        [InlineData(-5f)]
+        public void NonPositiveProjectileSpeed_OnProjectileUnit_IsRejected(float speed)
+        {
+            var def = Valid(); def.Delivery = "Projectile"; def.ProjectileSpeed = speed;
+            AssertError(Run(def), "projectile_speed", "grunt");
+        }
+
+        [Fact]
+        public void NonPositiveProjectileSpeed_OnHitscanUnit_IsIgnored()
+        {
+            // A Hitscan unit never reads projectile_speed, so a 0/negative value there is NOT an error.
+            var def = Valid(); def.Delivery = "Hitscan"; def.ProjectileSpeed = 0f;
+            Assert.True(Run(def).Ok);
+        }
+
+        [Fact]
+        public void OmittedProjectileSpeed_OnProjectileUnit_IsValid()
+        {
+            // Omitted ⇒ the POCO default 18 ⇒ a valid positive speed (existing ranged data is unchanged).
+            var def = Valid(); def.Delivery = "Projectile";   // ProjectileSpeed stays 18f
+            Assert.True(Run(def).Ok);
+        }
+
+        [Theory]
+        [InlineData(0f)]
+        [InlineData(-5f)]
+        public void NonPositiveProjectileSpeed_OnInferredProjectileUnit_IsRejected(float speed)
+        {
+            // A unit that OMITS delivery (null) but has attack_range 5 > 2.5 INFERS Projectile at runtime and reads
+            // projectile_speed — so a 0/negative speed MUST be rejected even though the literal delivery is null.
+            // (Regression guard: gating on the literal string instead of the resolved delivery let this slip through.)
+            var def = Valid(); def.Delivery = null; def.AttackRange = 5f; def.ProjectileSpeed = speed;
+            AssertError(Run(def), "projectile_speed", "grunt");
+        }
+
+        [Fact]
+        public void NonPositiveProjectileSpeed_OnInferredHitscanUnit_IsIgnored()
+        {
+            // Omitted delivery + short range (1.5 ≤ 2.5) infers Hitscan, which never reads projectile_speed → not an error.
+            var def = Valid(); def.Delivery = null; def.AttackRange = 1.5f; def.ProjectileSpeed = 0f;
+            Assert.True(Run(def).Ok);
+        }
+
+        // ── projectile_speed finiteness / range: enforced for EVERY unit, since the value is quantized and folded
+        //    into SimChecksum regardless of delivery — a NaN/Inf/out-of-range value must never reach the hash. ──
+
+        [Theory]
+        [InlineData(float.NaN)]
+        [InlineData(float.PositiveInfinity)]
+        [InlineData(float.NegativeInfinity)]
+        [InlineData(32768f)]   // == Range (the 16.16 ceiling — excluded)
+        [InlineData(99999f)]   // > Range
+        public void NonFiniteOrOutOfRangeProjectileSpeed_OnProjectileUnit_IsRejected(float speed)
+        {
+            var def = Valid(); def.Delivery = "Projectile"; def.ProjectileSpeed = speed;
+            AssertError(Run(def), "projectile_speed", "grunt");
+        }
+
+        [Theory]
+        [InlineData(float.NaN)]
+        [InlineData(float.PositiveInfinity)]
+        [InlineData(99999f)]   // > Range
+        public void NonFiniteOrOutOfRangeProjectileSpeed_OnHitscanUnit_IsAlsoRejected(float speed)
+        {
+            // A Hitscan unit ignores projectile_speed at combat, but the value is STILL Fixed.FromFloat-quantized and
+            // folded into the deterministic checksum, so a non-finite / out-of-range speed must fail closed here too
+            // (regression guard for gating the ENTIRE check on the resolved delivery — the finiteness rule is universal).
+            var def = Valid(); def.Delivery = "Hitscan"; def.ProjectileSpeed = speed;
+            AssertError(Run(def), "projectile_speed", "grunt");
+        }
+
         [Fact]
         public void HeroDamageAndArmorType_AreValid()
         {

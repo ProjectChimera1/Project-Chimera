@@ -190,6 +190,54 @@ namespace ProjectChimera.Sim.Tests.Definitions
             Assert.DoesNotContain("mesh_path", UnitJson(b, "grunt"));
         }
 
+        // ── delivery + projectile_speed (Story 3.12) ──
+
+        [Fact]
+        public void Update_AuthorsDelivery_AndCustomProjectileSpeed()
+        {
+            UnitDefinition edited = Parse(Faction).GetUnit("archer")!;
+            edited.Delivery = "Hitscan";        // an authored long-range hitscan sniper
+            edited.ProjectileSpeed = 6f;        // (unused by a hitscan unit, but round-trips)
+            string outJson = FactionWriter.PatchFactionJson(Faction,
+                new UnitEdit { Kind = UnitEditKind.Update, TargetId = "archer", Def = edited });
+
+            UnitDefinition reloaded = Parse(outJson).GetUnit("archer")!;
+            Assert.Equal("Hitscan", reloaded.Delivery);
+            Assert.Equal(6f, reloaded.ProjectileSpeed);
+        }
+
+        [Fact]
+        public void Update_OmittedDelivery_AndDefaultProjectileSpeed_AreNotWritten()
+        {
+            // A legacy ranged unit (archer) keeps delivery omitted and projectile_speed at its 18 default →
+            // FactionWriter must NOT balloon either key in (existing data round-trips byte-identically).
+            UnitDefinition edited = Parse(Faction).GetUnit("archer")!;
+            edited.AttackDamage = 12f;   // touch a different field
+            string outJson = FactionWriter.PatchFactionJson(Faction,
+                new UnitEdit { Kind = UnitEditKind.Update, TargetId = "archer", Def = edited });
+
+            string node = UnitJson(outJson, "archer");
+            Assert.DoesNotContain("delivery", node);            // null default → omitted
+            Assert.DoesNotContain("projectile_speed", node);    // 18 default → omitted
+        }
+
+        [Fact]
+        public void Update_ClearingDelivery_DropsTheKey()
+        {
+            // Author delivery, then clear it back to null (legacy inference) → the key is dropped.
+            UnitDefinition withDelivery = Parse(Faction).GetUnit("archer")!;
+            withDelivery.Delivery = "Projectile";
+            string a = FactionWriter.PatchFactionJson(Faction,
+                new UnitEdit { Kind = UnitEditKind.Update, TargetId = "archer", Def = withDelivery });
+            Assert.Contains("delivery", UnitJson(a, "archer"));
+
+            UnitDefinition cleared = Parse(a).GetUnit("archer")!;
+            cleared.Delivery = null;
+            string b = FactionWriter.PatchFactionJson(a,
+                new UnitEdit { Kind = UnitEditKind.Update, TargetId = "archer", Def = cleared });
+            Assert.DoesNotContain("delivery", UnitJson(b, "archer"));
+        }
+
         // ── Create: appends a minimal new unit (only non-default fields) ──
 
         [Fact]

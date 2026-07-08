@@ -209,6 +209,12 @@ namespace ProjectChimera.Economy
             {
                 world.SupplyCost[id]   = 1;
                 world.AttackRange[id]  = Fixed.FromFloat(FALLBACK_ATTACK_RNG);
+                // Story 3.12: this def-less path bypasses ApplyUnitDefinition, so it must mirror the old range→delivery
+                // inference (deleted from CombatSystem) or the fallback would inherit the Create default Hitscan and a
+                // ranged (range 5 > 2.5) fallback unit would regress from projectile to instant hitscan. ProjectileSpeed
+                // stays at the Create default (== the old global 18), so the inferred projectile flies as it did before.
+                world.Delivery[id] = world.AttackRange[id] > UnitDefinition.LegacyDeliveryThreshold
+                    ? Combat.AttackDelivery.Projectile : Combat.AttackDelivery.Hitscan;
                 // Story 2.2a (A2): non-mapper write sets BOTH Base (authored source) and Effective, so a later
                 // modifier recomputes Effective = Base + delta correctly instead of from a stale Zero base.
                 world.BaseAttackDamage[id]      = Fixed.FromFloat(FALLBACK_ATTACK_DMG);

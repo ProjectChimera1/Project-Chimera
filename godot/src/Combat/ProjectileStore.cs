@@ -27,6 +27,13 @@ namespace ProjectChimera.Combat
         /// <summary>AoE splash radius (0 = no splash). Copied from EntityWorld.SplashRadius at fire time.</summary>
         public readonly Fixed[]      SplashRadius  = new Fixed[MAX_PROJECTILES];
         /// <summary>
+        /// Per-projectile travel speed (world units/second, Story 3.12). Copied from <c>EntityWorld.ProjectileSpeed</c>
+        /// (the firing unit's authored speed) at Spawn, honoured at the <see cref="ProjectileSystem"/> advance step
+        /// instead of the old global constant. NOT folded — <see cref="ProjectileStore"/> is never a SimChecksum input
+        /// (the source SoA <c>EntityWorld.ProjectileSpeed</c> IS folded, so speed divergence still desyncs).
+        /// </summary>
+        public readonly Fixed[]      Speed         = new Fixed[MAX_PROJECTILES];
+        /// <summary>
         /// Presentation-only feedback override snapshotted from the FIRING unit at Spawn time (Story 2.7 SD-4). The
         /// attacker entity id is unrecoverable at impact (ProjectileSystem.ApplyHit has only projId/targetId), so the
         /// ranged/splash hit event reads this slot to honour a ranged unit's override. Null ⇒ default look. NOT folded
@@ -58,6 +65,7 @@ namespace ProjectChimera.Combat
             DamageType dmgType,
             ArmorType  targetArmor,
             Faction    owner,
+            Fixed      speed,          // Story 3.12 — required per-projectile travel speed (the firing unit's ProjectileSpeed)
             Fixed      splashRadius = default,
             CombatFeedbackProfile? feedback = null,
             bool       targetIsBuilding = false)
@@ -78,6 +86,7 @@ namespace ProjectChimera.Combat
             DmgType[id]          = dmgType;
             TargetArmor[id]      = targetArmor;
             Owner[id]            = owner;
+            Speed[id]            = speed;           // Story 3.12 — always overwritten (recycled slot never inherits)
             SplashRadius[id]     = splashRadius;
             Feedback[id]         = feedback;
             TargetIsBuilding[id] = targetIsBuilding; // Story 2.9a — always overwritten (recycled slot never inherits)
@@ -95,6 +104,7 @@ namespace ProjectChimera.Combat
             System.Array.Clear(Alive);         System.Array.Clear(Position);      System.Array.Clear(TargetId);
             System.Array.Clear(LastKnownPos);  System.Array.Clear(Damage);        System.Array.Clear(DmgType);
             System.Array.Clear(TargetArmor);   System.Array.Clear(Owner);         System.Array.Clear(SplashRadius);
+            System.Array.Clear(Speed);         // Story 3.12
             System.Array.Clear(Feedback);      System.Array.Clear(TargetIsBuilding); System.Array.Clear(_freeList);
             _freeCount = 0;
             _nextId    = 0;

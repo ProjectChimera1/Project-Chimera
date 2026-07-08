@@ -31,6 +31,8 @@ namespace ProjectChimera.CreationSuite
         private static readonly string[] DamageTypes = { "Normal", "Pierce", "Siege", "Magic", "Hero" };
         private static readonly string[] ArmorTypes = { "Unarmored", "Light", "Medium", "Heavy", "Fortified", "Hero" };
         private static readonly string[] SeparationPriorities = { "Yield", "Normal", "Push" };
+        // Story 3.12 — the closed attack-delivery set the dropdown offers (mirrors UnitDefinitionValidator._deliveries).
+        private static readonly string[] Deliveries = { "Hitscan", "Projectile" };
         private const double StatMax = 32767;   // one below the 16.16 ceiling (the form's first line of defence)
 
         private bool _lastValid = true;         // last validation verdict (drives the Save button + F5 gate)
@@ -87,6 +89,14 @@ namespace ProjectChimera.CreationSuite
                 0.5, () => def.AttackRange, v => def.AttackRange = v, def);
             AddNumFloat(_bodyHost, "Atk interval", "attack_speed", "Attack Interval", "Seconds between attacks — lower is faster.",
                 0.05, () => def.AttackSpeed, v => def.AttackSpeed = v, def);
+            // Story 3.12: authorable delivery (Hitscan/Projectile), decoupled from range. Changing it rebuilds the body
+            // (GoToUnit) so the dependent projectile_speed row toggles live. projectile_speed shows only when the
+            // effective delivery is Projectile.
+            AddDeliveryRow(_bodyHost, def);
+            if (def.EffectiveDeliveryString() == "Projectile")
+                AddNumFloat(_bodyHost, "Projectile speed", "projectile_speed", "Projectile Speed",
+                    "World units/second the projectile travels (default 18). Only used by a Projectile-delivery unit.",
+                    0.5, () => def.ProjectileSpeed, v => def.ProjectileSpeed = v, def);
 
             AddSection(_bodyHost, "Stats");
             AddNumFloat(_bodyHost, "HP", "hp", "Hit Points", "The unit's health pool. It dies at 0.",
@@ -374,6 +384,38 @@ namespace ProjectChimera.CreationSuite
             };
             AttachFieldTip(sel, term, body);
             AddFieldRow(parent, label, sel, MakeBadge(key));
+        }
+
+        /// <summary>
+        /// Story 3.12 — the attack-delivery dropdown. Displays the EFFECTIVE delivery (so an unauthored ranged unit
+        /// reads "Projectile") via <see cref="UnitDefinition.EffectiveDeliveryString"/>, and on pick sets the EXPLICIT
+        /// <see cref="UnitDefinition.Delivery"/> string then rebuilds the body (<see cref="GoToUnit"/>, the promote-to-hero
+        /// precedent) so the dependent <c>projectile_speed</c> row toggles live — one undoable step (Ctrl+Z reverses a
+        /// Projectile↔Hitscan flip). The badge key matches the validator's <c>delivery</c> field path.
+        /// </summary>
+        private void AddDeliveryRow(Control parent, UnitDefinition def)
+        {
+            OptionButton sel = ChimeraComponents.Select(Deliveries);
+            int cur = Array.IndexOf(Deliveries, def.EffectiveDeliveryString());
+            if (cur >= 0) sel.Selected = cur;
+            sel.ItemSelected += idx =>
+            {
+                if (_building) return;
+                if (_current == null || !ReferenceEquals(def, _current)) return;
+                string? old = def.Delivery;
+                string nu = Deliveries[(int)idx];
+                if (def.Delivery == nu) return;            // already explicitly this value — no-op
+                Action apply  = () => def.Delivery = nu;
+                Action revert = () => def.Delivery = old;
+                apply();
+                UnitDefinition t = def;
+                PushHistory(() => { apply(); GoToUnit(t); }, () => { revert(); GoToUnit(t); });
+                OnLiveChanged("delivery");
+                GoToUnit(t);   // rebuild: the projectile_speed row appears (Projectile) or disappears (Hitscan)
+            };
+            AttachFieldTip(sel, "Delivery",
+                "How the attack lands: Hitscan (instant damage, no projectile) or Projectile (a travelling shot). Independent of range.");
+            AddFieldRow(parent, "Delivery", sel, MakeBadge("delivery"));
         }
 
         private void AddCommaList(Control parent, string label, string key, string term, string body,
@@ -973,6 +1015,7 @@ namespace ProjectChimera.CreationSuite
             MeshScale = s.MeshScale, TrainTime = s.TrainTime, VisionRange = s.VisionRange,
             SplashRadius = s.SplashRadius, CollisionRadius = s.CollisionRadius, MaxEnergy = s.MaxEnergy,
             SeparationPriority = s.SeparationPriority,
+            Delivery = s.Delivery, ProjectileSpeed = s.ProjectileSpeed,   // Story 3.12
             // Null-guard each array: the property defaults are Array.Empty, but a raw-JSON hatch edit of
             // "prerequisites"/"abilities"/"behaviors": null overrides the initializer with null, and an unguarded
             // .Clone() would then NullReference-crash the Duplicate action.

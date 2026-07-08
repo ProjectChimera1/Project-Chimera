@@ -24,6 +24,9 @@ namespace ProjectChimera.Sim.Tests.Combat
             int id = w.Create(pos, f, Fixed.FromInt(100), Fixed.FromInt(3));
             w.EffectiveAttackDamage[id] = Fixed.FromInt(dmg);
             w.AttackRange[id]  = Fixed.FromInt(range);
+            // Story 3.12: mirror the old range→delivery inference (direct-SoA units skip ApplyUnitDefinition) so a
+            // ranged (> 2.5) attacker still spawns a projectile instead of the new Hitscan Create default.
+            w.Delivery[id] = w.AttackRange[id] > Fixed.FromFloat(2.5f) ? AttackDelivery.Projectile : AttackDelivery.Hitscan;
             w.AttackSpeed[id]  = Fixed.Zero;      // deterministic: cooldown resets to 0 → fires each tick
             w.DamageTypeOf[id] = dtype;
             return id;                            // AttackDomainOf defaults to All (includes Structure)
@@ -228,6 +231,29 @@ namespace ProjectChimera.Sim.Tests.Combat
                 damaged = buildings.Health[b].Raw < hp0.Raw;
             }
             Assert.True(damaged, "the ranged shell must apply Fortified matrix damage to the building on impact");
+        }
+
+        // ── Story 3.12 — the BUILDING projectile branch honours the attacker's per-unit ProjectileSpeed (not the
+        //    global fallback). Direct oracle: without this, reverting TryDealBuildingDamage to pass the constant
+        //    PROJECTILE_SPEED would leave every building test green (they all fire at the default 18) and the delivery
+        //    golden has no buildings — this pins the building branch's speed argument. ──
+        [Fact]
+        public void RangedAttacker_VsBuilding_SpawnsShellAtPerUnitSpeed_NotTheGlobalDefault()
+        {
+            var w = new EntityWorld();
+            var buildings = new BuildingStore();
+            var projectiles = new ProjectileStore();
+            var combat = new CombatSystem(projectiles, buildings: buildings);
+            int b = buildings.Create(V(0, 0), Faction.Player2, BuildingType.CommandCenter);
+            int ranged = Attacker(w, V(5, 0), Faction.Player1, DamageType.Siege, 40, range: 6); // ranged → Projectile
+            w.ProjectileSpeed[ranged] = Fixed.FromInt(6);          // authored per-unit speed (≠ the 18 fallback)
+
+            OrderAttackBuilding(w, ranged, b);
+            combat.Tick(w, Dt);                                    // in range → spawn a building-target shell
+
+            Assert.True(projectiles.HighWaterMark > 0, "a ranged attacker must spawn a projectile at the building");
+            Assert.Equal(Fixed.FromInt(6).Raw, projectiles.Speed[0].Raw); // the building branch carried the per-unit speed, not 18
+            Assert.NotEqual(ProjectileSystem.PROJECTILE_SPEED.Raw, projectiles.Speed[0].Raw);
         }
 
         [Fact]

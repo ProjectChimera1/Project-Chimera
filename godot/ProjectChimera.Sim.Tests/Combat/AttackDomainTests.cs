@@ -81,6 +81,7 @@ namespace ProjectChimera.Sim.Tests.Combat
             var w  = new EntityWorld();
             int aa = w.Create(V(0, 0), Faction.Player1, Fixed.FromInt(100), Fixed.FromInt(3));
             w.AttackRange[aa]    = Fixed.FromInt(20);
+            w.Delivery[aa]       = AttackDelivery.Projectile;        // Story 3.12: preserve old range-inferred delivery (ranged > 2.5)
             w.AttackDomainOf[aa] = AttackDomain.Air;                 // authored anti-air only
             /* nearer ground decoy */ Enemy(w, V(2, 0), UnitCategory.Melee);
             int air = Enemy(w, V(8, 0), UnitCategory.Air);          // farther flier — the only valid target
@@ -100,6 +101,7 @@ namespace ProjectChimera.Sim.Tests.Combat
             var w = new EntityWorld();
             int g = w.Create(V(0, 0), Faction.Player1, Fixed.FromInt(100), Fixed.FromInt(3));
             w.AttackRange[g]    = Fixed.FromInt(20);
+            w.Delivery[g]       = AttackDelivery.Projectile;        // Story 3.12: preserve old range-inferred delivery (ranged > 2.5)
             w.AttackDomainOf[g] = AttackDomain.Ground;
             /* nearer flier decoy */ Enemy(w, V(2, 0), UnitCategory.Air);
             int ground = Enemy(w, V(8, 0), UnitCategory.Melee);
@@ -116,6 +118,7 @@ namespace ProjectChimera.Sim.Tests.Combat
             var w = new EntityWorld();
             int u = w.Create(V(0, 0), Faction.Player1, Fixed.FromInt(100), Fixed.FromInt(3));
             w.AttackRange[u] = Fixed.FromInt(20);                    // AttackDomainOf defaults to All
+            w.Delivery[u]    = AttackDelivery.Projectile;            // Story 3.12: preserve old range-inferred delivery (ranged > 2.5)
             int air = Enemy(w, V(2, 0), UnitCategory.Air);          // nearest — with default All it wins
             /* farther ground */ Enemy(w, V(8, 0), UnitCategory.Melee);
 

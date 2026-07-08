@@ -112,6 +112,12 @@
          legs. NEW file; the 17 per-tick goldens above are NOT re-recorded (SimChecksum AlgoVersion stays 9, no fold). -->
     <None Remove="Golden\hero-start-state.golden.txt" />
     <EmbeddedResource Include="Golden\hero-start-state.golden.txt" />
+    <!-- Story 3.12 (AC6) — delivery golden (a long-range Hitscan sniper, a short-range custom-speed Projectile unit,
+         and a splash Projectile unit over Neutral targets; Player2 empty so the AI no-ops). Exercises the v10 Delivery
+         + ProjectileSpeed fold. Integer/Fixed-only → CROSS-PLATFORM SAFE, compared on both CI legs. NEW file; the 18
+         goldens above ARE re-baselined once for the v10 fold. -->
+    <None Remove="Golden\delivery-scenario.golden.txt" />
+    <EmbeddedResource Include="Golden\delivery-scenario.golden.txt" />
   </ItemGroup>
 
   <ItemGroup>

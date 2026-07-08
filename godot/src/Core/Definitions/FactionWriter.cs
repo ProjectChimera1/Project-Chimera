@@ -219,6 +219,11 @@ namespace ProjectChimera.Core.Definitions
             PutFloat(obj, "collision_radius", d.CollisionRadius, 1f);
             PutFloat(obj, "max_energy", d.MaxEnergy, 0f);
 
+            // Story 3.12: delivery is nullable (omit when null — the legacy range-inference default); projectile_speed
+            // omits at its 18f default so every existing ranged unit round-trips byte-identically.
+            PutNullableString(obj, "delivery", d.Delivery);
+            PutFloat(obj, "projectile_speed", d.ProjectileSpeed, 18f);
+
             PutString(obj, "separation_priority", d.SeparationPriority, "Normal");
 
             PutStringArray(obj, "prerequisites", d.Prerequisites, defaultsNull: false);

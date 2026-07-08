@@ -22,6 +22,8 @@ namespace ProjectChimera.Sim.Tests.Combat
             int id = w.Create(pos, f, Fixed.FromInt(100), Fixed.FromInt(3));
             w.EffectiveAttackDamage[id] = Fixed.FromInt(30);
             w.AttackRange[id]  = Fixed.FromInt(range);
+            // Story 3.12: mirror the old range→delivery inference (direct-SoA units skip ApplyUnitDefinition).
+            w.Delivery[id] = w.AttackRange[id] > Fixed.FromFloat(2.5f) ? AttackDelivery.Projectile : AttackDelivery.Hitscan;
             w.AttackSpeed[id]  = Fixed.Zero;
             w.DamageTypeOf[id] = DamageType.Siege;
             return id;

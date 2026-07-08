@@ -42,6 +42,9 @@ namespace ProjectChimera.Sim.Tests.Core
             AttackDomains = new[] { "Air" },
             // Story 2.11: a classification tag so the TagsOf mapper teeth bite (Create default = None).
             Tags = new[] { "Mechanical" },
+            // Story 3.12: an explicit Projectile delivery + a custom speed so the Delivery/ProjectileSpeed mapper teeth
+            // bite (Create defaults = Hitscan / 18). ResolveDelivery("Projectile") wins regardless of AttackRange.
+            Delivery = "Projectile", ProjectileSpeed = 6f,
         };
 
         [Fact]
@@ -77,6 +80,9 @@ namespace ProjectChimera.Sim.Tests.Core
             Assert.Equal(def.ParsedTags,                        w.TagsOf[id]);
             // Story 2.7: the presentation-read feedback override is copied (by reference) through the single mapper.
             Assert.Same(def.CombatFeedback,                     w.FeedbackProfile[id]);
+            // Story 3.12: the authored delivery + projectile speed are written through the single mapper.
+            Assert.Equal(def.ResolveDelivery(w.AttackRange[id]),   w.Delivery[id]);
+            Assert.Equal(Fixed.FromFloat(def.ProjectileSpeed).Raw, w.ProjectileSpeed[id].Raw);
 
             // Teeth: prove the mapped values are NOT coincidentally the Create defaults.
             Assert.NotEqual(Fixed.Zero.Raw,            w.BaseAttackDamage[id].Raw);    // default 0
@@ -86,6 +92,8 @@ namespace ProjectChimera.Sim.Tests.Core
             Assert.NotEqual(AttackDomain.All,          w.AttackDomainOf[id]);          // default All (Story 2.9a)
             Assert.NotEqual(UnitTag.None,              w.TagsOf[id]);                  // default None (Story 2.11)
             Assert.NotNull(w.FeedbackProfile[id]);                                     // default null (Story 2.7)
+            Assert.NotEqual(AttackDelivery.Hitscan,          w.Delivery[id]);          // default Hitscan (Story 3.12)
+            Assert.NotEqual(ProjectileSystem.PROJECTILE_SPEED.Raw, w.ProjectileSpeed[id].Raw); // default 18 (Story 3.12)
         }
 
         [Fact]
@@ -138,6 +146,9 @@ namespace ProjectChimera.Sim.Tests.Core
             Assert.Equal(refWorld.TagsOf[refId],               w.TagsOf[id]);
             // Story 2.7: SpawnUnit routes the feedback override through the mapper (same def instance ⇒ same reference).
             Assert.Same(refWorld.FeedbackProfile[refId],       w.FeedbackProfile[id]);
+            // Story 3.12: SpawnUnit routes the delivery + projectile speed through the same single mapper.
+            Assert.Equal(refWorld.Delivery[refId],             w.Delivery[id]);
+            Assert.Equal(refWorld.ProjectileSpeed[refId].Raw,  w.ProjectileSpeed[id].Raw);
         }
 
         // ── Story 2.4a — the FIRST per-entity ability state flows through ApplyUnitDefinition (A2), and a recycled

@@ -73,6 +73,9 @@ namespace ProjectChimera.Core.Definitions
         private static readonly string[] _damageTypes = { "Normal", "Pierce", "Siege", "Magic", "Hero" };
         private static readonly string[] _armorTypes = { "Unarmored", "Light", "Medium", "Heavy", "Fortified", "Hero" };
         private static readonly string[] _separationPriorities = { "Yield", "Normal", "Push" };
+        /// <summary>The closed authorable attack-delivery set (Story 3.12), mirroring the <c>AttackDelivery</c> enum + the
+        /// <c>UnitDefinition.ResolveDelivery</c> string switch. A null <c>delivery</c> is legal (legacy range inference).</summary>
+        private static readonly string[] _deliveries = { "Hitscan", "Projectile" };
 
         /// <summary>
         /// Validate a <paramref name="def"/> against its <paramref name="siblings"/> (the faction's <c>Units</c> list,
@@ -137,6 +140,27 @@ namespace ProjectChimera.Core.Definitions
             if (!InSet(_separationPriorities, def.SeparationPriority))
                 errors.Add(("separation_priority", Located(id, "separation_priority",
                     $"'{def.SeparationPriority}' is not a known separation priority (Yield|Normal|Push).")));
+
+            // ── delivery: nullable — null is the legacy range-inference default (valid); a non-null value must be in
+            //    the closed set. The fail-closed reject the ResolveDelivery accessor fails OPEN on (Story 3.12, AC4). ──
+            if (def.Delivery != null && !InSet(_deliveries, def.Delivery))
+                errors.Add(("delivery", Located(id, "delivery",
+                    $"'{def.Delivery}' is not a known delivery (Hitscan|Projectile).")));
+
+            // ── projectile_speed — TWO rules. (1) FINITE & in [0, 32768) for EVERY unit regardless of delivery: it
+            //    is quantized (Fixed.FromFloat) and FOLDED into SimChecksum (v10) for all entities, so a NaN/Inf/out-
+            //    of-range value must never reach the deterministic hash — the same [0, Range) invariant CheckStat
+            //    enforces on every other folded numeric stat (a Hitscan unit ignores the value at combat, but the fold
+            //    is unconditional, so the validation must be too). (2) STRICTLY-POSITIVE additionally when this unit's
+            //    EFFECTIVE delivery is Projectile — an authored projectile OR a legacy unit that OMITS delivery (null)
+            //    but has attack_range > 2.5 (infers Projectile) actually travels at this speed, so 0 is invalid there.
+            //    Gate rule (2) on the RESOLVED delivery, not the literal string; an omitted speed defaults to 18 (valid). ──
+            if (!float.IsFinite(def.ProjectileSpeed) || def.ProjectileSpeed < 0f || def.ProjectileSpeed >= Range)
+                errors.Add(("projectile_speed", Located(id, "projectile_speed",
+                    $"={def.ProjectileSpeed} must be finite and in [0, {(int)Range}) (it is folded into the deterministic checksum).")));
+            else if (def.EffectiveDeliveryString() == "Projectile" && def.ProjectileSpeed <= 0f)
+                errors.Add(("projectile_speed", Located(id, "projectile_speed",
+                    $"={def.ProjectileSpeed} must be strictly positive for a Projectile-delivery unit (authored or inferred from range).")));
 
             // ── numeric stats: finite & [0, 32768) — the 16.16 Fixed ceiling (AC2 "out-of-range/missing stat") ──
             CheckStat(errors, id, "hp", def.Hp);

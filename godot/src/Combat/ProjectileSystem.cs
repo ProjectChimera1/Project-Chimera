@@ -8,12 +8,17 @@ namespace ProjectChimera.Combat
     ///
     /// Each tick:
     ///   1. Track target: update last-known goal position while target is alive.
-    ///   2. Move projectile toward goal at PROJECTILE_SPEED units/sec.
+    ///   2. Move projectile toward goal at its per-unit speed (ProjectileStore.Speed; PROJECTILE_SPEED is the fallback).
     ///   3. On arrival (within HIT_RADIUS): deal damage if target still alive, then destroy.
     /// </summary>
     public class ProjectileSystem : ISimSystem
     {
-        /// <summary>World-units per second for all projectiles in Phase 1.</summary>
+        /// <summary>
+        /// The DEFAULT/fallback projectile travel speed (world units/second). Story 3.12: projectile speed is now
+        /// per-unit (<c>EntityWorld.ProjectileSpeed</c> → <c>ProjectileStore.Speed</c>, honoured at the advance step
+        /// below); this constant is the fallback a unit gets when it omits <c>projectile_speed</c> (== the value
+        /// <c>UnitDefinition.ProjectileSpeed</c>/<c>EntityWorld.Create</c> default to), so existing data is unchanged.
+        /// </summary>
         public static readonly Fixed PROJECTILE_SPEED = Fixed.FromFloat(18f);
 
         /// <summary>Squared hit-detection radius (0.5 world units → 0.25 sqr).</summary>
@@ -94,10 +99,10 @@ namespace ProjectChimera.Combat
                     continue;
                 }
 
-                // Advance toward goal
+                // Advance toward goal at THIS projectile's per-unit speed (Story 3.12 — was the global PROJECTILE_SPEED).
                 Fixed     dist = delta.Magnitude();
                 FixedVec3 dir  = delta / dist;
-                _store.Position[i] = _store.Position[i] + dir * PROJECTILE_SPEED * dt;
+                _store.Position[i] = _store.Position[i] + dir * _store.Speed[i] * dt;
             }
         }
 

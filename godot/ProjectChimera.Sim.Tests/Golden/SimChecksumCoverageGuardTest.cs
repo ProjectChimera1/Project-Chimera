@@ -17,7 +17,7 @@ namespace ProjectChimera.Sim.Tests.Golden
     ///      mutation. If a future story adds a public per-faction array to ResourceStore but forgets to fold it
     ///      into the checksum, mutating that array leaves the hash unchanged and this test FAILS, naming the
     ///      uncovered field. This proves *actual* coverage instead of a hand-maintained list that silently drifts.
-    ///   2. <see cref="KnownWorldState_ProducesPinnedV9Hash"/> — a snapshot/tripwire: a hand-built fixed world
+    ///   2. <see cref="KnownWorldState_ProducesPinnedV10Hash"/> — a snapshot/tripwire: a hand-built fixed world
     ///      hashes to a committed constant. Any unintended change to the algorithm (reordering mixes, adding or
     ///      dropping a field) moves the constant and turns this red, forcing a conscious re-pin + AlgoVersion bump.
     ///
@@ -31,8 +31,8 @@ namespace ProjectChimera.Sim.Tests.Golden
     /// <c>EntityWorld.FeedbackProfile</c> (the first reference-typed per-entity SoA) plus a <c>CombatEvent.Feedback</c>
     /// reference on the (never-hashed) <c>CombatEventQueue</c> and a <c>ProjectileStore.Feedback</c> slot. ALL are
     /// deliberately NOT folded — presentation-read only, exactly like <see cref="EntityWorld.MeshType"/>/CategoryOf —
-    /// so they add NO fold of their own: a presentation field never moves AlgoVersion or a golden (the version is 9
-    /// and there are 17 goldens as of Story 2.12, both moved only by REAL folds like the order-queue + rally fold).
+    /// so they add NO fold of their own: a presentation field never moves AlgoVersion or a golden (the version is 10
+    /// and there are 18 goldens as of Story 3.12, both moved only by REAL folds like the Delivery + ProjectileSpeed fold).
     /// The reflection scan (ResourceStore-only) and the enumerated EntityWorld guard below both correctly ignore them;
     /// the dedicated exclusion teeth (a FeedbackProfile must not move Compute; draining the event queue must not
     /// perturb the sim) live in CombatFeedbackProfileTests.
@@ -108,22 +108,22 @@ namespace ProjectChimera.Sim.Tests.Golden
         /// hash still moves.)
         /// </summary>
         [Fact]
-        public void KnownWorldState_ProducesPinnedV9Hash()
+        public void KnownWorldState_ProducesPinnedV10Hash()
         {
-            // Algorithm version must be exactly 9 (Story 2.12's order-queue + rally fold). If this fails, the const below is stale.
-            Assert.Equal(9, SimChecksum.AlgoVersion);
+            // Algorithm version must be exactly 10 (Story 3.12's Delivery + ProjectileSpeed fold). If this fails, the const below is stale.
+            Assert.Equal(10, SimChecksum.AlgoVersion);
 
             uint actual = ComputeKnownStateHash();
 
-            // ── Pinned v9 hash for the fixed world built by ComputeKnownStateHash() ───────────────────────────
+            // ── Pinned v10 hash for the fixed world built by ComputeKnownStateHash() ──────────────────────────
             // An intentional SimChecksum algorithm change must update this value AND bump SimChecksum.AlgoVersion.
-            // The known-state world has an EMPTY order queue (OrderQueueCount == 0 per entity) and the ONE building
-            // has no rally (HasRallyPoint == false, RallyPoint == Zero, the Create default), so the v9 fold adds a
-            // Mix(0) per entity + a Mix(0)/Mix(0)/Mix(0) per building — the hash moves from v8 purely by those mixes.
-            const uint ExpectedV9Hash = 0xFD72E97E; // recorded from a green v9 run; re-pin only on an intentional algo change
-            Assert.True(actual == ExpectedV9Hash,
-                $"Known-state v9 checksum changed: expected 0x{ExpectedV9Hash:X8}, actual 0x{actual:X8}. " +
-                $"If this is an INTENTIONAL algorithm change, re-pin ExpectedV9Hash to 0x{actual:X8} and bump " +
+            // The known-state world's two entities are at their Create defaults for the v10 fields (Delivery == Hitscan,
+            // ProjectileSpeed == the 18 fallback), so the v10 fold adds a Mix((int)Hitscan) + a Mix(18.Raw) per entity —
+            // the hash moves from v9 purely by those two mixes per entity.
+            const uint ExpectedV10Hash = 0xFD627DAA; // recorded from a green v10 run; re-pin only on an intentional algo change
+            Assert.True(actual == ExpectedV10Hash,
+                $"Known-state v10 checksum changed: expected 0x{ExpectedV10Hash:X8}, actual 0x{actual:X8}. " +
+                $"If this is an INTENTIONAL algorithm change, re-pin ExpectedV10Hash to 0x{actual:X8} and bump " +
                 $"SimChecksum.AlgoVersion. If not, you broke the deterministic checksum — investigate.");
         }
 
@@ -278,6 +278,22 @@ namespace ProjectChimera.Sim.Tests.Golden
                                  Faction.Player1, Fixed.FromInt(10), Fixed.FromInt(3));
                 w.OrderQueueCount[e] = 1;
                 return () => w.OrderQueueTargetZ[e * EntityWorld.MAX_ORDER_QUEUE + 0] = -6789;
+            });
+
+            // ── v10 (Story 3.12): Delivery + ProjectileSpeed are folded — mutate each to a value != its Create default
+            //    (Delivery default Hitscan → Projectile; ProjectileSpeed default 18 → 6). A non-default value MUST move
+            //    the hash; a no-move means the v10 fold is not reading the field. ──
+            AssertFieldFoldedIntoChecksum(buildings, resources, registry, w =>
+            {
+                int e = w.Create(new FixedVec3(Fixed.FromInt(1), Fixed.Zero, Fixed.FromInt(2)),
+                                 Faction.Player1, Fixed.FromInt(10), Fixed.FromInt(3));
+                return () => w.Delivery[e] = ProjectChimera.Combat.AttackDelivery.Projectile;
+            });
+            AssertFieldFoldedIntoChecksum(buildings, resources, registry, w =>
+            {
+                int e = w.Create(new FixedVec3(Fixed.FromInt(1), Fixed.Zero, Fixed.FromInt(2)),
+                                 Faction.Player1, Fixed.FromInt(10), Fixed.FromInt(3));
+                return () => w.ProjectileSpeed[e] = Fixed.FromInt(6);
             });
 
             // ── v9 (Story 2.12, D-1): the per-building rally point is folded — HasRallyPoint AND the RallyPoint X/Z.

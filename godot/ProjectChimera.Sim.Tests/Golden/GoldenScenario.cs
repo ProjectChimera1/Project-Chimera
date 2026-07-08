@@ -141,7 +141,8 @@ namespace ProjectChimera.Sim.Tests.Golden
             int p1Ranged = world.Create(new FixedVec3(Fixed.FromInt(-10), Fixed.Zero, Fixed.FromInt(3)),
                                         Faction.Player1, Fixed.FromInt(70), Fixed.FromInt(3));
             world.EffectiveAttackDamage[p1Ranged] = Fixed.FromInt(8);
-            world.AttackRange[p1Ranged]  = Fixed.FromInt(6);  // > 2.5 => ranged => spawns projectiles
+            world.AttackRange[p1Ranged]  = Fixed.FromInt(6);  // > 2.5 => ranged
+            world.Delivery[p1Ranged]     = AttackDelivery.Projectile; // Story 3.12: preserve the old range-inferred projectile behavior (Create default is now Hitscan)
             world.AttackSpeed[p1Ranged]  = Fixed.FromInt(1);
             world.DamageTypeOf[p1Ranged] = DamageType.Pierce;
             world.ArmorTypeOf[p1Ranged]  = ArmorType.Light;

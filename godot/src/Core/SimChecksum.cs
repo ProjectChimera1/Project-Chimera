@@ -19,6 +19,8 @@ namespace ProjectChimera.Core
     ///     PatrolIndex, PatrolDir, then count-driven PatrolWaypoints X/Y/Z) — added v4 (Story 1.12)
     ///   - EntityWorld separation config: per alive entity, CollisionRadius (Raw) + SeparationPriorityOf (int) —
     ///     added v5 (Story 1.13). CategoryOf is deliberately NOT hashed (presentation-read, like MeshType).
+    ///   - EntityWorld attack delivery: per alive entity, Delivery (int) + ProjectileSpeed (Raw) — added v10
+    ///     (Story 3.12), the authorable Hitscan/Projectile axis + per-unit projectile speed that combat reads in-tick.
     ///   - EntityWorld effective stats + ability/status: per alive entity, EffectiveAttackDamage, EffectiveMaxHealth,
     ///     EffectiveMoveSpeed, Energy (all Raw), and StatusFlagsOf (int) — added v6 (Story 2.2b), now that the
     ///     ModifierStore MUTATES them mid-match. Base* stays UNFOLDED (authored, in-tick-immutable).
@@ -84,8 +86,15 @@ namespace ProjectChimera.Core
         ///        and read in-tick by SpawnTrainedUnit, so genuinely mutable sim truth (D-1). Both count/flag-driven,
         ///        all int/Fixed.Raw → cross-platform. One scheduled re-baseline of ALL goldens (the known-state world
         ///        has an empty queue + no rally, so the pin moves purely by the added Mix(0) per entity/building).
+        ///   v10 — Story 3.12: fold per-entity Delivery ((int) — Hitscan/Projectile) + ProjectileSpeed (.Raw) — the
+        ///        authorable attack-delivery axis. Like AttackRange/SplashRadius/CategoryOf these are authored spawn-
+        ///        constants whose effect also reaches the hash transitively (via Position/Health), but the story MANDATES
+        ///        a direct fold: CombatSystem branches instant-vs-projectile on Delivery, and ProjectileSystem advances at
+        ///        ProjectileSpeed, so a peer divergence in either changes combat resolution and must desync detectably.
+        ///        Both int/Fixed.Raw → cross-platform safe. One scheduled re-baseline of ALL goldens (existing units keep
+        ///        their exact behaviour — Delivery infers the old MELEE_THRESHOLD partition, ProjectileSpeed defaults to 18).
         /// </summary>
-        public const int AlgoVersion = 9;
+        public const int AlgoVersion = 10;
 
         /// <summary>
         /// Compute a full-state checksum for desync detection.
@@ -141,6 +150,14 @@ namespace ProjectChimera.Core
                 // → cross-platform safe (the new formation-separation golden is compared on BOTH CI legs).
                 hash = Mix(hash, world.CollisionRadius[i].Raw);
                 hash = Mix(hash, (int)world.SeparationPriorityOf[i]);
+
+                // ── Attack delivery (v10, Story 3.12) ─────────────────────────────
+                // Delivery (Hitscan/Projectile) branches CombatSystem's instant-vs-projectile resolution, and
+                // ProjectileSpeed drives the projectile advance step — both read in-sim, so a peer divergence in
+                // either changes combat outcomes and must desync detectably. Authored spawn-constants folded by story
+                // mandate (like AttackRange transitively via Position). int / Fixed.Raw → cross-platform safe.
+                hash = Mix(hash, (int)world.Delivery[i]);
+                hash = Mix(hash, world.ProjectileSpeed[i].Raw);
 
                 // ── Effective stats + ability resource + status (v6, Story 2.2b) ──
                 // The ModifierStore now MUTATES these mid-match (a modifier changes Effective*; an ability debits

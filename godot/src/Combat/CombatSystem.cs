@@ -46,12 +46,6 @@ namespace ProjectChimera.Combat
         // Alive/FactionOf/Position/Health/Count/Destroy members are used (all on BuildingStore, no BuildingSystem).
         private readonly BuildingStore?    _buildings;
 
-        /// <summary>
-        /// Units with AttackRange above this value use projectiles; at or below it use instant melee damage.
-        /// Matches the highest melee range in alpha_faction.json (griffin = 2.0u).
-        /// </summary>
-        private static readonly Fixed MELEE_THRESHOLD = Fixed.FromFloat(2.5f);
-
         public CombatSystem(ProjectileStore projectiles, CombatEventQueue? events = null, MatchStats? stats = null,
             DamageTable? table = null, AbilityRegistry? registry = null, ModifierStore? modifiers = null,
             BuildingStore? buildings = null)
@@ -582,9 +576,11 @@ namespace ProjectChimera.Combat
         /// Fires an attack from <paramref name="attacker"/> toward <paramref name="target"/> if
         /// the cooldown has expired.
         ///
-        /// Ranged units (AttackRange > MELEE_THRESHOLD) spawn a projectile in ProjectileStore;
-        /// the projectile flies at 18 u/s and deals damage on arrival.
-        /// Melee units deal instant damage and destroy the target if HP reaches zero.
+        /// Story 3.12: branches on the attacker's authored <c>world.Delivery</c> (NOT a range threshold). A
+        /// <see cref="AttackDelivery.Projectile"/> unit spawns a tracking projectile — travelling at its per-unit
+        /// <c>world.ProjectileSpeed</c> — that resolves damage on arrival, regardless of AttackRange; a
+        /// <see cref="AttackDelivery.Hitscan"/> unit deals instant damage and destroys the target if HP reaches zero,
+        /// regardless of AttackRange.
         /// </summary>
         private void TryDealDamage(EntityWorld world, int attacker, int target)
         {
@@ -592,9 +588,10 @@ namespace ProjectChimera.Combat
 
             world.AttackCooldown[attacker] = world.AttackSpeed[attacker];
 
-            if (world.AttackRange[attacker] > MELEE_THRESHOLD)
+            if (world.Delivery[attacker] == AttackDelivery.Projectile)
             {
-                // Ranged — spawn a tracking projectile; damage resolved by ProjectileSystem on hit
+                // Projectile delivery — spawn a tracking projectile at the unit's per-unit speed; damage resolved by
+                // ProjectileSystem on hit.
                 _projectiles.Spawn(
                     world.Position[attacker],
                     target,
@@ -603,12 +600,13 @@ namespace ProjectChimera.Combat
                     world.DamageTypeOf[attacker],
                     world.ArmorTypeOf[target],
                     world.FactionOf[attacker],
+                    world.ProjectileSpeed[attacker], // Story 3.12 — per-unit projectile speed
                     world.SplashRadius[attacker],
                     world.FeedbackProfile[attacker]); // Story 2.7 SD-4: snapshot the firing unit's override (attacker id is lost by impact)
             }
             else
             {
-                // Melee — instant damage. Event BEFORE Apply; attacker-cleanup AFTER, gated on death —
+                // Hitscan — instant damage. Event BEFORE Apply; attacker-cleanup AFTER, gated on death —
                 // operation order preserved exactly so the golden checksums stay byte-identical (Story 1.6 AC2).
                 _events?.Push(CombatEventType.MeleeHit, world.Position[target], world.FeedbackProfile[attacker]); // Story 2.7
 
@@ -629,9 +627,10 @@ namespace ProjectChimera.Combat
 
         /// <summary>
         /// Story 2.9a (AC2/AC2.6) — deal cooldown-gated damage to a BUILDING, mirroring <see cref="TryDealDamage"/>'s
-        /// melee/ranged split. Melee (<c>AttackRange ≤ MELEE_THRESHOLD</c>) resolves instant matrix damage via the shared
-        /// <see cref="DamageResolver.ApplyToBuilding"/> helper; ranged spawns a real building-target projectile that flies
-        /// to the building and resolves on impact (<see cref="ProjectileSystem"/>, D-4). Buildings are always
+        /// hitscan/projectile split. Story 3.12: branches on the attacker's authored <c>world.Delivery</c> (NOT a range
+        /// threshold). Hitscan resolves instant matrix damage via the shared <see cref="DamageResolver.ApplyToBuilding"/>
+        /// helper; Projectile spawns a real building-target projectile — at the unit's per-unit speed — that flies to the
+        /// building and resolves on impact (<see cref="ProjectileSystem"/>, D-4). Buildings are always
         /// <see cref="ArmorType.Fortified"/> (D-3) with no flat armor. Caller guarantees <c>_buildings != null</c> and a
         /// valid, alive, in-range <paramref name="b"/> (validated in <see cref="TickAttackBuildingCombat"/>).
         /// </summary>
@@ -641,9 +640,9 @@ namespace ProjectChimera.Combat
 
             world.AttackCooldown[attacker] = world.AttackSpeed[attacker];
 
-            if (world.AttackRange[attacker] > MELEE_THRESHOLD)
+            if (world.Delivery[attacker] == AttackDelivery.Projectile)
             {
-                // Ranged — spawn a projectile that flies to the building and resolves Fortified matrix damage on impact.
+                // Projectile — spawn a projectile that flies to the building and resolves Fortified matrix damage on impact.
                 _projectiles.Spawn(
                     world.Position[attacker],
                     _buildings!.PackRef(b),         // Story 2.13 D-3: PACKED building ref (targetIsBuilding disambiguates it from an entity id)
@@ -652,13 +651,14 @@ namespace ProjectChimera.Combat
                     world.DamageTypeOf[attacker],
                     ArmorType.Fortified,            // D-3: 100% of building JSON authors Fortified; no per-building armor SoA
                     world.FactionOf[attacker],
+                    world.ProjectileSpeed[attacker], // Story 3.12 — per-unit projectile speed
                     world.SplashRadius[attacker],
                     world.FeedbackProfile[attacker],
                     targetIsBuilding: true);        // Story 2.9a (Task 4b)
             }
             else
             {
-                // Melee — instant matrix damage via the SINGLE shared building-damage entry point.
+                // Hitscan — instant matrix damage via the SINGLE shared building-damage entry point.
                 _events?.Push(CombatEventType.MeleeHit, _buildings!.Position[b], world.FeedbackProfile[attacker]);
                 if (DamageResolver.ApplyToBuilding(_buildings!, b, world.EffectiveAttackDamage[attacker],
                                                    world.DamageTypeOf[attacker], _table, _events))

@@ -91,6 +91,37 @@ namespace ProjectChimera.Core.Definitions
         public float SplashRadius { get; set; } = 0f;
 
         /// <summary>
+        /// The EXPLICIT, authorable attack-delivery mode (Story 3.12) — <c>"Hitscan"</c> | <c>"Projectile"</c>,
+        /// decoupled from <see cref="AttackRange"/>. Resolved to <see cref="ProjectChimera.Combat.AttackDelivery"/>
+        /// via <see cref="ResolveDelivery"/> and written to <c>EntityWorld.Delivery</c> in
+        /// <see cref="ProjectChimera.Core.EntityWorld.ApplyUnitDefinition"/> (the single def→SoA mapper).
+        ///
+        /// <para>Nullable, default <b>null</b> (NOT <c>"Hitscan"</c>): a flat Hitscan default would silently turn every
+        /// shipped ranged unit (archer, mage, siege, …) into a hitscan attacker. Instead, when <c>delivery</c> is
+        /// omitted/null (or an unknown string), <see cref="ResolveDelivery"/> falls back to the EXACT old range
+        /// inference — <c>quantizedRange &gt; </c><see cref="LegacyDeliveryThreshold"/> ⇒ Projectile, else Hitscan —
+        /// the identical Fixed comparison the deleted <c>CombatSystem.MELEE_THRESHOLD</c> used, so the partition is
+        /// byte-identical for all existing data. Loaded through the LENIENT faction loader, so it MUST be
+        /// <c>string?</c> (an enum-typed field would throw on that path); an unknown token is rejected fail-closed by
+        /// <see cref="UnitDefinitionValidator"/> (the accessor/validator split), NOT silently by
+        /// <see cref="ResolveDelivery"/>.</para>
+        /// </summary>
+        [JsonPropertyName("delivery")]
+        public string? Delivery { get; set; }
+
+        /// <summary>
+        /// Optional per-unit projectile speed in world units/second (Story 3.12) — applied only when the unit's
+        /// effective delivery is <see cref="ProjectChimera.Combat.AttackDelivery.Projectile"/>. Authored float,
+        /// quantized ONCE to <see cref="ProjectChimera.Core.Fixed"/> in
+        /// <see cref="ProjectChimera.Core.EntityWorld.ApplyUnitDefinition"/> (the single float→Fixed boundary, like the
+        /// other stats) and stored per-entity in <c>EntityWorld.ProjectileSpeed</c>. Default <b>18</b> == the old
+        /// hardcoded global (<c>ProjectileSystem.PROJECTILE_SPEED</c>), so omitting it leaves every existing ranged
+        /// unit's projectiles flying at the exact same speed (and <c>FactionWriter</c> omits the key on round-trip).
+        /// </summary>
+        [JsonPropertyName("projectile_speed")]
+        public float ProjectileSpeed { get; set; } = 18f;
+
+        /// <summary>
         /// Per-unit collision/separation radius in world units (Story 1.13, DG-2 / FR-54). Summed with a
         /// neighbour's radius to form the per-pair contact threshold in <c>MovementSystem</c>'s separation
         /// (replacing the old flat constant). Default 1.0 so two unauthored units sum to a 2.0 contact distance
@@ -291,6 +322,43 @@ namespace ProjectChimera.Core.Definitions
         }
 
         // ── Enum conversions ────────────────────────────────────────────────────
+
+        /// <summary>
+        /// The legacy delivery threshold (Story 3.12) — the EXACT Fixed value the deleted
+        /// <c>CombatSystem.MELEE_THRESHOLD</c> used (<c>Fixed.FromFloat(2.5f)</c>). A quantized attack range STRICTLY
+        /// GREATER than this inferred a ranged/projectile attacker under the old range-based rule. Kept here (not in
+        /// CombatSystem) because <see cref="ResolveDelivery"/> is the one place that inference now lives. A named
+        /// <c>static readonly Fixed</c> so the determinism analyzer's CHM0004 magic-number advisory stays clean.
+        /// </summary>
+        public static readonly Fixed LegacyDeliveryThreshold = Fixed.FromFloat(2.5f);
+
+        /// <summary>
+        /// Resolve the authored <c>delivery</c> string to <see cref="ProjectChimera.Combat.AttackDelivery"/> (Story
+        /// 3.12). An explicit <c>"Hitscan"</c>/<c>"Projectile"</c> wins; a null OR unknown string FAILS OPEN to the
+        /// exact old range inference (<paramref name="quantizedRange"/> &gt; <see cref="LegacyDeliveryThreshold"/> ⇒
+        /// Projectile, else Hitscan) — so legacy data with no <c>delivery</c> key keeps its byte-identical behaviour
+        /// (the deleted MELEE_THRESHOLD partition). The lenient fail-open mirrors <see cref="ParsedTags"/>; the
+        /// fail-closed REJECT of an invalid string is <see cref="UnitDefinitionValidator"/>'s job (the accessor/
+        /// validator split). Pass the SoA-quantized range (<c>EntityWorld.AttackRange[id]</c>) so the inference matches
+        /// the value combat actually reads.
+        /// </summary>
+        public Combat.AttackDelivery ResolveDelivery(Fixed quantizedRange) => Delivery switch
+        {
+            "Hitscan"    => Combat.AttackDelivery.Hitscan,
+            "Projectile" => Combat.AttackDelivery.Projectile,
+            _            => quantizedRange > LegacyDeliveryThreshold
+                                ? Combat.AttackDelivery.Projectile
+                                : Combat.AttackDelivery.Hitscan,
+        };
+
+        /// <summary>
+        /// Editor convenience (Story 3.12): the effective delivery as the canonical <c>"Hitscan"</c>/<c>"Projectile"</c>
+        /// string, resolving a null/unknown authored value through the SAME <see cref="ResolveDelivery"/> inference over
+        /// this def's authored <see cref="AttackRange"/>. The Unit Card Editor displays this so an unauthored ranged unit
+        /// still shows "Projectile", and drives the conditional <c>projectile_speed</c> row's visibility.
+        /// </summary>
+        public string EffectiveDeliveryString() =>
+            ResolveDelivery(Fixed.FromFloat(AttackRange)) == Combat.AttackDelivery.Projectile ? "Projectile" : "Hitscan";
 
         /// <summary>DamageType string from JSON resolved to enum.</summary>
         public DamageType ParsedDamageType => DamageType switch
