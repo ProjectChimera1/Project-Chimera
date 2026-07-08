@@ -108,7 +108,7 @@ development_status:
   epic-4: backlog
   4-1-data-drive-the-building-definition-runtime-building-store: done
   4-2-data-driven-tech-prerequisite-resolution-with-import-time-cycle-referential-lint: done
-  4-3-n-resource-registry-with-sparse-cost-maps-generalize-ore-crystal: backlog
+  4-3-n-resource-registry-with-sparse-cost-maps-generalize-ore-crystal: done
   4-4-data-driven-supply-cap-model-per-scenario: backlog
   4-5-in-app-building-definition-editor-unit-card-pattern-right-dock-inspector: backlog
   4-6-visual-tech-tree-editor-tier-laned-graph-drag-out-port-to-wire-prerequisites: backlog

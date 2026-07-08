@@ -314,6 +314,34 @@ namespace ProjectChimera.Core.Definitions
                 return ValidationResult.Fail(
                     $"scenario.inventory_slot_count={isc} must be in [1, {ProjectChimera.Core.HeroStore.INVENTORY_SLOTS}].", validated);
 
+            // ── Resource registry (Story 4.3, AR-39) — fail-closed when present so a hand-edited/cheat registry
+            // (a duplicate/blank id, a non-finite/negative starting_amount, or an unrecognized collection_model) is
+            // rejected at the pre-tick gate. A null registry (every existing scenario) ⇒ nothing to validate ⇒ the
+            // pass path is unchanged (no golden/behavior move). Authoring-only — NOT folded into any checksum/hash;
+            // self-contained (no FactionDefinition awareness — see the spec's Design Notes on why a cost-map key is
+            // not cross-referenced against this registry). First-fail, like the other loops. ──
+            if (m.Resources != null)
+            {
+                var resourceIds = new HashSet<string>();
+                for (int i = 0; i < m.Resources.Length; i++)
+                {
+                    ResourceDefinition r = m.Resources[i];
+                    if (r is null)
+                        return ValidationResult.Fail($"scenario.resources[{i}] is null.", validated);
+                    if (string.IsNullOrWhiteSpace(r.Id))
+                        return ValidationResult.Fail($"scenario.resources[{i}].id must be a non-empty id.", validated);
+                    if (!resourceIds.Add(r.Id))
+                        return ValidationResult.Fail(
+                            $"scenario.resources[{i}].id='{r.Id}' is a duplicate.", validated);
+                    string? e = CheckNonNeg($"scenario.resources[{i}].starting_amount", r.StartingAmount);
+                    if (e != null) return ValidationResult.Fail(e, validated);
+                    if (System.Array.IndexOf(ResourceDefinition.KnownCollectionModels, r.CollectionModel) < 0)
+                        return ValidationResult.Fail(
+                            $"scenario.resources[{i}].collection_model='{r.CollectionModel}' is not a known collection model " +
+                            $"({string.Join("/", ResourceDefinition.KnownCollectionModels)}).", validated);
+                }
+            }
+
             return ValidationResult.Pass(validated);
         }
 

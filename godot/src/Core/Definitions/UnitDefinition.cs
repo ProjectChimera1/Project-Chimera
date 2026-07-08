@@ -1,4 +1,5 @@
 #nullable enable
+using System.Collections.Generic;
 using System.Text.Json.Serialization;
 using ProjectChimera.Combat;
 using ProjectChimera.Core; // UnitCategory, SeparationPriority (sim enums)
@@ -66,6 +67,38 @@ namespace ProjectChimera.Core.Definitions
         /// <summary>Crystal cost (advanced units only).</summary>
         [JsonPropertyName("cost_crystal")]
         public int CostCrystal { get; set; } = 0;
+
+        /// <summary>
+        /// The authored sparse N-resource cost map (Story 4.3) — JSON keys are resource ids (today only
+        /// <c>"ore"</c>/<c>"crystal"</c> have runtime backing; see <see cref="ResourceCostValidator"/>), values are
+        /// non-negative int amounts. Null (the default) means "not authored" — <see cref="ResolvedCost"/> then
+        /// derives the legacy <see cref="CostOre"/>/<see cref="CostCrystal"/> map, so every existing unit/building
+        /// with no <c>cost</c> key behaves byte-identically to today. An authored EMPTY map (<c>"cost": {}</c>) is
+        /// deliberately distinct from null — it means "free" (verbatim, no legacy fallback).
+        /// </summary>
+        [JsonPropertyName("cost")]
+        public Dictionary<string, int>? Cost { get; set; }
+
+        /// <summary>
+        /// The resolved sparse cost map this unit/building actually trains/constructs for: <see cref="Cost"/>
+        /// verbatim when authored (even if empty ⇒ free), else the legacy <c>{ "ore": CostOre, "crystal": CostCrystal }</c>
+        /// map with zero-valued entries omitted — the exact derivation <see cref="BuildingDefinition.ConstructionCost"/>
+        /// used before Story 4.3 generalized it from Building-only to every <see cref="UnitDefinition"/> (units train
+        /// with the same sparse map buildings construct with). Excluded from JSON (computed, never authored directly).
+        /// </summary>
+        [JsonIgnore]
+        public IReadOnlyDictionary<string, int> ResolvedCost => Cost ?? LegacyCost();
+
+        /// <summary>Builds <c>{ "ore": CostOre, "crystal": CostCrystal }</c>, omitting zero-valued entries (a free
+        /// resource is simply absent from the map, not a zero entry) — the pre-4.3 <c>BuildingDefinition.ConstructionCost</c>
+        /// derivation, moved here verbatim so it now backs <see cref="ResolvedCost"/> for every unit, not just buildings.</summary>
+        private Dictionary<string, int> LegacyCost()
+        {
+            var map = new Dictionary<string, int>();
+            if (CostOre != 0) map["ore"] = CostOre;
+            if (CostCrystal != 0) map["crystal"] = CostCrystal;
+            return map;
+        }
 
         /// <summary>Supply consumed by one of these units.</summary>
         [JsonPropertyName("supply")]

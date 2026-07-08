@@ -242,5 +242,21 @@ namespace ProjectChimera.Core.Definitions
         [JsonPropertyName("inventory_slot_count")]
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public int? InventorySlotCount { get; set; }
+
+        /// <summary>
+        /// The scenario-declared, ordered resource registry (Story 4.3) — id/display/starting-amount/collection-
+        /// model authoring metadata for future resources. NULL (the default, every existing scenario) ⇒ the
+        /// implicit <see cref="ResourceDefinition.DefaultRegistry"/> (today's Ore/Crystal), and the block is
+        /// OMITTED from serialization when null (<see cref="JsonIgnoreCondition.WhenWritingNull"/>, the
+        /// <see cref="RevivalRule"/>/<see cref="Items"/> omit-when-null precedent) — so every existing scenario
+        /// serializes byte-for-byte identically, moving no golden. Validated for internal well-formedness (unique
+        /// non-empty ids, non-negative finite starting amounts) by <see cref="ScenarioValidator"/> when non-null.
+        /// Authoring-only this story — NOT wired into <see cref="ScenarioApplier"/> (starting balances stay on
+        /// <see cref="ScenarioPlayerSlot.StartOre"/>/<see cref="ScenarioPlayerSlot.StartCrystal"/>) and NOT folded
+        /// into any checksum/hash (mirrors the <see cref="PersistenceManifest"/> authoring-only precedent).
+        /// </summary>
+        [JsonPropertyName("resources")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public ResourceDefinition[]? Resources { get; set; }
     }
 }

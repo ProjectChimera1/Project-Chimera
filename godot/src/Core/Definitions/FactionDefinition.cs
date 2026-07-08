@@ -119,6 +119,10 @@ namespace ProjectChimera.Core.Definitions
         /// <c>errors</c> list — a duplicate building id, a <c>Buildings[]</c>/<c>Units[]</c> <c>prerequisites</c>
         /// entry referencing an unknown building id, or a prerequisite cycle among buildings (direct or self),
         /// each fails the whole load exactly like a missing required building field, list-all, joined by newlines.
+        ///
+        /// Story 4.3 (AC2): additively, <see cref="ResourceCostValidator"/> runs over the same aggregate list — an
+        /// authored <c>cost</c> map entry naming a resource id with no runtime backing (anything outside
+        /// <c>{"ore","crystal"}</c>) or an out-of-range amount fails the whole load, list-all, joined by newlines.
         /// </summary>
         public static FactionDefinition LoadFromFile(string absolutePath)
         {
@@ -135,6 +139,7 @@ namespace ProjectChimera.Core.Definitions
                         errors.Add(message);
             }
             errors.AddRange(TechTreeValidator.Validate(def));
+            errors.AddRange(ResourceCostValidator.Validate(def));
             if (errors.Count > 0)
                 throw new System.InvalidOperationException(string.Join("\n", errors));
 

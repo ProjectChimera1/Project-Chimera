@@ -42,22 +42,14 @@ namespace ProjectChimera.Core.Definitions
         public string MinGameVersion { get; set; } = "0.1";
 
         /// <summary>
-        /// The construction cost as a sparse resource map, COMPUTED (not a raw JSON field) from the inherited
-        /// <see cref="UnitDefinition.CostOre"/>/<see cref="UnitDefinition.CostCrystal"/> — keys <c>"ore"</c>/<c>"crystal"</c>,
-        /// omitted when 0 (a free resource is simply absent from the map, not a zero entry). Story 4.3 owns the real
-        /// authored sparse N-resource schema; this derives today's two-resource map from the existing fields rather than
-        /// pre-empting that schema with a second, soon-to-be-replaced JSON surface.
+        /// The construction cost as a sparse resource map. Story 4.3: now a thin alias for the inherited
+        /// <see cref="UnitDefinition.ResolvedCost"/> (the authored sparse <c>cost</c> map when present, else the
+        /// legacy <c>{ "ore": CostOre, "crystal": CostCrystal }</c> derivation) — the name is kept so no consumer
+        /// breaks, but the real authored sparse N-resource schema (<see cref="UnitDefinition.Cost"/>) now lives on
+        /// the base type, generalized from Building-only to every <see cref="UnitDefinition"/> (units train with
+        /// the same sparse map buildings construct with).
         /// </summary>
         [JsonIgnore]
-        public IReadOnlyDictionary<string, int> ConstructionCost
-        {
-            get
-            {
-                var map = new Dictionary<string, int>();
-                if (CostOre != 0) map["ore"] = CostOre;
-                if (CostCrystal != 0) map["crystal"] = CostCrystal;
-                return map;
-            }
-        }
+        public IReadOnlyDictionary<string, int> ConstructionCost => ResolvedCost;
     }
 }

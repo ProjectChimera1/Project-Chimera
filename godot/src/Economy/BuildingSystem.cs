@@ -346,18 +346,15 @@ namespace ProjectChimera.Economy
             byte supply = (byte)(def?.Supply ?? 1);
             if (!resources.HasSupply(faction, supply)) return false;
 
-            // Story 2.9b (AC2): multi-resource cost — check BOTH ore and crystal BEFORE spending EITHER, mirroring
-            // AbilityCastSystem.TryCast's check-all-then-debit-all contract. A unit whose ore passes but crystal
-            // fails must spend NOTHING (the partial-spend bug this ordering prevents). No FALLBACK_COST_CRYSTAL
-            // exists, so a null def defaults crystal to 0 (symmetric with the costOre null-coalesce — defensive; an
-            // unresolvable/empty-category def already returns before this point in practice). Every existing
-            // cost_crystal:0 unit is a no-op here (CanAfford/Spend of 0 always succeeds) — AC2.3, byte-for-byte.
-            float costOre     = def?.CostOre     ?? FALLBACK_COST_ORE;
-            float costCrystal = def?.CostCrystal ?? 0f;
-            if (!resources.CanAffordOre(faction, Fixed.FromFloat(costOre)))         return false;
-            if (!resources.CanAffordCrystal(faction, Fixed.FromFloat(costCrystal))) return false;
-            resources.SpendOre(faction, Fixed.FromFloat(costOre));
-            resources.SpendCrystal(faction, Fixed.FromFloat(costCrystal));
+            // Story 4.3: sparse cost-map spend — check-all-then-spend-all over the resolved cost map (generalizes
+            // the Story 2.9b ore+crystal atomicity to N resources). A null def (empty-category fallback) has no
+            // FALLBACK_COST_CRYSTAL, so it falls back to a single-entry ore-only map (symmetric with the old
+            // costOre null-coalesce). Every existing cost_crystal:0 unit is a no-op here (an absent/zero entry
+            // never fails CanAfford) — AC2.3, byte-for-byte; a unit whose ore passes but crystal fails still spends
+            // NOTHING (Spend's own check-all-then-spend-all).
+            var cost = def?.ResolvedCost ?? new Dictionary<string, int> { { "ore", (int)FALLBACK_COST_ORE } };
+            if (!resources.CanAfford(faction, cost)) return false;
+            resources.Spend(faction, cost);
 
             // Persist the CONCRETE unit so SpawnTrainedUnit trains exactly this one (not a re-derived
             // first-of-category). Stored as (Units index + 1) so 0 stays "idle". An empty-category default
@@ -684,9 +681,10 @@ namespace ProjectChimera.Economy
             string[]? prereqs = bdef?.Prerequisites;
             if (!TechTreeChecker.AreMet(_buildings, faction, prereqs)) return -1;
 
-            // Ore cost
-            float costOre = GetBuildingCost(type, faction);
-            if (costOre > 0f && !resources.SpendOre(faction, Fixed.FromFloat(costOre))) return -1;
+            // Story 4.3: sparse cost-map spend (was ore-only — buildings never charged crystal, a latent gap this
+            // generalization fixes as a direct consequence of routing through the real resolved cost map).
+            var cost = GetBuildingCost(type, faction);
+            if (!resources.Spend(faction, cost)) return -1;
 
             // Place building (starts under construction). Story 3.14: carry the authored revives_heroes capability so a
             // player-built revive building (not just scenario-placed) actually works. Story 4.1 (AC1/AC2): thread the
@@ -701,7 +699,7 @@ namespace ProjectChimera.Economy
                 constructionDuration: bdef?.ConstructionTime is float ct ? Fixed.FromFloat(ct) : (Fixed?)null);
             if (bId < 0)
             {
-                if (costOre > 0f) resources.AddOre(faction, Fixed.FromFloat(costOre)); // refund
+                resources.Add(faction, cost); // refund — unconditional; an empty/all-zero map is a no-op
                 return -1;
             }
 
@@ -718,13 +716,18 @@ namespace ProjectChimera.Economy
         }
 
         /// <summary>
-        /// Returns the ore cost to place the given building type for the faction.
-        /// Falls back to 0 when no definition is found (allowing free placement).
+        /// Returns the sparse resolved cost map to place the given building type for the faction (Story 4.3 —
+        /// was ore-only; buildings never charged crystal, a latent gap this fixes). Falls back to a fresh empty map
+        /// (free placement) when no definition is found — a fresh instance per call (review patch), not a shared
+        /// static: a caller downcasting the returned <see cref="IReadOnlyDictionary{TKey,TValue}"/> back to
+        /// <see cref="Dictionary{TKey,TValue}"/> and mutating it can never corrupt every future no-definition-found
+        /// lookup. Consumed identically at both call sites (<see cref="QueueWorkerBuild"/>'s spend/refund,
+        /// <see cref="ProjectChimera.UI.CommandCardSystem"/>'s build-button display).
         /// </summary>
-        public float GetBuildingCost(BuildingType type, Faction faction)
+        public IReadOnlyDictionary<string, int> GetBuildingCost(BuildingType type, Faction faction)
         {
             string id = TechTreeChecker.BuildingTypeId(type);
-            return GetFactionDef(faction)?.GetBuilding(id)?.CostOre ?? 0f;
+            return GetFactionDef(faction)?.GetBuilding(id)?.ResolvedCost ?? new Dictionary<string, int>();
         }
 
         /// <summary>

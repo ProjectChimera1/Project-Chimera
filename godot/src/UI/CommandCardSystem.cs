@@ -1,4 +1,6 @@
 #nullable enable
+using System.Collections.Generic;
+using System.Linq;
 using Godot;
 using ProjectChimera.Core;
 using ProjectChimera.Core.Definitions;
@@ -332,16 +334,19 @@ namespace ProjectChimera.UI
                     var (unitIndex, def) = options[i];
                     _trainUnitIndices[i]  = unitIndex;
 
-                    int   costOre     = def.CostOre;
-                    int   costCrystal = def.CostCrystal;   // Story 2.9b (AC2.2)
+                    // Story 4.3: the resolved sparse cost map (legacy cost_ore/cost_crystal derivation when no
+                    // authored `cost` — ore-then-crystal insertion order, matching today's text byte-for-byte).
+                    var   cost        = def.ResolvedCost;
+                    int   costOre     = cost.TryGetValue("ore", out int o) ? o : 0;
+                    int   costCrystal = cost.TryGetValue("crystal", out int c) ? c : 0;   // Story 2.9b (AC2.2)
                     float trainTime   = def.TrainTime;
                     byte  supply      = (byte)def.Supply;
 
-                    bool    canAfford     = _resources.CanAffordOre(faction, Fixed.FromFloat(costOre));
-                    // Story 2.9b (AC2.2): crystal-affordability preview — IDENTICAL to TrainUnit's sim check, in this
-                    // method's own Fixed.FromFloat(cost) local convention (not RefreshAbilityCard's Fixed.FromInt), so
-                    // the greyed-out button never diverges from what the sim would refuse.
-                    bool    crystalOk     = _resources.CanAffordCrystal(faction, Fixed.FromFloat(costCrystal));
+                    bool    canAfford     = _resources.CanAffordOre(faction, Fixed.FromInt(costOre));
+                    // Story 2.9b (AC2.2): crystal-affordability preview — IDENTICAL to TrainUnit's sim check (which
+                    // now spends via the same resolved cost map, quantized the same way — Fixed.FromInt), so the
+                    // greyed-out button never diverges from what the sim would refuse.
+                    bool    crystalOk     = _resources.CanAffordCrystal(faction, Fixed.FromInt(costCrystal));
                     bool    hasSupply     = _resources.HasSupply(faction, supply);
                     string? missingPrereq = _buildSys.GetUnmetPrereq(bId, unitIndex); // per-candidate prereq
                     bool    prereqsMet    = missingPrereq == null;
@@ -352,18 +357,16 @@ namespace ProjectChimera.UI
                     // Dim prereq-locked options (don't hide them) so the player sees what unlocks later.
                     _trainBtns[i].Modulate  = prereqsMet ? Colors.White : new Color(1f, 1f, 1f, 0.6f);
 
-                    // Story 2.9b (AC2.3): the crystal suffix appears ONLY for a nonzero cost, so every existing
-                    // cost_crystal:0 unit's button text is byte-for-byte unchanged.
-                    string costSuffix = costCrystal > 0 ? $" · {costCrystal} crystal" : "";
+                    string costText = FormatCost(cost, emptyText: "(free)");
                     string note = !prereqsMet ? $"[need: {missingPrereq}]"
                                 : !canAfford  ? "[need ore]"
                                 : !crystalOk  ? "[need crystal]"
                                 : !hasSupply  ? "[supply full]"
-                                : $"{costOre} ore{costSuffix} · {trainTime:F0}s";
+                                : $"{costText} · {trainTime:F0}s";
                     _trainBtns[i].Text        = $"{def.DisplayName}\n{note}";
-                    // Story 2.9b (review patch): surface crystal in the tooltip too, mirroring the button-face costSuffix,
-                    // so a crystal-costed unit's hover text matches what the sim charges (empty for cost_crystal:0 units).
-                    _trainBtns[i].TooltipText = $"{def.DisplayName} — {costOre} ore{costSuffix}, {trainTime:F0}s train"; // NFR-2
+                    // Story 2.9b (review patch): surface cost in the tooltip too, mirroring the button-face text,
+                    // so a multi-resource unit's hover text matches what the sim charges.
+                    _trainBtns[i].TooltipText = $"{def.DisplayName} — {costText}, {trainTime:F0}s train"; // NFR-2
                     _trainBtns[i].Visible     = true;
                 }
             }
@@ -938,18 +941,24 @@ namespace ProjectChimera.UI
             for (int i = 0; i < _buildBtns.Length; i++)
             {
                 var bType   = WORKER_BUILD_TYPES[i];
-                float cost  = _buildSys.GetBuildingCost(bType, faction);
-                string? pre = _buildSys.GetBuildingPlacePrereq(bType, faction);
+                // Story 4.3: the resolved sparse cost map (was ore-only; buildings never charged crystal, a latent
+                // gap this generalization fixes — the affordability preview now checks every resource the sim
+                // actually spends, so a crystal-costed building can never show enabled when unaffordable).
+                var     cost = _buildSys.GetBuildingCost(bType, faction);
+                string? pre  = _buildSys.GetBuildingPlacePrereq(bType, faction);
 
-                bool canAfford = _resources.CanAffordOre(faction, Fixed.FromFloat(cost));
+                bool canAfford = _resources.CanAfford(faction, cost);
                 bool prereqMet = pre == null;
 
                 _buildBtns[i].Disabled = isBuilding || !prereqMet || !canAfford;
 
+                // Story 4.3 (review patch): "[need ore]" assumed ore was always the only spendable resource — now
+                // that a building's cost map can include crystal too, name the shortfall generically (mirrors the
+                // shop button's own "[need resources]" phrasing a few methods above, the established precedent for
+                // a canAfford that aggregates more than one resource without attributing the specific one short).
                 string note = !prereqMet ? $"\n[need: {pre}]"
-                            : !canAfford  ? "\n[need ore]"
-                            : cost > 0f   ? $"\n{(int)cost} ore"
-                            : "\n(free)";
+                            : !canAfford  ? "\n[need resources]"
+                            : $"\n{FormatCost(cost, emptyText: "(free)")}";
                 _buildBtns[i].Text = BuildingTypeName(bType) + note;
             }
         }
@@ -1126,5 +1135,18 @@ namespace ProjectChimera.UI
             BuildingType.Aviary        => "Aviary",
             _ => "Building"
         };
+
+        /// <summary>
+        /// Story 4.3: format a resolved sparse cost map for display — empty ⇒ <paramref name="emptyText"/> (both
+        /// call sites use <c>"(free)"</c>: the build-button site's pre-4.3 phrasing, and the train-button site's
+        /// review-pass fix — the old unconditional <c>"{costOre} ore"</c> text implied every unit cost at least
+        /// some ore, which stopped being true the moment a unit could author an explicit empty <c>cost</c> map or a
+        /// legacy-derived cost of 0/0), else each entry as <c>"{amount} {resourceId}"</c> joined by <c>" · "</c>.
+        /// For the legacy-derived map (no authored <c>cost</c> key) the dictionary's insertion order is
+        /// ore-then-crystal (<see cref="UnitDefinition.ResolvedCost"/>'s <c>LegacyCost</c> derivation), matching
+        /// today's hardcoded "{ore} ore · {crystal} crystal" text byte-for-byte for existing (nonzero-cost) content.
+        /// </summary>
+        private static string FormatCost(IReadOnlyDictionary<string, int> cost, string emptyText) =>
+            cost.Count == 0 ? emptyText : string.Join(" · ", cost.Select(kv => $"{kv.Value} {kv.Key}"));
     }
 }

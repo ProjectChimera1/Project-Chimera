@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+
 namespace ProjectChimera.Core
 {
     /// <summary>
@@ -103,6 +105,65 @@ namespace ProjectChimera.Core
             if (!CanAffordCrystal(faction, cost)) return false;
             Crystal[(int)faction] = Crystal[(int)faction] - cost;
             return true;
+        }
+
+        // ── Sparse cost-map API (Story 4.3) ─────────────────────────────────────
+        // Generalizes the per-resource Ore/Crystal API to an authored sparse `{resourceId: amount}` map (e.g.
+        // UnitDefinition.ResolvedCost) WITHOUT restructuring the underlying Ore[]/Crystal[] arrays: "ore"/"crystal"
+        // route to the existing per-resource methods; any other key is fail-closed (unreachable for validated
+        // content — ResourceCostValidator rejects any other key at import time). Every existing call site
+        // (AbilityCastSystem, BuyItemCommand, ReviveHeroCommand, AiOpponentSystem) keeps using the per-resource
+        // methods directly and is untouched by this addition.
+
+        /// <summary>True iff the faction can afford EVERY entry in <paramref name="cost"/>. An unknown resource id
+        /// (no runtime backing) fails closed — CanAfford returns false rather than silently ignoring the key.
+        /// Amounts quantize via <see cref="Fixed.FromInt"/> (exact for the <c>int</c> cost type).</summary>
+        public bool CanAfford(Faction faction, IReadOnlyDictionary<string, int> cost)
+        {
+            foreach (var (key, amount) in cost)
+            {
+                switch (key)
+                {
+                    case "ore":     if (!CanAffordOre(faction, Fixed.FromInt(amount)))     return false; break;
+                    case "crystal": if (!CanAffordCrystal(faction, Fixed.FromInt(amount))) return false; break;
+                    default:        return false; // unregistered resource id — fail closed
+                }
+            }
+            return true;
+        }
+
+        /// <summary>Atomic spend of every entry in <paramref name="cost"/>: <see cref="CanAfford"/> first, then
+        /// spend every key only if all afford (check-all-then-spend-all — mirrors every existing cost site in this
+        /// file). Returns false (and spends nothing) if any key is unaffordable or unregistered.</summary>
+        public bool Spend(Faction faction, IReadOnlyDictionary<string, int> cost)
+        {
+            if (!CanAfford(faction, cost)) return false;
+            foreach (var (key, amount) in cost)
+            {
+                switch (key)
+                {
+                    case "ore":     SpendOre(faction, Fixed.FromInt(amount));     break;
+                    case "crystal": SpendCrystal(faction, Fixed.FromInt(amount)); break;
+                    // No default: CanAfford already fails closed on an unknown key, so this loop never reaches
+                    // one — Spend is only ever called after CanAfford has passed.
+                }
+            }
+            return true;
+        }
+
+        /// <summary>Add every entry in <paramref name="amounts"/> (e.g. a placement-failure refund). An unknown
+        /// resource id is silently ignored (there is nothing to credit it to) — refunds are best-effort restitution
+        /// of a prior Spend, never a new fail-closed gate.</summary>
+        public void Add(Faction faction, IReadOnlyDictionary<string, int> amounts)
+        {
+            foreach (var (key, amount) in amounts)
+            {
+                switch (key)
+                {
+                    case "ore":     AddOre(faction, Fixed.FromInt(amount));     break;
+                    case "crystal": AddCrystal(faction, Fixed.FromInt(amount)); break;
+                }
+            }
         }
     }
 }

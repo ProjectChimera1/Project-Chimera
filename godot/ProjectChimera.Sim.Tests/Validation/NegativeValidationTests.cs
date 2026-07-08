@@ -336,5 +336,110 @@ namespace ProjectChimera.Sim.Tests.Validation
             Assert.False(r.Ok);
             Assert.Contains("revive_hp_fraction", r.Error!);
         }
+
+        // ── Resource registry (Story 4.3, AC4) — fail-closed range checks; a null registry (every existing
+        //    scenario) passes; a well-formed multi-entry registry passes ─────────────────────────────────────────
+
+        [Fact]
+        public void NullResources_Passes_ExistingScenarioPathUnchanged()
+        {
+            var m = ValidModel();
+            m.Resources = null;
+            Assert.True(NewValidator().Validate(m).Ok);
+        }
+
+        [Fact]
+        public void WellFormedThreeEntryResourceRegistry_Passes()
+        {
+            var m = ValidModel();
+            m.Resources = new[]
+            {
+                new ResourceDefinition { Id = "ore",     DisplayName = "Ore",     StartingAmount = 200f },
+                new ResourceDefinition { Id = "crystal", DisplayName = "Crystal", StartingAmount = 0f },
+                new ResourceDefinition { Id = "gems",    DisplayName = "Gems",    StartingAmount = 0f },
+            };
+            Assert.True(NewValidator().Validate(m).Ok);
+        }
+
+        [Fact]
+        public void DuplicateResourceId_IsRejected_LocatingTheIndex()
+        {
+            var m = ValidModel();
+            m.Resources = new[]
+            {
+                new ResourceDefinition { Id = "ore" },
+                new ResourceDefinition { Id = "ore" },
+            };
+            ValidationResult r = NewValidator().Validate(m);
+            Assert.False(r.Ok);
+            Assert.Contains("resources[1].id", r.Error!);
+            Assert.Contains("duplicate", r.Error!);
+        }
+
+        [Fact]
+        public void EmptyResourceId_IsRejected_LocatingTheIndex()
+        {
+            var m = ValidModel();
+            m.Resources = new[] { new ResourceDefinition { Id = "" } };
+            ValidationResult r = NewValidator().Validate(m);
+            Assert.False(r.Ok);
+            Assert.Contains("resources[0].id", r.Error!);
+        }
+
+        [Fact]
+        public void WhitespaceOnlyResourceId_IsRejected_LocatingTheIndex()
+        {
+            // Review patch: IsNullOrEmpty alone let a whitespace-only id ("   ") through as a distinct,
+            // "unique" id — closing that gap without weakening the empty-id check above.
+            var m = ValidModel();
+            m.Resources = new[] { new ResourceDefinition { Id = "   " } };
+            ValidationResult r = NewValidator().Validate(m);
+            Assert.False(r.Ok);
+            Assert.Contains("resources[0].id", r.Error!);
+        }
+
+        [Fact]
+        public void UnknownCollectionModel_IsRejected_LocatingTheIndex()
+        {
+            // Review patch: collection_model was authored-but-unvalidated; a typo would load clean and only
+            // surface once Story 4.7 tried to consume it. Validate against the closed set now instead.
+            var m = ValidModel();
+            m.Resources = new[] { new ResourceDefinition { Id = "gems", CollectionModel = "Gathr" } };
+            ValidationResult r = NewValidator().Validate(m);
+            Assert.False(r.Ok);
+            Assert.Contains("resources[0].collection_model", r.Error!);
+        }
+
+        [Fact]
+        public void NegativeStartingAmount_IsRejected_LocatingTheField()
+        {
+            var m = ValidModel();
+            m.Resources = new[] { new ResourceDefinition { Id = "gems", StartingAmount = -1f } };
+            ValidationResult r = NewValidator().Validate(m);
+            Assert.False(r.Ok);
+            Assert.Contains("resources[0].starting_amount", r.Error!);
+        }
+
+        [Fact]
+        public void NonFiniteStartingAmount_IsRejected()
+        {
+            var m = ValidModel();
+            m.Resources = new[] { new ResourceDefinition { Id = "gems", StartingAmount = float.NaN } };
+            ValidationResult r = NewValidator().Validate(m);
+            Assert.False(r.Ok);
+            Assert.Contains("resources[0].starting_amount", r.Error!);
+        }
+
+        [Fact]
+        public void NullResourceEntry_IsRejected_NotAnNRE()
+        {
+            var m = ValidModel();
+            m.Resources = new ResourceDefinition[] { null! };
+            var ex = Record.Exception(() => NewValidator().Validate(m));
+            Assert.Null(ex);
+            ValidationResult r = NewValidator().Validate(m);
+            Assert.False(r.Ok);
+            Assert.Contains("resources[0]", r.Error!);
+        }
     }
 }
