@@ -407,6 +407,7 @@ namespace ProjectChimera.Core
                 new AbilityEditorPhase(_ctx),
                 new UnitCardPhase(_ctx),
                 new ItemCardPhase(_ctx),
+                new BuildingCardPhase(_ctx),
                 new PersistenceManifestPhase(_ctx),
                 new HeroPickerPhase(_ctx),
             };
@@ -581,6 +582,14 @@ namespace ProjectChimera.Core
             {
                 // Story 3.16: G opens the Item Card Editor (I is reserved for in-match Inventory, K for the Ability editor).
                 _ctx.ItemCardPanel.Toggle();
+                GetViewport().SetInputAsHandled();
+            }
+            else if (key.Keycode == Key.C)
+            {
+                // Story 4.5: C opens the Building Card Editor (verified unused — no other Key.C check anywhere in
+                // src/ and no InputMap action binds physical key C in project.godot; B is taken by EntityPlacer's
+                // building-placement-mode toggle).
+                _ctx.BuildingCardPanel.Toggle();
                 GetViewport().SetInputAsHandled();
             }
             else if (key.Keycode == Key.V)

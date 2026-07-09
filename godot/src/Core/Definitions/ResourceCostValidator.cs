@@ -30,8 +30,13 @@ namespace ProjectChimera.Core.Definitions
         /// <see cref="ScenarioValidator"/>'s <c>Range</c>).</summary>
         private const int Range = 32768;
 
-        /// <summary>The only resource ids with runtime <see cref="ResourceStore"/> backing today.</summary>
-        private static readonly HashSet<string> _knownResourceIds = new() { "ore", "crystal" };
+        /// <summary>The only resource ids with runtime <see cref="ResourceStore"/> backing today. Internal (not
+        /// private) so <see cref="UnitDefinitionValidator"/>'s per-field cost-map check and the Building/Unit Card
+        /// Editors' cost-map "+ Add resource" controls (Story 4.5) share this ONE set instead of each hand-declaring
+        /// their own copy that could silently drift out of sync.</summary>
+        internal static readonly string[] KnownResourceIds = { "ore", "crystal" };
+
+        private static readonly HashSet<string> _knownResourceIds = new(KnownResourceIds);
 
         /// <summary>
         /// Validate every authored <see cref="UnitDefinition.Cost"/> map in <paramref name="def"/>'s <c>Units</c>

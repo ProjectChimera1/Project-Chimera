@@ -108,6 +108,7 @@ namespace ProjectChimera.Core.Bootstrap
         public CreationSuite.MapGeneratorPanel  MapGenPanel  = null!;
         public CreationSuite.AbilityEditorPanel AbilityEditorPanel = null!;  // Story 2.5a (AbilityEditor phase)
         public CreationSuite.UnitCardPanel      UnitCardPanel      = null!;  // Story 3.3 (UnitCard phase)
+        public CreationSuite.BuildingCardPanel  BuildingCardPanel  = null!;  // Story 4.5 (BuildingCard phase)
         public CreationSuite.ItemCardPanel      ItemCardPanel      = null!;  // Story 3.16 (ItemCard phase)
         public CreationSuite.PersistenceManifestPanel PersistenceManifestPanel = null!;  // Story 3.8 (PersistenceManifest phase)
         public UI.HeroPickerOverlay HeroPicker = null!;  // Story 3.9 (HeroPicker phase) — offline Play-Skirmish hero picker + launch authority

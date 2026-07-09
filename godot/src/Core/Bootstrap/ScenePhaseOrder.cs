@@ -24,7 +24,7 @@ namespace ProjectChimera.Core.Bootstrap
             "Rendering", "Hud", "Minimap", "TerrainBrush", "ScenarioLoad", "FactionVisuals",
             "FlowFieldInit", "WinConditionUi", "GameOverOverlay", "Multiplayer", "ReplayStatus",
             "ContentBrowser", "MainMenu", "TriggerEditor", "MapGenerator", "AbilityEditor",
-            "UnitCard", "ItemCard", "PersistenceManifest", "HeroPicker",
+            "UnitCard", "ItemCard", "BuildingCard", "PersistenceManifest", "HeroPicker",
         };
     }
 }

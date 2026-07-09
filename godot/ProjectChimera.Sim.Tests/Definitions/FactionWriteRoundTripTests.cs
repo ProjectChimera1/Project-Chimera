@@ -462,5 +462,212 @@ namespace ProjectChimera.Sim.Tests.Definitions
             Assert.Contains("thud", outJson);
             Assert.DoesNotContain("clang", outJson);
         }
+
+        // ── Story 4.5: the sparse cost map (Story 4.3) now round-trips for a UNIT too — proves PutCostMap's fix
+        //    generalizes beyond buildings. Before this story NO ApplyFields pass ever wrote the "cost" key at all. ──
+
+        [Fact]
+        public void Update_AuthorsCostMap_OnAUnit_RoundTrips()
+        {
+            UnitDefinition edited = Parse(Faction).GetUnit("archer")!;
+            edited.Cost = new System.Collections.Generic.Dictionary<string, int> { ["ore"] = 80, ["crystal"] = 10 };
+            string outJson = FactionWriter.PatchFactionJson(Faction,
+                new UnitEdit { Kind = UnitEditKind.Update, TargetId = "archer", Def = edited });
+
+            Assert.Contains("\"cost\"", UnitJson(outJson, "archer"));
+            UnitDefinition reloaded = Parse(outJson).GetUnit("archer")!;
+            Assert.NotNull(reloaded.Cost);
+            Assert.Equal(80, reloaded.Cost!["ore"]);
+            Assert.Equal(10, reloaded.Cost!["crystal"]);
+        }
+
+        [Fact]
+        public void Update_OmittedCostMap_OnAUnit_IsNotWritten()
+        {
+            // cost omitted (null → legacy cost_ore/cost_crystal) must NOT balloon the key — every existing unit
+            // round-trips byte-identically (golden checksums untouched).
+            UnitDefinition edited = Parse(Faction).GetUnit("archer")!;
+            edited.AttackDamage = 12f;   // touch a different field
+            string outJson = FactionWriter.PatchFactionJson(Faction,
+                new UnitEdit { Kind = UnitEditKind.Update, TargetId = "archer", Def = edited });
+
+            Assert.DoesNotContain("\"cost\"", UnitJson(outJson, "archer"));
+        }
+
+        [Fact]
+        public void Update_AuthorsEmptyCostMap_OnAUnit_RoundTripsAsExplicitEmptyObject()
+        {
+            // An authored EMPTY map ({}) is Story 4.3's explicit "free" state — distinct from omitted (null).
+            UnitDefinition edited = Parse(Faction).GetUnit("archer")!;
+            edited.Cost = new System.Collections.Generic.Dictionary<string, int>();
+            string outJson = FactionWriter.PatchFactionJson(Faction,
+                new UnitEdit { Kind = UnitEditKind.Update, TargetId = "archer", Def = edited });
+
+            Assert.Contains("\"cost\"", UnitJson(outJson, "archer"));
+            UnitDefinition reloaded = Parse(outJson).GetUnit("archer")!;
+            Assert.NotNull(reloaded.Cost);
+            Assert.Empty(reloaded.Cost!);
+        }
+
+        // ── Story 4.5: the buildings[] writer surface — SyncFactionBuildings / PatchFactionBuildingJson /
+        //    SerializeBuildingClean. Mirrors the units[] tests above, operating on root["buildings"] only. ──
+
+        private static string BuildingJson(string factionJson, string buildingId)
+        {
+            JsonNode root = JsonNode.Parse(factionJson)!;
+            foreach (JsonNode? n in root["buildings"]!.AsArray())
+                if (n is JsonObject o && (string?)o["id"] == buildingId) return o.ToJsonString();
+            return $"<no building {buildingId}>";
+        }
+
+        [Fact]
+        public void SyncFactionBuildings_EditedBuilding_ConstructionFieldsAndCostMap_PersistAndReload()
+        {
+            FactionDefinition f = Parse(Faction);
+            BuildingDefinition barracks = f.GetBuilding("barracks")!;
+            barracks.ConstructionTime = 25f;
+            barracks.SupplyBonus = 5;
+            barracks.ProducesCategory = "Melee";
+            barracks.Cost = new System.Collections.Generic.Dictionary<string, int> { ["ore"] = 150, ["crystal"] = 25 };
+
+            string outJson = FactionWriter.SyncFactionBuildings(Faction, f.Buildings);
+
+            // Reload through the SAME production path (FactionDefinition.LoadFromFile validates + parses) by
+            // re-parsing with the lenient options (Tier-1 has no res:// path to hand LoadFromFile a real file with,
+            // so Parse — the same JsonOptions LoadFromFile uses internally — is the equivalent round-trip proof).
+            FactionDefinition reloaded = Parse(outJson);
+            BuildingDefinition rb = reloaded.GetBuilding("barracks")!;
+            Assert.Equal(25f, rb.ConstructionTime);
+            Assert.Equal(5, rb.SupplyBonus);
+            Assert.Equal("Melee", rb.ProducesCategory);
+            Assert.NotNull(rb.Cost);
+            Assert.Equal(150, rb.Cost!["ore"]);
+            Assert.Equal(25, rb.Cost!["crystal"]);
+        }
+
+        [Fact]
+        public void SyncFactionBuildings_UntouchedBuilding_UnitsAndFactionKeys_StayByteIdentical()
+        {
+            FactionDefinition f = Parse(Faction);
+            // No edits at all — every building/unit/faction key must re-emit identically.
+            string outJson = FactionWriter.SyncFactionBuildings(Faction, f.Buildings);
+
+            Assert.Equal(BuildingJson(Faction, "barracks"), BuildingJson(outJson, "barracks"));
+            Assert.Equal(UnitJson(Faction, "grunt"), UnitJson(outJson, "grunt"));
+            Assert.Equal(UnitJson(Faction, "archer"), UnitJson(outJson, "archer"));
+            Assert.Equal(UnitJson(Faction, "savant"), UnitJson(outJson, "savant"));
+            Assert.Contains("signature_mechanic", outJson);
+            Assert.Contains("transmutation", outJson);
+        }
+
+        [Fact]
+        public void SyncFactionBuildings_NeverTouchesUnitsArray()
+        {
+            FactionDefinition f = Parse(Faction);
+            f.GetBuilding("barracks")!.Hp = 999f;
+            string outJson = FactionWriter.SyncFactionBuildings(Faction, f.Buildings);
+
+            // The units[] array is completely untouched by a buildings-only sync.
+            Assert.Equal(UnitJson(Faction, "grunt"), UnitJson(outJson, "grunt"));
+            Assert.Equal(UnitJson(Faction, "archer"), UnitJson(outJson, "archer"));
+            Assert.Equal(UnitJson(Faction, "savant"), UnitJson(outJson, "savant"));
+        }
+
+        [Fact]
+        public void SyncFactionBuildings_AddAndDelete_InOnePass()
+        {
+            FactionDefinition f = Parse(Faction);
+            f.Buildings.RemoveAll(b => b.Id == "barracks");
+            f.Buildings.Add(new BuildingDefinition
+            {
+                Id = "outpost", Category = "Structure", Hp = 150f,
+                ConstructionTime = 8f, SupplyBonus = 0, ProducesCategory = "None",
+            });
+
+            string outJson = FactionWriter.SyncFactionBuildings(Faction, f.Buildings);
+            FactionDefinition reloaded = Parse(outJson);
+
+            Assert.Null(reloaded.GetBuilding("barracks"));
+            BuildingDefinition outpost = reloaded.GetBuilding("outpost")!;
+            Assert.Equal(150f, outpost.Hp);
+            Assert.Equal(8f, outpost.ConstructionTime);
+            Assert.Equal(0, outpost.SupplyBonus);
+            Assert.Equal("None", outpost.ProducesCategory);
+        }
+
+        [Fact]
+        public void PatchFactionBuildingJson_Create_AppendsBuilding()
+        {
+            var fresh = new BuildingDefinition
+            {
+                Id = "new_building", Category = "Structure", Hp = 400f,
+                ConstructionTime = 12f, SupplyBonus = 0, ProducesCategory = "None",
+            };
+            string outJson = FactionWriter.PatchFactionBuildingJson(Faction,
+                new BuildingEdit { Kind = BuildingEditKind.Create, Def = fresh });
+
+            FactionDefinition reloaded = Parse(outJson);
+            Assert.Equal(2, reloaded.Buildings.Count);
+            BuildingDefinition b = reloaded.GetBuilding("new_building")!;
+            Assert.Equal(400f, b.Hp);
+            Assert.Equal(12f, b.ConstructionTime);
+            // Units untouched.
+            Assert.Equal(UnitJson(Faction, "grunt"), UnitJson(outJson, "grunt"));
+        }
+
+        [Fact]
+        public void PatchFactionBuildingJson_Duplicate_ClonesVerbatim_WithNewId()
+        {
+            string outJson = FactionWriter.PatchFactionBuildingJson(Faction,
+                new BuildingEdit { Kind = BuildingEditKind.Duplicate, TargetId = "barracks", NewId = "barracks_copy" });
+
+            FactionDefinition reloaded = Parse(outJson);
+            Assert.Equal(2, reloaded.Buildings.Count);
+            BuildingDefinition copy = reloaded.GetBuilding("barracks_copy")!;
+            Assert.Equal("barracks_copy", copy.Id);
+            Assert.Equal(800f, copy.Hp);
+        }
+
+        [Fact]
+        public void PatchFactionBuildingJson_Delete_RemovesOnlyTarget()
+        {
+            string outJson = FactionWriter.PatchFactionBuildingJson(Faction,
+                new BuildingEdit { Kind = BuildingEditKind.Delete, TargetId = "barracks" });
+
+            FactionDefinition reloaded = Parse(outJson);
+            Assert.Empty(reloaded.Buildings);
+            Assert.Equal(3, reloaded.Units.Count);   // units untouched
+        }
+
+        [Fact]
+        public void PatchFactionBuildingJson_MissingTarget_Throws()
+        {
+            Assert.Throws<System.InvalidOperationException>(() =>
+                FactionWriter.PatchFactionBuildingJson(Faction,
+                    new BuildingEdit { Kind = BuildingEditKind.Delete, TargetId = "ghost" }));
+        }
+
+        [Fact]
+        public void SerializeBuildingClean_RoundTrips_NoParsedGettersOrBallooning()
+        {
+            BuildingDefinition b = Parse(Faction).GetBuilding("barracks")!;
+            b.ConstructionTime = 18f;
+            b.SupplyBonus = 3;
+            b.ProducesCategory = "Melee";
+
+            string json = FactionWriter.SerializeBuildingClean(b);
+            Assert.Contains("barracks", json);
+            Assert.Contains("construction_time", json);
+            Assert.Contains("supply_bonus", json);
+            Assert.Contains("produces_category", json);
+            Assert.DoesNotContain("Parsed", json);
+            Assert.DoesNotContain("AbilityIndices", json);
+
+            var parsed = JsonSerializer.Deserialize<BuildingDefinition>(json, FactionDefinition.JsonOptions);
+            Assert.NotNull(parsed);
+            Assert.Equal(18f, parsed!.ConstructionTime);
+            Assert.Equal(3, parsed.SupplyBonus);
+            Assert.Equal("Melee", parsed.ProducesCategory);
+        }
     }
 }
