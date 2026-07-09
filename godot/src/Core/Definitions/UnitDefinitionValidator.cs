@@ -46,6 +46,13 @@ namespace ProjectChimera.Core.Definitions
     ///
     /// <para><b>Determinism.</b> Pure C#, Godot-free, no <c>float</c> gameplay math — it reads authoring floats and
     /// reports strings; it touches no sim array and moves no checksum (the 3.4 pure-authoring-time posture).</para>
+    ///
+    /// <para><b>Story 4.5.</b> The terminal 5-arg <see cref="Validate(UnitDefinition,AbilityRegistry?,BehaviorRegistry?,ItemRegistry?,IReadOnlyList{UnitDefinition}?,string)"/>
+    /// overload accepts a <c>kind</c> parameter (default <c>"unit"</c>) threaded into every <see cref="Located"/>
+    /// message, so <see cref="BuildingDefinitionValidator"/> can reuse this whole gate — id/dup-id/enum/cost-range
+    /// checks included — over a <see cref="BuildingDefinition"/> list with an accurate <c>"building '&lt;id&gt;'…"</c>
+    /// message instead of duplicating ~20 rules. Every pre-4.5 call site omits <c>kind</c> and is therefore unaffected
+    /// (the default keeps every existing "unit '&lt;id&gt;'…" message byte-identical).</para>
     /// </summary>
     public sealed class UnitDefinitionValidator
     {
@@ -89,6 +96,7 @@ namespace ProjectChimera.Core.Definitions
         /// <c>UnitDefinition.ResolveDelivery</c> string switch. A null <c>delivery</c> is legal (legacy range inference).</summary>
         private static readonly string[] _deliveries = { "Hitscan", "Projectile" };
 
+
         /// <summary>
         /// Validate a <paramref name="def"/> against its <paramref name="siblings"/> (the faction's <c>Units</c> list,
         /// for the uniqueness rule) and the loaded <paramref name="registry"/> (for undefined-ability refs). Returns a
@@ -119,16 +127,21 @@ namespace ProjectChimera.Core.Definitions
         /// <summary>
         /// Story 3.16 overload: additionally validate the shop <c>shop_stock[]</c> ids against
         /// <paramref name="itemRegistry"/> (a dangling id is a located error). A null <paramref name="itemRegistry"/>
-        /// SKIPS the stock-ref check (mirrors the ability-null guard) so existing callers/tests compile + behave
-        /// unchanged; only the item editor / item-aware faction load supplies it. Every base rule still runs, including
-        /// the Structure-gating of the shop trio (which needs no registry).
+        /// SKIPS the stock-ref check (mirrors the ability-null guard) so existing callers/tests that pass no registry
+        /// compile + behave unchanged; only the item editor / item-aware faction load supplies it. Every base rule still
+        /// runs, including the Structure-gating of the shop trio (which needs no registry).
+        ///
+        /// <para>Story 4.5: <paramref name="kind"/> defaults to <c>"unit"</c> so every pre-4.5 call site (all of which
+        /// omit it) is unaffected; <see cref="BuildingDefinitionValidator"/> passes <c>"building"</c> so every located
+        /// message reads <c>"building '&lt;id&gt;'…"</c> instead of <c>"unit '&lt;id&gt;'…"</c>.</para>
         /// </summary>
         public UnitValidationResult Validate(
             UnitDefinition def,
             AbilityRegistry? registry,
             BehaviorRegistry? behaviorRegistry,
             ItemRegistry? itemRegistry,
-            IReadOnlyList<UnitDefinition>? siblings)
+            IReadOnlyList<UnitDefinition>? siblings,
+            string kind = "unit")
         {
             var errors = new List<(string, string)>();
             if (def is null)
@@ -142,36 +155,36 @@ namespace ProjectChimera.Core.Definitions
             // ── id: non-empty, sanitized (filename/render-slot safe), unique among sibling Units (D-7) ──
             if (string.IsNullOrEmpty(id))
             {
-                errors.Add(("id", Located(id, "id", "must be a non-empty id.")));
+                errors.Add(("id", Located(kind, id, "id", "must be a non-empty id.")));
             }
             else
             {
                 if (SanitizeId(id) != id)
-                    errors.Add(("id", Located(id, "id",
+                    errors.Add(("id", Located(kind, id, "id",
                         "contains characters outside [a-z0-9_]; rename before saving.")));
                 if (siblings != null && IsDuplicateId(def, id, siblings))
-                    errors.Add(("id", Located(id, "id",
+                    errors.Add(("id", Located(kind, id, "id",
                         "is a duplicate — another unit in this faction already uses this id.")));
             }
 
             // ── enums: fail-closed on any value the loader would silently fail-open (AC2 "invalid archetype/category") ──
             if (!InSet(_categories, def.Category))
-                errors.Add(("category", Located(id, "category",
+                errors.Add(("category", Located(kind, id, "category",
                     $"'{def.Category}' is not a known archetype (Worker|Melee|Ranged|Siege|Air|Structure).")));
             if (!InSet(_damageTypes, def.DamageType))
-                errors.Add(("damage_type", Located(id, "damage_type",
+                errors.Add(("damage_type", Located(kind, id, "damage_type",
                     $"'{def.DamageType}' is not a known damage type (Normal|Pierce|Siege|Magic|Hero).")));
             if (!InSet(_armorTypes, def.ArmorType))
-                errors.Add(("armor_type", Located(id, "armor_type",
+                errors.Add(("armor_type", Located(kind, id, "armor_type",
                     $"'{def.ArmorType}' is not a known armor type (Unarmored|Light|Medium|Heavy|Fortified|Hero).")));
             if (!InSet(_separationPriorities, def.SeparationPriority))
-                errors.Add(("separation_priority", Located(id, "separation_priority",
+                errors.Add(("separation_priority", Located(kind, id, "separation_priority",
                     $"'{def.SeparationPriority}' is not a known separation priority (Yield|Normal|Push).")));
 
             // ── delivery: nullable — null is the legacy range-inference default (valid); a non-null value must be in
             //    the closed set. The fail-closed reject the ResolveDelivery accessor fails OPEN on (Story 3.12, AC4). ──
             if (def.Delivery != null && !InSet(_deliveries, def.Delivery))
-                errors.Add(("delivery", Located(id, "delivery",
+                errors.Add(("delivery", Located(kind, id, "delivery",
                     $"'{def.Delivery}' is not a known delivery (Hitscan|Projectile).")));
 
             // ── projectile_speed — TWO rules. (1) FINITE & in [0, 32768) for EVERY unit regardless of delivery: it
@@ -183,39 +196,44 @@ namespace ProjectChimera.Core.Definitions
             //    but has attack_range > 2.5 (infers Projectile) actually travels at this speed, so 0 is invalid there.
             //    Gate rule (2) on the RESOLVED delivery, not the literal string; an omitted speed defaults to 18 (valid). ──
             if (!float.IsFinite(def.ProjectileSpeed) || def.ProjectileSpeed < 0f || def.ProjectileSpeed >= Range)
-                errors.Add(("projectile_speed", Located(id, "projectile_speed",
+                errors.Add(("projectile_speed", Located(kind, id, "projectile_speed",
                     $"={def.ProjectileSpeed} must be finite and in [0, {(int)Range}) (it is folded into the deterministic checksum).")));
             else if (def.EffectiveDeliveryString() == "Projectile" && def.ProjectileSpeed <= 0f)
-                errors.Add(("projectile_speed", Located(id, "projectile_speed",
+                errors.Add(("projectile_speed", Located(kind, id, "projectile_speed",
                     $"={def.ProjectileSpeed} must be strictly positive for a Projectile-delivery unit (authored or inferred from range).")));
 
             // ── numeric stats: finite & [0, 32768) — the 16.16 Fixed ceiling (AC2 "out-of-range/missing stat") ──
-            CheckStat(errors, id, "hp", def.Hp);
-            CheckStat(errors, id, "speed", def.Speed);
-            CheckStat(errors, id, "attack_damage", def.AttackDamage);
-            CheckStat(errors, id, "attack_range", def.AttackRange);
-            CheckStat(errors, id, "attack_speed", def.AttackSpeed);
-            CheckStat(errors, id, "armor", def.Armor);
-            CheckStat(errors, id, "splash_radius", def.SplashRadius);
-            CheckStat(errors, id, "collision_radius", def.CollisionRadius);
-            CheckStat(errors, id, "mesh_scale", def.MeshScale);
-            CheckStat(errors, id, "max_energy", def.MaxEnergy);
-            CheckStat(errors, id, "vision_range", def.VisionRange);
-            CheckStat(errors, id, "train_time", def.TrainTime);
+            CheckStat(errors, kind, id, "hp", def.Hp);
+            CheckStat(errors, kind, id, "speed", def.Speed);
+            CheckStat(errors, kind, id, "attack_damage", def.AttackDamage);
+            CheckStat(errors, kind, id, "attack_range", def.AttackRange);
+            CheckStat(errors, kind, id, "attack_speed", def.AttackSpeed);
+            CheckStat(errors, kind, id, "armor", def.Armor);
+            CheckStat(errors, kind, id, "splash_radius", def.SplashRadius);
+            CheckStat(errors, kind, id, "collision_radius", def.CollisionRadius);
+            CheckStat(errors, kind, id, "mesh_scale", def.MeshScale);
+            CheckStat(errors, kind, id, "max_energy", def.MaxEnergy);
+            CheckStat(errors, kind, id, "vision_range", def.VisionRange);
+            CheckStat(errors, kind, id, "train_time", def.TrainTime);
 
             // ── supply: an int count, but the same [0, 32768) bound (AC2 "(+ supply)") ──
-            CheckIntBound(errors, id, "supply", def.Supply);
+            CheckIntBound(errors, kind, id, "supply", def.Supply);
 
             // ── costs: ≥ 0 (a negative cost ADDS resource each train — the parked 1.3b/2.9b defect) AND < 32768 (the
             //    resource bound the epic-2-retro homed here). One error per cost — the negative case wins the message. ──
-            CheckCost(errors, id, "cost_ore", def.CostOre);
-            CheckCost(errors, id, "cost_crystal", def.CostCrystal);
+            CheckCost(errors, kind, id, "cost_ore", def.CostOre);
+            CheckCost(errors, kind, id, "cost_crystal", def.CostCrystal);
+
+            // ── cost (Story 4.5): the sparse authored resource map — each key must be a known resource id and each
+            //    value the same [0, 32768) range rule as the legacy cost_ore/cost_crystal fields above. Skips
+            //    entirely when unauthored (null) — the legacy fields already cover that case. ──
+            CheckCostMap(errors, kind, id, def.Cost);
 
             // ── xp_bounty (Story 3.13): when AUTHORED, an int in [0, 32768) — it is quantized to Fixed + folded into
             //    SimChecksum (v11), so it must satisfy the same [0, Range) invariant every other folded stat has.
             //    Omitted (null) ⇒ derived from cost_ore+cost_crystal (already cost-validated) ⇒ always valid. ──
             if (def.XpBounty.HasValue)
-                CheckIntBound(errors, id, "xp_bounty", def.XpBounty.Value);
+                CheckIntBound(errors, kind, id, "xp_bounty", def.XpBounty.Value);
 
             // ── every abilities[] id must resolve in the registry (AC2 "undefined ability reference") ──
             string[]? abilities = def.Abilities;
@@ -225,7 +243,7 @@ namespace ProjectChimera.Core.Definitions
                 {
                     string aid = abilities[i] ?? "";
                     if (registry.IndexOf(aid) < 0)
-                        errors.Add(("abilities", Located(id, $"abilities[{i}]",
+                        errors.Add(("abilities", Located(kind, id, $"abilities[{i}]",
                             $"'{aid}' is not a defined ability (no matching ability in the loaded set).")));
                 }
             }
@@ -240,26 +258,26 @@ namespace ProjectChimera.Core.Definitions
                     int idx = behaviorRegistry.IndexOf(bid);
                     if (idx < 0)
                     {
-                        errors.Add(("behaviors", Located(id, $"behaviors[{i}]",
+                        errors.Add(("behaviors", Located(kind, id, $"behaviors[{i}]",
                             $"'{bid}' is not a defined behavior (no matching behavior in the loaded set).")));
                     }
                     else if (!behaviorRegistry.Get(idx).IsCompatibleWith(def.Category))
                     {
-                        errors.Add(("behaviors", Located(id, $"behaviors[{i}]",
+                        errors.Add(("behaviors", Located(kind, id, $"behaviors[{i}]",
                             $"behavior '{bid}' is not compatible with the {def.Category} archetype.")));
                     }
                 }
             }
 
             // ── hero: is_hero↔hero coherence + leveling-curve range + ability-slot refs + composition (Story 3.7, AC2) ──
-            ValidateHero(errors, id, def, registry);
+            ValidateHero(errors, kind, id, def, registry);
 
             // ── revives_heroes: a HERO-REVIVAL capability that only makes sense on a Structure building (Story 3.14). A
             //    Worker/Melee/etc. unit can't host a revive command card, so the flag on a non-Structure unit is an
             //    authoring error — fail closed with a located badge (the is_hero-coherence precedent). Omitted (false)
             //    is always valid, so every existing unit is unaffected. ──
             if (def.RevivesHeroes && def.Category != "Structure")
-                errors.Add(("revives_heroes", Located(id, "revives_heroes",
+                errors.Add(("revives_heroes", Located(kind, id, "revives_heroes",
                     $"is set on a {def.Category} unit — only a Structure building can revive heroes.")));
 
             // ── sells_items / shop_stock / shop_radius: an item-SHOP capability that only makes sense on a Structure
@@ -269,10 +287,10 @@ namespace ProjectChimera.Core.Definitions
             bool hasStock  = def.ShopStock != null && def.ShopStock.Length > 0;
             bool hasRadius = def.ShopRadius != 0f;
             if ((def.SellsItems || hasStock || hasRadius) && def.Category != "Structure")
-                errors.Add(("sells_items", Located(id, "sells_items",
+                errors.Add(("sells_items", Located(kind, id, "sells_items",
                     $"is set on a {def.Category} unit — only a Structure building can sell items.")));
             if (!float.IsFinite(def.ShopRadius) || def.ShopRadius < 0f || def.ShopRadius >= Range)
-                errors.Add(("shop_radius", Located(id, "shop_radius",
+                errors.Add(("shop_radius", Located(kind, id, "shop_radius",
                     $"={def.ShopRadius} must be finite and in [0, {(int)Range}).")));
             if (def.ShopStock != null)
             {
@@ -280,9 +298,9 @@ namespace ProjectChimera.Core.Definitions
                 {
                     string sid = def.ShopStock[i] ?? "";
                     if (string.IsNullOrEmpty(sid))
-                        errors.Add(("shop_stock", Located(id, $"shop_stock[{i}]", "is an empty item id.")));
+                        errors.Add(("shop_stock", Located(kind, id, $"shop_stock[{i}]", "is an empty item id.")));
                     else if (itemRegistry != null && itemRegistry.IndexOf(sid) < 0)
-                        errors.Add(("shop_stock", Located(id, $"shop_stock[{i}]",
+                        errors.Add(("shop_stock", Located(kind, id, $"shop_stock[{i}]",
                             $"'{sid}' is not a defined item (no matching item in the loaded set).")));
                 }
             }
@@ -297,37 +315,69 @@ namespace ProjectChimera.Core.Definitions
         // ── Rule helpers ─────────────────────────────────────────────────────────
 
         /// <summary>Finite &amp; in [0, 32768) — the float stat rule. Appends a located error when it fails.</summary>
-        private static void CheckStat(List<(string, string)> errors, string id, string path, float v)
+        private static void CheckStat(List<(string, string)> errors, string kind, string id, string path, float v)
         {
             // Interpolate the value directly (the ScenarioValidator idiom) — an error string is display-only, never a
             // checksum input, so its number format is determinism-irrelevant; avoids the explicit float.ToString.
             if (!float.IsFinite(v) || v < 0f || v >= Range)
-                errors.Add((path, Located(id, path, $"={v} must be finite and in [0, {(int)Range}).")));
+                errors.Add((path, Located(kind, id, path, $"={v} must be finite and in [0, {(int)Range}).")));
         }
 
         /// <summary>Finite &amp; in [0, <paramref name="max"/>) — a float stat with a tighter-than-<see cref="Range"/> ceiling
         /// (Story 3.13 hero runtime fields whose downstream squaring/stacking would overflow Fixed at the generic Range).</summary>
-        private static void CheckStatMax(List<(string, string)> errors, string id, string path, float v, float max)
+        private static void CheckStatMax(List<(string, string)> errors, string kind, string id, string path, float v, float max)
         {
             if (!float.IsFinite(v) || v < 0f || v >= max)
-                errors.Add((path, Located(id, path, $"={v} must be finite and in [0, {(int)max}).")));
+                errors.Add((path, Located(kind, id, path, $"={v} must be finite and in [0, {(int)max}).")));
         }
 
         /// <summary>An int stat bounded to [0, 32768) (supply).</summary>
-        private static void CheckIntBound(List<(string, string)> errors, string id, string path, int v)
+        private static void CheckIntBound(List<(string, string)> errors, string kind, string id, string path, int v)
         {
             if (v < 0 || v >= (int)Range)
-                errors.Add((path, Located(id, path, $"={v} must be in [0, {(int)Range}).")));
+                errors.Add((path, Located(kind, id, path, $"={v} must be in [0, {(int)Range}).")));
         }
 
         /// <summary>A resource cost: ≥ 0 (negative-cost defect) and &lt; 32768 (resource bound). One error max.</summary>
-        private static void CheckCost(List<(string, string)> errors, string id, string path, int v)
+        private static void CheckCost(List<(string, string)> errors, string kind, string id, string path, int v)
         {
             if (v < 0)
-                errors.Add((path, Located(id, path,
+                errors.Add((path, Located(kind, id, path,
                     $"={v} must be >= 0 (a negative cost ADDS that resource each time the unit is trained).")));
             else if (v >= (int)Range)
-                errors.Add((path, Located(id, path, $"={v} exceeds the maximum resource cost ({(int)Range}).")));
+                errors.Add((path, Located(kind, id, path, $"={v} exceeds the maximum resource cost ({(int)Range}).")));
+        }
+
+        /// <summary>
+        /// Story 4.5: the authored sparse <c>cost</c> map (Story 4.3) — a per-field editor check that was missing even
+        /// for units (only the whole-faction <see cref="ResourceCostValidator"/> covered it, with no badge target). For
+        /// each authored <c>(key,value)</c> pair (skipped entirely when <paramref name="cost"/> is null — unauthored,
+        /// the legacy <c>cost_ore</c>/<c>cost_crystal</c> fields already cover that case): a key outside
+        /// <c>{"ore","crystal"}</c> is a located unknown-resource-id error (mirrors
+        /// <see cref="ResourceCostValidator"/>'s <c>ValidateEntry</c> message); a known key's value is range-checked
+        /// exactly like <see cref="CheckCost"/> (&gt;= 0 and &lt; 32768). Every error is keyed <c>"cost"</c> so the
+        /// editor's single cost-map control receives every offending entry's badge.
+        /// </summary>
+        private static void CheckCostMap(List<(string, string)> errors, string kind, string id, Dictionary<string, int>? cost)
+        {
+            if (cost == null) return;   // unauthored — the legacy cost_ore/cost_crystal fields already validated above
+
+            foreach (var (key, value) in cost)
+            {
+                if (!InSet(ResourceCostValidator.KnownResourceIds, key))
+                {
+                    errors.Add(("cost", Located(kind, id, "cost",
+                        $"references unknown resource id '{key}' (no runtime resource registered for it yet).")));
+                    continue;   // an unknown key's value is meaningless to range-check
+                }
+
+                if (value < 0)
+                    errors.Add(("cost", Located(kind, id, "cost",
+                        $"['{key}']={value} must be >= 0 (a negative cost ADDS that resource each time it is spent).")));
+                else if (value >= (int)Range)
+                    errors.Add(("cost", Located(kind, id, "cost",
+                        $"['{key}']={value} exceeds the maximum resource cost ({(int)Range}).")));
+            }
         }
 
         /// <summary>
@@ -338,7 +388,7 @@ namespace ProjectChimera.Core.Definitions
         /// authored yet" and always valid); (4) signature ≠ ultimate when both are set. A non-hero unit (Hero null,
         /// IsHero false) adds no hero errors.
         /// </summary>
-        private static void ValidateHero(List<(string, string)> errors, string id, UnitDefinition def, AbilityRegistry? registry)
+        private static void ValidateHero(List<(string, string)> errors, string kind, string id, UnitDefinition def, AbilityRegistry? registry)
         {
             HeroDefinition? h = def.Hero;
 
@@ -346,13 +396,13 @@ namespace ProjectChimera.Core.Definitions
             // only make sense once the two are consistent).
             if (def.IsHero && h == null)
             {
-                errors.Add(("is_hero", Located(id, "is_hero",
+                errors.Add(("is_hero", Located(kind, id, "is_hero",
                     "is a hero (is_hero:true) but has no 'hero' block — author its leveling/abilities or turn the hero flag off.")));
                 return;
             }
             if (!def.IsHero && h != null)
             {
-                errors.Add(("is_hero", Located(id, "is_hero",
+                errors.Add(("is_hero", Located(kind, id, "is_hero",
                     "has a 'hero' block but is not marked is_hero:true — set is_hero:true or remove the 'hero' block.")));
                 return;
             }
@@ -360,16 +410,16 @@ namespace ProjectChimera.Core.Definitions
 
             // Leveling curve — each field on its own located key.
             if (h.MaxLevel < HeroLevelMin || h.MaxLevel > HeroLevelMax)
-                errors.Add(("hero.max_level", Located(id, "hero.max_level",
+                errors.Add(("hero.max_level", Located(kind, id, "hero.max_level",
                     $"={h.MaxLevel} must be in [{HeroLevelMin}, {HeroLevelMax}].")));
             if (!float.IsFinite(h.BaseXp) || h.BaseXp <= 0f || h.BaseXp >= Range)
-                errors.Add(("hero.base_xp", Located(id, "hero.base_xp",
+                errors.Add(("hero.base_xp", Located(kind, id, "hero.base_xp",
                     $"={h.BaseXp} must be finite and in (0, {(int)Range}).")));
             if (!float.IsFinite(h.XpGrowth) || h.XpGrowth < 1f || h.XpGrowth >= HeroGrowthCap)
-                errors.Add(("hero.xp_growth", Located(id, "hero.xp_growth",
+                errors.Add(("hero.xp_growth", Located(kind, id, "hero.xp_growth",
                     $"={h.XpGrowth} must be finite and in [1, {(int)HeroGrowthCap}).")));
             if (!float.IsFinite(h.XpPerKill) || h.XpPerKill < 0f || h.XpPerKill >= Range)
-                errors.Add(("hero.xp_per_kill", Located(id, "hero.xp_per_kill",
+                errors.Add(("hero.xp_per_kill", Located(kind, id, "hero.xp_per_kill",
                     $"={h.XpPerKill} must be finite and in [0, {(int)Range}).")));
 
             // Story 3.13 runtime fields — finite & fail-closed to a Fixed-SAFE range (AR-39). Quantized to Fixed at the
@@ -377,10 +427,10 @@ namespace ProjectChimera.Core.Definitions
             // stacks (per-level deltas, summed up to 99×). Their ceilings are TIGHTER than the generic Range so the
             // downstream squaring/stacking cannot overflow 16.16 Fixed (the pre-3.13 CheckStat allowed up to 32767, which
             // r*r and 99× overflow — reviewer-found).
-            CheckStatMax(errors, id, "hero.xp_share_radius", h.XpShareRadius, HeroShareRadiusMax);
-            CheckStatMax(errors, id, "hero.health_per_level", h.HealthPerLevel, HeroStatGrowthMax);
-            CheckStatMax(errors, id, "hero.damage_per_level", h.DamagePerLevel, HeroStatGrowthMax);
-            CheckStatMax(errors, id, "hero.armor_per_level", h.ArmorPerLevel, HeroStatGrowthMax);
+            CheckStatMax(errors, kind, id, "hero.xp_share_radius", h.XpShareRadius, HeroShareRadiusMax);
+            CheckStatMax(errors, kind, id, "hero.health_per_level", h.HealthPerLevel, HeroStatGrowthMax);
+            CheckStatMax(errors, kind, id, "hero.damage_per_level", h.DamagePerLevel, HeroStatGrowthMax);
+            CheckStatMax(errors, kind, id, "hero.armor_per_level", h.ArmorPerLevel, HeroStatGrowthMax);
 
             // Ability slots — a SET-but-undefined ref is rejected; an empty (null/"") slot is valid (not authored yet).
             // Skip the ref lookup when there is no registry to validate against (mirrors the abilities[] guard).
@@ -389,16 +439,16 @@ namespace ProjectChimera.Core.Definitions
             if (registry != null)
             {
                 if (sig.Length > 0 && registry.IndexOf(sig) < 0)
-                    errors.Add(("hero.signature_ability", Located(id, "hero.signature_ability",
+                    errors.Add(("hero.signature_ability", Located(kind, id, "hero.signature_ability",
                         $"'{sig}' is not a defined ability (no matching ability in the loaded set).")));
                 if (ult.Length > 0 && registry.IndexOf(ult) < 0)
-                    errors.Add(("hero.ultimate_ability", Located(id, "hero.ultimate_ability",
+                    errors.Add(("hero.ultimate_ability", Located(kind, id, "hero.ultimate_ability",
                         $"'{ult}' is not a defined ability (no matching ability in the loaded set).")));
             }
 
             // Composition rule: the signature and the ultimate must differ when both are authored.
             if (sig.Length > 0 && ult.Length > 0 && sig == ult)
-                errors.Add(("hero.ultimate_ability", Located(id, "hero.ultimate_ability",
+                errors.Add(("hero.ultimate_ability", Located(kind, id, "hero.ultimate_ability",
                     "signature and ultimate ability must differ.")));
         }
 
@@ -427,10 +477,13 @@ namespace ProjectChimera.Core.Definitions
             return false;
         }
 
-        /// <summary>The located error idiom — names the unit id + field path + reason, mirroring
-        /// <see cref="UnitTagValidator.Located"/> and <c>AbilityValidator.Located</c>.</summary>
-        private static string Located(string id, string path, string reason) =>
-            $"unit '{id}'.{path}: {reason}";
+        /// <summary>The located error idiom — names the entity <paramref name="kind"/> ("unit" or, since Story 4.5,
+        /// "building") + id + field path + reason, mirroring <see cref="UnitTagValidator.Located"/> and
+        /// <c>AbilityValidator.Located</c>. Every pre-4.5 caller omits <paramref name="kind"/> at the public API
+        /// surface (the terminal <see cref="Validate"/> overload defaults it to <c>"unit"</c>), so every existing
+        /// message is byte-identical.</summary>
+        private static string Located(string kind, string id, string path, string reason) =>
+            $"{kind} '{id}'.{path}: {reason}";
 
         /// <summary>
         /// Filename/id sanitiser: lowercase, keep <c>[a-z0-9_]</c>, collapse everything else to <c>'_'</c>. Godot-free

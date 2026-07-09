@@ -20,6 +20,19 @@ namespace ProjectChimera.Core.Definitions
         Delete,
     }
 
+    /// <summary>The four building-list operations the Building Card Editor persists (Story 4.5, mirrors <see cref="UnitEditKind"/>).</summary>
+    public enum BuildingEditKind
+    {
+        /// <summary>Rewrite the changed fields of an existing building (matched by <see cref="BuildingEdit.TargetId"/>).</summary>
+        Update,
+        /// <summary>Append a brand-new building object (from <see cref="BuildingEdit.Def"/>, only its non-default fields).</summary>
+        Create,
+        /// <summary>Deep-clone the target building object verbatim and give the clone <see cref="BuildingEdit.NewId"/>.</summary>
+        Duplicate,
+        /// <summary>Remove the target building object.</summary>
+        Delete,
+    }
+
     /// <summary>One authoring edit to a faction's <c>units[]</c> array — the argument to <see cref="FactionWriter.PatchFactionJson"/>.</summary>
     public sealed class UnitEdit
     {
@@ -41,6 +54,30 @@ namespace ProjectChimera.Core.Definitions
         public string? RawUnitJson { get; init; }
 
         /// <summary>The id for the clone on <see cref="UnitEditKind.Duplicate"/>.</summary>
+        public string? NewId { get; init; }
+    }
+
+    /// <summary>One authoring edit to a faction's <c>buildings[]</c> array — mirrors <see cref="UnitEdit"/> (Story 4.5).
+    /// The argument to <see cref="FactionWriter.PatchFactionBuildingJson"/>.</summary>
+    public sealed class BuildingEdit
+    {
+        /// <summary>Which list operation to apply.</summary>
+        public BuildingEditKind Kind { get; init; }
+
+        /// <summary>The id of the building to update / duplicate / delete (matched against the on-disk <c>id</c>). Ignored for Create.</summary>
+        public string TargetId { get; init; } = "";
+
+        /// <summary>The edited/new building for <see cref="BuildingEditKind.Update"/> (reconcile source) and <see cref="BuildingEditKind.Create"/> (new building).</summary>
+        public BuildingDefinition? Def { get; init; }
+
+        /// <summary>
+        /// The raw-JSON escape-hatch path (mirrors <see cref="UnitEdit.RawUnitJson"/>): when set on an
+        /// <see cref="BuildingEditKind.Update"/>, the target building object is REPLACED wholesale by this parsed JSON.
+        /// When null, Update reconciles field-by-field from <see cref="Def"/>.
+        /// </summary>
+        public string? RawBuildingJson { get; init; }
+
+        /// <summary>The id for the clone on <see cref="BuildingEditKind.Duplicate"/>.</summary>
         public string? NewId { get; init; }
     }
 
@@ -210,6 +247,11 @@ namespace ProjectChimera.Core.Definitions
 
             PutInt(obj, "cost_ore", d.CostOre, 50);
             PutInt(obj, "cost_crystal", d.CostCrystal, 0);
+            // Story 4.5: the sparse authored cost map (Story 4.3) — was silently DROPPED by every prior ApplyFields
+            // pass (no PutCostMap call existed), so a creator-authored "cost" map never persisted for a unit OR a
+            // building. Omitted entirely when d.Cost is null (unauthored — the legacy cost_ore/cost_crystal fields
+            // above are the effective cost), matching every other nullable-field Put* helper's omit-on-null discipline.
+            PutCostMap(obj, "cost", d.Cost);
             PutInt(obj, "supply", d.Supply, 1);
 
             PutFloat(obj, "mesh_scale", d.MeshScale, 1f);
@@ -332,6 +374,174 @@ namespace ProjectChimera.Core.Definitions
             return root.ToJsonString(IndentedOptions);
         }
 
+        // ── Story 4.5: the buildings[] counterpart to the units machinery above ────────────────────────────────
+
+        /// <summary>
+        /// Apply one <paramref name="edit"/> to a faction JSON string's <c>buildings[]</c> array and return the patched
+        /// JSON — mirrors <see cref="PatchFactionJson"/> exactly, operating on <c>root["buildings"]</c> instead of
+        /// <c>root["units"]</c>. Never touches <c>root["units"]</c>. Throws <see cref="InvalidOperationException"/> on
+        /// malformed input (no <c>buildings</c> array, Create excepted) or a missing target id (Update/Duplicate/Delete).
+        /// </summary>
+        public static string PatchFactionBuildingJson(string factionJson, BuildingEdit edit)
+        {
+            if (factionJson is null) throw new InvalidOperationException("faction JSON is null.");
+            if (edit is null) throw new InvalidOperationException("edit is null.");
+
+            JsonNode root = JsonNode.Parse(factionJson)
+                            ?? throw new InvalidOperationException("faction JSON did not parse to an object.");
+
+            JsonArray buildings = GetOrCreateBuildings(root, edit.Kind);
+
+            switch (edit.Kind)
+            {
+                case BuildingEditKind.Create:
+                {
+                    BuildingDefinition def = edit.Def
+                        ?? throw new InvalidOperationException("Create requires a building definition.");
+                    var obj = new JsonObject();
+                    ApplyBuildingFields(obj, def);          // fresh object → writes only non-default fields (+ id)
+                    buildings.Add(obj);
+                    break;
+                }
+
+                case BuildingEditKind.Update:
+                {
+                    JsonObject target = FindBuilding(buildings, edit.TargetId)
+                        ?? throw new InvalidOperationException($"building '{edit.TargetId}' not found.");
+                    int idx = buildings.IndexOf(target);
+
+                    if (edit.RawBuildingJson != null)
+                    {
+                        // Raw-pane path: the creator's hand-edited JSON wins verbatim (already validated upstream).
+                        JsonNode replacement = JsonNode.Parse(edit.RawBuildingJson)
+                            ?? throw new InvalidOperationException("raw building JSON did not parse to an object.");
+                        buildings[idx] = replacement;
+                    }
+                    else
+                    {
+                        BuildingDefinition def = edit.Def
+                            ?? throw new InvalidOperationException("Update requires a building definition or raw JSON.");
+                        ApplyBuildingFields(target, def);   // reconcile: write only changed fields, preserve untouched tokens
+                    }
+                    break;
+                }
+
+                case BuildingEditKind.Duplicate:
+                {
+                    JsonObject target = FindBuilding(buildings, edit.TargetId)
+                        ?? throw new InvalidOperationException($"building '{edit.TargetId}' not found.");
+                    string newId = edit.NewId
+                        ?? throw new InvalidOperationException("Duplicate requires a NewId.");
+                    // Deep-clone by re-parse (preserves EVERY field of the source verbatim, incl. unknown keys).
+                    JsonObject clone = (JsonNode.Parse(target.ToJsonString())!).AsObject();
+                    clone["id"] = newId;
+                    buildings.Add(clone);
+                    break;
+                }
+
+                case BuildingEditKind.Delete:
+                {
+                    JsonObject target = FindBuilding(buildings, edit.TargetId)
+                        ?? throw new InvalidOperationException($"building '{edit.TargetId}' not found.");
+                    buildings.RemoveAt(buildings.IndexOf(target));
+                    break;
+                }
+            }
+
+            return root.ToJsonString(IndentedOptions);
+        }
+
+        /// <summary>
+        /// Serialize a single building to clean, indented JSON for the raw-JSON escape hatch — mirrors
+        /// <see cref="SerializeUnitClean"/>. The authorable fields via <see cref="ApplyBuildingFields"/> (no computed
+        /// <c>Parsed*</c> getter, no ballooned default).
+        /// </summary>
+        public static string SerializeBuildingClean(BuildingDefinition def)
+        {
+            var obj = new JsonObject();
+            ApplyBuildingFields(obj, def);
+            return obj.ToJsonString(IndentedOptions);
+        }
+
+        private static JsonArray GetOrCreateBuildings(JsonNode root, BuildingEditKind kind)
+        {
+            if (root["buildings"] is JsonArray existing) return existing;
+            if (kind == BuildingEditKind.Create)
+            {
+                var arr = new JsonArray();
+                root["buildings"] = arr;
+                return arr;
+            }
+            throw new InvalidOperationException("faction JSON has no 'buildings' array to edit.");
+        }
+
+        private static JsonObject? FindBuilding(JsonArray buildings, string id)
+        {
+            foreach (JsonNode? n in buildings)
+                if (n is JsonObject o && (string?)o["id"] == id) return o;
+            return null;
+        }
+
+        /// <summary>
+        /// Reconcile every authorable field of <paramref name="d"/> onto <paramref name="obj"/>: every
+        /// <see cref="UnitDefinition"/> field via <see cref="ApplyFields"/> (id, stats, cost map, …) PLUS the three
+        /// building-only fields, written UNCONDITIONALLY (no omit-at-default — <see cref="BuildingDefinition.ConstructionTime"/>/
+        /// <see cref="BuildingDefinition.SupplyBonus"/>/<see cref="BuildingDefinition.ProducesCategory"/> are
+        /// required-nullable per <see cref="BuildingDefinitionValidator"/>, so there is no meaningful default to omit
+        /// at). A still-null field (only possible on an invalid, un-Saveable def) is defensively omitted rather than
+        /// round-tripped as a literal JSON <c>null</c> token.
+        /// </summary>
+        private static void ApplyBuildingFields(JsonObject obj, BuildingDefinition d)
+        {
+            ApplyFields(obj, d);
+            if (d.ConstructionTime.HasValue) obj["construction_time"] = d.ConstructionTime.Value; else obj.Remove("construction_time");
+            if (d.SupplyBonus.HasValue) obj["supply_bonus"] = d.SupplyBonus.Value; else obj.Remove("supply_bonus");
+            if (!string.IsNullOrEmpty(d.ProducesCategory)) obj["produces_category"] = d.ProducesCategory; else obj.Remove("produces_category");
+        }
+
+        /// <summary>
+        /// Persist an entire in-memory <c>buildings</c> list to a faction JSON string in one atomic transform (Story 4.5
+        /// Save path) — the buildings-array generalization of <see cref="PatchFactionBuildingJson"/>, mirroring
+        /// <see cref="SyncFactionUnits"/> exactly. Reconciles onto <c>root["buildings"]</c> ONLY — never touches
+        /// <c>root["units"]</c> or any faction-level key.
+        /// </summary>
+        public static string SyncFactionBuildings(string factionJson, IReadOnlyList<BuildingDefinition> buildings)
+        {
+            if (factionJson is null) throw new InvalidOperationException("faction JSON is null.");
+            if (buildings is null) throw new InvalidOperationException("buildings is null.");
+
+            JsonNode root = JsonNode.Parse(factionJson)
+                            ?? throw new InvalidOperationException("faction JSON did not parse to an object.");
+
+            var oldArr = root["buildings"] as JsonArray ?? new JsonArray();
+            // Index the on-disk objects by id (first wins) so each in-memory building can reconcile onto its match.
+            var byId = new Dictionary<string, JsonObject>(StringComparer.Ordinal);
+            foreach (JsonNode? n in oldArr)
+                if (n is JsonObject o && (string?)o["id"] is string id && !byId.ContainsKey(id))
+                    byId[id] = o;
+
+            var newArr = new JsonArray();
+            foreach (BuildingDefinition b in buildings)
+            {
+                if (b.Id != null && byId.TryGetValue(b.Id, out JsonObject? existing))
+                {
+                    byId.Remove(b.Id);
+                    oldArr.Remove(existing);            // detach so it can re-parent into newArr
+                    ApplyBuildingFields(existing, b);   // reconcile in place (untouched tokens preserved)
+                    newArr.Add(existing);
+                }
+                else
+                {
+                    var fresh = new JsonObject();
+                    ApplyBuildingFields(fresh, b);       // only non-default fields (+ id) + the required building trio
+                    newArr.Add(fresh);
+                }
+            }
+            // Anything still in byId is an on-disk building no longer in the list → dropped (a delete).
+            root["buildings"] = newArr;
+            return root.ToJsonString(IndentedOptions);
+        }
+
         // Each Put* writes ONLY when the edited value differs from the current effective value (token-or-default).
 
         private static void PutFloat(JsonObject o, string key, float edited, float def)
@@ -410,6 +620,50 @@ namespace ProjectChimera.Core.Definitions
             foreach (JsonNode? n in a)
                 if (n != null && n.GetValueKind() == JsonValueKind.String) list.Add(n.GetValue<string>());
             return list.ToArray();
+        }
+
+        /// <summary>
+        /// Story 4.5: write-back for the sparse authored resource <c>cost</c> map (Story 4.3) — closes the gap where
+        /// NO prior <c>ApplyFields</c> pass ever wrote this key for a unit or a building (silently dropped on every
+        /// Save/round-trip). Compares the CURRENT on-disk map's key/value pairs against <paramref name="edited"/>'s
+        /// (order-independent via <see cref="MapsEqual"/>); writes the whole map only when they differ; omits the key
+        /// entirely when <paramref name="edited"/> is null (unauthored — the legacy <c>cost_ore</c>/<c>cost_crystal</c>
+        /// fields are the effective cost, so every existing unit/building with no <c>cost</c> key round-trips
+        /// byte-identically, keeping golden checksums untouched); drops the key when a previously-authored map is
+        /// cleared to null. An authored EMPTY map (<c>{}</c>) round-trips as an explicit empty object — distinct from
+        /// omitted (Story 4.3's "free" semantics). Keys are written in ordinal-sorted order for a deterministic byte
+        /// stream regardless of <see cref="Dictionary{TKey,TValue}"/> enumeration order.
+        /// </summary>
+        private static void PutCostMap(JsonObject o, string key, Dictionary<string, int>? edited)
+        {
+            Dictionary<string, int>? current = ReadCostMap(o, key);
+            if (MapsEqual(edited, current)) return;                 // unchanged (incl. both absent) → preserve/absent
+            if (edited == null) { o.Remove(key); return; }          // cleared → drop the key (→ legacy cost_ore/cost_crystal)
+
+            var costObj = new JsonObject();
+            foreach (string k in edited.Keys.OrderBy(k => k, StringComparer.Ordinal))
+                costObj[k] = edited[k];
+            o[key] = costObj;
+        }
+
+        private static Dictionary<string, int>? ReadCostMap(JsonObject o, string key)
+        {
+            if (o[key] is not JsonObject costObj) return null;
+            var map = new Dictionary<string, int>(StringComparer.Ordinal);
+            foreach (KeyValuePair<string, JsonNode?> kv in costObj)
+                if (kv.Value != null && kv.Value.GetValueKind() == JsonValueKind.Number)
+                    map[kv.Key] = (int)kv.Value.GetValue<double>();
+            return map;
+        }
+
+        private static bool MapsEqual(Dictionary<string, int>? a, Dictionary<string, int>? b)
+        {
+            if (a == null && b == null) return true;
+            if (a == null || b == null) return false;
+            if (a.Count != b.Count) return false;
+            foreach (KeyValuePair<string, int> kv in a)
+                if (!b.TryGetValue(kv.Key, out int v) || v != kv.Value) return false;
+            return true;
         }
 
         private static bool TryReadDouble(JsonObject o, string key, out double value)

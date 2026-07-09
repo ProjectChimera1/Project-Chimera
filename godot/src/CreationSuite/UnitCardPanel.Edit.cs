@@ -1,5 +1,6 @@
 #nullable enable
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
@@ -908,7 +909,11 @@ namespace ProjectChimera.CreationSuite
             UnitValidationResult res = _validator.Validate(_current, _registry, _behaviorRegistry, _faction?.Units);
             string? meshErr = MeshError(_current);
 
-            foreach ((string key, string msg) in res.Errors) ShowBadge(key, msg);
+            // Story 4.5 review pass: group by field path before badging — the sparse cost map can raise MULTIPLE
+            // simultaneous "cost"-keyed errors (one per bad resource entry) onto the ONE control's ONE badge; a
+            // plain per-error ShowBadge loop would have the last error silently overwrite every earlier one.
+            foreach (var group in res.Errors.GroupBy(e => e.FieldPath))
+                ShowBadge(group.Key, string.Join("  ", group.Select(e => e.Message)));
             if (meshErr != null) ShowBadge("mesh_path", meshErr);
 
             bool ok = res.Ok && meshErr == null;
@@ -1097,6 +1102,11 @@ namespace ProjectChimera.CreationSuite
             RevivesHeroes = s.RevivesHeroes,   // Story 3.14: copy the revive-capability flag
             Hero = s.Hero?.Clone(),   // deep-copy the hero block so the clone validates independently (Story 3.7)
             CombatFeedback = s.CombatFeedback,   // shared presentation-DTO ref (a raw-hatch edit re-parses a fresh POCO)
+            // Story 4.3/4.5 review pass: Cost is now actually persisted by FactionWriter.ApplyFields (PutCostMap) —
+            // an unguarded omission here would silently revert a duplicated unit's authored sparse cost map to the
+            // legacy cost_ore/cost_crystal fields on the next Save. Copy the dictionary (not the reference) so the
+            // clone validates/edits independently, mirroring CloneBuilding's identical fix.
+            Cost = s.Cost is null ? null : new Dictionary<string, int>(s.Cost),
         };
 
         // ── Save = persist the in-memory list to the file (Task 6; D-1/D-10) ─────────

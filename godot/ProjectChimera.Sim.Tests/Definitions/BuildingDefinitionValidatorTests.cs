@@ -1,5 +1,6 @@
 #nullable enable
 using System;
+using System.Collections.Generic;
 using System.IO;
 using ProjectChimera.Core.Definitions;
 using Xunit;
@@ -159,6 +160,98 @@ namespace ProjectChimera.Sim.Tests.Definitions
 
             var negative = new BuildingDefinition { Id = "barracks", Hp = -5f, ConstructionTime = 10f, SupplyBonus = 0, ProducesCategory = "Melee" };
             Assert.Contains(BuildingDefinitionValidator.Validate(negative).Errors, e => e.FieldPath == "hp");
+        }
+
+        // ── Story 4.5: the siblings-aware overload — reuses UnitDefinitionValidator's id/dup-id/enum/cost-range gate,
+        //    kinded "building", over the same def (see BuildingDefinitionValidator.Validate(def, siblings)). ──
+
+        private static BuildingDefinition ValidBuilding(string id = "barracks") => new()
+        {
+            Id = id, Category = "Structure", ConstructionTime = 10f, SupplyBonus = 0, ProducesCategory = "Melee",
+        };
+
+        [Fact]
+        public void SiblingsOverload_BlankId_ReturnsLocatedError_KindedBuilding()
+        {
+            var def = ValidBuilding(id: "");
+            BuildingValidationResult result = BuildingDefinitionValidator.Validate(def, siblings: null);
+            Assert.Contains(result.Errors, e => e.FieldPath == "id");
+            Assert.Contains(result.Errors, e => e.Message.StartsWith("building '"));
+        }
+
+        [Fact]
+        public void SiblingsOverload_DuplicateId_ReturnsLocatedError()
+        {
+            var a = ValidBuilding(id: "barracks");
+            var b = ValidBuilding(id: "barracks");
+            var siblings = new List<BuildingDefinition> { a, b };
+
+            BuildingValidationResult result = BuildingDefinitionValidator.Validate(a, siblings);
+            Assert.Contains(result.Errors, e => e.FieldPath == "id" && e.Message.Contains("duplicate"));
+        }
+
+        [Fact]
+        public void SiblingsOverload_UnknownCategory_ReturnsLocatedError()
+        {
+            var def = ValidBuilding();
+            def.Category = "NotARealCategory";
+            BuildingValidationResult result = BuildingDefinitionValidator.Validate(def, siblings: null);
+            Assert.Contains(result.Errors, e => e.FieldPath == "category");
+        }
+
+        [Fact]
+        public void SiblingsOverload_NegativeOreCostMapEntry_ReturnsLocatedError()
+        {
+            var def = ValidBuilding();
+            def.Cost = new Dictionary<string, int> { ["ore"] = -10 };
+            BuildingValidationResult result = BuildingDefinitionValidator.Validate(def, siblings: null);
+            Assert.Contains(result.Errors, e => e.FieldPath == "cost" && e.Message.Contains("must be >= 0"));
+        }
+
+        [Fact]
+        public void SiblingsOverload_CrystalCostMapEntryAtCeiling_ReturnsLocatedError()
+        {
+            var def = ValidBuilding();
+            def.Cost = new Dictionary<string, int> { ["crystal"] = 32768 };
+            BuildingValidationResult result = BuildingDefinitionValidator.Validate(def, siblings: null);
+            Assert.Contains(result.Errors, e => e.FieldPath == "cost" && e.Message.Contains("exceeds the maximum resource cost"));
+        }
+
+        [Fact]
+        public void SiblingsOverload_UnknownCostMapResourceId_ReturnsLocatedError()
+        {
+            var def = ValidBuilding();
+            def.Cost = new Dictionary<string, int> { ["gas"] = 5 };
+            BuildingValidationResult result = BuildingDefinitionValidator.Validate(def, siblings: null);
+            Assert.Contains(result.Errors, e => e.FieldPath == "cost" && e.Message.Contains("unknown resource id"));
+        }
+
+        [Fact]
+        public void SiblingsOverload_ExistingValidAlphaBuilding_StillPasses_WithNullSiblings()
+        {
+            // The LoadFromFile call path (BuildingDefinitionValidator.Validate(def)) is unaffected by this story:
+            // it forwards to Validate(def, null), so an existing valid building keeps loading cleanly.
+            string path = ResolveDataPath("alpha_faction.json");
+            FactionDefinition alpha = FactionDefinition.LoadFromFile(path);
+            Assert.NotEmpty(alpha.Buildings);
+            foreach (BuildingDefinition b in alpha.Buildings)
+                Assert.True(BuildingDefinitionValidator.Validate(b, siblings: null).Ok);
+        }
+
+        /// <summary>Resolve a shipped faction JSON by walking up from the test-assembly directory to
+        /// <c>resources/data/factions/</c> (mirrors <c>ResourceCostValidatorTests.ResolveDataPath</c> /
+        /// <c>TechTreeValidatorTests.ResolveDataPath</c>).</summary>
+        private static string ResolveDataPath(string fileName)
+        {
+            var dir = new DirectoryInfo(AppContext.BaseDirectory);
+            while (dir != null)
+            {
+                string candidate = Path.Combine(dir.FullName, "resources", "data", "factions");
+                if (Directory.Exists(candidate)) return Path.Combine(candidate, fileName);
+                dir = dir.Parent;
+            }
+            throw new DirectoryNotFoundException(
+                $"Could not locate resources/data/factions above {AppContext.BaseDirectory}");
         }
     }
 }
