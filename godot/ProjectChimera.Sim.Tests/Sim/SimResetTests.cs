@@ -436,7 +436,7 @@ namespace ProjectChimera.Sim.Tests.Sim
         public void HashAlgoVersions_AreUnchanged()
         {
             Assert.Equal(12, SimChecksum.AlgoVersion);   // Story 3.15: ItemStore + per-hero inventory fold (11→12)
-            Assert.Equal(3, CanonicalModelHash.AlgoVersion);
+            Assert.Equal(4, CanonicalModelHash.AlgoVersion); // Story 4.4: Supply's resolved values folded (3→4)
             Assert.Equal(2, StartStateHash.AlgoVersion);
         }
 

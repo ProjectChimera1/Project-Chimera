@@ -63,7 +63,7 @@ namespace ProjectChimera.Sim.Tests.Validation
         }
 
         [Fact]
-        public void AlgoVersion_IsThree() => Assert.Equal(3, CanonicalModelHash.AlgoVersion);
+        public void AlgoVersion_IsFour() => Assert.Equal(4, CanonicalModelHash.AlgoVersion);
 
         [Fact]
         public void ReorderedCollections_HashEqual()
@@ -114,6 +114,71 @@ namespace ProjectChimera.Sim.Tests.Validation
         }
 
         [Fact]
+        public void ChangedSupplyConfig_HashDiffers()
+        {
+            // Supply is sim-affecting (folds into SimChecksum via SupplyCap/SupplyUsed, gates TrainUnit) — two
+            // models differing ONLY in Supply MUST hash differently, else the lobby start-state handshake would
+            // compare EQUAL and the match then desyncs in-sim from tick 1. Teeth for the Story 4.4 fold
+            // (AlgoVersion 3→4); this test would be RED against v3.
+            var baseModel = BuildModel(false);
+            var changed = BuildModel(false);
+            changed.Supply = new SupplyConfig { StartingCap = 10, HardCeiling = 50, Enabled = true };
+            Assert.NotEqual(CanonicalModelHash.Compute(baseModel), CanonicalModelHash.Compute(changed));
+        }
+
+        [Fact]
+        public void NullSupply_And_ExplicitAllDefaultSupply_HashEqual()
+        {
+            // Folding the RESOLVED value (not the raw nullable field) means an omitted `supply` block and an
+            // explicitly-authored all-default SupplyConfig must hash IDENTICALLY — else every existing scenario
+            // (which omits `supply`) would be a false-positive lobby mismatch against a creator who explicitly
+            // authors the defaults.
+            var withNull = BuildModel(false);
+            withNull.Supply = null;
+            var withDefault = BuildModel(false);
+            withDefault.Supply = new SupplyConfig
+            {
+                StartingCap = ResourceStore.STARTING_SUPPLY_CAP,
+                HardCeiling = null,
+                Enabled = true,
+            };
+            Assert.Equal(CanonicalModelHash.Compute(withNull), CanonicalModelHash.Compute(withDefault));
+        }
+
+        [Fact]
+        public void InvalidNegativeHardCeiling_HashDiffersFromOmittedSupply()
+        {
+            // Review-pass-2 regression: a naive `HardCeiling ?? -1` sentinel would make an authored (invalid,
+            // shadow-mode-reachable) hard_ceiling=-1 hash IDENTICALLY to an omitted `supply` block (both folding
+            // as -1), even though they resolve to materially different runtime behavior (uncapped vs. a clamped-
+            // to-0 ceiling) — the exact false-negative this fold exists to prevent. Presence is now folded as an
+            // explicit bit before the value, so these must hash DIFFERENTLY.
+            var omitted = BuildModel(false);
+            omitted.Supply = null;
+            var invalidCeiling = BuildModel(false);
+            invalidCeiling.Supply = new SupplyConfig { HardCeiling = -1 };
+            Assert.NotEqual(CanonicalModelHash.Compute(omitted), CanonicalModelHash.Compute(invalidCeiling));
+        }
+
+        [Fact]
+        public void NegativeAuthoredValues_ResolveClampedToZero_MatchingRuntimeResolution()
+        {
+            // SupplyConfig.Resolve (called identically by ResourceStore.ConfigureSupply and this Compute fold)
+            // clamps a shadow-mode-reachable negative StartingCap/HardCeiling to 0 — so two DIFFERENT negative
+            // authored values that resolve to the SAME clamped runtime state must hash IDENTICALLY (matching what
+            // ConfigureSupply would actually apply), not differently by their raw un-clamped magnitude.
+            var a = BuildModel(false);
+            a.Supply = new SupplyConfig { StartingCap = -1, HardCeiling = -1, Enabled = true };
+            var b = BuildModel(false);
+            b.Supply = new SupplyConfig { StartingCap = -100, HardCeiling = -100, Enabled = true };
+            Assert.Equal(CanonicalModelHash.Compute(a), CanonicalModelHash.Compute(b));
+
+            var (startingCap, hardCeiling, _) = SupplyConfig.Resolve(a.Supply);
+            Assert.Equal(0, startingCap);
+            Assert.Equal(0, hardCeiling);
+        }
+
+        [Fact]
         public void DistinctFloatsThatQuantizeEqual_HashEqual()
         {
             var a = BuildModel(false);
@@ -160,10 +225,14 @@ namespace ProjectChimera.Sim.Tests.Validation
             // Build the documented canonical byte stream (D5 fixed order) INDEPENDENTLY of MixInt/MixStr, then
             // fold it with a textbook FNV-64. This pins the algorithm without a self-tautology.
             var buf = new List<byte>();
-            AppendInt(buf, CanonicalModelHash.AlgoVersion);  // AlgoVersion (= 3)
+            AppendInt(buf, CanonicalModelHash.AlgoVersion);  // AlgoVersion (= 4)
             AppendInt(buf, Fixed.FromFloat(120f).Raw);       // MapBounds quantized (= 7,864,320)
             AppendStr(buf, "DestroyAllBuildings");           // WinCondition by NAME
             AppendStr(buf, "");                              // TerrainRef
+            AppendInt(buf, ResourceStore.STARTING_SUPPLY_CAP); // Supply == null → resolved StartingCap default (10)
+            AppendInt(buf, 0);                                 // Supply == null → resolved HardCeiling presence bit (absent → 0)
+            AppendInt(buf, 0);                                 // Supply == null → resolved HardCeiling value (ignored when absent → 0)
+            AppendInt(buf, 1);                                 // Supply == null → resolved Enabled default (true → 1)
             // no slots / nodes / buildings / units
             ulong expected = IndependentFnv64(buf.ToArray());
             if (expected == 0UL) expected = 1UL;             // mirror the documented 0 → 1 sentinel

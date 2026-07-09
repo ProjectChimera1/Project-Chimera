@@ -123,9 +123,11 @@ namespace ProjectChimera.Economy
 
         private void RecalculateSupplyCaps()
         {
-            // Reset to base cap
+            // Reset to base cap (Story 4.4: the resolved per-scenario starting cap, not the hardcoded constant —
+            // ConfigureSupply defaults it to STARTING_SUPPLY_CAP when no scenario config is authored, so an
+            // omitted `supply` block reproduces this loop byte-identically).
             for (int f = 1; f <= 4; f++)
-                _resources.SupplyCap[f] = ResourceStore.STARTING_SUPPLY_CAP;
+                _resources.SupplyCap[f] = _resources.StartingSupplyCap;
 
             for (int i = 0; i < _buildings.Count; i++)
             {
@@ -133,6 +135,17 @@ namespace ProjectChimera.Economy
                 if (_buildings.IsUnderConstruction(i)) continue; // not functional yet
                 int f = (int)_buildings.FactionOf[i];
                 _resources.SupplyCap[f] += _buildings.SupplyBonus[i];
+            }
+
+            // Story 4.4: clamp to the authored hard ceiling AFTER bonuses, UNCONDITIONALLY of SupplyGatingEnabled —
+            // the ceiling shapes the cap VALUE (what the HUD and AI headroom scoring read) regardless of whether the
+            // gate enforces it (see spec Design Notes: avoids a hidden coupling where toggling `enabled` silently
+            // changes the displayed cap too).
+            if (_resources.SupplyHardCeiling is int ceiling)
+            {
+                for (int f = 1; f <= 4; f++)
+                    if (_resources.SupplyCap[f] > ceiling)
+                        _resources.SupplyCap[f] = ceiling;
             }
         }
 

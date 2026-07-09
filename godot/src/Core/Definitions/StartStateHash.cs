@@ -13,8 +13,9 @@ namespace ProjectChimera.Core.Definitions
     /// tick 1 — the StartCrystal-desync lesson, applied to heroes.
     ///
     /// It is deliberately its OWN hash with its own <see cref="AlgoVersion"/>, NOT an extension of
-    /// <see cref="CanonicalModelHash"/> (which stays v3, and structurally cannot see heroes — they come from
-    /// PlayerProfile, not ScenarioData) and NOT the per-tick <see cref="SimChecksum"/>. Per D-2 it is DRY: it folds
+    /// <see cref="CanonicalModelHash"/> (whose own AlgoVersion moves independently — Story 4.4 bumped it 3→4 — and
+    /// which structurally cannot see heroes — they come from PlayerProfile, not ScenarioData) and NOT the per-tick
+    /// <see cref="SimChecksum"/>. Per D-2 it is DRY: it folds
     /// the <see cref="CanonicalModelHash.Compute"/> value as the content SEED (never re-deriving that slot/node/
     /// building/unit walk), then the hero rows, so the result is a strict superset of content = "full init-time
     /// state including HeroStore" (AC3).

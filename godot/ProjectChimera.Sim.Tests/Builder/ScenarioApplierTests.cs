@@ -396,8 +396,12 @@ namespace ProjectChimera.Sim.Tests.Builder
 
         // Pinned canonical-model hash of BuildAlphaModel(). Recorded from CanonicalModelHash.Compute; an accidental
         // change to the in-code model (or a hash-algorithm change) flips this and the test fails. Re-recorded
-        // 2026-07-02 for AlgoVersion 3 (Story 2.9b follow-up: StartCrystal folded into the canonical hash — the model
-        // leaves start_crystal at its 0 default, but the AlgoVersion bump alone moves every hash). [gds-code-review]
-        private const ulong ExpectedCanonicalHash = 8107768752238097581UL;
+        // 2026-07-08 for AlgoVersion 4 (Story 4.4: Supply's resolved values folded into the canonical hash — the
+        // model omits `supply`, but the AlgoVersion bump alone moves every hash, same as the prior StartCrystal
+        // re-record). Re-recorded again same day (review-pass-2 patch): Supply's HardCeiling presence is now folded
+        // as an explicit bit before its value instead of a `?? -1` sentinel (fixes a hash collision between an
+        // omitted ceiling and an authored, shadow-mode-reachable invalid `-1`), which shifted every hash again.
+        // [Story 4.4]
+        private const ulong ExpectedCanonicalHash = 16869254917153809851UL;
     }
 }

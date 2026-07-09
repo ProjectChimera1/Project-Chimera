@@ -222,7 +222,7 @@ namespace ProjectChimera.Sim.Tests.Definitions
         public void HashAlgoVersions_AreUnchanged()
         {
             Assert.Equal(12, SimChecksum.AlgoVersion);
-            Assert.Equal(3, CanonicalModelHash.AlgoVersion);
+            Assert.Equal(4, CanonicalModelHash.AlgoVersion); // Story 4.4: Supply's resolved values folded (3→4)
             Assert.Equal(2, StartStateHash.AlgoVersion);
         }
 

@@ -342,6 +342,27 @@ namespace ProjectChimera.Core.Definitions
                 }
             }
 
+            // ── Supply config (Story 4.4, AR-39) — fail-closed when present so a hand-edited/cheat config (an
+            // out-of-range starting_cap, or a hard_ceiling below starting_cap) is rejected at the pre-tick gate. A
+            // null config (every existing scenario) ⇒ use today's hardcoded default ⇒ nothing to validate ⇒ the pass
+            // path is unchanged (no golden/behavior move). starting_cap/hard_ceiling are both int fields flowing
+            // through the float-typed CheckNonNeg range-check helper (lossless implicit widening, matches the
+            // existing validator-helper reuse convention). ──
+            if (m.Supply != null)
+            {
+                SupplyConfig sc = m.Supply;
+                string? e = CheckNonNeg("scenario.supply.starting_cap", sc.StartingCap);
+                if (e != null) return ValidationResult.Fail(e, validated);
+                if (sc.HardCeiling is int ceiling)
+                {
+                    string? ce = CheckNonNeg("scenario.supply.hard_ceiling", ceiling);
+                    if (ce != null) return ValidationResult.Fail(ce, validated);
+                    if (ceiling < sc.StartingCap)
+                        return ValidationResult.Fail(
+                            $"scenario.supply.hard_ceiling={ceiling} must be >= scenario.supply.starting_cap={sc.StartingCap}.", validated);
+                }
+            }
+
             return ValidationResult.Pass(validated);
         }
 
