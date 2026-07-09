@@ -20,6 +20,19 @@ namespace ProjectChimera.Core.Definitions
     ///     (Crystal is folded in SimChecksum, and <c>alpha_map_01.json</c> now ships a nonzero start_crystal), so two
     ///     clients with mismatched start_crystal now hash DIFFERENTLY here and are rejected at the handshake instead
     ///     of desyncing in-sim. Folded right after StartOre, in BOTH the sort key and the mixed byte stream.
+    ///   • <c>ScenarioData.Supply</c> FOLDED via <see cref="SupplyConfig.Resolve"/>'s resolved+clamped values
+    ///     (Story 4.4, AlgoVersion 3→4): it is sim-affecting (folds into SimChecksum via SupplyCap/SupplyUsed and
+    ///     gates TrainUnit), so two clients with mismatched supply config now hash DIFFERENTLY here and are
+    ///     rejected at the handshake instead of desyncing in-sim — the same StartCrystal-class fix, applied to
+    ///     Supply. <c>SupplyConfig.Resolve</c> is the SAME method <see cref="ResourceStore.ConfigureSupply"/> calls
+    ///     for the runtime resolution, so hash-equality ⇔ post-resolution runtime-equality holds both ways: an
+    ///     omitted <c>supply</c> block and an explicitly-authored all-default <see cref="SupplyConfig"/> hash
+    ///     IDENTICALLY (no false-positive mismatch), and a shadow-mode-reachable invalid negative value can never
+    ///     collide with — nor silently diverge in meaning from — a legitimately distinct resolved value (no
+    ///     false-negative mismatch). <c>HardCeiling</c>'s presence is folded as an explicit bit BEFORE its value
+    ///     (not a sentinel int) since, unlike <see cref="MixStr"/>'s null-length <c>-1</c> (intrinsically
+    ///     impossible for a real string), an authored <c>HardCeiling</c> can legitimately BE any non-negative int
+    ///     including values a naive sentinel might collide with.
     /// A <c>0 → 1</c> sentinel guarantees a valid model never hashes to the "no hash" value the fail-open
     /// handshake treats as a skip. The 64-bit <see cref="Compute"/> is exposed for Epic 9 to attest later;
     /// <see cref="ToWire"/> folds it to the existing 32-bit Ready-packet wire used today.
@@ -30,8 +43,9 @@ namespace ProjectChimera.Core.Definitions
     public static class CanonicalModelHash
     {
         /// <summary>Algorithm version. 1 = the retired byte-FNV file hash; 2 = canonical-model hash;
-        /// 3 = additionally folds <see cref="ScenarioPlayerSlot.StartCrystal"/> (Story 2.9b follow-up).</summary>
-        public const int AlgoVersion = 3;
+        /// 3 = additionally folds <see cref="ScenarioPlayerSlot.StartCrystal"/> (Story 2.9b follow-up);
+        /// 4 = additionally folds <see cref="ScenarioData.Supply"/>'s resolved values (Story 4.4).</summary>
+        public const int AlgoVersion = 4;
 
         private const ulong Offset = 14695981039346656037UL; // FNV-64 offset basis
         private const ulong Prime  = 1099511628211UL;        // FNV-64 prime
@@ -45,6 +59,17 @@ namespace ProjectChimera.Core.Definitions
             h = MixInt(h, Fixed.FromFloat(m.MapBounds).Raw);
             h = MixStr(h, m.WinCondition.ToString());            // enum by NAME, not ordinal
             h = MixStr(h, m.TerrainRef);
+
+            // Story 4.4: fold Supply via the SAME SupplyConfig.Resolve ResourceStore.ConfigureSupply uses — the
+            // single resolution+clamp boundary, so hash-equality <=> post-resolution runtime-equality holds both
+            // ways (see class doc). HardCeiling's presence is folded as an explicit bit BEFORE its value: null and
+            // any concrete int (including an authored, shadow-mode-reachable invalid negative one, now clamped to
+            // 0) are unambiguously distinguishable — unlike a bare `?? sentinel`, which would collide.
+            (int supplyStartingCap, int? supplyHardCeiling, bool supplyEnabled) = SupplyConfig.Resolve(m.Supply);
+            h = MixInt(h, supplyStartingCap);
+            h = MixInt(h, supplyHardCeiling.HasValue ? 1 : 0);
+            h = MixInt(h, supplyHardCeiling ?? 0);
+            h = MixInt(h, supplyEnabled ? 1 : 0);
 
             // Sort each collection by a TOTAL order over EVERY folded field (not just a primary key) so neither
             // input/file order NOR a tie on a partial key can move the hash. Numeric sort keys use the same

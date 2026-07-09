@@ -441,5 +441,83 @@ namespace ProjectChimera.Sim.Tests.Validation
             Assert.False(r.Ok);
             Assert.Contains("resources[0]", r.Error!);
         }
+
+        // ── Supply config (Story 4.4) — fail-closed range checks; a null config (every existing scenario) passes ──
+
+        [Fact]
+        public void NullSupply_Passes_ExistingScenarioPathUnchanged()
+        {
+            var m = ValidModel();
+            m.Supply = null;
+            Assert.True(NewValidator().Validate(m).Ok);
+        }
+
+        [Fact]
+        public void ValidSupplyConfig_Passes()
+        {
+            var m = ValidModel();
+            m.Supply = new SupplyConfig { StartingCap = 30, HardCeiling = 50, Enabled = true };
+            Assert.True(NewValidator().Validate(m).Ok);
+        }
+
+        [Fact]
+        public void SupplyConfigWithNullHardCeiling_Passes()
+        {
+            var m = ValidModel();
+            m.Supply = new SupplyConfig { StartingCap = 10, HardCeiling = null, Enabled = false };
+            Assert.True(NewValidator().Validate(m).Ok);
+        }
+
+        [Fact]
+        public void NegativeStartingCap_IsRejected_LocatingTheField()
+        {
+            var m = ValidModel();
+            m.Supply = new SupplyConfig { StartingCap = -1 };
+            ValidationResult r = NewValidator().Validate(m);
+            Assert.False(r.Ok);
+            Assert.Contains("scenario.supply.starting_cap", r.Error!);
+        }
+
+        [Fact]
+        public void OutOfRangeStartingCap_IsRejected_LocatingTheField()
+        {
+            var m = ValidModel();
+            m.Supply = new SupplyConfig { StartingCap = 32768 }; // >= the 16.16 range ceiling
+            ValidationResult r = NewValidator().Validate(m);
+            Assert.False(r.Ok);
+            Assert.Contains("scenario.supply.starting_cap", r.Error!);
+        }
+
+        [Fact]
+        public void NegativeHardCeiling_IsRejected_LocatingTheField()
+        {
+            var m = ValidModel();
+            m.Supply = new SupplyConfig { StartingCap = 0, HardCeiling = -1 };
+            ValidationResult r = NewValidator().Validate(m);
+            Assert.False(r.Ok);
+            Assert.Contains("scenario.supply.hard_ceiling", r.Error!);
+        }
+
+        [Fact]
+        public void HardCeilingBelowStartingCap_IsRejected_NamingBothValues()
+        {
+            var m = ValidModel();
+            m.Supply = new SupplyConfig { StartingCap = 20, HardCeiling = 5 };
+            ValidationResult r = NewValidator().Validate(m);
+            Assert.False(r.Ok);
+            Assert.Contains("scenario.supply.hard_ceiling", r.Error!);
+            Assert.Contains("20", r.Error!);
+            Assert.Contains("5", r.Error!);
+        }
+
+        [Fact]
+        public void HardCeilingEqualToStartingCap_Passes()
+        {
+            // The ceiling clamps unconditionally, but hard_ceiling == starting_cap is a valid (if inert-against-
+            // building-bonus) authored config — not a validation failure.
+            var m = ValidModel();
+            m.Supply = new SupplyConfig { StartingCap = 15, HardCeiling = 15 };
+            Assert.True(NewValidator().Validate(m).Ok);
+        }
     }
 }

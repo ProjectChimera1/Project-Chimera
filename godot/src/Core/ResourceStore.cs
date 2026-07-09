@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using ProjectChimera.Core.Definitions; // SupplyConfig (Story 4.4)
 
 namespace ProjectChimera.Core
 {
@@ -21,6 +22,23 @@ namespace ProjectChimera.Core
         public readonly int[] SupplyCap;
 
         public const int STARTING_SUPPLY_CAP = 10;
+
+        // ── Supply config (Story 4.4) ────────────────────────────────────────────
+        // Resolved once per scenario-apply via ConfigureSupply (mirrors RevivalRuleRuntime.Configure) — the
+        // instance-state home BuildingSystem.RecalculateSupplyCaps reads as its per-tick base/ceiling, and
+        // HasSupply reads as its enable gate. Defaults reproduce today's hardcoded behavior exactly.
+
+        /// <summary>Starting supply cap per faction before building bonuses. Defaults to
+        /// <see cref="STARTING_SUPPLY_CAP"/> (today's hardcoded value).</summary>
+        public int StartingSupplyCap { get; private set; } = STARTING_SUPPLY_CAP;
+
+        /// <summary>Optional hard ceiling <c>SupplyCap</c> is clamped to after building bonuses. <c>null</c> ⇒
+        /// uncapped (today's behavior).</summary>
+        public int? SupplyHardCeiling { get; private set; } = null;
+
+        /// <summary>Whether the supply gate blocks training once <c>SupplyUsed</c> reaches <c>SupplyCap</c>.
+        /// Defaults to <c>true</c> (today's behavior).</summary>
+        public bool SupplyGatingEnabled { get; private set; } = true;
 
         /// <summary>
         /// World position where workers of each faction return to deposit.
@@ -49,10 +67,27 @@ namespace ProjectChimera.Core
         }
 
         /// <summary>
+        /// Story 4.4: resolve <paramref name="config"/> (or compile defaults when null) into
+        /// <see cref="StartingSupplyCap"/>/<see cref="SupplyHardCeiling"/>/<see cref="SupplyGatingEnabled"/> — the
+        /// single float-free load boundary, called unconditionally from <see cref="ProjectChimera.Core.Sim.ScenarioApplier.Apply"/>
+        /// right after <c>RevivalRuntime.Configure</c> (mirrors that unconditional-call idiom: the resolver, not the
+        /// call site, owns the null-means-default logic). Never called inside a tick.
+        /// </summary>
+        public void ConfigureSupply(SupplyConfig? config)
+        {
+            (StartingSupplyCap, SupplyHardCeiling, SupplyGatingEnabled) = SupplyConfig.Resolve(config);
+        }
+
+        /// <summary>
         /// Story 3.10 (UX-DR62): restore this store to its EXACT post-construction state for the Edit↔Play reset —
         /// zero ore/crystal/supply-used/faction-base, then re-seed the ctor's starting ore and P1/P2 supply cap. A
         /// cleared store is byte-for-byte equal to <c>new ResourceStore(_startingOre)</c>. The re-apply's additive
         /// <see cref="AddOre"/>/<see cref="AddCrystal"/> writes require this pre-clear (they append, never overwrite).
+        /// Story 4.4: also resets the three supply-config properties to compile defaults (the same defensive-in-depth
+        /// idiom as the <c>_startingOre</c> reseed above) so every ClearForReset → Apply cycle reproduces a fresh
+        /// load byte-for-byte — no scenario's config may leak into the next (Apply's unconditional ConfigureSupply
+        /// call already guarantees this in the tested path; this is belt-and-suspenders for the narrow Clear-without-
+        /// a-following-Apply window).
         /// </summary>
         public void Clear()
         {
@@ -67,6 +102,10 @@ namespace ProjectChimera.Core
             Ore[(int)Faction.Player2] = _startingOre;
             SupplyCap[(int)Faction.Player1] = STARTING_SUPPLY_CAP;
             SupplyCap[(int)Faction.Player2] = STARTING_SUPPLY_CAP;
+
+            StartingSupplyCap   = STARTING_SUPPLY_CAP;
+            SupplyHardCeiling   = null;
+            SupplyGatingEnabled = true;
         }
 
         // ── Convenience methods ────────────────────────────────────────────────
@@ -77,8 +116,11 @@ namespace ProjectChimera.Core
         public bool CanAffordOre(Faction faction, Fixed cost) =>
             Ore[(int)faction] >= cost;
 
+        /// <summary>Story 4.4: gated on <see cref="SupplyGatingEnabled"/> — when the config disables gating, this
+        /// returns <c>true</c> unconditionally (training is never supply-blocked), though <c>SupplyCap</c>/
+        /// <c>SupplyUsed</c> are still computed, displayed, and folded identically to the enabled case.</summary>
         public bool HasSupply(Faction faction, int cost = 1) =>
-            SupplyUsed[(int)faction] + cost <= SupplyCap[(int)faction];
+            !SupplyGatingEnabled || SupplyUsed[(int)faction] + cost <= SupplyCap[(int)faction];
 
         /// <summary>Deduct ore cost. Returns false (and does nothing) if insufficient.</summary>
         public bool SpendOre(Faction faction, Fixed cost)

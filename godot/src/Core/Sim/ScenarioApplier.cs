@@ -77,6 +77,10 @@ namespace ProjectChimera.Core.Sim
             // Story 3.14: resolve the scenario's revival rule (or Default when omitted) into the shared runtime the sim
             // systems hold — the single float→Fixed boundary, done once at apply, never inside a tick.
             _host.RevivalRuntime.Configure(s?.RevivalRule);
+            // Story 4.4: resolve the scenario's supply config (or compile defaults when omitted) into ResourceStore —
+            // unconditional call, mirroring the RevivalRuntime.Configure line above (the resolver, not the call
+            // site, owns the null-means-default logic).
+            _host.Resources.ConfigureSupply(s?.Supply);
             if (s is null)
             {
                 // A default/unproven Validated<ScenarioData> carries a null model (the token-less Fail path used

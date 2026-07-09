@@ -54,8 +54,9 @@ namespace ProjectChimera.Sim.Tests.Meta
         private const int ExpectedSimChecksumAlgoVersion = 12;
 
         /// <summary>Load-time canonical start-state hash algorithm version (lobby handshake value).
-        /// v3 (Story 2.9b follow-up): folded ScenarioPlayerSlot.StartCrystal (sim-affecting per-slot start-state).</summary>
-        private const int ExpectedCanonicalModelHashAlgoVersion = 3;
+        /// v3 (Story 2.9b follow-up): folded ScenarioPlayerSlot.StartCrystal (sim-affecting per-slot start-state).
+        /// v4 (Story 4.4): folded ScenarioData.Supply's resolved values (sim-affecting supply/cap config).</summary>
+        private const int ExpectedCanonicalModelHashAlgoVersion = 4;
 
         /// <summary>Load-time canonical START-STATE hash algorithm version (Story 3.2, AC3) — a NEW, distinct FNV-64
         /// over the full init state = the <see cref="CanonicalModelHash"/> content seed PLUS the HeroStore rows.

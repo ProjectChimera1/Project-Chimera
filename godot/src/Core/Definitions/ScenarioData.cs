@@ -258,5 +258,20 @@ namespace ProjectChimera.Core.Definitions
         [JsonPropertyName("resources")]
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public ResourceDefinition[]? Resources { get; set; }
+
+        /// <summary>
+        /// The per-scenario supply / population-cap config (Story 4.4): starting cap, optional hard ceiling, and a
+        /// master enable toggle. NULL (the default, every existing scenario) ⇒ today's hardcoded default exactly
+        /// (<see cref="ResourceStore.STARTING_SUPPLY_CAP"/>, no ceiling, gating enabled), and the block is OMITTED
+        /// from serialization when null (<see cref="JsonIgnoreCondition.WhenWritingNull"/>, the
+        /// <see cref="RevivalRule"/>/<see cref="Resources"/> omit-when-null precedent) — so every existing scenario
+        /// serializes byte-for-byte identically, moving no golden. Resolved once (via
+        /// <see cref="ResourceStore.ConfigureSupply"/>) at scenario-apply. Validated (fail-closed) by
+        /// <see cref="ScenarioValidator"/> when present, and folded (as its resolved values) into
+        /// <see cref="CanonicalModelHash"/> — sim-affecting state, unlike the authoring-only blocks above.
+        /// </summary>
+        [JsonPropertyName("supply")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public SupplyConfig? Supply { get; set; }
     }
 }
