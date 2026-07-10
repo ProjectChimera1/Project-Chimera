@@ -1,5 +1,6 @@
 #nullable enable
 using System.Collections.Generic;
+using ProjectChimera.Core.Definitions;
 
 namespace ProjectChimera.Core
 {
@@ -25,6 +26,35 @@ namespace ProjectChimera.Core
         /// <summary>The ONE place the (Faction)(slot+1) offset lives. slot is 0-based; slot 0 → Player1.</summary>
         public static Faction ToFaction(int slot) => (Faction)(slot + 1);
 
+        /// <summary>Per-slot <see cref="SlotDefinitions"/> array size (AR-3 / Story 5.1).
+        /// Deliberately matches the AS-BUILT ResourceStore/MatchStats/BuildingSystem/ResearchSystem
+        /// FACTION_COUNT=5 (current Faction enum cardinality: Neutral+Player1..4) — NOT the forward
+        /// FACTION_ARRAY_SIZE (9) above. ScenarioApplier.InFactionRange derives its bounds-safety from this
+        /// array's .Length matching those still-5-sized arrays; widening only this one would let slots 4-7
+        /// pass InFactionRange and then throw IndexOutOfRangeException against them. Raising this in lockstep
+        /// with the other FACTION_COUNT=5 arrays is Story 9.2's job, not this one's.</summary>
+        public const int SLOT_DEFINITIONS_SIZE = 5;
+
+        /// <summary>Per-slot <see cref="FactionDefinition"/> lookup, indexed by <c>(int)Faction</c>. The registry
+        /// owns the storage; MainScene/ServerBootstrap's Godot-edge composition roots populate it after resolving
+        /// res:// paths (the registry itself never touches res:// or does file I/O — see class doc). Unassigned
+        /// slots stay <c>null</c>. Use <see cref="GetSlotDefinition"/> for a bounds-checked read (AC3).</summary>
+        public FactionDefinition?[] SlotDefinitions { get; } = new FactionDefinition?[SLOT_DEFINITIONS_SIZE];
+
+        /// <summary>
+        /// Bounds-checked per-slot lookup (AC3, epics.md Story 5.1 verbatim): returns the assigned
+        /// <see cref="FactionDefinition"/> for an in-range, populated slot; returns <c>null</c> — never throws —
+        /// for both an unassigned in-range slot and a genuinely out-of-range <paramref name="faction"/> value
+        /// (any <c>(int)faction</c> outside <c>[0, SLOT_DEFINITIONS_SIZE)</c>). Additive, read-only API; existing
+        /// direct <see cref="SlotDefinitions"/> consumers (already bounds-guarded by their own callers, e.g.
+        /// ScenarioApplier.InFactionRange) are not required to migrate to it.
+        /// </summary>
+        public FactionDefinition? GetSlotDefinition(Faction faction)
+        {
+            int idx = (int)faction;
+            return idx >= 0 && idx < SlotDefinitions.Length ? SlotDefinitions[idx] : null;
+        }
+
         private readonly Faction[] _activeFactions; // ascending, deterministic iteration
 
         /// <summary>
@@ -40,7 +70,11 @@ namespace ProjectChimera.Core
             _activeFactions = new Faction[activePlayerCount];
             for (int i = 0; i < activePlayerCount; i++)
                 _activeFactions[i] = ToFaction(i);
-            // TODO(5.1): hold per-slot FactionDefinition[] and derive ActiveFactions from assigned slots.
+            // ActiveFactions intentionally stays activePlayerCount-driven, NOT derived from SlotDefinitions
+            // occupancy: dozens of call sites (goldens, unit tests, ServerBootstrap) construct
+            // new FactionRegistry(N) purely for checksum iteration span and never populate SlotDefinitions —
+            // coupling the two would silently empty ActiveFactions for all of them (see Design Notes,
+            // spec-5-1-factionregistry-canonical-faction-slot-constants-ar-3.md).
         }
 
         /// <summary>The active factions of this match, ascending. Iterate this — never a 0..FACTION_COUNT loop.</summary>

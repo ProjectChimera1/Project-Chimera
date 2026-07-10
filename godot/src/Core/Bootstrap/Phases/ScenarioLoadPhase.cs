@@ -94,7 +94,7 @@ namespace ProjectChimera.Core.Bootstrap
             foreach (var slot in scenario.PlayerSlots ?? System.Array.Empty<ScenarioPlayerSlot>())
             {
                 if (string.IsNullOrEmpty(slot.FactionJson)) continue;
-                var faction = (Faction)(slot.Slot + 1); // slot 0 → Player1, slot 1 → Player2
+                var faction = FactionRegistry.ToFaction(slot.Slot); // resolved via the one canonical cast site
                 string abs = ProjectSettings.GlobalizePath(slot.FactionJson);
                 if (System.IO.File.Exists(abs))
                 {

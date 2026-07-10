@@ -2,6 +2,7 @@
 using System;
 using System.Linq;
 using ProjectChimera.Core;
+using ProjectChimera.Core.Definitions;
 using Xunit;
 
 namespace ProjectChimera.Sim.Tests.Golden
@@ -112,6 +113,75 @@ namespace ProjectChimera.Sim.Tests.Golden
             Assert.NotEqual(h3a, h3b);
             // …and is NEVER read when only 2 are active (its change cannot move the hash).
             Assert.Equal(h2a, h2b);
+        }
+
+        // ── AR-3 / Story 5.1: SlotDefinitions storage ─────────────────────────────
+
+        [Fact]
+        public void SlotDefinitions_FreshRegistry_IsSizeFiveAllNull()
+        {
+            var reg = new FactionRegistry(2);
+
+            Assert.Equal(FactionRegistry.SLOT_DEFINITIONS_SIZE, reg.SlotDefinitions.Length);
+            Assert.Equal(5, reg.SlotDefinitions.Length);
+            Assert.All(reg.SlotDefinitions, def => Assert.Null(def));
+        }
+
+        [Fact]
+        public void SlotDefinitions_SetThenRead_RoundTripsSameReference()
+        {
+            var reg = new FactionRegistry(2);
+            var def = new FactionDefinition();
+
+            reg.SlotDefinitions[(int)Faction.Player1] = def;
+
+            Assert.Same(def, reg.SlotDefinitions[(int)Faction.Player1]);
+        }
+
+        // ── AR-3 / Story 5.1 (AC3): GetSlotDefinition bounds-checked accessor ─────
+
+        [Fact]
+        public void GetSlotDefinition_AssignedInRangeSlot_ReturnsSameReference()
+        {
+            var reg = new FactionRegistry(2);
+            var def = new FactionDefinition();
+            reg.SlotDefinitions[(int)Faction.Player1] = def;
+
+            Assert.Same(def, reg.GetSlotDefinition(Faction.Player1));
+        }
+
+        [Fact]
+        public void GetSlotDefinition_UnassignedInRangeSlot_ReturnsNull()
+        {
+            var reg = new FactionRegistry(2);
+
+            Assert.Null(reg.GetSlotDefinition(Faction.Player2));
+        }
+
+        [Fact]
+        public void GetSlotDefinition_OutOfRangeFaction_ReturnsNullNeverThrows()
+        {
+            var reg = new FactionRegistry(2);
+
+            var ex = Record.Exception(() => reg.GetSlotDefinition((Faction)99));
+
+            Assert.Null(ex);
+            Assert.Null(reg.GetSlotDefinition((Faction)99));
+        }
+
+        [Fact]
+        public void GetSlotDefinition_ExactlyAtBoundary_ReturnsNullNeverThrows()
+        {
+            // (Faction)SLOT_DEFINITIONS_SIZE is the first genuinely invalid index — pins the off-by-one
+            // boundary (< vs <=) that GetSlotDefinition_OutOfRangeFaction_ReturnsNullNeverThrows's far-out-of-range
+            // (Faction)99 case cannot catch.
+            var reg = new FactionRegistry(2);
+            var boundary = (Faction)FactionRegistry.SLOT_DEFINITIONS_SIZE;
+
+            var ex = Record.Exception(() => reg.GetSlotDefinition(boundary));
+
+            Assert.Null(ex);
+            Assert.Null(reg.GetSlotDefinition(boundary));
         }
     }
 }

@@ -300,8 +300,17 @@ namespace ProjectChimera.Core
             foreach (string err in UnitTagValidator.ValidateAndDropUnits(_factionDef2))
                 GD.PrintErr($"[UnitTagValidator] {err} (unit dropped)");
 
+            // AR-3 / Story 5.1: construct the registry before it's needed and let it own per-slot storage
+            // (SlotDefinitions) instead of a locally-allocated array — the registry now holds the per-slot
+            // FactionDefinition lookups; see FactionRegistry.SlotDefinitions. TODO(5.1) partially resolved:
+            // this is the "hold per-slot FactionDefinition[]" half; deriving ActiveFactions from assigned
+            // slots (the TODO's other half) is intentionally NOT done — see FactionRegistry's ctor comment.
+            // activeFactionCount=2 is behaviour-preserving today (Ore[P1]+Ore[P2], byte-identical); deriving it
+            // from the loaded scenario's assigned slots remains a future story's job, not this one's.
+            var factions = new FactionRegistry(2);
+
             // Default slot assignments — overwritten per-slot by the ResolveSlotFactionDefs pre-pass
-            _slotFactionDefs = new FactionDefinition?[5];
+            _slotFactionDefs = factions.SlotDefinitions;
             _slotFactionDefs[(int)Faction.Player1] = _factionDef;
             _slotFactionDefs[(int)Faction.Player2] = _factionDef2;
 
@@ -317,11 +326,9 @@ namespace ProjectChimera.Core
             //    stores, the canonical 10-system tick order (ModifierSystem at index 3), the
             //    SimulationLoop, and the single checksum sink. MainScene injects the presentation GodotLogSink
             //    plus the loaded inputs; sim truth now lives on the host (the fields below are aliases of it).
-            //    TODO(5.1): derive the active player count from the loaded scenario's assigned slots; 2-player
-            //    today, so new FactionRegistry(2) is behaviour-preserving (Ore[P1]+Ore[P2], byte-identical).
             _host = SimulationHost.Create(
                 _logSink,
-                new FactionRegistry(2),
+                factions,
                 _factionDef,
                 _factionDef2,
                 _damageTable,
@@ -1414,7 +1421,13 @@ namespace ProjectChimera.Core
             string p2Abs = ProjectSettings.GlobalizePath(P2_FACTION_JSON);
             var p2Def = System.IO.File.Exists(p2Abs) ? FactionDefinition.LoadFromFile(p2Abs) : new FactionDefinition();
 
-            var slotDefs = new FactionDefinition?[5];
+            // AR-3 / Story 5.1: source slotDefs from a registry instance instead of a locally-allocated array
+            // (mirrors the client _Ready migration above). NOTE: this `factions` is a slot-storage source
+            // only — it is NOT threaded into ServerBootstrap.Build below, which constructs its own separate
+            // internal FactionRegistry(activeFactionCount) for checksum purposes (pre-existing, unchanged).
+            // Only `slotDefs` (the array) crosses that boundary.
+            var factions = new FactionRegistry(2);
+            var slotDefs = factions.SlotDefinitions;
             slotDefs[(int)Faction.Player1] = p1Def;
             slotDefs[(int)Faction.Player2] = p2Def;
 
@@ -1441,7 +1454,7 @@ namespace ProjectChimera.Core
             foreach (var slot in model.PlayerSlots ?? System.Array.Empty<ScenarioPlayerSlot>())
             {
                 if (string.IsNullOrEmpty(slot.FactionJson)) continue;
-                var f = (Faction)(slot.Slot + 1); // slot 0 → Player1, slot 1 → Player2
+                var f = FactionRegistry.ToFaction(slot.Slot);
                 if ((int)f < 0 || (int)f >= slotDefs.Length) continue;
                 string fAbs = ProjectSettings.GlobalizePath(slot.FactionJson);
                 if (System.IO.File.Exists(fAbs)) slotDefs[(int)f] = FactionDefinition.LoadFromFile(fAbs);
