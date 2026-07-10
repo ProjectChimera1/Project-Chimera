@@ -117,17 +117,17 @@ development_status:
   4-9-researchsystem-order-path-start-complete-cancel-modifier-application: done
   4-10-researchstore-simchecksum-fold-golden-rebaseline: done
   4-11-research-authoring-command-card-buttons-upgrade-display: done
-  epic-4-retrospective: optional
+  epic-4-retrospective: done
   epic-5: backlog
   5-1-factionregistry-canonical-faction-slot-constants-ar-3: backlog
   5-2-faction-schema-extension-validator-ar-39-ar-12-fr-18-data: backlog
   5-3-land-harden-the-fma-showcase-content-as-valid-definer-outputs-fr-20: backlog
   5-4-wire-the-two-signature-mechanics-via-d1-modifiers-fr-20-unique-mechanic: backlog
-  5-5a-faction-definer-guided-wizard-flow-validator-gated-save-fr-17-ux-dr40: backlog
-  5-5b-ai-preset-selection-advanced-raw-json-mode-hero-persistence-config-completion-target-fr-18-ux-dr80-ar-12: backlog
-  5-6-wizard-authored-factions-are-immediately-selectable-in-playtest-skirmish-fr-19-ux-dr80: backlog
-  5-7-playtest-validate-asymmetry-ai-playability-of-the-showcase-factions-fr-20-fr-18: backlog
-  5-8-added-your-first-scenario-guided-onboarding-15-min-playable: backlog
+  5-5-faction-definer-guided-wizard-flow-validator-gated-save-fr-17-ux-dr40: backlog
+  5-6-ai-preset-selection-advanced-raw-json-mode-hero-persistence-config-completion-target-fr-18-ux-dr80-ar-12: backlog
+  5-7-wizard-authored-factions-are-immediately-selectable-in-playtest-skirmish-fr-19-ux-dr80: backlog
+  5-8-playtest-validate-asymmetry-ai-playability-of-the-showcase-factions-fr-20-fr-18: backlog
+  5-9-added-your-first-scenario-guided-onboarding-15-min-playable: backlog
   epic-5-retrospective: optional
   epic-6: backlog
   6-1-verify-and-harden-in-app-terrain-sculpt-texture-paint: backlog
@@ -143,25 +143,25 @@ development_status:
   6-11-named-cameras-water-floor: backlog
   epic-6-retrospective: optional
   epic-7: backlog
-  7-1a-trigger-layer-determinism-prerequisites-ordering-fixed-culture: backlog
-  7-1b-1-graph-canonical-dsl-ir-foundation-closed-registry-node-converter: backlog
-  7-1b-2-lossless-flat-to-graph-migration: backlog
-  7-2-typed-scoped-variables-deterministic-timers-and-verify-to-ship-eca: backlog
-  7-3-fixed-point-arithmetic-and-boolean-expression-layer: backlog
-  7-4-custom-events-define-raise-subscribe-with-acyclic-same-tick-dispatch: backlog
-  7-5-bounded-foreach-foreachbatched-loops-arrays-and-layer-3-fuel: backlog
-  7-6-authoritative-server-side-load-time-validator-gate-no-escape-hatch: backlog
-  7-7-custom-runtime-ui-read-rail-declarative-widget-tree-version-stamped-readback: backlog
-  7-8a-custom-runtime-ui-write-rail-button-raised-dsleventcommand-on-the-lockstep-bus: backlog
-  7-8b-replay-v2-dsl-event-record-local-only-presentation-action-whitelist: backlog
-  7-9-t3-visual-node-graph-editor-view-additive-over-the-shared-ir: backlog
-  7-10-win-condition-preset-templates-t1-sim-layer-winconditionsystem: backlog
-  7-11-n-faction-victory-resolution-per-player-elimination: backlog
-  7-12-expression-state-reads-randomchoice-trigger-enable-disable-run: backlog
-  7-13-action-leaves-orderunits-movecamera-playsound-playvfx: backlog
-  7-14-event-breadth-unitdamaged-unittrained-abilitycast-herolevel-playerchat: backlog
-  7-15-objectives-quest-log-match-briefing-surface: backlog
-  7-16-trigger-debugging-variable-watch-fired-trigger-log: backlog
+  7-1-trigger-layer-determinism-prerequisites-ordering-fixed-culture: backlog
+  7-2-graph-canonical-dsl-ir-foundation-closed-registry-node-converter: backlog
+  7-3-lossless-flat-to-graph-migration: backlog
+  7-4-typed-scoped-variables-deterministic-timers-and-verify-to-ship-eca: backlog
+  7-5-fixed-point-arithmetic-and-boolean-expression-layer: backlog
+  7-6-custom-events-define-raise-subscribe-with-acyclic-same-tick-dispatch: backlog
+  7-7-bounded-foreach-foreachbatched-loops-arrays-and-layer-3-fuel: backlog
+  7-8-authoritative-server-side-load-time-validator-gate-no-escape-hatch: backlog
+  7-9-custom-runtime-ui-read-rail-declarative-widget-tree-version-stamped-readback: backlog
+  7-10-custom-runtime-ui-write-rail-button-raised-dsleventcommand-on-the-lockstep-bus: backlog
+  7-11-replay-v2-dsl-event-record-local-only-presentation-action-whitelist: backlog
+  7-12-t3-visual-node-graph-editor-view-additive-over-the-shared-ir: backlog
+  7-13-win-condition-preset-templates-t1-sim-layer-winconditionsystem: backlog
+  7-14-n-faction-victory-resolution-per-player-elimination: backlog
+  7-15-expression-state-reads-randomchoice-trigger-enable-disable-run: backlog
+  7-16-action-leaves-orderunits-movecamera-playsound-playvfx: backlog
+  7-17-event-breadth-unitdamaged-unittrained-abilitycast-herolevel-playerchat: backlog
+  7-18-objectives-quest-log-match-briefing-surface: backlog
+  7-19-trigger-debugging-variable-watch-fired-trigger-log: backlog
   epic-7-retrospective: optional
   epic-8: backlog
   8-1-isecretstore-rip-out-plaintext-export-secret-fields: backlog

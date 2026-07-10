@@ -458,18 +458,18 @@ _Added by the approved sprint-change proposal (`sprint-change-proposal-2026-07-0
 | FR-57 | Epic 3 | Attack-delivery flag (hitscan vs projectile) + speed (DG-5, Story 3.12) |
 | FR-58 | Epic 9 | Per-client command-rate throttle / anti-spam (DG-6, Story 9.13) |
 | FR-59 | Epic 10 | Adaptive AI: pattern-tracking + counter-weighting + overlay (DG-7, Story 10.11) |
-| FR-60 | Epic 7 | Win-condition preset templates + sim WinConditionSystem (DG-8, Story 7.10) |
+| FR-60 | Epic 7 | Win-condition preset templates + sim WinConditionSystem (DG-8, Story 7.13) |
 | FR-61 | Epic 6 | Sim-side terrain elevation + height-advantage vision (DG-9, Story 6.5) |
 | FR-62 | Epic 3 | Hero runtime: XP/leveling/stat growth + death/revival (Stories 3.13, 3.14) |
 | FR-63 | Epic 4 | Research/upgrade system + authoring (Stories 4.8–4.11) |
 | FR-64 | Epic 3 | Items: inventory sim + item editor + shops (Stories 3.15, 3.16) |
-| FR-65 | Epic 7/9 | N-faction victory + teams/alliances + local-faction + 4-player verify + full-content handshake (Stories 7.11, 9.14–9.17, 6.9) |
+| FR-65 | Epic 7/9 | N-faction victory + teams/alliances + local-faction + 4-player verify + full-content handshake (Stories 7.14, 9.14–9.17, 6.9) |
 | FR-66 | Epic 11 | Session shell: menu/pause/speed/concede/score/video settings (Stories 11.2–11.4, 11.12) |
 | FR-67 | Epic 11 | Mid-match SP save/load, checksum-verified (Stories 11.6, 11.7) |
 | FR-68 | Epic 11 | Skirmish setup screen + loading screen (Stories 11.1, 11.5) |
 | FR-69 | Epic 6 | World-Editor parity floor (Stories 6.6–6.11) |
-| FR-70 | Epic 7 | Trigger vocabulary v2 + objectives/briefing (Stories 7.12–7.15) |
-| FR-71 | Epic 7 | Trigger debugging: variable watch + fired-trigger log (Story 7.16) |
+| FR-70 | Epic 7 | Trigger vocabulary v2 + objectives/briefing (Stories 7.15–7.18) |
+| FR-71 | Epic 7 | Trigger debugging: variable watch + fired-trigger log (Story 7.19) |
 | FR-72 | Epic 12 | Import Manager + mod.io content sync (Stories 12.1–12.4) |
 | FR-73 | Epic 13 | Prologue campaign framework + 3 missions (Stories 13.1–13.4) |
 | FR-74 | Epic 2/11 | Match-feedback floor: shift-queue/rally (2.12), defect batch (2.13), alerts/denial/buff-icons/queue UI (11.8–11.11) |
@@ -506,7 +506,7 @@ A creator sculpts and texture-paints terrain with textures that persist correctl
 
 ### Epic 7: Rich Trigger DSL & Custom Runtime UI
 "Build any game": the trigger DSL gains variables, arithmetic, collections, loops, timers, and custom events, plus trigger-driven custom runtime UI — authored across four interoperating tiers (preset / ECA / visual node-graph / natural-language) on one underlying representation, all deterministic and server-validatable. *(PRD M3; arch D2 typed event/dataflow graph IR containing D1 effect subgraphs + bounded-loop model + two-rail custom UI; arch D3 serialization contract — single ContentLoader, `NodeBase` converter, canonical-model hash, versioning/migration.)*
-**FRs covered:** FR-23, FR-24, FR-25, FR-26, FR-27, FR-28 · **DG:** DG-8 (win-condition presets + sim WinConditionSystem, 7.10) · **Gap-closure (2026-07-01):** FR-65 N-faction victory (7.11), FR-70 vocabulary v2 + objectives (7.12–7.15), FR-71 debugging (7.16)
+**FRs covered:** FR-23, FR-24, FR-25, FR-26, FR-27, FR-28 · **DG:** DG-8 (win-condition presets + sim WinConditionSystem, 7.13) · **Gap-closure (2026-07-01):** FR-65 N-faction victory (7.14), FR-70 vocabulary v2 + objectives (7.15–7.18), FR-71 debugging (7.19)
 
 ### Epic 8: AI-Assisted Creation
 An AI collaborator is available across every editor — provider configuration (OpenRouter / Claude / local Ollama), generation of triggers, maps, units, abilities, heroes and factions as editable data, and faction/scenario balance analysis — degrading gracefully to a fully-usable manual suite when no provider is available. *(PRD M4; arch D6 hand-rolled `ILLMProvider` + `ISecretStore`; relax the AI-gen validator clamps for non-RTS scenario types; all AI output passes the same content-validation gate.)*
@@ -1434,7 +1434,7 @@ So that heroes actually progress during play instead of being dead data.
 
 _Covers: FR-62, FR-5. Depends on: 3.7, 3.2, 2.2b._
 
-> Gap-closure (2026-07-01): closes the VERIFIED BLOCKER "hero XP/leveling runtime unowned" — 3.7's note punted the runtime and no story owned it; the whole FR-7 persistence rail carried state nothing changed. Kill attribution comes from CombatSystem's kill event (shared with 7.14's event source — build the attribution hook once). Fixed math only; XP-share radius via the sim SpatialHash. ⚑ One fold covering 3.13+3.14 state.
+> Gap-closure (2026-07-01): closes the VERIFIED BLOCKER "hero XP/leveling runtime unowned" — 3.7's note punted the runtime and no story owned it; the whole FR-7 persistence rail carried state nothing changed. Kill attribution comes from CombatSystem's kill event (shared with 7.17's event source — build the attribution hook once). Fixed math only; XP-share radius via the sim SpatialHash. ⚑ One fold covering 3.13+3.14 state.
 
 ### Story 3.14: Hero death & revival
 
@@ -1812,7 +1812,7 @@ _Covers: FR-20, AR-39. Depends on: 5.3, Epic 2._
 
 > ⚠ Quality-review (OWNERSHIP): re-scope as VERIFY/INTEGRATION — confirm the Epic-2 signature mechanics (Equal Exchange, Sanguine Furnace) are correctly wired to the Court/Covenant faction data; do NOT re-implement them here.
 
-### Story 5.5a: Faction Definer guided wizard flow + validator-gated save (FR-17, UX-DR40)
+### Story 5.5: Faction Definer guided wizard flow + validator-gated save (FR-17, UX-DR40)
 
 As a creator,
 I want a guided multi-step flow (name & color -> roster -> buildings & tech -> starting conditions -> AI-preset step) that serializes a valid faction definition and blocks save when validation fails,
@@ -1828,9 +1828,9 @@ So that I can assemble a complete, playable faction's core data step-by-step wit
 
 _Covers: FR-17, AR-39, UX-DR40. Depends on: 5.2, 5.3._
 
-> Presentation layer (src/UI + a snake_case .tscn) — no setup/wizard scene exists yet, build new. UX-DR80 steps: name/color -> roster -> buildings & tech -> start conditions -> AI preset (the AI-preset SELECTION capability lands in 5.5b; this story lays out the step and serializes a default/valid preset so the file passes validation). Simple mode = preset pickers from authored units/buildings (Epics 2-4 content). UX-DR40: team-color picker offers Okabe-Ito colorblind-safe swatches plus a glyph/label per faction (alpha/beta colors already follow this). On finish, the wizard serializes a FactionDefinition and runs the 5.2 FactionValidator, blocking save with the located error(s) until PASS (AR-39). The wizard only PRODUCES a valid faction file; making it selectable in skirmish is 5.6.
+> Presentation layer (src/UI + a snake_case .tscn) — no setup/wizard scene exists yet, build new. UX-DR80 steps: name/color -> roster -> buildings & tech -> start conditions -> AI preset (the AI-preset SELECTION capability lands in 5.6; this story lays out the step and serializes a default/valid preset so the file passes validation). Simple mode = preset pickers from authored units/buildings (Epics 2-4 content). UX-DR40: team-color picker offers Okabe-Ito colorblind-safe swatches plus a glyph/label per faction (alpha/beta colors already follow this). On finish, the wizard serializes a FactionDefinition and runs the 5.2 FactionValidator, blocking save with the located error(s) until PASS (AR-39). The wizard only PRODUCES a valid faction file; making it selectable in skirmish is 5.7.
 
-### Story 5.5b: AI-preset selection, advanced raw-JSON mode, hero/persistence config + completion target (FR-18, UX-DR80, AR-12)
+### Story 5.6: AI-preset selection, advanced raw-JSON mode, hero/persistence config + completion target (FR-18, UX-DR80, AR-12)
 
 As a creator,
 I want to choose and write the faction's AI preset, hero/persistence config, and an advanced raw-JSON escape hatch (validator-gated), hitting the <=12-min simple-preset target with the authoring surface hidden from Commanders,
@@ -1848,11 +1848,11 @@ So that I can author a complete, playable faction in one sitting without hand-ed
 
 **Given** a player in Play/Skirmish-only context **When** they navigate the in-match HUD **Then** no Faction Definer/authoring control is reachable by accident (creation entry is opt-in only)
 
-_Covers: FR-18, AR-12, AR-39, UX-DR80. Depends on: 5.5a._
+_Covers: FR-18, AR-12, AR-39, UX-DR80. Depends on: 5.5._
 
-> Advanced mode = raw-JSON escape hatch (layered complexity) re-running the same 5.2 FactionValidator on the edited result (AR-39). AI-preset step selects from available presets and writes ai_preset (FR-18). Hero/persistence config surfaced as part of the flow (AR-12). UI must respect editor-invisible-to-Commanders (creation surface is opt-in). The <=12-min first-faction target is measured against the full simple-mode flow (5.5a + this story) with no JSON hand-editing. No sim-mutating change here — the wizard only produces/validates a faction file (no checksum/golden impact).
+> Advanced mode = raw-JSON escape hatch (layered complexity) re-running the same 5.2 FactionValidator on the edited result (AR-39). AI-preset step selects from available presets and writes ai_preset (FR-18). Hero/persistence config surfaced as part of the flow (AR-12). UI must respect editor-invisible-to-Commanders (creation surface is opt-in). The <=12-min first-faction target is measured against the full simple-mode flow (5.5 + this story) with no JSON hand-editing. No sim-mutating change here — the wizard only produces/validates a faction file (no checksum/golden impact).
 
-### Story 5.6: Wizard-authored factions are immediately selectable in playtest & skirmish (FR-19, UX-DR80)
+### Story 5.7: Wizard-authored factions are immediately selectable in playtest & skirmish (FR-19, UX-DR80)
 
 As a creator,
 I want a faction I just finished in the Definer to appear and be choosable in playtest and skirmish/MP setup without a restart or manual file move,
@@ -1868,11 +1868,11 @@ So that I get an instant author->play loop and can validate my faction right awa
 
 **Given** a faction file that fails validation present in the data folder **When** the setup list is built **Then** it is either excluded or shown as non-selectable with a reason (a broken faction cannot be launched into a match)
 
-_Covers: FR-19, AR-3, UX-DR80. Depends on: 5.1, 5.5b._
+_Covers: FR-19, AR-3, UX-DR80. Depends on: 5.1, 5.6._
 
 > Wires the 5.5 wizard output into the runtime selection path. Uses the 5.1 FactionRegistry as the single source of selectable factions; the skirmish/playtest faction picker enumerates the registry (which now includes user-authored factions discovered from the data folder) and assigns the chosen FactionDefinition to a player slot (replacing/extending today's scenario-JSON-slot mechanism). On match boot the selected faction must flow through to the existing per-slot load that 5.1 centralized. UX-DR80 acceptance: output instantly selectable in skirmish. AR-3: slot assignment goes through the registry's PLAYER_COUNT-aware API. Presentation-layer selection UI sends an intent; it does not mutate sim state directly.
 
-### Story 5.7: Playtest-validate asymmetry & AI playability of the showcase factions (FR-20, FR-18)
+### Story 5.8: Playtest-validate asymmetry & AI playability of the showcase factions (FR-20, FR-18)
 
 As a designer,
 I want an end-to-end playtest confirming the Covenant and Court play differently, each runs its unique mechanic, and each is playable with/against the AI via its assigned preset,
@@ -1888,13 +1888,13 @@ So that FR-20's 'genuinely asymmetric, validated in playtest' bar and FR-18's AI
 
 **Given** the same skirmish seed run twice **When** both runs complete equal ticks **Then** the golden checksum is byte-identical (the playtest path did not break determinism)
 
-_Covers: FR-20, FR-18, AR-39, UX-DR80. Depends on: 5.4, 5.6._
+_Covers: FR-20, FR-18, AR-39, UX-DR80. Depends on: 5.4, 5.7._
 
-> Integration/validation story — no new systems, it exercises 5.1-5.6 together. Uses the godot-verify / in-engine MCP path to run a skirmish: alpha vs beta, each driven by its ai_preset. Confirms (a) each faction's signature mechanic from 5.4 actually fires in a live match (Court units visibly regenerate via Sanguine Furnace; a Covenant signature action pays Equal Exchange flat self-cost), (b) the AI builds/trains and fights with each faction (FR-18), and (c) the factions feel/play asymmetrically (different effective army composition/behavior, not mirror). The on-death Glut remains out (Epic 7). Capture a brief playtest note as the FR-20 'validated in playtest' artifact. Confirm no determinism regression (golden checksum still byte-identical across two seeded runs).
+> Integration/validation story — no new systems, it exercises 5.1-5.7 together. Uses the godot-verify / in-engine MCP path to run a skirmish: alpha vs beta, each driven by its ai_preset. Confirms (a) each faction's signature mechanic from 5.4 actually fires in a live match (Court units visibly regenerate via Sanguine Furnace; a Covenant signature action pays Equal Exchange flat self-cost), (b) the AI builds/trains and fights with each faction (FR-18), and (c) the factions feel/play asymmetrically (different effective army composition/behavior, not mirror). The on-death Glut remains out (Epic 7). Capture a brief playtest note as the FR-20 'validated in playtest' artifact. Confirm no determinism regression (golden checksum still byte-identical across two seeded runs).
 
 > ✅ Resolved 2026-06-21 (readiness triage): AC#3 now uses an objective criterion — an army-composition divergence threshold and/or the FR-42 win-rate band with recorded numbers — replacing 'observably asymmetric'.
 
-### Story 5.8: [ADDED] 'Your First Scenario' guided onboarding (<15-min playable)
+### Story 5.9: [ADDED] 'Your First Scenario' guided onboarding (<15-min playable)
 
 As a first-time creator,
 I want a guided onboarding flow that walks me from an empty project to a basic playable scenario without reading a manual or touching JSON,
@@ -2032,11 +2032,11 @@ So that "unit enters region" scenarios — the backbone of WC3 custom maps — a
 
 **Given** triggers referencing regions **When** the fail-closed trigger validation pass (1.11) runs **Then** dangling region references are rejected with actionable messages, and the `RegionEnter`/`RegionLeave` event sources fire deterministically at tick boundaries (ascending-id, boundary-crossing semantics documented) for the Scenario Director
 
-**Given** the 7.10 win-condition presets that require zones (King of the Hill) **When** regions exist **Then** the preset binds to an author-drawn region instead of a hardcoded zone
+**Given** the 7.13 win-condition presets that require zones (King of the Hill) **When** regions exist **Then** the preset binds to an author-drawn region instead of a hardcoded zone
 
 _Covers: FR-69, FR-60 (dependency fix). Depends on: 6.4._
 
-> Gap-closure (2026-07-01): closes the VERIFIED plan inconsistency "7.10 requires regions, no story ships them, no editor tool draws them". Sim-side region containment math is Fixed-only; events integrate with the as-built ScenarioDirector event path (Epic 7 extends them further in 7.12–7.14). Rect-only for 1.0 (circles/polys post-1.0, documented).
+> Gap-closure (2026-07-01): closes the VERIFIED plan inconsistency "7.13 requires regions, no story ships them, no editor tool draws them". Sim-side region containment math is Fixed-only; events integrate with the as-built ScenarioDirector event path (Epic 7 extends them further in 7.15–7.17). Rect-only for 1.0 (circles/polys post-1.0, documented).
 
 ### Story 6.7: Impassable terrain — pathability paint, deterministic blocking, and the pathability overlay
 
@@ -2120,19 +2120,19 @@ So that cinematic triggers have targets and maps can use water as terrain.
 
 **Acceptance Criteria:**
 
-**Given** the camera tool **When** I create/name/preview camera positions (position/target/FOV) **Then** they persist in the scenario package and are listed for the 7.13 `MoveCamera` action and Epic 13 cinematics; "view through camera" preview works in-editor
+**Given** the camera tool **When** I create/name/preview camera positions (position/target/FOV) **Then** they persist in the scenario package and are listed for the 7.16 `MoveCamera` action and Epic 13 cinematics; "view through camera" preview works in-editor
 
 **Given** the water tool **When** I place a water volume **Then** it renders as a visual plane, auto-stamps impassable cells into the 6.7 layer (removing the volume un-stamps), and persists/packages — no sim fluid simulation exists or is implied
 
-_Covers: FR-69. Depends on: 6.7. Pairs with: 7.13._
+_Covers: FR-69. Depends on: 6.7. Pairs with: 7.16._
 
-> Gap-closure (2026-07-01): closes "no trigger camera actions or named-camera authoring (GDD-promised)" (authoring half — the action leaf is 7.13) and "no water" via the cheap-water decision (visual + blocking only), documented as such.
+> Gap-closure (2026-07-01): closes "no trigger camera actions or named-camera authoring (GDD-promised)" (authoring half — the action leaf is 7.16) and "no water" via the cheap-water decision (visual + blocking only), documented as such.
 
 ## Epic 7: Rich Trigger DSL & Custom Runtime UI
 
 _'Build any game': the trigger DSL gains variables/arithmetic/collections/loops/timers/custom-events plus trigger-driven custom UI, across four interoperating tiers, all deterministic and server-validatable._
 
-### Story 7.1a: Trigger-layer determinism prerequisites (ordering, Fixed, culture)
+### Story 7.1: Trigger-layer determinism prerequisites (ordering, Fixed, culture)
 
 As a platform engineer hardening the trigger layer for multiplayer,
 I want the as-built trigger ordering, float round-trips, and culture-sensitivity nondeterminisms removed and the golden re-pinned,
@@ -2148,7 +2148,7 @@ _Covers: FR-27, AR-13, AR-16. Depends on: — (none / earlier epics only)._
 
 > Split from former 7.1 — the determinism fixes (D3.4 A17 ordering/float) pulled out as a standalone, golden-re-pinning prerequisite. Depends on the prior D1 effect-graph epic (SimRng, golden harness). Must land before the IR rebuild so the migration starts from a deterministic baseline.
 
-### Story 7.1b-1: Graph-canonical DSL IR foundation + closed-registry node converter
+### Story 7.2: Graph-canonical DSL IR foundation + closed-registry node converter
 
 As a platform engineer unifying the trigger representation,
 I want the graph IR DTOs (persistent integer node ids, typed exec + data edges) that embed D1 effect subgraphs, served by a closed-registry NodeBase converter with canonical serialization,
@@ -2158,11 +2158,11 @@ So that every later DSL feature lands on one deterministic, server-validatable r
 
 **Given** the existing flat TriggerDefinition[] in ScenarioData and ScenarioDirector **When** graph IR DTOs are introduced in src/Dsl with an id-keyed node list, two sparse typed edge-lists (exec, data) and persistent integer node ids **Then** the trigger graph is a superset that embeds D1 EffectDef action subgraphs unchanged (no second executor), and a NodeBase JsonConverter over a CLOSED type registry round-trips every node by id with [JsonPolymorphic] forbidden **And** an unknown node kind is rejected at parse with a located error naming the kind **And** the graph section serializes canonically (nodes sorted by id, edges by (src,srcPort,dst,dstPort))
 
-_Covers: FR-23, FR-28, AR-10, AR-21, AR-22. Depends on: 7.1a._
+_Covers: FR-23, FR-28, AR-10, AR-21, AR-22. Depends on: 7.1._
 
 > Split from former 7.1b. Establishes the graph-canonical IR + closed-registry converter from step one even though only T2/T4 author it. AR-10/AR-21/AR-22, FR-28. The D1 effect executor is reused unchanged — no second executor.
 
-### Story 7.1b-2: Lossless flat-to-graph migration
+### Story 7.3: Lossless flat-to-graph migration
 
 As a platform engineer unifying the trigger representation,
 I want lossless migration of the existing flat trigger format into the graph IR with no second serialization path,
@@ -2172,11 +2172,11 @@ So that legacy scenarios load onto the single deterministic representation witho
 
 **Given** an existing flat-format scenario JSON on disk **When** it is loaded **Then** it migrates losslessly into the graph IR (T2 sentence list is a linear projection of an exec-edge chain) with no second serialization path
 
-_Covers: FR-27. Depends on: 7.1b-1._
+_Covers: FR-27. Depends on: 7.2._
 
-> Split from former 7.1b. The flat TriggerDefinition[] migrates with the T2 sentence list as a linear projection of an exec-edge chain — loaded through the same canonical IR serialization from 7.1b-1, never a parallel path. FR-27.
+> Split from former 7.1b. The flat TriggerDefinition[] migrates with the T2 sentence list as a linear projection of an exec-edge chain — loaded through the same canonical IR serialization from 7.2, never a parallel path. FR-27.
 
-### Story 7.2: Typed scoped variables, deterministic timers, and verify-to-ship ECA
+### Story 7.4: Typed scoped variables, deterministic timers, and verify-to-ship ECA
 
 As a scenario creator authoring game logic,
 I want typed, scoped variables (Int/Fixed/Bool/EntityRef/FactionRef/Point/TimerRef/Array) and deterministic named timers, declared in ScenarioData and edited in the ECA trigger list,
@@ -2190,11 +2190,11 @@ So that I can hold scoreboard/economy/per-player state and schedule delayed logi
 
 **Given** the existing Trigger Editor panel (FR-23, basic, verify-to-ship) **When** a creator adds/edits/enables/deletes an ECA trigger whose actions embed a D1 effect subgraph and reads/writes a declared variable **Then** the trigger persists into the graph IR and fires correctly in a running match **And** the editor surfaces a simple preset entry AND the raw-IR escape hatch (layered complexity)
 
-_Covers: FR-23, FR-24, FR-27, AR-10, AR-21, UX-DR79. Depends on: 7.1b-2._
+_Covers: FR-23, FR-24, FR-27, AR-10, AR-21, UX-DR79. Depends on: 7.3._
 
 > D2 D1s var table + ECA verify (FR-23). Variables are the 'typed, scoped' half of FR-24. UX-DR79 trigger list with typed/scoped variables. Depends only on 7.1.
 
-### Story 7.3: Fixed-point arithmetic and boolean expression layer
+### Story 7.5: Fixed-point arithmetic and boolean expression layer
 
 As a scenario creator writing trigger conditions and computed values,
 I want a CEL-shaped pure, typed, side-effect-free expression sublanguage over my variables (Fixed-point arithmetic, OR/NOT/grouping, bounded built-ins) that compiles at load and evaluates cheaply in the tick,
@@ -2202,17 +2202,17 @@ So that conditions can be richer than flat ANDed comparisons and variable assign
 
 **Acceptance Criteria:**
 
-**Given** the typed variables from 7.2 and the as-built pure-AND AllConditionsMet (:263) **When** a two-phase expression evaluator is added (parse + type-check + cost-estimate at load; evaluate pre-checked Fixed-only AST in the tick) supporting + - * / mod, > < >= <= == !=, && || !, and bounded built-ins count/distance/min/max/abs **Then** a condition tree using OR/NOT/grouping evaluates correctly and a SetVariable node assigns from an expression RHS **And** division by zero is rejected at load (validation), not at runtime **And** no float type exists anywhere in an expression; all fractional numerics are Fixed 16.16
+**Given** the typed variables from 7.4 and the as-built pure-AND AllConditionsMet (:263) **When** a two-phase expression evaluator is added (parse + type-check + cost-estimate at load; evaluate pre-checked Fixed-only AST in the tick) supporting + - * / mod, > < >= <= == !=, && || !, and bounded built-ins count/distance/min/max/abs **Then** a condition tree using OR/NOT/grouping evaluates correctly and a SetVariable node assigns from an expression RHS **And** division by zero is rejected at load (validation), not at runtime **And** no float type exists anywhere in an expression; all fractional numerics are Fixed 16.16
 
 **Given** an authored expression with a type mismatch (e.g. Bool + Fixed) **When** it is loaded **Then** it is rejected at load with a located error **And** a well-typed expression produces a byte-identical SimChecksum across two headless runs
 
 **Given** the same data subgraph rendered as a typed expression tree **When** it is serialized **Then** it lives in the graph IR as data edges (wire color = type), preserving the single-IR contract
 
-_Covers: FR-24, FR-27, AR-10, UX-DR79. Depends on: 7.2._
+_Covers: FR-24, FR-27, AR-10, UX-DR79. Depends on: 7.4._
 
-> D2 D2s expression layer. The arithmetic/boolean-expression half of FR-24. Strict extension of D1's bounded grammar. Depends on 7.2 (needs typed variables to operate on).
+> D2 D2s expression layer. The arithmetic/boolean-expression half of FR-24. Strict extension of D1's bounded grammar. Depends on 7.4 (needs typed variables to operate on).
 
-### Story 7.4: Custom events: define, raise, subscribe with acyclic same-tick dispatch
+### Story 7.6: Custom events: define, raise, subscribe with acyclic same-tick dispatch
 
 As a scenario creator building decoupled game-logic modules,
 I want to define named custom events (with typed params), raise them from triggers, and subscribe handler triggers, with same-tick dispatch proven acyclic at load and bounded by named caps,
@@ -2226,13 +2226,13 @@ So that I can build decoupled modules (and the Sanguine Court's on-death Glut se
 
 **Given** the built-in unit_dies event carrying only victim slot **When** the combat layer's killer/last-hit attribution is threaded onto the death event payload (typed EntityRef/FactionRef) **Then** an on-death handler can credit the killer faction (enabling the Court Glut on-death regen aura and kill-credit logic) **And** the named caps are corpus-validated as a gate before lock, not treated as a free tuning dial
 
-_Covers: FR-25, FR-27, AR-10, AR-11, UX-DR79. Depends on: 7.3._
+_Covers: FR-25, FR-27, AR-10, AR-11, UX-DR79. Depends on: 7.5._
 
-> D2 D3s(payloads)+D4s(custom events). Completes the D2 On-death seam for Epic 5's Court Glut. AR-11 acyclic-DAG/cascade-cost; FR-25. Depends on 7.3 (RaiseEvent args use expressions; handlers gate on expression conditions).
+> D2 D3s(payloads)+D4s(custom events). Completes the D2 On-death seam for Epic 5's Court Glut. AR-11 acyclic-DAG/cascade-cost; FR-25. Depends on 7.5 (RaiseEvent args use expressions; handlers gate on expression conditions).
 
 > ⚠ Quality-review: ship the GENERIC on-death event seam only (event payload + killer-attribution dispatch). It must be testable without Epic-5 faction content; the Court 'Glut' aura is faction data that consumes this seam.
 
-### Story 7.5: Bounded ForEach / ForEachBatched loops, arrays, and Layer-3 fuel
+### Story 7.7: Bounded ForEach / ForEachBatched loops, arrays, and Layer-3 fuel
 
 As a scenario creator building wave/AoE/iteration logic,
 I want static-capacity arrays/collections and the only sanctioned loop forms (ForEach over a snapshotted ascending-id collection, ForEachBatched for large sets) plus a checksummed per-tick fuel seatbelt,
@@ -2246,11 +2246,11 @@ So that I can build TD waves, autochess pools, and AoE-over-units patterns while
 
 **Given** a malformed/hand-edited definition that escapes the load gate **When** the per-tick fuel budget (MaxDslOpsPerTick, folded into SimChecksum) is exhausted **Then** execution halts deterministically at a whole-trigger boundary (never mid-Sequence) identically on two headless clients with no torn state **And** the fuel-counter checksum re-pin is recorded as a named expected event
 
-_Covers: FR-24, FR-27, AR-10, AR-11, AR-13, UX-DR79. Depends on: 7.4._
+_Covers: FR-24, FR-27, AR-10, AR-11, AR-13, UX-DR79. Depends on: 7.6._
 
-> D2 D5s loops/fuel. Completes FR-24 (collections + loops). AR-11 Layer-0/Layer-3, AR-13 SimRng for any loop randomness. Depends on 7.4 (ForEachBatched cross-tick drip rides the next-tick event queue; loops may raise events).
+> D2 D5s loops/fuel. Completes FR-24 (collections + loops). AR-11 Layer-0/Layer-3, AR-13 SimRng for any loop randomness. Depends on 7.6 (ForEachBatched cross-tick drip rides the next-tick event queue; loops may raise events).
 
-### Story 7.6: Authoritative server-side load-time validator gate (no escape hatch)
+### Story 7.8: Authoritative server-side load-time validator gate (no escape hatch)
 
 As a multiplayer host loading a creator scenario before any tick,
 I want the type-checker + graph-linter + cap/cost validator promoted to a mandatory pre-tick gate at the ApplyScenario / LoadScenario boundary on every load path, with the canonical-model hash and versioning underneath it,
@@ -2264,11 +2264,11 @@ So that no hand-edited, AI-generated, or replay-loaded scenario can enter the de
 
 **Given** the four authoring tiers (T1 preset, T2 ECA, T3 graph, T4 NL) **When** any tier emits a scenario **Then** it is validated by this same gate so AI authoring is no more dangerous than human authoring (safe-by-construction) **And** the worst-case canonical hash on a max-caps scenario completes within the lobby-handshake budget (low tens of ms)
 
-_Covers: FR-27, FR-28, AR-21, AR-22, AR-23, AR-24. Depends on: 7.5._
+_Covers: FR-27, FR-28, AR-21, AR-22, AR-23, AR-24. Depends on: 7.7._
 
-> D2 D6s + D3.1/D3.6. The D3 serialization/versioning contract (single ContentLoader path, NodeBase converter, closed registry, canonical-model hash, schema_version/migration). FR-27 (server-validatable, no escape hatch) + FR-28 (one validatable IR all tiers share). Depends on 7.5 (validator must cover loop/fuel/array caps).
+> D2 D6s + D3.1/D3.6. The D3 serialization/versioning contract (single ContentLoader path, NodeBase converter, closed registry, canonical-model hash, schema_version/migration). FR-27 (server-validatable, no escape hatch) + FR-28 (one validatable IR all tiers share). Depends on 7.7 (validator must cover loop/fuel/array caps).
 
-### Story 7.7: Custom runtime UI read rail: declarative widget tree + version-stamped readback
+### Story 7.9: Custom runtime UI read rail: declarative widget tree + version-stamped readback
 
 As a scenario creator showing live game state to the player,
 I want a declarative closed-vocabulary widget tree in ScenarioData (Panel/Label/Counter/ProgressBar/Timer/Leaderboard/FloatingText/ItemList) bound to DSL variables, fed by a double-buffered version-stamped DslVarReadback published once per tick,
@@ -2276,15 +2276,15 @@ So that I can build scoreboards, TD wave counters, and RPG-style readouts that u
 
 **Acceptance Criteria:**
 
-**Given** the validated DslVarTable from 7.6 **When** a CustomUiBridge (modeled on FogOfWarBridge) publishes a read-only, per-variable version/dirty-stamped DslVarReadback at the tick boundary and presentation widgets pull in _Process and re-format only on version change **Then** a Counter/Leaderboard bound via {variable} updates live, formatting (int->string, Fixed->mm:ss) happens presentation-side, and strings never enter the tick **And** the readback is a copy of already-checksummed state and is NOT in SimChecksum; it cannot desync
+**Given** the validated DslVarTable from 7.8 **When** a CustomUiBridge (modeled on FogOfWarBridge) publishes a read-only, per-variable version/dirty-stamped DslVarReadback at the tick boundary and presentation widgets pull in _Process and re-format only on version change **Then** a Counter/Leaderboard bound via {variable} updates live, formatting (int->string, Fixed->mm:ss) happens presentation-side, and strings never enter the tick **And** the readback is a copy of already-checksummed state and is NOT in SimChecksum; it cannot desync
 
 **Given** the closed widget vocabulary with an ItemList data-bound repeater **When** a creator authors widgets on a 16:9 canvas via the widget-palette builder with 9-point anchors, {variable} binding, and trigger-driven visibility **Then** the widget tree persists in ScenarioData, is covered by scenarioHash (divergent UIs refuse to start), and renders inside the 16:9 safe area **And** widget count/depth/list-rows caps (<=256 / <=8 / <=64) are rejected at load and asserted at runtime, never clamped **And** every BindVar resolves and type-matches the closed variable registry at load
 
-_Covers: FR-26, FR-27, AR-32, AR-21, UX-DR76, UX-DR58, UX-DR48. Depends on: 7.6._
+_Covers: FR-26, FR-27, AR-32, AR-21, UX-DR76, UX-DR58, UX-DR48. Depends on: 7.8._
 
-> D2 D8s read path. AR-32 READ rail; UX-DR76 widget-palette builder, UX-DR58 direct-manipulation authoring, UX-DR48 16:9 safe-area. Depends on 7.6 (binds resolve against the validated variable registry; UI schema rides the load gate).
+> D2 D8s read path. AR-32 READ rail; UX-DR76 widget-palette builder, UX-DR58 direct-manipulation authoring, UX-DR48 16:9 safe-area. Depends on 7.8 (binds resolve against the validated variable registry; UI schema rides the load gate).
 
-### Story 7.8a: Custom runtime UI write rail: Button-raised DslEventCommand on the lockstep bus
+### Story 7.10: Custom runtime UI write rail: Button-raised DslEventCommand on the lockstep bus
 
 As a scenario creator building interactive runtime UI,
 I want Buttons that raise custom events through a net-new DslEventCommand on the lockstep command bus, with per-event allowed-raiser authorization enforced sim-side,
@@ -2292,15 +2292,15 @@ So that players can vote, buy from a shop, or trigger waves via custom UI in bot
 
 **Acceptance Criteria:**
 
-**Given** the custom events from 7.4 and the read-rail UI from 7.7 **When** a Button.Pressed handler calls LockstepManager.EnqueueDslEvent(eventId, args) capturing LocalFaction as raiser, riding TickCommandPacket (parallel capped event list, MaxDslEventsPerTick) **Then** a button press defers by _currentDelay and applies at the same exec tick on two headless clients, and ApplyDslEvents enforces the per-event allowed-raiser set as sim-side authorization (never client-side button-disable) **And** the pinned tick-phase order is apply DSL events -> sim systems tick -> ScenarioDirector drains the bus
+**Given** the custom events from 7.6 and the read-rail UI from 7.9 **When** a Button.Pressed handler calls LockstepManager.EnqueueDslEvent(eventId, args) capturing LocalFaction as raiser, riding TickCommandPacket (parallel capped event list, MaxDslEventsPerTick) **Then** a button press defers by _currentDelay and applies at the same exec tick on two headless clients, and ApplyDslEvents enforces the per-event allowed-raiser set as sim-side authorization (never client-side button-disable) **And** the pinned tick-phase order is apply DSL events -> sim systems tick -> ScenarioDirector drains the bus
 
 **Given** DslEventCommand now mutates the sim via the lockstep bus **When** the new command kind and the apply-DSL-events tick phase are folded into the deterministic path **Then** the golden harness is re-baselined once (button-press scenario byte-identical across two headless clients) and DSL-event application is hashed/ordered deterministically (ascending faction-slot raiser order, no float/wall-clock)
 
-_Covers: FR-26, FR-27, AR-32, AR-23. Depends on: 7.7, 7.4._
+_Covers: FR-26, FR-27, AR-32, AR-23. Depends on: 7.9, 7.6._
 
-> D2 D9s write path (network arm): net-out DslEventCommand + capped per-tick event list + net-new sim-side authorization. AR-32 WRITE rail (networked arm), AR-23 lockstep event authority. Depends on 7.7 (buttons live in the widget tree) and 7.4 (buttons raise registered custom events). This is the sim-mutating landing — golden re-baseline rides here.
+> D2 D9s write path (network arm): net-out DslEventCommand + capped per-tick event list + net-new sim-side authorization. AR-32 WRITE rail (networked arm), AR-23 lockstep event authority. Depends on 7.9 (buttons live in the widget tree) and 7.6 (buttons raise registered custom events). This is the sim-mutating landing — golden re-baseline rides here.
 
-### Story 7.8b: Replay-v2 DSL-event record + local-only presentation-action whitelist
+### Story 7.11: Replay-v2 DSL-event record + local-only presentation-action whitelist
 
 As a scenario creator building interactive runtime UI,
 I want the replay format upgraded to record and re-apply DSL events through all command-application sites, plus local-only buttons confined to a closed presentation-action whitelist,
@@ -2308,15 +2308,15 @@ So that interactive matches replay bit-identically and cosmetic UI buttons can n
 
 **Acceptance Criteria:**
 
-**Given** the replay format is hardwired to UnitOrder (VERSION=1) and the write path from 7.8a **When** the write path is recorded **Then** ReplayRecorder.VERSION bumps to 2 with a DSL-event record kind, ReplayPlayer gains a parse+apply branch, and DSL-event application is threaded through all four command-application sites (live, spectator, ReplayPlayer.ApplyOrders, recorder) **And** a recorded match with a button press replays bit-identically under v2 and a v1 replay is hard-rejected
+**Given** the replay format is hardwired to UnitOrder (VERSION=1) and the write path from 7.10 **When** the write path is recorded **Then** ReplayRecorder.VERSION bumps to 2 with a DSL-event record kind, ReplayPlayer gains a parse+apply branch, and DSL-event application is threaded through all four command-application sites (live, spectator, ReplayPlayer.ApplyOrders, recorder) **And** a recorded match with a button press replays bit-identically under v2 and a v1 replay is hard-rejected
 
 **Given** a local-only button (toggle a panel, open a sub-panel) **When** it uses the closed presentation-action whitelist (ToggleWidgetVisible/OpenSubPanel/CloseSelf/SetLocalUiVar) **Then** the validator proves it cannot touch any DSL variable or event (disjoint sim/local-UI namespaces) and provably cannot affect SimChecksum
 
-_Covers: AR-32, AR-24. Depends on: 7.8a._
+_Covers: AR-32, AR-24. Depends on: 7.10._
 
 > D2 D9s write path (replay + local arm): replay-v2 record kind across four apply-sites + the local-only presentation-action whitelist. AR-32 WRITE rail (local arm), AR-24 replay integrity. The whitelist is proven disjoint from the sim namespaces and provably outside SimChecksum.
 
-### Story 7.9: T3 visual node-graph editor view (additive) over the shared IR
+### Story 7.12: T3 visual node-graph editor view (additive) over the shared IR
 
 As a scenario creator who prefers visual authoring,
 I want a GraphEdit-based node-graph editor that renders and edits the already-graph-canonical IR (typed exec + data wires, on-node error rendering) as a replaceable view, with the T2 sentence editor showing a graph-only fallback,
@@ -2328,11 +2328,11 @@ So that I can author the same logic visually as T1/T2/T4, interoperating on one 
 
 **Given** T3 node positions and other authoring affordances **When** the graph is saved **Then** they persist in the excluded _editor annotation channel (verbatim) and are NOT in the scenarioHash, so a cosmetic layout move yields the same hash **And** if GraphEdit proves inadequate it can be swapped for a custom view without touching the IR or the other three tiers
 
-_Covers: FR-28, AR-10, AR-21, UX-DR79, UX-DR57. Depends on: 7.6._
+_Covers: FR-28, AR-10, AR-21, UX-DR79, UX-DR57. Depends on: 7.8._
 
-> D2 D7s additive T3 view + D3.7 annotation channel. FR-28 (T3 tier on the one IR), UX-DR57 graph wiring, UX-DR79 node graph. GraphEdit is 'Experimental' (briefing residual risk) - mitigated by editor-agnostic IR + replaceable view. Depends on 7.6 (renders errors from the validator gate) and the graph IR from 7.1.
+> D2 D7s additive T3 view + D3.7 annotation channel. FR-28 (T3 tier on the one IR), UX-DR57 graph wiring, UX-DR79 node graph. GraphEdit is 'Experimental' (briefing residual risk) - mitigated by editor-agnostic IR + replaceable view. Depends on 7.8 (renders errors from the validator gate) and the graph IR from 7.1.
 
-### Story 7.10: Win-condition preset templates (T1) + sim-layer WinConditionSystem
+### Story 7.13: Win-condition preset templates (T1) + sim-layer WinConditionSystem
 
 As a scenario creator setting up a match's victory rules,
 I want the two built-in win conditions evaluated inside the deterministic simulation by a real WinConditionSystem, plus four named turnkey win-condition presets (King of the Hill, Timed Survival, Assassination, Landmark Destruction) authored on the DSL,
@@ -2342,7 +2342,7 @@ So that multiplayer victory is server-checkable and identical on every client, a
 
 **Given** the as-built win-eval that lives in presentation (MainScene.CheckWinCondition:2176-2213, a per-frame 2-case switch) and the enum comment that already names the intended owner (ScenarioData.cs:7 "(future) WinConditionSystem") **When** a sim-layer WinConditionSystem is added that ticks in the deterministic loop in ascending-id order and emits a verdict (None / FactionWon(slot) / FactionLost(slot)) **Then** the legacy DestroyAllBuildings and EliminateAllUnits cases (ScenarioData.cs:10-16) are VERIFIED to produce the same winning/losing faction as the old presentation switch on a fixed scenario, and MainScene now only reads the system's verdict to drive ShowGameOver (no win math remains in presentation) **And** the verdict is computed purely from sim arrays with no `using Godot;`, no float/double/Mathf, and no wall-clock
 
-**Given** the trigger/variable/timer/region primitives shipped earlier in Epic 7 (7.2 variables+timers, regions) **When** the four T1 presets are authored as turnkey graph-IR templates on the trigger system — King of the Hill (one faction holds a designated region continuously for N ticks), Timed Survival (a designated faction is still alive at tick N), Assassination (a designated leader entity dies), Landmark Destruction (a designated structure is destroyed) **Then** each preset, when applied with its parameters filled, instantiates valid trigger/condition nodes that compile through the load-time validator and resolves victory/defeat for the correct faction in a running headless match **And** each preset is expressed entirely through the public DSL (no hidden engine-only opcode), proven by round-tripping the instantiated template through the graph IR schema unchanged
+**Given** the trigger/variable/timer/region primitives shipped earlier in Epic 7 (7.4 variables+timers, regions) **When** the four T1 presets are authored as turnkey graph-IR templates on the trigger system — King of the Hill (one faction holds a designated region continuously for N ticks), Timed Survival (a designated faction is still alive at tick N), Assassination (a designated leader entity dies), Landmark Destruction (a designated structure is destroyed) **Then** each preset, when applied with its parameters filled, instantiates valid trigger/condition nodes that compile through the load-time validator and resolves victory/defeat for the correct faction in a running headless match **And** each preset is expressed entirely through the public DSL (no hidden engine-only opcode), proven by round-tripping the instantiated template through the graph IR schema unchanged
 
 **Given** the WinConditionSystem now folds new per-match win state into the sim (e.g. King-of-the-Hill hold-tick counters and Timed-Survival deadline ticks as parallel SoA/declaration-index stores, integer ticks only) **When** two headless runs execute the same seeded scenario+command stream that triggers each of the six conditions **Then** SimChecksum.Compute is widened to fold every live win-state field in declaration/ascending-id order and both runs yield a byte-identical final checksum, and the golden baseline is RE-BASELINED to capture the new fields
 
@@ -2352,11 +2352,11 @@ So that multiplayer victory is server-checkable and identical on every client, a
 
 **Given** the win-condition picker UI (which today exposes only the 2 enum values) **When** it is expanded **Then** it lists all six options (2 built-in + 4 presets), shows each preset's required parameter fields inline, and selecting one writes the corresponding WinCondition/preset template into ScenarioData such that it reloads to the same selection **And** the existing ScenarioDirector generic trigger-driven victory/defeat action (ScenarioDirector.cs:322-327, OnVictory) remains intact as the advanced escape hatch for authors who want fully custom logic
 
-_Covers: DG-8, FR-28, FR-22. Depends on: 7.2._
+_Covers: DG-8, FR-28, FR-22. Depends on: 7.4._
 
-> Brownfield: only 2 win conditions exist (ScenarioData.cs:10-16) and win-eval is mis-located in presentation (MainScene.CheckWinCondition:2176-2213). VERIFY the 2 built-ins behave identically after the move; BUILD the sim-layer WinConditionSystem and the 4 named T1 presets (all grep-absent today). This story MUTATES sim state: win counters/deadlines are new parallel SoA arrays on EntityWorld / a sibling win store, integer ticks only, all math via the 16.16 `Fixed` type, entities iterated in ascending-id order, any randomness only via seeded SimRng, no wall-clock — and the new state MUST fold into SimChecksum, which RE-BASELINES the golden checksum (call it out in the dev log). Presentation stays separate: MainScene only reads the verdict; no Godot types enter the sim. Scope limit: T1 tier only — these four are turnkey presets composed from Epic-7 DSL primitives (7.2), not a new generic win-condition engine; the ScenarioDirector OnVictory action (cs:322-327) stays as the T3 escape hatch and is not reworked here. Multi-team (>2 faction) free-for-all resolution beyond the existing P1/P2 two-faction assumption is out of scope.
+> Brownfield: only 2 win conditions exist (ScenarioData.cs:10-16) and win-eval is mis-located in presentation (MainScene.CheckWinCondition:2176-2213). VERIFY the 2 built-ins behave identically after the move; BUILD the sim-layer WinConditionSystem and the 4 named T1 presets (all grep-absent today). This story MUTATES sim state: win counters/deadlines are new parallel SoA arrays on EntityWorld / a sibling win store, integer ticks only, all math via the 16.16 `Fixed` type, entities iterated in ascending-id order, any randomness only via seeded SimRng, no wall-clock — and the new state MUST fold into SimChecksum, which RE-BASELINES the golden checksum (call it out in the dev log). Presentation stays separate: MainScene only reads the verdict; no Godot types enter the sim. Scope limit: T1 tier only — these four are turnkey presets composed from Epic-7 DSL primitives (7.4), not a new generic win-condition engine; the ScenarioDirector OnVictory action (cs:322-327) stays as the T3 escape hatch and is not reworked here. Multi-team (>2 faction) free-for-all resolution beyond the existing P1/P2 two-faction assumption is out of scope.
 
-### Story 7.11: N-faction victory resolution and per-player elimination
+### Story 7.14: N-faction victory resolution and per-player elimination
 
 As a player in a 3–4 player match,
 I want defeated players eliminated while the match continues, and victory to resolve for the last team standing,
@@ -2364,19 +2364,19 @@ So that matches beyond 1v1 can actually conclude.
 
 **Acceptance Criteria:**
 
-**Given** the sim `WinConditionSystem` (7.10) **When** generalized to N active factions **Then** it evaluates every active faction against the win condition using a sim-owned alliance mask (defaulting to teams-of-1 = FFA; populated from the lobby/setup by 9.15), and the hardcoded P1/P2 game-over path in `MainScene` is replaced by consuming the system's verdicts
+**Given** the sim `WinConditionSystem` (7.13) **When** generalized to N active factions **Then** it evaluates every active faction against the win condition using a sim-owned alliance mask (defaulting to teams-of-1 = FFA; populated from the lobby/setup by 9.15), and the hardcoded P1/P2 game-over path in `MainScene` is replaced by consuming the system's verdicts
 
 **Given** a faction loses its win-condition-relevant assets **When** elimination triggers **Then** a per-player defeat verdict is emitted at a deterministic tick, the eliminated faction's remaining entities resolve per the preset's rule (removed or neutral — documented per preset), the local eliminated player switches to the existing spectator/RevealAll view with a defeat banner, and the match CONTINUES for the rest
 
-**Given** the four 7.10 presets **When** run with 3–4 factions **Then** each resolves correctly for last-TEAM-standing (KotH cumulative time per team, Assassination per-team leader, etc.), verified headless per preset
+**Given** the four 7.13 presets **When** run with 3–4 factions **Then** each resolves correctly for last-TEAM-standing (KotH cumulative time per team, Assassination per-team leader, etc.), verified headless per preset
 
 **Given** the alliance mask + per-faction verdict state are sim state **When** they land **Then** they fold into `SimChecksum` with one bump and explicit golden re-baseline, and a replayed 4-faction match is byte-identical
 
-_Covers: FR-65. Depends on: 7.10._
+_Covers: FR-65. Depends on: 7.13._
 
-> Gap-closure (2026-07-01): closes the VERIFIED BLOCKER "3+ player matches cannot conclude" — 7.10's own scope note excluded >2-faction resolution while setup UIs advertised up to 8 players. The alliance MASK (sim data model) is owned HERE so the sim never depends on Epic 9; 9.15 only wires lobby teams into it. ⚑ One fold.
+> Gap-closure (2026-07-01): closes the VERIFIED BLOCKER "3+ player matches cannot conclude" — 7.13's own scope note excluded >2-faction resolution while setup UIs advertised up to 8 players. The alliance MASK (sim data model) is owned HERE so the sim never depends on Epic 9; 9.15 only wires lobby teams into it. ⚑ One fold.
 
-### Story 7.12: Expression state-reads, RandomChoice, and trigger enable/disable/run
+### Story 7.15: Expression state-reads, RandomChoice, and trigger enable/disable/run
 
 As a scenario creator,
 I want triggers that can READ game state, roll dice, and control other triggers,
@@ -2392,11 +2392,11 @@ So that real custom-game logic (checks, chances, phases) is authorable.
 
 **Given** the four authoring tiers **When** the vocabulary grows **Then** the ECA sentence-builder, node-graph palette, and the Tier-4 NL schema/registry all expose the new nodes (one underlying representation — no tier drift), with schema docs updated for 8.x
 
-_Covers: FR-70. Depends on: Epic 7 core DSL stories (7.2–7.5), 6.6._
+_Covers: FR-70. Depends on: Epic 7 core DSL stories (7.4–7.7), 6.6._
 
 > Gap-closure (2026-07-01): closes "expression layer cannot READ game state" + "no Random node" + "no trigger on/off". Everything stays inside the single typed event/dataflow graph (arch D2) — no scripting escape hatch.
 
-### Story 7.13: Action leaves — OrderUnits, MoveCamera, PlaySound/PlayVfx
+### Story 7.16: Action leaves — OrderUnits, MoveCamera, PlaySound/PlayVfx
 
 As a scenario creator,
 I want triggers to order units around, move the camera, and play sounds and effects,
@@ -2412,11 +2412,11 @@ So that scripted encounters and cinematic beats — the GDD's own Tier-2 vocabul
 
 **Given** the GDD §3 Tier-2 action list (Spawn Unit, Display Message, Set Variable, Victory/Defeat, Create Timer, Play Sound, Move Camera) **When** this story completes **Then** every named action exists in the vocabulary — the completeness check is documented against the GDD list
 
-_Covers: FR-70. Depends on: 7.12, 6.11, 2.7._
+_Covers: FR-70. Depends on: 7.15, 6.11, 2.7._
 
 > Gap-closure (2026-07-01): closes "no trigger action to ORDER UNITS" + "no camera control/cinematic toolkit" + "no PlaySound/PlayVfx anywhere". The sim/presentation split is the design: OrderUnits mutates sim deterministically; camera/sound/vfx are validated presentation leaves that CANNOT touch sim.
 
-### Story 7.14: Event breadth — UnitDamaged, UnitTrained, AbilityCast, HeroLevel, PlayerChat
+### Story 7.17: Event breadth — UnitDamaged, UnitTrained, AbilityCast, HeroLevel, PlayerChat
 
 As a scenario creator,
 I want triggers to react to damage, production, casts, hero levels, and chat commands,
@@ -2432,11 +2432,11 @@ So that the event vocabulary covers the WC3-class custom-map staples.
 
 **Given** the validator and all four authoring tiers **When** the events land **Then** each is authorable in ECA + node-graph and present in the Tier-4 NL schema
 
-_Covers: FR-70. Depends on: 7.12, 3.13 (HeroLevel), 2.7 (AbilityCast emission exists)._
+_Covers: FR-70. Depends on: 7.15, 3.13 (HeroLevel), 2.7 (AbilityCast emission exists)._
 
 > Gap-closure (2026-07-01): closes "event breadth stays at the as-built 6". The kill/damage attribution hook is shared with 3.13 — build once. PlayerChat determinism is the one wire-touching decision; state it explicitly in the story spec at create time.
 
-### Story 7.15: Objectives, quest log, and the match briefing surface
+### Story 7.18: Objectives, quest log, and the match briefing surface
 
 As a player,
 I want to see what I'm supposed to do — before the match and during it,
@@ -2450,11 +2450,11 @@ So that win conditions and scripted goals are never invisible.
 
 **Given** a scenario with only a win-condition preset and no authored objectives **When** the match starts **Then** a default objective is auto-emitted from the preset (e.g. "Destroy all enemy buildings") — every match shows its goal
 
-_Covers: FR-70, FR-73 (support). Depends on: 7.10, 7.12._
+_Covers: FR-70, FR-73 (support). Depends on: 7.13, 7.15._
 
 > Gap-closure (2026-07-01): closes "win conditions invisible to players" + "objectives.json pipeline absent". Objective state is DSL-variable-class sim state (folded via the existing DSL store fold — no new bump if it rides that store; state the disposition).
 
-### Story 7.16: Trigger debugging — variable watch, fired-trigger log, fire counters
+### Story 7.19: Trigger debugging — variable watch, fired-trigger log, fire counters
 
 As a scenario creator,
 I want to watch variables and see which triggers fired while playtesting,
@@ -2468,7 +2468,7 @@ So that I can debug my logic without guess-and-replay loops.
 
 **Given** a fired-log entry **When** clicked after the playtest ends **Then** the editor navigates to that trigger
 
-_Covers: FR-71. Depends on: 7.12, 3.10._
+_Covers: FR-71. Depends on: 7.15, 3.10._
 
 > Gap-closure (2026-07-01): closes "no runtime trigger observability". Read-only by construction; zero sim writes.
 
@@ -2954,15 +2954,15 @@ So that team RTS — the GDD's Phase-3 promise — exists.
 
 **Acceptance Criteria:**
 
-**Given** the lobby and skirmish setup **When** slots are assigned teams (up to 4 slots: 2v2, 1v1v1v1, 3v1) **Then** team choice shows colorblind-safe glyphs (10.8 palette rules), the team tuple joins the match-start handshake and start-state hash, and the sim alliance mask (owned by 7.11) is populated from it
+**Given** the lobby and skirmish setup **When** slots are assigned teams (up to 4 slots: 2v2, 1v1v1v1, 3v1) **Then** team choice shows colorblind-safe glyphs (10.8 palette rules), the team tuple joins the match-start handshake and start-state hash, and the sim alliance mask (owned by 7.14) is populated from it
 
-**Given** allied factions in a match **When** combat and vision run **Then** `TargetMatcher` excludes allies from hostile acquisition/force-fire (Neutral force-fire preserved per 1.12), the shared-team-vision toggle unions allied fog when enabled, and allied victory resolves via 7.11 (both winners on the score screen)
+**Given** allied factions in a match **When** combat and vision run **Then** `TargetMatcher` excludes allies from hostile acquisition/force-fire (Neutral force-fire preserved per 1.12), the shared-team-vision toggle unions allied fog when enabled, and allied victory resolves via 7.14 (both winners on the score screen)
 
 **Given** a 2v2 two-client loopback (2 humans + 2 AI slots if 10.13 has landed, else 4-human loopback) **When** the match completes **Then** elimination and team victory resolve correctly with zero desync
 
-_Covers: FR-65. Depends on: 7.11, 9.6, 11.1._
+_Covers: FR-65. Depends on: 7.14, 9.6, 11.1._
 
-> Gap-closure (2026-07-01): closes the VERIFIED "no team/alliance model — 2v2 impossible". FFA = teams-of-1 (no in-match diplomacy in 1.0, documented). Alliance data model already exists from 7.11 — this story is lobby/UI wiring + targeting/vision/victory integration.
+> Gap-closure (2026-07-01): closes the VERIFIED "no team/alliance model — 2v2 impossible". FFA = teams-of-1 (no in-match diplomacy in 1.0, documented). Alliance data model already exists from 7.14 — this story is lobby/UI wiring + targeting/vision/victory integration.
 
 ### Story 9.16: Four-player verified end-to-end
 
@@ -2980,7 +2980,7 @@ So that "supports 4 players" is a verified fact, not an aggregate assumption.
 
 _Covers: FR-65. Depends on: 9.14, 9.15, 6.9._
 
-> Gap-closure (2026-07-01): the single verify-story pattern (1.9b/10.1 precedent) for the chosen 1.0 scale. Supersedes the 8-slot claims edited out of 5.6/3.11.
+> Gap-closure (2026-07-01): the single verify-story pattern (1.9b/10.1 precedent) for the chosen 1.0 scale. Supersedes the 8-slot claims edited out of 5.7/3.11.
 
 ### Story 9.17: Full-content pre-match hash handshake
 
@@ -3342,11 +3342,11 @@ So that skirmish beyond 1v1 is playable without humans.
 
 **Given** `AiOpponentSystem` **When** instanced per AI slot **Then** the P1_BASE/P2 hardcodes are replaced by per-instance faction/difficulty/base-anchor parameters, and instances tick in ascending faction order (deterministic)
 
-**Given** a 1-human + 3-AI skirmish (11.1 setup exposes per-slot difficulty) **When** the match runs **Then** AIs acquire and fight ALL hostile factions (not only the human), elimination and victory resolve via 7.11, and the match concludes
+**Given** a 1-human + 3-AI skirmish (11.1 setup exposes per-slot difficulty) **When** the match runs **Then** AIs acquire and fight ALL hostile factions (not only the human), elimination and victory resolve via 7.14, and the match concludes
 
 **Given** the same seed and slot configuration **When** run twice **Then** the multi-AI match is byte-identical (single-machine; cross-platform joins the gate via 10.13)
 
-_Covers: FR-76. Depends on: 7.11, 11.1, 10.1._
+_Covers: FR-76. Depends on: 7.14, 11.1, 10.1._
 
 > Gap-closure (2026-07-01): closes "AI fills only one slot / skirmish advertises players nothing can fill". Instance state joins the 10.11 counter fold (extend, don't re-bump if sequenced together — state the disposition).
 
@@ -3434,11 +3434,11 @@ So that "plays well" is a recorded verdict, not an assumption made by test suite
 
 **Given** the melee fun gate (the GDD Phase-1 risk checkpoint, run retroactively now that Epic 5 content exists) **When** executed per its written protocol (blind sessions, session-length + "want to play more?" instruments) **Then** the verdict + evidence are filed in implementation-artifacts, and a NO spawns a correct-course rather than being absorbed silently
 
-**Given** the creator usability gate **When** a fresh-eyes participant builds "Your First Scenario" (5.8) **Then** completion time vs the ≤15-minute NFR, obstacles hit, and abandonment points are logged with the same go/no-go discipline
+**Given** the creator usability gate **When** a fresh-eyes participant builds "Your First Scenario" (5.9) **Then** completion time vs the ≤15-minute NFR, obstacles hit, and abandonment points are logged with the same go/no-go discipline
 
 **Given** the human balance pass **When** run alongside 10.2's self-play numbers **Then** blind faction-preference and perceived-fairness results (n≥3 sessions) are recorded against FR-42/FR-49a, with divergences between human feel and the 45–55% metric explicitly reconciled
 
-_Covers: FR-78, FR-49a (support). Depends on: Epic 5 (fun gate), 5.8 (usability), 10.2b (balance)._
+_Covers: FR-78, FR-49a (support). Depends on: Epic 5 (fun gate), 5.9 (usability), 10.2b (balance)._
 
 > Gap-closure (2026-07-01): closes the VERIFIED "zero human playtest gates in 121 stories". The GDD itself mandates the Phase-1 checkpoint ("if the core loop is not fun, stop everything") — this story makes that clause executable.
 
@@ -3456,13 +3456,13 @@ So that starting a custom match is an actual flow, not an assumption other stori
 
 **Given** Mode Select → Skirmish **When** the setup screen opens **Then** it lists shipped + subscribed + local maps with 6.9 minimap previews and map properties (name/author/suggested players), and selecting a map exposes its 2–4 slots
 
-**Given** the slot grid **When** configured **Then** each slot supports Open/Closed/AI (with per-slot difficulty via 10.1's AiDifficulty)/Human-local, faction pick (5.6 registry list incl. authored factions), team assignment (9.15 model), and color; validation blocks launch on broken configs (no faction, all-same-team, fewer start positions than filled slots) with actionable messages
+**Given** the slot grid **When** configured **Then** each slot supports Open/Closed/AI (with per-slot difficulty via 10.1's AiDifficulty)/Human-local, faction pick (5.7 registry list incl. authored factions), team assignment (9.15 model), and color; validation blocks launch on broken configs (no faction, all-same-team, fewer start positions than filled slots) with actionable messages
 
 **Given** a valid config **When** Start is pressed **Then** the match boots through the standard load path (11.5) with the chosen setup applied via the PLAYER_COUNT-aware registry — and 10.1/10.11's references to "the skirmish setup UI" now point at a real, storied screen
 
-_Covers: FR-68, FR-65. Depends on: 3.11, 6.9, 5.6._
+_Covers: FR-68, FR-65. Depends on: 3.11, 6.9, 5.7._
 
-> Gap-closure (2026-07-01): closes the code-referenced-but-never-built setup screen (5.6/10.1/10.11 all assume it). Design-system components; per-slot AI wiring consumed by 10.12.
+> Gap-closure (2026-07-01): closes the code-referenced-but-never-built setup screen (5.7/10.1/10.11 all assume it). Design-system components; per-slot AI wiring consumed by 10.12.
 
 ### Story 11.2: In-match menu, true SP pause, and game-speed control
 
@@ -3490,13 +3490,13 @@ So that matches end by decision as well as by destruction.
 
 **Acceptance Criteria:**
 
-**Given** the in-match menu **When** I Concede (confirm dialog) **Then** a defeat verdict for my faction resolves through 7.11 (entities per preset rule), the score screen (11.4) follows, and in MP the concession rides the order stream so all peers resolve it identically
+**Given** the in-match menu **When** I Concede (confirm dialog) **Then** a defeat verdict for my faction resolves through 7.14 (entities per preset rule), the score screen (11.4) follows, and in MP the concession rides the order stream so all peers resolve it identically
 
 **Given** an MP opponent leaves or drops **When** the 9.5 freeze-floor handling completes **Then** the departure is announced in-match (chat/system line + toast), and when only one team remains connected-and-alive, victory resolves for it rather than the match idling forever
 
 **Given** quit-to-menu in SP **When** confirmed without concede **Then** the match ends locally (no verdict recorded) and the shell returns to Mode Select with no leaked match state (clean re-entry into a new match verified)
 
-_Covers: FR-66. Depends on: 11.2, 7.11; MP announcements integrate with 9.5._
+_Covers: FR-66. Depends on: 11.2, 7.14; MP announcements integrate with 9.5._
 
 > Gap-closure (2026-07-01): closes "no leave/surrender flow and no victory when the last opponent leaves; drops are not announced". Concede-as-order keeps lockstep clean; the "last team standing wins on abandonment" rule is stated per-preset.
 
@@ -3508,13 +3508,13 @@ So that matches end with a payoff instead of a dead HUD.
 
 **Acceptance Criteria:**
 
-**Given** a match verdict (7.11 or concede) **When** the match ends **Then** a victory/defeat screen shows per-player rows: units built/lost/killed, buildings razed, resources gathered, army-value-over-time graph (dataviz-styled, from sim counters recorded during play), match duration, and winning team
+**Given** a match verdict (7.14 or concede) **When** the match ends **Then** a victory/defeat screen shows per-player rows: units built/lost/killed, buildings razed, resources gathered, army-value-over-time graph (dataviz-styled, from sim counters recorded during play), match duration, and winning team
 
 **Given** the stats source **When** counters are recorded **Then** they are sim-side deterministic counters (folded or derived-at-verdict — disposition stated; identical across peers in MP so every player sees the same numbers)
 
 **Given** the screen's actions **When** offered **Then** Continue (SP: back to setup with same config — the rematch loop), Save Replay (9.18 when landed; hidden before), and Quit to Menu all work, and in MP the screen shows correctly on ALL clients including the eliminated ones
 
-_Covers: FR-66. Depends on: 7.11, 11.1._
+_Covers: FR-66. Depends on: 7.14, 11.1._
 
 > Gap-closure (2026-07-01): closes "end-of-match flow is thin: no score screen". WC3-class summary, not APM analytics; counters are cheap per-tick increments in existing systems.
 
@@ -3754,11 +3754,11 @@ So that the Campaign button leads somewhere real.
 
 **Given** the campaign manifest (ordered mission list: scenario ref + title + briefing text + unlock rule) **When** Mode Select → Campaign opens **Then** a mission-select screen shows the 3 missions with locked/unlocked/completed states, completion persists across sessions, and the Mode Select denominator binds to the manifest count (N/3)
 
-**Given** a mission launch **When** it starts **Then** the 7.15 briefing surface presents the mission briefing (with 10.8c subtitles), an 11.7 autosave writes at mission start, and mission completion (Victory verdict) marks progress + unlocks the next mission with a completion card
+**Given** a mission launch **When** it starts **Then** the 7.18 briefing surface presents the mission briefing (with 10.8c subtitles), an 11.7 autosave writes at mission start, and mission completion (Victory verdict) marks progress + unlocks the next mission with a completion card
 
 **Given** a mission failure (Defeat verdict) **When** it resolves **Then** Retry / Load / Quit options present, and Retry restarts the mission cleanly
 
-_Covers: FR-73. Depends on: 7.15, 11.4, 11.7._
+_Covers: FR-73. Depends on: 7.18, 11.4, 11.7._
 
 > Gap-closure (2026-07-01): closes the VERIFIED blocker "Campaign & Tutorial is a shipped dead-end button". Framework is data-driven (a campaign is a manifest — creators can author campaigns post-1.0 with the same file).
 
@@ -3770,11 +3770,11 @@ So that I learn the game by playing it.
 
 **Acceptance Criteria:**
 
-**Given** mission 1 (authored in the creation suite with 7.x triggers/objectives/regions/cameras — zero engine-side special cases) **When** played **Then** it tutorializes camera control, selection, move/attack-move, and fog (staged objectives with 7.15 display, region-gated progression, `MoveCamera` beats, hint messages), ending in a scripted small fight and Victory
+**Given** mission 1 (authored in the creation suite with 7.x triggers/objectives/regions/cameras — zero engine-side special cases) **When** played **Then** it tutorializes camera control, selection, move/attack-move, and fog (staged objectives with 7.18 display, region-gated progression, `MoveCamera` beats, hint messages), ending in a scripted small fight and Victory
 
 **Given** a fresh player profile **When** they complete the mission **Then** completion time lands in the target band (~10 minutes), and every objective is completable without prior RTS knowledge (validated in the 10.17 usability protocol)
 
-_Covers: FR-73. Depends on: 13.1, 7.13, 7.15, 6.6, 6.11._
+_Covers: FR-73. Depends on: 13.1, 7.16, 7.18, 6.6, 6.11._
 
 > Gap-closure (2026-07-01). The dogfood rule is the point: this mission is the acceptance test for the trigger/camera/objective vocabulary.
 
