@@ -2,7 +2,7 @@
 
 [gates]
 mode = "per-epic"            # none | per-epic | per-story-spec-approval
-retrospective = "notify"     # never | notify | auto (auto unsupported in v1)
+retrospective = "auto"     # never | notify | auto (auto unsupported in v1)
 
 [limits]
 max_review_cycles = 2
