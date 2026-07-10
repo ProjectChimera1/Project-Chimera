@@ -894,6 +894,10 @@ namespace ProjectChimera.CreationSuite
             Delivery = s.Delivery, ProjectileSpeed = s.ProjectileSpeed,
             XpBounty = s.XpBounty,
             Prerequisites = s.Prerequisites is null ? Array.Empty<string>() : (string[])s.Prerequisites.Clone(),
+            // Story 4.8a review-pass fix: AvailableResearch was omitted from this hand-enumerated field list,
+            // silently stripping it on Duplicate — the same defect class the RevivesHeroes/Hero/ShopStock comment
+            // below already documents having been fixed once. Same null-safe .Clone() pattern as Prerequisites.
+            AvailableResearch = s.AvailableResearch is null ? Array.Empty<string>() : (string[])s.AvailableResearch.Clone(),
             Abilities = s.Abilities is null ? Array.Empty<string>() : (string[])s.Abilities.Clone(),
             Behaviors = s.Behaviors is null ? Array.Empty<string>() : (string[])s.Behaviors.Clone(),
             AttackDomains = s.AttackDomains?.Clone() as string[],

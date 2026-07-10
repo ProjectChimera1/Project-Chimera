@@ -497,6 +497,10 @@ namespace ProjectChimera.Core.Definitions
             if (d.ConstructionTime.HasValue) obj["construction_time"] = d.ConstructionTime.Value; else obj.Remove("construction_time");
             if (d.SupplyBonus.HasValue) obj["supply_bonus"] = d.SupplyBonus.Value; else obj.Remove("supply_bonus");
             if (!string.IsNullOrEmpty(d.ProducesCategory)) obj["produces_category"] = d.ProducesCategory; else obj.Remove("produces_category");
+            // Story 4.8a: available_research is a BuildingDefinition-only field (unlike prerequisites, which lives
+            // on the shared UnitDefinition base and already round-trips via ApplyFields above) — mirrors
+            // PutStringArray's "prerequisites" handling exactly (empty array default, never omitted-as-null).
+            PutStringArray(obj, "available_research", d.AvailableResearch, defaultsNull: false);
         }
 
         /// <summary>

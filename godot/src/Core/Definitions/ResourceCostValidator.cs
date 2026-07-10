@@ -27,8 +27,10 @@ namespace ProjectChimera.Core.Definitions
     public static class ResourceCostValidator
     {
         /// <summary>The 16.16 representable ceiling (mirrors <see cref="UnitDefinitionValidator"/>'s <c>Range</c> /
-        /// <see cref="ScenarioValidator"/>'s <c>Range</c>).</summary>
-        private const int Range = 32768;
+        /// <see cref="ScenarioValidator"/>'s <c>Range</c>). Internal (not private) so <see cref="ResearchValidator"/>
+        /// shares this ONE ceiling for its level-cost and modifier-delta range checks instead of hand-declaring a
+        /// second copy that could silently drift — same single-source-of-truth rationale as <see cref="KnownResourceIds"/>.</summary>
+        internal const int Range = 32768;
 
         /// <summary>The only resource ids with runtime <see cref="ResourceStore"/> backing today. Internal (not
         /// private) so <see cref="UnitDefinitionValidator"/>'s per-field cost-map check and the Building/Unit Card

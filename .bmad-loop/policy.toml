@@ -12,7 +12,7 @@ stop_without_result_nudges = 1
 dev_stall_grace_s = 600      # grace for a dev session that ended its turn awaiting a background process (e.g. a slow PlayMode/test run) before it is called stalled; each re-invocation resets it. 0 = fail fast on the first result-less Stop
 dev_stall_nudges = 2         # times an idle dev session is nudged awake on grace expiry before it is called stalled (bmad-loop has no background-completion re-invocation); pane output re-arms the grace window and a fresh Stop restores the budget. 0 = stall on grace expiry
 workflow_stall_nudges_cap = 3 # total (never-restored) stall nudges for an injected plugin-workflow session before it is called stalled; bounds a session that finished its work but never wrote its completion marker. 0 = stall on first grace expiry
-max_tokens_per_story = 2000000
+max_tokens_per_story = 4000000
 cache_read_weight = 0.1      # cache reads bill at ~0.1x input on all vendors; 1.0 = count raw
 
 [verify]

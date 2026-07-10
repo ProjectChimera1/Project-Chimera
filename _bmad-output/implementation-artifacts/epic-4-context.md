@@ -11,8 +11,10 @@ Command-Center supply rule. The epic retires the last major hardcoded-economy ta
 everything" holds for buildings/economy the way Epic 3 delivered it for units/heroes, and extends the
 tech tree beyond gating into a WC3-class research/upgrade system. Stories 4.1-4.4 retire hardcoded sim
 tables first (byte-identical golden checksums preserved, so the build stays always-shippable); 4.5-4.6
-add creator-facing editors on that data; 4.7 generalizes resource collection beyond gather-and-carry; 4.8
--4.9 add faction-wide timed research producing permanent unit upgrades.
+add creator-facing editors on that data; 4.7 generalizes resource collection beyond gather-and-carry; 4.8a
+-4.9 add faction-wide timed research producing permanent unit upgrades, with the former single research
+story split into content/runtime/determinism thirds after two prior dev attempts exceeded a single-session
+budget.
 
 ## Stories
 
@@ -23,7 +25,9 @@ add creator-facing editors on that data; 4.7 generalizes resource collection bey
 - Story 4.5: In-app building definition editor (Unit-Card pattern, right-dock inspector)
 - Story 4.6: Visual tech-tree editor (tier-laned graph, drag out-port to wire prerequisites)
 - Story 4.7: Per-resource collection models (INCOME / STREAMING / requires_structure) + Crystal production
-- Story 4.8: ResearchSystem — faction-wide timed upgrades
+- Story 4.8a: ResearchDefinition content model + validation
+- Story 4.8b: ResearchSystem order path — start/complete/cancel, permanent modifier application, future-spawn catch-up
+- Story 4.8c: ResearchStore SimChecksum fold + golden re-baseline
 - Story 4.9: Research authoring, command-card research buttons, and upgrade display
 
 ## Requirements & Constraints
@@ -50,7 +54,12 @@ add creator-facing editors on that data; 4.7 generalizes resource collection bey
   ResourceStore's fixed Ore/Crystal fields, the fixed supply-cap constant, single-model GatheringSystem)
   must be replaced with no behavior change for existing content: golden checksums byte-identical at every
   story boundary, re-baselined only when a story deliberately adds new checksum-covered state (4.7's
-  node/Crystal state; 4.8's research state).
+  node/Crystal state; 4.8c's research state).
+- Research content authoring (4.8a) is deliberately separated from the runtime order path (4.8b) and from
+  the checksum fold + golden re-baseline (4.8c) — each is scoped to fit a single dev-agent session after
+  the unsplit story twice failed to reach done. 4.8b's `ResearchStore` is mid-match-mutable but explicitly
+  NOT yet multiplayer/replay-safe until 4.8c's fold lands immediately after it, with no other story
+  sequenced in between.
 - All new/changed gameplay state stays Fixed-point, processed in ascending id order, uses no wall-clock
   timing, and adds no Godot types to sim-layer stores/systems.
 - A malformed tech tree (cycle, or a prerequisite/cost referencing an unknown id) fails at import with a
@@ -75,8 +84,10 @@ add creator-facing editors on that data; 4.7 generalizes resource collection bey
   new cost map for back-compat.
 - Research reuses the existing Epic 2 modifier pipeline (ModifierStore/ModifierSystem) as a faction-
   scoped permanent modifier source — no new stat pipeline; future units acquire bonuses via the existing
-  Base/Effective recompute at spawn. Research orders ride the same shared order-application path already
-  used for unit training.
+  Base/Effective recompute at spawn (the same spawn-hook wiring Epic 2's self-passive uses). Research
+  orders ride the same shared order-application path already used for unit training (exec-tick spend,
+  never at UI/issue-time). A repeatable research keeps one cumulative modifier slot per research
+  definition (sum of all completed levels' deltas), never one slot per level.
 - New per-store state (supply bonus, resource balances, node collection state, research progress) is a
   new SoA array folded into the generalized SimChecksum — never a Dictionary-backed store (a known
   nondeterminism source elsewhere in the codebase).
@@ -104,8 +115,9 @@ add creator-facing editors on that data; 4.7 generalizes resource collection bey
 ## Cross-Story Dependencies
 
 - Dependency order runs backward: 4.2 needs 4.1's building registry; 4.3 needs 4.1's loader path; 4.4
-  needs 4.1 + 4.3; 4.5 needs 4.1 + 4.3; 4.6 needs 4.2 + 4.5; 4.7 needs 4.3; 4.8 needs 4.2 + Epic 2's
-  modifier system (Story 2.2b); 4.9 needs 4.8 + 4.6.
+  needs 4.1 + 4.3; 4.5 needs 4.1 + 4.3; 4.6 needs 4.2 + 4.5; 4.7 needs 4.3; 4.8a needs 4.2 (validation
+  gate pattern); 4.8b needs 4.8a + Epic 2's modifier system (Story 2.2b); 4.8c needs 4.8b and must land
+  immediately after it with nothing else sequenced in between; 4.9 needs 4.8c + 4.6.
 - FR-13 (building authoring) splits across 4.1 (data/runtime) and 4.5 (UI); FR-14 (tech-tree gating)
   splits across 4.2 (runtime gate) and 4.6 (visual editor) — read each pair together for the full
   requirement.

@@ -28,6 +28,12 @@ namespace ProjectChimera.Core.Definitions
         [JsonPropertyName("buildings")]
         public List<BuildingDefinition> Buildings { get; set; } = new();
 
+        /// <summary>Faction-wide, timed, repeatable research/upgrade entries (Story 4.8a) — mirrors
+        /// <see cref="Units"/>/<see cref="Buildings"/>'s place on this type. Content-only this story: no runtime
+        /// order path consumes it yet (Story 4.8b).</summary>
+        [JsonPropertyName("research")]
+        public List<ResearchDefinition> Research { get; set; } = new();
+
         // ── Lookup helpers ──────────────────────────────────────────────────────
 
         /// <summary>Find a building definition by ID, or null if not found.</summary>
@@ -44,6 +50,31 @@ namespace ProjectChimera.Core.Definitions
             foreach (var u in Units)
                 if (u.Id == id) return u;
             return null;
+        }
+
+        /// <summary>Find a research definition by ID, or null if not found. Mirrors <see cref="GetBuilding"/>. A null
+        /// <see cref="Research"/> list (malformed JSON <c>"research": null</c>, which <see cref="ResearchValidator"/>
+        /// tolerates so the file loads) OR a null element inside it is skipped, never an NRE (second-review-pass fix:
+        /// the element case was already guarded, but a null list itself would still have NRE'd this getter for a file
+        /// that loaded without error).</summary>
+        public ResearchDefinition? GetResearch(string id)
+        {
+            if (Research == null) return null;
+            foreach (var r in Research)
+                if (r != null && r.Id == id) return r;
+            return null;
+        }
+
+        /// <summary>Index of the research entry with the given ID within the <see cref="Research"/> list, or -1 if
+        /// not found. Mirrors <see cref="IndexOfUnit"/>. A null <see cref="Research"/> list (malformed JSON
+        /// <c>"research": null</c>) OR a null element inside it is skipped, never an NRE (second-review-pass fix —
+        /// same latent-NRE gap as <see cref="GetResearch"/>).</summary>
+        public int IndexOfResearch(string id)
+        {
+            if (Research == null) return -1;
+            for (int i = 0; i < Research.Count; i++)
+                if (Research[i] != null && Research[i].Id == id) return i;
+            return -1;
         }
 
         /// <summary>
@@ -123,6 +154,16 @@ namespace ProjectChimera.Core.Definitions
         /// Story 4.3 (AC2): additively, <see cref="ResourceCostValidator"/> runs over the same aggregate list — an
         /// authored <c>cost</c> map entry naming a resource id with no runtime backing (anything outside
         /// <c>{"ore","crystal"}</c>) or an out-of-range amount fails the whole load, list-all, joined by newlines.
+        ///
+        /// Story 4.8a: additively, <see cref="ResearchValidator"/> runs over the same aggregate list — a duplicate
+        /// research id, an empty/malformed <see cref="ResearchDefinition.Levels"/> ladder, an out-of-range
+        /// <see cref="ResearchDefinition.CancelRefundFraction"/>, a <see cref="ResearchDefinition.Prerequisites"/>/
+        /// <see cref="BuildingDefinition.AvailableResearch"/> entry referencing an unknown id, a research→research
+        /// prerequisite cycle, or an over-cap research count each fails the whole load exactly like every check
+        /// above, list-all (the cycle check excepted — first-fail, same convention as
+        /// <see cref="TechTreeValidator"/>'s), joined by newlines. Content-only: this does NOT mint a
+        /// <see cref="Validated{T}"/> (matches the real precedent set by the checks above, not the epic's general
+        /// framing) and wires no runtime order path (Story 4.8b owns that).
         /// </summary>
         public static FactionDefinition LoadFromFile(string absolutePath)
         {
@@ -140,6 +181,7 @@ namespace ProjectChimera.Core.Definitions
             }
             errors.AddRange(TechTreeValidator.Validate(def));
             errors.AddRange(ResourceCostValidator.Validate(def));
+            errors.AddRange(ResearchValidator.Validate(def));
             if (errors.Count > 0)
                 throw new System.InvalidOperationException(string.Join("\n", errors));
 
