@@ -3,7 +3,7 @@ title: 'In-app building definition editor (Unit-Card pattern, right-dock inspect
 type: 'feature'
 created: '2026-07-09'
 baseline_revision: '5ad509795d24682c8cbc2298e6536e7de7842052'
-status: 'in-review'
+status: 'done'
 review_loop_iteration: 0
 followup_review_recommended: false
 context: []

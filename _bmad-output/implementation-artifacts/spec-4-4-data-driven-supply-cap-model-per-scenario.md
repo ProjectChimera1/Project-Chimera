@@ -2,7 +2,7 @@
 title: 'Data-driven supply / cap model per scenario'
 type: 'feature'
 created: '2026-07-08'
-status: 'in-review'
+status: 'done'
 review_loop_iteration: 0
 followup_review_recommended: true
 baseline_revision: 'eb905213eae437d96333c1f239e0741e80a6c5f6'
