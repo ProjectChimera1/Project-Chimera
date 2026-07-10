@@ -744,6 +744,16 @@ namespace ProjectChimera.CreationSuite
             Refresh();
         }
 
+        /// <summary>
+        /// Story 4.6 hook: open this inspector already bound to <paramref name="building"/> — the Tech Tree Editor's
+        /// <c>node_selected</c> handler calls this instead of duplicating <see cref="GoToBuilding"/>'s index lookup.
+        /// </summary>
+        public void SelectAndShow(BuildingDefinition building)
+        {
+            _panel.Visible = true;
+            GoToBuilding(building);
+        }
+
         // ── Toolbar + list ops ────────────────────────────────────────
 
         private Control BuildToolbar()

@@ -408,6 +408,7 @@ namespace ProjectChimera.Core
                 new UnitCardPhase(_ctx),
                 new ItemCardPhase(_ctx),
                 new BuildingCardPhase(_ctx),
+                new TechTreePhase(_ctx),   // Story 4.6 — must run AFTER BuildingCardPhase so _ctx.BuildingCardPanel already exists
                 new PersistenceManifestPhase(_ctx),
                 new HeroPickerPhase(_ctx),
             };
@@ -596,6 +597,14 @@ namespace ProjectChimera.Core
             {
                 // V (not P — P is the Patrol command in SelectionSystem, active whenever units are selected in Edit mode).
                 _ctx.PersistenceManifestPanel.Toggle();
+                GetViewport().SetInputAsHandled();
+            }
+            else if (key.Keycode == Key.R)
+            {
+                // Story 4.6: R opens the Visual Tech Tree Editor (verified unused — no other Key.R check anywhere in
+                // src/ and no InputMap action binds physical key R in project.godot; T is already claimed by
+                // TerrainBrush/SelectionSystem).
+                _ctx.TechTreePanel.Toggle();
                 GetViewport().SetInputAsHandled();
             }
         }

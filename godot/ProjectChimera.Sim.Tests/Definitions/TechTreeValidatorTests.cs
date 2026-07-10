@@ -252,6 +252,98 @@ namespace ProjectChimera.Sim.Tests.Definitions
             Assert.NotNull(def);
         }
 
+        // ── Story 4.6: ValidateProposedEdge (the Visual Tech Tree Editor's single-edge validation surface) ────────
+
+        [Fact]
+        public void ValidateProposedEdge_SelfEdge_RejectedWithWordingIdenticalToValidate()
+        {
+            // Proposing "a requires a" resolves through the SAME target-lookup + temporary-mutation + DetectCycle
+            // path as every other proposed edge (no separate hand-formatted string) — cross-check its wording against
+            // Validate() on an authored building that already lists itself as its own prerequisite, the same
+            // cross-check pattern used for the 2-/3-node cases below, so the two code paths can never drift apart.
+            var proposed = new FactionDefinition();
+            proposed.Buildings.Add(new BuildingDefinition { Id = "a" });
+            string? proposedErr = TechTreeValidator.ValidateProposedEdge(proposed, "a", "a");
+
+            var authored = new FactionDefinition();
+            authored.Buildings.Add(new BuildingDefinition { Id = "a", Prerequisites = new[] { "a" } });
+            var authoredErrors = TechTreeValidator.Validate(authored);
+
+            Assert.NotNull(proposedErr);
+            Assert.Contains(proposedErr!, authoredErrors);
+            // No mutation — the proposed edge is validated, never persisted, by this method.
+            Assert.Empty(proposed.Buildings[0].Prerequisites ?? Array.Empty<string>());
+        }
+
+        [Fact]
+        public void ValidateProposedEdge_ProposedTwoNodeCycle_RejectedWithWordingIdenticalToValidate()
+        {
+            // "a" already requires "b" (authored). Proposing the edge "b requires a" would close a 2-node cycle —
+            // prove ValidateProposedEdge's rejection wording is BYTE-IDENTICAL to what Validate produces for the
+            // equivalent already-authored graph (both share DetectCycle, so this is a code-sharing guarantee, not
+            // just a convention).
+            var proposed = new FactionDefinition();
+            proposed.Buildings.Add(new BuildingDefinition { Id = "a", Prerequisites = new[] { "b" } });
+            proposed.Buildings.Add(new BuildingDefinition { Id = "b" });
+            string? proposedErr = TechTreeValidator.ValidateProposedEdge(proposed, "a", "b");
+
+            var authored = new FactionDefinition();
+            authored.Buildings.Add(new BuildingDefinition { Id = "a", Prerequisites = new[] { "b" } });
+            authored.Buildings.Add(new BuildingDefinition { Id = "b", Prerequisites = new[] { "a" } });
+            var authoredErrors = TechTreeValidator.Validate(authored);
+
+            Assert.NotNull(proposedErr);
+            Assert.Contains(proposedErr!, authoredErrors);
+
+            // No mutation of the proposed def's target building's Prerequisites (restored via the finally).
+            Assert.Equal(Array.Empty<string>(), proposed.Buildings[1].Prerequisites ?? Array.Empty<string>());
+        }
+
+        [Fact]
+        public void ValidateProposedEdge_ProposedThreeNodeIndirectCycle_RejectedWithWordingIdenticalToValidate()
+        {
+            // "a"→"b"→"c" authored. Proposing "c requires a" would close the 3-node indirect cycle.
+            var proposed = new FactionDefinition();
+            proposed.Buildings.Add(new BuildingDefinition { Id = "a", Prerequisites = new[] { "b" } });
+            proposed.Buildings.Add(new BuildingDefinition { Id = "b", Prerequisites = new[] { "c" } });
+            proposed.Buildings.Add(new BuildingDefinition { Id = "c" });
+            string? proposedErr = TechTreeValidator.ValidateProposedEdge(proposed, "a", "c");
+
+            var authored = new FactionDefinition();
+            authored.Buildings.Add(new BuildingDefinition { Id = "a", Prerequisites = new[] { "b" } });
+            authored.Buildings.Add(new BuildingDefinition { Id = "b", Prerequisites = new[] { "c" } });
+            authored.Buildings.Add(new BuildingDefinition { Id = "c", Prerequisites = new[] { "a" } });
+            var authoredErrors = TechTreeValidator.Validate(authored);
+
+            Assert.NotNull(proposedErr);
+            Assert.Contains(proposedErr!, authoredErrors);
+        }
+
+        [Fact]
+        public void ValidateProposedEdge_ValidNonCyclicEdge_ReturnsNull()
+        {
+            var def = new FactionDefinition();
+            def.Buildings.Add(new BuildingDefinition { Id = "a" });
+            def.Buildings.Add(new BuildingDefinition { Id = "b" });
+
+            string? err = TechTreeValidator.ValidateProposedEdge(def, "a", "b");
+
+            Assert.Null(err);
+            // Never mutates — the target's Prerequisites is restored regardless of the outcome.
+            Assert.Empty(def.Buildings[1].Prerequisites ?? Array.Empty<string>());
+        }
+
+        [Fact]
+        public void ValidateProposedEdge_UnknownTarget_ReturnsNullDefensively()
+        {
+            var def = new FactionDefinition();
+            def.Buildings.Add(new BuildingDefinition { Id = "a" });
+
+            string? err = TechTreeValidator.ValidateProposedEdge(def, "a", "nonexistent");
+
+            Assert.Null(err);
+        }
+
         /// <summary>Resolve a shipped faction JSON by walking up from the test-assembly directory to
         /// <c>resources/data/factions/</c> (mirrors <c>CanonicalScenarioTests.DataFile</c> /
         /// <c>DataDrivenBuildingScenario.AlphaFactionPath</c>, Story 1.10a's established pattern).</summary>

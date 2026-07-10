@@ -83,24 +83,82 @@ namespace ProjectChimera.Core.Definitions
             }
 
             // ── Cycle detection: Buildings→Buildings edges only, 3-color DFS in list order ──────────────────
+            // Story 4.6: extracted into DetectCycle so the visual tech-tree editor's ValidateProposedEdge can reuse
+            // the SAME code path (byte-identical wording), rather than reimplementing the walk.
+            string? cycleMessage = DetectCycle(def);
+            if (cycleMessage != null)
+                errors.Add(cycleMessage);
+
+            return errors;
+        }
+
+        /// <summary>
+        /// Story 4.6: the single-edge validation surface the Visual Tech Tree Editor's <c>connection_request</c>
+        /// handler calls BEFORE drawing an edge or mutating any data. The target building's
+        /// <see cref="BuildingDefinition.Prerequisites"/> is TEMPORARILY appended with <paramref name="sourceId"/>
+        /// (restored in a <c>finally</c>, so this method never leaves <paramref name="def"/> mutated), then
+        /// <see cref="DetectCycle"/> runs over the whole graph as if the edge already existed — including a self-edge
+        /// (<paramref name="sourceId"/> == <paramref name="targetId"/>), which resolves to the SAME building
+        /// temporarily listing itself as its own prerequisite, so the DFS finds that 1-node cycle through the
+        /// identical code path as every other case rather than a separately hand-formatted string. Returns null when
+        /// the proposed edge is safe (no cycle); the located cycle message otherwise — byte-identical to what an
+        /// authored file containing that same edge would fail import-lint with, because both paths share this one
+        /// DFS.
+        /// </summary>
+        public static string? ValidateProposedEdge(FactionDefinition def, string sourceId, string targetId)
+        {
+            if (def == null) return null;
+
+            BuildingDefinition? target = null;
+            foreach (BuildingDefinition b in def.Buildings)
+            {
+                if (b.Id == targetId) { target = b; break; }
+            }
+            if (target == null) return null;   // unresolved target — the editor never calls this with one (defensive no-op)
+
+            string[]? original = target.Prerequisites;
+            target.Prerequisites = new List<string>(original ?? Array.Empty<string>()) { sourceId }.ToArray();
+            try
+            {
+                return DetectCycle(def);
+            }
+            finally
+            {
+                // Prerequisites is a non-nullable-typed property that malformed JSON can still leave null at runtime
+                // (see NullPrerequisitesArray_TreatedAsEmpty_NoThrowNoCrash) — null-forgiving restores the exact
+                // original reference (including null) rather than a defaulted-empty array.
+                target.Prerequisites = original!;
+            }
+        }
+
+        /// <summary>The cycle-DFS walk extracted out of <see cref="Validate"/> (Story 4.6) so it has a single,
+        /// independently-callable home shared by import-time linting and <see cref="ValidateProposedEdge"/>. Rebuilds
+        /// its own building-id set/map (mirrors <see cref="Validate"/>'s construction) since it must run standalone —
+        /// unchanged logic/wording from the original inline block; first-fail (stops at the first cycle found).</summary>
+        private static string? DetectCycle(FactionDefinition def)
+        {
+            var buildingIds = new HashSet<string>();
+            var buildingById = new Dictionary<string, BuildingDefinition>();
+            foreach (BuildingDefinition b in def.Buildings)
+            {
+                if (string.IsNullOrEmpty(b.Id)) continue;
+                if (!buildingById.TryAdd(b.Id, b)) continue;   // duplicate id — already reported by Validate's own check
+                buildingIds.Add(b.Id);
+            }
+
             var color = new Dictionary<string, Color>();
             foreach (string id in buildingIds)
                 color[id] = Color.White;
 
             var path = new List<string>();
-            string? cycleMessage = null;
             foreach (BuildingDefinition b in def.Buildings)
             {
                 if (string.IsNullOrEmpty(b.Id)) continue;
                 if (color[b.Id] != Color.White) continue;
-                cycleMessage = Visit(b.Id, buildingById, buildingIds, color, path);
-                if (cycleMessage != null) break;
+                string? cycleMessage = Visit(b.Id, buildingById, buildingIds, color, path);
+                if (cycleMessage != null) return cycleMessage;
             }
-
-            if (cycleMessage != null)
-                errors.Add(cycleMessage);
-
-            return errors;
+            return null;
         }
 
         /// <summary>DFS visit of one building node. Returns a formatted cycle message the instant a gray
