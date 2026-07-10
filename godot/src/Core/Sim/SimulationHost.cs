@@ -13,9 +13,11 @@ namespace ProjectChimera.Core.Sim
 {
     /// <summary>
     /// Net-new, Godot-free composition root for the simulation (Story 1.8a / AR-6). It owns the SoA stores,
-    /// the canonical 14-system tick order (Story 3.13 inserted <c>HeroXpSystem</c> at index 8, after
-    /// <c>ProjectileSystem</c>; Story 3.15 inserted <c>ItemSystem</c> at index 9) — with <c>OrderQueueSystem</c> at index 3 [Story 2.12 / FR-74], then
-    /// <c>AbilityCastSystem</c> at index 4 and <c>ModifierSystem</c> at index 5 — both immediately before
+    /// the canonical 15-system tick order (Story 3.13 inserted <c>HeroXpSystem</c> at index 9, after
+    /// <c>ProjectileSystem</c>; Story 3.15 inserted <c>ItemSystem</c> at index 10; Story 4.9 inserted
+    /// <c>ResearchSystem</c> at index 1, immediately after <c>BuildingSystem</c>, shifting everything after it down
+    /// by one) — with <c>OrderQueueSystem</c> at index 4 [Story 2.12 / FR-74], then
+    /// <c>AbilityCastSystem</c> at index 5 and <c>ModifierSystem</c> at index 6 — both immediately before
     /// <see cref="CombatSystem"/>; the ability-cast spine landed in Story 2.4a / FR-11, the AR-9 effective-stat
     /// recompute in Story 2.2a), the <see cref="SimulationLoop"/> it wraps, and the single checksum sink. Because it has zero Godot dependency it compiles into the Godot-free Tier-1 test
     /// project and (Story 1.9a) the headless ServerBootstrap reuses it verbatim.
@@ -83,6 +85,13 @@ namespace ProjectChimera.Core.Sim
         public CombatEventQueue CombatEvents { get; }
         public MatchStats MatchStats { get; }
         public BuildingSystem BuildSys { get; }
+        /// <summary>Story 4.9 — the faction-scoped research order path (start/cancel/tick/complete + future-spawn
+        /// catch-up). Exposed like <see cref="BuildSys"/> so apply sites can route
+        /// <c>OrderApplier.Apply(..., research: ResearchSys)</c>.</summary>
+        public ResearchSystem ResearchSys { get; }
+        /// <summary>Story 4.9 — the mid-match-mutable per-faction research substrate <see cref="ResearchSys"/> reads/
+        /// writes. Explicitly NOT yet folded into <see cref="SimChecksum"/> (Story 4.10's job).</summary>
+        public ResearchStore Research { get; }
         public ScenarioDirector ScenarioDirector { get; }
         public FogOfWarSystem Fog { get; }
 
@@ -134,6 +143,7 @@ namespace ProjectChimera.Core.Sim
             MatchStats       = new MatchStats();
             Fog              = new FogOfWarSystem(Faction.Player1);
             BuildSys         = new BuildingSystem(Buildings, Resources, factionDef1, factionDef2, MatchStats, Heroes, _revivalRuntime);
+            Research         = new ResearchStore(); // Story 4.9 — mid-match-mutable; NOT yet folded into SimChecksum (4.10's job)
             ScenarioDirector = new ScenarioDirector(Buildings, Resources);
 
             // AR-9 effective-stat recompute (Story 2.2a), the Story 2.2b ModifierStore it drives, and the Story 2.4a
@@ -153,55 +163,67 @@ namespace ProjectChimera.Core.Sim
             // stat modifiers are already reverted when its items drop — a harmless no-op removal). Uses the shared registry.
             ItemSys = new ItemSystem(World, Heroes, Items, Modifiers, ItemRegistry, CombatEvents, damageTable);
 
+            // Story 4.9 — the research order path. Constructed AFTER Modifiers (completion applies a permanent
+            // cumulative Modifier through the same store). Registered into _systems immediately after BuildSys below.
+            ResearchSys = new ResearchSystem(Buildings, Resources, Research, Modifiers, CombatEvents, factionDef1, factionDef2);
+
             // Story 2.6 — wire the WHILE-ALIVE self-passive installer to the spawn seam. EntityWorld fires
             // OnUnitDefinitionApplied once per def-based spawn (after the SoA is written); the cast system installs the
             // unit's self-passive (a Persistent HoT or a permanent stat modifier) through its executor + store. One
             // closure alloc at construction (never per-tick); symmetric with the OnDestroy → ClearEntity wire. A unit
             // with no self-passive (SelfPassiveAbilityIndex = -1) is a no-op, so existing scenarios stay identical.
             World.OnUnitDefinitionApplied += id => abilitySys.InstallSelfPassive(World, id);
+            // Story 4.9 — future-spawn catch-up: every future spawn of a faction with a completed research (training,
+            // scenario placement, hero respawn, editor restore/placement) also picks up its cumulative modifier(s).
+            World.OnUnitDefinitionApplied += id => ResearchSys.ApplyCompletedResearch(World, id);
 
-            // ── The canonical 13-system tick order (Story 2.12 inserted OrderQueueSystem at index 3; Story 3.13
-            //    inserted HeroXpSystem at index 8). The registration order IS the determinism contract;
-            //    SystemOrderTest FAILS on any reorder/add/remove. ──
+            // ── The canonical 15-system tick order (Story 2.12 inserted OrderQueueSystem at index 3; Story 3.13
+            //    inserted HeroXpSystem at index 9 [now 9, was 8]; Story 4.9 inserted ResearchSystem at index 1,
+            //    immediately after BuildingSystem, shifting GatheringSystem and everything after down by one). The
+            //    registration order IS the determinism contract; SystemOrderTest FAILS on any reorder/add/remove. ──
             _systems = new ISimSystem[]
             {
                 BuildSys,                                                                 // [0] BuildingSystem    (Economy)
-                new GatheringSystem(Nodes, Resources, Buildings, MatchStats),             // [1] GatheringSystem   (Economy) — Buildings (4.7): requires_structure gate
-                new MovementSystem(),                                                     // [2] MovementSystem    (Navigation)
-                // ── Story 2.12 shift-queue advance. At index 3, immediately AFTER MovementSystem so a queued
+                // ── Story 4.9 research order path. At index 1, immediately AFTER BuildingSystem — an Economy-tier
+                //    system that spends resources and times an order, structurally parallel to BuildingSystem's own
+                //    production timer. ──
+                ResearchSys,                                                              // [1] ResearchSystem    (Economy)
+                new GatheringSystem(Nodes, Resources, Buildings, MatchStats),             // [2] GatheringSystem   (Economy) — Buildings (4.7): requires_structure gate
+                new MovementSystem(),                                                     // [3] MovementSystem    (Navigation)
+                // ── Story 2.12 shift-queue advance. Immediately AFTER MovementSystem so a queued
                 //    movement order's arrival is detected fresh THIS tick, and BEFORE AbilityCastSystem so a popped
                 //    CastAbility order fires the same tick. Pops the head of each unit's completed order and dispatches
                 //    it through the shared OrderApplier.ApplyActiveOrder (no second command→state path — FR-74/AC1). ──
-                new OrderQueueSystem(),                                                    // [3] OrderQueueSystem  (Core, FR-74)
-                // ── Story 2.4a ability-cast spine. At index 4, immediately BEFORE ModifierSystem, so a cast that
-                //    installs a buff is recomputed by ModifierSystem (index 5) and read by CombatSystem (index 6) the
+                new OrderQueueSystem(),                                                    // [4] OrderQueueSystem  (Core, FR-74)
+                // ── Story 2.4a ability-cast spine. Immediately BEFORE ModifierSystem, so a cast that
+                //    installs a buff is recomputed by ModifierSystem and read by CombatSystem the
                 //    SAME tick. Ticks per-slot cooldowns down, consumes the pending-cast intent, runs the effect graph. ──
-                abilitySys,                                                               // [4] AbilityCastSystem  (Effects, FR-11)
+                abilitySys,                                                               // [5] AbilityCastSystem  (Effects, FR-11)
                 // ── AR-9 effective-stat recompute. Immediately before CombatSystem, so combat & projectile-spawn
                 //    damage read freshly-recomputed Effective* stats the SAME tick a modifier changes them. Drives the
                 //    ModifierStore (Story 2.2b) each tick (periods/expiry) then recomputes. ──
-                modSys,                                                                   // [5] ModifierSystem    (Effects, AR-9)
+                modSys,                                                                   // [6] ModifierSystem    (Effects, AR-9)
                 // Story 2.6: the on-hit rider needs the ability registry (index→graph) + the ModifierStore (apply leaf).
                 // Story 3.13: the DeathFeed threads a lethal hitscan's victim to the XP runtime.
                 new CombatSystem(Projectiles, CombatEvents, MatchStats, damageTable,
-                                 registry ?? AbilityRegistry.Empty, Modifiers, Buildings, _deathFeed), // [6] Buildings (2.9a): anti-building combat; DeathFeed (3.13)
+                                 registry ?? AbilityRegistry.Empty, Modifiers, Buildings, _deathFeed), // [7] Buildings (2.9a): anti-building combat; DeathFeed (3.13)
                 new ProjectileSystem(Projectiles, CombatEvents, MatchStats, damageTable,
-                                     Buildings, _deathFeed),                              // [7] Buildings (2.9a): ranged shells; DeathFeed (3.13)
-                // ── Story 3.13 hero XP runtime. At index 8, immediately AFTER ProjectileSystem so it drains the SAME
+                                     Buildings, _deathFeed),                              // [8] Buildings (2.9a): ranged shells; DeathFeed (3.13)
+                // ── Story 3.13 hero XP runtime. Immediately AFTER ProjectileSystem so it drains the SAME
                 //    tick's recorded deaths (combat + projectile impacts) → credits hostile heroes in range → advances
                 //    level → reconciles growth via the folded ModifierStore. Clears the feed at end-of-tick. ──
                 // Story 3.14: also drives hero death-detection, the revival countdown, and respawn (via the shared spawn
                 // hook + the resolved revival rule + BuildingStore); announcements ride CombatEvents.
-                new HeroXpSystem(Heroes, Modifiers, _deathFeed, Buildings, _revivalRuntime, ReviveSpawn, CombatEvents), // [8] HeroXpSystem (Combat, FR-7)
-                // ── Story 3.15 item / inventory. At index 9, AFTER the combat/projectile/hero-XP cluster: death-drops
-                //    happen synchronously at KillEntity (via the OnDestroy hook, during index 6/7) and hero respawn happens
-                //    in HeroXpSystem (index 8), so a revived hero is already empty when this resolves pickups. Runs after
-                //    MovementSystem (index 2) so it steers a pickup-bound hero from a current position. ──
-                ItemSys,                                                                  // [9] ItemSystem       (Combat, FR-64)
-                new SupplySystem(Resources),                                              // [10] SupplySystem      (Economy)
-                Fog,                                                                      // [11] FogOfWarSystem    (Core)
-                _ai = new AiOpponentSystem(Buildings, Resources, BuildSys, aiLevel),      // [12] AI opponent (plays Player2)
-                ScenarioDirector,                                                         // [13] ScenarioDirector — runs LAST
+                new HeroXpSystem(Heroes, Modifiers, _deathFeed, Buildings, _revivalRuntime, ReviveSpawn, CombatEvents), // [9] HeroXpSystem (Combat, FR-7)
+                // ── Story 3.15 item / inventory. AFTER the combat/projectile/hero-XP cluster: death-drops
+                //    happen synchronously at KillEntity (via the OnDestroy hook, during the combat/projectile indices) and
+                //    hero respawn happens in HeroXpSystem, so a revived hero is already empty when this resolves pickups.
+                //    Runs after MovementSystem so it steers a pickup-bound hero from a current position. ──
+                ItemSys,                                                                  // [10] ItemSystem       (Combat, FR-64)
+                new SupplySystem(Resources),                                              // [11] SupplySystem      (Economy)
+                Fog,                                                                      // [12] FogOfWarSystem    (Core)
+                _ai = new AiOpponentSystem(Buildings, Resources, BuildSys, aiLevel),      // [13] AI opponent (plays Player2)
+                ScenarioDirector,                                                         // [14] ScenarioDirector — runs LAST
             };
 
             _loop = new SimulationLoop(World, _systems);
@@ -210,7 +232,7 @@ namespace ProjectChimera.Core.Sim
             // The sim spine's only host-side log in 1.8a: a one-shot construction diagnostic through the
             // injected seam. NullLogSink no-ops it (tests/server → zero effect on the golden); GodotLogSink
             // prints it for MainScene. NEVER a per-tick log (D6).
-            _log.Info("[SimulationHost] Sim spine constructed (14 systems; OrderQueueSystem at index 3, AbilityCastSystem at index 4, ModifierSystem at index 5, HeroXpSystem at index 8, ItemSystem at index 9).");
+            _log.Info("[SimulationHost] Sim spine constructed (15 systems; ResearchSystem at index 1, OrderQueueSystem at index 4, AbilityCastSystem at index 5, ModifierSystem at index 6, HeroXpSystem at index 9, ItemSystem at index 10).");
         }
 
         /// <summary>
@@ -237,6 +259,7 @@ namespace ProjectChimera.Core.Sim
             Heroes.Clear();         // Story 3.9 gap: bulk-empty so the re-mint after clear is non-additive
             Items.Clear();          // Story 3.15 — folded ItemStore; bulk-empty so a re-apply re-places items non-additively
             Modifiers.Clear();      // folded — also zeroes the ModifierSystem accumulators it drives
+            Research.Clear();       // Story 4.9 — mid-match-mutable; bulk-empty so a re-apply starts every faction idle again
             CombatEvents.Clear();
             _deathFeed.Clear();     // Story 3.13 — transient per-tick death buffer (empty at reset)
             Fog.Reset();

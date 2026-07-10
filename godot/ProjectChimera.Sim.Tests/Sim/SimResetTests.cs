@@ -237,11 +237,32 @@ namespace ProjectChimera.Sim.Tests.Sim
             host.Items.Create(defId: 0, charges: 3, new FixedVec3(Fixed.FromInt(5), Fixed.Zero, Fixed.FromInt(7)));
             host.Heroes.Inventory[0] = 7; // non-default marker; HeroStore.Clear's Array.Clear(Inventory) must zero it
 
+            // Story 4.9 (review finding [medium] 6): the golden fixture's faction authors no research, so a missing
+            // Research.Clear() (or an incomplete one) in ClearForReset would still leave every OTHER store equal to
+            // fresh and pass vacuously. Grow + populate host.Research DIRECTLY (bypassing ResearchSystem, which the
+            // golden faction's empty Research list would deny) so this keystone has teeth on the 4.9 per-faction
+            // research substrate too — every field ResearchStore owns, non-default.
+            host.Research.EnsureCapacity(Faction.Player1, 2);
+            host.Research.InProgressIndex[(int)Faction.Player1]   = 1;
+            host.Research.RemainingTicks[(int)Faction.Player1]    = 5;
+            host.Research.StartedAtPosition[(int)Faction.Player1] = new FixedVec3(Fixed.FromInt(3), Fixed.Zero, Fixed.FromInt(4));
+            host.Research.CompletedLevels[(int)Faction.Player1][0]             = 2;
+            host.Research.CumulativeMaxHealthDelta[(int)Faction.Player1][0]    = Fixed.FromInt(10);
+            host.Research.CumulativeAttackDamageDelta[(int)Faction.Player1][0] = Fixed.FromInt(5);
+            host.Research.CumulativeMoveSpeedDelta[(int)Faction.Player1][0]    = Fixed.FromInt(2);
+            host.Research.CumulativeArmorDelta[(int)Faction.Player1][0]        = Fixed.FromInt(1);
+
             host.ClearForReset();
 
             // A newly-constructed host (NOT applied) is the byte-for-byte reference.
             FactionDefinition faction = GoldenApplierScenario.BuildFaction();
             var fresh = SimulationHost.Create(NullLogSink.Instance, new FactionRegistry(2), faction, faction);
+
+            // ResearchStore.Clear() never SHRINKS the per-faction-per-research inner arrays (by design — see its
+            // doc comment), it only zeroes them; the golden faction's Research list is empty so `fresh.Research`
+            // was never grown. Growing `fresh.Research` to the SAME size here isolates the assertion below to "did
+            // every value zero", not an incidental array-length mismatch from the direct EnsureCapacity above.
+            fresh.Research.EnsureCapacity(Faction.Player1, 2);
 
             // Loop / management counters.
             Assert.Equal(0u, host.CurrentTick);
@@ -286,6 +307,18 @@ namespace ProjectChimera.Sim.Tests.Sim
             Assert.Equal(fresh.Items.Alive,           host.Items.Alive);
             Assert.Equal(fresh.Items.Generation,      host.Items.Generation);
             Assert.Equal(fresh.Heroes.Inventory,      host.Heroes.Inventory);
+
+            // Story 4.9: the ResearchStore substrate populated above resets to fresh too — teeth for the
+            // Research.Clear() call in ClearForReset (see the direct population above; without it, host would
+            // diverge from a fresh boot and the "reset == fresh boot" determinism guarantee would break).
+            Assert.Equal(fresh.Research.InProgressIndex,            host.Research.InProgressIndex);
+            Assert.Equal(fresh.Research.RemainingTicks,             host.Research.RemainingTicks);
+            Assert.Equal(fresh.Research.StartedAtPosition,          host.Research.StartedAtPosition);
+            Assert.Equal(fresh.Research.CompletedLevels,            host.Research.CompletedLevels);
+            Assert.Equal(fresh.Research.CumulativeMaxHealthDelta,   host.Research.CumulativeMaxHealthDelta);
+            Assert.Equal(fresh.Research.CumulativeAttackDamageDelta,host.Research.CumulativeAttackDamageDelta);
+            Assert.Equal(fresh.Research.CumulativeMoveSpeedDelta,   host.Research.CumulativeMoveSpeedDelta);
+            Assert.Equal(fresh.Research.CumulativeArmorDelta,       host.Research.CumulativeArmorDelta);
         }
 
         // ── I/O matrix: HeroStore non-additive on re-deploy (the 3.9 deferred gap) ─────────────

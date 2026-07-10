@@ -101,6 +101,12 @@ namespace ProjectChimera.Multiplayer
         /// the replay/offline paths use, or item use/drop diverges between live and replay.</summary>
         public ProjectChimera.Combat.ItemSystem? Items;
 
+        /// <summary>Story 4.9: the research runtime the shared OrderApplier uses to EXECUTE a StartResearch / CancelResearch
+        /// command at exec-tick (the deterministic spend/refund + progress on the canonical ResearchStore/ResourceStore).
+        /// Wired by MainScene per match; null in headless/tests where the two commands no-op. Must be the SAME instance
+        /// the replay/offline paths use, or research diverges between live and replay.</summary>
+        public ProjectChimera.Economy.ResearchSystem? Research;
+
         /// <summary>Story 2.12 (AC4): the presentation event bus the shared OrderApplier pushes an OrderDenied event to
         /// when a Shift-queued order is rejected on a full ring. Wired by MainScene per match; null → the reject is still
         /// deterministic (it reads the folded OrderQueueCount), only the visual feedback is skipped. Presentation-only.</summary>
@@ -672,7 +678,7 @@ namespace ProjectChimera.Multiplayer
             // delegates are this manager's presentation hooks (wired by MainScene; null in headless/tests).
             for (int i = 0; i < count; i++)
                 OrderApplier.Apply(_world, in buf[baseIdx + i], expectedFaction,
-                    OnRequestPath, OnRequestAttackMove, OnCancelPath, Buildings, CombatEvents, Items);
+                    OnRequestPath, OnRequestAttackMove, OnCancelPath, Buildings, CombatEvents, Items, Research);
         }
     }
 }

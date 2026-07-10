@@ -13,41 +13,44 @@ using Xunit;
 namespace ProjectChimera.Sim.Tests.Sim
 {
     /// <summary>
-    /// Pins the canonical 12-system tick order that <see cref="SimulationHost"/> owns (Story 1.8a / AR-6;
+    /// Pins the canonical 15-system tick order that <see cref="SimulationHost"/> owns (Story 1.8a / AR-6;
     /// <c>ModifierSystem</c> filled the AR-9 slot in Story 2.2a; <c>AbilityCastSystem</c> was inserted at index 3 in
     /// Story 2.4a / FR-11, then bumped to index 4 when <c>OrderQueueSystem</c> was inserted at index 3 in Story 2.12 /
-    /// FR-74). The registration order IS the determinism contract — a desync hides in any silent reorder/add/remove —
-    /// so these tests FAIL loudly the moment the order drifts. They also pin the queue/cast/AR-9 slot contract:
-    /// <c>OrderQueueSystem</c> sits immediately after <see cref="MovementSystem"/> and immediately before
-    /// <see cref="AbilityCastSystem"/>, which sits immediately before <see cref="ModifierSystem"/>, which sits
-    /// immediately before <see cref="CombatSystem"/> (so an arrival is fresh, a popped cast fires same-tick, a cast's
-    /// buff is recomputed, and combat reads the recomputed Effective* stats the SAME tick), all strictly before
-    /// <see cref="ProjectileSystem"/>.
+    /// FR-74; <c>ResearchSystem</c> was inserted at index 1, immediately after <c>BuildingSystem</c>, in Story 4.9,
+    /// shifting every system after it down by one). The registration order IS the determinism contract — a desync
+    /// hides in any silent reorder/add/remove — so these tests FAIL loudly the moment the order drifts. They also pin
+    /// the queue/cast/AR-9 slot contract: <c>OrderQueueSystem</c> sits immediately after <see cref="MovementSystem"/>
+    /// and immediately before <see cref="AbilityCastSystem"/>, which sits immediately before
+    /// <see cref="ModifierSystem"/>, which sits immediately before <see cref="CombatSystem"/> (so an arrival is
+    /// fresh, a popped cast fires same-tick, a cast's buff is recomputed, and combat reads the recomputed Effective*
+    /// stats the SAME tick), all strictly before <see cref="ProjectileSystem"/>.
     /// </summary>
     public class SystemOrderTest
     {
         /// <summary>
-        /// The canonical order, by runtime type. <see cref="AbilityCastSystem"/> occupies index 3 (Story 2.4a / FR-11)
-        /// and <see cref="ModifierSystem"/> index 4 (Story 2.2a / AR-9), both immediately before
+        /// The canonical order, by runtime type. <see cref="ResearchSystem"/> occupies index 1 (Story 4.9), immediately
+        /// after <see cref="BuildingSystem"/>. <see cref="AbilityCastSystem"/> occupies index 5 (Story 2.4a / FR-11)
+        /// and <see cref="ModifierSystem"/> index 6 (Story 2.2a / AR-9), both immediately before
         /// <see cref="CombatSystem"/>, so a cast's buff is recomputed and combat reads the recomputed Effective* stats
         /// the same tick.
         /// </summary>
         private static readonly System.Type[] ExpectedOrder =
         {
             typeof(BuildingSystem),    // [0]
-            typeof(GatheringSystem),   // [1]
-            typeof(MovementSystem),    // [2]
-            typeof(OrderQueueSystem),  // [3]  ← Story 2.12 shift-queue advance (FR-74), after Movement / before AbilityCast
-            typeof(AbilityCastSystem), // [4]  ← Story 2.4a ability-cast spine (FR-11), immediately before ModifierSystem
-            typeof(ModifierSystem),    // [5]  ← AR-9 effective-stat recompute (Story 2.2a), immediately before Combat
-            typeof(CombatSystem),      // [6]
-            typeof(ProjectileSystem),  // [7]
-            typeof(HeroXpSystem),      // [8]  ← Story 3.13 hero XP runtime, immediately after ProjectileSystem
-            typeof(ItemSystem),        // [9]  ← Story 3.15 item / inventory, after the combat/projectile/hero-XP cluster
-            typeof(SupplySystem),      // [10]
-            typeof(FogOfWarSystem),    // [11]
-            typeof(AiOpponentSystem),  // [12]
-            typeof(ScenarioDirector),  // [13]  runs LAST
+            typeof(ResearchSystem),    // [1]  ← Story 4.9 research order path, immediately after BuildingSystem
+            typeof(GatheringSystem),   // [2]
+            typeof(MovementSystem),    // [3]
+            typeof(OrderQueueSystem),  // [4]  ← Story 2.12 shift-queue advance (FR-74), after Movement / before AbilityCast
+            typeof(AbilityCastSystem), // [5]  ← Story 2.4a ability-cast spine (FR-11), immediately before ModifierSystem
+            typeof(ModifierSystem),    // [6]  ← AR-9 effective-stat recompute (Story 2.2a), immediately before Combat
+            typeof(CombatSystem),      // [7]
+            typeof(ProjectileSystem),  // [8]
+            typeof(HeroXpSystem),      // [9]  ← Story 3.13 hero XP runtime, immediately after ProjectileSystem
+            typeof(ItemSystem),        // [10] ← Story 3.15 item / inventory, after the combat/projectile/hero-XP cluster
+            typeof(SupplySystem),      // [11]
+            typeof(FogOfWarSystem),    // [12]
+            typeof(AiOpponentSystem),  // [13]
+            typeof(ScenarioDirector),  // [14]  runs LAST
         };
 
         /// <summary>
@@ -61,7 +64,7 @@ namespace ProjectChimera.Sim.Tests.Sim
             new FactionDefinition());
 
         [Fact]
-        public void Systems_AreTheFourteenCanonicalSystems_InExactOrder()
+        public void Systems_AreTheFifteenCanonicalSystems_InExactOrder()
         {
             IReadOnlyList<ISimSystem> systems = BuildHost().Systems;
 

@@ -120,7 +120,8 @@ namespace ProjectChimera.Multiplayer
             Action<int>? onCancelPath = null,
             BuildingSystem? buildings = null,
             CombatEventQueue? events = null,
-            ItemSystem? items = null)
+            ItemSystem? items = null,
+            ResearchSystem? research = null)
         {
             // Story 2.12 (Decision #2): mask the wire's queued flag (0x80) off the Command byte FIRST, so every
             // downstream compare + the command→state switch sees only the real 0-13 UnitCommand — never a flagged
@@ -172,6 +173,24 @@ namespace ProjectChimera.Multiplayer
             if (cmd == UnitCommand.BuyItem)
             {
                 buildings?.BuyItemCommand(o.UnitId, expectedFaction, o.TargetX, o.TargetZ, items, events);
+                return;
+            }
+
+            // Story 4.9: StartResearch/CancelResearch ALSO name a BUILDING (UnitId = buildingId) — handle them beside
+            // Train/SetRally/ReviveHero/BuyItem, BEFORE the entity guard, for the same reason. StartResearch's TargetX
+            // carries the chosen research's index into FactionDefinition.Research as a RAW int (read directly, NEVER
+            // via .ToFloat()); CancelResearch's TargetX is unused/reserved. ResearchSystem.StartResearchCommand/
+            // CancelResearchCommand do the building-ownership + gate/refund guards and the deterministic exec-tick
+            // spend. NEVER persists as a CommandState. `research` null ⇒ deterministic no-op (golden/replay-without-
+            // research paths, like `buildings`/`items`).
+            if (cmd == UnitCommand.StartResearch)
+            {
+                research?.StartResearchCommand(o.UnitId, expectedFaction, o.TargetX);
+                return;
+            }
+            if (cmd == UnitCommand.CancelResearch)
+            {
+                research?.CancelResearchCommand(o.UnitId, expectedFaction);
                 return;
             }
 

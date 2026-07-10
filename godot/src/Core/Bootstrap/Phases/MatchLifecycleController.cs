@@ -74,6 +74,10 @@ namespace ProjectChimera.Core.Bootstrap
             // Story 3.15: give the manager the item runtime so an online UseItem / DropItem EXECUTES at exec-tick (the
             // deterministic charge/heal/ground-return) — the SAME ItemSystem instance the offline SelectionSystem uses.
             _ctx.Lockstep.Items = _ctx.Host.ItemSys;
+            // Story 4.9: give the manager the research runtime so an online StartResearch / CancelResearch EXECUTES
+            // at exec-tick (the deterministic spend/refund + progress on the canonical ResearchStore/ResourceStore) —
+            // the SAME ResearchSystem instance the replay/offline paths use.
+            _ctx.Lockstep.Research = _ctx.Host.ResearchSys;
             // Story 2.12: also give the manager the event bus so a full-ring queued-order reject can emit OrderDenied
             // feedback on the online path (the same bus the offline SelectionSystem path uses); presentation-only.
             _ctx.Lockstep.CombatEvents = _ctx.CombatEvents;
@@ -181,6 +185,9 @@ namespace ProjectChimera.Core.Bootstrap
                 // Story 3.15: give the replay the item runtime so a recorded UseItem / DropItem re-executes identically
                 // to the live match (charge-decrement / heal / ground-return on the canonical stores).
                 _ctx.ReplayPlayer.Items = _ctx.Host.ItemSys;
+                // Story 4.9: give the replay the research runtime so a recorded StartResearch / CancelResearch
+                // re-executes identically to the live match (spend/refund + progress on the canonical stores).
+                _ctx.ReplayPlayer.Research = _ctx.Host.ResearchSys;
 
                 // The replay embeds the scenario path — warn if it differs from the currently-loaded scenario.
                 if (_ctx.ReplayPlayer.ScenarioPath != _ctx.Scene.ScenarioPath)

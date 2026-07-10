@@ -62,6 +62,11 @@ namespace ProjectChimera.Multiplayer
         /// <see cref="Buildings"/>; null in the Tier-1 golden harness where item commands no-op.</summary>
         public ProjectChimera.Combat.ItemSystem? Items;
 
+        /// <summary>Story 4.9: the research runtime the shared OrderApplier uses to EXECUTE a replayed StartResearch /
+        /// CancelResearch command, so a recorded .chmr researches identically to the live match. Wired alongside
+        /// <see cref="Buildings"/>; null in the Tier-1 golden harness where the two commands no-op.</summary>
+        public ProjectChimera.Economy.ResearchSystem? Research;
+
         // ── Replay data ───────────────────────────────────────────────────────────
 
         // Key = simulation tick; value = list of (faction, orders[]) for that tick.
@@ -182,7 +187,7 @@ namespace ProjectChimera.Multiplayer
             // are null in the Tier-1 golden harness.
             for (int i = 0; i < count; i++)
                 OrderApplier.Apply(_world, in orders[i], expectedFaction,
-                    OnRequestPath, OnRequestAttackMove, OnCancelPath, Buildings, null, Items);
+                    OnRequestPath, OnRequestAttackMove, OnCancelPath, Buildings, null, Items, Research);
         }
     }
 }

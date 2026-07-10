@@ -35,7 +35,12 @@ namespace ProjectChimera.Combat
         // values cannot move any golden. The full-inventory reject reuses OrderDenied. ──
         ItemPickedUp,
         ItemUsed,
-        ItemDropped
+        ItemDropped,
+        // ── Story 4.9 (research order path): appended AFTER ItemDropped. Pushed by ResearchSystem.Tick when an
+        // in-progress research order completes, at the position it was started (BuildingStore position at issue time).
+        // Presentation-only — CombatEventQueue is NOT a SimChecksum input, so appending an enum value cannot move any
+        // golden. ──
+        ResearchComplete
     }
 
     /// <summary>Lightweight event written by sim systems each tick.</summary>
