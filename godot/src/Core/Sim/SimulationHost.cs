@@ -90,7 +90,7 @@ namespace ProjectChimera.Core.Sim
         /// <c>OrderApplier.Apply(..., research: ResearchSys)</c>.</summary>
         public ResearchSystem ResearchSys { get; }
         /// <summary>Story 4.9 — the mid-match-mutable per-faction research substrate <see cref="ResearchSys"/> reads/
-        /// writes. Explicitly NOT yet folded into <see cref="SimChecksum"/> (Story 4.10's job).</summary>
+        /// writes. Folded into <see cref="SimChecksum"/> (v14, Story 4.10).</summary>
         public ResearchStore Research { get; }
         public ScenarioDirector ScenarioDirector { get; }
         public FogOfWarSystem Fog { get; }
@@ -143,7 +143,7 @@ namespace ProjectChimera.Core.Sim
             MatchStats       = new MatchStats();
             Fog              = new FogOfWarSystem(Faction.Player1);
             BuildSys         = new BuildingSystem(Buildings, Resources, factionDef1, factionDef2, MatchStats, Heroes, _revivalRuntime);
-            Research         = new ResearchStore(); // Story 4.9 — mid-match-mutable; NOT yet folded into SimChecksum (4.10's job)
+            Research         = new ResearchStore(); // Story 4.9 — mid-match-mutable; folded into SimChecksum (v14, Story 4.10)
             ScenarioDirector = new ScenarioDirector(Buildings, Resources);
 
             // AR-9 effective-stat recompute (Story 2.2a), the Story 2.2b ModifierStore it drives, and the Story 2.4a
@@ -227,7 +227,7 @@ namespace ProjectChimera.Core.Sim
             };
 
             _loop = new SimulationLoop(World, _systems);
-            _loop.EnableChecksums(Buildings, Resources, checksumFactions, Modifiers, Heroes, Items, Nodes); // fold modifier state (v6) + ability cooldowns (v7) + mutable HeroStore (v11) + ItemStore/inventory (v12) + ResourceNodeStore (v13)
+            _loop.EnableChecksums(Buildings, Resources, checksumFactions, Modifiers, Heroes, Items, Nodes, Research); // fold modifier state (v6) + ability cooldowns (v7) + mutable HeroStore (v11) + ItemStore/inventory (v12) + ResourceNodeStore (v13) + ResearchStore (v14)
 
             // The sim spine's only host-side log in 1.8a: a one-shot construction diagnostic through the
             // injected seam. NullLogSink no-ops it (tests/server → zero effect on the golden); GodotLogSink

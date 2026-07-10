@@ -221,7 +221,7 @@ namespace ProjectChimera.Sim.Tests.Definitions
         [Fact]
         public void HashAlgoVersions_AreUnchanged()
         {
-            Assert.Equal(13, SimChecksum.AlgoVersion); // Story 4.7: first-ever ResourceNodeStore fold (12→13)
+            Assert.Equal(14, SimChecksum.AlgoVersion); // Story 4.10: first-ever ResearchStore fold (13→14)
             Assert.Equal(5, CanonicalModelHash.AlgoVersion); // Story 4.7: ScenarioResourceNode's 6 new fields folded (4→5)
             Assert.Equal(2, StartStateHash.AlgoVersion);
         }

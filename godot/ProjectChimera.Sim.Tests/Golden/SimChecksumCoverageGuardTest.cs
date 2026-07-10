@@ -108,21 +108,22 @@ namespace ProjectChimera.Sim.Tests.Golden
         /// hash still moves.)
         /// </summary>
         [Fact]
-        public void KnownWorldState_ProducesPinnedV13Hash()
+        public void KnownWorldState_ProducesPinnedV14Hash()
         {
-            // Algorithm version must be exactly 13 (Story 4.7's first-ever ResourceNodeStore fold). If this fails, the const below is stale.
-            Assert.Equal(13, SimChecksum.AlgoVersion);
+            // Algorithm version must be exactly 14 (Story 4.10's first-ever ResearchStore fold). If this fails, the const below is stale.
+            Assert.Equal(14, SimChecksum.AlgoVersion);
 
             uint actual = ComputeKnownStateHash();
 
-            // ── Pinned v13 hash for the fixed world built by ComputeKnownStateHash() ──────────────────────────
+            // ── Pinned v14 hash for the fixed world built by ComputeKnownStateHash() ──────────────────────────
             // An intentional SimChecksum algorithm change must update this value AND bump SimChecksum.AlgoVersion.
-            // The known-state world now includes an EMPTY ResourceNodeStore (no nodes → one Mix(0) node-count), so
-            // the v13 fold moves the hash from v12 purely by that single Mix(0) node-count.
-            const uint ExpectedV13Hash = 0x19F3880A; // recorded from a green v13 run; re-pin only on an intentional algo change
-            Assert.True(actual == ExpectedV13Hash,
-                $"Known-state v13 checksum changed: expected 0x{ExpectedV13Hash:X8}, actual 0x{actual:X8}. " +
-                $"If this is an INTENTIONAL algorithm change, re-pin ExpectedV13Hash to 0x{actual:X8} and bump " +
+            // The known-state world now includes an EMPTY ResearchStore (both active factions idle, no research
+            // arrays sized), so the v14 fold moves the hash from v13 purely by the added per-active-faction
+            // Mix(InProgressIndex=-1)/Mix(RemainingTicks=0) — no per-research inner loop runs (Length == 0).
+            const uint ExpectedV14Hash = 0x386E5B42; // recorded from a green v14 run; re-pin only on an intentional algo change
+            Assert.True(actual == ExpectedV14Hash,
+                $"Known-state v14 checksum changed: expected 0x{ExpectedV14Hash:X8}, actual 0x{actual:X8}. " +
+                $"If this is an INTENTIONAL algorithm change, re-pin ExpectedV14Hash to 0x{actual:X8} and bump " +
                 $"SimChecksum.AlgoVersion. If not, you broke the deterministic checksum — investigate.");
         }
 
@@ -326,6 +327,100 @@ namespace ProjectChimera.Sim.Tests.Golden
 
             // ── v13 (Story 4.7): the mutable ResourceNodeStore is folded (first-ever fold of this store) ──
             AssertResourceNodeStoreFoldedIntoChecksum(registry);
+
+            // ── v14 (Story 4.10): the mutable ResearchStore is folded (first-ever fold of this store) ──
+            AssertResearchStoreFoldedIntoChecksum(registry);
+        }
+
+        /// <summary>
+        /// Story 4.10 (v14) coverage teeth: the mutable <see cref="ResearchStore"/> state must move the
+        /// checksum — the FIRST-EVER fold of this store. Grows the store's per-research inner arrays on an active
+        /// faction slot, then mutates each folded field (InProgressIndex / RemainingTicks / CompletedLevels[idx][0] /
+        /// each of the four cumulative deltas) in turn — each MUST move the hash. A no-move means a folded research
+        /// field escaped <see cref="SimChecksum"/> (a silent desync surface, since <c>ResearchSystem</c> mutates all
+        /// of these mid-match). Also proves: (a) a SECOND active faction's (Player2) mutation moves the hash
+        /// INDEPENDENTLY of Player1's state (a hardcoded-index/mis-ordered-loop bug would fold only Player1 and pass
+        /// every other assertion here undetected); (b) a SECOND research index (r=1) within the same faction folds
+        /// too (an r&gt;0 indexing bug would pass with only one grown entry); (c) resetting an in-progress order back
+        /// to idle (InProgressIndex=-1, RemainingTicks=0 — the state <c>CancelResearchCommand</c> leaves behind) also
+        /// moves the hash, so the checksum genuinely reflects a cancel's effect and not just the forward direction.
+        /// Lives outside EntityWorld/HeroStore/ItemStore/ResourceNodeStore, so it needs its own teeth (passed as the
+        /// trailing Compute param), mirroring <see cref="AssertResourceNodeStoreFoldedIntoChecksum"/>.
+        /// </summary>
+        private static void AssertResearchStoreFoldedIntoChecksum(FactionRegistry registry)
+        {
+            var world     = new EntityWorld();          // empty — isolates the research contribution
+            var resources = new ResourceStore(Fixed.Zero);
+            var buildings = new BuildingStore();
+            var research  = new ResearchStore();
+            const int slot  = (int)Faction.Player1; // an active slot the loop reads
+            const int slot2 = (int)Faction.Player2; // a SECOND active slot — proves the fold isn't Player1-only
+
+            research.EnsureCapacity(Faction.Player1, 2); // two research entries so the r=1 index is also exercised
+            research.EnsureCapacity(Faction.Player2, 1);
+
+            uint empty = SimChecksum.Compute(world, buildings, resources, registry, null, null, null, null, research);
+
+            research.InProgressIndex[slot] = 0;
+            uint inProgressMoved = SimChecksum.Compute(world, buildings, resources, registry, null, null, null, null, research);
+            Assert.True(empty != inProgressMoved,
+                "ResearchStore.InProgressIndex is NOT folded into SimChecksum (v14).");
+
+            research.RemainingTicks[slot] = 5;
+            uint remainingMoved = SimChecksum.Compute(world, buildings, resources, registry, null, null, null, null, research);
+            Assert.True(inProgressMoved != remainingMoved,
+                "ResearchStore.RemainingTicks is NOT folded into SimChecksum (v14).");
+
+            research.CompletedLevels[slot][0] = 1;
+            uint completedMoved = SimChecksum.Compute(world, buildings, resources, registry, null, null, null, null, research);
+            Assert.True(remainingMoved != completedMoved,
+                "ResearchStore.CompletedLevels is NOT folded into SimChecksum (v14).");
+
+            research.CumulativeMaxHealthDelta[slot][0] = Fixed.FromInt(10);
+            uint hpMoved = SimChecksum.Compute(world, buildings, resources, registry, null, null, null, null, research);
+            Assert.True(completedMoved != hpMoved,
+                "ResearchStore.CumulativeMaxHealthDelta is NOT folded into SimChecksum (v14).");
+
+            research.CumulativeAttackDamageDelta[slot][0] = Fixed.FromInt(3);
+            uint atkMoved = SimChecksum.Compute(world, buildings, resources, registry, null, null, null, null, research);
+            Assert.True(hpMoved != atkMoved,
+                "ResearchStore.CumulativeAttackDamageDelta is NOT folded into SimChecksum (v14).");
+
+            research.CumulativeMoveSpeedDelta[slot][0] = Fixed.FromInt(1);
+            uint speedMoved = SimChecksum.Compute(world, buildings, resources, registry, null, null, null, null, research);
+            Assert.True(atkMoved != speedMoved,
+                "ResearchStore.CumulativeMoveSpeedDelta is NOT folded into SimChecksum (v14).");
+
+            research.CumulativeArmorDelta[slot][0] = Fixed.FromInt(2);
+            uint armorMoved = SimChecksum.Compute(world, buildings, resources, registry, null, null, null, null, research);
+            Assert.True(speedMoved != armorMoved,
+                "ResearchStore.CumulativeArmorDelta is NOT folded into SimChecksum (v14).");
+
+            // ── r=1 (a SECOND research index on the SAME faction) — proves the inner loop isn't index-0-only ──
+            research.CompletedLevels[slot][1] = 2;
+            uint secondIndexMoved = SimChecksum.Compute(world, buildings, resources, registry, null, null, null, null, research);
+            Assert.True(armorMoved != secondIndexMoved,
+                "ResearchStore.CompletedLevels[.][1] (a second research index, r=1) is NOT folded into SimChecksum (v14) — the inner loop may be index-0-only.");
+
+            // ── A SECOND active faction (Player2) — proves the outer loop isn't Player1-only ──
+            research.InProgressIndex[slot2] = 0;
+            uint secondFactionMoved = SimChecksum.Compute(world, buildings, resources, registry, null, null, null, null, research);
+            Assert.True(secondIndexMoved != secondFactionMoved,
+                "ResearchStore state on a SECOND active faction (Player2) is NOT folded into SimChecksum (v14) — the outer per-faction loop may be Player1-only.");
+
+            research.CumulativeArmorDelta[slot2][0] = Fixed.FromInt(7);
+            uint secondFactionDeltaMoved = SimChecksum.Compute(world, buildings, resources, registry, null, null, null, null, research);
+            Assert.True(secondFactionMoved != secondFactionDeltaMoved,
+                "ResearchStore.CumulativeArmorDelta on a SECOND active faction (Player2) is NOT folded into SimChecksum (v14).");
+
+            // ── Cancel-shaped transition: reset Player1's in-progress order back to idle (what CancelResearchCommand
+            //    leaves behind) — must ALSO move the hash, proving the fold reflects a cancel, not just the forward
+            //    start/tick/complete direction. ──
+            research.InProgressIndex[slot] = -1;
+            research.RemainingTicks[slot]  = 0;
+            uint cancelledMoved = SimChecksum.Compute(world, buildings, resources, registry, null, null, null, null, research);
+            Assert.True(secondFactionDeltaMoved != cancelledMoved,
+                "Resetting ResearchStore.InProgressIndex/RemainingTicks to idle (the CancelResearchCommand shape) does NOT move SimChecksum (v14).");
         }
 
         /// <summary>
@@ -615,7 +710,9 @@ namespace ProjectChimera.Sim.Tests.Golden
             // v11 (Story 3.13): pass an EMPTY HeroStore (no heroes → Mix(0) hero-count) — same explicit-production-path rationale.
             // v12 (Story 3.15): pass an EMPTY ItemStore (no items → Mix(0) item-count) — same explicit-production-path rationale.
             // v13 (Story 4.7): pass an EMPTY ResourceNodeStore (no nodes → Mix(0) node-count) — same rationale.
-            return SimChecksum.Compute(world, buildings, resources, new FactionRegistry(2), new ModifierStore(world), new HeroStore(), new ItemStore(), new ResourceNodeStore());
+            // v14 (Story 4.10): pass an EMPTY ResearchStore (both active factions idle, no research authored) —
+            // same explicit-production-path rationale.
+            return SimChecksum.Compute(world, buildings, resources, new FactionRegistry(2), new ModifierStore(world), new HeroStore(), new ItemStore(), new ResourceNodeStore(), new ResearchStore());
         }
 
         /// <summary>

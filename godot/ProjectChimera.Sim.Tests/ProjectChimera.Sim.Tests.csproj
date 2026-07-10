@@ -128,6 +128,12 @@
     <!-- Story 3.16 — shop-purchase golden (BuyItem mint/spend over the already-folded v12 stores; NO algo bump). NEW file. -->
     <None Remove="Golden\shop-purchase-scenario.golden.txt" />
     <EmbeddedResource Include="Golden\shop-purchase-scenario.golden.txt" />
+    <!-- Story 4.10 — research golden (StartResearch level 1 -> complete -> StartResearch level 2 of the same
+         research; Player2 empty so the AI no-ops). First golden exercising the v14 ResearchStore fold (the
+         FIRST-EVER fold of this store). Integer/Fixed-only → CROSS-PLATFORM SAFE, compared on both CI legs. NEW
+         file; the 23 goldens above ARE re-baselined once for the v14 fold. -->
+    <None Remove="Golden\research-scenario.golden.txt" />
+    <EmbeddedResource Include="Golden\research-scenario.golden.txt" />
   </ItemGroup>
 
   <ItemGroup>

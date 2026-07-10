@@ -48,6 +48,12 @@ namespace ProjectChimera.Core
     ///   - ResourceNodeStore mutable state: live count, then ascending node id — SupplyRemaining, Active,
     ///     AssignedGatherers, IncomeTicksElapsed — added v13 (Story 4.7), the FIRST-EVER fold of this store (a
     ///     pre-existing gap; see AlgoVersion's doc). A null store folds Mix(0).
+    ///   - ResearchStore mutable state: per ACTIVE faction (ascending -- the outer loop mirrors ResourceStore's
+    ///     ActiveFactions iteration, not a raw faction-count stride), InProgressIndex then RemainingTicks, then an
+    ///     inner count-driven loop bound by that faction's OWN CompletedLevels[idx].Length (a per-faction research-
+    ///     entry count, never a fixed constant) over CompletedLevels[idx][r] plus the four cumulative stat deltas
+    ///     (.Raw) per research index -- added v14 (Story 4.10), the FIRST-EVER fold of this store (4.9 built it
+    ///     mid-match-mutable but explicitly deferred the fold to this story). A null store folds a single Mix(0).
     ///
     /// Versioned by <see cref="AlgoVersion"/> — bump on any change to the hashed set/order
     /// (forces an intentional golden re-baseline). MatchStats is deliberately NOT hashed
@@ -126,8 +132,25 @@ namespace ProjectChimera.Core
         ///        with an empty store). One scheduled re-baseline of ALL goldens (every existing golden has at least
         ///        one node, so the pin moves by the newly-folded per-node state even though GATHER behavior itself
         ///        is unchanged).
+        ///   v14 — Story 4.10: <see cref="ResearchStore"/> is folded into the checksum for the FIRST TIME (4.9 made
+        ///        it mid-match-mutable via the order start/tick/complete/cancel path but explicitly deferred the
+        ///        fold to this immediately-following story — see 4.9's Design Notes). Fold, per ACTIVE faction
+        ///        (ascending — the OUTER loop mirrors ResourceStore's <c>factions.ActiveFactions</c> iteration, NOT
+        ///        the raw 0-4 <c>FACTION_COUNT</c> stride): InProgressIndex, RemainingTicks, then an INNER
+        ///        count-driven loop bound by that faction's OWN <c>CompletedLevels[idx].Length</c> (a per-faction
+        ///        research-entry count, never a fixed constant) over CompletedLevels[idx][r] plus the four
+        ///        cumulative stat deltas (.Raw:
+        ///        CumulativeMaxHealthDelta/CumulativeAttackDamageDelta/CumulativeMoveSpeedDelta/CumulativeArmorDelta)
+        ///        per research index. The four cumulative deltas are folded DIRECTLY (not left to transitive
+        ///        Effective* coverage) because they are genuinely mid-match-mutated sim truth that future-spawn
+        ///        catch-up reads — the same posture as ModifierStore/EffectiveArmor/HeroStore.Xp. StartedAtPosition
+        ///        stays UNFOLDED (write-once, read only to position the presentation-only ResearchComplete event —
+        ///        the same posture as other completion-event positions). All int/Fixed.Raw → cross-platform. A null
+        ///        store folds a single Mix(0) (legacy/test callers only; SimulationHost always passes a real store).
+        ///        One scheduled re-baseline of ALL goldens (every existing golden's factions have no research, so
+        ///        the pin moves purely by the added per-active-faction Mix(InProgressIndex)/Mix(RemainingTicks)).
         /// </summary>
-        public const int AlgoVersion = 13;
+        public const int AlgoVersion = 14;
 
         /// <summary>
         /// Compute a full-state checksum for desync detection.
@@ -135,7 +158,7 @@ namespace ProjectChimera.Core
         /// </summary>
         public static uint Compute(EntityWorld world, BuildingStore buildings, ResourceStore resources,
                                    FactionRegistry factions, ModifierStore? modifiers = null, HeroStore? heroes = null,
-                                   ItemStore? items = null, ResourceNodeStore? nodes = null)
+                                   ItemStore? items = null, ResourceNodeStore? nodes = null, ResearchStore? research = null)
         {
             // Contract guard for the registry param added in Story 1.3a: a future direct caller (e.g. the
             // 1.9a/9.1 server checksum collector) gets a clear error instead of an opaque NRE in the Ore loop.
@@ -386,6 +409,41 @@ namespace ProjectChimera.Core
             else
             {
                 hash = Mix(hash, 0); // null store ≡ empty: fold an identical count-0 mix
+            }
+
+            // ── ResearchStore mutable state (v14, Story 4.10) — OUTER loop per ACTIVE faction (ascending, mirrors
+            // the ResourceStore.ActiveFactions loop above — NOT a raw 0-4 FACTION_COUNT stride), then an INNER
+            // count-driven loop over that faction's OWN per-research state — the FIRST-EVER fold of this store
+            // (4.9 built it mid-match-mutable but explicitly deferred the fold to this story). InProgressIndex/
+            // RemainingTicks are the in-progress order countdown; CompletedLevels + the four cumulative deltas are
+            // folded per research index, bound by that faction's OWN CompletedLevels[idx].Length (a per-faction
+            // research-entry count, never a fixed constant — mirrors the AbilityCount/ResourceNodeStore count-driven
+            // convention). The four cumulative deltas are genuinely
+            // mid-match-mutated sim truth read directly by future-spawn catch-up, so they fold alongside
+            // CompletedLevels rather than relying on transitive Effective* coverage (the ModifierStore/
+            // EffectiveArmor/HeroStore.Xp posture). All int/Fixed.Raw → cross-platform. A null store folds a
+            // single Mix(0) (legacy/test callers only; SimulationHost always passes a real store in production).
+            if (research != null)
+            {
+                foreach (Faction f in factions.ActiveFactions)
+                {
+                    int idx = (int)f;
+                    hash = Mix(hash, research.InProgressIndex[idx]);
+                    hash = Mix(hash, research.RemainingTicks[idx]);
+                    int researchCount = research.CompletedLevels[idx].Length;
+                    for (int r = 0; r < researchCount; r++)
+                    {
+                        hash = Mix(hash, research.CompletedLevels[idx][r]);
+                        hash = Mix(hash, research.CumulativeMaxHealthDelta[idx][r].Raw);
+                        hash = Mix(hash, research.CumulativeAttackDamageDelta[idx][r].Raw);
+                        hash = Mix(hash, research.CumulativeMoveSpeedDelta[idx][r].Raw);
+                        hash = Mix(hash, research.CumulativeArmorDelta[idx][r].Raw);
+                    }
+                }
+            }
+            else
+            {
+                hash = Mix(hash, 0); // null store ≡ single Mix(0) (legacy/test callers only)
             }
 
             // ── RNG state (v3, Story 1.5) ─────────────────────────────────────────
