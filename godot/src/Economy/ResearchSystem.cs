@@ -73,6 +73,16 @@ namespace ProjectChimera.Economy
             return _factions[idx];
         }
 
+        /// <summary>
+        /// Story 4.11: presentation READ accessor — <see cref="ProjectChimera.UI.CommandCardSystem"/>'s research
+        /// button grid needs the same <see cref="FactionDefinition"/> this system's own gates read internally, to
+        /// resolve a selected building's <c>BuildingDefinition.AvailableResearch</c> against
+        /// <see cref="FactionDefinition.Research"/>/<see cref="FactionDefinition.IndexOfResearch"/> for its dim
+        /// predicate (mirrors <see cref="StartResearchCommand"/>'s own resolution, read-only). No sim-array
+        /// mutation; a thin public wrapper over the private <see cref="GetFactionDef"/> this system already uses.
+        /// </summary>
+        public FactionDefinition? GetFactionDefinition(Faction faction) => GetFactionDef(faction);
+
         /// <summary>Null-safe count of <paramref name="fdef"/>'s <see cref="FactionDefinition.Research"/> list
         /// (review fix). <see cref="FactionDefinition.GetResearch"/>/<see cref="FactionDefinition.IndexOfResearch"/>
         /// and <see cref="Definitions.ResearchValidator"/> all explicitly tolerate an authored <c>"research": null</c>

@@ -211,6 +211,61 @@ namespace ProjectChimera.Core.Definitions
             return errors;
         }
 
+        /// <summary>
+        /// Story 4.11 — the Visual Tech Tree Editor's single-edge validation surface for a dragged edge landing on a
+        /// RESEARCH node, mirroring <see cref="TechTreeValidator.ValidateProposedEdge"/>'s single-edge reuse of its
+        /// batch cycle DFS. <paramref name="sourceId"/> may name a building OR another research entry (the same
+        /// UNION <see cref="ResearchDefinition.Prerequisites"/> resolves against everywhere else); an unresolvable
+        /// source id is rejected inline with wording byte-identical to the referential-lint error <see cref="Validate"/>
+        /// emits for the same bad reference. A resolvable source then gets the SAME cycle check <see cref="Validate"/>
+        /// runs at import time: <paramref name="targetId"/>'s <see cref="ResearchDefinition.Prerequisites"/> is
+        /// TEMPORARILY appended with <paramref name="sourceId"/> (restored in a <c>finally</c>, so this method never
+        /// leaves <paramref name="def"/> mutated) and <see cref="DetectCycle"/> runs over the whole graph as if the
+        /// edge already existed — including a self-edge, which resolves to the SAME research entry temporarily
+        /// listing itself as its own prerequisite. Returns null when the proposed edge is safe; the located
+        /// rejection message otherwise. Returns null (a defensive no-op) when <paramref name="targetId"/> does not
+        /// resolve to a loaded research entry — the editor never calls this with one.
+        /// </summary>
+        public static string? ValidateProposedEdge(FactionDefinition def, string sourceId, string targetId)
+        {
+            if (def == null) return null;
+
+            List<ResearchDefinition> research = def.Research ?? new List<ResearchDefinition>();
+            List<BuildingDefinition> buildings = def.Buildings ?? new List<BuildingDefinition>();
+
+            ResearchDefinition? target = null;
+            foreach (ResearchDefinition? r in research)
+            {
+                if (r != null && r.Id == targetId) { target = r; break; }
+            }
+            if (target == null) return null;   // unresolved target — the editor never calls this with one (defensive no-op)
+
+            var researchIds = new HashSet<string>();
+            foreach (ResearchDefinition? r in research)
+                if (r != null && !string.IsNullOrEmpty(r.Id)) researchIds.Add(r.Id);
+
+            var buildingIds = new HashSet<string>();
+            foreach (BuildingDefinition? b in buildings)
+                if (b != null && !string.IsNullOrEmpty(b.Id)) buildingIds.Add(b.Id);
+
+            if (!researchIds.Contains(sourceId) && !buildingIds.Contains(sourceId))
+                return $"research '{targetId}'.prerequisites: references unknown id '{sourceId}' (not a known building or research id).";
+
+            string[]? original = target.Prerequisites;
+            target.Prerequisites = new List<string>(original ?? Array.Empty<string>()) { sourceId }.ToArray();
+            try
+            {
+                return DetectCycle(def);
+            }
+            finally
+            {
+                // Prerequisites is a non-nullable-typed property that malformed JSON can still leave null at runtime
+                // (mirrors TechTreeValidator.ValidateProposedEdge) — null-forgiving restores the exact original
+                // reference (including null) rather than a defaulted-empty array.
+                target.Prerequisites = original!;
+            }
+        }
+
         /// <summary>Finite + range guard for one <see cref="ResearchModifierDelta"/> field (review-pass fix) —
         /// rejects NaN/Infinity, and (second-review-pass fix) a finite magnitude at/beyond the 16.16
         /// <see cref="Fixed"/> ceiling. The four delta floats quantize into the same <see cref="Fixed"/> fields as a

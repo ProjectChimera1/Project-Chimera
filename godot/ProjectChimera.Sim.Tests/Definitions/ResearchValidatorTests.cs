@@ -661,6 +661,106 @@ namespace ProjectChimera.Sim.Tests.Definitions
             Assert.Empty(def.Research);
         }
 
+        // ── Story 4.11: ValidateProposedEdge (the Visual Tech Tree Editor's research-node single-edge validation
+        //    surface) — mirrors TechTreeValidatorTests' ValidateProposedEdge coverage shape. ───────────────────────
+
+        [Fact]
+        public void ValidateProposedEdge_SelfEdge_RejectedWithWordingIdenticalToValidate()
+        {
+            // Proposing "a requires a" resolves through the SAME target-lookup + temporary-mutation + DetectCycle
+            // path as every other proposed edge (no separate hand-formatted string) — cross-check its wording
+            // against Validate() on an authored research entry that already lists itself as its own prerequisite.
+            var proposed = new FactionDefinition();
+            proposed.Research.Add(new ResearchDefinition { Id = "a", Levels = { new ResearchLevel { TimeTicks = 10 } } });
+            string? proposedErr = ResearchValidator.ValidateProposedEdge(proposed, "a", "a");
+
+            var authored = new FactionDefinition();
+            authored.Research.Add(new ResearchDefinition { Id = "a", Prerequisites = new[] { "a" }, Levels = { new ResearchLevel { TimeTicks = 10 } } });
+            var authoredErrors = ResearchValidator.Validate(authored);
+
+            Assert.NotNull(proposedErr);
+            Assert.Contains(proposedErr!, authoredErrors);
+            // No mutation — the proposed edge is validated, never persisted, by this method.
+            Assert.Empty(proposed.Research[0].Prerequisites ?? Array.Empty<string>());
+        }
+
+        [Fact]
+        public void ValidateProposedEdge_ProposedTwoNodeResearchCycle_RejectedWithWordingIdenticalToValidate()
+        {
+            // "a" already requires "b" (authored). Proposing the edge "b requires a" would close a 2-node cycle.
+            var proposed = new FactionDefinition();
+            proposed.Research.Add(new ResearchDefinition { Id = "a", Prerequisites = new[] { "b" }, Levels = { new ResearchLevel { TimeTicks = 10 } } });
+            proposed.Research.Add(new ResearchDefinition { Id = "b", Levels = { new ResearchLevel { TimeTicks = 10 } } });
+            string? proposedErr = ResearchValidator.ValidateProposedEdge(proposed, "a", "b");
+
+            var authored = new FactionDefinition();
+            authored.Research.Add(new ResearchDefinition { Id = "a", Prerequisites = new[] { "b" }, Levels = { new ResearchLevel { TimeTicks = 10 } } });
+            authored.Research.Add(new ResearchDefinition { Id = "b", Prerequisites = new[] { "a" }, Levels = { new ResearchLevel { TimeTicks = 10 } } });
+            var authoredErrors = ResearchValidator.Validate(authored);
+
+            Assert.NotNull(proposedErr);
+            Assert.Contains(proposedErr!, authoredErrors);
+            // No mutation of the proposed def's target research's Prerequisites (restored via the finally).
+            Assert.Equal(Array.Empty<string>(), proposed.Research[1].Prerequisites ?? Array.Empty<string>());
+        }
+
+        [Fact]
+        public void ValidateProposedEdge_ValidResearchToResearchEdge_ReturnsNull()
+        {
+            var def = new FactionDefinition();
+            def.Research.Add(new ResearchDefinition { Id = "a", Levels = { new ResearchLevel { TimeTicks = 10 } } });
+            def.Research.Add(new ResearchDefinition { Id = "b", Levels = { new ResearchLevel { TimeTicks = 10 } } });
+
+            string? err = ResearchValidator.ValidateProposedEdge(def, "a", "b");
+
+            Assert.Null(err);
+            // Never mutates — the target's Prerequisites is restored regardless of the outcome.
+            Assert.Empty(def.Research[1].Prerequisites ?? Array.Empty<string>());
+        }
+
+        [Fact]
+        public void ValidateProposedEdge_ValidBuildingToResearchEdge_ReturnsNull()
+        {
+            // A building may be a research prerequisite's source (the union-of-building-or-research-ids resolution
+            // ResearchSystem.PrerequisitesMet reads at runtime) — proposing a building→research edge must succeed.
+            var def = new FactionDefinition();
+            def.Buildings.Add(new BuildingDefinition { Id = "barracks" });
+            def.Research.Add(new ResearchDefinition { Id = "armor_up", Levels = { new ResearchLevel { TimeTicks = 10 } } });
+
+            string? err = ResearchValidator.ValidateProposedEdge(def, "barracks", "armor_up");
+
+            Assert.Null(err);
+        }
+
+        [Fact]
+        public void ValidateProposedEdge_UnknownSourceId_RejectedInline()
+        {
+            // Neither a building id nor a research id — the drop-time rejection ResearchValidator's Design Notes
+            // add on top of TechTreeValidator's own ValidateProposedEdge (which has no unknown-SOURCE-id case,
+            // since a building's Prerequisites source is always another building already present in the graph).
+            var def = new FactionDefinition();
+            def.Research.Add(new ResearchDefinition { Id = "armor_up", Levels = { new ResearchLevel { TimeTicks = 10 } } });
+
+            string? err = ResearchValidator.ValidateProposedEdge(def, "no_such_id", "armor_up");
+
+            Assert.NotNull(err);
+            Assert.Contains("unknown id", err!);
+            Assert.Contains("no_such_id", err!);
+            // No mutation on rejection.
+            Assert.Empty(def.Research[0].Prerequisites ?? Array.Empty<string>());
+        }
+
+        [Fact]
+        public void ValidateProposedEdge_UnresolvedTargetId_ReturnsNull_DefensiveNoOp()
+        {
+            var def = new FactionDefinition();
+            def.Research.Add(new ResearchDefinition { Id = "armor_up", Levels = { new ResearchLevel { TimeTicks = 10 } } });
+
+            string? err = ResearchValidator.ValidateProposedEdge(def, "armor_up", "no_such_research_node");
+
+            Assert.Null(err);
+        }
+
         /// <summary>Resolve a shipped faction JSON by walking up from the test-assembly directory to
         /// <c>resources/data/factions/</c> (mirrors <c>TechTreeValidatorTests.ResolveDataPath</c>).</summary>
         private static string ResolveDataPath(string fileName)

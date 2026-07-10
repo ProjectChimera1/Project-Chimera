@@ -39,6 +39,11 @@ namespace ProjectChimera.CreationSuite
 
         private static readonly Color PortColorIn  = new(0.55f, 0.75f, 1.00f);
         private static readonly Color PortColorOut = new(1.00f, 0.75f, 0.35f);
+        // Story 4.11: research nodes' own port color (both slots), distinct from the building PortColorIn/PortColorOut
+        // pair — a visual "this is a research node" cue at a glance, on the SAME port type 0 (so building→research and
+        // research→research edges stay connectable under GraphEdit's default same-type connectivity — no
+        // AddValidConnectionType change needed).
+        private static readonly Color PortColorResearch = new(0.55f, 1.00f, 0.60f);
 
         // ── Kit context (self-owned; _accent only created when this panel is the first consumer) ──
         private GodotTheme        _theme  = null!;
@@ -49,6 +54,9 @@ namespace ProjectChimera.CreationSuite
         private GameState?         _gameState;
         private string             _factionJsonPath = "";   // res:// path of the faction file to write edits back to
         private BuildingCardPanel? _inspector;               // Story 4.5's shared right-dock inspector
+        // Story 4.11: this panel's OWN research inspector (unlike _inspector, not shared with any other phase —
+        // no bootstrap phase publishes a ResearchCardPanel, so this panel constructs and owns its sibling directly).
+        private ResearchCardPanel  _researchInspector = null!;
 
         // ── Shell ──
         private CanvasLayer    _canvas      = null!;
@@ -80,6 +88,11 @@ namespace ProjectChimera.CreationSuite
 
             _gameState.ModeChanged += OnModeChanged;   // authoring is Edit-only — hide in Play
             _panel.Visible = false;
+
+            // Story 4.11: bind the sibling research inspector to the SAME faction/game-state/file path — mirrors
+            // this panel's own binding, so a research edit and a building edit stay consistent in memory exactly
+            // like BuildingCardPanel/TechTreePanel already do for buildings.
+            _researchInspector.Initialize(_faction, _gameState, _factionJsonPath);
         }
 
         /// <summary>Toggle visibility (R key, Edit mode only). On open: recompute tiers and rebuild every node/edge
@@ -176,6 +189,11 @@ namespace ProjectChimera.CreationSuite
             root.AddChild(_graph);
 
             _panel.Visible = false;   // hidden until the first R toggle
+
+            // Story 4.11: this panel's own sibling research inspector — built here (not by a bootstrap phase) so its
+            // _Ready runs before Initialize() (below) ever binds it.
+            _researchInspector = new ResearchCardPanel();
+            AddChild(_researchInspector);
         }
 
         // ── Graph (re)build ──────────────────────────────────────────────────────
@@ -228,6 +246,49 @@ namespace ProjectChimera.CreationSuite
                     _graph.ConnectNode(prereqId, 0, b.Id, 0);
                 }
             }
+
+            // ── Story 4.11: research nodes ─────────────────────────────────────────
+            // No TechTreeLayout equivalent exists for the mixed building-or-research prerequisite graph, so research
+            // nodes lay out in their own single lane column, one tier-slot to the right of every building tier
+            // (stable ascending-id order, mirroring the building lane's own ordering convention) — simple and
+            // deterministic (a reload always redraws identically), not a full tiered layout.
+            List<ResearchDefinition> researchList = _faction.Research ?? new List<ResearchDefinition>();
+            var researchById = new Dictionary<string, ResearchDefinition>();
+            foreach (ResearchDefinition? r in researchList)
+                if (r != null && !string.IsNullOrEmpty(r.Id)) researchById[r.Id] = r;
+
+            int buildingMaxTier = tiers.Count > 0 ? tiers.Values.Max() : -1;
+            float researchColumnX = (buildingMaxTier + 1) * TIER_SPACING;
+            int researchLane = 0;
+            foreach (ResearchDefinition r in researchById.Values.OrderBy(r => r.Id, StringComparer.Ordinal))
+            {
+                var node = new GraphNode
+                {
+                    Name  = r.Id,
+                    Title = string.IsNullOrEmpty(r.DisplayName) ? r.Id : r.DisplayName,
+                };
+                node.SetSlot(0, true, 0, PortColorResearch, true, 0, PortColorResearch);
+                node.AddChild(new Label { Text = r.Id });
+                node.PositionOffset = new Vector2(researchColumnX, researchLane * LANE_SPACING);
+                _graph.AddChild(node);
+                researchLane++;
+            }
+
+            foreach (ResearchDefinition? r in researchList)
+            {
+                if (r == null || string.IsNullOrEmpty(r.Id)) continue;
+                foreach (string prereqId in r.Prerequisites ?? Array.Empty<string>())
+                {
+                    // A research prerequisite resolves against the UNION of building ids and research ids
+                    // (ResearchSystem.PrerequisitesMet's resolution order) — either is a valid edge source.
+                    if (!buildingById.ContainsKey(prereqId) && !researchById.ContainsKey(prereqId)) continue;
+                    // Review-pass fix: a self-referencing prerequisite (only reachable via hand-edited JSON — the
+                    // panel's own drop-time validation already rejects this as a 1-node cycle) would otherwise
+                    // connect a GraphNode to itself on the same slot, which is undefined GraphEdit behavior.
+                    if (prereqId == r.Id) continue;
+                    _graph.ConnectNode(prereqId, 0, r.Id, 0);
+                }
+            }
         }
 
         // ── Connection handling ──────────────────────────────────────────────────
@@ -240,9 +301,22 @@ namespace ProjectChimera.CreationSuite
             string sourceId = fromNode.ToString();
             string targetId = toNode.ToString();
 
-            BuildingDefinition? target = _faction.Buildings.FirstOrDefault(b => b.Id == targetId);
-            if (target == null) return;   // defensive — every node in the graph resolves to a loaded building
+            // Story 4.11: research-id resolution checked FIRST (the more specific match, mirrors
+            // ResearchSystem.PrerequisitesMet's own resolution order) — a dragged edge landing on a RESEARCH node
+            // appends to ITS Prerequisites, never a BuildingDefinition's.
+            ResearchDefinition? researchTarget = _faction.Research?.FirstOrDefault(r => r != null && r.Id == targetId);
+            if (researchTarget != null)
+            {
+                OnResearchConnectionRequest(fromNode, fromPort, toNode, toPort, sourceId, targetId, researchTarget);
+                return;
+            }
 
+            BuildingDefinition? target = _faction.Buildings.FirstOrDefault(b => b.Id == targetId);
+            if (target == null) return;   // defensive — every node in the graph resolves to a loaded building or research entry
+
+            // Review-pass fix (Story 4.11): TechTreeValidator.ValidateProposedEdge now rejects a non-building
+            // sourceId inline (research nodes share this graph's port type, so a research-sourced edge can land
+            // here) — see its own doc comment for why.
             string? cycleError = TechTreeValidator.ValidateProposedEdge(_faction, sourceId, targetId);
             if (cycleError != null)
             {
@@ -270,12 +344,60 @@ namespace ProjectChimera.CreationSuite
             ClearStatus();
         }
 
+        /// <summary>Story 4.11: the research counterpart of the building-target half of <see cref="OnConnectionRequest"/>
+        /// above — validates via <see cref="ResearchValidator.ValidateProposedEdge"/> (cycle OR unknown-id rejection,
+        /// identical wording to the import-time lint) BEFORE drawing the edge or mutating any data.</summary>
+        private void OnResearchConnectionRequest(StringName fromNode, long fromPort, StringName toNode, long toPort,
+            string sourceId, string targetId, ResearchDefinition target)
+        {
+            string? error = ResearchValidator.ValidateProposedEdge(_faction!, sourceId, targetId);
+            if (error != null)
+            {
+                ShowError(error);
+                return;   // rejected inline — no connection drawn, no data mutated
+            }
+
+            bool already = (target.Prerequisites ?? Array.Empty<string>()).Contains(sourceId);
+            if (!already)
+            {
+                string[]? beforeEdit = target.Prerequisites;
+                target.Prerequisites = (target.Prerequisites ?? Array.Empty<string>()).Append(sourceId).ToArray();
+                if (!Persist())
+                {
+                    target.Prerequisites = beforeEdit!;   // roll back — mirrors OnConnectionRequest's reasoning
+                    return;
+                }
+            }
+
+            _graph.ConnectNode(fromNode, (int)fromPort, toNode, (int)toPort);
+            ClearStatus();
+        }
+
         /// <summary>Deleting an existing edge (drag the connection away from its port).</summary>
         private void OnDisconnectionRequest(StringName fromNode, long fromPort, StringName toNode, long toPort)
         {
             if (_faction == null) return;
             string sourceId = fromNode.ToString();
             string targetId = toNode.ToString();
+
+            // Story 4.11: research-id resolution checked first — mirrors OnConnectionRequest's routing.
+            ResearchDefinition? researchTarget = _faction.Research?.FirstOrDefault(r => r != null && r.Id == targetId);
+            if (researchTarget != null)
+            {
+                if (researchTarget.Prerequisites != null)
+                {
+                    string[] beforeEdit = researchTarget.Prerequisites;
+                    researchTarget.Prerequisites = researchTarget.Prerequisites.Where(id => id != sourceId).ToArray();
+                    if (!Persist())
+                    {
+                        researchTarget.Prerequisites = beforeEdit;
+                        return;
+                    }
+                }
+                _graph.DisconnectNode(fromNode, (int)fromPort, toNode, (int)toPort);
+                ClearStatus();
+                return;
+            }
 
             BuildingDefinition? target = _faction.Buildings.FirstOrDefault(b => b.Id == targetId);
             if (target != null && target.Prerequisites != null)
@@ -294,11 +416,18 @@ namespace ProjectChimera.CreationSuite
             ClearStatus();
         }
 
-        /// <summary>Clicking a node opens the shared Building Card inspector bound to it.</summary>
+        /// <summary>Clicking a node opens the shared Building Card inspector — or, for a research node (Story
+        /// 4.11), this panel's own sibling <see cref="ResearchCardPanel"/> — bound to it. Research-id resolution
+        /// checked first, mirroring <see cref="OnConnectionRequest"/>'s routing.</summary>
         private void OnNodeSelected(Node node)
         {
-            if (_faction == null || _inspector == null) return;
+            if (_faction == null) return;
             string id = node.Name.ToString();
+
+            ResearchDefinition? research = _faction.Research?.FirstOrDefault(r => r != null && r.Id == id);
+            if (research != null) { _researchInspector.SelectAndShow(research); return; }
+
+            if (_inspector == null) return;
             BuildingDefinition? building = _faction.Buildings.FirstOrDefault(b => b.Id == id);
             if (building != null) _inspector.SelectAndShow(building);
         }
@@ -317,10 +446,14 @@ namespace ProjectChimera.CreationSuite
             {
                 string current = File.ReadAllText(abs);
                 string patched = FactionWriter.SyncFactionBuildings(current, _faction.Buildings);
+                // Story 4.11: also sync any research-prerequisite edge edit in the SAME write (one self-check, one
+                // atomic move) — SyncFactionResearch only rewrites when a research entry's fields actually differ,
+                // so a pure building-edge edit here is a no-op pass over root["research"].
+                patched = FactionWriter.SyncFactionResearch(patched, _faction.Research ?? new List<ResearchDefinition>());
                 File.WriteAllText(tmp, patched);
                 _ = FactionDefinition.LoadFromFile(tmp);   // self-check: refuse to report success for a file that won't reload
                 File.Move(tmp, abs, overwrite: true);
-                GD.Print($"[TechTree] Saved {abs} ({_faction.Buildings.Count} buildings).");
+                GD.Print($"[TechTree] Saved {abs} ({_faction.Buildings.Count} buildings, {_faction.Research?.Count ?? 0} research).");
                 return true;
             }
             catch (Exception ex)

@@ -104,6 +104,13 @@ namespace ProjectChimera.Core.Definitions
         /// the proposed edge is safe (no cycle); the located cycle message otherwise — byte-identical to what an
         /// authored file containing that same edge would fail import-lint with, because both paths share this one
         /// DFS.
+        ///
+        /// Review-pass fix (Story 4.11): a building's Prerequisites source was always another building already
+        /// present in the graph — until 4.11 put research nodes on the SAME GraphEdit port type, making a research
+        /// id newly reachable here as <paramref name="sourceId"/>. <see cref="DetectCycle"/> only walks
+        /// Buildings→Buildings edges, so it silently ignores a non-building sourceId and would otherwise return
+        /// null ("valid") for it. Rejected inline here — wording byte-identical to the import-time referential lint
+        /// — mirroring <see cref="ResearchValidator.ValidateProposedEdge"/>'s own unknown-source-id check.
         /// </summary>
         public static string? ValidateProposedEdge(FactionDefinition def, string sourceId, string targetId)
         {
@@ -115,6 +122,14 @@ namespace ProjectChimera.Core.Definitions
                 if (b.Id == targetId) { target = b; break; }
             }
             if (target == null) return null;   // unresolved target — the editor never calls this with one (defensive no-op)
+
+            bool sourceIsBuilding = false;
+            foreach (BuildingDefinition b in def.Buildings)
+            {
+                if (b.Id == sourceId) { sourceIsBuilding = true; break; }
+            }
+            if (!sourceIsBuilding)
+                return $"building '{targetId}'.prerequisites: references unknown building id '{sourceId}'.";
 
             string[]? original = target.Prerequisites;
             target.Prerequisites = new List<string>(original ?? Array.Empty<string>()) { sourceId }.ToArray();

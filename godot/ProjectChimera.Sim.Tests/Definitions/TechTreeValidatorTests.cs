@@ -344,6 +344,27 @@ namespace ProjectChimera.Sim.Tests.Definitions
             Assert.Null(err);
         }
 
+        [Fact]
+        public void ValidateProposedEdge_NonBuildingSourceId_RejectedInline()
+        {
+            // Story 4.11 review-pass fix: research nodes share this graph's port type, so a research id can now
+            // reach this method as sourceId, where it was previously always a building id by construction.
+            // DetectCycle only walks Buildings→Buildings edges and would otherwise silently ignore it and return
+            // null ("valid") — this must be rejected inline instead, with wording identical to the import-time
+            // referential lint.
+            var def = new FactionDefinition();
+            def.Buildings.Add(new BuildingDefinition { Id = "a" });
+            def.Research.Add(new ResearchDefinition { Id = "armor_up", Levels = { new ResearchLevel { TimeTicks = 10 } } });
+
+            string? err = TechTreeValidator.ValidateProposedEdge(def, "armor_up", "a");
+
+            Assert.NotNull(err);
+            Assert.Contains("unknown building id", err!);
+            Assert.Contains("armor_up", err!);
+            // No mutation on rejection.
+            Assert.Empty(def.Buildings[0].Prerequisites ?? Array.Empty<string>());
+        }
+
         /// <summary>Resolve a shipped faction JSON by walking up from the test-assembly directory to
         /// <c>resources/data/factions/</c> (mirrors <c>CanonicalScenarioTests.DataFile</c> /
         /// <c>DataDrivenBuildingScenario.AlphaFactionPath</c>, Story 1.10a's established pattern).</summary>

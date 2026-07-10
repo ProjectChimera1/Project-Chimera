@@ -45,6 +45,7 @@ namespace ProjectChimera.Core.Bootstrap
             // Story 2.12: pass BuildSys (offline SetRally apply site) + CombatEvents (OrderDenied feedback bus).
             selection.Initialize(cam, _ctx.World, _ctx.FlowFieldBridge, _ctx.Buildings, _ctx.BuildSys, _ctx.CombatEvents,
                                   _ctx.Host.Items, _ctx.Host.ItemSys); // Story 3.15 — pickup/use affordance
+            selection.SetResearchStore(_ctx.Host.Research); // Story 4.11 — aggregate upgrade line on the focus unit's panel
             _ctx.Selection = selection;
 
             var commandCard = new CommandCardSystem();
@@ -53,6 +54,7 @@ namespace ProjectChimera.Core.Bootstrap
             commandCard.SetAbilityRegistry(_ctx.AbilityRegistry); // Story 2.4b: the card needs the registry for ability labels (set on ctx by MainScene._Ready, before this phase)
             commandCard.SetReviveDeps(_ctx.Host.Heroes, _ctx.Host.RevivalRuntime); // Story 3.14: the card enumerates awaiting heroes + prices a revive
             commandCard.SetShopDeps(_ctx.Host.ItemSys, _ctx.Host.Items, _ctx.Host.ItemRegistry); // Story 3.16: shop Buy + inventory grid
+            commandCard.SetResearchDeps(_ctx.Host.ResearchSys, _ctx.Host.Research); // Story 4.11: research button grid
             commandCard.OnWorkerBuildRequested += _ctx.Scene.EnterBuildPlacementMode;
             _ctx.CommandCard = commandCard;
         }

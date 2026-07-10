@@ -116,7 +116,7 @@ development_status:
   4-8-researchdefinition-content-model-validation: done
   4-9-researchsystem-order-path-start-complete-cancel-modifier-application: done
   4-10-researchstore-simchecksum-fold-golden-rebaseline: done
-  4-11-research-authoring-command-card-buttons-upgrade-display: backlog
+  4-11-research-authoring-command-card-buttons-upgrade-display: done
   epic-4-retrospective: optional
   epic-5: backlog
   5-1-factionregistry-canonical-faction-slot-constants-ar-3: backlog

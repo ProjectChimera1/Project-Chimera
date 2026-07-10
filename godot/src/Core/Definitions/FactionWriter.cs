@@ -546,6 +546,121 @@ namespace ProjectChimera.Core.Definitions
             return root.ToJsonString(IndentedOptions);
         }
 
+        // ── Story 4.11: the research[] counterpart to the units/buildings machinery above ──────────────────────
+
+        /// <summary>
+        /// Persist an entire in-memory <c>research</c> list to a faction JSON string in one atomic transform (Story
+        /// 4.11 Save path) — the research-array generalization of <see cref="SyncFactionUnits"/>/
+        /// <see cref="SyncFactionBuildings"/>. Reconciles onto <c>root["research"]</c> ONLY — never touches
+        /// <c>root["units"]</c>/<c>root["buildings"]</c> or any faction-level key. Unlike the unit/building
+        /// reconcilers, a research entry's nested <c>levels</c> array has no existing token-preserving precedent in
+        /// this codebase (a repeatable list of composite objects, not a single scalar) — mirrors
+        /// <see cref="WriteHero"/>'s posture for a form-owned sub-object: the whole <c>levels</c> array is rewritten
+        /// fresh whenever a research entry's fields are reconciled (whether newly matched to an on-disk object or
+        /// freshly created), never diffed field-by-field.
+        /// </summary>
+        public static string SyncFactionResearch(string factionJson, IReadOnlyList<ResearchDefinition> research)
+        {
+            if (factionJson is null) throw new InvalidOperationException("faction JSON is null.");
+            if (research is null) throw new InvalidOperationException("research is null.");
+
+            JsonNode root = JsonNode.Parse(factionJson)
+                            ?? throw new InvalidOperationException("faction JSON did not parse to an object.");
+
+            var oldArr = root["research"] as JsonArray ?? new JsonArray();
+            // Index the on-disk objects by id (first wins) so each in-memory research entry can reconcile onto its match.
+            var byId = new Dictionary<string, JsonObject>(StringComparer.Ordinal);
+            foreach (JsonNode? n in oldArr)
+                if (n is JsonObject o && (string?)o["id"] is string id && !byId.ContainsKey(id))
+                    byId[id] = o;
+
+            var newArr = new JsonArray();
+            foreach (ResearchDefinition? r in research)
+            {
+                // Review-pass fix: a null list element (malformed hand-edited JSON "research": [null, {...}])
+                // must never NRE this write path — mirrors ResearchValidator.Validate's identical null-skip
+                // convention for the same input shape.
+                if (r == null) continue;
+                if (r.Id != null && byId.TryGetValue(r.Id, out JsonObject? existing))
+                {
+                    byId.Remove(r.Id);
+                    oldArr.Remove(existing);           // detach so it can re-parent into newArr
+                    ApplyResearchFields(existing, r);  // reconcile in place (id/display_name/cancel_refund_fraction/
+                                                        // prerequisites preserve untouched tokens; levels rewrites fresh)
+                    newArr.Add(existing);
+                }
+                else
+                {
+                    var fresh = new JsonObject();
+                    ApplyResearchFields(fresh, r);
+                    newArr.Add(fresh);
+                }
+            }
+            // Anything still in byId is an on-disk research entry no longer in the list → dropped (a delete).
+            root["research"] = newArr;
+            return root.ToJsonString(IndentedOptions);
+        }
+
+        /// <summary>
+        /// Serialize a single research entry to clean, indented JSON for the raw-JSON escape hatch — mirrors
+        /// <see cref="SerializeBuildingClean"/>.
+        /// </summary>
+        public static string SerializeResearchClean(ResearchDefinition def)
+        {
+            var obj = new JsonObject();
+            ApplyResearchFields(obj, def);
+            return obj.ToJsonString(IndentedOptions);
+        }
+
+        /// <summary>Reconcile every authorable field of <paramref name="d"/> onto <paramref name="obj"/> — the
+        /// four scalar/array fields via the same token-preserving Put* helpers <see cref="ApplyFields"/> uses, plus
+        /// the nested <c>levels</c> array (always rewritten fresh; see <see cref="SyncFactionResearch"/>'s doc).</summary>
+        private static void ApplyResearchFields(JsonObject obj, ResearchDefinition d)
+        {
+            PutString(obj, "id", d.Id, "");
+            PutString(obj, "display_name", d.DisplayName, "");
+            PutFloat(obj, "cancel_refund_fraction", d.CancelRefundFraction, 0f);
+            PutStringArray(obj, "prerequisites", d.Prerequisites, defaultsNull: false);
+            PutLevels(obj, "levels", d.Levels);
+        }
+
+        /// <summary>Rewrite the whole <c>levels</c> array fresh from <paramref name="edited"/> — each level's
+        /// <c>cost</c> map (ordinal-sorted keys, omitted when empty/unauthored), <c>time_ticks</c>, and
+        /// <c>modifier_delta</c> (omitted entirely when every one of its four fields is 0 — an unauthored level has
+        /// no stat effect, mirroring <see cref="ResearchLevel.ModifierDelta"/>'s null-is-no-effect semantics).</summary>
+        private static void PutLevels(JsonObject o, string key, List<ResearchLevel>? edited)
+        {
+            var arr = new JsonArray();
+            foreach (ResearchLevel? level in edited ?? new List<ResearchLevel>())
+            {
+                // Review-pass fix: same null-element defense as SyncFactionResearch above, for a malformed
+                // "levels": [null, {...}] entry.
+                if (level == null) continue;
+                var lo = new JsonObject();
+                if (level.Cost != null && level.Cost.Count > 0)
+                {
+                    var costObj = new JsonObject();
+                    foreach (string k in level.Cost.Keys.OrderBy(k => k, StringComparer.Ordinal))
+                        costObj[k] = level.Cost[k];
+                    lo["cost"] = costObj;
+                }
+                lo["time_ticks"] = level.TimeTicks;
+
+                ResearchModifierDelta? md = level.ModifierDelta;
+                if (md != null && (md.MaxHealthDelta != 0f || md.AttackDamageDelta != 0f || md.MoveSpeedDelta != 0f || md.ArmorDelta != 0f))
+                {
+                    var mdObj = new JsonObject();
+                    if (md.MaxHealthDelta != 0f)    mdObj["max_health_delta"]    = md.MaxHealthDelta;
+                    if (md.AttackDamageDelta != 0f) mdObj["attack_damage_delta"] = md.AttackDamageDelta;
+                    if (md.MoveSpeedDelta != 0f)    mdObj["move_speed_delta"]    = md.MoveSpeedDelta;
+                    if (md.ArmorDelta != 0f)        mdObj["armor_delta"]         = md.ArmorDelta;
+                    lo["modifier_delta"] = mdObj;
+                }
+                arr.Add(lo);
+            }
+            o[key] = arr;
+        }
+
         // Each Put* writes ONLY when the edited value differs from the current effective value (token-or-default).
 
         private static void PutFloat(JsonObject o, string key, float edited, float def)

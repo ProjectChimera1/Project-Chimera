@@ -147,6 +147,12 @@ namespace ProjectChimera.CreationSuite
             AddSection(_advancedHost, "Lists (comma-separated)");
             AddCommaList(_advancedHost, "Prerequisites", "prerequisites", "Prerequisites", "Building ids required before this building can be placed (Story 4.2 tech tree).",
                 () => def.Prerequisites, v => def.Prerequisites = v ?? Array.Empty<string>(), nullable: false, def);
+            // Story 4.11: authors the building→research "offers" linkage from the BUILDING side (Design Notes) —
+            // the field already round-trips via FactionWriter.SyncFactionBuildings:503 (landed silently in 4.8/4.5),
+            // so this is a one-line reuse of the exact AddCommaList pattern the Prerequisites row just above uses.
+            AddCommaList(_advancedHost, "Available research", "available_research", "Available Research",
+                "Research ids a creator can start from this building's command card (Story 4.11).",
+                () => def.AvailableResearch, v => def.AvailableResearch = v ?? Array.Empty<string>(), nullable: false, def);
 
             AddSection(_advancedHost, "Raw JSON (this building)");
             BuildRawPane(_advancedHost, def);

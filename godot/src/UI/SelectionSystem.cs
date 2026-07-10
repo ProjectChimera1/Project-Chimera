@@ -148,7 +148,13 @@ namespace ProjectChimera.UI
         private Panel        _barBg    = null!;
         private Panel        _barFill  = null!;
         private Label        _barLabel = null!;
+        private Label        _upgradeLabel = null!;  // Story 4.11: summed per-stat completed-research line
         private StyleBoxFlat _fillStyle = null!;
+
+        // Story 4.11: the mid-match-mutable per-faction research substrate — read-only here (never written).
+        // Null until wired (SetResearchStore) → the upgrade line stays omitted (matches "no completed research"
+        // I/O-matrix row: omit the line, not a zero).
+        private ResearchStore? _researchStore;
 
         // "N selected" label (multi-select)
         private Label _multiLabel = null!;
@@ -255,6 +261,12 @@ namespace ProjectChimera.UI
         /// Inject the lockstep manager for online play. Pass null to revert to offline mode.
         /// </summary>
         public void SetLockstep(LockstepManager? lockstep) => _lockstep = lockstep;
+
+        /// <summary>Story 4.11: inject the mid-match-mutable research substrate so the focus unit's floating panel
+        /// can show its faction's aggregate completed-research upgrade contribution. A setter (like
+        /// <see cref="SetLockstep"/>); wired by CameraPhase off the host. Null until wired → the upgrade line
+        /// stays omitted (never shown as a zero).</summary>
+        public void SetResearchStore(ResearchStore? research) => _researchStore = research;
 
         /// <summary>
         /// Route a unit command through the lockstep manager (online) or apply it now (offline).
@@ -1174,6 +1186,60 @@ namespace ProjectChimera.UI
 
             string faction = _world.FactionOf[_focusId] == Faction.Player1 ? "P1" : "P2";
             _barLabel.Text = $"{faction}  {(int)curHp}/{(int)maxHp} HP  [id {_focusId}]";
+
+            string upgradeText = BuildResearchUpgradeSummary(_focusId);
+            _upgradeLabel.Visible = upgradeText.Length > 0;
+            if (_upgradeLabel.Visible) _upgradeLabel.Text = upgradeText;
+        }
+
+        /// <summary>
+        /// Story 4.11: the focus unit's faction's aggregate completed-research upgrade contribution, e.g. "+2 Atk"
+        /// (summed across every research index where <c>CompletedLevels[faction][i] &gt; 0</c> — the SAME cumulative
+        /// per-stat totals <see cref="ProjectChimera.Economy.ResearchSystem"/> already maintains in
+        /// <see cref="ResearchStore"/>, never re-derived from <c>ModifierStore</c>). Empty string when the faction
+        /// has zero completed research OR every non-zero sum happens to net to zero — the caller omits the line
+        /// entirely rather than showing "+0" (I/O-matrix: "omit the line, not a zero").
+        /// </summary>
+        private string BuildResearchUpgradeSummary(int id)
+        {
+            if (_researchStore == null) return "";
+            int f = (int)_world.FactionOf[id];
+            if (f < 0 || f >= _researchStore.CompletedLevels.Length) return "";
+
+            int[] completed = _researchStore.CompletedLevels[f];
+            Fixed maxHealthDelta    = Fixed.Zero;
+            Fixed attackDamageDelta = Fixed.Zero;
+            Fixed armorDelta        = Fixed.Zero;
+            Fixed moveSpeedDelta    = Fixed.Zero;
+            for (int i = 0; i < completed.Length; i++)
+            {
+                if (completed[i] <= 0) continue; // never completed a level of this research — no contribution
+                maxHealthDelta    += _researchStore.CumulativeMaxHealthDelta[f][i];
+                attackDamageDelta += _researchStore.CumulativeAttackDamageDelta[f][i];
+                armorDelta        += _researchStore.CumulativeArmorDelta[f][i];
+                moveSpeedDelta    += _researchStore.CumulativeMoveSpeedDelta[f][i];
+            }
+
+            var parts = new List<string>(4);
+            AppendUpgradePart(parts, attackDamageDelta, "Atk");
+            AppendUpgradePart(parts, maxHealthDelta, "HP");
+            AppendUpgradePart(parts, armorDelta, "Armor");
+            AppendUpgradePart(parts, moveSpeedDelta, "Spd");
+            return parts.Count == 0 ? "" : string.Join("  ", parts);
+        }
+
+        /// <summary>Append "{+/-}{value} {suffix}" for a non-zero delta — display-side ToFloat() math (the no-float
+        /// rule applies to src/Core/src/Effects only, exactly like <see cref="UpdateHealthBar"/>'s own ratio math).</summary>
+        private static void AppendUpgradePart(List<string> parts, Fixed delta, string suffix)
+        {
+            if (delta == Fixed.Zero) return;
+            float v = delta.ToFloat();
+            // Review-pass fix: a nonzero Fixed delta can still round to "0" at the ":0.#" display precision (e.g.
+            // 0.03) — checking the ROUNDED value, not the exact Fixed, keeps the "omit the line, not a zero" rule
+            // from being violated per-stat, not just for the whole line.
+            float rounded = Mathf.Round(v * 10f) / 10f;
+            if (rounded == 0f) return;
+            parts.Add($"{(rounded > 0f ? "+" : "")}{rounded:0.#} {suffix}");
         }
 
         private void UpdateMultiLabel()
@@ -1251,7 +1317,8 @@ namespace ProjectChimera.UI
             AddChild(_canvas);
 
             _barRoot = new Control();
-            _barRoot.Size    = new Vector2(BAR_W + 80f, BAR_H + 18f);
+            // Story 4.11: +14px so the optional upgrade line (below _barLabel) has room without resizing at runtime.
+            _barRoot.Size    = new Vector2(BAR_W + 80f, BAR_H + 18f + 14f);
             _barRoot.Visible = false;
             _canvas.AddChild(_barRoot);
 
@@ -1282,6 +1349,17 @@ namespace ProjectChimera.UI
             _barLabel.AddThemeColorOverride("font_color", Colors.White);
             _barLabel.AddThemeFontSizeOverride("font_size", 12);
             _barRoot.AddChild(_barLabel);
+
+            // Story 4.11: the aggregate completed-research upgrade line (e.g. "+2 Atk"), directly below the HP
+            // readout. Omitted (Visible = false) whenever the focus unit's faction has zero completed research —
+            // never shown as a zero (I/O-matrix: "No upgrade line shown").
+            _upgradeLabel          = new Label();
+            _upgradeLabel.Position = new Vector2(0f, BAR_H + 16f);
+            _upgradeLabel.Size     = new Vector2(BAR_W + 80f, 14f);
+            _upgradeLabel.AddThemeColorOverride("font_color", new Color(0.65f, 0.90f, 1.00f));
+            _upgradeLabel.AddThemeFontSizeOverride("font_size", 11);
+            _upgradeLabel.Visible  = false;
+            _barRoot.AddChild(_upgradeLabel);
 
             // "N units selected" label — shown below HP bar area
             _multiLabel          = new Label();

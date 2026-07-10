@@ -80,6 +80,25 @@ namespace ProjectChimera.UI
         private Button[] _invDropBtns       = System.Array.Empty<Button>();
         private int      _lastFocusedHeroId = -1; // entity id whose inventory the grid last rendered (for callbacks)
 
+        // ── Research (Story 4.11) ────────────────────────────────────────────────
+        // Injected via SetResearchDeps (like SetReviveDeps/SetShopDeps). Null until wired → the research affordance
+        // stays inert (no buttons). `_research` (a ResearchSystem) is the offline OrderApplier.Apply(..., research:)
+        // apply site — mirrors `_itemSys`; `_researchStore` is the read-only per-faction state the dim predicate and
+        // in-progress status text read — mirrors `_items`.
+        private ResearchSystem? _research;
+        private ResearchStore?  _researchStore;
+        /// <summary>Shared empty cost map for a maxed/in-progress/prereq-locked slot (never mutated) — mirrors
+        /// <see cref="ResearchSystem.EmptyCost"/>'s own private field, kept here since this file has no access to it.</summary>
+        private static readonly Dictionary<string, int> EmptyResearchCost = new();
+        private static readonly List<ResearchLevel> EmptyResearchLevels = new();
+        // A research-picker grid overlaying the (unused-for-a-non-producer) train grid area, beside the revive/shop
+        // grids. One button per the selected building's BuildingDefinition.AvailableResearch entry, mapped per-refresh
+        // to its FactionDefinition.Research index (the captured-loop-var lambda carries the BUTTON slot).
+        private Button[] _researchBtns     = System.Array.Empty<Button>();
+        private readonly int[] _researchIndices = new int[MAX_TRAIN_OPTIONS]; // button slot → Research list index (-1 = empty)
+        private Label   _researchStatus    = null!;  // "{DisplayName}  Lv{level}  {s}s" in-flight label (mirrors _trainStatus)
+        private Button  _researchCancelBtn = null!;  // Cancel the faction's in-progress research order
+
         // ── Worker card UI nodes ──────────────────────────────────────────────
 
         private Panel    _workerPanel       = null!;
@@ -173,6 +192,16 @@ namespace ProjectChimera.UI
             _itemSys      = itemSys;
             _items        = items;
             _itemRegistry = registry ?? ItemRegistry.Empty;
+        }
+
+        /// <summary>Story 4.11: inject the research runtime + its mid-match-mutable state so a research-offering
+        /// building's card can list <c>AvailableResearch</c> options, dim them exactly as the sim would refuse, show
+        /// in-progress countdown, and dispatch Start/Cancel. A setter (like <see cref="SetShopDeps"/>); wired by
+        /// CameraPhase off the host. Null until wired → the research affordance stays inert (no buttons).</summary>
+        public void SetResearchDeps(ResearchSystem researchSys, ResearchStore researchStore)
+        {
+            _research      = researchSys;
+            _researchStore = researchStore;
         }
 
         public override void _Ready()
@@ -281,6 +310,7 @@ namespace ProjectChimera.UI
                 HideTrainButtons();
                 HideReviveButtons();       // Story 3.14: also clear any revive buttons left over from a prior selection
                 HideShopButtons();         // Story 3.16: clear any shop buttons left over from a prior selection
+                HideResearchButtons();     // Story 4.11: clear any research buttons left over from a prior selection
                 _trainStatus.Visible       = false;
                 _supplyLabel.Visible       = false;
                 return;
@@ -389,6 +419,185 @@ namespace ProjectChimera.UI
                 RefreshShopButtons(bId, faction);
             else
                 HideShopButtons();
+
+            // ── Research (Story 4.11): a building whose BuildingDefinition.AvailableResearch is non-empty offers one
+            //    research button per entry. Overlays the (hidden-for-a-non-producer) train grid, beside the revive/shop
+            //    grids — mirrors their `!canProduce` gating exactly. Inert until SetResearchDeps is wired. ──
+            if (!canProduce && _research != null && _researchStore != null)
+                RefreshResearchButtons(bId, faction);
+            else
+                HideResearchButtons();
+        }
+
+        /// <summary>Populate the research picker: one button per the selected building's
+        /// <c>BuildingDefinition.AvailableResearch</c> entry, resolved against <c>FactionDefinition.Research</c>/
+        /// <c>IndexOfResearch</c>. The dim predicate re-derives, read-only, the SAME ordered gates
+        /// <see cref="ResearchSystem.StartResearchCommand"/> checks (already in progress → maxed → prerequisite →
+        /// affordability) so a greyed-out button never diverges from what the sim would refuse (the 2.4b pattern
+        /// <see cref="RefreshAbilityCard"/> already follows). Faction-wide: exactly one order in progress at a time,
+        /// so ANY in-progress order (not just this building's own research) dims every option button here — the
+        /// SEPARATE <see cref="_researchCancelBtn"/> is the only affordance that stays live during that state.</summary>
+        private void RefreshResearchButtons(int bId, Faction faction)
+        {
+            FactionDefinition? fdef = _research!.GetFactionDefinition(faction);
+            BuildingDefinition? bdef = fdef?.GetBuilding(_buildings.DefinitionId[bId]);
+            string[] offered = bdef?.AvailableResearch ?? System.Array.Empty<string>();
+            if (fdef == null || offered.Length == 0)
+            {
+                HideResearchButtons();
+                return;
+            }
+
+            ResearchStore store = _researchStore!;
+            int f = (int)faction;
+            int inProgressIdx = (f >= 0 && f < store.InProgressIndex.Length) ? store.InProgressIndex[f] : -1;
+            bool anyInProgress = inProgressIdx >= 0;
+
+            if (anyInProgress && inProgressIdx < ResearchCount(fdef))
+            {
+                ResearchDefinition activeDef = fdef.Research[inProgressIdx];
+                int activeLevel = CompletedLevelsOf(store, f, inProgressIdx) + 1;
+                float remaining = store.RemainingTicks[f] / 30f;
+                _researchStatus.Text     = $"{activeDef.DisplayName}  Lv{activeLevel}  {remaining:F1}s";
+                _researchStatus.Visible  = true;
+                _researchCancelBtn.Visible = true;
+            }
+            else if (anyInProgress)
+            {
+                // Review-pass fix: a stale/out-of-range in-progress index (e.g. the faction's research list
+                // shrank underneath an already-running order) must still expose the Cancel affordance — the
+                // options grid below correctly stays disabled either way, but losing Cancel here would strand
+                // the player with an order they can never clear from this card.
+                _researchStatus.Text     = "[research in progress]";
+                _researchStatus.Visible  = true;
+                _researchCancelBtn.Visible = true;
+            }
+            else
+            {
+                _researchStatus.Visible    = false;
+                _researchCancelBtn.Visible = false;
+            }
+
+            int shown = 0;
+            for (int i = 0; i < offered.Length && shown < _researchBtns.Length; i++)
+            {
+                int ri = fdef.IndexOfResearch(offered[i]);
+                if (ri < 0) continue; // dangling available_research id — validator should have caught it; defensive skip
+
+                ResearchDefinition rdef = fdef.Research[ri];
+                Button btn = _researchBtns[shown];
+                _researchIndices[shown] = ri;
+
+                // Review-pass fix: Levels is a non-nullable-typed property that malformed hand-edited JSON
+                // ("levels": null) can still leave null at runtime (same class ResearchValidator.Validate already
+                // guards against) — never NRE the command card's refresh over it.
+                List<ResearchLevel> levels = rdef.Levels ?? EmptyResearchLevels;
+
+                int completedLevels = CompletedLevelsOf(store, f, ri);
+                bool maxed = completedLevels >= levels.Count;
+                string? missingPrereq = (!anyInProgress && !maxed) ? FirstUnmetResearchPrereq(fdef, faction, f, rdef.Prerequisites) : null;
+                bool prereqsMet = missingPrereq == null;
+
+                IReadOnlyDictionary<string, int> cost = (!maxed && completedLevels < levels.Count && levels[completedLevels] != null)
+                    ? (IReadOnlyDictionary<string, int>)(levels[completedLevels].Cost ?? EmptyResearchCost)
+                    : EmptyResearchCost;
+                bool canAfford = (anyInProgress || maxed || !prereqsMet) || _resources.CanAfford(faction, cost);
+
+                bool enabled = !anyInProgress && !maxed && prereqsMet && canAfford;
+                btn.Disabled  = !enabled;
+                // Locked-but-visible, not hidden — dim exactly like Train's prereq dimming.
+                btn.Modulate  = enabled ? Colors.White : new Color(1f, 1f, 1f, 0.6f);
+
+                int timeTicks = (!maxed && completedLevels < levels.Count && levels[completedLevels] != null)
+                    ? levels[completedLevels].TimeTicks : 0;
+                float timeSeconds = timeTicks / 30f;
+                string costText = FormatCost(cost, emptyText: "(free)");
+
+                string note = anyInProgress ? "[in progress]"
+                            : maxed         ? "[maxed]"
+                            : !prereqsMet   ? $"[need: {missingPrereq}]"
+                            : !canAfford    ? $"[need {FirstUnaffordableResource(faction, cost) ?? "resources"}]"
+                            : $"{costText} · {timeSeconds:F0}s";
+                btn.Text        = $"{rdef.DisplayName}\n{note}";
+                // Clamp the displayed "next level" to the ladder length so a maxed research reads "Lv2/2", not "Lv3/2".
+                int shownLevel  = System.Math.Min(completedLevels + 1, levels.Count);
+                btn.TooltipText = $"{rdef.DisplayName} — {costText}, {timeSeconds:F0}s research (Lv{shownLevel}/{levels.Count}).";
+                btn.Visible     = true;
+                shown++;
+            }
+            for (int i = shown; i < _researchBtns.Length; i++)
+            {
+                _researchBtns[i].Visible = false;
+                _researchIndices[i]      = -1;
+            }
+        }
+
+        /// <summary>Null-safe count of a faction's authored research list — mirrors
+        /// <see cref="ResearchSystem"/>'s own private <c>ResearchCount</c> tolerance for an authored
+        /// <c>"research": null</c> faction file.</summary>
+        private static int ResearchCount(FactionDefinition fdef) => fdef.Research?.Count ?? 0;
+
+        /// <summary>Read <c>ResearchStore.CompletedLevels[f][ri]</c> defensively — the store's inner per-faction
+        /// array is grown lazily by <see cref="ResearchSystem.EnsureCapacity"/> calls this read-only card never
+        /// triggers itself, so a not-yet-grown slot reads as 0 completed levels (never an index-out-of-range).</summary>
+        private static int CompletedLevelsOf(ResearchStore store, int f, int researchIndex)
+        {
+            if (f < 0 || f >= store.CompletedLevels.Length) return 0;
+            int[] levels = store.CompletedLevels[f];
+            return (researchIndex >= 0 && researchIndex < levels.Length) ? levels[researchIndex] : 0;
+        }
+
+        /// <summary>The first unmet prerequisite id, or null if all are satisfied — re-derives, read-only,
+        /// <see cref="ResearchSystem.PrerequisitesMet"/>'s EXACT resolution order (research id first — the more
+        /// specific match — else a building id via <see cref="TechTreeChecker.AreMet"/>), so this button grid's
+        /// grey-out never diverges from what the sim would refuse.</summary>
+        private string? FirstUnmetResearchPrereq(FactionDefinition fdef, Faction faction, int f, string[]? prereqs)
+        {
+            if (prereqs == null || prereqs.Length == 0) return null;
+            foreach (string id in prereqs)
+            {
+                int prereqResearchIdx = fdef.IndexOfResearch(id);
+                if (prereqResearchIdx >= 0)
+                {
+                    if (CompletedLevelsOf(_researchStore!, f, prereqResearchIdx) <= 0) return id;
+                }
+                else if (!TechTreeChecker.AreMet(_buildings, faction, new[] { id }))
+                {
+                    return id;
+                }
+            }
+            return null;
+        }
+
+        /// <summary>The first cost-map resource key the faction cannot afford, or null (defensive — <see cref="ResourceStore.CanAfford"/>
+        /// already failed for the whole map when this is called). Named per-resource, mirroring the Train button's
+        /// own "[need ore]"/"[need crystal]" note convention.</summary>
+        private string? FirstUnaffordableResource(Faction faction, IReadOnlyDictionary<string, int> cost)
+        {
+            foreach (var (key, amount) in cost)
+            {
+                bool ok = key switch
+                {
+                    "ore"     => _resources.CanAffordOre(faction, Fixed.FromInt(amount)),
+                    "crystal" => _resources.CanAffordCrystal(faction, Fixed.FromInt(amount)),
+                    _         => false,
+                };
+                if (!ok) return key;
+            }
+            return null;
+        }
+
+        /// <summary>Hide every research-picker button + the in-progress status/cancel affordances (used when the
+        /// selection can't research, offers none, or deps aren't wired).</summary>
+        private void HideResearchButtons()
+        {
+            for (int i = 0; i < _researchBtns.Length; i++)
+            {
+                _researchBtns[i].Visible = false;
+                _researchIndices[i]      = -1;
+            }
+            _researchStatus.Visible    = false;
+            _researchCancelBtn.Visible = false;
         }
 
         /// <summary>Populate the shop Buy picker: one button per <c>ShopStock</c> item, priced from the item def, greyed
@@ -599,6 +808,54 @@ namespace ProjectChimera.UI
             OrderApplier.Apply(_world, in order, Faction.Player1, buildings: _buildSys, items: _itemSys);
         }
 
+        private void OnResearchSlotPressed(int slot)
+        {
+            if (slot < 0 || slot >= _researchIndices.Length) return;
+            int researchIndex = _researchIndices[slot];
+            if (researchIndex < 0) return;
+            IssueResearchCommand(_selection.SelectedBuildingId, researchIndex);
+        }
+
+        private void OnResearchCancelPressed()
+        {
+            IssueCancelResearchCommand(_selection.SelectedBuildingId);
+        }
+
+        /// <summary>
+        /// Issue a StartResearch command for <paramref name="researchIndex"/> at building <paramref name="bId"/>
+        /// (Story 4.11, D-1 lockstep seam parity). Mirrors <see cref="IssueTrainCommand"/> exactly: online it is
+        /// ENQUEUED (the deterministic exec-tick spend + gate chain happens once, THERE — the picker's grey-out is
+        /// only a local prediction); offline it applies immediately via the SAME OrderApplier the replay/online
+        /// paths use, passing <c>research: _research</c> so the offline apply routes to
+        /// <see cref="ResearchSystem.StartResearchCommand"/>. Only the LOCAL player's (Player1) own building.
+        /// </summary>
+        private void IssueResearchCommand(int bId, int researchIndex)
+        {
+            if (bId < 0 || bId >= _buildings.Count) return;
+            if (!_buildings.Alive[bId] || _buildings.FactionOf[bId] != Faction.Player1) return;
+            bool applyNow = _lockstep?.EnqueueOrder(bId, UnitCommand.StartResearch,
+                                                    Fixed.FromRaw(researchIndex), Fixed.Zero) ?? true;
+            if (!applyNow) return; // online: LockstepManager.Flush applies it at exec-tick (spend happens THERE, once)
+            var order = new UnitOrder(bId, UnitCommand.StartResearch, Fixed.FromRaw(researchIndex), Fixed.Zero);
+            OrderApplier.Apply(_world, in order, Faction.Player1, buildings: _buildSys, research: _research);
+        }
+
+        /// <summary>
+        /// Issue a CancelResearch command from building <paramref name="bId"/> (Story 4.11). Mirrors
+        /// <see cref="IssueResearchCommand"/> — research state is faction-wide, not building-scoped, so any owned
+        /// building may cancel (mirrors <see cref="ResearchSystem.CancelResearchCommand"/>'s own ownership guard).
+        /// </summary>
+        private void IssueCancelResearchCommand(int bId)
+        {
+            if (bId < 0 || bId >= _buildings.Count) return;
+            if (!_buildings.Alive[bId] || _buildings.FactionOf[bId] != Faction.Player1) return;
+            bool applyNow = _lockstep?.EnqueueOrder(bId, UnitCommand.CancelResearch,
+                                                    Fixed.Zero, Fixed.Zero) ?? true;
+            if (!applyNow) return; // online: LockstepManager.Flush applies it at exec-tick (refund happens THERE, once)
+            var order = new UnitOrder(bId, UnitCommand.CancelResearch, Fixed.Zero, Fixed.Zero);
+            OrderApplier.Apply(_world, in order, Faction.Player1, buildings: _buildSys, research: _research);
+        }
+
         // ── Inventory grid (Story 3.16) ───────────────────────────────────────
 
         /// <summary>Render the focused hero's 6-slot inventory grid: each filled slot resolves
@@ -775,6 +1032,43 @@ namespace ProjectChimera.UI
                 _shopBtns[i] = btn;
                 _shopStockIndices[i] = -1;
             }
+
+            // ── Research buttons (Story 4.11) — overlay the train grid (a research-offering building is not
+            //    necessarily a producer). One per BuildingDefinition.AvailableResearch entry, mapped to its
+            //    FactionDefinition.Research index per-refresh (the captured lambda carries the BUTTON slot). ──
+            _researchBtns = new Button[MAX_TRAIN_OPTIONS];
+            for (int i = 0; i < MAX_TRAIN_OPTIONS; i++)
+            {
+                var btn = new Button();
+                btn.Position     = new Vector2(10f + i * 102f, 74f);
+                btn.Size         = new Vector2(98f, 70f);
+                btn.Visible      = false;
+                btn.AutowrapMode = TextServer.AutowrapMode.WordSmart;
+                btn.AddThemeFontOverride("font", _tabularFont); // AC4-style: tabular figures so cost/time align
+                int slot = i;
+                btn.Pressed += () => OnResearchSlotPressed(slot);
+                _panel.AddChild(btn);
+                _researchBtns[i] = btn;
+                _researchIndices[i] = -1;
+            }
+
+            // In-progress status text (mirrors _trainStatus) + a dedicated Cancel button (Matrix: "Cancel pressed" —
+            // research's ONE in-progress order is faction-wide, so Cancel lives beside the status text, not on any
+            // one option button, which stays disabled like every other option button while an order is running).
+            _researchStatus = MakeLabel(new Vector2(10f, 52f), 13, new Color(0.75f, 0.85f, 0.95f));
+            _researchStatus.AddThemeFontOverride("font", _tabularFont);
+            _researchStatus.Visible = false;
+            _panel.AddChild(_researchStatus);
+
+            // Plain hand-built Button — this file's own convention (no ChimeraComponents dependency anywhere in
+            // CommandCardSystem; see the class doc).
+            _researchCancelBtn = new Button { Text = "Cancel" };
+            _researchCancelBtn.Position = new Vector2(330f, 50f);
+            _researchCancelBtn.Size     = new Vector2(80f, 20f);
+            _researchCancelBtn.AddThemeFontSizeOverride("font_size", 11);
+            _researchCancelBtn.Visible  = false;
+            _researchCancelBtn.Pressed += OnResearchCancelPressed;
+            _panel.AddChild(_researchCancelBtn);
         }
 
         // ── Inventory panel construction (Story 3.16) ─────────────────────────
