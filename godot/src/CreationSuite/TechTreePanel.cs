@@ -28,7 +28,7 @@ namespace ProjectChimera.CreationSuite
     /// <para><b>Presentation-layer only.</b> Never touches <c>EntityWorld</c>/sim arrays/<c>BuildingSystem</c>/
     /// <c>TechTreeChecker</c>'s runtime consumption or checksums — this story only edits the SAME <c>prerequisites</c>
     /// data Story 4.2's runtime already gates on, unchanged. Never wires research/<c>ResearchDefinition</c> (Story
-    /// 4.9's job). Never persists a node's dragged position (Design Notes).</para>
+    /// 4.11's job). Never persists a node's dragged position (Design Notes).</para>
     /// </summary>
     public partial class TechTreePanel : Node
     {

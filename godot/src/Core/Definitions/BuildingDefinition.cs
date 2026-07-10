@@ -33,12 +33,12 @@ namespace ProjectChimera.Core.Definitions
         public string? ProducesCategory { get; set; }
 
         /// <summary>
-        /// Research ids (Story 4.8a) this building makes available for the owning faction to start — the
+        /// Research ids (Story 4.8) this building makes available for the owning faction to start — the
         /// building-side authoring half of the research content model, mirroring
         /// <see cref="UnitDefinition.Prerequisites"/>'s declaration exactly (a snake_case JSON string array,
         /// default empty, no legacy fallback). Each entry must resolve against <see cref="FactionDefinition.Research"/>
         /// — a dangling id is a located <see cref="ResearchValidator"/> import-time error. Content-only: no
-        /// command-card affordance reads this yet (Story 4.9 owns that).
+        /// command-card affordance reads this yet (Story 4.11 owns that).
         /// </summary>
         [JsonPropertyName("available_research")]
         public string[] AvailableResearch { get; set; } = System.Array.Empty<string>();

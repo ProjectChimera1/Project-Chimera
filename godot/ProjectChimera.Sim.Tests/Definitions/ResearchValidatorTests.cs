@@ -8,9 +8,9 @@ using Xunit;
 namespace ProjectChimera.Sim.Tests.Definitions
 {
     /// <summary>
-    /// Story 4.8a — <see cref="ResearchValidator"/>'s import-time field/referential/cycle/cap lint, and its wiring
+    /// Story 4.8 — <see cref="ResearchValidator"/>'s import-time field/referential/cycle/cap lint, and its wiring
     /// into <see cref="FactionDefinition.LoadFromFile"/>. One test per I/O Matrix row in the spec:
-    /// spec-4-8a-researchdefinition-content-model-validation.md.
+    /// spec-4-8-researchdefinition-content-model-validation.md.
     /// </summary>
     public class ResearchValidatorTests
     {
@@ -490,7 +490,7 @@ namespace ProjectChimera.Sim.Tests.Definitions
         public void FiniteButOutOfFixedRangeModifierDelta_ProducesLocatedError()
         {
             // Second-review-pass fix: level cost values were range-checked against the 16.16 Fixed ceiling, but the
-            // four modifier-delta floats — which quantize into the SAME Fixed fields at 4.8b order time — were only
+            // four modifier-delta floats — which quantize into the SAME Fixed fields at 4.9 order time — were only
             // finite-checked. 100000 is valid JSON, finite, but overflows Fixed; it must now be a located error,
             // closing the asymmetry with the cost range check.
             var def = new FactionDefinition();

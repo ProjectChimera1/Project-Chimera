@@ -6,17 +6,17 @@ using System.Text.Json.Serialization;
 namespace ProjectChimera.Core.Definitions
 {
     /// <summary>
-    /// A faction-wide, timed, repeatable (leveled) research/upgrade authored as data (Story 4.8a) — the content
+    /// A faction-wide, timed, repeatable (leveled) research/upgrade authored as data (Story 4.8) — the content
     /// model half of the epic's research system. Declared on <see cref="FactionDefinition.Research"/>, mirroring
     /// <see cref="BuildingDefinition"/>'s place on <see cref="FactionDefinition.Buildings"/>. Import-time gated by
     /// <see cref="ResearchValidator"/> (wired additively into <see cref="FactionDefinition.LoadFromFile"/>, the
     /// same throw-based aggregate-error gate <see cref="TechTreeValidator"/>/<see cref="ResourceCostValidator"/>
     /// already use — NOT a <see cref="Validated{T}"/> mint; see the spec's Design Notes).
     ///
-    /// <para>Deliberately content-only: no runtime order path (<c>ResearchSystem</c> — Story 4.8b), no
-    /// <c>SimChecksum</c> fold (Story 4.8c), no command-card UI (Story 4.9). Numeric fields stay authoring-time
+    /// <para>Deliberately content-only: no runtime order path (<c>ResearchSystem</c> — Story 4.9), no
+    /// <c>SimChecksum</c> fold (Story 4.10), no command-card UI (Story 4.11). Numeric fields stay authoring-time
     /// <c>float</c>/<c>int</c> — no <see cref="Fixed"/> conversion happens in this story; that single load-boundary
-    /// quantization is 4.8b's job (mirrors <see cref="UnitDefinition"/>'s own float-authoring/Fixed-at-spawn split).</para>
+    /// quantization is 4.9's job (mirrors <see cref="UnitDefinition"/>'s own float-authoring/Fixed-at-spawn split).</para>
     /// </summary>
     public class ResearchDefinition
     {
@@ -30,7 +30,7 @@ namespace ProjectChimera.Core.Definitions
 
         /// <summary>
         /// Fraction of the current level's authored <see cref="ResearchLevel.Cost"/> refunded when an in-progress
-        /// order is cancelled (4.8b: refund = <c>CancelRefundFraction × currentLevelCost</c>). Definition-level
+        /// order is cancelled (4.9: refund = <c>CancelRefundFraction × currentLevelCost</c>). Definition-level
         /// (not per-level) since only one level can ever be in progress at a time. Must lie within <c>[0, 1]</c> —
         /// enforced by <see cref="ResearchValidator"/>.
         /// </summary>
@@ -51,7 +51,7 @@ namespace ProjectChimera.Core.Definitions
         /// <summary>
         /// The repeatable level ladder — each entry is one purchasable step, carrying its own
         /// <see cref="ResearchLevel.Cost"/>/<see cref="ResearchLevel.TimeTicks"/>/<see cref="ResearchLevel.ModifierDelta"/>
-        /// (4.8b applies levels in order; "the next level's cost/time apply" after each completion). Must declare
+        /// (4.9 applies levels in order; "the next level's cost/time apply" after each completion). Must declare
         /// at least one level — an empty (or omitted/null) ladder is a located <see cref="ResearchValidator"/>
         /// error. A null list (malformed JSON <c>"levels": null</c>) is treated as empty, never an NRE.
         /// </summary>
@@ -60,8 +60,8 @@ namespace ProjectChimera.Core.Definitions
     }
 
     /// <summary>
-    /// One purchasable step of a <see cref="ResearchDefinition"/>'s repeatable ladder (Story 4.8a). Pure authoring
-    /// data — no runtime behaviour lives here; 4.8b's order path reads these fields to charge/time the order and
+    /// One purchasable step of a <see cref="ResearchDefinition"/>'s repeatable ladder (Story 4.8). Pure authoring
+    /// data — no runtime behaviour lives here; 4.9's order path reads these fields to charge/time the order and
     /// applies <see cref="ModifierDelta"/> as a permanent faction-scoped stat delta on completion.
     /// </summary>
     public class ResearchLevel
@@ -78,13 +78,13 @@ namespace ProjectChimera.Core.Definitions
 
         /// <summary>Duration of this level's research order in sim ticks. Must be positive — a located
         /// <see cref="ResearchValidator"/> error otherwise (a non-positive/instant/negative research order has no
-        /// meaningful progress semantics for 4.8b's order path).</summary>
+        /// meaningful progress semantics for 4.9's order path).</summary>
         [JsonPropertyName("time_ticks")]
         public int TimeTicks { get; set; }
 
         /// <summary>
         /// The permanent stat delta this level applies to every current AND future faction unit once completed
-        /// (4.8b, via the existing Epic 2 modifier pipeline). Null = a level with no stat effect (e.g. a
+        /// (4.9, via the existing Epic 2 modifier pipeline). Null = a level with no stat effect (e.g. a
         /// cost/time-only gate, or a level that only unlocks something else). Optional — omitting it is not an
         /// error.
         /// </summary>
@@ -93,12 +93,12 @@ namespace ProjectChimera.Core.Definitions
     }
 
     /// <summary>
-    /// The authoring-time stat delta one <see cref="ResearchLevel"/> applies (Story 4.8a) — mirrors
+    /// The authoring-time stat delta one <see cref="ResearchLevel"/> applies (Story 4.8) — mirrors
     /// <see cref="ProjectChimera.Effects.Modifier"/>'s four additive <see cref="Fixed"/> stat fields
     /// (<c>MaxHealthDelta</c>/<c>AttackDamageDelta</c>/<c>MoveSpeedDelta</c>/<c>ArmorDelta</c>) as authoring-time
-    /// <c>float</c>s — the single <see cref="Fixed"/> quantization boundary is 4.8b's, not this content model's.
+    /// <c>float</c>s — the single <see cref="Fixed"/> quantization boundary is 4.9's, not this content model's.
     /// A repeatable research keeps ONE cumulative modifier slot per <see cref="ResearchDefinition"/> (the sum of
-    /// every completed level's delta), never one slot per level (4.8b's job; not modeled here).
+    /// every completed level's delta), never one slot per level (4.9's job; not modeled here).
     /// </summary>
     public class ResearchModifierDelta
     {

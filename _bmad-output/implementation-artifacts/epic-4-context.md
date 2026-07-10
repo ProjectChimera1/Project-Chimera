@@ -11,8 +11,8 @@ Command-Center supply rule. The epic retires the last major hardcoded-economy ta
 everything" holds for buildings/economy the way Epic 3 delivered it for units/heroes, and extends the
 tech tree beyond gating into a WC3-class research/upgrade system. Stories 4.1-4.4 retire hardcoded sim
 tables first (byte-identical golden checksums preserved, so the build stays always-shippable); 4.5-4.6
-add creator-facing editors on that data; 4.7 generalizes resource collection beyond gather-and-carry; 4.8a
--4.9 add faction-wide timed research producing permanent unit upgrades, with the former single research
+add creator-facing editors on that data; 4.7 generalizes resource collection beyond gather-and-carry; 4.8
+-4.11 add faction-wide timed research producing permanent unit upgrades, with the former single research
 story split into content/runtime/determinism thirds after two prior dev attempts exceeded a single-session
 budget.
 
@@ -25,18 +25,23 @@ budget.
 - Story 4.5: In-app building definition editor (Unit-Card pattern, right-dock inspector)
 - Story 4.6: Visual tech-tree editor (tier-laned graph, drag out-port to wire prerequisites)
 - Story 4.7: Per-resource collection models (INCOME / STREAMING / requires_structure) + Crystal production
-- Story 4.8a: ResearchDefinition content model + validation
-- Story 4.8b: ResearchSystem order path — start/complete/cancel, permanent modifier application, future-spawn catch-up
-- Story 4.8c: ResearchStore SimChecksum fold + golden re-baseline
-- Story 4.9: Research authoring, command-card research buttons, and upgrade display
+- Story 4.8: ResearchDefinition content model + validation
+- Story 4.9: ResearchSystem order path — start/complete/cancel, permanent modifier application, future-spawn catch-up
+- Story 4.10: ResearchStore SimChecksum fold + golden re-baseline
+- Story 4.11: Research authoring, command-card research buttons, and upgrade display
 
-> **Status correction (2026-07-10):** bmad-loop committed Story **4.8a**'s completed work
-> (`ResearchDefinition` / `ResearchValidator` + tests + faction integration) under the wrong label —
-> commit `0b2f44e` is titled *"story 4-9 ... implemented and reviewed"* but its contents are 4.8a, not 4.9.
-> Ground truth in the codebase: **4.8a = done** (code present, review-pass applied); **4.8b, 4.8c, 4.9 =
-> not started** (no `ResearchSystem`, no `ResearchStore`, no research in `SimChecksum`, no command-card
-> research UI — 4.9's dev-auto blocked on the missing 4.8 sim). sprint-status.yaml corrected accordingly.
-> Next-up order: **4.8b → 4.8c → 4.9**.
+> **Renumber + status correction (2026-07-10):** the former single research story 4.8 was split into
+> `4.8a/4.8b/4.8c` plus authoring `4.9`, but the bmad-loop sprint-status parser silently drops any story
+> key with a letter suffix (its `STORY_RE` requires digits-only), so `4.8a/b/c` never appeared in the
+> loop's Sprint tree or auto-selection. The lettered stories were therefore **renumbered to flat numbers**:
+> `4.8a → 4.8`, `4.8b → 4.9`, `4.8c → 4.10`, `4.9 → 4.11`.
+>
+> Separately, bmad-loop had committed **4.8's** completed work (`ResearchDefinition`/`ResearchValidator` +
+> tests + faction integration) under the wrong label — commit `0b2f44e` is titled *"story 4-9 …
+> implemented and reviewed"* but its contents are the content model, not the authoring UI. Ground truth in
+> the codebase: **4.8 = done** (code present, review-pass applied); **4.9, 4.10, 4.11 = not started** (no
+> `ResearchSystem`, no `ResearchStore`, no research in `SimChecksum`, no command-card research UI).
+> Next-up order: **4.9 → 4.10 → 4.11**.
 
 ## Requirements & Constraints
 
@@ -62,11 +67,11 @@ budget.
   ResourceStore's fixed Ore/Crystal fields, the fixed supply-cap constant, single-model GatheringSystem)
   must be replaced with no behavior change for existing content: golden checksums byte-identical at every
   story boundary, re-baselined only when a story deliberately adds new checksum-covered state (4.7's
-  node/Crystal state; 4.8c's research state).
-- Research content authoring (4.8a) is deliberately separated from the runtime order path (4.8b) and from
-  the checksum fold + golden re-baseline (4.8c) — each is scoped to fit a single dev-agent session after
-  the unsplit story twice failed to reach done. 4.8b's `ResearchStore` is mid-match-mutable but explicitly
-  NOT yet multiplayer/replay-safe until 4.8c's fold lands immediately after it, with no other story
+  node/Crystal state; 4.10's research state).
+- Research content authoring (4.8) is deliberately separated from the runtime order path (4.9) and from
+  the checksum fold + golden re-baseline (4.10) — each is scoped to fit a single dev-agent session after
+  the unsplit story twice failed to reach done. 4.9's `ResearchStore` is mid-match-mutable but explicitly
+  NOT yet multiplayer/replay-safe until 4.10's fold lands immediately after it, with no other story
   sequenced in between.
 - All new/changed gameplay state stays Fixed-point, processed in ascending id order, uses no wall-clock
   timing, and adds no Godot types to sim-layer stores/systems.
@@ -123,9 +128,9 @@ budget.
 ## Cross-Story Dependencies
 
 - Dependency order runs backward: 4.2 needs 4.1's building registry; 4.3 needs 4.1's loader path; 4.4
-  needs 4.1 + 4.3; 4.5 needs 4.1 + 4.3; 4.6 needs 4.2 + 4.5; 4.7 needs 4.3; 4.8a needs 4.2 (validation
-  gate pattern); 4.8b needs 4.8a + Epic 2's modifier system (Story 2.2b); 4.8c needs 4.8b and must land
-  immediately after it with nothing else sequenced in between; 4.9 needs 4.8c + 4.6.
+  needs 4.1 + 4.3; 4.5 needs 4.1 + 4.3; 4.6 needs 4.2 + 4.5; 4.7 needs 4.3; 4.8 needs 4.2 (validation
+  gate pattern); 4.9 needs 4.8 + Epic 2's modifier system (Story 2.2b); 4.10 needs 4.9 and must land
+  immediately after it with nothing else sequenced in between; 4.11 needs 4.10 + 4.6.
 - FR-13 (building authoring) splits across 4.1 (data/runtime) and 4.5 (UI); FR-14 (tech-tree gating)
   splits across 4.2 (runtime gate) and 4.6 (visual editor) — read each pair together for the full
   requirement.

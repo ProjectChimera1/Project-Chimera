@@ -960,8 +960,8 @@ severity: low
 reason: Review budget (2 cycles) was exhausted with the story finalized (status: done, verify green) while the review pass kept recommending an independent follow-up. The work was committed by bmad-loop run 20260709-202815-6ca2; this entry preserves the lingering follow-up recommendation for a deliberate later review.
 status: open
 
-### DW-82: No round-trip test exists anywhere for `BuildingDefinition.Prerequisites` itself, so Story 4.8a's "round-trips exactly like `Prerequisites`" claim (AC2) can't be checked against a shared, comparable assertion.
-source_spec: `_bmad-output/implementation-artifacts/spec-4-8a-researchdefinition-content-model-validation.md`
+### DW-82: No round-trip test exists anywhere for `BuildingDefinition.Prerequisites` itself, so Story 4.8's "round-trips exactly like `Prerequisites`" claim (AC2) can't be checked against a shared, comparable assertion.
+source_spec: `_bmad-output/implementation-artifacts/spec-4-8-researchdefinition-content-model-validation.md`
 location: godot/ProjectChimera.Sim.Tests/Definitions/FactionWriteRoundTripTests.cs
 reason: summary: `Prerequisites`'s own round-trip behavior is unproven by any test, so the parity claim for the new `AvailableResearch` field rests only on "reads the same `PutStringArray` call," not a shared assertion that would catch the two diverging later. evidence: `grep -rl Prerequisites` across `ProjectChimera.Sim.Tests/Definitions` finds only tech-tree/layout/this-story's-new-file tests, no `Prerequisites`-specific round-trip test. Pre-existing gap (predates this story) surfaced incidentally by review. Closure: add a `Prerequisites` round-trip test alongside the existing `AvailableResearch` ones so both fields share one proven contract. Flagged by the Blind Hunter review layer.
 status: open

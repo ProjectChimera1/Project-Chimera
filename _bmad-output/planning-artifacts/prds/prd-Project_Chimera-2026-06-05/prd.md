@@ -355,7 +355,7 @@ sim-mutating items obey the determinism rules and re-baseline goldens per the ch
 
 **Functional Requirements:**
 - **FR-62** *(→ Epic 3 / Stories 3.13–3.14)* — **Hero runtime**: in-match XP gain (kill credit + share radius), leveling per the authored curve with stat growth via the modifier pipeline, and a data-driven hero **death/revival** rule.
-- **FR-63** *(→ Epic 4 / Stories 4.8a–4.9)* — **Research/upgrades**: data-driven research definitions queued at buildings, timed, applying permanent faction-scoped modifiers to current and future units; authored in the tech-tree editor; repeatable levels.
+- **FR-63** *(→ Epic 4 / Stories 4.8 through 4.11)* — **Research/upgrades**: data-driven research definitions queued at buildings, timed, applying permanent faction-scoped modifiers to current and future units; authored in the tech-tree editor; repeatable levels.
 - **FR-64** *(→ Epic 3 / Stories 3.15–3.16)* — **Items**: map-placed/dropped items, hero inventory slots, stat items via modifiers, charged consumables executing effect-graphs, an item editor, and `sells_items` shop buildings.
 - **FR-65** *(→ Epics 7/9 / Stories 7.11, 9.14–9.17, 6.9, 11.1)* — **Match scale honesty at 4 players**: N-faction victory/elimination, sim alliance model + lobby teams (2v2, allied vision/victory), local-faction parameterization (no P1 hardcodes), 4-player verified end-to-end, full-content pre-match hash handshake, 2–4 start-position authoring.
 - **FR-66** *(→ Epic 11 / Stories 11.2–11.4, 11.12)* — **Session shell**: in-match menu, true SP pause, SP game-speed control, concede/leave flow, victory/defeat + score screen, video/display settings.

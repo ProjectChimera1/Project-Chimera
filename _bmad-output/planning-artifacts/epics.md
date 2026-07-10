@@ -461,7 +461,7 @@ _Added by the approved sprint-change proposal (`sprint-change-proposal-2026-07-0
 | FR-60 | Epic 7 | Win-condition preset templates + sim WinConditionSystem (DG-8, Story 7.10) |
 | FR-61 | Epic 6 | Sim-side terrain elevation + height-advantage vision (DG-9, Story 6.5) |
 | FR-62 | Epic 3 | Hero runtime: XP/leveling/stat growth + death/revival (Stories 3.13, 3.14) |
-| FR-63 | Epic 4 | Research/upgrade system + authoring (Stories 4.8, 4.9) |
+| FR-63 | Epic 4 | Research/upgrade system + authoring (Stories 4.8–4.11) |
 | FR-64 | Epic 3 | Items: inventory sim + item editor + shops (Stories 3.15, 3.16) |
 | FR-65 | Epic 7/9 | N-faction victory + teams/alliances + local-faction + 4-player verify + full-content handshake (Stories 7.11, 9.14–9.17, 6.9) |
 | FR-66 | Epic 11 | Session shell: menu/pause/speed/concede/score/video settings (Stories 11.2–11.4, 11.12) |
@@ -494,7 +494,7 @@ A creator builds units and heroes in one consolidated Unit Card Editor with no J
 
 ### Epic 4: Author Buildings, Tech Trees & Economy
 A creator authors building definitions, drag-builds a visual tech tree that gates production at runtime, and configures resources and the supply model as data — closing the hardcoded-economy gap so creators aren't locked to Ore+Crystal. *(PRD M2; arch D3 data-drive tables — N-resource registry, tech-tree prerequisites, supply/cap.)*
-**FRs covered:** FR-13, FR-14, FR-15, FR-16 · **DG:** DG-3 (collection models + Crystal, 4.7) · **Gap-closure (2026-07-01):** FR-63 research/upgrades (4.8/4.9)
+**FRs covered:** FR-13, FR-14, FR-15, FR-16 · **DG:** DG-3 (collection models + Crystal, 4.7) · **Gap-closure (2026-07-01):** FR-63 research/upgrades (4.8–4.11)
 
 ### Epic 5: Faction Definer & the Asymmetric Showcase Factions
 A creator assembles authored units/heroes/buildings/tech into a complete, playable faction through a guided wizard, and the two showcase factions become genuinely asymmetric with their FMA identities landed and playtest-validated. *(PRD M2; consumes Epics 2–4; lands revised FMA stats, `display_names`, and themed mesh filenames into the alpha/beta faction JSON.)*
@@ -1648,7 +1648,7 @@ _Covers: DG-3, FR-15. Depends on: 4.3._
 
 > DG-3 / FR-15. Brownfield as-built: GatheringSystem.cs is a single GATHER round-trip only (TickIdle→TickMovingToResource→TickGathering→TickMovingToBase, deposit gated on physical arrival at FactionBase cs:135-143 via AddOre). VERIFY-ONLY: max_gatherers is fully built (ResourceNodeStore.MaxGatherers/AssignedGatherers, FindBestNode skips saturated nodes cs:189, max_gatherers present in every scenario JSON) — do not rebuild it, only assert it. BUILD: a collection_model selector (GATHER|INCOME|STREAMING, default GATHER for back-compat) + requires_structure field on ScenarioResourceNode and the parallel SoA arrays on ResourceNodeStore; the INCOME path (periodic flat trickle, no workers, no entity routing) and STREAMING path (credit at node each Gathering tick, no MovingToBase/CarryAmount leg); the structure-proximity/ownership gate folded into FindBestNode + INCOME/STREAMING eligibility; and ResourceStore.AddCrystal/SpendCrystal to close the real dead path (Crystal[] declared cs:13, consumed via UnitDefinition.CostCrystal, never produced today). DETERMINISM: this mutates sim state — all credit math stays in the 16.16 Fixed type, INCOME periods are integer-tick counters (never wall-clock), iterate nodes/entities in ascending id, any randomness only via SimRng; new per-node fields are new parallel SoA arrays on ResourceNodeStore and every new Crystal/period-accumulator value MUST fold into SimChecksum — this RE-BASELINES the golden checksum (record the new baseline as part of this story per AR-15/AR-16). SCOPE: GATHER behavior and existing scenarios are unchanged (default model = GATHER); presentation stays separate (no Godot types added to sim); requires_structure resolves against owned structures only (no shared/ally visibility in 1.0).
 
-### Story 4.8a: ResearchDefinition content model + validation
+### Story 4.8: ResearchDefinition content model + validation
 
 As a creator,
 I want to author `ResearchDefinition` content (id, per-level cost map, research time, repeatable levels with modifier deltas, prerequisites) on `FactionDefinition`, validated the same way tech-tree/building content is,
@@ -1658,17 +1658,17 @@ So that research is a data-driven authoring surface before any runtime order pat
 
 **Given** `ResearchDefinition` JSON (id, cost map, research time, repeatable `Levels` ladder, per-level modifier deltas, prerequisites) authored on `FactionDefinition.Research` **When** content loads **Then** `FactionDefinition.LoadFromFile` passes it through the same located-error validation gate as buildings/tech-tree content (field checks, referential lint against building AND research ids, a research→research prerequisite-cycle DFS, a per-faction research count cap) **And** any malformed entry (unknown/duplicate id, empty `Levels`, non-positive level time, an unregistered level-cost resource id, an out-of-[0,1] cancel-refund fraction, an unknown `Prerequisites`/`AvailableResearch` id, or a cycle) fails the WHOLE load, listing every located error, never a partial/silent accept
 
-**Given** a `BuildingDefinition` **When** it declares `AvailableResearch: string[]` (new, optional, defaults empty) **Then** it round-trips through content load/save exactly like `Prerequisites` — the building-eligibility gate 4.8b's order path consumes
+**Given** a `BuildingDefinition` **When** it declares `AvailableResearch: string[]` (new, optional, defaults empty) **Then** it round-trips through content load/save exactly like `Prerequisites` — the building-eligibility gate 4.9's order path consumes
 
 _Covers: FR-63. Depends on: 4.2._
 
-> Split from former 4.8 (deferred twice — two consecutive bmad-loop dev attempts both failed to reach `done`; the unsplit story bundled content authoring, runtime order/tick mechanics, and a first-ever `SimChecksum` fold + full golden re-baseline into one session, exceeding practical single-session dev+4-layer-review budget — see sprint-change-proposal-2026-07-10.md). This half is pure content/validation, no runtime order path, no new mid-match-mutable sim state — matches `BuildingDefinition`'s existing validation gate, mints no new `Validated<T>` token. Code map: `ResearchDefinition.cs` (new), `ResearchDefinitionValidator.cs` (new), `FactionDefinition.cs` (`Research` list + `GetResearch`/`IndexOfResearch` + validator call), `BuildingDefinition.cs` (`AvailableResearch`).
+> Split from the former unsplit research story (deferred twice — two consecutive bmad-loop dev attempts both failed to reach `done`; the unsplit story bundled content authoring, runtime order/tick mechanics, and a first-ever `SimChecksum` fold + full golden re-baseline into one session, exceeding practical single-session dev+4-layer-review budget — see sprint-change-proposal-2026-07-10.md). This half is pure content/validation, no runtime order path, no new mid-match-mutable sim state — matches `BuildingDefinition`'s existing validation gate, mints no new `Validated<T>` token. Code map: `ResearchDefinition.cs` (new), `ResearchDefinitionValidator.cs` (new), `FactionDefinition.cs` (`Research` list + `GetResearch`/`IndexOfResearch` + validator call), `BuildingDefinition.cs` (`AvailableResearch`).
 
-### Story 4.8b: ResearchSystem order path — start/complete/cancel, permanent modifier application, future-spawn catch-up
+### Story 4.9: ResearchSystem order path — start/complete/cancel, permanent modifier application, future-spawn catch-up
 
 As a player,
 I want to issue a `Research` order at an eligible building that spends cost, ticks a timer, and on completion applies a permanent faction-scoped stat modifier to every current AND future unit,
-So that researched upgrades from 4.8a's content actually take effect in a match.
+So that researched upgrades from 4.8's content actually take effect in a match.
 
 **Acceptance Criteria:**
 
@@ -1680,11 +1680,11 @@ So that researched upgrades from 4.8a's content actually take effect in a match.
 
 **Given** a `CancelResearch` order while a research is in progress **When** applied **Then** it refunds `CancelRefundFraction × currentLevelCost` (Fixed math, floored) and returns the faction to idle; a `CancelResearch` with nothing in progress is a no-op
 
-_Covers: FR-63. Depends on: 4.8a, 2.2b._
+_Covers: FR-63. Depends on: 4.8, 2.2b._
 
-> Split from former 4.8 (see 4.8a's note). This half is the hard novel logic — order guards, atomic spend, per-faction timer, cumulative-modifier math, spawn-hook wiring — validated by new Tier-1 tests (`BuildingSystemResearchTests.cs`) exercising every I/O-matrix row. **Deliberately NOT yet folded into `SimChecksum` (4.8c's job) — `ResearchStore` state is mid-match-mutable but NOT multiplayer/replay-safe until 4.8c lands; sequence 4.8c immediately after with no other story landing in between.** Code map: `ResearchStore.cs` (new per-faction SoA), `BuildingSystem.cs` (`StartResearch`/`StartResearchCommand`/`CancelResearchCommand`/`TickResearch`/`ApplyFactionResearch`/`AttachModifiers`), `EntityWorld.cs` (`Research`/`CancelResearch` `UnitCommand` entries), `NetworkCommand.cs` (dispatch), `CombatEventQueue.cs` (`ResearchStarted`/`ResearchComplete`), `SimulationHost.cs` (construct/wire `ResearchStore`, `AttachModifiers`, spawn-hook subscription, `ClearForReset` — checksum wiring excluded, that's 4.8c).
+> Split from the former unsplit research story (see 4.8's note). This half is the hard novel logic — order guards, atomic spend, per-faction timer, cumulative-modifier math, spawn-hook wiring — validated by new Tier-1 tests (`BuildingSystemResearchTests.cs`) exercising every I/O-matrix row. **Deliberately NOT yet folded into `SimChecksum` (4.10's job) — `ResearchStore` state is mid-match-mutable but NOT multiplayer/replay-safe until 4.10 lands; sequence 4.10 immediately after with no other story landing in between.** Code map: `ResearchStore.cs` (new per-faction SoA), `BuildingSystem.cs` (`StartResearch`/`StartResearchCommand`/`CancelResearchCommand`/`TickResearch`/`ApplyFactionResearch`/`AttachModifiers`), `EntityWorld.cs` (`Research`/`CancelResearch` `UnitCommand` entries), `NetworkCommand.cs` (dispatch), `CombatEventQueue.cs` (`ResearchStarted`/`ResearchComplete`), `SimulationHost.cs` (construct/wire `ResearchStore`, `AttachModifiers`, spawn-hook subscription, `ClearForReset` — checksum wiring excluded, that's 4.10).
 
-### Story 4.8c: ResearchStore SimChecksum fold + golden re-baseline
+### Story 4.10: ResearchStore SimChecksum fold + golden re-baseline
 
 As an engine developer,
 I want per-faction research state (in-progress index/timer + completed levels) folded into `SimChecksum` with an `AlgoVersion` bump and a full golden re-baseline,
@@ -1692,15 +1692,15 @@ So that a research-heavy match replays byte-identical and desyncs in research st
 
 **Acceptance Criteria:**
 
-**Given** `ResearchStore` (from 4.8b) **When** `SimChecksum.Compute` runs **Then** it mixes `InProgressIndex`/`InProgressTimer` per faction and `CompletedLevels` per research index, `AlgoVersion` bumps 13→14 with a doc-comment entry mirroring the v13 entry's narrative style, and `SimChecksumCoverageGuardTest` is re-pinned with a `ResearchStore` fold coverage assertion
+**Given** `ResearchStore` (from 4.9) **When** `SimChecksum.Compute` runs **Then** it mixes `InProgressIndex`/`InProgressTimer` per faction and `CompletedLevels` per research index, `AlgoVersion` bumps 13→14 with a doc-comment entry mirroring the v13 entry's narrative style, and `SimChecksumCoverageGuardTest` is re-pinned with a `ResearchStore` fold coverage assertion
 
 **Given** two runs of a research-heavy scenario **When** replayed post re-baseline **Then** golden checksums are byte-identical, and every existing golden scenario file is re-baselined (first-ever `ResearchStore` fold moves every golden, matching the 4.7 `ResourceNodeStore` precedent) — review confirms only expected hash lines moved before commit
 
-_Covers: FR-63. Depends on: 4.8b._
+_Covers: FR-63. Depends on: 4.9._
 
-> Split from former 4.8 (see 4.8a's note). Closes the determinism gap 4.8b's AC explicitly calls out. Mechanical/pattern-matching verification (confirm only expected hash lines moved), deliberately isolated from 4.8b's harder semantic review so it can land quickly right behind it. Code map: `SimChecksum.cs` (fold block + `AlgoVersion`), `SimulationLoop.cs` (`ResearchStore?` param threading), `SimChecksumCoverageGuardTest.cs` (re-pin), `godot/ProjectChimera.Sim.Tests/Golden/*.golden.txt` (re-baseline).
+> Split from the former unsplit research story (see 4.8's note). Closes the determinism gap 4.9's AC explicitly calls out. Mechanical/pattern-matching verification (confirm only expected hash lines moved), deliberately isolated from 4.9's harder semantic review so it can land quickly right behind it. Code map: `SimChecksum.cs` (fold block + `AlgoVersion`), `SimulationLoop.cs` (`ResearchStore?` param threading), `SimChecksumCoverageGuardTest.cs` (re-pin), `godot/ProjectChimera.Sim.Tests/Golden/*.golden.txt` (re-baseline).
 
-### Story 4.9: Research authoring, command-card research buttons, and upgrade display
+### Story 4.11: Research authoring, command-card research buttons, and upgrade display
 
 As a creator and player,
 I want to author research in the tech-tree editor and run it from building command cards with visible results,
@@ -1714,9 +1714,9 @@ So that upgrades are authorable without JSON and legible in-match.
 
 **Given** a unit benefiting from completed research **When** its panel renders **Then** the aggregate upgrade contribution is visible (e.g. "+2 Atk" beside the base stat)
 
-_Covers: FR-63. Depends on: 4.8c, 4.6._
+_Covers: FR-63. Depends on: 4.10, 4.6._
 
-> Gap-closure (2026-07-01). Pure authoring/presentation over 4.8's sim; design-system components; no new sim state.
+> Gap-closure (2026-07-01). Pure authoring/presentation over the research sim (4.9/4.10); design-system components; no new sim state.
 
 ## Epic 5: Faction Definer & the Asymmetric Showcase Factions
 
@@ -3786,11 +3786,11 @@ So that the core loop and the hero game are learned in play.
 
 **Acceptance Criteria:**
 
-**Given** mission 2 **When** played **Then** staged objectives teach worker/gathering (Ore then Crystal), supply, production picker (2.8), a research (4.8), and a hero with XP/level-up and a first item pickup (3.13/3.15) — each beat trigger-verified before the next unlocks
+**Given** mission 2 **When** played **Then** staged objectives teach worker/gathering (Ore then Crystal), supply, production picker (2.8), a research (4.9), and a hero with XP/level-up and a first item pickup (3.13/3.15) — each beat trigger-verified before the next unlocks
 
 **Given** the mission's combat beats **When** they run **Then** denial/ack/alert feedback (11.8/11.9) is exercised naturally (scripted raid triggers the under-attack alert), ending in a defended base + counter-push Victory
 
-_Covers: FR-73. Depends on: 13.2, 3.13, 3.15, 4.8._
+_Covers: FR-73. Depends on: 13.2, 3.13, 3.15, 4.9._
 
 > Gap-closure (2026-07-01). Mission 2 is deliberately the integration test for the hero/research/item runtimes in a guided setting.
 

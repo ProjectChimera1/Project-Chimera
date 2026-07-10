@@ -647,7 +647,7 @@ namespace ProjectChimera.Sim.Tests.Definitions
                     new BuildingEdit { Kind = BuildingEditKind.Delete, TargetId = "ghost" }));
         }
 
-        // ── Story 4.8a: available_research round-trips exactly like prerequisites ──────────────────────────────
+        // ── Story 4.8: available_research round-trips exactly like prerequisites ──────────────────────────────
 
         [Fact]
         public void SyncFactionBuildings_AuthoredAvailableResearch_RoundTrips()

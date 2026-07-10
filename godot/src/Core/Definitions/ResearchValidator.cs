@@ -5,7 +5,7 @@ using System.Collections.Generic;
 namespace ProjectChimera.Core.Definitions
 {
     /// <summary>
-    /// Import-time gate for a faction's authored <see cref="FactionDefinition.Research"/> list (Story 4.8a). Runs
+    /// Import-time gate for a faction's authored <see cref="FactionDefinition.Research"/> list (Story 4.8). Runs
     /// over the SAME <see cref="FactionDefinition.LoadFromFile"/> aggregate <c>errors</c> channel that
     /// <see cref="BuildingDefinitionValidator"/>/<see cref="TechTreeValidator"/>/<see cref="ResourceCostValidator"/>
     /// already throw with — additive, not a replacement. Pure C#, no logging, no throw — the caller
@@ -160,7 +160,7 @@ namespace ProjectChimera.Core.Definitions
 
                         // Review-pass fix: NaN/Infinity guard on the four stat-delta floats — unlike every other
                         // numeric field this story introduces, these had no finite-value check; a malformed value
-                        // would silently load and later apply as a real permanent stat delta once 4.8b wires it up.
+                        // would silently load and later apply as a real permanent stat delta once 4.9 wires it up.
                         if (level.ModifierDelta != null)
                         {
                             ResearchModifierDelta md = level.ModifierDelta;
@@ -214,7 +214,7 @@ namespace ProjectChimera.Core.Definitions
         /// <summary>Finite + range guard for one <see cref="ResearchModifierDelta"/> field (review-pass fix) —
         /// rejects NaN/Infinity, and (second-review-pass fix) a finite magnitude at/beyond the 16.16
         /// <see cref="Fixed"/> ceiling. The four delta floats quantize into the same <see cref="Fixed"/> fields as a
-        /// level's <c>cost</c> will (4.8b), so a finite-but-out-of-range value (e.g. 100000) that passed the
+        /// level's <c>cost</c> will (4.9), so a finite-but-out-of-range value (e.g. 100000) that passed the
         /// finite-only check would overflow at quantization — this closes the asymmetry with the level-cost range
         /// check above. Symmetric bound (deltas may legitimately be negative, unlike a cost). Located per-field/per-level.</summary>
         private static void CheckFiniteModifier(List<string> errors, string id, int levelIndex, string field, float value)

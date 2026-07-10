@@ -113,10 +113,10 @@ development_status:
   4-5-in-app-building-definition-editor-unit-card-pattern-right-dock-inspector: done
   4-6-visual-tech-tree-editor-tier-laned-graph-drag-out-port-to-wire-prerequisites: done
   4-7-per-resource-collection-models-income-streaming-requires-structure-crystal-production: done
-  4-8a-researchdefinition-content-model-validation: done
-  4-8b-researchsystem-order-path-start-complete-cancel-modifier-application: backlog
-  4-8c-researchstore-simchecksum-fold-golden-rebaseline: backlog
-  4-9-research-authoring-command-card-buttons-upgrade-display: backlog
+  4-8-researchdefinition-content-model-validation: done
+  4-9-researchsystem-order-path-start-complete-cancel-modifier-application: backlog
+  4-10-researchstore-simchecksum-fold-golden-rebaseline: backlog
+  4-11-research-authoring-command-card-buttons-upgrade-display: backlog
   epic-4-retrospective: optional
   epic-5: backlog
   5-1-factionregistry-canonical-faction-slot-constants-ar-3: backlog

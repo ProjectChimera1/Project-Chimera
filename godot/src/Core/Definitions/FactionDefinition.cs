@@ -28,9 +28,9 @@ namespace ProjectChimera.Core.Definitions
         [JsonPropertyName("buildings")]
         public List<BuildingDefinition> Buildings { get; set; } = new();
 
-        /// <summary>Faction-wide, timed, repeatable research/upgrade entries (Story 4.8a) — mirrors
+        /// <summary>Faction-wide, timed, repeatable research/upgrade entries (Story 4.8) — mirrors
         /// <see cref="Units"/>/<see cref="Buildings"/>'s place on this type. Content-only this story: no runtime
-        /// order path consumes it yet (Story 4.8b).</summary>
+        /// order path consumes it yet (Story 4.9).</summary>
         [JsonPropertyName("research")]
         public List<ResearchDefinition> Research { get; set; } = new();
 
@@ -155,7 +155,7 @@ namespace ProjectChimera.Core.Definitions
         /// authored <c>cost</c> map entry naming a resource id with no runtime backing (anything outside
         /// <c>{"ore","crystal"}</c>) or an out-of-range amount fails the whole load, list-all, joined by newlines.
         ///
-        /// Story 4.8a: additively, <see cref="ResearchValidator"/> runs over the same aggregate list — a duplicate
+        /// Story 4.8: additively, <see cref="ResearchValidator"/> runs over the same aggregate list — a duplicate
         /// research id, an empty/malformed <see cref="ResearchDefinition.Levels"/> ladder, an out-of-range
         /// <see cref="ResearchDefinition.CancelRefundFraction"/>, a <see cref="ResearchDefinition.Prerequisites"/>/
         /// <see cref="BuildingDefinition.AvailableResearch"/> entry referencing an unknown id, a research→research
@@ -163,7 +163,7 @@ namespace ProjectChimera.Core.Definitions
         /// above, list-all (the cycle check excepted — first-fail, same convention as
         /// <see cref="TechTreeValidator"/>'s), joined by newlines. Content-only: this does NOT mint a
         /// <see cref="Validated{T}"/> (matches the real precedent set by the checks above, not the epic's general
-        /// framing) and wires no runtime order path (Story 4.8b owns that).
+        /// framing) and wires no runtime order path (Story 4.9 owns that).
         /// </summary>
         public static FactionDefinition LoadFromFile(string absolutePath)
         {
