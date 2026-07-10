@@ -8,6 +8,16 @@ namespace ProjectChimera.Economy
     /// Workers (GatherState != Inactive) automatically cycle through:
     ///   Idle → MovingToResource → Gathering → MovingToBase → (deposit) → repeat
     ///
+    /// Story 4.7 adds two more per-node collection models on top of the GATHER cycle above (see
+    /// <see cref="ResourceCollectionModel"/>): Income (a periodic flat credit with zero assigned workers — driven
+    /// by <see cref="TickIncomeNodes"/>, never through the worker state machine) and Streaming (workers still
+    /// cycle Idle → MovingToResource → Gathering exactly like GATHER, but <see cref="TickGathering"/> credits the
+    /// gathering worker's faction directly at the node each tick instead of carrying to base — no
+    /// <c>MovingToBase</c> leg, no <c>CarryAmount</c>). A per-node <c>requires_structure</c> gate (mirroring
+    /// <c>AiOpponentSystem.FindNearestEnemyBuilding</c>'s scan shape against <see cref="BuildingStore"/>) can make
+    /// any node conditionally eligible. All GATHER-node behavior when <c>collection_model</c> is omitted/"Gather"
+    /// is byte-identical to pre-4.7 (the new branches are dead code on that path).
+    ///
     /// CombatSystem skips any entity with GatherState != Inactive, so workers never
     /// auto-attack — even when their unit data carries attack damage.
     /// MovementSystem handles their physical movement via MoveTarget + Moving flag.
@@ -20,12 +30,14 @@ namespace ProjectChimera.Economy
 
         private readonly ResourceNodeStore _nodes;
         private readonly ResourceStore     _resources;
+        private readonly BuildingStore     _buildings;
         private readonly MatchStats?        _stats;
 
-        public GatheringSystem(ResourceNodeStore nodes, ResourceStore resources, MatchStats? stats = null)
+        public GatheringSystem(ResourceNodeStore nodes, ResourceStore resources, BuildingStore buildings, MatchStats? stats = null)
         {
             _nodes     = nodes;
             _resources = resources;
+            _buildings = buildings;
             _stats     = stats;
         }
 
@@ -56,6 +68,10 @@ namespace ProjectChimera.Economy
                         break;
                 }
             }
+
+            // Story 4.7 — Income nodes have zero assigned workers; they credit on their own periodic cadence,
+            // ascending node id (deterministic, mirrors every other count-driven fold/tick in this codebase).
+            TickIncomeNodes();
         }
 
         // ── State handlers ────────────────────────────────────────────────────
@@ -95,24 +111,49 @@ namespace ProjectChimera.Economy
 
             if (node < 0 || !_nodes.Active[node])
             {
-                // Node gone — return what we have, then seek another
-                world.GatherState[id] = world.CarryAmount[id] > Fixed.Zero
-                    ? GatherState.MovingToBase
-                    : GatherState.Idle;
-                world.GatherTarget[id] = -1;
-                if (world.GatherState[id] == GatherState.MovingToBase)
+                // Node gone. Streaming never carries anything to return (Never rule: no MovingToBase leg for
+                // Streaming) — go straight to Idle. GATHER returns what it has (byte-identical to pre-4.7): if
+                // it's carrying something, head to base. The carried resource kind rides on the worker
+                // (CarryResourceType, snapshotted at gather time), so the deposit routes correctly on arrival
+                // regardless of GatherTarget (which is unfolded, not in SimChecksum — this changes no golden).
+                bool wasStreaming = node >= 0 && _nodes.CollectionModel[node] == ResourceCollectionModel.Streaming;
+                if (!wasStreaming && world.CarryAmount[id] > Fixed.Zero)
+                {
+                    world.GatherState[id] = GatherState.MovingToBase;
                     SetMoveToBase(world, id);
+                }
+                else
+                {
+                    world.GatherState[id]  = GatherState.Idle;
+                    world.GatherTarget[id] = -1;
+                }
                 return;
             }
 
+            bool streaming = _nodes.CollectionModel[node] == ResourceCollectionModel.Streaming;
+
+            // requires_structure can close mid-cycle (e.g. the gating structure is destroyed) — withhold this
+            // tick's Streaming credit entirely (no gather, no supply drain, no credit) rather than reassigning;
+            // the worker stays put and resumes the instant the gate reopens. GATHER is unaffected (checked only
+            // once, at FindBestNode assignment time) — never gated live, matching the Always/Never contract.
+            if (streaming && !StructureGateOpen(node, world.FactionOf[id]))
+                return;
+
             // Gather from node this tick
-            Fixed rate     = _nodes.GatherRate[node];
+            Fixed rate      = _nodes.GatherRate[node];
             Fixed canGather = Fixed.Min(rate * dt, _nodes.SupplyRemaining[node]);
-            Fixed canCarry  = world.CarryCapacity[id] - world.CarryAmount[id];
+            Fixed canCarry  = streaming ? canGather : world.CarryCapacity[id] - world.CarryAmount[id];
             Fixed gathered  = Fixed.Min(canGather, canCarry);
 
-            world.CarryAmount[id]        = world.CarryAmount[id] + gathered;
             _nodes.SupplyRemaining[node] = _nodes.SupplyRemaining[node] - gathered;
+
+            if (streaming)
+                CreditNode(node, world.FactionOf[id], gathered); // credit-in-place — no carry, ever
+            else
+            {
+                world.CarryAmount[id]       = world.CarryAmount[id] + gathered;
+                world.CarryResourceType[id] = _nodes.ResourceType[node]; // remember the carried kind so the deposit routes correctly even if GatherTarget is later cleared (e.g. a Build command)
+            }
 
             // Deplete node
             if (_nodes.SupplyRemaining[node] <= Fixed.Zero)
@@ -121,12 +162,25 @@ namespace ProjectChimera.Economy
                 _nodes.AssignedGatherers[node] = 0; // all workers will re-route next tick
             }
 
-            // Return to base if carry full or node just depleted
+            if (streaming)
+            {
+                // Streaming never routes through MovingToBase. A depleted node sends the worker back to Idle to
+                // seek another; otherwise it stays put and keeps crediting next tick.
+                if (!_nodes.Active[node])
+                {
+                    world.GatherTarget[id] = -1;
+                    world.GatherState[id]  = GatherState.Idle;
+                }
+                return;
+            }
+
+            // GATHER: return to base if carry full or node just depleted. The deposit resolves the resource kind
+            // from CarryResourceType (snapshotted above), not GatherTarget, so it's safe to leave GatherTarget as-is
+            // here — it's unfolded (not in SimChecksum), so this is behavior-identical to pre-4.7.
             if (world.CarryAmount[id] >= world.CarryCapacity[id] || !_nodes.Active[node])
             {
                 if (_nodes.Active[node])
                     _nodes.AssignedGatherers[node]--;
-                world.GatherTarget[id] = -1;
                 SetMoveToBase(world, id);
                 world.GatherState[id] = GatherState.MovingToBase;
             }
@@ -138,10 +192,15 @@ namespace ProjectChimera.Economy
             Fixed sqr = FixedVec3.SqrDistance(world.Position[id], basePos);
             if (sqr > ARRIVE_AT_BASE_SQR) return; // Still travelling
 
-            // Arrived — deposit ore
-            _stats?.RecordOreMined(world.FactionOf[id], world.CarryAmount[id]);
-            _resources.AddOre(world.FactionOf[id], world.CarryAmount[id]);
-            world.CarryAmount[id]  = Fixed.Zero;
+            // Arrived — deposit by the CARRIED resource kind (Story 4.7). Resolving the kind from GatherTarget was
+            // fragile: BuildingSystem clears GatherTarget when a Build command interrupts a returning worker, which
+            // mis-credited a Crystal load as Ore via the old node<0 fallback. CarryResourceType is snapshotted at
+            // gather time and rides on the worker, so the deposit always routes to the right balance (and a fresh
+            // slot's default Ore reproduces pre-4.7 always-Ore behavior for any zero/edge carry).
+            CreditKind(world.CarryResourceType[id], world.FactionOf[id], world.CarryAmount[id]);
+            world.CarryAmount[id]       = Fixed.Zero;
+            world.CarryResourceType[id] = ResourceKind.Ore; // reset the carry marker for the next trip
+            world.GatherTarget[id]      = -1;
             world.Flags[id]       &= ~EntityFlags.Moving;
             world.Velocity[id]     = FixedVec3.Zero;
 
@@ -149,7 +208,105 @@ namespace ProjectChimera.Economy
             world.GatherState[id] = GatherState.Idle;
         }
 
+        /// <summary>
+        /// Story 4.7 — the Income tick pass: periodic flat credit, zero assigned workers, ascending node id.
+        /// <see cref="ResourceNodeStore.IncomeTicksElapsed"/> is a whole-tick counter (never dt-accumulated, never
+        /// wall-clock); a requires_structure gate closed this tick withholds credit WITHOUT advancing the counter
+        /// (steady-state — no error), so the node doesn't burst-credit a backlog the instant the gate reopens.
+        /// </summary>
+        private void TickIncomeNodes()
+        {
+            for (int n = 0; n < _nodes.Count; n++)
+            {
+                if (!_nodes.Active[n]) continue;
+                if (_nodes.CollectionModel[n] != ResourceCollectionModel.Income) continue;
+
+                Faction owner = _nodes.OwnerFaction[n];
+                // Follow-up review patch: defend the Income pass against state the ScenarioValidator normally
+                // forbids but a direct/internal ResourceNodeStore.Create could produce. An owner degraded to
+                // Neutral (out-of-range owner_slot) would otherwise credit faction index 0 a phantom balance; a
+                // non-positive period (the Create default is 0) would make IncomeTicksElapsed's `< period` test
+                // false every tick and credit every tick instead of periodically. Validated content hits neither
+                // (owner_slot declared + income_period_ticks>0 are required whenever collection_model=Income).
+                if (owner == Faction.Neutral) continue;
+                if (_nodes.IncomePeriodTicks[n] <= 0) continue;
+
+                if (!StructureGateOpen(n, owner)) continue; // gate closed — withhold credit, no error
+
+                _nodes.IncomeTicksElapsed[n]++;
+                if (_nodes.IncomeTicksElapsed[n] < _nodes.IncomePeriodTicks[n]) continue;
+                _nodes.IncomeTicksElapsed[n] = 0;
+
+                Fixed credit = Fixed.Min(_nodes.GatherRate[n], _nodes.SupplyRemaining[n]); // Rate reused as "amount per period"
+                _nodes.SupplyRemaining[n] = _nodes.SupplyRemaining[n] - credit;
+                CreditNode(n, owner, credit);
+
+                if (_nodes.SupplyRemaining[n] <= Fixed.Zero)
+                    _nodes.Active[n] = false; // matches GATHER's existing depletion behavior
+            }
+        }
+
         // ── Helpers ───────────────────────────────────────────────────────────
+
+        /// <summary>Story 4.7 — dispatch a node's credit by its <see cref="ResourceNodeStore.ResourceType"/>
+        /// (Streaming/Income credit-in-place at the node). Thin wrapper over <see cref="CreditKind"/>.</summary>
+        private void CreditNode(int node, Faction faction, Fixed amount)
+            => CreditKind(_nodes.ResourceType[node], faction, amount);
+
+        /// <summary>Story 4.7 — dispatch a credit to the correct per-faction balance by resource kind, closing the
+        /// Crystal-production dead path. Used both for credit-in-place (Streaming/Income, by node <see cref="ResourceKind"/>)
+        /// and for a GATHER worker's base deposit (by the CARRIED kind — see <c>TickMovingToBase</c>). Ore credits also
+        /// feed <see cref="MatchStats.RecordOreMined"/> (mirrors the pre-4.7 base-deposit call); there is no Crystal
+        /// equivalent in MatchStats today (mirrors every existing AddCrystal call site — none record stats either).</summary>
+        private void CreditKind(ResourceKind kind, Faction faction, Fixed amount)
+        {
+            if (kind == ResourceKind.Crystal)
+            {
+                _resources.AddCrystal(faction, amount);
+            }
+            else
+            {
+                _resources.AddOre(faction, amount);
+                _stats?.RecordOreMined(faction, amount);
+            }
+        }
+
+        /// <summary>Story 4.7 — true when <paramref name="node"/> has no requires_structure gate, or
+        /// <paramref name="faction"/> owns a qualifying structure within range.</summary>
+        private bool StructureGateOpen(int node, Faction faction)
+        {
+            string requiredId = _nodes.RequiresStructureId[node];
+            if (string.IsNullOrEmpty(requiredId)) return true;
+            return FactionHasStructureNear(faction, requiredId, _nodes.Position[node], _nodes.RequiresStructureRadius[node]);
+        }
+
+        /// <summary>
+        /// Story 4.7 — true when <paramref name="faction"/> owns an ALIVE building whose
+        /// <see cref="BuildingStore.DefinitionId"/> equals <paramref name="buildingId"/> within
+        /// <paramref name="radius"/> of <paramref name="from"/>. Reuses
+        /// <c>AiOpponentSystem.FindNearestEnemyBuilding</c>'s scan shape (ascending id, <see cref="Fixed"/> squared
+        /// distance) against the SAME <see cref="BuildingStore"/> dependency, but existence-only (no nearest-pick
+        /// needed) and faction-OWNED rather than faction-EXCLUDED — never shared/ally visibility (owned-only, per
+        /// the Never rule).
+        /// </summary>
+        private bool FactionHasStructureNear(Faction faction, string buildingId, FixedVec3 from, Fixed radius)
+        {
+            Fixed radiusSqr = radius * radius;
+            for (int b = 0; b < _buildings.Count; b++)
+            {
+                if (!_buildings.Alive[b]) continue;
+                // Review patch: a structure still under construction is "not functional yet" — the same rule
+                // TechTreeChecker/BuildingSystem already enforce for every other structure-presence gate in this
+                // codebase (TechTreeChecker.cs:76, BuildingSystem.cs:135/159/330/454/524). A requires_structure gate
+                // must not open the instant a qualifying building is PLACED; it must wait until construction completes.
+                if (_buildings.IsUnderConstruction(b)) continue;
+                if (_buildings.FactionOf[b] != faction) continue;
+                if (_buildings.DefinitionId[b] != buildingId) continue;
+                Fixed sqrDist = FixedVec3.SqrDistance(from, _buildings.Position[b]);
+                if (sqrDist <= radiusSqr) return true;
+            }
+            return false;
+        }
 
         private void AssignToNode(EntityWorld world, int workerId, int nodeIdx)
         {
@@ -175,7 +332,8 @@ namespace ProjectChimera.Economy
         }
 
         /// <summary>
-        /// Find the nearest active node that isn't over capacity.
+        /// Find the nearest active, non-Income node that isn't over capacity and (Story 4.7) whose
+        /// requires_structure gate — if any — is open for <paramref name="faction"/>.
         /// Returns -1 if no suitable node exists.
         /// </summary>
         private int FindBestNode(FixedVec3 pos, Faction faction)
@@ -186,7 +344,9 @@ namespace ProjectChimera.Economy
             for (int n = 0; n < _nodes.Count; n++)
             {
                 if (!_nodes.Active[n]) continue;
+                if (_nodes.CollectionModel[n] == ResourceCollectionModel.Income) continue; // never assign workers to Income nodes
                 if (_nodes.AssignedGatherers[n] >= _nodes.MaxGatherers[n]) continue;
+                if (!StructureGateOpen(n, faction)) continue;
 
                 Fixed sqr = FixedVec3.SqrDistance(pos, _nodes.Position[n]);
                 if (sqr < bestSqrDist)

@@ -185,6 +185,60 @@ namespace ProjectChimera.Sim.Tests.Builder
         }
 
         [Fact]
+        public void Apply_ThreadsStory4_7Fields_IntoResourceNodeStore()
+        {
+            // Story 4.7 — the single float→Fixed/string→enum load boundary for resource nodes: collection_model,
+            // resource_type, requires_structure(+radius), owner_slot(→Faction), and income_period_ticks must all
+            // reach ResourceNodeStore.Create unchanged.
+            ScenarioData model = BuildAlphaModel();
+            model.ResourceNodes = new[]
+            {
+                new ScenarioResourceNode
+                {
+                    X = 5f, Z = -5f, Supply = 300f, Rate = 12f, MaxGatherers = 2,
+                    CollectionModel = "Income", ResourceType = "Crystal",
+                    RequiresStructure = "watchtower", RequiresStructureRadius = 8f,
+                    OwnerSlot = 1, IncomePeriodTicks = 45,
+                },
+            };
+            var (host, applier) = NewHostAndApplier();
+
+            ValidationResult r = new ScenarioValidator().Validate(model);
+            Assert.True(r.Ok, r.Error);
+            applier.Apply(r.Value);
+
+            Assert.Equal(1, host.Nodes.Count);
+            Assert.Equal(ResourceCollectionModel.Income, host.Nodes.CollectionModel[0]);
+            Assert.Equal(ResourceKind.Crystal,            host.Nodes.ResourceType[0]);
+            Assert.Equal("watchtower",                    host.Nodes.RequiresStructureId[0]);
+            Assert.Equal(Fixed.FromFloat(8f),              host.Nodes.RequiresStructureRadius[0]);
+            Assert.Equal(Faction.Player2,                  host.Nodes.OwnerFaction[0]); // slot 1 -> Player2
+            Assert.Equal(45,                               host.Nodes.IncomePeriodTicks[0]);
+            Assert.Equal(0,                                host.Nodes.IncomeTicksElapsed[0]); // fresh mutable counter
+        }
+
+        [Fact]
+        public void Apply_DefaultResourceNode_MaterializesGatherOreDefaults_IntoResourceNodeStore()
+        {
+            // The omitted-field default path: a node that never sets the 6 new fields must land on the exact
+            // GATHER-preserving defaults (Create's own defaults), never null/zero-by-accident.
+            ScenarioData model = BuildAlphaModel(); // ExpectedNodes never set the new fields
+            var (host, applier) = NewHostAndApplier();
+
+            ValidationResult r = new ScenarioValidator().Validate(model);
+            Assert.True(r.Ok, r.Error);
+            applier.Apply(r.Value);
+
+            for (int i = 0; i < ExpectedNodes.Length; i++)
+            {
+                Assert.Equal(ResourceCollectionModel.Gather, host.Nodes.CollectionModel[i]);
+                Assert.Equal(ResourceKind.Ore,                host.Nodes.ResourceType[i]);
+                Assert.Equal("",                              host.Nodes.RequiresStructureId[i]);
+                Assert.Equal(Faction.Neutral,                 host.Nodes.OwnerFaction[i]);
+            }
+        }
+
+        [Fact]
         public void Apply_RecordsScenarioPlacedHeroes_NotNonHeroes_AndClearsOnReapply()
         {
             // Story 3.9: LastAppliedHeroes is the load-bearing bridge feeding HeroProfileLoader.LoadInto — it must
@@ -401,7 +455,9 @@ namespace ProjectChimera.Sim.Tests.Builder
         // re-record). Re-recorded again same day (review-pass-2 patch): Supply's HardCeiling presence is now folded
         // as an explicit bit before its value instead of a `?? -1` sentinel (fixes a hash collision between an
         // omitted ceiling and an authored, shadow-mode-reachable invalid `-1`), which shifted every hash again.
-        // [Story 4.4]
-        private const ulong ExpectedCanonicalHash = 16869254917153809851UL;
+        // [Story 4.4] Re-recorded again 2026-07-09 for AlgoVersion 5 (Story 4.7: ScenarioResourceNode's 6 new
+        // fields folded — the model's nodes omit them, but the AlgoVersion bump alone moves every hash, same as
+        // every prior bump above).
+        private const ulong ExpectedCanonicalHash = 9661174451589536176UL;
     }
 }

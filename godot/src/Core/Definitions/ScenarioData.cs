@@ -55,6 +55,13 @@ namespace ProjectChimera.Core.Definitions
 
     /// <summary>
     /// A resource node to be created on the map when the scenario loads.
+    ///
+    /// Story 4.7 adds a per-node collection model (<see cref="CollectionModel"/>: GATHER — today's worker
+    /// round-trip, the default — vs. Income — a periodic flat credit with no workers — vs. Streaming — workers
+    /// credit in place, no base trip), a per-node <see cref="ResourceType"/> (Ore/Crystal, closing the Crystal-
+    /// production dead path), an optional <see cref="RequiresStructure"/> proximity gate, an <see cref="OwnerSlot"/>
+    /// (Income's credit destination — no workers to infer a faction from), and <see cref="IncomePeriodTicks"/>.
+    /// Every new field defaults to reproduce today's GATHER node exactly when omitted.
     /// </summary>
     public class ScenarioResourceNode
     {
@@ -64,16 +71,69 @@ namespace ProjectChimera.Core.Definitions
         [JsonPropertyName("z")]
         public float Z { get; set; }
 
-        /// <summary>Total ore supply in this node.</summary>
+        /// <summary>Total supply in this node (Ore or Crystal, per <see cref="ResourceType"/>).</summary>
         [JsonPropertyName("supply")]
         public float Supply { get; set; } = 400f;
 
-        /// <summary>Ore per second delivered by each active gatherer.</summary>
+        /// <summary>
+        /// Dual meaning by <see cref="CollectionModel"/> (Story 4.7): under GATHER/Streaming, the amount
+        /// delivered per second by each active gatherer (today's sole meaning). Under Income, the amount
+        /// granted per <see cref="IncomePeriodTicks"/> — reused rather than adding a new field (see the Story 4.7
+        /// spec's Design Notes): "amount granted per unit of production time" maps directly onto "amount per
+        /// period", and <see cref="MaxGatherers"/> is already inert-by-context for Income the same way.
+        /// </summary>
         [JsonPropertyName("rate")]
         public float Rate { get; set; } = 5f;
 
         [JsonPropertyName("max_gatherers")]
         public int MaxGatherers { get; set; } = 4;
+
+        /// <summary>The collection model this node uses — one of <see cref="ResourceDefinition.KnownCollectionModels"/>
+        /// ("Gather", "Income", "Streaming"). Default "Gather" — every existing scenario JSON omits this and loads/
+        /// simulates byte-identically. "Income" credits <see cref="Rate"/> to <see cref="OwnerSlot"/>'s faction every
+        /// <see cref="IncomePeriodTicks"/> ticks with zero assigned workers (<c>GatheringSystem.FindBestNode</c> always
+        /// skips it). "Streaming" behaves like GATHER for worker assignment/extraction but credits the gathering
+        /// worker's faction directly at the node each tick — no carry, no base trip.</summary>
+        [JsonPropertyName("collection_model")]
+        public string CollectionModel { get; set; } = "Gather";
+
+        /// <summary>The resource this node produces — "Ore" or "Crystal". Default "Ore" (today's only produced
+        /// resource). All node credit dispatches through <see cref="ResourceStore.AddOre"/>/
+        /// <see cref="ResourceStore.AddCrystal"/> by this field, closing the Crystal-production dead path (no node
+        /// ever called AddCrystal before Story 4.7).</summary>
+        [JsonPropertyName("resource_type")]
+        public string ResourceType { get; set; } = "Ore";
+
+        /// <summary>
+        /// Optional building-definition id (<see cref="BuildingStore.DefinitionId"/> — the Story 4.1 data-driven
+        /// id, NOT the closed <see cref="BuildingType"/> enum, so a creator-authored custom building can satisfy
+        /// the gate) a faction must OWN within <see cref="RequiresStructureRadius"/> of this node before it becomes
+        /// eligible: <c>GatheringSystem.FindBestNode</c> excludes an ungated-faction candidate, and the Income pass
+        /// withholds credit. NULL (the default) ⇒ no gate — every existing scenario is unaffected. Owned-only:
+        /// never satisfied by a shared/ally structure.
+        /// </summary>
+        [JsonPropertyName("requires_structure")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public string? RequiresStructure { get; set; }
+
+        /// <summary>World-unit radius of the <see cref="RequiresStructure"/> proximity check. Default 15 (only
+        /// consulted when <see cref="RequiresStructure"/> is set).</summary>
+        [JsonPropertyName("requires_structure_radius")]
+        public float RequiresStructureRadius { get; set; } = 15f;
+
+        /// <summary>0-based player slot this node's Income credits belong to (resolved to a <see cref="Faction"/>
+        /// exactly like <see cref="ScenarioBuilding.Slot"/>/<see cref="ScenarioUnit.Slot"/>). Required (and must
+        /// reference a declared <see cref="ScenarioPlayerSlot"/>) when <see cref="CollectionModel"/>="Income" — an
+        /// Income node has no assigned worker to infer a faction from. Default -1 (unset; inert for GATHER/Streaming,
+        /// which credit the gathering worker's own faction).</summary>
+        [JsonPropertyName("owner_slot")]
+        public int OwnerSlot { get; set; } = -1;
+
+        /// <summary>Whole simulation ticks between Income credits (only consulted when
+        /// <see cref="CollectionModel"/>="Income"; counted via a mutable tick counter, never dt-accumulated, never
+        /// wall-clock). Default 30 (1 second at 30 ticks/sec).</summary>
+        [JsonPropertyName("income_period_ticks")]
+        public int IncomePeriodTicks { get; set; } = 30;
     }
 
     /// <summary>

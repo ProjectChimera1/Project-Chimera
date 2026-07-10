@@ -112,7 +112,7 @@ development_status:
   4-4-data-driven-supply-cap-model-per-scenario: done
   4-5-in-app-building-definition-editor-unit-card-pattern-right-dock-inspector: done
   4-6-visual-tech-tree-editor-tier-laned-graph-drag-out-port-to-wire-prerequisites: done
-  4-7-per-resource-collection-models-income-streaming-requires-structure-crystal-production: backlog
+  4-7-per-resource-collection-models-income-streaming-requires-structure-crystal-production: done
   4-8-researchsystem-faction-wide-timed-upgrades: backlog
   4-9-research-authoring-command-card-buttons-upgrade-display: backlog
   epic-4-retrospective: optional

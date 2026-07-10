@@ -926,3 +926,36 @@ source_spec: `_bmad-output/implementation-artifacts/spec-4-6-visual-tech-tree-ed
 location: godot/src/CreationSuite/TechTreePanel.cs
 reason: summary: no shared registry backs any CreationSuite panel's CanvasLayer number. evidence: verified `MapGeneratorPanel` and `BuildingCardPanel` both already use `Layer = 13`, and `UnitCardPanel`/`ItemCardPanel`/`PersistenceManifestPanel` all already use `Layer = 11` — pre-existing duplication with no reported incident. Closure: if panel z-order bugs are ever observed, centralize all CreationSuite panel layer numbers into one shared constants class in a dedicated pass covering every panel, not just new ones. Flagged by the Blind Hunter review layer.
 status: open
+
+## Deferred from: code review of story-4.7 (2026-07-09)
+
+### DW-77: `EntityPlacer.PlaceResourceNode` still calls the legacy 4-arg `ResourceNodeStore.Create` overload — a creator placing a resource node through the in-app tool has no way to author `collection_model`/`resource_type`/`requires_structure`/`owner_slot`/`income_period_ticks`; every node placed through the actual creator-facing tool is hard-defaulted to GATHER/Ore/no-gate/Neutral, so today only hand-edited scenario JSON can reach this story's new capability.
+source_spec: `_bmad-output/implementation-artifacts/spec-4-7-per-resource-collection-models-income-streaming-requires-structure-crystal-production.md`
+location: godot/src/UI/EntityPlacer.cs
+reason: summary: the in-app resource-node placement tool cannot author any of the 6 new Story 4.7 fields. evidence: `EntityPlacer.cs` is untouched by this story's diff (pre-existing tool, not regressed) — Story 4.7's own acceptance criteria (epics.md) are phrased entirely at the `ScenarioResourceNode`/sim-engine data surface ("Given a ScenarioResourceNode declaring collection_model=..."), matching FR-15's "as data" framing and the epic's established pattern of separating schema/sim stories (4.1/4.2/4.3/4.4) from later in-app-editor stories (4.5/4.6) — Epic 6's Story 6.4 ("verify entity, start-position, resource-node, and win-condition placement to ship bar") is the documented likely closure point for wiring the placement tool to the new fields. Flagged by the Intent Alignment Auditor.
+status: open
+
+### DW-78: `EntityWorld.GatherState`/`CarryAmount`/`GatherTarget` (a worker's in-flight gather state) remain entirely unfolded from `SimChecksum`, even after this story's extensive checksum-coverage work on `ResourceNodeStore` — a worker's carried-resource load or gather-cycle state can diverge between clients undetected.
+source_spec: `_bmad-output/implementation-artifacts/spec-4-7-per-resource-collection-models-income-streaming-requires-structure-crystal-production.md`
+location: godot/src/Core/SimChecksum.cs, godot/src/Core/EntityWorld.cs
+reason: summary: per-worker gather state (GatherState/CarryAmount/GatherTarget) is not folded into SimChecksum. evidence: pre-existing since `GatheringSystem`'s worker state machine was first built (well before Story 4.7) — this story's fold work was scoped to `ResourceNodeStore` (the net-new mutable node-side state), not the pre-existing worker-side fields, which were never in this story's Code Map. Surfaced incidentally while reviewing this story's checksum-coverage additions. Closure: fold `GatherState`/`CarryAmount`/`GatherTarget` into `SimChecksum`'s per-entity loop in a future desync-hardening pass. Flagged by the Blind Hunter review layer.
+status: open
+
+### DW-79: `GatheringSystem.FindBestNode`'s `requires_structure` gate check (`StructureGateOpen` → `FactionHasStructureNear`) performs a full `BuildingStore` scan per candidate node per Idle worker per tick — an O(nodes × buildings) cost whenever any node is gated, versus the pre-4.7 O(nodes) scan.
+source_spec: `_bmad-output/implementation-artifacts/spec-4-7-per-resource-collection-models-income-streaming-requires-structure-crystal-production.md`
+location: godot/src/Economy/GatheringSystem.cs
+reason: summary: the new requires_structure gate check adds an O(buildings) inner scan to FindBestNode's per-node loop. evidence: bounded by `ResourceNodeStore.MAX_NODES` (64) and `BuildingStore.MAX_BUILDINGS` (64) today — worst case ~4096 ops per Idle worker per tick, negligible at this project's target scale (500-2000 entities @ 30 ticks/sec per root CLAUDE.md), and only Idle workers (not every entity) trigger it. Same "theoretical at current scale" class as the already-accepted DW-59 (TechTreeValidator's recursive DFS). Closure: revisit with a spatial index (mirrors any future SpatialHash-based query) if content scale or node/building counts ever grow enough for this to matter. Flagged by the Blind Hunter review layer.
+status: open
+
+### DW-80: A Streaming worker whose `requires_structure` gate closes permanently (the gating structure destroyed and never rebuilt) stays parked in `GatherState.Gathering` indefinitely, producing zero credit, rather than ever being freed to seek a different eligible node.
+source_spec: `_bmad-output/implementation-artifacts/spec-4-7-per-resource-collection-models-income-streaming-requires-structure-crystal-production.md`
+location: godot/src/Economy/GatheringSystem.cs
+reason: summary: a Streaming worker at a permanently gate-closed node never re-idles to seek another node. evidence: a defensible reading of AC4's "credit is withheld... becomes eligible and begins producing" (same worker, same node resumes — not "worker reassigns elsewhere"), now proven-as-implemented by `RequiresStructure_StreamingGate_ClosesThenReopensMidGather_WithholdsThenResumesCredit` (this story's own review-patch test). Not exercised by any shipped scenario (none author `requires_structure` yet — see DW-77). Closure: a future design ruling on whether a permanently-gated Streaming worker should eventually re-idle and seek a different node (matching GATHER's node-vanishes-mid-cycle re-seek behavior) versus staying parked awaiting the same structure's return. Flagged by the Verification Gap Reviewer and Edge Case Hunter.
+status: open
+
+### DW-81: Follow-up review still recommended for 4-7-per-resource-collection-models-income-streaming-requires-structure-crystal-production after the review budget was exhausted
+origin: review-budget-followup
+source_spec: `spec-4-7-per-resource-collection-models-income-streaming-requires-structure-crystal-production.md`
+severity: low
+reason: Review budget (2 cycles) was exhausted with the story finalized (status: done, verify green) while the review pass kept recommending an independent follow-up. The work was committed by bmad-loop run 20260709-202815-6ca2; this entry preserves the lingering follow-up recommendation for a deliberate later review.
+status: open

@@ -44,8 +44,14 @@ namespace ProjectChimera.Core.Definitions
     {
         /// <summary>Algorithm version. 1 = the retired byte-FNV file hash; 2 = canonical-model hash;
         /// 3 = additionally folds <see cref="ScenarioPlayerSlot.StartCrystal"/> (Story 2.9b follow-up);
-        /// 4 = additionally folds <see cref="ScenarioData.Supply"/>'s resolved values (Story 4.4).</summary>
-        public const int AlgoVersion = 4;
+        /// 4 = additionally folds <see cref="ScenarioData.Supply"/>'s resolved values (Story 4.4);
+        /// 5 = additionally folds <see cref="ScenarioResourceNode"/>'s 6 new Story 4.7 fields (CollectionModel,
+        /// ResourceType, RequiresStructure, RequiresStructureRadius, OwnerSlot, IncomePeriodTicks) — all
+        /// sim-affecting (collection model / resource routing / the requires_structure gate / Income's credit
+        /// destination), so a lobby mismatch on any of them must reject at the handshake instead of desyncing
+        /// in-sim. An omitted field hashes identically to its documented default (every existing scenario is
+        /// unaffected).</summary>
+        public const int AlgoVersion = 5;
 
         private const ulong Offset = 14695981039346656037UL; // FNV-64 offset basis
         private const ulong Prime  = 1099511628211UL;        // FNV-64 prime
@@ -92,13 +98,32 @@ namespace ProjectChimera.Core.Definitions
             foreach (ScenarioResourceNode n in (m.ResourceNodes ?? Array.Empty<ScenarioResourceNode>())
                          .OrderBy(x => Fixed.FromFloat(x.X).Raw).ThenBy(x => Fixed.FromFloat(x.Z).Raw)
                          .ThenBy(x => Fixed.FromFloat(x.Supply).Raw)
-                         .ThenBy(x => Fixed.FromFloat(x.Rate).Raw).ThenBy(x => x.MaxGatherers))
+                         .ThenBy(x => Fixed.FromFloat(x.Rate).Raw).ThenBy(x => x.MaxGatherers)
+                         // Story 4.7 — the 6 new fields complete the total order (class-doc requirement: EVERY
+                         // folded field, not just a partial key). Nullable RequiresStructure sorts via Ordinal
+                         // (null-safe).
+                         .ThenBy(x => x.CollectionModel, StringComparer.Ordinal)
+                         .ThenBy(x => x.ResourceType, StringComparer.Ordinal)
+                         .ThenBy(x => x.RequiresStructure, StringComparer.Ordinal)
+                         .ThenBy(x => Fixed.FromFloat(x.RequiresStructureRadius).Raw)
+                         .ThenBy(x => x.OwnerSlot)
+                         .ThenBy(x => x.IncomePeriodTicks))
             {
                 h = MixInt(h, Fixed.FromFloat(n.X).Raw);
                 h = MixInt(h, Fixed.FromFloat(n.Z).Raw);
                 h = MixInt(h, Fixed.FromFloat(n.Supply).Raw);
                 h = MixInt(h, Fixed.FromFloat(n.Rate).Raw);
                 h = MixInt(h, n.MaxGatherers);
+                // Story 4.7 (v5): the 6 new authored fields.
+                h = MixStr(h, n.CollectionModel);
+                h = MixStr(h, n.ResourceType);
+                // Review patch: normalize "" the SAME way ScenarioApplier.cs does (IsNullOrEmpty -> null) so an
+                // omitted requires_structure and an explicitly-authored "" (both mean "no gate") hash IDENTICALLY —
+                // otherwise two behaviorally-equivalent scenarios would false-positive-mismatch at the lobby handshake.
+                h = MixStr(h, string.IsNullOrEmpty(n.RequiresStructure) ? null : n.RequiresStructure);
+                h = MixInt(h, Fixed.FromFloat(n.RequiresStructureRadius).Raw);
+                h = MixInt(h, n.OwnerSlot);
+                h = MixInt(h, n.IncomePeriodTicks);
             }
 
             foreach (ScenarioBuilding b in (m.Buildings ?? Array.Empty<ScenarioBuilding>())

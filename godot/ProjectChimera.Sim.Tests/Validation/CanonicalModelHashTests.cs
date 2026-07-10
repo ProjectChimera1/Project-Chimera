@@ -63,7 +63,7 @@ namespace ProjectChimera.Sim.Tests.Validation
         }
 
         [Fact]
-        public void AlgoVersion_IsFour() => Assert.Equal(4, CanonicalModelHash.AlgoVersion);
+        public void AlgoVersion_IsFive() => Assert.Equal(5, CanonicalModelHash.AlgoVersion);
 
         [Fact]
         public void ReorderedCollections_HashEqual()
@@ -280,6 +280,138 @@ namespace ProjectChimera.Sim.Tests.Validation
                 {
                     TerrainRef = "", MapBounds = 120f, WinCondition = WinCondition.DestroyAllBuildings,
                     PlayerSlots = slots,
+                };
+            }
+            Assert.Equal(CanonicalModelHash.Compute(Make(false)), CanonicalModelHash.Compute(Make(true)));
+        }
+
+        // ── Story 4.7: the 6 new ScenarioResourceNode fields ──────────────────────────────────────────────
+
+        [Fact]
+        public void DefaultOmittedNodeFields_MatchExplicitDefaults_HashEqual()
+        {
+            // "An all-default-omitted node hashes identically to pre-story content" — a node that never sets the
+            // 6 new fields must hash IDENTICALLY to one that explicitly authors them at their documented defaults.
+            var omitted = BuildModel(false); // BuildModel's nodes never touch the 6 new fields
+            var explicitDefault = BuildModel(false);
+            foreach (var n in explicitDefault.ResourceNodes)
+            {
+                n.CollectionModel = "Gather";
+                n.ResourceType = "Ore";
+                n.RequiresStructure = null;
+                n.RequiresStructureRadius = 15f;
+                n.OwnerSlot = -1;
+                n.IncomePeriodTicks = 30;
+            }
+            Assert.Equal(CanonicalModelHash.Compute(omitted), CanonicalModelHash.Compute(explicitDefault));
+        }
+
+        [Fact]
+        public void ChangedCollectionModel_HashDiffers()
+        {
+            var baseModel = BuildModel(false);
+            var changed = BuildModel(false);
+            changed.ResourceNodes[0].CollectionModel = "Streaming";
+            Assert.NotEqual(CanonicalModelHash.Compute(baseModel), CanonicalModelHash.Compute(changed));
+        }
+
+        [Fact]
+        public void ChangedResourceType_HashDiffers()
+        {
+            var baseModel = BuildModel(false);
+            var changed = BuildModel(false);
+            changed.ResourceNodes[0].ResourceType = "Crystal";
+            Assert.NotEqual(CanonicalModelHash.Compute(baseModel), CanonicalModelHash.Compute(changed));
+        }
+
+        [Fact]
+        public void ChangedRequiresStructure_HashDiffers_NullVsNonNull()
+        {
+            var baseModel = BuildModel(false); // RequiresStructure stays null
+            var changed = BuildModel(false);
+            changed.ResourceNodes[0].RequiresStructure = "watchtower";
+            Assert.NotEqual(CanonicalModelHash.Compute(baseModel), CanonicalModelHash.Compute(changed));
+        }
+
+        [Fact]
+        public void RequiresStructure_NullAndEmptyString_HashIdentically()
+        {
+            // Review patch: ScenarioApplier already normalizes "" -> null ("no gate" either way) — the hash must
+            // agree, or two behaviorally-identical scenarios would false-positive-mismatch at the lobby handshake.
+            var nullModel = BuildModel(false);
+            var emptyModel = BuildModel(false);
+            emptyModel.ResourceNodes[0].RequiresStructure = "";
+            Assert.Equal(CanonicalModelHash.Compute(nullModel), CanonicalModelHash.Compute(emptyModel));
+        }
+
+        [Fact]
+        public void ChangedRequiresStructureRadius_HashDiffers()
+        {
+            var baseModel = BuildModel(false);
+            var changed = BuildModel(false);
+            changed.ResourceNodes[0].RequiresStructureRadius += 5f;
+            Assert.NotEqual(CanonicalModelHash.Compute(baseModel), CanonicalModelHash.Compute(changed));
+        }
+
+        [Fact]
+        public void ChangedOwnerSlot_HashDiffers()
+        {
+            var baseModel = BuildModel(false);
+            var changed = BuildModel(false);
+            changed.ResourceNodes[0].OwnerSlot = 0;
+            Assert.NotEqual(CanonicalModelHash.Compute(baseModel), CanonicalModelHash.Compute(changed));
+        }
+
+        [Fact]
+        public void ChangedIncomePeriodTicks_HashDiffers()
+        {
+            var baseModel = BuildModel(false);
+            var changed = BuildModel(false);
+            changed.ResourceNodes[0].IncomePeriodTicks += 10;
+            Assert.NotEqual(CanonicalModelHash.Compute(baseModel), CanonicalModelHash.Compute(changed));
+        }
+
+        [Theory]
+        [InlineData("collection_model")]
+        [InlineData("resource_type")]
+        [InlineData("requires_structure")]
+        [InlineData("requires_structure_radius")]
+        [InlineData("owner_slot")]
+        [InlineData("income_period_ticks")]
+        public void ResourceNodes_DifferingOnlyInOneStory4_7Field_AreOrderStable(string field)
+        {
+            // Verification-gap patch: the node sort key must extend to a TOTAL order over EVERY one of the 6 new
+            // fields, or array order leaks into the handshake hash (the class-doc requirement). The prior test
+            // pinned only CollectionModel — parameterize across all six so a dropped later ThenBy is caught. Two
+            // nodes identical on all pre-4.7 keys AND every other new field, differing only in `field`: if that
+            // field participates in the sort they order deterministically (reversed input → same hash); if it were
+            // missing from the sort they tie on all keys, the stable OrderBy preserves input order, and the
+            // reversed array would hash differently — failing this test.
+            static void SetField(ScenarioResourceNode n, string f, bool high)
+            {
+                switch (f)
+                {
+                    case "collection_model":          n.CollectionModel = high ? "Streaming" : "Gather"; break;
+                    case "resource_type":             n.ResourceType = high ? "Crystal" : "Ore"; break;
+                    case "requires_structure":        n.RequiresStructure = high ? "watchtower" : "armory"; break;
+                    case "requires_structure_radius": n.RequiresStructureRadius = high ? 20f : 10f; break;
+                    case "owner_slot":                n.OwnerSlot = high ? 0 : -1; break;
+                    case "income_period_ticks":       n.IncomePeriodTicks = high ? 40 : 20; break;
+                }
+            }
+            ScenarioData Make(bool reversed)
+            {
+                var a = new ScenarioResourceNode { X = 10f, Z = 10f, Supply = 400f, Rate = 5f, MaxGatherers = 4 };
+                var b = new ScenarioResourceNode { X = 10f, Z = 10f, Supply = 400f, Rate = 5f, MaxGatherers = 4 };
+                SetField(a, field, false);
+                SetField(b, field, true);
+                var nodes = new[] { a, b };
+                if (reversed) System.Array.Reverse(nodes);
+                return new ScenarioData
+                {
+                    TerrainRef = "", MapBounds = 120f, WinCondition = WinCondition.DestroyAllBuildings,
+                    PlayerSlots = new[] { new ScenarioPlayerSlot { Slot = 0, FactionJson = "res://a.json" } },
+                    ResourceNodes = nodes,
                 };
             }
             Assert.Equal(CanonicalModelHash.Compute(Make(false)), CanonicalModelHash.Compute(Make(true)));

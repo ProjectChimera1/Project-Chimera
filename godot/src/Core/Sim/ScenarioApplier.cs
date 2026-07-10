@@ -111,12 +111,41 @@ namespace ProjectChimera.Core.Sim
                     Fixed.FromFloat(slot.BaseX), Fixed.Zero, Fixed.FromFloat(slot.BaseZ)));
             }
 
-            // ── 2. Resource nodes ─────────────────────────────────────────────
+            // ── 2. Resource nodes (Story 4.7: collection model / resource type / requires_structure / owner / income) ─
             foreach (var node in s.ResourceNodes ?? System.Array.Empty<ScenarioResourceNode>())
             {
                 var pos = new FixedVec3(Fixed.FromFloat(node.X), Fixed.Zero, Fixed.FromFloat(node.Z));
-                _host.Nodes.Create(pos, Fixed.FromFloat(node.Supply),
-                                   Fixed.FromFloat(node.Rate), node.MaxGatherers);
+
+                // owner_slot -1 (unset — the default for GATHER/Streaming, which credit the gathering worker's own
+                // faction) or out-of-range has no valid Faction mapping; degrade to Neutral rather than an unchecked
+                // (Faction)(slot+1) OOB write (mirrors the InFactionRange guard the units/buildings loops use).
+                // Neutral is a safe sentinel here: it is consulted only by the Income pass (validator requires
+                // owner_slot when collection_model=Income) and the requires_structure gate, both of which simply
+                // never match a Neutral-owned structure/credit target — no OOB, no silent wrong-faction credit.
+                Faction ownerFaction = Faction.Neutral;
+                if (node.OwnerSlot >= 0)
+                {
+                    var candidate = (Faction)(node.OwnerSlot + 1);
+                    if (InFactionRange(candidate))
+                    {
+                        ownerFaction = candidate;
+                    }
+                    else
+                    {
+                        // Review patch: match the diagnostic the units/buildings loops already emit for the
+                        // identical out-of-range-slot condition (only shadow-mode reachable — the validator
+                        // requires a declared, in-range owner_slot whenever collection_model=Income).
+                        _log.Warn($"[ScenarioApplier] resource_node.owner_slot={node.OwnerSlot} maps to an out-of-range faction — degraded to Neutral.");
+                    }
+                }
+
+                _host.Nodes.Create(pos, Fixed.FromFloat(node.Supply), Fixed.FromFloat(node.Rate), node.MaxGatherers,
+                    ParseCollectionModel(node.CollectionModel),
+                    ParseResourceType(node.ResourceType),
+                    string.IsNullOrEmpty(node.RequiresStructure) ? null : node.RequiresStructure,
+                    Fixed.FromFloat(node.RequiresStructureRadius),
+                    ownerFaction,
+                    node.IncomePeriodTicks);
             }
 
             // ── 3. Buildings ──────────────────────────────────────────────────
@@ -326,6 +355,24 @@ namespace ProjectChimera.Core.Sim
             "SiegeWorkshop" => BuildingType.SiegeWorkshop,
             "Aviary"        => BuildingType.Aviary,        // Story 2.8 — else a scenario-placed Aviary silently mis-places as a CommandCenter.
             _               => BuildingType.CommandCenter,
+        };
+
+        /// <summary>Story 4.7 — parse a resource_node collection_model string (mirrors <see cref="ParseBuildingType"/>'s
+        /// switch style). Unknown strings are rejected at <see cref="ScenarioValidator"/>, so only the closed
+        /// vocabulary ever reaches here; the default arm exists for shadow-mode-reachable invalid content.</summary>
+        private static ResourceCollectionModel ParseCollectionModel(string model) => model switch
+        {
+            "Income"    => ResourceCollectionModel.Income,
+            "Streaming" => ResourceCollectionModel.Streaming,
+            _           => ResourceCollectionModel.Gather,
+        };
+
+        /// <summary>Story 4.7 — parse a resource_node resource_type string (mirrors <see cref="ParseBuildingType"/>'s
+        /// switch style). Unknown strings are rejected at <see cref="ScenarioValidator"/>.</summary>
+        private static ResourceKind ParseResourceType(string type) => type switch
+        {
+            "Crystal" => ResourceKind.Crystal,
+            _         => ResourceKind.Ore,
         };
     }
 }

@@ -45,18 +45,22 @@ namespace ProjectChimera.Sim.Tests.Meta
         //    same commit as the source change — that edit is the "did the siblings + goldens move too?" checkpoint.
 
         /// <summary>Runtime desync-checksum algorithm version. Bump ⇒ re-baseline ALL goldens (same commit).
+        /// v13 (Story 4.7): first-ever fold of ResourceNodeStore (SupplyRemaining/Active/AssignedGatherers) plus the
+        /// new mutable IncomeTicksElapsed counter. v12 (Story 3.15): folded the mutable ItemStore + per-hero inventory.
         /// v11 (Story 3.13): folded per-entity XpBounty + the mutable HeroStore state (Level/Xp/GrowthStacks + reserved
         /// 3.14 revival fields). v10 (Story 3.12): folded per-entity Delivery + ProjectileSpeed.
         /// v9 (Story 2.12): folded the per-entity shift-queue order ring (count-driven) + the per-building rally point
         /// (D-1). v8 (Story 2.6): folded per-entity EffectiveArmor (the buffable armor stat). v7 (Story 2.4a): folded
         /// per-entity AbilityCooldownTicks (count-driven). v6 (Story 2.2b): Effective* / Energy / StatusFlagsOf +
         /// the ModifierStore instance state.</summary>
-        private const int ExpectedSimChecksumAlgoVersion = 12;
+        private const int ExpectedSimChecksumAlgoVersion = 13;
 
         /// <summary>Load-time canonical start-state hash algorithm version (lobby handshake value).
         /// v3 (Story 2.9b follow-up): folded ScenarioPlayerSlot.StartCrystal (sim-affecting per-slot start-state).
-        /// v4 (Story 4.4): folded ScenarioData.Supply's resolved values (sim-affecting supply/cap config).</summary>
-        private const int ExpectedCanonicalModelHashAlgoVersion = 4;
+        /// v4 (Story 4.4): folded ScenarioData.Supply's resolved values (sim-affecting supply/cap config).
+        /// v5 (Story 4.7): folded ScenarioResourceNode's 6 new fields (collection model / resource type /
+        /// requires_structure gate / owner slot / income period — all sim-affecting).</summary>
+        private const int ExpectedCanonicalModelHashAlgoVersion = 5;
 
         /// <summary>Load-time canonical START-STATE hash algorithm version (Story 3.2, AC3) — a NEW, distinct FNV-64
         /// over the full init state = the <see cref="CanonicalModelHash"/> content seed PLUS the HeroStore rows.

@@ -401,8 +401,10 @@ namespace ProjectChimera.Sim.Tests.Validation
         [Fact]
         public void UnknownCollectionModel_IsRejected_LocatingTheIndex()
         {
-            // Review patch: collection_model was authored-but-unvalidated; a typo would load clean and only
-            // surface once Story 4.7 tried to consume it. Validate against the closed set now instead.
+            // Review patch: collection_model was authored-but-unvalidated; a typo would load clean and go
+            // undetected, since this per-resource-ID field stays inert (Story 4.7 wired the field of the same name
+            // on ScenarioResourceNode instead — see ResourceDefinition.CollectionModel's doc comment). Validate
+            // against the closed set now instead, so a typo is rejected at import either way.
             var m = ValidModel();
             m.Resources = new[] { new ResourceDefinition { Id = "gems", CollectionModel = "Gathr" } };
             ValidationResult r = NewValidator().Validate(m);

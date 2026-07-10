@@ -108,21 +108,21 @@ namespace ProjectChimera.Sim.Tests.Golden
         /// hash still moves.)
         /// </summary>
         [Fact]
-        public void KnownWorldState_ProducesPinnedV12Hash()
+        public void KnownWorldState_ProducesPinnedV13Hash()
         {
-            // Algorithm version must be exactly 12 (Story 3.15's ItemStore + inventory fold). If this fails, the const below is stale.
-            Assert.Equal(12, SimChecksum.AlgoVersion);
+            // Algorithm version must be exactly 13 (Story 4.7's first-ever ResourceNodeStore fold). If this fails, the const below is stale.
+            Assert.Equal(13, SimChecksum.AlgoVersion);
 
             uint actual = ComputeKnownStateHash();
 
-            // ── Pinned v12 hash for the fixed world built by ComputeKnownStateHash() ──────────────────────────
+            // ── Pinned v13 hash for the fixed world built by ComputeKnownStateHash() ──────────────────────────
             // An intentional SimChecksum algorithm change must update this value AND bump SimChecksum.AlgoVersion.
-            // The known-state world has NO heroes (empty HeroStore → no inventory folds) and NO items (empty ItemStore →
-            // one Mix(0) item-count), so the v12 fold moves the hash from v11 purely by that single Mix(0) item-count.
-            const uint ExpectedV12Hash = 0xAFB46F6A; // recorded from a green v12 run; re-pin only on an intentional algo change
-            Assert.True(actual == ExpectedV12Hash,
-                $"Known-state v12 checksum changed: expected 0x{ExpectedV12Hash:X8}, actual 0x{actual:X8}. " +
-                $"If this is an INTENTIONAL algorithm change, re-pin ExpectedV12Hash to 0x{actual:X8} and bump " +
+            // The known-state world now includes an EMPTY ResourceNodeStore (no nodes → one Mix(0) node-count), so
+            // the v13 fold moves the hash from v12 purely by that single Mix(0) node-count.
+            const uint ExpectedV13Hash = 0x19F3880A; // recorded from a green v13 run; re-pin only on an intentional algo change
+            Assert.True(actual == ExpectedV13Hash,
+                $"Known-state v13 checksum changed: expected 0x{ExpectedV13Hash:X8}, actual 0x{actual:X8}. " +
+                $"If this is an INTENTIONAL algorithm change, re-pin ExpectedV13Hash to 0x{actual:X8} and bump " +
                 $"SimChecksum.AlgoVersion. If not, you broke the deterministic checksum — investigate.");
         }
 
@@ -323,6 +323,49 @@ namespace ProjectChimera.Sim.Tests.Golden
             // Installing a modifier on a live entity MUST move the hash; advancing a tick (which changes
             // remainingTicks/ticksUntilPeriod) MUST move it again. A no-move means store state escaped the fold.
             AssertModifierStoreFoldedIntoChecksum(buildings, resources, registry);
+
+            // ── v13 (Story 4.7): the mutable ResourceNodeStore is folded (first-ever fold of this store) ──
+            AssertResourceNodeStoreFoldedIntoChecksum(registry);
+        }
+
+        /// <summary>
+        /// Story 4.7 (v13) coverage teeth: the mutable <see cref="ResourceNodeStore"/> state must move the
+        /// checksum — the FIRST-EVER fold of this store. Creates a node, then mutates each folded field
+        /// (SupplyRemaining / Active / AssignedGatherers / IncomeTicksElapsed) in turn — each MUST move the hash.
+        /// A no-move means a folded node field escaped <see cref="SimChecksum"/> (a silent desync surface, since
+        /// GatheringSystem mutates all four mid-match). Lives outside EntityWorld/HeroStore/ItemStore, so it needs
+        /// its own teeth (passed as the trailing Compute param), mirroring <see cref="AssertItemStoreFoldedIntoChecksum"/>.
+        /// </summary>
+        private static void AssertResourceNodeStoreFoldedIntoChecksum(FactionRegistry registry)
+        {
+            var world     = new EntityWorld();          // empty — isolates the node contribution
+            var resources = new ResourceStore(Fixed.Zero);
+            var buildings = new BuildingStore();
+            var nodes     = new ResourceNodeStore();
+
+            uint empty = SimChecksum.Compute(world, buildings, resources, registry, null, null, null, nodes);
+
+            int n = nodes.Create(new FixedVec3(Fixed.FromInt(5), Fixed.Zero, Fixed.FromInt(-4)),
+                                 Fixed.FromInt(100), Fixed.FromInt(5), maxGatherers: 4);
+            uint created = SimChecksum.Compute(world, buildings, resources, registry, null, null, null, nodes);
+            Assert.True(empty != created,
+                "Creating a resource node did NOT move the checksum — the ResourceNodeStore live count / rows are not folded into SimChecksum (v13).");
+
+            nodes.SupplyRemaining[n] = Fixed.FromInt(50);
+            uint supplyMoved = SimChecksum.Compute(world, buildings, resources, registry, null, null, null, nodes);
+            Assert.True(created != supplyMoved, "ResourceNodeStore.SupplyRemaining is NOT folded into SimChecksum (v13).");
+
+            nodes.Active[n] = false;
+            uint activeMoved = SimChecksum.Compute(world, buildings, resources, registry, null, null, null, nodes);
+            Assert.True(supplyMoved != activeMoved, "ResourceNodeStore.Active is NOT folded into SimChecksum (v13).");
+
+            nodes.AssignedGatherers[n] = 2;
+            uint assignedMoved = SimChecksum.Compute(world, buildings, resources, registry, null, null, null, nodes);
+            Assert.True(activeMoved != assignedMoved, "ResourceNodeStore.AssignedGatherers is NOT folded into SimChecksum (v13).");
+
+            nodes.IncomeTicksElapsed[n] = 7;
+            uint incomeMoved = SimChecksum.Compute(world, buildings, resources, registry, null, null, null, nodes);
+            Assert.True(assignedMoved != incomeMoved, "ResourceNodeStore.IncomeTicksElapsed is NOT folded into SimChecksum (v13).");
         }
 
         /// <summary>
@@ -571,7 +614,8 @@ namespace ProjectChimera.Sim.Tests.Golden
             // pin reflects the production fold path (null would hash identically via the ?? 0 count, but be explicit).
             // v11 (Story 3.13): pass an EMPTY HeroStore (no heroes → Mix(0) hero-count) — same explicit-production-path rationale.
             // v12 (Story 3.15): pass an EMPTY ItemStore (no items → Mix(0) item-count) — same explicit-production-path rationale.
-            return SimChecksum.Compute(world, buildings, resources, new FactionRegistry(2), new ModifierStore(world), new HeroStore(), new ItemStore());
+            // v13 (Story 4.7): pass an EMPTY ResourceNodeStore (no nodes → Mix(0) node-count) — same rationale.
+            return SimChecksum.Compute(world, buildings, resources, new FactionRegistry(2), new ModifierStore(world), new HeroStore(), new ItemStore(), new ResourceNodeStore());
         }
 
         /// <summary>

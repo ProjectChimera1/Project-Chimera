@@ -33,7 +33,11 @@ namespace ProjectChimera.Sim.Tests.Golden
         /// so this golden COULD later join the WSL cross-platform gate (unlike the AI-active golden). Update it
         /// INTENTIONALLY (alongside a deliberate generator/format change), never to "fix" a red run.
         /// </summary>
-        private const uint GoldenHash = 0xB46313CAu;
+        // Re-recorded for Story 4.7: ScenarioResourceNode gained 6 new always-serialized fields (collection_model,
+        // resource_type, requires_structure_radius, owner_slot, income_period_ticks — requires_structure omits when
+        // null), so every generated node's JSON grew, moving this JSON-format-drift tripwire (an intentional,
+        // additive schema change — not a "fix a red run" edit).
+        private const uint GoldenHash = 0xBA75FB13u;
 
         [Fact]
         public void SameSeed_TwiceProducesByteIdenticalSerialization_AndMatchesGoldenHash()

@@ -56,6 +56,10 @@ namespace ProjectChimera.Core.Definitions
         // silently defaulting them to CommandCenter the way the applier does (D4).
         private static readonly string[] _buildingTypeNames = Enum.GetNames(typeof(BuildingType));
 
+        // Story 4.7: the closed resource_type vocabulary (mirrors _buildingTypeNames — small, hand-authored,
+        // allocated once). Only Ore/Crystal have real ResourceStore-backed balances today.
+        private static readonly string[] _resourceTypeNames = { "Ore", "Crystal" };
+
         /// <summary>
         /// Validate a scenario model. Returns <see cref="ValidationResult.Pass"/> with a minted
         /// <see cref="Validated{T}"/> on success, or <see cref="ValidationResult.Fail"/> with a located error on
@@ -136,6 +140,37 @@ namespace ProjectChimera.Core.Definitions
                 if (n.MaxGatherers < 0)
                     return ValidationResult.Fail(
                         $"scenario.resource_nodes[{i}].max_gatherers={n.MaxGatherers} must be >= 0.", validated);
+
+                // ── Story 4.7: collection model / resource type / requires_structure gate / owner slot / income period ──
+                // collection_model reuses the Story 4.3 closed vocabulary (ResourceDefinition.KnownCollectionModels)
+                // so the two authoring surfaces never drift. resource_type is its own small closed set — only Ore/
+                // Crystal have real ResourceStore-backed balances today.
+                if (Array.IndexOf(ResourceDefinition.KnownCollectionModels, n.CollectionModel) < 0)
+                    return ValidationResult.Fail(
+                        $"scenario.resource_nodes[{i}].collection_model='{n.CollectionModel}' is not a known collection model " +
+                        $"({string.Join("/", ResourceDefinition.KnownCollectionModels)}).", validated);
+                if (!IsKnownResourceType(n.ResourceType))
+                    return ValidationResult.Fail(
+                        $"scenario.resource_nodes[{i}].resource_type='{n.ResourceType}' is not a known resource type " +
+                        $"({string.Join("/", _resourceTypeNames)}).", validated);
+                string? se = CheckNonNeg($"scenario.resource_nodes[{i}].requires_structure_radius", n.RequiresStructureRadius)
+                          ?? CheckNonNeg($"scenario.resource_nodes[{i}].income_period_ticks", n.IncomePeriodTicks);
+                if (se != null) return ValidationResult.Fail(se, validated);
+                // owner_slot is only load-bearing for Income (no assigned worker to infer a faction from) — required
+                // AND must reference a declared player_slot, exactly like the buildings/units slot-reference check
+                // above. Inert (unvalidated) for GATHER/Streaming, which credit the gathering worker's own faction.
+                if (n.CollectionModel == "Income" && !declared.Contains(n.OwnerSlot))
+                    return ValidationResult.Fail(
+                        $"scenario.resource_nodes[{i}].owner_slot={n.OwnerSlot} references no declared player_slot " +
+                        $"(required when collection_model=Income).", validated);
+                // Review patch: income_period_ticks=0 passed the bare non-negative check above but makes
+                // IncomeTicksElapsed's `< IncomePeriodTicks` comparison true on tick 1 forever — a degenerate
+                // "credit every tick" mode, not the intended periodic trickle. Only meaningful (and only gated) for
+                // Income; GATHER/Streaming ignore the field entirely, so a 0 there is inert, not an authoring error.
+                if (n.CollectionModel == "Income" && n.IncomePeriodTicks <= 0)
+                    return ValidationResult.Fail(
+                        $"scenario.resource_nodes[{i}].income_period_ticks={n.IncomePeriodTicks} must be > 0 " +
+                        $"(required when collection_model=Income).", validated);
             }
 
             // ── Buildings: in-bounds position, slot references a declared PlayerSlot, known building type ──
@@ -404,6 +439,15 @@ namespace ProjectChimera.Core.Definitions
             if (type is null) return false;
             for (int i = 0; i < _buildingTypeNames.Length; i++)
                 if (_buildingTypeNames[i] == type) return true;
+            return false;
+        }
+
+        /// <summary>True only for an EXACT resource_type name (case-sensitive) — "Ore" or "Crystal".</summary>
+        private static bool IsKnownResourceType(string? type)
+        {
+            if (type is null) return false;
+            for (int i = 0; i < _resourceTypeNames.Length; i++)
+                if (_resourceTypeNames[i] == type) return true;
             return false;
         }
 

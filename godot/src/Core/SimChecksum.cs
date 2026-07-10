@@ -45,6 +45,9 @@ namespace ProjectChimera.Core
     ///     pops the head on completion) → runtime-mutable sim truth. Count-driven (only populated slots hashed).
     ///   - BuildingStore rally point: per building, HasRallyPoint then RallyPoint X/Z — added v9 (Story 2.12, D-1), now
     ///     that rally is wire-driven (UnitCommand.SetRally) and read in-tick by SpawnTrainedUnit (mutable sim truth).
+    ///   - ResourceNodeStore mutable state: live count, then ascending node id — SupplyRemaining, Active,
+    ///     AssignedGatherers, IncomeTicksElapsed — added v13 (Story 4.7), the FIRST-EVER fold of this store (a
+    ///     pre-existing gap; see AlgoVersion's doc). A null store folds Mix(0).
     ///
     /// Versioned by <see cref="AlgoVersion"/> — bump on any change to the hashed set/order
     /// (forces an intentional golden re-baseline). MatchStats is deliberately NOT hashed
@@ -114,8 +117,17 @@ namespace ProjectChimera.Core
         ///        legacy callers agree). All int/Fixed.Raw → cross-platform. One scheduled re-baseline of ALL goldens
         ///        (existing goldens have no items + empty inventories, so the pin moves purely by the added Mix(0)
         ///        item-count + the INVENTORY_SLOTS Mix(-1) empty-slot refs per hero — of which existing goldens have none).
+        ///   v13 — Story 4.7: <see cref="ResourceNodeStore"/> is folded into the checksum for the FIRST TIME (a
+        ///        pre-existing desync-detection gap, not caused by this story — see the story's Design Notes) in the
+        ///        SAME bump that adds the new mutable <c>IncomeTicksElapsed</c> counter (Income's periodic-credit
+        ///        tick countdown), so a second immediate re-baseline is avoided. Fold: live count, then ascending
+        ///        node id: SupplyRemaining.Raw, Active (int), AssignedGatherers, IncomeTicksElapsed — all int/
+        ///        Fixed.Raw → cross-platform. A null store folds a single Mix(0) count (dormant/legacy callers agree
+        ///        with an empty store). One scheduled re-baseline of ALL goldens (every existing golden has at least
+        ///        one node, so the pin moves by the newly-folded per-node state even though GATHER behavior itself
+        ///        is unchanged).
         /// </summary>
-        public const int AlgoVersion = 12;
+        public const int AlgoVersion = 13;
 
         /// <summary>
         /// Compute a full-state checksum for desync detection.
@@ -123,7 +135,7 @@ namespace ProjectChimera.Core
         /// </summary>
         public static uint Compute(EntityWorld world, BuildingStore buildings, ResourceStore resources,
                                    FactionRegistry factions, ModifierStore? modifiers = null, HeroStore? heroes = null,
-                                   ItemStore? items = null)
+                                   ItemStore? items = null, ResourceNodeStore? nodes = null)
         {
             // Contract guard for the registry param added in Story 1.3a: a future direct caller (e.g. the
             // 1.9a/9.1 server checksum collector) gets a clear error instead of an opaque NRE in the Ore loop.
@@ -346,6 +358,29 @@ namespace ProjectChimera.Core
                     hash = Mix(hash, items.PosZ[i].Raw);
                     hash = Mix(hash, items.Held[i] ? 1 : 0);
                     hash = Mix(hash, items.CarrierHeroSlot[i]);
+                }
+            }
+            else
+            {
+                hash = Mix(hash, 0); // null store ≡ empty: fold an identical count-0 mix
+            }
+
+            // ── ResourceNodeStore mutable state (v13, Story 4.7) — live count, then ascending node id ──
+            // The FIRST-EVER fold of this store (a pre-existing desync-detection gap, not caused by this story —
+            // see the AlgoVersion doc). Nodes are append-only (no recycling), so 0..Count IS every node, in stable
+            // ascending-id order. Folds the pre-existing static-ish fields (SupplyRemaining/Active/AssignedGatherers)
+            // alongside the new mutable IncomeTicksElapsed (Income's periodic-credit countdown) in the SAME bump.
+            // All int/Fixed.Raw → cross-platform. A null store folds a single Mix(0) count (dormant/legacy callers
+            // agree with an empty store).
+            if (nodes != null)
+            {
+                hash = Mix(hash, nodes.Count);
+                for (int n = 0; n < nodes.Count; n++)
+                {
+                    hash = Mix(hash, nodes.SupplyRemaining[n].Raw);
+                    hash = Mix(hash, nodes.Active[n] ? 1 : 0);
+                    hash = Mix(hash, nodes.AssignedGatherers[n]);
+                    hash = Mix(hash, nodes.IncomeTicksElapsed[n]);
                 }
             }
             else

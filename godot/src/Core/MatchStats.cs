@@ -60,7 +60,10 @@ namespace ProjectChimera.Core
 
         // ── Economy tracking ──────────────────────────────────────────────────
 
-        /// <summary>Record ore deposited by a worker returning to base.</summary>
+        /// <summary>Record ore credited to a faction's balance from a resource node — a GATHER worker's deposit on
+        /// arrival at base, or (Story 4.7) a Streaming node's credit-in-place, or an Income node's periodic trickle.
+        /// Ore-only: Crystal-type node credits do not call this (mirrors every other AddCrystal call site — none of
+        /// them record stats either).</summary>
         /// <param name="amount">Amount in Fixed-point units — converted to int for storage.</param>
         public void RecordOreMined(Faction faction, Fixed amount)
         {

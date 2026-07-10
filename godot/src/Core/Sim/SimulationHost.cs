@@ -166,7 +166,7 @@ namespace ProjectChimera.Core.Sim
             _systems = new ISimSystem[]
             {
                 BuildSys,                                                                 // [0] BuildingSystem    (Economy)
-                new GatheringSystem(Nodes, Resources, MatchStats),                        // [1] GatheringSystem   (Economy)
+                new GatheringSystem(Nodes, Resources, Buildings, MatchStats),             // [1] GatheringSystem   (Economy) — Buildings (4.7): requires_structure gate
                 new MovementSystem(),                                                     // [2] MovementSystem    (Navigation)
                 // ── Story 2.12 shift-queue advance. At index 3, immediately AFTER MovementSystem so a queued
                 //    movement order's arrival is detected fresh THIS tick, and BEFORE AbilityCastSystem so a popped
@@ -205,7 +205,7 @@ namespace ProjectChimera.Core.Sim
             };
 
             _loop = new SimulationLoop(World, _systems);
-            _loop.EnableChecksums(Buildings, Resources, checksumFactions, Modifiers, Heroes, Items); // fold modifier state (v6) + ability cooldowns (v7) + mutable HeroStore (v11) + ItemStore/inventory (v12)
+            _loop.EnableChecksums(Buildings, Resources, checksumFactions, Modifiers, Heroes, Items, Nodes); // fold modifier state (v6) + ability cooldowns (v7) + mutable HeroStore (v11) + ItemStore/inventory (v12) + ResourceNodeStore (v13)
 
             // The sim spine's only host-side log in 1.8a: a one-shot construction diagnostic through the
             // injected seam. NullLogSink no-ops it (tests/server → zero effect on the golden); GodotLogSink

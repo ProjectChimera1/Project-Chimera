@@ -531,7 +531,13 @@ namespace ProjectChimera.Core
         // --- Gatherer data (workers only; Inactive for all other units) ---
         public readonly GatherState[] GatherState;
         public readonly int[]         GatherTarget;   // ResourceNodeStore index (-1 = none)
-        public readonly Fixed[]       CarryAmount;    // Current ore being carried
+        public readonly Fixed[]       CarryAmount;    // Current amount being carried
+        // Story 4.7 (follow-up review patch): which resource the current carry is (Ore/Crystal). Snapshotted at
+        // gather time and dispatched at deposit, independent of GatherTarget — BuildingSystem clears GatherTarget
+        // when a Build command interrupts a returning worker, so resolving the deposited kind from GatherTarget
+        // would mis-credit a Crystal load as Ore. Transient carry state (paired with CarryAmount); NOT folded into
+        // SimChecksum and NOT snapshot residue, exactly like CarryAmount.
+        public readonly ResourceKind[] CarryResourceType;
         public readonly Fixed[]       CarryCapacity;  // Max carry per trip
 
         // --- Worker construction ---
@@ -644,6 +650,7 @@ namespace ProjectChimera.Core
             GatherState    = new GatherState[MAX_ENTITIES];
             GatherTarget   = new int[MAX_ENTITIES];
             CarryAmount    = new Fixed[MAX_ENTITIES];
+            CarryResourceType = new ResourceKind[MAX_ENTITIES]; // Story 4.7 — defaults to Ore (0)
             CarryCapacity  = new Fixed[MAX_ENTITIES];
             BuildTarget    = new int[MAX_ENTITIES];
 
@@ -777,6 +784,7 @@ namespace ProjectChimera.Core
             GatherState[id]   = Core.GatherState.Inactive;
             GatherTarget[id]  = -1;
             CarryAmount[id]   = Fixed.Zero;
+            CarryResourceType[id] = ResourceKind.Ore; // Story 4.7 — recycled slot must not inherit the prior occupant's carry kind
             CarryCapacity[id] = Fixed.Zero;
             BuildTarget[id]   = -1;
 
@@ -1033,7 +1041,7 @@ namespace ProjectChimera.Core
             Array.Clear(AbilityCount);          Array.Clear(PendingCastSlot);       Array.Clear(PendingCastTarget);
             Array.Clear(AuraAbilityIndex);      Array.Clear(OnHitAbilityIndex);     Array.Clear(SelfPassiveAbilityIndex);
             Array.Clear(HeroIndex);             Array.Clear(GatherState);           Array.Clear(GatherTarget);
-            Array.Clear(CarryAmount);           Array.Clear(CarryCapacity);         Array.Clear(BuildTarget);
+            Array.Clear(CarryAmount);           Array.Clear(CarryResourceType);     Array.Clear(CarryCapacity);         Array.Clear(BuildTarget);
             Array.Clear(_freeList);
 
             // Re-apply the ctor sentinel fills (a default 0 would falsely alias slot/id 0 for these).
