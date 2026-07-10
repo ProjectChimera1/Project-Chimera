@@ -2324,13 +2324,13 @@ So that I can author the same logic visually as T1/T2/T4, interoperating on one 
 
 **Acceptance Criteria:**
 
-**Given** the graph-canonical IR shipped since 7.1 (no GraphEdit/Godot types in the IR) **When** a GraphEdit view is built that renders nodes, typed exec/data edges (wire color = type), variables side table, and routes the load-time validator errors onto the offending node **Then** a round-trip T2 -> T3 -> T2 preserves the IR by persistent-node-id equality with NO content migration step **And** full bidirectional editing is the IR-native tier; the T2 sentence editor shows a non-destructive read-only 'edit in graph view' fallback for graph-only constructs
+**Given** the graph-canonical IR shipped since 7.2 (no GraphEdit/Godot types in the IR) **When** a GraphEdit view is built that renders nodes, typed exec/data edges (wire color = type), variables side table, and routes the load-time validator errors onto the offending node **Then** a round-trip T2 -> T3 -> T2 preserves the IR by persistent-node-id equality with NO content migration step **And** full bidirectional editing is the IR-native tier; the T2 sentence editor shows a non-destructive read-only 'edit in graph view' fallback for graph-only constructs
 
 **Given** T3 node positions and other authoring affordances **When** the graph is saved **Then** they persist in the excluded _editor annotation channel (verbatim) and are NOT in the scenarioHash, so a cosmetic layout move yields the same hash **And** if GraphEdit proves inadequate it can be swapped for a custom view without touching the IR or the other three tiers
 
 _Covers: FR-28, AR-10, AR-21, UX-DR79, UX-DR57. Depends on: 7.8._
 
-> D2 D7s additive T3 view + D3.7 annotation channel. FR-28 (T3 tier on the one IR), UX-DR57 graph wiring, UX-DR79 node graph. GraphEdit is 'Experimental' (briefing residual risk) - mitigated by editor-agnostic IR + replaceable view. Depends on 7.8 (renders errors from the validator gate) and the graph IR from 7.1.
+> D2 D7s additive T3 view + D3.7 annotation channel. FR-28 (T3 tier on the one IR), UX-DR57 graph wiring, UX-DR79 node graph. GraphEdit is 'Experimental' (briefing residual risk) - mitigated by editor-agnostic IR + replaceable view. Depends on 7.8 (renders errors from the validator gate) and the graph IR from 7.2.
 
 ### Story 7.13: Win-condition preset templates (T1) + sim-layer WinConditionSystem
 
