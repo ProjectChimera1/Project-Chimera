@@ -30,6 +30,14 @@ budget.
 - Story 4.8c: ResearchStore SimChecksum fold + golden re-baseline
 - Story 4.9: Research authoring, command-card research buttons, and upgrade display
 
+> **Status correction (2026-07-10):** bmad-loop committed Story **4.8a**'s completed work
+> (`ResearchDefinition` / `ResearchValidator` + tests + faction integration) under the wrong label —
+> commit `0b2f44e` is titled *"story 4-9 ... implemented and reviewed"* but its contents are 4.8a, not 4.9.
+> Ground truth in the codebase: **4.8a = done** (code present, review-pass applied); **4.8b, 4.8c, 4.9 =
+> not started** (no `ResearchSystem`, no `ResearchStore`, no research in `SimChecksum`, no command-card
+> research UI — 4.9's dev-auto blocked on the missing 4.8 sim). sprint-status.yaml corrected accordingly.
+> Next-up order: **4.8b → 4.8c → 4.9**.
+
 ## Requirements & Constraints
 
 - Buildings must be creatable purely as data (stats, construction cost/time, supply bonus, produced unit
