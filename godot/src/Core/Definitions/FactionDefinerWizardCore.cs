@@ -174,6 +174,65 @@ namespace ProjectChimera.Core.Definitions
         }
 
         /// <summary>
+        /// Clear a dangling <see cref="FactionDefinition.HeroUnitId"/> — one that no longer names any unit in
+        /// <paramref name="draft"/>'s <see cref="FactionDefinition.Units"/> — so a hero pick that survives a later
+        /// roster unpick (Simple mode: Back → Roster → uncheck the hero's unit) or an Advanced raw-JSON edit can
+        /// never persist a reference to a unit that isn't actually in the faction (Story 5.6, Spec Change Log,
+        /// review pass 1). Null-guards <paramref name="draft"/> and <paramref name="draft"/>.<see
+        /// cref="FactionDefinition.Units"/> (a raw-JSON-deserialized def, or a hand-built one, can carry a null
+        /// <c>Units</c> list) before scanning — never throws. Returns true when a clear actually happened (i.e.
+        /// <see cref="FactionDefinition.HeroUnitId"/> was non-empty and did not match any unit's <c>Id</c>); false
+        /// when there was nothing to clear (already null/empty, or it still resolves).
+        /// </summary>
+        public static bool ClearStaleHeroReference(FactionDefinition? draft)
+        {
+            if (draft == null) return false;
+            if (string.IsNullOrEmpty(draft.HeroUnitId)) return false;
+
+            bool stillExists = draft.Units != null && draft.Units.Any(u => u != null && u.Id == draft.HeroUnitId);
+            if (stillExists) return false;
+
+            draft.HeroUnitId = null;
+            return true;
+        }
+
+        /// <summary>
+        /// Advanced-mode Finish (Story 5.6, FR-18): parse <paramref name="json"/> into a <see cref="FactionDefinition"/>
+        /// via <see cref="FactionDefinition.JsonOptions"/> (the same lenient options — comments/trailing commas
+        /// tolerated — every other loader in this codebase uses), then delegate UNCHANGED to <see cref="TryFinish"/>
+        /// — the Advanced raw-JSON pane runs through the exact same <see cref="FactionValidator.ValidateComplete"/>
+        /// gate (including the <see cref="ClearStaleHeroReference"/> call inside it) as the Simple guided-wizard
+        /// path; no separate/weaker validation. A parse failure (malformed JSON) or a null deserialize result (e.g.
+        /// the literal <c>"null"</c>) is a located <c>("raw_json", …)</c> <see cref="FactionDefinerFinishResult.Failure"/>
+        /// — never throws.
+        /// </summary>
+        public static FactionDefinerFinishResult TryFinishFromRawJson(string json, string factionsDirAbsolute)
+        {
+            FactionDefinition? parsed;
+            try
+            {
+                parsed = JsonSerializer.Deserialize<FactionDefinition>(json ?? "", FactionDefinition.JsonOptions);
+            }
+            catch (Exception ex)
+            {
+                return FactionDefinerFinishResult.Failure(new (string, string)[]
+                {
+                    ("raw_json", $"could not parse JSON: {ex.Message}"),
+                });
+            }
+
+            if (parsed == null)
+            {
+                return FactionDefinerFinishResult.Failure(new (string, string)[]
+                {
+                    ("raw_json", "JSON parsed to no faction object (e.g. the literal 'null') — a faction object is required."),
+                });
+            }
+
+            return TryFinish(parsed, factionsDirAbsolute);
+        }
+
+        /// <summary>
         /// Run the Finish/save gate (Story 5.5, D-1): <see cref="FactionValidator.ValidateComplete"/> first — block
         /// and locate on ANY failure (list-all). Only on a clean pass does this check whether the target
         /// <c>{id}_faction.json</c> already exists under <paramref name="factionsDirAbsolute"/> — this wizard always
@@ -191,6 +250,13 @@ namespace ProjectChimera.Core.Definitions
         {
             if (def == null)
                 return FactionDefinerFinishResult.Failure(new (string, string)[] { ("faction", "faction is null.") });
+
+            // Story 5.6 (Spec Change Log, review pass 1): the SOLE enforcement point for "a dangling HeroUnitId
+            // never reaches a written file" — the Panel's step-render call to this same method (BuildAiPresetStep)
+            // is early UI feedback only, since Finish is reachable from any step (Simple) and the Advanced raw-JSON
+            // path never renders the AI Preset step at all. Runs before ValidateComplete so a cleared reference
+            // never trips a downstream check that doesn't even look at HeroUnitId (nothing does today).
+            ClearStaleHeroReference(def);
 
             FactionValidationResult validation = FactionValidator.ValidateComplete(def);
             if (!validation.Ok)

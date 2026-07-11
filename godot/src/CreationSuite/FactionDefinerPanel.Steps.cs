@@ -41,8 +41,15 @@ namespace ProjectChimera.CreationSuite
             _presets = FactionDefinerWizardCore.ScanPresets(scanPaths);
 
             _draft = new FactionDefinition();   // Id/DisplayName empty, Color default, AiPreset "balanced", Starting* defaults
+            _draft.AiPreset = "";   // Story 5.6 (FR-18): override the FactionDefinition C# default so the AI Preset
+                                     // step opens with NOTHING selected — Finish is genuinely blockable until a
+                                     // creator explicitly picks one.
+
+            _paneDirty = false;   // a fresh session never carries a "discard" warning from a prior one
 
             ClearStatus();
+            _modeTabs.SetActive(0);   // "Toggle always resets to Simple mode" — fires OnModeTabChanged, which sets
+                                      // _advancedMode = false and restores step-tabs/scroll/json-pane visibility.
             _stepTabs.SetActive(0);
             RefreshStepBody();   // SetActive(0) fires TabChanged → RefreshStepBody already, but the panel may have
                                   // been freshly built with Active already 0 (no-op change) — call explicitly too.
@@ -211,17 +218,68 @@ namespace ProjectChimera.CreationSuite
                 ThemeTokens.TextLo));
         }
 
-        // ── Step 4: AI Preset (non-interactive stub this story) ──────────────────
+        // ── Step 4: AI Preset + Hero/Persistence (Story 5.6, FR-18/AR-12) ─────────
 
         private void BuildAiPresetStep()
         {
-            _draft.AiPreset = "balanced";   // Finish always writes this — pin it here so the panel reflects the real output
+            // Defensive clear (early UI feedback only — TryFinish's OWN call to this same method, run just before
+            // ValidateComplete, is the actual enforcement point; see FactionDefinerWizardCore.TryFinish's comment
+            // and the Spec Change Log). Catches a hero picked here, then unpicked via Back → Roster → uncheck,
+            // BEFORE this step re-renders — so the picker never shows a stale selection.
+            FactionDefinerWizardCore.ClearStaleHeroReference(_draft);
 
+            // ── AI Preset: a real picker over the closed FactionValidator.KnownAiPresets set. No auto-pin — the
+            // step opens with nothing selected (ResetWizard sets _draft.AiPreset = ""), so Finish is genuinely
+            // blockable via the located "ai_preset" validator error until a creator clicks a button.
             _bodyHost.AddChild(ChimeraComponents.FieldLabel("AI Preset"));
-            _bodyHost.AddChild(ChimeraComponents.Tag("balanced — selected", ChimeraComponents.TagVariant.Accent));
-            _bodyHost.AddChild(Body(
-                "Preset choice lands in Story 5.6 — Finish always writes ai_preset: \"balanced\" for now.",
-                ThemeTokens.TextLo));
+            if (string.IsNullOrEmpty(_draft.AiPreset))
+                _bodyHost.AddChild(Body("No preset selected — Finish is blocked until you pick one.", ThemeTokens.TextLo));
+
+            var presetGrid = new GridContainer { Columns = 3 };
+            presetGrid.AddThemeConstantOverride("h_separation", ChimeraComponents.Const(ThemeTokens.S2));
+            presetGrid.AddThemeConstantOverride("v_separation", ChimeraComponents.Const(ThemeTokens.S2));
+            foreach (string preset in FactionValidator.KnownAiPresets)
+            {
+                bool isActive = string.Equals(_draft.AiPreset, preset, System.StringComparison.OrdinalIgnoreCase);
+                var presetBtn = ChimeraComponents.Button(preset,
+                    isActive ? ChimeraComponents.ButtonVariant.Primary : ChimeraComponents.ButtonVariant.Secondary,
+                    ChimeraComponents.ButtonSize.Sm);
+                presetBtn.Pressed += () => { _draft.AiPreset = preset; RefreshStepBody(); };
+                presetGrid.AddChild(presetBtn);
+            }
+            _bodyHost.AddChild(presetGrid);
+
+            // ── Hero / Persistence (AR-12) ──
+            _bodyHost.AddChild(ChimeraComponents.FieldLabel("Hero Unit"));
+            var heroCandidates = _draft.Units.Where(u => u != null && u.IsHero).ToList();
+            if (heroCandidates.Count == 0)
+                _bodyHost.AddChild(Body("No hero-flagged unit in the picked roster.", ThemeTokens.TextLo));
+
+            var heroGrid = new GridContainer { Columns = 3 };
+            heroGrid.AddThemeConstantOverride("h_separation", ChimeraComponents.Const(ThemeTokens.S2));
+            heroGrid.AddThemeConstantOverride("v_separation", ChimeraComponents.Const(ThemeTokens.S2));
+
+            bool noneActive = string.IsNullOrEmpty(_draft.HeroUnitId);
+            var noneBtn = ChimeraComponents.Button("(none)",
+                noneActive ? ChimeraComponents.ButtonVariant.Primary : ChimeraComponents.ButtonVariant.Secondary,
+                ChimeraComponents.ButtonSize.Sm);
+            noneBtn.Pressed += () => { _draft.HeroUnitId = null; RefreshStepBody(); };
+            heroGrid.AddChild(noneBtn);
+
+            foreach (UnitDefinition hero in heroCandidates)
+            {
+                bool isActive = _draft.HeroUnitId == hero.Id;
+                var heroBtn = ChimeraComponents.Button(LabelFor(hero),
+                    isActive ? ChimeraComponents.ButtonVariant.Primary : ChimeraComponents.ButtonVariant.Secondary,
+                    ChimeraComponents.ButtonSize.Sm);
+                heroBtn.Pressed += () => { _draft.HeroUnitId = hero.Id; RefreshStepBody(); };
+                heroGrid.AddChild(heroBtn);
+            }
+            _bodyHost.AddChild(heroGrid);
+
+            var persistCb = new CheckBox { ButtonPressed = _draft.PersistenceEnabled, Text = "Enable cross-match persistence" };
+            persistCb.Toggled += on => _draft.PersistenceEnabled = on;
+            _bodyHost.AddChild(persistCb);
         }
 
         // ── Finish/save ───────────────────────────────────────────────────────────
@@ -229,7 +287,9 @@ namespace ProjectChimera.CreationSuite
         private void OnFinishPressed()
         {
             string factionsDirAbs = ProjectSettings.GlobalizePath(FACTIONS_DIR_RES);
-            FactionDefinerFinishResult result = FactionDefinerWizardCore.TryFinish(_draft, factionsDirAbs);
+            FactionDefinerFinishResult result = _advancedMode
+                ? FactionDefinerWizardCore.TryFinishFromRawJson(_jsonPane.Text, factionsDirAbs)
+                : FactionDefinerWizardCore.TryFinish(_draft, factionsDirAbs);
 
             if (!result.Ok)
             {
@@ -241,9 +301,15 @@ namespace ProjectChimera.CreationSuite
                 (string fieldPath, string message) = result.Errors[0];
                 int extra = result.Errors.Count - 1;
                 ShowError(extra > 0 ? $"{message} (+{extra} more issue{(extra == 1 ? "" : "s")})" : message);
-                if (result.Step.HasValue) _stepTabs.SetActive((int)result.Step.Value);
+                // Advanced mode has no step to jump to (its raw pane never renders a per-step body).
+                if (result.Step.HasValue && !_advancedMode) _stepTabs.SetActive((int)result.Step.Value);
                 return;
             }
+
+            // Review pass 2: a successful Advanced-mode Finish USED the pane's current text to write the file — it
+            // was not discarded. Clear the dirty flag so a later Advanced→Simple switch never shows the "edits were
+            // discarded" note for content that was, in fact, saved.
+            if (_advancedMode) _paneDirty = false;
 
             ShowOk($"Saved — {result.WrittenPath}");
             GD.Print($"[FactionDefiner] Wrote {result.WrittenPath}.");

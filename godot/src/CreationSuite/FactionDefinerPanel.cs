@@ -57,11 +57,20 @@ namespace ProjectChimera.CreationSuite
         private CanvasLayer    _canvas = null!;
         private PanelContainer _panel  = null!;
         private ChimeraTabs    _stepTabs = null!;     // Segment: the 5 wizard steps
+        private ScrollContainer _stepScroll = null!;   // wraps _bodyHost — hidden together with _stepTabs in Advanced
         private VBoxContainer  _bodyHost = null!;      // per-step content (refilled on step change)
         private Label          _statusLabel = null!;   // save/validation status line
         private Godot.Button   _backBtn   = null!;
         private Godot.Button   _nextBtn   = null!;
         private Godot.Button   _finishBtn = null!;
+
+        // ── Simple/Advanced mode (Story 5.6, FR-18) ──
+        private ChimeraTabs    _modeTabs     = null!;   // Segment: "Simple" / "Advanced"
+        private VBoxContainer  _jsonPaneHost = null!;   // Advanced-only host: raw JSON pane + "Sync JSON from picks"
+        private TextEdit       _jsonPane     = null!;
+        private bool           _advancedMode;
+        private bool           _paneDirty;
+        private bool           _suppressPaneDirty;
 
         // ── Lifecycle ─────────────────────────────────────────────────────────────
 
@@ -158,18 +167,39 @@ namespace ProjectChimera.CreationSuite
             _stepTabs.TabChanged += _ => RefreshStepBody();
             root.AddChild(_stepTabs);
 
+            // Simple/Advanced mode toggle (Story 5.6, FR-18) — mirrors the step-tabs Segment construction above.
+            // Advanced swaps the whole guided step flow for one raw-JSON escape hatch (Back/Next disabled).
+            _modeTabs = ChimeraTabs.Create(ChimeraComponents.TabsVariant.Segment, "Simple", "Advanced");
+            _modeTabs.SizeFlagsHorizontal = Control.SizeFlags.ShrinkCenter;
+            _modeTabs.TabChanged += OnModeTabChanged;
+            root.AddChild(_modeTabs);
+
             // Scrollable per-step body.
-            var scroll = new ScrollContainer
+            _stepScroll = new ScrollContainer
             {
                 SizeFlagsHorizontal  = Control.SizeFlags.ExpandFill,
                 SizeFlagsVertical    = Control.SizeFlags.ExpandFill,
                 HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled,
             };
-            root.AddChild(scroll);
+            root.AddChild(_stepScroll);
 
             _bodyHost = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
             _bodyHost.AddThemeConstantOverride("separation", ChimeraComponents.Const(ThemeTokens.S2));
-            scroll.AddChild(_bodyHost);
+            _stepScroll.AddChild(_bodyHost);
+
+            // Advanced-mode raw JSON pane (mirrors UnitCardPanel.Edit.cs's MakeJsonPane/SetPaneText pattern).
+            // Hidden until the mode toggle switches to Advanced.
+            _jsonPaneHost = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill, Visible = false };
+            _jsonPaneHost.AddThemeConstantOverride("separation", ChimeraComponents.Const(ThemeTokens.S2));
+            root.AddChild(_jsonPaneHost);
+
+            _jsonPane = MakeJsonPane();
+            _jsonPane.TextChanged += () => { if (!_suppressPaneDirty) _paneDirty = true; };
+            _jsonPaneHost.AddChild(_jsonPane);
+
+            var syncBtn = ChimeraComponents.Button("Sync JSON from picks", ChimeraComponents.ButtonVariant.Ghost, ChimeraComponents.ButtonSize.Sm);
+            syncBtn.Pressed += () => SetJsonPaneText(FactionDefinerWizardCore.SerializeDraftClean(_draft));
+            _jsonPaneHost.AddChild(syncBtn);
 
             // Status line + Back/Next/Finish footer.
             _statusLabel = Body("", ThemeTokens.TextLo);
@@ -207,8 +237,61 @@ namespace ProjectChimera.CreationSuite
 
         private void UpdateFooterButtons()
         {
-            _backBtn.Disabled = _stepTabs.Active <= 0;
-            _nextBtn.Disabled = _stepTabs.Active >= LastStepIndex;
+            // Advanced mode has no per-step navigation — Back/Next are disabled while it's active (spec Boundaries).
+            _backBtn.Disabled = _advancedMode || _stepTabs.Active <= 0;
+            _nextBtn.Disabled = _advancedMode || _stepTabs.Active >= LastStepIndex;
+        }
+
+        // ── Simple/Advanced mode toggle (Story 5.6, FR-18) ───────────────────────
+
+        /// <summary>Handle a Simple↔Advanced switch. Simple→Advanced seeds the JSON pane fresh via
+        /// <see cref="FactionDefinerWizardCore.SerializeDraftClean"/> every time (never stale). Advanced→Simple
+        /// with unsaved pane edits shows an inline discard note — the Design Notes' one-way "whichever mode Finish
+        /// is clicked from wins" model; a raw-JSON round-trip would desync the Roster/Buildings/Research
+        /// reference-equality checkboxes (Story 5.5), so Advanced edits are NEVER folded back into <c>_draft</c>.</summary>
+        private void OnModeTabChanged(int index)
+        {
+            bool goingAdvanced = index == 1;
+            if (goingAdvanced)
+            {
+                SetJsonPaneText(FactionDefinerWizardCore.SerializeDraftClean(_draft));
+                _advancedMode = true;
+            }
+            else
+            {
+                if (_advancedMode && _paneDirty)
+                    ShowError("Advanced JSON edits were discarded — Simple mode never folds them back into your picks.");
+                _advancedMode = false;
+            }
+
+            _stepTabs.Visible    = !_advancedMode;
+            _stepScroll.Visible  = !_advancedMode;
+            _jsonPaneHost.Visible = _advancedMode;
+            UpdateFooterButtons();
+        }
+
+        private TextEdit MakeJsonPane()
+        {
+            var te = new TextEdit
+            {
+                PlaceholderText = "{ }",
+                WrapMode = TextEdit.LineWrappingMode.None,
+                SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+                SizeFlagsVertical = Control.SizeFlags.ExpandFill,
+                CustomMinimumSize = new Vector2(0, 300),
+            };
+            te.AddThemeFontOverride("font", _theme.GetFont(ThemeTokens.FontMono, ThemeTokens.Type));
+            te.AddThemeFontSizeOverride("font_size", _theme.GetFontSize(ThemeTokens.Tsm, ThemeTokens.Type));
+            te.AddThemeColorOverride("font_color", Tok(ThemeTokens.TextHi));
+            return te;
+        }
+
+        private void SetJsonPaneText(string text)
+        {
+            _suppressPaneDirty = true;
+            _jsonPane.Text = text;
+            _suppressPaneDirty = false;
+            _paneDirty = false;
         }
 
         // ── Small shared builders (mirror BuildingCardPanel's) ───────────────────

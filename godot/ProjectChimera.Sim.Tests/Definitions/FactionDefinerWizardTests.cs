@@ -274,6 +274,220 @@ namespace ProjectChimera.Sim.Tests.Definitions
             finally { Directory.Delete(dir, recursive: true); }
         }
 
+        // ── ClearStaleHeroReference (Story 5.6, Spec Change Log review pass 1) ─────────────────────────────────
+
+        [Fact]
+        public void ClearStaleHeroReference_HeroIdMatchesNoUnit_ClearsAndReturnsTrue()
+        {
+            var def = new FactionDefinition
+            {
+                HeroUnitId = "ghost_unit",
+                Units = new List<UnitDefinition> { new UnitDefinition { Id = "worker", IsHero = false } },
+            };
+
+            bool cleared = FactionDefinerWizardCore.ClearStaleHeroReference(def);
+
+            Assert.True(cleared);
+            Assert.Null(def.HeroUnitId);
+        }
+
+        [Fact]
+        public void ClearStaleHeroReference_HeroIdMatchesLiveUnit_LeavesItAlone_ReturnsFalse()
+        {
+            var heroUnit = new UnitDefinition { Id = "champion", IsHero = true };
+            var def = new FactionDefinition
+            {
+                HeroUnitId = "champion",
+                Units = new List<UnitDefinition> { heroUnit },
+            };
+
+            bool cleared = FactionDefinerWizardCore.ClearStaleHeroReference(def);
+
+            Assert.False(cleared);
+            Assert.Equal("champion", def.HeroUnitId);
+        }
+
+        [Fact]
+        public void ClearStaleHeroReference_NoHeroIdAuthored_NoOp_ReturnsFalse()
+        {
+            var def = new FactionDefinition { HeroUnitId = null, Units = new List<UnitDefinition>() };
+
+            Assert.False(FactionDefinerWizardCore.ClearStaleHeroReference(def));
+            Assert.Null(def.HeroUnitId);
+        }
+
+        [Fact]
+        public void ClearStaleHeroReference_NullUnitsList_NullGuarded_ClearsStaleId_NoThrow()
+        {
+            // A raw-JSON-deserialized FactionDefinition can carry a null Units list (Edge Case Hunter, review
+            // pass 1) — must not NRE, must still clear the dangling id.
+            var def = new FactionDefinition { HeroUnitId = "ghost", Units = null! };
+
+            bool cleared = FactionDefinerWizardCore.ClearStaleHeroReference(def);
+
+            Assert.True(cleared);
+            Assert.Null(def.HeroUnitId);
+        }
+
+        [Fact]
+        public void ClearStaleHeroReference_NullDraft_NoThrow_ReturnsFalse()
+        {
+            Assert.False(FactionDefinerWizardCore.ClearStaleHeroReference(null));
+        }
+
+        // ── TryFinish: Hero / Persistence + empty ai_preset (Story 5.6, FR-18/AR-12) ───────────────────────────
+
+        [Fact]
+        public void TryFinish_HeroAndPersistenceSet_WritesBothToFile_HeroUnitIsExplicitlyHeroFlagged()
+        {
+            string dir = MakeTempDir();
+            try
+            {
+                FactionPresetPool pool = ScanRealAlphaBeta();
+                FactionDefinition def = NewDraft("hero_persist_test");
+                Pick(def, pool, unitIds: new[] { "worker", "infantry" }, buildingIds: new[] { "command_center" });
+
+                // Neither shipped alpha/beta unit is hero-flagged (confirmed by review, Spec Change Log) — hand-add
+                // an explicitly IsHero=true unit so this test proves the hero-round-trip behavior against a REAL
+                // hero, not merely that an arbitrary unit id string round-trips (the defect the prior pass's
+                // fixture baked in).
+                var heroUnit = new UnitDefinition
+                {
+                    Id = "champion_of_the_order", DisplayName = "Champion", Category = "Melee", IsHero = true,
+                    MeshPath = "res://resources/models/placeholder.glb",   // ValidateComplete requires mesh_path
+                };
+                def.Units.Add(heroUnit);
+                def.HeroUnitId = heroUnit.Id;
+                def.PersistenceEnabled = true;
+
+                FactionDefinerFinishResult result = FactionDefinerWizardCore.TryFinish(def, dir);
+
+                Assert.True(result.Ok);
+                FactionDefinition reloaded = FactionDefinition.LoadFromFile(result.WrittenPath!);
+                Assert.Equal("champion_of_the_order", reloaded.HeroUnitId);
+                Assert.True(reloaded.PersistenceEnabled);
+            }
+            finally { Directory.Delete(dir, recursive: true); }
+        }
+
+        [Fact]
+        public void TryFinish_EmptyAiPreset_BlocksAtAiPresetStep_LocatedError_NoFileWritten()
+        {
+            string dir = MakeTempDir();
+            try
+            {
+                FactionPresetPool pool = ScanRealAlphaBeta();
+                FactionDefinition def = NewDraft("empty_preset_test");
+                def.AiPreset = "";   // Story 5.6: "no preset selected" is now reachable through the real picker
+                Pick(def, pool, unitIds: new[] { "worker", "infantry" }, buildingIds: new[] { "command_center" });
+
+                FactionDefinerFinishResult result = FactionDefinerWizardCore.TryFinish(def, dir);
+
+                Assert.False(result.Ok);
+                Assert.Contains(result.Errors, e => e.FieldPath == "ai_preset");
+                Assert.Equal(FactionDefinerStep.AiPreset, result.Step);
+                Assert.False(File.Exists(Path.Combine(dir, "empty_preset_test_faction.json")));
+            }
+            finally { Directory.Delete(dir, recursive: true); }
+        }
+
+        [Fact]
+        public void TryFinish_DanglingHeroUnitId_ClearedInsideTryFinish_IndependentOfAnyPanelStepRender()
+        {
+            // Pins the "never a dangling hero reference reaches a written file" guarantee to TryFinish ITSELF
+            // (Spec Change Log, review pass 1): the def is constructed directly here with NO Panel/step-render
+            // code involved at all, so a passing assertion proves the guarantee does not rest on a UI rebuild hook.
+            string dir = MakeTempDir();
+            try
+            {
+                FactionPresetPool pool = ScanRealAlphaBeta();
+                FactionDefinition def = NewDraft("dangling_hero_test");
+                Pick(def, pool, unitIds: new[] { "worker", "infantry" }, buildingIds: new[] { "command_center" });
+                def.HeroUnitId = "no_such_unit_in_this_roster";   // dangling — never added to def.Units
+
+                FactionDefinerFinishResult result = FactionDefinerWizardCore.TryFinish(def, dir);
+
+                Assert.True(result.Ok);   // TryFinish clears the dangling reference rather than blocking on it
+                FactionDefinition reloaded = FactionDefinition.LoadFromFile(result.WrittenPath!);
+                Assert.Null(reloaded.HeroUnitId);   // the written file carries NO dangling hero_unit_id
+            }
+            finally { Directory.Delete(dir, recursive: true); }
+        }
+
+        // ── TryFinishFromRawJson (Story 5.6, Advanced mode) ─────────────────────────────────────────────────────
+
+        [Fact]
+        public void TryFinishFromRawJson_ValidJson_WritesFile_SameGateAsSimplePath()
+        {
+            string dir = MakeTempDir();
+            try
+            {
+                FactionPresetPool pool = ScanRealAlphaBeta();
+                FactionDefinition def = NewDraft("raw_json_valid_test");
+                Pick(def, pool, unitIds: new[] { "worker", "infantry" }, buildingIds: new[] { "command_center" });
+                string json = FactionDefinerWizardCore.SerializeDraftClean(def);
+
+                FactionDefinerFinishResult result = FactionDefinerWizardCore.TryFinishFromRawJson(json, dir);
+
+                Assert.True(result.Ok);
+                Assert.True(File.Exists(result.WrittenPath));
+                FactionDefinition reloaded = FactionDefinition.LoadFromFile(result.WrittenPath!);
+                Assert.Equal("raw_json_valid_test", reloaded.Id);
+                Assert.Equal("balanced", reloaded.AiPreset);
+            }
+            finally { Directory.Delete(dir, recursive: true); }
+        }
+
+        [Fact]
+        public void TryFinishFromRawJson_MalformedJson_BlocksWithLocatedRawJsonError_NoFileWritten()
+        {
+            string dir = MakeTempDir();
+            try
+            {
+                FactionDefinerFinishResult result = FactionDefinerWizardCore.TryFinishFromRawJson("{ not valid json !!", dir);
+
+                Assert.False(result.Ok);
+                Assert.Contains(result.Errors, e => e.FieldPath == "raw_json");
+                Assert.Empty(Directory.GetFiles(dir, "*_faction.json*", SearchOption.AllDirectories));
+            }
+            finally { Directory.Delete(dir, recursive: true); }
+        }
+
+        [Fact]
+        public void TryFinishFromRawJson_LiteralNullJson_BlocksWithLocatedRawJsonError_NoThrow()
+        {
+            string dir = MakeTempDir();
+            try
+            {
+                FactionDefinerFinishResult result = FactionDefinerWizardCore.TryFinishFromRawJson("null", dir);
+
+                Assert.False(result.Ok);
+                Assert.Contains(result.Errors, e => e.FieldPath == "raw_json");
+            }
+            finally { Directory.Delete(dir, recursive: true); }
+        }
+
+        [Fact]
+        public void TryFinishFromRawJson_ValidJsonMissingAiPreset_BlockedBySameAiPresetValidatorError_NoFileWritten()
+        {
+            string dir = MakeTempDir();
+            try
+            {
+                FactionPresetPool pool = ScanRealAlphaBeta();
+                FactionDefinition def = NewDraft("raw_json_missing_preset_test");
+                def.AiPreset = "";
+                Pick(def, pool, unitIds: new[] { "worker", "infantry" }, buildingIds: new[] { "command_center" });
+                string json = FactionDefinerWizardCore.SerializeDraftClean(def);
+
+                FactionDefinerFinishResult result = FactionDefinerWizardCore.TryFinishFromRawJson(json, dir);
+
+                Assert.False(result.Ok);
+                Assert.Contains(result.Errors, e => e.FieldPath == "ai_preset");
+                Assert.False(File.Exists(Path.Combine(dir, "raw_json_missing_preset_test_faction.json")));
+            }
+            finally { Directory.Delete(dir, recursive: true); }
+        }
+
         // ── Test helpers ─────────────────────────────────────────────────────────────────────────────────────
 
         private static FactionPresetPool ScanRealAlphaBeta() => FactionDefinerWizardCore.ScanPresets(new[]
