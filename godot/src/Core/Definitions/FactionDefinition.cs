@@ -34,6 +34,44 @@ namespace ProjectChimera.Core.Definitions
         [JsonPropertyName("research")]
         public List<ResearchDefinition> Research { get; set; } = new();
 
+        /// <summary>The AI opponent's build/behavior preset id for this faction (Story 5.2, FR-18 data). A CLOSED
+        /// string set owned by <see cref="FactionValidator"/> (currently seeded with exactly one member,
+        /// <c>"balanced"</c> — concrete preset ids for alpha/beta are Story 5.3's job). Defaults to <c>"balanced"</c>
+        /// (NOT empty) so an unauthored faction is already a valid closed-set member; an authored empty/unknown value
+        /// is still a located <see cref="FactionValidator"/> FAIL. Distinct from <c>AiDifficulty</c>
+        /// (<c>src/AI/AiOpponentSystem.cs</c>) — that is an unrelated per-match difficulty knob, never reused here.</summary>
+        [JsonPropertyName("ai_preset")]
+        public string AiPreset { get; set; } = "balanced";
+
+        /// <summary>The faction's signature-mechanic id (Story 5.2, AR-12) — descriptor-only storage, never wired to
+        /// any D1 modifier/effect execution here (Story 5.4's job). Already present as a bare, silently-ignored
+        /// string in <c>alpha_faction.json</c>/<c>beta_faction.json</c> today (Story 2.10); this field is the first
+        /// consumer. Defaults to <c>""</c> (no signature mechanic authored) — optional, never validated as required.</summary>
+        [JsonPropertyName("signature_mechanic")]
+        public string SignatureMechanicId { get; set; } = "";
+
+        /// <summary>Human-readable display text for <see cref="SignatureMechanicId"/> (Story 5.2, AR-12).
+        /// Descriptor-only — optional, defaults to <c>null</c> (not authored).</summary>
+        [JsonPropertyName("signature_mechanic_display")]
+        public string? SignatureMechanicDisplay { get; set; } = null;
+
+        /// <summary>The D1 modifier/effect-graph id <see cref="SignatureMechanicId"/> will eventually reference
+        /// (Story 5.2, AR-12) — a storage slot only; no runtime execution path reads it yet (Story 5.4). Optional,
+        /// defaults to <c>null</c> (not authored).</summary>
+        [JsonPropertyName("signature_mechanic_effect_id")]
+        public string? SignatureMechanicEffectId { get; set; } = null;
+
+        /// <summary>The faction's hero unit reference (Story 5.2, AR-12) — expected to resolve against
+        /// <see cref="Units"/>' <c>id</c>s once a hero authoring flow exists; not cross-checked by
+        /// <see cref="FactionValidator"/> this story. Optional, defaults to <c>null</c> (no hero authored).</summary>
+        [JsonPropertyName("hero_unit_id")]
+        public string? HeroUnitId { get; set; } = null;
+
+        /// <summary>Whether this faction opts into cross-match persistence (Story 5.2, AR-12) — a flag only; no
+        /// runtime persistence path reads it yet. Optional, defaults to <c>false</c>.</summary>
+        [JsonPropertyName("persistence_enabled")]
+        public bool PersistenceEnabled { get; set; } = false;
+
         // ── Lookup helpers ──────────────────────────────────────────────────────
 
         /// <summary>Find a building definition by ID, or null if not found.</summary>
@@ -164,6 +202,15 @@ namespace ProjectChimera.Core.Definitions
         /// <see cref="TechTreeValidator"/>'s), joined by newlines. Content-only: this does NOT mint a
         /// <see cref="Validated{T}"/> (matches the real precedent set by the checks above, not the epic's general
         /// framing) and wires no runtime order path (Story 4.9 owns that).
+        ///
+        /// Story 5.2: the four checks above (Building-per-item, TechTree, ResourceCost, Research) are now relocated,
+        /// unchanged, into <see cref="FactionValidator.Validate"/> — this method calls that ONE method instead of
+        /// each inline, plus three new structural checks (ai_preset closed-set, color, duplicate-unit-id). Errors are
+        /// still aggregated into the same <c>errors</c> list and thrown identically (joined by <c>\n</c>).
+        /// Deliberately calls <see cref="FactionValidator.Validate"/>, NOT <see cref="FactionValidator.ValidateComplete"/>
+        /// — the roster-completeness checks (missing <c>mesh_path</c>, missing required roles) are a legitimate
+        /// mid-edit state that <see cref="BuildingCardPanel"/>/<see cref="UnitCardPanel"/>'s Save self-check (which
+        /// also calls this method) must never reject; see <c>FactionValidator</c>'s own docs.
         /// </summary>
         public static FactionDefinition LoadFromFile(string absolutePath)
         {
@@ -172,16 +219,10 @@ namespace ProjectChimera.Core.Definitions
                                      ?? new FactionDefinition();
 
             var errors = new List<string>();
-            foreach (BuildingDefinition b in def.Buildings)
-            {
-                BuildingValidationResult result = BuildingDefinitionValidator.Validate(b);
-                if (!result.Ok)
-                    foreach ((string _, string message) in result.Errors)
-                        errors.Add(message);
-            }
-            errors.AddRange(TechTreeValidator.Validate(def));
-            errors.AddRange(ResourceCostValidator.Validate(def));
-            errors.AddRange(ResearchValidator.Validate(def));
+            FactionValidationResult result = FactionValidator.Validate(def);
+            if (!result.Ok)
+                foreach ((string _, string message) in result.Errors)
+                    errors.Add(message);
             if (errors.Count > 0)
                 throw new System.InvalidOperationException(string.Join("\n", errors));
 
