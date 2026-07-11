@@ -10,7 +10,7 @@
   "signature_mechanic": "equal_exchange",
   "ai_preset": "balanced",
   "signature_mechanic_display": "Equal Exchange",
-  "signature_mechanic_effect_id": "equal_exchange_self_cost",
+  "signature_mechanic_effect_id": "spike_transmutation",
   "units": [
     {
       "id": "worker",
