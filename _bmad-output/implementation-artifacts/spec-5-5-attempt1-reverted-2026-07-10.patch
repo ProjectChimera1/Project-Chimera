@@ -1,0 +1,1170 @@
+=== TRACKED CHANGES (git diff since baseline) ===
+diff --git a/godot/ProjectChimera.Sim.Tests/Bootstrap/PhaseOrderTest.cs b/godot/ProjectChimera.Sim.Tests/Bootstrap/PhaseOrderTest.cs
+index f11169d..b56d236 100644
+--- a/godot/ProjectChimera.Sim.Tests/Bootstrap/PhaseOrderTest.cs
++++ b/godot/ProjectChimera.Sim.Tests/Bootstrap/PhaseOrderTest.cs
+@@ -27,6 +27,7 @@ namespace ProjectChimera.Sim.Tests.Bootstrap
+             "FlowFieldInit", "WinConditionUi", "GameOverOverlay", "Multiplayer", "ReplayStatus",
+             "ContentBrowser", "MainMenu", "TriggerEditor", "MapGenerator", "AbilityEditor",
+             "UnitCard", "ItemCard", "BuildingCard", "TechTree", "PersistenceManifest", "HeroPicker",
++            "FactionDefiner",
+         };
+ 
+         /// <summary>A Godot-free stub phase that appends its name to a shared log when run (call-order proof).</summary>
+diff --git a/godot/src/Core/Bootstrap/Phases/SceneContext.cs b/godot/src/Core/Bootstrap/Phases/SceneContext.cs
+index 7f1225a..edfde4d 100644
+--- a/godot/src/Core/Bootstrap/Phases/SceneContext.cs
++++ b/godot/src/Core/Bootstrap/Phases/SceneContext.cs
+@@ -112,6 +112,7 @@ namespace ProjectChimera.Core.Bootstrap
+         public CreationSuite.TechTreePanel      TechTreePanel      = null!;  // Story 4.6 (TechTree phase)
+         public CreationSuite.ItemCardPanel      ItemCardPanel      = null!;  // Story 3.16 (ItemCard phase)
+         public CreationSuite.PersistenceManifestPanel PersistenceManifestPanel = null!;  // Story 3.8 (PersistenceManifest phase)
++        public CreationSuite.FactionDefinerPanel FactionDefinerPanel = null!;  // Story 5.5 (FactionDefiner phase)
+         public UI.HeroPickerOverlay HeroPicker = null!;  // Story 3.9 (HeroPicker phase) — offline Play-Skirmish hero picker + launch authority
+         /// <summary>Story 3.9: the profile the player Deployed at the offline skirmish start, handed off to
+         /// <c>HeroProfileLoader.LoadInto</c> to mint into <c>HeroStore</c> as init state; cleared after mint. Null ⇒
+diff --git a/godot/src/Core/Bootstrap/ScenePhaseOrder.cs b/godot/src/Core/Bootstrap/ScenePhaseOrder.cs
+index ef63164..f4bd070 100644
+--- a/godot/src/Core/Bootstrap/ScenePhaseOrder.cs
++++ b/godot/src/Core/Bootstrap/ScenePhaseOrder.cs
+@@ -25,6 +25,7 @@ namespace ProjectChimera.Core.Bootstrap
+             "FlowFieldInit", "WinConditionUi", "GameOverOverlay", "Multiplayer", "ReplayStatus",
+             "ContentBrowser", "MainMenu", "TriggerEditor", "MapGenerator", "AbilityEditor",
+             "UnitCard", "ItemCard", "BuildingCard", "TechTree", "PersistenceManifest", "HeroPicker",
++            "FactionDefiner",
+         };
+     }
+ }
+diff --git a/godot/src/Core/Definitions/FactionDefinition.cs b/godot/src/Core/Definitions/FactionDefinition.cs
+index 0801fab..ada9b4c 100644
+--- a/godot/src/Core/Definitions/FactionDefinition.cs
++++ b/godot/src/Core/Definitions/FactionDefinition.cs
+@@ -72,6 +72,22 @@ namespace ProjectChimera.Core.Definitions
+         [JsonPropertyName("persistence_enabled")]
+         public bool PersistenceEnabled { get; set; } = false;
+ 
++        /// <summary>The faction's starting ore balance (Story 5.5, FR-17) — descriptor-only data written by the
++        /// Faction Definer wizard's Starting Conditions step, mirroring <see cref="AiPreset"/>/
++        /// <see cref="SignatureMechanicId"/>'s unwired-descriptor pattern (Story 5.2): no <c>ScenarioApplier</c>/
++        /// <c>ScenarioPlayerSlot</c> change reads this yet — wiring it into actual match-start economy is left for a
++        /// future story. Defaults to <c>200</c>, matching <see cref="ScenarioPlayerSlot.StartOre"/>'s existing
++        /// default so an unauthored faction already carries the same starting balance a hand-authored scenario slot
++        /// would.</summary>
++        [JsonPropertyName("starting_ore")]
++        public float StartingOre { get; set; } = 200f;
++
++        /// <summary>The faction's starting crystal balance (Story 5.5, FR-17) — mirrors <see cref="StartingOre"/>'s
++        /// descriptor-only posture exactly. Defaults to <c>0</c>, matching
++        /// <see cref="ScenarioPlayerSlot.StartCrystal"/>'s existing default.</summary>
++        [JsonPropertyName("starting_crystal")]
++        public float StartingCrystal { get; set; } = 0f;
++
+         // ── Lookup helpers ──────────────────────────────────────────────────────
+ 
+         /// <summary>Find a building definition by ID, or null if not found.</summary>
+diff --git a/godot/src/Core/MainScene.cs b/godot/src/Core/MainScene.cs
+index fb1be2c..b089068 100644
+--- a/godot/src/Core/MainScene.cs
++++ b/godot/src/Core/MainScene.cs
+@@ -418,6 +418,7 @@ namespace ProjectChimera.Core
+                 new TechTreePhase(_ctx),   // Story 4.6 — must run AFTER BuildingCardPhase so _ctx.BuildingCardPanel already exists
+                 new PersistenceManifestPhase(_ctx),
+                 new HeroPickerPhase(_ctx),
++                new FactionDefinerPhase(_ctx),   // Story 5.5 — must be last (mirrors ScenePhaseOrder.Canonical)
+             };
+             new ScenePhaseRunner(phases).Run();
+ 
+@@ -614,6 +615,13 @@ namespace ProjectChimera.Core
+                 _ctx.TechTreePanel.Toggle();
+                 GetViewport().SetInputAsHandled();
+             }
++            else if (key.Keycode == Key.X)
++            {
++                // Story 5.5: X opens the Faction Definer guided wizard (verified unused — no other Key.X check
++                // anywhere in src/ and no InputMap action binds physical key X in project.godot).
++                _ctx.FactionDefinerPanel.Toggle();
++                GetViewport().SetInputAsHandled();
++            }
+         }
+ 
+         public override void _Process(double delta)
+
+=== NEW FILE: godot/ProjectChimera.Sim.Tests/Definitions/FactionDefinerWizardTests.cs ===
+diff --git a/godot/ProjectChimera.Sim.Tests/Definitions/FactionDefinerWizardTests.cs b/godot/ProjectChimera.Sim.Tests/Definitions/FactionDefinerWizardTests.cs
+new file mode 100755
+index 0000000..c31c58d
+--- /dev/null
++++ b/godot/ProjectChimera.Sim.Tests/Definitions/FactionDefinerWizardTests.cs
+@@ -0,0 +1,285 @@
++#nullable enable
++using System;
++using System.Collections.Generic;
++using System.IO;
++using System.Linq;
++using ProjectChimera.Core.Definitions;
++using Xunit;
++
++namespace ProjectChimera.Sim.Tests.Definitions
++{
++    /// <summary>
++    /// Story 5.5 (FR-17, UX-DR40) — Godot-free xUnit coverage of <see cref="FactionDefinerWizardCore"/>: preset-pool
++    /// scanning + deep-clone, the located-error → step mapping, and the <c>ValidateComplete</c>-gated atomic
++    /// Finish/save (every I/O-matrix row the spec names, except "Color step render" — that row is a pure UI
++    /// rendering concern of <c>FactionDefinerPanel</c> with no Godot-free core surface, verified instead by the
++    /// spec's own in-editor manual check). Uses the REAL shipped <c>alpha_faction.json</c>/<c>beta_faction.json</c>
++    /// as the scan source (mirrors <c>FactionValidatorTests</c>' <c>ResolveDataPath</c> precedent — both files are
++    /// already known-valid, so no hand-rolled fixture is needed), and writes Finish output only under a per-test
++    /// temp directory (never the real <c>resources/data/factions/</c> folder).
++    /// </summary>
++    public class FactionDefinerWizardTests
++    {
++        // ── ScanPresets ──────────────────────────────────────────────────────────────────────────────────────
++
++        [Fact]
++        public void ScanPresets_RealAlphaAndBeta_PopulatesPoolsTaggedWithSourceFactionId()
++        {
++            FactionPresetPool pool = FactionDefinerWizardCore.ScanPresets(new[]
++            {
++                ResolveDataPath("alpha_faction.json"),
++                ResolveDataPath("beta_faction.json"),
++            });
++
++            Assert.Equal(16, pool.Units.Count);      // 8 alpha + 8 beta
++            Assert.Equal(10, pool.Buildings.Count);  // 5 alpha + 5 beta
++            Assert.Empty(pool.Research);             // both shipped factions author no research entries today
++
++            FactionPresetOption<UnitDefinition> worker =
++                Assert.Single(pool.Units, o => o.Def.Id == "worker");
++            Assert.Equal("alpha", worker.SourceFactionId);
++
++            FactionPresetOption<UnitDefinition> forgehand =
++                Assert.Single(pool.Units, o => o.Def.Id == "forgehand");
++            Assert.Equal("beta", forgehand.SourceFactionId);
++        }
++
++        [Fact]
++        public void ScanPresets_UnreadablePath_SkippedDefensively_OtherPathsStillPopulate()
++        {
++            string missing = Path.Combine(Path.GetTempPath(), $"does-not-exist-{Guid.NewGuid():N}.json");
++
++            FactionPresetPool pool = FactionDefinerWizardCore.ScanPresets(new[]
++            {
++                missing,
++                ResolveDataPath("alpha_faction.json"),
++            });
++
++            Assert.Equal(8, pool.Units.Count);
++            Assert.Equal(5, pool.Buildings.Count);
++        }
++
++        [Fact]
++        public void ScanPresets_NullInput_ReturnsEmptyPool_NoThrow()
++        {
++            FactionPresetPool pool = FactionDefinerWizardCore.ScanPresets(null!);
++            Assert.Empty(pool.Units);
++            Assert.Empty(pool.Buildings);
++            Assert.Empty(pool.Research);
++        }
++
++        // ── DeepClone ────────────────────────────────────────────────────────────────────────────────────────
++
++        [Fact]
++        public void DeepClone_Unit_ProducesIndependentInstance_WithEqualValues()
++        {
++            var original = new UnitDefinition { Id = "grunt", DisplayName = "Grunt", Category = "Melee", Hp = 123f };
++
++            UnitDefinition clone = FactionDefinerWizardCore.DeepClone(original);
++
++            Assert.NotSame(original, clone);
++            Assert.Equal(original.Id, clone.Id);
++            Assert.Equal(original.Hp, clone.Hp);
++
++            clone.DisplayName = "Mutated";
++            Assert.Equal("Grunt", original.DisplayName);   // mutating the clone never touches the source
++        }
++
++        [Fact]
++        public void DeepClone_Building_PreservesDerivedBuildingOnlyFields()
++        {
++            var original = new BuildingDefinition
++            {
++                Id = "barracks", Category = "Structure", Hp = 500f,
++                ConstructionTime = 30f, SupplyBonus = 0, ProducesCategory = "Melee",
++            };
++
++            BuildingDefinition clone = FactionDefinerWizardCore.DeepClone(original);
++
++            Assert.NotSame(original, clone);
++            Assert.Equal(30f, clone.ConstructionTime);
++            Assert.Equal(0, clone.SupplyBonus);
++            Assert.Equal("Melee", clone.ProducesCategory);
++        }
++
++        // ── StepForError ─────────────────────────────────────────────────────────────────────────────────────
++
++        [Theory]
++        [InlineData("color", "faction 'x'.color: must be an [r, g, b, a] array of length 4.", FactionDefinerStep.NameColor)]
++        [InlineData("id", "a faction file already exists at '...' — choose a different id.", FactionDefinerStep.NameColor)]
++        [InlineData("ai_preset", "faction 'x'.ai_preset: must be authored.", FactionDefinerStep.AiPreset)]
++        [InlineData("units", "faction 'x'.units: roster is missing a required Worker unit.", FactionDefinerStep.Roster)]
++        [InlineData("prerequisites", "unit 'archer'.prerequisites: references unknown building id 'range'.", FactionDefinerStep.Roster)]
++        [InlineData("prerequisites", "building 'aviary'.prerequisites: references unknown building id 'siege_workshop'.", FactionDefinerStep.BuildingsTech)]
++        [InlineData("cost", "unit 'grunt'.cost: references unknown resource id 'gold'.", FactionDefinerStep.Roster)]
++        [InlineData("cost", "building 'barracks'.cost: references unknown resource id 'gold'.", FactionDefinerStep.BuildingsTech)]
++        [InlineData("mesh_path", "unit 'grunt' is missing mesh_path (required for a complete/playable faction).", FactionDefinerStep.Roster)]
++        [InlineData("mesh_path", "building 'barracks' is missing mesh_path (required for a complete/playable faction).", FactionDefinerStep.BuildingsTech)]
++        [InlineData("hp", "building 'barracks'.hp: must be a positive value.", FactionDefinerStep.BuildingsTech)]
++        public void StepForError_MapsFieldPathAndMessageKindLabel_ToExpectedStep(
++            string fieldPath, string message, FactionDefinerStep expected)
++        {
++            Assert.Equal(expected, FactionDefinerWizardCore.StepForError(fieldPath, message));
++        }
++
++        // ── TryFinish ────────────────────────────────────────────────────────────────────────────────────────
++
++        [Fact]
++        public void TryFinish_FullValidSelection_WritesFile_AndReloadsValidateCompleteOk()
++        {
++            string dir = MakeTempDir();
++            try
++            {
++                FactionPresetPool pool = ScanRealAlphaBeta();
++                FactionDefinition def = NewDraft("crimson_order_5_5");
++                Pick(def, pool, unitIds: new[] { "worker", "infantry" }, buildingIds: new[] { "command_center" });
++
++                FactionDefinerFinishResult result = FactionDefinerWizardCore.TryFinish(def, dir);
++
++                Assert.True(result.Ok);
++                Assert.NotNull(result.WrittenPath);
++                Assert.True(File.Exists(result.WrittenPath));
++
++                FactionDefinition reloaded = FactionDefinition.LoadFromFile(result.WrittenPath!);
++                Assert.Equal("crimson_order_5_5", reloaded.Id);
++                Assert.Equal(2, reloaded.Units.Count);
++                Assert.Single(reloaded.Buildings);
++                Assert.Equal("balanced", reloaded.AiPreset);
++                Assert.True(FactionValidator.ValidateComplete(reloaded).Ok);
++            }
++            finally { Directory.Delete(dir, recursive: true); }
++        }
++
++        [Fact]
++        public void TryFinish_DanglingBuildingPrerequisite_BlocksAtBuildingsTechStep_NoFileWritten()
++        {
++            string dir = MakeTempDir();
++            try
++            {
++                FactionPresetPool pool = ScanRealAlphaBeta();
++                FactionDefinition def = NewDraft("dangling_test");
++                // aviary requires siege_workshop, which is deliberately NOT picked → dangling prerequisite.
++                Pick(def, pool, unitIds: new[] { "worker", "infantry" }, buildingIds: new[] { "aviary" });
++
++                FactionDefinerFinishResult result = FactionDefinerWizardCore.TryFinish(def, dir);
++
++                Assert.False(result.Ok);
++                Assert.Contains(result.Errors, e => e.FieldPath == "prerequisites"
++                    && e.Message.Contains("aviary") && e.Message.Contains("siege_workshop"));
++                Assert.Equal(FactionDefinerStep.BuildingsTech, result.Step);
++                Assert.False(File.Exists(Path.Combine(dir, "dangling_test_faction.json")));
++            }
++            finally { Directory.Delete(dir, recursive: true); }
++        }
++
++        [Fact]
++        public void TryFinish_MissingWorker_BlocksAtRosterStep()
++        {
++            string dir = MakeTempDir();
++            try
++            {
++                FactionPresetPool pool = ScanRealAlphaBeta();
++                FactionDefinition def = NewDraft("no_worker_test");
++                Pick(def, pool, unitIds: new[] { "infantry" }, buildingIds: new[] { "command_center" });
++
++                FactionDefinerFinishResult result = FactionDefinerWizardCore.TryFinish(def, dir);
++
++                Assert.False(result.Ok);
++                Assert.Contains(result.Errors, e => e.FieldPath == "units" && e.Message.Contains("Worker"));
++                Assert.Equal(FactionDefinerStep.Roster, result.Step);
++            }
++            finally { Directory.Delete(dir, recursive: true); }
++        }
++
++        [Fact]
++        public void TryFinish_EmptyRoster_BlockedBySameRequiredRoleCheck_RosterStep()
++        {
++            string dir = MakeTempDir();
++            try
++            {
++                FactionPresetPool pool = ScanRealAlphaBeta();
++                FactionDefinition def = NewDraft("empty_roster_test");
++                Pick(def, pool, unitIds: Array.Empty<string>(), buildingIds: new[] { "command_center" });
++
++                FactionDefinerFinishResult result = FactionDefinerWizardCore.TryFinish(def, dir);
++
++                Assert.False(result.Ok);
++                Assert.Contains(result.Errors, e => e.FieldPath == "units" && e.Message.Contains("Worker"));
++                Assert.Contains(result.Errors, e => e.FieldPath == "units" && e.Message.Contains("combat"));
++                Assert.Equal(FactionDefinerStep.Roster, result.Step);
++            }
++            finally { Directory.Delete(dir, recursive: true); }
++        }
++
++        [Fact]
++        public void TryFinish_TargetFactionFileAlreadyExists_BlocksNamingIdField_NeverOverwrites()
++        {
++            string dir = MakeTempDir();
++            try
++            {
++                string existingPath = Path.Combine(dir, "dup_faction.json");
++                File.WriteAllText(existingPath, "SENTINEL-DO-NOT-OVERWRITE");
++
++                FactionPresetPool pool = ScanRealAlphaBeta();
++                FactionDefinition def = NewDraft("dup");
++                Pick(def, pool, unitIds: new[] { "worker", "infantry" }, buildingIds: new[] { "command_center" });
++
++                FactionDefinerFinishResult result = FactionDefinerWizardCore.TryFinish(def, dir);
++
++                Assert.False(result.Ok);
++                Assert.Contains(result.Errors, e => e.FieldPath == "id" && e.Message.Contains("already exists"));
++                Assert.Equal(FactionDefinerStep.NameColor, result.Step);
++
++                Assert.Equal("SENTINEL-DO-NOT-OVERWRITE", File.ReadAllText(existingPath));   // never overwritten
++                Assert.False(File.Exists(existingPath + ".tmp"));                            // no stray tmp left behind
++            }
++            finally { Directory.Delete(dir, recursive: true); }
++        }
++
++        // ── Test helpers ─────────────────────────────────────────────────────────────────────────────────────
++
++        private static FactionPresetPool ScanRealAlphaBeta() => FactionDefinerWizardCore.ScanPresets(new[]
++        {
++            ResolveDataPath("alpha_faction.json"),
++            ResolveDataPath("beta_faction.json"),
++        });
++
++        private static FactionDefinition NewDraft(string id) => new()
++        {
++            Id = id,
++            DisplayName = "Test Faction",
++            Color = new[] { 0.2f, 0.5f, 0.8f, 1f },
++            AiPreset = "balanced",
++        };
++
++        private static void Pick(FactionDefinition def, FactionPresetPool pool, string[] unitIds, string[] buildingIds)
++        {
++            foreach (string id in unitIds)
++                def.Units.Add(pool.Units.First(o => o.Def.Id == id).Def);
++            foreach (string id in buildingIds)
++                def.Buildings.Add(pool.Buildings.First(o => o.Def.Id == id).Def);
++        }
++
++        private static string MakeTempDir()
++        {
++            string dir = Path.Combine(Path.GetTempPath(), $"faction-definer-wizard-tests-{Guid.NewGuid():N}");
++            Directory.CreateDirectory(dir);
++            return dir;
++        }
++
++        /// <summary>Resolve a shipped faction JSON by walking up from the test-assembly directory to
++        /// <c>resources/data/factions/</c> (mirrors <c>FactionValidatorTests.ResolveDataPath</c>).</summary>
++        private static string ResolveDataPath(string fileName)
++        {
++            var dir = new DirectoryInfo(AppContext.BaseDirectory);
++            while (dir != null)
++            {
++                string candidate = Path.Combine(dir.FullName, "resources", "data", "factions");
++                if (Directory.Exists(candidate)) return Path.Combine(candidate, fileName);
++                dir = dir.Parent;
++            }
++            throw new DirectoryNotFoundException(
++                $"Could not locate resources/data/factions above {AppContext.BaseDirectory}");
++        }
++    }
++}
+
+=== NEW FILE: godot/src/Core/Bootstrap/Phases/FactionDefinerPhase.cs ===
+diff --git a/godot/src/Core/Bootstrap/Phases/FactionDefinerPhase.cs b/godot/src/Core/Bootstrap/Phases/FactionDefinerPhase.cs
+new file mode 100755
+index 0000000..979b753
+--- /dev/null
++++ b/godot/src/Core/Bootstrap/Phases/FactionDefinerPhase.cs
+@@ -0,0 +1,34 @@
++#nullable enable
++using Godot;
++using ProjectChimera.CreationSuite;
++
++namespace ProjectChimera.Core.Bootstrap
++{
++    /// <summary>
++    /// Story 5.5 (FR-17, UX-DR40) "FactionDefiner" phase — the last phase in the canonical order, appended after
++    /// <see cref="HeroPickerPhase"/>. Creates the Faction Definer guided-wizard panel and wires it to game state
++    /// only. Unlike <see cref="BuildingCardPhase"/>/<see cref="TechTreePhase"/> this phase does NOT bind an existing
++    /// <see cref="Definitions.FactionDefinition"/> — the wizard always assembles a BRAND-NEW faction from scratch
++    /// (Story 5.5's own AC1), scanning the on-disk faction JSONs for its Roster / Buildings &amp; Tech preset pools
++    /// rather than editing the currently-loaded scenario faction.
++    ///
++    /// <para>Toggle with X in Edit mode (verified unused — see <c>MainScene._UnhandledInput</c>).</para>
++    /// </summary>
++    public sealed class FactionDefinerPhase : ISetupPhase
++    {
++        private readonly SceneContext _ctx;
++        public FactionDefinerPhase(SceneContext ctx) => _ctx = ctx;
++
++        public string Name => "FactionDefiner";
++
++        public void Run()
++        {
++            _ctx.FactionDefinerPanel = new FactionDefinerPanel();
++            _ctx.Scene.AddChild(_ctx.FactionDefinerPanel);
++
++            _ctx.FactionDefinerPanel.Initialize(_ctx.GameState);
++
++            GD.Print("[FactionDefiner] Initialized — press X in Edit mode to open (5-step guided faction wizard).");
++        }
++    }
++}
+
+=== NEW FILE: godot/src/Core/Definitions/FactionDefinerWizardCore.cs ===
+diff --git a/godot/src/Core/Definitions/FactionDefinerWizardCore.cs b/godot/src/Core/Definitions/FactionDefinerWizardCore.cs
+new file mode 100755
+index 0000000..a46ba42
+--- /dev/null
++++ b/godot/src/Core/Definitions/FactionDefinerWizardCore.cs
+@@ -0,0 +1,223 @@
++#nullable enable
++using System;
++using System.Collections.Generic;
++using System.IO;
++using System.Linq;
++using System.Text.Json;
++
++namespace ProjectChimera.Core.Definitions
++{
++    /// <summary>Which of the 5 Faction Definer wizard steps a located error belongs to (Story 5.5, FR-17/UX-DR40) —
++    /// the panel jumps to this step when Finish is blocked. Ordinal order matches the wizard's step sequence
++    /// (<c>ChimeraTabs</c> segment order in <c>FactionDefinerPanel</c>): Name &amp; Color, Roster, Buildings &amp;
++    /// Tech, Starting Conditions, AI Preset.</summary>
++    public enum FactionDefinerStep
++    {
++        NameColor = 0,
++        Roster = 1,
++        BuildingsTech = 2,
++        StartingConditions = 3,
++        AiPreset = 4,
++    }
++
++    /// <summary>One pickable preset option surfaced by <see cref="FactionDefinerWizardCore.ScanPresets"/> — pairs a
++    /// deep-cloned authored definition with the faction file id it was scanned from (so the picker UI can label an
++    /// option "[alpha] worker" and disambiguate an id that recurs across scanned files).</summary>
++    public sealed class FactionPresetOption<T>
++    {
++        public string SourceFactionId { get; }
++        public T Def { get; }
++        public FactionPresetOption(string sourceFactionId, T def)
++        {
++            SourceFactionId = sourceFactionId;
++            Def = def;
++        }
++    }
++
++    /// <summary>The scanned pool of units/buildings/research available to the wizard's Roster / Buildings &amp; Tech
++    /// preset-picker steps (Story 5.5). Populated by <see cref="FactionDefinerWizardCore.ScanPresets"/>.</summary>
++    public sealed class FactionPresetPool
++    {
++        public List<FactionPresetOption<UnitDefinition>> Units { get; } = new();
++        public List<FactionPresetOption<BuildingDefinition>> Buildings { get; } = new();
++        public List<FactionPresetOption<ResearchDefinition>> Research { get; } = new();
++    }
++
++    /// <summary>The outcome of a Faction Definer Finish/save attempt (Story 5.5, AR-39). On failure, carries every
++    /// located <see cref="FactionValidator"/>/target-exists error (list-all) plus the step the FIRST error maps to,
++    /// so the panel can jump straight to the offending step. On success, carries the absolute path written.</summary>
++    public readonly struct FactionDefinerFinishResult
++    {
++        public bool Ok { get; }
++        public IReadOnlyList<(string FieldPath, string Message)> Errors { get; }
++        public FactionDefinerStep? Step { get; }
++        public string? WrittenPath { get; }
++
++        private FactionDefinerFinishResult(bool ok, IReadOnlyList<(string, string)> errors, FactionDefinerStep? step, string? writtenPath)
++        {
++            Ok = ok;
++            Errors = errors;
++            Step = step;
++            WrittenPath = writtenPath;
++        }
++
++        public static FactionDefinerFinishResult Success(string writtenPath) =>
++            new(true, Array.Empty<(string, string)>(), null, writtenPath);
++
++        public static FactionDefinerFinishResult Failure(IReadOnlyList<(string FieldPath, string Message)> errors)
++        {
++            FactionDefinerStep step = errors.Count > 0
++                ? FactionDefinerWizardCore.StepForError(errors[0].FieldPath, errors[0].Message)
++                : FactionDefinerStep.NameColor;
++            return new FactionDefinerFinishResult(false, errors, step, null);
++        }
++    }
++
++    /// <summary>
++    /// Story 5.5 (FR-17, UX-DR40) — the Godot-free core of the Faction Definer guided wizard: on-disk preset-pool
++    /// scanning + deep-clone, the located-error → step mapping the panel uses to jump to the offending step, and the
++    /// <see cref="FactionValidator.ValidateComplete"/>-gated atomic Finish/save (tmp write +
++    /// <see cref="FactionDefinition.LoadFromFile"/> self-check + <see cref="File.Move(string, string, bool)"/>,
++    /// target-exists guard). Mirrors the established "Godot-free core of a presentation feature" pattern
++    /// (<see cref="UnitCardText"/>) so the wizard's testable assembly/finish logic lives under
++    /// <c>src/Core/Definitions</c> and is Tier-1 unit-testable without a live Panel node — the presentation panel
++    /// (<c>FactionDefinerPanel</c>/<c>.Steps.cs</c>) is a thin Godot wrapper that resolves <c>res://</c> paths at the
++    /// Godot edge (<c>ProjectSettings.GlobalizePath</c>) and calls these plain methods. Pure C# — no <c>using
++    /// Godot</c>, no logging.
++    /// </summary>
++    public static class FactionDefinerWizardCore
++    {
++        /// <summary>
++        /// Scan the given absolute faction-JSON paths (alpha/beta today — Story 5.5's "Epics 2-4 content" pool) for
++        /// the Roster / Buildings &amp; Tech preset pools. A path that fails to load (missing file, invalid JSON) is
++        /// skipped defensively — never throws; the pool is a picker convenience surface, not a load-time gate. Every
++        /// option is DEEP-CLONED off the parsed def (via <see cref="DeepClone{T}"/>) so a later pick/unpick, or a
++        /// second wizard session reusing the same scan, can never alias back into a shared instance.
++        /// </summary>
++        public static FactionPresetPool ScanPresets(IEnumerable<string> factionJsonAbsolutePaths)
++        {
++            var pool = new FactionPresetPool();
++            if (factionJsonAbsolutePaths == null) return pool;
++
++            foreach (string path in factionJsonAbsolutePaths)
++            {
++                FactionDefinition def;
++                try { def = FactionDefinition.LoadFromFile(path); }
++                catch { continue; }
++
++                string sourceId = string.IsNullOrEmpty(def.Id) ? Path.GetFileNameWithoutExtension(path) : def.Id;
++
++                foreach (UnitDefinition u in def.Units ?? new List<UnitDefinition>())
++                {
++                    if (u == null) continue;
++                    pool.Units.Add(new FactionPresetOption<UnitDefinition>(sourceId, DeepClone(u)));
++                }
++                foreach (BuildingDefinition b in def.Buildings ?? new List<BuildingDefinition>())
++                {
++                    if (b == null) continue;
++                    pool.Buildings.Add(new FactionPresetOption<BuildingDefinition>(sourceId, DeepClone(b)));
++                }
++                foreach (ResearchDefinition r in def.Research ?? new List<ResearchDefinition>())
++                {
++                    if (r == null) continue;
++                    pool.Research.Add(new FactionPresetOption<ResearchDefinition>(sourceId, DeepClone(r)));
++                }
++            }
++            return pool;
++        }
++
++        /// <summary>Deep-clone a definition via a JSON round-trip through <see cref="FactionDefinition.JsonOptions"/>
++        /// — so a picked preset added to the new faction's list never aliases the scanned source file's instance (or
++        /// another picker's pooled instance). <typeparamref name="T"/> must be the CONCRETE runtime type (e.g.
++        /// <see cref="BuildingDefinition"/>, not <see cref="UnitDefinition"/>) so the clone preserves the derived
++        /// fields.</summary>
++        public static T DeepClone<T>(T source) where T : notnull
++        {
++            string json = JsonSerializer.Serialize(source, FactionDefinition.JsonOptions);
++            return JsonSerializer.Deserialize<T>(json, FactionDefinition.JsonOptions)
++                   ?? throw new InvalidOperationException("DeepClone: round-trip produced null.");
++        }
++
++        /// <summary>
++        /// Map one <see cref="FactionValidator"/>-located (or target-exists) error to the wizard step it belongs to.
++        /// A few field paths are unambiguous (<c>color</c>/<c>id</c> → Name &amp; Color, <c>ai_preset</c> → AI
++        /// Preset, <c>units</c> → Roster). The rest (<c>buildings</c>, <c>prerequisites</c>, <c>cost</c>,
++        /// <c>mesh_path</c>, <c>research</c>, and the building-only required fields <c>hp</c>/
++        /// <c>construction_time</c>/<c>supply_bonus</c>/<c>produces_category</c>) are shared between a unit (Roster)
++        /// and a building (Buildings &amp; Tech) — disambiguated by sniffing the message's leading
++        /// <c>"unit '"</c>/<c>"building '"</c> kind label, the shared wording convention <see
++        /// cref="TechTreeValidator"/>/<see cref="ResourceCostValidator"/>/<see cref="BuildingDefinitionValidator"/>
++        /// all use. Falls back to Buildings &amp; Tech when neither prefix matches (a faction-level structural
++        /// message, e.g. a null list).
++        /// </summary>
++        public static FactionDefinerStep StepForError(string fieldPath, string message)
++        {
++            switch (fieldPath)
++            {
++                case "color": return FactionDefinerStep.NameColor;
++                case "id": return FactionDefinerStep.NameColor;        // the target-exists collision names the id field
++                case "ai_preset": return FactionDefinerStep.AiPreset;
++                case "units": return FactionDefinerStep.Roster;
++            }
++            if (!string.IsNullOrEmpty(message) && message.StartsWith("unit '", StringComparison.Ordinal))
++                return FactionDefinerStep.Roster;
++            return FactionDefinerStep.BuildingsTech;
++        }
++
++        /// <summary>
++        /// Run the Finish/save gate (Story 5.5, D-1): <see cref="FactionValidator.ValidateComplete"/> first — block
++        /// and locate on ANY failure (list-all). Only on a clean pass does this check whether the target
++        /// <c>{id}_faction.json</c> already exists under <paramref name="factionsDirAbsolute"/> — this wizard always
++        /// creates a BRAND-NEW file (unlike a sibling editor's legitimate patch-in-place), so an existing target
++        /// refuses instead of overwriting. Only when the target is free: write a <c>.tmp</c> file (serialized
++        /// directly via <c>JsonSerializer.Serialize(def, FactionDefinition.JsonOptions)</c> — this is a fresh file,
++        /// not <see cref="FactionWriter"/>'s patch-an-existing-file DOM surgery), self-check via
++        /// <see cref="FactionDefinition.LoadFromFile"/>, then <see cref="File.Move(string, string, bool)"/> with
++        /// <c>overwrite:false</c>. Never throws — every failure mode returns a located
++        /// <see cref="FactionDefinerFinishResult"/>; a stray <c>.tmp</c> is cleaned up on any exception.
++        /// </summary>
++        public static FactionDefinerFinishResult TryFinish(FactionDefinition def, string factionsDirAbsolute)
++        {
++            if (def == null)
++                return FactionDefinerFinishResult.Failure(new (string, string)[] { ("faction", "faction is null.") });
++
++            FactionValidationResult validation = FactionValidator.ValidateComplete(def);
++            if (!validation.Ok)
++                return FactionDefinerFinishResult.Failure(validation.Errors.ToList());
++
++            string id = def.Id ?? "";
++            if (string.IsNullOrWhiteSpace(id))
++            {
++                return FactionDefinerFinishResult.Failure(new (string, string)[]
++                {
++                    ("id", "faction id must be authored (in the Name & Color step) before Finish."),
++                });
++            }
++
++            string targetAbs = Path.Combine(factionsDirAbsolute, $"{id}_faction.json");
++            if (File.Exists(targetAbs))
++            {
++                return FactionDefinerFinishResult.Failure(new (string, string)[]
++                {
++                    ("id", $"a faction file already exists at '{targetAbs}' — choose a different id " +
++                           "(an existing faction file is never overwritten)."),
++                });
++            }
++
++            string tmp = targetAbs + ".tmp";
++            try
++            {
++                string json = JsonSerializer.Serialize(def, FactionDefinition.JsonOptions);
++                File.WriteAllText(tmp, json);
++                _ = FactionDefinition.LoadFromFile(tmp);   // self-check: refuse to report success for a file that won't reload
++                File.Move(tmp, targetAbs, overwrite: false);
++                return FactionDefinerFinishResult.Success(targetAbs);
++            }
++            catch (Exception ex)
++            {
++                try { if (File.Exists(tmp)) File.Delete(tmp); } catch { /* leave no stray .tmp */ }
++                return FactionDefinerFinishResult.Failure(new (string, string)[] { ("id", $"save failed: {ex.Message}") });
++            }
++        }
++    }
++}
+
+=== NEW FILE: godot/src/CreationSuite/FactionDefinerPanel.cs ===
+diff --git a/godot/src/CreationSuite/FactionDefinerPanel.cs b/godot/src/CreationSuite/FactionDefinerPanel.cs
+new file mode 100755
+index 0000000..317830b
+--- /dev/null
++++ b/godot/src/CreationSuite/FactionDefinerPanel.cs
+@@ -0,0 +1,250 @@
++#nullable enable
++using Godot;
++using ProjectChimera.Core.Definitions;   // FactionDefinerStep, FactionPresetPool, FactionDefinerWizardCore
++using ProjectChimera.UI;                  // GameState, GameMode
++using ProjectChimera.UI.Components;        // ChimeraComponents, ChimeraTabs
++using ProjectChimera.UI.Theme;             // ThemeTokens, ThemeBuilder, AccentController
++using GodotTheme = Godot.Theme;            // the ProjectChimera.UI.Theme namespace shadows the bare Theme type
++
++namespace ProjectChimera.CreationSuite
++{
++    /// <summary>
++    /// Story 5.5 (FR-17, UX-DR40) — the Faction Definer guided wizard: a 5-step flow (Name &amp; Color, Roster,
++    /// Buildings &amp; Tech, Starting Conditions, AI Preset) that assembles a brand-new
++    /// <see cref="FactionDefinition"/> from creator picks over the existing on-disk faction content, blocks Finish
++    /// until <see cref="FactionValidator.ValidateComplete"/> passes, and only then writes a NEW faction JSON.
++    /// Follows the established code-only editor pattern exactly (<see cref="ChimeraComponents"/>/
++    /// <see cref="ChimeraTabs"/>, <c>CanvasLayer</c>→<c>PanelContainer</c> shell, no <c>.tscn</c>) — the same
++    /// construction method as every sibling editor (Unit Card, Building, Tech Tree, Ability).
++    ///
++    /// <para><b>This file</b> is the shell: kit bootstrap, the panel chrome (title/close, step tabs, scrollable
++    /// step-content host, status line, Back/Next/Finish footer), and step navigation. The step content builders +
++    /// the in-memory wizard state + the Finish/save handler live in the partial
++    /// <see cref="FactionDefinerPanel"/> file <c>FactionDefinerPanel.Steps.cs</c>.</para>
++    ///
++    /// <para><b>Unlike every sibling editor</b> (which bind to and edit the CURRENTLY LOADED scenario faction), this
++    /// panel never binds an existing <see cref="FactionDefinition"/> — it always assembles a fresh one from scratch
++    /// and, on Finish, writes it to a brand-new <c>{id}_faction.json</c> (refusing if that file already exists;
++    /// never patches/overwrites <c>alpha_faction.json</c>/<c>beta_faction.json</c> or any other existing faction).</para>
++    /// </summary>
++    public partial class FactionDefinerPanel : Node
++    {
++        // ── Layout constants (component-intrinsic dims; the spacing/color TOKENS are read from the theme) ──
++        private const float PANEL_W = 560f;
++        private const float PANEL_H = 680f;
++
++        /// <summary>The on-disk faction files scanned for the Roster / Buildings &amp; Tech preset pools (Story
++        /// 5.5's "Epics 2-4 content" pool) — the two shipped, fully-authored factions. Deliberately excludes
++        /// <c>_unitcard_sample.json</c>/<c>_buildingcard_sample.json</c> (editor scratch fixtures, not real
++        /// content).</summary>
++        private static readonly string[] PresetSourceFiles = { "alpha_faction.json", "beta_faction.json" };
++
++        private const string FACTIONS_DIR_RES = "res://resources/data/factions/";
++
++        // ── Kit context (self-owned; _accent only created when this panel is the first consumer) ──
++        private GodotTheme        _theme  = null!;
++        private AccentController?  _accent;
++
++        // ── Deps (wired by FactionDefinerPhase after AddChild) ──
++        private GameState? _gameState;
++
++        // ── Shell ──
++        private CanvasLayer    _canvas = null!;
++        private PanelContainer _panel  = null!;
++        private ChimeraTabs    _stepTabs = null!;     // Segment: the 5 wizard steps
++        private VBoxContainer  _bodyHost = null!;      // per-step content (refilled on step change)
++        private Label          _statusLabel = null!;   // save/validation status line
++        private Godot.Button   _backBtn   = null!;
++        private Godot.Button   _nextBtn   = null!;
++        private Godot.Button   _finishBtn = null!;
++
++        // ── Lifecycle ─────────────────────────────────────────────────────────────
++
++        /// <inheritdoc/>
++        public override void _Ready()
++        {
++            EnsureKitInitialized();   // MUST run before any ChimeraComponents.* call, or the factory throws
++            BuildUi();
++        }
++
++        /// <summary>Bind the panel to game state. Called by <c>FactionDefinerPhase</c> AFTER <c>AddChild</c>. Starts
++        /// hidden; shown by the <c>X</c> toggle in Edit mode.</summary>
++        public void Initialize(GameState gameState)
++        {
++            _gameState = gameState;
++            _gameState.ModeChanged += OnModeChanged;   // authoring is Edit-only — hide in Play
++            _panel.Visible = false;
++        }
++
++        /// <summary>Toggle visibility (X key, Edit mode only). On open: reset the wizard to a fresh draft + re-scan
++        /// the preset pools (every open starts a brand-new faction — no partial state carries across a close).</summary>
++        public void Toggle()
++        {
++            _panel.Visible = !_panel.Visible;
++            if (_panel.Visible) ResetWizard();
++        }
++
++        /// <summary>Hide the panel.</summary>
++        public void Close()
++        {
++            _panel.Visible = false;
++        }
++
++        private void OnModeChanged(int mode)
++        {
++            if (mode == (int)GameMode.Play) Close();   // hide in Play (authoring is Edit-only)
++        }
++
++        // ── Kit bootstrap ─────────────────────────────────────────────────────────
++
++        private void EnsureKitInitialized()
++        {
++            // ALWAYS load the theme (the inner PanelContainer.Theme needs it regardless of factory state).
++            _theme = ResourceLoader.Load<GodotTheme>(ThemeBuilder.ThemePath, cacheMode: ResourceLoader.CacheMode.Ignore)
++                     ?? ThemeBuilder.Build();
++
++            // Guard ONLY the one-time factory bootstrap so a future startup phase makes this a clean no-op.
++            if (!ChimeraComponents.IsInitialized)
++            {
++                _accent = new AccentController { Name = "AccentController" };
++                AddChild(_accent);
++                _accent.Initialize(_theme);
++                ChimeraComponents.Initialize(_theme, _accent);
++            }
++        }
++
++        // ── UI construction ──────────────────────────────────────────────────────
++
++        private void BuildUi()
++        {
++            _canvas = new CanvasLayer { Layer = 13 };
++            AddChild(_canvas);
++
++            _panel = ChimeraComponents.Panel(ChimeraComponents.PanelVariant.Default);
++            _panel.SetAnchorsPreset(Control.LayoutPreset.Center);
++            _panel.CustomMinimumSize = new Vector2(PANEL_W, PANEL_H);
++            _panel.Position = new Vector2(-PANEL_W * 0.5f, -PANEL_H * 0.5f);
++            _panel.Theme = _theme;   // _panel is a Control (FactionDefinerPanel : Node has NO Theme) — propagates to the subtree
++            _canvas.AddChild(_panel);
++
++            var root = new VBoxContainer();
++            root.AddThemeConstantOverride("separation", ChimeraComponents.Const(ThemeTokens.S3));
++            _panel.AddChild(root);
++
++            // Title + close row.
++            var titleRow = new HBoxContainer();
++            titleRow.AddThemeConstantOverride("separation", ChimeraComponents.Const(ThemeTokens.S2));
++            root.AddChild(titleRow);
++
++            var titleLbl = Heading("Faction Definer", ThemeTokens.Tlg);
++            titleLbl.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
++            titleLbl.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
++            titleRow.AddChild(titleLbl);
++
++            var closeBtn = ChimeraComponents.Button("Close [X]", ChimeraComponents.ButtonVariant.Secondary, ChimeraComponents.ButtonSize.Sm);
++            closeBtn.Pressed += Close;
++            closeBtn.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
++            titleRow.AddChild(closeBtn);
++
++            // Step indicator (Segment) — 5 steps, mirrors FactionDefinerStep's ordinal order.
++            _stepTabs = ChimeraTabs.Create(ChimeraComponents.TabsVariant.Segment,
++                "Name & Color", "Roster", "Buildings & Tech", "Starting Conditions", "AI Preset");
++            _stepTabs.SizeFlagsHorizontal = Control.SizeFlags.ShrinkCenter;
++            _stepTabs.TabChanged += _ => RefreshStepBody();
++            root.AddChild(_stepTabs);
++
++            // Scrollable per-step body.
++            var scroll = new ScrollContainer
++            {
++                SizeFlagsHorizontal  = Control.SizeFlags.ExpandFill,
++                SizeFlagsVertical    = Control.SizeFlags.ExpandFill,
++                HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled,
++            };
++            root.AddChild(scroll);
++
++            _bodyHost = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
++            _bodyHost.AddThemeConstantOverride("separation", ChimeraComponents.Const(ThemeTokens.S2));
++            scroll.AddChild(_bodyHost);
++
++            // Status line + Back/Next/Finish footer.
++            _statusLabel = Body("", ThemeTokens.TextLo);
++            _statusLabel.AutowrapMode = TextServer.AutowrapMode.Word;
++            _statusLabel.Visible = false;
++            root.AddChild(_statusLabel);
++
++            root.AddChild(BuildFooter());
++
++            _panel.Visible = false;   // hidden until the first X toggle
++        }
++
++        private HBoxContainer BuildFooter()
++        {
++            var row = new HBoxContainer();
++            row.AddThemeConstantOverride("separation", ChimeraComponents.Const(ThemeTokens.S2));
++
++            _backBtn = ChimeraComponents.Button("Back", ChimeraComponents.ButtonVariant.Secondary);
++            _backBtn.Pressed += () => { if (_stepTabs.Active > 0) _stepTabs.SetActive(_stepTabs.Active - 1); };
++            row.AddChild(_backBtn);
++
++            _nextBtn = ChimeraComponents.Button("Next", ChimeraComponents.ButtonVariant.Secondary);
++            _nextBtn.Pressed += () => { if (_stepTabs.Active < 4) _stepTabs.SetActive(_stepTabs.Active + 1); };
++            row.AddChild(_nextBtn);
++
++            var spacer = new Control { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
++            row.AddChild(spacer);
++
++            _finishBtn = ChimeraComponents.Button("Finish", ChimeraComponents.ButtonVariant.Primary);
++            _finishBtn.Pressed += OnFinishPressed;
++            row.AddChild(_finishBtn);
++
++            return row;
++        }
++
++        private void UpdateFooterButtons()
++        {
++            _backBtn.Disabled = _stepTabs.Active <= 0;
++            _nextBtn.Disabled = _stepTabs.Active >= 4;
++        }
++
++        // ── Small shared builders (mirror BuildingCardPanel's) ───────────────────
++
++        private Label Heading(string text, StringName sizeToken)
++        {
++            var l = new Label { Text = text };
++            l.AddThemeFontOverride("font", _theme.GetFont(ThemeTokens.FontDisplay, ThemeTokens.Type));
++            l.AddThemeFontSizeOverride("font_size", _theme.GetFontSize(sizeToken, ThemeTokens.Type));
++            l.AddThemeColorOverride("font_color", Tok(ThemeTokens.TextHi));
++            return l;
++        }
++
++        private Label Body(string text, StringName colorToken)
++        {
++            var l = new Label { Text = text };
++            l.AddThemeColorOverride("font_color", Tok(colorToken));
++            l.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
++            l.AutowrapMode = TextServer.AutowrapMode.Word;
++            return l;
++        }
++
++        private Color Tok(StringName token) => _theme.GetColor(token, ThemeTokens.Type);
++
++        private void ShowOk(string msg)
++        {
++            _statusLabel.Visible = true;
++            _statusLabel.Text = msg;
++            _statusLabel.AddThemeColorOverride("font_color", Tok(ThemeTokens.Ok));
++        }
++
++        private void ShowError(string msg)
++        {
++            _statusLabel.Visible = true;
++            _statusLabel.Text = msg;
++            _statusLabel.AddThemeColorOverride("font_color", Tok(ThemeTokens.Danger));
++        }
++
++        private void ClearStatus()
++        {
++            if (_statusLabel != null!) _statusLabel.Visible = false;
++        }
++    }
++}
+
+=== NEW FILE: godot/src/CreationSuite/FactionDefinerPanel.Steps.cs ===
+diff --git a/godot/src/CreationSuite/FactionDefinerPanel.Steps.cs b/godot/src/CreationSuite/FactionDefinerPanel.Steps.cs
+new file mode 100755
+index 0000000..8d33b86
+--- /dev/null
++++ b/godot/src/CreationSuite/FactionDefinerPanel.Steps.cs
+@@ -0,0 +1,248 @@
++#nullable enable
++using System.Collections.Generic;
++using System.IO;
++using System.Linq;
++using Godot;
++using ProjectChimera.Core.Definitions;
++using ProjectChimera.UI.Components;
++using ProjectChimera.UI.Theme;
++
++namespace ProjectChimera.CreationSuite
++{
++    public partial class FactionDefinerPanel
++    {
++        /// <summary>One pickable Okabe-Ito colorblind-safe swatch (UX-DR40) — a fixed hex + a distinguishing
++        /// glyph + label pair, so color is never the only signal. The exact 8-color, 8-glyph closed set the story
++        /// requires.</summary>
++        private static readonly (string Hex, string Glyph, string Label)[] ColorSwatchDefs =
++        {
++            ("#E69F00", "◆", "Team 1"),   // Orange
++            ("#56B4E9", "▲", "Team 2"),   // Sky Blue
++            ("#009E73", "●", "Team 3"),   // Bluish Green
++            ("#F0E442", "■", "Team 4"),   // Yellow
++            ("#0072B2", "★", "Team 5"),   // Blue
++            ("#D55E00", "✚", "Team 6"),   // Vermillion
++            ("#CC79A7", "◐", "Team 7"),   // Reddish Purple
++            ("#000000", "▣", "Team 8"),   // Black
++        };
++
++        // ── Wizard state (the FactionDefinition under construction + the scanned preset pools) ──
++        private FactionDefinition _draft = new();
++        private FactionPresetPool _presets = new();
++
++        // ── Per-step state re-scan / reset ───────────────────────────────────────
++
++        /// <summary>Start a brand-new wizard session: fresh draft, re-scanned preset pools, step 0. Called on every
++        /// panel open (Story 5.5 — the wizard never carries partial state across a close, matching "always creates
++        /// a brand-new file").</summary>
++        private void ResetWizard()
++        {
++            string factionsDirAbs = ProjectSettings.GlobalizePath(FACTIONS_DIR_RES);
++            var scanPaths = PresetSourceFiles.Select(f => Path.Combine(factionsDirAbs, f));
++            _presets = FactionDefinerWizardCore.ScanPresets(scanPaths);
++
++            _draft = new FactionDefinition();   // Id/DisplayName empty, Color default, AiPreset "balanced", Starting* defaults
++
++            ClearStatus();
++            _stepTabs.SetActive(0);
++            RefreshStepBody();   // SetActive(0) fires TabChanged → RefreshStepBody already, but the panel may have
++                                  // been freshly built with Active already 0 (no-op change) — call explicitly too.
++        }
++
++        // ── Step body dispatch ────────────────────────────────────────────────────
++
++        private void RefreshStepBody()
++        {
++            foreach (Node c in _bodyHost.GetChildren()) { _bodyHost.RemoveChild(c); c.QueueFree(); }
++
++            switch ((FactionDefinerStep)_stepTabs.Active)
++            {
++                case FactionDefinerStep.NameColor: BuildNameColorStep(); break;
++                case FactionDefinerStep.Roster: BuildRosterStep(); break;
++                case FactionDefinerStep.BuildingsTech: BuildBuildingsTechStep(); break;
++                case FactionDefinerStep.StartingConditions: BuildStartingConditionsStep(); break;
++                case FactionDefinerStep.AiPreset: BuildAiPresetStep(); break;
++            }
++            UpdateFooterButtons();
++        }
++
++        // ── Step 0: Name & Color ──────────────────────────────────────────────────
++
++        private void BuildNameColorStep()
++        {
++            _bodyHost.AddChild(ChimeraComponents.FieldLabel("Faction ID (used for the output filename)"));
++            var idInput = ChimeraComponents.Input("e.g. crimson_order", _draft.Id);
++            idInput.TextChanged += t => { _draft.Id = t; ClearStatus(); };
++            _bodyHost.AddChild(idInput);
++
++            _bodyHost.AddChild(ChimeraComponents.FieldLabel("Display Name"));
++            var nameInput = ChimeraComponents.Input("e.g. The Crimson Order", _draft.DisplayName);
++            nameInput.TextChanged += t => _draft.DisplayName = t;
++            _bodyHost.AddChild(nameInput);
++
++            _bodyHost.AddChild(ChimeraComponents.FieldLabel("Faction Color"));
++            var grid = new GridContainer { Columns = 4 };
++            grid.AddThemeConstantOverride("h_separation", ChimeraComponents.Const(ThemeTokens.S2));
++            grid.AddThemeConstantOverride("v_separation", ChimeraComponents.Const(ThemeTokens.S2));
++            foreach ((string hex, string glyph, string label) in ColorSwatchDefs)
++            {
++                float[] rgba = HexToRgba(hex);
++                bool isActive = ColorsEqual(_draft.Color, rgba);
++                var swatchBtn = ChimeraComponents.Button($"{glyph} {label}",
++                    isActive ? ChimeraComponents.ButtonVariant.Primary : ChimeraComponents.ButtonVariant.Secondary,
++                    ChimeraComponents.ButtonSize.Sm);
++                swatchBtn.Pressed += () => { _draft.Color = rgba; RefreshStepBody(); };
++                grid.AddChild(swatchBtn);
++            }
++            _bodyHost.AddChild(grid);
++        }
++
++        private static float[] HexToRgba(string hex)
++        {
++            var c = new Color(hex);
++            return new[] { c.R, c.G, c.B, 1f };
++        }
++
++        private static bool ColorsEqual(float[]? a, float[] b)
++        {
++            if (a == null || a.Length != 4) return false;
++            for (int i = 0; i < 4; i++)
++                if (Mathf.Abs(a[i] - b[i]) > 0.001f) return false;
++            return true;
++        }
++
++        // ── Step 1: Roster ────────────────────────────────────────────────────────
++
++        private void BuildRosterStep()
++        {
++            _bodyHost.AddChild(ChimeraComponents.FieldLabel(
++                "Roster — pick units from existing factions (needs >=1 Worker + >=1 combat unit)"));
++
++            if (_presets.Units.Count == 0)
++            {
++                _bodyHost.AddChild(Body("No units found in the scanned faction files.", ThemeTokens.TextLo));
++                return;
++            }
++
++            foreach (FactionPresetOption<UnitDefinition> opt in _presets.Units)
++                _bodyHost.AddChild(BuildPickRow(
++                    $"[{opt.SourceFactionId}] {LabelFor(opt.Def)} — {opt.Def.Category}",
++                    isChecked: _draft.Units.Contains(opt.Def),
++                    onToggled: on =>
++                    {
++                        if (on) { if (!_draft.Units.Contains(opt.Def)) _draft.Units.Add(opt.Def); }
++                        else _draft.Units.Remove(opt.Def);
++                    }));
++        }
++
++        // ── Step 2: Buildings & Tech (combined per spec) ─────────────────────────
++
++        private void BuildBuildingsTechStep()
++        {
++            _bodyHost.AddChild(ChimeraComponents.FieldLabel("Buildings — pick from existing factions"));
++            if (_presets.Buildings.Count == 0)
++            {
++                _bodyHost.AddChild(Body("No buildings found in the scanned faction files.", ThemeTokens.TextLo));
++            }
++            else
++            {
++                foreach (FactionPresetOption<BuildingDefinition> opt in _presets.Buildings)
++                    _bodyHost.AddChild(BuildPickRow(
++                        $"[{opt.SourceFactionId}] {LabelFor(opt.Def)}",
++                        isChecked: _draft.Buildings.Contains(opt.Def),
++                        onToggled: on =>
++                        {
++                            if (on) { if (!_draft.Buildings.Contains(opt.Def)) _draft.Buildings.Add(opt.Def); }
++                            else _draft.Buildings.Remove(opt.Def);
++                        }));
++            }
++
++            _bodyHost.AddChild(ChimeraComponents.FieldLabel("Research — pick from existing factions"));
++            if (_presets.Research.Count == 0)
++            {
++                _bodyHost.AddChild(Body("No research entries found in the scanned faction files.", ThemeTokens.TextLo));
++            }
++            else
++            {
++                foreach (FactionPresetOption<ResearchDefinition> opt in _presets.Research)
++                    _bodyHost.AddChild(BuildPickRow(
++                        $"[{opt.SourceFactionId}] {(string.IsNullOrEmpty(opt.Def.DisplayName) ? opt.Def.Id : opt.Def.DisplayName)}",
++                        isChecked: _draft.Research.Contains(opt.Def),
++                        onToggled: on =>
++                        {
++                            if (on) { if (!_draft.Research.Contains(opt.Def)) _draft.Research.Add(opt.Def); }
++                            else _draft.Research.Remove(opt.Def);
++                        }));
++            }
++        }
++
++        private static string LabelFor(UnitDefinition def) =>
++            string.IsNullOrEmpty(def.DisplayName) ? def.Id : def.DisplayName;
++
++        private HBoxContainer BuildPickRow(string label, bool isChecked, System.Action<bool> onToggled)
++        {
++            var row = new HBoxContainer();
++            row.AddThemeConstantOverride("separation", ChimeraComponents.Const(ThemeTokens.S2));
++
++            var cb = new CheckBox { ButtonPressed = isChecked };
++            cb.Toggled += on => onToggled(on);
++            row.AddChild(cb);
++
++            var lbl = Body(label, ThemeTokens.TextHi);
++            row.AddChild(lbl);
++            return row;
++        }
++
++        // ── Step 3: Starting Conditions ───────────────────────────────────────────
++
++        private void BuildStartingConditionsStep()
++        {
++            _bodyHost.AddChild(ChimeraComponents.FieldLabel("Starting Ore"));
++            var oreInput = ChimeraComponents.NumInput(_draft.StartingOre, 0, 100000, 10);
++            oreInput.ValueChanged += v => _draft.StartingOre = (float)v;
++            _bodyHost.AddChild(oreInput);
++
++            _bodyHost.AddChild(ChimeraComponents.FieldLabel("Starting Crystal"));
++            var crystalInput = ChimeraComponents.NumInput(_draft.StartingCrystal, 0, 100000, 10);
++            crystalInput.ValueChanged += v => _draft.StartingCrystal = (float)v;
++            _bodyHost.AddChild(crystalInput);
++
++            _bodyHost.AddChild(Body(
++                "Descriptor-only this story — not yet wired into match-start economy (a future story extends ScenarioApplier).",
++                ThemeTokens.TextLo));
++        }
++
++        // ── Step 4: AI Preset (non-interactive stub this story) ──────────────────
++
++        private void BuildAiPresetStep()
++        {
++            _draft.AiPreset = "balanced";   // Finish always writes this — pin it here so the panel reflects the real output
++
++            _bodyHost.AddChild(ChimeraComponents.FieldLabel("AI Preset"));
++            _bodyHost.AddChild(ChimeraComponents.Tag("balanced — selected", ChimeraComponents.TagVariant.Accent));
++            _bodyHost.AddChild(Body(
++                "Preset choice lands in Story 5.6 — Finish always writes ai_preset: \"balanced\" for now.",
++                ThemeTokens.TextLo));
++        }
++
++        // ── Finish/save ───────────────────────────────────────────────────────────
++
++        private void OnFinishPressed()
++        {
++            string factionsDirAbs = ProjectSettings.GlobalizePath(FACTIONS_DIR_RES);
++            FactionDefinerFinishResult result = FactionDefinerWizardCore.TryFinish(_draft, factionsDirAbs);
++
++            if (!result.Ok)
++            {
++                (string fieldPath, string message) = result.Errors[0];
++                int extra = result.Errors.Count - 1;
++                ShowError(extra > 0 ? $"{message} (+{extra} more issue{(extra == 1 ? "" : "s")})" : message);
++                if (result.Step.HasValue) _stepTabs.SetActive((int)result.Step.Value);
++                return;
++            }
++
++            ShowOk($"Saved — {result.WrittenPath}");
++            GD.Print($"[FactionDefiner] Wrote {result.WrittenPath}.");
++        }
++    }
++}

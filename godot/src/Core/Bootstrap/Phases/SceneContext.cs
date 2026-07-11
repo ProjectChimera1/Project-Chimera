@@ -112,6 +112,7 @@ namespace ProjectChimera.Core.Bootstrap
         public CreationSuite.TechTreePanel      TechTreePanel      = null!;  // Story 4.6 (TechTree phase)
         public CreationSuite.ItemCardPanel      ItemCardPanel      = null!;  // Story 3.16 (ItemCard phase)
         public CreationSuite.PersistenceManifestPanel PersistenceManifestPanel = null!;  // Story 3.8 (PersistenceManifest phase)
+        public CreationSuite.FactionDefinerPanel FactionDefinerPanel = null!;  // Story 5.5 (FactionDefiner phase)
         public UI.HeroPickerOverlay HeroPicker = null!;  // Story 3.9 (HeroPicker phase) — offline Play-Skirmish hero picker + launch authority
         /// <summary>Story 3.9: the profile the player Deployed at the offline skirmish start, handed off to
         /// <c>HeroProfileLoader.LoadInto</c> to mint into <c>HeroStore</c> as init state; cleared after mint. Null ⇒

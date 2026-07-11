@@ -72,6 +72,21 @@ namespace ProjectChimera.Core.Definitions
         [JsonPropertyName("persistence_enabled")]
         public bool PersistenceEnabled { get; set; } = false;
 
+        /// <summary>The faction's starting ore balance (Story 5.5, FR-17) — descriptor-only data written by the
+        /// Faction Definer wizard's Starting Conditions step, mirroring <see cref="AiPreset"/>/
+        /// <see cref="SignatureMechanicId"/>'s unwired-descriptor pattern (Story 5.2): no <c>ScenarioApplier</c>/
+        /// <c>ScenarioPlayerSlot</c> change reads this yet — wiring it into actual match-start economy is left for a
+        /// future story. Defaults to <c>200</c>, matching <c>ScenarioPlayerSlot.StartOre</c>'s existing default so an
+        /// unauthored faction already carries the same starting balance a hand-authored scenario slot would.</summary>
+        [JsonPropertyName("starting_ore")]
+        public float StartingOre { get; set; } = 200f;
+
+        /// <summary>The faction's starting crystal balance (Story 5.5, FR-17) — mirrors <see cref="StartingOre"/>'s
+        /// descriptor-only posture exactly. Defaults to <c>0</c>, matching <c>ScenarioPlayerSlot.StartCrystal</c>'s
+        /// existing default.</summary>
+        [JsonPropertyName("starting_crystal")]
+        public float StartingCrystal { get; set; } = 0f;
+
         // ── Lookup helpers ──────────────────────────────────────────────────────
 
         /// <summary>Find a building definition by ID, or null if not found.</summary>

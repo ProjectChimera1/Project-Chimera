@@ -418,6 +418,7 @@ namespace ProjectChimera.Core
                 new TechTreePhase(_ctx),   // Story 4.6 — must run AFTER BuildingCardPhase so _ctx.BuildingCardPanel already exists
                 new PersistenceManifestPhase(_ctx),
                 new HeroPickerPhase(_ctx),
+                new FactionDefinerPhase(_ctx),   // Story 5.5 — must be last (mirrors ScenePhaseOrder.Canonical)
             };
             new ScenePhaseRunner(phases).Run();
 
@@ -612,6 +613,13 @@ namespace ProjectChimera.Core
                 // src/ and no InputMap action binds physical key R in project.godot; T is already claimed by
                 // TerrainBrush/SelectionSystem).
                 _ctx.TechTreePanel.Toggle();
+                GetViewport().SetInputAsHandled();
+            }
+            else if (key.Keycode == Key.X)
+            {
+                // Story 5.5: X opens the Faction Definer guided wizard (verified unused — no other Key.X check
+                // anywhere in src/ and no InputMap action binds physical key X in project.godot).
+                _ctx.FactionDefinerPanel.Toggle();
                 GetViewport().SetInputAsHandled();
             }
         }
