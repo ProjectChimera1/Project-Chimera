@@ -12,6 +12,7 @@ using ProjectChimera.Navigation;
 using ProjectChimera.UGC;
 using ProjectChimera.UI;
 using System;
+using System.Linq;
 
 namespace ProjectChimera.Core
 {
@@ -196,6 +197,10 @@ namespace ProjectChimera.Core
         /// Card Editor reads it for the behavior picker + compat validation; no sim system consumes it).</summary>
         private const string BEHAVIORS_DIR = "res://resources/data/behaviors";
         internal const string ITEMS_DIR    = "res://resources/data/items"; // Story 3.15 (internal: the ItemCard phase reads it)
+        /// <summary>Story 5.7 (FR-19): directory scanned by <see cref="FactionDefinition.LoadSelectableFromDirectory"/>
+        /// for wizard-authored/showcase factions — the same directory <see cref="P1_FACTION_JSON"/>/<see cref="P2_FACTION_JSON"/>
+        /// live in.</summary>
+        private const string FACTIONS_DIR  = "res://resources/data/factions";
 
         // ── Lifecycle ─────────────────────────────────────────────────────────
 
@@ -288,6 +293,17 @@ namespace ProjectChimera.Core
             string itemsAbs = ProjectSettings.GlobalizePath(ITEMS_DIR);
             _itemRegistry = ItemRegistry.LoadFromDirectory(
                 itemsAbs, name => GD.Print($"[Items] skipped invalid {name}"));
+
+            // Story 5.7 (FR-19/UX-DR80): discover every SELECTABLE (ValidateComplete-passing) faction under
+            // resources/data/factions/, fresh on every scene load (Godot reloads MainScene from disk on every
+            // Play/Playtest, so this alone satisfies "no restart needed" — same posture as the Ability/Behavior/
+            // Item registries above). No skirmish/lobby picker screen exists yet (Story 11.1, which depends on
+            // THIS list), so the console-printed discovered set is the one currently-real "selectable list" surface.
+            string factionsAbs = ProjectSettings.GlobalizePath(FACTIONS_DIR);
+            var selectableFactions = FactionDefinition.LoadSelectableFromDirectory(
+                factionsAbs, (name, reason) => GD.Print($"[Factions] skipped invalid {name}: {reason}"));
+            GD.Print($"[Factions] {selectableFactions.Count} selectable: "
+                + string.Join(", ", selectableFactions.Select(f => f.Id)));
 
             // Story 2.11 (review C1): tag-validate the DEFAULT-SEEDED faction defs on the client too, mirroring the
             // server's validate-every-def posture (ServerBootstrap). ResolveSlotFactionDefs only validates slots that

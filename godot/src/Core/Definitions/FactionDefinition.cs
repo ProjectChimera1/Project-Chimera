@@ -1,6 +1,7 @@
 #nullable enable
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -242,6 +243,96 @@ namespace ProjectChimera.Core.Definitions
                 throw new System.InvalidOperationException(string.Join("\n", errors));
 
             return def;
+        }
+
+        /// <summary>
+        /// Story 5.7 (FR-19/UX-DR80): directory-scan discovery of every SELECTABLE (validated-complete) faction
+        /// under <paramref name="absDir"/> — the "what can a creator pick for playtest/skirmish" surface. Mirrors
+        /// <see cref="AbilityRegistry.LoadFromDirectory"/>'s pattern, but lives here (not on
+        /// <see cref="FactionRegistry"/>, which never touches res:// or does file I/O).
+        ///
+        /// Scans only <c>*_faction.json</c> (NOT bare <c>*.json</c> — this directory also holds
+        /// <c>_buildingcard_sample.json</c>/<c>_unitcard_sample.json</c>, unrelated sample content that must never
+        /// be mistaken for a faction). The directory enumeration itself (<see cref="Directory.GetFiles"/>) is
+        /// guarded — an I/O error there is reported via <paramref name="onExcluded"/> against <paramref
+        /// name="absDir"/> and yields an empty list, honoring this method's "never throws" contract even for a
+        /// permissions/enumeration failure, not just a per-file parse failure. Matching files are walked in a
+        /// deterministic ordinal-by-filename order — this walk order only controls the order <paramref
+        /// name="onExcluded"/> fires and which file wins a duplicate-id tie (see below); it is NOT what makes the
+        /// returned list itself deterministic (the final <see cref="Id"/> sort, below, does that).
+        ///
+        /// Each file is parsed directly via <see cref="JsonSerializer"/> (deliberately NOT <see cref="LoadFromFile"/>,
+        /// which throws on a <see cref="FactionValidator.Validate"/> failure — that would abort the whole scan on
+        /// one bad file); a parse exception or null result is reported via <paramref name="onExcluded"/> and
+        /// skipped. A successfully-parsed def is then gated by <see cref="FactionValidator.ValidateComplete"/> —
+        /// the roster-completeness check that closes DW-97's discovery half — and only <c>Ok</c> results proceed.
+        /// If a def's <see cref="Id"/> was already claimed by an earlier file in the walk order, it is reported via
+        /// <paramref name="onExcluded"/> as a duplicate and dropped (first-file-wins) — two factions can never
+        /// alias the same selectable id.
+        ///
+        /// The returned list is ordinal-sorted by <see cref="Id"/> (mirrors <see cref="AbilityRegistry"/>'s stable
+        /// index convention) — THIS sort is what makes the showcase factions (alpha/beta) and any wizard-authored
+        /// ones enumerate deterministically alongside each other regardless of on-disk filename order.
+        ///
+        /// A missing/absent <paramref name="absDir"/> returns an empty list. Never throws.
+        /// </summary>
+        public static IReadOnlyList<FactionDefinition> LoadSelectableFromDirectory(
+            string absDir, System.Action<string, string>? onExcluded = null)
+        {
+            if (string.IsNullOrEmpty(absDir) || !Directory.Exists(absDir))
+                return System.Array.Empty<FactionDefinition>();
+
+            string[] files;
+            try
+            {
+                files = Directory.GetFiles(absDir, "*_faction.json");
+            }
+            catch (System.Exception ex)
+            {
+                onExcluded?.Invoke(absDir, ex.Message);
+                return System.Array.Empty<FactionDefinition>();
+            }
+
+            var defs = new List<FactionDefinition>();
+            var seenIds = new System.Collections.Generic.HashSet<string>(System.StringComparer.Ordinal);
+            foreach (string file in files.OrderBy(f => f, System.StringComparer.Ordinal))
+            {
+                string fileName = Path.GetFileName(file);
+                FactionDefinition? def;
+                try
+                {
+                    def = JsonSerializer.Deserialize<FactionDefinition>(File.ReadAllText(file), JsonOptions);
+                }
+                catch (System.Exception ex)
+                {
+                    onExcluded?.Invoke(fileName, ex.Message);
+                    continue;
+                }
+
+                if (def is null)
+                {
+                    onExcluded?.Invoke(fileName, "deserialized to null");
+                    continue;
+                }
+
+                FactionValidationResult result = FactionValidator.ValidateComplete(def);
+                if (!result.Ok)
+                {
+                    string reason = result.Errors.Count > 0 ? result.Errors[0].Message : "failed ValidateComplete";
+                    onExcluded?.Invoke(fileName, reason);
+                    continue;
+                }
+
+                if (!seenIds.Add(def.Id))
+                {
+                    onExcluded?.Invoke(fileName, $"duplicate faction id '{def.Id}' — an earlier file already claimed it");
+                    continue;
+                }
+
+                defs.Add(def);
+            }
+
+            return defs.OrderBy(d => d.Id, System.StringComparer.Ordinal).ToList();
         }
     }
 }

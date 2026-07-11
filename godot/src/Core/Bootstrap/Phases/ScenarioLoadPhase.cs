@@ -109,6 +109,17 @@ namespace ProjectChimera.Core.Bootstrap
                     // any SpawnUnit; a dropped unit → GetUnit null → the applier's def==null skip → no EntityWorld slot.
                     foreach (string err in UnitTagValidator.ValidateAndDropUnits(def))
                         GD.PrintErr($"[UnitTagValidator] {err} (unit dropped)");
+                    // Story 5.7 (FR-19/UX-DR80, DW-97 match-load closure): shadow-mode, non-blocking roster-
+                    // completeness diagnostic — mirrors the UnitTagValidator GD.PrintErr idiom immediately above.
+                    // Runs AFTER tag-drop so it reflects the roster that will actually spawn (a unit dropped for
+                    // an unknown tag could be this faction's only Worker/combat unit — checking pre-drop would
+                    // silently miss that). Never blocks the load (no new blocking policy invented per DW-97's own
+                    // closure note); just surfaces a located error if the roster fails ValidateComplete (e.g.
+                    // missing Worker role or a blank mesh_path) so it isn't a silent unplayable match start.
+                    FactionValidationResult completeResult = FactionValidator.ValidateComplete(def);
+                    if (!completeResult.Ok)
+                        foreach ((string _, string message) in completeResult.Errors)
+                            GD.PrintErr($"[FactionValidator] slot {slot.Slot} ({abs}): {message}");
                     _ctx.SlotFactionDefs[(int)faction] = def;
                 }
             }
