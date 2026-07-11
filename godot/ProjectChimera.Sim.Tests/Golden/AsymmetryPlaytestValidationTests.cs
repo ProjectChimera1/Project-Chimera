@@ -1,0 +1,462 @@
+#nullable enable
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using ProjectChimera.Core;               // EntityWorld, Fixed, FixedVec3, Faction, FactionRegistry, UnitCategory, GatherState, UnitCommand, BuildingType
+using ProjectChimera.Core.Definitions;   // AbilityRegistry, AbilityDefinition, FactionDefinition, UnitDefinition
+using ProjectChimera.Core.Sim;           // SimulationHost, NullLogSink, ScenarioData
+using ProjectChimera.Multiplayer;        // OrderApplier, UnitOrder
+using Xunit;
+using Xunit.Abstractions;
+
+namespace ProjectChimera.Sim.Tests.Golden
+{
+    /// <summary>
+    /// Story 5.8 (FR-20, FR-18) — real-content, AI-piloted integration coverage proving BOTH showcase factions
+    /// (alpha/"Crucible Covenant", beta/"Sanguine Court") are individually AI-playable through the existing
+    /// SINGLE <see cref="ProjectChimera.AI.AiOpponentSystem"/> instance (hardcoded to pilot Player2), and that
+    /// each faction's signature mechanic fires live inside such a match — not just in Story 5.4's isolated
+    /// scenario. No new production systems: this exercises Stories 5.1-5.7 together.
+    ///
+    /// FR-18 is proven by running the AI TWICE — once with alpha occupying <c>factionDef2</c>, once with beta —
+    /// swapping which real roster the one hardcoded Player2 AI slot pilots (Design Notes: adding a second,
+    /// simultaneous AI instance would be new production capability, out of this integration-only story's scope).
+    /// FR-20's unique-mechanic bar is proven live inside these same AI-piloted matches: Sanguine Furnace via the
+    /// beta match's own real gathering worker (a combat-exempt <c>forgehand</c>, so nothing can damage it — the
+    /// ONLY thing that can move its Health is its own <c>furnace_trickle</c> passive), and Equal Exchange via a
+    /// scripted self-cast (the AI never casts an ACTIVE ability on its own — <c>AiOpponentSystem</c> never writes
+    /// <c>PendingCastTarget</c> — so this uses the same scripted-order technique Story 5.4's
+    /// <see cref="ProjectChimera.Sim.Tests.Effects.SignatureMechanicRealContentTests"/> established).
+    ///
+    /// Every test loads the REAL shipped <c>alpha_faction.json</c>/<c>beta_faction.json</c> + the REAL
+    /// <see cref="AbilityRegistry"/> (mirrors <c>SignatureMechanicRealContentTests.LoadRealContent</c>/<c>NewHost</c>)
+    /// — never a hand-built stand-in.
+    /// </summary>
+    public class AsymmetryPlaytestValidationTests
+    {
+        private readonly ITestOutputHelper _output;
+
+        public AsymmetryPlaytestValidationTests(ITestOutputHelper output) => _output = output;
+
+        // ── Scenario constants ───────────────────────────────────────────────────────────────────────────────
+
+        /// <summary>Equal to <see cref="ProjectChimera.AI.AiOpponentSystem"/>'s Normal-difficulty attack threshold,
+        /// so the AI's pre-placed initial wave is immediately conscriptable into a <c>LaunchAttack</c> (Idle/Stop
+        /// both count, per <c>AiSnapshot.AvailableCombatUnits</c>).</summary>
+        private const int InitialWaveSize = 5;
+
+        /// <summary>Real-content defenders guarding the opposing (non-AI-piloted) base, so the AI's eventual
+        /// attack wave engages REAL combat instead of marching to empty ground (unlike the deliberately-starved
+        /// <c>AiActiveScenario</c>, which gives its inert Player1 zero units on purpose).</summary>
+        private const int OpposingDefenderCount = 4;
+
+        /// <summary>50s at 30 ticks/sec — enough headroom for the AI's own Barracks to complete (~10s fallback
+        /// construction), several training cycles from its real roster, and its attack wave to close the ~90-unit
+        /// gap to the opposing base and fight.</summary>
+        private const int MatchTicks = 1500;
+
+        // Deterministic entity-id layout authored by <see cref="BuildAiPilotedHarness"/> (asserted there so a
+        // future reordering fails loudly instead of silently pointing these constants at the wrong unit):
+        //   0..(InitialWaveSize-1)                              -> AI (Player2) initial wave (real Melee unit)
+        //   InitialWaveSize                                      -> AI (Player2) real Worker-category unit
+        //   InitialWaveSize+1 .. InitialWaveSize+OpposingDefenderCount -> opposing (Player1) real Melee defenders
+        //   InitialWaveSize+1+OpposingDefenderCount (alpha only) -> isolated Player2 Equal-Exchange caster
+        private const int AiWorkerEntityId              = InitialWaveSize;
+        private const int EqualExchangeCasterEntityId   = InitialWaveSize + 1 + OpposingDefenderCount;
+
+        // ── Real-content resolution (mirrors SignatureMechanicRealContentTests.ResolveDataDir/LoadRealContent) ──
+
+        private static string ResolveDataDir(string sub)
+        {
+            var dir = new DirectoryInfo(AppContext.BaseDirectory);
+            while (dir != null)
+            {
+                string candidate = Path.Combine(dir.FullName, "resources", "data", sub);
+                if (Directory.Exists(candidate)) return candidate;
+                dir = dir.Parent;
+            }
+            throw new DirectoryNotFoundException(
+                $"Could not locate resources/data/{sub} above {AppContext.BaseDirectory}");
+        }
+
+        private static (FactionDefinition alpha, FactionDefinition beta, AbilityRegistry registry) LoadRealContent()
+        {
+            AbilityRegistry registry = AbilityRegistry.LoadFromDirectory(ResolveDataDir("abilities"));
+            FactionDefinition alpha = FactionDefinition.LoadFromFile(Path.Combine(ResolveDataDir("factions"), "alpha_faction.json"));
+            FactionDefinition beta  = FactionDefinition.LoadFromFile(Path.Combine(ResolveDataDir("factions"), "beta_faction.json"));
+            foreach (UnitDefinition u in alpha.Units) u.ResolveAbilities(registry);
+            foreach (UnitDefinition u in beta.Units)  u.ResolveAbilities(registry);
+            return (alpha, beta, registry);
+        }
+
+        // ── Shared AI-piloted match builders ─────────────────────────────────────────────────────────────────
+
+        /// <summary>Alpha occupies the AI's hardcoded Player2 slot; beta is the passive, real-content opposing
+        /// (Player1) side. Reused by the alpha FR-18 test, the Equal Exchange scripted-cast test, and the
+        /// composition/determinism test — a fresh, independently-loaded build every call (no shared/static
+        /// state), matching every other golden scenario's <c>Build()</c> contract.</summary>
+        private static GoldenHarness BuildAlphaPilotedHarness()
+        {
+            var (alpha, beta, registry) = LoadRealContent();
+            return BuildAiPilotedHarness(aiRoster: alpha, opposingRoster: beta, registry);
+        }
+
+        /// <summary>Beta occupies the AI's hardcoded Player2 slot; alpha is the passive, real-content opposing
+        /// (Player1) side. Reused by the beta FR-18 test, the Sanguine Furnace live-fire test, and the
+        /// composition/determinism test.</summary>
+        private static GoldenHarness BuildBetaPilotedHarness()
+        {
+            var (alpha, beta, registry) = LoadRealContent();
+            return BuildAiPilotedHarness(aiRoster: beta, opposingRoster: alpha, registry);
+        }
+
+        /// <summary>
+        /// Builds a fresh, fully-wired AI-piloted match: <paramref name="aiRoster"/> fills
+        /// <see cref="SimulationHost.Create"/>'s <c>factionDef2</c> (the AI's hardcoded Player2 slot — Design
+        /// Notes), <paramref name="opposingRoster"/> fills <c>factionDef1</c> (Player1, passive real-content
+        /// defenders — never AI-piloted, never a second <c>AiOpponentSystem</c>). Gives the AI a live
+        /// CommandCenter + ample ore (so it can afford to build its OWN Barracks and train from its real roster
+        /// — nothing here pre-builds a Barracks, so <c>ScoreBuildBarracks</c> must actually fire), a real
+        /// Worker-category unit gathering a nearby node (proves "gathers" and, for beta, doubles as the
+        /// furnace-regen observation unit — a gatherer is combat-exempt, so nothing else can move its Health),
+        /// and an initial wave of real Melee units at the Normal attack threshold (conscriptable, not yet
+        /// launched — the AI's own <c>ScoreLaunchAttack</c> decides when). The opposing side gets a live
+        /// CommandCenter + real Melee defenders positioned at <c>AiOpponentSystem.P1_BASE</c> (the AI's
+        /// hardcoded attack destination), so the eventual attack wave engages REAL combat.
+        /// </summary>
+        private static GoldenHarness BuildAiPilotedHarness(
+            FactionDefinition aiRoster, FactionDefinition opposingRoster, AbilityRegistry registry)
+        {
+            SimulationHost host = SimulationHost.Create(
+                NullLogSink.Instance, new FactionRegistry(2), opposingRoster, aiRoster, registry: registry);
+            host.ChecksumInterval = 1;
+            EntityWorld world = host.World;
+
+            // ── AI (Player2) base: a live, real CommandCenter + ample ore so it can afford to build its own
+            //    Barracks (AiOpponentSystem's hardcoded COST_BARRACKS), train from its real roster, and expand. ──
+            var aiCcPos = new FixedVec3(Fixed.FromInt(45), Fixed.Zero, Fixed.Zero);
+            int aiCc = host.BuildSys.PlaceBuildingDirect(BuildingType.CommandCenter, Faction.Player2, aiCcPos, preBuilt: true);
+            if (aiCc < 0) throw new InvalidOperationException("BuildAiPilotedHarness: AI CommandCenter failed to place.");
+            host.Resources.FactionBase[(int)Faction.Player2] = aiCcPos;
+            host.Resources.AddOre(Faction.Player2, Fixed.FromInt(1000));
+
+            // ── AI (Player2) initial wave: real roster Melee units, held at Stop (counted as "available" by
+            //    AiSnapshot but not wandering off before the AI's own attack decision — trained units spawn at
+            //    Stop too, so this matches how the AI's OWN production holds new units). ──
+            UnitDefinition? aiMeleeDef = aiRoster.GetUnitByCategory("Melee");
+            if (aiMeleeDef == null)
+                throw new InvalidOperationException($"BuildAiPilotedHarness: '{aiRoster.Id}' has no Melee unit for the initial wave.");
+            for (int i = 0; i < InitialWaveSize; i++)
+            {
+                int u = world.Create(new FixedVec3(Fixed.FromInt(40), Fixed.Zero, Fixed.FromInt(i * 2 - 4)),
+                                      Faction.Player2, Fixed.FromFloat(aiMeleeDef.Hp), Fixed.FromFloat(aiMeleeDef.Speed));
+                world.ApplyUnitDefinition(u, aiMeleeDef);
+                world.CommandState[u] = UnitCommand.Stop;
+            }
+
+            // ── AI (Player2) worker: real Worker-category unit (alpha "worker"/Acolyte, beta "forgehand"/
+            //    Cinderhand Thrall) gathering a nearby node — proves FR-18's "gathers" bar. A gatherer is
+            //    combat-exempt (CombatSystem.Tick's GatherState guard), so for beta this SAME unit doubles as the
+            //    Sanguine Furnace live-fire observation unit: nothing else can touch its Health. ──
+            UnitDefinition? aiWorkerDef = aiRoster.GetUnitByCategory("Worker");
+            if (aiWorkerDef == null)
+                throw new InvalidOperationException($"BuildAiPilotedHarness: '{aiRoster.Id}' has no Worker unit.");
+            int aiWorker = world.Create(new FixedVec3(Fixed.FromInt(50), Fixed.Zero, Fixed.FromInt(10)),
+                                        Faction.Player2, Fixed.FromFloat(aiWorkerDef.Hp), Fixed.FromFloat(aiWorkerDef.Speed));
+            world.ApplyUnitDefinition(aiWorker, aiWorkerDef);
+            world.GatherState[aiWorker]   = GatherState.Idle;
+            world.CarryCapacity[aiWorker] = Fixed.FromInt(20);
+            if (aiWorker != AiWorkerEntityId)
+                throw new InvalidOperationException(
+                    $"BuildAiPilotedHarness invariant broken: AI worker id was {aiWorker}, expected {AiWorkerEntityId}.");
+            host.Nodes.Create(new FixedVec3(Fixed.FromInt(55), Fixed.Zero, Fixed.FromInt(10)),
+                              Fixed.FromInt(500), Fixed.FromInt(7), 3);
+
+            // ── Opposing (Player1) base + defenders: real content, positioned at AiOpponentSystem's HARDCODED
+            //    attack destination (P1_BASE = (-45,0,0)) so the AI's eventual attack wave engages REAL combat
+            //    instead of marching to empty ground. Stop (never chase) — a defended base, not a second AI. ──
+            var p1BasePos = new FixedVec3(Fixed.FromInt(-45), Fixed.Zero, Fixed.Zero);
+            int p1Cc = host.BuildSys.PlaceBuildingDirect(BuildingType.CommandCenter, Faction.Player1, p1BasePos, preBuilt: true);
+            if (p1Cc < 0) throw new InvalidOperationException("BuildAiPilotedHarness: opposing CommandCenter failed to place.");
+            UnitDefinition? defenderDef = opposingRoster.GetUnitByCategory("Melee");
+            if (defenderDef == null)
+                throw new InvalidOperationException($"BuildAiPilotedHarness: '{opposingRoster.Id}' has no Melee unit for defenders.");
+            for (int i = 0; i < OpposingDefenderCount; i++)
+            {
+                int u = world.Create(new FixedVec3(Fixed.FromInt(-42), Fixed.Zero, Fixed.FromInt(i * 2 - 3)),
+                                      Faction.Player1, Fixed.FromFloat(defenderDef.Hp), Fixed.FromFloat(defenderDef.Speed));
+                world.ApplyUnitDefinition(u, defenderDef);
+                world.CommandState[u] = UnitCommand.Stop;
+            }
+
+            // ── Equal Exchange scripted-cast fixture: alpha's roster is the sole spike_transmutation carrier
+            //    (SignatureMechanicEffectId), so ONLY the alpha-piloted match gets this isolated Player2 caster
+            //    (alpha's first Melee unit IS "infantry", the real carrier) — far from all combat (never in
+            //    attack range of anything, Stop so it never chases) for
+            //    EqualExchange_FiresLive_ViaScriptedCast's scripted self-cast. The AI itself never casts an
+            //    ACTIVE ability on its own (Boundaries/Design Notes), so this is driven by a scripted order. ──
+            if (aiRoster.SignatureMechanicEffectId == "spike_transmutation")
+            {
+                int caster = world.Create(new FixedVec3(Fixed.Zero, Fixed.Zero, Fixed.FromInt(200)),
+                                           Faction.Player2, Fixed.FromFloat(aiMeleeDef.Hp), Fixed.FromFloat(aiMeleeDef.Speed));
+                world.ApplyUnitDefinition(caster, aiMeleeDef);
+                world.CommandState[caster] = UnitCommand.Stop;
+                if (caster != EqualExchangeCasterEntityId)
+                    throw new InvalidOperationException(
+                        $"BuildAiPilotedHarness invariant broken: Equal Exchange caster id was {caster}, expected {EqualExchangeCasterEntityId}.");
+            }
+
+            host.ScenarioDirector.LoadScenario(new ScenarioData());
+            return new GoldenHarness(host, aiWorker);
+        }
+
+        /// <summary>Issue a slot-0 self-cast intent through the shared, real <see cref="OrderApplier"/> (mirrors
+        /// <c>SignatureMechanicRealContentTests.IssueSelfCast</c>) — TargetZ -1 = Self/None per NetworkCommand's
+        /// convention. <paramref name="ownerFaction"/> must match the caster's actual faction (OrderApplier's
+        /// anti-cheat "own units only" guard).</summary>
+        private static void IssueSelfCast(EntityWorld world, int casterId, Faction ownerFaction) =>
+            OrderApplier.Apply(world, new UnitOrder(casterId, UnitCommand.CastAbility, Fixed.FromRaw(0), Fixed.FromRaw(-1)), ownerFaction);
+
+        // ── FR-18 — each real roster is AI-playable via the existing single AiOpponentSystem ────────────────
+
+        [Fact]
+        public void AiPilots_AlphaRoster_GathersBuildsTrainsAndFights()
+        {
+            GoldenHarness h = BuildAlphaPilotedHarness();
+            AssertAiPilotedFactionProgresses(h, "alpha");
+        }
+
+        [Fact]
+        public void AiPilots_BetaRoster_GathersBuildsTrainsAndFights()
+        {
+            GoldenHarness h = BuildBetaPilotedHarness();
+            AssertAiPilotedFactionProgresses(h, "beta");
+        }
+
+        /// <summary>
+        /// FR-18 — over a fixed tick count, the AI-piloted faction (Player2) must: grow its building count
+        /// (builds its own Barracks — nothing here pre-places one), train at least one unit from its real roster
+        /// (cumulative <see cref="MatchStats.UnitsBuilt"/>, immune to the noise of combat losses), deposit ore
+        /// via its real gathering worker (cumulative <see cref="MatchStats.OreMined"/>), and engage in real
+        /// combat (cumulative kills, either direction, over zero) against the opposing real-content defenders.
+        /// </summary>
+        private static void AssertAiPilotedFactionProgresses(GoldenHarness h, string rosterLabel)
+        {
+            const Faction ai = Faction.Player2;
+
+            int buildingsBefore   = CountFactionBuildings(h, ai);
+            int oreMinedBefore    = h.Host.MatchStats.OreMined(ai);
+            int engagementBefore  = h.Host.MatchStats.Kills(Faction.Player1) + h.Host.MatchStats.Kills(Faction.Player2);
+
+            for (int i = 0; i < MatchTicks; i++) h.Host.StepOnce();
+
+            int buildingsAfter  = CountFactionBuildings(h, ai);
+            int oreMinedAfter   = h.Host.MatchStats.OreMined(ai);
+            int engagementAfter = h.Host.MatchStats.Kills(Faction.Player1) + h.Host.MatchStats.Kills(Faction.Player2);
+            int unitsBuilt      = h.Host.MatchStats.UnitsBuilt(ai);
+            int aliveUnits      = CountFactionUnits(h.World, ai);
+
+            Assert.True(buildingsAfter > buildingsBefore,
+                $"{rosterLabel}: AI-piloted building count did not grow ({buildingsBefore} -> {buildingsAfter}) over {MatchTicks} ticks (FR-18 'builds').");
+            Assert.True(unitsBuilt > 0,
+                $"{rosterLabel}: AI-piloted faction trained zero units from its real roster over {MatchTicks} ticks (FR-18 'trains').");
+            Assert.True(oreMinedAfter > oreMinedBefore,
+                $"{rosterLabel}: AI-piloted faction's real worker deposited no ore ({oreMinedBefore} -> {oreMinedAfter}) over {MatchTicks} ticks (FR-18 'gathers').");
+            Assert.True(engagementAfter > engagementBefore,
+                $"{rosterLabel}: no combat kills were recorded ({engagementBefore} -> {engagementAfter}) over {MatchTicks} ticks — the AI-piloted wave never engaged real combat (FR-18 'fights').");
+            Assert.True(aliveUnits > 0,
+                $"{rosterLabel}: AI-piloted faction has zero alive units at match end.");
+        }
+
+        private static int CountFactionBuildings(GoldenHarness h, Faction f)
+        {
+            int n = 0;
+            for (int i = 0; i < h.Buildings.Count; i++)
+                if (h.Buildings.Alive[i] && h.Buildings.FactionOf[i] == f) n++;
+            return n;
+        }
+
+        private static int CountFactionUnits(EntityWorld world, Faction f)
+        {
+            int n = 0;
+            int hwm = world.HighWaterMark;
+            for (int i = 0; i < hwm; i++)
+                if (world.IsAlive(i) && world.FactionOf[i] == f) n++;
+            return n;
+        }
+
+        // ── FR-20 — Sanguine Furnace fires live inside a real AI-piloted match ───────────────────────────────
+
+        /// <summary>
+        /// Beta's real "forgehand" worker (the AI-piloted match's own gathering unit — see
+        /// <see cref="BuildAiPilotedHarness"/>) regenerates off its shipped <c>furnace_trickle</c> passive while
+        /// the beta AI is actively building/training/fighting elsewhere in this SAME match. A gatherer is
+        /// combat-exempt (<c>CombatSystem.Tick</c>'s <c>GatherState</c> guard), so nothing else can move its
+        /// Health — proving the mechanic fires live in a real AI-driven match, not just Story 5.4's isolated
+        /// scenario.
+        /// </summary>
+        [Fact]
+        public void SanguineFurnace_FiresLive_InAiMatch()
+        {
+            GoldenHarness h = BuildBetaPilotedHarness();
+            EntityWorld world = h.World;
+
+            int forgehand = AiWorkerEntityId;
+            Assert.Equal(Faction.Player2, world.FactionOf[forgehand]);
+            Assert.NotNull(world.SourceDefinition[forgehand]);
+            Assert.Equal("forgehand", world.SourceDefinition[forgehand]!.Id);
+            Assert.True(world.SourceDefinition[forgehand]!.SelfPassiveAbilityIndex >= 0,
+                "forgehand's furnace_trickle did not resolve to a self-passive slot.");
+
+            // Pre-damage below max so regen has room to show; clamp at Zero so a future data-driven HP retune
+            // below 30 can't push this into negative Health territory ahead of the regen assertion below.
+            world.Health[forgehand] = Fixed.Max(Fixed.Zero, world.Health[forgehand] - Fixed.FromInt(30));
+            Fixed before = world.Health[forgehand];
+
+            for (int i = 0; i < 60; i++) h.Host.StepOnce();
+
+            Assert.True(world.Health[forgehand] > before,
+                $"beta's real forgehand did not regen off furnace_trickle while AI-piloted: {world.Health[forgehand].Raw} vs before {before.Raw}");
+            Assert.True(world.Health[forgehand] <= world.EffectiveMaxHealth[forgehand],
+                $"Furnace regen overshot EffectiveMaxHealth: {world.Health[forgehand].Raw} > {world.EffectiveMaxHealth[forgehand].Raw}");
+            Assert.NotEqual(GatherState.Inactive, world.GatherState[forgehand]); // still a gatherer — never diverted into combat
+        }
+
+        // ── FR-20 — Equal Exchange fires live inside a real AI-piloted match, via a scripted cast ───────────
+
+        /// <summary>
+        /// <c>spike_transmutation</c> (Equal Exchange) is an ACTIVE ability the AI never casts on its own
+        /// (<c>AiOpponentSystem</c> never writes <c>PendingCastTarget</c>). This scripts a self-cast on the
+        /// isolated real alpha "infantry" caster (see <see cref="BuildAiPilotedHarness"/>) partway through an
+        /// alpha-AI-piloted match (the AI is already active elsewhere in the SAME match) and asserts the exact
+        /// -25 HP flat, armor-independent self-cost.
+        /// </summary>
+        [Fact]
+        public void EqualExchange_FiresLive_ViaScriptedCast()
+        {
+            var (_, _, registry) = LoadRealContent();
+            int spikeIdx = registry.IndexOf("spike_transmutation");
+            Assert.True(spikeIdx >= 0, "spike_transmutation is not in the real loaded AbilityRegistry.");
+            AbilityDefinition spike = registry.Get(spikeIdx);
+
+            GoldenHarness h = BuildAlphaPilotedHarness();
+            EntityWorld world = h.World;
+
+            int caster = EqualExchangeCasterEntityId;
+            Assert.Equal(Faction.Player2, world.FactionOf[caster]);
+            Assert.NotNull(world.SourceDefinition[caster]);
+            Assert.Equal("infantry", world.SourceDefinition[caster]!.Id);
+            Assert.Equal(spikeIdx, world.AbilityId[caster * EntityWorld.MAX_ABILITIES_PER_UNIT + 0]);
+
+            for (int i = 0; i < 30; i++) h.Host.StepOnce(); // the alpha AI is already active elsewhere in this SAME match
+
+            Fixed before = world.Health[caster];
+            IssueSelfCast(world, caster, Faction.Player2);
+            h.Host.StepOnce();
+
+            Fixed delta = before - world.Health[caster];
+            Assert.Equal(25, spike.CostHealth); // pin the AC's stated -25 to the real shipped ability data
+            Assert.Equal(Fixed.FromInt(spike.CostHealth).Raw, delta.Raw);
+        }
+
+        // ── AC3/AC4 — composition/win-rate recording + same-machine determinism ─────────────────────────────
+
+        /// <summary>
+        /// AC4 — two fresh in-process builds of the SAME AI-piloted match (per roster) are byte-identical
+        /// (no static/shared mutable state, no unseeded RNG, no Dictionary/HashSet enumeration in the AI path —
+        /// same-machine-only per Design Notes; <c>AiOpponentSystem</c> scores with <c>float</c>, so this is not a
+        /// cross-platform claim, matching <c>AiActiveGoldenTests</c>' own precedent).
+        ///
+        /// AC3 — composition sampling: counts the AI-piloted faction's alive units by
+        /// <see cref="UnitDefinition.ParsedCategory"/> at match end for both rosters (varying ONLY which real
+        /// roster occupies the AI slot, per Design Notes — no RNG-seed plumbing exists to vary anything else),
+        /// computes a Manhattan composition distance, and records both alongside each run's kills/losses/ore/
+        /// units-built via test output (the FR-20 playtest validation note).
+        /// </summary>
+        [Fact]
+        public void RecordCompositionAndDeterminism()
+        {
+            var (alphaHarnessA, alphaSeqA) = RunTracked(BuildAlphaPilotedHarness, MatchTicks);
+            var (_, alphaSeqB) = RunTracked(BuildAlphaPilotedHarness, MatchTicks);
+            Assert.True(alphaSeqA.Count >= MatchTicks,
+                $"expected >= {MatchTicks} checksum samples for the alpha-piloted run, got {alphaSeqA.Count}");
+            Assert.True(alphaSeqA.SequenceEqual(alphaSeqB),
+                "AC4 — two in-process runs of the SAME alpha-piloted AI match diverged (a static/shared mutable-state or nondeterminism leak).");
+
+            var (betaHarnessA, betaSeqA) = RunTracked(BuildBetaPilotedHarness, MatchTicks);
+            var (_, betaSeqB) = RunTracked(BuildBetaPilotedHarness, MatchTicks);
+            Assert.True(betaSeqA.Count >= MatchTicks,
+                $"expected >= {MatchTicks} checksum samples for the beta-piloted run, got {betaSeqA.Count}");
+            Assert.True(betaSeqA.SequenceEqual(betaSeqB),
+                "AC4 — two in-process runs of the SAME beta-piloted AI match diverged (a static/shared mutable-state or nondeterminism leak).");
+
+            Dictionary<UnitCategory, int> alphaComposition = CountAliveByCategory(alphaHarnessA.World, Faction.Player2);
+            Dictionary<UnitCategory, int> betaComposition  = CountAliveByCategory(betaHarnessA.World, Faction.Player2);
+            int compositionDistance = CompositionDistance(alphaComposition, betaComposition);
+            int alphaSurvivors = alphaComposition.Values.Sum();
+            int betaSurvivors  = betaComposition.Values.Sum();
+
+            MatchStats aStats = alphaHarnessA.Host.MatchStats;
+            MatchStats bStats = betaHarnessA.Host.MatchStats;
+            _output.WriteLine(
+                $"[FR-20 playtest note] alpha-piloted @ tick {MatchTicks}: composition {{{DescribeComposition(alphaComposition)}}} " +
+                $"survivors={alphaSurvivors} kills={aStats.Kills(Faction.Player2)} losses={aStats.Losses(Faction.Player2)} " +
+                $"oreMined={aStats.OreMined(Faction.Player2)} unitsBuilt={aStats.UnitsBuilt(Faction.Player2)}");
+            _output.WriteLine(
+                $"[FR-20 playtest note] beta-piloted  @ tick {MatchTicks}: composition {{{DescribeComposition(betaComposition)}}} " +
+                $"survivors={betaSurvivors} kills={bStats.Kills(Faction.Player2)} losses={bStats.Losses(Faction.Player2)} " +
+                $"oreMined={bStats.OreMined(Faction.Player2)} unitsBuilt={bStats.UnitsBuilt(Faction.Player2)}");
+            _output.WriteLine($"[FR-20 playtest note] composition distance (Manhattan over UnitCategory counts) = {compositionDistance}");
+            _output.WriteLine(
+                $"[FR-20 playtest note] win-rate figure: alpha-piloted kills-minus-losses={aStats.Kills(Faction.Player2) - aStats.Losses(Faction.Player2)}, " +
+                $"beta-piloted kills-minus-losses={bStats.Kills(Faction.Player2) - bStats.Losses(Faction.Player2)}");
+
+            // Non-vacuity: both AI-piloted armies have surviving real-roster units at match end — the point of
+            // AC3 is comparing two REAL rosters' compositions, not two empty graves.
+            Assert.True(alphaSurvivors > 0, "AC3: alpha-piloted Player2 has zero surviving units at match end — nothing to compare.");
+            Assert.True(betaSurvivors  > 0, "AC3: beta-piloted Player2 has zero surviving units at match end — nothing to compare.");
+        }
+
+        /// <summary>Build a FRESH harness, wire the checksum sink, and step it <paramref name="ticks"/> times —
+        /// like <see cref="GoldenChecksumReplay.RunAndRecord"/>, but also returns the harness itself so callers
+        /// can inspect end-of-match world/store state (composition sampling), which the discard-the-harness
+        /// <c>RunAndRecord</c> helper cannot provide.</summary>
+        private static (GoldenHarness Harness, List<GoldenChecksumReplay.Sample> Seq) RunTracked(Func<GoldenHarness> build, int ticks)
+        {
+            GoldenHarness harness = build();
+            var seq = new List<GoldenChecksumReplay.Sample>(ticks);
+            harness.Host.SetChecksumSink((tick, hash) => seq.Add(new GoldenChecksumReplay.Sample(tick, hash)));
+            for (int i = 0; i < ticks; i++) harness.Host.StepOnce();
+            return (harness, seq);
+        }
+
+        private static Dictionary<UnitCategory, int> CountAliveByCategory(EntityWorld world, Faction faction)
+        {
+            var counts = new Dictionary<UnitCategory, int>();
+            int hwm = world.HighWaterMark;
+            for (int i = 0; i < hwm; i++)
+            {
+                if (!world.IsAlive(i)) continue;
+                if (world.FactionOf[i] != faction) continue;
+                // A def-less fallback-trained unit (never happens on the real-content path here, but guarded for
+                // robustness) has no SourceDefinition; treat it like the production fallback spawn's implicit
+                // category (Melee — BuildingSystem's own def-less branch has no category concept either).
+                UnitCategory cat = world.SourceDefinition[i]?.ParsedCategory ?? UnitCategory.Melee;
+                counts[cat] = counts.GetValueOrDefault(cat) + 1;
+            }
+            return counts;
+        }
+
+        private static int CompositionDistance(Dictionary<UnitCategory, int> a, Dictionary<UnitCategory, int> b)
+        {
+            int distance = 0;
+            foreach (UnitCategory cat in Enum.GetValues<UnitCategory>())
+                distance += Math.Abs(a.GetValueOrDefault(cat) - b.GetValueOrDefault(cat));
+            return distance;
+        }
+
+        private static string DescribeComposition(Dictionary<UnitCategory, int> counts) =>
+            string.Join(", ", counts.OrderBy(kv => kv.Key).Select(kv => $"{kv.Key}={kv.Value}"));
+    }
+}
