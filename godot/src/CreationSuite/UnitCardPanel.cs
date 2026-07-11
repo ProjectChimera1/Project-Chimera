@@ -53,7 +53,12 @@ namespace ProjectChimera.CreationSuite
         private string             _originalId = "";       // the bound unit's id at Bind time — the PatchFactionJson target (survives an id rename)
         private readonly EditorHistory            _history   = new();   // own instance (D-6); reused by Ctrl+Z/Y when visible
         private readonly UnitDefinitionValidator  _validator = new();   // the Godot-free AR-39 gate (D-9)
-        private readonly Dictionary<string, ChimeraValidationBadge> _badges = new();  // JSON key → located badge (UX-DR55)
+        // JSON key → located badge(s) (UX-DR55). A List, not a single badge, because Story 5.9 added a second
+        // Simple-mode row for a field (Ultimate ability) that already had an Advanced-mode row under the SAME
+        // key — a single-value map let the second MakeBadge call silently overwrite the first, so the Simple row
+        // never reflected a validation error even while visible. ShowBadge now fans an error out to every badge
+        // registered under that key.
+        private readonly Dictionary<string, List<ChimeraValidationBadge>> _badges = new();
         private bool _building;                            // guard: suppress live handlers while (re)building controls
         private LineEdit? _meshPathInput;                  // the Model row's text field (Story 3.5 — Browse/Box write .Text here)
         private bool _lastMeshMissing;                     // last UpdatePreview fell back to the box for a NON-blank path (missing OR failed-to-load — D-3)
@@ -152,6 +157,51 @@ namespace ProjectChimera.CreationSuite
         {
             _panel.Visible = false;
             if (_subViewport != null!) _subViewport.RenderTargetUpdateMode = SubViewport.UpdateMode.Disabled;
+        }
+
+        // ── Story 5.9 (onboarding) ────────────────────────────────────────────────
+
+        /// <summary>The curated fixed list of existing unit ids offered as onboarding "starter templates" (spec
+        /// Boundaries/Never: a small fixed list via the existing Duplicate path, not a gallery UI). Ids must exist
+        /// in the bound faction's roster (both shipped factions carry all three) — an id that doesn't resolve
+        /// still opens the panel (see <see cref="StartFromTemplate"/>), it just skips the duplicate.</summary>
+        public static readonly (string Id, string Label)[] CuratedTemplateUnits =
+        {
+            ("worker",   "Worker (Economy)"),
+            ("infantry", "Infantry (Melee)"),
+            ("archer",   "Archer (Ranged)"),
+        };
+
+        /// <summary>Ensure the panel is visible without changing which unit is bound — a no-op if already open.
+        /// Backs onboarding steps 2/3, which revisit the SAME unit <see cref="StartFromTemplate"/> created in step 1
+        /// rather than duplicating again.</summary>
+        public void EnsureVisible()
+        {
+            if (!_panel.Visible) Toggle();
+        }
+
+        /// <summary>Onboarding step 1 (Story 5.9): open the panel and duplicate a curated template unit, selected
+        /// and ready for editing. Drives the SAME <c>Duplicate</c> path a manual toolbar click uses (D-2 — never
+        /// re-implemented here). Returns whether the duplicate actually happened; a template id that isn't in the
+        /// bound faction's roster still opens the panel on whatever unit is currently browsed (never a silent
+        /// no-op window), but the caller can now tell the two cases apart instead of assuming success (Story 5.9
+        /// review pass — was: the onboarding overlay always claimed "Created a copy…" even on this fallback).</summary>
+        public bool StartFromTemplate(string templateUnitId)
+        {
+            _panel.Visible = true;
+            _subViewport.RenderTargetUpdateMode = SubViewport.UpdateMode.Always;
+
+            int idx = _faction?.Units.FindIndex(u => u.Id == templateUnitId) ?? -1;
+            if (idx >= 0)
+            {
+                _index = idx;
+                Refresh();
+                DoDuplicate();   // clones + selects + pushes undo, exactly like the manual "Duplicate" button
+                return true;
+            }
+
+            Refresh();
+            return false;
         }
 
         private void OnModeChanged(int mode)
@@ -491,24 +541,10 @@ namespace ProjectChimera.CreationSuite
             return slash >= 0 ? path[(slash + 1)..] : path;
         }
 
-        /// <summary>Attach a hover-AND-keyboard-focus tooltip (AC3 / UX-DR53 / NFR-2). The keyboard half needs
-        /// <c>FocusMode.All</c> (a Readout/Tag defaults to None); the descendants are made mouse-transparent so the
-        /// composite itself is the unambiguous hover target (the 3.3 lesson).</summary>
+        /// <summary>Attach a hover-AND-keyboard-focus tooltip (AC3 / UX-DR53 / NFR-2). Thin forwarder to the
+        /// centralized <see cref="ChimeraTooltip.AttachFocusable"/> (Story 5.9 review pass — kept as a local
+        /// wrapper so existing unqualified call sites in this file don't need touching).</summary>
         private void AttachTip(Control target, string term, string body, ChimeraTooltip.TooltipRole role = ChimeraTooltip.TooltipRole.Pop)
-        {
-            target.MouseFilter = Control.MouseFilterEnum.Stop;
-            target.FocusMode = Control.FocusModeEnum.All;
-            MakeChildrenMouseIgnore(target);
-            ChimeraTooltip.Attach(target, term, body, role);
-        }
-
-        private static void MakeChildrenMouseIgnore(Node node)
-        {
-            foreach (Node child in node.GetChildren())
-            {
-                if (child is Control c) c.MouseFilter = Control.MouseFilterEnum.Ignore;
-                MakeChildrenMouseIgnore(child);
-            }
-        }
+            => ChimeraTooltip.AttachFocusable(target, term, body, role);
     }
 }

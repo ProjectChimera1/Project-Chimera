@@ -2,6 +2,7 @@
 using Godot;
 using ProjectChimera.Core;
 using ProjectChimera.UI;
+using ProjectChimera.UI.Components;   // ChimeraTooltip (Story 5.9 tooltip-gap closure)
 
 namespace ProjectChimera.CreationSuite
 {
@@ -513,18 +514,19 @@ namespace ProjectChimera.CreationSuite
             var modeBox = new HBoxContainer();
             vbox.AddChild(modeBox);
 
-            foreach (var (label, mode) in new (string, BrushMode)[]
+            foreach (var (label, mode, tip) in new (string, BrushMode, string)[]
             {
-                ("1 Raise",   BrushMode.Raise),
-                ("2 Lower",   BrushMode.Lower),
-                ("3 Smooth",  BrushMode.Smooth),
-                ("4 Flatten", BrushMode.Flatten),
-                ("5 Paint",   BrushMode.Paint),
+                ("1 Raise",   BrushMode.Raise,   "Raise terrain height under the brush."),
+                ("2 Lower",   BrushMode.Lower,   "Lower terrain height under the brush."),
+                ("3 Smooth",  BrushMode.Smooth,  "Average nearby heights to smooth bumps."),
+                ("4 Flatten", BrushMode.Flatten, "Flatten terrain to height 0 under the brush."),
+                ("5 Paint",   BrushMode.Paint,   "Switch to texture painting (pick a layer below)."),
             })
             {
                 var btn          = new Button { Text = label };
                 var capturedMode = mode;
                 btn.Pressed     += () => SetMode(capturedMode);
+                AttachTip(btn, label, tip);
                 modeBox.AddChild(btn);
             }
 
@@ -549,6 +551,7 @@ namespace ProjectChimera.CreationSuite
                     _activeLayer = capturedLayer;
                     UpdateModeLabel();
                 };
+                AttachTip(btn, LAYER_NAMES[i], $"Paint the '{LAYER_NAMES[i]}' texture layer under the brush.");
                 _layerBox.AddChild(btn);
             }
 
@@ -565,6 +568,7 @@ namespace ProjectChimera.CreationSuite
                 CustomMinimumSize = new Vector2(160, 0),
             };
             _sizeSlider.ValueChanged += v => _brushSize = (float)v;
+            AttachTip(_sizeSlider, "Brush size", "World-unit radius of the brush ([ / ] also resizes it).", ChimeraTooltip.TooltipRole.Field);
             sizeRow.AddChild(_sizeSlider);
 
             // ── Strength slider ───────────────────────────────────────────────
@@ -580,8 +584,14 @@ namespace ProjectChimera.CreationSuite
                 CustomMinimumSize = new Vector2(160, 0),
             };
             _strSlider.ValueChanged += v => _brushStrength = (float)v;
+            AttachTip(_strSlider, "Brush strength", "How much each stroke sample raises/lowers/paints per pass.", ChimeraTooltip.TooltipRole.Field);
             strRow.AddChild(_strSlider);
         }
+
+        /// <summary>Attach a hover-AND-keyboard-focus tooltip (AC3 / UX-DR53 / NFR-2). Thin forwarder to the
+        /// centralized <see cref="ChimeraTooltip.AttachFocusable"/> (Story 5.9 review pass).</summary>
+        private static void AttachTip(Control target, string term, string body, ChimeraTooltip.TooltipRole role = ChimeraTooltip.TooltipRole.Pop)
+            => ChimeraTooltip.AttachFocusable(target, term, body, role);
     }
 
     /// <summary>Terrain sculpt/paint mode for <see cref="TerrainBrush"/>.</summary>

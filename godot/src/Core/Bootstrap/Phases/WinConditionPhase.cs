@@ -65,6 +65,16 @@ namespace ProjectChimera.Core.Bootstrap
             btnBuildings.Toggled += (on) => { if (on && _ctx.Scenario != null) _ctx.Scenario.WinCondition = WinCondition.DestroyAllBuildings; };
             btnUnits.Toggled     += (on) => { if (on && _ctx.Scenario != null) _ctx.Scenario.WinCondition = WinCondition.EliminateAllUnits; };
 
+            // Story 5.9 review pass: this panel's radios were a boot-time snapshot with nothing to re-sync them if
+            // another surface (OnboardingPanel's win-condition step) mutates ScenarioData.WinCondition externally —
+            // SetPressedNoSignal avoids re-emitting Toggled (which would just re-write the same value right back).
+            _ctx.WinConditionUiRefresh = () =>
+            {
+                bool destroy = (_ctx.Scenario?.WinCondition ?? WinCondition.DestroyAllBuildings) == WinCondition.DestroyAllBuildings;
+                btnBuildings.SetPressedNoSignal(destroy);
+                btnUnits.SetPressedNoSignal(!destroy);
+            };
+
             // ── Map I/O section ────────────────────────────────────────────────
             vbox.AddChild(new HSeparator());
 

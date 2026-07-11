@@ -30,6 +30,12 @@ namespace ProjectChimera.UI
         /// <summary>Fired when the user clicks Close or presses Escape.</summary>
         public event Action? OnClosed;
 
+        /// <summary>Story 5.9 (NFR-2): fired when the user clicks "Replay onboarding" on the Gameplay tab.
+        /// <c>OnboardingPhase</c> subscribes to reset <see cref="Core.Definitions.SettingsData.HasSeenOnboarding"/>
+        /// and re-open <see cref="OnboardingPanel"/> — kept as an event (not a direct call) so this panel never
+        /// needs a reference to the onboarding panel it's built well before (Onboarding is the LAST phase).</summary>
+        public event Action? OnReplayOnboardingRequested;
+
         // ── State ─────────────────────────────────────────────────────────────
 
         private SettingsManager _settings = null!;
@@ -189,6 +195,15 @@ namespace ProjectChimera.UI
             _fpsBtn = AddToggleRow(v, "Show FPS",
                 "Display the current frame rate in the HUD.",
                 _settings.Current.ShowFps);
+
+            AddSectionHeader(v, "Onboarding");
+            var replayBtn = ChimeraComponents.Button("Replay \"Your First Scenario\" Onboarding",
+                ChimeraComponents.ButtonVariant.Secondary);
+            replayBtn.Pressed += () => OnReplayOnboardingRequested?.Invoke();
+            ChimeraTooltip.Attach(replayBtn, "Replay onboarding",
+                "Reset and reopen the guided \"Your First Scenario\" walkthrough from step 1.",
+                ChimeraTooltip.TooltipRole.Field);
+            v.AddChild(replayBtn);
 
             return v;
         }

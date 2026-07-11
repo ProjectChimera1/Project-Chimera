@@ -113,6 +113,7 @@ namespace ProjectChimera.Core.Bootstrap
         public CreationSuite.ItemCardPanel      ItemCardPanel      = null!;  // Story 3.16 (ItemCard phase)
         public CreationSuite.PersistenceManifestPanel PersistenceManifestPanel = null!;  // Story 3.8 (PersistenceManifest phase)
         public CreationSuite.FactionDefinerPanel FactionDefinerPanel = null!;  // Story 5.5 (FactionDefiner phase)
+        public UI.OnboardingPanel OnboardingPanel = null!;  // Story 5.9 (Onboarding phase — last)
         public UI.HeroPickerOverlay HeroPicker = null!;  // Story 3.9 (HeroPicker phase) — offline Play-Skirmish hero picker + launch authority
         /// <summary>Story 3.9: the profile the player Deployed at the offline skirmish start, handed off to
         /// <c>HeroProfileLoader.LoadInto</c> to mint into <c>HeroStore</c> as init state; cleared after mint. Null ⇒
@@ -140,5 +141,10 @@ namespace ProjectChimera.Core.Bootstrap
         // ── Win condition / game over (produced by WinConditionUi / GameOverOverlay) ───────────────────────
         public PanelContainer WinConditionPanel = null!;
         public Control        GameOverOverlay   = null!;
+        /// <summary>Story 5.9 review pass: re-sync the WinConditionUi corner panel's radio selection from the live
+        /// <see cref="Definitions.ScenarioData.WinCondition"/> — set by <c>WinConditionPhase</c>, called by
+        /// <c>OnboardingPanel</c> (via <c>MainScene.RefreshWinConditionUi</c>) after IT mutates the same field, so
+        /// the two win-condition UI surfaces never silently disagree on what's currently selected.</summary>
+        public Action?         WinConditionUiRefresh;
     }
 }

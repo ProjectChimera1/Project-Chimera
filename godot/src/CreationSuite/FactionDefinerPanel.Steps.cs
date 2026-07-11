@@ -79,11 +79,13 @@ namespace ProjectChimera.CreationSuite
             _bodyHost.AddChild(ChimeraComponents.FieldLabel("Faction ID (used for the output filename)"));
             var idInput = ChimeraComponents.Input("e.g. crimson_order", _draft.Id);
             idInput.TextChanged += t => { _draft.Id = t; ClearStatus(); };
+            AttachTip(idInput, "Faction ID", "A unique [a-z0-9_] id — becomes the output filename ({id}_faction.json). Must not collide with an existing faction.", ChimeraTooltip.TooltipRole.Field);
             _bodyHost.AddChild(idInput);
 
             _bodyHost.AddChild(ChimeraComponents.FieldLabel("Display Name"));
             var nameInput = ChimeraComponents.Input("e.g. The Crimson Order", _draft.DisplayName);
             nameInput.TextChanged += t => _draft.DisplayName = t;
+            AttachTip(nameInput, "Display Name", "The human-readable name shown in menus and skirmish setup.", ChimeraTooltip.TooltipRole.Field);
             _bodyHost.AddChild(nameInput);
 
             _bodyHost.AddChild(ChimeraComponents.FieldLabel("Faction Color"));
@@ -98,6 +100,7 @@ namespace ProjectChimera.CreationSuite
                     isActive ? ChimeraComponents.ButtonVariant.Primary : ChimeraComponents.ButtonVariant.Secondary,
                     ChimeraComponents.ButtonSize.Sm);
                 swatchBtn.Pressed += () => { _draft.Color = rgba; RefreshStepBody(); };
+                AttachTip(swatchBtn, label, $"Okabe-Ito colorblind-safe team color, paired with the {glyph} glyph so identity never relies on color alone.");
                 grid.AddChild(swatchBtn);
             }
             _bodyHost.AddChild(grid);
@@ -138,7 +141,8 @@ namespace ProjectChimera.CreationSuite
                     {
                         if (on) { if (!_draft.Units.Contains(opt.Def)) _draft.Units.Add(opt.Def); }
                         else _draft.Units.Remove(opt.Def);
-                    }));
+                    },
+                    tip: $"Include '{opt.Def.Id}' (from {opt.SourceFactionId}) in this faction's roster."));
         }
 
         // ── Step 2: Buildings & Tech (combined per spec) ─────────────────────────
@@ -160,7 +164,8 @@ namespace ProjectChimera.CreationSuite
                         {
                             if (on) { if (!_draft.Buildings.Contains(opt.Def)) _draft.Buildings.Add(opt.Def); }
                             else _draft.Buildings.Remove(opt.Def);
-                        }));
+                        },
+                        tip: $"Include '{opt.Def.Id}' (from {opt.SourceFactionId}) in this faction's building roster."));
             }
 
             _bodyHost.AddChild(ChimeraComponents.FieldLabel("Research — pick from existing factions"));
@@ -178,20 +183,22 @@ namespace ProjectChimera.CreationSuite
                         {
                             if (on) { if (!_draft.Research.Contains(opt.Def)) _draft.Research.Add(opt.Def); }
                             else _draft.Research.Remove(opt.Def);
-                        }));
+                        },
+                        tip: $"Include '{opt.Def.Id}' (from {opt.SourceFactionId}) in this faction's research list."));
             }
         }
 
         private static string LabelFor(UnitDefinition def) =>
             string.IsNullOrEmpty(def.DisplayName) ? def.Id : def.DisplayName;
 
-        private HBoxContainer BuildPickRow(string label, bool isChecked, System.Action<bool> onToggled)
+        private HBoxContainer BuildPickRow(string label, bool isChecked, System.Action<bool> onToggled, string? tip = null)
         {
             var row = new HBoxContainer();
             row.AddThemeConstantOverride("separation", ChimeraComponents.Const(ThemeTokens.S2));
 
             var cb = new CheckBox { ButtonPressed = isChecked };
             cb.Toggled += on => onToggled(on);
+            if (tip != null) AttachTip(cb, label, tip, ChimeraTooltip.TooltipRole.Field);
             row.AddChild(cb);
 
             var lbl = Body(label, ThemeTokens.TextHi);
@@ -206,11 +213,13 @@ namespace ProjectChimera.CreationSuite
             _bodyHost.AddChild(ChimeraComponents.FieldLabel("Starting Ore"));
             var oreInput = ChimeraComponents.NumInput(_draft.StartingOre, 0, 100000, 10);
             oreInput.ValueChanged += v => _draft.StartingOre = (float)v;
+            AttachTip(oreInput, "Starting Ore", "Ore this faction starts a match with.", ChimeraTooltip.TooltipRole.Field);
             _bodyHost.AddChild(oreInput);
 
             _bodyHost.AddChild(ChimeraComponents.FieldLabel("Starting Crystal"));
             var crystalInput = ChimeraComponents.NumInput(_draft.StartingCrystal, 0, 100000, 10);
             crystalInput.ValueChanged += v => _draft.StartingCrystal = (float)v;
+            AttachTip(crystalInput, "Starting Crystal", "Crystal (the scarce resource) this faction starts a match with.", ChimeraTooltip.TooltipRole.Field);
             _bodyHost.AddChild(crystalInput);
 
             _bodyHost.AddChild(Body(
@@ -245,6 +254,7 @@ namespace ProjectChimera.CreationSuite
                     isActive ? ChimeraComponents.ButtonVariant.Primary : ChimeraComponents.ButtonVariant.Secondary,
                     ChimeraComponents.ButtonSize.Sm);
                 presetBtn.Pressed += () => { _draft.AiPreset = preset; RefreshStepBody(); };
+                AttachTip(presetBtn, preset, $"Assign the '{preset}' AI preset so this faction is playable against/with the AI opponent.");
                 presetGrid.AddChild(presetBtn);
             }
             _bodyHost.AddChild(presetGrid);
@@ -264,6 +274,7 @@ namespace ProjectChimera.CreationSuite
                 noneActive ? ChimeraComponents.ButtonVariant.Primary : ChimeraComponents.ButtonVariant.Secondary,
                 ChimeraComponents.ButtonSize.Sm);
             noneBtn.Pressed += () => { _draft.HeroUnitId = null; RefreshStepBody(); };
+            AttachTip(noneBtn, "(none)", "This faction has no hero unit reference.");
             heroGrid.AddChild(noneBtn);
 
             foreach (UnitDefinition hero in heroCandidates)
@@ -273,12 +284,14 @@ namespace ProjectChimera.CreationSuite
                     isActive ? ChimeraComponents.ButtonVariant.Primary : ChimeraComponents.ButtonVariant.Secondary,
                     ChimeraComponents.ButtonSize.Sm);
                 heroBtn.Pressed += () => { _draft.HeroUnitId = hero.Id; RefreshStepBody(); };
+                AttachTip(heroBtn, LabelFor(hero), $"Reference '{hero.Id}' as this faction's persistent hero unit.");
                 heroGrid.AddChild(heroBtn);
             }
             _bodyHost.AddChild(heroGrid);
 
             var persistCb = new CheckBox { ButtonPressed = _draft.PersistenceEnabled, Text = "Enable cross-match persistence" };
             persistCb.Toggled += on => _draft.PersistenceEnabled = on;
+            AttachTip(persistCb, "Cross-match persistence", "Let this faction's hero attributes carry across matches via the persistence manifest.", ChimeraTooltip.TooltipRole.Field);
             _bodyHost.AddChild(persistCb);
         }
 

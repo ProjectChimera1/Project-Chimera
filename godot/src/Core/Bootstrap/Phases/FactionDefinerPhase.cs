@@ -5,8 +5,10 @@ using ProjectChimera.CreationSuite;
 namespace ProjectChimera.Core.Bootstrap
 {
     /// <summary>
-    /// Story 5.5 (FR-17, UX-DR40) "FactionDefiner" phase — the last phase in the canonical order, appended after
-    /// <see cref="HeroPickerPhase"/>. Creates the Faction Definer guided-wizard panel and wires it to game state
+    /// Story 5.5 (FR-17, UX-DR40) "FactionDefiner" phase — appended after <see cref="HeroPickerPhase"/>, second to
+    /// last in the canonical order (Story 5.9's <c>OnboardingPhase</c> now runs after it, since onboarding drives
+    /// panels every earlier phase — including this one — has already constructed). Creates the Faction Definer
+    /// guided-wizard panel and wires it to game state
     /// only. Unlike <see cref="BuildingCardPhase"/>/<see cref="TechTreePhase"/> this phase does NOT bind an existing
     /// <see cref="Definitions.FactionDefinition"/> — the wizard always assembles a BRAND-NEW faction from scratch
     /// (Story 5.5's own AC1), scanning the on-disk faction JSONs for its Roster / Buildings &amp; Tech preset pools

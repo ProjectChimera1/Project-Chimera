@@ -4,6 +4,7 @@ using ProjectChimera.AI;
 using ProjectChimera.Core;
 using ProjectChimera.Core.Definitions;
 using ProjectChimera.UI;
+using ProjectChimera.UI.Components;   // ChimeraTooltip (Story 5.9 tooltip-gap closure)
 using System;
 using System.Collections.Generic;
 using System.Text.Json;
@@ -135,6 +136,7 @@ namespace ProjectChimera.CreationSuite
 
             var newBtn = new Button { Text = "+ New Trigger (via AI)" };
             newBtn.Pressed += OnNewTriggerPressed;
+            AttachTip(newBtn, "New Trigger", "Open the AI trigger generator — describe a rule in plain English and review it before accepting.");
             root.AddChild(newBtn);
 
             root.AddChild(new HSeparator());
@@ -153,6 +155,7 @@ namespace ProjectChimera.CreationSuite
                 CustomMinimumSize = new Vector2(PANEL_W - MARGIN * 2, 90f),
                 WrapMode = TextEdit.LineWrappingMode.Boundary
             };
+            AttachTip(_nlInput, "Trigger description", "Describe the trigger in plain English — the AI turns this into a condition/action rule you review before accepting.");
             _genSection.AddChild(_nlInput);
 
             var genRow = new HBoxContainer();
@@ -160,6 +163,7 @@ namespace ProjectChimera.CreationSuite
 
             _genBtn = new Button { Text = "Generate ✦" };
             _genBtn.Pressed += OnGeneratePressed;
+            AttachTip(_genBtn, "Generate", "Send the description to the AI and preview the generated trigger below.");
             genRow.AddChild(_genBtn);
 
             _statusLabel = new Label { Text = "" };
@@ -182,10 +186,12 @@ namespace ProjectChimera.CreationSuite
 
             _acceptBtn = new Button { Text = "✔ Accept" };
             _acceptBtn.Pressed += OnAcceptPressed;
+            AttachTip(_acceptBtn, "Accept", "Add the previewed trigger to this scenario.");
             acceptRow.AddChild(_acceptBtn);
 
             _discardBtn = new Button { Text = "✘ Discard" };
             _discardBtn.Pressed += OnDiscardPressed;
+            AttachTip(_discardBtn, "Discard", "Drop the previewed trigger without adding it.");
             acceptRow.AddChild(_discardBtn);
 
             // Keep a reference so we can show/hide the accept row.
@@ -228,6 +234,7 @@ namespace ProjectChimera.CreationSuite
                     if (_scenario != null && idx < _scenario.Triggers.Length)
                         _scenario.Triggers[idx].Enabled = on;
                 };
+                AttachTip(enabledBox, trigger.Name, "Enable or disable this trigger without deleting it.", ChimeraTooltip.TooltipRole.Field);
                 row.AddChild(enabledBox);
 
                 var nameLabel = new Label
@@ -247,6 +254,7 @@ namespace ProjectChimera.CreationSuite
 
                 var delBtn = new Button { Text = "✘" };
                 delBtn.Pressed += () => DeleteTrigger(idx);
+                AttachTip(delBtn, "Delete", $"Remove trigger '{trigger.Name}' from this scenario.");
                 row.AddChild(delBtn);
             }
         }
@@ -356,5 +364,10 @@ namespace ProjectChimera.CreationSuite
 
         private static string GodotEscape(string s) =>
             s.Replace("[", "[[").Replace("]", "]]");
+
+        /// <summary>Attach a hover-AND-keyboard-focus tooltip (AC3 / UX-DR53 / NFR-2). Thin forwarder to the
+        /// centralized <see cref="ChimeraTooltip.AttachFocusable"/> (Story 5.9 review pass).</summary>
+        private static void AttachTip(Control target, string term, string body, ChimeraTooltip.TooltipRole role = ChimeraTooltip.TooltipRole.Pop)
+            => ChimeraTooltip.AttachFocusable(target, term, body, role);
     }
 }

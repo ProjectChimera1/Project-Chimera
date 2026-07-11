@@ -132,7 +132,16 @@ namespace ProjectChimera.CreationSuite
             AddSection(_bodyHost, "Promote to Hero");
             AddHeroPromoteRow(_bodyHost, def);
             if (def.IsHero && def.Hero != null)
+            {
                 AddHeroLevelingRow(_bodyHost, def);   // Simple: a leveling-curve preset dropdown
+                // Story 5.9 (NFR-2): the Ultimate ability picker, surfaced in Simple mode too — reuses the SAME
+                // AddHeroAbilityRow binding BuildHeroAdvanced uses below (no new data model), so a creator can pick
+                // an ultimate without ever opening Advanced/raw-JSON.
+                HeroDefinition hSimple = def.Hero;
+                AddHeroAbilityRow(_bodyHost, "Ultimate", "hero.ultimate_ability", "Ultimate Ability",
+                    "The hero's ultimate ability — must differ from the signature. Pick a defined ability or (none).",
+                    () => hSimple.UltimateAbility, v => hSimple.UltimateAbility = v, def);
+            }
 
             // Hero revival (Story 3.14): a Structure-only capability toggle. Only a Structure building can host a revive
             // command card, so the switch appears solely for Structures; the validator badges revives_heroes on a
@@ -219,7 +228,8 @@ namespace ProjectChimera.CreationSuite
         private ChimeraValidationBadge MakeBadge(string key)
         {
             var b = ChimeraValidationBadge.Create();
-            _badges[key] = b;
+            if (_badges.TryGetValue(key, out List<ChimeraValidationBadge>? list)) list.Add(b);
+            else _badges[key] = new List<ChimeraValidationBadge> { b };
             return b;
         }
 
@@ -902,7 +912,8 @@ namespace ProjectChimera.CreationSuite
         /// button. Does NOT rebuild the form (controls keep focus). Returns true when the current unit is fully valid.</summary>
         private bool RevalidateAndReflect()
         {
-            foreach (ChimeraValidationBadge b in _badges.Values) b.Clear();
+            foreach (List<ChimeraValidationBadge> list in _badges.Values)
+                foreach (ChimeraValidationBadge b in list) b.Clear();
 
             if (_current == null) { ClearStatus(); _lastValid = true; UpdateToolbarEnabled(); return true; }
 
@@ -926,7 +937,11 @@ namespace ProjectChimera.CreationSuite
 
         private void ShowBadge(string key, string message)
         {
-            if (_badges.TryGetValue(key, out ChimeraValidationBadge? b)) b.ShowError(message);
+            // Fan out to EVERY badge registered under this key — a field can now have more than one visible row
+            // (e.g. hero.ultimate_ability: a Simple-mode row and an Advanced-mode row), and both must reflect the
+            // same validator error regardless of which mode the creator is currently viewing (Story 5.9 review pass).
+            if (_badges.TryGetValue(key, out List<ChimeraValidationBadge>? list))
+                foreach (ChimeraValidationBadge b in list) b.ShowError(message);
             // else: no field control home for this key (should not happen); the status line still summarizes the count.
         }
 

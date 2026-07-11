@@ -163,6 +163,7 @@ namespace ProjectChimera.CreationSuite
 
             var closeBtn = ChimeraComponents.Button("Close [R]", ChimeraComponents.ButtonVariant.Secondary, ChimeraComponents.ButtonSize.Sm);
             closeBtn.Pressed += Close;
+            AttachTip(closeBtn, "Close", "Close the Tech Tree Editor (R).");
             titleRow.AddChild(closeBtn);
 
             // Status line (rejection messages / cycle errors).
@@ -234,6 +235,7 @@ namespace ProjectChimera.CreationSuite
                 node.SetSlot(0, true, 0, PortColorIn, true, 0, PortColorOut);
                 node.AddChild(new Label { Text = b.Id });
                 node.PositionOffset = new Vector2(tier * TIER_SPACING, lane * LANE_SPACING);
+                AttachTip(node, node.Title, "Click to edit this building in the Building Card inspector. Drag from its right port to another node's left port to add a prerequisite edge.");
                 _graph.AddChild(node);
             }
 
@@ -270,6 +272,7 @@ namespace ProjectChimera.CreationSuite
                 node.SetSlot(0, true, 0, PortColorResearch, true, 0, PortColorResearch);
                 node.AddChild(new Label { Text = r.Id });
                 node.PositionOffset = new Vector2(researchColumnX, researchLane * LANE_SPACING);
+                AttachTip(node, node.Title, "Click to edit this research entry in the Research Card inspector. Drag from its right port to another node's left port to add a prerequisite edge.");
                 _graph.AddChild(node);
                 researchLane++;
             }
@@ -477,5 +480,10 @@ namespace ProjectChimera.CreationSuite
         {
             _statusLabel.Visible = false;
         }
+
+        /// <summary>Attach a hover-AND-keyboard-focus tooltip (AC3 / UX-DR53 / NFR-2). Thin forwarder to the
+        /// centralized <see cref="ChimeraTooltip.AttachFocusable"/> (Story 5.9 review pass).</summary>
+        private void AttachTip(Control target, string term, string body, ChimeraTooltip.TooltipRole role = ChimeraTooltip.TooltipRole.Pop)
+            => ChimeraTooltip.AttachFocusable(target, term, body, role);
     }
 }

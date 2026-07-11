@@ -47,6 +47,28 @@ namespace ProjectChimera.UI.Components
             return t;
         }
 
+        /// <summary>Attach a hover-AND-keyboard-focus tooltip AND correctly configure <paramref name="target"/>
+        /// for it: <c>Stop</c> mouse filter, <c>All</c> focus mode, and descendant <see cref="Control"/>s made
+        /// mouse-transparent so the composite itself is the unambiguous hover/focus target (the 3.3 lesson).
+        /// Centralizes what several Creation Suite panels previously hand-rolled as identical private per-file
+        /// wrappers (Story 5.9 review pass) — new call sites should use this instead of re-deriving it.</summary>
+        public static void AttachFocusable(Control target, string term, string body, TooltipRole role = TooltipRole.Pop)
+        {
+            target.MouseFilter = Control.MouseFilterEnum.Stop;
+            target.FocusMode = Control.FocusModeEnum.All;
+            MakeChildrenMouseIgnore(target);
+            Attach(target, term, body, role);
+        }
+
+        private static void MakeChildrenMouseIgnore(Node node)
+        {
+            foreach (Node child in node.GetChildren())
+            {
+                if (child is Control c) c.MouseFilter = Control.MouseFilterEnum.Ignore;
+                MakeChildrenMouseIgnore(child);
+            }
+        }
+
         /// <inheritdoc/>
         public override void _Ready()
         {

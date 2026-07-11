@@ -434,7 +434,9 @@ namespace ProjectChimera.Core
                 new TechTreePhase(_ctx),   // Story 4.6 — must run AFTER BuildingCardPhase so _ctx.BuildingCardPanel already exists
                 new PersistenceManifestPhase(_ctx),
                 new HeroPickerPhase(_ctx),
-                new FactionDefinerPhase(_ctx),   // Story 5.5 — must be last (mirrors ScenePhaseOrder.Canonical)
+                new FactionDefinerPhase(_ctx),
+                new OnboardingPhase(_ctx),   // Story 5.9 — must be last (mirrors ScenePhaseOrder.Canonical); drives
+                                              // panels every earlier phase has already constructed
             };
             new ScenePhaseRunner(phases).Run();
 
@@ -638,6 +640,34 @@ namespace ProjectChimera.Core
                 _ctx.FactionDefinerPanel.Toggle();
                 GetViewport().SetInputAsHandled();
             }
+        }
+
+        // ── Onboarding wrappers (Story 5.9) ──────────────────────────────────────
+        // Thin public wrappers around the SAME panel handles the hotkey switch above already drives, so
+        // OnboardingPanel can navigate real panels/mode without duplicating their open/duplicate/toggle logic
+        // (D-2 precedent — mirrors how EntityPlacer/UnitCardPanel are driven rather than re-implemented).
+
+        /// <summary>Open the Unit Card Editor. With <paramref name="templateUnitId"/>, duplicates that curated unit
+        /// fresh and binds the clone (onboarding step 1) — returns whether the duplicate actually happened. With
+        /// null, just ensures the panel is open without creating anything (onboarding steps 2/3 revisiting the
+        /// unit step 1 already created) and always returns true.</summary>
+        public bool OpenUnitCardPanel(string? templateUnitId = null)
+        {
+            if (templateUnitId != null) return _ctx.UnitCardPanel.StartFromTemplate(templateUnitId);
+            _ctx.UnitCardPanel.EnsureVisible();
+            return true;
+        }
+
+        /// <summary>Re-sync the WinConditionUi corner panel's radio selection from the live scenario (Story 5.9
+        /// review pass) — called after <c>OnboardingPanel</c>'s win-condition step mutates the same field, so the
+        /// two surfaces never silently disagree on what's currently selected.</summary>
+        public void RefreshWinConditionUi() => _ctx.WinConditionUiRefresh?.Invoke();
+
+        /// <summary>Enter Play mode — idempotent (a no-op if already playing). Drives the same GameState toggle F5
+        /// uses (onboarding step 6's optional "Enter Play Mode" button; never a new hotkey).</summary>
+        public void EnterPlayMode()
+        {
+            if (_ctx.GameState.Mode == GameMode.Edit) _ctx.GameState.Toggle();
         }
 
         public override void _Process(double delta)

@@ -3,6 +3,7 @@ using Godot;
 using ProjectChimera.AI;
 using ProjectChimera.Core.Definitions;
 using ProjectChimera.UI;
+using ProjectChimera.UI.Components;   // ChimeraTooltip (Story 5.9 tooltip-gap closure)
 using System;
 using System.Text.Json;
 
@@ -127,6 +128,7 @@ namespace ProjectChimera.CreationSuite
                 CustomMinimumSize = new Vector2(PANEL_W - MARGIN * 2, 100f),
                 WrapMode = TextEdit.LineWrappingMode.Boundary
             };
+            AttachTip(_briefInput, "Map brief", "Describe the map in plain English — the AI turns this into a full scenario (terrain, resources, starting units).");
             root.AddChild(_briefInput);
 
             // ── Generate row ──────────────────────────────────────────────────
@@ -135,6 +137,7 @@ namespace ProjectChimera.CreationSuite
 
             _genBtn = new Button { Text = "Generate ✦" };
             _genBtn.Pressed += OnGeneratePressed;
+            AttachTip(_genBtn, "Generate", "Send the brief to the AI and generate a candidate scenario to preview below.");
             genRow.AddChild(_genBtn);
 
             _statusLabel = new Label { Text = "" };
@@ -164,14 +167,17 @@ namespace ProjectChimera.CreationSuite
 
             var loadBtn = new Button { Text = "↗ Load (no save)" };
             loadBtn.Pressed += OnLoadPressed;
+            AttachTip(loadBtn, "Load", "Apply the generated scenario immediately, without writing it to disk.");
             _actionRow.AddChild(loadBtn);
 
             var saveBtn = new Button { Text = "💾 Save & Load" };
             saveBtn.Pressed += OnSaveAndLoadPressed;
+            AttachTip(saveBtn, "Save & Load", "Write the generated scenario to res://resources/data/scenarios/ai_generated.json, then apply it.");
             _actionRow.AddChild(saveBtn);
 
             var discardBtn = new Button { Text = "✘ Discard" };
             discardBtn.Pressed += OnDiscardPressed;
+            AttachTip(discardBtn, "Discard", "Drop the generated scenario preview without applying it.");
             _actionRow.AddChild(discardBtn);
         }
 
@@ -282,5 +288,10 @@ namespace ProjectChimera.CreationSuite
                 if (u.Slot == slot) n++;
             return n;
         }
+
+        /// <summary>Attach a hover-AND-keyboard-focus tooltip (AC3 / UX-DR53 / NFR-2). Thin forwarder to the
+        /// centralized <see cref="ChimeraTooltip.AttachFocusable"/> (Story 5.9 review pass).</summary>
+        private static void AttachTip(Control target, string term, string body, ChimeraTooltip.TooltipRole role = ChimeraTooltip.TooltipRole.Pop)
+            => ChimeraTooltip.AttachFocusable(target, term, body, role);
     }
 }

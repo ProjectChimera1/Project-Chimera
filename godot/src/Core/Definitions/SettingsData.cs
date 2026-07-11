@@ -75,5 +75,13 @@ namespace ProjectChimera.Core.Definitions
         /// an older settings file → the default (no migration needed).</summary>
         [JsonPropertyName("hero_profile_folder")]
         public string HeroProfileFolder { get; set; } = "user://hero_profiles";
+
+        // ── Onboarding ────────────────────────────────────────────────────────
+
+        /// <summary>Story 5.9 (NFR-2): whether the first-time "Your First Scenario" guided onboarding overlay has
+        /// already been shown/dismissed. Defaults false so a fresh (or old, pre-5.9) save file always auto-offers
+        /// onboarding once; the Settings panel's "Replay onboarding" action resets this back to false on demand.</summary>
+        [JsonPropertyName("has_seen_onboarding")]
+        public bool HasSeenOnboarding { get; set; } = false;
     }
 }

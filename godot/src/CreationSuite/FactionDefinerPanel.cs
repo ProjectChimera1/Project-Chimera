@@ -158,6 +158,7 @@ namespace ProjectChimera.CreationSuite
             var closeBtn = ChimeraComponents.Button("Close [X]", ChimeraComponents.ButtonVariant.Secondary, ChimeraComponents.ButtonSize.Sm);
             closeBtn.Pressed += Close;
             closeBtn.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
+            AttachTip(closeBtn, "Close", "Close the Faction Definer (X).");
             titleRow.AddChild(closeBtn);
 
             // Step indicator (Segment) — 5 steps, mirrors FactionDefinerStep's ordinal order.
@@ -165,6 +166,9 @@ namespace ProjectChimera.CreationSuite
                 "Name & Color", "Roster", "Buildings & Tech", "Starting Conditions", "AI Preset");
             _stepTabs.SizeFlagsHorizontal = Control.SizeFlags.ShrinkCenter;
             _stepTabs.TabChanged += _ => RefreshStepBody();
+            // Per-tab tooltip (not AttachTip): AttachFocusable would mouse-ignore the tab buttons and make them
+            // unclickable — see ChimeraTabs.AttachTabTooltip (Story 5.9 review pass 2).
+            _stepTabs.AttachTabTooltip("Wizard steps", "Jump directly to any step — Name & Color, Roster, Buildings & Tech, Starting Conditions, or AI Preset.");
             root.AddChild(_stepTabs);
 
             // Simple/Advanced mode toggle (Story 5.6, FR-18) — mirrors the step-tabs Segment construction above.
@@ -172,6 +176,7 @@ namespace ProjectChimera.CreationSuite
             _modeTabs = ChimeraTabs.Create(ChimeraComponents.TabsVariant.Segment, "Simple", "Advanced");
             _modeTabs.SizeFlagsHorizontal = Control.SizeFlags.ShrinkCenter;
             _modeTabs.TabChanged += OnModeTabChanged;
+            _modeTabs.AttachTabTooltip("Simple / Advanced", "Simple uses guided picks over existing content; Advanced swaps in a raw-JSON escape hatch that still runs through the same validator.");
             root.AddChild(_modeTabs);
 
             // Scrollable per-step body.
@@ -195,10 +200,12 @@ namespace ProjectChimera.CreationSuite
 
             _jsonPane = MakeJsonPane();
             _jsonPane.TextChanged += () => { if (!_suppressPaneDirty) _paneDirty = true; };
+            AttachTip(_jsonPane, "Raw JSON", "Hand-edit the whole faction as JSON. Finish still runs it through the same validator as Simple mode.");
             _jsonPaneHost.AddChild(_jsonPane);
 
             var syncBtn = ChimeraComponents.Button("Sync JSON from picks", ChimeraComponents.ButtonVariant.Ghost, ChimeraComponents.ButtonSize.Sm);
             syncBtn.Pressed += () => SetJsonPaneText(FactionDefinerWizardCore.SerializeDraftClean(_draft));
+            AttachTip(syncBtn, "Sync JSON from picks", "Overwrite the raw-JSON pane with your current Simple-mode picks.");
             _jsonPaneHost.AddChild(syncBtn);
 
             // Status line + Back/Next/Finish footer.
@@ -219,10 +226,12 @@ namespace ProjectChimera.CreationSuite
 
             _backBtn = ChimeraComponents.Button("Back", ChimeraComponents.ButtonVariant.Secondary);
             _backBtn.Pressed += () => { if (_stepTabs.Active > 0) _stepTabs.SetActive(_stepTabs.Active - 1); };
+            AttachTip(_backBtn, "Back", "Return to the previous wizard step.");
             row.AddChild(_backBtn);
 
             _nextBtn = ChimeraComponents.Button("Next", ChimeraComponents.ButtonVariant.Secondary);
             _nextBtn.Pressed += () => { if (_stepTabs.Active < LastStepIndex) _stepTabs.SetActive(_stepTabs.Active + 1); };
+            AttachTip(_nextBtn, "Next", "Advance to the next wizard step.");
             row.AddChild(_nextBtn);
 
             var spacer = new Control { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
@@ -230,6 +239,7 @@ namespace ProjectChimera.CreationSuite
 
             _finishBtn = ChimeraComponents.Button("Finish", ChimeraComponents.ButtonVariant.Primary);
             _finishBtn.Pressed += OnFinishPressed;
+            AttachTip(_finishBtn, "Finish", "Validate and write this faction to a new faction JSON file. Blocked until every required field passes.");
             row.AddChild(_finishBtn);
 
             return row;
@@ -315,6 +325,12 @@ namespace ProjectChimera.CreationSuite
         }
 
         private Color Tok(StringName token) => _theme.GetColor(token, ThemeTokens.Type);
+
+        /// <summary>Attach a hover-AND-keyboard-focus tooltip (AC3 / UX-DR53 / NFR-2). Thin forwarder to the
+        /// centralized <see cref="ChimeraTooltip.AttachFocusable"/> (Story 5.9 review pass). Shared by this file
+        /// and <c>FactionDefinerPanel.Steps.cs</c> (same partial class).</summary>
+        private void AttachTip(Control target, string term, string body, ChimeraTooltip.TooltipRole role = ChimeraTooltip.TooltipRole.Pop)
+            => ChimeraTooltip.AttachFocusable(target, term, body, role);
 
         private void ShowOk(string msg)
         {

@@ -116,6 +116,18 @@ namespace ProjectChimera.UI.Components
             SetActive(0);
         }
 
+        /// <summary>Attach the same hover tooltip to every tab button (AC3 / NFR-2). Use this instead of attaching a
+        /// tooltip to the <see cref="ChimeraTabs"/> container: <see cref="ChimeraTooltip.AttachFocusable"/>'s
+        /// <c>MakeChildrenMouseIgnore</c> pass would turn the tab <see cref="Button"/>s mouse-transparent and make them
+        /// unclickable, while a container-level plain <see cref="ChimeraTooltip.Attach"/> does not reliably reveal while
+        /// hovering a child button (the 3.3 hover-target lesson). Attaching to each leaf button keeps clicks working AND
+        /// reveals reliably on whichever tab is hovered (Story 5.9 review pass 2).</summary>
+        public void AttachTabTooltip(string term, string body, ChimeraTooltip.TooltipRole role = ChimeraTooltip.TooltipRole.Pop)
+        {
+            foreach (var tab in _tabs)
+                ChimeraTooltip.Attach(tab, term, body, role);
+        }
+
         /// <summary>Switch the active tab, restyle, and emit <see cref="TabChanged"/>.</summary>
         public void SetActive(int index)
         {
