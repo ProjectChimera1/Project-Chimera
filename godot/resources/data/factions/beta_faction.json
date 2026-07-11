@@ -8,6 +8,9 @@
     1.0
   ],
   "signature_mechanic": "sanguine_furnace",
+  "ai_preset": "balanced",
+  "signature_mechanic_display": "Sanguine Furnace",
+  "signature_mechanic_effect_id": "furnace_trickle",
   "deferred_mechanics": ["glut_on_death"],
   "units": [
     {

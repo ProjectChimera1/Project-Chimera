@@ -8,6 +8,9 @@
     1.0
   ],
   "signature_mechanic": "equal_exchange",
+  "ai_preset": "balanced",
+  "signature_mechanic_display": "Equal Exchange",
+  "signature_mechanic_effect_id": "equal_exchange_self_cost",
   "units": [
     {
       "id": "worker",
@@ -187,38 +190,23 @@
       "splash_radius": 3.0
     },
     {
-      "id": "fatso",
-      "display_name": "Tubby",
-      "category": "Structure",
+      "id": "griffin",
+      "display_name": "Greycrest, the Bonded",
+      "category": "Air",
       "mesh_path": "res://assets/models/factions/alpha/greycrest_bonded.glb",
-      "hp": 230,
-      "speed": 0,
+      "hp": 190,
+      "speed": 6.5,
       "attack_damage": 35,
-      "attack_range": 15,
+      "attack_range": 2.0,
+      "attack_speed": 1.1,
       "damage_type": "Pierce",
-      "armor_type": "Fortified",
-      "cost_ore": 100,
-      "supply": 0,
+      "armor_type": "Light",
+      "cost_ore": 200,
+      "cost_crystal": 0,
+      "supply": 2,
       "mesh_scale": 1.4,
-      "train_time": 18,
-      "vision_range": 15
-    },
-    {
-      "id": "fatso_copy",
-      "display_name": "Tubby",
-      "category": "Structure",
-      "mesh_path": "res://assets/models/factions/alpha/greycrest_bonded.glb",
-      "hp": 230,
-      "speed": 0,
-      "attack_damage": 35,
-      "attack_range": 15,
-      "damage_type": "Pierce",
-      "armor_type": "Fortified",
-      "cost_ore": 100,
-      "supply": 0,
-      "mesh_scale": 1.4,
-      "train_time": 18,
-      "vision_range": 15
+      "train_time": 18.0,
+      "vision_range": 15.0
     }
   ],
   "buildings": [

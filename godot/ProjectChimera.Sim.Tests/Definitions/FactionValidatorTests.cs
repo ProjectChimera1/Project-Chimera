@@ -1,7 +1,9 @@
 #nullable enable
 using System;
 using System.IO;
+using ProjectChimera.Core;
 using ProjectChimera.Core.Definitions;
+using ProjectChimera.Economy;
 using Xunit;
 
 namespace ProjectChimera.Sim.Tests.Definitions
@@ -305,6 +307,93 @@ namespace ProjectChimera.Sim.Tests.Definitions
 
             Assert.Equal("balanced", beta.AiPreset);
             Assert.True(FactionValidator.Validate(beta).Ok);
+            Assert.True(FactionValidator.ValidateComplete(beta).Ok);
+        }
+
+        // ── Story 5.3 (FR-20): FMA showcase content hardening regression ─────────────────────
+        // Proves the new signature-mechanic descriptor fields landed on BOTH shipped factions, that alpha's
+        // roster regression (griffin replaced by junk "fatso"/"fatso_copy" placeholders) is reverted, and that
+        // both factions pass ValidateComplete's SCHEMA-level completeness gate (non-blank mesh_path + required
+        // roles) post-edit. ValidateComplete does not, and never has, verified that a mesh_path resolves to an
+        // on-disk file (review pass 1 finding) — that on-disk check for the story's 12 in-scope entries per
+        // faction was done manually (see the spec's Verification section); the two `aviary` buildings' known
+        // dangling mesh_path values are tracked separately as DW-102, not asserted here.
+
+        [Fact]
+        public void AlphaFaction_LoadFromFile_HasSignatureMechanicDescriptorFields()
+        {
+            FactionDefinition alpha = FactionDefinition.LoadFromFile(ResolveDataPath("alpha_faction.json"));
+
+            Assert.Equal("balanced", alpha.AiPreset);
+            Assert.False(string.IsNullOrEmpty(alpha.SignatureMechanicDisplay));
+            Assert.False(string.IsNullOrEmpty(alpha.SignatureMechanicEffectId));
+        }
+
+        [Fact]
+        public void BetaFaction_LoadFromFile_HasSignatureMechanicDescriptorFields()
+        {
+            FactionDefinition beta = FactionDefinition.LoadFromFile(ResolveDataPath("beta_faction.json"));
+
+            Assert.Equal("balanced", beta.AiPreset);
+            Assert.False(string.IsNullOrEmpty(beta.SignatureMechanicDisplay));
+            Assert.False(string.IsNullOrEmpty(beta.SignatureMechanicEffectId));
+        }
+
+        [Fact]
+        public void AlphaFaction_LoadFromFile_GriffinRestored_AirCategory_NoJunkPlaceholders()
+        {
+            FactionDefinition alpha = FactionDefinition.LoadFromFile(ResolveDataPath("alpha_faction.json"));
+
+            // Full stat block, not just Category/DisplayName — locks the fma-faction-design.md-sourced
+            // pre-regression values (recovered via git history) against a future accidental edit.
+            UnitDefinition? griffin = alpha.GetUnit("griffin");
+            Assert.NotNull(griffin);
+            Assert.Equal("Air", griffin!.Category);
+            Assert.Equal("Greycrest, the Bonded", griffin.DisplayName);
+            Assert.Equal("res://assets/models/factions/alpha/greycrest_bonded.glb", griffin.MeshPath);
+            Assert.Equal(190f, griffin.Hp);
+            Assert.Equal(6.5f, griffin.Speed);
+            Assert.Equal(35f, griffin.AttackDamage);
+            Assert.Equal(2.0f, griffin.AttackRange);
+            Assert.Equal(1.1f, griffin.AttackSpeed);
+            Assert.Equal("Pierce", griffin.DamageType);
+            Assert.Equal("Light", griffin.ArmorType);
+            Assert.Equal(200, griffin.CostOre);
+            Assert.Equal(0, griffin.CostCrystal);
+            Assert.Equal(2, griffin.Supply);
+            Assert.Equal(1.4f, griffin.MeshScale);
+            Assert.Equal(18.0f, griffin.TrainTime);
+            Assert.Equal(15.0f, griffin.VisionRange);
+
+            Assert.Null(alpha.GetUnit("fatso"));
+            Assert.Null(alpha.GetUnit("fatso_copy"));
+        }
+
+        [Fact]
+        public void AlphaFaction_RealJson_AviaryProducesGriffin_ThroughBuildingSystem()
+        {
+            // Verification-gap fix (review pass 1): the JSON-shape test above proves griffin's data is correct,
+            // but never exercised the actual production-resolution path this restoration was meant to unblock —
+            // Player1's real alpha_faction.json wired into a BuildingSystem, resolving its Aviary to griffin via
+            // the same BuildingType.Aviary -> "Air" -> GetUnitByCategory route MainScene uses in the live game.
+            FactionDefinition alpha = FactionDefinition.LoadFromFile(ResolveDataPath("alpha_faction.json"));
+            var buildings = new BuildingStore();
+            var resources = new ResourceStore(Fixed.FromInt(10000));
+            var sys       = new BuildingSystem(buildings, resources, alpha);
+
+            UnitDefinition? produced = sys.GetProductionUnit(BuildingType.Aviary, Faction.Player1);
+
+            Assert.NotNull(produced);
+            Assert.Equal("griffin", produced!.Id);
+        }
+
+        [Fact]
+        public void AlphaAndBetaFactions_ValidateComplete_AreOk_PostFmaHardening()
+        {
+            FactionDefinition alpha = FactionDefinition.LoadFromFile(ResolveDataPath("alpha_faction.json"));
+            FactionDefinition beta = FactionDefinition.LoadFromFile(ResolveDataPath("beta_faction.json"));
+
+            Assert.True(FactionValidator.ValidateComplete(alpha).Ok);
             Assert.True(FactionValidator.ValidateComplete(beta).Ok);
         }
 

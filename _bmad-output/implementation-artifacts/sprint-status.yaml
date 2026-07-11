@@ -121,7 +121,7 @@ development_status:
   epic-5: backlog
   5-1-factionregistry-canonical-faction-slot-constants-ar-3: done
   5-2-faction-schema-extension-validator-ar-39-ar-12-fr-18-data: done
-  5-3-land-harden-the-fma-showcase-content-as-valid-definer-outputs-fr-20: backlog
+  5-3-land-harden-the-fma-showcase-content-as-valid-definer-outputs-fr-20: done
   5-4-wire-the-two-signature-mechanics-via-d1-modifiers-fr-20-unique-mechanic: backlog
   5-5-faction-definer-guided-wizard-flow-validator-gated-save-fr-17-ux-dr40: backlog
   5-6-ai-preset-selection-advanced-raw-json-mode-hero-persistence-config-completion-target-fr-18-ux-dr80-ar-12: backlog
