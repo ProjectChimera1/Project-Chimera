@@ -114,8 +114,15 @@ namespace ProjectChimera.CreationSuite
             _panel = ChimeraComponents.Panel(ChimeraComponents.PanelVariant.Default);
             _panel.Theme = _theme;
             _panel.CustomMinimumSize = new Vector2(PANEL_W, 0);
-            _panel.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.CenterLeft);
-            _panel.Position = new Vector2(20, 60);
+            // Top-left docked (not centre-left): under CenterLeft the (20,60) offset was measured from the vertical
+            // centre, pushing a ~580px-tall panel off the bottom of the screen — the playtest cutoff. TopLeft +
+            // GrowDirection.End measures (20,60) from the top-left corner and grows the panel down-and-right so it sits
+            // fully on-screen; the inner ScrollContainer handles the body overflow.
+            _panel.SetAnchorsPreset(Control.LayoutPreset.TopLeft);
+            _panel.GrowHorizontal = Control.GrowDirection.End;
+            _panel.GrowVertical   = Control.GrowDirection.End;
+            _panel.OffsetLeft = 20;
+            _panel.OffsetTop  = 60;
             canvas.AddChild(_panel);
 
             var root = new VBoxContainer { CustomMinimumSize = new Vector2(PANEL_W - 24, 0) };

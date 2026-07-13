@@ -161,10 +161,18 @@ namespace ProjectChimera.CreationSuite
             _canvas = new CanvasLayer { Layer = 13 };
             AddChild(_canvas);
 
+            // Right-docked but shifted one panel-width further left (LEFT_OFFSET) so it sits BESIDE the building/unit
+            // card, not on top of it. Explicit offsets + GrowHorizontal.Begin keep it on-screen and grow over-wide
+            // content leftward instead of off the right edge (see BuildingCardPanel).
             _panel = ChimeraComponents.Panel(ChimeraComponents.PanelVariant.Default);
+            _panel.CustomMinimumSize = new Vector2(PANEL_W, 0);
             _panel.SetAnchorsPreset(Control.LayoutPreset.CenterRight);
-            _panel.CustomMinimumSize = new Vector2(PANEL_W, PANEL_H);
-            _panel.Position = new Vector2(-LEFT_OFFSET, -PANEL_H * 0.5f);
+            _panel.GrowHorizontal = Control.GrowDirection.Begin;
+            _panel.GrowVertical   = Control.GrowDirection.Both;
+            _panel.OffsetRight  = -(LEFT_OFFSET - PANEL_W);
+            _panel.OffsetLeft   = -LEFT_OFFSET;
+            _panel.OffsetTop    = -PANEL_H * 0.5f;
+            _panel.OffsetBottom =  PANEL_H * 0.5f;
             _panel.Theme = _theme;
             _canvas.AddChild(_panel);
 

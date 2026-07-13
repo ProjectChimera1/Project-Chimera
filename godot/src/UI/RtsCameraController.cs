@@ -71,15 +71,21 @@ namespace ProjectChimera.UI
 
             if (@event is InputEventMouseButton mb)
             {
+                // Zoom must not fire while the pointer is over UI (editor panels, the entity palette): the wheel
+                // should scroll that panel, not zoom the world camera. GuiGetHoveredControl() is null over the bare
+                // 3D viewport, so world zoom still works everywhere the cursor is not sitting on a Control.
+                bool pointerOverUi = GetViewport().GuiGetHoveredControl() != null;
                 switch (mb.ButtonIndex)
                 {
                     case MouseButton.Middle:
                         _middleHeld = mb.Pressed;
                         break;
                     case MouseButton.WheelUp:
+                        if (pointerOverUi) break;
                         _zoomDist = Mathf.Clamp(_zoomDist - ZoomStep * ZoomSpeedMultiplier, ZoomMin, ZoomMax);
                         break;
                     case MouseButton.WheelDown:
+                        if (pointerOverUi) break;
                         _zoomDist = Mathf.Clamp(_zoomDist + ZoomStep * ZoomSpeedMultiplier, ZoomMin, ZoomMax);
                         break;
                 }

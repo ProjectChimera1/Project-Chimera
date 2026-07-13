@@ -105,11 +105,17 @@ namespace ProjectChimera.CreationSuite
             _canvas = new CanvasLayer { Layer = 12 };
             AddChild(_canvas);
 
-            // Anchor panel to the right side, vertically centered.
+            // Anchor panel to the right side, vertically centered. Explicit offsets + GrowHorizontal.Begin keep the
+            // right edge on-screen (MARGIN gutter) and grow over-wide content leftward, never off-screen (see BuildingCardPanel).
             _panel = new PanelContainer();
+            _panel.CustomMinimumSize = new Vector2(PANEL_W, 0);
             _panel.SetAnchorsPreset(Control.LayoutPreset.CenterRight);
-            _panel.CustomMinimumSize = new Vector2(PANEL_W, PANEL_H);
-            _panel.Position = new Vector2(-(PANEL_W + MARGIN), -PANEL_H * 0.5f);
+            _panel.GrowHorizontal = Control.GrowDirection.Begin;
+            _panel.GrowVertical   = Control.GrowDirection.Both;
+            _panel.OffsetRight  = -MARGIN;
+            _panel.OffsetLeft   = -(PANEL_W + MARGIN);
+            _panel.OffsetTop    = -PANEL_H * 0.5f;
+            _panel.OffsetBottom =  PANEL_H * 0.5f;
             _canvas.AddChild(_panel);
 
             var root = new VBoxContainer { Theme = new Theme() };

@@ -242,9 +242,17 @@ namespace ProjectChimera.CreationSuite
             AddChild(_canvas);
 
             _panel = ChimeraComponents.Panel(ChimeraComponents.PanelVariant.Default);
+            _panel.CustomMinimumSize = new Vector2(PANEL_W, 0);
+            // Right-docked with a MARGIN gutter. Explicit offsets pin all four edges (PANEL_W wide, ending MARGIN px
+            // from the screen edge); GrowHorizontal.Begin makes any over-wide content grow LEFTWARD into the screen
+            // rather than spilling off the right edge. See BuildingCardPanel for the shared rationale.
             _panel.SetAnchorsPreset(Control.LayoutPreset.CenterRight);
-            _panel.CustomMinimumSize = new Vector2(PANEL_W, PANEL_H);
-            _panel.Position = new Vector2(-(PANEL_W + MARGIN), -PANEL_H * 0.5f);
+            _panel.GrowHorizontal = Control.GrowDirection.Begin;
+            _panel.GrowVertical   = Control.GrowDirection.Both;
+            _panel.OffsetRight  = -MARGIN;
+            _panel.OffsetLeft   = -(PANEL_W + MARGIN);
+            _panel.OffsetTop    = -PANEL_H * 0.5f;
+            _panel.OffsetBottom =  PANEL_H * 0.5f;
             _panel.Theme = _theme;   // _panel is a Control (UnitCardPanel : Node has NO Theme) — propagates to the subtree
             _canvas.AddChild(_panel);
 
