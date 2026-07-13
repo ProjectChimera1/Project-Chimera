@@ -118,11 +118,17 @@ namespace ProjectChimera.UI
 
             Vector3 move = Vector3.Zero;
 
-            // WASD / arrows
-            if (Input.IsKeyPressed(Key.W) || Input.IsKeyPressed(Key.Up))    move += forward;
-            if (Input.IsKeyPressed(Key.S) || Input.IsKeyPressed(Key.Down))  move -= forward;
-            if (Input.IsKeyPressed(Key.A) || Input.IsKeyPressed(Key.Left))  move -= right;
-            if (Input.IsKeyPressed(Key.D) || Input.IsKeyPressed(Key.Right)) move += right;
+            // WASD / arrows — but NOT while typing into a text field. HandlePan polls Input.IsKeyPressed directly,
+            // which bypasses GUI focus, so without this guard every letter typed into an editor field (id, name, …)
+            // would also drive the camera (a→left, d→right, arrows→cursor+pan). Suppress keyboard pan whenever a
+            // LineEdit/TextEdit owns focus (this also covers a SpinBox's internal LineEdit).
+            if (!IsTypingInTextField())
+            {
+                if (Input.IsKeyPressed(Key.W) || Input.IsKeyPressed(Key.Up))    move += forward;
+                if (Input.IsKeyPressed(Key.S) || Input.IsKeyPressed(Key.Down))  move -= forward;
+                if (Input.IsKeyPressed(Key.A) || Input.IsKeyPressed(Key.Left))  move -= right;
+                if (Input.IsKeyPressed(Key.D) || Input.IsKeyPressed(Key.Right)) move += right;
+            }
 
             // Edge scroll (only when enabled and no middle-mouse drag to avoid fighting)
             if (EdgeScrollEnabled && !_middleHeld)
@@ -136,6 +142,14 @@ namespace ProjectChimera.UI
 
             if (move.LengthSquared() > 0.001f)
                 Position += move.Normalized() * (PanSpeed * PanSpeedMultiplier) * (float)delta;
+        }
+
+        /// <summary>True when a text-editing control owns keyboard focus (a LineEdit or TextEdit, including a
+        /// SpinBox's internal LineEdit), so <see cref="HandlePan"/> must not consume WASD/arrows as camera pan.</summary>
+        private bool IsTypingInTextField()
+        {
+            Control focus = GetViewport()?.GuiGetFocusOwner();
+            return focus is LineEdit || focus is TextEdit;
         }
 
         private void UpdateCameraTransform()
