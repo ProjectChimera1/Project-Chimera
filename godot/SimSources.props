@@ -48,6 +48,12 @@
          trips the 1.10b advisory CHM0001, which is expected/correct (the delay value is never folded into the hash). -->
     <Compile Include="$(MSBuildThisFileDirectory)src\Multiplayer\DelayMath.cs"       LinkBase="Sim\Multiplayer" />
 
+    <!-- Story 6.2: the linear editor undo/redo stack (src/CreationSuite/EditorHistory.cs) is pure C# (Action
+         delegate pairs over two Stacks, no Godot types) — included as a single file so its shared-LIFO contract,
+         now shared by entity placement AND terrain strokes, is Tier-1 unit-testable (EditorHistoryTests). The rest
+         of src/CreationSuite is Godot-coupled, so the folder is deliberately NOT globbed. -->
+    <Compile Include="$(MSBuildThisFileDirectory)src\CreationSuite\EditorHistory.cs" LinkBase="Sim\CreationSuite" />
+
     <!-- Story 1.9a: the Godot-free server-authority core (ServerHost + ServerChecksumCollector) lives under
          src/Multiplayer/Server/ — a guaranteed-Godot-free subfolder. Folder-globbed (not single files) so the
          Epic-9 additions (ProtocolVersion / DelayController) are picked up without touching this file. -->

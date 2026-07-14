@@ -81,6 +81,43 @@ namespace ProjectChimera.Sim.Tests.Validation
         }
 
         [Fact]
+        public void TerrainRefPath_DoesNotChangeHash()
+        {
+            // Story 6.2: TerrainRef is a machine-specific LOCAL PATH — the author's map dir
+            // (res://…/{stem}_terrain) vs. a friend's imported copy (res://…/{id}_terrain/ — different stem AND a
+            // trailing slash) for the IDENTICAL logical map. The sculpted terrain CONTENT lives in separate .res
+            // files, never in this model, so the ref string must be NEUTRALIZED in the fold — else the same map
+            // authored locally vs. imported elsewhere would hash DIFFERENTLY and be false-positive-rejected at the
+            // MP lobby handshake (LobbyUi.ScenarioHash) / desync StartStateHash. All four variants (incl. empty)
+            // MUST hash EQUAL.
+            var a = BuildModel(false); a.TerrainRef = "res://resources/data/scenarios/my_map_terrain";
+            var b = BuildModel(false); b.TerrainRef = "res://resources/data/scenarios/my_map_terrain/";
+            var c = BuildModel(false); c.TerrainRef = "res://resources/data/scenarios/imported-123_terrain/";
+            var d = BuildModel(false); d.TerrainRef = "";
+            ulong ha = CanonicalModelHash.Compute(a);
+            Assert.Equal(ha, CanonicalModelHash.Compute(b));
+            Assert.Equal(ha, CanonicalModelHash.Compute(c));
+            Assert.Equal(ha, CanonicalModelHash.Compute(d));
+        }
+
+        [Fact]
+        public void EmptyTerrainRef_BaselineUnchanged()
+        {
+            // The neutralization is golden-preserving: because every existing scenario ships TerrainRef=="", mixing
+            // a fixed "" is byte-identical to the pre-change fold. MinimalModel_MatchesIndependentlyComputedFnv64
+            // (which folds "" for TerrainRef) is the independent-FNV proof the empty-ref baseline did not move;
+            // this asserts the same value is stable and non-zero. AlgoVersion stays 5 — NO shipped-scenario golden
+            // re-baseline.
+            var model = new ScenarioData
+            {
+                TerrainRef = "", MapBounds = 120f, WinCondition = WinCondition.DestroyAllBuildings,
+            };
+            ulong once = CanonicalModelHash.Compute(model);
+            Assert.Equal(once, CanonicalModelHash.Compute(model));
+            Assert.NotEqual(0UL, once);
+        }
+
+        [Fact]
         public void Triggers_AreExcludedFromHash()
         {
             // Trigger/effect canonicalization is deferred to Epic 7 (D5) — Triggers must not affect the hash today.

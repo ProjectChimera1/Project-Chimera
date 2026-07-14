@@ -183,6 +183,13 @@ namespace ProjectChimera.Core.Bootstrap
 
             // Save current scenario state to disk first.
             string scenAbs = ProjectSettings.GlobalizePath(_ctx.Scene.ScenarioPath);
+
+            // Story 6.2: persist the LIVE terrain beside the scenario and stamp TerrainRef BEFORE serializing, so the
+            // saved JSON carries the ref and the package below can bundle the region files. Returns the terrain
+            // folder's absolute path (null when there is no terrain / on a save failure — TerrainRef is cleared in
+            // that case so a stale ref can't make the next load restore outdated terrain).
+            string? terrainDir = SaveTerrainBesideScenario(scenAbs);
+
             try { ScenarioSerializer.SaveToFile(_ctx.Scenario, scenAbs); }
             catch (Exception ex) { statusLabel.Text = $"Save failed: {ex.Message}"; return; }
 
@@ -206,7 +213,7 @@ namespace ProjectChimera.Core.Bootstrap
 
             try
             {
-                var manifest = ContentPackager.Pack(scenAbs, outZip, opts);
+                var manifest = ContentPackager.Pack(scenAbs, outZip, opts, terrainDir);
                 statusLabel.Text = $"Exported: {System.IO.Path.GetFileName(outZip)}\n" +
                                    $"Hash: 0x{manifest.ScenarioHash:X8}";
                 GD.Print($"[MapIO] Exported package: {outZip}");
@@ -215,6 +222,60 @@ namespace ProjectChimera.Core.Bootstrap
             {
                 statusLabel.Text = $"Export failed: {ex.Message}";
                 GD.PrintErr($"[MapIO] Export error: {ex}");
+            }
+        }
+
+        /// <summary>
+        /// Story 6.2 — persist the live Terrain3D region data (height + control + color, captured together by
+        /// Terrain3DData.save_directory) into a "{stem}_terrain/" folder beside the scenario JSON, and stamp the
+        /// scenario's TerrainRef with that folder's res:// path (so ScenarioLoadPhase can resolve it back on load).
+        /// Returns the folder's absolute OS path for packaging, or null when there is nothing to save.
+        ///
+        /// Guards (review pass 1): the folder is cleared/recreated first so orphaned .res from a prior, larger map
+        /// are never packed or restored; on any failure TerrainRef is reset to "" (never left stale) so the next
+        /// load falls back to flat rather than restoring outdated terrain.
+        /// </summary>
+        private string? SaveTerrainBesideScenario(string scenarioAbsPath)
+        {
+            if (_ctx.Terrain == null || _ctx.Scenario == null) return null; // PlaneMesh fallback / no scenario
+
+            string stem       = System.IO.Path.GetFileNameWithoutExtension(scenarioAbsPath);
+            string scenDir    = System.IO.Path.GetDirectoryName(scenarioAbsPath)!;
+            string terrainAbs = System.IO.Path.Combine(scenDir, ContentPackager.TerrainFolderName(stem));
+
+            try
+            {
+                // Clear/recreate so stale region files from a prior (possibly larger) save are not carried forward.
+                if (System.IO.Directory.Exists(terrainAbs))
+                    System.IO.Directory.Delete(terrainAbs, recursive: true);
+                System.IO.Directory.CreateDirectory(terrainAbs);
+
+                var data = _ctx.Terrain.Get("data").AsGodotObject();
+                if (data == null) { _ctx.Scenario.TerrainRef = ""; return null; }
+
+                // save_directory writes one terrain3d_XX_YY.res per active region (height+control+color together).
+                data.Call("save_directory", terrainAbs);
+
+                // Review pass 2 (EC9): a terrain node with zero active regions writes an empty folder. Keep the
+                // empty-TerrainRef path byte-identical to today (no stamped ref pointing at an empty folder, no
+                // spurious "folder has no region files" log on every subsequent load) by treating that as no terrain.
+                if (System.IO.Directory.GetFiles(terrainAbs, "*.res").Length == 0)
+                {
+                    System.IO.Directory.Delete(terrainAbs, recursive: true);
+                    _ctx.Scenario.TerrainRef = "";
+                    return null;
+                }
+
+                // Stamp the res:// path so the load path resolves it independent of the absolute install location.
+                _ctx.Scenario.TerrainRef = ProjectSettings.LocalizePath(terrainAbs);
+                GD.Print($"[MapIO] Saved terrain → {_ctx.Scenario.TerrainRef}");
+                return terrainAbs;
+            }
+            catch (Exception ex)
+            {
+                GD.PrintErr($"[MapIO] Terrain save failed ({ex.Message}) — clearing TerrainRef (map will load flat).");
+                _ctx.Scenario.TerrainRef = "";
+                return null;
             }
         }
 
@@ -260,6 +321,36 @@ namespace ProjectChimera.Core.Bootstrap
                     string destFaction = ProjectSettings.GlobalizePath(
                         $"res://resources/data/factions/{System.IO.Path.GetFileName(fp)}");
                     System.IO.File.Copy(fp, destFaction, overwrite: true);
+                }
+
+                // Story 6.2: copy the bundled terrain region files into a folder tracked by manifest.Id and rewrite
+                // the imported scenario's TerrainRef to point at it. The scenario is renamed to {id}.json on import,
+                // so the terrain folder name must track manifest.Id (not the author's original stem).
+                if (result.TerrainFiles.Count > 0)
+                {
+                    string terrainResDir = $"res://resources/data/scenarios/{ContentPackager.TerrainFolderName(manifest.Id)}/";
+                    string terrainDestAbs = ProjectSettings.GlobalizePath(terrainResDir);
+                    // Review pass 2 (F2): clear/recreate the destination first, mirroring the export save path. Re-
+                    // importing a revised same-id package that dropped a region would otherwise leave the earlier
+                    // import's orphaned terrain3d_*.res behind, and the load-time glob would restore that stale region.
+                    if (System.IO.Directory.Exists(terrainDestAbs))
+                        System.IO.Directory.Delete(terrainDestAbs, recursive: true);
+                    System.IO.Directory.CreateDirectory(terrainDestAbs);
+                    foreach (var tf in result.TerrainFiles)
+                        System.IO.File.Copy(tf,
+                            System.IO.Path.Combine(terrainDestAbs, System.IO.Path.GetFileName(tf)), overwrite: true);
+
+                    var imported = ScenarioSerializer.LoadFromFile(destScenario);
+                    if (imported != null)
+                    {
+                        imported.TerrainRef = terrainResDir;
+                        ScenarioSerializer.SaveToFile(imported, destScenario);
+                    }
+                    else
+                    {
+                        GD.PrintErr("[MapIO] Terrain files copied but TerrainRef could not be rewritten " +
+                                    "(scenario reload returned null) — imported map will load flat.");
+                    }
                 }
 
                 statusLabel.Text = $"Imported: {manifest.DisplayName}\n" +

@@ -120,5 +120,21 @@ namespace ProjectChimera.Core.Definitions
         /// </summary>
         [JsonPropertyName("scenario_hash")]
         public uint ScenarioHash { get; set; }
+
+        /// <summary>
+        /// Story 6.2 — zip-relative paths of the bundled Terrain3D region files, e.g.
+        /// "map/terrain/terrain3d_00_00.res". Empty (the default) for a terrainless map or an old package predating
+        /// terrain persistence — Unpack treats absence as a graceful no-op (map loads flat).
+        /// </summary>
+        [JsonPropertyName("terrain_files")]
+        public List<string> TerrainFiles { get; set; } = new();
+
+        /// <summary>
+        /// Story 6.2 — aggregate FNV-1a integrity hash over the bundled terrain .res files (filename + bytes,
+        /// ordinal-sorted). Written at pack time, verified on Unpack (mirroring <see cref="ScenarioHash"/>) so
+        /// terrain bytes corrupted in transit are caught rather than silently loaded. 0 = no terrain bundled.
+        /// </summary>
+        [JsonPropertyName("terrain_hash")]
+        public uint TerrainHash { get; set; }
     }
 }

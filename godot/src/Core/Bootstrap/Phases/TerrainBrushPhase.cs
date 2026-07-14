@@ -21,7 +21,10 @@ namespace ProjectChimera.Core.Bootstrap
             if (_ctx.Terrain == null) return; // PlaneMesh fallback: no brush
             var brush = new TerrainBrush();
             _ctx.Scene.AddChild(brush);
-            brush.Initialize(_ctx.Terrain, _ctx.Cam, _ctx.NavObstacles, _ctx.GameState);
+            // Story 6.2: pass the EntityPlacer's shared EditorHistory so terrain strokes and entity placements share
+            // one undo stack (interleaved LIFO). Placer is published by the Camera phase (position 7) before this
+            // TerrainBrush phase (position 11), guaranteed by PhaseOrderTest — so _ctx.Placer is non-null here.
+            brush.Initialize(_ctx.Terrain, _ctx.Cam, _ctx.NavObstacles, _ctx.GameState, _ctx.Placer.History);
             GD.Print("[MainScene] TerrainBrush ready — press T in Edit mode to activate.");
         }
     }

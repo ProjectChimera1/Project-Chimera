@@ -114,6 +114,12 @@ namespace ProjectChimera.UI
         // Undo/redo history
         private readonly EditorHistory _history = new();
 
+        /// <summary>Story 6.2: the shared editor undo/redo stack. Exposed so <see cref="CreationSuite.TerrainBrush"/>
+        /// pushes terrain sculpt/paint stroke commands onto the SAME history the entity place/delete ops use — the
+        /// existing Ctrl+Z/Y handler here pops whichever delegate (entity or terrain) is on top, so the two op kinds
+        /// interleave in strict LIFO with no second parallel stack and no cross-corruption.</summary>
+        public EditorHistory History => _history;
+
         // Tracks ore set per start-position slot (for undo of MoveStartPos)
         private readonly float[] _slotStartOre = { 200f, 200f };
 

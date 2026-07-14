@@ -64,7 +64,17 @@ namespace ProjectChimera.Core.Definitions
             h = MixInt(h, AlgoVersion);                          // namespaces the hash (algo-1 was the byte-FNV)
             h = MixInt(h, Fixed.FromFloat(m.MapBounds).Raw);
             h = MixStr(h, m.WinCondition.ToString());            // enum by NAME, not ordinal
-            h = MixStr(h, m.TerrainRef);
+            // Story 6.2: TerrainRef is NEUTRALIZED (a fixed "" constant, never the field value). The sculpted
+            // terrain CONTENT lives in separate terrain3d_*.res files referenced by this path — it is NEVER folded
+            // into the scenario model — so the ref string itself is machine-specific noise: an author's map carries
+            // res://…/{stem}_terrain while a friend's imported copy carries res://…/{id}_terrain/ (different stem +
+            // trailing slash) for the IDENTICAL logical map. Folding the raw value would make those two hash
+            // differently and false-positive-reject the map at the MP lobby handshake (LobbyUi.ScenarioHash) and
+            // desync StartStateHash. Mixing a fixed "" is byte-identical to today's fold for every existing scenario
+            // (all have TerrainRef==""), so this is golden-preserving — AlgoVersion stays 5, no re-baseline of any
+            // shipped-scenario golden (only the HeroStartStateScenario test fixture, uniquely carrying a non-empty
+            // TerrainRef, re-records once by design — human-authorized 2026-07-14).
+            h = MixStr(h, "");
 
             // Story 4.4: fold Supply via the SAME SupplyConfig.Resolve ResourceStore.ConfigureSupply uses — the
             // single resolution+clamp boundary, so hash-equality <=> post-resolution runtime-equality holds both

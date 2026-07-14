@@ -48,6 +48,7 @@ namespace ProjectChimera.Core.Bootstrap
                 _ctx.Scenario = generated;
                 ApplyScenarioThroughApplier(generated, "ApplyScenario");
                 GD.Print($"[MainScene] Loaded AI-generated scenario: \"{generated.DisplayName}\"");
+                RestoreTerrainFromScenario();
                 SetupStartPositionBridge();
                 return;
             }
@@ -67,7 +68,68 @@ namespace ProjectChimera.Core.Bootstrap
                 GD.Print($"[MainScene] Loaded scenario: \"{scenario.DisplayName}\" ({scenario.Id})");
             }
 
+            RestoreTerrainFromScenario();
             SetupStartPositionBridge();
+        }
+
+        /// <summary>
+        /// Story 6.2 — restore saved Terrain3D region data over the flat region TerrainPhase (position 5) imported at
+        /// boot, BEFORE this ScenarioLoad phase (position 12) parsed the scenario. When the loaded scenario carries a
+        /// non-empty TerrainRef pointing at a folder that actually holds terrain3d_*.res files, assign it as the
+        /// terrain's data_directory (the addon reload idiom: clear to "" first, then set the path) so the saved
+        /// height + control maps load, recompute the height range, then MarkDirty the NavMesh so the bake reflects
+        /// the restored height.
+        ///
+        /// Empty TerrainRef (new/legacy map, PlaneMesh fallback) ⇒ do nothing: the flat region stays, byte-identical
+        /// to pre-feature behavior, with NO new log line. A set-but-missing/empty/corrupt ref ⇒ keep flat + a single
+        /// PrintErr diagnostic, never a crash.
+        /// </summary>
+        private void RestoreTerrainFromScenario()
+        {
+            string? terrainRef = _ctx.Scenario?.TerrainRef;
+            if (string.IsNullOrEmpty(terrainRef)) return;   // flat fallback — silent, byte-identical to today
+            if (_ctx.Terrain == null) return;               // PlaneMesh fallback — nothing to restore into
+
+            try
+            {
+                string absDir = ProjectSettings.GlobalizePath(terrainRef);
+                if (!System.IO.Directory.Exists(absDir))
+                {
+                    GD.PrintErr($"[ScenarioLoad] TerrainRef folder missing — keeping flat terrain: {terrainRef}");
+                    return;
+                }
+
+                // Honest logging: only claim a restore when the folder actually holds region .res files. An
+                // existing-but-empty folder keeps the flat region and says so accurately. The region-file test goes
+                // through the Godot-free ContentPackager.IsTerrainRegionFile predicate (Tier-1 unit-tested, review
+                // pass 2 / VG2) rather than an inline glob, so the negative-coordinate HYPHEN encoding
+                // (Terrain3DUtil.location_to_filename → e.g. (-1,-1) is "terrain3d-01-01.res", not "terrain3d_01_01")
+                // stays a pinned, regression-guarded rule. An underscore-anchored glob would miss every map whose
+                // regions sit at a negative location — including the default flat region at (-1,-1). [live-verified 6.2]
+                bool hasRegionFile = false;
+                foreach (var f in System.IO.Directory.GetFiles(absDir, "*.res"))
+                    if (Definitions.ContentPackager.IsTerrainRegionFile(System.IO.Path.GetFileName(f))) { hasRegionFile = true; break; }
+                if (!hasRegionFile)
+                {
+                    GD.Print($"[ScenarioLoad] TerrainRef folder has no region files — keeping flat terrain: {terrainRef}");
+                    return;
+                }
+
+                // Reload idiom: clear then set data_directory so a stale in-memory region does not linger.
+                _ctx.Terrain.Set("data_directory", "");
+                _ctx.Terrain.Set("data_directory", terrainRef);
+
+                // Recompute height ranges + rebake nav from the restored geometry.
+                var data = _ctx.Terrain.Get("data").AsGodotObject();
+                data?.Call("calc_height_range", true);
+                _ctx.NavObstacles?.MarkDirty();
+
+                GD.Print($"[ScenarioLoad] Restored sculpted terrain from {terrainRef}");
+            }
+            catch (System.Exception ex)
+            {
+                GD.PrintErr($"[ScenarioLoad] Terrain restore failed ({ex.Message}) — keeping flat terrain.");
+            }
         }
 
         /// <summary>

@@ -1,0 +1,897 @@
+diff --git a/godot/ProjectChimera.Sim.Tests/Validation/CanonicalModelHashTests.cs b/godot/ProjectChimera.Sim.Tests/Validation/CanonicalModelHashTests.cs
+index 2370f571..b7a34c78 100644
+--- a/godot/ProjectChimera.Sim.Tests/Validation/CanonicalModelHashTests.cs
++++ b/godot/ProjectChimera.Sim.Tests/Validation/CanonicalModelHashTests.cs
+@@ -80,6 +80,42 @@ namespace ProjectChimera.Sim.Tests.Validation
+                          CanonicalModelHash.Compute(BuildModel(false, id: "OMEGA", displayName: "Totally Different")));
+         }
+ 
++        [Fact]
++        public void TerrainRefPath_DoesNotChangeHash()
++        {
++            // Story 6.2: TerrainRef is a machine-specific LOCAL PATH — the author's map dir
++            // (res://…/{stem}_terrain) vs. a friend's imported copy (res://…/{id}_terrain/ — different stem AND a
++            // trailing slash) for the IDENTICAL logical map. The sculpted terrain CONTENT lives in separate .res
++            // files, never in this model, so the ref string must be NEUTRALIZED in the fold — else the same map
++            // authored locally vs. imported elsewhere would hash DIFFERENTLY and be false-positive-rejected at the
++            // MP lobby handshake (LobbyUi.ScenarioHash) / desync StartStateHash. All four variants (incl. empty)
++            // MUST hash EQUAL.
++            var a = BuildModel(false); a.TerrainRef = "res://resources/data/scenarios/my_map_terrain";
++            var b = BuildModel(false); b.TerrainRef = "res://resources/data/scenarios/my_map_terrain/";
++            var c = BuildModel(false); c.TerrainRef = "res://resources/data/scenarios/imported-123_terrain/";
++            var d = BuildModel(false); d.TerrainRef = "";
++            ulong ha = CanonicalModelHash.Compute(a);
++            Assert.Equal(ha, CanonicalModelHash.Compute(b));
++            Assert.Equal(ha, CanonicalModelHash.Compute(c));
++            Assert.Equal(ha, CanonicalModelHash.Compute(d));
++        }
++
++        [Fact]
++        public void EmptyTerrainRef_BaselineUnchanged()
++        {
++            // The neutralization is golden-preserving: because every existing scenario ships TerrainRef=="", mixing
++            // a fixed "" is byte-identical to the pre-change fold. MinimalModel_MatchesIndependentlyComputedFnv64
++            // (which folds "" for TerrainRef) is the independent-FNV proof the empty-ref baseline did not move;
++            // this asserts the same value is stable and non-zero. AlgoVersion stays 5 — NO golden re-baseline.
++            var model = new ScenarioData
++            {
++                TerrainRef = "", MapBounds = 120f, WinCondition = WinCondition.DestroyAllBuildings,
++            };
++            ulong once = CanonicalModelHash.Compute(model);
++            Assert.Equal(once, CanonicalModelHash.Compute(model));
++            Assert.NotEqual(0UL, once);
++        }
++
+         [Fact]
+         public void Triggers_AreExcludedFromHash()
+         {
+diff --git a/godot/SimSources.props b/godot/SimSources.props
+index e6dc43a4..b381e41f 100644
+--- a/godot/SimSources.props
++++ b/godot/SimSources.props
+@@ -48,6 +48,12 @@
+          trips the 1.10b advisory CHM0001, which is expected/correct (the delay value is never folded into the hash). -->
+     <Compile Include="$(MSBuildThisFileDirectory)src\Multiplayer\DelayMath.cs"       LinkBase="Sim\Multiplayer" />
+ 
++    <!-- Story 6.2: the linear editor undo/redo stack (src/CreationSuite/EditorHistory.cs) is pure C# (Action
++         delegate pairs over two Stacks, no Godot types) — included as a single file so its shared-LIFO contract,
++         now shared by entity placement AND terrain strokes, is Tier-1 unit-testable (EditorHistoryTests). The rest
++         of src/CreationSuite is Godot-coupled, so the folder is deliberately NOT globbed. -->
++    <Compile Include="$(MSBuildThisFileDirectory)src\CreationSuite\EditorHistory.cs" LinkBase="Sim\CreationSuite" />
++
+     <!-- Story 1.9a: the Godot-free server-authority core (ServerHost + ServerChecksumCollector) lives under
+          src/Multiplayer/Server/ — a guaranteed-Godot-free subfolder. Folder-globbed (not single files) so the
+          Epic-9 additions (ProtocolVersion / DelayController) are picked up without touching this file. -->
+diff --git a/godot/src/Core/Bootstrap/Phases/ScenarioLoadPhase.cs b/godot/src/Core/Bootstrap/Phases/ScenarioLoadPhase.cs
+index f194d5d4..7e29ce46 100644
+--- a/godot/src/Core/Bootstrap/Phases/ScenarioLoadPhase.cs
++++ b/godot/src/Core/Bootstrap/Phases/ScenarioLoadPhase.cs
+@@ -48,6 +48,7 @@ namespace ProjectChimera.Core.Bootstrap
+                 _ctx.Scenario = generated;
+                 ApplyScenarioThroughApplier(generated, "ApplyScenario");
+                 GD.Print($"[MainScene] Loaded AI-generated scenario: \"{generated.DisplayName}\"");
++                RestoreTerrainFromScenario();
+                 SetupStartPositionBridge();
+                 return;
+             }
+@@ -67,9 +68,62 @@ namespace ProjectChimera.Core.Bootstrap
+                 GD.Print($"[MainScene] Loaded scenario: \"{scenario.DisplayName}\" ({scenario.Id})");
+             }
+ 
++            RestoreTerrainFromScenario();
+             SetupStartPositionBridge();
+         }
+ 
++        /// <summary>
++        /// Story 6.2 — restore saved Terrain3D region data over the flat region TerrainPhase (position 5) imported at
++        /// boot, BEFORE this ScenarioLoad phase (position 12) parsed the scenario. When the loaded scenario carries a
++        /// non-empty TerrainRef pointing at a folder that actually holds terrain3d_*.res files, assign it as the
++        /// terrain's data_directory (the addon reload idiom: clear to "" first, then set the path) so the saved
++        /// height + control maps load, recompute the height range, then MarkDirty the NavMesh so the bake reflects
++        /// the restored height.
++        ///
++        /// Empty TerrainRef (new/legacy map, PlaneMesh fallback) ⇒ do nothing: the flat region stays, byte-identical
++        /// to pre-feature behavior, with NO new log line. A set-but-missing/empty/corrupt ref ⇒ keep flat + a single
++        /// PrintErr diagnostic, never a crash.
++        /// </summary>
++        private void RestoreTerrainFromScenario()
++        {
++            string? terrainRef = _ctx.Scenario?.TerrainRef;
++            if (string.IsNullOrEmpty(terrainRef)) return;   // flat fallback — silent, byte-identical to today
++            if (_ctx.Terrain == null) return;               // PlaneMesh fallback — nothing to restore into
++
++            try
++            {
++                string absDir = ProjectSettings.GlobalizePath(terrainRef);
++                if (!System.IO.Directory.Exists(absDir))
++                {
++                    GD.PrintErr($"[ScenarioLoad] TerrainRef folder missing — keeping flat terrain: {terrainRef}");
++                    return;
++                }
++
++                // Honest logging: only claim a restore when the folder actually holds region .res files. An
++                // existing-but-empty folder keeps the flat region and says so accurately.
++                if (System.IO.Directory.GetFiles(absDir, "terrain3d_*.res").Length == 0)
++                {
++                    GD.Print($"[ScenarioLoad] TerrainRef folder has no region files — keeping flat terrain: {terrainRef}");
++                    return;
++                }
++
++                // Reload idiom: clear then set data_directory so a stale in-memory region does not linger.
++                _ctx.Terrain.Set("data_directory", "");
++                _ctx.Terrain.Set("data_directory", terrainRef);
++
++                // Recompute height ranges + rebake nav from the restored geometry.
++                var data = _ctx.Terrain.Get("data").AsGodotObject();
++                data?.Call("calc_height_range", true);
++                _ctx.NavObstacles?.MarkDirty();
++
++                GD.Print($"[ScenarioLoad] Restored sculpted terrain from {terrainRef}");
++            }
++            catch (System.Exception ex)
++            {
++                GD.PrintErr($"[ScenarioLoad] Terrain restore failed ({ex.Message}) — keeping flat terrain.");
++            }
++        }
++
+         /// <summary>
+         /// Story 1.7 shadow-mode gate: run the model through the validator and return its result. On failure, log
+         /// a LOCATED rejection (presentation-side — the Godot-free validator never logs). The caller applies
+diff --git a/godot/src/Core/Bootstrap/Phases/TerrainBrushPhase.cs b/godot/src/Core/Bootstrap/Phases/TerrainBrushPhase.cs
+index 783b92cd..ed0c5839 100644
+--- a/godot/src/Core/Bootstrap/Phases/TerrainBrushPhase.cs
++++ b/godot/src/Core/Bootstrap/Phases/TerrainBrushPhase.cs
+@@ -21,7 +21,10 @@ namespace ProjectChimera.Core.Bootstrap
+             if (_ctx.Terrain == null) return; // PlaneMesh fallback: no brush
+             var brush = new TerrainBrush();
+             _ctx.Scene.AddChild(brush);
+-            brush.Initialize(_ctx.Terrain, _ctx.Cam, _ctx.NavObstacles, _ctx.GameState);
++            // Story 6.2: pass the EntityPlacer's shared EditorHistory so terrain strokes and entity placements share
++            // one undo stack (interleaved LIFO). Placer is published by the Camera phase (position 7) before this
++            // TerrainBrush phase (position 11), guaranteed by PhaseOrderTest — so _ctx.Placer is non-null here.
++            brush.Initialize(_ctx.Terrain, _ctx.Cam, _ctx.NavObstacles, _ctx.GameState, _ctx.Placer.History);
+             GD.Print("[MainScene] TerrainBrush ready — press T in Edit mode to activate.");
+         }
+     }
+diff --git a/godot/src/Core/Bootstrap/Phases/WinConditionPhase.cs b/godot/src/Core/Bootstrap/Phases/WinConditionPhase.cs
+index 99617012..6345d265 100644
+--- a/godot/src/Core/Bootstrap/Phases/WinConditionPhase.cs
++++ b/godot/src/Core/Bootstrap/Phases/WinConditionPhase.cs
+@@ -183,6 +183,13 @@ namespace ProjectChimera.Core.Bootstrap
+ 
+             // Save current scenario state to disk first.
+             string scenAbs = ProjectSettings.GlobalizePath(_ctx.Scene.ScenarioPath);
++
++            // Story 6.2: persist the LIVE terrain beside the scenario and stamp TerrainRef BEFORE serializing, so the
++            // saved JSON carries the ref and the package below can bundle the region files. Returns the terrain
++            // folder's absolute path (null when there is no terrain / on a save failure — TerrainRef is cleared in
++            // that case so a stale ref can't make the next load restore outdated terrain).
++            string? terrainDir = SaveTerrainBesideScenario(scenAbs);
++
+             try { ScenarioSerializer.SaveToFile(_ctx.Scenario, scenAbs); }
+             catch (Exception ex) { statusLabel.Text = $"Save failed: {ex.Message}"; return; }
+ 
+@@ -206,7 +213,7 @@ namespace ProjectChimera.Core.Bootstrap
+ 
+             try
+             {
+-                var manifest = ContentPackager.Pack(scenAbs, outZip, opts);
++                var manifest = ContentPackager.Pack(scenAbs, outZip, opts, terrainDir);
+                 statusLabel.Text = $"Exported: {System.IO.Path.GetFileName(outZip)}\n" +
+                                    $"Hash: 0x{manifest.ScenarioHash:X8}";
+                 GD.Print($"[MapIO] Exported package: {outZip}");
+@@ -218,6 +225,50 @@ namespace ProjectChimera.Core.Bootstrap
+             }
+         }
+ 
++        /// <summary>
++        /// Story 6.2 — persist the live Terrain3D region data (height + control + color, captured together by
++        /// Terrain3DData.save_directory) into a "{stem}_terrain/" folder beside the scenario JSON, and stamp the
++        /// scenario's TerrainRef with that folder's res:// path (so ScenarioLoadPhase can resolve it back on load).
++        /// Returns the folder's absolute OS path for packaging, or null when there is nothing to save.
++        ///
++        /// Guards (review pass 1): the folder is cleared/recreated first so orphaned .res from a prior, larger map
++        /// are never packed or restored; on any failure TerrainRef is reset to "" (never left stale) so the next
++        /// load falls back to flat rather than restoring outdated terrain.
++        /// </summary>
++        private string? SaveTerrainBesideScenario(string scenarioAbsPath)
++        {
++            if (_ctx.Terrain == null || _ctx.Scenario == null) return null; // PlaneMesh fallback / no scenario
++
++            string stem       = System.IO.Path.GetFileNameWithoutExtension(scenarioAbsPath);
++            string scenDir    = System.IO.Path.GetDirectoryName(scenarioAbsPath)!;
++            string terrainAbs = System.IO.Path.Combine(scenDir, ContentPackager.TerrainFolderName(stem));
++
++            try
++            {
++                // Clear/recreate so stale region files from a prior (possibly larger) save are not carried forward.
++                if (System.IO.Directory.Exists(terrainAbs))
++                    System.IO.Directory.Delete(terrainAbs, recursive: true);
++                System.IO.Directory.CreateDirectory(terrainAbs);
++
++                var data = _ctx.Terrain.Get("data").AsGodotObject();
++                if (data == null) { _ctx.Scenario.TerrainRef = ""; return null; }
++
++                // save_directory writes one terrain3d_XX_YY.res per active region (height+control+color together).
++                data.Call("save_directory", terrainAbs);
++
++                // Stamp the res:// path so the load path resolves it independent of the absolute install location.
++                _ctx.Scenario.TerrainRef = ProjectSettings.LocalizePath(terrainAbs);
++                GD.Print($"[MapIO] Saved terrain → {_ctx.Scenario.TerrainRef}");
++                return terrainAbs;
++            }
++            catch (Exception ex)
++            {
++                GD.PrintErr($"[MapIO] Terrain save failed ({ex.Message}) — clearing TerrainRef (map will load flat).");
++                _ctx.Scenario.TerrainRef = "";
++                return null;
++            }
++        }
++
+         private void ImportMapPackage(Label statusLabel)
+         {
+             // Open a native file dialog via Godot's FileDialog node.
+@@ -262,6 +313,31 @@ namespace ProjectChimera.Core.Bootstrap
+                     System.IO.File.Copy(fp, destFaction, overwrite: true);
+                 }
+ 
++                // Story 6.2: copy the bundled terrain region files into a folder tracked by manifest.Id and rewrite
++                // the imported scenario's TerrainRef to point at it. The scenario is renamed to {id}.json on import,
++                // so the terrain folder name must track manifest.Id (not the author's original stem).
++                if (result.TerrainFiles.Count > 0)
++                {
++                    string terrainResDir = $"res://resources/data/scenarios/{ContentPackager.TerrainFolderName(manifest.Id)}/";
++                    string terrainDestAbs = ProjectSettings.GlobalizePath(terrainResDir);
++                    System.IO.Directory.CreateDirectory(terrainDestAbs);
++                    foreach (var tf in result.TerrainFiles)
++                        System.IO.File.Copy(tf,
++                            System.IO.Path.Combine(terrainDestAbs, System.IO.Path.GetFileName(tf)), overwrite: true);
++
++                    var imported = ScenarioSerializer.LoadFromFile(destScenario);
++                    if (imported != null)
++                    {
++                        imported.TerrainRef = terrainResDir;
++                        ScenarioSerializer.SaveToFile(imported, destScenario);
++                    }
++                    else
++                    {
++                        GD.PrintErr("[MapIO] Terrain files copied but TerrainRef could not be rewritten " +
++                                    "(scenario reload returned null) — imported map will load flat.");
++                    }
++                }
++
+                 statusLabel.Text = $"Imported: {manifest.DisplayName}\n" +
+                                    $"by {manifest.Author} v{manifest.Version}\n" +
+                                    $"Set ScenarioPath to: res://resources/data/scenarios/{manifest.Id}.json";
+diff --git a/godot/src/Core/Definitions/CanonicalModelHash.cs b/godot/src/Core/Definitions/CanonicalModelHash.cs
+index 10f55fc2..70056e66 100644
+--- a/godot/src/Core/Definitions/CanonicalModelHash.cs
++++ b/godot/src/Core/Definitions/CanonicalModelHash.cs
+@@ -64,7 +64,15 @@ namespace ProjectChimera.Core.Definitions
+             h = MixInt(h, AlgoVersion);                          // namespaces the hash (algo-1 was the byte-FNV)
+             h = MixInt(h, Fixed.FromFloat(m.MapBounds).Raw);
+             h = MixStr(h, m.WinCondition.ToString());            // enum by NAME, not ordinal
+-            h = MixStr(h, m.TerrainRef);
++            // Story 6.2: TerrainRef is NEUTRALIZED (a fixed "" constant, never the field value). The sculpted
++            // terrain CONTENT lives in separate terrain3d_*.res files referenced by this path — it is NEVER folded
++            // into the scenario model — so the ref string itself is machine-specific noise: an author's map carries
++            // res://…/{stem}_terrain while a friend's imported copy carries res://…/{id}_terrain/ (different stem +
++            // trailing slash) for the IDENTICAL logical map. Folding the raw value would make those two hash
++            // differently and false-positive-reject the map at the MP lobby handshake (LobbyUi.ScenarioHash) and
++            // desync StartStateHash. Mixing a fixed "" is byte-identical to today's fold for every existing scenario
++            // (all have TerrainRef==""), so this is golden-preserving — AlgoVersion stays 5, no re-baseline.
++            h = MixStr(h, "");
+ 
+             // Story 4.4: fold Supply via the SAME SupplyConfig.Resolve ResourceStore.ConfigureSupply uses — the
+             // single resolution+clamp boundary, so hash-equality <=> post-resolution runtime-equality holds both
+diff --git a/godot/src/Core/Definitions/ContentPackageManifest.cs b/godot/src/Core/Definitions/ContentPackageManifest.cs
+index 9b026b91..2c2f6cee 100644
+--- a/godot/src/Core/Definitions/ContentPackageManifest.cs
++++ b/godot/src/Core/Definitions/ContentPackageManifest.cs
+@@ -120,5 +120,21 @@ namespace ProjectChimera.Core.Definitions
+         /// </summary>
+         [JsonPropertyName("scenario_hash")]
+         public uint ScenarioHash { get; set; }
++
++        /// <summary>
++        /// Story 6.2 — zip-relative paths of the bundled Terrain3D region files, e.g.
++        /// "map/terrain/terrain3d_00_00.res". Empty (the default) for a terrainless map or an old package predating
++        /// terrain persistence — Unpack treats absence as a graceful no-op (map loads flat).
++        /// </summary>
++        [JsonPropertyName("terrain_files")]
++        public List<string> TerrainFiles { get; set; } = new();
++
++        /// <summary>
++        /// Story 6.2 — aggregate FNV-1a integrity hash over the bundled terrain .res files (filename + bytes,
++        /// ordinal-sorted). Written at pack time, verified on Unpack (mirroring <see cref="ScenarioHash"/>) so
++        /// terrain bytes corrupted in transit are caught rather than silently loaded. 0 = no terrain bundled.
++        /// </summary>
++        [JsonPropertyName("terrain_hash")]
++        public uint TerrainHash { get; set; }
+     }
+ }
+diff --git a/godot/src/Core/Definitions/ContentPackager.cs b/godot/src/Core/Definitions/ContentPackager.cs
+index 2ae3ffea..36fb2004 100644
+--- a/godot/src/Core/Definitions/ContentPackager.cs
++++ b/godot/src/Core/Definitions/ContentPackager.cs
+@@ -3,6 +3,7 @@ using System;
+ using System.Collections.Generic;
+ using System.IO;
+ using System.IO.Compression;
++using System.Linq;
+ using System.Text;
+ using System.Text.Json;
+ 
+@@ -57,8 +58,10 @@ namespace ProjectChimera.Core.Definitions
+         /// <param name="outputZipPath">Absolute path for the output .chimera.zip file.</param>
+         /// <param name="options">Display metadata for the package.</param>
+         /// <returns>The generated <see cref="ContentPackageManifest"/>.</returns>
++        /// <param name="terrainDir">Story 6.2 — optional absolute path to a folder of Terrain3D region .res files
++        /// to bundle under map/terrain/. Null/missing/empty ⇒ no terrain bundled (a terrainless map).</param>
+         public static ContentPackageManifest Pack(string scenarioAbsPath, string outputZipPath,
+-                                                   PackOptions options)
++                                                   PackOptions options, string? terrainDir = null)
+         {
+             if (!File.Exists(scenarioAbsPath))
+                 throw new FileNotFoundException("Scenario file not found.", scenarioAbsPath);
+@@ -75,6 +78,21 @@ namespace ProjectChimera.Core.Definitions
+                 if (File.Exists(fp))
+                     factionEntries.Add("factions/" + Path.GetFileName(fp));
+ 
++            // Story 6.2: enumerate the terrain region files (ordinal-sorted by name so the aggregate integrity hash
++            // is order-independent), record them zip-relative under map/terrain/, and fold their filename+bytes.
++            var terrainEntries = new List<string>();
++            uint terrainHash = 0u;
++            string[] terrainFiles = Array.Empty<string>();
++            if (!string.IsNullOrEmpty(terrainDir) && Directory.Exists(terrainDir))
++            {
++                terrainFiles = Directory.EnumerateFiles(terrainDir, "*.res", SearchOption.TopDirectoryOnly)
++                                        .OrderBy(p => Path.GetFileName(p), StringComparer.Ordinal)
++                                        .ToArray();
++                foreach (var f in terrainFiles)
++                    terrainEntries.Add("map/terrain/" + Path.GetFileName(f));
++                terrainHash = HashTerrainFiles(terrainFiles);
++            }
++
+             var manifest = new ContentPackageManifest
+             {
+                 Id              = id,
+@@ -89,6 +107,8 @@ namespace ProjectChimera.Core.Definitions
+                 ThumbnailFile   = options.ThumbnailPath != null ? "thumbnail.png" : null,
+                 FactionFiles    = factionEntries,
+                 ScenarioHash    = scenarioHash,
++                TerrainFiles    = terrainEntries,
++                TerrainHash     = terrainHash,
+                 // AR-36 allow-list (Story 1.10b): packaging-time wall-clock stamped when EXPORTING a
+                 // .chimera.zip — never tick-reachable and never folded into the sim/start-state hash, so it is
+                 // an explicit RS0030 exemption (keeps the banned-API release gate at a clean zero baseline). A
+@@ -121,6 +141,10 @@ namespace ProjectChimera.Core.Definitions
+                 WriteEntry(archive, "factions/" + Path.GetFileName(fp), File.ReadAllBytes(fp));
+             }
+ 
++            // map/terrain/ (Story 6.2, optional) — the same ordinal-sorted file set the manifest recorded/hashed.
++            foreach (var f in terrainFiles)
++                WriteEntry(archive, "map/terrain/" + Path.GetFileName(f), File.ReadAllBytes(f));
++
+             return manifest;
+         }
+ 
+@@ -136,6 +160,8 @@ namespace ProjectChimera.Core.Definitions
+             public string? ThumbnailPath { get; init; }
+             /// <summary>Absolute paths to extracted faction JSON files.</summary>
+             public List<string> FactionPaths { get; init; } = new();
++            /// <summary>Story 6.2 — absolute paths to extracted Terrain3D region .res files (empty if none bundled).</summary>
++            public List<string> TerrainFiles { get; init; } = new();
+         }
+ 
+         /// <summary>
+@@ -210,12 +236,41 @@ namespace ProjectChimera.Core.Definitions
+                 factionOuts.Add(dest);
+             }
+ 
++            // 5. Extract terrain region files (Story 6.2, optional) + verify aggregate integrity hash.
++            var terrainOuts = new List<string>();
++            if (manifest.TerrainFiles != null && manifest.TerrainFiles.Count > 0)
++            {
++                string terrainOutDir = Path.Combine(extractDir, "terrain");
++                Directory.CreateDirectory(terrainOutDir);
++                foreach (var terrainZipPath in manifest.TerrainFiles)
++                {
++                    var entry = archive.GetEntry(terrainZipPath);
++                    if (entry == null) continue;
++                    string dest = Path.Combine(terrainOutDir, Path.GetFileName(terrainZipPath));
++                    entry.ExtractToFile(dest, overwrite: true);
++                    terrainOuts.Add(dest);
++                }
++
++                // Verify integrity if a hash was recorded (mirrors the scenario-hash check above).
++                if (manifest.TerrainHash != 0u)
++                {
++                    string[] sorted = terrainOuts
++                        .OrderBy(p => Path.GetFileName(p), StringComparer.Ordinal).ToArray();
++                    uint actualHash = HashTerrainFiles(sorted);
++                    if (actualHash != manifest.TerrainHash)
++                        throw new InvalidDataException(
++                            $"Terrain integrity check failed: expected 0x{manifest.TerrainHash:X8}, " +
++                            $"got 0x{actualHash:X8}. Package may be corrupt.");
++                }
++            }
++
+             return new UnpackResult
+             {
+                 Manifest     = manifest,
+                 ScenarioPath = scenarioOut,
+                 ThumbnailPath = thumbOut,
+                 FactionPaths  = factionOuts,
++                TerrainFiles  = terrainOuts,
+             };
+         }
+ 
+@@ -270,6 +325,34 @@ namespace ProjectChimera.Core.Definitions
+             s.Write(data, 0, data.Length);
+         }
+ 
++        // FNV-1a 32-bit constants — same primitive as ScenarioSerializer's scenario integrity hash, so the terrain
++        // integrity check reads as the sibling of the scenario one.
++        private const uint FNV_PRIME  = 16777619u;
++        private const uint FNV_OFFSET = 2166136261u;
++
++        /// <summary>
++        /// Story 6.2 — aggregate FNV-1a hash over a set of terrain region files: for each file (in the given
++        /// order — callers pass an ordinal-sort-by-filename set so the result is input-order-independent) fold its
++        /// filename bytes then its content bytes. Filename inclusion catches a rename; content bytes catch a
++        /// corrupt-in-transit region. Mirrors <see cref="ScenarioSerializer.ComputeFileHash"/> so the two integrity
++        /// checks share one algorithm family.
++        /// </summary>
++        private static uint HashTerrainFiles(IEnumerable<string> absFiles)
++        {
++            uint hash = FNV_OFFSET;
++            foreach (var f in absFiles)
++            {
++                foreach (byte b in Encoding.UTF8.GetBytes(Path.GetFileName(f))) { hash ^= b; hash *= FNV_PRIME; }
++                foreach (byte b in File.ReadAllBytes(f)) { hash ^= b; hash *= FNV_PRIME; }
++            }
++            return hash;
++        }
++
++        /// <summary>Story 6.2 — the terrain-folder name for a scenario stem ("{stem}_terrain"). The single naming
++        /// convention shared by the export-time save-beside-scenario path and the import-time TerrainRef rewrite, so
++        /// the two sites can never drift.</summary>
++        internal static string TerrainFolderName(string stem) => $"{stem}_terrain";
++
+         /// <summary>Convert a display name to a slug: lowercase, spaces→hyphens, strip non-alnum.</summary>
+         internal static string Slugify(string name)
+         {
+diff --git a/godot/src/CreationSuite/TerrainBrush.cs b/godot/src/CreationSuite/TerrainBrush.cs
+index 187b2c7a..25d093f2 100644
+--- a/godot/src/CreationSuite/TerrainBrush.cs
++++ b/godot/src/CreationSuite/TerrainBrush.cs
+@@ -1,4 +1,5 @@
+ #nullable enable
++using System.Collections.Generic;
+ using Godot;
+ using ProjectChimera.Core;
+ using ProjectChimera.UI;
+@@ -63,6 +64,30 @@ namespace ProjectChimera.CreationSuite
+         // ── Terrain3DEditor (GDExtension, no typed C# binding) ───────────────
+         private GodotObject? _editor = null;
+ 
++        // ── Undo/redo (Story 6.2) ────────────────────────────────────────────
++        /// <summary>The SHARED editor history injected from EntityPlacer — terrain strokes push here so they
++        /// interleave LIFO with entity place/delete ops under EntityPlacer's Ctrl+Z/Y handler. Null ⇒ undo disabled
++        /// (no snapshotting cost paid).</summary>
++        private EditorHistory? _history = null;
++
++        /// <summary>The affected regions' PRE-stroke height+control images, captured in BeginPaint and consumed in
++        /// EndPaint to build the undo command. Null between strokes.</summary>
++        private List<RegionSnapshot>? _strokeBefore = null;
++
++        /// <summary>A restorable snapshot of one Terrain3D region: its location, world origin, and duplicated
++        /// height/control CPU images (null when that map was absent).</summary>
++        private readonly struct RegionSnapshot
++        {
++            public readonly Vector2I Loc;
++            public readonly Vector3  OriginWorld;
++            public readonly Image?   Height;
++            public readonly Image?   Control;
++            public RegionSnapshot(Vector2I loc, Vector3 originWorld, Image? height, Image? control)
++            {
++                Loc = loc; OriginWorld = originWorld; Height = height; Control = control;
++            }
++        }
++
+         // ── Brush state ───────────────────────────────────────────────────────
+         private BrushMode _mode         = BrushMode.Raise;
+         private float     _brushSize    = 20f;   // world units (5–100)
+@@ -92,12 +117,14 @@ namespace ProjectChimera.CreationSuite
+         /// Call once from MainScene._Ready() after terrain and nav are initialised.
+         /// </summary>
+         public void Initialize(Node3D? terrain, RtsCameraController camCtrl,
+-                               NavObstacleManager navObstacles, GameState gameState)
++                               NavObstacleManager navObstacles, GameState gameState,
++                               EditorHistory? history = null)
+         {
+             _terrain      = terrain;
+             _camCtrl      = camCtrl;
+             _navObstacles = navObstacles;
+             _gameState    = gameState;
++            _history      = history;   // Story 6.2: shared undo stack (null ⇒ stroke undo disabled)
+ 
+             if (_terrain == null)
+             {
+@@ -213,11 +240,20 @@ namespace ProjectChimera.CreationSuite
+             var pos = GetTerrainPoint(viewportPos);
+             if (pos == null) return;
+ 
++            // Story 6.2: capture the affected regions' PRE-stroke height+control for undo (skipped when no shared
++            // history is wired, so the snapshot cost is only paid when it can be used).
++            _strokeBefore = SnapshotRegions(pos.Value);
++
+             _isPainting = true;
+             ApplyBrushSettings();
++
++            // Story 6.2: re-assert the editor↔terrain wiring immediately before start_operation (mirrors the addon's
++            // _edit() wiring). SetupEditor did this once at init, but 6.1 still saw Terrain3DEditor treat _terrain as
++            // uninitialized at operation time — re-issuing here keeps operate() writing to the correct region.
++            _terrain!.Call("set_editor", _editor);
++            _editor!.Call("set_terrain", _terrain);
++
+             // start_operation is required by C++ before any operate() call.
+-            // _store_undo inside it may fail silently at runtime (no EditorPlugin),
+-            // but the sculpt/paint state is still set up correctly.
+             _editor!.Call("start_operation", pos.Value);
+             _editor!.Call("operate",         pos.Value, GetCameraY());
+         }
+@@ -236,11 +272,141 @@ namespace ProjectChimera.CreationSuite
+         private void EndPaint()
+         {
+             _isPainting = false;
+-            if (_editor != null && _editor.Call("is_operating").AsBool())
+-                _editor.Call("stop_operation");
++
++            // ── _store_undo disposition (Story 6.2) ──────────────────────────────────────────────────────────
++            // We DELIBERATELY do NOT call Terrain3DEditor.stop_operation here. stop_operation is the SOLE trigger of
++            // the compiled-in `Terrain3DEditor:_store_undo: _terrain isn't initialized` push_error red line: at
++            // runtime there is no EditorPlugin host and no public EditorUndoRedoManager setter to satisfy the native
++            // backup path, so it errors on every stroke end. This story supplies its OWN snapshot-based undo (below),
++            // which makes Terrain3D's internal operation-undo redundant — so skipping stop_operation loses nothing
++            // and silences the red line. Tradeoff (reviewer-noted, intentionally accepted): is_operating stays true
++            // and the native backup may churn; the next stroke re-issues start_operation after re-asserting the
++            // wiring (BeginPaint), and our snapshot reads the region data operate() already wrote, so the restore
++            // payload is unaffected. Live-verified (6.2 review): no per-stroke red lines with this route-around.
++
++            // Push the completed stroke onto the shared editor history (no-op when no history / nothing snapshotted).
++            PushStrokeUndo();
++
+             _rebakeTimer = 0.5f; // debounce NavMesh rebake
+         }
+ 
++        // ── Stroke undo/redo (Story 6.2) ──────────────────────────────────────
++
++        /// <summary>
++        /// Capture a restorable per-region snapshot (duplicated height + control CPU images) of every Terrain3D
++        /// region the brush at <paramref name="centre"/> can touch — its centre plus the four ±brushSize probes on
++        /// X/Z, since a brush can straddle up to four regions. Returns null when no shared history is wired (undo
++        /// disabled) or nothing was captured, so the cost is only paid when it can be used.
++        /// </summary>
++        private List<RegionSnapshot>? SnapshotRegions(Vector3 centre)
++        {
++            if (_history == null || _terrain == null) return null;
++            var data = _terrain.Get("data").AsGodotObject();
++            if (data == null) return null;
++
++            float span  = GetRegionSpan();
++            var   snaps = new List<RegionSnapshot>();
++            var   seen  = new HashSet<Vector2I>();
++            float r     = _brushSize;
++
++            foreach (var probe in new[]
++            {
++                centre,
++                centre + new Vector3( r, 0f, 0f), centre + new Vector3(-r, 0f, 0f),
++                centre + new Vector3(0f, 0f,  r), centre + new Vector3(0f, 0f, -r),
++            })
++            {
++                var loc = data.Call("get_region_location", probe).AsVector2I();
++                if (!seen.Add(loc)) continue;
++
++                var region = data.Call("get_region", loc).AsGodotObject();
++                if (region == null) continue; // brush hanging off the map edge — no region there
++
++                var height  = region.Call("get_height_map").As<Image>();
++                var control = region.Call("get_control_map").As<Image>();
++                var origin  = new Vector3(loc.X * span, 0f, loc.Y * span);
++                snaps.Add(new RegionSnapshot(loc, origin,
++                    height  != null ? (Image)height.Duplicate(true)  : null,
++                    control != null ? (Image)control.Duplicate(true) : null));
++            }
++            return snaps.Count > 0 ? snaps : null;
++        }
++
++        /// <summary>
++        /// Snapshot the POST-stroke state of the same regions captured in BeginPaint, then push a (redo = restore
++        /// after, undo = restore before) command onto the shared history. No-op when nothing was snapshotted.
++        /// </summary>
++        private void PushStrokeUndo()
++        {
++            var before = _strokeBefore;
++            _strokeBefore = null;
++            if (_history == null || before == null || before.Count == 0) return;
++            if (_terrain?.Get("data").AsGodotObject() is not GodotObject data) return;
++
++            var after = new List<RegionSnapshot>(before.Count);
++            foreach (var b in before)
++            {
++                var region = data.Call("get_region", b.Loc).AsGodotObject();
++                Image? h = null, c = null;
++                if (region != null)
++                {
++                    var hm = region.Call("get_height_map").As<Image>();
++                    var cm = region.Call("get_control_map").As<Image>();
++                    h = hm != null ? (Image)hm.Duplicate(true) : null;
++                    c = cm != null ? (Image)cm.Duplicate(true) : null;
++                }
++                after.Add(new RegionSnapshot(b.Loc, b.OriginWorld, h, c));
++            }
++
++            _history.Push(
++                redo: () => RestoreRegions(after),
++                undo: () => RestoreRegions(before));
++        }
++
++        /// <summary>
++        /// Write a set of region snapshots back into the live terrain via import_images (the same call family
++        /// TerrainPhase uses to import the flat region), recompute the height range, and MarkDirty the NavMesh so a
++        /// bake reflects the restored height.
++        /// </summary>
++        private void RestoreRegions(List<RegionSnapshot> snaps)
++        {
++            if (_terrain == null) return;
++            var data = _terrain.Get("data").AsGodotObject();
++            if (data == null) return;
++
++            foreach (var s in snaps)
++            {
++                // import_images([height, control, color], regionOriginWorldPos, offset=0, scale=1). Color is left
++                // null (unchanged) — this story round-trips height + control only.
++                var images = new Godot.Collections.Array
++                {
++                    s.Height  != null ? Variant.From(s.Height)  : new Variant(),
++                    s.Control != null ? Variant.From(s.Control) : new Variant(),
++                    new Variant(),
++                };
++                data.Call("import_images", images, s.OriginWorld, 0f, 1f);
++            }
++            data.Call("calc_height_range", true);
++            _navObstacles?.MarkDirty();
++        }
++
++        /// <summary>World units spanned by one region edge = region_size × vertex_spacing. Both are Terrain3D node
++        /// properties; falls back to the flat-region defaults (256 × 1.0) TerrainPhase imports with.</summary>
++        private float GetRegionSpan()
++        {
++            if (_terrain == null) return 256f;
++            int regionSize = _terrain.Get("region_size").AsInt32();
++            if (regionSize <= 0) regionSize = 256;
++            float spacing = 1f;
++            var vs = _terrain.Get("vertex_spacing");
++            if (vs.VariantType is Variant.Type.Float or Variant.Type.Int)
++            {
++                float s = (float)vs.AsDouble();
++                if (s > 0f) spacing = s;
++            }
++            return regionSize * spacing;
++        }
++
+         // ── Brush helpers ─────────────────────────────────────────────────────
+ 
+         private void SetMode(BrushMode mode)
+diff --git a/godot/src/UI/EntityPlacer.cs b/godot/src/UI/EntityPlacer.cs
+index 2e069607..44655830 100644
+--- a/godot/src/UI/EntityPlacer.cs
++++ b/godot/src/UI/EntityPlacer.cs
+@@ -114,6 +114,12 @@ namespace ProjectChimera.UI
+         // Undo/redo history
+         private readonly EditorHistory _history = new();
+ 
++        /// <summary>Story 6.2: the shared editor undo/redo stack. Exposed so <see cref="CreationSuite.TerrainBrush"/>
++        /// pushes terrain sculpt/paint stroke commands onto the SAME history the entity place/delete ops use — the
++        /// existing Ctrl+Z/Y handler here pops whichever delegate (entity or terrain) is on top, so the two op kinds
++        /// interleave in strict LIFO with no second parallel stack and no cross-corruption.</summary>
++        public EditorHistory History => _history;
++
+         // Tracks ore set per start-position slot (for undo of MoveStartPos)
+         private readonly float[] _slotStartOre = { 200f, 200f };
+ 
+
+=== NEW FILE: godot/ProjectChimera.Sim.Tests/CreationSuite/EditorHistoryTests.cs ===
+diff --git a/godot/ProjectChimera.Sim.Tests/CreationSuite/EditorHistoryTests.cs b/godot/ProjectChimera.Sim.Tests/CreationSuite/EditorHistoryTests.cs
+new file mode 100755
+index 0000000..7f22ab2
+--- /dev/null
++++ b/godot/ProjectChimera.Sim.Tests/CreationSuite/EditorHistoryTests.cs
+@@ -0,0 +1,60 @@
++#nullable enable
++using System.Collections.Generic;
++using ProjectChimera.CreationSuite;
++using Xunit;
++
++namespace ProjectChimera.Sim.Tests.CreationSuite
++{
++    /// <summary>
++    /// Story 6.2 — the shared <see cref="EditorHistory"/> is now driven by BOTH entity placement (EntityPlacer) and
++    /// terrain sculpt/paint strokes (TerrainBrush). This pins the LIFO contract those two op kinds rely on to
++    /// interleave without cross-corruption. (The Terrain3D-node snapshot/restore itself has no Godot-free surface and
++    /// is covered by the live godot-mcp checks; here we prove the stack semantics the wiring depends on.)
++    /// </summary>
++    public class EditorHistoryTests
++    {
++        [Fact]
++        public void InterleavedEntityAndTerrainOps_UndoRedoInStrictLifo()
++        {
++            var h   = new EditorHistory();
++            var log = new List<string>();
++
++            // Place a unit (entity op), then a terrain stroke (terrain op) — both push onto ONE stack.
++            h.Push(redo: () => log.Add("entity:redo"),  undo: () => log.Add("entity:undo"));
++            h.Push(redo: () => log.Add("terrain:redo"), undo: () => log.Add("terrain:undo"));
++
++            h.Undo(); // terrain first (LIFO)
++            h.Undo(); // then entity
++            Assert.Equal(new[] { "terrain:undo", "entity:undo" }, log);
++
++            log.Clear();
++            h.Redo(); // entity comes back first
++            h.Redo(); // then terrain
++            Assert.Equal(new[] { "entity:redo", "terrain:redo" }, log);
++        }
++
++        [Fact]
++        public void PushAfterUndo_ClearsRedoableFuture()
++        {
++            var h = new EditorHistory();
++            h.Push(redo: () => { }, undo: () => { });
++            h.Undo();
++            Assert.True(h.CanRedo);
++
++            // A new op (e.g. a terrain stroke after undoing an entity placement) discards the redoable future.
++            h.Push(redo: () => { }, undo: () => { });
++            Assert.False(h.CanRedo);
++            Assert.True(h.CanUndo);
++        }
++
++        [Fact]
++        public void UndoRedo_OnEmptyStack_AreNoOps()
++        {
++            var h = new EditorHistory();
++            h.Undo();
++            h.Redo();
++            Assert.False(h.CanUndo);
++            Assert.False(h.CanRedo);
++        }
++    }
++}
+
+=== NEW FILE: godot/ProjectChimera.Sim.Tests/Definitions/ContentPackagerTerrainTests.cs ===
+diff --git a/godot/ProjectChimera.Sim.Tests/Definitions/ContentPackagerTerrainTests.cs b/godot/ProjectChimera.Sim.Tests/Definitions/ContentPackagerTerrainTests.cs
+new file mode 100755
+index 0000000..ef391aa
+--- /dev/null
++++ b/godot/ProjectChimera.Sim.Tests/Definitions/ContentPackagerTerrainTests.cs
+@@ -0,0 +1,116 @@
++#nullable enable
++using System;
++using System.IO;
++using System.IO.Compression;
++using System.Linq;
++using ProjectChimera.Core.Definitions;
++using Xunit;
++
++namespace ProjectChimera.Sim.Tests.Definitions
++{
++    /// <summary>
++    /// Story 6.2 — the .chimera.zip terrain round-trip (Godot-free half): Pack a folder of fake terrain .res files,
++    /// Unpack them, confirm recovery, and confirm the terrain integrity hash catches a tampered byte (mirroring the
++    /// existing scenario-hash check). Also pins the TerrainFolderName derivation helper.
++    /// </summary>
++    public class ContentPackagerTerrainTests
++    {
++        private static string NewTempDir()
++        {
++            string d = Path.Combine(Path.GetTempPath(), "chimera_terrain_" + Guid.NewGuid().ToString("N"));
++            Directory.CreateDirectory(d);
++            return d;
++        }
++
++        private static string WriteScenario(string dir)
++        {
++            string p = Path.Combine(dir, "scenario.json");
++            ScenarioSerializer.SaveToFile(
++                new ScenarioData { Id = "t", DisplayName = "Terrain Test", MapBounds = 120f }, p);
++            return p;
++        }
++
++        [Fact]
++        public void PackThenUnpack_RecoversTerrainFiles()
++        {
++            string work = NewTempDir();
++            try
++            {
++                string scen = WriteScenario(work);
++                string terrainDir = Path.Combine(work, "src_terrain");
++                Directory.CreateDirectory(terrainDir);
++                File.WriteAllBytes(Path.Combine(terrainDir, "terrain3d_00_00.res"), new byte[] { 1, 2, 3, 4 });
++                File.WriteAllBytes(Path.Combine(terrainDir, "terrain3d_00_01.res"), new byte[] { 5, 6, 7, 8, 9 });
++
++                string zip = Path.Combine(work, "map.chimera.zip");
++                var manifest = ContentPackager.Pack(
++                    scen, zip, new ContentPackager.PackOptions { DisplayName = "Terrain Test" }, terrainDir);
++
++                Assert.Equal(2, manifest.TerrainFiles.Count);
++                Assert.NotEqual(0u, manifest.TerrainHash);
++                Assert.Contains("map/terrain/terrain3d_00_00.res", manifest.TerrainFiles);
++
++                var result = ContentPackager.Unpack(zip, Path.Combine(work, "extract"));
++                Assert.Equal(2, result.TerrainFiles.Count);
++                Assert.Equal(new byte[] { 1, 2, 3, 4 },
++                    File.ReadAllBytes(result.TerrainFiles.First(f => f.EndsWith("terrain3d_00_00.res"))));
++                Assert.Equal(new byte[] { 5, 6, 7, 8, 9 },
++                    File.ReadAllBytes(result.TerrainFiles.First(f => f.EndsWith("terrain3d_00_01.res"))));
++            }
++            finally { Directory.Delete(work, recursive: true); }
++        }
++
++        [Fact]
++        public void TamperedTerrainByte_FailsIntegrityCheck()
++        {
++            string work = NewTempDir();
++            try
++            {
++                string scen = WriteScenario(work);
++                string terrainDir = Path.Combine(work, "src_terrain");
++                Directory.CreateDirectory(terrainDir);
++                File.WriteAllBytes(Path.Combine(terrainDir, "terrain3d_00_00.res"), new byte[] { 10, 20, 30 });
++
++                string zip = Path.Combine(work, "map.chimera.zip");
++                ContentPackager.Pack(scen, zip, new ContentPackager.PackOptions { DisplayName = "T" }, terrainDir);
++
++                // Tamper: rewrite the terrain entry's bytes inside the zip (scenario hash still valid).
++                using (var archive = ZipFile.Open(zip, ZipArchiveMode.Update))
++                {
++                    archive.GetEntry("map/terrain/terrain3d_00_00.res")!.Delete();
++                    var repl = archive.CreateEntry("map/terrain/terrain3d_00_00.res");
++                    using var s = repl.Open();
++                    s.Write(new byte[] { 99, 99, 99 }, 0, 3);
++                }
++
++                Assert.Throws<InvalidDataException>(
++                    () => ContentPackager.Unpack(zip, Path.Combine(work, "extract")));
++            }
++            finally { Directory.Delete(work, recursive: true); }
++        }
++
++        [Fact]
++        public void PackWithoutTerrain_UnpacksGracefully()
++        {
++            string work = NewTempDir();
++            try
++            {
++                string scen = WriteScenario(work);
++                string zip = Path.Combine(work, "map.chimera.zip");
++                var manifest = ContentPackager.Pack(
++                    scen, zip, new ContentPackager.PackOptions { DisplayName = "NoTerrain" });
++
++                Assert.Empty(manifest.TerrainFiles);
++                Assert.Equal(0u, manifest.TerrainHash);
++
++                var result = ContentPackager.Unpack(zip, Path.Combine(work, "extract"));
++                Assert.Empty(result.TerrainFiles);
++            }
++            finally { Directory.Delete(work, recursive: true); }
++        }
++
++        [Fact]
++        public void TerrainFolderName_AppendsSuffix()
++            => Assert.Equal("alpha_map_01_terrain", ContentPackager.TerrainFolderName("alpha_map_01"));
++    }
++}

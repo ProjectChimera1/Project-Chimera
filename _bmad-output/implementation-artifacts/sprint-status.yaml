@@ -131,7 +131,7 @@ development_status:
   epic-5-retrospective: done
   epic-6: backlog
   6-1-verify-harden-the-creation-suite-editor-terrain-sculpt-paint-entity-start-resource-win-placement-to-ship-bar: done
-  6-2-persist-sculpted-terrain-height-painted-textures-across-save-load-stroke-undo-redo-headline-defect-fix: backlog
+  6-2-persist-sculpted-terrain-height-painted-textures-across-save-load-stroke-undo-redo-headline-defect-fix: done
   6-3-sim-side-deterministic-terrain-elevation-height-advantage-vision-and-fog-of-war-verify: backlog
   6-4-regions-named-areas-as-a-first-class-map-trigger-primitive: backlog
   6-5-impassable-terrain-pathability-paint-deterministic-blocking-and-the-pathability-overlay: backlog

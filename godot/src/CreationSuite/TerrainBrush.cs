@@ -1,4 +1,5 @@
 #nullable enable
+using System.Collections.Generic;
 using Godot;
 using ProjectChimera.Core;
 using ProjectChimera.UI;
@@ -63,6 +64,30 @@ namespace ProjectChimera.CreationSuite
         // ── Terrain3DEditor (GDExtension, no typed C# binding) ───────────────
         private GodotObject? _editor = null;
 
+        // ── Undo/redo (Story 6.2) ────────────────────────────────────────────
+        /// <summary>The SHARED editor history injected from EntityPlacer — terrain strokes push here so they
+        /// interleave LIFO with entity place/delete ops under EntityPlacer's Ctrl+Z/Y handler. Null ⇒ undo disabled
+        /// (no snapshotting cost paid).</summary>
+        private EditorHistory? _history = null;
+
+        /// <summary>The affected regions' PRE-stroke height+control images, captured in BeginPaint and consumed in
+        /// EndPaint to build the undo command. Null between strokes.</summary>
+        private List<RegionSnapshot>? _strokeBefore = null;
+
+        /// <summary>A restorable snapshot of one Terrain3D region: its location, world origin, and duplicated
+        /// height/control CPU images (null when that map was absent).</summary>
+        private readonly struct RegionSnapshot
+        {
+            public readonly Vector2I Loc;
+            public readonly Vector3  OriginWorld;
+            public readonly Image?   Height;
+            public readonly Image?   Control;
+            public RegionSnapshot(Vector2I loc, Vector3 originWorld, Image? height, Image? control)
+            {
+                Loc = loc; OriginWorld = originWorld; Height = height; Control = control;
+            }
+        }
+
         // ── Brush state ───────────────────────────────────────────────────────
         private BrushMode _mode         = BrushMode.Raise;
         private float     _brushSize    = 20f;   // world units (5–100)
@@ -92,12 +117,14 @@ namespace ProjectChimera.CreationSuite
         /// Call once from MainScene._Ready() after terrain and nav are initialised.
         /// </summary>
         public void Initialize(Node3D? terrain, RtsCameraController camCtrl,
-                               NavObstacleManager navObstacles, GameState gameState)
+                               NavObstacleManager navObstacles, GameState gameState,
+                               EditorHistory? history = null)
         {
             _terrain      = terrain;
             _camCtrl      = camCtrl;
             _navObstacles = navObstacles;
             _gameState    = gameState;
+            _history      = history;   // Story 6.2: shared undo stack (null ⇒ stroke undo disabled)
 
             if (_terrain == null)
             {
@@ -213,11 +240,20 @@ namespace ProjectChimera.CreationSuite
             var pos = GetTerrainPoint(viewportPos);
             if (pos == null) return;
 
+            // Story 6.2: capture the affected regions' PRE-stroke height+control for undo (skipped when no shared
+            // history is wired, so the snapshot cost is only paid when it can be used).
+            _strokeBefore = SnapshotRegions(pos.Value);
+
             _isPainting = true;
             ApplyBrushSettings();
+
+            // Story 6.2: re-assert the editor↔terrain wiring immediately before start_operation (mirrors the addon's
+            // _edit() wiring). SetupEditor did this once at init, but 6.1 still saw Terrain3DEditor treat _terrain as
+            // uninitialized at operation time — re-issuing here keeps operate() writing to the correct region.
+            _terrain!.Call("set_editor", _editor!);
+            _editor!.Call("set_terrain", _terrain);
+
             // start_operation is required by C++ before any operate() call.
-            // _store_undo inside it may fail silently at runtime (no EditorPlugin),
-            // but the sculpt/paint state is still set up correctly.
             _editor!.Call("start_operation", pos.Value);
             _editor!.Call("operate",         pos.Value, GetCameraY());
         }
@@ -236,9 +272,145 @@ namespace ProjectChimera.CreationSuite
         private void EndPaint()
         {
             _isPainting = false;
-            if (_editor != null && _editor.Call("is_operating").AsBool())
-                _editor.Call("stop_operation");
+
+            // ── _store_undo disposition (Story 6.2) ──────────────────────────────────────────────────────────
+            // We DELIBERATELY do NOT call Terrain3DEditor.stop_operation here. stop_operation is the SOLE trigger of
+            // the compiled-in `Terrain3DEditor:_store_undo: _terrain isn't initialized` push_error red line: at
+            // runtime there is no EditorPlugin host and no public EditorUndoRedoManager setter to satisfy the native
+            // backup path, so it errors on every stroke end. This story supplies its OWN snapshot-based undo (below),
+            // which makes Terrain3D's internal operation-undo redundant — so skipping stop_operation loses nothing
+            // and silences the red line. Tradeoff (reviewer-noted, intentionally accepted): is_operating stays true
+            // and the native backup may churn; the next stroke re-issues start_operation after re-asserting the
+            // wiring (BeginPaint), and our snapshot reads the region data operate() already wrote, so the restore
+            // payload is unaffected. Live-verified (6.2 review): no per-stroke red lines with this route-around.
+
+            // Push the completed stroke onto the shared editor history (no-op when no history / nothing snapshotted).
+            PushStrokeUndo();
+
             _rebakeTimer = 0.5f; // debounce NavMesh rebake
+        }
+
+        // ── Stroke undo/redo (Story 6.2) ──────────────────────────────────────
+
+        /// <summary>
+        /// Capture a restorable per-region snapshot (duplicated height + control CPU images) of every Terrain3D
+        /// region the brush at <paramref name="centre"/> can touch. A circular brush of radius r centred near a
+        /// four-way region junction paints a quarter-disk into the DIAGONAL region as well as the two axis-adjacent
+        /// ones, so probing must cover all nine points of the ±r box (centre, the four axis points, AND the four
+        /// corners) — an axis-only cross would miss the diagonal region and leave un-undoable residue there (review
+        /// pass 2, finding F1). Duplicate locations are de-duped via <c>seen</c>, so on a single-region map this
+        /// still snapshots exactly one region. Returns null when no shared history is wired (undo disabled) or
+        /// nothing was captured, so the cost is only paid when it can be used.
+        /// </summary>
+        private List<RegionSnapshot>? SnapshotRegions(Vector3 centre)
+        {
+            if (_history == null || _terrain == null) return null;
+            var data = _terrain.Get("data").AsGodotObject();
+            if (data == null) return null;
+
+            float span  = GetRegionSpan();
+            var   snaps = new List<RegionSnapshot>();
+            var   seen  = new HashSet<Vector2I>();
+            float r     = _brushSize;
+
+            foreach (var probe in new[]
+            {
+                centre,
+                centre + new Vector3( r, 0f, 0f), centre + new Vector3(-r, 0f, 0f),
+                centre + new Vector3(0f, 0f,  r), centre + new Vector3(0f, 0f, -r),
+                centre + new Vector3( r, 0f,  r), centre + new Vector3( r, 0f, -r),
+                centre + new Vector3(-r, 0f,  r), centre + new Vector3(-r, 0f, -r),
+            })
+            {
+                var loc = data.Call("get_region_location", probe).AsVector2I();
+                if (!seen.Add(loc)) continue;
+
+                var region = data.Call("get_region", loc).AsGodotObject();
+                if (region == null) continue; // brush hanging off the map edge — no region there
+
+                var height  = region.Call("get_height_map").As<Image>();
+                var control = region.Call("get_control_map").As<Image>();
+                var origin  = new Vector3(loc.X * span, 0f, loc.Y * span);
+                snaps.Add(new RegionSnapshot(loc, origin,
+                    height  != null ? (Image)height.Duplicate(true)  : null,
+                    control != null ? (Image)control.Duplicate(true) : null));
+            }
+            return snaps.Count > 0 ? snaps : null;
+        }
+
+        /// <summary>
+        /// Snapshot the POST-stroke state of the same regions captured in BeginPaint, then push a (redo = restore
+        /// after, undo = restore before) command onto the shared history. No-op when nothing was snapshotted.
+        /// </summary>
+        private void PushStrokeUndo()
+        {
+            var before = _strokeBefore;
+            _strokeBefore = null;
+            if (_history == null || before == null || before.Count == 0) return;
+            if (_terrain?.Get("data").AsGodotObject() is not GodotObject data) return;
+
+            var after = new List<RegionSnapshot>(before.Count);
+            foreach (var b in before)
+            {
+                var region = data.Call("get_region", b.Loc).AsGodotObject();
+                Image? h = null, c = null;
+                if (region != null)
+                {
+                    var hm = region.Call("get_height_map").As<Image>();
+                    var cm = region.Call("get_control_map").As<Image>();
+                    h = hm != null ? (Image)hm.Duplicate(true) : null;
+                    c = cm != null ? (Image)cm.Duplicate(true) : null;
+                }
+                after.Add(new RegionSnapshot(b.Loc, b.OriginWorld, h, c));
+            }
+
+            _history.Push(
+                redo: () => RestoreRegions(after),
+                undo: () => RestoreRegions(before));
+        }
+
+        /// <summary>
+        /// Write a set of region snapshots back into the live terrain via import_images (the same call family
+        /// TerrainPhase uses to import the flat region), recompute the height range, and MarkDirty the NavMesh so a
+        /// bake reflects the restored height.
+        /// </summary>
+        private void RestoreRegions(List<RegionSnapshot> snaps)
+        {
+            if (_terrain == null) return;
+            var data = _terrain.Get("data").AsGodotObject();
+            if (data == null) return;
+
+            foreach (var s in snaps)
+            {
+                // import_images([height, control, color], regionOriginWorldPos, offset=0, scale=1). Color is left
+                // null (unchanged) — this story round-trips height + control only.
+                var images = new Godot.Collections.Array
+                {
+                    s.Height  != null ? Variant.From(s.Height)  : new Variant(),
+                    s.Control != null ? Variant.From(s.Control) : new Variant(),
+                    new Variant(),
+                };
+                data.Call("import_images", images, s.OriginWorld, 0f, 1f);
+            }
+            data.Call("calc_height_range", true);
+            _navObstacles?.MarkDirty();
+        }
+
+        /// <summary>World units spanned by one region edge = region_size × vertex_spacing. Both are Terrain3D node
+        /// properties; falls back to the flat-region defaults (256 × 1.0) TerrainPhase imports with.</summary>
+        private float GetRegionSpan()
+        {
+            if (_terrain == null) return 256f;
+            int regionSize = _terrain.Get("region_size").AsInt32();
+            if (regionSize <= 0) regionSize = 256;
+            float spacing = 1f;
+            var vs = _terrain.Get("vertex_spacing");
+            if (vs.VariantType is Variant.Type.Float or Variant.Type.Int)
+            {
+                float s = (float)vs.AsDouble();
+                if (s > 0f) spacing = s;
+            }
+            return regionSize * spacing;
         }
 
         // ── Brush helpers ─────────────────────────────────────────────────────

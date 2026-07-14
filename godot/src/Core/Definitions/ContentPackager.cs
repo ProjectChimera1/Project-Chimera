@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
+using System.Linq;
 using System.Text;
 using System.Text.Json;
 
@@ -56,9 +57,11 @@ namespace ProjectChimera.Core.Definitions
         /// <param name="scenarioAbsPath">Absolute path to the scenario JSON to pack.</param>
         /// <param name="outputZipPath">Absolute path for the output .chimera.zip file.</param>
         /// <param name="options">Display metadata for the package.</param>
+        /// <param name="terrainDir">Story 6.2 — optional absolute path to a folder of Terrain3D region .res files
+        /// to bundle under map/terrain/. Null/missing/empty ⇒ no terrain bundled (a terrainless map).</param>
         /// <returns>The generated <see cref="ContentPackageManifest"/>.</returns>
         public static ContentPackageManifest Pack(string scenarioAbsPath, string outputZipPath,
-                                                   PackOptions options)
+                                                   PackOptions options, string? terrainDir = null)
         {
             if (!File.Exists(scenarioAbsPath))
                 throw new FileNotFoundException("Scenario file not found.", scenarioAbsPath);
@@ -75,6 +78,23 @@ namespace ProjectChimera.Core.Definitions
                 if (File.Exists(fp))
                     factionEntries.Add("factions/" + Path.GetFileName(fp));
 
+            // Story 6.2: enumerate the terrain region files (ordinal-sorted by name so the aggregate integrity hash
+            // is order-independent), record them zip-relative under map/terrain/, and fold their filename+bytes.
+            var terrainEntries = new List<string>();
+            uint terrainHash = 0u;
+            string[] terrainFiles = Array.Empty<string>();
+            if (!string.IsNullOrEmpty(terrainDir) && Directory.Exists(terrainDir))
+            {
+                terrainFiles = Directory.EnumerateFiles(terrainDir, "*.res", SearchOption.TopDirectoryOnly)
+                                        .OrderBy(p => Path.GetFileName(p), StringComparer.Ordinal)
+                                        .ToArray();
+                foreach (var f in terrainFiles)
+                    terrainEntries.Add("map/terrain/" + Path.GetFileName(f));
+                // Review pass 2 (EC10): keep TerrainHash==0 the unambiguous "no terrain bundled" sentinel — an empty
+                // terrain dir must not stamp a non-zero FNV-of-nothing that contradicts an empty TerrainFiles list.
+                terrainHash = terrainFiles.Length == 0 ? 0u : HashTerrainFiles(terrainFiles);
+            }
+
             var manifest = new ContentPackageManifest
             {
                 Id              = id,
@@ -89,6 +109,8 @@ namespace ProjectChimera.Core.Definitions
                 ThumbnailFile   = options.ThumbnailPath != null ? "thumbnail.png" : null,
                 FactionFiles    = factionEntries,
                 ScenarioHash    = scenarioHash,
+                TerrainFiles    = terrainEntries,
+                TerrainHash     = terrainHash,
                 // AR-36 allow-list (Story 1.10b): packaging-time wall-clock stamped when EXPORTING a
                 // .chimera.zip — never tick-reachable and never folded into the sim/start-state hash, so it is
                 // an explicit RS0030 exemption (keeps the banned-API release gate at a clean zero baseline). A
@@ -121,6 +143,10 @@ namespace ProjectChimera.Core.Definitions
                 WriteEntry(archive, "factions/" + Path.GetFileName(fp), File.ReadAllBytes(fp));
             }
 
+            // map/terrain/ (Story 6.2, optional) — the same ordinal-sorted file set the manifest recorded/hashed.
+            foreach (var f in terrainFiles)
+                WriteEntry(archive, "map/terrain/" + Path.GetFileName(f), File.ReadAllBytes(f));
+
             return manifest;
         }
 
@@ -136,6 +162,8 @@ namespace ProjectChimera.Core.Definitions
             public string? ThumbnailPath { get; init; }
             /// <summary>Absolute paths to extracted faction JSON files.</summary>
             public List<string> FactionPaths { get; init; } = new();
+            /// <summary>Story 6.2 — absolute paths to extracted Terrain3D region .res files (empty if none bundled).</summary>
+            public List<string> TerrainFiles { get; init; } = new();
         }
 
         /// <summary>
@@ -210,12 +238,45 @@ namespace ProjectChimera.Core.Definitions
                 factionOuts.Add(dest);
             }
 
+            // 5. Extract terrain region files (Story 6.2, optional) + verify aggregate integrity hash.
+            var terrainOuts = new List<string>();
+            if (manifest.TerrainFiles != null && manifest.TerrainFiles.Count > 0)
+            {
+                string terrainOutDir = Path.Combine(extractDir, "terrain");
+                Directory.CreateDirectory(terrainOutDir);
+                foreach (var terrainZipPath in manifest.TerrainFiles)
+                {
+                    // Review pass 2 (EC8): a listed terrain file absent from the archive is a corrupt/incomplete
+                    // package, not a silent skip — dropping it would restore partial terrain unnoticed.
+                    var entry = archive.GetEntry(terrainZipPath)
+                        ?? throw new InvalidDataException(
+                            $"Terrain integrity check failed: manifest lists {terrainZipPath} but it is " +
+                            $"missing from the package.");
+                    string dest = Path.Combine(terrainOutDir, Path.GetFileName(terrainZipPath));
+                    entry.ExtractToFile(dest, overwrite: true);
+                    terrainOuts.Add(dest);
+                }
+
+                // Verify integrity whenever the manifest lists terrain files (review pass 2, F8/EC7): gating on
+                // TerrainHash!=0 both overloaded 0 as a legitimate-but-unverified hash AND let a tampered manifest
+                // skip the check by zeroing the field. Every terrain-bearing package is produced by Pack above, which
+                // always records a hash, so an unconditional verify here has no false positives.
+                string[] sorted = terrainOuts
+                    .OrderBy(p => Path.GetFileName(p), StringComparer.Ordinal).ToArray();
+                uint actualHash = HashTerrainFiles(sorted);
+                if (actualHash != manifest.TerrainHash)
+                    throw new InvalidDataException(
+                        $"Terrain integrity check failed: expected 0x{manifest.TerrainHash:X8}, " +
+                        $"got 0x{actualHash:X8}. Package may be corrupt.");
+            }
+
             return new UnpackResult
             {
                 Manifest     = manifest,
                 ScenarioPath = scenarioOut,
                 ThumbnailPath = thumbOut,
                 FactionPaths  = factionOuts,
+                TerrainFiles  = terrainOuts,
             };
         }
 
@@ -269,6 +330,48 @@ namespace ProjectChimera.Core.Definitions
             using var s = entry.Open();
             s.Write(data, 0, data.Length);
         }
+
+        // FNV-1a 32-bit constants — same primitive as ScenarioSerializer's scenario integrity hash, so the terrain
+        // integrity check reads as the sibling of the scenario one.
+        private const uint FNV_PRIME  = 16777619u;
+        private const uint FNV_OFFSET = 2166136261u;
+
+        /// <summary>
+        /// Story 6.2 — aggregate FNV-1a hash over a set of terrain region files: for each file (in the given
+        /// order — callers pass an ordinal-sort-by-filename set so the result is input-order-independent) fold its
+        /// filename bytes then its content bytes. Filename inclusion catches a rename; content bytes catch a
+        /// corrupt-in-transit region. Mirrors <see cref="ScenarioSerializer.ComputeFileHash"/> so the two integrity
+        /// checks share one algorithm family.
+        /// </summary>
+        private static uint HashTerrainFiles(IEnumerable<string> absFiles)
+        {
+            uint hash = FNV_OFFSET;
+            foreach (var f in absFiles)
+            {
+                foreach (byte b in Encoding.UTF8.GetBytes(Path.GetFileName(f))) { hash ^= b; hash *= FNV_PRIME; }
+                foreach (byte b in File.ReadAllBytes(f)) { hash ^= b; hash *= FNV_PRIME; }
+            }
+            return hash;
+        }
+
+        /// <summary>Story 6.2 — the terrain-folder name for a scenario stem ("{stem}_terrain"). The single naming
+        /// convention shared by the export-time save-beside-scenario path and the import-time TerrainRef rewrite, so
+        /// the two sites can never drift.</summary>
+        internal static string TerrainFolderName(string stem) => $"{stem}_terrain";
+
+        /// <summary>
+        /// Story 6.2 — is <paramref name="fileName"/> a Terrain3D region file? A region is written as
+        /// "terrain3d_XX_YY.res", but Terrain3DUtil.location_to_filename encodes a NEGATIVE region coordinate with a
+        /// HYPHEN separator — e.g. the default flat region at location (-1,-1) is "terrain3d-01-01.res", (0,0) is
+        /// "terrain3d_00_00.res". The load-side "does this folder hold regions?" check therefore MUST match a
+        /// "terrain3d" prefix that is NOT anchored on an underscore, or every map whose regions sit at a negative
+        /// location (i.e. essentially every map covering the origin) would be seen as having no regions and load flat.
+        /// Extracted as a Godot-free predicate (review pass 2, VG2) so this load-bearing rule is Tier-1 unit-testable
+        /// and a later "cleanup" to an underscore-anchored glob is caught by a red test rather than silently shipping.
+        /// </summary>
+        internal static bool IsTerrainRegionFile(string fileName) =>
+            fileName.StartsWith("terrain3d", StringComparison.Ordinal) &&
+            fileName.EndsWith(".res", StringComparison.Ordinal);
 
         /// <summary>Convert a display name to a slug: lowercase, spaces→hyphens, strip non-alnum.</summary>
         internal static string Slugify(string name)
