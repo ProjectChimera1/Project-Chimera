@@ -770,6 +770,209 @@ namespace ProjectChimera.Core
             _ctx.StartPosBridge.SetPosition(slot, worldPos);
         }
 
+        // ── ScenarioData sync (Story 6.1) ─────────────────────────────────────
+        // EntityPlacer keeps ScenarioData in sync with the live stores by calling these back on every building/unit/
+        // resource-node place/delete AND both directions of their undo/redo (mirroring the MoveStartPosition bridge).
+        // They mutate _ctx.Scenario.{Buildings,Units,ResourceNodes} so placements survive save/reload AND the F5
+        // Edit→Play re-apply — ResetToAuthoredStart re-applies ONLY _ctx.Scenario, so an unsynced placement is lost.
+        // Identity-preserving: RemoveMatch captures and returns the REAL entry object; ReAdd/RemoveHandle operate on
+        // that exact reference — so a delete→undo restores an authored node's economy fields / a building's pre_built
+        // flag verbatim rather than reconstructing a lossy value.
+
+        private const float SCENARIO_SYNC_EPS = 0.1f; // world-unit tolerance matching a live row to its scenario entry
+
+        /// <summary>Story 6.1 — building sync callback fired by <see cref="EntityPlacer"/>. See
+        /// <see cref="EntityPlacer.ScenarioSyncOp"/>. Editor buildings are always P1 (slot 0) in practice, but the
+        /// slot is derived from the faction so the handler stays general.</summary>
+        internal object? SyncBuilding(EntityPlacer.ScenarioSyncOp op, object? handle,
+                                     BuildingType type, Faction faction, Vector3 pos, bool preBuilt)
+        {
+            var scen = _ctx.Scenario;
+            if (scen == null) return null;
+            switch (op)
+            {
+                case EntityPlacer.ScenarioSyncOp.Add:
+                {
+                    int addSlot = (int)faction - 1;
+                    // Story 6.1: never persist a placement for a slot the scenario doesn't declare — ScenarioValidator
+                    // fails closed on an undeclared slot, so an unguarded append would veto the very next F5 (and Save).
+                    // Skipping keeps such a placement cosmetic-only (its pre-6.1 behavior); the null handle makes the
+                    // matching undo/redo legs no-op by construction.
+                    if (!SlotDeclared(scen, addSlot))
+                    {
+                        GD.PrintErr($"[MainScene] Building sync: slot {addSlot} is not a declared player_slot — placement not persisted (would invalidate F5/Save).");
+                        return null;
+                    }
+                    var entry = new ScenarioBuilding
+                    {
+                        Type = type.ToString(), Slot = addSlot,
+                        X = pos.X, Z = pos.Z, PreBuilt = preBuilt,
+                    };
+                    scen.Buildings = AppendEntry(scen.Buildings, entry);
+                    return entry;
+                }
+                case EntityPlacer.ScenarioSyncOp.ReAdd:
+                    if (handle is ScenarioBuilding b) scen.Buildings = AppendEntry(scen.Buildings, b);
+                    return handle;
+                case EntityPlacer.ScenarioSyncOp.RemoveHandle:
+                    scen.Buildings = RemoveByIdentity(scen.Buildings, handle as ScenarioBuilding, out _);
+                    return null;
+                case EntityPlacer.ScenarioSyncOp.RemoveMatch:
+                {
+                    int slot = (int)faction - 1;
+                    // Story 6.1: an undeclared-slot placement was never persisted by Add (SlotDeclared guard), so
+                    // there is nothing to remove — return silently rather than firing the drift diagnostic below,
+                    // symmetric with Add's skip. Otherwise deleting a cosmetic-only P2 placement in a single-slot
+                    // scenario would log a false "live store may have drifted" error.
+                    if (!SlotDeclared(scen, slot)) return null;
+                    ScenarioBuilding? match = null;
+                    foreach (var e in scen.Buildings ?? Array.Empty<ScenarioBuilding>())
+                        if (e.Slot == slot && PosMatch(e.X, e.Z, pos)) { match = e; break; }
+                    if (match == null)
+                    {
+                        GD.PrintErr($"[MainScene] Building sync: no ScenarioData.Buildings entry matched a delete at ({pos.X:F1},{pos.Z:F1}) slot {slot} — live store may have drifted.");
+                        return null;
+                    }
+                    scen.Buildings = RemoveByIdentity(scen.Buildings, match, out _);
+                    return match;
+                }
+            }
+            return null;
+        }
+
+        /// <summary>Story 6.1 — unit sync callback fired by <see cref="EntityPlacer"/>. Matched by slot + position
+        /// (a def-less spawn is never persisted, so it never reaches RemoveMatch).</summary>
+        internal object? SyncUnit(EntityPlacer.ScenarioSyncOp op, object? handle,
+                                 string unitId, Faction faction, Vector3 pos)
+        {
+            var scen = _ctx.Scenario;
+            if (scen == null) return null;
+            switch (op)
+            {
+                case EntityPlacer.ScenarioSyncOp.Add:
+                {
+                    int addSlot = (int)faction - 1;
+                    // Story 6.1: skip persisting a placement for an undeclared slot (see SyncBuilding.Add) so a P2
+                    // unit placed in a single-slot scenario cannot brick the next F5/Save via ScenarioValidator.
+                    if (!SlotDeclared(scen, addSlot))
+                    {
+                        GD.PrintErr($"[MainScene] Unit sync: slot {addSlot} is not a declared player_slot — placement not persisted (would invalidate F5/Save).");
+                        return null;
+                    }
+                    var entry = new ScenarioUnit { UnitId = unitId, Slot = addSlot, X = pos.X, Z = pos.Z };
+                    scen.Units = AppendEntry(scen.Units, entry);
+                    return entry;
+                }
+                case EntityPlacer.ScenarioSyncOp.ReAdd:
+                    if (handle is ScenarioUnit u) scen.Units = AppendEntry(scen.Units, u);
+                    return handle;
+                case EntityPlacer.ScenarioSyncOp.RemoveHandle:
+                    scen.Units = RemoveByIdentity(scen.Units, handle as ScenarioUnit, out _);
+                    return null;
+                case EntityPlacer.ScenarioSyncOp.RemoveMatch:
+                {
+                    int slot = (int)faction - 1;
+                    // Story 6.1: an undeclared-slot placement was never persisted by Add (SlotDeclared guard), so
+                    // there is nothing to remove — return silently rather than firing the drift diagnostic below,
+                    // symmetric with Add's skip (see SyncBuilding.RemoveMatch).
+                    if (!SlotDeclared(scen, slot)) return null;
+                    ScenarioUnit? match = null;
+                    foreach (var e in scen.Units ?? Array.Empty<ScenarioUnit>())
+                        if (e.Slot == slot && PosMatch(e.X, e.Z, pos)) { match = e; break; }
+                    if (match == null)
+                    {
+                        GD.PrintErr($"[MainScene] Unit sync: no ScenarioData.Units entry matched a delete at ({pos.X:F1},{pos.Z:F1}) slot {slot} — live store may have drifted.");
+                        return null;
+                    }
+                    scen.Units = RemoveByIdentity(scen.Units, match, out _);
+                    return match;
+                }
+            }
+            return null;
+        }
+
+        /// <summary>Story 6.1 — resource-node sync callback fired by <see cref="EntityPlacer"/>. Matched by position
+        /// (nodes have no slot). RemoveMatch returns the REAL authored entry so its economy fields survive undo.</summary>
+        internal object? SyncResourceNode(EntityPlacer.ScenarioSyncOp op, object? handle,
+                                         Vector3 pos, float supply, float rate, int maxGatherers)
+        {
+            var scen = _ctx.Scenario;
+            if (scen == null) return null;
+            switch (op)
+            {
+                case EntityPlacer.ScenarioSyncOp.Add:
+                {
+                    var entry = new ScenarioResourceNode { X = pos.X, Z = pos.Z, Supply = supply, Rate = rate, MaxGatherers = maxGatherers };
+                    scen.ResourceNodes = AppendEntry(scen.ResourceNodes, entry);
+                    return entry;
+                }
+                case EntityPlacer.ScenarioSyncOp.ReAdd:
+                    if (handle is ScenarioResourceNode n) scen.ResourceNodes = AppendEntry(scen.ResourceNodes, n);
+                    return handle;
+                case EntityPlacer.ScenarioSyncOp.RemoveHandle:
+                    scen.ResourceNodes = RemoveByIdentity(scen.ResourceNodes, handle as ScenarioResourceNode, out _);
+                    return null;
+                case EntityPlacer.ScenarioSyncOp.RemoveMatch:
+                {
+                    ScenarioResourceNode? match = null;
+                    foreach (var e in scen.ResourceNodes ?? Array.Empty<ScenarioResourceNode>())
+                        if (PosMatch(e.X, e.Z, pos)) { match = e; break; }
+                    if (match == null)
+                    {
+                        GD.PrintErr($"[MainScene] ResourceNode sync: no ScenarioData.ResourceNodes entry matched a delete at ({pos.X:F1},{pos.Z:F1}) — live store may have drifted.");
+                        return null;
+                    }
+                    scen.ResourceNodes = RemoveByIdentity(scen.ResourceNodes, match, out _);
+                    return match;
+                }
+            }
+            return null;
+        }
+
+        private static bool PosMatch(float x, float z, Vector3 pos)
+            => Mathf.Abs(x - pos.X) <= SCENARIO_SYNC_EPS && Mathf.Abs(z - pos.Z) <= SCENARIO_SYNC_EPS;
+
+        /// <summary>Story 6.1 — true when <paramref name="slot"/> is a declared <c>player_slot</c> in the scenario.
+        /// The sync's Add path refuses to persist a placement for any other slot, mirroring the fail-closed
+        /// <c>ScenarioValidator</c> gate so a placement can never invalidate the scenario for F5/Save.</summary>
+        private static bool SlotDeclared(ScenarioData scen, int slot)
+        {
+            foreach (var p in scen.PlayerSlots ?? Array.Empty<ScenarioPlayerSlot>())
+                if (p.Slot == slot) return true;
+            return false;
+        }
+
+        /// <summary>Append one entry to a (possibly-null) scenario sub-array, returning a fresh array. Treats an
+        /// explicitly-null array (a scenario JSON with an explicit <c>null</c> sub-array) as empty.</summary>
+        private static T[] AppendEntry<T>(T[]? arr, T entry)
+        {
+            int n = arr?.Length ?? 0;
+            var result = new T[n + 1];
+            if (n > 0) Array.Copy(arr!, result, n);
+            result[n] = entry;
+            return result;
+        }
+
+        /// <summary>Remove <paramref name="entry"/> from a scenario sub-array by REFERENCE identity (not value),
+        /// returning a fresh array. <paramref name="found"/> reports whether the reference was present.</summary>
+        private static T[] RemoveByIdentity<T>(T[]? arr, T? entry, out bool found) where T : class
+        {
+            found = false;
+            if (arr == null || arr.Length == 0 || entry == null) return arr ?? Array.Empty<T>();
+            // Explicit reference identity (NOT Array.IndexOf, which would switch to value equality should these
+            // scenario entry classes ever gain an Equals override / become records) — the handle must remove the
+            // exact captured object, never a value-equal sibling.
+            int idx = -1;
+            for (int i = 0; i < arr.Length; i++)
+                if (ReferenceEquals(arr[i], entry)) { idx = i; break; }
+            if (idx < 0) return arr;
+            var result = new T[arr.Length - 1];
+            Array.Copy(arr, 0, result, 0, idx);
+            Array.Copy(arr, idx + 1, result, idx, arr.Length - idx - 1);
+            found = true;
+            return result;
+        }
+
 
 
         // ── HUD ───────────────────────────────────────────────────────────────

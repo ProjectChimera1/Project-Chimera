@@ -37,7 +37,8 @@ namespace ProjectChimera.Core.Bootstrap
             _ctx.Scene.AddChild(placer);
             placer.Initialize(cam, _ctx.World, _ctx.Nodes, _ctx.Resources, _ctx.Buildings, _ctx.FactionDef,
                               _ctx.Scene.MoveStartPosition, _ctx.FactionDef2,
-                              _ctx.Host.Items, _ctx.Host.ItemRegistry); // Story 3.15 — Item placement mode
+                              _ctx.Host.Items, _ctx.Host.ItemRegistry, // Story 3.15 — Item placement mode
+                              _ctx.Scene.SyncBuilding, _ctx.Scene.SyncUnit, _ctx.Scene.SyncResourceNode); // Story 6.1 — ScenarioData sync
             _ctx.Placer = placer;
 
             var selection = new SelectionSystem();

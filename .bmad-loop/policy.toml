@@ -58,11 +58,9 @@ cleanup_session_on_finish = true  # kill the run's tmux session when it finishes
 # extra_args are client-specific). Stage tables must come after the [adapter]
 # keys above.
 [adapter.dev]
-model = "sonnet[1m]"         # dev pass on Sonnet w/ 1M context (~1/5 Opus $/token); same client, so it
-                             # inherits [adapter] extra_args (--effort high + bypass). Review has NO
-                             # [adapter.review] table -> inherits [adapter] model="" = opus[1m] (Opus 4.8) @ high.
-# [adapter.dev]
-# model = "opus"
+model = "opus"               # dev pass on Opus 4.8; same client, so it inherits [adapter] extra_args
+                             # (--effort high + bypass). Review has NO [adapter.review] table ->
+                             # inherits [adapter] model="" = opus[1m] (Opus 4.8) @ high.
 # [adapter.review]
 # name = "codex"
 # model = "gpt-5-codex"

@@ -27,6 +27,22 @@ namespace ProjectChimera.UI
     {
         public enum PlacementMode { P1Unit, P2Unit, ResourceNode, Building, StartPos, Item }
 
+        /// <summary>
+        /// Operation requested of a ScenarioData-sync callback (Story 6.1). One callback per entity kind
+        /// (building/unit/resource-node) multiplexes all four legs of place/delete undo/redo so that
+        /// <see cref="ScenarioData"/> never drifts from the live stores:
+        ///   • <see cref="Add"/>         — build a new scenario entry from the descriptor, append it, return it as an
+        ///                                 opaque handle (initial place).
+        ///   • <see cref="RemoveMatch"/> — find the scenario entry matching the descriptor, remove it, return the
+        ///                                 REAL removed object as the handle (initial delete). Identity-preserving:
+        ///                                 the authored entry is captured, never paraphrased.
+        ///   • <see cref="ReAdd"/>       — re-append the exact captured handle (undo-of-delete / redo-of-place).
+        ///   • <see cref="RemoveHandle"/>— remove the exact captured handle by identity (undo-of-place / redo-of-delete).
+        /// EntityPlacer treats the handle as opaque; MainScene owns the <see cref="ScenarioData"/> mutation, so
+        /// EntityPlacer never takes a direct ScenarioData/SceneContext reference.
+        /// </summary>
+        public enum ScenarioSyncOp { Add, RemoveMatch, ReAdd, RemoveHandle }
+
         // ── Fallback stats ────────────────────────────────────────────────────
         private const float HEALTH       = 100f;
         private const float SPEED        = 4f;
@@ -65,8 +81,23 @@ namespace ProjectChimera.UI
         /// </summary>
         private System.Action<int, Vector3, float>? _onStartPosMoved;
 
+        /// <summary>
+        /// Story 6.1 — ScenarioData sync callbacks (one per persisted entity kind), fired inside the place/delete
+        /// undo/redo closures so <c>ScenarioData.Buildings/Units/ResourceNodes</c> stay symmetric with the live
+        /// stores across save/reload AND the F5 Edit→Play toggle (which re-applies only <c>_ctx.Scenario</c>). Each
+        /// returns an opaque handle to the affected scenario entry. See <see cref="ScenarioSyncOp"/>.
+        /// </summary>
+        private System.Func<ScenarioSyncOp, object?, BuildingType, Faction, Vector3, bool, object?>? _onBuildingSync;
+        private System.Func<ScenarioSyncOp, object?, string, Faction, Vector3, object?>?             _onUnitSync;
+        private System.Func<ScenarioSyncOp, object?, Vector3, float, float, int, object?>?           _onResourceNodeSync;
+
         // ── Placement state ───────────────────────────────────────────────────
         private PlacementMode _mode         = PlacementMode.P1Unit;
+
+        /// <summary>Story 6.1 (UX-DR56) — true while a placement mode is armed (ghost visible, left-click places).
+        /// Right-click or Esc disarms it (see <see cref="CancelPlacement"/>); re-selecting any mode re-arms it (see
+        /// <see cref="ArmPlacement"/>). Starts armed so placement works immediately on entering Edit mode.</summary>
+        private bool _placementActive = true;
         private PlacementMode _lastUnitMode = PlacementMode.P1Unit;
         private BuildingType  _buildingType = BuildingType.CommandCenter;
         private int           _unitIndex    = 0;
@@ -135,18 +166,24 @@ namespace ProjectChimera.UI
                                BuildingStore? buildings = null, FactionDefinition? faction = null,
                                System.Action<int, Vector3, float>? onStartPosMoved = null,
                                FactionDefinition? faction2 = null,
-                               ItemStore? items = null, ItemRegistry? itemRegistry = null)
+                               ItemStore? items = null, ItemRegistry? itemRegistry = null,
+                               System.Func<ScenarioSyncOp, object?, BuildingType, Faction, Vector3, bool, object?>? onBuildingSync = null,
+                               System.Func<ScenarioSyncOp, object?, string, Faction, Vector3, object?>? onUnitSync = null,
+                               System.Func<ScenarioSyncOp, object?, Vector3, float, float, int, object?>? onResourceNodeSync = null)
         {
-            _camCtrl          = camCtrl;
-            _world            = world;
-            _nodes            = nodes;
-            _resources        = resources;
-            _buildings        = buildings;
-            _items            = items;         // Story 3.15
-            _itemRegistry     = itemRegistry;  // Story 3.15
-            _faction          = faction;
-            _faction2         = faction2;
-            _onStartPosMoved  = onStartPosMoved;
+            _camCtrl            = camCtrl;
+            _world              = world;
+            _nodes              = nodes;
+            _resources          = resources;
+            _buildings          = buildings;
+            _items              = items;         // Story 3.15
+            _itemRegistry       = itemRegistry;  // Story 3.15
+            _faction            = faction;
+            _faction2           = faction2;
+            _onStartPosMoved    = onStartPosMoved;
+            _onBuildingSync     = onBuildingSync;      // Story 6.1
+            _onUnitSync         = onUnitSync;          // Story 6.1
+            _onResourceNodeSync = onResourceNodeSync;  // Story 6.1
 
             CreateGhostMesh();
             BuildPaletteUi();
@@ -180,9 +217,36 @@ namespace ProjectChimera.UI
 
         public override void _Input(InputEvent @event)
         {
+            bool editMode = GameState.Instance?.Mode == GameMode.Edit;
+
+            // UX-DR56 (Story 6.1): right-click cancels an active placement mode and hides the ghost without
+            // placing anything. The RTS camera rotates on MIDDLE mouse, so right-click has no camera conflict.
+            // When nothing is armed, do not consume the event (let it fall through as before).
+            if (editMode && @event is InputEventMouseButton mb
+                && mb.ButtonIndex == MouseButton.Right && mb.Pressed)
+            {
+                if (_placementActive)
+                {
+                    CancelPlacement();
+                    GetViewport().SetInputAsHandled();
+                }
+                return;
+            }
+
             if (@event is not InputEventKey key || !key.Pressed || key.Echo) return;
 
-            bool editMode = GameState.Instance?.Mode == GameMode.Edit;
+            // UX-DR56 (Story 6.1): Esc cancels an active placement mode. Gated on _placementActive so that when
+            // nothing is armed the event is NOT consumed here — it falls through to MainScene._UnhandledInput's
+            // global Esc→Settings toggle (this _Input runs before and preempts that unhandled-input handler).
+            if (editMode && key.Keycode == Key.Escape)
+            {
+                if (_placementActive)
+                {
+                    CancelPlacement();
+                    GetViewport().SetInputAsHandled();
+                }
+                return;
+            }
 
             // Undo / redo — only in Edit mode
             if (editMode && key.CtrlPressed)
@@ -216,6 +280,7 @@ namespace ProjectChimera.UI
                         _mode = _lastUnitMode;
                     else
                         CycleUnitMode();
+                    ArmPlacement(); // UX-DR56: re-selecting a mode re-arms placement after a cancel
                     SyncPaletteToMode();
                     break;
 
@@ -227,12 +292,14 @@ namespace ProjectChimera.UI
                         _lastUnitMode = _mode;
                         _mode = PlacementMode.Building;
                     }
+                    ArmPlacement(); // UX-DR56: re-selecting a mode re-arms placement after a cancel
                     SyncPaletteToMode();
                     GD.Print($"[EntityPlacer] Mode: {ModeLabel}");
                     break;
 
                 case Key.U:
                     CycleUnitType();
+                    ArmPlacement(); // UX-DR56: re-selecting a unit archetype re-arms placement after a cancel
                     RefreshSubRow();
                     break;
 
@@ -252,6 +319,8 @@ namespace ProjectChimera.UI
                 && mb.ButtonIndex == MouseButton.Left
                 && mb.Pressed)
             {
+                // UX-DR56 (Story 6.1): a cancelled (disarmed) placement mode ignores left-clicks until re-armed.
+                if (!_placementActive) return;
                 TrySpawnAt(mb.Position, mb.ShiftPressed);
             }
         }
@@ -342,8 +411,25 @@ namespace ProjectChimera.UI
 
             _lastCursorWorld = new Vector3(x, 0f, z);
             _ghost.Position  = new Vector3(x, yOff, z);
-            _ghost.Visible   = true;
+            // UX-DR56 (Story 6.1): keep tracking the cursor (so Delete still targets the hover), but only SHOW the
+            // ghost while a placement mode is armed — a right-click/Esc cancel hides it until a mode is re-selected.
+            _ghost.Visible   = _placementActive;
         }
+
+        // ── Placement arm / cancel (UX-DR56) ──────────────────────────────────
+
+        /// <summary>Disarm the active placement mode: hides the ghost and makes left-clicks no-op until re-armed.
+        /// Fired by right-click or Esc while a placement mode is active.</summary>
+        private void CancelPlacement()
+        {
+            _placementActive = false;
+            if (_ghost != null) _ghost.Visible = false;
+            GD.Print("[EntityPlacer] Placement cancelled.");
+        }
+
+        /// <summary>Re-arm placement (ghost re-appears, left-click places again). Called whenever the user
+        /// re-selects a mode/type via keyboard (Tab/B/U) or the palette.</summary>
+        private void ArmPlacement() => _placementActive = true;
 
         /// <summary>Snap a world coordinate to the nearest 1-unit grid when snap is on.</summary>
         private float SnapValue(float v) => _gridSnapEnabled ? Mathf.Round(v) : v;
@@ -405,15 +491,31 @@ namespace ProjectChimera.UI
         private void PlaceUnit(FixedVec3 pos, bool asWorker)
         {
             Faction faction = _mode == PlacementMode.P2Unit ? Faction.Player2 : Faction.Player1;
+            Vector3 wpos    = new Vector3(pos.X.ToFloat(), 0f, pos.Z.ToFloat());
 
             if (asWorker)
             {
                 int id = DoSpawnWorker(pos, faction);
                 if (id < 0) return;
+
+                // Story 6.1: persist to ScenarioData.Units. A def-less spawn (faction has no worker def) is
+                // intentionally NOT persisted — sync only when we have a concrete unit id.
+                string  unitId     = ActiveFactionDef()?.GetUnitByCategory("Worker")?.Id ?? "";
+                object? syncHandle = string.IsNullOrEmpty(unitId) ? null
+                    : _onUnitSync?.Invoke(ScenarioSyncOp.Add, null, unitId, faction, wpos);
+
                 int[] box = { id };
                 _history.Push(
-                    redo: () => { int r = DoSpawnWorker(pos, faction); if (r >= 0) box[0] = r; },
-                    undo: () => _world.Destroy(box[0]));
+                    redo: () =>
+                    {
+                        int r = DoSpawnWorker(pos, faction); if (r >= 0) box[0] = r;
+                        if (r >= 0 && syncHandle != null) _onUnitSync?.Invoke(ScenarioSyncOp.ReAdd, syncHandle, unitId, faction, wpos);
+                    },
+                    undo: () =>
+                    {
+                        _world.Destroy(box[0]);
+                        if (syncHandle != null) _onUnitSync?.Invoke(ScenarioSyncOp.RemoveHandle, syncHandle, unitId, faction, wpos);
+                    });
             }
             else
             {
@@ -425,10 +527,24 @@ namespace ProjectChimera.UI
 
                 int id = DoSpawnCombatUnit(pos, faction, def);
                 if (id < 0) return;
+
+                // Story 6.1: persist to ScenarioData.Units (def-less fallback spawn is not persisted).
+                string  unitId     = def?.Id ?? "";
+                object? syncHandle = string.IsNullOrEmpty(unitId) ? null
+                    : _onUnitSync?.Invoke(ScenarioSyncOp.Add, null, unitId, faction, wpos);
+
                 int[] box = { id };
                 _history.Push(
-                    redo: () => { int r = DoSpawnCombatUnit(pos, faction, def); if (r >= 0) box[0] = r; },
-                    undo: () => _world.Destroy(box[0]));
+                    redo: () =>
+                    {
+                        int r = DoSpawnCombatUnit(pos, faction, def); if (r >= 0) box[0] = r;
+                        if (r >= 0 && syncHandle != null) _onUnitSync?.Invoke(ScenarioSyncOp.ReAdd, syncHandle, unitId, faction, wpos);
+                    },
+                    undo: () =>
+                    {
+                        _world.Destroy(box[0]);
+                        if (syncHandle != null) _onUnitSync?.Invoke(ScenarioSyncOp.RemoveHandle, syncHandle, unitId, faction, wpos);
+                    });
             }
         }
 
@@ -529,10 +645,17 @@ namespace ProjectChimera.UI
             GD.Print($"[EntityPlacer] Placed ore node id={nodeId} supply={_nodeSupply:F0} rate={_nodeRate:F0} at ({pos.X},{pos.Z})");
 
             // Capture for undo — slot id is stable (no free list in ResourceNodeStore)
-            int capturedId         = nodeId;
-            var capturedSupply     = supply;
-            var capturedRate       = rate;
-            var capturedNodes      = _nodes;
+            int   capturedId         = nodeId;
+            var   capturedSupply     = supply;
+            var   capturedRate       = rate;
+            var   capturedNodes      = _nodes;
+
+            // Story 6.1: mirror into ScenarioData.ResourceNodes. A freshly placed node is a plain Gather/Ore node
+            // (its authored economy fields default), so build it from the editor's supply/rate/max-gatherers.
+            Vector3 wpos             = new Vector3(pos.X.ToFloat(), 0f, pos.Z.ToFloat());
+            float   capturedSupplyF  = _nodeSupply;
+            float   capturedRateF    = _nodeRate;
+            object? syncHandle       = _onResourceNodeSync?.Invoke(ScenarioSyncOp.Add, null, wpos, capturedSupplyF, capturedRateF, NODE_MAX_GATHERERS);
             _history.Push(
                 redo: () =>
                 {
@@ -540,8 +663,13 @@ namespace ProjectChimera.UI
                     capturedNodes.SupplyRemaining[capturedId] = capturedSupply;
                     capturedNodes.SupplyTotal[capturedId]     = capturedSupply;
                     capturedNodes.GatherRate[capturedId]      = capturedRate;
+                    _onResourceNodeSync?.Invoke(ScenarioSyncOp.ReAdd, syncHandle, wpos, capturedSupplyF, capturedRateF, NODE_MAX_GATHERERS);
                 },
-                undo: () => capturedNodes.Active[capturedId] = false);
+                undo: () =>
+                {
+                    capturedNodes.Active[capturedId] = false;
+                    _onResourceNodeSync?.Invoke(ScenarioSyncOp.RemoveHandle, syncHandle, wpos, capturedSupplyF, capturedRateF, NODE_MAX_GATHERERS);
+                });
         }
 
         private void PlaceBuilding(FixedVec3 pos)
@@ -582,23 +710,33 @@ namespace ProjectChimera.UI
             if (id < 0) { GD.PrintErr("[EntityPlacer] BuildingStore full."); return; }
             GD.Print($"[EntityPlacer] Placed {_buildingType} id={id} for {faction} at ({pos.X:F1},{pos.Z:F1})");
 
+            // Story 6.1: mirror the placement into ScenarioData so the building survives save/reload AND the F5
+            // Edit→Play re-apply. Editor-placed buildings start under construction (BuildingStore.Create seeds the
+            // full ConstructionTimer), so persist pre_built:false to re-apply identically.
+            BuildingType capturedType = _buildingType;
+            Vector3      wpos         = new Vector3(pos.X.ToFloat(), 0f, pos.Z.ToFloat());
+
             // Capture for undo — building slot id is stable (BuildingStore has no free list)
             int      capturedId       = id;
             Faction  capturedFaction  = faction;
             Fixed    capturedCost     = Fixed.FromFloat(BUILDING_COSTS[(int)_buildingType]);
             Fixed    capturedDuration = _buildings.ConstructionDuration[id];
             var      capturedBuildings = _buildings;
+
+            object?  syncHandle = _onBuildingSync?.Invoke(ScenarioSyncOp.Add, null, capturedType, capturedFaction, wpos, false);
             _history.Push(
                 redo: () =>
                 {
                     capturedBuildings.Alive[capturedId]              = true;
                     capturedBuildings.ConstructionTimer[capturedId]  = capturedDuration;
                     _resources?.SpendOre(capturedFaction, capturedCost);
+                    _onBuildingSync?.Invoke(ScenarioSyncOp.ReAdd, syncHandle, capturedType, capturedFaction, wpos, false);
                 },
                 undo: () =>
                 {
                     capturedBuildings.Destroy(capturedId);
                     _resources?.AddOre(capturedFaction, capturedCost);
+                    _onBuildingSync?.Invoke(ScenarioSyncOp.RemoveHandle, syncHandle, capturedType, capturedFaction, wpos, false);
                 });
         }
 
@@ -797,6 +935,7 @@ namespace ProjectChimera.UI
                 _lastUnitMode = _mode;
 
             _mode = mode;
+            ArmPlacement(); // UX-DR56: selecting a palette mode re-arms placement after a cancel
             RefreshGhostVisuals();
             RefreshSubRow();
             GD.Print($"[EntityPlacer] Mode: {ModeLabel}");
@@ -854,6 +993,7 @@ namespace ProjectChimera.UI
                     btn.Pressed += () =>
                     {
                         _buildingType = capturedType;
+                        ArmPlacement(); // UX-DR56: re-selecting a building type re-arms placement after a cancel
                         RefreshGhostVisuals();
                         GD.Print($"[EntityPlacer] Building type: {_buildingType}");
                     };
@@ -886,6 +1026,7 @@ namespace ProjectChimera.UI
                     btn.Pressed += () =>
                     {
                         _unitIndex = capturedIdx;
+                        ArmPlacement(); // UX-DR56: re-selecting a unit archetype re-arms placement after a cancel
                         RefreshGhostVisuals();
                         GD.Print($"[EntityPlacer] Unit archetype: {units[capturedIdx].DisplayName}");
                     };
@@ -910,6 +1051,7 @@ namespace ProjectChimera.UI
                     btn.Pressed += () =>
                     {
                         _startSlot = capturedSlot;
+                        ArmPlacement(); // UX-DR56: re-selecting a start-pos slot re-arms placement after a cancel
                         RefreshGhostVisuals(); // update ghost color
                     };
                     _subRow.AddChild(btn);
@@ -965,6 +1107,7 @@ namespace ProjectChimera.UI
                     btn.Pressed += () =>
                     {
                         _itemIndex = capturedIdx;
+                        ArmPlacement(); // UX-DR56: re-selecting an item re-arms placement after a cancel
                         GD.Print($"[EntityPlacer] Item: {_itemRegistry.Get(capturedIdx).Id}");
                     };
                     _subRow.AddChild(btn);
@@ -1079,17 +1222,30 @@ namespace ProjectChimera.UI
             Fixed   capturedTimer    = _buildings.ConstructionTimer[id];
             var     capturedBuildings = _buildings;
 
+            // Story 6.1: capture the descriptor from the LIVE slot BEFORE Destroy so the ScenarioData match can run.
+            BuildingType capturedType = _buildings.Type[id];
+            Vector3      wpos         = new Vector3(_buildings.Position[id].X.ToFloat(), 0f, _buildings.Position[id].Z.ToFloat());
+
             _buildings.Destroy(id);
             // No ore refund on delete (destructive intent)
             GD.Print($"[EntityPlacer] Deleted building id={id}");
 
+            // Story 6.1: remove the matching ScenarioData.Buildings entry, capturing the REAL object so undo restores
+            // it by identity (preserving authored pre_built / slot / type — never reconstructing a lossy value).
+            object? syncHandle = _onBuildingSync?.Invoke(ScenarioSyncOp.RemoveMatch, null, capturedType, capturedFaction, wpos, false);
+
             _history.Push(
-                redo: () => capturedBuildings.Destroy(id),
+                redo: () =>
+                {
+                    capturedBuildings.Destroy(id);
+                    _onBuildingSync?.Invoke(ScenarioSyncOp.RemoveHandle, syncHandle, capturedType, capturedFaction, wpos, false);
+                },
                 undo: () =>
                 {
                     capturedBuildings.Alive[id]              = true;
                     capturedBuildings.ConstructionTimer[id]  = capturedTimer;
                     capturedBuildings.ConstructionDuration[id] = capturedDuration;
+                    _onBuildingSync?.Invoke(ScenarioSyncOp.ReAdd, syncHandle, capturedType, capturedFaction, wpos, false);
                 });
         }
 
@@ -1103,16 +1259,34 @@ namespace ProjectChimera.UI
             _world.Destroy(id);
             GD.Print($"[EntityPlacer] Deleted unit id={id}");
 
+            // Story 6.1: remove the matching ScenarioData.Units entry (identity-preserving), matched by slot+position.
+            // A def-less spawn was never persisted, so only sync def-based units.
+            string  unitId     = snap.Def?.Id ?? "";
+            Vector3 wpos       = new Vector3(snap.Position.X.ToFloat(), 0f, snap.Position.Z.ToFloat());
+            object? syncHandle = snap.Def != null
+                ? _onUnitSync?.Invoke(ScenarioSyncOp.RemoveMatch, null, unitId, snap.Faction, wpos)
+                : null;
+
             // Undo re-creates the unit; the new id is boxed so redo can destroy it again
             int[] box = { -1 };
             _history.Push(
-                redo: () => { if (box[0] >= 0) _world.Destroy(box[0]); },
+                redo: () =>
+                {
+                    if (box[0] >= 0)
+                    {
+                        _world.Destroy(box[0]);
+                        if (syncHandle != null) _onUnitSync?.Invoke(ScenarioSyncOp.RemoveHandle, syncHandle, unitId, snap.Faction, wpos);
+                    }
+                },
                 undo: () =>
                 {
                     box[0] = _world.RestoreUnit(snap);
                     // RestoreUnit returns -1 only when EntityWorld is at capacity (graceful, no partial state). Surface
                     // it — the Core method is Godot-free and cannot log, and the old EntityPlacer.RestoreUnit did.
-                    if (box[0] < 0) GD.PrintErr("[EntityPlacer] EntityWorld full — cannot restore deleted unit.");
+                    if (box[0] < 0) { GD.PrintErr("[EntityPlacer] EntityWorld full — cannot restore deleted unit."); return; }
+                    // Re-add to ScenarioData only AFTER the live restore is confirmed (>= 0) — a full world must not
+                    // leave a phantom ScenarioData.Units entry.
+                    if (syncHandle != null) _onUnitSync?.Invoke(ScenarioSyncOp.ReAdd, syncHandle, unitId, snap.Faction, wpos);
                 });
         }
 
@@ -1124,17 +1298,29 @@ namespace ProjectChimera.UI
             var capturedTotal   = _nodes.SupplyTotal[id];
             var capturedRate    = _nodes.GatherRate[id];
 
+            // Story 6.1: capture position BEFORE clearing so the ScenarioData match can run.
+            Vector3 wpos = new Vector3(_nodes.Position[id].X.ToFloat(), 0f, _nodes.Position[id].Z.ToFloat());
+
             _nodes.Active[id] = false;
             GD.Print($"[EntityPlacer] Deleted resource node id={id}");
 
+            // Story 6.1: remove the matching ScenarioData.ResourceNodes entry (identity-preserving) so an authored
+            // Income/Crystal/owner-slotted node is restored intact on undo (never degraded to a plain Gather/Ore node).
+            object? syncHandle = _onResourceNodeSync?.Invoke(ScenarioSyncOp.RemoveMatch, null, wpos, 0f, 0f, 0);
+
             _history.Push(
-                redo: () => capturedNodes.Active[id] = false,
+                redo: () =>
+                {
+                    capturedNodes.Active[id] = false;
+                    _onResourceNodeSync?.Invoke(ScenarioSyncOp.RemoveHandle, syncHandle, wpos, 0f, 0f, 0);
+                },
                 undo: () =>
                 {
                     capturedNodes.Active[id]          = true;
                     capturedNodes.SupplyRemaining[id] = capturedSupply;
                     capturedNodes.SupplyTotal[id]     = capturedTotal;
                     capturedNodes.GatherRate[id]      = capturedRate;
+                    _onResourceNodeSync?.Invoke(ScenarioSyncOp.ReAdd, syncHandle, wpos, 0f, 0f, 0);
                 });
         }
 
