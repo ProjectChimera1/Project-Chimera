@@ -1,7 +1,7 @@
-# ⚗️ Chimera Ability Workshop — pitch us an ability!
+# ⚗️ Chimera Ability Workshop — pitch an ability!
 
 Fill in what you know, skip what you don't. One sentence per line is plenty.
-Wild ideas are welcome — even "impossible" ones tell us what to build next.
+Wild ideas are welcome — even "impossible" ones tell me what to build next.
 
 ---
 
