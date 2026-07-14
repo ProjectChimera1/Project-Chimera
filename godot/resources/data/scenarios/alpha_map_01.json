@@ -28,56 +28,96 @@
       "z": -15,
       "supply": 600,
       "rate": 5,
-      "max_gatherers": 4
+      "max_gatherers": 4,
+      "collection_model": "Gather",
+      "resource_type": "Ore",
+      "requires_structure_radius": 15,
+      "owner_slot": -1,
+      "income_period_ticks": 30
     },
     {
       "x": -20,
       "z": 15,
       "supply": 600,
       "rate": 5,
-      "max_gatherers": 4
+      "max_gatherers": 4,
+      "collection_model": "Gather",
+      "resource_type": "Ore",
+      "requires_structure_radius": 15,
+      "owner_slot": -1,
+      "income_period_ticks": 30
     },
     {
       "x": 20,
       "z": -15,
       "supply": 600,
       "rate": 5,
-      "max_gatherers": 4
+      "max_gatherers": 4,
+      "collection_model": "Gather",
+      "resource_type": "Ore",
+      "requires_structure_radius": 15,
+      "owner_slot": -1,
+      "income_period_ticks": 30
     },
     {
       "x": 20,
       "z": 15,
       "supply": 600,
       "rate": 5,
-      "max_gatherers": 4
+      "max_gatherers": 4,
+      "collection_model": "Gather",
+      "resource_type": "Ore",
+      "requires_structure_radius": 15,
+      "owner_slot": -1,
+      "income_period_ticks": 30
     },
     {
       "x": 0,
       "z": -25,
       "supply": 400,
       "rate": 5,
-      "max_gatherers": 4
+      "max_gatherers": 4,
+      "collection_model": "Gather",
+      "resource_type": "Ore",
+      "requires_structure_radius": 15,
+      "owner_slot": -1,
+      "income_period_ticks": 30
     },
     {
       "x": 0,
       "z": 25,
       "supply": 400,
       "rate": 5,
-      "max_gatherers": 4
+      "max_gatherers": 4,
+      "collection_model": "Gather",
+      "resource_type": "Ore",
+      "requires_structure_radius": 15,
+      "owner_slot": -1,
+      "income_period_ticks": 30
     },
     {
       "x": -35,
       "z": 0,
       "supply": 300,
       "rate": 5,
-      "max_gatherers": 4
+      "max_gatherers": 4,
+      "collection_model": "Gather",
+      "resource_type": "Ore",
+      "requires_structure_radius": 15,
+      "owner_slot": -1,
+      "income_period_ticks": 30
     },
     {
       "x": 35,
       "z": 0,
       "supply": 300,
       "rate": 5,
-      "max_gatherers": 4
+      "max_gatherers": 4,
+      "collection_model": "Gather",
+      "resource_type": "Ore",
+      "requires_structure_radius": 15,
+      "owner_slot": -1,
+      "income_period_ticks": 30
     }
   ],
   "buildings": [
@@ -127,5 +167,14 @@
       "x": 42,
       "z": 3
     }
-  ]
+  ],
+  "triggers": [],
+  "persistence_manifest": {
+    "enabled": true,
+    "attributes": [
+      "hero.level",
+      "hero.xp",
+      "hero.inventory"
+    ]
+  }
 }
