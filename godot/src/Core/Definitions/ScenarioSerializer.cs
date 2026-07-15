@@ -54,6 +54,10 @@ namespace ProjectChimera.Core.Definitions
             // holds, so a permanent `scenario.Regions = null` side effect would silently surprise any other holder of
             // that instance. Swap-to-null under try/finally and restore the original reference afterwards — the JSON
             // bytes are identical to the null/absent case, and the caller's object is observably unchanged.
+            // Story 14.5: the persistence_manifest follows the same absent-stays-absent contract but needs no swap here —
+            // a null PersistenceManifest is omitted by [JsonIgnore(WhenWritingNull)] on ScenarioData, so a manifest-less
+            // map serializes with no key and an authored manifest round-trips unchanged. Pinned by the Tier-1
+            // PersistenceManifestTests all-shipped absolute-absence guard + editor-save round-trip test.
             ScenarioRegion[]? savedRegions = scenario.Regions;
             if (savedRegions is { Length: 0 }) scenario.Regions = null;
 

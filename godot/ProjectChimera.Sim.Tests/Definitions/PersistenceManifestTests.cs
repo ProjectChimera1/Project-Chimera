@@ -262,6 +262,90 @@ namespace ProjectChimera.Sim.Tests.Definitions
             Assert.Equal(json, ScenarioSerializer.Serialize(back!));
         }
 
+        // ── All-shipped absolute-absence guard (Story 14.5) ──────────────────────────
+
+        /// <summary>
+        /// Story 14.5 — the permanent regression net for the a0c8d51 incident vector: a fully-authored
+        /// <c>persistence_manifest</c> committed to disk on a shipped scenario (a shared-<see cref="ScenarioData"/>
+        /// editor re-save that the AutoSave cron then committed). The legacy single-map guard only watched
+        /// <c>alpha_map_01.json</c>; this generalizes ABSOLUTE ABSENCE across EVERY shipped scenario. A manifest
+        /// committed to ANY shipped map that is NOT on the (empty today) opt-in whitelist turns this RED — loading the
+        /// contaminated file reproduces the manifest in-memory, and re-serializing faithfully re-emits the key, failing
+        /// the absence assertion and naming the offending file. This is also the Tier-1 backstop for the Godot-Node-bound
+        /// "enabled:true only by explicit action" invariant: any in-memory default-manifest injection reaches a shipped
+        /// file only through a save, and this guard fails RED on that file.
+        /// </summary>
+        [Fact]
+        public void AllShippedScenarios_HaveNoManifest_ExceptOptInWhitelist()
+        {
+            // Empty today — the D3 shipped-without-persistence contract. A future map that deliberately authors
+            // persistence must be added here WITH that authoring decision; until then every shipped map must be
+            // manifest-free both in-memory (loaded model) and on the serialized wire.
+            var persistenceOptInMaps = new HashSet<string>();   // filenames, e.g. "some_map.json"
+
+            int checkedCount = 0;
+            var checkedFiles = new HashSet<string>();
+            foreach (string path in Directory.EnumerateFiles(ScenariosDir(), "*.json"))
+            {
+                string fileName = Path.GetFileName(path);
+
+                // LoadFromFile THROWS JsonException on malformed JSON; it returns null only for a literal `null`
+                // document or a missing file. A broken shipped file therefore fails LOUDLY here — it is never skipped.
+                ScenarioData? s = ScenarioSerializer.LoadFromFile(path);
+                if (s == null) continue;   // literal `null` document — not a real scenario
+                checkedCount++;
+                checkedFiles.Add(fileName);
+
+                // Structural on-disk key check — never a raw substring (which would conflate payload text with the
+                // structural key). Present iff the root object has the key AND it is non-null.
+                using var onDisk = System.Text.Json.JsonDocument.Parse(File.ReadAllText(path));
+                bool onDiskHasManifest =
+                    onDisk.RootElement.TryGetProperty("persistence_manifest", out var el)
+                    && el.ValueKind != System.Text.Json.JsonValueKind.Null;
+
+                string serialized = ScenarioSerializer.Serialize(s);
+                using var reSerialized = System.Text.Json.JsonDocument.Parse(serialized);
+                bool serializedHasManifest =
+                    reSerialized.RootElement.TryGetProperty("persistence_manifest", out var sel)
+                    && sel.ValueKind != System.Text.Json.JsonValueKind.Null;
+
+                if (persistenceOptInMaps.Contains(fileName))
+                {
+                    // Whitelisted opt-in map: presence round-trips (serialized presence == on-disk presence) AND the
+                    // deserialized manifest deep-equals the loaded one (content fidelity, not mere key presence).
+                    Assert.True(onDiskHasManifest,
+                        $"{fileName}: whitelisted as a persistence opt-in map but carries no on-disk manifest.");
+                    Assert.Equal(onDiskHasManifest, serializedHasManifest);
+
+                    ScenarioData? roundTripped = ScenarioSerializerRoundTrip(serialized);
+                    Assert.NotNull(s.PersistenceManifest);
+                    Assert.NotNull(roundTripped!.PersistenceManifest);
+                    Assert.Equal(s.PersistenceManifest!.Enabled, roundTripped.PersistenceManifest!.Enabled);
+                    Assert.Equal(s.PersistenceManifest.Attributes.ToArray(),
+                                 roundTripped.PersistenceManifest.Attributes.ToArray());
+                }
+                else
+                {
+                    // ABSOLUTE ABSENCE — the a0c8d51 vector. A manifest committed to disk on this map turns this RED.
+                    Assert.True(s.PersistenceManifest == null,
+                        $"{fileName}: loaded a persistence_manifest — a manifest was committed to disk on a shipped map " +
+                        "not on the opt-in whitelist (the a0c8d51 vector).");
+                    Assert.False(serializedHasManifest,
+                        $"{fileName}: serialized form carries a persistence_manifest key (a manifest was committed to disk).");
+                }
+            }
+
+            // Defeat the all-fail-to-load vacuous pass: at least one scenario must have successfully loaded and checked.
+            Assert.True(checkedCount > 0, "No shipped scenarios were successfully loaded and checked.");
+
+            // Defeat the whitelist silent-skip: every opt-in map must have actually loaded and been checked, so its
+            // fidelity assertions could NOT be vacuously skipped (e.g. a whitelisted map reduced to a `null`/missing
+            // document). No-op today (empty whitelist); load-bearing once a map is deliberately opted in.
+            Assert.True(persistenceOptInMaps.IsSubsetOf(checkedFiles),
+                "A whitelisted persistence opt-in map was not loaded/checked — its round-trip fidelity assertions never ran: " +
+                string.Join(", ", System.Linq.Enumerable.Where(persistenceOptInMaps, m => !checkedFiles.Contains(m))));
+        }
+
         // ── Golden / hash neutrality of a null manifest ──────────────────────────────
 
         [Fact]
@@ -380,6 +464,47 @@ namespace ProjectChimera.Sim.Tests.Definitions
                 Assert.NotNull(back!.PersistenceManifest);
                 Assert.True(back.PersistenceManifest!.Enabled);
                 Assert.Equal(new[] { "hero.level", "hero.xp" }, back.PersistenceManifest.Attributes.ToArray());
+            }
+            finally
+            {
+                if (File.Exists(tmp)) File.Delete(tmp);
+            }
+        }
+
+        // ── Editor map-save path: absent stays absent (Story 14.5) ───────────────────
+
+        /// <summary>
+        /// Story 14.5 — pins the absent-stays-absent contract through the REAL editor save path
+        /// (<see cref="ScenarioSerializer.SaveToFile"/> → <see cref="ScenarioSerializer.LoadFromFile"/>). A routine
+        /// editor save that mutates an unrelated (non-manifest) field must not opt a manifest-less map into hero
+        /// persistence: no <c>persistence_manifest</c> key is written, the reloaded manifest stays null, and the
+        /// mutation survives.
+        /// </summary>
+        [Fact]
+        public void ManifestLessMap_RoutineSave_WritesNoManifest_AndPersistsMutation()
+        {
+            ScenarioData s = LoadShipped();
+            Assert.Null(s.PersistenceManifest);   // fixture precondition: a manifest-less shipped map
+
+            // Mutate a NON-manifest field, exactly as a routine editor save would touch unrelated map data.
+            const string mutatedName = "Routine Save Marker 14.5";
+            s.DisplayName = mutatedName;
+
+            // Randomized temp filename so parallel test runs never collide on a fixed path.
+            string tmp = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName());
+            try
+            {
+                ScenarioSerializer.SaveToFile(s, tmp);          // the REAL editor save path
+                string written = File.ReadAllText(tmp);
+
+                ScenarioData? back = ScenarioSerializer.LoadFromFile(tmp);
+                Assert.NotNull(back);
+                Assert.Null(back!.PersistenceManifest);         // load-bearing: absent round-trips absent
+                Assert.Equal(mutatedName, back.DisplayName);    // the non-manifest mutation persisted
+
+                // Secondary structural check: the written bytes carry no persistence_manifest key.
+                using var doc = System.Text.Json.JsonDocument.Parse(written);
+                Assert.False(doc.RootElement.TryGetProperty("persistence_manifest", out _));
             }
             finally
             {

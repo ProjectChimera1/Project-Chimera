@@ -328,6 +328,13 @@ namespace ProjectChimera.CreationSuite
             try
             {
                 string abs = ProjectSettings.GlobalizePath(_scenarioPath);
+                // Story 14.5 — absent-stays-absent contract. This writes the ENTIRE shared ScenarioData, not just the
+                // manifest. A null PersistenceManifest is omitted by [JsonIgnore(WhenWritingNull)] on ScenarioData, so a
+                // manifest-less map saves with no persistence_manifest key. enabled:true originates ONLY from the explicit
+                // master/checklist toggles in this panel (PersistenceManifestEditing.ApplyMasterToggle /
+                // ApplyAttributeToggle) — a routine map-save must never inject a default manifest. Backstop: the Tier-1
+                // AllShippedScenarios_HaveNoManifest_ExceptOptInWhitelist guard fails RED if any future in-memory
+                // default-manifest injection reaches a shipped file through a save.
                 ScenarioSerializer.SaveToFile(_scenario, abs);
                 ShowStatus(_scenario.PersistenceManifest == null
                     ? "Saved (persistence not configured — no manifest written)."
