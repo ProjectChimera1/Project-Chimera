@@ -492,7 +492,7 @@ namespace ProjectChimera.Sim.Tests.Sim
         public void HashAlgoVersions_AreUnchanged()
         {
             Assert.Equal(15, SimChecksum.AlgoVersion);   // Story 6.3: per-entity Elevation fold (14→15)
-            Assert.Equal(6, CanonicalModelHash.AlgoVersion); // Story 6.5: pathability layer + slope config folded (5→6)
+            Assert.Equal(7, CanonicalModelHash.AlgoVersion); // Story 6.6: blocking prop/water footprint folded (6→7)
             Assert.Equal(2, StartStateHash.AlgoVersion);
         }
 

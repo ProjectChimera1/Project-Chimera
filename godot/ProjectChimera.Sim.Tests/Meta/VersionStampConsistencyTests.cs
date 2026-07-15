@@ -67,8 +67,11 @@ namespace ProjectChimera.Sim.Tests.Meta
         /// requires_structure gate / owner slot / income period — all sim-affecting).
         /// v6 (Story 6.5): folded the authored pathability layer (painted blocked bitset digest + slope-auto-block
         /// config) — lockstep-critical because it feeds MOVEMENT (Position is checksummed), so a mismatched blocked
-        /// layer must reject at the handshake instead of desyncing in-sim.</summary>
-        private const int ExpectedCanonicalModelHashAlgoVersion = 6;
+        /// layer must reject at the handshake instead of desyncing in-sim.
+        /// v7 (Story 6.6): folded the BLOCKING-prop + WATER footprints (their union of FlowField.WorldToCell cells) —
+        /// the inverse-free extension of v6 (they become blocked cells in the same PathabilityGrid). Non-blocking
+        /// props, cameras, and every rotation/scale stay EXCLUDED (cosmetic).</summary>
+        private const int ExpectedCanonicalModelHashAlgoVersion = 7;
 
         /// <summary>Load-time canonical START-STATE hash algorithm version (Story 3.2, AC3) — a NEW, distinct FNV-64
         /// over the full init state = the <see cref="CanonicalModelHash"/> content seed PLUS the HeroStore rows.

@@ -66,6 +66,16 @@ namespace ProjectChimera.Core.Definitions
             if (savedPathability != null
                 && ProjectChimera.Navigation.PathabilityGrid.DigestOfBase64(savedPathability) == 0u)
                 scenario.PathabilityBlocked = null;
+
+            // Story 6.6: normalize empty Props/Cameras/Water → null for THIS serialization (same swap-under-try/finally,
+            // restore-after discipline as Regions above — Serialize is a pure byte-source and must not mutate the
+            // caller's live model). An absent/empty collection emits no key, byte-identical to a pre-feature map.
+            ScenarioProp[]?   savedProps   = scenario.Props;
+            ScenarioCamera[]? savedCameras = scenario.Cameras;
+            ScenarioWater[]?  savedWater   = scenario.Water;
+            if (savedProps   is { Length: 0 }) scenario.Props   = null;
+            if (savedCameras is { Length: 0 }) scenario.Cameras = null;
+            if (savedWater   is { Length: 0 }) scenario.Water   = null;
             try
             {
                 return JsonSerializer.Serialize(scenario, _options);
@@ -74,6 +84,9 @@ namespace ProjectChimera.Core.Definitions
             {
                 scenario.Regions = savedRegions;
                 scenario.PathabilityBlocked = savedPathability;
+                scenario.Props   = savedProps;
+                scenario.Cameras = savedCameras;
+                scenario.Water   = savedWater;
             }
         }
 

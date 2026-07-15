@@ -71,8 +71,17 @@ namespace ProjectChimera.Core.Definitions
         /// from the first move order — the established fix is handshake rejection, not in-sim detection. An absent
         /// paint + slope-off hashes IDENTICALLY to the pre-6.5 v5 fold (digest 0, toggle 0, threshold 0), so every
         /// existing scenario is unaffected; a real painted/slope change moves the handshake hash. This forces a
+        /// ONE-TIME re-baseline of the handshake fixtures (human-authorized 2026-07-14).
+        /// 7 = additionally folds the Story 6.6 BLOCKING-prop + WATER footprints (their union of
+        /// <see cref="ProjectChimera.Navigation.FlowField.WorldToCell"/> cells, as a canonical content digest). This is
+        /// the exact INVERSE-FREE extension of the 5→6 pathability fold: a blocking prop / water volume becomes blocked
+        /// cells in the very same <c>PathabilityGrid</c>, so it feeds MOVEMENT (Position → SimChecksum) and a mismatch
+        /// must be rejected at the handshake rather than desyncing in-sim. NON-blocking props, cameras, and every
+        /// rotation/scale are COSMETIC (like <c>DisplayName</c>) and remain EXCLUDED. An absent/empty props+water set
+        /// digests to 0, byte-identical to the v6 fold, so every existing scenario is unaffected; a blocking-footprint
+        /// change moves the handshake hash and propagates into <c>StartStateHash</c> via the seed. This forces a
         /// ONE-TIME re-baseline of the handshake fixtures (human-authorized 2026-07-14).</summary>
-        public const int AlgoVersion = 6;
+        public const int AlgoVersion = 7;
 
         private const ulong Offset = 14695981039346656037UL; // FNV-64 offset basis
         private const ulong Prime  = 1099511628211UL;        // FNV-64 prime
@@ -109,6 +118,14 @@ namespace ProjectChimera.Core.Definitions
             h = MixInt(h, unchecked((int)PathabilityGrid.DigestOfBase64(m.PathabilityBlocked)));
             h = MixInt(h, m.SlopeAutoBlock ? 1 : 0);
             h = MixInt(h, Fixed.FromFloat(m.SlopeBlockThreshold).Raw);
+
+            // Story 6.6 (v7): fold the BLOCKING-prop + WATER footprints as a single content DIGEST over their union of
+            // FlowField.WorldToCell cells (canonical, order-independent — the packed-bitset FNV normalizes to 0 when
+            // nothing blocks). Only blocks_pathing props and water volumes contribute; a non-blocking prop, a camera,
+            // and every rotation/scale are cosmetic and never reach this fold. This is the deliberate INVERSE-free
+            // extension of the 5→6 pathability fold (see the AlgoVersion doc): blocking props/water become blocked
+            // cells in the same PathabilityGrid, so they are lockstep-critical exactly as painted cells are.
+            h = MixInt(h, unchecked((int)BlockingFootprintDigest(m.Props, m.Water)));
 
             // Story 4.4: fold Supply via the SAME SupplyConfig.Resolve ResourceStore.ConfigureSupply uses — the
             // single resolution+clamp boundary, so hash-equality <=> post-resolution runtime-equality holds both
@@ -203,6 +220,24 @@ namespace ProjectChimera.Core.Definitions
         {
             uint w = (uint)(h ^ (h >> 32));
             return w == 0u ? 1u : w;
+        }
+
+        /// <summary>
+        /// Story 6.6 — the content digest of the BLOCKING-prop + WATER footprint union. Stamps each
+        /// <c>blocks_pathing</c> prop's single cell and each water volume's rect cells into one shared
+        /// <see cref="ProjectChimera.Navigation.FlowField.WorldToCell"/> mask (the ONE derivation
+        /// <c>PathabilityGrid.StampPropInto</c>/<c>StampWaterInto</c> also feed the load-time union and the validator),
+        /// then folds it with <see cref="PathabilityGrid.Digest"/>. Order-independent (a mask union) and 0 when nothing
+        /// blocks — so an omitted/empty props+water set, or a set with only NON-blocking props, digests to 0
+        /// (byte-identical to the pre-6.6 fold). The single float→Fixed quantize here is the sanctioned load-time
+        /// boundary (called once per match load).
+        /// </summary>
+        private static uint BlockingFootprintDigest(ScenarioProp[]? props, ScenarioWater[]? water)
+        {
+            // Story 6.6 (review V1): the SAME shared derivation the load-time grid + validator use — behaviour-identical
+            // to the prior inline loop (same props-then-water stamp order), so the handshake baseline is unmoved.
+            bool[]? mask = PathabilityGrid.BuildBlockingFootprint(props, water);
+            return mask == null ? 0u : new PathabilityGrid(mask).Digest();
         }
 
         /// <summary>FNV-64 fold of a 32-bit int as 4 little-endian bytes (mirrors SimChecksum.Mix, 64-bit).</summary>

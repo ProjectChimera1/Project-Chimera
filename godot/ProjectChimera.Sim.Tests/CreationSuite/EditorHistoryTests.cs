@@ -56,5 +56,53 @@ namespace ProjectChimera.Sim.Tests.CreationSuite
             Assert.False(h.CanUndo);
             Assert.False(h.CanRedo);
         }
+
+        /// <summary>
+        /// Story 6.6 — a multi-select GROUP op (copy/paste, group-move, group-delete/duplicate spanning several
+        /// placements across categories) is ONE (redo, undo) pair on the shared stack, so it undoes/redoes as a
+        /// SINGLE step and interleaves LIFO with a single-entity op with no cross-corruption. Models the group op as
+        /// a closure that mutates a list of "placed" ids (the Godot-free mutation surface the EntityPlacer group ops
+        /// drive; the MultiMesh/scene side is covered by the live godot-mcp checks).
+        /// </summary>
+        [Fact]
+        public void GroupOp_IsOneUndoStep_AndInterleavesWithSingleOp()
+        {
+            var h = new EditorHistory();
+            var placed = new HashSet<int>();
+
+            // A single-entity place (one prop).
+            h.Push(redo: () => placed.Add(1), undo: () => placed.Remove(1));
+            placed.Add(1);
+
+            // A GROUP paste of three placements (2 units + 1 prop, say) — ONE pair, mutating all three.
+            int[] group = { 10, 11, 12 };
+            void GroupRedo() { foreach (int id in group) placed.Add(id); }
+            void GroupUndo() { foreach (int id in group) placed.Remove(id); }
+            h.Push(redo: GroupRedo, undo: GroupUndo);
+            GroupRedo();
+
+            Assert.Equal(new[] { 1, 10, 11, 12 }, Sorted(placed));
+
+            // One undo removes the ENTIRE group as a single step (LIFO — the group was pushed last).
+            h.Undo();
+            Assert.Equal(new[] { 1 }, Sorted(placed));
+
+            // The single-entity op undoes independently after it.
+            h.Undo();
+            Assert.Empty(placed);
+
+            // Redo restores the single op first, then the whole group in one step.
+            h.Redo();
+            Assert.Equal(new[] { 1 }, Sorted(placed));
+            h.Redo();
+            Assert.Equal(new[] { 1, 10, 11, 12 }, Sorted(placed));
+        }
+
+        private static int[] Sorted(HashSet<int> s)
+        {
+            var a = new List<int>(s);
+            a.Sort();
+            return a.ToArray();
+        }
     }
 }

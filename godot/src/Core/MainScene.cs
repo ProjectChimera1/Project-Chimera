@@ -419,6 +419,8 @@ namespace ProjectChimera.Core
                 new ScenarioLoadPhase(_ctx),
                 new RegionToolPhase(_ctx),   // Story 6.4 — after ScenarioLoad so _ctx.Scenario exists to mutate
                 new PathabilityToolPhase(_ctx), // Story 6.5 — after ScenarioLoad so _ctx.Scenario + _ctx.Pathability exist
+                new CameraToolPhase(_ctx),   // Story 6.6 — after PathabilityTool; shares _ctx.Placer.History
+                new WaterToolPhase(_ctx),    // Story 6.6 — after CameraTool; shares _ctx.Placer.History
                 new FactionVisualsPhase(_ctx),
                 new FlowFieldInitPhase(_ctx),
                 new WinConditionPhase(_ctx),
@@ -441,6 +443,13 @@ namespace ProjectChimera.Core
                                               // panels every earlier phase has already constructed
             };
             new ScenePhaseRunner(phases).Run();
+
+            // Story 6.6 — the prop renderer (one MultiMesh per distinct prop mesh) reads the live scenario each frame.
+            // Created AFTER the phase runner so ScenarioLoad has populated _ctx.Scenario; it late-binds via the getter
+            // so it survives the F5 Edit→Play re-apply. Not a phase (no cross-phase dependency to sequence).
+            var propRenderer = new UI.PropRenderer { Name = "PropRenderer" };
+            AddChild(propRenderer);
+            propRenderer.Initialize(() => _ctx.Scenario);
 
             // Compute scenario hash now that both scenario and lobby are ready.
             // Sent with the Ready packet so peers can detect map mismatches before starting.
@@ -925,6 +934,51 @@ namespace ProjectChimera.Core
                         return null;
                     }
                     scen.ResourceNodes = RemoveByIdentity(scen.ResourceNodes, match, out _);
+                    return match;
+                }
+            }
+            return null;
+        }
+
+        /// <summary>Story 6.6 — prop sync callback fired by <see cref="EntityPlacer"/>. Props are scenario-owned (no
+        /// live store), so this is the sole writer of <c>ScenarioData.Props</c>. Matched by position on RemoveMatch.
+        /// The <c>scale</c> is stored as null when 1 (the omit-when-default default). Rotation/scale/non-blocking props
+        /// never touch sim state or either checksum; only a blocking prop's footprint reaches the load-time grid.</summary>
+        internal object? SyncProp(EntityPlacer.ScenarioSyncOp op, object? handle,
+                                  string propId, Vector3 pos, float rot, float scale, bool blocks)
+        {
+            var scen = _ctx.Scenario;
+            if (scen == null) return null;
+            switch (op)
+            {
+                case EntityPlacer.ScenarioSyncOp.Add:
+                {
+                    var entry = new ScenarioProp
+                    {
+                        PropId = propId, X = pos.X, Z = pos.Z, Rot = rot,
+                        Scale = Mathf.IsEqualApprox(scale, 1f) ? (float?)null : scale,
+                        BlocksPathing = blocks,
+                    };
+                    scen.Props = AppendEntry(scen.Props, entry);
+                    return entry;
+                }
+                case EntityPlacer.ScenarioSyncOp.ReAdd:
+                    if (handle is ScenarioProp p) scen.Props = AppendEntry(scen.Props, p);
+                    return handle;
+                case EntityPlacer.ScenarioSyncOp.RemoveHandle:
+                    scen.Props = RemoveByIdentity(scen.Props, handle as ScenarioProp, out _);
+                    return null;
+                case EntityPlacer.ScenarioSyncOp.RemoveMatch:
+                {
+                    ScenarioProp? match = null;
+                    foreach (var e in scen.Props ?? Array.Empty<ScenarioProp>())
+                        if (PosMatch(e.X, e.Z, pos)) { match = e; break; }
+                    if (match == null)
+                    {
+                        GD.PrintErr($"[MainScene] Prop sync: no ScenarioData.Props entry matched a delete at ({pos.X:F1},{pos.Z:F1}).");
+                        return null;
+                    }
+                    scen.Props = RemoveByIdentity(scen.Props, match, out _);
                     return match;
                 }
             }

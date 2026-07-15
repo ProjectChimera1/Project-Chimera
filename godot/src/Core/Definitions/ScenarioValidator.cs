@@ -104,16 +104,84 @@ namespace ProjectChimera.Core.Definitions
             // (new bool[_triggers.Length]); reject it located, like the four collections above.
             if (m.Triggers is null)      return ValidationResult.Fail("scenario.triggers is null.", validated);
 
-            // ── Story 6.5: decode the authored PAINTED pathability layer ONCE (null/all-clear ⇒ no grid ⇒ every
-            //    position check below is a no-op, so a flat/legacy map's pass path is unchanged). Only the PAINTED
-            //    cells are validated here — slope-DERIVED cells depend on the terrain heightmap, which isn't available
-            //    at this Godot-free pre-tick gate; they are recomputed at load and never carry a start/spawn (the
-            //    editor overlay lets the author see and avoid them). Positions resolve through the SAME 128²/2-unit
-            //    FlowField.WorldToCell mapping the sim enforces, so validator↔sim agree on cell identity. ──
-            PathabilityGrid? painted = null;
-            if (!string.IsNullOrEmpty(m.PathabilityBlocked))
+            // ── Story 6.6: structurally validate props / cameras / water BEFORE decoding the blocked union (their
+            //    coords quantize into the footprint mask below, so a non-finite/out-of-range one must fail first) and
+            //    before any position check. NULL collections (every existing scenario) ⇒ nothing to validate ⇒ the
+            //    pass path is unchanged. First-fail located error, mirroring the buildings/units/regions loops. ──
+            ScenarioProp[] props = m.Props ?? Array.Empty<ScenarioProp>();
+            for (int i = 0; i < props.Length; i++)
             {
-                var g = new PathabilityGrid(PathabilityGrid.FromBase64(m.PathabilityBlocked));
+                ScenarioProp p = props[i];
+                if (p is null) return ValidationResult.Fail($"scenario.props[{i}] is null.", validated);
+                // x/z are hash-folded (the footprint cell) — gate finite + in the 16.16 range + within map bounds.
+                string? pe = CheckCoord($"scenario.props[{i}].x", p.X, bounds)
+                          ?? CheckCoord($"scenario.props[{i}].z", p.Z, bounds);
+                if (pe != null) return ValidationResult.Fail(pe, validated);
+                if (!Finite(p.Rot))
+                    return ValidationResult.Fail($"scenario.props[{i}].rot={p.Rot} must be finite.", validated);
+                if (p.Scale is float sc && (!Finite(sc) || sc <= 0f))
+                    return ValidationResult.Fail($"scenario.props[{i}].scale={sc} must be finite and > 0.", validated);
+            }
+
+            var declaredCameras = new HashSet<string>(StringComparer.Ordinal);
+            ScenarioCamera[] cameras = m.Cameras ?? Array.Empty<ScenarioCamera>();
+            for (int i = 0; i < cameras.Length; i++)
+            {
+                ScenarioCamera cam = cameras[i];
+                if (cam is null) return ValidationResult.Fail($"scenario.cameras[{i}] is null.", validated);
+                if (string.IsNullOrEmpty(cam.Name))
+                    return ValidationResult.Fail($"scenario.cameras[{i}].name must be a non-empty name.", validated);
+                if (!declaredCameras.Add(cam.Name))
+                    return ValidationResult.Fail($"scenario.cameras[{i}].name='{cam.Name}' is a duplicate.", validated);
+                // Cameras never fold into any hash, but a non-finite position/target/fov would still break the in-editor
+                // preview and the MoveCamera action, so gate well-formedness fail-closed.
+                if (!Finite(cam.X) || !Finite(cam.Y) || !Finite(cam.Z)
+                    || !Finite(cam.TargetX) || !Finite(cam.TargetY) || !Finite(cam.TargetZ))
+                    return ValidationResult.Fail($"scenario.cameras[{i}] has a non-finite position/target coordinate.", validated);
+                if (!Finite(cam.Fov) || cam.Fov <= 0f || cam.Fov >= 180f)
+                    return ValidationResult.Fail($"scenario.cameras[{i}].fov={cam.Fov} must be finite and in (0, 180).", validated);
+            }
+
+            ScenarioWater[] water = m.Water ?? Array.Empty<ScenarioWater>();
+            for (int i = 0; i < water.Length; i++)
+            {
+                ScenarioWater w = water[i];
+                if (w is null) return ValidationResult.Fail($"scenario.water[{i}] is null.", validated);
+                // x/z (min corner) and x+w / z+h (max corner) are hash-folded (the footprint rect) — every corner must
+                // be finite, in the 16.16 range, and within map bounds; extents must be positive (a well-formed rect).
+                string? we = CheckCoord($"scenario.water[{i}].x", w.X, bounds)
+                          ?? CheckCoord($"scenario.water[{i}].z", w.Z, bounds);
+                if (we != null) return ValidationResult.Fail(we, validated);
+                if (!InRange(w.W) || w.W <= 0f)
+                    return ValidationResult.Fail($"scenario.water[{i}].w={w.W} must be finite and > 0.", validated);
+                if (!InRange(w.H) || w.H <= 0f)
+                    return ValidationResult.Fail($"scenario.water[{i}].h={w.H} must be finite and > 0.", validated);
+                string? wce = CheckCoord($"scenario.water[{i}] max_x", w.X + w.W, bounds)
+                           ?? CheckCoord($"scenario.water[{i}] max_z", w.Z + w.H, bounds);
+                if (wce != null) return ValidationResult.Fail(wce, validated);
+                if (!Finite(w.Y))
+                    return ValidationResult.Fail($"scenario.water[{i}].y={w.Y} must be finite.", validated);
+            }
+
+            // ── Story 6.5 / 6.6: decode the authored blocked-cell UNION ONCE (null/all-clear ⇒ no grid ⇒ every
+            //    position check below is a no-op, so a flat/legacy map's pass path is unchanged). The union is the
+            //    PAINTED bitset OR'd with each blocking-prop's single-cell footprint and each water volume's rect
+            //    footprint — the SAME PathabilityGrid.StampPropInto/StampWaterInto derivation the load-time grid and
+            //    the CanonicalModelHash fold use, so validator↔sim↔hash agree on cell identity. Slope-DERIVED cells
+            //    depend on the terrain heightmap (unavailable at this Godot-free gate); they are recomputed at load and
+            //    never carry a start/spawn (the editor overlay lets the author see and avoid them). Positions resolve
+            //    through the SAME 128²/2-unit FlowField.WorldToCell mapping the sim enforces. ──
+            PathabilityGrid? painted = null;
+            {
+                // Story 6.6 (review V1): OR the PAINTED bitset with the ONE shared blocking-prop/water footprint
+                // derivation (m.Props/m.Water — the exact input the hash folds) so validator ↔ hash ↔ runtime grid
+                // provably agree on the blocked cell set. No hand-copied stamp loop can drift here anymore.
+                bool[] mask = PathabilityGrid.FromBase64(m.PathabilityBlocked);
+                bool[]? footprint = PathabilityGrid.BuildBlockingFootprint(m.Props, m.Water);
+                if (footprint != null)
+                    for (int i = 0; i < mask.Length; i++)
+                        if (footprint[i]) mask[i] = true;
+                var g = new PathabilityGrid(mask);
                 if (g.AnyBlocked) painted = g;
             }
 
@@ -546,7 +614,7 @@ namespace ProjectChimera.Core.Definitions
         {
             if (painted == null) return null;
             if (painted.IsBlocked(Fixed.FromFloat(x), Fixed.FromFloat(z)))
-                return $"{path} {what} ({x}, {z}) is on a painted impassable (blocked) cell — no unit can occupy it.";
+                return $"{path} {what} ({x}, {z}) is on an impassable (blocked) cell — painted, or a blocking prop / water footprint — no unit can occupy it.";
             return null;
         }
 

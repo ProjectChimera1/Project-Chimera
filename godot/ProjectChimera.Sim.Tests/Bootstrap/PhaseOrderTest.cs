@@ -23,7 +23,8 @@ namespace ProjectChimera.Sim.Tests.Bootstrap
         private static readonly string[] ExpectedOrder =
         {
             "Settings", "Audio", "GameState", "Lighting", "Terrain", "Navigation", "Camera",
-            "Rendering", "Hud", "Minimap", "TerrainBrush", "ScenarioLoad", "RegionTool", "PathabilityTool", "FactionVisuals",
+            "Rendering", "Hud", "Minimap", "TerrainBrush", "ScenarioLoad", "RegionTool", "PathabilityTool",
+            "CameraTool", "WaterTool", "FactionVisuals",
             "FlowFieldInit", "WinConditionUi", "GameOverOverlay", "Multiplayer", "ReplayStatus",
             "ContentBrowser", "MainMenu", "TriggerEditor", "MapGenerator", "AbilityEditor",
             "UnitCard", "ItemCard", "BuildingCard", "TechTree", "PersistenceManifest", "HeroPicker",

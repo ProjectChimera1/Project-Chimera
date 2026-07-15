@@ -497,6 +497,9 @@ namespace ProjectChimera.Sim.Tests.Builder
         // Re-recorded again 2026-07-14 for AlgoVersion 6 (Story 6.5: the authored pathability layer + slope config
         // folded — the alpha model paints nothing and leaves slope-auto-block off, so the new fields fold as
         // 0/0/0, but the AlgoVersion 5→6 bump alone moves every hash, same as every prior bump above).
-        private const ulong ExpectedCanonicalHash = 16729097417043282901UL;
+        // Re-recorded again 2026-07-14 for AlgoVersion 7 (Story 6.6: the blocking-prop + water footprint digest
+        // folded — the alpha model has no props/water, so the new field folds as 0, but the AlgoVersion 6→7 bump
+        // alone moves every hash, same as every prior bump above).
+        private const ulong ExpectedCanonicalHash = 8550496098828406378UL;
     }
 }

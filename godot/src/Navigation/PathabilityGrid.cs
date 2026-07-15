@@ -1,6 +1,7 @@
 #nullable enable
 using System;
 using ProjectChimera.Core;
+using ProjectChimera.Core.Definitions;
 
 namespace ProjectChimera.Navigation
 {
@@ -180,13 +181,15 @@ namespace ProjectChimera.Navigation
 
         /// <summary>
         /// Story 6.5 — resolve the load-time union grid from the authored PAINTED layer plus optional slope-derived
-        /// cells. Decodes <paramref name="paintedBase64"/>, and when <paramref name="slopeAutoBlock"/> is on with a
-        /// positive <paramref name="slopeThreshold"/> and an <paramref name="elev"/> grid, ORs slope-derived steep
-        /// cells in. Returns null when NOTHING is blocked (the flat/legacy common case — a null grid keeps every
-        /// downstream consumer a byte-identical no-op). Pure / Godot-free so the decode→derive→union decision is
-        /// Tier-1 testable independent of the Godot load phase, which only fans this result out to its sim sinks.
+        /// cells and (Story 6.6) an optional pre-built <paramref name="extraBlocked"/> mask (blocking-prop + water
+        /// footprint cells). Decodes <paramref name="paintedBase64"/>, when <paramref name="slopeAutoBlock"/> is on
+        /// with a positive <paramref name="slopeThreshold"/> and an <paramref name="elev"/> grid ORs slope-derived
+        /// steep cells in, then ORs <paramref name="extraBlocked"/> in. Returns null when NOTHING is blocked (the
+        /// flat/legacy common case — a null grid keeps every downstream consumer a byte-identical no-op). Pure /
+        /// Godot-free so the decode→derive→union decision is Tier-1 testable independent of the Godot load phase,
+        /// which only fans this result out to its sim sinks.
         /// </summary>
-        public static PathabilityGrid? Resolve(string? paintedBase64, bool slopeAutoBlock, Fixed slopeThreshold, ElevationGrid? elev)
+        public static PathabilityGrid? Resolve(string? paintedBase64, bool slopeAutoBlock, Fixed slopeThreshold, ElevationGrid? elev, bool[]? extraBlocked = null)
         {
             bool[] mask = FromBase64(paintedBase64);
             bool anyPainted = false;
@@ -196,7 +199,83 @@ namespace ProjectChimera.Navigation
             if (slopeAutoBlock && elev != null && slopeThreshold.Raw > 0)
                 anyDerived = DeriveSlopeBlockedInto(mask, elev, slopeThreshold);
 
-            return (anyPainted || anyDerived) ? new PathabilityGrid(mask) : null;
+            // Story 6.6: OR the blocking-prop + water footprint mask into the SAME union so its cells route the flow
+            // field, block the sim tick, and fold into the hash identically to painted cells. A moved/deleted prop or
+            // removed water volume un-stamps for free because this whole grid is rebuilt from source every load.
+            bool anyExtra = false;
+            if (extraBlocked != null)
+            {
+                int n = Math.Min(extraBlocked.Length, mask.Length);
+                for (int i = 0; i < n; i++) if (extraBlocked[i]) { mask[i] = true; anyExtra = true; }
+            }
+
+            return (anyPainted || anyDerived || anyExtra) ? new PathabilityGrid(mask) : null;
+        }
+
+        // ── Story 6.6: blocking-prop / water footprint derivation (the ONE Godot-free derivation shared by the
+        //    load-time union, the CanonicalModelHash fold, and the ScenarioValidator blocked-cell check) ──────────
+
+        /// <summary>
+        /// Story 6.6 — stamp a blocking prop's single-cell footprint (the cell containing world (<paramref name="x"/>,
+        /// <paramref name="z"/>) via <see cref="FlowField.WorldToCell"/>) into <paramref name="mask"/>. Clamped integer
+        /// cell — an out-of-grid coordinate clamps to the nearest edge cell, never throws.
+        /// </summary>
+        public static void StampPropInto(bool[] mask, Fixed x, Fixed z)
+        {
+            if (mask == null || mask.Length != CELL_COUNT) return;
+            FlowField.WorldToCell(x, z, out int col, out int row);
+            mask[row * GRID_SIZE + col] = true;
+        }
+
+        /// <summary>
+        /// Story 6.6 — stamp a water volume's rectangular footprint into <paramref name="mask"/>: every cell whose
+        /// centre-domain overlaps the axis-aligned rect [<paramref name="x"/>, x+<paramref name="w"/>] ×
+        /// [<paramref name="z"/>, z+<paramref name="h"/>], resolved through <see cref="FlowField.WorldToCell"/> (the
+        /// SAME 128²/2-unit/±128 mapping the sim enforces). Both corners clamp into the grid — a degenerate/negative
+        /// extent stamps at least the origin cell, never throws.
+        /// </summary>
+        public static void StampWaterInto(bool[] mask, Fixed x, Fixed z, Fixed w, Fixed h)
+        {
+            if (mask == null || mask.Length != CELL_COUNT) return;
+            Fixed maxX = w.Raw > 0 ? x + w : x;
+            Fixed maxZ = h.Raw > 0 ? z + h : z;
+            FlowField.WorldToCell(x, z, out int c0, out int r0);
+            FlowField.WorldToCell(maxX, maxZ, out int c1, out int r1);
+            if (c1 < c0) { (c0, c1) = (c1, c0); }
+            if (r1 < r0) { (r0, r1) = (r1, r0); }
+            for (int row = r0; row <= r1; row++)
+                for (int col = c0; col <= c1; col++)
+                    mask[row * GRID_SIZE + col] = true;
+        }
+
+        /// <summary>
+        /// Story 6.6 (review V1) — THE single Godot-free derivation of the blocking-prop + water footprint mask (or
+        /// <c>null</c> when nothing blocks). Every <c>blocks_pathing</c> prop stamps one cell and every water volume
+        /// stamps its rect, both through <see cref="StampPropInto"/>/<see cref="StampWaterInto"/>. All three consumers
+        /// call THIS method so the runtime <see cref="PathabilityGrid"/> the sim routes on, the
+        /// <see cref="ProjectChimera.Core.Definitions.CanonicalModelHash"/> handshake fold, and the
+        /// <see cref="ProjectChimera.Core.Definitions.ScenarioValidator"/> fail-closed check can never disagree on
+        /// which cells are blocked (the pre-fix bug: three hand-copies of this loop that could silently drift, shipping
+        /// a wrong-but-deterministic map). Order-independent (a mask union); iterates props then water.
+        /// </summary>
+        public static bool[]? BuildBlockingFootprint(ScenarioProp[]? props, ScenarioWater[]? water)
+        {
+            bool[]? mask = null;
+            if (props != null)
+                foreach (ScenarioProp p in props)
+                    if (p is { BlocksPathing: true })
+                    {
+                        mask ??= new bool[CELL_COUNT];
+                        StampPropInto(mask, Fixed.FromFloat(p.X), Fixed.FromFloat(p.Z));
+                    }
+            if (water != null)
+                foreach (ScenarioWater w in water)
+                    if (w != null)
+                    {
+                        mask ??= new bool[CELL_COUNT];
+                        StampWaterInto(mask, Fixed.FromFloat(w.X), Fixed.FromFloat(w.Z), Fixed.FromFloat(w.W), Fixed.FromFloat(w.H));
+                    }
+            return mask;
         }
 
         private static Fixed AbsFixed(Fixed v) => v.Raw < 0 ? -v : v;

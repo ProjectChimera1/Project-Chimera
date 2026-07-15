@@ -22,11 +22,11 @@ namespace ProjectChimera.Sim.Tests.Validation
         };
 
         [Fact]
-        public void AlgoVersions_Unchanged() // 6 for canonical (Story 6.5 pathability), 2 for start-state
+        public void AlgoVersions_Unchanged() // 7 for canonical (Story 6.6 blocking prop/water), 2 for start-state
         {
-            // Story 6.5 bumped CanonicalModelHash 5→6 to fold the pathability layer — a SEPARATE concern from
-            // Regions, which remain EXCLUDED (the with/without-regions equality below still holds at v6).
-            Assert.Equal(6, CanonicalModelHash.AlgoVersion);
+            // Story 6.6 bumped CanonicalModelHash 6→7 to fold the blocking-prop + water footprints — a SEPARATE
+            // concern from Regions, which remain EXCLUDED (the with/without-regions equality below still holds at v7).
+            Assert.Equal(7, CanonicalModelHash.AlgoVersion);
             Assert.Equal(2, StartStateHash.AlgoVersion);
         }
 

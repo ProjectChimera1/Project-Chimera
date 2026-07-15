@@ -245,8 +245,15 @@ namespace ProjectChimera.Core.Bootstrap
                 //    never touches Fixed.FromFloat; the derivation itself is pure Fixed.
                 bool slopeOn = s != null && s.SlopeAutoBlock && s.SlopeBlockThreshold > 0f;
                 Fixed threshold = slopeOn ? Fixed.FromFloat(s!.SlopeBlockThreshold) : Fixed.Zero;
+
+                // Story 6.6: build the blocking-prop + water footprint mask (the SAME StampPropInto/StampWaterInto
+                // derivation the hash + validator use) and hand it to Resolve as a third blocked source. A blocking
+                // prop stamps one cell; a water volume stamps its rect. Null when nothing blocks so the flat path is
+                // untouched. Rebuilt from source every load ⇒ a moved/deleted prop or removed water un-stamps for free.
+                bool[]? footprint = BuildBlockingFootprintMask(s);
+
                 Navigation.PathabilityGrid? grid = Navigation.PathabilityGrid.Resolve(
-                    s?.PathabilityBlocked, s?.SlopeAutoBlock ?? false, threshold, _lastElevationGrid);
+                    s?.PathabilityBlocked, s?.SlopeAutoBlock ?? false, threshold, _lastElevationGrid, footprint);
 
                 // 4) Inject into the sim sinks: the applier threads it into EntityWorld at Apply; the FlowFieldSystem
                 //    ORs the static mask into its obstacle map on the next RebuildObstacles (FlowFieldInit phase). The
@@ -268,6 +275,16 @@ namespace ProjectChimera.Core.Bootstrap
                 GD.PrintErr($"[ScenarioLoad] Pathability grid build failed ({ex.Message}) — map fully passable.");
             }
         }
+
+        /// <summary>
+        /// Story 6.6 — build the blocking-prop + water footprint mask (or null when none block), using the SAME
+        /// Godot-free <c>PathabilityGrid.StampPropInto</c>/<c>StampWaterInto</c> derivation the CanonicalModelHash fold
+        /// and ScenarioValidator use, so all three agree on which cells a blocking prop / water volume occupies.
+        /// </summary>
+        private static bool[]? BuildBlockingFootprintMask(ScenarioData? s)
+            // Story 6.6 (review V1): the ONE shared derivation — load, hash, and validator all route through it so the
+            // runtime grid can never block a different cell set than the handshake hash / validator certified.
+            => Navigation.PathabilityGrid.BuildBlockingFootprint(s?.Props, s?.Water);
 
         /// <summary>
         /// Story 1.7 shadow-mode gate: run the model through the validator and return its result. On failure, log

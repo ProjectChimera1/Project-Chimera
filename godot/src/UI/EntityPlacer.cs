@@ -25,7 +25,7 @@ namespace ProjectChimera.UI
     /// </summary>
     public partial class EntityPlacer : Node
     {
-        public enum PlacementMode { P1Unit, P2Unit, ResourceNode, Building, StartPos, Item }
+        public enum PlacementMode { P1Unit, P2Unit, ResourceNode, Building, StartPos, Item, Prop, Select }
 
         /// <summary>
         /// Operation requested of a ScenarioData-sync callback (Story 6.1). One callback per entity kind
@@ -60,8 +60,15 @@ namespace ProjectChimera.UI
 
         // Modes displayed left-to-right in the palette (order must match _modeBtns array)
         private static readonly PlacementMode[] MODE_ORDER =
-            { PlacementMode.P1Unit, PlacementMode.P2Unit, PlacementMode.ResourceNode, PlacementMode.Building, PlacementMode.StartPos, PlacementMode.Item };
-        private static readonly string[] MODE_LABELS = { "P1 Unit", "P2 Unit", "Ore Node", "Building", "Start Pos", "Item" };
+            { PlacementMode.P1Unit, PlacementMode.P2Unit, PlacementMode.ResourceNode, PlacementMode.Building, PlacementMode.StartPos, PlacementMode.Item, PlacementMode.Prop, PlacementMode.Select };
+        private static readonly string[] MODE_LABELS = { "P1 Unit", "P2 Unit", "Ore Node", "Building", "Start Pos", "Item", "Prop", "Select" };
+
+        // Story 6.6 — the built-in prop library (ids the PropRenderer maps to meshes). No external prop-asset pipeline
+        // yet; a small decorative vocabulary the palette cycles.
+        private static readonly string[] PROP_LIBRARY = { "tree", "rock", "crystal", "bush" };
+
+        // Story 6.6 — rotation step (radians) applied by the R key to the armed placement's yaw.
+        private const float ROT_STEP = Mathf.Pi / 4f; // 45°
 
         // ── Dependencies ──────────────────────────────────────────────────────
         private RtsCameraController _camCtrl   = null!;
@@ -91,6 +98,17 @@ namespace ProjectChimera.UI
         private System.Func<ScenarioSyncOp, object?, string, Faction, Vector3, object?>?             _onUnitSync;
         private System.Func<ScenarioSyncOp, object?, Vector3, float, float, int, object?>?           _onResourceNodeSync;
 
+        /// <summary>Story 6.6 — prop sync callback (place/delete + undo/redo legs). Signature:
+        /// (op, handle, prop_id, pos, rot, scale, blocks_pathing) → opaque handle (the affected <c>ScenarioProp</c>).
+        /// MainScene owns the <c>ScenarioData.Props</c> mutation (mirroring the building/unit/node syncs), so
+        /// EntityPlacer never mutates the scenario array directly.</summary>
+        private System.Func<ScenarioSyncOp, object?, string, Vector3, float, float, bool, object?>? _onPropSync;
+
+        /// <summary>Story 6.6 — narrow READ seam onto the live scenario (props only), for the prop delete scan, the
+        /// marquee multi-select, and prop rotation/group moves. Reading is late-bound (the scenario loads after this
+        /// placer is constructed). Mutations still route through the sync callbacks / history closures.</summary>
+        private System.Func<ScenarioData?>? _scenarioGetter;
+
         // ── Placement state ───────────────────────────────────────────────────
         private PlacementMode _mode         = PlacementMode.P1Unit;
 
@@ -110,6 +128,51 @@ namespace ProjectChimera.UI
         // Resource node sub-state (configurable supply and gather rate)
         private float _nodeSupply = 500f;
         private float _nodeRate   = 5f;
+
+        // ── Story 6.6: prop sub-state ─────────────────────────────────────────
+        private int   _propIndex   = 0;      // index into PROP_LIBRARY
+        private float _propScale    = 1f;
+        private bool  _propBlocks    = false;
+
+        // ── Story 6.6: shared armed-placement yaw (R key). Applied to the next placed prop/building/unit/node Rot. ─
+        private float _placementRot = 0f;
+
+        // ── Story 6.6: multi-select (marquee) state ───────────────────────────
+        private readonly List<Selected> _selection = new();
+        private bool    _marqueeActive = false;   // left-drag box in progress (Select mode)
+        private bool    _groupMoving   = false;   // dragging the selection to move it
+        private Vector2 _marqueeStart, _marqueeCurrent;
+        private Vector3 _groupMoveStartWorld;
+        private readonly List<PropDescriptor> _clipboard = new();
+        private Vector3 _clipboardAnchor;         // the cursor world pos when the clipboard was captured
+        private Control? _marqueeRect;            // screen-space selection rectangle overlay
+
+        /// <summary>A single member of the multi-select set — one live entity (unit/building/node) or a scenario prop.</summary>
+        private readonly struct Selected
+        {
+            public enum Kind { Unit, Building, Node, Prop }
+            public readonly Kind Category;
+            public readonly int LiveId;            // EntityWorld / store slot (Unit/Building/Node)
+            public readonly object? PropHandle;    // ScenarioProp (Prop)
+            public Selected(Kind cat, int liveId, object? prop) { Category = cat; LiveId = liveId; PropHandle = prop; }
+        }
+
+        /// <summary>A copy/paste descriptor capturing enough to re-create a placement at a new anchor.</summary>
+        private readonly struct PropDescriptor
+        {
+            public readonly Selected.Kind Category;
+            public readonly Vector3 Pos;           // original world position (relative offset preserved on paste)
+            public readonly string  Id;            // prop_id / unit_id ("" for node), building type name
+            public readonly Faction Faction;
+            public readonly float   Rot;
+            public readonly float   Scale;
+            public readonly bool    Blocks;
+            public readonly float   Supply, Rate;
+            public readonly int     MaxGatherers;
+            public PropDescriptor(Selected.Kind cat, Vector3 pos, string id, Faction faction, float rot, float scale,
+                                  bool blocks, float supply, float rate, int maxGatherers)
+            { Category = cat; Pos = pos; Id = id; Faction = faction; Rot = rot; Scale = scale; Blocks = blocks; Supply = supply; Rate = rate; MaxGatherers = maxGatherers; }
+        }
 
         // Undo/redo history
         private readonly EditorHistory _history = new();
@@ -152,6 +215,8 @@ namespace ProjectChimera.UI
             PlacementMode.ResourceNode => "Ore Node",
             PlacementMode.Building     => $"Building [{_buildingType}]",
             PlacementMode.StartPos     => $"Start Pos [P{_startSlot + 1}]",
+            PlacementMode.Prop         => $"Prop [{PROP_LIBRARY[_propIndex % PROP_LIBRARY.Length]}]",
+            PlacementMode.Select       => $"Select [{_selection.Count}]",
             _                          => "?"
         };
 
@@ -175,7 +240,9 @@ namespace ProjectChimera.UI
                                ItemStore? items = null, ItemRegistry? itemRegistry = null,
                                System.Func<ScenarioSyncOp, object?, BuildingType, Faction, Vector3, bool, object?>? onBuildingSync = null,
                                System.Func<ScenarioSyncOp, object?, string, Faction, Vector3, object?>? onUnitSync = null,
-                               System.Func<ScenarioSyncOp, object?, Vector3, float, float, int, object?>? onResourceNodeSync = null)
+                               System.Func<ScenarioSyncOp, object?, Vector3, float, float, int, object?>? onResourceNodeSync = null,
+                               System.Func<ScenarioSyncOp, object?, string, Vector3, float, float, bool, object?>? onPropSync = null,
+                               System.Func<ScenarioData?>? scenarioGetter = null)
         {
             _camCtrl            = camCtrl;
             _world              = world;
@@ -190,9 +257,12 @@ namespace ProjectChimera.UI
             _onBuildingSync     = onBuildingSync;      // Story 6.1
             _onUnitSync         = onUnitSync;          // Story 6.1
             _onResourceNodeSync = onResourceNodeSync;  // Story 6.1
+            _onPropSync         = onPropSync;          // Story 6.6
+            _scenarioGetter     = scenarioGetter;      // Story 6.6
 
             CreateGhostMesh();
             BuildPaletteUi();
+            BuildSelectionOverlay();
         }
 
         /// <summary>
@@ -217,6 +287,7 @@ namespace ProjectChimera.UI
                 _paletteCanvas.Visible = edit;
 
             UpdateGhostPosition(edit);
+            UpdateSelectionOverlay(edit);
         }
 
         // ── Input ─────────────────────────────────────────────────────────────
@@ -239,7 +310,37 @@ namespace ProjectChimera.UI
                 return;
             }
 
+            // Story 6.6: Select-mode marquee multi-select + group-move (left mouse). Handled in _Input (which fires
+            // before _UnhandledInput's placement) so a Select-mode drag never spawns an entity.
+            if (editMode && _mode == PlacementMode.Select && HandleSelectMouse(@event)) return;
+
             if (@event is not InputEventKey key || !key.Pressed || key.Echo) return;
+
+            // Story 6.6: R rotates the armed placement's yaw by a step (visual-only; excluded from every checksum) and
+            // re-rotates the props in the current selection. The tooltip states rotation is visual-only.
+            if (editMode && key.Keycode == Key.R && !key.CtrlPressed)
+            {
+                _placementRot = Mathf.Wrap(_placementRot + ROT_STEP, 0f, Mathf.Tau);
+                if (_ghost != null) _ghost.RotateY(ROT_STEP); // spin the ghost preview
+                RotateSelectedProps(ROT_STEP);
+                GD.Print($"[EntityPlacer] Placement yaw: {Mathf.RadToDeg(_placementRot):F0}° (visual-only).");
+                GetViewport().SetInputAsHandled();
+                return;
+            }
+
+            // Story 6.6: Ctrl+C / Ctrl+V — copy the selection, paste at the cursor with relative offsets preserved.
+            if (editMode && key.CtrlPressed && key.Keycode == Key.C)
+            {
+                CopySelection();
+                GetViewport().SetInputAsHandled();
+                return;
+            }
+            if (editMode && key.CtrlPressed && key.Keycode == Key.V)
+            {
+                PasteClipboard(_lastCursorWorld);
+                GetViewport().SetInputAsHandled();
+                return;
+            }
 
             // UX-DR56 (Story 6.1): Esc cancels an active placement mode. Gated on _placementActive so that when
             // nothing is armed the event is NOT consumed here — it falls through to MainScene._UnhandledInput's
@@ -271,10 +372,12 @@ namespace ProjectChimera.UI
                 }
             }
 
-            // Delete hovered entity
+            // Delete: in Select mode with a selection, delete the whole group as ONE undo step; otherwise delete the
+            // single hovered entity.
             if (editMode && key.Keycode == Key.Delete)
             {
-                TryDeleteAt(_lastCursorWorld);
+                if (_mode == PlacementMode.Select && _selection.Count > 0) DeleteSelection();
+                else TryDeleteAt(_lastCursorWorld);
                 GetViewport().SetInputAsHandled();
                 return;
             }
@@ -327,6 +430,8 @@ namespace ProjectChimera.UI
             {
                 // UX-DR56 (Story 6.1): a cancelled (disarmed) placement mode ignores left-clicks until re-armed.
                 if (!_placementActive) return;
+                // Story 6.6: Select mode never places — its left-drag is the marquee (handled in _Input).
+                if (_mode == PlacementMode.Select) return;
                 TrySpawnAt(mb.Position, mb.ShiftPressed);
             }
         }
@@ -365,6 +470,7 @@ namespace ProjectChimera.UI
                 PlacementMode.ResourceNode => (Mesh)new SphereMesh { Radius = 0.8f, Height = 1.6f },
                 PlacementMode.Building     => new BoxMesh { Size = new Vector3(4f, 2f, 4f) },
                 PlacementMode.StartPos     => new BoxMesh { Size = new Vector3(0.15f, 3f, 0.15f) }, // flag pole
+                PlacementMode.Prop         => new BoxMesh { Size = new Vector3(1f, 1f, 1f) },
                 _                          => new BoxMesh { Size = new Vector3(0.6f, 1.2f, 0.6f) },
             };
 
@@ -378,6 +484,9 @@ namespace ProjectChimera.UI
                     PlacementMode.StartPos     => _startSlot == 0
                                                     ? new Color(0.2f, 0.5f, 1f, 0.5f)
                                                     : new Color(1f, 0.3f, 0.2f, 0.5f),
+                    PlacementMode.Prop         => _propBlocks
+                                                    ? new Color(1f, 0.45f, 0.2f, 0.45f)   // blocking prop = orange
+                                                    : new Color(0.5f, 0.85f, 0.4f, 0.40f), // cosmetic prop = green
                     _                          => new Color(0.2f, 0.50f, 1f,   0.40f),
                 };
             }
@@ -412,14 +521,17 @@ namespace ProjectChimera.UI
                 PlacementMode.Building     => 1.0f,
                 PlacementMode.ResourceNode => 0.8f,
                 PlacementMode.StartPos     => 1.5f, // flag pole: half of 3u height
+                PlacementMode.Prop         => 0.5f,
                 _                          => 0.6f,
             };
 
             _lastCursorWorld = new Vector3(x, 0f, z);
             _ghost.Position  = new Vector3(x, yOff, z);
+            _ghost.Scale     = _mode == PlacementMode.Prop ? new Vector3(_propScale, _propScale, _propScale) : Vector3.One;
             // UX-DR56 (Story 6.1): keep tracking the cursor (so Delete still targets the hover), but only SHOW the
             // ghost while a placement mode is armed — a right-click/Esc cancel hides it until a mode is re-selected.
-            _ghost.Visible   = _placementActive;
+            // Story 6.6: Select mode has no ghost (it marquees, not places).
+            _ghost.Visible   = _placementActive && _mode != PlacementMode.Select;
         }
 
         // ── Placement arm / cancel (UX-DR56) ──────────────────────────────────
@@ -473,6 +585,11 @@ namespace ProjectChimera.UI
                 case PlacementMode.Item:
                     PlaceItem(fixedPos);
                     break;
+                case PlacementMode.Prop:
+                    PlaceProp(hit);
+                    break;
+                case PlacementMode.Select:
+                    break; // never places (marquee handled in _Input)
                 default:
                     PlaceUnit(fixedPos, shiftHeld);
                     break;
@@ -509,6 +626,7 @@ namespace ProjectChimera.UI
                 string  unitId     = ActiveFactionDef()?.GetUnitByCategory("Worker")?.Id ?? "";
                 object? syncHandle = string.IsNullOrEmpty(unitId) ? null
                     : _onUnitSync?.Invoke(ScenarioSyncOp.Add, null, unitId, faction, wpos);
+                ApplyPlacementRot(syncHandle);
 
                 int[] box = { id };
                 _history.Push(
@@ -538,6 +656,7 @@ namespace ProjectChimera.UI
                 string  unitId     = def?.Id ?? "";
                 object? syncHandle = string.IsNullOrEmpty(unitId) ? null
                     : _onUnitSync?.Invoke(ScenarioSyncOp.Add, null, unitId, faction, wpos);
+                ApplyPlacementRot(syncHandle);
 
                 int[] box = { id };
                 _history.Push(
@@ -662,6 +781,7 @@ namespace ProjectChimera.UI
             float   capturedSupplyF  = _nodeSupply;
             float   capturedRateF    = _nodeRate;
             object? syncHandle       = _onResourceNodeSync?.Invoke(ScenarioSyncOp.Add, null, wpos, capturedSupplyF, capturedRateF, NODE_MAX_GATHERERS);
+            ApplyPlacementRot(syncHandle);
             _history.Push(
                 redo: () =>
                 {
@@ -730,6 +850,7 @@ namespace ProjectChimera.UI
             var      capturedBuildings = _buildings;
 
             object?  syncHandle = _onBuildingSync?.Invoke(ScenarioSyncOp.Add, null, capturedType, capturedFaction, wpos, false);
+            ApplyPlacementRot(syncHandle);
             _history.Push(
                 redo: () =>
                 {
@@ -1122,6 +1243,53 @@ namespace ProjectChimera.UI
                 hint2.AddThemeFontSizeOverride("font_size", 11);
                 _subRow.AddChild(hint2);
             }
+            else if (_mode == PlacementMode.Prop)
+            {
+                // Prop library picker + scale + blocks_pathing + a rotation hint (R rotates; visual-only).
+                var propGroup = new ButtonGroup();
+                int clampedProp = _propIndex % PROP_LIBRARY.Length;
+                _propIndex = clampedProp;
+                for (int i = 0; i < PROP_LIBRARY.Length; i++)
+                {
+                    int capturedIdx = i;
+                    var btn = new Button
+                    {
+                        Text          = PROP_LIBRARY[i],
+                        ToggleMode    = true,
+                        ButtonGroup   = propGroup,
+                        ButtonPressed = (i == clampedProp),
+                    };
+                    btn.AddThemeFontSizeOverride("font_size", 12);
+                    btn.Pressed += () => { _propIndex = capturedIdx; ArmPlacement(); RefreshGhostVisuals(); GD.Print($"[EntityPlacer] Prop: {PROP_LIBRARY[capturedIdx]}"); };
+                    _subRow.AddChild(btn);
+                }
+
+                var scaleLabel = new Label { Text = " Scale:" };
+                scaleLabel.AddThemeFontSizeOverride("font_size", 12);
+                _subRow.AddChild(scaleLabel);
+                var scaleSpin = new SpinBox { MinValue = 0.1, MaxValue = 10, Step = 0.25, Value = _propScale, CustomMinimumSize = new Vector2(70f, 0f) };
+                scaleSpin.ValueChanged += v => _propScale = (float)v;
+                _subRow.AddChild(scaleSpin);
+
+                var blocksBtn = new Button { Text = "Blocks path", ToggleMode = true, ButtonPressed = _propBlocks };
+                blocksBtn.AddThemeFontSizeOverride("font_size", 12);
+                blocksBtn.Toggled += on => { _propBlocks = on; RefreshGhostVisuals(); };
+                _subRow.AddChild(blocksBtn);
+
+                var rotHint = new Label { Text = " [R] rotate (visual only)" };
+                rotHint.AddThemeFontSizeOverride("font_size", 11);
+                _subRow.AddChild(rotHint);
+            }
+            else if (_mode == PlacementMode.Select)
+            {
+                var hint = new Label { Text = "Drag a box to select. Shift adds. Del removes. Ctrl+C/V copy/paste. Drag selection to move." };
+                hint.AddThemeFontSizeOverride("font_size", 11);
+                _subRow.AddChild(hint);
+                var dupBtn = new Button { Text = "Duplicate" };
+                dupBtn.AddThemeFontSizeOverride("font_size", 12);
+                dupBtn.Pressed += DuplicateSelection;
+                _subRow.AddChild(dupBtn);
+            }
             else // ResourceNode
             {
                 var supplyLabel = new Label { Text = "Supply:" };
@@ -1173,6 +1341,19 @@ namespace ProjectChimera.UI
 
         // ── Helpers ───────────────────────────────────────────────────────────
 
+        /// <summary>Story 6.6 — persist the armed placement yaw onto a just-added scenario entry (the sync-Add handle
+        /// IS the ScenarioBuilding/Unit/ResourceNode entry). Rotation is presentation-only and excluded from every
+        /// checksum/hash, so this only affects round-trip + (for props) the visual yaw.</summary>
+        private void ApplyPlacementRot(object? handle)
+        {
+            switch (handle)
+            {
+                case ScenarioBuilding b:     b.Rot = _placementRot; break;
+                case ScenarioUnit u:         u.Rot = _placementRot; break;
+                case ScenarioResourceNode n: n.Rot = _placementRot; break;
+            }
+        }
+
         /// <summary>Returns the faction definition for the currently active placement mode.</summary>
         private FactionDefinition? ActiveFactionDef()
             => _mode == PlacementMode.P2Unit ? _faction2 : _faction;
@@ -1214,6 +1395,11 @@ namespace ProjectChimera.UI
             {
                 int nid = FindNearestNode(worldPos, 2f);
                 if (nid >= 0) { DeleteResourceNode(nid); return; }
+            }
+            // Story 6.6: props (scenario-owned) delete last in the priority order.
+            {
+                object? prop = FindNearestProp(worldPos, 2f);
+                if (prop != null) { DeleteProp(prop); return; }
             }
         }
 
@@ -1381,6 +1567,559 @@ namespace ProjectChimera.UI
                 if (d2 < best) { best = d2; hit = i; }
             }
             return hit;
+        }
+
+        // ═══════════════════════════════════════════════════════════════════════
+        //  Story 6.6 — props + multi-select / copy-paste / group-move / rotation
+        // ═══════════════════════════════════════════════════════════════════════
+
+        private ScenarioProp[] CurrentProps() => _scenarioGetter?.Invoke()?.Props ?? System.Array.Empty<ScenarioProp>();
+
+        // ── Prop place / delete (single, one history pair) ────────────────────
+
+        private void PlaceProp(Vector3 hit)
+        {
+            string  propId = PROP_LIBRARY[_propIndex % PROP_LIBRARY.Length];
+            Vector3 wpos   = new Vector3(SnapValue(hit.X), 0f, SnapValue(hit.Z));
+            float   rot    = _placementRot, scale = _propScale;
+            bool    blocks = _propBlocks;
+
+            object? handle = _onPropSync?.Invoke(ScenarioSyncOp.Add, null, propId, wpos, rot, scale, blocks);
+            if (handle == null) { GD.Print("[EntityPlacer] Prop not persisted (no scenario loaded)."); return; }
+
+            _history.Push(
+                redo: () => _onPropSync?.Invoke(ScenarioSyncOp.ReAdd, handle, propId, wpos, rot, scale, blocks),
+                undo: () => _onPropSync?.Invoke(ScenarioSyncOp.RemoveHandle, handle, propId, wpos, rot, scale, blocks));
+            GD.Print($"[EntityPlacer] Placed prop '{propId}' at ({wpos.X:F1},{wpos.Z:F1}) blocks={blocks} rot={Mathf.RadToDeg(rot):F0}°.");
+        }
+
+        private object? FindNearestProp(Vector3 worldPos, float radius)
+        {
+            float best = radius * radius; object? hit = null;
+            foreach (var p in CurrentProps())
+            {
+                float dx = worldPos.X - p.X, dz = worldPos.Z - p.Z;
+                float d2 = dx * dx + dz * dz;
+                if (d2 < best) { best = d2; hit = p; }
+            }
+            return hit;
+        }
+
+        private void DeleteProp(object prop)
+        {
+            var cmd = BuildDeleteProp(prop);
+            if (cmd == null) return;
+            _history.Push(cmd.Value.redo, cmd.Value.undo);
+        }
+
+        // ── R-key rotation of selected props (one history pair; visual-only) ───
+
+        private void RotateSelectedProps(float step)
+        {
+            PruneSelection();
+            var props = new List<ScenarioProp>();
+            foreach (var s in _selection) if (s.Category == Selected.Kind.Prop && s.PropHandle is ScenarioProp p) props.Add(p);
+            if (props.Count == 0) return;
+            void Apply(float d) { foreach (var p in props) p.Rot = Mathf.Wrap(p.Rot + d, 0f, Mathf.Tau); }
+            Apply(step);
+            _history.Push(redo: () => Apply(step), undo: () => Apply(-step));
+        }
+
+        // ── Marquee multi-select (Select mode) ────────────────────────────────
+
+        /// <summary>Handle Select-mode left-mouse: a drag starting over the current selection MOVES it; otherwise it
+        /// marquees (Shift adds to the existing selection). Returns true when the event was consumed.</summary>
+        private bool HandleSelectMouse(InputEvent @event)
+        {
+            if (@event is InputEventMouseButton mb && mb.ButtonIndex == MouseButton.Left)
+            {
+                if (mb.Pressed)
+                {
+                    if (IsOverPalette(mb.Position)) return false;
+                    PruneSelection(); // review fix (B3/E1): don't hit-test the cursor against dead/removed selections
+                    Vector3? gp = GroundPointOf(mb.Position);
+                    if (gp != null && _selection.Count > 0 && OverSelection(gp.Value))
+                    {
+                        _groupMoving = true;
+                        _groupMoveStartWorld = gp.Value;
+                    }
+                    else
+                    {
+                        _marqueeActive = true;
+                        _marqueeStart = mb.Position;
+                        _marqueeCurrent = mb.Position;
+                    }
+                    GetViewport().SetInputAsHandled();
+                    return true;
+                }
+                else // released
+                {
+                    if (_groupMoving)
+                    {
+                        _groupMoving = false;
+                        Vector3? gp = GroundPointOf(mb.Position);
+                        if (gp != null) MoveSelection(gp.Value - _groupMoveStartWorld);
+                        GetViewport().SetInputAsHandled();
+                        return true;
+                    }
+                    if (_marqueeActive)
+                    {
+                        _marqueeActive = false;
+                        FinishMarquee(mb.ShiftPressed);
+                        GetViewport().SetInputAsHandled();
+                        return true;
+                    }
+                }
+            }
+            else if (@event is InputEventMouseMotion motion && (_marqueeActive || _groupMoving))
+            {
+                if (_marqueeActive) _marqueeCurrent = motion.Position;
+                GetViewport().SetInputAsHandled();
+                return true;
+            }
+            return false;
+        }
+
+        private void FinishMarquee(bool shiftAdd)
+        {
+            if (!shiftAdd) _selection.Clear();
+            var cam = _camCtrl?.GetCamera();
+            if (cam == null) return;
+
+            float minX = Mathf.Min(_marqueeStart.X, _marqueeCurrent.X), maxX = Mathf.Max(_marqueeStart.X, _marqueeCurrent.X);
+            float minY = Mathf.Min(_marqueeStart.Y, _marqueeCurrent.Y), maxY = Mathf.Max(_marqueeStart.Y, _marqueeCurrent.Y);
+            // A near-zero box (a click, not a drag) selects nothing new — leave the set unchanged.
+            if (maxX - minX < 3f && maxY - minY < 3f) { RefreshSubRow(); return; }
+
+            bool InBox(Vector3 world)
+            {
+                if (cam.IsPositionBehind(world)) return false;
+                Vector2 s = cam.UnprojectPosition(world);
+                return s.X >= minX && s.X <= maxX && s.Y >= minY && s.Y <= maxY;
+            }
+
+            // Units.
+            int hwm = _world.HighWaterMark;
+            for (int i = 0; i < hwm; i++)
+            {
+                if ((_world.Flags[i] & EntityFlags.Alive) == 0) continue;
+                if (InBox(new Vector3(_world.Position[i].X.ToFloat(), 0.5f, _world.Position[i].Z.ToFloat())))
+                    AddToSelection(new Selected(Selected.Kind.Unit, i, null));
+            }
+            // Buildings.
+            if (_buildings != null)
+                for (int i = 0; i < _buildings.Count; i++)
+                {
+                    if (!_buildings.Alive[i]) continue;
+                    if (InBox(new Vector3(_buildings.Position[i].X.ToFloat(), 1f, _buildings.Position[i].Z.ToFloat())))
+                        AddToSelection(new Selected(Selected.Kind.Building, i, null));
+                }
+            // Nodes.
+            if (_nodes != null)
+                for (int i = 0; i < _nodes.Count; i++)
+                {
+                    if (!_nodes.Active[i]) continue;
+                    if (InBox(new Vector3(_nodes.Position[i].X.ToFloat(), 0.5f, _nodes.Position[i].Z.ToFloat())))
+                        AddToSelection(new Selected(Selected.Kind.Node, i, null));
+                }
+            // Props.
+            foreach (var p in CurrentProps())
+                if (InBox(new Vector3(p.X, 0.5f, p.Z)))
+                    AddToSelection(new Selected(Selected.Kind.Prop, -1, p));
+
+            GD.Print($"[EntityPlacer] Selection: {_selection.Count} object(s).");
+            RefreshSubRow();
+        }
+
+        private void AddToSelection(Selected s)
+        {
+            foreach (var e in _selection)
+                if (e.Category == s.Category && e.LiveId == s.LiveId && ReferenceEquals(e.PropHandle, s.PropHandle)) return;
+            _selection.Add(s);
+        }
+
+        private Vector3 SelectedWorldPos(Selected s) => s.Category switch
+        {
+            Selected.Kind.Unit     => new Vector3(_world.Position[s.LiveId].X.ToFloat(), 0f, _world.Position[s.LiveId].Z.ToFloat()),
+            Selected.Kind.Building => _buildings != null ? new Vector3(_buildings.Position[s.LiveId].X.ToFloat(), 0f, _buildings.Position[s.LiveId].Z.ToFloat()) : Vector3.Zero,
+            Selected.Kind.Node     => _nodes != null ? new Vector3(_nodes.Position[s.LiveId].X.ToFloat(), 0f, _nodes.Position[s.LiveId].Z.ToFloat()) : Vector3.Zero,
+            Selected.Kind.Prop     => s.PropHandle is ScenarioProp p ? new Vector3(p.X, 0f, p.Z) : Vector3.Zero,
+            _                      => Vector3.Zero,
+        };
+
+        private bool OverSelection(Vector3 world)
+        {
+            foreach (var s in _selection)
+            {
+                Vector3 p = SelectedWorldPos(s);
+                float dx = world.X - p.X, dz = world.Z - p.Z;
+                if (dx * dx + dz * dz <= 9f) return true; // within 3 units of any selected object
+            }
+            return false;
+        }
+
+        // ── Group operations (each ONE history pair) ──────────────────────────
+
+        /// <summary>Review fix (B3/E1): drop selected entries whose backing slot/handle is no longer live before any
+        /// group op reads it. Between a marquee and a group action, an intervening hover-Delete, single-op undo, or F5
+        /// re-apply can free a selected live slot (or remove a selected prop); operating on it would mutate a dead/reused
+        /// slot or read garbage. Freed-then-reused slots (same index, different entity) are a narrower residual not
+        /// covered here.</summary>
+        private void PruneSelection()
+        {
+            _selection.RemoveAll(s => s.Category switch
+            {
+                Selected.Kind.Unit     => s.LiveId < 0 || s.LiveId >= _world.Flags.Length || (_world.Flags[s.LiveId] & EntityFlags.Alive) == 0,
+                Selected.Kind.Building => _buildings == null || s.LiveId < 0 || s.LiveId >= _buildings.Count || !_buildings.Alive[s.LiveId],
+                Selected.Kind.Node     => _nodes == null || s.LiveId < 0 || s.LiveId >= _nodes.Count || !_nodes.Active[s.LiveId],
+                Selected.Kind.Prop     => s.PropHandle is not ScenarioProp p || System.Array.IndexOf(CurrentProps(), p) < 0,
+                _                      => true,
+            });
+        }
+
+        private void DeleteSelection()
+        {
+            PruneSelection();
+            var cmds = new List<(System.Action redo, System.Action undo)>();
+            foreach (var s in _selection)
+            {
+                var c = BuildDelete(s);
+                if (c != null) cmds.Add(c.Value);
+            }
+            _selection.Clear();
+            RefreshSubRow();
+            if (cmds.Count == 0) return;
+
+            _history.Push(
+                redo: () => { foreach (var c in cmds) c.redo(); },
+                undo: () => { for (int i = cmds.Count - 1; i >= 0; i--) cmds[i].undo(); });
+            GD.Print($"[EntityPlacer] Deleted {cmds.Count} selected object(s) (one undo step).");
+        }
+
+        /// <summary>Group move = delete the originals and re-create them at (pos + delta) — reusing the delete + create
+        /// builders so the live stores AND ScenarioData both stay consistent, as ONE undo step.</summary>
+        private void MoveSelection(Vector3 delta)
+        {
+            if (delta.LengthSquared() < 0.0001f) return;
+            PruneSelection();
+            var descriptors = new List<PropDescriptor>();
+            foreach (var s in _selection) descriptors.Add(Describe(s));
+
+            var deletes = new List<(System.Action redo, System.Action undo)>();
+            foreach (var s in _selection) { var c = BuildDelete(s); if (c != null) deletes.Add(c.Value); }
+
+            var creates = new List<(System.Action redo, System.Action undo, Selected selected)>();
+            _selection.Clear();
+            foreach (var d in descriptors)
+            {
+                var moved = d.Pos + new Vector3(SnapDelta(delta.X), 0f, SnapDelta(delta.Z));
+                var c = BuildCreate(d, moved);
+                if (c != null) { creates.Add(c.Value); _selection.Add(c.Value.selected); }
+            }
+            RefreshSubRow();
+
+            // Review fix (E5): if the selection pruned to empty (every selected slot freed mid-drag), nothing was
+            // deleted or recreated — skip the Push so we don't strand a phantom no-op undo step on the shared stack
+            // (mirrors the DeleteSelection / PasteClipboard empty guards).
+            if (deletes.Count == 0 && creates.Count == 0) return;
+
+            _history.Push(
+                redo: () => { foreach (var c in deletes) c.redo(); foreach (var c in creates) c.redo(); },
+                undo: () => { for (int i = creates.Count - 1; i >= 0; i--) creates[i].undo(); for (int i = deletes.Count - 1; i >= 0; i--) deletes[i].undo(); });
+            GD.Print($"[EntityPlacer] Moved {descriptors.Count} object(s) by ({delta.X:F1},{delta.Z:F1}) (one undo step).");
+        }
+
+        private float SnapDelta(float v) => _gridSnapEnabled ? Mathf.Round(v) : v;
+
+        private void CopySelection()
+        {
+            PruneSelection();
+            _clipboard.Clear();
+            foreach (var s in _selection) _clipboard.Add(Describe(s));
+            _clipboardAnchor = _selection.Count > 0 ? SelectedWorldPos(_selection[0]) : Vector3.Zero;
+            GD.Print($"[EntityPlacer] Copied {_clipboard.Count} object(s).");
+        }
+
+        private void PasteClipboard(Vector3 cursorWorld)
+        {
+            if (_clipboard.Count == 0) return;
+            var creates = new List<(System.Action redo, System.Action undo, Selected selected)>();
+            _selection.Clear();
+            foreach (var d in _clipboard)
+            {
+                // Preserve each descriptor's offset relative to the clipboard anchor, snapping the paste to the grid.
+                Vector3 rel = d.Pos - _clipboardAnchor;
+                Vector3 at  = new Vector3(SnapValue(cursorWorld.X + rel.X), 0f, SnapValue(cursorWorld.Z + rel.Z));
+                var c = BuildCreate(d, at);
+                if (c != null) { creates.Add(c.Value); _selection.Add(c.Value.selected); }
+            }
+            RefreshSubRow();
+            if (creates.Count == 0) return;
+            _history.Push(
+                redo: () => { foreach (var c in creates) c.redo(); },
+                undo: () => { for (int i = creates.Count - 1; i >= 0; i--) creates[i].undo(); });
+            GD.Print($"[EntityPlacer] Pasted {creates.Count} object(s) at cursor (one undo step).");
+        }
+
+        private void DuplicateSelection()
+        {
+            CopySelection();
+            // Paste with a small default offset so the copies don't overlap the originals.
+            Vector3 anchor = _clipboardAnchor + new Vector3(4f, 0f, 4f);
+            PasteClipboard(anchor);
+        }
+
+        // ── Descriptor capture + create/delete builders (one op, no push) ─────
+
+        private PropDescriptor Describe(Selected s)
+        {
+            switch (s.Category)
+            {
+                case Selected.Kind.Prop:
+                {
+                    var p = (ScenarioProp)s.PropHandle!;
+                    return new PropDescriptor(Selected.Kind.Prop, new Vector3(p.X, 0f, p.Z), p.PropId, Faction.Neutral, p.Rot, p.Scale ?? 1f, p.BlocksPathing, 0f, 0f, 0);
+                }
+                case Selected.Kind.Unit:
+                {
+                    UnitSnapshot snap = _world.SnapshotUnit(s.LiveId);
+                    Vector3 pos = new Vector3(_world.Position[s.LiveId].X.ToFloat(), 0f, _world.Position[s.LiveId].Z.ToFloat());
+                    return new PropDescriptor(Selected.Kind.Unit, pos, snap.Def?.Id ?? "", snap.Faction, 0f, 1f, false, 0f, 0f, 0);
+                }
+                case Selected.Kind.Building:
+                {
+                    Vector3 pos = new Vector3(_buildings!.Position[s.LiveId].X.ToFloat(), 0f, _buildings.Position[s.LiveId].Z.ToFloat());
+                    return new PropDescriptor(Selected.Kind.Building, pos, _buildings.Type[s.LiveId].ToString(), _buildings.FactionOf[s.LiveId], 0f, 1f, false, 0f, 0f, 0);
+                }
+                default: // Node
+                {
+                    Vector3 pos = new Vector3(_nodes!.Position[s.LiveId].X.ToFloat(), 0f, _nodes.Position[s.LiveId].Z.ToFloat());
+                    return new PropDescriptor(Selected.Kind.Node, pos, "", Faction.Neutral, 0f, 1f, false,
+                        _nodes.SupplyTotal[s.LiveId].ToFloat(), _nodes.GatherRate[s.LiveId].ToFloat(), NODE_MAX_GATHERERS);
+                }
+            }
+        }
+
+        private (System.Action redo, System.Action undo)? BuildDelete(Selected s) => s.Category switch
+        {
+            Selected.Kind.Prop     => BuildDeleteProp(s.PropHandle!),
+            Selected.Kind.Unit     => BuildDeleteUnit(s.LiveId),
+            Selected.Kind.Building => BuildDeleteBuilding(s.LiveId),
+            Selected.Kind.Node     => BuildDeleteNode(s.LiveId),
+            _                      => null,
+        };
+
+        private (System.Action redo, System.Action undo)? BuildDeleteProp(object prop)
+        {
+            if (prop is not ScenarioProp p) return null;
+            string id = p.PropId; Vector3 wp = new Vector3(p.X, 0f, p.Z);
+            float rot = p.Rot, scale = p.Scale ?? 1f; bool blocks = p.BlocksPathing;
+            // Review fix (E2): remove the EXACT selected prop by identity, not the first entry matching its (x,z).
+            // Two props stacked on one cell (paste/duplicate at zero offset) would otherwise unlink the wrong one, and
+            // undo would restore the wrong one. `p` IS the ScenarioData.Props entry, so RemoveHandle targets it directly.
+            _onPropSync?.Invoke(ScenarioSyncOp.RemoveHandle, p, id, wp, rot, scale, blocks);
+            return (
+                redo: () => _onPropSync?.Invoke(ScenarioSyncOp.RemoveHandle, p, id, wp, rot, scale, blocks),
+                undo: () => _onPropSync?.Invoke(ScenarioSyncOp.ReAdd, p, id, wp, rot, scale, blocks));
+        }
+
+        private (System.Action redo, System.Action undo)? BuildDeleteUnit(int id)
+        {
+            UnitSnapshot snap = _world.SnapshotUnit(id);
+            _world.Destroy(id);
+            string  unitId = snap.Def?.Id ?? "";
+            Vector3 wp     = new Vector3(snap.Position.X.ToFloat(), 0f, snap.Position.Z.ToFloat());
+            object? h      = snap.Def != null ? _onUnitSync?.Invoke(ScenarioSyncOp.RemoveMatch, null, unitId, snap.Faction, wp) : null;
+            int[] box = { -1 };
+            return (
+                redo: () => { if (box[0] >= 0) { _world.Destroy(box[0]); if (h != null) _onUnitSync?.Invoke(ScenarioSyncOp.RemoveHandle, h, unitId, snap.Faction, wp); } },
+                undo: () => { box[0] = _world.RestoreUnit(snap); if (box[0] < 0) return; if (h != null) _onUnitSync?.Invoke(ScenarioSyncOp.ReAdd, h, unitId, snap.Faction, wp); });
+        }
+
+        private (System.Action redo, System.Action undo)? BuildDeleteBuilding(int id)
+        {
+            if (_buildings == null) return null;
+            Faction faction = _buildings.FactionOf[id];
+            Fixed   dur = _buildings.ConstructionDuration[id], tim = _buildings.ConstructionTimer[id];
+            BuildingType type = _buildings.Type[id];
+            // Review fix (F2): capture the EXACT position and re-write Position/Type/Faction on undo. A group-move
+            // deletes-then-recreates through the LIFO slot, so BuildingStore.Create reuses this very slot and
+            // overwrites Position with the moved value; resurrecting via `Alive[id]=true` alone would strand the
+            // building at the moved position (live store ≠ ScenarioData until the next reload). Writing full
+            // identifying state makes the undo self-sufficient rather than relying on slot residue.
+            FixedVec3 origPos = _buildings.Position[id];
+            Vector3 wp = new Vector3(origPos.X.ToFloat(), 0f, origPos.Z.ToFloat());
+            var b = _buildings;
+            b.Destroy(id);
+            object? h = _onBuildingSync?.Invoke(ScenarioSyncOp.RemoveMatch, null, type, faction, wp, false);
+            return (
+                redo: () => { b.Destroy(id); _onBuildingSync?.Invoke(ScenarioSyncOp.RemoveHandle, h, type, faction, wp, false); },
+                undo: () => { b.Alive[id] = true; b.Position[id] = origPos; b.FactionOf[id] = faction; b.Type[id] = type; b.ConstructionTimer[id] = tim; b.ConstructionDuration[id] = dur; _onBuildingSync?.Invoke(ScenarioSyncOp.ReAdd, h, type, faction, wp, false); });
+        }
+
+        private (System.Action redo, System.Action undo)? BuildDeleteNode(int id)
+        {
+            if (_nodes == null) return null;
+            var n = _nodes;
+            var sup = n.SupplyRemaining[id]; var tot = n.SupplyTotal[id]; var rate = n.GatherRate[id];
+            Vector3 wp = new Vector3(n.Position[id].X.ToFloat(), 0f, n.Position[id].Z.ToFloat());
+            n.Active[id] = false;
+            object? h = _onResourceNodeSync?.Invoke(ScenarioSyncOp.RemoveMatch, null, wp, 0f, 0f, 0);
+            return (
+                redo: () => { n.Active[id] = false; _onResourceNodeSync?.Invoke(ScenarioSyncOp.RemoveHandle, h, wp, 0f, 0f, 0); },
+                undo: () => { n.Active[id] = true; n.SupplyRemaining[id] = sup; n.SupplyTotal[id] = tot; n.GatherRate[id] = rate; _onResourceNodeSync?.Invoke(ScenarioSyncOp.ReAdd, h, wp, 0f, 0f, 0); });
+        }
+
+        /// <summary>Create a placement from a descriptor at <paramref name="at"/> (performs it now, returns the
+        /// composable redo/undo + the resulting <see cref="Selected"/> so paste/move can re-select the copies).</summary>
+        private (System.Action redo, System.Action undo, Selected selected)? BuildCreate(PropDescriptor d, Vector3 at)
+        {
+            var pos = new FixedVec3(Fixed.FromFloat(at.X), Fixed.Zero, Fixed.FromFloat(at.Z));
+            switch (d.Category)
+            {
+                case Selected.Kind.Prop:
+                {
+                    object? h = _onPropSync?.Invoke(ScenarioSyncOp.Add, null, d.Id, at, d.Rot, d.Scale, d.Blocks);
+                    if (h == null) return null;
+                    return (
+                        redo: () => _onPropSync?.Invoke(ScenarioSyncOp.ReAdd, h, d.Id, at, d.Rot, d.Scale, d.Blocks),
+                        undo: () => _onPropSync?.Invoke(ScenarioSyncOp.RemoveHandle, h, d.Id, at, d.Rot, d.Scale, d.Blocks),
+                        selected: new Selected(Selected.Kind.Prop, -1, h));
+                }
+                case Selected.Kind.Unit:
+                {
+                    if (string.IsNullOrEmpty(d.Id)) return null;
+                    UnitDefinition? def = (d.Faction == Faction.Player2 ? _faction2 : _faction)?.GetUnit(d.Id);
+                    int id = DoSpawnCombatUnit(pos, d.Faction, def);
+                    if (id < 0) return null;
+                    object? h = _onUnitSync?.Invoke(ScenarioSyncOp.Add, null, d.Id, d.Faction, at);
+                    int[] box = { id };
+                    return (
+                        redo: () => { int r = DoSpawnCombatUnit(pos, d.Faction, def); if (r >= 0) { box[0] = r; if (h != null) _onUnitSync?.Invoke(ScenarioSyncOp.ReAdd, h, d.Id, d.Faction, at); } },
+                        undo: () => { _world.Destroy(box[0]); if (h != null) _onUnitSync?.Invoke(ScenarioSyncOp.RemoveHandle, h, d.Id, d.Faction, at); },
+                        selected: new Selected(Selected.Kind.Unit, id, null));
+                }
+                case Selected.Kind.Building:
+                {
+                    if (_buildings == null) return null;
+                    if (!System.Enum.TryParse(d.Id, out BuildingType type)) type = BuildingType.CommandCenter;
+                    int id = _buildings.Create(pos, d.Faction, type);
+                    if (id < 0) return null;
+                    Fixed dur = _buildings.ConstructionDuration[id];
+                    var b = _buildings;
+                    object? h = _onBuildingSync?.Invoke(ScenarioSyncOp.Add, null, type, d.Faction, at, false);
+                    return (
+                        // Review fix (F2, symmetric): redo re-writes Position/Type/Faction, not just `Alive[id]=true`.
+                        // After an undo restored the slot to its pre-move state, a redo must re-apply the moved
+                        // position rather than relying on residue the undo just overwrote.
+                        redo: () => { b.Alive[id] = true; b.Position[id] = pos; b.FactionOf[id] = d.Faction; b.Type[id] = type; b.ConstructionTimer[id] = dur; b.ConstructionDuration[id] = dur; _onBuildingSync?.Invoke(ScenarioSyncOp.ReAdd, h, type, d.Faction, at, false); },
+                        undo: () => { b.Destroy(id); _onBuildingSync?.Invoke(ScenarioSyncOp.RemoveHandle, h, type, d.Faction, at, false); },
+                        selected: new Selected(Selected.Kind.Building, id, null));
+                }
+                default: // Node
+                {
+                    if (_nodes == null) return null;
+                    int id = _nodes.Create(pos, Fixed.FromFloat(d.Supply), Fixed.FromFloat(d.Rate), d.MaxGatherers);
+                    if (id < 0) return null;
+                    var n = _nodes;
+                    object? h = _onResourceNodeSync?.Invoke(ScenarioSyncOp.Add, null, at, d.Supply, d.Rate, d.MaxGatherers);
+                    return (
+                        redo: () => { n.Active[id] = true; n.SupplyRemaining[id] = Fixed.FromFloat(d.Supply); n.SupplyTotal[id] = Fixed.FromFloat(d.Supply); n.GatherRate[id] = Fixed.FromFloat(d.Rate); _onResourceNodeSync?.Invoke(ScenarioSyncOp.ReAdd, h, at, d.Supply, d.Rate, d.MaxGatherers); },
+                        undo: () => { n.Active[id] = false; _onResourceNodeSync?.Invoke(ScenarioSyncOp.RemoveHandle, h, at, d.Supply, d.Rate, d.MaxGatherers); },
+                        selected: new Selected(Selected.Kind.Node, id, null));
+                }
+            }
+        }
+
+        // ── Raycast / overlay helpers ─────────────────────────────────────────
+
+        private Vector3? GroundPointOf(Vector2 screenPos)
+        {
+            var cam = _camCtrl?.GetCamera();
+            if (cam == null) return null;
+            var origin = cam.ProjectRayOrigin(screenPos);
+            var dir    = cam.ProjectRayNormal(screenPos);
+            if (Mathf.Abs(dir.Y) < 0.0001f) return null;
+            float t = -origin.Y / dir.Y;
+            if (t < 0f) return null;
+            return origin + dir * t;
+        }
+
+        private bool IsOverPalette(Vector2 screenPos)
+        {
+            if (_paletteCanvas == null) return false;
+            foreach (Node c in _paletteCanvas.GetChildren())
+                if (c is PanelContainer pc && pc.GetGlobalRect().HasPoint(screenPos)) return true;
+            return false;
+        }
+
+        // ── Selection overlay (screen-space marquee rect + 3D markers) ────────
+
+        private CanvasLayer?       _selectCanvas;
+        private ColorRect?         _marqueeVisual;
+        private Node3D?            _markerRoot;
+        private readonly List<MeshInstance3D> _markerPool = new();
+
+        private void BuildSelectionOverlay()
+        {
+            _selectCanvas = new CanvasLayer { Layer = 6 };
+            AddChild(_selectCanvas);
+            _marqueeVisual = new ColorRect { Color = new Color(0.3f, 0.6f, 1f, 0.2f), Visible = false, MouseFilter = Control.MouseFilterEnum.Ignore };
+            _selectCanvas.AddChild(_marqueeVisual);
+
+            _markerRoot = new Node3D { Name = "SelectionMarkers" };
+            GetParent()?.AddChild(_markerRoot);
+        }
+
+        private void UpdateSelectionOverlay(bool edit)
+        {
+            // Marquee rectangle.
+            if (_marqueeVisual != null)
+            {
+                if (edit && _marqueeActive)
+                {
+                    Vector2 tl = new Vector2(Mathf.Min(_marqueeStart.X, _marqueeCurrent.X), Mathf.Min(_marqueeStart.Y, _marqueeCurrent.Y));
+                    Vector2 br = new Vector2(Mathf.Max(_marqueeStart.X, _marqueeCurrent.X), Mathf.Max(_marqueeStart.Y, _marqueeCurrent.Y));
+                    _marqueeVisual.Position = tl;
+                    _marqueeVisual.Size     = br - tl;
+                    _marqueeVisual.Visible  = true;
+                }
+                else _marqueeVisual.Visible = false;
+            }
+
+            // 3D markers over each selected object (Edit-only).
+            if (_markerRoot == null) return;
+            bool show = edit && _mode == PlacementMode.Select;
+            _markerRoot.Visible = show;
+            if (!show) return;
+
+            // Grow the pool as needed.
+            while (_markerPool.Count < _selection.Count)
+            {
+                var mi = new MeshInstance3D
+                {
+                    Mesh = new BoxMesh { Size = new Vector3(1.5f, 0.1f, 1.5f) },
+                    CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
+                    MaterialOverride = new StandardMaterial3D
+                    {
+                        ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
+                        AlbedoColor = new Color(1f, 1f, 0.3f, 0.5f),
+                        Transparency = BaseMaterial3D.TransparencyEnum.Alpha,
+                    },
+                };
+                _markerRoot.AddChild(mi);
+                _markerPool.Add(mi);
+            }
+            for (int i = 0; i < _markerPool.Count; i++)
+            {
+                bool used = i < _selection.Count;
+                _markerPool[i].Visible = used;
+                if (used)
+                {
+                    Vector3 p = SelectedWorldPos(_selection[i]);
+                    _markerPool[i].Position = new Vector3(p.X, 0.15f, p.Z);
+                }
+            }
         }
     }
 }

@@ -134,6 +134,12 @@ namespace ProjectChimera.Core.Definitions
         /// wall-clock). Default 30 (1 second at 30 ticks/sec).</summary>
         [JsonPropertyName("income_period_ticks")]
         public int IncomePeriodTicks { get; set; } = 30;
+
+        /// <summary>Presentation-only yaw (radians, Story 6.6) applied to the resource-node mesh at spawn — cosmetic,
+        /// EXCLUDED from every checksum/hash (see <see cref="ScenarioBuilding.Rot"/>). Omit-when-default.</summary>
+        [JsonPropertyName("rot")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+        public float Rot { get; set; } = 0f;
     }
 
     /// <summary>
@@ -163,6 +169,15 @@ namespace ProjectChimera.Core.Definitions
         /// </summary>
         [JsonPropertyName("pre_built")]
         public bool PreBuilt { get; set; } = true;
+
+        /// <summary>Presentation-only yaw (radians, Story 6.6) applied to the building mesh at spawn. Default 0f,
+        /// OMITTED from serialization when default (<see cref="JsonIgnoreCondition.WhenWritingDefault"/>) so existing
+        /// scenarios serialize byte-identically. Rotation is COSMETIC for 1.0 (sim footprints stay axis-aligned) and is
+        /// deliberately EXCLUDED from <see cref="CanonicalModelHash"/> and per-tick <c>SimChecksum</c> — like
+        /// <c>DisplayName</c>.</summary>
+        [JsonPropertyName("rot")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+        public float Rot { get; set; } = 0f;
     }
 
     /// <summary>
@@ -184,6 +199,12 @@ namespace ProjectChimera.Core.Definitions
 
         [JsonPropertyName("z")]
         public float Z { get; set; }
+
+        /// <summary>Presentation-only yaw (radians, Story 6.6) applied to the unit mesh at spawn — cosmetic, EXCLUDED
+        /// from every checksum/hash (see <see cref="ScenarioBuilding.Rot"/>). Omit-when-default.</summary>
+        [JsonPropertyName("rot")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+        public float Rot { get; set; } = 0f;
     }
 
     /// <summary>
@@ -234,6 +255,114 @@ namespace ProjectChimera.Core.Definitions
 
         [JsonPropertyName("max_z")]
         public float MaxZ { get; set; }
+    }
+
+    /// <summary>
+    /// A placed doodad/prop (Story 6.6) — decorative map geometry rendered by a single-<c>MultiMesh</c>-per-mesh
+    /// <c>PropRenderer</c> (never a node per prop). Authored via the prop mode of <c>EntityPlacer</c>. When
+    /// <see cref="BlocksPathing"/> is true, the prop's single-cell footprint at (<see cref="X"/>, <see cref="Z"/>)
+    /// unions into 6.5's <c>PathabilityGrid</c> at load and folds into <see cref="CanonicalModelHash"/> (lockstep-
+    /// critical); when false it is purely cosmetic and never touches sim state or either checksum. <see cref="Rot"/>
+    /// (visual yaw) and <see cref="Scale"/> (uniform) are presentation-only and EXCLUDED from every checksum/hash.
+    /// </summary>
+    public class ScenarioProp
+    {
+        /// <summary>Prop library id (selects the mesh the <c>PropRenderer</c> instances).</summary>
+        [JsonPropertyName("prop_id")]
+        public string PropId { get; set; } = "";
+
+        [JsonPropertyName("x")]
+        public float X { get; set; }
+
+        [JsonPropertyName("z")]
+        public float Z { get; set; }
+
+        /// <summary>Presentation-only yaw (radians). Omit-when-default (0f).</summary>
+        [JsonPropertyName("rot")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+        public float Rot { get; set; } = 0f;
+
+        /// <summary>Uniform visual scale. NULL ⇒ the default 1.0 (read as <c>Scale ?? 1f</c>); OMITTED from
+        /// serialization when null (<see cref="JsonIgnoreCondition.WhenWritingNull"/>) so an unscaled prop is
+        /// byte-identical. Presentation-only — never folded into any checksum/hash.</summary>
+        [JsonPropertyName("scale")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public float? Scale { get; set; }
+
+        /// <summary>When true, the prop's footprint cell (at (<see cref="X"/>,<see cref="Z"/>) via
+        /// <c>FlowField.WorldToCell</c>) unions into the runtime pathability grid and folds into
+        /// <see cref="CanonicalModelHash"/>. Default false, omit-when-default so a non-blocking prop is byte-identical
+        /// and leaves both checksums untouched.</summary>
+        [JsonPropertyName("blocks_pathing")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+        public bool BlocksPathing { get; set; } = false;
+    }
+
+    /// <summary>
+    /// A named camera viewpoint (Story 6.6) — position + look-at target + field of view. Pure PRESENTATION: authored
+    /// by the camera tool for the in-editor "view through camera" preview and consumed by Epic 7's <c>MoveCamera</c>
+    /// trigger action (Story 7.13). Cameras never touch sim state and are EXCLUDED from both hashes. Validated
+    /// fail-closed (unique non-empty name) by <see cref="ScenarioValidator"/>.
+    /// </summary>
+    public class ScenarioCamera
+    {
+        /// <summary>Unique, non-empty camera name (the key <c>MoveCamera</c> references).</summary>
+        [JsonPropertyName("name")]
+        public string Name { get; set; } = "";
+
+        [JsonPropertyName("x")]
+        public float X { get; set; }
+
+        [JsonPropertyName("y")]
+        public float Y { get; set; }
+
+        [JsonPropertyName("z")]
+        public float Z { get; set; }
+
+        [JsonPropertyName("target_x")]
+        public float TargetX { get; set; }
+
+        [JsonPropertyName("target_y")]
+        public float TargetY { get; set; }
+
+        [JsonPropertyName("target_z")]
+        public float TargetZ { get; set; }
+
+        /// <summary>Vertical field of view in degrees. Default 70 (Godot's Camera3D default).</summary>
+        [JsonPropertyName("fov")]
+        public float Fov { get; set; } = 70f;
+    }
+
+    /// <summary>
+    /// A cheap water volume (Story 6.6) — a visual plane at level <see cref="Y"/> over the axis-aligned rect
+    /// (<see cref="X"/>,<see cref="Z"/>) sized <see cref="W"/>×<see cref="H"/>, with an auto-impassable footprint. NO
+    /// fluid simulation: the rect's cells union into 6.5's <c>PathabilityGrid</c> at load (units route around) and
+    /// fold into <see cref="CanonicalModelHash"/> (lockstep-critical, like a blocking prop). Removing the volume
+    /// un-stamps deterministically because the grid is rebuilt from source each load. Validated fail-closed
+    /// (well-formed rect: finite, in-range, positive extents) by <see cref="ScenarioValidator"/>.
+    /// </summary>
+    public class ScenarioWater
+    {
+        /// <summary>World X of the rect's min corner.</summary>
+        [JsonPropertyName("x")]
+        public float X { get; set; }
+
+        /// <summary>World Z of the rect's min corner.</summary>
+        [JsonPropertyName("z")]
+        public float Z { get; set; }
+
+        /// <summary>Rect width along +X (world units, > 0).</summary>
+        [JsonPropertyName("w")]
+        public float W { get; set; }
+
+        /// <summary>Rect depth along +Z (world units, > 0).</summary>
+        [JsonPropertyName("h")]
+        public float H { get; set; }
+
+        /// <summary>Water-surface world Y (the visual plane height). Presentation-only — the impassable footprint is
+        /// XZ-based, so Y is NOT folded into any checksum/hash.</summary>
+        [JsonPropertyName("y")]
+        public float Y { get; set; } = 0f;
     }
 
     /// <summary>
@@ -456,5 +585,40 @@ namespace ProjectChimera.Core.Definitions
         [JsonPropertyName("slope_block_threshold")]
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
         public float SlopeBlockThreshold { get; set; } = 0f;
+
+        /// <summary>
+        /// Placed doodads/props (Story 6.6). NULL (the default, every existing scenario) ⇒ no props, and the block is
+        /// OMITTED from serialization when null (<see cref="JsonIgnoreCondition.WhenWritingNull"/>, the
+        /// <see cref="Regions"/> precedent) — an absent/empty collection is byte-identical to pre-feature (no
+        /// map-package format change, no new zip entry; <c>.chimera.zip</c> round-trips inline). An empty array
+        /// normalizes back to null at the <c>ScenarioSerializer.Serialize</c> chokepoint. Read as
+        /// <c>Props ?? Array.Empty</c>. A <c>blocks_pathing</c> prop's single-cell footprint unions into 6.5's
+        /// <c>PathabilityGrid</c> at load and FOLDS into <see cref="CanonicalModelHash"/> (lockstep-critical, AlgoVersion
+        /// 7); a non-blocking prop, and every prop's rotation/scale, are cosmetic and EXCLUDED from both hashes.
+        /// </summary>
+        [JsonPropertyName("props")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public ScenarioProp[]? Props { get; set; }
+
+        /// <summary>
+        /// Named camera viewpoints (Story 6.6) for the in-editor "view through camera" preview and Epic 7's
+        /// <c>MoveCamera</c> action. NULL ⇒ none, OMITTED when null / normalized empty→null at the serialize
+        /// chokepoint (the <see cref="Regions"/> precedent). Read as <c>Cameras ?? Array.Empty</c>. Pure PRESENTATION
+        /// — EXCLUDED from <see cref="CanonicalModelHash"/> / <c>StartStateHash</c> / <c>SimChecksum</c>.
+        /// </summary>
+        [JsonPropertyName("cameras")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public ScenarioCamera[]? Cameras { get; set; }
+
+        /// <summary>
+        /// Cheap water volumes (Story 6.6) — a visual plane + an auto-impassable footprint (no fluid sim). NULL ⇒
+        /// none, OMITTED when null / normalized empty→null at the serialize chokepoint (the <see cref="Regions"/>
+        /// precedent). Read as <c>Water ?? Array.Empty</c>. Each volume's rect cells union into 6.5's
+        /// <c>PathabilityGrid</c> at load and FOLD into <see cref="CanonicalModelHash"/> (lockstep-critical, AlgoVersion
+        /// 7) — removing a volume un-stamps for free because the grid is rebuilt from source each load.
+        /// </summary>
+        [JsonPropertyName("water")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public ScenarioWater[]? Water { get; set; }
     }
 }

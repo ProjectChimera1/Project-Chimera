@@ -63,7 +63,7 @@ namespace ProjectChimera.Sim.Tests.Validation
         }
 
         [Fact]
-        public void AlgoVersion_IsSix() => Assert.Equal(6, CanonicalModelHash.AlgoVersion); // Story 6.5 bumped 5→6 (pathability fold)
+        public void AlgoVersion_IsSeven() => Assert.Equal(7, CanonicalModelHash.AlgoVersion); // Story 6.6 bumped 6→7 (blocking prop/water footprint fold)
 
         [Fact]
         public void ReorderedCollections_HashEqual()
@@ -262,7 +262,7 @@ namespace ProjectChimera.Sim.Tests.Validation
             // Build the documented canonical byte stream (D5 fixed order) INDEPENDENTLY of MixInt/MixStr, then
             // fold it with a textbook FNV-64. This pins the algorithm without a self-tautology.
             var buf = new List<byte>();
-            AppendInt(buf, CanonicalModelHash.AlgoVersion);  // AlgoVersion (= 6)
+            AppendInt(buf, CanonicalModelHash.AlgoVersion);  // AlgoVersion (= 7)
             AppendInt(buf, Fixed.FromFloat(120f).Raw);       // MapBounds quantized (= 7,864,320)
             AppendStr(buf, "DestroyAllBuildings");           // WinCondition by NAME
             AppendStr(buf, "");                              // TerrainRef
@@ -270,6 +270,8 @@ namespace ProjectChimera.Sim.Tests.Validation
             AppendInt(buf, 0);                               // PathabilityBlocked == null → DigestOfBase64 == 0
             AppendInt(buf, 0);                               // SlopeAutoBlock == false → 0
             AppendInt(buf, Fixed.FromFloat(0f).Raw);         // SlopeBlockThreshold == 0f quantized (= 0)
+            // Story 6.6 (v7): blocking-prop + water footprint digest — no props/water ⇒ empty footprint mask ⇒ 0.
+            AppendInt(buf, 0);                               // BlockingFootprintDigest(null, null) == 0
             AppendInt(buf, ResourceStore.STARTING_SUPPLY_CAP); // Supply == null → resolved StartingCap default (10)
             AppendInt(buf, 0);                                 // Supply == null → resolved HardCeiling presence bit (absent → 0)
             AppendInt(buf, 0);                                 // Supply == null → resolved HardCeiling value (ignored when absent → 0)
