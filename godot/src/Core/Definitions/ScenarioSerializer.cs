@@ -45,7 +45,26 @@ namespace ProjectChimera.Core.Definitions
         /// formatting — so two calls on equal models are byte-identical. Story 1.11 (AC4) uses this as the
         /// byte-identical artifact the procedural-map-generator golden-hash check pins.
         /// </summary>
-        public static string Serialize(ScenarioData scenario) => JsonSerializer.Serialize(scenario, _options);
+        public static string Serialize(ScenarioData scenario)
+        {
+            // Review patch (Story 6.4): Regions uses JsonIgnore(WhenWritingNull), which omits null but NOT an empty
+            // array — `[]` would emit `"regions":[]` and drift the pinned scenario bytes. Normalize empty→null for
+            // THIS serialization only, WITHOUT mutating the caller's model: Serialize is a pure, deterministic
+            // byte-source (golden-hash checks pin its output) and may be handed a live ScenarioData the editor still
+            // holds, so a permanent `scenario.Regions = null` side effect would silently surprise any other holder of
+            // that instance. Swap-to-null under try/finally and restore the original reference afterwards — the JSON
+            // bytes are identical to the null/absent case, and the caller's object is observably unchanged.
+            ScenarioRegion[]? savedRegions = scenario.Regions;
+            if (savedRegions is { Length: 0 }) scenario.Regions = null;
+            try
+            {
+                return JsonSerializer.Serialize(scenario, _options);
+            }
+            finally
+            {
+                scenario.Regions = savedRegions;
+            }
+        }
 
         /// <summary>
         /// Serialize a <see cref="ScenarioData"/> to a JSON file on disk.

@@ -237,8 +237,48 @@ namespace ProjectChimera.Core.Sim
                 }
             }
 
+            // ── 4c. Regions (Story 6.4) — resolve authored float rects → Fixed ONCE here (the single conversion
+            //    boundary) into a Godot-free RegionStore, and hand it to the ScenarioDirector BEFORE LoadScenario so
+            //    the unit_in_region condition can scan it. Static authored data (never mutated mid-match) ⇒ not in
+            //    SimChecksum. An absent/empty Regions collection resolves to RegionStore.Empty (no allocation, no
+            //    behavior change) so every pre-6.4 scenario is byte-identical. ──
+            _host.ScenarioDirector.SetRegionStore(BuildRegionStore(s.Regions));
+
             // ── 5. Triggers ────────────────────────────────────────────────────
             _host.ScenarioDirector.LoadScenario(s); // triggers last (same as today)
+        }
+
+        /// <summary>
+        /// Story 6.4: build the resolved <see cref="RegionStore"/> from the authored <see cref="ScenarioRegion"/>
+        /// rows — the SINGLE float→<see cref="Fixed"/> boundary for region bounds (one <see cref="Fixed.FromFloat"/>
+        /// per corner). Null/empty ⇒ <see cref="RegionStore.Empty"/> (the common case allocates nothing).
+        /// </summary>
+        private static RegionStore BuildRegionStore(ScenarioRegion[]? regions)
+        {
+            if (regions is null || regions.Length == 0) return RegionStore.Empty;
+            // Review patch: defensively SKIP any region that is (a) null, (b) has a non-finite corner, or (c)
+            // collapses to a degenerate/inverted FixedRect at the float→Fixed boundary — so a `"regions":[null]`
+            // shadow-mode apply cannot NRE, and a rect that passed the float-domain validator but degenerated at
+            // quantization cannot corrupt the store. float.IsFinite is used ONLY here, at the sanctioned load-time
+            // float→Fixed boundary (never on a tick path). ids/rects are appended TOGETHER so the parallel-array
+            // index alignment stays exact; the store ends up holding only well-formed rects.
+            var ids   = new List<string>(regions.Length);
+            var rects = new List<FixedRect>(regions.Length);
+            for (int i = 0; i < regions.Length; i++)
+            {
+                ScenarioRegion r = regions[i];
+                if (r is null) continue;
+                if (!float.IsFinite(r.MinX) || !float.IsFinite(r.MinZ)
+                    || !float.IsFinite(r.MaxX) || !float.IsFinite(r.MaxZ)) continue;
+                var rect = new FixedRect(
+                    Fixed.FromFloat(r.MinX), Fixed.FromFloat(r.MinZ),
+                    Fixed.FromFloat(r.MaxX), Fixed.FromFloat(r.MaxZ));
+                if (rect.MinX >= rect.MaxX || rect.MinZ >= rect.MaxZ) continue; // degenerate/inverted post-conversion
+                ids.Add(r.Id);
+                rects.Add(rect);
+            }
+            if (ids.Count == 0) return RegionStore.Empty;
+            return new RegionStore(ids.ToArray(), rects.ToArray());
         }
 
         /// <summary>

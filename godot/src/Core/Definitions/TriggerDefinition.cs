@@ -93,6 +93,9 @@ namespace ProjectChimera.Core.Definitions
     ///   resource_comparison — faction ore compared with amount via operator
     ///   unit_count         — faction alive unit count compared with count via operator
     ///   variable_comparison — named integer variable compared with value via operator
+    ///   unit_in_region     — a live unit of faction is inside the named region (region_id) — Story 6.4.
+    ///                        Stateless Fixed inclusive point-in-rect over ascending-entity-id positions; the
+    ///                        deterministic containment condition Epic 7's win-condition presets consume.
     /// </summary>
     public class TriggerCondition
     {
@@ -115,6 +118,12 @@ namespace ProjectChimera.Core.Definitions
         /// <summary>Variable name for variable_comparison.</summary>
         [JsonPropertyName("variable")]
         public string? Variable { get; set; }
+
+        /// <summary>Named region id for unit_in_region (Story 6.4). References a <see cref="ScenarioRegion.Id"/>;
+        /// the validator rejects a dangling ref (an undefined region_id) fail-closed, mirroring the timer_expires
+        /// dangling check.</summary>
+        [JsonPropertyName("region_id")]
+        public string? RegionId { get; set; }
 
         /// <summary>Integer value to compare variable against.</summary>
         [JsonPropertyName("value")]

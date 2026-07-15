@@ -35,6 +35,13 @@ namespace ProjectChimera.Core
         private readonly Dictionary<string, int> _timers    = new();
         private readonly Dictionary<string, int> _variables = new();
 
+        // ── Named regions (Story 6.4) ─────────────────────────────────────────
+        // The resolved (float→Fixed done once at ScenarioApplier) region rects the unit_in_region condition scans.
+        // Supplied by the applier via SetRegionStore before LoadScenario, same way scenario context is supplied
+        // today. Static authored data (never mutates mid-match), so it is NOT in SimChecksum. Defaults to Empty so
+        // a director built without regions (every pre-6.4 path / test) evaluates unit_in_region as false cleanly.
+        private RegionStore _regions = RegionStore.Empty;
+
         // ── Change-detection snapshots ────────────────────────────────────────
 
         private readonly EntityFlags[] _prevFlags          = new EntityFlags[EntityWorld.MAX_ENTITIES];
@@ -64,6 +71,14 @@ namespace ProjectChimera.Core
             _buildings = buildings;
             _resources = resources;
         }
+
+        /// <summary>
+        /// Story 6.4: supply the resolved <see cref="RegionStore"/> the <c>unit_in_region</c> condition scans. The
+        /// applier builds it (float→Fixed once, at the single conversion boundary) and hands it here BEFORE
+        /// <see cref="LoadScenario"/>. Never mutated mid-match, so it is not part of the checksummed state.
+        /// A null argument degrades to <see cref="RegionStore.Empty"/> (no regions ⇒ unit_in_region is false).
+        /// </summary>
+        public void SetRegionStore(RegionStore? store) => _regions = store ?? RegionStore.Empty;
 
         /// <summary>
         /// Load triggers from a freshly-applied scenario. Resets all runtime state.
@@ -330,6 +345,18 @@ namespace ProjectChimera.Core
                     if (string.IsNullOrEmpty(c.Variable)) return false;
                     _variables.TryGetValue(c.Variable, out int v);
                     return Compare(v, c.Value, c.Operator);
+                case "unit_in_region":
+                    // Story 6.4: true when ANY live unit of `faction` is inside region `region_id`. Pure Fixed
+                    // inclusive point-in-rect over EntityWorld.Position[] in ASCENDING entity-id order (the
+                    // deterministic contract) — no float/Mathf/Random. An unresolved id at eval time is false (the
+                    // validator already blocks dangling refs pre-tick, so this only guards shadow-mode content).
+                    if (!_regions.TryGetIndex(c.RegionId, out int rIdx)) return false;
+                    int rhwm = world.HighWaterMark;
+                    for (int i = 0; i < rhwm; i++)
+                        if (world.IsAlive(i) && world.FactionOf[i] == faction
+                            && _regions.Contains(rIdx, world.Position[i]))
+                            return true;
+                    return false;
                 default:
                     return true;
             }

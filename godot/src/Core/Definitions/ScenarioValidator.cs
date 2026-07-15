@@ -202,6 +202,51 @@ namespace ProjectChimera.Core.Definitions
                         $"scenario.units[{i}].slot={u.Slot} references no declared player_slot.", validated);
             }
 
+            // ── Regions (Story 6.4) — fail-closed well-formedness so a malformed/cheat region can never reach the
+            //    RegionStore or a unit_in_region scan. NULL Regions (every existing scenario — omit-when-null) ⇒ no
+            //    regions to validate ⇒ the pass path is unchanged (no golden/behavior move). Each region needs a
+            //    unique, non-empty id; a proper (non-degenerate, non-inverted) rect MinX<MaxX && MinZ<MaxZ; and all
+            //    four corners within MapBounds (the existing CheckCoord pattern). declaredRegions feeds the
+            //    dangling-region_id check in the triggers loop below (mirrors the timer_expires dangling check). ──
+            var declaredRegions = new HashSet<string>(StringComparer.Ordinal);
+            ScenarioRegion[] regions = m.Regions ?? Array.Empty<ScenarioRegion>();
+            for (int i = 0; i < regions.Length; i++)
+            {
+                ScenarioRegion rg = regions[i];
+                if (rg is null)
+                    return ValidationResult.Fail($"scenario.regions[{i}] is null.", validated);
+                if (string.IsNullOrEmpty(rg.Id))
+                    return ValidationResult.Fail($"scenario.regions[{i}].id must be a non-empty id.", validated);
+                if (!declaredRegions.Add(rg.Id))
+                    return ValidationResult.Fail($"scenario.regions[{i}].id='{rg.Id}' is a duplicate.", validated);
+                string? re = CheckCoord($"scenario.regions[{i}].min_x", rg.MinX, bounds)
+                          ?? CheckCoord($"scenario.regions[{i}].min_z", rg.MinZ, bounds)
+                          ?? CheckCoord($"scenario.regions[{i}].max_x", rg.MaxX, bounds)
+                          ?? CheckCoord($"scenario.regions[{i}].max_z", rg.MaxZ, bounds);
+                if (re != null) return ValidationResult.Fail(re, validated);
+                if (rg.MinX >= rg.MaxX)
+                    return ValidationResult.Fail(
+                        $"scenario.regions[{i}] has min_x={rg.MinX} >= max_x={rg.MaxX} (must be min_x < max_x).", validated);
+                if (rg.MinZ >= rg.MaxZ)
+                    return ValidationResult.Fail(
+                        $"scenario.regions[{i}] has min_z={rg.MinZ} >= max_z={rg.MaxZ} (must be min_z < max_z).", validated);
+                // Review patch (follow-up): the float min<max checks above are necessary but NOT sufficient. The
+                // applier resolves these corners to Fixed (16.16) exactly once and SKIPS any rect that degenerated at
+                // that quantization (ScenarioApplier.BuildRegionStore). A rect narrower than the Fixed step (~1/65536
+                // world units) is min<max in float yet collapses to min==max after Fixed.FromFloat — it would pass
+                // here but be silently dropped from the RegionStore, leaving any unit_in_region trigger that names it
+                // dead forever with no diagnostic. Make the validator authoritative in the SAME domain the sim uses:
+                // a region that passes here is GUARANTEED to survive BuildRegionStore (validator↔applier agree).
+                var fr = new FixedRect(
+                    Fixed.FromFloat(rg.MinX), Fixed.FromFloat(rg.MinZ),
+                    Fixed.FromFloat(rg.MaxX), Fixed.FromFloat(rg.MaxZ));
+                if (fr.MinX >= fr.MaxX || fr.MinZ >= fr.MaxZ)
+                    return ValidationResult.Fail(
+                        $"scenario.regions[{i}] collapses to a degenerate rect at 16.16 resolution " +
+                        $"(min_x={rg.MinX}, max_x={rg.MaxX}, min_z={rg.MinZ}, max_z={rg.MaxZ}); each axis must span " +
+                        "at least ~1/65536 world units so the region survives the float→Fixed resolution.", validated);
+            }
+
             // ── Triggers (Story 1.11, AC3 — Decision #1: extend THIS gate rather than add a second validator) ──
             // The as-built path wrote accepted LLM/editor triggers straight into Triggers[] and reached
             // ScenarioDirector WITHOUT any validation; AR-39 now inspects them too, so non-deterministic /
@@ -264,6 +309,22 @@ namespace ProjectChimera.Core.Definitions
                         return ValidationResult.Fail($"{cp}.building_type='{c.BuildingType}' is not a known BuildingType.", validated);
                     if (!InSet(_operators, c.Operator))
                         return ValidationResult.Fail($"{cp}.operator='{c.Operator}' is not a known comparison operator.", validated);
+                    // Story 6.4: a unit_in_region condition must name a DECLARED region (dangling-ref fail-closed,
+                    // mirroring the timer_expires dangling check) — an undefined/empty region_id would silently
+                    // never match at runtime, an almost-certain authoring/LLM error.
+                    if (c.Type == "unit_in_region")
+                    {
+                        // Review patch: also fail-closed on an out-of-range faction slot here — the unit_in_region
+                        // scan does (Faction)(c.Faction + 1) and compares live entities against it. Reuses the
+                        // canonical trigger-faction bound (CheckFactionSlot, engine ceiling Faction.Player4) the
+                        // general condition check above already applies, co-located with the region check as
+                        // belt-and-suspenders fail-closed defense.
+                        string? rfe = CheckFactionSlot($"{cp}.faction", c.Faction);
+                        if (rfe != null) return ValidationResult.Fail(rfe, validated);
+                        if (!declaredRegions.Contains(c.RegionId ?? ""))
+                            return ValidationResult.Fail(
+                                $"{cp}.region_id='{c.RegionId}' references no declared region.", validated);
+                    }
                 }
 
                 TriggerAction[] actions = t.Actions ?? Array.Empty<TriggerAction>();
@@ -457,7 +518,7 @@ namespace ProjectChimera.Core.Definitions
         //    allocated once, so the per-trigger checks allocate nothing (mirrors _buildingTypeNames). ──
         private static readonly string[] _operators          = { ">", "<", ">=", "<=", "==", "!=" };
         private static readonly string[] _triggerEventTypes  = { "match_start", "unit_dies", "building_completed", "timer_expires", "resource_threshold", "unit_count_threshold" };
-        private static readonly string[] _conditionTypes     = { "always", "building_exists", "resource_comparison", "unit_count", "variable_comparison" };
+        private static readonly string[] _conditionTypes     = { "always", "building_exists", "resource_comparison", "unit_count", "variable_comparison", "unit_in_region" };
         private static readonly string[] _actionTypes        = { "spawn_unit", "display_message", "victory", "defeat", "create_timer", "add_resources", "set_variable", "play_sound" };
 
         /// <summary>Exact-match membership in a closed string set (case-sensitive). Null is never a member.</summary>

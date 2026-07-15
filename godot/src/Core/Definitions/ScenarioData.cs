@@ -205,6 +205,38 @@ namespace ProjectChimera.Core.Definitions
     }
 
     /// <summary>
+    /// A named, rectangular map area (Story 6.4) — the first-class map/trigger primitive Epic 7's win-condition
+    /// presets bind to. Rect-only for 1.0 (circles/polygons deferred post-1.0). Authored as <c>float
+    /// MinX/MinZ/MaxX/MaxZ</c> (mirroring <see cref="ScenarioResourceNode"/>'s float X/Z convention), resolved
+    /// float→<see cref="Fixed"/> exactly once at <c>ScenarioApplier</c> into a <see cref="FixedRect"/> held by a
+    /// Godot-free <c>RegionStore</c>. Referenced by string <see cref="Id"/> from a <c>unit_in_region</c> trigger
+    /// condition. Validated fail-closed (unique non-empty id; <c>MinX &lt; MaxX &amp;&amp; MinZ &lt; MaxZ</c>; all
+    /// four corners within <c>MapBounds</c>) by <see cref="ScenarioValidator"/>.
+    /// </summary>
+    public class ScenarioRegion
+    {
+        /// <summary>Unique, non-empty region id (the string key a <c>unit_in_region</c> condition references).</summary>
+        [JsonPropertyName("id")]
+        public string Id { get; set; } = "";
+
+        /// <summary>Human-readable display name shown on the editor overlay label. Not a key.</summary>
+        [JsonPropertyName("name")]
+        public string Name { get; set; } = "";
+
+        [JsonPropertyName("min_x")]
+        public float MinX { get; set; }
+
+        [JsonPropertyName("min_z")]
+        public float MinZ { get; set; }
+
+        [JsonPropertyName("max_x")]
+        public float MaxX { get; set; }
+
+        [JsonPropertyName("max_z")]
+        public float MaxZ { get; set; }
+    }
+
+    /// <summary>
     /// Full scenario definition. Contains everything needed to reconstruct a match:
     /// terrain reference, player faction assignments, resource node layout,
     /// pre-placed buildings and units, and the win condition.
@@ -360,5 +392,25 @@ namespace ProjectChimera.Core.Definitions
         [JsonPropertyName("height_vision_bonus_per_step")]
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
         public float HeightVisionBonusPerStep { get; set; } = 0f;
+
+        /// <summary>
+        /// Named rectangular map regions (Story 6.4) — the first-class map/trigger primitive a <c>unit_in_region</c>
+        /// condition references by string id and Epic 7's win-condition presets bind to. NULL (the default, every
+        /// existing scenario) ⇒ no regions, and the block is OMITTED from serialization when null
+        /// (<see cref="JsonIgnoreCondition.WhenWritingNull"/>, the <see cref="Items"/>/<see cref="Resources"/>
+        /// omit-when-null precedent) — so an absent/empty regions collection serializes byte-for-byte identically to
+        /// pre-feature (no map-package format change, no new zip file). Read as <c>Regions ?? Array.Empty</c>.
+        /// Resolved once (float→Fixed) into a Godot-free <c>RegionStore</c> at scenario-apply. Validated (fail-closed)
+        /// by <see cref="ScenarioValidator"/> when present. Deliberately EXCLUDED from
+        /// <see cref="CanonicalModelHash"/> / <see cref="StartStateHash"/> / <c>SimChecksum</c> on the SAME basis as
+        /// <see cref="Triggers"/>: regions are a *trigger input* (the <c>unit_in_region</c> condition CAN gate trigger
+        /// actions — spawn_unit/add_resources/set_variable — that DO mutate SimChecksum-folded state), and Triggers
+        /// are an already-accepted, bounded handshake gap (deferred to Epic 7). When Triggers are folded into the
+        /// handshake, Regions fold with them. The Block-If tripwire is a NON-trigger sim consumer of region
+        /// containment. No <c>AlgoVersion</c> bump, no golden re-record.
+        /// </summary>
+        [JsonPropertyName("regions")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public ScenarioRegion[]? Regions { get; set; }
     }
 }

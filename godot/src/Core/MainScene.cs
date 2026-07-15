@@ -417,6 +417,7 @@ namespace ProjectChimera.Core
                 new MinimapPhase(_ctx),
                 new TerrainBrushPhase(_ctx),
                 new ScenarioLoadPhase(_ctx),
+                new RegionToolPhase(_ctx),   // Story 6.4 — after ScenarioLoad so _ctx.Scenario exists to mutate
                 new FactionVisualsPhase(_ctx),
                 new FlowFieldInitPhase(_ctx),
                 new WinConditionPhase(_ctx),

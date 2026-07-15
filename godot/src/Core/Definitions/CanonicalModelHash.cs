@@ -16,6 +16,12 @@ namespace ProjectChimera.Core.Definitions
     ///   • enums folded by NAME and strings by UTF-8 bytes (ordinal drifts on enum insert);
     ///   • cosmetic <c>Id</c>/<c>DisplayName</c> EXCLUDED, and <c>Triggers</c> EXCLUDED (trigger/effect
     ///     canonicalization is Epic 7 / D3.4 — a known, bounded handshake gap documented in the story);
+    ///   • <c>Regions</c> (Story 6.4) EXCLUDED on the SAME basis as <c>Triggers</c>: regions are a *trigger input*
+    ///     — referenced by the <c>unit_in_region</c> condition, which CAN gate trigger actions (spawn_unit /
+    ///     add_resources / set_variable) that DO mutate <c>SimChecksum</c>-folded state — and Triggers are an
+    ///     already-accepted, bounded handshake gap (deferred to Epic 7). When Triggers are folded into the
+    ///     handshake, Regions fold with them (and the version bumps then). The Block-If tripwire is a NON-trigger
+    ///     sim consumer of region containment. No fold below, <c>AlgoVersion</c> stays 5, no golden re-record.
     ///   • <c>ScenarioPlayerSlot.StartCrystal</c> FOLDED (Story 2.9b follow-up, AlgoVersion 2→3): it is sim-affecting
     ///     (Crystal is folded in SimChecksum, and <c>alpha_map_01.json</c> now ships a nonzero start_crystal), so two
     ///     clients with mismatched start_crystal now hash DIFFERENTLY here and are rejected at the handshake instead
