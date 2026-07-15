@@ -116,6 +116,9 @@ namespace ProjectChimera.Sim.Tests.Definitions
         [InlineData("mesh_path", "unit 'grunt' is missing mesh_path (required for a complete/playable faction).", FactionDefinerStep.Roster)]
         [InlineData("mesh_path", "building 'barracks' is missing mesh_path (required for a complete/playable faction).", FactionDefinerStep.BuildingsTech)]
         [InlineData("hp", "building 'barracks'.hp: must be a positive value.", FactionDefinerStep.BuildingsTech)]
+        // DW-106 / DW-114: a hero is a roster unit → Roster; a signature effect id is a faction-config default → AI Preset.
+        [InlineData("hero_unit_id", "faction 'x'.hero_unit_id: names unit 'ghost' which is not in this faction's roster.", FactionDefinerStep.Roster)]
+        [InlineData("signature_mechanic_effect_id", "faction 'x'.signature_mechanic_effect_id: 'no_such_effect' does not resolve to any loaded ability.", FactionDefinerStep.AiPreset)]
         public void StepForError_MapsFieldPathAndMessageKindLabel_ToExpectedStep(
             string fieldPath, string message, FactionDefinerStep expected)
         {
@@ -595,6 +598,69 @@ namespace ProjectChimera.Sim.Tests.Definitions
                 Assert.False(result.Ok);
                 Assert.Contains(result.Errors, e => e.FieldPath == "ai_preset");
                 Assert.Empty(Directory.GetFiles(dir, "*_faction.json*", SearchOption.AllDirectories));
+            }
+            finally { Directory.Delete(dir, recursive: true); }
+        }
+
+        // ── TryFinishFromRawJson: signature_mechanic_effect_id resolution (Story 14.3, DW-106) ──────────────────
+
+        [Fact]
+        public void TryFinishFromRawJson_DanglingSignatureEffectId_WithRegistry_BlocksAtAiPresetStep_NoFileWritten()
+        {
+            // DW-106: the Advanced raw-JSON pane authors a signature_mechanic_effect_id that resolves to no ability
+            // in the threaded registry → the Finish gate must block with a located signature_mechanic_effect_id
+            // error routed to the AI Preset step, and write no file.
+            string dir = MakeTempDir();
+            try
+            {
+                FactionPresetPool pool = ScanRealAlphaBeta();
+                FactionDefinition def = NewDraft("dangling_sig_test");
+                Pick(def, pool, unitIds: new[] { "worker", "infantry" }, buildingIds: new[] { "command_center" });
+                def.SignatureMechanicEffectId = "no_such_effect";   // dangling — absent from the registry below
+                string json = FactionDefinerWizardCore.SerializeDraftClean(def);
+                Assert.Contains("signature_mechanic_effect_id", json);   // SerializeDraftClean wrote the key
+
+                var registry = new AbilityRegistry(new[] { new AbilityDefinition { Id = "some_other_ability" } });
+
+                FactionDefinerFinishResult result =
+                    FactionDefinerWizardCore.TryFinishFromRawJson(json, dir, registry);
+
+                Assert.False(result.Ok);
+                Assert.Contains(result.Errors, e =>
+                    e.FieldPath == "signature_mechanic_effect_id" && e.Message.Contains("no_such_effect"));
+                Assert.Equal(FactionDefinerStep.AiPreset, result.Step);
+                Assert.Empty(Directory.GetFiles(dir, "*_faction.json*", SearchOption.AllDirectories));
+            }
+            finally { Directory.Delete(dir, recursive: true); }
+        }
+
+        [Fact]
+        public void TryFinishFromRawJson_ResolvingSignatureEffectId_WithRegistry_WritesFile()
+        {
+            // Counterpart to the dangling case: a signature_mechanic_effect_id that DOES resolve against the threaded
+            // registry passes the gate and writes the file (proves the check is a real resolution, not a blanket block).
+            string dir = MakeTempDir();
+            try
+            {
+                FactionPresetPool pool = ScanRealAlphaBeta();
+                FactionDefinition def = NewDraft("resolving_sig_test");
+                Pick(def, pool, unitIds: new[] { "worker", "infantry" }, buildingIds: new[] { "command_center" });
+                def.SignatureMechanicEffectId = "real_effect";
+                string json = FactionDefinerWizardCore.SerializeDraftClean(def);
+
+                var registry = new AbilityRegistry(new[] { new AbilityDefinition { Id = "real_effect" } });
+
+                FactionDefinerFinishResult result =
+                    FactionDefinerWizardCore.TryFinishFromRawJson(json, dir, registry);
+
+                Assert.True(result.Ok);
+                Assert.True(File.Exists(result.WrittenPath));
+
+                // Round-trip: the resolving signature id must actually survive the write (SerializeDraftClean emits
+                // signature_mechanic_effect_id only when non-empty, so a regression that dropped it on write would
+                // otherwise still pass a bare file-exists assertion).
+                FactionDefinition reloaded = FactionDefinition.LoadFromFile(result.WrittenPath!);
+                Assert.Equal("real_effect", reloaded.SignatureMechanicEffectId);
             }
             finally { Directory.Delete(dir, recursive: true); }
         }

@@ -300,9 +300,13 @@ namespace ProjectChimera.CreationSuite
         private void OnFinishPressed()
         {
             string factionsDirAbs = ProjectSettings.GlobalizePath(FACTIONS_DIR_RES);
+            // Story 14.3 (DW-106): load the ability registry so the Finish gate resolves a non-empty
+            // signature_mechanic_effect_id (a dangling one — notably from the Advanced raw-JSON pane — is blocked).
+            string abilitiesDirAbs = ProjectSettings.GlobalizePath(ABILITIES_DIR_RES);
+            AbilityRegistry abilityRegistry = AbilityRegistry.LoadFromDirectory(abilitiesDirAbs);
             FactionDefinerFinishResult result = _advancedMode
-                ? FactionDefinerWizardCore.TryFinishFromRawJson(_jsonPane.Text, factionsDirAbs)
-                : FactionDefinerWizardCore.TryFinish(_draft, factionsDirAbs);
+                ? FactionDefinerWizardCore.TryFinishFromRawJson(_jsonPane.Text, factionsDirAbs, abilityRegistry)
+                : FactionDefinerWizardCore.TryFinish(_draft, factionsDirAbs, abilityRegistry);
 
             if (!result.Ok)
             {

@@ -286,6 +286,109 @@ namespace ProjectChimera.Sim.Tests.Definitions
             Assert.Contains(complete.Errors, e => e.FieldPath == "units" && e.Message.Contains("combat"));
         }
 
+        // ── DW-106: hero_unit_id resolution (ValidateComplete-only) ──────────
+
+        [Fact]
+        public void HeroUnitIdResolves_ValidateComplete_IsOk()
+        {
+            FactionDefinition def = ValidFaction();
+            def.HeroUnitId = "melee"; // names the Melee unit already in the roster
+
+            Assert.True(FactionValidator.ValidateComplete(def).Ok);
+        }
+
+        [Fact]
+        public void HeroUnitIdDangling_ValidateComplete_ReturnsLocatedError_NamingFactionAndDanglingId()
+        {
+            FactionDefinition def = ValidFaction();
+            def.HeroUnitId = "ghost"; // no such unit id in the roster
+
+            FactionValidationResult complete = FactionValidator.ValidateComplete(def);
+            Assert.False(complete.Ok);
+            Assert.Contains(complete.Errors, e =>
+                e.FieldPath == "hero_unit_id"
+                && e.Message.Contains("test_faction")   // names the faction
+                && e.Message.Contains("ghost"));         // names the dangling id
+        }
+
+        [Fact]
+        public void HeroUnitIdDangling_WithRegistry_StillReportsHeroError()
+        {
+            // The hero check is registry-independent — supplying a registry must not suppress it.
+            FactionDefinition def = ValidFaction();
+            def.HeroUnitId = "ghost";
+            var registry = new AbilityRegistry(new[] { new AbilityDefinition { Id = "some_ability" } });
+
+            FactionValidationResult complete = FactionValidator.ValidateComplete(def, registry);
+            Assert.False(complete.Ok);
+            Assert.Contains(complete.Errors, e => e.FieldPath == "hero_unit_id" && e.Message.Contains("ghost"));
+        }
+
+        [Theory]
+        [InlineData(null)]
+        [InlineData("")]
+        [InlineData("   ")]
+        public void HeroUnitIdUnauthored_ValidateComplete_IsOk(string? heroUnitId)
+        {
+            FactionDefinition def = ValidFaction();
+            def.HeroUnitId = heroUnitId; // optional/unauthored — must pass
+
+            Assert.True(FactionValidator.ValidateComplete(def).Ok);
+        }
+
+        // ── DW-106: signature_mechanic_effect_id resolution (ValidateComplete-only, registry-gated) ──
+
+        [Fact]
+        public void SignatureEffectIdResolves_WithRegistry_ValidateComplete_IsOk()
+        {
+            FactionDefinition def = ValidFaction();
+            def.SignatureMechanicEffectId = "known_effect";
+            var registry = new AbilityRegistry(new[] { new AbilityDefinition { Id = "known_effect" } });
+
+            Assert.True(FactionValidator.ValidateComplete(def, registry).Ok);
+        }
+
+        [Fact]
+        public void SignatureEffectIdDangling_WithRegistry_ValidateComplete_ReturnsLocatedError()
+        {
+            FactionDefinition def = ValidFaction();
+            def.SignatureMechanicEffectId = "no_such_effect";
+            var registry = new AbilityRegistry(new[] { new AbilityDefinition { Id = "known_effect" } });
+
+            FactionValidationResult complete = FactionValidator.ValidateComplete(def, registry);
+            Assert.False(complete.Ok);
+            Assert.Contains(complete.Errors, e =>
+                e.FieldPath == "signature_mechanic_effect_id"
+                && e.Message.Contains("test_faction")
+                && e.Message.Contains("no_such_effect"));
+        }
+
+        [Fact]
+        public void SignatureEffectIdDangling_NoRegistry_SignatureCheckSkipped_ValidateComplete_IsOk()
+        {
+            // Without a registry the signature check cannot resolve and must be skipped — the prior outcome is
+            // unchanged (Ok here, since every other axis of ValidFaction is clean).
+            FactionDefinition def = ValidFaction();
+            def.SignatureMechanicEffectId = "no_such_effect";
+
+            FactionValidationResult complete = FactionValidator.ValidateComplete(def);
+            Assert.True(complete.Ok);
+            Assert.DoesNotContain(complete.Errors, e => e.FieldPath == "signature_mechanic_effect_id");
+        }
+
+        [Theory]
+        [InlineData(null)]
+        [InlineData("")]
+        [InlineData("   ")]
+        public void SignatureEffectIdUnauthored_WithRegistry_ValidateComplete_IsOk(string? effectId)
+        {
+            FactionDefinition def = ValidFaction();
+            def.SignatureMechanicEffectId = effectId; // optional/unauthored — must pass even with a registry
+            var registry = new AbilityRegistry(new[] { new AbilityDefinition { Id = "known_effect" } });
+
+            Assert.True(FactionValidator.ValidateComplete(def, registry).Ok);
+        }
+
         // ── Unchanged showcase load (regression) ─────────────────────────────
 
         [Fact]
@@ -308,6 +411,49 @@ namespace ProjectChimera.Sim.Tests.Definitions
             Assert.Equal("balanced", beta.AiPreset);
             Assert.True(FactionValidator.Validate(beta).Ok);
             Assert.True(FactionValidator.ValidateComplete(beta).Ok);
+        }
+
+        [Fact]
+        public void AlphaAndBetaFactions_NoRegistry_ValidateComplete_StillOk_PostDw106()
+        {
+            // DW-106 no-regression: the shipped factions author no hero_unit_id (hero check passes) and the
+            // signature check is skipped without a registry — both must still pass ValidateComplete(def) exactly
+            // as before this story. Alpha/beta DO author a non-empty signature_mechanic_effect_id, so this row also
+            // pins that a no-registry pass never trips the new signature check.
+            FactionDefinition alpha = FactionDefinition.LoadFromFile(ResolveDataPath("alpha_faction.json"));
+            FactionDefinition beta = FactionDefinition.LoadFromFile(ResolveDataPath("beta_faction.json"));
+
+            Assert.True(string.IsNullOrWhiteSpace(alpha.HeroUnitId));
+            Assert.True(string.IsNullOrWhiteSpace(beta.HeroUnitId));
+            Assert.True(FactionValidator.ValidateComplete(alpha).Ok);
+            Assert.True(FactionValidator.ValidateComplete(beta).Ok);
+        }
+
+        [Fact]
+        public void AlphaAndBeta_SignatureEffectIds_ResolveAgainstRealRegistry_ValidateComplete_IsOk()
+        {
+            // DW-106 regression guard against the EXACT defect that spawned it: a SHIPPED faction's
+            // signature_mechanic_effect_id drifting to a value matching no real ability. Unlike the no-registry row
+            // above, this loads the REAL abilities directory and passes it into ValidateComplete, so alpha's
+            // 'spike_transmutation' / beta's 'furnace_trickle' must actually resolve — a future re-drift of shipped
+            // content, or a moved/empty abilities dir, fails HERE (the wizard-gate registry-wiring's real-content
+            // assumption is pinned by the same real directory this asserts is non-empty).
+            AbilityRegistry registry = AbilityRegistry.LoadFromDirectory(ResolveAbilitiesDir());
+            Assert.True(registry.Count > 0, "real abilities directory resolved to an empty registry — path drift?");
+
+            FactionDefinition alpha = FactionDefinition.LoadFromFile(ResolveDataPath("alpha_faction.json"));
+            FactionDefinition beta = FactionDefinition.LoadFromFile(ResolveDataPath("beta_faction.json"));
+
+            Assert.False(string.IsNullOrWhiteSpace(alpha.SignatureMechanicEffectId));
+            Assert.False(string.IsNullOrWhiteSpace(beta.SignatureMechanicEffectId));
+            Assert.True(FactionValidator.ValidateComplete(alpha, registry).Ok);
+            Assert.True(FactionValidator.ValidateComplete(beta, registry).Ok);
+
+            // Belt-and-suspenders: the real registry actually enforces — a dangling id on the real faction is blocked.
+            alpha.SignatureMechanicEffectId = "no_such_effect_in_real_registry";
+            FactionValidationResult dangling = FactionValidator.ValidateComplete(alpha, registry);
+            Assert.False(dangling.Ok);
+            Assert.Contains(dangling.Errors, e => e.FieldPath == "signature_mechanic_effect_id");
         }
 
         // ── Story 5.3 (FR-20): FMA showcase content hardening regression ─────────────────────
@@ -558,6 +704,22 @@ namespace ProjectChimera.Sim.Tests.Definitions
             }
             throw new DirectoryNotFoundException(
                 $"Could not locate resources/data/factions above {AppContext.BaseDirectory}");
+        }
+
+        /// <summary>Resolve the shipped <c>resources/data/abilities/</c> directory (sibling of the factions dir),
+        /// mirroring <c>SignatureMechanicRealContentTests</c>'s real-content resolution — used to prove shipped
+        /// signature ids resolve against the genuinely-loaded registry, not a hand-built stand-in.</summary>
+        private static string ResolveAbilitiesDir()
+        {
+            var dir = new DirectoryInfo(AppContext.BaseDirectory);
+            while (dir != null)
+            {
+                string candidate = Path.Combine(dir.FullName, "resources", "data", "abilities");
+                if (Directory.Exists(candidate)) return candidate;
+                dir = dir.Parent;
+            }
+            throw new DirectoryNotFoundException(
+                $"Could not locate resources/data/abilities above {AppContext.BaseDirectory}");
         }
     }
 }

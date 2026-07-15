@@ -46,6 +46,12 @@ namespace ProjectChimera.CreationSuite
 
         private const string FACTIONS_DIR_RES = "res://resources/data/factions/";
 
+        /// <summary>The abilities directory the Finish gate loads an <see cref="AbilityRegistry"/> from so a dangling
+        /// <c>signature_mechanic_effect_id</c> (notably from the Advanced raw-JSON pane) is resolved and blocked
+        /// (Story 14.3, DW-106). Mirrors <c>MainScene.ABILITIES_DIR</c>; globalized via
+        /// <c>ProjectSettings.GlobalizePath</c> at the Godot edge like <see cref="FACTIONS_DIR_RES"/>.</summary>
+        private const string ABILITIES_DIR_RES = "res://resources/data/abilities";
+
         // ── Kit context (self-owned; _accent only created when this panel is the first consumer) ──
         private GodotTheme        _theme  = null!;
         private AccentController?  _accent;

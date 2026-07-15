@@ -167,6 +167,11 @@ namespace ProjectChimera.Core.Definitions
                 case "id": return FactionDefinerStep.NameColor;        // the target-exists collision names the id field
                 case "ai_preset": return FactionDefinerStep.AiPreset;
                 case "units": return FactionDefinerStep.Roster;
+                // DW-106 / DW-114: a hero is a roster unit — the Roster step is where the remedy lives (pick/unpick
+                // the referenced unit). A signature_mechanic_effect_id is not editable in any Simple step; route it to
+                // AI Preset, a defensible faction-config-level default (per DW-114's routing note).
+                case "hero_unit_id": return FactionDefinerStep.Roster;
+                case "signature_mechanic_effect_id": return FactionDefinerStep.AiPreset;
             }
             if (!string.IsNullOrEmpty(message) && message.StartsWith("unit '", StringComparison.Ordinal))
                 return FactionDefinerStep.Roster;
@@ -218,7 +223,8 @@ namespace ProjectChimera.Core.Definitions
         /// key that is PRESENT (even <c>""</c>/<c>null</c>) keeps its existing outcome. The re-inspection is
         /// best-effort and guarded so it can never turn an accepted document into a throw.</para>
         /// </summary>
-        public static FactionDefinerFinishResult TryFinishFromRawJson(string json, string factionsDirAbsolute)
+        public static FactionDefinerFinishResult TryFinishFromRawJson(string json, string factionsDirAbsolute,
+            AbilityRegistry? abilityRegistry = null)
         {
             FactionDefinition? parsed;
             try
@@ -262,7 +268,7 @@ namespace ProjectChimera.Core.Definitions
             }
             catch { /* re-inspection is best-effort; never turn an accepted doc into a throw */ }
 
-            return TryFinish(parsed, factionsDirAbsolute);
+            return TryFinish(parsed, factionsDirAbsolute, abilityRegistry);
         }
 
         /// <summary>
@@ -279,7 +285,8 @@ namespace ProjectChimera.Core.Definitions
         /// <c>overwrite:false</c>. Never throws — every failure mode returns a located
         /// <see cref="FactionDefinerFinishResult"/>; a stray <c>.tmp</c> is cleaned up on any exception.
         /// </summary>
-        public static FactionDefinerFinishResult TryFinish(FactionDefinition def, string factionsDirAbsolute)
+        public static FactionDefinerFinishResult TryFinish(FactionDefinition def, string factionsDirAbsolute,
+            AbilityRegistry? abilityRegistry = null)
         {
             if (def == null)
                 return FactionDefinerFinishResult.Failure(new (string, string)[] { ("faction", "faction is null.") });
@@ -291,7 +298,7 @@ namespace ProjectChimera.Core.Definitions
             // never trips a downstream check that doesn't even look at HeroUnitId (nothing does today).
             ClearStaleHeroReference(def);
 
-            FactionValidationResult validation = FactionValidator.ValidateComplete(def);
+            FactionValidationResult validation = FactionValidator.ValidateComplete(def, abilityRegistry);
             if (!validation.Ok)
                 return FactionDefinerFinishResult.Failure(validation.Errors.ToList());
 

@@ -1,6 +1,7 @@
 #nullable enable
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace ProjectChimera.Core.Definitions
 {
@@ -183,14 +184,40 @@ namespace ProjectChimera.Core.Definitions
         }
 
         /// <summary>
-        /// <see cref="Validate"/>'s errors PLUS the two roster-completeness checks that only make sense once a
-        /// faction is meant to be finished/playable: a unit or building with a missing/empty <c>mesh_path</c>, and a
+        /// <see cref="Validate"/>'s errors PLUS the roster-completeness checks that only make sense once a
+        /// faction is meant to be finished/playable: a unit or building with a missing/empty <c>mesh_path</c>, a
         /// roster missing a required role (no <c>"Worker"</c> unit, or no combat-category unit — see class doc for
-        /// the exact definition). Exposed for future stories' own gates (wizard finish, playtest, selectability) —
-        /// NEVER called by <see cref="FactionDefinition.LoadFromFile"/>. Returns every located error (list-all).
-        /// Pure — never throws, never logs.
+        /// the exact definition), and the two descriptor-reference resolution checks added by Story 14.3 (DW-106):
+        /// a non-empty <see cref="FactionDefinition.HeroUnitId"/> must name a unit in this faction's own
+        /// <see cref="FactionDefinition.Units"/> roster, and a non-empty
+        /// <see cref="FactionDefinition.SignatureMechanicEffectId"/> must resolve against a supplied
+        /// <paramref name="abilityRegistry"/>.
+        ///
+        /// <para><b>Optional-registry semantics (Story 14.3).</b> <paramref name="abilityRegistry"/> defaults to
+        /// <c>null</c> so every existing caller (<see cref="FactionDefinition.LoadSelectableFromDirectory"/>,
+        /// <c>ScenarioLoadPhase</c>, tests) compiles and behaves unchanged. The hero check is registry-independent so
+        /// it runs at EVERY <see cref="ValidateComplete"/> site; note that at the wizard save-gate a dangling
+        /// <c>hero_unit_id</c> is pre-nulled by <c>FactionDefinerWizardCore.ClearStaleHeroReference</c> BEFORE this
+        /// method is called, so in practice the located <c>hero_unit_id</c> error surfaces only at the non-wizard
+        /// sites (discovery/match-load) — the wizard silently repairs it instead (Story 5.6, unchanged). The signature check needs the
+        /// registry to resolve an ability id, so it fires ONLY when a registry is supplied — a null registry
+        /// deliberately SKIPS it (resolution is impossible without one) rather than failing closed; the wizard
+        /// save-gate is the site that threads a real registry today (the launch-gate wiring that would guarantee one
+        /// everywhere is Story 14.4). Both checks fire only for a non-empty field: a null/empty/whitespace
+        /// <c>hero_unit_id</c>/<c>signature_mechanic_effect_id</c> is a legitimate unauthored-descriptor state (these
+        /// fields default <c>null</c>) and passes.</para>
+        ///
+        /// <para><b>Why here, not <see cref="Validate"/> (epic-14 technical decision, supersedes DW-106's looser
+        /// wording).</b> <see cref="Validate"/> runs on every <see cref="FactionDefinition.LoadFromFile"/> — including
+        /// the Building/Unit Card Editors' lenient Save self-check — and takes no registry; wiring a registry-dependent
+        /// or roster-completeness check there would break that path and re-open the editor regression the two-method
+        /// split exists to prevent. These id-resolution checks therefore live in <see cref="ValidateComplete"/> only.</para>
+        ///
+        /// Exposed for callers' own gates (wizard finish, playtest, selectability) — NEVER called by
+        /// <see cref="FactionDefinition.LoadFromFile"/>. Returns every located error (list-all). Pure — never throws,
+        /// never logs.
         /// </summary>
-        public static FactionValidationResult ValidateComplete(FactionDefinition def)
+        public static FactionValidationResult ValidateComplete(FactionDefinition def, AbilityRegistry? abilityRegistry = null)
         {
             FactionValidationResult baseResult = Validate(def);
             var errors = new List<(string, string)>(baseResult.Errors);
@@ -248,6 +275,26 @@ namespace ProjectChimera.Core.Definitions
             if (!hasCombat)
                 errors.Add(("units", Located(id, "units",
                     "roster is missing a required combat unit (Melee, Ranged, Siege, or Air).")));
+
+            // ── DW-106: hero_unit_id resolves against this faction's own roster ──────────────────────
+            // Registry-independent, so effective at every ValidateComplete site (discovery/match-load included; the
+            // wizard save-gate pre-nulls a dangling ref via ClearStaleHeroReference, so it never trips there).
+            // Only fires for a non-empty id — a null/empty HeroUnitId is a legitimate unauthored-descriptor state.
+            // Id match is ordinal/case-sensitive by design: unit and ability ids are case-sensitive keys throughout
+            // (AbilityRegistry.IndexOf is ordinal too), UNLIKE the deliberately case-insensitive ai_preset/Category
+            // closed-set checks above — those are human-facing category tokens, these are exact reference ids.
+            if (!string.IsNullOrWhiteSpace(def.HeroUnitId) && def.Units != null
+                && !def.Units.Any(u => u != null && u.Id == def.HeroUnitId))
+                errors.Add(("hero_unit_id", Located(id, "hero_unit_id",
+                    $"names unit '{def.HeroUnitId}' which is not in this faction's roster.")));
+
+            // ── DW-106: signature_mechanic_effect_id resolves against a supplied AbilityRegistry ─────
+            // Fires ONLY when a registry is supplied (resolution needs one); a null registry skips it. Only for a
+            // non-empty id — a null/empty SignatureMechanicEffectId is a legitimate unauthored-descriptor state.
+            if (abilityRegistry != null && !string.IsNullOrWhiteSpace(def.SignatureMechanicEffectId)
+                && abilityRegistry.IndexOf(def.SignatureMechanicEffectId) < 0)
+                errors.Add(("signature_mechanic_effect_id", Located(id, "signature_mechanic_effect_id",
+                    $"'{def.SignatureMechanicEffectId}' does not resolve to any loaded ability.")));
 
             return errors.Count == 0 ? FactionValidationResult.Valid : new FactionValidationResult(errors);
         }
