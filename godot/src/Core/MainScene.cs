@@ -1613,6 +1613,20 @@ namespace ProjectChimera.Core
                 validated = r.Value;
             }
 
+            // 2b. Fail-closed roster-completeness gate (Story 14.4, DW-97). Mirrors the scenario veto above:
+            //     validate BEFORE the clear so an incomplete faction leaves the world entirely unchanged, and
+            //     return false so the caller stays in Edit. Threads _abilityRegistry so the
+            //     signature_mechanic_effect_id resolution check fires at THIS launch gate (the boot-shadow and
+            //     discovery paths deliberately stay registry-less — see FactionLaunchGate). The pure decision
+            //     lives in FactionLaunchGate (Tier-1 testable); this layer only does the Godot side effects.
+            string? factionBlock = Definitions.FactionLaunchGate.FirstIncompleteReason(_slotFactionDefs, _abilityRegistry);
+            if (factionBlock != null)
+            {
+                GD.PrintErr($"[Reset] {factionBlock.Replace("\n", " ")} — staying in Edit");
+                ShowTriggerMessage($"Cannot enter Play — {factionBlock}", 5f);
+                return false; // veto: nothing cleared, world unchanged
+            }
+
             // 3. Clear every store to its authored-start (post-ctor) state — in place, no host reconstruction.
             _host.ClearForReset();
 
