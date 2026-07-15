@@ -17,6 +17,13 @@ namespace ProjectChimera.Core.Definitions
     ///   • enums folded by NAME and strings by UTF-8 bytes (ordinal drifts on enum insert);
     ///   • cosmetic <c>Id</c>/<c>DisplayName</c> EXCLUDED, and <c>Triggers</c> EXCLUDED (trigger/effect
     ///     canonicalization is Epic 7 / D3.4 — a known, bounded handshake gap documented in the story);
+    ///   • the Story 6.7 authoring metadata <c>Author</c>/<c>Description</c>/<c>SuggestedPlayers</c> EXCLUDED on the
+    ///     exact <c>DisplayName</c> basis — pure cosmetic/authoring fields that no sim system reads, so they are
+    ///     folded into NEITHER this hash NOR <c>StartStateHash</c>. Each is omit-when-default, so an absent field is
+    ///     byte-identical to the pre-6.7 fold; there is NO fold below and <c>AlgoVersion</c> stays 7 (this story adds
+    ///     no hash-folded field). <c>MapBounds</c> — which Story 6.7's New-Map flow now sets per-scenario from the
+    ///     <c>MapSize</c> set — was ALREADY folded (below); authoring a different playable extent is expected map
+    ///     identity, not an algorithm change, so no re-baseline.
     ///   • <c>Regions</c> (Story 6.4) EXCLUDED on the SAME basis as <c>Triggers</c>: regions are a *trigger input*
     ///     — referenced by the <c>unit_in_region</c> condition, which CAN gate trigger actions (spawn_unit /
     ///     add_resources / set_variable) that DO mutate <c>SimChecksum</c>-folded state — and Triggers are an

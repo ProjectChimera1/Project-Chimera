@@ -90,8 +90,10 @@ namespace ProjectChimera.Core.Definitions
         public string ScenarioFile { get; set; } = "scenario.json";
 
         /// <summary>
-        /// Path inside the zip to the preview image (PNG, 256×256 recommended).
-        /// Null or empty = no thumbnail.
+        /// Path inside the zip to the preview image (PNG). Story 6.7 wires this previously-dead slot: when a map is
+        /// exported, <see cref="ContentPackager.Pack"/> auto-generates a top-down minimap preview and sets this to
+        /// <c>"preview/preview.png"</c>; a legacy on-disk thumbnail sets it to <c>"thumbnail.png"</c>. Null or empty =
+        /// no image. (The default below is only consulted when deserializing an old manifest that omits the key.)
         /// </summary>
         [JsonPropertyName("thumbnail_file")]
         public string? ThumbnailFile { get; set; } = "thumbnail.png";

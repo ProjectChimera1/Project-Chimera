@@ -1,0 +1,28 @@
+{
+  "id": "my-new-map",
+  "display_name": "My New Map",
+  "terrain_ref": "",
+  "map_bounds": 120,
+  "suggested_players": 2,
+  "win_condition": "DestroyAllBuildings",
+  "player_slots": [
+    {
+      "slot": 0,
+      "faction_json": "res://resources/data/factions/alpha_faction.json",
+      "start_ore": 200,
+      "base_x": -72,
+      "base_z": -72
+    },
+    {
+      "slot": 1,
+      "faction_json": "res://resources/data/factions/alpha_faction.json",
+      "start_ore": 200,
+      "base_x": 72,
+      "base_z": 72
+    }
+  ],
+  "resource_nodes": [],
+  "buildings": [],
+  "units": [],
+  "triggers": []
+}

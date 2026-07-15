@@ -84,9 +84,19 @@ namespace ProjectChimera.UI
 
         /// <summary>
         /// Fired when the user places a start-position marker.
-        /// Parameters: (slotIndex 0=P1/1=P2, world position, starting ore).
+        /// Story 6.7 parameters: (slotIndex 0..3, world position, starting ore, starting crystal).
+        /// Returns the <c>created</c> flag from MainScene.MoveStartPosition — true when the placement APPENDED a new
+        /// slot (so undo must remove it rather than repositioning a phantom at origin).
         /// </summary>
-        private System.Action<int, Vector3, float>? _onStartPosMoved;
+        private System.Func<int, Vector3, float, float, bool>? _onStartPosMoved;
+
+        /// <summary>Story 6.7 — fired when the author removes the trailing start slot (2–4 add/remove). Parameter is
+        /// the removed 0-based slot index; the owner truncates <c>PlayerSlots</c> and hides the flag marker.</summary>
+        private System.Action<int>? _onStartSlotRemoved;
+
+        /// <summary>Story 6.7 (patch 3) — fired when the Ore/Crystal spinner edits an ALREADY-placed slot, so the
+        /// economy change persists immediately (StartCrystal is hash-folded). Parameters: (slot, ore, crystal).</summary>
+        private System.Action<int, float, float>? _onStartSlotEconomy;
 
         /// <summary>
         /// Story 6.1 — ScenarioData sync callbacks (one per persisted entity kind), fired inside the place/delete
@@ -121,9 +131,13 @@ namespace ProjectChimera.UI
         private int           _unitIndex    = 0;
         private bool          _gridSnapEnabled = false;
 
-        // Start position sub-state
-        private int   _startSlot = 0;    // 0=P1, 1=P2
-        private float _startOre  = 200f; // starting ore for the selected slot
+        // Start position sub-state (Story 6.7: 2–4 slots, capped at the engine ceiling Faction.Player4).
+        private const int START_SLOT_CEILING = 4; // (int)Faction.Player4 — 5–8 is Story 9.2
+        private const int START_SLOT_MIN     = 2;
+        private int   _startSlot      = 0;  // 0..3
+        private int   _startSlotCount = 2;  // how many start slots currently exist (2..4)
+        private float _startOre       = 200f; // starting ore for the selected slot (mirrors _slotStartOre[_startSlot])
+        private float _startCrystal   = 0f;   // starting crystal for the selected slot
 
         // Resource node sub-state (configurable supply and gather rate)
         private float _nodeSupply = 500f;
@@ -183,8 +197,10 @@ namespace ProjectChimera.UI
         /// interleave in strict LIFO with no second parallel stack and no cross-corruption.</summary>
         public EditorHistory History => _history;
 
-        // Tracks ore set per start-position slot (for undo of MoveStartPos)
-        private readonly float[] _slotStartOre = { 200f, 200f };
+        // Tracks ore/crystal set per start-position slot (for undo of MoveStartPos). Story 6.7: sized to the engine
+        // ceiling (4) rather than a hardcoded 2.
+        private readonly float[] _slotStartOre     = { 200f, 200f, 200f, 200f };
+        private readonly float[] _slotStartCrystal = { 0f, 0f, 0f, 0f };
 
         // Last valid 3D cursor position in world space (used by Delete key)
         private Vector3 _lastCursorWorld;
@@ -235,14 +251,16 @@ namespace ProjectChimera.UI
         public void Initialize(RtsCameraController camCtrl, EntityWorld world,
                                ResourceNodeStore? nodes = null, ResourceStore? resources = null,
                                BuildingStore? buildings = null, FactionDefinition? faction = null,
-                               System.Action<int, Vector3, float>? onStartPosMoved = null,
+                               System.Func<int, Vector3, float, float, bool>? onStartPosMoved = null,
                                FactionDefinition? faction2 = null,
                                ItemStore? items = null, ItemRegistry? itemRegistry = null,
                                System.Func<ScenarioSyncOp, object?, BuildingType, Faction, Vector3, bool, object?>? onBuildingSync = null,
                                System.Func<ScenarioSyncOp, object?, string, Faction, Vector3, object?>? onUnitSync = null,
                                System.Func<ScenarioSyncOp, object?, Vector3, float, float, int, object?>? onResourceNodeSync = null,
                                System.Func<ScenarioSyncOp, object?, string, Vector3, float, float, bool, object?>? onPropSync = null,
-                               System.Func<ScenarioData?>? scenarioGetter = null)
+                               System.Func<ScenarioData?>? scenarioGetter = null,
+                               System.Action<int>? onStartSlotRemoved = null,
+                               System.Action<int, float, float>? onStartSlotEconomy = null)
         {
             _camCtrl            = camCtrl;
             _world              = world;
@@ -259,6 +277,24 @@ namespace ProjectChimera.UI
             _onResourceNodeSync = onResourceNodeSync;  // Story 6.1
             _onPropSync         = onPropSync;          // Story 6.6
             _scenarioGetter     = scenarioGetter;      // Story 6.6
+            _onStartSlotRemoved = onStartSlotRemoved;  // Story 6.7
+            _onStartSlotEconomy = onStartSlotEconomy;  // Story 6.7 (patch 3)
+
+            // Story 6.7: seed the working start-slot count from the loaded scenario (2..4) so the picker shows the
+            // right number of slots on first open, and mirror each slot's authored ore/crystal into the working arrays.
+            var scen0 = scenarioGetter?.Invoke();
+            if (scen0?.PlayerSlots != null)
+            {
+                _startSlotCount = System.Math.Clamp(scen0.PlayerSlots.Length, START_SLOT_MIN, START_SLOT_CEILING);
+                foreach (var s in scen0.PlayerSlots)
+                    if (s.Slot >= 0 && s.Slot < START_SLOT_CEILING)
+                    {
+                        _slotStartOre[s.Slot]     = s.StartOre;
+                        _slotStartCrystal[s.Slot] = s.StartCrystal;
+                    }
+                _startOre     = _slotStartOre[_startSlot];
+                _startCrystal = _slotStartCrystal[_startSlot];
+            }
 
             CreateGhostMesh();
             BuildPaletteUi();
@@ -481,9 +517,7 @@ namespace ProjectChimera.UI
                     PlacementMode.P2Unit       => new Color(1f,   0.30f, 0.2f, 0.40f),
                     PlacementMode.ResourceNode => new Color(1f,   0.85f, 0.2f, 0.40f),
                     PlacementMode.Building     => new Color(0.2f, 0.80f, 0.3f, 0.35f),
-                    PlacementMode.StartPos     => _startSlot == 0
-                                                    ? new Color(0.2f, 0.5f, 1f, 0.5f)
-                                                    : new Color(1f, 0.3f, 0.2f, 0.5f),
+                    PlacementMode.StartPos     => StartSlotGhostColor(_startSlot),
                     PlacementMode.Prop         => _propBlocks
                                                     ? new Color(1f, 0.45f, 0.2f, 0.45f)   // blocking prop = orange
                                                     : new Color(0.5f, 0.85f, 0.4f, 0.40f), // cosmetic prop = green
@@ -491,6 +525,16 @@ namespace ProjectChimera.UI
                 };
             }
         }
+
+        /// <summary>Story 6.7 — per-slot ghost/marker tint for a 2–4 start-position slot (matches
+        /// <see cref="StartPositionBridge"/>'s P1 blue / P2 red / P3 green / P4 yellow).</summary>
+        private static Color StartSlotGhostColor(int slot) => (slot & 3) switch
+        {
+            0 => new Color(0.20f, 0.50f, 1.00f, 0.5f), // P1 blue
+            1 => new Color(1.00f, 0.30f, 0.20f, 0.5f), // P2 red
+            2 => new Color(0.30f, 0.85f, 0.35f, 0.5f), // P3 green
+            _ => new Color(0.95f, 0.85f, 0.20f, 0.5f), // P4 yellow
+        };
 
         private void UpdateGhostPosition(bool editMode)
         {
@@ -871,22 +915,43 @@ namespace ProjectChimera.UI
         {
             var snapped = new Vector3(SnapValue(worldPos.X), 0f, SnapValue(worldPos.Z));
 
-            // Capture old state before applying
-            int   capturedSlot   = _startSlot;
-            float capturedNewOre = _startOre;
-            float capturedOldOre = _slotStartOre[_startSlot];
-            var   capturedNewPos = snapped;
-            var   capturedOldBase = _resources?.FactionBase[(int)_startSlot + 1] ?? default;
+            // Capture old state before applying (Story 6.7: ore AND crystal per slot).
+            int   capturedSlot        = _startSlot;
+            float capturedNewOre      = _startOre;
+            float capturedNewCrystal  = _startCrystal;
+            float capturedOldOre      = _slotStartOre[_startSlot];
+            float capturedOldCrystal  = _slotStartCrystal[_startSlot];
+            var   capturedNewPos      = snapped;
+            var   capturedOldBase = _resources?.FactionBase[(int)FactionRegistry.ToFaction(_startSlot)] ?? default;
             var   capturedOldPos = new Vector3(capturedOldBase.X.ToFloat(), 0f, capturedOldBase.Z.ToFloat());
 
-            _onStartPosMoved?.Invoke(_startSlot, snapped, _startOre);
-            _slotStartOre[_startSlot] = _startOre;
+            bool created = _onStartPosMoved?.Invoke(_startSlot, snapped, _startOre, _startCrystal) ?? false;
+            _slotStartOre[_startSlot]     = _startOre;
+            _slotStartCrystal[_startSlot] = _startCrystal;
+            // Placing slot N implies at least N+1 slots exist (2..4).
+            _startSlotCount = System.Math.Clamp(System.Math.Max(_startSlotCount, _startSlot + 1), START_SLOT_MIN, START_SLOT_CEILING);
 
-            GD.Print($"[EntityPlacer] Start pos P{_startSlot + 1} → ({snapped.X:F1}, {snapped.Z:F1})  ore={_startOre:F0}");
+            GD.Print($"[EntityPlacer] Start pos P{_startSlot + 1} → ({snapped.X:F1}, {snapped.Z:F1})  ore={_startOre:F0} crystal={_startCrystal:F0}");
 
             _history.Push(
-                redo: () => _onStartPosMoved?.Invoke(capturedSlot, capturedNewPos, capturedNewOre),
-                undo: () => _onStartPosMoved?.Invoke(capturedSlot, capturedOldPos, capturedOldOre));
+                // Redo re-invokes the move (Upsert re-creates the slot if it had been removed by the undo below).
+                redo: () => _onStartPosMoved?.Invoke(capturedSlot, capturedNewPos, capturedNewOre, capturedNewCrystal),
+                undo: () =>
+                {
+                    if (created)
+                    {
+                        // The placement CREATED the slot — undo removes it entirely rather than repositioning a phantom
+                        // at origin, and shrinks the working slot count back.
+                        _onStartSlotRemoved?.Invoke(capturedSlot);
+                        _startSlotCount = System.Math.Max(START_SLOT_MIN, _startSlotCount - 1);
+                        if (_startSlot >= _startSlotCount) _startSlot = _startSlotCount - 1;
+                        RefreshSubRow();
+                    }
+                    else
+                    {
+                        _onStartPosMoved?.Invoke(capturedSlot, capturedOldPos, capturedOldOre, capturedOldCrystal);
+                    }
+                });
         }
 
         // ── Mode cycling (keyboard) ───────────────────────────────────────────
@@ -1162,14 +1227,19 @@ namespace ProjectChimera.UI
             }
             else if (_mode == PlacementMode.StartPos)
             {
-                // P1 / P2 toggle
+                // Story 6.7: 2–4 player-slot toggles (mapped to Player1..Player4 via FactionRegistry.ToFaction),
+                // with add/remove buttons capped at [2,4] (the engine ceiling Faction.Player4).
+                _startSlotCount = System.Math.Clamp(_startSlotCount, START_SLOT_MIN, START_SLOT_CEILING);
+                if (_startSlot >= _startSlotCount) _startSlot = _startSlotCount - 1;
+
                 var slotGroup = new ButtonGroup();
-                foreach (var (label, slot) in new (string, int)[] { ("P1", 0), ("P2", 1) })
+                for (int slot = 0; slot < _startSlotCount; slot++)
                 {
                     int capturedSlot = slot;
                     var btn = new Button
                     {
-                        Text          = label,
+                        // Label is P{n} where n maps through FactionRegistry.ToFaction(slot) = Player{slot+1}.
+                        Text          = $"P{(int)FactionRegistry.ToFaction(slot)}",
                         ToggleMode    = true,
                         ButtonGroup   = slotGroup,
                         ButtonPressed = (slot == _startSlot),
@@ -1177,14 +1247,52 @@ namespace ProjectChimera.UI
                     };
                     btn.Pressed += () =>
                     {
-                        _startSlot = capturedSlot;
+                        _startSlot    = capturedSlot;
+                        _startOre     = _slotStartOre[_startSlot];
+                        _startCrystal = _slotStartCrystal[_startSlot];
                         ArmPlacement(); // UX-DR56: re-selecting a start-pos slot re-arms placement after a cancel
+                        RefreshSubRow();       // reflect this slot's ore/crystal in the spinners
                         RefreshGhostVisuals(); // update ghost color
                     };
                     _subRow.AddChild(btn);
                 }
 
-                // Starting ore spinner
+                // Add-slot ("+") — grows the set up to 4 and selects the new slot.
+                var addBtn = new Button { Text = "+", CustomMinimumSize = new Vector2(28f, 0f),
+                                          Disabled = _startSlotCount >= START_SLOT_CEILING };
+                addBtn.Pressed += () =>
+                {
+                    if (_startSlotCount < START_SLOT_CEILING)
+                    {
+                        _startSlot      = _startSlotCount; // new trailing slot
+                        _startSlotCount++;
+                        _startOre       = _slotStartOre[_startSlot];
+                        _startCrystal   = _slotStartCrystal[_startSlot];
+                        ArmPlacement();
+                        RefreshSubRow();
+                        RefreshGhostVisuals();
+                    }
+                };
+                _subRow.AddChild(addBtn);
+
+                // Remove-slot ("−") — drops the trailing slot down to a floor of 2.
+                var remBtn = new Button { Text = "−", CustomMinimumSize = new Vector2(28f, 0f),
+                                          Disabled = _startSlotCount <= START_SLOT_MIN };
+                remBtn.Pressed += () =>
+                {
+                    if (_startSlotCount > START_SLOT_MIN)
+                    {
+                        int removed = _startSlotCount - 1;
+                        _onStartSlotRemoved?.Invoke(removed); // owner truncates PlayerSlots + hides the marker
+                        _startSlotCount = removed;
+                        if (_startSlot >= _startSlotCount) _startSlot = _startSlotCount - 1;
+                        RefreshSubRow();
+                        RefreshGhostVisuals();
+                    }
+                };
+                _subRow.AddChild(remBtn);
+
+                // Starting ore spinner (per selected slot)
                 var oreLabel = new Label { Text = " Ore:" };
                 oreLabel.AddThemeFontSizeOverride("font_size", 12);
                 _subRow.AddChild(oreLabel);
@@ -1197,8 +1305,26 @@ namespace ProjectChimera.UI
                     Value             = _startOre,
                     CustomMinimumSize = new Vector2(80f, 0f),
                 };
-                spin.ValueChanged += v => _startOre = (float)v;
+                spin.ValueChanged += v => { _startOre = (float)v; _slotStartOre[_startSlot] = _startOre;
+                                            _onStartSlotEconomy?.Invoke(_startSlot, _startOre, _startCrystal); };
                 _subRow.AddChild(spin);
+
+                // Starting crystal spinner (per selected slot)
+                var crysLabel = new Label { Text = " Crystal:" };
+                crysLabel.AddThemeFontSizeOverride("font_size", 12);
+                _subRow.AddChild(crysLabel);
+
+                var crysSpin = new SpinBox
+                {
+                    MinValue          = 0,
+                    MaxValue          = 9999,
+                    Step              = 50,
+                    Value             = _startCrystal,
+                    CustomMinimumSize = new Vector2(80f, 0f),
+                };
+                crysSpin.ValueChanged += v => { _startCrystal = (float)v; _slotStartCrystal[_startSlot] = _startCrystal;
+                                                _onStartSlotEconomy?.Invoke(_startSlot, _startOre, _startCrystal); };
+                _subRow.AddChild(crysSpin);
 
                 var hint = new Label { Text = " Click terrain" };
                 hint.AddThemeFontSizeOverride("font_size", 11);

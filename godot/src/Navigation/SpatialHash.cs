@@ -12,11 +12,13 @@ namespace ProjectChimera.Navigation
     /// </summary>
     public class SpatialHash
     {
-        // Grid configuration
-        private const int GRID_DIM = 32;          // cells per axis
+        // Grid configuration. Public (read-only) so the Story 6.7 GridDimensionConsistencyTests guard can assert
+        // this hash's world-space coverage encloses every supported MapSize extent (values unchanged — exposure only,
+        // NOT a re-parameterization). Coverage on each axis is [ORIGIN_F, ORIGIN_F + GRID_DIM*CELL_SIZE_F) = [-160,160).
+        public const int GRID_DIM = 32;          // cells per axis
         private const int TOTAL_CELLS = GRID_DIM * GRID_DIM;
-        private const float CELL_SIZE_F = 10.0f;
-        private const float ORIGIN_F = -160.0f;   // world-space grid origin (X and Z)
+        public const float CELL_SIZE_F = 10.0f;
+        public const float ORIGIN_F = -160.0f;   // world-space grid origin (X and Z)
 
         private static readonly Fixed CELL_SIZE = Fixed.FromFloat(CELL_SIZE_F);
         private static readonly Fixed ORIGIN = Fixed.FromFloat(ORIGIN_F);

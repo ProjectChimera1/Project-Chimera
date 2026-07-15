@@ -393,6 +393,42 @@ namespace ProjectChimera.Core.Definitions
         [JsonPropertyName("map_bounds")]
         public float MapBounds { get; set; } = 120f;
 
+        /// <summary>
+        /// Story 6.7 — the map author's display name. COSMETIC/authoring-only: like <see cref="DisplayName"/>/
+        /// <see cref="Id"/> (the genuinely cosmetic, hash-excluded fields) it is EXCLUDED from
+        /// <see cref="CanonicalModelHash"/> AND
+        /// <see cref="StartStateHash"/> (it never affects the sim). NULL/empty ⇒ OMITTED from serialization
+        /// (<see cref="JsonIgnoreCondition.WhenWritingNull"/>; an empty string is normalized to null at the
+        /// <see cref="ScenarioSerializer.Serialize"/> chokepoint, the <see cref="Regions"/> precedent) so every
+        /// existing/flat/legacy scenario serializes byte-for-byte identically, moving no golden. Read as
+        /// <c>Author ?? ""</c>.
+        /// </summary>
+        [JsonPropertyName("author")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public string? Author { get; set; }
+
+        /// <summary>
+        /// Story 6.7 — a short human-readable map description. COSMETIC/authoring-only on the exact
+        /// <see cref="Author"/> basis: excluded from both hashes, omit-when-null/empty (byte-identical when absent).
+        /// Read as <c>Description ?? ""</c>.
+        /// </summary>
+        [JsonPropertyName("description")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public string? Description { get; set; }
+
+        /// <summary>
+        /// Story 6.7 — the number of players this map is designed for (2–4 for 1.0; the engine ceiling is
+        /// <see cref="Faction.Player4"/>). Authoring metadata surfaced in skirmish/lobby UIs (later epics) and used
+        /// by <see cref="ScenarioValidator.CollectAdvisories"/> to warn (non-fatally) when fewer start positions are
+        /// placed than suggested. COSMETIC on the <see cref="Author"/> basis: EXCLUDED from both hashes and OMITTED
+        /// when default (<see cref="JsonIgnoreCondition.WhenWritingDefault"/> — 0 is the int type-default), so a
+        /// legacy scenario with no key serializes byte-identically. 0 ⇒ "unspecified" (no advisory); a PRESENT value
+        /// must be in [2,4] (<see cref="ScenarioValidator"/> fail-closed).
+        /// </summary>
+        [JsonPropertyName("suggested_players")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+        public int SuggestedPlayers { get; set; } = 0;
+
         [JsonPropertyName("win_condition")]
         public WinCondition WinCondition { get; set; } = WinCondition.DestroyAllBuildings;
 
@@ -620,5 +656,140 @@ namespace ProjectChimera.Core.Definitions
         [JsonPropertyName("water")]
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public ScenarioWater[]? Water { get; set; }
+
+        /// <summary>The default faction JSON every blank-map start slot references. A blank map ships every player on
+        /// the shipped alpha faction; the author re-assigns per-slot factions later (skirmish/lobby setup, later
+        /// epics). Kept here as the single naming source so <see cref="CreateBlank"/> never drifts from the repo.</summary>
+        private const string DefaultFactionJson = "res://resources/data/factions/alpha_faction.json";
+
+        /// <summary>
+        /// Story 6.7 — Godot-free factory for a valid, EMPTY map: flat terrain (<see cref="TerrainRef"/>=""),
+        /// no resource nodes / buildings / units / triggers, <see cref="MapBounds"/> = the chosen size's playable
+        /// half-extent, the authoring metadata set, and <c>clamp(suggestedPlayers, 2, 4)</c> default start slots at
+        /// spread base positions well inside the bounds. The result is guaranteed to pass
+        /// <see cref="ScenarioValidator.Validate"/> (every slot is in-range, ore is non-negative, every base is inside
+        /// map bounds, and no collection is null). <paramref name="suggestedPlayers"/> is CLAMPED into [2,4] — the
+        /// factory never emits an invalid scenario — and the clamped value is stored in <see cref="SuggestedPlayers"/>
+        /// so the placed count matches the suggestion (no spurious below-suggested advisory on a freshly created map).
+        /// </summary>
+        /// <param name="displayName">The map's display name.</param>
+        /// <param name="author">The author metadata (may be empty).</param>
+        /// <param name="description">The description metadata (may be empty).</param>
+        /// <param name="suggestedPlayers">Intended player count; clamped into [2,4].</param>
+        /// <param name="size">The supported size whose half-extent becomes <see cref="MapBounds"/>.</param>
+        public static ScenarioData CreateBlank(
+            string displayName, string author = "", string description = "",
+            int suggestedPlayers = 3, MapSize size = MapSize.Medium)
+        {
+            int players = suggestedPlayers < 2 ? 2 : (suggestedPlayers > 4 ? 4 : suggestedPlayers);
+            float bounds = MapSizes.ToBounds(size);
+
+            // Spread the start bases around a ring at 60% of the half-extent so every base sits comfortably inside the
+            // map (and inside the fixed grids). Four canonical corner-ish anchors, deterministic and in declaration
+            // order, so the same (players,size) always yields the same layout.
+            float r = bounds * 0.6f;
+            (float x, float z)[] anchors =
+            {
+                (-r, -r), ( r,  r), ( r, -r), (-r,  r),
+            };
+
+            var slots = new ScenarioPlayerSlot[players];
+            for (int i = 0; i < players; i++)
+            {
+                slots[i] = new ScenarioPlayerSlot
+                {
+                    Slot        = i,
+                    FactionJson = DefaultFactionJson,
+                    StartOre    = 200f,
+                    BaseX       = anchors[i].x,
+                    BaseZ       = anchors[i].z,
+                };
+            }
+
+            return new ScenarioData
+            {
+                Id               = "",
+                DisplayName      = displayName ?? "",
+                Author           = string.IsNullOrEmpty(author) ? null : author,
+                Description      = string.IsNullOrEmpty(description) ? null : description,
+                SuggestedPlayers = players,
+                TerrainRef       = "",
+                MapBounds        = bounds,
+                WinCondition     = WinCondition.DestroyAllBuildings,
+                PlayerSlots      = slots,
+                ResourceNodes    = System.Array.Empty<ScenarioResourceNode>(),
+                Buildings        = System.Array.Empty<ScenarioBuilding>(),
+                Units            = System.Array.Empty<ScenarioUnit>(),
+                Triggers         = System.Array.Empty<TriggerDefinition>(),
+            };
+        }
+
+        /// <summary>
+        /// Story 6.7 — Godot-free start-slot upsert used by the editor's MoveStartPosition bridge. Finds the
+        /// <see cref="ScenarioPlayerSlot"/> whose <see cref="ScenarioPlayerSlot.Slot"/> equals <paramref name="slot"/>
+        /// and updates its base/economy in place (returns <c>false</c> — not created). When absent and
+        /// <paramref name="slot"/> is in [0,8) a new slot is appended (FactionJson inherited from slot 0 so it is
+        /// playable) and <c>true</c> is returned. An out-of-range slot is a no-op returning <c>false</c>.
+        /// </summary>
+        public bool UpsertStartSlot(int slot, float baseX, float baseZ, float startOre, float startCrystal)
+        {
+            foreach (var s in PlayerSlots)
+            {
+                if (s.Slot == slot)
+                {
+                    s.BaseX = baseX; s.BaseZ = baseZ; s.StartOre = startOre; s.StartCrystal = startCrystal;
+                    return false; // updated existing, not created
+                }
+            }
+
+            if (slot < 0 || slot >= 8) return false; // out of range — do nothing
+
+            var created = new ScenarioPlayerSlot
+            {
+                Slot        = slot,
+                FactionJson = PlayerSlots.Length > 0 ? PlayerSlots[0].FactionJson : "",
+                BaseX       = baseX,
+                BaseZ       = baseZ,
+                StartOre    = startOre,
+                StartCrystal = startCrystal,
+            };
+            var grown = new ScenarioPlayerSlot[PlayerSlots.Length + 1];
+            System.Array.Copy(PlayerSlots, grown, PlayerSlots.Length);
+            grown[^1] = created;
+            PlayerSlots = grown;
+            return true; // created a new slot
+        }
+
+        /// <summary>
+        /// Story 6.7 — remove the slot whose <see cref="ScenarioPlayerSlot.Slot"/> value equals <paramref name="slot"/>
+        /// (by exact Slot value, NOT array index, so a non-contiguous {0,1,3} set removes the right entry). Returns
+        /// <c>true</c> when a slot was removed, <c>false</c> when nothing matched.
+        /// </summary>
+        public bool RemoveStartSlot(int slot)
+        {
+            var kept = System.Array.FindAll(PlayerSlots, s => s.Slot != slot);
+            if (kept.Length == PlayerSlots.Length) return false;
+            PlayerSlots = kept;
+            return true;
+        }
+
+        /// <summary>
+        /// Story 6.7 (patch 3) — update ONLY the economy (StartOre/StartCrystal) of an already-present start slot,
+        /// never appending. Returns <c>true</c> when the slot existed and was updated, <c>false</c> otherwise. Used by
+        /// the palette spinners so an edit to an already-placed slot persists (and re-folds StartCrystal into the hash)
+        /// without requiring a terrain re-click.
+        /// </summary>
+        public bool UpdateStartSlotEconomy(int slot, float startOre, float startCrystal)
+        {
+            foreach (var s in PlayerSlots)
+            {
+                if (s.Slot == slot)
+                {
+                    s.StartOre = startOre; s.StartCrystal = startCrystal;
+                    return true;
+                }
+            }
+            return false;
+        }
     }
 }

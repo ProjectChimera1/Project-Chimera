@@ -76,6 +76,15 @@ namespace ProjectChimera.Core.Definitions
             if (savedProps   is { Length: 0 }) scenario.Props   = null;
             if (savedCameras is { Length: 0 }) scenario.Cameras = null;
             if (savedWater   is { Length: 0 }) scenario.Water   = null;
+
+            // Story 6.7: normalize empty authoring metadata → null for THIS serialization so a map whose author left
+            // Author/Description blank serializes byte-identically to a pre-6.7 map (the key is omitted rather than
+            // emitting "author":""). Same swap-under-try/finally, restore-after discipline — Serialize is a pure
+            // byte-source and must not mutate the caller's live model.
+            string? savedAuthor      = scenario.Author;
+            string? savedDescription = scenario.Description;
+            if (string.IsNullOrEmpty(savedAuthor))      scenario.Author      = null;
+            if (string.IsNullOrEmpty(savedDescription)) scenario.Description = null;
             try
             {
                 return JsonSerializer.Serialize(scenario, _options);
@@ -87,6 +96,8 @@ namespace ProjectChimera.Core.Definitions
                 scenario.Props   = savedProps;
                 scenario.Cameras = savedCameras;
                 scenario.Water   = savedWater;
+                scenario.Author      = savedAuthor;
+                scenario.Description = savedDescription;
             }
         }
 

@@ -754,22 +754,12 @@ namespace ProjectChimera.Core
         /// Called by EntityPlacer when the user places a start-position marker in Edit mode.
         /// Updates both the live scenario data and the simulation's faction base point.
         /// </summary>
-        internal void MoveStartPosition(int slot, Vector3 worldPos, float startOre)
+        internal bool MoveStartPosition(int slot, Vector3 worldPos, float startOre, float startCrystal)
         {
-            // Update scenario data (persisted on save)
-            if (_ctx.Scenario != null)
-            {
-                foreach (var s in _ctx.Scenario.PlayerSlots)
-                {
-                    if (s.Slot == slot)
-                    {
-                        s.BaseX    = worldPos.X;
-                        s.BaseZ    = worldPos.Z;
-                        s.StartOre = startOre;
-                        break;
-                    }
-                }
-            }
+            // Update scenario data (persisted on save). Story 6.7: if the author placed a NEW slot (2–4 start
+            // positions, add-slot), the Godot-free UpsertStartSlot appends a ScenarioPlayerSlot for it rather than
+            // silently dropping the placement, and reports whether a new slot was created.
+            bool created = _ctx.Scenario?.UpsertStartSlot(slot, worldPos.X, worldPos.Z, startOre, startCrystal) ?? false;
 
             // Update live sim: faction deposit / rally point. Routed through the applier (Story 1.8b D6) — the
             // unified sole writer of FactionBase; after 1.8b no MainScene code writes Resources.FactionBase directly.
@@ -779,6 +769,33 @@ namespace ProjectChimera.Core
 
             // Move the visual marker
             _ctx.StartPosBridge.SetPosition(slot, worldPos);
+            return created;
+        }
+
+        /// <summary>Story 6.7 (patch 3) — persist an in-place economy edit (ore/crystal) to an already-placed start
+        /// slot immediately, without moving it or appending. Wired to the palette Ore/Crystal spinners.</summary>
+        internal void SetStartSlotEconomy(int slot, float ore, float crystal)
+            => _ctx.Scenario?.UpdateStartSlotEconomy(slot, ore, crystal);
+
+        /// <summary>
+        /// Story 6.7 — remove the trailing start slot (2–4 add/remove). Drops the matching
+        /// <see cref="ScenarioPlayerSlot"/> from the live scenario and hides its flag marker. The engine keeps a
+        /// minimum of 2 slots (enforced in the editor), so this only ever removes slot 2 or 3.
+        /// </summary>
+        internal void RemoveStartPosition(int slot)
+        {
+            // Story 6.7 (review pass 2) — only touch sim/visual state when a slot was ACTUALLY removed. RemoveStartSlot
+            // matches by exact Slot value, so a no-match request (e.g. a non-contiguous set where count-1 is not a live
+            // slot value) must NOT zero an unrelated faction's deposit point or hide a still-live marker.
+            bool removed = _ctx.Scenario?.RemoveStartSlot(slot) ?? false;
+            if (!removed) return;
+
+            // Clear the stale sim base for the removed faction so a subsequent placement / re-add does not inherit a
+            // ghost deposit point from the dropped slot. Route the slot→faction offset through the canonical
+            // FactionRegistry.ToFaction cast site (never a scattered raw (Faction)(slot+1)).
+            _applier.SetFactionBase(FactionRegistry.ToFaction(slot), new FixedVec3(Fixed.Zero, Fixed.Zero, Fixed.Zero));
+
+            _ctx.StartPosBridge.EnsureVisible(slot, false);
         }
 
         // ── ScenarioData sync (Story 6.1) ─────────────────────────────────────

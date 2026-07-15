@@ -113,6 +113,90 @@ namespace ProjectChimera.Sim.Tests.Definitions
         public void TerrainFolderName_AppendsSuffix()
             => Assert.Equal("alpha_map_01_terrain", ContentPackager.TerrainFolderName("alpha_map_01"));
 
+        // ── Story 6.7: minimap preview packaging round-trip ─────────────────────
+
+        [Fact]
+        public void PackWithPreview_WritesPreviewPng_AndManifestReferencesIt()
+        {
+            string work = NewTempDir();
+            try
+            {
+                string scen = WriteScenario(work);
+                byte[] previewBytes = { 137, 80, 78, 71, 1, 2, 3, 4, 5 }; // fake PNG header + payload
+                string zip = Path.Combine(work, "map.chimera.zip");
+
+                var manifest = ContentPackager.Pack(scen, zip,
+                    new ContentPackager.PackOptions { DisplayName = "Preview Map", PreviewPngBytes = previewBytes });
+
+                Assert.Equal("preview/preview.png", manifest.ThumbnailFile);
+
+                // The zip actually contains preview/preview.png with the right bytes.
+                using (var archive = ZipFile.OpenRead(zip))
+                {
+                    var entry = archive.GetEntry("preview/preview.png");
+                    Assert.NotNull(entry);
+                    using var ms = new MemoryStream();
+                    entry!.Open().CopyTo(ms);
+                    Assert.Equal(previewBytes, ms.ToArray());
+                }
+
+                // Unpack recovers the preview image + its path.
+                var result = ContentPackager.Unpack(zip, Path.Combine(work, "extract"));
+                Assert.NotNull(result.ThumbnailPath);
+                Assert.Equal(previewBytes, File.ReadAllBytes(result.ThumbnailPath!));
+                Assert.Equal("preview/preview.png", result.Manifest.ThumbnailFile);
+            }
+            finally { Directory.Delete(work, recursive: true); }
+        }
+
+        [Fact]
+        public void PackWithoutPreview_OmitsSlot_AndPackageIsValid()
+        {
+            string work = NewTempDir();
+            try
+            {
+                string scen = WriteScenario(work);
+                string zip = Path.Combine(work, "map.chimera.zip");
+
+                var manifest = ContentPackager.Pack(scen, zip,
+                    new ContentPackager.PackOptions { DisplayName = "No Preview" });
+
+                Assert.Null(manifest.ThumbnailFile);
+
+                using (var archive = ZipFile.OpenRead(zip))
+                    Assert.Null(archive.GetEntry("preview/preview.png"));
+
+                var result = ContentPackager.Unpack(zip, Path.Combine(work, "extract"));
+                Assert.Null(result.ThumbnailPath);
+            }
+            finally { Directory.Delete(work, recursive: true); }
+        }
+
+        [Fact]
+        public void PackWithZeroLengthPreview_OmitsSlot_LikeNoPreview()
+        {
+            string work = NewTempDir();
+            try
+            {
+                string scen = WriteScenario(work);
+                string zip = Path.Combine(work, "map.chimera.zip");
+
+                // Story 6.7 (patch 9): a NON-null but EMPTY preview array must behave exactly like no preview — no
+                // zero-byte image entry, no manifest ThumbnailFile reference.
+                var manifest = ContentPackager.Pack(scen, zip,
+                    new ContentPackager.PackOptions { DisplayName = "Empty Preview", PreviewPngBytes = System.Array.Empty<byte>() });
+
+                Assert.Null(manifest.ThumbnailFile);
+
+                using (var archive = ZipFile.OpenRead(zip))
+                    Assert.Null(archive.GetEntry("preview/preview.png"));
+
+                var result = ContentPackager.Unpack(zip, Path.Combine(work, "extract"));
+                Assert.Null(result.ThumbnailPath);
+            }
+            finally { Directory.Delete(work, recursive: true); }
+        }
+
         // Review pass 2 (VG2): pin the load-bearing negative-coordinate region-file recognition. Terrain3D encodes a
         // negative region location with a HYPHEN (the default flat region at (-1,-1) → "terrain3d-01-01.res"), so the
         // load-side "does this folder hold regions?" predicate MUST match hyphenated names — an underscore-anchored

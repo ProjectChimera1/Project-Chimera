@@ -45,8 +45,15 @@ namespace ProjectChimera.Core.Definitions
             public string MinGameVersion { get; set; } = "0.1";
             public List<string> Tags     { get; set; } = new();
             public int PlayerCount       { get; set; } = 2;
-            /// <summary>Absolute path to a 256×256 PNG thumbnail. Null = no thumbnail.</summary>
+            /// <summary>Absolute path to a 256×256 PNG thumbnail. Null = no thumbnail. Legacy input, still honored;
+            /// <see cref="PreviewPngBytes"/> (the Story 6.7 auto-generated minimap preview) takes precedence when both
+            /// are supplied.</summary>
             public string? ThumbnailPath { get; set; }
+            /// <summary>Story 6.7 — the auto-generated top-down minimap preview as PNG bytes. When non-null, written
+            /// into the package at <c>preview/preview.png</c> and referenced by the manifest's
+            /// <see cref="ContentPackageManifest.ThumbnailFile"/> (wiring the previously-dead thumbnail slot). Null =
+            /// no preview generated ⇒ the slot is omitted, byte-identical to a pre-6.7 package.</summary>
+            public byte[]? PreviewPngBytes { get; set; }
             /// <summary>Additional faction JSON files to bundle. Absolute paths.</summary>
             public List<string> FactionPaths { get; set; } = new();
         }
@@ -106,7 +113,11 @@ namespace ProjectChimera.Core.Definitions
                 Tags            = options.Tags,
                 PlayerCount     = options.PlayerCount,
                 ScenarioFile    = "scenario.json",
-                ThumbnailFile   = options.ThumbnailPath != null ? "thumbnail.png" : null,
+                // Story 6.7: the auto-generated minimap preview wires the previously-dead ThumbnailFile slot. Preview
+                // bytes take precedence over the legacy on-disk ThumbnailPath; neither ⇒ null (omitted, pre-6.7 parity).
+                ThumbnailFile   = options.PreviewPngBytes != null && options.PreviewPngBytes.Length > 0 ? "preview/preview.png"
+                                : options.ThumbnailPath != null   ? "thumbnail.png"
+                                : null,
                 FactionFiles    = factionEntries,
                 ScenarioHash    = scenarioHash,
                 TerrainFiles    = terrainEntries,
@@ -132,8 +143,12 @@ namespace ProjectChimera.Core.Definitions
             // scenario.json
             WriteEntry(archive, "scenario.json", File.ReadAllBytes(scenarioAbsPath));
 
-            // thumbnail.png (optional)
-            if (options.ThumbnailPath != null && File.Exists(options.ThumbnailPath))
+            // preview/preview.png (Story 6.7, optional) — the auto-generated top-down minimap preview. Takes
+            // precedence over the legacy on-disk thumbnail so a package never carries two conflicting preview slots.
+            if (options.PreviewPngBytes != null && options.PreviewPngBytes.Length > 0)
+                WriteEntry(archive, "preview/preview.png", options.PreviewPngBytes);
+            // thumbnail.png (legacy, optional) — only when no generated preview was supplied.
+            else if (options.ThumbnailPath != null && File.Exists(options.ThumbnailPath))
                 WriteEntry(archive, "thumbnail.png", File.ReadAllBytes(options.ThumbnailPath));
 
             // factions/ (optional)
@@ -215,14 +230,16 @@ namespace ProjectChimera.Core.Definitions
                         $"got 0x{actualHash:X8}. Package may be corrupt.");
             }
 
-            // 3. Extract thumbnail (optional).
+            // 3. Extract the preview/thumbnail image (optional). Story 6.7: ThumbnailFile may now be either the
+            //    legacy "thumbnail.png" or the generated "preview/preview.png" — extract to the manifest-named entry's
+            //    basename so both round-trip (a listed-but-missing image is treated as "no image", pre-6.7 parity).
             string? thumbOut = null;
             if (!string.IsNullOrEmpty(manifest.ThumbnailFile))
             {
                 var thumbEntry = archive.GetEntry(manifest.ThumbnailFile);
                 if (thumbEntry != null)
                 {
-                    thumbOut = Path.Combine(extractDir, "thumbnail.png");
+                    thumbOut = Path.Combine(extractDir, Path.GetFileName(manifest.ThumbnailFile));
                     thumbEntry.ExtractToFile(thumbOut, overwrite: true);
                 }
             }

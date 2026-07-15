@@ -41,11 +41,25 @@ namespace ProjectChimera.UI.Components
         public static ChimeraDialog Create(string title, string body)
         {
             var d = new ChimeraDialog { Layer = ChimeraComponents.OverlayLayerDialog };
-            d.Build(title, body);
+            var bodyLbl = new Label { Text = body, AutowrapMode = TextServer.AutowrapMode.Word };
+            bodyLbl.AddThemeFontOverride("font", ChimeraComponents.FontOf(ThemeTokens.FontUi));
+            bodyLbl.AddThemeFontSizeOverride("font_size", ChimeraComponents.SizeOf(ThemeTokens.Tmd));
+            bodyLbl.AddThemeColorOverride("font_color", ChimeraComponents.Col(ThemeTokens.TextMid));
+            d.Build(title, bodyLbl);
             return d;
         }
 
-        private void Build(string title, string body)
+        /// <summary>Story 6.7 — build a dialog with an ARBITRARY body Control (a form, a field stack, …) instead of a
+        /// single sentence Label. The New-Map modal uses this to host its name/author/description/players/size inputs.
+        /// Add actions with <see cref="AddConfirm"/>/<see cref="AddCancel"/>, then <see cref="Open"/> it.</summary>
+        public static ChimeraDialog CreateCustom(string title, Control bodyContent)
+        {
+            var d = new ChimeraDialog { Layer = ChimeraComponents.OverlayLayerDialog };
+            d.Build(title, bodyContent);
+            return d;
+        }
+
+        private void Build(string title, Control bodyContent)
         {
             // Scrim: full-rect solid dim that eats input; clicking it cancels a non-destructive dialog.
             _scrim = new ColorRect { Color = ScrimColor, MouseFilter = Control.MouseFilterEnum.Stop };
@@ -89,15 +103,11 @@ namespace ProjectChimera.UI.Components
             head.AddChild(headRow);
             vb.AddChild(head);
 
-            // ── Body: pad 24 ──
+            // ── Body: pad 24 (an arbitrary Control — a sentence Label or a form) ──
             var bodyWrap = new MarginContainer();
             foreach (var s in new[] { "left", "right", "top", "bottom" })
                 bodyWrap.AddThemeConstantOverride($"margin_{s}", s5);
-            var bodyLbl = new Label { Text = body, AutowrapMode = TextServer.AutowrapMode.Word };
-            bodyLbl.AddThemeFontOverride("font", ChimeraComponents.FontOf(ThemeTokens.FontUi));
-            bodyLbl.AddThemeFontSizeOverride("font_size", ChimeraComponents.SizeOf(ThemeTokens.Tmd));
-            bodyLbl.AddThemeColorOverride("font_color", ChimeraComponents.Col(ThemeTokens.TextMid));
-            bodyWrap.AddChild(bodyLbl);
+            bodyWrap.AddChild(bodyContent);
             vb.AddChild(bodyWrap);
 
             // ── Foot: right-aligned buttons, gap s3, pad 16/24, top line ──

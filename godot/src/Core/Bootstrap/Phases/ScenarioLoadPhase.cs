@@ -416,14 +416,18 @@ namespace ProjectChimera.Core.Bootstrap
         /// </summary>
         private void SetupStartPositionBridge()
         {
-            var positions = new (float x, float z)[2];
+            // Story 6.7: 2–4 start positions (capped at the engine ceiling). Size the placed-position array to the
+            // scenario's declared player-slot count so 3- and 4-player maps show all their markers.
+            int placed = _ctx.Scenario?.PlayerSlots?.Length ?? 2;
+            placed = System.Math.Clamp(placed, 2, StartPositionBridge.MAX_SLOTS);
+            var positions = new (float x, float z)[placed];
 
             if (_ctx.Scenario != null)
             {
                 foreach (var slot in _ctx.Scenario.PlayerSlots)
                 {
-                    int idx = System.Math.Clamp(slot.Slot, 0, 1);
-                    positions[idx] = (slot.BaseX, slot.BaseZ);
+                    int idx = System.Math.Clamp(slot.Slot, 0, StartPositionBridge.MAX_SLOTS - 1);
+                    if (idx < positions.Length) positions[idx] = (slot.BaseX, slot.BaseZ);
                 }
             }
             else

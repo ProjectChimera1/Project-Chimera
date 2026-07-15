@@ -39,7 +39,9 @@ namespace ProjectChimera.Core.Bootstrap
                               _ctx.Scene.MoveStartPosition, _ctx.FactionDef2,
                               _ctx.Host.Items, _ctx.Host.ItemRegistry, // Story 3.15 — Item placement mode
                               _ctx.Scene.SyncBuilding, _ctx.Scene.SyncUnit, _ctx.Scene.SyncResourceNode, // Story 6.1 — ScenarioData sync
-                              _ctx.Scene.SyncProp, () => _ctx.Scenario); // Story 6.6 — prop sync + late-bound scenario read seam
+                              _ctx.Scene.SyncProp, () => _ctx.Scenario, // Story 6.6 — prop sync + late-bound scenario read seam
+                              _ctx.Scene.RemoveStartPosition, // Story 6.7 — remove trailing start slot (2–4)
+                              _ctx.Scene.SetStartSlotEconomy); // Story 6.7 (patch 3) — persist spinner economy edits to a placed slot
             _ctx.Placer = placer;
 
             var selection = new SelectionSystem();

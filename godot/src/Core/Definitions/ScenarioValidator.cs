@@ -93,6 +93,14 @@ namespace ProjectChimera.Core.Definitions
                 return ValidationResult.Fail(
                     $"scenario.slope_block_threshold={m.SlopeBlockThreshold} must be finite and within [0, {Range}).", validated);
 
+            // ── Story 6.7: suggested_players is authoring metadata (2–4 for 1.0; engine ceiling Faction.Player4).
+            //    Omit-when-default (0) ⇒ "unspecified" ⇒ nothing to validate (every existing scenario passes
+            //    unchanged). A PRESENT value must be in [2,4]; 1 or 5+ fails closed. This is a hard fail (an
+            //    unshippable design intent), distinct from the SOFT below-suggested advisory in CollectAdvisories. ──
+            if (m.SuggestedPlayers != 0 && (m.SuggestedPlayers < 2 || m.SuggestedPlayers > 4))
+                return ValidationResult.Fail(
+                    $"scenario.suggested_players={m.SuggestedPlayers} must be in [2,4] (1.0 ships 2–4 players).", validated);
+
             // ── Collections must be present. A null array is malformed input the applier would NRE on, so the
             // validator rejects it (located) rather than silently treating it as empty via the `?? Array.Empty`
             // guards below — those are then belt-and-suspenders. [Story 1.7 review patch] ──
@@ -571,7 +579,77 @@ namespace ProjectChimera.Core.Definitions
             return ValidationResult.Pass(validated);
         }
 
+        /// <summary>
+        /// Story 6.7 — a SEPARATE, NON-FATAL advisory channel, deliberately distinct from <see cref="Validate"/>'s
+        /// binary <see cref="ValidationResult"/> pass/fail gate (which every fail-closed call site depends on). It
+        /// returns human-readable warnings the editor surfaces (badge/toast) but which NEVER block a save or a tick.
+        /// Today the sole advisory is "placed start positions below suggested_players" (the AC's "warns, not errors"
+        /// case): when <see cref="ScenarioData.SuggestedPlayers"/> is specified (non-zero) and fewer start slots are
+        /// placed than suggested, the map is playable but under-populated for its stated player count. Pure — never
+        /// throws, never logs. Returns an empty list when there is nothing to advise (the common case).
+        /// </summary>
+        public IReadOnlyList<string> CollectAdvisories(ScenarioData m)
+        {
+            var advisories = new List<string>();
+            if (m is null) return advisories;
+
+            int suggested = m.SuggestedPlayers;
+            int placed    = m.PlayerSlots?.Length ?? 0;
+            if (suggested >= 2 && placed < suggested)
+                advisories.Add(
+                    $"Only {placed} start position(s) placed for a {suggested}-player map. " +
+                    $"Place at least {suggested} start positions before publishing.");
+
+            // Story 6.7 (patch 4) — warn (non-fatally) when a start position lies outside the current map bounds, which
+            // a map-size shrink can cause. A subsequent hard Validate would otherwise fail with a cryptic message, so
+            // this surfaces the cause up front.
+            if (m.PlayerSlots != null)
+                foreach (var s in m.PlayerSlots)
+                    if (OutOfBounds(s.BaseX, s.BaseZ, m.MapBounds))
+                        advisories.Add(
+                            $"Start position P{s.Slot + 1} is outside the current map bounds ({m.MapBounds}).");
+
+            // Story 6.7 (review pass 2) — the map-size-shrink strand-out is not unique to start positions: a shrink can
+            // push ANY authored content past the new bounds, at which point the next hard Validate fails to LOAD the map
+            // (CheckCoord, ±map_bounds — the SAME predicate/threshold as OutOfBounds below) while Export/New-Map only
+            // ever ran advisories on start slots. Extend the same non-fatal early warning to every coordinate-bearing
+            // collection the hard validator gates (buildings/units/resource nodes/props/water), so a shrink that would
+            // strand content surfaces a visible cause up front instead of a silent, unloadable package. Counts, not a
+            // per-entity spam, keep the toast readable.
+            int nContent = OutOfBoundsCount(m.Buildings,     b => (b.X, b.Z), m.MapBounds)
+                         + OutOfBoundsCount(m.Units,         u => (u.X, u.Z), m.MapBounds)
+                         + OutOfBoundsCount(m.ResourceNodes, n => (n.X, n.Z), m.MapBounds)
+                         + OutOfBoundsCount(m.Props,         p => (p.X, p.Z), m.MapBounds)
+                         + OutOfBoundsCount(m.Water,         w => (w.X, w.Z), m.MapBounds);
+            if (nContent > 0)
+                advisories.Add(
+                    $"{nContent} placed object(s) are outside the current map bounds ({m.MapBounds}) — " +
+                    $"a smaller map size can strand content; move or delete them before saving/exporting.");
+
+            return advisories;
+        }
+
         // ── Helpers (return a located error string, or null when the field is OK) ──
+
+        /// <summary>Story 6.7 (review pass 2) — the advisory out-of-bounds predicate. Matches the hard validator's
+        /// <see cref="CheckCoord"/> threshold exactly (strict <c>&gt; bounds</c>, i.e. an on-edge coordinate at exactly
+        /// ±bounds is IN-bounds for both) so the early advisory never disagrees with the hard load gate.</summary>
+        private static bool OutOfBounds(float x, float z, float bounds)
+            => System.Math.Abs(x) > bounds || System.Math.Abs(z) > bounds;
+
+        /// <summary>Story 6.7 (review pass 2) — count the entries in a nullable collection whose (x,z) lies outside the
+        /// map bounds. Null collection ⇒ 0 (a legacy scenario that omits the array is unaffected).</summary>
+        private static int OutOfBoundsCount<T>(T[]? items, System.Func<T, (float x, float z)> coord, float bounds)
+        {
+            if (items == null) return 0;
+            int n = 0;
+            foreach (var it in items)
+            {
+                var (x, z) = coord(it);
+                if (OutOfBounds(x, z, bounds)) n++;
+            }
+            return n;
+        }
 
         private static bool Finite(float v) => !float.IsNaN(v) && !float.IsInfinity(v);
 

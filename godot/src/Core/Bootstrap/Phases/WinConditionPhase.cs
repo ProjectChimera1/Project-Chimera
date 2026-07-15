@@ -78,35 +78,27 @@ namespace ProjectChimera.Core.Bootstrap
             // ── Map I/O section ────────────────────────────────────────────────
             vbox.AddChild(new HSeparator());
 
-            var ioTitle = new Label { Text = "Map Package" };
+            var ioTitle = new Label { Text = "Map Properties" };
             ioTitle.AddThemeFontSizeOverride("font_size", 13);
             vbox.AddChild(ioTitle);
 
-            // Map name field (pre-filled from scenario display name)
-            var nameRow = new HBoxContainer();
-            nameRow.AddChild(new Label { Text = "Name:", CustomMinimumSize = new Vector2(54, 0) });
-            var mapNameField = new LineEdit
-            {
-                Text                = _ctx.Scenario?.DisplayName ?? "My Map",
-                SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
-                MaxLength           = 64,
-            };
-            mapNameField.AddThemeFontSizeOverride("font_size", 12);
-            nameRow.AddChild(mapNameField);
-            vbox.AddChild(nameRow);
+            // Story 6.7 — "New Map" affordance: opens the design-system New-Map modal, which builds a blank map via
+            // ScenarioData.CreateBlank and writes it to the scenarios folder (the same "set ScenarioPath to…" hand-off
+            // the Import flow uses — no risky live-swap of the applied scenario mid-edit).
+            var newMapBtn = new Button { Text = "New Map…", CustomMinimumSize = new Vector2(160, 28) };
+            newMapBtn.AddThemeFontSizeOverride("font_size", 12);
+            vbox.AddChild(newMapBtn);
 
-            // Author field
-            var authorRow = new HBoxContainer();
-            authorRow.AddChild(new Label { Text = "Author:", CustomMinimumSize = new Vector2(54, 0) });
-            var authorField = new LineEdit
-            {
-                Text                = "Unknown",
-                SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
-                MaxLength           = 40,
-            };
-            authorField.AddThemeFontSizeOverride("font_size", 12);
-            authorRow.AddChild(authorField);
-            vbox.AddChild(authorRow);
+            // Story 6.7 — the editable Map-Properties panel (name/author/description/suggested-players/size) bound
+            // LIVE to the applied ScenarioData, so edits persist on Save and feed the export options below directly
+            // (no placeholder LineEdits). Only shown when a scenario is loaded.
+            if (_ctx.Scenario != null)
+                vbox.AddChild(ProjectChimera.CreationSuite.MapPropertiesPanel.BuildPropertiesEditor(_ctx.Scenario));
+
+            vbox.AddChild(new HSeparator());
+            var pkgTitle = new Label { Text = "Map Package" };
+            pkgTitle.AddThemeFontSizeOverride("font_size", 13);
+            vbox.AddChild(pkgTitle);
 
             // Export / Import buttons
             var btnRow = new HBoxContainer();
@@ -126,8 +118,16 @@ namespace ProjectChimera.Core.Bootstrap
             ioStatusLabel.AutowrapMode = TextServer.AutowrapMode.Word;
             vbox.AddChild(ioStatusLabel);
 
-            exportBtn.Pressed += () => ExportMapPackage(
-                mapNameField.Text.Trim(), authorField.Text.Trim(), ioStatusLabel);
+            newMapBtn.Pressed += () => ProjectChimera.CreationSuite.MapPropertiesPanel.OpenNewMapDialog(
+                _ctx.UiCanvas, blank => CreateNewMap(blank, ioStatusLabel));
+            // Story 6.7 (patch 7) — disable the button for the export duration so a double-click cannot spawn
+            // overlapping preview renders / concurrent packaging.
+            exportBtn.Pressed += async () =>
+            {
+                exportBtn.Disabled = true;
+                try { await ExportMapPackage(ioStatusLabel); }
+                finally { exportBtn.Disabled = false; }
+            };
             importBtn.Pressed += () => ImportMapPackage(ioStatusLabel);
 
             _ctx.WinConditionPanel = panel;
@@ -177,7 +177,45 @@ namespace ProjectChimera.Core.Bootstrap
             _ctx.WinConditionPanel.Visible = (_ctx.GameState.Mode == GameMode.Edit);
         }
 
-        private void ExportMapPackage(string mapName, string author, Label statusLabel)
+        /// <summary>
+        /// Story 6.7 — the New-Map hand-off: persist the freshly-built blank scenario to the scenarios folder and
+        /// tell the author how to load it (mirroring the Import flow's "set ScenarioPath to…" UX rather than a risky
+        /// mid-edit live-swap of the applied scenario).
+        /// </summary>
+        private void CreateNewMap(ScenarioData blank, Label statusLabel)
+        {
+            try
+            {
+                string slug = ContentPackager.Slugify(
+                    string.IsNullOrEmpty(blank.DisplayName) ? "new-map" : blank.DisplayName);
+                if (string.IsNullOrEmpty(slug)) slug = "new-map";
+                blank.Id = slug;
+                string dest = ProjectSettings.GlobalizePath($"res://resources/data/scenarios/{slug}.json");
+                // Story 6.7 (patch 5) — never silently overwrite an existing scenario file.
+                if (System.IO.File.Exists(dest))
+                {
+                    statusLabel.Text = $"A map named '{blank.DisplayName}' already exists — choose a different name.";
+                    return;
+                }
+                ScenarioSerializer.SaveToFile(blank, dest);
+                // Story 6.7 (patch 12) — route the size display through the one MapSize helper.
+                statusLabel.Text = $"Created blank {blank.SuggestedPlayers}-player map " +
+                                   $"({MapSizes.Label(MapSizes.FromBounds(blank.MapBounds))}).\n" +
+                                   $"Set ScenarioPath to: res://resources/data/scenarios/{slug}.json";
+                // Story 6.7 (patch 4) — surface non-blocking authoring advisories on creation too.
+                var advisories = new ScenarioValidator().CollectAdvisories(blank);
+                if (advisories.Count > 0)
+                    statusLabel.Text += "\n⚠ " + string.Join("; ", advisories);
+                GD.Print($"[MapIO] New map created → {dest}");
+            }
+            catch (Exception ex)
+            {
+                statusLabel.Text = $"New map failed: {ex.Message}";
+                GD.PrintErr($"[MapIO] New map error: {ex}");
+            }
+        }
+
+        private async System.Threading.Tasks.Task ExportMapPackage(Label statusLabel)
         {
             if (_ctx.Scenario == null) { statusLabel.Text = "No scenario loaded."; return; }
 
@@ -193,21 +231,30 @@ namespace ProjectChimera.Core.Bootstrap
             try { ScenarioSerializer.SaveToFile(_ctx.Scenario, scenAbs); }
             catch (Exception ex) { statusLabel.Text = $"Save failed: {ex.Message}"; return; }
 
+            // Story 6.7 — auto-generate the top-down minimap preview into the package. Null on any render failure ⇒
+            // the preview slot is simply omitted (pre-6.7 package parity). Rendered BEFORE Pack so the bytes are ready.
+            byte[]? previewPng = await RenderMinimapPreview();
+
+            // Story 6.7 — read the real authored metadata off the live ScenarioData (not placeholder LineEdits): the
+            // Map-Properties panel bound DisplayName/Author/Description/SuggestedPlayers directly onto this model.
+            string mapName = string.IsNullOrEmpty(_ctx.Scenario.DisplayName) ? "My Map" : _ctx.Scenario.DisplayName;
+            int playerCount = _ctx.Scenario.PlayerSlots?.Length ?? 2;
+
             // Determine output path: same directory as scenario, same slug name.
-            string slug   = ContentPackager.Slugify(
-                string.IsNullOrEmpty(mapName) ? _ctx.Scenario.DisplayName : mapName);
+            string slug   = ContentPackager.Slugify(mapName);
             string outDir = System.IO.Path.GetDirectoryName(scenAbs)!;
             string outZip = System.IO.Path.Combine(outDir, $"{slug}.chimera.zip");
 
             var opts = new ContentPackager.PackOptions
             {
-                DisplayName   = string.IsNullOrEmpty(mapName) ? _ctx.Scenario.DisplayName : mapName,
-                Author        = string.IsNullOrEmpty(author) ? "Unknown" : author,
-                Description   = _ctx.Scenario.DisplayName,
-                PlayerCount   = _ctx.Scenario.PlayerSlots?.Length ?? 2,
-                Tags          = new System.Collections.Generic.List<string>
+                DisplayName     = mapName,
+                Author          = string.IsNullOrEmpty(_ctx.Scenario.Author) ? "Unknown" : _ctx.Scenario.Author!,
+                Description     = _ctx.Scenario.Description ?? "",
+                PlayerCount     = playerCount,
+                PreviewPngBytes = previewPng,
+                Tags            = new System.Collections.Generic.List<string>
                 {
-                    _ctx.Scenario.PlayerSlots?.Length == 4 ? "2v2" : "1v1"
+                    playerCount switch { 4 => "2v2", 3 => "ffa3", _ => "1v1" }
                 },
             };
 
@@ -215,13 +262,44 @@ namespace ProjectChimera.Core.Bootstrap
             {
                 var manifest = ContentPackager.Pack(scenAbs, outZip, opts, terrainDir);
                 statusLabel.Text = $"Exported: {System.IO.Path.GetFileName(outZip)}\n" +
-                                   $"Hash: 0x{manifest.ScenarioHash:X8}";
+                                   $"Hash: 0x{manifest.ScenarioHash:X8}" +
+                                   (previewPng != null ? "\nPreview: preview/preview.png" : "\n(no preview)");
+                // Story 6.7 (patch 4) — surface AC2's non-blocking authoring advisories after a successful export.
+                var advisories = new ScenarioValidator().CollectAdvisories(_ctx.Scenario);
+                if (advisories.Count > 0)
+                    statusLabel.Text += "\n⚠ " + string.Join("; ", advisories);
                 GD.Print($"[MapIO] Exported package: {outZip}");
             }
             catch (Exception ex)
             {
                 statusLabel.Text = $"Export failed: {ex.Message}";
                 GD.PrintErr($"[MapIO] Export error: {ex}");
+            }
+        }
+
+        /// <summary>
+        /// Story 6.7 — render the top-down minimap preview PNG for the current map. Returns null (no preview) on any
+        /// failure so the export still produces a valid package.
+        /// </summary>
+        private async System.Threading.Tasks.Task<byte[]?> RenderMinimapPreview()
+        {
+            try
+            {
+                var renderer = new UI.MinimapPreviewRenderer();
+                _ctx.Scene.AddChild(renderer);
+                // Story 6.7 (patch 6) — free the outer renderer node on ALL paths (the catch used to leak it).
+                try
+                {
+                    World3D world = _ctx.Scene.GetViewport().World3D;
+                    float half = _ctx.Scenario?.MapBounds ?? 128f;
+                    return await renderer.RenderPreviewPngAsync(world, half);
+                }
+                finally { renderer.QueueFree(); }
+            }
+            catch (Exception ex)
+            {
+                GD.PrintErr($"[MapIO] Preview render failed: {ex.Message}");
+                return null;
             }
         }
 
