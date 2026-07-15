@@ -1100,6 +1100,7 @@ reason: summary: both `aviary` buildings (an Air-production building + category,
 closure: generate (or source) `bonded_aerie.glb`/`wraithwing_brood.glb` via Alec's local art-gen pipeline and drop them into `godot/assets/models/factions/{alpha|beta}/` respectively — a pure asset-authoring task, no code or schema change needed; the JSON `mesh_path` values are already correct and will resolve as soon as the files exist.
 status: open
 decision: 2026-07-15 Repoint to placeholder GLB — Edit alpha_faction.json and beta_faction.json aviary.mesh_path to an existing on-disk placeholder GLB so ValidateComplete + scenario load succeed until real art lands.
+decision: 2026-07-15 Repoint to placeholder GLB — Edit alpha_faction.json and beta_faction.json aviary.mesh_path to an existing on-disk placeholder GLB so ValidateComplete + scenario load succeed until real art lands.
 
 ### DW-103: `FactionDefinition.GetUnit`/`IndexOfUnit`/`GetUnitByCategory`/`GetUnitsByCategory` NRE on a null element inside a non-null `Units` list (pre-existing, sibling to DW-100/DW-101)
 source_spec: `_bmad-output/implementation-artifacts/spec-5-3-land-harden-the-fma-showcase-content-as-valid-definer-outputs-fr-20.md`
@@ -1371,6 +1372,7 @@ location: godot/src/CreationSuite/TerrainBrush.cs (SnapshotRegions/PushStrokeUnd
 severity: medium
 reason: Each stroke deep-`Duplicate`s height+control Images (before AND after) per touched region onto an uncapped shared EditorHistory — a long sculpt session pins hundreds of MB–GB of undo memory. A cap/coalescing policy also affects the shared entity-undo semantics, so it needs a deliberate design, not a drive-by patch.
 status: open
+decision: 2026-07-15 Bounded/coalescing history policy — Introduce a size/byte-capped, coalescing EditorHistory policy shared across terrain-stroke and entity undo, dropping oldest entries beyond the cap.
 decision: 2026-07-15 Bounded/coalescing history policy — Introduce a size/byte-capped, coalescing EditorHistory policy shared across terrain-stroke and entity undo, dropping oldest entries beyond the cap.
 
 ### DW-141: A stroke that auto-creates a new Terrain3D region cannot be undone
