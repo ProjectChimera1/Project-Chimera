@@ -252,6 +252,18 @@ namespace ProjectChimera.Sim.Tests.Sim
             host.Research.CumulativeMoveSpeedDelta[(int)Faction.Player1][0]    = Fixed.FromInt(2);
             host.Research.CumulativeArmorDelta[(int)Faction.Player1][0]        = Fixed.FromInt(1);
 
+            // Story 6.3 (review pass 1, VG2): the golden fixture injects no elevation grid and never enables the
+            // height-vision toggle, so a dropped reset of the three new sim-globals (or the Elevation array) in
+            // ClearForReset would leave every OTHER store equal to fresh and pass vacuously. Populate them directly so
+            // this keystone has teeth: a stale toggle/bonus/grid + a dirtied Elevation slot that ClearForReset MUST
+            // wipe back to fresh — otherwise a subsequent flat-map match reuses the prior map's height-vision config
+            // (reset != fresh boot).
+            host.World.HeightAdvantageVision    = true;
+            host.World.HeightVisionBonusPerStep = Fixed.FromInt(9);
+            host.World.SetElevationGrid(new ElevationGrid(new[] { Fixed.FromInt(3) }, 1, 1,
+                Fixed.Zero, Fixed.Zero, Fixed.One));
+            if (host.World.HighWaterMark > 0) host.World.Elevation[0] = Fixed.FromInt(7);
+
             host.ClearForReset();
 
             // A newly-constructed host (NOT applied) is the byte-for-byte reference.
@@ -319,6 +331,17 @@ namespace ProjectChimera.Sim.Tests.Sim
             Assert.Equal(fresh.Research.CumulativeAttackDamageDelta,host.Research.CumulativeAttackDamageDelta);
             Assert.Equal(fresh.Research.CumulativeMoveSpeedDelta,   host.Research.CumulativeMoveSpeedDelta);
             Assert.Equal(fresh.Research.CumulativeArmorDelta,       host.Research.CumulativeArmorDelta);
+
+            // Story 6.3 (VG2): the three height-vision sim-globals + the Elevation SoA reset to fresh (teeth for the
+            // ClearForReset resets — see the direct population above; without them a reused world carries a prior map's
+            // elevation config, breaking the "reset == fresh boot" determinism guarantee).
+            Assert.Equal(fresh.World.HeightAdvantageVision,    host.World.HeightAdvantageVision);
+            Assert.Equal(fresh.World.HeightVisionBonusPerStep, host.World.HeightVisionBonusPerStep);
+            Assert.Equal(fresh.World.Elevation,                host.World.Elevation);
+            // The private _elevationGrid also reset: a fresh spawn on the cleared world samples the null grid ⇒
+            // Fixed.Zero. A leaked grid (FromInt(3) above) would make this probe non-zero. (Done last — it mutates the world.)
+            int probe = host.World.Create(FixedVec3.Zero, Faction.Player1, Fixed.FromInt(1), Fixed.FromInt(1));
+            Assert.Equal(Fixed.Zero, host.World.Elevation[probe]);
         }
 
         // ── I/O matrix: HeroStore non-additive on re-deploy (the 3.9 deferred gap) ─────────────
@@ -468,7 +491,7 @@ namespace ProjectChimera.Sim.Tests.Sim
         [Fact]
         public void HashAlgoVersions_AreUnchanged()
         {
-            Assert.Equal(14, SimChecksum.AlgoVersion);   // Story 4.10: first-ever ResearchStore fold (13→14)
+            Assert.Equal(15, SimChecksum.AlgoVersion);   // Story 6.3: per-entity Elevation fold (14→15)
             Assert.Equal(5, CanonicalModelHash.AlgoVersion); // Story 4.7: ScenarioResourceNode's 6 new fields folded (4→5)
             Assert.Equal(2, StartStateHash.AlgoVersion);
         }

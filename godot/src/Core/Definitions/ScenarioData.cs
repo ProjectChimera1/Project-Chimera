@@ -333,5 +333,32 @@ namespace ProjectChimera.Core.Definitions
         [JsonPropertyName("supply")]
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public SupplyConfig? Supply { get; set; }
+
+        /// <summary>
+        /// The per-scenario height-advantage vision toggle (Story 6.3). When true, <c>FogOfWarSystem</c> widens an
+        /// elevated unit's stamped vision radius by an elevation-derived per-step bonus
+        /// (<see cref="HeightVisionBonusPerStep"/>); when false (the default, every existing scenario) the stamped fog
+        /// Grid is byte-for-byte identical to pre-feature. OMITTED from serialization when default
+        /// (<see cref="JsonIgnoreCondition.WhenWritingDefault"/>, the <see cref="ScenarioPlayerSlot.StartCrystal"/>
+        /// omit-when-default precedent) so every existing scenario serializes byte-identically, moving no golden.
+        /// Threaded into <see cref="EntityWorld.HeightAdvantageVision"/> at scenario-apply. Deliberately NOT folded into
+        /// <c>CanonicalModelHash</c>/<c>StartStateHash</c>: the fog Grid it affects is not in <c>SimChecksum</c> and no
+        /// sim system consumes it, so a toggle mismatch cannot cause a lockstep desync (it is not lockstep-critical).
+        /// </summary>
+        [JsonPropertyName("height_advantage_vision")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+        public bool HeightAdvantageVision { get; set; } = false;
+
+        /// <summary>
+        /// The per-scenario vision-radius bonus per whole elevation step (Story 6.3), in world units — consulted only
+        /// when <see cref="HeightAdvantageVision"/> is enabled. Default 0f (no bonus even if the toggle is on), OMITTED
+        /// from serialization when default (<see cref="JsonIgnoreCondition.WhenWritingDefault"/>) so existing scenarios
+        /// serialize byte-identically. Resolved once (the single float→Fixed boundary) into
+        /// <see cref="EntityWorld.HeightVisionBonusPerStep"/> at scenario-apply. NOT folded into any checksum/hash (the
+        /// <see cref="HeightAdvantageVision"/> rationale — it only affects the non-folded fog Grid).
+        /// </summary>
+        [JsonPropertyName("height_vision_bonus_per_step")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+        public float HeightVisionBonusPerStep { get; set; } = 0f;
     }
 }

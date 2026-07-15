@@ -185,6 +185,42 @@ namespace ProjectChimera.Sim.Tests.Builder
         }
 
         [Fact]
+        public void Apply_ThreadsStory6_3_HeightVisionConfig_AndSamplesElevationAtSpawn()
+        {
+            // Story 6.3 (review pass 1, VG1): the entire height-advantage feature ACTIVATES through Apply — it threads
+            // ScenarioData.HeightAdvantageVision / HeightVisionBonusPerStep onto the world and pushes the injected
+            // ElevationGrid so EntityWorld.Create samples it at spawn. Every OTHER 6.3 test configures a raw world by
+            // hand and bypasses Apply, so a regression that dropped this threading (or inverted the toggle) would ship
+            // a silently-dead feature with a green suite. This is the caller-path guard.
+            ScenarioData model = BuildAlphaModel();
+            model.HeightAdvantageVision    = true;
+            model.HeightVisionBonusPerStep = 4f;
+
+            var (host, applier) = NewHostAndApplier();
+
+            // A uniform non-zero grid over a wide extent ⇒ every spawned unit samples elevation 5 regardless of its XZ.
+            var heights = new[] { Fixed.FromInt(5), Fixed.FromInt(5), Fixed.FromInt(5), Fixed.FromInt(5) };
+            applier.SetElevationGrid(new ElevationGrid(heights, 2, 2,
+                Fixed.FromInt(-1000), Fixed.FromInt(-1000), Fixed.FromInt(1000)));
+
+            ValidationResult r = new ScenarioValidator().Validate(model);
+            Assert.True(r.Ok, r.Error);
+            applier.Apply(r.Value);
+
+            // Toggle + bonus reached the world (the single float→Fixed boundary lives in Apply).
+            Assert.True(host.World.HeightAdvantageVision);
+            Assert.Equal(Fixed.FromFloat(4f), host.World.HeightVisionBonusPerStep);
+
+            // The injected grid reached Create: every spawned unit sampled elevation 5, and the effective vision =
+            // base + floor(5/step)·bonus = base + 5·4.
+            Assert.True(host.World.AliveCount > 0);
+            for (int id = 0; id < host.World.AliveCount; id++)
+                Assert.Equal(Fixed.FromInt(5), host.World.Elevation[id]);
+            Assert.Equal(host.World.VisionRange[0] + Fixed.FromInt(5) * Fixed.FromFloat(4f),
+                         host.World.EffectiveVisionRange(0));
+        }
+
+        [Fact]
         public void Apply_ThreadsStory4_7Fields_IntoResourceNodeStore()
         {
             // Story 4.7 — the single float→Fixed/string→enum load boundary for resource nodes: collection_model,

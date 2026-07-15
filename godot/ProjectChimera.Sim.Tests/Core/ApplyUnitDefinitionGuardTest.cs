@@ -385,6 +385,30 @@ namespace ProjectChimera.Sim.Tests.Core
             Assert.Equal(EntityWorld.HERO_NONE, w.HeroIndex[reused]);
         }
 
+        // ── Story 6.3 — Elevation is TERRAIN-derived runtime state (sampled in Create from the injected ElevationGrid),
+        //    NOT def-derived — so, like HeroIndex/the shift-queue ring, it is NOT written by ApplyUnitDefinition. A
+        //    recycled slot must be re-sampled by Create so a new occupant never inherits a prior occupant's elevation
+        //    (the SoA-recycle trap). With no grid injected, Create writes Fixed.Zero — so a dirtied slot that reverts to
+        //    Zero on recycle proves Create re-writes the field rather than leaking the stale value. Elevation IS folded
+        //    (v15), but the fold teeth run on FRESH zero-init slots and pass even if the recycle re-write regressed, so
+        //    this guard is the dedicated recycle coverage. ──
+        [Fact]
+        public void RecycledSlot_CarriesNoPriorElevation()
+        {
+            var w = new EntityWorld();
+            int first = w.Create(FixedVec3.Zero, Faction.Player1, Fixed.FromInt(100), Fixed.FromInt(3));
+            // Dirty the elevation on the first occupant, as if it had spawned on a sculpted hill.
+            w.Elevation[first] = Fixed.FromInt(9);
+            Assert.NotEqual(Fixed.Zero.Raw, w.Elevation[first].Raw);
+
+            w.Destroy(first);
+            int reused = w.Create(FixedVec3.Zero, Faction.Player2, Fixed.FromInt(50), Fixed.FromInt(3));
+            Assert.Equal(first, reused); // same id off the free list
+
+            // No grid injected ⇒ Create re-samples to Fixed.Zero; the new occupant must carry NO prior elevation.
+            Assert.Equal(Fixed.Zero.Raw, w.Elevation[reused].Raw);
+        }
+
         // ── Story 3.17 — editor delete→undo restore fidelity. SnapshotUnit + RestoreUnit route a def-based unit back
         //    through ApplyUnitDefinition (the A2 mapper), so every def-derived authored field is re-derived — never a
         //    hand-copy that silently drops fields (the recurring RestoreUnit drop-debt). This Tier-1 round-trip guard

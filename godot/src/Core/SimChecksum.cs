@@ -11,6 +11,8 @@ namespace ProjectChimera.Core
     ///
     /// Hashed state (in order, ascending entity ID):
     ///   - EntityWorld: Position (X, Y, Z) and Health for every alive entity
+    ///   - EntityWorld terrain elevation: Elevation (Raw) per alive entity — added v15 (Story 6.3), the spawn-sampled
+    ///     terrain height (a dedicated SoA array, NOT Position.Y).
     ///   - BuildingStore: Alive flag, Health, ConstructionTimer for every building slot
     ///   - ResourceStore: Ore, Crystal, SupplyUsed, SupplyCap, FactionBase for each active
     ///     faction (via FactionRegistry, ascending)
@@ -149,8 +151,17 @@ namespace ProjectChimera.Core
         ///        store folds a single Mix(0) (legacy/test callers only; SimulationHost always passes a real store).
         ///        One scheduled re-baseline of ALL goldens (every existing golden's factions have no research, so
         ///        the pin moves purely by the added per-active-faction Mix(InProgressIndex)/Mix(RemainingTicks)).
+        ///   v15 — Story 6.3: fold per-entity <c>Elevation</c> (.Raw) in the entity loop (after Health) — the new
+        ///        terrain-elevation SoA array, sampled once at spawn from the authored heightmap. A dedicated array
+        ///        (NOT Position.Y, which would move goldens as position + risk MovementSystem integration leaking it).
+        ///        A peer divergence in a unit's elevation must desync detectably; it also feeds EffectiveVisionRange
+        ///        when the height-advantage vision toggle is on (the toggle/bonus themselves are NOT folded — the fog
+        ///        Grid is not in this checksum and no sim system consumes it, so a toggle mismatch cannot desync;
+        ///        CanonicalModelHash/StartStateHash are deliberately untouched). Fixed.Raw → cross-platform. Every
+        ///        existing golden scenario is FLAT (Elevation == 0), so this adds one Mix(0) per alive entity — the
+        ///        AC-authorized intentional expansion that re-baselines ALL 23 per-tick goldens in this one commit.
         /// </summary>
-        public const int AlgoVersion = 14;
+        public const int AlgoVersion = 15;
 
         /// <summary>
         /// Compute a full-state checksum for desync detection.
@@ -176,6 +187,14 @@ namespace ProjectChimera.Core
                 hash = Mix(hash, world.Position[i].Y.Raw);
                 hash = Mix(hash, world.Position[i].Z.Raw);
                 hash = Mix(hash, world.Health[i].Raw);
+
+                // ── Terrain elevation (v15, Story 6.3) ────────────────────────────
+                // Per-entity terrain elevation, sampled once at spawn from the authored heightmap (a dedicated SoA
+                // array, NOT Position.Y). A divergent elevation between peers must desync detectably (and it also feeds
+                // EffectiveVisionRange when the height-advantage toggle is on). Fixed.Raw → cross-platform safe. Every
+                // current golden scenario is flat (Elevation == 0), so this adds one Mix(0) per entity — the AC-authorized
+                // intentional re-baseline of ALL per-tick goldens.
+                hash = Mix(hash, world.Elevation[i].Raw);
 
                 // ── Command state (v4, Story 1.12) ────────────────────────────────
                 // The full RTS command vocabulary's persistent per-entity state IS sim truth: a peer divergence

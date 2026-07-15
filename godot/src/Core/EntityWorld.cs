@@ -259,6 +259,51 @@ namespace ProjectChimera.Core
         /// <summary>How far this unit can see (world units). Used by FogOfWarSystem.</summary>
         public readonly Fixed[] VisionRange;
 
+        // --- Terrain elevation (Story 6.3) ---
+        /// <summary>
+        /// Per-entity terrain elevation (world Y), sampled ONCE at spawn from the injected <see cref="ElevationGrid"/>
+        /// (a deterministic clamped integer cell lookup — never Godot <c>Image</c> interpolation, never an OOB read).
+        /// A dedicated SoA array — NOT <c>Position.Y</c> (which is already folded as position + could leak through
+        /// MovementSystem integration). Terrain-derived, so it is DEFAULTED (not written) in <see cref="ApplyUnitDefinition"/>
+        /// and set from the grid in <see cref="Create"/> — a recycled slot must never inherit the prior occupant's
+        /// elevation (the SoA-recycle trap). FOLDED into <see cref="SimChecksum"/> (v15) so a divergent elevation desyncs
+        /// detectably. Flat/legacy maps (null grid) leave every entry at <see cref="Fixed.Zero"/>.
+        /// </summary>
+        public readonly Fixed[] Elevation;
+
+        /// <summary>
+        /// Sim-global creator toggle (Story 6.3): when true, <see cref="EffectiveVisionRange"/> widens a unit's stamped
+        /// vision radius by an elevation-derived <see cref="Fixed"/> bonus. Default false ⇒ the fog Grid is
+        /// byte-for-byte identical to the pre-feature behaviour (the bonus term is not applied at all). Set once by
+        /// <c>ScenarioApplier</c> from <c>ScenarioData.HeightAdvantageVision</c>; NOT per-entity, NOT folded (the
+        /// fog Grid is not in <see cref="SimChecksum"/> and no sim system consumes it — see the CanonicalModelHash note).
+        /// </summary>
+        public bool HeightAdvantageVision;
+
+        /// <summary>
+        /// Sim-global per-elevation-step vision bonus (Story 6.3), in world units, applied only when
+        /// <see cref="HeightAdvantageVision"/> is on. Resolved once from <c>ScenarioData.HeightVisionBonusPerStep</c>
+        /// (the single float→Fixed boundary) by <c>ScenarioApplier</c>. Default <see cref="Fixed.Zero"/>.
+        /// </summary>
+        public Fixed HeightVisionBonusPerStep;
+
+        /// <summary>
+        /// The world-unit height of ONE elevation step for the height-advantage vision bonus (Story 6.3). Fixed at 1
+        /// world height-unit — a unit standing 1 world-unit higher earns one <see cref="HeightVisionBonusPerStep"/>
+        /// increment. A documented named constant (can become authored data later) so the determinism analyzer's
+        /// magic-number advisory stays clean; the floor-to-whole-steps math in <see cref="EffectiveVisionRange"/> is
+        /// exactly <c>floor(Elevation / this)</c>.
+        /// </summary>
+        public const int HEIGHT_STEP_WORLD_UNITS = 1;
+
+        /// <summary>
+        /// The injected finalized-terrain elevation grid (Story 6.3), or null for a flat/legacy map. Godot builds it
+        /// at load time from the restored Terrain3D heightmap and hands it in via <see cref="SetElevationGrid"/> BEFORE
+        /// scenario apply, so <see cref="Create"/> samples it for every spawn path uniformly. Null ⇒ elevation is
+        /// <see cref="Fixed.Zero"/> everywhere (no behaviour change vs pre-feature).
+        /// </summary>
+        private ElevationGrid _elevationGrid;
+
         // --- AoE ---
         /// <summary>
         /// Splash radius (world units) applied when a projectile from this unit hits.
@@ -616,6 +661,7 @@ namespace ProjectChimera.Core
             ArmorTypeOf = new ArmorType[MAX_ENTITIES];
 
             VisionRange    = new Fixed[MAX_ENTITIES];
+            Elevation      = new Fixed[MAX_ENTITIES];                    // Story 6.3 (folded v15; Create-sampled from the injected grid, else Zero)
             SplashRadius   = new Fixed[MAX_ENTITIES];
             Delivery       = new AttackDelivery[MAX_ENTITIES];          // Story 3.12 (folded v10; Hitscan == 0, no Array.Fill needed)
             ProjectileSpeed = new Fixed[MAX_ENTITIES];                  // Story 3.12 (folded v10; Create-defaulted to the 18 fallback)
@@ -723,6 +769,12 @@ namespace ProjectChimera.Core
             DamageTypeOf[id]  = DamageType.Normal;
             ArmorTypeOf[id]   = ArmorType.Unarmored;
             VisionRange[id]   = Fixed.FromFloat(8f);
+            // Story 6.3: sample terrain elevation for THIS spawn from the injected grid (deterministic clamped-cell
+            // lookup). Done in Create — which every spawn path funnels through and which has the spawn `position` — so
+            // scenario load, SpawnUnitAt (trigger/hero respawn), production, and editor placement all get uniform,
+            // correct elevation with no per-callsite edit. A recycled slot MUST be re-sampled (never inherit the prior
+            // occupant's elevation — the SoA-recycle trap); a null grid (flat/legacy map) yields Fixed.Zero.
+            Elevation[id]     = _elevationGrid != null ? _elevationGrid.Sample(position.X, position.Z) : Fixed.Zero;
             SplashRadius[id]  = Fixed.Zero;
             // Story 3.12: default attack-delivery fields on (re)allocation. A recycled/non-def slot must never carry the
             // prior occupant's delivery/speed (the SoA-recycle trap). Hitscan == instant (the safe default for a unit
@@ -793,6 +845,39 @@ namespace ProjectChimera.Core
 
             AliveCount++;
             return id;
+        }
+
+        /// <summary>
+        /// Story 6.3: inject the finalized-terrain <see cref="ElevationGrid"/> (or null for a flat/legacy map) BEFORE
+        /// any spawn, so <see cref="Create"/> samples it. Godot builds the grid at load time from the restored Terrain3D
+        /// heightmap (one <see cref="Fixed.FromFloat"/> per cell) and calls this via <c>ScenarioApplier</c>. Never
+        /// reassigned per-tick — a load-time seam only. Null ⇒ every spawn's <see cref="Elevation"/> is <see cref="Fixed.Zero"/>.
+        /// </summary>
+        public void SetElevationGrid(ElevationGrid grid) => _elevationGrid = grid;
+
+        /// <summary>
+        /// Story 6.3: the vision radius <see cref="ProjectChimera.Core.FogOfWarSystem"/> stamps for this unit — the base
+        /// authored <see cref="VisionRange"/> plus, ONLY when <see cref="HeightAdvantageVision"/> is enabled, an
+        /// elevation-derived <see cref="Fixed"/> bonus. Computed entirely in <see cref="Fixed"/> so it can merge BEFORE
+        /// the existing per-tick <c>.ToFloat()</c> boundary in FogOfWarSystem — no new float on any sim path. Steps =
+        /// <c>floor(Elevation / HEIGHT_STEP_WORLD_UNITS)</c>, clamped ≥ 0 (a sub-step or negative elevation earns no
+        /// bonus). Toggle OFF ⇒ returns the base range unchanged, so the stamped fog Grid stays byte-identical to
+        /// pre-feature.
+        /// </summary>
+        public Fixed EffectiveVisionRange(int id)
+        {
+            Fixed baseR = VisionRange[id];
+            if (!HeightAdvantageVision) return baseR;                 // toggle OFF ⇒ byte-identical fog
+            // Whole-step count = floor(Elevation / HEIGHT_STEP_WORLD_UNITS), clamped ≥ 0 (a sub-step or negative
+            // elevation earns no bonus). ToInt() == Raw >> FRACTIONAL_BITS (a deterministic floor); dividing by the
+            // NAMED step keeps the constant load-bearing (a future step != 1 reconfigures the math, not just the doc —
+            // review pass 1, F4). Height vision is an ADVANTAGE: a GIGO negative bonus must never reduce a unit's
+            // stamped radius below its base (nor drive a negative StampCircle radius), so the bonus term is clamped
+            // ≥ 0 (review pass 1, EC1). A well-authored non-negative bonus never trips the clamp.
+            int steps = Elevation[id].Raw > 0 ? Elevation[id].ToInt() / HEIGHT_STEP_WORLD_UNITS : 0;
+            Fixed bonus = Fixed.FromInt(steps) * HeightVisionBonusPerStep;
+            if (bonus.Raw < 0) bonus = Fixed.Zero;
+            return baseR + bonus;
         }
 
         /// <summary>
@@ -1031,6 +1116,7 @@ namespace ProjectChimera.Core
             Array.Clear(AttackSpeed);           Array.Clear(Energy);                Array.Clear(MaxEnergy);
             Array.Clear(StatusFlagsOf);         Array.Clear(DamageTypeOf);          Array.Clear(ArmorTypeOf);
             Array.Clear(VisionRange);           Array.Clear(SplashRadius);          Array.Clear(CollisionRadius);
+            Array.Clear(Elevation);             // Story 6.3 (0 == the fresh-ctor state; re-sampled at the next spawn)
             Array.Clear(Delivery);              Array.Clear(ProjectileSpeed);       // Story 3.12 (Hitscan==0 / 0 speed == the fresh-ctor state)
             Array.Clear(XpBounty);              // Story 3.13 (0 == the fresh-ctor state)
             Array.Clear(SeparationPriorityOf);  Array.Clear(CategoryOf);            Array.Clear(AttackDomainOf);
@@ -1060,6 +1146,12 @@ namespace ProjectChimera.Core
             _freeCount = 0;
             _nextId    = 0;
             AliveCount = 0;
+
+            // Story 6.3: reset the sim-global elevation config to the fresh-ctor defaults (a cleared world must equal
+            // new EntityWorld()). ScenarioApplier re-injects the grid + toggle/bonus on the next scenario apply.
+            HeightAdvantageVision    = false;
+            HeightVisionBonusPerStep = Fixed.Zero;
+            _elevationGrid           = null;
 
             // Re-seed the single shared deterministic RNG to the ctor seed (the folded state must equal a fresh world).
             Rng.Seed(DEFAULT_RNG_SEED);

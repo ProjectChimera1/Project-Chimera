@@ -45,6 +45,9 @@ namespace ProjectChimera.Sim.Tests.Meta
         //    same commit as the source change — that edit is the "did the siblings + goldens move too?" checkpoint.
 
         /// <summary>Runtime desync-checksum algorithm version. Bump ⇒ re-baseline ALL goldens (same commit).
+        /// v15 (Story 6.3): folded per-entity Elevation (the spawn-sampled terrain height, a dedicated SoA array —
+        /// NOT Position.Y). The height-advantage vision toggle/bonus are deliberately NOT folded (they only affect the
+        /// non-folded fog Grid), so CanonicalModelHash/StartStateHash stay put.
         /// v14 (Story 4.10): first-ever fold of ResearchStore (InProgressIndex/RemainingTicks + the per-research
         /// CompletedLevels/cumulative stat deltas), deferred from 4.9's mid-match-mutable order path.
         /// v13 (Story 4.7): first-ever fold of ResourceNodeStore (SupplyRemaining/Active/AssignedGatherers) plus the
@@ -55,7 +58,7 @@ namespace ProjectChimera.Sim.Tests.Meta
         /// (D-1). v8 (Story 2.6): folded per-entity EffectiveArmor (the buffable armor stat). v7 (Story 2.4a): folded
         /// per-entity AbilityCooldownTicks (count-driven). v6 (Story 2.2b): Effective* / Energy / StatusFlagsOf +
         /// the ModifierStore instance state.</summary>
-        private const int ExpectedSimChecksumAlgoVersion = 14;
+        private const int ExpectedSimChecksumAlgoVersion = 15;
 
         /// <summary>Load-time canonical start-state hash algorithm version (lobby handshake value).
         /// v3 (Story 2.9b follow-up): folded ScenarioPlayerSlot.StartCrystal (sim-affecting per-slot start-state).

@@ -46,9 +46,12 @@ namespace ProjectChimera.Core.Bootstrap
                 var generated = PendingGeneratedScenario;
                 PendingGeneratedScenario = null;
                 _ctx.Scenario = generated;
+                // Story 6.3: restore sculpted terrain and build the sim elevation grid BEFORE apply, so every
+                // scenario-placed unit samples the FINALIZED heightmap at spawn (see BuildAndInjectElevationGrid).
+                RestoreTerrainFromScenario();
+                BuildAndInjectElevationGrid();
                 ApplyScenarioThroughApplier(generated, "ApplyScenario");
                 GD.Print($"[MainScene] Loaded AI-generated scenario: \"{generated.DisplayName}\"");
-                RestoreTerrainFromScenario();
                 SetupStartPositionBridge();
                 return;
             }
@@ -59,16 +62,23 @@ namespace ProjectChimera.Core.Bootstrap
             if (scenario == null)
             {
                 GD.PrintErr($"[MainScene] Scenario not found or failed to parse: {_ctx.Scene.ScenarioPath} — using defaults.");
+                // Fallback map is flat (no TerrainRef): no restore. BuildAndInjectElevationGrid is intentionally NOT
+                // called here, so explicitly clear the applier's grid — a REUSED applier must not carry a prior
+                // sculpted load's grid into this flat fallback. Every unit then spawns at Fixed.Zero elevation
+                // (byte-identical to pre-feature). (review pass 1, F6.)
+                _ctx.Applier.SetElevationGrid(null);
                 ApplyFallbackThroughApplier();
             }
             else
             {
                 _ctx.Scenario = scenario;
+                // Story 6.3: restore terrain + inject the elevation grid BEFORE apply (spawn-time elevation sampling).
+                RestoreTerrainFromScenario();
+                BuildAndInjectElevationGrid();
                 ApplyScenarioThroughApplier(scenario, "ApplyScenario");
                 GD.Print($"[MainScene] Loaded scenario: \"{scenario.DisplayName}\" ({scenario.Id})");
             }
 
-            RestoreTerrainFromScenario();
             SetupStartPositionBridge();
         }
 
@@ -129,6 +139,68 @@ namespace ProjectChimera.Core.Bootstrap
             catch (System.Exception ex)
             {
                 GD.PrintErr($"[ScenarioLoad] Terrain restore failed ({ex.Message}) — keeping flat terrain.");
+            }
+        }
+
+        /// <summary>
+        /// Story 6.3 — the Godot→sim elevation seam. Reads the FINALIZED Terrain3D heightmap (after
+        /// <see cref="RestoreTerrainFromScenario"/>), builds a Godot-free <see cref="ElevationGrid"/> of
+        /// <see cref="Fixed"/> heights (one <see cref="Fixed.FromFloat"/> per cell — the sanctioned load-time float→Fixed
+        /// boundary), and hands it to the <see cref="ScenarioApplier"/> BEFORE apply so every spawn samples it. Runs
+        /// entirely inside the "ScenarioLoad" phase (position 12), which is AFTER "Terrain" (position 5) created the
+        /// node and AFTER the restore above — the ordering the sim contract needs.
+        ///
+        /// <para>The sim NEVER reads Terrain3D: sampling is a Godot-side load-time step, and the sim's
+        /// <see cref="ElevationGrid.Sample"/> is a clamped integer cell lookup over the baked <see cref="Fixed"/> array.
+        /// NaN/hole cells and any failure degrade to flat (Fixed.Zero) — never a crash. A null/PlaneMesh terrain leaves
+        /// the grid unset (applier default ⇒ zero elevation, byte-identical to pre-feature).</para>
+        /// </summary>
+        private void BuildAndInjectElevationGrid()
+        {
+            // PlaneMesh fallback — no heightmap to sample. Explicitly clear the grid so a REUSED applier can't carry a
+            // prior sculpted load's grid into this flat load (review pass 1, F6); units then spawn at Fixed.Zero.
+            if (_ctx.Terrain == null) { _ctx.Applier.SetElevationGrid(null); return; }
+
+            try
+            {
+                var data = _ctx.Terrain.Get("data").AsGodotObject();
+                if (data == null) { _ctx.Applier.SetElevationGrid(null); return; }
+
+                // Sample a grid over the default ±128 world XZ extent at 1 world-unit/cell (256×256). The grid stores
+                // its own extent, so the sim is general over resolution; this Godot-side resolution just matches the
+                // authored region. get_height does the (allowed) load-time interpolation; the SIM never interpolates.
+                const int N = 256;
+                const float half = 128f;
+                const float cell = (half * 2f) / N; // = 1.0 world unit/cell
+                var heights = new Fixed[N * N];
+                bool anyNonZero = false;
+
+                for (int row = 0; row < N; row++)
+                {
+                    float wz = -half + (row + 0.5f) * cell; // cell-centre world Z
+                    for (int col = 0; col < N; col++)
+                    {
+                        float wx = -half + (col + 0.5f) * cell; // cell-centre world X
+                        float h = data.Call("get_height", new Vector3(wx, 0f, wz)).AsSingle();
+                        if (!float.IsFinite(h)) h = 0f; // hole / NaN → flat, never a bad Fixed
+                        if (h != 0f) anyNonZero = true;
+                        heights[row * N + col] = Fixed.FromFloat(h);
+                    }
+                }
+
+                var grid = new ElevationGrid(heights, N, N,
+                    Fixed.FromFloat(-half), Fixed.FromFloat(-half), Fixed.FromFloat(cell));
+                _ctx.Applier.SetElevationGrid(grid);
+
+                if (anyNonZero)
+                    GD.Print("[ScenarioLoad] Built sim elevation grid from sculpted terrain (256×256).");
+            }
+            catch (System.Exception ex)
+            {
+                // Never block the load, and never carry a stale grid past a failed build (review pass 1, F6): clear it
+                // so units spawn at flat elevation (Fixed.Zero) rather than a prior load's heightmap.
+                _ctx.Applier.SetElevationGrid(null);
+                GD.PrintErr($"[ScenarioLoad] Elevation grid build failed ({ex.Message}) — units spawn at flat elevation.");
             }
         }
 

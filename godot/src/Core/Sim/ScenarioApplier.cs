@@ -44,6 +44,11 @@ namespace ProjectChimera.Core.Sim
         // Additive-only — no spawn-behavior change.
         private readonly List<HeroProfileLoader.PlacedHero> _lastAppliedHeroes = new();
 
+        // Story 6.3: the finalized-terrain elevation grid the Godot load-time step builds and injects (or null for a
+        // flat/legacy map). Set BEFORE Apply so EntityWorld.Create samples it for every scenario-placed spawn. Stays
+        // set on the world afterwards, so runtime SpawnUnitAt (trigger/hero respawn) spawns also sample it uniformly.
+        private ElevationGrid? _elevationGrid;
+
         /// <summary>The hero entities placed during the most recent <see cref="Apply"/> (entity id + unit id), for
         /// Story 3.9's init-time hero mint. Cleared at the start of each <see cref="Apply"/>.</summary>
         public IReadOnlyList<HeroProfileLoader.PlacedHero> LastAppliedHeroes => _lastAppliedHeroes;
@@ -70,6 +75,13 @@ namespace ProjectChimera.Core.Sim
         /// (filled by the presentation pre-pass). Order is part of the determinism contract:
         /// slots (faction def + ore + base) → resource nodes → buildings → units → triggers.
         /// </summary>
+        /// <summary>
+        /// Story 6.3: inject the finalized-terrain <see cref="ElevationGrid"/> (Godot-built at load time from the
+        /// restored Terrain3D heightmap) BEFORE <see cref="Apply"/> spawns any unit. Null ⇒ flat/legacy (elevation
+        /// stays <see cref="Fixed.Zero"/>). Godot-free type, so this setter keeps the applier Godot-free.
+        /// </summary>
+        public void SetElevationGrid(ElevationGrid? grid) => _elevationGrid = grid;
+
         public void Apply(Validated<ScenarioData> v)
         {
             _lastAppliedHeroes.Clear(); // Story 3.9: fresh record of placed heroes for this apply
@@ -89,6 +101,15 @@ namespace ProjectChimera.Core.Sim
                 _log.Warn("[ScenarioApplier] Apply received a Validated<ScenarioData> with a null model — skipped.");
                 return;
             }
+
+            // ── Story 6.3: thread the height-advantage vision toggle/bonus + the injected elevation grid into the
+            //    EntityWorld BEFORE any spawn, so EntityWorld.Create (which every spawn path funnels through) samples
+            //    the grid uniformly and EffectiveVisionRange sees the resolved toggle/bonus. The bonus is the single
+            //    float→Fixed boundary here; the grid may be null (flat/legacy ⇒ Fixed.Zero elevation). Position.Y stays
+            //    Fixed.Zero everywhere — elevation lives ONLY in the dedicated Elevation SoA array. ──
+            _host.World.HeightAdvantageVision    = s.HeightAdvantageVision;
+            _host.World.HeightVisionBonusPerStep = Fixed.FromFloat(s.HeightVisionBonusPerStep);
+            _host.World.SetElevationGrid(_elevationGrid);
 
             // ── 1. Player slots: faction def + starting ore + base deposit point ─
             foreach (var slot in s.PlayerSlots ?? System.Array.Empty<ScenarioPlayerSlot>())

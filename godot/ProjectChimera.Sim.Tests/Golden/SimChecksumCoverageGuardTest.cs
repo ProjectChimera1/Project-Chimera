@@ -108,22 +108,22 @@ namespace ProjectChimera.Sim.Tests.Golden
         /// hash still moves.)
         /// </summary>
         [Fact]
-        public void KnownWorldState_ProducesPinnedV14Hash()
+        public void KnownWorldState_ProducesPinnedV15Hash()
         {
-            // Algorithm version must be exactly 14 (Story 4.10's first-ever ResearchStore fold). If this fails, the const below is stale.
-            Assert.Equal(14, SimChecksum.AlgoVersion);
+            // Algorithm version must be exactly 15 (Story 6.3's per-entity Elevation fold). If this fails, the const below is stale.
+            Assert.Equal(15, SimChecksum.AlgoVersion);
 
             uint actual = ComputeKnownStateHash();
 
-            // ── Pinned v14 hash for the fixed world built by ComputeKnownStateHash() ──────────────────────────
+            // ── Pinned v15 hash for the fixed world built by ComputeKnownStateHash() ──────────────────────────
             // An intentional SimChecksum algorithm change must update this value AND bump SimChecksum.AlgoVersion.
-            // The known-state world now includes an EMPTY ResearchStore (both active factions idle, no research
-            // arrays sized), so the v14 fold moves the hash from v13 purely by the added per-active-faction
-            // Mix(InProgressIndex=-1)/Mix(RemainingTicks=0) — no per-research inner loop runs (Length == 0).
-            const uint ExpectedV14Hash = 0x386E5B42; // recorded from a green v14 run; re-pin only on an intentional algo change
-            Assert.True(actual == ExpectedV14Hash,
-                $"Known-state v14 checksum changed: expected 0x{ExpectedV14Hash:X8}, actual 0x{actual:X8}. " +
-                $"If this is an INTENTIONAL algorithm change, re-pin ExpectedV14Hash to 0x{actual:X8} and bump " +
+            // The known-state world's two entities are at their Create-default Elevation (0, no grid injected), so the
+            // v15 fold moves the hash from v14 purely by the added Mix(0) elevation per alive entity — the intentional
+            // Elevation-fold re-baseline (Story 6.3).
+            const uint ExpectedV15Hash = 0xB1E4E662; // recorded from a green v15 run; re-pin only on an intentional algo change
+            Assert.True(actual == ExpectedV15Hash,
+                $"Known-state v15 checksum changed: expected 0x{ExpectedV15Hash:X8}, actual 0x{actual:X8}. " +
+                $"If this is an INTENTIONAL algorithm change, re-pin ExpectedV15Hash to 0x{actual:X8} and bump " +
                 $"SimChecksum.AlgoVersion. If not, you broke the deterministic checksum — investigate.");
         }
 
@@ -303,6 +303,16 @@ namespace ProjectChimera.Sim.Tests.Golden
                 int e = w.Create(new FixedVec3(Fixed.FromInt(1), Fixed.Zero, Fixed.FromInt(2)),
                                  Faction.Player1, Fixed.FromInt(10), Fixed.FromInt(3));
                 return () => w.XpBounty[e] = Fixed.FromInt(50);
+            });
+
+            // ── v15 (Story 6.3): the per-entity Elevation is folded — mutate to a value != its Create default (0, the
+            //    flat-map / no-grid state). A non-zero elevation MUST move the hash; a no-move means the v15 entity-loop
+            //    fold is not reading the field. ──
+            AssertFieldFoldedIntoChecksum(buildings, resources, registry, w =>
+            {
+                int e = w.Create(new FixedVec3(Fixed.FromInt(1), Fixed.Zero, Fixed.FromInt(2)),
+                                 Faction.Player1, Fixed.FromInt(10), Fixed.FromInt(3));
+                return () => w.Elevation[e] = Fixed.FromInt(4);
             });
 
             // ── v11 (Story 3.13): the mutable HeroStore state is folded — minting a hero, then mutating Level / Xp /

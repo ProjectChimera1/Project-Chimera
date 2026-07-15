@@ -63,7 +63,11 @@ namespace ProjectChimera.Core
 
                 float wx = world.Position[id].X.ToFloat();
                 float wz = world.Position[id].Z.ToFloat();
-                float radius = world.VisionRange[id].ToFloat();
+                // Story 6.3: the height-advantage bonus is computed entirely in Fixed and merged into the base
+                // VisionRange INSIDE EffectiveVisionRange, BEFORE this single .ToFloat() boundary — so the StampCircle
+                // float math below is the unchanged, verified-not-rewritten path. Toggle OFF ⇒ this equals
+                // VisionRange[id] exactly, so the stamped Grid is byte-for-byte identical to pre-feature.
+                float radius = world.EffectiveVisionRange(id).ToFloat();
 
                 StampCircle(wx, wz, radius);
             }
