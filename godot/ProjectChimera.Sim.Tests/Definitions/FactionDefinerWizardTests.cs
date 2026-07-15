@@ -470,6 +470,9 @@ namespace ProjectChimera.Sim.Tests.Definitions
         [Fact]
         public void TryFinishFromRawJson_ValidJsonMissingAiPreset_BlockedBySameAiPresetValidatorError_NoFileWritten()
         {
+            // NOTE (DW-117): this covers the PRESENT-but-empty ai_preset case, NOT key absence — SerializeDraftClean
+            // always writes the key (root["ai_preset"] = def.AiPreset ?? ""). Key-absence is covered by
+            // TryFinishFromRawJson_AiPresetKeyAbsent_BlockedSameAsSimpleMode_NoFileWritten below.
             string dir = MakeTempDir();
             try
             {
@@ -488,7 +491,158 @@ namespace ProjectChimera.Sim.Tests.Definitions
             finally { Directory.Delete(dir, recursive: true); }
         }
 
+        [Fact]
+        public void TryFinishFromRawJson_AiPresetKeyAbsent_BlockedSameAsSimpleMode_NoFileWritten()
+        {
+            // DW-117: a syntactically valid faction doc that OMITS the ai_preset key entirely must be blocked by the
+            // same "must be authored" validator error Simple mode produces (its forced "" AiPreset) — an omitted key
+            // must NOT silently inherit the C# "balanced" default and pass. Also assert the located error routes the
+            // wizard to the AI Preset step (the user-visible consequence of the located ai_preset error).
+            string dir = MakeTempDir();
+            try
+            {
+                string json = RewriteAiPresetLine(BuildValidRawFactionJson("raw_json_absent_preset_test"), null);
+                Assert.DoesNotContain("ai_preset", json);
+
+                FactionDefinerFinishResult result = FactionDefinerWizardCore.TryFinishFromRawJson(json, dir);
+
+                Assert.False(result.Ok);
+                Assert.Contains(result.Errors, e => e.FieldPath == "ai_preset");
+                Assert.Equal(FactionDefinerStep.AiPreset, result.Step);
+                Assert.Empty(Directory.GetFiles(dir, "*_faction.json*", SearchOption.AllDirectories));
+            }
+            finally { Directory.Delete(dir, recursive: true); }
+        }
+
+        [Fact]
+        public void TryFinishFromRawJson_AiPresetKeyAbsentWithDuplicateOtherKey_StillBlocked_NoFileWritten()
+        {
+            // DW-117 (Edge Case Hunter, review pass 1): the re-inspection must tolerate duplicate property names
+            // exactly as the JsonSerializer deserialize does (last-wins). A doc that omits ai_preset AND duplicates
+            // another top-level key deserializes fine (AiPreset stays "balanced"); the key-presence re-parse must
+            // still fire and force "" so it is blocked. The earlier JsonNode.Parse approach THREW on the duplicate
+            // key, hit the best-effort catch, and silently reopened the bypass — this test locks that regression out.
+            string dir = MakeTempDir();
+            try
+            {
+                string absent = RewriteAiPresetLine(BuildValidRawFactionJson("raw_json_dupkey_preset_test"), null);
+                string dupJson = DuplicateTopLevelIdLine(absent);
+
+                FactionDefinerFinishResult result = FactionDefinerWizardCore.TryFinishFromRawJson(dupJson, dir);
+
+                Assert.False(result.Ok);
+                Assert.Contains(result.Errors, e => e.FieldPath == "ai_preset");
+                Assert.Empty(Directory.GetFiles(dir, "*_faction.json*", SearchOption.AllDirectories));
+            }
+            finally { Directory.Delete(dir, recursive: true); }
+        }
+
+        [Fact]
+        public void TryFinishFromRawJson_AiPresetKeyOffCase_TreatedAsAbsent_Blocked_NoFileWritten()
+        {
+            // DW-117: the fix's case-sensitivity is load-bearing. An off-case key ("Ai_Preset") is ignored by the
+            // case-sensitive deserialize (AiPreset stays at the "balanced" default) AND is absent to the case-
+            // sensitive JsonDocument key check, so it must be forced to "" and blocked — never silently accepted.
+            string dir = MakeTempDir();
+            try
+            {
+                string json = RewriteAiPresetLine(BuildValidRawFactionJson("raw_json_offcase_preset_test"),
+                    "\"Ai_Preset\": \"balanced\",");
+
+                FactionDefinerFinishResult result = FactionDefinerWizardCore.TryFinishFromRawJson(json, dir);
+
+                Assert.False(result.Ok);
+                Assert.Contains(result.Errors, e => e.FieldPath == "ai_preset");
+                Assert.Empty(Directory.GetFiles(dir, "*_faction.json*", SearchOption.AllDirectories));
+            }
+            finally { Directory.Delete(dir, recursive: true); }
+        }
+
+        [Fact]
+        public void TryFinishFromRawJson_AiPresetKeyPresentButNull_Blocked_NormalizationDoesNotFire()
+        {
+            // DW-117 (I/O matrix): a PRESENT ai_preset key with JSON null keeps its existing outcome — blocked by the
+            // "must be authored" validator error (deserialize sets AiPreset=null, coalesced to "" by the validator).
+            // The key IS present, so the DW-117 key-absent normalization does not fire; the block is the validator's.
+            string dir = MakeTempDir();
+            try
+            {
+                string json = RewriteAiPresetLine(BuildValidRawFactionJson("raw_json_null_preset_test"),
+                    "\"ai_preset\": null,");
+
+                FactionDefinerFinishResult result = FactionDefinerWizardCore.TryFinishFromRawJson(json, dir);
+
+                Assert.False(result.Ok);
+                Assert.Contains(result.Errors, e => e.FieldPath == "ai_preset");
+                Assert.Empty(Directory.GetFiles(dir, "*_faction.json*", SearchOption.AllDirectories));
+            }
+            finally { Directory.Delete(dir, recursive: true); }
+        }
+
+        [Fact]
+        public void TryFinishFromRawJson_AiPresetKeyPresentButUnknownValue_BlockedNotRecognized_NoFileWritten()
+        {
+            // DW-117 (I/O matrix): a PRESENT ai_preset key with an unknown value keeps its existing outcome —
+            // blocked by the closed-set "not a recognized ai_preset" validator error, unaffected by this change.
+            string dir = MakeTempDir();
+            try
+            {
+                string json = RewriteAiPresetLine(BuildValidRawFactionJson("raw_json_unknown_preset_test"),
+                    "\"ai_preset\": \"aggressive\",");
+
+                FactionDefinerFinishResult result = FactionDefinerWizardCore.TryFinishFromRawJson(json, dir);
+
+                Assert.False(result.Ok);
+                Assert.Contains(result.Errors, e => e.FieldPath == "ai_preset");
+                Assert.Empty(Directory.GetFiles(dir, "*_faction.json*", SearchOption.AllDirectories));
+            }
+            finally { Directory.Delete(dir, recursive: true); }
+        }
+
         // ── Test helpers ─────────────────────────────────────────────────────────────────────────────────────
+
+        /// <summary>A complete, valid faction as clean raw JSON (the Advanced-pane input shape): picks the real
+        /// alpha/beta worker+infantry+command_center and serializes via the sanctioned SerializeDraftClean.</summary>
+        private static string BuildValidRawFactionJson(string id)
+        {
+            FactionPresetPool pool = ScanRealAlphaBeta();
+            FactionDefinition def = NewDraft(id);
+            Pick(def, pool, unitIds: new[] { "worker", "infantry" }, buildingIds: new[] { "command_center" });
+            return FactionDefinerWizardCore.SerializeDraftClean(def);
+        }
+
+        /// <summary>Rewrite the single top-level <c>ai_preset</c> line of SerializeDraftClean output: replace it with
+        /// <paramref name="replacementLine"/> (original indentation preserved), or remove it entirely when null.
+        /// Asserts the key appears on exactly one line so this fails loudly if the serializer format ever drifts, and
+        /// targets only that line — decoupled from any incidental <c>"balanced"</c> substring elsewhere in the doc.</summary>
+        private static string RewriteAiPresetLine(string json, string? replacementLine)
+        {
+            string[] lines = json.Split('\n');
+            int idx = -1, count = 0;
+            for (int i = 0; i < lines.Length; i++)
+                if (lines[i].TrimStart().StartsWith("\"ai_preset\"", StringComparison.Ordinal)) { count++; if (idx < 0) idx = i; }
+            Assert.Equal(1, count);
+            if (replacementLine == null)
+                return string.Join('\n', lines.Where((_, i) => i != idx));
+            string indent = lines[idx].Substring(0, lines[idx].Length - lines[idx].TrimStart().Length);
+            lines[idx] = indent + replacementLine;
+            return string.Join('\n', lines);
+        }
+
+        /// <summary>Duplicate the single top-level <c>id</c> line (indentation and trailing comma preserved) to build
+        /// a document with a duplicate property name — tolerated by JsonSerializer/JsonDocument (last-wins) — used to
+        /// exercise the DW-117 re-inspection's duplicate-key tolerance.</summary>
+        private static string DuplicateTopLevelIdLine(string json)
+        {
+            string[] lines = json.Split('\n');
+            int idx = -1;
+            for (int i = 0; i < lines.Length; i++)
+                if (lines[i].TrimStart().StartsWith("\"id\"", StringComparison.Ordinal)) { idx = i; break; }
+            Assert.InRange(idx, 0, lines.Length - 1);
+            var withDup = lines.ToList();
+            withDup.Insert(idx + 1, lines[idx]);   // exact duplicate line keeps its trailing comma -> valid JSON
+            return string.Join('\n', withDup);
+        }
 
         private static FactionPresetPool ScanRealAlphaBeta() => FactionDefinerWizardCore.ScanPresets(new[]
         {

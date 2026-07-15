@@ -223,7 +223,7 @@ development_status:
   # Each is deferred-work-backed — spec it from its named DW item via bmad-loop-sweep / gds-create-story before dev. Recommend pulling forward ahead of Epic 6.
   epic-14: backlog
   14-1-remediation-dw-85-suppress-the-maxhealth-research-army-heal-on-re-apply: done
-  14-2-remediation-dw-117-close-the-advanced-mode-ai-preset-validation-bypass: backlog
+  14-2-remediation-dw-117-close-the-advanced-mode-ai-preset-validation-bypass: done
   14-3-remediation-dw-106-factionvalidator-resolves-signature-hero-descriptor-ids: backlog
   14-4-remediation-dw-97-wire-factionvalidator-validatecomplete-into-the-launch-gate: backlog
   14-5-remediation-editor-map-save-writes-default-persistence-manifest-absent-round-trips-absent: backlog

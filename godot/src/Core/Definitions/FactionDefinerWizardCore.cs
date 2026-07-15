@@ -205,6 +205,18 @@ namespace ProjectChimera.Core.Definitions
         /// path; no separate/weaker validation. A parse failure (malformed JSON) or a null deserialize result (e.g.
         /// the literal <c>"null"</c>) is a located <c>("raw_json", …)</c> <see cref="FactionDefinerFinishResult.Failure"/>
         /// — never throws.
+        ///
+        /// <para>DW-117: the POCO deserialize leaves <see cref="FactionDefinition.AiPreset"/> at its C# default
+        /// (<c>"balanced"</c>) when the document OMITS the <c>ai_preset</c> key entirely, which would silently pass
+        /// validation with an unauthored preset (the opposite of Simple mode, whose forced empty <c>AiPreset</c>
+        /// makes omission impossible). To close that bypass, after a successful deserialize this re-inspects the SAME
+        /// text via <see cref="JsonDocument"/> (with equivalently-lenient options: comments/trailing commas tolerated,
+        /// and — critically — duplicate property names accepted exactly as <see cref="JsonSerializer"/> accepts them,
+        /// which <see cref="JsonNode"/> does NOT); if the root object has no <c>ai_preset</c> key,
+        /// <see cref="FactionDefinition.AiPreset"/> is forced to <c>""</c> so the omitted key flows through the exact
+        /// same <see cref="FactionValidator.ValidateComplete"/> "must be authored" rejection Simple mode produces. A
+        /// key that is PRESENT (even <c>""</c>/<c>null</c>) keeps its existing outcome. The re-inspection is
+        /// best-effort and guarded so it can never turn an accepted document into a throw.</para>
         /// </summary>
         public static FactionDefinerFinishResult TryFinishFromRawJson(string json, string factionsDirAbsolute)
         {
@@ -228,6 +240,27 @@ namespace ProjectChimera.Core.Definitions
                     ("raw_json", "JSON parsed to no faction object (e.g. the literal 'null') — a faction object is required."),
                 });
             }
+
+            // DW-117: distinguish "ai_preset key omitted" (which would inherit the silent "balanced" default and
+            // bypass the "must be authored" gate Simple mode enforces) from "key present". Use JsonDocument.Parse,
+            // NOT JsonNode.Parse: JsonDocument tolerates duplicate property names exactly as the JsonSerializer
+            // deserialize above does (last-wins), so every document the deserialize accepted also re-parses here.
+            // JsonNode.Parse instead THROWS on duplicate keys — which the best-effort catch would swallow, silently
+            // skipping this check and reopening the bypass for a document that omits ai_preset AND duplicates some
+            // other key. Case-sensitive on the exact literal "ai_preset" to match FactionDefinition.JsonOptions (no
+            // PropertyNameCaseInsensitive), so an off-case key is correctly treated as absent. Best-effort: a
+            // re-parse failure leaves parsed unchanged rather than throwing, preserving the never-throws contract.
+            try
+            {
+                using JsonDocument doc = JsonDocument.Parse(json ?? "",
+                    new JsonDocumentOptions { CommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true });
+                if (doc.RootElement.ValueKind == JsonValueKind.Object
+                    && !doc.RootElement.TryGetProperty("ai_preset", out _))
+                {
+                    parsed.AiPreset = "";   // omitted key == Simple mode's forced "" -> validator "must be authored"
+                }
+            }
+            catch { /* re-inspection is best-effort; never turn an accepted doc into a throw */ }
 
             return TryFinish(parsed, factionsDirAbsolute);
         }
