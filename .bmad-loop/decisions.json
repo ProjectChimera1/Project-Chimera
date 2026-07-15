@@ -1,4 +1,13 @@
 {
+  "DW-102": {
+    "answered_at": "2026-07-15",
+    "bundle_name": "",
+    "effect": "build",
+    "intent": "Edit alpha_faction.json and beta_faction.json aviary.mesh_path to an existing on-disk placeholder GLB so ValidateComplete + scenario load succeed until real art lands.",
+    "key": "2",
+    "label": "Repoint to placeholder GLB",
+    "resolution": ""
+  },
   "DW-26": {
     "answered_at": "2026-07-08",
     "bundle_name": "",
