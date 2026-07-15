@@ -8,6 +8,15 @@
     "label": "Repoint to placeholder GLB",
     "resolution": ""
   },
+  "DW-140": {
+    "answered_at": "2026-07-15",
+    "bundle_name": "",
+    "effect": "build",
+    "intent": "Introduce a size/byte-capped, coalescing EditorHistory policy shared across terrain-stroke and entity undo, dropping oldest entries beyond the cap.",
+    "key": "1",
+    "label": "Bounded/coalescing history policy",
+    "resolution": ""
+  },
   "DW-26": {
     "answered_at": "2026-07-08",
     "bundle_name": "",
