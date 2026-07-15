@@ -77,8 +77,10 @@ These came from the earlier single-weapon framing. Keep as optional mechanics, n
 4. **Hot-swap granted abilities at runtime** — slot/unslot live (abilities are near-static on a unit today).
 5. **Mass / budget resource** — governs how many forms can be out at once; material sets the economy.
 6. **Material interaction / emergence** — conduction, dousing, phasing, etc. *Hardest to build and balance.*
-7. **Draw-material-from-region** — link an ability's resource to terrain tags (leans on Epic 6 regions).
-8. **Determinism note** — it all composes existing effect-bricks, so it's lockstep-safe; the cost is UI + hot-swap plumbing, not sim math.
+7. **Terrain-boosted material regen** — link a material's regen rate to the terrain/region the hero stands in (leans on Epic 6 regions).
+8. **Drawn-trajectory input** — hand-draw a flight path per fragment, launch-as-you-finish, with earlier pieces already in flight while you draw the next (the Swarm control scheme). Net-new input mode + path/spline resolution.
+9. **Preset path-shape library ("alchemist shapes")** — autodraw templates that generate all fragment paths at once; creator-authorable.
+10. **Determinism note** — it all composes existing effect-bricks and path data resolves to fixed-point, so it's lockstep-safe; the cost is UI + input + hot-swap plumbing, not sim math.
 
 ## Recommended build path (when it's someday scheduled)
 - **Hand-author a curated grid first** — ~4 materials × 5 shapes with tuned combos that feel incredible → prove it's fun → *then* open the wheel to creators. Do not build the infinite version first.
@@ -86,14 +88,22 @@ These came from the earlier single-weapon framing. Keep as optional mechanics, n
 
 ---
 
-## Open design decisions (Alec to select — pending)
+## Design decisions (locked 2026-07-15)
 
-1. **Cost spine** (what makes it skill, not chaos) → _pending_
-2. **Material source** (where the material comes from) → _pending_
-3. **Starting shapes** (seed the grid's shape axis) → _pending_
-4. **Material palette** (his 5 + any exotic extras) → _pending_
+1. **Cost spine — Blend: mass budget + re-tool risk.** You can only hold so much material out at once (budget), AND re-tooling the wheel leaves you exposed for a beat. Strategic layer (what's my budget committed to?) + tactical nerve layer (dare I re-tool right now?).
+2. **Material source — Hybrid, terrain-boosted regen.** You carry a capped reserve of *each* material at all times, so you're never helpless. Standing in terrain saturated with a material sharply **increases regeneration of that material** (on rock → rock refills fast; in water → water refills fast). Positioning doesn't gate access — it accelerates the *matching* resource, so you fight where your intended kit refuels. Ties into Epic 6 regions/terrain.
+3. **Starting shapes — all four: Wall, Blade, Swarm, Cage.** (More can be added later; the roster is data.)
+4. **Material palette — 7: metal, rock, water, digitized, ethereal, + Blood (Sanguine-themed life-cost/lifesteal) + Plant/organic (entangle/regrow).**
 
-*Alec's stated starting materials: metal, rock, water, digitized, ethereal.*
+### Swarm control — hand-draw paths + autodraw (the headline mechanic)
+The Yondu form is NOT fire-and-forget. On cast you enter a **drawing mode**:
+- **Hand-draw a path per fragment.** Draw fragment 1's trajectory → it launches the instant you finish → you immediately start drawing fragment 2's path *while #1 is already in flight* → and so on. You're conducting a live swarm piece by piece, curving shots around walls and threading targets. Precision = mastery.
+- **Autodraw for speed.** Instead of drawing each path by hand, slam a preset — the wheel **draws from a library of "alchemist shapes"** (transmutation-circle path templates: spiral, starburst, pincer, cross…) that auto-generate all fragment paths at once. Trade precision for tempo when you can't afford to stand and draw.
+- **This mechanic *is* the floor/ceiling axis** — autodraw presets = accessible day one; bespoke hand-drawing = the skill ceiling nobody sees coming. It's the earlier "named loadouts" idea reborn as path templates.
+- **Synergy with the cost spine (#1):** every second spent hand-drawing means more fragments already loose *and you standing still, exposed* — which is exactly the re-tool risk you chose. Drawing skill is literally paid for in vulnerability; the two choices reinforce each other.
+- **Determinism:** a drawn path is just data (waypoints / a spline) sent as an order and resolved to fixed-point → lockstep-safe. Hand-drawn and autodraw resolve through the same path executor.
+
+*Idea to consider (not locked): close a drawn path into a full loop and it completes a "transmutation circle" on the ground — the enclosed area detonates or becomes a hazard field. Rewards drawing skill with an alchemy-flavored payoff, and gives autodraw's circle-shapes a reason to be circles.*
 
 ## Name candidates
 "The Living Arsenal" · "One Blade, Every Shape" · "The Transmuter". FMA-transmutation theme fits the existing Crucible Covenant / Sanguine Court factions.

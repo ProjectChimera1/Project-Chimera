@@ -60,7 +60,7 @@ namespace ProjectChimera.Core.Sim
                 damageTable, registry: registry);
 
             // The ONLY way to obtain a Validated<ScenarioData> (the Proof ctor is internal + source-scanned).
-            ValidationResult r = new ScenarioValidator().Validate(model);
+            ValidationResult r = new ScenarioValidator().Validate(model, slotFactionDefs); // Story 6.8: authored-building-id gate
             if (!r.Ok)
             {
                 // Server is authoritative ⇒ fail-closed: do not tick unvalidated start-state.

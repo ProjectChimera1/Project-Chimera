@@ -280,6 +280,21 @@ namespace ProjectChimera.Economy
             _                          => "Melee",
         };
 
+        /// <summary>
+        /// Story 6.8: the production category for a PLACED building slot, generalized to honor an authored custom
+        /// building. A built-in enum type resolves through the closed <see cref="CategoryForBuilding(BuildingType)"/>
+        /// switch (byte-identical). A <see cref="BuildingType.Custom"/> building resolves <c>produces_category</c> from
+        /// its <see cref="BuildingDefinition"/> via the placed slot's <paramref name="definitionId"/> — never the
+        /// switch's <c>_ => "Melee"</c> default (which would silently train Melee at a custom Air producer). Falls back
+        /// to "Melee" only when the def / its <c>produces_category</c> is genuinely absent.
+        /// </summary>
+        private string CategoryForBuilding(BuildingType type, Faction faction, string? definitionId)
+        {
+            if (type != BuildingType.Custom) return CategoryForBuilding(type);
+            string? pc = GetFactionDef(faction)?.GetBuilding(definitionId ?? "")?.ProducesCategory;
+            return string.IsNullOrEmpty(pc) ? "Melee" : pc;
+        }
+
         // ── Public API ────────────────────────────────────────────────────────
 
         /// <summary>
@@ -334,6 +349,10 @@ namespace ProjectChimera.Economy
 
             Faction faction = _buildings.FactionOf[buildingId];
 
+            // Story 6.8: resolve the category from the placed slot (def-aware for a Custom producer), so a custom
+            // building trains its authored produces_category, not the enum switch's Melee default.
+            string category = CategoryForBuilding(bType, faction, _buildings.DefinitionId[buildingId]);
+
             // Resolve the def to train: an explicit chosen unit (bounds- + category-checked) or, for the
             // default -1, the first-of-category unit (unchanged behaviour; may be null for an empty category).
             UnitDefinition? def;
@@ -343,12 +362,12 @@ namespace ProjectChimera.Economy
                 if (fdef == null || chosenUnitIndex >= fdef.Units.Count) return false; // out-of-range → reject, no spend
                 def = fdef.Units[chosenUnitIndex];
                 // Category-match guard: the chosen unit must belong to the category this building produces.
-                if (!string.Equals(def.Category, CategoryForBuilding(bType), System.StringComparison.OrdinalIgnoreCase))
+                if (!string.Equals(def.Category, category, System.StringComparison.OrdinalIgnoreCase))
                     return false;
             }
             else
             {
-                def = GetProductionUnit(bType, faction);
+                def = GetFactionDef(faction)?.GetUnitByCategory(category);
             }
 
             // Tech tree: check prerequisites before spending resources
@@ -608,6 +627,39 @@ namespace ProjectChimera.Economy
             BuildingDefinition? bdef = GetFactionDef(faction)?.GetBuilding(TechTreeChecker.BuildingTypeId(type));
             int id = _buildings.Create(position, faction, type, revives, sells, stock, radius,
                 buildingId: bdef?.Id,
+                health: bdef != null ? Fixed.FromFloat(bdef.Hp) : (Fixed?)null,
+                supplyBonus: bdef?.SupplyBonus,
+                constructionDuration: bdef?.ConstructionTime is float ct ? Fixed.FromFloat(ct) : (Fixed?)null);
+            if (id < 0) return -1;
+            if (preBuilt)
+                _buildings.ConstructionTimer[id] = Fixed.Zero;
+            return id;
+        }
+
+        /// <summary>
+        /// Story 6.8: place a building by its AUTHORED <see cref="BuildingDefinition.Id"/> (the data-driven identity),
+        /// the by-id sibling of <see cref="PlaceBuildingDirect"/>. Resolves the def from the faction, maps the id to a
+        /// dedicated enum member via <see cref="TechTreeChecker.BuildingTypeFromId"/> (or <see cref="BuildingType.Custom"/>
+        /// for an authored building with no enum member), and threads the def's Hp/SupplyBonus/ConstructionTime +
+        /// revive/shop capability into <see cref="BuildingStore.Create"/>'s resolved-stats params — the ONLY path to
+        /// real (non-switch-default) stats for a <see cref="BuildingType.Custom"/> building. A null def (unknown id —
+        /// only reachable in shadow mode, the validator fails an unknown id closed) still records the authored
+        /// <c>DefinitionId</c> and degrades to the per-type switch defaults rather than throwing. Bypasses ore cost;
+        /// <paramref name="preBuilt"/>=true zeroes the construction timer. Returns the building id, or -1 if full.
+        /// </summary>
+        public int PlaceBuildingDirectById(string buildingId, Faction faction,
+                                           FixedVec3 position, bool preBuilt)
+        {
+            BuildingDefinition? bdef = GetFactionDef(faction)?.GetBuilding(buildingId);
+            BuildingType type = TechTreeChecker.BuildingTypeFromId(buildingId) ?? BuildingType.Custom;
+
+            bool revives = bdef?.RevivesHeroes ?? false;
+            (bool sells, string[] stock, Fixed radius) shop = bdef != null
+                ? (bdef.SellsItems, bdef.ShopStock ?? System.Array.Empty<string>(), Fixed.FromFloat(bdef.ShopRadius))
+                : (false, System.Array.Empty<string>(), Fixed.Zero);
+
+            int id = _buildings.Create(position, faction, type, revives, shop.sells, shop.stock, shop.radius,
+                buildingId: bdef?.Id ?? buildingId, // preserve the authored id even when no def resolved
                 health: bdef != null ? Fixed.FromFloat(bdef.Hp) : (Fixed?)null,
                 supplyBonus: bdef?.SupplyBonus,
                 constructionDuration: bdef?.ConstructionTime is float ct ? Fixed.FromFloat(ct) : (Fixed?)null);

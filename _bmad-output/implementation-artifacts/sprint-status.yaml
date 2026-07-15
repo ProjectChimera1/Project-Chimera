@@ -137,7 +137,7 @@ development_status:
   6-5-impassable-terrain-pathability-paint-deterministic-blocking-and-the-pathability-overlay: done
   6-6-doodads-props-placement-editor-multi-select-copy-paste-rotation-named-cameras-water-floor: done
   6-7-map-properties-new-map-flow-2-4-start-positions-and-minimap-preview: done
-  6-8-custom-building-placement-thread-an-authored-building-id-through-buildingsystem-scenarioapplier-retire-the-enum-gate: backlog
+  6-8-custom-building-placement-thread-an-authored-building-id-through-buildingsystem-scenarioapplier-retire-the-enum-gate: done
   epic-6-retrospective: optional
   epic-7: backlog
   7-1-trigger-layer-determinism-prerequisites-ordering-fixed-culture: backlog

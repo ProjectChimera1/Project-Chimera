@@ -61,6 +61,24 @@ namespace ProjectChimera.Core
             _                          => "",
         };
 
+        /// <summary>
+        /// Story 6.8: the single reverse of <see cref="BuildingTypeId"/> — maps a canonical building id back to its
+        /// dedicated <see cref="BuildingType"/> enum member, or <c>null</c> when the id has no enum member (an authored
+        /// <see cref="BuildingType.Custom"/> building id such as <c>"watchtower"</c>, or an empty/unknown id). This is
+        /// the ONE id↔enum source: the applier and editor use it to route a scenario's <c>ScenarioBuilding.Type</c>
+        /// string ("legacy enum name for the built-in five, OR an authored building-def id") to the right placement
+        /// path, and to serialize a live building back to the correct <c>Type</c> string. Pure C# — no Godot dependency.
+        /// </summary>
+        public static BuildingType? BuildingTypeFromId(string? id) => id switch
+        {
+            "command_center" => BuildingType.CommandCenter,
+            "barracks"       => BuildingType.Barracks,
+            "archery_range"  => BuildingType.ArcheryRange,
+            "siege_workshop" => BuildingType.SiegeWorkshop,
+            "aviary"         => BuildingType.Aviary,
+            _                => null,
+        };
+
         // ── Private helpers ────────────────────────────────────────────────────
 
         /// <summary>Matches the raw prereq string against <see cref="BuildingStore.DefinitionId"/> — any

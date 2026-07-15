@@ -24,13 +24,21 @@ namespace ProjectChimera.UI
     {
         private BuildingStore _buildings = null!;
 
-        // Two MultiMesh instances per type (P1 / P2).
-        private MultiMeshInstance3D[,] _mmi = null!; // [typeIndex, factionIndex 0=P1,1=P2]
+        // Two MultiMesh instances per RENDER BUCKET (P1 / P2). Story 6.8: buckets are keyed by the authored
+        // BuildingDefinition.Id (see _bucketOf), NOT the closed BuildingType enum, so a BuildingType.Custom building
+        // renders through its own bucket instead of being dropped at enum index 5.
+        private MultiMeshInstance3D[,] _mmi = null!; // [bucketIndex, factionIndex 0=P1,1=P2]
 
-        // Per (type, faction) visual metrics derived from the loaded mesh + its mesh_scale.
+        // Per (bucket, faction) visual metrics derived from the loaded mesh + its mesh_scale.
         private Vector3[,] _typeSize  = null!; // scaled bounding size (X width / Y height used)
         private float[,]   _scale     = null!; // uniform mesh scale
         private float[,]   _groundMinY = null!; // scaled local min-Y (≤0); anchors base to world Y=0
+
+        // Story 6.8 — DefinitionId → bucket index, discovered from the loaded faction defs at Initialize. Rebuild /
+        // the progress-bar / rally-marker passes route each live building by _buildings.DefinitionId[i] through this
+        // map; an id with no bucket (unknown building, defs unloaded) is skipped, never an out-of-range throw.
+        private System.Collections.Generic.Dictionary<string, int> _bucketOf = null!;
+        private int _bucketCount;
 
         // One MeshInstance3D progress bar per building slot (pre-allocated, hidden when idle).
         private MeshInstance3D[] _bars = null!;
@@ -48,9 +56,12 @@ namespace ProjectChimera.UI
             new Vector3(5f, 3f, 5f), // Barracks
             new Vector3(4f, 3f, 5f), // ArcheryRange
             new Vector3(5f, 3f, 7f), // SiegeWorkshop
-            new Vector3(5f, 3f, 7f), // Aviary (Story 2.8 — must move in lockstep with TYPE_COUNT below, indexed as TYPE_FALLBACK[t] in the t<TYPE_COUNT loop)
+            new Vector3(5f, 3f, 7f), // Aviary (Story 2.8)
         };
         private const int TYPE_COUNT = 5; // Story 2.8: CommandCenter/Barracks/ArcheryRange/SiegeWorkshop/Aviary
+        // Story 6.8 — fallback box for a Custom/authored building whose GLB is missing and which has no TYPE_FALLBACK
+        // enum slot. Matches NavObstacleManager.CUSTOM_FOOTPRINT so the visual and the nav obstacle agree.
+        private static readonly Vector3 CUSTOM_FALLBACK = new Vector3(5f, 3f, 5f);
 
         private static readonly Color P1_COLOR = new Color(0.2f, 0.5f, 1.0f);
         private static readonly Color P2_COLOR = new Color(1.0f, 0.3f, 0.2f);
@@ -73,22 +84,41 @@ namespace ProjectChimera.UI
         {
             _buildings = buildings;
 
-            _mmi        = new MultiMeshInstance3D[TYPE_COUNT, 2];
-            _typeSize   = new Vector3[TYPE_COUNT, 2];
-            _scale      = new float[TYPE_COUNT, 2];
-            _groundMinY = new float[TYPE_COUNT, 2];
-
             var defs  = new[] { p1Def, p2Def };
             var mats  = new[] { BuildTeamMaterial(p1Color), BuildTeamMaterial(p2Color) };
 
+            // Story 6.8: discover the render buckets by authored DefinitionId. Seed the 5 built-in enum ids first (in
+            // their stable enum order, so legacy scenarios render exactly as before), then append any extra authored
+            // building ids from either faction (a Custom building's id lands here). Deterministic, de-duplicated.
+            _bucketOf = new System.Collections.Generic.Dictionary<string, int>(System.StringComparer.Ordinal);
+            var ids = new System.Collections.Generic.List<string>();
             for (int t = 0; t < TYPE_COUNT; t++)
+                AddBucket(TechTreeChecker.BuildingTypeId((BuildingType)t), ids);
+            foreach (var d in defs)
+                if (d != null)
+                    foreach (var b in d.Buildings)
+                        AddBucket(b.Id, ids);
+            _bucketCount = ids.Count;
+
+            _mmi        = new MultiMeshInstance3D[_bucketCount, 2];
+            _typeSize   = new Vector3[_bucketCount, 2];
+            _scale      = new float[_bucketCount, 2];
+            _groundMinY = new float[_bucketCount, 2];
+
+            for (int t = 0; t < _bucketCount; t++)
             {
+                string id = ids[t];
+                // Fallback box: a built-in id maps to its TYPE_FALLBACK slot (byte-identical); a custom id uses the
+                // generic CUSTOM_FALLBACK. Only used when the building's GLB is missing.
+                var     enumT    = TechTreeChecker.BuildingTypeFromId(id);
+                Vector3 fallback = enumT is BuildingType bt && (int)bt >= 0 && (int)bt < TYPE_FALLBACK.Length
+                    ? TYPE_FALLBACK[(int)bt] : CUSTOM_FALLBACK;
+
                 for (int fi = 0; fi < 2; fi++)
                 {
-                    string id    = TechTreeChecker.BuildingTypeId((BuildingType)t);
                     var    def   = defs[fi]?.GetBuilding(id);
                     float  scale = def?.MeshScale ?? 1f;
-                    Mesh   mesh  = MeshLoader.LoadFromGlb(def?.MeshPath ?? "", TYPE_FALLBACK[t],
+                    Mesh   mesh  = MeshLoader.LoadFromGlb(def?.MeshPath ?? "", fallback,
                                                          fi == 0 ? p1Color : p2Color);
 
                     Aabb aabb         = mesh.GetAabb();
@@ -188,19 +218,18 @@ namespace ProjectChimera.UI
 
         private void Rebuild()
         {
-            // Count per (type, faction) bucket.
-            int[,] counts = new int[TYPE_COUNT, 2];
+            // Count per (bucket, faction). Story 6.8: bucket resolved by DefinitionId, not the enum value.
+            int[,] counts = new int[_bucketCount, 2];
             for (int i = 0; i < _buildings.Count; i++)
             {
                 if (!_buildings.Alive[i]) continue;
-                int t  = (int)_buildings.Type[i];
                 int fi = FactionIndex(_buildings.FactionOf[i]);
-                if (fi < 0 || t < 0 || t >= TYPE_COUNT) continue;
+                if (fi < 0 || !TryBucket(i, out int t)) continue;
                 counts[t, fi]++;
             }
 
             // Resize multimeshes.
-            for (int t = 0; t < TYPE_COUNT; t++)
+            for (int t = 0; t < _bucketCount; t++)
             {
                 for (int fi = 0; fi < 2; fi++)
                 {
@@ -213,9 +242,8 @@ namespace ProjectChimera.UI
             for (int i = 0; i < _buildings.Count; i++)
             {
                 if (!_buildings.Alive[i]) continue;
-                int t  = (int)_buildings.Type[i];
                 int fi = FactionIndex(_buildings.FactionOf[i]);
-                if (fi < 0 || t < 0 || t >= TYPE_COUNT) continue;
+                if (fi < 0 || !TryBucket(i, out int t)) continue;
 
                 float wx = _buildings.Position[i].X.ToFloat();
                 float wz = _buildings.Position[i].Z.ToFloat();
@@ -264,9 +292,8 @@ namespace ProjectChimera.UI
                     continue;
                 }
 
-                int t  = (int)_buildings.Type[i];
                 int fi = FactionIndex(_buildings.FactionOf[i]);
-                if (fi < 0 || t < 0 || t >= TYPE_COUNT) continue;
+                if (fi < 0 || !TryBucket(i, out int t)) continue;
 
                 float duration = _buildings.ConstructionDuration[i].ToFloat();
                 float remaining = _buildings.ConstructionTimer[i].ToFloat();
@@ -340,6 +367,22 @@ namespace ProjectChimera.UI
                 if (_buildings.Alive[i]) n++;
             return n;
         }
+
+        /// <summary>Story 6.8 — register a DefinitionId → bucket index (skips empty / already-registered ids). The
+        /// insertion order into <paramref name="ids"/> IS the bucket index, keeping the map and the parallel arrays
+        /// aligned.</summary>
+        private void AddBucket(string id, System.Collections.Generic.List<string> ids)
+        {
+            if (string.IsNullOrEmpty(id) || _bucketOf.ContainsKey(id)) return;
+            _bucketOf[id] = ids.Count;
+            ids.Add(id);
+        }
+
+        /// <summary>Story 6.8 — resolve building slot <paramref name="i"/>'s render bucket from its DefinitionId.
+        /// Returns false (skip, never throw) for an id with no bucket — an unknown building or one authored after
+        /// Initialize discovered the buckets.</summary>
+        private bool TryBucket(int i, out int bucket) =>
+            _bucketOf.TryGetValue(_buildings.DefinitionId[i] ?? "", out bucket);
 
         private static MultiMeshInstance3D CreateMmi(Mesh mesh, StandardMaterial3D teamMat)
         {

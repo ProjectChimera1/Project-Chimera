@@ -189,8 +189,23 @@ namespace ProjectChimera.Core.Sim
             {
                 var faction = (Faction)(b.Slot + 1);
                 var pos     = new FixedVec3(Fixed.FromFloat(b.X), Fixed.Zero, Fixed.FromFloat(b.Z));
-                var bType   = ParseBuildingType(b.Type);
-                _host.BuildSys.PlaceBuildingDirect(bType, faction, pos, b.PreBuilt);
+                // Story 6.8: b.Type is "legacy enum name OR authored building-def id". Take the byte-identical
+                // PlaceBuildingDirect path ONLY for an exact, case-sensitive, DEFINED, non-numeric enum NAME that is
+                // not the Custom sentinel: Enum.TryParse also parses numeric strings ("5"→Custom, "99"→undefined) and
+                // the case-sensitive/PascalCase-vs-snake_case disjointness makes real enum names unambiguous. The
+                // `bType.ToString() == b.Type` guard rejects any numeric spelling (an authored id like "5" then routes
+                // by-id), IsDefined rejects out-of-range numerics, and `!= Custom` keeps the bare "Custom" sentinel off
+                // the def-less direct path (the validator already fails a bare "Custom" closed — this is belt-and-braces
+                // for shadow-mode/direct callers). Anything else is an authored id → the by-id placement path
+                // (BuildingType.Custom or a snake_case built-in id). The former CommandCenter-swallowing default of
+                // ParseBuildingType no longer eats a custom id.
+                if (Enum.TryParse<BuildingType>(b.Type, out var bType)
+                    && Enum.IsDefined(typeof(BuildingType), bType)
+                    && bType.ToString() == b.Type
+                    && bType != BuildingType.Custom)
+                    _host.BuildSys.PlaceBuildingDirect(bType, faction, pos, b.PreBuilt);
+                else
+                    _host.BuildSys.PlaceBuildingDirectById(b.Type, faction, pos, b.PreBuilt);
             }
 
             // ── 4. Units ──────────────────────────────────────────────────────

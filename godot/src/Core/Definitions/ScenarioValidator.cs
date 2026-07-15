@@ -66,7 +66,14 @@ namespace ProjectChimera.Core.Definitions
         /// <see cref="Validated{T}"/> on success, or <see cref="ValidationResult.Fail"/> with a located error on
         /// the first failed check. Pure — never throws, never logs.
         /// </summary>
-        public ValidationResult Validate(ScenarioData m)
+        /// <param name="slotFactionDefs">Story 6.8 (optional) — the per-slot resolved <see cref="FactionDefinition"/>s
+        /// (indexed by <c>(int)Faction</c>, the same length-5 array the applier holds), so a pre-placed building's
+        /// <c>type</c> can be accepted as an authored building-def id present in its OWNER faction's <c>Buildings</c>
+        /// (the retired enum gate), not only as a legacy enum name. NULL (the default — every legacy caller/test) keeps
+        /// the enum-name-only behavior, byte-identical: an authored custom id then still fails closed. Trigger
+        /// <c>building_type</c> checks stay enum-only regardless (they have no single owner faction; the trigger-DSL
+        /// building resolution is Epic 7 territory).</param>
+        public ValidationResult Validate(ScenarioData m, IReadOnlyList<FactionDefinition?>? slotFactionDefs = null)
         {
             if (m is null) return ValidationResult.Fail("scenario is null.");
 
@@ -293,9 +300,13 @@ namespace ProjectChimera.Core.Definitions
                 if (!declared.Contains(b.Slot))
                     return ValidationResult.Fail(
                         $"scenario.buildings[{i}].slot={b.Slot} references no declared player_slot.", validated);
-                if (!IsKnownBuildingType(b.Type))
+                // Story 6.8: the retired enum gate. b.Type is accepted as a legacy BuildingType enum name OR an
+                // authored building-def id present in the OWNER faction's Buildings (resolved from slotFactionDefs by
+                // the building's slot). A truly unknown id — no enum name and no matching faction building-def — fails
+                // closed with a message naming it. When no faction defs are threaded (null), this is enum-name-only.
+                if (!IsKnownBuildingType(b.Type, OwnerFactionDef(slotFactionDefs, b.Slot)))
                     return ValidationResult.Fail(
-                        $"scenario.buildings[{i}].type='{b.Type}' is not a known BuildingType.", validated);
+                        $"scenario.buildings[{i}].type='{b.Type}' is not a known BuildingType enum name or an authored building id in the owner faction.", validated);
             }
 
             // ── Units: in-bounds position, slot references a declared PlayerSlot ──
@@ -696,13 +707,30 @@ namespace ProjectChimera.Core.Definitions
             return null;
         }
 
-        /// <summary>True only for an EXACT BuildingType enum name (case-sensitive); rejects numeric strings.</summary>
-        private static bool IsKnownBuildingType(string? type)
+        /// <summary>Story 6.8 — a known building type is an EXACT <see cref="BuildingType"/> enum name (case-sensitive;
+        /// rejects numeric strings) OR an authored building-def id present in <paramref name="ownerDef"/>'s
+        /// <c>Buildings</c>. A null <paramref name="ownerDef"/> (no faction threaded, or an out-of-range slot) restricts
+        /// to enum names only — byte-identical to the pre-6.8 gate. The bare <c>"Custom"</c> sentinel name is NOT a
+        /// placeable identity (it resolves no def → a stat-less, unrendered ghost), so it is excluded from the enum-name
+        /// match — a custom building must name its authored id; a lowercase authored id such as <c>"custom"</c> is still
+        /// accepted through <paramref name="ownerDef"/>.</summary>
+        private static bool IsKnownBuildingType(string? type, FactionDefinition? ownerDef = null)
         {
             if (type is null) return false;
             for (int i = 0; i < _buildingTypeNames.Length; i++)
-                if (_buildingTypeNames[i] == type) return true;
-            return false;
+                if (_buildingTypeNames[i] == type)
+                    return type != nameof(BuildingType.Custom); // the Custom sentinel is not a placeable Type
+            return ownerDef?.GetBuilding(type) != null;
+        }
+
+        /// <summary>Story 6.8 — resolve a pre-placed building's owner <see cref="FactionDefinition"/> from the
+        /// per-slot defs (indexed by <c>(int)Faction</c> = slot+1). Null when no defs are threaded or the slot is out
+        /// of range — the caller then falls back to enum-name-only building-type acceptance.</summary>
+        private static FactionDefinition? OwnerFactionDef(IReadOnlyList<FactionDefinition?>? slotFactionDefs, int slot)
+        {
+            if (slotFactionDefs is null) return null;
+            int fIdx = slot + 1; // (Faction)(slot + 1), matching the applier's cast
+            return fIdx >= 0 && fIdx < slotFactionDefs.Count ? slotFactionDefs[fIdx] : null;
         }
 
         /// <summary>True only for an EXACT resource_type name (case-sensitive) — "Ore" or "Crystal".</summary>

@@ -56,7 +56,8 @@ namespace ProjectChimera.UI
 
         private const int NODE_MAX_GATHERERS = 4;
 
-        private static readonly float[] BUILDING_COSTS = { 150f, 100f, 120f, 200f, 200f }; // …, Aviary=200 (Story 2.8 — indexed by (int)BuildingType; a missing entry crashes editor place/delete)
+        private static readonly float[] BUILDING_COSTS = { 150f, 100f, 120f, 200f, 200f }; // legacy per-enum fallback ore cost; only used when a built-in has no authored `cost` map
+        private const float DEFAULT_BUILDING_COST = 150f; // Story 6.8 — guarded ore cost for a Custom/authored building with no authored cost map
 
         // Modes displayed left-to-right in the palette (order must match _modeBtns array)
         private static readonly PlacementMode[] MODE_ORDER =
@@ -104,7 +105,9 @@ namespace ProjectChimera.UI
         /// stores across save/reload AND the F5 Edit→Play toggle (which re-applies only <c>_ctx.Scenario</c>). Each
         /// returns an opaque handle to the affected scenario entry. See <see cref="ScenarioSyncOp"/>.
         /// </summary>
-        private System.Func<ScenarioSyncOp, object?, BuildingType, Faction, Vector3, bool, object?>? _onBuildingSync;
+        // Story 6.8: the building sync closure carries the AUTHORED building id (string), not the BuildingType enum, so
+        // a Custom building (whose enum is BuildingType.Custom) round-trips its real id into ScenarioData.Buildings[].Type.
+        private System.Func<ScenarioSyncOp, object?, string, Faction, Vector3, bool, object?>? _onBuildingSync;
         private System.Func<ScenarioSyncOp, object?, string, Faction, Vector3, object?>?             _onUnitSync;
         private System.Func<ScenarioSyncOp, object?, Vector3, float, float, int, object?>?           _onResourceNodeSync;
 
@@ -127,7 +130,9 @@ namespace ProjectChimera.UI
         /// <see cref="ArmPlacement"/>). Starts armed so placement works immediately on entering Edit mode.</summary>
         private bool _placementActive = true;
         private PlacementMode _lastUnitMode = PlacementMode.P1Unit;
-        private BuildingType  _buildingType = BuildingType.CommandCenter;
+        // Story 6.8: the selected building is now an AUTHORED building-def id (string) sourced from the owner faction's
+        // Buildings, not a fixed BuildingType enum — so the palette can place any authored (custom) building.
+        private string        _buildingId   = "command_center";
         private int           _unitIndex    = 0;
         private bool          _gridSnapEnabled = false;
 
@@ -229,7 +234,7 @@ namespace ProjectChimera.UI
             PlacementMode.P1Unit       => $"P1 [{GetSelectedUnitName()}]",
             PlacementMode.P2Unit       => $"P2 [{GetSelectedUnitName()}]",
             PlacementMode.ResourceNode => "Ore Node",
-            PlacementMode.Building     => $"Building [{_buildingType}]",
+            PlacementMode.Building     => $"Building [{BuildingLabel(_buildingId)}]",
             PlacementMode.StartPos     => $"Start Pos [P{_startSlot + 1}]",
             PlacementMode.Prop         => $"Prop [{PROP_LIBRARY[_propIndex % PROP_LIBRARY.Length]}]",
             PlacementMode.Select       => $"Select [{_selection.Count}]",
@@ -254,7 +259,7 @@ namespace ProjectChimera.UI
                                System.Func<int, Vector3, float, float, bool>? onStartPosMoved = null,
                                FactionDefinition? faction2 = null,
                                ItemStore? items = null, ItemRegistry? itemRegistry = null,
-                               System.Func<ScenarioSyncOp, object?, BuildingType, Faction, Vector3, bool, object?>? onBuildingSync = null,
+                               System.Func<ScenarioSyncOp, object?, string, Faction, Vector3, bool, object?>? onBuildingSync = null,
                                System.Func<ScenarioSyncOp, object?, string, Faction, Vector3, object?>? onUnitSync = null,
                                System.Func<ScenarioSyncOp, object?, Vector3, float, float, int, object?>? onResourceNodeSync = null,
                                System.Func<ScenarioSyncOp, object?, string, Vector3, float, float, bool, object?>? onPropSync = null,
@@ -847,7 +852,7 @@ namespace ProjectChimera.UI
             if (_buildings == null) { GD.PrintErr("[EntityPlacer] BuildingStore not set."); return; }
 
             Faction faction   = Faction.Player1;
-            string  buildingId = TechTreeChecker.BuildingTypeId(_buildingType);
+            string  buildingId = _buildingId; // Story 6.8: the authored building id (built-in OR custom)
             var     buildingDef = _faction?.GetBuilding(buildingId); // buildings always placed for P1 in editor
 
             if (buildingDef != null && buildingDef.Prerequisites.Length > 0)
@@ -859,55 +864,58 @@ namespace ProjectChimera.UI
                     // (the editor's direct-placement path already has _faction in scope), same as BuildingSystem.
                     // An empty (unauthored) DisplayName falls back to the raw id too, not a blank string.
                     string missingName = _faction?.GetBuilding(missing)?.DisplayName is { Length: > 0 } dn ? dn : missing;
-                    GD.Print($"[EntityPlacer] Cannot place {_buildingType}: requires {missingName}.");
+                    GD.Print($"[EntityPlacer] Cannot place {buildingId}: requires {missingName}.");
                     return;
                 }
             }
 
+            // Story 6.8: cost resolves from the authored def (its `cost` map's ore), not a fixed enum-indexed array —
+            // so a Custom building never IndexOutOfRange's BUILDING_COSTS[5].
+            Fixed capturedCost = Fixed.FromFloat(BuildingCostOre(buildingId));
             if (_resources != null)
             {
-                float costF = BUILDING_COSTS[(int)_buildingType];
-                var   cost  = Fixed.FromFloat(costF);
-                if (!_resources.SpendOre(faction, cost))
+                if (!_resources.SpendOre(faction, capturedCost))
                 {
-                    GD.Print($"[EntityPlacer] Cannot afford {_buildingType} " +
-                             $"(costs {costF} ore, have {_resources.Ore[(int)faction].ToFloat():F0}).");
+                    GD.Print($"[EntityPlacer] Cannot afford {buildingId} " +
+                             $"(costs {capturedCost.ToFloat():F0} ore, have {_resources.Ore[(int)faction].ToFloat():F0}).");
                     return;
                 }
             }
 
-            int id = _buildings.Create(pos, faction, _buildingType);
+            // Story 6.8: place by authored id, threading the resolved def's stats + DefinitionId (so a Custom building
+            // previews with real stats and a stable id the nav/render buckets key on).
+            int id = CreateEditorBuilding(_buildings, pos, faction, buildingId, _faction);
             if (id < 0) { GD.PrintErr("[EntityPlacer] BuildingStore full."); return; }
-            GD.Print($"[EntityPlacer] Placed {_buildingType} id={id} for {faction} at ({pos.X:F1},{pos.Z:F1})");
+            GD.Print($"[EntityPlacer] Placed {buildingId} id={id} for {faction} at ({pos.X:F1},{pos.Z:F1})");
 
             // Story 6.1: mirror the placement into ScenarioData so the building survives save/reload AND the F5
             // Edit→Play re-apply. Editor-placed buildings start under construction (BuildingStore.Create seeds the
             // full ConstructionTimer), so persist pre_built:false to re-apply identically.
-            BuildingType capturedType = _buildingType;
+            string       capturedId2  = buildingId;
             Vector3      wpos         = new Vector3(pos.X.ToFloat(), 0f, pos.Z.ToFloat());
 
             // Capture for undo — building slot id is stable (BuildingStore has no free list)
             int      capturedId       = id;
             Faction  capturedFaction  = faction;
-            Fixed    capturedCost     = Fixed.FromFloat(BUILDING_COSTS[(int)_buildingType]);
             Fixed    capturedDuration = _buildings.ConstructionDuration[id];
             var      capturedBuildings = _buildings;
 
-            object?  syncHandle = _onBuildingSync?.Invoke(ScenarioSyncOp.Add, null, capturedType, capturedFaction, wpos, false);
+            object?  syncHandle = _onBuildingSync?.Invoke(ScenarioSyncOp.Add, null, capturedId2, capturedFaction, wpos, false);
             ApplyPlacementRot(syncHandle);
             _history.Push(
                 redo: () =>
                 {
                     capturedBuildings.Alive[capturedId]              = true;
+                    capturedBuildings.DefinitionId[capturedId]       = capturedId2; // Story 6.8: restore authored id (a recycled slot may carry another)
                     capturedBuildings.ConstructionTimer[capturedId]  = capturedDuration;
                     _resources?.SpendOre(capturedFaction, capturedCost);
-                    _onBuildingSync?.Invoke(ScenarioSyncOp.ReAdd, syncHandle, capturedType, capturedFaction, wpos, false);
+                    _onBuildingSync?.Invoke(ScenarioSyncOp.ReAdd, syncHandle, capturedId2, capturedFaction, wpos, false);
                 },
                 undo: () =>
                 {
                     capturedBuildings.Destroy(capturedId);
                     _resources?.AddOre(capturedFaction, capturedCost);
-                    _onBuildingSync?.Invoke(ScenarioSyncOp.RemoveHandle, syncHandle, capturedType, capturedFaction, wpos, false);
+                    _onBuildingSync?.Invoke(ScenarioSyncOp.RemoveHandle, syncHandle, capturedId2, capturedFaction, wpos, false);
                 });
         }
 
@@ -970,15 +978,62 @@ namespace ProjectChimera.UI
 
         private void CycleBuildingType()
         {
-            _buildingType = _buildingType switch
-            {
-                BuildingType.CommandCenter => BuildingType.Barracks,
-                BuildingType.Barracks      => BuildingType.ArcheryRange,
-                BuildingType.ArcheryRange  => BuildingType.SiegeWorkshop,
-                BuildingType.SiegeWorkshop => BuildingType.Aviary,
-                BuildingType.Aviary        => BuildingType.CommandCenter,
-                _                          => BuildingType.CommandCenter,
-            };
+            // Story 6.8: cycle through the owner faction's AUTHORED buildings (any id, including custom), not the closed
+            // BuildingType enum. Falls back to a no-op when the faction authors none.
+            var ids = BuildingPaletteIds();
+            if (ids.Count == 0) return;
+            int cur = ids.IndexOf(_buildingId);
+            _buildingId = ids[(cur + 1) % ids.Count];
+        }
+
+        /// <summary>Story 6.8 — the authored building ids the palette offers, in faction-list order. Empty when no
+        /// faction def is wired.</summary>
+        private System.Collections.Generic.List<string> BuildingPaletteIds()
+        {
+            var ids = new System.Collections.Generic.List<string>();
+            if (_faction != null)
+                foreach (var b in _faction.Buildings)
+                    if (!string.IsNullOrEmpty(b.Id)) ids.Add(b.Id);
+            return ids;
+        }
+
+        /// <summary>Story 6.8 — human-readable palette label for a building id (its authored DisplayName, else the raw id).</summary>
+        private string BuildingLabel(string buildingId)
+        {
+            var dn = _faction?.GetBuilding(buildingId)?.DisplayName;
+            return string.IsNullOrEmpty(dn) ? buildingId : dn;
+        }
+
+        /// <summary>Story 6.8 — resolve the ore cost to place a building by authored id from its def's `cost` map. Falls
+        /// back to the legacy per-enum constant for a built-in, or <see cref="DEFAULT_BUILDING_COST"/> for a custom
+        /// building with no authored cost — never IndexOutOfRange's BUILDING_COSTS for the Custom sentinel.</summary>
+        private float BuildingCostOre(string buildingId)
+        {
+            var bdef = _faction?.GetBuilding(buildingId);
+            if (bdef != null && bdef.ResolvedCost.TryGetValue("ore", out int ore)) return ore;
+            var t = TechTreeChecker.BuildingTypeFromId(buildingId);
+            return t is BuildingType bt && (int)bt >= 0 && (int)bt < BUILDING_COSTS.Length
+                ? BUILDING_COSTS[(int)bt] : DEFAULT_BUILDING_COST;
+        }
+
+        /// <summary>Story 6.8 — create an editor building slot by authored id, threading the resolved def's stats +
+        /// DefinitionId (mirrors <see cref="ProjectChimera.Economy.BuildingSystem.PlaceBuildingDirectById"/>) so a
+        /// Custom building previews with real stats and a stable id the nav/render buckets key on. Returns the slot id
+        /// (or -1 if full). Starts under construction (like the legacy Create call it replaces).</summary>
+        private static int CreateEditorBuilding(BuildingStore store, FixedVec3 pos, Faction faction,
+                                                string buildingId, FactionDefinition? fdef)
+        {
+            var bdef = fdef?.GetBuilding(buildingId);
+            BuildingType type = TechTreeChecker.BuildingTypeFromId(buildingId) ?? BuildingType.Custom;
+            return store.Create(pos, faction, type,
+                bdef?.RevivesHeroes ?? false,
+                bdef?.SellsItems ?? false,
+                bdef?.ShopStock,
+                bdef != null ? Fixed.FromFloat(bdef.ShopRadius) : default,
+                buildingId: bdef?.Id ?? buildingId,
+                health: bdef != null ? Fixed.FromFloat(bdef.Hp) : (Fixed?)null,
+                supplyBonus: bdef?.SupplyBonus,
+                constructionDuration: bdef?.ConstructionTime is float ct ? Fixed.FromFloat(ct) : (Fixed?)null);
         }
 
         private void CycleUnitType()
@@ -1164,30 +1219,28 @@ namespace ProjectChimera.UI
 
             if (_mode == PlacementMode.Building)
             {
+                // Story 6.8: enumerate the owner faction's AUTHORED buildings (id + DisplayName), so a custom building
+                // appears in the palette alongside the built-ins. If the selected id is no longer offered (faction
+                // swap), default to the first available so placement stays valid.
                 var buildGroup = new ButtonGroup();
-                foreach (var (label, type) in new (string, BuildingType)[]
-                {
-                    ("CC",       BuildingType.CommandCenter),
-                    ("Barracks", BuildingType.Barracks),
-                    ("Archery",  BuildingType.ArcheryRange),
-                    ("Siege",    BuildingType.SiegeWorkshop),
-                    ("Aviary",   BuildingType.Aviary),
-                })
+                var ids = BuildingPaletteIds();
+                if (ids.Count > 0 && !ids.Contains(_buildingId)) _buildingId = ids[0];
+                foreach (var bid in ids)
                 {
                     var btn = new Button
                     {
-                        Text          = label,
+                        Text          = BuildingLabel(bid),
                         ToggleMode    = true,
                         ButtonGroup   = buildGroup,
-                        ButtonPressed = (type == _buildingType),
+                        ButtonPressed = (bid == _buildingId),
                     };
-                    var capturedType = type;
+                    var capturedId = bid;
                     btn.Pressed += () =>
                     {
-                        _buildingType = capturedType;
+                        _buildingId = capturedId;
                         ArmPlacement(); // UX-DR56: re-selecting a building type re-arms placement after a cancel
                         RefreshGhostVisuals();
-                        GD.Print($"[EntityPlacer] Building type: {_buildingType}");
+                        GD.Print($"[EntityPlacer] Building: {_buildingId}");
                     };
                     _subRow.AddChild(btn);
                 }
@@ -1532,17 +1585,15 @@ namespace ProjectChimera.UI
         private void DeleteBuilding(int id)
         {
             if (_buildings == null) return;
-            Fixed capturedCost     = BUILDING_COSTS[(int)_buildings.Type[id]] > 0
-                ? Fixed.FromFloat(BUILDING_COSTS[(int)_buildings.Type[id]])
-                : Fixed.Zero;
             Faction capturedFaction = _buildings.FactionOf[id];
             Fixed   capturedDuration = _buildings.ConstructionDuration[id];
             Fixed   capturedTimer    = _buildings.ConstructionTimer[id];
             var     capturedBuildings = _buildings;
 
-            // Story 6.1: capture the descriptor from the LIVE slot BEFORE Destroy so the ScenarioData match can run.
-            BuildingType capturedType = _buildings.Type[id];
-            Vector3      wpos         = new Vector3(_buildings.Position[id].X.ToFloat(), 0f, _buildings.Position[id].Z.ToFloat());
+            // Story 6.1/6.8: capture the descriptor (authored id) from the LIVE slot BEFORE Destroy so the ScenarioData
+            // match + undo restore can run. DefinitionId keys the sync (Custom-safe — no BUILDING_COSTS[5] indexing).
+            string       capturedDefId = _buildings.DefinitionId[id];
+            Vector3      wpos          = new Vector3(_buildings.Position[id].X.ToFloat(), 0f, _buildings.Position[id].Z.ToFloat());
 
             _buildings.Destroy(id);
             // No ore refund on delete (destructive intent)
@@ -1550,20 +1601,21 @@ namespace ProjectChimera.UI
 
             // Story 6.1: remove the matching ScenarioData.Buildings entry, capturing the REAL object so undo restores
             // it by identity (preserving authored pre_built / slot / type — never reconstructing a lossy value).
-            object? syncHandle = _onBuildingSync?.Invoke(ScenarioSyncOp.RemoveMatch, null, capturedType, capturedFaction, wpos, false);
+            object? syncHandle = _onBuildingSync?.Invoke(ScenarioSyncOp.RemoveMatch, null, capturedDefId, capturedFaction, wpos, false);
 
             _history.Push(
                 redo: () =>
                 {
                     capturedBuildings.Destroy(id);
-                    _onBuildingSync?.Invoke(ScenarioSyncOp.RemoveHandle, syncHandle, capturedType, capturedFaction, wpos, false);
+                    _onBuildingSync?.Invoke(ScenarioSyncOp.RemoveHandle, syncHandle, capturedDefId, capturedFaction, wpos, false);
                 },
                 undo: () =>
                 {
                     capturedBuildings.Alive[id]              = true;
+                    capturedBuildings.DefinitionId[id]       = capturedDefId; // Story 6.8: restore authored id
                     capturedBuildings.ConstructionTimer[id]  = capturedTimer;
                     capturedBuildings.ConstructionDuration[id] = capturedDuration;
-                    _onBuildingSync?.Invoke(ScenarioSyncOp.ReAdd, syncHandle, capturedType, capturedFaction, wpos, false);
+                    _onBuildingSync?.Invoke(ScenarioSyncOp.ReAdd, syncHandle, capturedDefId, capturedFaction, wpos, false);
                 });
         }
 
@@ -2015,7 +2067,9 @@ namespace ProjectChimera.UI
                 case Selected.Kind.Building:
                 {
                     Vector3 pos = new Vector3(_buildings!.Position[s.LiveId].X.ToFloat(), 0f, _buildings.Position[s.LiveId].Z.ToFloat());
-                    return new PropDescriptor(Selected.Kind.Building, pos, _buildings.Type[s.LiveId].ToString(), _buildings.FactionOf[s.LiveId], 0f, 1f, false, 0f, 0f, 0);
+                    // Story 6.8: descriptor carries the authored DefinitionId (not the enum name), so a copy/paste of a
+                    // Custom building re-creates it as the right authored building.
+                    return new PropDescriptor(Selected.Kind.Building, pos, _buildings.DefinitionId[s.LiveId], _buildings.FactionOf[s.LiveId], 0f, 1f, false, 0f, 0f, 0);
                 }
                 default: // Node
                 {
@@ -2068,6 +2122,7 @@ namespace ProjectChimera.UI
             Faction faction = _buildings.FactionOf[id];
             Fixed   dur = _buildings.ConstructionDuration[id], tim = _buildings.ConstructionTimer[id];
             BuildingType type = _buildings.Type[id];
+            string  defId = _buildings.DefinitionId[id]; // Story 6.8: authored id for the sync + slot restore
             // Review fix (F2): capture the EXACT position and re-write Position/Type/Faction on undo. A group-move
             // deletes-then-recreates through the LIFO slot, so BuildingStore.Create reuses this very slot and
             // overwrites Position with the moved value; resurrecting via `Alive[id]=true` alone would strand the
@@ -2077,10 +2132,10 @@ namespace ProjectChimera.UI
             Vector3 wp = new Vector3(origPos.X.ToFloat(), 0f, origPos.Z.ToFloat());
             var b = _buildings;
             b.Destroy(id);
-            object? h = _onBuildingSync?.Invoke(ScenarioSyncOp.RemoveMatch, null, type, faction, wp, false);
+            object? h = _onBuildingSync?.Invoke(ScenarioSyncOp.RemoveMatch, null, defId, faction, wp, false);
             return (
-                redo: () => { b.Destroy(id); _onBuildingSync?.Invoke(ScenarioSyncOp.RemoveHandle, h, type, faction, wp, false); },
-                undo: () => { b.Alive[id] = true; b.Position[id] = origPos; b.FactionOf[id] = faction; b.Type[id] = type; b.ConstructionTimer[id] = tim; b.ConstructionDuration[id] = dur; _onBuildingSync?.Invoke(ScenarioSyncOp.ReAdd, h, type, faction, wp, false); });
+                redo: () => { b.Destroy(id); _onBuildingSync?.Invoke(ScenarioSyncOp.RemoveHandle, h, defId, faction, wp, false); },
+                undo: () => { b.Alive[id] = true; b.Position[id] = origPos; b.FactionOf[id] = faction; b.Type[id] = type; b.DefinitionId[id] = defId; b.ConstructionTimer[id] = tim; b.ConstructionDuration[id] = dur; _onBuildingSync?.Invoke(ScenarioSyncOp.ReAdd, h, defId, faction, wp, false); });
         }
 
         private (System.Action redo, System.Action undo)? BuildDeleteNode(int id)
@@ -2128,18 +2183,22 @@ namespace ProjectChimera.UI
                 case Selected.Kind.Building:
                 {
                     if (_buildings == null) return null;
-                    if (!System.Enum.TryParse(d.Id, out BuildingType type)) type = BuildingType.CommandCenter;
-                    int id = _buildings.Create(pos, d.Faction, type);
+                    // Story 6.8: d.Id is the authored DefinitionId. Resolve its def (from the owner faction) + enum, and
+                    // create through the shared editor helper so a Custom building re-creates with real stats + id.
+                    string defId = d.Id;
+                    var fdef = d.Faction == Faction.Player2 ? _faction2 : _faction;
+                    BuildingType type = TechTreeChecker.BuildingTypeFromId(defId) ?? BuildingType.Custom;
+                    int id = CreateEditorBuilding(_buildings, pos, d.Faction, defId, fdef);
                     if (id < 0) return null;
                     Fixed dur = _buildings.ConstructionDuration[id];
                     var b = _buildings;
-                    object? h = _onBuildingSync?.Invoke(ScenarioSyncOp.Add, null, type, d.Faction, at, false);
+                    object? h = _onBuildingSync?.Invoke(ScenarioSyncOp.Add, null, defId, d.Faction, at, false);
                     return (
                         // Review fix (F2, symmetric): redo re-writes Position/Type/Faction, not just `Alive[id]=true`.
                         // After an undo restored the slot to its pre-move state, a redo must re-apply the moved
                         // position rather than relying on residue the undo just overwrote.
-                        redo: () => { b.Alive[id] = true; b.Position[id] = pos; b.FactionOf[id] = d.Faction; b.Type[id] = type; b.ConstructionTimer[id] = dur; b.ConstructionDuration[id] = dur; _onBuildingSync?.Invoke(ScenarioSyncOp.ReAdd, h, type, d.Faction, at, false); },
-                        undo: () => { b.Destroy(id); _onBuildingSync?.Invoke(ScenarioSyncOp.RemoveHandle, h, type, d.Faction, at, false); },
+                        redo: () => { b.Alive[id] = true; b.Position[id] = pos; b.FactionOf[id] = d.Faction; b.Type[id] = type; b.DefinitionId[id] = defId; b.ConstructionTimer[id] = dur; b.ConstructionDuration[id] = dur; _onBuildingSync?.Invoke(ScenarioSyncOp.ReAdd, h, defId, d.Faction, at, false); },
+                        undo: () => { b.Destroy(id); _onBuildingSync?.Invoke(ScenarioSyncOp.RemoveHandle, h, defId, d.Faction, at, false); },
                         selected: new Selected(Selected.Kind.Building, id, null));
                 }
                 default: // Node

@@ -809,11 +809,19 @@ namespace ProjectChimera.Core
 
         private const float SCENARIO_SYNC_EPS = 0.1f; // world-unit tolerance matching a live row to its scenario entry
 
+        /// <summary>Story 6.8 — the <c>ScenarioBuilding.Type</c> string for an authored building id (its dual meaning):
+        /// a BUILT-IN id serializes as its legacy <see cref="BuildingType"/> ENUM NAME (e.g. <c>"command_center"</c> →
+        /// <c>"CommandCenter"</c>), so every existing scenario stays byte-identical; a CUSTOM id (no enum member)
+        /// serializes as the authored id verbatim (e.g. <c>"watchtower"</c>). Uses the single
+        /// <see cref="TechTreeChecker.BuildingTypeFromId"/> id↔enum source.</summary>
+        private static string ScenarioTypeString(string buildingId) =>
+            TechTreeChecker.BuildingTypeFromId(buildingId) is BuildingType bt ? bt.ToString() : buildingId;
+
         /// <summary>Story 6.1 — building sync callback fired by <see cref="EntityPlacer"/>. See
         /// <see cref="EntityPlacer.ScenarioSyncOp"/>. Editor buildings are always P1 (slot 0) in practice, but the
         /// slot is derived from the faction so the handler stays general.</summary>
         internal object? SyncBuilding(EntityPlacer.ScenarioSyncOp op, object? handle,
-                                     BuildingType type, Faction faction, Vector3 pos, bool preBuilt)
+                                     string buildingId, Faction faction, Vector3 pos, bool preBuilt)
         {
             var scen = _ctx.Scenario;
             if (scen == null) return null;
@@ -833,7 +841,7 @@ namespace ProjectChimera.Core
                     }
                     var entry = new ScenarioBuilding
                     {
-                        Type = type.ToString(), Slot = addSlot,
+                        Type = ScenarioTypeString(buildingId), Slot = addSlot,
                         X = pos.X, Z = pos.Z, PreBuilt = preBuilt,
                     };
                     scen.Buildings = AppendEntry(scen.Buildings, entry);
@@ -1595,7 +1603,7 @@ namespace ProjectChimera.Core
             bool hasScenario = _ctx.Scenario != null;
             if (hasScenario)
             {
-                ValidationResult r = new ScenarioValidator().Validate(_ctx.Scenario!);
+                ValidationResult r = new ScenarioValidator().Validate(_ctx.Scenario!, _slotFactionDefs); // Story 6.8: authored-building-id gate
                 if (!r.Ok)
                 {
                     GD.PrintErr($"[Reset] Edited scenario failed validation — staying in Edit: {r.Error}");

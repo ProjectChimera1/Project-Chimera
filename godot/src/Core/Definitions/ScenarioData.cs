@@ -148,7 +148,14 @@ namespace ProjectChimera.Core.Definitions
     public class ScenarioBuilding
     {
         /// <summary>
-        /// BuildingType enum name: "CommandCenter", "Barracks", "ArcheryRange", "SiegeWorkshop".
+        /// Story 6.8 — DUAL MEANING: the legacy <see cref="BuildingType"/> enum name for a built-in building
+        /// ("CommandCenter", "Barracks", "ArcheryRange", "SiegeWorkshop", "Aviary"), OR an authored
+        /// <see cref="BuildingDefinition.Id"/> (lowercase <c>[a-z0-9_]</c>, e.g. <c>"watchtower"</c>) for a custom
+        /// building with no dedicated enum member. The two vocabularies are disjoint (enum names are PascalCase,
+        /// authored ids are snake_case) so the applier resolves them unambiguously (<c>Enum.TryParse</c>-first, then
+        /// by-id). No new field: a custom id folds through <see cref="CanonicalModelHash"/> via the SAME existing
+        /// <c>MixStr(Type)</c> fold (no algorithm change, no <c>AlgoVersion</c> bump) — every legacy all-built-in
+        /// scenario serializes and hashes byte-identically.
         /// </summary>
         [JsonPropertyName("type")]
         public string Type { get; set; } = "CommandCenter";

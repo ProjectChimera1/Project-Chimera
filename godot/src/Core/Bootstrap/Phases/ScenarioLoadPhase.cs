@@ -293,7 +293,9 @@ namespace ProjectChimera.Core.Bootstrap
         /// </summary>
         private ValidationResult ValidateBeforeApply(ScenarioData model, string pathLabel)
         {
-            ValidationResult result = _validator.Validate(model);
+            // Story 6.8: pass the resolved per-slot faction defs (ResolveSlotFactionDefs ran just before this) so a
+            // pre-placed CUSTOM building's authored id is accepted by the retired enum gate.
+            ValidationResult result = _validator.Validate(model, _ctx.SlotFactionDefs);
             if (!result.Ok)
                 GD.PrintErr($"[ScenarioValidator] {pathLabel} REJECTED: {result.Error}");
             return result;

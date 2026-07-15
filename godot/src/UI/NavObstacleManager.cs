@@ -30,15 +30,20 @@ namespace ProjectChimera.UI
         // One StaticBody3D per building slot (null = slot unused or building dead)
         private readonly StaticBody3D?[] _bodies = new StaticBody3D?[BuildingStore.MAX_BUILDINGS];
 
-        // Building footprint sizes — must match BuildingBridge.TYPE_SIZE exactly
+        // Building footprint sizes — must match BuildingBridge.TYPE_FALLBACK exactly
         private static readonly Vector3[] TYPE_SIZE =
         {
             new(6f, 4f, 6f), // CommandCenter
             new(5f, 3f, 5f), // Barracks
             new(4f, 3f, 5f), // ArcheryRange
             new(5f, 3f, 7f), // SiegeWorkshop
-            new(5f, 3f, 7f), // Aviary (Story 2.8 — must stay length == BuildingType count; indexed by (int)Type each frame, else IndexOutOfRange)
+            new(5f, 3f, 7f), // Aviary (Story 2.8)
         };
+
+        // Story 6.8 — deterministic guarded footprint for a BuildingType.Custom / authored building with no enum
+        // member (its id resolves to no TYPE_SIZE slot). A fixed value keeps the nav bake deterministic and, crucially,
+        // never IndexOutOfRange's on a Custom building (enum value 5, past TYPE_SIZE's length).
+        private static readonly Vector3 CUSTOM_FOOTPRINT = new(5f, 3f, 5f);
 
         // Half-extent of the nav bake AABB — must cover the full walkable map
         private const float BAKE_HALF = 120f;
@@ -135,8 +140,7 @@ namespace ProjectChimera.UI
         /// it as a child of the NavigationRegion3D so it is included in the next bake.</summary>
         private void AddObstacle(int id)
         {
-            int t    = (int)_buildings.Type[id];
-            var size = TYPE_SIZE[t];
+            var size = FootprintFor(id);
 
             float wx = _buildings.Position[id].X.ToFloat();
             float wz = _buildings.Position[id].Z.ToFloat();
@@ -152,6 +156,19 @@ namespace ProjectChimera.UI
             _region.AddChild(body);
 
             _bodies[id] = body;
+        }
+
+        /// <summary>Story 6.8 — resolve building <paramref name="id"/>'s nav footprint from its
+        /// <see cref="BuildingStore.DefinitionId"/> (via <see cref="TechTreeChecker.BuildingTypeFromId"/>) instead of
+        /// indexing <see cref="TYPE_SIZE"/> by the raw enum value. A built-in id maps to its TYPE_SIZE slot
+        /// (byte-identical footprint); a Custom/authored id (no enum member) uses the guarded
+        /// <see cref="CUSTOM_FOOTPRINT"/> — never an IndexOutOfRange for the Custom sentinel (enum value 5).</summary>
+        private Vector3 FootprintFor(int id)
+        {
+            var t = TechTreeChecker.BuildingTypeFromId(_buildings.DefinitionId[id]);
+            if (t is BuildingType bt && (int)bt >= 0 && (int)bt < TYPE_SIZE.Length)
+                return TYPE_SIZE[(int)bt];
+            return CUSTOM_FOOTPRINT;
         }
 
         /// <summary>Removes and frees the StaticBody3D for building <paramref name="id"/>.</summary>
