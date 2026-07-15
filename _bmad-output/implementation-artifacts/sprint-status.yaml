@@ -228,6 +228,9 @@ development_status:
   14-4-remediation-dw-97-wire-factionvalidator-validatecomplete-into-the-launch-gate: done
   14-5-remediation-editor-map-save-writes-default-persistence-manifest-absent-round-trips-absent: done
   14-6-editor-tool-ux-consolidation-single-active-dock-arbitration-unified-hotkey-map: backlog
+  # 14-7/14-8: DW-164/DW-157 pulled forward from the 2026-07-15 pre-Epic-7 sweep partition as Epic-7 protectors (Alec, 2026-07-15). 14-7 (DW-164, high) = the hard gate, must land before Epic 7 (WinConditionPhase.cs is Epic 7's win-condition file); 14-8 (DW-157, medium) should-precede; 14-6 can slip into the first Epic 7 lull.
+  14-7-remediation-dw-164-map-export-new-map-write-path-hard-validate-before-persist: backlog
+  14-8-remediation-dw-157-rebuild-static-pathability-grid-on-edit-play-reapply: backlog
   epic-14-retrospective: optional
 
 action_items:
@@ -312,7 +315,7 @@ action_items:
     status: "done (normalization+audit half, 2026-07-15): 34 flat bullets -> canonical DW-140..DW-173, DW-68 closed [story 6-8 evidence, remainders split to DW-168 + DW-57], DW-57 seen-again; ledger open count 155. Remaining half = the code-verified triage PARTITION, queued as the first real bmad-loop sweep run in the pre-Epic-7 gate (the sweep skill self-gates to BMAD_LOOP_MODE sessions)"
   - epic: 6
     id: "A5-E6"
-    action: "Epic-14 remediation batch (14-1..14-5) runs BEFORE Epic 7 starts. Decision (Alec delegated 'best for game', 2026-07-15)"
+    action: "Epic-14 remediation batch (14-1..14-5) runs BEFORE Epic 7 starts; 14-1..14-5 done 2026-07-15. Pre-Epic-7 gate now also includes 14-7 (DW-164, HARD gate — see A8-E6); 14-8 (DW-157, see A9-E6) + 14-6 are should/can-slip. Decision (Alec delegated 'best for game', 2026-07-15)"
     owner: "bmad-loop"
     status: "open"
   - epic: 6
@@ -325,3 +328,15 @@ action_items:
     action: "Consolidated in-engine verification session via godot-mcp over the epic's unobserved surfaces: 6.1 on-disk save/reload, 6.2 sculpt persistence + undo interleave, 6.6 group ops + DW-139 follow-up, 6.7 New-Map/slots/minimap preview, 6.8 custom-building place/render, paint-write status for the 10-16 spec"
     owner: "Claude"
     status: "done (2026-07-15, retro doc §9): save/reload round-trip PROVEN live [sculpt->export->process-restart->identical heights] · New-Map + packaging + minimap preview PASS · 14-5 root-cause narrowed to PersistenceManifestPanel:331 · 10-16 defect reproduced [Invalid brush image] + set_control fix path proven · REMAINDER: gesture-bound group-ops/palette placement unobservable via MCP [no absolute mouse] -> DW-139 stays open for a human-driven pass"
+  - epic: 6
+    id: "A8-E6"
+    action: "Pull DW-164 forward as story 14-7 (pre-Epic-7 HARD GATE): the map Export / New-Map write path must run a hard Validate() before SaveToFile/Pack so a failing scenario can't ship as a manifest-valid but unloadable .chimera.zip. WinConditionPhase.cs is the exact file Epic 7's win-condition work (7.11/FR-60) builds on. Filed 2026-07-15 from the A4-E6/A10-E5 pre-Epic-7 sweep partition (bundle map-bounds-and-start-position-editor)"
+    owner: "bmad-loop"
+    status: "open"
+    key: "14-7"
+  - epic: 6
+    id: "A9-E6"
+    action: "Pull DW-157 forward as story 14-8: rebuild the static PathabilityGrid from current ScenarioData on Edit->Play re-apply (ResetToAuthoredStart/ScenarioApplier.Apply) so Edit-added props/water/painted cells are honored without a full reload — removes the authoring-loop friction hit while iterating on Epic 7 triggers. Filed 2026-07-15 from the sweep partition (bundle pathability-and-movement-sim). Should-precede Epic 7; softer than 14-7"
+    owner: "bmad-loop"
+    status: "open"
+    key: "14-8"

@@ -532,9 +532,9 @@ WC3 Import Manager parity: creators import custom models/images/audio with valid
 A 3-mission scripted tutorial arc (basics → economy/combat/heroes → full match) built on the Epic 7 trigger vocabulary as its proving ground, with a campaign framework (mission sequence, unlock state, briefings, per-mission autosave) and the Mode Select entry bound to the real mission count. *(2026-07-01 sprint-change proposal; GDD reconciled from "5–8 missions" to a 3-mission 1.0 prologue that grows post-1.0.)*
 **FRs covered:** FR-73
 
-### Epic 14: Retro Remediation (Epic-5 carryover)
-Deferred-work remediation stories filed from the Epic-5 retrospective (2026-07-11) as tracked keys: suppress the +MaxHealth research army-heal on re-apply, close the Advanced-mode ai_preset validation bypass, resolve FactionValidator signature/hero descriptor ids, and wire FactionValidator.ValidateComplete into the launch gate. *(Not FR-mapped — each is a named deferred-work item; spec from its DW entry before dev. Recommend pulling forward ahead of Epic 6.)*
-**DW covered:** DW-85, DW-117, DW-106, DW-97
+### Epic 14: Retro Remediation (Epic-5/6 carryover + pre-Epic-7 gate)
+Deferred-work and retro-backed remediation stories tracked as digit-only keys: suppress the +MaxHealth research army-heal on re-apply (14.1/DW-85), close the Advanced-mode ai_preset validation bypass (14.2/DW-117), resolve FactionValidator signature/hero descriptor ids (14.3/DW-106), wire FactionValidator.ValidateComplete into the launch gate (14.4/DW-97), stop a routine editor map-save writing a default persistence_manifest (14.5, Epic-6 retro A2-E6), consolidate the editor tool docks + unify the hotkey map (14.6, Epic-6 retro A3-E6), hard-Validate the map Export/New-Map write path so a failing scenario can't ship as an unloadable package (14.7/DW-164 — the pre-Epic-7 hard gate), and rebuild the static pathability grid on Edit→Play re-apply (14.8/DW-157). *(Not FR-mapped — each is a named deferred-work item or retro finding; spec from its DW entry before dev. 14.1–14.5 done 2026-07-15; 14.7 must precede Epic 7, since its file (WinConditionPhase.cs) is what Epic 7's win-condition work builds on.)*
+**DW covered:** DW-85, DW-117, DW-106, DW-97, DW-164, DW-157 (14.5/14.6 are Epic-6 retro findings, not DW-numbered)
 
 ---
 
@@ -3850,7 +3850,7 @@ _Covers: FR-73. Depends on: 13.2, 10.1._
 
 ## Epic 14: Retro Remediation (Epic-5 carryover)
 
-_Remediation stories filed from the Epic-5 and Epic-6 retrospectives per Alec's "track as digit-only keys" decision. Each is deferred-work- or retro-backed — spec it from its named DW item / retro finding before dev. **Decision (Alec delegated, 2026-07-15): the 14-1…14-5 batch runs BEFORE Epic 7 starts** (14-6 rides the batch or the first Epic 7 lull)._
+_Remediation stories filed from the Epic-5 and Epic-6 retrospectives (and the 2026-07-15 pre-Epic-7 sweep partition) per Alec's "track as digit-only keys" decision. Each is deferred-work- or retro-backed — spec it from its named DW item / retro finding before dev. **Decision (Alec delegated, 2026-07-15): the 14-1…14-5 batch runs BEFORE Epic 7 starts** (done 2026-07-15). **14-7 (DW-164) is the pre-Epic-7 hard gate — it must land before Epic 7 opens, because its file (`WinConditionPhase.cs`) is exactly what Epic 7's win-condition work builds on;** 14-8 (DW-157) should precede, and 14-6 rides the batch or the first Epic 7 lull._
 
 ### Story 14.1: Remediation DW-85 — suppress the +MaxHealth research army-heal on re-apply
 
@@ -3947,3 +3947,39 @@ So that the six-plus Epic-6 tools stop overlapping each other and I can actually
 _Covers: UX-DR56/UX-DR59/UX-DR70 (consolidation), FR-21/FR-22/FR-69 (editor surface). Depends on: 6.4, 6.5, 6.6 (the tools being consolidated)._
 
 > Epic-6 retro action A3-E6 — filed from Alec's live-use finding (2026-07-15): "so many editors it's hard to keep track of the hotkeys… overlap of water editor, region editor and so on. These need a proper home on the UI." Confirms the 6.6 review's deferred "no single-active-dock arbitration" item; this story closes both.
+
+### Story 14.7: Remediation DW-164 — map Export / New-Map write path runs a hard Validate() before it writes
+
+As a map creator,
+I want the editor to refuse to export or create a map that fails validation,
+So that I can never ship a `.chimera.zip` that passes its manifest hash but won't load.
+
+**Acceptance Criteria:**
+
+**Given** a scenario that fails the hard `Validate()` (e.g. content stranded past MapBounds by a map-size shrink, or a start-slot overflow) **When** the Export-map / New-Map write path runs **Then** the write is aborted BEFORE `SaveToFile`/`Pack` with a located error naming the failing check, **And** nothing is persisted or packaged (no partial/unloadable file is left on disk)
+
+**Given** a valid scenario **When** Export / New-Map runs **Then** it persists and packages exactly as today (no happy-path behaviour change) **And** the existing non-fatal `CollectAdvisories` pass still surfaces its advisories
+
+**Given** verification **When** the fix lands **Then** a RED-proven teeth-test pins that a known-invalid scenario is rejected at the write boundary with no file written, and a valid one round-trips (write → reload succeeds)
+
+_Covers: DW-164 (high). Depends on: 6.7 (map properties / `WinConditionPhase` export), 5.2 (`FactionValidator`) + `ScenarioValidator`._
+
+> **Pre-Epic-7 hard gate.** Filed 2026-07-15 from the pre-Epic-7 deferred-work sweep partition (bundle `map-bounds-and-start-position-editor`; the Blind F1/F8 headline of the spec-6-7 review). Today `WinConditionPhase.ExportMapPackage`/`CreateNewMap` call only the non-fatal `CollectAdvisories`, and only AFTER persisting/packaging — so a scenario that hard-fails `CheckCoord` on reload still writes and ships. That file is the exact surface Epic 7's win-condition work (Story 7.11 / FR-60) builds on, so this must close before Epic 7 opens. Fix: call `Validate()` before `SaveToFile`/`Pack`; on failure abort with the located error.
+
+### Story 14.8: Remediation DW-157 — rebuild the static PathabilityGrid on Edit→Play re-apply
+
+As a map creator,
+I want obstacles I add in Edit mode (props, water, painted-blocked cells) to be honored by unit movement the moment I hit Play,
+So that I don't have to fully reload the map to test pathing after every edit.
+
+**Acceptance Criteria:**
+
+**Given** a prop / water tile / painted-blocked cell added in Edit mode **When** I F5 Edit→Play (re-apply without a full process reload) **Then** the static `PathabilityGrid` is rebuilt from the current `ScenarioData` so units path around the new obstacle instead of walking through it, **And** the one rebuild site covers both 6.5 painted cells and 6.6 prop/water
+
+**Given** determinism **When** the grid rebuild lands **Then** it stays deterministic (all peers re-apply identically — no desync; `CanonicalModelHash` already folds the obstacle that session) **And** the golden disposition is stated explicitly (re-baseline only if an observed value actually shifts)
+
+**Given** verification **When** the fix lands **Then** a RED-proven teeth-test shows a unit paths around an Edit-added obstacle after re-apply (the same unit walked through it before the fix)
+
+_Covers: DW-157 (medium). Depends on: 6.5 (pathability paint), 6.6 (props/water), 6.2 (Edit→Play re-apply / `ResetToAuthoredStart`)._
+
+> Filed 2026-07-15 from the pre-Epic-7 sweep partition (bundle `pathability-and-movement-sim`; spec-6-6 Blind F1 + pass-2). The static grid is built once at boot (`ScenarioLoadPhase`; `ResetToAuthoredStart` reuses the boot grid), so an Edit-added obstacle is walked through in Play until a true reload — AC-consistent (the spec scoped "un-stamps on reload") and no desync risk, but high authoring-loop friction you hit constantly while iterating on Epic 7 triggers. Fix: rebuild the static grid from the current `ScenarioData` inside `ResetToAuthoredStart`/`ScenarioApplier.Apply`. Softer than 14.7 — should-precede, not a hard gate.
