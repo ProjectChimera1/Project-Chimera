@@ -168,13 +168,5 @@
       "z": 3
     }
   ],
-  "triggers": [],
-  "persistence_manifest": {
-    "enabled": true,
-    "attributes": [
-      "hero.level",
-      "hero.xp",
-      "hero.inventory"
-    ]
-  }
+  "triggers": []
 }

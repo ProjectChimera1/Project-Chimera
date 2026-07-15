@@ -3464,6 +3464,22 @@ _Covers: FR-78, FR-49a (support). Depends on: Epic 5 (fun gate), 5.9 (usability)
 
 > Gap-closure (2026-07-01): closes the VERIFIED "zero human playtest gates in 121 stories". The GDD itself mandates the Phase-1 checkpoint ("if the core loop is not fun, stop everything") — this story makes that clause executable.
 
+### Story 10.16: Restore terrain texture paint-write (Terrain3D GDExtension defect)
+
+As a map creator,
+I want the terrain paint brush to actually write texture layers again,
+So that FR-21's paint half means "I can paint," not just "paint data persists."
+
+**Acceptance Criteria:**
+
+**Given** the compiled Terrain3D GDExtension whose native `operate()` for `TOOL_TEXTURE` was confirmed unreachable from this project's C#/GDScript (Story 6.1, AC3 descoped 2026-07-14) **When** the defect is investigated (addon version/API drift vs. editor-only guard vs. call-shape) and the chosen fix lands (addon upgrade, API re-route, or direct control-map write path) **Then** painting Grass/Dirt/Rock/Snow in Edit mode visibly changes the terrain surface and the painted result persists through save/load and `.chimera.zip` round-trip (riding 6.2's persistence)
+
+**Given** the 6.1 acceptance bar **When** paint-write works again **Then** the original AC3 criteria (layer picker paint + no Terrain3DAssets-acceptance WARNING) are re-verified in-engine and the 6.1 descope note is closed with a pointer here
+
+_Covers: FR-21 (paint half). Depends on: 6.1, 6.2._
+
+> Filed from the Epic-6 retrospective (A3-E6 lineage; decision Alec 2026-07-15: park in Epic 10). The sculpt half of FR-21 is fully shipped; this restores the paint half's write path.
+
 ## Epic 11: Fully Operational Match & Shell
 
 _Everything between "click Play" and "back at the menu with a score screen". Added by the 2026-07-01 sprint-change proposal; closes the session-layer blocker cluster. **Sequenced BEFORE Epic 9** — multiplayer verification needs this shell to exist. All UI built from the 3.1x design system (UX-DR70); UX-DR addenda authored per-story (the 3.11 precedent)._
@@ -3834,7 +3850,7 @@ _Covers: FR-73. Depends on: 13.2, 10.1._
 
 ## Epic 14: Retro Remediation (Epic-5 carryover)
 
-_Remediation stories filed from the Epic-5 retrospective (2026-07-11) per Alec's "track as digit-only keys" decision. Each is deferred-work-backed — spec it from its named DW item (via bmad-loop-sweep / gds-create-story) before dev. Recommend pulling these forward ahead of Epic 6._
+_Remediation stories filed from the Epic-5 and Epic-6 retrospectives per Alec's "track as digit-only keys" decision. Each is deferred-work- or retro-backed — spec it from its named DW item / retro finding before dev. **Decision (Alec delegated, 2026-07-15): the 14-1…14-5 batch runs BEFORE Epic 7 starts** (14-6 rides the batch or the first Epic 7 lull)._
 
 ### Story 14.1: Remediation DW-85 — suppress the +MaxHealth research army-heal on re-apply
 
@@ -3897,3 +3913,37 @@ So that I never enter a match with an unplayable faction.
 _Covers: DW-97. Depends on: 5.2 (FactionValidator), 11.1 (skirmish setup launch)._
 
 > Epic-5 retro action A8-E5 (Alec 2026-07-11): a Worker-less faction cannot launch.
+
+### Story 14.5: Remediation — editor map-save must not write a default persistence_manifest
+
+As a map creator,
+I want saving a map that has no persistence manifest to produce a file that still has no persistence manifest,
+So that a routine editor save can't silently opt my map into hero persistence or break the shipped-scenario contract.
+
+**Acceptance Criteria:**
+
+**Given** a loaded scenario whose JSON has no `persistence_manifest` key **When** it is saved through the editor map-save path **Then** the written JSON contains no `persistence_manifest` key (absent round-trips as absent), and a scenario that DOES author a manifest round-trips it unchanged **And** a RED-proven teeth-test pins the absent-stays-absent contract at the serializer/save-path level
+
+**Given** the root cause **When** it is located **Then** the fix is documented at the write site, and `enabled: true` is only ever written by an explicit creator action in the persistence authoring UI. (In-engine probes at the epic-6 retro, 2026-07-15, PROVED the New-Map/CreateBlank path and the editor Save/Export path both write NO manifest — prime suspect is `PersistenceManifestPanel.SaveToFile`, PersistenceManifestPanel.cs:331, the 3.8 authoring panel.)
+
+_Covers: D3 shipped-scenario contract, FR-21 (save path). Depends on: 3.8 (persistence manifest authoring), 6.2 (map save path)._
+
+> Epic-6 retro action A2-E6 (Alec 2026-07-15). Root incident: an editor re-save wrote `enabled:true` + default attributes into `alpha_map_01.json`; the 2026-07-13 AutoSave cron committed it (a0c8d51), turning `PersistenceManifestTests` red for the entire Epic 6 run. The shipped file was repaired at the retro; this story fixes the write path so the class can't recur.
+
+### Story 14.6: Editor tool UX consolidation — single-active-dock arbitration + unified hotkey map
+
+As a map creator,
+I want exactly one tool panel active at a time and one place that shows me every editor hotkey,
+So that the six-plus Epic-6 tools stop overlapping each other and I can actually discover and trust the keybindings.
+
+**Acceptance Criteria:**
+
+**Given** the tool docks added across Epics 3–6 (Terrain brush, Region, Pathability, Camera, Water, entity placement palette, Unit/Building cards) **When** I activate any tool **Then** its panel docks in the shared right-dock slot and every other tool panel is deactivated/hidden (single-active arbitration — two docks can never render overlapped), and switching tools round-trips cleanly with no orphaned overlays or stuck input modes
+
+**Given** the full editor hotkey surface (T, 1–5, [, ], G, R, J, Esc, Ctrl+Z/Y, tool toggles, …) **When** a collision audit is run across all edit-mode tools **Then** no two tools bind the same key in the same mode (collisions resolved and documented), and every binding appears in one in-app hotkey reference surface (overlay or hint strip, tooltip-mandate compliant) that reflects the audited truth
+
+**Given** undo/redo and Esc-cancel **When** any tool is active **Then** Ctrl+Z/Y and Esc behave per the shared editor-history/cancel contract regardless of which tool owns the dock (no tool swallows or shadows them)
+
+_Covers: UX-DR56/UX-DR59/UX-DR70 (consolidation), FR-21/FR-22/FR-69 (editor surface). Depends on: 6.4, 6.5, 6.6 (the tools being consolidated)._
+
+> Epic-6 retro action A3-E6 — filed from Alec's live-use finding (2026-07-15): "so many editors it's hard to keep track of the hotkeys… overlap of water editor, region editor and so on. These need a proper home on the UI." Confirms the 6.6 review's deferred "no single-active-dock arbitration" item; this story closes both.

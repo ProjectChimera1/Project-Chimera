@@ -799,6 +799,7 @@ source_spec: `_bmad-output/implementation-artifacts/spec-4-2-data-driven-tech-pr
 location: n/a
 reason: summary: `BuildingType.Custom` — the enum sentinel this story's `TechTreeChecker` generalization was explicitly built to support as a prerequisite TARGET — still can't be resolved as a prerequisite SOURCE through `BuildingSystem.GetBuildingPlacePrereq`/`EntityPlacer.PlaceBuilding`'s prereq-lookup, because both resolve the building def via `TechTreeChecker.BuildingTypeId(BuildingType.Custom)` which returns `""`, and `GetBuilding("")` never matches a real building. evidence: Pre-existing since Story 4.1 introduced `BuildingType.Custom` (this exact `BuildingTypeId(type) → GetBuilding(id)` chain in both call sites predates this story; 4.2 only added the trailing display-name-resolution wrapper around it) — consistent with 4.1's own Design Notes, which already documented that `Custom` has no end-to-end placement route through `BuildingSystem`/the editor and deferred that to Stories 4.5/4.6. Closure: naturally resolved once 4.5/4.6 give a `Custom` building a real placement path that threads its authored id through instead of the enum-keyed lookup. Flagged by the Edge Case Hunter and Verification-Gap review layers.
 status: open
+seen-again: 2026-07-15 (epic-6 retro audit — story 6-8 shipped the placement-path threading and closed DW-68, but did NOT touch the prereq-SOURCE lookup this entry names: `TechTreeChecker.BuildingTypeId(BuildingType.Custom)` still returns "" in `GetBuildingPlacePrereq`. Still open.)
 
 ### DW-58: `TechTreeValidator.Validate` returns bare `string` error messages, unlike `BuildingDefinitionValidator`'s `(FieldPath, Message)` tuples — discarding any field-path structure a future consumer (e.g. an inline editor rejection) could key off to highlight the specific offending prerequisite edge.
 origin: migrated from legacy ledger ("Deferred from: code review of story-4.2 (2026-07-08)"), 2026-07-08
@@ -875,7 +876,8 @@ status: open
 source_spec: `_bmad-output/implementation-artifacts/spec-4-5-in-app-building-definition-editor-unit-card-pattern-right-dock-inspector.md`
 location: godot/src/Economy/BuildingSystem.cs, godot/src/Core/Sim/ScenarioApplier.cs, godot/src/Core/BuildingStore.cs, godot/src/UI/EntityPlacer.cs
 reason: summary: a brand-new (non-enum-backed) building authored via the Building Card Editor round-trips correctly through the loader/writer but cannot yet be placed in a live match by any existing code path. evidence: Cross-references the already-open DW-57 (migrated from Story 4.2's review, which named `BuildingSystem`/`EntityPlacer`'s `Custom`-enum gap and explicitly deferred its closure to "Stories 4.5/4.6"). This story (4.5) independently confirms DW-57 is still unresolved and adds new evidence DW-57 didn't cover: `ScenarioApplier.ParseBuildingType` (the scenario-authored initial-building placement path, distinct from `EntityPlacer`'s live in-match placement) has the SAME closed-enum limitation, silently mis-mapping any unrecognized type string to `CommandCenter` rather than resolving a real definition. This story's own AC3 ("places with exactly the stats authored... round-trips through 4.1's loader") is satisfied for the narrower, textually-anchored reading — an EXISTING enum-backed building's edited stats correctly round-trip to live placement (verified), and a NEW building's DATA correctly round-trips through the loader/writer (verified) — but the epic's broader "no longer locked to four hardcoded building types" promise for actually PLACING a wholly new building type is not complete until a future story (4.6, or an Epic-5 Faction-Definer story) retires the `BuildingType` enum's placement-selection gate, a determinism-sensitive change (`BuildingType` is byte-serialized into replays/scenarios — append-only, never renumbered) well beyond this presentation-layer editor story's "never touch sim arrays" scope. Closure: same as DW-57 — resolved once a later story threads an authored building id through `BuildingSystem`'s and `ScenarioApplier`'s placement-resolution paths instead of the enum. Flagged independently by the Intent-Alignment Auditor review layer (via an independent sub-exploration) and corroborated by this entry's author.
-status: open
+status: done 2026-07-15
+resolution: closed by story 6-8 (commit 3703b2d, epic-6 retro audit 2026-07-15) — authored building ids now thread through ScenarioValidator/ScenarioApplier/BuildingSystem placement as `BuildingType.Custom` + `DefinitionId` with def-resolved stats; `ParseBuildingType` no longer collapses unknown ids to CommandCenter; the enum placement gate is retired and all three `(int)BuildingType` array touch-sites are fixed. Remainders split: in-match train-card operability = DW-168; prereq-SOURCE lookup = DW-57 (still open).
 
 ### DW-69: Ctrl+Z/Ctrl+Y in `BuildingCardPanel.Edit.cs`/`UnitCardPanel.Edit.cs` fires `_history.Undo()`/`Redo()` without first releasing focus from whatever control currently has it — if the focused control is a required-field `SpinBox` mid-edit (no prior blur), the undo/redo call can interleave with that control's own `FocusExited` commit handler in an unverified order.
 source_spec: `_bmad-output/implementation-artifacts/spec-4-5-in-app-building-definition-editor-unit-card-pattern-right-dock-inspector.md`
@@ -1353,122 +1355,281 @@ reason: summary: The undo/redo history survives an Edit→Play→Edit toggle (on
 closure: clear (or otherwise invalidate) `EntityPlacer._history` inside `ResetToAuthoredStart` / on return to Edit so no undo/redo closure can outlive the reset that made its captured ids stale. Fixes both the pre-existing live-store hazard and the new `ScenarioData` exposure in one place.
 status: open
 
-- source_spec: `_bmad-output/implementation-artifacts/spec-6-2-persist-sculpted-terrain-height-painted-textures-across-save-load-stroke-undo-redo-headline-defect-fix.md`
-  summary: Terrain stroke undo deep-duplicates height+control Images (before+after) per touched region onto an uncapped shared EditorHistory, so a long sculpt session pins hundreds of MB–GB of undo memory.
-  evidence: TerrainBrush.SnapshotRegions/PushStrokeUndo call Image.Duplicate(true) for every touched region per stroke; EditorHistory (src/CreationSuite/EditorHistory.cs) never bounds its undo/redo stacks. Real for the terrain-creation use case (many strokes); a cap/coalescing policy also affects the shared entity-undo semantics.
-
-- source_spec: `_bmad-output/implementation-artifacts/spec-6-2-persist-sculpted-terrain-height-painted-textures-across-save-load-stroke-undo-redo-headline-defect-fix.md`
-  summary: A terrain stroke that paints into empty space and makes Terrain3D auto-create a new region cannot be undone — the new region has no pre-stroke snapshot, so undo leaves it.
-  evidence: TerrainBrush.SnapshotRegions skips probed locations whose get_region returns null (no before-snapshot); RestoreRegions only re-imports snapshotted regions, so a region created by the stroke survives undo. Fix needs was-absent tracking + remove_region on undo. Narrow (map-expansion strokes) but a real undo-correctness gap.
-
-- source_spec: `_bmad-output/implementation-artifacts/spec-6-2-persist-sculpted-terrain-height-painted-textures-across-save-load-stroke-undo-redo-headline-defect-fix.md`
-  summary: Pressing T (deactivate brush) mid-drag strands _isPainting=true so EndPaint never runs — the pre-existing phantom-motion-paint bug now also leaks the pending _strokeBefore Image snapshot and loses that stroke's undo entry.
-  evidence: TerrainBrush._Input early-returns on !_brushActive (line ~189), so the mouse-release during a T-deactivated drag never reaches EndPaint; _isPainting stays true and the InputEventMouseMotion && _isPainting branch then paints without a button on re-activation. Pre-existing input state-machine root; new aspect is the retained image snapshot.
-
-- source_spec: `_bmad-output/implementation-artifacts/spec-6-2-persist-sculpted-terrain-height-painted-textures-across-save-load-stroke-undo-redo-headline-defect-fix.md`
-  summary: A no-op terrain stroke (any BeginPaint/EndPaint that snapshotted a region but changed nothing — e.g. paint-mode strokes while the deferred TOOL_TEXTURE paint-write defect writes nothing, or flatten/smooth on already-flat terrain) still pushes an undo command onto the SHARED EditorHistory, so a subsequent Ctrl+Z runs a no-visible-change RestoreRegions and silently "absorbs" the press the user expected to undo their prior entity/terrain op.
-  evidence: TerrainBrush.EndPaint→PushStrokeUndo pushes whenever `before` has ≥1 snapshotted region, with no before-vs-after equality check; because the stack is now shared with EntityPlacer's entity ops (the point of 6.2), a no-op terrain entry on top makes interleaved undo require an extra Ctrl+Z. Real UX-correctness gap opened by the shared-stack design; clean fix needs cheap stroke-changed-anything detection (non-trivial on the hot path). Surfaced by the Blind Hunter layer (review pass 3). Low-medium consequence, no data loss.
-
-- source_spec: `_bmad-output/implementation-artifacts/spec-6-2-persist-sculpted-terrain-height-painted-textures-across-save-load-stroke-undo-redo-headline-defect-fix.md`
-  summary: Undo (Ctrl+Z) is not blocked while a terrain stroke is in progress, so pressing Ctrl+Z with LMB held races RestoreRegions (writing the previous stroke's images) against the live operate() sculpting the same region, producing a corrupt/incoherent undo entry when EndPaint then captures `after` from the mixed state.
-  evidence: EntityPlacer._UnhandledInput handles Ctrl+Z independently of TerrainBrush's _isPainting; nothing gates undo on an active stroke. Narrow trigger (LMB-hold + Ctrl+Z simultaneously) and low probability, but a genuine concurrency hole introduced by making terrain undo available during an in-progress stroke; a clean fix is cross-node (EntityPlacer must consult TerrainBrush._isPainting or the brush must swallow undo mid-stroke). Surfaced by the Blind Hunter layer (review pass 3).
-
-- source_spec: `_bmad-output/implementation-artifacts/spec-6-2-persist-sculpted-terrain-height-painted-textures-across-save-load-stroke-undo-redo-headline-defect-fix.md`
-  summary: WinConditionPhase.DoImport rewrites the imported scenario's TerrainRef only when `result.TerrainFiles.Count > 0`; a package whose bundled-terrain set is empty but whose scenario JSON carries a non-empty author-local TerrainRef leaves that stale author path verbatim, so every subsequent load emits the "TerrainRef folder missing — keeping flat" PrintErr rather than the intent's "log once" and a clean flat fallback.
-  evidence: The `if (result.TerrainFiles.Count > 0)` branch has no `else` that clears TerrainRef. Not reachable by any package THIS system produces (export sets TerrainRef non-empty IFF terrain files are bundled) or by genuine pre-6.2 packages (TerrainRef was always ""), so it requires a hand-built/third-party/cross-version package — hence tracked rather than patched into the settled, live-verified change. Converged on by the Blind Hunter, Edge Case Hunter, and Verification Gap layers (review pass 3). Fix: `else { imported.TerrainRef=""; SaveToFile(...); }` in the import path. Low consequence (graceful flat + repeated log line).
-
-- source_spec: `spec-6-3-sim-side-deterministic-terrain-elevation-height-advantage-vision-and-fog-of-war-verify.md`
-  summary: The client builds the SimChecksum-folded elevation grid via Godot `Terrain3DData.get_height` (float bilinear interpolation) → `Fixed.FromFloat`, a cross-platform determinism risk (`ScenarioLoadPhase.BuildAndInjectElevationGrid`); a proper fix reads RAW per-region height-map cells (per the epic's "never Godot Image interpolation" guidance) so the checksummed elevation is byte-identical across heterogeneous peers.
-  evidence: `get_height` does float interpolation whose last bit can differ across ARM/x64 (FMA/rounding), and `Fixed.FromFloat`'s `(int)(v*65536)` truncation can then cross a boundary → divergent `Elevation.Raw` → SimChecksum desync between clients. NOT reachable today: all shipped/golden scenarios are flat (Elevation==0), and every TICKING client is x64 (Linux is server/headless-only and the server does NOT tick its sim — MainScene.cs:244 — so it never folds elevation into a compared checksum); the x64-x64 LAN determinism gate (1.9b) passes. Becomes real when a sculpted map is played on cross-platform clients or a sculpted-map determinism gate is added. Raised by the Blind Hunter (Finding 3); Finding 1 (headless-server desync) was REJECTED after confirming the server is a relay+quorum collector over client peers and does not tick its own sim.
-
-- source_spec: `spec-6-5-impassable-terrain-pathability-paint-deterministic-blocking-and-the-pathability-overlay.md`
-  summary: MovementSystem's blocked-cell rejection tests only the origin and destination cells, not cells swept between them, so a unit whose per-tick displacement exceeds the 2-unit cell size (move speed ≥ ~60 world-units/s, or a 1-cell-thick wall) can tunnel through a painted wall in one tick.
-  evidence: `MovementSystem.cs` rejection checks `IsBlocked(pos)` and `IsBlocked(np)` only; with `CELL_SIZE_WORLD=2` and `dt=1/30`, a step ≥ 2 units skips a 1-cell wall (both endpoints clear). NOT reachable with shipping content (the golden mover is speed 40 = 1.33 u/tick; realistic RTS speeds are single-to-low-double digits, and authored walls are typically thicker than one cell). Raised by Blind Hunter #1 and Edge Case Hunter E2. Fix: swept-cell (DDA) check from pos→np rejecting on the first blocked cell crossed. Low consequence for 1.0.
-
-- source_spec: `spec-6-5-impassable-terrain-pathability-paint-deterministic-blocking-and-the-pathability-overlay.md`
-  summary: A start/unit/spawn_unit position on a SLOPE-DERIVED (not painted) blocked cell escapes ScenarioValidator (which sees only the painted layer, since the heightmap isn't available at the Godot-free pre-tick gate), and once a unit is inside any blocked cell MovementSystem lets it traverse further blocked cells freely — so a slope-blocked spawn ships un-caught and the trapped unit wanders through impassable terrain.
-  evidence: `ScenarioValidator.CheckNotBlocked` decodes only `PathabilityBlocked` (painted); slope cells are recomputed at load from `ElevationGrid`. `MovementSystem` only rejects a CROSSING (`!IsBlocked(pos) && IsBlocked(np)`), so an already-in-blocked unit is exempt. Narrow: slope-auto-block is per-map default OFF and the editor overlay lets authors see steep cells. Raised by Blind Hunter #4, Edge Case Hunter E3/E4, Intent-Alignment (d). Fix: a load-time spawn-in-blocked guard against the resolved union grid (after `BuildAndInjectPathabilityGrid`), and/or confine an already-blocked unit to moves toward a clear cell. Low-medium consequence.
-
-- source_spec: `spec-6-5-impassable-terrain-pathability-paint-deterministic-blocking-and-the-pathability-overlay.md`
-  summary: Slope derivation (`PathabilityGrid.DeriveSlopeBlockedInto`) samples only +X/+Z forward-neighbour differences, so far east/south edge cells (col/row 127) never auto-block (the +neighbour clamps to the same cell ⇒ rise 0) and cliff walls land one cell to the low side (asymmetric).
-  evidence: The loop samples `elev.Sample(cx+run, cz)` / `elev.Sample(cx, cz+run)` only; at max col/row `ElevationGrid.Sample` clamps to the same cell ⇒ rise 0. Deterministic (not a determinism bug), and the feature is per-map default OFF. Raised by Blind Hunter #7, Edge Case Hunter E5. Fix: max-over-4-neighbours or central difference (skip clamp-equal neighbours). Low consequence.
-
-- source_spec: `spec-6-5-impassable-terrain-pathability-paint-deterministic-blocking-and-the-pathability-overlay.md`
-  summary: The editor `PathabilityTool` re-implements `FlowField.WorldToCell`/`CellCenter` locally instead of calling the shared sim methods; they agree today (both floor) but nothing pins that the author-painted cell equals the sim-enforced cell, so a future change to the sim mapping would silently desync what the editor paints from what the sim blocks.
-  evidence: `PathabilityTool.cs` has its own `WorldToCell`/`CellCenter`; verified `Mathf.FloorToInt` == `Fixed.ToInt()` (arithmetic shift) today. Presentation/Godot-coupled, untestable in the sim project. Raised by Verification Gap (VG5). Fix: route the tool's cell mapping through the shared `FlowField` methods or a shared Godot-free helper. Low consequence.
-- source_spec: `{implementation_artifacts}/spec-6-6-doodads-props-placement-editor-multi-select-copy-paste-rotation-named-cameras-water-floor.md`
-  summary: Group move/duplicate/paste re-derives placements lossily (a moved/duplicated worker respawns via the combat path losing worker overrides; a building loses its authored pre_built flag; a node loses its Story-4.7 collection/owner fields).
-  evidence: `EntityPlacer.Describe` captures only id/faction/position (+supply/rate for nodes) and `BuildCreate` respawns from scratch; single-entity delete/undo paths ARE identity-preserving, so only the multi-select move/copy/paste path is lossy. Presentation/authoring-fidelity only — no determinism/checksum impact.
-- source_spec: `{implementation_artifacts}/spec-6-6-doodads-props-placement-editor-multi-select-copy-paste-rotation-named-cameras-water-floor.md`
-  summary: Rotation persists on units/buildings/resource-nodes (`Rot` round-trips, hash-excluded) but only props apply it as visual yaw at spawn; the sim-render bridges (BuildingBridge/MultiMeshBridge) have no per-entity rotation channel.
-  evidence: grep shows only `PropRenderer` consumes `.Rot` at spawn; `ScenarioBuilding.Rot`/`ScenarioUnit.Rot`/`ScenarioResourceNode.Rot` have no renderer. Cosmetic — footprints stay axis-aligned for 1.0, so non-prop visual yaw is low-value and architecturally invasive to wire; props (the emphasized MultiMesh case) rotate fully.
-- source_spec: `{implementation_artifacts}/spec-6-6-doodads-props-placement-editor-multi-select-copy-paste-rotation-named-cameras-water-floor.md`
-  summary: Marquee selection and 3D selection markers assume flat (y=0) terrain, so box-select misses entities on Story-6.3 elevated terrain and markers sink below raised ground.
-  evidence: `FinishMarquee` unprojects at hard-coded heights (0.5/1) and `GroundPointOf` intersects the y=0 plane only — the SAME y=0 convention every existing editor tool + single-entity placement already uses (pre-existing editor-wide limitation surfaced by the new marquee), not unique to this story.
-- source_spec: `{implementation_artifacts}/spec-6-6-doodads-props-placement-editor-multi-select-copy-paste-rotation-named-cameras-water-floor.md`
-  summary: Nothing arbitrates a single active right-dock tool panel — CameraTool, WaterTool, RegionTool and PathabilityTool all pin their panel to the same screen rect and overlap if two are toggled active at once.
-  evidence: all build `PanelContainer` at AnchorLeft/Right=1, OffsetLeft=-300 on CanvasLayer Layer=5 — a pre-existing pattern shared with the already-shipped RegionTool/PathabilityTool (6.4/6.5), not introduced here.
-- source_spec: `{implementation_artifacts}/spec-6-6-doodads-props-placement-editor-multi-select-copy-paste-rotation-named-cameras-water-floor.md`
-  summary: The "one group op = one undo step" contract is unit-tested only against a hand-written HashSet proxy closure, not the real EntityPlacer group-op composition (MoveSelection/PasteClipboard/DeleteSelection).
-  evidence: `EditorHistoryTests.GroupOp_IsOneUndoStep` exercises `EditorHistory.Push/Undo/Redo` (already covered) via a local closure; EntityPlacer is Godot-coupled and excluded from the Tier-1 set, so the composition is a manual godot-verify surface (as the spec's Verification section designates).
-- source_spec: `{implementation_artifacts}/spec-6-6-doodads-props-placement-editor-multi-select-copy-paste-rotation-named-cameras-water-floor.md`
-  summary: No automated test packs/unpacks props/cameras/water through ContentPackager (the .chimera.zip surface); the round-trip is proven only at the JSON ScenarioSerializer layer one level below the AC's "package/import" clause.
-  evidence: `ScenarioDataPropsCamerasWaterTests` round-trips via SaveToFile/LoadFromFile (JSON); ContentPackager writes scenario.json wholesale so inline props/cameras/water ride along for free, but a zip round-trip assertion would exercise the exact AC surface.
-- source_spec: `{implementation_artifacts}/spec-6-6-doodads-props-placement-editor-multi-select-copy-paste-rotation-named-cameras-water-floor.md`
-  summary: A blocking-prop / water footprint added or moved in Edit mode is NOT honored by the sim on an F5 Edit→Play re-apply — the static PathabilityGrid is built once at boot in `ScenarioLoadPhase` and reused across `ResetToAuthoredStart`, so units walk through the new obstacle until a real reload, even though `CanonicalModelHash` already folds it that session.
-  evidence: grep confirms `BuildBlockingFootprintMask`/`PathabilityGrid.Resolve`/`SetPathabilityGrid`/`SetStaticBlocked` exist ONLY in the once-run `ScenarioLoadPhase`; `ResetToAuthoredStart` re-threads the boot-time grid (`ScenarioApplier.Apply` reuses `_pathability`) without a scene reload. The SAME staleness affects Story 6.5's painted/slope layer (pre-existing mechanism, not introduced here); the spec's AC is deliberately scoped to "un-stamps on reload," so this is consistent with intent, not a deviation. High authoring-loop impact but no determinism/desync risk (all peers reload identically). Raised by Blind Hunter F1. Fix: rebuild the static grid from current `ScenarioData` inside `ResetToAuthoredStart`/`ScenarioApplier.Apply` before injecting into the sim (covers both 6.5 painted and 6.6 prop/water).
-- source_spec: `{implementation_artifacts}/spec-6-6-doodads-props-placement-editor-multi-select-copy-paste-rotation-named-cameras-water-floor.md`
-  summary: On a map with `MapBounds > 128`, a blocking prop / water / start at an in-bounds coordinate beyond the ±128 flow-grid extent is silently clamped by `FlowField.WorldToCell` onto an edge cell, so two distinct far-out positions alias to the same footprint cell and the validator can false-flag an unrelated start as blocked.
-  evidence: `PathabilityGrid.StampPropInto`/`StampWaterInto` and `ScenarioValidator` derive cells via `FlowField.WorldToCell`, which `Math.Clamp`s to `[0, GRID_SIZE-1]` (±128 / 2-unit); `ScenarioValidator` bounds prop/water coords only against `MapBounds` (bounded by the 16.16 range, not 128). Deterministic (no desync) but semantically wrong. Pre-existing whole-editor convention shared with 6.5 painted cells and all entity positions, unreachable when `MapBounds ≤ 128`. Raised by Blind Hunter F4 + Edge Case Hunter. Fix: reject props/water/positions beyond the ±grid extent in the validator, or enforce/document `MapBounds ≤ 128`. Low consequence.
-- source_spec: `{implementation_artifacts}/spec-6-6-doodads-props-placement-editor-multi-select-copy-paste-rotation-named-cameras-water-floor.md`
-  summary: Prop placement, paste, duplicate, and group-move write raw raycast/offset coordinates with no map-bounds guard (unlike `WaterTool.CommitDrag`, which rejects out-of-bounds rects), so an off-map paste/place persists an out-of-bounds entity that then fails `ScenarioValidator` at the next save/F5 with a confusing whole-scenario rejection.
-  evidence: `WaterTool.CommitDrag` guards `±MapBounds`; the sibling `EntityPlacer.PlaceProp`/`BuildCreate`/`PasteClipboard`/`MoveSelection`/`DuplicateSelection` do not. Fail-closed (validator rejects, no data corruption or determinism impact), so low consequence, but inconsistent with the water path and a poor authoring experience. Raised by Blind Hunter F7 + Edge Case Hunter E2. Fix: clamp/reject out-of-bounds creates at place/paste/move time with a status message, mirroring `WaterTool.CommitDrag`.
-
 ### DW-139: Follow-up review still recommended for 6-6-doodads-props-placement-editor-multi-select-copy-paste-rotation-named-cameras-water-floor after the review budget was exhausted
 origin: review-budget-followup
 source_spec: `spec-6-6-doodads-props-placement-editor-multi-select-copy-paste-rotation-named-cameras-water-floor.md`
 severity: low
 reason: Review budget (2 cycles) was exhausted with the story finalized (status: done, verify green) while the review pass kept recommending an independent follow-up. The work was committed by bmad-loop run 20260714-104223-7fe9; this entry preserves the lingering follow-up recommendation for a deliberate later review.
 status: open
-- source_spec: `{implementation_artifacts}/spec-6-7-map-properties-new-map-flow-2-4-start-positions-and-minimap-preview.md`
-  summary: True variable map-size grid generalization (fog/flow-field/pathability/spatial-hash grids resizing per chosen size, e.g. 128/192/256 cells) was escalated per the epic RISK NOTE rather than implemented — Story 6.7 ships "map size" as the authored playable half-extent (`ScenarioData.MapBounds`, supported set Small 80 / Medium 120 / Large 128) inside the FIXED ±128 grid identity.
-  evidence: The map-dimension coupling audit found five independent hardcoded grid systems (`FogOfWarSystem` with its own copy of the 128 constants, `FlowField.WORLD_HALF_INT`, `PathabilityGrid` derived from FlowField with a fixed 2048-byte persist format, `SpatialHash` at a separate ±160/32-dim, and the Terrain3D/NavMesh 256/±128), each folding into `CanonicalModelHash`, with NO cross-consistency guard prior to this story. Truly resizing the grids is a determinism-critical refactor that changes the pathability persist format (invalidating every stored scenario's `pathability_blocked`) and forces re-baselining every `CanonicalModelHash`/`StartStateHash`/golden fixture. The epic RISK NOTE explicitly directs shipping the fixed size set that works + escalating the rest via correct-course. Raised by the Intent-Alignment auditor (no visible escalation artifact) — this entry is that escalation record. Fix: a dedicated correct-course story that parameterizes the four sim grids by a single map-size source of truth in lockstep, with the guard test (`GridDimensionConsistencyTests`) extended to prove per-size consistency, and an explicit one-time golden re-baseline.
-- source_spec: `{implementation_artifacts}/spec-6-7-map-properties-new-map-flow-2-4-start-positions-and-minimap-preview.md`
-  summary: The start-position "−" (remove-slot) button is not pushed onto the editor undo history, and pressing "+" increments the picker's slot count before a backing `ScenarioPlayerSlot` exists — so removing a slot is not undoable and undoing an earlier move of a since-removed slot can resurrect it, leaving the picker's transient count out of sync with the persisted `PlayerSlots`.
-  evidence: `EntityPlacer.cs` remBtn.Pressed (~:1257) calls `_onStartSlotRemoved` with no `_history.Push`, unlike every other editor mutation; addBtn.Pressed (~:1239) does `_startSlotCount++` before any placement. Godot-coupled interaction state with no xUnit surface (the epic designates editor-manipulation UX a godot-verify surface; 6.6 deferred sibling interactive-fidelity items). The data-at-rest correctness is covered — the placement-that-created-a-slot undo now removes it (review PATCH 2) and Save only persists placed `PlayerSlots` — so this is interaction-polish, not data corruption. Raised by Blind Hunter + Edge Case Hunter. Fix: capture the removed slot's data and route "−" through `EditorHistory` (redo=remove, undo=re-add), and defer the `_startSlotCount` increment until a slot is actually placed; verify in-engine via godot-verify.
-- source_spec: `{implementation_artifacts}/spec-6-7-map-properties-new-map-flow-2-4-start-positions-and-minimap-preview.md`
-  summary: A Large (128) map's +X/+Z boundary line sits exactly at the fixed grid coverage edge, where `FlowField.WorldToCell` clamps col/row 128→127, so positions on that exact edge alias into the last fog/flow/pathability cell.
-  evidence: `MapSizes.MaxHalfExtent == FlowField.WORLD_HALF_INT == 128`; `FlowField.WorldToCell` `Math.Clamp`s to `[0, GRID_SIZE-1]`. Deterministic (no desync), affects only the exact +128 boundary line, and is the same pre-existing WorldToCell clamp convention already deferred for 6.6 (`MapBounds > 128` aliasing). Raised by Blind Hunter. Fix: give Large a small sub-128 margin, or document the edge as the intended playable ceiling.
-- source_spec: `{implementation_artifacts}/spec-6-7-map-properties-new-map-flow-2-4-start-positions-and-minimap-preview.md`
-  summary: The start-position editor assumes contiguous 0-based slot values (marker/palette sizing by `PlayerSlots.Length`, toggles by loop index, "−" removing `count-1`), so a validator-legal NON-contiguous set (e.g. slots {0,3}) drops the high slot's marker at load, misroutes palette buttons, and can target the wrong slot on remove.
-  evidence: `ScenarioValidator` permits any unique in-range slot set with no contiguity/`slot 0` requirement. `ScenarioLoadPhase.SetupStartPositionBridge` sizes `positions` by `clamp(PlayerSlots.Length,2,4)` then guards `if (idx < positions.Length)`, so slot value 3 in a length-2 set is silently dropped; `EntityPlacer` renders toggles by loop index and the "−" button removes value `_startSlotCount-1`. Pre-existing shape (the pre-6.7 code clamped to [0,1] and never handled non-contiguity); the normal editor flow keeps slots contiguous, so this only bites hand-authored/generated maps and is edit-time visual + a stale-base edge, not data corruption. Review PATCH 2 hardens `MainScene.RemoveStartPosition` to no-op the sim-base clear when nothing was actually removed; full non-contiguous handling remains. Raised by Blind Hunter F3, Edge Case Hunter #1/#3, Verification-Gap. Fix: size the marker/toggle set by max declared Slot value+1 (clamped to MAX_SLOTS) and drive toggle identity from `PlayerSlots[i].Slot`, or add a validator rule requiring contiguous `0..N-1` slots; verify in-engine.
-- source_spec: `{implementation_artifacts}/spec-6-7-map-properties-new-map-flow-2-4-start-positions-and-minimap-preview.md`
-  summary: The map Export / New-Map write path never runs a hard `ScenarioValidator.Validate()` before `SaveToFile`/`Pack`, so a scenario that fails validation (e.g. content stranded past `MapBounds` by a map-size shrink, or a slot overflow) is still written to disk and shipped in a `.chimera.zip` whose manifest hash validates but whose `scenario.json` will not load.
-  evidence: `WinConditionPhase.ExportMapPackage`/`CreateNewMap` call only `CollectAdvisories` (non-fatal) after already persisting/packaging; no `Validate().Ok` gate exists on the write path. Pre-existing (export never validated before this story); review PATCH 1 extends the non-fatal advisory to all coordinate-bearing collections so the stranding is at least surfaced, but the package is still writable. Raised by Blind Hunter F1/F8. Fix: call `Validate()` before `SaveToFile`/`Pack`; on failure abort with the located error rather than producing a broken package.
-- source_spec: `{implementation_artifacts}/spec-6-7-map-properties-new-map-flow-2-4-start-positions-and-minimap-preview.md`
-  summary: Authored map size (`MapBounds`) is reflected only in placement validation, editor-tool limits, and the model hash — NOT in camera pan-limits or NavMesh extent, both of which still cover the full fixed ±128 grid regardless of chosen size; so picking a smaller size restricts where content can be placed but does not change the runtime camera/nav footprint, and the change is effectively apply-on-reload for presentation.
-  evidence: grep of every `MapBounds` consumer returns validator, Region/Water tools, AI/map-gen, and `CanonicalModelHash` — `CameraPhase` and `NavigationPhase` do not read it. The spec's Design Notes claim `MapBounds` is "already wired to camera/NavMesh/validator/AI" is inaccurate for camera/NavMesh. The feature still satisfies its ACs (grids COVER the extent; placement bounds + hash differ observably, so the intent's Block-If is not triggered). Raised by the Intent-Alignment auditor (Divergence 1) + Blind Hunter F11. Fix: wire `MapBounds` into camera pan-limits and (if desired) a per-size NavMesh/edge-clamp, or correct the expectation that size changes the camera/nav experience.
-- source_spec: `{implementation_artifacts}/spec-6-7-map-properties-new-map-flow-2-4-start-positions-and-minimap-preview.md`
-  summary: The minimap preview renderer shares the live edit-mode `World3D` (`OwnWorld3D=false`) and is invoked from Export while in Edit mode, so the top-down snapshot written to `preview/preview.png` can capture editor gizmos — start-position flag poles, the placement ghost mesh, and any active pathability/region/grid overlays — rather than a clean map image.
-  evidence: `MinimapPreviewRenderer` renders the caller's `World3D` directly; `WinConditionPhase.RenderMinimapPreview` runs it during an Edit-mode export with `StartPositionBridge` markers and the `EntityPlacer` ghost present. Story-introduced (the renderer is new) but a godot-verify surface the pass-1 result already flagged (preview visual quality not screenshot-inspected); the packaging round-trip that consumes the bytes is Godot-free unit-tested and the render fails safe (null → omitted). Raised by Blind Hunter F5 + Verification-Gap. Fix: hide editor-only layers/gizmos for the one-shot render (cull mask or temporary visibility toggle) or render from a scene composed only of persistent map content; verify the output image in-engine.
-- source_spec: `{implementation_artifacts}/spec-6-7-map-properties-new-map-flow-2-4-start-positions-and-minimap-preview.md`
-  summary: Ore/Crystal spinner edits to an ALREADY-placed start slot persist immediately via `_onStartSlotEconomy` but are NOT pushed onto `EditorHistory`, so an accidental economy change to a placed slot mutates the hash-folded `StartCrystal` and cannot be reverted with Ctrl-Z, breaking the "every editor mutation is one undo step" contract for that path.
-  evidence: `EntityPlacer` `spin.ValueChanged`/`crysSpin.ValueChanged` (added by pass-1 patch 3) call `_onStartSlotEconomy` (→ `UpdateStartSlotEconomy`) with no `_history.Push`, unlike `PlaceStartPosition` which captures ore/crystal into history. Story-introduced (patch 3 made the spinner persist immediately where the pre-6.7 spinner only took effect on placement) but on the same Godot-coupled start-slot interaction surface with no xUnit harness; a correct fix must coalesce spinner edits into single undo entries and update the local mirror + spinner on undo/redo, which needs in-engine verification. Raised by Blind Hunter F4. Fix: route economy-spinner edits through `EditorHistory` (capture old/new ore+crystal, redo/undo via `UpdateStartSlotEconomy` + refresh) alongside the other deferred start-slot undo items; verify in-engine.
-- source_spec: `{implementation_artifacts}/spec-6-8-custom-building-placement-thread-an-authored-building-id-through-buildingsystem-scenarioapplier-retire-the-enum-gate.md`
-  summary: A placed `BuildingType.Custom` producer shows no train buttons in the in-match command card (its `canProduce` gate and `GetProductionUnits` roster are enum-only), so a custom producer's authored `produces_category` is trainable at the sim layer (tested) but unreachable from the UI.
-  evidence: `CommandCardSystem.RefreshBuildingCard` `canProduce` (~:322-325) matches only Barracks|ArcheryRange|SiegeWorkshop|Aviary → `Custom` yields `canProduce=false` (no buttons); the sibling `BuildingSystem.GetProductionUnit`/`GetProductionUnits` (:305,:319) still resolve category via the enum-only `CategoryForBuilding(type)` whose `_=>"Melee"` default would list the wrong roster if the gate were widened. The sim `TrainUnit` path IS def-aware and tested (`CustomProducer_RoutesProduction...`). In-match building-operation UI is out of this story's "placement" intent (the spec explicitly deferred the sibling worker-build-card). Raised by Blind Hunter (rated HIGH) + Verification-Gap. Fix: widen `canProduce` for a `Custom` producer with a non-empty `ProducesCategory` AND make `GetProductionUnit(s)` def-aware via the building slot's `DefinitionId` (both must land together, or the card lists Melee); verify in-engine.
-- source_spec: `{implementation_artifacts}/spec-6-8-custom-building-placement-thread-an-authored-building-id-through-buildingsystem-scenarioapplier-retire-the-enum-gate.md`
-  summary: Every `BuildingType.Custom` building gets a fixed 5×3×5 nav footprint (`CUSTOM_FOOTPRINT`) regardless of its authored mesh size, so a large custom building renders at its mesh size but blocks a fixed small box (units clip the visual or collide with empty space).
-  evidence: `NavObstacleManager.FootprintFor` (~:868) returns `CUSTOM_FOOTPRINT` for any id with no enum member, while `BuildingBridge` sizes the visual from the loaded GLB's AABB. Consistent with existing design (built-ins also use fixed `TYPE_SIZE` footprints, not mesh-derived), so not a regression — but authored/mesh-derived footprints for custom buildings are absent. Presentation, no xUnit surface. Raised by Blind Hunter + Edge Case Hunter. Fix: derive the footprint from the building def (an authored footprint field or the loaded mesh AABB) for both built-ins and customs; verify in-engine.
-- source_spec: `{implementation_artifacts}/spec-6-8-custom-building-placement-thread-an-authored-building-id-through-buildingsystem-scenarioapplier-retire-the-enum-gate.md`
-  summary: A custom building can be placed but cannot be referenced in a trigger — the validator's trigger `building_type` check stays enum-name-only, so a scenario that places a custom building and references it in a trigger condition fails validation wholesale.
-  evidence: `ScenarioValidator`'s trigger `building_type` checks (and `ScenarioDirector`'s `Enum.TryParse<BuildingType>`) are deliberately left enum-only (the retired gate was extended for `scenario.buildings[]` only). Out of this story's intent (the intent names BuildingSystem/ScenarioApplier placement; the trigger DSL is Epic 7). Raised by Blind Hunter. Fix (Epic 7): extend the trigger building resolution to accept authored building-def ids, mirroring the scenario-buildings gate.
-- source_spec: `{implementation_artifacts}/spec-6-8-custom-building-placement-thread-an-authored-building-id-through-buildingsystem-scenarioapplier-retire-the-enum-gate.md`
-  summary: `BuildingBridge` discovers its `DefinitionId` render buckets once at `Initialize` from exactly the two loaded faction defs, so a custom building authored mid-session (via the 4.5 building editor) then placed — or one owned by a third faction — has no bucket and renders invisibly (guarded against a throw, but silent).
-  evidence: `BuildingBridge.Initialize` builds `_bucketOf` from p1Def/p2Def + the 5 built-in ids; `TryBucket` returns false (skip, no draw) for any live `DefinitionId` not discovered then. A validated scenario-apply always has ids in buckets, but the live editor "author new building → place it" loop and >2-faction cases miss. Presentation, no xUnit surface, no diagnostic. Raised by Blind Hunter + Edge Case Hunter + Verification-Gap. Fix: re-discover/append a bucket when an unknown `DefinitionId` appears (or route unknown ids to a shared `CUSTOM_FALLBACK` bucket) so a placed building always renders; verify in-engine.
-- source_spec: `{implementation_artifacts}/spec-6-8-custom-building-placement-thread-an-authored-building-id-through-buildingsystem-scenarioapplier-retire-the-enum-gate.md`
-  summary: The def→`BuildingStore.Create` stat-threading is hand-copied in two places — `BuildingSystem.PlaceBuildingDirectById` and `EntityPlacer.CreateEditorBuilding` — which already diverge cosmetically (`ShopStock` nullable vs `Array.Empty`) and risk drift, the "never hand-copied in a spawn path" class the codebase warns about.
-  evidence: Both blocks map a `BuildingDefinition`'s Hp/SupplyBonus/ConstructionTime/shop/revive into `Create` with the same logic; both are currently correct (`Create` null-coalesces). Raised by Blind Hunter + Verification-Gap. Fix: extract a single `BuildingStore.CreateFromDefinition(def, pos, faction, id)` helper and call it from both the sim and editor placement paths.
-- source_spec: `{implementation_artifacts}/spec-6-8-custom-building-placement-thread-an-authored-building-id-through-buildingsystem-scenarioapplier-retire-the-enum-gate.md`
-  summary: Undo of a group-moved building restores Type/DefinitionId/Position/timers but not Health/MaxHealth/SupplyBonus/shop/revive, so if the LIFO slot is reused the resurrected building can carry stale stats — more visible now that custom buildings (with varied def-resolved stats) are placeable.
-  evidence: `EntityPlacer` group-move undo (~:2132) sets Alive/Position/Faction/Type/DefinitionId/timers but not the def-derived stats; pre-existing (built-in undo also omitted them), and `BuildingStore` has no free list so cross-building recycling is unlikely, but 6.8 makes it reachable for varied custom content. Presentation, no xUnit surface. Raised by Edge Case Hunter. Fix: restore the full def-derived stat set on undo (re-thread through the shared `CreateFromDefinition` helper), or re-resolve stats from `DefinitionId` on restore; verify in-engine.
+
+### DW-140: Terrain stroke undo pins unbounded Image memory on the shared EditorHistory
+
+origin: code review of spec-6-2-persist-sculpted-terrain-height-painted-textures-across-save-load-stroke-undo-redo-headline-defect-fix.md, 2026-07-14 (epic-6 bmad-loop; normalized from a flat append at the 2026-07-15 retro sweep)
+location: godot/src/CreationSuite/TerrainBrush.cs (SnapshotRegions/PushStrokeUndo) + godot/src/CreationSuite/EditorHistory.cs
+severity: medium
+reason: Each stroke deep-`Duplicate`s height+control Images (before AND after) per touched region onto an uncapped shared EditorHistory — a long sculpt session pins hundreds of MB–GB of undo memory. A cap/coalescing policy also affects the shared entity-undo semantics, so it needs a deliberate design, not a drive-by patch.
+status: open
+
+### DW-141: A stroke that auto-creates a new Terrain3D region cannot be undone
+
+origin: code review of spec-6-2 (terrain persistence), 2026-07-14 (epic-6 bmad-loop; normalized 2026-07-15)
+location: godot/src/CreationSuite/TerrainBrush.cs (SnapshotRegions skips null get_region probes; RestoreRegions re-imports only snapshotted regions)
+severity: low
+reason: Painting into empty space makes Terrain3D auto-create a region with no pre-stroke snapshot, so undo leaves the new region in place. Fix needs was-absent tracking + remove_region on undo. Narrow (map-expansion strokes) but a real undo-correctness gap.
+status: open
+
+### DW-142: Pressing T mid-drag strands _isPainting — EndPaint never runs, leaking the pending stroke snapshot and its undo entry
+
+origin: code review of spec-6-2 (terrain persistence), 2026-07-14 (epic-6 bmad-loop; normalized 2026-07-15)
+location: godot/src/CreationSuite/TerrainBrush.cs (_Input early-returns on !_brushActive ~:189)
+severity: low
+reason: Pre-existing phantom-motion-paint input-state-machine root; 6.2's new aspect is the retained _strokeBefore Image snapshot and the lost undo entry. Mouse-release during a T-deactivated drag never reaches EndPaint, and the motion+_isPainting branch then paints buttonlessly on re-activation.
+status: open
+
+### DW-143: No-op terrain strokes push undo commands onto the shared EditorHistory — a later Ctrl+Z is silently absorbed
+
+origin: code review of spec-6-2 (terrain persistence, review pass 3 Blind Hunter), 2026-07-14 (epic-6 bmad-loop; normalized 2026-07-15)
+location: godot/src/CreationSuite/TerrainBrush.cs (EndPaint→PushStrokeUndo pushes whenever ≥1 region snapshotted, no before-vs-after equality check)
+severity: low
+reason: A stroke that changed nothing (e.g. paint-mode strokes while TOOL_TEXTURE write is broken [see story 10-16], or flatten on already-flat terrain) still pushes an undo command, so interleaved undo requires an extra Ctrl+Z that visibly does nothing. Clean fix needs cheap stroke-changed-anything detection on the hot path. No data loss.
+status: open
+
+### DW-144: Ctrl+Z is not blocked while a terrain stroke is in progress — undo races the live operate() and corrupts the undo entry
+
+origin: code review of spec-6-2 (terrain persistence, review pass 3 Blind Hunter), 2026-07-14 (epic-6 bmad-loop; normalized 2026-07-15)
+location: godot/src/UI/EntityPlacer.cs (_UnhandledInput Ctrl+Z handling) + godot/src/CreationSuite/TerrainBrush.cs (_isPainting)
+severity: low
+reason: Ctrl+Z with LMB held races RestoreRegions (writing the previous stroke's images) against the live operate() sculpting the same region; EndPaint then captures `after` from the mixed state. Narrow trigger, genuine concurrency hole; a clean fix is cross-node (EntityPlacer consults TerrainBrush._isPainting, or the brush swallows undo mid-stroke).
+status: open
+
+### DW-145: Import leaves a stale author-local TerrainRef when a package bundles zero terrain files
+
+origin: code review of spec-6-2 (terrain persistence, review pass 3 — converged Blind/Edge/Verification-Gap), 2026-07-14 (epic-6 bmad-loop; normalized 2026-07-15)
+location: godot/src/CreationSuite/WinConditionPhase.cs (DoImport — `if (result.TerrainFiles.Count > 0)` has no else clearing TerrainRef)
+severity: low
+reason: Only reachable via hand-built/third-party/cross-version packages (this system exports TerrainRef non-empty IFF terrain files are bundled), so tracked rather than patched into the settled change. Consequence: graceful flat fallback + a repeated "TerrainRef folder missing" PrintErr on every load instead of log-once. Fix: `else { imported.TerrainRef=""; SaveToFile(...); }` in the import path.
+status: open
+
+### DW-146: SimChecksum-folded elevation grid is built via Godot float get_height → Fixed.FromFloat — cross-platform determinism risk
+
+origin: code review of spec-6-3-sim-side-deterministic-terrain-elevation-height-advantage-vision-and-fog-of-war-verify.md (Blind Hunter Finding 3), 2026-07-14 (epic-6 bmad-loop; normalized 2026-07-15)
+location: godot/src/Core/ScenarioLoadPhase.cs (BuildAndInjectElevationGrid)
+severity: medium
+reason: `Terrain3DData.get_height` does float bilinear interpolation whose last bit can differ across ARM/x64 (FMA/rounding); `Fixed.FromFloat`'s `(int)(v*65536)` truncation can then cross a boundary → divergent `Elevation.Raw` → SimChecksum desync between heterogeneous peers. NOT reachable today: all shipped/golden scenarios are flat (Elevation==0) and every TICKING client is x64 (the server is a relay+quorum collector and does not tick — the companion "headless server desync" finding was REJECTED on that evidence). Becomes real when a sculpted map ships on cross-platform clients. Proper fix reads RAW per-region height-map cells per the epic's "never Godot Image interpolation" rule. Flagged as the epic-6 retro's standing determinism watch-item.
+status: open
+
+### DW-147: MovementSystem blocked-cell rejection tests only endpoint cells — a fast unit can tunnel a 1-cell wall in one tick
+
+origin: code review of spec-6-5-impassable-terrain-pathability-paint-deterministic-blocking-and-the-pathability-overlay.md (Blind #1, Edge E2), 2026-07-14 (epic-6 bmad-loop; normalized 2026-07-15)
+location: godot/src/Core/MovementSystem.cs (rejection checks IsBlocked(pos)/IsBlocked(np) only; CELL_SIZE_WORLD=2, dt=1/30)
+severity: low
+reason: A per-tick displacement ≥ the 2-unit cell size (move speed ≥ ~60 world-units/s) or a 1-cell-thick wall can be tunnelled (both endpoints clear). Unreachable with shipping content (golden mover = 1.33 u/tick; authored walls thicker than one cell). Fix: swept-cell (DDA) check pos→np rejecting on the first blocked cell crossed.
+status: open
+
+### DW-148: Slope-DERIVED blocked cells escape ScenarioValidator, and an already-in-blocked unit traverses blocked cells freely
+
+origin: code review of spec-6-5 (pathability; Blind #4, Edge E3/E4, Intent-Alignment d), 2026-07-14 (epic-6 bmad-loop; normalized 2026-07-15)
+location: godot/src/Core/Definitions/ScenarioValidator.cs (CheckNotBlocked decodes only the painted layer) + godot/src/Core/MovementSystem.cs (rejects only a CROSSING: !IsBlocked(pos) && IsBlocked(np))
+severity: medium
+reason: The heightmap isn't available at the Godot-free pre-tick gate, so a spawn on a slope-derived blocked cell ships un-caught, and once inside any blocked cell a unit is exempt from further blocking. Narrow (slope-auto-block is per-map default OFF; the overlay shows steep cells). Fix: a load-time spawn-in-blocked guard against the resolved union grid (after BuildAndInjectPathabilityGrid), and/or confine an in-blocked unit to moves toward a clear cell.
+status: open
+
+### DW-149: Slope derivation samples only +X/+Z — far east/south edge cells never auto-block and cliff walls land one cell to the low side
+
+origin: code review of spec-6-5 (pathability; Blind #7, Edge E5), 2026-07-14 (epic-6 bmad-loop; normalized 2026-07-15)
+location: godot/src/Core/PathabilityGrid.cs (DeriveSlopeBlockedInto — forward-neighbour differences only; ElevationGrid.Sample clamps at max col/row ⇒ rise 0)
+severity: low
+reason: Deterministic (not a determinism bug) and the feature is per-map default OFF; the asymmetry is a quality gap. Fix: max-over-4-neighbours or central difference (skipping clamp-equal neighbours).
+status: open
+
+### DW-150: PathabilityTool re-implements FlowField.WorldToCell locally — nothing pins editor-painted cell == sim-blocked cell
+
+origin: code review of spec-6-5 (pathability; VG5), 2026-07-14 (epic-6 bmad-loop; normalized 2026-07-15)
+location: godot/src/CreationSuite/PathabilityTool.cs (private WorldToCell/CellCenter vs FlowField's)
+severity: low
+reason: They agree today (Mathf.FloorToInt == Fixed.ToInt() arithmetic shift, verified), but a future change to the sim mapping would silently desync what the editor paints from what the sim blocks. Fix: route the tool's cell mapping through the shared FlowField methods or a shared Godot-free helper.
+status: open
+
+### DW-151: Group move/duplicate/paste re-derives placements lossily (worker overrides, pre_built, node collection/owner fields)
+
+origin: code review of spec-6-6-doodads-props-placement-editor-multi-select-copy-paste-rotation-named-cameras-water-floor.md, 2026-07-14 (epic-6 bmad-loop; normalized 2026-07-15)
+location: godot/src/UI/EntityPlacer.cs (Describe captures only id/faction/position [+supply/rate for nodes]; BuildCreate respawns from scratch)
+severity: medium
+reason: A moved/duplicated worker respawns via the combat path losing worker overrides; a building loses its authored pre_built flag; a node loses its Story-4.7 collection/owner fields. Single-entity delete/undo paths ARE identity-preserving — only the multi-select move/copy/paste path is lossy. Authoring-fidelity only, no determinism/checksum impact.
+status: open
+
+### DW-152: Rotation persists on units/buildings/nodes but only props apply visual yaw at spawn
+
+origin: code review of spec-6-6 (doodads/multi-select), 2026-07-14 (epic-6 bmad-loop; normalized 2026-07-15)
+location: godot/src/UI/BuildingBridge.cs / MultiMeshBridge (no per-entity rotation channel); PropRenderer is the sole .Rot consumer
+severity: low
+reason: `Rot` round-trips (hash-excluded) on all placeables, but the sim-render bridges have no per-entity rotation channel, so non-prop yaw is cosmetic-only-unrendered. Footprints stay axis-aligned for 1.0 by design; wiring non-prop yaw is architecturally invasive for low value.
+status: open
+
+### DW-153: Marquee selection and 3D selection markers assume flat y=0 terrain
+
+origin: code review of spec-6-6 (doodads/multi-select), 2026-07-14 (epic-6 bmad-loop; normalized 2026-07-15)
+location: godot/src/UI/EntityPlacer.cs (FinishMarquee unprojects at hard-coded heights; GroundPointOf intersects the y=0 plane)
+severity: low
+reason: Box-select misses entities on Story-6.3 elevated terrain and markers sink below raised ground. The SAME y=0 convention every existing editor tool uses — a pre-existing editor-wide limitation surfaced by the new marquee, not unique to 6.6.
+status: open
+
+### DW-154: No single-active right-dock arbitration — Camera/Water/Region/Pathability panels overlap when two are toggled
+
+origin: code review of spec-6-6 (doodads/cameras/water), 2026-07-14 (epic-6 bmad-loop; normalized 2026-07-15). Confirmed from live use by Alec at the epic-6 retro (2026-07-15).
+location: godot/src/CreationSuite/CameraTool.cs / WaterTool.cs / RegionTool.cs / PathabilityTool.cs (all pin PanelContainer at AnchorLeft/Right=1, OffsetLeft=-300, CanvasLayer Layer=5)
+severity: medium
+reason: Nothing arbitrates a single active tool panel; the pattern is shared with the already-shipped RegionTool/PathabilityTool (6.4/6.5). SCHEDULED: story key 14-6 (epic-6 retro action A3-E6 — single-active-dock arbitration + unified hotkey map) owns the closure.
+status: open
+
+### DW-155: "One group op = one undo step" is unit-tested only against a HashSet proxy, not the real EntityPlacer group-op composition
+
+origin: code review of spec-6-6 (doodads/multi-select), 2026-07-14 (epic-6 bmad-loop; normalized 2026-07-15)
+location: godot/ProjectChimera.Sim.Tests (EditorHistoryTests.GroupOp_IsOneUndoStep) vs godot/src/UI/EntityPlacer.cs (MoveSelection/PasteClipboard/DeleteSelection)
+severity: low
+reason: The test exercises EditorHistory.Push/Undo/Redo via a local closure; EntityPlacer is Godot-coupled and Tier-1-excluded, so the real composition is a manual godot-verify surface (per the spec's Verification section). The epic-6 retro's A7-E6 in-engine session covers the observation half; a structural fix would extract the composition Godot-free.
+status: open
+
+### DW-156: No ContentPackager .chimera.zip round-trip test for props/cameras/water
+
+origin: code review of spec-6-6 (doodads/cameras/water), 2026-07-14 (epic-6 bmad-loop; normalized 2026-07-15)
+location: godot/ProjectChimera.Sim.Tests (ScenarioDataPropsCamerasWaterTests — JSON layer only) vs ContentPackager
+severity: low
+reason: The round-trip is proven at the ScenarioSerializer JSON layer one level below the AC's "package/import" clause; ContentPackager writes scenario.json wholesale so the data rides along, but a zip round-trip assertion would exercise the exact AC surface.
+status: open
+
+### DW-157: Blocking prop/water (and 6.5 painted cells) are not honored by the sim on an F5 Edit→Play re-apply — static PathabilityGrid is built once at boot
+
+origin: code review of spec-6-6 (doodads/cameras/water; Blind F1) + pass-2, 2026-07-14 (epic-6 bmad-loop; normalized 2026-07-15)
+location: godot/src/Core/ScenarioLoadPhase.cs (sole BuildBlockingFootprintMask/PathabilityGrid.Resolve/SetPathabilityGrid/SetStaticBlocked site) + MainScene ResetToAuthoredStart (reuses the boot grid)
+severity: medium
+reason: An obstacle added in Edit mode is walked through in Play until a true reload, even though CanonicalModelHash already folds it that session. AC-consistent (the spec scoped "un-stamps on reload") and no desync risk (all peers reload identically), but high authoring-loop friction. Fix: rebuild the static grid from current ScenarioData inside ResetToAuthoredStart/ScenarioApplier.Apply — covers both 6.5 painted and 6.6 prop/water in one place.
+status: open
+
+### DW-158: MapBounds > 128 — blocking footprints beyond the ±128 flow-grid extent alias onto edge cells; validator can false-flag an unrelated start
+
+origin: code review of spec-6-6 (doodads/cameras/water; Blind F4 + Edge), pass-2, 2026-07-14 (epic-6 bmad-loop; normalized 2026-07-15)
+location: godot/src/Core/PathabilityGrid.cs (StampPropInto/StampWaterInto) + ScenarioValidator (cells via FlowField.WorldToCell, which Math.Clamps to [0, GRID_SIZE-1])
+severity: low
+reason: Two distinct far-out positions alias to one footprint cell — deterministic (no desync) but semantically wrong. Pre-existing whole-editor convention (shared with 6.5 painted cells and entity positions), unreachable when MapBounds ≤ 128 (the 6.7 size set caps at 128). Fix: reject beyond-±grid coords in the validator, or enforce/document MapBounds ≤ 128. Related: DW-162 (the exact +128 boundary line).
+status: open
+
+### DW-159: Prop place/paste/duplicate/group-move have no map-bounds guard (WaterTool guards) — off-map paste persists then fails validation confusingly
+
+origin: code review of spec-6-6 (doodads/cameras/water; Blind F7 + Edge E2), pass-2, 2026-07-14 (epic-6 bmad-loop; normalized 2026-07-15)
+location: godot/src/UI/EntityPlacer.cs (PlaceProp/BuildCreate/PasteClipboard/MoveSelection/DuplicateSelection — no ±MapBounds check; contrast WaterTool.CommitDrag)
+severity: low
+reason: Fail-closed (the validator rejects at next save/F5 — no corruption or determinism impact) but the whole-scenario rejection is a poor authoring experience and inconsistent with the water path. Fix: clamp/reject out-of-bounds creates at place/paste/move time with a status message, mirroring WaterTool.CommitDrag.
+status: open
+
+### DW-160: Variable map-size grid generalization — the escalation record (five hardcoded grid systems need one map-size source of truth)
+
+origin: code review of spec-6-7-map-properties-new-map-flow-2-4-start-positions-and-minimap-preview.md (Intent-Alignment auditor — this entry IS the escalation record the epic RISK NOTE directed), 2026-07-15 (epic-6 bmad-loop; normalized at the retro sweep)
+location: godot/src/Core/FogOfWarSystem.cs (own 128 constants) + FlowField.WORLD_HALF_INT + PathabilityGrid (fixed 2048-byte persist format) + SpatialHash (±160/32-dim) + Terrain3D/NavMesh (256/±128)
+severity: medium
+reason: Story 6.7 ships "map size" as authored playable half-extents (Small 80 / Medium 120 / Large 128, `ScenarioData.MapBounds`) inside the FIXED ±128 grid identity, per the epic RISK NOTE. Truly resizing the grids is a determinism-critical refactor: it changes the pathability persist format (invalidating every stored scenario's `pathability_blocked`) and forces re-baselining every CanonicalModelHash/StartStateHash/golden fixture. Requires a dedicated correct-course story parameterizing the four sim grids from a single map-size truth source in lockstep, `GridDimensionConsistencyTests` extended per-size, and an explicit one-time golden re-baseline. Until then the fixed 80/120/128 set is the shipped contract.
+status: open
+
+### DW-161: Start-position "−" remove is not undoable, and "+" increments the picker count before a backing slot exists
+
+origin: code review of spec-6-7 (map properties; Blind + Edge), 2026-07-15 (epic-6 bmad-loop; normalized at the retro sweep)
+location: godot/src/UI/EntityPlacer.cs (remBtn.Pressed ~:1257 — no _history.Push; addBtn.Pressed ~:1239 — _startSlotCount++ before placement)
+severity: low
+reason: Removing a slot can't be undone, and undoing an earlier move of a since-removed slot can resurrect it, desyncing the picker's transient count from persisted PlayerSlots. Data-at-rest is covered (review PATCH 2: the placement-that-created-a-slot undo removes it; Save persists only placed slots) — this is interaction polish on a godot-verify surface. Fix: route "−" through EditorHistory (redo=remove, undo=re-add) and defer the count increment until a slot is placed.
+status: open
+
+### DW-162: A Large (128) map's +X/+Z boundary line aliases into the last fog/flow/pathability cell
+
+origin: code review of spec-6-7 (map properties; Blind Hunter), 2026-07-15 (epic-6 bmad-loop; normalized at the retro sweep)
+location: godot/src/Core/Definitions/MapSizes (MaxHalfExtent == FlowField.WORLD_HALF_INT == 128) + FlowField.WorldToCell clamp
+severity: low
+reason: Positions exactly on the +128 boundary clamp col/row 128→127. Deterministic, affects only the exact boundary line, same pre-existing WorldToCell clamp convention as DW-158. Fix: give Large a small sub-128 margin, or document the edge as the intended playable ceiling.
+status: open
+
+### DW-163: Start-position editor assumes contiguous 0-based slots — a validator-legal non-contiguous set (e.g. {0,3}) drops markers and misroutes toggles/remove
+
+origin: code review of spec-6-7 (map properties; Blind F3, Edge #1/#3, Verification-Gap), 2026-07-15 (epic-6 bmad-loop; normalized at the retro sweep)
+location: godot/src/Core/ScenarioLoadPhase.cs (SetupStartPositionBridge sizes by clamp(PlayerSlots.Length,2,4) then guards idx < positions.Length) + godot/src/UI/EntityPlacer.cs (toggles by loop index; "−" removes value _startSlotCount-1)
+severity: medium
+reason: ScenarioValidator permits any unique in-range slot set (no contiguity/slot-0 rule), so slot value 3 in a length-2 set is silently dropped at load and palette buttons misroute. The normal editor flow keeps slots contiguous — this bites hand-authored/generated maps; edit-time visual + a stale-base edge, not data corruption (review PATCH 2 hardened RemoveStartPosition's sim-base clear). Fix: size markers/toggles by max declared Slot+1 (clamped) and drive toggle identity from PlayerSlots[i].Slot, or add a validator contiguity rule.
+status: open
+
+### DW-164: The map Export / New-Map write path never runs a hard Validate() — a failing scenario still writes and ships as a package that won't load
+
+origin: code review of spec-6-7 (map properties; Blind F1/F8 — the story's headline finding), 2026-07-15 (epic-6 bmad-loop; normalized at the retro sweep)
+location: godot/src/CreationSuite/WinConditionPhase.cs (ExportMapPackage/CreateNewMap call only the non-fatal CollectAdvisories, after persisting/packaging)
+severity: high
+reason: A scenario that fails validation (e.g. content stranded past MapBounds by a map-size shrink, or a slot overflow) is still written to disk and shipped in a .chimera.zip whose manifest hash validates but whose scenario.json hard-fails CheckCoord on reload — a silent, unloadable export. Pre-existing (export never validated), and review PATCH 1 at least surfaces the stranding as an advisory covering all coordinate-bearing collections — but the package is still writable. Fix: call Validate() before SaveToFile/Pack; on failure abort with the located error.
+status: open
+
+### DW-165: MapBounds is reflected only in placement/tools/hash — camera pan-limits and NavMesh still cover the full ±128 regardless of chosen size
+
+origin: code review of spec-6-7 (map properties; Intent-Alignment Divergence 1 + Blind F11), 2026-07-15 (epic-6 bmad-loop; normalized at the retro sweep)
+location: godot/src/Core/CameraPhase.cs + NavigationPhase (neither reads MapBounds; grep of consumers: validator, Region/Water tools, AI/map-gen, CanonicalModelHash)
+severity: low
+reason: Picking a smaller size restricts placement but not the runtime camera/nav footprint; the spec's Design-Notes claim ("already wired to camera/NavMesh") was inaccurate. ACs still satisfied (grids COVER the extent; placement bounds + hash differ observably). Fix: wire MapBounds into camera pan-limits (and optionally a per-size NavMesh clamp), or correct the documented expectation.
+status: open
+
+### DW-166: Minimap preview renders the live edit-mode World3D — editor gizmos can be captured into preview.png
+
+origin: code review of spec-6-7 (map properties; Blind F5 + Verification-Gap), 2026-07-15 (epic-6 bmad-loop; normalized at the retro sweep)
+location: godot/src/CreationSuite/MinimapPreviewRenderer.cs (renders the caller's World3D, OwnWorld3D=false) + WinConditionPhase.RenderMinimapPreview (invoked during Edit-mode export)
+severity: medium
+reason: The top-down snapshot consumed by skirmish setup (11.1), the MP lobby (9.7), and the content browser (9.10) can capture start-position flag poles, the placement ghost, and active overlays instead of a clean map image. The packaging round-trip is unit-tested and the render fails safe (null → omitted); the visual quality is a godot-verify surface (epic-6 retro A7-E6 covers the observation). Fix: hide editor-only layers/gizmos for the one-shot render (cull mask or visibility toggle), or render from persistent map content only.
+status: open
+
+### DW-167: Economy-spinner edits to an already-placed start slot mutate hash-folded StartCrystal with no EditorHistory push (not undoable)
+
+origin: code review of spec-6-7 (map properties; Blind F4 — surface introduced by pass-1 patch 3), 2026-07-15 (epic-6 bmad-loop; normalized at the retro sweep)
+location: godot/src/UI/EntityPlacer.cs (spin.ValueChanged/crysSpin.ValueChanged → _onStartSlotEconomy → UpdateStartSlotEconomy, no _history.Push; contrast PlaceStartPosition which captures ore/crystal)
+severity: medium
+reason: An accidental economy edit to a placed slot persists immediately and can't be Ctrl+Z'd, breaking the "every editor mutation is one undo step" contract on a hash-folded value. A correct fix must coalesce spinner edits into single undo entries and refresh the mirror + spinner on undo/redo; needs in-engine verification (godot-verify surface).
+status: open
+
+### DW-168: A placed Custom producer shows no in-match train buttons — command-card canProduce/GetProductionUnits are enum-only
+
+origin: code review of spec-6-8-custom-building-placement-thread-an-authored-building-id-through-buildingsystem-scenarioapplier-retire-the-enum-gate.md (Blind Hunter, rated HIGH + Verification-Gap), 2026-07-15 (epic-6 bmad-loop; normalized at the retro sweep)
+location: godot/src/UI/CommandCardSystem.cs (RefreshBuildingCard canProduce ~:322-325 matches only Barracks|ArcheryRange|SiegeWorkshop|Aviary) + godot/src/Economy/BuildingSystem.cs (GetProductionUnit/GetProductionUnits :305/:319 resolve category via enum-only CategoryForBuilding whose default is "Melee")
+severity: high
+reason: The sim TrainUnit path IS def-aware and tested (CustomProducer_RoutesProduction...), but a custom producer's authored produces_category is unreachable from the UI — "placeable, not operable." Out of 6-8's placement intent (the spec explicitly deferred the sibling worker-build-card). Fix: widen canProduce for a Custom producer with non-empty ProducesCategory AND make GetProductionUnit(s) def-aware via the slot's DefinitionId — both must land together or the card lists the wrong (Melee) roster; verify in-engine. Split from DW-68's closure (epic-6 retro, 2026-07-15).
+status: open
+
+### DW-169: Every Custom building gets the fixed 5×3×5 CUSTOM_FOOTPRINT regardless of authored mesh size
+
+origin: code review of spec-6-8 (custom placement; Blind + Edge), 2026-07-15 (epic-6 bmad-loop; normalized at the retro sweep)
+location: godot/src/Navigation/NavObstacleManager.cs (FootprintFor ~:868 returns CUSTOM_FOOTPRINT for any non-enum id) vs BuildingBridge (visual sized from the GLB AABB)
+severity: medium
+reason: A large custom building renders at mesh size but blocks a fixed small box (units clip the visual or collide with empty space). Consistent with existing design (built-ins also use fixed TYPE_SIZE footprints), so not a regression — but authored/mesh-derived footprints are absent for exactly the buildings whose sizes vary. Fix: derive footprints from the def (authored field or mesh AABB) for built-ins and customs alike; verify in-engine.
+status: open
+
+### DW-170: Custom buildings cannot be referenced in triggers — validator/director building_type checks stay enum-only
+
+origin: code review of spec-6-8 (custom placement; Blind Hunter), 2026-07-15 (epic-6 bmad-loop; normalized at the retro sweep)
+location: godot/src/Core/Definitions/ScenarioValidator.cs (trigger building_type checks) + godot/src/Core/ScenarioDirector.cs (Enum.TryParse<BuildingType>)
+severity: medium
+reason: A scenario that places a custom building and references it in a trigger condition fails validation wholesale. Deliberately out of 6-8's intent — the trigger DSL is Epic 7 scope. Fix (Epic 7, alongside the 7.x trigger rebuild): extend trigger building resolution to accept authored building-def ids, mirroring the scenario-buildings gate.
+status: open
+
+### DW-171: BuildingBridge render buckets freeze at Initialize — a mid-session-authored or third-faction custom building renders invisibly
+
+origin: code review of spec-6-8 (custom placement; Blind + Edge + Verification-Gap), 2026-07-15 (epic-6 bmad-loop; normalized at the retro sweep)
+location: godot/src/UI/BuildingBridge.cs (Initialize builds _bucketOf from p1Def/p2Def + the 5 built-in ids; TryBucket returns false → skip, no draw, no diagnostic)
+severity: medium
+reason: A validated scenario-apply always has its ids in buckets, but the live "author a new building in the 4.5 editor → place it" loop and >2-faction cases miss — guarded against a throw but silent. Fix: re-discover/append a bucket when an unknown DefinitionId appears (or route unknowns to a shared CUSTOM_FALLBACK bucket) so a placed building always renders; verify in-engine.
+status: open
+
+### DW-172: def→BuildingStore.Create stat-threading is hand-copied in PlaceBuildingDirectById and CreateEditorBuilding — the "never hand-copied in a spawn path" class
+
+origin: code review of spec-6-8 (custom placement; Blind + Verification-Gap), 2026-07-15 (epic-6 bmad-loop; normalized at the retro sweep)
+location: godot/src/Economy/BuildingSystem.cs (PlaceBuildingDirectById) + godot/src/UI/EntityPlacer.cs (CreateEditorBuilding) — already diverge cosmetically (ShopStock nullable vs Array.Empty)
+severity: medium
+reason: Both blocks map a BuildingDefinition's Hp/SupplyBonus/ConstructionTime/shop/revive into Create with the same logic; both currently correct (Create null-coalesces) but the duplication is the exact drift class the A2 single-mapper rule exists to prevent on the unit side. Fix: extract one BuildingStore.CreateFromDefinition(def, pos, faction, id) helper called from both sim and editor placement (also unlocks the DW-173 fix).
+status: open
+
+### DW-173: Group-move undo of a building restores identity but not def-derived stats — stale stats if the LIFO slot is reused
+
+origin: code review of spec-6-8 (custom placement; Edge Case Hunter), 2026-07-15 (epic-6 bmad-loop; normalized at the retro sweep)
+location: godot/src/UI/EntityPlacer.cs (group-move undo ~:2132 sets Alive/Position/Faction/Type/DefinitionId/timers but not Health/MaxHealth/SupplyBonus/shop/revive)
+severity: low
+reason: Pre-existing (built-in undo also omitted def-derived stats) and BuildingStore recycling makes it unlikely — but 6-8 makes varied def-resolved stats reachable, so a resurrected building can carry a prior occupant's stats. Fix: restore the full def-derived set on undo by re-resolving from DefinitionId (ideally via the DW-172 CreateFromDefinition helper); verify in-engine.
+status: open
