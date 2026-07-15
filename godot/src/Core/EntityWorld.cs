@@ -304,6 +304,15 @@ namespace ProjectChimera.Core
         /// </summary>
         private ElevationGrid _elevationGrid;
 
+        /// <summary>
+        /// Story 6.5: the injected pathability grid (painted ∪ slope-derived blocked cells), or null for a
+        /// flat/legacy map with nothing blocked. Godot builds it at load time (decode + slope-derive) and hands it
+        /// in via <see cref="SetPathabilityGrid"/> BEFORE scenario apply. Consumed by <c>MovementSystem</c> to keep
+        /// a live unit out of a blocked cell. Null / empty ⇒ an exact no-op (byte-identical to pre-feature). Never
+        /// reassigned per-tick — a load-time seam only.
+        /// </summary>
+        public ProjectChimera.Navigation.PathabilityGrid? Pathability { get; private set; }
+
         // --- AoE ---
         /// <summary>
         /// Splash radius (world units) applied when a projectile from this unit hits.
@@ -856,6 +865,14 @@ namespace ProjectChimera.Core
         public void SetElevationGrid(ElevationGrid grid) => _elevationGrid = grid;
 
         /// <summary>
+        /// Story 6.5: inject the load-time pathability grid (painted ∪ slope-derived blocked cells) BEFORE any
+        /// spawn, so the fixed sim tick honors it. Godot decodes the painted bitset + derives slope cells and calls
+        /// this via <c>ScenarioApplier</c>. Never reassigned per-tick — a load-time seam only. Null ⇒ blocking is a
+        /// no-op (byte-identical to pre-feature). Godot-free type, so this setter keeps the sim Godot-free.
+        /// </summary>
+        public void SetPathabilityGrid(ProjectChimera.Navigation.PathabilityGrid? grid) => Pathability = grid;
+
+        /// <summary>
         /// Story 6.3: the vision radius <see cref="ProjectChimera.Core.FogOfWarSystem"/> stamps for this unit — the base
         /// authored <see cref="VisionRange"/> plus, ONLY when <see cref="HeightAdvantageVision"/> is enabled, an
         /// elevation-derived <see cref="Fixed"/> bonus. Computed entirely in <see cref="Fixed"/> so it can merge BEFORE
@@ -1152,6 +1169,9 @@ namespace ProjectChimera.Core
             HeightAdvantageVision    = false;
             HeightVisionBonusPerStep = Fixed.Zero;
             _elevationGrid           = null;
+            // Story 6.5: a cleared world must equal a fresh EntityWorld() — drop any prior load's pathability grid.
+            // ScenarioApplier re-injects it on the next scenario apply.
+            Pathability              = null;
 
             // Re-seed the single shared deterministic RNG to the ctor seed (the folded state must equal a fresh world).
             Rng.Seed(DEFAULT_RNG_SEED);

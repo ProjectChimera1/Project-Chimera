@@ -494,6 +494,9 @@ namespace ProjectChimera.Sim.Tests.Builder
         // [Story 4.4] Re-recorded again 2026-07-09 for AlgoVersion 5 (Story 4.7: ScenarioResourceNode's 6 new
         // fields folded — the model's nodes omit them, but the AlgoVersion bump alone moves every hash, same as
         // every prior bump above).
-        private const ulong ExpectedCanonicalHash = 9661174451589536176UL;
+        // Re-recorded again 2026-07-14 for AlgoVersion 6 (Story 6.5: the authored pathability layer + slope config
+        // folded — the alpha model paints nothing and leaves slope-auto-block off, so the new fields fold as
+        // 0/0/0, but the AlgoVersion 5→6 bump alone moves every hash, same as every prior bump above).
+        private const ulong ExpectedCanonicalHash = 16729097417043282901UL;
     }
 }

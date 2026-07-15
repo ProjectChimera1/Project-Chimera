@@ -26,6 +26,11 @@ namespace ProjectChimera.Core.Bootstrap
         /// <summary>Fail-closed toggle (CHIMERA_VALIDATE_FAILCLOSED, default off). Flip only on a release branch.</summary>
         private static readonly bool _failClosed = ScenarioGate.IsFailClosed();
 
+        /// <summary>Story 6.5: the ElevationGrid built by the most recent <see cref="BuildAndInjectElevationGrid"/>
+        /// (or null on a flat/legacy/failed build), so <see cref="BuildAndInjectPathabilityGrid"/> can derive steep
+        /// slope cells from it without re-sampling Terrain3D.</summary>
+        private ElevationGrid? _lastElevationGrid;
+
         /// <summary>
         /// Pending AI-generated scenario: written by the MapGenerator before the scene reload, consumed here.
         /// Static so it survives the Godot scene reload cycle (the new scene's ScenarioLoadPhase reads it).
@@ -50,6 +55,7 @@ namespace ProjectChimera.Core.Bootstrap
                 // scenario-placed unit samples the FINALIZED heightmap at spawn (see BuildAndInjectElevationGrid).
                 RestoreTerrainFromScenario();
                 BuildAndInjectElevationGrid();
+                BuildAndInjectPathabilityGrid(); // Story 6.5 — after the elevation grid (slope-derive reads it), before apply
                 ApplyScenarioThroughApplier(generated, "ApplyScenario");
                 GD.Print($"[MainScene] Loaded AI-generated scenario: \"{generated.DisplayName}\"");
                 SetupStartPositionBridge();
@@ -67,6 +73,12 @@ namespace ProjectChimera.Core.Bootstrap
                 // sculpted load's grid into this flat fallback. Every unit then spawns at Fixed.Zero elevation
                 // (byte-identical to pre-feature). (review pass 1, F6.)
                 _ctx.Applier.SetElevationGrid(null);
+                _lastElevationGrid = null;
+                // Story 6.5: clear pathability too — a REUSED applier/flow-field must not carry a prior sculpted
+                // load's blocking into this flat fallback (every unit then moves freely, byte-identical to pre-feature).
+                _ctx.Applier.SetPathabilityGrid(null);
+                _ctx.FlowFieldSys?.SetStaticBlocked(null);
+                _ctx.Pathability = null;
                 ApplyFallbackThroughApplier();
             }
             else
@@ -75,6 +87,7 @@ namespace ProjectChimera.Core.Bootstrap
                 // Story 6.3: restore terrain + inject the elevation grid BEFORE apply (spawn-time elevation sampling).
                 RestoreTerrainFromScenario();
                 BuildAndInjectElevationGrid();
+                BuildAndInjectPathabilityGrid(); // Story 6.5 — after the elevation grid, before apply
                 ApplyScenarioThroughApplier(scenario, "ApplyScenario");
                 GD.Print($"[MainScene] Loaded scenario: \"{scenario.DisplayName}\" ({scenario.Id})");
             }
@@ -159,12 +172,12 @@ namespace ProjectChimera.Core.Bootstrap
         {
             // PlaneMesh fallback — no heightmap to sample. Explicitly clear the grid so a REUSED applier can't carry a
             // prior sculpted load's grid into this flat load (review pass 1, F6); units then spawn at Fixed.Zero.
-            if (_ctx.Terrain == null) { _ctx.Applier.SetElevationGrid(null); return; }
+            if (_ctx.Terrain == null) { _ctx.Applier.SetElevationGrid(null); _lastElevationGrid = null; return; }
 
             try
             {
                 var data = _ctx.Terrain.Get("data").AsGodotObject();
-                if (data == null) { _ctx.Applier.SetElevationGrid(null); return; }
+                if (data == null) { _ctx.Applier.SetElevationGrid(null); _lastElevationGrid = null; return; }
 
                 // Sample a grid over the default ±128 world XZ extent at 1 world-unit/cell (256×256). The grid stores
                 // its own extent, so the sim is general over resolution; this Godot-side resolution just matches the
@@ -191,6 +204,7 @@ namespace ProjectChimera.Core.Bootstrap
                 var grid = new ElevationGrid(heights, N, N,
                     Fixed.FromFloat(-half), Fixed.FromFloat(-half), Fixed.FromFloat(cell));
                 _ctx.Applier.SetElevationGrid(grid);
+                _lastElevationGrid = grid; // Story 6.5: reused by slope-auto-block derivation
 
                 if (anyNonZero)
                     GD.Print("[ScenarioLoad] Built sim elevation grid from sculpted terrain (256×256).");
@@ -200,7 +214,58 @@ namespace ProjectChimera.Core.Bootstrap
                 // Never block the load, and never carry a stale grid past a failed build (review pass 1, F6): clear it
                 // so units spawn at flat elevation (Fixed.Zero) rather than a prior load's heightmap.
                 _ctx.Applier.SetElevationGrid(null);
+                _lastElevationGrid = null;
                 GD.PrintErr($"[ScenarioLoad] Elevation grid build failed ({ex.Message}) — units spawn at flat elevation.");
+            }
+        }
+
+        /// <summary>
+        /// Story 6.5 — the Godot→sim pathability seam. Runs AFTER <see cref="BuildAndInjectElevationGrid"/> in the
+        /// "ScenarioLoad" phase, BEFORE apply. Decodes the authored painted bitset
+        /// (<see cref="ScenarioData.PathabilityBlocked"/>) and, when <see cref="ScenarioData.SlopeAutoBlock"/> is on,
+        /// derives steep cells deterministically from the just-built <see cref="ElevationGrid"/> (neighbor rise/run ≥
+        /// <see cref="ScenarioData.SlopeBlockThreshold"/>) and UNIONS them into a Godot-free
+        /// <see cref="ProjectChimera.Navigation.PathabilityGrid"/>. Injects that grid into the 3 sim sinks (the applier
+        /// → EntityWorld at apply, and the FlowFieldSystem's static obstacle mask) plus the SceneContext (the editor
+        /// overlay tool reads it). Null/empty everywhere ⇒ flat (byte-identical to pre-feature).
+        ///
+        /// <para>The single float→<see cref="Fixed"/> boundary is the base64 decode + the slope derivation here; the
+        /// sim's <c>PathabilityGrid.IsBlocked</c> is a pure integer cell lookup. Any decode/derive failure degrades to
+        /// no blocking — never a crash.</para>
+        /// </summary>
+        private void BuildAndInjectPathabilityGrid()
+        {
+            try
+            {
+                ScenarioData? s = _ctx.Scenario;
+
+                // 1-3) Resolve the union grid (painted ∪ slope-derived, or null when nothing is blocked) via the pure,
+                //    Tier-1-tested PathabilityGrid.Resolve. The single float→Fixed boundary for the threshold stays
+                //    here and is applied ONLY when slope-auto-block is on with a positive threshold, so an inert config
+                //    never touches Fixed.FromFloat; the derivation itself is pure Fixed.
+                bool slopeOn = s != null && s.SlopeAutoBlock && s.SlopeBlockThreshold > 0f;
+                Fixed threshold = slopeOn ? Fixed.FromFloat(s!.SlopeBlockThreshold) : Fixed.Zero;
+                Navigation.PathabilityGrid? grid = Navigation.PathabilityGrid.Resolve(
+                    s?.PathabilityBlocked, s?.SlopeAutoBlock ?? false, threshold, _lastElevationGrid);
+
+                // 4) Inject into the sim sinks: the applier threads it into EntityWorld at Apply; the FlowFieldSystem
+                //    ORs the static mask into its obstacle map on the next RebuildObstacles (FlowFieldInit phase). The
+                //    SceneContext carries it so the PathabilityTool overlay (a later phase) can render the union.
+                _ctx.Applier.SetPathabilityGrid(grid);
+                _ctx.FlowFieldSys?.SetStaticBlocked(grid?.Blocked);
+                _ctx.Pathability = grid;
+
+                if (grid != null)
+                    GD.Print($"[ScenarioLoad] Built sim pathability grid (slope-auto-block={slopeOn}).");
+            }
+            catch (System.Exception ex)
+            {
+                // Never block the load, and never carry a stale grid past a failed build: clear all sinks so the map
+                // is fully passable rather than a prior load's blocking.
+                _ctx.Applier.SetPathabilityGrid(null);
+                _ctx.FlowFieldSys?.SetStaticBlocked(null);
+                _ctx.Pathability = null;
+                GD.PrintErr($"[ScenarioLoad] Pathability grid build failed ({ex.Message}) — map fully passable.");
             }
         }
 

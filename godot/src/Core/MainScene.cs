@@ -418,6 +418,7 @@ namespace ProjectChimera.Core
                 new TerrainBrushPhase(_ctx),
                 new ScenarioLoadPhase(_ctx),
                 new RegionToolPhase(_ctx),   // Story 6.4 — after ScenarioLoad so _ctx.Scenario exists to mutate
+                new PathabilityToolPhase(_ctx), // Story 6.5 — after ScenarioLoad so _ctx.Scenario + _ctx.Pathability exist
                 new FactionVisualsPhase(_ctx),
                 new FlowFieldInitPhase(_ctx),
                 new WinConditionPhase(_ctx),

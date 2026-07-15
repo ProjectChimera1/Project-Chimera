@@ -4,4 +4,4 @@
 # Fixture: 2-slot model + 1 node + 1 CommandCenter, plus 2 minted heroes (ids 1e9+7 / 2e9+11).
 # CROSS-PLATFORM SAFE (int/Fixed.Raw only). Re-baseline (intentional change only): CHIMERA_GOLDEN_RECORD=1, run
 # `dotnet test --filter FullyQualifiedName~HeroStartStateGolden`, then `dotnet build` and commit. DO NOT hand-edit.
-startstatehash 2461A3841B1A1A41
+startstatehash 6415E3EA53C88051

@@ -141,6 +141,30 @@ namespace ProjectChimera.Navigation
 
                 world.Velocity[i] = velocity;
                 world.Position[i] = pos + velocity * dt;
+
+                // Story 6.5 — deterministic blocked-cell rejection (the sim TEETH; the flow-field OR-in is only the
+                // live-game "route around" nicety). A live unit may not INTEGRATE its position INTO a blocked cell it
+                // was not already in. Null / all-clear grid ⇒ an exact no-op (Position untouched ⇒ byte-identical to
+                // pre-feature, so flat maps never move a per-tick checksum). Pure Fixed, integer cell lookup, so it is
+                // byte-identical across same-seed replays and both lockstep peers.
+                var pathability = world.Pathability;
+                if (pathability != null && pathability.AnyBlocked)
+                {
+                    FixedVec3 np = world.Position[i];
+                    // Only reject a CROSSING: a unit already standing in a blocked cell (never happens for a validated
+                    // map, but keep it deterministic) is not frozen — it may leave.
+                    if (!pathability.IsBlocked(pos.X, pos.Z) && pathability.IsBlocked(np.X, np.Z))
+                    {
+                        // Wall-slide: keep whichever single-axis move stays out of the blocked cell; otherwise fully
+                        // retain the pre-step position. Ascending id + Fixed-only ⇒ deterministic.
+                        if (!pathability.IsBlocked(np.X, pos.Z))
+                            world.Position[i] = new FixedVec3(np.X, np.Y, pos.Z); // slide along X
+                        else if (!pathability.IsBlocked(pos.X, np.Z))
+                            world.Position[i] = new FixedVec3(pos.X, np.Y, np.Z); // slide along Z
+                        else
+                            world.Position[i] = pos;                              // hard stop at the boundary
+                    }
+                }
             }
         }
     }

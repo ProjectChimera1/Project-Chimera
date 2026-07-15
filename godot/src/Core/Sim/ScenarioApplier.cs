@@ -49,6 +49,11 @@ namespace ProjectChimera.Core.Sim
         // set on the world afterwards, so runtime SpawnUnitAt (trigger/hero respawn) spawns also sample it uniformly.
         private ElevationGrid? _elevationGrid;
 
+        // Story 6.5: the load-time pathability grid (painted ∪ slope-derived blocked cells) the Godot load step
+        // builds and injects (or null for a flat/legacy map with nothing blocked). Set BEFORE Apply so it is threaded
+        // into EntityWorld before any spawn, letting the fixed sim tick keep units out of blocked cells.
+        private ProjectChimera.Navigation.PathabilityGrid? _pathability;
+
         /// <summary>The hero entities placed during the most recent <see cref="Apply"/> (entity id + unit id), for
         /// Story 3.9's init-time hero mint. Cleared at the start of each <see cref="Apply"/>.</summary>
         public IReadOnlyList<HeroProfileLoader.PlacedHero> LastAppliedHeroes => _lastAppliedHeroes;
@@ -82,6 +87,13 @@ namespace ProjectChimera.Core.Sim
         /// </summary>
         public void SetElevationGrid(ElevationGrid? grid) => _elevationGrid = grid;
 
+        /// <summary>
+        /// Story 6.5: inject the load-time <see cref="ProjectChimera.Navigation.PathabilityGrid"/> (painted ∪
+        /// slope-derived blocked cells, Godot-built at load) BEFORE <see cref="Apply"/>. Null ⇒ flat/legacy (blocking
+        /// is a no-op). Godot-free type, so this setter keeps the applier Godot-free.
+        /// </summary>
+        public void SetPathabilityGrid(ProjectChimera.Navigation.PathabilityGrid? grid) => _pathability = grid;
+
         public void Apply(Validated<ScenarioData> v)
         {
             _lastAppliedHeroes.Clear(); // Story 3.9: fresh record of placed heroes for this apply
@@ -110,6 +122,9 @@ namespace ProjectChimera.Core.Sim
             _host.World.HeightAdvantageVision    = s.HeightAdvantageVision;
             _host.World.HeightVisionBonusPerStep = Fixed.FromFloat(s.HeightVisionBonusPerStep);
             _host.World.SetElevationGrid(_elevationGrid);
+            // Story 6.5: thread the pathability grid into the EntityWorld BEFORE any spawn so the fixed sim tick
+            // (MovementSystem) keeps live units out of blocked cells uniformly. Null ⇒ no blocking (byte-identical).
+            _host.World.SetPathabilityGrid(_pathability);
 
             // ── 1. Player slots: faction def + starting ore + base deposit point ─
             foreach (var slot in s.PlayerSlots ?? System.Array.Empty<ScenarioPlayerSlot>())

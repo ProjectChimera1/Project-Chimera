@@ -56,6 +56,16 @@ namespace ProjectChimera.Core.Definitions
             // bytes are identical to the null/absent case, and the caller's object is observably unchanged.
             ScenarioRegion[]? savedRegions = scenario.Regions;
             if (savedRegions is { Length: 0 }) scenario.Regions = null;
+
+            // Story 6.5: normalize an ALL-CLEAR painted pathability layer to null for THIS serialization so a map the
+            // author painted then fully erased serializes byte-identically to a flat/legacy map (the key is omitted
+            // rather than emitting a 2048-byte all-zero bitset). Same swap-under-try/finally, restore-after discipline
+            // as Regions above — Serialize is a pure byte-source and must not mutate the caller's live model. A base64
+            // that decodes to any blocked cell is kept verbatim; only the all-zero case normalizes to null.
+            string? savedPathability = scenario.PathabilityBlocked;
+            if (savedPathability != null
+                && ProjectChimera.Navigation.PathabilityGrid.DigestOfBase64(savedPathability) == 0u)
+                scenario.PathabilityBlocked = null;
             try
             {
                 return JsonSerializer.Serialize(scenario, _options);
@@ -63,6 +73,7 @@ namespace ProjectChimera.Core.Definitions
             finally
             {
                 scenario.Regions = savedRegions;
+                scenario.PathabilityBlocked = savedPathability;
             }
         }
 

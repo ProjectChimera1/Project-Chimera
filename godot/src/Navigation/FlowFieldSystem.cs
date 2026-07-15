@@ -39,6 +39,15 @@ namespace ProjectChimera.Navigation
         private readonly FlowFieldComputer           _computer  = new FlowFieldComputer();
         private readonly Dictionary<int, FlowField>  _cache     = new Dictionary<int, FlowField>();
 
+        /// <summary>
+        /// Story 6.5: the static authored blocked mask (painted ∪ slope-derived cells, same 128²/2-unit/±128 cell
+        /// identity as the obstacle map) injected once at load via <see cref="SetStaticBlocked"/>. OR'd into
+        /// <see cref="_obstacles"/> on every <see cref="RebuildObstacles"/> so the BFS routes AROUND impassable
+        /// terrain in the live game. Null ⇒ no static blocking (byte-identical to pre-feature). Held by reference —
+        /// the load-time seam builds it once and never mutates it thereafter.
+        /// </summary>
+        private bool[]? _staticBlocked;
+
         // ── Obstacle map ──────────────────────────────────────────────────────
 
         /// <summary>
@@ -52,11 +61,30 @@ namespace ProjectChimera.Navigation
             System.Array.Clear(_obstacles, 0, SIZE);
             _cache.Clear();
 
+            // Story 6.5: OR the static authored blocked mask (painted ∪ slope-derived) in FIRST, so the BFS treats
+            // impassable terrain as obstacles and steers units around it. Same cell identity as the building marks
+            // below (both go through FlowField.WorldToCell). Null ⇒ nothing added (byte-identical to pre-feature).
+            if (_staticBlocked != null)
+                for (int c = 0; c < SIZE; c++)
+                    if (_staticBlocked[c]) _obstacles[c] = true;
+
             for (int i = 0; i < buildings.Count; i++)
             {
                 if (!buildings.Alive[i]) continue;
                 MarkBuildingCells(buildings.Position[i], true);
             }
+        }
+
+        /// <summary>
+        /// Story 6.5: inject the static authored blocked mask (painted ∪ slope-derived cells; length
+        /// <see cref="FlowField.CELL_COUNT"/>). Held by reference and OR'd into the obstacle map on the next (and
+        /// every subsequent) <see cref="RebuildObstacles"/>; the field cache is cleared so any already-computed field
+        /// recomputes against the new blocking. Null / wrong-length ⇒ no static blocking. Call once at scenario load.
+        /// </summary>
+        public void SetStaticBlocked(bool[]? mask)
+        {
+            _staticBlocked = (mask != null && mask.Length == SIZE) ? mask : null;
+            _cache.Clear();
         }
 
         /// <summary>

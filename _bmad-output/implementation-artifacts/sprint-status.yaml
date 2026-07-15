@@ -134,7 +134,7 @@ development_status:
   6-2-persist-sculpted-terrain-height-painted-textures-across-save-load-stroke-undo-redo-headline-defect-fix: done
   6-3-sim-side-deterministic-terrain-elevation-height-advantage-vision-and-fog-of-war-verify: done
   6-4-regions-named-areas-as-a-first-class-map-trigger-primitive: done
-  6-5-impassable-terrain-pathability-paint-deterministic-blocking-and-the-pathability-overlay: backlog
+  6-5-impassable-terrain-pathability-paint-deterministic-blocking-and-the-pathability-overlay: done
   6-6-doodads-props-placement-editor-multi-select-copy-paste-rotation-named-cameras-water-floor: backlog
   6-7-map-properties-new-map-flow-2-4-start-positions-and-minimap-preview: backlog
   6-8-custom-building-placement-thread-an-authored-building-id-through-buildingsystem-scenarioapplier-retire-the-enum-gate: backlog

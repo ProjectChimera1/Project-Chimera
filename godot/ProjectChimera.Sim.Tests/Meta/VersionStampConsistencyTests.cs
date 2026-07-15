@@ -64,8 +64,11 @@ namespace ProjectChimera.Sim.Tests.Meta
         /// v3 (Story 2.9b follow-up): folded ScenarioPlayerSlot.StartCrystal (sim-affecting per-slot start-state).
         /// v4 (Story 4.4): folded ScenarioData.Supply's resolved values (sim-affecting supply/cap config).
         /// v5 (Story 4.7): folded ScenarioResourceNode's 6 new fields (collection model / resource type /
-        /// requires_structure gate / owner slot / income period — all sim-affecting).</summary>
-        private const int ExpectedCanonicalModelHashAlgoVersion = 5;
+        /// requires_structure gate / owner slot / income period — all sim-affecting).
+        /// v6 (Story 6.5): folded the authored pathability layer (painted blocked bitset digest + slope-auto-block
+        /// config) — lockstep-critical because it feeds MOVEMENT (Position is checksummed), so a mismatched blocked
+        /// layer must reject at the handshake instead of desyncing in-sim.</summary>
+        private const int ExpectedCanonicalModelHashAlgoVersion = 6;
 
         /// <summary>Load-time canonical START-STATE hash algorithm version (Story 3.2, AC3) — a NEW, distinct FNV-64
         /// over the full init state = the <see cref="CanonicalModelHash"/> content seed PLUS the HeroStore rows.

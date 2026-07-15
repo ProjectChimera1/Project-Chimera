@@ -2,6 +2,7 @@
 using System;
 using System.Collections.Generic;
 using ProjectChimera.Core; // Faction, FactionRegistry, BuildingType
+using ProjectChimera.Navigation; // PathabilityGrid (Story 6.5 blocked-cell fail-closed)
 
 namespace ProjectChimera.Core.Definitions
 {
@@ -84,6 +85,14 @@ namespace ProjectChimera.Core.Definitions
 
             float bounds = m.MapBounds;
 
+            // ── Story 6.5: the slope-auto-block threshold is a float→Fixed boundary folded into CanonicalModelHash.
+            //    An out-of-range/non-finite value would overflow Fixed.FromFloat with a platform-unspecified result
+            //    (peers on different runtimes could then fold different Raw ⇒ false handshake reject), so gate it
+            //    finite, non-negative, and inside the Fixed range like map_bounds. Default 0f passes unchanged. ──
+            if (!Finite(m.SlopeBlockThreshold) || m.SlopeBlockThreshold < 0f || m.SlopeBlockThreshold >= Range)
+                return ValidationResult.Fail(
+                    $"scenario.slope_block_threshold={m.SlopeBlockThreshold} must be finite and within [0, {Range}).", validated);
+
             // ── Collections must be present. A null array is malformed input the applier would NRE on, so the
             // validator rejects it (located) rather than silently treating it as empty via the `?? Array.Empty`
             // guards below — those are then belt-and-suspenders. [Story 1.7 review patch] ──
@@ -94,6 +103,19 @@ namespace ProjectChimera.Core.Definitions
             // Story 1.11 (AC3): triggers are now gated too. A null array would NRE in ScenarioDirector.LoadScenario
             // (new bool[_triggers.Length]); reject it located, like the four collections above.
             if (m.Triggers is null)      return ValidationResult.Fail("scenario.triggers is null.", validated);
+
+            // ── Story 6.5: decode the authored PAINTED pathability layer ONCE (null/all-clear ⇒ no grid ⇒ every
+            //    position check below is a no-op, so a flat/legacy map's pass path is unchanged). Only the PAINTED
+            //    cells are validated here — slope-DERIVED cells depend on the terrain heightmap, which isn't available
+            //    at this Godot-free pre-tick gate; they are recomputed at load and never carry a start/spawn (the
+            //    editor overlay lets the author see and avoid them). Positions resolve through the SAME 128²/2-unit
+            //    FlowField.WorldToCell mapping the sim enforces, so validator↔sim agree on cell identity. ──
+            PathabilityGrid? painted = null;
+            if (!string.IsNullOrEmpty(m.PathabilityBlocked))
+            {
+                var g = new PathabilityGrid(PathabilityGrid.FromBase64(m.PathabilityBlocked));
+                if (g.AnyBlocked) painted = g;
+            }
 
             // ── Player slots: range / non-negative ore / in-bounds base / engine ceiling / uniqueness ──
             // declared = the set of slots a PlayerSlot actually declares; buildings/units must reference one of
@@ -125,6 +147,11 @@ namespace ProjectChimera.Core.Definitions
                          ?? CheckCoord($"scenario.player_slots[{i}].base_x", s.BaseX, bounds)
                          ?? CheckCoord($"scenario.player_slots[{i}].base_z", s.BaseZ, bounds);
                 if (e != null) return ValidationResult.Fail(e, validated);
+
+                // Story 6.5: a start position on a PAINTED blocked cell fails closed — a unit could never legally
+                // occupy it, so the map is unplayable. Fail before any tick with a clear message.
+                string? be = CheckNotBlocked($"scenario.player_slots[{i}]", "start base", s.BaseX, s.BaseZ, painted);
+                if (be != null) return ValidationResult.Fail(be, validated);
             }
 
             // ── Resource nodes: in-bounds position, non-negative supply/rate, non-negative gatherer cap ──
@@ -134,6 +161,9 @@ namespace ProjectChimera.Core.Definitions
                 ScenarioResourceNode n = nodes[i];
                 string? e = CheckCoord($"scenario.resource_nodes[{i}].x", n.X, bounds)
                          ?? CheckCoord($"scenario.resource_nodes[{i}].z", n.Z, bounds)
+                         // Story 6.5: a resource node on a painted blocked cell is unreachable by gatherers (soft-lock)
+                         // — fail closed, the same principle as start bases/units below.
+                         ?? CheckNotBlocked($"scenario.resource_nodes[{i}]", "resource node", n.X, n.Z, painted)
                          ?? CheckNonNeg($"scenario.resource_nodes[{i}].supply", n.Supply)
                          ?? CheckNonNeg($"scenario.resource_nodes[{i}].rate", n.Rate);
                 if (e != null) return ValidationResult.Fail(e, validated);
@@ -179,7 +209,10 @@ namespace ProjectChimera.Core.Definitions
             {
                 ScenarioBuilding b = buildings[i];
                 string? e = CheckCoord($"scenario.buildings[{i}].x", b.X, bounds)
-                         ?? CheckCoord($"scenario.buildings[{i}].z", b.Z, bounds);
+                         ?? CheckCoord($"scenario.buildings[{i}].z", b.Z, bounds)
+                         // Story 6.5: a pre-placed building on a painted blocked cell is an authoring error (its
+                         // spawn/rally point would be impassable) — fail closed, consistent with the start-base check.
+                         ?? CheckNotBlocked($"scenario.buildings[{i}]", "building position", b.X, b.Z, painted);
                 if (e != null) return ValidationResult.Fail(e, validated);
                 if (!declared.Contains(b.Slot))
                     return ValidationResult.Fail(
@@ -200,6 +233,10 @@ namespace ProjectChimera.Core.Definitions
                 if (!declared.Contains(u.Slot))
                     return ValidationResult.Fail(
                         $"scenario.units[{i}].slot={u.Slot} references no declared player_slot.", validated);
+
+                // Story 6.5: a pre-placed unit on a PAINTED blocked cell fails closed (same cell domain as the sim).
+                string? ube = CheckNotBlocked($"scenario.units[{i}]", "unit position", u.X, u.Z, painted);
+                if (ube != null) return ValidationResult.Fail(ube, validated);
             }
 
             // ── Regions (Story 6.4) — fail-closed well-formedness so a malformed/cheat region can never reach the
@@ -340,6 +377,10 @@ namespace ProjectChimera.Core.Definitions
                     {
                         string? ce = CheckCoord($"{ap}.x", a.X, bounds) ?? CheckCoord($"{ap}.z", a.Z, bounds);
                         if (ce != null) return ValidationResult.Fail(ce, validated);
+                        // Story 6.5: a spawn_unit trigger that would place a unit on a PAINTED blocked cell fails
+                        // closed (same cell domain as the sim) — a spawned unit could never legally occupy it.
+                        string? sbe = CheckNotBlocked(ap, "spawn_unit position", a.X, a.Z, painted);
+                        if (sbe != null) return ValidationResult.Fail(sbe, validated);
                     }
                 }
             }
@@ -491,6 +532,21 @@ namespace ProjectChimera.Core.Definitions
                 return $"{path}={v} is non-finite or outside the 16.16 range [-{Range}, {Range}).";
             if (v < 0f)
                 return $"{path}={v} must be >= 0.";
+            return null;
+        }
+
+        /// <summary>
+        /// Story 6.5: fail-closed if (x, z) resolves to a PAINTED blocked cell, using the SAME
+        /// <c>FlowField.WorldToCell</c> 128²/2-unit mapping the sim enforces (validator↔sim agree on cell identity).
+        /// Null grid (no paint / all-clear) ⇒ always OK (no behavior change for flat/legacy maps). The float→Fixed
+        /// conversion here is the sanctioned load-time boundary (this validator already quantizes region corners the
+        /// same way).
+        /// </summary>
+        private static string? CheckNotBlocked(string path, string what, float x, float z, PathabilityGrid? painted)
+        {
+            if (painted == null) return null;
+            if (painted.IsBlocked(Fixed.FromFloat(x), Fixed.FromFloat(z)))
+                return $"{path} {what} ({x}, {z}) is on a painted impassable (blocked) cell — no unit can occupy it.";
             return null;
         }
 

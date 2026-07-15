@@ -412,5 +412,49 @@ namespace ProjectChimera.Core.Definitions
         [JsonPropertyName("regions")]
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public ScenarioRegion[]? Regions { get; set; }
+
+        /// <summary>
+        /// The authored impassable-terrain paint (Story 6.5): base64 of the packed 128²/8 = 2048-byte blocked bitset
+        /// (bit i = cell i = row*128 + col, mapping through <c>FlowField.WorldToCell</c>). NULL (the default, every
+        /// existing scenario) ⇒ nothing painted, and the field is OMITTED from serialization when null
+        /// (<see cref="JsonIgnoreCondition.WhenWritingNull"/>, the <see cref="Regions"/> omit-when-null precedent) —
+        /// so a flat/legacy map serializes byte-for-byte identically to pre-feature. An all-clear painted layer is
+        /// normalized back to null at the serialize chokepoint (<c>ScenarioSerializer.Serialize</c>). Decoded once at
+        /// load into a Godot-free <c>PathabilityGrid</c> that the deterministic sim honors (a unit cannot cross into
+        /// a blocked cell) and the flow field routes around. FOLDED into <see cref="CanonicalModelHash"/> (via
+        /// <c>PathabilityGrid.DigestOfBase64</c>) because pathing is lockstep-critical: two peers with mismatched
+        /// painted layers produce divergent unit paths, so a mismatch must be rejected at the handshake rather than
+        /// desyncing in-sim. Validated (fail-closed) by <see cref="ScenarioValidator"/> — a start/spawn on a painted
+        /// blocked cell is rejected before any tick.
+        /// </summary>
+        [JsonPropertyName("pathability_blocked")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public string? PathabilityBlocked { get; set; }
+
+        /// <summary>
+        /// The per-map slope-derived auto-block toggle (Story 6.5). When true, steep cells (neighbor rise/run ≥
+        /// <see cref="SlopeBlockThreshold"/>) are derived deterministically from the <c>ElevationGrid</c> at load and
+        /// UNIONED into the runtime pathability grid; when false (the default, every existing scenario) no cells are
+        /// derived and a flat map behaves byte-identically to pre-feature. OMITTED from serialization when default
+        /// (<see cref="JsonIgnoreCondition.WhenWritingDefault"/>, the <see cref="HeightAdvantageVision"/>
+        /// omit-when-default precedent). The slope CONFIG (this toggle + threshold) is FOLDED into
+        /// <see cref="CanonicalModelHash"/>; the derived cells themselves ride the terrain heightmap (not the
+        /// handshake — <c>TerrainRef</c> is neutralized) and are recomputed deterministically at load.
+        /// </summary>
+        [JsonPropertyName("slope_auto_block")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+        public bool SlopeAutoBlock { get; set; } = false;
+
+        /// <summary>
+        /// The slope-auto-block steepness threshold (Story 6.5) — the minimum neighbor rise/run (world Y per world
+        /// unit) at which a flow cell auto-blocks — consulted only when <see cref="SlopeAutoBlock"/> is enabled.
+        /// Default 0f, OMITTED from serialization when default (<see cref="JsonIgnoreCondition.WhenWritingDefault"/>)
+        /// so existing scenarios serialize byte-identically. Resolved once (float→Fixed) at load-time slope
+        /// derivation. Folded (as its quantized <c>Fixed.Raw</c>) into <see cref="CanonicalModelHash"/> with the
+        /// toggle so a mismatched slope config is handshake-rejectable.
+        /// </summary>
+        [JsonPropertyName("slope_block_threshold")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+        public float SlopeBlockThreshold { get; set; } = 0f;
     }
 }

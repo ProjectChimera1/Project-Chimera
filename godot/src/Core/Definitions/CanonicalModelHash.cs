@@ -3,6 +3,7 @@ using System;
 using System.Linq;
 using System.Text;
 using ProjectChimera.Core; // Fixed
+using ProjectChimera.Navigation; // PathabilityGrid.DigestOfBase64 (Story 6.5 fold)
 
 namespace ProjectChimera.Core.Definitions
 {
@@ -21,7 +22,11 @@ namespace ProjectChimera.Core.Definitions
     ///     add_resources / set_variable) that DO mutate <c>SimChecksum</c>-folded state — and Triggers are an
     ///     already-accepted, bounded handshake gap (deferred to Epic 7). When Triggers are folded into the
     ///     handshake, Regions fold with them (and the version bumps then). The Block-If tripwire is a NON-trigger
-    ///     sim consumer of region containment. No fold below, <c>AlgoVersion</c> stays 5, no golden re-record.
+    ///     sim consumer of region containment. No fold below, <c>AlgoVersion</c> stays excluded (the v6 bump is Story 6.5's
+        ///     pathability layer, a separate concern — Regions themselves stay excluded on the Triggers basis).
+        ///   • <c>PathabilityBlocked</c> + slope config (Story 6.5) FOLDED (AlgoVersion 5→6) — the deliberate INVERSE
+        ///     of the Regions decision: pathability feeds MOVEMENT (Position is checksummed), so a mismatched blocked
+        ///     layer desyncs in-sim and must be rejected at the handshake. See the <see cref="AlgoVersion"/> doc.
     ///   • <c>ScenarioPlayerSlot.StartCrystal</c> FOLDED (Story 2.9b follow-up, AlgoVersion 2→3): it is sim-affecting
     ///     (Crystal is folded in SimChecksum, and <c>alpha_map_01.json</c> now ships a nonzero start_crystal), so two
     ///     clients with mismatched start_crystal now hash DIFFERENTLY here and are rejected at the handshake instead
@@ -56,8 +61,18 @@ namespace ProjectChimera.Core.Definitions
         /// sim-affecting (collection model / resource routing / the requires_structure gate / Income's credit
         /// destination), so a lobby mismatch on any of them must reject at the handshake instead of desyncing
         /// in-sim. An omitted field hashes identically to its documented default (every existing scenario is
-        /// unaffected).</summary>
-        public const int AlgoVersion = 5;
+        /// unaffected).
+        /// 6 = additionally folds the Story 6.5 authored PATHABILITY layer — the painted blocked bitset
+        /// (<see cref="ScenarioData.PathabilityBlocked"/> via <c>PathabilityGrid.DigestOfBase64</c>) plus the slope-
+        /// auto-block config (<see cref="ScenarioData.SlopeAutoBlock"/> + quantized
+        /// <see cref="ScenarioData.SlopeBlockThreshold"/>). This is the DELIBERATE INVERSE of the Regions decision
+        /// (regions feed only triggers → excluded): pathability feeds MOVEMENT (a core sim system whose output,
+        /// Position, is checksummed), so two peers with mismatched blocked layers produce divergent paths and desync
+        /// from the first move order — the established fix is handshake rejection, not in-sim detection. An absent
+        /// paint + slope-off hashes IDENTICALLY to the pre-6.5 v5 fold (digest 0, toggle 0, threshold 0), so every
+        /// existing scenario is unaffected; a real painted/slope change moves the handshake hash. This forces a
+        /// ONE-TIME re-baseline of the handshake fixtures (human-authorized 2026-07-14).</summary>
+        public const int AlgoVersion = 6;
 
         private const ulong Offset = 14695981039346656037UL; // FNV-64 offset basis
         private const ulong Prime  = 1099511628211UL;        // FNV-64 prime
@@ -81,6 +96,19 @@ namespace ProjectChimera.Core.Definitions
             // shipped-scenario golden (only the HeroStartStateScenario test fixture, uniquely carrying a non-empty
             // TerrainRef, re-records once by design — human-authorized 2026-07-14).
             h = MixStr(h, "");
+
+            // Story 6.5 (v6): fold the authored PATHABILITY layer — lockstep-critical because it feeds MOVEMENT
+            // (unit paths → Position, which IS in SimChecksum). The painted bitset folds via its content DIGEST
+            // (PathabilityGrid.DigestOfBase64: FNV over the packed bytes, normalized so an all-clear / absent layer
+            // digests to 0), NOT the raw base64 string — so two encodings of the same blocked set hash equally and an
+            // omitted layer hashes identically to an all-clear one (every existing scenario is unaffected). The slope
+            // CONFIG (toggle + quantized threshold) folds alongside so a mismatched auto-block setting is handshake-
+            // rejectable; the slope-DERIVED cells themselves ride the terrain heightmap (TerrainRef is neutralized
+            // above) and are recomputed deterministically at load, inheriting 6.3's accepted terrain-not-in-handshake
+            // residual. This is the deliberate INVERSE of the Regions exclusion (see the AlgoVersion doc).
+            h = MixInt(h, unchecked((int)PathabilityGrid.DigestOfBase64(m.PathabilityBlocked)));
+            h = MixInt(h, m.SlopeAutoBlock ? 1 : 0);
+            h = MixInt(h, Fixed.FromFloat(m.SlopeBlockThreshold).Raw);
 
             // Story 4.4: fold Supply via the SAME SupplyConfig.Resolve ResourceStore.ConfigureSupply uses — the
             // single resolution+clamp boundary, so hash-equality <=> post-resolution runtime-equality holds both

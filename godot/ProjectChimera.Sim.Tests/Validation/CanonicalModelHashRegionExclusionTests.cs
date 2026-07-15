@@ -22,9 +22,11 @@ namespace ProjectChimera.Sim.Tests.Validation
         };
 
         [Fact]
-        public void AlgoVersions_Unchanged() // 5 for canonical, 2 for start-state
+        public void AlgoVersions_Unchanged() // 6 for canonical (Story 6.5 pathability), 2 for start-state
         {
-            Assert.Equal(5, CanonicalModelHash.AlgoVersion);
+            // Story 6.5 bumped CanonicalModelHash 5→6 to fold the pathability layer — a SEPARATE concern from
+            // Regions, which remain EXCLUDED (the with/without-regions equality below still holds at v6).
+            Assert.Equal(6, CanonicalModelHash.AlgoVersion);
             Assert.Equal(2, StartStateHash.AlgoVersion);
         }
 

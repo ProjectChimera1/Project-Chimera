@@ -77,6 +77,10 @@ namespace ProjectChimera.Core.Bootstrap
         public FogOfWarBridge      FogBridge  = null!;   // Rendering
         public StartPositionBridge StartPosBridge = null!;  // ScenarioLoad
         public ScenarioData?       Scenario   = null;    // ScenarioLoad (live edited scenario; null on fallback)
+        /// <summary>Story 6.5: the load-time pathability grid (painted ∪ slope-derived blocked cells) built by
+        /// ScenarioLoad; null when nothing is blocked. Read by the PathabilityTool overlay (a later phase) for its
+        /// initial render. The sim consumes its own injected copy (via the applier/EntityWorld), never this handle.</summary>
+        public ProjectChimera.Navigation.PathabilityGrid? Pathability = null;  // ScenarioLoad
         public ScenarioData?       FallbackMirror = null; // ScenarioLoad (hardcoded-fallback mirror, for the canonical hash)
         public bool                ScenarioApplied = false; // ScenarioLoad (true once a model reached the sim — gates the _Ready hash)
 
