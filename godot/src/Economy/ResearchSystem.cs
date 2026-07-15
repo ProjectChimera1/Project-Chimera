@@ -311,7 +311,9 @@ namespace ProjectChimera.Economy
             {
                 if ((world.Flags[id] & EntityFlags.Alive) == 0) continue;
                 if (world.FactionOf[id] != faction) continue;
-                ApplyCumulativeModifier(id, faction, f, researchIndex);
+                // DW-85: living-army completion must NOT burst-heal — preserve current Health across the
+                // remove-then-reapply while the MaxHealth ceiling grows.
+                ApplyCumulativeModifier(world, id, faction, f, researchIndex, preserveCurrentHealth: true);
             }
 
             _events?.Push(CombatEventType.ResearchComplete, _research.StartedAtPosition[f]);
@@ -331,12 +333,28 @@ namespace ProjectChimera.Economy
         /// remove) and re-applies fresh: the combination is what makes "one cumulative slot per research,
         /// StackRule.Refresh" carry the GROWN magnitude (never <see cref="StackRule.Stack"/>-ed per level, per the
         /// spec's Design Notes).
+        ///
+        /// <para><b>DW-85 heal suppression.</b> <see cref="ModifierStore.ApplyStatDeltas"/>' Decision-#3 heals current
+        /// Health by any positive MaxHealth delta on APPLY. For a repeatable +MaxHealth research this would burst-heal
+        /// every living faction unit by the FULL cumulative bonus on every completion (and the remove step first clamps
+        /// Health DOWN by the OLD cumulative), turning the research into a repeatable army-heal. When
+        /// <paramref name="preserveCurrentHealth"/> is true (the living-army completion path), this snapshots
+        /// <c>world.Health[id]</c> before the remove+reapply and restores it afterward — re-clamped into the freshly
+        /// raised <see cref="EntityWorld.EffectiveMaxHealth"/> — so the ceiling grows but current Health stays invariant.
+        /// The future-spawn catch-up path (<see cref="ApplyCompletedResearch"/>) passes false so a newly trained unit
+        /// still spawns at full upgraded HP. <see cref="ModifierStore"/>'s shared heal-on-apply semantics are untouched.</para>
         /// </summary>
-        private void ApplyCumulativeModifier(int id, Faction faction, int f, int researchIndex)
+        private void ApplyCumulativeModifier(EntityWorld world, int id, Faction faction, int f, int researchIndex, bool preserveCurrentHealth)
         {
             int modId = ResearchModifierId(researchIndex);
+            Fixed healthBefore = world.Health[id];    // DW-85: snapshot to suppress the remove-then-reapply burst-heal
             _modifiers.RemoveByModifierId(id, modId); // revert the stale (smaller) delta, if any
             _modifiers.Apply(id, BuildCumulativeModifier(f, researchIndex), casterId: id, casterFaction: faction);
+            // living-army completion only; future-spawn catch-up keeps its heal. IsAlive re-checked because this
+            // writes a per-entity SoA slot after Apply/Remove — mirrors ModifierStore's post-effect IsAlive guards
+            // (defensive against a future lethal research period/expire effect that could recycle the host mid-apply).
+            if (preserveCurrentHealth && world.IsAlive(id))
+                world.Health[id] = Fixed.Clamp(healthBefore, Fixed.Zero, world.EffectiveMaxHealth[id]);
         }
 
         /// <summary>
@@ -381,7 +399,9 @@ namespace ProjectChimera.Economy
             for (int ri = 0; ri < ResearchCount(fdef); ri++)
             {
                 if (_research.CompletedLevels[f][ri] <= 0) continue;
-                ApplyCumulativeModifier(id, faction, f, ri);
+                // Future-spawn catch-up KEEPS the heal (preserveCurrentHealth: false) so a freshly trained unit
+                // spawns at full upgraded HP — DW-85 suppresses the heal for the living-army path only.
+                ApplyCumulativeModifier(world, id, faction, f, ri, preserveCurrentHealth: false);
             }
         }
 

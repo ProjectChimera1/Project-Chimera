@@ -1638,3 +1638,7 @@ location: godot/src/UI/EntityPlacer.cs (group-move undo ~:2132 sets Alive/Positi
 severity: low
 reason: Pre-existing (built-in undo also omitted def-derived stats) and BuildingStore recycling makes it unlikely — but 6-8 makes varied def-resolved stats reachable, so a resurrected building can carry a prior occupant's stats. Fix: restore the full def-derived set on undo by re-resolving from DefinitionId (ideally via the DW-172 CreateFromDefinition helper); verify in-engine.
 status: open
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-14-1-remediation-dw-85-suppress-the-maxhealth-research-army-heal-on-re-apply.md`
+  summary: A net-negative-MaxHealth modifier (research/item/aura) can drive `EffectiveMaxHealth` to 0 and pin a unit at 0 HP while it stays alive — no system raises death from a modifier-driven ceiling collapse.
+  evidence: `ModifierSystem.RecomputeEntity` floors `EffectiveMaxHealth` at 0 and `ModifierStore.ApplyStatDeltas`/the new DW-85 `ResearchSystem` restore both `Fixed.Clamp(Health, 0, EffectiveMaxHealth)`, so a 0 ceiling yields a 0-HP-alive "zombie". Pre-existing and shared across every +MaxHealth producer (not caused by DW-85 — the research restore mirrors the long-standing ModifierStore clamp); content-gated (no shipped content authors a net-negative max-health modifier today). Closure: decide whether a modifier-driven `EffectiveMaxHealth == 0` should kill the unit (and where that death is raised), or whether 0-HP-alive is intended for the "modifiers never kill" design.

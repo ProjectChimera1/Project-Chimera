@@ -24,6 +24,8 @@ namespace ProjectChimera.Sim.Tests.Economy
         private const int AdvancedIdx = 1; // 1 level, Prerequisites = ["armor_up"] (a RESEARCH prerequisite)
         private const int GatedIdx = 2;    // 1 level, Prerequisites = ["req_building"] (a BUILDING prerequisite)
         private const int OverflowIdx = 3; // 2 levels, each ArmorDelta individually valid but summing past the Fixed ceiling
+        private const int HpUpIdx = 4;     // 2 levels, each +50 MaxHealth — DW-85 heal-suppression coverage
+        private const int HpDownIdx = 5;   // 1 level, -50 MaxHealth (authorable) — DW-85 down-clamp branch coverage
 
         private sealed class Harness
         {
@@ -51,7 +53,7 @@ namespace ProjectChimera.Sim.Tests.Economy
                 Id = "p1",
                 Buildings = new List<BuildingDefinition>
                 {
-                    new BuildingDefinition { Id = "lab", AvailableResearch = new[] { "armor_up", "advanced", "gated", "overflow_test" } },
+                    new BuildingDefinition { Id = "lab", AvailableResearch = new[] { "armor_up", "advanced", "gated", "overflow_test", "hp_up", "hp_down" } },
                     new BuildingDefinition { Id = "no_research_shop", AvailableResearch = System.Array.Empty<string>() },
                 },
                 Research = new List<ResearchDefinition>
@@ -101,6 +103,34 @@ namespace ProjectChimera.Sim.Tests.Economy
                                                  ModifierDelta = new ResearchModifierDelta { ArmorDelta = 20000f } },
                             new ResearchLevel { Cost = new Dictionary<string, int> { { "ore", 1 } }, TimeTicks = 1,
                                                  ModifierDelta = new ResearchModifierDelta { ArmorDelta = 20000f } },
+                        },
+                    },
+                    new ResearchDefinition
+                    {
+                        // DW-85: a repeatable +MaxHealth ladder. Completing a level must raise the ceiling on living
+                        // faction units WITHOUT burst-healing their current Health (the living-army heal exploit).
+                        Id = "hp_up",
+                        Prerequisites = System.Array.Empty<string>(),
+                        Levels = new List<ResearchLevel>
+                        {
+                            new ResearchLevel { Cost = new Dictionary<string, int> { { "ore", 10 } }, TimeTicks = 1,
+                                                 ModifierDelta = new ResearchModifierDelta { MaxHealthDelta = 50f } },
+                            new ResearchLevel { Cost = new Dictionary<string, int> { { "ore", 10 } }, TimeTicks = 1,
+                                                 ModifierDelta = new ResearchModifierDelta { MaxHealthDelta = 50f } },
+                        },
+                    },
+                    new ResearchDefinition
+                    {
+                        // DW-85 (review): a NET-NEGATIVE max_health research is authorable (ResearchValidator rejects
+                        // only |delta| >= 32768). Completing it on the living-army path must clamp current Health DOWN
+                        // to the reduced ceiling — exercises the down-clamp branch of the preserve-health restore that
+                        // every positive-delta test leaves as a pass-through.
+                        Id = "hp_down",
+                        Prerequisites = System.Array.Empty<string>(),
+                        Levels = new List<ResearchLevel>
+                        {
+                            new ResearchLevel { Cost = new Dictionary<string, int> { { "ore", 10 } }, TimeTicks = 1,
+                                                 ModifierDelta = new ResearchModifierDelta { MaxHealthDelta = -50f } },
                         },
                     },
                 },
@@ -401,6 +431,109 @@ namespace ProjectChimera.Sim.Tests.Economy
             Assert.Equal(2, h.Research.CompletedLevels[(int)Faction.Player1][ArmorUpIdx]);
             // Cumulative delta is now level0 (2) + level1 (3) = 5.
             Assert.Equal(Fixed.FromInt(5), h.World.EffectiveArmor[unit]);
+        }
+
+        // ── DW-85: +MaxHealth research must NOT burst-heal the living army ─────────────────────────
+        // Matrix row 1: a damaged living unit whose faction completes a positive-MaxHealth research level gets the
+        // raised ceiling but keeps its current Health (no heal on the remove-then-reapply of the cumulative slot).
+        [Fact]
+        public void Complete_HpUp_DamagedUnit_RaisesCeilingButDoesNotHeal()
+        {
+            var h = Build();
+            int unit = h.World.Create(FixedVec3.Zero, Faction.Player1, Fixed.FromInt(100), Fixed.FromInt(3));
+            h.World.Health[unit] = Fixed.FromInt(10); // damaged: 10/100
+
+            Assert.True(h.Sys.StartResearchCommand(h.LabId, Faction.Player1, HpUpIdx));
+            h.Sys.Tick(h.World, Fixed.Zero); // TimeTicks=1 → level 0 (+50 max) completes
+
+            Assert.Equal(Fixed.FromInt(150), h.World.EffectiveMaxHealth[unit]);
+            Assert.Equal(Fixed.FromInt(10), h.World.Health[unit]); // NOT healed by +50
+        }
+
+        // Matrix row 2: a repeatable +MaxHealth ladder must not re-heal by the FULL cumulative on every completion.
+        // After level 0 the unit is 10/150; completing level 1 raises the ceiling to 200 but current Health stays 10
+        // (the pre-DW-85 bug jumped it to 110 — healed the whole +100 cumulative).
+        [Fact]
+        public void Complete_HpUp_Repeatable_DoesNotReHealFullCumulative()
+        {
+            var h = Build();
+            int unit = h.World.Create(FixedVec3.Zero, Faction.Player1, Fixed.FromInt(100), Fixed.FromInt(3));
+            h.World.Health[unit] = Fixed.FromInt(10);
+
+            Assert.True(h.Sys.StartResearchCommand(h.LabId, Faction.Player1, HpUpIdx));
+            h.Sys.Tick(h.World, Fixed.Zero); // level 0 completes → 10/150
+            Assert.Equal(Fixed.FromInt(150), h.World.EffectiveMaxHealth[unit]);
+            Assert.Equal(Fixed.FromInt(10), h.World.Health[unit]);
+
+            Assert.True(h.Sys.StartResearchCommand(h.LabId, Faction.Player1, HpUpIdx));
+            h.Sys.Tick(h.World, Fixed.Zero); // level 1 completes → ceiling 200
+
+            Assert.Equal(Fixed.FromInt(200), h.World.EffectiveMaxHealth[unit]);
+            Assert.Equal(Fixed.FromInt(10), h.World.Health[unit]); // still 10 — NOT +100 healed
+        }
+
+        // Matrix row 3: a full-health unit is not topped up to the new ceiling — it stays at its old current Health.
+        [Fact]
+        public void Complete_HpUp_FullHealthUnit_IsNotToppedUp()
+        {
+            var h = Build();
+            int unit = h.World.Create(FixedVec3.Zero, Faction.Player1, Fixed.FromInt(100), Fixed.FromInt(3)); // 100/100
+
+            Assert.True(h.Sys.StartResearchCommand(h.LabId, Faction.Player1, HpUpIdx));
+            h.Sys.Tick(h.World, Fixed.Zero); // level 0 completes
+
+            Assert.Equal(Fixed.FromInt(150), h.World.EffectiveMaxHealth[unit]);
+            Assert.Equal(Fixed.FromInt(100), h.World.Health[unit]); // now 100/150, NOT topped to 150
+        }
+
+        // Matrix row 4: the future-spawn catch-up path STILL heals — a unit trained AFTER completion spawns at full
+        // upgraded HP (both raised ceiling and full current Health). DW-85 suppresses ONLY the living-army path.
+        [Fact]
+        public void FutureSpawn_HpUp_StillHealsToFullUpgradedHealth()
+        {
+            var h = Build();
+            Assert.True(h.Sys.StartResearchCommand(h.LabId, Faction.Player1, HpUpIdx));
+            h.Sys.Tick(h.World, Fixed.Zero); // level 0 completes (no units alive)
+
+            int newUnit = h.World.Create(FixedVec3.Zero, Faction.Player1, Fixed.FromInt(100), Fixed.FromInt(3)); // 100/100
+            h.Sys.ApplyCompletedResearch(h.World, newUnit); // future-spawn catch-up (preserveCurrentHealth: false)
+
+            Assert.Equal(Fixed.FromInt(150), h.World.EffectiveMaxHealth[newUnit]);
+            Assert.Equal(Fixed.FromInt(150), h.World.Health[newUnit]); // full upgraded HP — catch-up heal preserved
+        }
+
+        // Matrix row 5 (regression guard): an armor-only completion carries maxHealthChange==0, so the snapshot/restore
+        // is a no-op — a damaged unit's current Health is left exactly as-is (no incidental heal or clamp).
+        [Fact]
+        public void Complete_ArmorOnly_LeavesDamagedHealthUntouched()
+        {
+            var h = Build();
+            int unit = h.World.Create(FixedVec3.Zero, Faction.Player1, Fixed.FromInt(100), Fixed.FromInt(3));
+            h.World.Health[unit] = Fixed.FromInt(10); // damaged
+
+            Assert.True(h.Sys.StartResearchCommand(h.LabId, Faction.Player1, ArmorUpIdx));
+            for (int i = 0; i < 3; i++) h.Sys.Tick(h.World, Fixed.Zero); // armor_up level 0 (+2 armor) completes
+
+            Assert.Equal(Fixed.FromInt(2), h.World.EffectiveArmor[unit]);
+            Assert.Equal(Fixed.FromInt(10), h.World.Health[unit]);       // Health untouched by a non-MaxHealth research
+            Assert.Equal(Fixed.FromInt(100), h.World.EffectiveMaxHealth[unit]); // ceiling unchanged
+        }
+
+        // Review (down-clamp branch): a NET-NEGATIVE +MaxHealth research LOWERS the ceiling on the living-army path.
+        // The preserve-health restore must clamp current Health DOWN to the reduced EffectiveMaxHealth — proving the
+        // restore respects the ceiling (a bare `Health = healthBefore` would leave Health above max, breaking the
+        // Health <= EffectiveMaxHealth invariant). Every positive-delta test leaves this branch a pass-through.
+        [Fact]
+        public void Complete_HpDown_FullHealthUnit_ClampsHealthDownToReducedCeiling()
+        {
+            var h = Build();
+            int unit = h.World.Create(FixedVec3.Zero, Faction.Player1, Fixed.FromInt(100), Fixed.FromInt(3)); // 100/100
+
+            Assert.True(h.Sys.StartResearchCommand(h.LabId, Faction.Player1, HpDownIdx));
+            h.Sys.Tick(h.World, Fixed.Zero); // -50 max completes → ceiling drops to 50
+
+            Assert.Equal(Fixed.FromInt(50), h.World.EffectiveMaxHealth[unit]);
+            Assert.Equal(Fixed.FromInt(50), h.World.Health[unit]); // clamped DOWN from 100 to the new ceiling, not left at 100
         }
 
         // ── Parity: StartResearch/CancelResearch through the shared OrderApplier ────
