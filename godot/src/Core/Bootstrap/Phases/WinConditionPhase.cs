@@ -197,6 +197,16 @@ namespace ProjectChimera.Core.Bootstrap
                     statusLabel.Text = $"A map named '{blank.DisplayName}' already exists — choose a different name.";
                     return;
                 }
+                // Story 14.7 (DW-164) — HARD Validate before any write; nothing partial on disk on failure. This is a
+                // hard gate distinct from the non-fatal CollectAdvisories below; do NOT weaken it to an advisory. The
+                // blank has no pre-placed custom buildings → null faction defs is correct here.
+                string? gateError = MapWriteGate.Check(blank);
+                if (gateError != null)
+                {
+                    statusLabel.Text = $"New map blocked — validation failed: {gateError}";
+                    GD.PrintErr($"[MapIO] New map blocked — validation failed: {gateError}");
+                    return;
+                }
                 ScenarioSerializer.SaveToFile(blank, dest);
                 // Story 6.7 (patch 12) — route the size display through the one MapSize helper.
                 statusLabel.Text = $"Created blank {blank.SuggestedPlayers}-player map " +
@@ -218,6 +228,20 @@ namespace ProjectChimera.Core.Bootstrap
         private async System.Threading.Tasks.Task ExportMapPackage(Label statusLabel)
         {
             if (_ctx.Scenario == null) { statusLabel.Text = "No scenario loaded."; return; }
+
+            // Story 14.7 (DW-164) — HARD Validate BEFORE any disk mutation. This must be the first statement after
+            // the null check so a rejected export leaves nothing partial on disk — no terrain files (this precedes
+            // SaveTerrainBesideScenario, which writes region files first), no scenario.json overwrite, no
+            // .chimera.zip. Pass the resolved per-slot faction defs so the verdict matches what reload produces
+            // (mirrors ScenarioLoadPhase.ValidateBeforeApply). This is a hard gate distinct from the non-fatal
+            // post-write CollectAdvisories; do NOT weaken it to an advisory.
+            string? gateError = MapWriteGate.Check(_ctx.Scenario, _ctx.SlotFactionDefs);
+            if (gateError != null)
+            {
+                statusLabel.Text = $"Export blocked — validation failed: {gateError}";
+                GD.PrintErr($"[MapIO] Export blocked — validation failed: {gateError}");
+                return;
+            }
 
             // Save current scenario state to disk first.
             string scenAbs = ProjectSettings.GlobalizePath(_ctx.Scene.ScenarioPath);
