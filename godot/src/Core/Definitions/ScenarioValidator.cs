@@ -1,6 +1,7 @@
 #nullable enable
 using System;
 using System.Collections.Generic;
+using System.Linq; // Story 7.4 — canonical-order edge iteration for the expression compile pass
 using ProjectChimera.Core; // Faction, FactionRegistry, BuildingType
 using ProjectChimera.Dsl; // Story 7.3 — TriggerGraph / NodeBase / EffectActionNode (trigger_graph gate)
 using ProjectChimera.Effects; // Story 7.3 — EffectBounds (trigger-embedded effect load-time bounds gate)
@@ -619,6 +620,19 @@ namespace ProjectChimera.Core.Definitions
             //    Deep STRUCTURAL graph validation (dangling/forked/dup-id edges) stays deferred to Story 7.7. ──
             if (parsedGraph != null)
             {
+                // Story 7.4 — id lookup + the set of set_variable actions fed by a value-in expression edge. A
+                // fed action's declared target may be Int/Fixed/Bool (the type-equality check happens in the
+                // compile pass below); the literal path keeps the 7.3 Int-only rule.
+                var graphById = new Dictionary<int, NodeBase>(parsedGraph.Nodes.Count);
+                foreach (NodeBase gn in parsedGraph.Nodes)
+                    graphById[gn.Id] = gn;
+                var exprValueTargets = new HashSet<int>();
+                foreach (DataEdge de in parsedGraph.DataEdges)
+                    if (de.DstPort == TriggerGraph.ActionValueInPort
+                        && graphById.TryGetValue(de.Src, out NodeBase? vSrc) && ExprCompiler.IsExprNode(vSrc)
+                        && graphById.TryGetValue(de.Dst, out NodeBase? vDst) && vDst is ActionNode)
+                        exprValueTargets.Add(de.Dst);
+
                 foreach (NodeBase node in parsedGraph.Nodes)
                 {
                     switch (node)
@@ -665,14 +679,106 @@ namespace ProjectChimera.Core.Definitions
                             string gp = $"scenario.trigger_graph action node {ga.Id}";
                             string? fe = CheckFactionSlot($"{gp}.faction", ga.Faction);
                             if (fe != null) return ValidationResult.Fail(fe, validated);
+                            // Story 7.4 widening: the Int-only rule now governs only the LITERAL path — an action
+                            // fed by a value-in expression edge may target Int/Fixed/Bool (its type equality is
+                            // enforced by the expression compile pass below).
                             if (ga.Kind == "set_variable" && !string.IsNullOrEmpty(ga.Variable)
                                 && declaredVarInfo.TryGetValue(ga.Variable, out var gaInfo)
-                                && gaInfo.Type != DslValueType.Int)
+                                && gaInfo.Type != DslValueType.Int
+                                && !exprValueTargets.Contains(ga.Id))
                                 return ValidationResult.Fail(
                                     $"{gp}.variable='{ga.Variable}' is {gaInfo.Type}-typed; set_variable writes only Int-typed variables (7.3).", validated);
                             break;
                         }
+
+                        case ExprVarNode gv:
+                        {
+                            // Story 7.4 — a slotted per-player read (name[k]) passes the SAME engine-ceiling gate
+                            // every other graph-node faction gets; a bare read carries -1 (no slot) and skips it.
+                            if (gv.Faction >= 0)
+                            {
+                                string? fe = CheckFactionSlot($"scenario.trigger_graph expr_var node {gv.Id}.faction", gv.Faction);
+                                if (fe != null) return ValidationResult.Fail(fe, validated);
+                            }
+                            break;
+                        }
                     }
+                }
+
+                // ── Story 7.4 — expression consumer edges: run the ExprCompiler (the full load-time rulebook:
+                //    strict typing, literal-zero divisor, undeclared/mis-scoped variables, TriggerLocal-in-condition,
+                //    ref-typed reads, missing/forked operand edges, wire-type = inferred type, ExprBounds caps) for
+                //    every expression root actually CONSUMED by a trigger condition-in port or a set_variable
+                //    value-in port. Unconsumed expression nodes are ignored (7.7 structural scope). Edges iterate in
+                //    canonical tuple order so the first-fail is deterministic. ──
+                List<DataEdge> sortedGraphData = parsedGraph.DataEdges.OrderBy(e => e).ToList();
+                var seenValueInPorts = new HashSet<int>();
+                foreach (DataEdge de in sortedGraphData)
+                {
+                    bool srcIsExpr = graphById.TryGetValue(de.Src, out NodeBase? src) && ExprCompiler.IsExprNode(src);
+                    graphById.TryGetValue(de.Dst, out NodeBase? dst);
+
+                    // Review patch — a value-in edge is CONSUMED by the runtime, so BOTH of its halves are gated
+                    // here (not left to 7.7 "unconsumed" scope): a run_effect dst would surface through
+                    // BuildExecutionOrder and throw mid-apply in LoadScenario; a non-expression src is silently
+                    // ignored at runtime (the literal Value would win against the authored wiring).
+                    if (de.DstPort == TriggerGraph.ActionValueInPort && dst is EffectActionNode)
+                        return ValidationResult.Fail(
+                            $"scenario.trigger_graph run_effect node {dst.Id}: a value-in edge is not allowed on run_effect (only a set_variable action takes a value expression).", validated);
+                    if (de.DstPort == TriggerGraph.ActionValueInPort && dst is ActionNode && !srcIsExpr)
+                        return ValidationResult.Fail(
+                            $"scenario.trigger_graph action node {dst.Id}: the value-in edge source (node {de.Src}) is not an expression node.", validated);
+
+                    if (!srcIsExpr || dst is null) continue;
+
+                    // Review (7.4 pass 2): a CONSUMED expression edge must leave its src on ExprDataOutPort (= 0) —
+                    // the only port expression nodes emit on. A stray src_port previously compiled, validated, and
+                    // round-tripped untouched (a silently-tolerated non-canonical encoding, against the fail-closed
+                    // posture this gate applies everywhere else). The compiler rejects the same on operand edges.
+                    bool consumedHere = (dst is TriggerNode && de.DstPort == TriggerGraph.TriggerConditionInPort)
+                                     || (dst is ActionNode && de.DstPort == TriggerGraph.ActionValueInPort);
+                    if (consumedHere && de.SrcPort != TriggerGraph.ExprDataOutPort)
+                        return ValidationResult.Fail(
+                            $"scenario.trigger_graph expr node {de.Src}: the consumer edge into node {de.Dst} leaves src port {de.SrcPort}; expression nodes emit only on port {TriggerGraph.ExprDataOutPort}.", validated);
+
+                    if (dst is TriggerNode && de.DstPort == TriggerGraph.TriggerConditionInPort)
+                    {
+                        if (!ExprCompiler.TryCompile(parsedGraph, de.Src, declaredVarInfo, inCondition: true,
+                                out ExprProgram? cp, out string? cErr))
+                            return ValidationResult.Fail($"scenario.trigger_graph: {cErr}", validated);
+                        if (cp!.ResultType != DslValueType.Bool)
+                            return ValidationResult.Fail(
+                                $"scenario.trigger_graph expr node {de.Src}: a trigger condition expression must evaluate to Bool, got {cp.ResultType}.", validated);
+                        if (de.Wire != DataWireType.Boolean)
+                            return ValidationResult.Fail(
+                                $"scenario.trigger_graph expr node {de.Src}: the condition-in edge must carry the Boolean wire, got '{de.Wire}'.", validated);
+                    }
+                    else if (dst is ActionNode act && de.DstPort == TriggerGraph.ActionValueInPort)
+                    {
+                        if (act.Kind != "set_variable")
+                            return ValidationResult.Fail(
+                                $"scenario.trigger_graph action node {act.Id}: a value-in expression edge is only allowed on a set_variable action (kind '{act.Kind}').", validated);
+                        if (string.IsNullOrEmpty(act.Variable))
+                            return ValidationResult.Fail(
+                                $"scenario.trigger_graph action node {act.Id}: a set_variable with a value expression needs a target variable.", validated);
+                        if (!seenValueInPorts.Add(act.Id))
+                            return ValidationResult.Fail(
+                                $"scenario.trigger_graph action node {act.Id}: multiple value-in expression edges (forked; exactly one allowed).", validated);
+                        if (!ExprCompiler.TryCompile(parsedGraph, de.Src, declaredVarInfo, inCondition: false,
+                                out ExprProgram? vp, out string? vErr))
+                            return ValidationResult.Fail($"scenario.trigger_graph: {vErr}", validated);
+                        DslValueType target = declaredVarInfo.TryGetValue(act.Variable!, out var tInfo) ? tInfo.Type : DslValueType.Int;
+                        if (target != DslValueType.Int && target != DslValueType.Fixed && target != DslValueType.Bool)
+                            return ValidationResult.Fail(
+                                $"scenario.trigger_graph action node {act.Id}: set_variable target '{act.Variable}' is {target}-typed; expression assignment targets Int/Fixed/Bool variables only.", validated);
+                        if (vp!.ResultType != target)
+                            return ValidationResult.Fail(
+                                $"scenario.trigger_graph expr node {de.Src}: value expression result type {vp.ResultType} does not match target variable '{act.Variable}' ({target}).", validated);
+                        if (de.Wire != ExprCompiler.WireOf(target))
+                            return ValidationResult.Fail(
+                                $"scenario.trigger_graph action node {act.Id}: the value-in edge wire '{de.Wire}' does not match target variable '{act.Variable}' ({target}).", validated);
+                    }
+                    // Other destinations/ports: unconsumed expression output — ignored (7.7 structural scope).
                 }
             }
 

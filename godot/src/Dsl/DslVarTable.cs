@@ -96,29 +96,35 @@ namespace ProjectChimera.Dsl
             for (int i = 0; i < variables.Count; i++)
             {
                 DslVarDecl d = variables[i];
+                // Review (7.4 pass 2): the declaration-init path applies the SAME Bool 0/1 normalization every
+                // write path funnels through — the validator gate rejects non-binary Bool initials for authored
+                // scenarios, but a direct-constructed DslVarDecl(Bool, raw 7) would otherwise seed a slot where
+                // `flag == true` is false while `flag`/`!flag` treat it truthy.
+                int raw0 = d.Raw0, raw1 = d.Raw1;
+                NormalizeBoolWrite(d.Type, ref raw0, ref raw1);
                 switch (d.Scope)
                 {
                     case VarScope.Global:
                         _gNames.Add(d.Name);
                         _gTypes.Add(d.Type);
-                        _gRaw0.Add(d.Raw0);
-                        _gRaw1.Add(d.Raw1);
+                        _gRaw0.Add(raw0);
+                        _gRaw1.Add(raw1);
                         break;
                     case VarScope.PerPlayer:
                         _pNames[pi] = d.Name;
                         _pTypes[pi] = d.Type;
                         for (int p = 0; p < PlayerSlots; p++)
                         {
-                            _pRaw0[pi * PlayerSlots + p] = d.Raw0;
-                            _pRaw1[pi * PlayerSlots + p] = d.Raw1;
+                            _pRaw0[pi * PlayerSlots + p] = raw0;
+                            _pRaw1[pi * PlayerSlots + p] = raw1;
                         }
                         pi++;
                         break;
                     case VarScope.TriggerLocal:
                         _tNames[ti]    = d.Name;
                         _tTypes[ti]    = d.Type;
-                        _tInitRaw0[ti] = d.Raw0;
-                        _tInitRaw1[ti] = d.Raw1;
+                        _tInitRaw0[ti] = raw0;
+                        _tInitRaw1[ti] = raw1;
                         ti++;
                         break;
                 }
@@ -171,64 +177,184 @@ namespace ProjectChimera.Dsl
         /// </summary>
         public int GetInt(string name, int faction)
         {
-            for (int i = 0; i < _pCount; i++)
-                if (string.Equals(_pNames[i], name, StringComparison.Ordinal))
-                    return _pRaw0[i * PlayerSlots + ClampSlot(faction)];
-
-            // A trigger-local NAME always resolves to the trigger-local slot (review follow-up): outside a scope it
-            // reads 0 per the documented contract — it must never fall through to a same-named Global lookup.
-            for (int i = 0; i < _tCount; i++)
-                if (string.Equals(_tNames[i], name, StringComparison.Ordinal))
-                    return _inTrigger ? _tRaw0[i] : 0;
-
-            for (int i = 0; i < _gNames.Count; i++)
-                if (string.Equals(_gNames[i], name, StringComparison.Ordinal))
-                    return _gRaw0[i];
-
-            return 0; // undeclared → Global/Int default 0 (no slot created on read)
+            switch (Resolve(name, out int i))
+            {
+                case Store.PerPlayer:    return _pRaw0[i * PlayerSlots + ClampSlot(faction)];
+                case Store.TriggerLocal: return _inTrigger ? _tRaw0[i] : 0;
+                case Store.Global:       return _gRaw0[i];
+                default:                 return 0; // undeclared → Global/Int default 0 (no slot created on read)
+            }
         }
 
         /// <summary>
         /// Write a named integer variable. Resolution mirrors <see cref="GetInt"/>: a declared PerPlayer var writes
         /// the <paramref name="faction"/> slot; a trigger-local var writes the active scratch (a no-op outside a
         /// trigger scope); a declared Global var writes its slot; an UNDECLARED name appends a Global/Int slot
-        /// (creation-index order preserved), reproducing the legacy <c>SetVariable</c> append semantics.
+        /// (creation-index order preserved), reproducing the legacy <c>SetVariable</c> append semantics. A write to
+        /// a declared Bool-typed slot normalizes to 0/1 (the same central rule as <see cref="SetRaw"/>).
         /// </summary>
         public void SetInt(string name, int faction, int value)
         {
-            for (int i = 0; i < _pCount; i++)
-                if (string.Equals(_pNames[i], name, StringComparison.Ordinal))
-                {
+            int raw1 = 0; // SetInt never writes raw1 (already 0 on every Bool slot); consumed only by NormalizeBoolWrite
+            switch (Resolve(name, out int i))
+            {
+                case Store.PerPlayer:
+                    NormalizeBoolWrite(_pTypes[i], ref value, ref raw1);
                     _pRaw0[i * PlayerSlots + ClampSlot(faction)] = value;
                     return;
-                }
-
-            // A trigger-local NAME always resolves to the trigger-local slot (review follow-up): outside a scope the
-            // write is the documented no-op — previously it fell through to the undeclared-append below and minted a
-            // phantom Global slot (with the same name) that would have folded into SimChecksum.
-            for (int i = 0; i < _tCount; i++)
-                if (string.Equals(_tNames[i], name, StringComparison.Ordinal))
-                {
-                    if (_inTrigger) _tRaw0[i] = value;
-                    return;
-                }
-
-            for (int i = 0; i < _gNames.Count; i++)
-                if (string.Equals(_gNames[i], name, StringComparison.Ordinal))
-                {
+                case Store.TriggerLocal:
+                    if (_inTrigger)
+                    {
+                        NormalizeBoolWrite(_tTypes[i], ref value, ref raw1);
+                        _tRaw0[i] = value;
+                    }
+                    return; // outside a scope the write is the documented no-op (never a Global fall-through)
+                case Store.Global:
+                    NormalizeBoolWrite(_gTypes[i], ref value, ref raw1);
                     _gRaw0[i] = value;
                     return;
-                }
-
-            // Undeclared → append a Global/Int slot (matches the legacy list-append; preserves creation index).
-            _gNames.Add(name);
-            _gTypes.Add(DslValueType.Int);
-            _gRaw0.Add(value);
-            _gRaw1.Add(0);
+                default:
+                    // Undeclared → append a Global/Int slot (matches the legacy list-append; preserves creation index).
+                    _gNames.Add(name);
+                    _gTypes.Add(DslValueType.Int);
+                    _gRaw0.Add(value);
+                    _gRaw1.Add(0);
+                    return;
+            }
         }
 
         private static int ClampSlot(int faction) =>
             faction < 0 ? 0 : (faction >= PlayerSlots ? PlayerSlots - 1 : faction);
+
+        // ── The single name-resolution walk (shared by every get/set/decl lookup) ──
+
+        /// <summary>Which backing store a name resolved to (<see cref="Undeclared"/> = no slot exists).</summary>
+        private enum Store : byte { PerPlayer, TriggerLocal, Global, Undeclared }
+
+        /// <summary>
+        /// THE resolution walk, shared by <see cref="GetInt"/>/<see cref="SetInt"/>/<see cref="GetRaw"/>/
+        /// <see cref="SetRaw"/>/<see cref="TryGetDecl"/> so the order can never drift between them: PerPlayer
+        /// first, then TriggerLocal (a trigger-local NAME always resolves to the trigger-local slot — review
+        /// follow-up: it must never fall through to a same-named Global), then Global (declared + undeclared-
+        /// appended). Deterministic linear scans in declaration/creation index (small N). Returns the store and
+        /// the index within it (-1 for <see cref="Store.Undeclared"/>).
+        /// </summary>
+        private Store Resolve(string name, out int index)
+        {
+            for (int i = 0; i < _pCount; i++)
+                if (string.Equals(_pNames[i], name, StringComparison.Ordinal)) { index = i; return Store.PerPlayer; }
+            for (int i = 0; i < _tCount; i++)
+                if (string.Equals(_tNames[i], name, StringComparison.Ordinal)) { index = i; return Store.TriggerLocal; }
+            for (int i = 0; i < _gNames.Count; i++)
+                if (string.Equals(_gNames[i], name, StringComparison.Ordinal)) { index = i; return Store.Global; }
+            index = -1;
+            return Store.Undeclared;
+        }
+
+        /// <summary>Central Bool write normalization: a Bool-typed slot stores raw0 as 0/1 with raw1 forced 0.
+        /// Every declared-slot write path (<see cref="SetInt"/>, <see cref="SetRaw"/>, and
+        /// <see cref="InitFromDeclarations"/> alike) funnels through this, so the 0/1 invariant cannot drift.
+        ///
+        /// LEGACY-SEMANTICS NOTE (review, 7.4 pass 2): applying this inside <see cref="SetInt"/> changed a
+        /// pre-7.4-reachable write path on a checksummed store (a declared-Bool slot used to keep e.g. 7 verbatim
+        /// and fold 7). That is unreachable for GATE-VALIDATED content by three independent rules — the flat AND
+        /// literal-graph set_variable channels are Int-target-only (P5), and Bool initials are gated to {0,1} —
+        /// so no golden/legacy scenario can observe it; only direct LoadScenario/table callers do, for whom 0/1
+        /// is the pinned post-7.4 contract. If any of those three rules is ever relaxed, this note is the tripwire:
+        /// re-audit the checksum impact before shipping.</summary>
+        private static void NormalizeBoolWrite(DslValueType type, ref int raw0, ref int raw1)
+        {
+            if (type != DslValueType.Bool) return;
+            raw0 = raw0 != 0 ? 1 : 0;
+            raw1 = 0;
+        }
+
+        // ── Story 7.4 — typed declaration lookup + raw get/set (the expression substrate) ─────
+
+        /// <summary>
+        /// Look up a name's declared type/scope, in the SAME resolution order as <see cref="GetInt"/>/<see
+        /// cref="SetInt"/> (PerPlayer → TriggerLocal → Global). Undeclared-then-appended Globals (the legacy
+        /// <c>SetVariable</c> append) resolve as Global/Int. Returns false (Int/Global outs) for an unknown name.
+        /// </summary>
+        public bool TryGetDecl(string name, out DslValueType type, out VarScope scope)
+        {
+            switch (Resolve(name, out int i))
+            {
+                case Store.PerPlayer:    type = _pTypes[i]; scope = VarScope.PerPlayer;    return true;
+                case Store.TriggerLocal: type = _tTypes[i]; scope = VarScope.TriggerLocal; return true;
+                case Store.Global:       type = _gTypes[i]; scope = VarScope.Global;       return true;
+                default:                 type = DslValueType.Int; scope = VarScope.Global; return false;
+            }
+        }
+
+        /// <summary>
+        /// Read a named variable's raw ints (raw0 = Int value / Fixed.Raw / Bool 0-1 / Point X; raw1 = Point Z,
+        /// 0 for scalars). SAME resolution order and contracts as <see cref="GetInt"/>: PerPlayer uses the
+        /// <paramref name="faction"/> slot; TriggerLocal reads the active scratch (0 outside a trigger scope,
+        /// never falling through to a same-named Global); undeclared reads (0, 0) without creating a slot.
+        /// </summary>
+        public void GetRaw(string name, int faction, out int raw0, out int raw1)
+        {
+            switch (Resolve(name, out int i))
+            {
+                case Store.PerPlayer:
+                {
+                    int idx = i * PlayerSlots + ClampSlot(faction);
+                    raw0 = _pRaw0[idx]; raw1 = _pRaw1[idx];
+                    return;
+                }
+                case Store.TriggerLocal:
+                    raw0 = _inTrigger ? _tRaw0[i] : 0;
+                    raw1 = _inTrigger ? _tRaw1[i] : 0;
+                    return;
+                case Store.Global:
+                    raw0 = _gRaw0[i]; raw1 = _gRaw1[i];
+                    return;
+                default:
+                    raw0 = 0; raw1 = 0; // undeclared → default (no slot created on read)
+                    return;
+            }
+        }
+
+        /// <summary>
+        /// Write a named variable's raw ints, mirroring <see cref="SetInt"/>'s exact resolution order and
+        /// contracts: PerPlayer writes the <paramref name="faction"/> slot; TriggerLocal writes the active scratch
+        /// (a no-op outside a trigger scope); Global writes its slot; an UNDECLARED name appends a Global/Int slot
+        /// (creation-index preserved — REACHABLE via a compiled expression whose set_variable TARGET is undeclared:
+        /// the compiler rejects undeclared READS only, and an undeclared write target defaults to Int, the legacy
+        /// append parity). A write to a Bool-typed slot normalizes raw0 to 0/1 (raw1 forced 0).
+        /// </summary>
+        public void SetRaw(string name, int faction, int raw0, int raw1)
+        {
+            switch (Resolve(name, out int i))
+            {
+                case Store.PerPlayer:
+                {
+                    NormalizeBoolWrite(_pTypes[i], ref raw0, ref raw1);
+                    int idx = i * PlayerSlots + ClampSlot(faction);
+                    _pRaw0[idx] = raw0; _pRaw1[idx] = raw1;
+                    return;
+                }
+                case Store.TriggerLocal:
+                    if (_inTrigger)
+                    {
+                        NormalizeBoolWrite(_tTypes[i], ref raw0, ref raw1);
+                        _tRaw0[i] = raw0; _tRaw1[i] = raw1;
+                    }
+                    return; // outside a scope the write is the documented no-op (never a Global fall-through)
+                case Store.Global:
+                    NormalizeBoolWrite(_gTypes[i], ref raw0, ref raw1);
+                    _gRaw0[i] = raw0; _gRaw1[i] = raw1;
+                    return;
+                default:
+                    // Undeclared → append a Global/Int slot (mirrors SetInt's legacy append; creation index preserved).
+                    _gNames.Add(name);
+                    _gTypes.Add(DslValueType.Int);
+                    _gRaw0.Add(raw0);
+                    _gRaw1.Add(raw1);
+                    return;
+            }
+        }
 
         // ── Timers ─────────────────────────────────────────────────────────────────
 

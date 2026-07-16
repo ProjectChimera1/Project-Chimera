@@ -5,13 +5,22 @@ using System.Text.Json.Serialization;
 namespace ProjectChimera.Dsl
 {
     /// <summary>
-    /// Story 7.2 — the wire type a data edge carries (its "wire color"). 7.2 ships only <see cref="Boolean"/>
-    /// (the condition→trigger gate); 7.4 extends this with Int/Fixed/… . Serialized NAME-ONLY via the registered
-    /// <c>JsonStringEnumConverter(allowIntegerValues:false)</c> so a numeric wire value fails closed.
+    /// Story 7.2 — the wire type a data edge carries (its "wire color"). 7.2 shipped only <see cref="Boolean"/>
+    /// (the condition→trigger gate); Story 7.4 appends <see cref="Int"/>/<see cref="Fixed"/>/<see cref="Point"/>
+    /// for the typed expression sublanguage (wire color = type). Members are APPENDED, never reordered/renamed —
+    /// serialization is NAME-ONLY via the registered <c>JsonStringEnumConverter(allowIntegerValues:false)</c> so a
+    /// numeric wire value fails closed and the existing <c>Boolean</c> name is untouched.
     /// </summary>
     public enum DataWireType
     {
+        /// <summary>A boolean value (the condition→trigger gate wire and boolean expression wires).</summary>
         Boolean,
+        /// <summary>A signed 32-bit integer expression value (Story 7.4).</summary>
+        Int,
+        /// <summary>A 16.16 fixed-point expression value, carried as <c>Fixed.Raw</c> (Story 7.4).</summary>
+        Fixed,
+        /// <summary>A 2D point (two <c>Fixed.Raw</c> ints, X then Z) — consumed only by <c>distance</c> (Story 7.4).</summary>
+        Point,
     }
 
     /// <summary>

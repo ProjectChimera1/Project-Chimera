@@ -104,6 +104,63 @@ namespace ProjectChimera.Dsl
                     JsonSerializer.Serialize(writer, ea.Effect, options);   // → EffectNodeJsonConverter (no second executor)
                     break;
 
+                // ── Story 7.4 — the five expression kinds (exact inverses of the Read branches) ──
+
+                case ExprLiteralNode lit:
+                    writer.WriteString("kind", NodeKinds.ExprLiteral);
+                    switch (lit.ValueType)
+                    {
+                        case DslValueType.Int:
+                            writer.WriteString("type", "Int");
+                            writer.WriteNumber("value", lit.Raw);
+                            break;
+                        case DslValueType.Fixed:
+                            writer.WriteString("type", "Fixed");
+                            // Review (7.4 pass 2): NOT the float-based FixedJsonConverter. A 16.16 raw beyond float's
+                            // 24-bit mantissa silently quantized on save, and raw int.MaxValue rounded UP to 32768f —
+                            // a value the converter then REJECTS on reload (persist-then-cannot-load data loss). The
+                            // expression path is float-free end-to-end: emit the EXACT decimal (raw/65536 always
+                            // terminates in ≤16 decimal digits) via pure integer math; Read parses it back the same way.
+                            WriteExprFixedExact(writer, "value", lit.Raw);
+                            break;
+                        case DslValueType.Bool:
+                            writer.WriteString("type", "Bool");
+                            writer.WriteBoolean("value", lit.Raw != 0);
+                            break;
+                        default:
+                            // Fail-closed: only Int/Fixed/Bool are literal-able (mirrors Read's reject).
+                            throw new JsonException(
+                                $"Cannot serialize expr_literal node {lit.Id}: value type '{lit.ValueType}' is not literal-able (Int/Fixed/Bool only).");
+                    }
+                    break;
+
+                case ExprVarNode ev:
+                    writer.WriteString("kind", NodeKinds.ExprVar);
+                    writer.WriteString("name", ev.Name);
+                    if (ev.Faction >= 0) writer.WriteNumber("faction", ev.Faction); // -1 (bare read) omits, mirroring Read's default
+                    break;
+
+                case ExprUnaryNode eu:
+                    if (!NodeKinds.InSet(NodeKinds.ExprUnaryOps, eu.Op))
+                        throw new JsonException($"Cannot serialize expr_unary node {eu.Id}: unknown op '{eu.Op}'.");
+                    writer.WriteString("kind", NodeKinds.ExprUnary);
+                    writer.WriteString("op", eu.Op);
+                    break;
+
+                case ExprBinaryNode eb:
+                    if (!NodeKinds.InSet(NodeKinds.ExprBinaryOps, eb.Op))
+                        throw new JsonException($"Cannot serialize expr_binary node {eb.Id}: unknown op '{eb.Op}'.");
+                    writer.WriteString("kind", NodeKinds.ExprBinary);
+                    writer.WriteString("op", eb.Op);
+                    break;
+
+                case ExprCallNode ec:
+                    if (!NodeKinds.InSet(NodeKinds.ExprCallFns, ec.Fn))
+                        throw new JsonException($"Cannot serialize expr_call node {ec.Id}: unknown fn '{ec.Fn}'.");
+                    writer.WriteString("kind", NodeKinds.ExprCall);
+                    writer.WriteString("fn", ec.Fn);
+                    break;
+
                 default:
                     // Fail-closed: a node type outside the closed registry cannot be authored (mirrors Read's default).
                     throw new JsonException(
@@ -204,6 +261,83 @@ namespace ProjectChimera.Dsl
                 };
             }
 
+            // ── Story 7.4 — the five expression kinds ──
+
+            if (kind == NodeKinds.ExprLiteral)
+            {
+                RejectUnknownProperties(el, path, "id", "kind", "type", "value");
+                // Review (7.4 pass 2): 'type' and 'value' are REQUIRED — a missing one used to silently default to
+                // Int 0 / false and evaluate, against the converter's otherwise fail-closed posture.
+                if (!el.TryGetProperty("type", out _))
+                    throw new JsonException($"{path}.type: required for expr_literal (Int/Fixed/Bool).");
+                if (!el.TryGetProperty("value", out _))
+                    throw new JsonException($"{path}.value: required for expr_literal.");
+                string typeName = ReadString(el, "type", path, "Int");
+                DslValueType vt = typeName switch
+                {
+                    "Int"   => DslValueType.Int,
+                    "Fixed" => DslValueType.Fixed,
+                    "Bool"  => DslValueType.Bool,
+                    _ => throw new JsonException(
+                        $"{path}.type: '{typeName}' is not a literal-able value type (Int/Fixed/Bool only)."),
+                };
+                // Fixed values parse via EXACT integer math (never the float-based FixedJsonConverter) — the inverse
+                // of WriteExprFixedExact, and the same round-half-up rule ExprParser applies to text literals, so the
+                // same decimal authored as text and as raw-IR yields the same raw (one IR).
+                int raw = vt switch
+                {
+                    DslValueType.Int   => ReadInt(el, "value", path, 0),
+                    DslValueType.Fixed => ReadExprFixedExact(el, "value", path),
+                    _                  => ReadBool(el, "value", path, false) ? 1 : 0,
+                };
+                return new ExprLiteralNode { Id = ReadId(el, path), ValueType = vt, Raw = raw };
+            }
+
+            if (kind == NodeKinds.ExprVar)
+            {
+                RejectUnknownProperties(el, path, "id", "kind", "name", "faction");
+                int faction = ReadInt(el, "faction", path, -1); // -1 = bare (slot-less) read
+                // Fail-closed: Write omits EVERY negative faction as a bare read, so a value outside the canonical
+                // encoding would silently rewrite to -1 on the next round-trip (a lossy rewrite, against the
+                // module's fail-closed posture) — reject it located instead.
+                if (faction < -1 || faction >= DslVarTable.PlayerSlots)
+                    throw new JsonException(
+                        $"{path}.faction: {faction} is outside the canonical range (-1 = bare read, 0..{DslVarTable.PlayerSlots - 1} = per-player slot).");
+                return new ExprVarNode
+                {
+                    Id      = ReadId(el, path),
+                    Name    = ReadString(el, "name", path, ""),
+                    Faction = faction,
+                };
+            }
+
+            if (kind == NodeKinds.ExprUnary)
+            {
+                RejectUnknownProperties(el, path, "id", "kind", "op");
+                string op = ReadString(el, "op", path, "");
+                if (!NodeKinds.InSet(NodeKinds.ExprUnaryOps, op))
+                    throw new JsonException($"{path}.op: '{op}' is not a known expr_unary operator (neg/not).");
+                return new ExprUnaryNode { Id = ReadId(el, path), Op = op };
+            }
+
+            if (kind == NodeKinds.ExprBinary)
+            {
+                RejectUnknownProperties(el, path, "id", "kind", "op");
+                string op = ReadString(el, "op", path, "");
+                if (!NodeKinds.InSet(NodeKinds.ExprBinaryOps, op))
+                    throw new JsonException($"{path}.op: '{op}' is not a known expr_binary operator.");
+                return new ExprBinaryNode { Id = ReadId(el, path), Op = op };
+            }
+
+            if (kind == NodeKinds.ExprCall)
+            {
+                RejectUnknownProperties(el, path, "id", "kind", "fn");
+                string fn = ReadString(el, "fn", path, "");
+                if (!NodeKinds.InSet(NodeKinds.ExprCallFns, fn))
+                    throw new JsonException($"{path}.fn: '{fn}' is not a known expression built-in (count/distance/min/max/abs).");
+                return new ExprCallNode { Id = ReadId(el, path), Fn = fn };
+            }
+
             throw new JsonException($"{path}: unknown node kind '{kind}'.");
         }
 
@@ -262,6 +396,103 @@ namespace ProjectChimera.Dsl
             if (!parent.TryGetProperty(prop, out JsonElement el)) return fallback;
             try { return el.Deserialize<Fixed>(options); }            // routes through FixedJsonConverter (the one quantizer)
             catch (JsonException ex) { throw new JsonException($"{path}.{prop}: {ex.Message}"); }
+        }
+
+        // ── Story 7.4 (pass-2 review) — exact integer-math Fixed codec for expr_literal values ──────
+        //
+        // The legacy-node Fixed fields keep the float-based FixedJsonConverter (the sanctioned AR-14 quantization
+        // boundary for CONTENT values, where float precision suffices). Expression literals are different: the
+        // story guarantees a float-free expression path and a byte-identical canonical round-trip, and the text
+        // parser produces raws (e.g. "32767.99998" → int.MaxValue) that float cannot represent — Fixed.ToFloat on
+        // raw int.MaxValue rounds to exactly 32768f, which Read then REJECTS, bricking the persisted scenario.
+        // So expr_literal Fixed values (de)serialize through this exact codec instead: 16.16 raws always terminate
+        // in ≤16 decimal digits (1/65536 = 5^16/10^16), so Write emits the exact decimal and Read recovers the raw
+        // with pure integer math (round-half-up — the SAME rule ExprParser applies, keeping text and raw-IR one IR).
+
+        /// <summary>5^16 — the exact per-unit decimal weight of one 16.16 raw step (1/65536 = 152587890625e-16).</summary>
+        private const ulong FRAC_DECIMAL_WEIGHT = 152_587_890_625UL;
+
+        /// <summary>Emit <paramref name="raw"/> (a 16.16 Fixed raw) as its EXACT decimal JSON number.</summary>
+        private static void WriteExprFixedExact(Utf8JsonWriter writer, string name, int raw)
+        {
+            ulong mag  = raw < 0 ? (ulong)(-(long)raw) : (ulong)raw;
+            ulong ip   = mag >> 16;
+            ulong fr   = mag & 0xFFFF;
+            string text;
+            if (fr == 0)
+            {
+                text = (raw < 0 ? "-" : "") + ip.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            }
+            else
+            {
+                // fr/65536 exactly = (fr * 5^16) / 10^16 — 16 zero-padded decimal digits, trailing zeros trimmed.
+                string frac = (fr * FRAC_DECIMAL_WEIGHT)
+                    .ToString("D16", System.Globalization.CultureInfo.InvariantCulture)
+                    .TrimEnd('0');
+                text = (raw < 0 ? "-" : "") + ip.ToString(System.Globalization.CultureInfo.InvariantCulture) + "." + frac;
+            }
+            writer.WritePropertyName(name);
+            writer.WriteRawValue(text, skipInputValidation: true); // plain decimal digits — always a valid JSON number
+        }
+
+        /// <summary>Parse a required expr_literal Fixed <paramref name="prop"/> back to its 16.16 raw with pure
+        /// integer math (round-half-up, matching <c>ExprParser</c>). Located rejects: missing/non-number property,
+        /// exponent notation, more than 20 fraction digits, out of 16.16 range.</summary>
+        private static int ReadExprFixedExact(JsonElement parent, string prop, string path)
+        {
+            if (!parent.TryGetProperty(prop, out JsonElement el))
+                throw new JsonException($"{path}.{prop}: required for expr_literal.");
+            if (el.ValueKind != JsonValueKind.Number)
+                throw new JsonException($"{path}.{prop}: must be a JSON number, got {el.ValueKind}.");
+
+            string text = el.GetRawText();
+            int pos = 0;
+            bool neg = pos < text.Length && text[pos] == '-';
+            if (neg) pos++;
+
+            long intPart = 0;
+            int intDigits = 0;
+            while (pos < text.Length && text[pos] >= '0' && text[pos] <= '9')
+            {
+                intDigits++;
+                // Accumulate with a saturating cap just past the 16.16 ceiling — the range reject below names it.
+                if (intPart <= 32768) intPart = intPart * 10 + (text[pos] - '0');
+                pos++;
+            }
+            if (intDigits == 0)
+                throw new JsonException($"{path}.{prop}: malformed Fixed decimal '{text}'.");
+
+            long frac = 0;
+            int fracDigits = 0;
+            if (pos < text.Length && text[pos] == '.')
+            {
+                pos++;
+                while (pos < text.Length && text[pos] >= '0' && text[pos] <= '9')
+                {
+                    fracDigits++;
+                    if (fracDigits > 20)
+                        throw new JsonException(
+                            $"{path}.{prop}: a Fixed value supports at most 20 fraction digits (exact 16.16 values need 16).");
+                    frac = frac * 10 + (text[pos] - '0');
+                    pos++;
+                }
+                if (fracDigits == 0)
+                    throw new JsonException($"{path}.{prop}: malformed Fixed decimal '{text}'.");
+            }
+            if (pos != text.Length) // 'e'/'E' exponent or other residue
+                throw new JsonException(
+                    $"{path}.{prop}: '{text}' is not a plain decimal (exponent notation is not supported for expr_literal Fixed values).");
+            if (intPart > 32768)
+                throw new JsonException($"{path}.{prop}: {text} is out of the 16.16 range [-32768, 32768).");
+
+            // raw = round_half_up((intPart + frac/10^k) * 65536), exact in Int128 (≤ ~2e33 ≪ Int128.Max).
+            System.Int128 pow10 = 1;
+            for (int i = 0; i < fracDigits; i++) pow10 *= 10;
+            System.Int128 mag = ((System.Int128)intPart * 65536 * pow10 + (System.Int128)frac * 65536 + pow10 / 2) / pow10;
+            System.Int128 signed = neg ? -mag : mag;
+            if (signed > int.MaxValue || signed < int.MinValue)
+                throw new JsonException($"{path}.{prop}: {text} is out of the 16.16 range [-32768, 32768).");
+            return (int)signed;
         }
 
         // ── Field writers ────────────────────────────────────────────────────────

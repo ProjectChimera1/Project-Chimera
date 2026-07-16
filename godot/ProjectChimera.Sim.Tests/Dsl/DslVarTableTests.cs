@@ -190,6 +190,70 @@ namespace ProjectChimera.Sim.Tests.Dsl
         }
 
         [Fact]
+        public void SetInt_OnDeclaredBoolVariable_NormalizesToZeroOrOne()
+        {
+            // Bool normalization is central to the shared resolution walk — SetInt (the legacy Int path) must
+            // store 0/1 on a Bool-typed slot exactly like SetRaw does (the drift this consolidation closes).
+            var t = new DslVarTable();
+            t.InitFromDeclarations(new[] { new DslVarDecl("b", DslValueType.Bool, VarScope.Global, 0) },
+                                   Array.Empty<DslTimerDecl>());
+            t.SetInt("b", faction: 0, 7);
+            Assert.Equal(1, t.GetInt("b", faction: 0));
+            t.SetInt("b", faction: 0, 0);
+            Assert.Equal(0, t.GetInt("b", faction: 0));
+        }
+
+        [Fact]
+        public void InitFromDeclarations_NormalizesBoolInitials_InEveryScope()
+        {
+            // The declaration-init path funnels through the SAME Bool 0/1 rule as every write path (review, 7.4
+            // pass 2): a direct-constructed DslVarDecl(Bool, raw 7) — legal for callers that bypass the validator
+            // gate — must not seed a slot where `flag == true` is false while `flag` is truthy.
+            var t = new DslVarTable();
+            t.InitFromDeclarations(new[]
+            {
+                new DslVarDecl("g", DslValueType.Bool, VarScope.Global,       7),
+                new DslVarDecl("p", DslValueType.Bool, VarScope.PerPlayer,    7),
+                new DslVarDecl("l", DslValueType.Bool, VarScope.TriggerLocal, 7),
+            }, Array.Empty<DslTimerDecl>());
+
+            Assert.Equal(1, t.GetInt("g", 0));
+            Assert.Equal(1, t.GetInt("p", 3)); // every player slot seeded normalized
+            t.Enter();
+            Assert.Equal(1, t.GetInt("l", 0)); // the trigger-local template normalized too
+            t.Exit();
+        }
+
+        [Fact]
+        public void BoolNormalization_AppliesInPerPlayerAndTriggerLocalStores_NotJustGlobal()
+        {
+            // The 0/1 invariant was pinned only against the Global store — dropping the PerPlayer or TriggerLocal
+            // NormalizeBoolWrite call site survived the suite (review, 7.4 pass 2). Pin all three per write path.
+            var t = new DslVarTable();
+            t.InitFromDeclarations(new[]
+            {
+                new DslVarDecl("p", DslValueType.Bool, VarScope.PerPlayer,    0),
+                new DslVarDecl("l", DslValueType.Bool, VarScope.TriggerLocal, 0),
+            }, Array.Empty<DslTimerDecl>());
+
+            t.SetInt("p", faction: 2, 7);
+            Assert.Equal(1, t.GetInt("p", faction: 2));
+            t.SetRaw("p", faction: 2, raw0: -5, raw1: 9);
+            t.GetRaw("p", 2, out int pr0, out int pr1);
+            Assert.Equal(1, pr0);
+            Assert.Equal(0, pr1);
+
+            t.Enter();
+            t.SetInt("l", faction: 0, 7);
+            Assert.Equal(1, t.GetInt("l", faction: 0));
+            t.SetRaw("l", faction: 0, raw0: 3, raw1: 4);
+            t.GetRaw("l", 0, out int lr0, out int lr1);
+            Assert.Equal(1, lr0);
+            Assert.Equal(0, lr1);
+            t.Exit();
+        }
+
+        [Fact]
         public void PlayerSlots_MatchesTheEngineCount()
         {
             // DslVarTable cannot reference FactionRegistry (the Dsl→Core-boundary rule), so PlayerSlots is a

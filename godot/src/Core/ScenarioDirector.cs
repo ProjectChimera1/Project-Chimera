@@ -1,6 +1,7 @@
 #nullable enable
 using System;
 using System.Collections.Generic;
+using System.Linq;                 // Story 7.4 — canonical-order edge iteration in the compile backstop
 using ProjectChimera.Combat;       // DamageTable, CombatEventQueue, DeathFeed
 using ProjectChimera.Core.Definitions;
 using ProjectChimera.Dsl;
@@ -21,7 +22,7 @@ namespace ProjectChimera.Core
     /// (run_effect) executes its embedded D1 effect subgraph via the EXISTING <see cref="EffectExecutor"/> (no
     /// second executor).
     /// </summary>
-    public class ScenarioDirector : ISimSystem
+    public class ScenarioDirector : ISimSystem, IExprWorld
     {
         // ── Dependencies ──────────────────────────────────────────────────────
 
@@ -40,6 +41,19 @@ namespace ProjectChimera.Core
         private List<TriggerGraph.TriggerExec> _execs = new();
         private bool[] _triggerFired    = Array.Empty<bool>();  // run_once guard, indexed by _execs position
         private int[]  _triggerCooldown = Array.Empty<int>();   // remaining ticks, indexed by _execs position
+
+        // Story 7.4 — compiled expression programs, indexed by _execs position. Compiled ONCE per LoadScenario
+        // (the two-phase contract: compile at load, zero-allocation eval in the tick). _condPrograms[i] are the
+        // Bool programs ANDed with the trigger's legacy conditions; _valuePrograms[i][j] is action j's compiled
+        // set_variable RHS (null = the legacy literal path). Empty for every expression-free (legacy) scenario,
+        // so legacy tick behavior is byte-identical (Block-If parity).
+        private ExprProgram[][]  _condPrograms  = Array.Empty<ExprProgram[]>();
+        private ExprProgram?[][] _valuePrograms = Array.Empty<ExprProgram?[]>();
+        private static readonly ExprProgram[]  NoCondPrograms  = Array.Empty<ExprProgram>();
+        private static readonly ExprProgram?[] NoValuePrograms = Array.Empty<ExprProgram?>();
+
+        // Story 7.4 — the live world the IExprWorld seam scans (set at Tick entry; count() reads it).
+        private EntityWorld? _exprWorld;
 
         // ── Named regions (Story 6.4) ─────────────────────────────────────────
         private RegionStore _regions = RegionStore.Empty;
@@ -124,16 +138,25 @@ namespace ProjectChimera.Core
             // UNION, so the global Priority-desc / node-id-asc total order holds across BOTH channels. A malformed
             // trigger_graph fails closed at the converter parse (7.3's only graph gate; the authoritative load-time
             // validator is 7.7). The tick WALKS this graph directly, superseding 7.2's ToFlat() lowering.
+            //
+            // Review (7.4 pass 2): FAILURE-ATOMIC — every throwing step (parse, cycle guard, expression compile)
+            // runs against LOCALS before any field is touched, so a caller that catches a located load error keeps
+            // the previous scenario's coherent runtime state (pre-7.4, a compile throw could strand half-replaced
+            // trigger state whose null program rows then NRE'd on the next Tick).
             TriggerGraph graph = TriggerGraph.FromFlat(scenario.Triggers);
             if (!string.IsNullOrWhiteSpace(scenario.TriggerGraphJson))
                 graph.Merge(TriggerGraph.FromJson(scenario.TriggerGraphJson!));
-            _execs = graph.BuildExecutionOrder();
-            _triggerFired    = new bool[_execs.Count];
-            _triggerCooldown = new int[_execs.Count];
+            List<TriggerGraph.TriggerExec> execs = graph.BuildExecutionOrder();
 
-            // Story 7.3: (re)initialize the typed/scoped variable + timer store from the scenario declarations. The
-            // seconds→ticks conversion happens HERE at the Core boundary (SecondsToTicks owns TICKS_PER_SECOND) so the
-            // table receives integer ticks only. Declared timers start active at their tick count (I/O matrix).
+            // Story 7.4 — compile every condition-expression and set_variable value-expression ONCE (two-phase
+            // contract). A compile failure throws a located JsonException, consistent with the cycle-guard posture
+            // above (the ScenarioValidator gate rejects the same errors located BEFORE any apply; this is the
+            // fail-closed backstop for direct LoadScenario callers). Expression-free scenarios compile nothing.
+            (ExprProgram[][] condPrograms, ExprProgram?[][] valuePrograms) = CompileExpressionPrograms(scenario, graph, execs);
+
+            // Story 7.3: the typed/scoped variable + timer store declarations. The seconds→ticks conversion happens
+            // HERE at the Core boundary (SecondsToTicks owns TICKS_PER_SECOND) so the table receives integer ticks
+            // only. Declared timers start active at their tick count (I/O matrix).
             var varDecls = new List<DslVarDecl>();
             if (scenario.Variables != null)
                 foreach (ScenarioVariable v in scenario.Variables)
@@ -142,6 +165,20 @@ namespace ProjectChimera.Core
             if (scenario.Timers != null)
                 foreach (ScenarioTimer t in scenario.Timers)
                     timerDecls.Add(new DslTimerDecl(t.Name, Math.Max(1, SecondsToTicks(t.Seconds))));
+
+            // ── COMMIT (nothing below throws) ──────────────────────────────────
+
+            // Story 7.4 (review patch): drop the world pinned by the previous run's Tick — a stale EntityWorld must
+            // not survive a LoadScenario / Edit→Play reset (count() would otherwise scan the old world if anything
+            // evaluated an expression before the first tick re-captures it).
+            _exprWorld = null;
+
+            _execs = execs;
+            _triggerFired    = new bool[execs.Count];
+            _triggerCooldown = new int[execs.Count];
+            _condPrograms    = condPrograms;
+            _valuePrograms   = valuePrograms;
+
             _vars.InitFromDeclarations(varDecls, timerDecls);
 
             _firstTick = true;
@@ -157,6 +194,184 @@ namespace ProjectChimera.Core
             }
         }
 
+        /// <summary>
+        /// Story 7.4 — compile every expression subgraph the execution view surfaced (condition-in roots and
+        /// set_variable value-in roots) into <see cref="ExprProgram"/>s held per trigger, via <see cref="ExprCompiler"/>
+        /// against the scenario's declared-variable map. Located <see cref="System.Text.Json.JsonException"/> on any
+        /// compile reject (type mismatch, literal-zero divisor, caps, scope misuse — the full 7.4 rulebook).
+        /// Pure function of its inputs (review, 7.4 pass 2): fills and returns LOCAL arrays so a mid-compile throw
+        /// never strands half-replaced director state — the caller commits them only after everything compiled.
+        /// </summary>
+        private static (ExprProgram[][] CondPrograms, ExprProgram?[][] ValuePrograms) CompileExpressionPrograms(
+            ScenarioData scenario, TriggerGraph graph, List<TriggerGraph.TriggerExec> execs)
+        {
+            // GATE-ONLY checks (deliberately NOT mirrored in this backstop): the engine-ceiling faction bound on
+            // slotted expr_var reads (CheckFactionSlot, ceiling Faction.Player4) is an authoring-policy rule the
+            // ScenarioValidator owns — the compiler's structural [0, DslVarTable.PlayerSlots) bound plus the
+            // CountAlive slot guard keep the runtime safe without it. Every OTHER expression consumer-edge check
+            // the gate applies (the compile rulebook, Bool condition roots, single value-in edge, wire = type,
+            // the value-in edge-shape rejects, duplicate declarations) is re-run below, so a direct LoadScenario
+            // caller fails closed identically.
+            var condPrograms  = new ExprProgram[execs.Count][];
+            var valuePrograms = new ExprProgram?[execs.Count][];
+
+            // Legacy parity guard: expression-free graphs skip every NEW check below (a duplicate-declaration
+            // direct-load, however malformed, must keep its exact pre-7.4 load behavior — the Block-If).
+            bool anyExpr = false;
+            foreach (NodeBase n in graph.Nodes)
+                if (ExprCompiler.IsExprNode(n)) { anyExpr = true; break; }
+
+            // Declared name → (type, scope), the same map shape the validator gate builds. WITH expressions
+            // present, duplicates reject like the gate (review, 7.4 pass 2): a last-declaration-wins map would
+            // type expressions against one slot while DslVarTable.Resolve reads another (PerPlayer-first),
+            // silently confusing typed raws.
+            var declMap = new Dictionary<string, (DslValueType Type, VarScope Scope)>(StringComparer.Ordinal);
+            if (scenario.Variables != null)
+                foreach (ScenarioVariable v in scenario.Variables)
+                    if (!string.IsNullOrWhiteSpace(v.Name))
+                    {
+                        if (!declMap.TryAdd(v.Name, (v.Type, v.Scope)) && anyExpr)
+                            throw new System.Text.Json.JsonException(
+                                $"scenario variable '{v.Name}' is declared more than once.");
+                    }
+
+            // ── Per-edge parity scan (review, 7.4 pass 2 — mirrors the gate's consumer-edge loop over ALL data
+            //    edges, not just exec-surfaced actions): a value-in edge whose src is NOT an expression node maps
+            //    to root -1 in BuildExecutionOrder and would otherwise be SILENTLY ignored (the literal Value wins
+            //    against the authored wiring); a value-in edge onto a run_effect or an action outside every exec
+            //    chain would escape the per-exec loop below entirely. Canonical tuple order → deterministic
+            //    first-fail, matching the gate. ──
+            var byId = new Dictionary<int, NodeBase>(graph.Nodes.Count);
+            foreach (NodeBase n in graph.Nodes)
+                byId[n.Id] = n;
+            List<DataEdge> sortedData = graph.DataEdges.OrderBy(e => e).ToList();
+            var seenValueInPorts = new HashSet<int>();
+            foreach (DataEdge de in sortedData)
+            {
+                bool srcIsExpr = byId.TryGetValue(de.Src, out NodeBase? src) && ExprCompiler.IsExprNode(src);
+                byId.TryGetValue(de.Dst, out NodeBase? dst);
+
+                if (de.DstPort == TriggerGraph.ActionValueInPort && dst is EffectActionNode)
+                    throw new System.Text.Json.JsonException(
+                        $"run_effect node {dst.Id}: a value-in edge is not allowed on run_effect (only a set_variable action takes a value expression).");
+                if (de.DstPort == TriggerGraph.ActionValueInPort && dst is ActionNode && !srcIsExpr)
+                    throw new System.Text.Json.JsonException(
+                        $"action node {dst.Id}: the value-in edge source (node {de.Src}) is not an expression node.");
+
+                if (!srcIsExpr || dst is null) continue;
+
+                bool consumedByCondition = dst is TriggerNode && de.DstPort == TriggerGraph.TriggerConditionInPort;
+                bool consumedByValueIn   = dst is ActionNode && de.DstPort == TriggerGraph.ActionValueInPort;
+                // Every expression node emits on ExprDataOutPort (= 0); a consumed edge leaving any other src port
+                // is a non-canonical encoding — reject located (the compiler applies the same rule to operand edges).
+                if ((consumedByCondition || consumedByValueIn) && de.SrcPort != TriggerGraph.ExprDataOutPort)
+                    throw new System.Text.Json.JsonException(
+                        $"expr node {de.Src}: the consumer edge into node {de.Dst} leaves src port {de.SrcPort}; expression nodes emit only on port {TriggerGraph.ExprDataOutPort}.");
+
+                if (consumedByValueIn)
+                {
+                    var act = (ActionNode)dst;
+                    if (act.Kind != "set_variable")
+                        throw new System.Text.Json.JsonException(
+                            $"action node {act.Id}: a value-in expression edge is only allowed on a set_variable action (kind '{act.Kind}').");
+                    if (string.IsNullOrEmpty(act.Variable))
+                        throw new System.Text.Json.JsonException(
+                            $"action node {act.Id}: a set_variable with a value expression needs a target variable.");
+                    if (!seenValueInPorts.Add(act.Id))
+                        throw new System.Text.Json.JsonException(
+                            $"action node {act.Id}: multiple value-in expression edges (forked; exactly one allowed).");
+                    if (!ExprCompiler.TryCompile(graph, de.Src, declMap, inCondition: false, out ExprProgram? vp, out string? vErr))
+                        throw new System.Text.Json.JsonException($"set_variable value expression: {vErr}");
+                    DslValueType target = declMap.TryGetValue(act.Variable!, out var tDecl) ? tDecl.Type : DslValueType.Int;
+                    if (target != DslValueType.Int && target != DslValueType.Fixed && target != DslValueType.Bool)
+                        throw new System.Text.Json.JsonException(
+                            $"action node {act.Id}: set_variable target '{act.Variable}' is {target}-typed; expression assignment targets Int/Fixed/Bool variables only.");
+                    if (vp!.ResultType != target)
+                        throw new System.Text.Json.JsonException(
+                            $"expr node {de.Src}: value expression result type {vp.ResultType} does not match target variable '{act.Variable}' ({target}).");
+                    if (de.Wire != ExprCompiler.WireOf(target))
+                        throw new System.Text.Json.JsonException(
+                            $"action node {act.Id}: the value-in edge wire '{de.Wire}' does not match target variable '{act.Variable}' ({target}).");
+                }
+            }
+
+            for (int i = 0; i < execs.Count; i++)
+            {
+                TriggerGraph.TriggerExec ex = execs[i];
+
+                if (ex.ConditionExprRoots.Length == 0)
+                {
+                    condPrograms[i] = NoCondPrograms;
+                }
+                else
+                {
+                    var programs = new ExprProgram[ex.ConditionExprRoots.Length];
+                    for (int j = 0; j < ex.ConditionExprRoots.Length; j++)
+                    {
+                        int root = ex.ConditionExprRoots[j];
+                        if (!ExprCompiler.TryCompile(graph, root, declMap, inCondition: true, out ExprProgram? p, out string? err))
+                            throw new System.Text.Json.JsonException($"trigger '{ex.Trigger.Name}' condition expression: {err}");
+                        if (p!.ResultType != DslValueType.Bool)
+                            throw new System.Text.Json.JsonException(
+                                $"trigger '{ex.Trigger.Name}' condition expression (expr node {root}): must evaluate to Bool, got {p.ResultType}.");
+                        // Backstop parity with the gate: the condition-in edge must carry the Boolean wire.
+                        foreach (DataEdge e in graph.DataEdges)
+                            if (e.Src == root && e.Dst == ex.Trigger.Id && e.DstPort == TriggerGraph.TriggerConditionInPort
+                                && e.Wire != DataWireType.Boolean)
+                                throw new System.Text.Json.JsonException(
+                                    $"trigger '{ex.Trigger.Name}' condition expression (expr node {root}): the condition-in edge must carry the Boolean wire, got '{e.Wire}'.");
+                        programs[j] = p;
+                    }
+                    condPrograms[i] = programs;
+                }
+
+                bool anyValue = false;
+                for (int j = 0; j < ex.ActionValueExprRoots.Length; j++)
+                    if (ex.ActionValueExprRoots[j] >= 0) { anyValue = true; break; }
+                if (!anyValue)
+                {
+                    valuePrograms[i] = NoValuePrograms;
+                    continue;
+                }
+
+                var values = new ExprProgram?[ex.Actions.Length];
+                for (int j = 0; j < ex.Actions.Length; j++)
+                {
+                    int root = ex.ActionValueExprRoots[j];
+                    if (root < 0) continue;
+                    if (ex.Actions[j] is not ActionNode act || act.Kind != "set_variable" || string.IsNullOrEmpty(act.Variable))
+                        throw new System.Text.Json.JsonException(
+                            $"trigger '{ex.Trigger.Name}' action node {ex.Actions[j].Id}: a value-in expression edge is only allowed on a set_variable action with a target variable.");
+                    if (!ExprCompiler.TryCompile(graph, root, declMap, inCondition: false, out ExprProgram? p, out string? err))
+                        throw new System.Text.Json.JsonException($"trigger '{ex.Trigger.Name}' set_variable value expression: {err}");
+                    DslValueType target = declMap.TryGetValue(act.Variable!, out var decl) ? decl.Type : DslValueType.Int;
+                    if (target != DslValueType.Int && target != DslValueType.Fixed && target != DslValueType.Bool)
+                        throw new System.Text.Json.JsonException(
+                            $"trigger '{ex.Trigger.Name}' set_variable target '{act.Variable}' is {target}-typed; expression assignment targets Int/Fixed/Bool variables only.");
+                    if (p!.ResultType != target)
+                        throw new System.Text.Json.JsonException(
+                            $"trigger '{ex.Trigger.Name}' set_variable value expression (expr node {root}): result type {p.ResultType} does not match target variable '{act.Variable}' ({target}).");
+                    values[j] = p;
+                }
+                valuePrograms[i] = values;
+            }
+
+            return (condPrograms, valuePrograms);
+        }
+
+        /// <summary>Story 7.4 — the <c>count(faction)</c> built-in's world seam: alive entities of the given slot,
+        /// via the existing deterministic ascending-id <see cref="CountAlive"/> scan. Reads the world captured at
+        /// Tick entry; 0 before the first tick or for a slot with no live entities.</summary>
+        int IExprWorld.CountAlive(int factionSlot)
+        {
+            EntityWorld? world = _exprWorld;
+            if (world is null) return 0;
+            // A COMPUTED slot can be any int (only LITERAL count() arguments are range-checked at compile) — an
+            // out-of-range slot counts 0 instead of wrapping the (Faction)(slot + 1) cast onto Neutral/garbage.
+            if (factionSlot < 0 || factionSlot >= DslVarTable.PlayerSlots) return 0;
+            return CountAlive(world, (Faction)(factionSlot + 1));
+        }
+
         /// <summary>The stored initial value's raw int for a declared variable: Fixed/Point store the Fixed.Raw
         /// verbatim (preserved through the JSON boundary); the integer-valued types (Int/Bool/refs/timer) store the
         /// truncated integer, so an Int slot's GetInt returns a plain int (never a shifted Fixed.Raw).</summary>
@@ -167,22 +382,33 @@ namespace ProjectChimera.Core
 
         public void Tick(EntityWorld world, Fixed dt)
         {
-            if (_execs.Count == 0)
+            _exprWorld = world; // Story 7.4 — expose the live world to the count() built-in for this tick
+            try
             {
-                // Review (7.3 follow-up): declared ScenarioData.Timers made trigger-less timers representable, and
-                // the folded remaining-ticks must still decrement per the "declared timers start active" contract —
-                // pre-7.3 the early-out was safe because timers could only exist via trigger actions. An empty table
-                // (every legacy scenario) makes this a no-op, so goldens/checksums are unmoved. Expiry events go
-                // nowhere without triggers (timer_expires is a trigger event), which is fine — the state is the point.
-                _expiredTimers.Clear();
-                _vars.TimerTickAndCollectExpired(_expiredTimers);
-                return;
-            }
+                if (_execs.Count == 0)
+                {
+                    // Review (7.3 follow-up): declared ScenarioData.Timers made trigger-less timers representable, and
+                    // the folded remaining-ticks must still decrement per the "declared timers start active" contract —
+                    // pre-7.3 the early-out was safe because timers could only exist via trigger actions. An empty table
+                    // (every legacy scenario) makes this a no-op, so goldens/checksums are unmoved. Expiry events go
+                    // nowhere without triggers (timer_expires is a trigger event), which is fine — the state is the point.
+                    _expiredTimers.Clear();
+                    _vars.TimerTickAndCollectExpired(_expiredTimers);
+                    return;
+                }
 
-            var events = CollectEvents(world);
-            TickCooldowns();
-            EvaluateTriggers(events, world);
-            UpdateSnapshots(world);
+                var events = CollectEvents(world);
+                TickCooldowns();
+                EvaluateTriggers(events, world);
+                UpdateSnapshots(world);
+            }
+            finally
+            {
+                // Review (7.4 pass 2): the seam is scoped to THE TICK — don't retain the world reference between
+                // ticks (any future between-tick evaluation entry point, e.g. an editor preview, would otherwise
+                // scan a world the director no longer owns; LoadScenario's clear covers only the reset path).
+                _exprWorld = null;
+            }
         }
 
         // ── Event collection ──────────────────────────────────────────────────
@@ -266,11 +492,14 @@ namespace ProjectChimera.Core
                 if (!t.Enabled || _triggerFired[idx] || _triggerCooldown[idx] > 0) continue;
                 if (!AnyEventMatches(ex.Events, events))                            continue;
                 if (!AllConditionsMet(ex.Conditions, world))                        continue;
+                // Story 7.4: compiled condition-expression programs AND with the legacy conditions above
+                // (multi-condition semantics). Pre-checked Bool postfix programs; zero-allocation eval.
+                if (!AllExprConditionsPass(idx))                                    continue;
 
                 // Story 7.3: open a trigger-local scope for this firing (allocate/reset trigger-local scratch), run
                 // the action chain, then free it — never engine-global, never folded.
                 _vars.Enter();
-                try { ExecuteActions(ex.Actions, world); }
+                try { ExecuteActions(ex.Actions, idx < _valuePrograms.Length ? _valuePrograms[idx] : NoValuePrograms, world); }
                 finally { _vars.Exit(); }
 
                 if (t.RunOnce) _triggerFired[idx] = true;
@@ -347,6 +576,17 @@ namespace ProjectChimera.Core
             return true;
         }
 
+        /// <summary>Story 7.4 — every compiled condition-expression program of the trigger at <paramref name="idx"/>
+        /// must evaluate non-zero (Bool true). ANDed with the legacy <see cref="AllConditionsMet"/> result, matching
+        /// multi-condition semantics. No programs (every legacy scenario) ⇒ trivially true.</summary>
+        private bool AllExprConditionsPass(int idx)
+        {
+            ExprProgram[] programs = idx < _condPrograms.Length ? _condPrograms[idx] : NoCondPrograms;
+            for (int i = 0; i < programs.Length; i++)
+                if (programs[i].Eval(_vars, this) == 0) return false;
+            return true;
+        }
+
         private bool EvalCondition(ConditionNode c, EntityWorld world)
         {
             var faction = (Faction)(c.Faction + 1);
@@ -390,10 +630,11 @@ namespace ProjectChimera.Core
 
         // ── Action execution ──────────────────────────────────────────────────
 
-        private void ExecuteActions(NodeBase[] actions, EntityWorld world)
+        private void ExecuteActions(NodeBase[] actions, ExprProgram?[] valuePrograms, EntityWorld world)
         {
-            foreach (var node in actions)
+            for (int j = 0; j < actions.Length; j++)
             {
+                NodeBase node = actions[j];
                 if (node is EffectActionNode effectNode)
                 {
                     RunEffect(effectNode, world);
@@ -434,9 +675,17 @@ namespace ProjectChimera.Core
                     }
                     case "set_variable":
                         if (!string.IsNullOrEmpty(a.Variable))
-                            // Story 7.3: write the Int-typed variable through the store; PerPlayer selects the player
-                            // slot via the action's Faction field; undeclared → Global/Int (legacy SetVariable parity).
-                            _vars.SetInt(a.Variable, a.Faction, a.Value);
+                        {
+                            // Story 7.4: a compiled RHS program (value-in expression edge) evaluates the typed raw
+                            // and writes through SetRaw (Bool targets normalize to 0/1; Fixed raw-exact). Otherwise
+                            // the 7.3 literal path is unchanged: PerPlayer selects the player slot via the action's
+                            // Faction field; undeclared → Global/Int (legacy SetVariable parity).
+                            ExprProgram? rhs = j < valuePrograms.Length ? valuePrograms[j] : null;
+                            if (rhs != null)
+                                _vars.SetRaw(a.Variable, a.Faction, rhs.Eval(_vars, this), 0);
+                            else
+                                _vars.SetInt(a.Variable, a.Faction, a.Value);
+                        }
                         break;
                 }
             }

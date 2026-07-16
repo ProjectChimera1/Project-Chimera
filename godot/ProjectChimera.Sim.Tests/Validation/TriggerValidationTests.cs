@@ -537,6 +537,373 @@ namespace ProjectChimera.Sim.Tests.Validation
             Assert.True(NewValidator().Validate(ok).Ok);
         }
 
+        // ── Story 7.4 — the expression layer at the validator gate ──
+
+        /// <summary>Declared-variable map matching the m.Variables set the expression tests declare.</summary>
+        private static readonly System.Collections.Generic.Dictionary<string, (DslValueType Type, VarScope Scope)> ExprVars =
+            new(System.StringComparer.Ordinal)
+            {
+                ["gold"] = (DslValueType.Int,   VarScope.Global),
+                ["done"] = (DslValueType.Bool,  VarScope.Global),
+                ["rate"] = (DslValueType.Fixed, VarScope.Global),
+                ["tl"]   = (DslValueType.Int,   VarScope.TriggerLocal),
+            };
+
+        private static ScenarioVariable[] ExprVarDecls() => new[]
+        {
+            new ScenarioVariable { Name = "gold", Type = DslValueType.Int,   Scope = VarScope.Global },
+            new ScenarioVariable { Name = "done", Type = DslValueType.Bool,  Scope = VarScope.Global },
+            new ScenarioVariable { Name = "rate", Type = DslValueType.Fixed, Scope = VarScope.Global },
+            new ScenarioVariable { Name = "tl",   Type = DslValueType.Int,   Scope = VarScope.TriggerLocal },
+        };
+
+        /// <summary>A single-trigger graph whose condition-in port is fed by the given expression NODES (hand-built
+        /// raw IR): trigger 0, match_start event 1, then the supplied nodes/edges, with <paramref name="rootId"/>
+        /// wired into the condition-in port over the given wire.</summary>
+        private static string ConditionExprGraph(NodeBase[] exprNodes, DataEdge[] operandEdges, int rootId,
+            DataWireType rootWire = DataWireType.Boolean)
+        {
+            var g = new TriggerGraph();
+            g.Nodes.Add(new TriggerNode { Id = 0, Name = "t" });
+            g.Nodes.Add(new EventNode { Id = 1, Kind = "match_start" });
+            g.ExecEdges.Add(new ExecEdge(1, 0, 0, 0));
+            foreach (NodeBase n in exprNodes) g.Nodes.Add(n);
+            foreach (DataEdge e in operandEdges) g.DataEdges.Add(e);
+            g.DataEdges.Add(new DataEdge(rootId, TriggerGraph.ExprDataOutPort, 0, TriggerGraph.TriggerConditionInPort, rootWire));
+            return g.ToCanonicalJson();
+        }
+
+        [Fact]
+        public void WellTypedExpressionCondition_IsAccepted()
+        {
+            var m = ValidModelWithTrigger();
+            m.Variables = ExprVarDecls();
+            m.TriggerGraphJson = TriggerGraph.BuildExpressionTrigger(
+                "t", "match_start", "(gold >= 10 && !done) || count(1) < 5", "gold", 0, "(gold + 5) * 2", ExprVars)
+                .ToCanonicalJson();
+            ValidationResult r = NewValidator().Validate(m);
+            Assert.True(r.Ok, r.Error);
+        }
+
+        [Fact]
+        public void ExpressionTypeMismatch_IsRejected_WithLocatedError()
+        {
+            // Bool && Int — a strict-typing reject surfaced as a located ValidationResult.Fail at the gate.
+            var m = ValidModelWithTrigger();
+            m.Variables = ExprVarDecls();
+            m.TriggerGraphJson = ConditionExprGraph(
+                new NodeBase[]
+                {
+                    new ExprVarNode { Id = 2, Name = "done" },
+                    new ExprLiteralNode { Id = 3, ValueType = DslValueType.Int, Raw = 1 },
+                    new ExprBinaryNode { Id = 4, Op = "and" },
+                },
+                new[]
+                {
+                    new DataEdge(2, 0, 4, TriggerGraph.ExprOperandPort0, DataWireType.Boolean),
+                    new DataEdge(3, 0, 4, TriggerGraph.ExprOperandPort1, DataWireType.Int),
+                },
+                rootId: 4);
+            ValidationResult r = NewValidator().Validate(m);
+            Assert.False(r.Ok);
+            Assert.Contains("expr node 4", r.Error!);
+        }
+
+        [Fact]
+        public void ExpressionLiteralZeroDivisor_IsRejectedAtTheGate()
+        {
+            var m = ValidModelWithTrigger();
+            m.Variables = ExprVarDecls();
+            m.TriggerGraphJson = ConditionExprGraph(
+                new NodeBase[]
+                {
+                    new ExprVarNode { Id = 2, Name = "gold" },
+                    new ExprLiteralNode { Id = 3, ValueType = DslValueType.Int, Raw = 0 },
+                    new ExprBinaryNode { Id = 4, Op = "div" },
+                    new ExprLiteralNode { Id = 5, ValueType = DslValueType.Int, Raw = 0 },
+                    new ExprBinaryNode { Id = 6, Op = "gt" },
+                },
+                new[]
+                {
+                    new DataEdge(2, 0, 4, TriggerGraph.ExprOperandPort0, DataWireType.Int),
+                    new DataEdge(3, 0, 4, TriggerGraph.ExprOperandPort1, DataWireType.Int),
+                    new DataEdge(4, 0, 6, TriggerGraph.ExprOperandPort0, DataWireType.Int),
+                    new DataEdge(5, 0, 6, TriggerGraph.ExprOperandPort1, DataWireType.Int),
+                },
+                rootId: 6);
+            ValidationResult r = NewValidator().Validate(m);
+            Assert.False(r.Ok);
+            Assert.Contains("literal-zero divisor", r.Error!);
+        }
+
+        [Fact]
+        public void ExpressionUndeclaredVariable_IsRejected()
+        {
+            var m = ValidModelWithTrigger();
+            m.TriggerGraphJson = ConditionExprGraph(
+                new NodeBase[]
+                {
+                    new ExprVarNode { Id = 2, Name = "ghost" },
+                },
+                System.Array.Empty<DataEdge>(),
+                rootId: 2);
+            ValidationResult r = NewValidator().Validate(m);
+            Assert.False(r.Ok);
+            Assert.Contains("undeclared", r.Error!);
+        }
+
+        [Fact]
+        public void ExpressionTriggerLocalReadInCondition_IsRejected()
+        {
+            var m = ValidModelWithTrigger();
+            m.Variables = ExprVarDecls();
+            m.TriggerGraphJson = ConditionExprGraph(
+                new NodeBase[]
+                {
+                    new ExprVarNode { Id = 2, Name = "tl" },
+                    new ExprLiteralNode { Id = 3, ValueType = DslValueType.Int, Raw = 1 },
+                    new ExprBinaryNode { Id = 4, Op = "eq" },
+                },
+                new[]
+                {
+                    new DataEdge(2, 0, 4, TriggerGraph.ExprOperandPort0, DataWireType.Int),
+                    new DataEdge(3, 0, 4, TriggerGraph.ExprOperandPort1, DataWireType.Int),
+                },
+                rootId: 4);
+            ValidationResult r = NewValidator().Validate(m);
+            Assert.False(r.Ok);
+            Assert.Contains("TriggerLocal", r.Error!);
+        }
+
+        [Fact]
+        public void ExpressionOverDepthCap_IsRejected_NamingTheCap()
+        {
+            var nodes = new System.Collections.Generic.List<NodeBase>
+            {
+                new ExprLiteralNode { Id = 2, ValueType = DslValueType.Bool, Raw = 1 },
+            };
+            var edges = new System.Collections.Generic.List<DataEdge>();
+            int cur = 2;
+            for (int i = 0; i < ExprBounds.MaxExprDepth; i++)
+            {
+                int id = 3 + i;
+                nodes.Add(new ExprUnaryNode { Id = id, Op = "not" });
+                edges.Add(new DataEdge(cur, 0, id, TriggerGraph.ExprOperandPort0, DataWireType.Boolean));
+                cur = id;
+            }
+            var m = ValidModelWithTrigger();
+            m.TriggerGraphJson = ConditionExprGraph(nodes.ToArray(), edges.ToArray(), rootId: cur);
+            ValidationResult r = NewValidator().Validate(m);
+            Assert.False(r.Ok);
+            Assert.Contains("MaxExprDepth", r.Error!);
+        }
+
+        [Fact]
+        public void ExprVarFactionAboveEngineCeiling_IsRejected_ByCheckFactionSlot()
+        {
+            // A per-player slotted read (score[5]) passes the compiler's [0,8) structural bound but must trip the
+            // SAME engine-ceiling CheckFactionSlot gate every other graph-node faction gets.
+            var m = ValidModelWithTrigger();
+            m.Variables = new[]
+            {
+                new ScenarioVariable { Name = "score", Type = DslValueType.Int, Scope = VarScope.PerPlayer },
+            };
+            m.TriggerGraphJson = ConditionExprGraph(
+                new NodeBase[]
+                {
+                    new ExprVarNode { Id = 2, Name = "score", Faction = 5 },
+                    new ExprLiteralNode { Id = 3, ValueType = DslValueType.Int, Raw = 1 },
+                    new ExprBinaryNode { Id = 4, Op = "eq" },
+                },
+                new[]
+                {
+                    new DataEdge(2, 0, 4, TriggerGraph.ExprOperandPort0, DataWireType.Int),
+                    new DataEdge(3, 0, 4, TriggerGraph.ExprOperandPort1, DataWireType.Int),
+                },
+                rootId: 4);
+            ValidationResult r = NewValidator().Validate(m);
+            Assert.False(r.Ok);
+            Assert.Contains("expr_var node 2.faction", r.Error!);
+        }
+
+        [Fact]
+        public void StraySrcPortOnExpressionConsumerEdge_IsRejected()
+        {
+            // Expression nodes emit only on ExprDataOutPort (= 0): a condition-in consumer edge leaving src_port 7
+            // previously compiled, validated, and round-tripped untouched — a silently-tolerated non-canonical
+            // encoding, rejected located now (review, 7.4 pass 2).
+            var g = new TriggerGraph();
+            g.Nodes.Add(new TriggerNode { Id = 0, Name = "t" });
+            g.Nodes.Add(new EventNode { Id = 1, Kind = "match_start" });
+            g.ExecEdges.Add(new ExecEdge(1, 0, 0, 0));
+            g.Nodes.Add(new ExprLiteralNode { Id = 2, ValueType = DslValueType.Bool, Raw = 1 });
+            g.DataEdges.Add(new DataEdge(2, 7, 0, TriggerGraph.TriggerConditionInPort, DataWireType.Boolean));
+
+            var m = ValidModelWithTrigger();
+            m.TriggerGraphJson = g.ToCanonicalJson();
+            ValidationResult r = NewValidator().Validate(m);
+            Assert.False(r.Ok);
+            Assert.Contains("emit only on port", r.Error!);
+        }
+
+        [Fact]
+        public void NonBoolExpressionOnConditionIn_IsRejected()
+        {
+            // An Int-rooted expression wired into the trigger's condition-in port must reject (conditions are Bool).
+            var m = ValidModelWithTrigger();
+            m.Variables = ExprVarDecls();
+            m.TriggerGraphJson = ConditionExprGraph(
+                new NodeBase[] { new ExprVarNode { Id = 2, Name = "gold" } },
+                System.Array.Empty<DataEdge>(),
+                rootId: 2,
+                rootWire: DataWireType.Int);
+            ValidationResult r = NewValidator().Validate(m);
+            Assert.False(r.Ok);
+            Assert.Contains("Bool", r.Error!);
+        }
+
+        [Fact]
+        public void SetVariable_FixedTargetWithFixedValueExpression_Passes_WhileLiteralPathStillRejects()
+        {
+            // The 7.4 widening: a Fixed-typed target is legal WHEN fed by a Fixed value expression…
+            var ok = ValidModelWithTrigger();
+            ok.Variables = ExprVarDecls();
+            ok.TriggerGraphJson = TriggerGraph.BuildExpressionTrigger(
+                "t", "match_start", null, "rate", 0, "1.5 + 0.25", ExprVars).ToCanonicalJson();
+            ValidationResult rOk = NewValidator().Validate(ok);
+            Assert.True(rOk.Ok, rOk.Error);
+
+            // …while the LITERAL path keeps the 7.3 Int-only rule (GraphChannel_SetVariableOnNonIntVariable covers
+            // the located message; this pins the two paths side by side).
+            var bad = ValidModelWithTrigger();
+            bad.Variables = ExprVarDecls();
+            bad.TriggerGraphJson = SingleNodeGraph(
+                new ActionNode { Id = 2, Kind = "set_variable", Variable = "rate", Value = 5 },
+                wireAsAction: true);
+            ValidationResult rBad = NewValidator().Validate(bad);
+            Assert.False(rBad.Ok);
+            Assert.Contains("Int-typed", rBad.Error!);
+        }
+
+        [Fact]
+        public void SetVariable_BoolTargetWithBoolValueExpression_Passes()
+        {
+            var m = ValidModelWithTrigger();
+            m.Variables = ExprVarDecls();
+            m.TriggerGraphJson = TriggerGraph.BuildExpressionTrigger(
+                "t", "match_start", null, "done", 0, "gold > 5", ExprVars).ToCanonicalJson();
+            ValidationResult r = NewValidator().Validate(m);
+            Assert.True(r.Ok, r.Error);
+        }
+
+        [Fact]
+        public void ValueExpressionTypeMismatchWithTarget_IsRejected()
+        {
+            // An Int expression wired into a Fixed-typed target: hand-built (the text helper refuses to build it).
+            var g = new TriggerGraph();
+            g.Nodes.Add(new TriggerNode { Id = 0, Name = "t" });
+            g.Nodes.Add(new EventNode { Id = 1, Kind = "match_start" });
+            g.ExecEdges.Add(new ExecEdge(1, 0, 0, 0));
+            g.Nodes.Add(new ActionNode { Id = 2, Kind = "set_variable", Variable = "rate" });
+            g.ExecEdges.Add(new ExecEdge(0, 0, 2, 0));
+            g.Nodes.Add(new ExprLiteralNode { Id = 3, ValueType = DslValueType.Int, Raw = 7 });
+            g.DataEdges.Add(new DataEdge(3, TriggerGraph.ExprDataOutPort, 2, TriggerGraph.ActionValueInPort, DataWireType.Int));
+
+            var m = ValidModelWithTrigger();
+            m.Variables = ExprVarDecls();
+            m.TriggerGraphJson = g.ToCanonicalJson();
+            ValidationResult r = NewValidator().Validate(m);
+            Assert.False(r.Ok);
+            Assert.Contains("rate", r.Error!);
+        }
+
+        [Fact]
+        public void ValueExpressionOnNonSetVariableAction_IsRejected()
+        {
+            // "No expression wiring into … any ActionNode field other than set_variable's value-in port."
+            var g = new TriggerGraph();
+            g.Nodes.Add(new TriggerNode { Id = 0, Name = "t" });
+            g.Nodes.Add(new EventNode { Id = 1, Kind = "match_start" });
+            g.ExecEdges.Add(new ExecEdge(1, 0, 0, 0));
+            g.Nodes.Add(new ActionNode { Id = 2, Kind = "display_message", Text = "hi" });
+            g.ExecEdges.Add(new ExecEdge(0, 0, 2, 0));
+            g.Nodes.Add(new ExprLiteralNode { Id = 3, ValueType = DslValueType.Int, Raw = 7 });
+            g.DataEdges.Add(new DataEdge(3, TriggerGraph.ExprDataOutPort, 2, TriggerGraph.ActionValueInPort, DataWireType.Int));
+
+            var m = ValidModelWithTrigger();
+            m.TriggerGraphJson = g.ToCanonicalJson();
+            ValidationResult r = NewValidator().Validate(m);
+            Assert.False(r.Ok);
+            Assert.Contains("set_variable", r.Error!);
+        }
+
+        [Fact]
+        public void ValueExpressionIntoRunEffectNode_IsRejectedAtTheGate()
+        {
+            // A value-in edge whose dst is a run_effect node IS consumed by the runtime (BuildExecutionOrder
+            // surfaces it and LoadScenario's compile throws mid-apply) — the gate must reject it first, not
+            // pattern-match it into the "unconsumed" ignore path.
+            var g = new TriggerGraph();
+            g.Nodes.Add(new TriggerNode { Id = 0, Name = "t" });
+            g.Nodes.Add(new EventNode { Id = 1, Kind = "match_start" });
+            g.ExecEdges.Add(new ExecEdge(1, 0, 0, 0));
+            g.Nodes.Add(new EffectActionNode { Id = 2, Effect = new DirectHpDeltaEffect(Fixed.FromInt(-10)) });
+            g.ExecEdges.Add(new ExecEdge(0, 0, 2, 0));
+            g.Nodes.Add(new ExprLiteralNode { Id = 3, ValueType = DslValueType.Int, Raw = 7 });
+            g.DataEdges.Add(new DataEdge(3, TriggerGraph.ExprDataOutPort, 2, TriggerGraph.ActionValueInPort, DataWireType.Int));
+
+            var m = ValidModelWithTrigger();
+            m.TriggerGraphJson = g.ToCanonicalJson();
+            ValidationResult r = NewValidator().Validate(m);
+            Assert.False(r.Ok);
+            Assert.Contains("run_effect node 2", r.Error!);
+        }
+
+        [Fact]
+        public void NonExpressionSourceOnValueInPort_IsRejected()
+        {
+            // A value-in edge whose SRC is not an expression node is silently ignored at runtime (the literal
+            // Value would win against the authored wiring) — reject it located instead of passing the gate.
+            var m = ValidModelWithTrigger();
+            m.Variables = ExprVarDecls();
+            var g = new TriggerGraph();
+            g.Nodes.Add(new TriggerNode { Id = 0, Name = "t" });
+            g.Nodes.Add(new EventNode { Id = 1, Kind = "match_start" });
+            g.ExecEdges.Add(new ExecEdge(1, 0, 0, 0));
+            g.Nodes.Add(new ActionNode { Id = 2, Kind = "set_variable", Variable = "gold" });
+            g.ExecEdges.Add(new ExecEdge(0, 0, 2, 0));
+            g.Nodes.Add(new ConditionNode { Id = 3, Kind = "always" });
+            g.DataEdges.Add(new DataEdge(3, TriggerGraph.ConditionDataOutPort, 2, TriggerGraph.ActionValueInPort, DataWireType.Int));
+            m.TriggerGraphJson = g.ToCanonicalJson();
+            ValidationResult r = NewValidator().Validate(m);
+            Assert.False(r.Ok);
+            Assert.Contains("action node 2", r.Error!);
+            Assert.Contains("not an expression node", r.Error!);
+        }
+
+        [Fact]
+        public void ForkedValueInEdges_AreRejected_AtTheGate()
+        {
+            // TWO expression edges into ONE set_variable value-in port — the seenValueInPorts fork reject
+            // ("forked; exactly one allowed"), previously uncovered.
+            var m = ValidModelWithTrigger();
+            m.Variables = ExprVarDecls();
+            var g = new TriggerGraph();
+            g.Nodes.Add(new TriggerNode { Id = 0, Name = "t" });
+            g.Nodes.Add(new EventNode { Id = 1, Kind = "match_start" });
+            g.ExecEdges.Add(new ExecEdge(1, 0, 0, 0));
+            g.Nodes.Add(new ActionNode { Id = 2, Kind = "set_variable", Variable = "gold" });
+            g.ExecEdges.Add(new ExecEdge(0, 0, 2, 0));
+            g.Nodes.Add(new ExprLiteralNode { Id = 3, ValueType = DslValueType.Int, Raw = 1 });
+            g.Nodes.Add(new ExprLiteralNode { Id = 4, ValueType = DslValueType.Int, Raw = 2 });
+            g.DataEdges.Add(new DataEdge(3, TriggerGraph.ExprDataOutPort, 2, TriggerGraph.ActionValueInPort, DataWireType.Int));
+            g.DataEdges.Add(new DataEdge(4, TriggerGraph.ExprDataOutPort, 2, TriggerGraph.ActionValueInPort, DataWireType.Int));
+            m.TriggerGraphJson = g.ToCanonicalJson();
+            ValidationResult r = NewValidator().Validate(m);
+            Assert.False(r.Ok);
+            Assert.Contains("forked", r.Error!);
+        }
+
         // AC3c — AR-13 (a random effect is valid only if it draws from SimRng) stays RESERVED: no random
         // trigger-effect TYPE exists pre-Epic-2, so there is nothing to validate yet. This is the documented
         // pending case; the mature rule is enforced by Epic 2's effect-validator (Story 2.3) the first moment an

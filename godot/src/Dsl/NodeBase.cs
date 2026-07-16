@@ -110,10 +110,82 @@ namespace ProjectChimera.Dsl
     }
 
     /// <summary>
+    /// Story 7.4 — a typed expression LITERAL leaf (Int / Fixed / Bool; the only literal-able value types).
+    /// <see cref="Raw"/> holds the value's raw int: the plain integer for Int, <c>Fixed.Raw</c> for Fixed, 0/1 for
+    /// Bool. The JSON <c>value</c> property reads as an int / a Fixed via the registered converter / a bool,
+    /// dispatched on the <c>type</c> property. Emits its value on <c>ExprDataOutPort</c> (data edge Src).
+    /// </summary>
+    public sealed class ExprLiteralNode : NodeBase
+    {
+        /// <summary>The closed-registry discriminator this node serializes under.</summary>
+        public string Kind => NodeKinds.ExprLiteral;
+
+        /// <summary>The literal's value type — restricted to Int / Fixed / Bool (enforced at (de)serialize AND compile).</summary>
+        public DslValueType ValueType { get; set; } = DslValueType.Int;
+
+        /// <summary>The raw int payload (Int value / Fixed.Raw / Bool 0-1).</summary>
+        public int Raw { get; set; } = 0;
+    }
+
+    /// <summary>
+    /// Story 7.4 — a declared-variable READ leaf. <see cref="Faction"/> is the per-player slot for a
+    /// <c>name[k]</c> read of a PerPlayer variable; -1 means a BARE read (no slot — required for non-PerPlayer
+    /// variables, rejected for PerPlayer ones). The compiler resolves the type/scope against the declared-variable
+    /// map; undeclared or ref/array-typed reads are located compile rejects.
+    /// </summary>
+    public sealed class ExprVarNode : NodeBase
+    {
+        /// <summary>The closed-registry discriminator this node serializes under.</summary>
+        public string Kind => NodeKinds.ExprVar;
+
+        /// <summary>The declared variable name to read.</summary>
+        public string Name { get; set; } = "";
+
+        /// <summary>The per-player slot (0..7) for a PerPlayer read; -1 = bare (slot-less) read.</summary>
+        public int Faction { get; set; } = -1;
+    }
+
+    /// <summary>Story 7.4 — a unary expression operator. <see cref="Op"/> ∈ <see cref="NodeKinds.ExprUnaryOps"/>
+    /// ({neg, not}); the single operand wires into <c>ExprOperandPort0</c>.</summary>
+    public sealed class ExprUnaryNode : NodeBase
+    {
+        /// <summary>The closed-registry discriminator this node serializes under.</summary>
+        public string Kind => NodeKinds.ExprUnary;
+
+        /// <summary>Operator ∈ {neg, not} (membership enforced at parse — an unknown op never constructs).</summary>
+        public string Op { get; set; } = "";
+    }
+
+    /// <summary>Story 7.4 — a binary expression operator. <see cref="Op"/> ∈ <see cref="NodeKinds.ExprBinaryOps"/>;
+    /// the left/right operands wire into <c>ExprOperandPort0</c>/<c>ExprOperandPort1</c>.</summary>
+    public sealed class ExprBinaryNode : NodeBase
+    {
+        /// <summary>The closed-registry discriminator this node serializes under.</summary>
+        public string Kind => NodeKinds.ExprBinary;
+
+        /// <summary>Operator ∈ {add,sub,mul,div,mod,gt,lt,ge,le,eq,ne,and,or} (membership enforced at parse).</summary>
+        public string Op { get; set; } = "";
+    }
+
+    /// <summary>Story 7.4 — a closed built-in call. <see cref="Fn"/> ∈ <see cref="NodeKinds.ExprCallFns"/>
+    /// ({count, distance, min, max, abs}); arguments wire into ports 0..arity-1.</summary>
+    public sealed class ExprCallNode : NodeBase
+    {
+        /// <summary>The closed-registry discriminator this node serializes under.</summary>
+        public string Kind => NodeKinds.ExprCall;
+
+        /// <summary>Built-in name ∈ {count, distance, min, max, abs} (membership enforced at parse).</summary>
+        public string Fn { get; set; } = "";
+    }
+
+    /// <summary>
     /// The CLOSED <c>kind</c> discriminator registry: the closed ECA vocabulary (event/condition/action type
-    /// strings) plus the two structural kinds "trigger" and "run_effect". A <c>kind</c> outside this union is
+    /// strings) plus the two structural kinds "trigger" and "run_effect", plus (Story 7.4) the five expression
+    /// kinds. A <c>kind</c> outside this union is
     /// rejected at parse by <see cref="NodeBaseJsonConverter"/> (fail-closed, AR-22). The three ECA sets are
-    /// pairwise disjoint AND disjoint from {trigger, run_effect}, so a kind string maps to exactly one node type.
+    /// pairwise disjoint AND disjoint from {trigger, run_effect} and the expr_* kinds, so a kind string maps to
+    /// exactly one node type. The expression op/fn sets are FIELD-value vocabularies (not kinds) — also closed,
+    /// membership-checked at parse so an unknown op/fn never constructs.
     ///
     /// NOTE: these arrays are DUPLICATED string-for-string from <c>ScenarioValidator</c>'s
     /// <c>_triggerEventTypes</c>/<c>_conditionTypes</c>/<c>_actionTypes</c> — those are <c>private</c> and cannot be
@@ -126,9 +198,23 @@ namespace ProjectChimera.Dsl
         public const string Trigger   = "trigger";
         public const string RunEffect = "run_effect";
 
+        // ── Story 7.4 — the five expression node kinds (structural, like trigger/run_effect) ──
+        public const string ExprLiteral = "expr_literal";
+        public const string ExprVar     = "expr_var";
+        public const string ExprUnary   = "expr_unary";
+        public const string ExprBinary  = "expr_binary";
+        public const string ExprCall    = "expr_call";
+
         public static readonly string[] EventTypes     = { "match_start", "unit_dies", "building_completed", "timer_expires", "resource_threshold", "unit_count_threshold" };
         public static readonly string[] ConditionTypes = { "always", "building_exists", "resource_comparison", "unit_count", "variable_comparison", "unit_in_region" };
         public static readonly string[] ActionTypes    = { "spawn_unit", "display_message", "victory", "defeat", "create_timer", "add_resources", "set_variable", "play_sound" };
+
+        // ── Story 7.4 — the CLOSED expression op/fn vocabularies (field values inside expr_* nodes, not kinds).
+        //    Membership is checked at parse (NodeBaseJsonConverter) AND at compile (ExprCompiler), so an unknown
+        //    op/fn never constructs and never evaluates. ──
+        public static readonly string[] ExprUnaryOps  = { "neg", "not" };
+        public static readonly string[] ExprBinaryOps = { "add", "sub", "mul", "div", "mod", "gt", "lt", "ge", "le", "eq", "ne", "and", "or" };
+        public static readonly string[] ExprCallFns   = { "count", "distance", "min", "max", "abs" };
 
         /// <summary>Exact-match membership in a closed string set (case-sensitive). Null is never a member.</summary>
         public static bool InSet(string[] set, string? value)

@@ -61,8 +61,10 @@ namespace ProjectChimera.CreationSuite
         // Closed-vocab dropdown sources (mirror ScenarioValidator's closed sets + NodeKinds; the pre-tick validator
         // is the real gate — the editor stays hand-kept until 7.7 unifies the vocab). "run_effect" is a manual
         // ACTION option that routes the trigger through the graph channel (trigger_graph), not the flat array.
+        // Story 7.4: "expression" is a manual CONDITION option that routes the trigger through the graph channel
+        // (a CEL-shaped text expression compiled into the shared IR), like run_effect does for actions.
         private static readonly string[] EventKinds     = { "match_start", "unit_dies", "building_completed", "timer_expires", "resource_threshold", "unit_count_threshold" };
-        private static readonly string[] ConditionKinds = { "(none)", "always", "building_exists", "resource_comparison", "unit_count", "variable_comparison", "unit_in_region" };
+        private static readonly string[] ConditionKinds = { "(none)", "always", "building_exists", "resource_comparison", "unit_count", "variable_comparison", "unit_in_region", "expression" };
         private static readonly string[] ActionKinds    = { "display_message", "spawn_unit", "victory", "defeat", "create_timer", "add_resources", "set_variable", "play_sound", "run_effect" };
         private static readonly string[] ValueTypeNames = Enum.GetNames(typeof(DslValueType));
         private static readonly string[] ScopeNames     = Enum.GetNames(typeof(VarScope));
@@ -79,6 +81,8 @@ namespace ProjectChimera.CreationSuite
         private OptionButton  _manualActVar  = null!;   // declared-variable picker for set_variable
         private SpinBox       _manualActVal  = null!;
         private LineEdit      _manualActText = null!;    // display_message text / effect JSON (run_effect)
+        private LineEdit      _manualCondExpr   = null!; // Story 7.4 — condition expression text (kind "expression")
+        private LineEdit      _manualActValExpr = null!; // Story 7.4 — optional set_variable value expression text
         private Label         _manualStatus  = null!;
 
         private VBoxContainer _varsSection   = null!;
@@ -458,6 +462,18 @@ namespace ProjectChimera.CreationSuite
             condRow.AddChild(new Label { Text = "== value" });
             condRow.AddChild(_manualCondVal);
             _manualSection.AddChild(condRow);
+            // Story 7.4 — the condition-expression text field, revealed when the "expression" kind is picked.
+            _manualCondExpr = new LineEdit
+            {
+                PlaceholderText = "condition expression, e.g. (a || b) && !c",
+                Visible = false,
+            };
+            AttachTip(_manualCondExpr, "Condition expression",
+                "A typed boolean expression over declared variables (CEL-shaped: + - * / %, comparisons, && || !, count/distance/min/max/abs). Validated fail-closed on Add.",
+                ChimeraTooltip.TooltipRole.Field);
+            _manualSection.AddChild(_manualCondExpr);
+            _manualCond.ItemSelected += _ =>
+                _manualCondExpr.Visible = ConditionKinds[Math.Max(0, _manualCond.Selected)] == "expression";
 
             _manualSection.AddChild(new Label { Text = "Then (action):" });
             _manualAction = MakeOption(ActionKinds);
@@ -470,6 +486,21 @@ namespace ProjectChimera.CreationSuite
             actRow.AddChild(new Label { Text = "value" });
             actRow.AddChild(_manualActVal);
             _manualSection.AddChild(actRow);
+            // Story 7.4 — the optional set_variable VALUE expression. When non-empty, the trigger persists via the
+            // graph channel and the assignment is the computed, typed expression result (widening the variable
+            // picker to Int/Fixed/Bool); when empty, the literal SpinBox value applies (Int-only picker).
+            _manualActValExpr = new LineEdit
+            {
+                PlaceholderText = "value expression (optional), e.g. (gold + 5) * 2",
+                Visible = false,
+            };
+            AttachTip(_manualActValExpr, "Value expression",
+                "Computes the set_variable value from a typed expression (must match the target variable's type). Leave empty to use the literal value.",
+                ChimeraTooltip.TooltipRole.Field);
+            _manualSection.AddChild(_manualActValExpr);
+            _manualAction.ItemSelected += _ =>
+                _manualActValExpr.Visible = ActionKinds[Math.Max(0, _manualAction.Selected)] == "set_variable";
+            _manualActValExpr.TextChanged += _ => RefreshVarPickers(); // widen/narrow the set_variable picker live
             _manualActText = new LineEdit { PlaceholderText = "message text, or run_effect JSON e.g. {\"kind\":\"direct_hp_delta\",\"delta\":-10}" };
             _manualSection.AddChild(_manualActText);
 
@@ -500,7 +531,20 @@ namespace ProjectChimera.CreationSuite
             }
             if (act == "set_variable" && string.IsNullOrEmpty(SelectedText(_manualActVar)))
             {
-                SetManualStatus("✘ set_variable needs a declared Int variable — add one in the Variables section first.");
+                // Story 7.4: the picker widens to Int/Fixed/Bool when a value expression is present — say so
+                // (PerPlayer targets are excluded there: the form has no slot picker; Raw IR carries the slot).
+                SetManualStatus(_manualActValExpr.Text.Trim().Length > 0
+                    ? "✘ set_variable needs a declared Int/Fixed/Bool variable (Global or TriggerLocal; PerPlayer targets via Raw IR) — add one in the Variables section first."
+                    : "✘ set_variable needs a declared Int variable — add one in the Variables section first.");
+                return;
+            }
+
+            // Story 7.4 (review patch): the run_effect branch below maps "expression" to a NULL condition — an
+            // authored expression condition would be silently discarded and the effect would persist firing
+            // UNCONDITIONALLY (with a success status). Refuse fail-closed instead.
+            if (act == "run_effect" && cond == "expression")
+            {
+                SetManualStatus("✘ An expression condition cannot pair with run_effect yet — author via Raw IR.");
                 return;
             }
 
@@ -510,9 +554,42 @@ namespace ProjectChimera.CreationSuite
             if (act == "run_effect")
             {
                 PersistManualRunEffect(name, ev,
-                    cond == "(none)" ? null : cond,
+                    cond == "(none)" || cond == "expression" ? null : cond,
                     cond == "variable_comparison" ? SelectedText(_manualCondVar) : null,
                     (int)_manualCondVal.Value);
+                return;
+            }
+
+            // Story 7.4 — expression condition and/or set_variable value expression: expressions live in the graph
+            // IR only, so the whole trigger persists via the graph channel (BuildExpressionTrigger + Merge, the
+            // PersistManualRunEffect accumulation pattern). Fail-closed: parse/compile errors land on the status
+            // label and nothing is persisted.
+            string condExprText = _manualCondExpr.Text.Trim();
+            string valExprText  = act == "set_variable" ? _manualActValExpr.Text.Trim() : "";
+            bool exprCondition  = cond == "expression";
+            bool exprValue      = act == "set_variable" && valExprText.Length > 0;
+            if (exprCondition || exprValue)
+            {
+                if (exprCondition && condExprText.Length == 0)
+                {
+                    SetManualStatus("✘ The expression condition needs expression text.");
+                    return;
+                }
+                if (exprCondition && act != "set_variable")
+                {
+                    SetManualStatus("✘ An expression condition currently pairs with the set_variable action (author other combinations via Raw IR).");
+                    return;
+                }
+                if (exprValue && !exprCondition && cond != "(none)")
+                {
+                    SetManualStatus("✘ A value expression pairs with the 'expression' condition or '(none)' (the graph channel would drop other condition kinds).");
+                    return;
+                }
+                PersistManualExpression(name, ev,
+                    exprCondition ? condExprText : null,
+                    SelectedText(_manualActVar),
+                    exprValue ? valExprText : null,
+                    (int)_manualActVal.Value);
                 return;
             }
 
@@ -602,6 +679,42 @@ namespace ProjectChimera.CreationSuite
                 // NotSupportedException: System.Text.Json can surface it on hostile input; the hatch must stay
                 // fail-closed with feedback rather than crash the editor.
                 SetManualStatus($"✘ Rejected: {ex.Message}");
+            }
+        }
+
+        /// <summary>Story 7.4 — persist a manual trigger whose condition and/or set_variable value is a CEL-shaped
+        /// TEXT expression, via the Godot-free <see cref="TriggerGraph.BuildExpressionTrigger"/> helper (parse +
+        /// compile fail-closed; located <see cref="JsonException"/> on any syntax/type/cap violation) and the same
+        /// graph-channel ACCUMULATION as <see cref="PersistManualRunEffect"/> (merge, canonicalize, raw-IR resync).
+        /// Nothing persists on rejection — the error lands on the status label.</summary>
+        private void PersistManualExpression(string name, string ev, string? conditionExprText,
+            string? setVarName, string? valueExprText, int literalValue)
+        {
+            if (_scenario == null) return;
+            try
+            {
+                var declMap = new Dictionary<string, (DslValueType Type, VarScope Scope)>(StringComparer.Ordinal);
+                if (_scenario.Variables != null)
+                    foreach (var v in _scenario.Variables)
+                        if (!string.IsNullOrWhiteSpace(v.Name))
+                            declMap[v.Name] = (v.Type, v.Scope);
+
+                TriggerGraph added = TriggerGraph.BuildExpressionTrigger(
+                    name, ev, conditionExprText, setVarName, 0, valueExprText, declMap,
+                    _manualEnabled.ButtonPressed, _manualRunOnce.ButtonPressed, literalValue);
+
+                TriggerGraph graph = string.IsNullOrWhiteSpace(_scenario.TriggerGraphJson)
+                    ? added
+                    : MergeInto(TriggerGraph.FromJson(_scenario.TriggerGraphJson!), added);
+                _scenario.TriggerGraphJson = graph.ToCanonicalJson();  // canonicalize on persist
+                if (_rawIrSection != null && _rawIrSection.Visible)
+                    _rawIrInput.Text = _scenario.TriggerGraphJson;     // keep an open raw-IR section in sync
+                SetManualStatus($"✔ Added expression trigger '{name}' to the graph channel.");
+                RefreshList();
+            }
+            catch (Exception ex) when (ex is JsonException or NotSupportedException)
+            {
+                SetManualStatus($"✘ Rejected (no trigger added): {ex.Message}");
             }
         }
 
@@ -716,25 +829,49 @@ namespace ProjectChimera.CreationSuite
             }
         }
 
-        /// <summary>Repopulate the variable-picker dropdowns in the manual form from the declared variables. Both
-        /// pickers list only <see cref="DslValueType.Int"/>-typed variables (non-Int typed read/write is Story 7.4).
-        /// The CONDITION picker additionally EXCLUDES <see cref="VarScope.TriggerLocal"/> variables — a condition
-        /// reads before the trigger-local scope is entered (it would read 0), so TriggerLocal is write-scratch only
-        /// and stays available to the action (set_variable) picker.</summary>
+        /// <summary>Repopulate the variable-picker dropdowns in the manual form from the declared variables. The
+        /// CONDITION picker lists Int-typed variables (variable_comparison stays Int-only) and EXCLUDES
+        /// <see cref="VarScope.TriggerLocal"/> ones — a condition reads before the trigger-local scope is entered
+        /// (it would read 0), so TriggerLocal is write-scratch only and stays available to the action picker.
+        /// Story 7.4: the set_variable picker WIDENS to Int/Fixed/Bool-typed variables when a value expression is
+        /// present (the properly-typed expression path); Int-only otherwise (the 7.3 literal path).</summary>
         private void RefreshVarPickers()
         {
             if (_manualCondVar == null || _manualActVar == null) return;
+            // Review patch: this runs on EVERY value-expression keystroke (TextChanged), so preserve the user's
+            // current picks across the repopulate and re-select by name when the item survives the refilter.
+            string prevCond = SelectedText(_manualCondVar);
+            string prevAct  = SelectedText(_manualActVar);
             _manualCondVar.Clear();
             _manualActVar.Clear();
+            bool widened = _manualActValExpr != null && _manualActValExpr.Text.Trim().Length > 0;
             var vars = _scenario?.Variables;
             if (vars != null)
                 foreach (var v in vars)
                 {
-                    if (v.Type != DslValueType.Int) continue;        // Int-leaves only (7.3)
-                    _manualActVar.AddItem(v.Name);                    // set_variable: TriggerLocal allowed (write-scratch)
-                    if (v.Scope != VarScope.TriggerLocal)
+                    // Review (7.4 pass 2): the WIDENED (expression) path excludes PerPlayer-scoped targets — the
+                    // manual form has no player-slot picker and PersistManualExpression writes slot 0, so offering
+                    // a PerPlayer variable would silently assign the wrong player. Per-player expression targets
+                    // are authored via Raw IR (which carries the slot). The literal path keeps its legacy filter.
+                    bool actEligible = widened
+                        ? (v.Type is DslValueType.Int or DslValueType.Fixed or DslValueType.Bool)
+                          && v.Scope != VarScope.PerPlayer
+                        : v.Type == DslValueType.Int;
+                    if (actEligible)
+                        _manualActVar.AddItem(v.Name);                // set_variable: TriggerLocal allowed (write-scratch)
+                    if (v.Type == DslValueType.Int && v.Scope != VarScope.TriggerLocal)
                         _manualCondVar.AddItem(v.Name);               // variable_comparison: exclude TriggerLocal (read)
                 }
+            SelectItemByText(_manualCondVar, prevCond);
+            SelectItemByText(_manualActVar, prevAct);
+        }
+
+        /// <summary>Re-select the item whose text equals <paramref name="text"/>, if still present (no-op otherwise).</summary>
+        private static void SelectItemByText(OptionButton opt, string text)
+        {
+            if (text.Length == 0) return;
+            for (int i = 0; i < opt.ItemCount; i++)
+                if (opt.GetItemText(i) == text) { opt.Select(i); return; }
         }
 
         // ── Story 7.3 — raw-IR escape hatch ────────────────────────────────────

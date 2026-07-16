@@ -37,6 +37,15 @@ namespace ProjectChimera.Dsl
         public const int EventExecOutPort       = 0;
         /// <summary>ConditionNode: the Boolean data-out port that gates the trigger (data edge Src).</summary>
         public const int ConditionDataOutPort   = 0;
+        /// <summary>ActionNode (Story 7.4): the typed value-in port a set_variable RHS expression feeds (data edge
+        /// Dst). Distinct from <see cref="ActionExecInPort"/> — data ports and exec ports are separate spaces.</summary>
+        public const int ActionValueInPort      = 1;
+        /// <summary>Expression node (Story 7.4): the first operand-in port (unary operand / binary left / arg 0).</summary>
+        public const int ExprOperandPort0       = 0;
+        /// <summary>Expression node (Story 7.4): the second operand-in port (binary right / arg 1).</summary>
+        public const int ExprOperandPort1       = 1;
+        /// <summary>Expression node (Story 7.4): the typed data-out port every expression node emits on (data edge Src).</summary>
+        public const int ExprDataOutPort        = 0;
 
         public List<NodeBase> Nodes     { get; } = new();
         public List<ExecEdge> ExecEdges { get; } = new();
@@ -204,6 +213,88 @@ namespace ProjectChimera.Dsl
         }
 
         /// <summary>
+        /// Story 7.4 — assemble a single-trigger graph whose condition and/or set_variable value are authored as
+        /// CEL-shaped expression TEXT (compiled through <see cref="ExprParser"/> into the one graph IR — never a
+        /// second executable form). Godot-free and unit-testable; the editor's manual form calls this and merges
+        /// the result into the scenario's graph channel (the <see cref="BuildRunEffectTrigger"/> accumulation
+        /// pattern). Ids: 0 = trigger, 1 = event, then parser-assigned expression nodes, then the set_variable
+        /// action.
+        ///
+        /// Fail-closed: each expression is parsed AND compiled here (<see cref="ExprCompiler"/>, the same checks
+        /// the validator gate re-runs), so a syntax error, type mismatch, literal-zero divisor, or cap violation
+        /// throws a located <see cref="JsonException"/> and NOTHING is returned to persist. A condition expression
+        /// must infer Bool; a value expression must match the declared target variable's type (Int/Fixed/Bool
+        /// targets only; an undeclared target is Int — the runtime Global/Int append semantics).
+        /// </summary>
+        /// <param name="setVarValue">The literal value for the set_variable action when NO value expression is
+        /// given (the legacy literal path — then the target must be Int-typed, per the unchanged 7.3 rule).</param>
+        public static TriggerGraph BuildExpressionTrigger(
+            string name, string eventKind,
+            string? conditionExprText, string? setVarName, int setVarFaction, string? valueExprText,
+            IReadOnlyDictionary<string, (DslValueType Type, VarScope Scope)> varDeclInfo,
+            bool enabled = true, bool runOnce = false, int setVarValue = 0)
+        {
+            // Fail-closed on whitespace-only text (review, 7.4 pass 2): "absent" is spelled null. Degrading "  " to
+            // no-condition would silently fire the trigger UNCONDITIONALLY (the exact silent-condition-drop class two
+            // prior patches closed), and a whitespace value expression would silently fall back to the literal path.
+            // The editor trims before calling; this guards every other (Godot-free/public) caller.
+            if (conditionExprText != null && string.IsNullOrWhiteSpace(conditionExprText))
+                throw new JsonException("condition expression text is blank (pass null for an unconditioned trigger).");
+            if (valueExprText != null && string.IsNullOrWhiteSpace(valueExprText))
+                throw new JsonException("value expression text is blank (pass null for the literal value path).");
+
+            var g = new TriggerGraph();
+            g.Nodes.Add(new TriggerNode { Id = 0, Name = name, Enabled = enabled, RunOnce = runOnce });
+            g.Nodes.Add(new EventNode { Id = 1, Kind = eventKind });
+            g.ExecEdges.Add(new ExecEdge(1, EventExecOutPort, 0, TriggerEventInPort));
+
+            if (!string.IsNullOrWhiteSpace(conditionExprText))
+            {
+                (int rootId, DataWireType wire) = ExprParser.Parse(conditionExprText!, g, varDeclInfo);
+                if (wire != DataWireType.Boolean)
+                    throw new JsonException($"condition expression must evaluate to Bool, got wire type '{wire}'.");
+                g.DataEdges.Add(new DataEdge(rootId, ExprDataOutPort, 0, TriggerConditionInPort, DataWireType.Boolean));
+                if (!ExprCompiler.TryCompile(g, rootId, varDeclInfo, inCondition: true, out _, out string? condErr))
+                    throw new JsonException($"condition expression: {condErr}");
+            }
+
+            if (!string.IsNullOrEmpty(setVarName))
+            {
+                if (!string.IsNullOrWhiteSpace(valueExprText))
+                {
+                    (int rootId, DataWireType wire) = ExprParser.Parse(valueExprText!, g, varDeclInfo);
+                    DslValueType target = varDeclInfo.TryGetValue(setVarName!, out var decl) ? decl.Type : DslValueType.Int;
+                    if (target != DslValueType.Int && target != DslValueType.Fixed && target != DslValueType.Bool)
+                        throw new JsonException(
+                            $"set_variable target '{setVarName}' is {target}-typed; expression assignment targets Int/Fixed/Bool variables only.");
+                    if (wire != ExprCompiler.WireOf(target))
+                        throw new JsonException(
+                            $"value expression wire type '{wire}' does not match the declared type of target variable '{setVarName}' ({target}).");
+
+                    int actionId = 0;
+                    foreach (NodeBase n in g.Nodes)
+                        if (n.Id + 1 > actionId) actionId = n.Id + 1;
+                    g.Nodes.Add(new ActionNode { Id = actionId, Kind = "set_variable", Variable = setVarName, Faction = setVarFaction });
+                    g.ExecEdges.Add(new ExecEdge(0, TriggerExecOutPort, actionId, ActionExecInPort));
+                    g.DataEdges.Add(new DataEdge(rootId, ExprDataOutPort, actionId, ActionValueInPort, wire));
+                    if (!ExprCompiler.TryCompile(g, rootId, varDeclInfo, inCondition: false, out _, out string? valErr))
+                        throw new JsonException($"value expression: {valErr}");
+                }
+                else
+                {
+                    // Literal path (unchanged 7.3 semantics): Int-only targets — the validator gate enforces it.
+                    int actionId = 0;
+                    foreach (NodeBase n in g.Nodes)
+                        if (n.Id + 1 > actionId) actionId = n.Id + 1;
+                    g.Nodes.Add(new ActionNode { Id = actionId, Kind = "set_variable", Variable = setVarName, Faction = setVarFaction, Value = setVarValue });
+                    g.ExecEdges.Add(new ExecEdge(0, TriggerExecOutPort, actionId, ActionExecInPort));
+                }
+            }
+
+            return g;
+        }
+
+        /// <summary>
         /// Lower the graph back to the flat <see cref="TriggerDefinition"/>[]. TriggerNodes are ordered by ascending
         /// <see cref="NodeBase.Id"/> → array order. Per trigger: events = EventNodes with an exec edge into its
         /// event-in port (ascending id); conditions = ConditionNodes with a data edge into its condition-in port
@@ -341,6 +432,17 @@ namespace ProjectChimera.Dsl
             public ConditionNode[]  Conditions { get; init; } = System.Array.Empty<ConditionNode>();
             /// <summary>The action chain in exec order — each element is an <see cref="ActionNode"/> or <see cref="EffectActionNode"/>.</summary>
             public NodeBase[]       Actions    { get; init; } = System.Array.Empty<NodeBase>();
+
+            /// <summary>Story 7.4 — expression-root node ids data-wired into this trigger's condition-in port
+            /// (ascending id). They are NOT <see cref="ConditionNode"/>s (the OfType walk above drops them), so
+            /// they are surfaced separately; the director compiles each into a Bool <c>ExprProgram</c> ANDed with
+            /// <see cref="Conditions"/> (multi-condition semantics).</summary>
+            public int[]            ConditionExprRoots { get; init; } = System.Array.Empty<int>();
+
+            /// <summary>Story 7.4 — per-action value-in expression-root id, parallel to <see cref="Actions"/>
+            /// (-1 = no value expression). Only a <c>set_variable</c> <see cref="ActionNode"/> may carry one
+            /// (enforced at the validator gate and at LoadScenario compile).</summary>
+            public int[]            ActionValueExprRoots { get; init; } = System.Array.Empty<int>();
         }
 
         /// <summary>
@@ -375,6 +477,13 @@ namespace ProjectChimera.Dsl
                     .Where(e => e.Dst == tn.Id && e.DstPort == TriggerConditionInPort && byId.ContainsKey(e.Src))
                     .Select(e => byId[e.Src]).OfType<ConditionNode>().OrderBy(n => n.Id).ToArray();
 
+                // Story 7.4 — expression roots wired into the SAME condition-in port. They are not ConditionNodes
+                // (the OfType above drops them), so surface their ids separately, ascending (deterministic).
+                int[] condExprRoots = DataEdges
+                    .Where(e => e.Dst == tn.Id && e.DstPort == TriggerConditionInPort
+                             && byId.TryGetValue(e.Src, out NodeBase? src) && ExprCompiler.IsExprNode(src))
+                    .Select(e => e.Src).Distinct().OrderBy(id => id).ToArray();
+
                 // Walk the exec chain out of the trigger: Trigger → node0 → … (ActionNode or EffectActionNode).
                 var actions = new List<NodeBase>();
                 int currentId = tn.Id, currentPort = TriggerExecOutPort;
@@ -400,12 +509,27 @@ namespace ProjectChimera.Dsl
                     currentPort = ActionExecOutPort;
                 }
 
+                // Story 7.4 — per-action value-in expression root (-1 = none): the lowest expr-node src data-wired
+                // into the action's value-in port (deterministic first; forks are rejected at the validator gate).
+                var valueRoots = new int[actions.Count];
+                for (int i = 0; i < actions.Count; i++)
+                {
+                    valueRoots[i] = -1;
+                    foreach (DataEdge e in DataEdges)
+                        if (e.Dst == actions[i].Id && e.DstPort == ActionValueInPort
+                            && byId.TryGetValue(e.Src, out NodeBase? src) && ExprCompiler.IsExprNode(src)
+                            && (valueRoots[i] < 0 || e.Src < valueRoots[i]))
+                            valueRoots[i] = e.Src;
+                }
+
                 result.Add(new TriggerExec
                 {
-                    Trigger    = tn,
-                    Events     = events,
-                    Conditions = conditions,
-                    Actions    = actions.ToArray(),
+                    Trigger              = tn,
+                    Events               = events,
+                    Conditions           = conditions,
+                    Actions              = actions.ToArray(),
+                    ConditionExprRoots   = condExprRoots,
+                    ActionValueExprRoots = valueRoots,
                 });
             }
 
