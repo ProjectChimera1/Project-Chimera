@@ -100,6 +100,12 @@ namespace ProjectChimera.Core.Definitions
             if (savedVariables is { Length: 0 }) scenario.Variables = null;
             if (savedTimers    is { Length: 0 }) scenario.Timers    = null;
             if (string.IsNullOrWhiteSpace(savedTriggerGraph)) scenario.TriggerGraphJson = null;
+
+            // Story 7.5: normalize an empty CustomEvents array → null for THIS serialization (the Variables
+            // pattern — same swap-under-try/finally, restore-after discipline), so an event-less scenario
+            // serializes byte-identically to pre-7.5 (no key emitted, no hash/golden movement).
+            ScenarioCustomEvent[]? savedCustomEvents = scenario.CustomEvents;
+            if (savedCustomEvents is { Length: 0 }) scenario.CustomEvents = null;
             try
             {
                 return JsonSerializer.Serialize(scenario, _options);
@@ -116,6 +122,7 @@ namespace ProjectChimera.Core.Definitions
                 scenario.Variables       = savedVariables;
                 scenario.Timers          = savedTimers;
                 scenario.TriggerGraphJson = savedTriggerGraph;
+                scenario.CustomEvents    = savedCustomEvents;
             }
         }
 

@@ -57,17 +57,38 @@ namespace ProjectChimera.Sim.Tests.Golden
                 remaining.Add(1); // value 1 → CollectEvents decrements to 0 → expires this call
             }
 
+            // Story 7.5: CollectEvents now fills the load-preallocated _baseEvents buffer (zero per-tick heap
+            // allocation) instead of returning a List — same emission semantics/order, different plumbing. The
+            // buffer is sized in LoadScenario, so load an empty scenario first, then re-inject the timers (the
+            // load resets the table). Reflection updated to read the buffer + its count; the ASSERTIONS (creation-
+            // index emission order — the AR-16 behavior under test) are unchanged.
+            director.LoadScenario(new ScenarioData());
+            names.Clear();
+            remaining.Clear();
+            foreach (string name in creationOrder)
+            {
+                names.Add(name);
+                remaining.Add(1);
+            }
             var collect = typeof(ScenarioDirector).GetMethod("CollectEvents", BindingFlags.NonPublic | BindingFlags.Instance)!;
-            var events = (IEnumerable)collect.Invoke(director, new object?[] { new EntityWorld() })!;
+            collect.Invoke(director, new object?[] { new EntityWorld() });
+
+            var eventsField = typeof(ScenarioDirector).GetField("_baseEvents", BindingFlags.NonPublic | BindingFlags.Instance)!;
+            var countField  = typeof(ScenarioDirector).GetField("_baseEventCount", BindingFlags.NonPublic | BindingFlags.Instance)!;
+            var buffer = (System.Array)eventsField.GetValue(director)!;
+            int count  = (int)countField.GetValue(director)!;
 
             System.Type firedEventType = typeof(ScenarioDirector).GetNestedType("FiredEvent", BindingFlags.NonPublic)!;
             FieldInfo typeF = firedEventType.GetField("Type")!;
             FieldInfo dataF = firedEventType.GetField("Data")!;
 
             var order = new List<string>();
-            foreach (object fe in events)
+            for (int i = 0; i < count; i++)
+            {
+                object fe = buffer.GetValue(i)!;
                 if ((string)typeF.GetValue(fe)! == "timer_expires")
                     order.Add((string)dataF.GetValue(fe)!);
+            }
             return order;
         }
 

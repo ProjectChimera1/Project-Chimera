@@ -610,7 +610,8 @@ namespace ProjectChimera.Combat
                     world.FactionOf[attacker],
                     world.ProjectileSpeed[attacker], // Story 3.12 — per-unit projectile speed
                     world.SplashRadius[attacker],
-                    world.FeedbackProfile[attacker]); // Story 2.7 SD-4: snapshot the firing unit's override (attacker id is lost by impact)
+                    world.FeedbackProfile[attacker], // Story 2.7 SD-4: snapshot the firing unit's override (attacker id is lost by impact)
+                    sourceId: attacker);             // Story 7.5 — snapshot the attacker id beside Owner for kill attribution at impact
             }
             else
             {
@@ -619,7 +620,8 @@ namespace ProjectChimera.Combat
                 _events?.Push(CombatEventType.MeleeHit, world.Position[target], world.FeedbackProfile[attacker]); // Story 2.7
 
                 var ctx = new DamageContext(world, target, world.ArmorTypeOf[target],
-                                            world.FactionOf[attacker], _table, _events, _stats, _deaths);
+                                            world.FactionOf[attacker], _table, _events, _stats, _deaths,
+                                            attackerId: attacker); // Story 7.5 — hitscan knows its attacker
                 if (DamageResolver.Apply(in ctx, world.EffectiveAttackDamage[attacker], world.DamageTypeOf[attacker]))
                 {
                     world.AttackTarget[attacker] = -1;
@@ -662,7 +664,8 @@ namespace ProjectChimera.Combat
                     world.ProjectileSpeed[attacker], // Story 3.12 — per-unit projectile speed
                     world.SplashRadius[attacker],
                     world.FeedbackProfile[attacker],
-                    targetIsBuilding: true);        // Story 2.9a (Task 4b)
+                    targetIsBuilding: true,         // Story 2.9a (Task 4b)
+                    sourceId: attacker);            // Story 7.5 — snapshot the attacker id (parity with the unit-target spawn)
             }
             else
             {

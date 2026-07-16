@@ -33,6 +33,12 @@ namespace ProjectChimera.Core.Definitions
     ///     Triggers/Regions do (the authoritative handshake fold is 7.7/later; when Triggers fold in, these fold with
     ///     them and the version bumps then). No fold below; <c>AlgoVersion</c> stays 7, so an absent-declaration
     ///     scenario hashes byte-identically to pre-7.3 (Block-If protection).
+    ///   • <c>CustomEvents</c> (Story 7.5) EXCLUDED on the SAME Variables/Timers/TriggerGraphJson basis: the
+    ///     custom-event registry is a trigger-DSL DECLARATION block (omit-when-null, empty→null at the serializer
+    ///     chokepoint). The LIVE pending next-tick event queue folds into per-tick <c>SimChecksum</c> (v17), so a
+    ///     peer whose declarations diverge in a way that matters is caught the first tick it matters; the
+    ///     declarations themselves stay out of the pre-match handshake until 7.7's versioned fold. No fold below;
+    ///     <c>AlgoVersion</c> stays 7 (pinned by CanonicalModelHashCustomEventExclusionTests).
     ///   • <c>Regions</c> (Story 6.4) EXCLUDED on the SAME basis as <c>Triggers</c>: regions are a *trigger input*
     ///     — referenced by the <c>unit_in_region</c> condition, which CAN gate trigger actions (spawn_unit /
     ///     add_resources / set_variable) that DO mutate <c>SimChecksum</c>-folded state — and Triggers are an

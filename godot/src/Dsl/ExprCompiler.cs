@@ -29,9 +29,10 @@ namespace ProjectChimera.Dsl
     /// </summary>
     public static class ExprCompiler
     {
-        /// <summary>True when <paramref name="node"/> is one of the five 7.4 expression node kinds.</summary>
+        /// <summary>True when <paramref name="node"/> is one of the five 7.4 expression node kinds or the 7.5
+        /// <see cref="ExprEventParamNode"/> event-parameter read leaf.</summary>
         public static bool IsExprNode(NodeBase? node) =>
-            node is ExprLiteralNode or ExprVarNode or ExprUnaryNode or ExprBinaryNode or ExprCallNode;
+            node is ExprLiteralNode or ExprVarNode or ExprUnaryNode or ExprBinaryNode or ExprCallNode or ExprEventParamNode;
 
         /// <summary>The wire color of a value type (wire color = type). Only the four expression-carryable types
         /// map; ref/array types are rejected before this is consulted.</summary>
@@ -57,6 +58,20 @@ namespace ProjectChimera.Dsl
             IReadOnlyDictionary<string, (DslValueType Type, VarScope Scope)> declaredVars,
             bool inCondition,
             out ExprProgram? program, out string? error)
+            => TryCompile(graph, rootId, declaredVars, inCondition, eventParams: null, out program, out error);
+
+        /// <summary>
+        /// Story 7.5 overload — <paramref name="eventParams"/> is the SUBSCRIBED event's parameter map (name →
+        /// frame slot + SURFACED type; ref-typed payload params already surface Int), or null when no single
+        /// subscribed event declares params — an <c>expr_event_param</c> read then rejects located (the
+        /// single-subscription rule).
+        /// </summary>
+        public static bool TryCompile(
+            TriggerGraph graph, int rootId,
+            IReadOnlyDictionary<string, (DslValueType Type, VarScope Scope)> declaredVars,
+            bool inCondition,
+            IReadOnlyDictionary<string, (int Slot, DslValueType Type)>? eventParams,
+            out ExprProgram? program, out string? error)
         {
             program = null;
 
@@ -66,6 +81,7 @@ namespace ProjectChimera.Dsl
                 SortedData  = graph.DataEdges.OrderBy(e => e).ToList(), // canonical tuple order → deterministic resolution
                 Vars        = declaredVars,
                 InCondition = inCondition,
+                EventParams = eventParams,
             };
             foreach (NodeBase n in graph.Nodes)
                 ctx.ById[n.Id] = n;
@@ -91,7 +107,7 @@ namespace ProjectChimera.Dsl
                 return false;
             }
 
-            program = new ExprProgram(ctx.Ops.ToArray(), ctx.MaxStack, rootType.Value);
+            program = new ExprProgram(ctx.Ops.ToArray(), ctx.MaxStack, rootType.Value, ctx.ReadsEventParams);
             error = null;
             return true;
         }
@@ -104,6 +120,8 @@ namespace ProjectChimera.Dsl
             public List<DataEdge> SortedData = null!;
             public IReadOnlyDictionary<string, (DslValueType Type, VarScope Scope)> Vars = null!;
             public bool InCondition;
+            public IReadOnlyDictionary<string, (int Slot, DslValueType Type)>? EventParams; // Story 7.5 (null = no event params)
+            public bool ReadsEventParams; // Story 7.5 — set when a PushEventParam is emitted (per-occurrence dispatch opt-in)
             public readonly List<ExprProgram.Op> Ops = new();
             public readonly HashSet<int> Path = new(); // node ids on the CURRENT walk path (cycle detection; never enumerated)
             public int Stack;
@@ -247,6 +265,27 @@ namespace ProjectChimera.Dsl
 
                 case ExprCallNode call:
                     return VisitCall(ctx, call, depth);
+
+                case ExprEventParamNode ep:
+                {
+                    // Story 7.5 — event.<name>: compiles only for a trigger subscribed to exactly ONE event kind
+                    // declaring the param (the custom registry, or the built-in unit_dies payload map). The map's
+                    // types are already SURFACED (EntityRef/FactionRef → Int raw handles — the one sanctioned
+                    // ref→Int surface). No map ⇒ the located single-subscription reject.
+                    if (ctx.EventParams is null)
+                    {
+                        ctx.Error = $"expr node {nodeId}: 'event.{ep.Name}' is not available here — event parameter reads compile only for a trigger subscribed to exactly one event that declares parameters.";
+                        return null;
+                    }
+                    if (string.IsNullOrEmpty(ep.Name) || !ctx.EventParams.TryGetValue(ep.Name, out var pd))
+                    {
+                        ctx.Error = $"expr node {nodeId}: the subscribed event declares no parameter '{ep.Name}'.";
+                        return null;
+                    }
+                    Emit(ctx, ExprProgram.OpCode.PushEventParam, +1, pd.Slot);
+                    ctx.ReadsEventParams = true;
+                    return pd.Type;
+                }
 
                 default:
                     ctx.Error = $"expr node {nodeId}: node is not an expression node (only expr_* kinds may feed an expression).";

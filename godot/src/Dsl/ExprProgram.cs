@@ -54,6 +54,7 @@ namespace ProjectChimera.Dsl
             Abs,       // raw abs; int.MinValue → int.MaxValue
             Count,     // pop faction slot, push IExprWorld.CountAlive (null world → 0)
             Distance,  // pop Point b, pop Point a, push FixedVec3.Distance((aX,0,aZ),(bX,0,bZ)).Raw
+            PushEventParam, // Story 7.5: push the current dispatch frame's param raw at slot A (no frame / OOB slot → 0)
         }
 
         /// <summary>One postfix op. <see cref="Name"/> is only used by <see cref="OpCode.PushVar"/> (the variable
@@ -81,12 +82,18 @@ namespace ProjectChimera.Dsl
         /// <summary>Number of postfix ops in the compiled program (≤ <see cref="ExprBounds.MaxExprOps"/>).</summary>
         public int OpCount => _ops.Length;
 
-        internal ExprProgram(Op[] ops, int maxStack, DslValueType resultType)
+        /// <summary>Story 7.5 — true when the program contains at least one <c>event.&lt;param&gt;</c> read
+        /// (a <see cref="OpCode.PushEventParam"/> op). A trigger whose compiled programs read event params
+        /// dispatches once per matching occurrence (statically visible at compile — no schema flag).</summary>
+        public bool ReadsEventParams { get; }
+
+        internal ExprProgram(Op[] ops, int maxStack, DslValueType resultType, bool readsEventParams = false)
         {
             _ops       = ops;
             _stack0    = new int[maxStack < 1 ? 1 : maxStack];
             _stack1    = new int[maxStack < 1 ? 1 : maxStack];
             ResultType = resultType;
+            ReadsEventParams = readsEventParams;
         }
 
         /// <summary>
@@ -99,7 +106,15 @@ namespace ProjectChimera.Dsl
         /// corrupt them. Safe today because programs are evaluated only on the single-threaded sim tick and the
         /// one external seam (<see cref="IExprWorld.CountAlive"/>, a pure world scan) never re-enters Eval.
         /// </summary>
-        public int Eval(DslVarTable vars, IExprWorld? world)
+        public int Eval(DslVarTable vars, IExprWorld? world) => Eval(vars, world, null, 0);
+
+        /// <summary>
+        /// Story 7.5 overload — evaluate against a DISPATCH FRAME: <paramref name="eventFrame"/> holds the current
+        /// occurrence's param raws (Int value / Fixed.Raw / Bool 0-1 / ref raw handles) and
+        /// <paramref name="eventFrameCount"/> how many are live. TOTAL semantics: no frame (null) or an
+        /// out-of-range slot evaluates to 0 — Eval can never throw in the tick. Zero heap allocation.
+        /// </summary>
+        public int Eval(DslVarTable vars, IExprWorld? world, int[]? eventFrame, int eventFrameCount)
         {
             int[] s0 = _stack0;
             int[] s1 = _stack1;
@@ -204,6 +219,13 @@ namespace ProjectChimera.Dsl
                         s1[sp - 1] = 0;
                         break;
                     }
+
+                    case OpCode.PushEventParam:
+                        // Story 7.5 — the current dispatch frame's param raw. TOTAL: no frame / OOB slot → 0.
+                        s0[sp] = (eventFrame != null && op.A >= 0 && op.A < eventFrameCount) ? eventFrame[op.A] : 0;
+                        s1[sp] = 0;
+                        sp++;
+                        break;
                 }
             }
 

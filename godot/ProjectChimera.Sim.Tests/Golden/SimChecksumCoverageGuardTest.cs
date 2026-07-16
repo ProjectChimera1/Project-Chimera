@@ -109,22 +109,22 @@ namespace ProjectChimera.Sim.Tests.Golden
         /// hash still moves.)
         /// </summary>
         [Fact]
-        public void KnownWorldState_ProducesPinnedV16Hash()
+        public void KnownWorldState_ProducesPinnedV17Hash()
         {
-            // Algorithm version must be exactly 16 (Story 7.3's DslVarTable fold). If this fails, the const below is stale.
-            Assert.Equal(16, SimChecksum.AlgoVersion);
+            // Algorithm version must be exactly 17 (Story 7.5's DslEventQueue fold). If this fails, the const below is stale.
+            Assert.Equal(17, SimChecksum.AlgoVersion);
 
             uint actual = ComputeKnownStateHash();
 
-            // ── Pinned v16 hash for the fixed world built by ComputeKnownStateHash() ──────────────────────────
+            // ── Pinned v17 hash for the fixed world built by ComputeKnownStateHash() ──────────────────────────
             // An intentional SimChecksum algorithm change must update this value AND bump SimChecksum.AlgoVersion.
-            // The known-state world passes an EMPTY DslVarTable (no declared vars/timers), so the v16 fold moves the
-            // hash from v15 purely by the added Mix(0) global-count + Mix(0) timer-count — the intentional
-            // DslVarTable-fold re-baseline (Story 7.3).
-            const uint ExpectedV16Hash = 0x359738A2; // recorded from a green v16 run; re-pin only on an intentional algo change
-            Assert.True(actual == ExpectedV16Hash,
-                $"Known-state v16 checksum changed: expected 0x{ExpectedV16Hash:X8}, actual 0x{actual:X8}. " +
-                $"If this is an INTENTIONAL algorithm change, re-pin ExpectedV16Hash to 0x{actual:X8} and bump " +
+            // The known-state world passes an EMPTY DslEventQueue (no pending next-tick events), so the v17 fold
+            // moves the hash from v16 purely by the added Mix(0) count — the story's named, recorded
+            // DslEventQueue-fold re-baseline (Story 7.5).
+            const uint ExpectedV17Hash = 0xFA8D8DC2; // recorded from a green v17 run; re-pin only on an intentional algo change
+            Assert.True(actual == ExpectedV17Hash,
+                $"Known-state v17 checksum changed: expected 0x{ExpectedV17Hash:X8}, actual 0x{actual:X8}. " +
+                $"If this is an INTENTIONAL algorithm change, re-pin ExpectedV17Hash to 0x{actual:X8} and bump " +
                 $"SimChecksum.AlgoVersion. If not, you broke the deterministic checksum — investigate.");
         }
 
@@ -344,6 +344,60 @@ namespace ProjectChimera.Sim.Tests.Golden
 
             // ── v16 (Story 7.3): the mutable DslVarTable is folded (first-ever fold of this store) ──
             AssertDslVarTableFoldedIntoChecksum(registry);
+
+            // ── v17 (Story 7.5): the pending next-tick DslEventQueue is folded (first-ever fold of this store) ──
+            AssertDslEventQueueFoldedIntoChecksum(registry);
+        }
+
+        /// <summary>
+        /// Story 7.5 (v17) coverage teeth: the pending next-tick <see cref="DslEventQueue"/> must move the
+        /// checksum — the FIRST-EVER fold of this store. Enqueuing an event moves the hash (the count + entry
+        /// fold); a different EVENT INDEX, a different RAISER, and a different PARAM RAW each move it
+        /// independently (a fold reading only the count would pass the first assertion and hide a payload
+        /// divergence — a silent desync surface, since next-tick feedback is live cross-tick sim state). Also
+        /// proves the null≡empty interchangeability promise (the DslVarTable v16 pattern).
+        /// </summary>
+        private static void AssertDslEventQueueFoldedIntoChecksum(FactionRegistry registry)
+        {
+            var world     = new EntityWorld();          // empty — isolates the queue contribution
+            var resources = new ResourceStore(Fixed.Zero);
+            var buildings = new BuildingStore();
+
+            static uint Hash(EntityWorld w, BuildingStore b, ResourceStore r, FactionRegistry reg, DslEventQueue? q) =>
+                SimChecksum.Compute(w, b, r, reg, null, null, null, null, null, null, q);
+
+            var queue = new DslEventQueue();
+            uint empty = Hash(world, buildings, resources, registry, queue);
+
+            Assert.True(queue.Enqueue(0, -1, new[] { 5, 0, 0, 0 }, 1));
+            uint enqueued = Hash(world, buildings, resources, registry, queue);
+            Assert.True(empty != enqueued,
+                "Enqueuing a next-tick event did NOT move the checksum — the DslEventQueue is not folded into SimChecksum (v17).");
+
+            var queueOtherEvent = new DslEventQueue();
+            queueOtherEvent.Enqueue(1, -1, new[] { 5, 0, 0, 0 }, 1);
+            Assert.True(enqueued != Hash(world, buildings, resources, registry, queueOtherEvent),
+                "A different pending EVENT INDEX did not move the checksum — the v17 fold is not reading the event index.");
+
+            var queueOtherRaiser = new DslEventQueue();
+            queueOtherRaiser.Enqueue(0, 2, new[] { 5, 0, 0, 0 }, 1);
+            Assert.True(enqueued != Hash(world, buildings, resources, registry, queueOtherRaiser),
+                "A different pending RAISER did not move the checksum — the v17 fold is not reading the raiser slot.");
+
+            var queueOtherParam = new DslEventQueue();
+            queueOtherParam.Enqueue(0, -1, new[] { 6, 0, 0, 0 }, 1);
+            Assert.True(enqueued != Hash(world, buildings, resources, registry, queueOtherParam),
+                "A different pending PARAM RAW did not move the checksum — the v17 fold is not reading the payload stride.");
+
+            // Clearing (the tick-start dequeue) returns the fold to the empty shape.
+            queue.Clear();
+            Assert.True(empty == Hash(world, buildings, resources, registry, queue),
+                "A cleared DslEventQueue does not fold like an empty one (the tick-start dequeue would leave residue).");
+
+            // Null ≡ empty (the DslVarTable v16 promise, applied to the queue).
+            Assert.True(Hash(world, buildings, resources, registry, new DslEventQueue())
+                     == Hash(world, buildings, resources, registry, null),
+                "A null DslEventQueue does NOT fold byte-identically to an empty queue (v17 null≡empty promise broken).");
         }
 
         /// <summary>
@@ -802,7 +856,9 @@ namespace ProjectChimera.Sim.Tests.Golden
             // same explicit-production-path rationale.
             // v16 (Story 7.3): pass an EMPTY DslVarTable (no declared vars/timers) — the fold adds Mix(0) global-count
             // + Mix(0) timer-count (per active faction the per-player loop is empty), same explicit-production-path rationale.
-            return SimChecksum.Compute(world, buildings, resources, new FactionRegistry(2), new ModifierStore(world), new HeroStore(), new ItemStore(), new ResourceNodeStore(), new ResearchStore(), new DslVarTable());
+            // v17 (Story 7.5): pass an EMPTY DslEventQueue (no pending next-tick events) — the fold adds one Mix(0)
+            // count, same explicit-production-path rationale.
+            return SimChecksum.Compute(world, buildings, resources, new FactionRegistry(2), new ModifierStore(world), new HeroStore(), new ItemStore(), new ResourceNodeStore(), new ResearchStore(), new DslVarTable(), new DslEventQueue());
         }
 
         /// <summary>

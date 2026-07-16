@@ -119,8 +119,10 @@ namespace ProjectChimera.Combat
                           _store.Position[projId], _store.Feedback[projId]); // Story 2.7 SD-4: the firing unit's override, snapshotted at Spawn
 
             // Primary hit uses the armor SNAPSHOT captured at spawn (_store.TargetArmor), not live armor.
+            // Story 7.5: the attacker id snapshotted at Spawn rides along for kill attribution (event.killer).
             var ctx = new DamageContext(world, targetId, _store.TargetArmor[projId],
-                                        _store.Owner[projId], _table, _events, _stats, _deaths);
+                                        _store.Owner[projId], _table, _events, _stats, _deaths,
+                                        attackerId: _store.SourceId[projId]);
             DamageResolver.Apply(in ctx, _store.Damage[projId], _store.DmgType[projId]);
 
             // AoE splash: deal same damage to all other enemies within splash radius
@@ -164,7 +166,9 @@ namespace ProjectChimera.Combat
                 if (distSqr > radiusSqr) continue;
 
                 // Secondary splash targets use LIVE armor (caller-supplied), and emit no pre-hit event.
-                var ctx = new DamageContext(world, i, world.ArmorTypeOf[i], owner, _table, _events, _stats, _deaths);
+                // Story 7.5: splash is part of the same impact — the spawn-snapshotted source id credits its kills too.
+                var ctx = new DamageContext(world, i, world.ArmorTypeOf[i], owner, _table, _events, _stats, _deaths,
+                                            attackerId: _store.SourceId[projId]);
                 DamageResolver.Apply(in ctx, damage, dmgType);
             }
         }

@@ -227,7 +227,7 @@ namespace ProjectChimera.Effects
                 world.Health[id] -= Fixed.FromInt(ab.CostHealth);
                 if (world.Health[id] <= Fixed.Zero)
                 {
-                    DamageResolver.KillEntity(world, id, faction, _events, _stats, _deaths);
+                    DamageResolver.KillEntity(world, id, faction, _events, _stats, _deaths, attackerId: id); // Story 7.5 — a self-lethal cast credits the caster
                     return;
                 }
             }

@@ -436,6 +436,21 @@ namespace ProjectChimera.Core.Definitions
                 }
             }
 
+            // ── Custom events (Story 7.5, AR-39) — the CLOSED registry, validated fail-closed when present via
+            //    the SHARED EventDispatchPlan routine (the exact rules the LoadScenario backstop mirrors): count ≤
+            //    MaxCustomEvents; unique non-blank names disjoint from the built-in event-kind set; param count ≤
+            //    MaxEventParams, unique identifier names, types ∈ {Int, Fixed, Bool}; allowed-raiser slots pass the
+            //    engine faction-slot ceiling (the CheckFactionSlot bound), no duplicates. NULL (every existing
+            //    scenario) ⇒ nothing to validate ⇒ the pass path is unchanged. Declarations are validated as INPUT
+            //    ONLY — EXCLUDED from the MP handshake hashes on the Variables/Timers/Triggers basis (7.7 folds
+            //    them); only the LIVE pending next-tick queue folds (SimChecksum v17). ──
+            if (m.CustomEvents != null)
+            {
+                string? ceErr = EventDispatchPlan.ValidateRegistry(m.CustomEvents, (int)Faction.Player4);
+                if (ceErr != null)
+                    return ValidationResult.Fail($"scenario.{ceErr}", validated);
+            }
+
             // ── Triggers (Story 1.11, AC3 — Decision #1: extend THIS gate rather than add a second validator) ──
             // The as-built path wrote accepted LLM/editor triggers straight into Triggers[] and reached
             // ScenarioDirector WITHOUT any validation; AR-39 now inspects them too, so non-deterministic /
@@ -460,12 +475,13 @@ namespace ProjectChimera.Core.Definitions
             //    crash on it). Deep STRUCTURAL validation (dangling/forked/dup-id edges) stays deferred to Story 7.7.
             //    NULL/whitespace (every existing scenario) ⇒ nothing to validate ⇒ the pass path is unchanged. ──
             TriggerGraph? parsedGraph = null;
+            List<TriggerGraph.TriggerExec>? gateExecs = null; // Story 7.5 — the exec view the dispatch-plan gate analyzes
             if (!string.IsNullOrWhiteSpace(m.TriggerGraphJson))
             {
                 try
                 {
                     parsedGraph = TriggerGraph.FromJson(m.TriggerGraphJson!);
-                    parsedGraph.BuildExecutionOrder(); // the 7.2 cycle guard, run AT the gate instead of mid-apply
+                    gateExecs = parsedGraph.BuildExecutionOrder(); // the 7.2 cycle guard, run AT the gate instead of mid-apply
                 }
                 catch (Exception ex) when (ex is System.Text.Json.JsonException or NotSupportedException)
                 {
@@ -620,6 +636,16 @@ namespace ProjectChimera.Core.Definitions
             //    Deep STRUCTURAL graph validation (dangling/forked/dup-id edges) stays deferred to Story 7.7. ──
             if (parsedGraph != null)
             {
+                // ── Story 7.5 — the SHARED custom-event analysis (the exact routine LoadScenario's backstop
+                //    runs): registry re-check, custom_event/raise_event usage rules (declared names, raiser
+                //    membership, single-subscription), raise-arg edge arity/type/wire + compile, and the same-tick
+                //    DAG proof + EventBounds caps (fan-out/depth/transitive ops — errors name the constant). It
+                //    also yields each trigger's event-parameter map, which the 7.4 expression compile loop below
+                //    threads into TryCompile so a handler's condition/value expressions may read event.<param>. ──
+                if (!EventDispatchPlan.TryBuild(m.CustomEvents, parsedGraph, gateExecs!, declaredVarInfo,
+                        maxRaiserSlotExclusive: (int)Faction.Player4, out EventDispatchPlan? evPlan, out string? evErr))
+                    return ValidationResult.Fail($"scenario.trigger_graph: {evErr}", validated);
+
                 // Story 7.4 — id lookup + the set of set_variable actions fed by a value-in expression edge. A
                 // fed action's declared target may be Int/Fixed/Bool (the type-equality check happens in the
                 // compile pass below); the literal path keeps the 7.3 Int-only rule.
@@ -744,7 +770,7 @@ namespace ProjectChimera.Core.Definitions
                     if (dst is TriggerNode && de.DstPort == TriggerGraph.TriggerConditionInPort)
                     {
                         if (!ExprCompiler.TryCompile(parsedGraph, de.Src, declaredVarInfo, inCondition: true,
-                                out ExprProgram? cp, out string? cErr))
+                                evPlan!.ParamMapFor(dst.Id), out ExprProgram? cp, out string? cErr))
                             return ValidationResult.Fail($"scenario.trigger_graph: {cErr}", validated);
                         if (cp!.ResultType != DslValueType.Bool)
                             return ValidationResult.Fail(
@@ -765,7 +791,7 @@ namespace ProjectChimera.Core.Definitions
                             return ValidationResult.Fail(
                                 $"scenario.trigger_graph action node {act.Id}: multiple value-in expression edges (forked; exactly one allowed).", validated);
                         if (!ExprCompiler.TryCompile(parsedGraph, de.Src, declaredVarInfo, inCondition: false,
-                                out ExprProgram? vp, out string? vErr))
+                                evPlan!.ParamMapFor(act.Id), out ExprProgram? vp, out string? vErr))
                             return ValidationResult.Fail($"scenario.trigger_graph: {vErr}", validated);
                         DslValueType target = declaredVarInfo.TryGetValue(act.Variable!, out var tInfo) ? tInfo.Type : DslValueType.Int;
                         if (target != DslValueType.Int && target != DslValueType.Fixed && target != DslValueType.Bool)

@@ -23,8 +23,15 @@ namespace ProjectChimera.Combat
         /// hostile heroes in range. Null in bare combat tests / non-XP call sites (no death is recorded).</summary>
         public readonly DeathFeed? Deaths;
 
+        /// <summary>Story 7.5: the attacker ENTITY id (−1 = unknown, the default). Hitscan passes the striking
+        /// unit; the projectile path passes the source id snapshotted at spawn; call sites that don't know an
+        /// attacker leave −1. On lethal damage <see cref="DamageResolver.KillEntity"/> writes it into the victim's
+        /// killer-attribution SoA for the <c>unit_dies</c> event payload.</summary>
+        public readonly int AttackerId;
+
         public DamageContext(EntityWorld world, int targetId, ArmorType targetArmor, Faction killer,
-                             DamageTable table, CombatEventQueue? events, MatchStats? stats, DeathFeed? deaths = null)
+                             DamageTable table, CombatEventQueue? events, MatchStats? stats, DeathFeed? deaths = null,
+                             int attackerId = -1)
         {
             World = world;
             TargetId = targetId;
@@ -34,6 +41,7 @@ namespace ProjectChimera.Combat
             Events = events;
             Stats = stats;
             Deaths = deaths;
+            AttackerId = attackerId;
         }
     }
 
@@ -72,7 +80,7 @@ namespace ProjectChimera.Combat
             world.Health[t] = world.Health[t] - damage;
             if (world.Health[t] <= Fixed.Zero)
             {
-                KillEntity(world, t, ctx.Killer, ctx.Events, ctx.Stats, ctx.Deaths);
+                KillEntity(world, t, ctx.Killer, ctx.Events, ctx.Stats, ctx.Deaths, ctx.AttackerId);
                 return true;
             }
             return false;
@@ -86,8 +94,14 @@ namespace ProjectChimera.Combat
         /// cast dies through the EXACT same path, never an invented one. Caller ensures Health has already reached ≤0.
         /// </summary>
         public static void KillEntity(EntityWorld world, int id, Faction killer, CombatEventQueue? events,
-                                      MatchStats? stats, DeathFeed? deaths = null)
+                                      MatchStats? stats, DeathFeed? deaths = null, int attackerId = -1)
         {
+            // Story 7.5: the SINGLE write point for the killer-attribution SoA — the attacker entity id (−1 =
+            // unknown) plus the killer faction SNAPSHOTTED as a slot (Neutral → −1; Player1 → 0), written BEFORE
+            // Destroy recycles the slot so ScenarioDirector's death diff can read the unit_dies payload this tick.
+            // Derived attribution state, NOT folded into SimChecksum (the _prevFlags basis).
+            world.KillerOf[id]        = attackerId;
+            world.KillerFactionOf[id] = (int)killer - 1; // Neutral (0) → −1; player factions → slot
             events?.Push(CombatEventType.UnitKilled, world.Position[id], world.FeedbackProfile[id]);
             stats?.RecordKill(world.FactionOf[id], killer);
             // Story 3.13: record the death for the XP runtime BEFORE Destroy recycles the slot (the corpse's

@@ -418,6 +418,49 @@ namespace ProjectChimera.Core.Definitions
     }
 
     /// <summary>
+    /// One typed parameter of a declared custom event (Story 7.5). <see cref="Name"/> must be an identifier
+    /// (letters/digits/underscore, not digit-leading — the ExprParser rules, so <c>event.&lt;name&gt;</c> can read
+    /// it); <see cref="Type"/> is restricted to Int/Fixed/Bool (no Point/ref/array payload types in 7.5) —
+    /// enforced at the <see cref="ScenarioValidator"/> gate AND the LoadScenario backstop.
+    /// </summary>
+    public class ScenarioEventParam
+    {
+        /// <summary>The parameter name (an ExprParser identifier; unique within its event).</summary>
+        [JsonPropertyName("name")]
+        public string Name { get; set; } = "";
+
+        /// <summary>The parameter type ∈ {Int, Fixed, Bool} — serialized by NAME via the enum converter.</summary>
+        [JsonPropertyName("type")]
+        public DslValueType Type { get; set; } = DslValueType.Int;
+    }
+
+    /// <summary>
+    /// A declared custom event (Story 7.5) — the CLOSED registry entry: a unique name (disjoint from the built-in
+    /// event kinds), up to EventBounds.MaxEventParams typed params, and the per-event allowed-raiser slot set
+    /// (load-time <c>raise_event.raiser</c> membership in 7.5; runtime raiser enforcement on the lockstep bus is
+    /// Story 7.9). EXCLUDED from <see cref="CanonicalModelHash"/>/<see cref="StartStateHash"/> on the SAME
+    /// Triggers/Variables basis (declarations stay out of the MP handshake until 7.7's versioned fold); the LIVE
+    /// pending next-tick queue folds into per-tick <c>SimChecksum</c> (v17).
+    /// </summary>
+    public class ScenarioCustomEvent
+    {
+        /// <summary>Unique event name (the key raise_event / custom_event subscriptions reference).</summary>
+        [JsonPropertyName("name")]
+        public string Name { get; set; } = "";
+
+        /// <summary>The typed params, declaration order = frame-slot order. NULL ⇒ none (omitted when null).</summary>
+        [JsonPropertyName("params")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public ScenarioEventParam[]? Params { get; set; }
+
+        /// <summary>The faction slots allowed to raise this event (each passes the engine faction-slot ceiling; no
+        /// duplicates). NULL ⇒ empty (system-raise only — an authored raiser of −1 is always legal).</summary>
+        [JsonPropertyName("allowed_raisers")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public int[]? AllowedRaisers { get; set; }
+    }
+
+    /// <summary>
     /// Full scenario definition. Contains everything needed to reconstruct a match:
     /// terrain reference, player faction assignments, resource node layout,
     /// pre-placed buildings and units, and the win condition.
@@ -526,6 +569,18 @@ namespace ProjectChimera.Core.Definitions
         [JsonPropertyName("timers")]
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public ScenarioTimer[]? Timers { get; set; }
+
+        /// <summary>
+        /// The closed custom-event registry (Story 7.5). NULL (the default, every existing scenario) ⇒ no declared
+        /// events; OMITTED when null / normalized empty→null at the <c>ScenarioSerializer.Serialize</c> chokepoint
+        /// (the <see cref="Variables"/> persistence pattern), so an absent block serializes BYTE-IDENTICALLY to
+        /// pre-7.5. The DECLARATIONS are deliberately EXCLUDED from <see cref="CanonicalModelHash"/> (AlgoVersion
+        /// stays 7) and <see cref="StartStateHash"/> on the Triggers/Variables basis; the LIVE pending next-tick
+        /// event queue folds into per-tick <c>SimChecksum</c> (v17).
+        /// </summary>
+        [JsonPropertyName("custom_events")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public ScenarioCustomEvent[]? CustomEvents { get; set; }
 
         /// <summary>
         /// The canonical graph-IR JSON for graph-only triggers (Story 7.3) — e.g. triggers authored through the

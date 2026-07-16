@@ -45,6 +45,12 @@ namespace ProjectChimera.Sim.Tests.Meta
         //    same commit as the source change — that edit is the "did the siblings + goldens move too?" checkpoint.
 
         /// <summary>Runtime desync-checksum algorithm version. Bump ⇒ re-baseline ALL goldens (same commit).
+        /// v17 (Story 7.5): first-ever fold of the DslEventQueue — the PENDING next-tick custom-event raises
+        /// (registry index + raiser + the fixed MaxEventParams param-raw stride, count-prefixed in enqueue order,
+        /// after the DslVarTable fold and before SimRng). Live CROSS-TICK sim state (non-empty at the checksum
+        /// boundary whenever feedback is pending), unlike the provably-drained CombatEventQueue/DeathFeed. The
+        /// custom-event DECLARATIONS stay OUT of the CanonicalModelHash/StartStateHash handshake (the
+        /// Variables/Timers basis).
         /// v16 (Story 7.3): first-ever fold of the DslVarTable — live typed/scoped DSL variables (Global then
         /// Per-player, EVERY slot 0..7 per declaration — writes can land on inactive slots, so all slots fold) +
         /// named timers. Declarations stay OUT of the CanonicalModelHash/
@@ -62,7 +68,7 @@ namespace ProjectChimera.Sim.Tests.Meta
         /// (D-1). v8 (Story 2.6): folded per-entity EffectiveArmor (the buffable armor stat). v7 (Story 2.4a): folded
         /// per-entity AbilityCooldownTicks (count-driven). v6 (Story 2.2b): Effective* / Energy / StatusFlagsOf +
         /// the ModifierStore instance state.</summary>
-        private const int ExpectedSimChecksumAlgoVersion = 16;
+        private const int ExpectedSimChecksumAlgoVersion = 17;
 
         /// <summary>Load-time canonical start-state hash algorithm version (lobby handshake value).
         /// v3 (Story 2.9b follow-up): folded ScenarioPlayerSlot.StartCrystal (sim-affecting per-slot start-state).

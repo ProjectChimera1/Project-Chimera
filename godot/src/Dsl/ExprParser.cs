@@ -36,7 +36,8 @@ namespace ProjectChimera.Dsl
         /// </summary>
         public static (int RootId, DataWireType Wire) Parse(
             string text, TriggerGraph graph,
-            IReadOnlyDictionary<string, (DslValueType Type, VarScope Scope)> declaredVars)
+            IReadOnlyDictionary<string, (DslValueType Type, VarScope Scope)> declaredVars,
+            IReadOnlyDictionary<string, (int Slot, DslValueType Type)>? eventParams = null)
         {
             if (text is null)
                 throw new JsonException("expr text (pos 0): expression text is null.");
@@ -48,7 +49,7 @@ namespace ProjectChimera.Dsl
             foreach (NodeBase n in graph.Nodes)
                 if (n.Id + 1 > nextId) nextId = n.Id + 1;
 
-            var p = new P { Text = text, Pos = 0, Graph = graph, Vars = declaredVars, NextId = nextId };
+            var p = new P { Text = text, Pos = 0, Graph = graph, Vars = declaredVars, EventParams = eventParams, NextId = nextId };
             Node root = ParseOr(p);
             p.SkipWs();
             if (p.Pos != text.Length)
@@ -74,6 +75,9 @@ namespace ProjectChimera.Dsl
             public int Pos;
             public TriggerGraph Graph = null!;
             public IReadOnlyDictionary<string, (DslValueType Type, VarScope Scope)> Vars = null!;
+            /// <summary>Story 7.5 — the subscribed event's parameter map (name → slot + SURFACED type; ref-typed
+            /// payload params already surface Int). Null = no event params available (event.&lt;name&gt; rejects).</summary>
+            public IReadOnlyDictionary<string, (int Slot, DslValueType Type)>? EventParams;
             public int NextId;
 
             public void SkipWs()
@@ -105,6 +109,17 @@ namespace ProjectChimera.Dsl
         private static bool IsDigit(char c)  => c >= '0' && c <= '9';
         private static bool IsIdentStart(char c) => (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_';
         private static bool IsIdentChar(char c)  => IsIdentStart(c) || IsDigit(c);
+
+        /// <summary>Story 7.5 — true when <paramref name="s"/> is a well-formed identifier under THIS parser's
+        /// rules (letters/digits/underscore, not digit-leading). Custom-event parameter names must satisfy it so
+        /// <c>event.&lt;name&gt;</c> text can always address a declared param.</summary>
+        internal static bool IsIdentifier(string? s)
+        {
+            if (string.IsNullOrEmpty(s) || !IsIdentStart(s![0])) return false;
+            for (int i = 1; i < s.Length; i++)
+                if (!IsIdentChar(s[i])) return false;
+            return true;
+        }
 
         // ── Node construction (with the depth cap enforced as the tree grows) ────
 
@@ -350,6 +365,28 @@ namespace ProjectChimera.Dsl
                 return AddLeaf(p, start, new ExprLiteralNode { ValueType = DslValueType.Bool, Raw = 1 }, DslValueType.Bool);
             if (name == "false")
                 return AddLeaf(p, start, new ExprLiteralNode { ValueType = DslValueType.Bool, Raw = 0 }, DslValueType.Bool);
+
+            // Story 7.5 — `event.<name>`: the event-parameter read. Only the `event.` prefix routes here (a
+            // declared variable named "event" without a following '.' still reads as a variable, so no legacy
+            // text changes meaning); the '.' must follow IMMEDIATELY (no whitespace) so `event . x` stays a
+            // located syntax error rather than a surprising member access.
+            if (name == "event" && p.Pos < p.Text.Length && p.Text[p.Pos] == '.')
+            {
+                p.Pos++; // consume '.'
+                if (p.Pos >= p.Text.Length || !IsIdentStart(p.Text[p.Pos]))
+                    throw p.Fail(p.Pos, "expected an event parameter name after 'event.'");
+                int pnStart = p.Pos;
+                while (p.Pos < p.Text.Length && IsIdentChar(p.Text[p.Pos]))
+                    p.Pos++;
+                string paramName = p.Text.Substring(pnStart, p.Pos - pnStart);
+                if (p.EventParams is null)
+                    throw p.Fail(start, $"'event.{paramName}' is not available here — event parameter reads compile only for a trigger subscribed to exactly one event that declares parameters");
+                if (!p.EventParams.TryGetValue(paramName, out var pd))
+                    throw p.Fail(start, $"the subscribed event declares no parameter '{paramName}'");
+                // Ref-typed payload params (EntityRef/FactionRef) already SURFACE Int in the map — the one
+                // sanctioned ref→Int surface (opaque raw handles; no ref algebra).
+                return AddLeaf(p, start, new ExprEventParamNode { Name = paramName }, pd.Type);
+            }
 
             if (p.Peek() == '(')
                 return ParseCall(p, start, name);

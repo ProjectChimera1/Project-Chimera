@@ -55,6 +55,49 @@ namespace ProjectChimera.Core
         // Story 7.4 — the live world the IExprWorld seam scans (set at Tick entry; count() reads it).
         private EntityWorld? _exprWorld;
 
+        // ── Story 7.5 — custom events: registry, per-exec dispatch info, buffers (ALL allocated at load) ─────
+
+        /// <summary>The FiredEvent.Type marker for custom-event occurrences (a const — no per-tick string).</summary>
+        private const string CustomEventType = "custom_event";
+
+        // The cross-tick next-tick queue (host-owned + checksum-folded in production; self-owned for direct
+        // test construction — determinism-identical either way, the tests fold their own instance).
+        private readonly DslEventQueue _eventQueue;
+
+        // The closed custom-event registry, resolved at LoadScenario (names are loaded references — the tick
+        // never constructs a string).
+        private string[] _eventNames       = Array.Empty<string>();
+        private int[]    _eventParamCounts = Array.Empty<int>();
+
+        // Per-exec dispatch info (parallel to _execs): the subscribed custom-event index (-1 = built-in events
+        // only), the per-occurrence opt-in flag (any compiled program reads event params), and the compiled
+        // raise plans (parallel to each exec's Actions; null rows = not a raise action).
+        private int[]  _subscribedEvent = Array.Empty<int>();
+        private bool[] _paramReading    = Array.Empty<bool>();
+        private EventDispatchPlan.RaiseCompiled?[][] _raisePlans = Array.Empty<EventDispatchPlan.RaiseCompiled?[]>();
+
+        // The preallocated BASE event buffer (replaces the per-tick `new List<FiredEvent>(16)`): sized at load to
+        // the worst-case emission (deaths + building completions + timers + thresholds + match_start).
+        private FiredEvent[] _baseEvents = Array.Empty<FiredEvent>();
+        private int _baseEventCount;
+
+        // The same-tick FIFO work list: seeded with the next-tick dequeue at tick start, appended by same-tick
+        // raises in execution order, drained occurrence-major after the base sweep. Fixed capacity with
+        // deterministic drop-newest overflow (EventBounds.MaxSameTickWorkList — a documented seatbelt for
+        // world-driven volume, distinct from 7.6 fuel).
+        private readonly FiredEvent[] _workList = new FiredEvent[EventBounds.MaxSameTickWorkList];
+        private int _workHead, _workCount;
+
+        // The current dispatch frame (event param raws) expressions read via PushEventParam, and the separate
+        // raise-arg scratch (args evaluate against the CURRENT frame, so they must not clobber it).
+        private readonly int[] _frameScratch = new int[EventBounds.MaxEventParams];
+        private int _frameCount;
+        private readonly int[] _raiseScratch = new int[EventBounds.MaxEventParams];
+
+        // Zero-alloc building-type names for the building_completed payload (BuildingType.ToString() allocates;
+        // the enum is byte-backed and append-only, so an index table is stable).
+        private static readonly string[] BuildingTypeNames = Enum.GetNames(typeof(BuildingType));
+
         // ── Named regions (Story 6.4) ─────────────────────────────────────────
         private RegionStore _regions = RegionStore.Empty;
 
@@ -96,11 +139,16 @@ namespace ProjectChimera.Core
 
         // ── Constructor ───────────────────────────────────────────────────────
 
-        public ScenarioDirector(BuildingStore buildings, ResourceStore resources, DslVarTable vars)
+        /// <param name="eventQueue">Story 7.5 — the cross-tick next-tick event queue. Production
+        /// (<c>SimulationHost</c>) passes its owned, checksum-folded instance; a null (direct test construction)
+        /// self-owns one — determinism-identical, the caller just cannot fold what it does not hold.</param>
+        public ScenarioDirector(BuildingStore buildings, ResourceStore resources, DslVarTable vars,
+                                DslEventQueue? eventQueue = null)
         {
-            _buildings = buildings;
-            _resources = resources;
-            _vars      = vars;
+            _buildings  = buildings;
+            _resources  = resources;
+            _vars       = vars;
+            _eventQueue = eventQueue ?? new DslEventQueue();
         }
 
         /// <summary>
@@ -148,11 +196,27 @@ namespace ProjectChimera.Core
                 graph.Merge(TriggerGraph.FromJson(scenario.TriggerGraphJson!));
             List<TriggerGraph.TriggerExec> execs = graph.BuildExecutionOrder();
 
-            // Story 7.4 — compile every condition-expression and set_variable value-expression ONCE (two-phase
-            // contract). A compile failure throws a located JsonException, consistent with the cycle-guard posture
-            // above (the ScenarioValidator gate rejects the same errors located BEFORE any apply; this is the
-            // fail-closed backstop for direct LoadScenario callers). Expression-free scenarios compile nothing.
-            (ExprProgram[][] condPrograms, ExprProgram?[][] valuePrograms) = CompileExpressionPrograms(scenario, graph, execs);
+            // Story 7.4/7.5 — compile every condition-expression, set_variable value-expression, and raise-arg
+            // program ONCE, and run the FULL 7.5 load-time backstop (registry validation, DAG proof + EventBounds
+            // caps via the shared EventDispatchPlan routine, single-subscription rules). A failure throws a located
+            // JsonException, consistent with the cycle-guard posture above (the ScenarioValidator gate rejects the
+            // same errors located BEFORE any apply; this is the fail-closed backstop for direct LoadScenario
+            // callers). Expression/event-free scenarios compile nothing (legacy parity).
+            CompiledPrograms compiled = CompileExpressionPrograms(scenario, graph, execs);
+
+            // Story 7.5 — size the preallocated base-event buffer to the worst-case per-tick emission: every
+            // entity dying (MAX_ENTITIES) + every building completing (MAX_BUILDINGS) + every DISTINCT timer name
+            // expiring (declared + create_timer action names — timer identity is static text, so this bound is
+            // load-computable) + the 4 polled threshold events + match_start.
+            var timerNames = new HashSet<string>(StringComparer.Ordinal);
+            if (scenario.Timers != null)
+                foreach (ScenarioTimer t in scenario.Timers)
+                    if (!string.IsNullOrEmpty(t.Name)) timerNames.Add(t.Name);
+            foreach (TriggerGraph.TriggerExec ex in execs)
+                foreach (NodeBase act in ex.Actions)
+                    if (act is ActionNode { Kind: "create_timer" } ct && !string.IsNullOrEmpty(ct.TimerName))
+                        timerNames.Add(ct.TimerName!);
+            var baseEvents = new FiredEvent[EntityWorld.MAX_ENTITIES + BuildingStore.MAX_BUILDINGS + timerNames.Count + 5];
 
             // Story 7.3: the typed/scoped variable + timer store declarations. The seconds→ticks conversion happens
             // HERE at the Core boundary (SecondsToTicks owns TICKS_PER_SECOND) so the table receives integer ticks
@@ -176,8 +240,22 @@ namespace ProjectChimera.Core
             _execs = execs;
             _triggerFired    = new bool[execs.Count];
             _triggerCooldown = new int[execs.Count];
-            _condPrograms    = condPrograms;
-            _valuePrograms   = valuePrograms;
+            _condPrograms    = compiled.CondPrograms;
+            _valuePrograms   = compiled.ValuePrograms;
+
+            // Story 7.5 — commit the custom-event runtime: registry references, per-exec dispatch info, compiled
+            // raise plans, the sized base buffer, and a clean queue/work-list (a re-load never inherits pending
+            // feedback from the previous scenario).
+            _eventNames       = compiled.EventNames;
+            _eventParamCounts = compiled.EventParamCounts;
+            _subscribedEvent  = compiled.SubscribedEvent;
+            _paramReading     = compiled.ParamReading;
+            _raisePlans       = compiled.RaisePlans;
+            _baseEvents       = baseEvents;
+            _baseEventCount   = 0;
+            _workHead = _workCount = 0;
+            _frameCount = 0;
+            _eventQueue.Clear();
 
             _vars.InitFromDeclarations(varDecls, timerDecls);
 
@@ -194,15 +272,30 @@ namespace ProjectChimera.Core
             }
         }
 
+        /// <summary>The load-compiled program set (Story 7.4 expressions + Story 7.5 custom-event dispatch info),
+        /// returned as LOCALS so a mid-compile throw never strands half-replaced director state (failure-atomic).</summary>
+        private sealed class CompiledPrograms
+        {
+            public ExprProgram[][]  CondPrograms  = Array.Empty<ExprProgram[]>();
+            public ExprProgram?[][] ValuePrograms = Array.Empty<ExprProgram?[]>();
+            public string[] EventNames            = Array.Empty<string>();
+            public int[]    EventParamCounts      = Array.Empty<int>();
+            public int[]    SubscribedEvent       = Array.Empty<int>();
+            public bool[]   ParamReading          = Array.Empty<bool>();
+            public EventDispatchPlan.RaiseCompiled?[][] RaisePlans = Array.Empty<EventDispatchPlan.RaiseCompiled?[]>();
+        }
+
         /// <summary>
-        /// Story 7.4 — compile every expression subgraph the execution view surfaced (condition-in roots and
-        /// set_variable value-in roots) into <see cref="ExprProgram"/>s held per trigger, via <see cref="ExprCompiler"/>
-        /// against the scenario's declared-variable map. Located <see cref="System.Text.Json.JsonException"/> on any
-        /// compile reject (type mismatch, literal-zero divisor, caps, scope misuse — the full 7.4 rulebook).
+        /// Story 7.4/7.5 — compile every expression subgraph the execution view surfaced (condition-in roots,
+        /// set_variable value-in roots, and raise-arg roots) into <see cref="ExprProgram"/>s held per trigger, via
+        /// <see cref="ExprCompiler"/> against the scenario's declared-variable map and (7.5) each trigger's
+        /// event-parameter map, and run the full 7.5 load-time backstop through the SHARED
+        /// <see cref="EventDispatchPlan"/> routine (registry rules, single-subscription, raise-arg arity/type/wire,
+        /// DAG proof + EventBounds caps). Located <see cref="System.Text.Json.JsonException"/> on any reject.
         /// Pure function of its inputs (review, 7.4 pass 2): fills and returns LOCAL arrays so a mid-compile throw
         /// never strands half-replaced director state — the caller commits them only after everything compiled.
         /// </summary>
-        private static (ExprProgram[][] CondPrograms, ExprProgram?[][] ValuePrograms) CompileExpressionPrograms(
+        private static CompiledPrograms CompileExpressionPrograms(
             ScenarioData scenario, TriggerGraph graph, List<TriggerGraph.TriggerExec> execs)
         {
             // GATE-ONLY checks (deliberately NOT mirrored in this backstop): the engine-ceiling faction bound on
@@ -217,9 +310,13 @@ namespace ProjectChimera.Core
 
             // Legacy parity guard: expression-free graphs skip every NEW check below (a duplicate-declaration
             // direct-load, however malformed, must keep its exact pre-7.4 load behavior — the Block-If).
-            bool anyExpr = false;
+            // Story 7.5: any custom-event machinery (declared events, raise/subscription/param-read nodes) also
+            // opts INTO the stricter checks — new machinery, native strictness; legacy content unaffected.
+            bool anyExpr = scenario.CustomEvents is { Length: > 0 };
             foreach (NodeBase n in graph.Nodes)
-                if (ExprCompiler.IsExprNode(n)) { anyExpr = true; break; }
+                if (ExprCompiler.IsExprNode(n) || n is RaiseEventNode
+                    || (n is EventNode c && c.Kind == "custom_event"))
+                { anyExpr = true; break; }
 
             // Declared name → (type, scope), the same map shape the validator gate builds. WITH expressions
             // present, duplicates reject like the gate (review, 7.4 pass 2): a last-declaration-wins map would
@@ -235,12 +332,23 @@ namespace ProjectChimera.Core
                                 $"scenario variable '{v.Name}' is declared more than once.");
                     }
 
+            // ── Story 7.5 — the SHARED load-time analysis (the exact routine the validator gate runs): registry
+            //    validation, custom_event/raise_event usage rules, single-subscription, raise-arg edge shape +
+            //    compile, and the same-tick DAG proof + EventBounds caps. Located throw = the fail-closed backstop.
+            //    It also yields each trigger's event-parameter map, which the 7.4 compile passes below need so a
+            //    handler's condition/value expressions can read event.<param>. ──
+            if (!EventDispatchPlan.TryBuild(scenario.CustomEvents, graph, execs, declMap,
+                    maxRaiserSlotExclusive: (int)Faction.Player4, out EventDispatchPlan? evPlan, out string? evErr))
+                throw new System.Text.Json.JsonException(evErr);
+            EventDispatchPlan plan = evPlan!;
+
             // ── Per-edge parity scan (review, 7.4 pass 2 — mirrors the gate's consumer-edge loop over ALL data
             //    edges, not just exec-surfaced actions): a value-in edge whose src is NOT an expression node maps
             //    to root -1 in BuildExecutionOrder and would otherwise be SILENTLY ignored (the literal Value wins
             //    against the authored wiring); a value-in edge onto a run_effect or an action outside every exec
             //    chain would escape the per-exec loop below entirely. Canonical tuple order → deterministic
-            //    first-fail, matching the gate. ──
+            //    first-fail, matching the gate. Story 7.5: raise-arg edges (Dst = a RaiseEventNode) are fully
+            //    checked by the plan above and skipped here. ──
             var byId = new Dictionary<int, NodeBase>(graph.Nodes.Count);
             foreach (NodeBase n in graph.Nodes)
                 byId[n.Id] = n;
@@ -280,7 +388,8 @@ namespace ProjectChimera.Core
                     if (!seenValueInPorts.Add(act.Id))
                         throw new System.Text.Json.JsonException(
                             $"action node {act.Id}: multiple value-in expression edges (forked; exactly one allowed).");
-                    if (!ExprCompiler.TryCompile(graph, de.Src, declMap, inCondition: false, out ExprProgram? vp, out string? vErr))
+                    if (!ExprCompiler.TryCompile(graph, de.Src, declMap, inCondition: false, plan.ParamMapFor(act.Id),
+                            out ExprProgram? vp, out string? vErr))
                         throw new System.Text.Json.JsonException($"set_variable value expression: {vErr}");
                     DslValueType target = declMap.TryGetValue(act.Variable!, out var tDecl) ? tDecl.Type : DslValueType.Int;
                     if (target != DslValueType.Int && target != DslValueType.Fixed && target != DslValueType.Bool)
@@ -295,9 +404,12 @@ namespace ProjectChimera.Core
                 }
             }
 
+            var paramReading = new bool[execs.Count];
             for (int i = 0; i < execs.Count; i++)
             {
                 TriggerGraph.TriggerExec ex = execs[i];
+                IReadOnlyDictionary<string, (int Slot, DslValueType Type)>? exMap = plan.ParamMapFor(ex.Trigger.Id);
+                paramReading[i] = plan.RaiseArgsReadEventParams[i];
 
                 if (ex.ConditionExprRoots.Length == 0)
                 {
@@ -309,7 +421,7 @@ namespace ProjectChimera.Core
                     for (int j = 0; j < ex.ConditionExprRoots.Length; j++)
                     {
                         int root = ex.ConditionExprRoots[j];
-                        if (!ExprCompiler.TryCompile(graph, root, declMap, inCondition: true, out ExprProgram? p, out string? err))
+                        if (!ExprCompiler.TryCompile(graph, root, declMap, inCondition: true, exMap, out ExprProgram? p, out string? err))
                             throw new System.Text.Json.JsonException($"trigger '{ex.Trigger.Name}' condition expression: {err}");
                         if (p!.ResultType != DslValueType.Bool)
                             throw new System.Text.Json.JsonException(
@@ -321,6 +433,7 @@ namespace ProjectChimera.Core
                                 throw new System.Text.Json.JsonException(
                                     $"trigger '{ex.Trigger.Name}' condition expression (expr node {root}): the condition-in edge must carry the Boolean wire, got '{e.Wire}'.");
                         programs[j] = p;
+                        paramReading[i] |= p!.ReadsEventParams; // Story 7.5 — per-occurrence opt-in is statically visible
                     }
                     condPrograms[i] = programs;
                 }
@@ -342,7 +455,7 @@ namespace ProjectChimera.Core
                     if (ex.Actions[j] is not ActionNode act || act.Kind != "set_variable" || string.IsNullOrEmpty(act.Variable))
                         throw new System.Text.Json.JsonException(
                             $"trigger '{ex.Trigger.Name}' action node {ex.Actions[j].Id}: a value-in expression edge is only allowed on a set_variable action with a target variable.");
-                    if (!ExprCompiler.TryCompile(graph, root, declMap, inCondition: false, out ExprProgram? p, out string? err))
+                    if (!ExprCompiler.TryCompile(graph, root, declMap, inCondition: false, exMap, out ExprProgram? p, out string? err))
                         throw new System.Text.Json.JsonException($"trigger '{ex.Trigger.Name}' set_variable value expression: {err}");
                     DslValueType target = declMap.TryGetValue(act.Variable!, out var decl) ? decl.Type : DslValueType.Int;
                     if (target != DslValueType.Int && target != DslValueType.Fixed && target != DslValueType.Bool)
@@ -352,11 +465,26 @@ namespace ProjectChimera.Core
                         throw new System.Text.Json.JsonException(
                             $"trigger '{ex.Trigger.Name}' set_variable value expression (expr node {root}): result type {p.ResultType} does not match target variable '{act.Variable}' ({target}).");
                     values[j] = p;
+                    paramReading[i] |= p!.ReadsEventParams; // Story 7.5 — per-occurrence opt-in is statically visible
                 }
                 valuePrograms[i] = values;
             }
 
-            return (condPrograms, valuePrograms);
+            // Story 7.5 — stamp the per-occurrence flag onto the exec view (spec surface) and hand everything back
+            // as locals for the failure-atomic commit.
+            for (int i = 0; i < execs.Count; i++)
+                execs[i].ReadsEventParams = paramReading[i];
+
+            return new CompiledPrograms
+            {
+                CondPrograms     = condPrograms,
+                ValuePrograms    = valuePrograms,
+                EventNames       = plan.EventNames,
+                EventParamCounts = plan.EventParamCounts,
+                SubscribedEvent  = plan.SubscribedEvent,
+                ParamReading     = paramReading,
+                RaisePlans       = plan.Raises,
+            };
         }
 
         /// <summary>Story 7.4 — the <c>count(faction)</c> built-in's world seam: alive entities of the given slot,
@@ -392,14 +520,39 @@ namespace ProjectChimera.Core
                     // pre-7.3 the early-out was safe because timers could only exist via trigger actions. An empty table
                     // (every legacy scenario) makes this a no-op, so goldens/checksums are unmoved. Expiry events go
                     // nowhere without triggers (timer_expires is a trigger event), which is fine — the state is the point.
+                    // Story 7.5: with no triggers there can be no raisers and no subscribers, so the queue is provably
+                    // empty; the defensive clear keeps a (unreachable) stale entry from folding forever.
                     _expiredTimers.Clear();
                     _vars.TimerTickAndCollectExpired(_expiredTimers);
+                    _eventQueue.Clear();
                     return;
                 }
 
-                var events = CollectEvents(world);
+                // Story 7.5 — seed the same-tick work list with the next-tick DEQUEUE (dequeued events dispatch
+                // before base-sweep raises: they were enqueued first, and the base sweep APPENDS behind them), then
+                // clear the queue — this tick's next_tick raises re-fill it for the next tick's seed.
+                _workHead = 0;
+                _workCount = 0;
+                int pending = _eventQueue.Count;
+                for (int i = 0; i < pending && _workCount < _workList.Length; i++)
+                {
+                    ref FiredEvent ev = ref _workList[_workCount++];
+                    ev.Type        = CustomEventType;
+                    ev.CustomIndex = _eventQueue.EventIndexAt(i);
+                    ev.Slot        = _eventQueue.RaiserAt(i);
+                    ev.Numeric     = 0;
+                    ev.Data        = null;
+                    ev.P0 = _eventQueue.ParamAt(i, 0);
+                    ev.P1 = _eventQueue.ParamAt(i, 1);
+                    ev.P2 = _eventQueue.ParamAt(i, 2);
+                    ev.P3 = _eventQueue.ParamAt(i, 3);
+                }
+                _eventQueue.Clear();
+
+                CollectEvents(world);
                 TickCooldowns();
-                EvaluateTriggers(events, world);
+                EvaluateTriggers(world);   // the legacy base sweep (semantics preserved); raises append to the work list
+                DrainWorkList(world);      // per-occurrence custom dispatch, FIFO occurrence-major
                 UpdateSnapshots(world);
             }
             finally
@@ -413,18 +566,36 @@ namespace ProjectChimera.Core
 
         // ── Event collection ──────────────────────────────────────────────────
 
-        private List<FiredEvent> CollectEvents(EntityWorld world)
+        /// <summary>Append one base event to the preallocated buffer (bounds-guarded drop-newest — unreachable
+        /// under the load-time sizing, kept as the fail-closed backstop).</summary>
+        private void AddBaseEvent(string type, int slot, int numeric, string? data,
+                                  int p0 = 0, int p1 = 0, int p2 = 0, int p3 = 0)
         {
-            var events = new List<FiredEvent>(16);
+            if (_baseEventCount >= _baseEvents.Length) return; // defensive drop-newest (sizing covers worst case)
+            ref FiredEvent ev = ref _baseEvents[_baseEventCount++];
+            ev.Type = type; ev.Slot = slot; ev.Numeric = numeric; ev.Data = data;
+            ev.CustomIndex = -1;
+            ev.P0 = p0; ev.P1 = p1; ev.P2 = p2; ev.P3 = p3;
+        }
+
+        /// <summary>Fill the preallocated base-event buffer (Story 7.5: replaces the per-tick
+        /// <c>new List&lt;FiredEvent&gt;(16)</c> — zero per-tick heap allocation on the event path). Emission
+        /// order is byte-identical to the legacy list (match_start, deaths ascending entity id, building
+        /// completions, timer expiries, thresholds); <c>unit_dies</c> now carries the killer-attribution payload.</summary>
+        private void CollectEvents(EntityWorld world)
+        {
+            _baseEventCount = 0;
 
             // match_start fires on the very first tick after LoadScenario().
             if (_firstTick)
             {
-                events.Add(new FiredEvent("match_start", -1, 0, null));
+                AddBaseEvent("match_start", -1, 0, null);
                 _firstTick = false;
             }
 
-            // Entity deaths — compare current Alive flag against previous snapshot.
+            // Entity deaths — compare current Alive flag against previous snapshot (ascending entity id — the
+            // per-occurrence emission order). Payload (Story 7.5): victim id, killer id, killer faction slot —
+            // read from the attribution SoA DamageResolver.KillEntity wrote (both -1 for non-combat destroys).
             int hwm = world.HighWaterMark;
             for (int i = 0; i < hwm; i++)
             {
@@ -433,7 +604,8 @@ namespace ProjectChimera.Core
                 if (wasAlive && !isAlive)
                 {
                     int slot = (int)world.FactionOf[i] - 1; // Player1=1 → slot 0
-                    events.Add(new FiredEvent("unit_dies", slot, 0, null));
+                    AddBaseEvent("unit_dies", slot, 0, null,
+                        p0: i, p1: world.KillerOf[i], p2: world.KillerFactionOf[i]);
                 }
             }
 
@@ -445,8 +617,8 @@ namespace ProjectChimera.Core
                 bool isDone  = isAlive && _buildings.ConstructionTimer[i] <= Fixed.Zero;
 
                 if (isAlive && !wasDone && isDone)
-                    events.Add(new FiredEvent("building_completed", (int)_buildings.FactionOf[i] - 1, 0,
-                        _buildings.Type[i].ToString()));
+                    AddBaseEvent("building_completed", (int)_buildings.FactionOf[i] - 1, 0,
+                        BuildingTypeNameOf(_buildings.Type[i]));
             }
 
             // Timers — decrement each ACTIVE timer and collect expiries in CREATION-INDEX (declaration) order via the
@@ -455,7 +627,7 @@ namespace ProjectChimera.Core
             _expiredTimers.Clear();
             _vars.TimerTickAndCollectExpired(_expiredTimers);
             for (int i = 0; i < _expiredTimers.Count; i++)
-                events.Add(new FiredEvent("timer_expires", -1, 0, _expiredTimers[i]));
+                AddBaseEvent("timer_expires", -1, 0, _expiredTimers[i]);
 
             // Threshold events — polled every tick so triggers can react to sustained states.
             for (int slot = 0; slot < 2; slot++)
@@ -463,11 +635,17 @@ namespace ProjectChimera.Core
                 var faction = (Faction)(slot + 1);
                 int oreRaw  = _resources.Ore[(int)faction].Raw;
                 int units   = CountAlive(world, faction);
-                events.Add(new FiredEvent("resource_threshold",   slot, oreRaw, null));
-                events.Add(new FiredEvent("unit_count_threshold", slot, units,  null));
+                AddBaseEvent("resource_threshold",   slot, oreRaw, null);
+                AddBaseEvent("unit_count_threshold", slot, units,  null);
             }
+        }
 
-            return events;
+        /// <summary>Zero-alloc BuildingType→name (ToString() allocates per call; the enum is byte-backed,
+        /// contiguous, and append-only, so Enum.GetNames order == value order).</summary>
+        private static string? BuildingTypeNameOf(BuildingType t)
+        {
+            int i = (int)t;
+            return i >= 0 && i < BuildingTypeNames.Length ? BuildingTypeNames[i] : null;
         }
 
         // ── Cooldown bookkeeping ──────────────────────────────────────────────
@@ -480,33 +658,143 @@ namespace ProjectChimera.Core
 
         // ── Trigger evaluation ────────────────────────────────────────────────
 
-        private void EvaluateTriggers(List<FiredEvent> events, EntityWorld world)
+        private void EvaluateTriggers(EntityWorld world)
         {
             // Walk the precomputed total order (Priority desc, then ascending node-id) built once in LoadScenario.
             // ExecuteActions runs in this order, so equal-priority triggers writing shared state resolve last-writer
             // by ascending declaration/node-id, deterministically across peers (AR-16).
+            //
+            // Story 7.5: the BASE SWEEP keeps the legacy once-per-tick-per-trigger semantics (Block-If parity) —
+            // EXCEPT a trigger whose compiled programs read event params, which dispatches once per matching base
+            // occurrence in emission order (per-occurrence is opt-in by construction: statically visible at
+            // compile, no schema flag, nothing existing changes). Custom-event subscribers never match here (no
+            // base event carries a custom type) — they dispatch per-occurrence via the drain.
             for (int idx = 0; idx < _execs.Count; idx++)
             {
                 TriggerGraph.TriggerExec ex = _execs[idx];
                 TriggerNode t = ex.Trigger;
-                if (!t.Enabled || _triggerFired[idx] || _triggerCooldown[idx] > 0) continue;
-                if (!AnyEventMatches(ex.Events, events))                            continue;
+                if (_subscribedEvent.Length > idx && _subscribedEvent[idx] >= 0)    continue; // drain-only
+                if (!t.Enabled || _triggerFired[idx] || _triggerCooldown[idx] > 0)  continue;
+
+                if (idx < _paramReading.Length && _paramReading[idx])
+                {
+                    // Per-occurrence base dispatch (param-reading triggers only): emission order — ascending
+                    // entity id for deaths. Gates re-checked per dispatch (RunOnce fires at most once per match;
+                    // a cooldown armed at fire suppresses the remaining same-tick occurrences).
+                    for (int e = 0; e < _baseEventCount; e++)
+                    {
+                        if (_triggerFired[idx] || _triggerCooldown[idx] > 0) break;
+                        ref FiredEvent f = ref _baseEvents[e];
+                        if (!MatchesAnyDef(ex.Events, in f))                 continue;
+                        LoadBuiltinFrame(in f);
+                        if (!AllConditionsMet(ex.Conditions, world))         continue;
+                        if (!AllExprConditionsPass(idx))                     continue;
+                        FireTrigger(idx, ex, world);
+                    }
+                    _frameCount = 0;
+                    continue;
+                }
+
+                _frameCount = 0; // legacy path: no dispatch frame (its programs cannot read event params anyway)
+                if (!AnyEventMatches(ex.Events))                                    continue;
                 if (!AllConditionsMet(ex.Conditions, world))                        continue;
                 // Story 7.4: compiled condition-expression programs AND with the legacy conditions above
                 // (multi-condition semantics). Pre-checked Bool postfix programs; zero-allocation eval.
                 if (!AllExprConditionsPass(idx))                                    continue;
 
-                // Story 7.3: open a trigger-local scope for this firing (allocate/reset trigger-local scratch), run
-                // the action chain, then free it — never engine-global, never folded.
-                _vars.Enter();
-                try { ExecuteActions(ex.Actions, idx < _valuePrograms.Length ? _valuePrograms[idx] : NoValuePrograms, world); }
-                finally { _vars.Exit(); }
-
-                if (t.RunOnce) _triggerFired[idx] = true;
-
-                int coolTicks = SecondsToTicks(t.CooldownSeconds);
-                if (coolTicks > 0) _triggerCooldown[idx] = coolTicks;
+                FireTrigger(idx, ex, world);
             }
+        }
+
+        /// <summary>Fire one trigger dispatch: trigger-local scope around the action chain (Story 7.3 — exactly as
+        /// the legacy path), then RunOnce/cooldown arming. Shared by the base sweep AND the custom-event drain, so
+        /// the gates behave identically per dispatch.</summary>
+        private void FireTrigger(int idx, TriggerGraph.TriggerExec ex, EntityWorld world)
+        {
+            _vars.Enter();
+            try { ExecuteActions(idx, ex, world); }
+            finally { _vars.Exit(); }
+
+            if (ex.Trigger.RunOnce) _triggerFired[idx] = true;
+
+            int coolTicks = SecondsToTicks(ex.Trigger.CooldownSeconds);
+            if (coolTicks > 0) _triggerCooldown[idx] = coolTicks;
+        }
+
+        /// <summary>Load the current dispatch frame from a BASE occurrence: only <c>unit_dies</c> carries a
+        /// payload (victim / killer / killer_faction — 3 slots); every other built-in has none.</summary>
+        private void LoadBuiltinFrame(in FiredEvent f)
+        {
+            if (f.Type == "unit_dies")
+            {
+                _frameScratch[0] = f.P0;
+                _frameScratch[1] = f.P1;
+                _frameScratch[2] = f.P2;
+                _frameScratch[3] = 0;
+                _frameCount = EventDispatchPlan.UnitDiesParamCount;
+            }
+            else
+            {
+                _frameCount = 0;
+            }
+        }
+
+        // ── Story 7.5 — the same-tick FIFO work-list drain ─────────────────────
+
+        /// <summary>Append a same-tick raise occurrence (deterministic drop-newest at
+        /// <see cref="EventBounds.MaxSameTickWorkList"/> — the documented world-volume seatbelt).</summary>
+        private void AppendWorkItem(int eventIndex, int raiser, int[] paramRaws, int paramCount)
+        {
+            if (_workCount >= _workList.Length) return; // drop-newest (identical on every peer — same execution order)
+            ref FiredEvent ev = ref _workList[_workCount++];
+            ev.Type        = CustomEventType;
+            ev.CustomIndex = eventIndex;
+            ev.Slot        = raiser;
+            ev.Numeric     = 0;
+            ev.Data        = null;
+            ev.P0 = paramCount > 0 ? paramRaws[0] : 0;
+            ev.P1 = paramCount > 1 ? paramRaws[1] : 0;
+            ev.P2 = paramCount > 2 ? paramRaws[2] : 0;
+            ev.P3 = paramCount > 3 ? paramRaws[3] : 0;
+        }
+
+        /// <summary>
+        /// Drain the same-tick work list AFTER the base sweep: occurrence-major FIFO (seeded with the next-tick
+        /// dequeue, appended by raises in execution order), each occurrence dispatched to its subscribed triggers
+        /// in the precomputed total order, gates re-checked per dispatch. Handlers never nest — a raise executed
+        /// during a dispatch APPENDS and defers to this loop (flat, deterministic, bounded by the load-proven DAG;
+        /// <c>_vars.Enter/Exit</c> wraps each dispatch exactly as the base sweep does).
+        /// </summary>
+        private void DrainWorkList(EntityWorld world)
+        {
+            while (_workHead < _workCount)
+            {
+                int cur = _workHead++;
+                int evIndex = _workList[cur].CustomIndex;
+                if (evIndex < 0 || evIndex >= _eventParamCounts.Length) continue; // defensive (load gate makes this unreachable)
+                int pc = _eventParamCounts[evIndex];
+
+                for (int idx = 0; idx < _execs.Count; idx++)
+                {
+                    if (idx >= _subscribedEvent.Length || _subscribedEvent[idx] != evIndex) continue;
+                    TriggerGraph.TriggerExec ex = _execs[idx];
+                    TriggerNode t = ex.Trigger;
+                    if (!t.Enabled || _triggerFired[idx] || _triggerCooldown[idx] > 0) continue;
+
+                    // Load the occurrence's payload as the dispatch frame (per trigger — an earlier handler's
+                    // raises only wrote the separate raise scratch, but reloading keeps this trivially correct).
+                    _frameScratch[0] = _workList[cur].P0;
+                    _frameScratch[1] = _workList[cur].P1;
+                    _frameScratch[2] = _workList[cur].P2;
+                    _frameScratch[3] = _workList[cur].P3;
+                    _frameCount = pc;
+
+                    if (!AllConditionsMet(ex.Conditions, world)) continue;
+                    if (!AllExprConditionsPass(idx))             continue;
+                    FireTrigger(idx, ex, world);
+                }
+            }
+            _frameCount = 0;
         }
 
         /// <summary>
@@ -534,11 +822,19 @@ namespace ProjectChimera.Core
 
         // ── Event matching ────────────────────────────────────────────────────
 
-        private static bool AnyEventMatches(EventNode[] evDefs, List<FiredEvent> fired)
+        private bool AnyEventMatches(EventNode[] evDefs)
         {
             foreach (var def in evDefs)
-                foreach (var f in fired)
-                    if (EventMatches(def, f)) return true;
+                for (int e = 0; e < _baseEventCount; e++)
+                    if (EventMatches(def, in _baseEvents[e])) return true;
+            return false;
+        }
+
+        /// <summary>One base occurrence against a trigger's event defs (the per-occurrence dispatch predicate).</summary>
+        private static bool MatchesAnyDef(EventNode[] evDefs, in FiredEvent f)
+        {
+            foreach (var def in evDefs)
+                if (EventMatches(def, in f)) return true;
             return false;
         }
 
@@ -578,12 +874,13 @@ namespace ProjectChimera.Core
 
         /// <summary>Story 7.4 — every compiled condition-expression program of the trigger at <paramref name="idx"/>
         /// must evaluate non-zero (Bool true). ANDed with the legacy <see cref="AllConditionsMet"/> result, matching
-        /// multi-condition semantics. No programs (every legacy scenario) ⇒ trivially true.</summary>
+        /// multi-condition semantics. No programs (every legacy scenario) ⇒ trivially true. Story 7.5 — programs
+        /// evaluate against the CURRENT dispatch frame (event.&lt;param&gt; reads; empty frame for legacy dispatches).</summary>
         private bool AllExprConditionsPass(int idx)
         {
             ExprProgram[] programs = idx < _condPrograms.Length ? _condPrograms[idx] : NoCondPrograms;
             for (int i = 0; i < programs.Length; i++)
-                if (programs[i].Eval(_vars, this) == 0) return false;
+                if (programs[i].Eval(_vars, this, _frameScratch, _frameCount) == 0) return false;
             return true;
         }
 
@@ -630,14 +927,39 @@ namespace ProjectChimera.Core
 
         // ── Action execution ──────────────────────────────────────────────────
 
-        private void ExecuteActions(NodeBase[] actions, ExprProgram?[] valuePrograms, EntityWorld world)
+        private void ExecuteActions(int idx, TriggerGraph.TriggerExec ex, EntityWorld world)
         {
+            NodeBase[] actions = ex.Actions;
+            ExprProgram?[] valuePrograms = idx < _valuePrograms.Length ? _valuePrograms[idx] : NoValuePrograms;
+            EventDispatchPlan.RaiseCompiled?[]? raisePlans = idx < _raisePlans.Length ? _raisePlans[idx] : null;
+
             for (int j = 0; j < actions.Length; j++)
             {
                 NodeBase node = actions[j];
                 if (node is EffectActionNode effectNode)
                 {
                     RunEffect(effectNode, world);
+                    continue;
+                }
+
+                if (node is RaiseEventNode)
+                {
+                    // Story 7.5 — raise_event: evaluate the compiled arg programs against the CURRENT dispatch
+                    // frame (a handler may forward event.<param> payloads) into the SEPARATE raise scratch (never
+                    // clobbering the frame), then defer: same-tick raises APPEND to the FIFO work list (handlers
+                    // never nest — the drain dispatches them flat), next-tick raises ride the checksummed queue
+                    // (deterministic drop-newest at capacity). Zero heap allocation.
+                    EventDispatchPlan.RaiseCompiled? rp = raisePlans != null && j < raisePlans.Length ? raisePlans[j] : null;
+                    if (rp == null) continue; // unreachable for gate/backstop-validated content (fail-safe no-op)
+                    int n = rp.ArgPrograms.Length;
+                    for (int p = 0; p < n; p++)
+                        _raiseScratch[p] = rp.ArgPrograms[p].Eval(_vars, this, _frameScratch, _frameCount);
+                    for (int p = n; p < EventBounds.MaxEventParams; p++)
+                        _raiseScratch[p] = 0;
+                    if (rp.NextTick)
+                        _eventQueue.Enqueue(rp.EventIndex, rp.Raiser, _raiseScratch, n);
+                    else
+                        AppendWorkItem(rp.EventIndex, rp.Raiser, _raiseScratch, n);
                     continue;
                 }
 
@@ -682,7 +1004,7 @@ namespace ProjectChimera.Core
                             // Faction field; undeclared → Global/Int (legacy SetVariable parity).
                             ExprProgram? rhs = j < valuePrograms.Length ? valuePrograms[j] : null;
                             if (rhs != null)
-                                _vars.SetRaw(a.Variable, a.Faction, rhs.Eval(_vars, this), 0);
+                                _vars.SetRaw(a.Variable, a.Faction, rhs.Eval(_vars, this, _frameScratch, _frameCount), 0);
                             else
                                 _vars.SetInt(a.Variable, a.Faction, a.Value);
                         }
@@ -754,20 +1076,23 @@ namespace ProjectChimera.Core
 
         // ── Internal event record ─────────────────────────────────────────────
 
-        private readonly struct FiredEvent
+        /// <summary>
+        /// One event occurrence. A MUTABLE struct written in place into the PREALLOCATED base/work-list buffers
+        /// (Story 7.5 — the former readonly struct rode a per-tick <c>List&lt;FiredEvent&gt;</c> allocation).
+        /// Story 7.5 widens it with the fixed <see cref="EventBounds.MaxEventParams"/> payload slots
+        /// (<see cref="P0"/>..<see cref="P3"/>: unit_dies = victim/killer/killer_faction; custom events = the
+        /// evaluated raise-arg raws) and the custom-event registry index (<see cref="CustomIndex"/>, -1 for
+        /// built-ins; custom occurrences carry the raiser slot in <see cref="Slot"/>). Type/Data are loaded
+        /// references or consts — no per-tick string construction.
+        /// </summary>
+        private struct FiredEvent
         {
-            public readonly string  Type;
-            public readonly int     Slot;    // -1 = no faction
-            public readonly int     Numeric; // typed numeric payload: ore raw-Fixed integer, or unit count
-            public readonly string? Data;    // string payload: building type, timer name (null when unused)
-
-            public FiredEvent(string type, int slot, int numeric, string? data)
-            {
-                Type    = type;
-                Slot    = slot;
-                Numeric = numeric;
-                Data    = data;
-            }
+            public string  Type;
+            public int     Slot;        // -1 = no faction (built-ins); the raiser slot for custom occurrences
+            public int     Numeric;     // typed numeric payload: ore raw-Fixed integer, or unit count
+            public string? Data;        // string payload: building type, timer name (null when unused)
+            public int     CustomIndex; // custom-event registry index (-1 = a built-in event)
+            public int     P0, P1, P2, P3; // Story 7.5 payload raws (EventBounds.MaxEventParams slots)
         }
     }
 }
