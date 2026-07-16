@@ -1,4 +1,5 @@
 #nullable enable
+using ProjectChimera.Dsl;
 using System;
 using ProjectChimera.Core;
 using ProjectChimera.Core.Definitions;
@@ -29,7 +30,7 @@ namespace ProjectChimera.Sim.Tests.Golden
         private static bool VictoryFires(Fixed ux, Fixed uz, RegionStore? store = null, Faction unitFaction = Faction.Player1)
         {
             var resources = new ResourceStore(Fixed.Zero);
-            var director = new ScenarioDirector(new BuildingStore(), resources);
+            var director = new ScenarioDirector(new BuildingStore(), resources, new DslVarTable());
             bool fired = false;
             director.OnVictory = _ => fired = true;
             director.SetRegionStore(store ?? HillStore());
@@ -95,7 +96,7 @@ namespace ProjectChimera.Sim.Tests.Golden
             // The IsAlive guard in the unit_in_region scan is load-bearing: a DEAD unit of the scanned faction
             // sitting INSIDE the region (a freed slot still below HighWaterMark) must NOT satisfy the condition.
             var resources = new ResourceStore(Fixed.Zero);
-            var director = new ScenarioDirector(new BuildingStore(), resources);
+            var director = new ScenarioDirector(new BuildingStore(), resources, new DslVarTable());
             bool fired = false;
             director.OnVictory = _ => fired = true;
             director.SetRegionStore(HillStore());

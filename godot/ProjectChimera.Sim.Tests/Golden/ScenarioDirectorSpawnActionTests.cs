@@ -1,4 +1,5 @@
 #nullable enable
+using ProjectChimera.Dsl;
 using System.Collections.Generic;
 using ProjectChimera.Core;
 using ProjectChimera.Core.Definitions;
@@ -27,7 +28,7 @@ namespace ProjectChimera.Sim.Tests.Golden
         private static List<SpawnCall> CaptureSpawns(TriggerAction spawnAction)
         {
             var calls = new List<SpawnCall>();
-            var director = new ScenarioDirector(new BuildingStore(), new ResourceStore(Fixed.Zero));
+            var director = new ScenarioDirector(new BuildingStore(), new ResourceStore(Fixed.Zero), new DslVarTable());
             director.OnSpawnUnit = (unitId, faction, x, z, count) =>
                 calls.Add(new SpawnCall(unitId, faction, x, z, count));
             director.LoadScenario(new ScenarioData

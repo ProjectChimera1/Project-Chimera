@@ -1,77 +1,77 @@
 #nullable enable
 using System;
 using System.Collections.Generic;
-using System.Linq;
+using ProjectChimera.Combat;       // DamageTable, CombatEventQueue, DeathFeed
 using ProjectChimera.Core.Definitions;
 using ProjectChimera.Dsl;
 using ProjectChimera.Economy;
+using ProjectChimera.Effects;      // EffectExecutor, EffectContext, EffectNode, ModifierStore
+using ProjectChimera.Navigation;   // SpatialHash (run_effect SearchArea fan-out)
 
 namespace ProjectChimera.Core
 {
     /// <summary>
-    /// Evaluates scenario triggers each simulation tick.
-    /// Pure C# — no Godot dependency. Runs last in the simulation loop so it
+    /// Evaluates scenario triggers each simulation tick by walking the graph-canonical IR directly (Story 7.3,
+    /// superseding 7.2's flat lowering). Pure C# — no Godot dependency. Runs last in the simulation loop so it
     /// sees fully-updated world state (post-combat, post-construction).
     ///
-    /// Delegates fire for effects that require the presentation layer
-    /// (spawn, message, sound, victory). All pure sim mutations (timers,
-    /// variables, add_resources) happen directly inside Tick().
+    /// Delegates fire for effects that require the presentation layer (spawn, message, sound, victory). Pure sim
+    /// mutations — timers, variables, add_resources — happen directly inside Tick() against the top-level
+    /// <see cref="DslVarTable"/> (folded into <see cref="SimChecksum"/>). An <see cref="EffectActionNode"/>
+    /// (run_effect) executes its embedded D1 effect subgraph via the EXISTING <see cref="EffectExecutor"/> (no
+    /// second executor).
     /// </summary>
     public class ScenarioDirector : ISimSystem
     {
         // ── Dependencies ──────────────────────────────────────────────────────
 
-        private readonly BuildingStore   _buildings;
-        private readonly ResourceStore   _resources;
+        private readonly BuildingStore _buildings;
+        private readonly ResourceStore _resources;
+
+        // Story 7.3 — the top-level typed/scoped variable + timer store (owned by SimulationHost, folded into
+        // SimChecksum). Replaces the former ad-hoc _variableNames/_variableValues/_timerNames/_timerRemaining lists.
+        private readonly DslVarTable _vars;
 
         // ── Trigger runtime state ─────────────────────────────────────────────
 
-        private TriggerDefinition[]  _triggers    = Array.Empty<TriggerDefinition>();
-        private bool[]               _triggerFired    = Array.Empty<bool>();    // run_once guard
-        private int[]                _triggerCooldown = Array.Empty<int>();    // remaining ticks
-
-        // The precomputed trigger evaluation order (Priority desc, then ascending declaration index). Computed
-        // ONCE per LoadScenario via a stable LINQ OrderByDescending/ThenBy (analyzer-clean — no Array.Sort, so no
-        // CHM0003), because the order is stable for the whole match: only Enabled/fired/cooldown change per tick.
-        private int[]                _triggerOrder = Array.Empty<int>();
-
-        // ── Named timers and integer variables — dense creation-index stores (Story 7.1) ──────
-        // Parallel-array (SoA) stores keyed by CREATION index, replacing the former Dictionary<string,int> whose
-        // enumeration order depended on insertion history (AR-16 forbids Dictionary enumeration in the tick). Name
-        // lookup is a deterministic linear scan (small N); the tick iterates the value list by ASCENDING creation
-        // index, so same-tick timer expiries emit in declaration order regardless of insertion history. NO
-        // Dictionary/HashSet is used at all. Story 7.3 hoists these into the top-level DslVarTable folded into
-        // SimChecksum — kept minimal and self-contained here so that hoist is clean.
-        private readonly List<string> _timerNames     = new();
-        private readonly List<int>    _timerRemaining = new(); // remaining ticks; 0 = inactive/expired slot
-
-        private readonly List<string> _variableNames  = new();
-        private readonly List<int>    _variableValues = new();
+        // Story 7.3 — the direct-execution view of the graph IR, in the TOTAL trigger order (Priority desc, then
+        // ascending persistent node-id). Built ONCE per LoadScenario. Replaces the flat TriggerDefinition[] +
+        // _triggerOrder: the tick now walks the graph, so run_effect (which has no flat form) executes too.
+        private List<TriggerGraph.TriggerExec> _execs = new();
+        private bool[] _triggerFired    = Array.Empty<bool>();  // run_once guard, indexed by _execs position
+        private int[]  _triggerCooldown = Array.Empty<int>();   // remaining ticks, indexed by _execs position
 
         // ── Named regions (Story 6.4) ─────────────────────────────────────────
-        // The resolved (float→Fixed done once at ScenarioApplier) region rects the unit_in_region condition scans.
-        // Supplied by the applier via SetRegionStore before LoadScenario, same way scenario context is supplied
-        // today. Static authored data (never mutates mid-match), so it is NOT in SimChecksum. Defaults to Empty so
-        // a director built without regions (every pre-6.4 path / test) evaluates unit_in_region as false cleanly.
         private RegionStore _regions = RegionStore.Empty;
+
+        // ── run_effect runtime (Story 7.3) ────────────────────────────────────
+        // The director owns its OWN EffectExecutor + SpatialHash (the AbilityCastSystem pattern — "no second
+        // executor" forbids a re-implementation of the effect runtime, not a second INSTANCE of the shared class).
+        // The remaining sinks are injected from SimulationHost via SetEffectRuntime once every store exists.
+        private readonly EffectExecutor _effectExecutor = new EffectExecutor();
+        private readonly SpatialHash    _effectSpatial  = new SpatialHash();
+        private DamageTable       _damageTable  = DamageTable.Default;
+        private ModifierStore?    _modifiers;
+        private CombatEventQueue? _combatEvents;
+        private MatchStats?       _matchStats;
+        private DeathFeed?        _deaths;
+
+        // ── Per-tick scratch ──────────────────────────────────────────────────
+        private readonly List<string> _expiredTimers = new();
 
         // ── Change-detection snapshots ────────────────────────────────────────
 
         private readonly EntityFlags[] _prevFlags          = new EntityFlags[EntityWorld.MAX_ENTITIES];
-        private readonly bool[]        _prevBuildingAlive  = new bool[BuildingStore.MAX_BUILDINGS];
         private readonly bool[]        _prevBuildingDone   = new bool[BuildingStore.MAX_BUILDINGS];
 
         private bool _firstTick = true;
 
         // ── Presentation-layer delegates ──────────────────────────────────────
 
-        /// <summary>Requests the presentation layer to spawn units. (unitId, factionSlot, x, z, count) — x/z are
-        /// <see cref="Fixed"/> so the in-tick path stays Fixed-only; the binder routes them through the Fixed-native
-        /// spawn primitive with no <c>Fixed.FromFloat</c>.</summary>
+        /// <summary>Requests the presentation layer to spawn units. (unitId, factionSlot, x, z, count).</summary>
         public Action<string, int, Fixed, Fixed, int>? OnSpawnUnit;
 
-        /// <summary>Requests a toast notification. (text, durationSeconds) — duration is <see cref="Fixed"/>; the
-        /// binder converts it to float at the presentation boundary only.</summary>
+        /// <summary>Requests a toast notification. (text, durationSeconds).</summary>
         public Action<string, Fixed>? OnDisplayMessage;
 
         /// <summary>Requests a sound effect. (soundId)</summary>
@@ -82,17 +82,31 @@ namespace ProjectChimera.Core
 
         // ── Constructor ───────────────────────────────────────────────────────
 
-        public ScenarioDirector(BuildingStore buildings, ResourceStore resources)
+        public ScenarioDirector(BuildingStore buildings, ResourceStore resources, DslVarTable vars)
         {
             _buildings = buildings;
             _resources = resources;
+            _vars      = vars;
         }
 
         /// <summary>
-        /// Story 6.4: supply the resolved <see cref="RegionStore"/> the <c>unit_in_region</c> condition scans. The
-        /// applier builds it (float→Fixed once, at the single conversion boundary) and hands it here BEFORE
-        /// <see cref="LoadScenario"/>. Never mutated mid-match, so it is not part of the checksummed state.
-        /// A null argument degrades to <see cref="RegionStore.Empty"/> (no regions ⇒ unit_in_region is false).
+        /// Story 7.3 — inject the run_effect runtime sinks (constructed after this director in <c>SimulationHost</c>).
+        /// The embedded effect graph executes against these: <paramref name="damageTable"/> is required (a null falls
+        /// back to <see cref="DamageTable.Default"/>); the rest are optional (a graph with no modifier/feedback leaf
+        /// never reads them). Idempotent; call once after the stores are built.
+        /// </summary>
+        public void SetEffectRuntime(DamageTable? damageTable, ModifierStore? modifiers,
+            CombatEventQueue? combatEvents, MatchStats? matchStats, DeathFeed? deaths)
+        {
+            _damageTable  = damageTable ?? DamageTable.Default;
+            _modifiers    = modifiers;
+            _combatEvents = combatEvents;
+            _matchStats   = matchStats;
+            _deaths       = deaths;
+        }
+
+        /// <summary>
+        /// Story 6.4: supply the resolved <see cref="RegionStore"/> the <c>unit_in_region</c> condition scans.
         /// </summary>
         public void SetRegionStore(RegionStore? store) => _regions = store ?? RegionStore.Empty;
 
@@ -102,48 +116,68 @@ namespace ProjectChimera.Core
         /// </summary>
         public void LoadScenario(ScenarioData scenario)
         {
-            // Story 7.2: route the sole trigger consumption through the graph-canonical IR as an IDENTITY lowering —
-            // FromFlat migrates the flat TriggerDefinition[] into the graph, ToFlat lowers it straight back. This
-            // proves the flat↔graph round-trip is lossless on live content while keeping the tick byte-identical
-            // (no hash fold, no on-disk format change). Later stories walk the graph directly (7.3); for 7.2 it is a
-            // waypoint. Every golden builds with empty triggers, so FromFlat([]).ToFlat() == [] — a no-op there.
-            _triggers        = TriggerGraph.FromFlat(scenario.Triggers).ToFlat();
-            _triggerFired    = new bool[_triggers.Length];
-            _triggerCooldown = new int[_triggers.Length];
+            // Story 7.3: build the execution graph by MERGING both trigger channels so neither is silently dropped.
+            // The flat TriggerDefinition[] lowers via FromFlat (lossless, so legacy flat scenarios execute
+            // byte-identically); when a trigger_graph canonical IR is ALSO present (graph-only triggers — e.g.
+            // run_effect — authored via the editor's raw-IR hatch), it is parsed via FromJson and merged in with its
+            // node ids offset past the flat graph's max id (no collisions). BuildExecutionOrder then runs over the
+            // UNION, so the global Priority-desc / node-id-asc total order holds across BOTH channels. A malformed
+            // trigger_graph fails closed at the converter parse (7.3's only graph gate; the authoritative load-time
+            // validator is 7.7). The tick WALKS this graph directly, superseding 7.2's ToFlat() lowering.
+            TriggerGraph graph = TriggerGraph.FromFlat(scenario.Triggers);
+            if (!string.IsNullOrWhiteSpace(scenario.TriggerGraphJson))
+                graph.Merge(TriggerGraph.FromJson(scenario.TriggerGraphJson!));
+            _execs = graph.BuildExecutionOrder();
+            _triggerFired    = new bool[_execs.Count];
+            _triggerCooldown = new int[_execs.Count];
 
-            // Precompute the total evaluation order ONCE: Priority desc, then ascending declaration index. LINQ
-            // OrderByDescending/ThenBy is a STABLE sort with an explicit total tiebreak — deterministic across
-            // runtimes AND analyzer-clean (it calls no Array.Sort/List.Sort, so it does not trip CHM0003). The
-            // declaration index is the flat-array ordering surrogate (Story 7.2 supersedes it with a persistent id).
-            _triggerOrder = Enumerable.Range(0, _triggers.Length)
-                .OrderByDescending(i => _triggers[i].Priority)
-                .ThenBy(i => i)
-                .ToArray();
+            // Story 7.3: (re)initialize the typed/scoped variable + timer store from the scenario declarations. The
+            // seconds→ticks conversion happens HERE at the Core boundary (SecondsToTicks owns TICKS_PER_SECOND) so the
+            // table receives integer ticks only. Declared timers start active at their tick count (I/O matrix).
+            var varDecls = new List<DslVarDecl>();
+            if (scenario.Variables != null)
+                foreach (ScenarioVariable v in scenario.Variables)
+                    varDecls.Add(new DslVarDecl(v.Name, v.Type, v.Scope, ScopeInitialRaw(v.Type, v.Initial)));
+            var timerDecls = new List<DslTimerDecl>();
+            if (scenario.Timers != null)
+                foreach (ScenarioTimer t in scenario.Timers)
+                    timerDecls.Add(new DslTimerDecl(t.Name, Math.Max(1, SecondsToTicks(t.Seconds))));
+            _vars.InitFromDeclarations(varDecls, timerDecls);
 
-            _timerNames.Clear();
-            _timerRemaining.Clear();
-            _variableNames.Clear();
-            _variableValues.Clear();
             _firstTick = true;
 
             // Snapshot initial state so the first diff doesn't generate spurious events.
             Array.Clear(_prevFlags, 0, _prevFlags.Length);
-            Array.Clear(_prevBuildingAlive, 0, _prevBuildingAlive.Length);
             Array.Clear(_prevBuildingDone, 0, _prevBuildingDone.Length);
 
             for (int i = 0; i < BuildingStore.MAX_BUILDINGS; i++)
             {
-                _prevBuildingAlive[i] = _buildings.Alive[i];
                 _prevBuildingDone[i]  = _buildings.Alive[i]
                     && _buildings.ConstructionTimer[i] <= Fixed.Zero;
             }
         }
 
+        /// <summary>The stored initial value's raw int for a declared variable: Fixed/Point store the Fixed.Raw
+        /// verbatim (preserved through the JSON boundary); the integer-valued types (Int/Bool/refs/timer) store the
+        /// truncated integer, so an Int slot's GetInt returns a plain int (never a shifted Fixed.Raw).</summary>
+        private static int ScopeInitialRaw(DslValueType type, Fixed initial) =>
+            (type == DslValueType.Fixed || type == DslValueType.Point) ? initial.Raw : initial.ToInt();
+
         // ── ISimSystem ────────────────────────────────────────────────────────
 
         public void Tick(EntityWorld world, Fixed dt)
         {
-            if (_triggers.Length == 0) return;
+            if (_execs.Count == 0)
+            {
+                // Review (7.3 follow-up): declared ScenarioData.Timers made trigger-less timers representable, and
+                // the folded remaining-ticks must still decrement per the "declared timers start active" contract —
+                // pre-7.3 the early-out was safe because timers could only exist via trigger actions. An empty table
+                // (every legacy scenario) makes this a no-op, so goldens/checksums are unmoved. Expiry events go
+                // nowhere without triggers (timer_expires is a trigger event), which is fine — the state is the point.
+                _expiredTimers.Clear();
+                _vars.TimerTickAndCollectExpired(_expiredTimers);
+                return;
+            }
 
             var events = CollectEvents(world);
             TickCooldowns();
@@ -180,44 +214,24 @@ namespace ProjectChimera.Core
             // Building completions (was under construction → now done).
             for (int i = 0; i < _buildings.Count; i++)
             {
-                bool wasAlive = _prevBuildingAlive[i];
-                bool isAlive  = _buildings.Alive[i];
-                bool wasDone  = _prevBuildingDone[i];
-                bool isDone   = isAlive && _buildings.ConstructionTimer[i] <= Fixed.Zero;
+                bool wasDone = _prevBuildingDone[i];
+                bool isAlive = _buildings.Alive[i];
+                bool isDone  = isAlive && _buildings.ConstructionTimer[i] <= Fixed.Zero;
 
                 if (isAlive && !wasDone && isDone)
-                {
-                    int slot = (int)_buildings.FactionOf[i] - 1;
-                    events.Add(new FiredEvent("building_completed", slot, 0,
+                    events.Add(new FiredEvent("building_completed", (int)_buildings.FactionOf[i] - 1, 0,
                         _buildings.Type[i].ToString()));
-                }
-                _ = wasAlive; // snapshot updated in UpdateSnapshots
             }
 
-            // Timers — decrement each ACTIVE timer and collect expiries in CREATION-INDEX (declaration) order.
-            // Iterating the parallel value list by ascending index is the deterministic contract (AR-16): same-tick
-            // expiries emit independent of insertion history, with NO Dictionary enumeration. An expired timer is
-            // marked inactive (remaining = 0) in place — a later create_timer of the same name reactivates its slot,
-            // preserving its creation index. Mutating values in place is safe (no add/remove during the loop).
-            for (int i = 0; i < _timerRemaining.Count; i++)
-            {
-                if (_timerRemaining[i] <= 0) continue; // inactive/expired slot
-                int remaining = _timerRemaining[i] - 1;
-                if (remaining <= 0)
-                {
-                    _timerRemaining[i] = 0;
-                    events.Add(new FiredEvent("timer_expires", -1, 0, _timerNames[i]));
-                }
-                else
-                {
-                    _timerRemaining[i] = remaining;
-                }
-            }
+            // Timers — decrement each ACTIVE timer and collect expiries in CREATION-INDEX (declaration) order via the
+            // top-level store. Byte-identical to the legacy ScenarioDirector loop (same order, same "fires on the
+            // tick it reaches 0"), now that timers live in the folded DslVarTable.
+            _expiredTimers.Clear();
+            _vars.TimerTickAndCollectExpired(_expiredTimers);
+            for (int i = 0; i < _expiredTimers.Count; i++)
+                events.Add(new FiredEvent("timer_expires", -1, 0, _expiredTimers[i]));
 
             // Threshold events — polled every tick so triggers can react to sustained states.
-            // Carry the ore as its raw Fixed integer (a typed int payload) — so the match path compares Fixed-vs-Fixed
-            // with NO string formatting/parsing and no float arithmetic in the tick (AR-16). slot < 2 stays as-is:
-            // widening to all active factions is Story 9.2, not this story.
             for (int slot = 0; slot < 2; slot++)
             {
                 var faction = (Faction)(slot + 1);
@@ -242,36 +256,34 @@ namespace ProjectChimera.Core
 
         private void EvaluateTriggers(List<FiredEvent> events, EntityWorld world)
         {
-            // Iterate the PRECOMPUTED total order (Priority desc, then ascending declaration index) built once in
-            // LoadScenario. The order is stable for the whole match (only Enabled/fired/cooldown change per tick),
-            // so recomputing it every tick was wasted work — and the per-tick Array.Sort was an unstable introsort
-            // that tripped CHM0003. ExecuteActions runs in this order, so equal-priority triggers writing shared
-            // state resolve last-writer by ascending declaration index, deterministically across peers (AR-16).
-            foreach (int idx in _triggerOrder)
+            // Walk the precomputed total order (Priority desc, then ascending node-id) built once in LoadScenario.
+            // ExecuteActions runs in this order, so equal-priority triggers writing shared state resolve last-writer
+            // by ascending declaration/node-id, deterministically across peers (AR-16).
+            for (int idx = 0; idx < _execs.Count; idx++)
             {
-                var t = _triggers[idx];
+                TriggerGraph.TriggerExec ex = _execs[idx];
+                TriggerNode t = ex.Trigger;
                 if (!t.Enabled || _triggerFired[idx] || _triggerCooldown[idx] > 0) continue;
-                if (!AnyEventMatches(t.Events, events))                             continue;
-                if (!AllConditionsMet(t.Conditions, world))                         continue;
+                if (!AnyEventMatches(ex.Events, events))                            continue;
+                if (!AllConditionsMet(ex.Conditions, world))                        continue;
 
-                ExecuteActions(t.Actions);
+                // Story 7.3: open a trigger-local scope for this firing (allocate/reset trigger-local scratch), run
+                // the action chain, then free it — never engine-global, never folded.
+                _vars.Enter();
+                try { ExecuteActions(ex.Actions, world); }
+                finally { _vars.Exit(); }
 
                 if (t.RunOnce) _triggerFired[idx] = true;
 
-                // Fixed seconds → whole ticks via SecondsToTicks (64-bit intermediate, overflow-safe): AC2/AR-14.
                 int coolTicks = SecondsToTicks(t.CooldownSeconds);
                 if (coolTicks > 0) _triggerCooldown[idx] = coolTicks;
             }
         }
 
         /// <summary>
-        /// Convert a <see cref="Fixed"/> duration in seconds to whole sim ticks WITHOUT overflowing the
-        /// Fixed multiply. <c>seconds * Fixed.FromInt(TICKS_PER_SECOND)</c> overflows the <c>(int)</c> cast
-        /// inside <see cref="Fixed"/>'s <c>operator*</c> once the product leaves 16.16 range (~1092 s at
-        /// 30 ticks/s) and silently wraps negative — yet <c>FixedJsonConverter</c> still admits durations up
-        /// to ~32767 s. Computing the product in a 64-bit intermediate and shifting down maps every
-        /// converter-admitted duration to a correct non-negative tick count, and is byte-identical to the
-        /// prior Fixed math for in-range values.
+        /// Convert a <see cref="Fixed"/> duration in seconds to whole sim ticks WITHOUT overflowing the Fixed
+        /// multiply (64-bit intermediate). The single seconds→ticks boundary — it owns <c>TICKS_PER_SECOND</c>, so
+        /// the Godot-free, Core-boundary-free <see cref="DslVarTable"/> receives integer ticks only (AC2/AR-14).
         /// </summary>
         private static int SecondsToTicks(Fixed seconds) =>
             (int)(((long)seconds.Raw * SimulationLoop.TICKS_PER_SECOND) >> Fixed.FRACTIONAL_BITS);
@@ -286,7 +298,6 @@ namespace ProjectChimera.Core
 
             for (int i = 0; i < _buildings.Count; i++)
             {
-                _prevBuildingAlive[i] = _buildings.Alive[i];
                 _prevBuildingDone[i]  = _buildings.Alive[i]
                     && _buildings.ConstructionTimer[i] <= Fixed.Zero;
             }
@@ -294,7 +305,7 @@ namespace ProjectChimera.Core
 
         // ── Event matching ────────────────────────────────────────────────────
 
-        private static bool AnyEventMatches(TriggerEvent[] evDefs, List<FiredEvent> fired)
+        private static bool AnyEventMatches(EventNode[] evDefs, List<FiredEvent> fired)
         {
             foreach (var def in evDefs)
                 foreach (var f in fired)
@@ -302,10 +313,10 @@ namespace ProjectChimera.Core
             return false;
         }
 
-        private static bool EventMatches(TriggerEvent def, in FiredEvent f)
+        private static bool EventMatches(EventNode def, in FiredEvent f)
         {
-            if (def.Type != f.Type) return false;
-            switch (def.Type)
+            if (def.Kind != f.Type) return false;
+            switch (def.Kind)
             {
                 case "match_start":
                     return true;
@@ -318,9 +329,6 @@ namespace ProjectChimera.Core
                     return string.IsNullOrEmpty(def.TimerName) || f.Data == def.TimerName;
                 case "resource_threshold":
                     if (f.Slot != def.Faction) return false;
-                    // f.Numeric is the ore's raw Fixed integer (a typed int payload). Compare Fixed-vs-Fixed; def.Amount
-                    // is a Fixed quantized at the JSON boundary by FixedJsonConverter, so there is NO string round-trip
-                    // and no in-tick float in the trigger tick path (AR-14/AR-16).
                     return Compare(Fixed.FromRaw(f.Numeric), def.Amount, def.Operator);
                 case "unit_count_threshold":
                     if (f.Slot != def.Faction) return false;
@@ -332,17 +340,17 @@ namespace ProjectChimera.Core
 
         // ── Condition evaluation ──────────────────────────────────────────────
 
-        private bool AllConditionsMet(TriggerCondition[] conds, EntityWorld world)
+        private bool AllConditionsMet(ConditionNode[] conds, EntityWorld world)
         {
             foreach (var c in conds)
                 if (!EvalCondition(c, world)) return false;
             return true;
         }
 
-        private bool EvalCondition(TriggerCondition c, EntityWorld world)
+        private bool EvalCondition(ConditionNode c, EntityWorld world)
         {
             var faction = (Faction)(c.Faction + 1);
-            switch (c.Type)
+            switch (c.Kind)
             {
                 case "always":
                     return true;
@@ -358,18 +366,16 @@ namespace ProjectChimera.Core
                     return false;
                 }
                 case "resource_comparison":
-                    // Fixed-vs-Fixed (no float). c.Amount is a Fixed quantized at the JSON boundary (Story 1.4) — no in-tick FromFloat.
                     return Compare(_resources.Ore[(int)faction], c.Amount, c.Operator);
                 case "unit_count":
                     return Compare(CountAlive(world, faction), c.Count, c.Operator);
                 case "variable_comparison":
                     if (string.IsNullOrEmpty(c.Variable)) return false;
-                    return Compare(GetVariable(c.Variable), c.Value, c.Operator);
+                    // Story 7.3: read the Int-typed variable through the store. A declared PerPlayer var selects the
+                    // player slot via the condition's Faction field; an undeclared name resolves to Global/Int/0
+                    // (legacy GetVariable parity).
+                    return Compare(_vars.GetInt(c.Variable, c.Faction), c.Value, c.Operator);
                 case "unit_in_region":
-                    // Story 6.4: true when ANY live unit of `faction` is inside region `region_id`. Pure Fixed
-                    // inclusive point-in-rect over EntityWorld.Position[] in ASCENDING entity-id order (the
-                    // deterministic contract) — no float/Mathf/Random. An unresolved id at eval time is false (the
-                    // validator already blocks dangling refs pre-tick, so this only guards shadow-mode content).
                     if (!_regions.TryGetIndex(c.RegionId, out int rIdx)) return false;
                     int rhwm = world.HighWaterMark;
                     for (int i = 0; i < rhwm; i++)
@@ -384,16 +390,22 @@ namespace ProjectChimera.Core
 
         // ── Action execution ──────────────────────────────────────────────────
 
-        private void ExecuteActions(TriggerAction[] actions)
+        private void ExecuteActions(NodeBase[] actions, EntityWorld world)
         {
-            foreach (var a in actions)
+            foreach (var node in actions)
             {
-                switch (a.Type)
+                if (node is EffectActionNode effectNode)
+                {
+                    RunEffect(effectNode, world);
+                    continue;
+                }
+
+                var a = (ActionNode)node;
+                switch (a.Kind)
                 {
                     case "spawn_unit":
                         if (!string.IsNullOrEmpty(a.UnitId))
-                            OnSpawnUnit?.Invoke(a.UnitId, a.Faction, a.X, a.Z,
-                                Math.Min(a.Count, 50));
+                            OnSpawnUnit?.Invoke(a.UnitId, a.Faction, a.X, a.Z, Math.Min(a.Count, 50));
                         break;
                     case "display_message":
                         if (!string.IsNullOrEmpty(a.Text))
@@ -411,66 +423,48 @@ namespace ProjectChimera.Core
                         break;
                     case "create_timer":
                         if (!string.IsNullOrEmpty(a.TimerName) && a.TimerSeconds > Fixed.Zero)
-                            // Fixed seconds → whole ticks via SecondsToTicks (64-bit intermediate): the plain
-                            // Fixed multiply overflows for durations past ~1092 s and wraps negative (AR-14).
-                            // Clamp to at least 1 tick: a sub-frame duration (0 < s < 1/30) rounds to 0 ticks, and
-                            // storing remaining=0 would be indistinguishable from an expired/inactive slot and never
-                            // fire. The old Dictionary path stored 0 and fired one tick later (decrement to -1);
-                            // Math.Max(1, …) reproduces that exact "fires next tick" latency without the overload.
-                            SetTimer(a.TimerName, Math.Max(1, SecondsToTicks(a.TimerSeconds)));
+                            // Clamp to >= 1 tick so a sub-frame duration still fires (matches the legacy latency).
+                            _vars.TimerSet(a.TimerName, Math.Max(1, SecondsToTicks(a.TimerSeconds)));
                         break;
                     case "add_resources":
                     {
                         var faction = (Faction)(a.Faction + 1);
-                        _resources.AddOre(faction, a.Amount); // a.Amount is already Fixed (quantized at the JSON boundary, Story 1.4)
+                        _resources.AddOre(faction, a.Amount);
                         break;
                     }
                     case "set_variable":
                         if (!string.IsNullOrEmpty(a.Variable))
-                            SetVariable(a.Variable, a.Value);
+                            // Story 7.3: write the Int-typed variable through the store; PerPlayer selects the player
+                            // slot via the action's Faction field; undeclared → Global/Int (legacy SetVariable parity).
+                            _vars.SetInt(a.Variable, a.Faction, a.Value);
                         break;
                 }
             }
         }
 
-        // ── Dense timer / variable stores (creation-index SoA; deterministic linear-scan lookup) ──────────────
-
-        /// <summary>Create or reset a named timer to <paramref name="ticks"/> remaining, preserving its creation
-        /// index (a reset reuses the existing slot; a new name appends). No Dictionary — linear scan (small N).</summary>
-        private void SetTimer(string name, int ticks)
+        /// <summary>
+        /// Story 7.3 — execute an embedded <see cref="EffectActionNode"/> (run_effect) via the EXISTING
+        /// <see cref="EffectExecutor"/> (no second executor). 7.3 has no target-parameterization on the node (that
+        /// is later scope — 7.13 action leaves), so the effect runs against a deterministic anchor: the lowest-id
+        /// alive entity (its faction is the caster faction). A world with no alive entity anchors at -1, so the
+        /// executor runs but every IsAlive-guarded leaf/SearchArea no-ops. Deterministic (ascending-id anchor,
+        /// Fixed-only), so it never perturbs a legacy scenario's checksum (goldens embed no run_effect).
+        /// </summary>
+        private void RunEffect(EffectActionNode node, EntityWorld world)
         {
-            for (int i = 0; i < _timerNames.Count; i++)
-                if (string.Equals(_timerNames[i], name, StringComparison.Ordinal))
-                {
-                    _timerRemaining[i] = ticks;
-                    return;
-                }
-            _timerNames.Add(name);
-            _timerRemaining.Add(ticks);
-        }
+            if (node.Effect is null) return;
 
-        /// <summary>Read a named integer variable, defaulting to 0 when it was never set (does NOT create a slot —
-        /// matches the prior Dictionary.TryGetValue-default-0 semantics). Linear scan, no Dictionary.</summary>
-        private int GetVariable(string name)
-        {
-            for (int i = 0; i < _variableNames.Count; i++)
-                if (string.Equals(_variableNames[i], name, StringComparison.Ordinal))
-                    return _variableValues[i];
-            return 0;
-        }
+            int anchor = -1;
+            int hwm = world.HighWaterMark;
+            for (int i = 0; i < hwm; i++)
+                if (world.IsAlive(i)) { anchor = i; break; }
 
-        /// <summary>Set a named integer variable, preserving its creation index (update in place, or append a new
-        /// name). Last-writer within a tick follows trigger declaration-index order (AR-16). No Dictionary.</summary>
-        private void SetVariable(string name, int value)
-        {
-            for (int i = 0; i < _variableNames.Count; i++)
-                if (string.Equals(_variableNames[i], name, StringComparison.Ordinal))
-                {
-                    _variableValues[i] = value;
-                    return;
-                }
-            _variableNames.Add(name);
-            _variableValues.Add(value);
+            Faction anchorFaction = anchor >= 0 ? world.FactionOf[anchor] : Faction.Neutral;
+            _effectSpatial.Rebuild(world); // rebuild for SearchArea fan-out (director runs last in the tick)
+            var ctx = new EffectContext(world, casterId: anchor, primaryTargetId: anchor, casterFaction: anchorFaction,
+                                        _damageTable, spatial: _effectSpatial, _combatEvents, _matchStats,
+                                        modifierStore: _modifiers, deaths: _deaths);
+            _effectExecutor.Run(node.Effect, in ctx);
         }
 
         // ── Helpers ───────────────────────────────────────────────────────────
@@ -484,15 +478,9 @@ namespace ProjectChimera.Core
             return n;
         }
 
-        // ≈ the prior 0.01f float tolerance (0.01 × 65536 = 655.36, rounded to 655 raw ≈ 0.0099945) so ==/!= behavior is closely preserved.
+        // ≈ the prior 0.01f float tolerance (0.01 × 65536 = 655.36 → 655 raw) so ==/!= behavior is closely preserved.
         private static readonly Fixed CompareEpsilon = Fixed.FromRaw(655);
 
-        /// <summary>
-        /// Fixed-vs-Fixed comparison for the threshold/condition sim path. Replaces the prior float compare,
-        /// removing the last float arithmetic (and MathF) from ScenarioDirector (AR-16). The ==/!= cases keep a
-        /// small epsilon ≈ the old 0.01f tolerance (FromRaw(655) = 0.0099945 — within ~1e-4, not exact), so
-        /// existing trigger behavior is closely preserved (integer thresholds never land in that sub-0.01 gap).
-        /// </summary>
         private static bool Compare(Fixed a, Fixed b, string op) => op switch
         {
             ">"  => a > b,

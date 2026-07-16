@@ -2,6 +2,8 @@
 using System.Text.Json;
 using ProjectChimera.Core;
 using ProjectChimera.Core.Definitions;
+using ProjectChimera.Dsl;       // Story 7.3 — DslValueType/VarScope, TriggerGraph (trigger_graph gate tests)
+using ProjectChimera.Effects;   // Story 7.3 — DirectHpDeltaEffect / SequenceEffect (embedded-effect bounds tests)
 using Xunit;
 
 namespace ProjectChimera.Sim.Tests.Validation
@@ -193,6 +195,346 @@ namespace ProjectChimera.Sim.Tests.Validation
             m.Triggers[0].Actions = null!;
             var ex = Record.Exception(() => NewValidator().Validate(m));
             Assert.Null(ex);
+        }
+
+        // ── Story 7.3 P3 — the trigger_graph channel is validated at the pre-tick gate (parse + effect-bounds) ──
+
+        [Fact]
+        public void MalformedTriggerGraph_IsRejected_WithLocatedError()
+        {
+            // An unknown node kind fails the closed-registry FromJson parse; the validator catches the JsonException
+            // and returns a LOCATED scenario.trigger_graph error (instead of crashing mid-apply in LoadScenario).
+            var m = ValidModelWithTrigger();
+            m.TriggerGraphJson = "{ \"nodes\": [ { \"id\": 0, \"kind\": \"bogus_kind\" } ], \"exec_edges\": [], \"data_edges\": [] }";
+            ValidationResult r = NewValidator().Validate(m);
+            Assert.False(r.Ok);
+            Assert.Contains("trigger_graph", r.Error!);
+        }
+
+        [Fact]
+        public void OverCapEmbeddedEffect_InTriggerGraph_IsRejected()
+        {
+            // A run_effect whose embedded effect is a Sequence with 9 children exceeds MaxSequenceChildren=8. It parses
+            // (the converter doesn't bound child count) but EffectBounds.Validate rejects it — the SAME load-time
+            // bounds gate every other effect source gets, applied here at the trigger_graph channel.
+            var children = new EffectNode[9];
+            for (int i = 0; i < children.Length; i++) children[i] = new DirectHpDeltaEffect(Fixed.FromInt(-1));
+            TriggerGraph g = TriggerGraph.BuildRunEffectTrigger("t", "match_start", new SequenceEffect(children));
+
+            var m = ValidModelWithTrigger();
+            m.TriggerGraphJson = g.ToCanonicalJson();
+            ValidationResult r = NewValidator().Validate(m);
+            Assert.False(r.Ok);
+            Assert.Contains("trigger_graph", r.Error!);
+        }
+
+        [Fact]
+        public void WellFormedTriggerGraph_IsAccepted()
+        {
+            // A valid run_effect graph (single direct_hp_delta) passes both the parse and the effect-bounds gate.
+            TriggerGraph g = TriggerGraph.BuildRunEffectTrigger("t", "match_start", new DirectHpDeltaEffect(Fixed.FromInt(-10)));
+            var m = ValidModelWithTrigger();
+            m.TriggerGraphJson = g.ToCanonicalJson();
+            ValidationResult r = NewValidator().Validate(m);
+            Assert.True(r.Ok, r.Error);
+        }
+
+        // ── Story 7.3 P4 — a variable_comparison cannot read a TriggerLocal-scoped variable ──
+
+        [Fact]
+        public void ConditionReadingTriggerLocalVariable_IsRejected()
+        {
+            // A condition evaluates BEFORE the trigger-local scope is entered, so a TriggerLocal read returns 0 —
+            // reject it fail-closed (TriggerLocal is action-write-scratch only).
+            var m = ValidModelWithTrigger();
+            m.Variables = new[] { new ScenarioVariable { Name = "loc", Type = DslValueType.Int, Scope = VarScope.TriggerLocal } };
+            m.Triggers[0].Conditions = new[]
+            {
+                new TriggerCondition { Type = "variable_comparison", Variable = "loc", Operator = "==", Value = 1 },
+            };
+            ValidationResult r = NewValidator().Validate(m);
+            Assert.False(r.Ok);
+            Assert.Contains("conditions[0].variable", r.Error!);
+            Assert.Contains("TriggerLocal", r.Error!);
+        }
+
+        // ── Story 7.3 P5 — Int-only + faction-range gating for variable read/write leaves ──
+
+        [Fact]
+        public void ConditionOnNonIntVariable_IsRejected()
+        {
+            var m = ValidModelWithTrigger();
+            m.Variables = new[] { new ScenarioVariable { Name = "pt", Type = DslValueType.Point, Scope = VarScope.Global } };
+            m.Triggers[0].Conditions = new[]
+            {
+                new TriggerCondition { Type = "variable_comparison", Variable = "pt", Operator = "==", Value = 1 },
+            };
+            ValidationResult r = NewValidator().Validate(m);
+            Assert.False(r.Ok);
+            Assert.Contains("conditions[0].variable", r.Error!);
+        }
+
+        [Fact]
+        public void SetVariableOnNonIntVariable_IsRejected()
+        {
+            var m = ValidModelWithTrigger();
+            m.Variables = new[] { new ScenarioVariable { Name = "fx", Type = DslValueType.Fixed, Scope = VarScope.Global } };
+            // Keep the create_timer action so the timer_expires event stays satisfied; add the offending set_variable.
+            m.Triggers[0].Actions = new[]
+            {
+                new TriggerAction { Type = "create_timer", TimerName = "spawn_clock", TimerSeconds = Fixed.FromInt(30) },
+                new TriggerAction { Type = "set_variable", Variable = "fx", Value = 5 },
+            };
+            ValidationResult r = NewValidator().Validate(m);
+            Assert.False(r.Ok);
+            Assert.Contains("actions[1].variable", r.Error!);
+        }
+
+        [Fact]
+        public void VariableLeafFactionOutOfRange_IsRejected_LocatingTheFaction()
+        {
+            // The rejection comes from the canonical CheckFactionSlot bound (engine ceiling [0,3], applied to EVERY
+            // action faction) — the engine ceiling is a strict subset of the DSL player-slot range, so no separate
+            // variable-leaf range check exists (review follow-up removed the unreachable one this test once named).
+            var m = ValidModelWithTrigger();
+            m.Variables = new[] { new ScenarioVariable { Name = "n", Type = DslValueType.Int, Scope = VarScope.PerPlayer } };
+            m.Triggers[0].Actions = new[]
+            {
+                new TriggerAction { Type = "create_timer", TimerName = "spawn_clock", TimerSeconds = Fixed.FromInt(30) },
+                new TriggerAction { Type = "set_variable", Variable = "n", Faction = 9, Value = 5 },
+            };
+            ValidationResult r = NewValidator().Validate(m);
+            Assert.False(r.Ok);
+            Assert.Contains("actions[1].faction", r.Error!);
+        }
+
+        // ── Story 7.3 P6 — variable/timer declaration rules (blank/duplicate) + the declared-timer-seeding path ──
+
+        [Fact]
+        public void BlankVariableName_IsRejected()
+        {
+            var m = ValidModelWithTrigger();
+            m.Variables = new[] { new ScenarioVariable { Name = "   ", Type = DslValueType.Int, Scope = VarScope.Global } };
+            ValidationResult r = NewValidator().Validate(m);
+            Assert.False(r.Ok);
+            Assert.Contains("variables[0].name", r.Error!);
+        }
+
+        [Fact]
+        public void DuplicateVariableName_IsRejected()
+        {
+            var m = ValidModelWithTrigger();
+            m.Variables = new[]
+            {
+                new ScenarioVariable { Name = "dup", Type = DslValueType.Int, Scope = VarScope.Global },
+                new ScenarioVariable { Name = "dup", Type = DslValueType.Int, Scope = VarScope.PerPlayer },
+            };
+            ValidationResult r = NewValidator().Validate(m);
+            Assert.False(r.Ok);
+            Assert.Contains("variables[1].name", r.Error!);
+            Assert.Contains("duplicate", r.Error!);
+        }
+
+        [Fact]
+        public void BlankTimerName_IsRejected()
+        {
+            var m = ValidModelWithTrigger();
+            m.Timers = new[] { new ScenarioTimer { Name = "", Seconds = Fixed.FromInt(5) } };
+            ValidationResult r = NewValidator().Validate(m);
+            Assert.False(r.Ok);
+            Assert.Contains("timers[0].name", r.Error!);
+        }
+
+        [Fact]
+        public void TimerExpires_NamingADeclaredScenarioTimer_IsAccepted()
+        {
+            // The declared-timer-seeding path: a timer_expires that names a declared ScenarioTimer (never created by
+            // any create_timer action) is ACCEPTED (declaredTimers is seeded with the ScenarioTimer names), not
+            // flagged dangling. A positive test proving the seeding actually works.
+            var m = ValidModelWithTrigger();
+            m.Timers = new[] { new ScenarioTimer { Name = "declared_clock", Seconds = Fixed.FromInt(5) } };
+            m.Triggers[0].Events = new[]
+            {
+                new TriggerEvent { Type = "resource_threshold", Faction = 1, Amount = Fixed.FromInt(500), Operator = ">=" },
+                new TriggerEvent { Type = "timer_expires", TimerName = "declared_clock" }, // only in m.Timers, never create_timer'd
+            };
+            ValidationResult r = NewValidator().Validate(m);
+            Assert.True(r.Ok, r.Error);
+        }
+
+        // ── Review follow-up — the trigger_graph gate also runs the 7.2 cycle guard + parse-level id sanity ──
+
+        [Fact]
+        public void CyclicTriggerGraph_IsRejectedAtTheGate_NotMidApply()
+        {
+            // A cyclic exec chain parses fine (FromJson does no structural checks) but previously blew up ONLY
+            // inside LoadScenario — the exact partial-apply crash the gate exists to close. The gate now runs
+            // BuildExecutionOrder (7.2's fail-closed cycle guard) so the cycle is a located validation error.
+            var g = new TriggerGraph();
+            g.Nodes.Add(new TriggerNode { Id = 0, Name = "cyc" });
+            g.Nodes.Add(new EventNode { Id = 1, Kind = "match_start" });
+            g.Nodes.Add(new ActionNode { Id = 2, Kind = "display_message", Text = "a" });
+            g.Nodes.Add(new ActionNode { Id = 3, Kind = "display_message", Text = "b" });
+            g.ExecEdges.Add(new ExecEdge(1, 0, 0, 0)); // event → trigger
+            g.ExecEdges.Add(new ExecEdge(0, 0, 2, 0)); // trigger → a
+            g.ExecEdges.Add(new ExecEdge(2, 0, 3, 0)); // a → b
+            g.ExecEdges.Add(new ExecEdge(3, 0, 2, 0)); // b → a (cycle)
+
+            var m = ValidModelWithTrigger();
+            m.TriggerGraphJson = g.ToCanonicalJson();
+            ValidationResult r = NewValidator().Validate(m);
+            Assert.False(r.Ok);
+            Assert.Contains("trigger_graph", r.Error!);
+            Assert.Contains("cycle", r.Error!);
+        }
+
+        [Fact]
+        public void NegativeNodeId_InTriggerGraph_IsRejected()
+        {
+            // Parse-level id sanity: canonical ids are 0-based, and Merge's id-offset union assumes non-negative
+            // ids (a negative authored id could alias onto an existing node after offsetting and silently
+            // drop/rewire a trigger). FromJson rejects it fail-closed.
+            var m = ValidModelWithTrigger();
+            m.TriggerGraphJson = """
+            { "nodes": [ { "id": -1, "kind": "trigger" } ], "exec_edges": [], "data_edges": [] }
+            """;
+            ValidationResult r = NewValidator().Validate(m);
+            Assert.False(r.Ok);
+            Assert.Contains("non-negative", r.Error!);
+        }
+
+        // ── Review follow-up — the graph channel gets the SAME semantic rulebook as the flat channel ──
+
+        private static string SingleNodeGraph(NodeBase node, bool wireAsEvent = false, bool wireAsCondition = false, bool wireAsAction = false)
+        {
+            var g = new TriggerGraph();
+            g.Nodes.Add(new TriggerNode { Id = 0, Name = "t" });
+            g.Nodes.Add(new EventNode { Id = 1, Kind = "match_start" });
+            g.ExecEdges.Add(new ExecEdge(1, 0, 0, 0));
+            g.Nodes.Add(node);
+            if (wireAsEvent)     g.ExecEdges.Add(new ExecEdge(node.Id, 0, 0, 0));
+            if (wireAsCondition) g.DataEdges.Add(new DataEdge(node.Id, 0, 0, 1, DataWireType.Boolean));
+            if (wireAsAction)    g.ExecEdges.Add(new ExecEdge(0, 0, node.Id, 0));
+            return g.ToCanonicalJson();
+        }
+
+        [Fact]
+        public void GraphChannel_ConditionReadingTriggerLocalVariable_IsRejected()
+        {
+            var m = ValidModelWithTrigger();
+            m.Variables = new[] { new ScenarioVariable { Name = "loc", Type = DslValueType.Int, Scope = VarScope.TriggerLocal } };
+            m.TriggerGraphJson = SingleNodeGraph(
+                new ConditionNode { Id = 2, Kind = "variable_comparison", Variable = "loc", Operator = "==", Value = 1 },
+                wireAsCondition: true);
+            ValidationResult r = NewValidator().Validate(m);
+            Assert.False(r.Ok);
+            Assert.Contains("trigger_graph condition node 2", r.Error!);
+            Assert.Contains("TriggerLocal", r.Error!);
+        }
+
+        [Fact]
+        public void GraphChannel_SetVariableOnNonIntVariable_IsRejected()
+        {
+            var m = ValidModelWithTrigger();
+            m.Variables = new[] { new ScenarioVariable { Name = "fx", Type = DslValueType.Fixed, Scope = VarScope.Global } };
+            m.TriggerGraphJson = SingleNodeGraph(
+                new ActionNode { Id = 2, Kind = "set_variable", Variable = "fx", Value = 5 },
+                wireAsAction: true);
+            ValidationResult r = NewValidator().Validate(m);
+            Assert.False(r.Ok);
+            Assert.Contains("trigger_graph action node 2", r.Error!);
+            Assert.Contains("Int-typed", r.Error!);
+        }
+
+        [Fact]
+        public void GraphChannel_FactionAboveEngineCeiling_IsRejected()
+        {
+            // The same engine-ceiling OOB crash class the flat channel rejects: (Faction)(slot+1) indexes size-5
+            // per-faction arrays at runtime, identically in both channels.
+            var m = ValidModelWithTrigger();
+            m.TriggerGraphJson = SingleNodeGraph(
+                new EventNode { Id = 2, Kind = "unit_dies", Faction = 9 },
+                wireAsEvent: true);
+            ValidationResult r = NewValidator().Validate(m);
+            Assert.False(r.Ok);
+            Assert.Contains("trigger_graph event node 2.faction", r.Error!);
+        }
+
+        [Fact]
+        public void GraphChannel_DanglingTimerExpires_IsRejected()
+        {
+            var m = ValidModelWithTrigger();
+            m.TriggerGraphJson = SingleNodeGraph(
+                new EventNode { Id = 2, Kind = "timer_expires", TimerName = "ghost" },
+                wireAsEvent: true);
+            ValidationResult r = NewValidator().Validate(m);
+            Assert.False(r.Ok);
+            Assert.Contains("trigger_graph event node 2", r.Error!);
+            Assert.Contains("ghost", r.Error!);
+        }
+
+        [Fact]
+        public void FlatTimerExpires_NamingAGraphCreateTimer_IsAccepted()
+        {
+            // Cross-channel timer namespace: the director merges both channels into ONE execution graph, so a flat
+            // timer_expires may legitimately reference a timer a GRAPH create_timer action arms. The dangling-timer
+            // union must span both channels (it previously false-flagged this as dangling).
+            var m = ValidModelWithTrigger();
+            m.Triggers[0].Events = new[]
+            {
+                new TriggerEvent { Type = "resource_threshold", Faction = 1, Amount = Fixed.FromInt(500), Operator = ">=" },
+                new TriggerEvent { Type = "timer_expires", TimerName = "graph_clock" }, // armed only by the graph channel
+            };
+            m.TriggerGraphJson = SingleNodeGraph(
+                new ActionNode { Id = 2, Kind = "create_timer", TimerName = "graph_clock", TimerSeconds = Fixed.FromInt(10) },
+                wireAsAction: true);
+            ValidationResult r = NewValidator().Validate(m);
+            Assert.True(r.Ok, r.Error);
+        }
+
+        // ── Review follow-up — declaration well-formedness beyond names ──
+
+        [Fact]
+        public void DeclaredTimer_NonPositiveSeconds_IsRejected()
+        {
+            // The load path clamps via Math.Max(1, SecondsToTicks(s)) — a zero/negative declaration would silently
+            // become a 1-tick timer firing on the first tick. The declaration path must not be more permissive than
+            // the create_timer action (which requires > 0 at runtime).
+            var m = ValidModelWithTrigger();
+            m.Timers = new[] { new ScenarioTimer { Name = "z", Seconds = Fixed.Zero } };
+            ValidationResult r = NewValidator().Validate(m);
+            Assert.False(r.Ok);
+            Assert.Contains("timers[0].seconds", r.Error!);
+        }
+
+        [Fact]
+        public void IntVariable_FractionalInitial_IsRejected()
+        {
+            // An Int initial of 2.5 would silently truncate to 2 at load (ScopeInitialRaw → ToInt) — fail-closed
+            // instead of silently rewriting the declaration. (A negative WHOLE initial stays legal.)
+            var m = ValidModelWithTrigger();
+            m.Variables = new[] { new ScenarioVariable { Name = "i", Type = DslValueType.Int, Scope = VarScope.Global, Initial = Fixed.FromFloat(2.5f) } };
+            ValidationResult r = NewValidator().Validate(m);
+            Assert.False(r.Ok);
+            Assert.Contains("variables[0].initial", r.Error!);
+
+            var ok = ValidModelWithTrigger();
+            ok.Variables = new[] { new ScenarioVariable { Name = "i", Type = DslValueType.Int, Scope = VarScope.Global, Initial = Fixed.FromInt(-3) } };
+            Assert.True(NewValidator().Validate(ok).Ok);
+        }
+
+        [Fact]
+        public void BoolVariable_NonBinaryInitial_IsRejected()
+        {
+            var m = ValidModelWithTrigger();
+            m.Variables = new[] { new ScenarioVariable { Name = "b", Type = DslValueType.Bool, Scope = VarScope.Global, Initial = Fixed.FromInt(7) } };
+            ValidationResult r = NewValidator().Validate(m);
+            Assert.False(r.Ok);
+            Assert.Contains("variables[0].initial", r.Error!);
+
+            var ok = ValidModelWithTrigger();
+            ok.Variables = new[] { new ScenarioVariable { Name = "b", Type = DslValueType.Bool, Scope = VarScope.Global, Initial = Fixed.One } };
+            Assert.True(NewValidator().Validate(ok).Ok);
         }
 
         // AC3c — AR-13 (a random effect is valid only if it draws from SimRng) stays RESERVED: no random

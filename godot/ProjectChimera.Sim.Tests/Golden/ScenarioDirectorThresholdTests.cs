@@ -1,4 +1,5 @@
 #nullable enable
+using ProjectChimera.Dsl;
 using System;
 using System.Globalization;
 using ProjectChimera.Core;
@@ -79,7 +80,7 @@ namespace ProjectChimera.Sim.Tests.Golden
         private static ScenarioDirector MakeDirector(ResourceStore resources, out Func<bool> didFire,
             TriggerDefinition trigger)
         {
-            var director = new ScenarioDirector(new BuildingStore(), resources);
+            var director = new ScenarioDirector(new BuildingStore(), resources, new DslVarTable());
             bool fired = false;
             director.OnDisplayMessage = (text, _) => { if (text == FireText) fired = true; };
             director.LoadScenario(new ScenarioData { Triggers = new[] { trigger } });

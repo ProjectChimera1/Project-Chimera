@@ -1,4 +1,5 @@
 #nullable enable
+using ProjectChimera.Dsl;
 using System.Collections.Generic;
 using System.Linq;
 using ProjectChimera.Core;
@@ -51,7 +52,7 @@ namespace ProjectChimera.Sim.Tests.Golden
             }
 
             var fireOrder = new List<int>(n);
-            var director = new ScenarioDirector(new BuildingStore(), new ResourceStore(Fixed.Zero));
+            var director = new ScenarioDirector(new BuildingStore(), new ResourceStore(Fixed.Zero), new DslVarTable());
             director.OnDisplayMessage = (text, _) => fireOrder.Add(int.Parse(text));
             director.LoadScenario(new ScenarioData { Triggers = triggers });
             director.Tick(new EntityWorld(), Fixed.One);
@@ -84,7 +85,7 @@ namespace ProjectChimera.Sim.Tests.Golden
             };
 
             var fireOrder = new List<string>();
-            var director = new ScenarioDirector(new BuildingStore(), new ResourceStore(Fixed.Zero));
+            var director = new ScenarioDirector(new BuildingStore(), new ResourceStore(Fixed.Zero), new DslVarTable());
             director.OnDisplayMessage = (text, _) => fireOrder.Add(text);
             director.LoadScenario(new ScenarioData { Triggers = triggers });
             director.Tick(new EntityWorld(), Fixed.One);

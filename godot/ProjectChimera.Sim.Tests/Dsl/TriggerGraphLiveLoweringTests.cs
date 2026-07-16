@@ -1,4 +1,7 @@
 #nullable enable
+using ProjectChimera.Dsl;
+using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
 using ProjectChimera.Core;              // Fixed
 using ProjectChimera.Core.Definitions;  // TriggerDefinition, ScenarioData
@@ -8,12 +11,12 @@ using Xunit;
 namespace ProjectChimera.Sim.Tests.Dsl
 {
     /// <summary>
-    /// Story 7.2 (review patch) — verify the LIVE lowering, not just the pure transform. The wired line
-    /// <c>_triggers = TriggerGraph.FromFlat(scenario.Triggers).ToFlat()</c> in <c>ScenarioDirector.LoadScenario</c>
-    /// is exercised here through the real <c>LoadScenario</c> entry point with a RICH, non-empty trigger set, and the
-    /// director's resulting <c>_triggers</c> is deep-compared field-for-field against the input. This closes the gap
-    /// the on-disk tripwire cannot cover (every shipped scenario ships zero triggers, so that test is empty→empty):
-    /// the field-mapping fidelity of the production identity lowering is proven directly on the surface that runs.
+    /// Story 7.2/7.3 — verify the LIVE lowering, not just the pure transform. Story 7.3 replaced the 7.2 identity
+    /// waypoint (<c>_triggers = FromFlat(...).ToFlat()</c>) with a DIRECT graph walk: <c>LoadScenario</c> builds the
+    /// execution view <c>_execs = TriggerGraph.FromFlat(...).BuildExecutionOrder()</c>. This test drives the real
+    /// <c>LoadScenario</c> with a RICH flat trigger set, reconstructs the flat triggers from the resulting execution
+    /// view (re-sorted to declaration order by ascending node id), and deep-compares field-for-field against the
+    /// input — proving the field-mapping fidelity of the production lowering directly on the surface that runs.
     /// </summary>
     public class TriggerGraphLiveLoweringTests
     {
@@ -23,18 +26,46 @@ namespace ProjectChimera.Sim.Tests.Dsl
             TriggerDefinition[] input = TriggerFieldAssert.RichTriggerSet();
 
             var scenario = new ScenarioData { Triggers = input };
-            var director = new ScenarioDirector(new BuildingStore(), new ResourceStore(Fixed.Zero));
+            var director = new ScenarioDirector(new BuildingStore(), new ResourceStore(Fixed.Zero), new DslVarTable());
 
-            // Drives the wired identity lowering (FromFlat(...).ToFlat()) inside the real LoadScenario.
+            // Drives the wired graph walk (FromFlat(...).BuildExecutionOrder()) inside the real LoadScenario.
             director.LoadScenario(scenario);
 
-            FieldInfo field = typeof(ScenarioDirector).GetField("_triggers", BindingFlags.NonPublic | BindingFlags.Instance)!;
-            var lowered = (TriggerDefinition[])field.GetValue(director)!;
+            FieldInfo field = typeof(ScenarioDirector).GetField("_execs", BindingFlags.NonPublic | BindingFlags.Instance)!;
+            var execs = (IEnumerable<TriggerGraph.TriggerExec>)field.GetValue(director)!;
 
-            // It must be a fresh array (the graph waypoint rebuilds it), lossless field-for-field vs the input.
-            Assert.NotSame(input, lowered);
+            // Reconstruct the flat triggers from the execution view. The view is in EXECUTION order (Priority desc,
+            // node-id asc); re-sort by ascending trigger node-id (== declaration order for a FromFlat graph) so it
+            // aligns with the input array for a lossless field-for-field compare.
+            TriggerDefinition[] lowered = execs.OrderBy(e => e.Trigger.Id).Select(ToFlat).ToArray();
+
             TriggerFieldAssert.AssertEqual(input, lowered);
         }
+
+        private static TriggerDefinition ToFlat(TriggerGraph.TriggerExec ex) => new()
+        {
+            Name            = ex.Trigger.Name,
+            Enabled         = ex.Trigger.Enabled,
+            RunOnce         = ex.Trigger.RunOnce,
+            CooldownSeconds = ex.Trigger.CooldownSeconds,
+            Priority        = ex.Trigger.Priority,
+            Events = ex.Events.Select(e => new TriggerEvent
+            {
+                Type = e.Kind, Faction = e.Faction, BuildingType = e.BuildingType,
+                TimerName = e.TimerName, Amount = e.Amount, Count = e.Count, Operator = e.Operator,
+            }).ToArray(),
+            Conditions = ex.Conditions.Select(c => new TriggerCondition
+            {
+                Type = c.Kind, Faction = c.Faction, BuildingType = c.BuildingType, Amount = c.Amount,
+                Count = c.Count, Variable = c.Variable, RegionId = c.RegionId, Value = c.Value, Operator = c.Operator,
+            }).ToArray(),
+            Actions = ex.Actions.OfType<ActionNode>().Select(a => new TriggerAction
+            {
+                Type = a.Kind, UnitId = a.UnitId, Faction = a.Faction, X = a.X, Z = a.Z, Count = a.Count,
+                Text = a.Text, Duration = a.Duration, TimerName = a.TimerName, TimerSeconds = a.TimerSeconds,
+                Amount = a.Amount, Value = a.Value, Variable = a.Variable, SoundId = a.SoundId,
+            }).ToArray(),
+        };
     }
 
     /// <summary>

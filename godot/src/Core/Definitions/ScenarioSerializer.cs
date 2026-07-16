@@ -89,6 +89,17 @@ namespace ProjectChimera.Core.Definitions
             string? savedDescription = scenario.Description;
             if (string.IsNullOrEmpty(savedAuthor))      scenario.Author      = null;
             if (string.IsNullOrEmpty(savedDescription)) scenario.Description = null;
+
+            // Story 7.3: normalize empty Variables/Timers arrays and empty/whitespace TriggerGraphJson → null for THIS
+            // serialization (same swap-under-try/finally, restore-after discipline — Serialize is a pure byte-source
+            // and must not mutate the caller's live model). An absent-declaration scenario then serializes BYTE-
+            // IDENTICALLY to pre-7.3 (no key emitted), so no scenario-bytes / CanonicalModelHash / StartStateHash move.
+            ScenarioVariable[]? savedVariables = scenario.Variables;
+            ScenarioTimer[]?    savedTimers    = scenario.Timers;
+            string?             savedTriggerGraph = scenario.TriggerGraphJson;
+            if (savedVariables is { Length: 0 }) scenario.Variables = null;
+            if (savedTimers    is { Length: 0 }) scenario.Timers    = null;
+            if (string.IsNullOrWhiteSpace(savedTriggerGraph)) scenario.TriggerGraphJson = null;
             try
             {
                 return JsonSerializer.Serialize(scenario, _options);
@@ -102,6 +113,9 @@ namespace ProjectChimera.Core.Definitions
                 scenario.Water   = savedWater;
                 scenario.Author      = savedAuthor;
                 scenario.Description = savedDescription;
+                scenario.Variables       = savedVariables;
+                scenario.Timers          = savedTimers;
+                scenario.TriggerGraphJson = savedTriggerGraph;
             }
         }
 

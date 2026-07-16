@@ -24,6 +24,15 @@ namespace ProjectChimera.Core.Definitions
     ///     no hash-folded field). <c>MapBounds</c> — which Story 6.7's New-Map flow now sets per-scenario from the
     ///     <c>MapSize</c> set — was ALREADY folded (below); authoring a different playable extent is expected map
     ///     identity, not an algorithm change, so no re-baseline.
+    ///   • <c>Variables</c>/<c>Timers</c>/<c>TriggerGraphJson</c> (Story 7.3) EXCLUDED on the SAME basis as
+    ///     <c>Triggers</c>/<c>Regions</c>: they are trigger-DSL DECLARATIONS. The DSL variable/timer store's LIVE
+    ///     per-tick values fold into <c>SimChecksum</c> (v16), so a peer that loaded different declared initial
+    ///     VALUES (or counts) is caught at tick 1 — declaration STRUCTURE (names/types/scopes) with identical values
+    ///     is not, which is part of the same bounded Triggers-shaped gap — but the DECLARATIONS stay out of the
+    ///     pre-match handshake, exactly as
+    ///     Triggers/Regions do (the authoritative handshake fold is 7.7/later; when Triggers fold in, these fold with
+    ///     them and the version bumps then). No fold below; <c>AlgoVersion</c> stays 7, so an absent-declaration
+    ///     scenario hashes byte-identically to pre-7.3 (Block-If protection).
     ///   • <c>Regions</c> (Story 6.4) EXCLUDED on the SAME basis as <c>Triggers</c>: regions are a *trigger input*
     ///     — referenced by the <c>unit_in_region</c> condition, which CAN gate trigger actions (spawn_unit /
     ///     add_resources / set_variable) that DO mutate <c>SimChecksum</c>-folded state — and Triggers are an

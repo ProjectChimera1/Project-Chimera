@@ -5,6 +5,7 @@ using ProjectChimera.AI;
 using ProjectChimera.Combat;
 using ProjectChimera.Core;
 using ProjectChimera.Core.Definitions;
+using ProjectChimera.Dsl;
 using ProjectChimera.Economy;
 using ProjectChimera.Effects;
 using ProjectChimera.Navigation;
@@ -93,6 +94,10 @@ namespace ProjectChimera.Core.Sim
         /// writes. Folded into <see cref="SimChecksum"/> (v14, Story 4.10).</summary>
         public ResearchStore Research { get; }
         public ScenarioDirector ScenarioDirector { get; }
+        /// <summary>Story 7.3 — the top-level typed/scoped DSL variable + timer store. Initialized from
+        /// <c>ScenarioData</c> declarations at scenario-apply (via <c>ScenarioDirector.LoadScenario</c>) and folded
+        /// into the per-tick <see cref="SimChecksum"/> (v16).</summary>
+        public DslVarTable Vars { get; }
         public FogOfWarSystem Fog { get; }
 
         // ── Loop pass-throughs (SimulationLoop is untouched; the host wraps it). ──
@@ -144,7 +149,8 @@ namespace ProjectChimera.Core.Sim
             Fog              = new FogOfWarSystem(Faction.Player1);
             BuildSys         = new BuildingSystem(Buildings, Resources, factionDef1, factionDef2, MatchStats, Heroes, _revivalRuntime);
             Research         = new ResearchStore(); // Story 4.9 — mid-match-mutable; folded into SimChecksum (v14, Story 4.10)
-            ScenarioDirector = new ScenarioDirector(Buildings, Resources);
+            Vars             = new DslVarTable();     // Story 7.3 — typed/scoped variables + timers; folded into SimChecksum (v16); init from ScenarioData at apply
+            ScenarioDirector = new ScenarioDirector(Buildings, Resources, Vars);
 
             // AR-9 effective-stat recompute (Story 2.2a), the Story 2.2b ModifierStore it drives, and the Story 2.4a
             // ability-cast system. Construct the systems + store FIRST — the store ctor takes modSys, and
@@ -157,6 +163,11 @@ namespace ProjectChimera.Core.Sim
             var abilitySys = new AbilityCastSystem(registry ?? AbilityRegistry.Empty, Resources, Modifiers,
                                                    damageTable, CombatEvents, MatchStats, _deathFeed);
             modSys.AttachStore(Modifiers);
+
+            // Story 7.3 — wire the run_effect runtime into the ScenarioDirector now that the stores exist. An
+            // EffectActionNode (run_effect) in a trigger executes its embedded D1 subgraph via the director's OWN
+            // EffectExecutor (the shared class, not a second implementation) against these shared sinks.
+            ScenarioDirector.SetEffectRuntime(damageTable, Modifiers, CombatEvents, MatchStats, _deathFeed);
 
             // Story 3.15 — the item / inventory tick system. Constructed AFTER Modifiers (it applies/removes carried stat
             // modifiers) and it subscribes World.OnDestroy for the death-drop AFTER ModifierStore.ClearEntity (so a hero's
@@ -227,7 +238,7 @@ namespace ProjectChimera.Core.Sim
             };
 
             _loop = new SimulationLoop(World, _systems);
-            _loop.EnableChecksums(Buildings, Resources, checksumFactions, Modifiers, Heroes, Items, Nodes, Research); // fold modifier state (v6) + ability cooldowns (v7) + mutable HeroStore (v11) + ItemStore/inventory (v12) + ResourceNodeStore (v13) + ResearchStore (v14)
+            _loop.EnableChecksums(Buildings, Resources, checksumFactions, Modifiers, Heroes, Items, Nodes, Research, Vars); // fold modifier state (v6) + ability cooldowns (v7) + mutable HeroStore (v11) + ItemStore/inventory (v12) + ResourceNodeStore (v13) + ResearchStore (v14) + DslVarTable (v16)
 
             // The sim spine's only host-side log in 1.8a: a one-shot construction diagnostic through the
             // injected seam. NullLogSink no-ops it (tests/server → zero effect on the golden); GodotLogSink
@@ -260,6 +271,7 @@ namespace ProjectChimera.Core.Sim
             Items.Clear();          // Story 3.15 — folded ItemStore; bulk-empty so a re-apply re-places items non-additively
             Modifiers.Clear();      // folded — also zeroes the ModifierSystem accumulators it drives
             Research.Clear();       // Story 4.9 — mid-match-mutable; bulk-empty so a re-apply starts every faction idle again
+            Vars.Clear();           // Story 7.3 — folded DslVarTable; bulk-empty so a re-apply re-inits declarations non-additively
             CombatEvents.Clear();
             _deathFeed.Clear();     // Story 3.13 — transient per-tick death buffer (empty at reset)
             Fog.Reset();

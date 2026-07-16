@@ -1,5 +1,6 @@
 #nullable enable
 using System.Text.Json.Serialization;
+using ProjectChimera.Dsl; // DslValueType, VarScope (Story 7.3 typed/scoped variable declarations)
 
 namespace ProjectChimera.Core.Definitions
 {
@@ -373,6 +374,50 @@ namespace ProjectChimera.Core.Definitions
     }
 
     /// <summary>
+    /// A typed, scoped DSL variable declaration (Story 7.3). Round-trips name / type / scope / initial; the initial
+    /// value is a <see cref="Fixed"/> serialized as its <c>Fixed.Raw</c> via the registered <c>FixedJsonConverter</c>
+    /// (so "2.5" is preserved exactly). Resolved into a <see cref="DslVarTable"/> slot at scenario-apply. Excluded
+    /// from <see cref="CanonicalModelHash"/>/<see cref="StartStateHash"/> (declarations stay out of the MP
+    /// start-state handshake, the Triggers/Regions basis); the LIVE value folds into per-tick <c>SimChecksum</c>.
+    /// </summary>
+    public class ScenarioVariable
+    {
+        /// <summary>Unique variable name (the key an ECA leaf references).</summary>
+        [JsonPropertyName("name")]
+        public string Name { get; set; } = "";
+
+        /// <summary>The value type (closed set) — serialized by NAME via the enum converter.</summary>
+        [JsonPropertyName("type")]
+        public DslValueType Type { get; set; } = DslValueType.Int;
+
+        /// <summary>The variable scope (Global / PerPlayer / TriggerLocal) — serialized by NAME.</summary>
+        [JsonPropertyName("scope")]
+        public VarScope Scope { get; set; } = VarScope.Global;
+
+        /// <summary>The initial value, quantized to <see cref="Fixed"/> at the JSON boundary and preserved as
+        /// <c>Fixed.Raw</c> on round-trip. Default 0.</summary>
+        [JsonPropertyName("initial")]
+        public Fixed Initial { get; set; } = Fixed.Zero;
+    }
+
+    /// <summary>
+    /// A named deterministic timer declaration (Story 7.3). <see cref="Seconds"/> is a <see cref="Fixed"/>
+    /// (converted to integer ticks ONCE at the Core boundary — no float→int truncation). Excluded from the MP
+    /// start-state handshake (declarations stay out on the Triggers/Regions basis); the LIVE remaining-tick count
+    /// folds into per-tick <c>SimChecksum</c>.
+    /// </summary>
+    public class ScenarioTimer
+    {
+        /// <summary>Unique timer name (the key a create_timer/timer_expires leaf references).</summary>
+        [JsonPropertyName("name")]
+        public string Name { get; set; } = "";
+
+        /// <summary>The timer duration in seconds (quantized to <see cref="Fixed"/> at the JSON boundary).</summary>
+        [JsonPropertyName("seconds")]
+        public Fixed Seconds { get; set; } = Fixed.FromInt(30);
+    }
+
+    /// <summary>
     /// Full scenario definition. Contains everything needed to reconstruct a match:
     /// terrain reference, player faction assignments, resource node layout,
     /// pre-placed buildings and units, and the win condition.
@@ -457,6 +502,44 @@ namespace ProjectChimera.Core.Definitions
         /// </summary>
         [JsonPropertyName("triggers")]
         public TriggerDefinition[] Triggers { get; set; } = System.Array.Empty<TriggerDefinition>();
+
+        /// <summary>
+        /// Typed, scoped DSL variable declarations (Story 7.3). NULL (the default, every existing scenario) ⇒ no
+        /// declared variables, and the block is OMITTED from serialization when null
+        /// (<see cref="JsonIgnoreCondition.WhenWritingNull"/>, the <see cref="Regions"/> precedent) — and an empty
+        /// array is normalized back to null at the <c>ScenarioSerializer.Serialize</c> chokepoint — so a scenario
+        /// without them serializes BYTE-IDENTICALLY to pre-7.3 (no scenario-bytes / <see cref="CanonicalModelHash"/> /
+        /// <see cref="StartStateHash"/> movement). Resolved into the folded <see cref="DslVarTable"/> at
+        /// scenario-apply; the DECLARATIONS themselves are deliberately EXCLUDED from both handshake hashes on the
+        /// Triggers/Regions basis (the LIVE values fold into per-tick <c>SimChecksum</c>).
+        /// </summary>
+        [JsonPropertyName("variables")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public ScenarioVariable[]? Variables { get; set; }
+
+        /// <summary>
+        /// Named deterministic timer declarations (Story 7.3). NULL ⇒ none; OMITTED when null / normalized empty→null
+        /// at the serialize chokepoint (the <see cref="Variables"/> precedent), so an absent block is byte-identical
+        /// to pre-7.3. Resolved into the folded <see cref="DslVarTable"/> at scenario-apply (seconds→integer ticks at
+        /// the Core boundary); EXCLUDED from both handshake hashes on the Triggers/Regions basis.
+        /// </summary>
+        [JsonPropertyName("timers")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public ScenarioTimer[]? Timers { get; set; }
+
+        /// <summary>
+        /// The canonical graph-IR JSON for graph-only triggers (Story 7.3) — e.g. triggers authored through the
+        /// editor's raw-IR escape hatch or embedding a <c>run_effect</c> effect subgraph that has no flat
+        /// representation. NULL/whitespace ⇒ absent; OMITTED when null / normalized empty→null at the serialize
+        /// chokepoint (the <see cref="Variables"/> precedent), so an absent field is byte-identical to pre-7.3. When
+        /// present it is MERGED with <see cref="Triggers"/> into one execution graph (<c>ScenarioDirector</c> builds
+        /// <c>TriggerGraph.FromFlat(Triggers)</c> then merges <c>FromJson(trigger_graph)</c> in with offset node ids —
+        /// NEITHER channel is dropped; the global Priority-desc/id-asc order spans both). EXCLUDED from both
+        /// handshake hashes on the Triggers basis.
+        /// </summary>
+        [JsonPropertyName("trigger_graph")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public string? TriggerGraphJson { get; set; }
 
         /// <summary>
         /// The per-scenario hero-persistence contract (Story 3.8): which attributes carry forward between matches +

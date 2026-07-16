@@ -3,6 +3,7 @@ using System;
 using System.Linq;
 using System.Reflection;
 using ProjectChimera.Core;
+using ProjectChimera.Dsl;     // DslVarTable / DslVarDecl / DslTimerDecl (v16 fold coverage)
 using ProjectChimera.Effects; // ModifierStore / Modifier / StatusFlags (v6 fold coverage)
 using Xunit;
 
@@ -108,22 +109,22 @@ namespace ProjectChimera.Sim.Tests.Golden
         /// hash still moves.)
         /// </summary>
         [Fact]
-        public void KnownWorldState_ProducesPinnedV15Hash()
+        public void KnownWorldState_ProducesPinnedV16Hash()
         {
-            // Algorithm version must be exactly 15 (Story 6.3's per-entity Elevation fold). If this fails, the const below is stale.
-            Assert.Equal(15, SimChecksum.AlgoVersion);
+            // Algorithm version must be exactly 16 (Story 7.3's DslVarTable fold). If this fails, the const below is stale.
+            Assert.Equal(16, SimChecksum.AlgoVersion);
 
             uint actual = ComputeKnownStateHash();
 
-            // ── Pinned v15 hash for the fixed world built by ComputeKnownStateHash() ──────────────────────────
+            // ── Pinned v16 hash for the fixed world built by ComputeKnownStateHash() ──────────────────────────
             // An intentional SimChecksum algorithm change must update this value AND bump SimChecksum.AlgoVersion.
-            // The known-state world's two entities are at their Create-default Elevation (0, no grid injected), so the
-            // v15 fold moves the hash from v14 purely by the added Mix(0) elevation per alive entity — the intentional
-            // Elevation-fold re-baseline (Story 6.3).
-            const uint ExpectedV15Hash = 0xB1E4E662; // recorded from a green v15 run; re-pin only on an intentional algo change
-            Assert.True(actual == ExpectedV15Hash,
-                $"Known-state v15 checksum changed: expected 0x{ExpectedV15Hash:X8}, actual 0x{actual:X8}. " +
-                $"If this is an INTENTIONAL algorithm change, re-pin ExpectedV15Hash to 0x{actual:X8} and bump " +
+            // The known-state world passes an EMPTY DslVarTable (no declared vars/timers), so the v16 fold moves the
+            // hash from v15 purely by the added Mix(0) global-count + Mix(0) timer-count — the intentional
+            // DslVarTable-fold re-baseline (Story 7.3).
+            const uint ExpectedV16Hash = 0x359738A2; // recorded from a green v16 run; re-pin only on an intentional algo change
+            Assert.True(actual == ExpectedV16Hash,
+                $"Known-state v16 checksum changed: expected 0x{ExpectedV16Hash:X8}, actual 0x{actual:X8}. " +
+                $"If this is an INTENTIONAL algorithm change, re-pin ExpectedV16Hash to 0x{actual:X8} and bump " +
                 $"SimChecksum.AlgoVersion. If not, you broke the deterministic checksum — investigate.");
         }
 
@@ -340,6 +341,83 @@ namespace ProjectChimera.Sim.Tests.Golden
 
             // ── v14 (Story 4.10): the mutable ResearchStore is folded (first-ever fold of this store) ──
             AssertResearchStoreFoldedIntoChecksum(registry);
+
+            // ── v16 (Story 7.3): the mutable DslVarTable is folded (first-ever fold of this store) ──
+            AssertDslVarTableFoldedIntoChecksum(registry);
+        }
+
+        /// <summary>
+        /// Story 7.3 (v16) coverage teeth: the mutable <see cref="DslVarTable"/> state must move the checksum — the
+        /// FIRST-EVER fold of this store. Declares a Global Int var, a Per-player Int var, and a timer, then mutates
+        /// each folded surface in turn — each MUST move the hash. A no-move means a folded variable/timer escaped
+        /// <see cref="SimChecksum"/> (a silent desync surface, since triggers mutate all of these mid-match). Also
+        /// proves: (a) an UNDECLARED set_variable append (a runtime-grown Global slot) folds; (b) a Per-player write
+        /// on a SECOND active faction (Player2) folds INDEPENDENTLY of Player1's slot; (c) a trigger-local write is
+        /// NEVER folded (Enter/write/Exit leaves the hash unchanged). The table lives outside EntityWorld, so it needs
+        /// its own teeth (passed as the trailing Compute param), mirroring <see cref="AssertResearchStoreFoldedIntoChecksum"/>.
+        /// </summary>
+        private static void AssertDslVarTableFoldedIntoChecksum(FactionRegistry registry)
+        {
+            var world     = new EntityWorld();          // empty — isolates the DslVarTable contribution
+            var resources = new ResourceStore(Fixed.Zero);
+            var buildings = new BuildingStore();
+            var vars      = new DslVarTable();
+            vars.InitFromDeclarations(new[]
+            {
+                new DslVarDecl("g",  DslValueType.Int, VarScope.Global,       0),
+                new DslVarDecl("pp", DslValueType.Int, VarScope.PerPlayer,    0),
+                new DslVarDecl("tl", DslValueType.Int, VarScope.TriggerLocal, 0),
+            }, new[] { new DslTimerDecl("t", 10) });
+
+            uint baseline = SimChecksum.Compute(world, buildings, resources, registry, null, null, null, null, null, vars);
+
+            vars.SetInt("g", 0, 5);
+            uint gMoved = SimChecksum.Compute(world, buildings, resources, registry, null, null, null, null, null, vars);
+            Assert.True(baseline != gMoved, "DslVarTable Global variable is NOT folded into SimChecksum (v16).");
+
+            // Per-player slot 0 (Player1, active) — must move the hash.
+            vars.SetInt("pp", 0, 7);
+            uint ppMoved = SimChecksum.Compute(world, buildings, resources, registry, null, null, null, null, null, vars);
+            Assert.True(gMoved != ppMoved, "DslVarTable Per-player variable (Player1) is NOT folded into SimChecksum (v16).");
+
+            // Per-player slot 1 (Player2, a SECOND active faction) — proves the per-player fold isn't Player1-only.
+            vars.SetInt("pp", 1, 9);
+            uint pp2Moved = SimChecksum.Compute(world, buildings, resources, registry, null, null, null, null, null, vars);
+            Assert.True(ppMoved != pp2Moved, "DslVarTable Per-player variable on a SECOND active faction (Player2) is NOT folded into SimChecksum (v16).");
+
+            // P2: a write to an INACTIVE player slot (faction 5 — NOT in the 2-player active set {0,1}) must STILL
+            // fold. SetInt/ClampSlot can target ANY slot 0..7, so the v16 fold covers every slot, not only active
+            // factions — otherwise a write to an inactive slot would silently escape the checksum (a desync surface).
+            // Under the pre-fix active-slots-only fold this write left the hash UNCHANGED; now it must move it.
+            vars.SetInt("pp", 5, 13);
+            uint inactiveSlotMoved = SimChecksum.Compute(world, buildings, resources, registry, null, null, null, null, null, vars);
+            Assert.True(pp2Moved != inactiveSlotMoved,
+                "DslVarTable Per-player write to an INACTIVE slot (faction 5) is NOT folded into SimChecksum (v16) — the fold must cover EVERY slot 0..7, not only active factions.");
+
+            // Timer remaining-ticks — must move the hash.
+            vars.TimerSet("t", 3);
+            uint timerMoved = SimChecksum.Compute(world, buildings, resources, registry, null, null, null, null, null, vars);
+            Assert.True(inactiveSlotMoved != timerMoved, "DslVarTable timer remaining-ticks is NOT folded into SimChecksum (v16).");
+
+            // An UNDECLARED set_variable append (a runtime-grown Global/Int slot) must fold too.
+            vars.SetInt("undeclared", 0, 11);
+            uint undeclMoved = SimChecksum.Compute(world, buildings, resources, registry, null, null, null, null, null, vars);
+            Assert.True(timerMoved != undeclMoved, "An undeclared set_variable append (runtime Global slot) is NOT folded into SimChecksum (v16).");
+
+            // A TriggerLocal write must NEVER fold: Enter/write/Exit leaves the hash exactly where it was.
+            uint beforeLocal = undeclMoved;
+            vars.Enter();
+            vars.SetInt("tl", 0, 999);
+            vars.Exit();
+            uint afterLocal = SimChecksum.Compute(world, buildings, resources, registry, null, null, null, null, null, vars);
+            Assert.True(beforeLocal == afterLocal, "A TriggerLocal write MOVED the checksum — trigger-local scratch must never fold (v16).");
+
+            // P2: a NULL DslVarTable must fold BYTE-IDENTICALLY to a non-null EMPTY table — the two are
+            // interchangeable in Compute (production always passes a real table; legacy/test callers may pass null).
+            uint withEmpty = SimChecksum.Compute(world, buildings, resources, registry, null, null, null, null, null, new DslVarTable());
+            uint withNull  = SimChecksum.Compute(world, buildings, resources, registry, null, null, null, null, null, null);
+            Assert.True(withEmpty == withNull,
+                "A null DslVarTable does NOT fold byte-identically to an empty table (v16 null≡empty promise broken).");
         }
 
         /// <summary>
@@ -722,7 +800,9 @@ namespace ProjectChimera.Sim.Tests.Golden
             // v13 (Story 4.7): pass an EMPTY ResourceNodeStore (no nodes → Mix(0) node-count) — same rationale.
             // v14 (Story 4.10): pass an EMPTY ResearchStore (both active factions idle, no research authored) —
             // same explicit-production-path rationale.
-            return SimChecksum.Compute(world, buildings, resources, new FactionRegistry(2), new ModifierStore(world), new HeroStore(), new ItemStore(), new ResourceNodeStore(), new ResearchStore());
+            // v16 (Story 7.3): pass an EMPTY DslVarTable (no declared vars/timers) — the fold adds Mix(0) global-count
+            // + Mix(0) timer-count (per active faction the per-player loop is empty), same explicit-production-path rationale.
+            return SimChecksum.Compute(world, buildings, resources, new FactionRegistry(2), new ModifierStore(world), new HeroStore(), new ItemStore(), new ResourceNodeStore(), new ResearchStore(), new DslVarTable());
         }
 
         /// <summary>

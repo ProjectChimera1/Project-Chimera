@@ -1,4 +1,5 @@
 #nullable enable
+using ProjectChimera.Dsl;
 using ProjectChimera.Core;
 using ProjectChimera.Core.Definitions;
 using Xunit;
@@ -49,7 +50,7 @@ namespace ProjectChimera.Sim.Tests.Golden
             };
 
             bool fired = false;
-            var director = new ScenarioDirector(new BuildingStore(), new ResourceStore(Fixed.Zero));
+            var director = new ScenarioDirector(new BuildingStore(), new ResourceStore(Fixed.Zero), new DslVarTable());
             director.OnDisplayMessage = (text, _) => { if (text == ObserverFired) fired = true; };
             director.LoadScenario(new ScenarioData { Triggers = new[] { writer0, writer1, observer } });
             director.Tick(new EntityWorld(), Fixed.One);

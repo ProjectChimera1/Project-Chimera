@@ -4,6 +4,7 @@ using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using ProjectChimera.Core.Definitions;   // TriggerDefinition, TriggerEvent, TriggerCondition, TriggerAction
+using ProjectChimera.Effects;             // EffectNode (embedded run_effect subgraph, Story 7.3)
 
 namespace ProjectChimera.Dsl
 {
@@ -137,6 +138,72 @@ namespace ProjectChimera.Dsl
         }
 
         /// <summary>
+        /// Story 7.3 — union another graph INTO this one, preserving both channels' triggers (never silently
+        /// dropping either). The <paramref name="other"/> graph's node ids are offset past THIS graph's maximum id
+        /// (so the two id spaces never collide), then its nodes and exec/data edges are appended with the same
+        /// offset applied to every edge endpoint — topology is preserved exactly. A subsequent
+        /// <see cref="BuildExecutionOrder"/> over the union re-derives the global Priority-desc / node-id-asc order
+        /// across BOTH channels. Used by <c>ScenarioDirector.LoadScenario</c> to merge the flat
+        /// <see cref="FromFlat"/> graph with an authored <see cref="FromJson"/> graph. Mutates this graph; the
+        /// <paramref name="other"/> graph's node ids are rewritten in place (it is a throwaway freshly-built graph).
+        /// </summary>
+        public void Merge(TriggerGraph other)
+        {
+            int offset = 0;
+            foreach (NodeBase n in Nodes)
+                if (n.Id + 1 > offset) offset = n.Id + 1;
+
+            foreach (NodeBase n in other.Nodes)
+            {
+                n.Id += offset;
+                Nodes.Add(n);
+            }
+            foreach (ExecEdge e in other.ExecEdges)
+                ExecEdges.Add(new ExecEdge(e.Src + offset, e.SrcPort, e.Dst + offset, e.DstPort));
+            foreach (DataEdge e in other.DataEdges)
+                DataEdges.Add(new DataEdge(e.Src + offset, e.SrcPort, e.Dst + offset, e.DstPort, e.Wire));
+        }
+
+        /// <summary>
+        /// Story 7.3 — assemble a single-trigger graph (EventNode --exec--&gt; TriggerNode --exec--&gt;
+        /// EffectActionNode) that fires <paramref name="effect"/> via run_effect when <paramref name="eventKind"/>
+        /// fires. Ids are the canonical 0=trigger, 1=event, 2=run_effect (the editor's hand-built layout, extracted
+        /// here so it is Godot-free and unit-testable). The caller merges the result into the scenario's graph
+        /// channel (accumulating, not overwriting).
+        ///
+        /// <para>Review follow-up: an optional gating condition (<paramref name="conditionKind"/> non-null ⇒ a
+        /// ConditionNode with id 3, data-wired to the trigger's condition-in port) — the editor's preset form lets a
+        /// creator pick a condition alongside the run_effect action, and silently discarding it would fire the
+        /// effect unconditionally against the authored logic. Variable/value/operator apply to
+        /// <c>variable_comparison</c>; other kinds carry their defaults.</para>
+        /// </summary>
+        public static TriggerGraph BuildRunEffectTrigger(string name, string eventKind, EffectNode effect,
+            bool enabled = true, bool runOnce = false,
+            string? conditionKind = null, string? conditionVariable = null, int conditionValue = 0,
+            string conditionOperator = "==")
+        {
+            var g = new TriggerGraph();
+            g.Nodes.Add(new TriggerNode { Id = 0, Name = name, Enabled = enabled, RunOnce = runOnce });
+            g.Nodes.Add(new EventNode { Id = 1, Kind = eventKind });
+            g.Nodes.Add(new EffectActionNode { Id = 2, Effect = effect });
+            g.ExecEdges.Add(new ExecEdge(1, EventExecOutPort, 0, TriggerEventInPort));
+            g.ExecEdges.Add(new ExecEdge(0, TriggerExecOutPort, 2, ActionExecInPort));
+            if (conditionKind is not null)
+            {
+                g.Nodes.Add(new ConditionNode
+                {
+                    Id       = 3,
+                    Kind     = conditionKind,
+                    Variable = conditionVariable,
+                    Value    = conditionValue,
+                    Operator = conditionOperator,
+                });
+                g.DataEdges.Add(new DataEdge(3, ConditionDataOutPort, 0, TriggerConditionInPort, DataWireType.Boolean));
+            }
+            return g;
+        }
+
+        /// <summary>
         /// Lower the graph back to the flat <see cref="TriggerDefinition"/>[]. TriggerNodes are ordered by ascending
         /// <see cref="NodeBase.Id"/> → array order. Per trigger: events = EventNodes with an exec edge into its
         /// event-in port (ascending id); conditions = ConditionNodes with a data edge into its condition-in port
@@ -261,6 +328,91 @@ namespace ProjectChimera.Dsl
         }
 
         /// <summary>
+        /// Story 7.3 — one trigger's execution view: its head <see cref="TriggerNode"/> plus the resolved
+        /// EventNodes (exec edges into its event-in port), ConditionNodes (data edges into its condition-in port),
+        /// and the ordered action chain (exec chain out — <see cref="ActionNode"/> AND <see cref="EffectActionNode"/>,
+        /// which the flat <see cref="ToFlat"/> lowering drops). Nodes are held by reference so the tick walks the
+        /// graph directly (superseding the 7.2 flat lowering) while run_effect executes via the effect executor.
+        /// </summary>
+        public sealed class TriggerExec
+        {
+            public TriggerNode      Trigger    { get; init; } = null!;
+            public EventNode[]      Events     { get; init; } = System.Array.Empty<EventNode>();
+            public ConditionNode[]  Conditions { get; init; } = System.Array.Empty<ConditionNode>();
+            /// <summary>The action chain in exec order — each element is an <see cref="ActionNode"/> or <see cref="EffectActionNode"/>.</summary>
+            public NodeBase[]       Actions    { get; init; } = System.Array.Empty<NodeBase>();
+        }
+
+        /// <summary>
+        /// Build the direct-execution view of this graph in the TOTAL trigger order (Priority desc, then ascending
+        /// persistent node-id — for a <see cref="FromFlat"/> graph this equals Priority desc, then declaration
+        /// index, so legacy flat scenarios execute in exactly the legacy order). Per trigger, the events/conditions
+        /// are resolved by the SAME deterministic edge-walk as <see cref="ToFlat"/> (ascending source id), and the
+        /// action chain follows the exec edges out of the trigger, collecting <see cref="ActionNode"/> AND
+        /// <see cref="EffectActionNode"/> — reusing 7.2's fail-closed cycle guard (a hand-built/JSON cycle rejects
+        /// with a located <see cref="JsonException"/> instead of spinning unbounded).
+        /// </summary>
+        public List<TriggerExec> BuildExecutionOrder()
+        {
+            var byId = new Dictionary<int, NodeBase>(Nodes.Count);
+            foreach (NodeBase n in Nodes)
+                byId[n.Id] = n;
+
+            // Total order: Priority desc, then ascending id (a stable OrderByDescending/ThenBy — no Array.Sort).
+            List<TriggerNode> triggerNodes = Nodes.OfType<TriggerNode>()
+                .OrderByDescending(n => n.Priority).ThenBy(n => n.Id).ToList();
+
+            List<ExecEdge> sortedExec = ExecEdges.OrderBy(x => x).ToList();
+            var result = new List<TriggerExec>(triggerNodes.Count);
+
+            foreach (TriggerNode tn in triggerNodes)
+            {
+                EventNode[] events = ExecEdges
+                    .Where(e => e.Dst == tn.Id && e.DstPort == TriggerEventInPort && byId.ContainsKey(e.Src))
+                    .Select(e => byId[e.Src]).OfType<EventNode>().OrderBy(n => n.Id).ToArray();
+
+                ConditionNode[] conditions = DataEdges
+                    .Where(e => e.Dst == tn.Id && e.DstPort == TriggerConditionInPort && byId.ContainsKey(e.Src))
+                    .Select(e => byId[e.Src]).OfType<ConditionNode>().OrderBy(n => n.Id).ToArray();
+
+                // Walk the exec chain out of the trigger: Trigger → node0 → … (ActionNode or EffectActionNode).
+                var actions = new List<NodeBase>();
+                int currentId = tn.Id, currentPort = TriggerExecOutPort;
+                var visited = new HashSet<int> { currentId };
+                while (true)
+                {
+                    NodeBase? next = null;
+                    foreach (ExecEdge e in sortedExec)
+                    {
+                        if (e.Src == currentId && e.SrcPort == currentPort
+                            && byId.TryGetValue(e.Dst, out NodeBase? nb) && (nb is ActionNode || nb is EffectActionNode))
+                        {
+                            next = nb;
+                            break;
+                        }
+                    }
+                    if (next is null) break;
+                    if (!visited.Add(next.Id))
+                        throw new JsonException(
+                            $"exec chain cycle at node {next.Id} (trigger '{tn.Name}', id {tn.Id}): the action chain must be acyclic.");
+                    actions.Add(next);
+                    currentId   = next.Id;
+                    currentPort = ActionExecOutPort;
+                }
+
+                result.Add(new TriggerExec
+                {
+                    Trigger    = tn,
+                    Events     = events,
+                    Conditions = conditions,
+                    Actions    = actions.ToArray(),
+                });
+            }
+
+            return result;
+        }
+
+        /// <summary>
         /// Canonical serialization: nodes emitted sorted by ascending id; exec/data edges each sorted by
         /// <c>(Src,SrcPort,Dst,DstPort)</c>. Uses <see cref="DslJson.Options"/> (the closed-registry
         /// <see cref="NodeBaseJsonConverter"/> + <c>FixedJsonConverter</c>). Two structurally-equal graphs (nodes/
@@ -277,7 +429,10 @@ namespace ProjectChimera.Dsl
             return JsonSerializer.Serialize(shape, DslJson.Options);
         }
 
-        /// <summary>Deserialize a graph from canonical (or any) JSON via <see cref="DslJson.Options"/>.</summary>
+        /// <summary>Deserialize a graph from canonical (or any) JSON via <see cref="DslJson.Options"/>.
+        /// Node ids must be non-negative (parse-level sanity, not 7.7 structural validation): every graph this module
+        /// emits is 0-based, and <see cref="Merge"/>'s id-offset scheme assumes it — a negative authored id could
+        /// alias onto an existing node after offsetting and silently drop/rewire a trigger.</summary>
         public static TriggerGraph FromJson(string json)
         {
             GraphJsonShape shape = JsonSerializer.Deserialize<GraphJsonShape>(json, DslJson.Options)
@@ -286,6 +441,9 @@ namespace ProjectChimera.Dsl
             if (shape.Nodes is not null)     graph.Nodes.AddRange(shape.Nodes);
             if (shape.ExecEdges is not null) graph.ExecEdges.AddRange(shape.ExecEdges);
             if (shape.DataEdges is not null) graph.DataEdges.AddRange(shape.DataEdges);
+            foreach (NodeBase n in graph.Nodes)
+                if (n.Id < 0)
+                    throw new JsonException($"graph node id {n.Id} must be non-negative (canonical node ids are 0-based).");
             return graph;
         }
 

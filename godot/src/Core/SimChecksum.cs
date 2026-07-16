@@ -1,4 +1,6 @@
 #nullable enable
+using System;
+using ProjectChimera.Dsl;     // DslVarTable (Story 7.3 typed/scoped variable + timer fold)
 using ProjectChimera.Effects; // ModifierStore (Option B fold param, Story 2.2b) + StatusFlags — same sim layer
 
 namespace ProjectChimera.Core
@@ -160,8 +162,23 @@ namespace ProjectChimera.Core
         ///        CanonicalModelHash/StartStateHash are deliberately untouched). Fixed.Raw → cross-platform. Every
         ///        existing golden scenario is FLAT (Elevation == 0), so this adds one Mix(0) per alive entity — the
         ///        AC-authorized intentional expansion that re-baselines ALL 23 per-tick goldens in this one commit.
+        ///   v16 — Story 7.3: fold the top-level <see cref="DslVarTable"/> — live typed/scoped DSL variables + timers —
+        ///        for the FIRST TIME (variables/timers were improvised inside ScenarioDirector and NEVER folded, a
+        ///        silent-desync gap this story closes). After the ResearchStore fold, before the RNG fold, the table
+        ///        folds: a leading Global-count then every live Global value (Fixed.Raw/int) in declaration/creation
+        ///        index; then, per Per-player DECLARATION (declaration index ascending), EVERY player slot 0..7
+        ///        ascending — NOT only the active factions, because SetInt/ClampSlot can write any slot and a written
+        ///        slot must never escape the fold (the review-hardened form; ResourceStore's ActiveFactions loop is
+        ///        deliberately NOT mirrored here); then a leading timer-count and every timer's remaining ticks in
+        ///        creation index. TriggerLocal scratch is NEVER folded (per-firing, freed at trigger end). A null
+        ///        store folds via DslVarTable.FoldEmpty — byte-identical to a non-null EMPTY table (a 0 global-count
+        ///        mix + a 0 timer-count mix; legacy/test callers only, SimulationHost always passes a real store).
+        ///        Every existing golden carries an EMPTY table (no declared vars/timers, empty triggers), so the fold
+        ///        adds Mix(0)-count steps that move the hash even with zero live state — the epic-mandated,
+        ///        behavior-neutral golden re-baseline (parity is proven by the migration/execution unit tests). All
+        ///        int/Fixed.Raw → cross-platform safe. One scheduled re-baseline of ALL per-tick goldens.
         /// </summary>
-        public const int AlgoVersion = 15;
+        public const int AlgoVersion = 16;
 
         /// <summary>
         /// Compute a full-state checksum for desync detection.
@@ -169,7 +186,8 @@ namespace ProjectChimera.Core
         /// </summary>
         public static uint Compute(EntityWorld world, BuildingStore buildings, ResourceStore resources,
                                    FactionRegistry factions, ModifierStore? modifiers = null, HeroStore? heroes = null,
-                                   ItemStore? items = null, ResourceNodeStore? nodes = null, ResearchStore? research = null)
+                                   ItemStore? items = null, ResourceNodeStore? nodes = null, ResearchStore? research = null,
+                                   DslVarTable? vars = null)
         {
             // Contract guard for the registry param added in Story 1.3a: a future direct caller (e.g. the
             // 1.9a/9.1 server checksum collector) gets a clear error instead of an opaque NRE in the Ore loop.
@@ -464,6 +482,20 @@ namespace ProjectChimera.Core
             {
                 hash = Mix(hash, 0); // null store ≡ single Mix(0) (legacy/test callers only)
             }
+
+            // ── DslVarTable mutable state (v16, Story 7.3) — live typed/scoped variables + timers ──
+            // The FIRST-EVER fold of the DSL variable/timer store (variables/timers were improvised inside
+            // ScenarioDirector and never folded — a silent-desync gap this story closes). The table folds Global then
+            // Per-player variable values (EVERY player slot 0..7, ascending — because a write can target any slot, not
+            // only active factions, so no written slot may escape the checksum) then timer remaining-ticks, each in
+            // ascending declaration/creation index; TriggerLocal scratch is never folded. A NULL store folds
+            // BYTE-IDENTICALLY to an EMPTY table (DslVarTable.FoldEmpty — a 0-global-count then a 0-timer-count), so
+            // null and empty are interchangeable (legacy/test callers only; SimulationHost always passes a real
+            // store). All int/Fixed.Raw → cross-platform safe.
+            if (vars != null)
+                vars.FoldInto(ref hash, Mix);
+            else
+                DslVarTable.FoldEmpty(ref hash, Mix); // null store ≡ empty table (byte-identical fold)
 
             // ── RNG state (v3, Story 1.5) ─────────────────────────────────────────
             // The single shared SimRng's state IS sim truth: once Epic 2 effects draw from it, a divergent

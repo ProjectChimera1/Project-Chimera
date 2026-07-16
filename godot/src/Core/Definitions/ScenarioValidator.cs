@@ -2,6 +2,8 @@
 using System;
 using System.Collections.Generic;
 using ProjectChimera.Core; // Faction, FactionRegistry, BuildingType
+using ProjectChimera.Dsl; // Story 7.3 — TriggerGraph / NodeBase / EffectActionNode (trigger_graph gate)
+using ProjectChimera.Effects; // Story 7.3 — EffectBounds (trigger-embedded effect load-time bounds gate)
 using ProjectChimera.Navigation; // PathabilityGrid (Story 6.5 blocked-cell fail-closed)
 
 namespace ProjectChimera.Core.Definitions
@@ -371,6 +373,68 @@ namespace ProjectChimera.Core.Definitions
                         "at least ~1/65536 world units so the region survives the float→Fixed resolution.", validated);
             }
 
+            // ── Variables (Story 7.3, AR-39) — fail-closed when present so a hand-edited/cheat declaration (a blank or
+            //    duplicate variable name) is rejected at the pre-tick gate. type/scope are closed enums structurally
+            //    (an unknown JSON name fails closed at deserialize via JsonStringEnumConverter), so only name
+            //    well-formedness/uniqueness is checked here. NULL (every existing scenario) ⇒ nothing to validate ⇒
+            //    the pass path is unchanged. Declarations are validated as INPUT ONLY — deliberately NOT folded into
+            //    the MP start-state handshake (that stays with Triggers/Regions until 7.7). First-fail located error. ──
+            // declaredVarInfo maps each declared variable NAME → its (Type, Scope), so the triggers loop below can
+            // fail-closed a set_variable/variable_comparison that references a non-Int or (for a condition read) a
+            // TriggerLocal-scoped variable (Story 7.3 P4/P5). An UNDECLARED name is NOT in the map and stays legal
+            // (it resolves to a Global/Int/0 default at runtime — the legacy GetVariable/SetVariable semantics).
+            var declaredVarInfo = new Dictionary<string, (DslValueType Type, VarScope Scope)>(StringComparer.Ordinal);
+            if (m.Variables != null)
+            {
+                var declaredVars = new HashSet<string>(StringComparer.Ordinal);
+                for (int i = 0; i < m.Variables.Length; i++)
+                {
+                    ScenarioVariable v = m.Variables[i];
+                    if (v is null) return ValidationResult.Fail($"scenario.variables[{i}] is null.", validated);
+                    if (string.IsNullOrWhiteSpace(v.Name))
+                        return ValidationResult.Fail($"scenario.variables[{i}].name must be a non-empty name.", validated);
+                    if (!declaredVars.Add(v.Name))
+                        return ValidationResult.Fail($"scenario.variables[{i}].name='{v.Name}' is a duplicate.", validated);
+                    // Review (7.3 follow-up): the initial must be representable in the declared type — an Int initial
+                    // with a fractional part would silently truncate at load (ScenarioDirector.ScopeInitialRaw →
+                    // ToInt: 2.5 → 2), and a Bool initial outside {0,1} would store a non-normalized truthy int.
+                    // Fail-closed instead of silently rewriting what the author declared. (Negative whole Ints pass:
+                    // their 16.16 fractional bits are zero.)
+                    if (v.Type == DslValueType.Int && (v.Initial.Raw & (Fixed.ONE - 1)) != 0)
+                        return ValidationResult.Fail(
+                            $"scenario.variables[{i}].initial must be a whole number for an Int-typed variable (it would silently truncate).", validated);
+                    if (v.Type == DslValueType.Bool && v.Initial != Fixed.Zero && v.Initial != Fixed.One)
+                        return ValidationResult.Fail(
+                            $"scenario.variables[{i}].initial must be 0 or 1 for a Bool-typed variable.", validated);
+                    declaredVarInfo[v.Name] = (v.Type, v.Scope);
+                }
+            }
+
+            // ── Timers (Story 7.3, AR-39) — fail-closed when present: a blank or duplicate timer name is rejected.
+            //    A create_timer/timer_expires that names a variable is inert; a declared timer is a real timer the
+            //    dangling-timer check below accepts (declaredTimers is seeded with these names). NULL ⇒ nothing to
+            //    validate. Declarations are NOT folded into the MP handshake (Triggers/Regions basis). ──
+            var declaredTimerNames = new HashSet<string>(StringComparer.Ordinal);
+            if (m.Timers != null)
+            {
+                for (int i = 0; i < m.Timers.Length; i++)
+                {
+                    ScenarioTimer tm = m.Timers[i];
+                    if (tm is null) return ValidationResult.Fail($"scenario.timers[{i}] is null.", validated);
+                    if (string.IsNullOrWhiteSpace(tm.Name))
+                        return ValidationResult.Fail($"scenario.timers[{i}].name must be a non-empty name.", validated);
+                    if (!declaredTimerNames.Add(tm.Name))
+                        return ValidationResult.Fail($"scenario.timers[{i}].name='{tm.Name}' is a duplicate.", validated);
+                    // Review (7.3 follow-up): a declared duration must be positive — the load path clamps via
+                    // Math.Max(1, SecondsToTicks(seconds)), so a zero/negative declaration would be silently rewritten
+                    // into a 1-tick timer firing on the first tick. The create_timer ACTION already requires > 0 at
+                    // runtime; the declaration path must not be more permissive than the action it formalizes.
+                    if (tm.Seconds <= Fixed.Zero)
+                        return ValidationResult.Fail(
+                            $"scenario.timers[{i}].seconds must be > 0 (a zero/negative duration would silently clamp to a 1-tick timer).", validated);
+                }
+            }
+
             // ── Triggers (Story 1.11, AC3 — Decision #1: extend THIS gate rather than add a second validator) ──
             // The as-built path wrote accepted LLM/editor triggers straight into Triggers[] and reached
             // ScenarioDirector WITHOUT any validation; AR-39 now inspects them too, so non-deterministic /
@@ -384,9 +448,35 @@ namespace ProjectChimera.Core.Definitions
             // First failure returns a single located error, mirroring the buildings/units loops above.
             TriggerDefinition[] triggers = m.Triggers ?? Array.Empty<TriggerDefinition>();
 
+            // ── Trigger graph channel, parse gate (Story 7.3, AR-39; review follow-up hoisted it ABOVE the flat
+            //    passes) — the trigger_graph canonical IR is a SEPARATE execution channel that ScenarioDirector MERGES
+            //    with the flat Triggers, so it must clear the SAME pre-tick gate: (1) TriggerGraph.FromJson parses
+            //    fail-closed through the closed-registry converter; (2) BuildExecutionOrder runs 7.2's fail-closed
+            //    exec-chain CYCLE guard — previously a cyclic authored graph passed validation and threw the same
+            //    JsonException inside LoadScenario, i.e. the exact PARTIAL-APPLY crash this gate exists to close.
+            //    Both throw located JsonExceptions; System.Text.Json can also surface NotSupportedException on hostile
+            //    input, so the catch covers it (a gate whose purpose is containing hand-edited/cheat input must not
+            //    crash on it). Deep STRUCTURAL validation (dangling/forked/dup-id edges) stays deferred to Story 7.7.
+            //    NULL/whitespace (every existing scenario) ⇒ nothing to validate ⇒ the pass path is unchanged. ──
+            TriggerGraph? parsedGraph = null;
+            if (!string.IsNullOrWhiteSpace(m.TriggerGraphJson))
+            {
+                try
+                {
+                    parsedGraph = TriggerGraph.FromJson(m.TriggerGraphJson!);
+                    parsedGraph.BuildExecutionOrder(); // the 7.2 cycle guard, run AT the gate instead of mid-apply
+                }
+                catch (Exception ex) when (ex is System.Text.Json.JsonException or NotSupportedException)
+                {
+                    return ValidationResult.Fail($"scenario.trigger_graph is malformed: {ex.Message}", validated);
+                }
+            }
+
             // Pass 1: collect every timer name a create_timer action declares, so a timer_expires reference can be
             // checked against it (the only cross-trigger reference; variables default to 0 at read, so they need none).
-            var declaredTimers = new HashSet<string>(StringComparer.Ordinal);
+            // Story 7.3: seed it with the declared scenario timers too, so a timer_expires naming a declared timer
+            // (never created by any create_timer action) is accepted rather than flagged dangling.
+            var declaredTimers = new HashSet<string>(declaredTimerNames, StringComparer.Ordinal);
             for (int i = 0; i < triggers.Length; i++)
             {
                 if (triggers[i] is null) continue; // located-rejected in pass 2; don't NRE while collecting
@@ -395,6 +485,13 @@ namespace ProjectChimera.Core.Definitions
                     if (collectActions[a].Type == "create_timer" && !string.IsNullOrEmpty(collectActions[a].TimerName))
                         declaredTimers.Add(collectActions[a].TimerName!);
             }
+            // Review (7.3 follow-up): the graph channel participates in the SAME cross-channel timer namespace (the
+            // director merges both channels into one execution graph), so its create_timer actions seed the union too —
+            // otherwise a flat timer_expires referencing a graph-created timer is false-flagged as dangling.
+            if (parsedGraph != null)
+                foreach (NodeBase gn in parsedGraph.Nodes)
+                    if (gn is ActionNode gCollect && gCollect.Kind == "create_timer" && !string.IsNullOrEmpty(gCollect.TimerName))
+                        declaredTimers.Add(gCollect.TimerName!);
 
             // Pass 2: validate each trigger's events, conditions, and actions in declaration order.
             for (int i = 0; i < triggers.Length; i++)
@@ -433,6 +530,24 @@ namespace ProjectChimera.Core.Definitions
                         return ValidationResult.Fail($"{cp}.building_type='{c.BuildingType}' is not a known BuildingType.", validated);
                     if (!InSet(_operators, c.Operator))
                         return ValidationResult.Fail($"{cp}.operator='{c.Operator}' is not a known comparison operator.", validated);
+                    // Story 7.3 (P4/P5): a variable_comparison READS a variable BEFORE the trigger-local scope is
+                    // entered, so a TriggerLocal-scoped var would read 0 (it is action-write-scratch only) — reject it
+                    // fail-closed. It must also be Int-typed (non-Int typed read is Story 7.4). Only DECLARED names
+                    // are checked; an undeclared name stays legal (Global/Int/0 default). Its faction (the PerPlayer
+                    // slot selector) is already range-gated by the canonical CheckFactionSlot above — the engine
+                    // ceiling [0,3] is a strict subset of the DSL slot range [0,DslVarTable.PlayerSlots), so a
+                    // separate PlayerSlots check here would be unreachable dead code (review follow-up removed it).
+                    if (c.Type == "variable_comparison" && !string.IsNullOrEmpty(c.Variable)
+                        && declaredVarInfo.TryGetValue(c.Variable, out var cInfo))
+                    {
+                        if (cInfo.Scope == VarScope.TriggerLocal)
+                            return ValidationResult.Fail(
+                                $"{cp}.variable='{c.Variable}' is TriggerLocal-scoped and cannot be read in a condition " +
+                                $"(conditions evaluate before the trigger-local scope is entered — it would read 0).", validated);
+                        if (cInfo.Type != DslValueType.Int)
+                            return ValidationResult.Fail(
+                                $"{cp}.variable='{c.Variable}' is {cInfo.Type}-typed; a variable_comparison reads only Int-typed variables (7.3).", validated);
+                    }
                     // Story 6.4: a unit_in_region condition must name a DECLARED region (dangling-ref fail-closed,
                     // mirroring the timer_expires dangling check) — an undefined/empty region_id would silently
                     // never match at runtime, an almost-certain authoring/LLM error.
@@ -460,6 +575,19 @@ namespace ProjectChimera.Core.Definitions
                         return ValidationResult.Fail($"{ap}.type='{a.Type}' is not a known trigger action type.", validated);
                     string? fe = CheckFactionSlot($"{ap}.faction", a.Faction);
                     if (fe != null) return ValidationResult.Fail(fe, validated);
+                    // Story 7.3 (P5): a set_variable WRITES a variable — a declared referent must be Int-typed
+                    // (non-Int typed write is Story 7.4). TriggerLocal IS allowed here (set_variable is the
+                    // action-write-scratch path). Only DECLARED names are checked (undeclared → Global/Int default).
+                    // Its faction (the PerPlayer slot selector) is already range-gated by CheckFactionSlot above —
+                    // the engine ceiling [0,3] ⊂ [0,DslVarTable.PlayerSlots), so a separate PlayerSlots check here
+                    // would be unreachable dead code (review follow-up removed it).
+                    if (a.Type == "set_variable" && !string.IsNullOrEmpty(a.Variable)
+                        && declaredVarInfo.TryGetValue(a.Variable, out var aInfo))
+                    {
+                        if (aInfo.Type != DslValueType.Int)
+                            return ValidationResult.Fail(
+                                $"{ap}.variable='{a.Variable}' is {aInfo.Type}-typed; set_variable writes only Int-typed variables (7.3).", validated);
+                    }
                     if (a.Type == "spawn_unit")
                     {
                         // Story 7.1: a.X/a.Z are now Fixed. Finiteness and the 16.16 range are guaranteed
@@ -472,6 +600,78 @@ namespace ProjectChimera.Core.Definitions
                         // closed (same cell domain as the sim) — a spawned unit could never legally occupy it.
                         string? sbe = CheckNotBlocked(ap, "spawn_unit position", a.X, a.Z, painted);
                         if (sbe != null) return ValidationResult.Fail(sbe, validated);
+                    }
+                }
+            }
+
+            // ── Trigger graph channel, semantic gate (Story 7.3, AR-39; parse + cycle guard ran ABOVE Pass 1) —
+            //    the graph channel MERGES into the same execution walk as the flat Triggers, so its nodes get the
+            //    SAME per-leaf rulebook the flat loops above apply (review follow-up: previously the graph channel
+            //    escaped every semantic check — a graph condition could read a TriggerLocal/Fixed-typed variable or
+            //    index an out-of-range faction that the flat channel rejects):
+            //      • EffectBounds.Validate on every run_effect embed — the SAME load-time bounds gate every other
+            //        effect source gets (AbilityValidator/ItemDefinitionValidator), instead of silent runtime
+            //        truncation.
+            //      • CheckFactionSlot on every event/condition/action node faction (the engine-ceiling OOB crash
+            //        class is identical in both channels).
+            //      • The P4/P5 declared-variable rules (TriggerLocal not readable in a condition; Int-only leaves).
+            //      • The dangling-timer check for graph timer_expires events, against the cross-channel union.
+            //    Deep STRUCTURAL graph validation (dangling/forked/dup-id edges) stays deferred to Story 7.7. ──
+            if (parsedGraph != null)
+            {
+                foreach (NodeBase node in parsedGraph.Nodes)
+                {
+                    switch (node)
+                    {
+                        case EffectActionNode effectNode:
+                        {
+                            EffectBoundsResult effBounds = EffectBounds.Validate(effectNode.Effect);
+                            if (!effBounds.IsValid)
+                                return ValidationResult.Fail(
+                                    $"scenario.trigger_graph run_effect node {node.Id}: {effBounds.Error}", validated);
+                            break;
+                        }
+                        case EventNode ge:
+                        {
+                            string gp = $"scenario.trigger_graph event node {ge.Id}";
+                            string? fe = CheckFactionSlot($"{gp}.faction", ge.Faction);
+                            if (fe != null) return ValidationResult.Fail(fe, validated);
+                            if (ge.Kind == "timer_expires" && !string.IsNullOrEmpty(ge.TimerName)
+                                && !declaredTimers.Contains(ge.TimerName))
+                                return ValidationResult.Fail(
+                                    $"{gp}.timer_name='{ge.TimerName}' references no declared timer or create_timer action (either channel).", validated);
+                            break;
+                        }
+                        case ConditionNode gc:
+                        {
+                            string gp = $"scenario.trigger_graph condition node {gc.Id}";
+                            string? fe = CheckFactionSlot($"{gp}.faction", gc.Faction);
+                            if (fe != null) return ValidationResult.Fail(fe, validated);
+                            if (gc.Kind == "variable_comparison" && !string.IsNullOrEmpty(gc.Variable)
+                                && declaredVarInfo.TryGetValue(gc.Variable, out var gcInfo))
+                            {
+                                if (gcInfo.Scope == VarScope.TriggerLocal)
+                                    return ValidationResult.Fail(
+                                        $"{gp}.variable='{gc.Variable}' is TriggerLocal-scoped and cannot be read in a condition " +
+                                        $"(conditions evaluate before the trigger-local scope is entered — it would read 0).", validated);
+                                if (gcInfo.Type != DslValueType.Int)
+                                    return ValidationResult.Fail(
+                                        $"{gp}.variable='{gc.Variable}' is {gcInfo.Type}-typed; a variable_comparison reads only Int-typed variables (7.3).", validated);
+                            }
+                            break;
+                        }
+                        case ActionNode ga:
+                        {
+                            string gp = $"scenario.trigger_graph action node {ga.Id}";
+                            string? fe = CheckFactionSlot($"{gp}.faction", ga.Faction);
+                            if (fe != null) return ValidationResult.Fail(fe, validated);
+                            if (ga.Kind == "set_variable" && !string.IsNullOrEmpty(ga.Variable)
+                                && declaredVarInfo.TryGetValue(ga.Variable, out var gaInfo)
+                                && gaInfo.Type != DslValueType.Int)
+                                return ValidationResult.Fail(
+                                    $"{gp}.variable='{ga.Variable}' is {gaInfo.Type}-typed; set_variable writes only Int-typed variables (7.3).", validated);
+                            break;
+                        }
                     }
                 }
             }

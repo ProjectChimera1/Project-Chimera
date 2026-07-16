@@ -1,4 +1,5 @@
 #nullable enable
+using ProjectChimera.Dsl;
 using System.Collections;
 using System.Collections.Generic;
 using System.Reflection;
@@ -39,14 +40,17 @@ namespace ProjectChimera.Sim.Tests.Golden
         /// </summary>
         private static List<string> EmittedTimerOrder(string[] creationOrder)
         {
-            var director = new ScenarioDirector(new BuildingStore(), new ResourceStore(Fixed.Zero));
-
-            var namesField = typeof(ScenarioDirector).GetField("_timerNames", BindingFlags.NonPublic | BindingFlags.Instance)!;
-            var remField   = typeof(ScenarioDirector).GetField("_timerRemaining", BindingFlags.NonPublic | BindingFlags.Instance)!;
-            var names = (List<string>)namesField.GetValue(director)!;
-            var remaining = (List<int>)remField.GetValue(director)!;
+            // Story 7.3: the timer store hoisted from ScenarioDirector into the top-level DslVarTable. Reflect into
+            // the table's dense _timerNames/_timerRemaining lists (still creation-index SoA), inject it into the
+            // director, and invoke the (unchanged-behavior) CollectEvents emission path.
+            var vars = new DslVarTable();
+            var namesField = typeof(DslVarTable).GetField("_timerNames", BindingFlags.NonPublic | BindingFlags.Instance)!;
+            var remField   = typeof(DslVarTable).GetField("_timerRemaining", BindingFlags.NonPublic | BindingFlags.Instance)!;
+            var names = (List<string>)namesField.GetValue(vars)!;
+            var remaining = (List<int>)remField.GetValue(vars)!;
             names.Clear();
             remaining.Clear();
+            var director = new ScenarioDirector(new BuildingStore(), new ResourceStore(Fixed.Zero), vars);
             foreach (string name in creationOrder)
             {
                 names.Add(name);
@@ -93,7 +97,7 @@ namespace ProjectChimera.Sim.Tests.Golden
         public void SubTickCreateTimer_StillFiresNextTick()
         {
             const string fired = "TIMER_FIRED";
-            var director = new ScenarioDirector(new BuildingStore(), new ResourceStore(Fixed.Zero));
+            var director = new ScenarioDirector(new BuildingStore(), new ResourceStore(Fixed.Zero), new DslVarTable());
             bool didFire = false;
             director.OnDisplayMessage = (text, _) => { if (text == fired) didFire = true; };
             director.LoadScenario(new ScenarioData
