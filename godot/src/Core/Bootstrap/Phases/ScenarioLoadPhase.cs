@@ -239,21 +239,15 @@ namespace ProjectChimera.Core.Bootstrap
             {
                 ScenarioData? s = _ctx.Scenario;
 
-                // 1-3) Resolve the union grid (painted ∪ slope-derived, or null when nothing is blocked) via the pure,
-                //    Tier-1-tested PathabilityGrid.Resolve. The single float→Fixed boundary for the threshold stays
-                //    here and is applied ONLY when slope-auto-block is on with a positive threshold, so an inert config
-                //    never touches Fixed.FromFloat; the derivation itself is pure Fixed.
-                bool slopeOn = s != null && s.SlopeAutoBlock && s.SlopeBlockThreshold > 0f;
-                Fixed threshold = slopeOn ? Fixed.FromFloat(s!.SlopeBlockThreshold) : Fixed.Zero;
-
-                // Story 6.6: build the blocking-prop + water footprint mask (the SAME StampPropInto/StampWaterInto
-                // derivation the hash + validator use) and hand it to Resolve as a third blocked source. A blocking
-                // prop stamps one cell; a water volume stamps its rect. Null when nothing blocks so the flat path is
-                // untouched. Rebuilt from source every load ⇒ a moved/deleted prop or removed water un-stamps for free.
-                bool[]? footprint = BuildBlockingFootprintMask(s);
-
-                Navigation.PathabilityGrid? grid = Navigation.PathabilityGrid.Resolve(
-                    s?.PathabilityBlocked, s?.SlopeAutoBlock ?? false, threshold, _lastElevationGrid, footprint);
+                // 1-3) Resolve the union grid (painted ∪ slope-derived ∪ prop/water footprint, or null when nothing is
+                //    blocked) via the ONE shared, Godot-free ScenarioApplier.BuildPathabilityGrid recipe (DW-157 /
+                //    Story 14.8). The Edit→Play F5 re-apply path (MainScene.ResetToAuthoredStart) routes through the
+                //    EXACT same method, so boot and re-apply can never diverge on the blocked-cell set. The applier's
+                //    elevation grid == _lastElevationGrid at boot (both set in BuildAndInjectElevationGrid above), so
+                //    the slope re-derivation reads the identical terrain — this refactor is byte-identical to the
+                //    former inline slopeOn/threshold/footprint/Resolve block.
+                Navigation.PathabilityGrid? grid =
+                    ProjectChimera.Core.Sim.ScenarioApplier.BuildPathabilityGrid(s, _lastElevationGrid);
 
                 // 4) Inject into the sim sinks: the applier threads it into EntityWorld at Apply; the FlowFieldSystem
                 //    ORs the static mask into its obstacle map on the next RebuildObstacles (FlowFieldInit phase). The
@@ -263,7 +257,7 @@ namespace ProjectChimera.Core.Bootstrap
                 _ctx.Pathability = grid;
 
                 if (grid != null)
-                    GD.Print($"[ScenarioLoad] Built sim pathability grid (slope-auto-block={slopeOn}).");
+                    GD.Print($"[ScenarioLoad] Built sim pathability grid (slope-auto-block={s != null && s.SlopeAutoBlock && s.SlopeBlockThreshold > 0f}).");
             }
             catch (System.Exception ex)
             {
@@ -275,16 +269,6 @@ namespace ProjectChimera.Core.Bootstrap
                 GD.PrintErr($"[ScenarioLoad] Pathability grid build failed ({ex.Message}) — map fully passable.");
             }
         }
-
-        /// <summary>
-        /// Story 6.6 — build the blocking-prop + water footprint mask (or null when none block), using the SAME
-        /// Godot-free <c>PathabilityGrid.StampPropInto</c>/<c>StampWaterInto</c> derivation the CanonicalModelHash fold
-        /// and ScenarioValidator use, so all three agree on which cells a blocking prop / water volume occupies.
-        /// </summary>
-        private static bool[]? BuildBlockingFootprintMask(ScenarioData? s)
-            // Story 6.6 (review V1): the ONE shared derivation — load, hash, and validator all route through it so the
-            // runtime grid can never block a different cell set than the handshake hash / validator certified.
-            => Navigation.PathabilityGrid.BuildBlockingFootprint(s?.Props, s?.Water);
 
         /// <summary>
         /// Story 1.7 shadow-mode gate: run the model through the validator and return its result. On failure, log

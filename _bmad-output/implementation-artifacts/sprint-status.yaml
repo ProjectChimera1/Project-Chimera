@@ -230,7 +230,7 @@ development_status:
   14-6-editor-tool-ux-consolidation-single-active-dock-arbitration-unified-hotkey-map: backlog
   # 14-7/14-8: DW-164/DW-157 pulled forward from the 2026-07-15 pre-Epic-7 sweep partition as Epic-7 protectors (Alec, 2026-07-15). 14-7 (DW-164, high) = the hard gate, must land before Epic 7 (WinConditionPhase.cs is Epic 7's win-condition file); 14-8 (DW-157, medium) should-precede; 14-6 can slip into the first Epic 7 lull.
   14-7-remediation-dw-164-map-export-new-map-write-path-hard-validate-before-persist: done
-  14-8-remediation-dw-157-rebuild-static-pathability-grid-on-edit-play-reapply: backlog
+  14-8-remediation-dw-157-rebuild-static-pathability-grid-on-edit-play-reapply: done
   epic-14-retrospective: optional
 
 action_items:

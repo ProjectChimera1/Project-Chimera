@@ -1630,11 +1630,47 @@ namespace ProjectChimera.Core
             // 3. Clear every store to its authored-start (post-ctor) state — in place, no host reconstruction.
             _host.ClearForReset();
 
+            // 3b. DW-157 (Story 14.8): rebuild the static PathabilityGrid from the CURRENT edited ScenarioData and
+            //     re-inject it into the SAME 3 sinks the boot path (ScenarioLoadPhase.BuildAndInjectPathabilityGrid)
+            //     fans it out to. Boot builds this grid ONCE and the applier previously re-threaded its STALE cached
+            //     grid on every re-apply, so a blocking prop / water volume / painted cell added, moved, or removed in
+            //     Edit mode was walked straight through until a full reload. Routing through the ONE shared
+            //     ScenarioApplier.BuildPathabilityGrid recipe (the same the boot path uses) guarantees byte-identical
+            //     blocked cells for an unchanged model. The applier grid MUST be set BEFORE Apply (Apply threads
+            //     _pathability into EntityWorld before any spawn). Reuse the applier's ALREADY-injected elevation grid
+            //     for slope re-derivation — DW-157 is painted/prop/water only, terrain re-bake is out of scope. Skipped
+            //     on the fallback path (fallback maps are flat, as at boot).
+            if (hasScenario)
+            {
+                var grid = ScenarioApplier.BuildPathabilityGrid(_ctx.Scenario, _applier.ElevationGrid);
+                _applier.SetPathabilityGrid(grid);           // → threaded into EntityWorld inside Apply (below)
+                _ctx.FlowFieldSys?.SetStaticBlocked(grid?.Blocked); // routing half (OR'd in on RebuildObstacles)
+                _ctx.Pathability = grid;                     // editor overlay
+            }
+            else
+            {
+                // Fallback re-apply is flat: the boot fallback path clears exactly these sinks
+                // (ScenarioLoadPhase, "a REUSED applier must not carry a prior sculpted load's blocking"), and
+                // ResetToAuthoredStart IS the reused-applier case — so clear them symmetrically here. Without this a
+                // scenario→fallback transition would leave a prior scenario's blocked cells stranded on the sinks.
+                _applier.SetPathabilityGrid(null);
+                _ctx.FlowFieldSys?.SetStaticBlocked(null);
+                _ctx.Pathability = null;
+            }
+
             // 4. Re-apply the authored scenario against the cleared host. ScenarioApplier.Apply is additive/non-
             //    idempotent, so it MUST run only after the clear; LoadScenario inside it rebuilds ScenarioDirector
             //    (trigger/timer/variable) state, making Edit-side trigger add/remove/enable live this Play.
             if (hasScenario) _applier.Apply(validated);
             else             _applier.ApplyFallback();
+
+            // 4b. DW-157 (Story 14.8): force the flow-field static obstacle mask to take effect THIS Play. The
+            //     per-frame FlowFieldBridge.CheckBuildingChanges only rebuilds obstacles when the BUILDING set changed
+            //     — an obstacle-only edit leaves buildings identical across the reset, so without this explicit rebuild
+            //     the refreshed static mask injected above would never be OR'd into the obstacle map until a building
+            //     placement/destruction happened to trigger a rebuild. Unconditional: on the fallback branch the mask
+            //     was just cleared to null above, so this drops any prior scenario's stranded static marks too.
+            _ctx.FlowFieldSys?.RebuildObstacles(_buildings);
 
             // 5. Re-mint the deployed hero as deterministic init state (non-additive: the store was just cleared).
             //    Discard path re-mints the profile's authored Level/Xp; preserve path re-mints the snapshot values.

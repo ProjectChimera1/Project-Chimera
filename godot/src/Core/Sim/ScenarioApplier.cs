@@ -94,6 +94,38 @@ namespace ProjectChimera.Core.Sim
         /// </summary>
         public void SetPathabilityGrid(ProjectChimera.Navigation.PathabilityGrid? grid) => _pathability = grid;
 
+        /// <summary>Story 6.3 / DW-157: the currently-injected finalized-terrain elevation grid (or null for a
+        /// flat/legacy map). Exposed so the Edit→Play re-apply path (<c>MainScene.ResetToAuthoredStart</c>) can reuse
+        /// the ALREADY-injected grid to re-derive slope-blocked cells without re-baking terrain (DW-157 is
+        /// painted/prop/water only — terrain re-bake is out of scope).</summary>
+        public ElevationGrid? ElevationGrid => _elevationGrid;
+
+        /// <summary>
+        /// DW-157 (Story 14.8) — THE single Godot-free derivation of the static <see cref="ProjectChimera.Navigation.PathabilityGrid"/>
+        /// (painted ∪ slope-derived ∪ blocking-prop/water footprint blocked cells, or <c>null</c> when nothing is
+        /// blocked). BOTH lifecycle paths route through this ONE recipe — the boot build
+        /// (<c>ScenarioLoadPhase.BuildAndInjectPathabilityGrid</c>) and the Edit→Play F5 re-apply
+        /// (<c>MainScene.ResetToAuthoredStart</c>) — so the two can never disagree on the blocked-cell set (the set
+        /// <see cref="ProjectChimera.Core.Definitions.CanonicalModelHash"/> certified). Centralizing it here structurally
+        /// prevents the DW-157 defect class (boot vs. re-apply drifting), mirroring how
+        /// <c>PathabilityGrid.BuildBlockingFootprint</c> is the sole footprint recipe for load/hash/validator.
+        ///
+        /// <para>This is the single float→<see cref="Fixed"/> slope-threshold boundary: <c>Fixed.FromFloat</c> is applied
+        /// to the slope threshold ONLY when slope-auto-block is on with a positive threshold (an inert config never
+        /// touches it); the derivation itself is pure <see cref="Fixed"/>. The recipe lives in the applier (Core.Sim,
+        /// which already references <see cref="ScenarioData"/>/<see cref="ElevationGrid"/>/<see cref="Fixed"/>/
+        /// <c>PathabilityGrid</c>) so <c>PathabilityGrid</c> stays Godot- and Definitions-free (keeps taking primitive
+        /// arrays). Never throws — <c>Resolve</c> degrades a flat/legacy map to <c>null</c>.</para>
+        /// </summary>
+        public static ProjectChimera.Navigation.PathabilityGrid? BuildPathabilityGrid(ScenarioData? s, ElevationGrid? elev)
+        {
+            bool slopeOn = s != null && s.SlopeAutoBlock && s.SlopeBlockThreshold > 0f;
+            Fixed threshold = slopeOn ? Fixed.FromFloat(s!.SlopeBlockThreshold) : Fixed.Zero;
+            bool[]? footprint = ProjectChimera.Navigation.PathabilityGrid.BuildBlockingFootprint(s?.Props, s?.Water);
+            return ProjectChimera.Navigation.PathabilityGrid.Resolve(
+                s?.PathabilityBlocked, s?.SlopeAutoBlock ?? false, threshold, elev, footprint);
+        }
+
         public void Apply(Validated<ScenarioData> v)
         {
             _lastAppliedHeroes.Clear(); // Story 3.9: fresh record of placed heroes for this apply
