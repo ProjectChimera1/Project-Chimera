@@ -8,24 +8,26 @@ using Xunit;
 namespace ProjectChimera.Sim.Tests.Golden
 {
     /// <summary>
-    /// Story 1.4 (AC3) — the trigger sort is a STABLE TOTAL ORDER: (Priority desc, then ascending declaration
-    /// index). Without the declaration-index tiebreak, ScenarioDirector's <c>Array.Sort</c> is an unstable
-    /// introsort, so equal-priority triggers can fire in a runtime-dependent order — and since ExecuteActions
-    /// runs in that order, equal-priority triggers writing shared state would desync across peers (AR-16).
+    /// Story 7.1 (AC2) — the trigger evaluation order is a STABLE TOTAL ORDER: (Priority desc, then ascending
+    /// declaration index). It is now PRECOMPUTED once per LoadScenario via a LINQ
+    /// <c>OrderByDescending(Priority).ThenBy(index)</c> (a stable ordering with an explicit total tiebreak),
+    /// replacing Story 1.4's per-tick <c>Array.Sort</c> (an unstable introsort that tripped CHM0003). Without the
+    /// declaration-index tiebreak, equal-priority triggers could fire in a runtime-dependent order — and since
+    /// ExecuteActions runs in that order, equal-priority triggers writing shared state would desync across peers
+    /// (AR-16).
     ///
-    /// These are BEHAVIORAL proofs: they drive a real ScenarioDirector one tick and capture the actual fire
-    /// order via OnDisplayMessage. The equal-priority test uses MORE triggers than .NET's introsort insertion-sort
-    /// threshold (16) on purpose — a small (≤16) array is sorted by a STABLE insertion sort, which preserves the
-    /// already-ascending input order and so does NOT distinguish the priority-only comparator from the tiebreak
-    /// (the "looks fine for a handful" trap). Above the threshold the unstable quicksort path engages, so reverting
-    /// the tiebreak actually reorders the array — verified as a negative control in the story's Task 8.
+    /// These are BEHAVIORAL proofs: they drive a real ScenarioDirector one tick and capture the actual fire order
+    /// via OnDisplayMessage. The equal-priority test still uses MORE triggers than .NET's old introsort
+    /// insertion-sort threshold (16) — historically the size at which the unstable quicksort path engaged. LINQ's
+    /// OrderBy is stable at ANY size, so the count is no longer load-bearing for correctness; it is retained as a
+    /// belt-and-suspenders guard against a future regression back to an unstable, size-sensitive sort.
     /// </summary>
     public class TriggerOrderingTests
     {
         /// <summary>
-        /// Above .NET's IntrospectiveSort insertion-sort threshold (16) so the unstable quicksort path engages:
-        /// reverting to a priority-only comparator reorders these equal-priority triggers, while the
-        /// (Priority desc, index asc) total order keeps them in declaration order.
+        /// Kept above .NET's historical IntrospectiveSort insertion-sort threshold (16) so a regression back to an
+        /// unstable, size-sensitive sort (where the quicksort path reorders equal-priority elements) would be caught
+        /// — the stable (Priority desc, index asc) order keeps them in declaration order regardless of count.
         /// </summary>
         private const int EqualPriorityTriggerCount = 24;
 

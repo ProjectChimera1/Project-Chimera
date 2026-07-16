@@ -462,7 +462,11 @@ namespace ProjectChimera.Core.Definitions
                     if (fe != null) return ValidationResult.Fail(fe, validated);
                     if (a.Type == "spawn_unit")
                     {
-                        string? ce = CheckCoord($"{ap}.x", a.X, bounds) ?? CheckCoord($"{ap}.z", a.Z, bounds);
+                        // Story 7.1: a.X/a.Z are now Fixed. Finiteness and the 16.16 range are guaranteed
+                        // structurally by the Fixed type and enforced at the JSON boundary by FixedJsonConverter,
+                        // so the former range/NaN branch is unreachable here; the remaining semantic gate is
+                        // map_bounds — a spawn coordinate outside ±map_bounds is still an authoring error.
+                        string? ce = CheckCoordFixed($"{ap}.x", a.X, bounds) ?? CheckCoordFixed($"{ap}.z", a.Z, bounds);
                         if (ce != null) return ValidationResult.Fail(ce, validated);
                         // Story 6.5: a spawn_unit trigger that would place a unit on a PAINTED blocked cell fails
                         // closed (same cell domain as the sim) — a spawned unit could never legally occupy it.
@@ -682,6 +686,20 @@ namespace ProjectChimera.Core.Definitions
             return null;
         }
 
+        /// <summary>Story 7.1 — coordinate check for a <see cref="Fixed"/>-typed authored coordinate (trigger
+        /// spawn_unit X/Z). Finiteness and the 16.16 representable range are guaranteed structurally by the
+        /// <see cref="Fixed"/> type (its Raw is an int) and by <c>FixedJsonConverter</c> at the JSON boundary, so
+        /// only the map_bounds gate remains — mirroring <see cref="CheckCoord"/>'s map_bounds branch (±bounds,
+        /// inclusive edge). The <c>Fixed.FromFloat</c> here is the sanctioned load-time boundary (this validator
+        /// already quantizes region corners / blocked-cell coords the same way).</summary>
+        private static string? CheckCoordFixed(string path, Fixed v, float bounds)
+        {
+            Fixed b = Fixed.FromFloat(bounds);
+            if (v < -b || v > b)
+                return $"{path}={v} is outside map_bounds (±{bounds}).";
+            return null;
+        }
+
         /// <summary>Non-negative scalar check: finite + in 16.16 range + &gt;= 0.</summary>
         private static string? CheckNonNeg(string path, float v)
         {
@@ -703,6 +721,17 @@ namespace ProjectChimera.Core.Definitions
         {
             if (painted == null) return null;
             if (painted.IsBlocked(Fixed.FromFloat(x), Fixed.FromFloat(z)))
+                return $"{path} {what} ({x}, {z}) is on an impassable (blocked) cell — painted, or a blocking prop / water footprint — no unit can occupy it.";
+            return null;
+        }
+
+        /// <summary>Story 7.1 — <see cref="Fixed"/> overload for trigger spawn_unit X/Z (now Fixed-typed). Same
+        /// painted-blocked-cell check as the float overload, but passes the coordinates straight through with no
+        /// <c>Fixed.FromFloat</c> (they are already Fixed).</summary>
+        private static string? CheckNotBlocked(string path, string what, Fixed x, Fixed z, PathabilityGrid? painted)
+        {
+            if (painted == null) return null;
+            if (painted.IsBlocked(x, z))
                 return $"{path} {what} ({x}, {z}) is on an impassable (blocked) cell — painted, or a blocking prop / water footprint — no unit can occupy it.";
             return null;
         }

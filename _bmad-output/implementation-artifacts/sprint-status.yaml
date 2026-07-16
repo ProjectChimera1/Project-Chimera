@@ -140,7 +140,7 @@ development_status:
   6-8-custom-building-placement-thread-an-authored-building-id-through-buildingsystem-scenarioapplier-retire-the-enum-gate: done
   epic-6-retrospective: done
   epic-7: backlog
-  7-1-trigger-layer-determinism-prerequisites-ordering-fixed-culture: backlog
+  7-1-trigger-layer-determinism-prerequisites-ordering-fixed-culture: done
   7-2-graph-canonical-dsl-ir-foundation-closed-registry-converter-lossless-flat-to-graph-migration: backlog
   7-3-typed-scoped-variables-deterministic-timers-and-verify-to-ship-eca: backlog
   7-4-fixed-point-arithmetic-and-boolean-expression-layer: backlog

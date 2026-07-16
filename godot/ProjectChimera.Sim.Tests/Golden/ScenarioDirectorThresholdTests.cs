@@ -44,7 +44,7 @@ namespace ProjectChimera.Sim.Tests.Golden
                     Enabled  = true,
                     Events   = new[] { new TriggerEvent { Type = "resource_threshold", Faction = 0, Amount = amount, Operator = op } },
                     Conditions = Array.Empty<TriggerCondition>(),
-                    Actions  = new[] { new TriggerAction { Type = "display_message", Text = FireText, Duration = 1f } },
+                    Actions  = new[] { new TriggerAction { Type = "display_message", Text = FireText, Duration = Fixed.FromInt(1) } },
                 });
 
             RunOneTick(director, culture);
@@ -67,7 +67,7 @@ namespace ProjectChimera.Sim.Tests.Golden
                     Enabled    = true,
                     Events     = new[] { new TriggerEvent { Type = "match_start", Faction = 0 } },
                     Conditions = new[] { new TriggerCondition { Type = "resource_comparison", Faction = 0, Amount = amount, Operator = op } },
-                    Actions    = new[] { new TriggerAction { Type = "display_message", Text = FireText, Duration = 1f } },
+                    Actions    = new[] { new TriggerAction { Type = "display_message", Text = FireText, Duration = Fixed.FromInt(1) } },
                 });
 
             RunOneTick(director, culture: null);

@@ -12,6 +12,7 @@ using ProjectChimera.Navigation;
 using ProjectChimera.UGC;
 using ProjectChimera.UI;
 using System;
+using System.Globalization;
 using System.Linq;
 
 namespace ProjectChimera.Core
@@ -208,6 +209,20 @@ namespace ProjectChimera.Core
         /// client-only lifecycle callbacks (_Process/_Input/_UnhandledInput) — in headless mode _Ready returns
         /// early before building the presentation context, so those would dereference a null _ctx. (Story 1.9a)</summary>
         private bool _headless;
+
+        /// <summary>Story 7.1: pin InvariantCulture process-wide at the earliest-running entry of the game process
+        /// root — a hardening net so number formatting/parsing anywhere (editor, UGC, AI-gen) is locale-independent
+        /// and can never diverge across peers. Runs before <see cref="_Ready"/>. The tick path itself is already
+        /// culture-free (Fixed-only, no string round-trips); this closes the gap outside it.</summary>
+        public override void _EnterTree()
+        {
+            CultureInfo.DefaultThreadCurrentCulture   = CultureInfo.InvariantCulture;
+            CultureInfo.DefaultThreadCurrentUICulture = CultureInfo.InvariantCulture;
+            // DefaultThread* only governs threads that have not already materialized a culture; the main thread
+            // (and any autoload that ran first) may have. Pin the running thread explicitly so the net covers it.
+            CultureInfo.CurrentCulture   = CultureInfo.InvariantCulture;
+            CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
+        }
 
         public override void _Ready()
         {

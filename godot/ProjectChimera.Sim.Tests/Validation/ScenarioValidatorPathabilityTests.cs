@@ -1,4 +1,5 @@
 #nullable enable
+using ProjectChimera.Core;
 using ProjectChimera.Core.Definitions;
 using ProjectChimera.Navigation;
 using Xunit;
@@ -73,7 +74,7 @@ namespace ProjectChimera.Sim.Tests.Validation
                 {
                     Name = "t",
                     Events  = new[] { new TriggerEvent { Type = "match_start" } },
-                    Actions = new[] { new TriggerAction { Type = "spawn_unit", UnitId = "worker", Faction = 0, X = BlockedX, Z = BlockedZ, Count = 1 } },
+                    Actions = new[] { new TriggerAction { Type = "spawn_unit", UnitId = "worker", Faction = 0, X = Fixed.FromFloat(BlockedX), Z = Fixed.FromFloat(BlockedZ), Count = 1 } },
                 },
             };
             ValidationResult r = Validator.Validate(m);

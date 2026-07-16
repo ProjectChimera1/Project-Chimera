@@ -1,7 +1,6 @@
 #nullable enable
 using System;
 using System.Collections.Generic;
-using System.Globalization;
 using System.Linq;
 using ProjectChimera.Core.Definitions;
 using ProjectChimera.Economy;
@@ -30,10 +29,23 @@ namespace ProjectChimera.Core
         private bool[]               _triggerFired    = Array.Empty<bool>();    // run_once guard
         private int[]                _triggerCooldown = Array.Empty<int>();    // remaining ticks
 
-        // ── Named timers and integer variables ────────────────────────────────
+        // The precomputed trigger evaluation order (Priority desc, then ascending declaration index). Computed
+        // ONCE per LoadScenario via a stable LINQ OrderByDescending/ThenBy (analyzer-clean — no Array.Sort, so no
+        // CHM0003), because the order is stable for the whole match: only Enabled/fired/cooldown change per tick.
+        private int[]                _triggerOrder = Array.Empty<int>();
 
-        private readonly Dictionary<string, int> _timers    = new();
-        private readonly Dictionary<string, int> _variables = new();
+        // ── Named timers and integer variables — dense creation-index stores (Story 7.1) ──────
+        // Parallel-array (SoA) stores keyed by CREATION index, replacing the former Dictionary<string,int> whose
+        // enumeration order depended on insertion history (AR-16 forbids Dictionary enumeration in the tick). Name
+        // lookup is a deterministic linear scan (small N); the tick iterates the value list by ASCENDING creation
+        // index, so same-tick timer expiries emit in declaration order regardless of insertion history. NO
+        // Dictionary/HashSet is used at all. Story 7.3 hoists these into the top-level DslVarTable folded into
+        // SimChecksum — kept minimal and self-contained here so that hoist is clean.
+        private readonly List<string> _timerNames     = new();
+        private readonly List<int>    _timerRemaining = new(); // remaining ticks; 0 = inactive/expired slot
+
+        private readonly List<string> _variableNames  = new();
+        private readonly List<int>    _variableValues = new();
 
         // ── Named regions (Story 6.4) ─────────────────────────────────────────
         // The resolved (float→Fixed done once at ScenarioApplier) region rects the unit_in_region condition scans.
@@ -52,11 +64,14 @@ namespace ProjectChimera.Core
 
         // ── Presentation-layer delegates ──────────────────────────────────────
 
-        /// <summary>Requests the presentation layer to spawn units. (unitId, factionSlot, x, z, count)</summary>
-        public Action<string, int, float, float, int>? OnSpawnUnit;
+        /// <summary>Requests the presentation layer to spawn units. (unitId, factionSlot, x, z, count) — x/z are
+        /// <see cref="Fixed"/> so the in-tick path stays Fixed-only; the binder routes them through the Fixed-native
+        /// spawn primitive with no <c>Fixed.FromFloat</c>.</summary>
+        public Action<string, int, Fixed, Fixed, int>? OnSpawnUnit;
 
-        /// <summary>Requests a toast notification. (text, durationSeconds)</summary>
-        public Action<string, float>? OnDisplayMessage;
+        /// <summary>Requests a toast notification. (text, durationSeconds) — duration is <see cref="Fixed"/>; the
+        /// binder converts it to float at the presentation boundary only.</summary>
+        public Action<string, Fixed>? OnDisplayMessage;
 
         /// <summary>Requests a sound effect. (soundId)</summary>
         public Action<string>? OnPlaySound;
@@ -89,8 +104,20 @@ namespace ProjectChimera.Core
             _triggers        = scenario.Triggers;
             _triggerFired    = new bool[_triggers.Length];
             _triggerCooldown = new int[_triggers.Length];
-            _timers.Clear();
-            _variables.Clear();
+
+            // Precompute the total evaluation order ONCE: Priority desc, then ascending declaration index. LINQ
+            // OrderByDescending/ThenBy is a STABLE sort with an explicit total tiebreak — deterministic across
+            // runtimes AND analyzer-clean (it calls no Array.Sort/List.Sort, so it does not trip CHM0003). The
+            // declaration index is the flat-array ordering surrogate (Story 7.2 supersedes it with a persistent id).
+            _triggerOrder = Enumerable.Range(0, _triggers.Length)
+                .OrderByDescending(i => _triggers[i].Priority)
+                .ThenBy(i => i)
+                .ToArray();
+
+            _timerNames.Clear();
+            _timerRemaining.Clear();
+            _variableNames.Clear();
+            _variableValues.Clear();
             _firstTick = true;
 
             // Snapshot initial state so the first diff doesn't generate spurious events.
@@ -127,7 +154,7 @@ namespace ProjectChimera.Core
             // match_start fires on the very first tick after LoadScenario().
             if (_firstTick)
             {
-                events.Add(new FiredEvent("match_start", -1, null));
+                events.Add(new FiredEvent("match_start", -1, 0, null));
                 _firstTick = false;
             }
 
@@ -140,7 +167,7 @@ namespace ProjectChimera.Core
                 if (wasAlive && !isAlive)
                 {
                     int slot = (int)world.FactionOf[i] - 1; // Player1=1 → slot 0
-                    events.Add(new FiredEvent("unit_dies", slot, null));
+                    events.Add(new FiredEvent("unit_dies", slot, 0, null));
                 }
             }
 
@@ -155,44 +182,43 @@ namespace ProjectChimera.Core
                 if (isAlive && !wasDone && isDone)
                 {
                     int slot = (int)_buildings.FactionOf[i] - 1;
-                    events.Add(new FiredEvent("building_completed", slot,
+                    events.Add(new FiredEvent("building_completed", slot, 0,
                         _buildings.Type[i].ToString()));
                 }
                 _ = wasAlive; // snapshot updated in UpdateSnapshots
             }
 
-            // Timers — decrement and collect expiries.
-            // Iterate a DETERMINISTICALLY-ORDERED snapshot of keys (ordinal), NOT Dictionary enumeration order
-            // (which depends on insertion history): same-tick expiries must append timer_expires events in a
-            // stable order regardless of the order the timers were created, or two peers desync (AR-16). The
-            // snapshot also allows mutating _timers during the loop. Story 7.2 replaces _timers with the dense
-            // SoA store folded into SimChecksum.
-            var keys = _timers.Keys.OrderBy(k => k, StringComparer.Ordinal).ToList();
-            foreach (var name in keys)
+            // Timers — decrement each ACTIVE timer and collect expiries in CREATION-INDEX (declaration) order.
+            // Iterating the parallel value list by ascending index is the deterministic contract (AR-16): same-tick
+            // expiries emit independent of insertion history, with NO Dictionary enumeration. An expired timer is
+            // marked inactive (remaining = 0) in place — a later create_timer of the same name reactivates its slot,
+            // preserving its creation index. Mutating values in place is safe (no add/remove during the loop).
+            for (int i = 0; i < _timerRemaining.Count; i++)
             {
-                int remaining = _timers[name] - 1;
+                if (_timerRemaining[i] <= 0) continue; // inactive/expired slot
+                int remaining = _timerRemaining[i] - 1;
                 if (remaining <= 0)
                 {
-                    _timers.Remove(name);
-                    events.Add(new FiredEvent("timer_expires", -1, name));
+                    _timerRemaining[i] = 0;
+                    events.Add(new FiredEvent("timer_expires", -1, 0, _timerNames[i]));
                 }
                 else
                 {
-                    _timers[name] = remaining;
+                    _timerRemaining[i] = remaining;
                 }
             }
 
             // Threshold events — polled every tick so triggers can react to sustained states.
-            // Carry the ore as its raw Fixed integer (InvariantCulture) — locale-invariant and lossless — so the
-            // match path compares Fixed-vs-Fixed with no float arithmetic or culture-dependent number formatting
-            // (AR-16). slot < 2 stays as-is: widening to all active factions is Story 9.2, not this story.
+            // Carry the ore as its raw Fixed integer (a typed int payload) — so the match path compares Fixed-vs-Fixed
+            // with NO string formatting/parsing and no float arithmetic in the tick (AR-16). slot < 2 stays as-is:
+            // widening to all active factions is Story 9.2, not this story.
             for (int slot = 0; slot < 2; slot++)
             {
                 var faction = (Faction)(slot + 1);
                 int oreRaw  = _resources.Ore[(int)faction].Raw;
                 int units   = CountAlive(world, faction);
-                events.Add(new FiredEvent("resource_threshold",   slot, oreRaw.ToString(CultureInfo.InvariantCulture)));
-                events.Add(new FiredEvent("unit_count_threshold", slot, units.ToString(CultureInfo.InvariantCulture)));
+                events.Add(new FiredEvent("resource_threshold",   slot, oreRaw, null));
+                events.Add(new FiredEvent("unit_count_threshold", slot, units,  null));
             }
 
             return events;
@@ -210,21 +236,12 @@ namespace ProjectChimera.Core
 
         private void EvaluateTriggers(List<FiredEvent> events, EntityWorld world)
         {
-            // Sort indices by a STABLE TOTAL ORDER: priority descending, then ascending declaration index.
-            // Array.Sort is an unstable introsort, so without the index tiebreak equal-priority triggers could
-            // reorder across runtimes/platforms — and ExecuteActions runs in this order, so equal-priority
-            // triggers writing shared state would desync (AR-16). The declaration index (a - b) is the flat-array
-            // surrogate for the future persistent node-id total order; Story 7.1b supersedes it. Arrays are small (<100).
-            // Use CompareTo (not subtraction) so extreme int priorities cannot overflow the comparator (AR-16).
-            var order = new int[_triggers.Length];
-            for (int i = 0; i < order.Length; i++) order[i] = i;
-            Array.Sort(order, (a, b) =>
-            {
-                int byPriority = _triggers[b].Priority.CompareTo(_triggers[a].Priority); // priority desc
-                return byPriority != 0 ? byPriority : a.CompareTo(b);                     // tiebreak: ascending declaration index
-            });
-
-            foreach (int idx in order)
+            // Iterate the PRECOMPUTED total order (Priority desc, then ascending declaration index) built once in
+            // LoadScenario. The order is stable for the whole match (only Enabled/fired/cooldown change per tick),
+            // so recomputing it every tick was wasted work — and the per-tick Array.Sort was an unstable introsort
+            // that tripped CHM0003. ExecuteActions runs in this order, so equal-priority triggers writing shared
+            // state resolve last-writer by ascending declaration index, deterministically across peers (AR-16).
+            foreach (int idx in _triggerOrder)
             {
                 var t = _triggers[idx];
                 if (!t.Enabled || _triggerFired[idx] || _triggerCooldown[idx] > 0) continue;
@@ -295,15 +312,13 @@ namespace ProjectChimera.Core
                     return string.IsNullOrEmpty(def.TimerName) || f.Data == def.TimerName;
                 case "resource_threshold":
                     if (f.Slot != def.Faction) return false;
-                    // f.Data is the ore's raw Fixed integer (InvariantCulture). Compare Fixed-vs-Fixed; def.Amount
-                    // is now a Fixed quantized at the JSON boundary by FixedJsonConverter (Story 1.4), so the prior
-                    // in-tick Fixed.FromFloat(def.Amount) is gone — zero float in the trigger tick path (AR-14/AR-16).
-                    return int.TryParse(f.Data, NumberStyles.Integer, CultureInfo.InvariantCulture, out int oreRaw)
-                        && Compare(Fixed.FromRaw(oreRaw), def.Amount, def.Operator);
+                    // f.Numeric is the ore's raw Fixed integer (a typed int payload). Compare Fixed-vs-Fixed; def.Amount
+                    // is a Fixed quantized at the JSON boundary by FixedJsonConverter, so there is NO string round-trip
+                    // and no in-tick float in the trigger tick path (AR-14/AR-16).
+                    return Compare(Fixed.FromRaw(f.Numeric), def.Amount, def.Operator);
                 case "unit_count_threshold":
                     if (f.Slot != def.Faction) return false;
-                    return int.TryParse(f.Data, NumberStyles.Integer, CultureInfo.InvariantCulture, out int cnt)
-                        && Compare(cnt, def.Count, def.Operator);
+                    return Compare(f.Numeric, def.Count, def.Operator);
                 default:
                     return false;
             }
@@ -343,8 +358,7 @@ namespace ProjectChimera.Core
                     return Compare(CountAlive(world, faction), c.Count, c.Operator);
                 case "variable_comparison":
                     if (string.IsNullOrEmpty(c.Variable)) return false;
-                    _variables.TryGetValue(c.Variable, out int v);
-                    return Compare(v, c.Value, c.Operator);
+                    return Compare(GetVariable(c.Variable), c.Value, c.Operator);
                 case "unit_in_region":
                     // Story 6.4: true when ANY live unit of `faction` is inside region `region_id`. Pure Fixed
                     // inclusive point-in-rect over EntityWorld.Position[] in ASCENDING entity-id order (the
@@ -393,7 +407,11 @@ namespace ProjectChimera.Core
                         if (!string.IsNullOrEmpty(a.TimerName) && a.TimerSeconds > Fixed.Zero)
                             // Fixed seconds → whole ticks via SecondsToTicks (64-bit intermediate): the plain
                             // Fixed multiply overflows for durations past ~1092 s and wraps negative (AR-14).
-                            _timers[a.TimerName] = SecondsToTicks(a.TimerSeconds);
+                            // Clamp to at least 1 tick: a sub-frame duration (0 < s < 1/30) rounds to 0 ticks, and
+                            // storing remaining=0 would be indistinguishable from an expired/inactive slot and never
+                            // fire. The old Dictionary path stored 0 and fired one tick later (decrement to -1);
+                            // Math.Max(1, …) reproduces that exact "fires next tick" latency without the overload.
+                            SetTimer(a.TimerName, Math.Max(1, SecondsToTicks(a.TimerSeconds)));
                         break;
                     case "add_resources":
                     {
@@ -403,10 +421,50 @@ namespace ProjectChimera.Core
                     }
                     case "set_variable":
                         if (!string.IsNullOrEmpty(a.Variable))
-                            _variables[a.Variable] = a.Value;
+                            SetVariable(a.Variable, a.Value);
                         break;
                 }
             }
+        }
+
+        // ── Dense timer / variable stores (creation-index SoA; deterministic linear-scan lookup) ──────────────
+
+        /// <summary>Create or reset a named timer to <paramref name="ticks"/> remaining, preserving its creation
+        /// index (a reset reuses the existing slot; a new name appends). No Dictionary — linear scan (small N).</summary>
+        private void SetTimer(string name, int ticks)
+        {
+            for (int i = 0; i < _timerNames.Count; i++)
+                if (string.Equals(_timerNames[i], name, StringComparison.Ordinal))
+                {
+                    _timerRemaining[i] = ticks;
+                    return;
+                }
+            _timerNames.Add(name);
+            _timerRemaining.Add(ticks);
+        }
+
+        /// <summary>Read a named integer variable, defaulting to 0 when it was never set (does NOT create a slot —
+        /// matches the prior Dictionary.TryGetValue-default-0 semantics). Linear scan, no Dictionary.</summary>
+        private int GetVariable(string name)
+        {
+            for (int i = 0; i < _variableNames.Count; i++)
+                if (string.Equals(_variableNames[i], name, StringComparison.Ordinal))
+                    return _variableValues[i];
+            return 0;
+        }
+
+        /// <summary>Set a named integer variable, preserving its creation index (update in place, or append a new
+        /// name). Last-writer within a tick follows trigger declaration-index order (AR-16). No Dictionary.</summary>
+        private void SetVariable(string name, int value)
+        {
+            for (int i = 0; i < _variableNames.Count; i++)
+                if (string.Equals(_variableNames[i], name, StringComparison.Ordinal))
+                {
+                    _variableValues[i] = value;
+                    return;
+                }
+            _variableNames.Add(name);
+            _variableValues.Add(value);
         }
 
         // ── Helpers ───────────────────────────────────────────────────────────
@@ -456,14 +514,16 @@ namespace ProjectChimera.Core
         private readonly struct FiredEvent
         {
             public readonly string  Type;
-            public readonly int     Slot; // -1 = no faction
-            public readonly string? Data; // payload: building type, ore amount, timer name, etc.
+            public readonly int     Slot;    // -1 = no faction
+            public readonly int     Numeric; // typed numeric payload: ore raw-Fixed integer, or unit count
+            public readonly string? Data;    // string payload: building type, timer name (null when unused)
 
-            public FiredEvent(string type, int slot, string? data)
+            public FiredEvent(string type, int slot, int numeric, string? data)
             {
-                Type = type;
-                Slot = slot;
-                Data = data;
+                Type    = type;
+                Slot    = slot;
+                Numeric = numeric;
+                Data    = data;
             }
         }
     }

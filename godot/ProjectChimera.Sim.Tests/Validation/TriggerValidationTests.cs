@@ -1,4 +1,5 @@
 #nullable enable
+using System.Text.Json;
 using ProjectChimera.Core;
 using ProjectChimera.Core.Definitions;
 using Xunit;
@@ -59,7 +60,7 @@ namespace ProjectChimera.Sim.Tests.Validation
                     Actions = new[]
                     {
                         new TriggerAction { Type = "create_timer", TimerName = "spawn_clock", TimerSeconds = Fixed.FromInt(30) },
-                        new TriggerAction { Type = "spawn_unit", UnitId = "soldier", Faction = 1, X = 40f, Z = 5f, Count = 3 },
+                        new TriggerAction { Type = "spawn_unit", UnitId = "soldier", Faction = 1, X = Fixed.FromInt(40), Z = Fixed.FromInt(5), Count = 3 },
                     },
                 },
             },
@@ -116,21 +117,25 @@ namespace ProjectChimera.Sim.Tests.Validation
         }
 
         [Fact]
-        public void OutOfRangeSpawnCoordinate_IsRejected_ViaTheRangeBranch()
+        public void OutOfRangeSpawnCoordinate_IsRejectedAtTheJsonBoundary_ByFixedJsonConverter()
         {
-            var m = ValidModelWithTrigger();
-            m.Triggers[0].Actions[1].X = 40000f; // beyond the 16.16 range (>= 32768) — would wrap when spawned to Fixed
-            ValidationResult r = NewValidator().Validate(m);
-            Assert.False(r.Ok);
-            Assert.Contains("triggers[0].actions[1].x", r.Error!);
-            Assert.Contains("16.16 range", r.Error!);
+            // Story 7.1: TriggerAction.X/Z are now Fixed, quantized at the JSON boundary. An out-of-16.16-range
+            // spawn coordinate can no longer even be constructed in code (a Fixed cannot hold ±40000); the finite/
+            // range gate MOVED to FixedJsonConverter, which rejects it at deserialize time with a located
+            // "16.16 range" error — exactly where the spec relocates the check. The validator's own coordinate gate
+            // now covers only map_bounds (proven by SpawnCoordinateOutsideMapBounds_IsRejected below).
+            var options = new JsonSerializerOptions { Converters = { new FixedJsonConverter() } };
+            const string json = "{\"type\":\"spawn_unit\",\"unit_id\":\"soldier\",\"x\":40000,\"z\":5}";
+            var ex = Assert.Throws<JsonException>(
+                () => JsonSerializer.Deserialize<TriggerAction>(json, options));
+            Assert.Contains("16.16 range", ex.Message);
         }
 
         [Fact]
         public void SpawnCoordinateOutsideMapBounds_IsRejected()
         {
             var m = ValidModelWithTrigger();
-            m.Triggers[0].Actions[1].Z = 200f; // inside the Fixed range but outside map_bounds 120
+            m.Triggers[0].Actions[1].Z = Fixed.FromInt(200); // inside the Fixed range but outside map_bounds 120
             ValidationResult r = NewValidator().Validate(m);
             Assert.False(r.Ok);
             Assert.Contains("triggers[0].actions[1].z", r.Error!);

@@ -159,11 +159,14 @@ namespace ProjectChimera.Core.Definitions
         [JsonPropertyName("faction")]
         public int Faction { get; set; } = 0;
 
+        /// <summary>Story 7.1: <see cref="Fixed"/> (not float) so a trigger spawn routes through the Fixed-native
+        /// spawn primitive with NO in-tick <c>Fixed.FromFloat</c>. Quantized at the JSON boundary by
+        /// <c>FixedJsonConverter</c> (registered in <c>ScenarioSerializer</c>).</summary>
         [JsonPropertyName("x")]
-        public float X { get; set; } = 0f;
+        public Fixed X { get; set; } = Fixed.Zero;
 
         [JsonPropertyName("z")]
-        public float Z { get; set; } = 0f;
+        public Fixed Z { get; set; } = Fixed.Zero;
 
         /// <summary>Units to spawn. Capped at 50. Used by spawn_unit.</summary>
         [JsonPropertyName("count")]
@@ -172,8 +175,10 @@ namespace ProjectChimera.Core.Definitions
         [JsonPropertyName("text")]
         public string? Text { get; set; }
 
+        /// <summary>Story 7.1: <see cref="Fixed"/> seconds — converted to float only at the presentation
+        /// delegate boundary (never in the tick). Quantized at the JSON boundary by <c>FixedJsonConverter</c>.</summary>
         [JsonPropertyName("duration")]
-        public float Duration { get; set; } = 4f;
+        public Fixed Duration { get; set; } = Fixed.FromInt(4);
 
         [JsonPropertyName("timer_name")]
         public string? TimerName { get; set; }

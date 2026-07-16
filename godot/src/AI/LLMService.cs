@@ -309,14 +309,16 @@ namespace ProjectChimera.AI
                 {
                     if (a.Count <= 0 || a.Count > MAX_SPAWN_COUNT)
                         a.Count = Math.Clamp(a.Count, 1, MAX_SPAWN_COUNT); // auto-clamp rather than reject
-                    float b = context.MapBounds;
+                    // Story 7.1: a.X/a.Z are now Fixed. Quantize the map bound to Fixed once (the sanctioned AI
+                    // authoring float→Fixed boundary) and compare Fixed-vs-Fixed — no float comparison here.
+                    Fixed b = Fixed.FromFloat(context.MapBounds);
                     if (a.X < -b || a.X > b || a.Z < -b || a.Z > b)
-                        return (null, $"spawn_unit position ({a.X}, {a.Z}) is outside map bounds ±{b}.");
+                        return (null, $"spawn_unit position ({a.X}, {a.Z}) is outside map bounds ±{context.MapBounds}.");
                 }
                 if (a.Type == "create_timer" && a.TimerSeconds <= Fixed.Zero)
                     return (null, $"create_timer '{a.TimerName}' has invalid duration {a.TimerSeconds.ToFloat()}s.");
-                if (a.Type == "display_message" && a.Duration <= 0)
-                    a.Duration = 4f; // auto-fix
+                if (a.Type == "display_message" && a.Duration <= Fixed.Zero)
+                    a.Duration = Fixed.FromInt(4); // auto-fix
             }
 
             return (trigger, null);

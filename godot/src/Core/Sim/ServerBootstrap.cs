@@ -1,4 +1,5 @@
 #nullable enable
+using System.Globalization;             // Story 7.1: process-wide InvariantCulture pin
 using ProjectChimera.Combat;            // DamageTable
 using ProjectChimera.Core;              // Faction, FactionRegistry
 using ProjectChimera.Core.Definitions;  // ScenarioData, ScenarioValidator, ValidationResult, Validated<>, FactionDefinition
@@ -33,6 +34,16 @@ namespace ProjectChimera.Core.Sim
             ScenarioData model, FactionDefinition?[] slotFactionDefs, DamageTable? damageTable,
             ILogSink log, int activeFactionCount, AbilityRegistry? abilityRegistry = null)
         {
+            // Story 7.1: pin InvariantCulture process-wide at the headless server's composition root — the same
+            // hardening net the client applies in MainScene._EnterTree, so the server's number formatting/parsing
+            // is locale-independent and cannot diverge from a client on a comma-decimal locale.
+            CultureInfo.DefaultThreadCurrentCulture   = CultureInfo.InvariantCulture;
+            CultureInfo.DefaultThreadCurrentUICulture = CultureInfo.InvariantCulture;
+            // DefaultThread* only governs threads that have not already materialized a culture; pin the running
+            // thread explicitly so the net covers the server's own execution thread too.
+            CultureInfo.CurrentCulture   = CultureInfo.InvariantCulture;
+            CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
+
             AbilityRegistry registry = abilityRegistry ?? AbilityRegistry.Empty;
 
             // Story 2.4b (server parity, MP-critical): resolve each slot faction's ability ids → registry indices
