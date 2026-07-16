@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using ProjectChimera.Core.Definitions;
+using ProjectChimera.Dsl;
 using ProjectChimera.Economy;
 
 namespace ProjectChimera.Core
@@ -101,7 +102,12 @@ namespace ProjectChimera.Core
         /// </summary>
         public void LoadScenario(ScenarioData scenario)
         {
-            _triggers        = scenario.Triggers;
+            // Story 7.2: route the sole trigger consumption through the graph-canonical IR as an IDENTITY lowering —
+            // FromFlat migrates the flat TriggerDefinition[] into the graph, ToFlat lowers it straight back. This
+            // proves the flat↔graph round-trip is lossless on live content while keeping the tick byte-identical
+            // (no hash fold, no on-disk format change). Later stories walk the graph directly (7.3); for 7.2 it is a
+            // waypoint. Every golden builds with empty triggers, so FromFlat([]).ToFlat() == [] — a no-op there.
+            _triggers        = TriggerGraph.FromFlat(scenario.Triggers).ToFlat();
             _triggerFired    = new bool[_triggers.Length];
             _triggerCooldown = new int[_triggers.Length];
 

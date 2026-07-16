@@ -34,6 +34,11 @@
          — without this line the new code would compile into neither, a silent coverage hole. Dsl/ (Epic 7) is
          still net-new; add its include HERE when the folder exists. -->
     <Compile Include="$(MSBuildThisFileDirectory)src\Effects\**\*.cs"    LinkBase="Sim\Effects" />
+    <!-- Story 7.2 (Epic 7): the graph-canonical trigger DSL IR (src\Dsl\, namespace ProjectChimera.Dsl). Pure C# /
+         Fixed-only / Godot-free. Globbed HERE so it is covered by BOTH the Tier-1 golden harness
+         (ProjectChimera.Sim.Tests) AND the determinism analyzer gate (ProjectChimera.Sim.Analysis) — the seam the
+         "Dsl/ … add its include HERE when the folder exists" note above reserved. -->
+    <Compile Include="$(MSBuildThisFileDirectory)src\Dsl\**\*.cs"        LinkBase="Sim\Dsl" />
 
     <!-- Story 1.5: explicit single-file includes so the .chmr record→replay round-trip (with the v2 seed
          header) is Tier-1 testable. These three Multiplayer files are verified Godot-free (System.* + Core

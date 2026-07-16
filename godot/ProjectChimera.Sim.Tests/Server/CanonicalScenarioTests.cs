@@ -5,6 +5,8 @@ using System.Linq;
 using ProjectChimera.Core;              // Faction
 using ProjectChimera.Core.Definitions;  // ScenarioData, ScenarioSerializer, ScenarioValidator, FactionDefinition
 using ProjectChimera.Core.Sim;          // ServerBootstrap, SimulationHost, NullLogSink
+using ProjectChimera.Dsl;               // TriggerGraph (Story 7.2 lossless flat↔graph lowering)
+using ProjectChimera.Sim.Tests.Dsl;     // TriggerFieldAssert (shared field-level trigger deep-compare)
 using ProjectChimera.Sim.Tests.Golden;  // GoldenChecksumReplay, GoldenHarness
 using Xunit;
 
@@ -47,6 +49,30 @@ namespace ProjectChimera.Sim.Tests.Server
             Assert.True(a.Count >= 300, $"expected >= 300 checksum samples, got {a.Count}");
             Assert.True(a.SequenceEqual(b),
                 "Two ServerBootstrap runs of the canonical P2.4 scenario diverged — a determinism leak.");
+        }
+
+        /// <summary>
+        /// Story 7.2 (Block-If tripwire) — the live <c>ScenarioDirector.LoadScenario</c> lowering routes triggers
+        /// through <c>TriggerGraph.FromFlat(...).ToFlat()</c>. Prove that migration is LOSSLESS on every shipped
+        /// on-disk scenario: the lowered triggers must deep-equal (FIELD-for-field, not just length) the original flat
+        /// array. (All shipped scenarios currently carry empty trigger sets, so today this pins the empty-set identity
+        /// that keeps every golden byte-identical; when authored trigger content lands, the deep-compare below guards
+        /// its round-trip too — and the non-empty field-level path is exercised now by
+        /// <c>TriggerGraphLiveLoweringTests.LiveLoadScenario_RichTriggers_LowersLosslessly</c>, which drives the same
+        /// wired lowering through the real LoadScenario with a rich trigger set.)
+        /// </summary>
+        [Theory]
+        [InlineData(P2_4_Scenario)]
+        [InlineData(DefaultScenario)]
+        public void OnDiskScenario_FlatToGraphLowering_IsLossless(string fileName)
+        {
+            ScenarioData? model = ScenarioSerializer.LoadFromFile(DataFile("scenarios", fileName));
+            Assert.NotNull(model);
+
+            TriggerDefinition[] original = model!.Triggers;
+            TriggerDefinition[] lowered  = TriggerGraph.FromFlat(original).ToFlat();
+
+            TriggerFieldAssert.AssertEqual(original, lowered);
         }
 
         /// <summary>Build a sim host from the on-disk canonical P2.4 scenario + its alpha/beta factions, via the real ServerBootstrap.</summary>
