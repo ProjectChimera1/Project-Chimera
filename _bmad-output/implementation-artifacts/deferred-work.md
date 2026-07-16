@@ -441,6 +441,7 @@ source_spec: `_bmad-output/implementation-artifacts/spec-3-9-offline-hero-persis
 location: n/a
 reason: summary: The applied hero profile is not slot/owner-scoped — LoadInto mints into the first matching placed hero regardless of which player slot owns it. evidence: HeroProfileLoader.LoadInto matches on UnitId == HeroDefId across all placed heroes (lowest entity id wins; duplicates skip via Mint -1). In a mirror/multi-slot scenario the deploying human's hero is assumed to be the first placed. Ownership scoping is unspecified by the intent and gameplay-inert today.
 status: open
+decision: 2026-07-16 Scope to owning slot — Thread the owning player slot into LoadInto and mint only into that slot's placed hero.
 
 ### DW-14: The boot-time StartStateHash is the empty-store value; the deployed-hero hash is recomputed only at Launch and GD.Print-logged, never put on the wire.
 origin: migrated from legacy ledger ("Deferred from: dev of story-3.4 (2026-07-06)"), 2026-07-08
@@ -783,6 +784,7 @@ source_spec: `_bmad-output/implementation-artifacts/spec-4-1-data-drive-the-buil
 location: n/a
 reason: summary: `BuildingDefinitionValidator` cannot distinguish an omitted `hp` (silently defaults to 100f via the inherited, non-nullable `UnitDefinition.Hp`) from an intentionally-authored `100`, so a creator who forgets `hp` gets a silently-wrong-HP building instead of a located import error — unlike `construction_time`/`supply_bonus`/`produces_category`, which are all required-nullable and do catch omission. evidence: Real and caused by this story — `Hp` went from vestigial (ignored by `BuildingStore.Create`'s switch) to load-bearing (threaded verbatim into `Health`/`MaxHealth` once a def resolves) in this diff, but no creator-facing building-authoring UI exists yet (Story 4.5 not shipped), so there is no reachable path today; both shipped faction files author correct `hp` values. Closing it properly requires either a `UnitDefinition`-wide nullable-`Hp` change (blast radius beyond buildings, touches unit spawning/validation too) or JSON-presence tracking (new machinery) — disproportionate for this story. A narrower `Hp <= 0` reject was added during review (catches typo'd zero/negative), but not full omission. Flagged independently by the Blind Hunter and Verification-Gap review layers; revisit alongside Story 4.5's own required-field validation UX.
 status: open
+decision: 2026-07-16 JSON-presence tracking — Detect an omitted hp via JSON-presence tracking (or a buildings-only nullable Hp) and emit a located error, avoiding the UnitDefinition-wide change.
 
 ## Deferred from: code review of story-4.2 (2026-07-08)
 
@@ -866,7 +868,9 @@ status: open
 source_spec: `_bmad-output/implementation-artifacts/spec-4-5-in-app-building-definition-editor-unit-card-pattern-right-dock-inspector.md`
 location: godot/src/Core/Definitions/FactionWriter.cs (SyncFactionUnits, SyncFactionBuildings), godot/src/CreationSuite/BuildingCardPanel.cs, godot/src/CreationSuite/UnitCardPanel.cs
 reason: summary: an id rename followed by a simple-form Save can silently drop truly-unmodeled custom JSON keys because `_originalId` is captured but never used for on-disk lookup. evidence: Confirmed identical, unused pattern already present in `UnitCardPanel.cs` since Story 3.4 (`_originalId`'s doc comment there makes the same "survives an id rename" claim the Sync path doesn't honor) — not a new defect. All schema-modeled fields (including `combat_feedback`) still round-trip correctly via `ApplyFields`/`ApplyBuildingFields` on the fresh object; only a genuinely out-of-schema hand-added key would be lost, and no shipped content has one. Closure: either make `SyncFactionUnits`/`SyncFactionBuildings` match by `_originalId` first (falling back to current id for new entries), or remove the misleading doc-comment claim if the current-id-match behavior is intentionally accepted. Flagged by the Blind Hunter and Edge Case Hunter review layers.
-status: open
+status: done 2026-07-16
+resolution: closed by human decision: Delete the misleading doc comment and accept current-id match; no shipped content carries out-of-schema keys.
+decision: 2026-07-16 Remove the claim — Delete the misleading doc comment and accept current-id match; no shipped content carries out-of-schema keys.
 
 ### DW-67: `FactionWriter.BuildingEdit`/`BuildingEditKind`/`PatchFactionBuildingJson` (this story's buildings-array counterpart to `UnitEdit`/`UnitEditKind`/`PatchFactionJson`) are exercised only by `FactionWriteRoundTripTests` — `BuildingCardPanel`'s actual Save path calls only `SyncFactionBuildings`, never `PatchFactionBuildingJson`, leaving ~150 lines of the single-edit API surface with no production caller.
 source_spec: `_bmad-output/implementation-artifacts/spec-4-5-in-app-building-definition-editor-unit-card-pattern-right-dock-inspector.md`
@@ -924,6 +928,7 @@ source_spec: `_bmad-output/implementation-artifacts/spec-4-6-visual-tech-tree-ed
 location: godot/src/CreationSuite/TechTreePanel.cs
 reason: summary: no undo/redo exists for tech-tree edge mutations, unlike sibling editors. evidence: epics.md's Story 4.6 acceptance criteria never mention undo/redo for the tech-tree editor, so this isn't a spec gap this story's own text should have caught; it's a UX-consistency gap relative to sibling editors' precedent. Recoverable (re-dragging the same edge restores it) rather than destructive, so low severity. Closure: if creator feedback confirms this is a real pain point, extend the existing per-editor undo-history pattern (already used by `BuildingCardPanel`/`UnitCardPanel`) to `TechTreePanel`'s edge mutations. Flagged by the Blind Hunter review layer.
 status: open
+decision: 2026-07-16 Add edge undo — Extend the per-editor EditorHistory undo pattern to TechTreePanel edge add/remove.
 
 ### DW-76: `TechTreePanel` hardcodes `CanvasLayer { Layer = 9 }` justified only by an inline comment ("below BuildingCardPanel's 13") rather than a shared constant/registry — the same ad-hoc pattern every existing CreationSuite panel already uses, so layer collisions among panels are already possible today and not introduced by this story.
 source_spec: `_bmad-output/implementation-artifacts/spec-4-6-visual-tech-tree-editor-tier-laned-graph-drag-out-port-to-wire-prerequisites.md`
@@ -956,13 +961,16 @@ source_spec: `_bmad-output/implementation-artifacts/spec-4-7-per-resource-collec
 location: godot/src/Economy/GatheringSystem.cs
 reason: summary: a Streaming worker at a permanently gate-closed node never re-idles to seek another node. evidence: a defensible reading of AC4's "credit is withheld... becomes eligible and begins producing" (same worker, same node resumes — not "worker reassigns elsewhere"), now proven-as-implemented by `RequiresStructure_StreamingGate_ClosesThenReopensMidGather_WithholdsThenResumesCredit` (this story's own review-patch test). Not exercised by any shipped scenario (none author `requires_structure` yet — see DW-77). Closure: a future design ruling on whether a permanently-gated Streaming worker should eventually re-idle and seek a different node (matching GATHER's node-vanishes-mid-cycle re-seek behavior) versus staying parked awaiting the same structure's return. Flagged by the Verification Gap Reviewer and Edge Case Hunter.
 status: open
+decision: 2026-07-16 Re-idle and re-seek — After N ticks of a closed gate, free the worker to Idle and seek a different eligible node (matching GATHER's node-vanishes re-seek).
 
 ### DW-81: Follow-up review still recommended for 4-7-per-resource-collection-models-income-streaming-requires-structure-crystal-production after the review budget was exhausted
 origin: review-budget-followup
 source_spec: `spec-4-7-per-resource-collection-models-income-streaming-requires-structure-crystal-production.md`
 severity: low
 reason: Review budget (2 cycles) was exhausted with the story finalized (status: done, verify green) while the review pass kept recommending an independent follow-up. The work was committed by bmad-loop run 20260709-202815-6ca2; this entry preserves the lingering follow-up recommendation for a deliberate later review.
-status: open
+status: done 2026-07-16
+resolution: closed by human decision: Story shipped and verified green; accept the residual review recommendation as satisfied.
+decision: 2026-07-16 Close as reviewed — Story shipped and verified green; accept the residual review recommendation as satisfied.
 
 ### DW-82: No round-trip test exists anywhere for `BuildingDefinition.Prerequisites` itself, so Story 4.8's "round-trips exactly like `Prerequisites`" claim (AC2) can't be checked against a shared, comparable assertion.
 source_spec: `_bmad-output/implementation-artifacts/spec-4-8-researchdefinition-content-model-validation.md`
@@ -975,6 +983,7 @@ source_spec: `_bmad-output/implementation-artifacts/spec-4-9-researchsystem-orde
 location: godot/src/Effects/ModifierStore.cs (`Apply`'s slot-full branch), godot/src/Economy/ResearchSystem.cs (`ApplyCumulativeModifier`)
 reason: summary: a unit simultaneously holding several item modifiers, a self-passive, AND multiple distinct completed researches (each research = its own modifier id = its own slot) can silently lose an earned permanent research buff with no player-visible signal once the ring is full. evidence: `ModifierStore.Apply`'s own doc comment states the slot-full behavior is deterministic-refuse-not-overflow "(drops it; never overflows the per-entity ring)" — an existing, accepted architectural limit shared by every modifier producer (e.g. `HeroXpSystem`'s growth stacking hits the same ceiling), not something Story 4.9 introduces uniquely; research just becomes one more path that can trigger it. Pre-existing `ModifierStore` design, surfaced incidentally by this story's review (Blind Hunter + Edge Case Hunter, independently). Closure: either raise `EffectCaps.MaxModifiersPerEntity`, add a starvation/eviction policy, or at minimum surface a diagnostic event on a refused install so a full ring is debuggable instead of silent.
 status: open
+decision: 2026-07-16 Diagnostic on refusal — Emit a diagnostic event/log on a refused install so a full ring is debuggable instead of silent.
 
 ### DW-84: `MatchLifecycleController`'s per-match wiring of shared systems into `LockstepManager`/`ReplayPlayer` (`Buildings`, `Items`, and now `Research`) has zero test coverage for any of these assignments — a dropped or mis-copied line would silently break online/replay parity for that command family with no test catching it.
 source_spec: `_bmad-output/implementation-artifacts/spec-4-9-researchsystem-order-path-start-complete-cancel-modifier-application.md`
@@ -1012,18 +1021,21 @@ source_spec: `_bmad-output/implementation-artifacts/spec-4-11-research-authoring
 location: godot/src/CreationSuite/TechTreePanel.cs (RebuildGraph's building-node loop :229-238 and research-node loop :263-275 both set `Name = <id>` on the SAME GraphEdit with no cross-check), godot/src/CreationSuite/TechTreePanel.cs:427 (`OnNodeSelected`'s `FirstOrDefault` resolution is first-wins, inconsistent with RebuildGraph's `researchById[r.Id] = r` last-wins dict at :258 — the same underlying duplicate-id class manifests two different ways)
 reason: summary: before this story, only building nodes existed in this GraphEdit, so a name collision was impossible by construction (BuildingDefinitionValidator already rejects duplicate building ids); this story introduces a SECOND id-namespace (research) sharing the same node-name space, and no validator checks a research id against the building id set or vice versa. evidence: confirmed by reading TechTreePanel.cs directly — `researchById` is built with last-wins semantics (`researchById[r.Id] = r`) while `OnNodeSelected` re-resolves via `_faction.Research?.FirstOrDefault(...)` (first-wins), so a duplicate id even resolves inconsistently WITHIN this story's own code, independent of the Godot auto-rename question. Flagged independently by the Blind Hunter and Edge Case Hunter review layers. Likely low-frequency (requires a creator to reuse an id across the two separately-edited BuildingCardPanel/ResearchCardPanel forms) and gracefully degrading (Godot auto-renames rather than crashing), so not patched inline pending a design call. Closure: add a cross-namespace uniqueness check (e.g. in `ResearchValidator.Validate` and/or `BuildingDefinitionValidator.Validate`, checking the OTHER definition list's id set) with a located error, and fix `OnNodeSelected` to resolve via the same last-wins `researchById`-style lookup `RebuildGraph` already uses rather than a fresh `FirstOrDefault`.
 status: open
+decision: 2026-07-16 Cross-namespace check + fix resolution — Add a cross-namespace uniqueness check (located error) in the validators AND fix OnNodeSelected to resolve via the same last-wins lookup RebuildGraph uses.
 
 ### DW-90: No mutual exclusivity between the command card's Research button grid and the existing Shop/Revive/Train button grids for the same building — all are gated only by their own single condition (`!canProduce`-style checks) and render at the same screen coordinates, so a building authored with both `AvailableResearch` entries and e.g. `ShopStock` would draw overlapping button grids with nothing preventing it.
 source_spec: `_bmad-output/implementation-artifacts/spec-4-11-research-authoring-command-card-buttons-upgrade-display.md`
 location: godot/src/UI/CommandCardSystem.cs (RefreshResearchButtons and its Shop/Revive/Train sibling Refresh* methods, all positioning at the same base offset e.g. `10f + i*102f, 74f`)
 reason: summary: this is a pre-existing architectural pattern — Shop and Revive/Train grids already coexist with the same single-condition-gating, same-coordinate-sharing shape with no cross-grid exclusivity check anywhere in this file, predating this story. Story 4.11's Research grid follows the SAME established (already-accepted) convention rather than introducing a new gap. evidence: flagged by the Blind Hunter review layer; verified the Shop/Revive/Train grids share the identical structural shape (independent boolean gate, no shared "which grid is active" state) before this story touched the file. Whether a real building would ever author both `AvailableResearch` and `ShopStock` is a content-authoring/game-design question outside this story's or this review's scope. Closure: if a building ever legitimately needs both, either the categories need a shared mutual-exclusivity gate (e.g. a building declares ONE "produces" category) or the button grids need distinct screen regions — a design decision, not a code defect, and applies equally to the pre-existing Shop/Revive/Train combinations this story didn't create.
 status: open
+decision: 2026-07-16 One producer-category gate — Have a building declare one active 'produces' category and gate the grids on it.
 
 ### DW-91: The command card gates ALL research UI (including the faction-wide in-progress Cancel affordance) on the SELECTED building's own producer/offer status, but research is faction-wide — so (a) a building with `canProduce == true` never shows its authored `AvailableResearch` at all, and (b) once a research is in progress, selecting an owned building that offers no research hides the Cancel button, leaving no way to cancel that order from that card.
 source_spec: `_bmad-output/implementation-artifacts/spec-4-11-research-authoring-command-card-buttons-upgrade-display.md`
 location: godot/src/UI/CommandCardSystem.cs (`RefreshBuildingCard` research gate at ~:426 `if (!canProduce && _research != null ...) RefreshResearchButtons else HideResearchButtons`; `RefreshResearchButtons` early-return at ~:445 `if (fdef == null || offered.Length == 0) { HideResearchButtons(); return; }` runs BEFORE the in-progress status/Cancel block at ~:456-479)
 reason: summary: research state (in-progress/cancel) is a per-faction singleton, but the command card renders and gates it per-building, so a producer building or a non-offering building suppresses UI for state that is logically faction-global. evidence: confirmed by reading `RefreshResearchButtons` — the `offered.Length == 0` early return hides `_researchCancelBtn` even when `anyInProgress`, and the caller's `!canProduce` gate means a barracks-style building that both trains units and lists `AvailableResearch` shows only its train grid, never its research. Both are real but low-consequence: (a) research authored on a producer building is a content-authoring choice that simply won't surface (no crash, no data loss); (b) the player can still cancel by reselecting the building that offers the research, and if that building is destroyed the research completes on its own — being unable to cancel is a lost-refund inconvenience, not a broken state. Distinct from DW-90 (which is about two grids OVERLAPPING on one building; this is about research being HIDDEN/unreachable). Flagged by the Blind Hunter (Cancel reachability) and Edge Case Hunter (producer building) review layers. Closure needs a design call: render the faction-wide in-progress status + Cancel independent of the selected building's offer/producer status (e.g. from `RefreshBuildingCard` whenever any owned building is selected and research is in progress), and decide whether a producing building may co-display a research grid — related to DW-90's "one building, which category is active" question.
 status: open
+decision: 2026-07-16 Faction-wide research UI — Render the in-progress status + Cancel whenever any owned building is selected and research is in progress, and decide whether a producer building may co-display a research grid (relates to DW-90).
 
 ### DW-92: Structural research edits made in `ResearchCardPanel` (Create/Delete/Duplicate) and prerequisite-edge edits made in `TechTreePanel`'s graph both mutate the SAME shared `FactionDefinition` instance, but neither view rebuilds the other — so the on-screen graph and the inspector can drift out of sync until the next Edit↔Play (`R`) toggle rebuilds the graph.
 source_spec: `_bmad-output/implementation-artifacts/spec-4-11-research-authoring-command-card-buttons-upgrade-display.md`
@@ -1050,6 +1062,7 @@ source_spec: `_bmad-output/implementation-artifacts/spec-5-1-factionregistry-can
 location: godot/src/Core/Bootstrap/Phases/ScenarioLoadPhase.cs (ResolveSlotFactionDefs, no guard), godot/src/Core/MainScene.cs (BuildHeadlessServerSimHost, has an inline `if ((int)f < 0 || (int)f >= slotDefs.Length) continue;` guard), godot/src/Core/Sim/ScenarioApplier.cs (separate private `InFactionRange` method)
 reason: summary: Story 5.1 centralized the `(Faction)(slot+1)` cast itself into `FactionRegistry.ToFaction`, but the range-validation that must accompany every use of that cast's result remains three independently-written checks (one missing entirely, one inline, one a private method on a different class) instead of one canonical bounds-checked path. evidence: pre-existing pattern — none of the three sites' bounds-check shape changed in this diff, only the cast expression did; confirmed by adversarial review (Blind Hunter) and independently by the Edge Case Hunter, who traced `ScenarioLoadPhase.ResolveSlotFactionDefs`'s missing guard as concretely reachable for a scenario slot >= 4. closure: a future story could route all three through `FactionRegistry.GetSlotDefinition`/an equivalent bounds-checked setter, once `ScenarioApplier`'s decoupling from `FactionRegistry` (it takes a raw array, not a registry reference) is revisited — out of Story 5.1's and this deferral's scope to design.
 status: open
+decision: 2026-07-16 Centralize bounds-check — Route all three sites through one FactionRegistry.GetSlotDefinition-style bounded accessor/setter.
 
 ### DW-96: `ScenarioLoadPhase.ResolveSlotFactionDefs`'s per-slot write has no bounds guard (pre-existing, same class as the story-1.8c deferral)
 source_spec: `_bmad-output/implementation-artifacts/spec-5-1-factionregistry-canonical-faction-slot-constants-ar-3.md`
@@ -1080,7 +1093,9 @@ source_spec: `_bmad-output/implementation-artifacts/spec-5-2-faction-schema-exte
 location: godot/src/Core/Definitions/FactionValidator.cs (`Validate`/`ValidateComplete`)
 reason: summary: the two methods are near-identical in name and signature; only their doc comments (and this deferred-work entry) distinguish "safe for every load, including mid-edit Save" from "only for callers that mean is-this-faction-finished." A future story wiring a new gate could pick the wrong one and either resurrect the Review Loop 2 editor-breaking regression (calling `ValidateComplete` from a lenient path) or resurrect the DW-97 gap (calling `Validate` where `ValidateComplete` was needed), with no compiler or test signal either way. evidence: flagged by the Blind Hunter review layer, Review Loop 3 (Pass 3); no existing analyzer/naming convention in this codebase currently distinguishes "safe everywhere" vs "gate-only" validator methods by type or attribute.
 closure: when DW-97 is picked up, consider a stronger signal than a doc comment — e.g. renaming to make the safety contract explicit (`ValidateStructural`/`ValidateReadyToShip`), or a lightweight `[MustBeCalledAtGate]`-style marker/analyzer — evaluate at that time rather than pre-emptively renaming a freshly-shipped, tested API now.
-status: open
+status: done 2026-07-16
+resolution: closed by human decision: Avoid pre-emptively renaming a freshly-shipped tested API; revisit only if a real mis-call occurs.
+decision: 2026-07-16 Keep doc-comment distinction — Avoid pre-emptively renaming a freshly-shipped tested API; revisit only if a real mis-call occurs.
 
 ### DW-100: `TechTreeValidator.Validate` throws `NullReferenceException` on a null element inside a non-null `Units`/`Buildings` list (pre-existing, rediscovered)
 source_spec: `_bmad-output/implementation-artifacts/spec-5-2-faction-schema-extension-validator-ar-39-ar-12-fr-18-data.md`
@@ -1118,6 +1133,7 @@ location: `godot/src/Core/Definitions/FactionValidator.cs:203-219` (`ValidateCom
 reason: summary: `FactionValidator.ValidateComplete` (Story 5.2) — the one validator this project treats as the "is this faction genuinely complete/playable" gate — only checks a `mesh_path` field is non-blank, never that it resolves to a real file on disk. DW-102 (this same story) is a concrete instance the gap allowed to ship silently (the `aviary` buildings' dangling `mesh_path` values pass `ValidateComplete` today). Three independent review layers (Blind Hunter, Edge Case Hunter, Intent Alignment) converged on this same observation during Story 5.3's review. evidence: read `FactionValidator.cs`'s `ValidateComplete` mesh_path loop directly; confirmed the `aviary` buildings' `bonded_aerie.glb`/`wraithwing_brood.glb` (non-existent on disk) pass `ValidateComplete().Ok` unchanged. Not caused by Story 5.3 — the check has worked this way since Story 5.2 authored it.
 closure: add a `File.Exists`/`ResourceLoader.Exists`-backed disk-existence check to `ValidateComplete`'s mesh_path loop (or a new, explicitly-named third method, given DW-99's existing concern about `Validate`/`ValidateComplete` ambiguity) — evaluate whether this belongs in the sim-layer validator at all (it reads the filesystem, a presentation-layer concern) versus a separate content-authoring lint step, before implementing.
 status: open
+decision: 2026-07-16 Add File.Exists to ValidateComplete — Add a File.Exists/ResourceLoader.Exists-backed check to ValidateComplete's mesh_path loop with a located error.
 
 ### DW-105: `_bmad-output/fma-faction-design.md`'s Air-unit narrative is stale relative to the shipped Story 2.8 Aviary building
 source_spec: `_bmad-output/implementation-artifacts/spec-5-3-land-harden-the-fma-showcase-content-as-valid-definer-outputs-fr-20.md`
@@ -1182,6 +1198,7 @@ location: `godot/src/CreationSuite/FactionDefinerPanel.Steps.cs` (`ResetWizard`,
 reason: summary: since `Key.X` both opens and (per the established sibling-panel `Toggle()` pattern) closes the panel, an accidental second `X` press while mid-edit re-opens a freshly-reset wizard, silently discarding all picks made so far — by design per this story's own Design Notes ("the wizard never carries partial state across a close"), but a real creator-facing usability gap all the same. Surfaced by the Blind Hunter review layer on Story 5.5's diff. Not this story's stated requirement to fix (the spec's Design Notes explicitly establish the no-partial-state-across-close behavior as intended), so left as a UX improvement for a future pass rather than reworked here.
 closure: if this friction proves real in practice, add a lightweight "discard unsaved wizard progress?" confirmation before `ResetWizard()` runs on a re-open that finds non-default draft state (e.g. any `_draft.Units`/`Buildings`/`Research` non-empty, or `Id`/`DisplayName` non-blank). Not urgent; no user complaint yet.
 status: open
+decision: 2026-07-16 Add discard confirmation — Show a 'discard unsaved wizard progress?' confirmation before ResetWizard() runs on a re-open that finds non-default draft state.
 
 ### DW-114: `FactionDefinerWizardCore.StepForError` has no case for `signature_mechanic*`/`hero_unit_id`/`starting_ore`/`starting_crystal` field paths (currently unreachable — latent trap if `FactionValidator` is ever extended to check them)
 source_spec: `_bmad-output/implementation-artifacts/spec-5-5-faction-definer-guided-wizard-flow-validator-gated-save-fr-17-ux-dr40.md`
@@ -1220,6 +1237,7 @@ location: `godot/src/Core/Definitions/FactionDefinerWizardCore.cs` (`TryFinish` 
 reason: summary: the data-integrity guarantee (no dangling `hero_unit_id` ever reaches a written file) is intact and directly tested, but a creator who picks a hero, unpicks that unit via Back → Roster → uncheck, then clicks Finish without revisiting the AI Preset step gets zero explanation for why `hero_unit_id` came back `null` — including, per Blind Hunter's finding, if `ValidateComplete` then blocks on an UNRELATED issue (e.g. missing `mesh_path`), the hero pick is already silently gone by the time the creator sees any error and returns to fix it. Surfaced by Edge Case Hunter (return-value-discarded) and Blind Hunter (silent-mutation-on-failed-attempt) independently on review pass 2.
 closure: surface the cleared-reference case to the creator — e.g. `OnFinishPressed` checks `ClearStaleHeroReference(_draft)`'s return before calling `TryFinish` and, if true, shows a status note ("hero selection was cleared — the picked unit is no longer in your roster") before proceeding. Needs a small design decision (block Finish to force acknowledgment, vs. just inform and proceed) — not urgent since the written data is always correct either way.
 status: open
+decision: 2026-07-16 Inform and proceed — Have OnFinishPressed check ClearStaleHeroReference's return and show a status note ('hero selection was cleared') before proceeding.
 
 ### DW-119: Two roster-picked units sharing the same `Id` across preset source files render as indistinguishable duplicate Hero Unit buttons
 source_spec: `_bmad-output/implementation-artifacts/spec-5-6-ai-preset-selection-advanced-raw-json-mode-hero-persistence-config-completion-target-fr-18-ux-dr80-ar-12.md`
@@ -1368,7 +1386,9 @@ origin: review-budget-followup
 source_spec: `spec-6-6-doodads-props-placement-editor-multi-select-copy-paste-rotation-named-cameras-water-floor.md`
 severity: low
 reason: Review budget (2 cycles) was exhausted with the story finalized (status: done, verify green) while the review pass kept recommending an independent follow-up. The work was committed by bmad-loop run 20260714-104223-7fe9; this entry preserves the lingering follow-up recommendation for a deliberate later review.
-status: open
+status: done 2026-07-16
+resolution: closed by human decision: Story shipped and verified green; accept the residual recommendation as satisfied.
+decision: 2026-07-16 Close as reviewed — Story shipped and verified green; accept the residual recommendation as satisfied.
 
 ### DW-140: Terrain stroke undo pins unbounded Image memory on the shared EditorHistory
 
@@ -1475,6 +1495,7 @@ location: godot/src/UI/BuildingBridge.cs / MultiMeshBridge (no per-entity rotati
 severity: low
 reason: `Rot` round-trips (hash-excluded) on all placeables, but the sim-render bridges have no per-entity rotation channel, so non-prop yaw is cosmetic-only-unrendered. Footprints stay axis-aligned for 1.0 by design; wiring non-prop yaw is architecturally invasive for low value.
 status: open
+decision: 2026-07-16 Add rotation channel — Add a per-entity rotation channel to the building/unit MultiMesh bridges so authored yaw renders.
 
 ### DW-153: Marquee selection and 3D selection markers assume flat y=0 terrain
 
@@ -1540,6 +1561,7 @@ location: godot/src/Core/FogOfWarSystem.cs (own 128 constants) + FlowField.WORLD
 severity: medium
 reason: Story 6.7 ships "map size" as authored playable half-extents (Small 80 / Medium 120 / Large 128, `ScenarioData.MapBounds`) inside the FIXED ±128 grid identity, per the epic RISK NOTE. Truly resizing the grids is a determinism-critical refactor: it changes the pathability persist format (invalidating every stored scenario's `pathability_blocked`) and forces re-baselining every CanonicalModelHash/StartStateHash/golden fixture. Requires a dedicated correct-course story parameterizing the four sim grids from a single map-size truth source in lockstep, `GridDimensionConsistencyTests` extended per-size, and an explicit one-time golden re-baseline. Until then the fixed 80/120/128 set is the shipped contract.
 status: open
+decision: 2026-07-16 Keep open
 
 ### DW-161: Start-position "−" remove is not undoable, and "+" increments the picker count before a backing slot exists
 
@@ -1556,6 +1578,7 @@ location: godot/src/Core/Definitions/MapSizes (MaxHalfExtent == FlowField.WORLD_
 severity: low
 reason: Positions exactly on the +128 boundary clamp col/row 128→127. Deterministic, affects only the exact boundary line, same pre-existing WorldToCell clamp convention as DW-158. Fix: give Large a small sub-128 margin, or document the edge as the intended playable ceiling.
 status: open
+decision: 2026-07-16 Keep open
 
 ### DW-163: Start-position editor assumes contiguous 0-based slots — a validator-legal non-contiguous set (e.g. {0,3}) drops markers and misroutes toggles/remove
 
