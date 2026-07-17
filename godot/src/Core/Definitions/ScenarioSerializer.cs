@@ -113,7 +113,11 @@ namespace ProjectChimera.Core.Definitions
             copy.SchemaVersion       = CurrentSchemaVersion;
             copy.ChecksumAlgoVersion = CanonicalModelHash.AlgoVersion;
 
-            return JsonSerializer.Serialize(copy, _options);
+            // A4-E3: normalize to LF. .NET 8's indented Utf8JsonWriter emits Environment.NewLine
+            // (\r\n on Windows, \n on Linux), which made this method's bytes — and every golden hash
+            // pinned on them — platform-dependent. Linux output is already LF, so this is a no-op
+            // there and no goldens move. Switch to JsonSerializerOptions.NewLine if/when on .NET 9.
+            return JsonSerializer.Serialize(copy, _options).Replace("\r\n", "\n");
         }
 
         /// <summary>
