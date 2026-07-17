@@ -43,6 +43,17 @@ jobs:
         with:
           dotnet-version: '8.0.419'   # pin to the exact SDK global.json + packages.lock.json name (D6 + 1.10a review) — one frozen, reproducible toolchain everywhere; bump intentionally alongside a lock-file regen
 
+      - name: Pin SDK resolution to exactly 8.0.419 (CI-only global.json override)
+        # The setup-dotnet pin above is NOT sufficient on GitHub runners: the SDK installs into the image's
+        # shared DOTNET_ROOT next to the PREINSTALLED (newer) 8.0.x SDK, and the committed global.json says
+        # rollForward: latestFeature (right for dev boxes — do not change it), so the resolver picks the newer
+        # preinstalled SDK. Its bundled Microsoft.NET.ILLink.Tasks then mismatches the committed
+        # packages.lock.json → NU1004 (this is what kept the gate red 2026-07-07..17; the lock files were
+        # never stale). Overriding the WORKSPACE copy (never committed) pins resolution to the exact SDK the
+        # lock files were generated against, so a runner-image SDK bump can never re-rot the gate.
+        shell: pwsh
+        run: Set-Content global.json '{"sdk":{"version":"8.0.419","rollForward":"disable"}}'
+
       - name: Restore (Godot-free Tier-1 test project only, locked package graph)
         run: dotnet restore godot/ProjectChimera.Sim.Tests/ProjectChimera.Sim.Tests.csproj --locked-mode
 
@@ -79,6 +90,12 @@ jobs:
         with:
           dotnet-version: '8.0.419'   # same frozen toolchain as tier1-golden-gate (global.json + lock files)
 
+      - name: Pin SDK resolution to exactly 8.0.419 (CI-only global.json override)
+        # Same rot vector as tier1-golden-gate: preinstalled newer SDK + rollForward latestFeature outranks
+        # the setup-dotnet pin. pwsh is preinstalled on ubuntu runners; one uniform step on both OSes.
+        shell: pwsh
+        run: Set-Content global.json '{"sdk":{"version":"8.0.419","rollForward":"disable"}}'
+
       - name: Restore (Godot-free Tier-1 test project only, locked package graph)
         run: dotnet restore godot/ProjectChimera.Sim.Tests/ProjectChimera.Sim.Tests.csproj --locked-mode
 
@@ -99,11 +116,12 @@ jobs:
   # compilation (ProjectChimera.Sim.Analysis). SIBLING job to tier1-golden-gate (left untouched), reusing the
   # same Godot-free windows-latest / SDK 8.0.419 / --locked-mode lane. No Godot is installed here either.
   #
-  # ADVISORY on master: the analyzers emit warnings (surfaced as annotations) but the build stays GREEN, so the
-  # hourly [AutoSave] auto-commit loop is never blocked. The RELEASE variant (-warnaserror for the zero-baseline
-  # rule set, currently RS0030) HARD-FAILS the build and is reachable on a release/** branch or on demand via the
-  # workflow_dispatch `run_release_gate` input — so the enforcement mechanism exists and can be exercised before a
-  # real release branch is cut.
+  # ADVISORY scope (precise): analyzer FINDINGS are advisory on master — no -warnaserror, so warnings surface
+  # as annotations and never fail the build. The JOB itself still enforces: the custom-analyzer unit tests and
+  # any real build/restore breakage (e.g. a lock-file/SDK mismatch) fail it honestly, and the RELEASE variant
+  # (-warnaserror for the zero-baseline rule set, currently RS0030) HARD-FAILS on a release/** branch or via the
+  # workflow_dispatch `run_release_gate` input. Deliberately NOT continue-on-error: that would also swallow the
+  # unit tests and the release hard-fail living in this job.
   tier1-analyzer-gate:
     runs-on: windows-latest
     steps:
@@ -115,6 +133,12 @@ jobs:
         with:
           dotnet-version: '8.0.419'   # same frozen toolchain as tier1-golden-gate (global.json + lock files)
 
+      - name: Pin SDK resolution to exactly 8.0.419 (CI-only global.json override)
+        # Same rot vector as tier1-golden-gate — and THIS job is where it bit (Sim.Analysis carries the
+        # implicit SDK-versioned ILLink.Tasks reference in its lock file, so an SDK drift = NU1004 here first).
+        shell: pwsh
+        run: Set-Content global.json '{"sdk":{"version":"8.0.419","rollForward":"disable"}}'
+
       - name: Restore (analyzer gate + custom-analyzer unit tests, locked package graph)
         run: |
           dotnet restore godot/ProjectChimera.Sim.Analysis/ProjectChimera.Sim.Analysis.csproj --locked-mode
@@ -123,7 +147,7 @@ jobs:
       - name: Custom-analyzer unit tests (CHM0001..CHM0005)
         run: dotnet test godot/analyzers/ProjectChimera.Analyzers.Tests/ProjectChimera.Analyzers.Tests.csproj -c Release --no-restore --logger "trx;LogFileName=analyzer-tests.trx"
 
-      - name: Determinism analyzer gate — ADVISORY (master stays green; findings surface as warnings/annotations)
+      - name: Determinism analyzer gate — findings ADVISORY (warnings annotate, never fail; real build breakage still does)
         # No -warnaserror here: BannedApiAnalyzers (RS0030), the custom BannedSimApiAnalyzer (CHM0001..CHM0005) and
         # the trim/AOT analyzers (IL2xxx/IL3xxx) all run and PRINT, but warnings never fail this step.
         run: dotnet build godot/ProjectChimera.Sim.Analysis/ProjectChimera.Sim.Analysis.csproj -c Release --no-restore
