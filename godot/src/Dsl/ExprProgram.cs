@@ -54,6 +54,8 @@ namespace ProjectChimera.Dsl
             Abs,       // raw abs; int.MinValue → int.MaxValue
             Count,     // pop faction slot, push IExprWorld.CountAlive (null world → 0)
             Distance,  // pop Point b, pop Point a, push FixedVec3.Distance((aX,0,aZ),(bX,0,bZ)).Raw
+            ArrayGet,  // Story 7.6: pop Int index, push DslVarTable.ArrayGet(Name, index) — OOB reads 0 (total)
+            ArrayLen,  // Story 7.6: push DslVarTable.ArrayLen(Name) — the live element count (Int)
         }
 
         /// <summary>One postfix op. <see cref="Name"/> is only used by <see cref="OpCode.PushVar"/> (the variable
@@ -204,6 +206,17 @@ namespace ProjectChimera.Dsl
                         s1[sp - 1] = 0;
                         break;
                     }
+
+                    case OpCode.ArrayGet: // Story 7.6: arr[i] — an OOB/unknown read is 0 (total semantics)
+                        s0[sp - 1] = vars.ArrayGet(op.Name!, s0[sp - 1]);
+                        s1[sp - 1] = 0;
+                        break;
+
+                    case OpCode.ArrayLen: // Story 7.6: length(arr) — the live element count
+                        s0[sp] = vars.ArrayLen(op.Name!);
+                        s1[sp] = 0;
+                        sp++;
+                        break;
                 }
             }
 

@@ -672,6 +672,67 @@ namespace ProjectChimera.Sim.Tests.Dsl
             Assert.Contains("blank", ex2.Message);
         }
 
+        // ── Review P10: arrayDecls plumbing through BuildExpressionTrigger ──────────
+
+        [Fact]
+        public void BuildExpressionTrigger_ArrayLengthCondition_CompilesAndLoads_WhenArrayDeclsArePassed()
+        {
+            // Before P10 the helper never forwarded arrayDecls to Parse/TryCompile, so an author who declared
+            // an Array variable and typed `length(arr) >= 2` in the editor's manual condition field got a false
+            // "no array declaration is available" reject.
+            var decls = new Dictionary<string, (DslValueType Type, VarScope Scope)>(StringComparer.Ordinal)
+            {
+                ["arr"]   = (DslValueType.Array, VarScope.Global),
+                ["fired"] = (DslValueType.Int,   VarScope.Global),
+            };
+            var arrayDecls = new Dictionary<string, (DslValueType Elem, int Capacity)>(StringComparer.Ordinal)
+            {
+                ["arr"] = (DslValueType.Int, 8),
+            };
+
+            TriggerGraph g = TriggerGraph.BuildExpressionTrigger(
+                "arr-gate", "match_start", "length(arr) >= 2", "fired", 0, "1", decls,
+                arrayDecls: arrayDecls);
+            Assert.Contains(g.Nodes, n => n is ExprArrayLenNode);
+
+            // The built trigger LOADS and ticks (a Global array read is legal in the inCondition:true trigger
+            // condition): the declared array seeds EMPTY, so length(arr) >= 2 is false and the action must not fire.
+            var scenario = new ScenarioData
+            {
+                Variables = new[]
+                {
+                    new ScenarioVariable { Name = "arr",   Type = DslValueType.Array, Scope = VarScope.Global, ElementType = DslValueType.Int, Capacity = 8 },
+                    new ScenarioVariable { Name = "fired", Type = DslValueType.Int,   Scope = VarScope.Global },
+                },
+                TriggerGraphJson = g.ToCanonicalJson(),
+            };
+            (ScenarioDirector director, DslVarTable vars) = Build(scenario);
+            director.Tick(new EntityWorld(), Fixed.One);
+            Assert.Equal(0, vars.GetInt("fired", 0));
+        }
+
+        [Fact]
+        public void BuildExpressionTrigger_WithoutArrayDecls_ScalarCallsAreUnchanged_AndArrayReadsStillReject()
+        {
+            // Omitting the trailing optional parameter keeps the exact 7.4 semantics: a scalar-only call
+            // compiles as before…
+            var decls = new Dictionary<string, (DslValueType Type, VarScope Scope)>(StringComparer.Ordinal)
+            {
+                ["x"] = (DslValueType.Int, VarScope.Global),
+            };
+            TriggerGraph scalar = TriggerGraph.BuildExpressionTrigger("t", "match_start", "x > 0", "x", 0, "1 + 1", decls);
+            Assert.Contains(scalar.Nodes, n => n is TriggerNode);
+
+            // …and an array read WITHOUT the map still rejects located (fail-closed default, never a silent 0).
+            var declsWithArr = new Dictionary<string, (DslValueType Type, VarScope Scope)>(StringComparer.Ordinal)
+            {
+                ["arr"] = (DslValueType.Array, VarScope.Global),
+            };
+            var ex = Assert.ThrowsAny<System.Text.Json.JsonException>(() => TriggerGraph.BuildExpressionTrigger(
+                "t2", "match_start", "length(arr) >= 2", null, 0, null, declsWithArr));
+            Assert.Contains("length(arr) requires a declared Array variable", ex.Message);
+        }
+
         [Fact]
         public void LegacyExpressionFreeScenario_TwoRuns_AreByteIdentical()
         {

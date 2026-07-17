@@ -46,6 +46,19 @@ namespace ProjectChimera.Dsl
         public const int ExprOperandPort1       = 1;
         /// <summary>Expression node (Story 7.4): the typed data-out port every expression node emits on (data edge Src).</summary>
         public const int ExprDataOutPort        = 0;
+        /// <summary>ActionNode (Story 7.6): the Int index-in data port an <c>array_set</c> index expression feeds
+        /// (data edge Dst). Distinct from <see cref="ActionValueInPort"/> (= 1) — data ports are a separate space.</summary>
+        public const int ActionIndexInPort      = 2;
+        /// <summary>ForEachNode / ForEachBatchedNode (Story 7.6): the exec-out port the per-iteration BODY chain
+        /// hangs off (exec edge Src). Port 0 stays the continuation (the chain after the loop).</summary>
+        public const int ForEachBodyOutPort     = 1;
+        /// <summary>BranchNode (Story 7.6): the exec-out port of the THEN chain. Port 0 stays the continuation.</summary>
+        public const int BranchThenOutPort      = 1;
+        /// <summary>BranchNode (Story 7.6): the exec-out port of the ELSE chain.</summary>
+        public const int BranchElseOutPort      = 2;
+        /// <summary>BranchNode (Story 7.6): the Bool condition-in DATA port (compiled <c>inCondition:false</c> —
+        /// TriggerLocal/loop-var reads are legal here, unlike the trigger condition-in).</summary>
+        public const int BranchCondInPort       = 0;
 
         public List<NodeBase> Nodes     { get; } = new();
         public List<ExecEdge> ExecEdges { get; } = new();
@@ -228,11 +241,16 @@ namespace ProjectChimera.Dsl
         /// </summary>
         /// <param name="setVarValue">The literal value for the set_variable action when NO value expression is
         /// given (the legacy literal path — then the target must be Int-typed, per the unchanged 7.3 rule).</param>
+        /// <param name="arrayDecls">Review P10 — declared Array names → (element type, capacity), threaded into
+        /// every Parse/TryCompile call so a manual expression may read declared arrays (<c>length(arr)</c>,
+        /// <c>arr[i]</c> — Global array reads are legal even in the <c>inCondition:true</c> trigger condition).
+        /// Null (every 7.4-era caller) keeps the prior semantics: array reads reject located.</param>
         public static TriggerGraph BuildExpressionTrigger(
             string name, string eventKind,
             string? conditionExprText, string? setVarName, int setVarFaction, string? valueExprText,
             IReadOnlyDictionary<string, (DslValueType Type, VarScope Scope)> varDeclInfo,
-            bool enabled = true, bool runOnce = false, int setVarValue = 0)
+            bool enabled = true, bool runOnce = false, int setVarValue = 0,
+            IReadOnlyDictionary<string, (DslValueType Elem, int Capacity)>? arrayDecls = null)
         {
             // Fail-closed on whitespace-only text (review, 7.4 pass 2): "absent" is spelled null. Degrading "  " to
             // no-condition would silently fire the trigger UNCONDITIONALLY (the exact silent-condition-drop class two
@@ -250,11 +268,11 @@ namespace ProjectChimera.Dsl
 
             if (!string.IsNullOrWhiteSpace(conditionExprText))
             {
-                (int rootId, DataWireType wire) = ExprParser.Parse(conditionExprText!, g, varDeclInfo);
+                (int rootId, DataWireType wire) = ExprParser.Parse(conditionExprText!, g, varDeclInfo, arrayDecls);
                 if (wire != DataWireType.Boolean)
                     throw new JsonException($"condition expression must evaluate to Bool, got wire type '{wire}'.");
                 g.DataEdges.Add(new DataEdge(rootId, ExprDataOutPort, 0, TriggerConditionInPort, DataWireType.Boolean));
-                if (!ExprCompiler.TryCompile(g, rootId, varDeclInfo, inCondition: true, out _, out string? condErr))
+                if (!ExprCompiler.TryCompile(g, rootId, varDeclInfo, inCondition: true, out _, out string? condErr, arrayDecls))
                     throw new JsonException($"condition expression: {condErr}");
             }
 
@@ -262,7 +280,7 @@ namespace ProjectChimera.Dsl
             {
                 if (!string.IsNullOrWhiteSpace(valueExprText))
                 {
-                    (int rootId, DataWireType wire) = ExprParser.Parse(valueExprText!, g, varDeclInfo);
+                    (int rootId, DataWireType wire) = ExprParser.Parse(valueExprText!, g, varDeclInfo, arrayDecls);
                     DslValueType target = varDeclInfo.TryGetValue(setVarName!, out var decl) ? decl.Type : DslValueType.Int;
                     if (target != DslValueType.Int && target != DslValueType.Fixed && target != DslValueType.Bool)
                         throw new JsonException(
@@ -277,7 +295,7 @@ namespace ProjectChimera.Dsl
                     g.Nodes.Add(new ActionNode { Id = actionId, Kind = "set_variable", Variable = setVarName, Faction = setVarFaction });
                     g.ExecEdges.Add(new ExecEdge(0, TriggerExecOutPort, actionId, ActionExecInPort));
                     g.DataEdges.Add(new DataEdge(rootId, ExprDataOutPort, actionId, ActionValueInPort, wire));
-                    if (!ExprCompiler.TryCompile(g, rootId, varDeclInfo, inCondition: false, out _, out string? valErr))
+                    if (!ExprCompiler.TryCompile(g, rootId, varDeclInfo, inCondition: false, out _, out string? valErr, arrayDecls))
                         throw new JsonException($"value expression: {valErr}");
                 }
                 else
@@ -291,6 +309,42 @@ namespace ProjectChimera.Dsl
                 }
             }
 
+            return g;
+        }
+
+        /// <summary>
+        /// Story 7.6 — assemble a single-trigger graph whose action chain is one <see cref="ForEachNode"/> with a
+        /// body chain (EventNode --exec--&gt; TriggerNode --exec--&gt; ForEachNode; ForEachNode port 1 --exec--&gt;
+        /// body[0] --exec--&gt; …). Godot-free and unit-testable, mirroring <see cref="BuildRunEffectTrigger"/> /
+        /// <see cref="BuildExpressionTrigger"/>; the caller merges the result into the scenario's graph channel.
+        /// Ids: 0 = trigger, 1 = event, 2 = for_each, 3.. = the body nodes in order. The caller may append
+        /// continuation nodes / data edges afterwards (fresh ids past the returned graph's max).
+        /// </summary>
+        public static TriggerGraph BuildForEachTrigger(
+            string name, string eventKind,
+            string source, string? arrayName, int faction, string? regionId, int upTo, string? loopVar,
+            NodeBase[] bodyActions, bool enabled = true, bool runOnce = false)
+        {
+            var g = new TriggerGraph();
+            g.Nodes.Add(new TriggerNode { Id = 0, Name = name, Enabled = enabled, RunOnce = runOnce });
+            g.Nodes.Add(new EventNode { Id = 1, Kind = eventKind });
+            g.Nodes.Add(new ForEachNode
+            {
+                Id = 2, Source = source, ArrayName = arrayName, Faction = faction,
+                RegionId = regionId, UpTo = upTo, LoopVar = loopVar,
+            });
+            g.ExecEdges.Add(new ExecEdge(1, EventExecOutPort, 0, TriggerEventInPort));
+            g.ExecEdges.Add(new ExecEdge(0, TriggerExecOutPort, 2, ActionExecInPort));
+
+            int prevId = 2, prevPort = ForEachBodyOutPort, nextId = 3;
+            foreach (NodeBase body in bodyActions)
+            {
+                body.Id = nextId++;
+                g.Nodes.Add(body);
+                g.ExecEdges.Add(new ExecEdge(prevId, prevPort, body.Id, ActionExecInPort));
+                prevId   = body.Id;
+                prevPort = ActionExecOutPort;
+            }
             return g;
         }
 
@@ -379,8 +433,12 @@ namespace ProjectChimera.Dsl
                     ActionNode? next = null;
                     foreach (ExecEdge e in sortedExec)   // deterministic: exactly one match in a FromFlat graph
                     {
+                        // Story 7.6: the graph-channel-only array action kinds (array_push/array_set/array_clear)
+                        // have NO flat form — ToFlat skips them exactly like EffectActionNode (the walk ends; the
+                        // flat _actionTypes vocabulary stays untouched).
                         if (e.Src == currentId && e.SrcPort == currentPort
-                            && byId.TryGetValue(e.Dst, out NodeBase? nb) && nb is ActionNode an)
+                            && byId.TryGetValue(e.Dst, out NodeBase? nb) && nb is ActionNode an
+                            && !NodeKinds.IsArrayActionKind(an.Kind))
                         {
                             next = an;
                             break;
@@ -440,9 +498,43 @@ namespace ProjectChimera.Dsl
             public int[]            ConditionExprRoots { get; init; } = System.Array.Empty<int>();
 
             /// <summary>Story 7.4 — per-action value-in expression-root id, parallel to <see cref="Actions"/>
-            /// (-1 = no value expression). Only a <c>set_variable</c> <see cref="ActionNode"/> may carry one
-            /// (enforced at the validator gate and at LoadScenario compile).</summary>
+            /// (-1 = no value expression). Only a <c>set_variable</c> (or, Story 7.6, an <c>array_push</c>/
+            /// <c>array_set</c>) <see cref="ActionNode"/> may carry one (enforced at the validator gate and at
+            /// LoadScenario compile).</summary>
             public int[]            ActionValueExprRoots { get; init; } = System.Array.Empty<int>();
+
+            /// <summary>Story 7.6 — the NESTED execution view of this trigger's chain: the top-level items in exec
+            /// order, each carrying its sub-chains (for_each/for_each_batched body; branch then/else) and its
+            /// surfaced expression roots. For a container-free (legacy) graph this is exactly
+            /// <see cref="Actions"/>/<see cref="ActionValueExprRoots"/> item-for-item, so the flat projections
+            /// above stay byte-identical.</summary>
+            public ExecItem[]       Items { get; init; } = System.Array.Empty<ExecItem>();
+        }
+
+        /// <summary>
+        /// Story 7.6 — one node of the nested execution view. <see cref="Node"/> is an <see cref="ActionNode"/>,
+        /// <see cref="EffectActionNode"/>, <see cref="ForEachNode"/>, <see cref="ForEachBatchedNode"/> or
+        /// <see cref="BranchNode"/>. Expression roots are the lowest expr-node src data-wired into the matching
+        /// in-port (-1 = none); sub-chains are resolved by the SAME deterministic walk as the top-level chain,
+        /// sharing one visited set so any rejoin of an ancestor (or sibling chain) rejects as a cycle.
+        /// </summary>
+        public sealed class ExecItem
+        {
+            private static readonly ExecItem[] None = System.Array.Empty<ExecItem>();
+
+            public NodeBase Node { get; init; } = null!;
+            /// <summary>Value-in expression root (data port <see cref="ActionValueInPort"/>; -1 = none).</summary>
+            public int ValueExprRoot { get; init; } = -1;
+            /// <summary>array_set index-in expression root (data port <see cref="ActionIndexInPort"/>; -1 = none).</summary>
+            public int IndexExprRoot { get; init; } = -1;
+            /// <summary>branch condition-in expression root (data port <see cref="BranchCondInPort"/>; -1 = none).</summary>
+            public int CondExprRoot { get; init; } = -1;
+            /// <summary>for_each / for_each_batched body chain (exec-out port <see cref="ForEachBodyOutPort"/>).</summary>
+            public ExecItem[] Body { get; init; } = None;
+            /// <summary>branch then chain (exec-out port <see cref="BranchThenOutPort"/>).</summary>
+            public ExecItem[] Then { get; init; } = None;
+            /// <summary>branch else chain (exec-out port <see cref="BranchElseOutPort"/>).</summary>
+            public ExecItem[] Else { get; init; } = None;
         }
 
         /// <summary>
@@ -484,42 +576,21 @@ namespace ProjectChimera.Dsl
                              && byId.TryGetValue(e.Src, out NodeBase? src) && ExprCompiler.IsExprNode(src))
                     .Select(e => e.Src).Distinct().OrderBy(id => id).ToArray();
 
-                // Walk the exec chain out of the trigger: Trigger → node0 → … (ActionNode or EffectActionNode).
-                var actions = new List<NodeBase>();
-                int currentId = tn.Id, currentPort = TriggerExecOutPort;
-                var visited = new HashSet<int> { currentId };
-                while (true)
-                {
-                    NodeBase? next = null;
-                    foreach (ExecEdge e in sortedExec)
-                    {
-                        if (e.Src == currentId && e.SrcPort == currentPort
-                            && byId.TryGetValue(e.Dst, out NodeBase? nb) && (nb is ActionNode || nb is EffectActionNode))
-                        {
-                            next = nb;
-                            break;
-                        }
-                    }
-                    if (next is null) break;
-                    if (!visited.Add(next.Id))
-                        throw new JsonException(
-                            $"exec chain cycle at node {next.Id} (trigger '{tn.Name}', id {tn.Id}): the action chain must be acyclic.");
-                    actions.Add(next);
-                    currentId   = next.Id;
-                    currentPort = ActionExecOutPort;
-                }
+                // Walk the exec chain out of the trigger into the NESTED execution view (Story 7.6): top-level
+                // chain via port 0, containers recursing into body/then/else sub-chains. ONE visited set spans the
+                // whole trigger walk (seeded with the trigger head), so a cycle — including a body/then/else chain
+                // rejoining ANY ancestor or sibling — rejects located (extending 7.2's fail-closed cycle guard).
+                var visited = new HashSet<int> { tn.Id };
+                ExecItem[] items = WalkChain(tn.Id, TriggerExecOutPort, tn, byId, sortedExec, visited, depth: 1);
 
-                // Story 7.4 — per-action value-in expression root (-1 = none): the lowest expr-node src data-wired
-                // into the action's value-in port (deterministic first; forks are rejected at the validator gate).
-                var valueRoots = new int[actions.Count];
-                for (int i = 0; i < actions.Count; i++)
+                // The flat projections (Actions / ActionValueExprRoots) mirror the TOP-LEVEL chain item-for-item —
+                // for a container-free (legacy) graph this is byte-identical to the pre-7.6 walk.
+                var actions    = new NodeBase[items.Length];
+                var valueRoots = new int[items.Length];
+                for (int i = 0; i < items.Length; i++)
                 {
-                    valueRoots[i] = -1;
-                    foreach (DataEdge e in DataEdges)
-                        if (e.Dst == actions[i].Id && e.DstPort == ActionValueInPort
-                            && byId.TryGetValue(e.Src, out NodeBase? src) && ExprCompiler.IsExprNode(src)
-                            && (valueRoots[i] < 0 || e.Src < valueRoots[i]))
-                            valueRoots[i] = e.Src;
+                    actions[i]    = items[i].Node;
+                    valueRoots[i] = items[i].ValueExprRoot;
                 }
 
                 result.Add(new TriggerExec
@@ -527,13 +598,99 @@ namespace ProjectChimera.Dsl
                     Trigger              = tn,
                     Events               = events,
                     Conditions           = conditions,
-                    Actions              = actions.ToArray(),
+                    Actions              = actions,
                     ConditionExprRoots   = condExprRoots,
                     ActionValueExprRoots = valueRoots,
+                    Items                = items,
                 });
             }
 
             return result;
+        }
+
+        /// <summary>
+        /// Story 7.6 — resolve one exec chain starting at (<paramref name="srcId"/>, <paramref name="srcPort"/>)
+        /// into its ordered <see cref="ExecItem"/> list, recursing into container sub-chains. Deterministic: the
+        /// first matching edge on the canonically-sorted exec list drives each hop (forked exec edges stay 7.7
+        /// structural scope — first-match here, like the 7.4 value-root rule). The SHARED <paramref name="visited"/>
+        /// set is the fail-closed cycle guard.
+        ///
+        /// <para>Review P9 — <paramref name="depth"/> is this chain's container nesting level (top-level chain =
+        /// 1) and is capped at <see cref="DslBounds.MaxExecWalkDepth"/>: hostile JSON with thousands of nested
+        /// containers would otherwise drive this recursion into an uncatchable <c>StackOverflowException</c>
+        /// BEFORE any DslLoopGate nesting/cost check runs (this walk BUILDS the view those checks walk). The
+        /// reject is a located <see cref="JsonException"/> naming the constant, like the cycle guard.</para>
+        /// </summary>
+        private ExecItem[] WalkChain(int srcId, int srcPort, TriggerNode tn,
+            Dictionary<int, NodeBase> byId, List<ExecEdge> sortedExec, HashSet<int> visited, int depth)
+        {
+            var items = new List<ExecItem>();
+            int currentId = srcId, currentPort = srcPort;
+            while (true)
+            {
+                NodeBase? next = null;
+                foreach (ExecEdge e in sortedExec)
+                {
+                    if (e.Src == currentId && e.SrcPort == currentPort
+                        && byId.TryGetValue(e.Dst, out NodeBase? nb)
+                        && (nb is ActionNode || nb is EffectActionNode
+                            || nb is ForEachNode || nb is ForEachBatchedNode || nb is BranchNode))
+                    {
+                        next = nb;
+                        break;
+                    }
+                }
+                if (next is null) break;
+                if (!visited.Add(next.Id))
+                    throw new JsonException(
+                        $"exec chain cycle at node {next.Id} (trigger '{tn.Name}', id {tn.Id}): the action chain must be acyclic (body/then/else chains may not rejoin an ancestor).");
+
+                ExecItem[] body = System.Array.Empty<ExecItem>();
+                ExecItem[] then = System.Array.Empty<ExecItem>();
+                ExecItem[] els  = System.Array.Empty<ExecItem>();
+                if (next is ForEachNode || next is ForEachBatchedNode || next is BranchNode)
+                {
+                    // Review P9 — the recursion seatbelt: reject BEFORE recursing into the sub-chain, located.
+                    if (depth + 1 > DslBounds.MaxExecWalkDepth)
+                        throw new JsonException(
+                            $"node {next.Id} (trigger '{tn.Name}', id {tn.Id}): container nesting depth {depth + 1} exceeds DslBounds.MaxExecWalkDepth={DslBounds.MaxExecWalkDepth} (the exec-walk recursion seatbelt).");
+                }
+                if (next is ForEachNode || next is ForEachBatchedNode)
+                    body = WalkChain(next.Id, ForEachBodyOutPort, tn, byId, sortedExec, visited, depth + 1);
+                else if (next is BranchNode)
+                {
+                    then = WalkChain(next.Id, BranchThenOutPort, tn, byId, sortedExec, visited, depth + 1);
+                    els  = WalkChain(next.Id, BranchElseOutPort, tn, byId, sortedExec, visited, depth + 1);
+                }
+
+                items.Add(new ExecItem
+                {
+                    Node          = next,
+                    ValueExprRoot = LowestExprRootInto(next.Id, ActionValueInPort, byId),
+                    IndexExprRoot = LowestExprRootInto(next.Id, ActionIndexInPort, byId),
+                    CondExprRoot  = next is BranchNode ? LowestExprRootInto(next.Id, BranchCondInPort, byId) : -1,
+                    Body          = body,
+                    Then          = then,
+                    Else          = els,
+                });
+
+                currentId   = next.Id;
+                currentPort = ActionExecOutPort; // = 0, the continuation port on every exec node kind
+            }
+            return items.Count == 0 ? System.Array.Empty<ExecItem>() : items.ToArray();
+        }
+
+        /// <summary>The lowest expression-node src data-wired into (<paramref name="dstId"/>,
+        /// <paramref name="dstPort"/>), or -1 (the 7.4 deterministic value-root rule; forks reject at the gate).</summary>
+        private int LowestExprRootInto(int dstId, int dstPort, Dictionary<int, NodeBase> byId)
+        {
+            int root = -1;
+            foreach (DataEdge e in DataEdges)
+                if (e.Dst == dstId && e.DstPort == dstPort
+                    && byId.TryGetValue(e.Src, out NodeBase? src) && ExprCompiler.IsExprNode(src)
+                    && (root < 0 || e.Src < root))
+                    root = e.Src;
+            return root;
         }
 
         /// <summary>

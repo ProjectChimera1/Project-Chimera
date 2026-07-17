@@ -177,8 +177,20 @@ namespace ProjectChimera.Core
         ///        adds Mix(0)-count steps that move the hash even with zero live state — the epic-mandated,
         ///        behavior-neutral golden re-baseline (parity is proven by the migration/execution unit tests). All
         ///        int/Fixed.Raw → cross-platform safe. One scheduled re-baseline of ALL per-tick goldens.
+        ///   v17 — Story 7.6: the bounded-loop / array / fuel layer folds. (a) <see cref="DslVarTable"/>'s FoldInto
+        ///        gains an ARRAYS section between the per-player and timer sections (a leading array-declaration
+        ///        count; per array its live element count then every live element raw, ascending element index) —
+        ///        arrays are variables, so they fold inside the table. (b) A new <see cref="Dsl.DslLoopState"/>
+        ///        store folds AFTER the DslVarTable and BEFORE the SimRng fold (SimRng stays last, the v16
+        ///        precedent): a leading for_each_batched continuation-row count; per row (ascending node id) its
+        ///        active flag / cursor / snapshot length / live snapshot entity ids; then the per-tick DSL fuel
+        ///        consumed (the MaxDslOpsPerTick seatbelt's counter — reset each director tick, so a divergent
+        ///        trigger workload desyncs detectably). A null DslLoopState folds byte-identically to an empty one
+        ///        (FoldEmpty null≡empty; legacy/test callers only — SimulationHost always passes the real store).
+        ///        Loop/array-free scenarios add only leading count/fuel Mix(0) steps — behavior-neutral, covered by
+        ///        this story's ONE scheduled re-baseline of ALL goldens. All int → cross-platform safe.
         /// </summary>
-        public const int AlgoVersion = 16;
+        public const int AlgoVersion = 17;
 
         /// <summary>
         /// Compute a full-state checksum for desync detection.
@@ -187,7 +199,7 @@ namespace ProjectChimera.Core
         public static uint Compute(EntityWorld world, BuildingStore buildings, ResourceStore resources,
                                    FactionRegistry factions, ModifierStore? modifiers = null, HeroStore? heroes = null,
                                    ItemStore? items = null, ResourceNodeStore? nodes = null, ResearchStore? research = null,
-                                   DslVarTable? vars = null)
+                                   DslVarTable? vars = null, DslLoopState? loopState = null)
         {
             // Contract guard for the registry param added in Story 1.3a: a future direct caller (e.g. the
             // 1.9a/9.1 server checksum collector) gets a clear error instead of an opaque NRE in the Ore loop.
@@ -496,6 +508,17 @@ namespace ProjectChimera.Core
                 vars.FoldInto(ref hash, Mix);
             else
                 DslVarTable.FoldEmpty(ref hash, Mix); // null store ≡ empty table (byte-identical fold)
+
+            // ── DslLoopState (v17, Story 7.6) — the loop layer's runtime state, AFTER the variable table and
+            // BEFORE the RNG fold (SimRng stays last): the for_each_batched continuation rows (active/cursor/
+            // length + live snapshot ids, ascending node-id row order) and the per-tick DSL fuel consumed. Both
+            // are peer-divergent sim truth: a divergent drip cursor or fuel exhaustion point changes which
+            // triggers execute. A NULL store folds byte-identically to an EMPTY one (FoldEmpty null≡empty;
+            // legacy/test callers only — SimulationHost always passes the real store). All int → cross-platform.
+            if (loopState != null)
+                loopState.FoldInto(ref hash, Mix);
+            else
+                DslLoopState.FoldEmpty(ref hash, Mix); // null store ≡ empty state (byte-identical fold)
 
             // ── RNG state (v3, Story 1.5) ─────────────────────────────────────────
             // The single shared SimRng's state IS sim truth: once Epic 2 effects draw from it, a divergent

@@ -125,5 +125,93 @@ namespace ProjectChimera.Sim.Tests.Sim
             host.StepOnce(); // match_start fires the run_effect; anchor = lowest-id alive entity = e
             Assert.Equal(1, host.Modifiers.CountAt(e)); // the modifier landed through the injected store
         }
+
+        // ── Story 7.6 (review P1) — the SAME two wiring links for DslLoopState. Every 7.6 determinism test
+        //    constructs ScenarioDirector directly and the golden harness runs an empty scenario, so deleting
+        //    EITHER the `LoopState` ctor argument in SimulationHost's director construction OR the `LoopState`
+        //    EnableChecksums argument compiled and passed everything (null ≡ empty folds). These tests assert at
+        //    the LOOP-EMITTED checksum surface with a live loop state, so both one-argument regressions go RED. ──
+
+        /// <summary>A host with <paramref name="units"/> P1 units and the given scenario, checksums every tick.</summary>
+        private static SimulationHost HostWithUnitsAndScenario(int units, ScenarioData scenario)
+        {
+            var host = SimulationHost.Create(NullLogSink.Instance, new FactionRegistry(2));
+            host.ChecksumInterval = 1;
+            for (int i = 0; i < units; i++)
+                host.World.Create(new FixedVec3(Fixed.FromInt(i), Fixed.Zero, Fixed.Zero),
+                    Faction.Player1, Fixed.FromInt(100), Fixed.One);
+            host.ScenarioDirector.LoadScenario(scenario);
+            return host;
+        }
+
+        /// <summary>match_start → for_each_batched(P1, batch 1) [body: display_message] — checksum-neutral for
+        /// world/vars (the message is presentation-only), so ONLY the DslLoopState fold (a configured row, the
+        /// active drain, the consumed fuel) distinguishes it from an empty scenario.</summary>
+        private static ScenarioData BatchedNeutralScenario()
+        {
+            var g = new TriggerGraph();
+            g.Nodes.Add(new TriggerNode { Id = 0, Name = "drip" });
+            g.Nodes.Add(new EventNode { Id = 1, Kind = "match_start" });
+            g.Nodes.Add(new ForEachBatchedNode { Id = 2, Source = "faction_units", Faction = 0, BatchSize = 1 });
+            g.Nodes.Add(new ActionNode { Id = 3, Kind = "display_message", Text = "x" });
+            g.ExecEdges.Add(new ExecEdge(1, TriggerGraph.EventExecOutPort, 0, TriggerGraph.TriggerEventInPort));
+            g.ExecEdges.Add(new ExecEdge(0, TriggerGraph.TriggerExecOutPort, 2, TriggerGraph.ActionExecInPort));
+            g.ExecEdges.Add(new ExecEdge(2, TriggerGraph.ForEachBodyOutPort, 3, TriggerGraph.ActionExecInPort));
+            return new ScenarioData { TriggerGraphJson = g.ToCanonicalJson() };
+        }
+
+        [Fact]
+        public void LoopStateDivergence_MovesTheLoopEmittedChecksum_ThroughBothWiringLinks()
+        {
+            // Two hosts with IDENTICAL worlds and (empty) variable tables; only DslLoopState differs — the
+            // batched host carries a configured continuation row, an active drain, and consumed fuel; the empty
+            // host carries nothing (its state folds byte-identically to a NULL fold). The loop-emitted sequences
+            // must diverge. If the director-ctor link drops, the host's LoopState stays empty and folds like the
+            // empty host's; if the EnableChecksums link drops, both fold null ≡ empty — either way the sequences
+            // become EQUAL and this test goes red.
+            SimulationHost batched = HostWithUnitsAndScenario(3, BatchedNeutralScenario());
+            SimulationHost empty   = HostWithUnitsAndScenario(3, new ScenarioData());
+
+            List<uint> withLoop = ChecksumSequence(batched, TICKS);
+            List<uint> without  = ChecksumSequence(empty, TICKS);
+            Assert.NotEqual(withLoop, without);
+        }
+
+        [Fact]
+        public void LiveForEachAndBatchedDrain_TwoHostRuns_AreByteIdentical()
+        {
+            // The spec's host-altitude two-run determinism row for live loops: a scenario carrying BOTH a live
+            // (re-firing) for_each AND a for_each_batched drain spanning ≥ 3 ticks, stepped twice through the
+            // full SimulationHost/SimulationLoop stack with checksums enabled → byte-identical sequences.
+            static ScenarioData LiveLoopScenario()
+            {
+                var g = new TriggerGraph();
+                g.Nodes.Add(new TriggerNode { Id = 0, Name = "live" });
+                g.Nodes.Add(new EventNode { Id = 1, Kind = "unit_count_threshold", Faction = 0, Count = 1, Operator = ">=" });
+                g.Nodes.Add(new ForEachNode { Id = 2, Source = "faction_units", Faction = 0, UpTo = 64 });
+                g.Nodes.Add(new EffectActionNode { Id = 3, Effect = new DirectHpDeltaEffect(Fixed.FromInt(-1)) });
+                g.ExecEdges.Add(new ExecEdge(1, TriggerGraph.EventExecOutPort, 0, TriggerGraph.TriggerEventInPort));
+                g.ExecEdges.Add(new ExecEdge(0, TriggerGraph.TriggerExecOutPort, 2, TriggerGraph.ActionExecInPort));
+                g.ExecEdges.Add(new ExecEdge(2, TriggerGraph.ForEachBodyOutPort, 3, TriggerGraph.ActionExecInPort));
+
+                g.Nodes.Add(new TriggerNode { Id = 10, Name = "drip" });
+                g.Nodes.Add(new EventNode { Id = 11, Kind = "match_start" });
+                g.Nodes.Add(new ForEachBatchedNode { Id = 12, Source = "faction_units", Faction = 0, BatchSize = 1 });
+                g.Nodes.Add(new EffectActionNode { Id = 13, Effect = new DirectHpDeltaEffect(Fixed.FromInt(-1)) });
+                g.ExecEdges.Add(new ExecEdge(11, TriggerGraph.EventExecOutPort, 10, TriggerGraph.TriggerEventInPort));
+                g.ExecEdges.Add(new ExecEdge(10, TriggerGraph.TriggerExecOutPort, 12, TriggerGraph.ActionExecInPort));
+                g.ExecEdges.Add(new ExecEdge(12, TriggerGraph.ForEachBodyOutPort, 13, TriggerGraph.ActionExecInPort));
+                return new ScenarioData { TriggerGraphJson = g.ToCanonicalJson() };
+            }
+
+            static List<uint> Run()
+            {
+                // 4 units + batch 1 → the batched drain spans 4 ticks; the for_each re-fires every tick.
+                SimulationHost host = HostWithUnitsAndScenario(4, LiveLoopScenario());
+                return ChecksumSequence(host, 8);
+            }
+
+            Assert.Equal(Run(), Run());
+        }
     }
 }

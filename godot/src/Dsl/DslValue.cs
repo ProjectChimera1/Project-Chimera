@@ -63,9 +63,19 @@ namespace ProjectChimera.Dsl
         public readonly int Raw0;
         public readonly int Raw1;
 
-        public DslVarDecl(string name, DslValueType type, VarScope scope, int raw0, int raw1 = 0)
+        /// <summary>Story 7.6 — the element type of an <see cref="DslValueType.Array"/> declaration (scalar
+        /// Int/Fixed/Bool only, gated at load). Defaulted (<see cref="DslValueType.Int"/>) and inert for scalars.</summary>
+        public readonly DslValueType ElementType;
+
+        /// <summary>Story 7.6 — the preallocated capacity of an <see cref="DslValueType.Array"/> declaration
+        /// (1..<see cref="DslBounds.MaxArrayCapacity"/>, gated at load). 0 (the default) for scalars.</summary>
+        public readonly int Capacity;
+
+        public DslVarDecl(string name, DslValueType type, VarScope scope, int raw0, int raw1 = 0,
+            DslValueType elementType = DslValueType.Int, int capacity = 0)
         {
             Name = name; Type = type; Scope = scope; Raw0 = raw0; Raw1 = raw1;
+            ElementType = elementType; Capacity = capacity;
         }
     }
 

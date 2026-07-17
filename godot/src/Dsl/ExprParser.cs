@@ -34,9 +34,12 @@ namespace ProjectChimera.Dsl
         /// <see cref="TriggerGraph.BuildExpressionTrigger"/> and the editor's manual form, build a fresh graph
         /// and discard it when this throws).
         /// </summary>
+        /// <param name="arrayDecls">Story 7.6 — declared Array names → (element type, capacity). Null (every 7.4
+        /// caller) means no arrays are declared, so <c>arr[expr]</c>/<c>length(arr)</c> reject located.</param>
         public static (int RootId, DataWireType Wire) Parse(
             string text, TriggerGraph graph,
-            IReadOnlyDictionary<string, (DslValueType Type, VarScope Scope)> declaredVars)
+            IReadOnlyDictionary<string, (DslValueType Type, VarScope Scope)> declaredVars,
+            IReadOnlyDictionary<string, (DslValueType Elem, int Capacity)>? arrayDecls = null)
         {
             if (text is null)
                 throw new JsonException("expr text (pos 0): expression text is null.");
@@ -48,7 +51,7 @@ namespace ProjectChimera.Dsl
             foreach (NodeBase n in graph.Nodes)
                 if (n.Id + 1 > nextId) nextId = n.Id + 1;
 
-            var p = new P { Text = text, Pos = 0, Graph = graph, Vars = declaredVars, NextId = nextId };
+            var p = new P { Text = text, Pos = 0, Graph = graph, Vars = declaredVars, ArrayDecls = arrayDecls, NextId = nextId };
             Node root = ParseOr(p);
             p.SkipWs();
             if (p.Pos != text.Length)
@@ -74,6 +77,7 @@ namespace ProjectChimera.Dsl
             public int Pos;
             public TriggerGraph Graph = null!;
             public IReadOnlyDictionary<string, (DslValueType Type, VarScope Scope)> Vars = null!;
+            public IReadOnlyDictionary<string, (DslValueType Elem, int Capacity)>? ArrayDecls;
             public int NextId;
 
             public void SkipWs()
@@ -351,13 +355,22 @@ namespace ProjectChimera.Dsl
             if (name == "false")
                 return AddLeaf(p, start, new ExprLiteralNode { ValueType = DslValueType.Bool, Raw = 0 }, DslValueType.Bool);
 
+            // Story 7.6 — `length(arr)`: the array-length built-in takes an ARRAY NAME (not an expression).
+            // A call named `length` is always the built-in (the grammar is closed; a variable named `length`
+            // stays readable bare).
+            if (name == "length" && p.Peek() == '(')
+                return ParseArrayLen(p, start);
+
             if (p.Peek() == '(')
                 return ParseCall(p, start, name);
 
-            // Declared-variable read: `name` or per-player `name[k]`.
+            // Declared-variable read: `name`, per-player `name[k]` (integer-literal slot), or — Story 7.6 —
+            // Array-declared `name[expr]` (declared-SCOPE/TYPE-driven disambiguation, per the 7.4 design note).
             if (!p.Vars.TryGetValue(name, out var decl))
                 throw p.Fail(start, $"undeclared variable '{name}'");
-            if (decl.Type is DslValueType.EntityRef or DslValueType.FactionRef or DslValueType.TimerRef or DslValueType.Array)
+            if (decl.Type == DslValueType.Array)
+                return ParseArrayGet(p, start, name);
+            if (decl.Type is DslValueType.EntityRef or DslValueType.FactionRef or DslValueType.TimerRef)
                 throw p.Fail(start, $"variable '{name}' is {decl.Type}-typed and cannot be read in an expression");
 
             int slot = -1;
@@ -393,6 +406,52 @@ namespace ProjectChimera.Dsl
             }
 
             return AddLeaf(p, start, new ExprVarNode { Name = name, Faction = slot }, decl.Type);
+        }
+
+        /// <summary>Story 7.6 — parse an Array-declared name's read: <c>name[expr]</c> (a FULL Int index
+        /// expression — unlike PerPlayer's literal-only <c>name[k]</c>, disambiguated by the declared type).
+        /// A bare Array read rejects, directing to the two legal forms.</summary>
+        private static Node ParseArrayGet(P p, int namePos, string name)
+        {
+            if (p.ArrayDecls is null || !p.ArrayDecls.TryGetValue(name, out (DslValueType Elem, int Capacity) adecl))
+                throw p.Fail(namePos, $"variable '{name}' is Array-typed but no array declaration is available (declare it as an Array-typed Global variable)");
+            p.SkipWs();
+            if (p.Pos >= p.Text.Length || p.Text[p.Pos] != '[')
+                throw p.Fail(namePos, $"variable '{name}' is Array-typed; read it via '{name}[i]' or 'length({name})', never bare");
+            p.Pos++; // consume '['
+            Node index = ParseOr(p);
+            if (!p.Match("]"))
+                throw p.Fail(p.Pos, "expected ']'");
+            if (index.Type != DslValueType.Int)
+                throw p.Fail(namePos, $"array index must be Int, got {index.Type}");
+
+            int depth = index.Depth + 1;
+            if (depth > ExprBounds.MaxExprDepth)
+                throw p.Fail(namePos, $"expression depth {depth} exceeds ExprBounds.MaxExprDepth={ExprBounds.MaxExprDepth}");
+            var node = new ExprArrayGetNode { Id = p.NextId++, Name = name };
+            p.Graph.Nodes.Add(node);
+            Wire(p, index, node.Id, TriggerGraph.ExprOperandPort0);
+            return new Node(node.Id, adecl.Elem, depth);
+        }
+
+        /// <summary>Story 7.6 — parse <c>length(arr)</c>: the argument is a declared-Array NAME (an identifier,
+        /// never an expression). Emits an <see cref="ExprArrayLenNode"/> leaf (Int).</summary>
+        private static Node ParseArrayLen(P p, int namePos)
+        {
+            if (!p.Match("("))
+                throw p.Fail(p.Pos, "expected '('"); // unreachable (caller peeked), kept fail-closed
+            p.SkipWs();
+            int argStart = p.Pos;
+            if (p.Pos >= p.Text.Length || !IsIdentStart(p.Text[p.Pos]))
+                throw p.Fail(p.Pos, "length(arr) takes a declared Array variable name");
+            while (p.Pos < p.Text.Length && IsIdentChar(p.Text[p.Pos]))
+                p.Pos++;
+            string arg = p.Text.Substring(argStart, p.Pos - argStart);
+            if (!p.Match(")"))
+                throw p.Fail(p.Pos, "expected ')' — length takes exactly 1 argument");
+            if (p.ArrayDecls is null || !p.ArrayDecls.TryGetValue(arg, out _))
+                throw p.Fail(argStart, $"length(arr) requires a declared Array variable, but '{arg}' is not one");
+            return AddLeaf(p, namePos, new ExprArrayLenNode { Name = arg }, DslValueType.Int);
         }
 
         private static Node ParseCall(P p, int namePos, string fn)

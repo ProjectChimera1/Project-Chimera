@@ -411,6 +411,16 @@ namespace ProjectChimera.Core.Definitions
                 }
             }
 
+            // ── Story 7.6 — array declaration rules (element_type/capacity present + in range, Global scope only,
+            //    no stray array fields on scalars), shared with the LoadScenario backstop via DslLoopGate. ──
+            {
+                string? declErr = DslLoopGate.CheckDeclarations(m.Variables);
+                if (declErr != null) return ValidationResult.Fail(declErr, validated);
+            }
+            // Declared Array names → (element type, capacity) — consumed by the expression compiler (arr[i] /
+            // length(arr)) and the loop gate below.
+            Dictionary<string, (DslValueType Elem, int Capacity)> declaredArrayInfo = DslLoopGate.BuildArrayDecls(m.Variables);
+
             // ── Timers (Story 7.3, AR-39) — fail-closed when present: a blank or duplicate timer name is rejected.
             //    A create_timer/timer_expires that names a variable is inert; a declared timer is a real timer the
             //    dangling-timer check below accepts (declaredTimers is seeded with these names). NULL ⇒ nothing to
@@ -460,12 +470,15 @@ namespace ProjectChimera.Core.Definitions
             //    crash on it). Deep STRUCTURAL validation (dangling/forked/dup-id edges) stays deferred to Story 7.7.
             //    NULL/whitespace (every existing scenario) ⇒ nothing to validate ⇒ the pass path is unchanged. ──
             TriggerGraph? parsedGraph = null;
+            List<TriggerGraph.TriggerExec>? graphExecs = null;
             if (!string.IsNullOrWhiteSpace(m.TriggerGraphJson))
             {
                 try
                 {
                     parsedGraph = TriggerGraph.FromJson(m.TriggerGraphJson!);
-                    parsedGraph.BuildExecutionOrder(); // the 7.2 cycle guard, run AT the gate instead of mid-apply
+                    // The 7.2 cycle guard (extended by 7.6 to body/then/else sub-chains rejoining any ancestor),
+                    // run AT the gate instead of mid-apply. Story 7.6 keeps the execution view for the loop gate.
+                    graphExecs = parsedGraph.BuildExecutionOrder();
                 }
                 catch (Exception ex) when (ex is System.Text.Json.JsonException or NotSupportedException)
                 {
@@ -591,6 +604,13 @@ namespace ProjectChimera.Core.Definitions
                     }
                     if (a.Type == "spawn_unit")
                     {
+                        // Story 7.6 — the LOUD spawn-count gate: a count beyond the named structural cap rejects
+                        // at load instead of silently truncating at runtime (the Math.Min(count, 50) literal is
+                        // retired; the runtime clamp is now EffectCaps.MaxSpawnCount, a seatbelt only). Review:
+                        // the low side rejects too — a count < 1 is a spawn that silently does nothing.
+                        if (a.Count < 1 || a.Count > EffectCaps.MaxSpawnCount)
+                            return ValidationResult.Fail(
+                                $"{ap}.count={a.Count} is out of range 1..EffectCaps.MaxSpawnCount={EffectCaps.MaxSpawnCount}.", validated);
                         // Story 7.1: a.X/a.Z are now Fixed. Finiteness and the 16.16 range are guaranteed
                         // structurally by the Fixed type and enforced at the JSON boundary by FixedJsonConverter,
                         // so the former range/NaN branch is unreachable here; the remaining semantic gate is
@@ -679,6 +699,11 @@ namespace ProjectChimera.Core.Definitions
                             string gp = $"scenario.trigger_graph action node {ga.Id}";
                             string? fe = CheckFactionSlot($"{gp}.faction", ga.Faction);
                             if (fe != null) return ValidationResult.Fail(fe, validated);
+                            // Story 7.6 — the graph channel gets the SAME loud spawn-count gate as the flat pass
+                            // (review: including the low side — a count < 1 is a spawn that silently does nothing).
+                            if (ga.Kind == "spawn_unit" && (ga.Count < 1 || ga.Count > EffectCaps.MaxSpawnCount))
+                                return ValidationResult.Fail(
+                                    $"{gp}.count={ga.Count} is out of range 1..EffectCaps.MaxSpawnCount={EffectCaps.MaxSpawnCount}.", validated);
                             // Story 7.4 widening: the Int-only rule now governs only the LITERAL path — an action
                             // fed by a value-in expression edge may target Int/Fixed/Bool (its type equality is
                             // enforced by the expression compile pass below).
@@ -688,6 +713,29 @@ namespace ProjectChimera.Core.Definitions
                                 && !exprValueTargets.Contains(ga.Id))
                                 return ValidationResult.Fail(
                                     $"{gp}.variable='{ga.Variable}' is {gaInfo.Type}-typed; set_variable writes only Int-typed variables (7.3).", validated);
+                            break;
+                        }
+
+                        case ForEachNode gfe:
+                        {
+                            // Story 7.6 — the engine-ceiling faction policy check (validator-owned, the 7.4
+                            // precedent); -1 = "any faction" is legal. The structural/semantic loop rules run in
+                            // the shared DslLoopGate pass below.
+                            if (gfe.Faction != -1)
+                            {
+                                string? fe = CheckFactionSlot($"scenario.trigger_graph for_each node {gfe.Id}.faction", gfe.Faction);
+                                if (fe != null) return ValidationResult.Fail(fe, validated);
+                            }
+                            break;
+                        }
+
+                        case ForEachBatchedNode gfb:
+                        {
+                            if (gfb.Faction != -1)
+                            {
+                                string? fe = CheckFactionSlot($"scenario.trigger_graph for_each_batched node {gfb.Id}.faction", gfb.Faction);
+                                if (fe != null) return ValidationResult.Fail(fe, validated);
+                            }
                             break;
                         }
 
@@ -744,7 +792,7 @@ namespace ProjectChimera.Core.Definitions
                     if (dst is TriggerNode && de.DstPort == TriggerGraph.TriggerConditionInPort)
                     {
                         if (!ExprCompiler.TryCompile(parsedGraph, de.Src, declaredVarInfo, inCondition: true,
-                                out ExprProgram? cp, out string? cErr))
+                                out ExprProgram? cp, out string? cErr, declaredArrayInfo))
                             return ValidationResult.Fail($"scenario.trigger_graph: {cErr}", validated);
                         if (cp!.ResultType != DslValueType.Bool)
                             return ValidationResult.Fail(
@@ -755,17 +803,21 @@ namespace ProjectChimera.Core.Definitions
                     }
                     else if (dst is ActionNode act && de.DstPort == TriggerGraph.ActionValueInPort)
                     {
-                        if (act.Kind != "set_variable")
+                        // Story 7.6 widening: array_push/array_set ALSO take a value-in expression edge (their
+                        // element typing is enforced by the shared DslLoopGate pass below).
+                        if (act.Kind != "set_variable" && !NodeKinds.IsArrayActionKind(act.Kind))
                             return ValidationResult.Fail(
-                                $"scenario.trigger_graph action node {act.Id}: a value-in expression edge is only allowed on a set_variable action (kind '{act.Kind}').", validated);
-                        if (string.IsNullOrEmpty(act.Variable))
-                            return ValidationResult.Fail(
-                                $"scenario.trigger_graph action node {act.Id}: a set_variable with a value expression needs a target variable.", validated);
+                                $"scenario.trigger_graph action node {act.Id}: a value-in expression edge is only allowed on a set_variable, array_push, or array_set action (kind '{act.Kind}').", validated);
                         if (!seenValueInPorts.Add(act.Id))
                             return ValidationResult.Fail(
                                 $"scenario.trigger_graph action node {act.Id}: multiple value-in expression edges (forked; exactly one allowed).", validated);
+                        if (NodeKinds.IsArrayActionKind(act.Kind))
+                            continue; // typing/required-edge rules run in DslLoopGate.CheckGraph below
+                        if (string.IsNullOrEmpty(act.Variable))
+                            return ValidationResult.Fail(
+                                $"scenario.trigger_graph action node {act.Id}: a set_variable with a value expression needs a target variable.", validated);
                         if (!ExprCompiler.TryCompile(parsedGraph, de.Src, declaredVarInfo, inCondition: false,
-                                out ExprProgram? vp, out string? vErr))
+                                out ExprProgram? vp, out string? vErr, declaredArrayInfo))
                             return ValidationResult.Fail($"scenario.trigger_graph: {vErr}", validated);
                         DslValueType target = declaredVarInfo.TryGetValue(act.Variable!, out var tInfo) ? tInfo.Type : DslValueType.Int;
                         if (target != DslValueType.Int && target != DslValueType.Fixed && target != DslValueType.Bool)
@@ -780,6 +832,14 @@ namespace ProjectChimera.Core.Definitions
                     }
                     // Other destinations/ports: unconsumed expression output — ignored (7.7 structural scope).
                 }
+
+                // ── Story 7.6 — the shared loop/branch/array-action gate + static cap-product cost check (one
+                //    implementation, DslLoopGate, also run by the LoadScenario backstop — parity by construction).
+                //    Uses the execution view captured above (graphExecs is non-null whenever parsedGraph is). ──
+                string? loopErr = DslLoopGate.CheckGraph(parsedGraph, graphExecs!, declaredVarInfo, declaredArrayInfo,
+                    id => declaredRegions.Contains(id));
+                if (loopErr != null)
+                    return ValidationResult.Fail($"scenario.trigger_graph: {loopErr}", validated);
             }
 
             // AR-13 (forbidden-until-SimRng) — RESERVED, intentionally NOT implemented here. SimRng shipped in

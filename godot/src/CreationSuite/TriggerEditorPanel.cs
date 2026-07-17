@@ -91,6 +91,9 @@ namespace ProjectChimera.CreationSuite
         private OptionButton  _varType       = null!;
         private OptionButton  _varScope      = null!;
         private LineEdit      _varInitial    = null!;
+        private OptionButton  _varElemType   = null!;   // Story 7.6 — array element type (visible when Array is selected)
+        private LineEdit      _varCapacity   = null!;   // Story 7.6 — array capacity (1..DslBounds.MaxArrayCapacity)
+        private HBoxContainer _varArrayRow   = null!;   // Story 7.6 — the Array-only input row (hidden for scalars)
         private Label         _varsStatus    = null!;   // duplicate-name / bad-initial feedback (review follow-up)
 
         private VBoxContainer _rawIrSection  = null!;
@@ -699,9 +702,19 @@ namespace ProjectChimera.CreationSuite
                         if (!string.IsNullOrWhiteSpace(v.Name))
                             declMap[v.Name] = (v.Type, v.Scope);
 
+                // Review P10 — the declared-array map (mirrors declMap): without it, an author who declares an
+                // Array variable and types `length(arr) >= 2` in the manual condition field got a false "no
+                // array declaration is available" reject (the helper defaulted arrayDecls to null).
+                var arrayDecls = new Dictionary<string, (DslValueType Elem, int Capacity)>(StringComparer.Ordinal);
+                if (_scenario.Variables != null)
+                    foreach (var v in _scenario.Variables)
+                        if (!string.IsNullOrWhiteSpace(v.Name) && v.Type == DslValueType.Array
+                            && v.ElementType is DslValueType elem && v.Capacity is int cap)
+                            arrayDecls[v.Name] = (elem, cap);
+
                 TriggerGraph added = TriggerGraph.BuildExpressionTrigger(
                     name, ev, conditionExprText, setVarName, 0, valueExprText, declMap,
-                    _manualEnabled.ButtonPressed, _manualRunOnce.ButtonPressed, literalValue);
+                    _manualEnabled.ButtonPressed, _manualRunOnce.ButtonPressed, literalValue, arrayDecls);
 
                 TriggerGraph graph = string.IsNullOrWhiteSpace(_scenario.TriggerGraphJson)
                     ? added
@@ -748,6 +761,19 @@ namespace ProjectChimera.CreationSuite
             row.AddChild(_varInitial);
             _varsSection.AddChild(row);
 
+            // Story 7.6 — Array-only inputs: element type + capacity, shown ONLY while the Array type is
+            // selected (layered complexity: scalar declarations keep the exact pre-7.6 row).
+            _varArrayRow = new HBoxContainer { Visible = false };
+            _varArrayRow.AddChild(new Label { Text = "element:" });
+            _varElemType = MakeOption(new[] { "Int", "Fixed", "Bool" });
+            _varArrayRow.AddChild(_varElemType);
+            _varArrayRow.AddChild(new Label { Text = "capacity:" });
+            _varCapacity = new LineEdit { PlaceholderText = $"1..{DslBounds.MaxArrayCapacity}", CustomMinimumSize = new Vector2(70, 0) };
+            _varArrayRow.AddChild(_varCapacity);
+            _varsSection.AddChild(_varArrayRow);
+            _varType.ItemSelected += idx =>
+                _varArrayRow.Visible = (DslValueType)Math.Max(0, (int)idx) == DslValueType.Array;
+
             var addBtn = new Button { Text = "Add variable" };
             addBtn.Pressed += OnVarAddPressed;
             _varsSection.AddChild(addBtn);
@@ -790,7 +816,40 @@ namespace ProjectChimera.CreationSuite
                 initial = Fixed.FromFloat(f);
             }
 
-            var decl = new ScenarioVariable { Name = name, Type = type, Scope = scope, Initial = initial };
+            // Story 7.6 — Array declarations: validate the element type + capacity fail-closed on Add (the
+            // same rules the ScenarioValidator gate applies), and force the Global-only scope rule with feedback.
+            DslValueType? elemType = null;
+            int? capacity = null;
+            if (type == DslValueType.Array)
+            {
+                if (scope != VarScope.Global)
+                {
+                    _varsStatus.Text = "\u2718 Arrays are Global-scope only (this story).";
+                    return;
+                }
+                if (initial != Fixed.Zero)
+                {
+                    _varsStatus.Text = "\u2718 Arrays seed empty \u2014 leave 'initial' blank/0.";
+                    return;
+                }
+                elemType = (int)Math.Max(0, _varElemType.Selected) switch
+                {
+                    1 => DslValueType.Fixed,
+                    2 => DslValueType.Bool,
+                    _ => DslValueType.Int,
+                };
+                string capText = _varCapacity.Text.Trim();
+                if (!int.TryParse(capText, System.Globalization.NumberStyles.Integer,
+                        System.Globalization.CultureInfo.InvariantCulture, out int cap)
+                    || cap < 1 || cap > DslBounds.MaxArrayCapacity)
+                {
+                    _varsStatus.Text = $"\u2718 Capacity must be an integer in 1..{DslBounds.MaxArrayCapacity} (DslBounds.MaxArrayCapacity).";
+                    return;
+                }
+                capacity = cap;
+            }
+
+            var decl = new ScenarioVariable { Name = name, Type = type, Scope = scope, Initial = initial, ElementType = elemType, Capacity = capacity };
             _scenario.Variables = Append(_scenario.Variables ?? Array.Empty<ScenarioVariable>(), decl);
             _varName.Text = "";
             _varsStatus.Text = $"✔ Declared '{name}'.";
@@ -813,7 +872,10 @@ namespace ProjectChimera.CreationSuite
                 int idx = i;
                 var v = vars[i];
                 var row = new HBoxContainer();
-                row.AddChild(new Label { Text = $"{v.Name} : {v.Type} / {v.Scope}", SizeFlagsHorizontal = Control.SizeFlags.Expand });
+                string typeText = v.Type == DslValueType.Array && v.ElementType is DslValueType et
+                    ? $"Array<{et}>[{v.Capacity ?? 0}]"
+                    : v.Type.ToString();
+                row.AddChild(new Label { Text = $"{v.Name} : {typeText} / {v.Scope}", SizeFlagsHorizontal = Control.SizeFlags.Expand });
                 var del = new Button { Text = "✘" };
                 del.Pressed += () =>
                 {
@@ -881,6 +943,13 @@ namespace ProjectChimera.CreationSuite
             _rawIrSection = new VBoxContainer { Visible = false };
             root.AddChild(_rawIrSection);
             _rawIrSection.AddChild(new Label { Text = "Raw graph-IR JSON (canonical):" });
+            // Story 7.6 — layered-complexity hint: loops, branches, and array actions are authored HERE this
+            // story (T2/T3 sugar is Stories 7.10/7.13).
+            _rawIrSection.AddChild(new Label
+            {
+                Text = "Loops (for_each / for_each_batched), branches, and array actions are authored via this raw-IR hatch for now.",
+                AutowrapMode = TextServer.AutowrapMode.Word,
+            });
 
             _rawIrInput = new TextEdit
             {

@@ -398,6 +398,25 @@ namespace ProjectChimera.Core.Definitions
         /// <c>Fixed.Raw</c> on round-trip. Default 0.</summary>
         [JsonPropertyName("initial")]
         public Fixed Initial { get; set; } = Fixed.Zero;
+
+        /// <summary>
+        /// Story 7.6 — the element type of an <see cref="DslValueType.Array"/>-typed declaration (Int/Fixed/Bool
+        /// only; gated at load). NULL (every scalar declaration and every pre-7.6 scenario) ⇒ OMITTED from
+        /// serialization (<see cref="JsonIgnoreCondition.WhenWritingNull"/>), so array-free scenarios serialize
+        /// byte-identically. REQUIRED (fail-closed) when <see cref="Type"/> = Array; rejected on scalars.
+        /// </summary>
+        [JsonPropertyName("element_type")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public DslValueType? ElementType { get; set; }
+
+        /// <summary>
+        /// Story 7.6 — the preallocated capacity of an Array-typed declaration
+        /// (1..<c>DslBounds.MaxArrayCapacity</c>; gated at load). NULL ⇒ omitted (byte-identical for array-free
+        /// scenarios). REQUIRED when <see cref="Type"/> = Array; rejected on scalars.
+        /// </summary>
+        [JsonPropertyName("capacity")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public int? Capacity { get; set; }
     }
 
     /// <summary>

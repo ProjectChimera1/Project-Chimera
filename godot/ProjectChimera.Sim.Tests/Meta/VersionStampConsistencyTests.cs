@@ -62,7 +62,7 @@ namespace ProjectChimera.Sim.Tests.Meta
         /// (D-1). v8 (Story 2.6): folded per-entity EffectiveArmor (the buffable armor stat). v7 (Story 2.4a): folded
         /// per-entity AbilityCooldownTicks (count-driven). v6 (Story 2.2b): Effective* / Energy / StatusFlagsOf +
         /// the ModifierStore instance state.</summary>
-        private const int ExpectedSimChecksumAlgoVersion = 16;
+        private const int ExpectedSimChecksumAlgoVersion = 17;
 
         /// <summary>Load-time canonical start-state hash algorithm version (lobby handshake value).
         /// v3 (Story 2.9b follow-up): folded ScenarioPlayerSlot.StartCrystal (sim-affecting per-slot start-state).

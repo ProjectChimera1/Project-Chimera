@@ -145,7 +145,7 @@ development_status:
   7-3-typed-scoped-variables-deterministic-timers-and-verify-to-ship-eca: done
   7-4-fixed-point-arithmetic-and-boolean-expression-layer: done
   7-5-custom-events-define-raise-subscribe-with-acyclic-same-tick-dispatch: backlog
-  7-6-bounded-foreach-foreachbatched-loops-arrays-and-layer-3-fuel: backlog
+  7-6-bounded-foreach-foreachbatched-loops-arrays-and-layer-3-fuel: done
   7-7-authoritative-server-side-load-time-validator-gate-no-escape-hatch: backlog
   7-8-custom-runtime-ui-read-rail-declarative-widget-tree-version-stamped-readback: backlog
   7-9-custom-runtime-ui-write-rail-dsleventcommand-on-lockstep-bus-replay-v2-dsl-event-record-local-only-action-whitelist: backlog

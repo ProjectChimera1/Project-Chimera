@@ -29,9 +29,11 @@ namespace ProjectChimera.Dsl
     /// </summary>
     public static class ExprCompiler
     {
-        /// <summary>True when <paramref name="node"/> is one of the five 7.4 expression node kinds.</summary>
+        /// <summary>True when <paramref name="node"/> is one of the five 7.4 expression node kinds or the two
+        /// 7.6 array expression kinds (expr_array_get / expr_array_len).</summary>
         public static bool IsExprNode(NodeBase? node) =>
-            node is ExprLiteralNode or ExprVarNode or ExprUnaryNode or ExprBinaryNode or ExprCallNode;
+            node is ExprLiteralNode or ExprVarNode or ExprUnaryNode or ExprBinaryNode or ExprCallNode
+                 or ExprArrayGetNode or ExprArrayLenNode;
 
         /// <summary>The wire color of a value type (wire color = type). Only the four expression-carryable types
         /// map; ref/array types are rejected before this is consulted.</summary>
@@ -51,12 +53,16 @@ namespace ProjectChimera.Dsl
         /// <param name="rootId">The root expression node's persistent id.</param>
         /// <param name="declaredVars">Declared variable name → (type, scope). Undeclared reads are rejected.</param>
         /// <param name="inCondition">True when compiling a trigger CONDITION expression (TriggerLocal reads are
-        /// then rejected — conditions evaluate before the trigger-local scope is entered).</param>
+        /// then rejected — conditions evaluate before the trigger-local scope is entered). A BRANCH condition
+        /// compiles with <c>inCondition: false</c> (Story 7.6 — it evaluates inside the trigger-local scope).</param>
+        /// <param name="arrayDecls">Story 7.6 — declared Array names → (element type, capacity). Null (every 7.4
+        /// caller) means no arrays are declared, so <c>expr_array_get</c>/<c>expr_array_len</c> reject located.</param>
         public static bool TryCompile(
             TriggerGraph graph, int rootId,
             IReadOnlyDictionary<string, (DslValueType Type, VarScope Scope)> declaredVars,
             bool inCondition,
-            out ExprProgram? program, out string? error)
+            out ExprProgram? program, out string? error,
+            IReadOnlyDictionary<string, (DslValueType Elem, int Capacity)>? arrayDecls = null)
         {
             program = null;
 
@@ -65,6 +71,7 @@ namespace ProjectChimera.Dsl
                 ById        = new Dictionary<int, NodeBase>(graph.Nodes.Count),
                 SortedData  = graph.DataEdges.OrderBy(e => e).ToList(), // canonical tuple order → deterministic resolution
                 Vars        = declaredVars,
+                ArrayDecls  = arrayDecls,
                 InCondition = inCondition,
             };
             foreach (NodeBase n in graph.Nodes)
@@ -103,6 +110,7 @@ namespace ProjectChimera.Dsl
             public Dictionary<int, NodeBase> ById = null!;
             public List<DataEdge> SortedData = null!;
             public IReadOnlyDictionary<string, (DslValueType Type, VarScope Scope)> Vars = null!;
+            public IReadOnlyDictionary<string, (DslValueType Elem, int Capacity)>? ArrayDecls;
             public bool InCondition;
             public readonly List<ExprProgram.Op> Ops = new();
             public readonly HashSet<int> Path = new(); // node ids on the CURRENT walk path (cycle detection; never enumerated)
@@ -182,7 +190,14 @@ namespace ProjectChimera.Dsl
                         ctx.Error = $"expr node {nodeId}: reads undeclared variable '{v.Name}'.";
                         return null;
                     }
-                    if (decl.Type is DslValueType.EntityRef or DslValueType.FactionRef or DslValueType.TimerRef or DslValueType.Array)
+                    if (decl.Type == DslValueType.Array)
+                    {
+                        // Story 7.6: a BARE read of an Array name stays a reject — the only legal array read
+                        // forms are expr_array_get (arr[i]) and expr_array_len (length(arr)).
+                        ctx.Error = $"expr node {nodeId}: variable '{v.Name}' is Array-typed; read it via 'arr[i]' (expr_array_get) or 'length(arr)' (expr_array_len), never bare.";
+                        return null;
+                    }
+                    if (decl.Type is DslValueType.EntityRef or DslValueType.FactionRef or DslValueType.TimerRef)
                     {
                         ctx.Error = $"expr node {nodeId}: variable '{v.Name}' is {decl.Type}-typed; expressions can read only Int/Fixed/Bool/Point variables.";
                         return null;
@@ -247,6 +262,40 @@ namespace ProjectChimera.Dsl
 
                 case ExprCallNode call:
                     return VisitCall(ctx, call, depth);
+
+                // ── Story 7.6 — the ONLY legal array read forms (a bare expr_var read of an Array name rejects
+                //    above). Arrays are Global-scoped, so both are legal in condition AND action contexts. ──
+
+                case ExprArrayGetNode ag:
+                {
+                    if (string.IsNullOrEmpty(ag.Name) || ctx.ArrayDecls is null
+                        || !ctx.ArrayDecls.TryGetValue(ag.Name, out (DslValueType Elem, int Capacity) adecl))
+                    {
+                        ctx.Error = $"expr node {nodeId}: expr_array_get reads undeclared array '{ag.Name}' (declare an Array-typed Global variable).";
+                        return null;
+                    }
+                    DslValueType? idx = Operand(ctx, nodeId, TriggerGraph.ExprOperandPort0, depth);
+                    if (idx is null) return null;
+                    if (idx != DslValueType.Int)
+                    {
+                        ctx.Error = $"expr node {nodeId}: array index must be Int, got {idx}.";
+                        return null;
+                    }
+                    Emit(ctx, ExprProgram.OpCode.ArrayGet, 0, name: ag.Name);
+                    return adecl.Elem;
+                }
+
+                case ExprArrayLenNode al:
+                {
+                    if (string.IsNullOrEmpty(al.Name) || ctx.ArrayDecls is null
+                        || !ctx.ArrayDecls.TryGetValue(al.Name, out _))
+                    {
+                        ctx.Error = $"expr node {nodeId}: expr_array_len reads undeclared array '{al.Name}' (declare an Array-typed Global variable).";
+                        return null;
+                    }
+                    Emit(ctx, ExprProgram.OpCode.ArrayLen, +1, name: al.Name);
+                    return DslValueType.Int;
+                }
 
                 default:
                     ctx.Error = $"expr node {nodeId}: node is not an expression node (only expr_* kinds may feed an expression).";

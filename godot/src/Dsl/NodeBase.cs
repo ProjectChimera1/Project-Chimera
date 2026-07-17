@@ -179,6 +179,115 @@ namespace ProjectChimera.Dsl
     }
 
     /// <summary>
+    /// Story 7.6 — the bounded, snapshot-at-entry loop container (the ONLY sanctioned iteration form besides
+    /// <see cref="ForEachBatchedNode"/>; no While/recursion/goto exists in the grammar). <see cref="Source"/> ∈
+    /// <see cref="NodeKinds.ForEachSources"/>: <c>array</c> iterates a declared Global array's elements (snapshot
+    /// copied to a preallocated buffer at loop entry); <c>faction_units</c>/<c>region_units</c> iterate an
+    /// ascending-id snapshot of alive units (faction filter, <see cref="Faction"/> −1 = any; <c>region_units</c>
+    /// also point-in-region). Iterates min(snapshotCount, <see cref="UpTo"/>); <see cref="UpTo"/> is the LOUD
+    /// authored cap — REQUIRED for entity sources (unset rejects at load, directing to <c>for_each_batched</c> or
+    /// an explicit <c>up_to</c>). <see cref="LoopVar"/> names a declared TriggerLocal variable (element value for
+    /// arrays — REQUIRED; entity id / Int for entity sources — optional). Exec-out port 1 = body chain; port 0 =
+    /// continuation.
+    /// </summary>
+    public sealed class ForEachNode : NodeBase
+    {
+        /// <summary>The closed-registry discriminator this node serializes under.</summary>
+        public string Kind => NodeKinds.ForEach;
+
+        /// <summary>Collection source ∈ {array, faction_units, region_units} (membership enforced at parse).</summary>
+        public string Source { get; set; } = "";
+
+        /// <summary>The declared Array-typed variable name (required when <see cref="Source"/> = array).</summary>
+        public string? ArrayName { get; set; }
+
+        /// <summary>Faction filter for entity sources; -1 = any faction.</summary>
+        public int Faction { get; set; } = -1;
+
+        /// <summary>The declared region id (required when <see cref="Source"/> = region_units).</summary>
+        public string? RegionId { get; set; }
+
+        /// <summary>The loud iteration cap (1..<c>DslBounds.MaxForEachItems</c>). 0 = unset — a LOAD reject for
+        /// entity sources; for arrays 0 means "the full array" (capacity ≤ MaxArrayCapacity ≤ MaxForEachItems).</summary>
+        public int UpTo { get; set; } = 0;
+
+        /// <summary>The declared TriggerLocal loop variable written before each iteration (element value / entity id).</summary>
+        public string? LoopVar { get; set; }
+    }
+
+    /// <summary>
+    /// Story 7.6 — the cross-tick drip loop (entity sources ONLY; arrays never need batching). Must be a
+    /// TOP-LEVEL chain node (never nested inside for_each/branch), at most one per trigger. On fire it snapshots
+    /// ascending alive-unit ids into its preallocated <c>DslLoopState</c> continuation row (cap
+    /// <c>DslBounds.MaxBatchSnapshot</c>); each subsequent director tick drains <see cref="BatchSize"/> entries
+    /// at the START of the tick (dead entities skipped at drain time; the trigger is suppressed in the sweep
+    /// while draining). Exec-out port 1 = per-entity body chain; port 0 = the continuation chain, run on the
+    /// completion tick. The continuation state is checksummed (self-contained — NOT a 7.5 event queue).
+    ///
+    /// <para>Review P14 — authoring traps: (1) each drain tick opens a FRESH TriggerLocal scope per row, so a
+    /// body accumulator held in a TriggerLocal does NOT survive batch boundaries, and the completion-tick
+    /// continuation sees only the FINAL batch's scope — accumulate across batches in Global variables instead.
+    /// (2) The node deliberately has NO LoopVar: a body reaches the current entity only implicitly, through the
+    /// run_effect anchor override (the 7.6 design ships no cross-tick loop-var resume machinery).</para>
+    /// </summary>
+    public sealed class ForEachBatchedNode : NodeBase
+    {
+        /// <summary>The closed-registry discriminator this node serializes under.</summary>
+        public string Kind => NodeKinds.ForEachBatched;
+
+        /// <summary>Collection source ∈ {faction_units, region_units} (entity sources only; enforced at parse).</summary>
+        public string Source { get; set; } = "";
+
+        /// <summary>Faction filter; -1 = any faction.</summary>
+        public int Faction { get; set; } = -1;
+
+        /// <summary>The declared region id (required when <see cref="Source"/> = region_units).</summary>
+        public string? RegionId { get; set; }
+
+        /// <summary>Entities drained per tick (1..<c>DslBounds.MaxForEachItems</c>; gated at load).</summary>
+        public int BatchSize { get; set; } = 0;
+    }
+
+    /// <summary>
+    /// Story 7.6 — the conditional exec container. A Bool expression wires into its condition-in data port
+    /// (<c>TriggerGraph.BranchCondInPort</c>, compiled <c>inCondition: false</c> so TriggerLocal / loop-var reads
+    /// are LEGAL, unlike the trigger condition-in). Exec-out port 1 = then chain, port 2 = else chain, port 0 =
+    /// continuation (always runs after the taken branch).
+    /// </summary>
+    public sealed class BranchNode : NodeBase
+    {
+        /// <summary>The closed-registry discriminator this node serializes under.</summary>
+        public string Kind => NodeKinds.Branch;
+    }
+
+    /// <summary>
+    /// Story 7.6 — an array element read: <c>arr[i]</c>. <see cref="Name"/> must be a declared Array variable;
+    /// the Int index expression wires into operand port 0. Result type = the declared element type. Total
+    /// runtime semantics: an out-of-bounds index evaluates to 0 (the div-by-zero precedent). The ONLY legal
+    /// array read forms are this node and <see cref="ExprArrayLenNode"/> — a bare <c>expr_var</c> read of an
+    /// Array-typed name still rejects at compile.
+    /// </summary>
+    public sealed class ExprArrayGetNode : NodeBase
+    {
+        /// <summary>The closed-registry discriminator this node serializes under.</summary>
+        public string Kind => NodeKinds.ExprArrayGet;
+
+        /// <summary>The declared Array-typed variable name to index.</summary>
+        public string Name { get; set; } = "";
+    }
+
+    /// <summary>Story 7.6 — an array length read: <c>length(arr)</c>. <see cref="Name"/> must be a declared
+    /// Array variable; emits the live element count as Int on <c>ExprDataOutPort</c>.</summary>
+    public sealed class ExprArrayLenNode : NodeBase
+    {
+        /// <summary>The closed-registry discriminator this node serializes under.</summary>
+        public string Kind => NodeKinds.ExprArrayLen;
+
+        /// <summary>The declared Array-typed variable name to measure.</summary>
+        public string Name { get; set; } = "";
+    }
+
+    /// <summary>
     /// The CLOSED <c>kind</c> discriminator registry: the closed ECA vocabulary (event/condition/action type
     /// strings) plus the two structural kinds "trigger" and "run_effect", plus (Story 7.4) the five expression
     /// kinds. A <c>kind</c> outside this union is
@@ -205,9 +314,29 @@ namespace ProjectChimera.Dsl
         public const string ExprBinary  = "expr_binary";
         public const string ExprCall    = "expr_call";
 
+        // ── Story 7.6 — the three exec-container kinds + the two array expression kinds. The CLOSED grammar's
+        //    only iteration/branch forms: no While/recursion/goto kind exists, so none can be expressed. ──
+        public const string ForEach        = "for_each";
+        public const string ForEachBatched = "for_each_batched";
+        public const string Branch         = "branch";
+        public const string ExprArrayGet   = "expr_array_get";
+        public const string ExprArrayLen   = "expr_array_len";
+
         public static readonly string[] EventTypes     = { "match_start", "unit_dies", "building_completed", "timer_expires", "resource_threshold", "unit_count_threshold" };
         public static readonly string[] ConditionTypes = { "always", "building_exists", "resource_comparison", "unit_count", "variable_comparison", "unit_in_region" };
-        public static readonly string[] ActionTypes    = { "spawn_unit", "display_message", "victory", "defeat", "create_timer", "add_resources", "set_variable", "play_sound" };
+        // Story 7.6: the three array action kinds (array_push/array_set/array_clear) are GRAPH-CHANNEL-ONLY —
+        // ToFlat skips them like EffectActionNode and the flat validator's _actionTypes stays untouched, so no
+        // flat TriggerDefinition can carry them.
+        public static readonly string[] ActionTypes    = { "spawn_unit", "display_message", "victory", "defeat", "create_timer", "add_resources", "set_variable", "play_sound", "array_push", "array_set", "array_clear" };
+
+        // ── Story 7.6 — the CLOSED for_each source vocabulary (a field value inside for_each/for_each_batched,
+        //    not a kind). Membership is checked at parse AND at both load gates, so an unknown source never
+        //    constructs. for_each_batched additionally restricts to the two entity sources at parse. ──
+        public static readonly string[] ForEachSources = { "array", "faction_units", "region_units" };
+
+        /// <summary>Story 7.6 — true for the three graph-channel-only array action kinds.</summary>
+        public static bool IsArrayActionKind(string? kind) =>
+            kind == "array_push" || kind == "array_set" || kind == "array_clear";
 
         // ── Story 7.4 — the CLOSED expression op/fn vocabularies (field values inside expr_* nodes, not kinds).
         //    Membership is checked at parse (NodeBaseJsonConverter) AND at compile (ExprCompiler), so an unknown

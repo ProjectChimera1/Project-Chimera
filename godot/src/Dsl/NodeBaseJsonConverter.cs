@@ -161,6 +161,44 @@ namespace ProjectChimera.Dsl
                     writer.WriteString("fn", ec.Fn);
                     break;
 
+                // ── Story 7.6 — the loop/branch containers + array expression kinds (exact inverses of Read) ──
+
+                case ForEachNode fe:
+                    if (!NodeKinds.InSet(NodeKinds.ForEachSources, fe.Source))
+                        throw new JsonException($"Cannot serialize for_each node {fe.Id}: unknown source '{fe.Source}'.");
+                    writer.WriteString("kind", NodeKinds.ForEach);
+                    writer.WriteString("source", fe.Source);
+                    WriteOptString(writer, "array_name", fe.ArrayName);
+                    writer.WriteNumber("faction", fe.Faction);
+                    WriteOptString(writer, "region_id", fe.RegionId);
+                    writer.WriteNumber("up_to", fe.UpTo);
+                    WriteOptString(writer, "loop_var", fe.LoopVar);
+                    break;
+
+                case ForEachBatchedNode fb:
+                    if (fb.Source != "faction_units" && fb.Source != "region_units")
+                        throw new JsonException($"Cannot serialize for_each_batched node {fb.Id}: source '{fb.Source}' is not an entity source (faction_units/region_units only).");
+                    writer.WriteString("kind", NodeKinds.ForEachBatched);
+                    writer.WriteString("source", fb.Source);
+                    writer.WriteNumber("faction", fb.Faction);
+                    WriteOptString(writer, "region_id", fb.RegionId);
+                    writer.WriteNumber("batch_size", fb.BatchSize);
+                    break;
+
+                case BranchNode br:
+                    writer.WriteString("kind", NodeKinds.Branch);
+                    break;
+
+                case ExprArrayGetNode ag:
+                    writer.WriteString("kind", NodeKinds.ExprArrayGet);
+                    writer.WriteString("name", ag.Name);
+                    break;
+
+                case ExprArrayLenNode al:
+                    writer.WriteString("kind", NodeKinds.ExprArrayLen);
+                    writer.WriteString("name", al.Name);
+                    break;
+
                 default:
                     // Fail-closed: a node type outside the closed registry cannot be authored (mirrors Read's default).
                     throw new JsonException(
@@ -336,6 +374,62 @@ namespace ProjectChimera.Dsl
                 if (!NodeKinds.InSet(NodeKinds.ExprCallFns, fn))
                     throw new JsonException($"{path}.fn: '{fn}' is not a known expression built-in (count/distance/min/max/abs).");
                 return new ExprCallNode { Id = ReadId(el, path), Fn = fn };
+            }
+
+            // ── Story 7.6 — the loop/branch containers + array expression kinds ──
+
+            if (kind == NodeKinds.ForEach)
+            {
+                RejectUnknownProperties(el, path, "id", "kind", "source", "array_name", "faction", "region_id", "up_to", "loop_var");
+                string source = ReadString(el, "source", path, "");
+                if (!NodeKinds.InSet(NodeKinds.ForEachSources, source))
+                    throw new JsonException($"{path}.source: '{source}' is not a known for_each source (array/faction_units/region_units).");
+                return new ForEachNode
+                {
+                    Id        = ReadId(el, path),
+                    Source    = source,
+                    ArrayName = ReadOptString(el, "array_name", path),
+                    Faction   = ReadInt(el, "faction", path, -1),
+                    RegionId  = ReadOptString(el, "region_id", path),
+                    UpTo      = ReadInt(el, "up_to", path, 0),
+                    LoopVar   = ReadOptString(el, "loop_var", path),
+                };
+            }
+
+            if (kind == NodeKinds.ForEachBatched)
+            {
+                RejectUnknownProperties(el, path, "id", "kind", "source", "faction", "region_id", "batch_size");
+                string source = ReadString(el, "source", path, "");
+                // Entity sources only — an "array" source can NEVER be valid on a batched loop (arrays never need
+                // batching by construction), so it fails closed at parse rather than waiting for the gate.
+                if (source != "faction_units" && source != "region_units")
+                    throw new JsonException($"{path}.source: '{source}' is not a for_each_batched entity source (faction_units/region_units only — arrays never need batching).");
+                return new ForEachBatchedNode
+                {
+                    Id        = ReadId(el, path),
+                    Source    = source,
+                    Faction   = ReadInt(el, "faction", path, -1),
+                    RegionId  = ReadOptString(el, "region_id", path),
+                    BatchSize = ReadInt(el, "batch_size", path, 0),
+                };
+            }
+
+            if (kind == NodeKinds.Branch)
+            {
+                RejectUnknownProperties(el, path, "id", "kind");
+                return new BranchNode { Id = ReadId(el, path) };
+            }
+
+            if (kind == NodeKinds.ExprArrayGet)
+            {
+                RejectUnknownProperties(el, path, "id", "kind", "name");
+                return new ExprArrayGetNode { Id = ReadId(el, path), Name = ReadString(el, "name", path, "") };
+            }
+
+            if (kind == NodeKinds.ExprArrayLen)
+            {
+                RejectUnknownProperties(el, path, "id", "kind", "name");
+                return new ExprArrayLenNode { Id = ReadId(el, path), Name = ReadString(el, "name", path, "") };
             }
 
             throw new JsonException($"{path}: unknown node kind '{kind}'.");

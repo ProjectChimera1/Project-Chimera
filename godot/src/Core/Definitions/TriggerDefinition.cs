@@ -137,7 +137,8 @@ namespace ProjectChimera.Core.Definitions
     /// An action executed when a trigger fires.
     ///
     /// Supported types:
-    ///   spawn_unit      — spawns count units of unit_id for faction at (x, z). Max 50 per action.
+    ///   spawn_unit      — spawns count units of unit_id for faction at (x, z); count is load-gated to
+    ///                     1..EffectCaps.MaxSpawnCount (Story 7.6 — the literal 50 is retired).
     ///   display_message — shows text on screen for duration seconds
     ///   victory         — faction wins the match
     ///   defeat          — faction loses (opposite faction wins)
@@ -168,7 +169,10 @@ namespace ProjectChimera.Core.Definitions
         [JsonPropertyName("z")]
         public Fixed Z { get; set; } = Fixed.Zero;
 
-        /// <summary>Units to spawn. Capped at 50. Used by spawn_unit.</summary>
+        /// <summary>Units to spawn. Used by spawn_unit. Story 7.6 (review P12): the literal-50 cap is RETIRED —
+        /// both load gates (ScenarioValidator and the unconditional LoadScenario backstop) reject counts outside
+        /// 1..<c>EffectCaps.MaxSpawnCount</c> (64), and the runtime seatbelt in <c>ScenarioDirector.ExecuteLeaf</c>
+        /// clamps at that same named constant (defense-in-depth only — unreachable through any load path).</summary>
         [JsonPropertyName("count")]
         public int Count { get; set; } = 1;
 

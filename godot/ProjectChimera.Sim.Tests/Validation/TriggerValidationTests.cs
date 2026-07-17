@@ -911,4 +911,545 @@ namespace ProjectChimera.Sim.Tests.Validation
         [Fact(Skip = "AR-13 reserved until the Epic 2 effect schema (Story 2.3) — no random trigger-effect type exists pre-Epic-2.")]
         public void RandomEffect_MustDrawFromSimRng_ReservedUntilStory2_3() { }
     }
+
+    /// <summary>
+    /// Story 7.6 — the loop/array/fuel LOAD gate (validator side) plus the <c>ScenarioDirector.LoadScenario</c>
+    /// backstop parity net: every bad-declaration / bad-loop shape in the I/O matrix rejects LOCATED at the gate
+    /// (naming the DslBounds constant where a cap is involved), and — via the SHARED DslLoopGate — identically at
+    /// the backstop for direct LoadScenario callers.
+    /// </summary>
+    public class LoopGateValidationTests
+    {
+        private static ScenarioValidator NewValidator() => new();
+
+        private static ScenarioData BaseModel() => new ScenarioData
+        {
+            MapBounds = 120f,
+            WinCondition = WinCondition.DestroyAllBuildings,
+            PlayerSlots = new[]
+            {
+                new ScenarioPlayerSlot { Slot = 0, FactionJson = "res://a.json", StartOre = 100f, BaseX = -45f, BaseZ = 0f },
+                new ScenarioPlayerSlot { Slot = 1, FactionJson = "res://b.json", StartOre = 100f, BaseX =  45f, BaseZ = 0f },
+            },
+            ResourceNodes = System.Array.Empty<ScenarioResourceNode>(),
+            Buildings = System.Array.Empty<ScenarioBuilding>(),
+            Units = System.Array.Empty<ScenarioUnit>(),
+            Triggers = System.Array.Empty<TriggerDefinition>(),
+            Regions = new[] { new ScenarioRegion { Id = "zone", MinX = -10f, MinZ = -10f, MaxX = 10f, MaxZ = 10f } },
+        };
+
+        private static ScenarioVariable IntArray(string name, int capacity = 8) => new()
+        {
+            Name = name, Type = DslValueType.Array, Scope = VarScope.Global,
+            ElementType = DslValueType.Int, Capacity = capacity,
+        };
+
+        private static ScenarioVariable LocalInt(string name) => new()
+        {
+            Name = name, Type = DslValueType.Int, Scope = VarScope.TriggerLocal,
+        };
+
+        /// <summary>A single-trigger graph: match_start → <paramref name="chainHead"/> (nodes/edges appended by the caller).</summary>
+        private static TriggerGraph SingleTrigger(out int nextId)
+        {
+            var g = new TriggerGraph();
+            g.Nodes.Add(new TriggerNode { Id = 0, Name = "t" });
+            g.Nodes.Add(new EventNode { Id = 1, Kind = "match_start" });
+            g.ExecEdges.Add(new ExecEdge(1, TriggerGraph.EventExecOutPort, 0, TriggerGraph.TriggerEventInPort));
+            nextId = 2;
+            return g;
+        }
+
+        private static ValidationResult Validate(ScenarioData m) => NewValidator().Validate(m);
+
+        private static void AssertRejectedAtBothGates(ScenarioData m, string messageFragment)
+        {
+            ValidationResult r = Validate(m);
+            Assert.False(r.Ok, "the validator gate should reject");
+            Assert.Contains(messageFragment, r.Error!);
+
+            // Backstop parity: a direct LoadScenario caller fails closed with the SAME located rule (the shared
+            // DslLoopGate — one implementation, no drift).
+            var director = new ScenarioDirector(new BuildingStore(), new ResourceStore(Fixed.Zero), new DslVarTable(), new DslLoopState());
+            var ex = Assert.Throws<System.Text.Json.JsonException>(() => director.LoadScenario(m));
+            Assert.Contains(messageFragment, ex.Message);
+        }
+
+        // ── Bad declarations (I/O matrix row) ───────────────────────────────────
+
+        [Fact]
+        public void ArrayWithoutCapacity_IsRejectedAtBothGates()
+        {
+            ScenarioData m = BaseModel();
+            m.Variables = new[] { new ScenarioVariable { Name = "a", Type = DslValueType.Array, Scope = VarScope.Global, ElementType = DslValueType.Int } };
+            AssertRejectedAtBothGates(m, "requires 'capacity'");
+        }
+
+        [Fact]
+        public void ArrayWithoutElementType_IsRejectedAtBothGates()
+        {
+            ScenarioData m = BaseModel();
+            m.Variables = new[] { new ScenarioVariable { Name = "a", Type = DslValueType.Array, Scope = VarScope.Global, Capacity = 4 } };
+            AssertRejectedAtBothGates(m, "requires 'element_type'");
+        }
+
+        [Theory]
+        [InlineData(0)]
+        [InlineData(65)]
+        public void ArrayCapacityOutOfRange_IsRejectedAtBothGates(int capacity)
+        {
+            ScenarioData m = BaseModel();
+            m.Variables = new[] { IntArray("a", capacity) };
+            AssertRejectedAtBothGates(m, "MaxArrayCapacity");
+        }
+
+        [Fact]
+        public void PerPlayerArray_IsRejectedAtBothGates()
+        {
+            ScenarioData m = BaseModel();
+            var v = IntArray("a");
+            v.Scope = VarScope.PerPlayer;
+            m.Variables = new[] { v };
+            AssertRejectedAtBothGates(m, "Global-scope only");
+        }
+
+        [Fact]
+        public void StrayElementTypeOnScalar_IsRejected()
+        {
+            ScenarioData m = BaseModel();
+            m.Variables = new[] { new ScenarioVariable { Name = "n", Type = DslValueType.Int, Scope = VarScope.Global, ElementType = DslValueType.Int } };
+            ValidationResult r = Validate(m);
+            Assert.False(r.Ok);
+            Assert.Contains("only valid on an Array-typed declaration", r.Error!);
+        }
+
+        // ── Loud caps (I/O matrix rows: missing up_to, cap-product overflow) ────
+
+        [Fact]
+        public void EntityForEachWithoutUpTo_IsRejected_DirectingToBatchedOrUpTo()
+        {
+            ScenarioData m = BaseModel();
+            TriggerGraph g = SingleTrigger(out int id);
+            g.Nodes.Add(new ForEachNode { Id = id, Source = "faction_units", Faction = 0 }); // UpTo unset
+            g.ExecEdges.Add(new ExecEdge(0, TriggerGraph.TriggerExecOutPort, id, TriggerGraph.ActionExecInPort));
+            m.TriggerGraphJson = g.ToCanonicalJson();
+
+            ValidationResult r = Validate(m);
+            Assert.False(r.Ok);
+            Assert.Contains("up_to", r.Error!);
+            Assert.Contains("for_each_batched", r.Error!); // the error DIRECTS the author to the two fixes
+            AssertRejectedAtBothGates(m, "for_each_batched");
+        }
+
+        [Fact]
+        public void UpToBeyondMaxForEachItems_IsRejectedNamingTheConstant()
+        {
+            ScenarioData m = BaseModel();
+            TriggerGraph g = SingleTrigger(out int id);
+            g.Nodes.Add(new ForEachNode { Id = id, Source = "faction_units", Faction = 0, UpTo = 65 });
+            g.ExecEdges.Add(new ExecEdge(0, TriggerGraph.TriggerExecOutPort, id, TriggerGraph.ActionExecInPort));
+            m.TriggerGraphJson = g.ToCanonicalJson();
+            AssertRejectedAtBothGates(m, "MaxForEachItems");
+        }
+
+        [Fact]
+        public void NestedCapProductOverflow_IsRejectedNamingMaxDslOpsPerTrigger()
+        {
+            // 64 × 64 × 2 body actions = 1 + 64×(1 + 64×2) = 8257 > MaxDslOpsPerTrigger (4096).
+            ScenarioData m = BaseModel();
+            TriggerGraph g = SingleTrigger(out int id);
+            int outer = id++, inner = id++, a1 = id++, a2 = id++;
+            g.Nodes.Add(new ForEachNode { Id = outer, Source = "faction_units", Faction = 0, UpTo = 64 });
+            g.Nodes.Add(new ForEachNode { Id = inner, Source = "faction_units", Faction = 0, UpTo = 64 });
+            g.Nodes.Add(new ActionNode { Id = a1, Kind = "set_variable", Variable = "x", Value = 1 });
+            g.Nodes.Add(new ActionNode { Id = a2, Kind = "set_variable", Variable = "x", Value = 2 });
+            g.ExecEdges.Add(new ExecEdge(0, TriggerGraph.TriggerExecOutPort, outer, TriggerGraph.ActionExecInPort));
+            g.ExecEdges.Add(new ExecEdge(outer, TriggerGraph.ForEachBodyOutPort, inner, TriggerGraph.ActionExecInPort));
+            g.ExecEdges.Add(new ExecEdge(inner, TriggerGraph.ForEachBodyOutPort, a1, TriggerGraph.ActionExecInPort));
+            g.ExecEdges.Add(new ExecEdge(a1, TriggerGraph.ActionExecOutPort, a2, TriggerGraph.ActionExecInPort));
+            m.TriggerGraphJson = g.ToCanonicalJson();
+            AssertRejectedAtBothGates(m, "MaxDslOpsPerTrigger");
+        }
+
+        [Fact]
+        public void NestingBeyondMaxLoopNesting_IsRejectedNamingTheConstant()
+        {
+            // 5 nested loops (up_to 1 keeps the cost tiny — only DEPTH trips).
+            ScenarioData m = BaseModel();
+            TriggerGraph g = SingleTrigger(out int id);
+            int prev = 0, prevPort = TriggerGraph.TriggerExecOutPort;
+            for (int d = 0; d < 5; d++)
+            {
+                int loop = id++;
+                g.Nodes.Add(new ForEachNode { Id = loop, Source = "faction_units", Faction = 0, UpTo = 1 });
+                g.ExecEdges.Add(new ExecEdge(prev, prevPort, loop, TriggerGraph.ActionExecInPort));
+                prev = loop;
+                prevPort = TriggerGraph.ForEachBodyOutPort;
+            }
+            m.TriggerGraphJson = g.ToCanonicalJson();
+            AssertRejectedAtBothGates(m, "MaxLoopNesting");
+        }
+
+        // ── Loop-var / source rules ─────────────────────────────────────────────
+
+        [Fact]
+        public void ArrayLoopWithoutLoopVar_IsRejected()
+        {
+            ScenarioData m = BaseModel();
+            m.Variables = new[] { IntArray("arr") };
+            TriggerGraph g = SingleTrigger(out int id);
+            g.Nodes.Add(new ForEachNode { Id = id, Source = "array", ArrayName = "arr" });
+            g.ExecEdges.Add(new ExecEdge(0, TriggerGraph.TriggerExecOutPort, id, TriggerGraph.ActionExecInPort));
+            m.TriggerGraphJson = g.ToCanonicalJson();
+            AssertRejectedAtBothGates(m, "loop_var");
+        }
+
+        [Fact]
+        public void LoopVarNotTriggerLocal_IsRejected()
+        {
+            ScenarioData m = BaseModel();
+            m.Variables = new[]
+            {
+                IntArray("arr"),
+                new ScenarioVariable { Name = "v", Type = DslValueType.Int, Scope = VarScope.Global },
+            };
+            TriggerGraph g = SingleTrigger(out int id);
+            g.Nodes.Add(new ForEachNode { Id = id, Source = "array", ArrayName = "arr", LoopVar = "v" });
+            g.ExecEdges.Add(new ExecEdge(0, TriggerGraph.TriggerExecOutPort, id, TriggerGraph.ActionExecInPort));
+            m.TriggerGraphJson = g.ToCanonicalJson();
+            AssertRejectedAtBothGates(m, "must be TriggerLocal-scoped");
+        }
+
+        [Fact]
+        public void LoopVarTypeMismatch_IsRejected()
+        {
+            ScenarioData m = BaseModel();
+            var arr = IntArray("arr");
+            arr.ElementType = DslValueType.Fixed; // Fixed elements
+            m.Variables = new[] { arr, LocalInt("v") }; // but an Int loop var
+            TriggerGraph g = SingleTrigger(out int id);
+            g.Nodes.Add(new ForEachNode { Id = id, Source = "array", ArrayName = "arr", LoopVar = "v" });
+            g.ExecEdges.Add(new ExecEdge(0, TriggerGraph.TriggerExecOutPort, id, TriggerGraph.ActionExecInPort));
+            m.TriggerGraphJson = g.ToCanonicalJson();
+            AssertRejectedAtBothGates(m, "Int-typed; this loop writes Fixed");
+        }
+
+        [Fact]
+        public void ArrayLoopOverUndeclaredArray_IsRejected()
+        {
+            ScenarioData m = BaseModel();
+            m.Variables = new[] { LocalInt("v") };
+            TriggerGraph g = SingleTrigger(out int id);
+            g.Nodes.Add(new ForEachNode { Id = id, Source = "array", ArrayName = "ghost", LoopVar = "v" });
+            g.ExecEdges.Add(new ExecEdge(0, TriggerGraph.TriggerExecOutPort, id, TriggerGraph.ActionExecInPort));
+            m.TriggerGraphJson = g.ToCanonicalJson();
+            AssertRejectedAtBothGates(m, "declared Array variable");
+        }
+
+        [Fact]
+        public void RegionUnitsOverUnknownRegion_IsRejected()
+        {
+            ScenarioData m = BaseModel();
+            TriggerGraph g = SingleTrigger(out int id);
+            g.Nodes.Add(new ForEachNode { Id = id, Source = "region_units", RegionId = "nowhere", UpTo = 8 });
+            g.ExecEdges.Add(new ExecEdge(0, TriggerGraph.TriggerExecOutPort, id, TriggerGraph.ActionExecInPort));
+            m.TriggerGraphJson = g.ToCanonicalJson();
+            AssertRejectedAtBothGates(m, "references no declared region");
+        }
+
+        // ── Batched restrictions ────────────────────────────────────────────────
+
+        [Fact]
+        public void BatchedNestedInsideForEach_IsRejected()
+        {
+            ScenarioData m = BaseModel();
+            TriggerGraph g = SingleTrigger(out int id);
+            int outer = id++, nested = id++;
+            g.Nodes.Add(new ForEachNode { Id = outer, Source = "faction_units", Faction = 0, UpTo = 4 });
+            g.Nodes.Add(new ForEachBatchedNode { Id = nested, Source = "faction_units", Faction = 0, BatchSize = 4 });
+            g.ExecEdges.Add(new ExecEdge(0, TriggerGraph.TriggerExecOutPort, outer, TriggerGraph.ActionExecInPort));
+            g.ExecEdges.Add(new ExecEdge(outer, TriggerGraph.ForEachBodyOutPort, nested, TriggerGraph.ActionExecInPort));
+            m.TriggerGraphJson = g.ToCanonicalJson();
+            AssertRejectedAtBothGates(m, "TOP-LEVEL");
+        }
+
+        [Fact]
+        public void TwoBatchedInOneTrigger_IsRejected()
+        {
+            ScenarioData m = BaseModel();
+            TriggerGraph g = SingleTrigger(out int id);
+            int b1 = id++, b2 = id++;
+            g.Nodes.Add(new ForEachBatchedNode { Id = b1, Source = "faction_units", Faction = 0, BatchSize = 4 });
+            g.Nodes.Add(new ForEachBatchedNode { Id = b2, Source = "faction_units", Faction = 0, BatchSize = 4 });
+            g.ExecEdges.Add(new ExecEdge(0, TriggerGraph.TriggerExecOutPort, b1, TriggerGraph.ActionExecInPort));
+            g.ExecEdges.Add(new ExecEdge(b1, TriggerGraph.ActionExecOutPort, b2, TriggerGraph.ActionExecInPort));
+            m.TriggerGraphJson = g.ToCanonicalJson();
+            AssertRejectedAtBothGates(m, "at most ONE");
+        }
+
+        [Fact]
+        public void MoreThanMaxBatchedLoops_IsRejected()
+        {
+            ScenarioData m = BaseModel();
+            var g = new TriggerGraph();
+            int id = 0;
+            for (int t = 0; t < DslBounds.MaxBatchedLoops + 1; t++)
+            {
+                int trig = id++, ev = id++, batched = id++;
+                g.Nodes.Add(new TriggerNode { Id = trig, Name = $"t{t}" });
+                g.Nodes.Add(new EventNode { Id = ev, Kind = "match_start" });
+                g.Nodes.Add(new ForEachBatchedNode { Id = batched, Source = "faction_units", Faction = 0, BatchSize = 4 });
+                g.ExecEdges.Add(new ExecEdge(ev, TriggerGraph.EventExecOutPort, trig, TriggerGraph.TriggerEventInPort));
+                g.ExecEdges.Add(new ExecEdge(trig, TriggerGraph.TriggerExecOutPort, batched, TriggerGraph.ActionExecInPort));
+            }
+            m.TriggerGraphJson = g.ToCanonicalJson();
+            AssertRejectedAtBothGates(m, "MaxBatchedLoops");
+        }
+
+        [Fact]
+        public void BatchSizeOutOfRange_IsRejected()
+        {
+            ScenarioData m = BaseModel();
+            TriggerGraph g = SingleTrigger(out int id);
+            g.Nodes.Add(new ForEachBatchedNode { Id = id, Source = "faction_units", Faction = 0, BatchSize = 0 });
+            g.ExecEdges.Add(new ExecEdge(0, TriggerGraph.TriggerExecOutPort, id, TriggerGraph.ActionExecInPort));
+            m.TriggerGraphJson = g.ToCanonicalJson();
+            AssertRejectedAtBothGates(m, "MaxForEachItems");
+        }
+
+        // ── Array-action shapes ─────────────────────────────────────────────────
+
+        [Fact]
+        public void ArrayPushWithoutValueEdge_IsRejected()
+        {
+            ScenarioData m = BaseModel();
+            m.Variables = new[] { IntArray("arr") };
+            TriggerGraph g = SingleTrigger(out int id);
+            g.Nodes.Add(new ActionNode { Id = id, Kind = "array_push", Variable = "arr" });
+            g.ExecEdges.Add(new ExecEdge(0, TriggerGraph.TriggerExecOutPort, id, TriggerGraph.ActionExecInPort));
+            m.TriggerGraphJson = g.ToCanonicalJson();
+            AssertRejectedAtBothGates(m, "requires a value-in expression edge");
+        }
+
+        [Fact]
+        public void ArraySetWithoutIndexEdge_IsRejected()
+        {
+            ScenarioData m = BaseModel();
+            m.Variables = new[] { IntArray("arr") };
+            TriggerGraph g = SingleTrigger(out int id);
+            int act = id;
+            g.Nodes.Add(new ActionNode { Id = act, Kind = "array_set", Variable = "arr" });
+            g.Nodes.Add(new ExprLiteralNode { Id = act + 1, ValueType = DslValueType.Int, Raw = 1 });
+            g.ExecEdges.Add(new ExecEdge(0, TriggerGraph.TriggerExecOutPort, act, TriggerGraph.ActionExecInPort));
+            g.DataEdges.Add(new DataEdge(act + 1, TriggerGraph.ExprDataOutPort, act, TriggerGraph.ActionValueInPort, DataWireType.Int));
+            m.TriggerGraphJson = g.ToCanonicalJson();
+            AssertRejectedAtBothGates(m, "index-in expression edge");
+        }
+
+        [Fact]
+        public void ArrayPushElementTypeMismatch_IsRejected()
+        {
+            ScenarioData m = BaseModel();
+            var arr = IntArray("arr");
+            arr.ElementType = DslValueType.Fixed;
+            m.Variables = new[] { arr };
+            TriggerGraph g = SingleTrigger(out int id);
+            int act = id;
+            g.Nodes.Add(new ActionNode { Id = act, Kind = "array_push", Variable = "arr" });
+            g.Nodes.Add(new ExprLiteralNode { Id = act + 1, ValueType = DslValueType.Int, Raw = 1 }); // Int into Fixed[]
+            g.ExecEdges.Add(new ExecEdge(0, TriggerGraph.TriggerExecOutPort, act, TriggerGraph.ActionExecInPort));
+            g.DataEdges.Add(new DataEdge(act + 1, TriggerGraph.ExprDataOutPort, act, TriggerGraph.ActionValueInPort, DataWireType.Int));
+            m.TriggerGraphJson = g.ToCanonicalJson();
+            AssertRejectedAtBothGates(m, "does not match array");
+        }
+
+        [Fact]
+        public void ArrayActionOnUndeclaredArray_IsRejected()
+        {
+            ScenarioData m = BaseModel();
+            TriggerGraph g = SingleTrigger(out int id);
+            g.Nodes.Add(new ActionNode { Id = id, Kind = "array_clear", Variable = "ghost" });
+            g.ExecEdges.Add(new ExecEdge(0, TriggerGraph.TriggerExecOutPort, id, TriggerGraph.ActionExecInPort));
+            m.TriggerGraphJson = g.ToCanonicalJson();
+            AssertRejectedAtBothGates(m, "declared Array variable");
+        }
+
+        [Fact]
+        public void FlatActionTypes_StayClosedToArrayKinds()
+        {
+            // The flat channel's _actionTypes is untouched: a flat trigger cannot carry an array action.
+            ScenarioData m = BaseModel();
+            m.Triggers = new[]
+            {
+                new TriggerDefinition
+                {
+                    Name = "flat",
+                    Events = new[] { new TriggerEvent { Type = "match_start" } },
+                    Actions = new[] { new TriggerAction { Type = "array_push", Variable = "arr" } },
+                },
+            };
+            ValidationResult r = Validate(m);
+            Assert.False(r.Ok);
+            Assert.Contains("not a known trigger action type", r.Error!);
+        }
+
+        // ── Forked-edge rejects (review P6): cond-in / index-in forks mirror the value-in fork rule ──
+
+        [Fact]
+        public void ForkedBranchConditionEdges_AreRejectedAtBothGates()
+        {
+            // TWO Bool expression edges into ONE branch condition-in port — previously silently resolved
+            // lowest-id-wins while the value-in port rejected the same fork shape.
+            ScenarioData m = BaseModel();
+            TriggerGraph g = SingleTrigger(out int id);
+            int branch = id++, e1 = id++, e2 = id++, act = id++;
+            g.Nodes.Add(new BranchNode { Id = branch });
+            g.Nodes.Add(new ExprLiteralNode { Id = e1, ValueType = DslValueType.Bool, Raw = 1 });
+            g.Nodes.Add(new ExprLiteralNode { Id = e2, ValueType = DslValueType.Bool, Raw = 0 });
+            g.Nodes.Add(new ActionNode { Id = act, Kind = "display_message", Text = "x" });
+            g.ExecEdges.Add(new ExecEdge(0, TriggerGraph.TriggerExecOutPort, branch, TriggerGraph.ActionExecInPort));
+            g.ExecEdges.Add(new ExecEdge(branch, TriggerGraph.BranchThenOutPort, act, TriggerGraph.ActionExecInPort));
+            g.DataEdges.Add(new DataEdge(e1, TriggerGraph.ExprDataOutPort, branch, TriggerGraph.BranchCondInPort, DataWireType.Boolean));
+            g.DataEdges.Add(new DataEdge(e2, TriggerGraph.ExprDataOutPort, branch, TriggerGraph.BranchCondInPort, DataWireType.Boolean));
+            m.TriggerGraphJson = g.ToCanonicalJson();
+            AssertRejectedAtBothGates(m, "forked");
+        }
+
+        [Fact]
+        public void ForkedIndexInEdges_AreRejectedAtBothGates()
+        {
+            // TWO Int expression edges into ONE array_set index-in port (data port 2) — same fork class.
+            ScenarioData m = BaseModel();
+            m.Variables = new[] { IntArray("arr") };
+            TriggerGraph g = SingleTrigger(out int id);
+            int act = id++, val = id++, i1 = id++, i2 = id++;
+            g.Nodes.Add(new ActionNode { Id = act, Kind = "array_set", Variable = "arr" });
+            g.Nodes.Add(new ExprLiteralNode { Id = val, ValueType = DslValueType.Int, Raw = 7 });
+            g.Nodes.Add(new ExprLiteralNode { Id = i1, ValueType = DslValueType.Int, Raw = 0 });
+            g.Nodes.Add(new ExprLiteralNode { Id = i2, ValueType = DslValueType.Int, Raw = 1 });
+            g.ExecEdges.Add(new ExecEdge(0, TriggerGraph.TriggerExecOutPort, act, TriggerGraph.ActionExecInPort));
+            g.DataEdges.Add(new DataEdge(val, TriggerGraph.ExprDataOutPort, act, TriggerGraph.ActionValueInPort, DataWireType.Int));
+            g.DataEdges.Add(new DataEdge(i1, TriggerGraph.ExprDataOutPort, act, TriggerGraph.ActionIndexInPort, DataWireType.Int));
+            g.DataEdges.Add(new DataEdge(i2, TriggerGraph.ExprDataOutPort, act, TriggerGraph.ActionIndexInPort, DataWireType.Int));
+            m.TriggerGraphJson = g.ToCanonicalJson();
+            AssertRejectedAtBothGates(m, "forked");
+        }
+
+        // ── Duplicate declarations with loop constructs (review P7) ─────────────
+
+        [Fact]
+        public void DuplicateArrayDeclaration_WithLoopConstructs_IsRejectedAtBothGates()
+        {
+            // The backstop previously armed the duplicate-name reject only when expressions existed (anyExpr);
+            // a duplicate-declared array + a loop and NO expressions would gate loop_var/array typing against
+            // the FIRST declaration while runtime Resolve may bind another. Now loop constructs arm it too.
+            ScenarioData m = BaseModel();
+            m.Variables = new[] { IntArray("arr", 8), IntArray("arr", 4), LocalInt("v") };
+            TriggerGraph g = SingleTrigger(out int id);
+            g.Nodes.Add(new ForEachNode { Id = id, Source = "array", ArrayName = "arr", LoopVar = "v" });
+            g.ExecEdges.Add(new ExecEdge(0, TriggerGraph.TriggerExecOutPort, id, TriggerGraph.ActionExecInPort));
+            m.TriggerGraphJson = g.ToCanonicalJson();
+
+            ValidationResult r = Validate(m);
+            Assert.False(r.Ok, "the validator gate should reject the duplicate declaration");
+            Assert.Contains("duplicate", r.Error!);
+
+            // Backstop (the messages differ textually — the validator's uniqueness pass predates the shared
+            // gate — but both reject fail-closed, located at the duplicated name).
+            var director = new ScenarioDirector(new BuildingStore(), new ResourceStore(Fixed.Zero), new DslVarTable(), new DslLoopState());
+            var ex = Assert.Throws<System.Text.Json.JsonException>(() => director.LoadScenario(m));
+            Assert.Contains("'arr'", ex.Message);
+            Assert.Contains("declared more than once", ex.Message);
+        }
+
+        // ── Array-source up_to messaging (review P9): 0 = full array is LEGAL, the message must say so ──
+
+        [Fact]
+        public void ArrayLoopNegativeUpTo_IsRejected_WithoutExcludingTheLegalZero()
+        {
+            ScenarioData m = BaseModel();
+            m.Variables = new[] { IntArray("arr"), LocalInt("v") };
+            TriggerGraph g = SingleTrigger(out int id);
+            g.Nodes.Add(new ForEachNode { Id = id, Source = "array", ArrayName = "arr", LoopVar = "v", UpTo = -1 });
+            g.ExecEdges.Add(new ExecEdge(0, TriggerGraph.TriggerExecOutPort, id, TriggerGraph.ActionExecInPort));
+            m.TriggerGraphJson = g.ToCanonicalJson();
+            AssertRejectedAtBothGates(m, "0 (the full array) or 1..DslBounds.MaxForEachItems");
+        }
+
+        // ── Spawn cap (I/O matrix row) — both gates, both sides of the range (review P5) ────────
+
+        [Theory]
+        [InlineData(70)]   // beyond EffectCaps.MaxSpawnCount
+        [InlineData(0)]    // low side: a spawn that would silently do nothing
+        [InlineData(-3)]
+        public void FlatSpawnCountOutOfRange_IsRejectedAtBothGates(int count)
+        {
+            ScenarioData m = BaseModel();
+            m.Triggers = new[]
+            {
+                new TriggerDefinition
+                {
+                    Name = "spawn",
+                    Events = new[] { new TriggerEvent { Type = "match_start" } },
+                    Actions = new[] { new TriggerAction { Type = "spawn_unit", UnitId = "soldier", Count = count } },
+                },
+            };
+            AssertRejectedAtBothGates(m, "MaxSpawnCount");
+        }
+
+        [Theory]
+        [InlineData(70)]
+        [InlineData(0)]
+        [InlineData(-3)]
+        public void GraphSpawnCountOutOfRange_IsRejectedAtBothGates(int count)
+        {
+            ScenarioData m = BaseModel();
+            TriggerGraph g = SingleTrigger(out int id);
+            g.Nodes.Add(new ActionNode { Id = id, Kind = "spawn_unit", UnitId = "soldier", Count = count });
+            g.ExecEdges.Add(new ExecEdge(0, TriggerGraph.TriggerExecOutPort, id, TriggerGraph.ActionExecInPort));
+            m.TriggerGraphJson = g.ToCanonicalJson();
+            AssertRejectedAtBothGates(m, "MaxSpawnCount");
+        }
+
+        // ── A VALID loop scenario passes the gate whole ─────────────────────────
+
+        [Fact]
+        public void WellFormedLoopScenario_PassesTheGate()
+        {
+            ScenarioData m = BaseModel();
+            m.Variables = new[]
+            {
+                IntArray("arr"),
+                LocalInt("v"),
+                new ScenarioVariable { Name = "sum", Type = DslValueType.Int, Scope = VarScope.Global },
+            };
+            var decls = new System.Collections.Generic.Dictionary<string, (DslValueType Type, VarScope Scope)>(System.StringComparer.Ordinal)
+            {
+                ["arr"] = (DslValueType.Array, VarScope.Global),
+                ["v"]   = (DslValueType.Int, VarScope.TriggerLocal),
+                ["sum"] = (DslValueType.Int, VarScope.Global),
+            };
+            var arrayDecls = new System.Collections.Generic.Dictionary<string, (DslValueType Elem, int Capacity)>(System.StringComparer.Ordinal)
+            {
+                ["arr"] = (DslValueType.Int, 8),
+            };
+
+            TriggerGraph g = SingleTrigger(out int id);
+            int push = id++, loop = id++, body = id++;
+            g.Nodes.Add(new ActionNode { Id = push, Kind = "array_push", Variable = "arr" });
+            g.Nodes.Add(new ForEachNode { Id = loop, Source = "array", ArrayName = "arr", LoopVar = "v", UpTo = 8 });
+            g.Nodes.Add(new ActionNode { Id = body, Kind = "set_variable", Variable = "sum" });
+            g.ExecEdges.Add(new ExecEdge(0, TriggerGraph.TriggerExecOutPort, push, TriggerGraph.ActionExecInPort));
+            g.ExecEdges.Add(new ExecEdge(push, TriggerGraph.ActionExecOutPort, loop, TriggerGraph.ActionExecInPort));
+            g.ExecEdges.Add(new ExecEdge(loop, TriggerGraph.ForEachBodyOutPort, body, TriggerGraph.ActionExecInPort));
+            (int pushRoot, _) = ExprParser.Parse("7", g, decls, arrayDecls);
+            g.DataEdges.Add(new DataEdge(pushRoot, TriggerGraph.ExprDataOutPort, push, TriggerGraph.ActionValueInPort, DataWireType.Int));
+            (int sumRoot, _) = ExprParser.Parse("sum + v", g, decls, arrayDecls);
+            g.DataEdges.Add(new DataEdge(sumRoot, TriggerGraph.ExprDataOutPort, body, TriggerGraph.ActionValueInPort, DataWireType.Int));
+            m.TriggerGraphJson = g.ToCanonicalJson();
+
+            ValidationResult r = Validate(m);
+            Assert.True(r.Ok, r.Error);
+        }
+    }
 }

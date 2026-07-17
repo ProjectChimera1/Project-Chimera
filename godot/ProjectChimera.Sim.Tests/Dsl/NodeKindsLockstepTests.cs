@@ -27,6 +27,12 @@ namespace ProjectChimera.Sim.Tests.Dsl
             yield return ("expr", NodeKinds.ExprUnary);
             yield return ("expr", NodeKinds.ExprBinary);
             yield return ("expr", NodeKinds.ExprCall);
+            // Story 7.6 — the three exec containers + the two array expression kinds.
+            yield return ("structural", NodeKinds.ForEach);
+            yield return ("structural", NodeKinds.ForEachBatched);
+            yield return ("structural", NodeKinds.Branch);
+            yield return ("expr", NodeKinds.ExprArrayGet);
+            yield return ("expr", NodeKinds.ExprArrayLen);
             foreach (string k in NodeKinds.EventTypes)     yield return ("event", k);
             foreach (string k in NodeKinds.ConditionTypes) yield return ("condition", k);
             foreach (string k in NodeKinds.ActionTypes)    yield return ("action", k);
@@ -67,6 +73,11 @@ namespace ProjectChimera.Sim.Tests.Dsl
             if (kind == NodeKinds.ExprUnary)   return new ExprUnaryNode { Id = id, Op = "not" };
             if (kind == NodeKinds.ExprBinary)  return new ExprBinaryNode { Id = id, Op = "add" };
             if (kind == NodeKinds.ExprCall)    return new ExprCallNode { Id = id, Fn = "count" };
+            if (kind == NodeKinds.ForEach)        return new ForEachNode { Id = id, Source = "faction_units", UpTo = 4 };
+            if (kind == NodeKinds.ForEachBatched) return new ForEachBatchedNode { Id = id, Source = "faction_units", BatchSize = 4 };
+            if (kind == NodeKinds.Branch)         return new BranchNode { Id = id };
+            if (kind == NodeKinds.ExprArrayGet)   return new ExprArrayGetNode { Id = id, Name = "arr" };
+            if (kind == NodeKinds.ExprArrayLen)   return new ExprArrayLenNode { Id = id, Name = "arr" };
             if (NodeKinds.InSet(NodeKinds.EventTypes, kind))     return new EventNode { Id = id, Kind = kind };
             if (NodeKinds.InSet(NodeKinds.ConditionTypes, kind)) return new ConditionNode { Id = id, Kind = kind };
             /* action */                                          return new ActionNode { Id = id, Kind = kind };

@@ -44,13 +44,44 @@ namespace ProjectChimera.Core
 
         // Story 7.4 — compiled expression programs, indexed by _execs position. Compiled ONCE per LoadScenario
         // (the two-phase contract: compile at load, zero-allocation eval in the tick). _condPrograms[i] are the
-        // Bool programs ANDed with the trigger's legacy conditions; _valuePrograms[i][j] is action j's compiled
-        // set_variable RHS (null = the legacy literal path). Empty for every expression-free (legacy) scenario,
-        // so legacy tick behavior is byte-identical (Block-If parity).
+        // Bool programs ANDed with the trigger's legacy conditions. Empty for every expression-free (legacy)
+        // scenario, so legacy tick behavior is byte-identical (Block-If parity).
         private ExprProgram[][]  _condPrograms  = Array.Empty<ExprProgram[]>();
-        private ExprProgram?[][] _valuePrograms = Array.Empty<ExprProgram?[]>();
         private static readonly ExprProgram[]  NoCondPrograms  = Array.Empty<ExprProgram>();
-        private static readonly ExprProgram?[] NoValuePrograms = Array.Empty<ExprProgram?>();
+
+        // Story 7.6 — the compiled NESTED execution tree, indexed by _execs position (one CompiledItem per
+        // TriggerGraph.ExecItem: leaf programs, preallocated loop snapshot buffers, run_effect fuel costs, and
+        // the batched-row link). Built ONCE per LoadScenario; the tick walks it with zero heap allocation.
+        private CompiledItem[][] _items = Array.Empty<CompiledItem[]>();
+        private static readonly CompiledItem[] NoItems = Array.Empty<CompiledItem>();
+
+        /// <summary>Story 7.6 — one compiled node of the nested execution tree (load-time allocated).</summary>
+        private sealed class CompiledItem
+        {
+            public NodeBase Node = null!;
+            public ExprProgram? Value;         // set_variable / array_push / array_set RHS
+            public ExprProgram? Index;         // array_set index
+            public ExprProgram? Cond;          // branch condition (compiled inCondition:false)
+            public CompiledItem[] Body = Array.Empty<CompiledItem>();
+            public CompiledItem[] Then = Array.Empty<CompiledItem>();
+            public CompiledItem[] Else = Array.Empty<CompiledItem>();
+            public int[]? Snapshot;            // for_each loop-entry snapshot buffer (UpTo / array capacity)
+            public int RunEffectCost;          // run_effect: embedded effect-node count (the fuel charge)
+            public int BatchRow = -1;          // for_each_batched: its DslLoopState continuation row
+        }
+
+        // Story 7.6 — the checksummed Layer-3 runtime state (per-tick fuel + batched continuation rows), shared
+        // with SimChecksum via SimulationHost. Direct test constructors get a private instance.
+        private readonly DslLoopState _loopState;
+
+        // Story 7.6 — batched-row bookkeeping (parallel to _loopState rows, ascending node id): the owning
+        // trigger's _execs index, and the batched item's position in that trigger's TOP-LEVEL compiled chain
+        // (items after it are the continuation chain, run on the completion tick).
+        private int[] _rowExecIdx = Array.Empty<int>();
+        private int[] _rowItemPos = Array.Empty<int>();
+        // Per _execs position: the trigger's batched continuation row (-1 = none). While its row is ACTIVE the
+        // trigger is suppressed in the sweep.
+        private int[] _batchRowOfTrigger = Array.Empty<int>();
 
         // Story 7.4 — the live world the IExprWorld seam scans (set at Tick entry; count() reads it).
         private EntityWorld? _exprWorld;
@@ -96,11 +127,15 @@ namespace ProjectChimera.Core
 
         // ── Constructor ───────────────────────────────────────────────────────
 
-        public ScenarioDirector(BuildingStore buildings, ResourceStore resources, DslVarTable vars)
+        /// <param name="loopState">Story 7.6 — the checksummed loop/fuel state (SimulationHost passes its shared
+        /// instance so SimChecksum folds the same object; a null — direct test constructors — gets a private one).</param>
+        public ScenarioDirector(BuildingStore buildings, ResourceStore resources, DslVarTable vars,
+            DslLoopState? loopState = null)
         {
             _buildings = buildings;
             _resources = resources;
             _vars      = vars;
+            _loopState = loopState ?? new DslLoopState();
         }
 
         /// <summary>
@@ -148,19 +183,67 @@ namespace ProjectChimera.Core
                 graph.Merge(TriggerGraph.FromJson(scenario.TriggerGraphJson!));
             List<TriggerGraph.TriggerExec> execs = graph.BuildExecutionOrder();
 
+            // Story 7.6 (review) — the spawn-count backstop, gate parity for DIRECT LoadScenario callers. Runs
+            // UNCONDITIONALLY (spawn_unit predates 7.6, so it is deliberately NOT behind the HasLoopConstructs
+            // legacy guard): the "never a silent runtime truncation" posture makes an out-of-range count a loud
+            // load reject at BOTH gates; the ExecuteLeaf Math.Min clamp stays a defense-in-depth seatbelt only.
+            string? spawnErr = DslLoopGate.CheckSpawnCounts(execs);
+            if (spawnErr != null) throw new System.Text.Json.JsonException(spawnErr);
+
+            // Story 7.6 — the loop/array/fuel backstop: the SAME DslLoopGate rulebook the ScenarioValidator gate
+            // runs (one implementation — parity by construction), applied fail-closed for direct LoadScenario
+            // callers. Guarded by HasLoopConstructs so a loop/array-free (legacy) scenario keeps its EXACT
+            // pre-7.6 load behavior (the 7.4 anyExpr precedent / the Block-If parity net).
+            Dictionary<string, (DslValueType Elem, int Capacity)> arrayDecls = DslLoopGate.BuildArrayDecls(scenario.Variables);
+            if (DslLoopGate.HasLoopConstructs(scenario.Variables, graph))
+            {
+                string? declErr = DslLoopGate.CheckDeclarations(scenario.Variables);
+                if (declErr != null) throw new System.Text.Json.JsonException(declErr);
+
+                var declaredRegions = new HashSet<string>(StringComparer.Ordinal);
+                if (scenario.Regions != null)
+                    foreach (ScenarioRegion rg in scenario.Regions)
+                        if (rg != null && !string.IsNullOrEmpty(rg.Id)) declaredRegions.Add(rg.Id);
+                // Review (7.6): requireUnique — a duplicate declaration with loop constructs present would gate
+                // loop_var/array typing against the FIRST declaration while runtime Resolve may bind another
+                // (the same silent-confusion class the 7.4 anyExpr rule closed for expressions). Duplicates now
+                // reject whenever expressions OR loop constructs exist; a construct-free legacy direct-load keeps
+                // its exact pre-7.4 behavior (the Block-If).
+                var loopDeclMap = BuildDeclMap(scenario, requireUnique: true);
+                string? loopErr = DslLoopGate.CheckGraph(graph, execs, loopDeclMap, arrayDecls,
+                    id => declaredRegions.Contains(id));
+                if (loopErr != null) throw new System.Text.Json.JsonException(loopErr);
+            }
+
             // Story 7.4 — compile every condition-expression and set_variable value-expression ONCE (two-phase
             // contract). A compile failure throws a located JsonException, consistent with the cycle-guard posture
             // above (the ScenarioValidator gate rejects the same errors located BEFORE any apply; this is the
             // fail-closed backstop for direct LoadScenario callers). Expression-free scenarios compile nothing.
-            (ExprProgram[][] condPrograms, ExprProgram?[][] valuePrograms) = CompileExpressionPrograms(scenario, graph, execs);
+            // Story 7.6 — the per-item compile now also builds the nested CompiledItem execution tree (loop
+            // snapshot buffers, branch/array programs, run_effect fuel costs).
+            (ExprProgram[][] condPrograms, CompiledItem[][] compiledItems) =
+                CompileExpressionPrograms(scenario, graph, execs, arrayDecls);
+
+            // Story 7.6 — collect the for_each_batched continuation rows from the TOP-LEVEL compiled chains, in
+            // ascending node-id order (the drain phase's total order across rows). All locals — committed below.
+            var batchedRows = new List<(int NodeId, int ExecIdx, int ItemPos)>();
+            for (int i = 0; i < compiledItems.Length; i++)
+                for (int j = 0; j < compiledItems[i].Length; j++)
+                    if (compiledItems[i][j].Node is ForEachBatchedNode fbNode)
+                        batchedRows.Add((fbNode.Id, i, j));
+            batchedRows.Sort((a, b) => a.NodeId.CompareTo(b.NodeId));
 
             // Story 7.3: the typed/scoped variable + timer store declarations. The seconds→ticks conversion happens
             // HERE at the Core boundary (SecondsToTicks owns TICKS_PER_SECOND) so the table receives integer ticks
-            // only. Declared timers start active at their tick count (I/O matrix).
+            // only. Declared timers start active at their tick count (I/O matrix). Story 7.6: Array declarations
+            // carry their element type + capacity into the table's preallocated array store.
             var varDecls = new List<DslVarDecl>();
             if (scenario.Variables != null)
                 foreach (ScenarioVariable v in scenario.Variables)
-                    varDecls.Add(new DslVarDecl(v.Name, v.Type, v.Scope, ScopeInitialRaw(v.Type, v.Initial)));
+                    varDecls.Add(new DslVarDecl(v.Name, v.Type, v.Scope, ScopeInitialRaw(v.Type, v.Initial),
+                        raw1: 0,
+                        elementType: v.ElementType ?? DslValueType.Int,
+                        capacity: v.Capacity ?? 0));
             var timerDecls = new List<DslTimerDecl>();
             if (scenario.Timers != null)
                 foreach (ScenarioTimer t in scenario.Timers)
@@ -177,7 +260,23 @@ namespace ProjectChimera.Core
             _triggerFired    = new bool[execs.Count];
             _triggerCooldown = new int[execs.Count];
             _condPrograms    = condPrograms;
-            _valuePrograms   = valuePrograms;
+            _items           = compiledItems;
+
+            // Story 7.6 — (re)allocate the continuation rows + row bookkeeping (load-time allocation only).
+            var rowNodeIds = new int[batchedRows.Count];
+            _rowExecIdx = new int[batchedRows.Count];
+            _rowItemPos = new int[batchedRows.Count];
+            _batchRowOfTrigger = new int[execs.Count];
+            for (int i = 0; i < _batchRowOfTrigger.Length; i++) _batchRowOfTrigger[i] = -1;
+            for (int r = 0; r < batchedRows.Count; r++)
+            {
+                rowNodeIds[r]  = batchedRows[r].NodeId;
+                _rowExecIdx[r] = batchedRows[r].ExecIdx;
+                _rowItemPos[r] = batchedRows[r].ItemPos;
+                _batchRowOfTrigger[batchedRows[r].ExecIdx] = r;
+                compiledItems[batchedRows[r].ExecIdx][batchedRows[r].ItemPos].BatchRow = r;
+            }
+            _loopState.ConfigureRows(rowNodeIds);
 
             _vars.InitFromDeclarations(varDecls, timerDecls);
 
@@ -202,8 +301,25 @@ namespace ProjectChimera.Core
         /// Pure function of its inputs (review, 7.4 pass 2): fills and returns LOCAL arrays so a mid-compile throw
         /// never strands half-replaced director state — the caller commits them only after everything compiled.
         /// </summary>
-        private static (ExprProgram[][] CondPrograms, ExprProgram?[][] ValuePrograms) CompileExpressionPrograms(
-            ScenarioData scenario, TriggerGraph graph, List<TriggerGraph.TriggerExec> execs)
+        /// <summary>Build the declared name → (type, scope) map for the loop gate (TryAdd — first declaration
+        /// wins, matching DslVarTable.Resolve). Duplicate declarations reject when <paramref name="requireUnique"/>:
+        /// armed by the 7.4 anyExpr rule AND (review, 7.6) by the presence of loop constructs.</summary>
+        private static Dictionary<string, (DslValueType Type, VarScope Scope)> BuildDeclMap(
+            ScenarioData scenario, bool requireUnique)
+        {
+            var map = new Dictionary<string, (DslValueType Type, VarScope Scope)>(StringComparer.Ordinal);
+            if (scenario.Variables != null)
+                foreach (ScenarioVariable v in scenario.Variables)
+                    if (v != null && !string.IsNullOrWhiteSpace(v.Name))
+                        if (!map.TryAdd(v.Name, (v.Type, v.Scope)) && requireUnique)
+                            throw new System.Text.Json.JsonException(
+                                $"scenario variable '{v.Name}' is declared more than once.");
+            return map;
+        }
+
+        private static (ExprProgram[][] CondPrograms, CompiledItem[][] Items) CompileExpressionPrograms(
+            ScenarioData scenario, TriggerGraph graph, List<TriggerGraph.TriggerExec> execs,
+            IReadOnlyDictionary<string, (DslValueType Elem, int Capacity)> arrayDecls)
         {
             // GATE-ONLY checks (deliberately NOT mirrored in this backstop): the engine-ceiling faction bound on
             // slotted expr_var reads (CheckFactionSlot, ceiling Faction.Player4) is an authoring-policy rule the
@@ -211,9 +327,10 @@ namespace ProjectChimera.Core
             // CountAlive slot guard keep the runtime safe without it. Every OTHER expression consumer-edge check
             // the gate applies (the compile rulebook, Bool condition roots, single value-in edge, wire = type,
             // the value-in edge-shape rejects, duplicate declarations) is re-run below, so a direct LoadScenario
-            // caller fails closed identically.
+            // caller fails closed identically. The 7.6 loop/array rulebook is NOT duplicated here — it runs via
+            // the SHARED DslLoopGate in LoadScenario (parity by construction).
             var condPrograms  = new ExprProgram[execs.Count][];
-            var valuePrograms = new ExprProgram?[execs.Count][];
+            var compiledItems = new CompiledItem[execs.Count][];
 
             // Legacy parity guard: expression-free graphs skip every NEW check below (a duplicate-declaration
             // direct-load, however malformed, must keep its exact pre-7.4 load behavior — the Block-If).
@@ -225,15 +342,7 @@ namespace ProjectChimera.Core
             // present, duplicates reject like the gate (review, 7.4 pass 2): a last-declaration-wins map would
             // type expressions against one slot while DslVarTable.Resolve reads another (PerPlayer-first),
             // silently confusing typed raws.
-            var declMap = new Dictionary<string, (DslValueType Type, VarScope Scope)>(StringComparer.Ordinal);
-            if (scenario.Variables != null)
-                foreach (ScenarioVariable v in scenario.Variables)
-                    if (!string.IsNullOrWhiteSpace(v.Name))
-                    {
-                        if (!declMap.TryAdd(v.Name, (v.Type, v.Scope)) && anyExpr)
-                            throw new System.Text.Json.JsonException(
-                                $"scenario variable '{v.Name}' is declared more than once.");
-                    }
+            Dictionary<string, (DslValueType Type, VarScope Scope)> declMap = BuildDeclMap(scenario, requireUnique: anyExpr);
 
             // ── Per-edge parity scan (review, 7.4 pass 2 — mirrors the gate's consumer-edge loop over ALL data
             //    edges, not just exec-surfaced actions): a value-in edge whose src is NOT an expression node maps
@@ -271,16 +380,20 @@ namespace ProjectChimera.Core
                 if (consumedByValueIn)
                 {
                     var act = (ActionNode)dst;
-                    if (act.Kind != "set_variable")
+                    // Story 7.6 widening: array_push/array_set also take a value-in expression edge (their
+                    // element typing runs via the shared DslLoopGate in LoadScenario).
+                    if (act.Kind != "set_variable" && !NodeKinds.IsArrayActionKind(act.Kind))
                         throw new System.Text.Json.JsonException(
-                            $"action node {act.Id}: a value-in expression edge is only allowed on a set_variable action (kind '{act.Kind}').");
-                    if (string.IsNullOrEmpty(act.Variable))
-                        throw new System.Text.Json.JsonException(
-                            $"action node {act.Id}: a set_variable with a value expression needs a target variable.");
+                            $"action node {act.Id}: a value-in expression edge is only allowed on a set_variable, array_push, or array_set action (kind '{act.Kind}').");
                     if (!seenValueInPorts.Add(act.Id))
                         throw new System.Text.Json.JsonException(
                             $"action node {act.Id}: multiple value-in expression edges (forked; exactly one allowed).");
-                    if (!ExprCompiler.TryCompile(graph, de.Src, declMap, inCondition: false, out ExprProgram? vp, out string? vErr))
+                    if (NodeKinds.IsArrayActionKind(act.Kind))
+                        continue; // typed/required-edge rules run in DslLoopGate.CheckGraph (LoadScenario)
+                    if (string.IsNullOrEmpty(act.Variable))
+                        throw new System.Text.Json.JsonException(
+                            $"action node {act.Id}: a set_variable with a value expression needs a target variable.");
+                    if (!ExprCompiler.TryCompile(graph, de.Src, declMap, inCondition: false, out ExprProgram? vp, out string? vErr, arrayDecls))
                         throw new System.Text.Json.JsonException($"set_variable value expression: {vErr}");
                     DslValueType target = declMap.TryGetValue(act.Variable!, out var tDecl) ? tDecl.Type : DslValueType.Int;
                     if (target != DslValueType.Int && target != DslValueType.Fixed && target != DslValueType.Bool)
@@ -309,7 +422,7 @@ namespace ProjectChimera.Core
                     for (int j = 0; j < ex.ConditionExprRoots.Length; j++)
                     {
                         int root = ex.ConditionExprRoots[j];
-                        if (!ExprCompiler.TryCompile(graph, root, declMap, inCondition: true, out ExprProgram? p, out string? err))
+                        if (!ExprCompiler.TryCompile(graph, root, declMap, inCondition: true, out ExprProgram? p, out string? err, arrayDecls))
                             throw new System.Text.Json.JsonException($"trigger '{ex.Trigger.Name}' condition expression: {err}");
                         if (p!.ResultType != DslValueType.Bool)
                             throw new System.Text.Json.JsonException(
@@ -325,38 +438,134 @@ namespace ProjectChimera.Core
                     condPrograms[i] = programs;
                 }
 
-                bool anyValue = false;
-                for (int j = 0; j < ex.ActionValueExprRoots.Length; j++)
-                    if (ex.ActionValueExprRoots[j] >= 0) { anyValue = true; break; }
-                if (!anyValue)
-                {
-                    valuePrograms[i] = NoValuePrograms;
-                    continue;
-                }
-
-                var values = new ExprProgram?[ex.Actions.Length];
-                for (int j = 0; j < ex.Actions.Length; j++)
-                {
-                    int root = ex.ActionValueExprRoots[j];
-                    if (root < 0) continue;
-                    if (ex.Actions[j] is not ActionNode act || act.Kind != "set_variable" || string.IsNullOrEmpty(act.Variable))
-                        throw new System.Text.Json.JsonException(
-                            $"trigger '{ex.Trigger.Name}' action node {ex.Actions[j].Id}: a value-in expression edge is only allowed on a set_variable action with a target variable.");
-                    if (!ExprCompiler.TryCompile(graph, root, declMap, inCondition: false, out ExprProgram? p, out string? err))
-                        throw new System.Text.Json.JsonException($"trigger '{ex.Trigger.Name}' set_variable value expression: {err}");
-                    DslValueType target = declMap.TryGetValue(act.Variable!, out var decl) ? decl.Type : DslValueType.Int;
-                    if (target != DslValueType.Int && target != DslValueType.Fixed && target != DslValueType.Bool)
-                        throw new System.Text.Json.JsonException(
-                            $"trigger '{ex.Trigger.Name}' set_variable target '{act.Variable}' is {target}-typed; expression assignment targets Int/Fixed/Bool variables only.");
-                    if (p!.ResultType != target)
-                        throw new System.Text.Json.JsonException(
-                            $"trigger '{ex.Trigger.Name}' set_variable value expression (expr node {root}): result type {p.ResultType} does not match target variable '{act.Variable}' ({target}).");
-                    values[j] = p;
-                }
-                valuePrograms[i] = values;
+                // Story 7.6 — compile the trigger's NESTED execution tree (leaf value/index programs, branch
+                // conditions, loop snapshot buffers, run_effect fuel costs). For a container-free legacy chain
+                // this reduces to the flat 7.4 value-program compile item-for-item (same rejects, same messages).
+                compiledItems[i] = CompileItems(graph, ex.Items, declMap, arrayDecls, ex.Trigger.Name, depth: 1);
             }
 
-            return (condPrograms, valuePrograms);
+            return (condPrograms, compiledItems);
+        }
+
+        /// <summary>
+        /// Story 7.6 — recursively compile one exec chain's <see cref="TriggerGraph.ExecItem"/>s into
+        /// <see cref="CompiledItem"/>s. All allocation happens HERE at load (snapshot buffers sized up_to /
+        /// declared array capacity; per-item programs), so the tick executor allocates nothing. Located
+        /// JsonException on any compile reject (backstop posture; the DslLoopGate rulebook has already gated
+        /// loop/array shapes whenever any 7.6 construct is present).
+        ///
+        /// <para>Review P9 — <paramref name="depth"/> is the chain's container nesting level (top-level = 1),
+        /// capped at <see cref="DslBounds.MaxExecWalkDepth"/> with a located reject: the recursion seatbelt
+        /// mirrored across all three exec-chain walkers, so a hostile deeply-nested tree can never
+        /// stack-overflow this compile (an uncatchable process kill) instead of failing closed.</para>
+        /// </summary>
+        private static CompiledItem[] CompileItems(TriggerGraph graph, TriggerGraph.ExecItem[] items,
+            IReadOnlyDictionary<string, (DslValueType Type, VarScope Scope)> declMap,
+            IReadOnlyDictionary<string, (DslValueType Elem, int Capacity)> arrayDecls,
+            string triggerName, int depth)
+        {
+            if (items.Length == 0) return NoItems;
+            var compiled = new CompiledItem[items.Length];
+            for (int j = 0; j < items.Length; j++)
+            {
+                TriggerGraph.ExecItem it = items[j];
+                var ci = new CompiledItem { Node = it.Node };
+
+                // Review P9 — the recursion seatbelt: reject located BEFORE recursing into a container's sub-chain.
+                if ((it.Node is ForEachNode || it.Node is ForEachBatchedNode || it.Node is BranchNode)
+                    && depth + 1 > DslBounds.MaxExecWalkDepth)
+                    throw new System.Text.Json.JsonException(
+                        $"trigger '{triggerName}' node {it.Node.Id}: container nesting depth {depth + 1} exceeds DslBounds.MaxExecWalkDepth={DslBounds.MaxExecWalkDepth} (the exec-walk recursion seatbelt).");
+
+                switch (it.Node)
+                {
+                    case ForEachNode fe:
+                    {
+                        int bufSize;
+                        if (fe.Source == "array")
+                            bufSize = arrayDecls.TryGetValue(fe.ArrayName ?? "", out (DslValueType Elem, int Capacity) ad) ? ad.Capacity : 0;
+                        else
+                            bufSize = fe.UpTo;
+                        ci.Snapshot = new int[bufSize < 0 ? 0 : bufSize];
+                        ci.Body = CompileItems(graph, it.Body, declMap, arrayDecls, triggerName, depth + 1);
+                        break;
+                    }
+
+                    case ForEachBatchedNode:
+                        ci.Body = CompileItems(graph, it.Body, declMap, arrayDecls, triggerName, depth + 1);
+                        break;
+
+                    case BranchNode br:
+                    {
+                        if (it.CondExprRoot < 0)
+                            throw new System.Text.Json.JsonException(
+                                $"trigger '{triggerName}' branch node {br.Id}: requires a Bool expression wired into its condition-in data port.");
+                        // Branch conditions compile inCondition:false — they evaluate INSIDE the trigger-local
+                        // scope, so TriggerLocal/loop-var reads are legal (unlike the trigger condition-in).
+                        if (!ExprCompiler.TryCompile(graph, it.CondExprRoot, declMap, inCondition: false,
+                                out ExprProgram? cp, out string? cErr, arrayDecls))
+                            throw new System.Text.Json.JsonException($"trigger '{triggerName}' branch condition: {cErr}");
+                        if (cp!.ResultType != DslValueType.Bool)
+                            throw new System.Text.Json.JsonException(
+                                $"trigger '{triggerName}' branch node {br.Id}: the condition expression must evaluate to Bool, got {cp.ResultType}.");
+                        ci.Cond = cp;
+                        ci.Then = CompileItems(graph, it.Then, declMap, arrayDecls, triggerName, depth + 1);
+                        ci.Else = CompileItems(graph, it.Else, declMap, arrayDecls, triggerName, depth + 1);
+                        break;
+                    }
+
+                    case EffectActionNode eff:
+                        ci.RunEffectCost = DslLoopGate.CountEffectNodes(eff.Effect);
+                        break;
+
+                    case ActionNode act when NodeKinds.IsArrayActionKind(act.Kind):
+                    {
+                        // Shapes/types are gated by DslLoopGate (always reachable here — an array action IS a
+                        // 7.6 construct); compile the programs the executor evaluates.
+                        if (it.ValueExprRoot >= 0)
+                        {
+                            if (!ExprCompiler.TryCompile(graph, it.ValueExprRoot, declMap, inCondition: false,
+                                    out ExprProgram? vp, out string? vErr, arrayDecls))
+                                throw new System.Text.Json.JsonException($"trigger '{triggerName}' {act.Kind} value expression: {vErr}");
+                            ci.Value = vp;
+                        }
+                        if (it.IndexExprRoot >= 0)
+                        {
+                            if (!ExprCompiler.TryCompile(graph, it.IndexExprRoot, declMap, inCondition: false,
+                                    out ExprProgram? ip, out string? iErr, arrayDecls))
+                                throw new System.Text.Json.JsonException($"trigger '{triggerName}' {act.Kind} index expression: {iErr}");
+                            ci.Index = ip;
+                        }
+                        break;
+                    }
+
+                    case ActionNode act:
+                    {
+                        int root = it.ValueExprRoot;
+                        if (root >= 0)
+                        {
+                            // The unchanged 7.4 rulebook for set_variable value expressions (same rejects/messages).
+                            if (act.Kind != "set_variable" || string.IsNullOrEmpty(act.Variable))
+                                throw new System.Text.Json.JsonException(
+                                    $"trigger '{triggerName}' action node {act.Id}: a value-in expression edge is only allowed on a set_variable action with a target variable.");
+                            if (!ExprCompiler.TryCompile(graph, root, declMap, inCondition: false, out ExprProgram? p, out string? err, arrayDecls))
+                                throw new System.Text.Json.JsonException($"trigger '{triggerName}' set_variable value expression: {err}");
+                            DslValueType target = declMap.TryGetValue(act.Variable!, out var decl) ? decl.Type : DslValueType.Int;
+                            if (target != DslValueType.Int && target != DslValueType.Fixed && target != DslValueType.Bool)
+                                throw new System.Text.Json.JsonException(
+                                    $"trigger '{triggerName}' set_variable target '{act.Variable}' is {target}-typed; expression assignment targets Int/Fixed/Bool variables only.");
+                            if (p!.ResultType != target)
+                                throw new System.Text.Json.JsonException(
+                                    $"trigger '{triggerName}' set_variable value expression (expr node {root}): result type {p.ResultType} does not match target variable '{act.Variable}' ({target}).");
+                            ci.Value = p;
+                        }
+                        break;
+                    }
+                }
+
+                compiled[j] = ci;
+            }
+            return compiled;
         }
 
         /// <summary>Story 7.4 — the <c>count(faction)</c> built-in's world seam: alive entities of the given slot,
@@ -385,6 +594,11 @@ namespace ProjectChimera.Core
             _exprWorld = world; // Story 7.4 — expose the live world to the count() built-in for this tick
             try
             {
+                // Story 7.6 — the per-tick fuel budget resets at the START of every director tick; everything the
+                // director executes below (drains + the sweep) charges against it. Legacy scenarios charge only
+                // their fired actions, and the consumed value folds into SimChecksum either way (v17).
+                _loopState.ResetFuel();
+
                 if (_execs.Count == 0)
                 {
                     // Review (7.3 follow-up): declared ScenarioData.Timers made trigger-less timers representable, and
@@ -397,6 +611,10 @@ namespace ProjectChimera.Core
                     return;
                 }
 
+                // Story 7.6 — the batched drain phase runs at the START of the director tick, BEFORE event
+                // collection and the trigger sweep (ascending node-id across rows).
+                DrainBatchedRows(world);
+
                 var events = CollectEvents(world);
                 TickCooldowns();
                 EvaluateTriggers(events, world);
@@ -408,6 +626,59 @@ namespace ProjectChimera.Core
                 // ticks (any future between-tick evaluation entry point, e.g. an editor preview, would otherwise
                 // scan a world the director no longer owns; LoadScenario's clear covers only the reset path).
                 _exprWorld = null;
+            }
+        }
+
+        // ── Story 7.6 — batched drip (drain phase) ────────────────────────────
+
+        /// <summary>
+        /// Drain every ACTIVE continuation row: up to its <c>batch_size</c> snapshot entries this tick, in
+        /// ascending node-id row order, each alive entity running the loop body anchored at itself (dead
+        /// entities are SKIPPED at drain time but still consume their batch slot — the drip stays 10/10/5-shaped).
+        /// Each row drains inside a fresh TriggerLocal scope. A row whose cursor reaches its snapshot length
+        /// completes: the row deactivates and the trigger's CONTINUATION chain (the top-level items after the
+        /// batched node) runs on this — the completion — tick. Fuel: a whole ROW is the drain-phase's
+        /// "whole-trigger boundary": once exhausted, remaining rows skip this tick and resume next tick.
+        /// </summary>
+        private void DrainBatchedRows(EntityWorld world)
+        {
+            for (int row = 0; row < _loopState.RowCount; row++)
+            {
+                if (!_loopState.RowActive(row)) continue;
+                if (_loopState.FuelExhausted) break; // whole-row boundary halt — rows resume next tick
+
+                int execIdx = _rowExecIdx[row];
+                CompiledItem batched = _items[execIdx][_rowItemPos[row]];
+                var fb = (ForEachBatchedNode)batched.Node;
+
+                _vars.Enter(); // entity drains re-enter a FRESH TriggerLocal scope per tick
+                try
+                {
+                    _loopState.Charge(1); // the drain entry (mirrors the static model's per-loop op)
+                    int cursor = _loopState.RowCursor(row);
+                    int len    = _loopState.RowLength(row);
+                    int end    = cursor + fb.BatchSize;
+                    if (end > len) end = len;
+
+                    for (int k = cursor; k < end; k++)
+                    {
+                        int ent = _loopState.RowId(row, k);
+                        if (!world.IsAlive(ent)) continue; // killed since snapshot → skipped at drain time
+                        ExecuteItems(batched.Body, world, ent);
+                    }
+                    _loopState.SetCursor(row, end);
+
+                    if (end >= len)
+                    {
+                        _loopState.CompleteRow(row);
+                        // The continuation chain (exec-out port 0 — the items AFTER the batched node) runs on
+                        // the completion tick, inside the same fresh trigger-local scope.
+                        CompiledItem[] chain = _items[execIdx];
+                        for (int j = _rowItemPos[row] + 1; j < chain.Length; j++)
+                            ExecuteItem(chain[j], world, -1);
+                    }
+                }
+                finally { _vars.Exit(); }
             }
         }
 
@@ -487,9 +758,21 @@ namespace ProjectChimera.Core
             // by ascending declaration/node-id, deterministically across peers (AR-16).
             for (int idx = 0; idx < _execs.Count; idx++)
             {
+                // Story 7.6 — the fuel seatbelt halts the SWEEP at a whole-trigger boundary: the in-flight
+                // trigger completed (it charged past the budget mid-run, untorn), and every remaining trigger
+                // skips this tick and simply re-evaluates next tick — identically on every peer.
+                if (_loopState.FuelExhausted) break;
+
                 TriggerGraph.TriggerExec ex = _execs[idx];
                 TriggerNode t = ex.Trigger;
                 if (!t.Enabled || _triggerFired[idx] || _triggerCooldown[idx] > 0) continue;
+                // Story 7.6 — a trigger whose batched continuation row is still draining is SUPPRESSED in the
+                // sweep (it cannot re-fire until the drip and its continuation chain complete). The RowCount
+                // bound is the reset-window guard (review P8): SimulationHost.ClearForReset clears LoopState
+                // rows while this director's bookkeeping survives until the re-apply's LoadScenario — a tick in
+                // that window must treat the stale row index as "no active row", never index cleared storage.
+                if (_batchRowOfTrigger[idx] >= 0 && _batchRowOfTrigger[idx] < _loopState.RowCount
+                    && _loopState.RowActive(_batchRowOfTrigger[idx])) continue;
                 if (!AnyEventMatches(ex.Events, events))                            continue;
                 if (!AllConditionsMet(ex.Conditions, world))                        continue;
                 // Story 7.4: compiled condition-expression programs AND with the legacy conditions above
@@ -499,7 +782,7 @@ namespace ProjectChimera.Core
                 // Story 7.3: open a trigger-local scope for this firing (allocate/reset trigger-local scratch), run
                 // the action chain, then free it — never engine-global, never folded.
                 _vars.Enter();
-                try { ExecuteActions(ex.Actions, idx < _valuePrograms.Length ? _valuePrograms[idx] : NoValuePrograms, world); }
+                try { ExecuteTopLevel(idx, world); }
                 finally { _vars.Exit(); }
 
                 if (t.RunOnce) _triggerFired[idx] = true;
@@ -630,64 +913,216 @@ namespace ProjectChimera.Core
 
         // ── Action execution ──────────────────────────────────────────────────
 
-        private void ExecuteActions(NodeBase[] actions, ExprProgram?[] valuePrograms, EntityWorld world)
+        /// <summary>
+        /// Story 7.6 — run a fired trigger's TOP-LEVEL compiled chain. A <c>for_each_batched</c> item SNAPSHOTS
+        /// (activating its continuation row) and STOPS the chain — the items after it are the continuation,
+        /// executed by the drain phase on the completion tick. Everything else executes inline.
+        /// </summary>
+        private void ExecuteTopLevel(int execIdx, EntityWorld world)
         {
-            for (int j = 0; j < actions.Length; j++)
+            CompiledItem[] items = execIdx < _items.Length ? _items[execIdx] : NoItems;
+            for (int j = 0; j < items.Length; j++)
             {
-                NodeBase node = actions[j];
-                if (node is EffectActionNode effectNode)
+                if (items[j].BatchRow >= 0)
                 {
-                    RunEffect(effectNode, world);
-                    continue;
+                    SnapshotBatched(items[j], world);
+                    return; // the rest of the chain is the checksummed continuation (runs at drain completion)
+                }
+                ExecuteItem(items[j], world, anchor: -1);
+            }
+        }
+
+        /// <summary>Execute a compiled sub-chain (loop body / branch arm) with the given run_effect anchor.</summary>
+        private void ExecuteItems(CompiledItem[] items, EntityWorld world, int anchor)
+        {
+            for (int j = 0; j < items.Length; j++)
+                ExecuteItem(items[j], world, anchor);
+        }
+
+        /// <summary>
+        /// Story 7.6 — execute ONE compiled item. Zero heap allocation: loop snapshots fill the item's
+        /// preallocated buffer; recursion depth is bounded by the load-gate nesting cap. Fuel is charged
+        /// mirroring the static cost model (action = 1 + its expression op counts, run_effect = embedded node
+        /// count, loop/branch entry = 1 + condition ops). <paramref name="anchor"/> is the current entity of the
+        /// nearest enclosing ENTITY-source loop (-1 = none → run_effect keeps its legacy lowest-id-alive anchor).
+        /// </summary>
+        private void ExecuteItem(CompiledItem item, EntityWorld world, int anchor)
+        {
+            switch (item.Node)
+            {
+                case ForEachNode fe:
+                {
+                    _loopState.Charge(1);
+                    int count = SnapshotForEach(item, fe, world);
+                    int iter  = fe.UpTo > 0 && fe.UpTo < count ? fe.UpTo : count;
+                    bool entitySource = fe.Source != "array";
+                    for (int i = 0; i < iter; i++)
+                    {
+                        int v = item.Snapshot![i];
+                        // The loop variable (a declared TriggerLocal) is written BEFORE each iteration: the
+                        // element raw for arrays, the entity id (Int) for entity sources. SetRaw applies the
+                        // central Bool 0/1 normalization for Bool-element arrays.
+                        if (!string.IsNullOrEmpty(fe.LoopVar))
+                            _vars.SetRaw(fe.LoopVar!, 0, v, 0);
+                        // run_effect in the body anchors at the CURRENT entity for entity sources; an array
+                        // loop leaves the inherited anchor untouched.
+                        ExecuteItems(item.Body, world, entitySource ? v : anchor);
+                    }
+                    break;
                 }
 
-                var a = (ActionNode)node;
-                switch (a.Kind)
+                case ForEachBatchedNode:
+                    // Unreachable when the load gate ran (top-level only; intercepted by ExecuteTopLevel).
+                    // Defensive no-op for a hostile direct caller — never a second drip path.
+                    break;
+
+                case BranchNode:
                 {
-                    case "spawn_unit":
-                        if (!string.IsNullOrEmpty(a.UnitId))
-                            OnSpawnUnit?.Invoke(a.UnitId, a.Faction, a.X, a.Z, Math.Min(a.Count, 50));
-                        break;
-                    case "display_message":
-                        if (!string.IsNullOrEmpty(a.Text))
-                            OnDisplayMessage?.Invoke(a.Text, a.Duration);
-                        break;
-                    case "play_sound":
-                        if (!string.IsNullOrEmpty(a.SoundId))
-                            OnPlaySound?.Invoke(a.SoundId);
-                        break;
-                    case "victory":
-                        OnVictory?.Invoke(a.Faction);
-                        break;
-                    case "defeat":
-                        OnVictory?.Invoke(1 - a.Faction); // other faction wins
-                        break;
-                    case "create_timer":
-                        if (!string.IsNullOrEmpty(a.TimerName) && a.TimerSeconds > Fixed.Zero)
-                            // Clamp to >= 1 tick so a sub-frame duration still fires (matches the legacy latency).
-                            _vars.TimerSet(a.TimerName, Math.Max(1, SecondsToTicks(a.TimerSeconds)));
-                        break;
-                    case "add_resources":
-                    {
-                        var faction = (Faction)(a.Faction + 1);
-                        _resources.AddOre(faction, a.Amount);
-                        break;
-                    }
-                    case "set_variable":
-                        if (!string.IsNullOrEmpty(a.Variable))
-                        {
-                            // Story 7.4: a compiled RHS program (value-in expression edge) evaluates the typed raw
-                            // and writes through SetRaw (Bool targets normalize to 0/1; Fixed raw-exact). Otherwise
-                            // the 7.3 literal path is unchanged: PerPlayer selects the player slot via the action's
-                            // Faction field; undeclared → Global/Int (legacy SetVariable parity).
-                            ExprProgram? rhs = j < valuePrograms.Length ? valuePrograms[j] : null;
-                            if (rhs != null)
-                                _vars.SetRaw(a.Variable, a.Faction, rhs.Eval(_vars, this), 0);
-                            else
-                                _vars.SetInt(a.Variable, a.Faction, a.Value);
-                        }
-                        break;
+                    _loopState.Charge(1 + (item.Cond?.OpCount ?? 0));
+                    bool taken = item.Cond != null && item.Cond.Eval(_vars, this) != 0;
+                    ExecuteItems(taken ? item.Then : item.Else, world, anchor);
+                    // Port-0 continuation items follow this one in the parent chain — they always run.
+                    break;
                 }
+
+                case EffectActionNode effectNode:
+                    _loopState.Charge(item.RunEffectCost);
+                    RunEffect(effectNode, world, anchor);
+                    break;
+
+                case ActionNode a:
+                    _loopState.Charge(1 + (item.Value?.OpCount ?? 0) + (item.Index?.OpCount ?? 0));
+                    ExecuteLeaf(a, item, world);
+                    break;
+            }
+        }
+
+        /// <summary>
+        /// Story 7.6 — snapshot the loop's collection AT ENTRY into the item's preallocated buffer, returning
+        /// the element count. Arrays copy their live elements; entity sources scan alive units in ASCENDING id
+        /// (the SearchAreaEffect sort-snapshot pattern; the scan itself is already ascending so no sort is
+        /// needed), applying the faction filter (-1 = any) and, for region_units, the region rect. The scan
+        /// stops once the buffer (sized up_to) is full — the lowest ids win, deterministically.
+        /// </summary>
+        private int SnapshotForEach(CompiledItem item, ForEachNode fe, EntityWorld world)
+        {
+            int[] buffer = item.Snapshot!;
+            if (fe.Source == "array")
+                return _vars.ArraySnapshot(fe.ArrayName ?? "", buffer);
+
+            int n = 0;
+            bool useRegion = fe.Source == "region_units";
+            int rIdx = -1;
+            if (useRegion && !_regions.TryGetIndex(fe.RegionId, out rIdx))
+                return 0; // unknown region (gate-rejected for authored content) → empty snapshot
+            int hwm = world.HighWaterMark;
+            for (int i = 0; i < hwm && n < buffer.Length; i++)
+            {
+                if (!world.IsAlive(i)) continue;
+                if (fe.Faction >= 0 && (int)world.FactionOf[i] != fe.Faction + 1) continue;
+                if (useRegion && !_regions.Contains(rIdx, world.Position[i])) continue;
+                buffer[n++] = i;
+            }
+            return n;
+        }
+
+        /// <summary>
+        /// Story 7.6 — a fired <c>for_each_batched</c>: snapshot ascending alive-unit ids into its preallocated
+        /// continuation row (cap <c>DslBounds.MaxBatchSnapshot</c> — lowest ids win) and activate the row. The
+        /// body does NOT run on the fire tick; the drain phase drips it from the next tick on, and the trigger
+        /// stays suppressed until the drip and its continuation complete.
+        /// </summary>
+        private void SnapshotBatched(CompiledItem item, EntityWorld world)
+        {
+            var fb = (ForEachBatchedNode)item.Node;
+            // Reset-window guard (review P8): after SimulationHost.ClearForReset clears the LoopState rows, a
+            // tick BEFORE the re-apply's LoadScenario could fire this trigger against cleared row storage —
+            // skip the snapshot deterministically (no row exists to drain). Unreachable on the normal path
+            // (LoadScenario always reconfigures the rows before any tick).
+            if (item.BatchRow >= _loopState.RowCount) return;
+            _loopState.Charge(1);
+            _loopState.BeginSnapshot(item.BatchRow);
+
+            bool useRegion = fb.Source == "region_units";
+            int rIdx = -1;
+            if (useRegion && !_regions.TryGetIndex(fb.RegionId, out rIdx))
+                return; // unknown region → empty snapshot (completes on the next drain tick)
+            int hwm = world.HighWaterMark;
+            for (int i = 0; i < hwm; i++)
+            {
+                if (!world.IsAlive(i)) continue;
+                if (fb.Faction >= 0 && (int)world.FactionOf[i] != fb.Faction + 1) continue;
+                if (useRegion && !_regions.Contains(rIdx, world.Position[i])) continue;
+                if (!_loopState.SnapshotAppend(item.BatchRow, i)) break; // deterministic lowest-id truncation
+            }
+        }
+
+        /// <summary>The leaf action switch (the 7.3/7.4 semantics unchanged; Story 7.6 adds the three array
+        /// actions and reconciles the spawn clamp to the named <see cref="EffectCaps.MaxSpawnCount"/>).</summary>
+        private void ExecuteLeaf(ActionNode a, CompiledItem item, EntityWorld world)
+        {
+            switch (a.Kind)
+            {
+                case "spawn_unit":
+                    if (!string.IsNullOrEmpty(a.UnitId))
+                        // Story 7.6: the runtime SEATBELT is the named structural cap (the validator gate is the
+                        // loud reject for authored counts beyond it — no literal 50 remains).
+                        OnSpawnUnit?.Invoke(a.UnitId, a.Faction, a.X, a.Z, Math.Min(a.Count, EffectCaps.MaxSpawnCount));
+                    break;
+                case "display_message":
+                    if (!string.IsNullOrEmpty(a.Text))
+                        OnDisplayMessage?.Invoke(a.Text, a.Duration);
+                    break;
+                case "play_sound":
+                    if (!string.IsNullOrEmpty(a.SoundId))
+                        OnPlaySound?.Invoke(a.SoundId);
+                    break;
+                case "victory":
+                    OnVictory?.Invoke(a.Faction);
+                    break;
+                case "defeat":
+                    OnVictory?.Invoke(1 - a.Faction); // other faction wins
+                    break;
+                case "create_timer":
+                    if (!string.IsNullOrEmpty(a.TimerName) && a.TimerSeconds > Fixed.Zero)
+                        // Clamp to >= 1 tick so a sub-frame duration still fires (matches the legacy latency).
+                        _vars.TimerSet(a.TimerName, Math.Max(1, SecondsToTicks(a.TimerSeconds)));
+                    break;
+                case "add_resources":
+                {
+                    var faction = (Faction)(a.Faction + 1);
+                    _resources.AddOre(faction, a.Amount);
+                    break;
+                }
+                case "set_variable":
+                    if (!string.IsNullOrEmpty(a.Variable))
+                    {
+                        // Story 7.4: a compiled RHS program (value-in expression edge) evaluates the typed raw
+                        // and writes through SetRaw (Bool targets normalize to 0/1; Fixed raw-exact). Otherwise
+                        // the 7.3 literal path is unchanged: PerPlayer selects the player slot via the action's
+                        // Faction field; undeclared → Global/Int (legacy SetVariable parity).
+                        if (item.Value != null)
+                            _vars.SetRaw(a.Variable, a.Faction, item.Value.Eval(_vars, this), 0);
+                        else
+                            _vars.SetInt(a.Variable, a.Faction, a.Value);
+                    }
+                    break;
+                // ── Story 7.6 — the array actions (total runtime semantics; the gate guarantees shapes) ──
+                case "array_push":
+                    if (!string.IsNullOrEmpty(a.Variable) && item.Value != null)
+                        _vars.ArrayPush(a.Variable, item.Value.Eval(_vars, this)); // at capacity → no-op
+                    break;
+                case "array_set":
+                    if (!string.IsNullOrEmpty(a.Variable) && item.Value != null && item.Index != null)
+                    {
+                        int idx = item.Index.Eval(_vars, this);
+                        _vars.ArraySet(a.Variable, idx, item.Value.Eval(_vars, this)); // OOB → no-op
+                    }
+                    break;
+                case "array_clear":
+                    if (!string.IsNullOrEmpty(a.Variable))
+                        _vars.ArrayClear(a.Variable);
+                    break;
             }
         }
 
@@ -698,15 +1133,29 @@ namespace ProjectChimera.Core
         /// alive entity (its faction is the caster faction). A world with no alive entity anchors at -1, so the
         /// executor runs but every IsAlive-guarded leaf/SearchArea no-ops. Deterministic (ascending-id anchor,
         /// Fixed-only), so it never perturbs a legacy scenario's checksum (goldens embed no run_effect).
+        ///
+        /// <para>Story 7.6 — <paramref name="anchorOverride"/>: inside an ENTITY-source loop body the effect
+        /// anchors at the CURRENT entity (caster = primary target = that unit); every non-loop run_effect passes
+        /// -1 and keeps the legacy lowest-id-alive anchor.</para>
         /// </summary>
-        private void RunEffect(EffectActionNode node, EntityWorld world)
+        private void RunEffect(EffectActionNode node, EntityWorld world, int anchorOverride = -1)
         {
             if (node.Effect is null) return;
 
-            int anchor = -1;
-            int hwm = world.HighWaterMark;
-            for (int i = 0; i < hwm; i++)
-                if (world.IsAlive(i)) { anchor = i; break; }
+            int anchor;
+            if (anchorOverride >= 0)
+            {
+                // The override is used VERBATIM — a current-loop entity killed by an earlier iteration anchors
+                // dead, so the effect's IsAlive-guarded leaves no-op (never silently re-anchored elsewhere).
+                anchor = anchorOverride;
+            }
+            else
+            {
+                anchor = -1;
+                int hwm = world.HighWaterMark;
+                for (int i = 0; i < hwm; i++)
+                    if (world.IsAlive(i)) { anchor = i; break; }
+            }
 
             Faction anchorFaction = anchor >= 0 ? world.FactionOf[anchor] : Faction.Neutral;
             _effectSpatial.Rebuild(world); // rebuild for SearchArea fan-out (director runs last in the tick)

@@ -56,6 +56,15 @@ namespace ProjectChimera.Dsl
         private int  _tCount;
         private bool _inTrigger;
 
+        // ── Story 7.6 — Global arrays (declared Array-typed variables; storage preallocated at declared
+        //    capacity; Global scope only this story). Declaration-index order; never a Dictionary. ──
+        private string[]       _aNames = Array.Empty<string>();
+        private DslValueType[] _aElem  = Array.Empty<DslValueType>(); // element type (Int/Fixed/Bool)
+        private int[]          _aCap   = Array.Empty<int>();          // declared capacity
+        private int[]          _aCount = Array.Empty<int>();          // live element count
+        private int[][]        _aRaws  = Array.Empty<int[]>();        // preallocated element raws (length = capacity)
+        private int _aDeclCount;
+
         // ── Timers (declared timers seed these; create_timer appends new names). ──
         private readonly List<string> _timerNames     = new();
         private readonly List<int>    _timerRemaining = new(); // remaining ticks; 0 = inactive/expired slot
@@ -70,13 +79,23 @@ namespace ProjectChimera.Dsl
         {
             Clear();
 
-            // First pass: count per-player + trigger-local declarations so the dense arrays can be sized once.
-            int ppCount = 0, tlCount = 0;
+            // First pass: count per-player + trigger-local + array declarations so the dense arrays can be sized
+            // once. Story 7.6: an Array-typed declaration routes to the dedicated array store (its raws are
+            // preallocated at declared capacity here — never grown in the tick), NOT to the scalar stores.
+            int ppCount = 0, tlCount = 0, arrCount = 0;
             for (int i = 0; i < variables.Count; i++)
             {
-                if (variables[i].Scope == VarScope.PerPlayer)    ppCount++;
+                if (variables[i].Type == DslValueType.Array)          arrCount++;
+                else if (variables[i].Scope == VarScope.PerPlayer)    ppCount++;
                 else if (variables[i].Scope == VarScope.TriggerLocal) tlCount++;
             }
+
+            _aDeclCount = arrCount;
+            _aNames = new string[arrCount];
+            _aElem  = new DslValueType[arrCount];
+            _aCap   = new int[arrCount];
+            _aCount = new int[arrCount];
+            _aRaws  = new int[arrCount][];
 
             _pCount = ppCount;
             _pNames = new string[ppCount];
@@ -92,10 +111,23 @@ namespace ProjectChimera.Dsl
             _tRaw0     = new int[tlCount];
             _tRaw1     = new int[tlCount];
 
-            int pi = 0, ti = 0;
+            int pi = 0, ti = 0, ai = 0;
             for (int i = 0; i < variables.Count; i++)
             {
                 DslVarDecl d = variables[i];
+                if (d.Type == DslValueType.Array)
+                {
+                    // Story 7.6: arrays seed EMPTY (count 0) at their declared capacity. A degenerate direct-
+                    // constructed capacity < 1 clamps to 1 (the gates reject it for authored content) so the
+                    // preallocated buffer is never zero-length.
+                    _aNames[ai] = d.Name;
+                    _aElem[ai]  = d.ElementType;
+                    _aCap[ai]   = d.Capacity < 1 ? 1 : d.Capacity;
+                    _aCount[ai] = 0;
+                    _aRaws[ai]  = new int[_aCap[ai]];
+                    ai++;
+                    continue;
+                }
                 // Review (7.4 pass 2): the declaration-init path applies the SAME Bool 0/1 normalization every
                 // write path funnels through — the validator gate rejects non-binary Bool initials for authored
                 // scenarios, but a direct-constructed DslVarDecl(Bool, raw 7) would otherwise seed a slot where
@@ -146,6 +178,8 @@ namespace ProjectChimera.Dsl
             _tNames = Array.Empty<string>(); _tTypes = Array.Empty<DslValueType>();
             _tInitRaw0 = Array.Empty<int>(); _tInitRaw1 = Array.Empty<int>();
             _tRaw0 = Array.Empty<int>(); _tRaw1 = Array.Empty<int>(); _tCount = 0; _inTrigger = false;
+            _aNames = Array.Empty<string>(); _aElem = Array.Empty<DslValueType>();
+            _aCap = Array.Empty<int>(); _aCount = Array.Empty<int>(); _aRaws = Array.Empty<int[]>(); _aDeclCount = 0;
             _timerNames.Clear(); _timerRemaining.Clear();
         }
 
@@ -283,8 +317,89 @@ namespace ProjectChimera.Dsl
                 case Store.PerPlayer:    type = _pTypes[i]; scope = VarScope.PerPlayer;    return true;
                 case Store.TriggerLocal: type = _tTypes[i]; scope = VarScope.TriggerLocal; return true;
                 case Store.Global:       type = _gTypes[i]; scope = VarScope.Global;       return true;
-                default:                 type = DslValueType.Int; scope = VarScope.Global; return false;
+                default:
+                    // Story 7.6: a declared Array resolves through the dedicated array store (Global scope only).
+                    if (ResolveArray(name) >= 0) { type = DslValueType.Array; scope = VarScope.Global; return true; }
+                    type = DslValueType.Int; scope = VarScope.Global; return false;
             }
+        }
+
+        // ── Story 7.6 — Global arrays: total-semantics ops (never throw in the tick; OOB/at-capacity are
+        //    deterministic no-ops, an OOB read is 0 — the div-by-zero precedent). Zero per-tick allocation:
+        //    element storage is preallocated at declared capacity in InitFromDeclarations. ──
+
+        /// <summary>Deterministic linear scan of the array declarations (declaration index; small N). -1 = unknown.</summary>
+        private int ResolveArray(string name)
+        {
+            for (int i = 0; i < _aDeclCount; i++)
+                if (string.Equals(_aNames[i], name, StringComparison.Ordinal)) return i;
+            return -1;
+        }
+
+        /// <summary>Look up a declared array's element type + capacity. False (Int/0 outs) for an unknown name.</summary>
+        public bool TryGetArrayDecl(string name, out DslValueType elementType, out int capacity)
+        {
+            int i = ResolveArray(name);
+            if (i < 0) { elementType = DslValueType.Int; capacity = 0; return false; }
+            elementType = _aElem[i]; capacity = _aCap[i];
+            return true;
+        }
+
+        /// <summary>Append <paramref name="raw"/> to the named array. At declared capacity (or on an unknown
+        /// name) this is a deterministic NO-OP. A Bool-element array normalizes the write to 0/1.</summary>
+        public void ArrayPush(string name, int raw)
+        {
+            int i = ResolveArray(name);
+            if (i < 0 || _aCount[i] >= _aCap[i]) return;
+            int r1 = 0;
+            NormalizeBoolWrite(_aElem[i], ref raw, ref r1);
+            _aRaws[i][_aCount[i]++] = raw;
+        }
+
+        /// <summary>Write element <paramref name="index"/>. An out-of-bounds index (vs the LIVE count) or an
+        /// unknown name is a deterministic NO-OP. Bool elements normalize to 0/1.</summary>
+        public void ArraySet(string name, int index, int raw)
+        {
+            int i = ResolveArray(name);
+            if (i < 0 || index < 0 || index >= _aCount[i]) return;
+            int r1 = 0;
+            NormalizeBoolWrite(_aElem[i], ref raw, ref r1);
+            _aRaws[i][index] = raw;
+        }
+
+        /// <summary>Reset the named array to empty (count 0). Unknown name = no-op. Elements beyond the live
+        /// count are never read or folded, so no scrub is needed.</summary>
+        public void ArrayClear(string name)
+        {
+            int i = ResolveArray(name);
+            if (i >= 0) _aCount[i] = 0;
+        }
+
+        /// <summary>Read element <paramref name="index"/>'s raw. Out-of-bounds (vs the live count) or an unknown
+        /// name reads 0 — the total-semantics default (the div-by-zero precedent).</summary>
+        public int ArrayGet(string name, int index)
+        {
+            int i = ResolveArray(name);
+            if (i < 0 || index < 0 || index >= _aCount[i]) return 0;
+            return _aRaws[i][index];
+        }
+
+        /// <summary>The named array's live element count (0 for an unknown name).</summary>
+        public int ArrayLen(string name)
+        {
+            int i = ResolveArray(name);
+            return i < 0 ? 0 : _aCount[i];
+        }
+
+        /// <summary>Copy the named array's live elements into <paramref name="buffer"/> (the caller's preallocated
+        /// loop-entry snapshot) and return the copied count (≤ buffer.Length). Unknown name copies 0.</summary>
+        public int ArraySnapshot(string name, int[] buffer)
+        {
+            int i = ResolveArray(name);
+            if (i < 0) return 0;
+            int n = _aCount[i] < buffer.Length ? _aCount[i] : buffer.Length;
+            System.Array.Copy(_aRaws[i], buffer, n);
+            return n;
         }
 
         /// <summary>
@@ -427,6 +542,17 @@ namespace ProjectChimera.Dsl
                     if (_pTypes[i] == DslValueType.Point) hash = mix(hash, _pRaw1[i * PlayerSlots + slot]);
                 }
 
+            // Story 7.6 (v17) — arrays, BETWEEN the per-player section and timers: a leading declaration count,
+            // then per array (declaration index ascending) its live count and every live element raw in ascending
+            // element index. Slots beyond the live count are never folded (they are unreachable by reads too).
+            hash = mix(hash, _aDeclCount);
+            for (int i = 0; i < _aDeclCount; i++)
+            {
+                hash = mix(hash, _aCount[i]);
+                for (int k = 0; k < _aCount[i]; k++)
+                    hash = mix(hash, _aRaws[i][k]);
+            }
+
             // Timers (creation-index order) — a leading count, then each remaining-tick.
             hash = mix(hash, _timerNames.Count);
             for (int i = 0; i < _timerRemaining.Count; i++)
@@ -434,13 +560,15 @@ namespace ProjectChimera.Dsl
         }
 
         /// <summary>
-        /// Fold BYTE-IDENTICALLY to an empty table's <see cref="FoldInto"/> (a leading 0-count for globals then a
-        /// leading 0-count for timers, no per-player/value mixes) so a NULL table and a non-null EMPTY table are
-        /// interchangeable in <c>SimChecksum</c>. Production always passes a real table; this is the null-caller path.
+        /// Fold BYTE-IDENTICALLY to an empty table's <see cref="FoldInto"/> (a leading 0-count for globals, then
+        /// a 0-count for arrays (v17), then a 0-count for timers, no per-player/value mixes) so a NULL table and
+        /// a non-null EMPTY table are interchangeable in <c>SimChecksum</c>. Production always passes a real
+        /// table; this is the null-caller path.
         /// </summary>
         public static void FoldEmpty(ref uint hash, Func<uint, int, uint> mix)
         {
             hash = mix(hash, 0); // 0 globals (matches FoldInto's leading global-count on an empty table)
+            hash = mix(hash, 0); // 0 arrays  (matches FoldInto's leading array-declaration count, v17)
             hash = mix(hash, 0); // 0 timers  (matches FoldInto's leading timer-count on an empty table)
         }
     }

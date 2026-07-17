@@ -98,6 +98,9 @@ namespace ProjectChimera.Core.Sim
         /// <c>ScenarioData</c> declarations at scenario-apply (via <c>ScenarioDirector.LoadScenario</c>) and folded
         /// into the per-tick <see cref="SimChecksum"/> (v16).</summary>
         public DslVarTable Vars { get; }
+        /// <summary>Story 7.6 — the checksummed loop-layer runtime state (per-tick DSL fuel + for_each_batched
+        /// continuation rows). Driven by <see cref="ScenarioDirector"/>; folded into <see cref="SimChecksum"/> (v17).</summary>
+        public DslLoopState LoopState { get; }
         public FogOfWarSystem Fog { get; }
 
         // ── Loop pass-throughs (SimulationLoop is untouched; the host wraps it). ──
@@ -150,7 +153,8 @@ namespace ProjectChimera.Core.Sim
             BuildSys         = new BuildingSystem(Buildings, Resources, factionDef1, factionDef2, MatchStats, Heroes, _revivalRuntime);
             Research         = new ResearchStore(); // Story 4.9 — mid-match-mutable; folded into SimChecksum (v14, Story 4.10)
             Vars             = new DslVarTable();     // Story 7.3 — typed/scoped variables + timers; folded into SimChecksum (v16); init from ScenarioData at apply
-            ScenarioDirector = new ScenarioDirector(Buildings, Resources, Vars);
+            LoopState        = new DslLoopState();    // Story 7.6 — loop fuel + batched continuation rows; folded into SimChecksum (v17)
+            ScenarioDirector = new ScenarioDirector(Buildings, Resources, Vars, LoopState);
 
             // AR-9 effective-stat recompute (Story 2.2a), the Story 2.2b ModifierStore it drives, and the Story 2.4a
             // ability-cast system. Construct the systems + store FIRST — the store ctor takes modSys, and
@@ -238,7 +242,7 @@ namespace ProjectChimera.Core.Sim
             };
 
             _loop = new SimulationLoop(World, _systems);
-            _loop.EnableChecksums(Buildings, Resources, checksumFactions, Modifiers, Heroes, Items, Nodes, Research, Vars); // fold modifier state (v6) + ability cooldowns (v7) + mutable HeroStore (v11) + ItemStore/inventory (v12) + ResourceNodeStore (v13) + ResearchStore (v14) + DslVarTable (v16)
+            _loop.EnableChecksums(Buildings, Resources, checksumFactions, Modifiers, Heroes, Items, Nodes, Research, Vars, LoopState); // fold modifier state (v6) + ability cooldowns (v7) + mutable HeroStore (v11) + ItemStore/inventory (v12) + ResourceNodeStore (v13) + ResearchStore (v14) + DslVarTable (v16) + DslLoopState (v17)
 
             // The sim spine's only host-side log in 1.8a: a one-shot construction diagnostic through the
             // injected seam. NullLogSink no-ops it (tests/server → zero effect on the golden); GodotLogSink
@@ -272,6 +276,7 @@ namespace ProjectChimera.Core.Sim
             Modifiers.Clear();      // folded — also zeroes the ModifierSystem accumulators it drives
             Research.Clear();       // Story 4.9 — mid-match-mutable; bulk-empty so a re-apply starts every faction idle again
             Vars.Clear();           // Story 7.3 — folded DslVarTable; bulk-empty so a re-apply re-inits declarations non-additively
+            LoopState.Clear();      // Story 7.6 — folded DslLoopState; bulk-empty so a re-apply reconfigures rows non-additively
             CombatEvents.Clear();
             _deathFeed.Clear();     // Story 3.13 — transient per-tick death buffer (empty at reset)
             Fog.Reset();

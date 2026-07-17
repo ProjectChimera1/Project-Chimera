@@ -4,6 +4,7 @@ using ProjectChimera.AI;                 // AiDifficulty (AI expansion-latch res
 using ProjectChimera.Core;
 using ProjectChimera.Core.Definitions;
 using ProjectChimera.Core.Sim;
+using ProjectChimera.Dsl;                // TriggerGraph / DslLoopState (Story 7.6 batched-row reset guard)
 using ProjectChimera.Effects;            // ModifierStore / ModifierSystem / Modifier (ClearAll coverage)
 using ProjectChimera.Sim.Tests.Golden;   // GoldenApplierScenario + AiActiveScenario fixtures
 using Xunit;
@@ -486,12 +487,70 @@ namespace ProjectChimera.Sim.Tests.Sim
             Assert.Equal(run1, run2);
         }
 
+        // ── Story 7.6 (review P8): a host reset mid-drain clears the batched continuation row, the unguarded
+        //    window between ClearForReset and the re-apply's LoadScenario is safe (the director's stale
+        //    _batchRowOfTrigger bookkeeping must never index the cleared LoopState rows), and after re-apply
+        //    the trigger is NOT suppressed. ──
+
+        [Fact]
+        public void ResetMidDrain_ClearsTheContinuationRow_AndTheReappliedTriggerFiresAgain()
+        {
+            // unit_count_threshold(P1 ≥ 1) → for_each_batched(P1, batch 1) [body: display_message].
+            var g = new TriggerGraph();
+            g.Nodes.Add(new TriggerNode { Id = 0, Name = "drip" });
+            g.Nodes.Add(new EventNode { Id = 1, Kind = "unit_count_threshold", Faction = 0, Count = 1, Operator = ">=" });
+            g.Nodes.Add(new ForEachBatchedNode { Id = 2, Source = "faction_units", Faction = 0, BatchSize = 1 });
+            g.Nodes.Add(new ActionNode { Id = 3, Kind = "display_message", Text = "x" });
+            g.ExecEdges.Add(new ExecEdge(1, TriggerGraph.EventExecOutPort, 0, TriggerGraph.TriggerEventInPort));
+            g.ExecEdges.Add(new ExecEdge(0, TriggerGraph.TriggerExecOutPort, 2, TriggerGraph.ActionExecInPort));
+            g.ExecEdges.Add(new ExecEdge(2, TriggerGraph.ForEachBodyOutPort, 3, TriggerGraph.ActionExecInPort));
+            var scenario = new ScenarioData { TriggerGraphJson = g.ToCanonicalJson() };
+
+            var host = SimulationHost.Create(NullLogSink.Instance, new FactionRegistry(2));
+            host.ChecksumInterval = 1;
+            void SpawnUnits(int n)
+            {
+                for (int i = 0; i < n; i++)
+                    host.World.Create(new FixedVec3(Fixed.FromInt(i), Fixed.Zero, Fixed.Zero),
+                        Faction.Player1, Fixed.FromInt(100), Fixed.One);
+            }
+
+            SpawnUnits(3);
+            host.ScenarioDirector.LoadScenario(scenario);
+            host.StepOnce(); // fire + snapshot: row active, len 3
+            host.StepOnce(); // drain 1 of 3 → MID-DRAIN
+            Assert.True(host.LoopState.RowActive(0));
+            Assert.Equal(1, host.LoopState.RowCursor(0));
+
+            // The reset clears the continuation row storage entirely — no active rows survive.
+            host.ClearForReset();
+            Assert.Equal(0, host.LoopState.RowCount);
+
+            // The unguarded WINDOW: a tick between ClearForReset and the re-apply, with the stale director
+            // state still holding batched-row bookkeeping — and a live unit so the trigger actually FIRES into
+            // the cleared row storage. The P8 guards (suppression bound + SnapshotBatched bound) make this a
+            // deterministic no-op instead of an index-out-of-range crash.
+            SpawnUnits(1);
+            host.StepOnce();
+            Assert.Equal(0, host.LoopState.RowCount); // still no rows — the fire snapshotted nothing
+
+            // Re-apply (the normal reset path): rows reconfigure and the trigger is NOT suppressed — it fires
+            // and snapshots a fresh full row.
+            host.ClearForReset();
+            SpawnUnits(3);
+            host.ScenarioDirector.LoadScenario(scenario);
+            host.StepOnce();
+            Assert.Equal(1, host.LoopState.RowCount);
+            Assert.True(host.LoopState.RowActive(0));
+            Assert.Equal(3, host.LoopState.RowLength(0));
+        }
+
         // ── No golden moves: the hash-version stamps stay UNBUMPED (this story folds no hash field) ─
 
         [Fact]
         public void HashAlgoVersions_AreUnchanged()
         {
-            Assert.Equal(16, SimChecksum.AlgoVersion);   // Story 7.3: DslVarTable variables/timers fold (15→16)
+            Assert.Equal(17, SimChecksum.AlgoVersion);   // Story 7.6: arrays + DslLoopState (loops/fuel) fold (16→17)
             Assert.Equal(7, CanonicalModelHash.AlgoVersion); // Story 6.6: blocking prop/water footprint folded (6→7)
             Assert.Equal(2, StartStateHash.AlgoVersion);
         }

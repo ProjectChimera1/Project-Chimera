@@ -3,6 +3,7 @@ using ProjectChimera.Dsl;
 using System.Collections.Generic;
 using ProjectChimera.Core;
 using ProjectChimera.Core.Definitions;
+using ProjectChimera.Effects; // EffectCaps (Story 7.6 spawn-cap reconciliation)
 using Xunit;
 
 namespace ProjectChimera.Sim.Tests.Golden
@@ -18,8 +19,8 @@ namespace ProjectChimera.Sim.Tests.Golden
     /// <para>The per-unit lateral offset (x + i·2.5) and the <c>SpawnUnitAt</c> routing live in
     /// <c>ScenarioDelegateBinder</c> (presentation-adjacent, requires a Godot <c>SceneContext</c>), so they are not
     /// exercisable from this Godot-free suite; this test pins the outermost sim-layer surface (the delegate contract).
-    /// The spawn count clamp (<c>Math.Min(count, 50)</c>) is asserted here as unchanged — the reconciliation to the
-    /// named cap of 64 is Story 7.6, not 7.1.</para>
+    /// Story 7.6 reconciled the spawn count clamp to the NAMED structural cap (<c>EffectCaps.MaxSpawnCount</c> = 64;
+    /// the literal 50 is retired) — the runtime clamp is the seatbelt; the validator gate is the loud reject.</para>
     /// </summary>
     public class ScenarioDirectorSpawnActionTests
     {
@@ -71,9 +72,34 @@ namespace ProjectChimera.Sim.Tests.Golden
         }
 
         [Fact]
-        public void SpawnUnitAction_ClampsCountAt50_Unchanged()
+        public void SpawnCountAtMaxSpawnCount_ReachesTheDelegateUnclamped()
         {
+            // Review P11: pins the retirement of the old literal-50 clamp at RUNTIME. Count = MaxSpawnCount (64)
+            // is the largest loadable count (the gates admit 1..64); it must reach OnSpawnUnit UNCLAMPED. Before
+            // this test no runtime observation exceeded 3, so a regressed Math.Min(count, 50) would have passed
+            // the whole suite silently.
             List<SpawnCall> calls = CaptureSpawns(new TriggerAction
+            {
+                Type    = "spawn_unit",
+                UnitId  = "soldier",
+                Faction = 0,
+                X       = Fixed.Zero,
+                Z       = Fixed.Zero,
+                Count   = EffectCaps.MaxSpawnCount,
+            });
+
+            SpawnCall c = Assert.Single(calls);
+            Assert.Equal(EffectCaps.MaxSpawnCount, c.Count); // 64 — not 50, not any other stale literal
+        }
+
+        [Fact]
+        public void SpawnCountBeyondMaxSpawnCount_IsRejectedAtTheLoadBackstop()
+        {
+            // Story 7.6 (review P5): a count beyond the named cap can no longer LOAD — the unconditional
+            // LoadScenario backstop rejects it located (naming the constant), so the former "runtime clamps to
+            // MaxSpawnCount" observation is unreachable through any load path. The ExecuteLeaf Math.Min clamp
+            // remains a defense-in-depth seatbelt only.
+            var ex = Assert.Throws<System.Text.Json.JsonException>(() => CaptureSpawns(new TriggerAction
             {
                 Type   = "spawn_unit",
                 UnitId = "soldier",
@@ -81,10 +107,8 @@ namespace ProjectChimera.Sim.Tests.Golden
                 X      = Fixed.Zero,
                 Z      = Fixed.Zero,
                 Count  = 100,
-            });
-
-            SpawnCall c = Assert.Single(calls);
-            Assert.Equal(50, c.Count); // Story 7.1 keeps the as-built clamp; the 64 cap is Story 7.6.
+            }));
+            Assert.Contains($"EffectCaps.MaxSpawnCount={EffectCaps.MaxSpawnCount}", ex.Message);
         }
     }
 }

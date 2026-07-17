@@ -109,22 +109,22 @@ namespace ProjectChimera.Sim.Tests.Golden
         /// hash still moves.)
         /// </summary>
         [Fact]
-        public void KnownWorldState_ProducesPinnedV16Hash()
+        public void KnownWorldState_ProducesPinnedV17Hash()
         {
-            // Algorithm version must be exactly 16 (Story 7.3's DslVarTable fold). If this fails, the const below is stale.
-            Assert.Equal(16, SimChecksum.AlgoVersion);
+            // Algorithm version must be exactly 17 (Story 7.6's arrays + DslLoopState fold). If this fails, the const below is stale.
+            Assert.Equal(17, SimChecksum.AlgoVersion);
 
             uint actual = ComputeKnownStateHash();
 
-            // ── Pinned v16 hash for the fixed world built by ComputeKnownStateHash() ──────────────────────────
+            // ── Pinned v17 hash for the fixed world built by ComputeKnownStateHash() ──────────────────────────
             // An intentional SimChecksum algorithm change must update this value AND bump SimChecksum.AlgoVersion.
-            // The known-state world passes an EMPTY DslVarTable (no declared vars/timers), so the v16 fold moves the
-            // hash from v15 purely by the added Mix(0) global-count + Mix(0) timer-count — the intentional
-            // DslVarTable-fold re-baseline (Story 7.3).
-            const uint ExpectedV16Hash = 0x359738A2; // recorded from a green v16 run; re-pin only on an intentional algo change
-            Assert.True(actual == ExpectedV16Hash,
-                $"Known-state v16 checksum changed: expected 0x{ExpectedV16Hash:X8}, actual 0x{actual:X8}. " +
-                $"If this is an INTENTIONAL algorithm change, re-pin ExpectedV16Hash to 0x{actual:X8} and bump " +
+            // The known-state world passes an EMPTY DslVarTable + EMPTY DslLoopState, so the v17 fold moves the
+            // hash from v16 purely by the added Mix(0) array-count (inside the table) + Mix(0) row-count +
+            // Mix(0) fuel (DslLoopState) — the intentional Story 7.6 loop-layer re-baseline.
+            const uint ExpectedV17Hash = 0xBFD34402; // recorded from a green v17 run; re-pin only on an intentional algo change
+            Assert.True(actual == ExpectedV17Hash,
+                $"Known-state v17 checksum changed: expected 0x{ExpectedV17Hash:X8}, actual 0x{actual:X8}. " +
+                $"If this is an INTENTIONAL algorithm change, re-pin ExpectedV17Hash to 0x{actual:X8} and bump " +
                 $"SimChecksum.AlgoVersion. If not, you broke the deterministic checksum — investigate.");
         }
 
@@ -344,6 +344,105 @@ namespace ProjectChimera.Sim.Tests.Golden
 
             // ── v16 (Story 7.3): the mutable DslVarTable is folded (first-ever fold of this store) ──
             AssertDslVarTableFoldedIntoChecksum(registry);
+
+            // ── v17 (Story 7.6): declared arrays fold inside the DslVarTable, and the DslLoopState (batched
+            //    continuation rows + per-tick fuel) folds after it ──
+            AssertDslArraysFoldedIntoChecksum(registry);
+            AssertDslLoopStateFoldedIntoChecksum(registry);
+        }
+
+        /// <summary>
+        /// Story 7.6 (v17) coverage teeth: declared-array state must move the checksum. Declares an Int array,
+        /// then (a) pushing an element, (b) mutating an element in place (array_set), and (c) clearing the array
+        /// each MUST move the hash. Negative teeth: (d) a push AT CAPACITY is a deterministic no-op and must NOT
+        /// move the hash (slots beyond the live count never fold), and (e) an OOB array_set is a no-op too.
+        /// </summary>
+        private static void AssertDslArraysFoldedIntoChecksum(FactionRegistry registry)
+        {
+            var world     = new EntityWorld();
+            var resources = new ResourceStore(Fixed.Zero);
+            var buildings = new BuildingStore();
+            var vars      = new DslVarTable();
+            vars.InitFromDeclarations(new[]
+            {
+                new DslVarDecl("arr", DslValueType.Array, VarScope.Global, 0, 0, elementType: DslValueType.Int, capacity: 2),
+            }, System.Array.Empty<DslTimerDecl>());
+
+            uint baseline = SimChecksum.Compute(world, buildings, resources, registry, null, null, null, null, null, vars);
+
+            vars.ArrayPush("arr", 5);
+            uint pushed = SimChecksum.Compute(world, buildings, resources, registry, null, null, null, null, null, vars);
+            Assert.True(baseline != pushed, "DslVarTable array_push is NOT folded into SimChecksum (v17).");
+
+            vars.ArraySet("arr", 0, 9);
+            uint set = SimChecksum.Compute(world, buildings, resources, registry, null, null, null, null, null, vars);
+            Assert.True(pushed != set, "DslVarTable array_set element mutation is NOT folded into SimChecksum (v17).");
+
+            // Fill to capacity, then a push AT capacity must be a no-op (negative tooth: no silent state, no fold move).
+            vars.ArrayPush("arr", 7);
+            uint full = SimChecksum.Compute(world, buildings, resources, registry, null, null, null, null, null, vars);
+            vars.ArrayPush("arr", 42); // capacity 2 → deterministic no-op
+            uint afterOverflowPush = SimChecksum.Compute(world, buildings, resources, registry, null, null, null, null, null, vars);
+            Assert.True(full == afterOverflowPush,
+                "An array_push AT CAPACITY moved the checksum — it must be a deterministic no-op (v17).");
+
+            vars.ArraySet("arr", 99, 1); // OOB → deterministic no-op
+            uint afterOobSet = SimChecksum.Compute(world, buildings, resources, registry, null, null, null, null, null, vars);
+            Assert.True(full == afterOobSet,
+                "An out-of-bounds array_set moved the checksum — it must be a deterministic no-op (v17).");
+
+            vars.ArrayClear("arr");
+            uint cleared = SimChecksum.Compute(world, buildings, resources, registry, null, null, null, null, null, vars);
+            Assert.True(full != cleared, "DslVarTable array_clear is NOT folded into SimChecksum (v17).");
+        }
+
+        /// <summary>
+        /// Story 7.6 (v17) coverage teeth: the <see cref="DslLoopState"/> continuation rows + fuel counter must
+        /// move the checksum. Configures one batched row, then (a) activating a snapshot, (b) appending snapshot
+        /// ids, (c) advancing the cursor, (d) completing the row, and (e) charging fuel each MUST move the hash.
+        /// Also proves the null ≡ empty FoldEmpty promise.
+        /// </summary>
+        private static void AssertDslLoopStateFoldedIntoChecksum(FactionRegistry registry)
+        {
+            var world     = new EntityWorld();
+            var resources = new ResourceStore(Fixed.Zero);
+            var buildings = new BuildingStore();
+            var loop      = new DslLoopState();
+            loop.ConfigureRows(new[] { 2 });
+
+            uint configured = SimChecksum.Compute(world, buildings, resources, registry, null, null, null, null, null, null, loop);
+
+            loop.BeginSnapshot(0);
+            uint active = SimChecksum.Compute(world, buildings, resources, registry, null, null, null, null, null, null, loop);
+            Assert.True(configured != active, "DslLoopState row ACTIVE flag is NOT folded into SimChecksum (v17).");
+
+            loop.SnapshotAppend(0, 3);
+            loop.SnapshotAppend(0, 7);
+            uint snapped = SimChecksum.Compute(world, buildings, resources, registry, null, null, null, null, null, null, loop);
+            Assert.True(active != snapped, "DslLoopState snapshot ids are NOT folded into SimChecksum (v17).");
+
+            loop.SetCursor(0, 1);
+            uint advanced = SimChecksum.Compute(world, buildings, resources, registry, null, null, null, null, null, null, loop);
+            Assert.True(snapped != advanced, "DslLoopState row CURSOR is NOT folded into SimChecksum (v17).");
+
+            loop.CompleteRow(0);
+            uint completed = SimChecksum.Compute(world, buildings, resources, registry, null, null, null, null, null, null, loop);
+            Assert.True(advanced != completed, "DslLoopState row completion is NOT folded into SimChecksum (v17).");
+
+            loop.Charge(5);
+            uint charged = SimChecksum.Compute(world, buildings, resources, registry, null, null, null, null, null, null, loop);
+            Assert.True(completed != charged, "DslLoopState fuel consumed is NOT folded into SimChecksum (v17).");
+
+            loop.ResetFuel();
+            uint reset = SimChecksum.Compute(world, buildings, resources, registry, null, null, null, null, null, null, loop);
+            Assert.True(reset == completed,
+                "Resetting the fuel counter must restore the pre-charge fold (fuel folds by VALUE, v17).");
+
+            // Null ≡ empty: a null DslLoopState folds byte-identically to a fresh (row-less, fuel-0) one.
+            uint withEmpty = SimChecksum.Compute(world, buildings, resources, registry, null, null, null, null, null, null, new DslLoopState());
+            uint withNull  = SimChecksum.Compute(world, buildings, resources, registry, null, null, null, null, null, null, null);
+            Assert.True(withEmpty == withNull,
+                "A null DslLoopState does NOT fold byte-identically to an empty one (v17 null≡empty promise broken).");
         }
 
         /// <summary>
@@ -802,7 +901,8 @@ namespace ProjectChimera.Sim.Tests.Golden
             // same explicit-production-path rationale.
             // v16 (Story 7.3): pass an EMPTY DslVarTable (no declared vars/timers) — the fold adds Mix(0) global-count
             // + Mix(0) timer-count (per active faction the per-player loop is empty), same explicit-production-path rationale.
-            return SimChecksum.Compute(world, buildings, resources, new FactionRegistry(2), new ModifierStore(world), new HeroStore(), new ItemStore(), new ResourceNodeStore(), new ResearchStore(), new DslVarTable());
+            // v17 (Story 7.6): pass an EMPTY DslLoopState (no batched rows, zero fuel) — same explicit-production-path rationale.
+            return SimChecksum.Compute(world, buildings, resources, new FactionRegistry(2), new ModifierStore(world), new HeroStore(), new ItemStore(), new ResourceNodeStore(), new ResearchStore(), new DslVarTable(), new DslLoopState());
         }
 
         /// <summary>
