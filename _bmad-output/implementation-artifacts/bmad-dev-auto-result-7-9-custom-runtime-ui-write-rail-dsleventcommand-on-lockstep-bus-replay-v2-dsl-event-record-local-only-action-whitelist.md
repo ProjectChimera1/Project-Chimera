@@ -4,6 +4,17 @@ status: blocked
 
 # BMad Dev Auto Result
 
+## RESOLVED 2026-07-17 — the blocking condition below NO LONGER HOLDS
+
+Story 7.5 has since LANDED on master as merge commit `1597e4d` (finalized `eb75385`; sprint-status
+`7-5: done`; determinism-gate CI green on Windows + Linux). The sweep below reported "zero code on
+disk" because it grepped GUESSED API names — 7.5's real surface is `DslEventQueue` /
+`EventDispatchPlan` / `EventBounds` (`godot/src/Dsl/`), the `RaiseEventNode` / `custom_event`
+subscription / `expr_event_param` node kinds, and the registry on `ScenarioData.CustomEvents`
+(SimChecksum v18, CanonicalModelHash v10). This artifact's "Resolution" step is therefore complete:
+re-dispatch 7.9. The plumbing-target inventory in the Investigation summary below remains valid and
+is worth reusing. Everything after this section is the ORIGINAL blocked report, kept verbatim.
+
 Status: blocked
 Blocking condition: **Unmet hard dependency — Story 7.5 (custom events) is not implemented.** Story 7.9's write rail is defined (epics.md / epic-7-context.md lines 50, 67) as "a Button raises a **registered custom event** with `LockstepManager.EnqueueDslEvent(eventId, args)`; `ApplyDslEvents` enforces the **per-event allowed-raiser set** sim-side." Every load-bearing noun there — the custom-event *registry* (names + typed params + allowed-raiser set), the `RaiseEvent` node, the acyclic same-tick dispatch/work-list drain, and `ApplyDslEvents` — is delivered by **Story 7.5 (custom events — define/raise/subscribe with acyclic same-tick dispatch)**, which is `backlog` in `sprint-status.yaml:147` and has **zero code on disk** (whole-repo sweep for `EnqueueDslEvent|DslEventCommand|ApplyDslEvents|RaiseEvent|EventRegistry|EventDefinition|allowed.?raiser|MaxDslEventsPerTick|RaiseEventNextTick|MaxCascade` returns empty). The trigger IR today has only the built-in *trigger-firing* closed event set (`NodeBase.cs:334` `EventTypes = { match_start, unit_dies, building_completed, timer_expires, resource_threshold, unit_count_threshold }`) — these are trigger *sources*, not raisable, subscribable, raiser-authorized custom events.
 
