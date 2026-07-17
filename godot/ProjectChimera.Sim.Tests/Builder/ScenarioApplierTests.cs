@@ -503,6 +503,9 @@ namespace ProjectChimera.Sim.Tests.Builder
         // Re-recorded again 2026-07-17 for AlgoVersion 8 (Story 7.7: the trigger/DSL model folded — the alpha
         // model's triggers now fold too, and the AlgoVersion 7→8 bump alone moves every hash; part of the ONE
         // named 7.7 re-baseline).
-        private const ulong ExpectedCanonicalHash = 15950593161466845279UL;
+        // Re-recorded again 2026-07-17 for AlgoVersion 9 (Story 7.8: the custom-UI widget tree folded — the alpha
+        // model has no custom_ui, so it folds as a single 0 marker, but the AlgoVersion 8→9 bump alone moves every
+        // hash, same as every prior bump above; part of the ONE named 7.8 re-baseline).
+        private const ulong ExpectedCanonicalHash = 216874896805250860UL;
     }
 }

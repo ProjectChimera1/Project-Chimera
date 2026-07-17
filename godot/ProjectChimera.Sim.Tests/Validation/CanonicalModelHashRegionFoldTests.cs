@@ -28,7 +28,7 @@ namespace ProjectChimera.Sim.Tests.Validation
             // Story 7.7 bumped CanonicalModelHash 7→8 (the ONE named re-baseline). StartStateHash's fold structure
             // is unchanged — its VALUE moves via the canonical seed, so its AlgoVersion stays 2 (the v5/v6/v7
             // precedent).
-            Assert.Equal(8, CanonicalModelHash.AlgoVersion);
+            Assert.Equal(9, CanonicalModelHash.AlgoVersion);
             Assert.Equal(2, StartStateHash.AlgoVersion);
         }
 

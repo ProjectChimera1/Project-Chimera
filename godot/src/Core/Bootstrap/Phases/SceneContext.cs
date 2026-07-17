@@ -90,6 +90,7 @@ namespace ProjectChimera.Core.Bootstrap
         public Label          ResourceLabel = null!;
         public Label          ControlsLabel = null!;
         public PanelContainer StallBanner   = null!;
+        public UI.CustomUiBridge CustomHud  = null!;     // CustomHudOverlay (Story 7.8 — the custom-UI read rail)
         public UI.MinimapBridge Minimap     = null!;     // Minimap
 
         // ── Multiplayer + match lifecycle (Multiplayer / ReplayStatus / MatchLifecycle) ────────────────────

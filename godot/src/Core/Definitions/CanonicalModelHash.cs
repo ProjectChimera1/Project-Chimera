@@ -99,8 +99,21 @@ namespace ProjectChimera.Core.Definitions
         /// <c>_editor</c> annotation bag and the <c>schema_version</c>/<c>checksum_algo_version</c> stamps are
         /// EXCLUDED by construction (cosmetic edits and legacy re-saves must not move the handshake). Hash 0 now
         /// BLOCKS the lobby start (<c>HandshakeGate</c>). This forces the story's ONE named re-baseline
-        /// (hero-start-state golden + version pins, human-authorized via the Story 7.7 spec).</summary>
-        public const int AlgoVersion = 8;
+        /// (hero-start-state golden + version pins, human-authorized via the Story 7.7 spec).
+        /// 9 = Story 7.8 — additionally folds the <see cref="ScenarioData.CustomUi"/> widget tree as a TYPED
+        /// recursive walk (present/absent marker, count prefix, per-widget id + kind name + anchor name + int
+        /// offset/size + optional binds, then a per-child present bit recursing children), appended AFTER the v8
+        /// trigger-graph fold in fixed order. This is sim-semantic for the MP handshake: two peers with divergent
+        /// widget trees produce different hashes so <c>HandshakeGate</c> BLOCKS the lobby start rather than starting
+        /// a match that shows each player a different UI. The per-widget <c>_editor</c> annotation bag is EXCLUDED
+        /// BY CONSTRUCTION (this typed walk reads typed fields only, never the bag), so a cosmetic layout move / a
+        /// re-save does NOT move the hash while a bind/kind/layout-field change DOES. An absent/empty <c>custom_ui</c>
+        /// folds a 0 marker, byte-identical to the pre-7.8 v8 fold, so every existing scenario is unaffected. This
+        /// forces the story's ONE named re-baseline (hero-start-state golden re-recorded — its <c>StartStateHash</c>
+        /// value moves via the canonical seed; <c>StartStateHash.AlgoVersion</c> stays 2 — plus the AlgoVersion pin,
+        /// in one commit). <c>SimChecksum</c> stays 17 and the 24 world goldens are untouched (the read rail is
+        /// presentation-only, NOT folded into <c>SimChecksum</c>).</summary>
+        public const int AlgoVersion = 9;
 
         private const ulong Offset = 14695981039346656037UL; // FNV-64 offset basis
         private const ulong Prime  = 1099511628211UL;        // FNV-64 prime
@@ -236,6 +249,10 @@ namespace ProjectChimera.Core.Definitions
             h = MixVariables(h, m.Variables);
             h = MixTimers(h, m.Timers);
             h = MixTriggerGraph(h, m.TriggerGraphJson);
+
+            // ── Story 7.8 (v9): the custom-UI widget tree, appended after the v8 trigger-graph fold. A typed
+            //    recursive walk (never JSON bytes; the per-widget `_editor` bag excluded by construction). ──
+            h = MixCustomUi(h, m.CustomUi);
 
             return h == 0UL ? 1UL : h; // sentinel: a valid model must never hash to the fail-open "no hash" value
         }
@@ -668,6 +685,82 @@ namespace ProjectChimera.Core.Definitions
             h = MixInt(h, (int)m.Status); // deliberate ordinal fold: Status is a [Flags] enum — a combined value has no single NAME, and the bit layout is append-only/stable ("fixing" this to a name fold would churn the hash)
             h = MixEffect(h, m.PeriodEffect);
             h = MixInt(h, m.PeriodTicks);
+            return h;
+        }
+
+        /// <summary>
+        /// Story 7.8 (v9): the custom-UI widget tree — a TYPED recursive fold (never JSON bytes). Absent OR empty
+        /// (no widgets) folds a 0 marker (byte-identical to the pre-7.8 v8 fold, and identical to a normalized-empty
+        /// tree); a present tree folds a 1 marker, the canvas dims, a widget count prefix, then each root widget in
+        /// AUTHORED (render) order — order is semantic (z-order). The per-widget <c>_editor</c> annotation bag is
+        /// EXCLUDED by construction (<see cref="MixWidget"/> reads typed fields only).
+        /// </summary>
+        private static ulong MixCustomUi(ulong h, CustomUiTree? tree)
+        {
+            WidgetBase[] widgets = tree?.Widgets ?? Array.Empty<WidgetBase>();
+            if (tree is null || widgets.Length == 0) return MixInt(h, 0); // absent/empty (≡ the serializer's empty→null)
+
+            h = MixInt(h, 1); // present marker
+            h = MixInt(h, tree.CanvasWidth);
+            h = MixInt(h, tree.CanvasHeight);
+            h = MixInt(h, widgets.Length);
+            foreach (WidgetBase w in widgets)
+                h = MixWidget(h, w);
+            return h;
+        }
+
+        /// <summary>One widget (v9): id, kind name, anchor name, int offset/size, optional visibility bind, then that
+        /// kind's semantic fields in fixed order, then a child count prefix and each child recursed. Null child folds
+        /// a -1 marker. The <c>_editor</c> bag is never read here.</summary>
+        private static ulong MixWidget(ulong h, WidgetBase? w)
+        {
+            if (w is null) return MixInt(h, -1);
+            h = MixInt(h, w.Id);
+            h = MixStr(h, w.Kind.ToString());   // enum by stable NAME
+            h = MixStr(h, w.Anchor.ToString()); // enum by stable NAME
+            h = MixInt(h, w.X);
+            h = MixInt(h, w.Y);
+            h = MixInt(h, w.W);
+            h = MixInt(h, w.H);
+            h = MixStr(h, w.VisibleBind);
+            switch (w)
+            {
+                case PanelWidget:
+                    break;
+                case LabelWidget l:
+                    h = MixStr(h, l.Text);
+                    h = MixStr(h, l.Bind);
+                    break;
+                case CounterWidget c:
+                    h = MixStr(h, c.Bind);
+                    break;
+                case ProgressBarWidget p:
+                    h = MixStr(h, p.Bind);
+                    h = MixInt(h, p.Max);
+                    break;
+                case TimerWidget t:
+                    h = MixStr(h, t.Bind);
+                    break;
+                case LeaderboardWidget lb:
+                    h = MixStr(h, lb.Bind);
+                    h = MixInt(h, lb.Rows);
+                    break;
+                case FloatingTextWidget ft:
+                    h = MixStr(h, ft.Text);
+                    h = MixStr(h, ft.Bind);
+                    break;
+                case ItemListWidget il:
+                    h = MixStr(h, il.Bind);
+                    h = MixInt(h, il.Rows);
+                    break;
+                default:
+                    h = MixStr(h, w.GetType().Name); // total/never-throw for a future kind
+                    break;
+            }
+            WidgetBase[] children = w.Children ?? Array.Empty<WidgetBase>();
+            h = MixInt(h, children.Length);
+            foreach (WidgetBase child in children)
+                h = MixWidget(h, child);
             return h;
         }
 

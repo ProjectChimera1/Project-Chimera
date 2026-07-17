@@ -80,8 +80,15 @@ namespace ProjectChimera.Sim.Tests.Meta
         /// JSON bytes). The `_editor` per-node bag and the schema_version/checksum_algo_version stamps stay
         /// EXCLUDED. The ONE named re-baseline: hero-start-state golden re-recorded (StartStateHash VALUE moves via
         /// the canonical seed; its AlgoVersion stays 2), independent-FNV pins recomputed, exclusion tests inverted
-        /// to sensitivity tests. SimChecksum (17) and the 24 per-tick world goldens are UNTOUCHED.</summary>
-        private const int ExpectedCanonicalModelHashAlgoVersion = 8;
+        /// to sensitivity tests. SimChecksum (17) and the 24 per-tick world goldens are UNTOUCHED.
+        /// v9 (Story 7.8): folded the ScenarioData.CustomUi widget tree as a TYPED recursive walk (present marker +
+        /// canvas dims + count prefix + per-widget id/kind/anchor/offset/size/binds, recursing children) appended
+        /// AFTER the v8 trigger-graph fold. Divergent widget trees now hash differently so HandshakeGate blocks the
+        /// lobby start. The per-widget `_editor` bag is EXCLUDED by construction; absent/empty custom_ui folds a 0
+        /// marker (byte-identical to v8). The ONE named re-baseline: the hero-start-state golden re-recorded (its
+        /// StartStateHash value moves via the canonical seed; StartStateHash.AlgoVersion stays 2). SimChecksum (17)
+        /// and the 24 per-tick world goldens are UNTOUCHED (the read rail is presentation-only, NOT folded).</summary>
+        private const int ExpectedCanonicalModelHashAlgoVersion = 9;
 
         /// <summary>Load-time canonical START-STATE hash algorithm version (Story 3.2, AC3) — a NEW, distinct FNV-64
         /// over the full init state = the <see cref="CanonicalModelHash"/> content seed PLUS the HeroStore rows.

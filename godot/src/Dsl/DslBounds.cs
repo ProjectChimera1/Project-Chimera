@@ -83,6 +83,29 @@ namespace ProjectChimera.Dsl
         public const int MaxEditorBagBytes = 4096;
 
         /// <summary>
+        /// Story 7.8 — the maximum number of widgets in a scenario's custom-UI tree (root + every nested child,
+        /// counted recursively). Rejected AT LOAD by <c>CustomUiGate</c> with a located error naming this constant;
+        /// the renderer additionally asserts it (belt-and-suspenders) and refuses to render an over-cap tree rather
+        /// than truncating. A corpus-validated dial, not a free tuning knob.
+        /// </summary>
+        public const int MaxWidgetCount = 256;
+
+        /// <summary>
+        /// Story 7.8 — the maximum widget-tree nesting depth (the root widget is depth 1). Rejected AT LOAD by
+        /// <c>CustomUiGate</c> with a located error naming this constant; the renderer asserts it too. Bounds the
+        /// recursion of every typed widget walk (hash fold, gate, renderer) by construction.
+        /// </summary>
+        public const int MaxWidgetDepth = 8;
+
+        /// <summary>
+        /// Story 7.8 — the maximum rows a data-bound repeater widget (Leaderboard / ItemList) may render. Rejected
+        /// AT LOAD by <c>CustomUiGate</c> (against the widget's authored <c>MaxRows</c>) with a located error naming
+        /// this constant; the renderer asserts it too. Matches <see cref="MaxArrayCapacity"/> so a full bound array
+        /// always fits one repeater.
+        /// </summary>
+        public const int MaxListRows = 64;
+
+        /// <summary>
         /// The per-tick DSL fuel budget — the runtime SEATBELT for the dynamic aggregate of CHAIN-SIDE work
         /// (many individually-legal triggers firing the same tick) plus definitions that escaped the load gate.
         /// Fuel charges fired-chain execution only: actions, their value/index expressions, run_effect embeds,

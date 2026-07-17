@@ -40,7 +40,10 @@ namespace ProjectChimera.Sim.Tests.Golden
         // Re-recorded for Story 7.7: ScenarioSerializer.Serialize now STAMPS schema_version + checksum_algo_version
         // on every save (D3 versioning), so the generated JSON grew by the two stamp keys — the same intentional,
         // additive schema-change class as the 4.7 re-record above.
-        private const uint GoldenHash = 0x21BBF380u;
+        // Re-recorded for Story 7.8: CanonicalModelHash.AlgoVersion bumped 8→9 (the custom-UI widget-tree fold), and
+        // Serialize stamps that value into `checksum_algo_version`, so the generated JSON's stamp changed 8→9 —
+        // moving this byte-hash tripwire by one stamp digit (the same additive stamp-change class as the 7.7 record).
+        private const uint GoldenHash = 0x5D4EF7FBu;
 
         [Fact]
         public void SameSeed_TwiceProducesByteIdenticalSerialization_AndMatchesGoldenHash()

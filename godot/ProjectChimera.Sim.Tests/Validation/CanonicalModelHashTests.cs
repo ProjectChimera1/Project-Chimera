@@ -63,7 +63,7 @@ namespace ProjectChimera.Sim.Tests.Validation
         }
 
         [Fact]
-        public void AlgoVersion_IsEight() => Assert.Equal(8, CanonicalModelHash.AlgoVersion); // Story 7.7 bumped 7→8 (trigger/DSL model fold)
+        public void AlgoVersion_IsNine() => Assert.Equal(9, CanonicalModelHash.AlgoVersion); // Story 7.8 bumped 8→9 (custom-UI widget-tree fold)
 
         [Fact]
         public void ReorderedCollections_HashEqual()
@@ -315,6 +315,8 @@ namespace ProjectChimera.Sim.Tests.Validation
             AppendInt(buf, 0);                                 // Variables: null → count 0
             AppendInt(buf, 0);                                 // Timers: null → count 0
             AppendInt(buf, 0);                                 // TriggerGraphJson: absent → 0 marker
+            // Story 7.8 (v9): the custom-UI widget tree — absent custom_ui folds a single 0 marker.
+            AppendInt(buf, 0);                                 // CustomUi: absent → 0 marker
             ulong expected = IndependentFnv64(buf.ToArray());
             if (expected == 0UL) expected = 1UL;             // mirror the documented 0 → 1 sentinel
 

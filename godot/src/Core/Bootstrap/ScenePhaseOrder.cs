@@ -21,7 +21,7 @@ namespace ProjectChimera.Core.Bootstrap
         public static readonly string[] Canonical =
         {
             "Settings", "Audio", "GameState", "Lighting", "Terrain", "Navigation", "Camera",
-            "Rendering", "Hud", "Minimap", "TerrainBrush", "ScenarioLoad", "RegionTool", "PathabilityTool",
+            "Rendering", "Hud", "CustomHudOverlay", "Minimap", "TerrainBrush", "ScenarioLoad", "RegionTool", "PathabilityTool",
             "CameraTool", "WaterTool", "FactionVisuals",
             "FlowFieldInit", "WinConditionUi", "GameOverOverlay", "Multiplayer", "ReplayStatus",
             "ContentBrowser", "MainMenu", "TriggerEditor", "MapGenerator", "AbilityEditor",

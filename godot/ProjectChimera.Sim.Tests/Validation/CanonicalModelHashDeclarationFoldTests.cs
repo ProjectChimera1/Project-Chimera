@@ -42,7 +42,7 @@ namespace ProjectChimera.Sim.Tests.Validation
         [Fact]
         public void AlgoVersions_Unchanged() // 8 canonical (Story 7.7) / 2 start-state (value moves via the seed)
         {
-            Assert.Equal(8, CanonicalModelHash.AlgoVersion);
+            Assert.Equal(9, CanonicalModelHash.AlgoVersion);
             Assert.Equal(2, StartStateHash.AlgoVersion);
         }
 

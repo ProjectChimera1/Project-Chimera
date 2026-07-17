@@ -553,7 +553,7 @@ namespace ProjectChimera.Sim.Tests.Sim
         public void HashAlgoVersions_AreUnchanged()
         {
             Assert.Equal(17, SimChecksum.AlgoVersion);   // Story 7.6: arrays + DslLoopState (loops/fuel) fold (16→17)
-            Assert.Equal(8, CanonicalModelHash.AlgoVersion); // Story 7.7: trigger/DSL model folded (7→8, the ONE named re-baseline)
+            Assert.Equal(9, CanonicalModelHash.AlgoVersion); // Story 7.8: custom-UI widget tree folded (8→9, the ONE named re-baseline)
             Assert.Equal(2, StartStateHash.AlgoVersion);
         }
 

@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Linq;                 // Story 7.4 — canonical-order edge iteration in the compile backstop
 using ProjectChimera.Combat;       // DamageTable, CombatEventQueue, DeathFeed
 using ProjectChimera.Core.Definitions;
+using ProjectChimera.Core.Sim;     // DslVarReadback (Story 7.8 presentation read rail)
 using ProjectChimera.Dsl;
 using ProjectChimera.Economy;
 using ProjectChimera.Effects;      // EffectExecutor, EffectContext, EffectNode, ModifierStore
@@ -101,6 +102,13 @@ namespace ProjectChimera.Core
         private MatchStats?       _matchStats;
         private DeathFeed?        _deaths;
 
+        // Story 7.8 — the presentation READ RAIL (owned by SimulationHost, wired via SetReadback). At the end of
+        // every Tick the director publishes a version-stamped COPY of the FINAL post-tick _vars into it (once per
+        // tick, at the tick boundary). Presentation-only — NEVER folded into SimChecksum, so a UI mismatch cannot
+        // desync. Null for direct test constructors that don't wire a read rail.
+        private DslVarReadback? _readback;
+        private uint _publishTick;
+
         // ── Per-tick scratch ──────────────────────────────────────────────────
         private readonly List<string> _expiredTimers = new();
 
@@ -158,6 +166,14 @@ namespace ProjectChimera.Core
         /// Story 6.4: supply the resolved <see cref="RegionStore"/> the <c>unit_in_region</c> condition scans.
         /// </summary>
         public void SetRegionStore(RegionStore? store) => _regions = store ?? RegionStore.Empty;
+
+        /// <summary>
+        /// Story 7.8 — wire the presentation read rail. <c>SimulationHost</c> passes its shared
+        /// <see cref="DslVarReadback"/> so that at each tick boundary the director publishes a version-stamped COPY of
+        /// the final post-tick variable state into it (presentation-only; NEVER folded into <c>SimChecksum</c>). Its
+        /// declarations are (re)initialized from the same <c>ScenarioData</c> at <see cref="LoadScenario"/>.
+        /// </summary>
+        public void SetReadback(DslVarReadback? readback) => _readback = readback;
 
         /// <summary>
         /// Load triggers from a freshly-applied scenario. Resets all runtime state.
@@ -218,6 +234,13 @@ namespace ProjectChimera.Core
                     id => declaredRegions.Contains(id));
                 if (loopErr != null) throw new System.Text.Json.JsonException(loopErr);
             }
+
+            // Story 7.8 — the custom-UI widget-tree gate (caps/dup-ids/anchor/depth/bind-resolve+type-match), the
+            // SAME shared CustomUiGate the ScenarioValidator runs, applied UNCONDITIONALLY here as the fail-closed
+            // backstop for direct LoadScenario callers (parity by construction — the GraphStructureGate posture).
+            // A null tree returns null (no-op). Runs against LOCALS before any field commit (failure atomicity).
+            string? uiErr = CustomUiGate.Check(scenario.CustomUi, loopDeclMap, arrayDecls);
+            if (uiErr != null) throw new System.Text.Json.JsonException(uiErr);
 
             // Story 7.4 — compile every condition-expression and set_variable value-expression ONCE (two-phase
             // contract). A compile failure throws a located JsonException, consistent with the cycle-guard posture
@@ -283,6 +306,11 @@ namespace ProjectChimera.Core
             _loopState.ConfigureRows(rowNodeIds);
 
             _vars.InitFromDeclarations(varDecls, timerDecls);
+
+            // Story 7.8 — (re)initialize the presentation read rail from the SAME declarations (Global/Per-player
+            // scalars + Global arrays; TriggerLocal scratch is never in the read rail) and reset its tick stamp.
+            _readback?.InitFromDeclarations(varDecls);
+            _publishTick = 0;
 
             _firstTick = true;
 
@@ -630,6 +658,12 @@ namespace ProjectChimera.Core
                 // ticks (any future between-tick evaluation entry point, e.g. an editor preview, would otherwise
                 // scan a world the director no longer owns; LoadScenario's clear covers only the reset path).
                 _exprWorld = null;
+
+                // Story 7.8 — publish the presentation read rail EXACTLY ONCE per tick at the tick boundary, reading
+                // the FINAL post-tick _vars (the director ticks LAST, and this runs after the sweep/timers/snapshots
+                // and the early-out alike). Publishes a version-stamped COPY; writes only the readback, never sim
+                // state; NEVER folded into SimChecksum (a UI mismatch cannot desync).
+                _readback?.Publish(_vars, ++_publishTick);
             }
         }
 

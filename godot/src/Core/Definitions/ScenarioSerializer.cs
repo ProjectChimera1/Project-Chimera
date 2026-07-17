@@ -33,7 +33,7 @@ namespace ProjectChimera.Core.Definitions
             ReadCommentHandling = JsonCommentHandling.Skip,
             AllowTrailingCommas = true,
             WriteIndented       = true,
-            Converters          = { new JsonStringEnumConverter(), new FixedJsonConverter() },
+            Converters          = { new JsonStringEnumConverter(), new FixedJsonConverter(), new WidgetBaseJsonConverter() },
         };
 
         /// <summary>
@@ -96,6 +96,11 @@ namespace ProjectChimera.Core.Definitions
             if (copy.Variables is { Length: 0 }) copy.Variables = null;
             if (copy.Timers    is { Length: 0 }) copy.Timers    = null;
             if (string.IsNullOrWhiteSpace(copy.TriggerGraphJson)) copy.TriggerGraphJson = null;
+
+            // Story 7.8: normalize an EMPTY custom-UI tree (no widgets) → null so a scenario without custom UI
+            // serializes BYTE-IDENTICALLY to pre-7.8 (no "custom_ui" key), round-trips absent, and moves no golden.
+            if (copy.CustomUi != null && (copy.CustomUi.Widgets == null || copy.CustomUi.Widgets.Length == 0))
+                copy.CustomUi = null;
 
             // Story 7.7 (D3 versioning): STAMP the current schema/checksum-algo versions. Every save carries the
             // stamps; the caller's in-memory model (possibly null stamps) is untouched. Both stamps are EXCLUDED

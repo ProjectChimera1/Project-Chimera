@@ -101,6 +101,11 @@ namespace ProjectChimera.Core.Sim
         /// <summary>Story 7.6 — the checksummed loop-layer runtime state (per-tick DSL fuel + for_each_batched
         /// continuation rows). Driven by <see cref="ScenarioDirector"/>; folded into <see cref="SimChecksum"/> (v17).</summary>
         public DslLoopState LoopState { get; }
+        /// <summary>Story 7.8 — the presentation READ RAIL: a version-stamped, double-buffered COPY of already-
+        /// checksummed <see cref="Vars"/> state, published once per tick at the tick boundary by
+        /// <see cref="ScenarioDirector"/>. Exposed for the presentation <c>CustomUiBridge</c> to pull. Explicitly
+        /// NOT folded into <see cref="SimChecksum"/> (AR-32 — a UI mismatch cannot desync).</summary>
+        public DslVarReadback Readback { get; }
         public FogOfWarSystem Fog { get; }
 
         // ── Loop pass-throughs (SimulationLoop is untouched; the host wraps it). ──
@@ -154,7 +159,9 @@ namespace ProjectChimera.Core.Sim
             Research         = new ResearchStore(); // Story 4.9 — mid-match-mutable; folded into SimChecksum (v14, Story 4.10)
             Vars             = new DslVarTable();     // Story 7.3 — typed/scoped variables + timers; folded into SimChecksum (v16); init from ScenarioData at apply
             LoopState        = new DslLoopState();    // Story 7.6 — loop fuel + batched continuation rows; folded into SimChecksum (v17)
+            Readback         = new DslVarReadback();  // Story 7.8 — presentation read rail (version-stamped copy of Vars); NOT folded into SimChecksum
             ScenarioDirector = new ScenarioDirector(Buildings, Resources, Vars, LoopState);
+            ScenarioDirector.SetReadback(Readback);   // Story 7.8 — the director publishes into it once per tick at the tick boundary
 
             // AR-9 effective-stat recompute (Story 2.2a), the Story 2.2b ModifierStore it drives, and the Story 2.4a
             // ability-cast system. Construct the systems + store FIRST — the store ctor takes modSys, and
@@ -277,6 +284,7 @@ namespace ProjectChimera.Core.Sim
             Research.Clear();       // Story 4.9 — mid-match-mutable; bulk-empty so a re-apply starts every faction idle again
             Vars.Clear();           // Story 7.3 — folded DslVarTable; bulk-empty so a re-apply re-inits declarations non-additively
             LoopState.Clear();      // Story 7.6 — folded DslLoopState; bulk-empty so a re-apply reconfigures rows non-additively
+            Readback.Clear();       // Story 7.8 — presentation read rail (unfolded); bulk-empty so a re-apply re-inits declarations non-additively
             CombatEvents.Clear();
             _deathFeed.Clear();     // Story 3.13 — transient per-tick death buffer (empty at reset)
             Fog.Reset();

@@ -584,6 +584,23 @@ namespace ProjectChimera.Core.Definitions
         public string? TriggerGraphJson { get; set; }
 
         /// <summary>
+        /// The custom runtime UI widget tree (Story 7.8) — a closed-vocabulary declarative read rail rendering live
+        /// DSL variable state (scoreboards/counters/timers). NULL (the default, every existing scenario) ⇒ no custom
+        /// UI, and the block is OMITTED from serialization when null (<see cref="JsonIgnoreCondition.WhenWritingNull"/>,
+        /// the <see cref="Regions"/>/<see cref="Variables"/> precedent) — an empty tree is normalized back to null at
+        /// the <c>ScenarioSerializer.Serialize</c> chokepoint — so a scenario without custom UI serializes
+        /// BYTE-IDENTICALLY to pre-7.8 (no scenario-bytes / <see cref="StartStateHash"/> movement). UNLIKE the
+        /// trigger/DSL blocks, the widget tree IS folded into <see cref="CanonicalModelHash"/> (v9, a typed recursive
+        /// walk — the per-widget <c>_editor</c> bag excluded by construction) so two peers with divergent UIs hash
+        /// differently and the lobby start is blocked. Validated + cap-checked at load by <c>CustomUiGate</c>
+        /// (invoked by BOTH <see cref="ScenarioValidator"/> and <c>ScenarioDirector.LoadScenario</c>). The read rail
+        /// itself (the version-stamped <c>DslVarReadback</c>) is presentation-only and NOT in <c>SimChecksum</c>.
+        /// </summary>
+        [JsonPropertyName("custom_ui")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public CustomUiTree? CustomUi { get; set; }
+
+        /// <summary>
         /// The per-scenario hero-persistence contract (Story 3.8): which attributes carry forward between matches +
         /// a master enable toggle. NULL ⇒ persistence not configured (the default for every existing scenario), and
         /// the block is OMITTED from serialization when null (<see cref="JsonIgnoreCondition.WhenWritingNull"/>, the

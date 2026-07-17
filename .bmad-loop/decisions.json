@@ -8,6 +8,15 @@
     "label": "Repoint to placeholder GLB",
     "resolution": ""
   },
+  "DW-13": {
+    "answered_at": "2026-07-17",
+    "bundle_name": "",
+    "effect": "build",
+    "intent": "Thread the owning player slot into LoadInto and mint only into that slot's placed hero.",
+    "key": "1",
+    "label": "Scope to owning slot",
+    "resolution": ""
+  },
   "DW-140": {
     "answered_at": "2026-07-15",
     "bundle_name": "",
@@ -42,6 +51,24 @@
     "intent": "In the editor delete path, free the HeroStore row and clear its EntityId back-reference (assumes DW-51 resolves to 'restore as plain unit'). Pairs with DW-51 option 2.",
     "key": "1",
     "label": "Free the row on delete",
+    "resolution": ""
+  },
+  "DW-55": {
+    "answered_at": "2026-07-17",
+    "bundle_name": "",
+    "effect": "build",
+    "intent": "Detect an omitted hp via JSON-presence tracking (or a buildings-only nullable Hp) and emit a located error, avoiding the UnitDefinition-wide change.",
+    "key": "1",
+    "label": "JSON-presence tracking",
+    "resolution": ""
+  },
+  "DW-75": {
+    "answered_at": "2026-07-17",
+    "bundle_name": "",
+    "effect": "build",
+    "intent": "Extend the per-editor EditorHistory undo pattern to TechTreePanel edge add/remove.",
+    "key": "1",
+    "label": "Add edge undo",
     "resolution": ""
   }
 }

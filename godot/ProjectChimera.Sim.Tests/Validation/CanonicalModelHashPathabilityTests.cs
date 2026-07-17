@@ -29,7 +29,7 @@ namespace ProjectChimera.Sim.Tests.Validation
         }
 
         [Fact]
-        public void AlgoVersion_IsEight() => Assert.Equal(8, CanonicalModelHash.AlgoVersion); // Story 7.7: bumped 7→8 (trigger/DSL model fold; the pathability folds below are unchanged)
+        public void AlgoVersion_IsNine() => Assert.Equal(9, CanonicalModelHash.AlgoVersion); // Story 7.8: bumped 8→9 (custom-UI widget-tree fold; the pathability folds below are unchanged)
 
         [Fact]
         public void AbsentPaint_And_AllClearPaint_HashEqual()

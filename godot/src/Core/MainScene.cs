@@ -429,6 +429,7 @@ namespace ProjectChimera.Core
                 new CameraPhase(_ctx),
                 new RenderingPhase(_ctx),
                 new HudPhase(_ctx),
+                new CustomHudOverlayPhase(_ctx), // Story 7.8 — the custom-UI read rail overlay, after Hud (shares nothing; own CanvasLayer)
                 new MinimapPhase(_ctx),
                 new TerrainBrushPhase(_ctx),
                 new ScenarioLoadPhase(_ctx),
@@ -754,6 +755,7 @@ namespace ProjectChimera.Core
             // Drain LLM callbacks and update toast notification.
             _ctx.TriggerPanel.Update();
             _ctx.MapGenPanel.Update();
+            _ctx.CustomHud.Update(); // Story 7.8 — pull the version-stamped read rail; re-format only changed widgets
             if (_toastTimer > 0)
             {
                 _toastTimer -= (float)delta;

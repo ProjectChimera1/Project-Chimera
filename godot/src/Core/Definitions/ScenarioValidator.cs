@@ -886,6 +886,18 @@ namespace ProjectChimera.Core.Definitions
                     return ValidationResult.Fail($"scenario.trigger_graph: {loopErr}");
             }
 
+            // ── Custom UI widget tree (Story 7.8, AR-32) — fail-closed when present: the SHARED CustomUiGate
+            //    rulebook (widget/depth/list-row caps naming the constant, duplicate ids, anchor validity, and every
+            //    {variable} bind resolving + type-matching the declared-variable registry). The SAME implementation
+            //    the ScenarioDirector.LoadScenario backstop runs (parity by construction, the GraphStructureGate
+            //    precedent). Reuses declaredVarInfo/declaredArrayInfo built above. NULL (every existing scenario) ⇒
+            //    nothing to validate ⇒ the pass path is unchanged. First-fail located error. ──
+            if (m.CustomUi != null)
+            {
+                string? uiErr = CustomUiGate.Check(m.CustomUi, declaredVarInfo, declaredArrayInfo);
+                if (uiErr != null) return ValidationResult.Fail(uiErr);
+            }
+
             // AR-13 (forbidden-until-SimRng) — RESERVED, intentionally NOT implemented here. SimRng shipped in
             // Story 1.5 and is unconditionally present (EntityWorld.Rng, non-null, no flag), and no effect/ability
             // schema exists yet (Epic 2). The rule's failing condition ("SimRng absent") can never occur and there

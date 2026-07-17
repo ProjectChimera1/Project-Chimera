@@ -62,6 +62,10 @@ namespace ProjectChimera.Core
     /// Versioned by <see cref="AlgoVersion"/> — bump on any change to the hashed set/order
     /// (forces an intentional golden re-baseline). MatchStats is deliberately NOT hashed
     /// (private, write-only scoreboard derived from already-hashed deaths — observational only).
+    /// The Story 7.8 <c>DslVarReadback</c> (the presentation read rail) is likewise NOT folded — it is a
+    /// version-stamped COPY of the already-hashed <see cref="ProjectChimera.Dsl.DslVarTable"/>, published once per
+    /// tick for presentation only, so folding it would be redundant and (crucially) leaving it unfolded means a UI
+    /// mismatch cannot desync (AR-32 read rail). It is never passed to <see cref="Compute"/>; AlgorithmVersion stays 17.
     ///
     /// All values are Fixed (int Raw) — platform-independent, no float arithmetic.
     /// </summary>
