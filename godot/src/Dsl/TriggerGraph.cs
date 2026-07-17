@@ -611,9 +611,10 @@ namespace ProjectChimera.Dsl
         /// <summary>
         /// Story 7.6 — resolve one exec chain starting at (<paramref name="srcId"/>, <paramref name="srcPort"/>)
         /// into its ordered <see cref="ExecItem"/> list, recursing into container sub-chains. Deterministic: the
-        /// first matching edge on the canonically-sorted exec list drives each hop (forked exec edges stay 7.7
-        /// structural scope — first-match here, like the 7.4 value-root rule). The SHARED <paramref name="visited"/>
-        /// set is the fail-closed cycle guard.
+        /// first matching edge on the canonically-sorted exec list drives each hop. Story 7.7: forked exec edges
+        /// are REJECTED by <see cref="GraphStructureGate"/> at both load gates before any walk, so first-match here
+        /// is a benign deterministic tie-break for direct callers only, never a reachable semantics. The SHARED
+        /// <paramref name="visited"/> set is the fail-closed cycle guard.
         ///
         /// <para>Review P9 — <paramref name="depth"/> is this chain's container nesting level (top-level chain =
         /// 1) and is capped at <see cref="DslBounds.MaxExecWalkDepth"/>: hostile JSON with thousands of nested
@@ -711,9 +712,10 @@ namespace ProjectChimera.Dsl
         }
 
         /// <summary>Deserialize a graph from canonical (or any) JSON via <see cref="DslJson.Options"/>.
-        /// Node ids must be non-negative (parse-level sanity, not 7.7 structural validation): every graph this module
-        /// emits is 0-based, and <see cref="Merge"/>'s id-offset scheme assumes it — a negative authored id could
-        /// alias onto an existing node after offsetting and silently drop/rewire a trigger.</summary>
+        /// Node ids must be non-negative (parse-level sanity; the deep structural rulebook is
+        /// <see cref="GraphStructureGate"/>, run at both load gates): every graph this module emits is 0-based, and
+        /// <see cref="Merge"/>'s id-offset scheme assumes it — a negative authored id could alias onto an existing
+        /// node after offsetting and silently drop/rewire a trigger.</summary>
         public static TriggerGraph FromJson(string json)
         {
             GraphJsonShape shape = JsonSerializer.Deserialize<GraphJsonShape>(json, DslJson.Options)

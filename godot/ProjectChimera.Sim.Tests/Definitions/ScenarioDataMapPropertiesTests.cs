@@ -93,7 +93,7 @@ namespace ProjectChimera.Sim.Tests.Definitions
         [Fact]
         public void AlgoVersions_Unchanged()
         {
-            Assert.Equal(7, CanonicalModelHash.AlgoVersion);
+            Assert.Equal(8, CanonicalModelHash.AlgoVersion); // Story 7.7: trigger/DSL model folded (7→8)
             Assert.Equal(17, SimChecksum.AlgoVersion);
             Assert.Equal(2, StartStateHash.AlgoVersion);
         }

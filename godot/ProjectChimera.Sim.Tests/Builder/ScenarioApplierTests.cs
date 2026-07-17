@@ -500,6 +500,9 @@ namespace ProjectChimera.Sim.Tests.Builder
         // Re-recorded again 2026-07-14 for AlgoVersion 7 (Story 6.6: the blocking-prop + water footprint digest
         // folded — the alpha model has no props/water, so the new field folds as 0, but the AlgoVersion 6→7 bump
         // alone moves every hash, same as every prior bump above).
-        private const ulong ExpectedCanonicalHash = 8550496098828406378UL;
+        // Re-recorded again 2026-07-17 for AlgoVersion 8 (Story 7.7: the trigger/DSL model folded — the alpha
+        // model's triggers now fold too, and the AlgoVersion 7→8 bump alone moves every hash; part of the ONE
+        // named 7.7 re-baseline).
+        private const ulong ExpectedCanonicalHash = 15950593161466845279UL;
     }
 }

@@ -743,7 +743,8 @@ namespace ProjectChimera.Sim.Tests.Validation
             m.TriggerGraphJson = g.ToCanonicalJson();
             ValidationResult r = NewValidator().Validate(m);
             Assert.False(r.Ok);
-            Assert.Contains("emit only on port", r.Error!);
+            // Story 7.7: the structural gate (port legality) now fires first — same error class, located.
+            Assert.Contains("is not a data-out port", r.Error!);
         }
 
         [Fact]
@@ -856,7 +857,9 @@ namespace ProjectChimera.Sim.Tests.Validation
             m.TriggerGraphJson = g.ToCanonicalJson();
             ValidationResult r = NewValidator().Validate(m);
             Assert.False(r.Ok);
-            Assert.Contains("run_effect node 2", r.Error!);
+            // Story 7.7: the structural gate rejects it first (run_effect has no data-in ports) — same class.
+            Assert.Contains("is not a data-in port", r.Error!);
+            Assert.Contains("run_effect", r.Error!);
         }
 
         [Fact]

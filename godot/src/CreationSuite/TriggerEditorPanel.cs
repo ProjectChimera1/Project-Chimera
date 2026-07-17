@@ -58,8 +58,9 @@ namespace ProjectChimera.CreationSuite
 
         // ── Story 7.3 — manual ECA form / variables section / raw-IR hatch ─────
 
-        // Closed-vocab dropdown sources (mirror ScenarioValidator's closed sets + NodeKinds; the pre-tick validator
-        // is the real gate — the editor stays hand-kept until 7.7 unifies the vocab). "run_effect" is a manual
+        // Closed-vocab dropdown sources (mirror the NodeKinds registry — since Story 7.7 the ONE vocabulary source
+        // the validator also consumes; these UI lists stay hand-kept because they carry presentation-only extras
+        // like "(none)"/"expression", and the pre-tick validator is the real gate). "run_effect" is a manual
         // ACTION option that routes the trigger through the graph channel (trigger_graph), not the flat array.
         // Story 7.4: "expression" is a manual CONDITION option that routes the trigger through the graph channel
         // (a CEL-shaped text expression compiled into the shared IR), like run_effect does for actions.

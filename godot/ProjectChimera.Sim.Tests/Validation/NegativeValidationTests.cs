@@ -9,7 +9,7 @@ namespace ProjectChimera.Sim.Tests.Validation
     /// Story 1.7 (AC2) — <see cref="ScenarioValidator"/> rejects out-of-range / non-finite values and dangling
     /// references with a LOCATED error (naming the offending field path), and accepts a valid model (returning a
     /// <see cref="Validated{T}"/> whose Value is the same instance). The validator is pure: it never throws and
-    /// never logs — the call site decides shadow vs fail-closed (see ShadowModeTests).
+    /// never logs — every call site is fail-closed since Story 7.7 (see FailClosedGateTests).
     ///
     /// There is intentionally NO test for the AR-13 forbidden-until-SimRng rule: SimRng shipped in Story 1.5 and
     /// is unconditionally present, and no effect schema exists until Epic 2, so the rule has no reachable failing

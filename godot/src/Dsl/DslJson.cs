@@ -40,6 +40,9 @@ namespace ProjectChimera.Dsl
                 new FixedJsonConverter(),
                 new EffectNodeJsonConverter(),
                 new NodeBaseJsonConverter(),
+                // Story 7.7 — a data edge MISSING its 'wire' is now a located parse reject (it silently defaulted
+                // to Boolean through the [JsonConstructor] before); Write emits the identical byte layout.
+                new DataEdgeJsonConverter(),
             },
         };
     }

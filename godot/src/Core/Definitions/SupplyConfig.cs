@@ -43,8 +43,8 @@ namespace ProjectChimera.Core.Definitions
         /// <summary>
         /// The single null-means-default AND defensive-clamp resolution boundary (Story 4.4 review-pass-2 patch).
         /// <see cref="ScenarioValidator"/> rejects a negative <see cref="StartingCap"/>/<see cref="HardCeiling"/> at
-        /// import, but this codebase's DEFAULT posture is shadow mode (<c>ScenarioGate</c>: fail-closed is an opt-in
-        /// env var), so a rejected model can still reach here. Clamping here — mirroring
+        /// import (and since Story 7.7 the load gate is fail-closed everywhere), but a DIRECT caller can still
+        /// hand this resolver an unvalidated config. Clamping here — mirroring
         /// <c>RevivalRuleRuntime.LinearSat</c>'s own documented defense-in-depth precedent ("the primary gate is
         /// ScenarioValidator... this is defense-in-depth") — guarantees a negative authored value can never produce
         /// a negative runtime <c>SupplyCap</c> (which would permanently soft-lock training).

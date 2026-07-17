@@ -31,10 +31,10 @@ namespace ProjectChimera.Core.Definitions
     }
 
     /// <summary>
-    /// Pure result of a validation pass — no logging, no throw (Story 1.7, D3). The caller (presentation)
-    /// decides shadow vs fail-closed policy. When <see cref="Ok"/> is false, <see cref="Error"/> carries a
-    /// single LOCATED message (field path + offending value); <see cref="Value"/> is meaningful only when
-    /// <see cref="Ok"/> is true.
+    /// Pure result of a validation pass — no logging, no throw (Story 1.7, D3). Story 7.7: the gate is
+    /// fail-closed everywhere — a caller may proceed ONLY when <see cref="Ok"/> is true (shadow mode is gone).
+    /// When <see cref="Ok"/> is false, <see cref="Error"/> carries a single LOCATED message (field path +
+    /// offending value); <see cref="Value"/> is meaningful only when <see cref="Ok"/> is true.
     /// </summary>
     public readonly struct ValidationResult
     {
@@ -45,10 +45,10 @@ namespace ProjectChimera.Core.Definitions
         public string? Error { get; }
 
         /// <summary>
-        /// The minted proof-of-validation value. On <see cref="Ok"/>==true it wraps the validated model. On a
-        /// FAILED result it carries the same (now-suspect) model ONLY when minted via the token-carrying
-        /// <see cref="Fail(string, Validated{ScenarioData})"/> overload — so 1.7 shadow-mode can still apply it
-        /// (Story 1.8b, D3); the null-model early-out leaves it <c>default</c>.
+        /// The minted proof-of-validation value — meaningful ONLY when <see cref="Ok"/> is true. Story 7.7: a
+        /// FAILED result ALWAYS carries <c>default</c> (no token) — the failure-carrying overload is deleted, so
+        /// an invalid model can never reach the applier (the applier's null-model guard makes consuming a failed
+        /// result's <c>default</c> a logged no-op, never an apply).
         /// </summary>
         public Validated<ScenarioData> Value { get; }
 
@@ -63,19 +63,9 @@ namespace ProjectChimera.Core.Definitions
         public static ValidationResult Pass(Validated<ScenarioData> value) => new(true, null, value);
 
         /// <summary>
-        /// Failed validation carrying ONLY a located error (no token). Used for the null-model early-out, which
-        /// routes to the fallback and never reaches the applier, so it needs no <see cref="Validated{T}"/>.
+        /// Failed validation: a located error and NO token (Story 7.7 — the failure-carrying overload that let
+        /// shadow mode apply a rejected model is deleted; a failed result can never be applied).
         /// </summary>
         public static ValidationResult Fail(string located) => new(false, located, default);
-
-        /// <summary>
-        /// Failed validation carrying a located error AND the minted proof-of-validation token (Story 1.8b, D3).
-        /// The 1.7 shadow gate applies the model even when validation fails (master never breaks), and the 1.8b
-        /// applier consumes only a <see cref="Validated{T}"/> — so a shadow-mode apply-on-fail still needs a token.
-        /// Golden-neutral: the same model is applied; only the result plumbing changes. The validator is the sole
-        /// minter, so this wraps a token it minted (never one constructed here).
-        /// </summary>
-        public static ValidationResult Fail(string located, Validated<ScenarioData> value) =>
-            new(false, located, value);
     }
 }

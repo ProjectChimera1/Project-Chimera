@@ -15,8 +15,8 @@ namespace ProjectChimera.Core.Definitions
     ///     "1.0" and "1" (same float) hash equal while a real value change diverges;
     ///   • collections SORTED by a stable key, so JSON array order cannot change the hash;
     ///   • enums folded by NAME and strings by UTF-8 bytes (ordinal drifts on enum insert);
-    ///   • cosmetic <c>Id</c>/<c>DisplayName</c> EXCLUDED, and <c>Triggers</c> EXCLUDED (trigger/effect
-    ///     canonicalization is Epic 7 / D3.4 — a known, bounded handshake gap documented in the story);
+    ///   • cosmetic <c>Id</c>/<c>DisplayName</c> EXCLUDED; <c>Triggers</c> FOLDED since v8 (Story 7.7 closed the
+    ///     long-ledgered "until 7.7" gap — see the <see cref="AlgoVersion"/> doc);
     ///   • the Story 6.7 authoring metadata <c>Author</c>/<c>Description</c>/<c>SuggestedPlayers</c> EXCLUDED on the
     ///     exact <c>DisplayName</c> basis — pure cosmetic/authoring fields that no sim system reads, so they are
     ///     folded into NEITHER this hash NOR <c>StartStateHash</c>. Each is omit-when-default, so an absent field is
@@ -24,22 +24,12 @@ namespace ProjectChimera.Core.Definitions
     ///     no hash-folded field). <c>MapBounds</c> — which Story 6.7's New-Map flow now sets per-scenario from the
     ///     <c>MapSize</c> set — was ALREADY folded (below); authoring a different playable extent is expected map
     ///     identity, not an algorithm change, so no re-baseline.
-    ///   • <c>Variables</c>/<c>Timers</c>/<c>TriggerGraphJson</c> (Story 7.3) EXCLUDED on the SAME basis as
-    ///     <c>Triggers</c>/<c>Regions</c>: they are trigger-DSL DECLARATIONS. The DSL variable/timer store's LIVE
-    ///     per-tick values fold into <c>SimChecksum</c> (v16), so a peer that loaded different declared initial
-    ///     VALUES (or counts) is caught at tick 1 — declaration STRUCTURE (names/types/scopes) with identical values
-    ///     is not, which is part of the same bounded Triggers-shaped gap — but the DECLARATIONS stay out of the
-    ///     pre-match handshake, exactly as
-    ///     Triggers/Regions do (the authoritative handshake fold is 7.7/later; when Triggers fold in, these fold with
-    ///     them and the version bumps then). No fold below; <c>AlgoVersion</c> stays 7, so an absent-declaration
-    ///     scenario hashes byte-identically to pre-7.3 (Block-If protection).
-    ///   • <c>Regions</c> (Story 6.4) EXCLUDED on the SAME basis as <c>Triggers</c>: regions are a *trigger input*
-    ///     — referenced by the <c>unit_in_region</c> condition, which CAN gate trigger actions (spawn_unit /
-    ///     add_resources / set_variable) that DO mutate <c>SimChecksum</c>-folded state — and Triggers are an
-    ///     already-accepted, bounded handshake gap (deferred to Epic 7). When Triggers are folded into the
-    ///     handshake, Regions fold with them (and the version bumps then). The Block-If tripwire is a NON-trigger
-    ///     sim consumer of region containment. No fold below, <c>AlgoVersion</c> stays excluded (the v6 bump is Story 6.5's
-        ///     pathability layer, a separate concern — Regions themselves stay excluded on the Triggers basis).
+    ///   • <c>Variables</c>/<c>Timers</c>/<c>TriggerGraphJson</c> (Story 7.3) and <c>Regions</c> (Story 6.4) —
+    ///     FOLDED since v8 (Story 7.7): the deferred "these fold with Triggers when 7.7 lands" promise is
+    ///     discharged; declaration structure, region geometry, and the full parsed graph IR are now
+    ///     handshake-covered (see the <see cref="AlgoVersion"/> doc for the fold layout). The per-node
+    ///     <c>_editor</c> annotation bag and the <c>schema_version</c>/<c>checksum_algo_version</c> stamps remain
+    ///     EXCLUDED (cosmetic / re-save-neutral by design).
         ///   • <c>PathabilityBlocked</c> + slope config (Story 6.5) FOLDED (AlgoVersion 5→6) — the deliberate INVERSE
         ///     of the Regions decision: pathability feeds MOVEMENT (Position is checksummed), so a mismatched blocked
         ///     layer desyncs in-sim and must be rejected at the handshake. See the <see cref="AlgoVersion"/> doc.
@@ -96,8 +86,21 @@ namespace ProjectChimera.Core.Definitions
         /// rotation/scale are COSMETIC (like <c>DisplayName</c>) and remain EXCLUDED. An absent/empty props+water set
         /// digests to 0, byte-identical to the v6 fold, so every existing scenario is unaffected; a blocking-footprint
         /// change moves the handshake hash and propagates into <c>StartStateHash</c> via the seed. This forces a
-        /// ONE-TIME re-baseline of the handshake fixtures (human-authorized 2026-07-14).</summary>
-        public const int AlgoVersion = 7;
+        /// ONE-TIME re-baseline of the handshake fixtures (human-authorized 2026-07-14).
+        /// 8 = Story 7.7 — additionally folds the FULL trigger/DSL sim-semantic model, closing the long-ledgered
+        /// "Triggers excluded until 7.7" handshake gap in ONE named bump: <c>Regions</c> (total-ordered), the flat
+        /// <c>Triggers</c> (DECLARATION order — it is semantic: priority ties break by declaration index and the
+        /// live SimChecksum var fold follows declaration order), <c>Variables</c>, <c>Timers</c>, and the PARSED
+        /// <c>TriggerGraphJson</c> graph IR as a TYPED fold — nodes ascending id (kind string + each semantic field
+        /// in fixed order; <c>Fixed</c> via <c>.Raw</c>; enums as stable names; run_effect embeds folded as a typed
+        /// effect-tree walk), exec edges sorted <c>(Src,SrcPort,Dst,DstPort)</c>, data edges sorted likewise + wire
+        /// name. NEVER the <c>ToCanonicalJson</c> bytes (the ledgered cross-runtime string-format risk). An
+        /// unparseable graph folds a fixed sentinel (<see cref="Compute"/> stays pure/never-throw); the per-node
+        /// <c>_editor</c> annotation bag and the <c>schema_version</c>/<c>checksum_algo_version</c> stamps are
+        /// EXCLUDED by construction (cosmetic edits and legacy re-saves must not move the handshake). Hash 0 now
+        /// BLOCKS the lobby start (<c>HandshakeGate</c>). This forces the story's ONE named re-baseline
+        /// (hero-start-state golden + version pins, human-authorized via the Story 7.7 spec).</summary>
+        public const int AlgoVersion = 8;
 
         private const ulong Offset = 14695981039346656037UL; // FNV-64 offset basis
         private const ulong Prime  = 1099511628211UL;        // FNV-64 prime
@@ -225,7 +228,447 @@ namespace ProjectChimera.Core.Definitions
                 h = MixInt(h, Fixed.FromFloat(u.Z).Raw);
             }
 
+            // ── Story 7.7 (v8): the trigger/DSL sim-semantic model, appended after the v7 fields in fixed order.
+            //    Each collection folds a count prefix (so adjacent collections cannot alias) and null ≡ empty
+            //    (count 0 — a legacy scenario without a block hashes identically to one carrying an empty one). ──
+            h = MixRegions(h, m.Regions);
+            h = MixTriggers(h, m.Triggers);
+            h = MixVariables(h, m.Variables);
+            h = MixTimers(h, m.Timers);
+            h = MixTriggerGraph(h, m.TriggerGraphJson);
+
             return h == 0UL ? 1UL : h; // sentinel: a valid model must never hash to the fail-open "no hash" value
+        }
+
+        // ── Story 7.7 (v8) folds ─────────────────────────────────────────────────────────────────────────────
+
+        /// <summary>Regions (v8): TOTAL-ordered by (Id ordinal, then every quantized corner) so array order can
+        /// never move the hash. <c>Name</c> is a cosmetic overlay label (the <c>DisplayName</c> basis) — excluded.
+        /// Null rows fold a -1 marker (never throw; the validator rejects them separately).</summary>
+        private static ulong MixRegions(ulong h, ScenarioRegion[]? regions)
+        {
+            ScenarioRegion[] rs = regions ?? Array.Empty<ScenarioRegion>();
+            h = MixInt(h, rs.Length);
+            foreach (ScenarioRegion? r in rs
+                         .OrderBy(x => x?.Id, StringComparer.Ordinal)
+                         .ThenBy(x => x is null ? 0 : Fixed.FromFloat(x.MinX).Raw)
+                         .ThenBy(x => x is null ? 0 : Fixed.FromFloat(x.MinZ).Raw)
+                         .ThenBy(x => x is null ? 0 : Fixed.FromFloat(x.MaxX).Raw)
+                         .ThenBy(x => x is null ? 0 : Fixed.FromFloat(x.MaxZ).Raw))
+            {
+                if (r is null) { h = MixInt(h, -1); continue; }
+                h = MixStr(h, r.Id);
+                h = MixInt(h, Fixed.FromFloat(r.MinX).Raw);
+                h = MixInt(h, Fixed.FromFloat(r.MinZ).Raw);
+                h = MixInt(h, Fixed.FromFloat(r.MaxX).Raw);
+                h = MixInt(h, Fixed.FromFloat(r.MaxZ).Raw);
+            }
+            return h;
+        }
+
+        /// <summary>Flat triggers (v8): folded in DECLARATION order — trigger order IS semantic (priority ties
+        /// break by declaration index), so reordering triggers legitimately moves the hash. Every semantic field
+        /// of every event/condition/action folds in fixed order (Fixed via .Raw). Null rows fold -1 markers.</summary>
+        private static ulong MixTriggers(ulong h, TriggerDefinition[]? triggers)
+        {
+            TriggerDefinition[] ts = triggers ?? Array.Empty<TriggerDefinition>();
+            h = MixInt(h, ts.Length);
+            foreach (TriggerDefinition? t in ts)
+            {
+                if (t is null) { h = MixInt(h, -1); continue; }
+                h = MixStr(h, t.Name);
+                h = MixInt(h, t.Enabled ? 1 : 0);
+                h = MixInt(h, t.RunOnce ? 1 : 0);
+                h = MixInt(h, t.CooldownSeconds.Raw);
+                h = MixInt(h, t.Priority);
+
+                TriggerEvent[] events = t.Events ?? Array.Empty<TriggerEvent>();
+                h = MixInt(h, events.Length);
+                foreach (TriggerEvent? e in events)
+                {
+                    if (e is null) { h = MixInt(h, -1); continue; }
+                    h = MixStr(h, e.Type);
+                    h = MixInt(h, e.Faction);
+                    h = MixStr(h, e.BuildingType);
+                    h = MixStr(h, e.TimerName);
+                    h = MixInt(h, e.Amount.Raw);
+                    h = MixInt(h, e.Count);
+                    h = MixStr(h, e.Operator);
+                }
+
+                TriggerCondition[] conds = t.Conditions ?? Array.Empty<TriggerCondition>();
+                h = MixInt(h, conds.Length);
+                foreach (TriggerCondition? c in conds)
+                {
+                    if (c is null) { h = MixInt(h, -1); continue; }
+                    h = MixStr(h, c.Type);
+                    h = MixInt(h, c.Faction);
+                    h = MixStr(h, c.BuildingType);
+                    h = MixInt(h, c.Amount.Raw);
+                    h = MixInt(h, c.Count);
+                    h = MixStr(h, c.Variable);
+                    h = MixStr(h, c.RegionId);
+                    h = MixInt(h, c.Value);
+                    h = MixStr(h, c.Operator);
+                }
+
+                TriggerAction[] actions = t.Actions ?? Array.Empty<TriggerAction>();
+                h = MixInt(h, actions.Length);
+                foreach (TriggerAction? a in actions)
+                {
+                    if (a is null) { h = MixInt(h, -1); continue; }
+                    // NOTE: this FLAT-channel action fold order (…Amount, Variable, Value, SoundId) differs from
+                    // MixGraphNode's graph-channel order (…Amount, Value, Variable, SoundId). Both are channel-local
+                    // and FROZEN as-shipped in v8 — reordering either is an AlgoVersion bump, not a cleanup.
+                    h = MixStr(h, a.Type);
+                    h = MixStr(h, a.UnitId);
+                    h = MixInt(h, a.Faction);
+                    h = MixInt(h, a.X.Raw);
+                    h = MixInt(h, a.Z.Raw);
+                    h = MixInt(h, a.Count);
+                    h = MixStr(h, a.Text);
+                    h = MixInt(h, a.Duration.Raw);
+                    h = MixStr(h, a.TimerName);
+                    h = MixInt(h, a.TimerSeconds.Raw);
+                    h = MixInt(h, a.Amount.Raw);
+                    h = MixStr(h, a.Variable);
+                    h = MixInt(h, a.Value);
+                    h = MixStr(h, a.SoundId);
+                }
+            }
+            return h;
+        }
+
+        /// <summary>Variable declarations (v8): DECLARATION order (the live-value SimChecksum fold follows it, so
+        /// order is semantic). Enums by NAME; the Fixed initial by .Raw; the Array element/capacity fields fold a
+        /// presence bit before their value (the HardCeiling convention).</summary>
+        private static ulong MixVariables(ulong h, ScenarioVariable[]? variables)
+        {
+            ScenarioVariable[] vs = variables ?? Array.Empty<ScenarioVariable>();
+            h = MixInt(h, vs.Length);
+            foreach (ScenarioVariable? v in vs)
+            {
+                if (v is null) { h = MixInt(h, -1); continue; }
+                h = MixStr(h, v.Name);
+                h = MixStr(h, v.Type.ToString());
+                h = MixStr(h, v.Scope.ToString());
+                h = MixInt(h, v.Initial.Raw);
+                h = MixInt(h, v.ElementType.HasValue ? 1 : 0);
+                h = MixStr(h, v.ElementType?.ToString());
+                h = MixInt(h, v.Capacity.HasValue ? 1 : 0);
+                h = MixInt(h, v.Capacity ?? 0);
+            }
+            return h;
+        }
+
+        /// <summary>Timer declarations (v8): DECLARATION order; the Fixed duration by .Raw.</summary>
+        private static ulong MixTimers(ulong h, ScenarioTimer[]? timers)
+        {
+            ScenarioTimer[] ts = timers ?? Array.Empty<ScenarioTimer>();
+            h = MixInt(h, ts.Length);
+            foreach (ScenarioTimer? t in ts)
+            {
+                if (t is null) { h = MixInt(h, -1); continue; }
+                h = MixStr(h, t.Name);
+                h = MixInt(h, t.Seconds.Raw);
+            }
+            return h;
+        }
+
+        /// <summary>Fixed sentinel folded when <c>TriggerGraphJson</c> is present but unparseable — Compute stays
+        /// pure/never-throw (the gate rejects the scenario separately; this hash just never matches a real one).</summary>
+        private const int UnparseableGraphSentinel = -2;
+
+        /// <summary>
+        /// Story 7.7 perf — the single-entry PARSE MEMO behind <see cref="MixTriggerGraph"/>. Parsing a max-caps
+        /// graph dominates the v8 fold (tens of ms), and <see cref="Compute"/> runs several times per load over the
+        /// SAME immutable <c>TriggerGraphJson</c> string (the wire hash, the <see cref="StartStateHash"/> content
+        /// seed, the F5 recompute) — so the last (json → parsed graph) pair is cached. PURE: the parse is a
+        /// deterministic function of the immutable string, so the fold output is byte-identical with or without the
+        /// memo; a null entry means "unparseable" (the sentinel re-folds without re-throwing the parse). Benign
+        /// race under concurrency (worst case a duplicate parse); memory is bounded by one live graph.
+        /// </summary>
+        private static volatile GraphParseMemo? _graphMemo;
+
+        private sealed class GraphParseMemo
+        {
+            public readonly string Json;
+            public readonly ProjectChimera.Dsl.TriggerGraph? Graph; // null = unparseable (folds the sentinel)
+            public GraphParseMemo(string json, ProjectChimera.Dsl.TriggerGraph? graph) { Json = json; Graph = graph; }
+        }
+
+        /// <summary>TEST HOOK (Story 7.7 review) — drop the parse memo so a perf test can measure the COLD
+        /// (first-parse) compute per sample; the memo's ordinal CONTENT equality means distinct string instances
+        /// alone cannot defeat it. Never called by production code; the memo refills on the next Compute.</summary>
+        internal static void ClearGraphMemoForTests() => _graphMemo = null;
+
+        /// <summary>
+        /// The parsed <c>TriggerGraphJson</c> graph IR (v8): a TYPED fold — nodes ascending id (kind string + each
+        /// semantic field in fixed order; <c>Fixed</c> via .Raw; enums as stable names), exec edges sorted
+        /// <c>(Src,SrcPort,Dst,DstPort)</c>, data edges sorted likewise + wire name. NEVER the ToCanonicalJson
+        /// bytes (the ledgered cross-runtime string-format risk). Absent/whitespace folds a 0 marker; an
+        /// unparseable payload folds <see cref="UnparseableGraphSentinel"/>. The per-node <c>_editor</c> bag is
+        /// excluded BY CONSTRUCTION — this fold reads typed fields only.
+        /// </summary>
+        private static ulong MixTriggerGraph(ulong h, string? triggerGraphJson)
+        {
+            if (string.IsNullOrWhiteSpace(triggerGraphJson)) return MixInt(h, 0); // absent (≡ the serializer's empty→null normalization)
+
+            // Parse-memo hit? (Ordinal string equality — negligible next to a re-parse; see _graphMemo doc.)
+            GraphParseMemo? memo = _graphMemo;
+            if (memo is null || !string.Equals(memo.Json, triggerGraphJson, StringComparison.Ordinal))
+            {
+                ProjectChimera.Dsl.TriggerGraph? parsed;
+                try
+                {
+                    parsed = ProjectChimera.Dsl.TriggerGraph.FromJson(triggerGraphJson!);
+                }
+                catch (Exception)
+                {
+                    parsed = null; // never throw — the validator rejects it located; the fold uses the sentinel
+                }
+                memo = new GraphParseMemo(triggerGraphJson!, parsed);
+                _graphMemo = memo;
+            }
+
+            ProjectChimera.Dsl.TriggerGraph? graph = memo.Graph;
+            if (graph is null)
+                return MixInt(h, UnparseableGraphSentinel);
+
+            // Review follow-up: a hand-authored EMPTY graph ({"nodes":[]…}) is semantically identical to an absent
+            // one — fold the SAME absent marker so the two can never false-positive-mismatch at the lobby (the
+            // serializer already normalizes whitespace-only to null; this closes the parsed-empty case). No
+            // committed fixture authors an empty graph, so no golden/pin moves.
+            if (graph.Nodes.Count == 0 && graph.ExecEdges.Count == 0 && graph.DataEdges.Count == 0)
+                return MixInt(h, 0);
+
+            h = MixInt(h, 1); // present marker
+
+            h = MixInt(h, graph.Nodes.Count);
+            foreach (ProjectChimera.Dsl.NodeBase n in graph.Nodes.OrderBy(x => x.Id))
+                h = MixGraphNode(h, n);
+
+            h = MixInt(h, graph.ExecEdges.Count);
+            foreach (ProjectChimera.Dsl.ExecEdge e in graph.ExecEdges.OrderBy(x => x))
+            {
+                h = MixInt(h, e.Src);
+                h = MixInt(h, e.SrcPort);
+                h = MixInt(h, e.Dst);
+                h = MixInt(h, e.DstPort);
+            }
+
+            h = MixInt(h, graph.DataEdges.Count);
+            // DataEdge.CompareTo is total on the (Src,SrcPort,Dst,DstPort) topology tuple only (wire is
+            // deliberately not a sort key there). Since the fold ALSO emits the wire, add wire as an explicit
+            // tiebreaker so the ordering is total over every folded field — delivering this method's documented
+            // "data edges sorted likewise + wire name" guarantee. Duplicate-topology data edges are rejected
+            // upstream by GraphStructureGate's forked-data-in check, so this tie is unreachable on any gate-passed
+            // model and moves no sanctioned hash; it only makes the fold order-independent on un-gated paths.
+            foreach (ProjectChimera.Dsl.DataEdge e in graph.DataEdges.OrderBy(x => x).ThenBy(x => x.Wire))
+            {
+                h = MixInt(h, e.Src);
+                h = MixInt(h, e.SrcPort);
+                h = MixInt(h, e.Dst);
+                h = MixInt(h, e.DstPort);
+                h = MixStr(h, e.Wire.ToString()); // wire name (enum by stable NAME)
+            }
+
+            return h;
+        }
+
+        /// <summary>One graph node (v8): id, kind string, then that kind's semantic fields in the converter's
+        /// field order (Fixed via .Raw, enums as names). The <c>_editor</c> bag is never read here.</summary>
+        private static ulong MixGraphNode(ulong h, ProjectChimera.Dsl.NodeBase n)
+        {
+            h = MixInt(h, n.Id);
+            switch (n)
+            {
+                case ProjectChimera.Dsl.TriggerNode t:
+                    h = MixStr(h, t.Kind);
+                    h = MixStr(h, t.Name);
+                    h = MixInt(h, t.Enabled ? 1 : 0);
+                    h = MixInt(h, t.RunOnce ? 1 : 0);
+                    h = MixInt(h, t.CooldownSeconds.Raw);
+                    h = MixInt(h, t.Priority);
+                    break;
+                case ProjectChimera.Dsl.EventNode e:
+                    h = MixStr(h, e.Kind);
+                    h = MixInt(h, e.Faction);
+                    h = MixStr(h, e.BuildingType);
+                    h = MixStr(h, e.TimerName);
+                    h = MixInt(h, e.Amount.Raw);
+                    h = MixInt(h, e.Count);
+                    h = MixStr(h, e.Operator);
+                    break;
+                case ProjectChimera.Dsl.ConditionNode c:
+                    h = MixStr(h, c.Kind);
+                    h = MixInt(h, c.Faction);
+                    h = MixStr(h, c.BuildingType);
+                    h = MixInt(h, c.Amount.Raw);
+                    h = MixInt(h, c.Count);
+                    h = MixStr(h, c.Variable);
+                    h = MixStr(h, c.RegionId);
+                    h = MixInt(h, c.Value);
+                    h = MixStr(h, c.Operator);
+                    break;
+                case ProjectChimera.Dsl.ActionNode a:
+                    // NOTE: this GRAPH-channel action fold order (…Amount, Value, Variable, SoundId) differs from
+                    // MixTriggers' flat-channel order (…Amount, Variable, Value, SoundId). Both are channel-local
+                    // and FROZEN as-shipped in v8 — reordering either is an AlgoVersion bump, not a cleanup.
+                    h = MixStr(h, a.Kind);
+                    h = MixStr(h, a.UnitId);
+                    h = MixInt(h, a.Faction);
+                    h = MixInt(h, a.X.Raw);
+                    h = MixInt(h, a.Z.Raw);
+                    h = MixInt(h, a.Count);
+                    h = MixStr(h, a.Text);
+                    h = MixInt(h, a.Duration.Raw);
+                    h = MixStr(h, a.TimerName);
+                    h = MixInt(h, a.TimerSeconds.Raw);
+                    h = MixInt(h, a.Amount.Raw);
+                    h = MixInt(h, a.Value);
+                    h = MixStr(h, a.Variable);
+                    h = MixStr(h, a.SoundId);
+                    break;
+                case ProjectChimera.Dsl.EffectActionNode ea:
+                    h = MixStr(h, ea.Kind);
+                    h = MixEffect(h, ea.Effect); // the embedded effect subgraph is sim-semantic — typed walk
+                    break;
+                case ProjectChimera.Dsl.ExprLiteralNode lit:
+                    h = MixStr(h, lit.Kind);
+                    h = MixStr(h, lit.ValueType.ToString());
+                    h = MixInt(h, lit.Raw);
+                    break;
+                case ProjectChimera.Dsl.ExprVarNode ev:
+                    h = MixStr(h, ev.Kind);
+                    h = MixStr(h, ev.Name);
+                    h = MixInt(h, ev.Faction);
+                    break;
+                case ProjectChimera.Dsl.ExprUnaryNode eu:
+                    h = MixStr(h, eu.Kind);
+                    h = MixStr(h, eu.Op);
+                    break;
+                case ProjectChimera.Dsl.ExprBinaryNode eb:
+                    h = MixStr(h, eb.Kind);
+                    h = MixStr(h, eb.Op);
+                    break;
+                case ProjectChimera.Dsl.ExprCallNode ec:
+                    h = MixStr(h, ec.Kind);
+                    h = MixStr(h, ec.Fn);
+                    break;
+                case ProjectChimera.Dsl.ForEachNode fe:
+                    h = MixStr(h, fe.Kind);
+                    h = MixStr(h, fe.Source);
+                    h = MixStr(h, fe.ArrayName);
+                    h = MixInt(h, fe.Faction);
+                    h = MixStr(h, fe.RegionId);
+                    h = MixInt(h, fe.UpTo);
+                    h = MixStr(h, fe.LoopVar);
+                    break;
+                case ProjectChimera.Dsl.ForEachBatchedNode fb:
+                    h = MixStr(h, fb.Kind);
+                    h = MixStr(h, fb.Source);
+                    h = MixInt(h, fb.Faction);
+                    h = MixStr(h, fb.RegionId);
+                    h = MixInt(h, fb.BatchSize);
+                    break;
+                case ProjectChimera.Dsl.BranchNode br:
+                    h = MixStr(h, br.Kind);
+                    break;
+                case ProjectChimera.Dsl.ExprArrayGetNode ag:
+                    h = MixStr(h, ag.Kind);
+                    h = MixStr(h, ag.Name);
+                    break;
+                case ProjectChimera.Dsl.ExprArrayLenNode al:
+                    h = MixStr(h, al.Kind);
+                    h = MixStr(h, al.Name);
+                    break;
+                default:
+                    // Unreachable through FromJson (closed registry); fold the runtime type name so Compute stays
+                    // total/never-throw even for a hand-constructed future node.
+                    h = MixStr(h, n.GetType().Name);
+                    break;
+            }
+            return h;
+        }
+
+        /// <summary>The embedded run_effect payload (v8): a TYPED effect-tree walk (kind string + semantic fields;
+        /// Fixed via .Raw; enums as names) — never serialized bytes. Null child ⇒ a 0 marker; a present node ⇒ a 1
+        /// marker first (so absent vs default-valued children cannot alias). Depth is bounded by the JSON parser's
+        /// MaxDepth, so the recursion is safe on any FromJson-parsed graph.</summary>
+        private static ulong MixEffect(ulong h, ProjectChimera.Effects.EffectNode? e)
+        {
+            if (e is null) return MixInt(h, 0);
+            h = MixInt(h, 1);
+            switch (e)
+            {
+                case ProjectChimera.Effects.DirectHpDeltaEffect d:
+                    h = MixStr(h, "direct_hp_delta");
+                    h = MixInt(h, d.Delta.Raw);
+                    h = MixStr(h, d.RequireTag.ToString());
+                    break;
+                case ProjectChimera.Effects.HealEffect he:
+                    h = MixStr(h, "heal");
+                    h = MixInt(h, he.Amount.Raw);
+                    h = MixStr(h, he.RequireTag.ToString());
+                    break;
+                case ProjectChimera.Effects.DamageEffect dm:
+                    h = MixStr(h, "damage");
+                    h = MixInt(h, dm.Amount.Raw);
+                    h = MixStr(h, dm.Type.ToString());
+                    h = MixStr(h, dm.RequireTag.ToString());
+                    break;
+                case ProjectChimera.Effects.ApplyModifierEffect am:
+                    h = MixStr(h, "apply_modifier");
+                    h = MixModifier(h, am.Modifier);
+                    h = MixStr(h, am.RequireTag.ToString());
+                    break;
+                case ProjectChimera.Effects.SequenceEffect s:
+                    h = MixStr(h, "sequence");
+                    h = MixInt(h, s.Children?.Length ?? 0);
+                    foreach (ProjectChimera.Effects.EffectNode? child in s.Children ?? Array.Empty<ProjectChimera.Effects.EffectNode>())
+                        h = MixEffect(h, child);
+                    break;
+                case ProjectChimera.Effects.SearchAreaEffect sa:
+                    h = MixStr(h, "search_area");
+                    h = MixInt(h, sa.Radius.Raw);
+                    h = MixStr(h, sa.Filter.ToString());
+                    h = MixStr(h, sa.RequireTag.ToString());
+                    h = MixEffect(h, sa.Child);
+                    break;
+                case ProjectChimera.Effects.PersistentEffect p:
+                    h = MixStr(h, "persistent");
+                    h = MixEffect(h, p.InitialEffect);
+                    h = MixEffect(h, p.PeriodEffect);
+                    h = MixEffect(h, p.ExpireEffect);
+                    h = MixInt(h, p.PeriodTicks);
+                    h = MixInt(h, p.PeriodCount);
+                    h = MixInt(h, p.Lifelong ? 1 : 0);
+                    break;
+                default:
+                    h = MixStr(h, e.GetType().Name); // total/never-throw for a future kind
+                    break;
+            }
+            return h;
+        }
+
+        /// <summary>An <c>apply_modifier</c> payload (v8): every semantic Modifier field in fixed order.</summary>
+        private static ulong MixModifier(ulong h, ProjectChimera.Effects.Modifier? m)
+        {
+            if (m is null) return MixInt(h, 0);
+            h = MixInt(h, 1);
+            h = MixInt(h, m.Id);
+            h = MixInt(h, m.DurationTicks);
+            h = MixStr(h, m.Stacking.ToString());
+            h = MixInt(h, m.MaxStacks);
+            h = MixInt(h, m.MaxHealthDelta.Raw);
+            h = MixInt(h, m.AttackDamageDelta.Raw);
+            h = MixInt(h, m.MoveSpeedDelta.Raw);
+            h = MixInt(h, m.ArmorDelta.Raw);
+            h = MixInt(h, (int)m.Status); // deliberate ordinal fold: Status is a [Flags] enum — a combined value has no single NAME, and the bit layout is append-only/stable ("fixing" this to a name fold would churn the hash)
+            h = MixEffect(h, m.PeriodEffect);
+            h = MixInt(h, m.PeriodTicks);
+            return h;
         }
 
         /// <summary>

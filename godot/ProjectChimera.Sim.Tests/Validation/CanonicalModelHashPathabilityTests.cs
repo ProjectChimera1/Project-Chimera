@@ -29,7 +29,7 @@ namespace ProjectChimera.Sim.Tests.Validation
         }
 
         [Fact]
-        public void AlgoVersion_IsSeven() => Assert.Equal(7, CanonicalModelHash.AlgoVersion); // Story 6.6: bumped 6→7 (blocking prop/water footprint fold)
+        public void AlgoVersion_IsEight() => Assert.Equal(8, CanonicalModelHash.AlgoVersion); // Story 7.7: bumped 7→8 (trigger/DSL model fold; the pathability folds below are unchanged)
 
         [Fact]
         public void AbsentPaint_And_AllClearPaint_HashEqual()

@@ -5,15 +5,15 @@ namespace ProjectChimera.Core.Definitions
 {
     /// <summary>
     /// Pure (Godot-free) fail-closed roster-completeness decision for the client Edit→Play launch boundary
-    /// (Story 14.4, DW-97). Splits the DECISION from the side effects, mirroring <see cref="ScenarioGate"/>'s
-    /// split-decision idiom: this type runs <see cref="FactionValidator.ValidateComplete"/> over every resolved
+    /// (Story 14.4, DW-97). Splits the DECISION from the side effects (the Story 1.7 split-decision idiom): this
+    /// type runs <see cref="FactionValidator.ValidateComplete"/> over every resolved
     /// slot faction and returns the FIRST located block reason (or <c>null</c> when every faction is complete);
     /// the caller (<c>MainScene.ResetToAuthoredStart</c>) — the only layer allowed to touch Godot — performs the
     /// presentation side effects (<c>GD.PrintErr</c>, the HUD toast) and the actual veto.
     ///
     /// <para><b>Why split out of <c>MainScene</c>.</b> <c>ResetToAuthoredStart</c> is a Godot <c>Node</c> method
     /// outside the Tier-1 Godot-free test globs, so its launch-gate logic cannot be unit-tested directly — the same
-    /// constraint that made Story 1.7 extract <see cref="ScenarioGate"/>. Living here, in
+    /// constraint that drove Story 1.7's Godot-free gate extraction. Living here, in
     /// <c>src/Core/Definitions</c>, this decision compiles into the Godot-free Tier-1 test assembly and is unit-
     /// testable; the located reason it returns is presentation-surfaced by the caller.</para>
     ///

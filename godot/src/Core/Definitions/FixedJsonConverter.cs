@@ -33,8 +33,26 @@ namespace ProjectChimera.Core.Definitions
         {
             if (reader.TokenType != JsonTokenType.Number)
                 throw new JsonException($"Expected a JSON number for Fixed, got {reader.TokenType}.");
+            return FromCheckedDouble(reader.GetDouble());
+        }
 
-            double d = reader.GetDouble();
+        /// <summary>
+        /// Story 7.7 perf review — the SAME quantization rulebook over an already-parsed <see cref="JsonElement"/>.
+        /// <c>NodeBaseJsonConverter</c>'s per-field Fixed reads call this directly instead of spinning up the full
+        /// <c>JsonSerializer</c> machinery per field (<c>el.Deserialize&lt;Fixed&gt;(options)</c> dominated the
+        /// max-caps graph parse in the cold handshake-hash budget). One rulebook core
+        /// (<see cref="FromCheckedDouble"/>) backs both entry points, so the boundary cannot drift.
+        /// </summary>
+        internal static Fixed ReadElement(JsonElement el)
+        {
+            if (el.ValueKind != JsonValueKind.Number)
+                throw new JsonException($"Expected a JSON number for Fixed, got {el.ValueKind}.");
+            return FromCheckedDouble(el.GetDouble());
+        }
+
+        /// <summary>The one quantization rulebook: finite → float-narrow → post-cast range check → FromFloat.</summary>
+        private static Fixed FromCheckedDouble(double d)
+        {
             if (double.IsNaN(d) || double.IsInfinity(d))
                 throw new JsonException($"Fixed value must be finite; got {d}.");
 

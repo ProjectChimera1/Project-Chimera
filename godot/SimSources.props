@@ -52,6 +52,10 @@
          the rest of src/Multiplayer (LockstepManager, ENet transports) is Godot/ENet-coupled. Its float RTT math
          trips the 1.10b advisory CHM0001, which is expected/correct (the delay value is never folded into the hash). -->
     <Compile Include="$(MSBuildThisFileDirectory)src\Multiplayer\DelayMath.cs"       LinkBase="Sim\Multiplayer" />
+    <!-- Story 7.7: the pure lobby start-handshake decision (hash-0 blocks / mismatch blocks / equal-nonzero
+         allows) extracted from LobbyUi so it is Tier-1 unit-testable (HandshakeGateTests). Single-file include —
+         the DelayMath precedent; the rest of src/Multiplayer stays Godot/ENet-coupled and un-globbed. -->
+    <Compile Include="$(MSBuildThisFileDirectory)src\Multiplayer\HandshakeGate.cs"   LinkBase="Sim\Multiplayer" />
 
     <!-- Story 6.2: the linear editor undo/redo stack (src/CreationSuite/EditorHistory.cs) is pure C# (Action
          delegate pairs over two Stacks, no Godot types) — included as a single file so its shared-LIFO contract,

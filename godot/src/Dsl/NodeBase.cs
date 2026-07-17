@@ -20,6 +20,16 @@ namespace ProjectChimera.Dsl
         /// <summary>The persistent integer id. Unique within a <see cref="TriggerGraph"/>; drives canonical
         /// ordering and graph→flat reconstruction.</summary>
         public int Id { get; set; }
+
+        /// <summary>
+        /// Story 7.7 — the OPTIONAL per-node <c>_editor</c> annotation bag (e.g. 7.10 node positions / authoring
+        /// affordances). Round-tripped VERBATIM through <see cref="NodeBaseJsonConverter"/> (allow-listed on every
+        /// kind, NEVER interpreted by any gate or the runtime) and serialized deterministically by
+        /// <c>TriggerGraph.ToCanonicalJson</c>. EXCLUDED from <c>CanonicalModelHash</c> BY CONSTRUCTION: the v8
+        /// typed graph fold reads each kind's semantic fields directly and never touches this bag, so editing
+        /// <c>_editor</c> content can never move the MP handshake hash.
+        /// </summary>
+        public System.Text.Json.JsonElement? Editor { get; set; }
     }
 
     /// <summary>
@@ -296,11 +306,10 @@ namespace ProjectChimera.Dsl
     /// exactly one node type. The expression op/fn sets are FIELD-value vocabularies (not kinds) — also closed,
     /// membership-checked at parse so an unknown op/fn never constructs.
     ///
-    /// NOTE: these arrays are DUPLICATED string-for-string from <c>ScenarioValidator</c>'s
-    /// <c>_triggerEventTypes</c>/<c>_conditionTypes</c>/<c>_actionTypes</c> — those are <c>private</c> and cannot be
-    /// shared, so this is a hand-kept copy, NOT an automatic mirror. When the trigger vocabulary is extended (e.g.
-    /// Story 7.13), BOTH lists must be updated together; there is no cross-check guard yet. Story 7.7 (the
-    /// authoritative load-time graph validator) is the sanctioned place to unify these into one source of truth.
+    /// Story 7.7 — this registry is THE single vocabulary source: <c>ScenarioValidator</c>'s trigger vocabulary
+    /// fields alias <see cref="EventTypes"/>/<see cref="ConditionTypes"/>/<see cref="FlatActionTypes"/> directly
+    /// (no hand-kept copy remains; <c>NodeKindsLockstepTests</c> asserts the aliasing by reference so a second
+    /// copy can never drift back in). When the trigger vocabulary is extended (e.g. Story 7.13), extend it HERE.
     /// </summary>
     internal static class NodeKinds
     {
@@ -329,6 +338,15 @@ namespace ProjectChimera.Dsl
         // flat TriggerDefinition can carry them.
         public static readonly string[] ActionTypes    = { "spawn_unit", "display_message", "victory", "defeat", "create_timer", "add_resources", "set_variable", "play_sound", "array_push", "array_set", "array_clear" };
 
+        /// <summary>
+        /// Story 7.7 — the FLAT-channel action vocabulary: <see cref="ActionTypes"/> minus the graph-channel-only
+        /// kinds (the array actions have no flat form — <c>ToFlat</c> skips them like <c>run_effect</c>). This is
+        /// the EXACT set <c>ScenarioDirector.ExecuteActions</c> handles for a flat <c>TriggerAction</c>, and the
+        /// set <c>ScenarioValidator</c> gates flat actions against — derived here, never hand-copied.
+        /// </summary>
+        public static readonly string[] FlatActionTypes =
+            System.Array.FindAll(ActionTypes, k => !IsArrayActionKind(k));
+
         // ── Story 7.6 — the CLOSED for_each source vocabulary (a field value inside for_each/for_each_batched,
         //    not a kind). Membership is checked at parse AND at both load gates, so an unknown source never
         //    constructs. for_each_batched additionally restricts to the two entity sources at parse. ──
@@ -337,6 +355,13 @@ namespace ProjectChimera.Dsl
         /// <summary>Story 7.6 — true for the three graph-channel-only array action kinds.</summary>
         public static bool IsArrayActionKind(string? kind) =>
             kind == "array_push" || kind == "array_set" || kind == "array_clear";
+
+        // ── Story 7.7 — the CLOSED comparison-operator vocabulary (a field value inside event/condition nodes and
+        //    flat trigger events/conditions, not a kind). ONE source for BOTH channels: ScenarioValidator's
+        //    _operators aliases this array (flat gate) and NodeBaseJsonConverter membership-checks it at parse
+        //    (graph channel), so an unknown operator never constructs — it previously parsed with a silent
+        //    ScenarioDirector.Compare `_ => false` (an inert dead trigger). ──
+        public static readonly string[] Operators = { ">", "<", ">=", "<=", "==", "!=" };
 
         // ── Story 7.4 — the CLOSED expression op/fn vocabularies (field values inside expr_* nodes, not kinds).
         //    Membership is checked at parse (NodeBaseJsonConverter) AND at compile (ExprCompiler), so an unknown
@@ -353,5 +378,89 @@ namespace ProjectChimera.Dsl
                 if (set[i] == value) return true;
             return false;
         }
+
+        /// <summary>Story 7.7 — the kind string a node serializes under (the closed-registry discriminator),
+        /// resolved from the runtime type. Used by located structural-gate errors and the canonical hash fold.</summary>
+        public static string KindOf(NodeBase n) => n switch
+        {
+            TriggerNode         => Trigger,
+            EffectActionNode    => RunEffect,
+            EventNode e         => e.Kind,
+            ConditionNode c     => c.Kind,
+            ActionNode a        => a.Kind,
+            ExprLiteralNode     => ExprLiteral,
+            ExprVarNode         => ExprVar,
+            ExprUnaryNode       => ExprUnary,
+            ExprBinaryNode      => ExprBinary,
+            ExprCallNode        => ExprCall,
+            ForEachNode         => ForEach,
+            ForEachBatchedNode  => ForEachBatched,
+            BranchNode          => Branch,
+            ExprArrayGetNode    => ExprArrayGet,
+            ExprArrayLenNode    => ExprArrayLen,
+            _                   => n.GetType().Name, // unreachable: the registry is closed at parse
+        };
+    }
+
+    /// <summary>
+    /// Story 7.7 — the ONE exec/data PORT-LEGALITY table per node kind (NodeKinds-adjacent so the closed registry
+    /// and its pin layout live side by side; the single source <see cref="GraphStructureGate"/> consumes at BOTH
+    /// load gates). An edge endpoint whose port is not in its node's set is a located structural reject — never a
+    /// silently-ignored wire. Fan-in policy: the trigger condition-in port is the ONLY data port that accepts
+    /// multiple edges (multi-condition AND semantics — the FromFlat wiring); every other data port takes exactly
+    /// one edge, and every exec-out port drives exactly one edge (forked exec chains reject).
+    /// </summary>
+    internal static class NodePorts
+    {
+        /// <summary>True when <paramref name="port"/> is a legal EXEC-OUT port of <paramref name="n"/>.</summary>
+        public static bool IsExecOut(NodeBase n, int port) => n switch
+        {
+            TriggerNode                       => port == TriggerGraph.TriggerExecOutPort,
+            EventNode                         => port == TriggerGraph.EventExecOutPort,
+            ActionNode or EffectActionNode    => port == TriggerGraph.ActionExecOutPort,
+            ForEachNode or ForEachBatchedNode => port == TriggerGraph.ActionExecOutPort
+                                              || port == TriggerGraph.ForEachBodyOutPort,
+            BranchNode                        => port == TriggerGraph.ActionExecOutPort
+                                              || port == TriggerGraph.BranchThenOutPort
+                                              || port == TriggerGraph.BranchElseOutPort,
+            _                                 => false, // expression/condition nodes are data-side only
+        };
+
+        /// <summary>True when <paramref name="port"/> is a legal EXEC-IN port of <paramref name="n"/>.</summary>
+        public static bool IsExecIn(NodeBase n, int port) => n switch
+        {
+            TriggerNode => port == TriggerGraph.TriggerEventInPort,
+            ActionNode or EffectActionNode or ForEachNode or ForEachBatchedNode or BranchNode
+                        => port == TriggerGraph.ActionExecInPort,
+            _           => false, // events FIRE exec, never receive it; expr/condition nodes are data-side
+        };
+
+        /// <summary>True when <paramref name="port"/> is a legal DATA-OUT port of <paramref name="n"/>.</summary>
+        public static bool IsDataOut(NodeBase n, int port) => n switch
+        {
+            ConditionNode => port == TriggerGraph.ConditionDataOutPort,
+            ExprLiteralNode or ExprVarNode or ExprUnaryNode or ExprBinaryNode or ExprCallNode
+                or ExprArrayGetNode or ExprArrayLenNode
+                          => port == TriggerGraph.ExprDataOutPort,
+            _             => false, // triggers/events/actions/containers emit no data
+        };
+
+        /// <summary>True when <paramref name="port"/> is a legal DATA-IN port of <paramref name="n"/>.</summary>
+        public static bool IsDataIn(NodeBase n, int port) => n switch
+        {
+            TriggerNode                       => port == TriggerGraph.TriggerConditionInPort,
+            ActionNode                        => port == TriggerGraph.ActionValueInPort
+                                              || port == TriggerGraph.ActionIndexInPort,
+            BranchNode                        => port == TriggerGraph.BranchCondInPort,
+            ExprUnaryNode or ExprArrayGetNode => port == TriggerGraph.ExprOperandPort0,
+            ExprBinaryNode or ExprCallNode    => port == TriggerGraph.ExprOperandPort0
+                                              || port == TriggerGraph.ExprOperandPort1,
+            _                                 => false, // events/run_effect/literals/vars/array-len take no data-in
+        };
+
+        /// <summary>True when (<paramref name="n"/>, <paramref name="port"/>) accepts MULTIPLE data edges — only
+        /// the trigger condition-in port (conditions and condition-expression roots AND together).</summary>
+        public static bool AllowsDataFanIn(NodeBase n, int port) =>
+            n is TriggerNode && port == TriggerGraph.TriggerConditionInPort;
     }
 }

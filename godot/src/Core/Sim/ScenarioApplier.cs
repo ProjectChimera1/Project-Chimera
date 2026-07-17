@@ -32,7 +32,7 @@ namespace ProjectChimera.Core.Sim
         private readonly ILogSink _log;
 
         // The SAME array MainScene owns as _slotFactionDefs. The presentation pre-pass writes resolved defs into it
-        // IN PLACE (never reassign, or the shared reference goes stale); Apply/ApplyFallback/SpawnUnit and the
+        // IN PLACE (never reassign, or the shared reference goes stale); Apply/SpawnUnit and the
         // runtime OnSpawnUnit trigger delegate all read this one array. (D1/D4)
         private readonly FactionDefinition?[] _slotFactionDefs;
 
@@ -65,7 +65,7 @@ namespace ProjectChimera.Core.Sim
         /// <param name="log">Injected log seam (NullLogSink for tests/server; GodotLogSink for MainScene). The
         /// applier's ONLY logging is low-frequency diagnostics (unknown unit_id) — never per-tick/per-entity.</param>
         /// <param name="slotFactionDefs">The SAME array MainScene holds as <c>_slotFactionDefs</c>. The presentation
-        /// pre-pass writes resolved defs into it in place before Apply/ApplyFallback; SpawnUnit + the trigger
+        /// pre-pass writes resolved defs into it in place before Apply; SpawnUnit + the trigger
         /// delegate read it. Never reassigned here.</param>
         public ScenarioApplier(SimulationHost host, ILogSink log, FactionDefinition?[] slotFactionDefs)
         {
@@ -128,23 +128,25 @@ namespace ProjectChimera.Core.Sim
 
         public void Apply(Validated<ScenarioData> v)
         {
-            _lastAppliedHeroes.Clear(); // Story 3.9: fresh record of placed heroes for this apply
             ScenarioData s = v.Value; // as-built property name (NOT .Model)
-            // Story 3.14: resolve the scenario's revival rule (or Default when omitted) into the shared runtime the sim
-            // systems hold — the single float→Fixed boundary, done once at apply, never inside a tick.
-            _host.RevivalRuntime.Configure(s?.RevivalRule);
-            // Story 4.4: resolve the scenario's supply config (or compile defaults when omitted) into ResourceStore —
-            // unconditional call, mirroring the RevivalRuntime.Configure line above (the resolver, not the call
-            // site, owns the null-means-default logic).
-            _host.Resources.ConfigureSupply(s?.Supply);
             if (s is null)
             {
                 // A default/unproven Validated<ScenarioData> carries a null model (the token-less Fail path used
                 // by the null-model early-out). Reject it at the consumption point instead of NRE'ing on
-                // s.PlayerSlots — closes the validation-bypass the Story 1.7 review deferred to 1.8b.
+                // s.PlayerSlots — closes the validation-bypass the Story 1.7 review deferred to 1.8b. FIRST, before
+                // ANY store write (review follow-up: Configure/ConfigureSupply used to run before this guard, so
+                // consuming a failed token silently reset the revival/supply config — a pure no-op now).
                 _log.Warn("[ScenarioApplier] Apply received a Validated<ScenarioData> with a null model — skipped.");
                 return;
             }
+            _lastAppliedHeroes.Clear(); // Story 3.9: fresh record of placed heroes for this apply
+            // Story 3.14: resolve the scenario's revival rule (or Default when omitted) into the shared runtime the sim
+            // systems hold — the single float→Fixed boundary, done once at apply, never inside a tick.
+            _host.RevivalRuntime.Configure(s.RevivalRule);
+            // Story 4.4: resolve the scenario's supply config (or compile defaults when omitted) into ResourceStore —
+            // unconditional call, mirroring the RevivalRuntime.Configure line above (the resolver, not the call
+            // site, owns the null-means-default logic).
+            _host.Resources.ConfigureSupply(s.Supply);
 
             // ── Story 6.3: thread the height-advantage vision toggle/bonus + the injected elevation grid into the
             //    EntityWorld BEFORE any spawn, so EntityWorld.Create (which every spawn path funnels through) samples
@@ -314,8 +316,12 @@ namespace ProjectChimera.Core.Sim
         /// Story 6.4: build the resolved <see cref="RegionStore"/> from the authored <see cref="ScenarioRegion"/>
         /// rows — the SINGLE float→<see cref="Fixed"/> boundary for region bounds (one <see cref="Fixed.FromFloat"/>
         /// per corner). Null/empty ⇒ <see cref="RegionStore.Empty"/> (the common case allocates nothing).
+        /// Story 7.7 review: the defensive skips below (null row / non-finite corner / post-quantize degenerate)
+        /// are POST-GATE defense-in-depth — the fail-closed validator rejects all three before any Apply, so the
+        /// sanctioned flow can no longer reach them; they stay because Apply is also callable by direct/headless
+        /// hosts. <c>internal</c> (not private) so the Tier-1 suite pins the skip behavior directly.
         /// </summary>
-        private static RegionStore BuildRegionStore(ScenarioRegion[]? regions)
+        internal static RegionStore BuildRegionStore(ScenarioRegion[]? regions)
         {
             if (regions is null || regions.Length == 0) return RegionStore.Empty;
             // Review patch: defensively SKIP any region that is (a) null, (b) has a non-finite corner, or (c)
@@ -357,64 +363,71 @@ namespace ProjectChimera.Core.Sim
         }
 
         /// <summary>
-        /// Hardcoded fallback used only if the scenario JSON is missing (mirrors alpha_map_01.json so the game is
-        /// always playable). Reads <c>_slotFactionDefs</c> for the worker defs (MainScene seeds the P1/P2 defaults
-        /// before this runs). Deliberately does NOT call <c>LoadScenario</c> — rerouting through <see cref="Apply"/>
-        /// would newly fire <c>match_start</c> triggers and move behavior; the split is preserved.
+        /// Story 7.7 — the hardcoded fallback SCENARIO MODEL (mirrors alpha_map_01.json so the game is always
+        /// playable when the scenario file is missing, unparseable, or rejected by the validator). The legacy
+        /// un-tokened <c>ApplyFallback()</c> writer is RETIRED: every fallback boot now routes
+        /// <c>Apply(Validate(BuildFallbackMirror()).Value)</c> — one writer path, one token type — with behavior
+        /// parity to the legacy writer pinned by <c>FallbackMirrorParityTests</c> (SimChecksum + key world facts).
+        /// Keep these literal values in sync with alpha_map_01.json.
         /// </summary>
-        public void ApplyFallback()
+        /// <param name="slotFactionDefs">Optional (review follow-up) — the per-slot resolved faction defs (indexed
+        /// by <c>(int)Faction</c>, the same length-5 array the applier holds). When threaded, each slot's worker
+        /// unit_id is resolved BY CATEGORY from its faction def (the legacy writer's <c>GetUnitByCategory("Worker")</c>
+        /// lookup), so a custom faction whose worker is not literally id'd "worker" still spawns workers on the
+        /// fallback boot; null (tests / no defs yet) falls back to the conventional "worker" id both shipped
+        /// factions declare.</param>
+        public static ScenarioData BuildFallbackMirror(
+            System.Collections.Generic.IReadOnlyList<FactionDefinition?>? slotFactionDefs = null) => new ScenarioData
         {
-            // Faction bases (D6: both base write sites unified via SetFactionBase)
-            SetFactionBase(Faction.Player1, new FixedVec3(Fixed.FromFloat(-45f), Fixed.Zero, Fixed.Zero));
-            SetFactionBase(Faction.Player2, new FixedVec3(Fixed.FromFloat(+45f), Fixed.Zero, Fixed.Zero));
-
-            // Starting ore + crystal. Crystal is seeded here too so worker abilities (e.g. matter_infusion) are
-            // testable on the fallback map; keep these literals in sync with alpha_map_01.json's start_crystal and
-            // ScenarioLoadPhase.BuildFallbackMirror's StartCrystal.
-            _host.Resources.AddOre(Faction.Player1, Fixed.FromFloat(200f));
-            _host.Resources.AddOre(Faction.Player2, Fixed.FromFloat(200f));
-            _host.Resources.AddCrystal(Faction.Player1, Fixed.FromFloat(100f));
-            _host.Resources.AddCrystal(Faction.Player2, Fixed.FromFloat(100f));
-
-            // Resource nodes
-            var rate = Fixed.FromFloat(5f);
-            foreach (var (x, z, supply) in new (float, float, float)[]
+            Id           = "fallback",
+            DisplayName  = "Fallback",
+            MapBounds    = 120f,
+            WinCondition = WinCondition.DestroyAllBuildings,
+            PlayerSlots = new[]
             {
-                ( -20f, -15f, 600f ), ( -20f,  15f, 600f ),
-                (  20f, -15f, 600f ), (  20f,  15f, 600f ),
-                (   0f, -25f, 400f ), (   0f,  25f, 400f ),
-                ( -35f,   0f, 300f ), (  35f,   0f, 300f ),
-            })
+                new ScenarioPlayerSlot { Slot = 0, StartOre = 200f, StartCrystal = 100f, BaseX = -45f, BaseZ = 0f },
+                new ScenarioPlayerSlot { Slot = 1, StartOre = 200f, StartCrystal = 100f, BaseX =  45f, BaseZ = 0f },
+            },
+            ResourceNodes = new[]
             {
-                _host.Nodes.Create(
-                    new FixedVec3(Fixed.FromFloat(x), Fixed.Zero, Fixed.FromFloat(z)),
-                    Fixed.FromFloat(supply), rate, maxGatherers: 4);
-            }
+                new ScenarioResourceNode { X = -20f, Z = -15f, Supply = 600f, Rate = 5f, MaxGatherers = 4 },
+                new ScenarioResourceNode { X = -20f, Z =  15f, Supply = 600f, Rate = 5f, MaxGatherers = 4 },
+                new ScenarioResourceNode { X =  20f, Z = -15f, Supply = 600f, Rate = 5f, MaxGatherers = 4 },
+                new ScenarioResourceNode { X =  20f, Z =  15f, Supply = 600f, Rate = 5f, MaxGatherers = 4 },
+                new ScenarioResourceNode { X =   0f, Z = -25f, Supply = 400f, Rate = 5f, MaxGatherers = 4 },
+                new ScenarioResourceNode { X =   0f, Z =  25f, Supply = 400f, Rate = 5f, MaxGatherers = 4 },
+                new ScenarioResourceNode { X = -35f, Z =   0f, Supply = 300f, Rate = 5f, MaxGatherers = 4 },
+                new ScenarioResourceNode { X =  35f, Z =   0f, Supply = 300f, Rate = 5f, MaxGatherers = 4 },
+            },
+            Buildings = new[]
+            {
+                new ScenarioBuilding { Type = "CommandCenter", Slot = 0, X = -45f, Z = 0f, PreBuilt = true },
+                new ScenarioBuilding { Type = "CommandCenter", Slot = 1, X =  45f, Z = 0f, PreBuilt = true },
+            },
+            Units = new[]
+            {
+                new ScenarioUnit { UnitId = WorkerIdForSlot(slotFactionDefs, 0), Slot = 0, X = -42f, Z = -3f },
+                new ScenarioUnit { UnitId = WorkerIdForSlot(slotFactionDefs, 0), Slot = 0, X = -42f, Z =  3f },
+                new ScenarioUnit { UnitId = WorkerIdForSlot(slotFactionDefs, 1), Slot = 1, X =  42f, Z = -3f },
+                new ScenarioUnit { UnitId = WorkerIdForSlot(slotFactionDefs, 1), Slot = 1, X =  42f, Z =  3f },
+            },
+        };
 
-            // Starter command centres
-            _host.BuildSys.PlaceBuildingDirect(BuildingType.CommandCenter, Faction.Player1,
-                new FixedVec3(Fixed.FromFloat(-45f), Fixed.Zero, Fixed.Zero), preBuilt: true);
-            _host.BuildSys.PlaceBuildingDirect(BuildingType.CommandCenter, Faction.Player2,
-                new FixedVec3(Fixed.FromFloat(+45f), Fixed.Zero, Fixed.Zero), preBuilt: true);
-
-            // 2 workers per faction — each faction uses its own worker definition
-            var workerDef  = _slotFactionDefs[(int)Faction.Player1]?.GetUnitByCategory("Worker");
-            var workerDef2 = _slotFactionDefs[(int)Faction.Player2]?.GetUnitByCategory("Worker") ?? workerDef;
-            if (workerDef != null)
-            {
-                SpawnUnit(workerDef,  Faction.Player1, -42f, -3f);
-                SpawnUnit(workerDef,  Faction.Player1, -42f, +3f);
-            }
-            if (workerDef2 != null)
-            {
-                SpawnUnit(workerDef2, Faction.Player2, +42f, -3f);
-                SpawnUnit(workerDef2, Faction.Player2, +42f, +3f);
-            }
+        /// <summary>Resolve a fallback-mirror slot's worker unit_id by CATEGORY from its faction def (the legacy
+        /// writer's lookup), falling back to the conventional "worker" id when no defs are threaded or the faction
+        /// declares no Worker-category unit.</summary>
+        private static string WorkerIdForSlot(
+            System.Collections.Generic.IReadOnlyList<FactionDefinition?>? slotFactionDefs, int slot)
+        {
+            int fIdx = slot + 1; // (Faction)(slot + 1), matching Apply's cast
+            FactionDefinition? def = (slotFactionDefs != null && fIdx >= 0 && fIdx < slotFactionDefs.Count)
+                ? slotFactionDefs[fIdx] : null;
+            return def?.GetUnitByCategory("Worker")?.Id ?? "worker";
         }
 
         /// <summary>
         /// Spawn a unit from a <see cref="UnitDefinition"/>, wiring all SoA fields. The single alloc-free spawn
-        /// primitive shared by <see cref="Apply"/>, <see cref="ApplyFallback"/>, and the runtime
+        /// primitive shared by <see cref="Apply"/> and the runtime
         /// <c>ScenarioDirector.OnSpawnUnit</c> trigger delegate (D5). Returns the new entity id, or -1 if the world
         /// is full. Allocation-free: pre-resolved def, value-type structs, no LINQ/closures/boxing/string alloc.
         /// </summary>

@@ -73,6 +73,16 @@ namespace ProjectChimera.Dsl
         public const int MaxExecWalkDepth = 256;
 
         /// <summary>
+        /// Story 7.7 review — the maximum UTF-8 byte size of one node's verbatim <c>_editor</c> annotation bag
+        /// (raw JSON text). Every other authored surface has a named cap; the bag must not be the one unbounded
+        /// channel (a hostile file could otherwise carry megabytes of never-interpreted payload through every
+        /// gate). 4096 is generous for the bag's intended content — Story 7.10 node canvas positions plus small
+        /// authoring affordances (a position + a note is tens of bytes) — and is enforced at parse by
+        /// <c>NodeBaseJsonConverter</c> with a located reject.
+        /// </summary>
+        public const int MaxEditorBagBytes = 4096;
+
+        /// <summary>
         /// The per-tick DSL fuel budget — the runtime SEATBELT for the dynamic aggregate of CHAIN-SIDE work
         /// (many individually-legal triggers firing the same tick) plus definitions that escaped the load gate.
         /// Fuel charges fired-chain execution only: actions, their value/index expressions, run_effect embeds,

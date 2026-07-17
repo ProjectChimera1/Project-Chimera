@@ -74,8 +74,14 @@ namespace ProjectChimera.Sim.Tests.Meta
         /// layer must reject at the handshake instead of desyncing in-sim.
         /// v7 (Story 6.6): folded the BLOCKING-prop + WATER footprints (their union of FlowField.WorldToCell cells) —
         /// the inverse-free extension of v6 (they become blocked cells in the same PathabilityGrid). Non-blocking
-        /// props, cameras, and every rotation/scale stay EXCLUDED (cosmetic).</summary>
-        private const int ExpectedCanonicalModelHashAlgoVersion = 7;
+        /// props, cameras, and every rotation/scale stay EXCLUDED (cosmetic).
+        /// v8 (Story 7.7): folded the FULL trigger/DSL sim-semantic model — Regions (total-ordered), flat Triggers
+        /// (declaration order), Variables, Timers, and the parsed TriggerGraphJson graph IR as a TYPED fold (never
+        /// JSON bytes). The `_editor` per-node bag and the schema_version/checksum_algo_version stamps stay
+        /// EXCLUDED. The ONE named re-baseline: hero-start-state golden re-recorded (StartStateHash VALUE moves via
+        /// the canonical seed; its AlgoVersion stays 2), independent-FNV pins recomputed, exclusion tests inverted
+        /// to sensitivity tests. SimChecksum (17) and the 24 per-tick world goldens are UNTOUCHED.</summary>
+        private const int ExpectedCanonicalModelHashAlgoVersion = 8;
 
         /// <summary>Load-time canonical START-STATE hash algorithm version (Story 3.2, AC3) — a NEW, distinct FNV-64
         /// over the full init state = the <see cref="CanonicalModelHash"/> content seed PLUS the HeroStore rows.
@@ -92,6 +98,11 @@ namespace ProjectChimera.Sim.Tests.Meta
 
         /// <summary>Default minimum game version a packaged .chimera.zip declares it requires.</summary>
         private const string ExpectedManifestMinGameVersion = "0.1";
+
+        /// <summary>Story 7.7 (D3.1 landed): the scenario-JSON FORMAT version <c>ScenarioSerializer.Serialize</c>
+        /// stamps into <c>schema_version</c>. Absent ⇒ v1 legacy amnesty; newer-than-current rejects at the
+        /// validator. Bump only on a real format change (with a migration/amnesty decision) in the same commit.</summary>
+        private const int ExpectedScenarioSchemaVersion = 1;
 
         [Fact]
         public void DeterminismAlgorithmStamps_ArePinned()
@@ -158,26 +169,38 @@ namespace ProjectChimera.Sim.Tests.Meta
         }
 
         /// <summary>
-        /// Forward tripwire for the one unbuilt stamp with a KNOWN home. Today <see cref="ScenarioData"/> carries no
-        /// <c>schema_version</c>; when D3.1 adds it for forward-compat migrations, this test goes red — which is the
-        /// signal to wire the new stamp into THIS registry (pin its expected value above) so it joins the
-        /// "move together" checkpoint instead of floating unpinned. (CurrentGameVersion has no code home yet, so it
-        /// is documented in <see cref="UnbuiltStamps"/> rather than tripwired.)
+        /// Story 7.7 — the D3.1 scenario-format stamp LANDED (the former "still unbuilt" tripwire is inverted, as
+        /// it demanded): <see cref="ScenarioData"/> carries <c>schema_version</c> + <c>checksum_algo_version</c>
+        /// (absent ⇒ v1 amnesty), <c>ScenarioSerializer.Serialize</c> stamps the current values, and this registry
+        /// pins them so neither can drift silently. Both stamps are EXCLUDED from <see cref="CanonicalModelHash"/>
+        /// (a legacy re-save must not move the handshake).
         /// </summary>
         [Fact]
-        public void SchemaVersionStamp_IsStillUnbuilt_OrHasBeenWiredIntoThisRegistry()
+        public void SchemaVersionStamp_IsBuilt_AndPinned()
         {
             bool hasSchemaVersion = typeof(ScenarioData)
                 .GetMembers(BindingFlags.Public | BindingFlags.Instance)
                 .Any(m => (m.MemberType is MemberTypes.Property or MemberTypes.Field)
                           && (m.Name.Equals("SchemaVersion", StringComparison.OrdinalIgnoreCase)
                               || m.Name.Replace("_", "").Equals("schemaversion", StringComparison.OrdinalIgnoreCase)));
+            Assert.True(hasSchemaVersion,
+                "ScenarioData no longer carries a schema_version member — the D3.1 stamp landed in Story 7.7 and " +
+                "must not silently vanish (legacy amnesty + future-reject depend on it).");
 
-            Assert.False(hasSchemaVersion,
-                "ScenarioData now has a schema_version member — the D3.1 scenario-format versioning has landed. " +
-                "Wire it into VersionStampConsistencyTests: add an Expected…SchemaVersion pin above and assert it " +
-                "in a [Fact], so the new stamp joins the version-stamp consistency surface (it gates forward-compat " +
-                "migration and must not drift silently). Then delete or invert this tripwire.");
+            Assert.True(ScenarioSerializer.CurrentSchemaVersion == ExpectedScenarioSchemaVersion,
+                $"ScenarioSerializer.CurrentSchemaVersion is {ScenarioSerializer.CurrentSchemaVersion}, expected " +
+                $"{ExpectedScenarioSchemaVersion}. This is the scenario-JSON format stamp Serialize writes; a bump " +
+                $"needs a forward-compat migration/amnesty decision. Update {nameof(ExpectedScenarioSchemaVersion)} " +
+                "here in the same commit as an intentional bump.");
+
+            // checksum_algo_version stamps CanonicalModelHash.AlgoVersion — already pinned above, so just assert
+            // the serializer actually writes both stamps (a legacy model gains them on save).
+            var legacy = new ScenarioData { MapBounds = 120f };
+            string json = ScenarioSerializer.Serialize(legacy);
+            Assert.Contains($"\"schema_version\": {ExpectedScenarioSchemaVersion}", json);
+            Assert.Contains($"\"checksum_algo_version\": {CanonicalModelHash.AlgoVersion}", json);
+            Assert.Null(legacy.SchemaVersion);        // Serialize must not mutate the caller's model
+            Assert.Null(legacy.ChecksumAlgoVersion);
         }
 
         /// <summary>
@@ -188,7 +211,7 @@ namespace ProjectChimera.Sim.Tests.Meta
         private static readonly string[] UnbuiltStamps =
         {
             "CurrentGameVersion — game/app semver constant; gates min_game_version at load (D3.1). No code home yet.",
-            "schema_version (ScenarioData) — scenario-JSON format version for forward-compat migrations (D3.1). Tripwired above.",
+            // schema_version (ScenarioData) — BUILT in Story 7.7 and pinned above (SchemaVersionStamp_IsBuilt_AndPinned).
         };
 
         [Fact]
@@ -196,8 +219,8 @@ namespace ProjectChimera.Sim.Tests.Meta
         {
             // A trivial assertion that simply keeps the UnbuiltStamps list referenced (so it is not dead code) and
             // documents the count. When a D3.1 stamp is built and pinned above, remove its line from UnbuiltStamps.
-            Assert.True(UnbuiltStamps.Length == 2,
-                $"Expected exactly 2 documented unbuilt D3.1 version stamps, found {UnbuiltStamps.Length}. When one " +
+            Assert.True(UnbuiltStamps.Length == 1,
+                $"Expected exactly 1 documented unbuilt D3.1 version stamp, found {UnbuiltStamps.Length}. When one " +
                 $"is built and pinned into this registry, remove its entry from {nameof(UnbuiltStamps)} and update this count.");
         }
     }

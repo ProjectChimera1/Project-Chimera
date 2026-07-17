@@ -53,6 +53,37 @@ namespace ProjectChimera.Sim.Tests.Dsl
         }
 
         [Fact]
+        public void ScenarioValidator_ConsumesNodeKinds_ByReference() // Story 7.7 — vocabulary unification teeth
+        {
+            // The validator's private vocabulary fields must ALIAS the NodeKinds arrays (same object, not a copy):
+            // a re-introduced hand-kept string list would pass a value-equality check today and silently drift on
+            // the next vocabulary extension — reference identity cannot.
+            var t = typeof(ProjectChimera.Core.Definitions.ScenarioValidator);
+            const System.Reflection.BindingFlags F =
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static;
+
+            Assert.Same(NodeKinds.EventTypes,      t.GetField("_triggerEventTypes", F)!.GetValue(null));
+            Assert.Same(NodeKinds.ConditionTypes,  t.GetField("_conditionTypes", F)!.GetValue(null));
+            Assert.Same(NodeKinds.FlatActionTypes, t.GetField("_actionTypes", F)!.GetValue(null));
+            // Story 7.7 review follow-up: the comparison-operator vocabulary is unified too — the flat gate's
+            // _operators aliases NodeKinds.Operators (the same set NodeBaseJsonConverter enforces at graph parse).
+            Assert.Same(NodeKinds.Operators,       t.GetField("_operators", F)!.GetValue(null));
+        }
+
+        [Fact]
+        public void FlatActionTypes_AreExactlyTheGraphSetMinusArrayKinds() // the derived-set contract
+        {
+            foreach (string k in NodeKinds.FlatActionTypes)
+            {
+                Assert.Contains(k, NodeKinds.ActionTypes);
+                Assert.False(NodeKinds.IsArrayActionKind(k), $"graph-channel-only kind '{k}' leaked into the flat set");
+            }
+            foreach (string k in NodeKinds.ActionTypes)
+                if (!NodeKinds.IsArrayActionKind(k))
+                    Assert.Contains(k, NodeKinds.FlatActionTypes);
+        }
+
+        [Fact]
         public void ExprOpAndFnVocabularies_AreDisjointFromEachOther()
         {
             string[] unary  = NodeKinds.ExprUnaryOps;

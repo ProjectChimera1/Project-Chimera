@@ -37,7 +37,10 @@ namespace ProjectChimera.Sim.Tests.Golden
         // resource_type, requires_structure_radius, owner_slot, income_period_ticks — requires_structure omits when
         // null), so every generated node's JSON grew, moving this JSON-format-drift tripwire (an intentional,
         // additive schema change — not a "fix a red run" edit).
-        private const uint GoldenHash = 0xBA75FB13u;
+        // Re-recorded for Story 7.7: ScenarioSerializer.Serialize now STAMPS schema_version + checksum_algo_version
+        // on every save (D3 versioning), so the generated JSON grew by the two stamp keys — the same intentional,
+        // additive schema-change class as the 4.7 re-record above.
+        private const uint GoldenHash = 0x21BBF380u;
 
         [Fact]
         public void SameSeed_TwiceProducesByteIdenticalSerialization_AndMatchesGoldenHash()

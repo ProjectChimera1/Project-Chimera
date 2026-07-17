@@ -473,8 +473,10 @@ namespace ProjectChimera.Core
             // desync. Folded to the existing 32-bit Ready-packet wire (widening is Epic 9). _ctx.Scenario holds the
             // applied model for the file / AI / editor paths; _ctx.FallbackMirror holds it for the hardcoded fallback.
             // Story 1.7 review patch: only publish a hash for a model that was actually applied. In fail-closed
-            // mode a rejected scenario leaves _ctx.ScenarioApplied false (nothing reached the sim), so we publish 0 —
-            // the handshake treats 0 as fail-open/skip rather than advertising a start-state we never built.
+            // mode a rejected scenario leaves _ctx.ScenarioApplied false (nothing reached the sim), so we publish 0
+            // rather than advertising a start-state we never built. Story 7.7: 0 is now fail-CLOSED — HandshakeGate
+            // BLOCKS the lobby start on either side's 0 ("scenario hash not computed"), so a host with no applied
+            // scenario can no longer start a match.
             ScenarioData? hashModel = _ctx.Scenario ?? _ctx.FallbackMirror;
             _ctx.LobbyUi.ScenarioHash = (_ctx.ScenarioApplied && hashModel != null)
                 ? Definitions.CanonicalModelHash.ToWire(Definitions.CanonicalModelHash.Compute(hashModel))
@@ -1565,8 +1567,9 @@ namespace ProjectChimera.Core
         /// route through it — Edit→Play starts the sim from a clean authored board that reflects trigger edits made in
         /// Edit, and Play→Edit restores the authored board for editing. Sequence: (optional) snapshot live hero
         /// rows → re-validate the live edited scenario (fail-closed veto) → <c>ClearForReset</c> → re-apply the
-        /// authored scenario (or <c>ApplyFallback</c>) against the cleared host → re-mint the deployed hero profile
-        /// (or the preserved snapshot) → recompute the start-state hash → fold in the lifecycle reset.
+        /// authored scenario (or the VALIDATED fallback mirror, Story 7.7) against the cleared host → re-mint the
+        /// deployed hero profile (or the preserved snapshot) → recompute the start-state hash → fold in the
+        /// lifecycle reset.
         ///
         /// <para>Fail-closed: if the edited <c>_ctx.Scenario</c> fails <see cref="ScenarioValidator"/> the reset ABORTS
         /// BEFORE clearing anything (world unchanged), surfaces the located error, and returns false so the caller
@@ -1668,6 +1671,10 @@ namespace ProjectChimera.Core
                 // (ScenarioLoadPhase, "a REUSED applier must not carry a prior sculpted load's blocking"), and
                 // ResetToAuthoredStart IS the reused-applier case — so clear them symmetrically here. Without this a
                 // scenario→fallback transition would leave a prior scenario's blocked cells stranded on the sinks.
+                // The boot fallback ALSO nulls the applier's ELEVATION grid; that clear is deliberately absent here:
+                // _ctx.Scenario == null is only reachable via the boot fallback path itself (missing/unparseable/
+                // rejected file), which already nulled the elevation grid — so it is provably null on this branch,
+                // and the scenario branch above deliberately REUSES it (DW-157: terrain re-bake is out of scope).
                 _applier.SetPathabilityGrid(null);
                 _ctx.FlowFieldSys?.SetStaticBlocked(null);
                 _ctx.Pathability = null;
@@ -1676,8 +1683,35 @@ namespace ProjectChimera.Core
             // 4. Re-apply the authored scenario against the cleared host. ScenarioApplier.Apply is additive/non-
             //    idempotent, so it MUST run only after the clear; LoadScenario inside it rebuilds ScenarioDirector
             //    (trigger/timer/variable) state, making Edit-side trigger add/remove/enable live this Play.
-            if (hasScenario) _applier.Apply(validated);
-            else             _applier.ApplyFallback();
+            //    Story 7.7: the fallback branch routes through the SAME validated-mirror writer path as boot (the
+            //    legacy un-tokened ApplyFallback is retired) — no apply path skips the validator anymore.
+            if (hasScenario)
+            {
+                _applier.Apply(validated);
+            }
+            else
+            {
+                // Same validated-mirror recipe as boot, worker ids resolved by category from the slot defs (a
+                // custom-faction fallback still spawns workers). Note: the boot fallback nulls the elevation/
+                // pathability sinks BEFORE applying; this branch cleared pathability above and elevation is
+                // provably already null here (see the comment on the fallback sink-clear branch).
+                ScenarioData mirror = ScenarioApplier.BuildFallbackMirror(_slotFactionDefs);
+                ValidationResult fr = new ScenarioValidator().Validate(mirror, _slotFactionDefs);
+                if (fr.Ok)
+                {
+                    _ctx.FallbackMirror = mirror;
+                    _applier.Apply(fr.Value);
+                }
+                else
+                {
+                    // Build defect: the shipped mirror must always validate. ClearForReset already ran, so the
+                    // world is EMPTY — surface it loudly and VETO (return false) instead of falling through and
+                    // reporting a successful reset over an empty board (review follow-up).
+                    GD.PrintErr($"[Reset] Fallback mirror REJECTED — applying nothing: {fr.Error}");
+                    ShowTriggerMessage($"Reset failed — fallback map invalid (build defect):\n{fr.Error}", 8f);
+                    return false;
+                }
+            }
 
             // 4b. DW-157 (Story 14.8): force the flow-field static obstacle mask to take effect THIS Play. The
             //     per-frame FlowFieldBridge.CheckBuildingChanges only rebuilds obstacles when the BUILDING set changed

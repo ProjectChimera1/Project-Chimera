@@ -21,7 +21,7 @@ namespace ProjectChimera.Sim.Tests.Validation
         };
 
         [Fact]
-        public void AlgoVersion_IsSeven() => Assert.Equal(7, CanonicalModelHash.AlgoVersion);
+        public void AlgoVersion_IsEight() => Assert.Equal(8, CanonicalModelHash.AlgoVersion); // Story 7.7: 7→8 (trigger/DSL fold; prop/water folds unchanged)
 
         [Fact]
         public void EmptyPropsWater_HashEqual_ToBaseline()

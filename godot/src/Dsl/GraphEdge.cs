@@ -1,5 +1,6 @@
 #nullable enable
 using System;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace ProjectChimera.Dsl
@@ -98,5 +99,97 @@ namespace ProjectChimera.Dsl
 
         public override bool Equals(object? obj) => obj is DataEdge e && Equals(e);
         public override int GetHashCode() => HashCode.Combine(Src, SrcPort, Dst, DstPort, Wire);
+    }
+
+    /// <summary>
+    /// Story 7.7 — the fail-closed <see cref="DataEdge"/> converter. Before 7.7 the struct deserialized through
+    /// its <c>[JsonConstructor]</c>, where an authored data edge MISSING its <c>wire</c> silently defaulted to
+    /// <see cref="DataWireType.Boolean"/> (a fail-OPEN typing hole in the "wire color = type" contract). This
+    /// converter makes EVERY missing key a LOCATED parse reject (review follow-up: a missing endpoint previously
+    /// defaulted to node 0 — a real node the edge then silently rewired onto); a DUPLICATE key is a located reject
+    /// too (mirroring <c>NodeBaseJsonConverter.RejectUnknownProperties</c> — <c>JsonDocument</c> permits duplicate
+    /// names, and a second value could otherwise smuggle past validation); the unknown-property posture stays as-is
+    /// (rejected — the POCO layer's <c>UnmappedMemberHandling.Disallow</c> equivalent, re-applied here because a
+    /// custom converter bypasses it); and the wire enum parses by NAME only, case-SENSITIVE, never by value —
+    /// <c>Enum.TryParse</c> alone would accept <c>"2"</c> numerically, against the converter's documented strict
+    /// posture (mirroring <c>JsonStringEnumConverter(allowIntegerValues:false)</c>). <see cref="Write"/> emits the
+    /// exact property layout the POCO serialization produced (src, src_port, dst, dst_port, wire-by-name), so
+    /// canonical bytes are unchanged for every existing graph.
+    /// </summary>
+    public sealed class DataEdgeJsonConverter : JsonConverter<DataEdge>
+    {
+        /// <inheritdoc />
+        public override DataEdge Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        {
+            using JsonDocument doc = JsonDocument.ParseValue(ref reader);
+            JsonElement el = doc.RootElement;
+            if (el.ValueKind != JsonValueKind.Object)
+                throw new JsonException($"data edge must be a JSON object, got {el.ValueKind}.");
+
+            int src = 0, srcPort = 0, dst = 0, dstPort = 0;
+            DataWireType wire = default;
+            bool hasSrc = false, hasSrcPort = false, hasDst = false, hasDstPort = false, hasWire = false;
+            foreach (JsonProperty p in el.EnumerateObject())
+            {
+                switch (p.Name)
+                {
+                    case "src":      RejectDuplicate(hasSrc, "src");           src     = ReadInt(p, "src");      hasSrc = true; break;
+                    case "src_port": RejectDuplicate(hasSrcPort, "src_port");  srcPort = ReadInt(p, "src_port"); hasSrcPort = true; break;
+                    case "dst":      RejectDuplicate(hasDst, "dst");           dst     = ReadInt(p, "dst");      hasDst = true; break;
+                    case "dst_port": RejectDuplicate(hasDstPort, "dst_port");  dstPort = ReadInt(p, "dst_port"); hasDstPort = true; break;
+                    case "wire":
+                        RejectDuplicate(hasWire, "wire");
+                        if (p.Value.ValueKind != JsonValueKind.String)
+                            throw new JsonException(
+                                $"data edge 'wire' must be a wire-type NAME string (Boolean/Int/Fixed/Point), got {p.Value.ValueKind}.");
+                        string name = p.Value.GetString()!;
+                        // NAME-only, case-sensitive: a digit/sign-leading string parses BY VALUE through
+                        // Enum.TryParse ("2" → Fixed), so reject it before the parse ever runs.
+                        if (name.Length == 0 || !char.IsLetter(name[0])
+                            || !Enum.TryParse(name, ignoreCase: false, out wire) || !Enum.IsDefined(typeof(DataWireType), wire))
+                            throw new JsonException($"data edge 'wire' value '{name}' is not a known wire type (Boolean/Int/Fixed/Point, exact name).");
+                        hasWire = true;
+                        break;
+                    default:
+                        throw new JsonException($"data edge property '{p.Name}' is unknown (data edges are closed: src/src_port/dst/dst_port/wire).");
+                }
+            }
+            // ALL five keys are required — a missing endpoint would silently default to node/port 0 (fail-open).
+            if (!hasSrc)     throw new JsonException("data edge is missing its required 'src' node id (it would silently default to node 0).");
+            if (!hasSrcPort) throw new JsonException($"data edge (src {src}) is missing its required 'src_port'.");
+            if (!hasDst)     throw new JsonException($"data edge (src {src}:{srcPort}) is missing its required 'dst' node id (it would silently default to node 0).");
+            if (!hasDstPort) throw new JsonException($"data edge ({src}:{srcPort} → {dst}) is missing its required 'dst_port'.");
+            if (!hasWire)
+                throw new JsonException(
+                    $"data edge ({src}:{srcPort} → {dst}:{dstPort}) is missing its required 'wire' type — " +
+                    "wire color = type is load-bearing and no longer defaults to Boolean (Story 7.7 fail-closed parse).");
+            return new DataEdge(src, srcPort, dst, dstPort, wire);
+        }
+
+        /// <summary>Located duplicate-key reject (each field may appear at most once — the AR-22 posture).</summary>
+        private static void RejectDuplicate(bool seen, string name)
+        {
+            if (seen)
+                throw new JsonException($"data edge property '{name}' is a duplicate (each field may appear at most once).");
+        }
+
+        /// <inheritdoc />
+        public override void Write(Utf8JsonWriter writer, DataEdge value, JsonSerializerOptions options)
+        {
+            writer.WriteStartObject();
+            writer.WriteNumber("src", value.Src);
+            writer.WriteNumber("src_port", value.SrcPort);
+            writer.WriteNumber("dst", value.Dst);
+            writer.WriteNumber("dst_port", value.DstPort);
+            writer.WriteString("wire", value.Wire.ToString()); // enum by NAME (the JsonStringEnumConverter layout)
+            writer.WriteEndObject();
+        }
+
+        private static int ReadInt(JsonProperty p, string name)
+        {
+            if (p.Value.ValueKind != JsonValueKind.Number || !p.Value.TryGetInt32(out int v))
+                throw new JsonException($"data edge '{name}' must be a 32-bit integer.");
+            return v;
+        }
     }
 }

@@ -446,6 +446,29 @@ namespace ProjectChimera.Core.Definitions
     /// </summary>
     public class ScenarioData
     {
+        /// <summary>
+        /// Story 7.7 (D3 versioning) — the scenario-JSON FORMAT version stamp. NULL (every legacy file) ⇒ v1
+        /// amnesty (no migration; the file loads normally) and the key is OMITTED
+        /// (<see cref="JsonIgnoreCondition.WhenWritingNull"/>) — but <see cref="ScenarioSerializer.Serialize"/>
+        /// STAMPS the current <see cref="ScenarioSerializer.CurrentSchemaVersion"/> on every save, so re-saved
+        /// files carry it. A value NEWER than the build's supported version is a located
+        /// <see cref="ScenarioValidator"/> reject (never a silent misparse of a future format). EXCLUDED from
+        /// <see cref="CanonicalModelHash"/> — a re-save that adds the stamp to a legacy file must not move the
+        /// handshake hash. Pinned by <c>VersionStampConsistencyTests</c>.
+        /// </summary>
+        [JsonPropertyName("schema_version")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public int? SchemaVersion { get; set; }
+
+        /// <summary>
+        /// Story 7.7 (D3 versioning) — the <see cref="CanonicalModelHash.AlgoVersion"/> this file was last saved
+        /// under. Same amnesty/stamping/rejection/hash-exclusion contract as <see cref="SchemaVersion"/>: absent ⇒
+        /// v1 amnesty; stamped on save; newer-than-current rejects located; never folded into the hash.
+        /// </summary>
+        [JsonPropertyName("checksum_algo_version")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public int? ChecksumAlgoVersion { get; set; }
+
         [JsonPropertyName("id")]
         public string Id { get; set; } = "";
 
@@ -900,5 +923,14 @@ namespace ProjectChimera.Core.Definitions
             }
             return false;
         }
+
+        /// <summary>
+        /// Story 7.7 review — a SHALLOW copy for <see cref="ScenarioSerializer.Serialize"/>'s stamp/normalize pass:
+        /// the serializer mutates the COPY (empty→null normalizations + version stamps) and serializes it, so the
+        /// caller's live model is never touched — not even transiently (the former swap-mutate-restore let
+        /// concurrent readers observe stamps mid-serialize, and a throw between swaps left them applied). Shallow
+        /// is sufficient: the serializer only ever reassigns top-level references/stamps, never element contents.
+        /// </summary>
+        internal ScenarioData ShallowClone() => (ScenarioData)MemberwiseClone();
     }
 }

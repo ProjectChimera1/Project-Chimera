@@ -14,17 +14,17 @@ namespace ProjectChimera.Core.Definitions
     /// validated but whose payload was unloadable.
     ///
     /// This is the one shared, Godot-free gate decision the two Export/New-Map paths route through, so those two
-    /// can never diverge again (fix Export, forget New-Map). It is NOT wired into every scenario write path — the
-    /// Import re-save (<c>WinConditionPhase.DoImport</c>), <c>MapGeneratorPanel</c>, and <c>PersistenceManifestPanel</c>
-    /// still write without it (out of DW-164 scope; tracked as deferred work). Callers MUST invoke <see cref="Check"/>
-    /// BEFORE any disk write (terrain save, scenario save, package pack) and abort — surfacing the returned located
-    /// error — on a non-null return, so a rejected write leaves NOTHING partial on disk.
+    /// can never diverge again (fix Export, forget New-Map). Story 7.7 additionally routes the
+    /// <c>MapGeneratorPanel</c> AI-generated save through it; the Import re-save (<c>WinConditionPhase.DoImport</c>)
+    /// and <c>PersistenceManifestPanel</c> still write without it (ledgered, out of scope). Callers MUST invoke
+    /// <see cref="Check"/> BEFORE any disk write (terrain save, scenario save, package pack) and abort — surfacing
+    /// the returned located error — on a non-null return, so a rejected write leaves NOTHING partial on disk.
     ///
     /// This is a HARD gate, distinct from and additive to the non-fatal <c>CollectAdvisories</c> layer: it MUST
-    /// NOT be weakened into an advisory or warning-only surface. It is intentionally fail-closed even though the
-    /// master load gate (<c>ScenarioGate.ShouldProceed</c>) runs the same validator in shadow mode — an exported
-    /// package must not ship model-invalid content that hard-fails on a fail-closed reload, not merely shadow-limp;
-    /// that shadow-vs-hard asymmetry is the point of DW-164. Note the guarantee is the MODEL-level validation subset
+    /// NOT be weakened into an advisory or warning-only surface. Since Story 7.7 the master LOAD gate is
+    /// fail-closed everywhere too (shadow mode is gone), so this pre-write gate and the load gate now agree: an
+    /// exported package that would hard-fail on reload is never written. Note the guarantee is the MODEL-level
+    /// validation subset
     /// (coordinates / slots / player-slot economy / painted-cell blocking): slope-derived blocked cells depend on the
     /// terrain heightmap and are recomputed at load, so they are outside this Godot-free gate's view and are not part
     /// of the loadability it certifies.

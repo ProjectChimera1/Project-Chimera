@@ -247,6 +247,16 @@ namespace ProjectChimera.CreationSuite
         {
             if (_pendingScenario == null) return;
 
+            // Story 7.7 — the AI-generated save routes through the SAME hard MapWriteGate as Export/New-Map
+            // (DW-164 pattern): a model-invalid generated map is never persisted; the located error surfaces here
+            // and the load below is skipped (the boot gate would reject it anyway — this keeps bad bytes off disk).
+            string? gateErr = MapWriteGate.Check(_pendingScenario);
+            if (gateErr != null)
+            {
+                _statusLabel.Text = $"✘ Invalid map — not saved: {gateErr}";
+                return;
+            }
+
             try
             {
                 string resPath = "res://resources/data/scenarios/ai_generated.json";

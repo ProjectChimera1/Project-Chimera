@@ -20,6 +20,14 @@ namespace ProjectChimera.Core.Definitions
     /// </summary>
     public static class ScenarioSerializer
     {
+        /// <summary>
+        /// Story 7.7 (D3 versioning) — the CURRENT scenario-JSON format version <see cref="Serialize"/> stamps
+        /// into <see cref="ScenarioData.SchemaVersion"/> on every save. An absent stamp reads as v1 (legacy
+        /// amnesty); a file stamped NEWER than this rejects at <see cref="ScenarioValidator"/>. Bump only on a
+        /// real format change, together with the <c>VersionStampConsistencyTests</c> pin (same commit).
+        /// </summary>
+        public const int CurrentSchemaVersion = 1;
+
         private static readonly JsonSerializerOptions _options = new()
         {
             ReadCommentHandling = JsonCommentHandling.Skip,
@@ -47,76 +55,56 @@ namespace ProjectChimera.Core.Definitions
         /// </summary>
         public static string Serialize(ScenarioData scenario)
         {
+            // Story 7.7 review — all normalizations/stamps below apply to a SHALLOW COPY, never the caller's model:
+            // Serialize is a pure, deterministic byte-source (golden-hash checks pin its output) and may be handed
+            // a live ScenarioData the editor still holds. The former swap-mutate-restore discipline left the model
+            // transiently stamped (observable by concurrent readers, and permanently if a pre-try step threw); the
+            // copy makes non-mutation structural. Shallow is sufficient — only top-level references/stamps are
+            // reassigned, element contents are never touched — and the emitted bytes are identical
+            // (SchemaVersionTests.Serialize_DoesNotMutateTheCallersModel pins the contract).
+            ScenarioData copy = scenario.ShallowClone();
+
             // Review patch (Story 6.4): Regions uses JsonIgnore(WhenWritingNull), which omits null but NOT an empty
-            // array — `[]` would emit `"regions":[]` and drift the pinned scenario bytes. Normalize empty→null for
-            // THIS serialization only, WITHOUT mutating the caller's model: Serialize is a pure, deterministic
-            // byte-source (golden-hash checks pin its output) and may be handed a live ScenarioData the editor still
-            // holds, so a permanent `scenario.Regions = null` side effect would silently surprise any other holder of
-            // that instance. Swap-to-null under try/finally and restore the original reference afterwards — the JSON
-            // bytes are identical to the null/absent case, and the caller's object is observably unchanged.
-            // Story 14.5: the persistence_manifest follows the same absent-stays-absent contract but needs no swap here —
-            // a null PersistenceManifest is omitted by [JsonIgnore(WhenWritingNull)] on ScenarioData, so a manifest-less
-            // map serializes with no key and an authored manifest round-trips unchanged. Pinned by the Tier-1
-            // PersistenceManifestTests all-shipped absolute-absence guard + editor-save round-trip test.
-            ScenarioRegion[]? savedRegions = scenario.Regions;
-            if (savedRegions is { Length: 0 }) scenario.Regions = null;
+            // array — `[]` would emit `"regions":[]` and drift the pinned scenario bytes. Normalize empty→null.
+            // Story 14.5: the persistence_manifest follows the same absent-stays-absent contract but needs no
+            // normalization here — a null PersistenceManifest is omitted by [JsonIgnore(WhenWritingNull)], so a
+            // manifest-less map serializes with no key and an authored manifest round-trips unchanged. Pinned by the
+            // Tier-1 PersistenceManifestTests all-shipped absolute-absence guard + editor-save round-trip test.
+            if (copy.Regions is { Length: 0 }) copy.Regions = null;
 
-            // Story 6.5: normalize an ALL-CLEAR painted pathability layer to null for THIS serialization so a map the
-            // author painted then fully erased serializes byte-identically to a flat/legacy map (the key is omitted
-            // rather than emitting a 2048-byte all-zero bitset). Same swap-under-try/finally, restore-after discipline
-            // as Regions above — Serialize is a pure byte-source and must not mutate the caller's live model. A base64
-            // that decodes to any blocked cell is kept verbatim; only the all-zero case normalizes to null.
-            string? savedPathability = scenario.PathabilityBlocked;
-            if (savedPathability != null
-                && ProjectChimera.Navigation.PathabilityGrid.DigestOfBase64(savedPathability) == 0u)
-                scenario.PathabilityBlocked = null;
+            // Story 6.5: normalize an ALL-CLEAR painted pathability layer to null so a map the author painted then
+            // fully erased serializes byte-identically to a flat/legacy map (the key is omitted rather than emitting
+            // a 2048-byte all-zero bitset). A base64 that decodes to any blocked cell is kept verbatim.
+            if (copy.PathabilityBlocked != null
+                && ProjectChimera.Navigation.PathabilityGrid.DigestOfBase64(copy.PathabilityBlocked) == 0u)
+                copy.PathabilityBlocked = null;
 
-            // Story 6.6: normalize empty Props/Cameras/Water → null for THIS serialization (same swap-under-try/finally,
-            // restore-after discipline as Regions above — Serialize is a pure byte-source and must not mutate the
-            // caller's live model). An absent/empty collection emits no key, byte-identical to a pre-feature map.
-            ScenarioProp[]?   savedProps   = scenario.Props;
-            ScenarioCamera[]? savedCameras = scenario.Cameras;
-            ScenarioWater[]?  savedWater   = scenario.Water;
-            if (savedProps   is { Length: 0 }) scenario.Props   = null;
-            if (savedCameras is { Length: 0 }) scenario.Cameras = null;
-            if (savedWater   is { Length: 0 }) scenario.Water   = null;
+            // Story 6.6: normalize empty Props/Cameras/Water → null — an absent/empty collection emits no key,
+            // byte-identical to a pre-feature map.
+            if (copy.Props   is { Length: 0 }) copy.Props   = null;
+            if (copy.Cameras is { Length: 0 }) copy.Cameras = null;
+            if (copy.Water   is { Length: 0 }) copy.Water   = null;
 
-            // Story 6.7: normalize empty authoring metadata → null for THIS serialization so a map whose author left
-            // Author/Description blank serializes byte-identically to a pre-6.7 map (the key is omitted rather than
-            // emitting "author":""). Same swap-under-try/finally, restore-after discipline — Serialize is a pure
-            // byte-source and must not mutate the caller's live model.
-            string? savedAuthor      = scenario.Author;
-            string? savedDescription = scenario.Description;
-            if (string.IsNullOrEmpty(savedAuthor))      scenario.Author      = null;
-            if (string.IsNullOrEmpty(savedDescription)) scenario.Description = null;
+            // Story 6.7: normalize empty authoring metadata → null so a map whose author left Author/Description
+            // blank serializes byte-identically to a pre-6.7 map (no "author":"" key).
+            if (string.IsNullOrEmpty(copy.Author))      copy.Author      = null;
+            if (string.IsNullOrEmpty(copy.Description)) copy.Description = null;
 
-            // Story 7.3: normalize empty Variables/Timers arrays and empty/whitespace TriggerGraphJson → null for THIS
-            // serialization (same swap-under-try/finally, restore-after discipline — Serialize is a pure byte-source
-            // and must not mutate the caller's live model). An absent-declaration scenario then serializes BYTE-
-            // IDENTICALLY to pre-7.3 (no key emitted), so no scenario-bytes / CanonicalModelHash / StartStateHash move.
-            ScenarioVariable[]? savedVariables = scenario.Variables;
-            ScenarioTimer[]?    savedTimers    = scenario.Timers;
-            string?             savedTriggerGraph = scenario.TriggerGraphJson;
-            if (savedVariables is { Length: 0 }) scenario.Variables = null;
-            if (savedTimers    is { Length: 0 }) scenario.Timers    = null;
-            if (string.IsNullOrWhiteSpace(savedTriggerGraph)) scenario.TriggerGraphJson = null;
-            try
-            {
-                return JsonSerializer.Serialize(scenario, _options);
-            }
-            finally
-            {
-                scenario.Regions = savedRegions;
-                scenario.PathabilityBlocked = savedPathability;
-                scenario.Props   = savedProps;
-                scenario.Cameras = savedCameras;
-                scenario.Water   = savedWater;
-                scenario.Author      = savedAuthor;
-                scenario.Description = savedDescription;
-                scenario.Variables       = savedVariables;
-                scenario.Timers          = savedTimers;
-                scenario.TriggerGraphJson = savedTriggerGraph;
-            }
+            // Story 7.3: normalize empty Variables/Timers arrays and empty/whitespace TriggerGraphJson → null. An
+            // absent-declaration scenario then serializes BYTE-IDENTICALLY to pre-7.3 (no key emitted), so no
+            // scenario-bytes / CanonicalModelHash / StartStateHash move.
+            if (copy.Variables is { Length: 0 }) copy.Variables = null;
+            if (copy.Timers    is { Length: 0 }) copy.Timers    = null;
+            if (string.IsNullOrWhiteSpace(copy.TriggerGraphJson)) copy.TriggerGraphJson = null;
+
+            // Story 7.7 (D3 versioning): STAMP the current schema/checksum-algo versions. Every save carries the
+            // stamps; the caller's in-memory model (possibly null stamps) is untouched. Both stamps are EXCLUDED
+            // from CanonicalModelHash, so this re-save-adds-stamps behavior never moves the handshake hash of a
+            // legacy file.
+            copy.SchemaVersion       = CurrentSchemaVersion;
+            copy.ChecksumAlgoVersion = CanonicalModelHash.AlgoVersion;
+
+            return JsonSerializer.Serialize(copy, _options);
         }
 
         /// <summary>

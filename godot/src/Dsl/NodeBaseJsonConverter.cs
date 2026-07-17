@@ -35,7 +35,23 @@ namespace ProjectChimera.Dsl
         public override NodeBase Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {
             using JsonDocument doc = JsonDocument.ParseValue(ref reader);
-            return ReadNode(doc.RootElement, options, path: "node");
+            NodeBase node = ReadNode(doc.RootElement, options, path: "node");
+            // Story 7.7 — the optional per-node `_editor` annotation bag: allow-listed on EVERY kind (see
+            // RejectUnknownProperties), captured VERBATIM (a Clone survives the transient JsonDocument) and never
+            // interpreted. Write() re-emits it, so authoring metadata round-trips; the canonical hash never reads it.
+            // Review follow-up: SIZE-CAPPED like every other authored surface (DslBounds.MaxEditorBagBytes) — the
+            // bag is round-tripped, never read, so an unbounded one would be the file's one free payload channel.
+            if (doc.RootElement.ValueKind == JsonValueKind.Object
+                && doc.RootElement.TryGetProperty(EditorProperty, out JsonElement editorEl))
+            {
+                int bagBytes = System.Text.Encoding.UTF8.GetByteCount(editorEl.GetRawText());
+                if (bagBytes > DslBounds.MaxEditorBagBytes)
+                    throw new JsonException(
+                        $"node {node.Id}.{EditorProperty}: annotation bag is {bagBytes} bytes, over the " +
+                        $"DslBounds.MaxEditorBagBytes={DslBounds.MaxEditorBagBytes} cap.");
+                node.Editor = editorEl.Clone();
+            }
+            return node;
         }
 
         /// <inheritdoc />
@@ -204,8 +220,18 @@ namespace ProjectChimera.Dsl
                     throw new JsonException(
                         $"Cannot serialize graph node of type '{value.GetType().Name}': not in the closed kind registry.");
             }
+            // Story 7.7 — re-emit the verbatim `_editor` bag LAST (a fixed position keeps ToCanonicalJson
+            // deterministic). JsonElement.WriteTo replays the captured tokens through this writer.
+            if (value.Editor is JsonElement editor)
+            {
+                writer.WritePropertyName(EditorProperty);
+                editor.WriteTo(writer);
+            }
             writer.WriteEndObject();
         }
+
+        /// <summary>Story 7.7 — the per-node verbatim annotation property (allow-listed on every kind).</summary>
+        private const string EditorProperty = "_editor";
 
         // ── Node dispatch (read) ─────────────────────────────────────────────────
 
@@ -253,7 +279,7 @@ namespace ProjectChimera.Dsl
                     TimerName    = ReadOptString(el, "timer_name", path),
                     Amount       = ReadFixed(el, "amount", path, options, Fixed.Zero),
                     Count        = ReadInt(el, "count", path, 0),
-                    Operator     = ReadString(el, "operator", path, ">="),
+                    Operator     = ReadOperator(el, path),
                 };
             }
 
@@ -271,7 +297,7 @@ namespace ProjectChimera.Dsl
                     Variable     = ReadOptString(el, "variable", path),
                     RegionId     = ReadOptString(el, "region_id", path),
                     Value        = ReadInt(el, "value", path, 0),
-                    Operator     = ReadString(el, "operator", path, ">="),
+                    Operator     = ReadOperator(el, path),
                 };
             }
 
@@ -477,6 +503,19 @@ namespace ProjectChimera.Dsl
             return el.GetString()!;
         }
 
+        /// <summary>Story 7.7 review — the comparison-operator field of an event/condition node, membership-checked
+        /// against the ONE closed vocabulary (<see cref="NodeKinds.Operators"/> — the same set the flat
+        /// <c>ScenarioValidator</c> gate aliases), mirroring the expr-op membership checks. An unknown operator
+        /// previously constructed and fell into <c>ScenarioDirector.Compare</c>'s silent <c>_ =&gt; false</c> arm
+        /// (an inert dead trigger); now it is a located parse reject. Absent keeps the <c>"&gt;="</c> default.</summary>
+        private static string ReadOperator(JsonElement parent, string path)
+        {
+            string op = ReadString(parent, "operator", path, ">=");
+            if (!NodeKinds.InSet(NodeKinds.Operators, op))
+                throw new JsonException($"{path}.operator: '{op}' is not a known comparison operator (>, <, >=, <=, ==, !=).");
+            return op;
+        }
+
         private static string? ReadOptString(JsonElement parent, string prop, string path)
         {
             if (!parent.TryGetProperty(prop, out JsonElement el) || el.ValueKind == JsonValueKind.Null) return null;
@@ -488,7 +527,10 @@ namespace ProjectChimera.Dsl
         private static Fixed ReadFixed(JsonElement parent, string prop, string path, JsonSerializerOptions options, Fixed fallback)
         {
             if (!parent.TryGetProperty(prop, out JsonElement el)) return fallback;
-            try { return el.Deserialize<Fixed>(options); }            // routes through FixedJsonConverter (the one quantizer)
+            // The one quantizer (FixedJsonConverter) via its element entry point — same rulebook as
+            // el.Deserialize<Fixed>(options), without per-field JsonSerializer machinery (Story 7.7 perf review:
+            // that overhead dominated the max-caps graph parse inside the cold handshake-hash budget).
+            try { return ProjectChimera.Core.Definitions.FixedJsonConverter.ReadElement(el); }
             catch (JsonException ex) { throw new JsonException($"{path}.{prop}: {ex.Message}"); }
         }
 
@@ -609,13 +651,24 @@ namespace ProjectChimera.Dsl
         /// Any property whose name is not in <paramref name="allowed"/> is a located reject; a DUPLICATE allowed key
         /// is a located reject too (JsonDocument permits duplicate names and TryGetProperty silently takes the
         /// FIRST — without this, a second value could smuggle past validation). Closes the hole
-        /// <c>UnmappedMemberHandling.Disallow</c> leaves inside a custom converter (AR-22).
+        /// <c>UnmappedMemberHandling.Disallow</c> leaves inside a custom converter (AR-22). Story 7.7: the verbatim
+        /// <c>_editor</c> annotation bag is implicitly allow-listed on EVERY kind (still at most once) — it is
+        /// captured, never interpreted, and excluded from the canonical hash by construction.
         /// </summary>
         private static void RejectUnknownProperties(JsonElement el, string path, params string[] allowed)
         {
             Span<bool> seen = stackalloc bool[allowed.Length];
+            bool seenEditor = false;
             foreach (JsonProperty p in el.EnumerateObject())
             {
+                if (string.Equals(p.Name, EditorProperty, StringComparison.Ordinal))
+                {
+                    if (seenEditor)
+                        throw new JsonException(
+                            $"{path}.{p.Name}: duplicate property (each field may appear at most once, AR-22).");
+                    seenEditor = true;
+                    continue;
+                }
                 int idx = -1;
                 for (int i = 0; i < allowed.Length; i++)
                     if (string.Equals(p.Name, allowed[i], StringComparison.Ordinal)) { idx = i; break; }

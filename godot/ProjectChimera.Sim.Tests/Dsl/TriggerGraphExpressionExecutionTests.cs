@@ -521,7 +521,8 @@ namespace ProjectChimera.Sim.Tests.Dsl
 
             var scenario = new ScenarioData { TriggerGraphJson = g.ToCanonicalJson() };
             var ex = Assert.ThrowsAny<System.Text.Json.JsonException>(() => Build(scenario));
-            Assert.Contains("emit only on port", ex.Message);
+            // Story 7.7: the structural gate (port legality) now fires first — same error class, located.
+            Assert.Contains("is not a data-out port", ex.Message);
         }
 
         [Fact]

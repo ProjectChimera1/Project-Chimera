@@ -14,15 +14,17 @@ namespace ProjectChimera.Core.Definitions
     /// <c>JsonException</c>) — ONE implementation, so the RULES are identical by construction (the 7.4
     /// precedent hand-duplicated its rules; the 7.6 surface is large enough that duplication would drift).
     ///
-    /// Review P13 — the parity guarantee, stated precisely: shared-rulebook parity covers the RULES, not the
-    /// INVOCATION conditions, which deliberately differ. <see cref="ScenarioValidator"/> runs
-    /// <see cref="CheckGraph"/> UNCONDITIONALLY on every graph scenario, while the LoadScenario backstop guards
-    /// it behind <see cref="HasLoopConstructs"/> (the legacy-parity posture: a loop/array-free scenario keeps
-    /// its exact pre-7.6 load behavior) — only <see cref="CheckSpawnCounts"/> is unconditional at BOTH gates.
-    /// Additionally, the validator's own spawn scan checks EVERY spawn_unit node in the parsed graph, whereas
-    /// the backstop's <see cref="CheckSpawnCounts"/> walks only exec-REACHABLE items (an out-of-range count on
-    /// an unreachable node passes the backstop but fails the validator). Closing that residual divergence class
-    /// (whole-graph structural/reachability validation) is Story 7.7 structural-validator territory.
+    /// Story 7.7 — gate/backstop reconciliation: BOTH gates now run <see cref="CheckDeclarations"/> +
+    /// <see cref="CheckGraph"/> + <see cref="CheckSpawnCounts"/> + <c>GraphStructureGate.Check</c>
+    /// UNCONDITIONALLY (the 7.6 <c>HasLoopConstructs</c> legacy-parity guard is removed — there is no
+    /// invocation-condition divergence left). The remaining VALIDATOR-ONLY checks are deliberate policy, not
+    /// drift: the <c>CheckFactionSlot</c> engine ceiling, <c>EffectBounds</c> on run_effect embeds, the
+    /// timer/variable declaration semantics, spawn-position bounds/blocked-cell checks, and the stamp checks —
+    /// all live in <see cref="ScenarioValidator"/> alone (authoring-policy rules whose absence cannot crash the
+    /// runtime; the compiler/loop-gate structural bounds keep direct loads safe).
+    ///
+    /// Story 7.7 also adds the loop-var SHADOWING rule here: nested loops sharing one <c>loop_var</c> along a
+    /// nesting chain reject located (the inner loop would silently overwrite the outer loop's live value).
     ///
     /// Every reject is a LOCATED error string naming the offending node and, for caps, the
     /// <see cref="DslBounds"/> constant — never a silent runtime truncation. Checks:
@@ -47,22 +49,8 @@ namespace ProjectChimera.Core.Definitions
     /// </summary>
     internal static class DslLoopGate
     {
-        /// <summary>True when the scenario carries any Story 7.6 construct (an Array declaration, or a loop/
-        /// branch/array-action/array-expression node in the graph) — the backstop's legacy-parity guard: a
-        /// loop/array-free scenario skips every new check, keeping its exact pre-7.6 load behavior.</summary>
-        public static bool HasLoopConstructs(ScenarioVariable[]? variables, TriggerGraph? graph)
-        {
-            if (variables != null)
-                foreach (ScenarioVariable v in variables)
-                    if (v != null && (v.Type == DslValueType.Array || v.ElementType != null || v.Capacity != null))
-                        return true;
-            if (graph != null)
-                foreach (NodeBase n in graph.Nodes)
-                    if (n is ForEachNode or ForEachBatchedNode or BranchNode or ExprArrayGetNode or ExprArrayLenNode
-                        || (n is ActionNode a && NodeKinds.IsArrayActionKind(a.Kind)))
-                        return true;
-            return false;
-        }
+        // Story 7.7: the 7.6 HasLoopConstructs legacy-parity guard is REMOVED — the LoadScenario backstop now runs
+        // every shared check unconditionally, exactly like the validator (gate/backstop reconciliation).
 
         /// <summary>Array-declaration rules (see class remarks). Returns the first located error, or null.</summary>
         public static string? CheckDeclarations(ScenarioVariable[]? variables)
@@ -212,9 +200,9 @@ namespace ProjectChimera.Core.Definitions
         /// Review (7.6) — the spawn-count backstop: every executable <c>spawn_unit</c> action (both channels —
         /// flat triggers lower into the graph before this runs — and every nesting level) must carry a count in
         /// 1..<see cref="EffectCaps.MaxSpawnCount"/>. Run UNCONDITIONALLY by <c>ScenarioDirector.LoadScenario</c>
-        /// (NOT behind the <see cref="HasLoopConstructs"/> legacy guard: the "never a silent runtime truncation"
-        /// posture makes an out-of-range count a loud load reject at BOTH gates, message-parallel to the
-        /// <c>ScenarioValidator</c> reject). Returns the first located error, or null.
+        /// (the "never a silent runtime truncation" posture makes an out-of-range count a loud load reject at
+        /// BOTH gates, message-parallel to the <c>ScenarioValidator</c> reject). Returns the first located error,
+        /// or null.
         /// </summary>
         public static string? CheckSpawnCounts(List<TriggerGraph.TriggerExec> execs)
         {
@@ -248,6 +236,11 @@ namespace ProjectChimera.Core.Definitions
             public IReadOnlyDictionary<string, (DslValueType Type, VarScope Scope)> DeclMap = null!;
             public IReadOnlyDictionary<string, (DslValueType Elem, int Capacity)> ArrayDecls = null!;
             public Func<string, bool> RegionExists = null!;
+
+            /// <summary>Story 7.7 — the loop variables bound by the ENCLOSING for_each chain (name → owning node
+            /// id), maintained add/remove around each body recursion so the shadowing reject names both loops.
+            /// Sibling loops (not on one nesting chain) may legally reuse a loop_var.</summary>
+            public readonly Dictionary<string, int> ActiveLoopVars = new(StringComparer.Ordinal);
         }
 
         private static bool ContainsLoopConstruct(TriggerGraph.ExecItem[] items)
@@ -295,9 +288,27 @@ namespace ProjectChimera.Core.Definitions
 
                         long iterCap = CheckForEach(ctx, fe);
                         RequireWalkDepth(walkDepth + 1, fe.Id, "for_each");
+
+                        // Story 7.7 — loop-var shadowing along a NESTING chain rejects located: the inner loop
+                        // would silently overwrite the outer loop's live TriggerLocal value each iteration (the
+                        // ledgered shadowing gap). Sibling loops may reuse a name (removed after the body walk).
+                        string? loopVar = fe.LoopVar;
+                        if (!string.IsNullOrEmpty(loopVar))
+                        {
+                            if (ctx.ActiveLoopVars.TryGetValue(loopVar!, out int ownerId))
+                                throw new GateException(
+                                    $"for_each node {fe.Id}: loop_var '{loopVar}' is already bound by enclosing for_each node {ownerId} " +
+                                    "(nested loops on one chain must use distinct loop variables — shadowing would silently overwrite the outer loop's value).");
+                            ctx.ActiveLoopVars[loopVar!] = fe.Id;
+                        }
+
                         int inner = batchedInTrigger;
                         long body = WalkChain(ctx, it.Body, newDepth, walkDepth + 1, topLevel: false, ref inner);
                         batchedInTrigger = inner;
+
+                        if (!string.IsNullOrEmpty(loopVar))
+                            ctx.ActiveLoopVars.Remove(loopVar!);
+
                         cost += Sat(1 + Sat(iterCap * body));
                         break;
                     }

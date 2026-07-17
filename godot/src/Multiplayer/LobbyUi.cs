@@ -355,28 +355,24 @@ namespace ProjectChimera.Multiplayer
                     break;
 
                 case PacketType.Ready:
+                {
+                    // Story 7.7 — the pure HandshakeGate decision: hash 0 (not computed) BLOCKS (fail-closed,
+                    // inverting the old skip), a nonzero mismatch blocks, equal nonzero allows. An UNPARSEABLE
+                    // Ready payload routes through the gate as peerHash 0 (peerHashParsed: false) so it blocks
+                    // with the not-computed reason — it must never mark the peer ready and bypass the check.
+                    bool parsed = TickCommandPacket.TryReadReady(data, len, out uint peerHash);
+                    string? block = HandshakeGate.CheckStart(ScenarioHash, peerHash, peerHashParsed: parsed);
+                    if (block != null)
+                    {
+                        SetStatus(block);
+                        _peerReadyConfirmed = false; // don't allow TryStartGame
+                        return;
+                    }
                     _peerReadyConfirmed = true;
-                    if (TickCommandPacket.TryReadReady(data, len, out uint peerHash))
-                    {
-                        if (ScenarioHash != 0 && peerHash != 0 && peerHash != ScenarioHash)
-                        {
-                            // Mismatched scenario files = guaranteed desync. Block the match.
-                            SetStatus(
-                                $"MAP MISMATCH — cannot start!\n" +
-                                $"Your map: 0x{ScenarioHash:X8}\n" +
-                                $"Peer map:  0x{peerHash:X8}\n" +
-                                "Both players must load the same scenario file.");
-                            _peerReadyConfirmed = false; // don't allow TryStartGame
-                            return;
-                        }
-                        SetStatus("Other player is ready!");
-                    }
-                    else
-                    {
-                        SetStatus("Other player is ready!");
-                    }
+                    SetStatus("Other player is ready!");
                     TryStartGame();
                     break;
+                }
 
                 case PacketType.StartGame:
                     FireMatchStart(isHost: false);

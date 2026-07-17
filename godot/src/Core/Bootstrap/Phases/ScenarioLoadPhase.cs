@@ -21,10 +21,10 @@ namespace ProjectChimera.Core.Bootstrap
 
         public string Name => "ScenarioLoad";
 
-        /// <summary>The single pre-tick validation gate (Godot-free). Shadow-mode on master.</summary>
+        /// <summary>The single pre-tick validation gate (Godot-free). Story 7.7: FAIL-CLOSED, unconditionally —
+        /// shadow mode and its env toggle are removed; a rejected model is never applied (the validated fallback
+        /// substitutes, extending the missing-file safety net to invalid files).</summary>
         private readonly ScenarioValidator _validator = new();
-        /// <summary>Fail-closed toggle (CHIMERA_VALIDATE_FAILCLOSED, default off). Flip only on a release branch.</summary>
-        private static readonly bool _failClosed = ScenarioGate.IsFailClosed();
 
         /// <summary>Story 6.5: the ElevationGrid built by the most recent <see cref="BuildAndInjectElevationGrid"/>
         /// (or null on a flat/legacy/failed build), so <see cref="BuildAndInjectPathabilityGrid"/> can derive steep
@@ -40,24 +40,46 @@ namespace ProjectChimera.Core.Bootstrap
         public void Run() => LoadAndApplyScenario();
 
         /// <summary>
-        /// Resolve <see cref="MainScene.ScenarioPath"/>, load the JSON, and apply it. Falls back to a hardcoded
-        /// default if the file is missing or fails to parse.
+        /// Resolve <see cref="MainScene.ScenarioPath"/>, load the JSON, validate FAIL-CLOSED (Story 7.7), and
+        /// apply it. Falls back to the VALIDATED hardcoded mirror if the file is missing, fails to parse, or is
+        /// REJECTED by the validator — the established missing-file safety net, extended to invalid files (the
+        /// rejected model never touches the sim; the located error is surfaced).
         /// </summary>
         private void LoadAndApplyScenario()
         {
-            // Check for an AI-generated scenario passed across the scene reload boundary.
+            // Check for an AI-generated scenario passed across the scene reload boundary. Story 7.7: it clears the
+            // SAME fail-closed gate as a file scenario BEFORE any sim/terrain side effect — a rejected AI model is
+            // substituted by the validated fallback, exactly like an invalid file.
             if (PendingGeneratedScenario != null)
             {
                 var generated = PendingGeneratedScenario;
                 PendingGeneratedScenario = null;
-                _ctx.Scenario = generated;
-                // Story 6.3: restore sculpted terrain and build the sim elevation grid BEFORE apply, so every
-                // scenario-placed unit samples the FINALIZED heightmap at spawn (see BuildAndInjectElevationGrid).
-                RestoreTerrainFromScenario();
-                BuildAndInjectElevationGrid();
-                BuildAndInjectPathabilityGrid(); // Story 6.5 — after the elevation grid (slope-derive reads it), before apply
-                ApplyScenarioThroughApplier(generated, "ApplyScenario");
-                GD.Print($"[MainScene] Loaded AI-generated scenario: \"{generated.DisplayName}\"");
+                FactionDefinition?[] seededDefs = SnapshotSlotFactionDefs(); // pre-resolution defaults (see reject below)
+                ResolveSlotFactionDefs(generated);                 // the one Godot path-resolution, hoisted
+                ValidationResult rg = ValidateBeforeApply(generated, "ApplyScenario(AI)");
+                if (!rg.Ok)
+                {
+                    // Review follow-up: the pre-pass above resolved the REJECTED model's faction defs into the
+                    // shared slot array — re-seed the _Ready defaults (what the missing-file path boots with) so
+                    // the fallback never spawns from a rejected scenario's roster; and clear Scenario so no
+                    // downstream consumer can observe the rejected model as if applied (missing-file alignment:
+                    // Scenario null + FallbackMirror set).
+                    RestoreSlotFactionDefs(seededDefs);
+                    _ctx.Scenario = null;
+                    ApplyFallbackThroughApplier();
+                }
+                else
+                {
+                    _ctx.Scenario = generated;
+                    // Story 6.3: restore sculpted terrain and build the sim elevation grid BEFORE apply, so every
+                    // scenario-placed unit samples the FINALIZED heightmap at spawn (see BuildAndInjectElevationGrid).
+                    RestoreTerrainFromScenario();
+                    BuildAndInjectElevationGrid();
+                    BuildAndInjectPathabilityGrid(); // Story 6.5 — after the elevation grid (slope-derive reads it), before apply
+                    _ctx.Applier.Apply(rg.Value);
+                    _ctx.ScenarioApplied = true;
+                    GD.Print($"[MainScene] Loaded AI-generated scenario: \"{generated.DisplayName}\"");
+                }
                 SetupStartPositionBridge();
                 return;
             }
@@ -68,28 +90,35 @@ namespace ProjectChimera.Core.Bootstrap
             if (scenario == null)
             {
                 GD.PrintErr($"[MainScene] Scenario not found or failed to parse: {_ctx.Scene.ScenarioPath} — using defaults.");
-                // Fallback map is flat (no TerrainRef): no restore. BuildAndInjectElevationGrid is intentionally NOT
-                // called here, so explicitly clear the applier's grid — a REUSED applier must not carry a prior
-                // sculpted load's grid into this flat fallback. Every unit then spawns at Fixed.Zero elevation
-                // (byte-identical to pre-feature). (review pass 1, F6.)
-                _ctx.Applier.SetElevationGrid(null);
-                _lastElevationGrid = null;
-                // Story 6.5: clear pathability too — a REUSED applier/flow-field must not carry a prior sculpted
-                // load's blocking into this flat fallback (every unit then moves freely, byte-identical to pre-feature).
-                _ctx.Applier.SetPathabilityGrid(null);
-                _ctx.FlowFieldSys?.SetStaticBlocked(null);
-                _ctx.Pathability = null;
                 ApplyFallbackThroughApplier();
             }
             else
             {
-                _ctx.Scenario = scenario;
-                // Story 6.3: restore terrain + inject the elevation grid BEFORE apply (spawn-time elevation sampling).
-                RestoreTerrainFromScenario();
-                BuildAndInjectElevationGrid();
-                BuildAndInjectPathabilityGrid(); // Story 6.5 — after the elevation grid, before apply
-                ApplyScenarioThroughApplier(scenario, "ApplyScenario");
-                GD.Print($"[MainScene] Loaded scenario: \"{scenario.DisplayName}\" ({scenario.Id})");
+                // Story 7.7 — validate BEFORE any terrain/grid side effect, so a rejected file leaves no residue
+                // and the fallback boots on a clean flat board (the invalid model is never applied).
+                FactionDefinition?[] seededDefs = SnapshotSlotFactionDefs(); // pre-resolution defaults (see reject below)
+                ResolveSlotFactionDefs(scenario);                  // the one Godot path-resolution, hoisted
+                ValidationResult r = ValidateBeforeApply(scenario, "ApplyScenario");
+                if (!r.Ok)
+                {
+                    // Review follow-up (mirrors the AI path above): re-seed the default slot faction defs — the
+                    // pre-pass resolved the REJECTED file's defs into the shared array — and clear Scenario so the
+                    // reject leaves exactly the missing-file state (Scenario null + FallbackMirror set).
+                    RestoreSlotFactionDefs(seededDefs);
+                    _ctx.Scenario = null;
+                    ApplyFallbackThroughApplier();
+                }
+                else
+                {
+                    _ctx.Scenario = scenario;
+                    // Story 6.3: restore terrain + inject the elevation grid BEFORE apply (spawn-time elevation sampling).
+                    RestoreTerrainFromScenario();
+                    BuildAndInjectElevationGrid();
+                    BuildAndInjectPathabilityGrid(); // Story 6.5 — after the elevation grid, before apply
+                    _ctx.Applier.Apply(r.Value);
+                    _ctx.ScenarioApplied = true;
+                    GD.Print($"[MainScene] Loaded scenario: \"{scenario.DisplayName}\" ({scenario.Id})");
+                }
             }
 
             SetupStartPositionBridge();
@@ -271,9 +300,10 @@ namespace ProjectChimera.Core.Bootstrap
         }
 
         /// <summary>
-        /// Story 1.7 shadow-mode gate: run the model through the validator and return its result. On failure, log
-        /// a LOCATED rejection (presentation-side — the Godot-free validator never logs). The caller applies
-        /// <c>result.Value</c> when <see cref="ScenarioGate.ShouldProceed"/> permits. Never throws.
+        /// Story 1.7 gate, Story 7.7 fail-closed: run the model through the validator and return its result. On
+        /// failure, log the LOCATED rejection and surface it as a toast (presentation-side — the Godot-free
+        /// validator never logs); the caller applies <c>result.Value</c> ONLY when <c>result.Ok</c> (no shadow
+        /// proceed). Never throws.
         /// </summary>
         private ValidationResult ValidateBeforeApply(ScenarioData model, string pathLabel)
         {
@@ -281,8 +311,29 @@ namespace ProjectChimera.Core.Bootstrap
             // pre-placed CUSTOM building's authored id is accepted by the retired enum gate.
             ValidationResult result = _validator.Validate(model, _ctx.SlotFactionDefs);
             if (!result.Ok)
+            {
                 GD.PrintErr($"[ScenarioValidator] {pathLabel} REJECTED: {result.Error}");
+                // Surface the located error in-scene too (the existing toast convention) — the fallback world that
+                // boots instead would otherwise look like a silent wrong-map load. ShowTriggerMessage no-ops
+                // internally when the toast label isn't built yet (review follow-up: the former guard here checked
+                // ToastLabel while the call went through Scene — one guard, owned by the callee).
+                _ctx.Scene.ShowTriggerMessage($"Invalid scenario — loaded the fallback map instead:\n{result.Error}", 8f);
+            }
             return result;
+        }
+
+        /// <summary>Review follow-up — a shallow snapshot of the shared per-slot faction-def array's CONTENTS,
+        /// taken before <see cref="ResolveSlotFactionDefs"/> so a REJECTED scenario's resolved defs can be rolled
+        /// back to the _Ready-seeded defaults (what the missing-file fallback boots with).</summary>
+        private FactionDefinition?[] SnapshotSlotFactionDefs() =>
+            (FactionDefinition?[])_ctx.SlotFactionDefs.Clone();
+
+        /// <summary>Restore a <see cref="SnapshotSlotFactionDefs"/> snapshot IN PLACE — the array reference is
+        /// shared with the applier/MainScene and must never be reassigned.</summary>
+        private void RestoreSlotFactionDefs(FactionDefinition?[] snapshot)
+        {
+            for (int i = 0; i < _ctx.SlotFactionDefs.Length; i++)
+                _ctx.SlotFactionDefs[i] = snapshot[i];
         }
 
         /// <summary>
@@ -328,73 +379,41 @@ namespace ProjectChimera.Core.Bootstrap
         }
 
         /// <summary>
-        /// Story 1.8b — presentation orchestration for a parsed scenario: faction pre-pass, the 1.7 validation
-        /// gate, then (when shadow / fail-closed policy permits) hand the validated model to the applier.
-        /// </summary>
-        private void ApplyScenarioThroughApplier(ScenarioData scenario, string pathLabel)
-        {
-            ResolveSlotFactionDefs(scenario);                            // the one Godot path-resolution, hoisted
-            ValidationResult r = ValidateBeforeApply(scenario, pathLabel);
-            if (ScenarioGate.ShouldProceed(r.Ok, _failClosed))          // shadow proceeds even when r.Ok == false
-            {
-                _ctx.Applier.Apply(r.Value);
-                _ctx.ScenarioApplied = true; // reached only when the gate permits applying (Story 1.7 review patch)
-            }
-        }
-
-        /// <summary>
-        /// Story 1.8b — fallback path (scenario JSON missing): build the ScenarioData mirror so it passes the same
-        /// validation gate and yields a real canonical-model hash, then apply the hardcoded fallback through the
-        /// applier (the always-applied safety net; its gate result is shadow-validation only).
+        /// Story 1.8b / Story 7.7 — the fallback path (scenario JSON missing, unparseable, or REJECTED by the
+        /// validator): clear the terrain/pathability sinks (the fallback map is flat — a REUSED applier must not
+        /// carry a prior sculpted load's grids), then VALIDATE the Godot-free mirror and apply it through the SAME
+        /// <c>Apply(Validated&lt;T&gt;)</c> writer path every other scenario uses (the legacy un-tokened
+        /// <c>ApplyFallback</c> is retired — one writer path, one token type). If the mirror itself fails
+        /// validation, NOTHING is applied (empty world) and the defect is logged — that is a build defect, not a
+        /// runtime path.
         /// </summary>
         private void ApplyFallbackThroughApplier()
         {
-            _ctx.FallbackMirror = BuildFallbackMirror();
-            ValidateBeforeApply(_ctx.FallbackMirror, "fallback"); // shadow-validation only (result intentionally not used)
-            _ctx.ScenarioApplied = true; // the fallback is the always-applied safety net (Story 1.7 review patch)
-            _ctx.Applier.ApplyFallback();
-        }
+            // Flat fallback: no terrain restore, and explicitly clear the grids so a REUSED applier cannot carry a
+            // prior sculpted load's elevation/blocking into this flat board (review pass 1 F6 / Story 6.5).
+            _ctx.Applier.SetElevationGrid(null);
+            _lastElevationGrid = null;
+            _ctx.Applier.SetPathabilityGrid(null);
+            _ctx.FlowFieldSys?.SetStaticBlocked(null);
+            _ctx.Pathability = null;
 
-        /// <summary>
-        /// Story 1.7: a ScenarioData mirror of the hardcoded ScenarioApplier.ApplyFallback layout, used ONLY to
-        /// feed the validation gate and the canonical-model hash. Keep these literal values in sync with the
-        /// applier's fallback; unit_id "worker" is the conventional worker id.
-        /// </summary>
-        private static ScenarioData BuildFallbackMirror() => new ScenarioData
-        {
-            Id           = "fallback",
-            DisplayName  = "Fallback",
-            MapBounds    = 120f,
-            WinCondition = WinCondition.DestroyAllBuildings,
-            PlayerSlots = new[]
+            // Review follow-up: thread the slot faction defs so the mirror's worker unit_ids resolve by CATEGORY
+            // (a custom faction whose worker isn't literally id'd "worker" still spawns its workers).
+            ScenarioData mirror = ProjectChimera.Core.Sim.ScenarioApplier.BuildFallbackMirror(_ctx.SlotFactionDefs);
+            ValidationResult r = _validator.Validate(mirror, _ctx.SlotFactionDefs);
+            if (!r.Ok)
             {
-                new ScenarioPlayerSlot { Slot = 0, StartOre = 200f, StartCrystal = 100f, BaseX = -45f, BaseZ = 0f },
-                new ScenarioPlayerSlot { Slot = 1, StartOre = 200f, StartCrystal = 100f, BaseX =  45f, BaseZ = 0f },
-            },
-            ResourceNodes = new[]
-            {
-                new ScenarioResourceNode { X = -20f, Z = -15f, Supply = 600f, Rate = 5f, MaxGatherers = 4 },
-                new ScenarioResourceNode { X = -20f, Z =  15f, Supply = 600f, Rate = 5f, MaxGatherers = 4 },
-                new ScenarioResourceNode { X =  20f, Z = -15f, Supply = 600f, Rate = 5f, MaxGatherers = 4 },
-                new ScenarioResourceNode { X =  20f, Z =  15f, Supply = 600f, Rate = 5f, MaxGatherers = 4 },
-                new ScenarioResourceNode { X =   0f, Z = -25f, Supply = 400f, Rate = 5f, MaxGatherers = 4 },
-                new ScenarioResourceNode { X =   0f, Z =  25f, Supply = 400f, Rate = 5f, MaxGatherers = 4 },
-                new ScenarioResourceNode { X = -35f, Z =   0f, Supply = 300f, Rate = 5f, MaxGatherers = 4 },
-                new ScenarioResourceNode { X =  35f, Z =   0f, Supply = 300f, Rate = 5f, MaxGatherers = 4 },
-            },
-            Buildings = new[]
-            {
-                new ScenarioBuilding { Type = "CommandCenter", Slot = 0, X = -45f, Z = 0f, PreBuilt = true },
-                new ScenarioBuilding { Type = "CommandCenter", Slot = 1, X =  45f, Z = 0f, PreBuilt = true },
-            },
-            Units = new[]
-            {
-                new ScenarioUnit { UnitId = "worker", Slot = 0, X = -42f, Z = -3f },
-                new ScenarioUnit { UnitId = "worker", Slot = 0, X = -42f, Z =  3f },
-                new ScenarioUnit { UnitId = "worker", Slot = 1, X =  42f, Z = -3f },
-                new ScenarioUnit { UnitId = "worker", Slot = 1, X =  42f, Z =  3f },
-            },
-        };
+                // Build defect: the shipped mirror must always validate. Apply nothing (empty world), log, and
+                // surface it in-scene (review follow-up: an empty world with only a console line read as a silent
+                // hang — same toast path as a scenario reject, no-op until the toast label exists).
+                GD.PrintErr($"[ScenarioValidator] fallback mirror REJECTED — applying nothing: {r.Error}");
+                _ctx.Scene.ShowTriggerMessage($"Fallback map failed validation (build defect) — nothing applied:\n{r.Error}", 8f);
+                return;
+            }
+            _ctx.FallbackMirror = mirror;
+            _ctx.Applier.Apply(r.Value);
+            _ctx.ScenarioApplied = true; // the validated fallback is the always-applied safety net
+        }
 
         /// <summary>
         /// Create flag-pole markers for the two player start positions. Reads initial XZ from the live scenario
@@ -418,7 +437,7 @@ namespace ProjectChimera.Core.Bootstrap
             }
             else
             {
-                // Fallback positions matching ScenarioApplier.ApplyFallback
+                // Fallback positions matching ScenarioApplier.BuildFallbackMirror
                 positions[0] = (-45f, 0f);
                 positions[1] = (+45f, 0f);
             }

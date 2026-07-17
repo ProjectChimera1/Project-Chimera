@@ -141,15 +141,12 @@ namespace ProjectChimera.Sim.Tests.Builder
         }
 
         [Fact]
-        public void Apply_ShadowMode_SkipsMalformedRegions_KeepsIndexAlignment_NoThrow()
+        public void Apply_MalformedRegions_FailValidation_AndTheTokenlessResultIsASafeNoOp()
         {
-            // Review patch (follow-up): shadow mode (D3) applies a model that FAILED validation, so malformed region
-            // rows reach BuildRegionStore's defensive skip logic. Prove that a null element, a non-finite corner, and
-            // a rect that collapses at the float→Fixed (16.16) boundary are each DROPPED without throwing (an NRE on
-            // the null row would abort the whole scene load), and — critically — that dropping them does NOT shift the
-            // surviving "hill" region's parallel-array index: a unit_in_region(hill) trigger must still resolve against
-            // hill's OWN rect. An ids/rects alignment regression would map "hill" to the wrong rect (or none) and the
-            // unit at the origin would no longer fire victory.
+            // Story 7.7 (supersedes the shadow-mode variant of this test): a model with malformed region rows FAILS
+            // validation and its result carries NO token — the applier can no longer receive it. Consuming the
+            // failed result's default Value must be a logged NO-OP (the null-model guard), never a partial apply:
+            // no region store is built, so a unit_in_region trigger loaded afterwards cannot fire.
             var (host, applier) = NewHostAndApplier();
             var model = ModelWithUnitAt(0f, 0f); // one live P1 worker at the origin (inside "hill" [-10..10])
             model.Regions = new[]
@@ -157,20 +154,50 @@ namespace ProjectChimera.Sim.Tests.Builder
                 null!,                                                                                            // (a) null row
                 new ScenarioRegion { Id = "nan", Name = "NaN", MinX = float.NaN, MinZ = 0f, MaxX = 5f, MaxZ = 5f }, // (b) non-finite corner
                 new ScenarioRegion { Id = "sub", Name = "Sub", MinX = 0f, MinZ = 0f, MaxX = 1e-6f, MaxZ = 1e-6f },  // (c) collapses at 16.16
-                new ScenarioRegion { Id = "hill", Name = "Hill", MinX = -10f, MinZ = -10f, MaxX = 10f, MaxZ = 10f }, // GOOD — its index must survive
+                new ScenarioRegion { Id = "hill", Name = "Hill", MinX = -10f, MinZ = -10f, MaxX = 10f, MaxZ = 10f }, // GOOD — but the model as a whole rejects
             };
             ValidationResult r = new ScenarioValidator().Validate(model);
-            Assert.False(r.Ok); // malformed regions ⇒ validation fails; this exercises the SHADOW-mode apply path
+            Assert.False(r.Ok);        // malformed regions ⇒ validation fails, located
+            Assert.NotNull(r.Error);
+            Assert.Null(r.Value.Value); // proof discipline: NO token for a failed model
 
             bool fired = false;
             var ex = Record.Exception(() =>
             {
-                applier.Apply(r.Value); // must NOT throw on the null / NaN / degenerate rows
+                applier.Apply(r.Value); // default token ⇒ null model ⇒ logged skip, world untouched
                 host.ScenarioDirector.OnVictory = _ => fired = true;
                 host.ScenarioDirector.Tick(host.World, Fixed.FromInt(1));
             });
-            Assert.Null(ex);    // no NRE / OOB from the three malformed rows
-            Assert.True(fired); // "hill" kept its correct rect despite the earlier drops ⇒ unit at origin ⇒ victory
+            Assert.Null(ex);     // consuming a failed result never throws
+            Assert.False(fired); // nothing was applied — no unit, no region store, no victory
+        }
+
+        [Fact]
+        public void BuildRegionStore_DefensiveSkips_DropOnlyTheMalformedRows()
+        {
+            // Story 7.7 review: the sanctioned flow can no longer reach these skips (the fail-closed validator
+            // rejects a null row / NaN corner / sub-16.16 rect before any Apply), but BuildRegionStore stays
+            // post-gate defense-in-depth for direct/headless callers — pin the skip behavior DIRECTLY (the method
+            // is internal; the test assembly compiles the sim sources).
+            var rows = new[]
+            {
+                null!,                                                                                             // (a) null row → skipped
+                new ScenarioRegion { Id = "nan",  MinX = float.NaN, MinZ = 0f, MaxX = 5f, MaxZ = 5f },              // (b) non-finite corner → skipped
+                new ScenarioRegion { Id = "sub",  MinX = 0f, MinZ = 0f, MaxX = 1e-6f, MaxZ = 1e-6f },               // (c) degenerate at 16.16 → skipped
+                new ScenarioRegion { Id = "inv",  MinX = 10f, MinZ = 10f, MaxX = -10f, MaxZ = -10f },               // (d) inverted rect → skipped
+                new ScenarioRegion { Id = "hill", MinX = -10f, MinZ = -10f, MaxX = 10f, MaxZ = 10f },               // GOOD → kept
+            };
+            RegionStore store = ScenarioApplier.BuildRegionStore(rows);
+            Assert.Equal(1, store.Count);                    // only the well-formed rect survives
+            Assert.True(store.TryGetIndex("hill", out int idx));
+            Assert.Equal(0, idx);                            // ids/rects stayed index-aligned
+            Assert.False(store.TryGetIndex("nan", out _));
+            Assert.False(store.TryGetIndex("sub", out _));
+            Assert.False(store.TryGetIndex("inv", out _));
+
+            // Null/empty inputs resolve to the shared Empty store (the no-allocation common case).
+            Assert.Same(RegionStore.Empty, ScenarioApplier.BuildRegionStore(null));
+            Assert.Same(RegionStore.Empty, ScenarioApplier.BuildRegionStore(System.Array.Empty<ScenarioRegion>()));
         }
     }
 }

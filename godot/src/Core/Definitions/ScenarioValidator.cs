@@ -14,9 +14,11 @@ namespace ProjectChimera.Core.Definitions
     /// <see cref="ScenarioData"/> through <see cref="Validate"/> before it is applied to the simulation. On
     /// success it mints a <see cref="Validated{T}"/> (the proof-of-validation token); on the FIRST failed check
     /// it returns a located <see cref="ValidationResult"/> error (field path + offending value). It is pure: it
-    /// NEVER throws and NEVER logs — the presentation call site decides shadow vs fail-closed policy
-    /// (<see cref="ScenarioGate"/>). Godot-free (src/Core/Definitions), so it compiles into the Tier-1 test
-    /// assembly and the AOT-eligible sim layer.
+    /// NEVER throws and NEVER logs — the call site surfaces the located error. Story 7.7: the gate is
+    /// FAIL-CLOSED EVERYWHERE, unconditionally — shadow mode and its env toggle are removed; proceeding requires
+    /// <c>Ok</c>, and only a passing model ever mints a <see cref="Validated{T}"/>.
+    /// Godot-free (src/Core/Definitions), so it compiles into the Tier-1 test assembly and the AOT-eligible sim
+    /// layer.
     ///
     /// The model is the as-built <see cref="ScenarioData"/> (still <c>float</c>-based in 1.7). The validator
     /// replicates the finiteness/range checks the <see cref="FixedJsonConverter"/> would do (the model does not
@@ -80,18 +82,39 @@ namespace ProjectChimera.Core.Definitions
         {
             if (m is null) return ValidationResult.Fail("scenario is null.");
 
-            // D3 (Story 1.8b): mint the proof-of-validation token ONCE here (m is non-null). It is carried by BOTH
-            // Pass and every Fail below, so 1.7 shadow-mode can still apply the model on a FAILED validation (the
-            // applier consumes only Validated<ScenarioData>). Golden-neutral: the same model is applied as today.
-            // This is the codebase's sole `new Validated<` (ValidatedSoleMinterTest guards it).
-            var validated = new Validated<ScenarioData>(m, _proof);
+            // Story 7.7 (proof discipline): the Validated<ScenarioData> token is minted ONLY at the Pass return at
+            // the BOTTOM of this method, after every check has passed. A failed validation carries NO token — the
+            // 1.7/1.8b shadow-mode apply-on-fail plumbing is retired, so an invalid model can never reach the
+            // applier. The Pass site below is the codebase's sole `new Validated<ScenarioData>` (guarded by
+            // ValidatedMintingTests' sole-minter source scan).
+
+            // ── Story 7.7 (D3 versioning stamps): schema_version / checksum_algo_version. Absent (null) ⇒ v1
+            //    legacy amnesty, no migration; a value NEWER than this build understands fails closed with a
+            //    located error (never a silent misparse of a future format). Both stamps are EXCLUDED from
+            //    CanonicalModelHash, so a re-save that adds them to a legacy file never moves the handshake. ──
+            if (m.SchemaVersion is int schemaV && schemaV > ScenarioSerializer.CurrentSchemaVersion)
+                return ValidationResult.Fail(
+                    $"scenario.schema_version={schemaV} is newer than this build's supported schema version " +
+                    $"{ScenarioSerializer.CurrentSchemaVersion} — a newer-format file cannot be safely loaded.");
+            // Review follow-up: an EXPLICIT 0/negative stamp is nonsense (versions start at 1; only an ABSENT
+            // stamp gets the v1 amnesty) — fail it closed rather than treating garbage as legacy.
+            if (m.SchemaVersion is int schemaLow && schemaLow < 1)
+                return ValidationResult.Fail(
+                    $"scenario.schema_version={schemaLow} must be >= 1 (omit the stamp entirely for a legacy file).");
+            if (m.ChecksumAlgoVersion is int algoV && algoV > CanonicalModelHash.AlgoVersion)
+                return ValidationResult.Fail(
+                    $"scenario.checksum_algo_version={algoV} is newer than this build's CanonicalModelHash.AlgoVersion=" +
+                    $"{CanonicalModelHash.AlgoVersion} — a newer-algo file cannot be safely loaded.");
+            if (m.ChecksumAlgoVersion is int algoLow && algoLow < 1)
+                return ValidationResult.Fail(
+                    $"scenario.checksum_algo_version={algoLow} must be >= 1 (omit the stamp entirely for a legacy file).");
 
             // ── Map bounds: finite, > 0, and inside the Fixed range (it is a coordinate ceiling) ──
             if (!Finite(m.MapBounds) || m.MapBounds <= 0f)
-                return ValidationResult.Fail($"scenario.map_bounds={m.MapBounds} must be finite and > 0.", validated);
+                return ValidationResult.Fail($"scenario.map_bounds={m.MapBounds} must be finite and > 0.");
             if (m.MapBounds >= Range)
                 return ValidationResult.Fail(
-                    $"scenario.map_bounds={m.MapBounds} exceeds the 16.16 range [0, {Range}).", validated);
+                    $"scenario.map_bounds={m.MapBounds} exceeds the 16.16 range [0, {Range}).");
 
             float bounds = m.MapBounds;
 
@@ -101,7 +124,7 @@ namespace ProjectChimera.Core.Definitions
             //    finite, non-negative, and inside the Fixed range like map_bounds. Default 0f passes unchanged. ──
             if (!Finite(m.SlopeBlockThreshold) || m.SlopeBlockThreshold < 0f || m.SlopeBlockThreshold >= Range)
                 return ValidationResult.Fail(
-                    $"scenario.slope_block_threshold={m.SlopeBlockThreshold} must be finite and within [0, {Range}).", validated);
+                    $"scenario.slope_block_threshold={m.SlopeBlockThreshold} must be finite and within [0, {Range}).");
 
             // ── Story 6.7: suggested_players is authoring metadata (2–4 for 1.0; engine ceiling Faction.Player4).
             //    Omit-when-default (0) ⇒ "unspecified" ⇒ nothing to validate (every existing scenario passes
@@ -109,18 +132,18 @@ namespace ProjectChimera.Core.Definitions
             //    unshippable design intent), distinct from the SOFT below-suggested advisory in CollectAdvisories. ──
             if (m.SuggestedPlayers != 0 && (m.SuggestedPlayers < 2 || m.SuggestedPlayers > 4))
                 return ValidationResult.Fail(
-                    $"scenario.suggested_players={m.SuggestedPlayers} must be in [2,4] (1.0 ships 2–4 players).", validated);
+                    $"scenario.suggested_players={m.SuggestedPlayers} must be in [2,4] (1.0 ships 2–4 players).");
 
             // ── Collections must be present. A null array is malformed input the applier would NRE on, so the
             // validator rejects it (located) rather than silently treating it as empty via the `?? Array.Empty`
             // guards below — those are then belt-and-suspenders. [Story 1.7 review patch] ──
-            if (m.PlayerSlots is null)   return ValidationResult.Fail("scenario.player_slots is null.", validated);
-            if (m.ResourceNodes is null) return ValidationResult.Fail("scenario.resource_nodes is null.", validated);
-            if (m.Buildings is null)     return ValidationResult.Fail("scenario.buildings is null.", validated);
-            if (m.Units is null)         return ValidationResult.Fail("scenario.units is null.", validated);
+            if (m.PlayerSlots is null)   return ValidationResult.Fail("scenario.player_slots is null.");
+            if (m.ResourceNodes is null) return ValidationResult.Fail("scenario.resource_nodes is null.");
+            if (m.Buildings is null)     return ValidationResult.Fail("scenario.buildings is null.");
+            if (m.Units is null)         return ValidationResult.Fail("scenario.units is null.");
             // Story 1.11 (AC3): triggers are now gated too. A null array would NRE in ScenarioDirector.LoadScenario
             // (new bool[_triggers.Length]); reject it located, like the four collections above.
-            if (m.Triggers is null)      return ValidationResult.Fail("scenario.triggers is null.", validated);
+            if (m.Triggers is null)      return ValidationResult.Fail("scenario.triggers is null.");
 
             // ── Story 6.6: structurally validate props / cameras / water BEFORE decoding the blocked union (their
             //    coords quantize into the footprint mask below, so a non-finite/out-of-range one must fail first) and
@@ -130,15 +153,15 @@ namespace ProjectChimera.Core.Definitions
             for (int i = 0; i < props.Length; i++)
             {
                 ScenarioProp p = props[i];
-                if (p is null) return ValidationResult.Fail($"scenario.props[{i}] is null.", validated);
+                if (p is null) return ValidationResult.Fail($"scenario.props[{i}] is null.");
                 // x/z are hash-folded (the footprint cell) — gate finite + in the 16.16 range + within map bounds.
                 string? pe = CheckCoord($"scenario.props[{i}].x", p.X, bounds)
                           ?? CheckCoord($"scenario.props[{i}].z", p.Z, bounds);
-                if (pe != null) return ValidationResult.Fail(pe, validated);
+                if (pe != null) return ValidationResult.Fail(pe);
                 if (!Finite(p.Rot))
-                    return ValidationResult.Fail($"scenario.props[{i}].rot={p.Rot} must be finite.", validated);
+                    return ValidationResult.Fail($"scenario.props[{i}].rot={p.Rot} must be finite.");
                 if (p.Scale is float sc && (!Finite(sc) || sc <= 0f))
-                    return ValidationResult.Fail($"scenario.props[{i}].scale={sc} must be finite and > 0.", validated);
+                    return ValidationResult.Fail($"scenario.props[{i}].scale={sc} must be finite and > 0.");
             }
 
             var declaredCameras = new HashSet<string>(StringComparer.Ordinal);
@@ -146,39 +169,39 @@ namespace ProjectChimera.Core.Definitions
             for (int i = 0; i < cameras.Length; i++)
             {
                 ScenarioCamera cam = cameras[i];
-                if (cam is null) return ValidationResult.Fail($"scenario.cameras[{i}] is null.", validated);
+                if (cam is null) return ValidationResult.Fail($"scenario.cameras[{i}] is null.");
                 if (string.IsNullOrEmpty(cam.Name))
-                    return ValidationResult.Fail($"scenario.cameras[{i}].name must be a non-empty name.", validated);
+                    return ValidationResult.Fail($"scenario.cameras[{i}].name must be a non-empty name.");
                 if (!declaredCameras.Add(cam.Name))
-                    return ValidationResult.Fail($"scenario.cameras[{i}].name='{cam.Name}' is a duplicate.", validated);
+                    return ValidationResult.Fail($"scenario.cameras[{i}].name='{cam.Name}' is a duplicate.");
                 // Cameras never fold into any hash, but a non-finite position/target/fov would still break the in-editor
                 // preview and the MoveCamera action, so gate well-formedness fail-closed.
                 if (!Finite(cam.X) || !Finite(cam.Y) || !Finite(cam.Z)
                     || !Finite(cam.TargetX) || !Finite(cam.TargetY) || !Finite(cam.TargetZ))
-                    return ValidationResult.Fail($"scenario.cameras[{i}] has a non-finite position/target coordinate.", validated);
+                    return ValidationResult.Fail($"scenario.cameras[{i}] has a non-finite position/target coordinate.");
                 if (!Finite(cam.Fov) || cam.Fov <= 0f || cam.Fov >= 180f)
-                    return ValidationResult.Fail($"scenario.cameras[{i}].fov={cam.Fov} must be finite and in (0, 180).", validated);
+                    return ValidationResult.Fail($"scenario.cameras[{i}].fov={cam.Fov} must be finite and in (0, 180).");
             }
 
             ScenarioWater[] water = m.Water ?? Array.Empty<ScenarioWater>();
             for (int i = 0; i < water.Length; i++)
             {
                 ScenarioWater w = water[i];
-                if (w is null) return ValidationResult.Fail($"scenario.water[{i}] is null.", validated);
+                if (w is null) return ValidationResult.Fail($"scenario.water[{i}] is null.");
                 // x/z (min corner) and x+w / z+h (max corner) are hash-folded (the footprint rect) — every corner must
                 // be finite, in the 16.16 range, and within map bounds; extents must be positive (a well-formed rect).
                 string? we = CheckCoord($"scenario.water[{i}].x", w.X, bounds)
                           ?? CheckCoord($"scenario.water[{i}].z", w.Z, bounds);
-                if (we != null) return ValidationResult.Fail(we, validated);
+                if (we != null) return ValidationResult.Fail(we);
                 if (!InRange(w.W) || w.W <= 0f)
-                    return ValidationResult.Fail($"scenario.water[{i}].w={w.W} must be finite and > 0.", validated);
+                    return ValidationResult.Fail($"scenario.water[{i}].w={w.W} must be finite and > 0.");
                 if (!InRange(w.H) || w.H <= 0f)
-                    return ValidationResult.Fail($"scenario.water[{i}].h={w.H} must be finite and > 0.", validated);
+                    return ValidationResult.Fail($"scenario.water[{i}].h={w.H} must be finite and > 0.");
                 string? wce = CheckCoord($"scenario.water[{i}] max_x", w.X + w.W, bounds)
                            ?? CheckCoord($"scenario.water[{i}] max_z", w.Z + w.H, bounds);
-                if (wce != null) return ValidationResult.Fail(wce, validated);
+                if (wce != null) return ValidationResult.Fail(wce);
                 if (!Finite(w.Y))
-                    return ValidationResult.Fail($"scenario.water[{i}].y={w.Y} must be finite.", validated);
+                    return ValidationResult.Fail($"scenario.water[{i}].y={w.Y} must be finite.");
             }
 
             // ── Story 6.5 / 6.6: decode the authored blocked-cell UNION ONCE (null/all-clear ⇒ no grid ⇒ every
@@ -214,7 +237,7 @@ namespace ProjectChimera.Core.Definitions
 
                 if (s.Slot < 0 || s.Slot >= FactionRegistry.PLAYER_COUNT)
                     return ValidationResult.Fail(
-                        $"scenario.player_slots[{i}].slot={s.Slot} is out of [0,{FactionRegistry.PLAYER_COUNT}).", validated);
+                        $"scenario.player_slots[{i}].slot={s.Slot} is out of [0,{FactionRegistry.PLAYER_COUNT}).");
 
                 // The AR-39 length-5 overflow guard: the as-built Faction enum tops at Player4, so FactionRegistry
                 // .ToFaction(slot) is only defined for slot <= 3. A slot in [4,8) is < PLAYER_COUNT but overflows
@@ -222,22 +245,22 @@ namespace ProjectChimera.Core.Definitions
                 if (s.Slot + 1 > (int)Faction.Player4)
                     return ValidationResult.Fail(
                         $"scenario.player_slots[{i}].slot={s.Slot} maps to an undefined Faction " +
-                        $"(engine ceiling: slot <= {(int)Faction.Player4 - 1}).", validated);
+                        $"(engine ceiling: slot <= {(int)Faction.Player4 - 1}).");
 
                 if (!declared.Add(s.Slot))
                     return ValidationResult.Fail(
-                        $"scenario.player_slots[{i}].slot={s.Slot} is a duplicate.", validated);
+                        $"scenario.player_slots[{i}].slot={s.Slot} is a duplicate.");
 
                 string? e = CheckNonNeg($"scenario.player_slots[{i}].start_ore", s.StartOre)
                          ?? CheckNonNeg($"scenario.player_slots[{i}].start_crystal", s.StartCrystal)
                          ?? CheckCoord($"scenario.player_slots[{i}].base_x", s.BaseX, bounds)
                          ?? CheckCoord($"scenario.player_slots[{i}].base_z", s.BaseZ, bounds);
-                if (e != null) return ValidationResult.Fail(e, validated);
+                if (e != null) return ValidationResult.Fail(e);
 
                 // Story 6.5: a start position on a PAINTED blocked cell fails closed — a unit could never legally
                 // occupy it, so the map is unplayable. Fail before any tick with a clear message.
                 string? be = CheckNotBlocked($"scenario.player_slots[{i}]", "start base", s.BaseX, s.BaseZ, painted);
-                if (be != null) return ValidationResult.Fail(be, validated);
+                if (be != null) return ValidationResult.Fail(be);
             }
 
             // ── Resource nodes: in-bounds position, non-negative supply/rate, non-negative gatherer cap ──
@@ -252,10 +275,10 @@ namespace ProjectChimera.Core.Definitions
                          ?? CheckNotBlocked($"scenario.resource_nodes[{i}]", "resource node", n.X, n.Z, painted)
                          ?? CheckNonNeg($"scenario.resource_nodes[{i}].supply", n.Supply)
                          ?? CheckNonNeg($"scenario.resource_nodes[{i}].rate", n.Rate);
-                if (e != null) return ValidationResult.Fail(e, validated);
+                if (e != null) return ValidationResult.Fail(e);
                 if (n.MaxGatherers < 0)
                     return ValidationResult.Fail(
-                        $"scenario.resource_nodes[{i}].max_gatherers={n.MaxGatherers} must be >= 0.", validated);
+                        $"scenario.resource_nodes[{i}].max_gatherers={n.MaxGatherers} must be >= 0.");
 
                 // ── Story 4.7: collection model / resource type / requires_structure gate / owner slot / income period ──
                 // collection_model reuses the Story 4.3 closed vocabulary (ResourceDefinition.KnownCollectionModels)
@@ -264,21 +287,21 @@ namespace ProjectChimera.Core.Definitions
                 if (Array.IndexOf(ResourceDefinition.KnownCollectionModels, n.CollectionModel) < 0)
                     return ValidationResult.Fail(
                         $"scenario.resource_nodes[{i}].collection_model='{n.CollectionModel}' is not a known collection model " +
-                        $"({string.Join("/", ResourceDefinition.KnownCollectionModels)}).", validated);
+                        $"({string.Join("/", ResourceDefinition.KnownCollectionModels)}).");
                 if (!IsKnownResourceType(n.ResourceType))
                     return ValidationResult.Fail(
                         $"scenario.resource_nodes[{i}].resource_type='{n.ResourceType}' is not a known resource type " +
-                        $"({string.Join("/", _resourceTypeNames)}).", validated);
+                        $"({string.Join("/", _resourceTypeNames)}).");
                 string? se = CheckNonNeg($"scenario.resource_nodes[{i}].requires_structure_radius", n.RequiresStructureRadius)
                           ?? CheckNonNeg($"scenario.resource_nodes[{i}].income_period_ticks", n.IncomePeriodTicks);
-                if (se != null) return ValidationResult.Fail(se, validated);
+                if (se != null) return ValidationResult.Fail(se);
                 // owner_slot is only load-bearing for Income (no assigned worker to infer a faction from) — required
                 // AND must reference a declared player_slot, exactly like the buildings/units slot-reference check
                 // above. Inert (unvalidated) for GATHER/Streaming, which credit the gathering worker's own faction.
                 if (n.CollectionModel == "Income" && !declared.Contains(n.OwnerSlot))
                     return ValidationResult.Fail(
                         $"scenario.resource_nodes[{i}].owner_slot={n.OwnerSlot} references no declared player_slot " +
-                        $"(required when collection_model=Income).", validated);
+                        $"(required when collection_model=Income).");
                 // Review patch: income_period_ticks=0 passed the bare non-negative check above but makes
                 // IncomeTicksElapsed's `< IncomePeriodTicks` comparison true on tick 1 forever — a degenerate
                 // "credit every tick" mode, not the intended periodic trickle. Only meaningful (and only gated) for
@@ -286,7 +309,7 @@ namespace ProjectChimera.Core.Definitions
                 if (n.CollectionModel == "Income" && n.IncomePeriodTicks <= 0)
                     return ValidationResult.Fail(
                         $"scenario.resource_nodes[{i}].income_period_ticks={n.IncomePeriodTicks} must be > 0 " +
-                        $"(required when collection_model=Income).", validated);
+                        $"(required when collection_model=Income).");
             }
 
             // ── Buildings: in-bounds position, slot references a declared PlayerSlot, known building type ──
@@ -299,17 +322,17 @@ namespace ProjectChimera.Core.Definitions
                          // Story 6.5: a pre-placed building on a painted blocked cell is an authoring error (its
                          // spawn/rally point would be impassable) — fail closed, consistent with the start-base check.
                          ?? CheckNotBlocked($"scenario.buildings[{i}]", "building position", b.X, b.Z, painted);
-                if (e != null) return ValidationResult.Fail(e, validated);
+                if (e != null) return ValidationResult.Fail(e);
                 if (!declared.Contains(b.Slot))
                     return ValidationResult.Fail(
-                        $"scenario.buildings[{i}].slot={b.Slot} references no declared player_slot.", validated);
+                        $"scenario.buildings[{i}].slot={b.Slot} references no declared player_slot.");
                 // Story 6.8: the retired enum gate. b.Type is accepted as a legacy BuildingType enum name OR an
                 // authored building-def id present in the OWNER faction's Buildings (resolved from slotFactionDefs by
                 // the building's slot). A truly unknown id — no enum name and no matching faction building-def — fails
                 // closed with a message naming it. When no faction defs are threaded (null), this is enum-name-only.
                 if (!IsKnownBuildingType(b.Type, OwnerFactionDef(slotFactionDefs, b.Slot)))
                     return ValidationResult.Fail(
-                        $"scenario.buildings[{i}].type='{b.Type}' is not a known BuildingType enum name or an authored building id in the owner faction.", validated);
+                        $"scenario.buildings[{i}].type='{b.Type}' is not a known BuildingType enum name or an authored building id in the owner faction.");
             }
 
             // ── Units: in-bounds position, slot references a declared PlayerSlot ──
@@ -319,14 +342,14 @@ namespace ProjectChimera.Core.Definitions
                 ScenarioUnit u = units[i];
                 string? e = CheckCoord($"scenario.units[{i}].x", u.X, bounds)
                          ?? CheckCoord($"scenario.units[{i}].z", u.Z, bounds);
-                if (e != null) return ValidationResult.Fail(e, validated);
+                if (e != null) return ValidationResult.Fail(e);
                 if (!declared.Contains(u.Slot))
                     return ValidationResult.Fail(
-                        $"scenario.units[{i}].slot={u.Slot} references no declared player_slot.", validated);
+                        $"scenario.units[{i}].slot={u.Slot} references no declared player_slot.");
 
                 // Story 6.5: a pre-placed unit on a PAINTED blocked cell fails closed (same cell domain as the sim).
                 string? ube = CheckNotBlocked($"scenario.units[{i}]", "unit position", u.X, u.Z, painted);
-                if (ube != null) return ValidationResult.Fail(ube, validated);
+                if (ube != null) return ValidationResult.Fail(ube);
             }
 
             // ── Regions (Story 6.4) — fail-closed well-formedness so a malformed/cheat region can never reach the
@@ -341,22 +364,22 @@ namespace ProjectChimera.Core.Definitions
             {
                 ScenarioRegion rg = regions[i];
                 if (rg is null)
-                    return ValidationResult.Fail($"scenario.regions[{i}] is null.", validated);
+                    return ValidationResult.Fail($"scenario.regions[{i}] is null.");
                 if (string.IsNullOrEmpty(rg.Id))
-                    return ValidationResult.Fail($"scenario.regions[{i}].id must be a non-empty id.", validated);
+                    return ValidationResult.Fail($"scenario.regions[{i}].id must be a non-empty id.");
                 if (!declaredRegions.Add(rg.Id))
-                    return ValidationResult.Fail($"scenario.regions[{i}].id='{rg.Id}' is a duplicate.", validated);
+                    return ValidationResult.Fail($"scenario.regions[{i}].id='{rg.Id}' is a duplicate.");
                 string? re = CheckCoord($"scenario.regions[{i}].min_x", rg.MinX, bounds)
                           ?? CheckCoord($"scenario.regions[{i}].min_z", rg.MinZ, bounds)
                           ?? CheckCoord($"scenario.regions[{i}].max_x", rg.MaxX, bounds)
                           ?? CheckCoord($"scenario.regions[{i}].max_z", rg.MaxZ, bounds);
-                if (re != null) return ValidationResult.Fail(re, validated);
+                if (re != null) return ValidationResult.Fail(re);
                 if (rg.MinX >= rg.MaxX)
                     return ValidationResult.Fail(
-                        $"scenario.regions[{i}] has min_x={rg.MinX} >= max_x={rg.MaxX} (must be min_x < max_x).", validated);
+                        $"scenario.regions[{i}] has min_x={rg.MinX} >= max_x={rg.MaxX} (must be min_x < max_x).");
                 if (rg.MinZ >= rg.MaxZ)
                     return ValidationResult.Fail(
-                        $"scenario.regions[{i}] has min_z={rg.MinZ} >= max_z={rg.MaxZ} (must be min_z < max_z).", validated);
+                        $"scenario.regions[{i}] has min_z={rg.MinZ} >= max_z={rg.MaxZ} (must be min_z < max_z).");
                 // Review patch (follow-up): the float min<max checks above are necessary but NOT sufficient. The
                 // applier resolves these corners to Fixed (16.16) exactly once and SKIPS any rect that degenerated at
                 // that quantization (ScenarioApplier.BuildRegionStore). A rect narrower than the Fixed step (~1/65536
@@ -371,15 +394,15 @@ namespace ProjectChimera.Core.Definitions
                     return ValidationResult.Fail(
                         $"scenario.regions[{i}] collapses to a degenerate rect at 16.16 resolution " +
                         $"(min_x={rg.MinX}, max_x={rg.MaxX}, min_z={rg.MinZ}, max_z={rg.MaxZ}); each axis must span " +
-                        "at least ~1/65536 world units so the region survives the float→Fixed resolution.", validated);
+                        "at least ~1/65536 world units so the region survives the float→Fixed resolution.");
             }
 
             // ── Variables (Story 7.3, AR-39) — fail-closed when present so a hand-edited/cheat declaration (a blank or
             //    duplicate variable name) is rejected at the pre-tick gate. type/scope are closed enums structurally
             //    (an unknown JSON name fails closed at deserialize via JsonStringEnumConverter), so only name
             //    well-formedness/uniqueness is checked here. NULL (every existing scenario) ⇒ nothing to validate ⇒
-            //    the pass path is unchanged. Declarations are validated as INPUT ONLY — deliberately NOT folded into
-            //    the MP start-state handshake (that stays with Triggers/Regions until 7.7). First-fail located error. ──
+            //    the pass path is unchanged. Story 7.7: declarations now ALSO fold into the MP start-state
+            //    handshake (CanonicalModelHash v8), alongside Triggers/Regions. First-fail located error. ──
             // declaredVarInfo maps each declared variable NAME → its (Type, Scope), so the triggers loop below can
             // fail-closed a set_variable/variable_comparison that references a non-Int or (for a condition read) a
             // TriggerLocal-scoped variable (Story 7.3 P4/P5). An UNDECLARED name is NOT in the map and stays legal
@@ -391,11 +414,11 @@ namespace ProjectChimera.Core.Definitions
                 for (int i = 0; i < m.Variables.Length; i++)
                 {
                     ScenarioVariable v = m.Variables[i];
-                    if (v is null) return ValidationResult.Fail($"scenario.variables[{i}] is null.", validated);
+                    if (v is null) return ValidationResult.Fail($"scenario.variables[{i}] is null.");
                     if (string.IsNullOrWhiteSpace(v.Name))
-                        return ValidationResult.Fail($"scenario.variables[{i}].name must be a non-empty name.", validated);
+                        return ValidationResult.Fail($"scenario.variables[{i}].name must be a non-empty name.");
                     if (!declaredVars.Add(v.Name))
-                        return ValidationResult.Fail($"scenario.variables[{i}].name='{v.Name}' is a duplicate.", validated);
+                        return ValidationResult.Fail($"scenario.variables[{i}].name='{v.Name}' is a duplicate.");
                     // Review (7.3 follow-up): the initial must be representable in the declared type — an Int initial
                     // with a fractional part would silently truncate at load (ScenarioDirector.ScopeInitialRaw →
                     // ToInt: 2.5 → 2), and a Bool initial outside {0,1} would store a non-normalized truthy int.
@@ -403,10 +426,10 @@ namespace ProjectChimera.Core.Definitions
                     // their 16.16 fractional bits are zero.)
                     if (v.Type == DslValueType.Int && (v.Initial.Raw & (Fixed.ONE - 1)) != 0)
                         return ValidationResult.Fail(
-                            $"scenario.variables[{i}].initial must be a whole number for an Int-typed variable (it would silently truncate).", validated);
+                            $"scenario.variables[{i}].initial must be a whole number for an Int-typed variable (it would silently truncate).");
                     if (v.Type == DslValueType.Bool && v.Initial != Fixed.Zero && v.Initial != Fixed.One)
                         return ValidationResult.Fail(
-                            $"scenario.variables[{i}].initial must be 0 or 1 for a Bool-typed variable.", validated);
+                            $"scenario.variables[{i}].initial must be 0 or 1 for a Bool-typed variable.");
                     declaredVarInfo[v.Name] = (v.Type, v.Scope);
                 }
             }
@@ -415,7 +438,7 @@ namespace ProjectChimera.Core.Definitions
             //    no stray array fields on scalars), shared with the LoadScenario backstop via DslLoopGate. ──
             {
                 string? declErr = DslLoopGate.CheckDeclarations(m.Variables);
-                if (declErr != null) return ValidationResult.Fail(declErr, validated);
+                if (declErr != null) return ValidationResult.Fail(declErr);
             }
             // Declared Array names → (element type, capacity) — consumed by the expression compiler (arr[i] /
             // length(arr)) and the loop gate below.
@@ -431,18 +454,18 @@ namespace ProjectChimera.Core.Definitions
                 for (int i = 0; i < m.Timers.Length; i++)
                 {
                     ScenarioTimer tm = m.Timers[i];
-                    if (tm is null) return ValidationResult.Fail($"scenario.timers[{i}] is null.", validated);
+                    if (tm is null) return ValidationResult.Fail($"scenario.timers[{i}] is null.");
                     if (string.IsNullOrWhiteSpace(tm.Name))
-                        return ValidationResult.Fail($"scenario.timers[{i}].name must be a non-empty name.", validated);
+                        return ValidationResult.Fail($"scenario.timers[{i}].name must be a non-empty name.");
                     if (!declaredTimerNames.Add(tm.Name))
-                        return ValidationResult.Fail($"scenario.timers[{i}].name='{tm.Name}' is a duplicate.", validated);
+                        return ValidationResult.Fail($"scenario.timers[{i}].name='{tm.Name}' is a duplicate.");
                     // Review (7.3 follow-up): a declared duration must be positive — the load path clamps via
                     // Math.Max(1, SecondsToTicks(seconds)), so a zero/negative declaration would be silently rewritten
                     // into a 1-tick timer firing on the first tick. The create_timer ACTION already requires > 0 at
                     // runtime; the declaration path must not be more permissive than the action it formalizes.
                     if (tm.Seconds <= Fixed.Zero)
                         return ValidationResult.Fail(
-                            $"scenario.timers[{i}].seconds must be > 0 (a zero/negative duration would silently clamp to a 1-tick timer).", validated);
+                            $"scenario.timers[{i}].seconds must be > 0 (a zero/negative duration would silently clamp to a 1-tick timer).");
                 }
             }
 
@@ -467,8 +490,11 @@ namespace ProjectChimera.Core.Definitions
             //    JsonException inside LoadScenario, i.e. the exact PARTIAL-APPLY crash this gate exists to close.
             //    Both throw located JsonExceptions; System.Text.Json can also surface NotSupportedException on hostile
             //    input, so the catch covers it (a gate whose purpose is containing hand-edited/cheat input must not
-            //    crash on it). Deep STRUCTURAL validation (dangling/forked/dup-id edges) stays deferred to Story 7.7.
-            //    NULL/whitespace (every existing scenario) ⇒ nothing to validate ⇒ the pass path is unchanged. ──
+            //    crash on it). Story 7.7: the formerly-deferred deep STRUCTURAL validation now runs HERE too —
+            //    GraphStructureGate (dup node ids, dangling endpoints, port legality, exec/data forks, stray data
+            //    edges, unconsumed-expression compiles) over the WHOLE graph, unconditionally, BEFORE the
+            //    execution-order walk (the same shared rulebook ScenarioDirector.LoadScenario runs — parity by
+            //    construction). NULL/whitespace (every existing scenario) ⇒ nothing to validate ⇒ pass unchanged. ──
             TriggerGraph? parsedGraph = null;
             List<TriggerGraph.TriggerExec>? graphExecs = null;
             if (!string.IsNullOrWhiteSpace(m.TriggerGraphJson))
@@ -476,13 +502,28 @@ namespace ProjectChimera.Core.Definitions
                 try
                 {
                     parsedGraph = TriggerGraph.FromJson(m.TriggerGraphJson!);
+                }
+                catch (Exception ex) when (ex is System.Text.Json.JsonException or NotSupportedException)
+                {
+                    return ValidationResult.Fail($"scenario.trigger_graph is malformed: {ex.Message}");
+                }
+
+                // Story 7.7 — the whole-graph structural rulebook (unreachable nodes included), shared with the
+                // LoadScenario backstop. Runs before BuildExecutionOrder so malformed structure rejects located
+                // rather than relying on the walker's tolerances.
+                string? structErr = GraphStructureGate.Check(parsedGraph, declaredVarInfo, declaredArrayInfo);
+                if (structErr != null)
+                    return ValidationResult.Fail($"scenario.trigger_graph: {structErr}");
+
+                try
+                {
                     // The 7.2 cycle guard (extended by 7.6 to body/then/else sub-chains rejoining any ancestor),
                     // run AT the gate instead of mid-apply. Story 7.6 keeps the execution view for the loop gate.
                     graphExecs = parsedGraph.BuildExecutionOrder();
                 }
                 catch (Exception ex) when (ex is System.Text.Json.JsonException or NotSupportedException)
                 {
-                    return ValidationResult.Fail($"scenario.trigger_graph is malformed: {ex.Message}", validated);
+                    return ValidationResult.Fail($"scenario.trigger_graph is malformed: {ex.Message}");
                 }
             }
 
@@ -511,7 +552,7 @@ namespace ProjectChimera.Core.Definitions
             for (int i = 0; i < triggers.Length; i++)
             {
                 TriggerDefinition t = triggers[i];
-                if (t is null) return ValidationResult.Fail($"scenario.triggers[{i}] is null.", validated);
+                if (t is null) return ValidationResult.Fail($"scenario.triggers[{i}] is null.");
 
                 TriggerEvent[] events = t.Events ?? Array.Empty<TriggerEvent>();
                 for (int j = 0; j < events.Length; j++)
@@ -519,16 +560,16 @@ namespace ProjectChimera.Core.Definitions
                     TriggerEvent e = events[j];
                     string ep = $"scenario.triggers[{i}].events[{j}]";
                     if (!InSet(_triggerEventTypes, e.Type))
-                        return ValidationResult.Fail($"{ep}.type='{e.Type}' is not a known trigger event type.", validated);
+                        return ValidationResult.Fail($"{ep}.type='{e.Type}' is not a known trigger event type.");
                     string? fe = CheckFactionSlot($"{ep}.faction", e.Faction);
-                    if (fe != null) return ValidationResult.Fail(fe, validated);
+                    if (fe != null) return ValidationResult.Fail(fe);
                     if (!string.IsNullOrEmpty(e.BuildingType) && !IsKnownBuildingType(e.BuildingType))
-                        return ValidationResult.Fail($"{ep}.building_type='{e.BuildingType}' is not a known BuildingType.", validated);
+                        return ValidationResult.Fail($"{ep}.building_type='{e.BuildingType}' is not a known BuildingType.");
                     if (!InSet(_operators, e.Operator))
-                        return ValidationResult.Fail($"{ep}.operator='{e.Operator}' is not a known comparison operator.", validated);
+                        return ValidationResult.Fail($"{ep}.operator='{e.Operator}' is not a known comparison operator.");
                     if (e.Type == "timer_expires" && !string.IsNullOrEmpty(e.TimerName) && !declaredTimers.Contains(e.TimerName))
                         return ValidationResult.Fail(
-                            $"{ep}.timer_name='{e.TimerName}' references no timer created by any create_timer action.", validated);
+                            $"{ep}.timer_name='{e.TimerName}' references no timer created by any create_timer action.");
                 }
 
                 TriggerCondition[] conds = t.Conditions ?? Array.Empty<TriggerCondition>();
@@ -537,13 +578,13 @@ namespace ProjectChimera.Core.Definitions
                     TriggerCondition c = conds[j];
                     string cp = $"scenario.triggers[{i}].conditions[{j}]";
                     if (!InSet(_conditionTypes, c.Type))
-                        return ValidationResult.Fail($"{cp}.type='{c.Type}' is not a known trigger condition type.", validated);
+                        return ValidationResult.Fail($"{cp}.type='{c.Type}' is not a known trigger condition type.");
                     string? fe = CheckFactionSlot($"{cp}.faction", c.Faction);
-                    if (fe != null) return ValidationResult.Fail(fe, validated);
+                    if (fe != null) return ValidationResult.Fail(fe);
                     if (!string.IsNullOrEmpty(c.BuildingType) && !IsKnownBuildingType(c.BuildingType))
-                        return ValidationResult.Fail($"{cp}.building_type='{c.BuildingType}' is not a known BuildingType.", validated);
+                        return ValidationResult.Fail($"{cp}.building_type='{c.BuildingType}' is not a known BuildingType.");
                     if (!InSet(_operators, c.Operator))
-                        return ValidationResult.Fail($"{cp}.operator='{c.Operator}' is not a known comparison operator.", validated);
+                        return ValidationResult.Fail($"{cp}.operator='{c.Operator}' is not a known comparison operator.");
                     // Story 7.3 (P4/P5): a variable_comparison READS a variable BEFORE the trigger-local scope is
                     // entered, so a TriggerLocal-scoped var would read 0 (it is action-write-scratch only) — reject it
                     // fail-closed. It must also be Int-typed (non-Int typed read is Story 7.4). Only DECLARED names
@@ -557,10 +598,10 @@ namespace ProjectChimera.Core.Definitions
                         if (cInfo.Scope == VarScope.TriggerLocal)
                             return ValidationResult.Fail(
                                 $"{cp}.variable='{c.Variable}' is TriggerLocal-scoped and cannot be read in a condition " +
-                                $"(conditions evaluate before the trigger-local scope is entered — it would read 0).", validated);
+                                $"(conditions evaluate before the trigger-local scope is entered — it would read 0).");
                         if (cInfo.Type != DslValueType.Int)
                             return ValidationResult.Fail(
-                                $"{cp}.variable='{c.Variable}' is {cInfo.Type}-typed; a variable_comparison reads only Int-typed variables (7.3).", validated);
+                                $"{cp}.variable='{c.Variable}' is {cInfo.Type}-typed; a variable_comparison reads only Int-typed variables (7.3).");
                     }
                     // Story 6.4: a unit_in_region condition must name a DECLARED region (dangling-ref fail-closed,
                     // mirroring the timer_expires dangling check) — an undefined/empty region_id would silently
@@ -573,10 +614,10 @@ namespace ProjectChimera.Core.Definitions
                         // general condition check above already applies, co-located with the region check as
                         // belt-and-suspenders fail-closed defense.
                         string? rfe = CheckFactionSlot($"{cp}.faction", c.Faction);
-                        if (rfe != null) return ValidationResult.Fail(rfe, validated);
+                        if (rfe != null) return ValidationResult.Fail(rfe);
                         if (!declaredRegions.Contains(c.RegionId ?? ""))
                             return ValidationResult.Fail(
-                                $"{cp}.region_id='{c.RegionId}' references no declared region.", validated);
+                                $"{cp}.region_id='{c.RegionId}' references no declared region.");
                     }
                 }
 
@@ -586,9 +627,9 @@ namespace ProjectChimera.Core.Definitions
                     TriggerAction a = actions[j];
                     string ap = $"scenario.triggers[{i}].actions[{j}]";
                     if (!InSet(_actionTypes, a.Type))
-                        return ValidationResult.Fail($"{ap}.type='{a.Type}' is not a known trigger action type.", validated);
+                        return ValidationResult.Fail($"{ap}.type='{a.Type}' is not a known trigger action type.");
                     string? fe = CheckFactionSlot($"{ap}.faction", a.Faction);
-                    if (fe != null) return ValidationResult.Fail(fe, validated);
+                    if (fe != null) return ValidationResult.Fail(fe);
                     // Story 7.3 (P5): a set_variable WRITES a variable — a declared referent must be Int-typed
                     // (non-Int typed write is Story 7.4). TriggerLocal IS allowed here (set_variable is the
                     // action-write-scratch path). Only DECLARED names are checked (undeclared → Global/Int default).
@@ -600,7 +641,7 @@ namespace ProjectChimera.Core.Definitions
                     {
                         if (aInfo.Type != DslValueType.Int)
                             return ValidationResult.Fail(
-                                $"{ap}.variable='{a.Variable}' is {aInfo.Type}-typed; set_variable writes only Int-typed variables (7.3).", validated);
+                                $"{ap}.variable='{a.Variable}' is {aInfo.Type}-typed; set_variable writes only Int-typed variables (7.3).");
                     }
                     if (a.Type == "spawn_unit")
                     {
@@ -610,17 +651,17 @@ namespace ProjectChimera.Core.Definitions
                         // the low side rejects too — a count < 1 is a spawn that silently does nothing.
                         if (a.Count < 1 || a.Count > EffectCaps.MaxSpawnCount)
                             return ValidationResult.Fail(
-                                $"{ap}.count={a.Count} is out of range 1..EffectCaps.MaxSpawnCount={EffectCaps.MaxSpawnCount}.", validated);
+                                $"{ap}.count={a.Count} is out of range 1..EffectCaps.MaxSpawnCount={EffectCaps.MaxSpawnCount}.");
                         // Story 7.1: a.X/a.Z are now Fixed. Finiteness and the 16.16 range are guaranteed
                         // structurally by the Fixed type and enforced at the JSON boundary by FixedJsonConverter,
                         // so the former range/NaN branch is unreachable here; the remaining semantic gate is
                         // map_bounds — a spawn coordinate outside ±map_bounds is still an authoring error.
                         string? ce = CheckCoordFixed($"{ap}.x", a.X, bounds) ?? CheckCoordFixed($"{ap}.z", a.Z, bounds);
-                        if (ce != null) return ValidationResult.Fail(ce, validated);
+                        if (ce != null) return ValidationResult.Fail(ce);
                         // Story 6.5: a spawn_unit trigger that would place a unit on a PAINTED blocked cell fails
                         // closed (same cell domain as the sim) — a spawned unit could never legally occupy it.
                         string? sbe = CheckNotBlocked(ap, "spawn_unit position", a.X, a.Z, painted);
-                        if (sbe != null) return ValidationResult.Fail(sbe, validated);
+                        if (sbe != null) return ValidationResult.Fail(sbe);
                     }
                 }
             }
@@ -637,7 +678,8 @@ namespace ProjectChimera.Core.Definitions
             //        class is identical in both channels).
             //      • The P4/P5 declared-variable rules (TriggerLocal not readable in a condition; Int-only leaves).
             //      • The dangling-timer check for graph timer_expires events, against the cross-channel union.
-            //    Deep STRUCTURAL graph validation (dangling/forked/dup-id edges) stays deferred to Story 7.7. ──
+            //    Deep STRUCTURAL graph validation (dangling/forked/dup-id edges, port legality, unconsumed
+            //    expression compiles) already ran ABOVE via GraphStructureGate (Story 7.7 closed the deferral). ──
             if (parsedGraph != null)
             {
                 // Story 7.4 — id lookup + the set of set_variable actions fed by a value-in expression edge. A
@@ -662,35 +704,35 @@ namespace ProjectChimera.Core.Definitions
                             EffectBoundsResult effBounds = EffectBounds.Validate(effectNode.Effect);
                             if (!effBounds.IsValid)
                                 return ValidationResult.Fail(
-                                    $"scenario.trigger_graph run_effect node {node.Id}: {effBounds.Error}", validated);
+                                    $"scenario.trigger_graph run_effect node {node.Id}: {effBounds.Error}");
                             break;
                         }
                         case EventNode ge:
                         {
                             string gp = $"scenario.trigger_graph event node {ge.Id}";
                             string? fe = CheckFactionSlot($"{gp}.faction", ge.Faction);
-                            if (fe != null) return ValidationResult.Fail(fe, validated);
+                            if (fe != null) return ValidationResult.Fail(fe);
                             if (ge.Kind == "timer_expires" && !string.IsNullOrEmpty(ge.TimerName)
                                 && !declaredTimers.Contains(ge.TimerName))
                                 return ValidationResult.Fail(
-                                    $"{gp}.timer_name='{ge.TimerName}' references no declared timer or create_timer action (either channel).", validated);
+                                    $"{gp}.timer_name='{ge.TimerName}' references no declared timer or create_timer action (either channel).");
                             break;
                         }
                         case ConditionNode gc:
                         {
                             string gp = $"scenario.trigger_graph condition node {gc.Id}";
                             string? fe = CheckFactionSlot($"{gp}.faction", gc.Faction);
-                            if (fe != null) return ValidationResult.Fail(fe, validated);
+                            if (fe != null) return ValidationResult.Fail(fe);
                             if (gc.Kind == "variable_comparison" && !string.IsNullOrEmpty(gc.Variable)
                                 && declaredVarInfo.TryGetValue(gc.Variable, out var gcInfo))
                             {
                                 if (gcInfo.Scope == VarScope.TriggerLocal)
                                     return ValidationResult.Fail(
                                         $"{gp}.variable='{gc.Variable}' is TriggerLocal-scoped and cannot be read in a condition " +
-                                        $"(conditions evaluate before the trigger-local scope is entered — it would read 0).", validated);
+                                        $"(conditions evaluate before the trigger-local scope is entered — it would read 0).");
                                 if (gcInfo.Type != DslValueType.Int)
                                     return ValidationResult.Fail(
-                                        $"{gp}.variable='{gc.Variable}' is {gcInfo.Type}-typed; a variable_comparison reads only Int-typed variables (7.3).", validated);
+                                        $"{gp}.variable='{gc.Variable}' is {gcInfo.Type}-typed; a variable_comparison reads only Int-typed variables (7.3).");
                             }
                             break;
                         }
@@ -698,12 +740,12 @@ namespace ProjectChimera.Core.Definitions
                         {
                             string gp = $"scenario.trigger_graph action node {ga.Id}";
                             string? fe = CheckFactionSlot($"{gp}.faction", ga.Faction);
-                            if (fe != null) return ValidationResult.Fail(fe, validated);
+                            if (fe != null) return ValidationResult.Fail(fe);
                             // Story 7.6 — the graph channel gets the SAME loud spawn-count gate as the flat pass
                             // (review: including the low side — a count < 1 is a spawn that silently does nothing).
                             if (ga.Kind == "spawn_unit" && (ga.Count < 1 || ga.Count > EffectCaps.MaxSpawnCount))
                                 return ValidationResult.Fail(
-                                    $"{gp}.count={ga.Count} is out of range 1..EffectCaps.MaxSpawnCount={EffectCaps.MaxSpawnCount}.", validated);
+                                    $"{gp}.count={ga.Count} is out of range 1..EffectCaps.MaxSpawnCount={EffectCaps.MaxSpawnCount}.");
                             // Story 7.4 widening: the Int-only rule now governs only the LITERAL path — an action
                             // fed by a value-in expression edge may target Int/Fixed/Bool (its type equality is
                             // enforced by the expression compile pass below).
@@ -712,7 +754,7 @@ namespace ProjectChimera.Core.Definitions
                                 && gaInfo.Type != DslValueType.Int
                                 && !exprValueTargets.Contains(ga.Id))
                                 return ValidationResult.Fail(
-                                    $"{gp}.variable='{ga.Variable}' is {gaInfo.Type}-typed; set_variable writes only Int-typed variables (7.3).", validated);
+                                    $"{gp}.variable='{ga.Variable}' is {gaInfo.Type}-typed; set_variable writes only Int-typed variables (7.3).");
                             break;
                         }
 
@@ -724,7 +766,7 @@ namespace ProjectChimera.Core.Definitions
                             if (gfe.Faction != -1)
                             {
                                 string? fe = CheckFactionSlot($"scenario.trigger_graph for_each node {gfe.Id}.faction", gfe.Faction);
-                                if (fe != null) return ValidationResult.Fail(fe, validated);
+                                if (fe != null) return ValidationResult.Fail(fe);
                             }
                             break;
                         }
@@ -734,7 +776,7 @@ namespace ProjectChimera.Core.Definitions
                             if (gfb.Faction != -1)
                             {
                                 string? fe = CheckFactionSlot($"scenario.trigger_graph for_each_batched node {gfb.Id}.faction", gfb.Faction);
-                                if (fe != null) return ValidationResult.Fail(fe, validated);
+                                if (fe != null) return ValidationResult.Fail(fe);
                             }
                             break;
                         }
@@ -746,7 +788,7 @@ namespace ProjectChimera.Core.Definitions
                             if (gv.Faction >= 0)
                             {
                                 string? fe = CheckFactionSlot($"scenario.trigger_graph expr_var node {gv.Id}.faction", gv.Faction);
-                                if (fe != null) return ValidationResult.Fail(fe, validated);
+                                if (fe != null) return ValidationResult.Fail(fe);
                             }
                             break;
                         }
@@ -757,7 +799,8 @@ namespace ProjectChimera.Core.Definitions
                 //    strict typing, literal-zero divisor, undeclared/mis-scoped variables, TriggerLocal-in-condition,
                 //    ref-typed reads, missing/forked operand edges, wire-type = inferred type, ExprBounds caps) for
                 //    every expression root actually CONSUMED by a trigger condition-in port or a set_variable
-                //    value-in port. Unconsumed expression nodes are ignored (7.7 structural scope). Edges iterate in
+                //    value-in port. Unconsumed expression subgraphs were already compile-checked by
+                //    GraphStructureGate above (Story 7.7 — no orphan semantic skip). Edges iterate in
                 //    canonical tuple order so the first-fail is deterministic. ──
                 List<DataEdge> sortedGraphData = parsedGraph.DataEdges.OrderBy(e => e).ToList();
                 var seenValueInPorts = new HashSet<int>();
@@ -772,10 +815,10 @@ namespace ProjectChimera.Core.Definitions
                     // ignored at runtime (the literal Value would win against the authored wiring).
                     if (de.DstPort == TriggerGraph.ActionValueInPort && dst is EffectActionNode)
                         return ValidationResult.Fail(
-                            $"scenario.trigger_graph run_effect node {dst.Id}: a value-in edge is not allowed on run_effect (only a set_variable action takes a value expression).", validated);
+                            $"scenario.trigger_graph run_effect node {dst.Id}: a value-in edge is not allowed on run_effect (only a set_variable action takes a value expression).");
                     if (de.DstPort == TriggerGraph.ActionValueInPort && dst is ActionNode && !srcIsExpr)
                         return ValidationResult.Fail(
-                            $"scenario.trigger_graph action node {dst.Id}: the value-in edge source (node {de.Src}) is not an expression node.", validated);
+                            $"scenario.trigger_graph action node {dst.Id}: the value-in edge source (node {de.Src}) is not an expression node.");
 
                     if (!srcIsExpr || dst is null) continue;
 
@@ -787,19 +830,19 @@ namespace ProjectChimera.Core.Definitions
                                      || (dst is ActionNode && de.DstPort == TriggerGraph.ActionValueInPort);
                     if (consumedHere && de.SrcPort != TriggerGraph.ExprDataOutPort)
                         return ValidationResult.Fail(
-                            $"scenario.trigger_graph expr node {de.Src}: the consumer edge into node {de.Dst} leaves src port {de.SrcPort}; expression nodes emit only on port {TriggerGraph.ExprDataOutPort}.", validated);
+                            $"scenario.trigger_graph expr node {de.Src}: the consumer edge into node {de.Dst} leaves src port {de.SrcPort}; expression nodes emit only on port {TriggerGraph.ExprDataOutPort}.");
 
                     if (dst is TriggerNode && de.DstPort == TriggerGraph.TriggerConditionInPort)
                     {
                         if (!ExprCompiler.TryCompile(parsedGraph, de.Src, declaredVarInfo, inCondition: true,
                                 out ExprProgram? cp, out string? cErr, declaredArrayInfo))
-                            return ValidationResult.Fail($"scenario.trigger_graph: {cErr}", validated);
+                            return ValidationResult.Fail($"scenario.trigger_graph: {cErr}");
                         if (cp!.ResultType != DslValueType.Bool)
                             return ValidationResult.Fail(
-                                $"scenario.trigger_graph expr node {de.Src}: a trigger condition expression must evaluate to Bool, got {cp.ResultType}.", validated);
+                                $"scenario.trigger_graph expr node {de.Src}: a trigger condition expression must evaluate to Bool, got {cp.ResultType}.");
                         if (de.Wire != DataWireType.Boolean)
                             return ValidationResult.Fail(
-                                $"scenario.trigger_graph expr node {de.Src}: the condition-in edge must carry the Boolean wire, got '{de.Wire}'.", validated);
+                                $"scenario.trigger_graph expr node {de.Src}: the condition-in edge must carry the Boolean wire, got '{de.Wire}'.");
                     }
                     else if (dst is ActionNode act && de.DstPort == TriggerGraph.ActionValueInPort)
                     {
@@ -807,30 +850,31 @@ namespace ProjectChimera.Core.Definitions
                         // element typing is enforced by the shared DslLoopGate pass below).
                         if (act.Kind != "set_variable" && !NodeKinds.IsArrayActionKind(act.Kind))
                             return ValidationResult.Fail(
-                                $"scenario.trigger_graph action node {act.Id}: a value-in expression edge is only allowed on a set_variable, array_push, or array_set action (kind '{act.Kind}').", validated);
+                                $"scenario.trigger_graph action node {act.Id}: a value-in expression edge is only allowed on a set_variable, array_push, or array_set action (kind '{act.Kind}').");
                         if (!seenValueInPorts.Add(act.Id))
                             return ValidationResult.Fail(
-                                $"scenario.trigger_graph action node {act.Id}: multiple value-in expression edges (forked; exactly one allowed).", validated);
+                                $"scenario.trigger_graph action node {act.Id}: multiple value-in expression edges (forked; exactly one allowed).");
                         if (NodeKinds.IsArrayActionKind(act.Kind))
                             continue; // typing/required-edge rules run in DslLoopGate.CheckGraph below
                         if (string.IsNullOrEmpty(act.Variable))
                             return ValidationResult.Fail(
-                                $"scenario.trigger_graph action node {act.Id}: a set_variable with a value expression needs a target variable.", validated);
+                                $"scenario.trigger_graph action node {act.Id}: a set_variable with a value expression needs a target variable.");
                         if (!ExprCompiler.TryCompile(parsedGraph, de.Src, declaredVarInfo, inCondition: false,
                                 out ExprProgram? vp, out string? vErr, declaredArrayInfo))
-                            return ValidationResult.Fail($"scenario.trigger_graph: {vErr}", validated);
+                            return ValidationResult.Fail($"scenario.trigger_graph: {vErr}");
                         DslValueType target = declaredVarInfo.TryGetValue(act.Variable!, out var tInfo) ? tInfo.Type : DslValueType.Int;
                         if (target != DslValueType.Int && target != DslValueType.Fixed && target != DslValueType.Bool)
                             return ValidationResult.Fail(
-                                $"scenario.trigger_graph action node {act.Id}: set_variable target '{act.Variable}' is {target}-typed; expression assignment targets Int/Fixed/Bool variables only.", validated);
+                                $"scenario.trigger_graph action node {act.Id}: set_variable target '{act.Variable}' is {target}-typed; expression assignment targets Int/Fixed/Bool variables only.");
                         if (vp!.ResultType != target)
                             return ValidationResult.Fail(
-                                $"scenario.trigger_graph expr node {de.Src}: value expression result type {vp.ResultType} does not match target variable '{act.Variable}' ({target}).", validated);
+                                $"scenario.trigger_graph expr node {de.Src}: value expression result type {vp.ResultType} does not match target variable '{act.Variable}' ({target}).");
                         if (de.Wire != ExprCompiler.WireOf(target))
                             return ValidationResult.Fail(
-                                $"scenario.trigger_graph action node {act.Id}: the value-in edge wire '{de.Wire}' does not match target variable '{act.Variable}' ({target}).", validated);
+                                $"scenario.trigger_graph action node {act.Id}: the value-in edge wire '{de.Wire}' does not match target variable '{act.Variable}' ({target}).");
                     }
-                    // Other destinations/ports: unconsumed expression output — ignored (7.7 structural scope).
+                    // Other destinations/ports: already gated structurally by GraphStructureGate (port legality),
+                    // and unconsumed expression roots were compile-checked there too (Story 7.7).
                 }
 
                 // ── Story 7.6 — the shared loop/branch/array-action gate + static cap-product cost check (one
@@ -839,7 +883,7 @@ namespace ProjectChimera.Core.Definitions
                 string? loopErr = DslLoopGate.CheckGraph(parsedGraph, graphExecs!, declaredVarInfo, declaredArrayInfo,
                     id => declaredRegions.Contains(id));
                 if (loopErr != null)
-                    return ValidationResult.Fail($"scenario.trigger_graph: {loopErr}", validated);
+                    return ValidationResult.Fail($"scenario.trigger_graph: {loopErr}");
             }
 
             // AR-13 (forbidden-until-SimRng) — RESERVED, intentionally NOT implemented here. SimRng shipped in
@@ -862,7 +906,7 @@ namespace ProjectChimera.Core.Definitions
             if (m.PersistenceManifest != null)
             {
                 var mr = new PersistenceManifestValidator().Validate(m.PersistenceManifest);
-                if (!mr.Ok) return ValidationResult.Fail(mr.Errors[0].Message, validated);
+                if (!mr.Ok) return ValidationResult.Fail(mr.Errors[0].Message);
             }
 
             // ── Revival rule (Story 3.14, AR-39) — fail-closed when present so a hand-edited/cheat rule (non-finite or
@@ -881,23 +925,23 @@ namespace ProjectChimera.Core.Definitions
                     ?? CheckNonNeg("scenario.revival_rule.cost_crystal_per_level", r.CostCrystalPerLevel)
                     ?? CheckNonNeg("scenario.revival_rule.time_base_seconds", r.TimeBaseSeconds)
                     ?? CheckNonNeg("scenario.revival_rule.time_per_level_seconds", r.TimePerLevelSeconds);
-                if (e != null) return ValidationResult.Fail(e, validated);
+                if (e != null) return ValidationResult.Fail(e);
                 // The FIELDS are non-negative, but the COMPOSED curve base + perLevel × level is evaluated at the hero's
                 // level (up to MaxRevivableLevel) and quantizes to Fixed — so the curve AT MAX LEVEL must stay in the
                 // 16.16 range, else the runtime cost/timer overflows and wraps negative (free-money / instant-revive, the
                 // Story 3.13 overflow class the per-field non-neg check does NOT catch).
                 if (RevivalCurveOverflows(r.CostOreBase, r.CostOrePerLevel))
-                    return ValidationResult.Fail($"scenario.revival_rule ore cost (base {r.CostOreBase} + {r.CostOrePerLevel}/level) exceeds the 16.16 range [0, {Range}) at level {MaxRevivableLevel}.", validated);
+                    return ValidationResult.Fail($"scenario.revival_rule ore cost (base {r.CostOreBase} + {r.CostOrePerLevel}/level) exceeds the 16.16 range [0, {Range}) at level {MaxRevivableLevel}.");
                 if (RevivalCurveOverflows(r.CostCrystalBase, r.CostCrystalPerLevel))
-                    return ValidationResult.Fail($"scenario.revival_rule crystal cost (base {r.CostCrystalBase} + {r.CostCrystalPerLevel}/level) exceeds the 16.16 range [0, {Range}) at level {MaxRevivableLevel}.", validated);
+                    return ValidationResult.Fail($"scenario.revival_rule crystal cost (base {r.CostCrystalBase} + {r.CostCrystalPerLevel}/level) exceeds the 16.16 range [0, {Range}) at level {MaxRevivableLevel}.");
                 if ((double)r.TimeBaseSeconds + (double)r.TimePerLevelSeconds * MaxRevivableLevel >= Range)
-                    return ValidationResult.Fail($"scenario.revival_rule time (base {r.TimeBaseSeconds} + {r.TimePerLevelSeconds}/level) exceeds the 16.16 range [0, {Range}) at level {MaxRevivableLevel}.", validated);
+                    return ValidationResult.Fail($"scenario.revival_rule time (base {r.TimeBaseSeconds} + {r.TimePerLevelSeconds}/level) exceeds the 16.16 range [0, {Range}) at level {MaxRevivableLevel}.");
                 // Reject a fraction that is positive-but-quantizes-to-Fixed.Zero (e.g. 1e-5) — the pre-quantization (0,1]
                 // check alone would let it through and respawn a 0-HP dead-on-arrival hero (validate the QUANTIZED value).
                 if (!Finite(r.ReviveHpFraction) || r.ReviveHpFraction <= 0f || r.ReviveHpFraction > 1f
                     || ProjectChimera.Core.Fixed.FromFloat(r.ReviveHpFraction) <= ProjectChimera.Core.Fixed.Zero)
                     return ValidationResult.Fail(
-                        $"scenario.revival_rule.revive_hp_fraction={r.ReviveHpFraction} must be finite and in (0, 1] and quantize to a positive 16.16 value.", validated);
+                        $"scenario.revival_rule.revive_hp_fraction={r.ReviveHpFraction} must be finite and in (0, 1] and quantize to a positive 16.16 value.");
             }
 
             // ── Inventory slot count (Story 3.15, AR-39) — fail-closed when present so a hand-edited/cheat count outside
@@ -906,7 +950,7 @@ namespace ProjectChimera.Core.Definitions
             if (m.InventorySlotCount is int isc
                 && (isc < 1 || isc > ProjectChimera.Core.HeroStore.INVENTORY_SLOTS))
                 return ValidationResult.Fail(
-                    $"scenario.inventory_slot_count={isc} must be in [1, {ProjectChimera.Core.HeroStore.INVENTORY_SLOTS}].", validated);
+                    $"scenario.inventory_slot_count={isc} must be in [1, {ProjectChimera.Core.HeroStore.INVENTORY_SLOTS}].");
 
             // ── Resource registry (Story 4.3, AR-39) — fail-closed when present so a hand-edited/cheat registry
             // (a duplicate/blank id, a non-finite/negative starting_amount, or an unrecognized collection_model) is
@@ -921,18 +965,18 @@ namespace ProjectChimera.Core.Definitions
                 {
                     ResourceDefinition r = m.Resources[i];
                     if (r is null)
-                        return ValidationResult.Fail($"scenario.resources[{i}] is null.", validated);
+                        return ValidationResult.Fail($"scenario.resources[{i}] is null.");
                     if (string.IsNullOrWhiteSpace(r.Id))
-                        return ValidationResult.Fail($"scenario.resources[{i}].id must be a non-empty id.", validated);
+                        return ValidationResult.Fail($"scenario.resources[{i}].id must be a non-empty id.");
                     if (!resourceIds.Add(r.Id))
                         return ValidationResult.Fail(
-                            $"scenario.resources[{i}].id='{r.Id}' is a duplicate.", validated);
+                            $"scenario.resources[{i}].id='{r.Id}' is a duplicate.");
                     string? e = CheckNonNeg($"scenario.resources[{i}].starting_amount", r.StartingAmount);
-                    if (e != null) return ValidationResult.Fail(e, validated);
+                    if (e != null) return ValidationResult.Fail(e);
                     if (System.Array.IndexOf(ResourceDefinition.KnownCollectionModels, r.CollectionModel) < 0)
                         return ValidationResult.Fail(
                             $"scenario.resources[{i}].collection_model='{r.CollectionModel}' is not a known collection model " +
-                            $"({string.Join("/", ResourceDefinition.KnownCollectionModels)}).", validated);
+                            $"({string.Join("/", ResourceDefinition.KnownCollectionModels)}).");
                 }
             }
 
@@ -946,18 +990,20 @@ namespace ProjectChimera.Core.Definitions
             {
                 SupplyConfig sc = m.Supply;
                 string? e = CheckNonNeg("scenario.supply.starting_cap", sc.StartingCap);
-                if (e != null) return ValidationResult.Fail(e, validated);
+                if (e != null) return ValidationResult.Fail(e);
                 if (sc.HardCeiling is int ceiling)
                 {
                     string? ce = CheckNonNeg("scenario.supply.hard_ceiling", ceiling);
-                    if (ce != null) return ValidationResult.Fail(ce, validated);
+                    if (ce != null) return ValidationResult.Fail(ce);
                     if (ceiling < sc.StartingCap)
                         return ValidationResult.Fail(
-                            $"scenario.supply.hard_ceiling={ceiling} must be >= scenario.supply.starting_cap={sc.StartingCap}.", validated);
+                            $"scenario.supply.hard_ceiling={ceiling} must be >= scenario.supply.starting_cap={sc.StartingCap}.");
                 }
             }
 
-            return ValidationResult.Pass(validated);
+            // Story 7.7 (proof discipline): every check above passed — mint the proof-of-validation token HERE and
+            // only here. This is the codebase's sole `new Validated<ScenarioData>` (ValidatedMintingTests scan).
+            return ValidationResult.Pass(new Validated<ScenarioData>(m, _proof));
         }
 
         /// <summary>
@@ -1137,14 +1183,17 @@ namespace ProjectChimera.Core.Definitions
             return false;
         }
 
-        // ── Trigger vocabulary (Story 1.11, AC3) — the CLOSED, typed sets ScenarioDirector actually handles.
-        //    Each mirrors a switch in ScenarioDirector (EventMatches / EvalCondition / ExecuteActions / Compare);
-        //    a value outside the set is silently inert at runtime, so the gate rejects it instead. Static =
-        //    allocated once, so the per-trigger checks allocate nothing (mirrors _buildingTypeNames). ──
-        private static readonly string[] _operators          = { ">", "<", ">=", "<=", "==", "!=" };
-        private static readonly string[] _triggerEventTypes  = { "match_start", "unit_dies", "building_completed", "timer_expires", "resource_threshold", "unit_count_threshold" };
-        private static readonly string[] _conditionTypes     = { "always", "building_exists", "resource_comparison", "unit_count", "variable_comparison", "unit_in_region" };
-        private static readonly string[] _actionTypes        = { "spawn_unit", "display_message", "victory", "defeat", "create_timer", "add_resources", "set_variable", "play_sound" };
+        // ── Trigger vocabulary (Story 1.11, AC3; Story 7.7 unification) — the CLOSED, typed sets ScenarioDirector
+        //    actually handles. Story 7.7: these fields ALIAS the NodeKinds registry (the one vocabulary source) —
+        //    the former hand-kept string copies are gone, so the flat gate and the graph converter can never drift
+        //    (NodeKindsLockstepTests asserts the aliasing by reference). The flat action set is NodeKinds'
+        //    FlatActionTypes (the graph set minus the graph-channel-only array kinds ToFlat skips). The operator
+        //    set aliases NodeKinds.Operators too (review follow-up), so the graph converter's parse-time operator
+        //    membership check and this flat gate share the one vocabulary. ──
+        private static readonly string[] _operators          = NodeKinds.Operators;
+        private static readonly string[] _triggerEventTypes  = NodeKinds.EventTypes;
+        private static readonly string[] _conditionTypes     = NodeKinds.ConditionTypes;
+        private static readonly string[] _actionTypes        = NodeKinds.FlatActionTypes;
 
         /// <summary>Exact-match membership in a closed string set (case-sensitive). Null is never a member.</summary>
         private static bool InSet(string[] set, string? value)

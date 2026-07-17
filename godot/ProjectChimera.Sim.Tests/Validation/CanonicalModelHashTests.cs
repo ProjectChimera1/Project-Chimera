@@ -63,7 +63,7 @@ namespace ProjectChimera.Sim.Tests.Validation
         }
 
         [Fact]
-        public void AlgoVersion_IsSeven() => Assert.Equal(7, CanonicalModelHash.AlgoVersion); // Story 6.6 bumped 6→7 (blocking prop/water footprint fold)
+        public void AlgoVersion_IsEight() => Assert.Equal(8, CanonicalModelHash.AlgoVersion); // Story 7.7 bumped 7→8 (trigger/DSL model fold)
 
         [Fact]
         public void ReorderedCollections_HashEqual()
@@ -118,14 +118,46 @@ namespace ProjectChimera.Sim.Tests.Validation
         }
 
         [Fact]
-        public void Triggers_AreExcludedFromHash()
+        public void Triggers_AreFoldedIntoHash() // Story 7.7 inverted the exclusion: triggers are sim-semantic
         {
-            // Trigger/effect canonicalization is deferred to Epic 7 (D5) — Triggers must not affect the hash today.
             var a = BuildModel(false);
             var b = BuildModel(false);
             a.Triggers = Array.Empty<TriggerDefinition>();
             b.Triggers = new[] { new TriggerDefinition { Name = "T1" }, new TriggerDefinition { Name = "T2" } };
-            Assert.Equal(CanonicalModelHash.Compute(a), CanonicalModelHash.Compute(b));
+            Assert.NotEqual(CanonicalModelHash.Compute(a), CanonicalModelHash.Compute(b));
+        }
+
+        [Fact]
+        public void TriggerParamChange_MovesHash() // v8 sensitivity: a single trigger action field is semantic
+        {
+            static ScenarioData WithTrigger(int amountRaw)
+            {
+                var m = BuildModel(false);
+                m.Triggers = new[]
+                {
+                    new TriggerDefinition
+                    {
+                        Name = "reward",
+                        Events = new[] { new TriggerEvent { Type = "match_start", Faction = 0 } },
+                        Actions = new[] { new TriggerAction { Type = "add_resources", Faction = 0, Amount = Fixed.FromRaw(amountRaw) } },
+                    },
+                };
+                return m;
+            }
+            Assert.NotEqual(CanonicalModelHash.Compute(WithTrigger(100 << 16)),
+                            CanonicalModelHash.Compute(WithTrigger(200 << 16)));
+        }
+
+        [Fact]
+        public void TriggerDeclarationOrder_IsSemantic_MovesHash()
+        {
+            // Declaration order breaks priority ties in the execution total order, so v8 deliberately folds
+            // triggers IN ORDER — two scenarios with the same triggers in a different order hash differently.
+            var t1 = new TriggerDefinition { Name = "A" };
+            var t2 = new TriggerDefinition { Name = "B" };
+            var a = BuildModel(false); a.Triggers = new[] { t1, t2 };
+            var b = BuildModel(false); b.Triggers = new[] { t2, t1 };
+            Assert.NotEqual(CanonicalModelHash.Compute(a), CanonicalModelHash.Compute(b));
         }
 
         [Fact]
@@ -262,7 +294,7 @@ namespace ProjectChimera.Sim.Tests.Validation
             // Build the documented canonical byte stream (D5 fixed order) INDEPENDENTLY of MixInt/MixStr, then
             // fold it with a textbook FNV-64. This pins the algorithm without a self-tautology.
             var buf = new List<byte>();
-            AppendInt(buf, CanonicalModelHash.AlgoVersion);  // AlgoVersion (= 7)
+            AppendInt(buf, CanonicalModelHash.AlgoVersion);  // AlgoVersion (= 8)
             AppendInt(buf, Fixed.FromFloat(120f).Raw);       // MapBounds quantized (= 7,864,320)
             AppendStr(buf, "DestroyAllBuildings");           // WinCondition by NAME
             AppendStr(buf, "");                              // TerrainRef
@@ -277,6 +309,12 @@ namespace ProjectChimera.Sim.Tests.Validation
             AppendInt(buf, 0);                                 // Supply == null → resolved HardCeiling value (ignored when absent → 0)
             AppendInt(buf, 1);                                 // Supply == null → resolved Enabled default (true → 1)
             // no slots / nodes / buildings / units
+            // Story 7.7 (v8): the trigger/DSL model — every collection folds a count prefix; all empty/absent here.
+            AppendInt(buf, 0);                                 // Regions: null → count 0
+            AppendInt(buf, 0);                                 // Triggers: default empty array → count 0
+            AppendInt(buf, 0);                                 // Variables: null → count 0
+            AppendInt(buf, 0);                                 // Timers: null → count 0
+            AppendInt(buf, 0);                                 // TriggerGraphJson: absent → 0 marker
             ulong expected = IndependentFnv64(buf.ToArray());
             if (expected == 0UL) expected = 1UL;             // mirror the documented 0 → 1 sentinel
 

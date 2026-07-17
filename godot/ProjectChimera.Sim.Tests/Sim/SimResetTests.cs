@@ -468,7 +468,7 @@ namespace ProjectChimera.Sim.Tests.Sim
         {
             const int N = 90;
 
-            FactionDefinition faction = GoldenApplierScenario.BuildFaction(); // has a Worker unit (ApplyFallback needs it)
+            FactionDefinition faction = GoldenApplierScenario.BuildFaction(); // has a Worker unit (the fallback spawns it)
             var slotDefs = new FactionDefinition?[5];
             slotDefs[(int)Faction.Player1] = faction;
             slotDefs[(int)Faction.Player2] = faction;
@@ -477,11 +477,13 @@ namespace ProjectChimera.Sim.Tests.Sim
             host.ChecksumInterval = 1;
             var applier = new ScenarioApplier(host, NullLogSink.Instance, slotDefs);
 
-            applier.ApplyFallback();
+            // Story 7.7: the fallback routes through the SAME validated mirror + Apply writer path as boot (the
+            // legacy un-tokened ApplyFallback is retired) — the reset round-trip contract is unchanged.
+            ApplyValidated(applier, ScenarioApplier.BuildFallbackMirror());
             List<(uint, uint)> run1 = RunTicks(host, N);
 
             host.ClearForReset();
-            applier.ApplyFallback();            // no triggers/timers beyond ClearForReset — round-trips cleanly
+            ApplyValidated(applier, ScenarioApplier.BuildFallbackMirror());
             List<(uint, uint)> run2 = RunTicks(host, N);
 
             Assert.Equal(run1, run2);
@@ -551,7 +553,7 @@ namespace ProjectChimera.Sim.Tests.Sim
         public void HashAlgoVersions_AreUnchanged()
         {
             Assert.Equal(17, SimChecksum.AlgoVersion);   // Story 7.6: arrays + DslLoopState (loops/fuel) fold (16→17)
-            Assert.Equal(7, CanonicalModelHash.AlgoVersion); // Story 6.6: blocking prop/water footprint folded (6→7)
+            Assert.Equal(8, CanonicalModelHash.AlgoVersion); // Story 7.7: trigger/DSL model folded (7→8, the ONE named re-baseline)
             Assert.Equal(2, StartStateHash.AlgoVersion);
         }
 

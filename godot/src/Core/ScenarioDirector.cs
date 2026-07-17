@@ -171,8 +171,8 @@ namespace ProjectChimera.Core
             // run_effect — authored via the editor's raw-IR hatch), it is parsed via FromJson and merged in with its
             // node ids offset past the flat graph's max id (no collisions). BuildExecutionOrder then runs over the
             // UNION, so the global Priority-desc / node-id-asc total order holds across BOTH channels. A malformed
-            // trigger_graph fails closed at the converter parse (7.3's only graph gate; the authoritative load-time
-            // validator is 7.7). The tick WALKS this graph directly, superseding 7.2's ToFlat() lowering.
+            // trigger_graph fails closed at the converter parse AND at the Story 7.7 GraphStructureGate below (the
+            // authoritative structural rulebook). The tick WALKS this graph directly, superseding 7.2's ToFlat().
             //
             // Review (7.4 pass 2): FAILURE-ATOMIC — every throwing step (parse, cycle guard, expression compile)
             // runs against LOCALS before any field is touched, so a caller that catches a located load error keeps
@@ -181,35 +181,39 @@ namespace ProjectChimera.Core
             TriggerGraph graph = TriggerGraph.FromFlat(scenario.Triggers);
             if (!string.IsNullOrWhiteSpace(scenario.TriggerGraphJson))
                 graph.Merge(TriggerGraph.FromJson(scenario.TriggerGraphJson!));
+
+            // Story 7.7 — gate/backstop reconciliation: the SAME shared rulebooks the ScenarioValidator gate runs
+            // (GraphStructureGate + DslLoopGate.CheckDeclarations + CheckGraph + CheckSpawnCounts), applied
+            // UNCONDITIONALLY for direct LoadScenario callers (the 7.6 HasLoopConstructs legacy-parity guard is
+            // removed — one invocation posture at both gates). Duplicate variable declarations now always reject
+            // here too (the validator always rejected them), so loop_var/array/expression typing can never gate
+            // against a different declaration than runtime Resolve binds. All checks run against LOCALS before
+            // any field commit (failure atomicity preserved).
+            Dictionary<string, (DslValueType Elem, int Capacity)> arrayDecls = DslLoopGate.BuildArrayDecls(scenario.Variables);
+            var loopDeclMap = BuildDeclMap(scenario, requireUnique: true);
+
+            string? declErr = DslLoopGate.CheckDeclarations(scenario.Variables);
+            if (declErr != null) throw new System.Text.Json.JsonException(declErr);
+
+            // Whole-graph structural rulebook (dup ids, dangling endpoints, port legality, exec/data forks, stray
+            // data edges, unconsumed-expression compiles) BEFORE the execution-order walk, so structurally
+            // malformed IR rejects located instead of relying on the walker's tolerances.
+            string? structErr = GraphStructureGate.Check(graph, loopDeclMap, arrayDecls);
+            if (structErr != null) throw new System.Text.Json.JsonException(structErr);
+
             List<TriggerGraph.TriggerExec> execs = graph.BuildExecutionOrder();
 
-            // Story 7.6 (review) — the spawn-count backstop, gate parity for DIRECT LoadScenario callers. Runs
-            // UNCONDITIONALLY (spawn_unit predates 7.6, so it is deliberately NOT behind the HasLoopConstructs
-            // legacy guard): the "never a silent runtime truncation" posture makes an out-of-range count a loud
-            // load reject at BOTH gates; the ExecuteLeaf Math.Min clamp stays a defense-in-depth seatbelt only.
+            // Story 7.6 (review) — the spawn-count backstop: the "never a silent runtime truncation" posture makes
+            // an out-of-range count a loud load reject at BOTH gates; the ExecuteLeaf Math.Min clamp stays a
+            // defense-in-depth seatbelt only.
             string? spawnErr = DslLoopGate.CheckSpawnCounts(execs);
             if (spawnErr != null) throw new System.Text.Json.JsonException(spawnErr);
 
-            // Story 7.6 — the loop/array/fuel backstop: the SAME DslLoopGate rulebook the ScenarioValidator gate
-            // runs (one implementation — parity by construction), applied fail-closed for direct LoadScenario
-            // callers. Guarded by HasLoopConstructs so a loop/array-free (legacy) scenario keeps its EXACT
-            // pre-7.6 load behavior (the 7.4 anyExpr precedent / the Block-If parity net).
-            Dictionary<string, (DslValueType Elem, int Capacity)> arrayDecls = DslLoopGate.BuildArrayDecls(scenario.Variables);
-            if (DslLoopGate.HasLoopConstructs(scenario.Variables, graph))
             {
-                string? declErr = DslLoopGate.CheckDeclarations(scenario.Variables);
-                if (declErr != null) throw new System.Text.Json.JsonException(declErr);
-
                 var declaredRegions = new HashSet<string>(StringComparer.Ordinal);
                 if (scenario.Regions != null)
                     foreach (ScenarioRegion rg in scenario.Regions)
                         if (rg != null && !string.IsNullOrEmpty(rg.Id)) declaredRegions.Add(rg.Id);
-                // Review (7.6): requireUnique — a duplicate declaration with loop constructs present would gate
-                // loop_var/array typing against the FIRST declaration while runtime Resolve may bind another
-                // (the same silent-confusion class the 7.4 anyExpr rule closed for expressions). Duplicates now
-                // reject whenever expressions OR loop constructs exist; a construct-free legacy direct-load keeps
-                // its exact pre-7.4 behavior (the Block-If).
-                var loopDeclMap = BuildDeclMap(scenario, requireUnique: true);
                 string? loopErr = DslLoopGate.CheckGraph(graph, execs, loopDeclMap, arrayDecls,
                     id => declaredRegions.Contains(id));
                 if (loopErr != null) throw new System.Text.Json.JsonException(loopErr);
