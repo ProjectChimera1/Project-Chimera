@@ -60,6 +60,11 @@ jobs:
       - name: Golden-checksum determinism gate (fails on ANY checksum diff)
         # CHIMERA_GOLDEN_RECORD is intentionally NEVER set — verify mode asserts against the committed goldens.
         # No hardcoded test count: xUnit returns a non-zero exit code on ANY failure, which fails this step.
+        env:
+          # CI-only perf-ceiling margin (CanonicalModelHashPerfTests): shared runners are noisy/oversubscribed
+          # and overshot the tight local 250 ms cold ceiling by ~3.5% with no code change (run 29617704476).
+          # 2x lets hardware noise through while a real perf regression still fails; the local default stays 1.0.
+          CHIMERA_PERF_CEILING_SCALE: '2.0'
         run: dotnet test godot/ProjectChimera.Sim.Tests/ProjectChimera.Sim.Tests.csproj -c Release --no-restore --logger "trx;LogFileName=tier1.trx"
 
       - name: Upload test results (.trx)
@@ -102,6 +107,8 @@ jobs:
       - name: Cross-platform golden-checksum gate on Linux (fails on ANY checksum diff vs the committed Windows goldens)
         # Verify mode — CHIMERA_GOLDEN_RECORD intentionally NEVER set (recording on Linux would overwrite the
         # committed Windows baseline). No hardcoded test count: xUnit's non-zero exit on ANY failure fails this step.
+        env:
+          CHIMERA_PERF_CEILING_SCALE: '2.0'   # same CI-only perf margin as tier1-golden-gate (see comment there)
         run: dotnet test godot/ProjectChimera.Sim.Tests/ProjectChimera.Sim.Tests.csproj -c Release --no-restore --logger "trx;LogFileName=tier1-linux.trx"
 
       - name: Upload test results (.trx)
