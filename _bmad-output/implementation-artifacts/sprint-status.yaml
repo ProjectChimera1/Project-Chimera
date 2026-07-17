@@ -144,7 +144,7 @@ development_status:
   7-2-graph-canonical-dsl-ir-foundation-closed-registry-converter-lossless-flat-to-graph-migration: done
   7-3-typed-scoped-variables-deterministic-timers-and-verify-to-ship-eca: done
   7-4-fixed-point-arithmetic-and-boolean-expression-layer: done
-  7-5-custom-events-define-raise-subscribe-with-acyclic-same-tick-dispatch: backlog
+  7-5-custom-events-define-raise-subscribe-with-acyclic-same-tick-dispatch: done
   7-6-bounded-foreach-foreachbatched-loops-arrays-and-layer-3-fuel: done
   7-7-authoritative-server-side-load-time-validator-gate-no-escape-hatch: done
   7-8-custom-runtime-ui-read-rail-declarative-widget-tree-version-stamped-readback: done

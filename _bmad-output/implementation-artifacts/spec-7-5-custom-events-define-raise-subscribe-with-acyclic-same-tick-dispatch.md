@@ -6,6 +6,7 @@ status: 'done'
 review_loop_iteration: 1
 followup_review_recommended: false
 baseline_revision: 'e94fb331fbf338106d2afaa71098ea397aa680e7'
+final_revision: '1597e4d'
 merge_note: >-
   Re-landed onto master 2026-07-17 via manual merge of the recovered commit 8c36cfe (parent 7-4) across the
   diverged 7-6/7-7/7-8 line: SimChecksum AlgoVersion 17->18 (DslEventQueue fold after DslLoopState), the spec's
