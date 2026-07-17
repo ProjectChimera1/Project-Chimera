@@ -97,6 +97,10 @@ namespace ProjectChimera.Core.Definitions
             if (copy.Timers    is { Length: 0 }) copy.Timers    = null;
             if (string.IsNullOrWhiteSpace(copy.TriggerGraphJson)) copy.TriggerGraphJson = null;
 
+            // Story 7.5: normalize an empty CustomEvents array → null so an event-less scenario serializes
+            // BYTE-IDENTICALLY to pre-7.5 (no "custom_events" key emitted) and round-trips absent.
+            if (copy.CustomEvents is { Length: 0 }) copy.CustomEvents = null;
+
             // Story 7.8: normalize an EMPTY custom-UI tree (no widgets) → null so a scenario without custom UI
             // serializes BYTE-IDENTICALLY to pre-7.8 (no "custom_ui" key), round-trips absent, and moves no golden.
             if (copy.CustomUi != null && (copy.CustomUi.Widgets == null || copy.CustomUi.Widgets.Length == 0))

@@ -547,13 +547,14 @@ namespace ProjectChimera.Sim.Tests.Sim
             Assert.Equal(3, host.LoopState.RowLength(0));
         }
 
-        // ── No golden moves: the hash-version stamps stay UNBUMPED (this story folds no hash field) ─
+        // ── Hash-version stamps: pinned so any UNSANCTIONED bump is loud (the 7.5 merge re-baseline is the
+        //    sanctioned one — v18 sim fold + v10 canonical fold, both landed with the single golden re-record) ─
 
         [Fact]
         public void HashAlgoVersions_AreUnchanged()
         {
-            Assert.Equal(17, SimChecksum.AlgoVersion);   // Story 7.6: arrays + DslLoopState (loops/fuel) fold (16→17)
-            Assert.Equal(9, CanonicalModelHash.AlgoVersion); // Story 7.8: custom-UI widget tree folded (8→9, the ONE named re-baseline)
+            Assert.Equal(18, SimChecksum.AlgoVersion);   // v17 = Story 7.6 arrays + DslLoopState (loops/fuel) fold; v18 = Story 7.5 DslEventQueue fold (landed via merge)
+            Assert.Equal(10, CanonicalModelHash.AlgoVersion); // v9 = Story 7.8 custom-UI fold; v10 = Story 7.5 custom-event registry fold (landed via merge)
             Assert.Equal(2, StartStateHash.AlgoVersion);
         }
 

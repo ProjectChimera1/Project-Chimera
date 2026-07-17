@@ -342,8 +342,8 @@ namespace ProjectChimera.Core.Definitions
                             throw new GateException(
                                 $"branch node {br.Id}: requires a Bool expression wired into its condition-in data port (port {TriggerGraph.BranchCondInPort}).");
                         long condOps = CompileExpr(ctx, it.CondExprRoot, $"branch node {br.Id} condition",
-                            out DslValueType condType);
-                        if (condType != DslValueType.Bool)
+                            out DslValueType condType, out bool condTyped);
+                        if (condTyped && condType != DslValueType.Bool)
                             throw new GateException(
                                 $"branch node {br.Id}: the condition expression must evaluate to Bool, got {condType}.");
                         RequireWire(ctx, it.CondExprRoot, br.Id, TriggerGraph.BranchCondInPort, DataWireType.Boolean,
@@ -358,6 +358,13 @@ namespace ProjectChimera.Core.Definitions
                         break;
                     }
 
+                    case RaiseEventNode:
+                        // Story 7.5 (merge): an executed raise charges one op at runtime, so mirror it in the
+                        // static model. Raise-ARG expression ops stay deliberately uncharged — same deferred
+                        // class as condition-expression evaluation (see the deferred-work ledger).
+                        cost += 1;
+                        break;
+
                     case ActionNode act when NodeKinds.IsArrayActionKind(act.Kind):
                         cost += CheckArrayAction(ctx, act, it);
                         break;
@@ -366,7 +373,7 @@ namespace ProjectChimera.Core.Definitions
                     {
                         long c = 1;
                         if (it.ValueExprRoot >= 0)
-                            c += CompileExpr(ctx, it.ValueExprRoot, $"action node {act.Id} value", out _);
+                            c += CompileExpr(ctx, it.ValueExprRoot, $"action node {act.Id} value", out _, out _);
                         if (it.IndexExprRoot >= 0)
                             throw new GateException(
                                 $"action node {act.Id} (kind '{act.Kind}'): an index-in expression edge is only allowed on an array_set action.");
@@ -472,8 +479,8 @@ namespace ProjectChimera.Core.Definitions
                     if (it.IndexExprRoot >= 0)
                         throw new GateException(
                             $"action node {act.Id} (array_push): takes no index-in edge (array_push appends; use array_set to write an index).");
-                    cost += CompileExpr(ctx, it.ValueExprRoot, $"action node {act.Id} (array_push) value", out DslValueType vt);
-                    if (vt != adecl.Elem)
+                    cost += CompileExpr(ctx, it.ValueExprRoot, $"action node {act.Id} (array_push) value", out DslValueType vt, out bool vtTyped);
+                    if (vtTyped && vt != adecl.Elem)
                         throw new GateException(
                             $"action node {act.Id} (array_push): value expression type {vt} does not match array '{act.Variable}' element type {adecl.Elem}.");
                     RequireWire(ctx, it.ValueExprRoot, act.Id, TriggerGraph.ActionValueInPort, ExprCompiler.WireOf(adecl.Elem),
@@ -488,14 +495,14 @@ namespace ProjectChimera.Core.Definitions
                     if (it.IndexExprRoot < 0)
                         throw new GateException(
                             $"action node {act.Id} (array_set): requires an Int index-in expression edge (data port {TriggerGraph.ActionIndexInPort}).");
-                    cost += CompileExpr(ctx, it.ValueExprRoot, $"action node {act.Id} (array_set) value", out DslValueType vt);
-                    if (vt != adecl.Elem)
+                    cost += CompileExpr(ctx, it.ValueExprRoot, $"action node {act.Id} (array_set) value", out DslValueType vt, out bool vtTyped);
+                    if (vtTyped && vt != adecl.Elem)
                         throw new GateException(
                             $"action node {act.Id} (array_set): value expression type {vt} does not match array '{act.Variable}' element type {adecl.Elem}.");
                     RequireWire(ctx, it.ValueExprRoot, act.Id, TriggerGraph.ActionValueInPort, ExprCompiler.WireOf(adecl.Elem),
                         $"action node {act.Id} (array_set)");
-                    cost += CompileExpr(ctx, it.IndexExprRoot, $"action node {act.Id} (array_set) index", out DslValueType idxT);
-                    if (idxT != DslValueType.Int)
+                    cost += CompileExpr(ctx, it.IndexExprRoot, $"action node {act.Id} (array_set) index", out DslValueType idxT, out bool idxTyped);
+                    if (idxTyped && idxT != DslValueType.Int)
                         throw new GateException(
                             $"action node {act.Id} (array_set): the index expression must be Int, got {idxT}.");
                     break;
@@ -514,13 +521,48 @@ namespace ProjectChimera.Core.Definitions
         /// <summary>Compile the expression rooted at <paramref name="root"/> (branch conditions and every
         /// loop-context expression compile <c>inCondition:false</c> — trigger-local/loop-var reads are legal)
         /// and return its op count. Throws located on any compile reject.</summary>
-        private static long CompileExpr(Ctx ctx, int root, string where, out DslValueType resultType)
+        private static long CompileExpr(Ctx ctx, int root, string where, out DslValueType resultType, out bool typed)
         {
+            if (SubgraphReadsEventParams(ctx, root))
+            {
+                resultType = default;
+                typed = false;
+                return 0;
+            }
             if (!ExprCompiler.TryCompile(ctx.Graph, root, ctx.DeclMap, inCondition: false,
                     out ExprProgram? prog, out string? err, ctx.ArrayDecls))
                 throw new GateException($"{where}: {err}");
             resultType = prog!.ResultType;
+            typed = true;
             return prog.OpCount;
+        }
+
+        /// <summary>Story 7.5 (merge): true when the operand subgraph under <paramref name="root"/> contains an
+        /// <see cref="ExprEventParamNode"/>. Such a subgraph cannot compile without its trigger's event-parameter
+        /// map, which exists only once <see cref="EventDispatchPlan.TryBuild"/> has run — the validator's
+        /// event-param root pass (branch/array roots) + data-edge pass (condition/value roots) and the director's
+        /// CompileItems all compile these roots strictly WITH the map, so this static-cost pass skips them: ops
+        /// uncharged (the same deferred class as condition-expression charging — see the deferred-work ledger) and
+        /// the result type unchecked HERE (the later strict compiles re-assert Bool/element-type/Int-index, so the
+        /// load still gates fail-closed). Iterative walk, the P9 posture.</summary>
+        private static bool SubgraphReadsEventParams(Ctx ctx, int root)
+        {
+            if (ctx.ById.TryGetValue(root, out NodeBase? rn) && rn is ExprEventParamNode) return true;
+            var seen = new HashSet<int> { root };
+            var stack = new Stack<int>();
+            stack.Push(root);
+            while (stack.Count > 0)
+            {
+                int cur = stack.Pop();
+                foreach (DataEdge e in ctx.Graph.DataEdges)
+                {
+                    if (e.Dst != cur || !seen.Add(e.Src)) continue;
+                    if (!ctx.ById.TryGetValue(e.Src, out NodeBase? src) || !ExprCompiler.IsExprNode(src)) continue;
+                    if (src is ExprEventParamNode) return true;
+                    stack.Push(e.Src);
+                }
+            }
+            return false;
         }
 
         /// <summary>The consumed edge (<paramref name="src"/> → <paramref name="dst"/>:<paramref name="dstPort"/>)

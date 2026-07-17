@@ -64,9 +64,12 @@ namespace ProjectChimera.CreationSuite
         // ACTION option that routes the trigger through the graph channel (trigger_graph), not the flat array.
         // Story 7.4: "expression" is a manual CONDITION option that routes the trigger through the graph channel
         // (a CEL-shaped text expression compiled into the shared IR), like run_effect does for actions.
-        private static readonly string[] EventKinds     = { "match_start", "unit_dies", "building_completed", "timer_expires", "resource_threshold", "unit_count_threshold" };
+        // Story 7.5: "custom_event" is a manual EVENT option (declared-event picker) and "raise_event" a manual
+        // ACTION option (event picker + next-tick toggle + per-param arg expression fields) — both route the
+        // trigger through the graph channel (custom events are graph-channel-only; ToFlat fails closed on them).
+        private static readonly string[] EventKinds     = { "match_start", "unit_dies", "building_completed", "timer_expires", "resource_threshold", "unit_count_threshold", "custom_event" };
         private static readonly string[] ConditionKinds = { "(none)", "always", "building_exists", "resource_comparison", "unit_count", "variable_comparison", "unit_in_region", "expression" };
-        private static readonly string[] ActionKinds    = { "display_message", "spawn_unit", "victory", "defeat", "create_timer", "add_resources", "set_variable", "play_sound", "run_effect" };
+        private static readonly string[] ActionKinds    = { "display_message", "spawn_unit", "victory", "defeat", "create_timer", "add_resources", "set_variable", "play_sound", "run_effect", "raise_event" };
         private static readonly string[] ValueTypeNames = Enum.GetNames(typeof(DslValueType));
         private static readonly string[] ScopeNames     = Enum.GetNames(typeof(VarScope));
 
@@ -100,6 +103,19 @@ namespace ProjectChimera.CreationSuite
         private VBoxContainer _rawIrSection  = null!;
         private TextEdit      _rawIrInput    = null!;
         private Label         _rawIrStatus   = null!;
+
+        // ── Story 7.5 — custom-events declaration section + manual raise/subscribe controls ──
+        private VBoxContainer _eventsSection = null!;
+        private VBoxContainer _eventsList    = null!;
+        private LineEdit      _evtName       = null!;
+        private LineEdit      _evtParams     = null!;   // compact "name:Type, name:Type" line
+        private LineEdit      _evtRaisers    = null!;   // compact "0,1" allowed-raiser slots line
+        private Label         _evtStatus     = null!;
+        private OptionButton  _manualEventName  = null!; // declared-event picker (event kind custom_event)
+        private OptionButton  _manualRaiseEvent = null!; // declared-event picker (action kind raise_event)
+        private CheckBox      _manualRaiseNextTick = null!;
+        private VBoxContainer _raiseArgsBox  = null!;    // per-declared-param arg expression fields
+        private readonly List<LineEdit> _raiseArgEdits = new();
 
         // ── Public init ───────────────────────────────────────────────────────
 
@@ -190,7 +206,7 @@ namespace ProjectChimera.CreationSuite
             // Story 7.3 — layered-complexity entry points: manual preset form, variables, and the raw-IR hatch,
             // alongside the AI path. Each button toggles its section (all start collapsed).
             var manualBtn = new Button { Text = "+ New Trigger (Manual)" };
-            manualBtn.Pressed += () => ToggleSection(_manualSection);
+            manualBtn.Pressed += () => { RefreshVarPickers(); RefreshEventPickers(); ToggleSection(_manualSection); };
             AttachTip(manualBtn, "Manual Trigger", "Author an ECA trigger from closed-vocabulary dropdowns — no AI needed.");
             root.AddChild(manualBtn);
 
@@ -204,6 +220,11 @@ namespace ProjectChimera.CreationSuite
             AttachTip(varsBtn, "Variables", "Declare typed, scoped DSL variables (Global / Per-player / Trigger-local).");
             root.AddChild(varsBtn);
 
+            var eventsBtn = new Button { Text = "Custom Events…" };
+            eventsBtn.Pressed += () => { RefreshEventsList(); RefreshEventPickers(); ToggleSection(_eventsSection); };
+            AttachTip(eventsBtn, "Custom Events", "Declare named custom events (typed params + allowed raisers) that triggers can raise and subscribe to.");
+            root.AddChild(eventsBtn);
+
             var rawBtn = new Button { Text = "Raw IR (advanced)…" };
             rawBtn.Pressed += OnRawIrPressed;
             AttachTip(rawBtn, "Raw IR", "Paste canonical graph-IR JSON (the escape hatch). Validated fail-closed on Accept.");
@@ -213,6 +234,7 @@ namespace ProjectChimera.CreationSuite
 
             BuildManualSection(root);
             BuildVarsSection(root);
+            BuildEventsSection(root);
             BuildRawIrSection(root);
 
             root.AddChild(new HSeparator());
@@ -454,6 +476,14 @@ namespace ProjectChimera.CreationSuite
             _manualSection.AddChild(new Label { Text = "When (event):" });
             _manualEvent = MakeOption(EventKinds);
             _manualSection.AddChild(_manualEvent);
+            // Story 7.5 — the declared-event picker, revealed when the "custom_event" kind is picked.
+            _manualEventName = new OptionButton { Visible = false };
+            AttachTip(_manualEventName, "Custom event",
+                "The declared custom event this trigger subscribes to (declare events in the Custom Events section).",
+                ChimeraTooltip.TooltipRole.Field);
+            _manualSection.AddChild(_manualEventName);
+            _manualEvent.ItemSelected += _ =>
+                _manualEventName.Visible = EventKinds[Math.Max(0, _manualEvent.Selected)] == "custom_event";
 
             _manualSection.AddChild(new Label { Text = "If (condition):" });
             _manualCond = MakeOption(ConditionKinds);
@@ -503,8 +533,31 @@ namespace ProjectChimera.CreationSuite
                 ChimeraTooltip.TooltipRole.Field);
             _manualSection.AddChild(_manualActValExpr);
             _manualAction.ItemSelected += _ =>
-                _manualActValExpr.Visible = ActionKinds[Math.Max(0, _manualAction.Selected)] == "set_variable";
+            {
+                string kind = ActionKinds[Math.Max(0, _manualAction.Selected)];
+                _manualActValExpr.Visible = kind == "set_variable";
+                bool raise = kind == "raise_event";
+                _manualRaiseEvent.Visible = raise;
+                _manualRaiseNextTick.Visible = raise;
+                _raiseArgsBox.Visible = raise;
+                if (raise) RefreshRaiseArgFields();
+            };
             _manualActValExpr.TextChanged += _ => RefreshVarPickers(); // widen/narrow the set_variable picker live
+            // Story 7.5 — the raise_event controls (event picker, next-tick toggle, per-param arg expressions),
+            // revealed when the "raise_event" action is picked. Args are typed expressions compiled fail-closed on Add.
+            _manualRaiseEvent = new OptionButton { Visible = false };
+            AttachTip(_manualRaiseEvent, "Raise event",
+                "The declared custom event to raise (subscribed handler triggers fire within the same tick).",
+                ChimeraTooltip.TooltipRole.Field);
+            _manualSection.AddChild(_manualRaiseEvent);
+            _manualRaiseEvent.ItemSelected += _ => RefreshRaiseArgFields();
+            _manualRaiseNextTick = new CheckBox { Text = "Raise next tick (feedback-safe)", Visible = false };
+            AttachTip(_manualRaiseNextTick, "Next tick",
+                "Defers the raise to the next tick through the bounded event queue — the sanctioned way to author A→B→A feedback (same-tick cycles are rejected at load).",
+                ChimeraTooltip.TooltipRole.Field);
+            _manualSection.AddChild(_manualRaiseNextTick);
+            _raiseArgsBox = new VBoxContainer { Visible = false };
+            _manualSection.AddChild(_raiseArgsBox);
             _manualActText = new LineEdit { PlaceholderText = "message text, or run_effect JSON e.g. {\"kind\":\"direct_hp_delta\",\"delta\":-10}" };
             _manualSection.AddChild(_manualActText);
 
@@ -549,6 +602,41 @@ namespace ProjectChimera.CreationSuite
             if (act == "run_effect" && cond == "expression")
             {
                 SetManualStatus("✘ An expression condition cannot pair with run_effect yet — author via Raw IR.");
+                return;
+            }
+
+            // ── Story 7.5 — custom-event subscribe (event kind custom_event) and/or raise (action raise_event):
+            //    graph-channel-only (BuildCustomEventTrigger + accumulating Merge). Exotic combos the manual form
+            //    cannot represent route to Raw IR fail-closed — nothing partial ever persists. ──
+            if (ev == "custom_event" || act == "raise_event")
+            {
+                if (ev == "custom_event" && string.IsNullOrEmpty(SelectedText(_manualEventName)))
+                {
+                    SetManualStatus("✘ Pick the declared custom event to subscribe to (declare one in the Custom Events section first).");
+                    return;
+                }
+                if (act == "raise_event" && string.IsNullOrEmpty(SelectedText(_manualRaiseEvent)))
+                {
+                    SetManualStatus("✘ Pick the declared custom event to raise (declare one in the Custom Events section first).");
+                    return;
+                }
+                if (act == "run_effect" || (ev == "custom_event" && act != "set_variable" && act != "raise_event"))
+                {
+                    SetManualStatus("✘ A custom-event trigger currently pairs with the set_variable or raise_event action — author other combinations via Raw IR.");
+                    return;
+                }
+                if (cond != "(none)" && cond != "expression")
+                {
+                    SetManualStatus("✘ A custom-event trigger takes '(none)' or an 'expression' condition — author other condition kinds via Raw IR.");
+                    return;
+                }
+                string evCondText = _manualCondExpr.Text.Trim();
+                if (cond == "expression" && evCondText.Length == 0)
+                {
+                    SetManualStatus("✘ The expression condition needs expression text.");
+                    return;
+                }
+                PersistManualCustomEvent(name, ev, cond == "expression" ? evCondText : null, act);
                 return;
             }
 
@@ -738,6 +826,62 @@ namespace ProjectChimera.CreationSuite
         {
             existing.Merge(added);
             return existing;
+        }
+
+        /// <summary>Story 7.5 — persist a manual custom-event trigger (subscribe via <c>custom_event</c> and/or
+        /// raise via <c>raise_event</c>) through the Godot-free <see cref="TriggerGraph.BuildCustomEventTrigger"/>
+        /// helper (parse + compile + arity/type/raiser checks fail-closed; located <see cref="JsonException"/> on
+        /// any violation) and the same graph-channel ACCUMULATION as <see cref="PersistManualRunEffect"/> (merge,
+        /// canonicalize, raw-IR resync). Nothing persists on rejection — the error lands on the status label.</summary>
+        private void PersistManualCustomEvent(string name, string eventKind, string? conditionExprText, string act)
+        {
+            if (_scenario == null) return;
+            try
+            {
+                var declMap = new Dictionary<string, (DslValueType Type, VarScope Scope)>(StringComparer.Ordinal);
+                if (_scenario.Variables != null)
+                    foreach (var v in _scenario.Variables)
+                        if (!string.IsNullOrWhiteSpace(v.Name))
+                            declMap[v.Name] = (v.Type, v.Scope);
+
+                string? raiseName = null;
+                List<string>? raiseArgs = null;
+                bool nextTick = false;
+                if (act == "raise_event")
+                {
+                    raiseName = SelectedText(_manualRaiseEvent);
+                    nextTick  = _manualRaiseNextTick.ButtonPressed;
+                    raiseArgs = new List<string>();
+                    foreach (LineEdit argEdit in _raiseArgEdits)
+                        raiseArgs.Add(argEdit.Text.Trim());
+                }
+
+                string? setVarName   = act == "set_variable" ? SelectedText(_manualActVar) : null;
+                string  valText      = act == "set_variable" ? _manualActValExpr.Text.Trim() : "";
+                string? valueExpr    = valText.Length > 0 ? valText : null;
+
+                TriggerGraph added = TriggerGraph.BuildCustomEventTrigger(
+                    name,
+                    eventKind, eventKind == "custom_event" ? SelectedText(_manualEventName) : null,
+                    conditionExprText,
+                    raiseName, raiseArgs, raiser: -1, nextTick,
+                    setVarName, 0, valueExpr,
+                    declMap, _scenario.CustomEvents,
+                    _manualEnabled.ButtonPressed, _manualRunOnce.ButtonPressed, (int)_manualActVal.Value);
+
+                TriggerGraph graph = string.IsNullOrWhiteSpace(_scenario.TriggerGraphJson)
+                    ? added
+                    : MergeInto(TriggerGraph.FromJson(_scenario.TriggerGraphJson!), added);
+                _scenario.TriggerGraphJson = graph.ToCanonicalJson();  // canonicalize on persist
+                if (_rawIrSection != null && _rawIrSection.Visible)
+                    _rawIrInput.Text = _scenario.TriggerGraphJson;     // keep an open raw-IR section in sync
+                SetManualStatus($"✔ Added custom-event trigger '{name}' to the graph channel.");
+                RefreshList();
+            }
+            catch (Exception ex) when (ex is JsonException or NotSupportedException)
+            {
+                SetManualStatus($"✘ Rejected (no trigger added): {ex.Message}");
+            }
         }
 
         // ── Story 7.3 — variables declaration section ──────────────────────────
@@ -935,6 +1079,200 @@ namespace ProjectChimera.CreationSuite
             if (text.Length == 0) return;
             for (int i = 0; i < opt.ItemCount; i++)
                 if (opt.GetItemText(i) == text) { opt.Select(i); return; }
+        }
+
+        // ── Story 7.5 — custom-events declaration section (the vars-section clone) ──
+
+        private void BuildEventsSection(VBoxContainer root)
+        {
+            _eventsSection = new VBoxContainer { Visible = false };
+            root.AddChild(_eventsSection);
+            _eventsSection.AddChild(new Label { Text = "Declared custom events:" });
+
+            _eventsList = new VBoxContainer();
+            _eventsSection.AddChild(_eventsList);
+
+            _evtName = new LineEdit { PlaceholderText = "event name (e.g. wave_start)" };
+            _eventsSection.AddChild(_evtName);
+            _evtParams = new LineEdit { PlaceholderText = "params (e.g. count:Int, rate:Fixed) — empty = none" };
+            AttachTip(_evtParams, "Event params",
+                "Comma-separated name:Type pairs (Int / Fixed / Bool). Handlers read them as event.<name>.",
+                ChimeraTooltip.TooltipRole.Field);
+            _eventsSection.AddChild(_evtParams);
+            _evtRaisers = new LineEdit { PlaceholderText = "allowed raiser slots (e.g. 0,1) — empty = system only" };
+            AttachTip(_evtRaisers, "Allowed raisers",
+                "Faction slots allowed to raise this event. A trigger's authored raiser must be -1 (system) or one of these.",
+                ChimeraTooltip.TooltipRole.Field);
+            _eventsSection.AddChild(_evtRaisers);
+
+            var addBtn = new Button { Text = "Add event" };
+            addBtn.Pressed += OnEventAddPressed;
+            _eventsSection.AddChild(addBtn);
+
+            _evtStatus = new Label { Text = "", AutowrapMode = TextServer.AutowrapMode.Word };
+            _eventsSection.AddChild(_evtStatus);
+        }
+
+        private void OnEventAddPressed()
+        {
+            if (_scenario == null) return;
+            string name = _evtName.Text.Trim();
+            if (string.IsNullOrEmpty(name)) { _evtStatus.Text = "✘ An event needs a name."; return; }
+
+            // Fail-closed at authoring time (the pre-tick gate re-checks everything): dup names, built-in
+            // shadowing, malformed param/raiser text — refuse with feedback, never a partial persist.
+            if (_scenario.CustomEvents != null)
+                foreach (var existing in _scenario.CustomEvents)
+                    if (existing.Name == name) { _evtStatus.Text = $"✘ '{name}' is already declared."; return; }
+            if (Array.IndexOf(EventKinds, name) >= 0)
+            { _evtStatus.Text = $"✘ '{name}' shadows a built-in event kind."; return; }
+
+            var paramList = new List<ScenarioEventParam>();
+            string paramsText = _evtParams.Text.Trim();
+            if (paramsText.Length > 0)
+            {
+                foreach (string chunk in paramsText.Split(','))
+                {
+                    string[] halves = chunk.Split(':');
+                    string pn = halves[0].Trim();
+                    string pt = halves.Length > 1 ? halves[1].Trim() : "";
+                    if (halves.Length != 2 || pn.Length == 0
+                        || (pt != "Int" && pt != "Fixed" && pt != "Bool"))
+                    {
+                        _evtStatus.Text = $"✘ '{chunk.Trim()}' is not a 'name:Type' pair (types: Int / Fixed / Bool).";
+                        return;
+                    }
+                    paramList.Add(new ScenarioEventParam { Name = pn, Type = Enum.Parse<DslValueType>(pt) });
+                }
+            }
+
+            var raiserList = new List<int>();
+            string raisersText = _evtRaisers.Text.Trim();
+            if (raisersText.Length > 0)
+            {
+                foreach (string chunk in raisersText.Split(','))
+                {
+                    if (!int.TryParse(chunk.Trim(), System.Globalization.NumberStyles.Integer,
+                            System.Globalization.CultureInfo.InvariantCulture, out int slot))
+                    {
+                        _evtStatus.Text = $"✘ '{chunk.Trim()}' is not a faction slot number.";
+                        return;
+                    }
+                    raiserList.Add(slot);
+                }
+            }
+
+            // Run the SAME closed-registry rules the pre-tick gate applies (caps, identifier params, raiser
+            // range/dups) over the WOULD-BE registry, so a bad declaration is refused here with the gate's own
+            // message instead of failing the whole scenario later.
+            var candidate = new List<ScenarioCustomEvent>(_scenario.CustomEvents ?? Array.Empty<ScenarioCustomEvent>())
+            {
+                new ScenarioCustomEvent
+                {
+                    Name = name,
+                    Params = paramList.Count > 0 ? paramList.ToArray() : null,
+                    AllowedRaisers = raiserList.Count > 0 ? raiserList.ToArray() : null,
+                },
+            };
+            string? err = EventDispatchPlan.ValidateRegistry(candidate, (int)Faction.Player4);
+            if (err != null) { _evtStatus.Text = $"✘ {err}"; return; }
+
+            _scenario.CustomEvents = candidate.ToArray();
+            _evtName.Text = "";
+            _evtStatus.Text = $"✔ Declared '{name}'.";
+            RefreshEventsList();
+            RefreshEventPickers();
+        }
+
+        private void RefreshEventsList()
+        {
+            if (_eventsList == null) return;
+            foreach (Node child in _eventsList.GetChildren()) { _eventsList.RemoveChild(child); child.QueueFree(); }
+            var events = _scenario?.CustomEvents;
+            if (events == null || events.Length == 0)
+            {
+                _eventsList.AddChild(new Label { Text = "(none)" });
+                return;
+            }
+            for (int i = 0; i < events.Length; i++)
+            {
+                int idx = i;
+                var ev = events[i];
+                string paramsDesc = ev.Params is { Length: > 0 }
+                    ? string.Join(", ", Array.ConvertAll(ev.Params, p => $"{p.Name}:{p.Type}"))
+                    : "no params";
+                var row = new HBoxContainer();
+                row.AddChild(new Label { Text = $"{ev.Name} ({paramsDesc})", SizeFlagsHorizontal = Control.SizeFlags.Expand, ClipText = true });
+                var del = new Button { Text = "✘" };
+                del.Pressed += () =>
+                {
+                    if (_scenario?.CustomEvents == null) return;
+                    var list = new List<ScenarioCustomEvent>(_scenario.CustomEvents);
+                    if (idx < list.Count) list.RemoveAt(idx);
+                    _scenario.CustomEvents = list.Count == 0 ? null : list.ToArray();
+                    RefreshEventsList();
+                    RefreshEventPickers();
+                };
+                row.AddChild(del);
+                _eventsList.AddChild(row);
+            }
+        }
+
+        /// <summary>Repopulate the declared-event pickers (subscribe + raise) from the scenario's registry,
+        /// preserving the current picks by name (the RefreshVarPickers discipline).</summary>
+        private void RefreshEventPickers()
+        {
+            if (_manualEventName == null || _manualRaiseEvent == null) return;
+            string prevSub   = SelectedText(_manualEventName);
+            string prevRaise = SelectedText(_manualRaiseEvent);
+            _manualEventName.Clear();
+            _manualRaiseEvent.Clear();
+            var events = _scenario?.CustomEvents;
+            if (events != null)
+                foreach (var ev in events)
+                {
+                    if (string.IsNullOrEmpty(ev?.Name)) continue;
+                    _manualEventName.AddItem(ev.Name);
+                    _manualRaiseEvent.AddItem(ev.Name);
+                }
+            SelectItemByText(_manualEventName, prevSub);
+            SelectItemByText(_manualRaiseEvent, prevRaise);
+            RefreshRaiseArgFields();
+        }
+
+        /// <summary>Rebuild the per-declared-param raise-argument expression fields for the currently picked raise
+        /// event (one labeled LineEdit per param, preserving text by param name across refreshes).</summary>
+        private void RefreshRaiseArgFields()
+        {
+            if (_raiseArgsBox == null) return;
+            var prevText = new Dictionary<string, string>(StringComparer.Ordinal);
+            foreach (LineEdit edit in _raiseArgEdits)
+                if (edit.HasMeta("param")) prevText[(string)edit.GetMeta("param")] = edit.Text;
+            foreach (Node child in _raiseArgsBox.GetChildren()) { _raiseArgsBox.RemoveChild(child); child.QueueFree(); }
+            _raiseArgEdits.Clear();
+
+            string evName = SelectedText(_manualRaiseEvent);
+            if (string.IsNullOrEmpty(evName) || _scenario?.CustomEvents == null) return;
+            ScenarioCustomEvent? ev = null;
+            foreach (var candidate in _scenario.CustomEvents)
+                if (candidate?.Name == evName) { ev = candidate; break; }
+            if (ev?.Params == null || ev.Params.Length == 0) return;
+
+            foreach (ScenarioEventParam p in ev.Params)
+            {
+                var row = new HBoxContainer();
+                row.AddChild(new Label { Text = $"{p.Name} ({p.Type}):" });
+                var edit = new LineEdit
+                {
+                    PlaceholderText = $"expression, e.g. gold + 1",
+                    SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+                };
+                edit.SetMeta("param", p.Name);
+                if (prevText.TryGetValue(p.Name, out string? kept)) edit.Text = kept;
+                row.AddChild(edit);
+                _raiseArgsBox.AddChild(row);
+                _raiseArgEdits.Add(edit);
+            }
         }
 
         // ── Story 7.3 — raw-IR escape hatch ────────────────────────────────────

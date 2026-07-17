@@ -45,6 +45,15 @@ namespace ProjectChimera.Sim.Tests.Meta
         //    same commit as the source change — that edit is the "did the siblings + goldens move too?" checkpoint.
 
         /// <summary>Runtime desync-checksum algorithm version. Bump ⇒ re-baseline ALL goldens (same commit).
+        /// v18 (Story 7.5, landed via the 7-5 re-land merge): first-ever fold of the DslEventQueue — the PENDING
+        /// next-tick custom-event raises (registry index + raiser + the fixed MaxEventParams param-raw stride,
+        /// count-prefixed in enqueue order, AFTER the DslLoopState fold and before SimRng). Live CROSS-TICK sim
+        /// state (non-empty at the checksum boundary whenever feedback is pending), unlike the provably-drained
+        /// CombatEventQueue/DeathFeed. The custom-event DECLARATIONS fold into the CanonicalModelHash handshake
+        /// (v10), not here.
+        /// v17 (Story 7.6): the bounded-loop / array / fuel layer — the DslVarTable fold gains an ARRAYS section
+        /// (count-prefixed live elements per declared array) and the new DslLoopState store folds after the table
+        /// (for_each_batched continuation rows + the per-tick DSL fuel consumed), before SimRng (which stays last).
         /// v16 (Story 7.3): first-ever fold of the DslVarTable — live typed/scoped DSL variables (Global then
         /// Per-player, EVERY slot 0..7 per declaration — writes can land on inactive slots, so all slots fold) +
         /// named timers. Declarations stay OUT of the CanonicalModelHash/
@@ -62,7 +71,7 @@ namespace ProjectChimera.Sim.Tests.Meta
         /// (D-1). v8 (Story 2.6): folded per-entity EffectiveArmor (the buffable armor stat). v7 (Story 2.4a): folded
         /// per-entity AbilityCooldownTicks (count-driven). v6 (Story 2.2b): Effective* / Energy / StatusFlagsOf +
         /// the ModifierStore instance state.</summary>
-        private const int ExpectedSimChecksumAlgoVersion = 17;
+        private const int ExpectedSimChecksumAlgoVersion = 18;
 
         /// <summary>Load-time canonical start-state hash algorithm version (lobby handshake value).
         /// v3 (Story 2.9b follow-up): folded ScenarioPlayerSlot.StartCrystal (sim-affecting per-slot start-state).
@@ -87,8 +96,17 @@ namespace ProjectChimera.Sim.Tests.Meta
         /// lobby start. The per-widget `_editor` bag is EXCLUDED by construction; absent/empty custom_ui folds a 0
         /// marker (byte-identical to v8). The ONE named re-baseline: the hero-start-state golden re-recorded (its
         /// StartStateHash value moves via the canonical seed; StartStateHash.AlgoVersion stays 2). SimChecksum (17)
-        /// and the 24 per-tick world goldens are UNTOUCHED (the read rail is presentation-only, NOT folded).</summary>
-        private const int ExpectedCanonicalModelHashAlgoVersion = 9;
+        /// and the 24 per-tick world goldens are UNTOUCHED (the read rail is presentation-only, NOT folded).
+        /// v10 (Story 7.5, landed via the 7-5 re-land merge): folded the ScenarioData.CustomEvents registry
+        /// (count-prefixed declaration order: per event its name, typed params, allowed-raiser set) appended AFTER
+        /// the v9 CustomUi fold, and the typed graph fold gained the three 7.5 node kinds (raise_event's
+        /// name/raiser/next_tick, expr_event_param's name, custom_event's event_name on the EventNode case).
+        /// 7.5's original exclusion basis (at v7, Triggers/Variables stayed out of the handshake) dissolved when
+        /// v8 folded the full trigger/DSL model — divergent registries/graphs must reject at the lobby instead of
+        /// desyncing in-sim. Named re-baseline: hero-start-state golden re-recorded (StartStateHash value moves
+        /// via the canonical seed; its AlgoVersion stays 2). The 24 per-tick goldens move too — via the SEPARATE
+        /// SimChecksum v18 bump landing in the same merge, not via this fold.</summary>
+        private const int ExpectedCanonicalModelHashAlgoVersion = 10;
 
         /// <summary>Load-time canonical START-STATE hash algorithm version (Story 3.2, AC3) — a NEW, distinct FNV-64
         /// over the full init state = the <see cref="CanonicalModelHash"/> content seed PLUS the HeroStore rows.

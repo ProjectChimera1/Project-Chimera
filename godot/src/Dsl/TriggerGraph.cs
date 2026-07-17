@@ -59,6 +59,18 @@ namespace ProjectChimera.Dsl
         /// <summary>BranchNode (Story 7.6): the Bool condition-in DATA port (compiled <c>inCondition:false</c> —
         /// TriggerLocal/loop-var reads are legal here, unlike the trigger condition-in).</summary>
         public const int BranchCondInPort       = 0;
+        /// <summary>RaiseEventNode (Story 7.5): the typed value-in DATA ports its raise arguments feed (data edge
+        /// Dst), one per declared event param in declaration order. Data ports are per-NODE-TYPE spaces: these
+        /// coexist with <see cref="ActionExecInPort"/>/<see cref="ActionExecOutPort"/> (exec space) and numerically
+        /// overlap <see cref="ActionValueInPort"/>/<see cref="ActionIndexInPort"/> (ActionNode-only data ports) —
+        /// which is why the exec walk never resolves value/index roots on a raise node.</summary>
+        public const int RaiseArgInPort0        = 0;
+        /// <summary>RaiseEventNode (Story 7.5): the second raise-argument data-in port.</summary>
+        public const int RaiseArgInPort1        = 1;
+        /// <summary>RaiseEventNode (Story 7.5): the third raise-argument data-in port.</summary>
+        public const int RaiseArgInPort2        = 2;
+        /// <summary>RaiseEventNode (Story 7.5): the fourth raise-argument data-in port (== EventBounds.MaxEventParams − 1).</summary>
+        public const int RaiseArgInPort3        = 3;
 
         public List<NodeBase> Nodes     { get; } = new();
         public List<ExecEdge> ExecEdges { get; } = new();
@@ -349,6 +361,159 @@ namespace ProjectChimera.Dsl
         }
 
         /// <summary>
+        /// Story 7.5 — assemble a single-trigger graph for the custom-event layer, Godot-free and unit-testable
+        /// (the <see cref="BuildRunEffectTrigger"/>/<see cref="BuildExpressionTrigger"/> family; the editor's
+        /// manual form calls this and MERGES the result into the scenario's graph channel). The trigger subscribes
+        /// to <paramref name="eventKind"/> (a built-in kind, or <c>custom_event</c> naming
+        /// <paramref name="customEventName"/>), optionally gated by a condition expression, and carries up to two
+        /// chained actions: a <c>raise_event</c> (with per-declared-param argument expression TEXT, an authored
+        /// raiser slot, and the next-tick flag) and/or a <c>set_variable</c> (expression or literal value).
+        ///
+        /// Fail-closed: every expression is parsed AND compiled here against the declared-variable map and the
+        /// subscribed event's parameter map (so <c>event.&lt;param&gt;</c> reads work exactly as they will at the
+        /// gate), raise arguments are arity/type-matched against the declared params, and the authored raiser must
+        /// be −1 (system) or ∈ the target event's allowed_raisers — a violation throws a located
+        /// <see cref="JsonException"/> and NOTHING is returned to persist.
+        /// </summary>
+        public static TriggerGraph BuildCustomEventTrigger(
+            string name,
+            string eventKind, string? customEventName,
+            string? conditionExprText,
+            string? raiseEventName, IReadOnlyList<string>? raiseArgExprTexts, int raiser, bool raiseNextTick,
+            string? setVarName, int setVarFaction, string? valueExprText,
+            IReadOnlyDictionary<string, (DslValueType Type, VarScope Scope)> varDeclInfo,
+            IReadOnlyList<ScenarioCustomEvent>? customEvents,
+            bool enabled = true, bool runOnce = false, int setVarValue = 0,
+            IReadOnlyDictionary<string, (DslValueType Elem, int Capacity)>? arrayDecls = null)
+        {
+            if (conditionExprText != null && string.IsNullOrWhiteSpace(conditionExprText))
+                throw new JsonException("condition expression text is blank (pass null for an unconditioned trigger).");
+            if (valueExprText != null && string.IsNullOrWhiteSpace(valueExprText))
+                throw new JsonException("value expression text is blank (pass null for the literal value path).");
+
+            var g = new TriggerGraph();
+            g.Nodes.Add(new TriggerNode { Id = 0, Name = name, Enabled = enabled, RunOnce = runOnce });
+
+            // ── Subscription + the trigger's event-parameter map (the same map the gate/backstop derive) ──
+            IReadOnlyDictionary<string, (int Slot, DslValueType Type)>? paramMap;
+            if (eventKind == NodeKinds.CustomEvent)
+            {
+                if (string.IsNullOrWhiteSpace(customEventName))
+                    throw new JsonException("a custom_event subscription needs the declared custom-event name.");
+                ScenarioCustomEvent ev = FindDeclaredEvent(customEvents, customEventName!)
+                    ?? throw new JsonException($"custom event '{customEventName}' is not declared in scenario.custom_events.");
+                g.Nodes.Add(new EventNode { Id = 1, Kind = NodeKinds.CustomEvent, EventName = customEventName });
+                paramMap = EventDispatchPlan.ParamMapOf(ev);
+            }
+            else
+            {
+                g.Nodes.Add(new EventNode { Id = 1, Kind = eventKind });
+                paramMap = eventKind == "unit_dies" ? EventDispatchPlan.UnitDiesParams : null;
+            }
+            g.ExecEdges.Add(new ExecEdge(1, EventExecOutPort, 0, TriggerEventInPort));
+
+            if (!string.IsNullOrWhiteSpace(conditionExprText))
+            {
+                (int rootId, DataWireType wire) = ExprParser.Parse(conditionExprText!, g, varDeclInfo, arrayDecls, eventParams: paramMap);
+                if (wire != DataWireType.Boolean)
+                    throw new JsonException($"condition expression must evaluate to Bool, got wire type '{wire}'.");
+                g.DataEdges.Add(new DataEdge(rootId, ExprDataOutPort, 0, TriggerConditionInPort, DataWireType.Boolean));
+                if (!ExprCompiler.TryCompile(g, rootId, varDeclInfo, inCondition: true, paramMap, out _, out string? condErr, arrayDecls))
+                    throw new JsonException($"condition expression: {condErr}");
+            }
+
+            int prevExecId = 0, prevExecPort = TriggerExecOutPort;
+
+            // ── Optional raise_event action (arg expressions arity/type-matched against the declared params) ──
+            if (!string.IsNullOrEmpty(raiseEventName))
+            {
+                ScenarioCustomEvent target = FindDeclaredEvent(customEvents, raiseEventName!)
+                    ?? throw new JsonException($"raise_event names undeclared custom event '{raiseEventName}'.");
+                ScenarioEventParam[] declParams = target.Params ?? System.Array.Empty<ScenarioEventParam>();
+                int argCount = raiseArgExprTexts?.Count ?? 0;
+                if (argCount != declParams.Length)
+                    throw new JsonException(
+                        $"raise_event '{raiseEventName}' declares {declParams.Length} parameter(s) but {argCount} argument expression(s) were given.");
+                if (raiser != -1)
+                {
+                    int[] allowed = target.AllowedRaisers ?? System.Array.Empty<int>();
+                    if (System.Array.IndexOf(allowed, raiser) < 0)
+                        throw new JsonException(
+                            $"raise_event '{raiseEventName}' raiser {raiser} is not in the event's allowed_raisers (or use -1 = system).");
+                }
+
+                int raiseId = NextFreeId(g);
+                var raiseNode = new RaiseEventNode { Id = raiseId, Name = raiseEventName!, Raiser = raiser, NextTick = raiseNextTick };
+                g.Nodes.Add(raiseNode);
+                g.ExecEdges.Add(new ExecEdge(prevExecId, prevExecPort, raiseId, ActionExecInPort));
+                prevExecId = raiseId; prevExecPort = ActionExecOutPort;
+
+                for (int p = 0; p < declParams.Length; p++)
+                {
+                    string argText = raiseArgExprTexts![p];
+                    if (string.IsNullOrWhiteSpace(argText))
+                        throw new JsonException($"raise_event '{raiseEventName}' argument {p} ('{declParams[p].Name}') needs expression text.");
+                    (int argRoot, DataWireType argWire) = ExprParser.Parse(argText, g, varDeclInfo, arrayDecls, eventParams: paramMap);
+                    DataWireType wanted = ExprCompiler.WireOf(declParams[p].Type);
+                    if (argWire != wanted)
+                        throw new JsonException(
+                            $"raise_event '{raiseEventName}' argument {p} ('{declParams[p].Name}') must be {declParams[p].Type}-typed, got wire '{argWire}'.");
+                    g.DataEdges.Add(new DataEdge(argRoot, ExprDataOutPort, raiseId, RaiseArgInPort0 + p, wanted));
+                    if (!ExprCompiler.TryCompile(g, argRoot, varDeclInfo, inCondition: false, paramMap, out _, out string? argErr, arrayDecls))
+                        throw new JsonException($"raise_event argument {p}: {argErr}");
+                }
+            }
+
+            // ── Optional set_variable action (the BuildExpressionTrigger semantics, event-param-aware) ──
+            if (!string.IsNullOrEmpty(setVarName))
+            {
+                if (!string.IsNullOrWhiteSpace(valueExprText))
+                {
+                    (int rootId, DataWireType wire) = ExprParser.Parse(valueExprText!, g, varDeclInfo, arrayDecls, eventParams: paramMap);
+                    DslValueType target = varDeclInfo.TryGetValue(setVarName!, out var decl) ? decl.Type : DslValueType.Int;
+                    if (target != DslValueType.Int && target != DslValueType.Fixed && target != DslValueType.Bool)
+                        throw new JsonException(
+                            $"set_variable target '{setVarName}' is {target}-typed; expression assignment targets Int/Fixed/Bool variables only.");
+                    if (wire != ExprCompiler.WireOf(target))
+                        throw new JsonException(
+                            $"value expression wire type '{wire}' does not match the declared type of target variable '{setVarName}' ({target}).");
+                    int actionId = NextFreeId(g);
+                    g.Nodes.Add(new ActionNode { Id = actionId, Kind = "set_variable", Variable = setVarName, Faction = setVarFaction });
+                    g.ExecEdges.Add(new ExecEdge(prevExecId, prevExecPort, actionId, ActionExecInPort));
+                    g.DataEdges.Add(new DataEdge(rootId, ExprDataOutPort, actionId, ActionValueInPort, wire));
+                    if (!ExprCompiler.TryCompile(g, rootId, varDeclInfo, inCondition: false, paramMap, out _, out string? valErr, arrayDecls))
+                        throw new JsonException($"value expression: {valErr}");
+                }
+                else
+                {
+                    int actionId = NextFreeId(g);
+                    g.Nodes.Add(new ActionNode { Id = actionId, Kind = "set_variable", Variable = setVarName, Faction = setVarFaction, Value = setVarValue });
+                    g.ExecEdges.Add(new ExecEdge(prevExecId, prevExecPort, actionId, ActionExecInPort));
+                }
+            }
+
+            return g;
+        }
+
+        /// <summary>Deterministic linear scan for a declared custom event by name (null when absent).</summary>
+        private static ScenarioCustomEvent? FindDeclaredEvent(IReadOnlyList<ScenarioCustomEvent>? events, string name)
+        {
+            if (events == null) return null;
+            for (int i = 0; i < events.Count; i++)
+                if (events[i] != null && events[i].Name == name) return events[i];
+            return null;
+        }
+
+        /// <summary>The lowest unused node id (max + 1) — the Build-helper id-assignment convention.</summary>
+        private static int NextFreeId(TriggerGraph g)
+        {
+            int next = 0;
+            foreach (NodeBase n in g.Nodes)
+                if (n.Id + 1 > next) next = n.Id + 1;
+            return next;
+        }
+
+        /// <summary>
         /// Lower the graph back to the flat <see cref="TriggerDefinition"/>[]. TriggerNodes are ordered by ascending
         /// <see cref="NodeBase.Id"/> → array order. Per trigger: events = EventNodes with an exec edge into its
         /// event-in port (ascending id); conditions = ConditionNodes with a data edge into its condition-in port
@@ -357,6 +522,21 @@ namespace ProjectChimera.Dsl
         /// </summary>
         public TriggerDefinition[] ToFlat()
         {
+            // Story 7.5 — GRAPH-CHANNEL-ONLY kinds have NO flat representation: fail closed (located throw), never
+            // a lossy lowering that would silently drop a raise/subscription/param-read from the flat projection.
+            foreach (NodeBase n in Nodes)
+            {
+                if (n is RaiseEventNode)
+                    throw new JsonException(
+                        $"node {n.Id}: raise_event has no flat TriggerDefinition form (graph-channel-only, Story 7.5) — ToFlat fails closed.");
+                if (n is EventNode ce && ce.Kind == NodeKinds.CustomEvent)
+                    throw new JsonException(
+                        $"node {n.Id}: a custom_event subscription has no flat TriggerDefinition form (graph-channel-only, Story 7.5) — ToFlat fails closed.");
+                if (n is ExprEventParamNode)
+                    throw new JsonException(
+                        $"node {n.Id}: expr_event_param has no flat TriggerDefinition form (graph-channel-only, Story 7.5) — ToFlat fails closed.");
+            }
+
             // Keyed lookup by id (indexer access only — never enumerated, so deterministic order is preserved).
             var byId = new Dictionary<int, NodeBase>(Nodes.Count);
             foreach (NodeBase n in Nodes)
@@ -503,6 +683,25 @@ namespace ProjectChimera.Dsl
             /// LoadScenario compile).</summary>
             public int[]            ActionValueExprRoots { get; init; } = System.Array.Empty<int>();
 
+            /// <summary>Story 7.5 — per-action raise-argument expression roots, parallel to <see cref="Actions"/>.
+            /// A row is null for every non-<see cref="RaiseEventNode"/> action; for a raise action it is an
+            /// <c>int[EventBounds.MaxEventParams]</c> whose slot p holds the lowest expression-node src data-wired
+            /// into <see cref="RaiseArgInPort0"/>+p (-1 = no edge — deterministic first; missing/forked/extra
+            /// edges are located rejects at the validator gate / LoadScenario compile, not here).</summary>
+            public int[]?[]         RaiseArgRoots { get; init; } = System.Array.Empty<int[]?>();
+
+            /// <summary>Story 7.5 — the registry index of the custom event this trigger subscribes to (-1 = none;
+            /// built-in events only). Resolved AGAINST the scenario's closed custom-event registry by
+            /// <see cref="EventDispatchPlan.TryBuild"/> at load — BuildExecutionOrder has no registry, so it
+            /// leaves the -1 default.</summary>
+            public int              SubscribedCustomEvent { get; set; } = -1;
+
+            /// <summary>Story 7.5 — true when any of this trigger's compiled programs (condition / set_variable
+            /// value / raise-argument) reads an <c>event.&lt;param&gt;</c>. A param-reading trigger dispatches
+            /// once per matching occurrence (per-occurrence is opt-in by construction — legacy triggers keep
+            /// once-per-tick). Set at load (plan + director compile), not here.</summary>
+            public bool             ReadsEventParams { get; set; }
+
             /// <summary>Story 7.6 — the NESTED execution view of this trigger's chain: the top-level items in exec
             /// order, each carrying its sub-chains (for_each/for_each_batched body; branch then/else) and its
             /// surfaced expression roots. For a container-free (legacy) graph this is exactly
@@ -513,10 +712,12 @@ namespace ProjectChimera.Dsl
 
         /// <summary>
         /// Story 7.6 — one node of the nested execution view. <see cref="Node"/> is an <see cref="ActionNode"/>,
-        /// <see cref="EffectActionNode"/>, <see cref="ForEachNode"/>, <see cref="ForEachBatchedNode"/> or
-        /// <see cref="BranchNode"/>. Expression roots are the lowest expr-node src data-wired into the matching
-        /// in-port (-1 = none); sub-chains are resolved by the SAME deterministic walk as the top-level chain,
-        /// sharing one visited set so any rejoin of an ancestor (or sibling chain) rejects as a cycle.
+        /// <see cref="EffectActionNode"/>, <see cref="ForEachNode"/>, <see cref="ForEachBatchedNode"/>,
+        /// <see cref="BranchNode"/> or (Story 7.5) a <see cref="RaiseEventNode"/>. Expression roots are the lowest
+        /// expr-node src data-wired into the matching in-port (-1 = none; a raise node's data-in ports are its
+        /// RAISE ARGS, so all three roots stay -1 on it); sub-chains are resolved by the SAME deterministic walk
+        /// as the top-level chain, sharing one visited set so any rejoin of an ancestor (or sibling chain)
+        /// rejects as a cycle.
         /// </summary>
         public sealed class ExecItem
         {
@@ -585,12 +786,28 @@ namespace ProjectChimera.Dsl
 
                 // The flat projections (Actions / ActionValueExprRoots) mirror the TOP-LEVEL chain item-for-item —
                 // for a container-free (legacy) graph this is byte-identical to the pre-7.6 walk.
-                var actions    = new NodeBase[items.Length];
-                var valueRoots = new int[items.Length];
+                // Story 7.5 — RaiseArgRoots mirrors the same top-level chain: a null row for every non-raise item;
+                // for a raise_event item, slot p holds the lowest expr-node src data-wired into RaiseArgInPort0+p
+                // (-1 = no edge — deterministic first; missing/forked/extra edges are located rejects at the
+                // validator gate / LoadScenario compile, not here).
+                var actions       = new NodeBase[items.Length];
+                var valueRoots    = new int[items.Length];
+                var raiseArgRoots = new int[]?[items.Length];
                 for (int i = 0; i < items.Length; i++)
                 {
                     actions[i]    = items[i].Node;
                     valueRoots[i] = items[i].ValueExprRoot;
+                    if (items[i].Node is RaiseEventNode)
+                    {
+                        var roots = new int[EventBounds.MaxEventParams];
+                        for (int p = 0; p < roots.Length; p++) roots[p] = -1;
+                        foreach (DataEdge e in DataEdges)
+                            if (e.Dst == actions[i].Id && e.DstPort >= 0 && e.DstPort < EventBounds.MaxEventParams
+                                && byId.TryGetValue(e.Src, out NodeBase? rsrc) && ExprCompiler.IsExprNode(rsrc)
+                                && (roots[e.DstPort] < 0 || e.Src < roots[e.DstPort]))
+                                roots[e.DstPort] = e.Src;
+                        raiseArgRoots[i] = roots;
+                    }
                 }
 
                 result.Add(new TriggerExec
@@ -601,6 +818,7 @@ namespace ProjectChimera.Dsl
                     Actions              = actions,
                     ConditionExprRoots   = condExprRoots,
                     ActionValueExprRoots = valueRoots,
+                    RaiseArgRoots        = raiseArgRoots,
                     Items                = items,
                 });
             }
@@ -635,7 +853,8 @@ namespace ProjectChimera.Dsl
                     if (e.Src == currentId && e.SrcPort == currentPort
                         && byId.TryGetValue(e.Dst, out NodeBase? nb)
                         && (nb is ActionNode || nb is EffectActionNode
-                            || nb is ForEachNode || nb is ForEachBatchedNode || nb is BranchNode))
+                            || nb is ForEachNode || nb is ForEachBatchedNode || nb is BranchNode
+                            || nb is RaiseEventNode))   // Story 7.5: raise chains like an action (same exec ports)
                     {
                         next = nb;
                         break;
@@ -664,11 +883,16 @@ namespace ProjectChimera.Dsl
                     els  = WalkChain(next.Id, BranchElseOutPort, tn, byId, sortedExec, visited, depth + 1);
                 }
 
+                // Story 7.5 — a RaiseEventNode's data-in ports are its RAISE ARGS (RaiseArgInPort0..3, numerically
+                // overlapping ActionValueInPort=1/ActionIndexInPort=2): resolving value/index roots on it would
+                // silently misread raise arguments as set_variable value/array_set index expressions. All three
+                // roots stay -1 on a raise node; its arg roots are projected into TriggerExec.RaiseArgRoots.
+                bool isRaise = next is RaiseEventNode;
                 items.Add(new ExecItem
                 {
                     Node          = next,
-                    ValueExprRoot = LowestExprRootInto(next.Id, ActionValueInPort, byId),
-                    IndexExprRoot = LowestExprRootInto(next.Id, ActionIndexInPort, byId),
+                    ValueExprRoot = isRaise ? -1 : LowestExprRootInto(next.Id, ActionValueInPort, byId),
+                    IndexExprRoot = isRaise ? -1 : LowestExprRootInto(next.Id, ActionIndexInPort, byId),
                     CondExprRoot  = next is BranchNode ? LowestExprRootInto(next.Id, BranchCondInPort, byId) : -1,
                     Body          = body,
                     Then          = then,

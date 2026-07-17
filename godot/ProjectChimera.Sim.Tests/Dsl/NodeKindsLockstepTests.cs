@@ -22,6 +22,11 @@ namespace ProjectChimera.Sim.Tests.Dsl
         {
             yield return ("structural", NodeKinds.Trigger);
             yield return ("structural", NodeKinds.RunEffect);
+            // ── Story 7.5 — the three custom-event kinds (custom_event is the graph-only EVENT kind: the graph
+            //    event vocabulary is EventTypes ∪ {custom_event}, the sanctioned graph⊃flat divergence). ──
+            yield return ("structural", NodeKinds.RaiseEvent);
+            yield return ("event", NodeKinds.CustomEvent);
+            yield return ("expr", NodeKinds.ExprEventParam);
             yield return ("expr", NodeKinds.ExprLiteral);
             yield return ("expr", NodeKinds.ExprVar);
             yield return ("expr", NodeKinds.ExprUnary);
@@ -36,6 +41,16 @@ namespace ProjectChimera.Sim.Tests.Dsl
             foreach (string k in NodeKinds.EventTypes)     yield return ("event", k);
             foreach (string k in NodeKinds.ConditionTypes) yield return ("condition", k);
             foreach (string k in NodeKinds.ActionTypes)    yield return ("action", k);
+        }
+
+        [Fact]
+        public void GraphEventTypes_IsExactlyEventTypesPlusCustomEvent()
+        {
+            // The Story 7.5 sanctioned graph⊃flat divergence, pinned: the graph event set is the frozen flat set
+            // plus custom_event and NOTHING else — a drift on either side goes red here.
+            Assert.Equal(
+                NodeKinds.EventTypes.Concat(new[] { NodeKinds.CustomEvent }).OrderBy(k => k, System.StringComparer.Ordinal),
+                NodeKinds.GraphEventTypes.OrderBy(k => k, System.StringComparer.Ordinal));
         }
 
         [Fact]
@@ -109,6 +124,9 @@ namespace ProjectChimera.Sim.Tests.Dsl
             if (kind == NodeKinds.Branch)         return new BranchNode { Id = id };
             if (kind == NodeKinds.ExprArrayGet)   return new ExprArrayGetNode { Id = id, Name = "arr" };
             if (kind == NodeKinds.ExprArrayLen)   return new ExprArrayLenNode { Id = id, Name = "arr" };
+            if (kind == NodeKinds.RaiseEvent)     return new RaiseEventNode { Id = id, Name = "ev" };
+            if (kind == NodeKinds.CustomEvent)    return new EventNode { Id = id, Kind = NodeKinds.CustomEvent, EventName = "ev" };
+            if (kind == NodeKinds.ExprEventParam) return new ExprEventParamNode { Id = id, Name = "p" };
             if (NodeKinds.InSet(NodeKinds.EventTypes, kind))     return new EventNode { Id = id, Kind = kind };
             if (NodeKinds.InSet(NodeKinds.ConditionTypes, kind)) return new ConditionNode { Id = id, Kind = kind };
             /* action */                                          return new ActionNode { Id = id, Kind = kind };

@@ -359,6 +359,26 @@ namespace ProjectChimera.Core
         /// </summary>
         public readonly Fixed[] XpBounty;
 
+        // --- Killer attribution (Story 7.5) ---
+        /// <summary>
+        /// The attacker ENTITY id that landed this unit's killing blow (−1 = none/unknown — non-combat destroys
+        /// leave it). WRITTEN ONLY by <c>DamageResolver.KillEntity</c> (the single death choke point, BEFORE
+        /// <see cref="Destroy"/> recycles the slot); READ by <c>ScenarioDirector</c>'s death diff to fill the
+        /// <c>unit_dies</c> event payload (<c>event.killer</c>). Derived attribution state — deliberately NOT
+        /// folded into <see cref="SimChecksum"/> (the <c>_prevFlags</c> basis: it only feeds the trigger event
+        /// payload, whose effects fold via the DSL stores). <see cref="Create"/> defaults it to −1 — a recycled
+        /// slot must NEVER carry the prior occupant's killer (the SoA-recycle trap).
+        /// </summary>
+        public readonly int[] KillerOf;
+
+        /// <summary>
+        /// The killing blow's faction slot, SNAPSHOTTED at <c>DamageResolver.KillEntity</c> (−1 = none/Neutral;
+        /// Player1 → 0). Snapshotted rather than derived from <see cref="KillerOf"/> because the attacker entity
+        /// may itself die/recycle before the director's death diff reads the payload. Same NOT-folded /
+        /// Create-defaults-−1 contract as <see cref="KillerOf"/>.
+        /// </summary>
+        public readonly int[] KillerFactionOf;
+
         // --- Separation / formation (Story 1.13, DG-2 / FR-54) ---
         /// <summary>
         /// Per-unit separation radius. Summed with a neighbour's (<c>CollisionRadius[i] + CollisionRadius[j]</c>)
@@ -675,6 +695,8 @@ namespace ProjectChimera.Core
             Delivery       = new AttackDelivery[MAX_ENTITIES];          // Story 3.12 (folded v10; Hitscan == 0, no Array.Fill needed)
             ProjectileSpeed = new Fixed[MAX_ENTITIES];                  // Story 3.12 (folded v10; Create-defaulted to the 18 fallback)
             XpBounty       = new Fixed[MAX_ENTITIES];                    // Story 3.13 (folded v11; Create-defaulted to Zero)
+            KillerOf        = new int[MAX_ENTITIES];                     // Story 7.5 (NOT folded — derived attribution; sentinel −1 via Array.Fill below)
+            KillerFactionOf = new int[MAX_ENTITIES];                     // Story 7.5 (NOT folded; sentinel −1 via Array.Fill below)
             CollisionRadius      = new Fixed[MAX_ENTITIES];              // Story 1.13 (folded v5)
             SeparationPriorityOf = new SeparationPriority[MAX_ENTITIES]; // Story 1.13 (folded v5)
             CategoryOf           = new UnitCategory[MAX_ENTITIES];       // Story 1.13 (NOT folded — presentation-read)
@@ -728,6 +750,8 @@ namespace ProjectChimera.Core
             Array.Fill(PendingCastSlot,   NO_PENDING_CAST); // Story 2.4a: 255 = no cast queued
             Array.Fill(PendingCastTarget, -1);
             Array.Fill(HeroIndex, HERO_NONE);               // Story 3.2: −1 = "not a hero" (default int 0 would falsely alias HeroStore slot 0)
+            Array.Fill(KillerOf,        -1);                // Story 7.5: −1 = no killer (default 0 would falsely alias entity 0)
+            Array.Fill(KillerFactionOf, -1);                // Story 7.5: −1 = no killer faction (default 0 would falsely alias slot 0 / Player1)
         }
 
         /// <summary>
@@ -794,6 +818,11 @@ namespace ProjectChimera.Core
             // Story 3.13: a recycled/non-def slot awards no XP bounty on death. ApplyUnitDefinition overwrites it from
             // the def (authored xp_bounty else ore+crystal cost, quantized at the single boundary).
             XpBounty[id]        = Fixed.Zero;
+            // Story 7.5: a (re)allocated slot has no killer — a recycled slot must NEVER carry the prior occupant's
+            // attribution (the SoA-recycle trap: a spawned unit would credit the previous corpse's killer to its own
+            // future death payload). Written only by DamageResolver.KillEntity.
+            KillerOf[id]        = -1;
+            KillerFactionOf[id] = -1;
             // Story 1.13: default separation/formation fields on (re)allocation. A recycled slot must never carry
             // the previous unit's radius/priority/category (the classic SoA bug — cf. the 1.12 zombie-route fix).
             // SpawnUnit overwrites these from the def; Create must default them for any spawn site that forgets.
@@ -1136,6 +1165,7 @@ namespace ProjectChimera.Core
             Array.Clear(Elevation);             // Story 6.3 (0 == the fresh-ctor state; re-sampled at the next spawn)
             Array.Clear(Delivery);              Array.Clear(ProjectileSpeed);       // Story 3.12 (Hitscan==0 / 0 speed == the fresh-ctor state)
             Array.Clear(XpBounty);              // Story 3.13 (0 == the fresh-ctor state)
+            Array.Clear(KillerOf);              Array.Clear(KillerFactionOf); // Story 7.5 (re-filled to −1 below)
             Array.Clear(SeparationPriorityOf);  Array.Clear(CategoryOf);            Array.Clear(AttackDomainOf);
             Array.Clear(TagsOf);                Array.Clear(SupplyCost);            Array.Clear(MeshType);
             Array.Clear(FeedbackProfile);       Array.Clear(SourceDefinition);      Array.Clear(CommandState);
@@ -1159,6 +1189,8 @@ namespace ProjectChimera.Core
             Array.Fill(PendingCastSlot,   NO_PENDING_CAST);
             Array.Fill(PendingCastTarget, -1);
             Array.Fill(HeroIndex, HERO_NONE);
+            Array.Fill(KillerOf,        -1);    // Story 7.5 sentinel (matches the ctor fill)
+            Array.Fill(KillerFactionOf, -1);    // Story 7.5 sentinel (matches the ctor fill)
 
             _freeCount = 0;
             _nextId    = 0;

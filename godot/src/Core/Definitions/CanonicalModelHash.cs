@@ -30,6 +30,11 @@ namespace ProjectChimera.Core.Definitions
     ///     handshake-covered (see the <see cref="AlgoVersion"/> doc for the fold layout). The per-node
     ///     <c>_editor</c> annotation bag and the <c>schema_version</c>/<c>checksum_algo_version</c> stamps remain
     ///     EXCLUDED (cosmetic / re-save-neutral by design).
+    ///   • <c>CustomEvents</c> (Story 7.5, landed via merge) — FOLDED since v10, on the SAME declarations basis as
+    ///     Variables/Timers/TriggerGraphJson: the custom-event registry is sim-semantic trigger-DSL model (param
+    ///     slots/types drive the dispatch frames), so two peers with divergent registries must be rejected at the
+    ///     handshake rather than first desyncing mid-match through the live <c>SimChecksum</c> queue fold. The
+    ///     three 7.5 graph kinds fold in the v8 typed graph walk (see the <see cref="AlgoVersion"/> doc).
         ///   • <c>PathabilityBlocked</c> + slope config (Story 6.5) FOLDED (AlgoVersion 5→6) — the deliberate INVERSE
         ///     of the Regions decision: pathability feeds MOVEMENT (Position is checksummed), so a mismatched blocked
         ///     layer desyncs in-sim and must be rejected at the handshake. See the <see cref="AlgoVersion"/> doc.
@@ -112,8 +117,24 @@ namespace ProjectChimera.Core.Definitions
         /// forces the story's ONE named re-baseline (hero-start-state golden re-recorded — its <c>StartStateHash</c>
         /// value moves via the canonical seed; <c>StartStateHash.AlgoVersion</c> stays 2 — plus the AlgoVersion pin,
         /// in one commit). <c>SimChecksum</c> stays 17 and the 24 world goldens are untouched (the read rail is
-        /// presentation-only, NOT folded into <c>SimChecksum</c>).</summary>
-        public const int AlgoVersion = 9;
+        /// presentation-only, NOT folded into <c>SimChecksum</c>).
+        /// 10 = Story 7.5 (landed via merge) — additionally folds (a) the <see cref="ScenarioData.CustomEvents"/>
+        /// registry as a TYPED fold appended AFTER the v9 custom-UI fold: count prefix (null ≡ empty ⇒ 0 — the
+        /// serializer chokepoint normalizes empty→null), DECLARATION order (order is semantic: the registry event
+        /// INDEX is what the live SimChecksum queue fold and the dispatch plan key on); per event its Name, a
+        /// Params count then per param Name + Type (enum by NAME — the MixVariables conventions), an
+        /// AllowedRaisers count then each declared slot value as-declared (null ≡ empty ⇒ count 0); and (b) the
+        /// three Story 7.5 graph kinds in the v8 typed trigger-graph node fold — raise_event (Name, Raiser,
+        /// NextTick), expr_event_param (Name), and the custom_event subscription's <c>EventNode.EventName</c>
+        /// appended after the frozen v8 EventNode fields (absent folds the MixStr null marker) — without which two
+        /// graphs differing only in a raise target would hash identically. The registry is sim-semantic trigger-DSL
+        /// model (param slots/types drive the dispatch frames), so a lobby mismatch on any of it must reject at the
+        /// handshake instead of desyncing mid-match via the SimChecksum v18 queue fold — the exact declaration-fold
+        /// class 7.7's v8 closed (the 7.5-era exclusion premise "declarations stay out until 7.7's fold" died when
+        /// v8 landed). No existing scenario declares events or carries the new kinds, but the leading AlgoVersion
+        /// mix moves the hash for EVERY scenario — the merge's ONE named re-baseline (hero-start-state golden +
+        /// version pins, one commit); <c>StartStateHash.AlgoVersion</c> stays 2 (the 7.7/7.8 precedent).</summary>
+        public const int AlgoVersion = 10;
 
         private const ulong Offset = 14695981039346656037UL; // FNV-64 offset basis
         private const ulong Prime  = 1099511628211UL;        // FNV-64 prime
@@ -253,6 +274,11 @@ namespace ProjectChimera.Core.Definitions
             // ── Story 7.8 (v9): the custom-UI widget tree, appended after the v8 trigger-graph fold. A typed
             //    recursive walk (never JSON bytes; the per-widget `_editor` bag excluded by construction). ──
             h = MixCustomUi(h, m.CustomUi);
+
+            // ── Story 7.5 (v10, landed via merge): the custom-event registry, appended after the v9 custom-UI
+            //    fold. Sim-semantic trigger-DSL model (param slots/types drive the dispatch frames) — a divergent
+            //    registry must reject at the handshake, the exact declaration-fold class 7.7's v8 closed. ──
+            h = MixCustomEvents(h, m.CustomEvents);
 
             return h == 0UL ? 1UL : h; // sentinel: a valid model must never hash to the fail-open "no hash" value
         }
@@ -516,6 +542,11 @@ namespace ProjectChimera.Core.Definitions
                     h = MixInt(h, e.Amount.Raw);
                     h = MixInt(h, e.Count);
                     h = MixStr(h, e.Operator);
+                    // Story 7.5 (v10): the custom_event subscription target, appended AFTER the frozen v8 fields.
+                    // Built-in event kinds carry a null EventName (folds MixStr's -1 null marker — byte-stable for
+                    // every pre-7.5 graph modulo the version bump); two graphs differing only in the subscribed
+                    // custom event must hash differently.
+                    h = MixStr(h, e.EventName);
                     break;
                 case ProjectChimera.Dsl.ConditionNode c:
                     h = MixStr(h, c.Kind);
@@ -599,6 +630,19 @@ namespace ProjectChimera.Core.Definitions
                 case ProjectChimera.Dsl.ExprArrayLenNode al:
                     h = MixStr(h, al.Kind);
                     h = MixStr(h, al.Name);
+                    break;
+                case ProjectChimera.Dsl.RaiseEventNode re:
+                    // Story 7.5 (v10): every semantic raise field folds — Name (the raise target), Raiser slot,
+                    // and the same-tick/next-tick edge bit (bool as 0/1, the sibling-case primitive).
+                    h = MixStr(h, re.Kind);
+                    h = MixStr(h, re.Name);
+                    h = MixInt(h, re.Raiser);
+                    h = MixInt(h, re.NextTick ? 1 : 0);
+                    break;
+                case ProjectChimera.Dsl.ExprEventParamNode ep:
+                    // Story 7.5 (v10): the event.<param> leaf — the param name is its only semantic field.
+                    h = MixStr(h, ep.Kind);
+                    h = MixStr(h, ep.Name);
                     break;
                 default:
                     // Unreachable through FromJson (closed registry); fold the runtime type name so Compute stays
@@ -761,6 +805,40 @@ namespace ProjectChimera.Core.Definitions
             h = MixInt(h, children.Length);
             foreach (WidgetBase child in children)
                 h = MixWidget(h, child);
+            return h;
+        }
+
+        /// <summary>
+        /// Story 7.5 (v10, landed via merge): the custom-event registry — a TYPED fold following the
+        /// <see cref="MixVariables"/> conventions: count prefix (null ≡ empty ⇒ 0 — the serializer chokepoint
+        /// normalizes empty→null, so both states hash identically), DECLARATION order (order is semantic: the
+        /// registry event index is what the live SimChecksum queue fold and the EventDispatchPlan key on). Per
+        /// event: Name, a Params count then per param Name + Type (enum by NAME), an AllowedRaisers count then
+        /// each declared slot value as-declared (null ≡ empty ⇒ count 0). Null rows fold the -1 marker.
+        /// </summary>
+        private static ulong MixCustomEvents(ulong h, ScenarioCustomEvent[]? events)
+        {
+            ScenarioCustomEvent[] es = events ?? Array.Empty<ScenarioCustomEvent>();
+            h = MixInt(h, es.Length);
+            foreach (ScenarioCustomEvent? ev in es)
+            {
+                if (ev is null) { h = MixInt(h, -1); continue; }
+                h = MixStr(h, ev.Name);
+
+                ScenarioEventParam[] ps = ev.Params ?? Array.Empty<ScenarioEventParam>();
+                h = MixInt(h, ps.Length);
+                foreach (ScenarioEventParam? p in ps)
+                {
+                    if (p is null) { h = MixInt(h, -1); continue; }
+                    h = MixStr(h, p.Name);
+                    h = MixStr(h, p.Type.ToString()); // enum by NAME (the MixVariables convention)
+                }
+
+                int[] raisers = ev.AllowedRaisers ?? Array.Empty<int>();
+                h = MixInt(h, raisers.Length);
+                foreach (int r in raisers)
+                    h = MixInt(h, r); // as-declared order (the gate rejects duplicates/out-of-range)
+            }
             return h;
         }
 

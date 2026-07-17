@@ -23,12 +23,13 @@ namespace ProjectChimera.Sim.Tests.Validation
         };
 
         [Fact]
-        public void AlgoVersions_Unchanged() // 8 for canonical (Story 7.7 trigger/DSL fold), 2 for start-state
+        public void AlgoVersions_Unchanged() // 10 for canonical (7.5 merge custom-events fold), 2 for start-state
         {
-            // Story 7.7 bumped CanonicalModelHash 7→8 (the ONE named re-baseline). StartStateHash's fold structure
+            // Story 7.7 bumped CanonicalModelHash 7→8 (the ONE named re-baseline); 7.8 → 9 (CustomUi); the 7.5
+            // re-land merge → 10 (custom-events registry + graph node kinds). StartStateHash's fold structure
             // is unchanged — its VALUE moves via the canonical seed, so its AlgoVersion stays 2 (the v5/v6/v7
             // precedent).
-            Assert.Equal(9, CanonicalModelHash.AlgoVersion);
+            Assert.Equal(10, CanonicalModelHash.AlgoVersion);
             Assert.Equal(2, StartStateHash.AlgoVersion);
         }
 

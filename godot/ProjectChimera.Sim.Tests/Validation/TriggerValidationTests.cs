@@ -907,6 +907,208 @@ namespace ProjectChimera.Sim.Tests.Validation
             Assert.Contains("forked", r.Error!);
         }
 
+        // ── Story 7.5 — custom-event gate rejects (every Bad-authoring matrix row lands as a located Fail) ──
+
+        private static ScenarioCustomEvent CustomEv(string name, params (string Name, DslValueType Type)[] ps) =>
+            new()
+            {
+                Name = name,
+                Params = ps.Length == 0
+                    ? null
+                    : System.Array.ConvertAll(ps, p => new ScenarioEventParam { Name = p.Name, Type = p.Type }),
+            };
+
+        private static readonly System.Collections.Generic.Dictionary<string, (DslValueType Type, VarScope Scope)>
+            NoDecls = new(System.StringComparer.Ordinal);
+
+        [Fact]
+        public void ValidCustomEventScenario_PassesTheGate()
+        {
+            var m = ValidModelWithTrigger();
+            m.Variables = new[]
+            {
+                new ScenarioVariable { Name = "gold",  Type = DslValueType.Int, Scope = VarScope.Global, Initial = Fixed.FromInt(4) },
+                new ScenarioVariable { Name = "score", Type = DslValueType.Int, Scope = VarScope.Global },
+            };
+            m.CustomEvents = new[] { CustomEv("wave_start", ("count", DslValueType.Int)) };
+            var decls = new System.Collections.Generic.Dictionary<string, (DslValueType Type, VarScope Scope)>(System.StringComparer.Ordinal)
+            {
+                ["gold"] = (DslValueType.Int, VarScope.Global), ["score"] = (DslValueType.Int, VarScope.Global),
+            };
+            TriggerGraph g = TriggerGraph.BuildCustomEventTrigger(
+                "A", "match_start", null, null, "wave_start", new[] { "gold + 1" }, -1, false,
+                null, 0, null, decls, m.CustomEvents);
+            g.Merge(TriggerGraph.BuildCustomEventTrigger(
+                "H", "custom_event", "wave_start", "event.count > 2", null, null, -1, false,
+                "score", 0, "event.count * 10", decls, m.CustomEvents));
+            m.TriggerGraphJson = g.ToCanonicalJson();
+
+            ValidationResult r = NewValidator().Validate(m);
+            Assert.True(r.Ok, r.Error);
+        }
+
+        [Fact]
+        public void DuplicateCustomEventNames_AreRejected_AtTheDeclarationsBlock()
+        {
+            var m = ValidModelWithTrigger();
+            m.CustomEvents = new[] { CustomEv("dup"), CustomEv("dup") };
+            ValidationResult r = NewValidator().Validate(m);
+            Assert.False(r.Ok);
+            Assert.Contains("custom_events", r.Error!);
+            Assert.Contains("duplicate", r.Error!);
+        }
+
+        [Fact]
+        public void CustomEventShadowingUnitDies_IsRejected()
+        {
+            var m = ValidModelWithTrigger();
+            m.CustomEvents = new[] { CustomEv("unit_dies") };
+            ValidationResult r = NewValidator().Validate(m);
+            Assert.False(r.Ok);
+            Assert.Contains("shadows", r.Error!);
+        }
+
+        [Fact]
+        public void RaiseOfUndeclaredEvent_IsRejected_AtTheGraphGate()
+        {
+            var m = ValidModelWithTrigger();
+            var g = new TriggerGraph();
+            g.Nodes.Add(new TriggerNode { Id = 0, Name = "t" });
+            g.Nodes.Add(new EventNode { Id = 1, Kind = "match_start" });
+            g.ExecEdges.Add(new ExecEdge(1, 0, 0, 0));
+            g.Nodes.Add(new RaiseEventNode { Id = 2, Name = "ghost" });
+            g.ExecEdges.Add(new ExecEdge(0, 0, 2, 0));
+            m.TriggerGraphJson = g.ToCanonicalJson();
+            ValidationResult r = NewValidator().Validate(m);
+            Assert.False(r.Ok);
+            Assert.Contains("ghost", r.Error!);
+            Assert.Contains("not a declared custom event", r.Error!);
+        }
+
+        [Fact]
+        public void EventGhostParamRead_IsRejected_AtTheGate()
+        {
+            var m = ValidModelWithTrigger();
+            m.CustomEvents = new[] { CustomEv("wave_start", ("count", DslValueType.Int)) };
+            var g = new TriggerGraph();
+            g.Nodes.Add(new TriggerNode { Id = 0, Name = "h" });
+            g.Nodes.Add(new EventNode { Id = 1, Kind = "custom_event", EventName = "wave_start" });
+            g.ExecEdges.Add(new ExecEdge(1, 0, 0, 0));
+            g.Nodes.Add(new ExprEventParamNode { Id = 2, Name = "ghost" });
+            g.DataEdges.Add(new DataEdge(2, TriggerGraph.ExprDataOutPort, 0, TriggerGraph.TriggerConditionInPort, DataWireType.Boolean));
+            m.TriggerGraphJson = g.ToCanonicalJson();
+            ValidationResult r = NewValidator().Validate(m);
+            Assert.False(r.Ok);
+            Assert.Contains("ghost", r.Error!);
+        }
+
+        [Fact]
+        public void RaiseArgArityMismatch_IsRejected_AtTheGate()
+        {
+            var m = ValidModelWithTrigger();
+            m.CustomEvents = new[] { CustomEv("typed", ("count", DslValueType.Int)) };
+            var g = new TriggerGraph();
+            g.Nodes.Add(new TriggerNode { Id = 0, Name = "t" });
+            g.Nodes.Add(new EventNode { Id = 1, Kind = "match_start" });
+            g.ExecEdges.Add(new ExecEdge(1, 0, 0, 0));
+            g.Nodes.Add(new RaiseEventNode { Id = 2, Name = "typed" }); // declared param 0 has NO arg edge
+            g.ExecEdges.Add(new ExecEdge(0, 0, 2, 0));
+            m.TriggerGraphJson = g.ToCanonicalJson();
+            ValidationResult r = NewValidator().Validate(m);
+            Assert.False(r.Ok);
+            Assert.Contains("no argument edge", r.Error!);
+        }
+
+        [Fact]
+        public void RaiseArgTypeMismatch_IsRejected_AtTheGate()
+        {
+            var m = ValidModelWithTrigger();
+            m.CustomEvents = new[] { CustomEv("typed", ("count", DslValueType.Int)) };
+            var g = new TriggerGraph();
+            g.Nodes.Add(new TriggerNode { Id = 0, Name = "t" });
+            g.Nodes.Add(new EventNode { Id = 1, Kind = "match_start" });
+            g.ExecEdges.Add(new ExecEdge(1, 0, 0, 0));
+            g.Nodes.Add(new RaiseEventNode { Id = 2, Name = "typed" });
+            g.ExecEdges.Add(new ExecEdge(0, 0, 2, 0));
+            g.Nodes.Add(new ExprLiteralNode { Id = 3, ValueType = DslValueType.Bool, Raw = 1 }); // Bool → Int param
+            g.DataEdges.Add(new DataEdge(3, TriggerGraph.ExprDataOutPort, 2, TriggerGraph.RaiseArgInPort0, DataWireType.Boolean));
+            m.TriggerGraphJson = g.ToCanonicalJson();
+            ValidationResult r = NewValidator().Validate(m);
+            Assert.False(r.Ok);
+            Assert.Contains("wire", r.Error!);
+        }
+
+        [Fact]
+        public void RaiserNotInAllowedRaisers_IsRejected_AtTheGate()
+        {
+            var m = ValidModelWithTrigger();
+            m.CustomEvents = new[]
+            {
+                new ScenarioCustomEvent { Name = "gated", AllowedRaisers = new[] { 0 } },
+            };
+            var g = new TriggerGraph();
+            g.Nodes.Add(new TriggerNode { Id = 0, Name = "t" });
+            g.Nodes.Add(new EventNode { Id = 1, Kind = "match_start" });
+            g.ExecEdges.Add(new ExecEdge(1, 0, 0, 0));
+            g.Nodes.Add(new RaiseEventNode { Id = 2, Name = "gated", Raiser = 1 }); // 1 ∉ {0}
+            g.ExecEdges.Add(new ExecEdge(0, 0, 2, 0));
+            m.TriggerGraphJson = g.ToCanonicalJson();
+            ValidationResult r = NewValidator().Validate(m);
+            Assert.False(r.Ok);
+            Assert.Contains("allowed_raisers", r.Error!);
+        }
+
+        [Fact]
+        public void ParamReadOnAMultiEventTrigger_IsRejected_AtTheGate()
+        {
+            // A trigger subscribed to TWO built-in events whose condition reads event params: no single
+            // subscription declares them, so the compile rejects located (the single-subscription rule).
+            var m = ValidModelWithTrigger();
+            var g = new TriggerGraph();
+            g.Nodes.Add(new TriggerNode { Id = 0, Name = "multi" });
+            g.Nodes.Add(new EventNode { Id = 1, Kind = "unit_dies" });
+            g.ExecEdges.Add(new ExecEdge(1, 0, 0, 0));
+            g.Nodes.Add(new EventNode { Id = 2, Kind = "match_start" });
+            g.ExecEdges.Add(new ExecEdge(2, 0, 0, 0));
+            g.Nodes.Add(new ExprEventParamNode { Id = 3, Name = "victim" });
+            g.DataEdges.Add(new DataEdge(3, TriggerGraph.ExprDataOutPort, 0, TriggerGraph.TriggerConditionInPort, DataWireType.Boolean));
+            m.TriggerGraphJson = g.ToCanonicalJson();
+            ValidationResult r = NewValidator().Validate(m);
+            Assert.False(r.Ok);
+            Assert.Contains("exactly one event", r.Error!);
+        }
+
+        [Fact]
+        public void SameTickDispatchCycle_IsRejected_AtTheGate_NamingTheCycle()
+        {
+            var m = ValidModelWithTrigger();
+            m.CustomEvents = new[] { CustomEv("e1"), CustomEv("e2") };
+            TriggerGraph g = TriggerGraph.BuildCustomEventTrigger(
+                "h1", "custom_event", "e1", null, "e2", null, -1, false, null, 0, null, NoDecls, m.CustomEvents);
+            g.Merge(TriggerGraph.BuildCustomEventTrigger(
+                "h2", "custom_event", "e2", null, "e1", null, -1, false, null, 0, null, NoDecls, m.CustomEvents));
+            m.TriggerGraphJson = g.ToCanonicalJson();
+            ValidationResult r = NewValidator().Validate(m);
+            Assert.False(r.Ok);
+            Assert.Contains("e1→e2→e1", r.Error!);
+        }
+
+        [Fact]
+        public void FanOutOverCap_IsRejected_AtTheGate_NamingTheConstant()
+        {
+            var m = ValidModelWithTrigger();
+            m.CustomEvents = new[] { CustomEv("hub") };
+            TriggerGraph g = TriggerGraph.BuildCustomEventTrigger(
+                "h0", "custom_event", "hub", null, null, null, -1, false, null, 0, null, NoDecls, m.CustomEvents);
+            for (int i = 1; i <= EventBounds.MaxEventFanOut; i++) // cap + 1 subscribers total
+                g.Merge(TriggerGraph.BuildCustomEventTrigger(
+                    $"h{i}", "custom_event", "hub", null, null, null, -1, false, null, 0, null, NoDecls, m.CustomEvents));
+            m.TriggerGraphJson = g.ToCanonicalJson();
+            ValidationResult r = NewValidator().Validate(m);
+            Assert.False(r.Ok);
+            Assert.Contains("MaxEventFanOut", r.Error!);
+        }
+
         // AC3c — AR-13 (a random effect is valid only if it draws from SimRng) stays RESERVED: no random
         // trigger-effect TYPE exists pre-Epic-2, so there is nothing to validate yet. This is the documented
         // pending case; the mature rule is enforced by Epic 2's effect-validator (Story 2.3) the first moment an

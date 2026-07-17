@@ -73,6 +73,16 @@ namespace ProjectChimera.Dsl
                     writer.WriteNumber("priority", t.Priority);
                     break;
 
+                case EventNode e when e.Kind == NodeKinds.CustomEvent:
+                    // Story 7.5 — the graph-only custom-event subscription: kind + its required event_name only
+                    // (the flat EventNode fields are meaningless on it and never serialize — Read's allow-list
+                    // rejects them, so the encoding stays canonical).
+                    if (string.IsNullOrEmpty(e.EventName))
+                        throw new JsonException($"Cannot serialize custom_event node {e.Id}: 'event_name' is required.");
+                    writer.WriteString("kind", NodeKinds.CustomEvent);
+                    writer.WriteString("event_name", e.EventName);
+                    break;
+
                 case EventNode e:
                     writer.WriteString("kind", e.Kind);
                     writer.WriteNumber("faction", e.Faction);
@@ -81,6 +91,16 @@ namespace ProjectChimera.Dsl
                     WriteFixed(writer, "amount", e.Amount, options);
                     writer.WriteNumber("count", e.Count);
                     writer.WriteString("operator", e.Operator);
+                    break;
+
+                case RaiseEventNode r:
+                    // Story 7.5 — raise_event: name always; raiser omitted at its -1 (system) default and
+                    // next_tick omitted when false, mirroring expr_var's canonical omit-at-default encoding
+                    // (Read defaults them back, so the round-trip is byte-exact).
+                    writer.WriteString("kind", NodeKinds.RaiseEvent);
+                    writer.WriteString("name", r.Name);
+                    if (r.Raiser >= 0) writer.WriteNumber("raiser", r.Raiser);
+                    if (r.NextTick) writer.WriteBoolean("next_tick", true);
                     break;
 
                 case ConditionNode c:
@@ -215,6 +235,12 @@ namespace ProjectChimera.Dsl
                     writer.WriteString("name", al.Name);
                     break;
 
+                case ExprEventParamNode ep:
+                    // Story 7.5 — the event.<name> read leaf (exact inverse of the Read branch).
+                    writer.WriteString("kind", NodeKinds.ExprEventParam);
+                    writer.WriteString("name", ep.Name);
+                    break;
+
                 default:
                     // Fail-closed: a node type outside the closed registry cannot be authored (mirrors Read's default).
                     throw new JsonException(
@@ -265,6 +291,42 @@ namespace ProjectChimera.Dsl
                 try { effect = effEl.Deserialize<EffectNode>(options)!; }   // → EffectNodeJsonConverter (byte-faithful embed)
                 catch (JsonException ex) { throw new JsonException($"{path}.effect: {ex.Message}"); }
                 return new EffectActionNode { Id = ReadId(el, path), Effect = effect };
+            }
+
+            if (kind == NodeKinds.CustomEvent)
+            {
+                // Story 7.5 — the graph-only custom-event subscription. 'event_name' is REQUIRED (fail-closed: a
+                // subscription naming nothing can never dispatch and is an almost-certain authoring error); the
+                // flat EventNode fields are rejected by this allow-list (they are meaningless on a custom
+                // subscription, and admitting them would create non-canonical encodings Write cannot reproduce).
+                RejectUnknownProperties(el, path, "id", "kind", "event_name");
+                string? evName = ReadOptString(el, "event_name", path);
+                if (string.IsNullOrEmpty(evName))
+                    throw new JsonException($"{path}.event_name: required for custom_event (the declared custom-event name).");
+                return new EventNode { Id = ReadId(el, path), Kind = NodeKinds.CustomEvent, EventName = evName };
+            }
+
+            if (kind == NodeKinds.RaiseEvent)
+            {
+                // Story 7.5 — raise_event. 'raiser' is range-checked like expr_var.faction (fail-closed: Write
+                // omits every negative raiser as the -1 system default, so a value outside the canonical encoding
+                // would silently rewrite on the next round-trip — reject it located instead). Registry membership
+                // of 'name' and allowed-raiser membership are load-gate concerns, not parse concerns.
+                RejectUnknownProperties(el, path, "id", "kind", "name", "raiser", "next_tick");
+                string name = ReadString(el, "name", path, "");
+                if (string.IsNullOrEmpty(name))
+                    throw new JsonException($"{path}.name: required for raise_event (the declared custom-event name).");
+                int raiser = ReadInt(el, "raiser", path, -1); // -1 = system raise
+                if (raiser < -1 || raiser >= DslVarTable.PlayerSlots)
+                    throw new JsonException(
+                        $"{path}.raiser: {raiser} is outside the canonical range (-1 = system, 0..{DslVarTable.PlayerSlots - 1} = faction slot).");
+                return new RaiseEventNode
+                {
+                    Id       = ReadId(el, path),
+                    Name     = name,
+                    Raiser   = raiser,
+                    NextTick = ReadBool(el, "next_tick", path, false),
+                };
             }
 
             if (NodeKinds.InSet(NodeKinds.EventTypes, kind))
@@ -456,6 +518,17 @@ namespace ProjectChimera.Dsl
             {
                 RejectUnknownProperties(el, path, "id", "kind", "name");
                 return new ExprArrayLenNode { Id = ReadId(el, path), Name = ReadString(el, "name", path, "") };
+            }
+
+            if (kind == NodeKinds.ExprEventParam)
+            {
+                // Story 7.5 — event.<name>. 'name' is required (a nameless read can never compile); declaration
+                // membership + the single-subscription rule are compile/gate concerns, not parse concerns.
+                RejectUnknownProperties(el, path, "id", "kind", "name");
+                string epName = ReadString(el, "name", path, "");
+                if (string.IsNullOrEmpty(epName))
+                    throw new JsonException($"{path}.name: required for expr_event_param (the event parameter name).");
+                return new ExprEventParamNode { Id = ReadId(el, path), Name = epName };
             }
 
             throw new JsonException($"{path}: unknown node kind '{kind}'.");

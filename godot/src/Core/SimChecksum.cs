@@ -65,7 +65,8 @@ namespace ProjectChimera.Core
     /// The Story 7.8 <c>DslVarReadback</c> (the presentation read rail) is likewise NOT folded — it is a
     /// version-stamped COPY of the already-hashed <see cref="ProjectChimera.Dsl.DslVarTable"/>, published once per
     /// tick for presentation only, so folding it would be redundant and (crucially) leaving it unfolded means a UI
-    /// mismatch cannot desync (AR-32 read rail). It is never passed to <see cref="Compute"/>; AlgorithmVersion stays 17.
+    /// mismatch cannot desync (AR-32 read rail). It is never passed to <see cref="Compute"/> and never bumps
+    /// <see cref="AlgoVersion"/>.
     ///
     /// All values are Fixed (int Raw) — platform-independent, no float arithmetic.
     /// </summary>
@@ -193,8 +194,20 @@ namespace ProjectChimera.Core
         ///        (FoldEmpty null≡empty; legacy/test callers only — SimulationHost always passes the real store).
         ///        Loop/array-free scenarios add only leading count/fuel Mix(0) steps — behavior-neutral, covered by
         ///        this story's ONE scheduled re-baseline of ALL goldens. All int → cross-platform safe.
+        ///   v18 — Story 7.5 (landed via merge): fold the new <see cref="DslEventQueue"/> — the PENDING next-tick
+        ///        custom-event raises — for the FIRST TIME. Unlike CombatEventQueue/DeathFeed (provably drained
+        ///        within the tick) the queue is live CROSS-TICK sim state: it is non-empty at the checksum boundary
+        ///        whenever a raise_event with next_tick=true is awaiting its dequeue, so a peer whose pending
+        ///        feedback diverges must desync detectably. Folds AFTER the DslLoopState fold and BEFORE the SimRng
+        ///        fold (SimRng stays last, the standing precedent): a leading count, then per entry in enqueue order
+        ///        the registry event index, the raiser slot, and the fixed EventBounds.MaxEventParams param-raw
+        ///        stride. A null queue folds via DslEventQueue.FoldEmpty — byte-identical to a non-null EMPTY queue
+        ///        (a single Mix(0) count; legacy/test callers only, SimulationHost always passes a real queue).
+        ///        Every existing golden carries an EMPTY queue, so the fold adds one Mix(0) that moves the hash with
+        ///        zero live state — the merge's ONE named, recorded, behavior-neutral re-baseline of ALL per-tick
+        ///        goldens. All ints → cross-platform safe.
         /// </summary>
-        public const int AlgoVersion = 17;
+        public const int AlgoVersion = 18;
 
         /// <summary>
         /// Compute a full-state checksum for desync detection.
@@ -203,7 +216,8 @@ namespace ProjectChimera.Core
         public static uint Compute(EntityWorld world, BuildingStore buildings, ResourceStore resources,
                                    FactionRegistry factions, ModifierStore? modifiers = null, HeroStore? heroes = null,
                                    ItemStore? items = null, ResourceNodeStore? nodes = null, ResearchStore? research = null,
-                                   DslVarTable? vars = null, DslLoopState? loopState = null)
+                                   DslVarTable? vars = null, DslLoopState? loopState = null,
+                                   DslEventQueue? dslEvents = null)
         {
             // Contract guard for the registry param added in Story 1.3a: a future direct caller (e.g. the
             // 1.9a/9.1 server checksum collector) gets a clear error instead of an opaque NRE in the Ore loop.
@@ -523,6 +537,18 @@ namespace ProjectChimera.Core
                 loopState.FoldInto(ref hash, Mix);
             else
                 DslLoopState.FoldEmpty(ref hash, Mix); // null store ≡ empty state (byte-identical fold)
+
+            // ── DslEventQueue pending next-tick events (v18, Story 7.5) — after the loop-state fold, before SimRng ──
+            // The FIRST-EVER fold of the cross-tick custom-event queue: a raise_event with next_tick=true is LIVE
+            // sim state at the checksum boundary (unlike CombatEventQueue/DeathFeed, which are provably drained
+            // within the tick), so a divergent pending set between peers must desync detectably. Count-prefixed in
+            // enqueue order: per entry the registry event index, raiser slot, and the fixed MaxEventParams param-raw
+            // stride. A null queue folds BYTE-IDENTICALLY to an empty one (a single Mix(0) count — legacy/test
+            // callers only; SimulationHost always passes a real queue). All ints → cross-platform safe.
+            if (dslEvents != null)
+                dslEvents.FoldInto(ref hash, Mix);
+            else
+                DslEventQueue.FoldEmpty(ref hash, Mix); // null queue ≡ empty queue (byte-identical fold)
 
             // ── RNG state (v3, Story 1.5) ─────────────────────────────────────────
             // The single shared SimRng's state IS sim truth: once Epic 2 effects draw from it, a divergent

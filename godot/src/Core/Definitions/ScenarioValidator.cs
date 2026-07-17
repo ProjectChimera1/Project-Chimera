@@ -469,6 +469,22 @@ namespace ProjectChimera.Core.Definitions
                 }
             }
 
+            // ── Custom events (Story 7.5, AR-39) — the CLOSED registry, validated fail-closed when present via
+            //    the SHARED EventDispatchPlan routine (the exact rules the LoadScenario backstop mirrors): count ≤
+            //    MaxCustomEvents; unique non-blank names disjoint from the built-in event-kind set; param count ≤
+            //    MaxEventParams, unique identifier names, types ∈ {Int, Fixed, Bool}; allowed-raiser slots pass the
+            //    engine faction-slot ceiling (the CheckFactionSlot bound), no duplicates. NULL (every existing
+            //    scenario) ⇒ nothing to validate ⇒ the pass path is unchanged. Declarations are sim-semantic
+            //    (param slots/types shape every dispatch frame), so they FOLD into the MP handshake like the other
+            //    declaration blocks (CanonicalModelHash v10 — the 7.7 Variables/Timers/TriggerGraph basis); the
+            //    LIVE pending next-tick queue folds separately (SimChecksum v18). ──
+            if (m.CustomEvents != null)
+            {
+                string? ceErr = EventDispatchPlan.ValidateRegistry(m.CustomEvents, (int)Faction.Player4);
+                if (ceErr != null)
+                    return ValidationResult.Fail($"scenario.{ceErr}");
+            }
+
             // ── Triggers (Story 1.11, AC3 — Decision #1: extend THIS gate rather than add a second validator) ──
             // The as-built path wrote accepted LLM/editor triggers straight into Triggers[] and reached
             // ScenarioDirector WITHOUT any validation; AR-39 now inspects them too, so non-deterministic /
@@ -496,6 +512,7 @@ namespace ProjectChimera.Core.Definitions
             //    execution-order walk (the same shared rulebook ScenarioDirector.LoadScenario runs — parity by
             //    construction). NULL/whitespace (every existing scenario) ⇒ nothing to validate ⇒ pass unchanged. ──
             TriggerGraph? parsedGraph = null;
+            // Story 7.6 loop gate AND Story 7.5 dispatch-plan gate both analyze this execution view.
             List<TriggerGraph.TriggerExec>? graphExecs = null;
             if (!string.IsNullOrWhiteSpace(m.TriggerGraphJson))
             {
@@ -682,6 +699,18 @@ namespace ProjectChimera.Core.Definitions
             //    expression compiles) already ran ABOVE via GraphStructureGate (Story 7.7 closed the deferral). ──
             if (parsedGraph != null)
             {
+                // ── Story 7.5 — the SHARED custom-event analysis (the exact routine LoadScenario's backstop
+                //    runs): registry re-check, custom_event/raise_event usage rules (declared names, raiser
+                //    membership, single-subscription), raise-arg edge arity/type/wire + compile (raise args may
+                //    read declared arrays too, hence declaredArrayInfo), and the same-tick DAG proof + EventBounds
+                //    caps (fan-out/depth/transitive ops — errors name the constant). It also yields each trigger's
+                //    event-parameter map, which the 7.4 expression compile loop below threads into TryCompile so a
+                //    handler's condition/value expressions may read event.<param>. ──
+                if (!EventDispatchPlan.TryBuild(m.CustomEvents, parsedGraph, graphExecs!, declaredVarInfo,
+                        declaredArrayInfo, maxRaiserSlotExclusive: (int)Faction.Player4,
+                        out EventDispatchPlan? evPlan, out string? evErr))
+                    return ValidationResult.Fail($"scenario.trigger_graph: {evErr}");
+
                 // Story 7.4 — id lookup + the set of set_variable actions fed by a value-in expression edge. A
                 // fed action's declared target may be Int/Fixed/Bool (the type-equality check happens in the
                 // compile pass below); the literal path keeps the 7.3 Int-only rule.
@@ -834,8 +863,11 @@ namespace ProjectChimera.Core.Definitions
 
                     if (dst is TriggerNode && de.DstPort == TriggerGraph.TriggerConditionInPort)
                     {
+                        // Story 7.5: the trigger's event-parameter map (from the dispatch plan) rides along so a
+                        // handler condition may read event.<param>; non-handlers get a null map (event.* rejects).
                         if (!ExprCompiler.TryCompile(parsedGraph, de.Src, declaredVarInfo, inCondition: true,
-                                out ExprProgram? cp, out string? cErr, declaredArrayInfo))
+                                eventParams: evPlan!.ParamMapFor(dst.Id), out ExprProgram? cp, out string? cErr,
+                                declaredArrayInfo))
                             return ValidationResult.Fail($"scenario.trigger_graph: {cErr}");
                         if (cp!.ResultType != DslValueType.Bool)
                             return ValidationResult.Fail(
@@ -859,8 +891,11 @@ namespace ProjectChimera.Core.Definitions
                         if (string.IsNullOrEmpty(act.Variable))
                             return ValidationResult.Fail(
                                 $"scenario.trigger_graph action node {act.Id}: a set_variable with a value expression needs a target variable.");
+                        // Story 7.5: same event-parameter map threading as the condition compile above (keyed by
+                        // the consuming action's id — the plan maps every chained action of a handler trigger).
                         if (!ExprCompiler.TryCompile(parsedGraph, de.Src, declaredVarInfo, inCondition: false,
-                                out ExprProgram? vp, out string? vErr, declaredArrayInfo))
+                                eventParams: evPlan!.ParamMapFor(act.Id), out ExprProgram? vp, out string? vErr,
+                                declaredArrayInfo))
                             return ValidationResult.Fail($"scenario.trigger_graph: {vErr}");
                         DslValueType target = declaredVarInfo.TryGetValue(act.Variable!, out var tInfo) ? tInfo.Type : DslValueType.Int;
                         if (target != DslValueType.Int && target != DslValueType.Fixed && target != DslValueType.Bool)
@@ -884,6 +919,20 @@ namespace ProjectChimera.Core.Definitions
                     id => declaredRegions.Contains(id));
                 if (loopErr != null)
                     return ValidationResult.Fail($"scenario.trigger_graph: {loopErr}");
+
+                // ── Story 7.5 (merge hardening) — the strict compiles DslLoopGate's static pass SKIPS when a
+                //    subgraph reads event.<param> (it holds no event-parameter maps): every branch condition and
+                //    array-action value/index root recompiles here WITH the owning trigger's map, re-asserting the
+                //    Bool / element-type / Int-index rules — the exact checks the LoadScenario backstop applies in
+                //    CompileItems, so a gate PASS still guarantees a loadable scenario (the 7.7 invariant). Roots
+                //    free of event reads recompile to the identical verdict DslLoopGate already gave. ──
+                for (int ti = 0; ti < graphExecs!.Count; ti++)
+                {
+                    string? evRootErr = CheckEventParamRoots(parsedGraph, graphExecs[ti],
+                        evPlan!.ParamMapFor(graphExecs[ti].Trigger.Id), declaredVarInfo, declaredArrayInfo);
+                    if (evRootErr != null)
+                        return ValidationResult.Fail($"scenario.trigger_graph: {evRootErr}");
+                }
             }
 
             // ── Custom UI widget tree (Story 7.8, AR-32) — fail-closed when present: the SHARED CustomUiGate
@@ -1227,6 +1276,63 @@ namespace ProjectChimera.Core.Definitions
             if (slot < 0 || slot + 1 > (int)Faction.Player4)
                 return $"{path}={slot} is out of the valid faction-slot range [0,{(int)Faction.Player4 - 1}].";
             return null;
+        }
+
+        /// <summary>Story 7.5 (merge hardening) — strict map-aware compiles for the roots DslLoopGate's static
+        /// pass skips when they read <c>event.&lt;param&gt;</c>: branch conditions (must be Bool) and array-action
+        /// value/index roots (element type / Int), walked over the nested execution view exactly as the
+        /// LoadScenario backstop's <c>CompileItems</c> compiles them. Recursion depth is bounded by the
+        /// MaxExecWalkDepth cap DslLoopGate already enforced above. Returns the first located error, else null.</summary>
+        private static string? CheckEventParamRoots(TriggerGraph graph, TriggerGraph.TriggerExec ex,
+            IReadOnlyDictionary<string, (int Slot, DslValueType Type)>? paramMap,
+            IReadOnlyDictionary<string, (DslValueType Type, VarScope Scope)> declaredVars,
+            IReadOnlyDictionary<string, (DslValueType Elem, int Capacity)> arrayDecls)
+        {
+            return Walk(ex.Items);
+
+            string? Walk(TriggerGraph.ExecItem[] items)
+            {
+                foreach (TriggerGraph.ExecItem it in items)
+                {
+                    switch (it.Node)
+                    {
+                        case BranchNode br when it.CondExprRoot >= 0:
+                        {
+                            if (!ExprCompiler.TryCompile(graph, it.CondExprRoot, declaredVars, inCondition: false,
+                                    paramMap, out ExprProgram? cp, out string? cErr, arrayDecls))
+                                return $"trigger '{ex.Trigger.Name}' branch condition: {cErr}";
+                            if (cp!.ResultType != DslValueType.Bool)
+                                return $"trigger '{ex.Trigger.Name}' branch node {br.Id}: the condition expression must evaluate to Bool, got {cp.ResultType}.";
+                            break;
+                        }
+                        case ActionNode act when NodeKinds.IsArrayActionKind(act.Kind):
+                        {
+                            DslValueType elem = arrayDecls.TryGetValue(act.Variable ?? "", out (DslValueType Elem, int Capacity) ad)
+                                ? ad.Elem : DslValueType.Int;
+                            if (it.ValueExprRoot >= 0)
+                            {
+                                if (!ExprCompiler.TryCompile(graph, it.ValueExprRoot, declaredVars, inCondition: false,
+                                        paramMap, out ExprProgram? vp, out string? vErr, arrayDecls))
+                                    return $"trigger '{ex.Trigger.Name}' {act.Kind} value expression: {vErr}";
+                                if (vp!.ResultType != elem)
+                                    return $"trigger '{ex.Trigger.Name}' action node {act.Id} ({act.Kind}): value expression type {vp.ResultType} does not match array '{act.Variable}' element type {elem}.";
+                            }
+                            if (it.IndexExprRoot >= 0)
+                            {
+                                if (!ExprCompiler.TryCompile(graph, it.IndexExprRoot, declaredVars, inCondition: false,
+                                        paramMap, out ExprProgram? ip, out string? iErr, arrayDecls))
+                                    return $"trigger '{ex.Trigger.Name}' {act.Kind} index expression: {iErr}";
+                                if (ip!.ResultType != DslValueType.Int)
+                                    return $"trigger '{ex.Trigger.Name}' action node {act.Id} ({act.Kind}): the index expression must be Int, got {ip.ResultType}.";
+                            }
+                            break;
+                        }
+                    }
+                    string? sub = Walk(it.Body) ?? Walk(it.Then) ?? Walk(it.Else);
+                    if (sub != null) return sub;
+                }
+                return null;
+            }
         }
     }
 }

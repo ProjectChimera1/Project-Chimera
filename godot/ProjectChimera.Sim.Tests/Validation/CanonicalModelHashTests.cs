@@ -63,7 +63,7 @@ namespace ProjectChimera.Sim.Tests.Validation
         }
 
         [Fact]
-        public void AlgoVersion_IsNine() => Assert.Equal(9, CanonicalModelHash.AlgoVersion); // Story 7.8 bumped 8→9 (custom-UI widget-tree fold)
+        public void AlgoVersion_IsTen() => Assert.Equal(10, CanonicalModelHash.AlgoVersion); // 7.5 re-land merge bumped 9→10 (custom-events registry + graph node-kind fold)
 
         [Fact]
         public void ReorderedCollections_HashEqual()
@@ -294,7 +294,7 @@ namespace ProjectChimera.Sim.Tests.Validation
             // Build the documented canonical byte stream (D5 fixed order) INDEPENDENTLY of MixInt/MixStr, then
             // fold it with a textbook FNV-64. This pins the algorithm without a self-tautology.
             var buf = new List<byte>();
-            AppendInt(buf, CanonicalModelHash.AlgoVersion);  // AlgoVersion (= 8)
+            AppendInt(buf, CanonicalModelHash.AlgoVersion);  // AlgoVersion (= 10)
             AppendInt(buf, Fixed.FromFloat(120f).Raw);       // MapBounds quantized (= 7,864,320)
             AppendStr(buf, "DestroyAllBuildings");           // WinCondition by NAME
             AppendStr(buf, "");                              // TerrainRef
@@ -317,6 +317,8 @@ namespace ProjectChimera.Sim.Tests.Validation
             AppendInt(buf, 0);                                 // TriggerGraphJson: absent → 0 marker
             // Story 7.8 (v9): the custom-UI widget tree — absent custom_ui folds a single 0 marker.
             AppendInt(buf, 0);                                 // CustomUi: absent → 0 marker
+            // Story 7.5 via merge (v10): the custom-event registry — absent custom_events folds a 0 count.
+            AppendInt(buf, 0);                                 // CustomEvents: null ≡ empty → count 0
             ulong expected = IndependentFnv64(buf.ToArray());
             if (expected == 0UL) expected = 1UL;             // mirror the documented 0 → 1 sentinel
 

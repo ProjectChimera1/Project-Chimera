@@ -46,6 +46,14 @@ namespace ProjectChimera.Combat
         /// flag). NOT folded (ProjectileStore is never an input to SimChecksum), so this discriminator is fold-neutral.
         /// </summary>
         public readonly bool[]       TargetIsBuilding = new bool[MAX_PROJECTILES];
+        /// <summary>
+        /// Story 7.5: the firing unit's ENTITY id, snapshotted at <see cref="Spawn"/> beside <see cref="Owner"/>
+        /// (−1 = unknown). Passed to <c>DamageContext.AttackerId</c> at impact so a lethal projectile hit credits
+        /// its killer (<c>event.killer</c>). May be stale by impact (the shooter can die/recycle mid-flight) — the
+        /// payload is an opaque raw handle, documented as such. NOT folded (ProjectileStore is never a SimChecksum
+        /// input); a recycled slot is always overwritten at Spawn.
+        /// </summary>
+        public readonly int[]        SourceId         = new int[MAX_PROJECTILES];
 
         private readonly int[] _freeList  = new int[MAX_PROJECTILES];
         private int            _freeCount;
@@ -68,7 +76,8 @@ namespace ProjectChimera.Combat
             Fixed      speed,          // Story 3.12 — required per-projectile travel speed (the firing unit's ProjectileSpeed)
             Fixed      splashRadius = default,
             CombatFeedbackProfile? feedback = null,
-            bool       targetIsBuilding = false)
+            bool       targetIsBuilding = false,
+            int        sourceId = -1)   // Story 7.5 — the firing unit's entity id (kill attribution at impact)
         {
             int id;
             if (_freeCount > 0)
@@ -90,6 +99,7 @@ namespace ProjectChimera.Combat
             SplashRadius[id]     = splashRadius;
             Feedback[id]         = feedback;
             TargetIsBuilding[id] = targetIsBuilding; // Story 2.9a — always overwritten (recycled slot never inherits)
+            SourceId[id]         = sourceId;         // Story 7.5 — always overwritten (recycled slot never inherits)
             return id;
         }
 
@@ -106,6 +116,7 @@ namespace ProjectChimera.Combat
             System.Array.Clear(TargetArmor);   System.Array.Clear(Owner);         System.Array.Clear(SplashRadius);
             System.Array.Clear(Speed);         // Story 3.12
             System.Array.Clear(Feedback);      System.Array.Clear(TargetIsBuilding); System.Array.Clear(_freeList);
+            System.Array.Clear(SourceId);      // Story 7.5 (always overwritten at Spawn, but "cleared == fresh")
             _freeCount = 0;
             _nextId    = 0;
         }

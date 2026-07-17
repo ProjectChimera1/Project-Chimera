@@ -106,6 +106,10 @@ namespace ProjectChimera.Core.Sim
         /// <see cref="ScenarioDirector"/>. Exposed for the presentation <c>CustomUiBridge</c> to pull. Explicitly
         /// NOT folded into <see cref="SimChecksum"/> (AR-32 — a UI mismatch cannot desync).</summary>
         public DslVarReadback Readback { get; }
+        /// <summary>Story 7.5 — the cross-tick custom-event queue (pending <c>next_tick</c> raises). Owned here,
+        /// shared with <see cref="ScenarioDirector"/> (the only enqueue/dequeue site) and folded into the per-tick
+        /// <see cref="SimChecksum"/> (v18). Cleared on <see cref="ClearForReset"/>; <c>LoadScenario</c> resets it too.</summary>
+        public DslEventQueue DslEvents { get; }
         public FogOfWarSystem Fog { get; }
 
         // ── Loop pass-throughs (SimulationLoop is untouched; the host wraps it). ──
@@ -160,7 +164,8 @@ namespace ProjectChimera.Core.Sim
             Vars             = new DslVarTable();     // Story 7.3 — typed/scoped variables + timers; folded into SimChecksum (v16); init from ScenarioData at apply
             LoopState        = new DslLoopState();    // Story 7.6 — loop fuel + batched continuation rows; folded into SimChecksum (v17)
             Readback         = new DslVarReadback();  // Story 7.8 — presentation read rail (version-stamped copy of Vars); NOT folded into SimChecksum
-            ScenarioDirector = new ScenarioDirector(Buildings, Resources, Vars, LoopState);
+            DslEvents        = new DslEventQueue();   // Story 7.5 — pending next-tick custom events; folded into SimChecksum (v18)
+            ScenarioDirector = new ScenarioDirector(Buildings, Resources, Vars, LoopState, DslEvents);
             ScenarioDirector.SetReadback(Readback);   // Story 7.8 — the director publishes into it once per tick at the tick boundary
 
             // AR-9 effective-stat recompute (Story 2.2a), the Story 2.2b ModifierStore it drives, and the Story 2.4a
@@ -249,7 +254,7 @@ namespace ProjectChimera.Core.Sim
             };
 
             _loop = new SimulationLoop(World, _systems);
-            _loop.EnableChecksums(Buildings, Resources, checksumFactions, Modifiers, Heroes, Items, Nodes, Research, Vars, LoopState); // fold modifier state (v6) + ability cooldowns (v7) + mutable HeroStore (v11) + ItemStore/inventory (v12) + ResourceNodeStore (v13) + ResearchStore (v14) + DslVarTable (v16) + DslLoopState (v17)
+            _loop.EnableChecksums(Buildings, Resources, checksumFactions, Modifiers, Heroes, Items, Nodes, Research, Vars, LoopState, DslEvents); // fold modifier state (v6) + ability cooldowns (v7) + mutable HeroStore (v11) + ItemStore/inventory (v12) + ResourceNodeStore (v13) + ResearchStore (v14) + DslVarTable (v16) + DslLoopState (v17) + DslEventQueue (v18)
 
             // The sim spine's only host-side log in 1.8a: a one-shot construction diagnostic through the
             // injected seam. NullLogSink no-ops it (tests/server → zero effect on the golden); GodotLogSink
@@ -285,6 +290,7 @@ namespace ProjectChimera.Core.Sim
             Vars.Clear();           // Story 7.3 — folded DslVarTable; bulk-empty so a re-apply re-inits declarations non-additively
             LoopState.Clear();      // Story 7.6 — folded DslLoopState; bulk-empty so a re-apply reconfigures rows non-additively
             Readback.Clear();       // Story 7.8 — presentation read rail (unfolded); bulk-empty so a re-apply re-inits declarations non-additively
+            DslEvents.Clear();      // Story 7.5 — folded next-tick event queue; empty so a re-apply starts with no pending feedback
             CombatEvents.Clear();
             _deathFeed.Clear();     // Story 3.13 — transient per-tick death buffer (empty at reset)
             Fog.Reset();

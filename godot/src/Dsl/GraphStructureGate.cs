@@ -107,10 +107,32 @@ namespace ProjectChimera.Dsl
             foreach (NodeBase n in graph.Nodes.OrderBy(x => x.Id)) // ascending id → deterministic first-fail
             {
                 if (!ExprCompiler.IsExprNode(n) || consumedAsOperand.Contains(n.Id)) continue;
-                if (!ExprCompiler.TryCompile(graph, n.Id, declMap, inCondition: false,
+                // Story 7.5: a subgraph reading event.<param> cannot compile without its trigger's event-parameter
+                // map, which exists only once EventDispatchPlan.TryBuild has run — the validator's data-edge pass,
+                // the raise-arg compiles, and the director backstop all compile such roots strictly WITH the map.
+                // Compiling it map-less here would false-reject every 7.5 scenario, so this pass skips the compile
+                // (reachability marking still runs — the root-less-cycle reject below must keep covering them).
+                var sub = new HashSet<int>();
+                MarkReached(graph, byId, n.Id, sub);
+                bool readsEventParams = false;
+                foreach (int id in sub)
+                    if (byId.TryGetValue(id, out NodeBase? sn) && sn is ExprEventParamNode) { readsEventParams = true; break; }
+                if (readsEventParams)
+                {
+                    // A skipped root must still be CONSUMED by some port — the consuming pass (validator
+                    // event-param pass / raise-arg compile / director CompileItems) is what compiles it strictly
+                    // with the map. A dangling event-param subgraph would otherwise escape every compile.
+                    bool consumed = false;
+                    foreach (DataEdge e in graph.DataEdges)
+                        if (e.Src == n.Id && byId.TryGetValue(e.Dst, out NodeBase? dc) && !ExprCompiler.IsExprNode(dc))
+                        { consumed = true; break; }
+                    if (!consumed)
+                        return $"expression subgraph rooted at node {n.Id} reads event.<param> but is not consumed by any port — event-parameter expressions compile only against a consuming trigger's dispatch plan.";
+                }
+                else if (!ExprCompiler.TryCompile(graph, n.Id, declMap, inCondition: false,
                         out _, out string? err, arrayDecls))
                     return $"expression subgraph rooted at node {n.Id}: {err}";
-                MarkReached(graph, byId, n.Id, reached);
+                reached.UnionWith(sub);
             }
             foreach (NodeBase n in graph.Nodes.OrderBy(x => x.Id))
                 if (ExprCompiler.IsExprNode(n) && !reached.Contains(n.Id))

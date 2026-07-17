@@ -221,8 +221,8 @@ namespace ProjectChimera.Sim.Tests.Definitions
         [Fact]
         public void HashAlgoVersions_AreUnchanged()
         {
-            Assert.Equal(17, SimChecksum.AlgoVersion); // Story 7.6: arrays + DslLoopState (loops/fuel) fold (16→17)
-            Assert.Equal(9, CanonicalModelHash.AlgoVersion); // Story 7.8: custom-UI widget tree folded (8→9, the ONE named re-baseline)
+            Assert.Equal(18, SimChecksum.AlgoVersion); // v17 = Story 7.6 loops/fuel; v18 = Story 7.5 (merge) DslEventQueue fold
+            Assert.Equal(10, CanonicalModelHash.AlgoVersion); // v9 = Story 7.8 custom UI; v10 = Story 7.5 (merge) custom-event registry fold
             Assert.Equal(2, StartStateHash.AlgoVersion);
         }
 
