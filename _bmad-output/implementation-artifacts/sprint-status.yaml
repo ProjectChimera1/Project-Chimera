@@ -154,7 +154,7 @@ development_status:
   7-12-n-faction-victory-resolution-and-per-player-elimination: done
   7-13-complete-the-trigger-vocabulary-expression-state-reads-randomchoice-enable-disable-run-action-leaves-event-breadth: done
   7-14-objectives-quest-log-and-the-match-briefing-surface: done
-  7-15-trigger-debugging-variable-watch-fired-trigger-log-fire-counters: backlog
+  7-15-trigger-debugging-variable-watch-fired-trigger-log-fire-counters: done
   epic-7-retrospective: optional
   epic-8: backlog
   8-1-provider-config-isecretstore-provider-model-baseurl-in-versioned-settingsdata: backlog

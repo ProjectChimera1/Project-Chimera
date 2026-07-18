@@ -47,6 +47,7 @@ namespace ProjectChimera.CreationSuite
 
         private CanvasLayer    _canvas      = null!;
         private PanelContainer _panel       = null!;
+        private ScrollContainer _listScroll = null!;   // Story 7.15 — held so FocusTrigger can scroll a row into view
         private VBoxContainer  _triggerList = null!;
         private VBoxContainer  _genSection  = null!;
         private TextEdit       _nlInput     = null!;
@@ -162,6 +163,31 @@ namespace ProjectChimera.CreationSuite
             if (_panel.Visible) RefreshList();
         }
 
+        /// <summary>
+        /// Story 7.15 — click-to-navigate landing for the trigger-debug overlay. Ensure the panel is open + its list
+        /// refreshed, then scroll to + tint the authored <c>Triggers[]</c> row at <paramref name="triggerIndex"/>.
+        /// A map-miss (index out of range, or a graph-only / empty list) opens the editor UNFOCUSED rather than
+        /// crashing. Presentation-only — no scenario mutation.
+        /// </summary>
+        public void FocusTrigger(int triggerIndex)
+        {
+            // Ensure the panel is open and its rows are freshly built (so child index i == Triggers[i]).
+            if (!_panel.Visible) _panel.Visible = true;
+            RefreshList();
+
+            TriggerDefinition[]? triggers = _scenario?.Triggers;
+            if (triggers == null || (uint)triggerIndex >= (uint)triggers.Length) return; // map-miss → unfocused, no crash
+            if (triggerIndex >= _triggerList.GetChildCount()) return;                     // defensive (row not present)
+
+            if (_triggerList.GetChild(triggerIndex) is not Control row) return;
+
+            // Tint the target row (RefreshList rebuilt every row at default modulate, so only this one is highlighted).
+            row.Modulate = new Color(1.0f, 0.92f, 0.45f); // amber highlight
+
+            // Scroll the row into view once layout has settled (positions are 0 until the next layout pass).
+            _listScroll.CallDeferred(ScrollContainer.MethodName.EnsureControlVisible, row);
+        }
+
         // ── _Ready ────────────────────────────────────────────────────────────
 
         public override void _Ready()
@@ -204,12 +230,12 @@ namespace ProjectChimera.CreationSuite
             root.AddChild(new HSeparator());
 
             // ── Trigger list ──────────────────────────────────────────────────
-            var listScroll = new ScrollContainer();
-            listScroll.CustomMinimumSize = new Vector2(PANEL_W - MARGIN * 2, 200f);
-            root.AddChild(listScroll);
+            _listScroll = new ScrollContainer();
+            _listScroll.CustomMinimumSize = new Vector2(PANEL_W - MARGIN * 2, 200f);
+            root.AddChild(_listScroll);
 
             _triggerList = new VBoxContainer();
-            listScroll.AddChild(_triggerList);
+            _listScroll.AddChild(_triggerList);
 
             // Story 7.3 — layered-complexity entry points: manual preset form, variables, and the raw-IR hatch,
             // alongside the AI path. Each button toggles its section (all start collapsed).

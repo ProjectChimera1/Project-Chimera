@@ -92,6 +92,7 @@ namespace ProjectChimera.Core.Bootstrap
         public PanelContainer StallBanner   = null!;
         public UI.CustomUiBridge CustomHud  = null!;     // CustomHudOverlay (Story 7.8 — the custom-UI read rail)
         public UI.ObjectiveLogOverlay ObjectiveLog = null!; // ObjectiveOverlay (Story 7.14 — in-match quest log, read rail)
+        public UI.TriggerDebugOverlay TriggerDebugOverlay = null!; // TriggerDebugOverlay (Story 7.15 — variable watch + fired-trigger log + fire counters + enabled state)
         public UI.MatchBriefingOverlay Briefing = null!;    // ObjectiveOverlay (Story 7.14 — skippable pre-match briefing)
         public UI.MinimapBridge Minimap     = null!;     // Minimap
 

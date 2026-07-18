@@ -127,6 +127,14 @@ namespace ProjectChimera.Core.Sim
         /// with <see cref="ScenarioDirector"/> (the writer) and the checksum wiring — NEVER reallocated per
         /// LoadScenario. Folded into the per-tick <see cref="SimChecksum"/> (v21); cleared on <see cref="ClearForReset"/>.</summary>
         public TriggerEnabledStore TriggerEnabled { get; }
+        /// <summary>Story 7.15 — the presentation-only trigger-debugging OBSERVATION BUFFER: per-exec fire counters
+        /// + a fixed-capacity tick-stamped ring of recent fires. STABLE reference constructed once here and shared
+        /// BY REFERENCE with <see cref="ScenarioDirector"/> (the only writer, at the <c>FireTrigger</c> choke point).
+        /// Written UNCONDITIONALLY on every fire, but NEVER folded into <see cref="SimChecksum"/> and NEVER wired into
+        /// <c>EnableChecksums</c> — the exact non-folded posture as <see cref="Readback"/> (a run with it attached
+        /// vs not, or the overlay open vs closed, is byte-identical). Reset by <see cref="ScenarioDirector"/> at
+        /// <c>LoadScenario</c>; cleared on <see cref="ClearForReset"/>.</summary>
+        public TriggerFireLog TriggerFireLog { get; }
         /// <summary>Story 7.13 — the host-owned TRANSIENT sim-event feed (unit_damaged/unit_trained/ability_cast/
         /// hero_level). The producing systems push at their tick-boundary sites; <see cref="ScenarioDirector"/> drains
         /// it each tick into its base-event buffer and clears it. NOT folded (empty at the checksum boundary, the
@@ -202,9 +210,10 @@ namespace ProjectChimera.Core.Sim
             WinState         = new WinStateStore();    // Story 7.11 — win-condition runtime state; folded into SimChecksum (v19)
             Alliances        = new AllianceStore();     // Story 7.12 — per-faction team-id mask (default FFA); folded into SimChecksum (v20)
             TriggerEnabled   = new TriggerEnabledStore(); // Story 7.13 — per-exec trigger-enabled mask; folded into SimChecksum (v21); STABLE reference
+            TriggerFireLog   = new TriggerFireLog();       // Story 7.15 — trigger-debug observation buffer (fire counts + tick-stamped ring); STABLE reference; NEVER folded
             DslSimEvents     = new DslSimEventFeed();      // Story 7.13 — transient sim-event feed (unit_damaged/unit_trained/ability_cast/hero_level); NOT folded
             WinCon           = new WinConditionSystem(WinState, Buildings, checksumFactions, Alliances); // Story 7.11/7.12 — team-aware sim-layer win evaluator
-            ScenarioDirector = new ScenarioDirector(Buildings, Resources, Vars, LoopState, DslEvents, TriggerEnabled, DslSimEvents);
+            ScenarioDirector = new ScenarioDirector(Buildings, Resources, Vars, LoopState, DslEvents, TriggerEnabled, DslSimEvents, TriggerFireLog);
             ScenarioDirector.SetReadback(Readback);   // Story 7.8 — the director publishes into it once per tick at the tick boundary
 
             // AR-9 effective-stat recompute (Story 2.2a), the Story 2.2b ModifierStore it drives, and the Story 2.4a
@@ -348,6 +357,7 @@ namespace ProjectChimera.Core.Sim
             WinState.Clear();       // Story 7.11 — folded win-condition state; empty so a re-apply re-seeds counters/verdict non-additively
             Alliances.Clear();      // Story 7.12 — folded team-id mask; restore FFA so a re-apply starts from the default (9.15 re-seeds teams)
             TriggerEnabled.Clear(); // Story 7.13 — folded trigger-enabled mask; empty so a re-apply's LoadScenario re-seeds it non-additively (Count 0 → folds nothing until then)
+            TriggerFireLog.Clear(); // Story 7.15 — non-folded observation buffer; empty so a re-apply's LoadScenario re-seeds fire counts/ring non-additively
             DslSimEvents.Clear();   // Story 7.13 — transient sim-event feed (empty at reset)
             WinCon.ResetConfig();   // Review P10 — the win-condition APPLY-TIME config lives outside every store; a Clear
                                     // without a re-Configure must not leave a stale preset pointed at zeroed counters

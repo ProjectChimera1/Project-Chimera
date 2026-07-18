@@ -258,6 +258,59 @@ namespace ProjectChimera.Core.Sim
             return false;
         }
 
+        /// <summary>
+        /// Story 7.15 — one declared-variable descriptor for the trigger-debug variable watch. Carries the current
+        /// value read off the published tear-free snapshot: for a scalar, <see cref="Raw0"/>/<see cref="Raw1"/> are
+        /// the value (per-player uses the requested faction slot); for an array, <see cref="IsArray"/> is true and
+        /// <see cref="ArrayCount"/> is the live element count. Presentation formats the raw(s) into text; the
+        /// <see cref="Version"/> lets the overlay re-format a row only on change (the CustomUiBridge idiom).
+        /// </summary>
+        public readonly struct WatchVar
+        {
+            public readonly string       Name;
+            public readonly VarScope     Scope;
+            public readonly DslValueType Type;    // scalar value type, or the ELEMENT type for an array
+            public readonly bool         IsArray;
+            public readonly int          Raw0;    // scalar raw0 (undefined for arrays)
+            public readonly int          Raw1;    // scalar raw1 (Fixed/Point high word; 0 otherwise / for arrays)
+            public readonly int          ArrayCount; // live element count (0 for scalars)
+            public readonly uint         Version;
+            public WatchVar(string name, VarScope scope, DslValueType type, bool isArray,
+                            int raw0, int raw1, int arrayCount, uint version)
+            {
+                Name = name; Scope = scope; Type = type; IsArray = isArray;
+                Raw0 = raw0; Raw1 = raw1; ArrayCount = arrayCount; Version = version;
+            }
+        }
+
+        /// <summary>
+        /// Story 7.15 — a PURE read-side enumeration of every declared watchable variable (the addressable set:
+        /// declared Global + Per-player scalars + declared Global arrays), each with its current value + version off
+        /// the published tear-free snapshot. <c>TriggerLocal</c>/loop scratch is never in the read rail, so it is
+        /// absent here by construction (not a coverage gap). Per-player scalars are read at
+        /// <paramref name="faction"/> (a 0-based DSL slot, clamped 0..7 — e.g. via <see cref="PlayerSlotForFaction"/>).
+        /// Adds NO folded state; the readback is already excluded from <c>SimChecksum</c>.
+        /// </summary>
+        public List<WatchVar> Enumerate(int faction = 0)
+        {
+            Snapshot s = _published;
+            var list = new List<WatchVar>(_gCount + _pCount + _aCount);
+            for (int i = 0; i < _gCount; i++)
+                list.Add(new WatchVar(_gNames[i], VarScope.Global, _gTypes[i], false,
+                                      s.GRaw0[i], s.GRaw1[i], 0, s.GVer[i]));
+            int slot = faction < 0 ? 0 : (faction >= PlayerSlots ? PlayerSlots - 1 : faction);
+            for (int i = 0; i < _pCount; i++)
+            {
+                int idx = i * PlayerSlots + slot;
+                list.Add(new WatchVar(_pNames[i], VarScope.PerPlayer, _pTypes[i], false,
+                                      s.PRaw0[idx], s.PRaw1[idx], 0, s.PVer[i]));
+            }
+            for (int i = 0; i < _aCount; i++)
+                list.Add(new WatchVar(_aNames[i], VarScope.Global, _aElem[i], true,
+                                      0, 0, s.ALen[i], s.AVer[i]));
+            return list;
+        }
+
         /// <summary>Read a declared array's element type, live count, and version. False for an unknown/non-array name.</summary>
         public bool TryGetArray(string name, out DslValueType elem, out int count, out uint version)
         {

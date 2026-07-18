@@ -77,6 +77,12 @@ namespace ProjectChimera.Core
         // drained in CollectEvents into the base-event buffer and cleared. NOT folded (empty at the checksum boundary).
         private readonly DslSimEventFeed _simEventFeed;
 
+        // Story 7.15 — the host-owned trigger-debug OBSERVATION BUFFER (per-exec fire counts + tick-stamped ring).
+        // Written UNCONDITIONALLY at the single FireTrigger choke point, AFTER the folded run-once/cooldown arming,
+        // so the observation never perturbs the fold. NEVER folded into SimChecksum (the DslVarReadback posture); a
+        // null (direct test constructor) self-owns one — the write then just lands nowhere observable.
+        private readonly TriggerFireLog? _fireLog;
+
         // Story 7.13 — the interned kind name per DslSimEventFeed code (no per-tick string allocation).
         private static readonly string[] SimEventKindNames = { "unit_damaged", "unit_trained", "ability_cast", "hero_level" };
 
@@ -263,9 +269,13 @@ namespace ProjectChimera.Core
         /// <param name="simEventFeed">Story 7.13 — the transient sim-event feed the four producer systems push into
         /// and the director drains each tick. A null self-owns one (the raises then never reach it unless the test
         /// pushes to the director's own feed via <see cref="SimEventFeed"/>).</param>
+        /// <param name="fireLog">Story 7.15 — the non-folded trigger-debug observation buffer. Production
+        /// (<c>SimulationHost</c>) passes its owned STABLE reference (never folded); a null (direct test construction)
+        /// self-owns one — determinism-identical, the caller just cannot observe what it does not hold.</param>
         public ScenarioDirector(BuildingStore buildings, ResourceStore resources, DslVarTable vars,
             DslLoopState? loopState = null, DslEventQueue? eventQueue = null,
-            TriggerEnabledStore? triggerEnabled = null, DslSimEventFeed? simEventFeed = null)
+            TriggerEnabledStore? triggerEnabled = null, DslSimEventFeed? simEventFeed = null,
+            TriggerFireLog? fireLog = null)
         {
             _buildings     = buildings;
             _resources     = resources;
@@ -274,6 +284,12 @@ namespace ProjectChimera.Core
             _eventQueue    = eventQueue ?? new DslEventQueue();
             _triggerEnabled = triggerEnabled ?? new TriggerEnabledStore();
             _simEventFeed   = simEventFeed ?? new DslSimEventFeed();
+            // Nullable by design: a null fire log means "do not observe" (headless determinism runs, dedicated
+            // server). The write at FireTrigger is `_fireLog?.Record(...)`, so a null buffer performs NO fire-log
+            // work — which is exactly what makes the differential guard meaningful (a run with the buffer is proven
+            // byte-identical to one with the write genuinely absent). Real games always pass a SimulationHost-owned
+            // buffer, so recording is unconditional there (visibility-independent, never gated on overlay state).
+            _fireLog        = fireLog;
         }
 
         /// <summary>Story 7.13 — the director's transient sim-event feed (production shares the host's; a direct test
@@ -527,6 +543,28 @@ namespace ProjectChimera.Core
             _execs = execs;
             _triggerFired    = new bool[execs.Count];
             _triggerCooldown = new int[execs.Count];
+            // Story 7.15 — reset the non-folded observation buffer alongside the fire-guard reallocation: fresh
+            // per-exec fire counters + an empty recent-fire ring, so an F5 Edit→Play re-apply starts with no stale
+            // counts. Sized to the exec count (== trigger count), the same index space _triggerFired uses.
+            _fireLog?.Reset(execs.Count);
+            // Story 7.15 (review patch) — install the exec→authored-Triggers[] index map the debug overlay uses for
+            // trigger names + click-to-navigate. Exec order is (Priority desc, node-id asc), so it diverges from
+            // authored order once any trigger uses a non-default Priority; because FromFlat emits trigger nodes in
+            // authored order with strictly increasing ids, the authored index is the RANK of each exec's Trigger.Id.
+            if (_fireLog != null && execs.Count > 0)
+            {
+                int n = execs.Count;
+                var execToAuthored = new int[n];
+                for (int i = 0; i < n; i++)
+                {
+                    int id = execs[i].Trigger.Id;
+                    int rank = 0;
+                    for (int j = 0; j < n; j++)
+                        if (execs[j].Trigger.Id < id) rank++; // ids are unique — no ties
+                    execToAuthored[i] = rank;
+                }
+                _fireLog.SetAuthoredMapping(execToAuthored);
+            }
             _condPrograms    = compiled.CondPrograms;
             _items           = compiled.Items;
 
@@ -1437,6 +1475,14 @@ namespace ProjectChimera.Core
 
             int coolTicks = SecondsToTicks(ex.Trigger.CooldownSeconds);
             if (coolTicks > 0) _triggerCooldown[idx] = coolTicks;
+
+            // Story 7.15 — record this fire UNCONDITIONALLY into the non-folded observation buffer, AFTER the folded
+            // run-once/cooldown arming above. Pure int increment + ring append; NEVER folded into SimChecksum, so a
+            // run with the buffer attached is byte-identical to one without. The tick stamp is the deterministic sim
+            // tick this Tick() will publish (the _publishTick source: Publish uses ++_publishTick at the tick
+            // boundary, so this in-progress tick is _publishTick + 1). No string/name in the tick — the exec idx is
+            // resolved to a human-readable name PRESENTATION-side only.
+            _fireLog?.Record(idx, (int)(_publishTick + 1));
         }
 
         /// <summary>Load the current dispatch frame from a BASE occurrence: only <c>unit_dies</c> carries a

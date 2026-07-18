@@ -436,6 +436,7 @@ namespace ProjectChimera.Core
                 new HudPhase(_ctx),
                 new CustomHudOverlayPhase(_ctx), // Story 7.8 — the custom-UI read rail overlay, after Hud (shares nothing; own CanvasLayer)
                 new ObjectiveLogOverlayPhase(_ctx), // Story 7.14 — in-match quest log (read rail) + skippable briefing (own CanvasLayers)
+                new TriggerDebugOverlayPhase(_ctx), // Story 7.15 — trigger-debug overlay (variable watch + fired-log + fire counters + enabled; own CanvasLayer)
                 new MinimapPhase(_ctx),
                 new TerrainBrushPhase(_ctx),
                 new ScenarioLoadPhase(_ctx),
@@ -621,6 +622,19 @@ namespace ProjectChimera.Core
                 return;
             }
 
+            // Story 7.15 — the in-match trigger-debug overlay toggle. Handled ABOVE the Edit-mode guard so it fires
+            // in PLAY, but scoped to Play only (a developer diagnostic of a running match: variable watch, fired-log,
+            // fire counters, enabled state). F2 is unclaimed — no other Key.F2 check anywhere in src/ and no InputMap
+            // action binds it. Presentation-only — no sim write, checksum byte-identical. Null-guarded: the overlay
+            // phase may not have run in a reduced scene (the F1 precedent).
+            if (key.Keycode == Key.F2)
+            {
+                if (_ctx.GameState.Mode == GameMode.Play)
+                    _ctx.TriggerDebugOverlay?.Toggle();
+                GetViewport().SetInputAsHandled();
+                return;
+            }
+
             // Edit-mode-only shortcuts.
             if (_ctx.GameState.Mode != GameMode.Edit) return;
 
@@ -715,6 +729,21 @@ namespace ProjectChimera.Core
             if (templateUnitId != null) return _ctx.UnitCardPanel.StartFromTemplate(templateUnitId);
             _ctx.UnitCardPanel.EnsureVisible();
             return true;
+        }
+
+        /// <summary>
+        /// Story 7.15 — click-to-navigate landing for the trigger-debug overlay's fired-log entries. Crosses the
+        /// Play→Edit boundary (the debug overlay runs in Play; the trigger editors are Edit-mode tools): switch
+        /// <c>GameState</c> to Edit — which resets the running match, inherent to the engine's mode model, not a
+        /// defect (the user clicked to go EDIT that trigger) — open the flat <see cref="CreationSuite.TriggerEditorPanel"/>,
+        /// and focus + highlight the authored trigger at <paramref name="triggerIndex"/>. A best-effort exec→
+        /// <c>Triggers[]</c> map miss opens the editor unfocused rather than crashing (FocusTrigger bounds-guards).
+        /// </summary>
+        public void NavigateToTrigger(int triggerIndex)
+        {
+            _ctx.TriggerDebugOverlay?.Close();                                 // don't leave the diagnostic panel over the editor
+            if (_ctx.GameState.Mode == GameMode.Play) _ctx.GameState.Toggle(); // → Edit (resets the match, by design)
+            _ctx.TriggerPanel.FocusTrigger(triggerIndex);                      // ensures the panel is open + focuses the row
         }
 
         /// <summary>Re-sync the WinConditionUi corner panel's radio selection from the live scenario (Story 5.9
@@ -814,6 +843,7 @@ namespace ProjectChimera.Core
             _ctx.MapGenPanel.Update();
             _ctx.CustomHud.Update(); // Story 7.8 — pull the version-stamped read rail; re-format only changed widgets
             _ctx.ObjectiveLog?.Update(); // Story 7.14 — pull objective state off the read rail; re-format only on version change (null-guarded: phase may be absent in a reduced scene, matching the F1 toggle guard)
+            _ctx.TriggerDebugOverlay?.Update(); // Story 7.15 — pull the variable watch / fired-log / fire counters / enabled state; re-format only on change (null-guarded, matching the F2 toggle guard)
             if (_toastTimer > 0)
             {
                 _toastTimer -= (float)delta;
