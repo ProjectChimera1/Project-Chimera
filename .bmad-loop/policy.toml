@@ -39,7 +39,10 @@ trigger = "recommended"
 
 [adapter]
 name = "claude"              # claude | codex | gemini | <custom .bmad-loop/profiles/*.toml>
-model = ""                   # empty = CLI default model (opus[1m] = Opus 4.8, inherited from global settings)
+model = "opus"               # pinned to Opus 4.8. NB: empty ("") does NOT reliably inherit settings.json's
+                             # model — an interactive /model selection saved to ~/.claude.json outranks it, so
+                             # an empty model let the review stage drift onto Fable 5 (run 20260717-223404-9791,
+                             # review-1/2). Pin explicitly so no stage inherits a drifting CLI default.
 # Loop sessions run at effort=high instead of the global xhigh, to cut tokens.
 # extra_args REPLACES the profile's permission-bypass flags, so re-include them here.
 extra_args = ["--permission-mode", "bypassPermissions", "--effort", "high"]
