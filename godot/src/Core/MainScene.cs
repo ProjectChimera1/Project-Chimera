@@ -446,6 +446,7 @@ namespace ProjectChimera.Core
                 new ContentBrowserPhase(_ctx),
                 new MainMenuPhase(_ctx),
                 new TriggerEditorPhase(_ctx),
+                new DslGraphEditorPhase(_ctx),   // Story 7.10 — after TriggerEditor so _ctx.TriggerPanel exists (T2↔T3 wiring)
                 new MapGeneratorPhase(_ctx),
                 new AbilityEditorPhase(_ctx),
                 new UnitCardPhase(_ctx),
@@ -667,6 +668,15 @@ namespace ProjectChimera.Core
                 // Story 5.5: X opens the Faction Definer guided wizard (verified unused — no other Key.X check
                 // anywhere in src/ and no InputMap action binds physical key X in project.godot).
                 _ctx.FactionDefinerPanel.Toggle();
+                GetViewport().SetInputAsHandled();
+            }
+            else if (key.Keycode == Key.Y && !key.CtrlPressed)
+            {
+                // Story 7.10: Y opens the T3 node-graph editor. The spec's example key (G) is taken (EntityPlacer
+                // grid-snap + ItemCard editor), so Y is used — plain Y is unbound (every other Key.Y usage is
+                // Ctrl+Y = redo, handled by the focused card panel's _Input before this _UnhandledInput ever runs;
+                // the !CtrlPressed guard keeps redo out of this toggle even when no card is focused).
+                _ctx.DslGraphEditorPanel.Toggle();
                 GetViewport().SetInputAsHandled();
             }
         }

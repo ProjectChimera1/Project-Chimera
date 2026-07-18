@@ -39,6 +39,10 @@ namespace ProjectChimera.CreationSuite
         private LLMService?     _llm;
         private ScenarioContext _context = new();
 
+        // Story 7.10 — the T3 node-graph editor this panel's read-only "edit in graph view" fallback rows open
+        // (wired by DslGraphEditorPhase after both panels are constructed). Null until wired.
+        private DslGraphEditorPanel? _graphEditor;
+
         // ── UI nodes ──────────────────────────────────────────────────────────
 
         private CanvasLayer    _canvas      = null!;
@@ -140,6 +144,10 @@ namespace ProjectChimera.CreationSuite
             _scenario = scenario;
             RefreshList();
         }
+
+        /// <summary>Story 7.10 — wire the T3 node-graph editor this panel's graph-only read-only fallback rows
+        /// open (called by <c>DslGraphEditorPhase</c>).</summary>
+        public void SetGraphEditor(DslGraphEditorPanel graphEditor) => _graphEditor = graphEditor;
 
         /// <summary>Called each _Process frame by MainScene to drain LLM callbacks.</summary>
         public void Update()
@@ -308,17 +316,23 @@ namespace ProjectChimera.CreationSuite
             }
 
             var triggers = _scenario?.Triggers;
-            if (triggers == null || triggers.Length == 0)
+            bool anyFlat = triggers != null && triggers.Length > 0;
+
+            if (!anyFlat)
             {
-                _triggerList.AddChild(new Label
-                {
-                    Text = "(no triggers — click '+ New Trigger' to add one)",
-                    AutowrapMode = TextServer.AutowrapMode.Word
-                });
+                // Story 7.10 — even with no FLAT triggers, the graph channel may hold graph-only constructs; render
+                // their read-only fallback rows before deciding the list is empty.
+                int graphRows = RefreshGraphOnlyFallbackRows();
+                if (graphRows == 0)
+                    _triggerList.AddChild(new Label
+                    {
+                        Text = "(no triggers — click '+ New Trigger' to add one)",
+                        AutowrapMode = TextServer.AutowrapMode.Word
+                    });
                 return;
             }
 
-            for (int i = 0; i < triggers.Length; i++)
+            for (int i = 0; i < triggers!.Length; i++)
             {
                 var trigger = triggers[i];
                 int idx     = i; // capture for closures
@@ -355,6 +369,104 @@ namespace ProjectChimera.CreationSuite
                 AttachTip(delBtn, "Delete", $"Remove trigger '{trigger.Name}' from this scenario.");
                 row.AddChild(delBtn);
             }
+
+            // Story 7.10 — graph-only constructs (raise_event / custom_event / loop / branch / event-param) live in
+            // the graph channel and are NOT editable as flat sentences: surface them read-only after the flat rows.
+            RefreshGraphOnlyFallbackRows();
+        }
+
+        /// <summary>
+        /// Story 7.10 — render a non-destructive read-only "edit in graph view" row for each graph-channel trigger
+        /// when the graph channel contains a graph-only construct (<see cref="TriggerGraph.ContainsGraphOnly"/> —
+        /// the same classification <c>ToFlat</c> fails closed on). T2 NEVER mutates these; the button opens the T3
+        /// panel. Returns the number of rows rendered (0 when the channel is absent/unparseable/flat-only).
+        /// </summary>
+        private int RefreshGraphOnlyFallbackRows()
+        {
+            string? json = _scenario?.TriggerGraphJson;
+            if (string.IsNullOrWhiteSpace(json)) return 0;
+
+            TriggerGraph graph;
+            try { graph = TriggerGraph.FromJson(json!); }
+            catch (Exception ex) when (ex is JsonException or NotSupportedException)
+            {
+                // The channel holds content, but it cannot be parsed: an invisible row here would let T2 claim
+                // "(no triggers)" while unloadable trigger content exists. One honest row instead.
+                _triggerList.AddChild(new HSeparator());
+                AddGraphOnlyRow("graph channel present but unparseable — it will be rejected at load (open graph view for details)");
+                return 1;
+            }
+            if (graph.Nodes.Count == 0) return 0;
+            if (!graph.ContainsGraphOnly())
+            {
+                // Graph-channel triggers with no graph-only construct (e.g. authored in T3 from flat-capable
+                // kinds) are still invisible in the flat list — surface one summary row so T2 never claims
+                // "(no triggers)" while the graph channel holds live ones.
+                _triggerList.AddChild(new HSeparator());
+                AddGraphOnlyRow($"{graph.Nodes.Count} graph-channel node(s) (edit in graph view)");
+                return 1;
+            }
+
+            _triggerList.AddChild(new HSeparator());
+            _triggerList.AddChild(new Label
+            {
+                Text = "Graph-only constructs (read-only — edit in graph view):",
+                AutowrapMode = TextServer.AutowrapMode.Word,
+                Modulate = new Color(0.72f, 0.72f, 0.78f),
+            });
+
+            // If the channel holds exactly one trigger, name it alongside each graph-only node (cheap, unambiguous);
+            // otherwise the row carries just the node's kind + id (a precise, non-destructive locator). Only nodes
+            // that are ACTUALLY graph-only get a row — flat-representable TriggerNodes/actions are NOT mislabeled.
+            string? soleTrigger = null;
+            int triggerCount = 0;
+            foreach (NodeBase n in graph.Nodes)
+                if (n is TriggerNode tn) { triggerCount++; soleTrigger = string.IsNullOrEmpty(tn.Name) ? $"trigger {tn.Id}" : tn.Name; }
+            if (triggerCount != 1) soleTrigger = null;
+
+            int count = 0;
+            foreach (NodeBase n in graph.Nodes)
+            {
+                if (!TriggerGraph.IsGraphOnly(n)) continue;
+                string desc = DescribeGraphOnly(n);
+                AddGraphOnlyRow(soleTrigger != null ? $"{desc}  (in '{soleTrigger}')" : desc);
+                count++;
+            }
+            return count;
+        }
+
+        /// <summary>A concise, non-destructive description of a graph-only node: its closed-registry kind + id,
+        /// with the declared event/raise name when the node carries one.</summary>
+        private static string DescribeGraphOnly(NodeBase n)
+        {
+            string extra = n switch
+            {
+                EventNode e when !string.IsNullOrEmpty(e.EventName)  => $" '{e.EventName}'",
+                RaiseEventNode r when !string.IsNullOrEmpty(r.Name)  => $" '{r.Name}'",
+                _                                                    => "",
+            };
+            return $"{NodeKinds.KindOf(n)}{extra} (id {n.Id})";
+        }
+
+        /// <summary>Append one read-only graph-only fallback row (dimmed label + "Edit in graph view" button).</summary>
+        private void AddGraphOnlyRow(string label)
+        {
+            var row = new HBoxContainer();
+            row.AddChild(new Label
+            {
+                Text = $"⬡ {label}",
+                SizeFlagsHorizontal = Control.SizeFlags.Expand,
+                ClipText = true,
+                Modulate = new Color(0.72f, 0.72f, 0.78f),
+            });
+            var editBtn = new Button { Text = "Edit in graph view" };
+            // Hide this (higher-layer) T2 panel first: the T3 canvas sits on a lower CanvasLayer, so opening it
+            // underneath a still-visible T2 panel would occlude the graph editor the user just asked for.
+            editBtn.Pressed += () => { _panel.Visible = false; _graphEditor?.Open(); };
+            AttachTip(editBtn, "Graph view",
+                "Open the T3 node-graph editor to view/edit this graph-only construct (raise_event / custom_event / loop / branch). T2 never edits it.");
+            row.AddChild(editBtn);
+            _triggerList.AddChild(row);
         }
 
         private void DeleteTrigger(int idx)

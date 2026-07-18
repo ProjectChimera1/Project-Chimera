@@ -26,7 +26,7 @@ namespace ProjectChimera.Sim.Tests.Bootstrap
             "Rendering", "Hud", "CustomHudOverlay", "Minimap", "TerrainBrush", "ScenarioLoad", "RegionTool", "PathabilityTool",
             "CameraTool", "WaterTool", "FactionVisuals",
             "FlowFieldInit", "WinConditionUi", "GameOverOverlay", "Multiplayer", "ReplayStatus",
-            "ContentBrowser", "MainMenu", "TriggerEditor", "MapGenerator", "AbilityEditor",
+            "ContentBrowser", "MainMenu", "TriggerEditor", "DslGraphEditor", "MapGenerator", "AbilityEditor",
             "UnitCard", "ItemCard", "BuildingCard", "TechTree", "PersistenceManifest", "HeroPicker",
             "FactionDefiner", "Onboarding",
         };

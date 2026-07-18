@@ -76,6 +76,38 @@ namespace ProjectChimera.Dsl
         public List<ExecEdge> ExecEdges { get; } = new();
         public List<DataEdge> DataEdges { get; } = new();
 
+        // ── Story 7.10 — graph-only classification (the T2 read-only-fallback detector) ────────────────────────
+        /// <summary>
+        /// Story 7.10 — true for a node KIND that has NO flat <c>TriggerDefinition</c> form: the exact
+        /// graph-channel-only vocabulary the flat T2 sentence editor cannot represent (<see cref="ToFlat"/> fails
+        /// closed on <c>raise_event</c>/<c>custom_event</c>/<c>expr_event_param</c> and drops
+        /// loops/branches/array-actions). Godot-free; reuses the closed <see cref="NodeKinds"/> registry so the
+        /// classification never drifts from the vocabulary. The T2 <c>TriggerEditorPanel</c> uses it to render a
+        /// non-destructive read-only "edit in graph view" row for such constructs.
+        /// </summary>
+        public static bool IsGraphOnlyKind(string? kind) =>
+            kind == NodeKinds.RaiseEvent
+            || kind == NodeKinds.CustomEvent
+            || kind == NodeKinds.ExprEventParam
+            || kind == NodeKinds.ForEach
+            || kind == NodeKinds.ForEachBatched
+            || kind == NodeKinds.Branch
+            || NodeKinds.IsArrayActionKind(kind);
+
+        /// <summary>True when <paramref name="node"/> is a graph-channel-only construct (its serialized
+        /// discriminator is a graph-only kind) — see <see cref="IsGraphOnlyKind"/>.</summary>
+        public static bool IsGraphOnly(NodeBase node) =>
+            node is not null && IsGraphOnlyKind(NodeKinds.KindOf(node));
+
+        /// <summary>True when this graph contains ANY graph-channel-only construct (so the flat T2 editor must
+        /// surface it read-only rather than pretend it can be edited as a sentence).</summary>
+        public bool ContainsGraphOnly()
+        {
+            foreach (NodeBase n in Nodes)
+                if (IsGraphOnly(n)) return true;
+            return false;
+        }
+
         /// <summary>
         /// Migrate the flat <see cref="TriggerDefinition"/>[] into the graph IR. Ids are assigned by a single
         /// ascending counter walking triggers in array order; per trigger it emits the TriggerNode, then its

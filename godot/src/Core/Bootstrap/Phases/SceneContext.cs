@@ -115,6 +115,7 @@ namespace ProjectChimera.Core.Bootstrap
         public CreationSuite.UnitCardPanel      UnitCardPanel      = null!;  // Story 3.3 (UnitCard phase)
         public CreationSuite.BuildingCardPanel  BuildingCardPanel  = null!;  // Story 4.5 (BuildingCard phase)
         public CreationSuite.TechTreePanel      TechTreePanel      = null!;  // Story 4.6 (TechTree phase)
+        public CreationSuite.DslGraphEditorPanel DslGraphEditorPanel = null!;  // Story 7.10 (DslGraphEditor phase)
         public CreationSuite.ItemCardPanel      ItemCardPanel      = null!;  // Story 3.16 (ItemCard phase)
         public CreationSuite.PersistenceManifestPanel PersistenceManifestPanel = null!;  // Story 3.8 (PersistenceManifest phase)
         public CreationSuite.FactionDefinerPanel FactionDefinerPanel = null!;  // Story 5.5 (FactionDefiner phase)

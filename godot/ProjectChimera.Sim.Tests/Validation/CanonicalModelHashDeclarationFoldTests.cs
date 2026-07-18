@@ -128,6 +128,33 @@ namespace ProjectChimera.Sim.Tests.Validation
         }
 
         [Fact]
+        public void LayoutMove_ViaNodeEditorAnnotation_DoesNotChangeCanonicalHash_AlgoVersionsPinned()
+        {
+            // Story 7.10 — a T3 canvas layout move persists x/y into each node's `_editor` bag via the position
+            // seam; the typed hash fold never reads `_editor`, so the MP handshake hash is byte-identical and NO
+            // AlgoVersion moves (CanonicalModelHash 11 / SimChecksum 18 / StartStateHash 2 — no golden re-baseline).
+            TriggerGraph plain = TriggerGraph.BuildRunEffectTrigger("t", "match_start", new DirectHpDeltaEffect(Fixed.FromInt(-1)));
+            var a = BaseModel(); a.TriggerGraphJson = plain.ToCanonicalJson();
+
+            TriggerGraph moved = TriggerGraph.FromJson(plain.ToCanonicalJson());
+            int i = 0;
+            foreach (NodeBase n in moved.Nodes) { NodeEditorAnnotation.SetPosition(n, 120 + 30 * i, -40 * i); i++; }
+            var b = BaseModel(); b.TriggerGraphJson = moved.ToCanonicalJson();
+
+            Assert.Equal(CanonicalModelHash.Compute(a), CanonicalModelHash.Compute(b));
+
+            // Strengthen the guarantee to the strongest handshake hash that folds canonical model content:
+            // StartStateHash folds CanonicalModelHash as its content seed, so a cosmetic layout move must leave it
+            // byte-identical too (an empty HeroStore folds no hero rows — the seed alone).
+            var heroes = new HeroStore();
+            Assert.Equal(StartStateHash.Compute(a, heroes), StartStateHash.Compute(b, heroes));
+
+            Assert.Equal(11, CanonicalModelHash.AlgoVersion);
+            Assert.Equal(18, SimChecksum.AlgoVersion);
+            Assert.Equal(2, StartStateHash.AlgoVersion);
+        }
+
+        [Fact]
         public void Stamps_AreExcluded_DoNotChangeCanonicalHash()
         {
             // schema_version/checksum_algo_version are excluded so a legacy re-save (which stamps them) never
