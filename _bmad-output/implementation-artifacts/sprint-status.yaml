@@ -148,7 +148,7 @@ development_status:
   7-6-bounded-foreach-foreachbatched-loops-arrays-and-layer-3-fuel: done
   7-7-authoritative-server-side-load-time-validator-gate-no-escape-hatch: done
   7-8-custom-runtime-ui-read-rail-declarative-widget-tree-version-stamped-readback: done
-  7-9-custom-runtime-ui-write-rail-dsleventcommand-on-lockstep-bus-replay-v2-dsl-event-record-local-only-action-whitelist: backlog
+  7-9-custom-runtime-ui-write-rail-dsleventcommand-on-lockstep-bus-replay-v2-dsl-event-record-local-only-action-whitelist: done
   7-10-t3-visual-node-graph-editor-view-additive-over-the-shared-ir: backlog
   7-11-win-condition-preset-templates-t1-sim-layer-winconditionsystem: backlog
   7-12-n-faction-victory-resolution-and-per-player-elimination: backlog

@@ -151,12 +151,13 @@ namespace ProjectChimera.Sim.Tests.Golden
         }
 
         /// <summary>
-        /// AC2 (back-compat, D6) — a v1 .chmr (no seed header) still loads, falling back to
-        /// <see cref="EntityWorld.DEFAULT_RNG_SEED"/>. Guards that the VERSION 1→2 bump never bricks older
-        /// replays. A non-default pre-seed proves the player actually reseeded (not coincidence).
+        /// Story 7.9 (was AC2 back-compat) — a v1 .chmr (no seed header) is now HARD-REJECTED with
+        /// <see cref="InvalidDataException"/>: v1 is seed-incomplete (no captured SimRng seed → the old
+        /// DEFAULT_RNG_SEED fallback silently desyncs any SimRng scenario), so the guard tightened from
+        /// <c>version &lt; 1</c> to <c>version &lt; 2</c>. Seed-complete v2 (below) still plays; v3 adds DslEvent orders.
         /// </summary>
         [Fact]
-        public void V1Replay_WithoutSeed_FallsBackToDefaultSeed()
+        public void V1Replay_IsHardRejected()
         {
             string chmrPath = Path.Combine(Path.GetTempPath(), $"chimera_simrng_v1_{Guid.NewGuid():N}.chmr");
             try
@@ -165,17 +166,14 @@ namespace ProjectChimera.Sim.Tests.Golden
                 using (var w = new BinaryWriter(File.Open(chmrPath, FileMode.Create)))
                 {
                     w.Write(ReplayRecorder.MAGIC);
-                    w.Write((ushort)1);            // v1 — predates the seed header
+                    w.Write((ushort)1);            // v1 — seed-incomplete, now hard-rejected
                     w.Write((ushort)0);            // empty scenario path
                     w.Write(ReplayRecorder.EOF_SENTINEL);
                 }
 
                 var world = new EntityWorld();
-                world.Rng.Seed(0xDEADUL);          // make it non-default first, so the reseed is observable
-                var player = new ReplayPlayer(chmrPath, world);
-
-                Assert.Equal(EntityWorld.DEFAULT_RNG_SEED, player.Seed);
-                Assert.Equal(EntityWorld.DEFAULT_RNG_SEED, world.Rng.State); // proves the v1 path reseeded to default
+                var ex = Assert.Throws<InvalidDataException>(() => new ReplayPlayer(chmrPath, world));
+                Assert.Contains("version", ex.Message); // located reject naming the unsupported version
             }
             finally
             {

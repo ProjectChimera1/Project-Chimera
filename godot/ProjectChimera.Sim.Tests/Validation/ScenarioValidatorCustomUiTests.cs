@@ -60,5 +60,51 @@ namespace ProjectChimera.Sim.Tests.Validation
             Assert.Contains("scenario.custom_ui.widgets[0].bind", ex.Message);
             Assert.Contains("ghost", ex.Message);
         }
+
+        // ── Story 7.9 — Button registry threading at BOTH sites (review pass 2) ────────────────────────────────
+        // CustomUiGate.Check's customEvents parameter is OPTIONAL (null fail-closes every event button), so a
+        // reverted/forgotten registry pass at either site compiles clean and silently bricks all event-button
+        // content. These prove the registry actually arrives: a valid event button is ACCEPTED at each site, and
+        // an undeclared event still rejects located at the validator site.
+
+        /// <summary>One declared 0-param event + a Button raising it — valid iff the registry reaches the gate.</summary>
+        private static void AddEventButton(ScenarioData m)
+        {
+            m.CustomEvents = new[] { new ScenarioCustomEvent { Name = "buy", AllowedRaisers = new[] { 0 } } };
+            m.CustomUi = new CustomUiTree
+            {
+                Widgets = new WidgetBase[] { new ButtonWidget { Id = 1, Text = "Buy", EventName = "buy" } },
+            };
+        }
+
+        [Fact]
+        public void Validator_Accepts_ValidEventButton_RegistryThreaded()
+        {
+            var m = ValidModel();
+            AddEventButton(m);
+            ValidationResult r = new ScenarioValidator().Validate(m);
+            Assert.True(r.Ok, r.Error); // fails with "'buy' is not a declared custom event" if the registry pass regresses
+        }
+
+        [Fact]
+        public void Director_LoadScenario_Accepts_ValidEventButton_RegistryThreaded()
+        {
+            var director = new ScenarioDirector(new BuildingStore(), new ResourceStore(Fixed.Zero), new DslVarTable());
+            var scenario = new ScenarioData();
+            AddEventButton(scenario);
+            director.LoadScenario(scenario); // throws located if the backstop's registry pass regresses
+        }
+
+        [Fact]
+        public void Validator_Rejects_UndeclaredEventButton_Located()
+        {
+            var m = ValidModel();
+            AddEventButton(m);
+            ((ButtonWidget)m.CustomUi!.Widgets![0]).EventName = "ghost_event";
+            ValidationResult r = new ScenarioValidator().Validate(m);
+            Assert.False(r.Ok);
+            Assert.Contains("scenario.custom_ui.widgets[0].event", r.Error!);
+            Assert.Contains("ghost_event", r.Error!);
+        }
     }
 }

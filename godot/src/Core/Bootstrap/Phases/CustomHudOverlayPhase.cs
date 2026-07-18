@@ -34,9 +34,16 @@ namespace ProjectChimera.Core.Bootstrap
             // raw engine int would read the NEXT player's slot (off-by-one; e.g. local Player1 → Player2's value).
             // Theme left to the bridge's default (null-safe — numeric labels fall back to the default font). The tree
             // is pulled live each frame.
+            // Story 7.9 — also hand the write rail: the lockstep bus a Button press enqueues onto, and the live
+            // scenario getter used to resolve an authored event name to its registry index. Both MUST be late-bound
+            // getters: this phase runs at position 10 while SceneContext.Lockstep is only created by the Multiplayer
+            // phase's MatchLifecycleController many phases later — a by-value handle here is permanently null (and
+            // the scenario getter additionally survives the F5 Edit→Play re-apply).
             bridge.Initialize(_ctx.Host.Readback, () => _ctx.Scenario?.CustomUi,
                 localFactionGetter: () => DslVarReadback.PlayerSlotForFaction((int)_ctx.Lockstep.LocalFaction),
-                theme: null);
+                theme: null,
+                lockstepGetter: () => _ctx.Lockstep,
+                scenarioGetter: () => _ctx.Scenario);
             _ctx.CustomHud = bridge;
         }
     }

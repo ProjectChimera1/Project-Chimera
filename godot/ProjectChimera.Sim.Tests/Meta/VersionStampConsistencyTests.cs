@@ -105,8 +105,16 @@ namespace ProjectChimera.Sim.Tests.Meta
         /// v8 folded the full trigger/DSL model — divergent registries/graphs must reject at the lobby instead of
         /// desyncing in-sim. Named re-baseline: hero-start-state golden re-recorded (StartStateHash value moves
         /// via the canonical seed; its AlgoVersion stays 2). The 24 per-tick goldens move too — via the SEPARATE
-        /// SimChecksum v18 bump landing in the same merge, not via this fold.</summary>
-        private const int ExpectedCanonicalModelHashAlgoVersion = 10;
+        /// SimChecksum v18 bump landing in the same merge, not via this fold.
+        /// v11 (Story 7.9): the custom-UI WRITE RAIL entered the folded widget tree — MixWidget gained a Button case
+        /// folding Text, EventName, an arg-count prefix + each authored arg RAW (the parallel ArgTypes is
+        /// authoring/gate-only, NOT folded), the LocalAction (enum by NAME) and its target (widget id / local var
+        /// name+value). Divergent widget trees (one peer has the button, one doesn't) hash differently so
+        /// HandshakeGate blocks the lobby start. The per-widget `_editor` bag stays EXCLUDED. The ONE named
+        /// re-baseline: the hero-start-state golden re-recorded (StartStateHash value moves via the canonical seed;
+        /// StartStateHash.AlgoVersion stays 2). SimChecksum (18) and the 24 per-tick world goldens are UNTOUCHED
+        /// (the write rail enters the EXISTING checksum-folded DslEventQueue — no new folded sim state).</summary>
+        private const int ExpectedCanonicalModelHashAlgoVersion = 11;
 
         /// <summary>Load-time canonical START-STATE hash algorithm version (Story 3.2, AC3) — a NEW, distinct FNV-64
         /// over the full init state = the <see cref="CanonicalModelHash"/> content seed PLUS the HeroStore rows.
@@ -118,8 +126,9 @@ namespace ProjectChimera.Sim.Tests.Meta
         /// <summary>Lockstep Hello-handshake wire protocol version.</summary>
         private const ushort ExpectedProtocolVersion = 1;
 
-        /// <summary>.chmr replay file-format version.</summary>
-        private const ushort ExpectedReplayFormatVersion = 2;
+        /// <summary>.chmr replay file-format version. Story 7.9 bumped 2→3 (the stream may carry DslEvent orders;
+        /// ReplayPlayer hard-rejects v1 but still plays v2).</summary>
+        private const ushort ExpectedReplayFormatVersion = 3;
 
         /// <summary>Default minimum game version a packaged .chimera.zip declares it requires.</summary>
         private const string ExpectedManifestMinGameVersion = "0.1";

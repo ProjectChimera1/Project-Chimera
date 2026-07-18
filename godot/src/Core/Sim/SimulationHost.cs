@@ -112,6 +112,13 @@ namespace ProjectChimera.Core.Sim
         public DslEventQueue DslEvents { get; }
         public FogOfWarSystem Fog { get; }
 
+        /// <summary>Story 7.9 — the sim-side raiser-authorization DSL sink (a narrow handle to
+        /// <see cref="ScenarioDirector"/>.<c>TryEnqueueExternalDslEvent</c>): (eventIndex, raiserSlot, arg0, arg1) →
+        /// applied bool. <c>LockstepManager</c>/<c>ReplayPlayer</c> hold it so the single <c>OrderApplier.Apply</c>
+        /// lands a button-originated DslEvent into the checksum-folded <see cref="DslEvents"/> queue identically on
+        /// every peer and in replay. Reads only existing plan state — adds NO new folded sim state.</summary>
+        public Func<int, int, int, int, bool> DslEventSink => ScenarioDirector.TryEnqueueExternalDslEvent;
+
         // ── Loop pass-throughs (SimulationLoop is untouched; the host wraps it). ──
         public uint CurrentTick => _loop.CurrentTick;
         public uint LastChecksum => _loop.LastChecksum;

@@ -943,7 +943,9 @@ namespace ProjectChimera.Core.Definitions
             //    nothing to validate ⇒ the pass path is unchanged. First-fail located error. ──
             if (m.CustomUi != null)
             {
-                string? uiErr = CustomUiGate.Check(m.CustomUi, declaredVarInfo, declaredArrayInfo);
+                // Story 7.9 — pass the declared custom-event registry so the gate can resolve a Button's raise target,
+                // enforce the ≤ MaxButtonEventParams wire budget, and type-match its authored args.
+                string? uiErr = CustomUiGate.Check(m.CustomUi, declaredVarInfo, declaredArrayInfo, m.CustomEvents);
                 if (uiErr != null) return ValidationResult.Fail(uiErr);
             }
 

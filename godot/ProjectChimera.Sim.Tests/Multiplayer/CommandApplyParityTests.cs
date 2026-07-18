@@ -22,8 +22,9 @@ namespace ProjectChimera.Sim.Tests.Multiplayer
     /// not constructible in this Tier-1 assembly, but it calls the identical <see cref="OrderApplier.Apply"/> line.
     ///
     /// AC6b (serialization round-trip): the new orders ride the UNCHANGED 11-byte UnitOrder wire — the target
-    /// entity id packs into TargetX as a RAW int (Fixed.FromRaw), read back as o.TargetX (never via float). No
-    /// format change, no <see cref="ReplayRecorder.VERSION"/> bump.
+    /// entity id packs into TargetX as a RAW int (Fixed.FromRaw), read back as o.TargetX (never via float). The
+    /// command wire is unchanged; the replay CONTAINER format, however, is now <see cref="ReplayRecorder.VERSION"/>
+    /// == 3 (bumped independently of these commands). The assertions below pin that value and the wire's stability.
     /// </summary>
     public class CommandApplyParityTests
     {
@@ -244,10 +245,11 @@ namespace ProjectChimera.Sim.Tests.Multiplayer
         }
 
         [Fact]
-        public void ReplayFile_RoundTrips_CastAbility_ThroughSharedApplier_NoVersionBump()
+        public void ReplayFile_RoundTrips_CastAbility_ThroughSharedApplier_WireUnchanged()
         {
-            // The cast reuses the unchanged 11-byte wire — NO replay-format bump (the Story 1.12 precedent).
-            Assert.Equal(2, ReplayRecorder.VERSION);
+            // The cast reuses the unchanged 11-byte command wire (the Story 1.12 precedent); the replay container
+            // format is VERSION 3 (bumped independently of this command).
+            Assert.Equal(3, ReplayRecorder.VERSION);
 
             string path = Path.GetTempFileName();
             try
@@ -289,10 +291,11 @@ namespace ProjectChimera.Sim.Tests.Multiplayer
         }
 
         [Fact]
-        public void ReplayFile_RoundTrips_ShiftQueue_ThroughSharedApplier_NoVersionBump()
+        public void ReplayFile_RoundTrips_ShiftQueue_ThroughSharedApplier_WireUnchanged()
         {
-            // Story 2.12: the queued flag + SetRally reuse the unchanged 11-byte wire — NO replay-format bump.
-            Assert.Equal(2, ReplayRecorder.VERSION);
+            // Story 2.12: the queued flag + SetRally reuse the unchanged 11-byte command wire; the replay container
+            // format is VERSION 3 (bumped independently of this command).
+            Assert.Equal(3, ReplayRecorder.VERSION);
 
             string path = Path.GetTempFileName();
             try
@@ -411,7 +414,7 @@ namespace ProjectChimera.Sim.Tests.Multiplayer
             // and DropItem returns the item to the ground, IDENTICALLY through the live apply site (OrderApplier.Apply
             // with items:, the exact line LockstepManager.ApplyOrders calls) and the replay site (ReplayPlayer, Items
             // wired). If EITHER apply site stops forwarding `items`, the item command becomes a no-op and this fails.
-            Assert.Equal(2, ReplayRecorder.VERSION); // unchanged 11-byte wire — no format bump
+            Assert.Equal(3, ReplayRecorder.VERSION); // unchanged 11-byte command wire; replay container format is VERSION 3
 
             var useOrder  = new UnitOrder(0, UnitCommand.UseItem,  Fixed.FromRaw(0), Fixed.Zero); // inv slot 0 = potion
             var dropOrder = new UnitOrder(0, UnitCommand.DropItem, Fixed.FromRaw(1), Fixed.Zero); // inv slot 1 = ring

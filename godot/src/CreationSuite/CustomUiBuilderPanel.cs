@@ -3,7 +3,7 @@ using System;
 using System.Collections.Generic;
 using Godot;
 using ProjectChimera.Core.Definitions; // CustomUiTree / WidgetBase / AnchorPoint / ScenarioData
-using ProjectChimera.Dsl;               // DslValueType
+using ProjectChimera.Dsl;               // DslBounds.MaxListRows
 
 namespace ProjectChimera.CreationSuite
 {
@@ -16,7 +16,11 @@ namespace ProjectChimera.CreationSuite
     /// 16:9 safe area. The persisted tree is validated + cap-checked at load by <c>CustomUiGate</c> (this builder is
     /// convenience authoring; the load gate is authoritative).
     ///
-    /// Read-only display only (Story 7.8): the palette has NO Button/interactive kind (that is the 7.9 write rail).
+    /// Story 7.9 — the palette gains the interactive <c>Button</c> write-rail kind. The builder is minimal (a valid
+    /// persisted tree is sufficient — richer arg/event authoring is optional polish, and the load gate is
+    /// authoritative): a fresh Button defaults to the always-valid <c>CloseSelf</c> local action, its caption is
+    /// editable, and a local-action selector lets the author pick among the closed presentation-only actions.
+    /// Event-raising buttons (with typed args) remain JSON-authored.
     /// </summary>
     public partial class CustomUiBuilderPanel : Node
     {
@@ -28,6 +32,14 @@ namespace ProjectChimera.CreationSuite
         {
             WidgetKind.Panel, WidgetKind.Label, WidgetKind.Counter, WidgetKind.ProgressBar,
             WidgetKind.Timer, WidgetKind.Leaderboard, WidgetKind.FloatingText, WidgetKind.ItemList,
+            WidgetKind.Button, // Story 7.9 — the interactive write rail
+        };
+
+        // Story 7.9 — the closed presentation-only local actions offered for a selected Button.
+        private static readonly LocalUiAction[] LocalActions =
+        {
+            LocalUiAction.CloseSelf, LocalUiAction.ToggleWidgetVisible,
+            LocalUiAction.OpenSubPanel, LocalUiAction.SetLocalUiVar,
         };
 
         private ScenarioData? _scenario;
@@ -46,6 +58,7 @@ namespace ProjectChimera.CreationSuite
         private LineEdit _text = null!;
         private OptionButton _bindOpt = null!;
         private OptionButton _visibleOpt = null!;
+        private OptionButton _localActionOpt = null!; // Story 7.9 — Button local-action selector
 
         public override void _Ready() => BuildUi();
 
@@ -140,6 +153,16 @@ namespace ProjectChimera.CreationSuite
             _rows = MakeSpin(1, DslBounds.MaxListRows);
             root.AddChild(LabeledRow("Rows (repeater)", _rows));
 
+            // Story 7.9 — Button local action (only meaningful for a Button widget). Index 0 is a distinct,
+            // NON-DESTRUCTIVE "(none)" state (LocalAction.None): it represents an event-only button and, critically,
+            // leaves EventName/ArgRaws/ArgTypes untouched so editing an event button's caption/anchor never converts
+            // it into a local-action button. Real actions follow at indices 1..N (LocalActions[sel-1]).
+            _localActionOpt = new OptionButton();
+            _localActionOpt.AddItem("(none)");
+            foreach (LocalUiAction a in LocalActions) _localActionOpt.AddItem(a.ToString());
+            _localActionOpt.ItemSelected += _ => ApplyInspector();
+            root.AddChild(LabeledRow("Button action", _localActionOpt));
+
             var del = new Button { Text = "Delete selected" };
             del.Pressed += DeleteSelected;
             root.AddChild(del);
@@ -200,6 +223,9 @@ namespace ProjectChimera.CreationSuite
             WidgetKind.Leaderboard  => new LeaderboardWidget { Id = id, W = 240, H = 200 },
             WidgetKind.FloatingText => new FloatingTextWidget { Id = id, W = 160, H = 40, Text = "!" },
             WidgetKind.ItemList     => new ItemListWidget { Id = id, W = 240, H = 200 },
+            // Story 7.9 — a fresh Button defaults to the always-valid CloseSelf local action (passes CustomUiGate
+            // with no further authoring); the author can pick another action or JSON-author an event raise.
+            WidgetKind.Button       => new ButtonWidget { Id = id, W = 160, H = 48, Text = "Button", LocalAction = LocalUiAction.CloseSelf },
             _                       => new PanelWidget { Id = id },
         };
 
@@ -222,6 +248,13 @@ namespace ProjectChimera.CreationSuite
             SelectOption(_bindOpt, w.ValueBind);
             SelectOption(_visibleOpt, w.VisibleBind);
             _rows.Value = w.MaxRows > 0 ? w.MaxRows : 8;
+            // Story 7.9 — reflect the Button's local action. Index 0 is "(none)" (LocalAction.None ⇒ an event-only
+            // button); a real action maps to LocalActions[idx] at dropdown index idx+1. Never coerce None → CloseSelf.
+            if (w is ButtonWidget btn)
+            {
+                int idx = Array.IndexOf(LocalActions, btn.LocalAction);
+                _localActionOpt.Selected = idx >= 0 ? idx + 1 : 0;
+            }
         }
 
         private void ApplyInspector()
@@ -234,7 +267,60 @@ namespace ProjectChimera.CreationSuite
             SetStaticText(_selected, _text.Text);
             SetBind(_selected, OptionText(_bindOpt));
             SetRows(_selected, (int)_rows.Value);
+            // Story 7.9 (PATCH 3) — apply ONLY the local-action selector to a Button, NON-DESTRUCTIVELY. This method
+            // fires on ANY inspector edit (caption/anchor/offset/bind…), so it must never clobber the event target:
+            // EventName/ArgRaws/ArgTypes are NEVER touched here (an event button round-trips a caption edit intact;
+            // event raises + typed args are JSON-authored). Dropdown index 0 = "(none)" ⇒ LocalAction.None (no local
+            // action); indices 1..N select LocalActions[sel-1]. Toggle/Open default their target to the button's own
+            // id (a guaranteed-existing widget); SetLocalUiVar seeds a var name so the gate's non-empty-name rule holds.
+            if (_selected is ButtonWidget btn)
+            {
+                int sel = _localActionOpt.Selected;
+                if (sel <= 0)
+                {
+                    if (string.IsNullOrEmpty(btn.EventName))
+                    {
+                        // "(none)" on a button with NO event would author a gate-invalid tree ("button has no event
+                        // or local action") that persists fine but rejects the WHOLE scenario on the next load.
+                        // Refuse: keep the current action and re-sync the dropdown (CloseSelf if somehow invalid).
+                        if (btn.LocalAction == LocalUiAction.None) btn.LocalAction = LocalUiAction.CloseSelf;
+                        int keep = Array.IndexOf(LocalActions, btn.LocalAction);
+                        _localActionOpt.Selected = keep >= 0 ? keep + 1 : 1;
+                    }
+                    else
+                    {
+                        btn.LocalAction = LocalUiAction.None; // "(none)" — event-only; leave EventName/args untouched
+                        // Mirror ReadButton's writer-symmetry normalization (PATCH 2): the canonical fold reads the
+                        // local fields UNCONDITIONALLY while the writer omits them at None, so stray values left by
+                        // a previous action selection would make the live model's handshake hash diverge from this
+                        // tree's own save (spurious HandshakeGate mismatch).
+                        btn.LocalTargetWidgetId = -1;
+                        btn.LocalVarName = null;
+                        btn.LocalVarValue = 0;
+                    }
+                }
+                else if (sel - 1 < LocalActions.Length)
+                {
+                    btn.LocalAction = LocalActions[sel - 1];
+                    switch (btn.LocalAction)
+                    {
+                        case LocalUiAction.ToggleWidgetVisible:
+                        case LocalUiAction.OpenSubPanel:
+                            if (!IdExists(btn.LocalTargetWidgetId)) btn.LocalTargetWidgetId = btn.Id;
+                            break;
+                        case LocalUiAction.SetLocalUiVar:
+                            if (string.IsNullOrEmpty(btn.LocalVarName)) btn.LocalVarName = "ui_var";
+                            break;
+                    }
+                }
+            }
             RefreshPreview();
+        }
+
+        private bool IdExists(int id)
+        {
+            foreach (WidgetBase w in Flatten(_tree)) if (w.Id == id) return true;
+            return false;
         }
 
         private static void SetBind(WidgetBase w, string? bind)
@@ -262,12 +348,14 @@ namespace ProjectChimera.CreationSuite
             string? t = string.IsNullOrEmpty(text) ? null : text;
             if (w is LabelWidget l) l.Text = t;
             else if (w is FloatingTextWidget ft) ft.Text = t;
+            else if (w is ButtonWidget b) b.Text = t; // Story 7.9 — the button caption
         }
 
         private static string? StaticText(WidgetBase w) => w switch
         {
             LabelWidget l => l.Text,
             FloatingTextWidget f => f.Text,
+            ButtonWidget b => b.Text, // Story 7.9
             _ => null,
         };
 

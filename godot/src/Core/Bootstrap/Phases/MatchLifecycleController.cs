@@ -29,6 +29,12 @@ namespace ProjectChimera.Core.Bootstrap
             _ctx.Transport = new ENetTransport();
             _ctx.Lockstep  = new LockstepManager(_ctx.Transport, _ctx.World);
 
+            // Story 7.9: wire the sim-side authorized-enqueue handle for the custom-UI write rail UNCONDITIONALLY
+            // (not only at online match start): the OFFLINE F5 playtest applies a button raise immediately through
+            // the SAME sink, so it must be present without a lobby handshake. The delegate targets the stable
+            // ScenarioDirector instance, so it survives every F5 Edit→Play re-apply.
+            _ctx.Lockstep.DslEventSink = _ctx.Host.DslEventSink;
+
             // Checksum broadcasting is handled by the SINGLE SimulationHost sink set in _Ready (it forwards to
             // lockstep when ctx.Lockstep.IsOnline). Exactly one SetChecksumSink call per caller (D5).
             _ctx.Lockstep.OnDesync += (tick, local, remote) =>
@@ -78,6 +84,7 @@ namespace ProjectChimera.Core.Bootstrap
             // at exec-tick (the deterministic spend/refund + progress on the canonical ResearchStore/ResourceStore) —
             // the SAME ResearchSystem instance the replay/offline paths use.
             _ctx.Lockstep.Research = _ctx.Host.ResearchSys;
+            // Story 7.9: the DslEventSink is wired UNCONDITIONALLY in Run() (offline + online), so nothing to do here.
             // Story 2.12: also give the manager the event bus so a full-ring queued-order reject can emit OrderDenied
             // feedback on the online path (the same bus the offline SelectionSystem path uses); presentation-only.
             _ctx.Lockstep.CombatEvents = _ctx.CombatEvents;
@@ -188,6 +195,9 @@ namespace ProjectChimera.Core.Bootstrap
                 // Story 4.9: give the replay the research runtime so a recorded StartResearch / CancelResearch
                 // re-executes identically to the live match (spend/refund + progress on the canonical stores).
                 _ctx.ReplayPlayer.Research = _ctx.Host.ResearchSys;
+                // Story 7.9: give the replay the sim-side authorized-enqueue handle so a recorded (v3) button-originated
+                // DslEvent order re-raises the custom event identically to the live match (same director + queue).
+                _ctx.ReplayPlayer.DslEventSink = _ctx.Host.DslEventSink;
 
                 // The replay embeds the scenario path — warn if it differs from the currently-loaded scenario.
                 if (_ctx.ReplayPlayer.ScenarioPath != _ctx.Scene.ScenarioPath)

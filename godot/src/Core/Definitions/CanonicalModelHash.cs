@@ -133,8 +133,21 @@ namespace ProjectChimera.Core.Definitions
         /// class 7.7's v8 closed (the 7.5-era exclusion premise "declarations stay out until 7.7's fold" died when
         /// v8 landed). No existing scenario declares events or carries the new kinds, but the leading AlgoVersion
         /// mix moves the hash for EVERY scenario — the merge's ONE named re-baseline (hero-start-state golden +
-        /// version pins, one commit); <c>StartStateHash.AlgoVersion</c> stays 2 (the 7.7/7.8 precedent).</summary>
-        public const int AlgoVersion = 10;
+        /// version pins, one commit); <c>StartStateHash.AlgoVersion</c> stays 2 (the 7.7/7.8 precedent).
+        /// 11 = Story 7.9 — the custom-UI WRITE RAIL enters the folded widget tree: <see cref="MixWidget"/> gains a
+        /// <c>Button</c> case folding its <c>Text</c>, <c>EventName</c>, an arg-count prefix then each authored arg
+        /// RAW (Int/Bool value or <c>Fixed.Raw</c> — the parallel authored-type array is authoring/gate-only and is
+        /// NOT folded), the <c>LocalAction</c> (enum by stable NAME) and its target (<c>LocalTargetWidgetId</c> +
+        /// <c>LocalVarName</c> + <c>LocalVarValue</c>), in fixed field order. The per-widget <c>_editor</c> bag stays
+        /// EXCLUDED by construction (this walk reads typed fields only), so a bind/event/arg/local-action/text/layout
+        /// change moves the hash while a cosmetic <c>_editor</c>/re-save does NOT. Divergent widget trees (one peer
+        /// has the button, one doesn't) hash differently → <c>HandshakeGate</c> BLOCKS the lobby start. No existing
+        /// scenario declares a Button (the pre-7.9 fold of a Button-free tree is byte-identical modulo this leading
+        /// AlgoVersion mix), but the AlgoVersion bump moves the hash for EVERY scenario — the story's ONE named
+        /// re-baseline (hero-start-state golden re-recorded + version pins, one commit); <c>StartStateHash.AlgoVersion</c>
+        /// stays 2, <c>SimChecksum.AlgoVersion</c> stays 18, and the 24 world replay goldens are byte-identical (the
+        /// write rail enters the EXISTING checksum-folded DslEventQueue — no new folded sim state).</summary>
+        public const int AlgoVersion = 11;
 
         private const ulong Offset = 14695981039346656037UL; // FNV-64 offset basis
         private const ulong Prime  = 1099511628211UL;        // FNV-64 prime
@@ -796,6 +809,20 @@ namespace ProjectChimera.Core.Definitions
                 case ItemListWidget il:
                     h = MixStr(h, il.Bind);
                     h = MixInt(h, il.Rows);
+                    break;
+                case ButtonWidget btn:
+                    // Story 7.9 (v11): the write-rail button. Fold Text, EventName, an arg-count prefix + each authored
+                    // arg RAW (ArgTypes is authoring/gate-only — NOT folded), the LocalAction enum by NAME, then its
+                    // target (widget id / local var name+value). Divergent buttons must reject at the handshake.
+                    h = MixStr(h, btn.Text);
+                    h = MixStr(h, btn.EventName);
+                    int[] args = btn.ArgRaws ?? Array.Empty<int>();
+                    h = MixInt(h, args.Length);
+                    foreach (int a in args) h = MixInt(h, a);
+                    h = MixStr(h, btn.LocalAction.ToString()); // enum by stable NAME
+                    h = MixInt(h, btn.LocalTargetWidgetId);
+                    h = MixStr(h, btn.LocalVarName);
+                    h = MixInt(h, btn.LocalVarValue);
                     break;
                 default:
                     h = MixStr(h, w.GetType().Name); // total/never-throw for a future kind

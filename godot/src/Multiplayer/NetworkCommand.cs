@@ -121,7 +121,11 @@ namespace ProjectChimera.Multiplayer
             BuildingSystem? buildings = null,
             CombatEventQueue? events = null,
             ItemSystem? items = null,
-            ResearchSystem? research = null)
+            ResearchSystem? research = null,
+            // Story 7.9 — a narrow handle to ScenarioDirector.TryEnqueueExternalDslEvent (eventIndex, raiserSlot,
+            // arg0, arg1) → bool. Null on golden/headless/replay-without-a-director paths → a DslEvent order is a
+            // deterministic no-op (exactly like `buildings`/`items`/`research` == null for their commands).
+            Func<int, int, int, int, bool>? dslSink = null)
         {
             // Story 2.12 (Decision #2): mask the wire's queued flag (0x80) off the Command byte FIRST, so every
             // downstream compare + the command→state switch sees only the real 0-13 UnitCommand — never a flagged
@@ -191,6 +195,21 @@ namespace ProjectChimera.Multiplayer
             if (cmd == UnitCommand.CancelResearch)
             {
                 research?.CancelResearchCommand(o.UnitId, expectedFaction);
+                return;
+            }
+
+            // Story 7.9 (custom-UI write rail): a DslEvent order names a custom-event REGISTRY INDEX (UnitId), not an
+            // entity — handle it beside Train/Research, BEFORE the entity-ownership guard (which would misread the
+            // event index as an EntityWorld slot). The wire packs eventIndex→UnitId, arg0→TargetX.Raw, arg1→TargetZ.Raw
+            // (read directly as raws, NEVER via .ToFloat() — the packed-int lesson). The RAISER is the command's own
+            // faction (the anti-cheat truth: a peer can only inject into its own command stream), converted to the
+            // 0-based faction SLOT the event's allowed_raisers use (Player1→0). The sim-side gate authorizes it
+            // deterministically on every peer + in replay; `dslSink` null ⇒ deterministic no-op (golden/replay). A
+            // Neutral raiser (spectator stream — never carries DslEvents) is dropped rather than mapped to −1/system.
+            if (cmd == UnitCommand.DslEvent)
+            {
+                if (dslSink == null || expectedFaction == Faction.Neutral) return;
+                dslSink(o.UnitId, (int)expectedFaction - 1, o.TargetX, o.TargetZ);
                 return;
             }
 

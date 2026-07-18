@@ -67,6 +67,12 @@ namespace ProjectChimera.Multiplayer
         /// <see cref="Buildings"/>; null in the Tier-1 golden harness where the two commands no-op.</summary>
         public ProjectChimera.Economy.ResearchSystem? Research;
 
+        /// <summary>Story 7.9: the sim-side authorized-enqueue handle (<c>ScenarioDirector.TryEnqueueExternalDslEvent</c>)
+        /// the shared OrderApplier calls to reproduce a replayed button-originated DslEvent order, so a v3 .chmr raises
+        /// custom events identically to the live match. Wired alongside <see cref="Buildings"/>; null in the Tier-1
+        /// golden harness where DslEvent orders no-op.</summary>
+        public Func<int, int, int, int, bool>? DslEventSink;
+
         // ── Replay data ───────────────────────────────────────────────────────────
 
         // Key = simulation tick; value = list of (faction, orders[]) for that tick.
@@ -97,9 +103,11 @@ namespace ProjectChimera.Multiplayer
                 throw new InvalidDataException($"Replay: bad magic 0x{magic:X8} in '{filePath}'");
 
             ushort version = reader.ReadUInt16();
-            // Accept every known version (1..current) — v1 files predate the seed header and stay playable.
-            if (version < 1 || version > ReplayRecorder.VERSION)
-                throw new InvalidDataException($"Replay: unsupported version {version}");
+            // Story 7.9 — HARD-REJECT v1 (seed-incomplete: no captured SimRng seed → DEFAULT_RNG_SEED fallback →
+            // desync for any SimRng scenario). v2 (seed-complete, DslEvent-free) still plays unchanged; v3 round-trips
+            // DslEvent orders. Accept [2, current].
+            if (version < 2 || version > ReplayRecorder.VERSION)
+                throw new InvalidDataException($"Replay: unsupported version {version} (v1 is hard-rejected — seed-incomplete and desync-prone; v2/v3 supported).");
 
             ushort pathLen = reader.ReadUInt16();
             var pathBytes  = reader.ReadBytes(pathLen);
@@ -187,7 +195,7 @@ namespace ProjectChimera.Multiplayer
             // are null in the Tier-1 golden harness.
             for (int i = 0; i < count; i++)
                 OrderApplier.Apply(_world, in orders[i], expectedFaction,
-                    OnRequestPath, OnRequestAttackMove, OnCancelPath, Buildings, null, Items, Research);
+                    OnRequestPath, OnRequestAttackMove, OnCancelPath, Buildings, null, Items, Research, DslEventSink);
         }
     }
 }

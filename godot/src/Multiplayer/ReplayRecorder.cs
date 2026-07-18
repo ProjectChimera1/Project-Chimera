@@ -22,7 +22,11 @@ namespace ProjectChimera.Multiplayer
 
         /// <summary>Four-byte magic: "CHMR" (Chimera Replay).</summary>
         public const uint   MAGIC   = 0x524D4843u; // 'C','H','M','R' LE
-        public const ushort VERSION = 2; // v2 (Story 1.5): header carries the 8-byte match-start SimRng seed
+        // v2 (Story 1.5): header carries the 8-byte match-start SimRng seed.
+        // v3 (Story 7.9): the command stream may carry UnitCommand.DslEvent orders (button-originated custom-event
+        // raises). No format/stride change — DslEvent rides the existing fixed 11-byte per-order record for free — so
+        // the bump is a COMPATIBILITY marker: ReplayPlayer hard-rejects v1 (seed-incomplete) but still plays v2.
+        public const ushort VERSION = 3;
 
         /// <summary>Sentinel written at end-of-file to mark replay completion.</summary>
         public const uint EOF_SENTINEL = 0xFFFFFFFFu;

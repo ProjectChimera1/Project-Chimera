@@ -2,6 +2,7 @@
 using System;
 using Godot;
 using ProjectChimera.Core;
+using ProjectChimera.Dsl; // Story 7.9 — EventBounds.MaxDslEventsPerTick
 
 namespace ProjectChimera.Multiplayer
 {
@@ -112,6 +113,12 @@ namespace ProjectChimera.Multiplayer
         /// deterministic (it reads the folded OrderQueueCount), only the visual feedback is skipped. Presentation-only.</summary>
         public ProjectChimera.Combat.CombatEventQueue? CombatEvents;
 
+        /// <summary>Story 7.9: the sim-side authorized-enqueue handle the shared OrderApplier calls to apply a
+        /// button-originated DslEvent order at exec-tick (<c>ScenarioDirector.TryEnqueueExternalDslEvent</c>: eventIndex,
+        /// raiserSlot, arg0, arg1 → bool). Wired by MainScene per match; null in headless/tests where DslEvent no-ops.
+        /// Must be the SAME instance the replay/offline paths use, or button raises diverge between live and replay.</summary>
+        public Func<int, int, int, int, bool>? DslEventSink;
+
         // ── Public state ──────────────────────────────────────────────────────
 
         public bool IsOnline   { get; private set; }
@@ -155,6 +162,9 @@ namespace ProjectChimera.Multiplayer
 
         private readonly UnitOrder[] _pendingOrders = new UnitOrder[TickCommandPacket.MAX_ORDERS];
         private int                  _pendingCount;
+        // Story 7.9 — how many of _pendingOrders this tick are DslEvent raises, so EnqueueDslEvent can enforce the
+        // per-player MaxDslEventsPerTick cap (drop-newest). Reset alongside _pendingCount when the batch is sent.
+        private int                  _pendingDslEventCount;
 
         // ── Circular command buffers ──────────────────────────────────────────
 
@@ -206,6 +216,7 @@ namespace ProjectChimera.Multiplayer
             IsOnline      = true;
             IsStalling    = false;
             _pendingCount = 0;
+            _pendingDslEventCount = 0;
             ResetAdaptiveState();
             SeedInitialTicks();
 
@@ -228,6 +239,7 @@ namespace ProjectChimera.Multiplayer
             IsOnline      = true;
             IsStalling    = false;
             _pendingCount = 0;
+            _pendingDslEventCount = 0;
             ResetAdaptiveState();
 
             for (int i = 0; i < _currentDelay; i++)
@@ -258,6 +270,42 @@ namespace ProjectChimera.Multiplayer
             if (_pendingCount < TickCommandPacket.MAX_ORDERS)
                 _pendingOrders[_pendingCount++] = new UnitOrder(unitId, command, targetX, targetZ);
 
+            return false;
+        }
+
+        /// <summary>
+        /// Story 7.9 — queue a custom-UI Button's custom-event raise on the lockstep bus. Mirrors
+        /// <see cref="EnqueueOrder"/>: OFFLINE (F5 playtest) it applies immediately through the SAME
+        /// <see cref="OrderApplier.Apply"/> the online/replay paths use (structural parity) so the event enters the
+        /// director's queue that tick; ONLINE it buffers a <see cref="UnitCommand.DslEvent"/> order for the exec-tick
+        /// (applied identically on every peer, recorded to replay). The <see cref="LocalFaction"/> becomes the raiser
+        /// at apply time (OrderApplier derives the 0-based slot). Enforces <see cref="EventBounds.MaxDslEventsPerTick"/>
+        /// DETERMINISTICALLY drop-newest (never a throw), and shares the existing 32-order packet budget. Spectators
+        /// cannot raise (they own no faction). Returns true when applied now (offline), false when buffered/dropped.
+        /// </summary>
+        public bool EnqueueDslEvent(int eventIndex, int arg0, int arg1)
+        {
+            // Offline (F5): apply-now through the shared applier — the raiser is ALWAYS Player1 (the offline
+            // editor's local faction), structurally, never whatever LocalFaction a previous online/spectate session
+            // left behind (GoOnline/GoSpectate mutate it and nothing resets it on the way back offline; a stale
+            // Neutral would make every offline press a silent authorization drop).
+            if (!IsOnline)
+            {
+                var order = new UnitOrder(eventIndex, UnitCommand.DslEvent, Fixed.FromRaw(arg0), Fixed.FromRaw(arg1));
+                OrderApplier.Apply(_world, in order, Faction.Player1,
+                    OnRequestPath, OnRequestAttackMove, OnCancelPath, Buildings, CombatEvents, Items, Research, DslEventSink);
+                return true;
+            }
+            if (IsSpectator) return false;
+
+            // Online: buffer for the exec-tick, honouring BOTH the per-tick DslEvent cap and the shared packet budget
+            // (drop-newest — mirrors the _pendingCount < MAX_ORDERS idiom; never throws).
+            if (DslEventRateLimit.CanAccept(_pendingDslEventCount, _pendingCount, TickCommandPacket.MAX_ORDERS))
+            {
+                _pendingOrders[_pendingCount++] = new UnitOrder(eventIndex, UnitCommand.DslEvent,
+                    Fixed.FromRaw(arg0), Fixed.FromRaw(arg1));
+                _pendingDslEventCount++;
+            }
             return false;
         }
 
@@ -331,6 +379,7 @@ namespace ProjectChimera.Multiplayer
                 for (int i = 0; i < n; i++)
                     _localBuf[base_ + i] = _pendingOrders[i];
                 _pendingCount = 0;
+                _pendingDslEventCount = 0; // Story 7.9 — the DslEvent-per-tick budget resets with the batch
 
                 int bytes = TickCommandPacket.Write(
                     _sendBuf, issueTick, LocalFaction,
@@ -678,7 +727,7 @@ namespace ProjectChimera.Multiplayer
             // delegates are this manager's presentation hooks (wired by MainScene; null in headless/tests).
             for (int i = 0; i < count; i++)
                 OrderApplier.Apply(_world, in buf[baseIdx + i], expectedFaction,
-                    OnRequestPath, OnRequestAttackMove, OnCancelPath, Buildings, CombatEvents, Items, Research);
+                    OnRequestPath, OnRequestAttackMove, OnCancelPath, Buildings, CombatEvents, Items, Research, DslEventSink);
         }
     }
 }

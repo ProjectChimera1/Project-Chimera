@@ -111,6 +111,12 @@ namespace ProjectChimera.Core
         // never constructs a string).
         private string[] _eventNames       = Array.Empty<string>();
         private int[]    _eventParamCounts = Array.Empty<int>();
+        // Story 7.9 — per-event allowed-raiser faction slots (registry order), for the RUNTIME sim-side raiser
+        // authorization of a button-originated DslEvent (TryEnqueueExternalDslEvent). Reads-only; no new folded state.
+        private int[][]  _eventAllowedRaisers = Array.Empty<int[]>();
+        // Story 7.9 — the fixed-width scratch handed to DslEventQueue.Enqueue for an external (button) raise, so the
+        // sim-side gate allocates nothing per raise. Slots past the wire's 2 args stay 0 (never written).
+        private readonly int[] _externalArgScratch = new int[EventBounds.MaxEventParams];
 
         // Per-exec dispatch info (parallel to _execs): the subscribed custom-event index (-1 = built-in events
         // only) and the per-occurrence opt-in flag (any compiled program of the trigger reads event params). The
@@ -233,6 +239,43 @@ namespace ProjectChimera.Core
         public void SetReadback(DslVarReadback? readback) => _readback = readback;
 
         /// <summary>
+        /// Story 7.9 — the sim-side raiser-AUTHORIZATION gate for a custom-UI Button raise arriving on the lockstep
+        /// bus. Invoked by the single <c>OrderApplier.Apply</c> at the deterministic command-application point (before
+        /// <c>StepOnce</c>), identically on every peer and in replay, so its verdict is byte-identical everywhere.
+        ///
+        /// Bounds-checks <paramref name="eventIndex"/> against the loaded registry, then authorizes
+        /// <paramref name="raiserFaction"/> (a 0-based faction SLOT, or −1 = system, always legal) against the
+        /// event's declared <c>allowed_raisers</c> (the load-time mirror at the runtime seam 7.5 earmarked). An
+        /// authorized raise enqueues into the EXISTING checksum-folded <see cref="DslEventQueue"/> (the button's args
+        /// fill the event's declared param slots; the unused wire slot is dropped, never truncating a declared
+        /// param). Returns false — a DETERMINISTIC no-op drop, never a throw, never a client-side button-disable — on
+        /// an out-of-range index, an unauthorized raiser, or a full queue (drop-newest). Adds NO new folded state.
+        /// </summary>
+        public bool TryEnqueueExternalDslEvent(int eventIndex, int raiserFaction, int arg0, int arg1)
+        {
+            if ((uint)eventIndex >= (uint)_eventNames.Length) return false; // out of range → deterministic no-op
+
+            if (raiserFaction != -1)
+            {
+                int[] allowed = _eventAllowedRaisers.Length > eventIndex
+                    ? _eventAllowedRaisers[eventIndex] : Array.Empty<int>();
+                if (Array.IndexOf(allowed, raiserFaction) < 0) return false; // unauthorized → deterministic drop
+            }
+
+            // Fill only the declared param slots from the 2-arg wire (a ≤2-param event by the CustomUiGate budget):
+            // arg0→slot0, arg1→slot1. Slots past 2 stay 0 (never written); Enqueue clamps to the declared count.
+            _externalArgScratch[0] = arg0;
+            _externalArgScratch[1] = arg1;
+            int paramCount = _eventParamCounts.Length > eventIndex ? _eventParamCounts[eventIndex] : 0;
+            // Story 7.9 (PATCH 6) — re-enforce the wire budget sim-side: the DslEvent order carries only 2 arg slots, so
+            // a wider event must NOT fire through this external (button) seam with silently-zeroed params. A tampered
+            // order naming an event declaring > MaxButtonEventParams params is a deterministic drop (no mutation, no
+            // throw). Triggers may still raise wider events directly via RaiseEventNode/DslEventQueue.Enqueue.
+            if (paramCount > EventBounds.MaxButtonEventParams) return false;
+            return _eventQueue.Enqueue(eventIndex, raiserFaction, _externalArgScratch, paramCount);
+        }
+
+        /// <summary>
         /// Load triggers from a freshly-applied scenario. Resets all runtime state.
         /// Call after ApplyScenario() so the initial alive-state snapshots are clean.
         /// </summary>
@@ -296,7 +339,9 @@ namespace ProjectChimera.Core
             // SAME shared CustomUiGate the ScenarioValidator runs, applied UNCONDITIONALLY here as the fail-closed
             // backstop for direct LoadScenario callers (parity by construction — the GraphStructureGate posture).
             // A null tree returns null (no-op). Runs against LOCALS before any field commit (failure atomicity).
-            string? uiErr = CustomUiGate.Check(scenario.CustomUi, loopDeclMap, arrayDecls);
+            // Story 7.9 — pass CustomEvents (parity with the validator) so the backstop resolves Button raise targets,
+            // enforces the ≤ MaxButtonEventParams budget, and type-matches authored args.
+            string? uiErr = CustomUiGate.Check(scenario.CustomUi, loopDeclMap, arrayDecls, scenario.CustomEvents);
             if (uiErr != null) throw new System.Text.Json.JsonException(uiErr);
 
             // Story 7.4 — compile every condition-expression and set_variable value-expression ONCE (two-phase
@@ -368,6 +413,7 @@ namespace ProjectChimera.Core
             // queue/work-list/frame (a re-load never inherits pending feedback from the previous scenario).
             _eventNames       = compiled.EventNames;
             _eventParamCounts = compiled.EventParamCounts;
+            _eventAllowedRaisers = compiled.EventAllowedRaisers; // Story 7.9 — runtime raiser auth
             _subscribedEvent  = compiled.SubscribedEvent;
             _paramReading     = compiled.ParamReading;
             _baseEvents       = baseEvents;
@@ -437,6 +483,7 @@ namespace ProjectChimera.Core
             public CompiledItem[][] Items         = Array.Empty<CompiledItem[]>();
             public string[] EventNames            = Array.Empty<string>();
             public int[]    EventParamCounts      = Array.Empty<int>();
+            public int[][]  EventAllowedRaisers   = Array.Empty<int[]>();
             public int[]    SubscribedEvent       = Array.Empty<int>();
             public bool[]   ParamReading          = Array.Empty<bool>();
         }
@@ -630,6 +677,7 @@ namespace ProjectChimera.Core
                 Items            = compiledItems,
                 EventNames       = plan.EventNames,
                 EventParamCounts = plan.EventParamCounts,
+                EventAllowedRaisers = plan.EventAllowedRaisers, // Story 7.9
                 SubscribedEvent  = plan.SubscribedEvent,
                 ParamReading     = paramReading,
             };

@@ -2,6 +2,7 @@
 using System;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using ProjectChimera.Dsl; // DslValueType (Story 7.9 Button arg types — a plain enum; sim-layer clean, engine-free)
 
 namespace ProjectChimera.Core.Definitions
 {
@@ -55,12 +56,32 @@ namespace ProjectChimera.Core.Definitions
     }
 
     /// <summary>
-    /// Story 7.8 — the closed widget kinds. A closed union: any other <c>kind</c> string fails closed at parse in
-    /// <see cref="WidgetBaseJsonConverter"/> with a located error naming it. No <c>Button</c> (write rail, 7.9).
+    /// Story 7.8/7.9 — the closed widget kinds. A closed union: any other <c>kind</c> string fails closed at parse in
+    /// <see cref="WidgetBaseJsonConverter"/> with a located error naming it. Story 7.9 appended <c>Button</c> (the
+    /// interactive write-rail kind) LAST — do not reorder (enum names fold by NAME so order is cosmetic to the hash,
+    /// but append-only keeps the source diff minimal).
     /// </summary>
     public enum WidgetKind
     {
         Panel, Label, Counter, ProgressBar, Timer, Leaderboard, FloatingText, ItemList,
+        Button, // Story 7.9 — the write rail
+    }
+
+    /// <summary>
+    /// Story 7.9 — the CLOSED, presentation-only local-action vocabulary a <c>Button</c> may perform INSTEAD of (or
+    /// alongside) raising a networked custom event. Each action is handled entirely inside <c>CustomUiBridge</c>
+    /// (presentation): it touches only Godot <c>Control</c> visibility and a presentation-only local variable store,
+    /// NEVER a sim system, the DSL, or the lockstep bus — so it is provably disjoint from the sim/DSL namespaces and
+    /// outside <c>SimChecksum</c> (a test asserts the checksum is byte-identical whether local actions fire or not).
+    /// Godot-free/int-only here; an unknown local action rejects fail-closed at parse.
+    /// </summary>
+    public enum LocalUiAction
+    {
+        None,                 // no local action (the button raises a custom event instead)
+        ToggleWidgetVisible,  // flip the target widget's Control visibility (LocalTargetWidgetId)
+        OpenSubPanel,         // show the target widget (LocalTargetWidgetId)
+        CloseSelf,            // hide this button's own widget
+        SetLocalUiVar,        // set a presentation-only local UI var (LocalVarName = LocalVarValue)
     }
 
     /// <summary>
@@ -196,5 +217,60 @@ namespace ProjectChimera.Core.Definitions
         public override string? ValueBind => Bind;
         public override bool ExpectsArrayBind => true;
         public override int MaxRows => _maxRows;
+    }
+
+    /// <summary>
+    /// Story 7.9 — the interactive WRITE-RAIL widget. A press either raises a REGISTERED custom event through the
+    /// lockstep command bus (<see cref="EventName"/> resolved to a registry index presentation-side, then
+    /// <c>LockstepManager.EnqueueDslEvent</c>) or performs a presentation-only <see cref="LocalUiAction"/> — never
+    /// mutating sim state directly. Godot-free/int-only: it stores the authored caption, the event name (resolved to
+    /// an int index once at bridge init — the string NEVER enters the tick), the quantized int arg raws (Int/Bool
+    /// value or <c>Fixed.Raw</c>) with a parallel authored-type array (authoring/gate-only — used to type-match args
+    /// against the event's declared params and to round-trip; NOT folded into the canonical hash and NOT on the
+    /// wire), and the local-action + its target. Validated at load by <c>CustomUiGate</c> (event declared,
+    /// param-count ≤ <c>EventBounds.MaxButtonEventParams</c>, arg types match, at least one of event/local-action,
+    /// valid local target).
+    /// </summary>
+    public sealed class ButtonWidget : WidgetBase
+    {
+        public override WidgetKind Kind => WidgetKind.Button;
+
+        /// <summary>The button caption (static; presentation-only). Folded into the canonical hash.</summary>
+        public string? Text { get; set; }
+
+        /// <summary>OPTIONAL — the authored name of the registered custom event this button raises. Resolved to the
+        /// registry INDEX once, presentation-side, at bridge init (the string never enters the tick). Null ⇒ this
+        /// button performs only a <see cref="LocalAction"/>.</summary>
+        public string? EventName { get; set; }
+
+        /// <summary>The quantized argument raws forwarded to the raised event's param slots (Int/Bool value or
+        /// <c>Fixed.Raw</c>). Length must equal the event's declared param count (≤
+        /// <c>EventBounds.MaxButtonEventParams</c>). Empty for a local-action-only or param-less button.</summary>
+        public int[] ArgRaws { get; set; } = Array.Empty<int>();
+
+        /// <summary>The authored TYPE of each arg (parallel to <see cref="ArgRaws"/>) — authoring/gate metadata used
+        /// to type-match against the event's declared params and to round-trip the JSON form. NOT folded into the
+        /// canonical hash (only the raws fold) and NEVER on the wire.</summary>
+        public DslValueType[] ArgTypes { get; set; } = Array.Empty<DslValueType>();
+
+        /// <summary>OPTIONAL — the presentation-only local action this button performs (default <see cref="LocalUiAction.None"/>).</summary>
+        public LocalUiAction LocalAction { get; set; } = LocalUiAction.None;
+
+        /// <summary>The target widget id for <see cref="LocalUiAction.ToggleWidgetVisible"/>/<see cref="LocalUiAction.OpenSubPanel"/>
+        /// (unused/−1 otherwise). Validated to name an existing widget at load.</summary>
+        public int LocalTargetWidgetId { get; set; } = -1;
+
+        /// <summary>The presentation-only local UI var name written by <see cref="LocalUiAction.SetLocalUiVar"/>
+        /// (a store distinct from the sim <c>DslVarTable</c>). Null/unused for other actions.</summary>
+        public string? LocalVarName { get; set; }
+
+        /// <summary>The value written to <see cref="LocalVarName"/> by <see cref="LocalUiAction.SetLocalUiVar"/>.</summary>
+        public int LocalVarValue { get; set; }
+
+        /// <summary>Story 7.9 — the single Godot-free routing predicate for a press: true iff this button raises a
+        /// networked custom event (has an <see cref="EventName"/>). A local-action-only button (<c>EventName</c> null)
+        /// NEVER touches the lockstep bus — its press is presentation-only, so it can never enter <c>SimChecksum</c>.
+        /// <c>CustomUiBridge</c> routes the <c>Pressed</c> handler through this so the seam is the one source of truth.</summary>
+        public bool RaisesSimEvent => !string.IsNullOrEmpty(EventName);
     }
 }

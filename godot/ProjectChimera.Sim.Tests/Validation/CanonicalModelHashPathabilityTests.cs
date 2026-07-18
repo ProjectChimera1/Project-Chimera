@@ -29,7 +29,7 @@ namespace ProjectChimera.Sim.Tests.Validation
         }
 
         [Fact]
-        public void AlgoVersion_IsTen() => Assert.Equal(10, CanonicalModelHash.AlgoVersion); // 7.5 re-land merge: 9→10 (custom-events fold; the pathability folds below are unchanged)
+        public void AlgoVersion_IsEleven() => Assert.Equal(11, CanonicalModelHash.AlgoVersion); // 7.5 re-land merge: 9→10 (custom-events fold); Story 7.9: 10→11 (Button fold). Pathability folds below unchanged.
 
         [Fact]
         public void AbsentPaint_And_AllClearPaint_HashEqual()

@@ -40,7 +40,7 @@ namespace ProjectChimera.Sim.Tests.Validation
             Assert.NotEqual(CanonicalModelHash.Compute(a), CanonicalModelHash.Compute(b));
 
         [Fact]
-        public void AlgoVersion_IsTen() => Assert.Equal(10, CanonicalModelHash.AlgoVersion);
+        public void AlgoVersion_IsEleven() => Assert.Equal(11, CanonicalModelHash.AlgoVersion);
 
         [Fact]
         public void AbsentVsEmpty_HashEqual()

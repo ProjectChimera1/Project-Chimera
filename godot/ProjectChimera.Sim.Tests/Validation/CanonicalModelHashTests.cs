@@ -63,7 +63,7 @@ namespace ProjectChimera.Sim.Tests.Validation
         }
 
         [Fact]
-        public void AlgoVersion_IsTen() => Assert.Equal(10, CanonicalModelHash.AlgoVersion); // 7.5 re-land merge bumped 9→10 (custom-events registry + graph node-kind fold)
+        public void AlgoVersion_IsEleven() => Assert.Equal(11, CanonicalModelHash.AlgoVersion); // 7.5 re-land merge bumped 9→10 (custom-events registry + graph node-kind fold); Story 7.9: 10→11 (Button fold)
 
         [Fact]
         public void ReorderedCollections_HashEqual()
@@ -294,7 +294,7 @@ namespace ProjectChimera.Sim.Tests.Validation
             // Build the documented canonical byte stream (D5 fixed order) INDEPENDENTLY of MixInt/MixStr, then
             // fold it with a textbook FNV-64. This pins the algorithm without a self-tautology.
             var buf = new List<byte>();
-            AppendInt(buf, CanonicalModelHash.AlgoVersion);  // AlgoVersion (= 10)
+            AppendInt(buf, CanonicalModelHash.AlgoVersion);  // AlgoVersion (= 11)
             AppendInt(buf, Fixed.FromFloat(120f).Raw);       // MapBounds quantized (= 7,864,320)
             AppendStr(buf, "DestroyAllBuildings");           // WinCondition by NAME
             AppendStr(buf, "");                              // TerrainRef

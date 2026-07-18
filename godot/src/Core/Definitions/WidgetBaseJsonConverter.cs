@@ -87,6 +87,20 @@ namespace ProjectChimera.Core.Definitions
                     WriteOptString(writer, "bind", il.Bind);
                     writer.WriteNumber("rows", il.Rows);
                     break;
+                case ButtonWidget b:
+                    // Story 7.9 — the write rail. Fixed field order (deterministic serialization): text, event, args,
+                    // arg_types, then the local-action fields (only when present, keeping absent/keyless round-trips clean).
+                    WriteOptString(writer, "text", b.Text);
+                    WriteOptString(writer, "event", b.EventName);
+                    WriteButtonArgs(writer, b);
+                    if (b.LocalAction != LocalUiAction.None)
+                    {
+                        writer.WriteString("local_action", b.LocalAction.ToString()); // enum by NAME
+                        if (b.LocalTargetWidgetId != -1) writer.WriteNumber("local_target", b.LocalTargetWidgetId);
+                        WriteOptString(writer, "local_var", b.LocalVarName);
+                        if (b.LocalVarName != null) writer.WriteNumber("local_value", b.LocalVarValue);
+                    }
+                    break;
                 default:
                     throw new JsonException(
                         $"Cannot serialize widget of type '{value.GetType().Name}': not in the closed kind registry.");
@@ -132,6 +146,7 @@ namespace ProjectChimera.Core.Definitions
                 WidgetKind.Leaderboard  => ReadLeaderboard(el, path),
                 WidgetKind.FloatingText => ReadFloatingText(el, path),
                 WidgetKind.ItemList     => ReadItemList(el, path),
+                WidgetKind.Button       => ReadButton(el, path),
                 _ => throw new JsonException($"{path}: unknown widget kind '{kind}'."), // unreachable (ReadKind gates)
             };
 
@@ -192,6 +207,145 @@ namespace ProjectChimera.Core.Definitions
             w.Bind = ReadOptString(el, "bind", path);
             w.Rows = ReadInt(el, "rows", path, 8);
             return w;
+        }
+
+        private static ButtonWidget ReadButton(JsonElement el, string path)
+        {
+            // Story 7.9 — the write-rail button: caption + optional custom-event target (name + typed args) +
+            // optional presentation-only local action. Closed allow-list; unknown/dup props reject fail-closed.
+            var w = ReadCommon(el, path, new ButtonWidget(),
+                Extend(CommonFields, "text", "event", "args", "arg_types", "local_action", "local_target", "local_var", "local_value"));
+            w.Text        = ReadOptString(el, "text", path);
+            w.EventName   = ReadOptString(el, "event", path);
+            // Canonicalize: every behavior gate treats "" as no-event (IsNullOrEmpty), but the fold distinguishes
+            // ""(len 0) from null (len −1) — normalize so two behaviorally identical authorings hash identically
+            // (the writer itself never emits "", so this only affects hand-authored files).
+            if (w.EventName is { Length: 0 }) w.EventName = null;
+            ReadButtonArgs(el, path, w);
+            w.LocalAction = ReadLocalAction(el, path);
+            w.LocalTargetWidgetId = ReadInt(el, "local_target", path, -1);
+            w.LocalVarName  = ReadOptString(el, "local_var", path);
+            w.LocalVarValue = ReadInt(el, "local_value", path, 0);
+
+            // PATCH 2 — round-trip symmetry with the writer, which OMITS the local fields when LocalAction==None (and
+            // local_value when LocalVarName==null). The canonical fold reads these fields UNCONDITIONALLY, so a
+            // gate-valid button carrying stray local fields would fold them yet re-save the omitted defaults →
+            // hash divergence. Normalize the in-memory state to exactly what the writer emits so the fold agrees.
+            if (w.LocalAction == LocalUiAction.None)
+            {
+                w.LocalTargetWidgetId = -1;
+                w.LocalVarName = null;
+                w.LocalVarValue = 0;
+            }
+            if (w.LocalVarName == null)
+                w.LocalVarValue = 0;
+            return w;
+        }
+
+        /// <summary>Read the button's args LOSSLESSLY: <c>args</c> is an array of raw INTS (each an Int/Bool value or a
+        /// <c>Fixed.Raw</c>) read straight into <see cref="ButtonWidget.ArgRaws"/>, and <c>arg_types</c> is the parallel
+        /// array of <see cref="ProjectChimera.Dsl.DslValueType"/> enum NAMES read into <see cref="ButtonWidget.ArgTypes"/>.
+        /// There is NO float path: a non-integer/overflow arg element is a located reject (via <c>TryGetInt32</c>), so
+        /// the raws round-trip byte-exact and the canonical Button fold is re-save-neutral. An unknown type name, or an
+        /// <c>arg_types</c> length that disagrees with <c>args</c>, is a located reject. When <c>arg_types</c> is absent,
+        /// every type defaults to <c>Int</c> (all raws are ints ⇒ lossless; the gate validates the args against the
+        /// event's declared param types).</summary>
+        private static void ReadButtonArgs(JsonElement el, string path, ButtonWidget w)
+        {
+            if (!el.TryGetProperty("args", out JsonElement argsEl) || argsEl.ValueKind == JsonValueKind.Null)
+            {
+                // arg_types WITHOUT args is authored data the writer would silently drop on the next save — this
+                // converter rejects malformed shapes, it never swallows them.
+                if (el.TryGetProperty("arg_types", out JsonElement strayTypes) && strayTypes.ValueKind != JsonValueKind.Null)
+                    throw new JsonException($"{path}.arg_types: present without 'args' (arg_types annotates args element-wise; author 'args' or remove 'arg_types').");
+                return; // no args (local-action-only or param-less event)
+            }
+            if (argsEl.ValueKind != JsonValueKind.Array)
+                throw new JsonException($"{path}.args: must be a JSON array, got {argsEl.ValueKind}.");
+            int n = argsEl.GetArrayLength();
+            // Parse-level cap: the wire can never carry more than MaxButtonEventParams raws, and the gate only
+            // re-checks counts for EVENT buttons — without this cap a local-action-only button could smuggle an
+            // arbitrarily large args array through both gates into the canonical fold (unbounded alloc + hash work).
+            if (n > ProjectChimera.Dsl.EventBounds.MaxButtonEventParams)
+                throw new JsonException(
+                    $"{path}.args: {n} args exceed EventBounds.MaxButtonEventParams={ProjectChimera.Dsl.EventBounds.MaxButtonEventParams} (the button wire budget).");
+            var raws = new int[n];
+            int i = 0;
+            foreach (JsonElement e in argsEl.EnumerateArray())
+            {
+                if (e.ValueKind != JsonValueKind.Number || !e.TryGetInt32(out int iv))
+                    throw new JsonException(
+                        $"{path}.args[{i}]: a button arg must be a 32-bit integer raw (Int/Bool value or Fixed.Raw), got {e.ValueKind}.");
+                raws[i] = iv;
+                i++;
+            }
+
+            var types = new ProjectChimera.Dsl.DslValueType[n];
+            if (el.TryGetProperty("arg_types", out JsonElement typesEl) && typesEl.ValueKind != JsonValueKind.Null)
+            {
+                if (typesEl.ValueKind != JsonValueKind.Array)
+                    throw new JsonException($"{path}.arg_types: must be a JSON array, got {typesEl.ValueKind}.");
+                int tn = typesEl.GetArrayLength();
+                if (tn != n)
+                    throw new JsonException($"{path}.arg_types: length {tn} does not match args length {n}.");
+                int j = 0;
+                foreach (JsonElement te in typesEl.EnumerateArray())
+                {
+                    string tp = $"{path}.arg_types[{j}]";
+                    if (te.ValueKind != JsonValueKind.String)
+                        throw new JsonException($"{tp}: must be a string, got {te.ValueKind}.");
+                    string name = te.GetString()!;
+                    if (!Enum.TryParse(name, ignoreCase: false, out ProjectChimera.Dsl.DslValueType parsed) || !Enum.IsDefined(parsed))
+                        throw new JsonException($"{tp}: '{name}' is not a known DslValueType.");
+                    types[j] = parsed;
+                    j++;
+                }
+            }
+            else
+            {
+                for (int k = 0; k < n; k++) types[k] = ProjectChimera.Dsl.DslValueType.Int; // absent ⇒ all Int (lossless)
+            }
+
+            w.ArgRaws  = raws;
+            w.ArgTypes = types;
+        }
+
+        /// <summary>Write the button's args LOSSLESSLY: <c>args</c> as an array of the raw INTS (<see cref="ButtonWidget.ArgRaws"/>,
+        /// never a float) plus a parallel <c>arg_types</c> array of the <see cref="ProjectChimera.Dsl.DslValueType"/> enum
+        /// NAMES. Both keys are omitted entirely when there are no args (keeps the keyless round-trip clean). Because the
+        /// raws are emitted verbatim, <c>ArgRaws</c> round-trips byte-exact and the canonical Button fold (which folds the
+        /// raws, not the types) is re-save-neutral.</summary>
+        private static void WriteButtonArgs(Utf8JsonWriter writer, ButtonWidget b)
+        {
+            int[] raws = b.ArgRaws ?? Array.Empty<int>();
+            if (raws.Length == 0) return;
+            ProjectChimera.Dsl.DslValueType[] types = b.ArgTypes ?? Array.Empty<ProjectChimera.Dsl.DslValueType>();
+            writer.WritePropertyName("args");
+            writer.WriteStartArray();
+            for (int i = 0; i < raws.Length; i++)
+                writer.WriteNumberValue(raws[i]); // raw int only — no float, ever
+            writer.WriteEndArray();
+            writer.WritePropertyName("arg_types");
+            writer.WriteStartArray();
+            for (int i = 0; i < raws.Length; i++)
+            {
+                ProjectChimera.Dsl.DslValueType t = i < types.Length ? types[i] : ProjectChimera.Dsl.DslValueType.Int;
+                writer.WriteStringValue(t.ToString()); // stable enum NAME
+            }
+            writer.WriteEndArray();
+        }
+
+        private static LocalUiAction ReadLocalAction(JsonElement el, string path)
+        {
+            if (!el.TryGetProperty("local_action", out JsonElement laEl) || laEl.ValueKind == JsonValueKind.Null)
+                return LocalUiAction.None;
+            if (laEl.ValueKind != JsonValueKind.String)
+                throw new JsonException($"{path}.local_action: must be a string, got {laEl.ValueKind}.");
+            string la = laEl.GetString()!;
+            if (!Enum.TryParse(la, ignoreCase: false, out LocalUiAction parsed) || !Enum.IsDefined(parsed))
+                throw new JsonException(
+                    $"{path}.local_action: '{la}' is not a known local UI action (closed set — no scripting/extension escape hatch).");
+            return parsed;
         }
 
         /// <summary>Read the fields common to every widget (id/anchor/offset/size/visible_bind) after rejecting

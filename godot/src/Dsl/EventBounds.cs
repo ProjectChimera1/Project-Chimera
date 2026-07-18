@@ -33,6 +33,25 @@ namespace ProjectChimera.Dsl
         public const int MaxEventParams = 4;
 
         /// <summary>
+        /// Story 7.9 — the maximum number of typed params a custom-UI <c>Button</c> may target on the custom event
+        /// it raises through the lockstep bus. 2 is the fixed wire budget: a <c>DslEvent</c> order reuses the 11-byte
+        /// <c>UnitOrder</c> (eventIndex→UnitId, arg0→TargetX.Raw, arg1→TargetZ.Raw) with NO wire widening, so a button
+        /// may only raise an event declaring ≤ this many params. <c>CustomUiGate</c> rejects a button targeting a
+        /// wider event with a located error naming this constant (wider-arg buttons are deferred, not truncated;
+        /// triggers can still raise wider events via <c>RaiseEventNode</c>).
+        /// </summary>
+        public const int MaxButtonEventParams = 2;
+
+        /// <summary>
+        /// Story 7.9 — the per-player, per-tick cap on button-originated <c>DslEvent</c> commands buffered on the
+        /// lockstep bus. 8 comfortably covers rapid legitimate interaction (a vote/buy flurry) while bounding what a
+        /// spammed button can inject per tick. <c>LockstepManager.EnqueueDslEvent</c> enforces it DETERMINISTICALLY
+        /// drop-newest (never a throw), mirroring the <c>_pendingCount &lt; MAX_ORDERS</c> idiom; DslEvents also share
+        /// the existing 32-order packet budget.
+        /// </summary>
+        public const int MaxDslEventsPerTick = 8;
+
+        /// <summary>
         /// Maximum triggers subscribed to any single event. 16 covers a heavily-observed hub event (every module
         /// watching one "wave_start") while bounding the per-occurrence dispatch scan.
         /// </summary>

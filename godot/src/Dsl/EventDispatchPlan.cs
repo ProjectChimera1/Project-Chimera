@@ -54,6 +54,11 @@ namespace ProjectChimera.Dsl
         public int[] EventParamCounts = Array.Empty<int>();
         /// <summary>Per event: its declared param types, declaration order (raise-arg type checks).</summary>
         public DslValueType[][] EventParamTypes = Array.Empty<DslValueType[]>();
+        /// <summary>Story 7.9 — per event (registry order): the declared allowed-raiser faction slots (empty ⇒
+        /// system-only). Precomputed for O(1) RUNTIME raiser authorization of a button-originated raise on the
+        /// lockstep bus (<c>ScenarioDirector.TryEnqueueExternalDslEvent</c>) — the load-time mirror of 7.5's
+        /// authored <c>raise_event.raiser</c> membership, at the new runtime seam.</summary>
+        public int[][] EventAllowedRaisers = Array.Empty<int[]>();
 
         /// <summary>Per exec (parallel to the execs list analyzed): the subscribed custom event index (−1 none).</summary>
         public int[] SubscribedEvent = Array.Empty<int>();
@@ -213,9 +218,10 @@ namespace ProjectChimera.Dsl
 
             var result = new EventDispatchPlan();
             int eventCount = declaredEvents?.Count ?? 0;
-            result.EventNames       = new string[eventCount];
-            result.EventParamCounts = new int[eventCount];
-            result.EventParamTypes  = new DslValueType[eventCount][];
+            result.EventNames         = new string[eventCount];
+            result.EventParamCounts   = new int[eventCount];
+            result.EventParamTypes    = new DslValueType[eventCount][];
+            result.EventAllowedRaisers = new int[eventCount][];
             var indexByName = new Dictionary<string, int>(StringComparer.Ordinal);
             var paramMaps   = new IReadOnlyDictionary<string, (int Slot, DslValueType Type)>[eventCount];
             for (int i = 0; i < eventCount; i++)
@@ -227,6 +233,7 @@ namespace ProjectChimera.Dsl
                 var types = new DslValueType[ps.Length];
                 for (int p = 0; p < ps.Length; p++) types[p] = ps[p].Type;
                 result.EventParamTypes[i]  = types;
+                result.EventAllowedRaisers[i] = ev.AllowedRaisers ?? Array.Empty<int>(); // Story 7.9 — runtime auth lookup
                 indexByName[ev.Name]       = i;
                 paramMaps[i]               = ParamMapOf(ev);
             }
