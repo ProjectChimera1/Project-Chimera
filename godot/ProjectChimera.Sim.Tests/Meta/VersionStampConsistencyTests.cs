@@ -45,6 +45,13 @@ namespace ProjectChimera.Sim.Tests.Meta
         //    same commit as the source change — that edit is the "did the siblings + goldens move too?" checkpoint.
 
         /// <summary>Runtime desync-checksum algorithm version. Bump ⇒ re-baseline ALL goldens (same commit).
+        /// v20 (Story 7.12): first-ever fold of the AllianceStore — the sim-owned per-faction team-id mask that
+        /// generalizes win resolution to N-faction, team-aware last-team-standing. One team-id Mix per ACTIVE faction
+        /// (ascending), immediately AFTER the WinStateStore block and before SimRng. Every existing golden is FFA
+        /// (team id == slot index, the only populated state in 1.0 — lobby team wiring is Story 9.15), so the fold
+        /// adds one Mix((int)f) per active faction and moves the hash even with the default mask (a null store folds
+        /// byte-identically to default FFA). The preset PARAMS already fold into the CanonicalModelHash handshake
+        /// (v12, unchanged this story). The ONE scheduled re-baseline of ALL per-tick goldens.
         /// v19 (Story 7.11): first-ever fold of the WinStateStore — the sim-layer win-condition runtime state (the
         /// scalar MatchTicks grace/elapsed counter, then per ACTIVE faction KothHoldTicks / SurvivalRemaining /
         /// Verdict, AFTER the DslEventQueue fold and before SimRng). Win evaluation moved out of presentation into the
@@ -76,7 +83,7 @@ namespace ProjectChimera.Sim.Tests.Meta
         /// (D-1). v8 (Story 2.6): folded per-entity EffectiveArmor (the buffable armor stat). v7 (Story 2.4a): folded
         /// per-entity AbilityCooldownTicks (count-driven). v6 (Story 2.2b): Effective* / Energy / StatusFlagsOf +
         /// the ModifierStore instance state.</summary>
-        private const int ExpectedSimChecksumAlgoVersion = 19;
+        private const int ExpectedSimChecksumAlgoVersion = 20;
 
         /// <summary>Load-time canonical start-state hash algorithm version (lobby handshake value).
         /// v3 (Story 2.9b follow-up): folded ScenarioPlayerSlot.StartCrystal (sim-affecting per-slot start-state).

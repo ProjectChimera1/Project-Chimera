@@ -117,6 +117,11 @@ namespace ProjectChimera.Core.Sim
         /// the per-tick <see cref="SimChecksum"/> (v19). Cleared on <see cref="ClearForReset"/>; re-seeded by the
         /// applier's <c>WinConditionSystem.Configure</c>.</summary>
         public WinStateStore WinState { get; }
+        /// <summary>Story 7.12 — the sim-owned per-faction team-id alliance mask (default FFA / teams-of-1). Read by
+        /// <see cref="WinCon"/> for team-aware N-faction resolution; folded into the per-tick <see cref="SimChecksum"/>
+        /// (v20). Cleared (restored to FFA) on <see cref="ClearForReset"/>. Populated from the lobby by Story 9.15;
+        /// this story owns the model + the FFA default only.</summary>
+        public AllianceStore Alliances { get; }
         /// <summary>Story 7.11 — the sim-layer win-condition evaluator. Registered AFTER <c>AiOpponentSystem</c> and
         /// immediately BEFORE <see cref="ScenarioDirector"/>. Configured at scenario-apply from the applied
         /// <c>ScenarioData</c> (built-in enum or a T1 preset). Presentation polls <see cref="WinState"/> for the
@@ -185,7 +190,8 @@ namespace ProjectChimera.Core.Sim
             Readback         = new DslVarReadback();  // Story 7.8 — presentation read rail (version-stamped copy of Vars); NOT folded into SimChecksum
             DslEvents        = new DslEventQueue();   // Story 7.5 — pending next-tick custom events; folded into SimChecksum (v18)
             WinState         = new WinStateStore();    // Story 7.11 — win-condition runtime state; folded into SimChecksum (v19)
-            WinCon           = new WinConditionSystem(WinState, Buildings, checksumFactions); // Story 7.11 — sim-layer win evaluator
+            Alliances        = new AllianceStore();     // Story 7.12 — per-faction team-id mask (default FFA); folded into SimChecksum (v20)
+            WinCon           = new WinConditionSystem(WinState, Buildings, checksumFactions, Alliances); // Story 7.11/7.12 — team-aware sim-layer win evaluator
             ScenarioDirector = new ScenarioDirector(Buildings, Resources, Vars, LoopState, DslEvents);
             ScenarioDirector.SetReadback(Readback);   // Story 7.8 — the director publishes into it once per tick at the tick boundary
 
@@ -280,7 +286,7 @@ namespace ProjectChimera.Core.Sim
             };
 
             _loop = new SimulationLoop(World, _systems);
-            _loop.EnableChecksums(Buildings, Resources, checksumFactions, Modifiers, Heroes, Items, Nodes, Research, Vars, LoopState, DslEvents, WinState); // fold modifier state (v6) + ability cooldowns (v7) + mutable HeroStore (v11) + ItemStore/inventory (v12) + ResourceNodeStore (v13) + ResearchStore (v14) + DslVarTable (v16) + DslLoopState (v17) + DslEventQueue (v18) + WinStateStore (v19)
+            _loop.EnableChecksums(Buildings, Resources, checksumFactions, Modifiers, Heroes, Items, Nodes, Research, Vars, LoopState, DslEvents, WinState, Alliances); // fold modifier state (v6) + ability cooldowns (v7) + mutable HeroStore (v11) + ItemStore/inventory (v12) + ResourceNodeStore (v13) + ResearchStore (v14) + DslVarTable (v16) + DslLoopState (v17) + DslEventQueue (v18) + WinStateStore (v19) + AllianceStore (v20)
 
             // The sim spine's only host-side log in 1.8a: a one-shot construction diagnostic through the
             // injected seam. NullLogSink no-ops it (tests/server → zero effect on the golden); GodotLogSink
@@ -318,6 +324,7 @@ namespace ProjectChimera.Core.Sim
             Readback.Clear();       // Story 7.8 — presentation read rail (unfolded); bulk-empty so a re-apply re-inits declarations non-additively
             DslEvents.Clear();      // Story 7.5 — folded next-tick event queue; empty so a re-apply starts with no pending feedback
             WinState.Clear();       // Story 7.11 — folded win-condition state; empty so a re-apply re-seeds counters/verdict non-additively
+            Alliances.Clear();      // Story 7.12 — folded team-id mask; restore FFA so a re-apply starts from the default (9.15 re-seeds teams)
             WinCon.ResetConfig();   // Review P10 — the win-condition APPLY-TIME config lives outside every store; a Clear
                                     // without a re-Configure must not leave a stale preset pointed at zeroed counters
                                     // (e.g. _preset=TimedSurvival + SurvivalRemaining=0 → instant false win next tick)

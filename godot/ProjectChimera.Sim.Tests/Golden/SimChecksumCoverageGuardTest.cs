@@ -109,23 +109,23 @@ namespace ProjectChimera.Sim.Tests.Golden
         /// hash still moves.)
         /// </summary>
         [Fact]
-        public void KnownWorldState_ProducesPinnedV19Hash()
+        public void KnownWorldState_ProducesPinnedV20Hash()
         {
-            // Algorithm version must be exactly 19 (Story 7.11's WinStateStore fold at v19, on top of 7.5's
-            // DslEventQueue fold at v18). If this fails, the const below is stale.
-            Assert.Equal(19, SimChecksum.AlgoVersion);
+            // Algorithm version must be exactly 20 (Story 7.12's AllianceStore fold at v20, on top of 7.11's
+            // WinStateStore fold at v19). If this fails, the const below is stale.
+            Assert.Equal(20, SimChecksum.AlgoVersion);
 
             uint actual = ComputeKnownStateHash();
 
-            // ── Pinned v19 hash for the fixed world built by ComputeKnownStateHash() ──────────────────────────
+            // ── Pinned v20 hash for the fixed world built by ComputeKnownStateHash() ──────────────────────────
             // An intentional SimChecksum algorithm change must update this value AND bump SimChecksum.AlgoVersion.
-            // The known-state world passes an EMPTY WinStateStore, so the v19 fold moves the hash from v18 purely by
-            // the added Mix(0) MatchTicks + the per-active-faction Mix(0) triples — Story 7.11's named, recorded
-            // WinStateStore-fold re-baseline (there is NO CHIMERA_GOLDEN_RECORD hook for this hand pin).
-            const uint ExpectedV19Hash = 0x48FB4D02; // re-pinned at v19 (7.11 WinStateStore fold) from this test's failure message
-            Assert.True(actual == ExpectedV19Hash,
-                $"Known-state v19 checksum changed: expected 0x{ExpectedV19Hash:X8}, actual 0x{actual:X8}. " +
-                $"If this is an INTENTIONAL algorithm change, re-pin ExpectedV19Hash to 0x{actual:X8} and bump " +
+            // The known-state world passes a NULL AllianceStore, so the v20 fold moves the hash from v19 purely by the
+            // added Mix((int)f) per active faction (a null store ≡ default FFA, team id == slot index) — Story 7.12's
+            // named, recorded AllianceStore-fold re-baseline (there is NO CHIMERA_GOLDEN_RECORD hook for this hand pin).
+            const uint ExpectedV20Hash = 0x1A47DE11; // re-pinned at v20 (7.12 AllianceStore fold) from this test's failure message
+            Assert.True(actual == ExpectedV20Hash,
+                $"Known-state v20 checksum changed: expected 0x{ExpectedV20Hash:X8}, actual 0x{actual:X8}. " +
+                $"If this is an INTENTIONAL algorithm change, re-pin ExpectedV20Hash to 0x{actual:X8} and bump " +
                 $"SimChecksum.AlgoVersion. If not, you broke the deterministic checksum — investigate.");
         }
 
@@ -357,6 +357,59 @@ namespace ProjectChimera.Sim.Tests.Golden
 
             // ── v19 (Story 7.11): the mutable WinStateStore is folded (first-ever fold of this store) ──
             AssertWinStateStoreFoldedIntoChecksum(registry);
+
+            // ── v20 (Story 7.12): the AllianceStore team-id mask is folded (first-ever fold of this store) ──
+            AssertAllianceStoreFoldedIntoChecksum(registry);
+        }
+
+        /// <summary>
+        /// Story 7.12 (v20) coverage teeth: the <see cref="AllianceStore"/> team-id mask must move the checksum — the
+        /// FIRST-EVER fold of this store. A changed team id on Player1 AND independently on Player2 each move the hash
+        /// (a fold reading only one slot, or ignoring the store, would hide a team divergence — and a peer with a
+        /// different mask resolves last-team-standing victory differently, so it MUST desync detectably). Also proves
+        /// the null≡default-FFA interchangeability promise (a null store folds byte-identically to a default mask,
+        /// where team id == slot index — the DslEventQueue/WinStateStore null≡empty pattern applied to FFA).
+        /// </summary>
+        private static void AssertAllianceStoreFoldedIntoChecksum(FactionRegistry registry)
+        {
+            var world     = new EntityWorld();          // empty — isolates the store contribution
+            var resources = new ResourceStore(Fixed.Zero);
+            var buildings = new BuildingStore();
+
+            // NAMED trailing arg (never positional) — pin the store to its parameter by NAME, immune to the next widening.
+            static uint Hash(EntityWorld w, BuildingStore b, ResourceStore r, FactionRegistry reg, AllianceStore? a) =>
+                SimChecksum.Compute(w, b, r, reg, alliances: a);
+
+            var store = new AllianceStore();
+            uint ffa = Hash(world, buildings, resources, registry, store);
+
+            // Ally Player1 with Player2 (put both on team id == Player1's slot) — a changed Player2 team id moves the hash.
+            var allied = new AllianceStore();
+            allied.TeamId[(int)Faction.Player2] = (int)Faction.Player1;
+            Assert.True(ffa != Hash(world, buildings, resources, registry, allied),
+                "A changed Player2 team id did not move the checksum — the v20 AllianceStore fold is missing (or reads only one slot).");
+
+            // A changed Player1 team id (independently) also moves the hash — proves the fold isn't Player2-only.
+            var allied2 = new AllianceStore();
+            allied2.TeamId[(int)Faction.Player1] = 3;
+            Assert.True(ffa != Hash(world, buildings, resources, registry, allied2),
+                "A changed Player1 team id did not move the checksum — the v20 fold reads only one faction slot.");
+
+            // Null ≡ default FFA: a null AllianceStore folds byte-identically to a freshly-constructed (FFA) one.
+            Assert.True(Hash(world, buildings, resources, registry, new AllianceStore())
+                     == Hash(world, buildings, resources, registry, null),
+                "A null AllianceStore does NOT fold byte-identically to a default-FFA store (v20 null≡FFA promise broken).");
+
+            // AreAllied semantics teeth: FFA = no two distinct factions allied; a shared team id makes them allied;
+            // a faction is always allied with itself. (Pure API — no checksum move, but the mask's meaning is load-bearing.)
+            Assert.True(store.AreAllied(Faction.Player1, Faction.Player1), "A faction must be allied with itself.");
+            Assert.False(store.AreAllied(Faction.Player1, Faction.Player2), "FFA default: distinct factions are NOT allied.");
+            Assert.True(allied.AreAllied(Faction.Player1, Faction.Player2), "A shared team id must make two factions allied.");
+
+            // Clear() restores FFA.
+            allied.Clear();
+            Assert.True(ffa == Hash(world, buildings, resources, registry, allied),
+                "AllianceStore.Clear() did not restore the default-FFA fold shape.");
         }
 
         /// <summary>

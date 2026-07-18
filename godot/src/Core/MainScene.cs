@@ -108,6 +108,11 @@ namespace ProjectChimera.Core
         // WinConditionPanel / GameOverOverlay moved to SceneContext (Story 1.8c WinCondition / GameOver phases).
         private bool           _gameOver          = false;
         private int            _playFrames        = 0;
+        // Story 7.12 — per-player elimination: set once when the LOCAL faction latches VERDICT_LOST while the match is
+        // still unresolved. Flips to the RevealAll spectator view + a non-terminal defeat banner; the match keeps
+        // ticking until fully resolved (then ShowGameOver fires). Reset by ResetMatchOnReturnToEdit.
+        private bool           _localEliminated   = false;
+        private Label?         _defeatBanner;
 
         // ── Trigger system ────────────────────────────────────────────────────
 
@@ -745,19 +750,34 @@ namespace ProjectChimera.Core
                     _matchStartMs = Time.GetTicksMsec();
                 _playFrames++;
 
-                // Story 7.11: win evaluation now lives in the deterministic sim-layer WinConditionSystem (the grace
-                // period is a tick count there, not this frame count). Presentation merely CONSUMES the verdict —
-                // it holds no win math. Poll the folded WinStateStore for the winning faction (Faction.Player1==1
-                // aligns with the existing 1-based overlay arg, no adapter math); the enclosing !_gameOver guard
-                // makes ShowGameOver fire exactly once. The ScenarioDirector OnVictory escape hatch still works too.
+                // Story 7.11/7.12: win evaluation lives in the deterministic sim-layer WinConditionSystem (the grace
+                // period is a tick count there, not this frame count). Presentation merely CONSUMES verdicts — it
+                // holds NO win math. Story 7.12 makes elimination per-player: a locally-eliminated player flips to the
+                // RevealAll spectator view with a non-terminal defeat banner and KEEPS ticking; only when the match is
+                // FULLY resolved (a team won, or the no-victor form) does ShowGameOver fire once. Faction.Player1==1
+                // aligns with the 1-based overlay arg (no adapter math). The ScenarioDirector OnVictory escape hatch
+                // still works too.
                 int winnerFaction = _host.WinState.WinnerFaction();
                 if (winnerFaction != 0)
+                {
                     ShowGameOver(winnerFaction);
-                else if (_host.WinState.SoleLoserFaction() != 0)
-                    // Review P1 — a LOST-only outcome: in a single-active-faction match a preset loss latches
-                    // only VERDICT_LOST (there is no distinct other faction to latch WON), yet the match is over.
-                    // 0 = "no victor" → ShowGameOver renders its defeat/match-over form.
+                }
+                else if (_host.WinCon.IsFullyResolved())
+                {
+                    // Every active faction is latched but no team WON (a lone team wiped itself out): the no-victor
+                    // match-over form. 0 = "no victor" → ShowGameOver renders its defeat/match-over form.
                     ShowGameOver(0);
+                }
+                else
+                {
+                    // Match continues. If the LOCAL player has latched VERDICT_LOST, switch to the spectator reveal +
+                    // a non-terminal defeat banner and keep watching until the match fully resolves. LocalFaction is
+                    // Player1 offline (LockstepManager default).
+                    Faction local = _ctx.Lockstep.LocalFaction;
+                    if (!_localEliminated && local != Faction.Neutral
+                        && _host.WinState.Verdict[(int)local] == WinStateStore.VERDICT_LOST)
+                        OnLocalPlayerEliminated();
+                }
             }
             else if (_ctx.GameState.Mode == GameMode.Edit)
             {
@@ -1301,6 +1321,11 @@ namespace ProjectChimera.Core
         {
             _gameOver = true;
 
+            // Story 7.12 — the match has now FULLY resolved, so hide the non-terminal "DEFEATED — spectating until the
+            // match ends" banner: the terminal game-over overlay replaces it (otherwise the banner's "until the match
+            // ends" promise would contradict the overlay and linger until the return to Edit).
+            if (_defeatBanner != null) _defeatBanner.Visible = false;
+
             // Notify chat before closing it.
             _ctx.ChatOverlay.AddSystemMessage(winnerPlayer > 0 ? $"Player {winnerPlayer} wins! GG" : "Match over — defeat. GG");
 
@@ -1812,8 +1837,10 @@ namespace ProjectChimera.Core
             _ctx.ReplayPlayer = null;
             if (_ctx.ReplayStatusLabel != null) _ctx.ReplayStatusLabel.Visible = false;
 
-            // Reset spectator fog reveal.
+            // Reset spectator fog reveal + the Story 7.12 per-player defeat banner.
             if (_ctx.FogBridge != null) _ctx.FogBridge.RevealAll = false;
+            _localEliminated = false;
+            if (_defeatBanner != null) _defeatBanner.Visible = false;
 
             // Close chat overlay and tear down lockstep subscription.
             _ctx.ChatOverlay.Close();
@@ -1828,6 +1855,43 @@ namespace ProjectChimera.Core
         // lives in the deterministic sim-layer WinConditionSystem (server-checkable, byte-identical across peers);
         // presentation only reads the folded WinStateStore verdict in _Process (see there) to drive ShowGameOver.
         // MainScene holds NO win math.
+
+        /// <summary>
+        /// Story 7.12 — the LOCAL player has latched <see cref="WinStateStore.VERDICT_LOST"/> but the match is not yet
+        /// fully resolved: flip to the existing RevealAll spectator view (mirroring the spectator pattern in
+        /// <c>MatchLifecycleController</c> and <c>ResetMatchOnReturnToEdit</c>) and show a NON-terminal defeat banner.
+        /// The sim keeps ticking (this is not <c>_gameOver</c>); only full resolution fires <see cref="ShowGameOver"/>.
+        /// Idempotent — guarded by <c>_localEliminated</c> so it runs once per match.
+        /// </summary>
+        private void OnLocalPlayerEliminated()
+        {
+            _localEliminated = true;
+
+            // Reveal the whole map so the eliminated player keeps watching (the existing spectator reveal toggle).
+            if (_ctx.FogBridge != null) _ctx.FogBridge.RevealAll = true;
+
+            // A persistent, non-terminal top-of-screen banner (distinct from the terminal game-over overlay). Created
+            // lazily on the HUD canvas so it survives across matches; ResetMatchOnReturnToEdit hides it.
+            if (_defeatBanner == null)
+            {
+                _defeatBanner = new Label
+                {
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                    VerticalAlignment   = VerticalAlignment.Center,
+                    Text                = "DEFEATED — spectating until the match ends",
+                };
+                _defeatBanner.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.TopWide);
+                _defeatBanner.OffsetTop    = 24;
+                _defeatBanner.OffsetBottom = 68;
+                _defeatBanner.AddThemeFontSizeOverride("font_size", 28);
+                _defeatBanner.AddThemeColorOverride("font_color", new Color(0.9f, 0.25f, 0.25f));
+                _ctx.UiCanvas.AddChild(_defeatBanner);
+            }
+            _defeatBanner.Visible = true;
+
+            _ctx.ChatOverlay?.AddSystemMessage("You were eliminated — spectating until the match ends.");
+            GD.Print("[WinCondition] Local player eliminated — spectating (RevealAll) until the match resolves.");
+        }
 
         // ── Utilities ─────────────────────────────────────────────────────────────
 

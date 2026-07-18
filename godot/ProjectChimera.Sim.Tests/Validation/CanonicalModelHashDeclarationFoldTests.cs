@@ -150,7 +150,7 @@ namespace ProjectChimera.Sim.Tests.Validation
             Assert.Equal(StartStateHash.Compute(a, heroes), StartStateHash.Compute(b, heroes));
 
             Assert.Equal(12, CanonicalModelHash.AlgoVersion);
-            Assert.Equal(19, SimChecksum.AlgoVersion);
+            Assert.Equal(20, SimChecksum.AlgoVersion);
             Assert.Equal(2, StartStateHash.AlgoVersion);
         }
 

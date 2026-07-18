@@ -219,8 +219,19 @@ namespace ProjectChimera.Core
         ///        existing golden carries a fresh store whose MatchTicks advances deterministically and whose
         ///        per-faction fields stay 0 for the replay window, so the fold moves the hash — the story's ONE
         ///        scheduled, behavior-neutral re-baseline of ALL per-tick goldens. All ints → cross-platform safe.
+        ///   v20 — Story 7.12: fold the new <see cref="AllianceStore"/> — the sim-owned per-faction team-id mask that
+        ///        generalizes win resolution to N-faction, team-aware last-team-standing — for the FIRST TIME. Folds
+        ///        immediately AFTER the WinStateStore block and BEFORE the RNG fold (SimRng stays last, the standing
+        ///        precedent): one team-id Mix per ACTIVE faction (ascending — the ResourceStore/WinStateStore
+        ///        ActiveFactions iteration, NEVER a raw 0-4 stride). A peer with a different team assignment resolves
+        ///        victory differently (last-team-standing depends on who is allied with whom), so the mask must desync
+        ///        detectably even though it is static within a match. A null store folds byte-identically to a
+        ///        default-FFA store (Mix((int)f) per active faction — FFA is team id == slot index). Every existing
+        ///        golden is FFA (the ONLY populated state in 1.0 — lobby team wiring is Story 9.15), so the fold adds
+        ///        one Mix((int)f) per active faction and moves the hash even with the default mask — the story's ONE
+        ///        scheduled, behavior-neutral re-baseline of ALL per-tick goldens. All ints → cross-platform safe.
         /// </summary>
-        public const int AlgoVersion = 19;
+        public const int AlgoVersion = 20;
 
         /// <summary>
         /// Compute a full-state checksum for desync detection.
@@ -230,7 +241,8 @@ namespace ProjectChimera.Core
                                    FactionRegistry factions, ModifierStore? modifiers = null, HeroStore? heroes = null,
                                    ItemStore? items = null, ResourceNodeStore? nodes = null, ResearchStore? research = null,
                                    DslVarTable? vars = null, DslLoopState? loopState = null,
-                                   DslEventQueue? dslEvents = null, WinStateStore? winState = null)
+                                   DslEventQueue? dslEvents = null, WinStateStore? winState = null,
+                                   AllianceStore? alliances = null)
         {
             // Contract guard for the registry param added in Story 1.3a: a future direct caller (e.g. the
             // 1.9a/9.1 server checksum collector) gets a clear error instead of an opaque NRE in the Ore loop.
@@ -591,6 +603,25 @@ namespace ProjectChimera.Core
                     hash = Mix(hash, 0);
                     hash = Mix(hash, 0);
                 }
+            }
+
+            // ── AllianceStore team-id mask (v20, Story 7.12) — the sim-owned per-faction team assignment, folded
+            // immediately AFTER the WinStateStore block and BEFORE the RNG fold (SimRng stays last, the standing
+            // precedent). One team-id Mix per ACTIVE faction (ascending — the ResourceStore/WinStateStore
+            // ActiveFactions iteration, NOT a raw 0-4 stride). The mask is static within a match but a peer with a
+            // DIFFERENT team assignment resolves last-team-standing victory differently, so a divergent mask must
+            // desync detectably. A null store folds byte-identically to a default-FFA store: FFA is team id == slot
+            // index, so a null store folds Mix((int)f) per active faction — exactly what a default AllianceStore
+            // yields. All int → cross-platform safe.
+            if (alliances != null)
+            {
+                foreach (Faction f in factions.ActiveFactions)
+                    hash = Mix(hash, alliances.TeamOf(f));
+            }
+            else
+            {
+                foreach (Faction f in factions.ActiveFactions)
+                    hash = Mix(hash, (int)f); // null store ≡ default FFA (team id == slot index)
             }
 
             // ── RNG state (v3, Story 1.5) ─────────────────────────────────────────

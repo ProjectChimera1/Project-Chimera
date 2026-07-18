@@ -275,6 +275,11 @@ namespace ProjectChimera.Sim.Tests.Sim
             host.WinState.Verdict[(int)Faction.Player1]           = WinStateStore.VERDICT_WON;
             host.WinState.Verdict[(int)Faction.Player2]           = WinStateStore.VERDICT_LOST;
 
+            // Story 7.12: dirty the v20-folded AllianceStore team mask (ally P2 onto P1's team) so a dropped
+            // Alliances.Clear() in ClearForReset would leave a stale team assignment (reset != fresh boot); the
+            // FFA-restore must wipe it back so the next match starts teams-of-1.
+            host.Alliances.TeamId[(int)Faction.Player2] = (int)Faction.Player1;
+
             host.ClearForReset();
 
             // A newly-constructed host (NOT applied) is the byte-for-byte reference.
@@ -358,6 +363,9 @@ namespace ProjectChimera.Sim.Tests.Sim
             Assert.Equal(fresh.WinState.SurvivalRemaining, host.WinState.SurvivalRemaining);
             Assert.Equal(fresh.WinState.Verdict,           host.WinState.Verdict);
             Assert.False(host.WinState.IsResolved());
+            // Story 7.12: the v20-folded AllianceStore team mask resets to fresh FFA (teeth for the Alliances.Clear()
+            // call in ClearForReset — see the direct dirtying above).
+            Assert.Equal(fresh.Alliances.TeamId, host.Alliances.TeamId);
             // The private _elevationGrid also reset: a fresh spawn on the cleared world samples the null grid ⇒
             // Fixed.Zero. A leaked grid (FromInt(3) above) would make this probe non-zero. (Done last — it mutates the world.)
             int probe = host.World.Create(FixedVec3.Zero, Faction.Player1, Fixed.FromInt(1), Fixed.FromInt(1));
@@ -572,7 +580,7 @@ namespace ProjectChimera.Sim.Tests.Sim
         [Fact]
         public void HashAlgoVersions_AreUnchanged()
         {
-            Assert.Equal(19, SimChecksum.AlgoVersion);   // v17 = Story 7.6 arrays + DslLoopState (loops/fuel) fold; v18 = Story 7.5 DslEventQueue fold (landed via merge)
+            Assert.Equal(20, SimChecksum.AlgoVersion);   // v17 = Story 7.6 arrays + DslLoopState (loops/fuel) fold; v18 = Story 7.5 DslEventQueue fold (landed via merge)
             Assert.Equal(12, CanonicalModelHash.AlgoVersion); // v9 = Story 7.8 custom-UI fold; v10 = Story 7.5 custom-event registry fold (merge); v11 = Story 7.9 Button fold
             Assert.Equal(2, StartStateHash.AlgoVersion);
         }
