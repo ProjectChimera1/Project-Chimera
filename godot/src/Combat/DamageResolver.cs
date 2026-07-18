@@ -29,9 +29,14 @@ namespace ProjectChimera.Combat
         /// killer-attribution SoA for the <c>unit_dies</c> event payload.</summary>
         public readonly int AttackerId;
 
+        /// <summary>Story 7.13: optional transient sim-event feed. On any hit, <see cref="DamageResolver.Apply"/>
+        /// raises a <c>unit_damaged</c> occurrence here (victim / attacker / amount) for the trigger DSL. Null in bare
+        /// combat tests / non-DSL call sites (no event is raised).</summary>
+        public readonly DslSimEventFeed? DslSimEvents;
+
         public DamageContext(EntityWorld world, int targetId, ArmorType targetArmor, Faction killer,
                              DamageTable table, CombatEventQueue? events, MatchStats? stats, DeathFeed? deaths = null,
-                             int attackerId = -1)
+                             int attackerId = -1, DslSimEventFeed? dslSimEvents = null)
         {
             World = world;
             TargetId = targetId;
@@ -42,6 +47,7 @@ namespace ProjectChimera.Combat
             Stats = stats;
             Deaths = deaths;
             AttackerId = attackerId;
+            DslSimEvents = dslSimEvents;
         }
     }
 
@@ -78,6 +84,11 @@ namespace ProjectChimera.Combat
             // Story 2.9a: the matrix+floor math is now the shared DamageTable.FinalDamage helper (building damage reuses it).
             Fixed damage = ctx.Table.FinalDamage(amount, type, ctx.TargetArmor, world.EffectiveArmor[t]);
             world.Health[t] = world.Health[t] - damage;
+            // Story 7.13 — raise unit_damaged at the single damage-application site (victim / attacker / amount),
+            // deterministically into the trigger DSL sim-event feed (fires even if this hit is lethal — the death
+            // sequence below then also raises unit_dies). Null feed (bare combat tests) → no-op.
+            ctx.DslSimEvents?.Push(DslSimEventFeed.KindUnitDamaged,
+                (int)world.FactionOf[t] - 1, t, ctx.AttackerId, damage.ToInt());
             if (world.Health[t] <= Fixed.Zero)
             {
                 KillEntity(world, t, ctx.Killer, ctx.Events, ctx.Stats, ctx.Deaths, ctx.AttackerId);

@@ -122,6 +122,16 @@ namespace ProjectChimera.Core.Sim
         /// (v20). Cleared (restored to FFA) on <see cref="ClearForReset"/>. Populated from the lobby by Story 9.15;
         /// this story owns the model + the FFA default only.</summary>
         public AllianceStore Alliances { get; }
+        /// <summary>Story 7.13 — the per-exec trigger-enabled runtime mask (enable_trigger/disable_trigger flip a
+        /// target trigger's enabled flag mid-match). STABLE reference constructed once here and shared BY REFERENCE
+        /// with <see cref="ScenarioDirector"/> (the writer) and the checksum wiring — NEVER reallocated per
+        /// LoadScenario. Folded into the per-tick <see cref="SimChecksum"/> (v21); cleared on <see cref="ClearForReset"/>.</summary>
+        public TriggerEnabledStore TriggerEnabled { get; }
+        /// <summary>Story 7.13 — the host-owned TRANSIENT sim-event feed (unit_damaged/unit_trained/ability_cast/
+        /// hero_level). The producing systems push at their tick-boundary sites; <see cref="ScenarioDirector"/> drains
+        /// it each tick into its base-event buffer and clears it. NOT folded (empty at the checksum boundary, the
+        /// DeathFeed posture). Cleared on <see cref="ClearForReset"/>.</summary>
+        public DslSimEventFeed DslSimEvents { get; }
         /// <summary>Story 7.11 — the sim-layer win-condition evaluator. Registered AFTER <c>AiOpponentSystem</c> and
         /// immediately BEFORE <see cref="ScenarioDirector"/>. Configured at scenario-apply from the applied
         /// <c>ScenarioData</c> (built-in enum or a T1 preset). Presentation polls <see cref="WinState"/> for the
@@ -191,8 +201,10 @@ namespace ProjectChimera.Core.Sim
             DslEvents        = new DslEventQueue();   // Story 7.5 — pending next-tick custom events; folded into SimChecksum (v18)
             WinState         = new WinStateStore();    // Story 7.11 — win-condition runtime state; folded into SimChecksum (v19)
             Alliances        = new AllianceStore();     // Story 7.12 — per-faction team-id mask (default FFA); folded into SimChecksum (v20)
+            TriggerEnabled   = new TriggerEnabledStore(); // Story 7.13 — per-exec trigger-enabled mask; folded into SimChecksum (v21); STABLE reference
+            DslSimEvents     = new DslSimEventFeed();      // Story 7.13 — transient sim-event feed (unit_damaged/unit_trained/ability_cast/hero_level); NOT folded
             WinCon           = new WinConditionSystem(WinState, Buildings, checksumFactions, Alliances); // Story 7.11/7.12 — team-aware sim-layer win evaluator
-            ScenarioDirector = new ScenarioDirector(Buildings, Resources, Vars, LoopState, DslEvents);
+            ScenarioDirector = new ScenarioDirector(Buildings, Resources, Vars, LoopState, DslEvents, TriggerEnabled, DslSimEvents);
             ScenarioDirector.SetReadback(Readback);   // Story 7.8 — the director publishes into it once per tick at the tick boundary
 
             // AR-9 effective-stat recompute (Story 2.2a), the Story 2.2b ModifierStore it drives, and the Story 2.4a
@@ -285,8 +297,18 @@ namespace ProjectChimera.Core.Sim
                 ScenarioDirector,                                                         // [15] ScenarioDirector — runs LAST
             };
 
+            // ── Story 7.13 — wire the transient sim-event feed to its four PRODUCERS (all tick before the director,
+            //    index 15). Setters (not ctor params) keep the systems' construction signatures untouched (no test/
+            //    golden churn). CombatSystem [7] / ProjectileSystem [8] / HeroXpSystem [9] are retrieved from the
+            //    fixed-order array (SystemOrderTest pins the indices); the two field-held systems wire directly. ──
+            BuildSys.SetDslSimEvents(DslSimEvents);
+            abilitySys.SetDslSimEvents(DslSimEvents);
+            ((CombatSystem)_systems[7]).SetDslSimEvents(DslSimEvents);
+            ((ProjectileSystem)_systems[8]).SetDslSimEvents(DslSimEvents);
+            ((HeroXpSystem)_systems[9]).SetDslSimEvents(DslSimEvents);
+
             _loop = new SimulationLoop(World, _systems);
-            _loop.EnableChecksums(Buildings, Resources, checksumFactions, Modifiers, Heroes, Items, Nodes, Research, Vars, LoopState, DslEvents, WinState, Alliances); // fold modifier state (v6) + ability cooldowns (v7) + mutable HeroStore (v11) + ItemStore/inventory (v12) + ResourceNodeStore (v13) + ResearchStore (v14) + DslVarTable (v16) + DslLoopState (v17) + DslEventQueue (v18) + WinStateStore (v19) + AllianceStore (v20)
+            _loop.EnableChecksums(Buildings, Resources, checksumFactions, Modifiers, Heroes, Items, Nodes, Research, Vars, LoopState, DslEvents, WinState, Alliances, TriggerEnabled); // fold modifier state (v6) + ability cooldowns (v7) + mutable HeroStore (v11) + ItemStore/inventory (v12) + ResourceNodeStore (v13) + ResearchStore (v14) + DslVarTable (v16) + DslLoopState (v17) + DslEventQueue (v18) + WinStateStore (v19) + AllianceStore (v20) + TriggerEnabledStore (v21)
 
             // The sim spine's only host-side log in 1.8a: a one-shot construction diagnostic through the
             // injected seam. NullLogSink no-ops it (tests/server → zero effect on the golden); GodotLogSink
@@ -325,6 +347,8 @@ namespace ProjectChimera.Core.Sim
             DslEvents.Clear();      // Story 7.5 — folded next-tick event queue; empty so a re-apply starts with no pending feedback
             WinState.Clear();       // Story 7.11 — folded win-condition state; empty so a re-apply re-seeds counters/verdict non-additively
             Alliances.Clear();      // Story 7.12 — folded team-id mask; restore FFA so a re-apply starts from the default (9.15 re-seeds teams)
+            TriggerEnabled.Clear(); // Story 7.13 — folded trigger-enabled mask; empty so a re-apply's LoadScenario re-seeds it non-additively (Count 0 → folds nothing until then)
+            DslSimEvents.Clear();   // Story 7.13 — transient sim-event feed (empty at reset)
             WinCon.ResetConfig();   // Review P10 — the win-condition APPLY-TIME config lives outside every store; a Clear
                                     // without a re-Configure must not leave a stale preset pointed at zeroed counters
                                     // (e.g. _preset=TimedSurvival + SurvivalRemaining=0 → instant false win next tick)

@@ -50,6 +50,12 @@ namespace ProjectChimera.Combat
         // credited). Threaded into every hitscan DamageContext so a lethal instant hit records the victim's death.
         private readonly DeathFeed?        _deaths;
 
+        // Story 7.13 — the trigger-DSL sim-event feed (unit_damaged raised at the damage site via DamageContext).
+        // Wired by SimulationHost after construction (a setter keeps the ctor signature untouched); null ⇒ no raise.
+        private DslSimEventFeed? _dslSimEvents;
+        /// <summary>Story 7.13 — wire the trigger-DSL sim-event feed so hitscan damage raises unit_damaged.</summary>
+        public void SetDslSimEvents(DslSimEventFeed? feed) => _dslSimEvents = feed;
+
         public CombatSystem(ProjectileStore projectiles, CombatEventQueue? events = null, MatchStats? stats = null,
             DamageTable? table = null, AbilityRegistry? registry = null, ModifierStore? modifiers = null,
             BuildingStore? buildings = null, DeathFeed? deaths = null)
@@ -621,7 +627,7 @@ namespace ProjectChimera.Combat
 
                 var ctx = new DamageContext(world, target, world.ArmorTypeOf[target],
                                             world.FactionOf[attacker], _table, _events, _stats, _deaths,
-                                            attackerId: attacker); // Story 7.5 — hitscan knows its attacker
+                                            attackerId: attacker, dslSimEvents: _dslSimEvents); // Story 7.5 attacker; 7.13 unit_damaged feed
                 if (DamageResolver.Apply(in ctx, world.EffectiveAttackDamage[attacker], world.DamageTypeOf[attacker]))
                 {
                     world.AttackTarget[attacker] = -1;

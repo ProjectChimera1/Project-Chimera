@@ -227,14 +227,24 @@ namespace ProjectChimera.Dsl
     }
 
     /// <summary>Story 7.4 — a closed built-in call. <see cref="Fn"/> ∈ <see cref="NodeKinds.ExprCallFns"/>
-    /// ({count, distance, min, max, abs}); arguments wire into ports 0..arity-1.</summary>
+    /// ({count, distance, min, max, abs} plus the Story 7.13 state reads); arguments wire into ports 0..arity-1.</summary>
     public sealed class ExprCallNode : NodeBase
     {
         /// <summary>The closed-registry discriminator this node serializes under.</summary>
         public string Kind => NodeKinds.ExprCall;
 
-        /// <summary>Built-in name ∈ {count, distance, min, max, abs} (membership enforced at parse).</summary>
+        /// <summary>Built-in name ∈ <see cref="NodeKinds.ExprCallFns"/> (membership enforced at parse).</summary>
         public string Fn { get; set; } = "";
+
+        /// <summary>
+        /// Story 7.13 — the OPTIONAL closed-vocabulary SELECTOR of a state-read built-in: the <c>tag</c> of
+        /// <c>unit_count_tag</c>, the <c>category</c> of <c>unit_count_category</c>, the <c>resource</c> of
+        /// <c>player_resource</c>, or the <c>region</c> of <c>region_unit_count</c>. It is a STATIC string-enum
+        /// field (never a data operand edge) resolved to its int id/index at COMPILE (tag/category/resource) or at
+        /// runtime via <c>RegionStore</c> (region) — no string ever enters the tick. Empty on every other built-in
+        /// (a stray selector on a non-selector fn is a located compile reject); omit-when-empty at serialize.
+        /// </summary>
+        public string Selector { get; set; } = "";
     }
 
     /// <summary>
@@ -346,6 +356,143 @@ namespace ProjectChimera.Dsl
         public string Name { get; set; } = "";
     }
 
+    // ── Story 7.13 — the action-LEAF nodes (dedicated classes, graph-channel-only, chaining like an action). They
+    //    carry STATIC typed fields (no data operand edges), so they need no compiled expression programs. order_units
+    //    runs sim-side (reuses OrderApplier); move_camera / cinematic_mode / play_vfx are PRESENTATION-ONLY (director
+    //    delegates, never folded into SimChecksum). All four fail closed in TriggerGraph.ToFlat (no flat form). ──
+
+    /// <summary>
+    /// Story 7.13 — the sim-side <c>order_units</c> action: issue <see cref="Command"/> to every alive unit matching
+    /// the ascending-id selection (<see cref="Faction"/> −1 = any; optional <see cref="RegionId"/> point-in-region),
+    /// via <c>OrderApplier.ApplyActiveOrder</c> — reusing the existing <c>UnitCommand</c> semantics (folds through
+    /// the existing entity/order state, no new checksum fold). <see cref="X"/>/<see cref="Z"/> are the target point
+    /// (Move/AttackMove); ignored for Stop/HoldPosition. An empty selection is a deterministic no-op.
+    /// </summary>
+    public sealed class OrderUnitsNode : NodeBase
+    {
+        /// <summary>The closed-registry discriminator this node serializes under.</summary>
+        public string Kind => NodeKinds.OrderUnits;
+
+        /// <summary>Order command ∈ <see cref="NodeKinds.OrderCommands"/> (move/attack_move/stop/hold_position;
+        /// membership enforced at parse).</summary>
+        public string Command { get; set; } = "";
+
+        /// <summary>Selection faction filter (0-based slot); −1 = any faction.</summary>
+        public int Faction { get; set; } = -1;
+
+        /// <summary>Optional selection region id (null = no region filter); resolved at runtime via RegionStore.</summary>
+        public string? RegionId { get; set; }
+
+        /// <summary>Target point X (16.16 Fixed) for Move/AttackMove; ignored for Stop/HoldPosition.</summary>
+        public Fixed X { get; set; } = Fixed.Zero;
+
+        /// <summary>Target point Z (16.16 Fixed) for Move/AttackMove; ignored for Stop/HoldPosition.</summary>
+        public Fixed Z { get; set; } = Fixed.Zero;
+    }
+
+    /// <summary>Story 7.13 — the PRESENTATION-ONLY <c>move_camera</c> action: pan the camera to the named
+    /// <c>ScenarioCamera</c> (<see cref="CameraName"/>) via a director presentation delegate. Never folded into
+    /// <c>SimChecksum</c>; an unknown camera name is a located reject at load.</summary>
+    public sealed class MoveCameraNode : NodeBase
+    {
+        /// <summary>The closed-registry discriminator this node serializes under.</summary>
+        public string Kind => NodeKinds.MoveCamera;
+
+        /// <summary>The declared <c>ScenarioCamera</c> name to pan to (validated at load).</summary>
+        public string CameraName { get; set; } = "";
+    }
+
+    /// <summary>Story 7.13 — the PRESENTATION-ONLY <c>cinematic_mode</c> action: toggle the cinematic letterbox/UI
+    /// via a director presentation delegate. Never folded into <c>SimChecksum</c>.</summary>
+    public sealed class CinematicModeNode : NodeBase
+    {
+        /// <summary>The closed-registry discriminator this node serializes under.</summary>
+        public string Kind => NodeKinds.CinematicMode;
+
+        /// <summary>True = enter cinematic mode; false = exit.</summary>
+        public bool Enabled { get; set; } = true;
+    }
+
+    /// <summary>Story 7.13 — the PRESENTATION-ONLY <c>play_vfx</c> action: request a one-shot VFX (<see cref="VfxId"/>)
+    /// at point (<see cref="X"/>,<see cref="Z"/>) via a director presentation delegate. Never folded into
+    /// <c>SimChecksum</c>.</summary>
+    public sealed class PlayVfxNode : NodeBase
+    {
+        /// <summary>The closed-registry discriminator this node serializes under.</summary>
+        public string Kind => NodeKinds.PlayVfx;
+
+        /// <summary>The VFX id to play (presentation-resolved; unknown ids are a silent presentation no-op).</summary>
+        public string VfxId { get; set; } = "";
+
+        /// <summary>VFX position X (16.16 Fixed).</summary>
+        public Fixed X { get; set; } = Fixed.Zero;
+
+        /// <summary>VFX position Z (16.16 Fixed).</summary>
+        public Fixed Z { get; set; } = Fixed.Zero;
+    }
+
+    /// <summary>
+    /// Story 7.13 — the <c>random_choice</c> WEIGHTED exec container (graph-channel-only; <see cref="TriggerGraph.ToFlat"/>
+    /// fails closed on it). On fire it evaluates its weighted exec-out branches in ASCENDING port-index order, sums the
+    /// integer <see cref="Weights"/>, draws <c>world.Rng.NextInt(totalWeight)</c> (the SINGLE shared <see cref="Fixed"/>-free
+    /// <c>SimRng</c> stream, folded LAST in <c>SimChecksum</c> — no second stream, no reorder), and selects the branch by
+    /// subtracting down the pre-sorted weight array. Branch k hangs off exec-out port
+    /// <c>TriggerGraph.RandomChoiceBranchOutPort0 + k</c> (k = 0..<see cref="Weights"/>.Length−1); port 0 is the
+    /// continuation (runs after the taken branch, like <see cref="BranchNode"/>). A zero-total-weight or empty
+    /// (<see cref="Weights"/>.Length == 0) <c>random_choice</c> rejects at LOAD.
+    /// </summary>
+    public sealed class RandomChoiceNode : NodeBase
+    {
+        /// <summary>The closed-registry discriminator this node serializes under.</summary>
+        public string Kind => NodeKinds.RandomChoice;
+
+        /// <summary>The per-branch integer weights, parallel to exec-out ports
+        /// <c>RandomChoiceBranchOutPort0 + k</c>. Each ≥ 0, at least one branch, total &gt; 0 (enforced at load).</summary>
+        public int[] Weights { get; set; } = System.Array.Empty<int>();
+    }
+
+    // ── Story 7.13 — the three trigger-control action leaves (dedicated graph-only classes; ToFlat fails closed on
+    //    each, like raise_event). enable_trigger/disable_trigger flip the target trigger's folded runtime enabled
+    //    flag; run_trigger synchronously runs the target's chain, depth-capped. All reference a target by its
+    //    persistent TRIGGER-NODE id (a graph concept — hence no flat form). Self/mutual run cycles reject at load. ──
+
+    /// <summary>Story 7.13 — the <c>enable_trigger</c> action: set the target trigger's runtime enabled flag TRUE
+    /// (folded into <c>SimChecksum</c> v21). <see cref="TargetTriggerId"/> is a persistent <see cref="TriggerNode"/>
+    /// id; an unresolved target rejects at load.</summary>
+    public sealed class EnableTriggerNode : NodeBase
+    {
+        /// <summary>The closed-registry discriminator this node serializes under.</summary>
+        public string Kind => NodeKinds.EnableTrigger;
+
+        /// <summary>The persistent node id of the target <see cref="TriggerNode"/> (validated at load).</summary>
+        public int TargetTriggerId { get; set; } = -1;
+    }
+
+    /// <summary>Story 7.13 — the <c>disable_trigger</c> action: set the target trigger's runtime enabled flag FALSE
+    /// (folded into <c>SimChecksum</c> v21). <see cref="TargetTriggerId"/> is a persistent <see cref="TriggerNode"/>
+    /// id; an unresolved target rejects at load.</summary>
+    public sealed class DisableTriggerNode : NodeBase
+    {
+        /// <summary>The closed-registry discriminator this node serializes under.</summary>
+        public string Kind => NodeKinds.DisableTrigger;
+
+        /// <summary>The persistent node id of the target <see cref="TriggerNode"/> (validated at load).</summary>
+        public int TargetTriggerId { get; set; } = -1;
+    }
+
+    /// <summary>Story 7.13 — the <c>run_trigger</c> action: synchronously execute the target trigger's action chain in
+    /// place, bounded by <c>EventBounds.MaxRunTriggerDepth</c> (a seatbelt halting at the whole-trigger boundary, never
+    /// mid-Sequence). <see cref="TargetTriggerId"/> is a persistent <see cref="TriggerNode"/> id; an unresolved target
+    /// and any self/mutual run cycle reject at load.</summary>
+    public sealed class RunTriggerNode : NodeBase
+    {
+        /// <summary>The closed-registry discriminator this node serializes under.</summary>
+        public string Kind => NodeKinds.RunTrigger;
+
+        /// <summary>The persistent node id of the target <see cref="TriggerNode"/> (validated at load, cycle-checked).</summary>
+        public int TargetTriggerId { get; set; } = -1;
+    }
+
     /// <summary>
     /// The CLOSED <c>kind</c> discriminator registry: the closed ECA vocabulary (event/condition/action type
     /// strings) plus the two structural kinds "trigger" and "run_effect", plus (Story 7.4) the five expression
@@ -394,12 +541,36 @@ namespace ProjectChimera.Dsl
         public const string ExprArrayGet   = "expr_array_get";
         public const string ExprArrayLen   = "expr_array_len";
 
-        public static readonly string[] EventTypes     = { "match_start", "unit_dies", "building_completed", "timer_expires", "resource_threshold", "unit_count_threshold" };
+        // ── Story 7.13 — the four graph-channel-only action-leaf kinds (dedicated node classes; ToFlat fails
+        //    closed on each, like raise_event). order_units is sim-side; the other three are presentation-only. ──
+        public const string OrderUnits    = "order_units";
+        public const string MoveCamera    = "move_camera";
+        public const string CinematicMode = "cinematic_mode";
+        public const string PlayVfx       = "play_vfx";
+
+        // ── Story 7.13 — the weighted exec container + the three trigger-control action leaves (dedicated node
+        //    classes; ToFlat fails closed on each). ──
+        public const string RandomChoice   = "random_choice";
+        public const string EnableTrigger  = "enable_trigger";
+        public const string DisableTrigger = "disable_trigger";
+        public const string RunTrigger     = "run_trigger";
+
+        // Story 7.13 — five NEW built-in event sources APPEND to the flat + graph event vocabularies. Four are
+        // raised deterministically by the sim (unit_damaged/unit_trained/ability_cast/hero_level) at their
+        // tick-boundary sites; player_chat is externally-driven (registered here; its raise wire is a later commit).
+        // Appending to EventTypes is checksum-neutral: no existing scenario subscribes, so CanonicalModelHash moves
+        // only by its version bump. Their typed param schemas live in EventDispatchPlan.BuiltinEventParams.
+        public static readonly string[] EventTypes     =
+        {
+            "match_start", "unit_dies", "building_completed", "timer_expires", "resource_threshold", "unit_count_threshold",
+            "unit_damaged", "unit_trained", "ability_cast", "hero_level", "player_chat",
+        };
         /// <summary>Story 7.5 — the GRAPH event vocabulary: <see cref="EventTypes"/> ∪ {<see cref="CustomEvent"/>}
         /// (the sanctioned graph⊃flat divergence — the flat sets stay frozen; ToFlat fails closed on custom_event).</summary>
         public static readonly string[] GraphEventTypes =
         {
             "match_start", "unit_dies", "building_completed", "timer_expires", "resource_threshold", "unit_count_threshold",
+            "unit_damaged", "unit_trained", "ability_cast", "hero_level", "player_chat",
             CustomEvent,
         };
         public static readonly string[] ConditionTypes = { "always", "building_exists", "resource_comparison", "unit_count", "variable_comparison", "unit_in_region" };
@@ -438,7 +609,62 @@ namespace ProjectChimera.Dsl
         //    op/fn never constructs and never evaluates. ──
         public static readonly string[] ExprUnaryOps  = { "neg", "not" };
         public static readonly string[] ExprBinaryOps = { "add", "sub", "mul", "div", "mod", "gt", "lt", "ge", "le", "eq", "ne", "and", "or" };
-        public static readonly string[] ExprCallFns   = { "count", "distance", "min", "max", "abs" };
+        // Story 7.13 — the state-read built-ins APPEND to the closed fn vocabulary (checksum-neutral: a graph using
+        // none of them folds byte-identically; MixGraphNode already folds Fn). entity_hp/owner/position take an
+        // entity-Int operand; unit_count_tag/category/player_resource/region_unit_count carry a static Selector.
+        public static readonly string[] ExprCallFns   =
+        {
+            "count", "distance", "min", "max", "abs",
+            "entity_hp", "entity_owner", "entity_position",
+            "unit_count_tag", "unit_count_category", "player_resource", "region_unit_count",
+        };
+
+        // ── Story 7.13 — the closed order-command vocabulary (a static field value on order_units, not a kind). ──
+        public static readonly string[] OrderCommands = { "move", "attack_move", "stop", "hold_position" };
+
+        /// <summary>Story 7.13 — true for a state-read built-in that carries a static <c>Selector</c> (never an
+        /// operand edge). The other reads (entity_hp/entity_owner/entity_position) and the 7.4 fns take none.</summary>
+        public static bool FnUsesSelector(string? fn) =>
+            fn == "unit_count_tag" || fn == "unit_count_category"
+            || fn == "player_resource" || fn == "region_unit_count";
+
+        /// <summary>Story 7.13 — resolve a <c>unit_count_tag</c> selector to its <see cref="UnitTag"/> bit (int).</summary>
+        public static bool TryResolveTagSelector(string? s, out int bit)
+        {
+            switch (s)
+            {
+                case "organic":    bit = (int)UnitTag.Organic;    return true;
+                case "mechanical": bit = (int)UnitTag.Mechanical; return true;
+                case "magical":    bit = (int)UnitTag.Magical;    return true;
+                default:           bit = 0;                       return false;
+            }
+        }
+
+        /// <summary>Story 7.13 — resolve a <c>unit_count_category</c> selector to its <see cref="UnitCategory"/> int.</summary>
+        public static bool TryResolveCategorySelector(string? s, out int category)
+        {
+            switch (s)
+            {
+                case "worker":    category = (int)UnitCategory.Worker;    return true;
+                case "melee":     category = (int)UnitCategory.Melee;     return true;
+                case "ranged":    category = (int)UnitCategory.Ranged;    return true;
+                case "siege":     category = (int)UnitCategory.Siege;     return true;
+                case "air":       category = (int)UnitCategory.Air;       return true;
+                case "structure": category = (int)UnitCategory.Structure; return true;
+                default:          category = -1;                          return false;
+            }
+        }
+
+        /// <summary>Story 7.13 — resolve a <c>player_resource</c> selector to its resource-kind index (0=ore, 1=crystal).</summary>
+        public static bool TryResolveResourceSelector(string? s, out int kind)
+        {
+            switch (s)
+            {
+                case "ore":     kind = 0; return true;
+                case "crystal": kind = 1; return true;
+                default:        kind = -1; return false;
+            }
+        }
 
         /// <summary>Exact-match membership in a closed string set (case-sensitive). Null is never a member.</summary>
         public static bool InSet(string[] set, string? value)
@@ -470,6 +696,14 @@ namespace ProjectChimera.Dsl
             ExprArrayLenNode    => ExprArrayLen,
             RaiseEventNode      => RaiseEvent,
             ExprEventParamNode  => ExprEventParam,
+            OrderUnitsNode      => OrderUnits,
+            MoveCameraNode      => MoveCamera,
+            CinematicModeNode   => CinematicMode,
+            PlayVfxNode         => PlayVfx,
+            RandomChoiceNode    => RandomChoice,
+            EnableTriggerNode   => EnableTrigger,
+            DisableTriggerNode  => DisableTrigger,
+            RunTriggerNode      => RunTrigger,
             _                   => n.GetType().Name, // unreachable: the registry is closed at parse
         };
     }
@@ -490,13 +724,22 @@ namespace ProjectChimera.Dsl
             TriggerNode                       => port == TriggerGraph.TriggerExecOutPort,
             EventNode                         => port == TriggerGraph.EventExecOutPort,
             // Story 7.5: raise_event chains like an action (single exec-out continuation).
+            // Story 7.13: the four action-leaf nodes chain identically (single exec-out continuation).
+            // Story 7.13: enable/disable/run_trigger chain like an action (single exec-out continuation).
             ActionNode or EffectActionNode or RaiseEventNode
+                or OrderUnitsNode or MoveCameraNode or CinematicModeNode or PlayVfxNode
+                or EnableTriggerNode or DisableTriggerNode or RunTriggerNode
                                               => port == TriggerGraph.ActionExecOutPort,
             ForEachNode or ForEachBatchedNode => port == TriggerGraph.ActionExecOutPort
                                               || port == TriggerGraph.ForEachBodyOutPort,
             BranchNode                        => port == TriggerGraph.ActionExecOutPort
                                               || port == TriggerGraph.BranchThenOutPort
                                               || port == TriggerGraph.BranchElseOutPort,
+            // Story 7.13: random_choice — port 0 continuation, plus one branch port per weight
+            // (RandomChoiceBranchOutPort0 .. +Weights.Length−1).
+            RandomChoiceNode rc               => port == TriggerGraph.ActionExecOutPort
+                                              || (port >= TriggerGraph.RandomChoiceBranchOutPort0
+                                                  && port < TriggerGraph.RandomChoiceBranchOutPort0 + rc.Weights.Length),
             _                                 => false, // expression/condition nodes are data-side only
         };
 
@@ -505,6 +748,8 @@ namespace ProjectChimera.Dsl
         {
             TriggerNode => port == TriggerGraph.TriggerEventInPort,
             ActionNode or EffectActionNode or ForEachNode or ForEachBatchedNode or BranchNode or RaiseEventNode
+                or OrderUnitsNode or MoveCameraNode or CinematicModeNode or PlayVfxNode
+                or RandomChoiceNode or EnableTriggerNode or DisableTriggerNode or RunTriggerNode
                         => port == TriggerGraph.ActionExecInPort,
             _           => false, // events FIRE exec, never receive it; expr/condition nodes are data-side
         };

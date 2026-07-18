@@ -31,6 +31,12 @@ namespace ProjectChimera.Combat
         private readonly BuildingStore?     _buildings; // Story 2.9a (D-4) — building-target projectiles; null ⇒ no building hits
         private readonly DeathFeed?         _deaths;    // Story 3.13 — records a lethal projectile hit's victim for the XP runtime
 
+        // Story 7.13 — the trigger-DSL sim-event feed (unit_damaged raised at the damage site via DamageContext).
+        // Wired by SimulationHost after construction; null ⇒ no raise.
+        private DslSimEventFeed? _dslSimEvents;
+        /// <summary>Story 7.13 — wire the trigger-DSL sim-event feed so projectile/splash damage raises unit_damaged.</summary>
+        public void SetDslSimEvents(DslSimEventFeed? feed) => _dslSimEvents = feed;
+
         public ProjectileSystem(ProjectileStore store, CombatEventQueue? events = null, MatchStats? stats = null,
             DamageTable? table = null, BuildingStore? buildings = null, DeathFeed? deaths = null)
         {
@@ -122,7 +128,7 @@ namespace ProjectChimera.Combat
             // Story 7.5: the attacker id snapshotted at Spawn rides along for kill attribution (event.killer).
             var ctx = new DamageContext(world, targetId, _store.TargetArmor[projId],
                                         _store.Owner[projId], _table, _events, _stats, _deaths,
-                                        attackerId: _store.SourceId[projId]);
+                                        attackerId: _store.SourceId[projId], dslSimEvents: _dslSimEvents);
             DamageResolver.Apply(in ctx, _store.Damage[projId], _store.DmgType[projId]);
 
             // AoE splash: deal same damage to all other enemies within splash radius
@@ -168,7 +174,7 @@ namespace ProjectChimera.Combat
                 // Secondary splash targets use LIVE armor (caller-supplied), and emit no pre-hit event.
                 // Story 7.5: splash is part of the same impact — the spawn-snapshotted source id credits its kills too.
                 var ctx = new DamageContext(world, i, world.ArmorTypeOf[i], owner, _table, _events, _stats, _deaths,
-                                            attackerId: _store.SourceId[projId]);
+                                            attackerId: _store.SourceId[projId], dslSimEvents: _dslSimEvents);
                 DamageResolver.Apply(in ctx, damage, dmgType);
             }
         }

@@ -13,6 +13,34 @@ namespace ProjectChimera.Dsl
         /// <summary>Number of alive entities owned by the given faction slot (slot 0 = Player1). Deterministic
         /// ascending-id scan; an empty/unknown faction counts 0.</summary>
         int CountAlive(int factionSlot);
+
+        // ── Story 7.13 — the state-read built-ins. All PURE (mutate nothing) and TOTAL (never throw in-tick); an
+        //    out-of-range/dead entity read returns the defined sentinel. Raws are typed by ExprProgram.ResultType. ──
+
+        /// <summary>Entity HP as a <c>Fixed.Raw</c> (dead/out-of-range id → 0).</summary>
+        int EntityHpRaw(int entityId);
+
+        /// <summary>Entity owner as a 0-based faction slot (Player1 → 0); dead/out-of-range/Neutral → −1.</summary>
+        int EntityOwnerSlot(int entityId);
+
+        /// <summary>Entity position as two <c>Fixed.Raw</c>s (X then Z); dead/out-of-range → origin (0,0).</summary>
+        void EntityPosition(int entityId, out int rawX, out int rawZ);
+
+        /// <summary>Alive units of <paramref name="factionSlot"/> (0-based) carrying <paramref name="tagBit"/>
+        /// (a <c>UnitTag</c> bit). Ascending-id scan; an out-of-range slot counts 0.</summary>
+        int UnitCountTag(int factionSlot, int tagBit);
+
+        /// <summary>Alive units of <paramref name="factionSlot"/> (0-based) of <paramref name="category"/>
+        /// (a <c>UnitCategory</c> int). Ascending-id scan; an out-of-range slot counts 0.</summary>
+        int UnitCountCategory(int factionSlot, int category);
+
+        /// <summary>Faction resource balance as a <c>Fixed.Raw</c> — <paramref name="resourceKind"/> 0=ore, 1=crystal;
+        /// an out-of-range slot/kind → 0.</summary>
+        int PlayerResourceRaw(int factionSlot, int resourceKind);
+
+        /// <summary>Alive units inside the named region (resolved via the RegionStore). Ascending-id scan; an
+        /// unknown region → 0.</summary>
+        int RegionUnitCount(string? regionName);
     }
 
     /// <summary>
@@ -57,6 +85,15 @@ namespace ProjectChimera.Dsl
             ArrayGet,  // Story 7.6: pop Int index, push DslVarTable.ArrayGet(Name, index) — OOB reads 0 (total)
             ArrayLen,  // Story 7.6: push DslVarTable.ArrayLen(Name) — the live element count (Int)
             PushEventParam, // Story 7.5: push the current dispatch frame's param raw at slot A (no frame / OOB slot → 0)
+
+            // ── Story 7.13 — the state-read built-ins (all pure, all total; null world → sentinel) ──
+            EntityHp,       // pop entity Int, push Fixed raw = world.EntityHpRaw(id) (dead/OOB → 0)
+            EntityOwner,    // pop entity Int, push FactionRef raw = world.EntityOwnerSlot(id) (dead/OOB → -1)
+            EntityPos,      // pop entity Int, push Point (raw X, raw Z) = world.EntityPosition(id) (dead/OOB → 0,0)
+            UnitCountTag,   // pop faction Int, push Int = world.UnitCountTag(slot, A=tagBit)
+            UnitCountCat,   // pop faction Int, push Int = world.UnitCountCategory(slot, A=category)
+            PlayerResource, // pop faction Int, push Fixed raw = world.PlayerResourceRaw(slot, A=resourceKind)
+            RegionUnitCount,// push Int = world.RegionUnitCount(Name=regionName) — arity 0, region carried in Name
         }
 
         /// <summary>One postfix op. <see cref="Name"/> is only used by <see cref="OpCode.PushVar"/> (the variable
@@ -236,6 +273,44 @@ namespace ProjectChimera.Dsl
                     case OpCode.PushEventParam:
                         // Story 7.5 — the current dispatch frame's param raw. TOTAL: no frame / OOB slot → 0.
                         s0[sp] = (eventFrame != null && op.A >= 0 && op.A < eventFrameCount) ? eventFrame[op.A] : 0;
+                        s1[sp] = 0;
+                        sp++;
+                        break;
+
+                    // ── Story 7.13 — the state-read built-ins. Entity reads pop the entity Int in slot sp-1 and
+                    //    replace it in place (a null world folds the sentinel). RegionUnitCount pushes (arity 0). ──
+                    case OpCode.EntityHp:
+                        s0[sp - 1] = world?.EntityHpRaw(s0[sp - 1]) ?? 0;
+                        s1[sp - 1] = 0;
+                        break;
+
+                    case OpCode.EntityOwner:
+                        s0[sp - 1] = world?.EntityOwnerSlot(s0[sp - 1]) ?? -1;
+                        s1[sp - 1] = 0;
+                        break;
+
+                    case OpCode.EntityPos:
+                        if (world != null) world.EntityPosition(s0[sp - 1], out s0[sp - 1], out s1[sp - 1]);
+                        else { s0[sp - 1] = 0; s1[sp - 1] = 0; }
+                        break;
+
+                    case OpCode.UnitCountTag:
+                        s0[sp - 1] = world?.UnitCountTag(s0[sp - 1], op.A) ?? 0;
+                        s1[sp - 1] = 0;
+                        break;
+
+                    case OpCode.UnitCountCat:
+                        s0[sp - 1] = world?.UnitCountCategory(s0[sp - 1], op.A) ?? 0;
+                        s1[sp - 1] = 0;
+                        break;
+
+                    case OpCode.PlayerResource:
+                        s0[sp - 1] = world?.PlayerResourceRaw(s0[sp - 1], op.A) ?? 0;
+                        s1[sp - 1] = 0;
+                        break;
+
+                    case OpCode.RegionUnitCount:
+                        s0[sp] = world?.RegionUnitCount(op.Name) ?? 0;
                         s1[sp] = 0;
                         sp++;
                         break;

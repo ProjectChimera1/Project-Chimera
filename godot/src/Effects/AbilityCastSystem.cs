@@ -42,6 +42,12 @@ namespace ProjectChimera.Effects
         // Own spatial hash for SearchArea fan-out (e.g. fireball), rebuilt from current positions before each run.
         private readonly SpatialHash _spatial = new SpatialHash();
 
+        // Story 7.13 — the trigger-DSL sim-event feed (ability_cast raised at the atomic-success point). Wired by
+        // SimulationHost after construction; null ⇒ no raise.
+        private DslSimEventFeed? _dslSimEvents;
+        /// <summary>Story 7.13 — wire the trigger-DSL sim-event feed so a committed cast raises ability_cast.</summary>
+        public void SetDslSimEvents(DslSimEventFeed? feed) => _dslSimEvents = feed;
+
         /// <summary>
         /// Construct the cast system. <paramref name="registry"/>/<paramref name="resources"/>/<paramref
         /// name="modifiers"/> are required; <paramref name="damageTable"/> resolves to <see cref="DamageTable.Default"/>
@@ -212,6 +218,12 @@ namespace ProjectChimera.Effects
             var ctx = new EffectContext(world, casterId: id, primaryTargetId: target, casterFaction: faction,
                                         _damageTable, spatial: _spatial, _events, _stats, modifierStore: _modifiers, deaths: _deaths);
             _executor.Run(ab.EffectGraph, in ctx);
+
+            // Story 7.13 — raise ability_cast at the atomic-success point (every gate passed, all costs debited, the
+            // effect graph executed): caster entity id + the ability registry index, keyed on the caster's faction
+            // slot. Captured even for a self-lethal cast (the effect already ran; the caster id is still valid here).
+            // Null feed (bare tests) → no-op.
+            _dslSimEvents?.Push(DslSimEventFeed.KindAbilityCast, (int)faction - 1, id, regIdx, 0);
 
             // Story 2.13 (AC5.4, D-4): the self HP-cost is debited AFTER the effect graph resolves (matching the
             // migrated abilities' old graph-tail direct_hp_delta point → the Health trajectory stays byte-identical),

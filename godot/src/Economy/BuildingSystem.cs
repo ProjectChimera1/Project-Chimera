@@ -60,6 +60,12 @@ namespace ProjectChimera.Economy
         private readonly HeroStore?            _heroes;
         private readonly RevivalRuleRuntime?   _revival;
 
+        // Story 7.13 — the trigger-DSL sim-event feed (unit_trained raised when production completes). Wired by
+        // SimulationHost after construction; null ⇒ no raise.
+        private DslSimEventFeed? _dslSimEvents;
+        /// <summary>Story 7.13 — wire the trigger-DSL sim-event feed so completed training raises unit_trained.</summary>
+        public void SetDslSimEvents(DslSimEventFeed? feed) => _dslSimEvents = feed;
+
         public BuildingSystem(BuildingStore buildings, ResourceStore resources,
                               FactionDefinition? p1Faction = null,
                               FactionDefinition? p2Faction = null,
@@ -216,6 +222,10 @@ namespace ProjectChimera.Economy
                 Fixed.FromFloat(hp), Fixed.FromFloat(speed));
 
             if (id < 0) return; // EntityWorld full
+
+            // Story 7.13 — raise unit_trained at the production-completion site (the trained entity id + its faction
+            // slot) into the trigger DSL sim-event feed. Null feed (bare tests) → no-op.
+            _dslSimEvents?.Push(DslSimEventFeed.KindUnitTrained, (int)faction - 1, id, 0, 0);
 
             _stats?.RecordUnitBuilt(faction);
 

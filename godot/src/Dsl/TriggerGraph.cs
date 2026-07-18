@@ -71,6 +71,10 @@ namespace ProjectChimera.Dsl
         public const int RaiseArgInPort2        = 2;
         /// <summary>RaiseEventNode (Story 7.5): the fourth raise-argument data-in port (== EventBounds.MaxEventParams − 1).</summary>
         public const int RaiseArgInPort3        = 3;
+        /// <summary>RandomChoiceNode (Story 7.13): the FIRST weighted-branch exec-out port. Branch k hangs off
+        /// <c>RandomChoiceBranchOutPort0 + k</c> (k = 0..Weights.Length−1); port 0 (<see cref="ActionExecOutPort"/>)
+        /// stays the continuation chain, run after the taken branch.</summary>
+        public const int RandomChoiceBranchOutPort0 = 1;
 
         public List<NodeBase> Nodes     { get; } = new();
         public List<ExecEdge> ExecEdges { get; } = new();
@@ -92,6 +96,16 @@ namespace ProjectChimera.Dsl
             || kind == NodeKinds.ForEach
             || kind == NodeKinds.ForEachBatched
             || kind == NodeKinds.Branch
+            // Story 7.13 — the four action-leaf kinds have no flat TriggerDefinition form (ToFlat fails closed).
+            || kind == NodeKinds.OrderUnits
+            || kind == NodeKinds.MoveCamera
+            || kind == NodeKinds.CinematicMode
+            || kind == NodeKinds.PlayVfx
+            // Story 7.13 — the weighted container + the three trigger-control leaves are graph-channel-only too.
+            || kind == NodeKinds.RandomChoice
+            || kind == NodeKinds.EnableTrigger
+            || kind == NodeKinds.DisableTrigger
+            || kind == NodeKinds.RunTrigger
             || NodeKinds.IsArrayActionKind(kind);
 
         /// <summary>True when <paramref name="node"/> is a graph-channel-only construct (its serialized
@@ -222,6 +236,15 @@ namespace ProjectChimera.Dsl
             foreach (NodeBase n in other.Nodes)
             {
                 n.Id += offset;
+                // Story 7.13 — the trigger-control leaves reference a target trigger BY PERSISTENT NODE ID, so the
+                // reference must be offset alongside the ids it points at (custom-event refs use NAMES and are
+                // merge-safe; these do not). A still-unset (-1) target is left as-is and rejected at the load gate.
+                switch (n)
+                {
+                    case EnableTriggerNode en  when en.TargetTriggerId >= 0:  en.TargetTriggerId  += offset; break;
+                    case DisableTriggerNode di when di.TargetTriggerId >= 0:  di.TargetTriggerId  += offset; break;
+                    case RunTriggerNode rt     when rt.TargetTriggerId >= 0:  rt.TargetTriggerId  += offset; break;
+                }
                 Nodes.Add(n);
             }
             foreach (ExecEdge e in other.ExecEdges)
@@ -567,6 +590,15 @@ namespace ProjectChimera.Dsl
                 if (n is ExprEventParamNode)
                     throw new JsonException(
                         $"node {n.Id}: expr_event_param has no flat TriggerDefinition form (graph-channel-only, Story 7.5) — ToFlat fails closed.");
+                // Story 7.13 — the four action-leaf kinds are graph-channel-only: fail closed (like raise_event)
+                // rather than lowering lossily to a flat TriggerAction the flat T2 editor could then mis-render.
+                if (n is OrderUnitsNode or MoveCameraNode or CinematicModeNode or PlayVfxNode)
+                    throw new JsonException(
+                        $"node {n.Id}: {NodeKinds.KindOf(n)} has no flat TriggerDefinition form (graph-channel-only, Story 7.13) — ToFlat fails closed.");
+                // Story 7.13 — the weighted container + the three trigger-control leaves have no flat form either.
+                if (n is RandomChoiceNode or EnableTriggerNode or DisableTriggerNode or RunTriggerNode)
+                    throw new JsonException(
+                        $"node {n.Id}: {NodeKinds.KindOf(n)} has no flat TriggerDefinition form (graph-channel-only, Story 7.13) — ToFlat fails closed.");
             }
 
             // Keyed lookup by id (indexer access only — never enumerated, so deterministic order is preserved).
@@ -768,6 +800,9 @@ namespace ProjectChimera.Dsl
             public ExecItem[] Then { get; init; } = None;
             /// <summary>branch else chain (exec-out port <see cref="BranchElseOutPort"/>).</summary>
             public ExecItem[] Else { get; init; } = None;
+            /// <summary>Story 7.13 — random_choice weighted branch sub-chains, parallel to
+            /// <see cref="RandomChoiceNode.Weights"/> (branch k = exec-out port <see cref="RandomChoiceBranchOutPort0"/>+k).</summary>
+            public ExecItem[][] Branches { get; init; } = System.Array.Empty<ExecItem[]>();
         }
 
         /// <summary>
@@ -886,7 +921,13 @@ namespace ProjectChimera.Dsl
                         && byId.TryGetValue(e.Dst, out NodeBase? nb)
                         && (nb is ActionNode || nb is EffectActionNode
                             || nb is ForEachNode || nb is ForEachBatchedNode || nb is BranchNode
-                            || nb is RaiseEventNode))   // Story 7.5: raise chains like an action (same exec ports)
+                            || nb is RaiseEventNode   // Story 7.5: raise chains like an action (same exec ports)
+                            // Story 7.13: the four action-leaf kinds chain like an action too (single exec-out).
+                            || nb is OrderUnitsNode || nb is MoveCameraNode
+                            || nb is CinematicModeNode || nb is PlayVfxNode
+                            // Story 7.13: the weighted container + the three trigger-control leaves chain too.
+                            || nb is RandomChoiceNode
+                            || nb is EnableTriggerNode || nb is DisableTriggerNode || nb is RunTriggerNode))
                     {
                         next = nb;
                         break;
@@ -900,7 +941,8 @@ namespace ProjectChimera.Dsl
                 ExecItem[] body = System.Array.Empty<ExecItem>();
                 ExecItem[] then = System.Array.Empty<ExecItem>();
                 ExecItem[] els  = System.Array.Empty<ExecItem>();
-                if (next is ForEachNode || next is ForEachBatchedNode || next is BranchNode)
+                ExecItem[][] branches = System.Array.Empty<ExecItem[]>();
+                if (next is ForEachNode || next is ForEachBatchedNode || next is BranchNode || next is RandomChoiceNode)
                 {
                     // Review P9 — the recursion seatbelt: reject BEFORE recursing into the sub-chain, located.
                     if (depth + 1 > DslBounds.MaxExecWalkDepth)
@@ -913,6 +955,16 @@ namespace ProjectChimera.Dsl
                 {
                     then = WalkChain(next.Id, BranchThenOutPort, tn, byId, sortedExec, visited, depth + 1);
                     els  = WalkChain(next.Id, BranchElseOutPort, tn, byId, sortedExec, visited, depth + 1);
+                }
+                else if (next is RandomChoiceNode rc)
+                {
+                    // Story 7.13 — one sub-chain per weighted branch (branch k = exec-out port
+                    // RandomChoiceBranchOutPort0 + k), sharing the one visited set so any branch rejoining an
+                    // ancestor rejects as a cycle exactly like a branch then/else chain.
+                    int n = rc.Weights.Length;
+                    branches = n == 0 ? System.Array.Empty<ExecItem[]>() : new ExecItem[n][];
+                    for (int k = 0; k < n; k++)
+                        branches[k] = WalkChain(next.Id, RandomChoiceBranchOutPort0 + k, tn, byId, sortedExec, visited, depth + 1);
                 }
 
                 // Story 7.5 — a RaiseEventNode's data-in ports are its RAISE ARGS (RaiseArgInPort0..3, numerically
@@ -929,6 +981,7 @@ namespace ProjectChimera.Dsl
                     Body          = body,
                     Then          = then,
                     Else          = els,
+                    Branches      = branches,
                 });
 
                 currentId   = next.Id;

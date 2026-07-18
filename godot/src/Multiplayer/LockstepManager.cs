@@ -459,6 +459,18 @@ namespace ProjectChimera.Multiplayer
             _transport.SendReliable(TickCommandPacket.MakeChat(LocalFaction, message));
         }
 
+        /// <summary>
+        /// Story 7.13 (Arm D) — raise a bounded player_chat CODE onto the REPLICATED, tick-stamped rail so every
+        /// client (and replay) evaluates it on the identical tick. Rides the EXISTING 11-byte
+        /// <see cref="UnitCommand.DslEvent"/> order via <see cref="EnqueueDslEvent"/> (eventIndex =
+        /// <see cref="EventBounds.PlayerChatRailCode"/>, arg0 = the chat code, arg1 unused) — NO new wire, NO replay
+        /// VERSION change. Only the bounded integer code + the sender's own faction slot enter the tick; the free-text
+        /// chat STRING stays on the reliable <see cref="SendChat"/> side-channel for DISPLAY only (never in the tick).
+        /// Offline it applies immediately (raiser = Player1); online it buffers for the exec-tick (raiser = LocalFaction),
+        /// honouring the same per-tick DslEvent cap and packet budget as any button raise.
+        /// </summary>
+        public bool SendPlayerChat(int chatCode) => EnqueueDslEvent(EventBounds.PlayerChatRailCode, chatCode, 0);
+
         // ── Incoming packet dispatch ──────────────────────────────────────────
 
         private void HandlePacket(byte[] data, int len, int channel)

@@ -83,7 +83,7 @@ namespace ProjectChimera.Sim.Tests.Meta
         /// (D-1). v8 (Story 2.6): folded per-entity EffectiveArmor (the buffable armor stat). v7 (Story 2.4a): folded
         /// per-entity AbilityCooldownTicks (count-driven). v6 (Story 2.2b): Effective* / Energy / StatusFlagsOf +
         /// the ModifierStore instance state.</summary>
-        private const int ExpectedSimChecksumAlgoVersion = 20;
+        private const int ExpectedSimChecksumAlgoVersion = 21;
 
         /// <summary>Load-time canonical start-state hash algorithm version (lobby handshake value).
         /// v3 (Story 2.9b follow-up): folded ScenarioPlayerSlot.StartCrystal (sim-affecting per-slot start-state).
@@ -134,7 +134,7 @@ namespace ProjectChimera.Sim.Tests.Meta
         /// victory rules reject at the lobby handshake. The ONE named re-baseline: hero-start-state golden re-recorded
         /// (StartStateHash value moves via the canonical seed; StartStateHash.AlgoVersion stays 2). The 24 per-tick
         /// world goldens move via the SEPARATE SimChecksum v19 bump in the same commit, not via this fold.</summary>
-        private const int ExpectedCanonicalModelHashAlgoVersion = 12;
+        private const int ExpectedCanonicalModelHashAlgoVersion = 13;
 
         /// <summary>Load-time canonical START-STATE hash algorithm version (Story 3.2, AC3) — a NEW, distinct FNV-64
         /// over the full init state = the <see cref="CanonicalModelHash"/> content seed PLUS the HeroStore rows.

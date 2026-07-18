@@ -19,6 +19,20 @@ namespace ProjectChimera.Sim.Tests.Dsl
         private sealed class StubWorld : IExprWorld
         {
             public int CountAlive(int factionSlot) => factionSlot == 1 ? 5 : 0;
+
+            // Story 7.13 — deterministic stubs keyed so the opcode-level tests can assert typed values and sentinels.
+            public int EntityHpRaw(int entityId) => entityId == 3 ? Fixed.FromInt(50).Raw : 0;      // else sentinel 0
+            public int EntityOwnerSlot(int entityId) => entityId == 3 ? 1 : -1;                      // else Neutral (-1)
+            public void EntityPosition(int entityId, out int rawX, out int rawZ)
+            {
+                if (entityId == 3) { rawX = Fixed.FromInt(7).Raw; rawZ = Fixed.FromInt(9).Raw; }
+                else { rawX = 0; rawZ = 0; }                                                         // else origin
+            }
+            public int UnitCountTag(int factionSlot, int tagBit) => (factionSlot == 0 && tagBit == 1) ? 2 : 0;
+            public int UnitCountCategory(int factionSlot, int category) => (factionSlot == 0 && category == 1) ? 3 : 0;
+            public int PlayerResourceRaw(int factionSlot, int resourceKind) =>
+                (factionSlot == 0 && resourceKind == 0) ? Fixed.FromInt(100).Raw : 0;
+            public int RegionUnitCount(string? regionName) => regionName == "r" ? 4 : 0;
         }
 
         private static readonly Dictionary<string, (DslValueType Type, VarScope Scope)> NoVars =

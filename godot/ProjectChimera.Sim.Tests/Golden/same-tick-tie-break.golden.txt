@@ -1,6 +1,6 @@
 # Project Chimera — cross-faction same-tick tie-break golden (Story 1.9a, AR-40 fork #1).
 # Format: "<tick> <hashHex8>" per line — tick decimal, hash 8 uppercase hex digits (no 0x).
-# checksum_algo_version: 20
+# checksum_algo_version: 21
 # Pins the SimChecksum sequence for a symmetric Player1-vs-Player2 same-tick melee engagement (ascending faction-slot / ascending-entity-ID resolution), stepped via StepOnce at ChecksumInterval=1.
 # Samples: 300 (one line per sim tick).
 # Re-baseline (intentional behavior change only): set CHIMERA_GOLDEN_RECORD=1, run `dotnet test --filter FullyQualifiedName~SameTickTieBreak`, then `dotnet build` (refreshes the embedded copy) and commit. DO NOT hand-edit. NEVER record the other goldens.

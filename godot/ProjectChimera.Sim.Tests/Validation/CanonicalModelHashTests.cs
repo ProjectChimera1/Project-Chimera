@@ -63,7 +63,7 @@ namespace ProjectChimera.Sim.Tests.Validation
         }
 
         [Fact]
-        public void AlgoVersion_IsTwelve() => Assert.Equal(12, CanonicalModelHash.AlgoVersion); // 7.5 re-land merge bumped 9→10 (custom-events registry + graph node-kind fold); Story 7.9: 10→11 (Button fold)
+        public void AlgoVersion_IsTwelve() => Assert.Equal(13, CanonicalModelHash.AlgoVersion); // 7.5 re-land merge bumped 9→10 (custom-events registry + graph node-kind fold); Story 7.9: 10→11 (Button fold)
 
         [Fact]
         public void ReorderedCollections_HashEqual()

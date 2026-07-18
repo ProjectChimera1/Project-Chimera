@@ -230,8 +230,20 @@ namespace ProjectChimera.Core
         ///        golden is FFA (the ONLY populated state in 1.0 — lobby team wiring is Story 9.15), so the fold adds
         ///        one Mix((int)f) per active faction and moves the hash even with the default mask — the story's ONE
         ///        scheduled, behavior-neutral re-baseline of ALL per-tick goldens. All ints → cross-platform safe.
+        ///   v21 — Story 7.13: fold the new <see cref="TriggerEnabledStore"/> — the per-exec trigger-enabled runtime
+        ///        mask (enable_trigger/disable_trigger flip a target trigger's enabled flag mid-match) — for the FIRST
+        ///        TIME. Folds immediately AFTER the AllianceStore block and BEFORE the RNG fold (SimRng stays last, the
+        ///        standing precedent): one enabled bit Mix per exec entry, in EXEC ORDER, with NO count prefix (the exec
+        ///        count is static model state already covered by CanonicalModelHash). A divergent enabled set between
+        ///        peers evaluates different triggers and must desync detectably. UNLIKE every other store here, a NULL
+        ///        store folds NOTHING (zero Mix calls — a true no-op absent path, NOT the null≡empty→Mix(0) convention),
+        ///        and a Count==0 store (a trigger-less scenario, or a ClearForReset-emptied store) likewise folds
+        ///        nothing — so a scenario carrying ZERO DSL triggers hashes BYTE-IDENTICALLY to its pre-story (v20)
+        ///        sequence (the re-baseline differential guard's clean control). Only scenarios that DECLARE triggers
+        ///        move by their enabled bits. All ints → cross-platform safe. One scheduled re-baseline of the
+        ///        trigger-carrying world goldens.
         /// </summary>
-        public const int AlgoVersion = 20;
+        public const int AlgoVersion = 21;
 
         /// <summary>
         /// Compute a full-state checksum for desync detection.
@@ -242,7 +254,7 @@ namespace ProjectChimera.Core
                                    ItemStore? items = null, ResourceNodeStore? nodes = null, ResearchStore? research = null,
                                    DslVarTable? vars = null, DslLoopState? loopState = null,
                                    DslEventQueue? dslEvents = null, WinStateStore? winState = null,
-                                   AllianceStore? alliances = null)
+                                   AllianceStore? alliances = null, TriggerEnabledStore? triggerEnabled = null)
         {
             // Contract guard for the registry param added in Story 1.3a: a future direct caller (e.g. the
             // 1.9a/9.1 server checksum collector) gets a clear error instead of an opaque NRE in the Ore loop.
@@ -624,6 +636,22 @@ namespace ProjectChimera.Core
                     hash = Mix(hash, (int)f); // null store ≡ default FFA (team id == slot index)
             }
 
+            // ── TriggerEnabledStore per-exec enabled mask (v21, Story 7.13) — the trigger-enabled runtime state,
+            // folded immediately AFTER the AllianceStore block and BEFORE the RNG fold (SimRng stays last, the
+            // standing precedent). One enabled bit Mix per exec entry, in EXEC ORDER, with NO count prefix (the exec
+            // count is static model state already covered by CanonicalModelHash). enable_trigger/disable_trigger flip
+            // a target trigger's runtime enabled flag mid-match, so a peer whose enabled set diverges evaluates
+            // different triggers and must desync detectably. NULL = SKIP ENTIRELY (zero Mix calls — NOT the
+            // null≡empty→Mix(0) convention the other stores use): this store needs a true no-op absent path so the
+            // re-baseline differential guard has a clean control, and a Count==0 store (a trigger-less scenario, or a
+            // ClearForReset-emptied store) likewise folds nothing — so a scenario carrying zero DSL triggers hashes
+            // byte-identically to its pre-story (v20) sequence. All ints → cross-platform safe.
+            if (triggerEnabled != null)
+            {
+                for (int i = 0; i < triggerEnabled.Count; i++)
+                    hash = Mix(hash, triggerEnabled.IsEnabled(i) ? 1 : 0);
+            }
+
             // ── RNG state (v3, Story 1.5) ─────────────────────────────────────────
             // The single shared SimRng's state IS sim truth: once Epic 2 effects draw from it, a divergent
             // draw stream between peers must desync detectably. Folded as two int mixes (low/high 32 bits)
@@ -636,9 +664,11 @@ namespace ProjectChimera.Core
         }
 
         /// <summary>
-        /// FNV-1a mix: feed a single int (4 bytes, little-endian) into the hash.
+        /// FNV-1a mix: feed a single int (4 bytes, little-endian) into the hash. Internal (not private) so the
+        /// Story 7.13 re-baseline differential-guard's fold-position test can HAND-REPLICATE the fold tail
+        /// (alliance → enabled → rng) to pin the enabled fold's exact position and count.
         /// </summary>
-        private static uint Mix(uint hash, int value)
+        internal static uint Mix(uint hash, int value)
         {
             uint v = (uint)value;
             hash ^= v & 0xFF;         hash *= FNV_PRIME;

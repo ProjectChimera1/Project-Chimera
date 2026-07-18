@@ -87,5 +87,41 @@ namespace ProjectChimera.Dsl
         /// Overflow is deterministic drop-newest — a documented seatbelt, distinct from Story 7.6's runtime fuel.
         /// </summary>
         public const int MaxSameTickWorkList = 1024;
+
+        /// <summary>
+        /// Story 7.13 — the named runtime depth cap for synchronous <c>run_trigger</c> nesting: part of the ruleset
+        /// IDENTITY (a constant, NOT folded into any checksum — like <see cref="MaxCascadeOps"/>). Self/mutual run
+        /// cycles are rejected AT LOAD (tri-color DFS over the run-target graph), so an acyclic authored web can never
+        /// exceed this; the cap is a pure seatbelt against a pathologically deep legal chain, halting DETERMINISTICALLY
+        /// at the WHOLE-TRIGGER boundary (never mid-Sequence). 16 admits a deep module dispatch chain while bounding
+        /// the synchronous per-tick run stack.
+        /// </summary>
+        public const int MaxRunTriggerDepth = 16;
+
+        /// <summary>
+        /// Story 7.13 — the maximum number of weighted branches a single <c>random_choice</c> may declare. Bounds the
+        /// per-node branch-port fan-out (and the weight array) at load; a wider node is a located reject. 16 comfortably
+        /// covers a weighted loot/spawn table while keeping the exec walk trivially bounded.
+        /// </summary>
+        public const int MaxRandomChoiceBranches = 16;
+
+        /// <summary>
+        /// Story 7.13 (Arm D) — the RESERVED wire/queue sentinel for the built-in <c>player_chat</c> rail, distinct
+        /// from every custom-event registry index (customs are <c>0..MaxCustomEvents-1</c>). A player_chat occurrence
+        /// rides the EXISTING 11-byte <c>UnitCommand.DslEvent</c> order (the Story 7.9 button wire) with this value in
+        /// the order's <c>UnitId</c> (a <c>ushort</c> — so it MUST fit <c>0..65535</c> and stay above
+        /// <see cref="MaxCustomEvents"/>). <c>TryEnqueueExternalDslEvent</c> recognises it BEFORE the registry-range
+        /// guard and routes it to the transient player_chat rail rather than the custom-event registry; no replay
+        /// VERSION change (0xFF00 = 65280).
+        /// </summary>
+        public const int PlayerChatRailCode = 0xFF00;
+
+        /// <summary>
+        /// Story 7.13 (Arm D) — the bounded ceiling (exclusive) on a <c>player_chat</c> chat CODE. The sim tick only
+        /// ever sees a bounded integer code + sender slot — NEVER a string (the chat-string↔code map is presentation-
+        /// side). A code outside <c>[0, MaxChatCode)</c> is a DETERMINISTIC no-op drop at
+        /// <c>TryEnqueueExternalDslEvent</c> (no mutation, no throw), identical on every peer and in replay.
+        /// </summary>
+        public const int MaxChatCode = 1024;
     }
 }

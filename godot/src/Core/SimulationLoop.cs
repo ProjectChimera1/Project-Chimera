@@ -72,6 +72,7 @@ namespace ProjectChimera.Core
         private DslEventQueue?   _checksumDslEvents; // Story 7.5: folds pending next-tick custom events (null ≡ empty)
         private WinStateStore?   _checksumWinState;  // Story 7.11: folds win-condition runtime state (null ≡ empty)
         private AllianceStore?   _checksumAlliances; // Story 7.12: folds the per-faction team-id mask (null ≡ default FFA)
+        private TriggerEnabledStore? _checksumTriggerEnabled; // Story 7.13: folds the per-exec trigger-enabled mask (null = SKIP)
 
         public SimulationLoop(EntityWorld world, params ISimSystem[] systems)
         {
@@ -90,7 +91,7 @@ namespace ProjectChimera.Core
                                     ResourceNodeStore? nodes = null, ResearchStore? research = null,
                                     DslVarTable? vars = null, DslLoopState? loopState = null,
                                     DslEventQueue? dslEvents = null, WinStateStore? winState = null,
-                                    AllianceStore? alliances = null)
+                                    AllianceStore? alliances = null, TriggerEnabledStore? triggerEnabled = null)
         {
             _checksumBuildings = buildings;
             _checksumResources = resources;
@@ -105,6 +106,7 @@ namespace ProjectChimera.Core
             _checksumDslEvents = dslEvents; // Story 7.5 — folds the pending next-tick custom-event queue (null ≡ empty)
             _checksumWinState  = winState;  // Story 7.11 — folds the win-condition runtime state (null ≡ empty)
             _checksumAlliances = alliances; // Story 7.12 — folds the per-faction team-id mask (null ≡ default FFA)
+            _checksumTriggerEnabled = triggerEnabled; // Story 7.13 — folds the per-exec trigger-enabled mask (null = SKIP)
         }
 
         /// <summary>
@@ -139,7 +141,7 @@ namespace ProjectChimera.Core
             if (ChecksumInterval > 0 && CurrentTick % (uint)ChecksumInterval == 0
                 && _checksumBuildings != null && _checksumResources != null && _checksumFactions != null)
             {
-                LastChecksum = SimChecksum.Compute(World, _checksumBuildings, _checksumResources, _checksumFactions, _checksumModifiers, _checksumHeroes, _checksumItems, _checksumNodes, _checksumResearch, _checksumVars, _checksumLoopState, _checksumDslEvents, _checksumWinState, _checksumAlliances);
+                LastChecksum = SimChecksum.Compute(World, _checksumBuildings, _checksumResources, _checksumFactions, _checksumModifiers, _checksumHeroes, _checksumItems, _checksumNodes, _checksumResearch, _checksumVars, _checksumLoopState, _checksumDslEvents, _checksumWinState, _checksumAlliances, _checksumTriggerEnabled);
                 OnChecksum?.Invoke(CurrentTick, LastChecksum);
             }
         }
@@ -176,7 +178,7 @@ namespace ProjectChimera.Core
                 if (ChecksumInterval > 0 && CurrentTick % (uint)ChecksumInterval == 0
                     && _checksumBuildings != null && _checksumResources != null && _checksumFactions != null)
                 {
-                    LastChecksum = SimChecksum.Compute(World, _checksumBuildings, _checksumResources, _checksumFactions, _checksumModifiers, _checksumHeroes, _checksumItems, _checksumNodes, _checksumResearch, _checksumVars, _checksumLoopState, _checksumDslEvents, _checksumWinState, _checksumAlliances);
+                    LastChecksum = SimChecksum.Compute(World, _checksumBuildings, _checksumResources, _checksumFactions, _checksumModifiers, _checksumHeroes, _checksumItems, _checksumNodes, _checksumResearch, _checksumVars, _checksumLoopState, _checksumDslEvents, _checksumWinState, _checksumAlliances, _checksumTriggerEnabled);
                     OnChecksum?.Invoke(CurrentTick, LastChecksum);
                 }
             }

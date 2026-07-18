@@ -38,6 +38,16 @@ namespace ProjectChimera.Sim.Tests.Dsl
             yield return ("structural", NodeKinds.Branch);
             yield return ("expr", NodeKinds.ExprArrayGet);
             yield return ("expr", NodeKinds.ExprArrayLen);
+            // Story 7.13 — the four graph-channel-only action-leaf kinds (dedicated node classes, like raise_event).
+            yield return ("structural", NodeKinds.OrderUnits);
+            yield return ("structural", NodeKinds.MoveCamera);
+            yield return ("structural", NodeKinds.CinematicMode);
+            yield return ("structural", NodeKinds.PlayVfx);
+            // Story 7.13 — the weighted container + the three trigger-control leaves.
+            yield return ("structural", NodeKinds.RandomChoice);
+            yield return ("structural", NodeKinds.EnableTrigger);
+            yield return ("structural", NodeKinds.DisableTrigger);
+            yield return ("structural", NodeKinds.RunTrigger);
             foreach (string k in NodeKinds.EventTypes)     yield return ("event", k);
             foreach (string k in NodeKinds.ConditionTypes) yield return ("condition", k);
             foreach (string k in NodeKinds.ActionTypes)    yield return ("action", k);
@@ -127,6 +137,14 @@ namespace ProjectChimera.Sim.Tests.Dsl
             if (kind == NodeKinds.RaiseEvent)     return new RaiseEventNode { Id = id, Name = "ev" };
             if (kind == NodeKinds.CustomEvent)    return new EventNode { Id = id, Kind = NodeKinds.CustomEvent, EventName = "ev" };
             if (kind == NodeKinds.ExprEventParam) return new ExprEventParamNode { Id = id, Name = "p" };
+            if (kind == NodeKinds.OrderUnits)     return new OrderUnitsNode { Id = id, Command = "move", Faction = -1 };
+            if (kind == NodeKinds.MoveCamera)     return new MoveCameraNode { Id = id, CameraName = "cam" };
+            if (kind == NodeKinds.CinematicMode)  return new CinematicModeNode { Id = id, Enabled = true };
+            if (kind == NodeKinds.PlayVfx)        return new PlayVfxNode { Id = id, VfxId = "vfx" };
+            if (kind == NodeKinds.RandomChoice)   return new RandomChoiceNode { Id = id, Weights = new[] { 1, 1 } };
+            if (kind == NodeKinds.EnableTrigger)  return new EnableTriggerNode { Id = id, TargetTriggerId = 0 };
+            if (kind == NodeKinds.DisableTrigger) return new DisableTriggerNode { Id = id, TargetTriggerId = 0 };
+            if (kind == NodeKinds.RunTrigger)     return new RunTriggerNode { Id = id, TargetTriggerId = 0 };
             if (NodeKinds.InSet(NodeKinds.EventTypes, kind))     return new EventNode { Id = id, Kind = kind };
             if (NodeKinds.InSet(NodeKinds.ConditionTypes, kind)) return new ConditionNode { Id = id, Kind = kind };
             /* action */                                          return new ActionNode { Id = id, Kind = kind };

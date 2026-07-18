@@ -1,6 +1,6 @@
 # Project Chimera — delivery golden-checksum baseline (Story 3.12, AC6) — CROSS-PLATFORM SAFE (integer/Fixed only).
 # Format: "<tick> <hashHex8>" per line — tick decimal, hash 8 uppercase hex digits (no 0x).
-# checksum_algo_version: 20
+# checksum_algo_version: 21
 # Pins the SimChecksum (v10) sequence for DeliveryScenario.Build() (a long-range Hitscan sniper, a short-range custom-speed Projectile unit, and a splash Projectile unit over high-HP Neutral targets; Player2 empty so the AI no-ops) stepped via StepOnce at ChecksumInterval=1. All hashed fields integer/Fixed → byte-identical Win↔Linux; compared on both CI legs.
 # Samples: 300 (one line per sim tick).
 # Re-baseline (intentional behavior change only): set CHIMERA_GOLDEN_RECORD=1, run `dotnet test --filter FullyQualifiedName~DeliveryGolden`, then `dotnet build` (refreshes the embedded copy) and commit. DO NOT hand-edit.

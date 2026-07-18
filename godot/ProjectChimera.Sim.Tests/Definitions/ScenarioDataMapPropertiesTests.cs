@@ -93,8 +93,8 @@ namespace ProjectChimera.Sim.Tests.Definitions
         [Fact]
         public void AlgoVersions_Unchanged()
         {
-            Assert.Equal(12, CanonicalModelHash.AlgoVersion); // Story 7.5 (merge): custom-event registry folded (9→10); Story 7.9: Button fold (10→11)
-            Assert.Equal(20, SimChecksum.AlgoVersion); // Story 7.5 (landed via merge): DslEventQueue folded (17→18)
+            Assert.Equal(13, CanonicalModelHash.AlgoVersion); // Story 7.5 (merge): custom-event registry folded (9→10); Story 7.9: Button fold (10→11)
+            Assert.Equal(21, SimChecksum.AlgoVersion); // Story 7.5 (landed via merge): DslEventQueue folded (17→18)
             Assert.Equal(2, StartStateHash.AlgoVersion);
         }
 

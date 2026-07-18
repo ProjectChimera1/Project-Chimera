@@ -506,6 +506,6 @@ namespace ProjectChimera.Sim.Tests.Builder
         // Re-recorded again 2026-07-17 for AlgoVersion 9 (Story 7.8: the custom-UI widget tree folded — the alpha
         // model has no custom_ui, so it folds as a single 0 marker, but the AlgoVersion 8→9 bump alone moves every
         // hash, same as every prior bump above; part of the ONE named 7.8 re-baseline).
-        private const ulong ExpectedCanonicalHash = 12154402494241862715UL; // recomputed at CanonicalModelHash v12 (Story 7.11 win-condition preset fold)
+        private const ulong ExpectedCanonicalHash = 14797314539278078280UL; // recomputed at CanonicalModelHash v13 (Story 7.13 new-node-kind graph-walk fold)
     }
 }

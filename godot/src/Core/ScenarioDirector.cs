@@ -8,6 +8,7 @@ using ProjectChimera.Core.Sim;     // DslVarReadback (Story 7.8 presentation rea
 using ProjectChimera.Dsl;
 using ProjectChimera.Economy;
 using ProjectChimera.Effects;      // EffectExecutor, EffectContext, EffectNode, ModifierStore
+using ProjectChimera.Multiplayer;  // Story 7.13 — OrderApplier.ApplyActiveOrder (order_units sim leaf)
 using ProjectChimera.Navigation;   // SpatialHash (run_effect SearchArea fan-out)
 
 namespace ProjectChimera.Core
@@ -50,6 +51,38 @@ namespace ProjectChimera.Core
         private bool[] _triggerFired    = Array.Empty<bool>();  // run_once guard, indexed by _execs position
         private int[]  _triggerCooldown = Array.Empty<int>();   // remaining ticks, indexed by _execs position
 
+        // Story 7.13 — the FOLDED per-exec trigger-enabled runtime mask (host-owned STABLE reference, shared with
+        // SimChecksum). enable_trigger/disable_trigger flip an entry; both sweep gates consult it alongside
+        // TriggerNode.Enabled. Unlike _triggerFired/_triggerCooldown it is NOT reallocated per LoadScenario (it is
+        // reset in place so the checksum keeps folding the same object).
+        private readonly TriggerEnabledStore _triggerEnabled;
+
+        // Story 7.13 — persistent trigger-node id → _execs index (built once per LoadScenario). Resolves an
+        // enable_trigger/disable_trigger/run_trigger target to the exec it controls/runs.
+        private Dictionary<int, int> _triggerNodeIdToExec = new();
+
+        // Story 7.13 — the transient run_trigger nesting depth (reset at tick start; NOT folded — a per-tick scratch
+        // counter, not cross-tick sim truth). Bounds synchronous run_trigger recursion by EventBounds.MaxRunTriggerDepth.
+        private int _runDepth;
+
+        // Story 7.13 — the host-owned transient sim-event feed (unit_damaged/unit_trained/ability_cast/hero_level),
+        // drained in CollectEvents into the base-event buffer and cleared. NOT folded (empty at the checksum boundary).
+        private readonly DslSimEventFeed _simEventFeed;
+
+        // Story 7.13 — the interned kind name per DslSimEventFeed code (no per-tick string allocation).
+        private static readonly string[] SimEventKindNames = { "unit_damaged", "unit_trained", "ability_cast", "hero_level" };
+
+        // Story 7.13 (Arm D) — the transient player_chat pending buffer. A replicated player_chat occurrence arrives on
+        // the folded _eventQueue (via TryEnqueueExternalDslEvent, marked with EventBounds.PlayerChatRailCode); the
+        // tick-start dequeue SEPARATES it from the custom-event work-list (player_chat is a BUILT-IN dispatched by the
+        // base sweep, not a _subscribedEvent) and stashes (sender, code) here. CollectEvents drains it into a base
+        // "player_chat" FiredEvent and clears it — so it is EMPTY at the checksum boundary → NOT folded (the
+        // DslSimEventFeed posture). Sized to MaxNextTickEventQueue (the _eventQueue capacity, so a single tick's
+        // dequeue can never overflow it); deterministic drop-newest guard for defence-in-depth.
+        private readonly int[] _pendingChatSender = new int[EventBounds.MaxNextTickEventQueue];
+        private readonly int[] _pendingChatCode   = new int[EventBounds.MaxNextTickEventQueue];
+        private int _pendingChatCount;
+
         // Story 7.4 — compiled expression programs, indexed by _execs position. Compiled ONCE per LoadScenario
         // (the two-phase contract: compile at load, zero-allocation eval in the tick). _condPrograms[i] are the
         // Bool programs ANDed with the trigger's legacy conditions. Empty for every expression-free (legacy)
@@ -73,6 +106,10 @@ namespace ProjectChimera.Core
             public CompiledItem[] Body = Array.Empty<CompiledItem>();
             public CompiledItem[] Then = Array.Empty<CompiledItem>();
             public CompiledItem[] Else = Array.Empty<CompiledItem>();
+            // Story 7.13 — random_choice: one compiled sub-chain per weighted branch + the parallel weights.
+            public CompiledItem[][] Branches = Array.Empty<CompiledItem[]>();
+            public int[] Weights = Array.Empty<int>();
+            public int   WeightTotal;          // precomputed sum of Weights (the draw bound)
             public int[]? Snapshot;            // for_each loop-entry snapshot buffer (UpTo / array capacity)
             public int RunEffectCost;          // run_effect: embedded effect-node count (the fuel charge)
             public int BatchRow = -1;          // for_each_batched: its DslLoopState continuation row
@@ -192,6 +229,19 @@ namespace ProjectChimera.Core
         /// <summary>Signals a match outcome. (winnerFactionSlot: 0=P1, 1=P2)</summary>
         public Action<int>? OnVictory;
 
+        // ── Story 7.13 — the PRESENTATION-ONLY action-leaf delegates (mirror the On* pattern; C3-clean: the body
+        //    may fire but never read/write sim state). NEVER folded into SimChecksum, so the checksum is
+        //    byte-identical whether these fire or not — and they do NOT charge DSL fuel (fuel IS folded). ──
+
+        /// <summary>Requests a camera pan to a named ScenarioCamera. (cameraName)</summary>
+        public Action<string>? OnMoveCamera;
+
+        /// <summary>Requests the cinematic letterbox/UI toggle. (enabled)</summary>
+        public Action<bool>? OnCinematicMode;
+
+        /// <summary>Requests a one-shot VFX at a point. (vfxId, x, z)</summary>
+        public Action<string, Fixed, Fixed>? OnPlayVfx;
+
         // ── Constructor ───────────────────────────────────────────────────────
 
         /// <param name="loopState">Story 7.6 — the checksummed loop/fuel state (SimulationHost passes its shared
@@ -199,15 +249,28 @@ namespace ProjectChimera.Core
         /// <param name="eventQueue">Story 7.5 — the cross-tick next-tick event queue. Production
         /// (<c>SimulationHost</c>) passes its owned, checksum-folded instance; a null (direct test construction)
         /// self-owns one — determinism-identical, the caller just cannot fold what it does not hold.</param>
+        /// <param name="triggerEnabled">Story 7.13 — the FOLDED per-exec trigger-enabled mask. Production
+        /// (<c>SimulationHost</c>) passes its owned, checksum-folded instance (STABLE reference); a null (direct test
+        /// construction) self-owns one — determinism-identical, the caller just cannot fold what it does not hold.</param>
+        /// <param name="simEventFeed">Story 7.13 — the transient sim-event feed the four producer systems push into
+        /// and the director drains each tick. A null self-owns one (the raises then never reach it unless the test
+        /// pushes to the director's own feed via <see cref="SimEventFeed"/>).</param>
         public ScenarioDirector(BuildingStore buildings, ResourceStore resources, DslVarTable vars,
-            DslLoopState? loopState = null, DslEventQueue? eventQueue = null)
+            DslLoopState? loopState = null, DslEventQueue? eventQueue = null,
+            TriggerEnabledStore? triggerEnabled = null, DslSimEventFeed? simEventFeed = null)
         {
-            _buildings  = buildings;
-            _resources  = resources;
-            _vars       = vars;
-            _loopState  = loopState ?? new DslLoopState();
-            _eventQueue = eventQueue ?? new DslEventQueue();
+            _buildings     = buildings;
+            _resources     = resources;
+            _vars          = vars;
+            _loopState     = loopState ?? new DslLoopState();
+            _eventQueue    = eventQueue ?? new DslEventQueue();
+            _triggerEnabled = triggerEnabled ?? new TriggerEnabledStore();
+            _simEventFeed   = simEventFeed ?? new DslSimEventFeed();
         }
+
+        /// <summary>Story 7.13 — the director's transient sim-event feed (production shares the host's; a direct test
+        /// constructor that passed null can push occurrences here to exercise the drain).</summary>
+        public DslSimEventFeed SimEventFeed => _simEventFeed;
 
         /// <summary>
         /// Story 7.3 — inject the run_effect runtime sinks (constructed after this director in <c>SimulationHost</c>).
@@ -253,6 +316,21 @@ namespace ProjectChimera.Core
         /// </summary>
         public bool TryEnqueueExternalDslEvent(int eventIndex, int raiserFaction, int arg0, int arg1)
         {
+            // Story 7.13 (Arm D) — the built-in player_chat rail. Recognised BEFORE the custom-registry range guard
+            // (the sentinel PlayerChatRailCode is far above _eventNames.Length and would else be rejected). The sim
+            // accepts ONLY a bounded integer chat code + a real player sender slot — never a string. arg0 is the chat
+            // CODE; arg1 is unused on this rail. Params are stored P0=sender, P1=code to match LoadBuiltinFrame's
+            // player_chat case. Any out-of-range sender or code is a DETERMINISTIC no-op drop (no mutation, no throw),
+            // identical on every peer and in replay.
+            if (eventIndex == EventBounds.PlayerChatRailCode)
+            {
+                if ((uint)raiserFaction >= (uint)FactionRegistry.PLAYER_COUNT) return false; // -1/system or out-of-range slot
+                if ((uint)arg0 >= (uint)EventBounds.MaxChatCode)               return false; // code out of [0, MaxChatCode)
+                _externalArgScratch[0] = raiserFaction; // P0 = sender
+                _externalArgScratch[1] = arg0;          // P1 = code
+                return _eventQueue.Enqueue(EventBounds.PlayerChatRailCode, raiserFaction, _externalArgScratch, 2);
+            }
+
             if ((uint)eventIndex >= (uint)_eventNames.Length) return false; // out of range → deterministic no-op
 
             if (raiserFaction != -1)
@@ -377,7 +455,11 @@ namespace ProjectChimera.Core
             foreach (NodeBase n in graph.Nodes)
                 if (n is ActionNode { Kind: "create_timer" } ct && !string.IsNullOrEmpty(ct.TimerName))
                     timerNames.Add(ct.TimerName!);
-            var baseEvents = new FiredEvent[EntityWorld.MAX_ENTITIES + BuildingStore.MAX_BUILDINGS + timerNames.Count + 5];
+            // Story 7.13 — add headroom for the sim-event feed drain (unit_damaged/unit_trained/ability_cast/
+            // hero_level occurrences collected into the base buffer alongside the polled events) AND for Arm D's
+            // player_chat pending buffer (up to EventBounds.MaxNextTickEventQueue occurrences drain into this SAME
+            // base buffer), so the sizing is correct-by-construction rather than relying on entity/building headroom.
+            var baseEvents = new FiredEvent[EntityWorld.MAX_ENTITIES + BuildingStore.MAX_BUILDINGS + timerNames.Count + 5 + DslSimEventFeed.Capacity + EventBounds.MaxNextTickEventQueue];
 
             // Story 7.3: the typed/scoped variable + timer store declarations. The seconds→ticks conversion happens
             // HERE at the Core boundary (SecondsToTicks owns TICKS_PER_SECOND) so the table receives integer ticks
@@ -408,6 +490,19 @@ namespace ProjectChimera.Core
             _condPrograms    = compiled.CondPrograms;
             _items           = compiled.Items;
 
+            // Story 7.13 — reset the FOLDED trigger-enabled mask IN PLACE (grow/reuse the host-owned buffer, all
+            // enabled), then seed each exec from its authored TriggerNode.Enabled; and build the persistent
+            // trigger-node-id → exec-index map the enable/disable/run_trigger leaves resolve against. The store
+            // reference is stable (never reallocated), so SimChecksum keeps folding the same object.
+            _triggerEnabled.Reset(execs.Count);
+            _triggerNodeIdToExec = new Dictionary<int, int>(execs.Count);
+            for (int i = 0; i < execs.Count; i++)
+            {
+                _triggerEnabled.SetInitial(i, execs[i].Trigger.Enabled);
+                _triggerNodeIdToExec[execs[i].Trigger.Id] = i;
+            }
+            _runDepth = 0;
+
             // Story 7.5 — commit the custom-event runtime: registry references, per-exec dispatch info (the
             // compiled raise plans ride the committed Items tree), the sized base buffer, and a clean
             // queue/work-list/frame (a re-load never inherits pending feedback from the previous scenario).
@@ -419,6 +514,7 @@ namespace ProjectChimera.Core
             _baseEvents       = baseEvents;
             _baseEventCount   = 0;
             _workHead = _workCount = 0;
+            _pendingChatCount = 0; // Story 7.13 (Arm D) — a re-load never inherits a pending player_chat occurrence
             _frameCount = 0;
             _eventQueue.Clear();
 
@@ -715,7 +811,8 @@ namespace ProjectChimera.Core
                 var ci = new CompiledItem { Node = it.Node };
 
                 // Review P9 — the recursion seatbelt: reject located BEFORE recursing into a container's sub-chain.
-                if ((it.Node is ForEachNode || it.Node is ForEachBatchedNode || it.Node is BranchNode)
+                if ((it.Node is ForEachNode || it.Node is ForEachBatchedNode || it.Node is BranchNode
+                        || it.Node is RandomChoiceNode)
                     && depth + 1 > DslBounds.MaxExecWalkDepth)
                     throw new System.Text.Json.JsonException(
                         $"trigger '{triggerName}' node {it.Node.Id}: container nesting depth {depth + 1} exceeds DslBounds.MaxExecWalkDepth={DslBounds.MaxExecWalkDepth} (the exec-walk recursion seatbelt).");
@@ -755,6 +852,23 @@ namespace ProjectChimera.Core
                         readsEventParams |= cp.ReadsEventParams;
                         ci.Then = CompileItems(graph, it.Then, declMap, arrayDecls, eventParams, triggerName, depth + 1, ref readsEventParams);
                         ci.Else = CompileItems(graph, it.Else, declMap, arrayDecls, eventParams, triggerName, depth + 1, ref readsEventParams);
+                        break;
+                    }
+
+                    case RandomChoiceNode rc:
+                    {
+                        // Story 7.13 — weights + one compiled sub-chain per branch (the DslLoopGate has already
+                        // rejected an empty/zero-total/negative/over-cap weight set at both gates; this just compiles
+                        // the branches the executor draws among). Weights are copied so the compiled item is
+                        // self-contained; WeightTotal is the NextInt draw bound.
+                        ci.Weights = (int[])rc.Weights.Clone();
+                        int total = 0;
+                        for (int k = 0; k < ci.Weights.Length; k++) total += ci.Weights[k];
+                        ci.WeightTotal = total;
+                        var branches = it.Branches.Length == 0 ? Array.Empty<CompiledItem[]>() : new CompiledItem[it.Branches.Length][];
+                        for (int k = 0; k < it.Branches.Length; k++)
+                            branches[k] = CompileItems(graph, it.Branches[k], declMap, arrayDecls, eventParams, triggerName, depth + 1, ref readsEventParams);
+                        ci.Branches = branches;
                         break;
                     }
 
@@ -843,6 +957,79 @@ namespace ProjectChimera.Core
             return CountAlive(world, (Faction)(factionSlot + 1));
         }
 
+        // ── Story 7.13 — the state-read built-ins (the count() seam pattern). All PURE (mutate nothing) and TOTAL
+        //    (never throw in-tick): a dead/out-of-range read returns the defined sentinel; a null world (before the
+        //    first tick) folds the same sentinel. Entities iterate ascending id skipping !IsAlive. ──
+
+        int IExprWorld.EntityHpRaw(int entityId)
+        {
+            EntityWorld? world = _exprWorld;
+            if (world is null || entityId < 0 || entityId >= world.HighWaterMark || !world.IsAlive(entityId)) return 0;
+            return world.Health[entityId].Raw;
+        }
+
+        int IExprWorld.EntityOwnerSlot(int entityId)
+        {
+            EntityWorld? world = _exprWorld;
+            if (world is null || entityId < 0 || entityId >= world.HighWaterMark || !world.IsAlive(entityId)) return -1;
+            return (int)world.FactionOf[entityId] - 1; // 0-based slot (Player1 → 0); Neutral → -1
+        }
+
+        void IExprWorld.EntityPosition(int entityId, out int rawX, out int rawZ)
+        {
+            EntityWorld? world = _exprWorld;
+            if (world is null || entityId < 0 || entityId >= world.HighWaterMark || !world.IsAlive(entityId))
+            {
+                rawX = 0; rawZ = 0;
+                return;
+            }
+            FixedVec3 p = world.Position[entityId];
+            rawX = p.X.Raw;
+            rawZ = p.Z.Raw;
+        }
+
+        int IExprWorld.UnitCountTag(int factionSlot, int tagBit)
+        {
+            EntityWorld? world = _exprWorld;
+            if (world is null || factionSlot < 0 || factionSlot >= DslVarTable.PlayerSlots) return 0;
+            var faction = (Faction)(factionSlot + 1);
+            int n = 0, hwm = world.HighWaterMark;
+            for (int i = 0; i < hwm; i++)
+                if (world.IsAlive(i) && world.FactionOf[i] == faction && ((int)world.TagsOf[i] & tagBit) != 0) n++;
+            return n;
+        }
+
+        int IExprWorld.UnitCountCategory(int factionSlot, int category)
+        {
+            EntityWorld? world = _exprWorld;
+            if (world is null || factionSlot < 0 || factionSlot >= DslVarTable.PlayerSlots) return 0;
+            var faction = (Faction)(factionSlot + 1);
+            int n = 0, hwm = world.HighWaterMark;
+            for (int i = 0; i < hwm; i++)
+                if (world.IsAlive(i) && world.FactionOf[i] == faction && (int)world.CategoryOf[i] == category) n++;
+            return n;
+        }
+
+        int IExprWorld.PlayerResourceRaw(int factionSlot, int resourceKind)
+        {
+            // ResourceStore is indexed by (int)Faction (0 = Neutral, 1 = Player1 …); a 0-based slot maps to slot+1.
+            int idx = factionSlot + 1;
+            if (factionSlot < 0 || idx >= _resources.Ore.Length) return 0;
+            return resourceKind == 0 ? _resources.Ore[idx].Raw
+                 : resourceKind == 1 ? _resources.Crystal[idx].Raw
+                 : 0;
+        }
+
+        int IExprWorld.RegionUnitCount(string? regionName)
+        {
+            EntityWorld? world = _exprWorld;
+            if (world is null || !_regions.TryGetIndex(regionName, out int rIdx)) return 0; // unknown region → 0 (total)
+            int n = 0, hwm = world.HighWaterMark;
+            for (int i = 0; i < hwm; i++)
+                if (world.IsAlive(i) && _regions.Contains(rIdx, world.Position[i])) n++;
+            return n;
+        }
+
         /// <summary>The stored initial value's raw int for a declared variable: Fixed/Point store the Fixed.Raw
         /// verbatim (preserved through the JSON boundary); the integer-valued types (Int/Bool/refs/timer) store the
         /// truncated integer, so an Int slot's GetInt returns a plain int (never a shifted Fixed.Raw).</summary>
@@ -862,8 +1049,16 @@ namespace ProjectChimera.Core
                 // SimChecksum either way (v17).
                 _loopState.ResetFuel();
 
+                // Story 7.13 — the transient run_trigger nesting counter resets at the START of every director tick
+                // (per-tick scratch, NOT folded — the depth cap is a within-tick seatbelt).
+                _runDepth = 0;
+
                 if (_execs.Count == 0)
                 {
+                    // Story 7.13 — a trigger-less scenario still drains the sim-event feed producers pushed (no
+                    // subscriber matches, but the feed must not accumulate across ticks).
+                    _simEventFeed.Clear();
+                    _pendingChatCount = 0; // Story 7.13 (Arm D) — parity: the player_chat rail must not accumulate either
                     // Review (7.3 follow-up): declared ScenarioData.Timers made trigger-less timers representable, and
                     // the folded remaining-ticks must still decrement per the "declared timers start active" contract —
                     // pre-7.3 the early-out was safe because timers could only exist via trigger actions. An empty table
@@ -884,9 +1079,25 @@ namespace ProjectChimera.Core
                 // behind the dequeued events.
                 _workHead = 0;
                 _workCount = 0;
+                _pendingChatCount = 0; // Story 7.13 (Arm D) — re-fill the transient player_chat rail from this dequeue
                 int pending = _eventQueue.Count;
-                for (int i = 0; i < pending && _workCount < _workList.Length; i++)
+                for (int i = 0; i < pending; i++)
                 {
+                    // Story 7.13 (Arm D) — a player_chat-rail entry (marked with the reserved sentinel) is a BUILT-IN,
+                    // dispatched by the base sweep (not a _subscribedEvent), so it must NOT seed the custom work-list.
+                    // Stash (sender=P0, code=P1) on the transient rail; CollectEvents drains it into a base occurrence.
+                    if (_eventQueue.EventIndexAt(i) == EventBounds.PlayerChatRailCode)
+                    {
+                        if (_pendingChatCount < _pendingChatSender.Length) // deterministic drop-newest (cannot overflow in practice)
+                        {
+                            _pendingChatSender[_pendingChatCount] = _eventQueue.ParamAt(i, 0);
+                            _pendingChatCode[_pendingChatCount]   = _eventQueue.ParamAt(i, 1);
+                            _pendingChatCount++;
+                        }
+                        continue;
+                    }
+
+                    if (_workCount >= _workList.Length) continue; // custom work-list full → drop-newest (existing seatbelt)
                     ref FiredEvent ev = ref _workList[_workCount++];
                     ev.Type        = CustomEventType;
                     ev.CustomIndex = _eventQueue.EventIndexAt(i);
@@ -1057,6 +1268,31 @@ namespace ProjectChimera.Core
                 AddBaseEvent("resource_threshold",   slot, oreRaw, null);
                 AddBaseEvent("unit_count_threshold", slot, units,  null);
             }
+
+            // ── Story 7.13 — drain the transient sim-event feed the four producer systems pushed THIS tick
+            //    (unit_damaged/unit_trained/ability_cast/hero_level), in producer push order (deterministic: ascending
+            //    system order, then ascending id within a system), into the base buffer with their typed payloads.
+            //    Then clear the feed so the next tick starts fresh (the DeathFeed drain posture). Emitted AFTER the
+            //    polled built-ins; a subscribed trigger fires per occurrence exactly like unit_dies. ──
+            int simCount = _simEventFeed.Count;
+            for (int i = 0; i < simCount; i++)
+            {
+                int code = _simEventFeed.KindAt(i);
+                string kindName = (uint)code < (uint)SimEventKindNames.Length ? SimEventKindNames[code] : "";
+                if (kindName.Length == 0) continue; // defensive (unknown code)
+                AddBaseEvent(kindName, _simEventFeed.SlotAt(i), 0, null,
+                    p0: _simEventFeed.P0At(i), p1: _simEventFeed.P1At(i), p2: _simEventFeed.P2At(i));
+            }
+            _simEventFeed.Clear();
+
+            // ── Story 7.13 (Arm D) — drain the transient player_chat rail (dequeued THIS tick from the replicated,
+            //    tick-stamped DslEvent order) into base "player_chat" occurrences. P0=sender, P1=code (matching
+            //    LoadBuiltinFrame's player_chat case); the base occurrence's Slot is the sender faction so EventMatches
+            //    gates on it exactly like unit_dies. Cleared same-tick → empty at the checksum boundary (unfolded). ──
+            for (int i = 0; i < _pendingChatCount; i++)
+                AddBaseEvent("player_chat", _pendingChatSender[i], 0, null,
+                    p0: _pendingChatSender[i], p1: _pendingChatCode[i]);
+            _pendingChatCount = 0;
         }
 
         /// <summary>Zero-alloc BuildingType→name (ToString() allocates per call; the enum is byte-backed,
@@ -1096,9 +1332,8 @@ namespace ProjectChimera.Core
                 if (_loopState.FuelExhausted) break;
 
                 TriggerGraph.TriggerExec ex = _execs[idx];
-                TriggerNode t = ex.Trigger;
                 if (idx < _subscribedEvent.Length && _subscribedEvent[idx] >= 0)   continue; // Story 7.5 — drain-only
-                if (!t.Enabled || _triggerFired[idx] || _triggerCooldown[idx] > 0) continue;
+                if (!_triggerEnabled.IsEnabled(idx) || _triggerFired[idx] || _triggerCooldown[idx] > 0) continue; // Story 7.13 — the runtime mask is SEEDED from TriggerNode.Enabled at load, so it SUBSUMES the authored flag; gate on the mask alone (dropping the redundant !t.Enabled) so enable_trigger can turn on an authored-disabled trigger
                 // Story 7.6 — a trigger whose batched continuation row is still draining is SUPPRESSED in the
                 // sweep (it cannot re-fire until the drip and its continuation chain complete). The RowCount
                 // bound is the reset-window guard (review P8): SimulationHost.ClearForReset clears LoopState
@@ -1165,17 +1400,32 @@ namespace ProjectChimera.Core
         /// payload (victim / killer / killer_faction — 3 slots); every other built-in has none.</summary>
         private void LoadBuiltinFrame(in FiredEvent f)
         {
-            if (f.Type == "unit_dies")
+            // Story 7.13 — every built-in event carrying a readable payload fills the frame from its FiredEvent
+            // P0..P2 slots; the width is the built-in's declared param count. Payload-less kinds (match_start,
+            // thresholds, building/timer) leave an empty frame.
+            switch (f.Type)
             {
-                _frameScratch[0] = f.P0;
-                _frameScratch[1] = f.P1;
-                _frameScratch[2] = f.P2;
-                _frameScratch[3] = 0;
-                _frameCount = EventDispatchPlan.UnitDiesParamCount;
-            }
-            else
-            {
-                _frameCount = 0;
+                case "unit_dies":
+                    _frameScratch[0] = f.P0; _frameScratch[1] = f.P1; _frameScratch[2] = f.P2; _frameScratch[3] = 0;
+                    _frameCount = EventDispatchPlan.UnitDiesParamCount;
+                    break;
+                case "unit_damaged": // victim, attacker, amount
+                    _frameScratch[0] = f.P0; _frameScratch[1] = f.P1; _frameScratch[2] = f.P2; _frameScratch[3] = 0;
+                    _frameCount = 3;
+                    break;
+                case "unit_trained": // unit
+                    _frameScratch[0] = f.P0; _frameScratch[1] = 0; _frameScratch[2] = 0; _frameScratch[3] = 0;
+                    _frameCount = 1;
+                    break;
+                case "ability_cast": // caster, ability
+                case "hero_level":   // hero, level
+                case "player_chat":  // sender, code
+                    _frameScratch[0] = f.P0; _frameScratch[1] = f.P1; _frameScratch[2] = 0; _frameScratch[3] = 0;
+                    _frameCount = 2;
+                    break;
+                default:
+                    _frameCount = 0;
+                    break;
             }
         }
 
@@ -1226,8 +1476,7 @@ namespace ProjectChimera.Core
 
                     if (idx >= _subscribedEvent.Length || _subscribedEvent[idx] != evIndex) continue;
                     TriggerGraph.TriggerExec ex = _execs[idx];
-                    TriggerNode t = ex.Trigger;
-                    if (!t.Enabled || _triggerFired[idx] || _triggerCooldown[idx] > 0) continue;
+                    if (!_triggerEnabled.IsEnabled(idx) || _triggerFired[idx] || _triggerCooldown[idx] > 0) continue; // Story 7.13 — the runtime mask is SEEDED from TriggerNode.Enabled at load, so it SUBSUMES the authored flag; gate on the mask alone (dropping the redundant !t.Enabled) so enable_trigger can turn on an authored-disabled trigger
                     // Story 7.6 — batched-row suppression, exactly the sweep's check (incl. the reset-window
                     // RowCount bound): a subscriber whose drip is still draining cannot re-fire.
                     if (_batchRowOfTrigger[idx] >= 0 && _batchRowOfTrigger[idx] < _loopState.RowCount
@@ -1310,6 +1559,14 @@ namespace ProjectChimera.Core
                 case "unit_count_threshold":
                     if (f.Slot != def.Faction) return false;
                     return Compare(f.Numeric, def.Count, def.Operator);
+                // ── Story 7.13 — the five new built-in event sources match on the occurrence's faction slot (the
+                //    victim / trained-unit / caster / hero / sender faction), exactly like unit_dies. ──
+                case "unit_damaged":
+                case "unit_trained":
+                case "ability_cast":
+                case "hero_level":
+                case "player_chat":
+                    return f.Slot == def.Faction;
                 default:
                     return false;
             }
@@ -1485,6 +1742,150 @@ namespace ProjectChimera.Core
                     _loopState.Charge(1 + (item.Value?.OpCount ?? 0) + (item.Index?.OpCount ?? 0));
                     ExecuteLeaf(a, item, world);
                     break;
+
+                // ── Story 7.13 — the sim-side order_units leaf. Charges fuel (sim-affecting, exactly like an
+                //    action) and issues the order to every matching alive unit ascending-id via OrderApplier. ──
+                case OrderUnitsNode ou:
+                    _loopState.Charge(1);
+                    ExecuteOrderUnits(ou, world);
+                    break;
+
+                // ── Story 7.13 — the PRESENTATION-ONLY leaves. They fire a presentation delegate and NOTHING else:
+                //    NO fuel charge (fuel is folded into SimChecksum), NO folded-store write — so the checksum is
+                //    byte-identical whether they fire or not. Null delegates (headless) are a clean no-op. ──
+                case MoveCameraNode mc:
+                    OnMoveCamera?.Invoke(mc.CameraName);
+                    break;
+
+                case CinematicModeNode cm:
+                    OnCinematicMode?.Invoke(cm.Enabled);
+                    break;
+
+                case PlayVfxNode pv:
+                    OnPlayVfx?.Invoke(pv.VfxId, pv.X, pv.Z);
+                    break;
+
+                // ── Story 7.13 — the weighted exec container. Draws from the SINGLE shared SimRng stream (folded
+                //    LAST), sums pre-computed weights, and selects the branch by subtracting down the array. Charges
+                //    1 op (the container entry); the taken branch charges its own items. Port-0 continuation items
+                //    follow this one in the parent chain (they always run, like a branch). ──
+                case RandomChoiceNode:
+                {
+                    _loopState.Charge(1);
+                    ExecuteRandomChoice(item, world, anchor);
+                    break;
+                }
+
+                // ── Story 7.13 — enable_trigger/disable_trigger: flip the target's FOLDED runtime enabled flag. ──
+                case EnableTriggerNode en:
+                    _loopState.Charge(1);
+                    if (_triggerNodeIdToExec.TryGetValue(en.TargetTriggerId, out int enIdx))
+                        _triggerEnabled.Set(enIdx, true);
+                    break;
+
+                case DisableTriggerNode dis:
+                    _loopState.Charge(1);
+                    if (_triggerNodeIdToExec.TryGetValue(dis.TargetTriggerId, out int disIdx))
+                        _triggerEnabled.Set(disIdx, false);
+                    break;
+
+                // ── Story 7.13 — run_trigger: synchronously run the target trigger's chain in place, depth-capped
+                //    (a seatbelt halting at the WHOLE-TRIGGER boundary; self/mutual cycles were rejected at load). ──
+                case RunTriggerNode rt:
+                    _loopState.Charge(1);
+                    ExecuteRunTrigger(rt, world);
+                    break;
+            }
+        }
+
+        /// <summary>
+        /// Story 7.13 — resolve a fired <c>random_choice</c>: sum weights, draw <c>world.Rng.NextInt(total)</c> (the
+        /// SINGLE shared SimRng stream folded LAST in SimChecksum — no second stream, no reorder), and select the
+        /// branch by subtracting down the weight array (branch k = the k-th weighted branch). A zero-weight branch is
+        /// never selected; a selected empty branch is a deterministic no-op. Total &gt; 0 is guaranteed by the load
+        /// gate; a defensive total ≤ 0 draws no branch.
+        /// </summary>
+        private void ExecuteRandomChoice(CompiledItem item, EntityWorld world, int anchor)
+        {
+            int total = item.WeightTotal;
+            if (total <= 0 || item.Branches.Length == 0) return; // gate-rejected for authored content — defensive
+            int draw = world.Rng.NextInt(total);
+            for (int k = 0; k < item.Weights.Length; k++)
+            {
+                int w = item.Weights[k];
+                if (draw < w)
+                {
+                    if (k < item.Branches.Length)
+                        ExecuteItems(item.Branches[k], world, anchor);
+                    return;
+                }
+                draw -= w;
+            }
+            // Unreachable when total > 0 (draw < total ⇒ some branch consumed it); defensive no-op otherwise.
+        }
+
+        /// <summary>
+        /// Story 7.13 — synchronously execute a target trigger's action chain in place (the <c>run_trigger</c> leaf),
+        /// bounded by <see cref="EventBounds.MaxRunTriggerDepth"/>. At the cap the run is a deterministic no-op (halts
+        /// at the whole-trigger boundary — never mid-Sequence). Self/mutual run cycles were rejected at load, so the
+        /// cap is a pure seatbelt. The target runs inside its OWN fresh TriggerLocal scope (like a normal fire); a
+        /// target carrying a for_each_batched snapshots + activates its continuation row exactly as a direct fire.
+        /// </summary>
+        private void ExecuteRunTrigger(RunTriggerNode rt, EntityWorld world)
+        {
+            if (_runDepth >= EventBounds.MaxRunTriggerDepth) return; // seatbelt — whole-trigger boundary halt
+            if (!_triggerNodeIdToExec.TryGetValue(rt.TargetTriggerId, out int target)) return; // gate-rejected — defensive
+            // Story 7.13 (follow-up review, P2): honor the SAME batched-drip suppression every OTHER trigger-entry
+            // path enforces (base sweep :1342, same-tick re-dispatch :1357, custom-event drain :1482). A target whose
+            // for_each_batched continuation row is still ACTIVE must not be re-entered — a second SnapshotBatched
+            // (ExecuteTopLevel :1651) resets the folded _loopState row cursor mid-drain (double-processing / lost
+            // continuation). run_trigger was the one entry path that omitted this guard; skip deterministically at the
+            // whole-trigger boundary so a still-draining batched target is left to complete its drip.
+            if (_batchRowOfTrigger[target] >= 0 && _batchRowOfTrigger[target] < _loopState.RowCount
+                && _loopState.RowActive(_batchRowOfTrigger[target])) return;
+            // Story 7.13 (follow-up review, P1): a run target is a synchronous GOSUB, NOT an event fire — it has no
+            // dispatch frame of its own. Run it at frame 0 (the batched-drain / legacy-fire convention) so its
+            // programs read event.<param> as the defined sentinel 0 rather than BLEEDING the calling trigger's
+            // dispatch frame (_frameCount/_frameScratch). Save/restore so the caller's remaining chain is unaffected.
+            int savedFrame = _frameCount;
+            _frameCount = 0;
+            _runDepth++;
+            _vars.Enter();
+            try { ExecuteTopLevel(target, world); }
+            finally { _vars.Exit(); _runDepth--; _frameCount = savedFrame; }
+        }
+
+        /// <summary>
+        /// Story 7.13 — issue <c>order_units</c>: for every alive unit matching the ascending-id selection
+        /// (faction filter −1 = any; optional region point-in-rect), apply the order via
+        /// <see cref="OrderApplier.ApplyActiveOrder"/> — the SAME command→CommandState mapping a hand-issued order
+        /// uses, so it folds through the existing entity/order state (no new checksum fold). An empty selection /
+        /// unknown region is a deterministic no-op. Presentation path-request delegates stay null (sim-side issue).
+        /// </summary>
+        private void ExecuteOrderUnits(OrderUnitsNode ou, EntityWorld world)
+        {
+            UnitCommand cmd = ou.Command switch
+            {
+                "move"          => UnitCommand.Move,
+                "attack_move"   => UnitCommand.AttackMove,
+                "stop"          => UnitCommand.Stop,
+                "hold_position" => UnitCommand.HoldPosition,
+                _               => UnitCommand.Stop, // unreachable: command is parse-validated to the closed set
+            };
+
+            bool useRegion = !string.IsNullOrEmpty(ou.RegionId);
+            int rIdx = -1;
+            if (useRegion && !_regions.TryGetIndex(ou.RegionId, out rIdx))
+                return; // unknown region (gate-rejected for authored content) → no-op
+
+            int tx = ou.X.Raw, tz = ou.Z.Raw;
+            int hwm = world.HighWaterMark;
+            for (int i = 0; i < hwm; i++)
+            {
+                if (!world.IsAlive(i)) continue;
+                if (ou.Faction >= 0 && (int)world.FactionOf[i] != ou.Faction + 1) continue;
+                if (useRegion && !_regions.Contains(rIdx, world.Position[i])) continue;
+                OrderApplier.ApplyActiveOrder(world, i, cmd, tx, tz);
             }
         }
 

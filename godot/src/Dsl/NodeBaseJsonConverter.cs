@@ -195,6 +195,11 @@ namespace ProjectChimera.Dsl
                         throw new JsonException($"Cannot serialize expr_call node {ec.Id}: unknown fn '{ec.Fn}'.");
                     writer.WriteString("kind", NodeKinds.ExprCall);
                     writer.WriteString("fn", ec.Fn);
+                    // Story 7.13 — the OPTIONAL state-read selector, omit-when-empty (mirrors expr_var's canonical
+                    // omit-at-default encoding; Read defaults it back, so the round-trip stays byte-exact and a
+                    // 7.4-era count/distance node serializes byte-identically to before).
+                    if (!string.IsNullOrEmpty(ec.Selector))
+                        writer.WriteString("selector", ec.Selector);
                     break;
 
                 // ── Story 7.6 — the loop/branch containers + array expression kinds (exact inverses of Read) ──
@@ -239,6 +244,61 @@ namespace ProjectChimera.Dsl
                     // Story 7.5 — the event.<name> read leaf (exact inverse of the Read branch).
                     writer.WriteString("kind", NodeKinds.ExprEventParam);
                     writer.WriteString("name", ep.Name);
+                    break;
+
+                // ── Story 7.13 — the four action-leaf kinds (exact inverses of the Read branches) ──
+
+                case OrderUnitsNode ou:
+                    if (!NodeKinds.InSet(NodeKinds.OrderCommands, ou.Command))
+                        throw new JsonException($"Cannot serialize order_units node {ou.Id}: unknown command '{ou.Command}'.");
+                    writer.WriteString("kind", NodeKinds.OrderUnits);
+                    writer.WriteString("command", ou.Command);
+                    writer.WriteNumber("faction", ou.Faction);
+                    WriteOptString(writer, "region_id", ou.RegionId);
+                    WriteFixed(writer, "x", ou.X, options);
+                    WriteFixed(writer, "z", ou.Z, options);
+                    break;
+
+                case MoveCameraNode mc:
+                    writer.WriteString("kind", NodeKinds.MoveCamera);
+                    writer.WriteString("camera_name", mc.CameraName);
+                    break;
+
+                case CinematicModeNode cm:
+                    writer.WriteString("kind", NodeKinds.CinematicMode);
+                    writer.WriteBoolean("enabled", cm.Enabled);
+                    break;
+
+                case PlayVfxNode pv:
+                    writer.WriteString("kind", NodeKinds.PlayVfx);
+                    writer.WriteString("vfx_id", pv.VfxId);
+                    WriteFixed(writer, "x", pv.X, options);
+                    WriteFixed(writer, "z", pv.Z, options);
+                    break;
+
+                // ── Story 7.13 — the weighted container + the three trigger-control leaves (inverses of Read) ──
+
+                case RandomChoiceNode rc:
+                    writer.WriteString("kind", NodeKinds.RandomChoice);
+                    writer.WritePropertyName("weights");
+                    writer.WriteStartArray();
+                    foreach (int w in rc.Weights) writer.WriteNumberValue(w);
+                    writer.WriteEndArray();
+                    break;
+
+                case EnableTriggerNode en:
+                    writer.WriteString("kind", NodeKinds.EnableTrigger);
+                    writer.WriteNumber("target_trigger", en.TargetTriggerId);
+                    break;
+
+                case DisableTriggerNode di:
+                    writer.WriteString("kind", NodeKinds.DisableTrigger);
+                    writer.WriteNumber("target_trigger", di.TargetTriggerId);
+                    break;
+
+                case RunTriggerNode rt:
+                    writer.WriteString("kind", NodeKinds.RunTrigger);
+                    writer.WriteNumber("target_trigger", rt.TargetTriggerId);
                     break;
 
                 default:
@@ -457,11 +517,13 @@ namespace ProjectChimera.Dsl
 
             if (kind == NodeKinds.ExprCall)
             {
-                RejectUnknownProperties(el, path, "id", "kind", "fn");
+                RejectUnknownProperties(el, path, "id", "kind", "fn", "selector");
                 string fn = ReadString(el, "fn", path, "");
                 if (!NodeKinds.InSet(NodeKinds.ExprCallFns, fn))
-                    throw new JsonException($"{path}.fn: '{fn}' is not a known expression built-in (count/distance/min/max/abs).");
-                return new ExprCallNode { Id = ReadId(el, path), Fn = fn };
+                    throw new JsonException($"{path}.fn: '{fn}' is not a known expression built-in.");
+                // Story 7.13 — the optional state-read selector (empty when absent; membership/presence rules are
+                // compile concerns, per the closed-vocab-resolves-at-compile decision, not parse concerns).
+                return new ExprCallNode { Id = ReadId(el, path), Fn = fn, Selector = ReadString(el, "selector", path, "") };
             }
 
             // ── Story 7.6 — the loop/branch containers + array expression kinds ──
@@ -531,6 +593,77 @@ namespace ProjectChimera.Dsl
                 return new ExprEventParamNode { Id = ReadId(el, path), Name = epName };
             }
 
+            // ── Story 7.13 — the four action-leaf kinds ──
+
+            if (kind == NodeKinds.OrderUnits)
+            {
+                RejectUnknownProperties(el, path, "id", "kind", "command", "faction", "region_id", "x", "z");
+                string command = ReadString(el, "command", path, "");
+                if (!NodeKinds.InSet(NodeKinds.OrderCommands, command))
+                    throw new JsonException($"{path}.command: '{command}' is not a known order_units command (move/attack_move/stop/hold_position).");
+                return new OrderUnitsNode
+                {
+                    Id       = ReadId(el, path),
+                    Command  = command,
+                    Faction  = ReadInt(el, "faction", path, -1),
+                    RegionId = ReadOptString(el, "region_id", path),
+                    X        = ReadFixed(el, "x", path, options, Fixed.Zero),
+                    Z        = ReadFixed(el, "z", path, options, Fixed.Zero),
+                };
+            }
+
+            if (kind == NodeKinds.MoveCamera)
+            {
+                RejectUnknownProperties(el, path, "id", "kind", "camera_name");
+                return new MoveCameraNode { Id = ReadId(el, path), CameraName = ReadString(el, "camera_name", path, "") };
+            }
+
+            if (kind == NodeKinds.CinematicMode)
+            {
+                RejectUnknownProperties(el, path, "id", "kind", "enabled");
+                return new CinematicModeNode { Id = ReadId(el, path), Enabled = ReadBool(el, "enabled", path, true) };
+            }
+
+            if (kind == NodeKinds.PlayVfx)
+            {
+                RejectUnknownProperties(el, path, "id", "kind", "vfx_id", "x", "z");
+                return new PlayVfxNode
+                {
+                    Id    = ReadId(el, path),
+                    VfxId = ReadString(el, "vfx_id", path, ""),
+                    X     = ReadFixed(el, "x", path, options, Fixed.Zero),
+                    Z     = ReadFixed(el, "z", path, options, Fixed.Zero),
+                };
+            }
+
+            // ── Story 7.13 — the weighted container + the three trigger-control leaves ──
+
+            if (kind == NodeKinds.RandomChoice)
+            {
+                RejectUnknownProperties(el, path, "id", "kind", "weights");
+                // 'weights' is REQUIRED — a random_choice with no weights array can never draw a branch (a
+                // zero-total/empty node rejects at the load gate, but a missing array is a parse-level malform).
+                return new RandomChoiceNode { Id = ReadId(el, path), Weights = ReadIntArray(el, "weights", path) };
+            }
+
+            if (kind == NodeKinds.EnableTrigger)
+            {
+                RejectUnknownProperties(el, path, "id", "kind", "target_trigger");
+                return new EnableTriggerNode { Id = ReadId(el, path), TargetTriggerId = ReadTargetTrigger(el, path) };
+            }
+
+            if (kind == NodeKinds.DisableTrigger)
+            {
+                RejectUnknownProperties(el, path, "id", "kind", "target_trigger");
+                return new DisableTriggerNode { Id = ReadId(el, path), TargetTriggerId = ReadTargetTrigger(el, path) };
+            }
+
+            if (kind == NodeKinds.RunTrigger)
+            {
+                RejectUnknownProperties(el, path, "id", "kind", "target_trigger");
+                return new RunTriggerNode { Id = ReadId(el, path), TargetTriggerId = ReadTargetTrigger(el, path) };
+            }
+
             throw new JsonException($"{path}: unknown node kind '{kind}'.");
         }
 
@@ -587,6 +720,39 @@ namespace ProjectChimera.Dsl
             if (!NodeKinds.InSet(NodeKinds.Operators, op))
                 throw new JsonException($"{path}.operator: '{op}' is not a known comparison operator (>, <, >=, <=, ==, !=).");
             return op;
+        }
+
+        /// <summary>Story 7.13 — read a REQUIRED JSON array of 32-bit integers (random_choice weights). A missing
+        /// property, a non-array value, or a non-integer element is a located reject (fail-closed).</summary>
+        private static int[] ReadIntArray(JsonElement parent, string prop, string path)
+        {
+            if (!parent.TryGetProperty(prop, out JsonElement el))
+                throw new JsonException($"{path}.{prop}: required (an integer array).");
+            if (el.ValueKind != JsonValueKind.Array)
+                throw new JsonException($"{path}.{prop}: must be an integer array, got {el.ValueKind}.");
+            int n = el.GetArrayLength();
+            var result = new int[n];
+            int i = 0;
+            foreach (JsonElement item in el.EnumerateArray())
+            {
+                if (item.ValueKind != JsonValueKind.Number || !item.TryGetInt32(out int v))
+                    throw new JsonException($"{path}.{prop}[{i}]: must be a 32-bit integer.");
+                result[i++] = v;
+            }
+            return result;
+        }
+
+        /// <summary>Story 7.13 — read a REQUIRED non-negative target trigger node id (enable/disable/run_trigger).
+        /// A missing or negative value is a located reject (the referenced trigger must exist; resolution is a
+        /// load-gate concern).</summary>
+        private static int ReadTargetTrigger(JsonElement el, string path)
+        {
+            if (!el.TryGetProperty("target_trigger", out _))
+                throw new JsonException($"{path}.target_trigger: required (the persistent node id of the target trigger).");
+            int v = ReadInt(el, "target_trigger", path, -1);
+            if (v < 0)
+                throw new JsonException($"{path}.target_trigger: {v} is not a valid trigger node id (must be non-negative).");
+            return v;
         }
 
         private static string? ReadOptString(JsonElement parent, string prop, string path)

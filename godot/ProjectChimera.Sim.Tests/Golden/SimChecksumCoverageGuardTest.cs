@@ -113,7 +113,7 @@ namespace ProjectChimera.Sim.Tests.Golden
         {
             // Algorithm version must be exactly 20 (Story 7.12's AllianceStore fold at v20, on top of 7.11's
             // WinStateStore fold at v19). If this fails, the const below is stale.
-            Assert.Equal(20, SimChecksum.AlgoVersion);
+            Assert.Equal(21, SimChecksum.AlgoVersion);
 
             uint actual = ComputeKnownStateHash();
 

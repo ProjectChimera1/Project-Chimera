@@ -1,6 +1,6 @@
 # Project Chimera — equal-exchange golden-checksum baseline (Story 2.10, AC1.5 / D-5) — CROSS-PLATFORM SAFE (integer/Fixed only).
 # Format: "<tick> <hashHex8>" per line — tick decimal, hash 8 uppercase hex digits (no 0x).
-# checksum_algo_version: 20
+# checksum_algo_version: 21
 # Pins the SimChecksum (v8) sequence for EqualExchangeScenario.Build() (one stationary P1 caster casts a Self equal_exchange ability = Sequence[apply_modifier +15 atk, direct_hp_delta -25] via a CastAbility UnitOrder at tick 1; Player2 empty so the AI no-ops) stepped via StepOnce at ChecksumInterval=1. First golden with a flat armor-independent HP self-cost inside a Sequence — exercises the tick-1 Health 100→75 drop (clamped, NOT via the damage matrix), the same-tick EffectiveAttack buff, the modifier expiry, and the v7 cooldown fold. All hashed fields integer/Fixed → byte-identical Win↔Linux; NOT Windows-gated, compared on both CI legs.
 # Samples: 300 (one line per sim tick).
 # Re-baseline (intentional behavior change only): set CHIMERA_GOLDEN_RECORD=1, run `dotnet test --filter FullyQualifiedName~EqualExchangeGolden`, then `dotnet build` (refreshes the embedded copy) and commit. DO NOT hand-edit.

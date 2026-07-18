@@ -43,6 +43,9 @@ namespace ProjectChimera.Dsl
             DslValueType.Int   => DataWireType.Int,
             DslValueType.Fixed => DataWireType.Fixed,
             DslValueType.Bool  => DataWireType.Boolean,
+            // Story 7.13 — FactionRef (entity_owner's result) is a raw-int-backed value: it flows on an Int wire, so
+            // it can feed a faction operand (unit_count_tag/category/player_resource) or an Int/FactionRef comparison.
+            DslValueType.FactionRef => DataWireType.Int,
             _                  => DataWireType.Point, // DslValueType.Point (the only other carryable type)
         };
 
@@ -408,13 +411,18 @@ namespace ProjectChimera.Dsl
                     return DslValueType.Bool;
 
                 case "eq": case "ne":
-                    if (!bothInt && !bothFixed && !bothBool)
+                {
+                    // Story 7.13 — FactionRef (raw-int-backed) compares with Int or FactionRef (both raw ints order
+                    // identically), so entity_owner(e) == <slot> / entity_owner(a) == entity_owner(b) is legal.
+                    bool bothFactionLike = IsFactionLike(lt.Value) && IsFactionLike(rt.Value) && (lt == DslValueType.FactionRef || rt == DslValueType.FactionRef);
+                    if (!bothInt && !bothFixed && !bothBool && !bothFactionLike)
                     {
-                        ctx.Error = $"expr node {id}: comparison '{bin.Op}' requires both operands of the same Int/Fixed/Bool type, got {lt} and {rt}.";
+                        ctx.Error = $"expr node {id}: comparison '{bin.Op}' requires both operands of the same Int/Fixed/Bool/FactionRef type, got {lt} and {rt}.";
                         return null;
                     }
                     Emit(ctx, bin.Op == "eq" ? ExprProgram.OpCode.Eq : ExprProgram.OpCode.Ne, -1);
                     return DslValueType.Bool;
+                }
 
                 case "and": case "or":
                     if (!bothBool)
@@ -431,6 +439,9 @@ namespace ProjectChimera.Dsl
             }
         }
 
+        /// <summary>Story 7.13 — true for the raw-int faction types a faction operand / FactionRef comparison accepts.</summary>
+        private static bool IsFactionLike(DslValueType t) => t == DslValueType.Int || t == DslValueType.FactionRef;
+
         private static DslValueType? VisitCall(Ctx ctx, ExprCallNode call, int depth)
         {
             int id = call.Id;
@@ -438,11 +449,25 @@ namespace ProjectChimera.Dsl
             {
                 "count" => 1, "abs" => 1,
                 "distance" => 2, "min" => 2, "max" => 2,
+                // Story 7.13 — the state reads. entity_* + the three faction-count reads take one operand; the
+                // closed-vocab selector (tag/category/resource/region) is a STATIC field, never an operand.
+                "entity_hp" => 1, "entity_owner" => 1, "entity_position" => 1,
+                "unit_count_tag" => 1, "unit_count_category" => 1, "player_resource" => 1,
+                "region_unit_count" => 0,
                 _ => -1,
             };
             if (arity < 0)
             {
                 ctx.Error = $"expr node {id}: unknown built-in '{call.Fn}'.";
+                return null;
+            }
+
+            // Story 7.13 — the closed-vocab selector is legal ONLY on the four reads that declare one; a stray
+            // selector on any other built-in is a located reject (keeps the canonical encoding clean).
+            bool usesSelector = NodeKinds.FnUsesSelector(call.Fn);
+            if (!usesSelector && !string.IsNullOrEmpty(call.Selector))
+            {
+                ctx.Error = $"expr node {id}: built-in '{call.Fn}' takes no selector (got '{call.Selector}').";
                 return null;
             }
 
@@ -505,6 +530,91 @@ namespace ProjectChimera.Dsl
                     Emit(ctx, call.Fn == "min" ? ExprProgram.OpCode.Min : ExprProgram.OpCode.Max, -1);
                     return argTypes[0];
                 }
+
+                // ── Story 7.13 — the state reads. Entity reads take an Int entity handle (e.g. an event.<param>
+                //    surfaced EntityRef); the faction-count reads take a faction operand (Int/FactionRef) + a
+                //    static selector resolved to an int id here (region carries its name into the opcode). ──
+
+                case "entity_hp":
+                    if (argTypes[0] != DslValueType.Int)
+                    {
+                        ctx.Error = $"expr node {id}: entity_hp(entity) requires an Int entity handle, got {argTypes[0]}.";
+                        return null;
+                    }
+                    Emit(ctx, ExprProgram.OpCode.EntityHp, 0);
+                    return DslValueType.Fixed;
+
+                case "entity_owner":
+                    if (argTypes[0] != DslValueType.Int)
+                    {
+                        ctx.Error = $"expr node {id}: entity_owner(entity) requires an Int entity handle, got {argTypes[0]}.";
+                        return null;
+                    }
+                    Emit(ctx, ExprProgram.OpCode.EntityOwner, 0);
+                    return DslValueType.FactionRef;
+
+                case "entity_position":
+                    if (argTypes[0] != DslValueType.Int)
+                    {
+                        ctx.Error = $"expr node {id}: entity_position(entity) requires an Int entity handle, got {argTypes[0]}.";
+                        return null;
+                    }
+                    Emit(ctx, ExprProgram.OpCode.EntityPos, 0); // Int handle → Point (same stack slot: raw X, raw Z)
+                    return DslValueType.Point;
+
+                case "unit_count_tag":
+                    if (!IsFactionLike(argTypes[0]))
+                    {
+                        ctx.Error = $"expr node {id}: unit_count_tag(faction, tag) requires an Int/FactionRef faction operand, got {argTypes[0]}.";
+                        return null;
+                    }
+                    if (!NodeKinds.TryResolveTagSelector(call.Selector, out int tagBit))
+                    {
+                        ctx.Error = $"expr node {id}: unit_count_tag selector '{call.Selector}' is not a known tag (organic/mechanical/magical).";
+                        return null;
+                    }
+                    Emit(ctx, ExprProgram.OpCode.UnitCountTag, 0, a: tagBit);
+                    return DslValueType.Int;
+
+                case "unit_count_category":
+                    if (!IsFactionLike(argTypes[0]))
+                    {
+                        ctx.Error = $"expr node {id}: unit_count_category(faction, category) requires an Int/FactionRef faction operand, got {argTypes[0]}.";
+                        return null;
+                    }
+                    if (!NodeKinds.TryResolveCategorySelector(call.Selector, out int catId))
+                    {
+                        ctx.Error = $"expr node {id}: unit_count_category selector '{call.Selector}' is not a known category (worker/melee/ranged/siege/air/structure).";
+                        return null;
+                    }
+                    Emit(ctx, ExprProgram.OpCode.UnitCountCat, 0, a: catId);
+                    return DslValueType.Int;
+
+                case "player_resource":
+                    if (!IsFactionLike(argTypes[0]))
+                    {
+                        ctx.Error = $"expr node {id}: player_resource(faction, resource) requires an Int/FactionRef faction operand, got {argTypes[0]}.";
+                        return null;
+                    }
+                    if (!NodeKinds.TryResolveResourceSelector(call.Selector, out int resKind))
+                    {
+                        ctx.Error = $"expr node {id}: player_resource selector '{call.Selector}' is not a known resource (ore/crystal).";
+                        return null;
+                    }
+                    Emit(ctx, ExprProgram.OpCode.PlayerResource, 0, a: resKind);
+                    return DslValueType.Fixed;
+
+                case "region_unit_count":
+                    // Arity 0 — the region is a STATIC selector, not an operand. Its NAME is carried into the opcode
+                    // and resolved at runtime via RegionStore (the for_each region_units precedent); region EXISTENCE
+                    // is validated at load by ScenarioValidator (which holds the scenario's declared regions).
+                    if (string.IsNullOrEmpty(call.Selector))
+                    {
+                        ctx.Error = $"expr node {id}: region_unit_count requires a 'selector' naming a declared region.";
+                        return null;
+                    }
+                    Emit(ctx, ExprProgram.OpCode.RegionUnitCount, +1, name: call.Selector);
+                    return DslValueType.Int;
 
                 default: // "abs"
                     if (argTypes[0] != DslValueType.Int && argTypes[0] != DslValueType.Fixed)

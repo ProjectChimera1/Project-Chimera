@@ -26,6 +26,9 @@ namespace ProjectChimera.Multiplayer
         // v3 (Story 7.9): the command stream may carry UnitCommand.DslEvent orders (button-originated custom-event
         // raises). No format/stride change — DslEvent rides the existing fixed 11-byte per-order record for free — so
         // the bump is a COMPATIBILITY marker: ReplayPlayer hard-rejects v1 (seed-incomplete) but still plays v2.
+        // Story 7.13 (Arm D): player_chat ALSO rides this same 11-byte DslEvent order (UnitId = the reserved
+        // EventBounds.PlayerChatRailCode sentinel, TargetX = the bounded chat code) — still NO format/stride change,
+        // so VERSION STAYS 3; ReplayRecorder/ReplayPlayer need no code change (the order records & replays as-is).
         public const ushort VERSION = 3;
 
         /// <summary>Sentinel written at end-of-file to mark replay completion.</summary>

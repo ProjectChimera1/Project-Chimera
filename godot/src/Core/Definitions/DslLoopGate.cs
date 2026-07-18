@@ -188,6 +188,25 @@ namespace ProjectChimera.Core.Definitions
                             $"action node {de.Dst}: the index-in edge must carry the Int wire, got '{de.Wire}'.");
                 }
 
+                // ── Story 7.13 — run_trigger self/mutual-cycle reject (tri-color DFS over the run-target graph;
+                //    edges = each trigger's run_trigger targets, collected across container sub-chains). Roots
+                //    iterate in exec order → deterministic first-fail. Targets were resolved to trigger nodes by
+                //    RequireTriggerTarget in the WalkChain pass above. ──
+                var runTargets = new Dictionary<int, List<int>>(execs.Count);
+                foreach (TriggerGraph.TriggerExec ex in execs)
+                {
+                    var list = new List<int>();
+                    CollectRunTargets(ex.Items, list);
+                    runTargets[ex.Trigger.Id] = list;
+                }
+                var runColor = new Dictionary<int, byte>();
+                var runPath  = new List<int>();
+                foreach (TriggerGraph.TriggerExec ex in execs)
+                {
+                    string? cyc = RunCycleDfs(ex.Trigger.Id, runTargets, runColor, runPath, ctx.ById);
+                    if (cyc != null) throw new GateException(cyc);
+                }
+
                 return null;
             }
             catch (GateException gex)
@@ -248,9 +267,13 @@ namespace ProjectChimera.Core.Definitions
             foreach (TriggerGraph.ExecItem it in items)
             {
                 if (it.Node is ForEachNode or ForEachBatchedNode or BranchNode) return true;
+                // Story 7.13 — random_choice is a container too (its worst-branch cost must clear the per-trigger cap).
+                if (it.Node is RandomChoiceNode) return true;
                 if (it.Node is ActionNode a && NodeKinds.IsArrayActionKind(a.Kind)) return true;
                 if (ContainsLoopConstruct(it.Body) || ContainsLoopConstruct(it.Then) || ContainsLoopConstruct(it.Else))
                     return true;
+                foreach (TriggerGraph.ExecItem[] br in it.Branches)
+                    if (ContainsLoopConstruct(br)) return true;
             }
             return false;
         }
@@ -384,10 +407,138 @@ namespace ProjectChimera.Core.Definitions
                     case EffectActionNode eff:
                         cost += CountEffectNodes(eff.Effect);
                         break;
+
+                    // ── Story 7.13 — the four action-leaf kinds each cost 1 op (an action). order_units validates
+                    //    its selection faction/region here; the presentation leaves need no semantic gate. ──
+                    case OrderUnitsNode ou:
+                        if (ou.Faction < -1 || ou.Faction >= DslVarTable.PlayerSlots)
+                            throw new GateException(
+                                $"order_units node {ou.Id}: faction {ou.Faction} is out of range (-1 = any faction, 0..{DslVarTable.PlayerSlots - 1}).");
+                        if (!string.IsNullOrEmpty(ou.RegionId) && !ctx.RegionExists(ou.RegionId!))
+                            throw new GateException(
+                                $"order_units node {ou.Id}: region_id '{ou.RegionId}' references no declared region.");
+                        cost += 1;
+                        break;
+
+                    case MoveCameraNode or CinematicModeNode or PlayVfxNode:
+                        cost += 1;
+                        break;
+
+                    // ── Story 7.13 — the weighted exec container. Reject empty/zero-total/negative/over-cap weights
+                    //    at load; recurse each branch sub-chain; cost = 1 + the worst branch (the branch posture). ──
+                    case RandomChoiceNode rc:
+                    {
+                        if (rc.Weights.Length == 0)
+                            throw new GateException(
+                                $"random_choice node {rc.Id}: has no weighted branches (at least one branch required).");
+                        if (rc.Weights.Length > EventBounds.MaxRandomChoiceBranches)
+                            throw new GateException(
+                                $"random_choice node {rc.Id}: {rc.Weights.Length} branches exceed EventBounds.MaxRandomChoiceBranches={EventBounds.MaxRandomChoiceBranches}.");
+                        long total = 0;
+                        for (int k = 0; k < rc.Weights.Length; k++)
+                        {
+                            if (rc.Weights[k] < 0)
+                                throw new GateException(
+                                    $"random_choice node {rc.Id}: branch {k} has negative weight {rc.Weights[k]} (weights must be >= 0).");
+                            total += rc.Weights[k];
+                        }
+                        if (total <= 0)
+                            throw new GateException(
+                                $"random_choice node {rc.Id}: total branch weight is 0 (at least one branch must have a positive weight).");
+                        // Story 7.13 (review) — the RUNTIME weight-sum (ScenarioDirector.ExecuteRandomChoice) is an
+                        // int; reject a set whose long sum exceeds int.MaxValue at LOAD so it can never wrap to a
+                        // wrong/negative WeightTotal and violate the authored weights (deterministic but incorrect).
+                        if (total > int.MaxValue)
+                            throw new GateException(
+                                $"random_choice node {rc.Id}: total branch weight {total} overflows int.MaxValue (the runtime weight-sum is a 32-bit int).");
+                        RequireWalkDepth(walkDepth + 1, rc.Id, "random_choice");
+                        long maxBranch = 0;
+                        int innerR = batchedInTrigger;
+                        foreach (TriggerGraph.ExecItem[] br in it.Branches)
+                        {
+                            long bc = WalkChain(ctx, br, loopDepth, walkDepth + 1, topLevel: false, ref innerR);
+                            if (bc > maxBranch) maxBranch = bc;
+                        }
+                        batchedInTrigger = innerR;
+                        cost += Sat(1 + maxBranch);
+                        break;
+                    }
+
+                    // ── Story 7.13 — the three trigger-control leaves each cost 1; their target must resolve to a
+                    //    trigger node (run_trigger self/mutual cycles are rejected by CheckGraph's DFS below). ──
+                    case EnableTriggerNode en:
+                        RequireTriggerTarget(ctx, en.Id, en.TargetTriggerId, "enable_trigger");
+                        cost += 1;
+                        break;
+                    case DisableTriggerNode di:
+                        RequireTriggerTarget(ctx, di.Id, di.TargetTriggerId, "disable_trigger");
+                        cost += 1;
+                        break;
+                    case RunTriggerNode rt:
+                        RequireTriggerTarget(ctx, rt.Id, rt.TargetTriggerId, "run_trigger");
+                        cost += 1;
+                        break;
                 }
             }
             return Sat(cost);
         }
+
+        /// <summary>Story 7.13 — a trigger-control leaf's target must resolve to an existing <see cref="TriggerNode"/>
+        /// (a persistent node id). An unset (-1) or non-trigger target is a located reject.</summary>
+        private static void RequireTriggerTarget(Ctx ctx, int nodeId, int targetTriggerId, string kind)
+        {
+            if (targetTriggerId < 0 || !ctx.ById.TryGetValue(targetTriggerId, out NodeBase? tgt) || tgt is not TriggerNode)
+                throw new GateException(
+                    $"{kind} node {nodeId}: target_trigger {targetTriggerId} does not resolve to a trigger node.");
+        }
+
+        /// <summary>Story 7.13 — collect every <see cref="RunTriggerNode"/> target reachable in an exec-item chain
+        /// (top-level + container body/then/else/branches) into <paramref name="targets"/>, for the run-cycle DFS.</summary>
+        private static void CollectRunTargets(TriggerGraph.ExecItem[] items, List<int> targets)
+        {
+            foreach (TriggerGraph.ExecItem it in items)
+            {
+                if (it.Node is RunTriggerNode rt) targets.Add(rt.TargetTriggerId);
+                CollectRunTargets(it.Body, targets);
+                CollectRunTargets(it.Then, targets);
+                CollectRunTargets(it.Else, targets);
+                foreach (TriggerGraph.ExecItem[] br in it.Branches)
+                    CollectRunTargets(br, targets);
+            }
+        }
+
+        /// <summary>Story 7.13 — tri-color DFS over the run_trigger target graph (edges = a trigger's run_trigger
+        /// targets). Names the cycle path (A→B→A). Reuses the EventDispatchPlan cycle-DFS shape.</summary>
+        private static string? RunCycleDfs(int triggerId, Dictionary<int, List<int>> runTargets,
+            Dictionary<int, byte> color, List<int> path, Dictionary<int, NodeBase> byId)
+        {
+            if (color.TryGetValue(triggerId, out byte c))
+            {
+                if (c == 2) return null;
+                if (c == 1)
+                {
+                    int start = path.IndexOf(triggerId);
+                    var cycle = new List<string>();
+                    for (int k = start; k < path.Count; k++) cycle.Add(TriggerNameOf(byId, path[k]));
+                    cycle.Add(TriggerNameOf(byId, triggerId));
+                    return $"run_trigger cycle: {string.Join("→", cycle)} (a trigger may not run itself, directly or transitively).";
+                }
+            }
+            color[triggerId] = 1;
+            path.Add(triggerId);
+            if (runTargets.TryGetValue(triggerId, out List<int>? tgts))
+                foreach (int t in tgts)
+                {
+                    string? cyc = RunCycleDfs(t, runTargets, color, path, byId);
+                    if (cyc != null) return cyc;
+                }
+            path.RemoveAt(path.Count - 1);
+            color[triggerId] = 2;
+            return null;
+        }
+
+        private static string TriggerNameOf(Dictionary<int, NodeBase> byId, int id) =>
+            byId.TryGetValue(id, out NodeBase? n) && n is TriggerNode t ? $"'{t.Name}' (node {id})" : $"node {id}";
 
         private static long CheckForEach(Ctx ctx, ForEachNode fe)
         {

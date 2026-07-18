@@ -42,7 +42,7 @@ namespace ProjectChimera.Sim.Tests.Validation
         [Fact]
         public void AlgoVersions_Unchanged() // 10 canonical (7.5 merge fold) / 2 start-state (value moves via the seed)
         {
-            Assert.Equal(12, CanonicalModelHash.AlgoVersion);
+            Assert.Equal(13, CanonicalModelHash.AlgoVersion);
             Assert.Equal(2, StartStateHash.AlgoVersion);
         }
 
@@ -89,6 +89,85 @@ namespace ProjectChimera.Sim.Tests.Validation
                 .BuildRunEffectTrigger("t", "match_start", new DirectHpDeltaEffect(Fixed.FromInt(-2)))
                 .ToCanonicalJson();
             Assert.NotEqual(CanonicalModelHash.Compute(a), CanonicalModelHash.Compute(b));
+        }
+
+        /// <summary>Story 7.13 (review PATCH 2) — the ExprCallNode.Selector fold is OMIT-WHEN-DEFAULT, the discipline
+        /// every other fold observes: an empty selector (count/distance) mixes NOTHING (so a pre-7.13 count node folds
+        /// byte-identically apart from the version bump), while a present state-read selector stays discriminated so a
+        /// divergent handshake rejects at the lobby.</summary>
+        [Fact]
+        public void ExprCallSelector_OmitWhenDefault_AndDiscriminatesWhenPresent()
+        {
+            // Empty vs null selector on a count() node → both omit → identical hash (the omit-when-default invariant;
+            // a JSON round-trip also normalizes both to "", so this proves the fold adds no mix for an empty selector).
+            var emptySel = BaseModel(); emptySel.TriggerGraphJson = GraphWithExprCall("count", "");
+            var nullSel  = BaseModel(); nullSel.TriggerGraphJson  = GraphWithExprCall("count", null!);
+            Assert.Equal(CanonicalModelHash.Compute(emptySel), CanonicalModelHash.Compute(nullSel));
+
+            // A state read WITH a non-empty selector must hash DIFFERENTLY from the same fn+node with an empty
+            // selector — selectors are discriminated when present (closes the Arm A handshake gap).
+            var withSel    = BaseModel(); withSel.TriggerGraphJson    = GraphWithExprCall("region_unit_count", "region1");
+            var withoutSel = BaseModel(); withoutSel.TriggerGraphJson = GraphWithExprCall("region_unit_count", "");
+            Assert.NotEqual(CanonicalModelHash.Compute(withSel), CanonicalModelHash.Compute(withoutSel));
+        }
+
+        /// <summary>A minimal trigger graph carrying a single ExprCallNode (fn + selector) for the selector-fold test.</summary>
+        private static string GraphWithExprCall(string fn, string selector)
+        {
+            var g = new TriggerGraph();
+            g.Nodes.Add(new TriggerNode { Id = 0, Name = "t" });
+            g.Nodes.Add(new EventNode { Id = 1, Kind = "match_start" });
+            g.Nodes.Add(new ExprCallNode { Id = 2, Fn = fn, Selector = selector });
+            g.ExecEdges.Add(new ExecEdge(1, TriggerGraph.EventExecOutPort, 0, TriggerGraph.TriggerEventInPort));
+            return g.ToCanonicalJson();
+        }
+
+        /// <summary>Story 7.13 (follow-up review) — the eight new node kinds fold their SEMANTIC FIELDS into the typed
+        /// walk (Arm A left them on the type-name `default` arm — folding presence but NOT field values, the handshake
+        /// gap the v13 bump closed). Two models differing in exactly one folded field of one new kind must hash
+        /// DIFFERENTLY, or a divergent scenario passes the lobby handshake and desyncs. No golden fixture carries these
+        /// kinds, so this is their only fold-discrimination guard.</summary>
+        [Fact]
+        public void NewNodeKinds_FoldSemanticFields_DiscriminatingAtTheHandshake()
+        {
+            // order_units — command discriminates (faction/region/X/Z also fold; command is representative)
+            Assert.NotEqual(HashWithNode(new OrderUnitsNode { Id = 2, Command = "move",        Faction = 0, RegionId = "r", X = Fixed.FromInt(3), Z = Fixed.FromInt(4) }),
+                            HashWithNode(new OrderUnitsNode { Id = 2, Command = "attack_move", Faction = 0, RegionId = "r", X = Fixed.FromInt(3), Z = Fixed.FromInt(4) }));
+            // order_units — the point coordinate (X.Raw folds)
+            Assert.NotEqual(HashWithNode(new OrderUnitsNode { Id = 2, Command = "move", Faction = 0, RegionId = "r", X = Fixed.FromInt(3), Z = Fixed.FromInt(4) }),
+                            HashWithNode(new OrderUnitsNode { Id = 2, Command = "move", Faction = 0, RegionId = "r", X = Fixed.FromInt(9), Z = Fixed.FromInt(4) }));
+            // move_camera — camera name
+            Assert.NotEqual(HashWithNode(new MoveCameraNode { Id = 2, CameraName = "camA" }),
+                            HashWithNode(new MoveCameraNode { Id = 2, CameraName = "camB" }));
+            // cinematic_mode — the on/off flag
+            Assert.NotEqual(HashWithNode(new CinematicModeNode { Id = 2, Enabled = true }),
+                            HashWithNode(new CinematicModeNode { Id = 2, Enabled = false }));
+            // play_vfx — vfx id
+            Assert.NotEqual(HashWithNode(new PlayVfxNode { Id = 2, VfxId = "boom", X = Fixed.Zero, Z = Fixed.Zero }),
+                            HashWithNode(new PlayVfxNode { Id = 2, VfxId = "fizz", X = Fixed.Zero, Z = Fixed.Zero }));
+            // random_choice — the weighted-branch structure
+            Assert.NotEqual(HashWithNode(new RandomChoiceNode { Id = 2, Weights = new[] { 1, 2 } }),
+                            HashWithNode(new RandomChoiceNode { Id = 2, Weights = new[] { 1, 3 } }));
+            // enable_trigger / disable_trigger / run_trigger — target trigger id
+            Assert.NotEqual(HashWithNode(new EnableTriggerNode  { Id = 2, TargetTriggerId = 5 }),
+                            HashWithNode(new EnableTriggerNode  { Id = 2, TargetTriggerId = 6 }));
+            Assert.NotEqual(HashWithNode(new DisableTriggerNode { Id = 2, TargetTriggerId = 5 }),
+                            HashWithNode(new DisableTriggerNode { Id = 2, TargetTriggerId = 6 }));
+            Assert.NotEqual(HashWithNode(new RunTriggerNode     { Id = 2, TargetTriggerId = 5 }),
+                            HashWithNode(new RunTriggerNode     { Id = 2, TargetTriggerId = 6 }));
+        }
+
+        /// <summary>A minimal trigger graph carrying a single new-kind node (id 2) for the field-fold discrimination
+        /// test. The typed walk folds every node by id (CanonicalModelHash.cs:565), so exec wiring is irrelevant.</summary>
+        private static ulong HashWithNode(NodeBase node)
+        {
+            var g = new TriggerGraph();
+            g.Nodes.Add(new TriggerNode { Id = 0, Name = "t" });
+            g.Nodes.Add(new EventNode { Id = 1, Kind = "match_start" });
+            g.Nodes.Add(node);
+            g.ExecEdges.Add(new ExecEdge(1, TriggerGraph.EventExecOutPort, 0, TriggerGraph.TriggerEventInPort));
+            var m = BaseModel(); m.TriggerGraphJson = g.ToCanonicalJson();
+            return CanonicalModelHash.Compute(m);
         }
 
         [Fact]
@@ -149,8 +228,8 @@ namespace ProjectChimera.Sim.Tests.Validation
             var heroes = new HeroStore();
             Assert.Equal(StartStateHash.Compute(a, heroes), StartStateHash.Compute(b, heroes));
 
-            Assert.Equal(12, CanonicalModelHash.AlgoVersion);
-            Assert.Equal(20, SimChecksum.AlgoVersion);
+            Assert.Equal(13, CanonicalModelHash.AlgoVersion);
+            Assert.Equal(21, SimChecksum.AlgoVersion);
             Assert.Equal(2, StartStateHash.AlgoVersion);
         }
 

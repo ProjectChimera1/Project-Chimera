@@ -1007,6 +1007,22 @@ namespace ProjectChimera.Core.Definitions
                 if (loopErr != null)
                     return ValidationResult.Fail($"scenario.trigger_graph: {loopErr}");
 
+                // ── Story 7.13 — the closed-vocab selectors that need SCENARIO context to validate (the fixed-enum
+                //    tag/category/resource selectors reject in ExprCompiler; camera + region selectors need the
+                //    scenario's declared cameras/regions). A located reject on an unknown name; runtime is total. ──
+                var graphCameras = new HashSet<string>(StringComparer.Ordinal);
+                foreach (ScenarioCamera cam in m.Cameras ?? Array.Empty<ScenarioCamera>())
+                    if (cam != null && !string.IsNullOrEmpty(cam.Name)) graphCameras.Add(cam.Name);
+                foreach (NodeBase gn in parsedGraph.Nodes)
+                {
+                    if (gn is MoveCameraNode mcn && !graphCameras.Contains(mcn.CameraName))
+                        return ValidationResult.Fail(
+                            $"scenario.trigger_graph: move_camera node {mcn.Id} camera_name='{mcn.CameraName}' references no declared camera.");
+                    if (gn is ExprCallNode ecn && ecn.Fn == "region_unit_count" && !declaredRegions.Contains(ecn.Selector))
+                        return ValidationResult.Fail(
+                            $"scenario.trigger_graph: region_unit_count node {ecn.Id} selector='{ecn.Selector}' references no declared region.");
+                }
+
                 // ── Story 7.5 (merge hardening) — the strict compiles DslLoopGate's static pass SKIPS when a
                 //    subgraph reads event.<param> (it holds no event-parameter maps): every branch condition and
                 //    array-action value/index root recompiles here WITH the owning trigger's map, re-asserting the

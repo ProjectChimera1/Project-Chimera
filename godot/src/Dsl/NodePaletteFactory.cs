@@ -41,6 +41,16 @@ namespace ProjectChimera.Dsl
             kinds.Add(NodeKinds.ExprArrayGet);
             kinds.Add(NodeKinds.ExprArrayLen);
             kinds.Add(NodeKinds.ExprEventParam);
+            // Story 7.13 — the four action-leaf kinds (graph-channel-only, authored in T3).
+            kinds.Add(NodeKinds.OrderUnits);
+            kinds.Add(NodeKinds.MoveCamera);
+            kinds.Add(NodeKinds.CinematicMode);
+            kinds.Add(NodeKinds.PlayVfx);
+            // Story 7.13 — the weighted container + the three trigger-control leaves.
+            kinds.Add(NodeKinds.RandomChoice);
+            kinds.Add(NodeKinds.EnableTrigger);
+            kinds.Add(NodeKinds.DisableTrigger);
+            kinds.Add(NodeKinds.RunTrigger);
             return kinds.ToArray();
         }
 
@@ -92,6 +102,23 @@ namespace ProjectChimera.Dsl
             if (kind == NodeKinds.ExprArrayLen) return new ExprArrayLenNode { Id = id, Name = "" };
             // expr_event_param's name is REQUIRED non-empty at parse — same placeholder posture.
             if (kind == NodeKinds.ExprEventParam) return new ExprEventParamNode { Id = id, Name = "param" };
+
+            // Story 7.13 — the four action-leaf kinds. order_units' command defaults to a valid closed-vocab member
+            // (parse requires one); the free-form camera/vfx names get placeholders the validator gate rejects
+            // located until they name a declared camera / a real VFX id (work-in-progress is a badge).
+            if (kind == NodeKinds.OrderUnits) return new OrderUnitsNode { Id = id, Command = "move", Faction = -1 };
+            if (kind == NodeKinds.MoveCamera) return new MoveCameraNode { Id = id, CameraName = "" };
+            if (kind == NodeKinds.CinematicMode) return new CinematicModeNode { Id = id, Enabled = true };
+            if (kind == NodeKinds.PlayVfx) return new PlayVfxNode { Id = id, VfxId = "" };
+
+            // Story 7.13 — the weighted container + the three trigger-control leaves. random_choice defaults to an
+            // empty weights array (serializes/re-parses cleanly; the gate rejects the empty/zero-total set located —
+            // a badge). enable/disable/run_trigger default to target 0 (>= 0 so the round-trip is clean; the gate
+            // rejects located until it names a real trigger node — work-in-progress is a badge).
+            if (kind == NodeKinds.RandomChoice) return new RandomChoiceNode { Id = id, Weights = System.Array.Empty<int>() };
+            if (kind == NodeKinds.EnableTrigger) return new EnableTriggerNode { Id = id, TargetTriggerId = 0 };
+            if (kind == NodeKinds.DisableTrigger) return new DisableTriggerNode { Id = id, TargetTriggerId = 0 };
+            if (kind == NodeKinds.RunTrigger) return new RunTriggerNode { Id = id, TargetTriggerId = 0 };
 
             return null;
         }

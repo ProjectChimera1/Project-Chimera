@@ -159,8 +159,17 @@ namespace ProjectChimera.Core.Definitions
         /// existing scenario declares a preset, but the leading AlgoVersion mix moves the hash for EVERY scenario —
         /// the story's ONE named re-baseline (hero-start-state golden re-recorded + version pins, one commit);
         /// <c>StartStateHash.AlgoVersion</c> stays 2 (the 7.7–7.9 precedent), and the SimChecksum bump (v19) covers
-        /// the 24 world replay goldens separately.</summary>
-        public const int AlgoVersion = 12;
+        /// the 24 world replay goldens separately.
+        /// 13 = Story 7.13 — the typed graph walk (<see cref="MixGraphNode"/>) is EXTENDED to fold the field values of
+        /// every new node kind, INCLUDING Arm A's deferred leaves: <c>order_units</c> (command + faction + region + x/z),
+        /// <c>move_camera</c> (camera name), <c>cinematic_mode</c> (flag), <c>play_vfx</c> (vfx id + x/z) — all four rode
+        /// Arm A's type-name <c>default</c> arm (folding presence but NOT field values, a handshake gap) — plus the
+        /// <c>ExprCallNode.Selector</c> for the state reads, the weighted-branch structure for <c>random_choice</c>, and
+        /// the target trigger id for <c>enable_trigger</c>/<c>disable_trigger</c>/<c>run_trigger</c>. A scenario carrying
+        /// NONE of the new kinds folds BYTE-IDENTICALLY apart from this leading AlgoVersion mix (the new arms are only
+        /// reached by the new kinds; omit-when-default discipline verified) — so only the <c>hero-start-state</c> golden
+        /// re-records, exactly like the 7.5/7.11 graph-walk-extension precedent. <c>StartStateHash.AlgoVersion</c> stays 2.</summary>
+        public const int AlgoVersion = 13;
 
         private const ulong Offset = 14695981039346656037UL; // FNV-64 offset basis
         private const ulong Prime  = 1099511628211UL;        // FNV-64 prime
@@ -668,6 +677,13 @@ namespace ProjectChimera.Core.Definitions
                 case ProjectChimera.Dsl.ExprCallNode ec:
                     h = MixStr(h, ec.Kind);
                     h = MixStr(h, ec.Fn);
+                    // Story 7.13 (v13): the state-read SELECTOR (unit_count_tag/category/player_resource/
+                    // region_unit_count), appended after Fn — OMIT-WHEN-DEFAULT (the discipline every other fold
+                    // observes). A state read always carries a non-empty validated selector, so it stays
+                    // discriminated; a count()/distance node (empty selector) mixes NOTHING here, folding
+                    // byte-identically to the v12 arm apart from the version bump. Two graphs differing only in a
+                    // (present) state-read selector still hash differently (closes the Arm A handshake gap).
+                    if (!string.IsNullOrEmpty(ec.Selector)) h = MixStr(h, ec.Selector);
                     break;
                 case ProjectChimera.Dsl.ForEachNode fe:
                     h = MixStr(h, fe.Kind);
@@ -709,6 +725,51 @@ namespace ProjectChimera.Core.Definitions
                     h = MixStr(h, ep.Kind);
                     h = MixStr(h, ep.Name);
                     break;
+
+                // ── Story 7.13 (v13): the four action-leaf kinds (Arm A left them on the type-name `default` arm,
+                //    folding presence but NOT field values — a handshake gap) + the weighted container + the three
+                //    trigger-control leaves. Each folds its semantic fields so two scenarios differing only in an
+                //    order target / camera / vfx / weighted structure / target trigger hash differently. ──
+                case ProjectChimera.Dsl.OrderUnitsNode ou:
+                    h = MixStr(h, ou.Kind);
+                    h = MixStr(h, ou.Command);
+                    h = MixInt(h, ou.Faction);
+                    h = MixStr(h, ou.RegionId);
+                    h = MixInt(h, ou.X.Raw);
+                    h = MixInt(h, ou.Z.Raw);
+                    break;
+                case ProjectChimera.Dsl.MoveCameraNode mc:
+                    h = MixStr(h, mc.Kind);
+                    h = MixStr(h, mc.CameraName);
+                    break;
+                case ProjectChimera.Dsl.CinematicModeNode cm:
+                    h = MixStr(h, cm.Kind);
+                    h = MixInt(h, cm.Enabled ? 1 : 0);
+                    break;
+                case ProjectChimera.Dsl.PlayVfxNode pv:
+                    h = MixStr(h, pv.Kind);
+                    h = MixStr(h, pv.VfxId);
+                    h = MixInt(h, pv.X.Raw);
+                    h = MixInt(h, pv.Z.Raw);
+                    break;
+                case ProjectChimera.Dsl.RandomChoiceNode rc:
+                    h = MixStr(h, rc.Kind);
+                    h = MixInt(h, rc.Weights.Length);           // the weighted-branch structure
+                    foreach (int w in rc.Weights) h = MixInt(h, w);
+                    break;
+                case ProjectChimera.Dsl.EnableTriggerNode en:
+                    h = MixStr(h, en.Kind);
+                    h = MixInt(h, en.TargetTriggerId);
+                    break;
+                case ProjectChimera.Dsl.DisableTriggerNode di:
+                    h = MixStr(h, di.Kind);
+                    h = MixInt(h, di.TargetTriggerId);
+                    break;
+                case ProjectChimera.Dsl.RunTriggerNode rt:
+                    h = MixStr(h, rt.Kind);
+                    h = MixInt(h, rt.TargetTriggerId);
+                    break;
+
                 default:
                     // Unreachable through FromJson (closed registry); fold the runtime type name so Compute stays
                     // total/never-throw even for a hand-constructed future node.

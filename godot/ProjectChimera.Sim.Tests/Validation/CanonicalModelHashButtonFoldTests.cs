@@ -31,10 +31,10 @@ namespace ProjectChimera.Sim.Tests.Validation
             Assert.Equal(CanonicalModelHash.Compute(a), CanonicalModelHash.Compute(b));
 
         [Fact]
-        public void AlgoVersion_IsTwelve() => Assert.Equal(12, CanonicalModelHash.AlgoVersion);
+        public void AlgoVersion_IsTwelve() => Assert.Equal(13, CanonicalModelHash.AlgoVersion);
 
         [Fact]
-        public void SimChecksumAlgoVersion_Stays20() => Assert.Equal(20, ProjectChimera.Core.SimChecksum.AlgoVersion);
+        public void SimChecksumAlgoVersion_Stays20() => Assert.Equal(21, ProjectChimera.Core.SimChecksum.AlgoVersion);
 
         [Fact]
         public void PresentButton_MovesHashVsNoUi()

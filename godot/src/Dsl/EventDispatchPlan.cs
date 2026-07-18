@@ -48,6 +48,49 @@ namespace ProjectChimera.Dsl
         /// <summary>Number of frame slots the built-in <c>unit_dies</c> payload occupies.</summary>
         public const int UnitDiesParamCount = 3;
 
+        /// <summary>
+        /// Story 7.13 — the typed payload maps of the FIVE new built-in event sources (mirroring
+        /// <see cref="UnitDiesParams"/>: ref-typed ids SURFACE Int — the one sanctioned ref→Int surface). A trigger
+        /// subscribing to exactly one of these reads its payload via <c>event.&lt;name&gt;</c>; the director fills the
+        /// matching frame slots at dispatch. <c>player_chat</c> is registered here even though its raise wire lands in
+        /// a later commit (Arm D). Keyed by the built-in event KIND string.
+        /// </summary>
+        public static readonly IReadOnlyDictionary<string, IReadOnlyDictionary<string, (int Slot, DslValueType Type)>> BuiltinEventParams =
+            new Dictionary<string, IReadOnlyDictionary<string, (int, DslValueType)>>(StringComparer.Ordinal)
+            {
+                ["unit_dies"]    = UnitDiesParams,
+                ["unit_damaged"] = new Dictionary<string, (int, DslValueType)>(StringComparer.Ordinal)
+                {
+                    ["victim"]   = (0, DslValueType.Int),
+                    ["attacker"] = (1, DslValueType.Int),
+                    ["amount"]   = (2, DslValueType.Int),
+                },
+                ["unit_trained"] = new Dictionary<string, (int, DslValueType)>(StringComparer.Ordinal)
+                {
+                    ["unit"] = (0, DslValueType.Int),
+                },
+                ["ability_cast"] = new Dictionary<string, (int, DslValueType)>(StringComparer.Ordinal)
+                {
+                    ["caster"]  = (0, DslValueType.Int),
+                    ["ability"] = (1, DslValueType.Int),
+                },
+                ["hero_level"]   = new Dictionary<string, (int, DslValueType)>(StringComparer.Ordinal)
+                {
+                    ["hero"]  = (0, DslValueType.Int),
+                    ["level"] = (1, DslValueType.Int),
+                },
+                ["player_chat"]  = new Dictionary<string, (int, DslValueType)>(StringComparer.Ordinal)
+                {
+                    ["sender"] = (0, DslValueType.Int),
+                    ["code"]   = (1, DslValueType.Int),
+                },
+            };
+
+        /// <summary>Story 7.13 — the built-in event payload map for <paramref name="kind"/> (a single-subscription
+        /// trigger's event-parameter map), or null when the kind carries no readable payload (e.g. match_start).</summary>
+        public static IReadOnlyDictionary<string, (int Slot, DslValueType Type)>? BuiltinParamMapOf(string? kind) =>
+            kind != null && BuiltinEventParams.TryGetValue(kind, out var map) ? map : null;
+
         /// <summary>Declared event names, registry (declaration) order — the runtime dispatch identity.</summary>
         public string[] EventNames = Array.Empty<string>();
         /// <summary>Per event: its declared param count (the runtime frame width).</summary>
@@ -315,8 +358,10 @@ namespace ProjectChimera.Dsl
                 IReadOnlyDictionary<string, (int Slot, DslValueType Type)>? paramMap = null;
                 if (customIdx >= 0)
                     paramMap = paramMaps[customIdx];
-                else if (ex.Events.Length == 1 && ex.Events[0].Kind == "unit_dies")
-                    paramMap = UnitDiesParams;
+                else if (ex.Events.Length == 1)
+                    // Story 7.13 — a single built-in subscription (unit_dies + the five new sources) exposes its
+                    // typed payload map; kinds with no readable payload (match_start, thresholds) return null.
+                    paramMap = BuiltinParamMapOf(ex.Events[0].Kind);
                 if (paramMap != null)
                 {
                     result._paramMapByNodeId[ex.Trigger.Id] = paramMap;

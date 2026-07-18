@@ -55,6 +55,12 @@ namespace ProjectChimera.Combat
         private readonly Func<UnitDefinition, Faction, Fixed, Fixed, int>? _spawn;
         private readonly CombatEventQueue?   _events;
 
+        // Story 7.13 — the trigger-DSL sim-event feed (hero_level raised when a hero advances a level). Wired by
+        // SimulationHost after construction; null ⇒ no raise.
+        private DslSimEventFeed? _dslSimEvents;
+        /// <summary>Story 7.13 — wire the trigger-DSL sim-event feed so a hero level-up raises hero_level.</summary>
+        public void SetDslSimEvents(DslSimEventFeed? feed) => _dslSimEvents = feed;
+
         public HeroXpSystem(HeroStore heroes, ModifierStore modifiers, DeathFeed deaths,
                             BuildingStore? buildings = null, RevivalRuleRuntime? revival = null,
                             Func<UnitDefinition, Faction, Fixed, Fixed, int>? spawn = null,
@@ -142,7 +148,7 @@ namespace ProjectChimera.Combat
                 }
 
                 // On-field & live: level + reconcile growth (ReconcileGrowth re-checks the live link internally).
-                AdvanceLevels(slot);
+                AdvanceLevels(world, slot, _heroes.EntityId[slot]);
                 ReconcileGrowth(world, slot);
             }
 
@@ -263,7 +269,7 @@ namespace ProjectChimera.Combat
         /// <summary>Advance <see cref="HeroStore.Level"/> while accumulated XP covers the next geometric threshold,
         /// consuming that threshold each level, up to <see cref="HeroStore.MaxLevelOf"/>. Degenerate curves
         /// (BaseXp &lt;= 0 or XpGrowth &lt; 1 — e.g. an un-minted default) are skipped (no throw, no instant-max).</summary>
-        private void AdvanceLevels(int slot)
+        private void AdvanceLevels(EntityWorld world, int slot, int entityId)
         {
             Fixed baseXp = _heroes.BaseXpOf[slot];
             Fixed growth = _heroes.XpGrowthOf[slot];
@@ -277,6 +283,12 @@ namespace ProjectChimera.Combat
                 {
                     _heroes.Xp[slot]  = _heroes.Xp[slot] - threshold;
                     _heroes.Level[slot]++;
+                    // Story 7.13 — raise hero_level at the level-advance site: the hero's entity id + the NEW level,
+                    // keyed on the hero's faction slot. Once per level gained (a multi-level tick raises each).
+                    // Null feed (bare tests) → no-op.
+                    _dslSimEvents?.Push(DslSimEventFeed.KindHeroLevel,
+                        entityId >= 0 && entityId < world.HighWaterMark ? (int)world.FactionOf[entityId] - 1 : -1,
+                        entityId, _heroes.Level[slot], 0);
                 }
                 else break;
             }

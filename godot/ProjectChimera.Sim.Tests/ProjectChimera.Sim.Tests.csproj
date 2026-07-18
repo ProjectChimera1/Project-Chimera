@@ -140,6 +140,13 @@
          file; the 23 goldens above ARE re-baselined once for the v14 fold. -->
     <None Remove="Golden\research-scenario.golden.txt" />
     <EmbeddedResource Include="Golden\research-scenario.golden.txt" />
+    <!-- Story 7.13 — the re-baseline DIFFERENTIAL GUARD's FROZEN control: a verbatim copy of the pre-story (v20)
+         golden-scenario (a NO-TRIGGER scenario) captured BEFORE the SimChecksum 20->21 re-record. The
+         TriggerEnabledStore fold is a true no-op for a Count==0 scenario, so the v21 run MUST reproduce these bytes
+         exactly; this frozen file is NEVER re-recorded (no RecordGoldenBaseline covers it) so it is an independent
+         control against a reset/threading defect baked into the re-baseline. -->
+    <None Remove="Golden\rebaseline-guard-story12-frozen-v20.golden.txt" />
+    <EmbeddedResource Include="Golden\rebaseline-guard-story12-frozen-v20.golden.txt" />
   </ItemGroup>
 
   <ItemGroup>
