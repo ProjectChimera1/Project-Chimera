@@ -493,6 +493,49 @@ namespace ProjectChimera.Dsl
         public int TargetTriggerId { get; set; } = -1;
     }
 
+    // ── Story 7.14 — the three objective action-leaf nodes (dedicated graph-only classes; ToFlat fails closed on
+    //    each, like enable_trigger). They flip an authored objective's state by writing the reserved Global Int DSL
+    //    variable backing that objective (via _vars.SetInt at ExecuteItem) — so they carry NO new folded store and
+    //    force NO SimChecksum bump (the value rides the existing v16 DslVarTable fold). The objective is referenced by
+    //    its STRING id (a scenario-data concept, not a node id → no id-offset remap on merge). Titles/descriptions are
+    //    strings and NEVER enter the tick; only the int ordinal folds. An unknown objective id rejects at load. ──
+
+    /// <summary>Story 7.14 — the <c>show_objective</c> action: reveal an objective (Hidden→Active) by writing its
+    /// reserved var to <see cref="ObjectiveState.Active"/>. <see cref="ObjectiveId"/> references an authored objective
+    /// by id; an unresolved id rejects at load.</summary>
+    public sealed class ShowObjectiveNode : NodeBase
+    {
+        /// <summary>The closed-registry discriminator this node serializes under.</summary>
+        public string Kind => NodeKinds.ShowObjective;
+
+        /// <summary>The authored objective id whose state this leaf flips (validated at load).</summary>
+        public string ObjectiveId { get; set; } = "";
+    }
+
+    /// <summary>Story 7.14 — the <c>complete_objective</c> action: mark an objective Complete by writing its reserved
+    /// var to <see cref="ObjectiveState.Complete"/>. <see cref="ObjectiveId"/> references an authored objective by id;
+    /// an unresolved id rejects at load.</summary>
+    public sealed class CompleteObjectiveNode : NodeBase
+    {
+        /// <summary>The closed-registry discriminator this node serializes under.</summary>
+        public string Kind => NodeKinds.CompleteObjective;
+
+        /// <summary>The authored objective id whose state this leaf flips (validated at load).</summary>
+        public string ObjectiveId { get; set; } = "";
+    }
+
+    /// <summary>Story 7.14 — the <c>fail_objective</c> action: mark an objective Failed by writing its reserved var to
+    /// <see cref="ObjectiveState.Failed"/>. <see cref="ObjectiveId"/> references an authored objective by id; an
+    /// unresolved id rejects at load.</summary>
+    public sealed class FailObjectiveNode : NodeBase
+    {
+        /// <summary>The closed-registry discriminator this node serializes under.</summary>
+        public string Kind => NodeKinds.FailObjective;
+
+        /// <summary>The authored objective id whose state this leaf flips (validated at load).</summary>
+        public string ObjectiveId { get; set; } = "";
+    }
+
     /// <summary>
     /// The CLOSED <c>kind</c> discriminator registry: the closed ECA vocabulary (event/condition/action type
     /// strings) plus the two structural kinds "trigger" and "run_effect", plus (Story 7.4) the five expression
@@ -554,6 +597,13 @@ namespace ProjectChimera.Dsl
         public const string EnableTrigger  = "enable_trigger";
         public const string DisableTrigger = "disable_trigger";
         public const string RunTrigger     = "run_trigger";
+
+        // ── Story 7.14 — the three objective action-leaf kinds (dedicated node classes; ToFlat fails closed on each,
+        //    like enable_trigger). They write the reserved Global Int DSL var backing an authored objective — no new
+        //    folded store, no SimChecksum bump. Graph-channel-only (not in ActionTypes/FlatActionTypes). ──
+        public const string ShowObjective     = "show_objective";
+        public const string CompleteObjective = "complete_objective";
+        public const string FailObjective     = "fail_objective";
 
         // Story 7.13 — five NEW built-in event sources APPEND to the flat + graph event vocabularies. Four are
         // raised deterministically by the sim (unit_damaged/unit_trained/ability_cast/hero_level) at their
@@ -704,6 +754,9 @@ namespace ProjectChimera.Dsl
             EnableTriggerNode   => EnableTrigger,
             DisableTriggerNode  => DisableTrigger,
             RunTriggerNode      => RunTrigger,
+            ShowObjectiveNode     => ShowObjective,
+            CompleteObjectiveNode => CompleteObjective,
+            FailObjectiveNode     => FailObjective,
             _                   => n.GetType().Name, // unreachable: the registry is closed at parse
         };
     }
@@ -729,6 +782,8 @@ namespace ProjectChimera.Dsl
             ActionNode or EffectActionNode or RaiseEventNode
                 or OrderUnitsNode or MoveCameraNode or CinematicModeNode or PlayVfxNode
                 or EnableTriggerNode or DisableTriggerNode or RunTriggerNode
+                // Story 7.14: the three objective action-leaf nodes chain like an action (single exec-out continuation).
+                or ShowObjectiveNode or CompleteObjectiveNode or FailObjectiveNode
                                               => port == TriggerGraph.ActionExecOutPort,
             ForEachNode or ForEachBatchedNode => port == TriggerGraph.ActionExecOutPort
                                               || port == TriggerGraph.ForEachBodyOutPort,
@@ -750,6 +805,8 @@ namespace ProjectChimera.Dsl
             ActionNode or EffectActionNode or ForEachNode or ForEachBatchedNode or BranchNode or RaiseEventNode
                 or OrderUnitsNode or MoveCameraNode or CinematicModeNode or PlayVfxNode
                 or RandomChoiceNode or EnableTriggerNode or DisableTriggerNode or RunTriggerNode
+                // Story 7.14: the three objective action-leaf nodes receive exec like an action.
+                or ShowObjectiveNode or CompleteObjectiveNode or FailObjectiveNode
                         => port == TriggerGraph.ActionExecInPort,
             _           => false, // events FIRE exec, never receive it; expr/condition nodes are data-side
         };

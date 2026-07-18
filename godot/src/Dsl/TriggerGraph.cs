@@ -106,6 +106,10 @@ namespace ProjectChimera.Dsl
             || kind == NodeKinds.EnableTrigger
             || kind == NodeKinds.DisableTrigger
             || kind == NodeKinds.RunTrigger
+            // Story 7.14 — the three objective action-leaf kinds have no flat TriggerDefinition form (ToFlat fails closed).
+            || kind == NodeKinds.ShowObjective
+            || kind == NodeKinds.CompleteObjective
+            || kind == NodeKinds.FailObjective
             || NodeKinds.IsArrayActionKind(kind);
 
         /// <summary>True when <paramref name="node"/> is a graph-channel-only construct (its serialized
@@ -599,6 +603,10 @@ namespace ProjectChimera.Dsl
                 if (n is RandomChoiceNode or EnableTriggerNode or DisableTriggerNode or RunTriggerNode)
                     throw new JsonException(
                         $"node {n.Id}: {NodeKinds.KindOf(n)} has no flat TriggerDefinition form (graph-channel-only, Story 7.13) — ToFlat fails closed.");
+                // Story 7.14 — the three objective action-leaf kinds are graph-channel-only too.
+                if (n is ShowObjectiveNode or CompleteObjectiveNode or FailObjectiveNode)
+                    throw new JsonException(
+                        $"node {n.Id}: {NodeKinds.KindOf(n)} has no flat TriggerDefinition form (graph-channel-only, Story 7.14) — ToFlat fails closed.");
             }
 
             // Keyed lookup by id (indexer access only — never enumerated, so deterministic order is preserved).
@@ -927,7 +935,9 @@ namespace ProjectChimera.Dsl
                             || nb is CinematicModeNode || nb is PlayVfxNode
                             // Story 7.13: the weighted container + the three trigger-control leaves chain too.
                             || nb is RandomChoiceNode
-                            || nb is EnableTriggerNode || nb is DisableTriggerNode || nb is RunTriggerNode))
+                            || nb is EnableTriggerNode || nb is DisableTriggerNode || nb is RunTriggerNode
+                            // Story 7.14: the three objective action-leaf kinds chain like an action (single exec-out).
+                            || nb is ShowObjectiveNode || nb is CompleteObjectiveNode || nb is FailObjectiveNode))
                     {
                         next = nb;
                         break;

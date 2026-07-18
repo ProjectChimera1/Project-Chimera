@@ -133,8 +133,18 @@ namespace ProjectChimera.Sim.Tests.Meta
         /// faction_slot/survive_ticks; Assassination leader_unit_index; Landmark structure_index) so divergent
         /// victory rules reject at the lobby handshake. The ONE named re-baseline: hero-start-state golden re-recorded
         /// (StartStateHash value moves via the canonical seed; StartStateHash.AlgoVersion stays 2). The 24 per-tick
-        /// world goldens move via the SEPARATE SimChecksum v19 bump in the same commit, not via this fold.</summary>
-        private const int ExpectedCanonicalModelHashAlgoVersion = 13;
+        /// world goldens move via the SEPARATE SimChecksum v19 bump in the same commit, not via this fold.
+        /// v13 (Story 7.13): the typed graph walk gained explicit fold arms for the new node kinds (order_units/
+        /// move_camera/cinematic_mode/play_vfx field values, ExprCallNode.Selector, random_choice weighted structure,
+        /// enable/disable/run_trigger target id). A no-new-kind scenario folds byte-identical apart from the bump.
+        /// v14 (Story 7.14): the typed graph walk gained explicit fold arms for the three objective action-leaf kinds
+        /// (show_objective/complete_objective/fail_objective — each folds its objective_id). The authored `objectives`
+        /// array itself is hash-EXCLUDED (authoring/presentation data). A scenario carrying none of the three kinds
+        /// folds byte-identical apart from this AlgoVersion bump — the ONE named re-baseline: hero-start-state golden
+        /// re-recorded (StartStateHash value moves via the canonical seed; StartStateHash.AlgoVersion stays 2).
+        /// SimChecksum stays 21 and the 24 per-tick world goldens are UNTOUCHED (objective state rides the existing
+        /// v16 DslVarTable fold; a scenario with no authored objectives declares no reserved var).</summary>
+        private const int ExpectedCanonicalModelHashAlgoVersion = 14;
 
         /// <summary>Load-time canonical START-STATE hash algorithm version (Story 3.2, AC3) — a NEW, distinct FNV-64
         /// over the full init state = the <see cref="CanonicalModelHash"/> content seed PLUS the HeroStore rows.

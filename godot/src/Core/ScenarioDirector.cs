@@ -61,6 +61,14 @@ namespace ProjectChimera.Core
         // enable_trigger/disable_trigger/run_trigger target to the exec it controls/runs.
         private Dictionary<int, int> _triggerNodeIdToExec = new();
 
+        // Story 7.14 — authored objective id → its reserved Global-Int DSL variable NAME (precomputed once per
+        // LoadScenario so the show/complete/fail_objective leaves mutate via _vars.SetInt WITHOUT allocating a name
+        // string in the tick). Only AUTHORED objectives get an entry (the synthesized default is presentation-only —
+        // it declares no folded var, so an objective-less scenario adds NO folded state and its SimChecksum is
+        // byte-identical). An objective action whose id is not in this map is a deterministic no-op.
+        private Dictionary<string, string> _objectiveVarNameById =
+            new(System.StringComparer.Ordinal);
+
         // Story 7.13 — the transient run_trigger nesting depth (reset at tick start; NOT folded — a per-tick scratch
         // counter, not cross-tick sim truth). Bounds synchronous run_trigger recursion by EventBounds.MaxRunTriggerDepth.
         private int _runDepth;
@@ -389,6 +397,14 @@ namespace ProjectChimera.Core
             string? declErr = DslLoopGate.CheckDeclarations(scenario.Variables);
             if (declErr != null) throw new System.Text.Json.JsonException(declErr);
 
+            // Story 7.14 — the objective + reserved-namespace DECLARATION rulebook, the SAME shared
+            // ObjectiveResolver.CheckDeclarations the ScenarioValidator gate runs, applied here as the fail-closed
+            // backstop for direct LoadScenario callers (gate/backstop parity — a caller bypassing the validator fails
+            // closed identically; without this a malformed objectives array reached Resolve below and NRE'd / declared
+            // colliding reserved vars). Runs against LOCALS before any field commit.
+            string? objectiveDeclErr = ObjectiveResolver.CheckDeclarations(scenario);
+            if (objectiveDeclErr != null) throw new System.Text.Json.JsonException(objectiveDeclErr);
+
             // Whole-graph structural rulebook (dup ids, dangling endpoints, port legality, exec/data forks, stray
             // data edges, unconsumed-expression compiles) BEFORE the execution-order walk, so structurally
             // malformed IR rejects located instead of relying on the walker's tolerances.
@@ -408,8 +424,16 @@ namespace ProjectChimera.Core
                 if (scenario.Regions != null)
                     foreach (ScenarioRegion rg in scenario.Regions)
                         if (rg != null && !string.IsNullOrEmpty(rg.Id)) declaredRegions.Add(rg.Id);
+                // Story 7.14 — the set of MUTABLE objective ids an objective action may target: the authored,
+                // reserved-var-backed objectives ONLY (matches _objectiveVarNameById below). The presentation-only
+                // synthesized default is excluded, so an action targeting it rejects located here rather than being a
+                // silent runtime no-op (fail-closed backstop parity with the ScenarioValidator gate).
+                var mutableObjectives = new HashSet<string>(StringComparer.Ordinal);
+                foreach (ResolvedObjective ro in ObjectiveResolver.Resolve(scenario))
+                    if (ro.HasReservedVar) mutableObjectives.Add(ro.Id);
                 string? loopErr = DslLoopGate.CheckGraph(graph, execs, loopDeclMap, arrayDecls,
-                    id => declaredRegions.Contains(id));
+                    id => declaredRegions.Contains(id),
+                    id => mutableObjectives.Contains(id));
                 if (loopErr != null) throw new System.Text.Json.JsonException(loopErr);
             }
 
@@ -472,6 +496,22 @@ namespace ProjectChimera.Core
                         raw1: 0,
                         elementType: v.ElementType ?? DslValueType.Int,
                         capacity: v.Capacity ?? 0));
+
+            // Story 7.14 — append one reserved Global-Int DSL variable per AUTHORED objective (ascending authored
+            // order, AFTER the authored decls), seeded from the objective's initial_state ordinal. This is the ONLY
+            // new folded state and it rides the existing v16 DslVarTable fold — NO SimChecksum bump. The synthesized
+            // DEFAULT objective (a scenario with no authored objectives) is presentation-only and declares NOTHING
+            // here, so every pre-7.14 scenario (all with no authored objectives — every golden) adds no folded var and
+            // its per-tick SimChecksum is byte-identical. The show/complete/fail_objective leaves mutate these vars via
+            // _vars.SetInt (the reserved name resolved through the precomputed id→name map below).
+            var objectiveVarNames = new Dictionary<string, string>(System.StringComparer.Ordinal);
+            foreach (ResolvedObjective ro in ObjectiveResolver.Resolve(scenario))
+            {
+                if (!ro.HasReservedVar) continue; // the synthesized default is presentation-only (no folded state)
+                string reserved = ro.ReservedVarName;
+                varDecls.Add(new DslVarDecl(reserved, DslValueType.Int, VarScope.Global, (int)ro.InitialState));
+                objectiveVarNames[ro.Id] = reserved; // last-wins on a duplicate id (validator rejects dups at load)
+            }
             var timerDecls = new List<DslTimerDecl>();
             if (scenario.Timers != null)
                 foreach (ScenarioTimer t in scenario.Timers)
@@ -502,6 +542,9 @@ namespace ProjectChimera.Core
                 _triggerNodeIdToExec[execs[i].Trigger.Id] = i;
             }
             _runDepth = 0;
+
+            // Story 7.14 — commit the authored objective id → reserved-var-name map (built pre-commit above).
+            _objectiveVarNameById = objectiveVarNames;
 
             // Story 7.5 — commit the custom-event runtime: registry references, per-exec dispatch info (the
             // compiled raise plans ride the committed Items tree), the sized base buffer, and a clean
@@ -1794,6 +1837,29 @@ namespace ProjectChimera.Core
                 case RunTriggerNode rt:
                     _loopState.Charge(1);
                     ExecuteRunTrigger(rt, world);
+                    break;
+
+                // ── Story 7.14 — the three objective action leaves. Each charges 1 op (folded-state write, like an
+                //    action) and flips the target objective's reserved Global-Int var via _vars.SetInt (the ordinal
+                //    rides the existing v16 DslVarTable fold — no new store, no SimChecksum bump). No string enters
+                //    the tick: the reserved var NAME was precomputed at load in _objectiveVarNameById. An id with no
+                //    reserved var (the presentation-only default) is a deterministic no-op. ──
+                case ShowObjectiveNode so:
+                    _loopState.Charge(1);
+                    if (_objectiveVarNameById.TryGetValue(so.ObjectiveId, out string? soVar))
+                        _vars.SetInt(soVar, 0, (int)ObjectiveState.Active);
+                    break;
+
+                case CompleteObjectiveNode co:
+                    _loopState.Charge(1);
+                    if (_objectiveVarNameById.TryGetValue(co.ObjectiveId, out string? coVar))
+                        _vars.SetInt(coVar, 0, (int)ObjectiveState.Complete);
+                    break;
+
+                case FailObjectiveNode fo:
+                    _loopState.Charge(1);
+                    if (_objectiveVarNameById.TryGetValue(fo.ObjectiveId, out string? foVar))
+                        _vars.SetInt(foVar, 0, (int)ObjectiveState.Failed);
                     break;
             }
         }

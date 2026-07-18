@@ -42,7 +42,7 @@ namespace ProjectChimera.Sim.Tests.Validation
         [Fact]
         public void AlgoVersions_Unchanged() // 10 canonical (7.5 merge fold) / 2 start-state (value moves via the seed)
         {
-            Assert.Equal(13, CanonicalModelHash.AlgoVersion);
+            Assert.Equal(14, CanonicalModelHash.AlgoVersion);
             Assert.Equal(2, StartStateHash.AlgoVersion);
         }
 
@@ -155,6 +155,30 @@ namespace ProjectChimera.Sim.Tests.Validation
                             HashWithNode(new DisableTriggerNode { Id = 2, TargetTriggerId = 6 }));
             Assert.NotEqual(HashWithNode(new RunTriggerNode     { Id = 2, TargetTriggerId = 5 }),
                             HashWithNode(new RunTriggerNode     { Id = 2, TargetTriggerId = 6 }));
+            // Story 7.14 — the three objective action-leaf kinds fold their objective_id (an explicit arm each, never
+            // the type-name-only default): two actions differing only by target objective must hash differently.
+            Assert.NotEqual(HashWithNode(new ShowObjectiveNode     { Id = 2, ObjectiveId = "a" }),
+                            HashWithNode(new ShowObjectiveNode     { Id = 2, ObjectiveId = "b" }));
+            Assert.NotEqual(HashWithNode(new CompleteObjectiveNode { Id = 2, ObjectiveId = "a" }),
+                            HashWithNode(new CompleteObjectiveNode { Id = 2, ObjectiveId = "b" }));
+            Assert.NotEqual(HashWithNode(new FailObjectiveNode     { Id = 2, ObjectiveId = "a" }),
+                            HashWithNode(new FailObjectiveNode     { Id = 2, ObjectiveId = "b" }));
+        }
+
+        /// <summary>Story 7.14 — the authored `objectives` array is hash-EXCLUDED (authoring/presentation data on the
+        /// variables/display_name basis): two scenarios differing ONLY in their objectives (or one with none) must hash
+        /// IDENTICALLY, so an objective edit never moves the MP start-state handshake.</summary>
+        [Fact]
+        public void AuthoredObjectives_AreHashExcluded()
+        {
+            var without = BaseModel();
+            var with = BaseModel();
+            with.Objectives = new[]
+            {
+                new ScenarioObjective { Id = "kill_boss", Title = "Kill the boss", InitialState = ObjectiveState.Active },
+                new ScenarioObjective { Id = "hold_hill", Title = "Hold the hill", InitialState = ObjectiveState.Hidden },
+            };
+            Assert.Equal(CanonicalModelHash.Compute(without), CanonicalModelHash.Compute(with));
         }
 
         /// <summary>A minimal trigger graph carrying a single new-kind node (id 2) for the field-fold discrimination
@@ -228,7 +252,7 @@ namespace ProjectChimera.Sim.Tests.Validation
             var heroes = new HeroStore();
             Assert.Equal(StartStateHash.Compute(a, heroes), StartStateHash.Compute(b, heroes));
 
-            Assert.Equal(13, CanonicalModelHash.AlgoVersion);
+            Assert.Equal(14, CanonicalModelHash.AlgoVersion);
             Assert.Equal(21, SimChecksum.AlgoVersion);
             Assert.Equal(2, StartStateHash.AlgoVersion);
         }

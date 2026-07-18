@@ -91,6 +91,62 @@ namespace ProjectChimera.Core.Definitions
     }
 
     /// <summary>
+    /// Story 7.14 — the live state of an objective, carried as the ordinal of a reserved <c>Global Int</c> DSL
+    /// variable (so it rides the v16 <c>DslVarTable</c> fold with NO <c>SimChecksum</c> bump). The ordinals are
+    /// LOAD-BEARING (<c>0=Hidden, 1=Active, 2=Complete, 3=Failed</c>) — the reserved var seeds/mutates by cast to
+    /// int, and presentation reads the int back. Serialized by NAME (an authored <c>initial_state</c>). NEVER
+    /// enters the tick as a string; only the int ordinal folds.
+    /// </summary>
+    [JsonConverter(typeof(JsonStringEnumConverter))]
+    public enum ObjectiveState
+    {
+        /// <summary>Not yet revealed to the player (ordinal 0). A <c>show_objective</c> flips it to Active.</summary>
+        Hidden,
+        /// <summary>In progress / shown (ordinal 1). The default synthesized objective seeds here.</summary>
+        Active,
+        /// <summary>Completed (ordinal 2). Terminal — set by <c>complete_objective</c>.</summary>
+        Complete,
+        /// <summary>Failed (ordinal 3). Terminal — set by <c>fail_objective</c>.</summary>
+        Failed,
+    }
+
+    /// <summary>
+    /// Story 7.14 — an authored objective (quest-log / briefing entry). Mirrors <see cref="ScenarioVariable"/>: it is
+    /// authoring/presentation data, EXCLUDED from <see cref="CanonicalModelHash"/>/<see cref="StartStateHash"/> (the
+    /// declarations stay out of the MP start-state handshake, exactly like variable declarations and
+    /// <c>display_name</c>/<c>description</c>) and normalized empty→null at the <c>ScenarioSerializer.Serialize</c>
+    /// chokepoint so every existing scenario serializes byte-identically. The <see cref="Title"/>/<see cref="Description"/>
+    /// strings are NEVER folded anywhere and NEVER enter the tick — only the live reserved-var ordinal (see
+    /// <see cref="ObjectiveState"/>) folds into per-tick <c>SimChecksum</c> via the existing <c>DslVarTable</c> fold.
+    /// The three DSL leaves <c>show_objective</c>/<c>complete_objective</c>/<c>fail_objective</c> reference an objective
+    /// by its <see cref="Id"/>.
+    /// </summary>
+    public class ScenarioObjective
+    {
+        /// <summary>Unique objective id (the key a <c>show_objective</c>/<c>complete_objective</c>/<c>fail_objective</c>
+        /// leaf references). Non-empty; validated unique at load. May NOT start with the reserved
+        /// <c>ObjectiveResolver.ReservedVarPrefix</c> (that namespace is barred to authored variable names too).</summary>
+        [JsonPropertyName("id")]
+        public string Id { get; set; } = "";
+
+        /// <summary>The player-facing objective title (quest-log row + briefing line). Non-empty; presentation-only.</summary>
+        [JsonPropertyName("title")]
+        public string Title { get; set; } = "";
+
+        /// <summary>Optional longer description. NULL/empty ⇒ omitted (byte-identical when absent). Presentation-only.</summary>
+        [JsonPropertyName("description")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public string? Description { get; set; }
+
+        /// <summary>The initial state the reserved var seeds from. Defaults to <see cref="ObjectiveState.Active"/> (an
+        /// authored objective is shown from match start unless the author starts it Hidden and reveals it via
+        /// <c>show_objective</c>). Serialized by name always (a new authored block — no pre-existing byte-identity to
+        /// preserve within it).</summary>
+        [JsonPropertyName("initial_state")]
+        public ObjectiveState InitialState { get; set; } = ObjectiveState.Active;
+    }
+
+    /// <summary>
     /// Maps a player slot (0-based index) to a faction JSON, starting resources,
     /// and the world position where workers return to deposit ore.
     /// </summary>
@@ -692,6 +748,22 @@ namespace ProjectChimera.Core.Definitions
         [JsonPropertyName("variables")]
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public ScenarioVariable[]? Variables { get; set; }
+
+        /// <summary>
+        /// Authored objectives (Story 7.14) — the quest-log / briefing entries. NULL (the default, every existing
+        /// scenario) ⇒ no authored objectives, and the block is OMITTED from serialization when null
+        /// (<see cref="JsonIgnoreCondition.WhenWritingNull"/>, the <see cref="Variables"/> precedent) — and an empty
+        /// array is normalized back to null at the <c>ScenarioSerializer.Serialize</c> chokepoint — so a scenario
+        /// without them serializes BYTE-IDENTICALLY to pre-7.14 (no scenario-bytes / <see cref="CanonicalModelHash"/> /
+        /// <see cref="StartStateHash"/> movement). This is hash-EXCLUDED authoring/presentation data on the
+        /// <see cref="Variables"/>/<c>display_name</c> basis (declarations stay out of the handshake; only the LIVE
+        /// reserved-var ordinal folds into per-tick <c>SimChecksum</c> via the existing <c>DslVarTable</c> fold, so no
+        /// bump). When absent, <c>ObjectiveResolver</c> synthesizes a single presentation-only default from the win
+        /// preset so every match shows its goal. Resolved by <c>ObjectiveResolver</c> at <c>ScenarioDirector.LoadScenario</c>.
+        /// </summary>
+        [JsonPropertyName("objectives")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public ScenarioObjective[]? Objectives { get; set; }
 
         /// <summary>
         /// Named deterministic timer declarations (Story 7.3). NULL ⇒ none; OMITTED when null / normalized empty→null

@@ -435,6 +435,7 @@ namespace ProjectChimera.Core
                 new RenderingPhase(_ctx),
                 new HudPhase(_ctx),
                 new CustomHudOverlayPhase(_ctx), // Story 7.8 — the custom-UI read rail overlay, after Hud (shares nothing; own CanvasLayer)
+                new ObjectiveLogOverlayPhase(_ctx), // Story 7.14 — in-match quest log (read rail) + skippable briefing (own CanvasLayers)
                 new MinimapPhase(_ctx),
                 new TerrainBrushPhase(_ctx),
                 new ScenarioLoadPhase(_ctx),
@@ -605,6 +606,20 @@ namespace ProjectChimera.Core
                 return;
             }
 #endif
+
+            // Story 7.14 — the in-match quest-log toggle. Handled ABOVE the Edit-mode guard so it fires in PLAY, but
+            // scoped to Play only: the quest log is an in-match affordance, so F1 does nothing in Edit (it would
+            // otherwise pop the log over the map editor reflecting stale/empty state). F1 is unclaimed by
+            // SelectionSystem / EntityPlacer / the Edit-mode letter ladder (the conventional "objectives/help" key).
+            // Presentation-only — no sim write, checksum byte-identical. Null-guarded: the overlay phase may not have
+            // run in a reduced scene.
+            if (key.Keycode == Key.F1)
+            {
+                if (_ctx.GameState.Mode == GameMode.Play)
+                    _ctx.ObjectiveLog?.Toggle();
+                GetViewport().SetInputAsHandled();
+                return;
+            }
 
             // Edit-mode-only shortcuts.
             if (_ctx.GameState.Mode != GameMode.Edit) return;
@@ -798,6 +813,7 @@ namespace ProjectChimera.Core
             _ctx.TriggerPanel.Update();
             _ctx.MapGenPanel.Update();
             _ctx.CustomHud.Update(); // Story 7.8 — pull the version-stamped read rail; re-format only changed widgets
+            _ctx.ObjectiveLog?.Update(); // Story 7.14 — pull objective state off the read rail; re-format only on version change (null-guarded: phase may be absent in a reduced scene, matching the F1 toggle guard)
             if (_toastTimer > 0)
             {
                 _toastTimer -= (float)delta;

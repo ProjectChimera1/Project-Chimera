@@ -301,6 +301,23 @@ namespace ProjectChimera.Dsl
                     writer.WriteNumber("target_trigger", rt.TargetTriggerId);
                     break;
 
+                // ── Story 7.14 — the three objective action-leaf kinds (exact inverses of the Read branches) ──
+
+                case ShowObjectiveNode so:
+                    writer.WriteString("kind", NodeKinds.ShowObjective);
+                    writer.WriteString("objective_id", so.ObjectiveId);
+                    break;
+
+                case CompleteObjectiveNode co:
+                    writer.WriteString("kind", NodeKinds.CompleteObjective);
+                    writer.WriteString("objective_id", co.ObjectiveId);
+                    break;
+
+                case FailObjectiveNode fo:
+                    writer.WriteString("kind", NodeKinds.FailObjective);
+                    writer.WriteString("objective_id", fo.ObjectiveId);
+                    break;
+
                 default:
                     // Fail-closed: a node type outside the closed registry cannot be authored (mirrors Read's default).
                     throw new JsonException(
@@ -664,6 +681,26 @@ namespace ProjectChimera.Dsl
                 return new RunTriggerNode { Id = ReadId(el, path), TargetTriggerId = ReadTargetTrigger(el, path) };
             }
 
+            // ── Story 7.14 — the three objective action-leaf kinds (single required objective_id string) ──
+
+            if (kind == NodeKinds.ShowObjective)
+            {
+                RejectUnknownProperties(el, path, "id", "kind", "objective_id");
+                return new ShowObjectiveNode { Id = ReadId(el, path), ObjectiveId = ReadObjectiveId(el, path) };
+            }
+
+            if (kind == NodeKinds.CompleteObjective)
+            {
+                RejectUnknownProperties(el, path, "id", "kind", "objective_id");
+                return new CompleteObjectiveNode { Id = ReadId(el, path), ObjectiveId = ReadObjectiveId(el, path) };
+            }
+
+            if (kind == NodeKinds.FailObjective)
+            {
+                RejectUnknownProperties(el, path, "id", "kind", "objective_id");
+                return new FailObjectiveNode { Id = ReadId(el, path), ObjectiveId = ReadObjectiveId(el, path) };
+            }
+
             throw new JsonException($"{path}: unknown node kind '{kind}'.");
         }
 
@@ -752,6 +789,18 @@ namespace ProjectChimera.Dsl
             int v = ReadInt(el, "target_trigger", path, -1);
             if (v < 0)
                 throw new JsonException($"{path}.target_trigger: {v} is not a valid trigger node id (must be non-negative).");
+            return v;
+        }
+
+        /// <summary>Story 7.14 — read a REQUIRED non-empty objective id (show/complete/fail_objective). A missing or
+        /// blank value is a located reject (the referenced objective must exist; id RESOLUTION is a load-gate concern).</summary>
+        private static string ReadObjectiveId(JsonElement el, string path)
+        {
+            if (!el.TryGetProperty("objective_id", out _))
+                throw new JsonException($"{path}.objective_id: required (the id of the target objective).");
+            string v = ReadString(el, "objective_id", path, "");
+            if (string.IsNullOrWhiteSpace(v))
+                throw new JsonException($"{path}.objective_id: must be a non-empty objective id.");
             return v;
         }
 

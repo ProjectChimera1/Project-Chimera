@@ -51,6 +51,10 @@ namespace ProjectChimera.Dsl
             kinds.Add(NodeKinds.EnableTrigger);
             kinds.Add(NodeKinds.DisableTrigger);
             kinds.Add(NodeKinds.RunTrigger);
+            // Story 7.14 — the three objective action-leaf kinds (graph-channel-only, authored in T3).
+            kinds.Add(NodeKinds.ShowObjective);
+            kinds.Add(NodeKinds.CompleteObjective);
+            kinds.Add(NodeKinds.FailObjective);
             return kinds.ToArray();
         }
 
@@ -119,6 +123,12 @@ namespace ProjectChimera.Dsl
             if (kind == NodeKinds.EnableTrigger) return new EnableTriggerNode { Id = id, TargetTriggerId = 0 };
             if (kind == NodeKinds.DisableTrigger) return new DisableTriggerNode { Id = id, TargetTriggerId = 0 };
             if (kind == NodeKinds.RunTrigger) return new RunTriggerNode { Id = id, TargetTriggerId = 0 };
+
+            // Story 7.14 — the three objective action-leaf kinds. The objective_id gets a placeholder the validator
+            // gate rejects located until it names a declared objective (work-in-progress is a badge).
+            if (kind == NodeKinds.ShowObjective)     return new ShowObjectiveNode { Id = id, ObjectiveId = "objective" };
+            if (kind == NodeKinds.CompleteObjective) return new CompleteObjectiveNode { Id = id, ObjectiveId = "objective" };
+            if (kind == NodeKinds.FailObjective)     return new FailObjectiveNode { Id = id, ObjectiveId = "objective" };
 
             return null;
         }

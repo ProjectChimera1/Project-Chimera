@@ -48,6 +48,10 @@ namespace ProjectChimera.Sim.Tests.Dsl
             yield return ("structural", NodeKinds.EnableTrigger);
             yield return ("structural", NodeKinds.DisableTrigger);
             yield return ("structural", NodeKinds.RunTrigger);
+            // Story 7.14 — the three graph-channel-only objective action-leaf kinds.
+            yield return ("structural", NodeKinds.ShowObjective);
+            yield return ("structural", NodeKinds.CompleteObjective);
+            yield return ("structural", NodeKinds.FailObjective);
             foreach (string k in NodeKinds.EventTypes)     yield return ("event", k);
             foreach (string k in NodeKinds.ConditionTypes) yield return ("condition", k);
             foreach (string k in NodeKinds.ActionTypes)    yield return ("action", k);
@@ -145,6 +149,9 @@ namespace ProjectChimera.Sim.Tests.Dsl
             if (kind == NodeKinds.EnableTrigger)  return new EnableTriggerNode { Id = id, TargetTriggerId = 0 };
             if (kind == NodeKinds.DisableTrigger) return new DisableTriggerNode { Id = id, TargetTriggerId = 0 };
             if (kind == NodeKinds.RunTrigger)     return new RunTriggerNode { Id = id, TargetTriggerId = 0 };
+            if (kind == NodeKinds.ShowObjective)     return new ShowObjectiveNode { Id = id, ObjectiveId = "obj" };
+            if (kind == NodeKinds.CompleteObjective) return new CompleteObjectiveNode { Id = id, ObjectiveId = "obj" };
+            if (kind == NodeKinds.FailObjective)     return new FailObjectiveNode { Id = id, ObjectiveId = "obj" };
             if (NodeKinds.InSet(NodeKinds.EventTypes, kind))     return new EventNode { Id = id, Kind = kind };
             if (NodeKinds.InSet(NodeKinds.ConditionTypes, kind)) return new ConditionNode { Id = id, Kind = kind };
             /* action */                                          return new ActionNode { Id = id, Kind = kind };

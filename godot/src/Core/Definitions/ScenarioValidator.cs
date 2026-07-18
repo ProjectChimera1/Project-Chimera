@@ -504,6 +504,9 @@ namespace ProjectChimera.Core.Definitions
                     if (v is null) return ValidationResult.Fail($"scenario.variables[{i}] is null.");
                     if (string.IsNullOrWhiteSpace(v.Name))
                         return ValidationResult.Fail($"scenario.variables[{i}].name must be a non-empty name.");
+                    // Story 7.14 — the reserved 'objective:' namespace bar on authored variable names AND the objective
+                    // declaration rules are enforced by the shared ObjectiveResolver.CheckDeclarations rulebook below
+                    // (run identically by the LoadScenario backstop — gate/backstop parity, no drift).
                     if (!declaredVars.Add(v.Name))
                         return ValidationResult.Fail($"scenario.variables[{i}].name='{v.Name}' is a duplicate.");
                     // Review (7.3 follow-up): the initial must be representable in the declared type — an Int initial
@@ -520,6 +523,14 @@ namespace ProjectChimera.Core.Definitions
                     declaredVarInfo[v.Name] = (v.Type, v.Scope);
                 }
             }
+
+            // ── Story 7.14 — objectives + reserved-namespace declaration rules (fail-closed when present): no null
+            //    element, unique non-empty ids, non-empty title, no id in the reserved 'objective:' namespace, and no
+            //    authored variable name in that namespace. Enforced through the SHARED ObjectiveResolver.CheckDeclarations
+            //    rulebook the LoadScenario backstop runs identically (gate/backstop parity — one rulebook, no drift).
+            //    NULL (every pre-7.14 scenario) ⇒ nothing to validate. Authoring/presentation data — hash-excluded. ──
+            string? objectiveDeclErr = ObjectiveResolver.CheckDeclarations(m);
+            if (objectiveDeclErr != null) return ValidationResult.Fail(objectiveDeclErr);
 
             // ── Story 7.6 — array declaration rules (element_type/capacity present + in range, Global scope only,
             //    no stray array fields on scalars), shared with the LoadScenario backstop via DslLoopGate. ──
@@ -1002,8 +1013,17 @@ namespace ProjectChimera.Core.Definitions
                 // ── Story 7.6 — the shared loop/branch/array-action gate + static cap-product cost check (one
                 //    implementation, DslLoopGate, also run by the LoadScenario backstop — parity by construction).
                 //    Uses the execution view captured above (graphExecs is non-null whenever parsedGraph is). ──
+                // Story 7.14 — the set of MUTABLE objective ids an objective action may target: the authored,
+                // reserved-var-backed objectives ONLY. The synthesized default (a preset-only scenario with no authored
+                // objectives) is presentation-only — it declares no reserved var, so at runtime an action targeting it
+                // is a silent no-op. Excluding it here makes such an action a located LOAD reject instead of a dead
+                // action a designer gets no diagnostic for (matches the runtime _objectiveVarNameById set exactly).
+                var mutableObjectiveIds = new HashSet<string>(StringComparer.Ordinal);
+                foreach (ResolvedObjective ro in ObjectiveResolver.Resolve(m))
+                    if (ro.HasReservedVar) mutableObjectiveIds.Add(ro.Id);
                 string? loopErr = DslLoopGate.CheckGraph(parsedGraph, graphExecs!, declaredVarInfo, declaredArrayInfo,
-                    id => declaredRegions.Contains(id));
+                    id => declaredRegions.Contains(id),
+                    id => mutableObjectiveIds.Contains(id));
                 if (loopErr != null)
                     return ValidationResult.Fail($"scenario.trigger_graph: {loopErr}");
 
@@ -1021,6 +1041,16 @@ namespace ProjectChimera.Core.Definitions
                     if (gn is ExprCallNode ecn && ecn.Fn == "region_unit_count" && !declaredRegions.Contains(ecn.Selector))
                         return ValidationResult.Fail(
                             $"scenario.trigger_graph: region_unit_count node {ecn.Id} selector='{ecn.Selector}' references no declared region.");
+                    // Story 7.14 — cross-reference each objective action's target id against the effective objectives.
+                    if (gn is ShowObjectiveNode son && !mutableObjectiveIds.Contains(son.ObjectiveId))
+                        return ValidationResult.Fail(
+                            $"scenario.trigger_graph: show_objective node {son.Id} objective_id='{son.ObjectiveId}' references no declared objective.");
+                    if (gn is CompleteObjectiveNode con && !mutableObjectiveIds.Contains(con.ObjectiveId))
+                        return ValidationResult.Fail(
+                            $"scenario.trigger_graph: complete_objective node {con.Id} objective_id='{con.ObjectiveId}' references no declared objective.");
+                    if (gn is FailObjectiveNode fon && !mutableObjectiveIds.Contains(fon.ObjectiveId))
+                        return ValidationResult.Fail(
+                            $"scenario.trigger_graph: fail_objective node {fon.Id} objective_id='{fon.ObjectiveId}' references no declared objective.");
                 }
 
                 // ── Story 7.5 (merge hardening) — the strict compiles DslLoopGate's static pass SKIPS when a

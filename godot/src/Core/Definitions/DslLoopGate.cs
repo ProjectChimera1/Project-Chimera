@@ -118,7 +118,8 @@ namespace ProjectChimera.Core.Definitions
             List<TriggerGraph.TriggerExec> execs,
             IReadOnlyDictionary<string, (DslValueType Type, VarScope Scope)> declMap,
             IReadOnlyDictionary<string, (DslValueType Elem, int Capacity)> arrayDecls,
-            Func<string, bool> regionExists)
+            Func<string, bool> regionExists,
+            Func<string, bool>? objectiveExists = null)
         {
             try
             {
@@ -129,6 +130,9 @@ namespace ProjectChimera.Core.Definitions
                     DeclMap = declMap,
                     ArrayDecls = arrayDecls,
                     RegionExists = regionExists,
+                    // Story 7.14 — an absent objectiveExists (legacy/test callers) admits any objective id so the
+                    // primary located reject stays in ScenarioValidator (which has the resolved effective objectives).
+                    ObjectiveExists = objectiveExists ?? (_ => true),
                 };
                 foreach (NodeBase n in graph.Nodes)
                     ctx.ById[n.Id] = n;
@@ -255,6 +259,7 @@ namespace ProjectChimera.Core.Definitions
             public IReadOnlyDictionary<string, (DslValueType Type, VarScope Scope)> DeclMap = null!;
             public IReadOnlyDictionary<string, (DslValueType Elem, int Capacity)> ArrayDecls = null!;
             public Func<string, bool> RegionExists = null!;
+            public Func<string, bool> ObjectiveExists = null!; // Story 7.14 — objective id existence check
 
             /// <summary>Story 7.7 — the loop variables bound by the ENCLOSING for_each chain (name → owning node
             /// id), maintained add/remove around each body recursion so the shadowing reject names both loops.
@@ -478,6 +483,21 @@ namespace ProjectChimera.Core.Definitions
                         RequireTriggerTarget(ctx, rt.Id, rt.TargetTriggerId, "run_trigger");
                         cost += 1;
                         break;
+
+                    // ── Story 7.14 — the three objective action leaves each cost 1; their target objective id must
+                    //    resolve to a declared/effective objective. ──
+                    case ShowObjectiveNode so:
+                        RequireObjectiveTarget(ctx, so.Id, so.ObjectiveId, "show_objective");
+                        cost += 1;
+                        break;
+                    case CompleteObjectiveNode co:
+                        RequireObjectiveTarget(ctx, co.Id, co.ObjectiveId, "complete_objective");
+                        cost += 1;
+                        break;
+                    case FailObjectiveNode fo:
+                        RequireObjectiveTarget(ctx, fo.Id, fo.ObjectiveId, "fail_objective");
+                        cost += 1;
+                        break;
                 }
             }
             return Sat(cost);
@@ -490,6 +510,15 @@ namespace ProjectChimera.Core.Definitions
             if (targetTriggerId < 0 || !ctx.ById.TryGetValue(targetTriggerId, out NodeBase? tgt) || tgt is not TriggerNode)
                 throw new GateException(
                     $"{kind} node {nodeId}: target_trigger {targetTriggerId} does not resolve to a trigger node.");
+        }
+
+        /// <summary>Story 7.14 — an objective action leaf's target must resolve to a declared/effective objective id
+        /// (mirrors <see cref="RequireTriggerTarget"/>). An empty or unknown id is a located reject.</summary>
+        private static void RequireObjectiveTarget(Ctx ctx, int nodeId, string objectiveId, string kind)
+        {
+            if (string.IsNullOrEmpty(objectiveId) || !ctx.ObjectiveExists(objectiveId))
+                throw new GateException(
+                    $"{kind} node {nodeId}: objective_id '{objectiveId}' references no declared objective.");
         }
 
         /// <summary>Story 7.13 — collect every <see cref="RunTriggerNode"/> target reachable in an exec-item chain

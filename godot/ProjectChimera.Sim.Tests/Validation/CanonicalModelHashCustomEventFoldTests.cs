@@ -50,7 +50,7 @@ namespace ProjectChimera.Sim.Tests.Validation
         [Fact]
         public void AlgoVersions_Unchanged() // 10 canonical (this fold) / 2 start-state (value moves via the seed)
         {
-            Assert.Equal(13, CanonicalModelHash.AlgoVersion);
+            Assert.Equal(14, CanonicalModelHash.AlgoVersion);
             Assert.Equal(2, StartStateHash.AlgoVersion);
         }
 

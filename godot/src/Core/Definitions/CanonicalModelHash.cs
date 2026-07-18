@@ -168,8 +168,16 @@ namespace ProjectChimera.Core.Definitions
         /// the target trigger id for <c>enable_trigger</c>/<c>disable_trigger</c>/<c>run_trigger</c>. A scenario carrying
         /// NONE of the new kinds folds BYTE-IDENTICALLY apart from this leading AlgoVersion mix (the new arms are only
         /// reached by the new kinds; omit-when-default discipline verified) — so only the <c>hero-start-state</c> golden
-        /// re-records, exactly like the 7.5/7.11 graph-walk-extension precedent. <c>StartStateHash.AlgoVersion</c> stays 2.</summary>
-        public const int AlgoVersion = 13;
+        /// re-records, exactly like the 7.5/7.11 graph-walk-extension precedent. <c>StartStateHash.AlgoVersion</c> stays 2.
+        /// 14 = Story 7.14 — the typed graph walk (<see cref="MixGraphNode"/>) is EXTENDED to fold the objective-id
+        /// semantic field of the three new node kinds <c>show_objective</c>/<c>complete_objective</c>/<c>fail_objective</c>
+        /// (an explicit arm each — the <c>default</c> arm folds only the type name and would let two objective actions
+        /// differing only by target collide → MP handshake desync). The authored <c>objectives</c> array itself is
+        /// hash-EXCLUDED (authoring/presentation data on the <c>variables</c>/<c>display_name</c> basis). A scenario
+        /// carrying NONE of the three kinds folds BYTE-IDENTICALLY apart from this leading AlgoVersion mix — so only the
+        /// <c>hero-start-state</c> golden re-records (the 7.5/7.11/7.13 graph-walk-extension precedent).
+        /// <c>StartStateHash.AlgoVersion</c> stays 2.</summary>
+        public const int AlgoVersion = 14;
 
         private const ulong Offset = 14695981039346656037UL; // FNV-64 offset basis
         private const ulong Prime  = 1099511628211UL;        // FNV-64 prime
@@ -768,6 +776,22 @@ namespace ProjectChimera.Core.Definitions
                 case ProjectChimera.Dsl.RunTriggerNode rt:
                     h = MixStr(h, rt.Kind);
                     h = MixInt(h, rt.TargetTriggerId);
+                    break;
+
+                // ── Story 7.14 (v14): the three objective action-leaf kinds. Each folds its objective-id semantic
+                //    field (an explicit arm — never the type-name-only `default` fold) so two objective actions
+                //    differing only by target hash differently at the handshake. ──
+                case ProjectChimera.Dsl.ShowObjectiveNode so:
+                    h = MixStr(h, so.Kind);
+                    h = MixStr(h, so.ObjectiveId);
+                    break;
+                case ProjectChimera.Dsl.CompleteObjectiveNode co:
+                    h = MixStr(h, co.Kind);
+                    h = MixStr(h, co.ObjectiveId);
+                    break;
+                case ProjectChimera.Dsl.FailObjectiveNode fo:
+                    h = MixStr(h, fo.Kind);
+                    h = MixStr(h, fo.ObjectiveId);
                     break;
 
                 default:

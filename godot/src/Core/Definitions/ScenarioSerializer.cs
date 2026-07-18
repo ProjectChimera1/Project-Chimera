@@ -95,6 +95,9 @@ namespace ProjectChimera.Core.Definitions
             // scenario-bytes / CanonicalModelHash / StartStateHash move.
             if (copy.Variables is { Length: 0 }) copy.Variables = null;
             if (copy.Timers    is { Length: 0 }) copy.Timers    = null;
+            // Story 7.14: normalize an empty Objectives array → null so an objective-less scenario serializes
+            // BYTE-IDENTICALLY to pre-7.14 (no "objectives" key) and round-trips absent. Hash-excluded either way.
+            if (copy.Objectives is { Length: 0 }) copy.Objectives = null;
             if (string.IsNullOrWhiteSpace(copy.TriggerGraphJson)) copy.TriggerGraphJson = null;
 
             // Story 7.5: normalize an empty CustomEvents array → null so an event-less scenario serializes
