@@ -14,7 +14,9 @@ namespace ProjectChimera.Core.Sim
 {
     /// <summary>
     /// Net-new, Godot-free composition root for the simulation (Story 1.8a / AR-6). It owns the SoA stores,
-    /// the canonical 15-system tick order (Story 3.13 inserted <c>HeroXpSystem</c> at index 9, after
+    /// the canonical 16-system tick order (Story 7.11 inserted <c>WinConditionSystem</c> at index 14, after
+    /// <c>AiOpponentSystem</c> and immediately before <c>ScenarioDirector</c>; Story 3.13 inserted
+    /// <c>HeroXpSystem</c> at index 9, after
     /// <c>ProjectileSystem</c>; Story 3.15 inserted <c>ItemSystem</c> at index 10; Story 4.9 inserted
     /// <c>ResearchSystem</c> at index 1, immediately after <c>BuildingSystem</c>, shifting everything after it down
     /// by one) — with <c>OrderQueueSystem</c> at index 4 [Story 2.12 / FR-74], then
@@ -110,6 +112,16 @@ namespace ProjectChimera.Core.Sim
         /// shared with <see cref="ScenarioDirector"/> (the only enqueue/dequeue site) and folded into the per-tick
         /// <see cref="SimChecksum"/> (v18). Cleared on <see cref="ClearForReset"/>; <c>LoadScenario</c> resets it too.</summary>
         public DslEventQueue DslEvents { get; }
+        /// <summary>Story 7.11 — the per-match win-condition runtime state (per-faction KotH hold counter / survival
+        /// deadline / verdict latch + scalar match-tick grace counter). Driven by <see cref="WinCon"/>; folded into
+        /// the per-tick <see cref="SimChecksum"/> (v19). Cleared on <see cref="ClearForReset"/>; re-seeded by the
+        /// applier's <c>WinConditionSystem.Configure</c>.</summary>
+        public WinStateStore WinState { get; }
+        /// <summary>Story 7.11 — the sim-layer win-condition evaluator. Registered AFTER <c>AiOpponentSystem</c> and
+        /// immediately BEFORE <see cref="ScenarioDirector"/>. Configured at scenario-apply from the applied
+        /// <c>ScenarioData</c> (built-in enum or a T1 preset). Presentation polls <see cref="WinState"/> for the
+        /// verdict; the director's <c>OnVictory</c> escape hatch is unchanged.</summary>
+        public WinConditionSystem WinCon { get; }
         public FogOfWarSystem Fog { get; }
 
         /// <summary>Story 7.9 — the sim-side raiser-authorization DSL sink (a narrow handle to
@@ -172,6 +184,8 @@ namespace ProjectChimera.Core.Sim
             LoopState        = new DslLoopState();    // Story 7.6 — loop fuel + batched continuation rows; folded into SimChecksum (v17)
             Readback         = new DslVarReadback();  // Story 7.8 — presentation read rail (version-stamped copy of Vars); NOT folded into SimChecksum
             DslEvents        = new DslEventQueue();   // Story 7.5 — pending next-tick custom events; folded into SimChecksum (v18)
+            WinState         = new WinStateStore();    // Story 7.11 — win-condition runtime state; folded into SimChecksum (v19)
+            WinCon           = new WinConditionSystem(WinState, Buildings, checksumFactions); // Story 7.11 — sim-layer win evaluator
             ScenarioDirector = new ScenarioDirector(Buildings, Resources, Vars, LoopState, DslEvents);
             ScenarioDirector.SetReadback(Readback);   // Story 7.8 — the director publishes into it once per tick at the tick boundary
 
@@ -211,7 +225,8 @@ namespace ProjectChimera.Core.Sim
             // scenario placement, hero respawn, editor restore/placement) also picks up its cumulative modifier(s).
             World.OnUnitDefinitionApplied += id => ResearchSys.ApplyCompletedResearch(World, id);
 
-            // ── The canonical 15-system tick order (Story 2.12 inserted OrderQueueSystem at index 3; Story 3.13
+            // ── The canonical 16-system tick order (Story 7.11 inserted WinConditionSystem at index 14, after AI /
+            //    before ScenarioDirector; Story 2.12 inserted OrderQueueSystem at index 3; Story 3.13
             //    inserted HeroXpSystem at index 9 [now 9, was 8]; Story 4.9 inserted ResearchSystem at index 1,
             //    immediately after BuildingSystem, shifting GatheringSystem and everything after down by one). The
             //    registration order IS the determinism contract; SystemOrderTest FAILS on any reorder/add/remove. ──
@@ -257,16 +272,20 @@ namespace ProjectChimera.Core.Sim
                 new SupplySystem(Resources),                                              // [11] SupplySystem      (Economy)
                 Fog,                                                                      // [12] FogOfWarSystem    (Core)
                 _ai = new AiOpponentSystem(Buildings, Resources, BuildSys, aiLevel),      // [13] AI opponent (plays Player2)
-                ScenarioDirector,                                                         // [14] ScenarioDirector — runs LAST
+                // ── Story 7.11 win-condition evaluator. Immediately AFTER AiOpponentSystem (so it sees post-death
+                //    alive counts) and immediately BEFORE ScenarioDirector (so the director's OnVictory escape hatch
+                //    still runs last). Reads final entity/building state, writes the folded WinStateStore verdict. ──
+                WinCon,                                                                   // [14] WinConditionSystem (Core, FR-win)
+                ScenarioDirector,                                                         // [15] ScenarioDirector — runs LAST
             };
 
             _loop = new SimulationLoop(World, _systems);
-            _loop.EnableChecksums(Buildings, Resources, checksumFactions, Modifiers, Heroes, Items, Nodes, Research, Vars, LoopState, DslEvents); // fold modifier state (v6) + ability cooldowns (v7) + mutable HeroStore (v11) + ItemStore/inventory (v12) + ResourceNodeStore (v13) + ResearchStore (v14) + DslVarTable (v16) + DslLoopState (v17) + DslEventQueue (v18)
+            _loop.EnableChecksums(Buildings, Resources, checksumFactions, Modifiers, Heroes, Items, Nodes, Research, Vars, LoopState, DslEvents, WinState); // fold modifier state (v6) + ability cooldowns (v7) + mutable HeroStore (v11) + ItemStore/inventory (v12) + ResourceNodeStore (v13) + ResearchStore (v14) + DslVarTable (v16) + DslLoopState (v17) + DslEventQueue (v18) + WinStateStore (v19)
 
             // The sim spine's only host-side log in 1.8a: a one-shot construction diagnostic through the
             // injected seam. NullLogSink no-ops it (tests/server → zero effect on the golden); GodotLogSink
             // prints it for MainScene. NEVER a per-tick log (D6).
-            _log.Info("[SimulationHost] Sim spine constructed (15 systems; ResearchSystem at index 1, OrderQueueSystem at index 4, AbilityCastSystem at index 5, ModifierSystem at index 6, HeroXpSystem at index 9, ItemSystem at index 10).");
+            _log.Info("[SimulationHost] Sim spine constructed (16 systems; ResearchSystem at index 1, OrderQueueSystem at index 4, AbilityCastSystem at index 5, ModifierSystem at index 6, HeroXpSystem at index 9, ItemSystem at index 10, WinConditionSystem at index 14).");
         }
 
         /// <summary>
@@ -298,6 +317,10 @@ namespace ProjectChimera.Core.Sim
             LoopState.Clear();      // Story 7.6 — folded DslLoopState; bulk-empty so a re-apply reconfigures rows non-additively
             Readback.Clear();       // Story 7.8 — presentation read rail (unfolded); bulk-empty so a re-apply re-inits declarations non-additively
             DslEvents.Clear();      // Story 7.5 — folded next-tick event queue; empty so a re-apply starts with no pending feedback
+            WinState.Clear();       // Story 7.11 — folded win-condition state; empty so a re-apply re-seeds counters/verdict non-additively
+            WinCon.ResetConfig();   // Review P10 — the win-condition APPLY-TIME config lives outside every store; a Clear
+                                    // without a re-Configure must not leave a stale preset pointed at zeroed counters
+                                    // (e.g. _preset=TimedSurvival + SurvivalRemaining=0 → instant false win next tick)
             CombatEvents.Clear();
             _deathFeed.Clear();     // Story 3.13 — transient per-tick death buffer (empty at reset)
             Fog.Reset();

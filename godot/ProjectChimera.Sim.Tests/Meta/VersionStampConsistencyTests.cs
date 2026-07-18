@@ -45,6 +45,11 @@ namespace ProjectChimera.Sim.Tests.Meta
         //    same commit as the source change — that edit is the "did the siblings + goldens move too?" checkpoint.
 
         /// <summary>Runtime desync-checksum algorithm version. Bump ⇒ re-baseline ALL goldens (same commit).
+        /// v19 (Story 7.11): first-ever fold of the WinStateStore — the sim-layer win-condition runtime state (the
+        /// scalar MatchTicks grace/elapsed counter, then per ACTIVE faction KothHoldTicks / SurvivalRemaining /
+        /// Verdict, AFTER the DslEventQueue fold and before SimRng). Win evaluation moved out of presentation into the
+        /// deterministic WinConditionSystem, so its live state must be peer-checksummed; the preset PARAMS fold into
+        /// the CanonicalModelHash handshake (v12), not here. The ONE scheduled re-baseline of ALL 24 per-tick goldens.
         /// v18 (Story 7.5, landed via the 7-5 re-land merge): first-ever fold of the DslEventQueue — the PENDING
         /// next-tick custom-event raises (registry index + raiser + the fixed MaxEventParams param-raw stride,
         /// count-prefixed in enqueue order, AFTER the DslLoopState fold and before SimRng). Live CROSS-TICK sim
@@ -71,7 +76,7 @@ namespace ProjectChimera.Sim.Tests.Meta
         /// (D-1). v8 (Story 2.6): folded per-entity EffectiveArmor (the buffable armor stat). v7 (Story 2.4a): folded
         /// per-entity AbilityCooldownTicks (count-driven). v6 (Story 2.2b): Effective* / Energy / StatusFlagsOf +
         /// the ModifierStore instance state.</summary>
-        private const int ExpectedSimChecksumAlgoVersion = 18;
+        private const int ExpectedSimChecksumAlgoVersion = 19;
 
         /// <summary>Load-time canonical start-state hash algorithm version (lobby handshake value).
         /// v3 (Story 2.9b follow-up): folded ScenarioPlayerSlot.StartCrystal (sim-affecting per-slot start-state).
@@ -113,8 +118,16 @@ namespace ProjectChimera.Sim.Tests.Meta
         /// HandshakeGate blocks the lobby start. The per-widget `_editor` bag stays EXCLUDED. The ONE named
         /// re-baseline: the hero-start-state golden re-recorded (StartStateHash value moves via the canonical seed;
         /// StartStateHash.AlgoVersion stays 2). SimChecksum (18) and the 24 per-tick world goldens are UNTOUCHED
-        /// (the write rail enters the EXISTING checksum-folded DslEventQueue — no new folded sim state).</summary>
-        private const int ExpectedCanonicalModelHashAlgoVersion = 11;
+        /// (the write rail enters the EXISTING checksum-folded DslEventQueue — no new folded sim state).
+        /// v12 (Story 7.11): folded the ScenarioData.WinConditionSpec preset params, appended IMMEDIATELY AFTER the
+        /// built-in WinCondition enum fold. A null / None spec folds NOTHING (byte-identical to v11 apart from this
+        /// AlgoVersion bump — the omit-when-default discipline; the serializer normalizes a None spec to null); a
+        /// preset folds a present marker + kind name + params (KotH region_id/hold_ticks; Survival
+        /// faction_slot/survive_ticks; Assassination leader_unit_index; Landmark structure_index) so divergent
+        /// victory rules reject at the lobby handshake. The ONE named re-baseline: hero-start-state golden re-recorded
+        /// (StartStateHash value moves via the canonical seed; StartStateHash.AlgoVersion stays 2). The 24 per-tick
+        /// world goldens move via the SEPARATE SimChecksum v19 bump in the same commit, not via this fold.</summary>
+        private const int ExpectedCanonicalModelHashAlgoVersion = 12;
 
         /// <summary>Load-time canonical START-STATE hash algorithm version (Story 3.2, AC3) — a NEW, distinct FNV-64
         /// over the full init state = the <see cref="CanonicalModelHash"/> content seed PLUS the HeroStore rows.

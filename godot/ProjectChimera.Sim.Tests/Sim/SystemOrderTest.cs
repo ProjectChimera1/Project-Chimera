@@ -13,7 +13,9 @@ using Xunit;
 namespace ProjectChimera.Sim.Tests.Sim
 {
     /// <summary>
-    /// Pins the canonical 15-system tick order that <see cref="SimulationHost"/> owns (Story 1.8a / AR-6;
+    /// Pins the canonical 16-system tick order that <see cref="SimulationHost"/> owns (Story 1.8a / AR-6;
+    /// <c>WinConditionSystem</c> was inserted at index 14 in Story 7.11, after <c>AiOpponentSystem</c> and immediately
+    /// before <c>ScenarioDirector</c>;
     /// <c>ModifierSystem</c> filled the AR-9 slot in Story 2.2a; <c>AbilityCastSystem</c> was inserted at index 3 in
     /// Story 2.4a / FR-11, then bumped to index 4 when <c>OrderQueueSystem</c> was inserted at index 3 in Story 2.12 /
     /// FR-74; <c>ResearchSystem</c> was inserted at index 1, immediately after <c>BuildingSystem</c>, in Story 4.9,
@@ -50,7 +52,8 @@ namespace ProjectChimera.Sim.Tests.Sim
             typeof(SupplySystem),      // [11]
             typeof(FogOfWarSystem),    // [12]
             typeof(AiOpponentSystem),  // [13]
-            typeof(ScenarioDirector),  // [14]  runs LAST
+            typeof(WinConditionSystem),// [14] ← Story 7.11 win-condition evaluator, after AI / before ScenarioDirector
+            typeof(ScenarioDirector),  // [15]  runs LAST
         };
 
         /// <summary>
@@ -64,7 +67,7 @@ namespace ProjectChimera.Sim.Tests.Sim
             new FactionDefinition());
 
         [Fact]
-        public void Systems_AreTheFifteenCanonicalSystems_InExactOrder()
+        public void Systems_AreTheSixteenCanonicalSystems_InExactOrder()
         {
             IReadOnlyList<ISimSystem> systems = BuildHost().Systems;
 

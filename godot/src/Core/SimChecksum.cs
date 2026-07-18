@@ -206,8 +206,21 @@ namespace ProjectChimera.Core
         ///        Every existing golden carries an EMPTY queue, so the fold adds one Mix(0) that moves the hash with
         ///        zero live state — the merge's ONE named, recorded, behavior-neutral re-baseline of ALL per-tick
         ///        goldens. All ints → cross-platform safe.
+        ///   v19 — Story 7.11: fold the new <see cref="WinStateStore"/> — the sim-layer win-condition runtime state —
+        ///        for the FIRST TIME (win evaluation moved out of presentation into the deterministic
+        ///        <c>WinConditionSystem</c>, so its live state must be peer-checksummed). Folds AFTER the
+        ///        DslEventQueue fold and BEFORE the SimRng fold (SimRng stays last, the standing precedent): the
+        ///        scalar <c>MatchTicks</c> grace/elapsed counter first, then per ACTIVE faction (ascending — the
+        ///        ResourceStore/ResearchStore <c>ActiveFactions</c> iteration, NOT a raw 0-4 stride) KothHoldTicks,
+        ///        SurvivalRemaining, and Verdict. A divergent hold-counter / survival deadline / latched verdict
+        ///        between peers changes which match outcome resolves, so it must desync detectably. A null store
+        ///        folds byte-identically to an empty one (a single Mix(0) MatchTicks then the per-active-faction
+        ///        Mix(0) triples; legacy/test callers only — SimulationHost always passes a real store). Every
+        ///        existing golden carries a fresh store whose MatchTicks advances deterministically and whose
+        ///        per-faction fields stay 0 for the replay window, so the fold moves the hash — the story's ONE
+        ///        scheduled, behavior-neutral re-baseline of ALL per-tick goldens. All ints → cross-platform safe.
         /// </summary>
-        public const int AlgoVersion = 18;
+        public const int AlgoVersion = 19;
 
         /// <summary>
         /// Compute a full-state checksum for desync detection.
@@ -217,7 +230,7 @@ namespace ProjectChimera.Core
                                    FactionRegistry factions, ModifierStore? modifiers = null, HeroStore? heroes = null,
                                    ItemStore? items = null, ResourceNodeStore? nodes = null, ResearchStore? research = null,
                                    DslVarTable? vars = null, DslLoopState? loopState = null,
-                                   DslEventQueue? dslEvents = null)
+                                   DslEventQueue? dslEvents = null, WinStateStore? winState = null)
         {
             // Contract guard for the registry param added in Story 1.3a: a future direct caller (e.g. the
             // 1.9a/9.1 server checksum collector) gets a clear error instead of an opaque NRE in the Ore loop.
@@ -549,6 +562,36 @@ namespace ProjectChimera.Core
                 dslEvents.FoldInto(ref hash, Mix);
             else
                 DslEventQueue.FoldEmpty(ref hash, Mix); // null queue ≡ empty queue (byte-identical fold)
+
+            // ── WinStateStore (v19, Story 7.11) — the sim-layer win-condition runtime state, AFTER the DslEventQueue
+            // fold and BEFORE the RNG fold (SimRng stays last, the standing precedent). The scalar MatchTicks
+            // grace/elapsed counter folds first (once), then per ACTIVE faction (ascending — mirroring the
+            // ResourceStore/ResearchStore ActiveFactions loop, NOT a raw 0-4 stride) KothHoldTicks / SurvivalRemaining
+            // / Verdict. Each is peer-divergent live win-state: a divergent hold-counter, survival countdown, or
+            // latched verdict changes which outcome resolves and must desync detectably. A null store folds
+            // byte-identically to an empty one (Mix(0) MatchTicks then the per-active-faction Mix(0) triples). All int
+            // → cross-platform safe.
+            if (winState != null)
+            {
+                hash = Mix(hash, winState.MatchTicks);
+                foreach (Faction f in factions.ActiveFactions)
+                {
+                    int idx = (int)f;
+                    hash = Mix(hash, winState.KothHoldTicks[idx]);
+                    hash = Mix(hash, winState.SurvivalRemaining[idx]);
+                    hash = Mix(hash, winState.Verdict[idx]);
+                }
+            }
+            else
+            {
+                hash = Mix(hash, 0); // null store ≡ empty: MatchTicks == 0
+                foreach (Faction f in factions.ActiveFactions)
+                {
+                    hash = Mix(hash, 0);
+                    hash = Mix(hash, 0);
+                    hash = Mix(hash, 0);
+                }
+            }
 
             // ── RNG state (v3, Story 1.5) ─────────────────────────────────────────
             // The single shared SimRng's state IS sim truth: once Epic 2 effects draw from it, a divergent

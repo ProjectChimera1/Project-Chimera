@@ -106,6 +106,42 @@ namespace ProjectChimera.Core.Definitions
             if (copy.CustomUi != null && (copy.CustomUi.Widgets == null || copy.CustomUi.Widgets.Length == 0))
                 copy.CustomUi = null;
 
+            // Story 7.11: normalize a None (no-preset) WinConditionSpec → null so a scenario using only the built-in
+            // WinCondition enum serializes BYTE-IDENTICALLY to pre-7.11 (no "win_condition_spec" key), round-trips
+            // absent, and — with the None spec folding nothing extra in CanonicalModelHash — moves no golden apart
+            // from the AlgoVersion bump.
+            if (copy.WinConditionSpec != null && copy.WinConditionSpec.Preset == WinPresetKind.None)
+                copy.WinConditionSpec = null;
+
+            // Story 7.11 review (P5): the editor reuses one WinConditionSpec across preset switches, so a spec can
+            // carry stale cross-preset params (e.g. a leftover LeaderUnitIndex on a KotH spec). [JsonIgnore(
+            // WhenWritingDefault)] would then serialize them, making two semantically-identical scenarios serialize
+            // DIFFERENTLY while CanonicalModelHash (which folds only the active preset's params) hashes them
+            // IDENTICALLY — breaking "same serialize ⇄ same hash". Zero every field NOT owned by the active preset.
+            // ShallowClone shares the spec reference, so build a fresh instance — the live in-editor spec is untouched.
+            if (copy.WinConditionSpec is { Preset: not WinPresetKind.None } src)
+            {
+                WinConditionSpec norm = new() { Preset = src.Preset };
+                switch (src.Preset)
+                {
+                    case WinPresetKind.KingOfTheHill:
+                        norm.RegionId  = src.RegionId;
+                        norm.HoldTicks = src.HoldTicks;
+                        break;
+                    case WinPresetKind.TimedSurvival:
+                        norm.FactionSlot  = src.FactionSlot;
+                        norm.SurviveTicks = src.SurviveTicks;
+                        break;
+                    case WinPresetKind.Assassination:
+                        norm.LeaderUnitIndex = src.LeaderUnitIndex;
+                        break;
+                    case WinPresetKind.LandmarkDestruction:
+                        norm.StructureIndex = src.StructureIndex;
+                        break;
+                }
+                copy.WinConditionSpec = norm;
+            }
+
             // Story 7.7 (D3 versioning): STAMP the current schema/checksum-algo versions. Every save carries the
             // stamps; the caller's in-memory model (possibly null stamps) is untouched. Both stamps are EXCLUDED
             // from CanonicalModelHash, so this re-save-adds-stamps behavior never moves the handshake hash of a

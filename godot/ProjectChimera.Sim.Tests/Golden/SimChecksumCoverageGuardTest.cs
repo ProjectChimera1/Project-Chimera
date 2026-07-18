@@ -109,23 +109,23 @@ namespace ProjectChimera.Sim.Tests.Golden
         /// hash still moves.)
         /// </summary>
         [Fact]
-        public void KnownWorldState_ProducesPinnedV18Hash()
+        public void KnownWorldState_ProducesPinnedV19Hash()
         {
-            // Algorithm version must be exactly 18 (Story 7.6's arrays + DslLoopState fold at v17, plus Story
-            // 7.5's DslEventQueue fold at v18 — landed via merge). If this fails, the const below is stale.
-            Assert.Equal(18, SimChecksum.AlgoVersion);
+            // Algorithm version must be exactly 19 (Story 7.11's WinStateStore fold at v19, on top of 7.5's
+            // DslEventQueue fold at v18). If this fails, the const below is stale.
+            Assert.Equal(19, SimChecksum.AlgoVersion);
 
             uint actual = ComputeKnownStateHash();
 
-            // ── Pinned v18 hash for the fixed world built by ComputeKnownStateHash() ──────────────────────────
+            // ── Pinned v19 hash for the fixed world built by ComputeKnownStateHash() ──────────────────────────
             // An intentional SimChecksum algorithm change must update this value AND bump SimChecksum.AlgoVersion.
-            // The known-state world passes an EMPTY DslVarTable + EMPTY DslLoopState + EMPTY DslEventQueue, so
-            // the v18 fold moves the hash from master's v17 purely by the added Mix(0) queue count — the merge's
-            // named, recorded DslEventQueue-fold re-baseline (Story 7.5 landed on the 7.6 loop-layer fold).
-            const uint ExpectedV18Hash = 0x4EE07922; // re-pinned at v18 (7.5 merge DslEventQueue fold) from this test's failure message — no CHIMERA_GOLDEN_RECORD hook covers this pin
-            Assert.True(actual == ExpectedV18Hash,
-                $"Known-state v18 checksum changed: expected 0x{ExpectedV18Hash:X8}, actual 0x{actual:X8}. " +
-                $"If this is an INTENTIONAL algorithm change, re-pin ExpectedV18Hash to 0x{actual:X8} and bump " +
+            // The known-state world passes an EMPTY WinStateStore, so the v19 fold moves the hash from v18 purely by
+            // the added Mix(0) MatchTicks + the per-active-faction Mix(0) triples — Story 7.11's named, recorded
+            // WinStateStore-fold re-baseline (there is NO CHIMERA_GOLDEN_RECORD hook for this hand pin).
+            const uint ExpectedV19Hash = 0x48FB4D02; // re-pinned at v19 (7.11 WinStateStore fold) from this test's failure message
+            Assert.True(actual == ExpectedV19Hash,
+                $"Known-state v19 checksum changed: expected 0x{ExpectedV19Hash:X8}, actual 0x{actual:X8}. " +
+                $"If this is an INTENTIONAL algorithm change, re-pin ExpectedV19Hash to 0x{actual:X8} and bump " +
                 $"SimChecksum.AlgoVersion. If not, you broke the deterministic checksum — investigate.");
         }
 
@@ -354,6 +354,9 @@ namespace ProjectChimera.Sim.Tests.Golden
             // ── v18 (Story 7.5, landed via merge): the pending next-tick DslEventQueue is folded (first-ever
             //    fold of this store) ──
             AssertDslEventQueueFoldedIntoChecksum(registry);
+
+            // ── v19 (Story 7.11): the mutable WinStateStore is folded (first-ever fold of this store) ──
+            AssertWinStateStoreFoldedIntoChecksum(registry);
         }
 
         /// <summary>
@@ -502,6 +505,63 @@ namespace ProjectChimera.Sim.Tests.Golden
             Assert.True(Hash(world, buildings, resources, registry, new DslEventQueue())
                      == Hash(world, buildings, resources, registry, null),
                 "A null DslEventQueue does NOT fold byte-identically to an empty queue (v18 null≡empty promise broken).");
+        }
+
+        /// <summary>
+        /// Story 7.11 (v19) coverage teeth: the mutable <see cref="WinStateStore"/> state must move the checksum —
+        /// the FIRST-EVER fold of this store. The scalar MatchTicks moves it; then each PER-FACTION field
+        /// (KothHoldTicks / SurvivalRemaining / Verdict) mutated on Player1 AND independently on Player2 moves it (a
+        /// fold reading only Player1's slot, or only the scalar, would hide a per-faction divergence). Also proves
+        /// the null≡empty interchangeability promise (the DslEventQueue v18 pattern).
+        /// </summary>
+        private static void AssertWinStateStoreFoldedIntoChecksum(FactionRegistry registry)
+        {
+            var world     = new EntityWorld();          // empty — isolates the store contribution
+            var resources = new ResourceStore(Fixed.Zero);
+            var buildings = new BuildingStore();
+
+            // NAMED trailing arg (never positional) — pin the store to its parameter by NAME, immune to the next widening.
+            static uint Hash(EntityWorld w, BuildingStore b, ResourceStore r, FactionRegistry reg, WinStateStore? s) =>
+                SimChecksum.Compute(w, b, r, reg, winState: s);
+
+            var store = new WinStateStore();
+            uint empty = Hash(world, buildings, resources, registry, store);
+
+            store.MatchTicks = 42;
+            uint ticked = Hash(world, buildings, resources, registry, store);
+            Assert.True(empty != ticked,
+                "Advancing WinStateStore.MatchTicks did NOT move the checksum — the scalar grace counter is not folded (v19).");
+
+            var koth1 = new WinStateStore(); koth1.KothHoldTicks[(int)Faction.Player1] = 7;
+            Assert.True(empty != Hash(world, buildings, resources, registry, koth1),
+                "A Player1 KothHoldTicks change did not move the checksum — the v19 per-faction fold is missing.");
+            var koth2 = new WinStateStore(); koth2.KothHoldTicks[(int)Faction.Player2] = 7;
+            Assert.True(empty != Hash(world, buildings, resources, registry, koth2),
+                "A Player2 KothHoldTicks change did not move the checksum — the v19 fold reads only one faction slot.");
+
+            var surv1 = new WinStateStore(); surv1.SurvivalRemaining[(int)Faction.Player1] = 300;
+            Assert.True(empty != Hash(world, buildings, resources, registry, surv1),
+                "A Player1 SurvivalRemaining change did not move the checksum — the v19 fold is missing the survival countdown.");
+            var surv2 = new WinStateStore(); surv2.SurvivalRemaining[(int)Faction.Player2] = 300;
+            Assert.True(empty != Hash(world, buildings, resources, registry, surv2),
+                "A Player2 SurvivalRemaining change did not move the checksum — the v19 fold reads only one faction slot.");
+
+            var verdict1 = new WinStateStore(); verdict1.Verdict[(int)Faction.Player1] = WinStateStore.VERDICT_WON;
+            Assert.True(empty != Hash(world, buildings, resources, registry, verdict1),
+                "A Player1 Verdict latch did not move the checksum — the v19 fold is missing the verdict field.");
+            var verdict2 = new WinStateStore(); verdict2.Verdict[(int)Faction.Player2] = WinStateStore.VERDICT_LOST;
+            Assert.True(empty != Hash(world, buildings, resources, registry, verdict2),
+                "A Player2 Verdict latch did not move the checksum — the v19 fold reads only one faction slot.");
+
+            // Clearing returns the fold to the empty shape.
+            store.Clear();
+            Assert.True(empty == Hash(world, buildings, resources, registry, store),
+                "A cleared WinStateStore does not fold like an empty one (Clear left residue).");
+
+            // Null ≡ empty (the DslEventQueue v18 promise, applied to the win-state store).
+            Assert.True(Hash(world, buildings, resources, registry, new WinStateStore())
+                     == Hash(world, buildings, resources, registry, null),
+                "A null WinStateStore does NOT fold byte-identically to an empty store (v19 null≡empty promise broken).");
         }
 
         /// <summary>
@@ -963,7 +1023,9 @@ namespace ProjectChimera.Sim.Tests.Golden
             // v17 (Story 7.6): pass an EMPTY DslLoopState (no batched rows, zero fuel) — same explicit-production-path rationale.
             // v18 (Story 7.5, landed via merge): pass an EMPTY DslEventQueue (no pending next-tick events) — the
             // fold adds one Mix(0) count, same explicit-production-path rationale.
-            return SimChecksum.Compute(world, buildings, resources, new FactionRegistry(2), new ModifierStore(world), new HeroStore(), new ItemStore(), new ResourceNodeStore(), new ResearchStore(), new DslVarTable(), new DslLoopState(), new DslEventQueue());
+            // v19 (Story 7.11): pass an EMPTY WinStateStore (MatchTicks == 0, no KotH/survival counters, no verdict)
+            // — the fold adds Mix(0) MatchTicks + the per-active-faction Mix(0) triples, same explicit-production-path rationale.
+            return SimChecksum.Compute(world, buildings, resources, new FactionRegistry(2), new ModifierStore(world), new HeroStore(), new ItemStore(), new ResourceNodeStore(), new ResearchStore(), new DslVarTable(), new DslLoopState(), new DslEventQueue(), new WinStateStore());
         }
 
         /// <summary>

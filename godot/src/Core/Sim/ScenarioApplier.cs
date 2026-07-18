@@ -219,8 +219,13 @@ namespace ProjectChimera.Core.Sim
             }
 
             // ── 3. Buildings ──────────────────────────────────────────────────
-            foreach (var b in s.Buildings ?? System.Array.Empty<ScenarioBuilding>())
+            // Story 7.11: capture each placed building's BuildingStore slot, index-aligned to the authored
+            // Buildings array, so a Landmark-Destruction preset can resolve its structure_index to a runtime slot.
+            ScenarioBuilding[] buildingsArr = s.Buildings ?? System.Array.Empty<ScenarioBuilding>();
+            int[] buildingSlots = new int[buildingsArr.Length];
+            for (int bi = 0; bi < buildingsArr.Length; bi++)
             {
+                var b = buildingsArr[bi];
                 var faction = (Faction)(b.Slot + 1);
                 var pos     = new FixedVec3(Fixed.FromFloat(b.X), Fixed.Zero, Fixed.FromFloat(b.Z));
                 // Story 6.8: b.Type is "legacy enum name OR authored building-def id". Take the byte-identical
@@ -237,14 +242,20 @@ namespace ProjectChimera.Core.Sim
                     && Enum.IsDefined(typeof(BuildingType), bType)
                     && bType.ToString() == b.Type
                     && bType != BuildingType.Custom)
-                    _host.BuildSys.PlaceBuildingDirect(bType, faction, pos, b.PreBuilt);
+                    buildingSlots[bi] = _host.BuildSys.PlaceBuildingDirect(bType, faction, pos, b.PreBuilt);
                 else
-                    _host.BuildSys.PlaceBuildingDirectById(b.Type, faction, pos, b.PreBuilt);
+                    buildingSlots[bi] = _host.BuildSys.PlaceBuildingDirectById(b.Type, faction, pos, b.PreBuilt);
             }
 
             // ── 4. Units ──────────────────────────────────────────────────────
-            foreach (var u in s.Units ?? System.Array.Empty<ScenarioUnit>())
+            // Story 7.11: capture each placed unit's spawned entity id, index-aligned to the authored Units array,
+            // so an Assassination preset can resolve its leader_unit_index to a runtime entity id (-1 = not spawned).
+            ScenarioUnit[] unitsArr = s.Units ?? System.Array.Empty<ScenarioUnit>();
+            int[] unitEntityIds = new int[unitsArr.Length];
+            for (int ui = 0; ui < unitsArr.Length; ui++)
             {
+                unitEntityIds[ui] = -1;
+                var u = unitsArr[ui];
                 var faction = (Faction)(u.Slot + 1);
                 // Look up def from the per-slot faction definition resolved by the pre-pass. Bounds-guard the
                 // UNCHECKED (Faction) cast — a shadow-applied invalid model (D3) may carry an out-of-range slot.
@@ -255,6 +266,7 @@ namespace ProjectChimera.Core.Sim
                     continue;
                 }
                 int spawnedId = SpawnUnit(def, faction, u.X, u.Z);
+                unitEntityIds[ui] = spawnedId;
 
                 // Story 3.9: record a scenario-PLACED hero (init-time only) so MainScene/HeroPickerPhase can mint a
                 // deployed PlayerProfile into HeroStore before the start-state hash. Recorded HERE (not in the shared
@@ -306,7 +318,13 @@ namespace ProjectChimera.Core.Sim
             //    the unit_in_region condition can scan it. Static authored data (never mutated mid-match) ⇒ not in
             //    SimChecksum. An absent/empty Regions collection resolves to RegionStore.Empty (no allocation, no
             //    behavior change) so every pre-6.4 scenario is byte-identical. ──
-            _host.ScenarioDirector.SetRegionStore(BuildRegionStore(s.Regions));
+            RegionStore regionStore = BuildRegionStore(s.Regions);
+            _host.ScenarioDirector.SetRegionStore(regionStore);
+
+            // ── 4d. Win condition (Story 7.11) — resolve the applied scenario's built-in enum / T1 preset into the
+            //    sim-layer WinConditionSystem, sharing the SAME RegionStore the director scans (mirrors SetRegionStore)
+            //    and the placement→runtime-id maps captured above. Resolved BEFORE LoadScenario, alongside regions. ──
+            _host.WinCon.Configure(s, regionStore, unitEntityIds, buildingSlots);
 
             // ── 5. Triggers ────────────────────────────────────────────────────
             _host.ScenarioDirector.LoadScenario(s); // triggers last (same as today)

@@ -1889,3 +1889,31 @@ source_spec: `spec-7-10-t3-visual-node-graph-editor-view-additive-over-the-share
 severity: low
 reason: Review budget (2 cycles) was exhausted with the story finalized (status: done, verify green) while the review pass kept recommending an independent follow-up. The work was committed by bmad-loop run 20260717-190048-cec1; this entry preserves the lingering follow-up recommendation for a deliberate later review.
 status: open
+
+### DW-184: Assassination/Landmark presets can miss a target death via same-tick, same-faction EntityWorld slot recycle (no entity generation counter)
+origin: 7-11-review-defer
+source_spec: `spec-7-11-win-condition-preset-templates-t1-sim-layer-winconditionsystem.md`
+severity: medium
+reason: `WinConditionSystem.EvaluateAssassination`/`EvaluateLandmark` (godot/src/Core/WinConditionSystem.cs:253-270) treat the target as alive when `world.IsAlive(id) && world.FactionOf[id] == targetFaction`. `EntityWorld.Destroy` frees a slot to the LIFO free-list immediately (EntityWorld.cs:1124) and `Create` pops it same-tick (EntityWorld.cs:767), and base entity ids have NO generation counter (EntityWorld.cs:601). So if the designated leader's slot is recycled into a NEW same-faction unit within the same tick, BEFORE WinConditionSystem ticks at index 14, the death is masked and the preset never latches (leader effectively immortal → wrong/no verdict). Currently hard to reach: the only same-faction spawners between the death systems (CombatSystem[7]/ProjectileSystem[8]) and WinConditionSystem[14] are hero revival (HeroXpSystem[9], which is tick-delayed, not same-tick) and unit production (largely completes in ScenarioDirector[15], after the win evaluator). Surfaced independently by the Blind Hunter and Edge Case Hunter layers; the implementation comment acknowledges the cross-tick case but not an intra-tick recycle. Closure = a generation/ABA-safe target identity (mirror the HeroStore packed `(Generation<<8)|slot` handle) or a per-tick "died this tick" death-feed membership check consulted by the win evaluator; becomes live the moment any system spawns same-faction units synchronously between combat resolution and index 14.
+status: open
+
+### DW-185: WinConditionSystem built-ins and presets are hard-2-player (P1/P2); a >2-faction scenario resolves wrong or arbitrarily
+origin: 7-11-review-defer
+source_spec: `spec-7-11-win-condition-preset-templates-t1-sim-layer-winconditionsystem.md`
+severity: medium
+reason: `WinConditionSystem.EvaluateBuiltin`/`CountBuildingsAlive`/`CountUnitsAlive` (godot/src/Core/WinConditionSystem.cs:152-187) count only `Faction.Player1`/`Player2`, and `OtherFaction` (cs:284-289) returns the first active faction != f, so in a 3-4 player match (FactionRegistry supports up to 8) Player3/Player4 buildings and units are ignored for the built-ins and every preset marks only the lowest other faction as winner — Player3/Player4 receive no verdict and can be alive when victory is declared. Nothing (validator included) blocks a preset on a >2-faction scenario. This is carried forward from the old presentation switch (also P1/P2-only) and is EXPLICITLY out of scope for Story 7.11 per the intent scope note ("Multi-team (>2 faction) free-for-all resolution beyond the existing P1/P2 two-faction assumption is out of scope") — it is owned by Story 7.12 (N-faction victory resolution + sim-owned alliance mask), which depends on 7.11. Logged so 7.12 can consume it and so the new canonical evaluator's 2-faction limit is tracked. Surfaced by the Blind Hunter and Edge Case Hunter layers. Closure = Story 7.12.
+status: open
+
+### DW-186: Editor surfaces can save a scenario the fail-closed loader then rejects — no save-time validation surface (author lockout class)
+origin: 7-11-review-2-defer
+source_spec: `spec-7-11-win-condition-preset-templates-t1-sim-layer-winconditionsystem.md`
+severity: medium
+reason: The editor writes `ScenarioData` to disk without running `ScenarioValidator`, while every load path is fail-closed (`ScenarioLoadPhase.cs:312-315` rejects and applies nothing; `MainScene.cs:1643` re-validates on Edit→Play). So any editor surface that can author an invalid value produces a file that validates clean nowhere until the NEXT boot rejects it — at which point the author's content no longer loads and they must hand-edit JSON to recover. The class predates 7.11 (trigger editor can reference undefined regions/timers, blank variable names, etc. — the located-reject rules at `ScenarioValidator.cs:596-638` all have editor-reachable authoring paths), but 7.11's win-condition picker widens it: an empty KotH `region_id` or an out-of-range preset index can be committed from the picker with no feedback (the 7-11 follow-up review clamped the slot spinner and hardened the validator, but free-text/index params remain uncheckable client-side). Surfaced by the Edge Case Hunter layer on the 7-11 follow-up pass. Closure = one platform-level save-time validation surface (run `ScenarioValidator.Validate` on save and surface the located error in-editor, blocking or warning), covering all authoring surfaces at once rather than per-picker guards.
+status: open
+
+### DW-187: Follow-up review still recommended for 7-11-win-condition-preset-templates-t1-sim-layer-winconditionsystem after the review budget was exhausted
+origin: review-budget-followup
+source_spec: `spec-7-11-win-condition-preset-templates-t1-sim-layer-winconditionsystem.md`
+severity: low
+reason: Review budget (2 cycles) was exhausted with the story finalized (status: done, verify green) while the review pass kept recommending an independent follow-up. The work was committed by bmad-loop run 20260717-223404-9791; this entry preserves the lingering follow-up recommendation for a deliberate later review.
+status: open

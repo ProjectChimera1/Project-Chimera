@@ -265,6 +265,16 @@ namespace ProjectChimera.Sim.Tests.Sim
                 Fixed.Zero, Fixed.Zero, Fixed.One));
             if (host.World.HighWaterMark > 0) host.World.Elevation[0] = Fixed.FromInt(7);
 
+            // Story 7.11 (review P9): the golden fixture runs a built-in win condition and the 60-tick run above
+            // stays un-resolved, so a dropped WinState.Clear() in ClearForReset would leave every OTHER store equal
+            // to fresh and pass vacuously (only MatchTicks would differ). Dirty every v19-folded WinStateStore
+            // field directly so this keystone has teeth on the win-state substrate too.
+            host.WinState.MatchTicks = 4242;
+            host.WinState.KothHoldTicks[(int)Faction.Player1]     = 7;
+            host.WinState.SurvivalRemaining[(int)Faction.Player2] = 55;
+            host.WinState.Verdict[(int)Faction.Player1]           = WinStateStore.VERDICT_WON;
+            host.WinState.Verdict[(int)Faction.Player2]           = WinStateStore.VERDICT_LOST;
+
             host.ClearForReset();
 
             // A newly-constructed host (NOT applied) is the byte-for-byte reference.
@@ -339,6 +349,15 @@ namespace ProjectChimera.Sim.Tests.Sim
             Assert.Equal(fresh.World.HeightAdvantageVision,    host.World.HeightAdvantageVision);
             Assert.Equal(fresh.World.HeightVisionBonusPerStep, host.World.HeightVisionBonusPerStep);
             Assert.Equal(fresh.World.Elevation,                host.World.Elevation);
+
+            // Story 7.11 (review P9): the v19-folded WinStateStore resets to fresh (teeth for the WinState.Clear()
+            // call in ClearForReset — see the direct dirtying above; without it a re-Play would carry a latched
+            // verdict / stale counters into the next match, breaking the "reset == fresh boot" guarantee).
+            Assert.Equal(fresh.WinState.MatchTicks,        host.WinState.MatchTicks);
+            Assert.Equal(fresh.WinState.KothHoldTicks,     host.WinState.KothHoldTicks);
+            Assert.Equal(fresh.WinState.SurvivalRemaining, host.WinState.SurvivalRemaining);
+            Assert.Equal(fresh.WinState.Verdict,           host.WinState.Verdict);
+            Assert.False(host.WinState.IsResolved());
             // The private _elevationGrid also reset: a fresh spawn on the cleared world samples the null grid ⇒
             // Fixed.Zero. A leaked grid (FromInt(3) above) would make this probe non-zero. (Done last — it mutates the world.)
             int probe = host.World.Create(FixedVec3.Zero, Faction.Player1, Fixed.FromInt(1), Fixed.FromInt(1));
@@ -553,8 +572,8 @@ namespace ProjectChimera.Sim.Tests.Sim
         [Fact]
         public void HashAlgoVersions_AreUnchanged()
         {
-            Assert.Equal(18, SimChecksum.AlgoVersion);   // v17 = Story 7.6 arrays + DslLoopState (loops/fuel) fold; v18 = Story 7.5 DslEventQueue fold (landed via merge)
-            Assert.Equal(11, CanonicalModelHash.AlgoVersion); // v9 = Story 7.8 custom-UI fold; v10 = Story 7.5 custom-event registry fold (merge); v11 = Story 7.9 Button fold
+            Assert.Equal(19, SimChecksum.AlgoVersion);   // v17 = Story 7.6 arrays + DslLoopState (loops/fuel) fold; v18 = Story 7.5 DslEventQueue fold (landed via merge)
+            Assert.Equal(12, CanonicalModelHash.AlgoVersion); // v9 = Story 7.8 custom-UI fold; v10 = Story 7.5 custom-event registry fold (merge); v11 = Story 7.9 Button fold
             Assert.Equal(2, StartStateHash.AlgoVersion);
         }
 

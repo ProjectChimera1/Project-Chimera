@@ -129,6 +129,9 @@ namespace ProjectChimera.Sim.Tests.Validation
             {
                 Id = "max-caps", DisplayName = "Max Caps Perf Fixture", TerrainRef = "",
                 MapBounds = bounds, WinCondition = WinCondition.DestroyAllBuildings,
+                // Story 7.11: exercise the v12 win-condition-preset fold on the worst-case fixture (a KotH preset
+                // binding a declared region) so the perf test walks the real preset-param cost, not just the None path.
+                WinConditionSpec = new WinConditionSpec { Preset = WinPresetKind.KingOfTheHill, RegionId = "r0", HoldTicks = 300 },
                 PlayerSlots = slots, Units = units, Buildings = buildings, ResourceNodes = nodes,
                 Regions = regions, Variables = variables, Timers = timers, Triggers = triggers,
                 TriggerGraphJson = g.ToCanonicalJson(),

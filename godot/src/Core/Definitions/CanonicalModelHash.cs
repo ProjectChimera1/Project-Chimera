@@ -146,8 +146,21 @@ namespace ProjectChimera.Core.Definitions
         /// AlgoVersion mix), but the AlgoVersion bump moves the hash for EVERY scenario — the story's ONE named
         /// re-baseline (hero-start-state golden re-recorded + version pins, one commit); <c>StartStateHash.AlgoVersion</c>
         /// stays 2, <c>SimChecksum.AlgoVersion</c> stays 18, and the 24 world replay goldens are byte-identical (the
-        /// write rail enters the EXISTING checksum-folded DslEventQueue — no new folded sim state).</summary>
-        public const int AlgoVersion = 11;
+        /// write rail enters the EXISTING checksum-folded DslEventQueue — no new folded sim state).
+        /// 12 = Story 7.11 — additionally folds the <see cref="ScenarioData.WinConditionSpec"/> win-condition preset
+        /// params, appended IMMEDIATELY AFTER the built-in <see cref="ScenarioData.WinCondition"/> enum fold. A null
+        /// or <see cref="WinPresetKind.None"/> spec (every scenario using only the built-in enum) folds NOTHING extra
+        /// — so a no-preset scenario hashes BYTE-IDENTICALLY to the pre-7.11 v11 fold apart from this leading
+        /// AlgoVersion bump (the omit-when-default discipline; the serializer normalizes a None spec to null). A
+        /// preset folds a present marker, the preset kind name (enum by stable NAME), and its params (KotH region_id
+        /// + hold_ticks; Survival faction_slot + survive_ticks; Assassination leader_unit_index; Landmark
+        /// structure_index) — sim-semantic win config, so two peers with divergent presets hash differently and
+        /// <c>HandshakeGate</c> BLOCKS the lobby start rather than starting a match with mismatched victory rules. No
+        /// existing scenario declares a preset, but the leading AlgoVersion mix moves the hash for EVERY scenario —
+        /// the story's ONE named re-baseline (hero-start-state golden re-recorded + version pins, one commit);
+        /// <c>StartStateHash.AlgoVersion</c> stays 2 (the 7.7–7.9 precedent), and the SimChecksum bump (v19) covers
+        /// the 24 world replay goldens separately.</summary>
+        public const int AlgoVersion = 12;
 
         private const ulong Offset = 14695981039346656037UL; // FNV-64 offset basis
         private const ulong Prime  = 1099511628211UL;        // FNV-64 prime
@@ -160,6 +173,11 @@ namespace ProjectChimera.Core.Definitions
             h = MixInt(h, AlgoVersion);                          // namespaces the hash (algo-1 was the byte-FNV)
             h = MixInt(h, Fixed.FromFloat(m.MapBounds).Raw);
             h = MixStr(h, m.WinCondition.ToString());            // enum by NAME, not ordinal
+            // Story 7.11 (v12): fold the win-condition PRESET spec immediately after the built-in WinCondition enum.
+            // A null / None spec folds NOTHING (byte-identical to the pre-7.11 fold apart from the AlgoVersion bump —
+            // the omit-when-default discipline); a preset folds a present marker + kind name + its params so two
+            // peers with divergent victory rules reject at the lobby handshake.
+            h = MixWinConditionSpec(h, m.WinConditionSpec);
             // Story 6.2: TerrainRef is NEUTRALIZED (a fixed "" constant, never the field value). The sculpted
             // terrain CONTENT lives in separate terrain3d_*.res files referenced by this path — it is NEVER folded
             // into the scenario model — so the ref string itself is machine-specific noise: an author's map carries
@@ -294,6 +312,40 @@ namespace ProjectChimera.Core.Definitions
             h = MixCustomEvents(h, m.CustomEvents);
 
             return h == 0UL ? 1UL : h; // sentinel: a valid model must never hash to the fail-open "no hash" value
+        }
+
+        /// <summary>
+        /// Story 7.11 (v12): the win-condition PRESET spec — a typed fold appended after the built-in
+        /// <see cref="ScenarioData.WinCondition"/> enum. A null or <see cref="WinPresetKind.None"/> spec folds
+        /// NOTHING (returns h unchanged) so a no-preset scenario is byte-identical to the pre-7.11 fold apart from the
+        /// AlgoVersion bump — the omit-when-default discipline (the serializer normalizes a None spec to null). A
+        /// preset folds a 1 present-marker, the kind NAME (enum by stable name), then that preset's params in fixed
+        /// order. The optional <c>RegionId</c> string folds via <see cref="MixStr"/>'s null-length marker.
+        /// </summary>
+        private static ulong MixWinConditionSpec(ulong h, WinConditionSpec? spec)
+        {
+            if (spec is null || spec.Preset == WinPresetKind.None) return h; // no preset — fold nothing
+
+            h = MixInt(h, 1);                        // present marker
+            h = MixStr(h, spec.Preset.ToString());   // enum by stable NAME
+            switch (spec.Preset)
+            {
+                case WinPresetKind.KingOfTheHill:
+                    h = MixStr(h, spec.RegionId);
+                    h = MixInt(h, spec.HoldTicks);
+                    break;
+                case WinPresetKind.TimedSurvival:
+                    h = MixInt(h, spec.FactionSlot);
+                    h = MixInt(h, spec.SurviveTicks);
+                    break;
+                case WinPresetKind.Assassination:
+                    h = MixInt(h, spec.LeaderUnitIndex);
+                    break;
+                case WinPresetKind.LandmarkDestruction:
+                    h = MixInt(h, spec.StructureIndex);
+                    break;
+            }
+            return h;
         }
 
         // ── Story 7.7 (v8) folds ─────────────────────────────────────────────────────────────────────────────

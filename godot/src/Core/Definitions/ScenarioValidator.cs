@@ -397,6 +397,93 @@ namespace ProjectChimera.Core.Definitions
                         "at least ~1/65536 world units so the region survives the float→Fixed resolution.");
             }
 
+            // ── Win-condition preset spec (Story 7.11) — fail-closed when a preset is set so an invalid/missing
+            //    required param is rejected at LOAD with ONE located error naming the preset and the offending param
+            //    (never a runtime crash, never a silently un-winnable match). NULL / None (every pre-7.11 scenario,
+            //    and the bare built-in enum path) ⇒ nothing to validate ⇒ the pass path is unchanged. Placement-index
+            //    params validate against the AUTHORED placement arrays (the validator sees the model, never runtime
+            //    entity counts) — the units/buildings length pattern above. ──
+            WinConditionSpec? wspec = m.WinConditionSpec;
+            if (wspec != null && wspec.Preset != WinPresetKind.None)
+            {
+                switch (wspec.Preset)
+                {
+                    case WinPresetKind.KingOfTheHill:
+                        if (string.IsNullOrEmpty(wspec.RegionId) || !declaredRegions.Contains(wspec.RegionId))
+                            return ValidationResult.Fail(
+                                $"scenario.win_condition_spec.region_id='{wspec.RegionId}' references no declared region " +
+                                "(required for the KingOfTheHill preset).");
+                        if (wspec.HoldTicks <= 0)
+                            return ValidationResult.Fail(
+                                $"scenario.win_condition_spec.hold_ticks={wspec.HoldTicks} must be > 0 " +
+                                "(required for the KingOfTheHill preset).");
+                        break;
+
+                    case WinPresetKind.TimedSurvival:
+                    {
+                        // Review P4 — the ENGINE faction ceiling (the canonical CheckFactionSlot bound, [0,3]),
+                        // checked BEFORE the declared-slot rule so the ceiling error is the one surfaced: the sim
+                        // tracks only Faction 1-4 (FACTION_COUNT=5 arrays), so a designated slot ≥ 4 would pass a
+                        // declared-only check, be silently skipped by WinConditionSystem.Configure's seeding, and
+                        // read as "eliminated" on tick 1 — the wrong faction wins. This stays load-fatal even when
+                        // the player_slots ceiling relaxes (Story 9.2) until the win stores widen with it.
+                        string? sfe = CheckFactionSlot("scenario.win_condition_spec.faction_slot", wspec.FactionSlot);
+                        if (sfe != null)
+                            return ValidationResult.Fail(sfe + " (the TimedSurvival preset designates an engine-tracked faction).");
+                        if (!declared.Contains(wspec.FactionSlot))
+                            return ValidationResult.Fail(
+                                $"scenario.win_condition_spec.faction_slot={wspec.FactionSlot} references no declared player_slot " +
+                                "(required for the TimedSurvival preset).");
+                        if (wspec.SurviveTicks <= 0)
+                            return ValidationResult.Fail(
+                                $"scenario.win_condition_spec.survive_ticks={wspec.SurviveTicks} must be > 0 " +
+                                "(required for the TimedSurvival preset).");
+                        break;
+                    }
+
+                    case WinPresetKind.Assassination:
+                    {
+                        if (wspec.LeaderUnitIndex < 0 || wspec.LeaderUnitIndex >= units.Length)
+                            return ValidationResult.Fail(
+                                $"scenario.win_condition_spec.leader_unit_index={wspec.LeaderUnitIndex} is out of range " +
+                                $"[0,{units.Length}) (the Assassination preset references the authored units placement list).");
+                        // Review P4 — the DESIGNATED placement's owner must be engine-tracked too (same ceiling as
+                        // above). Today the units loop's declared-slot rule already caps placements at slot 3, so
+                        // this is post-gate defense-in-depth that becomes the load-fatal guard when Story 9.2
+                        // relaxes the declared ceiling ahead of the length-5 win stores.
+                        string? lfe = CheckFactionSlot(
+                            $"scenario.win_condition_spec.leader_unit_index → scenario.units[{wspec.LeaderUnitIndex}].slot",
+                            units[wspec.LeaderUnitIndex].Slot);
+                        if (lfe != null)
+                            return ValidationResult.Fail(lfe + " (the Assassination preset's designated leader must belong to an engine-tracked faction).");
+                        break;
+                    }
+
+                    case WinPresetKind.LandmarkDestruction:
+                    {
+                        if (wspec.StructureIndex < 0 || wspec.StructureIndex >= buildings.Length)
+                            return ValidationResult.Fail(
+                                $"scenario.win_condition_spec.structure_index={wspec.StructureIndex} is out of range " +
+                                $"[0,{buildings.Length}) (the LandmarkDestruction preset references the authored buildings placement list).");
+                        // Review P4 — same engine-ceiling defense-in-depth as the Assassination case above.
+                        string? bfe = CheckFactionSlot(
+                            $"scenario.win_condition_spec.structure_index → scenario.buildings[{wspec.StructureIndex}].slot",
+                            buildings[wspec.StructureIndex].Slot);
+                        if (bfe != null)
+                            return ValidationResult.Fail(bfe + " (the LandmarkDestruction preset's designated structure must belong to an engine-tracked faction).");
+                        break;
+                    }
+
+                    // Review P3 — an UNKNOWN preset value (hand-edited/cheat JSON deserializes any integer into the
+                    // enum) must fail closed: it would pass every case-specific rule above and then evaluate
+                    // NOTHING at runtime — a silently un-winnable match, exactly what this gate exists to prevent.
+                    default:
+                        return ValidationResult.Fail(
+                            $"scenario.win_condition_spec.preset={(int)wspec.Preset} is not a known win-condition preset " +
+                            "(known: None, KingOfTheHill, TimedSurvival, Assassination, LandmarkDestruction).");
+                }
+            }
+
             // ── Variables (Story 7.3, AR-39) — fail-closed when present so a hand-edited/cheat declaration (a blank or
             //    duplicate variable name) is rejected at the pre-tick gate. type/scope are closed enums structurally
             //    (an unknown JSON name fails closed at deserialize via JsonStringEnumConverter), so only name

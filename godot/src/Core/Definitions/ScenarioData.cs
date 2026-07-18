@@ -17,6 +17,80 @@ namespace ProjectChimera.Core.Definitions
     }
 
     /// <summary>
+    /// The T1 win-condition PRESET kind (Story 7.11). <see cref="None"/> ⇒ no preset — the match uses the bare
+    /// built-in <see cref="WinCondition"/> enum (DestroyAllBuildings / EliminateAllUnits), the pre-7.11 default
+    /// path. The four named presets are evaluated natively by the sim-layer <c>WinConditionSystem</c> from the
+    /// typed <see cref="WinConditionSpec"/>; each is also expressible as canonical public-DSL graph-IR
+    /// (<c>WinConditionPresets</c>) for the round-trip stability proof.
+    /// </summary>
+    [JsonConverter(typeof(JsonStringEnumConverter))]
+    public enum WinPresetKind
+    {
+        /// <summary>No preset — fall back to the built-in <see cref="WinCondition"/> enum.</summary>
+        None,
+        /// <summary>A faction that SOLELY holds a named region for N contiguous ticks wins.</summary>
+        KingOfTheHill,
+        /// <summary>A designated faction that survives to tick N wins; if eliminated before N it loses.</summary>
+        TimedSurvival,
+        /// <summary>Killing a designated leader unit loses the match for its owner.</summary>
+        Assassination,
+        /// <summary>Destroying a designated structure loses the match for its owner.</summary>
+        LandmarkDestruction,
+    }
+
+    /// <summary>
+    /// The typed, discriminated win-condition spec (Story 7.11) — a built-in enum (<see cref="Preset"/> =
+    /// <see cref="WinPresetKind.None"/>) OR one of four named presets with their required params. Persisted
+    /// alongside <see cref="ScenarioData.WinCondition"/>; the bare enum stays the default/built-in path. NULL (or a
+    /// <see cref="WinPresetKind.None"/> spec normalized to null at the serialize chokepoint) ⇒ a scenario serializes
+    /// and hashes BYTE-IDENTICALLY to pre-7.11 (apart from the <see cref="CanonicalModelHash.AlgoVersion"/> bump).
+    /// Invalid/missing preset params reject at load via <see cref="ScenarioValidator"/> with a single located error.
+    /// </summary>
+    public class WinConditionSpec
+    {
+        /// <summary>The preset kind — <see cref="WinPresetKind.None"/> defers to the built-in enum.</summary>
+        [JsonPropertyName("preset")]
+        public WinPresetKind Preset { get; set; } = WinPresetKind.None;
+
+        /// <summary>King-of-the-Hill: the id of the declared <see cref="ScenarioRegion"/> to hold. Required (and
+        /// must reference a declared region) when <see cref="Preset"/> = <see cref="WinPresetKind.KingOfTheHill"/>.</summary>
+        [JsonPropertyName("region_id")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public string? RegionId { get; set; }
+
+        /// <summary>King-of-the-Hill: contiguous sole-hold ticks required to win. Required &gt; 0 for KotH.</summary>
+        [JsonPropertyName("hold_ticks")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+        public int HoldTicks { get; set; }
+
+        /// <summary>Timed-Survival: the 0-based player slot that must survive. Required (and must reference a
+        /// declared <see cref="ScenarioPlayerSlot"/>) for Timed-Survival.</summary>
+        [JsonPropertyName("faction_slot")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+        public int FactionSlot { get; set; }
+
+        /// <summary>Timed-Survival: whole ticks the designated faction must survive to win. Required &gt; 0.</summary>
+        [JsonPropertyName("survive_ticks")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+        public int SurviveTicks { get; set; }
+
+        /// <summary>Assassination: index into the authored <see cref="ScenarioData.Units"/> placement list of the
+        /// leader unit. Required in range [0, Units.Length) for Assassination. Placed units carry no stable
+        /// per-instance id, so the target is referenced by its placement-list index (resolved to the spawned entity
+        /// id at scenario-apply).</summary>
+        [JsonPropertyName("leader_unit_index")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+        public int LeaderUnitIndex { get; set; }
+
+        /// <summary>Landmark-Destruction: index into the authored <see cref="ScenarioData.Buildings"/> placement
+        /// list of the landmark structure. Required in range [0, Buildings.Length). Referenced by placement-list
+        /// index (resolved to the BuildingStore slot at scenario-apply).</summary>
+        [JsonPropertyName("structure_index")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+        public int StructureIndex { get; set; }
+    }
+
+    /// <summary>
     /// Maps a player slot (0-based index) to a faction JSON, starting resources,
     /// and the world position where workers return to deposit ore.
     /// </summary>
@@ -569,6 +643,22 @@ namespace ProjectChimera.Core.Definitions
 
         [JsonPropertyName("win_condition")]
         public WinCondition WinCondition { get; set; } = WinCondition.DestroyAllBuildings;
+
+        /// <summary>
+        /// The typed win-condition spec (Story 7.11) — a built-in enum or one of four named T1 presets with params.
+        /// NULL (the default, every pre-7.11 scenario) ⇒ the bare <see cref="WinCondition"/> built-in path; the block
+        /// is OMITTED from serialization when null (<see cref="JsonIgnoreCondition.WhenWritingNull"/>, the
+        /// <see cref="Regions"/> precedent) and a <see cref="WinPresetKind.None"/> spec is normalized back to null at
+        /// the <c>ScenarioSerializer.Serialize</c> chokepoint — so a scenario without a preset serializes
+        /// BYTE-IDENTICALLY to pre-7.11. The preset params fold into <see cref="CanonicalModelHash"/> (v12) AFTER
+        /// <see cref="WinCondition"/> so divergent presets reject at the lobby handshake; a null/None spec folds
+        /// nothing (byte-identical apart from the AlgoVersion bump). Validated fail-closed by
+        /// <see cref="ScenarioValidator"/> when a preset is set. Resolved into the sim-layer <c>WinConditionSystem</c>
+        /// (+ its folded <c>WinStateStore</c>) at scenario-apply.
+        /// </summary>
+        [JsonPropertyName("win_condition_spec")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public WinConditionSpec? WinConditionSpec { get; set; }
 
         [JsonPropertyName("player_slots")]
         public ScenarioPlayerSlot[] PlayerSlots { get; set; } = System.Array.Empty<ScenarioPlayerSlot>();

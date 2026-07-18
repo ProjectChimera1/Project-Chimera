@@ -43,7 +43,7 @@ namespace ProjectChimera.Sim.Tests.Golden
         // Re-recorded for Story 7.8: CanonicalModelHash.AlgoVersion bumped 8→9 (the custom-UI widget-tree fold), and
         // Serialize stamps that value into `checksum_algo_version`, so the generated JSON's stamp changed 8→9 —
         // moving this byte-hash tripwire by one stamp digit (the same additive stamp-change class as the 7.7 record).
-        private const uint GoldenHash = 0xC036A2DCu; // recomputed: the serializer's checksum_algo_version stamp moved 10→11 (Story 7.9 write-rail canonical fold)
+        private const uint GoldenHash = 775261021u; // recomputed: the serializer's checksum_algo_version stamp moved 11→12 (Story 7.11 win-condition preset fold)
 
         [Fact]
         public void SameSeed_TwiceProducesByteIdenticalSerialization_AndMatchesGoldenHash()

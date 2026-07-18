@@ -41,38 +41,148 @@ namespace ProjectChimera.Core.Bootstrap
             title.AddThemeFontSizeOverride("font_size", 14);
             vbox.AddChild(title);
 
+            // Story 7.11: the picker expands from 2 built-in toggles to ALL SIX options (2 built-in + 4 T1 presets),
+            // each preset's required param fields shown inline. Selecting an option writes ScenarioData.WinCondition /
+            // WinConditionSpec so a Save/reload restores the same selection + params.
             var group = new ButtonGroup();
-            var current = _ctx.Scenario?.WinCondition ?? WinCondition.DestroyAllBuildings;
 
-            var btnBuildings = new Button
+            WinPresetKind curPreset  = _ctx.Scenario?.WinConditionSpec?.Preset ?? WinPresetKind.None;
+            WinCondition  curBuiltin = _ctx.Scenario?.WinCondition ?? WinCondition.DestroyAllBuildings;
+            WinConditionSpec? curSpec = _ctx.Scenario?.WinConditionSpec;
+
+            // ── Preset param field controls (built first so the toggle handlers can capture them). ──
+            SpinBox NewIntSpin(int min, int max, int val)
+                => new SpinBox { MinValue = min, MaxValue = max, Step = 1, Value = val,
+                                 CustomMinimumSize = new Vector2(96, 26) };
+
+            var kothRegion    = new LineEdit { PlaceholderText = "region id", Text = curSpec?.RegionId ?? "",
+                                               CustomMinimumSize = new Vector2(120, 26) };
+            var kothHold      = NewIntSpin(1, 1_000_000, System.Math.Max(1, curSpec?.HoldTicks ?? 300));
+            // Review P4 — the survival slot is capped at the ENGINE faction ceiling (slot 3 / Faction.Player4,
+            // the same CheckFactionSlot bound the validator enforces): the sim's win stores track only factions
+            // 1-4, so slots 4-7 would author a scenario the validator rejects at load.
+            var survSlot      = NewIntSpin(0, 3, System.Math.Max(0, curSpec?.FactionSlot ?? 0));
+            var survTicks     = NewIntSpin(1, 100_000_000, System.Math.Max(1, curSpec?.SurviveTicks ?? 900));
+            var assassinIndex = NewIntSpin(0, 100_000, System.Math.Max(0, curSpec?.LeaderUnitIndex ?? 0));
+            var landmarkIndex = NewIntSpin(0, 100_000, System.Math.Max(0, curSpec?.StructureIndex ?? 0));
+
+            Control ParamRow(string label, Control field)
             {
-                Text          = "Destroy All Buildings",
-                ToggleMode    = true,
-                ButtonPressed = current == WinCondition.DestroyAllBuildings,
-            };
-            btnBuildings.ButtonGroup = group;
-            vbox.AddChild(btnBuildings);
+                var row = new HBoxContainer();
+                var l = new Label { Text = label, CustomMinimumSize = new Vector2(110, 0) };
+                l.AddThemeFontSizeOverride("font_size", 11);
+                row.AddChild(l);
+                field.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+                row.AddChild(field);
+                return row;
+            }
 
-            var btnUnits = new Button
+            var kothPanel = new VBoxContainer();
+            kothPanel.AddChild(ParamRow("Region id", kothRegion));
+            kothPanel.AddChild(ParamRow("Hold ticks", kothHold));
+            var survPanel = new VBoxContainer();
+            survPanel.AddChild(ParamRow("Faction slot", survSlot));
+            survPanel.AddChild(ParamRow("Survive ticks", survTicks));
+            var assassinPanel = new VBoxContainer();
+            assassinPanel.AddChild(ParamRow("Leader unit #", assassinIndex));
+            var landmarkPanel = new VBoxContainer();
+            landmarkPanel.AddChild(ParamRow("Structure #", landmarkIndex));
+
+            Button MakeToggle(string text, bool pressed)
             {
-                Text          = "Eliminate All Units",
-                ToggleMode    = true,
-                ButtonPressed = current == WinCondition.EliminateAllUnits,
-            };
-            btnUnits.ButtonGroup = group;
-            vbox.AddChild(btnUnits);
+                var b = new Button { Text = text, ToggleMode = true, ButtonPressed = pressed };
+                b.AddThemeFontSizeOverride("font_size", 12);
+                b.ButtonGroup = group;
+                vbox.AddChild(b);
+                return b;
+            }
 
-            btnBuildings.Toggled += (on) => { if (on && _ctx.Scenario != null) _ctx.Scenario.WinCondition = WinCondition.DestroyAllBuildings; };
-            btnUnits.Toggled     += (on) => { if (on && _ctx.Scenario != null) _ctx.Scenario.WinCondition = WinCondition.EliminateAllUnits; };
+            var btnBuildings = MakeToggle("Destroy All Buildings",
+                curPreset == WinPresetKind.None && curBuiltin == WinCondition.DestroyAllBuildings);
+            var btnUnits = MakeToggle("Eliminate All Units",
+                curPreset == WinPresetKind.None && curBuiltin == WinCondition.EliminateAllUnits);
+            var btnKoth = MakeToggle("King of the Hill", curPreset == WinPresetKind.KingOfTheHill);
+            vbox.AddChild(kothPanel);
+            var btnSurv = MakeToggle("Timed Survival", curPreset == WinPresetKind.TimedSurvival);
+            vbox.AddChild(survPanel);
+            var btnAssassin = MakeToggle("Assassination", curPreset == WinPresetKind.Assassination);
+            vbox.AddChild(assassinPanel);
+            var btnLandmark = MakeToggle("Landmark Destruction", curPreset == WinPresetKind.LandmarkDestruction);
+            vbox.AddChild(landmarkPanel);
 
-            // Story 5.9 review pass: this panel's radios were a boot-time snapshot with nothing to re-sync them if
-            // another surface (OnboardingPanel's win-condition step) mutates ScenarioData.WinCondition externally —
-            // SetPressedNoSignal avoids re-emitting Toggled (which would just re-write the same value right back).
+            WinConditionSpec EnsureSpec()
+            {
+                _ctx.Scenario!.WinConditionSpec ??= new WinConditionSpec();
+                return _ctx.Scenario.WinConditionSpec;
+            }
+
+            void RefreshPanels()
+            {
+                kothPanel.Visible     = btnKoth.ButtonPressed;
+                survPanel.Visible     = btnSurv.ButtonPressed;
+                assassinPanel.Visible = btnAssassin.ButtonPressed;
+                landmarkPanel.Visible = btnLandmark.ButtonPressed;
+            }
+
+            // A built-in toggle clears the preset spec (null → the bare enum path); a preset toggle writes its kind +
+            // current param values. Only the ON edge acts (a ButtonGroup emits an OFF edge on the deselected button).
+            btnBuildings.Toggled += on => { if (!on || _ctx.Scenario == null) return;
+                _ctx.Scenario.WinCondition = WinCondition.DestroyAllBuildings; _ctx.Scenario.WinConditionSpec = null; RefreshPanels(); };
+            btnUnits.Toggled += on => { if (!on || _ctx.Scenario == null) return;
+                _ctx.Scenario.WinCondition = WinCondition.EliminateAllUnits; _ctx.Scenario.WinConditionSpec = null; RefreshPanels(); };
+            btnKoth.Toggled += on => { if (!on || _ctx.Scenario == null) return;
+                var sp = EnsureSpec(); sp.Preset = WinPresetKind.KingOfTheHill; sp.RegionId = kothRegion.Text; sp.HoldTicks = (int)kothHold.Value; RefreshPanels(); };
+            btnSurv.Toggled += on => { if (!on || _ctx.Scenario == null) return;
+                var sp = EnsureSpec(); sp.Preset = WinPresetKind.TimedSurvival; sp.FactionSlot = (int)survSlot.Value; sp.SurviveTicks = (int)survTicks.Value; RefreshPanels(); };
+            btnAssassin.Toggled += on => { if (!on || _ctx.Scenario == null) return;
+                var sp = EnsureSpec(); sp.Preset = WinPresetKind.Assassination; sp.LeaderUnitIndex = (int)assassinIndex.Value; RefreshPanels(); };
+            btnLandmark.Toggled += on => { if (!on || _ctx.Scenario == null) return;
+                var sp = EnsureSpec(); sp.Preset = WinPresetKind.LandmarkDestruction; sp.StructureIndex = (int)landmarkIndex.Value; RefreshPanels(); };
+
+            // Live param edits persist into the active preset's spec.
+            kothRegion.TextChanged     += t => { if (btnKoth.ButtonPressed && _ctx.Scenario?.WinConditionSpec is { } s) s.RegionId = t; };
+            kothHold.ValueChanged      += v => { if (btnKoth.ButtonPressed && _ctx.Scenario?.WinConditionSpec is { } s) s.HoldTicks = (int)v; };
+            survSlot.ValueChanged      += v => { if (btnSurv.ButtonPressed && _ctx.Scenario?.WinConditionSpec is { } s) s.FactionSlot = (int)v; };
+            survTicks.ValueChanged     += v => { if (btnSurv.ButtonPressed && _ctx.Scenario?.WinConditionSpec is { } s) s.SurviveTicks = (int)v; };
+            assassinIndex.ValueChanged += v => { if (btnAssassin.ButtonPressed && _ctx.Scenario?.WinConditionSpec is { } s) s.LeaderUnitIndex = (int)v; };
+            landmarkIndex.ValueChanged += v => { if (btnLandmark.ButtonPressed && _ctx.Scenario?.WinConditionSpec is { } s) s.StructureIndex = (int)v; };
+
+            RefreshPanels();
+
+            // Story 5.9 review pass: re-sync the picker if another surface mutates the model externally.
+            // SetPressedNoSignal / SetValueNoSignal avoid re-emitting handlers that would just re-write the value.
             _ctx.WinConditionUiRefresh = () =>
             {
-                bool destroy = (_ctx.Scenario?.WinCondition ?? WinCondition.DestroyAllBuildings) == WinCondition.DestroyAllBuildings;
-                btnBuildings.SetPressedNoSignal(destroy);
-                btnUnits.SetPressedNoSignal(!destroy);
+                WinPresetKind p = _ctx.Scenario?.WinConditionSpec?.Preset ?? WinPresetKind.None;
+                WinCondition  b = _ctx.Scenario?.WinCondition ?? WinCondition.DestroyAllBuildings;
+                btnBuildings.SetPressedNoSignal(p == WinPresetKind.None && b == WinCondition.DestroyAllBuildings);
+                btnUnits.SetPressedNoSignal(p == WinPresetKind.None && b == WinCondition.EliminateAllUnits);
+                btnKoth.SetPressedNoSignal(p == WinPresetKind.KingOfTheHill);
+                btnSurv.SetPressedNoSignal(p == WinPresetKind.TimedSurvival);
+                btnAssassin.SetPressedNoSignal(p == WinPresetKind.Assassination);
+                btnLandmark.SetPressedNoSignal(p == WinPresetKind.LandmarkDestruction);
+                if (_ctx.Scenario?.WinConditionSpec is { } sp)
+                {
+                    kothRegion.Text = sp.RegionId ?? "";
+                    if (sp.HoldTicks > 0)    kothHold.SetValueNoSignal(sp.HoldTicks);
+                    survSlot.SetValueNoSignal(sp.FactionSlot);
+                    if (sp.SurviveTicks > 0) survTicks.SetValueNoSignal(sp.SurviveTicks);
+                    assassinIndex.SetValueNoSignal(sp.LeaderUnitIndex);
+                    landmarkIndex.SetValueNoSignal(sp.StructureIndex);
+                }
+                else
+                {
+                    // Review P11 — no active spec (an external surface cleared it, e.g. a built-in selection):
+                    // restore the initial-build defaults, otherwise the stale params of a previously-selected
+                    // preset silently re-enter the spec on the next preset toggle.
+                    kothRegion.Text = "";
+                    kothHold.SetValueNoSignal(300);
+                    survSlot.SetValueNoSignal(0);
+                    survTicks.SetValueNoSignal(900);
+                    assassinIndex.SetValueNoSignal(0);
+                    landmarkIndex.SetValueNoSignal(0);
+                }
+                RefreshPanels();
             };
 
             // ── Map I/O section ────────────────────────────────────────────────

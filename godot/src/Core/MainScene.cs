@@ -744,8 +744,20 @@ namespace ProjectChimera.Core
                 if (_playFrames == 0)
                     _matchStartMs = Time.GetTicksMsec();
                 _playFrames++;
-                if (_playFrames > 180) // ~3 s grace period at 60 fps before checking win
-                    CheckWinCondition();
+
+                // Story 7.11: win evaluation now lives in the deterministic sim-layer WinConditionSystem (the grace
+                // period is a tick count there, not this frame count). Presentation merely CONSUMES the verdict —
+                // it holds no win math. Poll the folded WinStateStore for the winning faction (Faction.Player1==1
+                // aligns with the existing 1-based overlay arg, no adapter math); the enclosing !_gameOver guard
+                // makes ShowGameOver fire exactly once. The ScenarioDirector OnVictory escape hatch still works too.
+                int winnerFaction = _host.WinState.WinnerFaction();
+                if (winnerFaction != 0)
+                    ShowGameOver(winnerFaction);
+                else if (_host.WinState.SoleLoserFaction() != 0)
+                    // Review P1 — a LOST-only outcome: in a single-active-faction match a preset loss latches
+                    // only VERDICT_LOST (there is no distinct other faction to latch WON), yet the match is over.
+                    // 0 = "no victor" → ShowGameOver renders its defeat/match-over form.
+                    ShowGameOver(0);
             }
             else if (_ctx.GameState.Mode == GameMode.Edit)
             {
@@ -1282,13 +1294,15 @@ namespace ProjectChimera.Core
         /// The overlay is populated with live match data at show-time, not at setup-time.
         /// </summary>
 
-        /// <summary>Populate and display the victory/defeat panel with live match data.</summary>
+        /// <summary>Populate and display the victory/defeat panel with live match data. Review P1:
+        /// <paramref name="winnerPlayer"/> == 0 means "no victor" (a LOST-only outcome — a single-active-faction
+        /// preset loss latches only VERDICT_LOST) and renders the defeat/match-over form.</summary>
         internal void ShowGameOver(int winnerPlayer)
         {
             _gameOver = true;
 
             // Notify chat before closing it.
-            _ctx.ChatOverlay.AddSystemMessage($"Player {winnerPlayer} wins! GG");
+            _ctx.ChatOverlay.AddSystemMessage(winnerPlayer > 0 ? $"Player {winnerPlayer} wins! GG" : "Match over — defeat. GG");
 
             // Finalise replay recording — match is over.
             _ctx.MatchLifecycle.StopRecording();
@@ -1340,7 +1354,9 @@ namespace ProjectChimera.Core
 
             var winner = new Label
             {
-                Text                = $"Player {winnerPlayer} Wins!",
+                // Review P1 — winnerPlayer 0 = "no victor" (LOST-only outcome): the DEFEAT heading above already
+                // applies (localWin is false), only this sub-line needs a no-victor phrasing.
+                Text                = winnerPlayer > 0 ? $"Player {winnerPlayer} Wins!" : "No Victor — Match Over",
                 HorizontalAlignment = HorizontalAlignment.Center,
             };
             winner.AddThemeFontSizeOverride("font_size", 26);
@@ -1425,7 +1441,7 @@ namespace ProjectChimera.Core
             vbox.AddChild(hint);
 
             _ctx.GameOverOverlay.Visible = true;
-            GD.Print($"[WinCondition] Player {winnerPlayer} wins — {duration} — " +
+            GD.Print($"[WinCondition] {(winnerPlayer > 0 ? $"Player {winnerPlayer} wins" : "Match over — no victor")} — {duration} — " +
                      $"P1: {p1Kills}k/{p1Built}u/{p1Ore}ore  " +
                      $"P2: {p2Kills}k/{p2Built}u/{p2Ore}ore. Press F5 to return to Edit.");
         }
@@ -1808,50 +1824,10 @@ namespace ProjectChimera.Core
         }
 
         // ── Win Condition Check ───────────────────────────────────────────────
-
-        /// <summary>
-        /// Evaluate the active win condition. Called every frame during Play mode
-        /// after the initial grace period. Sets <see cref="_gameOver"/> and shows
-        /// the overlay on the first faction to satisfy the losing criterion.
-        /// </summary>
-        private void CheckWinCondition()
-        {
-            if (_ctx.Scenario == null) return;
-
-            switch (_ctx.Scenario.WinCondition)
-            {
-                case WinCondition.DestroyAllBuildings:
-                {
-                    bool p1Alive = false, p2Alive = false;
-                    for (int i = 0; i < _buildings.Count; i++)
-                    {
-                        if (!_buildings.Alive[i]) continue;
-                        if (_buildings.FactionOf[i] == Faction.Player1) p1Alive = true;
-                        else if (_buildings.FactionOf[i] == Faction.Player2) p2Alive = true;
-                        if (p1Alive && p2Alive) return; // both still standing — exit early
-                    }
-                    if (!p1Alive) ShowGameOver(2);
-                    else if (!p2Alive) ShowGameOver(1);
-                    break;
-                }
-
-                case WinCondition.EliminateAllUnits:
-                {
-                    bool p1Alive = false, p2Alive = false;
-                    int cap = _world.HighWaterMark;
-                    for (int i = 0; i < cap; i++)
-                    {
-                        if (!_world.IsAlive(i)) continue;
-                        if (_world.FactionOf[i] == Faction.Player1) p1Alive = true;
-                        else if (_world.FactionOf[i] == Faction.Player2) p2Alive = true;
-                        if (p1Alive && p2Alive) return;
-                    }
-                    if (!p1Alive) ShowGameOver(2);
-                    else if (!p2Alive) ShowGameOver(1);
-                    break;
-                }
-            }
-        }
+        // Story 7.11: the former per-frame, P1/P2-hardcoded CheckWinCondition switch is DELETED. Win evaluation now
+        // lives in the deterministic sim-layer WinConditionSystem (server-checkable, byte-identical across peers);
+        // presentation only reads the folded WinStateStore verdict in _Process (see there) to drive ShowGameOver.
+        // MainScene holds NO win math.
 
         // ── Utilities ─────────────────────────────────────────────────────────────
 
