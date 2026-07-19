@@ -1,6 +1,7 @@
 #nullable enable
 using System.Collections.Generic;
 using ProjectChimera.AI;                 // AiDifficulty (AI expansion-latch reset guard)
+using ProjectChimera.Combat;             // ProjectileStore (DW-20 direct post-clear projectile assertion)
 using ProjectChimera.Core;
 using ProjectChimera.Core.Definitions;
 using ProjectChimera.Core.Sim;
@@ -83,6 +84,196 @@ namespace ProjectChimera.Sim.Tests.Sim
             Assert.Equal(run0, run1); // sanity: two fresh boots agree (determinism)
             Assert.Equal(run1, run2); // KEYSTONE: clear + re-apply reproduces the run byte-for-byte
             Assert.Equal(run0, run2);
+        }
+
+        // ── DW-20: the same keystone, but over a FIGHTING scenario (projectiles + a live cast + two-sided combat) ──
+        // The keystone above runs the economy golden fixture, in which nothing ever fights — so the per-match state
+        // owned by ProjectileSystem / AbilityCastSystem / CombatSystem is entirely unpinned by it. None of those three
+        // holds mutable per-match state today (their SpatialHash/EffectExecutor self-refresh each Tick, and
+        // EffectExecutor.LastPeakStackDepth is diagnostic-only and unfolded), so this CANNOT fail against current
+        // production code. It is a TRIPWIRE: the first future story that folds a per-match field into one of them
+        // without adding it to ClearForReset diverges here, at a located tick.
+
+        [Fact]
+        public void ClearAndReapply_ReproducesByteIdenticalRun_OverAFightingScenario()
+        {
+            const int N = 40; // long enough to fire, short enough that nothing dies and shots are still in flight
+
+            SimulationHost host = CombatResetScenario.Build();
+            CombatResetScenario.CastAt(host);                                  // consumed in tick 1
+            IReadOnlyList<GoldenChecksumReplay.Sample> run1 = RunSamples(host, N);
+
+            // ── TEETH: the fight preconditions must actually have held, or the reproduction below is vacuous. ──
+            Assert.Equal(N, run1.Count); // an unfired checksum sink yields an EMPTY sequence, which compares as "same"
+
+            int inFlight = CombatResetScenario.LiveProjectiles(host);
+            Assert.True(inFlight > 0,
+                "Precondition failed: no projectile is in flight at reset time — the fixture went hitscan (check " +
+                "Delivery = AttackDelivery.Projectile) or the shots already landed, so this test proves nothing.");
+            // …and one must actually have LANDED. ProjectileStore is unfolded, so projectiles reach the checksum ONLY
+            // via the damage they deal. If every shot is still airborne when sampling stops, the projectile half of
+            // this guard contributes nothing to the sequence comparison. The P2 targets take damage exclusively from
+            // the P1 projectile attackers, so a dented target IS a folded impact. BOTH halves must hold.
+            Assert.True(host.World.Health[CombatResetScenario.Target1] <
+                        host.World.EffectiveMaxHealth[CombatResetScenario.Target1],
+                "Precondition failed: no projectile has LANDED on Target1 within the sampled window — projectiles are " +
+                "not folded into SimChecksum directly, so with no impact the projectile path pins nothing. Raise " +
+                "CombatResetScenario's ProjectileSpeed or lengthen N.");
+            Assert.True(host.World.AbilityCooldownTicks[CombatResetScenario.CasterAbilitySlot0] > 0,
+                "Precondition failed: the caster's ability cooldown is not ticking — the cast never went through.");
+            Assert.True(host.World.EffectiveAttackDamage[CombatResetScenario.Caster] >
+                        host.World.BaseAttackDamage[CombatResetScenario.Caster],
+                "Precondition failed: battle_fury's modifier is not installed on the caster at reset time.");
+            Assert.True(host.World.Health[CombatResetScenario.Attacker1] < host.World.EffectiveMaxHealth[CombatResetScenario.Attacker1],
+                "Precondition failed: no damage was landed — CombatSystem never engaged.");
+            // The SECOND attacker/target pair too: the fixture creates four combatants, and asserting only pair 1
+            // would let pair 2 sit inert (out of range, never acquiring) while this guard still passed — half the
+            // fixture silently contributing nothing to the run it claims to reproduce.
+            Assert.True(host.World.Health[CombatResetScenario.Target2] <
+                        host.World.EffectiveMaxHealth[CombatResetScenario.Target2],
+                "Precondition failed: Target2 is undamaged — the second attacker/target pair never engaged, so only " +
+                "half the fighting fixture is actually exercised.");
+            Assert.True(host.World.Health[CombatResetScenario.Attacker2] <
+                        host.World.EffectiveMaxHealth[CombatResetScenario.Attacker2],
+                "Precondition failed: Attacker2 is undamaged — Target2 never returned fire.");
+
+            host.ClearForReset();
+
+            // ProjectileStore is NOT folded into SimChecksum (the checksum only sees projectiles indirectly, via the
+            // damage they land on folded Health), so a leaked in-flight projectile would NOT show up in the sequence
+            // comparison below. Assert the wipe DIRECTLY.
+            Assert.Equal(0, host.Projectiles.HighWaterMark);
+            // Iterate the ACTUAL slot array, not the MAX_PROJECTILES constant: were capacity ever decoupled from that
+            // constant, a constant-bounded loop would silently under-scan and miss surviving slots past its end.
+            for (int i = 0; i < host.Projectiles.Alive.Length; i++)
+                Assert.False(host.Projectiles.Alive[i], $"Projectile slot {i} survived ClearForReset.");
+
+            CombatResetScenario.Populate(host);                                // identical authored start
+            CombatResetScenario.CastAt(host);
+            IReadOnlyList<GoldenChecksumReplay.Sample> run2 = RunSamples(host, N);
+
+            // An independent fresh boot, for the "reset == fresh boot" half of the guarantee.
+            SimulationHost host0 = CombatResetScenario.Build();
+            CombatResetScenario.CastAt(host0);
+            IReadOnlyList<GoldenChecksumReplay.Sample> run0 = RunSamples(host0, N);
+
+            Assert.Equal(N, run2.Count);
+            Assert.Equal(N, run0.Count);
+
+            AssertSameSequence(run0, run1, "two fresh fighting boots disagree (the fixture is nondeterministic)");
+            AssertSameSequence(run1, run2, "clear + re-apply did NOT reproduce the fighting run");
+            AssertSameSequence(run0, run2, "the post-reset fighting run diverges from a fresh boot");
+        }
+
+        // ── DW-193: ClearForReset + re-apply re-seeds the folded TriggerEnabledStore NON-ADDITIVELY ─────────────
+        // TriggerEnabledStore.Clear() only zeroes Count — the _enabled buffer keeps its stale flags. Non-additivity
+        // comes entirely from the re-apply's LoadScenario → Reset(count) all-true re-seed, which SetInitial then
+        // overwrites with the authored per-trigger state. The disable must actually have taken effect BEFORE the
+        // reset or the assertion has no teeth.
+
+        [Fact]
+        public void ClearForReset_ThenReapplyTriggerCarryingScenario_ReseedsEnabledMaskNonAdditively()
+        {
+            const int N = 10;
+            const int aIdx = 0, bIdx = 1, cIdx = 2; // execs are ordered PRIORITY-DESCENDING: A(10), B(5), C(0)
+
+            ScenarioData scenario = BuildEnableMaskScenario();
+
+            var host = SimulationHost.Create(NullLogSink.Instance, new FactionRegistry(2));
+            host.ChecksumInterval = 1;
+            host.ScenarioDirector.LoadScenario(scenario);
+
+            // Authored seed: A + B enabled, C authored Enabled = false.
+            Assert.Equal(3, host.TriggerEnabled.Count);
+            Assert.True(host.TriggerEnabled.IsEnabled(aIdx));
+            Assert.True(host.TriggerEnabled.IsEnabled(bIdx));
+            Assert.False(host.TriggerEnabled.IsEnabled(cIdx));
+
+            IReadOnlyList<GoldenChecksumReplay.Sample> run1 = RunSamples(host, N);
+            Assert.Equal(N, run1.Count); // an unfired checksum sink yields an EMPTY sequence, which compares as "same"
+
+            // TEETH: A's disable_trigger must have flipped B to runtime-disabled before the reset, otherwise the
+            // "B is enabled again after re-apply" assertion below would hold trivially.
+            Assert.False(host.TriggerEnabled.IsEnabled(bIdx),
+                "Precondition failed: trigger B was never runtime-disabled, so the re-seed assertion has no teeth.");
+
+            host.ClearForReset();
+            Assert.Equal(0, host.TriggerEnabled.Count); // a cleared store folds NOTHING until the next LoadScenario
+
+            // A FRESHLY-BUILT scenario instance, exactly as Edit→Play supplies one — never the object already fed to
+            // the first LoadScenario. Re-feeding the same instance would hide a LoadScenario that mutates its input
+            // (e.g. writing runtime-disabled state back onto the authored ScenarioData), which is precisely the class
+            // of additive leak this test exists to rule out.
+            host.ScenarioDirector.LoadScenario(BuildEnableMaskScenario()); // the re-apply path
+
+            Assert.Equal(3, host.TriggerEnabled.Count);
+            Assert.True(host.TriggerEnabled.IsEnabled(aIdx),
+                "Trigger A's authored-enabled state did not survive the reset + re-seed. A is the trigger that DRIVES " +
+                "the disable, so a regression silently disabling it would leave B enabled for the wrong reason and " +
+                "the B assertion below would still pass.");
+            Assert.True(host.TriggerEnabled.IsEnabled(bIdx),
+                "Reset.Reset()'s all-true re-seed did not restore B — the runtime disable leaked across the reset.");
+            Assert.False(host.TriggerEnabled.IsEnabled(cIdx),
+                "SetInitial's authored re-seed did not survive Reset()'s all-true seed — C is wrongly permissive.");
+
+            IReadOnlyList<GoldenChecksumReplay.Sample> run2 = RunSamples(host, N);
+            Assert.Equal(N, run2.Count);
+            AssertSameSequence(run1, run2, "the re-seeded trigger-enabled mask did not reproduce the run");
+        }
+
+        /// <summary>Three match_start triggers, distinct priorities so the priority-descending exec order is
+        /// unambiguous: A (10) <c>disable_trigger</c>s B (5); C (0) is authored <c>Enabled = false</c>.
+        ///
+        /// <para>B and C each carry a <c>set_variable</c> action onto a folded DSL variable, but NEITHER ever runs:
+        /// A disables B before B evaluates, and C is authored disabled — so <c>bFired</c>/<c>cFired</c> stay 0 in every
+        /// run and contribute nothing to the checksum. They are shape, not signal. The assertions in this test rest
+        /// entirely on the direct <c>TriggerEnabled.IsEnabled</c> mask reads.</para></summary>
+        private static ScenarioData BuildEnableMaskScenario()
+        {
+            var g = new TriggerGraph();
+            g.Nodes.Add(new TriggerNode { Id = 0, Name = "A", Priority = 10 });
+            g.Nodes.Add(new EventNode { Id = 1, Kind = "match_start" });
+            g.Nodes.Add(new DisableTriggerNode { Id = 2, TargetTriggerId = 3 });
+            g.Nodes.Add(new TriggerNode { Id = 3, Name = "B", Priority = 5 });
+            g.Nodes.Add(new EventNode { Id = 4, Kind = "match_start" });
+            g.Nodes.Add(new ActionNode { Id = 5, Kind = "set_variable", Variable = "bFired", Value = 1 });
+            g.Nodes.Add(new TriggerNode { Id = 6, Name = "C", Priority = 0, Enabled = false });
+            g.Nodes.Add(new EventNode { Id = 7, Kind = "match_start" });
+            g.Nodes.Add(new ActionNode { Id = 8, Kind = "set_variable", Variable = "cFired", Value = 1 });
+            g.ExecEdges.Add(new ExecEdge(1, TriggerGraph.EventExecOutPort, 0, TriggerGraph.TriggerEventInPort));
+            g.ExecEdges.Add(new ExecEdge(0, TriggerGraph.TriggerExecOutPort, 2, TriggerGraph.ActionExecInPort));
+            g.ExecEdges.Add(new ExecEdge(4, TriggerGraph.EventExecOutPort, 3, TriggerGraph.TriggerEventInPort));
+            g.ExecEdges.Add(new ExecEdge(3, TriggerGraph.TriggerExecOutPort, 5, TriggerGraph.ActionExecInPort));
+            g.ExecEdges.Add(new ExecEdge(7, TriggerGraph.EventExecOutPort, 6, TriggerGraph.TriggerEventInPort));
+            g.ExecEdges.Add(new ExecEdge(6, TriggerGraph.TriggerExecOutPort, 8, TriggerGraph.ActionExecInPort));
+
+            return new ScenarioData
+            {
+                Variables = new[]
+                {
+                    new ScenarioVariable { Name = "bFired", Type = DslValueType.Int, Scope = VarScope.Global },
+                    new ScenarioVariable { Name = "cFired", Type = DslValueType.Int, Scope = VarScope.Global },
+                },
+                TriggerGraphJson = g.ToCanonicalJson(),
+            };
+        }
+
+        /// <summary>Step the host <paramref name="ticks"/> times, capturing the per-tick checksum as
+        /// <see cref="GoldenChecksumReplay.Sample"/>s so a divergence can be reported at its located tick.</summary>
+        private static IReadOnlyList<GoldenChecksumReplay.Sample> RunSamples(SimulationHost host, int ticks)
+        {
+            var seq = new List<GoldenChecksumReplay.Sample>(ticks);
+            host.SetChecksumSink((t, h) => seq.Add(new GoldenChecksumReplay.Sample(t, h)));
+            for (int i = 0; i < ticks; i++) host.StepOnce();
+            return seq;
+        }
+
+        /// <summary>Assert two checksum sequences are byte-identical, naming the FIRST divergent tick on failure.</summary>
+        private static void AssertSameSequence(IReadOnlyList<GoldenChecksumReplay.Sample> expected,
+                                               IReadOnlyList<GoldenChecksumReplay.Sample> actual, string what)
+        {
+            GoldenChecksumReplay.Divergence? d = GoldenChecksumReplay.CompareSequences(expected, actual);
+            Assert.True(d is null, d is null ? "" : $"{what}: {GoldenChecksumReplay.DescribeDivergence(d.Value)}");
         }
 
         // ── I/O matrix: a trigger edited in Edit is live on the next Play (re-apply's LoadScenario), no reload ──

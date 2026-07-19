@@ -496,7 +496,8 @@ origin: migrated from legacy ledger ("Deferred from: dev of story-3.4 (2026-07-0
 source_spec: `_bmad-output/implementation-artifacts/spec-3-10-added-edit-play-round-trip-loop-no-restart-playtest.md`
 location: n/a
 reason: summary: The cleared-store==freshly-constructed test compares only ~11 of EntityWorld's ~60 SoA arrays, so a future SoA field that is folded/read but omitted from EntityWorld.Clear (and not re-defaulted by ScenarioApplier) would not be caught by the reset tests. evidence: ClearForReset_LeavesEveryStoreEqualToFreshlyConstructed asserts a representative subset; the byte-identical reproduce-run test masks omissions because Create/ApplyUnitDefinition re-defaults non-def per-entity fields on re-apply. EntityWorld.Clear is field-complete today (verified by two review layers); an exhaustive field-by-field fresh==cleared sweep would self-pin it against future field additions.
-status: open
+status: done 2026-07-19
+resolution: resolved by sweep bundle dw-reset-determinism-test-coverage
 
 ## Deferred from: follow-up code review of story-3.10 (2026-07-07)
 
@@ -505,7 +506,8 @@ origin: migrated from legacy ledger ("Deferred from: follow-up code review of st
 source_spec: `_bmad-output/implementation-artifacts/spec-3-10-added-edit-play-round-trip-loop-no-restart-playtest.md`
 location: n/a
 reason: summary: No reset-reproduction test exercises a run that actually fights — the determinism keystone reproduces the golden applier scenario but never spawns projectiles or casts abilities before/after the reset, so a future per-match field held by a combat/projectile/ability system (not a store) could desync uncaught. evidence: ClearForReset resets stores + the AI latch, but tick systems (CombatSystem._spatialHash, ProjectileSystem, AbilityCastSystem, MovementSystem._neighborBuffer, EffectExecutor.LastPeakStackDepth) hold instance state it never touches. These are per-tick-rebuilt or diagnostic-only today so no test fails — the gap is that a newly-folded per-match system field would pass every existing reset test. A reproduce-run test over a scenario that spawns projectiles + casts abilities would pin the composed combat path the current keystone skips.
-status: open
+status: done 2026-07-19
+resolution: resolved by sweep bundle dw-reset-determinism-test-coverage
 
 ### DW-21: ScenarioApplier.ApplyFallback does not clear _lastAppliedHeroes (only Apply does), so the fallback reset path re-mints against whatever hero records a prior Apply left — an asymmetry the new reset newly depends on.
 origin: migrated from legacy ledger ("Deferred from: follow-up code review of story-3.10 (2026-07-07)"), 2026-07-08
@@ -2002,7 +2004,8 @@ origin: 7-13-review-defer
 source_spec: `_bmad-output/implementation-artifacts/spec-7-13-complete-the-trigger-vocabulary-expression-state-reads-randomchoice-enable-disable-run-action-leaves-event-breadth.md`
 severity: low
 reason: Low impact — `LoadScenario` calls `_triggerEnabled.Reset(execs.Count)` which fully overwrites the buffer, so omitting the `ClearForReset` `Clear()` would not corrupt a re-apply; the only exposed window is a checksum computed between `ClearForReset` and the next `LoadScenario`, which per project memory is the offline Edit→Play path (not an MP desync path). A cheap regression test (reset → re-apply a disable-carrying scenario → assert the mask re-seeds) would close it. Flagged by the Verification-Gap review layer.
-status: open
+status: done 2026-07-19
+resolution: resolved by sweep bundle dw-reset-determinism-test-coverage
 
 ## From code review of story-7-14 (2026-07-18)
 
@@ -2020,3 +2023,26 @@ severity: low
 reason: `DslGraphEditorPanel.PortsOf` (src/CreationSuite/DslGraphEditorPanel.cs:702-768) has cases only for the generic `ActionNode`/`EffectActionNode`/`RaiseEventNode`/`ForEach*`/`Branch*`/expr families — it has NO case for any dedicated-leaf class, so `ShowObjectiveNode`/`CompleteObjectiveNode`/`FailObjectiveNode` (7.14) AND the pre-existing 7.13-and-earlier leaves (`OrderUnitsNode`/`MoveCameraNode`/`CinematicModeNode`/`PlayVfxNode`/`RandomChoiceNode`/`EnableTriggerNode`/`DisableTriggerNode`/`RunTriggerNode`) all fall through to zero ports. There is likewise no `objective_id`/target field editor. This is a PRE-EXISTING, class-wide editor limitation: 7.14's objective nodes are at exact parity with the accepted 7.13 precedent (NodePaletteFactory exposes them, PortsOf doesn't render them), and the 7.13/7.14 add-a-kind checklist never listed `PortsOf` as a surface. Not caused by this story; surfaced incidentally by the Blind Hunter layer (which flagged the parity itself). Closure = a holistic pass giving every dedicated-leaf kind an exec-in/exec-out `PortsOf` case (derivable from `NodePorts`) plus a target-field inspector, or an explicit decision that these leaves are authored only via the raw-IR/text path and should be removed from the visual palette.
 status: open
 decision: 2026-07-19 Add PortsOf cases + a target-field inspector for all dedicated-leaf kinds — Give every dedicated-leaf kind an exec-in/exec-out PortsOf case (derivable from NodePorts) plus a target-field inspector, pairing with the DW-179 inspector work.
+
+## From follow-up code review of dw-reset-determinism-test-coverage (2026-07-19)
+
+### DW-196: The DW-19 exhaustive-sweep technique is applied to `EntityWorld` only — the ~20 sibling stores `ClearForReset` wipes are still hand-enumerated, and dropped `Array.Clear` calls in `ProjectileStore`/`HeroStore`/`ItemStore` ship GREEN through the entire suite
+origin: dw-reset-determinism-test-coverage-review-defer
+source_spec: `_bmad-output/implementation-artifacts/spec-reset-determinism-test-coverage.md`
+severity: high
+reason: DW-19 closed the "new field, forgotten in Clear(), silent pass" blind spot for `EntityWorld` via a reflection sweep, but `SimulationHost.ClearForReset` (src/Core/Sim/SimulationHost.cs:342-371) is a flat fan-out over ~24 stores whose own `Clear()` methods remain verified by hand-enumerated assertions — i.e. they retain the defect class in full. DEMONSTRATED by four independent mutants run against the full 2753-test suite in an isolated worktree, each shipping **2752 passed / 0 failed**: `ProjectileStore.Clear()` minus `Array.Clear(SourceId)`; minus `Array.Clear(Speed)`; `HeroStore.Clear()` minus `Array.Clear(Level)`+`Array.Clear(Xp)`; `ItemStore.Clear()` minus `Array.Clear(DefId)`+`Array.Clear(Charges)`. Severity is high because `HeroStore.Level`/`Xp` and `ItemStore.DefId`/`Charges` ARE folded into the checksum (v12/v13), so an omission there is a live "reset != fresh boot" desync leak that ships green; `ProjectileStore`'s fields are unfolded, so an omission there can never be surfaced by any checksum comparison. Not caused by this story — the intent scoped DW-19 explicitly to `EntityWorld`'s ~70 SoA arrays — and surfaced concurrently by three of four review layers. Closure = lift `DivergingFields`/`NonDefaultValue`/`SyntheticallyFillArrays` out of `EntityWorldClearCompletenessTests` into a shared type-agnostic helper and drive it from an xUnit `[Theory]`/`MemberData` list of (store type, dirty-fixture) pairs over every store `ClearForReset` touches. The machinery is already written and already type-agnostic; this is mostly a lift-and-parameterize.
+status: open
+
+### DW-197: `TriggerEnabledStore` never shrinks its `_enabled` buffer and `IsEnabled` returns `true` out of range, so re-applying a scenario with FEWER triggers than the previous one leaves a stale enabled tail
+origin: dw-reset-determinism-test-coverage-review-defer
+source_spec: `_bmad-output/implementation-artifacts/spec-reset-determinism-test-coverage.md`
+severity: medium
+reason: `Clear()` (src/Core/TriggerEnabledStore.cs:69) zeroes only `Count`; `Reset(count)` re-seeds only `[0, count)` and never shrinks or wipes the tail past `count`; `IsEnabled` (src/Core/TriggerEnabledStore.cs:64-65) returns **true** for an out-of-range index. The new DW-193 test re-applies the SAME 3-trigger scenario, so the stale tail is always fully overwritten and the shrink path is never exercised. The realistic Edit→Play case is precisely the shrinking one — an author deletes a trigger and re-plays — after which a stale `_enabled[2]` remains set behind a smaller `Count`. Whether that is reachable as an observable defect depends on whether any caller reads `IsEnabled` at an index >= `Count`; that reachability question is the first step of closure, not an assumed bug. Not caused by this story (pre-existing production behavior; the intent's matrix specifies only same-scenario re-apply). Flagged independently by the Edge Case Hunter and Blind Hunter layers. Closure = establish reachability, then either bound `IsEnabled` by `Count` (returning false out of range) or have `Reset`/`Clear` wipe the tail, plus a shrink-path regression test.
+status: open
+
+### DW-198: The DW-20 fighting-reset test asserts its fight preconditions against the pre-reset host only, so a fixture that goes vacuous exclusively on the re-apply path would leave all three checksum sequences trivially agreeing
+origin: dw-reset-determinism-test-coverage-review-defer
+source_spec: `_bmad-output/implementation-artifacts/spec-reset-determinism-test-coverage.md`
+severity: low
+reason: `ClearAndReapply_ReproducesByteIdenticalRun_OverAFightingScenario` asserts in-flight/landed/cooldown/modifier/damage against `host` before `ClearForReset`, but never re-checks them for `run2` (the post-reset re-populate) or `host0` (the independent fresh boot). If a future change made `CombatResetScenario.Populate` produce an inert start state only on the re-apply path, run1 would still be a real fight while run2/run0 quietly became empty — and because all three are compared only against each other, the test would stay green while proving nothing about the reset. Low severity: this is a second-order weakening of a guard that is itself a forward-looking tripwire, and the pre-reset teeth do cover the fixture's main degradation mode. Not caused by this story in the sense that the guard is new and green; surfaced by the Blind Hunter layer. Closure = extract the precondition block into a helper and invoke it against each of the three hosts after their runs.
+status: open
