@@ -63,12 +63,6 @@ namespace ProjectChimera.Core.Definitions
         /// case) — an authored <c>"Balanced"</c> is accepted the same as <c>"balanced"</c>.</summary>
         private static readonly HashSet<string> _knownAiPresets = new(KnownAiPresets, StringComparer.OrdinalIgnoreCase);
 
-        /// <summary>The four combat-category <see cref="UnitDefinition.Category"/> values (excluding
-        /// <c>"Worker"</c>) any ONE of which satisfies the "required roles" combat half — mirrors the project's
-        /// 6-archetype <c>Category</c> system (Worker + Melee/Ranged/Siege/Air/Structure); <c>"Structure"</c> is
-        /// excluded because a structure unit is not a combat role for this check.</summary>
-        private static readonly string[] _combatCategories = { "Melee", "Ranged", "Siege", "Air" };
-
         /// <summary>
         /// Validate <paramref name="def"/> against every axis that is NEVER a legitimate mid-edit state: the four
         /// relocated checks (Building-per-item/TechTree/ResourceCost/Research, unchanged) plus the ai_preset
@@ -261,7 +255,7 @@ namespace ProjectChimera.Core.Definitions
                     hasWorker = true;
                     continue;
                 }
-                foreach (string combatCategory in _combatCategories)
+                foreach (string combatCategory in UnitCategories.Combat)
                 {
                     if (string.Equals(category, combatCategory, StringComparison.OrdinalIgnoreCase))
                     {
@@ -274,7 +268,7 @@ namespace ProjectChimera.Core.Definitions
                 errors.Add(("units", Located(id, "units", "roster is missing a required Worker unit.")));
             if (!hasCombat)
                 errors.Add(("units", Located(id, "units",
-                    "roster is missing a required combat unit (Melee, Ranged, Siege, or Air).")));
+                    $"roster is missing a required combat unit ({UnitCategories.CombatOrPhrase}).")));
 
             // ── DW-106: hero_unit_id resolves against this faction's own roster ──────────────────────
             // Registry-independent, so effective at every ValidateComplete site (discovery/match-load included; the

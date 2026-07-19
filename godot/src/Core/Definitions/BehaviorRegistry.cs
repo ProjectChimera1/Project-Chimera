@@ -20,10 +20,6 @@ namespace ProjectChimera.Core.Definitions
     /// </summary>
     public sealed class BehaviorRegistry
     {
-        // The 6-archetype closed set (mirrors UnitCategory + UnitDefinitionValidator's _categories). A behavior whose
-        // compatible_archetypes lists a token outside this set is authored against a non-existent archetype → dropped.
-        private static readonly string[] _archetypes = { "Worker", "Melee", "Ranged", "Siege", "Air", "Structure" };
-
         // index → def, sorted ascending by Id (ordinal). The stable index a unit's behaviors reference.
         private readonly BehaviorDefinition[] _byIndex;
 
@@ -92,10 +88,14 @@ namespace ProjectChimera.Core.Definitions
             {
                 BehaviorDefinition? def = JsonSerializer.Deserialize<BehaviorDefinition>(File.ReadAllText(file));
                 if (def == null || string.IsNullOrEmpty(def.Id)) return null;
+                // A compatible_archetypes token outside the 6-archetype closed set names a non-existent archetype, so the
+                // whole behavior is rejected (dropped at load). The closed set is the shared source of truth
+                // UnitCategories.All (derived from the UnitCategory enum) — the same set UnitDefinitionValidator checks
+                // against, so the two can never disagree on what an archetype is.
                 if (def.CompatibleArchetypes != null)
                 {
                     foreach (string token in def.CompatibleArchetypes)
-                        if (Array.IndexOf(_archetypes, token) < 0) return null;   // unknown archetype token → reject
+                        if (Array.IndexOf(UnitCategories.All, token) < 0) return null;   // unknown archetype token → reject
                 }
                 return def;
             }

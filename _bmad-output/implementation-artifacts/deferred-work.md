@@ -417,7 +417,8 @@ origin: migrated from legacy ledger ("Deferred from: dev of story-3.4 (2026-07-0
 source_spec: `_bmad-output/implementation-artifacts/spec-3-6-archetype-orthogonal-ability-behavior-composition-no-subclassing.md`
 location: UnitDefinitionValidator.cs:60
 reason: summary: The 6-archetype closed set is duplicated across `UnitDefinitionValidator._categories`, `BehaviorRegistry._archetypes`, and the validator's error string, so a future 7th `UnitCategory` can be added to one and missed in another (a behavior listing the new archetype would then be silently dropped at load). evidence: Three independent literals of the same Worker/Melee/Ranged/Siege/Air/Structure set exist (UnitDefinitionValidator.cs:60, BehaviorRegistry.cs archetype set, UnitDefinitionValidator.cs error string) with no shared source; `UnitCategory` (Core/UnitCategory.cs) is the canonical enum they should derive from. summary: The in-editor composition UI (chips/Add picker `AddComponentPicker`, preset dropdown `AddCompositionRow`, undo closures `ApplyComponentList`) has no automated verification — it is Godot-`Control` code not loadable in the Tier-1 assembly, so the array-mutation/undo/preset-filter wiring is verified only by live in-engine driving between sessions. evidence: A grep of ProjectChimera.Sim.Tests for `UnitCardPanel`/`AddComponentPicker`/`AddCompositionRow` returns no hits; only the pure `Bundle`/`Detect`/validator helpers are Tier-1-tested. Recommend extracting the array-mutation/undo logic into a Godot-free seam or adopting a scripted godot-mcp editor-driving check as the verification of record.
-status: open
+status: done 2026-07-19
+resolution: resolved by sweep bundle dw-unit-category-single-source
 
 ### DW-10: Creation-suite editor panels do not rebind their held `ScenarioData` after a scenario is reloaded/imported at runtime — each captures `_scenario` (and its write-back path) once at `Initialize` and never again, so after a reload the panel edits a stale object and can save it back to the originally-captured path (silent data loss / wrong-target save).
 origin: migrated from legacy ledger ("Deferred from: dev of story-3.4 (2026-07-06)"), 2026-07-08
@@ -1103,7 +1104,8 @@ source_spec: `_bmad-output/implementation-artifacts/spec-5-2-faction-schema-exte
 location: godot/src/Core/Definitions/FactionValidator.cs (`_combatCategories = { "Melee", "Ranged", "Siege", "Air" }`), also pre-existing in godot/src/Core/Definitions/UnitDefinitionValidator.cs (`_categories`, all six) and godot/src/CreationSuite/BehaviorRegistry.cs (`_archetypes`, all six)
 reason: summary: `FactionValidator`'s required-roles check adds a third independent hardcoded copy of the project's 6-archetype category list (this one a 4-element combat-only subset). evidence: confirmed by grep — no shared constant/enum backs any of the three; a future category rename or addition (e.g. adding a 7th archetype) requires remembering to touch all three files, with no compiler error if one is missed. Flagged by the Blind Hunter review layer, Review Loop 3 (Pass 3). Pre-existing duplication pattern (the first two copies predate this story) that this story's addition makes marginally worse, not introduces.
 closure: extract a single `UnitCategory`-adjacent closed-set source of truth (e.g. a `static readonly` array or enum on `UnitDefinition` itself) that `UnitDefinitionValidator`, `BehaviorRegistry`, and `FactionValidator` all reference — a cross-cutting cleanup better done once, not piecemeal per-story.
-status: open
+status: done 2026-07-19
+resolution: resolved by sweep bundle dw-unit-category-single-source
 
 ### DW-99: No guard prevents a future call site from mistakenly calling `FactionValidator.Validate` where it means `ValidateComplete` (or vice versa)
 source_spec: `_bmad-output/implementation-artifacts/spec-5-2-faction-schema-extension-validator-ar-39-ar-12-fr-18-data.md`

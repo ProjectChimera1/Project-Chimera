@@ -88,7 +88,8 @@ namespace ProjectChimera.Core.Definitions
         // The closed authorable sets, mirroring the string switches in UnitDefinition's Parsed* getters + the enum
         // members. Static → allocated once (the ScenarioValidator closed-set idiom), so the per-unit scan allocates
         // nothing. Case-sensitive exact match (an authored "melee" ≠ "Melee"; the lenient loader would fail-open it).
-        private static readonly string[] _categories = { "Worker", "Melee", "Ranged", "Siege", "Air", "Structure" };
+        // Category uses the shared closed-set source of truth UnitCategories.All (derived from the UnitCategory enum),
+        // so a new archetype propagates here with no hand-edit. The other axes below remain local closed sets.
         private static readonly string[] _damageTypes = { "Normal", "Pierce", "Siege", "Magic", "Hero" };
         private static readonly string[] _armorTypes = { "Unarmored", "Light", "Medium", "Heavy", "Fortified", "Hero" };
         private static readonly string[] _separationPriorities = { "Yield", "Normal", "Push" };
@@ -168,9 +169,9 @@ namespace ProjectChimera.Core.Definitions
             }
 
             // ── enums: fail-closed on any value the loader would silently fail-open (AC2 "invalid archetype/category") ──
-            if (!InSet(_categories, def.Category))
+            if (!InSet(UnitCategories.All, def.Category))
                 errors.Add(("category", Located(kind, id, "category",
-                    $"'{def.Category}' is not a known archetype (Worker|Melee|Ranged|Siege|Air|Structure).")));
+                    $"'{def.Category}' is not a known archetype ({UnitCategories.PipeList}).")));
             if (!InSet(_damageTypes, def.DamageType))
                 errors.Add(("damage_type", Located(kind, id, "damage_type",
                     $"'{def.DamageType}' is not a known damage type (Normal|Pierce|Siege|Magic|Hero).")));

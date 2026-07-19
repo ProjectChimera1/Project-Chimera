@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Text.Json;
 using Godot;
+using ProjectChimera.Core;                // UnitCategories (the shared archetype closed-set source of truth)
 using ProjectChimera.Core.Definitions;   // BuildingDefinition, FactionDefinition, BuildingDefinitionValidator, UnitDefinitionValidator, FactionWriter, ModelAssignment
 using ProjectChimera.UI;                  // MeshLoader (unused here — no preview), SettingsManager (AR-5 last-used folder)
 using ProjectChimera.UI.Components;        // ChimeraComponents, ChimeraDialog, ChimeraTooltip, ChimeraValidationBadge
@@ -29,8 +30,10 @@ namespace ProjectChimera.CreationSuite
     /// </summary>
     public partial class BuildingCardPanel
     {
-        // The closed authorable sets the dropdowns offer (mirror UnitDefinitionValidator's sets).
-        private static readonly string[] Categories = { "Worker", "Melee", "Ranged", "Siege", "Air", "Structure" };
+        // The closed authorable sets the dropdowns offer (mirror UnitDefinitionValidator's sets). Categories is a COPY
+        // of the shared archetype source of truth (UnitCategories.All) so it can never drift from the validator/enum yet
+        // remains a private per-panel array — the dropdown cannot alias (and so cannot corrupt) the validators' set.
+        private static readonly string[] Categories = UnitCategories.All.ToArray();
         private static readonly string[] DamageTypes = { "Normal", "Pierce", "Siege", "Magic", "Hero" };
         private static readonly string[] ArmorTypes = { "Unarmored", "Light", "Medium", "Heavy", "Fortified", "Hero" };
         private static readonly string[] SeparationPriorities = { "Yield", "Normal", "Push" };
