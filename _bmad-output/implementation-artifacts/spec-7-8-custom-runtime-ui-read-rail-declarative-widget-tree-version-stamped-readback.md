@@ -4,7 +4,8 @@ type: 'feature'
 created: '2026-07-17'
 status: 'done'
 review_loop_iteration: 0
-followup_review_recommended: true
+followup_review_recommended: false
+followup_cleared_by: 'A2-E7 in-engine verification (2026-07-19)'
 baseline_revision: '23d00869b3736e90414928db795782d42f1242f9'
 final_revision: '96662cb'
 context:
@@ -225,3 +226,7 @@ Also applied 5 low patches (nested-child double-offset in `CustomUiBridge`; Fixe
 **Files changed (follow-up patches):** `DslVarReadback.cs` (new `PlayerSlotForFaction` helper + double-buffer doc reword), `CustomHudOverlayPhase.cs` (faction→slot conversion + corrected comment), `CustomUiBridge.cs` (nested-child `Vector2.Zero` origin + `Initialize` doc), `WidgetFormat.cs` (Fixed-precision `Fraction` + doc reword); tests `DslVarReadbackTests.cs` (+2) and `CanonicalModelHashCustomUiTests.cs` (+1).
 
 `followup_review_recommended` remains **true**: this pass changed runtime behavior on the primary per-player path and added a sim-side API (`PlayerSlotForFaction`); although now covered by two regression tests, the behavior change on a critical path — and the fact that the previous "fix" here was wrong — warrants one more independent confirmation, ideally an in-engine godot-verify of a per-player scoreboard for both a local Player1 and Player2.
+
+### A2-E7 in-engine verification (2026-07-19) — flag CLEARED
+
+The pre-Epic-8 consolidated in-engine session (Windows godot-mcp) drove the read rail live: a generated gate-valid scenario's `CustomUiTree` built its widgets from `ScenarioData.CustomUi` in a running match, and a `Counter` widget bound to a live DSL variable re-formatted on-screen as the value changed (0→1→3, driven by the 7.9 write rail), then rebuilt correctly (3 widgets) and re-seeded to the authored value across an F5 Edit→Play round-trip. Combined with the `PlayerSlotForFaction` off-by-one fix being Tier-1-green (two `DslVarReadbackTests` + the full 2717-pass Windows suite), the read-rail behavior is independently confirmed. **`followup_review_recommended` → false.** RESIDUAL (documented, not blocking): the specific *local-Player2* per-player scalar render (slot-1 resolution) cannot be exercised offline — godot-mcp's local faction is always Player1 (`MAX_PLAYERS=2`, no local-P2 view without a second machine) — so the P2 half of "both P1 and P2" remains a 2-machine confirmation item, tracked alongside the FR-39 two-machine LAN gate.
