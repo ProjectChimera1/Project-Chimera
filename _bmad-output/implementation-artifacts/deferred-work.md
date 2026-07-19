@@ -115,37 +115,43 @@ _Advisory-rule completeness/quality items from the `gds-code-review` of the dete
 origin: migrated from legacy ledger ("Deferred from: code review of story 1-10b (2026-06-24)"), 2026-07-08
 location: BannedSimApiAnalyzer.cs:135
 reason: **CHM0002 enumeration detection is `foreach`-only** (`BannedSimApiAnalyzer.cs:135`). Misses `dict.Keys`/`.Values`, LINQ (`.Select`/`.First`/`.Aggregate`), and explicit `.GetEnumerator()` loops over a Dictionary/HashSet — the most common nondeterministic-iteration forms after `foreach`. Advisory; golden replay backstops actual order desync. Natural home: the future "full" custom analyzer pass.
-status: open
+status: done 2026-07-19
+resolution: resolved by sweep bundle dw-analyzer-coverage-hardening
 
 ### DW-4: CHM0001 misses fully-qualified `System.Single`/`System.Double` and `var`-inferred float
 origin: migrated from legacy ledger ("Deferred from: code review of story 1-10b (2026-06-24)"), 2026-07-08
 location: BannedSimApiAnalyzer.cs:119
 reason: **CHM0001 misses fully-qualified `System.Single`/`System.Double` and `var`-inferred float** (`BannedSimApiAnalyzer.cs:119`). Only the `float`/`double` keyword (`PredefinedTypeSyntax`) fires; `System.Single x;` or `var x = 1f;` slip through, and RS0030 doesn't catch the declaration either. The XML-doc billing CHM0001 as "the real coverage" overclaims — tighten the doc or the rule.
-status: open
+status: done 2026-07-19
+resolution: resolved by sweep bundle dw-analyzer-coverage-hardening
 
 ### DW-5: CHM0003 misses `Span<T>.Sort` / delegate-reached sorts, and over-flags tie-broken (already-deterministic) sorts
 origin: migrated from legacy ledger ("Deferred from: code review of story 1-10b (2026-06-24)"), 2026-07-08
 location: BannedSimApiAnalyzer.cs:182-184
 reason: **CHM0003 misses `Span<T>.Sort` / delegate-reached sorts, and over-flags tie-broken (already-deterministic) sorts** (`BannedSimApiAnalyzer.cs:182-184`). Scoped to direct `Array.Sort`/`List<T>.Sort` invocations. The one real finding (`ScenarioDirector.cs:206`) can't be cleared by passing a total-order comparer without also suppressing the rule.
-status: open
+status: done 2026-07-19
+resolution: resolved by sweep bundle dw-analyzer-coverage-hardening
 
 ### DW-6: CHM0004 magic-cap heuristic — false-positives on ordinary loop bounds/comparisons (`for (i<100)`, `if (hp>=50)`); blind to `static readonly` caps and negated bounds (`< -64`)
 origin: migrated from legacy ledger ("Deferred from: code review of story 1-10b (2026-06-24)"), 2026-07-08
 location: BannedSimApiAnalyzer.cs:200-276
 reason: **CHM0004 magic-cap heuristic — false-positives on ordinary loop bounds/comparisons (`for (i<100)`, `if (hp>=50)`); blind to `static readonly` caps and negated bounds (`< -64`)** (`BannedSimApiAnalyzer.cs:200-276`). Documented as "Heuristic and advisory." Don't over-trust the 6-site baseline as "6 real caps." Cleanup story (Epics 2/7 → `SimConstants`) will triage.
-status: open
+status: done 2026-07-19
+resolution: resolved by sweep bundle dw-analyzer-coverage-hardening
 
 ### DW-7: Analyzer test hardening
 origin: migrated from legacy ledger ("Deferred from: code review of story 1-10b (2026-06-24)"), 2026-07-08
 location: ProjectChimera.Analyzers.Tests/BannedSimApiAnalyzerTests.cs
 reason: **Analyzer test hardening** (`ProjectChimera.Analyzers.Tests/BannedSimApiAnalyzerTests.cs`). `OrderBy_does_not_report_CHM0003` is structurally vacuous (CHM0003 can never match `OrderBy`, so it proves nothing). Positive CHM0001 coverage pins only a field + a cast; add `float?`, `List<float>`, tuple-element, and lambda-param forms (the bulk of the 128 advisory sites) so a future keyword-context regression is caught.
-status: open
+status: done 2026-07-19
+resolution: resolved by sweep bundle dw-analyzer-coverage-hardening
 
 ### DW-8: CI release-gate `github.event.inputs.run_release_gate == 'true'` is correct only because GitHub serializes dispatch inputs as strings
 origin: migrated from legacy ledger ("Deferred from: code review of story 1-10b (2026-06-24)"), 2026-07-08
 location: .github/workflows/determinism-gate.yml
 reason: **CI release-gate `github.event.inputs.run_release_gate == 'true'` is correct only because GitHub serializes dispatch inputs as strings** (`.github/workflows/determinism-gate.yml`). Add a guard comment so a well-meaning `== true` "cleanup" can't silently make the on-demand release proof unreachable while still appearing wired.
-status: open
+status: done 2026-07-19
+resolution: resolved by sweep bundle dw-analyzer-coverage-hardening
 
 **Also raised in the same review (NOT deferred — tracked on the story):** the float↔string RS0030 bans not firing (decision pending) and the CHM0005 name-only converter allow-list (patch) live in story 1-10b's `### Review Findings`.
 

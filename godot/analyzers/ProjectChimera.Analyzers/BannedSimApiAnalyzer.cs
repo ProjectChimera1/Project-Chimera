@@ -12,8 +12,11 @@ namespace ProjectChimera.Analyzers
     /// they require syntax/semantic analysis rather than a banned-symbol table:
     /// <list type="bullet">
     ///   <item>CHM0001 — the true <c>float</c>/<c>double</c> primitive ban (the keyword on declarations, casts,
-    ///         fields, parameters and type arguments). RS0030's <c>T:System.Single</c> only fires on member
-    ///         access, never on declarations (roslyn-analyzers #7371), so this is the real coverage.</item>
+    ///         fields, parameters and type arguments). It also covers the fully-qualified <c>System.Single</c>/
+    ///         <c>System.Double</c> (and bare <c>Single</c>/<c>Double</c>) type references and <c>var</c>-inferred
+    ///         float/double locals — the qualified/inferred forms the keyword path cannot see. RS0030's
+    ///         <c>T:System.Single</c> only fires on member access, never on declarations (roslyn-analyzers #7371),
+    ///         so this is the real coverage.</item>
     ///   <item>CHM0002 — <c>Dictionary</c>/<c>HashSet</c> enumeration driving sim order (S-CORE-1). Iteration
     ///         order over a hashed collection is nondeterministic; sim must iterate ascending id.</item>
     ///   <item>CHM0003 — unstable <c>Array.Sort</c> / <c>List&lt;T&gt;.Sort</c> (S-CORE-2). Equal elements may be
@@ -58,7 +61,7 @@ namespace ProjectChimera.Analyzers
             category: Category,
             defaultSeverity: DiagnosticSeverity.Warning,
             isEnabledByDefault: true,
-            description: "The deterministic simulation must not use float/double for gameplay state. Use Fixed. The off-the-shelf banned-API analyzer cannot flag the primitive keyword on declarations; this rule does.",
+            description: "The deterministic simulation must not use float/double for gameplay state. Use Fixed. The off-the-shelf banned-API analyzer cannot flag the primitive keyword on declarations; this rule does, and also covers System.Single/System.Double type references and var-inferred float/double.",
             helpLinkUri: HelpLinkBase + "chm0001");
 
         internal static readonly DiagnosticDescriptor DictionaryEnumerationRule = new(
@@ -128,6 +131,7 @@ namespace ProjectChimera.Analyzers
             context.EnableConcurrentExecution();
 
             context.RegisterSyntaxNodeAction(AnalyzePredefinedType, SyntaxKind.PredefinedType);
+            context.RegisterSyntaxNodeAction(AnalyzeIdentifierName, SyntaxKind.IdentifierName);
             context.RegisterSyntaxNodeAction(AnalyzeForEach, SyntaxKind.ForEachStatement);
             context.RegisterSyntaxNodeAction(AnalyzeInvocation, SyntaxKind.InvocationExpression);
             context.RegisterSyntaxNodeAction(AnalyzeNumericLiteral, SyntaxKind.NumericLiteralExpression);
@@ -149,6 +153,75 @@ namespace ProjectChimera.Analyzers
             ctx.ReportDiagnostic(Diagnostic.Create(FloatPrimitiveRule, node.GetLocation(), node.Keyword.ValueText));
         }
 
+        // ── CHM0001 — System.Single/Double type references and var-inferred float/double ──────
+        // The PredefinedType path above owns the `float`/`double` keyword; this closes the qualified
+        // (`System.Single`) and inferred (`var x = 1f`) forms it cannot see. Cheap text prefilter first
+        // ("var"/"Single"/"Double") so the semantic model is only consulted for the handful of candidates.
+        private static void AnalyzeIdentifierName(SyntaxNodeAnalysisContext ctx)
+        {
+            var node = (IdentifierNameSyntax)ctx.Node;
+            string text = node.Identifier.ValueText;
+
+            if (text == "var")
+            {
+                if (!node.IsVar)
+                    return;
+                ITypeSymbol? inferred = ctx.SemanticModel.GetTypeInfo(node, ctx.CancellationToken).Type;
+                if (inferred is null || inferred.TypeKind == TypeKind.Error)
+                    return; // inference failure / error type — skip
+                string? primitive = FloatOrDoubleName(inferred);
+                if (primitive is not null)
+                    ctx.ReportDiagnostic(Diagnostic.Create(FloatPrimitiveRule, node.GetLocation(), primitive));
+                return;
+            }
+
+            if (text != "Single" && text != "Double")
+                return;
+
+            // Skip member access (`System.Single.Parse`, `Single.MaxValue`) — RS0030/CHM0006 own member access.
+            if (node.Parent is MemberAccessExpressionSyntax)
+                return;
+
+            // Skip `nameof(Single)`/`nameof(Double)` — the type only produces a string; no float value is computed.
+            if (IsInsideNameOf(node))
+                return;
+
+            if (ctx.SemanticModel.GetSymbolInfo(node, ctx.CancellationToken).Symbol is not INamedTypeSymbol nt)
+                return;
+            string? primitiveName = FloatOrDoubleName(nt);
+            string ns = nt.ContainingNamespace?.ToDisplayString() ?? string.Empty;
+            if (primitiveName is not null && ns == "System")
+                ctx.ReportDiagnostic(Diagnostic.Create(FloatPrimitiveRule, node.GetLocation(), primitiveName));
+        }
+
+        /// <summary>
+        /// True when <paramref name="node"/> is the argument of a <c>nameof(...)</c> expression. <c>nameof</c> never
+        /// evaluates its operand, so a <c>Single</c>/<c>Double</c> type name inside it is a string, not a float value.
+        /// </summary>
+        private static bool IsInsideNameOf(SyntaxNode node)
+        {
+            for (SyntaxNode? a = node.Parent; a is not null; a = a.Parent)
+            {
+                if (a is InvocationExpressionSyntax inv
+                    && inv.Expression is IdentifierNameSyntax { Identifier.ValueText: "nameof" })
+                    return true;
+                // A statement/member boundary means we are past any enclosing nameof — stop climbing.
+                if (a is StatementSyntax || a is MemberDeclarationSyntax)
+                    return false;
+            }
+            return false;
+        }
+
+        /// <summary>Returns "float"/"double" when <paramref name="t"/> is System.Single/System.Double, else null.</summary>
+        private static string? FloatOrDoubleName(ITypeSymbol t)
+        {
+            if (t.SpecialType == SpecialType.System_Single)
+                return "float";
+            if (t.SpecialType == SpecialType.System_Double)
+                return "double";
+            return null;
+        }
+
         // ── CHM0002 — Dictionary/HashSet enumeration ──────────────────────────────────────────
         private static void AnalyzeForEach(SyntaxNodeAnalysisContext ctx)
         {
@@ -164,12 +237,34 @@ namespace ProjectChimera.Analyzers
 
         private static bool IsUnorderedCollection(ITypeSymbol type)
         {
+            if (IsDictionaryKeyOrValueCollection(type))
+                return true;
             if (IsUnorderedInterface(type))
                 return true;
             foreach (INamedTypeSymbol i in type.AllInterfaces)
                 if (IsUnorderedInterface(i))
                     return true;
             return false;
+        }
+
+        /// <summary>
+        /// True for <c>Dictionary&lt;,&gt;.KeyCollection</c>/<c>ValueCollection</c> — the projection you get from
+        /// <c>dict.Keys</c>/<c>dict.Values</c>. Enumerating it yields hash order, so it is as unordered as the
+        /// dictionary itself. Detected structurally: metadata name is <c>KeyCollection</c>/<c>ValueCollection</c>
+        /// nested in the BCL <c>System.Collections.Generic.Dictionary`2</c> specifically — the namespace is verified
+        /// so a user type named <c>Dictionary`2</c> (or the sorted/immutable dictionaries, which are deterministic)
+        /// cannot be mistaken for it. <c>SortedDictionary`2</c> already differs by metadata name, so it is excluded too.
+        /// </summary>
+        private static bool IsDictionaryKeyOrValueCollection(ITypeSymbol type)
+        {
+            ITypeSymbol def = type.OriginalDefinition;
+            string name = def.MetadataName;
+            if (name != "KeyCollection" && name != "ValueCollection")
+                return false;
+            INamedTypeSymbol? container = def.ContainingType;
+            if (container is null || container.MetadataName != "Dictionary`2")
+                return false;
+            return (container.ContainingNamespace?.ToDisplayString() ?? string.Empty) == "System.Collections.Generic";
         }
 
         private static bool IsUnorderedInterface(ITypeSymbol t)
@@ -196,12 +291,40 @@ namespace ProjectChimera.Analyzers
                 return;
             string ownerNs = owner.ContainingNamespace?.ToDisplayString() ?? string.Empty;
 
-            // CHM0003 — unstable Array.Sort / List<T>.Sort
+            // CHM0002 (beyond foreach) — GetEnumerator() or a non-ordering LINQ operator invoked on an unordered
+            // receiver (Dictionary/HashSet/KeyCollection/ValueCollection). Cheap kind prefilter: the invocation must
+            // be a member access so a receiver node exists; ordering operators (OrderBy/…) impose a deterministic
+            // order and are exempt. Reports on the receiver so the location points at the collection (matches foreach).
+            if (node.Expression is MemberAccessExpressionSyntax recvAccess)
+            {
+                bool isEnumeration =
+                    method.Name == "GetEnumerator"
+                    || (ownerNs == "System.Linq" && owner.MetadataName == "Enumerable"
+                        && !IsOrderingOperator(method.Name)
+                        && !IsOrderInsensitiveReducer(method.Name));
+                if (isEnumeration)
+                {
+                    ITypeSymbol? recvType =
+                        ctx.SemanticModel.GetTypeInfo(recvAccess.Expression, ctx.CancellationToken).Type;
+                    if (recvType is not null && recvType.TypeKind != TypeKind.Error && IsUnorderedCollection(recvType))
+                    {
+                        ctx.ReportDiagnostic(Diagnostic.Create(
+                            DictionaryEnumerationRule, recvAccess.Expression.GetLocation(), recvType.Name));
+                        return;
+                    }
+                }
+            }
+
+            // CHM0003 — unstable Array.Sort / List<T>.Sort / Span<T>.Sort (MemoryExtensions). A Sort that carries an
+            // IComparer/IComparer<T>/Comparison<T> argument is a developer-controlled total order and is NOT flagged —
+            // this is how the two real total-order List.Sort(Comparison) sites clear without a suppression.
             if (method.Name == "Sort"
                 && ((ownerNs == "System" && owner.MetadataName == "Array")
+                    || (ownerNs == "System" && owner.MetadataName == "MemoryExtensions")
                     || (ownerNs == "System.Collections.Generic" && owner.MetadataName == "List`1")))
             {
-                ctx.ReportDiagnostic(Diagnostic.Create(UnstableSortRule, node.GetLocation(), owner.Name));
+                if (!HasComparerParameter(method))
+                    ctx.ReportDiagnostic(Diagnostic.Create(UnstableSortRule, node.GetLocation(), owner.Name));
                 return;
             }
 
@@ -227,6 +350,42 @@ namespace ProjectChimera.Analyzers
             }
         }
 
+        /// <summary>LINQ operators that impose a deterministic order and so are exempt from CHM0002.</summary>
+        private static bool IsOrderingOperator(string name)
+            => name == "OrderBy" || name == "OrderByDescending" || name == "Order" || name == "OrderDescending";
+
+        /// <summary>
+        /// LINQ reducers whose <em>result</em> does not depend on enumeration order (the sim layer is int/Fixed —
+        /// float is banned by CHM0001 — so integer sum/min/max/average are order-invariant too). Flagging these on a
+        /// Dictionary/HashSet is a false positive: the value is already deterministic. Order-exposing operators
+        /// (<c>First</c>/<c>Last</c>/<c>ElementAt</c>/<c>Select</c>/<c>Aggregate</c>/<c>ToList</c>/…) are NOT listed and still fire.
+        /// </summary>
+        private static bool IsOrderInsensitiveReducer(string name)
+            => name == "Count" || name == "LongCount" || name == "Any" || name == "All" || name == "Contains"
+               || name == "Sum" || name == "Min" || name == "Max" || name == "Average"
+               || name == "ToDictionary" || name == "ToHashSet";
+
+        /// <summary>
+        /// True when <paramref name="method"/> takes an <c>IComparer</c>/<c>IComparer&lt;T&gt;</c>/<c>Comparison&lt;T&gt;</c>
+        /// parameter — a developer-controlled total order, which clears the CHM0003 unstable-sort ban.
+        /// </summary>
+        private static bool HasComparerParameter(IMethodSymbol method)
+        {
+            foreach (IParameterSymbol p in method.Parameters)
+            {
+                ITypeSymbol def = p.Type.OriginalDefinition;
+                string ns = def.ContainingNamespace?.ToDisplayString() ?? string.Empty;
+                string name = def.MetadataName;
+                if (ns == "System.Collections.Generic" && name == "IComparer`1")
+                    return true;
+                if (ns == "System.Collections" && name == "IComparer")
+                    return true;
+                if (ns == "System" && name == "Comparison`1")
+                    return true;
+            }
+            return false;
+        }
+
         // ── CHM0004 — magic cap literal ───────────────────────────────────────────────────────
         private static void AnalyzeNumericLiteral(SyntaxNodeAnalysisContext ctx)
         {
@@ -240,14 +399,31 @@ namespace ProjectChimera.Analyzers
                 case long l: value = l; break;
                 default: return;
             }
+
+            // A leading unary minus is part of the bound value: `x < -64` is a cap of -64, not 64. Treat the unary
+            // expression as the node whose context/parent decides cap-ness so the negated relational bound fires.
+            SyntaxNode boundNode = node;
+            if (node.Parent is PrefixUnaryExpressionSyntax neg
+                && neg.IsKind(SyntaxKind.UnaryMinusExpression)
+                && neg.Operand == node)
+            {
+                value = -value;
+                boundNode = neg;
+            }
+
             if (value > -CapLiteralThreshold && value < CapLiteralThreshold)
                 return;
             if (IsInsideConstOrEnum(node))
                 return;
-            if (!IsCapContext(node))
+            // A loop-condition relational bound (`for (…; i < 100; …)` / `while (i < 100)`) is control flow, not a
+            // structural cap — the DW-6 false-positive class. Skip it.
+            if (IsLoopConditionBound(boundNode))
+                return;
+            if (!IsCapContext(boundNode) && !IsStaticReadonlyFieldCap(boundNode))
                 return;
 
-            ctx.ReportDiagnostic(Diagnostic.Create(MagicCapLiteralRule, node.GetLocation(), value));
+            // Report at boundNode so a negated cap (`-64`) underlines the sign too, matching the reported value.
+            ctx.ReportDiagnostic(Diagnostic.Create(MagicCapLiteralRule, boundNode.GetLocation(), value));
         }
 
         /// <summary>
@@ -294,7 +470,7 @@ namespace ProjectChimera.Analyzers
         }
 
         /// <summary>True when the literal is used as a relational bound (&lt; &lt;= &gt; &gt;=) or an array size — a "cap".</summary>
-        private static bool IsCapContext(LiteralExpressionSyntax node)
+        private static bool IsCapContext(SyntaxNode node)
         {
             SyntaxNode? parent = node.Parent;
             while (parent is ParenthesizedExpressionSyntax p)
@@ -304,17 +480,69 @@ namespace ProjectChimera.Analyzers
                 return true;
 
             if (parent is BinaryExpressionSyntax bin)
-            {
-                switch (bin.OperatorToken.Kind())
-                {
-                    case SyntaxKind.LessThanToken:
-                    case SyntaxKind.LessThanEqualsToken:
-                    case SyntaxKind.GreaterThanToken:
-                    case SyntaxKind.GreaterThanEqualsToken:
-                        return true;
-                }
-            }
+                return IsRelational(bin);
             return false;
+        }
+
+        /// <summary>True for the four relational operators (&lt; &lt;= &gt; &gt;=).</summary>
+        private static bool IsRelational(BinaryExpressionSyntax bin)
+        {
+            switch (bin.OperatorToken.Kind())
+            {
+                case SyntaxKind.LessThanToken:
+                case SyntaxKind.LessThanEqualsToken:
+                case SyntaxKind.GreaterThanToken:
+                case SyntaxKind.GreaterThanEqualsToken:
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
+        /// <summary>
+        /// True when the literal's enclosing relational comparison is the controlling condition of a <c>for</c>/
+        /// <c>while</c>/<c>do…while</c> loop (climbing through parentheses and <c>&amp;&amp;</c>/<c>||</c> compound
+        /// conditions). Such a bound is loop control flow, not a structural cap, so CHM0004 must not flag it (DW-6).
+        /// </summary>
+        private static bool IsLoopConditionBound(SyntaxNode node)
+        {
+            SyntaxNode? p = node.Parent;
+            while (p is ParenthesizedExpressionSyntax paren)
+                p = paren.Parent;
+            if (p is not BinaryExpressionSyntax bin || !IsRelational(bin))
+                return false;
+
+            SyntaxNode current = bin;
+            SyntaxNode? parent = bin.Parent;
+            while (parent is ParenthesizedExpressionSyntax
+                   || (parent is BinaryExpressionSyntax pb
+                       && (pb.IsKind(SyntaxKind.LogicalAndExpression) || pb.IsKind(SyntaxKind.LogicalOrExpression))))
+            {
+                current = parent;
+                parent = parent.Parent;
+            }
+
+            return (parent is ForStatementSyntax f && f.Condition == current)
+                || (parent is WhileStatementSyntax w && w.Condition == current)
+                || (parent is DoStatementSyntax d && d.Condition == current);
+        }
+
+        /// <summary>
+        /// True when the literal is the initializer of a <c>static readonly</c> field — a structural cap that escaped
+        /// the named-constant channel (<c>const</c>/enum are already exempt via <see cref="IsInsideConstOrEnum"/>).
+        /// </summary>
+        private static bool IsStaticReadonlyFieldCap(SyntaxNode node)
+        {
+            if (node.Parent is not EqualsValueClauseSyntax eq || eq.Value != node)
+                return false;
+            if (eq.Parent is not VariableDeclaratorSyntax vd)
+                return false;
+            if (vd.Parent is not VariableDeclarationSyntax decl)
+                return false;
+            if (decl.Parent is not FieldDeclarationSyntax field)
+                return false;
+            return field.Modifiers.Any(SyntaxKind.StaticKeyword)
+                && field.Modifiers.Any(SyntaxKind.ReadOnlyKeyword);
         }
     }
 }

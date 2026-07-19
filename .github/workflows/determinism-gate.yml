@@ -160,6 +160,12 @@ jobs:
         run: dotnet build godot/ProjectChimera.Sim.Analysis/ProjectChimera.Sim.Analysis.csproj -c Release --no-restore
 
       - name: Determinism analyzer gate — RELEASE hard-fail (release/** branch or dispatched)
+        # DW-8 guard: the `run_release_gate == 'true'` compare MUST stay a string. workflow_dispatch inputs are
+        # always serialized as strings, so the dispatched boolean arrives as the string "true"; comparing string ==
+        # string here matches correctly. A "cleanup" to `== true` (YAML boolean) forces a type mismatch, and GitHub
+        # Actions then coerces both operands to numbers before comparing ("true" -> NaN, true -> 1), so `== true` is
+        # NEVER satisfied — the on-demand release proof would go permanently false/unreachable while still looking
+        # wired. Keep the literal 'true' string.
         if: ${{ github.event.inputs.run_release_gate == 'true' || startsWith(github.ref, 'refs/heads/release/') }}
         # ChimeraRelease=true adds the zero-baseline rule set (RS0030) to WarningsAsErrors — any banned determinism
         # API in sim code now FAILS the build. Green today (zero baseline); proven to fail on a real violation
