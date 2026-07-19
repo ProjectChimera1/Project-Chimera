@@ -8,15 +8,6 @@
     "label": "Repoint to placeholder GLB",
     "resolution": ""
   },
-  "DW-13": {
-    "answered_at": "2026-07-17",
-    "bundle_name": "",
-    "effect": "build",
-    "intent": "Thread the owning player slot into LoadInto and mint only into that slot's placed hero.",
-    "key": "1",
-    "label": "Scope to owning slot",
-    "resolution": ""
-  },
   "DW-140": {
     "answered_at": "2026-07-15",
     "bundle_name": "",
