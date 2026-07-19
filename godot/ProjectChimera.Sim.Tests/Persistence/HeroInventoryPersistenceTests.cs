@@ -1,5 +1,6 @@
 #nullable enable
 using System.Collections.Generic;
+using System.Text.Json;
 using ProjectChimera.Core;
 using ProjectChimera.Core.Definitions;
 using ProjectChimera.Effects;
@@ -203,6 +204,69 @@ namespace ProjectChimera.Sim.Tests.Persistence
             Assert.NotEqual(HeroStore.INVENTORY_EMPTY, heroes.Inventory[0]); // within cap
             Assert.NotEqual(HeroStore.INVENTORY_EMPTY, heroes.Inventory[1]); // within cap
             Assert.Equal(HeroStore.INVENTORY_EMPTY, heroes.Inventory[2]);    // beyond cap → rejected, not over-capacity
+        }
+
+        // ── DW-13: owner-slot scoping mints only the local player's placed hero ────────────
+
+        // Two placed heroes share the same unit id but are owned by different factions. With ownerSlot set, only the
+        // OWNING faction's placed hero is minted (the local player's profile never lands on an enemy's same-id hero).
+        [Fact]
+        public void LoadInto_OwnerSlotScoped_MintsOnlyOwningFactionsPlacedHero()
+        {
+            var reg = Reg();
+            var heroes = new HeroStore();
+            var items = new ItemStore();
+            var world = new EntityWorld();
+
+            int e1 = world.Create(FixedVec3.Zero, Faction.Player1, Fixed.FromInt(100), Fixed.FromInt(3));
+            int e2 = world.Create(FixedVec3.Zero, Faction.Player2, Fixed.FromInt(100), Fixed.FromInt(3));
+            var placed = new List<HeroProfileLoader.PlacedHero>
+            {
+                new(e1, "hero", OwnerFaction: Faction.Player1),
+                new(e2, "hero", OwnerFaction: Faction.Player2),
+            };
+            PlayerProfile profile = HeroProfileLoader.BuildProfile("h#1", "hero", "f", "H", null,
+                1, Fixed.Zero, ShapeOf("hero.level"));
+
+            int minted = HeroProfileLoader.LoadInto(heroes, placed, profile, log: null, world: world,
+                items: items, registry: reg, ownerSlot: Faction.Player2);
+
+            Assert.Equal(1, minted);                                     // exactly the owned hero minted
+            Assert.Equal(EntityWorld.HERO_NONE, world.HeroIndex[e1]);    // Player1's placed hero skipped (owner mismatch)
+            Assert.NotEqual(EntityWorld.HERO_NONE, world.HeroIndex[e2]); // Player2's placed hero received the mint
+        }
+
+        // ── DW-48: a legacy slot-less loadout re-mints contiguously, not collapsed onto slot 0 ──
+
+        // A legacy profile whose inventory JSON predates slot capture deserializes each item's Slot to -1 (DW-48), so
+        // re-mint uses the first-free contiguous fallback. Before the fix a missing "slot" deserialized to 0, collapsing
+        // every item onto slot 0 (the second then skipped as an occupied duplicate). Guards the deserialization path.
+        [Fact]
+        public void LoadInto_LegacySlotlessLoadout_ReMintsContiguously_NotCollapsedOntoSlotZero()
+        {
+            var reg = Reg();
+            var loadout = new List<ProfileInventoryItem>
+            {
+                JsonSerializer.Deserialize<ProfileInventoryItem>("{\"item_id\":\"ring\",\"charges\":0}"),
+                JsonSerializer.Deserialize<ProfileInventoryItem>("{\"item_id\":\"potion\",\"charges\":2}"),
+            };
+            Assert.Equal(-1, loadout[0].Slot);   // slot-less legacy items → -1, not 0
+            Assert.Equal(-1, loadout[1].Slot);
+
+            PlayerProfile profile = HeroProfileLoader.BuildProfile("h#1", "hero", "f", "H", null,
+                1, Fixed.Zero, ShapeOf("hero.inventory"), loadout);
+
+            var (heroes, items, minted) = ReMint(reg, profile);
+
+            Assert.Equal(1, minted);
+            int r0 = heroes.Inventory[0], r1 = heroes.Inventory[1];
+            Assert.NotEqual(HeroStore.INVENTORY_EMPTY, r0);   // ring in slot 0
+            Assert.NotEqual(HeroStore.INVENTORY_EMPTY, r1);   // potion contiguously in slot 1 (NOT collapsed onto slot 0)
+            Assert.NotEqual(r0, r1);                          // two distinct item instances, both landed
+            Assert.True(items.TryResolveRef(r0, out int s0));
+            Assert.True(items.TryResolveRef(r1, out int s1));
+            Assert.Equal(reg.IndexOf("ring"),   items.DefId[s0]);
+            Assert.Equal(reg.IndexOf("potion"), items.DefId[s1]);
         }
 
         // PATCH 6 — a corrupt/hand-edited charge count is clamped to [0, def.Charges] on re-mint.

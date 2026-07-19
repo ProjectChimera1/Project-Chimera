@@ -504,7 +504,8 @@ namespace ProjectChimera.Core
             Definitions.HeroProfileLoader.LoadInto(_host.Heroes, _applier.LastAppliedHeroes, _ctx.PendingHeroProfile,
                 world: _host.World, // Story 3.13: establish the entity→hero link (D-8) for the XP runtime
                 items: _host.Items, registry: _host.ItemRegistry, // Story 3.16: re-mint persisted inventory before the hash
-                modifiers: _host.Modifiers, usableSlots: _host.ItemSys.UsableSlots); // Story 3.16 review: apply carried stat modifiers + honor the slot cap
+                modifiers: _host.Modifiers, usableSlots: _host.ItemSys.UsableSlots, // Story 3.16 review: apply carried stat modifiers + honor the slot cap
+                ownerSlot: _ctx.Lockstep?.LocalFaction); // DW-13: mint the deployed profile into the local player's placed hero only (null at first boot / no profile is inert)
             ulong startStateHash = (_ctx.ScenarioApplied && hashModel != null)
                 ? Definitions.StartStateHash.Compute(hashModel, _host.Heroes)
                 : 0UL;
@@ -1824,31 +1825,42 @@ namespace ProjectChimera.Core
             //    Discard path re-mints the profile's authored Level/Xp; preserve path re-mints the snapshot values.
             if (preserveHeroProgress && haveSnapshot && _ctx.PendingHeroProfile != null)
             {
-                var snapProfile = new Definitions.PlayerProfile
-                {
-                    ProfileId        = _ctx.PendingHeroProfile.ProfileId,
-                    HeroDefId        = _ctx.PendingHeroProfile.HeroDefId,
-                    FactionId        = _ctx.PendingHeroProfile.FactionId,
-                    DisplayName      = _ctx.PendingHeroProfile.DisplayName,
-                    SignatureAbility = _ctx.PendingHeroProfile.SignatureAbility,
-                    Values           = new System.Collections.Generic.List<Definitions.ProfileAttributeValue>
+                Definitions.PlayerProfile pending = _ctx.PendingHeroProfile;
+                // DW-15: route the preserve snapshot through the SAME BuildProfile(... DeriveProfileShape() ...) seam Save
+                // uses (HeroPickerOverlay.OnSave/OnOverwrite), so the re-mint honours the manifest-selected attributes
+                // (only hero.level / hero.xp / hero.inventory the shape carries) instead of re-minting hardcoded level+xp
+                // keys unconditionally. Defensive fallback: if the manifest/shape resolves null (a PendingHeroProfile
+                // implies persistence was enabled, so this is not expected), keep the old hardcoded-Values snapshot so
+                // behaviour never regresses.
+                Definitions.PlayerProfileShape? shape =
+                    (_ctx.Scenario ?? _ctx.FallbackMirror)?.PersistenceManifest?.DeriveProfileShape();
+                Definitions.PlayerProfile snapProfile = shape != null
+                    ? Definitions.HeroProfileLoader.BuildProfile(
+                        pending.ProfileId, pending.HeroDefId, pending.FactionId, pending.DisplayName, pending.SignatureAbility,
+                        snapLevel, snapXp, shape, _ctx.HarvestedHeroInventory ?? pending.Inventory)
+                    : new Definitions.PlayerProfile
                     {
-                        new("hero.level", snapLevel),
-                        new("hero.xp", snapXp.Raw),
-                    },
-                    // Story 3.16 review: carry the preserved loadout too, so return-to-edit-with-preserve re-mints the
-                    // inventory consistently with the level/xp (the snapshot captured it above; else fall back to the
-                    // deployed profile's saved loadout). Without this the preserve branch dropped the inventory entirely.
-                    Inventory        = _ctx.HarvestedHeroInventory
-                                       ?? _ctx.PendingHeroProfile.Inventory,
-                };
+                        ProfileId        = pending.ProfileId,
+                        HeroDefId        = pending.HeroDefId,
+                        FactionId        = pending.FactionId,
+                        DisplayName      = pending.DisplayName,
+                        SignatureAbility = pending.SignatureAbility,
+                        Values           = new System.Collections.Generic.List<Definitions.ProfileAttributeValue>
+                        {
+                            new("hero.level", snapLevel),
+                            new("hero.xp", snapXp.Raw),
+                        },
+                        Inventory        = _ctx.HarvestedHeroInventory ?? pending.Inventory,
+                    };
                 Definitions.HeroProfileLoader.LoadInto(_host.Heroes, _applier.LastAppliedHeroes, snapProfile, _logSink, _host.World,
-                    _host.Items, _host.ItemRegistry, _host.Modifiers, _host.ItemSys.UsableSlots); // Story 3.16
+                    _host.Items, _host.ItemRegistry, _host.Modifiers, _host.ItemSys.UsableSlots,
+                    ownerSlot: _ctx.Lockstep?.LocalFaction); // Story 3.16 + DW-13
             }
             else
             {
                 Definitions.HeroProfileLoader.LoadInto(_host.Heroes, _applier.LastAppliedHeroes, _ctx.PendingHeroProfile, _logSink, _host.World,
-                    _host.Items, _host.ItemRegistry, _host.Modifiers, _host.ItemSys.UsableSlots); // Story 3.16: re-mint the deployed profile's persisted inventory + carried stat modifiers
+                    _host.Items, _host.ItemRegistry, _host.Modifiers, _host.ItemSys.UsableSlots,
+                    ownerSlot: _ctx.Lockstep?.LocalFaction); // Story 3.16: re-mint the deployed profile's persisted inventory + carried stat modifiers; DW-13: local player's placed hero only
             }
 
             // 6. Recompute + log the start-state hash so it reflects the re-applied board + re-minted heroes.

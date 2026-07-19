@@ -59,11 +59,21 @@ namespace ProjectChimera.Core.Definitions
         /// live — e.g. two placed heroes share the deployed hero's unit id) is a DETERMINISTIC SKIP + optional log, with
         /// no partial-state divergence: every peer skips the same rows. Iterates <paramref name="placedHeroes"/> in list
         /// order (ascending) — no nondeterministic enumeration.
+        ///
+        /// <para>DW-12 (fail-closed range/cap gate): a whole profile with an out-of-range persisted level (&lt; 0) or xp
+        /// (raw &lt; 0, or above <see cref="Combat.HeroXpSystem.XpCeiling"/>) is REJECTED (0 minted + <c>log?.Warn</c>) so a
+        /// cheated/corrupt value never folds into <see cref="StartStateHash"/> - never a silent clamp. Per placed hero, an
+        /// over-cap level (<c>placed.MaxLevel &gt; 0 &amp;&amp; level &gt; placed.MaxLevel</c>) skips THAT hero deterministically.</para>
+        ///
+        /// <para>DW-13 (owner-slot scoping): when <paramref name="ownerSlot"/> is non-null, only placed heroes whose
+        /// <see cref="PlacedHero.OwnerFaction"/> equals it are minted (the local player's profile lands on the local
+        /// player's placed hero, not an enemy's same-id hero). <c>null</c> (the default) preserves today's behaviour.</para>
         /// </summary>
         public static int LoadInto(HeroStore heroes, IReadOnlyList<PlacedHero> placedHeroes, PlayerProfile? profile,
                                    ILogSink? log = null, EntityWorld? world = null,
                                    ItemStore? items = null, ItemRegistry? registry = null,
-                                   ModifierStore? modifiers = null, int usableSlots = HeroStore.INVENTORY_SLOTS)
+                                   ModifierStore? modifiers = null, int usableSlots = HeroStore.INVENTORY_SLOTS,
+                                   Faction? ownerSlot = null)
         {
             if (profile == null || placedHeroes == null) return 0;
 
@@ -71,11 +81,37 @@ namespace ProjectChimera.Core.Definitions
             int level  = profile.Level;
             Fixed xp   = profile.Xp;
 
+            // DW-12: fail-closed range gate on the whole profile. Reject (0 minted) an out-of-range persisted level/xp
+            // rather than folding a cheat/corrupt value into the start-state hash. Deterministic (every peer rejects the
+            // same profile); never a silent clamp. XpCeiling is the same saturation the runtime enforces, so a persisted
+            // xp above it is by definition unreachable through legitimate play. Level lower-bound is < 0 (NOT < 1): an
+            // inventory-only profile whose manifest omits hero.level legitimately mints level == 0 today.
+            if (level < 0 || xp.Raw < 0 || xp.Raw > HeroXpSystem.XpCeiling.Raw)
+            {
+                log?.Warn($"[HeroProfileLoader] Profile '{profile.ProfileId}' has an out-of-range level ({level}) or xp " +
+                          $"(raw {xp.Raw}, ceiling {HeroXpSystem.XpCeiling.Raw}) - rejected deterministically; 0 minted.");
+                return 0;
+            }
+
             int minted = 0;
+            int ownerFiltered = 0; // DW-13: unit-id-matching placed heroes skipped PURELY by the owner-slot gate
             for (int i = 0; i < placedHeroes.Count; i++)
             {
                 PlacedHero placed = placedHeroes[i];
                 if (placed.UnitId != profile.HeroDefId) continue; // only the deployed hero's placed units
+
+                // DW-13: owner-slot scoping - skip a placed hero owned by a different faction than the local caller's slot.
+                // Null ownerSlot (every pre-existing caller/test) bypasses the filter, preserving mint-into-every-match.
+                if (ownerSlot != null && placed.OwnerFaction != ownerSlot.Value) { ownerFiltered++; continue; }
+
+                // DW-12: per-hero over-cap gate - skip (don't mint) a placed hero whose authored MaxLevel is below the
+                // persisted level. MaxLevel == 0 means "no cap declared" (pre-3.13 construction), so the gate is inert then.
+                if (placed.MaxLevel > 0 && level > placed.MaxLevel)
+                {
+                    log?.Warn($"[HeroProfileLoader] Profile '{profile.ProfileId}' level {level} exceeds placed hero " +
+                              $"(entity {placed.EntityId}) MaxLevel {placed.MaxLevel} - skipped deterministically.");
+                    continue;
+                }
 
                 // Story 3.13: mint with the def-derived curve/growth/share constants captured on the placed hero, so the
                 // HeroXpSystem can level + grow it (the SoA-recycle contract writes every live field in Mint).
@@ -101,6 +137,15 @@ namespace ProjectChimera.Core.Definitions
                 else log?.Warn($"[HeroProfileLoader] Mint refused for profile '{profile.ProfileId}' " +
                                $"(entity {placed.EntityId}) — duplicate live id or full store; skipped deterministically.");
             }
+
+            // DW-13 (review): the profile's hero id WAS placed, but every placement is owned by a slot other than the
+            // owning one, so nothing minted. The picker offers a profile whenever its hero id is placed in ANY slot
+            // (HeroPickerOverlay.IsCompatible/TryResolvePrimaryHero are slot-agnostic), so a deploy that lands on no
+            // owned hero must be diagnosable rather than a silent 0-mint — the whole loadout would otherwise vanish quietly.
+            if (minted == 0 && ownerSlot != null && ownerFiltered > 0)
+                log?.Warn($"[HeroProfileLoader] Profile '{profile.ProfileId}' matched {ownerFiltered} placed hero(es), " +
+                          $"none owned by slot {ownerSlot.Value} — 0 minted (deployed hero is not on the owning player's slot).");
+
             return minted;
         }
 

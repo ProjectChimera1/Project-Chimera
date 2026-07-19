@@ -4,6 +4,7 @@ using System.IO;
 using System.Text.Json;
 using ProjectChimera.Core;               // Fixed, HeroStore, HeroId
 using ProjectChimera.Core.Definitions;
+using ProjectChimera.Combat;             // HeroXpSystem.XpCeiling (DW-12 fail-closed ceiling)
 using Xunit;
 
 namespace ProjectChimera.Sim.Tests.Definitions
@@ -198,6 +199,107 @@ namespace ProjectChimera.Sim.Tests.Definitions
             Assert.Equal(1, HeroProfileLoader.LoadInto(storeA, placed, profile));  // one minted, one skipped
             Assert.Equal(1, HeroProfileLoader.LoadInto(storeB, placed, profile));
             Assert.Equal(StartStateHash.Compute(model, storeA), StartStateHash.Compute(model, storeB));
+        }
+
+        // ── DW-12: fail-closed range/cap gate ──────────────────────────────────────────────
+
+        [Fact]
+        public void LoadInto_NegativeLevel_RejectsWholeProfile_ZeroMinted()
+        {
+            var model = new ScenarioData { Id = "s" };
+            var placed = new[] { new HeroProfileLoader.PlacedHero(0, "grommash") };
+            ulong emptyHash = StartStateHash.Compute(model, new HeroStore());
+
+            var store = new HeroStore();
+            PlayerProfile profile = HeroProfileLoader.BuildProfile("g#1", "grommash", "orc", "G", null,
+                level: -1, xp: Fixed.Zero, ShapeOf("hero.level", "hero.xp"));
+            Assert.Equal(0, HeroProfileLoader.LoadInto(store, placed, profile));
+            Assert.Equal(emptyHash, StartStateHash.Compute(model, store)); // nothing folded → empty-store hash
+        }
+
+        [Fact]
+        public void LoadInto_NegativeXp_RejectsWholeProfile_ZeroMinted()
+        {
+            var model = new ScenarioData { Id = "s" };
+            var placed = new[] { new HeroProfileLoader.PlacedHero(0, "grommash") };
+            ulong emptyHash = StartStateHash.Compute(model, new HeroStore());
+            var store = new HeroStore();
+            PlayerProfile profile = HeroProfileLoader.BuildProfile("g#1", "grommash", "orc", "G", null,
+                level: 1, xp: Fixed.FromRaw(-1), ShapeOf("hero.level", "hero.xp"));
+            Assert.Equal(0, HeroProfileLoader.LoadInto(store, placed, profile));
+            Assert.Equal(emptyHash, StartStateHash.Compute(model, store)); // nothing folded → empty-store hash
+        }
+
+        [Fact]
+        public void LoadInto_XpAboveCeiling_RejectsWholeProfile_ZeroMinted()
+        {
+            var model = new ScenarioData { Id = "s" };
+            var placed = new[] { new HeroProfileLoader.PlacedHero(0, "grommash") };
+            ulong emptyHash = StartStateHash.Compute(model, new HeroStore());
+            var store = new HeroStore();
+            PlayerProfile profile = HeroProfileLoader.BuildProfile("g#1", "grommash", "orc", "G", null,
+                level: 1, xp: Fixed.FromRaw(HeroXpSystem.XpCeiling.Raw + 1), ShapeOf("hero.level", "hero.xp"));
+            Assert.Equal(0, HeroProfileLoader.LoadInto(store, placed, profile));
+            Assert.Equal(emptyHash, StartStateHash.Compute(model, store)); // nothing folded → empty-store hash
+        }
+
+        [Fact]
+        public void LoadInto_XpExactlyAtCeiling_StillMints()
+        {
+            var placed = new[] { new HeroProfileLoader.PlacedHero(0, "grommash") };
+            var store = new HeroStore();
+            PlayerProfile profile = HeroProfileLoader.BuildProfile("g#1", "grommash", "orc", "G", null,
+                level: 1, xp: HeroXpSystem.XpCeiling, ShapeOf("hero.level", "hero.xp"));
+            Assert.Equal(1, HeroProfileLoader.LoadInto(store, placed, profile)); // ceiling is inclusive (legitimate saturation)
+        }
+
+        [Fact]
+        public void LoadInto_LevelOverPlacedMaxLevel_SkipsThatHero()
+        {
+            // Placed hero declares MaxLevel 5; a profile persisted at level 6 is skipped (0 minted for it).
+            var model = new ScenarioData { Id = "s" };
+            var placed = new[] { new HeroProfileLoader.PlacedHero(0, "grommash", MaxLevel: 5) };
+            ulong emptyHash = StartStateHash.Compute(model, new HeroStore());
+            var store = new HeroStore();
+            PlayerProfile profile = HeroProfileLoader.BuildProfile("g#1", "grommash", "orc", "G", null,
+                level: 6, xp: Fixed.Zero, ShapeOf("hero.level"));
+            Assert.Equal(0, HeroProfileLoader.LoadInto(store, placed, profile));
+            Assert.Equal(emptyHash, StartStateHash.Compute(model, store)); // over-cap hero skipped → nothing folded
+        }
+
+        [Fact]
+        public void LoadInto_ValidLevelAndXp_StillMintsOne()
+        {
+            // The valid path is unchanged: an in-range level/xp with a matching placed hero still mints exactly one row.
+            var placed = new[] { new HeroProfileLoader.PlacedHero(0, "grommash", MaxLevel: 5) };
+            var store = new HeroStore();
+            PlayerProfile profile = HeroProfileLoader.BuildProfile("g#1", "grommash", "orc", "G", null,
+                level: 3, xp: SampleXp, ShapeOf("hero.level", "hero.xp"));
+            Assert.Equal(1, HeroProfileLoader.LoadInto(store, placed, profile));
+        }
+
+        // ── DW-48: a missing "slot" key deserializes to -1 (not 0), explicit slot round-trips ──
+
+        [Fact]
+        public void ProfileInventoryItem_MissingSlotKey_DeserializesToMinusOne()
+        {
+            ProfileInventoryItem item =
+                JsonSerializer.Deserialize<ProfileInventoryItem>("{\"item_id\":\"ring\",\"charges\":2}");
+            Assert.Equal("ring", item.ItemId);
+            Assert.Equal(2, item.Charges);
+            Assert.Equal(-1, item.Slot);   // absent key → legacy sentinel, NOT default(int)=0
+        }
+
+        [Fact]
+        public void ProfileInventoryItem_ExplicitSlot_RoundTripsFaithfully()
+        {
+            var original = new ProfileInventoryItem("ring", 2, 3);
+            string json = JsonSerializer.Serialize(original);
+            Assert.Contains("\"slot\":3", json);   // slot always written, in-order
+            ProfileInventoryItem back = JsonSerializer.Deserialize<ProfileInventoryItem>(json);
+            Assert.Equal(3, back.Slot);
+            Assert.Equal("ring", back.ItemId);
+            Assert.Equal(2, back.Charges);
         }
 
         // ── BuildProfile captures exactly the manifest-shape keys ──────────────────────────

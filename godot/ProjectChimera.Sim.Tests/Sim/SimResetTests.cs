@@ -471,6 +471,63 @@ namespace ProjectChimera.Sim.Tests.Sim
             Assert.Equal(SampleXp.Raw, xp.Raw);
         }
 
+        // ── DW-13 (review): the applier→ownerSlot wiring seam, exercised against an applier-PRODUCED placed list ──
+
+        [Fact]
+        public void Applier_RecordsPlacedHeroOwnerFaction_AndOwnerSlotFilterMintsLocalHeroOnly()
+        {
+            // The DW-13 filter is only correct if the applier populates PlacedHero.OwnerFaction from the scenario slot
+            // AND the production ownerSlot (LocalFaction) matches it. The fixture places the champion at slot 0 → Player1,
+            // mirroring an offline skirmish (LocalFaction defaults to Player1). Verified against the applier's real output,
+            // not a hand-built PlacedHero, so a drift in ScenarioApplier's slot→faction mapping would fail here.
+            var (_, applier, _) = BuildHeroApplied();
+            Assert.NotEmpty(applier.LastAppliedHeroes);
+            Assert.Equal(Faction.Player1, applier.LastAppliedHeroes[0].OwnerFaction); // slot 0 → Player1
+
+            PlayerProfile profile = BuildHeroProfile(level: 1, xp: Fixed.Zero);
+
+            // ownerSlot = the owning (local) slot → mints the local player's placed hero.
+            var localStore = new HeroStore();
+            Assert.Equal(1, HeroProfileLoader.LoadInto(localStore, applier.LastAppliedHeroes, profile,
+                                                       ownerSlot: Faction.Player1));
+            // ownerSlot = a different slot → the placement is owner-filtered out → 0 minted (no cross-slot mint).
+            var enemyStore = new HeroStore();
+            Assert.Equal(0, HeroProfileLoader.LoadInto(enemyStore, applier.LastAppliedHeroes, profile,
+                                                       ownerSlot: Faction.Player2));
+        }
+
+        // ── DW-15 (review): preserve routes through the manifest shape, so it carries ONLY the selected attributes ──
+
+        [Fact]
+        public void Reset_PreserveThroughPartialManifestShape_CarriesOnlySelectedAttributes()
+        {
+            // DW-15: the preserve snapshot now flows through PersistenceManifest.DeriveProfileShape() (the same seam Save
+            // uses), so it honors WHICH attributes the manifest selects. A manifest carrying only hero.level re-mints the
+            // grown level but DROPS xp — the old hardcoded-Values preserve path would have carried both regardless.
+            var (host, applier, model) = BuildHeroApplied();
+            PlayerProfile deployed = BuildHeroProfile(level: 1, xp: Fixed.Zero);
+            HeroProfileLoader.LoadInto(host.Heroes, applier.LastAppliedHeroes, deployed);
+            HeroId id = HeroProfileLoader.MintId(deployed);
+            SimulateHeroGrowth(host.Heroes, id, level: 5, xp: SampleXp);
+
+            Assert.True(TryGetLiveHero(host.Heroes, id, out int snapLevel, out Fixed snapXp));
+            Assert.Equal(5, snapLevel);
+
+            host.ClearForReset();
+            ApplyValidated(applier, model);
+
+            // Build the preserve snapshot through a manifest shape that selects ONLY hero.level (same ProfileId → same id).
+            var levelOnly = new PersistenceManifest { Enabled = true };
+            levelOnly.Attributes.Add("hero.level");
+            PlayerProfile snapProfile = HeroProfileLoader.BuildProfile("champion#1", "champion", "alpha", "Champion", null,
+                                                                       snapLevel, snapXp, levelOnly.DeriveProfileShape());
+            HeroProfileLoader.LoadInto(host.Heroes, applier.LastAppliedHeroes, snapProfile);
+
+            Assert.True(TryGetLiveHero(host.Heroes, id, out int level, out Fixed xp));
+            Assert.Equal(5, level);               // hero.level IS in the shape → carried
+            Assert.Equal(Fixed.Zero.Raw, xp.Raw); // hero.xp omitted from the shape → NOT preserved
+        }
+
         // ── I/O matrix: invalid edited scenario blocks Play (fail-closed re-validation) ─────────
 
         [Fact]

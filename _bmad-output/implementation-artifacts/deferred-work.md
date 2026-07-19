@@ -440,14 +440,16 @@ origin: migrated from legacy ledger ("Deferred from: dev of story-3.4 (2026-07-0
 source_spec: `_bmad-output/implementation-artifacts/spec-3-9-offline-hero-persistence-rail-save-load-hero-picker-deterministic-init-time-apply.md`
 location: profiles.json
 reason: summary: On-disk PlayerProfile level/xp values are minted into HeroStore with no range/cap validation — a cheat/invalid-state vector once a runtime consumer exists. evidence: HeroProfileLoader.LoadInto trusts the raw ints in profiles.json verbatim; a hand-edited negative level or absurd xp is minted and folded into StartStateHash. Gameplay-inert until Story 3.13 consumes level/xp (determinism holds regardless), so the fail-closed value gate belongs with that consumer.
-status: open
+status: done 2026-07-19
+resolution: resolved by sweep bundle dw-hero-profile-load-hardening
 
 ### DW-13: The applied hero profile is not slot/owner-scoped — LoadInto mints into the first matching placed hero regardless of which player slot owns it.
 origin: migrated from legacy ledger ("Deferred from: dev of story-3.4 (2026-07-06)"), 2026-07-08
 source_spec: `_bmad-output/implementation-artifacts/spec-3-9-offline-hero-persistence-rail-save-load-hero-picker-deterministic-init-time-apply.md`
 location: n/a
 reason: summary: The applied hero profile is not slot/owner-scoped — LoadInto mints into the first matching placed hero regardless of which player slot owns it. evidence: HeroProfileLoader.LoadInto matches on UnitId == HeroDefId across all placed heroes (lowest entity id wins; duplicates skip via Mint -1). In a mirror/multi-slot scenario the deploying human's hero is assumed to be the first placed. Ownership scoping is unspecified by the intent and gameplay-inert today.
-status: open
+status: done 2026-07-19
+resolution: resolved by sweep bundle dw-hero-profile-load-hardening
 decision: 2026-07-17 Scope to owning slot — Thread the owning player slot into LoadInto and mint only into that slot's placed hero.
 decision: 2026-07-16 Scope to owning slot — Thread the owning player slot into LoadInto and mint only into that slot's placed hero.
 
@@ -463,7 +465,8 @@ origin: migrated from legacy ledger ("Deferred from: dev of story-3.4 (2026-07-0
 source_spec: `_bmad-output/implementation-artifacts/spec-3-10-added-edit-play-round-trip-loop-no-restart-playtest.md`
 location: n/a
 reason: summary: The preserve-hero-progress branch of the Edit↔Play reset always re-mints hero.level + hero.xp, ignoring which attributes the scenario's Story-3.8 PersistenceManifest actually selects to carry forward. evidence: MainScene.ResetToAuthoredStart's preserve path builds a snapshot PlayerProfile with hardcoded hero.level/hero.xp Values, not manifest.DeriveProfileShape() keys. Inert pre-3.13 (only level/xp are eligible today and xp doesn't grow at runtime), so it is gameplay-neutral now; the moment Story 3.13 adds runtime XP or the manifest carries more eligible attributes, the preserve path must route through the manifest shape (the same seam BuildProfile uses on Save).
-status: open
+status: done 2026-07-19
+resolution: resolved by sweep bundle dw-hero-profile-load-hardening
 
 ### DW-16: The preserve-hero-progress branch silently loses a hero's progress if that hero died during the playtest (no live HeroStore row to snapshot), falling through to the authored base values.
 origin: migrated from legacy ledger ("Deferred from: dev of story-3.4 (2026-07-06)"), 2026-07-08
@@ -735,7 +738,8 @@ origin: migrated from legacy ledger ("Deferred from: follow-up review of story-3
 source_spec: `_bmad-output/implementation-artifacts/spec-3-16-item-authoring-shop-buildings-inventory-ui.md`
 location: n/a
 reason: summary: `ProfileInventoryItem.Slot` defaults to `-1` in its C# constructor, but System.Text.Json passes `default(int)=0` (NOT the `-1` default) for a missing `"slot"` key — confirmed empirically: `JsonSerializer.Deserialize<ProfileInventoryItem>("{\"item_id\":\"ring\",\"charges\":2}").Slot == 0`, and `LocalProfileSource.JsonOptions` adds no special handling. So a slot-less "legacy" inventory profile would deserialize every item to `Slot=0`, defeating the documented `Slot<0` contiguous-fallback in `HeroProfileLoader.ReMintInventory` and collapsing a multi-item loadout onto slot 0 (duplicate-slot skip drops all but the first). evidence: Confirmed real by an exploratory test (removed — it cannot assert the documented `-1` without a code fix, and asserting `0` would enshrine the bug). Defensive-only today: hero-inventory persistence is NEW in Story 3.16 (all real captures set `Slot` explicitly via `CaptureInventory`), so no slot-less profile data exists — the `-1` fallback branch is reachable only through the internal 2-arg `new(id, charges)` ctor (tests) and future hand-edited JSON. A reliable fix (nullable-backed `int? Slot` mapping absent→-1, or a small converter) ripples through `CaptureInventory`/`ReMintInventory` and the persistence tests, exceeding safe unattended scope. Closure: make missing-slot JSON map to `-1` (nullable-backed property or converter) and pin it with the round-trip test. Flagged by the Blind Hunter review layer (#7).
-status: open
+status: done 2026-07-19
+resolution: resolved by sweep bundle dw-hero-profile-load-hardening
 
 ### DW-49: The shop Buy button (`CommandCardSystem.RefreshShopButtons`) is enabled on affordability + "an owned hero is in range" only; it never consults the resolved buyer's free-slot state, and `FindNearestOwnedHero` always targets the single NEAREST owned hero. If the nearest in-range hero has a full inventory but a farther in-range owned hero has room, the Buy button lights and priced, yet `BuyItemCommand`'s free-slot guard rejects (OrderDenied) — an affordable, in-range Buy that silently does nothing.
 origin: migrated from legacy ledger ("Deferred from: follow-up review of story-3.16 (2026-07-08)"), 2026-07-08

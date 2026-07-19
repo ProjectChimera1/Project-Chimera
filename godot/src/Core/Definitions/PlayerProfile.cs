@@ -1,5 +1,7 @@
 #nullable enable
+using System;
 using System.Collections.Generic;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 using ProjectChimera.Core; // Fixed
 
@@ -20,10 +22,55 @@ namespace ProjectChimera.Core.Definitions
     /// <para>Story 3.16 (review): <c>Slot</c> is the 0-based inventory grid index the item occupied at Save, so re-mint is
     /// SLOT-FAITHFUL (an item in slot 2 comes back in slot 2, not repacked to slot 1). Defaults to <c>-1</c> for a legacy
     /// profile that predates slot capture — re-mint then falls back to the first free slot (the old contiguous behaviour).</para>
+    /// <para>DW-48: the type-level <see cref="ProfileInventoryItemJsonConverter"/> deserializes a MISSING <c>"slot"</c> key
+    /// to <c>-1</c> (the legacy sentinel), not System.Text.Json's <c>default(int)=0</c> — a positional record's default
+    /// parameter value is NOT honoured for an absent JSON property, so without the converter a slot-less legacy loadout
+    /// would collapse every item onto slot 0. The serialized form is unchanged (<c>item_id</c>, <c>charges</c>, <c>slot</c>,
+    /// in that order, <c>slot</c> always written), so no golden re-baseline is required.</para>
+    [JsonConverter(typeof(ProfileInventoryItemJsonConverter))]
     public readonly record struct ProfileInventoryItem(
         [property: JsonPropertyName("item_id")] string ItemId,
         [property: JsonPropertyName("charges")] int Charges,
         [property: JsonPropertyName("slot")] int Slot = -1);
+
+    /// <summary>DW-48: deserialize a <see cref="ProfileInventoryItem"/> so an ABSENT <c>"slot"</c> key becomes <c>-1</c>
+    /// (backed by a nullable that stays null → <c>-1</c>), never <c>default(int)=0</c>. Serialization stays byte-identical
+    /// to the default positional-record shape: <c>item_id</c>, <c>charges</c>, <c>slot</c> in that order, <c>slot</c> always
+    /// written — so a round-trip of an explicit slot is faithful and no existing on-disk profile changes bytes.</summary>
+    internal sealed class ProfileInventoryItemJsonConverter : JsonConverter<ProfileInventoryItem>
+    {
+        public override ProfileInventoryItem Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        {
+            if (reader.TokenType != JsonTokenType.StartObject) throw new JsonException();
+            string itemId = "";
+            int charges = 0;
+            int? slot = null; // absent key stays null → -1 (never default(int)=0)
+            while (reader.Read())
+            {
+                if (reader.TokenType == JsonTokenType.EndObject) break;
+                if (reader.TokenType != JsonTokenType.PropertyName) throw new JsonException();
+                string name = reader.GetString()!;
+                reader.Read();
+                switch (name)
+                {
+                    case "item_id": itemId = reader.GetString() ?? ""; break;
+                    case "charges": charges = reader.GetInt32(); break;
+                    case "slot":    slot = reader.TokenType == JsonTokenType.Null ? (int?)null : reader.GetInt32(); break;
+                    default: reader.Skip(); break;
+                }
+            }
+            return new ProfileInventoryItem(itemId, charges, slot ?? -1);
+        }
+
+        public override void Write(Utf8JsonWriter writer, ProfileInventoryItem value, JsonSerializerOptions options)
+        {
+            writer.WriteStartObject();
+            writer.WriteString("item_id", value.ItemId);
+            writer.WriteNumber("charges", value.Charges);
+            writer.WriteNumber("slot", value.Slot);
+            writer.WriteEndObject();
+        }
+    }
 
     /// <summary>
     /// A saved hero, offline (Story 3.9, AR-12 M2 / FR-7b). The VALUE-bearing companion to Story 3.8's shape-only
