@@ -42,15 +42,11 @@ namespace ProjectChimera.UI
         private FactionDefinition?[]   _slotFactionDefs = System.Array.Empty<FactionDefinition?>();
         private Action<PlayerProfile?> _launch = _ => { };
 
-        /// <summary>Story 3.13 (D6): supplies the harvested end-of-match Level/Xp for a hero unit id — <c>Has</c> true
-        /// when the last playtest grew that hero, so Save/Overwrite persist the REAL grown values instead of the authored
-        /// placeholders. Wired by <c>HeroPickerPhase</c> to read the <c>SceneContext</c> harvest; null ⇒ placeholders.</summary>
-        public System.Func<string, (bool Has, int Level, Core.Fixed Xp)>? HeroProgressProvider;
-
-        /// <summary>Story 3.16: supplies the harvested carried inventory (item-def id + charges pairs) for a hero unit id
-        /// — so Save/Overwrite persist the REAL loadout the hero ended the last playtest with (when the manifest carries
-        /// <c>hero.inventory</c>). Wired by <c>HeroPickerPhase</c>; null / no capture ⇒ an empty loadout is saved.</summary>
-        public System.Func<string, IReadOnlyList<ProfileInventoryItem>?>? HeroInventoryProvider;
+        /// <summary>Story 3.13 (D6) / Story 3.16 / DW-27 / DW-32: supplies the end-of-match hero harvest (live Level/Xp +
+        /// carried loadout) captured on return-to-Edit — so Save/Overwrite persist the REAL grown values + loadout instead
+        /// of the authored placeholders. Wired by <c>HeroPickerPhase</c> as a live-read closure over <c>SceneContext.Harvest</c>;
+        /// null / <c>None</c> ⇒ the authored fallbacks. The has-vs-fallback rule lives in <see cref="HeroHarvestResolver"/>.</summary>
+        public System.Func<HeroHarvestResolver.HeroHarvest>? HarvestProvider;
 
         // ── Nodes ──
         private CanvasLayer     _canvas   = null!;
@@ -384,16 +380,11 @@ namespace ProjectChimera.UI
 
         /// <summary>Story 3.13 (D6): the harvested end-of-match Level/Xp for <paramref name="heroDefId"/> if the last
         /// playtest grew that hero, else the supplied fallback (authored base for a fresh Save, or the profile's own
-        /// values for Overwrite). Keeps Save/Overwrite reading real grown values without coupling the picker to HeroStore.</summary>
-        private (int Level, Fixed Xp) ResolveHeroProgress(string heroDefId, int fallbackLevel, Fixed fallbackXp)
-        {
-            if (HeroProgressProvider != null)
-            {
-                (bool has, int level, Fixed xp) = HeroProgressProvider(heroDefId);
-                if (has) return (level, xp);
-            }
-            return (fallbackLevel, fallbackXp);
-        }
+        /// values for Overwrite). Takes the caller's already-captured <paramref name="h"/> so Level/Xp and inventory are
+        /// resolved against the SAME harvest read (one provider invocation per Save/Overwrite, no read-skew).</summary>
+        private static (int Level, Fixed Xp) ResolveHeroProgress(in HeroHarvestResolver.HeroHarvest h, string heroDefId,
+                                                                 int fallbackLevel, Fixed fallbackXp)
+            => HeroHarvestResolver.ResolveProgress(in h, heroDefId, fallbackLevel, fallbackXp);
 
         private void OnSavePressed()
         {
@@ -406,12 +397,13 @@ namespace ProjectChimera.UI
 
             // Story 3.13 (D6): source the harvested end-of-match Level/Xp for this hero (if the last playtest grew it),
             // else the authored base (level 1, 0 XP). Routed through the manifest shape → BuildProfile.
-            (int level, Fixed xp) = ResolveHeroProgress(unitId, fallbackLevel: 1, fallbackXp: Fixed.Zero);
+            HeroHarvestResolver.HeroHarvest h = HarvestProvider?.Invoke() ?? HeroHarvestResolver.HeroHarvest.None;
+            (int level, Fixed xp) = ResolveHeroProgress(in h, unitId, fallbackLevel: 1, fallbackXp: Fixed.Zero);
             string profileId = _source.NextProfileId(unitId);
             PlayerProfile profile = HeroProfileLoader.BuildProfile(
                 profileId, unitId, factionId, display, sig, level, xp,
                 _scenario.PersistenceManifest.DeriveProfileShape(),
-                HeroInventoryProvider?.Invoke(unitId)); // Story 3.16: capture the live loadout when the shape carries hero.inventory
+                HeroHarvestResolver.ResolveInventory(in h, unitId)); // Story 3.16: capture the live loadout when the shape carries hero.inventory
             _source.Save(profile);
 
             _toastHost.Show("Saved", $"{display} saved as a new hero slot.", ChimeraToastHost.ToastVariant.Ok);
@@ -432,11 +424,12 @@ namespace ProjectChimera.UI
             {
                 // Story 3.13 (D6): rebuild the SAME profile id, capturing the harvested end-of-match Level/Xp for this
                 // hero (if the last playtest grew it), else the profile's own values — through the manifest shape.
-                (int level, Fixed xp) = ResolveHeroProgress(target.HeroDefId, fallbackLevel: target.Level, fallbackXp: target.Xp);
-                // Story 3.16 review: the provider returns null when the harvested hero != this overwrite target — mirror the
+                HeroHarvestResolver.HeroHarvest h = HarvestProvider?.Invoke() ?? HeroHarvestResolver.HeroHarvest.None;
+                (int level, Fixed xp) = ResolveHeroProgress(in h, target.HeroDefId, fallbackLevel: target.Level, fallbackXp: target.Xp);
+                // Story 3.16 review: the resolver returns null when the harvested hero != this overwrite target — mirror the
                 // level/xp fallback and keep the target's PREVIOUSLY-SAVED loadout, rather than wiping it to an empty list.
                 IReadOnlyList<ProfileInventoryItem>? inventory =
-                    HeroInventoryProvider?.Invoke(target.HeroDefId) ?? target.Inventory;
+                    HeroHarvestResolver.ResolveInventory(in h, target.HeroDefId) ?? target.Inventory;
                 PlayerProfile rebuilt = HeroProfileLoader.BuildProfile(
                     target.ProfileId, target.HeroDefId, target.FactionId, target.DisplayName, target.SignatureAbility,
                     level, xp, _scenario.PersistenceManifest.DeriveProfileShape(),

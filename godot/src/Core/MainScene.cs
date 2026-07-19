@@ -1684,36 +1684,18 @@ namespace ProjectChimera.Core
         {
             // 1. Snapshot the live deployed hero's Level/Xp BEFORE anything clears (preserve path only). Pre-3.13 this
             //    equals the profile's authored values, but the seam is exercised now so Story 3.13 hooks in unchanged.
-            bool haveSnapshot = false;
-            int  snapLevel = 0;
-            Fixed snapXp = Fixed.Zero;
-            // Story 3.10 preserve-snapshot AND Story 3.13 (D6) end-of-match harvest share this seam: read the deployed
-            // hero's LIVE Level/Xp BEFORE the store is cleared. The snapshot re-mints grown values in PersistenceTestMode;
-            // the harvest (always, when a hero is deployed) stashes them into SceneContext so the picker's Save/Overwrite
-            // persists the real grown values through the manifest shape.
-            if (_ctx.PendingHeroProfile != null)
-            {
-                HeroId targetId = Definitions.HeroProfileLoader.MintId(_ctx.PendingHeroProfile);
-                HeroStore heroes = _host.Heroes;
-                for (int slot = 0; slot < heroes.Count; slot++)
-                {
-                    if (!heroes.Alive[slot] || heroes.Id[slot] != targetId) continue;
-                    haveSnapshot = true;
-                    snapLevel    = heroes.Level[slot];
-                    snapXp       = heroes.Xp[slot];
-                    // Story 3.13 (D6): harvest the live values for the picker Save/Overwrite (unconditional on preserve mode).
-                    _ctx.HasHarvestedHeroProgress = true;
-                    _ctx.HarvestedHeroDefId       = _ctx.PendingHeroProfile.HeroDefId;
-                    _ctx.HarvestedHeroLevel       = snapLevel;
-                    _ctx.HarvestedHeroXp          = snapXp;
-                    // Story 3.16: harvest the live carried inventory (as item-def ids + charges) for the picker Save/Overwrite.
-                    _ctx.HarvestedHeroInventory   = Definitions.HeroProfileLoader.CaptureInventory(
-                        heroes, _host.Items, _host.ItemRegistry, slot);
-                    break;
-                }
-            }
-            // Story 3.10: the snapshot re-mint is gated on the persistence-test mode; the harvest above is not.
-            if (!preserveHeroProgress) haveSnapshot = false;
+            // DW-27/DW-32: the plain-data capture is lifted into the Godot-free HeroHarvestResolver so the has-vs-fallback
+            // decision is Tier-1 tested. Capture keys on the persisted Alive row (NOT Alive3_14) so a fallen hero stays
+            // harvestable. The resolver reproduces the old inline scan byte-for-byte: None (Has=false) when no hero is
+            // deployed or no live row matches. The harvest is stashed on SceneContext so the picker's Save/Overwrite reads
+            // the REAL grown values (through the manifest shape); the snapshot re-mint below is additionally gated on the
+            // persistence-test mode.
+            var harvest = Definitions.HeroHarvestResolver.Capture(
+                _host.Heroes, _host.Items, _host.ItemRegistry, _ctx.PendingHeroProfile);
+            _ctx.Harvest = harvest;
+            bool  haveSnapshot = harvest.Has && preserveHeroProgress;
+            int   snapLevel    = harvest.Level;
+            Fixed snapXp       = harvest.Xp;
 
             // 2. Fail-closed re-validation of the edited scenario (the Validated<> proof is not retained past boot).
             //    Validate BEFORE the clear so an invalid edit leaves the world entirely unchanged (AC: fail closed).
@@ -1837,7 +1819,7 @@ namespace ProjectChimera.Core
                 Definitions.PlayerProfile snapProfile = shape != null
                     ? Definitions.HeroProfileLoader.BuildProfile(
                         pending.ProfileId, pending.HeroDefId, pending.FactionId, pending.DisplayName, pending.SignatureAbility,
-                        snapLevel, snapXp, shape, _ctx.HarvestedHeroInventory ?? pending.Inventory)
+                        snapLevel, snapXp, shape, harvest.Inventory ?? pending.Inventory)
                     : new Definitions.PlayerProfile
                     {
                         ProfileId        = pending.ProfileId,
@@ -1850,7 +1832,10 @@ namespace ProjectChimera.Core
                             new("hero.level", snapLevel),
                             new("hero.xp", snapXp.Raw),
                         },
-                        Inventory        = _ctx.HarvestedHeroInventory ?? pending.Inventory,
+                        // harvest.Inventory is a captured List (CaptureInventory) or null; null ⇒ fall back to pending (a List) —
+                        // the same `HarvestedHeroInventory ?? pending.Inventory` result as pre-extraction, now cast-free (the
+                        // harvest carries the concrete List type) and identical to the shape branch's fallback above.
+                        Inventory        = harvest.Inventory ?? pending.Inventory,
                     };
                 Definitions.HeroProfileLoader.LoadInto(_host.Heroes, _applier.LastAppliedHeroes, snapProfile, _logSink, _host.World,
                     _host.Items, _host.ItemRegistry, _host.Modifiers, _host.ItemSys.UsableSlots,

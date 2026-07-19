@@ -565,7 +565,8 @@ origin: migrated from legacy ledger ("Deferred from: code review of story-3.13 (
 source_spec: `_bmad-output/implementation-artifacts/spec-3-13-heroxpsystem-kill-credit-xp-leveling-stat-growth-runtime.md`
 location: MainScene.cs
 reason: summary: The end-of-match harvest of live `HeroStore.Level`/`Xp` into the deployed `PlayerProfile` (`MainScene.ResetToAuthoredStart` capture) and the picker Save/Overwrite rewire (`HeroPickerOverlay.ResolveHeroProgress`) have NO automated coverage — a wrong-way change (e.g. dropping the harvested value and re-persisting the level-1/0 placeholder) would silently regress AC3 with the whole suite green. evidence: These live in `src/UI`/`MainScene` (Godot-coupled Tier-2), outside the Godot-free `ProjectChimera.Sim.Tests`; grep for `ResolveHeroProgress`/`Harvested`/`HeroPickerOverlay` across the test project returns nothing. The Tier-1 `HeroXpTests.Discard_ReMintsAuthoredValues` covers the discard branch, and `HeroProfilePersistenceTests` covers `BuildProfile`+manifest-shape, but the live-HeroStore→profile harvest capture (plain data logic at `MainScene.cs:~1198`) is not lifted into a testable seam. Extracting a Godot-free harvest resolver + unit-testing "Has → uses harvested, not fallback" would close it. Flagged by the Verification-Gap review layer.
-status: open
+status: done 2026-07-19
+resolution: resolved by sweep bundle dw-hero-harvest-resolver-extraction
 
 ### DW-28: A pathological large `Base*` stat combined with (validator-capped) per-level growth can still overflow an `Effective*` stat — the pre-existing unsaturated `ModifierSystem.AccumulateBonus` (`Fixed +=`, no clamp) effective-stat accumulation class, not unique to hero growth. Story 3.13 capped the growth CONTRIBUTION (`*_per_level < 256`, ≤99 stacks) so realistic authoring is safe; the residual requires an already-extreme base.
 origin: migrated from legacy ledger ("Deferred from: code review of story-3.13 (2026-07-08)"), 2026-07-08
@@ -606,7 +607,8 @@ origin: migrated from legacy ledger ("Deferred from: code review of story-3.14 (
 source_spec: `_bmad-output/implementation-artifacts/spec-3-14-hero-death-revival.md`
 location: n/a
 reason: summary: AC3's "manifest-persisted attributes still finalize per FR-7a" for a fallen (disabled-revival or awaiting) hero has no Tier-1 end-to-end coverage — the harvest lives in the Godot-coupled `MainScene.ResetToAuthoredStart`/`HeroPickerOverlay`, outside the Godot-free test project. Only the sim precondition (the row stays `HeroStore.Alive` so it remains harvestable) is asserted. evidence: `HeroRevivalTests` assert `Heroes.Alive[slot]` stays true after death (both enabled-awaiting and disabled branches), which is the sim guarantee the harvest depends on, but the harvest→profile→manifest-shape path is the same pre-existing Godot-coupled seam already deferred in the story-3.13 review (no headless harness). Extracting a Godot-free harvest resolver would close both. Flagged by the Verification-Gap + Intent-Alignment review layers.
-status: open
+status: done 2026-07-19
+resolution: resolved by sweep bundle dw-hero-harvest-resolver-extraction
 
 ## Deferred from: follow-up code review of story-3.14 (2026-07-08)
 

@@ -134,16 +134,14 @@ namespace ProjectChimera.Core.Bootstrap
         /// kept). Pre-3.13 there is no runtime XP growth so both branches coincide — this is the tested seam Story 3.13
         /// consumes. Sourced by <c>WinConditionPhase</c> for the <c>ResetToAuthoredStart(preserveHeroProgress)</c> call.</summary>
         public bool PersistenceTestMode;
-        // ── Story 3.13 (D6): end-of-match harvest of the deployed hero's live Level/Xp, captured before HeroStore is
-        //    cleared on return-to-Edit, so the hero picker's Save/Overwrite persists the REAL grown values (routed
-        //    through the manifest shape) instead of the authored placeholders. Keyed by the deployed hero's unit id. ─
-        public bool                HasHarvestedHeroProgress;
-        public string?             HarvestedHeroDefId;
-        public int                 HarvestedHeroLevel;
-        public Fixed               HarvestedHeroXp;
-        // ── Story 3.16: the deployed hero's carried inventory (item-def id + charges), harvested at the same seam so the
-        //    picker Save/Overwrite persists the REAL loadout when the manifest carries hero.inventory. Null ⇒ empty. ─
-        public System.Collections.Generic.List<Definitions.ProfileInventoryItem>? HarvestedHeroInventory;
+        // ── Story 3.13 (D6) / Story 3.16 / DW-27 / DW-32: end-of-match harvest of the deployed hero's live Level/Xp +
+        //    carried inventory, captured (by the Godot-free HeroHarvestResolver) before HeroStore is cleared on
+        //    return-to-Edit, so the hero picker's Save/Overwrite persists the REAL grown values + loadout (routed through
+        //    the manifest shape) instead of the authored placeholders. A single value-typed carrier — the has-vs-heroDefId
+        //    match now lives inside the resolver (ResolveProgress/ResolveInventory), read live by the picker via
+        //    HeroPickerPhase's HarvestProvider. Defaults to None (Has=false), so an un-harvested picker session falls
+        //    back exactly as before. ─
+        public Definitions.HeroHarvestResolver.HeroHarvest Harvest = Definitions.HeroHarvestResolver.HeroHarvest.None;
         public AI.LLMService          LlmService     = null!;
         public Label?                 ToastLabel;
 

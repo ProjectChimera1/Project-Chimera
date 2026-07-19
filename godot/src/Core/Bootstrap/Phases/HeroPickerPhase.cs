@@ -31,15 +31,11 @@ namespace ProjectChimera.Core.Bootstrap
             _ctx.HeroPicker = new HeroPickerOverlay();
             _ctx.Scene.AddChild(_ctx.HeroPicker);
             _ctx.HeroPicker.Initialize(_ctx.Scenario, source, _ctx.SlotFactionDefs, Launch);
-            // Story 3.13 (D6): let Save/Overwrite read the harvested end-of-match Level/Xp for a hero unit id (captured
-            // into SceneContext on return-to-Edit before HeroStore is cleared), so the picker persists real grown values.
-            _ctx.HeroPicker.HeroProgressProvider = heroDefId =>
-                (_ctx.HasHarvestedHeroProgress && _ctx.HarvestedHeroDefId == heroDefId,
-                 _ctx.HarvestedHeroLevel, _ctx.HarvestedHeroXp);
-            // Story 3.16: supply the harvested carried inventory for the same hero so Save/Overwrite persists the loadout.
-            _ctx.HeroPicker.HeroInventoryProvider = heroDefId =>
-                (_ctx.HasHarvestedHeroProgress && _ctx.HarvestedHeroDefId == heroDefId)
-                    ? _ctx.HarvestedHeroInventory : null;
+            // Story 3.13 (D6) / Story 3.16 / DW-27 / DW-32: let Save/Overwrite read the harvested end-of-match Level/Xp +
+            // loadout for a hero unit id (captured into SceneContext.Harvest on return-to-Edit before HeroStore is cleared),
+            // so the picker persists real grown values. The harvest is captured long AFTER picker init, so hand the picker a
+            // live-read closure — not a snapshot — over the single value-typed carrier (default None ⇒ falls back as before).
+            _ctx.HeroPicker.HarvestProvider = () => _ctx.Harvest;
 
             GD.Print("[HeroPicker] Initialized — offline Play-Skirmish hero picker (shown when the scenario's persistence manifest is enabled).");
         }
