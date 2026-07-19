@@ -502,7 +502,8 @@ origin: migrated from legacy ledger ("Deferred from: follow-up code review of st
 source_spec: `_bmad-output/implementation-artifacts/spec-3-10-added-edit-play-round-trip-loop-no-restart-playtest.md`
 location: n/a
 reason: summary: ScenarioApplier.ApplyFallback does not clear _lastAppliedHeroes (only Apply does), so the fallback reset path re-mints against whatever hero records a prior Apply left — an asymmetry the new reset newly depends on. evidence: The reset re-mint reads ScenarioApplier.LastAppliedHeroes after re-applying; Apply clears the list at its top but ApplyFallback does not, and ClearForReset does not touch it (it lives on the applier, not a store). Safe today because a given applier consistently uses one path per session (fallback path never had a prior Apply populate the list), so the list is empty in the fallback reset. A one-line clear at the top of ApplyFallback (or in ClearForReset) would make the invariant symmetric and future-proof against any mixed Apply→ApplyFallback flow.
-status: open
+status: done 2026-07-19
+resolution: already resolved: Story 7.7 retired the separate ApplyFallback writer — ScenarioApplier.cs:386-389 documents every fallback boot now routes Apply(Validate(BuildFallbackMirror()).Value); Apply clears _lastAppliedHeroes at :142, so the asymmetry is gone (SimResetTests.cs:507-509 confirms fallback goes through the validated Apply path).
 
 ### DW-22: The offlineEditorLoop guard that gates the destructive reset away from online/replay transitions has zero automated coverage — the highest-blast-radius decision in the change is verified only by inspection.
 origin: migrated from legacy ledger ("Deferred from: follow-up code review of story-3.10 (2026-07-07)"), 2026-07-08
@@ -1368,7 +1369,8 @@ source_spec: `_bmad-output/implementation-artifacts/spec-5-9-added-your-first-sc
 location: `godot/src/UI/OnboardingPanel.cs` (`PANEL_H = 360` constant vs the `CustomMinimumSize` height of 0 and the `BottomLeft`-anchored `Position.Y = -(PANEL_H + MARGIN)`).
 reason: summary: the overlay is bottom-left anchored at a fixed vertical offset computed from `PANEL_H = 360`, but its actual height is driven by content (step body length + wrapped note label + footer). On a step whose content exceeds ~360px the panel can extend below the intended bottom (footer Back/Next potentially off the viewport edge); on shorter steps it leaves a gap. Flagged by the Blind Hunter layer. Not verified to actually clip on any current step (step bodies are short), so tracked as a robustness/latent-layout item rather than a confirmed clip. LOW consequence.
 closure: when onboarding layout is next touched, either size the anchor offset from the panel's measured height (`Size.Y` after `ResetSize`) or cap the body in a `ScrollContainer` so the footer is always reachable regardless of content length. Low priority.
-status: open
+status: done 2026-07-19
+resolution: already resolved: OnboardingPanel.cs:211-223 now wraps the per-step body in a ScrollContainer (CustomMinimumSize 0,150; HorizontalScrollMode Disabled) with the Back/Next footer added AFTER it in the root VBox (:231-253) — exactly the recommended fix, so long content scrolls and the footer never clips.
 
 ### DW-137: Editor-placed map items (Story 3.15) are not synced into `ScenarioData` and are lost on save/reload and F5
 source_spec: `_bmad-output/implementation-artifacts/spec-6-1-verify-harden-the-creation-suite-editor-terrain-sculpt-paint-entity-start-resource-win-placement-to-ship-bar.md`
