@@ -17,6 +17,15 @@
     "label": "Separate content-lint step",
     "resolution": ""
   },
+  "DW-113": {
+    "answered_at": "2026-07-20",
+    "bundle_name": "",
+    "effect": "build",
+    "intent": "Show a 'discard unsaved wizard progress?' confirmation before ResetWizard() runs on a re-open that finds non-default draft state.",
+    "key": "1",
+    "label": "Add discard confirmation",
+    "resolution": ""
+  },
   "DW-130": {
     "answered_at": "2026-07-19",
     "bundle_name": "",
