@@ -26,6 +26,15 @@
     "label": "Add discard confirmation",
     "resolution": ""
   },
+  "DW-118": {
+    "answered_at": "2026-07-20",
+    "bundle_name": "",
+    "effect": "build",
+    "intent": "Have OnFinishPressed check ClearStaleHeroReference's return and show a status note ('hero selection was cleared') before proceeding.",
+    "key": "1",
+    "label": "Inform and proceed",
+    "resolution": ""
+  },
   "DW-130": {
     "answered_at": "2026-07-19",
     "bundle_name": "",
