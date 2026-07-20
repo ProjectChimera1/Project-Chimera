@@ -206,6 +206,15 @@
     "label": "Add edge undo",
     "resolution": ""
   },
+  "DW-80": {
+    "answered_at": "2026-07-20",
+    "bundle_name": "",
+    "effect": "build",
+    "intent": "After N ticks of a closed gate, free the worker to Idle and seek a different eligible node (matching GATHER's node-vanishes re-seek).",
+    "key": "1",
+    "label": "Re-idle and re-seek",
+    "resolution": ""
+  },
   "DW-91": {
     "answered_at": "2026-07-19",
     "bundle_name": "",

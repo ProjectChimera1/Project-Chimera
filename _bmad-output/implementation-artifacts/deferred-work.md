@@ -985,6 +985,7 @@ source_spec: `_bmad-output/implementation-artifacts/spec-4-7-per-resource-collec
 location: godot/src/Economy/GatheringSystem.cs
 reason: summary: a Streaming worker at a permanently gate-closed node never re-idles to seek another node. evidence: a defensible reading of AC4's "credit is withheld... becomes eligible and begins producing" (same worker, same node resumes — not "worker reassigns elsewhere"), now proven-as-implemented by `RequiresStructure_StreamingGate_ClosesThenReopensMidGather_WithholdsThenResumesCredit` (this story's own review-patch test). Not exercised by any shipped scenario (none author `requires_structure` yet — see DW-77). Closure: a future design ruling on whether a permanently-gated Streaming worker should eventually re-idle and seek a different node (matching GATHER's node-vanishes-mid-cycle re-seek behavior) versus staying parked awaiting the same structure's return. Flagged by the Verification Gap Reviewer and Edge Case Hunter.
 status: open
+decision: 2026-07-20 Re-idle and re-seek — After N ticks of a closed gate, free the worker to Idle and seek a different eligible node (matching GATHER's node-vanishes re-seek).
 decision: 2026-07-16 Re-idle and re-seek — After N ticks of a closed gate, free the worker to Idle and seek a different eligible node (matching GATHER's node-vanishes re-seek).
 
 ### DW-81: Follow-up review still recommended for 4-7-per-resource-collection-models-income-streaming-requires-structure-crystal-production after the review budget was exhausted
