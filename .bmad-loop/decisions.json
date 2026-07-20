@@ -215,6 +215,15 @@
     "label": "Re-idle and re-seek",
     "resolution": ""
   },
+  "DW-83": {
+    "answered_at": "2026-07-20",
+    "bundle_name": "",
+    "effect": "build",
+    "intent": "Emit a diagnostic event/log on a refused install so a full ring is debuggable instead of silent.",
+    "key": "1",
+    "label": "Diagnostic on refusal",
+    "resolution": ""
+  },
   "DW-91": {
     "answered_at": "2026-07-19",
     "bundle_name": "",
