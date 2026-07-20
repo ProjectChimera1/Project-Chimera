@@ -224,6 +224,15 @@
     "label": "Diagnostic on refusal",
     "resolution": ""
   },
+  "DW-89": {
+    "answered_at": "2026-07-20",
+    "bundle_name": "",
+    "effect": "build",
+    "intent": "Add a cross-namespace uniqueness check (located error) in the validators AND fix OnNodeSelected to resolve via the same last-wins lookup RebuildGraph uses.",
+    "key": "1",
+    "label": "Cross-namespace check + fix resolution",
+    "resolution": ""
+  },
   "DW-91": {
     "answered_at": "2026-07-19",
     "bundle_name": "",
