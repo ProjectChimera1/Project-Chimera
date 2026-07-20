@@ -233,6 +233,15 @@
     "label": "Cross-namespace check + fix resolution",
     "resolution": ""
   },
+  "DW-90": {
+    "answered_at": "2026-07-20",
+    "bundle_name": "",
+    "effect": "build",
+    "intent": "Have a building declare one active 'produces' category and gate the grids on it.",
+    "key": "1",
+    "label": "One producer-category gate",
+    "resolution": ""
+  },
   "DW-91": {
     "answered_at": "2026-07-19",
     "bundle_name": "",
