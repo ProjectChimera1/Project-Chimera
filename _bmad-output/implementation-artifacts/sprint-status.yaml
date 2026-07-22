@@ -161,7 +161,7 @@ development_status:
   8-2-godot-free-illmprovider-anthropic-ollama-openrouter-four-state-availability-ui-test-connection: done
   8-3-ai-generation-on-the-provider-stack-triggers-new-dsl-constructs-maps: done
   8-4-ai-entity-drafts-as-editable-data-unit-ability-hero-faction: done
-  8-5-ai-balance-analysis-of-a-faction-scenario-with-editable-suggestions: backlog
+  8-5-ai-balance-analysis-of-a-faction-scenario-with-editable-suggestions: done
   epic-8-retrospective: optional
   # Epic 11 is sequenced BEFORE Epic 9 (2026-07-01 sprint-change proposal): MP verification needs the session shell to exist.
   epic-11: backlog

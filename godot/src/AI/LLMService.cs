@@ -8,6 +8,7 @@ using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
 using ProjectChimera.AI.Providers;
@@ -720,6 +721,7 @@ play_sound      — sound_id (string)");
         private CancellationTokenSource? _abilityCts;
         private CancellationTokenSource? _heroCts;
         private CancellationTokenSource? _factionCts;
+        private CancellationTokenSource? _balanceCts;   // Story 8.5 — balance-analysis flow (own CTS)
 
         // ── Public draft API ──────────────────────────────────────────────────
 
@@ -786,6 +788,128 @@ play_sound      — sound_id (string)");
             _abilityCts?.Cancel();
             _heroCts?.Cancel();
             _factionCts?.Cancel();
+            _balanceCts?.Cancel();
+        }
+
+        // ══════════════════════════════════════════════════════════════════════
+        // Story 8.5 — AI balance analysis (editable, per-field suggestions)
+        //
+        // A provider-backed CRITIQUE flow mirroring the 8.4 draft framework: it rides the SAME no-fallback / four-state /
+        // StripMarkdown pipeline (RunDraftAsync) and returns an EDITABLE BalanceReport of per-field BalanceSuggestions.
+        // Nothing is auto-applied — the creator reviews/edits/discards each suggestion, and applying one routes the
+        // proposed value through BalanceSuggestionApplier.TryApply, which re-gates it with the EXISTING
+        // UnitDefinitionValidator on a clone (no second float→Fixed path, no bare-definition hash). Stays Godot-free.
+        // ══════════════════════════════════════════════════════════════════════
+
+        /// <summary>
+        /// Asynchronously request an AI balance analysis of a faction's roster. The focus <paramref name="prompt"/> is
+        /// the creator's steer ("melee feels weak", …); <paramref name="ctx"/> carries the roster unit ids the router
+        /// validates suggestions against and the closed tunable-field vocabulary. The callback is marshalled to the main
+        /// thread via <see cref="DrainEvents"/>. On success: callback(report, null) with a non-null
+        /// <see cref="BalanceReport"/> whose every suggestion names an existing unit id + tunable field + proposed value
+        /// + rationale. On any failure (unavailable provider / provider error / unparseable-or-invalid report):
+        /// callback(null, message). A full-roster analysis needs a large budget — reuse the faction 8192-token figure.
+        /// </summary>
+        public void GenerateBalanceAnalysisAsync(
+            string prompt, BalanceAnalysisContext ctx, Action<BalanceReport?, string?> onComplete)
+        {
+            _balanceCts?.Cancel();
+            _balanceCts = new CancellationTokenSource();
+            RunDraftAsync(
+                BuildBalanceAnalysisPrompt(ctx),
+                $"Analyze this faction for balance. Focus: {prompt}",
+                json => ValidateBalanceReport(json, ctx),
+                _balanceCts.Token, onComplete, maxTokens: FACTION_DRAFT_MAX_TOKENS);
+        }
+
+        /// <summary>Cancel any in-flight balance-analysis request.</summary>
+        public void CancelBalanceAnalysis() => _balanceCts?.Cancel();
+
+        /// <summary>Story 8.5: internal so the staleness-guard test can assert the prompt enumerates every member of
+        /// <see cref="BalanceSuggestionApplier.TunableFields"/> (each heads its own line — exact-token match) and states
+        /// the Fixed-safe range. A tunable-field member absent from this builder fails the guard.</summary>
+        internal static string BuildBalanceAnalysisPrompt(BalanceAnalysisContext ctx)
+        {
+            IReadOnlyList<string> fields = ctx?.TunableFields != null && ctx.TunableFields.Count > 0
+                ? ctx.TunableFields
+                : BalanceSuggestionApplier.TunableFields;
+            IReadOnlyList<string> unitIds = ctx?.UnitIds ?? System.Array.Empty<string>();
+
+            var sb = new StringBuilder();
+            sb.AppendLine("You are a balance analyst for Project Chimera, a real-time strategy game.");
+            sb.AppendLine("Critique the balance of the faction roster below and propose concrete, field-specific tuning");
+            sb.AppendLine("suggestions the creator (address them as \"Commander\") can review, edit, and apply.");
+            sb.AppendLine();
+            sb.AppendLine("=== EXISTING UNIT IDS (a suggestion's unit_id MUST be one of these) ===");
+            sb.AppendLine(unitIds.Count > 0 ? string.Join(", ", unitIds) : "(none)");
+            sb.AppendLine();
+            sb.AppendLine("=== TUNABLE FIELDS (a suggestion's field MUST be exactly one of these) ===");
+            foreach (string f in fields)
+                sb.AppendLine(f);   // each field HEADS its own line (exact-token staleness guard)
+            sb.AppendLine();
+            sb.AppendLine("=== OUTPUT SCHEMA ===");
+            sb.AppendLine(@"{
+  ""suggestions"": [
+    {
+      ""unit_id"": ""<an existing unit id>"",
+      ""field"": ""<one tunable field name from the list above>"",
+      ""current"": <the field's current value, for display>,
+      ""proposed"": <the new numeric value you recommend>,
+      ""rationale"": ""<one terse sentence explaining the change>""
+    }
+  ]
+}");
+            sb.AppendLine();
+            sb.AppendLine("=== INSTRUCTIONS ===");
+            sb.AppendLine($"Every proposed value MUST be finite and within [0, {DraftFixedRange}) (the Fixed-safe range).");
+            sb.AppendLine("Only propose changes to the listed tunable fields on the listed unit ids. Prefer a handful of");
+            sb.AppendLine("high-impact, actionable suggestions over an exhaustive dump.");
+            sb.AppendLine("Return ONLY valid JSON. No markdown fences, no explanation, no extra text.");
+            return sb.ToString();
+        }
+
+        /// <summary>
+        /// Parse a generated balance analysis into an editable <see cref="BalanceReport"/>, list-first-failing with a
+        /// LOCATED error on any of: malformed JSON, a missing <c>suggestions</c> array, a suggestion whose <c>unit_id</c>
+        /// is not in <see cref="BalanceAnalysisContext.UnitIds"/>, or whose <c>field</c> is not in the closed tunable set
+        /// (<see cref="BalanceAnalysisContext.TunableFields"/>, defaulted from <see cref="BalanceSuggestionApplier"/>).
+        /// Never mutates any faction/unit data — applying a suggestion is a separate, explicit, per-suggestion action
+        /// through <see cref="BalanceSuggestionApplier.TryApply"/>.
+        /// </summary>
+        public static (BalanceReport? report, string? error) ValidateBalanceReport(string json, BalanceAnalysisContext ctx)
+        {
+            BalanceReport report;
+            try
+            {
+                report = JsonSerializer.Deserialize<BalanceReport>(json,
+                    new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
+                    ?? throw new InvalidOperationException("Deserialised to null.");
+            }
+            catch (Exception ex)
+            {
+                return (null, $"Invalid JSON: {ex.Message}");
+            }
+
+            if (report.Suggestions == null)
+                return (null, "Balance report has no 'suggestions' array.");
+
+            var knownFields = new HashSet<string>(
+                ctx?.TunableFields != null && ctx.TunableFields.Count > 0 ? ctx.TunableFields : BalanceSuggestionApplier.TunableFields,
+                StringComparer.Ordinal);
+            var knownIds = new HashSet<string>(ctx?.UnitIds ?? System.Array.Empty<string>(), StringComparer.Ordinal);
+
+            for (int i = 0; i < report.Suggestions.Count; i++)
+            {
+                BalanceSuggestion s = report.Suggestions[i];
+                if (s == null)
+                    return (null, $"suggestions[{i}] is null.");
+                if (!knownIds.Contains(s.UnitId ?? ""))
+                    return (null, $"suggestions[{i}].unit_id='{s.UnitId}' is not a unit in this faction's roster.");
+                if (!knownFields.Contains(s.Field ?? ""))
+                    return (null, $"suggestions[{i}].field='{s.Field}' is not a tunable balance field.");
+            }
+
+            return (report, null);
         }
 
         /// <summary>
@@ -1244,5 +1368,42 @@ play_sound      — sound_id (string)");
 
         /// <summary>Optional signature-mechanic id hints the prompt may list (not a gate this story).</summary>
         public IReadOnlyList<string> SignatureIds { get; set; } = System.Array.Empty<string>();
+    }
+
+    // ── Story 8.5 balance-analysis DTOs (Godot-free) ───────────────────────────
+
+    /// <summary>
+    /// Context for a balance analysis — the faction's live roster ids the router validates every suggestion's
+    /// <c>unit_id</c> against, plus the closed tunable-field vocabulary (defaulted from
+    /// <see cref="BalanceSuggestionApplier.TunableFields"/> — the single source of truth shared by the prompt builder,
+    /// the validate router, and the apply mapper).
+    /// </summary>
+    public sealed class BalanceAnalysisContext
+    {
+        /// <summary>The roster unit ids a suggestion may target; a suggestion citing an id outside this set is a located reject.</summary>
+        public IReadOnlyList<string> UnitIds { get; set; } = System.Array.Empty<string>();
+
+        /// <summary>The closed set of tunable field names (defaults to <see cref="BalanceSuggestionApplier.TunableFields"/>).</summary>
+        public IReadOnlyList<string> TunableFields { get; set; } = BalanceSuggestionApplier.TunableFields;
+    }
+
+    /// <summary>One editable, per-field balance suggestion: a target unit id, a tunable field (snake_case), the proposed
+    /// new value, the current value (advisory/display only), and a one-line rationale. Nothing is auto-applied — the
+    /// creator reviews/edits/discards it, and an applied value is re-gated through
+    /// <see cref="BalanceSuggestionApplier.TryApply"/>.</summary>
+    public sealed class BalanceSuggestion
+    {
+        [JsonPropertyName("unit_id")]   public string UnitId { get; set; } = "";
+        [JsonPropertyName("field")]     public string Field { get; set; } = "";
+        [JsonPropertyName("proposed")]  public double Proposed { get; set; }
+        [JsonPropertyName("current")]   public double Current { get; set; }
+        [JsonPropertyName("rationale")] public string Rationale { get; set; } = "";
+    }
+
+    /// <summary>The parsed, editable result of a balance analysis — a flat list of per-field <see cref="BalanceSuggestion"/>s.</summary>
+    public sealed class BalanceReport
+    {
+        [JsonPropertyName("suggestions")]
+        public List<BalanceSuggestion> Suggestions { get; set; } = new();
     }
 }

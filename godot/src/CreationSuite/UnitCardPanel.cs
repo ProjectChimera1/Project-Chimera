@@ -62,6 +62,17 @@ namespace ProjectChimera.CreationSuite
         private Label          _aiStatusLabel = null!;
         private ChimeraSpinner _aiSpinner     = null!;
         private Label          _aiSpinnerText = null!;
+
+        // ── Story 8.5 — AI balance-analysis affordance ──
+        private VBoxContainer  _balanceCard        = null!;
+        private TextEdit       _balancePromptInput = null!;
+        private Godot.Button   _balanceGenBtn      = null!;
+        private Label          _balanceAvailLabel  = null!;
+        private Label          _balanceStatusLabel = null!;
+        private ChimeraSpinner _balanceSpinner     = null!;
+        private Label          _balanceSpinnerText = null!;
+        private VBoxContainer  _balanceRowsHost    = null!;   // suggestion rows (cleared + repopulated per analysis)
+
         private string             _factionJsonPath = "";  // res:// path of the faction file to write edits back to (D-8)
 
         // ── Edit state (Story 3.4) ──
@@ -233,6 +244,7 @@ namespace ProjectChimera.CreationSuite
             if (_llm == null || _aiEvaluator == null || _aiSecretStore == null)
             {
                 _aiCard.Visible = false;
+                if (_balanceCard != null!) _balanceCard.Visible = false;
                 return;
             }
 
@@ -246,6 +258,17 @@ namespace ProjectChimera.CreationSuite
                 ? "AI: ready (config OK — Test connection in Settings to confirm)."
                 : AiAvailabilityMessages.Describe(state);
             _aiGenBtn.Disabled = !available;
+
+            // Story 8.5 — the balance-analysis card degrades on the SAME four-state; manual balance editing stays usable.
+            if (_balanceCard != null!)
+            {
+                _balanceCard.Visible = true;
+                _balanceAvailLabel.Visible = true;
+                _balanceAvailLabel.Text = available
+                    ? "AI balance: ready (config OK — Test connection in Settings to confirm)."
+                    : AiAvailabilityMessages.Describe(state);
+                _balanceGenBtn.Disabled = !available;
+            }
         }
 
         private void OnAiGeneratePressed()
@@ -311,6 +334,217 @@ namespace ProjectChimera.CreationSuite
             _aiStatusLabel.Text = message;
             // Distinguish a failure from a ready/success message (an all-neutral line reads a failed generation as success).
             _aiStatusLabel.AddThemeColorOverride("font_color", Tok(error ? ThemeTokens.Danger : ThemeTokens.Ok));
+        }
+
+        // ── Story 8.5 — AI balance-analysis affordance ─────────────────────────
+
+        private void BuildBalanceCard(Control parent)
+        {
+            _balanceCard = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill, Visible = false };
+            _balanceCard.AddThemeConstantOverride("separation", ChimeraComponents.Const(ThemeTokens.S1));
+            parent.AddChild(_balanceCard);
+
+            _balanceCard.AddChild(Heading("AI Balance Analysis, Commander", ThemeTokens.Tmd));
+
+            _balanceAvailLabel = Body("", ThemeTokens.TextLo);
+            _balanceAvailLabel.AutowrapMode = TextServer.AutowrapMode.Word;
+            _balanceAvailLabel.Visible = false;
+            _balanceCard.AddChild(_balanceAvailLabel);
+
+            _balancePromptInput = new TextEdit
+            {
+                PlaceholderText = "e.g. \"melee units feel too weak against ranged\"",
+                CustomMinimumSize = new Vector2(0, 56f),
+                WrapMode = TextEdit.LineWrappingMode.Boundary,
+                SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+            };
+            _balanceCard.AddChild(_balancePromptInput);
+
+            var genRow = new HBoxContainer();
+            genRow.AddThemeConstantOverride("separation", ChimeraComponents.Const(ThemeTokens.S2));
+            _balanceCard.AddChild(genRow);
+
+            _balanceGenBtn = ChimeraComponents.Button("Analyze ✦", ChimeraComponents.ButtonVariant.Secondary, ChimeraComponents.ButtonSize.Sm);
+            _balanceGenBtn.Pressed += OnBalanceAnalyzePressed;
+            genRow.AddChild(_balanceGenBtn);
+
+            _balanceSpinner = ChimeraSpinner.Create(20);
+            _balanceSpinner.Visible = false;
+            genRow.AddChild(_balanceSpinner);
+            _balanceSpinnerText = Body("Transmuting…", ThemeTokens.TextMid);
+            _balanceSpinnerText.Visible = false;
+            genRow.AddChild(_balanceSpinnerText);
+
+            _balanceStatusLabel = Body("", ThemeTokens.TextLo);
+            _balanceStatusLabel.AutowrapMode = TextServer.AutowrapMode.Word;
+            _balanceStatusLabel.Visible = false;
+            _balanceCard.AddChild(_balanceStatusLabel);
+
+            _balanceRowsHost = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+            _balanceRowsHost.AddThemeConstantOverride("separation", ChimeraComponents.Const(ThemeTokens.S1));
+            _balanceCard.AddChild(_balanceRowsHost);
+
+            _balanceCard.AddChild(new HSeparator());
+        }
+
+        private void OnBalanceAnalyzePressed()
+        {
+            if (_llm == null) return;
+            if (_faction == null)
+            {
+                ShowBalanceStatus("No faction bound — open a faction first, Commander.", error: true);
+                return;
+            }
+            string prompt = _balancePromptInput.Text.Trim();
+            if (string.IsNullOrEmpty(prompt))
+            {
+                ShowBalanceStatus("Describe what feels off first, Commander.", error: true);
+                return;
+            }
+
+            var ids = _faction.Units.Where(u => u != null && !string.IsNullOrEmpty(u.Id)).Select(u => u.Id).ToList();
+            var ctx = new BalanceAnalysisContext { UnitIds = ids };
+
+            SetBalanceBusy(true);
+            ClearBalanceRows();
+            _llm.GenerateBalanceAnalysisAsync(prompt, ctx, OnBalanceAnalysisComplete);
+        }
+
+        private void OnBalanceAnalysisComplete(BalanceReport? report, string? error)
+        {
+            SetBalanceBusy(false);
+            if (report == null)
+            {
+                ShowBalanceStatus(error ?? "Analysis failed.", error: true);
+                return;
+            }
+            if (report.Suggestions.Count == 0)
+            {
+                ShowBalanceStatus("No tuning suggestions returned, Commander.");
+                return;
+            }
+
+            ClearBalanceRows();
+            foreach (BalanceSuggestion s in report.Suggestions)
+                _balanceRowsHost.AddChild(BuildSuggestionRow(s));
+            ShowBalanceStatus($"{report.Suggestions.Count} suggestion(s) — review, edit the value, then Apply. Nothing is applied automatically.");
+        }
+
+        /// <summary>Build one editable suggestion row: a field chip + unit id, the rationale, an editable proposed-value
+        /// input, and Apply / Discard. Apply gates the (possibly edited) value through
+        /// <see cref="BalanceSuggestionApplier.TryApply"/> and lands a success through the existing undo/validate/Save seam.</summary>
+        private Control BuildSuggestionRow(BalanceSuggestion s)
+        {
+            var row = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+            row.AddThemeConstantOverride("separation", ChimeraComponents.Const(ThemeTokens.S1));
+
+            // Show the unit's REAL current value (read from the bound roster), not the model's unverified `current`
+            // claim — a hallucinated or omitted current is misleading in a balance tool. "—" when unreadable.
+            string curText = "—";
+            UnitDefinition? liveUnit = _faction?.Units?.FirstOrDefault(u => u != null && u.Id == s.UnitId);
+            if (liveUnit != null && BalanceSuggestionApplier.TryReadField(liveUnit, s.Field, out double curVal))
+                curText = curVal.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
+            row.AddChild(Body($"{s.UnitId} · {s.Field}   (current {curText})", ThemeTokens.TextMid));
+
+            var rationale = Body(s.Rationale, ThemeTokens.TextLo);
+            rationale.AutowrapMode = TextServer.AutowrapMode.Word;
+            row.AddChild(rationale);
+
+            var editRow = new HBoxContainer();
+            editRow.AddThemeConstantOverride("separation", ChimeraComponents.Const(ThemeTokens.S2));
+            row.AddChild(editRow);
+
+            var valueInput = new LineEdit
+            {
+                Text = s.Proposed.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture),
+                CustomMinimumSize = new Vector2(90f, 0),
+            };
+            editRow.AddChild(valueInput);
+
+            var applyBtn = ChimeraComponents.Button("Apply", ChimeraComponents.ButtonVariant.Primary, ChimeraComponents.ButtonSize.Sm);
+            editRow.AddChild(applyBtn);
+            var discardBtn = ChimeraComponents.Button("Discard", ChimeraComponents.ButtonVariant.Ghost, ChimeraComponents.ButtonSize.Sm);
+            editRow.AddChild(discardBtn);
+
+            applyBtn.Pressed += () => OnApplySuggestion(s, valueInput.Text, row);
+            discardBtn.Pressed += () => { _balanceRowsHost.RemoveChild(row); row.QueueFree(); };
+
+            return row;
+        }
+
+        private void OnApplySuggestion(BalanceSuggestion s, string editedText, Control row)
+        {
+            if (_faction == null) return;
+            if (!double.TryParse(editedText, System.Globalization.NumberStyles.Float,
+                    System.Globalization.CultureInfo.InvariantCulture, out double edited))
+            {
+                ShowBalanceStatus($"'{editedText}' is not a number, Commander.", error: true);
+                return;
+            }
+
+            UnitDefinition? target = _faction.Units.FirstOrDefault(u => u != null && u.Id == s.UnitId);
+            if (target == null)
+            {
+                ShowBalanceStatus($"Unit '{s.UnitId}' is no longer in the roster.", error: true);
+                return;
+            }
+
+            var (candidate, err) = BalanceSuggestionApplier.TryApply(target, s.Field, edited, _faction.Units);
+            if (candidate == null)
+            {
+                // Located reject — nothing mutated; show the message and leave the row for another edit.
+                ShowBalanceStatus(err ?? "Rejected.", error: true);
+                return;
+            }
+
+            // Commit the validated clone into the SAME list Save/browse operate on, through the existing undo seam.
+            // Reference-based restore (locate by reference at closure time, never a captured index) — the 8.4 draft-apply
+            // precedent: a raw index goes stale if the roster is later reordered/deleted, so an undo would overwrite a
+            // different slot (or throw). Idempotent guards keep undo/redo safe if the target was removed meanwhile.
+            UnitDefinition old = target;
+            UnitDefinition neu = candidate;
+            int idx = _faction.Units.IndexOf(old);
+            if (idx < 0) { ShowBalanceStatus($"Unit '{s.UnitId}' is no longer in the roster.", error: true); return; }
+            _faction.Units[idx] = neu;
+            PushHistory(
+                redo: () => { int i = _faction.Units.IndexOf(old); if (i >= 0) { _faction.Units[i] = neu; GoToUnit(neu); } },
+                undo: () => { int i = _faction.Units.IndexOf(neu); if (i >= 0) { _faction.Units[i] = old; GoToUnit(old); } });
+            GoToUnit(neu);
+            RevalidateAndReflect();
+            if (!PersistSync())
+                // PersistSync already surfaced its own error — don't also claim success. The in-memory edit + undo stand.
+                return;
+
+            _balanceRowsHost.RemoveChild(row);
+            row.QueueFree();
+            // Echo the value ACTUALLY applied (int fields round), read back from the committed clone — not the typed text.
+            double appliedVal = BalanceSuggestionApplier.TryReadField(neu, s.Field, out double rb) ? rb : edited;
+            ShowBalanceStatus($"Applied {s.Field}={appliedVal:0.###} to '{s.UnitId}' — re-validated and saved.");
+        }
+
+        private void ClearBalanceRows()
+        {
+            if (_balanceRowsHost == null!) return;
+            foreach (Node child in _balanceRowsHost.GetChildren())
+            {
+                _balanceRowsHost.RemoveChild(child);
+                child.QueueFree();
+            }
+        }
+
+        private void SetBalanceBusy(bool busy)
+        {
+            _balanceGenBtn.Disabled = busy;
+            _balanceSpinner.Visible = busy;
+            _balanceSpinnerText.Visible = busy;
+            if (busy) _balanceStatusLabel.Visible = false;
+        }
+
+        private void ShowBalanceStatus(string message, bool error = false)
+        {
+            _balanceStatusLabel.Visible = true;
+            _balanceStatusLabel.Text = message;
+            _balanceStatusLabel.AddThemeColorOverride("font_color", Tok(error ? ThemeTokens.Danger : ThemeTokens.Ok));
         }
 
         /// <summary>Hide the panel and stop rendering the preview.</summary>
@@ -467,6 +701,11 @@ namespace ProjectChimera.CreationSuite
             // Story 8.4 — AI draft card (hidden until Initialize wires a provider). A prompt + Generate (unit, or hero
             // via the toggle) adds an editable, reopenable unit to the faction — the SAME list Save/browse operate on.
             BuildAiCard(contentCol);
+
+            // Story 8.5 — AI balance-analysis card (hidden until Initialize wires a provider). A focus prompt + Analyze
+            // requests per-field tuning suggestions over the WHOLE roster; each is editable and applied one at a time
+            // through the same validate/undo/Save seam manual edits use — nothing auto-applies.
+            BuildBalanceCard(contentCol);
 
             // Read-only header → Preview (persistent) → disclosure Segment → editable body (refilled per unit).
             _headerHost = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
