@@ -21,7 +21,7 @@ warnings: [multiple-goals]
 
 **Always:** Treat the D5 briefing (SD-5/SD-7) as the canonical 9.1 scope; verify claims against the live codebase, not the epic's stale brownfield hints ("SimChecksum only hashes Ore[Player1]/Ore[Player2]" is false as of 1.3b).
 
-**Block If:** The story's entire scope is already implemented and tested by prior stories, leaving no implementable delta — a dev-auto pass cannot safely either (a) fabricate make-work or a needless golden re-baseline, or (b) unilaterally declare the story `done` and re-scope the Epic-9 backlog. A human/orchestrator must decide. **← This condition is TRUE; see Auto Run Result.**
+**Block If:** The story's entire scope is already implemented and tested by prior stories, leaving no implementable delta — a dev-auto pass cannot safely either (a) fabricate make-work or a needless golden re-baseline, or (b) unilaterally declare the story `done` and re-scope the Epic-9 backlog. A human/orchestrator must decide. **← This condition was TRUE and has been HUMAN-RESOLVED as done-by-prior-work; see ## Resolution. Do NOT re-block on it — the governance decision is now made.**
 
 **Never:** Bump `SimChecksum.AlgoVersion` or re-record any golden without a real new folded field (violates the checksum-fold timing rule). Never widen the 32-bit checksum wire (D12). Never build `TickCommandsMerged` / N-adaptive quorum / disconnect re-base here — those are 9.2/9.3/9.5.
 
@@ -50,7 +50,7 @@ warnings: [multiple-goals]
 ## Tasks & Acceptance
 
 **Execution:**
-- *(none — no implementable delta; see Auto Run Result).* If a human confirms "done-by-prior-work", the only action is a status/backlog update (mark 9.1 done, note Epic-1 subsumption); no source changes.
+- *(none — no implementable delta; see Auto Run Result and ## Resolution).* The human has confirmed "done-by-prior-work"; the story is closed by Epic-1 Stories 1.3b + 1.9a/1.9b. Do NOT write feature code, do NOT bump `AlgoVersion`, do NOT re-record any golden. The only permitted action is the status/backlog update the orchestrator performs on re-arm.
 
 **Acceptance Criteria:**
 - Given the widened `SimChecksum`, when `Compute` runs on a known 2-faction world, then it folds Crystal/SupplyUsed/SupplyCap (not just Ore) per active faction in ascending order and pins to a fixed committed hash — **already met** (`SimChecksumCoverageGuardTest`).
@@ -71,3 +71,17 @@ A dev-auto pass cannot safely resolve this alone: fabricating make-work or a nee
 **Recommended human action:** mark Story 9.1 done-by-prior-work (subsumed by Epic-1 Stories 1.3b + 1.9a/1.9b), note the subsumption in the Epic-9 backlog / sprint-status, and proceed to Story 9.2 (faction/player model expansion to 8 — the first story with genuine implementable delta on the D5 backbone). Resolve interactively via `/bmad-loop-resolve 9-1-widen-simchecksum-add-server-side-checksum-collector-with-majority-vote-desync-attribution`.
 
 Note: `warnings: [multiple-goals]` carried from routing (the title joins a sim-layer widen and a server-layer collector); both goals are already satisfied, so the warning is informational only.
+
+## Resolution
+
+**Decision (human, 2026-07-22, via `/bmad-loop-resolve`):** Story 9.1 is **done-by-prior-work** — its entire scope was delivered ahead of schedule by Epic-1 Stories 1.3b (SD-7 widen) and 1.9a/1.9b (SD-5 server collector). There is NO implementable delta. This is a governance closure, not a code change.
+
+**Verification (fresh read of the live codebase at baseline `91bc73a`, all three ACs CONFIRMED):**
+- **AC1** — `godot/src/Core/SimChecksum.cs:418-428` folds Ore+Crystal+SupplyUsed+SupplyCap+FactionBase per active faction, ascending; `AlgoVersion=21`; guarded by `SimChecksumCoverageGuardTest` (pinned known-state hash `0x1A47DE11` + reflection differential proving every per-faction array is folded).
+- **AC2** — `ServerChecksumCollector.cs` (strict-majority `>N/2`, ascending-slot minority attribution, no-majority verdict, stale/duplicate drop, transport-authoritative slot) → `ServerHost.cs` (minority→`MakeDesyncAlert`, no-majority→broadcast `MakeHalt` + terminal `Halted`) → `DedicatedServer.cs` Checksum case (spectators excluded, old P2P relay removed). Unit-tested: all-agree / one-minority-N3 / no-majority-N2 / no-majority-N3 / N4-majority / 2-2-split / stale / duplicate.
+- **AC3** — `GoldenChecksumReplay.cs` harness + `GoldenChecksumReplayTests.cs` assert byte-identical two-run replay at the default N=2 scenario.
+- Residual server-collector work (N-adaptive quorum re-base on disconnect, late-checksum window) is charter-assigned to Stories 9.2/9.3/9.5 in `deferred-work.md`, NOT 9.1.
+
+**Minor cosmetic lags noted but explicitly OUT OF SCOPE for 9.1** (left for a future cleanup, do not touch here): the pin test is named `...PinnedV20Hash` while it now asserts `AlgoVersion==21` (still correct — v21's `TriggerEnabledStore` fold is a no-op on the null-store known world); and `DedicatedServer.cs`'s class-header comment still says it "relays" checksums though the body now consumes them.
+
+**Action on re-arm:** close Story 9.1 (status/backlog update noting the Epic-1 subsumption) and proceed to Story 9.2. No source changes, no `AlgoVersion` bump, no golden re-record.
