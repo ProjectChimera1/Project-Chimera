@@ -1,0 +1,388 @@
+{
+  "workflow": "deferred-sweep-triage",
+  "open_ids": [
+    "DW-1","DW-2","DW-10","DW-14","DW-17","DW-22","DW-23","DW-25","DW-26","DW-28",
+    "DW-31","DW-33","DW-34","DW-35","DW-36","DW-37","DW-38","DW-39","DW-42","DW-43",
+    "DW-46","DW-47","DW-49","DW-50","DW-52","DW-54","DW-55","DW-57","DW-58","DW-59",
+    "DW-61","DW-62","DW-63","DW-64","DW-65","DW-67","DW-69","DW-70","DW-71","DW-72",
+    "DW-73","DW-74","DW-75","DW-76","DW-77","DW-78","DW-79","DW-80","DW-82","DW-83",
+    "DW-84","DW-86","DW-87","DW-88","DW-89","DW-90","DW-91","DW-92","DW-93","DW-94",
+    "DW-95","DW-96","DW-100","DW-101","DW-102","DW-103","DW-104","DW-105","DW-107","DW-108",
+    "DW-109","DW-110","DW-111","DW-112","DW-113","DW-114","DW-115","DW-116","DW-118","DW-119",
+    "DW-120","DW-121","DW-122","DW-123","DW-124","DW-125","DW-126","DW-127","DW-128","DW-129",
+    "DW-130","DW-131","DW-132","DW-133","DW-134","DW-135","DW-137","DW-138","DW-140","DW-141",
+    "DW-142","DW-143","DW-144","DW-145","DW-146","DW-147","DW-148","DW-149","DW-150","DW-151",
+    "DW-153","DW-154","DW-155","DW-156","DW-158","DW-159","DW-160","DW-161","DW-162","DW-163",
+    "DW-165","DW-166","DW-167","DW-168","DW-169","DW-170","DW-171","DW-172","DW-173","DW-174",
+    "DW-175","DW-176","DW-177","DW-179","DW-180","DW-181","DW-182","DW-183","DW-184","DW-186",
+    "DW-187","DW-188","DW-189","DW-190","DW-191","DW-192","DW-194","DW-195","DW-196","DW-197",
+    "DW-198"
+  ],
+  "already_resolved": [],
+  "bundles": [
+    {
+      "name": "card-editor-robustness",
+      "dw_ids": ["DW-64","DW-65","DW-69","DW-72","DW-71","DW-133"],
+      "intent": "Harden the Unit/Building Card editor panels (UnitCardPanel.Edit.cs / BuildingCardPanel.Edit.cs). Clear the undo `_history` when a raw-JSON Save wholesale-replaces the bound definition (DW-64) and when LoadFactionFromPath swaps in a new faction (DW-65), so stale closures can't dangle. Call ReleaseFocus() before firing Undo/Redo (DW-69), and commit required-num SpinBox fields only on a real ValueChanged rather than on blur-at-displayed-0 (DW-71). Make CloneUnit copy the Story-3.16 shop fields (SellsItems/ShopStock/ShopRadius) (DW-72), and rebuild/re-read the Ultimate picker when the Simple/Advanced segment switches so the hidden pane can't show a stale selection (DW-133)."
+    },
+    {
+      "name": "techtree-authoring-sync",
+      "dw_ids": ["DW-75","DW-89","DW-92"],
+      "intent": "Fix the TechTreePanel graph-authoring surface. Add Ctrl+Z/Y undo for edge add/remove (DW-75), matching the card editors. Add a cross-namespace uniqueness check so a research id cannot collide with a building id before both become same-name GraphNodes (Godot AddChild auto-renames the second, breaking by-name edge/selection resolution) and resolve OnNodeSelected via the last-wins researchById lookup (DW-89). Have structural research edits in ResearchCardPanel (Create/Delete/Duplicate) notify TechTreePanel.RebuildGraph so the graph and inspector don't drift until the next R toggle (DW-92)."
+    },
+    {
+      "name": "research-command-card",
+      "dw_ids": ["DW-90","DW-91","DW-93"],
+      "intent": "Fix the in-match research command-card in CommandCardSystem. Add mutual exclusivity between the Research button grid and the Shop/Revive/Train grids so a building authored with both doesn't draw overlapping grids at the same coordinates (DW-90). Render the faction-wide in-progress research status and Cancel affordance independent of the selected building's own producer/offer status, so a producer building can show its research and a non-offering building can still cancel an in-progress order (DW-91). Extract the research-button dim predicate and upgrade-summary formatting into Godot-free Core/Economy helpers and unit-test them (DW-93)."
+    },
+    {
+      "name": "creation-suite-panel-infra",
+      "dw_ids": ["DW-23","DW-74","DW-76"],
+      "intent": "Consolidate shared CreationSuite/overlay panel infrastructure in one pass. Single-source the copy-pasted EnsureKitInitialized bootstrap and Heading/Body label helpers (now duplicated across ~15 panels/overlays) into a shared base type or static helper (DW-23). Add an _ExitTree override to every panel that subscribes to GameState.ModeChanged so the handler is unsubscribed if the panel is freed (DW-74). Replace the ad-hoc hardcoded CanvasLayer.Layer values (9/11/13/14…) with a shared layer-constants registry so z-order collisions among panels are impossible by construction (DW-76)."
+    },
+    {
+      "name": "hero-revive-shop-affordances",
+      "dw_ids": ["DW-31","DW-33","DW-49","DW-50"],
+      "intent": "Fix HUD affordance gaps in the CommandCardSystem hero/shop grids (needs /godot-verify). Render revive buttons for a building that BOTH produces units and is flagged revives_heroes, not only in the !canProduce branch (DW-31). Add a SourceDef!=null filter to RefreshReviveButtons so a hero minted without a SourceDef doesn't render a dead, priced revive button (DW-33). Make shop Buy target the nearest in-range hero WITH a free inventory slot instead of the single nearest hero, so an affordable Buy no longer silently no-ops when the closest hero is full (DW-49). Render ItemDefinition.Icon textures (Button.Icon) across the inventory grid, shop Buy buttons, and picker cards instead of name+text only (DW-50)."
+    },
+    {
+      "name": "item-modifier-hardening",
+      "dw_ids": ["DW-34","DW-83","DW-35","DW-38","DW-39","DW-42","DW-28","DW-47"],
+      "intent": "Harden the item / ModifierStore stack. When ModifierStore.Apply refuses an install because an entity's 8-slot ring is full, emit a diagnostic/denial cue instead of silently dropping (DW-83), and have ItemSystem check that return value so a full-slot hero doesn't claim a silently-inert stat item (DW-34). Box the new item ref in EntityPlacer.PlaceItem's redo closure so place->undo->redo->undo can't leak the redone ground item (DW-35). Either add the stat-item-XOR-consumable validator rule or soften the docs to permit hybrids, with test coverage (DW-38). Add an away-from-hero pickup-traversal test exercising the MoveTarget steering branch (DW-39). Add a per-stat move_speed cap in ItemDefinitionValidator (the uniform ±1000 cap tunnels/freezes a hero) plus a top clamp in ModifierSystem.RecomputeEntity for the shared effective-stat-overflow class (DW-42, DW-28). Add filename-safe charset validation to the item Id (Persist does Path.Combine + File writes, so `../../foo` escapes the items dir) (DW-47)."
+    },
+    {
+      "name": "projectile-ttl-clamp",
+      "dw_ids": ["DW-25"],
+      "intent": "Add a snap-to-goal clamp and a max-lifetime/TTL to ProjectileSystem.Tick. A high authored projectile_speed (up to the validator's 32768 ceiling) overshoots the 0.5-unit hit radius every tick and never converges, so the shell orbits its target forever and permanently leaks its MAX_PROJECTILES slot until the pool fills and the unit stops firing. This is a determinism-relevant sim change and will require re-recording the affected goldens."
+    },
+    {
+      "name": "scenario-applier-canonical-order",
+      "dw_ids": ["DW-37"],
+      "intent": "Make ScenarioApplier place items (and units/buildings) in the same canonical order that StartStateHash folds them (sorted by id/X/Z) rather than raw array order. Today two scenarios with the same item set in different array order hash identically yet assign different runtime packed refs, so a PickupItem/inventory ref could resolve to a different physical item per peer. This is a determinism fix and will require a golden re-baseline. The direction was already decided (canonicalize placement order, 2026-07-19)."
+    },
+    {
+      "name": "gathering-system-behavior",
+      "dw_ids": ["DW-77","DW-79","DW-80"],
+      "intent": "Complete the Story-4.7 gathering behavior. Wire EntityPlacer.PlaceResourceNode (and its authoring UI) to the full node fields (collection_model/resource_type/requires_structure/owner_slot/income_period_ticks) instead of the legacy 4-arg Create that hard-defaults every editor-placed node to GATHER/Ore/no-gate/Neutral (DW-77). Add a spatial index (or cache) for the requires_structure gate check so FindBestNode is not O(nodes x buildings) per idle worker per tick (DW-79). Free a Streaming worker whose gate closes permanently back to Idle to re-seek a different eligible node instead of parking it in Gathering forever producing zero credit (DW-80, decided 2026-07-20)."
+    },
+    {
+      "name": "gather-state-checksum-fold",
+      "dw_ids": ["DW-78"],
+      "intent": "Fold the per-worker in-flight gather state (EntityWorld.GatherState/CarryAmount/GatherTarget) into SimChecksum. These arrays mutate mid-match yet are currently unfolded, so a worker's carried load or gather-cycle state can diverge between clients undetected. Per the checksum-fold-timing rule this qualifies for a fold; the change re-baselines the goldens and must pass the two-run byte-identical test."
+    },
+    {
+      "name": "faction-definition-validator-hardening",
+      "dw_ids": ["DW-55","DW-62","DW-100","DW-101","DW-103","DW-111","DW-59"],
+      "intent": "Harden the faction/definition validators in Core/Definitions. Distinguish an omitted building `hp` from an intentional 100 (JSON-presence tracking or a buildings-only nullable Hp) so a forgotten hp becomes a located import error (DW-55). Wrap FactionDefinition.LoadFromFile's JsonSerializer.Deserialize in try/catch so a malformed value yields a located aggregated error rather than a raw JsonException (DW-62). Add null-element/null-list guards to TechTreeValidator (DW-100), ResourceCostValidator (DW-101), and FactionDefinition.GetUnit/IndexOfUnit/GetUnitByCategory/GetUnitsByCategory (DW-103) so a null entry no longer NREs at load. Add a duplicate-id check for Buildings and Research to FactionValidator, mirroring the existing Units check (DW-111). Convert TechTreeValidator.Visit's recursive DFS to an explicit-stack walk to remove the deep-chain stack-overflow risk (DW-59)."
+    },
+    {
+      "name": "mesh-path-integrity",
+      "dw_ids": ["DW-102","DW-104"],
+      "intent": "Close the mesh_path integrity gap. Repoint the aviary mesh_path in alpha_faction.json/beta_faction.json (bonded_aerie.glb / wraithwing_brood.glb) to an existing on-disk placeholder GLB until real art lands (DW-102). Add a mesh_path disk-existence check as a presentation-layer/content-authoring lint (editor Save/discovery edge) — per the 2026-07-19 decision to keep this out of the sim FactionValidator — so an authored mesh_path that resolves to no on-disk file is caught (DW-104)."
+    },
+    {
+      "name": "faction-definer-wizard-hardening",
+      "dw_ids": ["DW-112","DW-113","DW-114","DW-115","DW-116","DW-118","DW-119"],
+      "intent": "Harden the Faction Definer wizard (FactionDefinerWizardCore / FactionDefinerPanel). Catch IOException/UnauthorizedAccess around the File.Move and re-check File.Exists so the TOCTOU race surfaces the 'already exists' message not a generic one (DW-112). Add a discard confirmation before ResetWizard when a re-open would drop non-default draft state (DW-113, decided). Add FactionValidator >=0 checks for StartingOre/StartingCrystal (DW-115) and the matching StepForError cases for starting_ore/starting_crystal (DW-114) and raw_json (DW-116). Have OnFinishPressed honor ClearStaleHeroReference's return and show a 'hero selection was cleared' note before proceeding (DW-118, decided). DistinctBy(Id) the hero-candidate list so two same-id roster units don't render as duplicate Hero buttons (DW-119)."
+    },
+    {
+      "name": "onboarding-panel-hardening",
+      "dw_ids": ["DW-129","DW-130","DW-131"],
+      "intent": "Harden OnboardingPanel. Assign a non-colliding CanvasLayer.Layer (currently 14, colliding with AbilityEditorPanel) (DW-129). Add _UnhandledInput Escape dismissal that closes only when onboarding is topmost and Settings is closed, calling SetInputAsHandled — per the recorded precedence decision (DW-130). Remember the unit id StartFromTemplate created in step 1 and re-bind/verify it on steps 2/3 so tune-stats and promote-hero apply to that unit rather than whatever is currently bound (DW-131)."
+    },
+    {
+      "name": "custom-building-runtime",
+      "dw_ids": ["DW-172","DW-57","DW-168","DW-169","DW-171","DW-173"],
+      "intent": "Make placed Custom buildings first-class at runtime. Extract one BuildingStore.CreateFromDefinition(def,pos,faction,id) and call it from both sim (PlaceBuildingDirectById) and editor (CreateEditorBuilding) placement, ending the hand-copied stat-threading class (DW-172), which then lets group-move undo restore the full def-derived stat set (Health/MaxHealth/SupplyBonus/shop/revive) by re-resolving from DefinitionId (DW-173). Resolve BuildingType.Custom as a prerequisite SOURCE by threading the authored DefinitionId instead of TechTreeChecker.BuildingTypeId(Custom)=='' (DW-57). Widen CommandCardSystem canProduce and make GetProductionUnits def-aware so a Custom producer shows its train buttons (DW-168). Derive building footprint from the BuildingDefinition (authored field or mesh AABB) rather than the fixed 5x3x5 CUSTOM_FOOTPRINT (DW-169). Re-discover/append a BuildingBridge render bucket on an unknown DefinitionId so a mid-session-authored or third-faction custom building isn't invisible (DW-171)."
+    },
+    {
+      "name": "custom-building-triggers",
+      "dw_ids": ["DW-170"],
+      "intent": "Extend trigger building_type resolution to accept authored building-def ids so Custom buildings can be referenced in triggers. The ScenarioValidator/ScenarioDirector building_type checks are still Enum.TryParse<BuildingType> enum-only, mirroring the scenario-buildings gate. The Epic-7 trigger-DSL dependency this was blocked on has now landed (stories 7-1..7-15 done), so this is buildable."
+    },
+    {
+      "name": "terrain-stroke-undo",
+      "dw_ids": ["DW-141","DW-142","DW-143","DW-144"],
+      "intent": "Fix the TerrainBrush stroke-undo state machine. Track was-absent regions in SnapshotRegions/RestoreRegions so a stroke that auto-creates a new Terrain3D region can be undone (remove_region on undo) (DW-141). Ensure EndPaint runs when T is pressed mid-drag so _isPainting and the pending stroke snapshot aren't stranded (DW-142). Add a cheap before-vs-after equality check so a no-op stroke doesn't push an undo command that silently absorbs a later Ctrl+Z (DW-143). Block Ctrl+Z while a stroke is in progress (consult TerrainBrush._isPainting in EntityPlacer's undo handler) so undo can't race the live operate() and corrupt the entry (DW-144)."
+    },
+    {
+      "name": "editor-state-f5-persistence",
+      "dw_ids": ["DW-137","DW-138"],
+      "intent": "Fix editor state that doesn't survive the F5 Edit->Play->Edit round-trip. Mirror editor-placed map items into ScenarioData.Items (add an item ScenarioSyncOp handler paralleling the building/unit protocol) so placed items aren't lost on save/reload/F5 (DW-137). Add an invalidate/Clear method to EditorHistory and call it in MainScene.ResetToAuthoredStart so a post-F5 undo can no longer corrupt ScenarioData against a stale history (DW-138)."
+    },
+    {
+      "name": "pathability-determinism",
+      "dw_ids": ["DW-147","DW-148","DW-149","DW-150"],
+      "intent": "Close pathability/movement correctness gaps in Navigation. Add a swept (DDA) blocked-cell check between pos and np in MovementSystem so a fast unit can't tunnel a 1-cell wall in one tick (DW-147). Validate spawns against the resolved union grid at load time and confine an already-in-blocked unit rather than letting it traverse blocked cells freely (DW-148). Make PathabilityGrid.DeriveSlopeBlockedInto sample all four neighbours (or central difference) so far east/south edge cells auto-block and cliff walls don't land one cell to the low side (DW-149). Route PathabilityTool's cell mapping through the shared FlowField.WorldToCell helper so editor-painted cell == sim-blocked cell can't silently drift (DW-150)."
+    },
+    {
+      "name": "map-bounds-guards",
+      "dw_ids": ["DW-158","DW-159","DW-165"],
+      "intent": "Enforce map bounds consistently. Reject coordinates beyond the +/-grid extent (or enforce/document MapBounds<=128) in ScenarioValidator so blocking footprints past the +/-128 flow-grid don't alias onto edge cells and false-flag an unrelated start (DW-158). Add the +/-MapBounds guard to EntityPlacer prop place/paste/duplicate/group-move, mirroring WaterTool.CommitDrag, so an off-map paste doesn't persist then fail validation confusingly (DW-159). Wire MapBounds into CameraPhase pan-limits (and optionally NavigationPhase) so a smaller chosen size actually restricts the runtime camera/nav footprint instead of covering the full +/-128 (DW-165)."
+    },
+    {
+      "name": "start-position-editor",
+      "dw_ids": ["DW-161","DW-163","DW-167"],
+      "intent": "Fix start-position editor interaction/robustness (needs /godot-verify). Route the start-slot '-' remove through EditorHistory and defer the '+' count increment until a backing slot is actually placed (DW-161). Size the slot set by max declared Slot+1 and drive toggle/remove identity from PlayerSlots[i].Slot so a validator-legal non-contiguous set (e.g. {0,3}) doesn't drop markers and misroute toggles (DW-163). Push an EditorHistory entry for economy-spinner edits to an already-placed start slot so the hash-folded StartCrystal/StartOre change is undoable (DW-167)."
+    },
+    {
+      "name": "editor-group-ops",
+      "dw_ids": ["DW-151","DW-153","DW-155"],
+      "intent": "Fix editor group-op fidelity and coverage. Carry worker overrides, pre_built, and node collection/owner fields through EntityPlacer group move/duplicate/paste so re-derived placements aren't lossy (DW-151). Account for terrain height in FinishMarquee/GroundPointOf so box-select doesn't miss elevated entities and 3D selection markers don't sink through the ground (DW-153). Extract the EntityPlacer group-op composition Godot-free and test that one group op == one undo step against the real composition rather than only a HashSet proxy (DW-155)."
+    },
+    {
+      "name": "packager-props-roundtrip-test",
+      "dw_ids": ["DW-156"],
+      "intent": "Add a ContentPackager .chimera.zip round-trip test for props/cameras/water, exercising the package/import surface one level above the already-proven JSON round-trip. Terrain has a packager round-trip test but props/cameras/water are only covered at the JSON layer, leaving the AC's package/import path unexercised."
+    },
+    {
+      "name": "minimap-preview-gizmo-hide",
+      "dw_ids": ["DW-166"],
+      "intent": "Prevent the minimap preview from capturing editor gizmos. MinimapPreviewRenderer renders the live edit-mode World3D with no cull mask, so start-position flags, the placement ghost, and active overlays can bleed into preview.png. Hide the editor-only layers/gizmos (via cull mask / visibility) for the one-shot render. The preview.png is consumed downstream by stories 11.1/9.7/9.10."
+    },
+    {
+      "name": "win-condition-koth-elimination",
+      "dw_ids": ["DW-188","DW-190"],
+      "intent": "Close two win-condition gaps. Make fully-wiped factions eligible for total-wipeout elimination under King of the Hill so a mutual-annihilation KotH match resolves via last-team-standing, without perturbing the hold-race path (DW-188, decided). Extract the per-player-elimination presentation decision (localFaction + WinStateStore + IsFullyResolved -> Continue/EliminateLocal/GameOver) into a pure Tier-1-testable helper and/or a scripted godot-verify scenario, so the headline elimination UX can't regress with the whole suite green (DW-190)."
+    },
+    {
+      "name": "dsl-reset-checksum-sweep",
+      "dw_ids": ["DW-196","DW-197","DW-198"],
+      "intent": "Generalize the reset/checksum determinism tripwires. Lift the DW-19 exhaustive-sweep technique (DivergingFields/NonDefaultValue/SyntheticallyFillArrays) out of EntityWorldClearCompletenessTests into a shared type-agnostic [Theory] over every store ClearForReset touches, so a dropped Array.Clear in ProjectileStore/HeroStore/ItemStore (whose fields are checksum-folded) can't ship green (DW-196). Bound TriggerEnabledStore.IsEnabled by Count (or wipe the tail on Reset/Clear) so re-applying a scenario with FEWER triggers doesn't leave a stale enabled tail, with a shrink-path regression test (DW-197). Extract the DW-20 fighting-reset precondition block into a helper and assert it against all three checksum hosts (not just the pre-reset host) so a fixture that goes vacuous only on the re-apply path can't trivially pass (DW-198)."
+    },
+    {
+      "name": "dsl-robustness",
+      "dw_ids": ["DW-181","DW-191"],
+      "intent": "Harden the DSL load/runtime guards. Add a Tier-1 test that derives the graph-only kind set from ToFlat's actual throw/drop behavior so TriggerGraph.IsGraphOnlyKind and ToFlat can't silently drift when a future graph-only kind is added (DW-181). Convert the load-time run_trigger cycle detectors (DslLoopGate.RunCycleDfs and EventDispatchPlan.CycleDfs) to explicit-stack iterative walks, or add a global trigger-count cap, so a very long acyclic run_trigger chain can't StackOverflow at load — matching the runtime MaxRunTriggerDepth=16 seatbelt (DW-191)."
+    },
+    {
+      "name": "dsl-graph-editor-fields",
+      "dw_ids": ["DW-179","DW-195"],
+      "intent": "Make T3 node-graph nodes fully authorable in DslGraphEditorPanel. Give every dedicated graph-only leaf kind (ShowObjective/CompleteObjective/FailObjective and the pre-existing OrderUnits/MoveCamera/etc.) an exec-in/out PortsOf case so a palette-added node is wireable instead of an unsaveable dead node (DW-195). Add a selected-node property inspector (reusing the card-editor field-row + validation badge) so ExprLiteral/ExprVar/RaiseEvent/ActionNode payload fields can be edited rather than carrying palette defaults only (DW-179). Both directions were decided 2026-07-19."
+    },
+    {
+      "name": "save-import-integrity",
+      "dw_ids": ["DW-145","DW-186"],
+      "intent": "Close save/import integrity gaps. In WinConditionPhase.DoImport, clear the author-local TerrainRef (else-branch) when an imported package bundles zero terrain files, so a stale TerrainRef doesn't linger (DW-145). Run ScenarioValidator.Validate on save across all editor authoring paths (MapGeneratorPanel, PersistenceManifestPanel, etc.) and surface a located error, so editor surfaces can no longer save a scenario the fail-closed loader then rejects — the author-lockout class (DW-186)."
+    },
+    {
+      "name": "scenario-load-phase-hardening",
+      "dw_ids": ["DW-95","DW-96","DW-123"],
+      "intent": "Harden ScenarioLoadPhase.ResolveSlotFactionDefs. Add the interim bounds guard on the per-slot write `_ctx.SlotFactionDefs[(int)faction] = def` so a scenario slot >=4 doesn't index out of range (DW-95, DW-96 — same site, both decided as the cheap missing-guard add). Wrap the FactionDefinition.LoadFromFile(abs) call in try/catch so a hand-corrupted scenario-assigned faction file that fails the lenient Validate logs and skips that slot instead of throwing uncaught and crashing the whole scene load (DW-123)."
+    },
+    {
+      "name": "editor-panel-scenario-rebind",
+      "dw_ids": ["DW-10"],
+      "intent": "Wire the CreationSuite editor panels' SetScenario into the runtime scenario reload/import path so a panel rebinds its held ScenarioData after a reload. Today PersistenceManifestPanel/TriggerEditorPanel (and siblings) capture _scenario once at Initialize with zero callers of their SetScenario, so after a reload a panel edits a stale object and can save it back to the originally-captured path (silent data loss / wrong-target save). The panels and the reload path both exist today; this is wiring, not new infrastructure."
+    },
+    {
+      "name": "hero-store-delete-lifecycle",
+      "dw_ids": ["DW-52"],
+      "intent": "Free the HeroStore row when a hero-linked unit is deleted in the editor. EntityWorld.Destroy does not free the row nor clear the store's back-reference EntityId, so the row leaks and its EntityId dangles at a dead/recycled entity. The prior 'restore as plain unit' concern (DW-51) is already resolved, so freeing the row on delete is a mechanical lifecycle fix."
+    },
+    {
+      "name": "ai-supply-gating-guard",
+      "dw_ids": ["DW-63"],
+      "intent": "Guard AiOpponentSystem's supply-headroom scoring against a scenario with supply.enabled:false. SupplyHeadroom = SupplyCap - SupplyUsed can saturate to a meaningless deeply-negative magnitude when SupplyUsed climbs unboundedly past SupplyCap (never blocked, since gating is disabled), skewing the expand-supply ladder. Skip the supply-headroom branch when supply gating is disabled. (Low priority; AiOpponentSystem is also float-based and slated for a separate float->Fixed determinism pass.)"
+    },
+    {
+      "name": "signature-mechanic-test-hardening",
+      "dw_ids": ["DW-107","DW-108","DW-109","DW-110"],
+      "intent": "Harden SignatureMechanicRealContentTests. Assert AbilityRegistry.LoadFromDirectory's Count (or pass a failing onSkipped) so a silently-skipped invalid ability file is caught (DW-107). Derive the pre-damage amount from def.Hp (or assert def.Hp>30) instead of a fixed Fixed.FromInt(30), so the test isn't fragile against future low-HP roster content (DW-108). Hoist the real content into a shared static fixture so the two-run determinism test doesn't re-read from disk twice per run (DW-109). Issue the cast intents via GoldenChecksumReplay.RunAndRecord's perturb hook rather than inside the build callback (DW-110)."
+    },
+    {
+      "name": "research-parity-test-coverage",
+      "dw_ids": ["DW-82","DW-84","DW-86"],
+      "intent": "Add the missing research/definition parity test coverage. Add a BuildingDefinition.Prerequisites round-trip test alongside the existing AvailableResearch cases in FactionWriteRoundTripTests so the 'round-trips exactly like Prerequisites' claim is pinned by a shared assertion (DW-82). Add a MatchLifecycleController seam test asserting Lockstep/ReplayPlayer's Buildings/Items/Research references are the same instances as Host, so a dropped wiring line can't silently break online/replay parity (DW-84). Add a StartResearch/CancelResearch replay-vs-live round-trip to CommandApplyParityTests, matching the BuyItem/UseItem/SetRally cases, so a dropped Research forwarding arg is caught (DW-86)."
+    },
+    {
+      "name": "ai-test-constant-drift-guard",
+      "dw_ids": ["DW-125"],
+      "intent": "Remove the silent-drift risk in AsymmetryPlaytestValidationTests, whose harness constants (InitialWaveSize=5, base positions (45,0,0)/(-45,0,0)) hand-copy AiOpponentSystem's internal attack-threshold and P1_BASE values. Expose those constants as internal (InternalsVisibleTo) and reference them symbolically, or add a drift-guard assertion, so retuning AiOpponentSystem doesn't leave the test silently stale."
+    },
+    {
+      "name": "settings-serialization-single-source",
+      "dw_ids": ["DW-134"],
+      "intent": "Extract a single Godot-free SettingsSerialization.Options (WriteIndented/CommentHandling.Skip/AllowTrailingCommas) in src/Core/Definitions and reference it from both SettingsManager and SettingsDataRoundTripTests. The test currently hand-replicates the JsonSerializerOptions instead of exercising the real serializer path, so a silent divergence between the two option sets would regress persistence while the test stays green."
+    },
+    {
+      "name": "offline-reset-guard-test",
+      "dw_ids": ["DW-22"],
+      "intent": "Extract the offlineEditorLoop guard in WinConditionPhase (`ReplayPlayer == null && !Lockstep.IsOnline`) that gates the destructive Edit<->Play reset away from online/replay transitions into a pure static predicate, and add a Tier-1 test. This is the highest-blast-radius decision in the reset change and is currently verified only by inspection; all its inputs are local booleans so the extraction needs no future story."
+    },
+    {
+      "name": "doc-comment-rename-cleanup",
+      "dw_ids": ["DW-46","DW-88","DW-105","DW-194","DW-175"],
+      "intent": "Non-behavioral documentation/comment/name corrections in one sweep. Fix the EntityWorld.cs:37-38 UseItem/DropItem doc comments that say 'Handled by OrderApplier BEFORE the entity guard' when NetworkCommand correctly dispatches them AFTER the ownership guard (a latent anti-cheat trap) (DW-46). Correct the misleading precedent framing in the ResearchSystem.CompleteResearch full-world-scan comment (DW-88). Add a dated addendum to _bmad-output/fma-faction-design.md noting Story 2.8's Aviary/Air building resolved the stale 'air units unbuildable' narrative (DW-105). Rename the stale CanonicalModelHash/SimChecksum AlgoVersion test-method names (AlgoVersion_IsTwelve/_Pinned_At12 now assert 14, Stays20 asserts 21) to version-neutral forms across the ~6 test files (DW-194). Correct the stale NetworkCommand MakeReady doc and one-time re-save/normalize the 3 CRLF files, keeping raw-byte hash semantics, per the 2026-07-19 decision (DW-175)."
+    }
+  ],
+  "blocked": [
+    {"id":"DW-1","blocker":"Epic 9 lockstep multiplayer + the AiOpponentSystem float->Fixed determinism conversion it depends on"},
+    {"id":"DW-2","blocker":"Epic 9 stateful command-log server (whole-stream buffer + rejoin/replay-to-live-tick catch-up)"},
+    {"id":"DW-14","blocker":"Epic 9 attested multi-hash content handshake (must consume the Launch-time StartStateHash on the wire)"},
+    {"id":"DW-17","blocker":"Epic 9 MP-seed handshake introducing a live match seed the offline-only reset must capture and restore"},
+    {"id":"DW-36","blocker":"Epic 9 online/replay RNG parity plus a future RNG-drawing consumable (only shipped consumable is a deterministic self-heal)"},
+    {"id":"DW-43","blocker":"A permanent (non-revivable) hero-removal path that tears down the HeroStore row before the EntityWorld entity — no such path exists yet"},
+    {"id":"DW-54","blocker":"An in-place UnitDefinition reload/replace editor feature (defs are resolved once at scenario link and never mutated today)"},
+    {"id":"DW-73","blocker":"An automated Godot Control/GraphEdit interaction test harness (none exists for any CreationSuite editor)"},
+    {"id":"DW-87","blocker":"Story 9.2 — >4 active factions / FactionRegistry PLAYER_COUNT (8-player) ceiling actually wired up (all live callers construct FactionRegistry(2))"},
+    {"id":"DW-94","blocker":"Story 9.2 — SLOT_DEFINITIONS_SIZE grown in lockstep with PLAYER_COUNT/FACTION_ARRAY_SIZE when the Faction enum widens"},
+    {"id":"DW-120","blocker":"Story 11.1 (3-4 player skirmish/lobby setup screen) — or Story 9.2 which owns the FactionRegistry PLAYER_COUNT widening"},
+    {"id":"DW-121","blocker":"Story 11.1 (skirmish/lobby setup screen that consumes the faction discovery list to assign a match slot)"},
+    {"id":"DW-126","blocker":"A general-purpose Scenario Settings panel (Epic-6-scale surface not yet built)"},
+    {"id":"DW-127","blocker":"A New Scenario empty-canvas origination flow (Epic-6-scale surface not yet built)"},
+    {"id":"DW-128","blocker":"A non-alpha/beta (custom) faction becoming a plausible boot default (unreachable while both shipped factions carry all curated template ids)"},
+    {"id":"DW-135","blocker":"A non-alpha/beta (custom) faction becoming a plausible boot default (overlaps DW-128)"},
+    {"id":"DW-154","blocker":"Story 14-6 (single-active right-dock arbitration + unified hotkey map; epic-6 retro action A3-E6) — not yet shipped"},
+    {"id":"DW-176","blocker":"An offline .chmr replay-recording feature (replay recording is online-only today, so the press-time apply has no recorded stream to diverge from)"},
+    {"id":"DW-184","blocker":"An EntityWorld base-entity generation counter — becomes live only when a system spawns same-faction units synchronously between CombatSystem[7]/ProjectileSystem[8] and WinConditionSystem[14] (the Landmark half is already generation-safe)"},
+    {"id":"DW-189","blocker":"Story 9.2/9.15 player-count widening — the 2-faction (1 - a.Faction) escape hatch is unreachable while MAX_PLAYERS=2"}
+  ],
+  "skip": [
+    {"id":"DW-58","reason":"The structured-tuple retrofit was conditioned on Story 4.6 needing (FieldPath,Message) field paths; 4.6 shipped consuming plain strings (ValidateProposedEdge returns string?), so the trigger resolved negative — moot."},
+    {"id":"DW-61","reason":"Human decision (2026-07-19): keep BuildingDefinition.ConstructionCost for API stability / a future external tool despite zero current callers — accepted won't-fix, no code change."},
+    {"id":"DW-67","reason":"Human decision (2026-07-19): keep the public single-edit building-JSON API (PatchFactionBuildingJson/BuildingEdit) for architectural parity with UnitEdit despite only a test caller — accepted won't-fix."},
+    {"id":"DW-70","reason":"Human decision (2026-07-19): accept the missing field-badge 'home' for inherited unit-only keys on a BuildingDefinition, matching existing unit-editor precedent — won't-fix."},
+    {"id":"DW-122","reason":"Pure DRY with no behavioral impact; the entry's own closure defers extracting a shared LoadValidatedFromDirectory helper until a 5th such loader is added."},
+    {"id":"DW-132","reason":"Accepted project convention: Godot Control UI (OnboardingPanel) is verified via live /godot-verify, not dotnet test; no CreationSuite panel has Control-level automated coverage by design."}
+  ],
+  "decisions": [
+    {
+      "id":"DW-26",
+      "question":"The hero-centric XpPerKill (xp_per_kill) knob is superseded by UnitDefinition.XpBounty as the runtime XP source but is still validated, round-tripped, editor-exposed, and now AI-editable — how should this misleading authoring surface be resolved?",
+      "context":"UnitDefinitionValidator.cs:422 validates it, HeroDefinition Clone round-trips it, UnitCardPanel.Edit.cs:777 surfaces it as a functional 'XP per kill' knob, and BalanceSuggestionApplier.cs:135 lets the AI edit it, yet no Combat/HeroXpSystem consumes it. The recorded deferral says 'repurpose' but leaves the exact semantic open.",
+      "options":[
+        {"key":"1","label":"Remove the dead knob","effect":"close","resolution":"Drop XpPerKill from the validator, FactionWriter, and Unit Card editor as dead authoring surface; XpBounty remains the sole runtime XP source."},
+        {"key":"2","label":"Repurpose as XP multiplier","effect":"build","intent":"Wire XpPerKill into the runtime as a per-hero XP-gain multiplier applied on top of the victim's XpBounty, and update the editor help text to match."},
+        {"key":"3","label":"Keep open","effect":"keep-open"}
+      ],
+      "recommendation":"1"
+    },
+    {
+      "id":"DW-124",
+      "question":"ai_preset is validated data but no runtime AI system consumes it (AiOpponentSystem pilots via AiDifficulty only). Wire it into the AI, or retire the 'each side run by its ai_preset' framing?",
+      "context":"Grep of AiOpponentSystem.cs finds no ai_preset reference; the field is a closed set with the single value 'balanced'. Wiring it would require expanding the preset set AND first making AiOpponentSystem deterministic (float->Fixed) for any lockstep use, which is itself gated on Epic 9.",
+      "options":[
+        {"key":"1","label":"Wire ai_preset into AI scoring","effect":"build","intent":"Expand the preset set and have AiOpponentSystem select behavior weights by ai_preset, gated behind the AI float->Fixed determinism work."},
+        {"key":"2","label":"Retire the framing","effect":"close","resolution":"Keep ai_preset as inert metadata (or remove it) and drop the 'each side run by its preset' language from the docs."},
+        {"key":"3","label":"Keep open","effect":"keep-open"}
+      ],
+      "recommendation":"3"
+    },
+    {
+      "id":"DW-140",
+      "question":"The shared EditorHistory is an uncapped stack and terrain strokes duplicate full height/control Images per region, so undo memory grows unbounded. Adopt a bounded/coalescing history policy?",
+      "context":"EditorHistory.cs is an uncapped Stack shared by entity, terrain, and start-slot undo. A bounded/coalescing policy changes the undo contract (entries may be evicted or coalesced) for ALL consumers — an API-shape change that ripples across every undo producer.",
+      "options":[
+        {"key":"1","label":"Bounded coalescing history","effect":"build","intent":"Add a byte/entry cap to EditorHistory with oldest-entry eviction and terrain-stroke coalescing, and update all undo producers to tolerate eviction."},
+        {"key":"2","label":"Keep open","effect":"keep-open"}
+      ],
+      "recommendation":"1"
+    },
+    {
+      "id":"DW-146",
+      "question":"The SimChecksum-folded elevation grid is built via Godot float get_height -> Fixed.FromFloat, a cross-platform determinism risk. Build a deterministic path now or continue deferring?",
+      "context":"ScenarioLoadPhase.cs:226 samples float bilinear heights then Fixed.FromFloat per cell. Unreachable today (all shipped scenarios are flat; every ticking client is x64). The recorded decision defers until sculpted maps ship on non-x64 clients.",
+      "options":[
+        {"key":"1","label":"Deterministic elevation quantization","effect":"build","intent":"Replace the float get_height path with an integer/Fixed height source (or a pinned quantization) so the folded grid is bit-identical cross-platform, with a golden re-baseline."},
+        {"key":"2","label":"Keep open (defer)","effect":"keep-open"}
+      ],
+      "recommendation":"2"
+    },
+    {
+      "id":"DW-160",
+      "question":"Five grid systems (FogOfWar 128, FlowField, PathabilityGrid persist format, SpatialHash, Terrain3D/NavMesh) each hardcode map extent. Author the correct-course determinism story to unify them on one map-size source of truth?",
+      "context":"This is the escalation record: resizing the map changes the pathability persist format and forces a golden re-baseline, so it needs a scoped determinism story rather than an ad-hoc dev pass. It is the parent of DW-162 and DW-165.",
+      "options":[
+        {"key":"1","label":"Author the correct-course story","effect":"build","intent":"Scope a determinism correct-course story introducing one map-size source of truth consumed by all five grid systems, including the pathability persist-format migration and golden re-baseline."},
+        {"key":"2","label":"Keep open","effect":"keep-open"}
+      ],
+      "recommendation":"1"
+    },
+    {
+      "id":"DW-162",
+      "question":"A Large (128) map's +X/+Z boundary line aliases into the last fog/flow/pathability cell. Give Large a sub-128 margin (which forces a one-time golden re-baseline), or handle it under the DW-160 map-size story?",
+      "context":"MapSizes.MaxHalfExtent == FlowField.WORLD_HALF_INT == 128 and WorldToCell clamps col/row 128->127. The recorded fix (sub-128 Large margin) requires a golden re-baseline and is conceptually part of the DW-160 map-size unification.",
+      "options":[
+        {"key":"1","label":"Sub-128 Large margin + re-baseline","effect":"build","intent":"Reduce the Large half-extent below 128 so the boundary line stays in-grid, then re-record the affected goldens."},
+        {"key":"2","label":"Fold into DW-160","effect":"keep-open"}
+      ],
+      "recommendation":"2"
+    },
+    {
+      "id":"DW-174",
+      "question":"Story 7-8 (custom runtime UI read-rail) finalized green but a deeper follow-up review was recommended after the review budget was exhausted. Schedule it, close it, or keep it open?",
+      "context":"origin: review-budget-followup for spec-7-8. The story is done and green; only the deferred deeper review pass remains.",
+      "options":[
+        {"key":"1","label":"Schedule the follow-up review","effect":"build","intent":"Run a bmad code-review pass over the 7-8 read-rail changes and file any findings as new ledger entries."},
+        {"key":"2","label":"Accept as reviewed","effect":"close","resolution":"Treat 7-8 as sufficiently reviewed; no further pass."},
+        {"key":"3","label":"Keep open","effect":"keep-open"}
+      ],
+      "recommendation":"1"
+    },
+    {
+      "id":"DW-177",
+      "question":"The Godot-coupled write-rail (name->index resolution, arg extraction, offline sink wiring) is Tier-1-inexpressible and carries no executed coverage. How should the residual verification be discharged?",
+      "context":"The determinism-critical seams are already extracted and tested; the residual is Godot-only surface. Pass-2 confirmed the risk class is real (review found a null-lockstep wiring defect). Discharging it needs a human/in-engine godot-verify session, not an automatable test.",
+      "options":[
+        {"key":"1","label":"Author an in-engine verify checklist","effect":"build","intent":"Write and run a godot-verify checklist covering the write-rail Godot surfaces (name->index, arg extraction, offline sink wiring), recording results."},
+        {"key":"2","label":"Keep open","effect":"keep-open"}
+      ],
+      "recommendation":"1"
+    },
+    {
+      "id":"DW-180",
+      "question":"The T3 node-graph editor's Godot-coupled drag/wire/badge interactions have zero executed coverage and cannot be driven by godot-mcp (no absolute-mouse cursor for port->port drag). Schedule a human real-mouse verify session?",
+      "context":"Verified this sweep: godot_input has no absolute-mouse click, so port drag/disconnect/node-move need a human pass. The ledger already records keep-open pending that session.",
+      "options":[
+        {"key":"1","label":"Human real-mouse godot-verify","effect":"build","intent":"Run a human-driven in-engine session exercising drag/wire/disconnect/node-move on the T3 graph editor and record results."},
+        {"key":"2","label":"Keep open","effect":"keep-open"}
+      ],
+      "recommendation":"1"
+    },
+    {
+      "id":"DW-182",
+      "question":"The 7.10 follow-up panel behaviors (reopen edit-preservation, invalid/cycle save status, pre-draw cycle+type rejection, T2->T3 occlusion) need in-engine verify beyond the DW-180 checklist. Bundle them into the same human session?",
+      "context":"Same absolute-mouse godot-mcp limitation as DW-180; the ledger records keep-open bundled with DW-180's human pass.",
+      "options":[
+        {"key":"1","label":"Verify in the DW-180 session","effect":"build","intent":"Add the 7.10 panel-behavior checks to the human-driven T3 graph-editor verify session and record results."},
+        {"key":"2","label":"Keep open","effect":"keep-open"}
+      ],
+      "recommendation":"1"
+    },
+    {
+      "id":"DW-183",
+      "question":"Story 7-10 (T3 visual node-graph editor) finalized green but a deeper follow-up review was recommended after the review budget was exhausted. Schedule it, close it, or keep it open?",
+      "context":"origin: review-budget-followup for spec-7-10. The story is done and green; only the deferred deeper review pass remains.",
+      "options":[
+        {"key":"1","label":"Schedule the follow-up review","effect":"build","intent":"Run a bmad code-review pass over the 7-10 graph-editor changes and file any findings as new ledger entries."},
+        {"key":"2","label":"Accept as reviewed","effect":"close","resolution":"Treat 7-10 as sufficiently reviewed; no further pass."},
+        {"key":"3","label":"Keep open","effect":"keep-open"}
+      ],
+      "recommendation":"1"
+    },
+    {
+      "id":"DW-187",
+      "question":"Story 7-11 (win-condition preset templates) finalized green but a deeper follow-up review was recommended after the review budget was exhausted. Schedule it, close it, or keep it open?",
+      "context":"origin: review-budget-followup for spec-7-11. The story is done and green; only the deferred deeper review pass remains.",
+      "options":[
+        {"key":"1","label":"Schedule the follow-up review","effect":"build","intent":"Run a bmad code-review pass over the 7-11 WinConditionSystem changes and file any findings as new ledger entries."},
+        {"key":"2","label":"Accept as reviewed","effect":"close","resolution":"Treat 7-11 as sufficiently reviewed; no further pass."},
+        {"key":"3","label":"Keep open","effect":"keep-open"}
+      ],
+      "recommendation":"1"
+    },
+    {
+      "id":"DW-192",
+      "question":"DslSimEventFeed.Capacity=512 deterministically drops-newest, so a large AoE engagement can exceed 512 unit_damaged pushes/tick and stop firing those triggers. Raise/scale the cap or accept the documented saturation?",
+      "context":"DamageResolver/ProjectileSystem push one occurrence per hit plus per splash victim; a large AoE engagement can exceed 512 pushes/tick. The recorded decision keeps this open as a designer tuning item.",
+      "options":[
+        {"key":"1","label":"Raise/scale the capacity","effect":"build","intent":"Increase DslSimEventFeed.Capacity (or make it scenario-configurable) and document the new ceiling."},
+        {"key":"2","label":"Accept the saturation","effect":"close","resolution":"Accept the documented deterministic drop-newest behavior as intended backpressure under extreme AoE load."},
+        {"key":"3","label":"Keep open","effect":"keep-open"}
+      ],
+      "recommendation":"3"
+    }
+  ],
+  "escalations": []
+}
