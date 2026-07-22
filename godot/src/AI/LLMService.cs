@@ -10,8 +10,10 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
+using ProjectChimera.AI.Providers;
 using ProjectChimera.Core;
 using ProjectChimera.Core.Definitions;
+using ProjectChimera.Dsl; // NodeKinds — the closed flat trigger vocabulary (internal, same assembly)
 
 namespace ProjectChimera.AI
 {
@@ -45,26 +47,50 @@ namespace ProjectChimera.AI
 
         /// <summary>res:// path to the faction JSON for slot 1 (Player 2).</summary>
         public string Slot1FactionJson { get; set; } = "res://resources/data/factions/beta_faction.json";
+
+        // ── Story 8.3 — the three RTS clamps, parameterized out of ValidateScenario/BuildMapSystemPrompt onto this
+        //    TRUSTED context (editor/caller-supplied). Defaults reproduce today's RTS behavior exactly, so RTS output
+        //    is byte-for-byte unchanged; a non-RTS caller supplies relaxed values. NONE of these is ever sourced from
+        //    the parsed (untrusted) scenario file — that would weaken the validation gate circularly. A future
+        //    ScenarioType registry can populate them per type (see deferred-work DW note). ──
+
+        /// <summary>Story 8.3: the minimum number of player slots a valid scenario must declare. RTS default 2;
+        /// <see cref="ValidateScenario"/> rejects fewer. Trusted (never read from the scenario file).</summary>
+        public int MinPlayerSlots { get; set; } = 2;
+
+        /// <summary>Story 8.3: the maximum pre-placed combat (non-worker) units allowed per faction slot. RTS default
+        /// 6; <see cref="ValidateScenario"/> rejects more. Trusted (never read from the scenario file).</summary>
+        public int MaxCombatUnitsPerSlot { get; set; } = 6;
+
+        /// <summary>Story 8.3: the TRUSTED per-slot faction-JSON resolver. NULL ⇒ the RTS default (slot 0 →
+        /// <see cref="Slot0FactionJson"/>, every other slot → <see cref="Slot1FactionJson"/>) — identical to today.
+        /// A non-RTS caller supplies its own trusted mapping. <see cref="ValidateScenario"/> OVERWRITES each slot's
+        /// hallucinated <c>faction_json</c> from this resolver, so the untrusted file never dictates the path.</summary>
+        public Func<int, string>? FactionJsonResolver { get; set; }
+
+        /// <summary>Resolve the trusted faction-JSON path for the given 0-based <paramref name="slot"/>, honoring
+        /// <see cref="FactionJsonResolver"/> when set else the RTS slot-0/slot-1 default mapping.</summary>
+        public string ResolveFactionJson(int slot)
+            => FactionJsonResolver != null
+                ? FactionJsonResolver(slot)
+                : (slot == 0 ? Slot0FactionJson : Slot1FactionJson);
     }
 
     /// <summary>
-    /// Translates natural language descriptions into validated TriggerDefinition JSON
-    /// using the Claude API (cloud) with an optional Ollama fallback (local).
+    /// Translates natural language descriptions into validated TriggerDefinition / ScenarioData JSON, routing every
+    /// generation call through the Story 8.2 <see cref="ILLMProvider"/> stack via
+    /// <see cref="LlmProviderFactory.TryCreate"/>. The selected provider is AUTHORITATIVE — on failure that provider's
+    /// error is surfaced and NO other provider is attempted (the old implicit Claude→Ollama fallback is gone).
     ///
-    /// Pure C# — no Godot dependency. Uses System.Net.Http.HttpClient directly.
+    /// Pure C# — no Godot dependency. The API key is read ONLY through <see cref="ISecretStore"/> (via the factory),
+    /// never a property / <c>[Export]</c> field / settings. The owned <see cref="HttpClient"/> is built with
+    /// <c>AllowAutoRedirect=false</c> (a real key now flows through it — closes the cross-host redirect key-leak).
     /// Follows the ConcurrentQueue/DrainEvents pattern used by NakamaService and ModIoService.
     /// Call DrainEvents() once per _Process frame to marshal callbacks to the main thread.
     /// </summary>
     public class LLMService
     {
         // ── Configuration ─────────────────────────────────────────────────────
-
-        private const string CLAUDE_URL    = "https://api.anthropic.com/v1/messages";
-        private const string CLAUDE_MODEL  = "claude-sonnet-4-6";
-        private const string CLAUDE_VERSION = "2023-06-01";
-
-        private const string OLLAMA_URL    = "http://localhost:11434/api/generate";
-        private const string OLLAMA_MODEL  = "llama3.1:8b";
 
         private const int    MAX_TOKENS    = 2048;
         private const int    TIMEOUT_MS    = 30_000;
@@ -76,20 +102,45 @@ namespace ProjectChimera.AI
         // ── Internal state ────────────────────────────────────────────────────
 
         private readonly HttpClient _http;
+        private readonly Func<SettingsData> _getSettings;
+        private readonly ISecretStore _secretStore;
         private readonly ConcurrentQueue<Action> _queue = new();
         private CancellationTokenSource? _cts;
         private CancellationTokenSource? _mapCts;
 
-        /// <summary>Set before calling GenerateTriggerAsync. Empty string disables cloud.</summary>
-        public string AnthropicApiKey { get; set; } = "";
-
         // ── Construction ──────────────────────────────────────────────────────
 
-        public LLMService()
+        /// <summary>
+        /// Story 8.3: construct the service with the Godot-free seams the provider stack needs — a settings accessor
+        /// (the authoritative selected provider/model/base-URL), the <see cref="ISecretStore"/> (the ONLY key source),
+        /// and an optional injected <see cref="HttpClient"/> (the unit-test seam over a stub handler). When
+        /// <paramref name="http"/> is null an owned client is built with <c>AllowAutoRedirect=false</c>.
+        /// </summary>
+        public LLMService(Func<SettingsData> getSettings, ISecretStore secretStore, HttpClient? http = null)
         {
-            _http = new HttpClient { Timeout = TimeSpan.FromMilliseconds(TIMEOUT_MS) };
-            _http.DefaultRequestHeaders.UserAgent.ParseAdd("ProjectChimera/1.0");
+            _getSettings = getSettings ?? throw new ArgumentNullException(nameof(getSettings));
+            _secretStore = secretStore ?? throw new ArgumentNullException(nameof(secretStore));
+
+            if (http != null)
+            {
+                _http = http;
+            }
+            else
+            {
+                _http = new HttpClient(BuildOwnedHttpHandler())
+                { Timeout = TimeSpan.FromMilliseconds(TIMEOUT_MS) };
+                _http.DefaultRequestHeaders.UserAgent.ParseAdd("ProjectChimera/1.0");
+            }
         }
+
+        /// <summary>
+        /// Story 8.3: the owned-client message handler, factored out so the <c>AllowAutoRedirect=false</c> hardening is
+        /// directly Tier-1 assertable (the owned path is never taken when a stub client is injected). A real key now
+        /// flows through this client via the provider adapters, so redirects are refused: the host allowlist is enforced
+        /// only against the initial base URL, and .NET does NOT strip a custom <c>x-api-key</c> header on a cross-host
+        /// redirect — mirrors the evaluator client 8.2 hardened.
+        /// </summary>
+        internal static HttpClientHandler BuildOwnedHttpHandler() => new() { AllowAutoRedirect = false };
 
         // ── Public API ────────────────────────────────────────────────────────
 
@@ -107,32 +158,41 @@ namespace ProjectChimera.AI
             _cts = new CancellationTokenSource();
             var token = _cts.Token;
 
+            // Snapshot the authoritative settings on the caller thread; the factory reads the provider/model/base-URL
+            // from it and the key from the secret store — no fallback, no other provider attempted.
+            SettingsData settings = _getSettings();
+
             Task.Run(async () =>
             {
                 try
                 {
-                    string prompt  = BuildSystemPrompt(context);
-                    string? json   = null;
-                    string? error  = null;
-                    string msg     = $"Create a trigger for: {description}";
+                    string prompt = BuildSystemPrompt(context);
+                    string msg    = $"Create a trigger for: {description}";
 
-                    // Try Claude API first.
-                    if (!string.IsNullOrEmpty(AnthropicApiKey))
-                        (json, error) = await TryClaudeAsync(prompt, msg, token);
-
-                    // Fallback: local Ollama.
-                    if (json == null)
-                        (json, error) = await TryOllamaAsync(prompt, msg, token);
-
-                    if (json == null)
+                    // Route through the selected provider only (Story 8.3). A synchronous-unavailable case
+                    // (no provider / no key / bad host) short-circuits with the four-state message and NO network call.
+                    if (!LlmProviderFactory.TryCreate(settings, _secretStore, _http,
+                            out ILLMProvider? provider, out AiAvailability failure))
                     {
-                        string fallback = error ?? "Both Claude and Ollama are unavailable.";
-                        _queue.Enqueue(() => onComplete(null, fallback));
+                        _queue.Enqueue(() => onComplete(null, AiAvailabilityMessages.Describe(failure)));
+                        return;
+                    }
+
+                    NormalizedResult result = await provider!.GenerateAsync(
+                        new NormalizedRequest(prompt, msg, MAX_TOKENS), token);
+
+                    if (!result.Ok)
+                    {
+                        // The selected provider's failure is surfaced — never masked by another provider — and voiced
+                        // with the SAME four-state microcopy Test-connection uses (Story 8.3), not a raw adapter string,
+                        // so the async failure half of the four-state availability UX matches the synchronous half.
+                        _queue.Enqueue(() => onComplete(null,
+                            AiAvailabilityMessages.Describe(AiAvailabilityMap.FromFailure(result.Failure))));
                         return;
                     }
 
                     // Validate the generated JSON.
-                    var (trigger, validationError) = Validate(json, context);
+                    var (trigger, validationError) = Validate(StripMarkdown(result.Text), context);
                     if (trigger == null)
                     {
                         _queue.Enqueue(() => onComplete(null,
@@ -160,99 +220,17 @@ namespace ProjectChimera.AI
                 action();
         }
 
-        // ── Claude API ────────────────────────────────────────────────────────
-
-        private async Task<(string? json, string? error)> TryClaudeAsync(
-            string systemPrompt, string userMessage, CancellationToken ct)
-        {
-            try
-            {
-                var body = new
-                {
-                    model      = CLAUDE_MODEL,
-                    max_tokens = MAX_TOKENS,
-                    system     = systemPrompt,
-                    messages   = new[]
-                    {
-                        new { role = "user", content = userMessage }
-                    }
-                };
-
-                var req = new HttpRequestMessage(HttpMethod.Post, CLAUDE_URL)
-                {
-                    Content = new StringContent(
-                        JsonSerializer.Serialize(body),
-                        Encoding.UTF8, "application/json")
-                };
-                req.Headers.Add("x-api-key", AnthropicApiKey);
-                req.Headers.Add("anthropic-version", CLAUDE_VERSION);
-
-                var resp = await _http.SendAsync(req, ct);
-                string raw = await resp.Content.ReadAsStringAsync(ct);
-
-                if (!resp.IsSuccessStatusCode)
-                    return (null, $"Claude API error {(int)resp.StatusCode}: {raw}");
-
-                // Extract text from content[0].text
-                using var doc = JsonDocument.Parse(raw);
-                string text = doc.RootElement
-                    .GetProperty("content")[0]
-                    .GetProperty("text").GetString() ?? "";
-
-                return (StripMarkdown(text), null);
-            }
-            catch (Exception ex) when (ex is not OperationCanceledException)
-            {
-                return (null, $"Claude unreachable: {ex.Message}");
-            }
-        }
-
-        // ── Ollama fallback ───────────────────────────────────────────────────
-
-        private async Task<(string? json, string? error)> TryOllamaAsync(
-            string systemPrompt, string userMessage, CancellationToken ct)
-        {
-            try
-            {
-                var body = new
-                {
-                    model  = OLLAMA_MODEL,
-                    prompt = $"{systemPrompt}\n\n{userMessage}",
-                    stream = false
-                };
-
-                var req = new HttpRequestMessage(HttpMethod.Post, OLLAMA_URL)
-                {
-                    Content = new StringContent(
-                        JsonSerializer.Serialize(body),
-                        Encoding.UTF8, "application/json")
-                };
-
-                var resp = await _http.SendAsync(req, ct);
-                string raw = await resp.Content.ReadAsStringAsync(ct);
-
-                if (!resp.IsSuccessStatusCode)
-                    return (null, $"Ollama error {(int)resp.StatusCode}");
-
-                using var doc = JsonDocument.Parse(raw);
-                string text = doc.RootElement.GetProperty("response").GetString() ?? "";
-                return (StripMarkdown(text), null);
-            }
-            catch (Exception ex) when (ex is not OperationCanceledException)
-            {
-                return (null, $"Ollama unreachable: {ex.Message}");
-            }
-        }
-
         // ── Validation pipeline ───────────────────────────────────────────────
 
         /// <summary>
-        /// Five-pass validation:
+        /// Six-pass validation:
         /// 1. Schema — can JSON be deserialized to TriggerDefinition?
-        /// 2. Faction slots — 0 or 1 only
-        /// 3. BuildingType strings — must match BuildingType enum
-        /// 4. Operators — only the six standard comparison symbols
-        /// 5. Range / safety — counts ≤ 50, durations > 0, spawn inside bounds
+        /// 2. Construct membership (Story 8.3) — every event/condition/action Type is a member of the closed flat
+        ///    <see cref="NodeKinds"/> vocabulary; an unknown or graph-only construct is rejected with a LOCATED error.
+        /// 3. Faction slots — 0 or 1 only
+        /// 4. BuildingType strings — must match BuildingType enum
+        /// 5. Operators — only the six standard comparison symbols
+        /// 6. Range / safety — counts ≤ 50, durations > 0, spawn inside bounds
         /// Returns (null, errorMessage) on failure, (trigger, null) on success.
         /// </summary>
         public static (TriggerDefinition? trigger, string? error) Validate(
@@ -271,7 +249,25 @@ namespace ProjectChimera.AI
                 return (null, $"Invalid JSON: {ex.Message}");
             }
 
-            // Pass 2 — faction slots.
+            // Pass 2 — construct membership (Story 8.3). Reject any event/condition/action whose Type is outside the
+            // closed FLAT NodeKinds vocabulary, with a LOCATED error (path + offending value) matching the shape
+            // ScenarioValidator uses. Driven off the single NodeKinds registry so the LLM gate and the load gate never
+            // diverge — a graph-only construct (e.g. custom_event, for_each, order_units) is a flat-channel unknown and
+            // is rejected here, not silently accepted.
+            var knownEvents     = new HashSet<string>(NodeKinds.EventTypes, StringComparer.Ordinal);
+            var knownConditions = new HashSet<string>(NodeKinds.ConditionTypes, StringComparer.Ordinal);
+            var knownActions    = new HashSet<string>(NodeKinds.FlatActionTypes, StringComparer.Ordinal);
+            for (int j = 0; j < trigger.Events.Length; j++)
+                if (!knownEvents.Contains(trigger.Events[j].Type))
+                    return (null, $"events[{j}].type='{trigger.Events[j].Type}' is not a known trigger event type.");
+            for (int j = 0; j < trigger.Conditions.Length; j++)
+                if (!knownConditions.Contains(trigger.Conditions[j].Type))
+                    return (null, $"conditions[{j}].type='{trigger.Conditions[j].Type}' is not a known trigger condition type.");
+            for (int j = 0; j < trigger.Actions.Length; j++)
+                if (!knownActions.Contains(trigger.Actions[j].Type))
+                    return (null, $"actions[{j}].type='{trigger.Actions[j].Type}' is not a known trigger action type.");
+
+            // Pass 3 — faction slots.
             foreach (var ev in trigger.Events)
                 if (ev.Faction is not (0 or 1))
                     return (null, $"Event '{ev.Type}' has invalid faction slot {ev.Faction} (must be 0 or 1).");
@@ -282,7 +278,7 @@ namespace ProjectChimera.AI
                 if (a.Faction is not (0 or 1))
                     return (null, $"Action '{a.Type}' has invalid faction slot {a.Faction}.");
 
-            // Pass 3 — building type strings.
+            // Pass 4 — building type strings.
             foreach (var ev in trigger.Events)
                 if (!string.IsNullOrEmpty(ev.BuildingType)
                     && !Enum.TryParse<BuildingType>(ev.BuildingType, out _))
@@ -293,7 +289,7 @@ namespace ProjectChimera.AI
                     && !Enum.TryParse<BuildingType>(c.BuildingType, out _))
                     return (null, $"Unknown building_type '{c.BuildingType}'.");
 
-            // Pass 4 — operator strings.
+            // Pass 5 — operator strings.
             var validOps = new HashSet<string> { ">", "<", ">=", "<=", "==", "!=" };
             foreach (var ev in trigger.Events)
                 if (!string.IsNullOrEmpty(ev.Operator) && !validOps.Contains(ev.Operator))
@@ -302,7 +298,7 @@ namespace ProjectChimera.AI
                 if (!string.IsNullOrEmpty(c.Operator) && !validOps.Contains(c.Operator))
                     return (null, $"Invalid operator '{c.Operator}' in condition '{c.Type}'.");
 
-            // Pass 5 — range and safety.
+            // Pass 6 — range and safety.
             foreach (var a in trigger.Actions)
             {
                 if (a.Type == "spawn_unit")
@@ -326,7 +322,9 @@ namespace ProjectChimera.AI
 
         // ── Prompt builder ────────────────────────────────────────────────────
 
-        private static string BuildSystemPrompt(ScenarioContext ctx)
+        // Story 8.3: internal (not private) so the Tier-1 staleness-guard test can assert the prompt enumerates every
+        // flat NodeKinds construct — a future flat construct added to NodeKinds but not described here fails the guard.
+        internal static string BuildSystemPrompt(ScenarioContext ctx)
         {
             var sb = new StringBuilder();
             sb.AppendLine(
@@ -346,20 +344,30 @@ namespace ProjectChimera.AI
   ""actions"": [ TriggerAction ]
 }");
             sb.AppendLine();
+            // NOTE: every construct string below is a member of NodeKinds.EventTypes / ConditionTypes /
+            // FlatActionTypes (Story 7.13 appended the 5 built-in event sources; Story 6.4 added unit_in_region). This
+            // description block is HAND-AUTHORED (not derived from NodeKinds) precisely so the staleness-guard test can
+            // catch a future NodeKinds addition that was not documented here.
             sb.AppendLine("=== VALID EVENT TYPES ===");
             sb.AppendLine(@"match_start              — no additional fields
 unit_dies               — faction (0=Player1, 1=Player2)
 building_completed      — faction, building_type (""CommandCenter""|""Barracks""|""ArcheryRange""|""SiegeWorkshop"")
 timer_expires           — timer_name (string)
 resource_threshold      — faction, amount (float), operator
-unit_count_threshold    — faction, count (int), operator");
+unit_count_threshold    — faction, count (int), operator
+unit_damaged            — faction — fires when a unit of faction takes damage
+unit_trained            — faction — fires when a unit of faction finishes training
+ability_cast            — faction — fires when a unit of faction casts an ability
+hero_level              — faction — fires when a hero of faction gains a level
+player_chat             — faction — fires when a player sends a chat message");
             sb.AppendLine();
             sb.AppendLine("=== VALID CONDITION TYPES ===");
             sb.AppendLine(@"always                  — always true
 building_exists         — faction, building_type
 resource_comparison     — faction, amount (float), operator
 unit_count              — faction, count (int), operator
-variable_comparison     — variable (string), value (int), operator");
+variable_comparison     — variable (string), value (int), operator
+unit_in_region          — faction, region_id (string) — true while a live unit of faction is inside the named region");
             sb.AppendLine();
             sb.AppendLine("=== VALID ACTION TYPES ===");
             sb.AppendLine(@"spawn_unit      — unit_id (string), faction, x (float), z (float), count (int, max 50)
@@ -414,9 +422,9 @@ play_sound      — sound_id (string)");
         // ── Utilities ─────────────────────────────────────────────────────────
 
         /// <summary>Strip ```json ... ``` markdown fences that some models add.</summary>
-        private static string StripMarkdown(string text)
+        private static string StripMarkdown(string? text)
         {
-            text = text.Trim();
+            text = (text ?? "").Trim();
             if (text.StartsWith("```"))
             {
                 int start = text.IndexOf('\n') + 1;
@@ -446,29 +454,37 @@ play_sound      — sound_id (string)");
             _mapCts = new CancellationTokenSource();
             var token = _mapCts.Token;
 
+            // Snapshot the authoritative settings on the caller thread (see GenerateTriggerAsync). No fallback.
+            SettingsData settings = _getSettings();
+
             Task.Run(async () =>
             {
                 try
                 {
                     string prompt = BuildMapSystemPrompt(context);
-                    string? json  = null;
-                    string? error = null;
                     string msg    = $"Create a map scenario for: {description}";
 
-                    if (!string.IsNullOrEmpty(AnthropicApiKey))
-                        (json, error) = await TryClaudeAsync(prompt, msg, token);
-
-                    if (json == null)
-                        (json, error) = await TryOllamaAsync(prompt, msg, token);
-
-                    if (json == null)
+                    // Route through the selected provider only (Story 8.3). Synchronous-unavailable short-circuits
+                    // with the four-state message and NO network call.
+                    if (!LlmProviderFactory.TryCreate(settings, _secretStore, _http,
+                            out ILLMProvider? provider, out AiAvailability failure))
                     {
-                        string fallback = error ?? "Both Claude and Ollama are unavailable.";
-                        _queue.Enqueue(() => onComplete(null, fallback));
+                        _queue.Enqueue(() => onComplete(null, AiAvailabilityMessages.Describe(failure)));
                         return;
                     }
 
-                    var (scenario, validationError) = ValidateScenario(json, context);
+                    NormalizedResult result = await provider!.GenerateAsync(
+                        new NormalizedRequest(prompt, msg, MAX_TOKENS), token);
+
+                    if (!result.Ok)
+                    {
+                        // Story 8.3: voice the runtime failure with the shared four-state microcopy (see the trigger path).
+                        _queue.Enqueue(() => onComplete(null,
+                            AiAvailabilityMessages.Describe(AiAvailabilityMap.FromFailure(result.Failure))));
+                        return;
+                    }
+
+                    var (scenario, validationError) = ValidateScenario(StripMarkdown(result.Text), context);
                     if (scenario == null)
                     {
                         _queue.Enqueue(() => onComplete(null,
@@ -491,19 +507,24 @@ play_sound      — sound_id (string)");
 
         /// <summary>
         /// Validate a generated ScenarioData JSON through seven passes:
-        /// 1. Schema — deserialization succeeds.
-        /// 2. Player slots — exactly 2; faction paths forced to known values.
+        /// 1. Schema — deserialization succeeds. (UNIVERSAL — always runs.)
+        /// 2. Player slots — at least <see cref="MapGeneratorContext.MinPlayerSlots"/> (RTS default 2); faction paths
+        ///    forced from the TRUSTED per-slot <see cref="MapGeneratorContext.ResolveFactionJson"/> mapping.
         /// 3. Building types — only valid BuildingType enum names.
         /// 4. Unit IDs — only IDs present in MapGeneratorContext.UnitIds.
-        /// 5. Position bounds — all X/Z within ±MapBounds.
-        /// 6. Ore node spacing — every pair at least 15 units apart.
-        /// 7. Pre-placed unit count — at most 6 non-worker units per faction slot.
-        /// Returns (null, errorMessage) on failure, (scenario, null) on success.
+        /// 5. Position bounds — all X/Z within ±MapBounds. (UNIVERSAL — always runs.)
+        /// 6. Ore node spacing — every pair at least 15 units apart. (UNIVERSAL — always runs.)
+        /// 7. Pre-placed unit count — at most <see cref="MapGeneratorContext.MaxCombatUnitsPerSlot"/> (RTS default 6)
+        ///    non-worker units per faction slot.
+        /// Story 8.3: the three RTS clamps (passes 2 min-slots / 2 faction-path / 7 max-combat) are parameterized from
+        /// the TRUSTED <paramref name="context"/> (RTS defaults preserve today's behavior exactly); the universal passes
+        /// (1/5/6) always run regardless of clamp values. NO clamp value is ever sourced from the parsed (untrusted)
+        /// scenario file. Returns (null, errorMessage) on failure, (scenario, null) on success.
         /// </summary>
         public static (ScenarioData? scenario, string? error) ValidateScenario(
             string json, MapGeneratorContext context)
         {
-            // Pass 1 — schema.
+            // Pass 1 — schema (UNIVERSAL).
             ScenarioData scenario;
             try
             {
@@ -516,17 +537,14 @@ play_sound      — sound_id (string)");
                 return (null, $"Invalid JSON: {ex.Message}");
             }
 
-            // Pass 2 — player slots.
-            if (scenario.PlayerSlots.Length < 2)
-                return (null, $"Expected 2 player slots, got {scenario.PlayerSlots.Length}.");
+            // Pass 2 — player slots (Story 8.3: min-slots clamp from the trusted context; RTS default 2).
+            if (scenario.PlayerSlots.Length < context.MinPlayerSlots)
+                return (null, $"Expected at least {context.MinPlayerSlots} player slots, got {scenario.PlayerSlots.Length}.");
 
-            // Force faction JSON paths to known valid values — LLMs often hallucinate these.
+            // Force faction JSON paths from the TRUSTED per-slot resolver — LLMs often hallucinate these, and the
+            // untrusted file must never dictate the path. RTS default = the existing slot-0/slot-1 mapping.
             foreach (var slot in scenario.PlayerSlots)
-            {
-                slot.FactionJson = slot.Slot == 0
-                    ? context.Slot0FactionJson
-                    : context.Slot1FactionJson;
-            }
+                slot.FactionJson = context.ResolveFactionJson(slot.Slot);
 
             // Pass 3 — building types.
             var validBuildings = new HashSet<string>
@@ -544,7 +562,7 @@ play_sound      — sound_id (string)");
                     return (null, $"Unknown unit_id '{u.UnitId}'. " +
                         $"Valid: {string.Join(", ", context.UnitIds)}");
 
-            // Pass 5 — position bounds.
+            // Pass 5 — position bounds (UNIVERSAL — always runs regardless of the clamp values).
             float bounds = context.MapBounds;
             foreach (var slot in scenario.PlayerSlots)
                 if (Math.Abs(slot.BaseX) > bounds || Math.Abs(slot.BaseZ) > bounds)
@@ -567,7 +585,7 @@ play_sound      — sound_id (string)");
                 if (Math.Abs(u.X) > bounds || Math.Abs(u.Z) > bounds)
                     return (null, $"Unit '{u.UnitId}' at ({u.X}, {u.Z}) is outside ±{bounds}.");
 
-            // Pass 6 — ore node spacing ≥ 15u.
+            // Pass 6 — ore node spacing ≥ 15u (UNIVERSAL — always runs regardless of the clamp values).
             for (int i = 0; i < scenario.ResourceNodes.Length; i++)
                 for (int j = i + 1; j < scenario.ResourceNodes.Length; j++)
                 {
@@ -578,21 +596,24 @@ play_sound      — sound_id (string)");
                         return (null, $"Ore nodes {i} and {j} are {dist:F1}u apart (minimum 15u).");
                 }
 
-            // Pass 7 — pre-placed combat units per slot ≤ 6.
+            // Pass 7 — pre-placed combat units per slot (Story 8.3: max-combat clamp from the trusted context; RTS
+            // default 6).
             var combatCount = new Dictionary<int, int>();
             foreach (var u in scenario.Units)
                 if (!string.Equals(u.UnitId, "worker", StringComparison.OrdinalIgnoreCase))
                     combatCount[u.Slot] = combatCount.GetValueOrDefault(u.Slot) + 1;
             foreach (var kv in combatCount)
-                if (kv.Value > 6)
-                    return (null, $"Slot {kv.Key} has {kv.Value} pre-placed combat units (max 6).");
+                if (kv.Value > context.MaxCombatUnitsPerSlot)
+                    return (null, $"Slot {kv.Key} has {kv.Value} pre-placed combat units (max {context.MaxCombatUnitsPerSlot}).");
 
             return (scenario, null);
         }
 
         // ── Map system prompt ─────────────────────────────────────────────────
 
-        private static string BuildMapSystemPrompt(MapGeneratorContext ctx)
+        // Story 8.3: internal (not private) so the Tier-1 clamp test can assert the prompt reflects the SAME clamp
+        // values ValidateScenario gates against (min player slots + max combat units per slot).
+        internal static string BuildMapSystemPrompt(MapGeneratorContext ctx)
         {
             var sb = new StringBuilder();
             sb.AppendLine(
@@ -625,11 +646,13 @@ play_sound      — sound_id (string)");
             sb.AppendLine();
             sb.AppendLine("=== PLACEMENT RULES ===");
             sb.AppendLine($"- All x/z positions MUST be within ±{ctx.MapBounds} world units.");
-            sb.AppendLine("- Player 1 (slot 0): base near X=-45, Z=0. Player 2 (slot 1): base near X=45, Z=0.");
+            // Story 8.3: reflect the SAME min-player-slots clamp ValidateScenario gates against (RTS default 2).
+            sb.AppendLine($"- Provide at least {ctx.MinPlayerSlots} player slots. Player 1 (slot 0): base near X=-45, Z=0. Player 2 (slot 1): base near X=45, Z=0.");
             sb.AppendLine("- Each slot MUST have a CommandCenter (pre_built=true) at its base position.");
             sb.AppendLine("- Ore nodes must be spaced at least 15 units apart from every other ore node.");
             sb.AppendLine("- Use 4–12 resource nodes. Supply 200–2000, rate 3–10.");
-            sb.AppendLine("- Pre-place at most 6 combat (non-worker) units per faction slot.");
+            // Story 8.3: reflect the SAME max-combat clamp ValidateScenario gates against (RTS default 6).
+            sb.AppendLine($"- Pre-place at most {ctx.MaxCombatUnitsPerSlot} combat (non-worker) units per faction slot.");
             sb.AppendLine("- Start workers 3–5 units from their CommandCenter.");
             sb.AppendLine();
             sb.AppendLine("=== AVAILABLE UNIT IDs ===");

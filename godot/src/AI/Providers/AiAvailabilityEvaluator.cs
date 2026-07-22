@@ -63,11 +63,9 @@ namespace ProjectChimera.AI.Providers
             if (result.Ok)
                 return AiAvailability.Healthy;
 
-            return result.Failure switch
-            {
-                NormalizedFailure.Unreachable => AiAvailability.Unreachable,
-                _                             => AiAvailability.FailedValidation, // HttpError / MalformedResponse
-            };
+            // Story 8.3: the failure→state mapping is now the shared AiAvailabilityMap so the generate path and
+            // Test-connection classify identically (a runtime failure is voiced with the same four-state microcopy).
+            return AiAvailabilityMap.FromFailure(result.Failure);
         }
     }
 }

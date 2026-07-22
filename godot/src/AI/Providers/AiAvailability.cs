@@ -51,4 +51,21 @@ namespace ProjectChimera.AI.Providers
                 "Commander, AI availability is unknown. Run Test connection in Settings › AI Provider.",
         };
     }
+
+    /// <summary>
+    /// Story 8.3 — the single failure→availability mapping shared by <c>AiAvailabilityEvaluator.TestConnectionAsync</c>
+    /// and the <c>LLMService</c> generate path, so a runtime generation failure is voiced with the SAME four-state
+    /// microcopy Test-connection uses instead of a raw adapter string. A network/timeout failure is
+    /// <see cref="AiAvailability.Unreachable"/>; a reached-but-unhealthy answer (bad status / malformed body) is
+    /// <see cref="AiAvailability.FailedValidation"/>. Only ever called on a non-Ok result.
+    /// </summary>
+    public static class AiAvailabilityMap
+    {
+        /// <summary>Map a provider <see cref="NormalizedFailure"/> to the creator-facing <see cref="AiAvailability"/> state.</summary>
+        public static AiAvailability FromFailure(NormalizedFailure failure) => failure switch
+        {
+            NormalizedFailure.Unreachable => AiAvailability.Unreachable,
+            _                             => AiAvailability.FailedValidation, // HttpError / MalformedResponse
+        };
+    }
 }

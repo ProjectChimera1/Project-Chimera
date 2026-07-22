@@ -20,9 +20,12 @@ namespace ProjectChimera.Core.Bootstrap
 
         public void Run()
         {
-            // Story 8.1: source the Anthropic key from the secret store (user://secrets/llm.key), not the removed
-            // plaintext [Export] field on MainScene. Empty ⇒ Ollama fallback, exactly as before.
-            _ctx.LlmService = new LLMService { AnthropicApiKey = _ctx.SecretStore.Get(Definitions.SecretIds.Llm) };
+            // Story 8.3: the LLMService now routes generation through the Story 8.2 ILLMProvider stack via
+            // LlmProviderFactory — the selected provider is authoritative (NO Claude→Ollama fallback). It reads the
+            // provider/model/base-URL from the live settings accessor and the API key ONLY through the secret store
+            // (never a plaintext field); its owned HttpClient is built AllowAutoRedirect=false (a real key flows
+            // through it now). Injecting null for the client lets the service own that hardened client.
+            _ctx.LlmService = new LLMService(() => _ctx.SettingsMgr.Current, _ctx.SecretStore, http: null);
 
             _ctx.TriggerPanel = new TriggerEditorPanel();
             _ctx.Scene.AddChild(_ctx.TriggerPanel);
@@ -63,8 +66,8 @@ namespace ProjectChimera.Core.Bootstrap
             _ctx.UiCanvas.AddChild(_ctx.ToastLabel);
 
             GD.Print("[TriggerEditor] Initialized — press L in Edit mode to open. " +
-                     "Anthropic API key " +
-                     (_ctx.SecretStore.Has(Definitions.SecretIds.Llm) ? "configured." : "not set (Ollama fallback)."));
+                     "AI provider key " +
+                     (_ctx.SecretStore.Has(Definitions.SecretIds.Llm) ? "configured." : "not set."));
         }
     }
 }
