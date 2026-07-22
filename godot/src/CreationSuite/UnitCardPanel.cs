@@ -1,9 +1,12 @@
 #nullable enable
 using System.Collections.Generic;
+using System.Linq;
 using Godot;
-using ProjectChimera.Core.Definitions;   // UnitDefinition, FactionDefinition, AbilityRegistry, UnitCardText, UnitDefinitionValidator
+using ProjectChimera.AI;                  // LLMService, UnitDraftContext (Story 8.4)
+using ProjectChimera.AI.Providers;         // AiAvailabilityEvaluator/Messages (four-state)
+using ProjectChimera.Core.Definitions;   // UnitDefinition, FactionDefinition, AbilityRegistry, UnitCardText, UnitDefinitionValidator, ISecretStore
 using ProjectChimera.UI;                  // GameState, GameMode, MeshLoader
-using ProjectChimera.UI.Components;        // ChimeraComponents, ChimeraTabs, ChimeraTooltip, ChimeraValidationBadge
+using ProjectChimera.UI.Components;        // ChimeraComponents, ChimeraTabs, ChimeraTooltip, ChimeraValidationBadge, ChimeraSpinner
 using ProjectChimera.UI.Theme;             // ThemeTokens, ThemeBuilder, AccentController
 using GodotTheme = Godot.Theme;            // the ProjectChimera.UI.Theme namespace shadows the bare Theme type
 
@@ -46,6 +49,19 @@ namespace ProjectChimera.CreationSuite
         private AbilityRegistry    _registry = AbilityRegistry.Empty;
         private BehaviorRegistry   _behaviorRegistry = BehaviorRegistry.Empty;   // Story 3.6 — the behavior picker + compat source
         private int                _index;                 // browse cursor into _faction.Units
+
+        // ── Story 8.4 — AI draft affordance (unit + hero via a toggle; null deps hide the row) ──
+        private LLMService?              _llm;
+        private AiAvailabilityEvaluator? _aiEvaluator;
+        private ISecretStore?            _aiSecretStore;
+        private VBoxContainer  _aiCard        = null!;
+        private TextEdit       _aiPromptInput = null!;
+        private CheckBox       _aiHeroToggle  = null!;
+        private Godot.Button   _aiGenBtn      = null!;
+        private Label          _aiAvailLabel  = null!;
+        private Label          _aiStatusLabel = null!;
+        private ChimeraSpinner _aiSpinner     = null!;
+        private Label          _aiSpinnerText = null!;
         private string             _factionJsonPath = "";  // res:// path of the faction file to write edits back to (D-8)
 
         // ── Edit state (Story 3.4) ──
@@ -104,7 +120,9 @@ namespace ProjectChimera.CreationSuite
         /// Starts hidden; shown by the <c>J</c> toggle in Edit mode.
         /// </summary>
         public void Initialize(FactionDefinition? faction, GameState gameState, AbilityRegistry registry,
-                               BehaviorRegistry behaviorRegistry, string factionJsonPath = "")
+                               BehaviorRegistry behaviorRegistry, string factionJsonPath = "",
+                               LLMService? llm = null, AiAvailabilityEvaluator? aiEvaluator = null,
+                               ISecretStore? aiSecretStore = null)
         {
             _faction          = faction;
             _gameState        = gameState;
@@ -112,9 +130,13 @@ namespace ProjectChimera.CreationSuite
             _behaviorRegistry = behaviorRegistry ?? BehaviorRegistry.Empty;
             _factionJsonPath  = factionJsonPath ?? "";
             _index           = 0;
+            _llm           = llm;               // Story 8.4 — provider-backed draft framework (null hides the AI row)
+            _aiEvaluator   = aiEvaluator;
+            _aiSecretStore = aiSecretStore;
 
             _gameState.ModeChanged += OnModeChanged;   // authoring is Edit-only — hide in Play
             _panel.Visible = false;
+            RefreshAvailability();
         }
 
         /// <summary>
@@ -145,11 +167,150 @@ namespace ProjectChimera.CreationSuite
             {
                 _subViewport.RenderTargetUpdateMode = SubViewport.UpdateMode.Always;
                 Refresh();
+                RefreshAvailability();
             }
             else
             {
                 _subViewport.RenderTargetUpdateMode = SubViewport.UpdateMode.Disabled;
             }
+        }
+
+        // ── Story 8.4 — AI draft affordance ────────────────────────────────────
+
+        private void BuildAiCard(Control parent)
+        {
+            _aiCard = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill, Visible = false };
+            _aiCard.AddThemeConstantOverride("separation", ChimeraComponents.Const(ThemeTokens.S1));
+            parent.AddChild(_aiCard);
+
+            _aiCard.AddChild(Heading("AI Draft, Commander", ThemeTokens.Tmd));
+
+            _aiAvailLabel = Body("", ThemeTokens.TextLo);
+            _aiAvailLabel.AutowrapMode = TextServer.AutowrapMode.Word;
+            _aiAvailLabel.Visible = false;
+            _aiCard.AddChild(_aiAvailLabel);
+
+            _aiPromptInput = new TextEdit
+            {
+                PlaceholderText = "e.g. \"a fast ranged skirmisher with a poison arrow\"",
+                CustomMinimumSize = new Vector2(0, 56f),
+                WrapMode = TextEdit.LineWrappingMode.Boundary,
+                SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+            };
+            _aiCard.AddChild(_aiPromptInput);
+
+            _aiHeroToggle = new CheckBox { Text = "Draft as Hero (adds leveling + ability slots)" };
+            _aiCard.AddChild(_aiHeroToggle);
+
+            var genRow = new HBoxContainer();
+            genRow.AddThemeConstantOverride("separation", ChimeraComponents.Const(ThemeTokens.S2));
+            _aiCard.AddChild(genRow);
+
+            _aiGenBtn = ChimeraComponents.Button("Generate ✦", ChimeraComponents.ButtonVariant.Secondary, ChimeraComponents.ButtonSize.Sm);
+            _aiGenBtn.Pressed += OnAiGeneratePressed;
+            genRow.AddChild(_aiGenBtn);
+
+            _aiSpinner = ChimeraSpinner.Create(20);
+            _aiSpinner.Visible = false;
+            genRow.AddChild(_aiSpinner);
+            _aiSpinnerText = Body("Transmuting…", ThemeTokens.TextMid);
+            _aiSpinnerText.Visible = false;
+            genRow.AddChild(_aiSpinnerText);
+
+            _aiStatusLabel = Body("", ThemeTokens.TextLo);
+            _aiStatusLabel.AutowrapMode = TextServer.AutowrapMode.Word;
+            _aiStatusLabel.Visible = false;
+            _aiCard.AddChild(_aiStatusLabel);
+
+            _aiCard.AddChild(new HSeparator());
+        }
+
+        /// <summary>Story 8.4 — four-state AI-availability line + Generate gating (mirrors MapGeneratorPanel). A null
+        /// evaluator (older wiring) hides the whole AI row; the manual editor is unaffected in every state.</summary>
+        private void RefreshAvailability()
+        {
+            if (_aiCard == null!) return;
+            if (_llm == null || _aiEvaluator == null || _aiSecretStore == null)
+            {
+                _aiCard.Visible = false;
+                return;
+            }
+
+            _aiCard.Visible = true;
+            var settings = SettingsManager.Instance?.Current ?? new SettingsData();
+            AiAvailability state = _aiEvaluator.EvaluateConfig(settings, _aiSecretStore);
+            bool available = state == AiAvailability.Healthy;
+
+            _aiAvailLabel.Visible = true;
+            _aiAvailLabel.Text = available
+                ? "AI: ready (config OK — Test connection in Settings to confirm)."
+                : AiAvailabilityMessages.Describe(state);
+            _aiGenBtn.Disabled = !available;
+        }
+
+        private void OnAiGeneratePressed()
+        {
+            if (_llm == null) return;
+            if (_faction == null)
+            {
+                ShowAiStatus("No faction bound — open a faction first, Commander.");
+                return;
+            }
+            string prompt = _aiPromptInput.Text.Trim();
+            if (string.IsNullOrEmpty(prompt))
+            {
+                ShowAiStatus("Describe the unit first, Commander.");
+                return;
+            }
+
+            SetAiBusy(true);
+            // Self-contained validation (Siblings null); a colliding id is renamed on insert via UniqueId. The loaded
+            // ability/behavior registries gate composition refs exactly as the manual editor does.
+            var ctx = new UnitDraftContext { AbilityRegistry = _registry, BehaviorRegistry = _behaviorRegistry };
+            if (_aiHeroToggle.ButtonPressed)
+                _llm.GenerateHeroDraftAsync(prompt, ctx, OnAiDraftComplete);
+            else
+                _llm.GenerateUnitDraftAsync(prompt, ctx, OnAiDraftComplete);
+        }
+
+        private void OnAiDraftComplete(UnitDefinition? def, string? error)
+        {
+            SetAiBusy(false);
+            if (def == null)
+            {
+                ShowAiStatus(error ?? "Generation failed.", error: true);
+                return;
+            }
+            if (_faction == null) return;
+
+            // Land the validated draft as an editable, reopenable unit in the SAME list Save/browse operate on (the
+            // DoCreate seam). Nothing is locked. A colliding id is uniquified so the roster stays duplicate-free.
+            if (_faction.Units.Any(u => u != null && u.Id == def.Id))
+                def.Id = UniqueId(def.Id);
+            _faction.Units.Add(def);
+            _index = _faction.Units.Count - 1;
+            UnitDefinition captured = def;
+            PushHistory(
+                redo: () => { if (!_faction.Units.Contains(captured)) _faction.Units.Add(captured); GoToUnit(captured); },
+                undo: () => RemoveFromList(captured));
+            Refresh();
+            ShowAiStatus($"Draft '{def.Id}' added — edit its fields, then Save.");
+        }
+
+        private void SetAiBusy(bool busy)
+        {
+            _aiGenBtn.Disabled = busy;
+            _aiSpinner.Visible = busy;
+            _aiSpinnerText.Visible = busy;
+            if (busy) _aiStatusLabel.Visible = false;
+        }
+
+        private void ShowAiStatus(string message, bool error = false)
+        {
+            _aiStatusLabel.Visible = true;
+            _aiStatusLabel.Text = message;
+            // Distinguish a failure from a ready/success message (an all-neutral line reads a failed generation as success).
+            _aiStatusLabel.AddThemeColorOverride("font_color", Tok(error ? ThemeTokens.Danger : ThemeTokens.Ok));
         }
 
         /// <summary>Hide the panel and stop rendering the preview.</summary>
@@ -212,6 +373,7 @@ namespace ProjectChimera.CreationSuite
         /// <inheritdoc/>
         public override void _Process(double delta)
         {
+            _llm?.DrainEvents();   // Story 8.4 — marshal AI draft callbacks to the main thread each frame
             if (_panel is null || !_panel.Visible) return;
             _turntable.RotateY(Mathf.DegToRad(TURNTABLE_SPEED * (float)delta));   // slow live turntable (D-8)
         }
@@ -301,6 +463,10 @@ namespace ProjectChimera.CreationSuite
             var contentCol = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
             contentCol.AddThemeConstantOverride("separation", ChimeraComponents.Const(ThemeTokens.S3));
             scroll.AddChild(contentCol);
+
+            // Story 8.4 — AI draft card (hidden until Initialize wires a provider). A prompt + Generate (unit, or hero
+            // via the toggle) adds an editable, reopenable unit to the faction — the SAME list Save/browse operate on.
+            BuildAiCard(contentCol);
 
             // Read-only header → Preview (persistent) → disclosure Segment → editable body (refilled per unit).
             _headerHost = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };

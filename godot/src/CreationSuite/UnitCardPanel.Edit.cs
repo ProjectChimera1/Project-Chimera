@@ -1079,20 +1079,14 @@ namespace ProjectChimera.CreationSuite
             Refresh();
         }
 
+        // Delegates to the Godot-free, Tier-1-tested dedup convention so the manual New/Duplicate paths and the Story 8.4
+        // AI-draft landing all uniquify ids identically (see UnitDefinitionValidator.MakeUniqueId).
         private string UniqueId(string baseId)
         {
-            string id = UnitDefinitionValidator.SanitizeId(baseId);
-            if (id.Length == 0) id = "new_unit";
-            if (!IdExists(id)) return id;
-            for (int i = 2; i < 100000; i++)
-            {
-                string candidate = $"{id}_{i}";
-                if (!IdExists(candidate)) return candidate;
-            }
-            return id;   // pathological fallback (validator will still reject a dup on Save)
+            IEnumerable<string> existing = _faction?.Units.Where(u => u != null).Select(u => u.Id)
+                ?? System.Linq.Enumerable.Empty<string>();
+            return UnitDefinitionValidator.MakeUniqueId(existing, baseId);
         }
-
-        private bool IdExists(string id) => _faction != null && _faction.Units.Exists(u => u.Id == id);
 
         private static UnitDefinition CloneUnit(UnitDefinition s, string newId) => new()
         {

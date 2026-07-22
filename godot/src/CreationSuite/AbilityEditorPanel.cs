@@ -3,9 +3,12 @@ using System;
 using System.IO;
 using System.Text.Json;
 using Godot;
+using ProjectChimera.AI;                // LLMService, AbilityDraftContext (Story 8.4)
+using ProjectChimera.AI.Providers;      // AiAvailabilityEvaluator/Messages (four-state)
 using ProjectChimera.Core;              // Fixed, ScenarioData
-using ProjectChimera.Core.Definitions;  // AbilityDefinition, AbilityPresets, AbilityPresetMatcher, AbilityValidator, AbilityLoader, ContentJson, AbilityRegistry
+using ProjectChimera.Core.Definitions;  // AbilityDefinition, AbilityPresets, AbilityPresetMatcher, AbilityValidator, AbilityLoader, ContentJson, AbilityRegistry, ISecretStore
 using ProjectChimera.UI;                // GameState, GameMode
+using ProjectChimera.UI.Components;     // ChimeraSpinner (Story 8.4 "Transmuting…")
 
 namespace ProjectChimera.CreationSuite
 {
@@ -44,6 +47,18 @@ namespace ProjectChimera.CreationSuite
         // ── Deps (create-only editor; scenario is accepted for phase-signature parity, unused today) ──
         private GameState?      _gameState;
         private AbilityRegistry _registry = AbilityRegistry.Empty;
+
+        // ── Story 8.4 — AI draft affordance (provider-backed editable draft; null deps hide the row) ──
+        private LLMService?              _llm;
+        private AiAvailabilityEvaluator? _aiEvaluator;
+        private ISecretStore?            _aiSecretStore;
+        private VBoxContainer  _aiCard        = null!;
+        private TextEdit       _aiPromptInput = null!;
+        private Button         _aiGenBtn      = null!;
+        private Label          _aiAvailLabel  = null!;
+        private Label          _aiStatusLabel = null!;
+        private ChimeraSpinner _aiSpinner     = null!;
+        private Label          _aiSpinnerText = null!;
 
         // ── Shell ──
         private CanvasLayer    _canvas = null!;
@@ -94,11 +109,15 @@ namespace ProjectChimera.CreationSuite
 
         /// <summary>Wire the editor to the live game state + loaded ability registry. Called by AbilityEditorPhase
         /// AFTER AddChild (so the UI built in _Ready exists). Starts hidden; shown by the K toggle in Edit mode.</summary>
-        public void Initialize(ScenarioData? scenario, GameState gameState, AbilityRegistry registry)
+        public void Initialize(ScenarioData? scenario, GameState gameState, AbilityRegistry registry,
+            LLMService? llm = null, AiAvailabilityEvaluator? aiEvaluator = null, ISecretStore? aiSecretStore = null)
         {
             _ = scenario;                       // create-only editor: scenario reserved for parity, unused today
             _gameState = gameState;
             _registry  = registry ?? AbilityRegistry.Empty;
+            _llm           = llm;               // Story 8.4 — provider-backed draft framework (null hides the AI row)
+            _aiEvaluator   = aiEvaluator;
+            _aiSecretStore = aiSecretStore;
 
             _gameState.ModeChanged += OnModeChanged;
             _panel.Visible = false;
@@ -106,13 +125,17 @@ namespace ProjectChimera.CreationSuite
             SelectPreset(AbilityPresets.Kind.TargetedDamage, seedHeader: true);
             SwitchMode(simple: true);
             RefreshList();
+            RefreshAvailability();
         }
+
+        /// <summary>Story 8.4 — drain LLM callbacks each frame (marshals draft results to the main thread).</summary>
+        public override void _Process(double delta) => _llm?.DrainEvents();
 
         /// <summary>Toggle visibility (K key, Edit mode only). Refreshes the existing-ability list on open.</summary>
         public void Toggle()
         {
             _panel.Visible = !_panel.Visible;
-            if (_panel.Visible) RefreshList();
+            if (_panel.Visible) { RefreshList(); RefreshAvailability(); }
         }
 
         private void Close() => _panel.Visible = false;
@@ -176,6 +199,10 @@ namespace ProjectChimera.CreationSuite
             content.AddThemeConstantOverride("separation", 8);
             scroll.AddChild(content);
 
+            // Story 8.4 — AI draft card (hidden until Initialize wires a provider). A prompt + Generate produces an
+            // editable draft that lands in the SAME form as a hand-authored ability (LoadFromRegistry seam).
+            BuildAiCard(content);
+
             // Common header.
             AddSectionHeader(content, "Ability");
             _idEdit = AddLineEditRow(content, "Id", "lowercase_id");
@@ -236,6 +263,123 @@ namespace ProjectChimera.CreationSuite
             _listBox = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
             _listBox.AddThemeConstantOverride("separation", 4);
             content.AddChild(_listBox);
+        }
+
+        // ── Story 8.4 — AI draft affordance ────────────────────────────────────
+
+        private void BuildAiCard(Control parent)
+        {
+            _aiCard = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill, Visible = false };
+            _aiCard.AddThemeConstantOverride("separation", 4);
+            parent.AddChild(_aiCard);
+
+            AddSectionHeader(_aiCard, "AI Draft, Commander");
+
+            _aiAvailLabel = new Label { AutowrapMode = TextServer.AutowrapMode.Word, Visible = false };
+            _aiAvailLabel.AddThemeFontSizeOverride("font_size", 11);
+            _aiCard.AddChild(_aiAvailLabel);
+
+            _aiPromptInput = new TextEdit
+            {
+                PlaceholderText = "e.g. \"a short-cooldown self heal for a frontline bruiser\"",
+                CustomMinimumSize = new Vector2(0, 60f),
+                WrapMode = TextEdit.LineWrappingMode.Boundary,
+            };
+            _aiCard.AddChild(_aiPromptInput);
+
+            var genRow = new HBoxContainer();
+            genRow.AddThemeConstantOverride("separation", 8);
+            _aiCard.AddChild(genRow);
+
+            _aiGenBtn = new Button { Text = "Generate ✦", TooltipText = "Draft an editable ability from your prompt — you own what you make." };
+            _aiGenBtn.Pressed += OnAiGeneratePressed;
+            genRow.AddChild(_aiGenBtn);
+
+            _aiSpinner = ChimeraSpinner.Create(20);
+            _aiSpinner.Visible = false;
+            genRow.AddChild(_aiSpinner);
+            _aiSpinnerText = new Label { Text = "Transmuting…", Visible = false };
+            _aiSpinnerText.AddThemeColorOverride("font_color", HeaderBlue);
+            genRow.AddChild(_aiSpinnerText);
+
+            _aiStatusLabel = new Label { AutowrapMode = TextServer.AutowrapMode.Word, Visible = false };
+            _aiStatusLabel.AddThemeFontSizeOverride("font_size", 11);
+            _aiCard.AddChild(_aiStatusLabel);
+
+            _aiCard.AddChild(new HSeparator());
+        }
+
+        /// <summary>Story 8.4 — drive the four-state AI-availability line + Generate gating from the config-derived
+        /// evaluator (mirrors MapGeneratorPanel). A null evaluator (older wiring) hides the whole AI row; manual
+        /// authoring is unaffected in every state.</summary>
+        private void RefreshAvailability()
+        {
+            if (_aiCard == null!) return;
+            if (_llm == null || _aiEvaluator == null || _aiSecretStore == null)
+            {
+                _aiCard.Visible = false;
+                return;
+            }
+
+            _aiCard.Visible = true;
+            var settings = SettingsManager.Instance?.Current ?? new SettingsData();
+            AiAvailability state = _aiEvaluator.EvaluateConfig(settings, _aiSecretStore);
+            bool available = state == AiAvailability.Healthy;
+
+            _aiAvailLabel.Visible = true;
+            _aiAvailLabel.Text = available
+                ? "AI: ready (config OK — Test connection in Settings to confirm)."
+                : AiAvailabilityMessages.Describe(state);
+            _aiAvailLabel.AddThemeColorOverride("font_color", available ? OkGreen : new Color(0.95f, 0.8f, 0.45f));
+            _aiGenBtn.Disabled = !available;
+        }
+
+        private void OnAiGeneratePressed()
+        {
+            if (_llm == null) return;
+            string prompt = _aiPromptInput.Text.Trim();
+            if (string.IsNullOrEmpty(prompt))
+            {
+                ShowAiStatus("Describe the ability first, Commander.", error: true);
+                return;
+            }
+
+            SetAiBusy(true);
+
+            // Existing ability ids are prompt hints (avoid id collisions); validation is self-contained.
+            var ids = new string[_registry.Count];
+            for (int i = 0; i < _registry.Count; i++) ids[i] = _registry.Get(i).Id;
+
+            _llm.GenerateAbilityDraftAsync(prompt, new AbilityDraftContext { ExistingAbilityIds = ids }, OnAiDraftComplete);
+        }
+
+        private void OnAiDraftComplete(AbilityDefinition? def, string? error)
+        {
+            SetAiBusy(false);
+            if (def == null)
+            {
+                ShowAiStatus(error ?? "Generation failed.", error: true);
+                return;
+            }
+
+            // Land the validated draft in the SAME editable form a hand-authored ability uses (reopenable, unlocked).
+            LoadFromRegistry(def);
+            ShowAiStatus($"Draft '{def.Id}' ready — edit and Save.", error: false);
+        }
+
+        private void SetAiBusy(bool busy)
+        {
+            _aiGenBtn.Disabled = busy;
+            _aiSpinner.Visible = busy;
+            _aiSpinnerText.Visible = busy;
+            if (busy) { _aiStatusLabel.Visible = false; }
+        }
+
+        private void ShowAiStatus(string message, bool error)
+        {
+            _aiStatusLabel.Visible = true;
+            _aiStatusLabel.Text = message;
+            _aiStatusLabel.AddThemeColorOverride("font_color", error ? ErrRed : OkGreen);
         }
 
         private void BuildModePill(Control parent)

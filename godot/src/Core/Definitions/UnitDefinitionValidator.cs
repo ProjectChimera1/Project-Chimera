@@ -500,5 +500,26 @@ namespace ProjectChimera.Core.Definitions
                 sb.Append(ch is (>= 'a' and <= 'z') or (>= '0' and <= '9') or '_' ? ch : '_');
             return sb.ToString();
         }
+
+        /// <summary>
+        /// Sanitize <paramref name="baseId"/> and, if it already appears in <paramref name="existingIds"/>, suffix it
+        /// (<c>_2</c>, <c>_3</c>, …) until free — the single dedup convention shared by the Unit Card editor's manual
+        /// New/Duplicate paths and the Story 8.4 AI-draft landing, so a generated unit whose id collides with the roster
+        /// is inserted under a unique id (the roster stays duplicate-free without relying on the sibling-aware validator,
+        /// which skips the dup rule when it is validated with no siblings). Godot-free so it is Tier-1 testable.
+        /// </summary>
+        public static string MakeUniqueId(IEnumerable<string> existingIds, string baseId)
+        {
+            var taken = new HashSet<string>(existingIds ?? System.Array.Empty<string>());
+            string id = SanitizeId(baseId);
+            if (id.Length == 0) id = "new_unit";
+            if (!taken.Contains(id)) return id;
+            for (int i = 2; i < 100000; i++)
+            {
+                string candidate = $"{id}_{i}";
+                if (!taken.Contains(candidate)) return candidate;
+            }
+            return id;   // pathological fallback (validator will still reject a dup on Save)
+        }
     }
 }

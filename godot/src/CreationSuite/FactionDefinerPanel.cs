@@ -1,8 +1,10 @@
 #nullable enable
 using Godot;
-using ProjectChimera.Core.Definitions;   // FactionDefinerStep, FactionPresetPool, FactionDefinerWizardCore
+using ProjectChimera.AI;                  // LLMService, FactionDraftContext (Story 8.4)
+using ProjectChimera.AI.Providers;         // AiAvailabilityEvaluator/Messages (four-state)
+using ProjectChimera.Core.Definitions;   // FactionDefinerStep, FactionPresetPool, FactionDefinerWizardCore, ISecretStore
 using ProjectChimera.UI;                  // GameState, GameMode
-using ProjectChimera.UI.Components;        // ChimeraComponents, ChimeraTabs
+using ProjectChimera.UI.Components;        // ChimeraComponents, ChimeraTabs, ChimeraSpinner
 using ProjectChimera.UI.Theme;             // ThemeTokens, ThemeBuilder, AccentController
 using GodotTheme = Godot.Theme;            // the ProjectChimera.UI.Theme namespace shadows the bare Theme type
 
@@ -59,6 +61,18 @@ namespace ProjectChimera.CreationSuite
         // ── Deps (wired by FactionDefinerPhase after AddChild) ──
         private GameState? _gameState;
 
+        // ── Story 8.4 — AI draft affordance (provider-backed editable draft; null deps hide the row) ──
+        private LLMService?              _llm;
+        private AiAvailabilityEvaluator? _aiEvaluator;
+        private ISecretStore?            _aiSecretStore;
+        private VBoxContainer  _aiCard        = null!;
+        private TextEdit       _aiPromptInput = null!;
+        private Godot.Button   _aiGenBtn      = null!;
+        private Label          _aiAvailLabel  = null!;
+        private Label          _aiStatusLabel = null!;
+        private ChimeraSpinner _aiSpinner     = null!;
+        private Label          _aiSpinnerText = null!;
+
         // ── Shell ──
         private CanvasLayer    _canvas = null!;
         private PanelContainer _panel  = null!;
@@ -89,19 +103,27 @@ namespace ProjectChimera.CreationSuite
 
         /// <summary>Bind the panel to game state. Called by <c>FactionDefinerPhase</c> AFTER <c>AddChild</c>. Starts
         /// hidden; shown by the <c>X</c> toggle in Edit mode.</summary>
-        public void Initialize(GameState gameState)
+        public void Initialize(GameState gameState,
+            LLMService? llm = null, AiAvailabilityEvaluator? aiEvaluator = null, ISecretStore? aiSecretStore = null)
         {
             _gameState = gameState;
             _gameState.ModeChanged += OnModeChanged;   // authoring is Edit-only — hide in Play
+            _llm           = llm;                      // Story 8.4 — provider-backed draft framework (null hides the AI row)
+            _aiEvaluator   = aiEvaluator;
+            _aiSecretStore = aiSecretStore;
             _panel.Visible = false;
+            RefreshAvailability();
         }
+
+        /// <summary>Story 8.4 — drain LLM callbacks each frame (marshals draft results to the main thread).</summary>
+        public override void _Process(double delta) => _llm?.DrainEvents();
 
         /// <summary>Toggle visibility (X key, Edit mode only). On open: reset the wizard to a fresh draft + re-scan
         /// the preset pools (every open starts a brand-new faction — no partial state carries across a close).</summary>
         public void Toggle()
         {
             _panel.Visible = !_panel.Visible;
-            if (_panel.Visible) ResetWizard();
+            if (_panel.Visible) { ResetWizard(); RefreshAvailability(); }
         }
 
         /// <summary>Hide the panel.</summary>
@@ -166,6 +188,10 @@ namespace ProjectChimera.CreationSuite
             closeBtn.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
             AttachTip(closeBtn, "Close", "Close the Faction Definer (X).");
             titleRow.AddChild(closeBtn);
+
+            // Story 8.4 — AI draft card (hidden until Initialize wires a provider). A prompt + Generate drafts a whole
+            // faction that lands in the Advanced raw-JSON pane as editable data; Finish still runs the same validator.
+            BuildAiCard(root);
 
             // Step indicator (Segment) — 5 steps, mirrors FactionDefinerStep's ordinal order.
             _stepTabs = ChimeraTabs.Create(ChimeraComponents.TabsVariant.Segment,
@@ -308,6 +334,126 @@ namespace ProjectChimera.CreationSuite
             _jsonPane.Text = text;
             _suppressPaneDirty = false;
             _paneDirty = false;
+        }
+
+        // ── Story 8.4 — AI draft affordance ────────────────────────────────────
+
+        private void BuildAiCard(Control parent)
+        {
+            _aiCard = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill, Visible = false };
+            _aiCard.AddThemeConstantOverride("separation", ChimeraComponents.Const(ThemeTokens.S2));
+            parent.AddChild(_aiCard);
+
+            _aiAvailLabel = new Label { Text = "", AutowrapMode = TextServer.AutowrapMode.Word, Visible = false };
+            _aiCard.AddChild(_aiAvailLabel);
+
+            _aiPromptInput = new TextEdit
+            {
+                PlaceholderText = "AI draft, Commander — e.g. \"a fire-and-forge faction of ember cultists\"",
+                CustomMinimumSize = new Vector2(0, 56f),
+                WrapMode = TextEdit.LineWrappingMode.Boundary,
+            };
+            _aiCard.AddChild(_aiPromptInput);
+
+            var genRow = new HBoxContainer();
+            genRow.AddThemeConstantOverride("separation", ChimeraComponents.Const(ThemeTokens.S2));
+            _aiCard.AddChild(genRow);
+
+            _aiGenBtn = ChimeraComponents.Button("Generate ✦", ChimeraComponents.ButtonVariant.Secondary, ChimeraComponents.ButtonSize.Sm);
+            _aiGenBtn.Pressed += OnAiGeneratePressed;
+            AttachTip(_aiGenBtn, "Generate", "Draft an editable faction from your prompt — you own what you make.");
+            genRow.AddChild(_aiGenBtn);
+
+            _aiSpinner = ChimeraSpinner.Create(20);
+            _aiSpinner.Visible = false;
+            genRow.AddChild(_aiSpinner);
+            _aiSpinnerText = new Label { Text = "Transmuting…", Visible = false };
+            genRow.AddChild(_aiSpinnerText);
+
+            _aiStatusLabel = new Label { Text = "", AutowrapMode = TextServer.AutowrapMode.Word, Visible = false };
+            _aiCard.AddChild(_aiStatusLabel);
+
+            _aiCard.AddChild(new HSeparator());
+        }
+
+        /// <summary>Story 8.4 — four-state AI-availability line + Generate gating (mirrors MapGeneratorPanel). A null
+        /// evaluator (older wiring) hides the whole AI row; the manual wizard is unaffected in every state.</summary>
+        private void RefreshAvailability()
+        {
+            if (_aiCard == null!) return;
+            if (_llm == null || _aiEvaluator == null || _aiSecretStore == null)
+            {
+                _aiCard.Visible = false;
+                return;
+            }
+
+            _aiCard.Visible = true;
+            var settings = SettingsManager.Instance?.Current ?? new SettingsData();
+            AiAvailability state = _aiEvaluator.EvaluateConfig(settings, _aiSecretStore);
+            bool available = state == AiAvailability.Healthy;
+
+            _aiAvailLabel.Visible = true;
+            _aiAvailLabel.Text = available
+                ? "AI: ready (config OK — Test connection in Settings to confirm)."
+                : AiAvailabilityMessages.Describe(state);
+            _aiGenBtn.Disabled = !available;
+        }
+
+        private void OnAiGeneratePressed()
+        {
+            if (_llm == null) return;
+            string prompt = _aiPromptInput.Text.Trim();
+            if (string.IsNullOrEmpty(prompt))
+            {
+                ShowAiStatus("Describe the faction first, Commander.");
+                return;
+            }
+
+            SetAiBusy(true);
+            // Load the AbilityRegistry the SAME way the Finish gate does (ABILITIES_DIR_RES) so the router's per-unit
+            // UnitDefinitionValidator pass actually runs the ability-reference checks at draft time — without it, a
+            // drafted unit citing a nonexistent ability id would only be caught later at Finish, not at generation.
+            string abilitiesDirAbs = ProjectSettings.GlobalizePath(ABILITIES_DIR_RES);
+            var ctx = new FactionDraftContext
+            {
+                AiPresets = FactionValidator.KnownAiPresets,
+                AbilityRegistry = AbilityRegistry.LoadFromDirectory(abilitiesDirAbs),
+            };
+            _llm.GenerateFactionDraftAsync(prompt, ctx, OnAiDraftComplete);
+        }
+
+        private void OnAiDraftComplete(FactionDefinition? def, string? error)
+        {
+            SetAiBusy(false);
+            if (def == null)
+            {
+                ShowAiStatus(error ?? "Generation failed.", error: true);
+                return;
+            }
+
+            // Land the validated draft as editable data: populate _draft and show it in the Advanced raw-JSON pane via
+            // the SANCTIONED FactionWriter-backed clean serializer (never a reflection re-serialize). Finish still
+            // re-validates. Nothing is locked — the pane is fully editable.
+            _draft = def;
+            if (_modeTabs != null!) _modeTabs.SetActive(1);   // reflect Advanced in the segment
+            OnModeTabChanged(1);                               // serialize _draft into the pane + show it
+            ShowAiStatus($"Draft '{def.Id}' ready — review, edit, then Finish.");
+        }
+
+        private void SetAiBusy(bool busy)
+        {
+            _aiGenBtn.Disabled = busy;
+            _aiSpinner.Visible = busy;
+            _aiSpinnerText.Visible = busy;
+            if (busy) _aiStatusLabel.Visible = false;
+        }
+
+        private void ShowAiStatus(string message, bool error = false)
+        {
+            _aiStatusLabel.Visible = true;
+            _aiStatusLabel.Text = message;
+            // Distinguish a failure from a ready/success message (an all-neutral line reads a failed generation as success).
+            _aiStatusLabel.AddThemeColorOverride("font_color", Tok(error ? ThemeTokens.Danger : ThemeTokens.Ok));
         }
 
         // ── Small shared builders (mirror BuildingCardPanel's) ───────────────────

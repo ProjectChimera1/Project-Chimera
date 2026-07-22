@@ -93,6 +93,9 @@ namespace ProjectChimera.AI
         // ── Configuration ─────────────────────────────────────────────────────
 
         private const int    MAX_TOKENS    = 2048;
+        // A faction draft echoes the full unit schema for EVERY unit in a playable roster (plus buildings), so the
+        // single-entity 2048 budget truncates it mid-JSON (→ a generic "Invalid JSON" reject). Give it more headroom.
+        private const int    FACTION_DRAFT_MAX_TOKENS = 8192;
         private const int    TIMEOUT_MS    = 30_000;
 
         // Safety cap: spawn_unit count is clamped to this in validation, independently
@@ -696,5 +699,550 @@ play_sound      — sound_id (string)");
                 "Return ONLY valid JSON. No markdown fences, no explanation, no extra text.");
             return sb.ToString();
         }
+
+        // ══════════════════════════════════════════════════════════════════════
+        // Story 8.4 — AI entity drafts (unit / ability / hero / faction)
+        //
+        // A provider-backed EDITABLE-DRAFT framework mirroring GenerateTriggerAsync/GenerateScenarioAsync: the four
+        // kinds share the SAME no-fallback / four-state / StripMarkdown pipeline (see RunDraftAsync) and each draft is
+        // gated by the EXISTING per-kind validator (UnitDefinitionValidator / AbilityLoader+AbilityValidator /
+        // FactionValidator) — never a fork, never a weakened gate. No second float→Fixed path is introduced:
+        //   • ability drafts deserialize through ContentJson.Options (FixedJsonConverter quantizes at parse, rejects
+        //     |v| >= 32768 / NaN / Inf) — the same boundary hand-authored abilities use;
+        //   • unit / hero / faction drafts deserialize through the lenient FactionDefinition.JsonOptions (plain float)
+        //     and are range-gated to the Fixed-safe [0, 32768) by UnitDefinitionValidator; quantization to Fixed still
+        //     happens ONLY later at EntityWorld.ApplyUnitDefinition (the single def→SoA boundary), so a draft hashes
+        //     identically to an equivalent hand-authored def BY CONSTRUCTION.
+        // Stays Godot-free (no Godot dependency) — Tier-1 + analyzer covered.
+        // ══════════════════════════════════════════════════════════════════════
+
+        private CancellationTokenSource? _unitCts;
+        private CancellationTokenSource? _abilityCts;
+        private CancellationTokenSource? _heroCts;
+        private CancellationTokenSource? _factionCts;
+
+        // ── Public draft API ──────────────────────────────────────────────────
+
+        /// <summary>
+        /// Asynchronously generate an editable <see cref="UnitDefinition"/> draft from a natural-language prompt. The
+        /// draft is gated by the SAME <see cref="UnitDefinitionValidator"/> hand-authored units pass; the callback is
+        /// marshalled to the main thread via <see cref="DrainEvents"/>. On success: callback(def, null). On any failure
+        /// (unavailable provider / provider error / failed validation): callback(null, message).
+        /// </summary>
+        public void GenerateUnitDraftAsync(string prompt, UnitDraftContext ctx, Action<UnitDefinition?, string?> onComplete)
+        {
+            _unitCts?.Cancel();
+            _unitCts = new CancellationTokenSource();
+            RunDraftAsync(BuildUnitDraftPrompt(ctx), $"Create a unit for: {prompt}",
+                json => ValidateUnitDraft(json, ctx), _unitCts.Token, onComplete);
+        }
+
+        /// <summary>
+        /// Asynchronously generate an editable <see cref="AbilityDefinition"/> draft. Gated by the SAME
+        /// <see cref="AbilityLoader"/>/<see cref="AbilityValidator"/> path hand-authored abilities pass (numbers land as
+        /// <see cref="Fixed"/> via <see cref="ContentJson.Options"/>). See <see cref="GenerateUnitDraftAsync"/> for the callback contract.
+        /// </summary>
+        public void GenerateAbilityDraftAsync(string prompt, AbilityDraftContext ctx, Action<AbilityDefinition?, string?> onComplete)
+        {
+            _abilityCts?.Cancel();
+            _abilityCts = new CancellationTokenSource();
+            RunDraftAsync(BuildAbilityDraftPrompt(ctx), $"Create an ability for: {prompt}",
+                json => ValidateAbilityDraft(json, ctx), _abilityCts.Token, onComplete);
+        }
+
+        /// <summary>
+        /// Asynchronously generate an editable HERO draft — a <see cref="UnitDefinition"/> with <c>is_hero:true</c> and a
+        /// <c>hero</c> block. <see cref="ValidateHeroDraft"/> requires the hero designation before running the shared unit
+        /// gate. See <see cref="GenerateUnitDraftAsync"/> for the callback contract.
+        /// </summary>
+        public void GenerateHeroDraftAsync(string prompt, UnitDraftContext ctx, Action<UnitDefinition?, string?> onComplete)
+        {
+            _heroCts?.Cancel();
+            _heroCts = new CancellationTokenSource();
+            RunDraftAsync(BuildHeroDraftPrompt(ctx), $"Create a hero for: {prompt}",
+                json => ValidateHeroDraft(json, ctx), _heroCts.Token, onComplete);
+        }
+
+        /// <summary>
+        /// Asynchronously generate an editable <see cref="FactionDefinition"/> draft. Gated by
+        /// <see cref="FactionValidator.Validate"/> AND a per-unit <see cref="UnitDefinitionValidator"/> pass (closing the
+        /// bare-faction-load deep-validation gap); roster-completeness (<c>ValidateComplete</c>) is deliberately NOT run,
+        /// so an incomplete-but-well-formed draft still loads for further editing. See <see cref="GenerateUnitDraftAsync"/>
+        /// for the callback contract.
+        /// </summary>
+        public void GenerateFactionDraftAsync(string prompt, FactionDraftContext ctx, Action<FactionDefinition?, string?> onComplete)
+        {
+            _factionCts?.Cancel();
+            _factionCts = new CancellationTokenSource();
+            RunDraftAsync(BuildFactionDraftPrompt(ctx), $"Create a faction for: {prompt}",
+                json => ValidateFactionDraft(json, ctx), _factionCts.Token, onComplete,
+                maxTokens: FACTION_DRAFT_MAX_TOKENS);
+        }
+
+        /// <summary>Cancel any in-flight draft generation (all four kinds).</summary>
+        public void CancelDrafts()
+        {
+            _unitCts?.Cancel();
+            _abilityCts?.Cancel();
+            _heroCts?.Cancel();
+            _factionCts?.Cancel();
+        }
+
+        /// <summary>
+        /// The shared draft pipeline (factored from <see cref="GenerateTriggerAsync"/>): snapshot settings on the caller
+        /// thread, then on a worker thread run <c>TryCreate</c> (four-state + NO request on false) → <c>GenerateAsync</c>
+        /// → <c>!Ok</c> four-state via <see cref="AiAvailabilityMap.FromFailure"/> → <see cref="StripMarkdown"/> →
+        /// <paramref name="validate"/> → enqueue the callback. The selected provider is authoritative — no fallback.
+        /// Every callback is marshalled through the existing <see cref="_queue"/>/<see cref="DrainEvents"/> seam.
+        /// </summary>
+        private void RunDraftAsync<T>(
+            string systemPrompt,
+            string userMsg,
+            Func<string, (T? def, string? error)> validate,
+            CancellationToken token,
+            Action<T?, string?> onComplete,
+            int maxTokens = MAX_TOKENS) where T : class
+        {
+            // Snapshot the authoritative settings on the caller thread (see GenerateTriggerAsync). No fallback.
+            SettingsData settings = _getSettings();
+
+            Task.Run(async () =>
+            {
+                try
+                {
+                    // Synchronous-unavailable (no provider / no key / bad host) short-circuits with the four-state
+                    // message and NO network call.
+                    if (!LlmProviderFactory.TryCreate(settings, _secretStore, _http,
+                            out ILLMProvider? provider, out AiAvailability failure))
+                    {
+                        _queue.Enqueue(() => onComplete(null, AiAvailabilityMessages.Describe(failure)));
+                        return;
+                    }
+
+                    NormalizedResult result = await provider!.GenerateAsync(
+                        new NormalizedRequest(systemPrompt, userMsg, maxTokens), token);
+
+                    if (!result.Ok)
+                    {
+                        // The selected provider's failure is surfaced (never masked) with the shared four-state microcopy.
+                        _queue.Enqueue(() => onComplete(null,
+                            AiAvailabilityMessages.Describe(AiAvailabilityMap.FromFailure(result.Failure))));
+                        return;
+                    }
+
+                    (T? def, string? error) = validate(StripMarkdown(result.Text));
+                    _queue.Enqueue(() => onComplete(def, def == null ? error : null));
+                }
+                catch (OperationCanceledException) { /* silently dropped */ }
+                catch (Exception ex)
+                {
+                    _queue.Enqueue(() => onComplete(null, ex.Message));
+                }
+            }, token);
+        }
+
+        // ── Validate routers (public-static; each routes through the EXISTING per-kind gate) ──
+
+        /// <summary>
+        /// Deserialize a generated unit through the lenient <see cref="FactionDefinition.JsonOptions"/> (plain float — the
+        /// SAME options hand-authored units load with) and gate it with <see cref="UnitDefinitionValidator"/>. On any
+        /// located error returns <c>(null, message)</c> naming the field path + offending value; never quantizes here
+        /// (quantization stays at <c>EntityWorld.ApplyUnitDefinition</c>).
+        /// </summary>
+        public static (UnitDefinition? def, string? error) ValidateUnitDraft(string json, UnitDraftContext ctx)
+        {
+            if (!TryDeserializeUnit(json, out UnitDefinition? def, out string? jsonError))
+                return (null, jsonError);
+            return GateUnit(def!, ctx);
+        }
+
+        /// <summary>
+        /// Like <see cref="ValidateUnitDraft"/> but additionally requires the HERO designation (<c>is_hero:true</c> + a
+        /// non-null <c>hero</c> block) BEFORE the shared unit gate — a well-formed non-hero unit is rejected with a
+        /// located error so <see cref="GenerateHeroDraftAsync"/> never silently yields a plain unit.
+        /// </summary>
+        public static (UnitDefinition? def, string? error) ValidateHeroDraft(string json, UnitDraftContext ctx)
+        {
+            if (!TryDeserializeUnit(json, out UnitDefinition? def, out string? jsonError))
+                return (null, jsonError);
+            if (!def!.IsHero || def.Hero == null)
+                return (null, $"hero '{def.Id}'.is_hero: a hero draft requires is_hero:true and a 'hero' block " +
+                    $"(got is_hero={def.IsHero}, hero={(def.Hero == null ? "null" : "present")}).");
+            return GateUnit(def, ctx);
+        }
+
+        /// <summary>
+        /// Route a generated ability through the EXACT hand-authored path: <see cref="AbilityLoader.Load"/> deserializes
+        /// via <see cref="ContentJson.Options"/> (<see cref="FixedJsonConverter"/> quantizes each number to
+        /// <see cref="Fixed"/> and rejects <c>|v| &gt;= 32768</c>/NaN/Inf at parse) and runs <see cref="AbilityValidator"/>.
+        /// On failure returns <c>(null, located error)</c>.
+        /// </summary>
+        public static (AbilityDefinition? def, string? error) ValidateAbilityDraft(string json, AbilityDraftContext ctx)
+        {
+            AbilityValidationResult r = AbilityLoader.Load(json, "ai-draft");
+            return r.Ok ? (r.Value.Value, null) : (null, r.Error);
+        }
+
+        /// <summary>
+        /// Deserialize a generated faction through <see cref="FactionDefinition.JsonOptions"/>, run the structural
+        /// <see cref="FactionValidator.Validate"/> gate, AND loop <see cref="UnitDefinitionValidator"/> over
+        /// <c>def.Units</c> (the deep per-unit validation bare faction load skips — closing that gap). Does NOT run
+        /// <see cref="FactionValidator.ValidateComplete"/> (roster-completeness stays at the selectable boundary), so an
+        /// incomplete-but-well-formed draft still loads for editing.
+        /// </summary>
+        public static (FactionDefinition? def, string? error) ValidateFactionDraft(string json, FactionDraftContext ctx)
+        {
+            FactionDefinition def;
+            try
+            {
+                def = JsonSerializer.Deserialize<FactionDefinition>(json, FactionDefinition.JsonOptions)
+                    ?? throw new InvalidOperationException("Deserialised to null.");
+            }
+            catch (Exception ex)
+            {
+                return (null, $"Invalid JSON: {ex.Message}");
+            }
+
+            FactionValidationResult structural = FactionValidator.Validate(def);
+            if (!structural.Ok)
+                return (null, JoinErrors(structural.Errors));
+
+            // Deep-validate each unit (the gap bare faction load leaves — see Design Notes). A per-unit failure names
+            // the offending unit + field.
+            var validator = new UnitDefinitionValidator();
+            if (def.Units != null)
+            {
+                foreach (UnitDefinition u in def.Units)
+                {
+                    if (u == null) continue;
+                    UnitValidationResult ur = validator.Validate(
+                        u, ctx.AbilityRegistry, ctx.BehaviorRegistry, ctx.ItemRegistry, def.Units, "unit");
+                    if (!ur.Ok)
+                        return (null, JoinErrors(ur.Errors));
+                }
+            }
+
+            return (def, null);
+        }
+
+        // ── Router helpers ────────────────────────────────────────────────────
+
+        private static bool TryDeserializeUnit(string json, out UnitDefinition? def, out string? error)
+        {
+            try
+            {
+                def = JsonSerializer.Deserialize<UnitDefinition>(json, FactionDefinition.JsonOptions)
+                    ?? throw new InvalidOperationException("Deserialised to null.");
+                error = null;
+                return true;
+            }
+            catch (Exception ex)
+            {
+                def = null;
+                error = $"Invalid JSON: {ex.Message}";
+                return false;
+            }
+        }
+
+        private static (UnitDefinition? def, string? error) GateUnit(UnitDefinition def, UnitDraftContext ctx)
+        {
+            UnitValidationResult result = new UnitDefinitionValidator().Validate(
+                def, ctx.AbilityRegistry, ctx.BehaviorRegistry, ctx.ItemRegistry, ctx.Siblings, "unit");
+            return result.Ok ? (def, null) : (null, JoinErrors(result.Errors));
+        }
+
+        /// <summary>Join every located field error into one message (list-all validators return several); each message
+        /// already carries its path + offending value.</summary>
+        private static string JoinErrors(IReadOnlyList<(string FieldPath, string Message)> errors)
+        {
+            var sb = new StringBuilder();
+            for (int i = 0; i < errors.Count; i++)
+            {
+                if (i > 0) sb.Append(" | ");
+                sb.Append(errors[i].Message);
+            }
+            return sb.ToString();
+        }
+
+        // ── Draft prompt builders (internal-static; staleness-guardable) ──────
+
+        /// <summary>The Fixed-safe numeric ceiling every generated stat must stay below (mirrors
+        /// <c>FixedJsonConverter.FixedRangeLimit</c> / <c>UnitDefinitionValidator</c>'s Range).</summary>
+        private const int DraftFixedRange = 32768;
+
+        /// <summary>Story 8.4: internal so the staleness-guard test can assert the prompt states the Fixed-safe range and
+        /// the archetype+ability composition guidance (a draft is archetype + ability/behavior composition, never a bespoke
+        /// subclass).</summary>
+        internal static string BuildUnitDraftPrompt(UnitDraftContext ctx)
+        {
+            var sb = new StringBuilder();
+            sb.AppendLine("You are a unit-authoring assistant for Project Chimera, a real-time strategy game.");
+            sb.AppendLine("Convert the user's description into a valid JSON UnitDefinition object (snake_case keys).");
+            sb.AppendLine();
+            AppendUnitSchema(sb);
+            sb.AppendLine();
+            sb.AppendLine("=== ARCHETYPE + ABILITY COMPOSITION ===");
+            sb.AppendLine("Express behavior via archetype (category) + ability/behavior composition — NEVER a bespoke");
+            sb.AppendLine("subclass. A \"healer\" is a Ranged archetype composed with a heal ability + a support behavior.");
+            sb.AppendLine("Only reference ability/behavior ids from the AVAILABLE lists below; an unknown id is rejected.");
+            sb.AppendLine();
+            AppendUnitContext(sb, ctx);
+            sb.AppendLine("=== INSTRUCTIONS ===");
+            sb.AppendLine($"Every numeric stat MUST be finite and within [0, {DraftFixedRange}) (the Fixed-safe range).");
+            sb.AppendLine("Return ONLY valid JSON. No markdown fences, no explanation, no extra text.");
+            return sb.ToString();
+        }
+
+        /// <summary>Story 8.4: internal so the staleness-guard test can assert the HERO prompt states the Fixed-safe range,
+        /// composition guidance, AND that a hero requires <c>is_hero:true</c> + a <c>hero</c> block.</summary>
+        internal static string BuildHeroDraftPrompt(UnitDraftContext ctx)
+        {
+            var sb = new StringBuilder();
+            sb.AppendLine("You are a hero-authoring assistant for Project Chimera, a real-time strategy game.");
+            sb.AppendLine("A hero is a UnitDefinition with is_hero:true AND a 'hero' block (leveling curve + ability slots).");
+            sb.AppendLine("Convert the user's description into a valid JSON UnitDefinition object (snake_case keys).");
+            sb.AppendLine();
+            AppendUnitSchema(sb);
+            sb.AppendLine("The 'hero' block (REQUIRED — is_hero MUST be true):");
+            sb.AppendLine(@"{
+  ""max_level"": 5,          // 2..100
+  ""base_xp"": 100.0,        // > 0
+  ""xp_growth"": 1.4,        // 1..100
+  ""xp_per_kill"": 40.0,
+  ""xp_share_radius"": 20.0, // < 128
+  ""health_per_level"": 25.0,
+  ""damage_per_level"": 4.0,
+  ""armor_per_level"": 1.0,
+  ""signature_ability"": ""<ability_id or empty>"",
+  ""ultimate_ability"": ""<ability_id or empty>""
+}");
+            sb.AppendLine();
+            sb.AppendLine("=== ARCHETYPE + ABILITY COMPOSITION ===");
+            sb.AppendLine("Express behavior via archetype (category) + ability/behavior composition — NEVER a bespoke");
+            sb.AppendLine("subclass. Signature and ultimate ability ids must differ and reference AVAILABLE ability ids.");
+            sb.AppendLine();
+            AppendUnitContext(sb, ctx);
+            sb.AppendLine("=== INSTRUCTIONS ===");
+            sb.AppendLine("Set is_hero:true and author the 'hero' block — a hero draft is rejected without both.");
+            sb.AppendLine($"Every numeric stat MUST be finite and within [0, {DraftFixedRange}) (the Fixed-safe range).");
+            sb.AppendLine("Return ONLY valid JSON. No markdown fences, no explanation, no extra text.");
+            return sb.ToString();
+        }
+
+        /// <summary>Story 8.4: internal so the staleness-guard test can assert the prompt enumerates every closed-set member
+        /// of the effect-kind, targeting, and activation vocabularies (each heads its own line — exact-token match).</summary>
+        internal static string BuildAbilityDraftPrompt(AbilityDraftContext ctx)
+        {
+            var sb = new StringBuilder();
+            sb.AppendLine("You are an ability-authoring assistant for Project Chimera, a real-time strategy game.");
+            sb.AppendLine("Convert the user's description into a valid JSON AbilityDefinition object (snake_case keys).");
+            sb.AppendLine();
+            sb.AppendLine("=== ABILITY SCHEMA ===");
+            sb.AppendLine(@"{
+  ""id"": ""string (lowercase_snake_case)"",
+  ""display_name"": ""string"",
+  ""targeting"": ""None"" | ""Self"" | ""TargetUnit"" | ""GroundPoint"",
+  ""activation"": ""active"" | ""aura"" | ""on_hit"" | ""while_alive"",
+  ""cost_energy"": 0.0,
+  ""cost_ore"": 0,
+  ""cost_crystal"": 0,
+  ""cost_health"": 0,
+  ""cooldown"": 0.0,
+  ""effect"": { EffectNode }
+}");
+            sb.AppendLine();
+            // Each targeting/activation token HEADS its own line so the staleness guard's exact-line-token match holds.
+            sb.AppendLine("=== VALID TARGETING TYPES ===");
+            sb.AppendLine("None        — no target (passive)");
+            sb.AppendLine("Self        — the caster is the target");
+            sb.AppendLine("TargetUnit  — the player selects one unit");
+            sb.AppendLine("GroundPoint — the player picks a ground point");
+            sb.AppendLine();
+            sb.AppendLine("=== VALID ACTIVATION TYPES ===");
+            sb.AppendLine("active      — player-cast ability (default)");
+            sb.AppendLine("aura        — while-alive aura (SearchArea → apply_modifier, refreshed each tick)");
+            sb.AppendLine("on_hit      — rider that fires when this unit's attack lands");
+            sb.AppendLine("while_alive — permanent/periodic self-passive installed at spawn");
+            sb.AppendLine();
+            sb.AppendLine("=== VALID EFFECT KINDS (the 'kind' field on every effect node) ===");
+            sb.AppendLine("direct_hp_delta — { \"kind\": \"direct_hp_delta\", \"delta\": float }");
+            sb.AppendLine("heal            — { \"kind\": \"heal\", \"amount\": float }");
+            sb.AppendLine("damage          — { \"kind\": \"damage\", \"amount\": float, \"damage_type\": \"Normal\" }");
+            sb.AppendLine("apply_modifier  — { \"kind\": \"apply_modifier\", \"modifier\": { … } }");
+            sb.AppendLine("sequence        — { \"kind\": \"sequence\", \"children\": [ EffectNode, … ] }");
+            sb.AppendLine("search_area     — { \"kind\": \"search_area\", \"radius\": float, \"child\": EffectNode }");
+            sb.AppendLine("persistent      — { \"kind\": \"persistent\", \"period_ticks\": int, \"period_count\": int, … }");
+            sb.AppendLine();
+            if (ctx?.ExistingAbilityIds != null && ctx.ExistingAbilityIds.Count > 0)
+            {
+                sb.AppendLine("=== EXISTING ABILITY IDS (avoid colliding) ===");
+                sb.AppendLine(string.Join(", ", ctx.ExistingAbilityIds));
+                sb.AppendLine();
+            }
+            sb.AppendLine("=== INSTRUCTIONS ===");
+            sb.AppendLine($"Every numeric value MUST be finite and within [0, {DraftFixedRange}) (the Fixed-safe range).");
+            sb.AppendLine("An ability must declare at least one effect node. Costs/cooldown must be >= 0.");
+            sb.AppendLine("Return ONLY valid JSON. No markdown fences, no explanation, no extra text.");
+            return sb.ToString();
+        }
+
+        /// <summary>Story 8.4: internal so the staleness-guard test can assert the prompt enumerates every closed-set
+        /// <c>ai_preset</c> member (from the trusted context, seeded from <c>FactionValidator.KnownAiPresets</c>).</summary>
+        internal static string BuildFactionDraftPrompt(FactionDraftContext ctx)
+        {
+            var sb = new StringBuilder();
+            sb.AppendLine("You are a faction-authoring assistant for Project Chimera, a real-time strategy game.");
+            sb.AppendLine("Convert the user's description into a valid JSON FactionDefinition object (snake_case keys).");
+            sb.AppendLine();
+            sb.AppendLine("=== FACTION SCHEMA ===");
+            sb.AppendLine(@"{
+  ""id"": ""string (lowercase_snake_case)"",
+  ""display_name"": ""string"",
+  ""color"": [0.2, 0.5, 1.0, 1.0],   // [r, g, b, a] in [0, 1]
+  ""ai_preset"": ""balanced"",
+  ""units"": [ UnitDefinition, … ],
+  ""buildings"": [ BuildingDefinition, … ]
+}");
+            sb.AppendLine();
+            sb.AppendLine("=== VALID AI PRESETS ===");
+            IReadOnlyList<string> presets = ctx?.AiPresets != null && ctx.AiPresets.Count > 0
+                ? ctx.AiPresets
+                : new[] { "balanced" };
+            foreach (string p in presets)
+                sb.AppendLine($"{p}");   // each preset HEADS its own line (exact-token staleness guard)
+            sb.AppendLine();
+            sb.AppendLine("=== UNIT SCHEMA (per entry in 'units') ===");
+            AppendUnitSchema(sb);
+            sb.AppendLine("=== ARCHETYPE + ABILITY COMPOSITION ===");
+            sb.AppendLine("Express each unit's behavior via archetype (category) + ability/behavior composition — NEVER a");
+            sb.AppendLine("bespoke subclass. Include at least one Worker unit and one combat unit for a playable roster.");
+            sb.AppendLine();
+            AppendUnitContext(sb, new UnitDraftContext
+            {
+                AbilityRegistry = ctx?.AbilityRegistry,
+                BehaviorRegistry = ctx?.BehaviorRegistry,
+                ItemRegistry = ctx?.ItemRegistry,
+            });
+            sb.AppendLine("=== INSTRUCTIONS ===");
+            sb.AppendLine($"Every numeric stat MUST be finite and within [0, {DraftFixedRange}) (the Fixed-safe range).");
+            sb.AppendLine("Return ONLY valid JSON. No markdown fences, no explanation, no extra text.");
+            return sb.ToString();
+        }
+
+        /// <summary>The shared UnitDefinition JSON schema block (snake_case), reused by the unit/hero/faction prompts.</summary>
+        private static void AppendUnitSchema(StringBuilder sb)
+        {
+            sb.AppendLine("=== UNIT SCHEMA ===");
+            sb.AppendLine(@"{
+  ""id"": ""string (lowercase_snake_case)"",
+  ""display_name"": ""string"",
+  ""category"": ""Worker"" | ""Melee"" | ""Ranged"" | ""Siege"" | ""Air"" | ""Structure"",
+  ""hp"": 100.0,
+  ""speed"": 4.0,
+  ""attack_damage"": 10.0,
+  ""attack_range"": 5.0,
+  ""attack_speed"": 1.0,
+  ""damage_type"": ""Normal"" | ""Pierce"" | ""Siege"" | ""Magic"",
+  ""armor_type"": ""Unarmored"" | ""Light"" | ""Medium"" | ""Heavy"" | ""Fortified"",
+  ""armor"": 0.0,
+  ""cost_ore"": 50,
+  ""cost_crystal"": 0,
+  ""supply"": 1,
+  ""vision_range"": 8.0,
+  ""abilities"": [ ""<ability_id>"", … ],
+  ""behaviors"": [ ""<behavior_id>"", … ]
+}");
+        }
+
+        /// <summary>Append the AVAILABLE ability/behavior/item ids from the draft context so the model composes only with
+        /// resolvable references (an unknown ref is a located reject at the validate gate).</summary>
+        private static void AppendUnitContext(StringBuilder sb, UnitDraftContext ctx)
+        {
+            sb.AppendLine("=== AVAILABLE COMPOSITION IDS ===");
+            sb.AppendLine("Ability ids: " + IdList(ctx?.AbilityRegistry));
+            sb.AppendLine("Behavior ids: " + BehaviorIdList(ctx?.BehaviorRegistry));
+            sb.AppendLine("Item ids: " + ItemIdList(ctx?.ItemRegistry));
+            sb.AppendLine();
+        }
+
+        private static string IdList(AbilityRegistry? reg)
+        {
+            if (reg == null || reg.Count == 0) return "(none)";
+            var ids = new string[reg.Count];
+            for (int i = 0; i < reg.Count; i++) ids[i] = reg.Get(i).Id;
+            return string.Join(", ", ids);
+        }
+
+        private static string BehaviorIdList(BehaviorRegistry? reg)
+        {
+            if (reg == null || reg.Count == 0) return "(none)";
+            var ids = new string[reg.Count];
+            for (int i = 0; i < reg.Count; i++) ids[i] = reg.Get(i).Id;
+            return string.Join(", ", ids);
+        }
+
+        private static string ItemIdList(ItemRegistry? reg)
+        {
+            if (reg == null || reg.Count == 0) return "(none)";
+            var ids = new string[reg.Count];
+            for (int i = 0; i < reg.Count; i++) ids[i] = reg.Get(i).Id;
+            return string.Join(", ", ids);
+        }
+    }
+
+    // ── Story 8.4 draft context DTOs (Godot-free) ──────────────────────────────
+
+    /// <summary>
+    /// Context for a UNIT (and HERO) draft — the loaded registries the validator gates ability/behavior/item refs
+    /// against, plus the faction's existing units (for the uniqueness rule). All optional: a null registry SKIPS its
+    /// reference check (the validator's documented null-registry semantics), exactly as hand-authored editor validation.
+    /// </summary>
+    public sealed class UnitDraftContext
+    {
+        /// <summary>Loaded abilities the unit may compose (null skips the ability-ref check).</summary>
+        public AbilityRegistry? AbilityRegistry { get; set; }
+
+        /// <summary>Loaded behaviors the unit may compose (null skips the behavior-ref check).</summary>
+        public BehaviorRegistry? BehaviorRegistry { get; set; }
+
+        /// <summary>Loaded items a shop unit may stock (null skips the shop-stock-ref check).</summary>
+        public ItemRegistry? ItemRegistry { get; set; }
+
+        /// <summary>The faction's existing units, for the duplicate-id rule (null skips the uniqueness check).</summary>
+        public IReadOnlyList<UnitDefinition>? Siblings { get; set; }
+    }
+
+    /// <summary>
+    /// Context for an ABILITY draft. Ability validation is self-contained (<see cref="AbilityLoader"/>/
+    /// <see cref="AbilityValidator"/> need no external registry), so this carries only optional existing-id hints the
+    /// prompt lists so the model avoids id collisions.
+    /// </summary>
+    public sealed class AbilityDraftContext
+    {
+        /// <summary>Existing ability ids the prompt lists as "avoid colliding" (purely a prompt hint; not a gate).</summary>
+        public IReadOnlyList<string>? ExistingAbilityIds { get; set; }
+    }
+
+    /// <summary>
+    /// Context for a FACTION draft — the registries used to deep-validate each generated unit, plus the closed-set
+    /// <c>ai_preset</c> members (seeded from <c>FactionValidator.KnownAiPresets</c>) and signature-mechanic id hints the
+    /// prompt enumerates.
+    /// </summary>
+    public sealed class FactionDraftContext
+    {
+        /// <summary>Loaded abilities each generated unit may compose (deep per-unit validation).</summary>
+        public AbilityRegistry? AbilityRegistry { get; set; }
+
+        /// <summary>Loaded behaviors each generated unit may compose.</summary>
+        public BehaviorRegistry? BehaviorRegistry { get; set; }
+
+        /// <summary>Loaded items a shop unit may stock.</summary>
+        public ItemRegistry? ItemRegistry { get; set; }
+
+        /// <summary>The closed set of recognized <c>ai_preset</c> ids the prompt enumerates (staleness-guarded).</summary>
+        public IReadOnlyList<string> AiPresets { get; set; } = System.Array.Empty<string>();
+
+        /// <summary>Optional signature-mechanic id hints the prompt may list (not a gate this story).</summary>
+        public IReadOnlyList<string> SignatureIds { get; set; } = System.Array.Empty<string>();
     }
 }
