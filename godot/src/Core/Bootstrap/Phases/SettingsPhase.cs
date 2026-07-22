@@ -1,4 +1,6 @@
 #nullable enable
+using Godot;
+using ProjectChimera.Core.Definitions;
 using ProjectChimera.UI;
 
 namespace ProjectChimera.Core.Bootstrap
@@ -18,6 +20,17 @@ namespace ProjectChimera.Core.Bootstrap
 
         public void Run()
         {
+            // Story 8.1: construct the secret store FIRST (this phase runs first) so every later phase can source
+            // API keys from it. The Godot layer does the single GlobalizePath("user://secrets") call; the store
+            // itself is Godot-free. Migrate any legacy plaintext key on first run — both legacy values are "" in this
+            // repo (the [Export] AnthropicApiKey/ModIoApiKey fields were removed), so these are forward-compatible
+            // seams, no-ops today. Both keys get a migration call so the seam is symmetric with SecretMigration's
+            // contract (which names both fields), not just the LLM key.
+            var secretStore = new FileSecretStore(ProjectSettings.GlobalizePath("user://secrets"));
+            SecretMigration.MigrateLegacyKey(secretStore, SecretIds.Llm, "");
+            SecretMigration.MigrateLegacyKey(secretStore, SecretIds.ModIo, "");
+            _ctx.SecretStore = secretStore;
+
             // SettingsManager: loads user://settings.json on _Ready, fires OnSettingsChanged.
             var settingsMgr = new UI.SettingsManager();
             _ctx.Scene.AddChild(settingsMgr);

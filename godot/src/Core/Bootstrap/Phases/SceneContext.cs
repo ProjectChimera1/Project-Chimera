@@ -109,6 +109,10 @@ namespace ProjectChimera.Core.Bootstrap
         // ── Top UI layers (ContentBrowser / MainMenu / Settings / TriggerEditor / MapGenerator) ────────────
         public UI.ContentBrowserPanel ContentBrowser = null!;
         public UI.SettingsManager     SettingsMgr    = null!;
+        /// <summary>Story 8.1: the Godot-free secret store (file-backed over <c>user://secrets</c>). Constructed once
+        /// in <c>SettingsPhase</c>; the TriggerEditor / ContentBrowser phases source their LLM / mod.io keys from it
+        /// via <see cref="ISecretStore.Get"/> instead of the removed plaintext <c>[Export]</c> fields on MainScene.</summary>
+        public ISecretStore           SecretStore    = null!;
         public UI.SettingsPanel       SettingsPanel  = null!;
         public UI.MainMenuOverlay     MainMenu       = null!;
         public UI.AudioManager        AudioMgr       = null!;

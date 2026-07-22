@@ -62,20 +62,26 @@ namespace ProjectChimera.UI
             if (!File.Exists(SETTINGS_PATH))
             {
                 Current = new SettingsData();
-                return;
+            }
+            else
+            {
+                try
+                {
+                    string json = File.ReadAllText(SETTINGS_PATH);
+                    // Story 8.1: deserialize + forward-migrate through the Godot-free seam (Tier-1 tested), so an
+                    // unknown provider / empty model / null base-url is normalized and the schema version stamped.
+                    Current = SettingsData.FromJson(json, _jsonOpts);
+                }
+                catch (Exception ex)
+                {
+                    GD.PrintErr($"[Settings] Failed to load settings: {ex.Message}. Using defaults.");
+                    Current = new SettingsData();
+                }
             }
 
-            try
-            {
-                string json = File.ReadAllText(SETTINGS_PATH);
-                Current = JsonSerializer.Deserialize<SettingsData>(json, _jsonOpts)
-                          ?? new SettingsData();
-            }
-            catch (Exception ex)
-            {
-                GD.PrintErr($"[Settings] Failed to load settings: {ex.Message}. Using defaults.");
-                Current = new SettingsData();
-            }
+            // Forward-migrate again to cover the absent / corrupt-fallback paths (idempotent for the FromJson path
+            // above). Guarantees Current is normalized regardless of which branch produced it.
+            Current.MigrateForward();
         }
 
         /// <summary>

@@ -157,7 +157,7 @@ development_status:
   7-15-trigger-debugging-variable-watch-fired-trigger-log-fire-counters: done
   epic-7-retrospective: done
   epic-8: backlog
-  8-1-provider-config-isecretstore-provider-model-baseurl-in-versioned-settingsdata: backlog
+  8-1-provider-config-isecretstore-provider-model-baseurl-in-versioned-settingsdata: done
   8-2-godot-free-illmprovider-anthropic-ollama-openrouter-four-state-availability-ui-test-connection: backlog
   8-3-ai-generation-on-the-provider-stack-triggers-new-dsl-constructs-maps: backlog
   8-4-ai-entity-drafts-as-editable-data-unit-ability-hero-faction: backlog

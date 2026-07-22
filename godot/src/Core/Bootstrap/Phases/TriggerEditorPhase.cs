@@ -20,7 +20,9 @@ namespace ProjectChimera.Core.Bootstrap
 
         public void Run()
         {
-            _ctx.LlmService = new LLMService { AnthropicApiKey = _ctx.Scene.AnthropicApiKey };
+            // Story 8.1: source the Anthropic key from the secret store (user://secrets/llm.key), not the removed
+            // plaintext [Export] field on MainScene. Empty ⇒ Ollama fallback, exactly as before.
+            _ctx.LlmService = new LLMService { AnthropicApiKey = _ctx.SecretStore.Get(Definitions.SecretIds.Llm) };
 
             _ctx.TriggerPanel = new TriggerEditorPanel();
             _ctx.Scene.AddChild(_ctx.TriggerPanel);
@@ -59,7 +61,7 @@ namespace ProjectChimera.Core.Bootstrap
 
             GD.Print("[TriggerEditor] Initialized — press L in Edit mode to open. " +
                      "Anthropic API key " +
-                     (string.IsNullOrEmpty(_ctx.Scene.AnthropicApiKey) ? "not set (Ollama fallback)." : "configured."));
+                     (_ctx.SecretStore.Has(Definitions.SecretIds.Llm) ? "configured." : "not set (Ollama fallback)."));
         }
     }
 }

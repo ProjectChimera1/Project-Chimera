@@ -13,8 +13,9 @@ namespace ProjectChimera.UI
     ///
     /// Two tabs:
     ///   Local  — scans user://packages/ for locally installed .chimera.zip files.
-    ///   Online — browses and downloads maps from mod.io (requires ModIoGameId +
-    ///            ModIoApiKey set in MainScene's Inspector exports).
+    ///   Online — browses and downloads maps from mod.io (requires ModIoGameId set in MainScene's Inspector
+    ///            export, plus a mod.io key in the ISecretStore — user://secrets/modio.key, Story 8.1 — not a
+    ///            plaintext [Export] field).
     ///
     /// Usage:
     ///   var browser = new ContentBrowserPanel();

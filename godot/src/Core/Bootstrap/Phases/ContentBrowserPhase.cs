@@ -22,11 +22,12 @@ namespace ProjectChimera.Core.Bootstrap
 
         public void Run()
         {
-            // Create mod.io service if credentials are configured in the Inspector.
+            // Create mod.io service if a game id is set (Inspector) AND a key is present in the secret store.
+            // Story 8.1: the key comes from user://secrets/modio.key via ISecretStore, not a plaintext [Export].
             ModIoService? modIo = null;
-            if (_ctx.Scene.ModIoGameId > 0 && !string.IsNullOrWhiteSpace(_ctx.Scene.ModIoApiKey))
+            if (_ctx.Scene.ModIoGameId > 0 && _ctx.SecretStore.Has(SecretIds.ModIo))
             {
-                modIo = new ModIoService(_ctx.Scene.ModIoGameId, _ctx.Scene.ModIoApiKey);
+                modIo = new ModIoService(_ctx.Scene.ModIoGameId, _ctx.SecretStore.Get(SecretIds.ModIo));
                 GD.Print($"[ContentBrowser] mod.io service created (game ID {_ctx.Scene.ModIoGameId}).");
             }
 

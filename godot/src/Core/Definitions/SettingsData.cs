@@ -1,4 +1,5 @@
 #nullable enable
+using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace ProjectChimera.Core.Definitions
@@ -11,6 +12,42 @@ namespace ProjectChimera.Core.Definitions
     /// </summary>
     public class SettingsData
     {
+        // ── Schema versioning ─────────────────────────────────────────────────
+
+        /// <summary>Story 8.1: the settings schema version, stamped by <see cref="MigrateForward"/> on load. The
+        /// current version this build writes. Bump when a forward-incompatible field shape is added so a future
+        /// <see cref="MigrateForward"/> can normalize older files.</summary>
+        public const int CurrentSchemaVersion = 1;
+
+        /// <summary>Story 8.1: the persisted schema version. An older <c>settings.json</c> that predates this field
+        /// deserializes to <c>0</c>; <see cref="MigrateForward"/> stamps <see cref="CurrentSchemaVersion"/> so a
+        /// subsequent <c>Save</c> persists the version. Never governs alone — always run through
+        /// <see cref="MigrateForward"/> on load.</summary>
+        [JsonPropertyName("schema_version")]
+        public int SchemaVersion { get; set; } = 0;
+
+        // ── AI provider (Story 8.1) ───────────────────────────────────────────
+
+        /// <summary>Story 8.1: the selected LLM provider id (curated in <see cref="LlmProviderCatalog"/> —
+        /// <c>anthropic</c>/<c>ollama</c>/<c>openrouter</c>). Defaults to the curated default provider; an unknown
+        /// value is reset to the default by <see cref="MigrateForward"/>. The API KEY is NEVER stored here — it lives
+        /// only in the <see cref="ISecretStore"/>.</summary>
+        [JsonPropertyName("llm_provider")]
+        public string LlmProvider { get; set; } = LlmProviderCatalog.DefaultProviderId;
+
+        /// <summary>Story 8.1: the selected model — either a curated pick from the provider's catalog list OR a
+        /// free-text override; both persist and round-trip verbatim. An empty value is reset to
+        /// <see cref="LlmProviderCatalog.DefaultModel"/> (<c>claude-sonnet-4-6</c>) by <see cref="MigrateForward"/>.
+        /// No separate override field is needed — one persisted model field holds either kind.</summary>
+        [JsonPropertyName("llm_model")]
+        public string LlmModel { get; set; } = LlmProviderCatalog.DefaultModel;
+
+        /// <summary>Story 8.1: an optional base-URL override for the provider endpoint. Empty means "use the
+        /// provider's catalog default base URL" (resolved by Story 8.2's provider stack); a non-empty value persists
+        /// and round-trips verbatim.</summary>
+        [JsonPropertyName("llm_base_url")]
+        public string LlmBaseUrl { get; set; } = "";
+
         // ── Camera ────────────────────────────────────────────────────────────
 
         /// <summary>Camera pan speed multiplier. 1.0 = default; 0.5 = half; 2.0 = double.</summary>
@@ -83,5 +120,46 @@ namespace ProjectChimera.Core.Definitions
         /// onboarding once; the Settings panel's "Replay onboarding" action resets this back to false on demand.</summary>
         [JsonPropertyName("has_seen_onboarding")]
         public bool HasSeenOnboarding { get; set; } = false;
+
+        // ── Forward migration (Story 8.1) ─────────────────────────────────────
+
+        /// <summary>
+        /// Story 8.1: normalize this instance forward and stamp the current schema version. Because absent JSON
+        /// fields deserialize to the C# property initializers, an old file already lands on the new defaults; this
+        /// additionally resets an UNKNOWN provider id to the catalog default and an EMPTY model to
+        /// <see cref="LlmProviderCatalog.DefaultModel"/>, then sets <see cref="SchemaVersion"/> to
+        /// <see cref="CurrentSchemaVersion"/> so a subsequent <c>Save</c> persists the version. Idempotent — call it
+        /// in <c>SettingsManager.Load</c> after deserialize. Returns <c>this</c> for fluent use.
+        /// </summary>
+        public SettingsData MigrateForward()
+        {
+            // Unknown provider id → curated default (a free-text/legacy value that no longer maps to a provider).
+            if (!LlmProviderCatalog.TryGet(LlmProvider, out _))
+                LlmProvider = LlmProviderCatalog.DefaultProviderId;
+
+            // Empty model → default. A non-empty model (curated OR free-text override) is preserved verbatim.
+            if (string.IsNullOrWhiteSpace(LlmModel))
+                LlmModel = LlmProviderCatalog.DefaultModel;
+
+            // Explicit JSON null (`"llm_base_url": null`) deserializes the property to null; normalize it to "" so
+            // "no override" is a single representation and Story 8.2's base-URL resolution never sees a null.
+            LlmBaseUrl ??= "";
+
+            SchemaVersion = CurrentSchemaVersion;
+            return this;
+        }
+
+        /// <summary>
+        /// Story 8.1: the Godot-free deserialize-then-migrate seam that <c>SettingsManager.Load</c> calls for a
+        /// present <c>settings.json</c> — deserialize with the given options, fall back to a fresh instance on a null
+        /// result, then <see cref="MigrateForward"/>. Extracted from the Node so the load-time normalization contract
+        /// (unknown provider / empty model / null base-url / schema stamp all applied on load) is Tier-1 testable
+        /// without the Godot <c>SettingsManager</c> — the Node's <c>Load</c> is a thin wrapper over this plus its
+        /// try/catch fail-soft. Never returns null, but DOES throw <see cref="JsonException"/> on malformed JSON —
+        /// deliberately not swallowed here so the Godot caller can log it (<c>SettingsManager.Load</c> wraps this call
+        /// in try/catch → <c>GD.PrintErr</c> + defaults). Any other caller that needs fail-soft must catch likewise.
+        /// </summary>
+        public static SettingsData FromJson(string json, JsonSerializerOptions options)
+            => (JsonSerializer.Deserialize<SettingsData>(json, options) ?? new SettingsData()).MigrateForward();
     }
 }

@@ -15,6 +15,10 @@ data_*/
 TestResults/
 *.trx
 
+# Story 8.1: API-key secret store — never commit keys or the secrets dir
+*.key
+secrets/
+
 # OS junk
 .DS_Store
 Thumbs.db

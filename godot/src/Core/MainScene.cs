@@ -179,17 +179,10 @@ namespace ProjectChimera.Core
         /// </summary>
         [Export] public int ModIoGameId { get; set; } = 0;
 
-        /// <summary>
-        /// mod.io read-only API key from mod.io > API Access.
-        /// Required for browsing and downloading mods. Leave empty to disable mod.io features.
-        /// </summary>
-        [Export] public string ModIoApiKey { get; set; } = "";
-
-        /// <summary>
-        /// Anthropic API key for LLM-powered trigger authoring in the Trigger Editor.
-        /// Set via Godot Inspector. Leave empty to use local Ollama fallback only.
-        /// </summary>
-        [Export] public string AnthropicApiKey { get; set; } = "";
+        // Story 8.1: the two plaintext [Export] LLM / mod.io key fields were removed — API keys are no longer
+        // hardcodable/committable/shippable Inspector strings. Keys now come from the Godot-free ISecretStore
+        // (user://secrets/*.key, gitignored); SettingsPhase constructs the store and the TriggerEditor/ContentBrowser
+        // phases source their keys from it. ModIoGameId (a non-secret public id) stays.
 
         // ── Constants ─────────────────────────────────────────────────────────
 
