@@ -1,12 +1,8 @@
----
-deferred_work_file: '{implementation_artifacts}/deferred-work.md'
----
-
 # Step 4: Review
 
 ## RULES
 
-- YOU MUST ALWAYS SPEAK OUTPUT in your Agent communication style with the config `{communication_language}`
+- **Language** — Speak in `{{.communication_language}}`. Write any file output in `{{.document_output_language}}`.
 - All review subagents must run at the same model capability as the current session.
 - Run subagents synchronously: launch them together, then wait for all results before continuing.
 
@@ -22,13 +18,11 @@ Do NOT `git add` anything — this is read-only inspection.
 
 ### Review
 
-The review layers are `{workflow.review_layers}`, resolved during activation.
+Execute these review layers in parallel wherever their execution methods allow: substitute the runtime placeholders (e.g. `{diff_output}`) into each layer's instruction, then follow it verbatim. Parallel means several blocking calls awaited together in this turn — never backgrounded or detached, never ending the turn to await results. When running layers as subagents, spawn every reviewer before reading or reacting to any of their output; begin collection and triage only once all are launched.
 
-Skip every layer whose `instruction` is empty or missing — that is how an override disables a default layer — and every layer whose `when` condition (if present) does not hold in the current context. If no layers remain, HALT with status `blocked` and blocking condition `no active review layers`.
+{workflow.review_layers}
 
-Execute all remaining layers in parallel wherever their execution methods allow: substitute the runtime placeholders (e.g. `{diff_output}`) into each layer's `instruction`, then follow it verbatim.
-
-If a layer's instruction requires subagents and none are available, generate one review prompt file per such layer in `{implementation_artifacts}` and HALT. Ask the human to run each in a separate session (ideally a different LLM) and paste back the findings.
+If a layer's instruction requires subagents and none are available, generate one review prompt file per such layer in `{{.implementation_artifacts}}` and HALT. Ask the human to run each in a separate session (ideally a different LLM) and paste back the findings.
 
 ### Classify
 
@@ -47,8 +41,8 @@ If a layer's instruction requires subagents and none are available, generate one
 4. Process findings in cascading order. If intent_gap or bad_spec findings exist, they trigger a loopback — lower findings are moot since code will be re-derived. If neither exists, process patch and defer normally. Before each loopback, read `{spec_file}` frontmatter `review_loop_iteration` (missing means `0`), increment it by 1, and write it back. If it exceeds 5, HALT and escalate to the human.
    - **intent_gap** — Root cause is inside `<frozen-after-approval>`. Revert code changes. Loop back to the human to resolve. Once resolved, read fully and follow `./step-02-plan.md` to re-run steps 2–4.
    - **bad_spec** — Root cause is outside `<frozen-after-approval>`. Before reverting code: extract KEEP instructions for positive preservation (what worked well and must survive re-derivation). Revert code changes. Read the `## Spec Change Log` in `{spec_file}` and strictly respect all logged constraints when amending the non-frozen sections that contain the root cause. Append a new change-log entry recording: the triggering finding, what was amended, the known-bad state avoided, and the KEEP instructions. Read fully and follow `./step-03-implement.md` to re-derive the code, then this step will run again.
-   - **patch** — Auto-fix. These are the only findings that survive loopbacks.
-   - **defer** — Append one new entry to `{deferred_work_file}` using this format. Do not modify existing entries or look for duplicates.
+   - **patch** — Auto-fix. These are the only findings that survive loopbacks. If the step-03 implementation subagent can be re-engaged with its context intact, send it all patch findings in one synchronous message — for each: the file, what is wrong, and what the fix must do. If it cannot be re-engaged, apply the patches yourself. Then re-run the checks in `{spec_file}`'s `## Verification` section, if present; if verification fails and the failure cannot be fixed, HALT and escalate to the human.
+   - **defer** — Append one new entry to `{{.deferred_work_file}}` using this format. Do not modify existing entries or look for duplicates.
      ```markdown
      - source_spec: `{spec_file}`
        summary: <one sentence>
