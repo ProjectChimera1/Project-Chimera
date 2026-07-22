@@ -35,6 +35,12 @@ namespace ProjectChimera.CreationSuite
         private LLMService?          _llm;
         private MapGeneratorContext  _context = new();
 
+        // Story 8.2 — availability status: the AI Generate affordance is gated on the four-state evaluator; the
+        // surrounding editor stays usable in every state. Config-derived (synchronous) on open.
+        private ProjectChimera.AI.Providers.AiAvailabilityEvaluator? _aiEvaluator;
+        private ProjectChimera.Core.Definitions.ISecretStore?        _aiSecretStore;
+        private Label _aiAvailLabel = null!;
+
         // ── UI nodes ──────────────────────────────────────────────────────────
 
         private CanvasLayer    _canvas     = null!;
@@ -60,14 +66,45 @@ namespace ProjectChimera.CreationSuite
         public void Initialize(
             GameState gameState,
             LLMService llm,
-            MapGeneratorContext context)
+            MapGeneratorContext context,
+            ProjectChimera.AI.Providers.AiAvailabilityEvaluator? aiEvaluator = null,
+            ProjectChimera.Core.Definitions.ISecretStore? aiSecretStore = null)
         {
             _gameState = gameState;
             _llm       = llm;
             _context   = context;
+            _aiEvaluator   = aiEvaluator;
+            _aiSecretStore = aiSecretStore;
 
             _gameState.ModeChanged += OnModeChanged;
             _panel.Visible = false;
+            RefreshAvailability();
+        }
+
+        /// <summary>Story 8.2 — drive the AI-availability status line + Generate gating from the config-derived
+        /// (synchronous) evaluator. In every unavailable state the four-state message shows and Generate disables,
+        /// while the surrounding editor stays usable. A null evaluator (older wiring) leaves AI enabled as before.</summary>
+        private void RefreshAvailability()
+        {
+            if (_aiAvailLabel == null) return; // UI not built yet
+            if (_aiEvaluator == null || _aiSecretStore == null)
+            {
+                _aiAvailLabel.Visible = false;
+                return;
+            }
+
+            var settings = ProjectChimera.UI.SettingsManager.Instance?.Current
+                           ?? new ProjectChimera.Core.Definitions.SettingsData();
+            var state = _aiEvaluator.EvaluateConfig(settings, _aiSecretStore);
+            bool available = state == ProjectChimera.AI.Providers.AiAvailability.Healthy;
+
+            _aiAvailLabel.Visible = true;
+            _aiAvailLabel.Text = available
+                ? "AI: ready (config OK — Test connection in Settings to confirm)."
+                : ProjectChimera.AI.Providers.AiAvailabilityMessages.Describe(state);
+            _aiAvailLabel.Modulate = available ? new Color(0.6f, 0.9f, 0.6f) : new Color(0.95f, 0.8f, 0.45f);
+
+            if (_genBtn != null) _genBtn.Disabled = !available;
         }
 
         /// <summary>Called each _Process frame by MainScene to drain LLM callbacks.</summary>
@@ -80,6 +117,7 @@ namespace ProjectChimera.CreationSuite
         public void Toggle()
         {
             _panel.Visible = !_panel.Visible;
+            if (_panel.Visible) RefreshAvailability();
         }
 
         // ── _Ready ────────────────────────────────────────────────────────────
@@ -114,6 +152,16 @@ namespace ProjectChimera.CreationSuite
                 HorizontalAlignment = HorizontalAlignment.Center
             };
             root.AddChild(header);
+
+            // Story 8.2 — AI-availability status line (four-state); hidden until Initialize wires the evaluator.
+            _aiAvailLabel = new Label
+            {
+                Text = "",
+                Visible = false,
+                AutowrapMode = TextServer.AutowrapMode.Word,
+                CustomMinimumSize = new Vector2(PANEL_W - MARGIN * 2, 0),
+            };
+            root.AddChild(_aiAvailLabel);
 
             root.AddChild(new HSeparator());
 

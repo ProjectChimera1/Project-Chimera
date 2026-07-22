@@ -31,6 +31,19 @@ namespace ProjectChimera.Core.Bootstrap
             SecretMigration.MigrateLegacyKey(secretStore, SecretIds.ModIo, "");
             _ctx.SecretStore = secretStore;
 
+            // Story 8.2: one shared HttpClient (short Test-connection timeout + a UA) feeds the Godot-free
+            // availability evaluator. Test-connection / the four-state UI run through this; nothing here touches the
+            // deterministic sim. Timeout is short so a Test-connection against an unreachable host fails fast.
+            // AllowAutoRedirect=false: the host allowlist is enforced against the INITIAL base URL only, so a 302 from
+            // an allowlisted host would otherwise silently follow to an arbitrary host — and .NET does NOT strip the
+            // custom x-api-key header on a cross-host redirect (it only strips Authorization), leaking the Anthropic
+            // key. Refusing redirects keeps the allowlist guarantee intact.
+            var aiHttp = new System.Net.Http.HttpClient(
+                new System.Net.Http.HttpClientHandler { AllowAutoRedirect = false })
+            { Timeout = System.TimeSpan.FromSeconds(15) };
+            aiHttp.DefaultRequestHeaders.UserAgent.ParseAdd("ProjectChimera/1.0");
+            _ctx.AiEvaluator = new AI.Providers.AiAvailabilityEvaluator(aiHttp);
+
             // SettingsManager: loads user://settings.json on _Ready, fires OnSettingsChanged.
             var settingsMgr = new UI.SettingsManager();
             _ctx.Scene.AddChild(settingsMgr);
@@ -39,7 +52,9 @@ namespace ProjectChimera.Core.Bootstrap
             // SettingsPanel: layer 15, toggled via Escape key.
             var settingsPanel = new UI.SettingsPanel();
             _ctx.Scene.AddChild(settingsPanel);
-            settingsPanel.Initialize(settingsMgr);
+            // Story 8.2: hand the panel the evaluator + secret store so its AI Provider section can run
+            // Test-connection and read/write the API key exclusively through ISecretStore.
+            settingsPanel.Initialize(settingsMgr, _ctx.AiEvaluator, secretStore);
             _ctx.SettingsPanel = settingsPanel;
 
             // Apply settings to systems already initialised (camera applied later in Camera; audio buses in

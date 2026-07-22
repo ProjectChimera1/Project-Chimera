@@ -39,6 +39,13 @@ namespace ProjectChimera.CreationSuite
         private LLMService?     _llm;
         private ScenarioContext _context = new();
 
+        // Story 8.2 — availability status: the AI Generate affordance is gated on the four-state evaluator; manual
+        // ECA / variables / events authoring stays usable in every state. Config-derived (synchronous) on open.
+        private ProjectChimera.AI.Providers.AiAvailabilityEvaluator? _aiEvaluator;
+        private ProjectChimera.Core.Definitions.ISecretStore?        _aiSecretStore;
+        private Label  _aiAvailLabel = null!;
+        private Button _newAiBtn     = null!;
+
         // Story 7.10 — the T3 node-graph editor this panel's read-only "edit in graph view" fallback rows open
         // (wired by DslGraphEditorPhase after both panels are constructed). Null until wired.
         private DslGraphEditorPanel? _graphEditor;
@@ -128,15 +135,20 @@ namespace ProjectChimera.CreationSuite
             ScenarioData? scenario,
             GameState gameState,
             LLMService llm,
-            ScenarioContext context)
+            ScenarioContext context,
+            ProjectChimera.AI.Providers.AiAvailabilityEvaluator? aiEvaluator = null,
+            ProjectChimera.Core.Definitions.ISecretStore? aiSecretStore = null)
         {
             _scenario  = scenario;
             _gameState = gameState;
             _llm       = llm;
             _context   = context;
+            _aiEvaluator   = aiEvaluator;
+            _aiSecretStore = aiSecretStore;
 
             _gameState.ModeChanged += OnModeChanged;
             _panel.Visible = false; // start hidden; shown by L key toggle
+            RefreshAvailability();
         }
 
         /// <summary>Called when the scenario is reloaded (e.g. after Import or scene restart).</summary>
@@ -160,7 +172,36 @@ namespace ProjectChimera.CreationSuite
         public void Toggle()
         {
             _panel.Visible = !_panel.Visible;
-            if (_panel.Visible) RefreshList();
+            if (_panel.Visible) { RefreshList(); RefreshAvailability(); }
+        }
+
+        /// <summary>Story 8.2 — drive the AI-availability status line + Generate gating from the config-derived
+        /// (synchronous) evaluator. In every unavailable state the four-state message shows and the AI Generate
+        /// affordances disable, while manual ECA / variables / events authoring stays fully usable. No network call
+        /// here (Test-connection lives in Settings); a null evaluator (older wiring) leaves AI enabled as before.</summary>
+        private void RefreshAvailability()
+        {
+            if (_aiAvailLabel == null) return; // UI not built yet
+            if (_aiEvaluator == null || _aiSecretStore == null)
+            {
+                _aiAvailLabel.Visible = false;
+                return;
+            }
+
+            var settings = ProjectChimera.UI.SettingsManager.Instance?.Current
+                           ?? new ProjectChimera.Core.Definitions.SettingsData();
+            var state = _aiEvaluator.EvaluateConfig(settings, _aiSecretStore);
+            bool available = state == ProjectChimera.AI.Providers.AiAvailability.Healthy;
+
+            _aiAvailLabel.Visible = true;
+            _aiAvailLabel.Text = available
+                ? "AI: ready (config OK — Test connection in Settings to confirm)."
+                : ProjectChimera.AI.Providers.AiAvailabilityMessages.Describe(state);
+            _aiAvailLabel.Modulate = available ? new Color(0.6f, 0.9f, 0.6f) : new Color(0.95f, 0.8f, 0.45f);
+
+            // Gate ONLY the AI affordances; manual authoring stays enabled.
+            if (_newAiBtn != null) _newAiBtn.Disabled = !available;
+            if (_genBtn != null)   _genBtn.Disabled   = !available;
         }
 
         /// <summary>
@@ -227,6 +268,16 @@ namespace ProjectChimera.CreationSuite
             };
             root.AddChild(header);
 
+            // Story 8.2 — AI-availability status line (four-state); hidden until Initialize wires the evaluator.
+            _aiAvailLabel = new Label
+            {
+                Text = "",
+                Visible = false,
+                AutowrapMode = TextServer.AutowrapMode.Word,
+                CustomMinimumSize = new Vector2(PANEL_W - MARGIN * 2, 0),
+            };
+            root.AddChild(_aiAvailLabel);
+
             root.AddChild(new HSeparator());
 
             // ── Trigger list ──────────────────────────────────────────────────
@@ -244,10 +295,10 @@ namespace ProjectChimera.CreationSuite
             AttachTip(manualBtn, "Manual Trigger", "Author an ECA trigger from closed-vocabulary dropdowns — no AI needed.");
             root.AddChild(manualBtn);
 
-            var newBtn = new Button { Text = "+ New Trigger (via AI)" };
-            newBtn.Pressed += OnNewTriggerPressed;
-            AttachTip(newBtn, "New Trigger", "Open the AI trigger generator — describe a rule in plain English and review it before accepting.");
-            root.AddChild(newBtn);
+            _newAiBtn = new Button { Text = "+ New Trigger (via AI)" };
+            _newAiBtn.Pressed += OnNewTriggerPressed;
+            AttachTip(_newAiBtn, "New Trigger", "Open the AI trigger generator — describe a rule in plain English and review it before accepting.");
+            root.AddChild(_newAiBtn);
 
             var varsBtn = new Button { Text = "Variables…" };
             varsBtn.Pressed += () => { RefreshVarsList(); RefreshVarPickers(); ToggleSection(_varsSection); };

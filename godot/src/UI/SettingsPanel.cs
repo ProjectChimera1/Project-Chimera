@@ -2,6 +2,10 @@
 using Godot;
 using System;
 using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
+using ProjectChimera.AI.Providers;   // Story 8.2 — AiAvailability(Evaluator/Messages), four-state UI
+using ProjectChimera.Core.Definitions; // Story 8.2 — ISecretStore, SecretIds, LlmProviderCatalog
 using ProjectChimera.UI.Components; // ChimeraComponents, ChimeraTabs, ChimeraSlider, ChimeraSwitch, ChimeraTooltip
 using ProjectChimera.UI.Theme;       // ThemeTokens, ThemeBuilder, AccentController
 using GodotTheme = Godot.Theme;       // the ProjectChimera.UI.Theme namespace shadows the bare Theme type
@@ -58,12 +62,30 @@ namespace ProjectChimera.UI
         private ChimeraSwitch _fpsBtn            = null!;
         private ChimeraSwitch _colorblindBtn     = null!;
 
+        // ── Story 8.2 — AI Provider config section ─────────────────────────────
+
+        private AiAvailabilityEvaluator? _aiEvaluator;
+        private ISecretStore?            _secretStore;
+        private OptionButton _providerSelect  = null!;
+        private OptionButton _modelSelect     = null!;
+        private LineEdit     _modelOverride   = null!;
+        private LineEdit     _baseUrlInput    = null!;
+        private LineEdit     _apiKeyInput     = null!;
+        private Button       _clearKeyBtn     = null!;
+        private Button       _testBtn         = null!;
+        private ChimeraSpinner _testSpinner   = null!;
+        private Label        _aiStatusLabel   = null!;
+        private CancellationTokenSource? _testCts;
+
         // ── Initialization ────────────────────────────────────────────────────
 
-        /// <summary>Build the settings UI and sync all widgets to current settings.</summary>
-        public void Initialize(SettingsManager settings)
+        /// <summary>Build the settings UI and sync all widgets to current settings. Story 8.2: the evaluator +
+        /// secret store back the AI Provider section (Test-connection + four-state UI + key entry).</summary>
+        public void Initialize(SettingsManager settings, AiAvailabilityEvaluator aiEvaluator, ISecretStore secretStore)
         {
-            _settings = settings;
+            _settings    = settings;
+            _aiEvaluator = aiEvaluator;
+            _secretStore = secretStore;
             Layer     = 15; // above content browser (10)
             Visible   = false;
 
@@ -114,7 +136,7 @@ namespace ProjectChimera.UI
 
             // ── Tab header (UX-DR73) ──────────────────────────────────────────
             var tabs = ChimeraTabs.Create(ChimeraComponents.TabsVariant.Underline,
-                "Gameplay", "Graphics", "Audio", "Controls", "Accessibility");
+                "Gameplay", "Graphics", "Audio", "Controls", "Accessibility", "AI Provider");
             vbox.AddChild(tabs);
 
             // ── Content host (pages swap on TabChanged) ───────────────────────
@@ -131,6 +153,7 @@ namespace ProjectChimera.UI
             host.AddChild(BuildAudioPage());
             host.AddChild(BuildControlsPage());
             host.AddChild(BuildAccessibilityPage());
+            host.AddChild(BuildAiProviderPage());
             ShowPage(0);
 
             tabs.TabChanged += OnTabChanged;
@@ -246,6 +269,247 @@ namespace ProjectChimera.UI
                 "Changes Player 2 units from red to orange so they read in red-green color blindness.",
                 _settings.Current.ColorblindMode);
             return v;
+        }
+
+        // ── Story 8.2 — AI Provider page ───────────────────────────────────────
+
+        private Control BuildAiProviderPage()
+        {
+            var v = NewPage();
+            var s = _settings.Current;
+
+            AddSectionHeader(v, "AI Provider");
+
+            // Provider picker (curated catalog, in stable order).
+            v.AddChild(ChimeraComponents.FieldLabel("Provider"));
+            _providerSelect = ChimeraComponents.Select();
+            int selectedProvider = 0;
+            for (int i = 0; i < LlmProviderCatalog.Providers.Count; i++)
+            {
+                var p = LlmProviderCatalog.Providers[i];
+                _providerSelect.AddItem(p.DisplayName, i);
+                if (string.Equals(p.Id, s.LlmProvider, StringComparison.Ordinal)) selectedProvider = i;
+            }
+            _providerSelect.Select(selectedProvider);
+            _providerSelect.ItemSelected += _ => { RefreshModelList(); UpdateAiStatusLine(); };
+            v.AddChild(_providerSelect);
+
+            // Model picker (curated) + free-text override.
+            v.AddChild(ChimeraComponents.FieldLabel("Model (curated)"));
+            _modelSelect = ChimeraComponents.Select();
+            v.AddChild(_modelSelect);
+
+            v.AddChild(ChimeraComponents.FieldLabel("Model override (optional — free text)"));
+            _modelOverride = ChimeraComponents.Input("e.g. claude-sonnet-4-6 or a custom tag");
+            v.AddChild(_modelOverride);
+
+            // Base-URL override.
+            v.AddChild(ChimeraComponents.FieldLabel("Base URL override (optional)"));
+            _baseUrlInput = ChimeraComponents.Input("leave blank to use the provider default");
+            _baseUrlInput.Text = s.LlmBaseUrl;
+            v.AddChild(_baseUrlInput);
+
+            // API key (masked). Never persisted to settings.json — only ISecretStore.
+            v.AddChild(ChimeraComponents.FieldLabel("API key (stored securely, never in settings.json)"));
+            var keyRow = new HBoxContainer();
+            keyRow.AddThemeConstantOverride("separation", ChimeraComponents.Const(ThemeTokens.S2));
+            _apiKeyInput = ChimeraComponents.Input(
+                (_secretStore?.Has(SecretIds.Llm) ?? false) ? "•••••••• (key stored — type to replace)" : "paste your API key");
+            _apiKeyInput.Secret = true;
+            _apiKeyInput.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+            keyRow.AddChild(_apiKeyInput);
+            _clearKeyBtn = ChimeraComponents.Button("Clear key", ChimeraComponents.ButtonVariant.Ghost,
+                                                    ChimeraComponents.ButtonSize.Sm);
+            _clearKeyBtn.Pressed += OnClearKeyPressed;
+            keyRow.AddChild(_clearKeyBtn);
+            v.AddChild(keyRow);
+
+            // Test connection row: button + spinner + status.
+            var testRow = new HBoxContainer();
+            testRow.AddThemeConstantOverride("separation", ChimeraComponents.Const(ThemeTokens.S2));
+            _testBtn = ChimeraComponents.Button("Test connection", ChimeraComponents.ButtonVariant.Secondary);
+            _testBtn.Pressed += OnTestConnectionPressed;
+            testRow.AddChild(_testBtn);
+            _testSpinner = ChimeraSpinner.Create(20);
+            _testSpinner.Visible = false;
+            testRow.AddChild(_testSpinner);
+            v.AddChild(testRow);
+
+            _aiStatusLabel = Body("", ThemeTokens.TextMid, ThemeTokens.Tsm);
+            _aiStatusLabel.AutowrapMode = TextServer.AutowrapMode.Word;
+            _aiStatusLabel.CustomMinimumSize = new Vector2(0, 40);
+            v.AddChild(_aiStatusLabel);
+
+            RefreshModelList();
+            UpdateAiStatusLine();
+            return v;
+        }
+
+        /// <summary>Repopulate the curated model dropdown for the selected provider and pre-select the persisted
+        /// model when it is one of the curated picks (else it stays in the free-text override field).</summary>
+        private void RefreshModelList()
+        {
+            _modelSelect.Clear();
+            int providerIdx = Math.Max(0, _providerSelect.Selected);
+            if (providerIdx >= LlmProviderCatalog.Providers.Count) return;
+
+            var p = LlmProviderCatalog.Providers[providerIdx];
+            string current = _settings.Current.LlmModel;
+            int sel = -1;
+            for (int i = 0; i < p.Models.Count; i++)
+            {
+                _modelSelect.AddItem(p.Models[i], i);
+                if (string.Equals(p.Models[i], current, StringComparison.Ordinal)) sel = i;
+            }
+            if (sel >= 0)
+            {
+                _modelSelect.Select(sel);
+                _modelOverride.Text = ""; // the persisted model is a curated pick — override stays empty
+            }
+            else if (!string.IsNullOrWhiteSpace(current))
+            {
+                // Persisted model is a free-text override — surface it in the override field.
+                _modelOverride.Text = current;
+                if (_modelSelect.ItemCount > 0) _modelSelect.Select(0);
+            }
+            else if (_modelSelect.ItemCount > 0)
+            {
+                _modelSelect.Select(0);
+            }
+        }
+
+        /// <summary>Synchronous, config-derived availability line (NoProvider / NoKey / candidate) shown on open and
+        /// whenever the provider changes — no network call.</summary>
+        private void UpdateAiStatusLine()
+        {
+            if (_aiEvaluator == null || _secretStore == null || _aiStatusLabel == null) return;
+            var snapshot = BuildAiSettingsSnapshot();
+            AiAvailability state = _aiEvaluator.EvaluateConfig(snapshot, _secretStore);
+            _aiStatusLabel.Text = state == AiAvailability.Healthy
+                ? "Config looks good, Commander. Run Test connection to confirm the round-trip."
+                : AiAvailabilityMessages.Describe(state);
+        }
+
+        /// <summary>A SettingsData snapshot reflecting the CURRENT (unsaved) AI-section widget values, so
+        /// Test-connection and the status line reflect what the creator is editing before they press Apply.
+        /// Normalized via <see cref="SettingsData.MigrateForward"/> — the SAME normalization <see cref="ApplyAndSave"/>
+        /// runs before persisting — so the config Test-connection / the status line validate can never disagree with the
+        /// config that Apply will save (e.g. an empty model resolves to the default in BOTH paths, so the status line
+        /// never reports a config-only "ready" for a config Apply would rewrite).</summary>
+        private SettingsData BuildAiSettingsSnapshot()
+        {
+            var live = _settings.Current;
+            int providerIdx = Math.Max(0, _providerSelect.Selected);
+            string providerId = providerIdx < LlmProviderCatalog.Providers.Count
+                ? LlmProviderCatalog.Providers[providerIdx].Id
+                : live.LlmProvider;
+            return new SettingsData
+            {
+                LlmProvider = providerId,
+                LlmModel    = ResolveSelectedModel(),
+                LlmBaseUrl  = _baseUrlInput.Text.Trim(),
+            }.MigrateForward();
+        }
+
+        /// <summary>The effective model: the free-text override when present, else the selected curated model.</summary>
+        private string ResolveSelectedModel()
+        {
+            string overrideText = _modelOverride.Text.Trim();
+            if (overrideText.Length > 0) return overrideText;
+            if (_modelSelect.Selected >= 0 && _modelSelect.ItemCount > 0)
+                return _modelSelect.GetItemText(_modelSelect.Selected);
+            return _settings.Current.LlmModel;
+        }
+
+        private void OnClearKeyPressed()
+        {
+            _secretStore?.Clear(SecretIds.Llm);
+            _apiKeyInput.Text = "";
+            _apiKeyInput.PlaceholderText = "paste your API key";
+            UpdateAiStatusLine();
+            GD.Print("[Settings] Cleared stored LLM key.");
+        }
+
+        private void OnTestConnectionPressed()
+        {
+            if (_aiEvaluator == null || _secretStore == null) return;
+
+            // The round-trip needs the typed key in the store (LlmProviderFactory reads the key from ISecretStore),
+            // but a FAILING test must not destroy a previously-valid stored key. Snapshot the prior value and place the
+            // typed key for the probe; CompleteTest keeps it only on Healthy, else restores the prior key and leaves
+            // the field populated so the creator can fix a typo. Both the Test AND the Clear-key buttons are disabled
+            // below for the duration, so no concurrent secret-store mutation (a Clear on the main thread while the
+            // background probe reads/restores the key) can race or undo the restore.
+            string typedKey   = _apiKeyInput.Text.Trim();
+            bool   keyEntered = typedKey.Length > 0;
+            string priorKey   = _secretStore.Get(SecretIds.Llm);
+            if (keyEntered) _secretStore.Set(SecretIds.Llm, typedKey);
+
+            SettingsData snapshot = BuildAiSettingsSnapshot();
+            _testBtn.Disabled     = true;
+            _clearKeyBtn.Disabled = true;
+            _testSpinner.Visible = true;
+            _aiStatusLabel.Text  = "Transmuting…"; // UX-DR52 spinner copy
+
+            _testCts?.Cancel();
+            _testCts = new CancellationTokenSource();
+            CancellationToken ct = _testCts.Token;
+            AiAvailabilityEvaluator evaluator = _aiEvaluator;
+            ISecretStore store = _secretStore;
+
+            Task.Run(async () =>
+            {
+                AiAvailability state;
+                try { state = await evaluator.TestConnectionAsync(snapshot, store, ct); }
+                catch (OperationCanceledException) { return; }
+                catch (Exception) { state = AiAvailability.Unreachable; }
+                // Marshal the UI update back onto the Godot main thread.
+                Callable.From(() => CompleteTest(state, keyEntered, typedKey, priorKey)).CallDeferred();
+            });
+        }
+
+        private void CompleteTest(AiAvailability state, bool keyEntered, string typedKey, string priorKey)
+        {
+            // The secret-store restore touches no UI, so it must run even if the panel was freed mid-test: a FAILED
+            // test must never leave the unverified probe key persisted in place of a previously-valid one, regardless
+            // of whether the panel is still around to update its field.
+            bool verified = keyEntered && state == AiAvailability.Healthy;
+            if (keyEntered && !verified)
+            {
+                if (priorKey.Length > 0) _secretStore?.Set(SecretIds.Llm, priorKey);
+                else                     _secretStore?.Clear(SecretIds.Llm);
+            }
+
+            if (!IsInstanceValid(this)) return;
+
+            if (verified)
+            {
+                // Verified — keep the typed key (already stored); blank the field and show the stored placeholder.
+                _apiKeyInput.Text = "";
+                _apiKeyInput.PlaceholderText = "•••••••• (key stored — type to replace)";
+            }
+            else if (keyEntered)
+            {
+                // Test failed: the prior key was restored above; keep the typed value visible so the creator can fix it.
+                _apiKeyInput.Text = typedKey;
+            }
+
+            _testSpinner.Visible = false;
+            _testBtn.Disabled     = false;
+            _clearKeyBtn.Disabled = false;
+            _aiStatusLabel.Text  = AiAvailabilityMessages.Describe(state);
+        }
+
+        /// <summary>Write the API key to the secret store IFF the creator typed one (a blank field keeps the stored
+        /// key untouched). Never persists the key to settings.json.</summary>
+        private void PersistApiKeyIfEntered()
+        {
+            if (_secretStore == null) return;
+            string typed = _apiKeyInput.Text.Trim();
+            if (typed.Length == 0) return;
+            _secretStore.Set(SecretIds.Llm, typed);
+            _apiKeyInput.Text = "";
+            _apiKeyInput.PlaceholderText = "•••••••• (key stored — type to replace)";
         }
 
         private VBoxContainer NewPage()
@@ -397,6 +661,20 @@ namespace ProjectChimera.UI
             s.ShowFps            = _fpsBtn.On;
             s.ColorblindMode     = _colorblindBtn.On;
 
+            // Story 8.2: persist the AI provider/model/baseUrl into SettingsData (round-trips through settings.json);
+            // the API key goes ONLY to the secret store, never into settings.json.
+            if (_providerSelect != null)
+            {
+                int providerIdx = Math.Max(0, _providerSelect.Selected);
+                if (providerIdx < LlmProviderCatalog.Providers.Count)
+                    s.LlmProvider = LlmProviderCatalog.Providers[providerIdx].Id;
+                s.LlmModel   = ResolveSelectedModel();
+                s.LlmBaseUrl = _baseUrlInput.Text.Trim();
+                PersistApiKeyIfEntered();
+                s.MigrateForward(); // normalize (empty model → default, etc.) before persist
+                UpdateAiStatusLine();
+            }
+
             _settings.Apply();
             _settings.Save();
 
@@ -416,6 +694,21 @@ namespace ProjectChimera.UI
             _minimapBtn.SetOn(_settings.Current.ShowMinimap, animate: false);
             _fpsBtn.SetOn(_settings.Current.ShowFps, animate: false);
             _colorblindBtn.SetOn(_settings.Current.ColorblindMode, animate: false);
+
+            // Story 8.2: re-sync the AI Provider widgets to the reset defaults (the stored key is NOT cleared here —
+            // "Reset to Defaults" governs settings.json fields, not the secret store; use "Clear key" for that).
+            if (_providerSelect != null)
+            {
+                int providerIdx = 0;
+                for (int i = 0; i < LlmProviderCatalog.Providers.Count; i++)
+                    if (string.Equals(LlmProviderCatalog.Providers[i].Id, _settings.Current.LlmProvider, StringComparison.Ordinal))
+                        providerIdx = i;
+                _providerSelect.Select(providerIdx);
+                _baseUrlInput.Text  = _settings.Current.LlmBaseUrl;
+                _modelOverride.Text = "";
+                RefreshModelList();
+                UpdateAiStatusLine();
+            }
 
             _settings.Apply();
             _settings.Save();

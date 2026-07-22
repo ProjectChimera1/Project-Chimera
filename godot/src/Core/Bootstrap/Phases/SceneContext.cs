@@ -113,6 +113,11 @@ namespace ProjectChimera.Core.Bootstrap
         /// in <c>SettingsPhase</c>; the TriggerEditor / ContentBrowser phases source their LLM / mod.io keys from it
         /// via <see cref="ISecretStore.Get"/> instead of the removed plaintext <c>[Export]</c> fields on MainScene.</summary>
         public ISecretStore           SecretStore    = null!;
+        /// <summary>Story 8.2: the Godot-free availability evaluator (over a shared short-timeout <c>HttpClient</c>).
+        /// Constructed in <c>SettingsPhase</c> alongside the secret store; the Settings provider-config section drives
+        /// Test-connection through it, and the TriggerEditor / MapGenerator panels drive their on-open availability
+        /// status line from <see cref="AI.Providers.AiAvailabilityEvaluator.EvaluateConfig"/>.</summary>
+        public AI.Providers.AiAvailabilityEvaluator AiEvaluator = null!;
         public UI.SettingsPanel       SettingsPanel  = null!;
         public UI.MainMenuOverlay     MainMenu       = null!;
         public UI.AudioManager        AudioMgr       = null!;

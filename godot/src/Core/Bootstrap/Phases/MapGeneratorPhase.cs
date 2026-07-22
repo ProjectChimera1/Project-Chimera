@@ -42,7 +42,10 @@ namespace ProjectChimera.Core.Bootstrap
             };
             unitIds.CopyTo(context.UnitIds);
 
-            _ctx.MapGenPanel.Initialize(_ctx.GameState, _ctx.LlmService, context);
+            // Story 8.2: pass the availability evaluator + secret store so the panel drives its four-state AI status
+            // line (Generate disabled when unavailable; the surrounding editor always stays usable).
+            _ctx.MapGenPanel.Initialize(_ctx.GameState, _ctx.LlmService, context,
+                _ctx.AiEvaluator, _ctx.SecretStore);
             _ctx.MapGenPanel.OnLoadRequested += _ctx.Scene.LoadGeneratedScenario;
 
             GD.Print("[MapGenerator] Initialized — press M in Edit mode to open.");

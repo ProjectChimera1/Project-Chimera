@@ -40,7 +40,10 @@ namespace ProjectChimera.Core.Bootstrap
             };
             unitIds.CopyTo(context.UnitIds);
 
-            _ctx.TriggerPanel.Initialize(_ctx.Scenario, _ctx.GameState, _ctx.LlmService, context);
+            // Story 8.2: pass the availability evaluator + secret store so the panel drives its four-state AI status
+            // line (Generate disabled when unavailable; manual authoring always stays usable).
+            _ctx.TriggerPanel.Initialize(_ctx.Scenario, _ctx.GameState, _ctx.LlmService, context,
+                _ctx.AiEvaluator, _ctx.SecretStore);
 
             // Task 4: the single assignment site for the ScenarioDirector On* presentation delegates.
             ScenarioDelegateBinder.Bind(_ctx);
