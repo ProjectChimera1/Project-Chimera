@@ -48,7 +48,7 @@ namespace ProjectChimera.Core
         /// so a preset with hold_ticks/survive_ticks below the grace can still resolve.</summary>
         public const int GRACE_TICKS = 90;
 
-        private const int FACTION_COUNT = 5; // WinStateStore / AllianceStore array size (Faction enum 0-4)
+        private const int FACTION_COUNT = FactionRegistry.FACTION_ARRAY_SIZE; // 9: WinStateStore / AllianceStore array size (Neutral + Player1..Player8)
 
         private readonly WinStateStore _store;
         private readonly BuildingStore _buildings;

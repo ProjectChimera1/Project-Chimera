@@ -11,7 +11,7 @@ namespace ProjectChimera.Core
     /// </summary>
     public class MatchStats
     {
-        private const int FACTION_COUNT = 5; // matches Faction enum range
+        private const int FACTION_COUNT = FactionRegistry.FACTION_ARRAY_SIZE; // 9: Neutral + Player1..Player8
 
         /// <summary>Units killed BY each faction (kills[1] = P1 kill count).</summary>
         private readonly int[] _kills = new int[FACTION_COUNT];

@@ -16,7 +16,7 @@ namespace ProjectChimera.Core
     /// </summary>
     public class WinStateStore
     {
-        private const int FACTION_COUNT = 5; // indices 0-4; Faction enum is 0-4 (0 = Neutral, unused)
+        private const int FACTION_COUNT = FactionRegistry.FACTION_ARRAY_SIZE; // 9: Neutral(0) + Player1..Player8
 
         /// <summary>Verdict sentinel — no outcome resolved yet for this faction.</summary>
         public const int VERDICT_NONE = 0;

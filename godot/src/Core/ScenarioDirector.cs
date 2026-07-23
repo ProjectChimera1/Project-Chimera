@@ -38,6 +38,12 @@ namespace ProjectChimera.Core
         private readonly BuildingStore _buildings;
         private readonly ResourceStore _resources;
 
+        // Story 9.2 — the match's active-faction registry, used to generalize the per-tick threshold poll from the
+        // literal 2-player loop to iterate every active faction (slots 0..ActiveCount-1). Nullable by design: a
+        // direct test construction that passes null falls back to the historical 2-slot poll (SimulationHost always
+        // supplies its checksum registry). NOT folded — read-only iteration span, mirrors WinConditionSystem's use.
+        private readonly FactionRegistry? _factionRegistry;
+
         // Story 7.3 — the top-level typed/scoped variable + timer store (owned by SimulationHost, folded into
         // SimChecksum). Replaces the former ad-hoc _variableNames/_variableValues/_timerNames/_timerRemaining lists.
         private readonly DslVarTable _vars;
@@ -272,14 +278,18 @@ namespace ProjectChimera.Core
         /// <param name="fireLog">Story 7.15 — the non-folded trigger-debug observation buffer. Production
         /// (<c>SimulationHost</c>) passes its owned STABLE reference (never folded); a null (direct test construction)
         /// self-owns one — determinism-identical, the caller just cannot observe what it does not hold.</param>
+        /// <param name="factions">Story 9.2 — the match's active-faction registry. Production (<c>SimulationHost</c>)
+        /// passes its checksum registry so the per-tick threshold poll spans slots 0..ActiveCount-1; a null (direct
+        /// test construction) falls back to the historical 2-slot poll. Read-only iteration span — NOT folded.</param>
         public ScenarioDirector(BuildingStore buildings, ResourceStore resources, DslVarTable vars,
             DslLoopState? loopState = null, DslEventQueue? eventQueue = null,
             TriggerEnabledStore? triggerEnabled = null, DslSimEventFeed? simEventFeed = null,
-            TriggerFireLog? fireLog = null)
+            TriggerFireLog? fireLog = null, FactionRegistry? factions = null)
         {
             _buildings     = buildings;
             _resources     = resources;
             _vars          = vars;
+            _factionRegistry = factions; // Story 9.2 — active-faction span for the threshold poll (null ⇒ 2-slot legacy)
             _loopState     = loopState ?? new DslLoopState();
             _eventQueue    = eventQueue ?? new DslEventQueue();
             _triggerEnabled = triggerEnabled ?? new TriggerEnabledStore();
@@ -499,7 +509,9 @@ namespace ProjectChimera.Core
             // hero_level occurrences collected into the base buffer alongside the polled events) AND for Arm D's
             // player_chat pending buffer (up to EventBounds.MaxNextTickEventQueue occurrences drain into this SAME
             // base buffer), so the sizing is correct-by-construction rather than relying on entity/building headroom.
-            var baseEvents = new FiredEvent[EntityWorld.MAX_ENTITIES + BuildingStore.MAX_BUILDINGS + timerNames.Count + 5 + DslSimEventFeed.Capacity + EventBounds.MaxNextTickEventQueue];
+            // Story 9.2 — the threshold poll now emits 2 events (resource + unit_count) per ACTIVE faction, up to
+            // 2*PLAYER_COUNT at N=8; reserve that plus 1 (match_start) rather than the old compile-time `+ 5`.
+            var baseEvents = new FiredEvent[EntityWorld.MAX_ENTITIES + BuildingStore.MAX_BUILDINGS + timerNames.Count + (2 * FactionRegistry.PLAYER_COUNT + 1) + DslSimEventFeed.Capacity + EventBounds.MaxNextTickEventQueue];
 
             // Story 7.3: the typed/scoped variable + timer store declarations. The seconds→ticks conversion happens
             // HERE at the Core boundary (SecondsToTicks owns TICKS_PER_SECOND) so the table receives integer ticks
@@ -716,7 +728,7 @@ namespace ProjectChimera.Core
             //    It also yields each trigger's event-parameter map, which the compile passes below need so a
             //    handler's condition/value expressions can read event.<param>. ──
             if (!EventDispatchPlan.TryBuild(scenario.CustomEvents, graph, execs, declMap, arrayDecls,
-                    maxRaiserSlotExclusive: (int)Faction.Player4, out EventDispatchPlan? evPlan, out string? evErr))
+                    maxRaiserSlotExclusive: FactionRegistry.PLAYER_COUNT, out EventDispatchPlan? evPlan, out string? evErr))
                 throw new System.Text.Json.JsonException(evErr);
             EventDispatchPlan plan = evPlan!;
 
@@ -1340,8 +1352,10 @@ namespace ProjectChimera.Core
             for (int i = 0; i < _expiredTimers.Count; i++)
                 AddBaseEvent("timer_expires", -1, 0, _expiredTimers[i]);
 
-            // Threshold events — polled every tick so triggers can react to sustained states.
-            for (int slot = 0; slot < 2; slot++)
+            // Threshold events — polled every tick so triggers can react to sustained states. Story 9.2: iterate
+            // every ACTIVE faction (slots 0..ActiveCount-1) rather than the literal first two; a null registry
+            // (direct test construction) preserves the historical 2-slot poll.
+            for (int slot = 0; slot < (_factionRegistry?.ActiveCount ?? 2); slot++)
             {
                 var faction = (Faction)(slot + 1);
                 int oreRaw  = _resources.Ore[(int)faction].Raw;

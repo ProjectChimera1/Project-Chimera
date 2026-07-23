@@ -18,22 +18,22 @@ namespace ProjectChimera.Core
         /// <summary>Playable factions, excluding Neutral. Forward target (ship ceiling 4-now / 8-fast-follow).</summary>
         public const int PLAYER_COUNT = 8;
 
-        /// <summary>Per-faction array size incl. Neutral (slot 0). Forward target.
-        /// NOTE: distinct from the as-built ResourceStore/MatchStats FACTION_COUNT=5 (current enum cardinality,
-        /// raised by Story 9.2). New slot loops use PLAYER_COUNT / ActiveFactions — never a bare FACTION_COUNT.</summary>
+        /// <summary>Per-faction array size incl. Neutral (slot 0). The single source of truth every per-faction
+        /// store sizes to: ResourceStore/MatchStats/ResearchStore/WinStateStore/WinConditionSystem/BuildingSystem/
+        /// ResearchSystem all size their arrays to this (Story 9.2 unified them here). New slot loops use
+        /// PLAYER_COUNT / ActiveFactions — never a bare FACTION_COUNT.</summary>
         public const int FACTION_ARRAY_SIZE = 9;
 
         /// <summary>The ONE place the (Faction)(slot+1) offset lives. slot is 0-based; slot 0 → Player1.</summary>
         public static Faction ToFaction(int slot) => (Faction)(slot + 1);
 
         /// <summary>Per-slot <see cref="SlotDefinitions"/> array size (AR-3 / Story 5.1).
-        /// Deliberately matches the AS-BUILT ResourceStore/MatchStats/BuildingSystem/ResearchSystem
-        /// FACTION_COUNT=5 (current Faction enum cardinality: Neutral+Player1..4) — NOT the forward
-        /// FACTION_ARRAY_SIZE (9) above. ScenarioApplier.InFactionRange derives its bounds-safety from this
-        /// array's .Length matching those still-5-sized arrays; widening only this one would let slots 4-7
-        /// pass InFactionRange and then throw IndexOutOfRangeException against them. Raising this in lockstep
-        /// with the other FACTION_COUNT=5 arrays is Story 9.2's job, not this one's.</summary>
-        public const int SLOT_DEFINITIONS_SIZE = 5;
+        /// Story 9.2 unified this with <see cref="FACTION_ARRAY_SIZE"/> (9): the enum now reaches Player8 and
+        /// every per-faction store (ResourceStore/MatchStats/ResearchStore/WinStateStore/WinConditionSystem/
+        /// BuildingSystem/ResearchSystem) sizes to <see cref="FACTION_ARRAY_SIZE"/> in lockstep, so
+        /// ScenarioApplier.InFactionRange (which derives its bound from this array's .Length) and those stores
+        /// agree at 9 — slots 4-7 that pass InFactionRange now have real backing storage.</summary>
+        public const int SLOT_DEFINITIONS_SIZE = FACTION_ARRAY_SIZE;
 
         /// <summary>Per-slot <see cref="FactionDefinition"/> lookup, indexed by <c>(int)Faction</c>. The registry
         /// owns the storage; MainScene/ServerBootstrap's Godot-edge composition roots populate it after resolving

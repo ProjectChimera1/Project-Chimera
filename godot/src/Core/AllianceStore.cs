@@ -24,7 +24,7 @@ namespace ProjectChimera.Core
     /// </summary>
     public sealed class AllianceStore
     {
-        private const int FACTION_COUNT = FactionRegistry.SLOT_DEFINITIONS_SIZE; // 5; indices 0-4 (0 = Neutral, unused)
+        private const int FACTION_COUNT = FactionRegistry.SLOT_DEFINITIONS_SIZE; // 9; indices 0-8 (0 = Neutral, unused)
 
         /// <summary>Per-faction team id (indexed by <c>(int)Faction</c>). FFA default: <c>TeamId[f] == f</c> (each
         /// faction its own team). Two factions are allied iff their team ids are equal. Folded into

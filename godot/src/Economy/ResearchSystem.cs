@@ -58,7 +58,7 @@ namespace ProjectChimera.Economy
             _research  = research;
             _modifiers = modifiers;
             _events    = events;
-            _factions  = new FactionDefinition?[5]; // indices 0-4; Faction enum is 0-4
+            _factions  = new FactionDefinition?[FactionRegistry.FACTION_ARRAY_SIZE]; // 9: Neutral + Player1..Player8
             _factions[(int)Faction.Player1] = p1Faction;
             _factions[(int)Faction.Player2] = p2Faction;
 
@@ -93,8 +93,9 @@ namespace ProjectChimera.Economy
 
         public void Tick(EntityWorld world, Fixed dt)
         {
-            // Mirrors BuildingSystem.RecalculateSupplyCaps' faction loop (BuildingSystem.cs:129) — factions 1-4 only.
-            for (int f = 1; f <= 4; f++)
+            // Mirrors BuildingSystem.RecalculateSupplyCaps' faction loop (BuildingSystem.cs:129) — every playable
+            // slot 1..8 (Story 9.2 widened both from the old 1-4 bound so Player5-8 research also counts down).
+            for (int f = 1; f < FactionRegistry.FACTION_ARRAY_SIZE; f++)
             {
                 Faction faction = (Faction)f;
                 int researchIndex = _research.InProgressIndex[f];

@@ -9,9 +9,9 @@ namespace ProjectChimera.Sim.Tests.Definitions
 {
     /// <summary>
     /// Story 6.7 — start positions generalize from a hardcoded 2 to 2–4 slots, mapped to factions ONLY through
-    /// <see cref="FactionRegistry.ToFaction"/>, capped at the engine ceiling (Player4). suggested_players ∉ [2,4],
-    /// slot ≥ 4, and duplicate slots stay HARD fail-closed; the below-suggested-players case is a SOFT non-fatal
-    /// advisory that leaves <see cref="ScenarioValidator.Validate"/> passing.
+    /// <see cref="FactionRegistry.ToFaction"/>. Story 9.2 raised the engine ceiling to Player8: slots in [0,8) are
+    /// now valid; slot ≥ 8 (== PLAYER_COUNT) and duplicate slots stay HARD fail-closed; the below-suggested-players
+    /// case is a SOFT non-fatal advisory that leaves <see cref="ScenarioValidator.Validate"/> passing.
     /// </summary>
     public class StartPositionSlotTests
     {
@@ -71,11 +71,23 @@ namespace ProjectChimera.Sim.Tests.Definitions
         [Fact]
         public void SlotAtEngineCeiling_FailsClosed()
         {
-            // Slot 4 is < PLAYER_COUNT (8) but overflows the as-built Faction enum (tops at Player4 = slot 3).
+            // Story 9.2: the engine ceiling is now Player8. Slot 8 == PLAYER_COUNT overflows the [0,8) valid range
+            // and the Faction enum (which tops at Player8 = slot 7).
             var m = MapWithSlots(2);
-            m.PlayerSlots[1].Slot = 4;
+            m.PlayerSlots[1].Slot = 8;
             var r = new ScenarioValidator().Validate(m);
             Assert.False(r.Ok);
+        }
+
+        [Theory]
+        [InlineData(4)] // maps to Player5 — newly valid after Story 9.2
+        [InlineData(7)] // maps to Player8 — the top valid slot
+        public void SlotInExpandedRange_IsAccepted(int slot)
+        {
+            // Story 9.2: slots 4-7 now map to real, backed Faction members (Player5..Player8) and pass validation.
+            var m = MapWithSlots(2);
+            m.PlayerSlots[1].Slot = slot;
+            Assert.True(new ScenarioValidator().Validate(m).Ok);
         }
 
         [Fact]
@@ -88,7 +100,7 @@ namespace ProjectChimera.Sim.Tests.Definitions
 
         [Theory]
         [InlineData(1)]
-        [InlineData(5)]
+        [InlineData(9)] // Story 9.2: [2,8] valid; 9 == PLAYER_COUNT+1 is the first rejected value
         public void SuggestedPlayersOutOfRange_FailsClosed(int suggested)
         {
             var m = MapWithSlots(2, suggested);
@@ -96,6 +108,11 @@ namespace ProjectChimera.Sim.Tests.Definitions
             Assert.False(r.Ok);
             Assert.Contains("suggested_players", r.Error);
         }
+
+        [Fact]
+        public void SuggestedPlayersAtCeiling_Passes()
+            // Story 9.2: suggested_players = 8 (PLAYER_COUNT) is now a valid authoring intent for an 8-player map.
+            => Assert.True(new ScenarioValidator().Validate(MapWithSlots(2, suggested: 8)).Ok);
 
         [Fact]
         public void SuggestedPlayersUnset_Passes()

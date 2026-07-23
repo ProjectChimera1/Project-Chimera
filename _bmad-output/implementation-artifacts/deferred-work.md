@@ -2119,3 +2119,27 @@ status: open
 - source_spec: `_bmad-output/implementation-artifacts/spec-8-5-ai-balance-analysis-of-a-faction-scenario-with-editable-suggestions.md`
   summary: The balance-analysis tunable-field vocabulary (`BalanceSuggestionApplier.TunableFields`) omits movement `speed` (arguably the highest-leverage balance stat) and `xp_bounty`, while including cosmetic `mesh_scale`; the prompt hard-restricts the model to the set and `ValidateBalanceReport` rejects anything outside it, so a Commander cannot get a speed suggestion at all.
   evidence: `speed` was excluded because it quantizes at the `EntityWorld.Create` ctor, outside this story's `ApplyUnitDefinition`-reuse quantize contract; `xp_bounty` is nullable/derived. Closure = a product decision on whether to add `speed`/`xp_bounty` (handling `speed`'s distinct quantize path and `xp_bounty`'s derived-when-null semantics) and whether to drop `mesh_scale`. (Blind Hunter, Story 8.5 review.)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-9-2-expand-the-faction-player-model-to-8-and-audit-every-int-faction-site.md`
+  summary: ScenarioDirector `defeat` action resolves the winner as `OnVictory(1 - a.Faction)`, a 1v1-only "other faction wins" computation that yields a garbage negative faction slot for a.Faction >= 2; N-player FFA winner-on-single-defeat semantics belongs to Story 9.14 (teams/victory).
+  evidence: ScenarioDirector.cs ~:2089; reachable only once 8-player `defeat` triggers exist (this story enables them). Not folded into SimChecksum (presentation callback), so no desync — but a real latent presentation bug at slots 3-8.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-9-2-expand-the-faction-player-model-to-8-and-audit-every-int-faction-site.md`
+  summary: TriggerEditorPanel's live custom-event raiser-slot validation still passes `(int)Faction.Player4` while the load-time validator now uses PLAYER_COUNT, so the editor rejects raiser slots 4-7 the engine accepts (presentation/authoring cap, Story 9.5 / post-1.0 UI-to-8).
+  evidence: src/CreationSuite/TriggerEditorPanel.cs:1366. Deliberately fenced as presentation in the 9.2 spec (ship-4-UI-for-1.0); the editor being stricter than load-time is safe but inconsistent.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-9-2-expand-the-faction-player-model-to-8-and-audit-every-int-faction-site.md`
+  summary: MatchChatOverlay maps only Player1-Player4 to names/colors; Player5-8 fall through to a placeholder label and default color in an 8-faction match (presentation, Story 9.5).
+  evidence: src/UI/MatchChatOverlay.cs ~:46,305. User-visible only when >4 factions play; presentation-layer, out of the 9.2 sim scope.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-9-2-expand-the-faction-player-model-to-8-and-audit-every-int-faction-site.md`
+  summary: BuildingSystem/ResearchSystem `_factions` arrays are now sized 9 but their ctors still populate only Player1/Player2, so a Player5-8 building/researcher resolves a null faction def (no production/research options) until lobby slot-assignment wires per-slot defs; runtime SetFactionDef already supports arbitrary in-range slots.
+  evidence: src/Economy/BuildingSystem.cs:82-83, ResearchSystem.cs:62-63. Full per-slot faction-def population is Story 9.7 (Nakama matchmaking / server-side slot assignment) territory.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-9-2-expand-the-faction-player-model-to-8-and-audit-every-int-faction-site.md`
+  summary: The N=3/N=8 determinism tests are two-run in-process only (no committed cross-process golden), so a cross-platform divergence in the newly-active slots 5-8 code paths would not be pinned; AC3 asked only for two-run equality, and slots 5-8 share the slots-1-4 fold paths already cross-process-pinned by the N=2/N=4 goldens.
+  evidence: MultiFactionExpansionTests.cs; the committed goldens (golden-scenario N=2, golden-multifaction N=4) pin cross-process only up to slot 4. Optional hardening: a committed N=8 golden via the WSL cross-platform gate (mind the CRLF-normalization tripwire).
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-9-2-expand-the-faction-player-model-to-8-and-audit-every-int-faction-site.md`
+  summary: The map-authoring UI still caps player count at 4 (New-Map picker offers only "2/3/4"; start-position markers/colors and the placement ceiling stop at slot 4), so an 8-slot scenario that now passes ScenarioValidator/MapWriteGate cannot be authored or fully visualized in-editor — the validator moved to 8 while the authoring surface stayed at 4 (presentation/authoring, Story 9.5 / post-1.0 UI-to-8).
+  evidence: src/CreationSuite/MapPropertiesPanel.cs (PlayerOptions = {2,3,4}); src/UI/StartPositionBridge.cs (MAX_SLOTS = 4, SetPosition/EnsureVisible silently return for slot >= 4); src/UI/EntityPlacer.cs (START_SLOT_CEILING = 4). EntityPlacer.START_SLOT_CEILING is named in the 9.2 spec's Design-Notes scope fences; MapPropertiesPanel/StartPositionBridge are the same ship-4-UI-for-1.0 class but were not yet enumerated. Bounds-guarded (no crash) — slots 4-7 markers just no-op. Closure = raise all three to FactionRegistry.PLAYER_COUNT together in the UI-to-8 story.

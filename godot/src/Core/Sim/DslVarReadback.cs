@@ -222,7 +222,7 @@ namespace ProjectChimera.Core.Sim
         // ── Presentation-side read API (call on the front snapshot handle) ──
 
         /// <summary>
-        /// Map an ENGINE <c>Faction</c> (as an int: Neutral=0, Player1=1 … Player4=4) to the 0-based per-player DSL
+        /// Map an ENGINE <c>Faction</c> (as an int: Neutral=0, Player1=1 … Player8=8) to the 0-based per-player DSL
         /// slot this readback (and <see cref="DslVarTable"/>) index by. The DSL per-player store is 0-based with
         /// <b>slot 0 = Player1</b>: <c>set_variable</c>/<c>variable_comparison</c> pass the trigger's 0-based
         /// <c>Faction</c> field straight through as the slot (whereas engine-faction ops convert with

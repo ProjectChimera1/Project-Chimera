@@ -59,10 +59,10 @@ namespace ProjectChimera.Sim.Tests.Validation
         [Fact]
         public void SlotOverflow_IsBlocked_LocatingTheSlot()
         {
-            // A player_slot above the engine Faction ceiling (Player4 → max slot 3) hard-fails on reload. The gate
-            // must block it with a located slot error.
+            // A player_slot above the engine Faction ceiling (Story 9.2: Player8 → max slot 7) hard-fails on reload.
+            // The gate must block it with a located slot error.
             var m = ValidModel();
-            m.PlayerSlots[1].Slot = 5; // < PLAYER_COUNT but exceeds the as-built Faction enum ceiling
+            m.PlayerSlots[1].Slot = 8; // == PLAYER_COUNT — the first slot beyond the [0,8) valid range
             string? verdict = MapWriteGate.Check(m);
             Assert.NotNull(verdict);
             Assert.Contains("slot", verdict!);

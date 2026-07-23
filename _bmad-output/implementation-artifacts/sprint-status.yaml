@@ -175,7 +175,7 @@ development_status:
   epic-11-retrospective: optional
   epic-9: backlog
   9-1-widen-simchecksum-add-server-side-checksum-collector-with-majority-vote-desync-attribution: done
-  9-2-expand-the-faction-player-model-to-8-and-audit-every-int-faction-site: backlog
+  9-2-expand-the-faction-player-model-to-8-and-audit-every-int-faction-site: done
   9-3-server-authoritative-merged-tick-rewrite-build-client-gate-spectator-chat-n-2-fr-39-golden-gate: backlog
   9-4-server-dictated-adaptive-input-delay-start-state-agreement-protocol-version-rulesethash-gates: backlog
   # 9-5 (local-faction) is sequenced before 9-6/9-7 (2026-07-01): the local-faction fix must land before MP verification stories.

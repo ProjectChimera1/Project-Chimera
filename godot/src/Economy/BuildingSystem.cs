@@ -78,7 +78,7 @@ namespace ProjectChimera.Economy
             _stats     = stats;
             _heroes    = heroes;
             _revival   = revival;
-            _factions  = new FactionDefinition?[5]; // indices 0-4; Faction enum is 0-4
+            _factions  = new FactionDefinition?[FactionRegistry.FACTION_ARRAY_SIZE]; // 9: Neutral + Player1..Player8
             _factions[(int)Faction.Player1] = p1Faction;
             _factions[(int)Faction.Player2] = p2Faction;
         }
@@ -132,7 +132,8 @@ namespace ProjectChimera.Economy
             // Reset to base cap (Story 4.4: the resolved per-scenario starting cap, not the hardcoded constant —
             // ConfigureSupply defaults it to STARTING_SUPPLY_CAP when no scenario config is authored, so an
             // omitted `supply` block reproduces this loop byte-identically).
-            for (int f = 1; f <= 4; f++)
+            // Story 9.2: iterate every playable slot (1..8), not just 1-4 — Player5-8 must reset to base too.
+            for (int f = 1; f < FactionRegistry.FACTION_ARRAY_SIZE; f++)
                 _resources.SupplyCap[f] = _resources.StartingSupplyCap;
 
             for (int i = 0; i < _buildings.Count; i++)
@@ -149,7 +150,8 @@ namespace ProjectChimera.Economy
             // changes the displayed cap too).
             if (_resources.SupplyHardCeiling is int ceiling)
             {
-                for (int f = 1; f <= 4; f++)
+                // Story 9.2: clamp every playable slot (1..8), matching the base-reset loop above.
+                for (int f = 1; f < FactionRegistry.FACTION_ARRAY_SIZE; f++)
                     if (_resources.SupplyCap[f] > ceiling)
                         _resources.SupplyCap[f] = ceiling;
             }

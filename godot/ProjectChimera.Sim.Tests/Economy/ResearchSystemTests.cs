@@ -781,6 +781,27 @@ namespace ProjectChimera.Sim.Tests.Economy
             Assert.Equal(Fixed.FromInt(4), host.World.EffectiveArmor[newUnit]);
         }
 
+        // ── Story 9.2: the per-faction Tick loop spans slots 1..8, not just 1-4 ──────────────────────────
+        // Regression guard for the widened `for (f = 1; f < FACTION_ARRAY_SIZE)` bound: a HIGH slot (Player8)
+        // in-progress order must count down and then resolve. With the old `f <= 4` bound Player8's order would
+        // freeze forever — never decrementing, never completing — silently stalling all Player5-8 research.
+        // The order is seeded directly (the ctor only wires P1/P2 faction defs) so this isolates the loop bound
+        // from the faction-def command path; completion at a def-less slot takes CompleteResearch's defensive
+        // clear, which is exactly the observable "the loop reached slot 8".
+        [Fact]
+        public void Tick_HighSlotPlayer8_InProgressOrder_CountsDownAndResolves()
+        {
+            var h = Build();
+            h.Research.InProgressIndex[(int)Faction.Player8] = ArmorUpIdx;
+            h.Research.RemainingTicks[(int)Faction.Player8]  = 2;
+
+            h.Sys.Tick(h.World, Fixed.Zero);
+            Assert.Equal(1, h.Research.RemainingTicks[(int)Faction.Player8]); // counted down — the loop reached slot 8
+
+            h.Sys.Tick(h.World, Fixed.Zero);
+            Assert.Equal(-1, h.Research.InProgressIndex[(int)Faction.Player8]); // resolved at slot 8 (order cleared)
+        }
+
         private static bool HasOrderDenied(Harness h)
         {
             for (int i = 0; i < h.Events.Count; i++)

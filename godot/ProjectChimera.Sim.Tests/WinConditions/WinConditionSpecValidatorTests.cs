@@ -135,20 +135,21 @@ namespace ProjectChimera.Sim.Tests.WinConditions
             Assert.Contains("preset=99", r.Error);
         }
 
-        // ── Review P4: the ENGINE faction ceiling ([0,3] — the sim tracks only Faction 1-4) on preset slots ──────
+        // ── Review P4: the ENGINE faction ceiling ([0,7] — the sim tracks Faction 1-8 after Story 9.2) on preset slots ──
 
         [Fact]
         public void Survival_FactionSlotBeyondEngineCeiling_Rejected()
         {
-            // Slot 4 can never be seeded into the length-5 win stores: without the ceiling check Configure would
-            // silently skip seeding and FactionAlive would read false → the wrong faction wins on tick 1. The
-            // ceiling check runs BEFORE the declared-slot rule so ITS located error is the one surfaced.
+            // Story 9.2 raised the engine ceiling to Player8 ([0,7]); slot 8 can never be seeded into the length-9
+            // win stores: without the ceiling check Configure would silently skip seeding and FactionAlive would
+            // read false → the wrong faction wins on tick 1. The ceiling check runs BEFORE the declared-slot rule
+            // so ITS located error is the one surfaced.
             var s = Base();
-            s.WinConditionSpec = new WinConditionSpec { Preset = WinPresetKind.TimedSurvival, FactionSlot = 4, SurviveTicks = 900 };
+            s.WinConditionSpec = new WinConditionSpec { Preset = WinPresetKind.TimedSurvival, FactionSlot = 8, SurviveTicks = 900 };
             var r = Validate(s);
             Assert.False(r.Ok);
             Assert.Contains("faction_slot", r.Error);
-            Assert.Contains("[0,3]", r.Error);
+            Assert.Contains("[0,7]", r.Error);
         }
 
         [Fact]

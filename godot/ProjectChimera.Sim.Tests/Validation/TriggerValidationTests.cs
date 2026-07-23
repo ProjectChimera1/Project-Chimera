@@ -82,7 +82,7 @@ namespace ProjectChimera.Sim.Tests.Validation
         public void EventFactionSlotAboveEngineCeiling_IsRejected_LocatingTheEventFaction()
         {
             var m = ValidModelWithTrigger();
-            m.Triggers[0].Events[0].Faction = 5; // ScenarioDirector would do (Faction)6 → Ore[6], an OOB crash
+            m.Triggers[0].Events[0].Faction = 8; // Story 9.2: [0,7] valid; slot 8 → (Faction)9 → Ore[9], an OOB crash
             ValidationResult r = NewValidator().Validate(m);
             Assert.False(r.Ok);
             Assert.Contains("triggers[0].events[0].faction", r.Error!);
@@ -699,10 +699,13 @@ namespace ProjectChimera.Sim.Tests.Validation
         }
 
         [Fact]
-        public void ExprVarFactionAboveEngineCeiling_IsRejected_ByCheckFactionSlot()
+        public void ExprVarFactionAboveEngineCeiling_IsRejected_FailClosed()
         {
-            // A per-player slotted read (score[5]) passes the compiler's [0,8) structural bound but must trip the
-            // SAME engine-ceiling CheckFactionSlot gate every other graph-node faction gets.
+            // Story 9.2 raised the engine ceiling (CheckFactionSlot) to Player8 so it now COINCIDES with the DSL's
+            // per-player structural bound (DslVarTable.PlayerSlots = 8, i.e. slots [0,8)). A per-player slotted read
+            // at slot 8 (== PLAYER_COUNT) is therefore out of BOTH ranges and fail-closes at the canonical-range
+            // converter gate during graph parse (which fires ahead of the redundant-now CheckFactionSlot gate).
+            // Either way it must be rejected and located — an in-range read [0,7] would silently pass.
             var m = ValidModelWithTrigger();
             m.Variables = new[]
             {
@@ -711,7 +714,7 @@ namespace ProjectChimera.Sim.Tests.Validation
             m.TriggerGraphJson = ConditionExprGraph(
                 new NodeBase[]
                 {
-                    new ExprVarNode { Id = 2, Name = "score", Faction = 5 },
+                    new ExprVarNode { Id = 2, Name = "score", Faction = 8 },
                     new ExprLiteralNode { Id = 3, ValueType = DslValueType.Int, Raw = 1 },
                     new ExprBinaryNode { Id = 4, Op = "eq" },
                 },
@@ -723,7 +726,8 @@ namespace ProjectChimera.Sim.Tests.Validation
                 rootId: 4);
             ValidationResult r = NewValidator().Validate(m);
             Assert.False(r.Ok);
-            Assert.Contains("expr_var node 2.faction", r.Error!);
+            Assert.Contains("faction", r.Error!);
+            Assert.Contains("8", r.Error!);
         }
 
         [Fact]

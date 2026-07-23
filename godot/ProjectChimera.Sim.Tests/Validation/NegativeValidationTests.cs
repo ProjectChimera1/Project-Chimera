@@ -123,7 +123,7 @@ namespace ProjectChimera.Sim.Tests.Validation
         public void SlotAboveEngineCeiling_IsRejected()
         {
             var m = ValidModel();
-            m.PlayerSlots[1].Slot = 5; // < PLAYER_COUNT(8) but exceeds the as-built Faction enum (Player4 → max slot 3)
+            m.PlayerSlots[1].Slot = 8; // Story 9.2: [0,8) is now valid; slot 8 == PLAYER_COUNT is the first rejected
             ValidationResult r = NewValidator().Validate(m);
             Assert.False(r.Ok);
             Assert.Contains("player_slots[1].slot", r.Error!);

@@ -126,13 +126,14 @@ namespace ProjectChimera.Core.Definitions
                 return ValidationResult.Fail(
                     $"scenario.slope_block_threshold={m.SlopeBlockThreshold} must be finite and within [0, {Range}).");
 
-            // ── Story 6.7: suggested_players is authoring metadata (2–4 for 1.0; engine ceiling Faction.Player4).
+            // ── Story 6.7 / 9.2: suggested_players is authoring metadata (engine ceiling now Faction.Player8).
             //    Omit-when-default (0) ⇒ "unspecified" ⇒ nothing to validate (every existing scenario passes
-            //    unchanged). A PRESENT value must be in [2,4]; 1 or 5+ fails closed. This is a hard fail (an
-            //    unshippable design intent), distinct from the SOFT below-suggested advisory in CollectAdvisories. ──
-            if (m.SuggestedPlayers != 0 && (m.SuggestedPlayers < 2 || m.SuggestedPlayers > 4))
+            //    unchanged). A PRESENT value must be in [2, PLAYER_COUNT]; 1 or above PLAYER_COUNT fails closed.
+            //    This is a hard fail (an unshippable design intent), distinct from the SOFT below-suggested
+            //    advisory in CollectAdvisories. ──
+            if (m.SuggestedPlayers != 0 && (m.SuggestedPlayers < 2 || m.SuggestedPlayers > FactionRegistry.PLAYER_COUNT))
                 return ValidationResult.Fail(
-                    $"scenario.suggested_players={m.SuggestedPlayers} must be in [2,4] (1.0 ships 2–4 players).");
+                    $"scenario.suggested_players={m.SuggestedPlayers} must be in [2,{FactionRegistry.PLAYER_COUNT}].");
 
             // ── Collections must be present. A null array is malformed input the applier would NRE on, so the
             // validator rejects it (located) rather than silently treating it as empty via the `?? Array.Empty`
@@ -239,13 +240,14 @@ namespace ProjectChimera.Core.Definitions
                     return ValidationResult.Fail(
                         $"scenario.player_slots[{i}].slot={s.Slot} is out of [0,{FactionRegistry.PLAYER_COUNT}).");
 
-                // The AR-39 length-5 overflow guard: the as-built Faction enum tops at Player4, so FactionRegistry
-                // .ToFaction(slot) is only defined for slot <= 3. A slot in [4,8) is < PLAYER_COUNT but overflows
-                // the [5] per-faction arrays. This relaxes automatically when Story 9.2 extends Faction to Player8.
-                if (s.Slot + 1 > (int)Faction.Player4)
+                // The engine faction ceiling: FactionRegistry.ToFaction(slot) must map to a defined Faction enum
+                // member. Story 9.2 extended the enum to Player8 and widened every per-faction array to
+                // FACTION_ARRAY_SIZE (9), so slot in [0,8) now maps to a real, backed Faction. The redundant-with-
+                // PLAYER_COUNT-above check is kept as a defensive engine-ceiling assertion tied to the enum itself.
+                if (s.Slot + 1 > (int)Faction.Player8)
                     return ValidationResult.Fail(
                         $"scenario.player_slots[{i}].slot={s.Slot} maps to an undefined Faction " +
-                        $"(engine ceiling: slot <= {(int)Faction.Player4 - 1}).");
+                        $"(engine ceiling: slot <= {(int)Faction.Player8 - 1}).");
 
                 if (!declared.Add(s.Slot))
                     return ValidationResult.Fail(
@@ -421,12 +423,12 @@ namespace ProjectChimera.Core.Definitions
 
                     case WinPresetKind.TimedSurvival:
                     {
-                        // Review P4 — the ENGINE faction ceiling (the canonical CheckFactionSlot bound, [0,3]),
+                        // Review P4 — the ENGINE faction ceiling (the canonical CheckFactionSlot bound, [0,7]),
                         // checked BEFORE the declared-slot rule so the ceiling error is the one surfaced: the sim
-                        // tracks only Faction 1-4 (FACTION_COUNT=5 arrays), so a designated slot ≥ 4 would pass a
-                        // declared-only check, be silently skipped by WinConditionSystem.Configure's seeding, and
-                        // read as "eliminated" on tick 1 — the wrong faction wins. This stays load-fatal even when
-                        // the player_slots ceiling relaxes (Story 9.2) until the win stores widen with it.
+                        // tracks Faction 1-8 (FACTION_COUNT=9 arrays after Story 9.2), so a designated slot ≥ 8 would
+                        // pass a declared-only check, be silently skipped by WinConditionSystem.Configure's seeding,
+                        // and read as "eliminated" on tick 1 — the wrong faction wins. The win stores widened with
+                        // the player_slots ceiling in Story 9.2, so this ceiling now admits slots 4-7.
                         string? sfe = CheckFactionSlot("scenario.win_condition_spec.faction_slot", wspec.FactionSlot);
                         if (sfe != null)
                             return ValidationResult.Fail(sfe + " (the TimedSurvival preset designates an engine-tracked faction).");
@@ -578,7 +580,7 @@ namespace ProjectChimera.Core.Definitions
             //    LIVE pending next-tick queue folds separately (SimChecksum v18). ──
             if (m.CustomEvents != null)
             {
-                string? ceErr = EventDispatchPlan.ValidateRegistry(m.CustomEvents, (int)Faction.Player4);
+                string? ceErr = EventDispatchPlan.ValidateRegistry(m.CustomEvents, FactionRegistry.PLAYER_COUNT);
                 if (ceErr != null)
                     return ValidationResult.Fail($"scenario.{ceErr}");
             }
@@ -705,7 +707,7 @@ namespace ProjectChimera.Core.Definitions
                     // fail-closed. It must also be Int-typed (non-Int typed read is Story 7.4). Only DECLARED names
                     // are checked; an undeclared name stays legal (Global/Int/0 default). Its faction (the PerPlayer
                     // slot selector) is already range-gated by the canonical CheckFactionSlot above — the engine
-                    // ceiling [0,3] is a strict subset of the DSL slot range [0,DslVarTable.PlayerSlots), so a
+                    // ceiling [0,7] is a strict subset of the DSL slot range [0,DslVarTable.PlayerSlots), so a
                     // separate PlayerSlots check here would be unreachable dead code (review follow-up removed it).
                     if (c.Type == "variable_comparison" && !string.IsNullOrEmpty(c.Variable)
                         && declaredVarInfo.TryGetValue(c.Variable, out var cInfo))
@@ -725,7 +727,7 @@ namespace ProjectChimera.Core.Definitions
                     {
                         // Review patch: also fail-closed on an out-of-range faction slot here — the unit_in_region
                         // scan does (Faction)(c.Faction + 1) and compares live entities against it. Reuses the
-                        // canonical trigger-faction bound (CheckFactionSlot, engine ceiling Faction.Player4) the
+                        // canonical trigger-faction bound (CheckFactionSlot, engine ceiling Faction.Player8) the
                         // general condition check above already applies, co-located with the region check as
                         // belt-and-suspenders fail-closed defense.
                         string? rfe = CheckFactionSlot($"{cp}.faction", c.Faction);
@@ -749,7 +751,7 @@ namespace ProjectChimera.Core.Definitions
                     // (non-Int typed write is Story 7.4). TriggerLocal IS allowed here (set_variable is the
                     // action-write-scratch path). Only DECLARED names are checked (undeclared → Global/Int default).
                     // Its faction (the PerPlayer slot selector) is already range-gated by CheckFactionSlot above —
-                    // the engine ceiling [0,3] ⊂ [0,DslVarTable.PlayerSlots), so a separate PlayerSlots check here
+                    // the engine ceiling [0,7] ⊂ [0,DslVarTable.PlayerSlots), so a separate PlayerSlots check here
                     // would be unreachable dead code (review follow-up removed it).
                     if (a.Type == "set_variable" && !string.IsNullOrEmpty(a.Variable)
                         && declaredVarInfo.TryGetValue(a.Variable, out var aInfo))
@@ -805,7 +807,7 @@ namespace ProjectChimera.Core.Definitions
                 //    event-parameter map, which the 7.4 expression compile loop below threads into TryCompile so a
                 //    handler's condition/value expressions may read event.<param>. ──
                 if (!EventDispatchPlan.TryBuild(m.CustomEvents, parsedGraph, graphExecs!, declaredVarInfo,
-                        declaredArrayInfo, maxRaiserSlotExclusive: (int)Faction.Player4,
+                        declaredArrayInfo, maxRaiserSlotExclusive: FactionRegistry.PLAYER_COUNT,
                         out EventDispatchPlan? evPlan, out string? evErr))
                     return ValidationResult.Fail($"scenario.trigger_graph: {evErr}");
 
@@ -1402,14 +1404,14 @@ namespace ProjectChimera.Core.Definitions
 
         /// <summary>
         /// A trigger faction slot must map to a defined <see cref="Faction"/>: ScenarioDirector does
-        /// <c>(Faction)(slot + 1)</c> and indexes the size-5 per-faction arrays, so an out-of-range slot crashes
-        /// the tick (OOB) — exactly the engine ceiling the player-slot check enforces, reused here. Returns a
-        /// located error or null when OK.
+        /// <c>(Faction)(slot + 1)</c> and indexes the FACTION_ARRAY_SIZE (9) per-faction arrays, so an out-of-range
+        /// slot crashes the tick (OOB) — exactly the engine ceiling the player-slot check enforces, reused here.
+        /// Returns a located error or null when OK.
         /// </summary>
         private static string? CheckFactionSlot(string path, int slot)
         {
-            if (slot < 0 || slot + 1 > (int)Faction.Player4)
-                return $"{path}={slot} is out of the valid faction-slot range [0,{(int)Faction.Player4 - 1}].";
+            if (slot < 0 || slot + 1 > (int)Faction.Player8)
+                return $"{path}={slot} is out of the valid faction-slot range [0,{(int)Faction.Player8 - 1}].";
             return null;
         }
 

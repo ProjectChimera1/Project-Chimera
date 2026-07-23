@@ -176,6 +176,29 @@ namespace ProjectChimera.Sim.Tests.Economy
             Assert.Equal(15, resources.SupplyCap[(int)Faction.Player1]);
         }
 
+        [Fact]
+        public void RecalculateSupplyCaps_HighSlotPlayer8_ResetsToBase_AddsBonus_AndClamps()
+        {
+            // Story 9.2 (loop-widening regression guard): the base-reset AND hard-ceiling clamp loops now span
+            // slots 1..8. Player8 (the top new slot) must reset-to-base, accumulate a building bonus, and be
+            // clamped by the hard ceiling — with the old `f <= 4` bound its cap would never reset or clamp.
+            var buildings = new BuildingStore();
+            var resources = new ResourceStore(Fixed.Zero);
+            resources.ConfigureSupply(new SupplyConfig { StartingCap = 10, HardCeiling = 15 });
+            var sys = new BuildingSystem(buildings, resources);
+            int b = sys.PlaceBuildingDirect(BuildingType.CommandCenter, Faction.Player8, FixedVec3.Zero, preBuilt: true);
+            buildings.SupplyBonus[b] = 3; // 10 + 3 = 13 (below the 15 ceiling — proves base-reset + bonus reach slot 8)
+
+            var world = new EntityWorld();
+            sys.Tick(world, Fixed.Zero);
+            Assert.Equal(13, resources.SupplyCap[(int)Faction.Player8]);
+
+            // Now push the bonus past the ceiling — proves the CLAMP loop also reaches slot 8.
+            buildings.SupplyBonus[b] = 30; // 10 + 30 = 40, clamped to 15
+            sys.Tick(world, Fixed.Zero);
+            Assert.Equal(15, resources.SupplyCap[(int)Faction.Player8]);
+        }
+
         // ── BuildingSystem.TrainUnit — ceiling-block / gating-bypass ────────────────────────────────────────────
 
         private static FactionDefinition OneUnitFaction() => new FactionDefinition

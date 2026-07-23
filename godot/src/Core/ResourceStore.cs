@@ -5,11 +5,11 @@ namespace ProjectChimera.Core
 {
     /// <summary>
     /// Per-faction resource balances and faction base positions.
-    /// Indexed by (int)Faction (0 = Neutral, 1 = Player1 … 4 = Player4).
+    /// Indexed by (int)Faction (0 = Neutral, 1 = Player1 … 8 = Player8).
     /// </summary>
     public class ResourceStore
     {
-        private const int FACTION_COUNT = 5;
+        private const int FACTION_COUNT = FactionRegistry.FACTION_ARRAY_SIZE; // 9: Neutral + Player1..Player8
 
         // Current balances
         public readonly Fixed[] Ore;

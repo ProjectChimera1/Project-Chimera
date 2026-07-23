@@ -27,6 +27,23 @@ namespace ProjectChimera.Sim.Tests.Golden
             Assert.Equal(9, FactionRegistry.FACTION_ARRAY_SIZE); // incl. Neutral slot 0
         }
 
+        /// <summary>
+        /// Story 9.2 (follow-up hardening) — the load-bearing invariant every per-faction store and the
+        /// ScenarioDirector threshold poll silently rely on:
+        /// FACTION_ARRAY_SIZE == PLAYER_COUNT + 1 == (int)Faction.Player8 + 1 == SLOT_DEFINITIONS_SIZE.
+        /// A future story that bumps PLAYER_COUNT without extending the enum (or adds an enum member without
+        /// resizing the arrays) makes ToFaction/(int)Faction emit a slot the length-9 arrays cannot hold — a
+        /// runtime IndexOutOfRange in the poll/stores that no other unit test catches until an N&gt;8 match runs.
+        /// Tying the four numbers together here fails that divergence at build/unit time instead.
+        /// </summary>
+        [Fact]
+        public void Constants_EnumAndArraySizesAgree_TheLoadBearingInvariant()
+        {
+            Assert.Equal(FactionRegistry.PLAYER_COUNT + 1, FactionRegistry.FACTION_ARRAY_SIZE);
+            Assert.Equal((int)Faction.Player8 + 1, FactionRegistry.FACTION_ARRAY_SIZE);
+            Assert.Equal(FactionRegistry.FACTION_ARRAY_SIZE, FactionRegistry.SLOT_DEFINITIONS_SIZE);
+        }
+
         // ── AC1: the single (Faction)(slot+1) cast site ───────────────────────────
 
         [Fact]
@@ -36,6 +53,11 @@ namespace ProjectChimera.Sim.Tests.Golden
             Assert.Equal(Faction.Player2, FactionRegistry.ToFaction(1));
             Assert.Equal(Faction.Player3, FactionRegistry.ToFaction(2));
             Assert.Equal(Faction.Player4, FactionRegistry.ToFaction(3));
+            // Story 9.2 — the four new slots map to the newly-added enum members.
+            Assert.Equal(Faction.Player5, FactionRegistry.ToFaction(4));
+            Assert.Equal(Faction.Player6, FactionRegistry.ToFaction(5));
+            Assert.Equal(Faction.Player7, FactionRegistry.ToFaction(6));
+            Assert.Equal(Faction.Player8, FactionRegistry.ToFaction(7));
         }
 
         // ── AC1: the ascending active-faction list ────────────────────────────────
@@ -115,15 +137,47 @@ namespace ProjectChimera.Sim.Tests.Golden
             Assert.Equal(h2a, h2b);
         }
 
+        /// <summary>
+        /// Story 9.2 — the SAME non-tautological span proof for the TOP new slot (Player8, the highest of the
+        /// enum members and array indices added by 9.2). Changing Ore[Player8] moves the checksum under
+        /// FactionRegistry(8) (Player8 is the 8th active faction, read) but CANNOT move it under FactionRegistry(7)
+        /// (the 7-active loop stops at Player7). A regression capping the fold span at 4 — which the N=8 two-run
+        /// determinism test would NOT catch (it passes on P1 evolution + self-equality alone) — fails here.
+        /// </summary>
+        [Fact]
+        public void OreLoop_SpansExactlyTheActiveFactions_TopSlotPlayer8_NotATautology()
+        {
+            var world     = new EntityWorld();
+            var buildings = new BuildingStore();
+            var resources = new ResourceStore(Fixed.Zero);
+            var reg8      = new FactionRegistry(8);
+            var reg7      = new FactionRegistry(7);
+
+            resources.Ore[(int)Faction.Player8] = Fixed.FromInt(100);
+            uint h8a = SimChecksum.Compute(world, buildings, resources, reg8);
+            uint h7a = SimChecksum.Compute(world, buildings, resources, reg7);
+
+            resources.Ore[(int)Faction.Player8] = Fixed.FromInt(250);
+            uint h8b = SimChecksum.Compute(world, buildings, resources, reg8);
+            uint h7b = SimChecksum.Compute(world, buildings, resources, reg7);
+
+            // Player8's ore value IS folded when 8 factions are active…
+            Assert.NotEqual(h8a, h8b);
+            // …and is NEVER read when only 7 are active (its change cannot move the hash).
+            Assert.Equal(h7a, h7b);
+        }
+
         // ── AR-3 / Story 5.1: SlotDefinitions storage ─────────────────────────────
 
         [Fact]
-        public void SlotDefinitions_FreshRegistry_IsSizeFiveAllNull()
+        public void SlotDefinitions_FreshRegistry_IsSizeNineAllNull()
         {
             var reg = new FactionRegistry(2);
 
+            // Story 9.2: SLOT_DEFINITIONS_SIZE was unified with FACTION_ARRAY_SIZE (9) so the slot array agrees
+            // with the widened per-faction stores (Neutral + Player1..Player8).
             Assert.Equal(FactionRegistry.SLOT_DEFINITIONS_SIZE, reg.SlotDefinitions.Length);
-            Assert.Equal(5, reg.SlotDefinitions.Length);
+            Assert.Equal(9, reg.SlotDefinitions.Length);
             Assert.All(reg.SlotDefinitions, def => Assert.Null(def));
         }
 

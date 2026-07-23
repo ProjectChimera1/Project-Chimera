@@ -21,7 +21,7 @@ namespace ProjectChimera.Core
     /// </summary>
     public class ResearchStore
     {
-        private const int FACTION_COUNT = 5; // indices 0-4; Faction enum is 0-4 (0 = Neutral, unused)
+        private const int FACTION_COUNT = FactionRegistry.FACTION_ARRAY_SIZE; // 9: Neutral(0) + Player1..Player8
 
         /// <summary>Research index (into that faction's <c>FactionDefinition.Research</c>) currently in progress,
         /// or -1 when the faction is idle. Exactly one in-progress order per faction.</summary>
