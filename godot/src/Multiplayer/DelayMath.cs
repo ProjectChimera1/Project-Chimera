@@ -44,17 +44,38 @@ namespace ProjectChimera.Multiplayer
         }
 
         /// <summary>
-        /// The cross-peer agreement rule: both peers converge on <c>max(myDesired, theirDelay)</c>. This is
-        /// COMMUTATIVE — <c>AgreeDelay(a, b) == AgreeDelay(b, a)</c> — which is exactly why both peers pick the
-        /// SAME delay regardless of who proposed first (the invariant AC2a asserts).
-        ///
-        /// AC2c — KNOWN GAP (do NOT fix here; owned by Story 9.4): <paramref name="theirDelayRaw"/> is the
-        /// untrusted wire byte and is deliberately NOT re-clamped to [MIN_DELAY, MAX_DELAY] here — a forged
-        /// proposal could push the agreed delay past BUFFER_SIZE and corrupt the ring buffer. Story 9.4 adds the
-        /// server-dictated delay + receipt re-clamp + ACK-commit. This helper preserves the as-built behavior
-        /// verbatim so the smoke test can DOCUMENT the gap; <c>DelayMathTests</c> asserts this CURRENT unclamped
-        /// result and will flag when 9.4 changes it.
+        /// Story 9.4 — clamp an UNTRUSTED delay value (a wire byte from a peer's proposal or a server directive)
+        /// into the safe ring-buffer range [<see cref="MIN_DELAY"/>, <see cref="MAX_DELAY"/>] ⊂ [1, BUFFER_SIZE-1].
+        /// The single hardening primitive shared by <see cref="AgreeDelay"/> (P2P path) and the client's
+        /// <c>DelayDirective</c> receipt (server-dictated path): a forged/corrupt value can never push the applied
+        /// delay past BUFFER_SIZE and corrupt the ring. Deterministic — every peer clamps an identical directive
+        /// identically, so all commit the same delay at the same tick.
         /// </summary>
-        internal static int AgreeDelay(int myDesired, int theirDelayRaw) => Math.Max(myDesired, theirDelayRaw);
+        internal static int ClampDelay(int raw) => Math.Clamp(raw, MIN_DELAY, MAX_DELAY);
+
+        /// <summary>
+        /// Story 9.4 — the Godot-free server-dictated-delay RECEIPT decision, extracted from
+        /// <c>LockstepManager.HandleDelayDirective</c> so the headline hardening (the receipt re-clamp) is Tier-1
+        /// testable. Maps an untrusted directive delay byte to BOTH the delay the client applies AND the value it
+        /// echoes in its <c>DelayAck</c> — both the same clamped value, so a forged 200/255 can never push either
+        /// past BUFFER_SIZE and corrupt the ring. Returns <c>(appliedDelay, ackEcho)</c>.
+        /// </summary>
+        internal static (int appliedDelay, int ackEcho) ResolveDirectiveReceipt(int rawDelay)
+        {
+            int clamped = ClampDelay(rawDelay);
+            return (clamped, clamped);
+        }
+
+        /// <summary>
+        /// The cross-peer agreement rule: both peers converge on <c>max(myDesired, clamp(theirDelay))</c>. This is
+        /// COMMUTATIVE over valid inputs — <c>AgreeDelay(a, b) == AgreeDelay(b, a)</c> — which is exactly why both
+        /// peers pick the SAME delay regardless of who proposed first (the invariant AC2a asserts).
+        ///
+        /// AC2c (Story 9.4 — CLOSED): <paramref name="theirDelayRaw"/> is the untrusted wire byte and is now
+        /// re-clamped to [<see cref="MIN_DELAY"/>, <see cref="MAX_DELAY"/>] via <see cref="ClampDelay"/> before the
+        /// max — a forged proposal (e.g. 200) can no longer push the agreed delay past BUFFER_SIZE and corrupt the
+        /// ring buffer. The same clamp guards the server-dictated <c>DelayDirective</c> receipt on the client.
+        /// </summary>
+        internal static int AgreeDelay(int myDesired, int theirDelayRaw) => Math.Max(myDesired, ClampDelay(theirDelayRaw));
     }
 }

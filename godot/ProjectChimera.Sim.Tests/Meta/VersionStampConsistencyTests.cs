@@ -153,8 +153,24 @@ namespace ProjectChimera.Sim.Tests.Meta
         /// value itself is pinned by the independent-FNV pin (StartStateHashTests) + the hero-start-state golden.</summary>
         private const int ExpectedStartStateHashAlgoVersion = 2;
 
-        /// <summary>Lockstep Hello-handshake wire protocol version.</summary>
-        private const ushort ExpectedProtocolVersion = 1;
+        /// <summary>Lockstep Hello-handshake wire protocol version.
+        /// v2 (Story 9.4): the coordinated wire bump for the server-dictated delay exchange
+        /// (<c>DelayDirective</c>/<c>DelayAck</c>) + the widened Ready packet (protocol version + 64-bit
+        /// match-agreement hash). The version is now VALIDATED fail-closed on the client's inbound Hello and the
+        /// server's inbound Ready (closing the D3.8 gap), so a v1 build can no longer complete the handshake against
+        /// a v2 build. No golden/checksum re-baseline — this is handshake/wire only, no sim-array fold.</summary>
+        private const ushort ExpectedProtocolVersion = 2;
+
+        /// <summary>Story 9.4 — the net-new ruleset-fingerprint hash over the <see cref="EffectCaps"/> structural
+        /// caps, folded into <see cref="MatchAgreementHash"/>. v1 = initial (AlgoVersion + every cap in file order).
+        /// A bump changes the value old clients compute for the start-state handshake — update this pin in the same
+        /// commit.</summary>
+        private const int ExpectedRulesetHashAlgoVersion = 1;
+
+        /// <summary>Story 9.4 — the single 64-bit start-state-agreement hash on the widened Ready packet. v1 =
+        /// initial (AlgoVersion + RulesetHash + initial-delay + faction-count + roster + StartStateHash). A bump
+        /// changes the handshake value — update this pin in the same commit.</summary>
+        private const int ExpectedMatchAgreementHashAlgoVersion = 1;
 
         /// <summary>.chmr replay file-format version. Story 7.9 bumped 2→3 (the stream may carry DslEvent orders;
         /// ReplayPlayer hard-rejects v1 but still plays v2).</summary>
@@ -199,6 +215,24 @@ namespace ProjectChimera.Sim.Tests.Meta
                 $"StartStateHash.AlgoVersion is {StartStateHash.AlgoVersion}, expected {ExpectedStartStateHashAlgoVersion}. " +
                 $"This is the Story 3.2 init-state hash (heroes + content). A bump must re-record the hero-start-state " +
                 $"golden AND update {nameof(ExpectedStartStateHashAlgoVersion)} here in the same commit.");
+        }
+
+        [Fact]
+        public void StartStateAgreementHashStamps_ArePinned()
+        {
+            // Story 9.4: the two net-new handshake hashes folded into the start-state-agreement value. A bump to
+            // either changes the value old clients compute for the widened Ready handshake — so a bump must update
+            // the corresponding pin here (and re-check any recorded hash pins) in the same commit.
+            Assert.True(RulesetHash.AlgoVersion == ExpectedRulesetHashAlgoVersion,
+                $"RulesetHash.AlgoVersion is {RulesetHash.AlgoVersion}, expected {ExpectedRulesetHashAlgoVersion}. " +
+                $"This fingerprints the EffectCaps structural caps folded into MatchAgreementHash; a bump changes " +
+                $"the handshake value. Update {nameof(ExpectedRulesetHashAlgoVersion)} in the same commit.");
+
+            Assert.True(MatchAgreementHash.AlgoVersion == ExpectedMatchAgreementHashAlgoVersion,
+                $"MatchAgreementHash.AlgoVersion is {MatchAgreementHash.AlgoVersion}, expected " +
+                $"{ExpectedMatchAgreementHashAlgoVersion}. This is the single 64-bit start-state-agreement value on " +
+                $"the widened Ready packet; a bump changes the handshake value. Update " +
+                $"{nameof(ExpectedMatchAgreementHashAlgoVersion)} in the same commit.");
         }
 
         [Fact]

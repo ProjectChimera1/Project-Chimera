@@ -9,36 +9,40 @@ namespace ProjectChimera.Multiplayer
     /// had proven start-state agreement for. Now either side's 0 BLOCKS the start, a nonzero mismatch blocks with
     /// the established message, and only equal nonzero hashes allow.
     ///
+    /// Story 9.4 — widened from the 32-bit scenario hash to the 64-bit <c>MatchAgreementHash</c> (ruleset +
+    /// initial-delay + roster + faction-count + start-state), so the P2P start gate now covers the full agreement
+    /// surface, not just map content. Formatted as <c>X16</c>. The fail-closed hash-0 posture is unchanged.
+    ///
     /// Pure function: no logging, no side effects; <c>LobbyUi</c> surfaces the returned reason as its status text.
     /// </summary>
     public static class HandshakeGate
     {
         /// <summary>
-        /// Decide whether the match start is allowed given the local and peer scenario wire hashes
-        /// (<c>CanonicalModelHash.ToWire</c> values; 0 = "not computed"). Returns <c>null</c> to ALLOW, or the
+        /// Decide whether the match start is allowed given the local and peer 64-bit match-agreement hashes
+        /// (<c>MatchAgreementHash.Compute</c> values; 0 = "not computed"). Returns <c>null</c> to ALLOW, or the
         /// human-readable BLOCK reason to surface:
         ///   • an UNPARSEABLE Ready payload (<paramref name="peerHashParsed"/> false) → the peer hash is treated
         ///     as 0, so it blocks with the not-computed reason (fail-closed — a payload we cannot read is never
         ///     proof of start-state agreement, and must not bypass the gate);
-        ///   • either hash 0 → block ("scenario hash not computed" — a validated scenario was never applied);
-        ///   • nonzero mismatch → block (the established map-mismatch message);
+        ///   • either hash 0 → block ("start-state hash not computed" — a validated scenario was never applied);
+        ///   • nonzero mismatch → block (the established mismatch message);
         ///   • equal nonzero → allow.
         /// </summary>
-        public static string? CheckStart(uint localHash, uint peerHash, bool peerHashParsed = true)
+        public static string? CheckStart(ulong localHash, ulong peerHash, bool peerHashParsed = true)
         {
-            if (!peerHashParsed) peerHash = 0u; // unparseable Ready ≡ "not computed" — routes into the block below
+            if (!peerHashParsed) peerHash = 0UL; // unparseable Ready ≡ "not computed" — routes into the block below
 
-            if (localHash == 0u || peerHash == 0u)
-                return "CANNOT START — scenario hash not computed!\n" +
-                       $"Your map: 0x{localHash:X8}\n" +
-                       $"Peer map:  0x{peerHash:X8}\n" +
+            if (localHash == 0UL || peerHash == 0UL)
+                return "CANNOT START — start-state hash not computed!\n" +
+                       $"Your match: 0x{localHash:X16}\n" +
+                       $"Peer match: 0x{peerHash:X16}\n" +
                        "A hash of 0 means no validated scenario was applied on that peer.";
 
             if (peerHash != localHash)
-                return "MAP MISMATCH — cannot start!\n" +
-                       $"Your map: 0x{localHash:X8}\n" +
-                       $"Peer map:  0x{peerHash:X8}\n" +
-                       "Both players must load the same scenario file.";
+                return "START-STATE MISMATCH — cannot start!\n" +
+                       $"Your match: 0x{localHash:X16}\n" +
+                       $"Peer match: 0x{peerHash:X16}\n" +
+                       "Both players must load the same scenario, ruleset, and roster.";
 
             return null; // equal nonzero — start allowed
         }

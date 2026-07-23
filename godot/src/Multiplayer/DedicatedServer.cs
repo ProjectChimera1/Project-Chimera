@@ -67,6 +67,29 @@ namespace ProjectChimera.Multiplayer
         /// the connected player count. Null until the match starts.</summary>
         private Server.MergedTickBuilder? _builder;
 
+        // ── Story 9.4: server-dictated delay + start-state agreement ───────────────
+
+        /// <summary>The Godot-free server delay authority — per-slot RTT EWMA + dictated-delay directive/ACK state
+        /// machine. Constructed at InGame (HandleReady) alongside <see cref="_builder"/>. Null until the match starts.</summary>
+        private Server.DelayController? _delayController;
+
+        /// <summary>Per-slot Ready-packet agreement data collected before StartGame (protocol version + 64-bit
+        /// match-agreement hash), compared fail-closed by
+        /// <see cref="Server.ServerLobbyPolicy.CheckStartStateAgreement"/> at the readiness gate.</summary>
+        private readonly ulong[]  _readyHash    = new ulong[ServerTransport.MAX_SLOTS];
+        private readonly ushort[] _readyVersion = new ushort[ServerTransport.MAX_SLOTS];
+
+        /// <summary>Seconds elapsed since the last per-slot RTT-probe (Ping) broadcast.</summary>
+        private double _sincePing;
+        private byte   _pingSeq;
+
+        /// <summary>How often the server probes each client's RTT (seconds).</summary>
+        private const double PING_INTERVAL_SEC = 1.0;
+
+        /// <summary>The highest sim tick the server has seen fanned in — the frontier a dictated directive's
+        /// <c>applyAtTick</c> is measured forward from.</summary>
+        private uint _latestSeenTick;
+
         // ── Story 1.9a: server authority ───────────────────────────────────────────
 
         /// <summary>
@@ -133,9 +156,34 @@ namespace ProjectChimera.Multiplayer
 
         // ── Godot loop ────────────────────────────────────────────────────────────
 
-        public override void _Process(double _delta)
+        public override void _Process(double delta)
         {
             _transport?.Poll();
+
+            // Story 9.4: once in-match, probe each player's RTT periodically and dictate ONE delay for the whole
+            // match when the target shifts. The server is the SINGLE delay authority — clients apply changes only
+            // from a DelayDirective (never their own DelayProposal), so all commit the same value at the same tick.
+            if (_state != State.InGame || _delayController == null) return;
+
+            _sincePing += delta;
+            if (_sincePing >= PING_INTERVAL_SEC)
+            {
+                _sincePing = 0;
+                var ping = TickCommandPacket.MakePing(_pingSeq++, (uint)Time.GetTicksMsec());
+                for (int s = 0; s < ServerTransport.MAX_PLAYERS; s++)
+                    if (_transport.IsSlotConnected(s)) _transport.SendReliableTo(s, ping);
+            }
+
+            // PATCH 1a: the confirmed high-water = the tick through which the merged fan-in has emitted (all players
+            // submitted past it). It gates directive pipelining so a new directive is not issued until the prior one
+            // has matured (been applied) on every client.
+            uint confirmed = _builder != null && _builder.EmittedThrough >= 0 ? (uint)_builder.EmittedThrough : 0u;
+            if (_delayController.TryComputeDirective(_latestSeenTick, confirmed, out int delay, out uint applyAtTick))
+            {
+                var directive = TickCommandPacket.MakeDelayDirective((byte)delay, applyAtTick);
+                _transport.BroadcastCommands(directive, directive.Length);
+                GD.Print($"[Server] Dictating input delay → {delay} ticks, applyAtTick {applyAtTick} (awaiting all-{ExpectedPlayers} ACK).");
+            }
         }
 
         // ── Connection events ─────────────────────────────────────────────────────
@@ -201,7 +249,39 @@ namespace ProjectChimera.Multiplayer
                     break;
 
                 case PacketType.Ready:
-                    HandleReady(slot);
+                    HandleReady(slot, data, len);
+                    break;
+
+                case PacketType.Ping:
+                    // Story 9.4: symmetry/defensive — a client Ping is echoed back as a Pong (the server is
+                    // normally the pinger, but never leave an inbound probe unanswered). Wire: type(1)+seq(1)+ms(4).
+                    if (len >= 6)
+                        _transport.SendReliableTo(slot, TickCommandPacket.MakePong(
+                            data[1], (uint)(data[2] | (data[3] << 8) | (data[4] << 16) | (data[5] << 24))));
+                    break;
+
+                case PacketType.Pong:
+                    // Story 9.4: the client's echo of a server RTT probe. rtt = now - the senderMs we stamped into
+                    // the Ping. Slot is transport-authoritative (this callback's slot), never a packet byte.
+                    if (_state == State.InGame && _delayController != null && slot < ServerTransport.MAX_PLAYERS &&
+                        TickCommandPacket.TryReadPong(data, len, out _, out uint pongMs))
+                        _delayController.RecordRtt(slot, (float)Time.GetTicksMsec() - pongMs);
+                    break;
+
+                case PacketType.DelayAck:
+                    // Story 9.4: a player acknowledges the pending server-dictated delay. When every player has
+                    // ACKed the (delay, applyAtTick) pair, log the commit and advance the controller so the next
+                    // directive may issue.
+                    if (_state == State.InGame && _delayController != null && slot < ServerTransport.MAX_PLAYERS &&
+                        TickCommandPacket.TryReadDelayAck(data, len, out byte ackDelay, out uint ackApplyAt))
+                    {
+                        _delayController.RecordAck(slot, ackDelay, ackApplyAt);
+                        if (_delayController.AllAcked(ackDelay, ackApplyAt))
+                        {
+                            _delayController.Commit(ackDelay, ackApplyAt);
+                            GD.Print($"[Server] Delay change committed → {ackDelay} ticks at tick {ackApplyAt} (all {ExpectedPlayers} players ACKed).");
+                        }
+                    }
                     break;
 
                 case PacketType.TickCommands:
@@ -254,7 +334,7 @@ namespace ProjectChimera.Multiplayer
 
         // ── Lobby handshake ───────────────────────────────────────────────────────
 
-        private void HandleReady(int slot)
+        private void HandleReady(int slot, byte[] data, int len)
         {
             if (slot >= ServerTransport.MAX_PLAYERS) return; // spectators don't send Ready
             if (_state == State.InGame) return;              // match already started — ignore late/duplicate Ready
@@ -265,7 +345,14 @@ namespace ProjectChimera.Multiplayer
             // the server threw away. Start only once BOTH players are connected AND both have readied; the
             // connect/ready order no longer matters.
             _ready[slot] = true;
-            GD.Print($"[Server] Slot {slot} is Ready.");
+
+            // Story 9.4: collect this slot's Ready agreement payload (protocol version + 64-bit match-agreement
+            // hash). A short/undersized/malformed Ready parses false → version 0 / hash 0 → the fail-closed
+            // agreement gate below rejects the start (never fail-open).
+            TickCommandPacket.TryReadReady(data, len, out ushort readyVersion, out ulong readyHash);
+            _readyVersion[slot] = readyVersion;
+            _readyHash[slot]    = readyHash;
+            GD.Print($"[Server] Slot {slot} is Ready (protocol v{readyVersion}, match hash 0x{readyHash:X16}).");
 
             // Story 9.3: N-shaped count machine — start once `connected == expected && ready == expected` (no
             // `_ready[0] && _ready[1]` two-slot literal). `expected` is the match's player width (MAX_PLAYERS today).
@@ -273,11 +360,29 @@ namespace ProjectChimera.Multiplayer
             int readyCount = CountReadyPlayers();
             if (Server.ServerLobbyPolicy.ShouldStart(connected, readyCount, ExpectedPlayers))
             {
+                // Story 9.4: the ADDITIONAL start-state-agreement gate — every slot must share one non-zero
+                // match-agreement hash AND run PROTOCOL_VERSION. On disagreement, broadcast a terminal HALT and do
+                // NOT StartGame (fail-closed). Checked BEFORE flipping state / standing up the match machinery.
+                HaltReason? disagreement = Server.ServerLobbyPolicy.CheckStartStateAgreement(
+                    _readyHash, _readyVersion, ExpectedPlayers);
+                if (disagreement != null)
+                {
+                    GD.PrintErr($"[Server] Start-state agreement FAILED ({disagreement}) — broadcasting HALT, not starting.");
+                    _transport.BroadcastReliable(TickCommandPacket.MakeHalt(0u, disagreement.Value));
+                    _state = State.BothReady;
+                    return;
+                }
+
                 _state = State.InGame;
 
                 // Story 9.3: stand up the authoritative merged fan-in for this match — expected = the connected
                 // player count (== ExpectedPlayers at the gate). Spectators are NOT counted (they never submit).
                 _builder = new Server.MergedTickBuilder(connected, SLOT_FACTION);
+
+                // Story 9.4: stand up the server delay authority alongside the fan-in. The initial delay baseline is
+                // LockstepManager.INPUT_DELAY (the delay the clients start at), so no directive issues until a
+                // measured RTT genuinely shifts the target.
+                _delayController = new Server.DelayController(connected, LockstepManager.INPUT_DELAY);
 
                 // Story 1.9a (D5): stand up the server-authority core for this match. expectedPeerCount = the
                 // connected PLAYER count (spectators excluded — D6). The transport seams are wrapped in lambdas
@@ -311,10 +416,12 @@ namespace ProjectChimera.Multiplayer
         private void FanInTickCommands(int fromSlot, byte[] data, int len)
         {
             if (_builder == null) return; // not yet InGame
-            if (_builder.Submit(fromSlot, data, len, out uint tick) &&
-                _builder.TryBuild(tick, out byte[] merged, out int mergedLen))
+            if (_builder.Submit(fromSlot, data, len, out uint tick))
             {
-                _transport.BroadcastCommands(merged, mergedLen);
+                // Story 9.4: track the frontier so a dictated delay directive's applyAtTick lands safely ahead of it.
+                if (tick > _latestSeenTick) _latestSeenTick = tick;
+                if (_builder.TryBuild(tick, out byte[] merged, out int mergedLen))
+                    _transport.BroadcastCommands(merged, mergedLen);
             }
         }
 

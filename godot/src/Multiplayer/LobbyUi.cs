@@ -42,10 +42,25 @@ namespace ProjectChimera.Multiplayer
 
         /// <summary>
         /// FNV-1a hash of the current scenario file, computed by MainScene after loading.
-        /// Sent with the Ready packet so the host can verify both peers have the same map.
+        /// Retained for status-text display only (Story 9.4 moved the wire to <see cref="MatchAgreementHash"/>).
         /// 0 = not set / no file on disk.
         /// </summary>
         public uint ScenarioHash { get; set; }
+
+        /// <summary>
+        /// Story 9.4 — the 64-bit start-state-agreement value (ruleset + initial-delay + roster + faction-count +
+        /// start-state), computed by MainScene and SENT on the widened Ready packet. The host compares the peer's
+        /// value with its own via the fail-closed <see cref="HandshakeGate"/>; any 0 or mismatch blocks the start.
+        /// </summary>
+        public ulong MatchAgreementHash { get; set; }
+
+        /// <summary>
+        /// Story 9.4 — true when this match's delay is SERVER-dictated (a dedicated server assigned our faction, or
+        /// online/Nakama mode), so the client must run as a delay follower (<c>LockstepManager.ServerDictatedDelay</c>).
+        /// False for a P2P host match (the DelayProposal negotiation stays the 2-player behavior). Set in
+        /// <see cref="FireMatchStart"/> before <see cref="Close"/> resets lobby state, so the match wiring can read it.
+        /// </summary>
+        public bool ServerDictated { get; private set; }
 
         // ── UI refs — Direct tab ───────────────────────────────────────────────────
 
@@ -275,9 +290,10 @@ namespace ProjectChimera.Multiplayer
         {
             _readyConfirmed    = true;
             _readyBtn.Disabled = true;
-            _transport.SendReliable(TickCommandPacket.MakeReady(ScenarioHash));
+            // Story 9.4: the widened Ready carries our PROTOCOL_VERSION + the 64-bit match-agreement hash.
+            _transport.SendReliable(TickCommandPacket.MakeReady(TickCommandPacket.PROTOCOL_VERSION, MatchAgreementHash));
 #if DEBUG
-            GD.Print($"[Lobby] Ready packet SENT (scenarioHash=0x{ScenarioHash:X8}).");
+            GD.Print($"[Lobby] Ready packet SENT (protocol v{TickCommandPacket.PROTOCOL_VERSION}, match hash=0x{MatchAgreementHash:X16}).");
 #endif
             string hashStr = ScenarioHash != 0 ? $"  [map 0x{ScenarioHash:X8}]" : "";
             SetStatus($"Ready! Waiting for other player…{hashStr}");
@@ -337,8 +353,19 @@ namespace ProjectChimera.Multiplayer
 #if DEBUG
                     GD.Print("[Lobby] Hello packet received from server.");
 #endif
-                    if (TickCommandPacket.TryReadHello(data, len, out var f)
-                        && f != Core.Faction.Neutral)
+                    // Story 9.4: validate the peer/server PROTOCOL_VERSION fail-closed (the D3.8 gap). A version
+                    // skew — or an unparseable Hello (version 0) — blocks the start; we never mark ready.
+                    if (!TickCommandPacket.TryReadHello(data, len, out var f, out ushort helloVer)
+                        || helloVer != TickCommandPacket.PROTOCOL_VERSION)
+                    {
+                        SetStatus("CANNOT START — protocol version mismatch.\n" +
+                                  $"Server protocol: v{helloVer}\n" +
+                                  $"Your protocol:  v{TickCommandPacket.PROTOCOL_VERSION}\n" +
+                                  "Both players must run the same game build.");
+                        _readyBtn.Visible = false;
+                        break;
+                    }
+                    if (f != Core.Faction.Neutral)
                     {
                         _assignedFaction = f;
                         SetStatus($"Server assigned faction: {f}. Click Ready when set up.");
@@ -356,12 +383,22 @@ namespace ProjectChimera.Multiplayer
 
                 case PacketType.Ready:
                 {
-                    // Story 7.7 — the pure HandshakeGate decision: hash 0 (not computed) BLOCKS (fail-closed,
-                    // inverting the old skip), a nonzero mismatch blocks, equal nonzero allows. An UNPARSEABLE
-                    // Ready payload routes through the gate as peerHash 0 (peerHashParsed: false) so it blocks
-                    // with the not-computed reason — it must never mark the peer ready and bypass the check.
-                    bool parsed = TickCommandPacket.TryReadReady(data, len, out uint peerHash);
-                    string? block = HandshakeGate.CheckStart(ScenarioHash, peerHash, peerHashParsed: parsed);
+                    // Story 7.7 / 9.4 — the pure HandshakeGate decision over the 64-bit match-agreement hash: hash 0
+                    // (not computed) BLOCKS (fail-closed), a nonzero mismatch blocks, equal nonzero allows. An
+                    // UNPARSEABLE Ready payload routes through the gate as peerHash 0 (peerHashParsed: false) so it
+                    // blocks — it must never mark the peer ready and bypass the check. Story 9.4 ALSO validates the
+                    // peer's PROTOCOL_VERSION here (the version is not folded into the hash, so a version skew with a
+                    // matching scenario would otherwise slip past the hash gate — fail-closed).
+                    bool parsed = TickCommandPacket.TryReadReady(data, len, out ushort peerVer, out ulong peerHash);
+                    if (parsed && peerVer != TickCommandPacket.PROTOCOL_VERSION)
+                    {
+                        SetStatus("CANNOT START — peer protocol version mismatch.\n" +
+                                  $"Peer protocol: v{peerVer}\n" +
+                                  $"Your protocol: v{TickCommandPacket.PROTOCOL_VERSION}");
+                        _peerReadyConfirmed = false;
+                        return;
+                    }
+                    string? block = HandshakeGate.CheckStart(MatchAgreementHash, peerHash, peerHashParsed: parsed);
                     if (block != null)
                     {
                         SetStatus(block);
@@ -398,7 +435,12 @@ namespace ProjectChimera.Multiplayer
                 ? _assignedFaction
                 : (isHost ? Core.Faction.Player1 : Core.Faction.Player2);
 
-            GD.Print($"[Lobby] Match starting — faction: {localFaction} (serverAssigned={_assignedFaction != Core.Faction.Neutral}, online={_onlineModeActive})");
+            // Story 9.4: a dedicated server assigns our faction (or online/Nakama mode) ⇒ delay is server-dictated;
+            // a P2P host match (Neutral Hello, direct mode) keeps the DelayProposal negotiation. Captured BEFORE
+            // Close() resets _assignedFaction / _onlineModeActive so the match wiring can read ServerDictated.
+            ServerDictated = _assignedFaction != Core.Faction.Neutral || _onlineModeActive;
+
+            GD.Print($"[Lobby] Match starting — faction: {localFaction} (serverAssigned={_assignedFaction != Core.Faction.Neutral}, online={_onlineModeActive}, serverDictated={ServerDictated})");
             Close();
             OnMatchStart?.Invoke(isHost, localFaction);
         }

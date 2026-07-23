@@ -65,6 +65,12 @@ namespace ProjectChimera.Core.Bootstrap
 
         private void OnMatchStart(bool isHost, Faction localFaction)
         {
+            // Story 9.4: put the client into server-dictated delay mode iff the match is server-driven (dedicated
+            // server / online). In that mode the client is a pure delay follower — it never pings/proposes its own
+            // delay change; the ONLY delay mutation is a server DelayDirective (the determinism invariant). In a P2P
+            // host match this stays false and the DelayProposal negotiation remains the 2-player behavior.
+            _ctx.Lockstep.ServerDictatedDelay = _ctx.LobbyUi.ServerDictated;
+
             // Wire path-request delegates to FlowFieldBridge — deterministic, no NavServer.
             _ctx.Lockstep.OnRequestPath        = (id, x, z) => _ctx.FlowFieldBridge.RequestPath(id, new Vector3(x, 0f, z));
             _ctx.Lockstep.OnRequestAttackMove  = (id, x, z) => _ctx.FlowFieldBridge.RequestAttackMove(id, new Vector3(x, 0f, z));

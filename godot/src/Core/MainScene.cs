@@ -504,6 +504,16 @@ namespace ProjectChimera.Core
                 : 0UL;
             GD.Print($"[MainScene] Start-state hash (algo v{Definitions.StartStateHash.AlgoVersion}): 0x{startStateHash:X16}");
 
+            // Story 9.4: the single 64-bit match-agreement value carried on the widened Ready packet and gated
+            // fail-closed before tick 0 (server-attested + P2P HandshakeGate). Folds the ruleset (EffectCaps
+            // structural caps), the initial input delay, the roster + faction-count (from the applied model), and
+            // the StartStateHash above. Fail-closed to 0 for an unapplied model, mirroring the hashes above.
+            _ctx.LobbyUi.MatchAgreementHash = (_ctx.ScenarioApplied && hashModel != null)
+                ? Definitions.MatchAgreementHash.Compute(
+                    ProjectChimera.Multiplayer.LockstepManager.INPUT_DELAY, hashModel, _host.Heroes)
+                : 0UL;
+            GD.Print($"[MainScene] Match-agreement hash (algo v{Definitions.MatchAgreementHash.AlgoVersion}): 0x{_ctx.LobbyUi.MatchAgreementHash:X16}");
+
             // If a replay file is specified via the Inspector, load it now and
             // enter Play mode immediately — no lobby, no network required.
             if (!string.IsNullOrEmpty(ReplayPath))

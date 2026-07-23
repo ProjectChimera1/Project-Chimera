@@ -43,6 +43,14 @@ namespace ProjectChimera.Multiplayer
         /// </summary>
         Halt         = 0x13,
         /// <summary>
+        /// Story 9.4: server → client ONLY. The authoritative server-dictated input-delay change — the server
+        /// measures per-slot RTT, computes ONE delay for the whole match, and broadcasts this directive to every
+        /// peer with the tick it takes effect at. The client re-clamps the delay to [MIN_DELAY, MAX_DELAY] on
+        /// receipt, schedules the change via the existing apply-tick machinery, and replies with a
+        /// <see cref="DelayAck"/>. Wire: type(1) + delay(1) + applyAtTick(4 LE) = 6 bytes.
+        /// </summary>
+        DelayDirective = 0x15,
+        /// <summary>
         /// In-game chat message.
         /// Wire format: type(1) + faction(1) + msgLen(2 LE) + msgBytes(UTF-8, max 200).
         /// Relayed by DedicatedServer to all connected peers.
@@ -58,6 +66,12 @@ namespace ProjectChimera.Multiplayer
         /// Both peers must agree before the change takes effect; see LockstepManager.
         /// </summary>
         DelayProposal = 0x42,
+        /// <summary>
+        /// Story 9.4: client → server. Acknowledges a server-dictated <see cref="DelayDirective"/>, echoing the
+        /// (clamped) delay + applyAtTick so the server can confirm every player committed the same change. Same
+        /// wire format as <see cref="DelayDirective"/>: type(1) + delay(1) + applyAtTick(4 LE) = 6 bytes.
+        /// </summary>
+        DelayAck      = 0x43,
     }
 
     // ── HALT reason ───────────────────────────────────────────────────────────
@@ -70,6 +84,13 @@ namespace ProjectChimera.Multiplayer
     {
         /// <summary>No strict-majority canonical hash for the executed tick — global desync.</summary>
         NoMajority = 0,
+        /// <summary>Story 9.4: a peer's Ready carried a <see cref="TickCommandPacket.PROTOCOL_VERSION"/> that
+        /// differs from the server's — the peers cannot interoperate. Fail-closed: the match never starts.</summary>
+        ProtocolMismatch = 1,
+        /// <summary>Story 9.4: the per-slot <see cref="TickCommandPacket.MakeReady"/> match-agreement hashes did
+        /// NOT all agree on one non-zero value (a mismatched ruleset / initial-delay / roster / start-state, or a
+        /// hash of 0). Fail-closed: the match never starts.</summary>
+        StartStateDisagreement = 2,
     }
 
     // ── Per-unit order (11 bytes) ─────────────────────────────────────────────
@@ -636,7 +657,12 @@ namespace ProjectChimera.Multiplayer
         // ── Lobby packet helpers ───────────────────────────────────────────────
 
         /// <summary>4-byte Hello packet: type(1) + protocolVersion(2) + faction(1).</summary>
-        public const ushort PROTOCOL_VERSION = 1;
+        /// <remarks>Story 9.4: bumped 1→2 — the coordinated wire change that adds the server-dictated
+        /// <see cref="PacketType.DelayDirective"/>/<see cref="PacketType.DelayAck"/> exchange and the widened
+        /// Ready packet (protocol version + 64-bit match-agreement hash). The version is now VALIDATED fail-closed
+        /// on the client's inbound Hello and the server's inbound Ready (closing the D3.8 gap), so an old build
+        /// (v1) can no longer complete the handshake against a v2 build.</remarks>
+        public const ushort PROTOCOL_VERSION = 2;
 
         /// <summary>
         /// Create a Hello packet. The server sends one to each connecting client,
@@ -652,40 +678,57 @@ namespace ProjectChimera.Multiplayer
 
         /// <summary>Parse a Hello packet. Returns Faction.Neutral if the packet has no faction byte.</summary>
         public static bool TryReadHello(byte[] buf, int len, out Core.Faction faction)
+            => TryReadHello(buf, len, out faction, out _);
+
+        /// <summary>
+        /// Story 9.4 — parse a Hello packet, exposing BOTH the assigned faction and the peer's
+        /// <see cref="PROTOCOL_VERSION"/> (2 LE bytes at offset 1) so the client can validate it fail-closed
+        /// before proceeding (the D3.8 gap). Faction is Neutral if the packet has no faction byte.
+        /// </summary>
+        public static bool TryReadHello(byte[] buf, int len, out Core.Faction faction, out ushort version)
         {
             faction = Core.Faction.Neutral;
+            version = 0;
             if (len < 3) return false;
             if ((PacketType)buf[0] != PacketType.Hello) return false;
+            version = (ushort)(buf[1] | (buf[2] << 8));
             if (len >= 4) faction = (Core.Faction)buf[3];
             return true;
         }
 
         /// <summary>
-        /// Ready packet: type(1) + scenarioHash(4).
-        /// scenarioHash = ScenarioSerializer.ComputeFileHash(scenarioPath).
-        /// The host compares the peer's hash with its own; a mismatch means different
-        /// scenario files and would cause guaranteed desync — the match should not start.
+        /// Story 9.4 — the widened Ready packet: type(1) + protocolVersion(2 LE) + matchAgreementHash(8 LE) = 11
+        /// bytes. Supersedes the old type(1) + scenarioHash(4) layout (the coordinated <see cref="PROTOCOL_VERSION"/>
+        /// 1→2 wire bump). The server validates the version (→ <see cref="HaltReason.ProtocolMismatch"/>) and
+        /// collects the 64-bit hash per slot (→ <see cref="HaltReason.StartStateDisagreement"/> unless all slots
+        /// share one non-zero value); P2P peers compare via the widened <c>HandshakeGate</c>. The hash is the single
+        /// fail-closed start-state-agreement value (<c>MatchAgreementHash</c>) — a superset of the old scenario hash.
         /// </summary>
-        public static byte[] MakeReady(uint scenarioHash = 0)
+        public static byte[] MakeReady(ushort protocolVersion, ulong matchAgreementHash)
         {
-            var buf = new byte[5];
+            var buf = new byte[11];
             buf[0] = (byte)PacketType.Ready;
-            int pos = 1;
-            WriteUint(buf, ref pos, scenarioHash);
+            buf[1] = (byte)protocolVersion;
+            buf[2] = (byte)(protocolVersion >> 8);
+            int pos = 3;
+            WriteULong(buf, ref pos, matchAgreementHash);
             return buf;
         }
 
-        /// <summary>Parse a Ready packet, extracting the scenario hash (0 if not present).</summary>
-        public static bool TryReadReady(byte[] buf, int len, out uint scenarioHash)
+        /// <summary>
+        /// Parse a widened Ready packet (Story 9.4), reading back the protocol version + 64-bit match-agreement
+        /// hash. Fail-closed: a wrong type OR a short/undersized packet returns <c>false</c> (version 0 / hash 0),
+        /// which routes into the start-blocking gate on both the server and P2P paths.
+        /// </summary>
+        public static bool TryReadReady(byte[] buf, int len, out ushort protocolVersion, out ulong matchAgreementHash)
         {
-            scenarioHash = 0;
-            if (len < 1) return false;
+            protocolVersion = 0;
+            matchAgreementHash = 0;
+            if (len < 11) return false;
             if ((PacketType)buf[0] != PacketType.Ready) return false;
-            if (len >= 5)
-            {
-                int pos = 1;
-                scenarioHash = ReadUint(buf, ref pos);
-            }
+            protocolVersion = (ushort)(buf[1] | (buf[2] << 8));
+            int pos = 3;
+            matchAgreementHash = ReadULong(buf, ref pos);
             return true;
         }
 
@@ -804,6 +847,56 @@ namespace ProjectChimera.Multiplayer
             return true;
         }
 
+        // ── Server-dictated delay helpers (Story 9.4) ─────────────────────────
+
+        /// <summary>Serialise a server→client <see cref="PacketType.DelayDirective"/> (6 bytes):
+        /// type(1) + delay(1) + applyAtTick(4 LE).</summary>
+        public static byte[] MakeDelayDirective(byte delay, uint applyAtTick)
+        {
+            var buf = new byte[6];
+            buf[0] = (byte)PacketType.DelayDirective;
+            buf[1] = delay;
+            int pos = 2;
+            WriteUint(buf, ref pos, applyAtTick);
+            return buf;
+        }
+
+        /// <summary>Parse a <see cref="PacketType.DelayDirective"/> packet. Returns false if malformed.</summary>
+        public static bool TryReadDelayDirective(byte[] buf, int len, out byte delay, out uint applyAtTick)
+        {
+            delay = 0; applyAtTick = 0;
+            if (len < 6) return false;
+            if ((PacketType)buf[0] != PacketType.DelayDirective) return false;
+            delay = buf[1];
+            int pos = 2;
+            applyAtTick = ReadUint(buf, ref pos);
+            return true;
+        }
+
+        /// <summary>Serialise a client→server <see cref="PacketType.DelayAck"/> (6 bytes):
+        /// type(1) + delay(1) + applyAtTick(4 LE). Echoes the CLAMPED delay the client committed.</summary>
+        public static byte[] MakeDelayAck(byte delay, uint applyAtTick)
+        {
+            var buf = new byte[6];
+            buf[0] = (byte)PacketType.DelayAck;
+            buf[1] = delay;
+            int pos = 2;
+            WriteUint(buf, ref pos, applyAtTick);
+            return buf;
+        }
+
+        /// <summary>Parse a <see cref="PacketType.DelayAck"/> packet. Returns false if malformed.</summary>
+        public static bool TryReadDelayAck(byte[] buf, int len, out byte delay, out uint applyAtTick)
+        {
+            delay = 0; applyAtTick = 0;
+            if (len < 6) return false;
+            if ((PacketType)buf[0] != PacketType.DelayAck) return false;
+            delay = buf[1];
+            int pos = 2;
+            applyAtTick = ReadUint(buf, ref pos);
+            return true;
+        }
+
         // ── Little-endian helpers ──────────────────────────────────────────────
 
         private static void WriteInt(byte[] buf, ref int pos, int v)
@@ -833,6 +926,34 @@ namespace ProjectChimera.Multiplayer
         {
             uint v = (uint)(buf[pos] | (buf[pos + 1] << 8) | (buf[pos + 2] << 16) | (buf[pos + 3] << 24));
             pos += 4;
+            return v;
+        }
+
+        /// <summary>Write a 64-bit value little-endian (Story 9.4 — the widened Ready match-agreement hash).</summary>
+        private static void WriteULong(byte[] buf, ref int pos, ulong v)
+        {
+            buf[pos++] = (byte)v;
+            buf[pos++] = (byte)(v >> 8);
+            buf[pos++] = (byte)(v >> 16);
+            buf[pos++] = (byte)(v >> 24);
+            buf[pos++] = (byte)(v >> 32);
+            buf[pos++] = (byte)(v >> 40);
+            buf[pos++] = (byte)(v >> 48);
+            buf[pos++] = (byte)(v >> 56);
+        }
+
+        /// <summary>Read a 64-bit little-endian value (Story 9.4).</summary>
+        private static ulong ReadULong(byte[] buf, ref int pos)
+        {
+            ulong v = (ulong)buf[pos]
+                    | ((ulong)buf[pos + 1] << 8)
+                    | ((ulong)buf[pos + 2] << 16)
+                    | ((ulong)buf[pos + 3] << 24)
+                    | ((ulong)buf[pos + 4] << 32)
+                    | ((ulong)buf[pos + 5] << 40)
+                    | ((ulong)buf[pos + 6] << 48)
+                    | ((ulong)buf[pos + 7] << 56);
+            pos += 8;
             return v;
         }
     }

@@ -48,5 +48,38 @@ namespace ProjectChimera.Multiplayer.Server
         /// </summary>
         public static bool ShouldStart(int connectedPlayers, int readyPlayers, int expected)
             => expected > 0 && connectedPlayers == expected && readyPlayers == expected;
+
+        /// <summary>
+        /// Story 9.4 — the server-attested start-state-agreement gate (a distinct, ADDITIONAL check beyond the
+        /// readiness gate <see cref="ShouldStart"/>). Given the per-slot Ready payloads collected from the first
+        /// <paramref name="expected"/> slots, returns:
+        ///   • <c>null</c> to ALLOW — iff EVERY one of the <paramref name="expected"/> slots reported the SAME
+        ///     non-zero <paramref name="perSlotHash"/> AND every slot's <paramref name="perSlotVersion"/> equals
+        ///     <see cref="TickCommandPacket.PROTOCOL_VERSION"/>;
+        ///   • <see cref="HaltReason.ProtocolMismatch"/> — if any slot's protocol version differs (checked FIRST,
+        ///     so a version skew is reported as such rather than as a hash disagreement);
+        ///   • <see cref="HaltReason.StartStateDisagreement"/> — if any slot's hash is 0 or the hashes are not all
+        ///     equal.
+        /// Fail-closed: any 0 hash, version skew, or per-slot disagreement blocks the start (never fail-open).
+        /// The arrays must have at least <paramref name="expected"/> entries.
+        /// </summary>
+        public static HaltReason? CheckStartStateAgreement(ulong[] perSlotHash, ushort[] perSlotVersion, int expected)
+        {
+            if (expected <= 0) return HaltReason.StartStateDisagreement; // a zero-player lobby never agrees on a start
+
+            // Protocol version FIRST — a version skew is its own reason (fail-closed).
+            for (int s = 0; s < expected; s++)
+                if (perSlotVersion[s] != TickCommandPacket.PROTOCOL_VERSION)
+                    return HaltReason.ProtocolMismatch;
+
+            // Every slot must share ONE non-zero match-agreement hash.
+            ulong first = perSlotHash[0];
+            if (first == 0UL) return HaltReason.StartStateDisagreement;
+            for (int s = 1; s < expected; s++)
+                if (perSlotHash[s] == 0UL || perSlotHash[s] != first)
+                    return HaltReason.StartStateDisagreement;
+
+            return null; // all versions match + all hashes equal non-zero → start allowed
+        }
     }
 }

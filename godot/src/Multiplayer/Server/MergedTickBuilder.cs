@@ -55,6 +55,14 @@ namespace ProjectChimera.Multiplayer.Server
         // is monotonic (reliable, in-order transport ⇒ ticks fan in ascending), so this is a true high-water.
         private long _resolvedThrough = -1;
 
+        /// <summary>
+        /// Story 9.4 — the emitted high-water: the highest tick for which a merged packet has been broadcast
+        /// (−1 = none yet). Because emission requires ALL <see cref="Expected"/> players to have submitted that
+        /// tick, this is the "confirmed on all clients through" signal the <see cref="DelayController"/> uses to
+        /// gate directive pipelining (a delay change scheduled at/before this tick has been applied by every client).
+        /// </summary>
+        public long EmittedThrough => _resolvedThrough;
+
         // Decode + assembly scratch (single-threaded server; reused across ticks — no per-submit allocation).
         private readonly UnitOrder[] _decodeBuf = new UnitOrder[TickCommandPacket.MAX_ORDERS];
         private readonly Faction[]   _sortFaction = new Faction[MergedTickPacket.MERGED_MAX_SUBBUNDLES];

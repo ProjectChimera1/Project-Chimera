@@ -127,6 +127,20 @@ namespace ProjectChimera.Multiplayer
         // ── Public state ──────────────────────────────────────────────────────
 
         public bool IsOnline   { get; private set; }
+
+        /// <summary>
+        /// Story 9.4 — server-dictated delay mode. Set by the dedicated-server join wiring
+        /// (<c>MatchLifecycleController.OnMatchStart</c>). When true this client is a pure delay FOLLOWER: it never
+        /// sends its own RTT <see cref="SendPing"/> and never proposes/schedules its own change
+        /// (<see cref="MaybeProposeDelayChange"/>) — a per-client unilateral change would make two clients pick
+        /// DIFFERENT delays (and disagree on which buffer slot a command lands in) → desync. The ONLY delay
+        /// mutation in server mode is a server <see cref="PacketType.DelayDirective"/>, which every client
+        /// re-clamps identically and commits at the same <c>applyAtTick</c> via the existing
+        /// <see cref="CommitDelayChange"/> machinery. In P2P mode (LobbyUi host) this stays false and the
+        /// <see cref="PacketType.DelayProposal"/> negotiation remains the 2-player behavior.
+        /// </summary>
+        public bool ServerDictatedDelay { get; set; }
+
         /// <summary>True while waiting for the remote peer's commands for the current exec tick.</summary>
         public bool IsStalling { get; private set; }
         /// <summary>True when observing a match without participating.</summary>
@@ -368,7 +382,10 @@ namespace ProjectChimera.Multiplayer
                 CommitDelayChange(currentTick, _pendingNewDelay);
 
             // ── Periodic RTT ping ─────────────────────────────────────────────
-            if (currentTick - _lastPingSentTick >= PING_INTERVAL_TICKS)
+            // Story 9.4: in server-dictated mode the SERVER measures RTT (it pings us and we echo Pong); this
+            // client must NOT run its own ping→propose loop — two clients each scheduling a change from their own
+            // RTT would pick different delays and desync. The delay only ever mutates via a DelayDirective.
+            if (!ServerDictatedDelay && currentTick - _lastPingSentTick >= PING_INTERVAL_TICKS)
                 SendPing(currentTick);
 
             uint issueTick = currentTick + (uint)_currentDelay;
@@ -544,7 +561,50 @@ namespace ProjectChimera.Multiplayer
                 case PacketType.DelayProposal:
                     HandleDelayProposal(data, len);
                     break;
+
+                case PacketType.DelayDirective:
+                    // Story 9.4: the authoritative server-dictated delay change. Every client re-clamps the delay
+                    // to [MIN_DELAY, MAX_DELAY] identically, schedules it at the server's applyAtTick via the
+                    // existing pending-change machinery, and ACKs the CLAMPED value.
+                    HandleDelayDirective(data, len);
+                    break;
             }
+        }
+
+        /// <summary>
+        /// Story 9.4 — apply a server <see cref="PacketType.DelayDirective"/>. Re-clamps the untrusted delay byte
+        /// to [MIN_DELAY, MAX_DELAY] (<see cref="DelayMath.ClampDelay"/> — so an out-of-range/forged value can
+        /// never push the applied delay past BUFFER_SIZE and corrupt the ring), schedules the change at the
+        /// server-supplied <paramref name="applyAtTick"/> via the EXISTING <see cref="CommitDelayChange"/> pending
+        /// machinery (reusing its empty-gap pre-seed verbatim), and replies with a <see cref="PacketType.DelayAck"/>
+        /// echoing the clamped delay. Because every client clamps the same directive identically and commits at the
+        /// same tick, all clients pick the same delay at the same tick (the determinism invariant).
+        /// </summary>
+        private void HandleDelayDirective(byte[] data, int len)
+        {
+            // PATCH 4: only a live server-dictated PLAYER acts on a directive. A spectator receives the broadcast
+            // too (BroadcastCommands reaches spectators), but its Flush never applies pending delay changes — so it
+            // would strand _pendingDelayChange and emit a spurious ACK. A P2P client (!ServerDictatedDelay) uses the
+            // DelayProposal path, never a directive. Mirror the guard in MaybeProposeDelayChange.
+            if (IsSpectator || !ServerDictatedDelay) return;
+
+            if (!TickCommandPacket.TryReadDelayDirective(data, len, out byte rawDelay, out uint applyAtTick)) return;
+
+            // PATCH 1b: never OVERWRITE a still-pending, not-yet-applied delay change. With the server-side maturity
+            // gate (DelayController) a new directive is only issued after the prior one has matured on ALL clients —
+            // so _pendingDelayChange is already false when a legitimate next directive arrives. Dropping A for B on a
+            // slow client would leave two clients holding different delays for a window → desync; ignore defensively
+            // (a superseding directive is re-issued once the prior matures).
+            if (_pendingDelayChange) return;
+
+            // PATCH 3: the receipt re-clamp (the headline hardening) is decided by the Godot-free DelayMath helper —
+            // an out-of-range/forged byte can never push the applied delay OR the ACK echo past BUFFER_SIZE.
+            var (appliedDelay, ackEcho) = DelayMath.ResolveDirectiveReceipt(rawDelay);
+            _pendingDelayChange = true;
+            _pendingNewDelay    = appliedDelay;
+            _pendingApplyTick   = applyAtTick;
+
+            _transport.SendReliable(TickCommandPacket.MakeDelayAck((byte)ackEcho, applyAtTick));
         }
 
         /// <summary>
@@ -602,6 +662,7 @@ namespace ProjectChimera.Multiplayer
         private void MaybeProposeDelayChange()
         {
             if (!IsOnline || IsSpectator) return;
+            if (ServerDictatedDelay) return; // Story 9.4: only a server DelayDirective may change the delay in server mode
             if (_pendingDelayChange) return; // already negotiating
 
             int target = ComputeTargetDelay();

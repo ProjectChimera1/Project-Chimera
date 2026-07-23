@@ -5,9 +5,10 @@ using Xunit;
 namespace ProjectChimera.Sim.Tests.Validation
 {
     /// <summary>
-    /// Story 7.7 — the pure lobby start-handshake decision (<see cref="HandshakeGate"/>): a scenario wire hash of
-    /// 0 ("not computed") BLOCKS the start on EITHER side (inverting the old fail-open skip), a nonzero mismatch
-    /// blocks with the established map-mismatch message, and only equal nonzero hashes allow. The I/O-matrix
+    /// Story 7.7 / 9.4 — the pure lobby start-handshake decision (<see cref="HandshakeGate"/>): a 64-bit
+    /// match-agreement hash of 0 ("not computed") BLOCKS the start on EITHER side (fail-closed), a nonzero mismatch
+    /// blocks with the established mismatch message, and only equal nonzero hashes allow. Story 9.4 widened the gate
+    /// from the 32-bit scenario hash to the 64-bit MatchAgreementHash (formatted X16). The I/O-matrix
     /// lobby-handshake row, pinned Godot-free.
     /// </summary>
     public class HandshakeGateTests
@@ -35,19 +36,28 @@ namespace ProjectChimera.Sim.Tests.Validation
         }
 
         [Fact]
-        public void NonzeroMismatch_Blocks_WithTheMapMismatchMessage()
+        public void NonzeroMismatch_Blocks_WithTheMismatchMessage()
         {
-            string? reason = HandshakeGate.CheckStart(0x11111111u, 0x22222222u);
+            string? reason = HandshakeGate.CheckStart(0x1111111111111111UL, 0x2222222222222222UL);
             Assert.NotNull(reason);
-            Assert.Contains("MAP MISMATCH", reason);
-            Assert.Contains("0x11111111", reason);
-            Assert.Contains("0x22222222", reason);
+            Assert.Contains("MISMATCH", reason);
+            Assert.Contains("0x1111111111111111", reason); // X16-formatted 64-bit value
+            Assert.Contains("0x2222222222222222", reason);
         }
 
         [Fact]
         public void EqualNonzero_Allows()
         {
             Assert.Null(HandshakeGate.CheckStart(0xC0FFEEu, 0xC0FFEEu));
+        }
+
+        [Fact]
+        public void EqualNonzero_FullWidth64Bit_Allows()
+        {
+            // Story 9.4: the widened gate carries the full 64-bit MatchAgreementHash (a value the old 32-bit gate
+            // could not represent). Equal high-bit-set values still allow; a one-bit difference blocks.
+            Assert.Null(HandshakeGate.CheckStart(0xDEADBEEF_CAFEF00DUL, 0xDEADBEEF_CAFEF00DUL));
+            Assert.NotNull(HandshakeGate.CheckStart(0xDEADBEEF_CAFEF00DUL, 0xDEADBEEF_CAFEF00CUL));
         }
 
         [Fact]

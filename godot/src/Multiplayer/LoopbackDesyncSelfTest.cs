@@ -20,6 +20,9 @@ namespace ProjectChimera.Multiplayer
         private const int  PORT = 49777;
         private const uint GOOD = 0xA11AA11Au;
         private const uint BAD  = 0xDEADBEEFu;
+        /// <summary>Story 9.4: a shared non-zero match-agreement hash both loopback peers send in their Ready so the
+        /// new fail-closed start-state-agreement gate accepts the smoke itself (agreeing + non-zero + versions match).</summary>
+        private const ulong AGREE = 0xC0FFEE_C0FFEEUL;
         private const int  CleanWindowTarget = 5;   // Story 1.9b: prove ≥5 clean comparison windows (≥300 ticks-equiv) before diverging
 
         private sealed class Peer
@@ -65,7 +68,7 @@ namespace ProjectChimera.Multiplayer
             if (len < 1) return;
             switch ((PacketType)data[0])
             {
-                case PacketType.Hello:       p.T.SendReliable(TickCommandPacket.MakeReady(0)); break;
+                case PacketType.Hello:       p.T.SendReliable(TickCommandPacket.MakeReady(TickCommandPacket.PROTOCOL_VERSION, AGREE)); break;
                 case PacketType.StartGame:   p.Started = true; break;
                 case PacketType.Halt:
                 case PacketType.DesyncAlert: p.Halted = true; break;
