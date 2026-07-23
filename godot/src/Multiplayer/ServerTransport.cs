@@ -149,6 +149,18 @@ namespace ProjectChimera.Multiplayer
                 if (_slots[s] != null) SendReliableTo(s, data, length, CH_COMMANDS);
         }
 
+        /// <summary>
+        /// Story 9.3 — broadcast the authoritative merged tick command packet to ALL connected peers (players AND
+        /// spectators) on <see cref="CH_COMMANDS"/>. Supersedes the split
+        /// <c>SendCommandsTo(other) + BroadcastCommandsToSpectators</c> relay: every peer now rides the identical
+        /// server-built merged stream, so players and spectators apply byte-identical bytes in one deterministic order.
+        /// </summary>
+        public void BroadcastCommands(byte[] data, int length)
+        {
+            for (int s = 0; s < MAX_SLOTS; s++)
+                if (_slots[s] != null) SendReliableTo(s, data, length, CH_COMMANDS);
+        }
+
         /// <summary>Returns true if the given slot has a connected peer.</summary>
         public bool IsSlotConnected(int slot)
             => (uint)slot < MAX_SLOTS && _slots[slot] != null;

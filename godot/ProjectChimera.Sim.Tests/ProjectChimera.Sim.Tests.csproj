@@ -147,6 +147,11 @@
          control against a reset/threading defect baked into the re-baseline. -->
     <None Remove="Golden\rebaseline-guard-story12-frozen-v20.golden.txt" />
     <EmbeddedResource Include="Golden\rebaseline-guard-story12-frozen-v20.golden.txt" />
+    <!-- Story 9.3 — the server-authoritative merged-tick N=2 FR-39 regression golden. Driven by a deterministic
+         per-tick P1+P2 UnitOrder stream through the REAL MergedTickBuilder + MergedTickApplier. NEW file; the
+         goldens above are NOT re-recorded (the rewrite touches the wire, not the sim fold — AlgoVersion unchanged). -->
+    <None Remove="Golden\golden-merged-n2.golden.txt" />
+    <EmbeddedResource Include="Golden\golden-merged-n2.golden.txt" />
   </ItemGroup>
 
   <ItemGroup>

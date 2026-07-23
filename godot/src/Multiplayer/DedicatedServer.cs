@@ -39,15 +39,33 @@ namespace ProjectChimera.Multiplayer
         public const int DEFAULT_PORT = 7777;
 
         // ── Faction → slot mapping ────────────────────────────────────────────────
-        // Slot 0 = Player1, Slot 1 = Player2 (first come first served).
+        // Slot s → Player(s+1) (first come first served). N-shaped: derived from FactionRegistry.ToFaction so the
+        // mapping grows automatically if ServerTransport.MAX_PLAYERS is ever raised (Story 9.7/9.15) — never a
+        // hardcoded { Player1, Player2 } literal.
 
-        private static readonly Faction[] SLOT_FACTION = { Faction.Player1, Faction.Player2 };
+        private static readonly Faction[] SLOT_FACTION = BuildSlotFactions();
+
+        private static Faction[] BuildSlotFactions()
+        {
+            var a = new Faction[ServerTransport.MAX_PLAYERS];
+            for (int i = 0; i < a.Length; i++) a[i] = FactionRegistry.ToFaction(i);
+            return a;
+        }
+
+        /// <summary>The player count this match expects before it may start (and the merged fan-in width). The
+        /// relay ships N≤2; enabling &gt;2 live players is Story 9.7/9.15, but the count machine + builder are
+        /// N-shaped so that is a constant bump, not a rearchitecture.</summary>
+        private static int ExpectedPlayers => ServerTransport.MAX_PLAYERS;
 
         // ── State ─────────────────────────────────────────────────────────────────
 
         private ServerTransport _transport = null!;
         private State           _state     = State.Waiting;
         private readonly bool[] _ready     = new bool[ServerTransport.MAX_SLOTS];
+
+        /// <summary>Story 9.3: the authoritative per-tick merged fan-in. Constructed at InGame (HandleReady) with
+        /// the connected player count. Null until the match starts.</summary>
+        private Server.MergedTickBuilder? _builder;
 
         // ── Story 1.9a: server authority ───────────────────────────────────────────
 
@@ -90,10 +108,8 @@ namespace ProjectChimera.Multiplayer
             _serverHost?.LogSummary();
         }
 
-        // Reusable buffers to avoid per-frame allocation
-        private readonly byte[] _relayBuf  = new byte[
-            TickCommandPacket.HEADER_BYTES + TickCommandPacket.MAX_ORDERS * UnitOrder.SIZE + 16];
-        private readonly UnitOrder[] _validateBuf = new UnitOrder[TickCommandPacket.MAX_ORDERS];
+        // Story 9.3: the per-tick command relay is now the MergedTickBuilder (which owns its own decode +
+        // assembly scratch), so the old per-faction relay/validate buffers are gone.
 
         // ── Init ──────────────────────────────────────────────────────────────────
 
@@ -155,13 +171,14 @@ namespace ProjectChimera.Multiplayer
 
             if (_state == State.InGame)
             {
-                // Story 1.9b: a player left mid-match (ends the 1v1) — emit the determinism verdict-so-far (once).
+                // Story 1.9b: a player left mid-match — emit the determinism verdict-so-far (once).
                 EmitSummaryOnce();
 
-                // Notify the remaining player peer.
-                int other = 1 - slot;
-                if (_transport.IsSlotConnected(other))
-                    _transport.SendReliableTo(other, TickCommandPacket.MakeHello(Faction.Neutral));
+                // Story 9.3: notify EVERY other connected player peer (N-shaped — no `1 - slot` single-opponent
+                // assumption). Slots are 0..MAX_PLAYERS-1; each surviving player is told the leaver's faction went Neutral.
+                for (int other = 0; other < ServerTransport.MAX_PLAYERS; other++)
+                    if (other != slot && _transport.IsSlotConnected(other))
+                        _transport.SendReliableTo(other, TickCommandPacket.MakeHello(Faction.Neutral));
             }
 
             int playerCount = CountConnectedPlayers();
@@ -189,7 +206,14 @@ namespace ProjectChimera.Multiplayer
 
                 case PacketType.TickCommands:
                     if (_state == State.InGame)
-                        RelayTickCommands(slot, data, len);
+                        FanInTickCommands(slot, data, len);
+                    break;
+
+                case PacketType.TickCommandsMerged:
+                    // Story 9.3: the merged tick is server-authored (server → client ONLY). A client that sends
+                    // one is spoofing the authoritative stream — hard-reject, no state change. (The builder also
+                    // rejects it in Submit; this is the explicit dispatch-level guard.)
+                    GD.PrintErr($"[Server] Rejected merged-shaped packet from slot {slot} — TickCommandsMerged is server→client only.");
                     break;
 
                 case PacketType.Checksum:
@@ -209,11 +233,21 @@ namespace ProjectChimera.Multiplayer
                 // PacketType.DesyncAlert is now SERVER-GENERATED (clients never send it) — the old relay case is gone.
 
                 case PacketType.Chat:
-                    // Broadcast chat to all connected peers (players + spectators).
-                    // No validation needed — the faction byte is decorative; the server
-                    // could overwrite it with the slot's known faction, but for friends/
-                    // family EA we trust the sender.
-                    _transport.BroadcastReliable(data[..len]);
+                    // Story 9.3 (chat-spoof fix): the client's faction byte is spoofable, so RE-STAMP it from the
+                    // sender's transport-authoritative slot before rebroadcasting (a spectator sender → Neutral).
+                    // The message text is re-encoded via MakeChat so no client-supplied faction byte survives.
+                    if (TickCommandPacket.TryReadChat(data, len, out _, out string chatMsg))
+                    {
+                        Faction stamped = Server.ServerLobbyPolicy.StampChatFaction(
+                            slot, SLOT_FACTION, ServerTransport.MAX_PLAYERS);
+                        _transport.BroadcastReliable(TickCommandPacket.MakeChat(stamped, chatMsg));
+                    }
+                    else
+                    {
+                        // Story 9.3: the old relay rebroadcast raw bytes unconditionally; the re-stamp path can only
+                        // rebroadcast a chat it can decode. Log the drop so a malformed chat is observable, not silent.
+                        GD.PrintErr($"[DedicatedServer] Dropped undecodable Chat from slot {slot} ({len} bytes).");
+                    }
                     break;
             }
         }
@@ -233,24 +267,30 @@ namespace ProjectChimera.Multiplayer
             _ready[slot] = true;
             GD.Print($"[Server] Slot {slot} is Ready.");
 
-            bool bothConnected = CountConnectedPlayers() >= ServerTransport.MAX_PLAYERS;
-            if (bothConnected && _ready[0] && _ready[1])
+            // Story 9.3: N-shaped count machine — start once `connected == expected && ready == expected` (no
+            // `_ready[0] && _ready[1]` two-slot literal). `expected` is the match's player width (MAX_PLAYERS today).
+            int connected  = CountConnectedPlayers();
+            int readyCount = CountReadyPlayers();
+            if (Server.ServerLobbyPolicy.ShouldStart(connected, readyCount, ExpectedPlayers))
             {
                 _state = State.InGame;
+
+                // Story 9.3: stand up the authoritative merged fan-in for this match — expected = the connected
+                // player count (== ExpectedPlayers at the gate). Spectators are NOT counted (they never submit).
+                _builder = new Server.MergedTickBuilder(connected, SLOT_FACTION);
 
                 // Story 1.9a (D5): stand up the server-authority core for this match. expectedPeerCount = the
                 // connected PLAYER count (spectators excluded — D6). The transport seams are wrapped in lambdas
                 // because SendReliableTo/BroadcastReliable take an optional length arg, so a method-group
                 // conversion to Action<int,byte[]> / Action<byte[]> won't bind.
-                int playerCount = CountConnectedPlayers();
-                _serverHost = new ServerHost(playerCount, Log ?? new NullLogSink(),
+                _serverHost = new ServerHost(connected, Log ?? new NullLogSink(),
                     (s, pkt) => _transport.SendReliableTo(s, pkt),
                     pkt => _transport.BroadcastReliable(pkt));
 
-                // Broadcast StartGame (tick 0) to both peers simultaneously.
+                // Broadcast StartGame (tick 0) to all peers simultaneously.
                 var startPkt = TickCommandPacket.MakeStartGame(startTick: 0);
                 _transport.BroadcastReliable(startPkt);
-                GD.Print($"[Server] Both peers ready — broadcasting StartGame. Match begins (quorum N={playerCount}).");
+                GD.Print($"[Server] All {connected} players ready — broadcasting StartGame. Match begins (quorum N={connected}).");
             }
             else
             {
@@ -258,45 +298,35 @@ namespace ProjectChimera.Multiplayer
             }
         }
 
-        // ── Command relay + validation ────────────────────────────────────────────
+        // ── Command fan-in (Story 9.3) ─────────────────────────────────────────────
 
         /// <summary>
-        /// Validate and relay a TickCommands packet from <paramref name="fromSlot"/> to the other peer.
-        /// Anti-cheat: drops any order targeting a unit that does not belong to the sender's faction.
+        /// Story 9.3: fan a player's single-faction TickCommands into the authoritative
+        /// <see cref="Server.MergedTickBuilder"/>. When the last expected player's submission completes the tick,
+        /// broadcast the ONE merged packet to ALL peers (players + spectators) on CH_COMMANDS. All the
+        /// determinism-critical work (faction re-stamp / spoof-drop / over-count-drop / merged-from-client
+        /// hard-reject / ascending sort / byte-ceiling drop) lives in the Godot-free builder — this node is a
+        /// thin adapter (transport in → builder → transport out).
         /// </summary>
-        private void RelayTickCommands(int fromSlot, byte[] data, int len)
+        private void FanInTickCommands(int fromSlot, byte[] data, int len)
         {
-            if (!TickCommandPacket.TryRead(data, len, out uint tick, out Faction claimedFaction,
-                                           _validateBuf, out int count))
+            if (_builder == null) return; // not yet InGame
+            if (_builder.Submit(fromSlot, data, len, out uint tick) &&
+                _builder.TryBuild(tick, out byte[] merged, out int mergedLen))
             {
-                GD.PrintErr($"[Server] Malformed TickCommands from slot {fromSlot} — dropping.");
-                return;
+                _transport.BroadcastCommands(merged, mergedLen);
             }
-
-            // The slot determines the real faction regardless of what the packet claims.
-            Faction expectedFaction = SLOT_FACTION[fromSlot];
-            if (claimedFaction != expectedFaction)
-            {
-                GD.PrintErr($"[Server] Faction spoof from slot {fromSlot}: " +
-                            $"claimed {claimedFaction}, expected {expectedFaction} — dropping.");
-                return;
-            }
-
-            // Relay to the other player, plus any connected spectators.
-            int other = 1 - fromSlot;
-            _transport.SendCommandsTo(other, data, len);
-            _transport.BroadcastCommandsToSpectators(data, len);
         }
 
         // ── Helpers ───────────────────────────────────────────────────────────────
 
+        // Both counting helpers + the start gate delegate to the Godot-free Server.ServerLobbyPolicy so the policy
+        // is Tier-1 unit-testable (spectators — slots >= MAX_PLAYERS — are excluded by the maxPlayers bound).
         private int CountConnectedPlayers()
-        {
-            int count = 0;
-            for (int s = 0; s < ServerTransport.MAX_PLAYERS; s++)
-                if (_transport.IsSlotConnected(s)) count++;
-            return count;
-        }
+            => Server.ServerLobbyPolicy.CountConnectedPlayers(_transport.IsSlotConnected, ServerTransport.MAX_PLAYERS);
+
+        private int CountReadyPlayers()
+            => Server.ServerLobbyPolicy.CountReadyPlayers(_transport.IsSlotConnected, s => _ready[s], ServerTransport.MAX_PLAYERS);
 
         // ── Cleanup ───────────────────────────────────────────────────────────────
 

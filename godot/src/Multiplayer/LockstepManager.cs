@@ -3,6 +3,7 @@ using System;
 using Godot;
 using ProjectChimera.Core;
 using ProjectChimera.Dsl; // Story 7.9 — EventBounds.MaxDslEventsPerTick
+using ProjectChimera.Multiplayer.Server; // Story 9.3 — MergedTickApplier (the sole client command source)
 
 namespace ProjectChimera.Multiplayer
 {
@@ -22,9 +23,13 @@ namespace ProjectChimera.Multiplayer
     ///   sides agree on the new delay and the tick at which it takes effect, ensuring
     ///   the change is deterministic and does not cause desync.
     ///
-    /// Circular command buffers:
-    ///   _localBuf[tick % BUFFER_SIZE]  — local commands keyed by execution tick
-    ///   _remoteBuf[tick % BUFFER_SIZE] — remote commands, filled on receipt
+    /// Server-authoritative merged tick (Story 9.3):
+    ///   The client still SENDS its own single-faction TickCommands for issueTick, but it APPLIES only the
+    ///   server's merged echo — one TickCommandsMerged per tick carrying every faction's sub-bundle (the local
+    ///   one re-stamped and included). It gates on a single merged-arrival ring (_mergedArrived / _mergedTickFor /
+    ///   _mergedBytes) and applies via MergedTickApplier — the SOLE command source, so every peer + spectator
+    ///   applies byte-identical bytes in the same ascending-faction order. The client no longer self-applies, and
+    ///   the two-slot p1Ready/p2Ready demux is gone.
     ///
     /// Match start bootstrap:
     ///   Ticks 0.._currentDelay-1 are pre-filled with empty command sets on both sides.
@@ -166,22 +171,20 @@ namespace ProjectChimera.Multiplayer
         // per-player MaxDslEventsPerTick cap (drop-newest). Reset alongside _pendingCount when the batch is sent.
         private int                  _pendingDslEventCount;
 
-        // ── Circular command buffers ──────────────────────────────────────────
+        // ── Send-tracking (Story 9.3) ─────────────────────────────────────────
+        // The client still SENDS its own single-faction commands for issueTick; _localSent guards one send per
+        // issueMod. There is no longer a local/remote apply buffer — the sole command source is the server's
+        // merged echo (below).
+        private readonly bool[] _localSent = new bool[BUFFER_SIZE];
 
-        private readonly UnitOrder[] _localBuf   = new UnitOrder[BUFFER_SIZE * TickCommandPacket.MAX_ORDERS];
-        private readonly int[]       _localCount  = new int[BUFFER_SIZE];
-        private readonly bool[]      _localSent   = new bool[BUFFER_SIZE];
-
-        private readonly UnitOrder[] _remoteBuf      = new UnitOrder[BUFFER_SIZE * TickCommandPacket.MAX_ORDERS];
-        private readonly int[]       _remoteCount     = new int[BUFFER_SIZE];
-        private readonly bool[]      _remoteArrived   = new bool[BUFFER_SIZE];
-        private readonly uint[]      _remoteTickFor   = new uint[BUFFER_SIZE];
-
-        // Spectator-only: P1 commands routed into _localBuf
-        private readonly bool[]      _localArrived    = new bool[BUFFER_SIZE];
-        private readonly uint[]      _localTickFor    = new uint[BUFFER_SIZE];
-
-        private readonly UnitOrder[] _tempBuf = new UnitOrder[TickCommandPacket.MAX_ORDERS];
+        // ── Merged-arrival ring (Story 9.3) ───────────────────────────────────
+        // One authoritative TickCommandsMerged per tick, keyed by tick % BUFFER_SIZE. Preallocated byte buffers
+        // (copied into on receipt) so the receive path never allocates. A seeded bootstrap-gap tick stores len 0
+        // (an empty merged → the applier is a deterministic no-op).
+        private readonly bool[]   _mergedArrived = new bool[BUFFER_SIZE];
+        private readonly uint[]   _mergedTickFor = new uint[BUFFER_SIZE];
+        private readonly byte[][] _mergedBytes;
+        private readonly int[]    _mergedLen     = new int[BUFFER_SIZE];
 
         // ── Send buffers ──────────────────────────────────────────────────────
 
@@ -194,12 +197,26 @@ namespace ProjectChimera.Multiplayer
         private uint _pendingLocalChecksum;
         private bool _localChecksumReady;
 
+        // ── Replay recording (Story 9.3) ──────────────────────────────────────
+        // The recorder is now fed from the single authoritative merged stream (all factions, ascending), via
+        // MergedTickApplier's per-sub-bundle hook. _recordTick carries the exec tick to the cached hook so no
+        // closure is allocated per tick.
+        private uint _recordTick;
+        private readonly Action<Faction, UnitOrder[], int, int> _recordHook;
+
         // ── Init ──────────────────────────────────────────────────────────────
 
         public LockstepManager(ENetTransport transport, EntityWorld world)
         {
             _transport = transport;
             _world     = world;
+
+            _mergedBytes = new byte[BUFFER_SIZE][];
+            for (int i = 0; i < BUFFER_SIZE; i++)
+                _mergedBytes[i] = new byte[MergedTickPacket.MERGED_MAX_BYTES];
+
+            _recordHook = (faction, buf, baseIdx, count) =>
+                Recorder?.RecordTick(_recordTick, faction, buf, baseIdx, count);
 
             _transport.OnPacketReceived += HandlePacket;
         }
@@ -242,18 +259,11 @@ namespace ProjectChimera.Multiplayer
             _pendingDslEventCount = 0;
             ResetAdaptiveState();
 
-            for (int i = 0; i < _currentDelay; i++)
-            {
-                int mod = i & BUFFER_MASK;
-                _localCount[mod]    = 0;
-                _localArrived[mod]  = true;
-                _localTickFor[mod]  = (uint)i;
-                _remoteCount[mod]   = 0;
-                _remoteArrived[mod] = true;
-                _remoteTickFor[mod] = (uint)i;
-            }
+            // Story 9.3: a spectator consumes the SAME server-built merged stream as the players — one merged
+            // packet per tick, not a P1/P2 demux. Seed the bootstrap-gap ticks (0.._currentDelay-1) as empty.
+            SeedInitialTicks();
 
-            GD.Print("[Lockstep] Spectating. Both faction streams routed from network.");
+            GD.Print("[Lockstep] Spectating. Consuming the server-authoritative merged tick stream.");
         }
 
         // ── Command accumulation ──────────────────────────────────────────────
@@ -332,28 +342,23 @@ namespace ProjectChimera.Multiplayer
             // stays hidden; the distinct terminal HALT overlay is shown via the OnHalt event instead (UX-DR64e).
             if (_halted) return false;
 
-            // ── Spectator path ────────────────────────────────────────────────
+            // ── Spectator path (Story 9.3) ────────────────────────────────────
+            // A spectator sends nothing; it just gates on the single merged-arrival flag and applies the merged
+            // packet (all factions, ascending) exactly like a player — one deterministic apply order for both.
             if (IsSpectator)
             {
                 int execModS = (int)(currentTick & BUFFER_MASK);
 
                 _transport.Poll();
 
-                bool p1Ready = _localArrived[execModS]  && _localTickFor[execModS]  == currentTick;
-                bool p2Ready = _remoteArrived[execModS] && _remoteTickFor[execModS] == currentTick;
-                if (!p1Ready || !p2Ready)
+                if (!(_mergedArrived[execModS] && _mergedTickFor[execModS] == currentTick))
                 {
                     IsStalling = true;
                     return false;
                 }
 
-                int p1Base = execModS * TickCommandPacket.MAX_ORDERS;
-                int p2Base = execModS * TickCommandPacket.MAX_ORDERS;
-                ApplyOrders(_localBuf,  p1Base, _localCount[execModS],  Faction.Player1);
-                ApplyOrders(_remoteBuf, p2Base, _remoteCount[execModS], Faction.Player2);
-
-                _localArrived[execModS]  = false;  _localCount[execModS]  = 0;
-                _remoteArrived[execModS] = false;  _remoteCount[execModS] = 0;
+                ApplyMerged(execModS, currentTick);
+                _mergedArrived[execModS] = false;
                 IsStalling = false;
                 return true;
             }
@@ -370,20 +375,17 @@ namespace ProjectChimera.Multiplayer
             int  issueMod  = (int)(issueTick & BUFFER_MASK);
             int  execMod   = (int)(currentTick & BUFFER_MASK);
 
-            // ── Send local commands for issueTick ─────────────────────────────
+            // ── Send local commands for issueTick (single-faction, client → server) ──
+            // The client still sends its own bundle; the server fans it in and echoes it back inside the merged
+            // packet. It is NOT self-applied here — the merged echo is the sole command source (Story 9.3).
             if (!_localSent[issueMod])
             {
                 int n = _pendingCount;
-                _localCount[issueMod] = n;
-                int base_ = issueMod * TickCommandPacket.MAX_ORDERS;
-                for (int i = 0; i < n; i++)
-                    _localBuf[base_ + i] = _pendingOrders[i];
                 _pendingCount = 0;
                 _pendingDslEventCount = 0; // Story 7.9 — the DslEvent-per-tick budget resets with the batch
 
                 int bytes = TickCommandPacket.Write(
-                    _sendBuf, issueTick, LocalFaction,
-                    _localBuf, base_, n);
+                    _sendBuf, issueTick, LocalFaction, _pendingOrders, 0, n);
                 _transport.SendCommands(_sendBuf, bytes);
                 _localSent[issueMod] = true;
             }
@@ -391,35 +393,36 @@ namespace ProjectChimera.Multiplayer
             // ── Poll transport ────────────────────────────────────────────────
             _transport.Poll();
 
-            // ── Check if execution tick is ready ──────────────────────────────
-            bool remoteReady = _remoteArrived[execMod] && _remoteTickFor[execMod] == currentTick;
-            if (!remoteReady)
+            // ── Gate on the merged packet for this exec tick ──────────────────
+            if (!(_mergedArrived[execMod] && _mergedTickFor[execMod] == currentTick))
             {
                 IsStalling = true;
                 return false;
             }
 
-            // ── Apply both peers' commands ────────────────────────────────────
-            int localBase  = execMod * TickCommandPacket.MAX_ORDERS;
-            int remoteBase = execMod * TickCommandPacket.MAX_ORDERS;
+            // ── Apply the authoritative merged tick (its SOLE command source) ──
+            ApplyMerged(execMod, currentTick);
 
-            var remoteFaction = LocalFaction == Faction.Player1 ? Faction.Player2 : Faction.Player1;
-            ApplyOrders(_localBuf,  localBase,  _localCount[execMod],  LocalFaction);
-            ApplyOrders(_remoteBuf, remoteBase, _remoteCount[execMod], remoteFaction);
-
-            if (Recorder != null)
-            {
-                Recorder.RecordTick(currentTick, LocalFaction,
-                    _localBuf, localBase, _localCount[execMod]);
-                Recorder.RecordTick(currentTick, remoteFaction,
-                    _remoteBuf, remoteBase, _remoteCount[execMod]);
-            }
-
-            _localSent[execMod]    = false;  _localCount[execMod]  = 0;
-            _remoteArrived[execMod] = false; _remoteCount[execMod] = 0;
+            _localSent[execMod]     = false;
+            _mergedArrived[execMod] = false;
 
             IsStalling = false;
             return true;
+        }
+
+        /// <summary>
+        /// Story 9.3 — apply the stored merged packet for ring slot <paramref name="mod"/> via the single
+        /// <see cref="MergedTickApplier"/> core (the same core the spectator path and the FR-39 golden use). The
+        /// per-sub-bundle recorder hook feeds the replay recorder from the one authoritative command stream. A
+        /// seeded bootstrap/gap tick (len 0) decodes to nothing → a deterministic no-op.
+        /// </summary>
+        private void ApplyMerged(int mod, uint currentTick)
+        {
+            _recordTick = currentTick;
+            MergedTickApplier.Apply(_mergedBytes[mod], _mergedLen[mod], _world,
+                OnRequestPath, OnRequestAttackMove, OnCancelPath,
+                Buildings, CombatEvents, Items, Research, DslEventSink,
+                Recorder != null ? _recordHook : null);
         }
 
         // ── Checksum exchange ─────────────────────────────────────────────────
@@ -480,8 +483,10 @@ namespace ProjectChimera.Multiplayer
 
             switch (type)
             {
-                case PacketType.TickCommands:
-                    HandleTickCommands(data, len);
+                case PacketType.TickCommandsMerged:
+                    // Story 9.3: the server-authoritative merged tick — the client's SOLE command source (its own
+                    // bundle round-trips through the server and comes back re-stamped inside this packet).
+                    HandleMergedTick(data, len);
                     break;
 
                 case PacketType.Checksum:
@@ -542,38 +547,22 @@ namespace ProjectChimera.Multiplayer
             }
         }
 
-        private void HandleTickCommands(byte[] data, int len)
+        /// <summary>
+        /// Story 9.3 — receive the server-authoritative merged tick. Keyed by its own tick into the merged-arrival
+        /// ring; the raw bytes are copied into the preallocated ring buffer (no per-packet allocation) and applied
+        /// later in <see cref="Flush"/> when the sim reaches that tick. Identical handling for players and
+        /// spectators — the merged packet is the sole command source for both.
+        /// </summary>
+        private void HandleMergedTick(byte[] data, int len)
         {
-            if (!TickCommandPacket.TryRead(data, len, out uint tick, out Faction cmdFaction,
-                                           _tempBuf, out int count)) return;
+            if (!MergedTickPacket.TryPeekTick(data, len, out uint tick)) return;
+            if (len > MergedTickPacket.MERGED_MAX_BYTES) return; // over-ceiling → drop (defensive; the codec also rejects)
 
-            int mod   = (int)(tick & BUFFER_MASK);
-            int base_ = mod * TickCommandPacket.MAX_ORDERS;
-
-            if (IsSpectator)
-            {
-                if (cmdFaction == Faction.Player1)
-                {
-                    _localCount[mod] = count;
-                    for (int i = 0; i < count; i++) _localBuf[base_ + i] = _tempBuf[i];
-                    _localArrived[mod] = true;
-                    _localTickFor[mod] = tick;
-                }
-                else
-                {
-                    _remoteCount[mod] = count;
-                    for (int i = 0; i < count; i++) _remoteBuf[base_ + i] = _tempBuf[i];
-                    _remoteArrived[mod] = true;
-                    _remoteTickFor[mod] = tick;
-                }
-            }
-            else
-            {
-                _remoteCount[mod] = count;
-                for (int i = 0; i < count; i++) _remoteBuf[base_ + i] = _tempBuf[i];
-                _remoteArrived[mod] = true;
-                _remoteTickFor[mod] = tick;
-            }
+            int mod = (int)(tick & BUFFER_MASK);
+            Array.Copy(data, _mergedBytes[mod], len);
+            _mergedLen[mod]     = len;
+            _mergedArrived[mod] = true;
+            _mergedTickFor[mod] = tick;
         }
 
         // ── RTT measurement ───────────────────────────────────────────────────
@@ -691,11 +680,13 @@ namespace ProjectChimera.Multiplayer
                      gap <= currentTick + (uint)newDelay; gap++)
                 {
                     int mod = (int)(gap & BUFFER_MASK);
-                    _localCount[mod]    = 0;
+                    // Both peers pre-seed the gap as empty and do NOT send for it; the server therefore never
+                    // emits a merged packet for these ticks, so the client self-seeds an empty merged (len 0 →
+                    // the applier no-ops) exactly as it does for the bootstrap-gap ticks (Story 9.3).
                     _localSent[mod]     = true;   // "sent" — both peers treat as empty
-                    _remoteCount[mod]   = 0;
-                    _remoteArrived[mod] = true;   // "received" — both peers treat as empty
-                    _remoteTickFor[mod] = gap;
+                    _mergedArrived[mod] = true;   // "received" — empty merged
+                    _mergedTickFor[mod] = gap;
+                    _mergedLen[mod]     = 0;
                 }
             }
 
@@ -718,28 +709,17 @@ namespace ProjectChimera.Multiplayer
 
         private void SeedInitialTicks()
         {
+            // Story 9.3: the first REAL merged packet the server can emit is for tick == _currentDelay (the first
+            // issueTick both clients send). Ticks 0.._currentDelay-1 therefore have no merged packet and are
+            // pre-seeded empty (len 0 → the applier no-ops) so the sim can advance through the bootstrap gap.
             for (int i = 0; i < _currentDelay; i++)
             {
                 int mod = i & BUFFER_MASK;
-                _localCount[mod]    = 0;
                 _localSent[mod]     = true;
-                _remoteCount[mod]   = 0;
-                _remoteArrived[mod] = true;
-                _remoteTickFor[mod] = (uint)i;
+                _mergedArrived[mod] = true;
+                _mergedTickFor[mod] = (uint)i;
+                _mergedLen[mod]     = 0;
             }
-        }
-
-        // ── Apply orders to EntityWorld ───────────────────────────────────────
-
-        private void ApplyOrders(UnitOrder[] buf, int baseIdx, int count, Faction expectedFaction)
-        {
-            // Story 1.12: the per-order command→world step is the SHARED OrderApplier.Apply (in NetworkCommand.cs),
-            // used VERBATIM by both this live path and ReplayPlayer.ApplyOrders — so the two can never diverge
-            // (AR-17; the epic's #1 replay-vs-live desync trap is now structurally impossible). The path-request
-            // delegates are this manager's presentation hooks (wired by MainScene; null in headless/tests).
-            for (int i = 0; i < count; i++)
-                OrderApplier.Apply(_world, in buf[baseIdx + i], expectedFaction,
-                    OnRequestPath, OnRequestAttackMove, OnCancelPath, Buildings, CombatEvents, Items, Research, DslEventSink);
         }
     }
 }

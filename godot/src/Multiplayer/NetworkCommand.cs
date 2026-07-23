@@ -20,6 +20,15 @@ namespace ProjectChimera.Multiplayer
         StartGame    = 0x03,
         /// <summary>Per-tick command bundle (UnitCommand orders for this tick).</summary>
         TickCommands = 0x10,
+        /// <summary>
+        /// Story 9.3: server → client ONLY. The authoritative merged tick — one packet per tick fanned in
+        /// from every player's single-faction <see cref="TickCommands"/>, with faction re-stamped from the
+        /// transport-authoritative slot and sub-bundles sorted ascending by faction id (ascending wire order
+        /// IS the canonical apply order). Every peer + spectator applies these byte-identical bytes in the same
+        /// order — the FR-39 determinism invariant that scales to N players. Wire layout: see
+        /// <see cref="MergedTickPacket"/>. A packet of this type received FROM a client is hard-rejected.
+        /// </summary>
+        TickCommandsMerged = 0x14,
         /// <summary>World-state checksum for desync detection.</summary>
         Checksum     = 0x11,
         /// <summary>
@@ -823,6 +832,160 @@ namespace ProjectChimera.Multiplayer
         private static uint ReadUint(byte[] buf, ref int pos)
         {
             uint v = (uint)(buf[pos] | (buf[pos + 1] << 8) | (buf[pos + 2] << 16) | (buf[pos + 3] << 24));
+            pos += 4;
+            return v;
+        }
+    }
+
+    // ── MergedTickPacket ────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Story 9.3 — the server-authoritative merged tick codec (server → client ONLY). Co-located with the
+    /// <see cref="UnitOrder"/> / DSL-order layout it wraps so the sub-bundle body reuses the identical 11-byte
+    /// order encoding as <see cref="TickCommandPacket"/>.
+    ///
+    /// Wire layout:  type(1) + tick(4 LE) + subBundleCount(1) + [ faction(1) + orderCount(1) + orders(orderCount*11) ]…
+    /// Sub-bundles are written ASCENDING by faction id at build time, so wire order IS the canonical intra-tick
+    /// apply order (unit orders in wire order, DSL-event orders included in their sent position, per faction).
+    ///
+    /// Ceilings are DROP-NOT-CLAMP (the <c>AppendOrder</c> / read-side-reject precedent, never the silent
+    /// write-side clamp): <see cref="TryRead"/> returns <c>false</c> — never truncates — on ANY breach of
+    /// <see cref="MERGED_MAX_SUBBUNDLES"/>, <see cref="TickCommandPacket.MAX_ORDERS"/> per sub-bundle, or
+    /// <see cref="MERGED_MAX_BYTES"/>. A merged-shaped packet is server-authored only; the builder that produces
+    /// it (<c>MergedTickBuilder</c>) hard-rejects one submitted by a client.
+    /// </summary>
+    public static class MergedTickPacket
+    {
+        /// <summary>type(1) + tick(4) + subBundleCount(1).</summary>
+        public const int HEADER_BYTES = 6;
+
+        /// <summary>faction(1) + orderCount(1) prefixing each sub-bundle's orders.</summary>
+        public const int SUBBUNDLE_HEADER_BYTES = 2;
+
+        /// <summary>
+        /// Max sub-bundles (one per active player). Sized to <see cref="FactionRegistry.PLAYER_COUNT"/> (8) so the
+        /// merged packet is N-shaped from day one — enabling &gt;2 live players is Story 9.7/9.15, but the wire
+        /// never has to grow. Enforced drop-not-clamp on both build and read.
+        /// </summary>
+        public const int MERGED_MAX_SUBBUNDLES = FactionRegistry.PLAYER_COUNT;
+
+        /// <summary>
+        /// Absolute byte ceiling: the worst case of <see cref="MERGED_MAX_SUBBUNDLES"/> full
+        /// (<see cref="TickCommandPacket.MAX_ORDERS"/>-order) sub-bundles. In normal N≤8 play this is never the
+        /// binding constraint (the sub-bundle count + per-bundle order cap already bound the total); it is the
+        /// deterministic safety valve so a pathological assembly drops the overflowing sub-bundle rather than
+        /// producing an over-length packet.
+        /// </summary>
+        public const int MERGED_MAX_BYTES =
+            HEADER_BYTES + MERGED_MAX_SUBBUNDLES * (SUBBUNDLE_HEADER_BYTES + TickCommandPacket.MAX_ORDERS * UnitOrder.SIZE);
+
+        /// <summary>
+        /// Serialise a pre-sorted, pre-filtered set of sub-bundles into <paramref name="buf"/>. The caller
+        /// (<c>MergedTickBuilder</c>) is responsible for supplying sub-bundles ascending by faction id and for
+        /// having already applied the drop-not-clamp ceilings; this is a straight serializer. Sub-bundle <c>b</c>'s
+        /// orders live at <paramref name="ordersFlat"/><c>[b * MAX_ORDERS + i]</c>.
+        /// </summary>
+        /// <returns>Number of bytes written.</returns>
+        public static int Write(byte[] buf, uint tick, Faction[] factions, int[] orderCounts,
+                                UnitOrder[] ordersFlat, int subBundleCount)
+        {
+            int pos = 0;
+            buf[pos++] = (byte)PacketType.TickCommandsMerged;
+            buf[pos++] = (byte)tick;
+            buf[pos++] = (byte)(tick >> 8);
+            buf[pos++] = (byte)(tick >> 16);
+            buf[pos++] = (byte)(tick >> 24);
+            buf[pos++] = (byte)subBundleCount;
+
+            for (int b = 0; b < subBundleCount; b++)
+            {
+                int count = orderCounts[b];
+                buf[pos++] = (byte)factions[b];
+                buf[pos++] = (byte)count;
+                int baseIdx = b * TickCommandPacket.MAX_ORDERS;
+                for (int i = 0; i < count; i++)
+                {
+                    var o = ordersFlat[baseIdx + i];
+                    buf[pos++] = (byte)o.UnitId;
+                    buf[pos++] = (byte)(o.UnitId >> 8);
+                    buf[pos++] = (byte)o.Command;
+                    WriteInt(buf, ref pos, o.TargetX);
+                    WriteInt(buf, ref pos, o.TargetZ);
+                }
+            }
+
+            return pos;
+        }
+
+        /// <summary>
+        /// Parse (and fully validate) a merged tick packet into the caller-owned scratch arrays. Returns
+        /// <c>false</c> — leaving <paramref name="subBundleCount"/> at 0 — on a wrong type, a truncated buffer, or
+        /// ANY ceiling breach (drop-not-clamp: an over-count sub-bundle, too many sub-bundles, or a length past
+        /// <see cref="MERGED_MAX_BYTES"/> all reject the WHOLE packet rather than truncating it).
+        /// <paramref name="outFactions"/> / <paramref name="outOrderCounts"/> must be at least
+        /// <see cref="MERGED_MAX_SUBBUNDLES"/> long; <paramref name="outOrdersFlat"/> at least
+        /// <see cref="MERGED_MAX_SUBBUNDLES"/> * <see cref="TickCommandPacket.MAX_ORDERS"/> long.
+        /// </summary>
+        public static bool TryRead(byte[] buf, int len, out uint tick, Faction[] outFactions,
+                                   int[] outOrderCounts, UnitOrder[] outOrdersFlat, out int subBundleCount)
+        {
+            tick = 0; subBundleCount = 0;
+            if (len < HEADER_BYTES) return false;
+            if (len > MERGED_MAX_BYTES) return false;                      // byte-ceiling read-side reject
+            if ((PacketType)buf[0] != PacketType.TickCommandsMerged) return false;
+
+            int pos = 1;
+            tick = (uint)(buf[pos] | (buf[pos + 1] << 8) | (buf[pos + 2] << 16) | (buf[pos + 3] << 24));
+            pos += 4;
+            int n = buf[pos++];
+            if (n > MERGED_MAX_SUBBUNDLES) return false;                   // sub-bundle-count ceiling reject
+
+            for (int b = 0; b < n; b++)
+            {
+                if (pos + SUBBUNDLE_HEADER_BYTES > len) return false;
+                var faction = (Faction)buf[pos++];
+                int count   = buf[pos++];
+                if (count > TickCommandPacket.MAX_ORDERS) return false;    // per-sub-bundle over-count reject
+                if (pos + count * UnitOrder.SIZE > len) return false;
+
+                int baseIdx = b * TickCommandPacket.MAX_ORDERS;
+                for (int i = 0; i < count; i++)
+                {
+                    ushort unitId = (ushort)(buf[pos] | (buf[pos + 1] << 8)); pos += 2;
+                    var command = (UnitCommand)buf[pos++];
+                    int tx = ReadInt(buf, ref pos);
+                    int tz = ReadInt(buf, ref pos);
+                    outOrdersFlat[baseIdx + i] = new UnitOrder(unitId, command, Fixed.FromRaw(tx), Fixed.FromRaw(tz));
+                }
+                outFactions[b]    = faction;
+                outOrderCounts[b] = count;
+            }
+
+            subBundleCount = n;
+            return true;
+        }
+
+        /// <summary>Peek only the tick field of a merged packet (for ring-buffer keying) without a full decode.</summary>
+        public static bool TryPeekTick(byte[] buf, int len, out uint tick)
+        {
+            tick = 0;
+            if (len < HEADER_BYTES) return false;
+            if ((PacketType)buf[0] != PacketType.TickCommandsMerged) return false;
+            tick = (uint)(buf[1] | (buf[2] << 8) | (buf[3] << 16) | (buf[4] << 24));
+            return true;
+        }
+
+        private static void WriteInt(byte[] buf, ref int pos, int v)
+        {
+            buf[pos++] = (byte)v;
+            buf[pos++] = (byte)(v >> 8);
+            buf[pos++] = (byte)(v >> 16);
+            buf[pos++] = (byte)(v >> 24);
+        }
+
+        private static int ReadInt(byte[] buf, ref int pos)
+        {
+            int v = buf[pos] | (buf[pos + 1] << 8) | (buf[pos + 2] << 16) | (buf[pos + 3] << 24);
             pos += 4;
             return v;
         }
