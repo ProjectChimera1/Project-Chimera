@@ -1,0 +1,163 @@
+<title>Project Chimera — Manual Verification Checklist</title>
+<style>
+  :root{
+    --ink:#1a1c20; --muted:#5b6470; --line:#d9dde3; --accent:#2f6f4f;
+    --chip:#eef3f0; --chipink:#2f6f4f; --warnbg:#fff4e5; --warnink:#8a5a00;
+    --bg:#ffffff; --card:#ffffff;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{ --ink:#e7e9ec; --muted:#9aa3ad; --line:#333941; --accent:#6fd3a0;
+      --chip:#1d2a24; --chipink:#8fe3b6; --warnbg:#2a2113; --warnink:#e3b464;
+      --bg:#14161a; --card:#171a1f; }
+  }
+  :root[data-theme="dark"]{ --ink:#e7e9ec; --muted:#9aa3ad; --line:#333941; --accent:#6fd3a0;
+      --chip:#1d2a24; --chipink:#8fe3b6; --warnbg:#2a2113; --warnink:#e3b464; --bg:#14161a; --card:#171a1f; }
+  :root[data-theme="light"]{ --ink:#1a1c20; --muted:#5b6470; --line:#d9dde3; --accent:#2f6f4f;
+      --chip:#eef3f0; --chipink:#2f6f4f; --warnbg:#fff4e5; --warnink:#8a5a00; --bg:#fff; --card:#fff; }
+
+  *{ box-sizing:border-box; }
+  body{ margin:0; background:var(--bg); color:var(--ink);
+    font:14px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; }
+  .wrap{ max-width:900px; margin:0 auto; padding:28px 24px 48px; }
+  header{ border-bottom:2px solid var(--accent); padding-bottom:12px; margin-bottom:18px; }
+  h1{ font-size:22px; margin:0 0 4px; letter-spacing:.2px; }
+  .sub{ color:var(--muted); font-size:12.5px; }
+  .legend{ display:flex; gap:14px; flex-wrap:wrap; margin-top:10px; font-size:12px; color:var(--muted); }
+  .legend b{ color:var(--ink); }
+  .grid{ display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  @media (max-width:680px){ .grid{ grid-template-columns:1fr; } }
+  .card{ background:var(--card); border:1px solid var(--line); border-radius:10px; padding:12px 14px; break-inside:avoid; }
+  .card h2{ font-size:14.5px; margin:0 0 8px; display:flex; align-items:baseline; gap:8px; }
+  .num{ color:var(--accent); font-weight:700; }
+  .chip{ font-size:10.5px; font-weight:600; color:var(--chipink); background:var(--chip);
+    border-radius:999px; padding:2px 8px; margin-left:auto; white-space:nowrap; }
+  .chip.warn{ color:var(--warnink); background:var(--warnbg); }
+  .row{ display:flex; gap:8px; align-items:flex-start; margin:6px 0; }
+  .box{ width:14px; height:14px; border:1.5px solid var(--muted); border-radius:3px; margin-top:2px; flex:0 0 auto; }
+  .k{ font-weight:600; color:var(--accent); font-size:11px; text-transform:uppercase; letter-spacing:.4px; }
+  .do{ font-size:12.8px; }
+  .chk{ font-size:12.4px; color:var(--muted); }
+  .chk b{ color:var(--ink); font-weight:600; }
+  kbd{ font:11px/1 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; background:var(--chip); color:var(--ink);
+    border:1px solid var(--line); border-bottom-width:2px; border-radius:4px; padding:2px 5px; }
+  .top{ background:var(--chip); border:1px solid var(--line); border-radius:10px; padding:10px 14px; margin-bottom:18px; font-size:12.6px; }
+  .top b{ color:var(--accent); }
+  footer{ margin-top:22px; padding-top:12px; border-top:1px solid var(--line); font-size:11.5px; color:var(--muted); }
+  @media print{
+    body{ background:#fff; color:#000; font-size:10.5px; }
+    .wrap{ padding:0; max-width:none; }
+    .card{ border-color:#bbb; }
+    .chip{ border:1px solid #bbb; }
+    header{ border-color:#000; }
+    a{ color:#000; text-decoration:none; }
+    .grid{ gap:8px; }
+  }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Project Chimera — Manual Verification Checklist</h1>
+    <div class="sub">Single machine · no second laptop required · print &amp; tick as you go</div>
+    <div class="legend">
+      <span><b>F5</b> = toggle Play / Edit</span>
+      <span><span class="chip">no key</span> works offline, no LLM</span>
+      <span><span class="chip warn">needs Ollama/key</span> local model or API key</span>
+    </div>
+  </header>
+
+  <div class="top">
+    <b>Launch:</b> open the project in Godot → press <kbd>F5</kbd> to enter Play mode (or run via MCP).
+    &nbsp;<b>AI features (9 &amp; 10):</b> <kbd>Esc</kbd> → Settings → <b>AI Provider</b> → pick <b>Ollama (local)</b>,
+    set model → <b>Test connection</b> → <b>Apply &amp; Save</b>. No API key needed with Ollama.
+  </div>
+
+  <div class="grid">
+
+    <div class="card">
+      <h2><span class="num">1.</span> AI opponent <span class="chip">no key</span></h2>
+      <div class="row"><span class="box"></span><div><span class="k">Do</span>
+        <div class="do">Load a skirmish map, <kbd>F5</kbd> to Play. Watch the red (P2) side ~2–3 min. Try <kbd>AiLevel = Hard</kbd> in Inspector.</div></div></div>
+      <div class="row"><span class="box"></span><div><span class="k">Worked?</span>
+        <div class="chk">P2 builds a Barracks &lt;20s after 100 ore → techs to Archery Range → sends attack-waves at your base. <b>HUD sim-hash keeps changing</b> (no freeze).</div></div></div>
+    </div>
+
+    <div class="card">
+      <h2><span class="num">2.</span> Worker construction <span class="chip">no key</span></h2>
+      <div class="row"><span class="box"></span><div><span class="k">Do</span>
+        <div class="do">In Play, select a worker → command card shows 4 build buttons → click <b>Barracks</b> → click a ground spot.</div></div></div>
+      <div class="row"><span class="box"></span><div><span class="k">Worked?</span>
+        <div class="chk">Ore deducts, worker walks to site, <b>green bar fills</b>, building completes, worker returns to gathering.</div></div></div>
+    </div>
+
+    <div class="card">
+      <h2><span class="num">3.</span> Combat &amp; feedback <span class="chip">no key</span></h2>
+      <div class="row"><span class="box"></span><div><span class="k">Do</span>
+        <div class="do">Move your units into an enemy group (or let a wave arrive).</div></div></div>
+      <div class="row"><span class="box"></span><div><span class="k">Worked?</span>
+        <div class="chk">Melee = instant flashes; ranged/siege = visible <b>projectiles</b>; siege hits show <b>red splash</b>; kills trigger a <b>camera shake</b>.</div></div></div>
+    </div>
+
+    <div class="card">
+      <h2><span class="num">4.</span> Fog of war + minimap <span class="chip">no key</span></h2>
+      <div class="row"><span class="box"></span><div><span class="k">Do</span>
+        <div class="do">Move a unit into unexplored ground. Then click the bottom-right minimap.</div></div></div>
+      <div class="row"><span class="box"></span><div><span class="k">Worked?</span>
+        <div class="chk">Black → dim-grey (explored) → clear (visible) as units pass; minimap mirrors fog + blue/red dots; <b>clicking pans</b> the camera.</div></div></div>
+    </div>
+
+    <div class="card">
+      <h2><span class="num">5.</span> Formations + control groups <span class="chip">no key</span></h2>
+      <div class="row"><span class="box"></span><div><span class="k">Do</span>
+        <div class="do">Box-select a mixed group → <kbd>Ctrl</kbd>+<kbd>1</kbd> to assign → move-order somewhere → press <kbd>1</kbd> to recall.</div></div></div>
+      <div class="row"><span class="box"></span><div><span class="k">Worked?</span>
+        <div class="chk">Melee/siege <b>lead the front</b>, ranged/air/workers trail; <kbd>1</kbd> re-selects the exact group.</div></div></div>
+    </div>
+
+    <div class="card">
+      <h2><span class="num">6.</span> Terrain editor + undo/redo <span class="chip">no key</span></h2>
+      <div class="row"><span class="box"></span><div><span class="k">Do</span>
+        <div class="do"><kbd>F5</kbd> to Edit → <kbd>T</kbd> brush → <kbd>1</kbd>–<kbd>4</kbd> mode → <kbd>[</kbd> <kbd>]</kbd> size → left-drag to sculpt. Then <kbd>Ctrl</kbd>+<kbd>Z</kbd> / <kbd>Ctrl</kbd>+<kbd>Y</kbd>.</div></div></div>
+      <div class="row"><span class="box"></span><div><span class="k">Worked?</span>
+        <div class="chk">Terrain deforms under the brush; <b>undo/redo steps cleanly</b> with no residue.</div></div></div>
+    </div>
+
+    <div class="card">
+      <h2><span class="num">7.</span> Win condition + score screen <span class="chip">no key</span></h2>
+      <div class="row"><span class="box"></span><div><span class="k">Do</span>
+        <div class="do">Set a win condition in the Edit-mode panel → Play → eliminate the enemy (or get eliminated).</div></div></div>
+      <div class="row"><span class="box"></span><div><span class="k">Worked?</span>
+        <div class="chk">Full-screen <b>VICTORY/DEFEAT</b> card: duration + kills / units-built / ore-mined table. <kbd>F5</kbd> → Edit clears it.</div></div></div>
+    </div>
+
+    <div class="card">
+      <h2><span class="num">8.</span> Replay (solo lockstep check) <span class="chip">no key</span></h2>
+      <div class="row"><span class="box"></span><div><span class="k">Do</span>
+        <div class="do">Play a match to the end (auto-records to <kbd>user://replays/*.chmr</kbd>). Set <kbd>ReplayPath</kbd> in Inspector to that file → run.</div></div></div>
+      <div class="row"><span class="box"></span><div><span class="k">Worked?</span>
+        <div class="chk">Match <b>replays deterministically</b> from recorded orders — exercises the same lockstep apply path as networked play, solo.</div></div></div>
+    </div>
+
+    <div class="card">
+      <h2><span class="num">9.</span> LLM triggers <span class="chip warn">needs Ollama/key</span></h2>
+      <div class="row"><span class="box"></span><div><span class="k">Do</span>
+        <div class="do">Edit → <kbd>L</kbd> panel. <b>No-key path:</b> hand-add a <kbd>match_start → add_resources</kbd> trigger to a scenario JSON, reload, Play. <b>With model:</b> type a description → Generate → Accept.</div></div></div>
+      <div class="row"><span class="box"></span><div><span class="k">Worked?</span>
+        <div class="chk">Inline: <b>ore jumps on tick 1</b>. Generated: valid JSON preview appears and Accept adds it to the list.</div></div></div>
+    </div>
+
+    <div class="card">
+      <h2><span class="num">10.</span> AI map generator <span class="chip warn">needs Ollama/key</span></h2>
+      <div class="row"><span class="box"></span><div><span class="k">Do</span>
+        <div class="do">Edit → <kbd>M</kbd> panel → type a map brief → <b>Generate ✦</b> → <b>Load (no save)</b>.</div></div></div>
+      <div class="row"><span class="box"></span><div><span class="k">Worked?</span>
+        <div class="chk">Preview shows name/bounds/counts; scene reloads into the map; validator <b>rejects</b> out-of-bounds coords, ore closer than 15u, or &gt;6 units/faction.</div></div></div>
+    </div>
+
+  </div>
+
+  <footer>
+    Project Chimera · Godot 4.6.2 / C# · manual single-machine verification. Genuine two-machine items (P2P LAN sync,
+    adaptive-delay over real RTT, dedicated-server + spectator end-to-end) are the only things this checklist can't cover.
+    Everything else is verifiable here — plus 3,169 headless tests via <kbd>dotnet test</kbd>.
+  </footer>
+</div>
