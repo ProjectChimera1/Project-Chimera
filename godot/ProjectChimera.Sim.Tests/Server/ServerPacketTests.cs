@@ -63,5 +63,53 @@ namespace ProjectChimera.Sim.Tests.Server
             TickCommandPacket.WriteChecksum(checksumBuf, 5u, 9u);
             Assert.False(TickCommandPacket.TryReadDesyncAlert(checksumBuf, checksumBuf.Length, out _, out _));
         }
+
+        // ── Story 9.6: DropDirective / DropAck (type + faction + applyAtTick = 6 bytes) ──────────────────────
+
+        [Theory]
+        [InlineData((byte)0, 0u)]
+        [InlineData((byte)2, 12345u)]
+        [InlineData((byte)8, 4294967295u)]
+        public void DropDirective_RoundTrips(byte faction, uint applyAtTick)
+        {
+            byte[] b = TickCommandPacket.MakeDropDirective(faction, applyAtTick);
+            Assert.Equal(6, b.Length);
+            Assert.Equal((byte)PacketType.DropDirective, b[0]);
+
+            Assert.True(TickCommandPacket.TryReadDropDirective(b, b.Length, out byte f, out uint t));
+            Assert.Equal(faction, f);
+            Assert.Equal(applyAtTick, t);
+        }
+
+        [Theory]
+        [InlineData((byte)1, 0u)]
+        [InlineData((byte)3, 99u)]
+        [InlineData((byte)7, 4294967295u)]
+        public void DropAck_RoundTrips(byte faction, uint applyAtTick)
+        {
+            byte[] b = TickCommandPacket.MakeDropAck(faction, applyAtTick);
+            Assert.Equal(6, b.Length);
+            Assert.Equal((byte)PacketType.DropAck, b[0]);
+
+            Assert.True(TickCommandPacket.TryReadDropAck(b, b.Length, out byte f, out uint t));
+            Assert.Equal(faction, f);
+            Assert.Equal(applyAtTick, t);
+        }
+
+        [Fact]
+        public void Drop_TruncatedAndWrongType_ReturnFalse()
+        {
+            byte[] dir = TickCommandPacket.MakeDropDirective(2, 42u);
+            Assert.False(TickCommandPacket.TryReadDropDirective(dir, 5, out _, out _)); // len < 6
+            Assert.False(TickCommandPacket.TryReadDropAck(dir, dir.Length, out _, out _)); // DropDirective is not a DropAck
+
+            byte[] ack = TickCommandPacket.MakeDropAck(2, 42u);
+            Assert.False(TickCommandPacket.TryReadDropAck(ack, 5, out _, out _)); // len < 6
+            Assert.False(TickCommandPacket.TryReadDropDirective(ack, ack.Length, out _, out _)); // DropAck is not a DropDirective
+
+            // The 0x16/0x44 discriminators are distinct from the 0x15/0x43 delay pair (no accidental alias).
+            byte[] delayDir = TickCommandPacket.MakeDelayDirective(4, 42u);
+            Assert.False(TickCommandPacket.TryReadDropDirective(delayDir, delayDir.Length, out _, out _));
+        }
     }
 }

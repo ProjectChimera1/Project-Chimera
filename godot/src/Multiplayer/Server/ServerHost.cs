@@ -71,7 +71,17 @@ namespace ProjectChimera.Multiplayer.Server
 
             ServerChecksumCollector.Verdict v = _collector.Record(tick, slot, hash);
             if (!v.Complete) return;
+            ProcessVerdict(tick, v);
+        }
 
+        /// <summary>
+        /// Turn ONE completed collector verdict into wire actions + the Story-1.9b observability counters. Extracted
+        /// from <see cref="OnChecksum"/> (Story 9.6) so the disconnect-driven re-tally path (<see cref="DropReporter"/>)
+        /// routes its now-complete windows through the SAME clean/alert/HALT logic — keeping
+        /// <see cref="WindowsCompared"/>/<see cref="DesyncCount"/>/<see cref="Passing"/> alive over the reduced quorum.
+        /// </summary>
+        private void ProcessVerdict(uint tick, ServerChecksumCollector.Verdict v)
+        {
             // Story 1.9b review: every completed comparison window counts toward the total the MATCH SUMMARY reports
             // (clean + diverged); DesyncCount tracks the diverged subset (clean = WindowsCompared − DesyncCount).
             WindowsCompared++;
@@ -98,6 +108,28 @@ namespace ProjectChimera.Multiplayer.Server
                 _broadcastReliable(TickCommandPacket.MakeHalt(tick, HaltReason.NoMajority));
                 Halted = true;
                 _log.Warn($"[Determinism] tick {tick}: GLOBAL DESYNC — no canonical hash. Broadcasting terminal HALT.");
+            }
+        }
+
+        /// <summary>
+        /// Story 9.6 — drop <paramref name="slot"/> from the checksum quorum on a mid-match disconnect. Lowers the
+        /// collector's expected-reporter count (floor 1), ignores that reporter's later stale reports, and re-tallies
+        /// any in-flight window the reduced quorum now completes — routing each through <see cref="ProcessVerdict"/>
+        /// so <see cref="WindowsCompared"/>/<see cref="Passing"/> keep advancing over the survivors (no silent quorum
+        /// freeze, no false HALT). A no-op once <see cref="Halted"/>.
+        ///
+        /// <para>When the drop floors the quorum to a single reporter (the 1v1 case), the windows that keep completing
+        /// are LIVENESS / observability — proof the lone survivor's sim is still advancing — NOT cross-peer
+        /// attestation: a lone reporter is trivially its own majority, so there is no comparison peer left to attest
+        /// agreement against. See <see cref="ServerChecksumCollector.DropExpectedReporter"/>.</para>
+        /// </summary>
+        public void DropReporter(int slot)
+        {
+            if (Halted) return;
+            foreach ((uint tick, ServerChecksumCollector.Verdict v) in _collector.DropExpectedReporter(slot))
+            {
+                if (Halted) break; // a HALT is terminal — stop routing further re-tallied windows
+                ProcessVerdict(tick, v);
             }
         }
 

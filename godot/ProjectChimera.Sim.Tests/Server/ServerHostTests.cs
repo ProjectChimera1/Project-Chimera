@@ -97,6 +97,29 @@ namespace ProjectChimera.Sim.Tests.Server
         }
 
         [Fact]
+        public void DropReporter_KeepsCompletingWindows_OverReducedQuorum()
+        {
+            // Story 9.6: N=2, slot 0 reports tick 10 (bucket pending on slot 1). Slot 1 disconnects → the reduced
+            // quorum re-tallies the in-flight window as a clean PASS, and the survivor keeps completing windows.
+            var (host, cap) = Make(2);
+            host.OnChecksum(0, 10u, 0xAAAAu); // pending — waiting on slot 1
+
+            Assert.Equal(0, host.WindowsCompared);
+            host.DropReporter(1);             // slot 1 dropped → re-tally tick 10 over the lone survivor
+
+            Assert.Equal(1, host.WindowsCompared); // the re-tallied window counted
+            Assert.True(host.Passing);
+            Assert.False(host.Halted);
+            Assert.Empty(cap.Sent);
+            Assert.Empty(cap.Broadcast);
+
+            // A further lone-survivor window still completes + PASSes (no silent quorum freeze).
+            host.OnChecksum(0, 20u, 0xBBBBu);
+            Assert.Equal(2, host.WindowsCompared);
+            Assert.True(host.Passing);
+        }
+
+        [Fact]
         public void Ctor_NullSeams_Throw()
         {
             Assert.Throws<ArgumentNullException>(() => new ServerHost(2, null!, (_, _) => { }, _ => { }));          // null log

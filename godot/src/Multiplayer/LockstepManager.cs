@@ -78,6 +78,14 @@ namespace ProjectChimera.Multiplayer
         /// <summary>Fires when a chat message arrives. Args: (senderFaction, message).</summary>
         public event Action<Faction, string>? OnChatReceived;
 
+        /// <summary>
+        /// Story 9.6 — fires when the server broadcasts a <see cref="PacketType.DropDirective"/>: a peer disconnected
+        /// mid-match and its faction's slot is being frozen (empty commands injected each tick, sim continues).
+        /// Args: (droppedFaction, applyAtTick). Presentation-only — the determinism truth is the merged stream the
+        /// server keeps broadcasting, not this event. Players ACK the directive; spectators only surface the UI.
+        /// </summary>
+        public event Action<Faction, uint>? OnPlayerDropped;
+
         // ── Replay recording ──────────────────────────────────────────────────
 
         /// <summary>
@@ -575,7 +583,33 @@ namespace ProjectChimera.Multiplayer
                     // existing pending-change machinery, and ACKs the CLAMPED value.
                     HandleDelayDirective(data, len);
                     break;
+
+                case PacketType.DropDirective:
+                    // Story 9.6: the authoritative freeze-and-continue directive — a peer dropped and its slot is
+                    // being frozen. Fire the presentation event; a player ACKs, a spectator does not.
+                    HandleDropDirective(data, len);
+                    break;
             }
+        }
+
+        /// <summary>
+        /// Story 9.6 — handle a server <see cref="PacketType.DropDirective"/>. Fires <see cref="OnPlayerDropped"/>
+        /// for the UI (players AND spectators), then — if this client is a PLAYER (not a spectator) — replies with a
+        /// <see cref="PacketType.DropAck"/> echoing the dropped faction + applyAtTick. The client does NOT seed its
+        /// merged-arrival ring: the server injects an empty command for the dropped slot every tick and keeps
+        /// broadcasting the merged stream, so <see cref="Flush"/>'s merged-arrival gate fills and unstalls normally
+        /// (unlike a delay change, which needs a local pre-seed). The network layer runs even while the sim is
+        /// stalled, so the ACK is delivered and the freeze commits server-side.
+        /// </summary>
+        private void HandleDropDirective(byte[] data, int len)
+        {
+            if (!TickCommandPacket.TryReadDropDirective(data, len, out byte faction, out uint applyAtTick)) return;
+
+            OnPlayerDropped?.Invoke((Faction)faction, applyAtTick);
+
+            // A spectator surfaces the UI but never ACKs (it owns no faction and does not vote in the quorum).
+            if (!IsSpectator)
+                _transport.SendReliable(TickCommandPacket.MakeDropAck(faction, applyAtTick));
         }
 
         /// <summary>

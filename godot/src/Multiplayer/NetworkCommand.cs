@@ -51,6 +51,15 @@ namespace ProjectChimera.Multiplayer
         /// </summary>
         DelayDirective = 0x15,
         /// <summary>
+        /// Story 9.6: server → client ONLY. A peer disconnected mid-match; the server dictates a deterministic
+        /// freeze-and-continue for that faction's slot. Carries the dropped <see cref="Core.Faction"/> and the
+        /// tick-counted <c>applyAtTick</c> (the informational "idle-from" marker) so every surviving client can
+        /// surface it in UI and ACK it. The determinism truth is the merged stream (the server injects an empty
+        /// command for the dropped slot each tick), NOT this marker. Wire: type(1) + faction(1) + applyAtTick(4 LE)
+        /// = 6 bytes. ACK-gated exactly like <see cref="DelayDirective"/>.
+        /// </summary>
+        DropDirective = 0x16,
+        /// <summary>
         /// In-game chat message.
         /// Wire format: type(1) + faction(1) + msgLen(2 LE) + msgBytes(UTF-8, max 200).
         /// Relayed by DedicatedServer to all connected peers.
@@ -72,6 +81,13 @@ namespace ProjectChimera.Multiplayer
         /// wire format as <see cref="DelayDirective"/>: type(1) + delay(1) + applyAtTick(4 LE) = 6 bytes.
         /// </summary>
         DelayAck      = 0x43,
+        /// <summary>
+        /// Story 9.6: client → server. A surviving player acknowledges a server-dictated
+        /// <see cref="DropDirective"/>, echoing the (dropped) faction + applyAtTick so the server can confirm every
+        /// survivor committed the same freeze before it begins injecting empty commands for the dropped slot. Same
+        /// wire format as <see cref="DropDirective"/>: type(1) + faction(1) + applyAtTick(4 LE) = 6 bytes.
+        /// </summary>
+        DropAck       = 0x44,
     }
 
     // ── HALT reason ───────────────────────────────────────────────────────────
@@ -892,6 +908,59 @@ namespace ProjectChimera.Multiplayer
             if (len < 6) return false;
             if ((PacketType)buf[0] != PacketType.DelayAck) return false;
             delay = buf[1];
+            int pos = 2;
+            applyAtTick = ReadUint(buf, ref pos);
+            return true;
+        }
+
+        // ── Deterministic disconnect freeze-and-continue helpers (Story 9.6) ───
+
+        /// <summary>Serialise a server→client <see cref="PacketType.DropDirective"/> (6 bytes):
+        /// type(1) + faction(1) + applyAtTick(4 LE). <paramref name="faction"/> is the DROPPED faction
+        /// (<c>SLOT_FACTION[droppedSlot]</c>); <paramref name="applyAtTick"/> is the tick-counted idle-from marker.</summary>
+        public static byte[] MakeDropDirective(byte faction, uint applyAtTick)
+        {
+            var buf = new byte[6];
+            buf[0] = (byte)PacketType.DropDirective;
+            buf[1] = faction;
+            int pos = 2;
+            WriteUint(buf, ref pos, applyAtTick);
+            return buf;
+        }
+
+        /// <summary>Parse a <see cref="PacketType.DropDirective"/> packet. Returns false if malformed.</summary>
+        public static bool TryReadDropDirective(byte[] buf, int len, out byte faction, out uint applyAtTick)
+        {
+            faction = 0; applyAtTick = 0;
+            if (len < 6) return false;
+            if ((PacketType)buf[0] != PacketType.DropDirective) return false;
+            faction = buf[1];
+            int pos = 2;
+            applyAtTick = ReadUint(buf, ref pos);
+            return true;
+        }
+
+        /// <summary>Serialise a client→server <see cref="PacketType.DropAck"/> (6 bytes):
+        /// type(1) + faction(1) + applyAtTick(4 LE). Echoes the DROPPED faction + applyAtTick the survivor is
+        /// acknowledging; the server maps the faction byte back to a slot via <c>SLOT_FACTION</c> (never trusts it
+        /// as a slot index) and treats the transport-authoritative source slot as the acking survivor.</summary>
+        public static byte[] MakeDropAck(byte faction, uint applyAtTick)
+        {
+            var buf = new byte[6];
+            buf[0] = (byte)PacketType.DropAck;
+            buf[1] = faction;
+            int pos = 2;
+            WriteUint(buf, ref pos, applyAtTick);
+            return buf;
+        }
+
+        /// <summary>Parse a <see cref="PacketType.DropAck"/> packet. Returns false if malformed.</summary>
+        public static bool TryReadDropAck(byte[] buf, int len, out byte faction, out uint applyAtTick)
+        {
+            faction = 0; applyAtTick = 0;
+            if (len < 6) return false;
+            if ((PacketType)buf[0] != PacketType.DropAck) return false;
+            faction = buf[1];
             int pos = 2;
             applyAtTick = ReadUint(buf, ref pos);
             return true;
