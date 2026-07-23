@@ -561,7 +561,7 @@ namespace ProjectChimera.Core
                             Fixed.FromFloat(hit.X), Fixed.Zero, Fixed.FromFloat(hit.Z));
                         _buildSys.QueueWorkerBuild(
                             _pendingBuildWorkerId, _pendingBuildType, pos,
-                            Faction.Player1, _resources, _world);
+                            _ctx.Lockstep?.EffectiveLocalFaction ?? Faction.Player1, _resources, _world);
                     }
                     CancelBuildPlacement();
                     GetViewport().SetInputAsHandled();
@@ -1885,6 +1885,20 @@ namespace ProjectChimera.Core
 
             // Reset spectator fog reveal + the Story 7.12 per-player defeat banner.
             if (_ctx.FogBridge != null) _ctx.FogBridge.RevealAll = false;
+            // Story 9.5 (review): reset the lockstep online-state on the way back to Edit. GoOnline/GoSpectate set
+            // IsOnline/IsSpectator (and LocalFaction) but the LockstepManager is built ONCE at bootstrap and survives
+            // every F5 Edit↔Play re-apply, and nothing else resets these flags — so without this a subsequent OFFLINE
+            // F5 playtest in the same process would see IsOnline still true and EffectiveLocalFaction still resolve to
+            // the prior match's (e.g. Player2) faction, breaking selection/command/minimap/worker-build. GoOffline is a
+            // pure flag reset (no transport teardown); a following online match re-establishes everything via GoOnline.
+            _ctx.Lockstep.GoOffline();
+            // Story 9.5: retarget the fog viewer back to Player1 (the offline reference). The fog's _faction is
+            // independent of the lockstep flags above, so it needs its own reset. OnMatchStart's SetViewer mutated
+            // _faction to the online faction and nothing else resets it on the way back to Edit, so a subsequent
+            // offline F5 would otherwise reveal the prior match's (e.g. Player2) vision. FogOfWarSystem.Reset() wipes
+            // the Grid but NOT _faction — and it runs on the later Edit→Play transition AFTER OnMatchStart's SetViewer,
+            // so this return-to-edit seam (not Reset) is the correct place to restore the default viewer.
+            _ctx.Fog.SetViewer(Faction.Player1);
             _localEliminated = false;
             if (_defeatBanner != null) _defeatBanner.Visible = false;
 

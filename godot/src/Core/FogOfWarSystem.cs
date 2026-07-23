@@ -11,7 +11,7 @@ namespace ProjectChimera.Core
     ///
     /// Each tick:
     ///   1. Demote all Visible → Explored.
-    ///   2. For each alive P1 unit, stamp a circle of radius VisionRange as Visible.
+    ///   2. For each alive unit of the viewer faction, stamp a circle of radius VisionRange as Visible.
     ///
     /// The grid is exposed as a public byte array; FogOfWarBridge uploads it to GPU.
     ///
@@ -38,13 +38,22 @@ namespace ProjectChimera.Core
         /// </summary>
         public readonly byte[] Grid = new byte[GRID_SIZE * GRID_SIZE];
 
-        /// <summary>Which faction this fog instance reveals for.</summary>
-        private readonly Faction _faction;
+        /// <summary>Which faction this fog instance reveals for. Retargetable per-client via <see cref="SetViewer"/>.</summary>
+        private Faction _faction;
 
         public FogOfWarSystem(Faction faction = Faction.Player1)
         {
             _faction = faction;
         }
+
+        /// <summary>
+        /// Story 9.5: retarget which faction this per-client fog reveals for. Called at match start
+        /// (<c>MatchLifecycleController.OnMatchStart</c>) with the server-assigned local faction so a client in slot
+        /// Player2..Player8 sees its OWN units' vision instead of Player1's. Presentation-only — the fog Grid is read
+        /// solely by the minimap/fog bridges and is NOT folded into <c>SimChecksum</c>, so a per-client differing fog
+        /// is correct RTS behaviour. Pure enum-field assignment (no float/Dictionary/Random) — stays determinism-safe.
+        /// </summary>
+        public void SetViewer(Faction faction) => _faction = faction;
 
         // ── ISimSystem ────────────────────────────────────────────────────────
 

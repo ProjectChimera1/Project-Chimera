@@ -51,6 +51,15 @@ namespace ProjectChimera.UI
         private FogOfWarSystem?     _fog;          // optional; minimap still works without it
         private RtsCameraController? _camCtrl;      // optional; click-to-pan disabled when null
 
+        // Story 9.5: the local player's faction, late-bound. Defaults to Player1 so every offline/single-player path and
+        // any un-wired instance stay byte-identical to today; MinimapPhase wires it to _ctx.Lockstep?.EffectiveLocalFaction
+        // (offline/spectator clamps to Player1) so a client assigned Player2..Player8 paints its OWN units/buildings as
+        // own (P1_COLOR) and everyone else as P2_COLOR.
+        private System.Func<Faction> _localFaction = () => Faction.Player1;
+
+        /// <summary>Story 9.5: inject the live local-faction getter (see <see cref="MinimapPhase"/>).</summary>
+        public void SetLocalFaction(System.Func<Faction> getter) => _localFaction = getter;
+
         // ── Godot nodes ───────────────────────────────────────────────────────
 
         private SubViewport  _subViewport = null!;
@@ -231,6 +240,7 @@ namespace ProjectChimera.UI
 
         internal void DrawDots(Control canvas)
         {
+            Faction me = _localFaction(); // hoist out of the per-entity loops (invariant across this draw)
             int cap = _world.HighWaterMark;
             for (int i = 0; i < cap; i++)
             {
@@ -238,7 +248,7 @@ namespace ProjectChimera.UI
                 Vector2 px = WorldToMinimap(
                     _world.Position[i].X.ToFloat(),
                     _world.Position[i].Z.ToFloat());
-                Color col = _world.FactionOf[i] == Faction.Player1 ? P1_COLOR : P2_COLOR;
+                Color col = _world.FactionOf[i] == me ? P1_COLOR : P2_COLOR;
                 canvas.DrawCircle(px, UNIT_RADIUS, col);
             }
 
@@ -248,7 +258,7 @@ namespace ProjectChimera.UI
                 Vector2 px = WorldToMinimap(
                     _buildings.Position[i].X.ToFloat(),
                     _buildings.Position[i].Z.ToFloat());
-                Color col = _buildings.FactionOf[i] == Faction.Player1 ? P1_COLOR : P2_COLOR;
+                Color col = _buildings.FactionOf[i] == me ? P1_COLOR : P2_COLOR;
                 canvas.DrawRect(
                     new Rect2(px - Vector2.One * BLDG_RADIUS, Vector2.One * BLDG_RADIUS * 2f),
                     col);

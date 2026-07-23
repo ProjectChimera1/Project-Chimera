@@ -70,6 +70,15 @@ namespace ProjectChimera.UI
         // a null sink still rejects deterministically (the reject reads the folded OrderQueueCount); only the visual is skipped.
         private CombatEventQueue?   _combatEvents  = null;
 
+        // Story 9.5: the local player's faction, late-bound. Defaults to Player1 so every offline/single-player path and
+        // any un-wired instance stay byte-identical to today; CameraPhase wires it to _ctx.Lockstep?.EffectiveLocalFaction
+        // (offline/spectator clamps to Player1) so a client assigned Player2..Player8 selects/commands/casts on its OWN
+        // units. Presentation-only — no sim fold.
+        private System.Func<Faction> _localFaction = () => Faction.Player1;
+
+        /// <summary>Story 9.5: inject the live local-faction getter (see <see cref="CameraPhase"/>).</summary>
+        public void SetLocalFaction(System.Func<Faction> getter) => _localFaction = getter;
+
         // ── Building selection ─────────────────────────────────────────────────────
 
         /// <summary>
@@ -368,7 +377,7 @@ namespace ProjectChimera.UI
                     {
                         if (RaycastGround(lmb.Position, out Vector3 fHit))
                         {
-                            int friendlyId = FindNearestUnit(fHit, PICK_RADIUS); // Player1-only = friendly
+                            int friendlyId = FindNearestUnit(fHit, PICK_RADIUS); // local-faction-only = friendly
                             if (friendlyId >= 0) IssueFollowCommand(friendlyId);
                         }
                         _awaitingFollowClick = false;
@@ -555,11 +564,12 @@ namespace ProjectChimera.UI
             Rect2 screenRect = MakeRect(_dragStart, _dragCurrent);
             ClearSelection(); // also resets ActiveGroupIndex
 
+            Faction me = _localFaction(); // hoist the local-faction read out of the per-entity loop (invariant here)
             int cap = _world.HighWaterMark;
             for (int i = 0; i < cap; i++)
             {
                 if (!_world.IsAlive(i)) continue;
-                if (_world.FactionOf[i] != Faction.Player1) continue; // only select own units
+                if (_world.FactionOf[i] != me) continue; // only select own units
 
                 var sim = _world.Position[i];
                 var world3d = new Vector3(sim.X.ToFloat(), 0.8f, sim.Z.ToFloat());
@@ -916,10 +926,10 @@ namespace ProjectChimera.UI
             // Story 2.4b review: re-validate the caster at the ISSUE seam, not just at arm time. The pending caster id
             // (ArmCastTargeting) persists across frames and is NOT pruned like _selectedList, so the armed caster can
             // die and its slot recycle to a different unit before the target-click. Refuse unless the caster is still
-            // alive AND locally owned (Player1 — the selection convention at :387/:732), so a recycled enemy slot can
+            // alive AND locally owned (the local faction — the selection convention at :387/:732), so a recycled enemy slot can
             // never be made to cast (offline this also re-seats expectedFaction to the local player, closing the
             // self-comparison hole in OrderApplier's anti-cheat guard).
-            if (!_world.IsAlive(casterId) || _world.FactionOf[casterId] != Faction.Player1) return;
+            if (!_world.IsAlive(casterId) || _world.FactionOf[casterId] != _localFaction()) return;
             // Story 2.12 (review R3): a Shift-held cast APPENDS to the order ring (queued flag on the wire byte) instead
             // of replacing — OrderApplier masks 0x80 off before the CastAbility case, and a popped cast dispatches through
             // the shared ApplyActiveOrder core. A plain (non-Shift) cast is unflagged → clears the ring + casts now.
@@ -954,7 +964,7 @@ namespace ProjectChimera.UI
             if (_lockstep?.EnqueueOrder(buildingId, UnitCommand.SetRally, tx, tz) ?? true)
             {
                 var order = new UnitOrder(buildingId, UnitCommand.SetRally, tx, tz);
-                OrderApplier.Apply(_world, in order, Faction.Player1, buildings: _buildSys);
+                OrderApplier.Apply(_world, in order, _localFaction(), buildings: _buildSys);
             }
 
             GD.Print($"[Selection] Rally point → building {buildingId} at ({hit.X:F1}, {hit.Z:F1})");
@@ -984,11 +994,12 @@ namespace ProjectChimera.UI
             int   bestId     = -1;
             float bestSqDist = radius * radius;
             int   cap        = _world.HighWaterMark;
+            Faction me       = _localFaction(); // hoist out of the per-entity loop (invariant here)
 
             for (int i = 0; i < cap; i++)
             {
                 if (!_world.IsAlive(i)) continue;
-                if (_world.FactionOf[i] != Faction.Player1) continue; // only select own units
+                if (_world.FactionOf[i] != me) continue; // only select own units
                 var pos = _world.Position[i];
                 float dx = pos.X.ToFloat() - worldHit.X;
                 float dz = pos.Z.ToFloat() - worldHit.Z;
@@ -999,20 +1010,21 @@ namespace ProjectChimera.UI
         }
 
         /// <summary>
-        /// Nearest ENEMY unit to the world hit within radius (Story 1.12). Enemy = alive and neither Player1
-        /// (the local player) nor Neutral. Mirror of <see cref="FindNearestUnit"/>, which finds Player1-only.
+        /// Nearest ENEMY unit to the world hit within radius (Story 1.12). Enemy = alive and neither the local
+        /// faction nor Neutral. Mirror of <see cref="FindNearestUnit"/>, which finds local-faction-only.
         /// </summary>
         private int FindNearestEnemyUnit(Vector3 worldHit, float radius)
         {
             int   bestId     = -1;
             float bestSqDist = radius * radius;
             int   cap        = _world.HighWaterMark;
+            Faction me       = _localFaction(); // hoist out of the per-entity loop (invariant here)
 
             for (int i = 0; i < cap; i++)
             {
                 if (!_world.IsAlive(i)) continue;
                 Faction f = _world.FactionOf[i];
-                if (f == Faction.Player1 || f == Faction.Neutral) continue; // enemy = not me, not neutral
+                if (f == me || f == Faction.Neutral) continue; // enemy = not me, not neutral
                 var pos = _world.Position[i];
                 float dx = pos.X.ToFloat() - worldHit.X;
                 float dz = pos.Z.ToFloat() - worldHit.Z;
@@ -1043,7 +1055,7 @@ namespace ProjectChimera.UI
 
         /// <summary>
         /// Nearest ENEMY building to the world hit within radius (Story 2.9a). Enemy = alive and NOT the local
-        /// player's faction (Player1). Clone of <see cref="FindNearestBuilding"/> (faction-agnostic) with a
+        /// player's faction. Clone of <see cref="FindNearestBuilding"/> (faction-agnostic) with a
         /// local-faction exclusion only — Neutral buildings stay targetable when explicitly ordered (AC2.5), so we
         /// do NOT copy <see cref="FindNearestEnemyUnit"/>'s Neutral skip.
         /// </summary>
@@ -1053,11 +1065,12 @@ namespace ProjectChimera.UI
 
             int   bestId     = -1;
             float bestSqDist = radius * radius;
+            Faction me       = _localFaction(); // hoist out of the per-entity loop (invariant here)
 
             for (int i = 0; i < _buildingStore.Count; i++)
             {
                 if (!_buildingStore.Alive[i]) continue;
-                if (_buildingStore.FactionOf[i] == Faction.Player1) continue; // exclude ONLY the local player's buildings
+                if (_buildingStore.FactionOf[i] == me) continue; // exclude ONLY the local player's buildings
                 var pos = _buildingStore.Position[i];
                 float dx = pos.X.ToFloat() - worldHit.X;
                 float dz = pos.Z.ToFloat() - worldHit.Z;

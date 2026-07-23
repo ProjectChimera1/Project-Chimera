@@ -20,6 +20,10 @@ namespace ProjectChimera.Core.Bootstrap
             var minimap = new MinimapBridge();
             _ctx.UiCanvas.AddChild(minimap);
             minimap.Initialize(_ctx.World, _ctx.Buildings, _ctx.Fog, _ctx.Cam);
+            // Story 9.5: inject the live local-faction getter so the minimap paints own-vs-enemy from the local player's
+            // view. _ctx.Lockstep is built later (phase 17); the closure defers the read to gameplay time, and the
+            // ?? Player1 guard keeps single-player byte-identical.
+            minimap.SetLocalFaction(() => _ctx.Lockstep?.EffectiveLocalFaction ?? Faction.Player1);
             _ctx.Minimap = minimap;
         }
     }

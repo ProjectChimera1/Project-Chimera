@@ -148,6 +148,13 @@ namespace ProjectChimera.Multiplayer
         /// <summary>The local player's faction (set when the match starts).</summary>
         public Faction LocalFaction { get; private set; } = Faction.Player1;
 
+        /// <summary>
+        /// Story 9.5 — the effective local faction for the presentation layer. Offline OR spectator resolves to
+        /// <see cref="Faction.Player1"/> (nothing resets <see cref="LocalFaction"/> on the way back offline, so reading
+        /// it raw would leak a stale Player2/Neutral from a prior match); an online player gets its assigned faction.
+        /// </summary>
+        public Faction EffectiveLocalFaction => LocalFactionPolicy.Effective(IsOnline, IsSpectator, LocalFaction);
+
         /// <summary>Active input-delay ticks (adapted from RTT measurements).</summary>
         public int CurrentDelay => _currentDelay;
 

@@ -116,6 +116,10 @@ namespace ProjectChimera.Core.Bootstrap
                 // Auto-start replay recording before entering lockstep.
                 StartRecording();
                 _ctx.Lockstep.GoOnline(localFaction);
+                // Story 9.5: retarget this client's fog to its server-assigned faction so its OWN units light the fog
+                // (a client in slot Player2..Player8 would otherwise reveal Player1's vision). Presentation-only — the
+                // fog Grid is not folded into SimChecksum, so a per-client differing fog is correct RTS behaviour.
+                _ctx.Fog.SetViewer(localFaction);
 
                 GD.Print($"[MainScene] Match started as {localFaction}.");
             }

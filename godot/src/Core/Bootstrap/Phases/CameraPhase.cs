@@ -50,6 +50,10 @@ namespace ProjectChimera.Core.Bootstrap
             selection.Initialize(cam, _ctx.World, _ctx.FlowFieldBridge, _ctx.Buildings, _ctx.BuildSys, _ctx.CombatEvents,
                                   _ctx.Host.Items, _ctx.Host.ItemSys); // Story 3.15 — pickup/use affordance
             selection.SetResearchStore(_ctx.Host.Research); // Story 4.11 — aggregate upgrade line on the focus unit's panel
+            // Story 9.5: inject the live local-faction getter. _ctx.Lockstep is built later (phase 17) and the assigned
+            // faction only resolves at match start (GoOnline), so the closure defers the read to gameplay time; the
+            // ?? Player1 guard covers any pre-match call and keeps single-player byte-identical.
+            selection.SetLocalFaction(() => _ctx.Lockstep?.EffectiveLocalFaction ?? Faction.Player1);
             _ctx.Selection = selection;
 
             var commandCard = new CommandCardSystem();
@@ -60,6 +64,8 @@ namespace ProjectChimera.Core.Bootstrap
             commandCard.SetShopDeps(_ctx.Host.ItemSys, _ctx.Host.Items, _ctx.Host.ItemRegistry); // Story 3.16: shop Buy + inventory grid
             commandCard.SetResearchDeps(_ctx.Host.ResearchSys, _ctx.Host.Research); // Story 4.11: research button grid
             commandCard.OnWorkerBuildRequested += _ctx.Scene.EnterBuildPlacementMode;
+            // Story 9.5: same late-bound local-faction getter as the selection system.
+            commandCard.SetLocalFaction(() => _ctx.Lockstep?.EffectiveLocalFaction ?? Faction.Player1);
             _ctx.CommandCard = commandCard;
         }
     }

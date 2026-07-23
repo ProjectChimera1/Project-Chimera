@@ -34,6 +34,15 @@ namespace ProjectChimera.UI
         private EntityWorld     _world      = null!;
         private LockstepManager? _lockstep;  // Story 2.8: null offline (apply Train now) / set online (enqueue for exec-tick)
 
+        // Story 9.5: the local player's faction, late-bound. Defaults to Player1 so every offline/single-player path and
+        // any un-wired instance stay byte-identical to today; CameraPhase wires it to _ctx.Lockstep?.EffectiveLocalFaction
+        // (offline/spectator clamps to Player1) so a client assigned Player2..Player8 acts on its OWN buildings/units/hero.
+        // Presentation-only — no sim fold.
+        private System.Func<Faction> _localFaction = () => Faction.Player1;
+
+        /// <summary>Story 9.5: inject the live local-faction getter (see <see cref="CameraPhase"/>).</summary>
+        public void SetLocalFaction(System.Func<Faction> getter) => _localFaction = getter;
+
         // ── Building card UI nodes ─────────────────────────────────────────────
 
         private Panel  _panel              = null!;
@@ -230,16 +239,20 @@ namespace ProjectChimera.UI
 
             bool buildingSelected = bId >= 0 && bId < _buildings.Count && _buildings.Alive[bId];
 
+            // Story 9.5: hoist the local-faction read once per UpdatePanels (invariant across this frame), matching
+            // SelectionSystem/MinimapBridge — one consistent read instead of three separate delegate calls below.
+            Faction me = _localFaction();
+
             // A worker is focused when no building is selected and the focused unit
-            // belongs to P1 and has a non-Inactive gather state.
+            // belongs to the local faction and has a non-Inactive gather state.
             bool workerSelected = !buildingSelected
                 && _world != null
                 && focusId >= 0
                 && _world.IsAlive(focusId)
-                && _world.FactionOf[focusId] == Faction.Player1
+                && _world.FactionOf[focusId] == me
                 && _world.GatherState[focusId] != GatherState.Inactive;
 
-            // Story 2.9b (AC1.1): a focused P1 unit with ≥1 resolved ability shows the ability card — INCLUDING a
+            // Story 2.9b (AC1.1): a focused local-faction unit with ≥1 resolved ability shows the ability card — INCLUDING a
             // worker. Decision C is reversed now that worker-cast ships: the old `&& !workerSelected` term (which
             // suppressed a worker's ability card in favour of its build card) is dropped, so a worker that is BOTH a
             // gatherer and ability-bearing shows the ability card TOGETHER WITH the worker card (stacked, not
@@ -248,7 +261,7 @@ namespace ProjectChimera.UI
                 && _world != null
                 && focusId >= 0
                 && _world.IsAlive(focusId)
-                && _world.FactionOf[focusId] == Faction.Player1
+                && _world.FactionOf[focusId] == me
                 && _world.AbilityCount[focusId] > 0;
 
             _panel.Visible        = buildingSelected;
@@ -260,14 +273,14 @@ namespace ProjectChimera.UI
                 _abilityPanel.Position = workerSelected ? _abilityPanelStackedPos : _abilityPanelNormalPos;
             _abilityPanel.Visible = abilitySelected;
 
-            // Story 3.16: a focused P1 HERO shows its inventory grid (independent of the ability card — a hero often has both).
+            // Story 3.16: a focused local-faction HERO shows its inventory grid (independent of the ability card — a hero often has both).
             bool inventorySelected = !buildingSelected
                 && _world != null
                 && _items != null
                 && _heroes != null
                 && focusId >= 0
                 && _world.IsAlive(focusId)
-                && _world.FactionOf[focusId] == Faction.Player1
+                && _world.FactionOf[focusId] == me
                 && _world.HeroIndex[focusId] != EntityWorld.HERO_NONE;
             _inventoryPanel.Visible = inventorySelected;
 
@@ -737,19 +750,19 @@ namespace ProjectChimera.UI
         /// <paramref name="bId"/> (Story 2.8, D-1). Routes through the shared lockstep seam — online it is ENQUEUED
         /// (executed at exec-tick by LockstepManager, so the ore/supply spend happens once, THERE — the picker's
         /// grey-out is only a local prediction); offline it applies immediately via the SAME OrderApplier the
-        /// replay/online paths use (structural parity). Only the LOCAL player's (Player1) own building trains,
-        /// mirroring SelectionSystem's cast/selection convention.
+        /// replay/online paths use (structural parity). Only the LOCAL player's own building trains (the local faction,
+        /// resolved late-bound via <see cref="_localFaction"/>), mirroring SelectionSystem's cast/selection convention.
         /// </summary>
         private void IssueTrainCommand(int bId, int chosenUnitIndex)
         {
             if (bId < 0 || bId >= _buildings.Count) return;
-            if (!_buildings.Alive[bId] || _buildings.FactionOf[bId] != Faction.Player1) return;
+            if (!_buildings.Alive[bId] || _buildings.FactionOf[bId] != _localFaction()) return;
             // Online: EnqueueOrder returns false (queued). Offline (_lockstep == null): the ?? true yields apply-now.
             bool applyNow = _lockstep?.EnqueueOrder(bId, UnitCommand.Train,
                                                     Fixed.FromRaw(chosenUnitIndex), Fixed.Zero) ?? true;
             if (!applyNow) return; // online: LockstepManager.Flush applies it at exec-tick (spend happens THERE, once)
             var order = new UnitOrder(bId, UnitCommand.Train, Fixed.FromRaw(chosenUnitIndex), Fixed.Zero);
-            OrderApplier.Apply(_world, in order, Faction.Player1, buildings: _buildSys);
+            OrderApplier.Apply(_world, in order, _localFaction(), buildings: _buildSys);
         }
 
         private void OnReviveSlotPressed(int slot)
@@ -765,17 +778,17 @@ namespace ProjectChimera.UI
         /// <paramref name="bId"/> (Story 3.14, D-4). Mirrors <see cref="IssueTrainCommand"/>: online it is ENQUEUED
         /// (executed at exec-tick by LockstepManager, so the level-scaled spend happens once, THERE); offline it applies
         /// immediately via the SAME OrderApplier the replay/online paths use (structural parity). Only the LOCAL player's
-        /// (Player1) own building revives its own hero.
+        /// own building (the local faction) revives its own hero.
         /// </summary>
         private void IssueReviveCommand(int bId, int heroSlot)
         {
             if (bId < 0 || bId >= _buildings.Count) return;
-            if (!_buildings.Alive[bId] || _buildings.FactionOf[bId] != Faction.Player1) return;
+            if (!_buildings.Alive[bId] || _buildings.FactionOf[bId] != _localFaction()) return;
             bool applyNow = _lockstep?.EnqueueOrder(bId, UnitCommand.ReviveHero,
                                                     Fixed.FromRaw(heroSlot), Fixed.Zero) ?? true;
             if (!applyNow) return; // online: LockstepManager.Flush applies it at exec-tick (spend happens THERE, once)
             var order = new UnitOrder(bId, UnitCommand.ReviveHero, Fixed.FromRaw(heroSlot), Fixed.Zero);
-            OrderApplier.Apply(_world, in order, Faction.Player1, buildings: _buildSys);
+            OrderApplier.Apply(_world, in order, _localFaction(), buildings: _buildSys);
         }
 
         private void OnShopSlotPressed(int slot)
@@ -787,7 +800,7 @@ namespace ProjectChimera.UI
             if (bId < 0 || bId >= _buildings.Count) return;
             Fixed radius = _buildings.ShopRadius[bId];
             if (radius <= Fixed.Zero) radius = Fixed.FromInt(6);
-            int buyer = FindNearestOwnedHero(_buildings.Position[bId], radius, Faction.Player1);
+            int buyer = FindNearestOwnedHero(_buildings.Position[bId], radius, _localFaction());
             if (buyer < 0) return; // no owned hero in range → no buyer
             IssueBuyCommand(bId, stockIndex, buyer);
         }
@@ -796,16 +809,16 @@ namespace ProjectChimera.UI
         /// entity <paramref name="heroEntity"/> (Story 3.16). Mirrors <see cref="IssueReviveCommand"/>: online ENQUEUED
         /// (spend + mint happen once at exec-tick); offline applied via the SAME OrderApplier the replay/online paths use,
         /// passing BOTH <c>buildings</c> and <c>items</c> so the offline mint fires. WIRE: TargetX = stock index (raw int),
-        /// TargetZ = buying hero entity id (raw int). Only the LOCAL player's (Player1) own shop.</summary>
+        /// TargetZ = buying hero entity id (raw int). Only the LOCAL player's own shop (the local faction).</summary>
         private void IssueBuyCommand(int bId, int stockIndex, int heroEntity)
         {
             if (bId < 0 || bId >= _buildings.Count) return;
-            if (!_buildings.Alive[bId] || _buildings.FactionOf[bId] != Faction.Player1) return;
+            if (!_buildings.Alive[bId] || _buildings.FactionOf[bId] != _localFaction()) return;
             bool applyNow = _lockstep?.EnqueueOrder(bId, UnitCommand.BuyItem,
                                                     Fixed.FromRaw(stockIndex), Fixed.FromRaw(heroEntity)) ?? true;
             if (!applyNow) return; // online: LockstepManager.Flush applies at exec-tick (spend + mint happen THERE, once)
             var order = new UnitOrder(bId, UnitCommand.BuyItem, Fixed.FromRaw(stockIndex), Fixed.FromRaw(heroEntity));
-            OrderApplier.Apply(_world, in order, Faction.Player1, buildings: _buildSys, items: _itemSys);
+            OrderApplier.Apply(_world, in order, _localFaction(), buildings: _buildSys, items: _itemSys);
         }
 
         private void OnResearchSlotPressed(int slot)
@@ -827,17 +840,17 @@ namespace ProjectChimera.UI
         /// ENQUEUED (the deterministic exec-tick spend + gate chain happens once, THERE — the picker's grey-out is
         /// only a local prediction); offline it applies immediately via the SAME OrderApplier the replay/online
         /// paths use, passing <c>research: _research</c> so the offline apply routes to
-        /// <see cref="ResearchSystem.StartResearchCommand"/>. Only the LOCAL player's (Player1) own building.
+        /// <see cref="ResearchSystem.StartResearchCommand"/>. Only the LOCAL player's own building (the local faction).
         /// </summary>
         private void IssueResearchCommand(int bId, int researchIndex)
         {
             if (bId < 0 || bId >= _buildings.Count) return;
-            if (!_buildings.Alive[bId] || _buildings.FactionOf[bId] != Faction.Player1) return;
+            if (!_buildings.Alive[bId] || _buildings.FactionOf[bId] != _localFaction()) return;
             bool applyNow = _lockstep?.EnqueueOrder(bId, UnitCommand.StartResearch,
                                                     Fixed.FromRaw(researchIndex), Fixed.Zero) ?? true;
             if (!applyNow) return; // online: LockstepManager.Flush applies it at exec-tick (spend happens THERE, once)
             var order = new UnitOrder(bId, UnitCommand.StartResearch, Fixed.FromRaw(researchIndex), Fixed.Zero);
-            OrderApplier.Apply(_world, in order, Faction.Player1, buildings: _buildSys, research: _research);
+            OrderApplier.Apply(_world, in order, _localFaction(), buildings: _buildSys, research: _research);
         }
 
         /// <summary>
@@ -848,12 +861,12 @@ namespace ProjectChimera.UI
         private void IssueCancelResearchCommand(int bId)
         {
             if (bId < 0 || bId >= _buildings.Count) return;
-            if (!_buildings.Alive[bId] || _buildings.FactionOf[bId] != Faction.Player1) return;
+            if (!_buildings.Alive[bId] || _buildings.FactionOf[bId] != _localFaction()) return;
             bool applyNow = _lockstep?.EnqueueOrder(bId, UnitCommand.CancelResearch,
                                                     Fixed.Zero, Fixed.Zero) ?? true;
             if (!applyNow) return; // online: LockstepManager.Flush applies it at exec-tick (refund happens THERE, once)
             var order = new UnitOrder(bId, UnitCommand.CancelResearch, Fixed.Zero, Fixed.Zero);
-            OrderApplier.Apply(_world, in order, Faction.Player1, buildings: _buildSys, research: _research);
+            OrderApplier.Apply(_world, in order, _localFaction(), buildings: _buildSys, research: _research);
         }
 
         // ── Inventory grid (Story 3.16) ───────────────────────────────────────
