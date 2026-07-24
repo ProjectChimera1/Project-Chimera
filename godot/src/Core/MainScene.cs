@@ -1535,16 +1535,19 @@ namespace ProjectChimera.Core
             uint  totalSec  = (uint)(elapsedMs / 1000);
             string duration = $"{totalSec / 60}:{totalSec % 60:D2}";
 
-            int p1Kills  = _matchStats.Kills(Faction.Player1);
-            int p2Kills  = _matchStats.Kills(Faction.Player2);
-            int p1Built  = _matchStats.UnitsBuilt(Faction.Player1);
-            int p2Built  = _matchStats.UnitsBuilt(Faction.Player2);
-            int p1Ore    = _matchStats.OreMined(Faction.Player1);
-            int p2Ore    = _matchStats.OreMined(Faction.Player2);
+            // Story 9.15 — render EVERY active slot (up to 8), not just P1/P2. The Godot-free GameOverSummary builder
+            // emits one row per faction with a latched verdict (WON/LOST + kills/losses/built/ore + canonical color),
+            // correct even on a non-contiguous active set.
+            GameOverSummary.GameOverRow[] rows = GameOverSummary.Build(_matchStats, _host.WinState);
 
-            // Faction colors — match building/selection palette
-            Color p1Color = new Color(0.25f, 0.55f, 1.0f);
-            Color p2Color = new Color(1.0f,  0.25f, 0.25f);
+            // The winning factions (a team victory latches WON for every ally). Drives the sub-heading phrasing.
+            var wonFactions = new System.Collections.Generic.List<GameOverSummary.GameOverRow>();
+            foreach (GameOverSummary.GameOverRow r in rows) if (r.Won) wonFactions.Add(r);
+
+            // The winner's canonical color for the sub-heading (the team representative when >1 ally won; defeat-gray on no victor).
+            Color winnerColor = winnerPlayer > 0
+                ? FactionPalette.ForFaction((Faction)winnerPlayer).ToColor()
+                : new Color(0.8f, 0.2f, 0.2f);
 
             // Clear previous children (safety guard against double-trigger)
             foreach (Node child in _ctx.GameOverOverlay.GetChildren())
@@ -1564,7 +1567,13 @@ namespace ProjectChimera.Core
             card.AddChild(vbox);
 
             // ── Heading ───────────────────────────────────────────────────────
-            bool localWin = (winnerPlayer == 1);
+            // Story 9.15 — VICTORY iff the LOCAL player's OWN faction latched WON. winnerPlayer is the team REPRESENTATIVE
+            // (lowest WON slot), NOT the local seat — keying VICTORY off it would show DEFEAT to a winning ally on a higher
+            // slot while that same player's stat row reads WON (the 2v2 contradiction). Resolve the local faction via the
+            // policy-resolved, null-guarded accessor the sibling sites use (raw LocalFaction is stale offline-after-online
+            // and NREs when Lockstep is null, since it is declared null!).
+            var localFaction = _ctx.Lockstep?.EffectiveLocalFaction ?? Faction.Player1;
+            bool localWin = _host.WinState.Verdict[(int)localFaction] == WinStateStore.VERDICT_WON;
             var heading = new Label
             {
                 Text                = localWin ? "VICTORY" : "DEFEAT",
@@ -1577,13 +1586,17 @@ namespace ProjectChimera.Core
 
             var winner = new Label
             {
-                // Review P1 — winnerPlayer 0 = "no victor" (LOST-only outcome): the DEFEAT heading above already
-                // applies (localWin is false), only this sub-line needs a no-victor phrasing.
-                Text                = winnerPlayer > 0 ? $"Player {winnerPlayer} Wins!" : "No Victor — Match Over",
+                // A TEAM win (>1 faction latched WON) is an ALLIED victory, not one player's — enumerate the WON factions
+                // so the sub-line never contradicts the multi-row table. Single winner keeps the "Player N Wins!" phrasing;
+                // winnerPlayer 0 = "no victor" (LOST-only outcome — the DEFEAT heading already applies).
+                Text                = winnerPlayer <= 0 ? "No Victor — Match Over"
+                                    : wonFactions.Count > 1
+                                        ? $"Team Victory — {string.Join(", ", wonFactions.ConvertAll(w => w.Name))} Win!"
+                                        : $"Player {winnerPlayer} Wins!",
                 HorizontalAlignment = HorizontalAlignment.Center,
             };
             winner.AddThemeFontSizeOverride("font_size", 26);
-            winner.AddThemeColorOverride("font_color", winnerPlayer == 1 ? p1Color : p2Color);
+            winner.AddThemeColorOverride("font_color", winnerColor);
             vbox.AddChild(winner);
 
             vbox.AddChild(new HSeparator());
@@ -1600,56 +1613,39 @@ namespace ProjectChimera.Core
 
             vbox.AddChild(new HSeparator());
 
-            // ── Stat table header row ─────────────────────────────────────────
-            // Helper: create a two-column stat row with a centred label and two value columns
-            void AddStatRow(string rowLabel, string p1Val, string p2Val)
+            // ── Per-player stat table (Story 9.15 — one row per active slot, up to 8) ─────────────
+            // Fixed-width column layout: Player | Result | Kills | Losses | Built | Ore. Replaces the former
+            // two-column (P1/P2-only) grid so slots 3–8 render.
+            void AddScoreRow(string c0, string c1, string c2, string c3, string c4, string c5,
+                             Color color, int fontSize)
             {
                 var row = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.Center };
                 row.AddThemeConstantOverride("separation", 0);
-
-                // Row label (left)
-                var lbl = new Label
+                void Cell(string text, float width, HorizontalAlignment align)
                 {
-                    Text                = rowLabel,
-                    HorizontalAlignment = HorizontalAlignment.Right,
-                    CustomMinimumSize   = new Vector2(160, 0),
-                };
-                lbl.AddThemeFontSizeOverride("font_size", 18);
-                lbl.AddThemeColorOverride("font_color", Colors.LightGray);
-
-                // P1 value
-                var v1 = new Label
-                {
-                    Text                = p1Val,
-                    HorizontalAlignment = HorizontalAlignment.Center,
-                    CustomMinimumSize   = new Vector2(140, 0),
-                };
-                v1.AddThemeFontSizeOverride("font_size", 20);
-                v1.AddThemeColorOverride("font_color", p1Color);
-
-                // P2 value
-                var v2 = new Label
-                {
-                    Text                = p2Val,
-                    HorizontalAlignment = HorizontalAlignment.Center,
-                    CustomMinimumSize   = new Vector2(140, 0),
-                };
-                v2.AddThemeFontSizeOverride("font_size", 20);
-                v2.AddThemeColorOverride("font_color", p2Color);
-
-                row.AddChild(lbl);
-                row.AddChild(v1);
-                row.AddChild(v2);
+                    var lbl = new Label { Text = text, HorizontalAlignment = align, CustomMinimumSize = new Vector2(width, 0) };
+                    lbl.AddThemeFontSizeOverride("font_size", fontSize);
+                    lbl.AddThemeColorOverride("font_color", color);
+                    row.AddChild(lbl);
+                }
+                Cell(c0, 120, HorizontalAlignment.Left);
+                Cell(c1, 90,  HorizontalAlignment.Center);
+                Cell(c2, 80,  HorizontalAlignment.Center);
+                Cell(c3, 80,  HorizontalAlignment.Center);
+                Cell(c4, 90,  HorizontalAlignment.Center);
+                Cell(c5, 110, HorizontalAlignment.Center);
                 vbox.AddChild(row);
             }
 
-            // Column headers
-            AddStatRow("", "Player 1", "Player 2");
-
-            // Stats
-            AddStatRow("Kills",        $"{p1Kills}",         $"{p2Kills}");
-            AddStatRow("Units Built",  $"{p1Built}",         $"{p2Built}");
-            AddStatRow("Ore Mined",    $"{p1Ore:N0}",        $"{p2Ore:N0}");
+            // Header row (light gray) + one canonical-color-tinted row per active faction.
+            AddScoreRow("Player", "Result", "Kills", "Losses", "Built", "Ore", Colors.LightGray, 16);
+            foreach (GameOverSummary.GameOverRow r in rows)
+            {
+                Color rowColor = Color.Color8(r.ColorR, r.ColorG, r.ColorB, r.ColorA);
+                AddScoreRow($"{r.ColorGlyph} {r.Name}", r.VerdictLabel,
+                            $"{r.Kills}", $"{r.Losses}", $"{r.UnitsBuilt}", $"{r.OreMined:N0}",
+                            rowColor, 18);
+            }
 
             vbox.AddChild(new HSeparator());
 
@@ -1676,9 +1672,11 @@ namespace ProjectChimera.Core
             vbox.AddChild(hint);
 
             _ctx.GameOverOverlay.Visible = true;
-            GD.Print($"[WinCondition] {(winnerPlayer > 0 ? $"Player {winnerPlayer} wins" : "Match over — no victor")} — {duration} — " +
-                     $"P1: {p1Kills}k/{p1Built}u/{p1Ore}ore  " +
-                     $"P2: {p2Kills}k/{p2Built}u/{p2Ore}ore. Press F5 to return to Edit.");
+            var summaryLine = new System.Text.StringBuilder();
+            foreach (GameOverSummary.GameOverRow r in rows)
+                summaryLine.Append($"  {r.Name}:{r.VerdictLabel} {r.Kills}k/{r.UnitsBuilt}u/{r.OreMined}ore");
+            GD.Print($"[WinCondition] {(winnerPlayer > 0 ? $"Player {winnerPlayer} wins" : "Match over — no victor")} — {duration} —" +
+                     $"{summaryLine}. Press F5 to return to Edit.");
         }
 
         /// <summary>Story 9.11 — the score-screen "Save Replay" affordance: a small rename dialog over the just-

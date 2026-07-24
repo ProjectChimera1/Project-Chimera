@@ -1,0 +1,65 @@
+{
+  "id": "quad_map_01",
+  "display_name": "Quad Standoff",
+  "terrain_ref": "",
+  "map_bounds": 120.0,
+  "suggested_players": 4,
+  "win_condition": "DestroyAllBuildings",
+
+  "player_slots": [
+    {
+      "slot": 0,
+      "faction_json": "res://resources/data/factions/alpha_faction.json",
+      "start_ore": 300.0,
+      "base_x": -50.0,
+      "base_z": -50.0
+    },
+    {
+      "slot": 1,
+      "faction_json": "res://resources/data/factions/beta_faction.json",
+      "start_ore": 300.0,
+      "base_x": 50.0,
+      "base_z": -50.0
+    },
+    {
+      "slot": 2,
+      "faction_json": "res://resources/data/factions/alpha_faction.json",
+      "start_ore": 300.0,
+      "base_x": -50.0,
+      "base_z": 50.0
+    },
+    {
+      "slot": 3,
+      "faction_json": "res://resources/data/factions/beta_faction.json",
+      "start_ore": 300.0,
+      "base_x": 50.0,
+      "base_z": 50.0
+    }
+  ],
+
+  "resource_nodes": [
+    { "x": -35.0, "z": -35.0, "supply": 500.0, "rate": 5.0, "max_gatherers": 4 },
+    { "x":  35.0, "z": -35.0, "supply": 500.0, "rate": 5.0, "max_gatherers": 4 },
+    { "x": -35.0, "z":  35.0, "supply": 500.0, "rate": 5.0, "max_gatherers": 4 },
+    { "x":  35.0, "z":  35.0, "supply": 500.0, "rate": 5.0, "max_gatherers": 4 },
+    { "x":   0.0, "z":   0.0, "supply": 900.0, "rate": 7.0, "max_gatherers": 6 }
+  ],
+
+  "buildings": [
+    { "type": "CommandCenter", "slot": 0, "x": -50.0, "z": -50.0, "pre_built": true },
+    { "type": "CommandCenter", "slot": 1, "x":  50.0, "z": -50.0, "pre_built": true },
+    { "type": "CommandCenter", "slot": 2, "x": -50.0, "z":  50.0, "pre_built": true },
+    { "type": "CommandCenter", "slot": 3, "x":  50.0, "z":  50.0, "pre_built": true }
+  ],
+
+  "units": [
+    { "unit_id": "worker",     "slot": 0, "x": -47.0, "z": -47.0 },
+    { "unit_id": "scout",      "slot": 0, "x": -43.0, "z": -47.0 },
+    { "unit_id": "forgehand",  "slot": 1, "x":  47.0, "z": -47.0 },
+    { "unit_id": "footsoldier", "slot": 1, "x":  43.0, "z": -47.0 },
+    { "unit_id": "worker",     "slot": 2, "x": -47.0, "z":  47.0 },
+    { "unit_id": "scout",      "slot": 2, "x": -43.0, "z":  47.0 },
+    { "unit_id": "forgehand",  "slot": 3, "x":  47.0, "z":  47.0 },
+    { "unit_id": "footsoldier", "slot": 3, "x":  43.0, "z":  47.0 }
+  ]
+}
