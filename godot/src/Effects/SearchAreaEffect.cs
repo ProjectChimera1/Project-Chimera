@@ -73,7 +73,7 @@ namespace ProjectChimera.Effects
             for (int r = 0; r < count; r++)
             {
                 int id = hitBuffer[r];
-                if (TargetMatcher.Matches(Filter, world, ctx.CasterId, ctx.CasterFaction, id, RequireTag))
+                if (TargetMatcher.Matches(Filter, world, ctx.CasterId, ctx.CasterFaction, id, RequireTag, ctx.Alliances))
                     hitBuffer[w++] = id;
             }
             count = w;

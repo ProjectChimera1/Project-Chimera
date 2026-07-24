@@ -714,6 +714,16 @@ namespace ProjectChimera.Multiplayer
             foreach (Node c in _slotGrid.GetChildren()) c.QueueFree();
 
             int n = PlayerCount < 2 ? 2 : (PlayerCount > FactionRegistry.PLAYER_COUNT ? FactionRegistry.PLAYER_COUNT : PlayerCount);
+
+            // Story 9.14: compute each slot's canonical TEAM id from the applied scenario's per-slot teams (the SAME
+            // AllianceSeeder mapping the sim seeds into AllianceStore), so the lobby DISPLAYS teams — the lobby never
+            // authors them. Start from the FFA default (TeamId[f]==f); ComputeTeamIds overwrites only teamed members.
+            // Null scenario (not yet loaded) ⇒ FFA, so every slot shows its own-faction glyph (byte-safe presentation).
+            ScenarioData? teamScenario = ScenarioProvider?.Invoke();
+            int[] teamIdByFaction = new int[FactionRegistry.FACTION_ARRAY_SIZE];
+            for (int f = 0; f < teamIdByFaction.Length; f++) teamIdByFaction[f] = f;
+            Core.AllianceSeeder.ComputeTeamIds(teamScenario, teamIdByFaction);
+
             for (int slot = 0; slot < n; slot++)
             {
                 var entry = FactionPalette.ForSlot(slot);
@@ -735,6 +745,21 @@ namespace ProjectChimera.Multiplayer
 
                 var nameLabel = new Label { Text = entry.Name, CustomMinimumSize = new Vector2(60, 0) };
                 row.AddChild(nameLabel);
+
+                // Story 9.14: per-slot TEAM glyph, keyed by the canonical team id (own-faction glyph when Team==0/FFA).
+                // Colorblind rule: the palette Glyph (a distinct shape) carries the team, never color alone — a "Team"
+                // label + the team-representative Name accompany it. All allies share ONE canonical id → ONE glyph.
+                int factionIdx = slot + 1;
+                int canonicalTeamId = factionIdx < teamIdByFaction.Length ? teamIdByFaction[factionIdx] : 0;
+                var teamEntry = FactionPalette.ForFaction((Core.Faction)canonicalTeamId);
+                var teamLabel = new Label
+                {
+                    Text = $"Team {teamEntry.Glyph}",
+                    CustomMinimumSize = new Vector2(64, 0),
+                    TooltipText = $"Team {teamEntry.Name}",
+                };
+                teamLabel.AddThemeColorOverride("font_color", teamEntry.ToColor());
+                row.AddChild(teamLabel);
 
                 bool occupied = _readyModel.IsOccupied(slot);
                 bool ready    = _readyModel.IsReady(slot);

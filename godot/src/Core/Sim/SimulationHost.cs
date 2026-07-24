@@ -200,7 +200,8 @@ namespace ProjectChimera.Core.Sim
             _deathFeed       = new DeathFeed();    // Story 3.13 — transient per-tick death buffer for the XP runtime
             _revivalRuntime  = new RevivalRuleRuntime(); // Story 3.14 — resolved from RevivalRule.Default until a scenario reconfigures it
             MatchStats       = new MatchStats();
-            Fog              = new FogOfWarSystem(Faction.Player1);
+            Alliances        = new AllianceStore();     // Story 7.12 — per-faction team-id mask (default FFA); folded into SimChecksum (v20). Story 9.14: built BEFORE Fog/Combat/Projectile so they can read the mask (shared vision + allied combat exclusion).
+            Fog              = new FogOfWarSystem(Faction.Player1, Alliances); // Story 9.14 — shared-team vision unions allied sight (presentation-only, unfolded)
             BuildSys         = new BuildingSystem(Buildings, Resources, factionDef1, factionDef2, MatchStats, Heroes, _revivalRuntime);
             Research         = new ResearchStore(); // Story 4.9 — mid-match-mutable; folded into SimChecksum (v14, Story 4.10)
             Vars             = new DslVarTable();     // Story 7.3 — typed/scoped variables + timers; folded into SimChecksum (v16); init from ScenarioData at apply
@@ -208,7 +209,6 @@ namespace ProjectChimera.Core.Sim
             Readback         = new DslVarReadback();  // Story 7.8 — presentation read rail (version-stamped copy of Vars); NOT folded into SimChecksum
             DslEvents        = new DslEventQueue();   // Story 7.5 — pending next-tick custom events; folded into SimChecksum (v18)
             WinState         = new WinStateStore();    // Story 7.11 — win-condition runtime state; folded into SimChecksum (v19)
-            Alliances        = new AllianceStore();     // Story 7.12 — per-faction team-id mask (default FFA); folded into SimChecksum (v20)
             TriggerEnabled   = new TriggerEnabledStore(); // Story 7.13 — per-exec trigger-enabled mask; folded into SimChecksum (v21); STABLE reference
             TriggerFireLog   = new TriggerFireLog();       // Story 7.15 — trigger-debug observation buffer (fire counts + tick-stamped ring); STABLE reference; NEVER folded
             DslSimEvents     = new DslSimEventFeed();      // Story 7.13 — transient sim-event feed (unit_damaged/unit_trained/ability_cast/hero_level); NOT folded
@@ -225,7 +225,7 @@ namespace ProjectChimera.Core.Sim
             var modSys = new ModifierSystem();
             Modifiers = new ModifierStore(World, modSys, damageTable, CombatEvents, MatchStats);
             var abilitySys = new AbilityCastSystem(registry ?? AbilityRegistry.Empty, Resources, Modifiers,
-                                                   damageTable, CombatEvents, MatchStats, _deathFeed);
+                                                   damageTable, CombatEvents, MatchStats, _deathFeed, Alliances); // Story 9.14: team-aware ability targeting
             modSys.AttachStore(Modifiers);
 
             // Story 7.3 — wire the run_effect runtime into the ScenarioDirector now that the stores exist. An
@@ -282,9 +282,9 @@ namespace ProjectChimera.Core.Sim
                 // Story 2.6: the on-hit rider needs the ability registry (index→graph) + the ModifierStore (apply leaf).
                 // Story 3.13: the DeathFeed threads a lethal hitscan's victim to the XP runtime.
                 new CombatSystem(Projectiles, CombatEvents, MatchStats, damageTable,
-                                 registry ?? AbilityRegistry.Empty, Modifiers, Buildings, _deathFeed), // [7] Buildings (2.9a): anti-building combat; DeathFeed (3.13)
+                                 registry ?? AbilityRegistry.Empty, Modifiers, Buildings, _deathFeed, Alliances), // [7] Buildings (2.9a): anti-building combat; DeathFeed (3.13); Alliances (9.14): allied acquisition/force-fire exclusion
                 new ProjectileSystem(Projectiles, CombatEvents, MatchStats, damageTable,
-                                     Buildings, _deathFeed),                              // [8] Buildings (2.9a): ranged shells; DeathFeed (3.13)
+                                     Buildings, _deathFeed, Alliances),                  // [8] Buildings (2.9a): ranged shells; DeathFeed (3.13); Alliances (9.14): allied splash exclusion
                 // ── Story 3.13 hero XP runtime. Immediately AFTER ProjectileSystem so it drains the SAME
                 //    tick's recorded deaths (combat + projectile impacts) → credits hostile heroes in range → advances
                 //    level → reconciles growth via the folded ModifierStore. Clears the feed at end-of-tick. ──

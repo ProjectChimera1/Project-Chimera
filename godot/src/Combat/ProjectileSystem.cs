@@ -30,6 +30,7 @@ namespace ProjectChimera.Combat
         private readonly DamageTable        _table;
         private readonly BuildingStore?     _buildings; // Story 2.9a (D-4) — building-target projectiles; null ⇒ no building hits
         private readonly DeathFeed?         _deaths;    // Story 3.13 — records a lethal projectile hit's victim for the XP runtime
+        private readonly AllianceStore?     _alliances; // Story 9.14 — AoE splash skips ALLIED factions; null/FFA ⇒ byte-identical
 
         // Story 7.13 — the trigger-DSL sim-event feed (unit_damaged raised at the damage site via DamageContext).
         // Wired by SimulationHost after construction; null ⇒ no raise.
@@ -38,7 +39,8 @@ namespace ProjectChimera.Combat
         public void SetDslSimEvents(DslSimEventFeed? feed) => _dslSimEvents = feed;
 
         public ProjectileSystem(ProjectileStore store, CombatEventQueue? events = null, MatchStats? stats = null,
-            DamageTable? table = null, BuildingStore? buildings = null, DeathFeed? deaths = null)
+            DamageTable? table = null, BuildingStore? buildings = null, DeathFeed? deaths = null,
+            AllianceStore? alliances = null)
         {
             _store     = store;
             _events    = events;
@@ -46,6 +48,7 @@ namespace ProjectChimera.Combat
             _table     = table ?? DamageTable.Default;
             _buildings = buildings;
             _deaths    = deaths;   // Story 3.13 (optional — XP credited only when wired)
+            _alliances = alliances; // Story 9.14 (optional — FFA/null → no allied splash exclusion, byte-identical)
         }
 
         public void Tick(EntityWorld world, Fixed dt)
@@ -167,6 +170,9 @@ namespace ProjectChimera.Combat
                 if (i == primaryTarget) continue;
                 if ((world.Flags[i] & EntityFlags.Alive) == 0) continue;
                 if (world.FactionOf[i] == owner) continue; // don't splash friendlies
+                // Story 9.14: don't splash ALLIED factions either (null/FFA ⇒ no-op; Neutral is never allied so it
+                // still takes splash — AreAllied(owner, Neutral)==false).
+                if (_alliances != null && _alliances.AreAllied(owner, world.FactionOf[i])) continue;
 
                 Fixed distSqr = FixedVec3.SqrDistance(hitPos, world.Position[i]);
                 if (distSqr > radiusSqr) continue;

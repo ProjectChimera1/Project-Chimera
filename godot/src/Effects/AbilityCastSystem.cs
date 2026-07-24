@@ -35,6 +35,9 @@ namespace ProjectChimera.Effects
         private readonly CombatEventQueue? _events;
         private readonly MatchStats? _stats;
         private readonly DeathFeed? _deaths;
+        // Story 9.14 — the sim-owned alliance mask, threaded onto every cast EffectContext so an ability's Ally/Enemy
+        // SearchArea filter is TEAM-aware. Optional: null ⇒ strict faction equality (byte-identical to pre-9.14 / FFA).
+        private readonly AllianceStore? _alliances;
 
         // Graph-running executor — NOT the ModifierStore's dedicated period executor (re-entrancy safety). Its own
         // pre-allocated work-stack; an ApplyModifier/Persistent leaf in a cast graph re-enters the STORE's executor.
@@ -56,7 +59,7 @@ namespace ProjectChimera.Effects
         /// </summary>
         public AbilityCastSystem(AbilityRegistry registry, ResourceStore resources, ModifierStore modifiers,
                                  DamageTable? damageTable = null, CombatEventQueue? events = null, MatchStats? stats = null,
-                                 DeathFeed? deaths = null)
+                                 DeathFeed? deaths = null, AllianceStore? alliances = null)
         {
             _registry    = registry;
             _resources   = resources;
@@ -65,6 +68,7 @@ namespace ProjectChimera.Effects
             _events      = events;
             _stats       = stats;
             _deaths      = deaths;
+            _alliances   = alliances; // Story 9.14 (optional — FFA/null → strict faction equality, byte-identical)
         }
 
         /// <summary>Ticks per second for the seconds→ticks cooldown conversion (the named sim rate, CHM0004-clean).</summary>
@@ -139,7 +143,8 @@ namespace ProjectChimera.Effects
                 // primaryTarget = the owner → the SearchArea centers on the owner's position; the owner's faction
                 // drives the Ally/Enemy filter. The store is MANDATORY (the aura's ApplyModifier leaf needs it).
                 var ctx = new EffectContext(world, casterId: id, primaryTargetId: id, casterFaction: world.FactionOf[id],
-                                            _damageTable, spatial: _spatial, _events, _stats, modifierStore: _modifiers, deaths: _deaths);
+                                            _damageTable, spatial: _spatial, _events, _stats, modifierStore: _modifiers, deaths: _deaths,
+                                            alliances: _alliances); // Story 9.14: team-aware aura Ally/Enemy filter
                 _executor.Run(aura.EffectGraph, in ctx);
             }
         }
@@ -160,7 +165,8 @@ namespace ProjectChimera.Effects
             if (idx < 0 || idx >= _registry.Count) return;
             AbilityDefinition passive = _registry.Get(idx);
             var ctx = new EffectContext(world, casterId: id, primaryTargetId: id, casterFaction: world.FactionOf[id],
-                                        _damageTable, spatial: null, _events, _stats, modifierStore: _modifiers, deaths: _deaths);
+                                        _damageTable, spatial: null, _events, _stats, modifierStore: _modifiers, deaths: _deaths,
+                                        alliances: _alliances); // Story 9.14: team-aware self-passive Ally/Enemy filter
             _executor.Run(passive.EffectGraph, in ctx);
         }
 
@@ -216,7 +222,8 @@ namespace ProjectChimera.Effects
             // null store (battle_fury is one).
             _spatial.Rebuild(world);
             var ctx = new EffectContext(world, casterId: id, primaryTargetId: target, casterFaction: faction,
-                                        _damageTable, spatial: _spatial, _events, _stats, modifierStore: _modifiers, deaths: _deaths);
+                                        _damageTable, spatial: _spatial, _events, _stats, modifierStore: _modifiers, deaths: _deaths,
+                                        alliances: _alliances); // Story 9.14: team-aware cast Ally/Enemy filter
             _executor.Run(ab.EffectGraph, in ctx);
 
             // Story 7.13 — raise ability_cast at the atomic-success point (every gate passed, all costs debited, the

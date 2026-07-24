@@ -168,9 +168,10 @@ namespace ProjectChimera.Sim.Tests.Meta
         private const int ExpectedRulesetHashAlgoVersion = 1;
 
         /// <summary>Story 9.4 — the single 64-bit start-state-agreement hash on the widened Ready packet. v1 =
-        /// initial (AlgoVersion + RulesetHash + initial-delay + faction-count + roster + StartStateHash). A bump
-        /// changes the handshake value — update this pin in the same commit.</summary>
-        private const int ExpectedMatchAgreementHashAlgoVersion = 1;
+        /// initial (AlgoVersion + RulesetHash + initial-delay + faction-count + roster + StartStateHash). Story 9.14
+        /// bumped v1→v2: the per-slot TEAM ordinal now folds beside each roster ordinal (a team mismatch fails the
+        /// start closed). A bump changes the handshake value — update this pin in the same commit.</summary>
+        private const int ExpectedMatchAgreementHashAlgoVersion = 2;
 
         /// <summary>.chmr replay file-format version. Story 7.9 bumped 2→3 (DslEvent orders). Story 9.11 bumped 3→4
         /// ("replay v2": self-describing tagged body via the frozen MergedTickPacket envelope + a result trailer, and

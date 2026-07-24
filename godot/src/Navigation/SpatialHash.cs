@@ -1,3 +1,4 @@
+#nullable enable
 using System;
 using ProjectChimera.Core;
 
@@ -72,8 +73,13 @@ namespace ProjectChimera.Navigation
         /// <summary>
         /// Find the nearest alive enemy to entity <paramref name="id"/> within its attack range.
         /// Returns the enemy entity ID, or -1 if none found.
+        /// <para>Story 9.14: an optional <paramref name="alliances"/> mask excludes ALLIED factions from acquisition
+        /// (an ally is never auto-attacked). Null (bare combat tests) ⇒ only the same-faction skip applies, so the
+        /// pre-9.14 behavior is byte-identical; in FFA no two distinct factions are allied, so the extra skip is a
+        /// no-op there too. Neutral is never allied with a player (<c>AreAllied(Player,Neutral)==false</c>), so
+        /// Neutral stays targetable.</para>
         /// </summary>
-        public int FindNearestEnemy(EntityWorld world, int id)
+        public int FindNearestEnemy(EntityWorld world, int id, AllianceStore? alliances = null)
         {
             FixedVec3 pos = world.Position[id];
             Faction myFaction = world.FactionOf[id];
@@ -107,6 +113,9 @@ namespace ProjectChimera.Navigation
                         int j = _sortedIds[start + k];
                         if (j == id) continue;
                         if (world.FactionOf[j] == myFaction) continue;
+                        // Story 9.14: skip an ALLIED faction's unit (excluded from nearest-enemy acquisition). Null
+                        // mask / FFA ⇒ no-op (see method doc); Neutral is never allied so it stays acquirable.
+                        if (alliances != null && alliances.AreAllied(myFaction, world.FactionOf[j])) continue;
                         // Story 2.9a (AC1): honor the attacker's domain capability — prune targets it can never damage
                         // (e.g. an anti-air-only unit skips ground candidates) BEFORE the strict-nearest compare, so
                         // ascending-id tie-break stability is preserved. Integer bit-AND, no float.
@@ -129,8 +138,10 @@ namespace ProjectChimera.Navigation
         /// Find the nearest alive enemy to entity <paramref name="id"/> across the entire grid,
         /// ignoring attack range. Used for "advance to contact" when no enemy is in range.
         /// Returns the enemy entity ID, or -1 if no enemies exist.
+        /// <para>Story 9.14: same optional <paramref name="alliances"/> allied-skip as <see cref="FindNearestEnemy"/>
+        /// (an ally is never chased to contact); null / FFA ⇒ byte-identical to pre-9.14.</para>
         /// </summary>
-        public int FindNearestEnemyGlobal(EntityWorld world, int id)
+        public int FindNearestEnemyGlobal(EntityWorld world, int id, AllianceStore? alliances = null)
         {
             FixedVec3 pos = world.Position[id];
             Faction myFaction = world.FactionOf[id];
@@ -143,6 +154,8 @@ namespace ProjectChimera.Navigation
                 if (j == id) continue;
                 if (!world.IsAlive(j)) continue;
                 if (world.FactionOf[j] == myFaction) continue;
+                // Story 9.14: skip an ALLIED faction (never chase an ally to contact). Null / FFA ⇒ no-op.
+                if (alliances != null && alliances.AreAllied(myFaction, world.FactionOf[j])) continue;
                 // Story 2.9a (AC1.1): the SAME domain prune on the chase-to-contact path, so an anti-air-only unit
                 // with no valid air target does NOT march toward a ground enemy it can never damage.
                 if (!DomainClassifier.CanAttack(world.AttackDomainOf[id], world.CategoryOf[j])) continue;

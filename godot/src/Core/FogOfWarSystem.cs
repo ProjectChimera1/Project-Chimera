@@ -1,3 +1,4 @@
+#nullable enable
 namespace ProjectChimera.Core
 {
     /// <summary>
@@ -41,9 +42,20 @@ namespace ProjectChimera.Core
         /// <summary>Which faction this fog instance reveals for. Retargetable per-client via <see cref="SetViewer"/>.</summary>
         private Faction _faction;
 
-        public FogOfWarSystem(Faction faction = Faction.Player1)
+        /// <summary>Story 9.14 — the sim-owned alliance mask, so shared-team vision can union allied units' sight.
+        /// Optional (null ⇒ no allied faction, single-viewer fog exactly as pre-9.14).</summary>
+        private readonly AllianceStore? _alliances;
+
+        /// <summary>Story 9.14 — when true (default) AND an alliance mask is present, the local fog UNIONS the vision of
+        /// every ALLIED faction's units (a teammate's scouted area is revealed on your fog). When false, only the
+        /// viewer's own faction lights the fog. Presentation-only — the fog Grid is NOT folded into
+        /// <c>SimChecksum</c>, so a per-client shared-vision setting can NEVER desync the sim.</summary>
+        public bool SharedTeamVision { get; set; } = true;
+
+        public FogOfWarSystem(Faction faction = Faction.Player1, AllianceStore? alliances = null)
         {
-            _faction = faction;
+            _faction   = faction;
+            _alliances = alliances;
         }
 
         /// <summary>
@@ -68,7 +80,14 @@ namespace ProjectChimera.Core
             for (int id = 0; id < cap; id++)
             {
                 if ((world.Flags[id] & EntityFlags.Alive) == 0) continue;
-                if (world.FactionOf[id] != _faction) continue;
+                // Story 9.14: stamp the viewer's own faction always; additionally stamp ALLIED factions' units when
+                // shared-team vision is enabled and a mask is present (union of teammate sight). Null mask / toggle off
+                // ⇒ only the own-faction path, byte-identical to pre-9.14. Presentation-only (unfolded), so this NEVER
+                // affects any SimChecksum.
+                Faction f = world.FactionOf[id];
+                bool reveal = f == _faction
+                           || (SharedTeamVision && _alliances != null && _alliances.AreAllied(_faction, f));
+                if (!reveal) continue;
 
                 float wx = world.Position[id].X.ToFloat();
                 float wz = world.Position[id].Z.ToFloat();

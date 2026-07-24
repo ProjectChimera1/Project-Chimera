@@ -34,6 +34,12 @@ namespace ProjectChimera.Effects
         /// <summary>The caster's faction (the killer for <see cref="DamageEffect"/>, the allegiance anchor for filters).</summary>
         public readonly Faction CasterFaction;
 
+        /// <summary>Story 9.14 — the sim-owned alliance mask, so a <see cref="SearchAreaEffect"/>'s Ally/Enemy filter
+        /// is TEAM-aware (an allied faction matches Ally and is excluded from Enemy). Optional (a reference, never
+        /// copied by value): null ⇒ allegiance falls back to strict faction equality (byte-identical to pre-9.14 / FFA,
+        /// where no distinct factions are allied).</summary>
+        public readonly AllianceStore? Alliances;
+
         /// <summary>The damage matrix the <see cref="DamageEffect"/> leaf resolves through.</summary>
         public readonly DamageTable DamageTable;
 
@@ -65,15 +71,17 @@ namespace ProjectChimera.Effects
         public EffectContext(EntityWorld world, int casterId, int primaryTargetId, Faction casterFaction,
                              DamageTable damageTable, SpatialHash? spatial = null,
                              CombatEventQueue? events = null, MatchStats? stats = null,
-                             ModifierStore? modifierStore = null, DeathFeed? deaths = null)
-            : this(world, world.Rng, spatial, casterId, primaryTargetId, casterFaction, damageTable, events, stats, modifierStore, deaths)
+                             ModifierStore? modifierStore = null, DeathFeed? deaths = null,
+                             AllianceStore? alliances = null)
+            : this(world, world.Rng, spatial, casterId, primaryTargetId, casterFaction, damageTable, events, stats, modifierStore, deaths, alliances)
         {
         }
 
         // All-field private ctor used by WithTarget (re-targets without re-reading world.Rng).
         private EffectContext(EntityWorld world, SimRng rng, SpatialHash? spatial, int casterId,
                               int primaryTargetId, Faction casterFaction, DamageTable damageTable,
-                              CombatEventQueue? events, MatchStats? stats, ModifierStore? modifierStore, DeathFeed? deaths)
+                              CombatEventQueue? events, MatchStats? stats, ModifierStore? modifierStore, DeathFeed? deaths,
+                              AllianceStore? alliances)
         {
             World = world;
             Rng = rng;
@@ -86,6 +94,7 @@ namespace ProjectChimera.Effects
             Stats = stats;
             ModifierStore = modifierStore;
             Deaths = deaths;
+            Alliances = alliances;
         }
 
         /// <summary>
@@ -94,6 +103,6 @@ namespace ProjectChimera.Effects
         /// the same RNG stream and modifier store.
         /// </summary>
         public EffectContext WithTarget(int targetId) =>
-            new EffectContext(World, Rng, Spatial, CasterId, targetId, CasterFaction, DamageTable, Events, Stats, ModifierStore, Deaths);
+            new EffectContext(World, Rng, Spatial, CasterId, targetId, CasterFaction, DamageTable, Events, Stats, ModifierStore, Deaths, Alliances);
     }
 }

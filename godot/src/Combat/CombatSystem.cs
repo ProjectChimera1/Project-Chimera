@@ -46,6 +46,11 @@ namespace ProjectChimera.Combat
         // Alive/FactionOf/Position/Health/Count/Destroy members are used (all on BuildingStore, no BuildingSystem).
         private readonly BuildingStore?    _buildings;
 
+        // Story 9.14 — the sim-owned alliance mask, threaded so combat excludes ALLIED factions from acquisition,
+        // force-fire, and building-attack. Optional: null in bare combat tests (FFA — no distinct factions ally, so
+        // every allied branch is a no-op and the pre-9.14 goldens stay byte-identical). Read-only here.
+        private readonly AllianceStore?    _alliances;
+
         // Story 3.13 — the transient death feed the hero-XP runtime drains. Optional: null in bare combat tests (no XP
         // credited). Threaded into every hitscan DamageContext so a lethal instant hit records the victim's death.
         private readonly DeathFeed?        _deaths;
@@ -58,7 +63,7 @@ namespace ProjectChimera.Combat
 
         public CombatSystem(ProjectileStore projectiles, CombatEventQueue? events = null, MatchStats? stats = null,
             DamageTable? table = null, AbilityRegistry? registry = null, ModifierStore? modifiers = null,
-            BuildingStore? buildings = null, DeathFeed? deaths = null)
+            BuildingStore? buildings = null, DeathFeed? deaths = null, AllianceStore? alliances = null)
         {
             _projectiles = projectiles;
             _events      = events;
@@ -68,6 +73,7 @@ namespace ProjectChimera.Combat
             _modifiers   = modifiers;
             _buildings   = buildings;   // Story 2.9a (optional — building attacks no-op when absent, e.g. bare tests)
             _deaths      = deaths;      // Story 3.13 (optional — XP credited only when wired)
+            _alliances   = alliances;   // Story 9.14 (optional — FFA/null → no allied exclusion, byte-identical)
         }
 
         // Squared arrive threshold for AttackMove→Idle + Patrol waypoint advance. Story 2.13 (AC2, D-1): widened
@@ -170,7 +176,7 @@ namespace ProjectChimera.Combat
             TickCooldown(world, i, dt);
 
             int target = ValidateOrClearTarget(world, i);
-            if (target < 0) target = _spatialHash.FindNearestEnemy(world, i);
+            if (target < 0) target = _spatialHash.FindNearestEnemy(world, i, _alliances);
             world.AttackTarget[i] = target;
 
             if (target < 0)
@@ -189,7 +195,7 @@ namespace ProjectChimera.Combat
                 }
 
                 // No enemy in attack range — advance toward nearest enemy anywhere
-                int anyEnemy = _spatialHash.FindNearestEnemyGlobal(world, i);
+                int anyEnemy = _spatialHash.FindNearestEnemyGlobal(world, i, _alliances);
                 if (anyEnemy >= 0)
                 {
                     world.MoveTarget[i] = world.Position[anyEnemy];
@@ -233,7 +239,7 @@ namespace ProjectChimera.Combat
             TickCooldown(world, i, dt);
 
             int target = ValidateOrClearTarget(world, i);
-            if (target < 0) target = _spatialHash.FindNearestEnemy(world, i);
+            if (target < 0) target = _spatialHash.FindNearestEnemy(world, i, _alliances);
             world.AttackTarget[i] = target;
 
             if (target < 0)
@@ -270,7 +276,11 @@ namespace ProjectChimera.Combat
             // Option A, Story 1.12) blocks force-firing your own units — reachable when a killed enemy's slot is
             // recycled into a friendly before this tick, or via a crafted order. Same-faction ONLY: a Neutral is
             // still a valid force-fire target (the golden relies on it).
-            if (forced < 0 || !world.IsAlive(forced) || forced == i || world.FactionOf[forced] == world.FactionOf[i])
+            // Story 9.14: also reject force-firing an ALLIED faction (AreAllied covers same-faction too when a mask is
+            // present). Neutral stays force-fireable — AreAllied(Player,Neutral)==false. Null mask / FFA ⇒ only the
+            // same-faction term applies, byte-identical to pre-9.14. The allied read is guarded by the IsAlive term above.
+            if (forced < 0 || !world.IsAlive(forced) || forced == i || world.FactionOf[forced] == world.FactionOf[i]
+                || (_alliances != null && _alliances.AreAllied(world.FactionOf[i], world.FactionOf[forced])))
             {
                 // AC3 — forced target gone/invalid: clear and resume normal Idle acquire-nearest THIS tick (no
                 // freeze). Delegate cooldown + acquisition to TickIdleCombat (do NOT also tick cooldown here, or it
@@ -322,6 +332,7 @@ namespace ProjectChimera.Combat
             // that would let it acquire+hit a nearby unit, violating AC2.4).
             if (_buildings == null || !_buildings.TryResolveRef(world.CommandTarget[i], out int b)
                 || _buildings.FactionOf[b] == world.FactionOf[i]
+                || (_alliances != null && _alliances.AreAllied(world.FactionOf[i], _buildings.FactionOf[b])) // Story 9.14: an ALLIED building is never force-attacked (null/FFA ⇒ no-op; Neutral stays targetable)
                 || (world.AttackDomainOf[i] & AttackDomain.Structure) == AttackDomain.None)
             {
                 world.CommandState[i]  = UnitCommand.Idle;
@@ -360,7 +371,7 @@ namespace ProjectChimera.Combat
             TickCooldown(world, i, dt);
 
             int target = ValidateOrClearTarget(world, i);
-            if (target < 0) target = _spatialHash.FindNearestEnemy(world, i);
+            if (target < 0) target = _spatialHash.FindNearestEnemy(world, i, _alliances);
             world.AttackTarget[i] = target;
 
             if (target < 0)
@@ -466,7 +477,7 @@ namespace ProjectChimera.Combat
             TickCooldown(world, i, dt);
 
             int target = ValidateOrClearTarget(world, i);
-            if (target < 0) target = _spatialHash.FindNearestEnemy(world, i);
+            if (target < 0) target = _spatialHash.FindNearestEnemy(world, i, _alliances);
             world.AttackTarget[i] = target;
 
             if (target < 0)
@@ -579,6 +590,7 @@ namespace ProjectChimera.Combat
             {
                 if (!_buildings.Alive[b]) continue;
                 if (_buildings.FactionOf[b] == myFaction || _buildings.FactionOf[b] == Faction.Neutral) continue; // enemy ONLY — never me, never Neutral (2.13 review, Alec): matches the AI raze picker + SelectionSystem convention; Neutral is use/claim, not auto-attack
+                if (_alliances != null && _alliances.AreAllied(myFaction, _buildings.FactionOf[b])) continue; // Story 9.14: never auto-acquire an ALLIED building (null/FFA ⇒ no-op)
                 Fixed sqrDist = FixedVec3.SqrDistance(myPos, _buildings.Position[b]);
                 if (sqrDist > sqrRange) continue;                                // out of attack range
                 if (best < 0 || sqrDist < bestSqr) { best = b; bestSqr = sqrDist; } // strict < ⇒ ascending-id tie-break
@@ -703,7 +715,8 @@ namespace ProjectChimera.Combat
             AbilityDefinition onHit = _registry.Get(idx);
             var ctx = new EffectContext(world, casterId: attacker, primaryTargetId: target,
                                         casterFaction: world.FactionOf[attacker], _table,
-                                        spatial: _spatialHash, _events, _stats, modifierStore: _modifiers);
+                                        spatial: _spatialHash, _events, _stats, modifierStore: _modifiers,
+                                        alliances: _alliances); // Story 9.14: team-aware Ally/Enemy on the on-hit rider
             _onHitExecutor.Run(onHit.EffectGraph, in ctx);
         }
     }

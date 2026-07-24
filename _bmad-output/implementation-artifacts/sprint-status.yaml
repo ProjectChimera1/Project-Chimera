@@ -188,7 +188,7 @@ development_status:
   9-11-replay-v2-tagged-body-scenario-re-gate-replay-ux-browser-playback-perspective: done
   9-12-server-validated-online-hero-persistence-rail: done
   9-13-per-client-command-rate-throttle-anti-spam-on-the-dedicated-server: done
-  9-14-teams-alliances-lobby-teams-wired-into-the-sim-alliance-model: backlog
+  9-14-teams-alliances-lobby-teams-wired-into-the-sim-alliance-model: done
   9-15-four-player-verified-end-to-end: backlog
   9-16-full-content-pre-match-hash-handshake: backlog
   epic-9-retrospective: optional

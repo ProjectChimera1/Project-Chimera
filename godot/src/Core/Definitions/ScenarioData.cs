@@ -175,6 +175,19 @@ namespace ProjectChimera.Core.Definitions
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
         public float StartCrystal { get; set; } = 0f;
 
+        /// <summary>Story 9.14 — this slot's TEAM ordinal (1,2,…). Default <c>0</c> = UNASSIGNED / FFA (every slot its
+        /// own team). Slots that share a positive ordinal are allied; the sim-side canonical team-id encoding (the
+        /// lowest faction-slot index among a team's members) is computed at match-start by <c>AllianceSeeder</c> and
+        /// written into the folded <c>AllianceStore</c> mask — the ordinal itself never reaches a sim store. An int
+        /// (no enum), a settable auto-prop, consistent with the dual-path DTO constraint. OMITTED from serialization
+        /// when 0 (<see cref="JsonIgnoreCondition.WhenWritingDefault"/>, the <see cref="StartCrystal"/> precedent) so
+        /// every pre-9.14 / FFA scenario serializes byte-for-byte identically — no map-identity or canonical-model-hash
+        /// move. Folded into the match-agreement handshake hash (<c>MatchAgreementHash</c>, algo v2) so a per-slot team
+        /// mismatch fails the start closed; NOT folded into <c>CanonicalModelHash</c> (peers load the same file).</summary>
+        [JsonPropertyName("team")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+        public int Team { get; set; }
+
         /// <summary>World X of the faction deposit / rally base point.</summary>
         [JsonPropertyName("base_x")]
         public float BaseX { get; set; }

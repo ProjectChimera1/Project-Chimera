@@ -30,7 +30,7 @@ namespace ProjectChimera.Core.Definitions
         /// <summary>Algorithm version of THIS hash. Mixed FIRST so a bump moves the value alone. Bump only when the
         /// folded set/order changes (independent of <see cref="RulesetHash.AlgoVersion"/> and
         /// <see cref="StartStateHash.AlgoVersion"/>, which fold in as components).</summary>
-        public const int AlgoVersion = 1;
+        public const int AlgoVersion = 2; // Story 9.14: bumped 1→2 — the per-slot Team ordinal now folds into the roster loop
 
         private const ulong Offset = 14695981039346656037UL; // FNV-64 offset basis (same primitive as StartStateHash)
         private const ulong Prime  = 1099511628211UL;        // FNV-64 prime
@@ -54,7 +54,20 @@ namespace ProjectChimera.Core.Definitions
             int n = model.PlayerSlots?.Length ?? 0;
             h = MixInt(h, n);
             for (int slot = 0; slot < n; slot++)
-                h = MixInt(h, (int)FactionRegistry.ToFaction(slot)); // roster faction ordinal for each active slot
+                h = MixInt(h, (int)FactionRegistry.ToFaction(slot)); // roster faction ordinal for each active slot (unchanged since 9.4)
+
+            // Story 9.14: fold the CANONICAL seeded team-id mask — faction-indexed over [1, FACTION_COUNT), EXACTLY the
+            // mapping AllianceSeeder writes into AllianceStore (and SimChecksum folds). Folding the WHOLE faction-keyed
+            // mask — not the positional per-slot .Team ordinal — makes the handshake validate precisely the mask the sim
+            // will run, independent of PlayerSlots ORDER or GAPS: a reordered / sparse / non-contiguous roster (e.g. a
+            // removed middle slot) folds the identical faction→team mapping the seeder produces, so a team on a gapped
+            // high slot can never slip past unfolded (the earlier positional fold missed exactly that, failing OPEN).
+            // FFA → canonical id == own faction, so the fold is inert apart from the one-time AlgoVersion 1→2 bump. Teams
+            // live in the shared applied model (both peers recompute identically; never a wire byte) → a team mismatch
+            // fails the start closed via the existing handshake gate.
+            int[] teamIds = AllianceSeeder.ComputeTeamIds(model);
+            for (int fi = 1; fi < teamIds.Length; fi++) // faction indices only; Neutral (index 0) is never teamed
+                h = MixInt(h, teamIds[fi]);
 
             h = MixULong(h, StartStateHash.Compute(model, heroes)); // content + hero/item start-state (superset of scenarioHash)
 

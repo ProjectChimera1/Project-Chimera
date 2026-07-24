@@ -484,6 +484,67 @@ namespace ProjectChimera.Sim.Tests.Builder
                 $"ScenarioApplier.SpawnUnit allocated {after - before} bytes across 256 calls — the spawn path must be allocation-free (AC3).");
         }
 
+        // ── Story 9.14: the production seed wire — Apply seeds the AllianceStore mask from the scenario's per-slot
+        //    teams. This is the ONLY production path from scenario teams into the sim mask, so it needs a direct
+        //    Apply-driven test (the other alliance tests poke TeamId directly). Mirrors the Apply_Threads… precedents. ──
+
+        private static FactionDefinition?[] EmptySlotDefs() => new FactionDefinition?[FactionRegistry.FACTION_ARRAY_SIZE];
+
+        /// <summary>A minimal 4-slot model; when <paramref name="teamed"/>, slots {0,1}=team1 and {2,3}=team2 (a real
+        /// 2v2), else every slot is FFA (Team==0). No units/buildings needed — the seed reads only the slots' teams.</summary>
+        private static ScenarioData TeamModel(bool teamed)
+        {
+            ScenarioPlayerSlot S(int i, int team) => new ScenarioPlayerSlot
+            {
+                Slot = i, FactionJson = "res://f.json", StartOre = 200f,
+                BaseX = -45f + i * 20f, BaseZ = 0f, Team = teamed ? team : 0,
+            };
+            return new ScenarioData
+            {
+                Id = "team_map", DisplayName = "Team Map", TerrainRef = "", MapBounds = 120f,
+                WinCondition = WinCondition.DestroyAllBuildings,
+                PlayerSlots = new[] { S(0, 1), S(1, 1), S(2, 2), S(3, 2) },
+            };
+        }
+
+        private static (SimulationHost host, ScenarioApplier applier) NewFourFactionHostAndApplier()
+        {
+            var host = SimulationHost.Create(NullLogSink.Instance, new FactionRegistry(4),
+                                             new FactionDefinition(), new FactionDefinition());
+            var applier = new ScenarioApplier(host, NullLogSink.Instance, EmptySlotDefs());
+            return (host, applier);
+        }
+
+        [Fact]
+        public void Apply_SeedsAllianceMask_FromScenarioTeams()
+        {
+            var (host, applier) = NewFourFactionHostAndApplier();
+            ValidationResult r = new ScenarioValidator().Validate(TeamModel(teamed: true));
+            Assert.True(r.Ok, r.Error);
+
+            applier.Apply(r.Value); // the sole production wire: scenario teams → AllianceSeeder.Seed → host.Alliances
+
+            Assert.True(host.Alliances.AreAllied(Faction.Player1, Faction.Player2));  // team {P1,P2}
+            Assert.True(host.Alliances.AreAllied(Faction.Player3, Faction.Player4));  // team {P3,P4}
+            Assert.False(host.Alliances.AreAllied(Faction.Player1, Faction.Player3)); // across teams
+            Assert.Equal((int)Faction.Player1, host.Alliances.TeamOf(Faction.Player2));
+            Assert.Equal((int)Faction.Player3, host.Alliances.TeamOf(Faction.Player4));
+        }
+
+        [Fact]
+        public void Apply_FfaModel_LeavesAllianceMaskFfa_GoldenSafe()
+        {
+            var (host, applier) = NewFourFactionHostAndApplier();
+            ValidationResult r = new ScenarioValidator().Validate(TeamModel(teamed: false));
+            Assert.True(r.Ok, r.Error);
+
+            applier.Apply(r.Value);
+
+            Assert.False(host.Alliances.AreAllied(Faction.Player1, Faction.Player2)); // no distinct factions allied
+            for (int f = 0; f < FactionRegistry.SLOT_DEFINITIONS_SIZE; f++)
+                Assert.Equal(f, host.Alliances.TeamId[f]);                            // byte-identical FFA default
+        }
+
         // Pinned canonical-model hash of BuildAlphaModel(). Recorded from CanonicalModelHash.Compute; an accidental
         // change to the in-code model (or a hash-algorithm change) flips this and the test fails. Re-recorded
         // 2026-07-08 for AlgoVersion 4 (Story 4.4: Supply's resolved values folded into the canonical hash — the

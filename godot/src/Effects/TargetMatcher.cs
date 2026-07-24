@@ -28,7 +28,8 @@ namespace ProjectChimera.Effects
         /// </summary>
         internal static bool Matches(TargetFilter filter, EntityWorld world, int casterId,
                                      Faction casterFaction, int candidateId,
-                                     UnitTag requireTag = UnitTag.None)
+                                     UnitTag requireTag = UnitTag.None,
+                                     AllianceStore? alliances = null)
         {
             // AND-constraint: explicit alive check when requested. (Dead ids never enter the spatial-hash
             // snapshot, but a leaf chained after a lethal sibling could re-reference a now-dead id.)
@@ -61,11 +62,16 @@ namespace ProjectChimera.Effects
                 return true; // no allegiance constraint → any faction is eligible
 
             Faction ef = world.FactionOf[candidateId];
+            // Story 9.14: Ally/Enemy are now TEAM-aware when an alliance mask is present. "Allied" means same team
+            // (AreAllied — which is true for same-faction too, and always false for Neutral vs a player). With a null
+            // mask (bare tests) OR in FFA (no distinct factions allied), this reduces EXACTLY to the pre-9.14 faction-
+            // equality tests — byte-identical. The Neutral bit is unchanged.
+            bool allied = alliances != null ? alliances.AreAllied(casterFaction, ef) : ef == casterFaction;
             if ((wanted & TargetFilter.Self) != 0 && candidateId == casterId)
                 return true;
-            if ((wanted & TargetFilter.Ally) != 0 && ef == casterFaction && candidateId != casterId)
+            if ((wanted & TargetFilter.Ally) != 0 && allied && candidateId != casterId)
                 return true;
-            if ((wanted & TargetFilter.Enemy) != 0 && ef != casterFaction && ef != Faction.Neutral)
+            if ((wanted & TargetFilter.Enemy) != 0 && !allied && ef != Faction.Neutral)
                 return true;
             if ((wanted & TargetFilter.Neutral) != 0 && ef == Faction.Neutral)
                 return true;

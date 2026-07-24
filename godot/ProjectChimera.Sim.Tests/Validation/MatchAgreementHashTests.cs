@@ -92,6 +92,9 @@ namespace ProjectChimera.Sim.Tests.Validation
             h = Mix(h, n);
             for (int slot = 0; slot < n; slot++)
                 h = Mix(h, (int)FactionRegistry.ToFaction(slot));
+            int[] teamIds = AllianceSeeder.ComputeTeamIds(model); // Story 9.14: fold the CANONICAL seeded team-id mask, faction-indexed
+            for (int fi = 1; fi < teamIds.Length; fi++)
+                h = Mix(h, teamIds[fi]);
             h = MixULong(h, StartStateHash.Compute(model, heroes));
             ulong expected = h == 0UL ? 1UL : h;
 
@@ -133,6 +136,61 @@ namespace ProjectChimera.Sim.Tests.Validation
             Assert.NotEqual(
                 MatchAgreementHash.Compute(4, m, TwoHeroes(levelOfFirst: 4)),
                 MatchAgreementHash.Compute(4, m, TwoHeroes(levelOfFirst: 7)));
+        }
+
+        // ── Story 9.14: the per-slot team folds into the handshake hash (a team mismatch fails the start closed) ──
+
+        [Fact]
+        public void AlgoVersion_IsTwo_AfterTeamFold()
+        {
+            Assert.Equal(2, MatchAgreementHash.AlgoVersion);
+        }
+
+        [Fact]
+        public void DifferentTeamAssignment_MovesTheHash()
+        {
+            // FFA vs a REAL 2v2 (slots {0,1} and {2,3} paired): the canonical seeded ids differ from FFA (P2→1, P4→3),
+            // so the handshake value MUST differ — peers that disagree on the team layout fail closed pre-tick-0 (the
+            // fail-closed team-mismatch matrix row). A lone-slot "team" would map back to its own faction (FFA-equal),
+            // which is exactly the canonical-encoding semantics; a divergent MASK needs a genuine multi-member team.
+            var ffa = BuildModel(players: 4);
+            var teamed = BuildModel(players: 4);
+            teamed.PlayerSlots[0].Team = 1;
+            teamed.PlayerSlots[1].Team = 1; // {P1,P2} → P2's canonical id becomes 1 (was 2 in FFA)
+            teamed.PlayerSlots[2].Team = 2;
+            teamed.PlayerSlots[3].Team = 2; // {P3,P4} → P4's canonical id becomes 3 (was 4 in FFA)
+            Assert.NotEqual(
+                MatchAgreementHash.Compute(4, ffa, TwoHeroes()),
+                MatchAgreementHash.Compute(4, teamed, TwoHeroes()));
+        }
+
+        [Fact]
+        public void GappedRoster_TeamMismatch_StillMovesTheHash_FailsClosed()
+        {
+            // Regression (9.14 review): a NON-CONTIGUOUS roster (a removed middle slot → slots {0,1,3,4}) with a team on
+            // the two GAPPED-region high slots {3,4} (factions {4,5}). A positional team fold folded only teamIds[1..n]
+            // and MISSED faction 5's moved canonical id, so peers that disagreed on that team hashed identically and the
+            // start failed OPEN. The faction-indexed mask fold catches it: peer A (FFA) and peer B (teamed) MUST diverge.
+            var ffa = BuildModel(players: 5);
+            ffa.RemoveStartSlot(2);                   // gap at slot 2 → {0,1,3,4}
+            var teamed = BuildModel(players: 5);
+            teamed.RemoveStartSlot(2);
+            foreach (var s in teamed.PlayerSlots)
+                if (s.Slot == 3 || s.Slot == 4) s.Team = 1; // team the gapped-region pair → P5's canonical id moves 5→4
+            Assert.NotEqual(
+                MatchAgreementHash.Compute(4, ffa, TwoHeroes()),
+                MatchAgreementHash.Compute(4, teamed, TwoHeroes()));
+        }
+
+        [Fact]
+        public void FfaModel_TeamFoldIsInert_ByteStreamMatchesTheHandRoll()
+        {
+            // Every Team==0 in an FFA model, so the new per-slot fold mixes a constant 0 — the algo-version bump moves
+            // the value once, but two FFA models with identical rosters still hash identically (the fold is inert).
+            var a = BuildModel(players: 3);
+            var b = BuildModel(players: 3);
+            Assert.Equal(MatchAgreementHash.Compute(4, a, TwoHeroes()),
+                         MatchAgreementHash.Compute(4, b, TwoHeroes()));
         }
 
         [Fact]

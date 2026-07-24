@@ -181,6 +181,15 @@ namespace ProjectChimera.Core.Sim
                     Fixed.FromFloat(slot.BaseX), Fixed.Zero, Fixed.FromFloat(slot.BaseZ)));
             }
 
+            // ── Story 9.14: seed the sim-owned AllianceStore team-id mask from the scenario's per-slot teams, BEFORE
+            //    tick 0. Done HERE (the sole Godot-free sim-truth writer) rather than only in MainScene so EVERY apply
+            //    path seeds identically — boot, the Edit→Play re-apply, AND the headless dedicated server
+            //    (ServerBootstrap). The server folds AllianceStore into SimChecksum (v20) exactly like the clients, so
+            //    seeding must be shared or a teamed match would desync server-vs-client. Seed RESTORES FFA first, so it
+            //    composes with ClearForReset's Alliances.Clear() on the reset path (Clear precedes this re-seed). FFA
+            //    (every Team==0) leaves the mask at the default TeamId[f]==f — byte-identical to pre-9.14. ──
+            AllianceSeeder.Seed(_host.Alliances, s);
+
             // ── 2. Resource nodes (Story 4.7: collection model / resource type / requires_structure / owner / income) ─
             foreach (var node in s.ResourceNodes ?? System.Array.Empty<ScenarioResourceNode>())
             {
