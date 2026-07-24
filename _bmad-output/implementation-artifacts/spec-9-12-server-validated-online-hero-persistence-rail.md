@@ -3,7 +3,7 @@ title: 'Story 9.12 — Server-validated online hero persistence rail'
 type: 'feature'
 created: '2026-07-24'
 baseline_revision: 'b231901'
-status: 'blocked'
+status: 'draft'
 review_loop_iteration: 0
 followup_review_recommended: false
 context:
