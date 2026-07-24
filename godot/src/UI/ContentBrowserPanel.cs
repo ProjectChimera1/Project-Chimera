@@ -852,12 +852,48 @@ namespace ProjectChimera.UI
             _modIo.OnDownloadComplete += (modId, localPath) =>
             {
                 _downloadProgress.Remove(modId);
-                _downloadComplete.Add(modId);
-                if (_downloadLabels.TryGetValue(modId, out var lbl))
-                    lbl.Text = "Downloaded ✓";
-                // Refresh local tab so the new package appears immediately.
-                RefreshLocal();
-                GD.Print($"[ContentBrowser] Downloaded mod {modId} → {localPath}");
+
+                // Story 9.9: integrity-verify the freshly downloaded package (scenario + terrain + asset bytes) BEFORE
+                // it is playable. A hash mismatch or a missing/disallowed/oversized listed entry throws
+                // InvalidDataException → the download is marked not-playable (never added to _downloadComplete, so its
+                // card is not offered as ready) and the located reason is surfaced. The bundled assets are NOT ingested
+                // here: ReloadCurrentScene rebuilds the AssetRegistry, so the render ingest runs on the load path
+                // (FactionVisualsPhase) into the registry the bridges actually read. This extraction is verify-only.
+                string cacheDir = Path.Combine(
+                    ProjectSettings.GlobalizePath("user://package_cache/"), modId.ToString());
+                try
+                {
+                    var result = ContentPackager.Unpack(localPath, cacheDir);
+
+                    _downloadComplete.Add(modId);
+                    if (_downloadLabels.TryGetValue(modId, out var okLbl))
+                        okLbl.Text = "Downloaded ✓";
+                    // Refresh local tab so the new package appears immediately.
+                    RefreshLocal();
+                    GD.Print($"[ContentBrowser] Downloaded + verified mod {modId} → {localPath} " +
+                             $"({result.Manifest.AssetFiles?.Count ?? 0} asset(s)).");
+                }
+                catch (InvalidDataException ex)
+                {
+                    if (_downloadLabels.TryGetValue(modId, out var badLbl))
+                        badLbl.Text = "Corrupt ✗";
+                    _onlineStatusLabel.Text = $"Download rejected — {ex.Message}";
+                    GD.PrintErr($"[ContentBrowser] Integrity check failed for mod {modId}: {ex.Message}");
+                }
+                catch (Exception ex)
+                {
+                    if (_downloadLabels.TryGetValue(modId, out var errLbl))
+                        errLbl.Text = "Verify failed ✗";
+                    _onlineStatusLabel.Text = $"Download could not be verified — {ex.Message}";
+                    GD.PrintErr($"[ContentBrowser] Verify error for mod {modId}: {ex.Message}");
+                }
+                finally
+                {
+                    // Story 9.9 (review P8): this is a verify-only cache never read for rendering — always clean it up,
+                    // which also drops a partial extraction left by a rejected/failed download so it doesn't leak.
+                    try { if (Directory.Exists(cacheDir)) Directory.Delete(cacheDir, recursive: true); }
+                    catch { /* best-effort */ }
+                }
             };
 
             _modIo.OnAuthCodeSent += () =>

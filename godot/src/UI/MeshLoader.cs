@@ -22,6 +22,24 @@ namespace ProjectChimera.UI
             => LoadFromGlb(resPath, fallbackSize, fallbackColor, out _);
 
         /// <summary>
+        /// Story 9.9 — registry-aware load. When <paramref name="registry"/> is non-null and <paramref name="resPath"/>
+        /// is a non-<c>res://</c> logical id (e.g. "assets/heavy_tank.glb") that the registry holds, return the
+        /// pre-ingested custom mesh; otherwise fall through to the existing <c>res://</c> load (and box fallback). A
+        /// null registry reproduces today's behavior exactly, so existing world-spawn callers are unaffected.
+        /// </summary>
+        public static Mesh LoadFromGlb(string resPath, Vector3 fallbackSize, Color fallbackColor,
+                                       AssetRegistry? registry)
+        {
+            if (registry != null && !string.IsNullOrEmpty(resPath) &&
+                !resPath.StartsWith("res://", System.StringComparison.Ordinal) &&
+                registry.TryGet(resPath, out var registered))
+            {
+                return registered;
+            }
+            return LoadFromGlb(resPath, fallbackSize, fallbackColor, out _);
+        }
+
+        /// <summary>
         /// Load a Mesh from a GLB at the given res:// path, reporting whether the box placeholder was used.
         /// <paramref name="usedPlaceholder"/> is set true whenever the box is returned — because the path was
         /// empty/missing OR because the GLB loaded but yielded no <see cref="MeshInstance3D"/>. This lets the
@@ -67,7 +85,9 @@ namespace ProjectChimera.UI
 
         // ── Internals ────────────────────────────────────────────────────────────
 
-        private static Mesh? FindFirstMesh(Node root)
+        // internal (Story 9.9): reused by RuntimeAssetIngest's GLTFDocument path to find the first mesh in a
+        // GenerateScene tree, so the recursive-find logic lives in exactly one place.
+        internal static Mesh? FindFirstMesh(Node root)
         {
             if (root is MeshInstance3D mi && mi.Mesh != null)
                 return mi.Mesh;
@@ -81,7 +101,9 @@ namespace ProjectChimera.UI
             return null;
         }
 
-        private static Mesh MakePlaceholder(Vector3 size, Color color)
+        // internal (Story 9.9): the shared box placeholder, reused by RuntimeAssetIngest so every ingest failure mode
+        // falls back to the exact same box shape as a missing res:// GLB.
+        internal static Mesh MakePlaceholder(Vector3 size, Color color)
         {
             var box = new BoxMesh();
             box.Size = size;

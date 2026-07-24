@@ -80,7 +80,8 @@ namespace ProjectChimera.UI
         /// </summary>
         public void Initialize(BuildingStore buildings,
                                FactionDefinition? p1Def, FactionDefinition? p2Def,
-                               Color p1Color, Color p2Color)
+                               Color p1Color, Color p2Color,
+                               AssetRegistry? registry = null)
         {
             _buildings = buildings;
 
@@ -119,7 +120,7 @@ namespace ProjectChimera.UI
                     var    def   = defs[fi]?.GetBuilding(id);
                     float  scale = def?.MeshScale ?? 1f;
                     Mesh   mesh  = MeshLoader.LoadFromGlb(def?.MeshPath ?? "", fallback,
-                                                         fi == 0 ? p1Color : p2Color);
+                                                         fi == 0 ? p1Color : p2Color, registry);
 
                     Aabb aabb         = mesh.GetAabb();
                     _scale[t, fi]     = scale;

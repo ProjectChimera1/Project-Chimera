@@ -46,9 +46,11 @@ namespace ProjectChimera.UI
         /// <summary>
         /// Per-unit-type setup. Loads one mesh per unit definition in <paramref name="factionDef"/>
         /// and applies a shared team-coloured material override.
+        /// Story 9.9: an optional <paramref name="registry"/> resolves a unit's non-<c>res://</c> logical
+        /// <c>MeshPath</c> to a downloaded custom mesh; null (the default) = today's <c>res://</c>-only behavior.
         /// </summary>
         public void Initialize(SimulationHost host, FactionDefinition factionDef,
-                               Faction faction, Color teamColor)
+                               Faction faction, Color teamColor, AssetRegistry? registry = null)
         {
             _renderWorld = host.World;
             _alphaSource = () => host.InterpolationAlpha;
@@ -71,7 +73,7 @@ namespace ProjectChimera.UI
             {
                 var   def   = t < units.Count ? units[t] : null;
                 float scale = def?.MeshScale ?? 1f;
-                Mesh  mesh  = MeshLoader.LoadFromGlb(def?.MeshPath ?? "", fallbackSize, teamColor);
+                Mesh  mesh  = MeshLoader.LoadFromGlb(def?.MeshPath ?? "", fallbackSize, teamColor, registry);
                 _mmi[t] = BuildSubMesh(t, mesh, scale, teamMat, GroundOffsetFor(mesh, scale));
             }
 

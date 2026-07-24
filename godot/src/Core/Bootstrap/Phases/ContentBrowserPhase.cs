@@ -34,6 +34,8 @@ namespace ProjectChimera.Core.Bootstrap
             _ctx.ContentBrowser = new ContentBrowserPanel();
             _ctx.Scene.AddChild(_ctx.ContentBrowser);
             // Story 9.8: hand the secret store so the Local-tab publish gate can verify a package's proof-of-play token.
+            // Story 9.9: the browser only integrity-VERIFIES a download here; the render ingest into the shared
+            // AssetRegistry runs on the load-to-play path (FactionVisualsPhase), which survives ReloadCurrentScene.
             _ctx.ContentBrowser.Initialize("user://packages/", modIo, _ctx.SecretStore);
             _ctx.ContentBrowser.OnLoadMap += HandleLoadMap;
 

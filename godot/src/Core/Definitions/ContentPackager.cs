@@ -69,6 +69,12 @@ namespace ProjectChimera.Core.Definitions
             /// <summary>Story 9.8 — explicit IP-ownership consent, written into
             /// <see cref="ContentPackageManifest.IpConsent"/>. Defaults false (the publish gate refuses without it).</summary>
             public bool IpConsent { get; set; }
+
+            /// <summary>Story 9.9 — absolute on-disk paths to custom binary assets (GLB meshes) to bundle. Each existing
+            /// file is copied into the package at <c>assets/{name}</c> (recorded in list order in
+            /// <see cref="ContentPackageManifest.AssetFiles"/>) and its filename+bytes folded (ordinal-sorted) into
+            /// <see cref="ContentPackageManifest.AssetHash"/>. Empty (the default) = no assets bundled.</summary>
+            public List<string> AssetPaths { get; set; } = new();
         }
 
         /// <summary>
@@ -124,8 +130,35 @@ namespace ProjectChimera.Core.Definitions
                     terrainEntries.Add("map/terrain/" + Path.GetFileName(f));
                 // Review pass 2 (EC10): keep TerrainHash==0 the unambiguous "no terrain bundled" sentinel — an empty
                 // terrain dir must not stamp a non-zero FNV-of-nothing that contradicts an empty TerrainFiles list.
-                terrainHash = terrainFiles.Length == 0 ? 0u : HashTerrainFiles(terrainFiles);
+                terrainHash = terrainFiles.Length == 0 ? 0u : HashFiles(terrainFiles);
             }
+
+            // Story 9.9: enumerate the bundled custom assets (GLB meshes) into canonical zip-relative paths
+            // (assets/{name}). Only existing files contribute. AssetFiles preserves the caller's list order (so the
+            // manifest and the written entries stay in lock-step, mirroring screenshots); the AssetHash folds the same
+            // set ordinal-sorted by filename (so the aggregate integrity hash is input-order-independent, mirroring
+            // terrain). AssetHash==0 is the unambiguous "no assets bundled" sentinel.
+            var assetEntries = new List<string>();
+            var assetSources = new List<string>();
+            var assetLeaves  = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var ap in options.AssetPaths ?? new List<string>())
+            {
+                if (!File.Exists(ap)) continue;
+                string leaf = Path.GetFileName(ap);
+                // Review pass (P3): two sources that share a leaf name would both map to assets/{leaf}. The hash folds
+                // both distinct files but Unpack's GetEntry returns the single surviving entry twice, so the package
+                // would fail its OWN integrity check on download. Reject at Pack with a clear error instead of shipping
+                // a self-invalidating package.
+                if (!assetLeaves.Add(leaf))
+                    throw new ArgumentException(
+                        $"Duplicate asset file name '{leaf}': bundled asset names must be unique " +
+                        $"(each maps to assets/{leaf}).", nameof(options));
+                assetEntries.Add("assets/" + leaf);
+                assetSources.Add(ap);
+            }
+            uint assetHash = assetSources.Count == 0
+                ? 0u
+                : HashFiles(assetSources.OrderBy(p => Path.GetFileName(p), StringComparer.Ordinal));
 
             var manifest = new ContentPackageManifest
             {
@@ -147,6 +180,9 @@ namespace ProjectChimera.Core.Definitions
                 ScenarioHash    = scenarioHash,
                 TerrainFiles    = terrainEntries,
                 TerrainHash     = terrainHash,
+                // Story 9.9: bundled custom assets (GLB) + their aggregate integrity hash (the terrain-hash sibling).
+                AssetFiles      = assetEntries,
+                AssetHash       = assetHash,
                 // Story 9.8: proof-of-play token + screenshots + IP-ownership consent (the pre-publish quality/IP gate
                 // fields). The gate at upload verifies the token, re-derives the canonical hash for staleness, and
                 // enforces thumbnail/description/screenshots/consent before ModIoService.UploadModAsync.
@@ -197,6 +233,10 @@ namespace ProjectChimera.Core.Definitions
             for (int i = 0; i < screenshotEntries.Count; i++)
                 WriteEntry(archive, screenshotEntries[i], File.ReadAllBytes(screenshotSources[i]));
 
+            // assets/ (Story 9.9, optional) — the same list order the manifest recorded, so entry names match.
+            for (int i = 0; i < assetEntries.Count; i++)
+                WriteEntry(archive, assetEntries[i], File.ReadAllBytes(assetSources[i]));
+
             return manifest;
         }
 
@@ -214,6 +254,10 @@ namespace ProjectChimera.Core.Definitions
             public List<string> FactionPaths { get; init; } = new();
             /// <summary>Story 6.2 — absolute paths to extracted Terrain3D region .res files (empty if none bundled).</summary>
             public List<string> TerrainFiles { get; init; } = new();
+            /// <summary>Story 9.9 — absolute paths to extracted custom asset (GLB) files (empty if none bundled). Each
+            /// lives under an <c>assets/</c> subdir of the extract directory; its manifest zip-relative logical id
+            /// (e.g. "assets/heavy_tank.glb") is the AssetRegistry key a custom unit's MeshPath references.</summary>
+            public List<string> AssetFiles { get; init; } = new();
         }
 
         /// <summary>
@@ -315,10 +359,54 @@ namespace ProjectChimera.Core.Definitions
                 // always records a hash, so an unconditional verify here has no false positives.
                 string[] sorted = terrainOuts
                     .OrderBy(p => Path.GetFileName(p), StringComparer.Ordinal).ToArray();
-                uint actualHash = HashTerrainFiles(sorted);
+                uint actualHash = HashFiles(sorted);
                 if (actualHash != manifest.TerrainHash)
                     throw new InvalidDataException(
                         $"Terrain integrity check failed: expected 0x{manifest.TerrainHash:X8}, " +
+                        $"got 0x{actualHash:X8}. Package may be corrupt.");
+            }
+
+            // 6. Extract custom asset files (Story 9.9, optional) + verify aggregate integrity hash. Mirrors the terrain
+            //    path exactly: a listed-but-absent asset is a corrupt/incomplete package (a located throw, never a
+            //    silent skip), and the recomputed hash is verified unconditionally whenever the manifest lists assets so
+            //    an asset byte damaged in transit is caught. Like ScenarioHash/TerrainHash this is an UNKEYED FNV
+            //    corruption check, not tamper-proofing — clearing AssetFiles skips the check and the hash is
+            //    recomputable; a re-packaged archive is out of scope (server attestation is the later online rail).
+            var assetOuts = new List<string>();
+            if (manifest.AssetFiles != null && manifest.AssetFiles.Count > 0)
+            {
+                string assetOutDir = Path.Combine(extractDir, "assets");
+                Directory.CreateDirectory(assetOutDir);
+                foreach (var assetZipPath in manifest.AssetFiles)
+                {
+                    var entry = archive.GetEntry(assetZipPath)
+                        ?? throw new InvalidDataException(
+                            $"Asset integrity check failed: manifest lists {assetZipPath} but it is " +
+                            $"missing from the package.");
+
+                    // Review pass (P4): gate the extension + per-entry uncompressed size at extraction — not only at
+                    // the render-path ingest — so a hostile listed entry (disallowed type or a decompression bomb)
+                    // never lands on disk. Located throws mirror the missing-entry reject above.
+                    if (!AssetValidator.IsAllowedExtension(Path.GetExtension(assetZipPath)))
+                        throw new InvalidDataException(
+                            $"Asset integrity check failed: '{assetZipPath}' has a disallowed extension " +
+                            $"(only {string.Join(", ", AssetValidator.AllowedExtensions)} allowed).");
+                    if (entry.Length > AssetValidator.MaxAssetBytes)
+                        throw new InvalidDataException(
+                            $"Asset integrity check failed: '{assetZipPath}' is {entry.Length} bytes, over the " +
+                            $"{AssetValidator.MaxAssetBytes}-byte cap.");
+
+                    string dest = Path.Combine(assetOutDir, Path.GetFileName(assetZipPath));
+                    entry.ExtractToFile(dest, overwrite: true);
+                    assetOuts.Add(dest);
+                }
+
+                string[] sorted = assetOuts
+                    .OrderBy(p => Path.GetFileName(p), StringComparer.Ordinal).ToArray();
+                uint actualHash = HashFiles(sorted);
+                if (actualHash != manifest.AssetHash)
+                    throw new InvalidDataException(
+                        $"Asset integrity check failed: expected 0x{manifest.AssetHash:X8}, " +
                         $"got 0x{actualHash:X8}. Package may be corrupt.");
             }
 
@@ -329,6 +417,7 @@ namespace ProjectChimera.Core.Definitions
                 ThumbnailPath = thumbOut,
                 FactionPaths  = factionOuts,
                 TerrainFiles  = terrainOuts,
+                AssetFiles    = assetOuts,
             };
         }
 
@@ -413,13 +502,14 @@ namespace ProjectChimera.Core.Definitions
         private const uint FNV_OFFSET = 2166136261u;
 
         /// <summary>
-        /// Story 6.2 — aggregate FNV-1a hash over a set of terrain region files: for each file (in the given
+        /// Story 6.2 (generalized Story 9.9) — aggregate FNV-1a hash over a set of files: for each file (in the given
         /// order — callers pass an ordinal-sort-by-filename set so the result is input-order-independent) fold its
         /// filename bytes then its content bytes. Filename inclusion catches a rename; content bytes catch a
-        /// corrupt-in-transit region. Mirrors <see cref="ScenarioSerializer.ComputeFileHash"/> so the two integrity
+        /// corrupt-in-transit file. The single folding shape shared by the terrain integrity hash and the Story 9.9
+        /// asset integrity hash. Mirrors <see cref="ScenarioSerializer.ComputeFileHash"/> so all three integrity
         /// checks share one algorithm family.
         /// </summary>
-        private static uint HashTerrainFiles(IEnumerable<string> absFiles)
+        private static uint HashFiles(IEnumerable<string> absFiles)
         {
             uint hash = FNV_OFFSET;
             foreach (var f in absFiles)

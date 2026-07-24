@@ -108,6 +108,11 @@ namespace ProjectChimera.Core.Bootstrap
 
         // ── Top UI layers (ContentBrowser / MainMenu / Settings / TriggerEditor / MapGenerator) ────────────
         public UI.ContentBrowserPanel ContentBrowser = null!;
+        /// <summary>Story 9.9: the shared render/session custom-asset registry. Populated by the content browser on
+        /// download (integrity-verified ingest of a package's bundled GLBs) and consulted by the unit render bridges
+        /// (<see cref="UI.MultiMeshBridge"/>) so a downloaded custom unit renders its bundled mesh; a null registry is
+        /// never threaded — this always-present instance keeps the seam live while empty for non-custom content.</summary>
+        public UI.AssetRegistry       AssetRegistry  = new();
         public UI.SettingsManager     SettingsMgr    = null!;
         /// <summary>Story 8.1: the Godot-free secret store (file-backed over <c>user://secrets</c>). Constructed once
         /// in <c>SettingsPhase</c>; the TriggerEditor / ContentBrowser phases source their LLM / mod.io keys from it

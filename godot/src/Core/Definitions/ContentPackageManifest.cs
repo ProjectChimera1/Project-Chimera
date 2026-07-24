@@ -20,7 +20,7 @@ namespace ProjectChimera.Core.Definitions
     ///   thumbnail.png        ← 256×256 preview (optional)
     ///   factions/            ← custom faction JSON overrides (optional)
     ///     my_faction.json
-    ///   models/              ← custom GLB models for custom units (optional)
+    ///   assets/              ← custom GLB models for custom units (optional, Story 9.9)
     ///     heavy_tank.glb
     /// </code>
     /// </summary>
@@ -138,6 +138,25 @@ namespace ProjectChimera.Core.Definitions
         /// </summary>
         [JsonPropertyName("terrain_hash")]
         public uint TerrainHash { get; set; }
+
+        /// <summary>
+        /// Story 9.9 — zip-relative paths of the bundled custom binary assets (GLB meshes), e.g.
+        /// "assets/heavy_tank.glb". The terrain-sibling of <see cref="TerrainFiles"/>: recorded in Pack list order,
+        /// hashed ordinal-sorted. Empty (the default) = no assets bundled — byte-identical to a pre-9.9 package.
+        /// A custom unit's <c>MeshPath</c> references one of these zip-relative ids to render its bundled mesh.
+        /// </summary>
+        [JsonPropertyName("asset_files")]
+        public List<string> AssetFiles { get; set; } = new();
+
+        /// <summary>
+        /// Story 9.9 — aggregate FNV-1a integrity hash over the bundled asset files (filename + bytes, ordinal-sorted),
+        /// the sibling of <see cref="TerrainHash"/>. Written at pack time, verified on Unpack whenever
+        /// <see cref="AssetFiles"/> is non-empty so an asset byte corrupted/damaged in transit is caught rather than
+        /// silently loaded. Like <see cref="ScenarioHash"/>/<see cref="TerrainHash"/> this is an unkeyed FNV corruption
+        /// check, not tamper-proofing (anti-cheat/attestation is out of scope). 0 = no assets bundled.
+        /// </summary>
+        [JsonPropertyName("asset_hash")]
+        public uint AssetHash { get; set; }
 
         // ── Story 9.8 — proof-of-play + quality/IP-consent gate fields ───────────
 
