@@ -24,6 +24,20 @@ namespace ProjectChimera.UGC
         [JsonPropertyName("modfile")]       public ModIoFile?   Modfile     { get; set; }
         [JsonPropertyName("stats")]         public ModIoStats   Stats       { get; set; } = new();
         [JsonPropertyName("tags")]          public List<ModIoTag> Tags      { get; set; } = new();
+        /// <summary>Story 9.10: the mod's logo image set (thumbnails + original), used for the card thumbnail.</summary>
+        [JsonPropertyName("logo")]          public ModIoLogo?   Logo        { get; set; }
+    }
+
+    /// <summary>
+    /// A mod's logo image set from mod.io. Story 9.10 renders <see cref="Thumb320x180"/> on the browse card.
+    /// See: https://docs.mod.io/restapiref/#logo-object
+    /// </summary>
+    public class ModIoLogo
+    {
+        [JsonPropertyName("filename")]      public string Filename     { get; set; } = "";
+        [JsonPropertyName("thumb_320x180")] public string Thumb320x180 { get; set; } = "";
+        [JsonPropertyName("thumb_640x360")] public string Thumb640x360 { get; set; } = "";
+        [JsonPropertyName("original")]      public string Original     { get; set; } = "";
     }
 
     public class ModIoUser
@@ -52,11 +66,25 @@ namespace ProjectChimera.UGC
         [JsonPropertyName("ratings_positive")] public int RatingsPositive { get; set; }
         [JsonPropertyName("ratings_negative")] public int RatingsNegative { get; set; }
         [JsonPropertyName("downloads_total")]  public int DownloadsTotal  { get; set; }
+        // Story 9.10: mod.io-native rating summary. RatingsDisplayText is mod.io's own human-readable weighted
+        // string (e.g. "94% (128)"); when present we show it verbatim instead of computing a local score.
+        [JsonPropertyName("ratings_percentage_positive")] public int    RatingsPercentagePositive { get; set; }
+        [JsonPropertyName("ratings_display_text")]        public string RatingsDisplayText        { get; set; } = "";
     }
 
     public class ModIoTag
     {
         [JsonPropertyName("name")] public string Name { get; set; } = "";
+    }
+
+    /// <summary>
+    /// Story 9.10: a game tag-option group from <c>GET /games/{id}/tags</c>. Each group carries a display name and
+    /// the tag values under it; the browser flattens all groups into one chip list (no local hardcoded tag index).
+    /// </summary>
+    public class ModIoTagOption
+    {
+        [JsonPropertyName("name")] public string       Name { get; set; } = "";
+        [JsonPropertyName("tags")] public List<string> Tags { get; set; } = new();
     }
 
     public class ModIoListResponse<T>
@@ -109,6 +137,14 @@ namespace ProjectChimera.UGC
         public event Action?                OnAuthCodeSent;
         /// <summary>Fired after AuthenticateEmailExchangeAsync succeeds. Returns username.</summary>
         public event Action<string>?        OnLoginSuccess;
+        /// <summary>Story 9.10: fired when GetGameTagsAsync completes. Returns the flat game tag-name list.</summary>
+        public event Action<List<string>>?  OnTagOptionsReady;
+        /// <summary>Story 9.10: fired when DownloadThumbnailAsync completes. Args: (modId, raw image bytes).</summary>
+        public event Action<int, byte[]>?   OnThumbnailReady;
+        /// <summary>Story 9.10: fired on a 2xx from SubscribeAsync. Args: (modId).</summary>
+        public event Action<int>?           OnSubscribeComplete;
+        /// <summary>Story 9.10: fired on a 2xx from RateAsync. Args: (modId, positive).</summary>
+        public event Action<int, bool>?     OnRateComplete;
         /// <summary>Fired on any operation error. Args: (operation, message).</summary>
         public event Action<string, string>? OnError;
 
@@ -157,16 +193,17 @@ namespace ProjectChimera.UGC
         /// <param name="limit">Number of results per page (max 100).</param>
         /// <param name="offset">Pagination offset.</param>
         /// <param name="searchQuery">Optional free-text search (mod name / summary).</param>
-        public void BrowseModsAsync(int limit = 20, int offset = 0, string? searchQuery = null)
+        /// <param name="sort">Optional mod.io-native <c>_sort</c> token (e.g. <c>-downloads</c>). Null/blank ⇒ default
+        /// <c>-popular</c>.</param>
+        /// <param name="tags">Optional mod.io tag names; each becomes one <c>tags=</c> param (mod.io ANDs them).</param>
+        public void BrowseModsAsync(int limit = 20, int offset = 0, string? searchQuery = null,
+                                    string? sort = null, IReadOnlyList<string>? tags = null)
         {
             _ = Task.Run(async () =>
             {
                 try
                 {
-                    string url = $"{BASE_URL}/games/{_gameId}/mods" +
-                                 $"?api_key={_apiKey}&_limit={limit}&_offset={offset}&_sort=-popular";
-                    if (!string.IsNullOrWhiteSpace(searchQuery))
-                        url += $"&_q={Uri.EscapeDataString(searchQuery)}";
+                    string url = BuildModsUrl(BASE_URL, _gameId, _apiKey, limit, offset, searchQuery, sort, tags);
 
                     var response = await _http.GetAsync(url);
                     var body     = await response.Content.ReadAsStringAsync();
@@ -185,6 +222,122 @@ namespace ProjectChimera.UGC
                 catch (Exception ex)
                 {
                     _queue.Enqueue(() => OnError?.Invoke("browse", ex.Message));
+                }
+            });
+        }
+
+        /// <summary>
+        /// Pure builder for the browse request URL — the Story 9.10 Tier-1 testable seam that proves the six
+        /// discovery verbs become mod.io-native query params rather than a local index. Threads the search text,
+        /// sort key, and tag set straight into the mod.io request:
+        ///   • <paramref name="sort"/> null/blank ⇒ default <c>-popular</c> (already-shipped, known-good).
+        ///   • <paramref name="searchQuery"/> ⇒ escaped <c>_q</c> (omitted when blank).
+        ///   • each non-blank tag ⇒ one escaped <c>tags=</c> param (mod.io AND semantics).
+        /// No client-side re-sort/re-filter: whatever mod.io returns is what the panel shows.
+        /// </summary>
+        public static string BuildModsUrl(string baseUrl, int gameId, string apiKey, int limit, int offset,
+                                          string? searchQuery, string? sort, IReadOnlyList<string>? tags)
+        {
+            string sortToken = string.IsNullOrWhiteSpace(sort) ? "-popular" : sort;
+
+            var sb = new StringBuilder();
+            sb.Append($"{baseUrl}/games/{gameId}/mods");
+            sb.Append($"?api_key={apiKey}&_limit={limit}&_offset={offset}");
+            sb.Append($"&_sort={Uri.EscapeDataString(sortToken)}");
+            if (!string.IsNullOrWhiteSpace(searchQuery))
+                sb.Append($"&_q={Uri.EscapeDataString(searchQuery)}");
+            if (tags != null)
+                foreach (var tag in tags)
+                    if (!string.IsNullOrWhiteSpace(tag))
+                        sb.Append($"&tags={Uri.EscapeDataString(tag)}");
+            return sb.ToString();
+        }
+
+        // ── Tag options ───────────────────────────────────────────────────────
+
+        /// <summary>
+        /// Fetch this game's tag options from mod.io (<c>GET /games/{id}/tags</c>) and deliver a flattened tag-name
+        /// list via <see cref="OnTagOptionsReady"/>. The browser builds its filter chips from this — there is no
+        /// hardcoded/local tag index. No authentication required. On failure, fires <see cref="OnError"/> and no
+        /// chips are produced (browse/sort still work).
+        /// </summary>
+        public void GetGameTagsAsync()
+        {
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    string url = $"{BASE_URL}/games/{_gameId}/tags?api_key={_apiKey}";
+                    var response = await _http.GetAsync(url);
+                    var body     = await response.Content.ReadAsStringAsync();
+
+                    if (!response.IsSuccessStatusCode)
+                    {
+                        string err = ParseError(body) ?? $"HTTP {(int)response.StatusCode}";
+                        _queue.Enqueue(() => OnError?.Invoke("tags", err));
+                        return;
+                    }
+
+                    var result = JsonSerializer.Deserialize<ModIoListResponse<ModIoTagOption>>(body, _json);
+                    var names  = FlattenTagNames(result?.Data);
+                    _queue.Enqueue(() => OnTagOptionsReady?.Invoke(names));
+                }
+                catch (Exception ex)
+                {
+                    _queue.Enqueue(() => OnError?.Invoke("tags", ex.Message));
+                }
+            });
+        }
+
+        /// <summary>
+        /// Pure builder for the flat chip-name list from a <c>GET /games/{id}/tags</c> response — the Story 9.10
+        /// Tier-1 testable seam that pins the "no local tag index" contract and the malformed-group guard. Flattens
+        /// every group's tag values into one list, skipping a null/malformed group (<c>"tags":null</c>) so one bad
+        /// group never drops all tags, and dropping blank/whitespace tag names.
+        /// </summary>
+        public static List<string> FlattenTagNames(IReadOnlyList<ModIoTagOption>? groups)
+        {
+            var names = new List<string>();
+            if (groups == null) return names;
+            foreach (var group in groups)
+            {
+                if (group?.Tags == null) continue; // one malformed group ("tags":null) must not drop all tags
+                foreach (var t in group.Tags)
+                    if (!string.IsNullOrWhiteSpace(t))
+                        names.Add(t);
+            }
+            return names;
+        }
+
+        // ── Thumbnail ─────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// Fetch a mod's logo thumbnail bytes (raw, undecoded) and deliver them via <see cref="OnThumbnailReady"/>.
+        /// The presentation layer decodes them into a texture. No authentication required. On failure, fires
+        /// <see cref="OnError"/> and no bytes are delivered (the card keeps its placeholder).
+        /// </summary>
+        /// <param name="modId">mod.io mod ID (used to route the result back to the right card).</param>
+        /// <param name="url">The <c>logo.thumb_320x180</c> (or similar) URL from a browse result.</param>
+        public void DownloadThumbnailAsync(int modId, string url)
+        {
+            if (string.IsNullOrWhiteSpace(url)) return;
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    var response = await _http.GetAsync(url);
+                    if (!response.IsSuccessStatusCode)
+                    {
+                        _queue.Enqueue(() =>
+                            OnError?.Invoke("thumbnail", $"HTTP {(int)response.StatusCode}"));
+                        return;
+                    }
+                    byte[] bytes = await response.Content.ReadAsByteArrayAsync();
+                    _queue.Enqueue(() => OnThumbnailReady?.Invoke(modId, bytes));
+                }
+                catch (Exception ex)
+                {
+                    _queue.Enqueue(() => OnError?.Invoke("thumbnail", ex.Message));
                 }
             });
         }
@@ -393,6 +546,10 @@ namespace ProjectChimera.UGC
                         string err = ParseError(body) ?? $"HTTP {(int)response.StatusCode}";
                         _queue.Enqueue(() => OnError?.Invoke("subscribe", err));
                     }
+                    else
+                    {
+                        _queue.Enqueue(() => OnSubscribeComplete?.Invoke(modId));
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -440,7 +597,17 @@ namespace ProjectChimera.UGC
                     var req = AuthRequest(HttpMethod.Post,
                         $"{BASE_URL}/games/{_gameId}/mods/{modId}/ratings");
                     req.Content = payload;
-                    await _http.SendAsync(req);
+                    var response = await _http.SendAsync(req);
+                    if (!response.IsSuccessStatusCode)
+                    {
+                        var body = await response.Content.ReadAsStringAsync();
+                        string err = ParseError(body) ?? $"HTTP {(int)response.StatusCode}";
+                        _queue.Enqueue(() => OnError?.Invoke("rate", err));
+                    }
+                    else
+                    {
+                        _queue.Enqueue(() => OnRateComplete?.Invoke(modId, positive));
+                    }
                 }
                 catch (Exception ex)
                 {

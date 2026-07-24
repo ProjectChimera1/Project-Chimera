@@ -69,10 +69,39 @@ namespace ProjectChimera.UI
         private Label         _onlineStatusLabel = null!;
         private VBoxContainer _onlineListContainer = null!;
 
+        // Story 9.10: sort dropdown + mod.io tag-filter chips (both re-issue browse with the composed sort+search+tags).
+        private OptionButton    _sortDropdown = null!;
+        private HFlowContainer  _tagChipRow   = null!;
+        private readonly List<CheckBox>  _tagChips      = new();
+        private readonly HashSet<string> _selectedTags  = new();
+        private bool                     _tagsFetched   = false;
+
+        // Story 9.10: mod.io-native _sort tokens. Default -popular is the already-shipped, known-good browse order;
+        // the rest are a small curated set a later story can tune. An unexpected token surfaces via OnError (the
+        // mod.io response), never a crash.
+        private static readonly (string Label, string Token)[] SORT_OPTIONS =
+        {
+            ("Popular",         "-popular"),
+            ("Most Downloaded", "-downloads"),
+            ("Newest",          "-date_live"),
+            ("Name A–Z",        "name"),
+        };
+
         // Download state: modId → (button label, progress 0-1)
         private readonly Dictionary<int, Label>  _downloadLabels   = new();
         private readonly Dictionary<int, float>  _downloadProgress = new();
         private readonly HashSet<int>            _downloadComplete = new();
+
+        // Story 9.10: per-card thumbnail targets + the logo URL used to pick the decoder (jpg/png).
+        private readonly Dictionary<int, TextureRect> _thumbnails    = new();
+        private readonly Dictionary<int, string>      _thumbnailUrls = new();
+        private ImageTexture? _placeholderTex;
+
+        // Story 9.10: per-card subscribe/rate buttons + which mods have a committed rating (so an OnError revert
+        // never re-enables an already-succeeded action).
+        private readonly Dictionary<int, Button>                 _subscribeButtons = new();
+        private readonly Dictionary<int, (Button Up, Button Down)> _rateButtons    = new();
+        private readonly HashSet<int>                            _ratedMods        = new();
 
         // Tag badge color palette (cycling).
         private static readonly Color[] TAG_COLORS =
@@ -508,6 +537,34 @@ namespace ProjectChimera.UI
             browseBtn.Pressed += BrowseOnline;
             searchRow.AddChild(browseBtn);
 
+            // ── Sort row (mod.io-native _sort tokens) ─────────────────────────
+            var sortRow = new HBoxContainer();
+            sortRow.AddThemeConstantOverride("separation", 6);
+            tab.AddChild(sortRow);
+
+            var sortLabel = new Label { Text = "Sort:" };
+            sortLabel.AddThemeFontSizeOverride("font_size", 13);
+            sortLabel.AddThemeColorOverride("font_color", new Color(0.65f, 0.65f, 0.7f));
+            sortRow.AddChild(sortLabel);
+
+            _sortDropdown = new OptionButton { CustomMinimumSize = new Vector2(170, 30) };
+            _sortDropdown.AddThemeFontSizeOverride("font_size", 13);
+            for (int i = 0; i < SORT_OPTIONS.Length; i++)
+                _sortDropdown.AddItem(SORT_OPTIONS[i].Label, i);
+            _sortDropdown.Selected = 0;
+            // Re-issue browse with the newly chosen sort, preserving current search + tags.
+            _sortDropdown.ItemSelected += _ => BrowseOnline();
+            sortRow.AddChild(_sortDropdown);
+
+            var tagsLabel = new Label { Text = "   Tags:" };
+            tagsLabel.AddThemeFontSizeOverride("font_size", 13);
+            tagsLabel.AddThemeColorOverride("font_color", new Color(0.65f, 0.65f, 0.7f));
+            sortRow.AddChild(tagsLabel);
+
+            // Tag chips wrap onto multiple lines; populated from GET /games/{id}/tags (no local tag index).
+            _tagChipRow = new HFlowContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+            sortRow.AddChild(_tagChipRow);
+
             // ── Status label ──────────────────────────────────────────────────
             _onlineStatusLabel = new Label { Text = "Press Browse to fetch maps from mod.io." };
             _onlineStatusLabel.AddThemeFontSizeOverride("font_size", 13);
@@ -623,6 +680,17 @@ namespace ProjectChimera.UI
             }
         }
 
+        /// <summary>
+        /// Story 9.10: a logged-out user clicked a login-gated action (subscribe/rate). Open the login panel and
+        /// surface a prompt; the mod.io write is NOT sent until they log in.
+        /// </summary>
+        private void PromptLoginFor(string action)
+        {
+            _loginPanel.Visible  = true;
+            _loginToggleBtn.Text = "Cancel";
+            _onlineStatusLabel.Text = $"Log in to {action}. Enter your mod.io email above to receive a code.";
+        }
+
         private void RequestAuthCode()
         {
             string email = _emailField.Text.Trim();
@@ -653,7 +721,26 @@ namespace ProjectChimera.UI
         {
             _onlineStatusLabel.Text = "Fetching mod list…";
             ClearOnlineList();
-            _modIo!.BrowseModsAsync(limit: 20, searchQuery: _searchField.Text.Trim());
+
+            // Fetch the game's tag options once (first browse of the tab), so the chip row is mod.io-driven.
+            if (!_tagsFetched)
+            {
+                _tagsFetched = true;
+                _modIo!.GetGameTagsAsync();
+            }
+
+            int idx = (int)_sortDropdown.Selected;
+            if (idx < 0 || idx >= SORT_OPTIONS.Length) idx = 0;
+            string sortToken = SORT_OPTIONS[idx].Token;
+
+            List<string>? tags = _selectedTags.Count > 0 ? new List<string>(_selectedTags) : null;
+
+            // Compose search + tag + sort into ONE mod.io query (no client-side re-sort/re-filter).
+            _modIo!.BrowseModsAsync(
+                limit: 20,
+                searchQuery: _searchField.Text.Trim(),
+                sort: sortToken,
+                tags: tags);
         }
 
         private void ClearOnlineList()
@@ -666,6 +753,11 @@ namespace ProjectChimera.UI
             _downloadLabels.Clear();
             _downloadProgress.Clear();
             _downloadComplete.Clear();
+            _thumbnails.Clear();
+            _thumbnailUrls.Clear();
+            _subscribeButtons.Clear();
+            _rateButtons.Clear();
+            _ratedMods.Clear();
         }
 
         private void PopulateOnlineList(List<ModIoMod> mods)
@@ -685,6 +777,24 @@ namespace ProjectChimera.UI
             var row  = new HBoxContainer();
             row.AddThemeConstantOverride("separation", 12);
             card.AddChild(row);
+
+            // Thumbnail (mod.io logo). A neutral placeholder shows while loading or when the mod has no logo; the
+            // real bytes are fetched async via DownloadThumbnailAsync and decoded in OnThumbnailReady.
+            var thumb = new TextureRect
+            {
+                CustomMinimumSize = new Vector2(96, 54),
+                ExpandMode        = TextureRect.ExpandModeEnum.IgnoreSize,
+                StretchMode       = TextureRect.StretchModeEnum.KeepAspectCentered,
+                Texture           = PlaceholderThumbnail(),
+            };
+            row.AddChild(thumb);
+            _thumbnails[mod.Id] = thumb;
+            string logoUrl = mod.Logo?.Thumb320x180 ?? "";
+            if (!string.IsNullOrEmpty(logoUrl))
+            {
+                _thumbnailUrls[mod.Id] = logoUrl;
+                _modIo?.DownloadThumbnailAsync(mod.Id, logoUrl);
+            }
 
             // Info column.
             var info = new VBoxContainer();
@@ -720,9 +830,13 @@ namespace ProjectChimera.UI
                 metaRow.AddChild(authorLbl);
             }
 
+            // mod.io-native stats: downloads + rating. Prefer mod.io's own weighted display text ("94% (128)")
+            // when present; otherwise fall back to the raw +N/−N counts. Never a locally computed score.
             string statsMeta = "";
             if (mod.Stats.DownloadsTotal > 0)   statsMeta += $"   •   {mod.Stats.DownloadsTotal} downloads";
-            if (mod.Stats.RatingsPositive + mod.Stats.RatingsNegative > 0)
+            if (!string.IsNullOrWhiteSpace(mod.Stats.RatingsDisplayText))
+                statsMeta += $"   •   {mod.Stats.RatingsDisplayText}";
+            else if (mod.Stats.RatingsPositive + mod.Stats.RatingsNegative > 0)
                 statsMeta += $"   •   +{mod.Stats.RatingsPositive} / -{mod.Stats.RatingsNegative}";
             if (!string.IsNullOrEmpty(statsMeta))
             {
@@ -731,6 +845,21 @@ namespace ProjectChimera.UI
                 statsLbl.AddThemeColorOverride("font_color", new Color(0.65f, 0.65f, 0.7f));
                 metaRow.AddChild(statsLbl);
             }
+
+            // Author ownership / attribution line — surfaced from the mod.io entry (beside the profile link above).
+            // Reflects mod.io's actual model (author retains IP; platform takes a host/distribute right, mirroring the
+            // Story 9.8 IP-consent framing) — no unverified "©" ownership assertion. Guarded against a blank username.
+            string ownerName = mod.SubmittedBy.Username;
+            var ownershipLbl = new Label
+            {
+                Text = string.IsNullOrWhiteSpace(ownerName)
+                    ? "Hosted & distributed via mod.io"
+                    : $"IP retained by {ownerName} · hosted & distributed via mod.io",
+                AutowrapMode = TextServer.AutowrapMode.Word,
+            };
+            ownershipLbl.AddThemeFontSizeOverride("font_size", 10);
+            ownershipLbl.AddThemeColorOverride("font_color", new Color(0.5f, 0.52f, 0.6f));
+            info.AddChild(ownershipLbl);
 
             if (!string.IsNullOrWhiteSpace(mod.Summary))
                 AddDescLabel(info, mod.Summary);
@@ -784,51 +913,57 @@ namespace ProjectChimera.UI
             };
             rightCol.AddChild(downloadBtn);
 
-            // Subscribe button (logged-in only).
-            if (_modIo?.IsLoggedIn == true)
+            // Subscribe + Rate are ALWAYS shown (Story 9.10). A logged-out click opens the login panel + prompts
+            // instead of calling mod.io; a logged-in click sends the request and reflects success/error events.
+            var subBtn = new Button
             {
-                var subBtn = new Button
-                {
-                    Text             = "Subscribe",
-                    CustomMinimumSize = new Vector2(140, 30),
-                };
-                subBtn.AddThemeFontSizeOverride("font_size", 12);
-                subBtn.Pressed += () =>
-                {
-                    subBtn.Text     = "Subscribed";
-                    subBtn.Disabled = true;
-                    _modIo!.SubscribeAsync(capturedId);
-                };
-                rightCol.AddChild(subBtn);
+                Text             = "Subscribe",
+                CustomMinimumSize = new Vector2(140, 30),
+            };
+            subBtn.AddThemeFontSizeOverride("font_size", 12);
+            subBtn.Pressed += () =>
+            {
+                if (_modIo == null) return;
+                if (!_modIo.IsLoggedIn) { PromptLoginFor("subscribe"); return; }
+                subBtn.Text     = "Subscribing…";
+                subBtn.Disabled = true;
+                _modIo.SubscribeAsync(capturedId);
+            };
+            rightCol.AddChild(subBtn);
+            _subscribeButtons[capturedId] = subBtn;
 
-                // Thumbs up / down row. Declare both before wiring closures so
-                // each button can reference the other (CS0841 guard).
-                var rateRow = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.Center };
-                rateRow.AddThemeConstantOverride("separation", 4);
-                rightCol.AddChild(rateRow);
+            // Thumbs up / down row. Declare both before wiring closures so each button can reference the other
+            // (CS0841 guard).
+            var rateRow = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.Center };
+            rateRow.AddThemeConstantOverride("separation", 4);
+            rightCol.AddChild(rateRow);
 
-                Button thumbUp   = new() { Text = "+", CustomMinimumSize = new Vector2(44, 28), TooltipText = "Rate positive" };
-                Button thumbDown = new() { Text = "−", CustomMinimumSize = new Vector2(44, 28), TooltipText = "Rate negative" };
+            Button thumbUp   = new() { Text = "+", CustomMinimumSize = new Vector2(44, 28), TooltipText = "Rate positive" };
+            Button thumbDown = new() { Text = "−", CustomMinimumSize = new Vector2(44, 28), TooltipText = "Rate negative" };
 
-                thumbUp.AddThemeFontSizeOverride("font_size", 16);
-                thumbUp.Pressed += () =>
-                {
-                    thumbUp.Disabled   = true;
-                    thumbDown.Disabled = true;
-                    _modIo!.RateAsync(capturedId, positive: true);
-                };
+            thumbUp.AddThemeFontSizeOverride("font_size", 16);
+            thumbUp.Pressed += () =>
+            {
+                if (_modIo == null) return;
+                if (!_modIo.IsLoggedIn) { PromptLoginFor("rate"); return; }
+                thumbUp.Disabled   = true;
+                thumbDown.Disabled = true;
+                _modIo.RateAsync(capturedId, positive: true);
+            };
 
-                thumbDown.AddThemeFontSizeOverride("font_size", 16);
-                thumbDown.Pressed += () =>
-                {
-                    thumbUp.Disabled   = true;
-                    thumbDown.Disabled = true;
-                    _modIo!.RateAsync(capturedId, positive: false);
-                };
+            thumbDown.AddThemeFontSizeOverride("font_size", 16);
+            thumbDown.Pressed += () =>
+            {
+                if (_modIo == null) return;
+                if (!_modIo.IsLoggedIn) { PromptLoginFor("rate"); return; }
+                thumbUp.Disabled   = true;
+                thumbDown.Disabled = true;
+                _modIo.RateAsync(capturedId, positive: false);
+            };
 
-                rateRow.AddChild(thumbUp);
-                rateRow.AddChild(thumbDown);
-            }
+            rateRow.AddChild(thumbUp);
+            rateRow.AddChild(thumbDown);
+            _rateButtons[capturedId] = (thumbUp, thumbDown);
 
             return card;
         }
@@ -842,6 +977,83 @@ namespace ProjectChimera.UI
             _modIo.OnBrowseComplete += mods =>
             {
                 PopulateOnlineList(mods);
+            };
+
+            // Story 9.10: build the tag-filter chips from mod.io's own game tags (no local tag index). If the fetch
+            // failed, OnError fires instead and the chip row simply stays empty — browse/sort still work.
+            _modIo.OnTagOptionsReady += names =>
+            {
+                foreach (var chip in _tagChips) chip.QueueFree();
+                _tagChips.Clear();
+
+                // Prune any selected tag no longer offered by mod.io, so a stale selection can't keep filtering
+                // browse with no chip left to clear it (would otherwise silently narrow results to empty).
+                _selectedTags.IntersectWith(names);
+
+                var seen = new HashSet<string>();
+                foreach (var name in names)
+                {
+                    if (string.IsNullOrWhiteSpace(name) || !seen.Add(name)) continue;
+                    var chip = new CheckBox { Text = name, ButtonPressed = _selectedTags.Contains(name) };
+                    chip.AddThemeFontSizeOverride("font_size", 12);
+                    string capturedName = name;
+                    chip.Toggled += pressed =>
+                    {
+                        if (pressed) _selectedTags.Add(capturedName);
+                        else         _selectedTags.Remove(capturedName);
+                        BrowseOnline(); // re-issue with the composed sort + search + tags
+                    };
+                    _tagChips.Add(chip);
+                    _tagChipRow.AddChild(chip);
+                }
+            };
+
+            // Story 9.10: decode fetched logo bytes into the card's TextureRect. Any failure leaves the placeholder;
+            // never throws.
+            _modIo.OnThumbnailReady += (modId, bytes) =>
+            {
+                if (!_thumbnails.TryGetValue(modId, out var rect)) return;
+                try
+                {
+                    var img = new Image();
+                    string url = _thumbnailUrls.TryGetValue(modId, out var u) ? u : "";
+                    bool jpgFirst = !url.EndsWith(".png", StringComparison.OrdinalIgnoreCase);
+
+                    Error err = jpgFirst ? img.LoadJpgFromBuffer(bytes) : img.LoadPngFromBuffer(bytes);
+                    if (err != Error.Ok)
+                        err = jpgFirst ? img.LoadPngFromBuffer(bytes) : img.LoadJpgFromBuffer(bytes);
+
+                    if (err == Error.Ok && img.GetWidth() > 0)
+                        rect.Texture = ImageTexture.CreateFromImage(img);
+                }
+                catch (Exception ex)
+                {
+                    GD.PrintErr($"[ContentBrowser] Thumbnail decode failed for mod {modId}: {ex.Message}");
+                    // Placeholder stays.
+                }
+            };
+
+            // Story 9.10: reflect a successful subscribe.
+            _modIo.OnSubscribeComplete += modId =>
+            {
+                if (_subscribeButtons.TryGetValue(modId, out var b))
+                {
+                    b.Text     = "Subscribed ✓";
+                    b.Disabled = true;
+                }
+            };
+
+            // Story 9.10: reflect a successful rating — the chosen thumb is highlighted and the pair stays disabled.
+            _modIo.OnRateComplete += (modId, positive) =>
+            {
+                _ratedMods.Add(modId);
+                if (_rateButtons.TryGetValue(modId, out var pair))
+                {
+                    pair.Up.Disabled   = true;
+                    pair.Down.Disabled = true;
+                    var chosen = positive ? pair.Up : pair.Down;
+                    chosen.AddThemeColorOverride("font_color", new Color(0.4f, 0.9f, 0.5f));
+                }
             };
 
             _modIo.OnDownloadProgress += (modId, pct) =>
@@ -922,11 +1134,34 @@ namespace ProjectChimera.UI
 
             _modIo.OnError += (op, msg) =>
             {
-                _onlineStatusLabel.Text = $"Error ({op}): {msg}";
                 GD.PrintErr($"[ContentBrowser] mod.io error in '{op}': {msg}");
+
+                // Story 9.10: thumbnail + tag-option fetches are BACKGROUND, per-card/one-shot ops — their failures
+                // must NOT clobber the user-facing browse status ("N maps found"). Log only. For tags, reset the
+                // pre-call latch so the next browse retries the fetch (a transient offline/5xx must not permanently
+                // disable the chip row). These ops never touch the auth/subscribe/rate button state, so return early.
+                if (op == "thumbnail") return;
+                if (op == "tags") { _tagsFetched = false; return; }
+
+                // User-initiated ops surface to the status label.
+                _onlineStatusLabel.Text = $"Error ({op}): {msg}";
                 // Re-enable buttons that may have been disabled optimistically.
                 if (op == "auth_request")  _requestCodeBtn.Disabled  = false;
                 if (op == "auth_exchange") _exchangeCodeBtn.Disabled = false;
+
+                // Story 9.10: revert an in-flight subscribe (its button reads "Subscribing…") back to actionable.
+                if (op == "subscribe")
+                    foreach (var b in _subscribeButtons.Values)
+                        if (b.Text == "Subscribing…") { b.Disabled = false; b.Text = "Subscribe"; }
+
+                // Story 9.10: re-enable rate pairs that were optimistically disabled but never committed.
+                if (op == "rate")
+                    foreach (var (modId, pair) in _rateButtons)
+                        if (!_ratedMods.Contains(modId))
+                        {
+                            pair.Up.Disabled   = false;
+                            pair.Down.Disabled = false;
+                        }
             };
         }
 
@@ -969,6 +1204,19 @@ namespace ProjectChimera.UI
         }
 
         // ── Shared card builder helpers ───────────────────────────────────────
+
+        /// <summary>Story 9.10: a lazily-built neutral placeholder texture shown until a mod's logo decodes (or
+        /// permanently when a mod has no logo). Reused across all cards.</summary>
+        private ImageTexture PlaceholderThumbnail()
+        {
+            if (_placeholderTex == null)
+            {
+                var img = Image.CreateEmpty(96, 54, false, Image.Format.Rgba8);
+                img.Fill(new Color(0.18f, 0.20f, 0.28f, 1f));
+                _placeholderTex = ImageTexture.CreateFromImage(img);
+            }
+            return _placeholderTex;
+        }
 
         private static PanelContainer MakeCardPanel()
         {

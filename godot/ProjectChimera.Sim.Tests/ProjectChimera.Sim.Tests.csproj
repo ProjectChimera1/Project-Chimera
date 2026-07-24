@@ -30,6 +30,10 @@
     <Compile Include="..\src\UGC\ProofOfPlayStore.cs"  LinkBase="Sim\UGC" />
     <Compile Include="..\src\UGC\PublishGate.cs"       LinkBase="Sim\UGC" />
     <Compile Include="..\src\UGC\ProofOfPlayMint.cs"   LinkBase="Sim\UGC" />
+    <!-- Story 9.10: include ModIoService as a single file so its pure BuildModsUrl seam is Tier-1 testable
+         (mirrors the UGC includes above; deliberately OUTSIDE SimSources.props / the determinism analyzer set —
+         it is off-tick, Godot-free, presentation-adjacent HTTP glue). -->
+    <Compile Include="..\src\UGC\ModIoService.cs"      LinkBase="Sim\UGC" />
   </ItemGroup>
 
   <ItemGroup>
