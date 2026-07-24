@@ -73,8 +73,9 @@ namespace ProjectChimera.Sim.Tests.Multiplayer
             string path = Path.GetTempFileName();
             try
             {
-                // ── Record a v3 replay of the chat-code injection. ──
-                using (var rec = new ReplayRecorder(path, "test://chat", EntityWorld.DEFAULT_RNG_SEED))
+                // ── Record a v4 replay of the chat-code injection. ──
+                using (var rec = new ReplayRecorder(path, "test://chat", EntityWorld.DEFAULT_RNG_SEED,
+                           0x11UL, 0x22UL, CanonicalModelHash.AlgoVersion, new[] { Faction.Player1, Faction.Player2 }))
                     rec.RecordTick(3, Faction.Player1, new[] { chatOrder }, 0, 1);
 
                 // ── LIVE reference run: apply the identical order through the shared applier before StepOnce. ──

@@ -185,7 +185,7 @@ development_status:
   9-8-proof-of-play-token-pre-publish-quality-ip-consent-gate-publish-chimera-zip-to-mod-io: done
   9-9-content-hash-integrity-verification-on-download-runtime-binary-asset-ingest: done
   9-10-content-browser-delegating-browse-search-tag-sort-subscribe-rate-to-mod-io: done
-  9-11-replay-v2-tagged-body-scenario-re-gate-replay-ux-browser-playback-perspective: backlog
+  9-11-replay-v2-tagged-body-scenario-re-gate-replay-ux-browser-playback-perspective: done
   9-12-server-validated-online-hero-persistence-rail: backlog
   9-13-per-client-command-rate-throttle-anti-spam-on-the-dedicated-server: backlog
   9-14-teams-alliances-lobby-teams-wired-into-the-sim-alliance-model: backlog

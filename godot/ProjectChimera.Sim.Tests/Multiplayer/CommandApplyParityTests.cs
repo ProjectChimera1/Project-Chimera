@@ -184,7 +184,7 @@ namespace ProjectChimera.Sim.Tests.Multiplayer
             try
             {
                 // Record a tick carrying AttackTarget + Patrol for Player1.
-                using (var rec = new ReplayRecorder(path, "test://command-vocabulary", EntityWorld.DEFAULT_RNG_SEED))
+                using (var rec = new ReplayRecorder(path, "test://command-vocabulary", EntityWorld.DEFAULT_RNG_SEED, 0x11UL, 0x22UL, CanonicalModelHash.AlgoVersion, new[] { Faction.Player1, Faction.Player2 }))
                 {
                     var orders = new[]
                     {
@@ -248,13 +248,13 @@ namespace ProjectChimera.Sim.Tests.Multiplayer
         public void ReplayFile_RoundTrips_CastAbility_ThroughSharedApplier_WireUnchanged()
         {
             // The cast reuses the unchanged 11-byte command wire (the Story 1.12 precedent); the replay container
-            // format is VERSION 3 (bumped independently of this command).
-            Assert.Equal(3, ReplayRecorder.VERSION);
+            // format is VERSION 4 (Story 9.11 "replay v2" — bumped independently of this command wire).
+            Assert.Equal(4, ReplayRecorder.VERSION);
 
             string path = Path.GetTempFileName();
             try
             {
-                using (var rec = new ReplayRecorder(path, "test://ability-cast", EntityWorld.DEFAULT_RNG_SEED))
+                using (var rec = new ReplayRecorder(path, "test://ability-cast", EntityWorld.DEFAULT_RNG_SEED, 0x11UL, 0x22UL, CanonicalModelHash.AlgoVersion, new[] { Faction.Player1, Faction.Player2 }))
                 {
                     var orders = new[]
                     {
@@ -295,7 +295,7 @@ namespace ProjectChimera.Sim.Tests.Multiplayer
         {
             // Story 2.12: the queued flag + SetRally reuse the unchanged 11-byte command wire; the replay container
             // format is VERSION 3 (bumped independently of this command).
-            Assert.Equal(3, ReplayRecorder.VERSION);
+            Assert.Equal(4, ReplayRecorder.VERSION);
 
             string path = Path.GetTempFileName();
             try
@@ -304,7 +304,7 @@ namespace ProjectChimera.Sim.Tests.Multiplayer
                 var queuedMove = new UnitOrder(0, (UnitCommand)((byte)UnitCommand.Move | UnitOrderFlags.Queued),
                                                Fixed.FromInt(12), Fixed.FromInt(-3));
                 var setRally   = new UnitOrder(0, UnitCommand.SetRally, Fixed.FromInt(16), Fixed.FromInt(-4));
-                using (var rec = new ReplayRecorder(path, "test://shift-queue", EntityWorld.DEFAULT_RNG_SEED))
+                using (var rec = new ReplayRecorder(path, "test://shift-queue", EntityWorld.DEFAULT_RNG_SEED, 0x11UL, 0x22UL, CanonicalModelHash.AlgoVersion, new[] { Faction.Player1, Faction.Player2 }))
                 {
                     var orders = new[] { queuedMove, setRally };
                     rec.RecordTick(1, Faction.Player1, orders, 0, orders.Length);
@@ -414,7 +414,7 @@ namespace ProjectChimera.Sim.Tests.Multiplayer
             // and DropItem returns the item to the ground, IDENTICALLY through the live apply site (OrderApplier.Apply
             // with items:, the exact line LockstepManager.ApplyOrders calls) and the replay site (ReplayPlayer, Items
             // wired). If EITHER apply site stops forwarding `items`, the item command becomes a no-op and this fails.
-            Assert.Equal(3, ReplayRecorder.VERSION); // unchanged 11-byte command wire; replay container format is VERSION 3
+            Assert.Equal(4, ReplayRecorder.VERSION); // unchanged 11-byte command wire; replay container format is VERSION 4
 
             var useOrder  = new UnitOrder(0, UnitCommand.UseItem,  Fixed.FromRaw(0), Fixed.Zero); // inv slot 0 = potion
             var dropOrder = new UnitOrder(0, UnitCommand.DropItem, Fixed.FromRaw(1), Fixed.Zero); // inv slot 1 = ring
@@ -429,7 +429,7 @@ namespace ProjectChimera.Sim.Tests.Multiplayer
             string path = Path.GetTempFileName();
             try
             {
-                using (var rec = new ReplayRecorder(path, "test://item-use-drop", EntityWorld.DEFAULT_RNG_SEED))
+                using (var rec = new ReplayRecorder(path, "test://item-use-drop", EntityWorld.DEFAULT_RNG_SEED, 0x11UL, 0x22UL, CanonicalModelHash.AlgoVersion, new[] { Faction.Player1, Faction.Player2 }))
                 {
                     var orders = new[] { useOrder, dropOrder };
                     rec.RecordTick(1, Faction.Player1, orders, 0, orders.Length);
@@ -530,7 +530,7 @@ namespace ProjectChimera.Sim.Tests.Multiplayer
             string path = Path.GetTempFileName();
             try
             {
-                using (var rec = new ReplayRecorder(path, "test://buy-item", EntityWorld.DEFAULT_RNG_SEED))
+                using (var rec = new ReplayRecorder(path, "test://buy-item", EntityWorld.DEFAULT_RNG_SEED, 0x11UL, 0x22UL, CanonicalModelHash.AlgoVersion, new[] { Faction.Player1, Faction.Player2 }))
                 {
                     var orders = new[] { buy };
                     rec.RecordTick(1, Faction.Player1, orders, 0, orders.Length);

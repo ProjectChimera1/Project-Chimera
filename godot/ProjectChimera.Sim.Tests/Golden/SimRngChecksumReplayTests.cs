@@ -4,35 +4,38 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using ProjectChimera.Core;
+using ProjectChimera.Core.Definitions; // CanonicalModelHash.AlgoVersion
 using ProjectChimera.Multiplayer;
 using Xunit;
 
 namespace ProjectChimera.Sim.Tests.Golden
 {
     /// <summary>
-    /// Story 1.5 (AC2 + AC3) — proves the shared <see cref="SimRng"/> is (a) folded into <see cref="SimChecksum"/>
-    /// so a divergent draw stream is detectable, (b) recorded by <see cref="ReplayRecorder"/> + restored by
-    /// <see cref="ReplayPlayer"/> so a replay regenerates the identical stream, and (c) drives reproducible
-    /// per-tick checksums across two live runs AND across a record→replay round-trip.
+    /// Story 1.5 (AC2 + AC3) / Story 9.11 ("replay v2", format v4) — proves the shared <see cref="SimRng"/> is
+    /// (a) folded into <see cref="SimChecksum"/>, (b) recorded by <see cref="ReplayRecorder"/> + restored by
+    /// <see cref="ReplayPlayer"/> so a replay regenerates the identical stream, and (c) drives reproducible per-tick
+    /// checksums across two live runs AND across a record→replay round-trip. Story 9.11 additionally proves the v4
+    /// tagged-body / header round-trip, the fail-closed scenario re-gate, the pre-v4 + forward-algo hard-rejects,
+    /// the result trailer, and the lightweight header reader.
     ///
-    /// The RNG-driven behavior lives in a test-only <see cref="ISimSystem"/> (<see cref="RngDrawTestSystem"/>)
-    /// added to the loop — NOT a RunAndRecord perturb callback. A .chmr records ORDERS, not perturbs; only a
-    /// system re-runs on playback, so the draw MUST live in a system for the replayed checksum to reproduce.
-    ///
-    /// Replay-test scope (Task 7 note, resolved): took the RECOMMENDED path — ReplayRecorder.cs / ReplayPlayer.cs
-    /// / NetworkCommand.cs are explicitly compiled into this Tier-1 (Godot-free) assembly, so the full
-    /// record→restore-seed→replay round-trip is verified headlessly here (no Tier-2/GdUnit4 deferral needed).
+    /// ReplayRecorder.cs / ReplayPlayer.cs / ReplayHeader.cs / NetworkCommand.cs are compiled into this Tier-1
+    /// (Godot-free) assembly, so the full record→restore-seed→replay round-trip is verified headlessly here.
     /// </summary>
     public class SimRngChecksumReplayTests
     {
         private const int Ticks = 120;
 
-        /// <summary>
-        /// Test-only system mirroring how an Epic 2 random effect will draw: each tick it advances the shared
-        /// <see cref="SimRng"/> and writes the result into HASHED state (the target entity's Health). Because
-        /// both the draw (<see cref="SimRng.State"/>) and its effect (Health) are folded into the checksum, the
-        /// per-tick checksum sequence is a faithful fingerprint of the RNG stream.
-        /// </summary>
+        // A representative header roster + fields for a 2-player match. scenarioHash/rulesetHash are non-zero so a
+        // round-trip re-gate would pass; algo version matches this build (never forward-incompatible).
+        private static readonly Faction[] Roster2 = { Faction.Player1, Faction.Player2 };
+        private const ulong ScenarioHashFixture = 0xABCDEF0123456789UL;
+        private const ulong RulesetHashFixture  = 0x0F0F0F0F0F0F0F0FUL;
+
+        private static ReplayRecorder NewRecorder(string path, string scenarioPath = "simrng-replay-test",
+            ulong seed = 0UL, int algoVersion = -1)
+            => new(path, scenarioPath, seed, ScenarioHashFixture, RulesetHashFixture,
+                   algoVersion < 0 ? CanonicalModelHash.AlgoVersion : algoVersion, Roster2);
+
         private sealed class RngDrawTestSystem : ISimSystem
         {
             private readonly int _targetId;
@@ -45,10 +48,6 @@ namespace ProjectChimera.Sim.Tests.Golden
             }
         }
 
-        /// <summary>
-        /// Build a minimal, checksum-enabled loop whose ONLY system draws from the shared SimRng. Returns the
-        /// world (so a caller can let ReplayPlayer reseed it) and the loop (to step + capture).
-        /// </summary>
         private static (EntityWorld World, SimulationLoop Loop) BuildRngLoop(ulong seed)
         {
             var world = new EntityWorld();
@@ -58,7 +57,7 @@ namespace ProjectChimera.Sim.Tests.Golden
 
             var loop = new SimulationLoop(world, new RngDrawTestSystem(targetId));
             loop.EnableChecksums(new BuildingStore(), new ResourceStore(Fixed.Zero), new FactionRegistry(2));
-            loop.ChecksumInterval = 1; // one checksum per tick → the sequence is a full per-tick fingerprint
+            loop.ChecksumInterval = 1;
             return (world, loop);
         }
 
@@ -87,12 +86,7 @@ namespace ProjectChimera.Sim.Tests.Golden
             Assert.Equal(a, b);
         }
 
-        /// <summary>
-        /// AC2 (negative control) — a DIFFERENT seed produces a different checksum sequence. Proves the RNG
-        /// stream actually drives the hash: if <see cref="SimRng.State"/> were not folded in (or the draw didn't
-        /// touch hashed state), seed A and seed B would be indistinguishable. This is the robust,
-        /// stream/checksum-level control the 1.4 review asked for — no reflection or BCL-internal probing.
-        /// </summary>
+        /// <summary>AC2 (negative control) — a DIFFERENT seed produces a different checksum sequence.</summary>
         [Fact]
         public void DifferentSeed_DivergesChecksumSequence()
         {
@@ -106,39 +100,40 @@ namespace ProjectChimera.Sim.Tests.Golden
         }
 
         /// <summary>
-        /// AC2/AC3 — the match seed survives a ReplayRecorder→ReplayPlayer round-trip, and replaying the SAME
-        /// loop (test system included) with the restored seed reproduces the live per-tick checksum sequence
-        /// byte-for-byte. The .chmr carries the seed in its v2 header; it records no orders (this scenario
-        /// issues none) — the stream regenerates from the seed alone because the draw lives in a system.
+        /// Story 9.11 (AC1) — the v4 round-trip: the match seed survives a ReplayRecorder→ReplayPlayer round-trip,
+        /// and replaying with the restored seed reproduces the live per-tick checksum sequence byte-for-byte. The
+        /// header fields (seed/scenarioHash/rulesetHash/roster) round-trip exactly.
         /// </summary>
         [Fact]
-        public void RecordThenReplay_ReproducesChecksumSequence()
+        public void V4RoundTrip_ReproducesChecksums()
         {
             const ulong seed = 0x0BADC0DE12345678UL;
             string chmrPath = Path.Combine(Path.GetTempPath(), $"chimera_simrng_{Guid.NewGuid():N}.chmr");
 
             try
             {
-                // ── Persist the match seed to a .chmr (this scenario issues no unit orders). ──
-                using (var recorder = new ReplayRecorder(chmrPath, "simrng-replay-test", seed))
+                using (var recorder = NewRecorder(chmrPath, seed: seed))
                     Assert.Equal(seed, recorder.Seed);
 
-                // ── Live run with the same seed. ──
                 var (_, liveLoop) = BuildRngLoop(seed);
                 uint[] live = StepCapturing(liveLoop, Ticks);
 
-                // ── Replay: build a fresh loop seeded to a WRONG value, then let ReplayPlayer restore the
-                //    recorded seed from the header BEFORE any tick. ──
                 var (replayWorld, replayLoop) = BuildRngLoop(0xFFFFFFFFFFFFFFFFUL); // deliberately wrong
                 var player = new ReplayPlayer(chmrPath, replayWorld);
-                Assert.Equal(seed, player.Seed);            // seed survived the header round-trip
-                Assert.Equal(seed, replayWorld.Rng.State);  // ReplayPlayer reseeded the world's RNG (overrode the wrong seed)
+
+                // Header round-trips exactly.
+                Assert.Equal(seed, player.Seed);
+                Assert.Equal(seed, replayWorld.Rng.State);            // ReplayPlayer reseeded the world's RNG
+                Assert.Equal(ScenarioHashFixture, player.ScenarioHash);
+                Assert.Equal(RulesetHashFixture,  player.RulesetHash);
+                Assert.Equal(CanonicalModelHash.AlgoVersion, player.ModelAlgoVersion);
+                Assert.Equal(Roster2, player.Roster);
 
                 var replay = new List<uint>(Ticks);
                 replayLoop.OnChecksum = (_, hash) => replay.Add(hash);
                 for (int i = 0; i < Ticks; i++)
                 {
-                    player.Flush(replayLoop.CurrentTick); // applies recorded orders (none here)
+                    player.Flush(replayLoop.CurrentTick);
                     replayLoop.StepOnce();
                 }
 
@@ -150,30 +145,41 @@ namespace ProjectChimera.Sim.Tests.Golden
             }
         }
 
-        /// <summary>
-        /// Story 7.9 (was AC2 back-compat) — a v1 .chmr (no seed header) is now HARD-REJECTED with
-        /// <see cref="InvalidDataException"/>: v1 is seed-incomplete (no captured SimRng seed → the old
-        /// DEFAULT_RNG_SEED fallback silently desyncs any SimRng scenario), so the guard tightened from
-        /// <c>version &lt; 1</c> to <c>version &lt; 2</c>. Seed-complete v2 (below) still plays; v3 adds DslEvent orders.
-        /// </summary>
+        /// <summary>Story 9.11 — the fail-closed scenario re-gate (pure policy, mirrors HandshakeGate.CheckStart):
+        /// equal nonzero allows; a mismatch or either-hash-0 blocks with a surfaced reason.</summary>
         [Fact]
-        public void V1Replay_IsHardRejected()
+        public void ScenarioReGate_MismatchIsRejected()
         {
-            string chmrPath = Path.Combine(Path.GetTempPath(), $"chimera_simrng_v1_{Guid.NewGuid():N}.chmr");
+            Assert.Null(ReplayPlayer.ScenarioGateBlockReason(0x1234UL, 0x1234UL));       // equal nonzero → allow
+            Assert.NotNull(ReplayPlayer.ScenarioGateBlockReason(0x1234UL, 0x5678UL));    // mismatch → block
+            Assert.NotNull(ReplayPlayer.ScenarioGateBlockReason(0UL, 0x5678UL));         // embedded 0 → block
+            Assert.NotNull(ReplayPlayer.ScenarioGateBlockReason(0x1234UL, 0UL));         // loaded 0 → block
+            Assert.NotNull(ReplayPlayer.ScenarioGateBlockReason(0UL, 0UL));              // both 0 → block
+        }
+
+        /// <summary>Story 9.11 — a v1/v2/v3 file (no embedded scenario hash) is HARD-REJECTED with a descriptive
+        /// "older replay format" error and never partially played.</summary>
+        [Theory]
+        [InlineData(1)]
+        [InlineData(2)]
+        [InlineData(3)]
+        public void LegacyVersion_IsHardRejected(int version)
+        {
+            string chmrPath = Path.Combine(Path.GetTempPath(), $"chimera_legacy_v{version}_{Guid.NewGuid():N}.chmr");
             try
             {
-                // Hand-write a v1 header: magic + version(1) + pathLen(0) + EOF sentinel. No seed field.
                 using (var w = new BinaryWriter(File.Open(chmrPath, FileMode.Create)))
                 {
                     w.Write(ReplayRecorder.MAGIC);
-                    w.Write((ushort)1);            // v1 — seed-incomplete, now hard-rejected
-                    w.Write((ushort)0);            // empty scenario path
+                    w.Write((ushort)version);
+                    w.Write((ushort)0);                    // empty scenario path
+                    w.Write(EntityWorld.DEFAULT_RNG_SEED); // an 8-byte seed (v2/v3 shape)
                     w.Write(ReplayRecorder.EOF_SENTINEL);
                 }
 
                 var world = new EntityWorld();
                 var ex = Assert.Throws<InvalidDataException>(() => new ReplayPlayer(chmrPath, world));
-                Assert.Contains("version", ex.Message); // located reject naming the unsupported version
+                Assert.Contains("older replay format", ex.Message);
             }
             finally
             {
@@ -181,25 +187,42 @@ namespace ProjectChimera.Sim.Tests.Golden
             }
         }
 
-        /// <summary>
-        /// Robustness (review patch, Story 1.5) — a v2-stamped .chmr whose header ends before the full 8-byte
-        /// seed is truncated/corrupt. The loader must reject it with <see cref="InvalidDataException"/> (the
-        /// documented ctor contract), NOT leak the raw <see cref="EndOfStreamException"/> that a short
-        /// ReadUInt64 would throw — matching how bad-magic / unsupported-version headers are rejected.
-        /// </summary>
+        /// <summary>Story 9.11 — a v4 file whose embedded modelAlgoVersion exceeds this build's is forward-
+        /// incompatible and hard-rejected ("newer") — never partially played.</summary>
         [Fact]
-        public void V2Replay_TruncatedSeed_ThrowsInvalidData()
+        public void ForwardAlgoVersion_IsRejected()
         {
-            string chmrPath = Path.Combine(Path.GetTempPath(), $"chimera_simrng_trunc_{Guid.NewGuid():N}.chmr");
+            string chmrPath = Path.Combine(Path.GetTempPath(), $"chimera_fwd_{Guid.NewGuid():N}.chmr");
             try
             {
-                // Hand-write a v2 header that stops mid-seed: magic + version(2) + pathLen(0) + only 3 of 8 seed bytes.
+                using (var rec = NewRecorder(chmrPath, algoVersion: CanonicalModelHash.AlgoVersion + 1))
+                    rec.RecordTick(1, Faction.Player1,
+                        new[] { new UnitOrder(0, UnitCommand.Move, Fixed.FromInt(5), Fixed.FromInt(7)) }, 0, 1);
+
+                var world = new EntityWorld();
+                var ex = Assert.Throws<InvalidDataException>(() => new ReplayPlayer(chmrPath, world));
+                Assert.Contains("newer", ex.Message);
+            }
+            finally
+            {
+                if (File.Exists(chmrPath)) File.Delete(chmrPath);
+            }
+        }
+
+        /// <summary>Story 9.11 — a v4 header truncated before the roster is a corrupt file: rejected with
+        /// <see cref="InvalidDataException"/>, no partial playback.</summary>
+        [Fact]
+        public void TruncatedHeader_ThrowsInvalidData()
+        {
+            string chmrPath = Path.Combine(Path.GetTempPath(), $"chimera_trunc_{Guid.NewGuid():N}.chmr");
+            try
+            {
                 using (var w = new BinaryWriter(File.Open(chmrPath, FileMode.Create)))
                 {
                     w.Write(ReplayRecorder.MAGIC);
-                    w.Write((ushort)2);                       // v2 — promises an 8-byte seed
-                    w.Write((ushort)0);                       // empty scenario path
-                    w.Write(new byte[] { 0x01, 0x02, 0x03 }); // truncated seed (3 of 8 bytes)
+                    w.Write(ReplayRecorder.VERSION); // v4 — promises the full extended header
+                    w.Write((ushort)0);              // empty scenario path
+                    w.Write(EntityWorld.DEFAULT_RNG_SEED); // seed only — file ends before scenarioHash/roster
                 }
 
                 var world = new EntityWorld();
@@ -209,6 +232,412 @@ namespace ProjectChimera.Sim.Tests.Golden
             {
                 if (File.Exists(chmrPath)) File.Delete(chmrPath);
             }
+        }
+
+        /// <summary>Story 9.11 — the result trailer round-trips: winnerFaction / finalTick / completed are restored
+        /// on load; an interrupted recording carries completed=false.</summary>
+        [Fact]
+        public void ResultTrailer_RoundTrips()
+        {
+            string wonPath = Path.Combine(Path.GetTempPath(), $"chimera_won_{Guid.NewGuid():N}.chmr");
+            string incPath = Path.Combine(Path.GetTempPath(), $"chimera_inc_{Guid.NewGuid():N}.chmr");
+            try
+            {
+                var order = new UnitOrder(0, UnitCommand.Move, Fixed.FromInt(5), Fixed.FromInt(7));
+
+                using (var rec = NewRecorder(wonPath))
+                {
+                    rec.RecordTick(4, Faction.Player1, new[] { order }, 0, 1);
+                    rec.RecordTick(9, Faction.Player2, new[] { order }, 0, 1);
+                    rec.Close(winnerFaction: 2, completed: true);
+                }
+
+                var wonPlayer = new ReplayPlayer(wonPath, new EntityWorld());
+                Assert.Equal(9u, wonPlayer.FinalTick);
+                Assert.Equal(2,  wonPlayer.WinnerFaction);
+                Assert.True(wonPlayer.Completed);
+
+                using (var rec = NewRecorder(incPath))
+                {
+                    rec.RecordTick(3, Faction.Player1, new[] { order }, 0, 1);
+                    rec.Close(); // interrupted — no winner, incomplete
+                }
+
+                var incPlayer = new ReplayPlayer(incPath, new EntityWorld());
+                Assert.Equal(3u, incPlayer.FinalTick);
+                Assert.False(incPlayer.Completed);
+            }
+            finally
+            {
+                if (File.Exists(wonPath)) File.Delete(wonPath);
+                if (File.Exists(incPath)) File.Delete(incPath);
+            }
+        }
+
+        /// <summary>Story 9.11 — the lightweight ReplayHeader.Read returns metadata (map/hash/roster/duration/
+        /// result) for a v4 file and flags a legacy file as unplayable without throwing.</summary>
+        [Fact]
+        public void HeaderRead_ReturnsMetadata()
+        {
+            string chmrPath = Path.Combine(Path.GetTempPath(), $"chimera_hdr_{Guid.NewGuid():N}.chmr");
+            string legacyPath = Path.Combine(Path.GetTempPath(), $"chimera_hdrlegacy_{Guid.NewGuid():N}.chmr");
+            try
+            {
+                using (var rec = NewRecorder(chmrPath, scenarioPath: "res://scenarios/dueling_peaks.json"))
+                {
+                    rec.RecordTick(150, Faction.Player1,
+                        new[] { new UnitOrder(0, UnitCommand.Move, Fixed.FromInt(1), Fixed.FromInt(2)) }, 0, 1);
+                    rec.Close(winnerFaction: 1, completed: true);
+                }
+
+                var hdr = ReplayHeader.Read(chmrPath);
+                Assert.True(hdr.IsPlayable);
+                Assert.Equal("res://scenarios/dueling_peaks.json", hdr.ScenarioPath);
+                Assert.Equal(ScenarioHashFixture, hdr.ScenarioHash);
+                Assert.Equal(Roster2, hdr.Roster);
+                Assert.Equal(2, hdr.FactionCount);
+                Assert.Equal(150u, hdr.FinalTick);
+                Assert.Equal(1, hdr.WinnerFaction);
+                Assert.True(hdr.Completed);
+
+                // A legacy file lists as unplayable, not a crash.
+                using (var w = new BinaryWriter(File.Open(legacyPath, FileMode.Create)))
+                {
+                    w.Write(ReplayRecorder.MAGIC);
+                    w.Write((ushort)3);
+                    w.Write((ushort)0);
+                    w.Write(EntityWorld.DEFAULT_RNG_SEED);
+                    w.Write(ReplayRecorder.EOF_SENTINEL);
+                }
+                var legacyHdr = ReplayHeader.Read(legacyPath);
+                Assert.False(legacyHdr.IsPlayable);
+            }
+            finally
+            {
+                if (File.Exists(chmrPath)) File.Delete(chmrPath);
+                if (File.Exists(legacyPath)) File.Delete(legacyPath);
+            }
+        }
+
+        /// <summary>Helper: hand-write a v4 header (2-slot roster) to <paramref name="w"/>.</summary>
+        private static void WriteV4Header(BinaryWriter w, string scenarioPath = "", int factionCount = 2)
+        {
+            w.Write(ReplayRecorder.MAGIC);
+            w.Write(ReplayRecorder.VERSION);
+            var pb = System.Text.Encoding.UTF8.GetBytes(scenarioPath);
+            w.Write((ushort)pb.Length);
+            w.Write(pb);
+            w.Write(EntityWorld.DEFAULT_RNG_SEED); // seed
+            w.Write(ScenarioHashFixture);          // scenarioHash
+            w.Write(RulesetHashFixture);           // rulesetHash
+            w.Write(CanonicalModelHash.AlgoVersion); // modelAlgoVersion
+            w.Write((ushort)factionCount);
+            for (int i = 0; i < factionCount; i++) w.Write((byte)FactionRegistry.ToFaction(i));
+        }
+
+        /// <summary>Story 9.11 (P9) — a crash-mid-record file (merged frames, NO 0x1A trailer) still lists: the
+        /// header reader returns IsPlayable=true, Completed=false, and FinalTick == the max recorded tick (the
+        /// TryPeekTick fallback).</summary>
+        [Fact]
+        public void HeaderRead_NoTrailer_FallsBackToMaxMergedTick()
+        {
+            string path = Path.Combine(Path.GetTempPath(), $"chimera_notrailer_{Guid.NewGuid():N}.chmr");
+            try
+            {
+                using (var w = new BinaryWriter(File.Open(path, FileMode.Create)))
+                {
+                    WriteV4Header(w, "res://scenarios/x.json");
+
+                    // Two merged frames (ticks 10 and 150), then EOF — but deliberately NO result trailer.
+                    WriteMergedFrame(w, 10, Faction.Player1);
+                    WriteMergedFrame(w, 150, Faction.Player2);
+                    // no trailer, no frame-len-0 EOF (a crash mid-record)
+                }
+
+                var hdr = ReplayHeader.Read(path);
+                Assert.True(hdr.IsPlayable);
+                Assert.False(hdr.Completed);
+                Assert.Equal(150u, hdr.FinalTick);
+            }
+            finally { if (File.Exists(path)) File.Delete(path); }
+        }
+
+        private static void WriteMergedFrame(BinaryWriter w, uint tick, Faction faction)
+        {
+            var buf      = new byte[MergedTickPacket.MERGED_MAX_BYTES];
+            var factions = new[] { faction };
+            var counts   = new[] { 1 };
+            var orders   = new UnitOrder[TickCommandPacket.MAX_ORDERS];
+            orders[0]    = new UnitOrder(0, UnitCommand.Move, Fixed.FromInt(1), Fixed.FromInt(2));
+            int len = MergedTickPacket.Write(buf, tick, factions, counts, orders, 1);
+            w.Write((ushort)len);
+            w.Write(buf, 0, len);
+        }
+
+        /// <summary>Story 9.11 (P8) — a corrupt header declaring more factions than the ceiling is rejected (no
+        /// giant roster allocation) on playback, and lists as unplayable in the browser.</summary>
+        [Fact]
+        public void OverlargeFactionCount_IsRejected()
+        {
+            string path = Path.Combine(Path.GetTempPath(), $"chimera_bigroster_{Guid.NewGuid():N}.chmr");
+            try
+            {
+                using (var w = new BinaryWriter(File.Open(path, FileMode.Create)))
+                {
+                    w.Write(ReplayRecorder.MAGIC);
+                    w.Write(ReplayRecorder.VERSION);
+                    w.Write((ushort)0);
+                    w.Write(EntityWorld.DEFAULT_RNG_SEED);
+                    w.Write(ScenarioHashFixture);
+                    w.Write(RulesetHashFixture);
+                    w.Write(CanonicalModelHash.AlgoVersion);
+                    w.Write((ushort)(FactionRegistry.PLAYER_COUNT + 1)); // 9 > 8 ceiling
+                }
+
+                Assert.Throws<InvalidDataException>(() => new ReplayPlayer(path, new EntityWorld()));
+                Assert.False(ReplayHeader.Read(path).IsPlayable);
+            }
+            finally { if (File.Exists(path)) File.Delete(path); }
+        }
+
+        /// <summary>Story 9.11 (P3) — a well-framed but internally-corrupt merged frame, and an unrecognized frame
+        /// type, are BOTH fail-closed (throw) rather than silently dropped (the silent-desync class this eliminates).</summary>
+        [Fact]
+        public void CorruptOrUnknownFrame_IsHardRejected()
+        {
+            string corruptPath = Path.Combine(Path.GetTempPath(), $"chimera_corruptframe_{Guid.NewGuid():N}.chmr");
+            string unknownPath = Path.Combine(Path.GetTempPath(), $"chimera_unknownframe_{Guid.NewGuid():N}.chmr");
+            try
+            {
+                // A 0x14 merged frame whose subBundleCount (99) exceeds the ceiling → TryRead returns false.
+                using (var w = new BinaryWriter(File.Open(corruptPath, FileMode.Create)))
+                {
+                    WriteV4Header(w);
+                    w.Write((ushort)MergedTickPacket.HEADER_BYTES);       // frameLen = 6
+                    w.Write((byte)PacketType.TickCommandsMerged);         // 0x14
+                    w.Write((uint)5);                                     // tick
+                    w.Write((byte)99);                                    // subBundleCount > MERGED_MAX_SUBBUNDLES
+                }
+                Assert.Throws<InvalidDataException>(() => new ReplayPlayer(corruptPath, new EntityWorld()));
+
+                // An unrecognized frame-type byte → reject (not skip).
+                using (var w = new BinaryWriter(File.Open(unknownPath, FileMode.Create)))
+                {
+                    WriteV4Header(w);
+                    w.Write((ushort)1);   // frameLen = 1
+                    w.Write((byte)0x99);  // unknown discriminator
+                }
+                Assert.Throws<InvalidDataException>(() => new ReplayPlayer(unknownPath, new EntityWorld()));
+            }
+            finally
+            {
+                if (File.Exists(corruptPath)) File.Delete(corruptPath);
+                if (File.Exists(unknownPath)) File.Delete(unknownPath);
+            }
+        }
+
+        /// <summary>Story 9.11 (follow-up) — the CORE new v4 glue: two factions recorded on the SAME tick in
+        /// DESCENDING call order are flushed as ONE merged frame with sub-bundles sorted ASCENDING by faction, and on
+        /// replay both sub-bundles are decoded AND applied ascending-by-faction (the canonical apply order the live
+        /// merged path uses). Guards <c>ReplayRecorder.FlushTick</c>'s selection-sort and the player's per-sub-bundle
+        /// fan-out — every other round-trip test is single-faction-per-tick, so the sort never swaps and the fan-out
+        /// loop never runs more than once.</summary>
+        [Fact]
+        public void V4MultiFactionTick_RoundTripsSortedAscending()
+        {
+            string path = Path.Combine(Path.GetTempPath(), $"chimera_multi_{Guid.NewGuid():N}.chmr");
+            try
+            {
+                var p1Move = new UnitOrder(0, UnitCommand.Move, Fixed.FromInt(1), Fixed.FromInt(2)); // unit 0 → Player1
+                var p2Move = new UnitOrder(1, UnitCommand.Move, Fixed.FromInt(3), Fixed.FromInt(4)); // unit 1 → Player2
+
+                // Record BOTH on the same tick, Player2 FIRST (descending) — FlushTick must sort ascending on flush.
+                using (var rec = NewRecorder(path))
+                {
+                    rec.RecordTick(7, Faction.Player2, new[] { p2Move }, 0, 1);
+                    rec.RecordTick(7, Faction.Player1, new[] { p1Move }, 0, 1);
+                    rec.Close(winnerFaction: 0, completed: true);
+                }
+
+                var world = new EntityWorld();
+                int u0 = world.Create(FixedVec3.Zero, Faction.Player1, Fixed.FromInt(100), Fixed.One);
+                int u1 = world.Create(FixedVec3.Zero, Faction.Player2, Fixed.FromInt(100), Fixed.One);
+                Assert.Equal(0, u0);
+                Assert.Equal(1, u1);
+
+                var applied = new List<int>();
+                var player = new ReplayPlayer(path, world) { OnRequestPath = (id, x, z) => applied.Add(id) };
+                player.Flush(7);
+
+                // Both sub-bundles survived the round-trip (presence — the fan-out ran for both)...
+                Assert.True((world.Flags[u0] & EntityFlags.Moving) != 0);
+                Assert.True((world.Flags[u1] & EntityFlags.Moving) != 0);
+                // ...and were applied ascending-by-faction (Player1's unit 0 BEFORE Player2's unit 1) despite the
+                // descending record order — proving FlushTick's sort + the merged frame's canonical wire order.
+                Assert.Equal(new[] { u0, u1 }, applied.ToArray());
+            }
+            finally { if (File.Exists(path)) File.Delete(path); }
+        }
+
+        /// <summary>Story 9.11 (follow-up, P3) — a result-trailer frame (0x1A) SHORTER than its fixed 7-byte payload is
+        /// corruption: fail-closed (throw) like the corrupt-merged / unknown-type branches, never silently ignored
+        /// (a dropped trailer is a replay with no result and no error).</summary>
+        [Fact]
+        public void TruncatedTrailer_IsHardRejected()
+        {
+            string path = Path.Combine(Path.GetTempPath(), $"chimera_shorttrailer_{Guid.NewGuid():N}.chmr");
+            try
+            {
+                using (var w = new BinaryWriter(File.Open(path, FileMode.Create)))
+                {
+                    WriteV4Header(w);
+                    w.Write((ushort)3);                    // frameLen = 3 (< TRAILER_BYTES == 7)
+                    w.Write(ReplayRecorder.FRAME_TRAILER); // 0x1A
+                    w.Write((byte)0);                      // one partial payload byte...
+                    w.Write((byte)0);                      // ...frame is 3 bytes, short of the 7-byte trailer
+                }
+                Assert.Throws<InvalidDataException>(() => new ReplayPlayer(path, new EntityWorld()));
+            }
+            finally { if (File.Exists(path)) File.Delete(path); }
+        }
+
+        /// <summary>Story 9.11 (follow-up, P8) — a roster byte outside the valid player range
+        /// (Player1..Player{PLAYER_COUNT}) is a corrupt header: rejected on playback rather than becoming an
+        /// out-of-range Faction that flows to Fog.SetViewer.</summary>
+        [Fact]
+        public void OutOfRangeRosterFaction_IsRejected()
+        {
+            string path = Path.Combine(Path.GetTempPath(), $"chimera_badroster_{Guid.NewGuid():N}.chmr");
+            try
+            {
+                using (var w = new BinaryWriter(File.Open(path, FileMode.Create)))
+                {
+                    w.Write(ReplayRecorder.MAGIC);
+                    w.Write(ReplayRecorder.VERSION);
+                    w.Write((ushort)0);
+                    w.Write(EntityWorld.DEFAULT_RNG_SEED);
+                    w.Write(ScenarioHashFixture);
+                    w.Write(RulesetHashFixture);
+                    w.Write(CanonicalModelHash.AlgoVersion);
+                    w.Write((ushort)1);   // factionCount = 1 (within the P8 ceiling)
+                    w.Write((byte)200);   // roster[0] = 200 — not a valid player faction
+                }
+                Assert.Throws<InvalidDataException>(() => new ReplayPlayer(path, new EntityWorld()));
+                // The lightweight header reader must agree with the player: an out-of-range roster byte is an
+                // unplayable row, not a Play-enabled one that only errors on click (mirrors OverlargeFactionCount).
+                Assert.False(ReplayHeader.Read(path).IsPlayable);
+            }
+            finally { if (File.Exists(path)) File.Delete(path); }
+        }
+
+        /// <summary>Story 9.11 (follow-up) — orders recorded on TWO DIFFERENT ticks both survive the v4
+        /// buffer-and-flush-on-tick-advance model: recording tick 3 then tick 7 forces <c>FlushTick</c> to emit tick 3's
+        /// buffered frame when tick 7 arrives, and <c>Close</c> flushes tick 7. Every other round-trip test flushes a
+        /// single tick, so the buffered earlier tick's frame is never proven to survive the advance.</summary>
+        [Fact]
+        public void V4MultiTickOrders_BothTicksRoundTrip()
+        {
+            string path = Path.Combine(Path.GetTempPath(), $"chimera_multitick_{Guid.NewGuid():N}.chmr");
+            try
+            {
+                var p1Move = new UnitOrder(0, UnitCommand.Move, Fixed.FromInt(1), Fixed.FromInt(2)); // unit 0 → tick 3
+                var p2Move = new UnitOrder(1, UnitCommand.Move, Fixed.FromInt(3), Fixed.FromInt(4)); // unit 1 → tick 7
+
+                using (var rec = NewRecorder(path))
+                {
+                    rec.RecordTick(3, Faction.Player1, new[] { p1Move }, 0, 1); // buffered...
+                    rec.RecordTick(7, Faction.Player2, new[] { p2Move }, 0, 1); // ...FlushTick emits tick 3 here
+                    rec.Close(winnerFaction: 0, completed: true);              // ...and flushes tick 7
+                }
+
+                var world = new EntityWorld();
+                int u0 = world.Create(FixedVec3.Zero, Faction.Player1, Fixed.FromInt(100), Fixed.One);
+                int u1 = world.Create(FixedVec3.Zero, Faction.Player2, Fixed.FromInt(100), Fixed.One);
+                Assert.Equal(0, u0);
+                Assert.Equal(1, u1);
+
+                var applied = new List<int>();
+                var player = new ReplayPlayer(path, world) { OnRequestPath = (id, x, z) => applied.Add(id) };
+
+                // Tick 3's buffered frame applies unit 0 only; tick 7 has not been flushed yet.
+                player.Flush(3);
+                Assert.True((world.Flags[u0] & EntityFlags.Moving) != 0);
+                Assert.False((world.Flags[u1] & EntityFlags.Moving) != 0);
+                Assert.Equal(new[] { u0 }, applied.ToArray());
+
+                // Tick 7's frame applies unit 1 — proving the earlier buffered tick did not clobber or drop the later one.
+                player.Flush(7);
+                Assert.True((world.Flags[u1] & EntityFlags.Moving) != 0);
+                Assert.Equal(new[] { u0, u1 }, applied.ToArray());
+            }
+            finally { if (File.Exists(path)) File.Delete(path); }
+        }
+
+        /// <summary>Story 9.11 (follow-up) — an interrupted recording's trailer carries winner 0 (no victor), and a
+        /// negative winnerFaction passed to <c>Close</c> is clamped to 0 rather than written as a garbage byte.</summary>
+        [Fact]
+        public void ResultTrailer_IncompleteAndNegativeWinner_ClampToZero()
+        {
+            string incPath = Path.Combine(Path.GetTempPath(), $"chimera_incwin_{Guid.NewGuid():N}.chmr");
+            string negPath = Path.Combine(Path.GetTempPath(), $"chimera_negwin_{Guid.NewGuid():N}.chmr");
+            try
+            {
+                var order = new UnitOrder(0, UnitCommand.Move, Fixed.FromInt(5), Fixed.FromInt(7));
+
+                using (var rec = NewRecorder(incPath))
+                {
+                    rec.RecordTick(3, Faction.Player1, new[] { order }, 0, 1);
+                    rec.Close(); // interrupted → no victor
+                }
+                var incPlayer = new ReplayPlayer(incPath, new EntityWorld());
+                Assert.Equal(0, incPlayer.WinnerFaction);
+                Assert.False(incPlayer.Completed);
+
+                using (var rec = NewRecorder(negPath))
+                {
+                    rec.RecordTick(5, Faction.Player1, new[] { order }, 0, 1);
+                    rec.Close(winnerFaction: -1, completed: true); // negative must clamp to 0
+                }
+                var negPlayer = new ReplayPlayer(negPath, new EntityWorld());
+                Assert.Equal(0, negPlayer.WinnerFaction);
+                Assert.True(negPlayer.Completed);
+            }
+            finally
+            {
+                if (File.Exists(incPath)) File.Delete(incPath);
+                if (File.Exists(negPath)) File.Delete(negPath);
+            }
+        }
+
+        /// <summary>Story 9.11 (follow-up) — the header reader's FULL-SCAN trailer decode (used when the fixed-tail
+        /// fast path's signature does not match, e.g. a stray byte after EOF) reconstructs the same winner/finalTick as
+        /// the fast path. Without a trailing byte the fast path handles a completed file, so this branch is otherwise
+        /// never exercised WITH a trailer present.</summary>
+        [Fact]
+        public void HeaderRead_FullScanTrailer_MatchesFastPath()
+        {
+            string path = Path.Combine(Path.GetTempPath(), $"chimera_fullscan_{Guid.NewGuid():N}.chmr");
+            try
+            {
+                using (var rec = NewRecorder(path, scenarioPath: "res://scenarios/y.json"))
+                {
+                    rec.RecordTick(42, Faction.Player1,
+                        new[] { new UnitOrder(0, UnitCommand.Move, Fixed.FromInt(1), Fixed.FromInt(2)) }, 0, 1);
+                    rec.Close(winnerFaction: 1, completed: true);
+                }
+
+                // Append a stray byte after EOF so the fixed-tail fast-path signature check fails and Read falls through
+                // to the full body scan.
+                using (var s = new FileStream(path, FileMode.Append, FileAccess.Write))
+                    s.WriteByte(0xEE);
+
+                var hdr = ReplayHeader.Read(path);
+                Assert.True(hdr.IsPlayable);
+                Assert.Equal(42u, hdr.FinalTick);
+                Assert.Equal(1, hdr.WinnerFaction);
+                Assert.True(hdr.Completed);
+            }
+            finally { if (File.Exists(path)) File.Delete(path); }
         }
     }
 }

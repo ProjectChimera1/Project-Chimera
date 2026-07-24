@@ -105,6 +105,9 @@ namespace ProjectChimera.Core.Bootstrap
         public ReplayRecorder?        ReplayRecorder;   // MatchLifecycle (active recorder during an online match)
         public ReplayPlayer?          ReplayPlayer;     // MatchLifecycle (active replay player; _Process reads this)
         public Label?                 ReplayStatusLabel;
+        // Story 9.11 — replay UX (produced by ReplayBrowserPhase; consumed by MainScene runtime).
+        public UI.ReplayBrowserPanel     ReplayBrowser  = null!; // main-menu/Edit-mode replay browser (hotkey N)
+        public UI.ReplayPlaybackControls ReplayControls = null!; // in-playback overlay (pause/speed/seek/perspective)
 
         // ── Top UI layers (ContentBrowser / MainMenu / Settings / TriggerEditor / MapGenerator) ────────────
         public UI.ContentBrowserPanel ContentBrowser = null!;

@@ -1,5 +1,6 @@
 #nullable enable
 using Godot;
+using ProjectChimera.Core.Definitions; // CanonicalModelHash / RulesetHash (v4 replay header fields + re-gate)
 using ProjectChimera.Multiplayer;
 using ProjectChimera.UI;
 using System;
@@ -187,9 +188,21 @@ namespace ProjectChimera.Core.Bootstrap
                 if (players < 2) players = 2;
                 string filePath  = System.IO.Path.Combine(replayDir, $"{timestamp}_{players}p.chmr");
 
+                // Story 9.11 (v4 "replay v2"): compute the self-describing header fields — the canonical scenario
+                // model hash (re-gated on playback), the ruleset (Effect-Graph caps) hash, this build's model
+                // algo-version, and the per-slot roster. All are the SAME values already computed for the MP
+                // handshake (MatchAgreementHash) — reuse, do not invent (Design Notes).
+                ulong scenarioHash = _ctx.Scenario != null ? CanonicalModelHash.Compute(_ctx.Scenario) : 0UL;
+                ulong rulesetHash  = RulesetHash.Compute();
+                int slotCount = _ctx.Scenario?.PlayerSlots?.Length ?? 0;
+                if (slotCount > FactionRegistry.PLAYER_COUNT) slotCount = FactionRegistry.PLAYER_COUNT;
+                var roster = new Faction[slotCount];
+                for (int i = 0; i < slotCount; i++) roster[i] = FactionRegistry.ToFaction(i);
+
                 // Match seed: a fixed default for now (the real MP seed handshake is Epic 9). The EntityWorld's RNG
                 // already starts at this value; record it so a replay restores the identical stream origin (D6).
-                _ctx.ReplayRecorder = new ReplayRecorder(filePath, _ctx.Scene.ScenarioPath, EntityWorld.DEFAULT_RNG_SEED);
+                _ctx.ReplayRecorder = new ReplayRecorder(filePath, _ctx.Scene.ScenarioPath, EntityWorld.DEFAULT_RNG_SEED,
+                    scenarioHash, rulesetHash, CanonicalModelHash.AlgoVersion, roster);
                 _ctx.Lockstep.Recorder = _ctx.ReplayRecorder;
 
                 if (_ctx.ReplayStatusLabel != null)
@@ -206,13 +219,19 @@ namespace ProjectChimera.Core.Bootstrap
             }
         }
 
-        /// <summary>Stop and finalise the active recorder, freeing the file handle.</summary>
-        public void StopRecording()
+        /// <summary>Stop and finalise the active recorder as an INCOMPLETE recording (no winner) — used on the
+        /// return-to-Edit reset and any mid-match teardown. The file is ALWAYS retained on disk (never discarded).</summary>
+        public void StopRecording() => StopRecording(0, completed: false);
+
+        /// <summary>Stop and finalise the active recorder, writing the result trailer (winner + finalTick + completed)
+        /// so the browser can show the outcome. <paramref name="winnerFaction"/> is the 1-based player number
+        /// (0 = no victor). The file is ALWAYS retained on disk regardless of outcome (Story 9.11).</summary>
+        public void StopRecording(int winnerFaction, bool completed)
         {
             if (_ctx.ReplayRecorder == null) return;
 
             _ctx.Lockstep.Recorder = null;
-            _ctx.ReplayRecorder.Close();
+            _ctx.ReplayRecorder.Close(winnerFaction, completed);
             GD.Print($"[Replay] Saved → {_ctx.ReplayRecorder.FilePath}");
             _ctx.ReplayRecorder = null;
 
@@ -224,9 +243,31 @@ namespace ProjectChimera.Core.Bootstrap
         {
             try
             {
-                // ReplayPlayer reads the match seed from the header and reseeds World.Rng before the first tick
-                // (v1 files → default seed), so the replayed RNG stream matches the recording.
-                _ctx.ReplayPlayer = new ReplayPlayer(filePath, _ctx.World);
+                // ReplayPlayer parses the v4 header (hard-rejecting pre-v4 / forward-incompatible files with an
+                // InvalidDataException surfaced below), reads the match seed, and reseeds World.Rng before the first
+                // tick so the replayed RNG stream matches the recording.
+                var player = new ReplayPlayer(filePath, _ctx.World);
+
+                // ── Story 9.11: fail-closed scenario RE-GATE (mirrors HandshakeGate.CheckStart) ──
+                // Recompute the LOADED scenario's canonical hash and refuse to play unless it exactly matches the
+                // hash embedded when the replay was recorded — never play a mismatched replay (silent desync). This
+                // REPLACES the former soft GD.PrintErr path-mismatch warning.
+                ulong loadedHash = _ctx.Scenario != null ? CanonicalModelHash.Compute(_ctx.Scenario) : 0UL;
+                string? gateReason = ReplayPlayer.ScenarioGateBlockReason(player.ScenarioHash, loadedHash);
+                if (gateReason != null)
+                {
+                    GD.PrintErr($"[Replay] Refused to play '{filePath}':\n{gateReason}");
+                    if (_ctx.ReplayStatusLabel != null)
+                    {
+                        _ctx.ReplayStatusLabel.Text    = "REPLAY REFUSED (scenario mismatch)";
+                        _ctx.ReplayStatusLabel.Visible = true;
+                    }
+                    _ctx.Scene.ShowReplayLoadError(gateReason); // P6 — surface the reason, never silently inert
+                    _ctx.ReplayPlayer = null; // do not enter Play — zero ticks stepped
+                    return;
+                }
+
+                _ctx.ReplayPlayer = player;
                 _ctx.ReplayPlayer.OnRequestPath       = (id, x, z) => _ctx.FlowFieldBridge.RequestPath(id, new Vector3(x, 0f, z));
                 _ctx.ReplayPlayer.OnRequestAttackMove = (id, x, z) => _ctx.FlowFieldBridge.RequestAttackMove(id, new Vector3(x, 0f, z));
                 _ctx.ReplayPlayer.OnCancelPath        = id => _ctx.FlowFieldBridge.CancelPath(id);
@@ -243,12 +284,6 @@ namespace ProjectChimera.Core.Bootstrap
                 // DslEvent order re-raises the custom event identically to the live match (same director + queue).
                 _ctx.ReplayPlayer.DslEventSink = _ctx.Host.DslEventSink;
 
-                // The replay embeds the scenario path — warn if it differs from the currently-loaded scenario.
-                if (_ctx.ReplayPlayer.ScenarioPath != _ctx.Scene.ScenarioPath)
-                    GD.PrintErr($"[Replay] Scenario mismatch: replay was recorded on " +
-                                $"'{_ctx.ReplayPlayer.ScenarioPath}' but loaded '{_ctx.Scene.ScenarioPath}'. " +
-                                $"Set ScenarioPath in the Inspector to match for accurate playback.");
-
                 if (_ctx.ReplayStatusLabel != null)
                 {
                     _ctx.ReplayStatusLabel.Text    = "▶ REPLAY";
@@ -263,8 +298,23 @@ namespace ProjectChimera.Core.Bootstrap
             }
             catch (Exception e)
             {
+                // P6: surface the reason (corrupt / legacy / newer-format / truncated) so Play is never silently inert.
                 GD.PrintErr($"[Replay] Failed to load '{filePath}': {e.Message}");
+                _ctx.ReplayPlayer = null;
+                if (_ctx.ReplayStatusLabel != null)
+                {
+                    _ctx.ReplayStatusLabel.Text    = "REPLAY UNPLAYABLE — " + FirstLine(e.Message);
+                    _ctx.ReplayStatusLabel.Visible = true;
+                }
+                _ctx.Scene.ShowReplayLoadError(e.Message);
             }
+        }
+
+        /// <summary>The first line of a (possibly multi-line) reason string — for the compact status label.</summary>
+        private static string FirstLine(string s)
+        {
+            int nl = s.IndexOf('\n');
+            return nl < 0 ? s : s.Substring(0, nl);
         }
     }
 }

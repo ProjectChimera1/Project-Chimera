@@ -38,6 +38,7 @@ namespace ProjectChimera.UI
         public event Action? OnMultiplayer; // Story 9.7 — open the multiplayer lobby
         public event Action? OnCreate;
         public event Action? OnBrowse;
+        public event Action? OnReplays; // Story 9.11 — open the replay browser
         public event Action? OnGenerateMap;
         public event Action? OnSettings;
         public event Action? OnQuit;
@@ -125,6 +126,11 @@ namespace ProjectChimera.UI
                 "Browse",
                 "Download and play maps shared by other creators via mod.io.",
                 () => { Visible = false; OnBrowse?.Invoke(); });
+
+            AddNavButton(nav, "Replays", ChimeraComponents.ButtonVariant.Secondary, ChimeraComponents.ButtonSize.Lg,
+                "Replays",
+                "Browse, watch, rename, and delete your recorded matches.",
+                () => { Visible = false; OnReplays?.Invoke(); });
 
             AddNavButton(nav, "Settings", ChimeraComponents.ButtonVariant.Secondary, ChimeraComponents.ButtonSize.Lg,
                 "Settings",

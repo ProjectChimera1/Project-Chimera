@@ -13,16 +13,22 @@ using Xunit;
 namespace ProjectChimera.Sim.Tests.Multiplayer
 {
     /// <summary>
-    /// Story 7.9 — replay-v3: a button-originated <see cref="UnitCommand.DslEvent"/> order rides the existing fixed
-    /// 11-byte per-order record for free, so recording + replaying a button stream through the SHARED
-    /// <c>OrderApplier</c> (wired to the director's DSL sink) reproduces the identical tick-by-tick SimChecksum a
-    /// live apply produces. <see cref="ReplayRecorder.VERSION"/> is 3; a seed-complete v2 replay still plays
-    /// unchanged (v1 hard-reject lives in <c>SimRngChecksumReplayTests</c>).
+    /// Story 7.9 / Story 9.11 — replay-v4 ("replay v2"): a button-originated <see cref="UnitCommand.DslEvent"/> order
+    /// rides the existing fixed 11-byte per-order record inside the frozen <see cref="MergedTickPacket"/> envelope,
+    /// so recording + replaying a button stream through the SHARED <c>OrderApplier</c> (wired to the director's DSL
+    /// sink) reproduces the identical tick-by-tick SimChecksum a live apply produces. <see cref="ReplayRecorder.VERSION"/>
+    /// is 4; pre-v4 files are hard-rejected (that reject lives in <c>SimRngChecksumReplayTests</c>).
     /// </summary>
     public class ReplayDslEventTests
     {
+        private static readonly Faction[] Roster2 = { Faction.Player1, Faction.Player2 };
+
+        private static ReplayRecorder NewRec(string path)
+            => new(path, "test://buy", EntityWorld.DEFAULT_RNG_SEED,
+                   scenarioHash: 0x11UL, rulesetHash: 0x22UL, modelAlgoVersion: CanonicalModelHash.AlgoVersion, roster: Roster2);
+
         [Fact]
-        public void ReplayFormatVersion_IsThree() => Assert.Equal(3, ReplayRecorder.VERSION);
+        public void ReplayFormatVersion_IsFour() => Assert.Equal(4, ReplayRecorder.VERSION);
 
         private static ScenarioVariable IntVar(string name) =>
             new() { Name = name, Type = DslValueType.Int, Scope = VarScope.Global, Initial = Fixed.Zero };
@@ -67,8 +73,8 @@ namespace ProjectChimera.Sim.Tests.Multiplayer
             string path = Path.GetTempFileName();
             try
             {
-                // ── Record a v3 replay of the button press. ──
-                using (var rec = new ReplayRecorder(path, "test://buy", EntityWorld.DEFAULT_RNG_SEED))
+                // ── Record a v4 replay of the button press. ──
+                using (var rec = NewRec(path))
                     rec.RecordTick(3, Faction.Player1, new[] { buyOrder }, 0, 1);
 
                 // ── LIVE reference run: apply the identical order through the shared applier before StepOnce. ──
@@ -97,34 +103,21 @@ namespace ProjectChimera.Sim.Tests.Multiplayer
         }
 
         [Fact]
-        public void SeedCompleteV2Replay_StillPlays()
+        public void V4Replay_PlaysRecordedMoveOrder()
         {
-            // Hand-write a seed-complete v2 header carrying a single ordinary Move order — it must still load + play
-            // (only v1 is hard-rejected).
+            // Record a v4 replay carrying a single ordinary Move order via the tagged MergedTickPacket body, then
+            // load + replay it: the Move applies through the shared OrderApplier (parity with the live path).
             string path = Path.GetTempFileName();
             try
             {
-                using (var w = new BinaryWriter(File.Open(path, FileMode.Create)))
-                {
-                    w.Write(ReplayRecorder.MAGIC);
-                    w.Write((ushort)2);                       // v2 — seed-complete, DslEvent-free
-                    w.Write((ushort)0);                       // empty scenario path
-                    w.Write(EntityWorld.DEFAULT_RNG_SEED);    // the 8-byte seed
-                    // one tick record: tick 1, Player1, 1 order (Move to (5,7))
-                    w.Write((uint)1);
-                    w.Write((byte)Faction.Player1);
-                    w.Write((byte)1);
-                    w.Write((ushort)0);                        // unitId 0
-                    w.Write((byte)UnitCommand.Move);
-                    w.Write(Fixed.FromInt(5).Raw);
-                    w.Write(Fixed.FromInt(7).Raw);
-                    w.Write(ReplayRecorder.EOF_SENTINEL);
-                }
+                var move = new UnitOrder(0, UnitCommand.Move, Fixed.FromInt(5), Fixed.FromInt(7));
+                using (var rec = NewRec(path))
+                    rec.RecordTick(1, Faction.Player1, new[] { move }, 0, 1);
 
                 var world = new EntityWorld();
                 int u = world.Create(FixedVec3.Zero, Faction.Player1, Fixed.FromInt(100), Fixed.One);
                 Assert.Equal(0, u);
-                var player = new ReplayPlayer(path, world);  // no throw — v2 is accepted
+                var player = new ReplayPlayer(path, world);  // no throw — v4 is accepted
                 Assert.Equal(EntityWorld.DEFAULT_RNG_SEED, player.Seed);
                 player.Flush(1);                              // the Move order applies through the shared applier
                 Assert.True((world.Flags[u] & EntityFlags.Moving) != 0);

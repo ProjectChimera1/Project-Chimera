@@ -172,9 +172,10 @@ namespace ProjectChimera.Sim.Tests.Meta
         /// changes the handshake value — update this pin in the same commit.</summary>
         private const int ExpectedMatchAgreementHashAlgoVersion = 1;
 
-        /// <summary>.chmr replay file-format version. Story 7.9 bumped 2→3 (the stream may carry DslEvent orders;
-        /// ReplayPlayer hard-rejects v1 but still plays v2).</summary>
-        private const ushort ExpectedReplayFormatVersion = 3;
+        /// <summary>.chmr replay file-format version. Story 7.9 bumped 2→3 (DslEvent orders). Story 9.11 bumped 3→4
+        /// ("replay v2": self-describing tagged body via the frozen MergedTickPacket envelope + a result trailer, and
+        /// a header embedding the scenario/ruleset/algo hashes + roster; ReplayPlayer hard-rejects all pre-v4 files).</summary>
+        private const ushort ExpectedReplayFormatVersion = 4;
 
         /// <summary>Default minimum game version a packaged .chimera.zip declares it requires.</summary>
         private const string ExpectedManifestMinGameVersion = "0.1";

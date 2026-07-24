@@ -24,7 +24,7 @@ namespace ProjectChimera.Core.Bootstrap
             "Rendering", "Hud", "CustomHudOverlay", "ObjectiveOverlay", "TriggerDebugOverlay", "Minimap", "TerrainBrush", "ScenarioLoad", "RegionTool", "PathabilityTool",
             "CameraTool", "WaterTool", "FactionVisuals",
             "FlowFieldInit", "WinConditionUi", "GameOverOverlay", "Multiplayer", "ReplayStatus",
-            "ContentBrowser", "MainMenu", "TriggerEditor", "DslGraphEditor", "MapGenerator", "AbilityEditor",
+            "ContentBrowser", "ReplayBrowser", "MainMenu", "TriggerEditor", "DslGraphEditor", "MapGenerator", "AbilityEditor",
             "UnitCard", "ItemCard", "BuildingCard", "TechTree", "PersistenceManifest", "HeroPicker",
             "FactionDefiner", "Onboarding",
         };

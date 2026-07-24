@@ -49,6 +49,15 @@ namespace ProjectChimera.Core.Bootstrap
                 _ctx.ContentBrowser.ToggleVisible();
             };
 
+            // Story 9.11: the Replays destination — opens the replay browser (also reachable via the Edit-mode N
+            // hotkey). ReplayBrowserPhase runs before MainMenuPhase, so ctx.ReplayBrowser already exists here.
+            _ctx.MainMenu.OnReplays += () =>
+            {
+                if (_ctx.GameState.Mode != GameMode.Edit)
+                    _ctx.GameState.Toggle();
+                _ctx.ReplayBrowser.ToggleVisible();
+            };
+
             _ctx.MainMenu.OnGenerateMap += () =>
             {
                 // Switch to Edit mode and open the map generator panel.

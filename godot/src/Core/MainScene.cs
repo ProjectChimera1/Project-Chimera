@@ -128,6 +128,24 @@ namespace ProjectChimera.Core
         /// <summary>Time.GetTicksMsec() value when Play mode first started this match.</summary>
         private ulong _matchStartMs = 0;
 
+        // ── Replay playback controls (Story 9.11) — presentation-only; NEVER touch sim state or the checksum ──
+        private bool _replayPaused;
+        private int  _replaySpeed = 1;   // sim ticks stepped per frame (1/2/4/8)
+        private int  _replaySeekTo = -1; // >=0 → fast render-free re-sim to this tick, then clear
+        private int  _replayPerspective = -1; // -1 = reveal-all; 0..N-1 = roster[i] fog viewer
+
+        /// <summary>Max sim ticks the seek-forward advances per frame (P4): a bounded batch so a long seek advances
+        /// over several frames instead of freezing the window on the main thread. 240 ticks = 8 s of sim/frame.</summary>
+        private const int REPLAY_SEEK_TICKS_PER_FRAME = 240;
+
+        /// <summary>Story 9.11 (P1): cross-reload handoff from the replay browser's Play. The browser stashes the
+        /// pending replay + its scenario here and reloads the scene; the fresh <c>_Ready</c> consumes them BEFORE the
+        /// phase list runs — so <c>ScenarioLoadPhase</c> loads the replay's scenario into a clean tick-0 world and the
+        /// re-gate compares against the correctly-loaded scenario — then autoplays the replay. Static so they survive
+        /// <c>ReloadCurrentScene</c> (the <c>ScenarioLoadPhase.PendingGeneratedScenario</c> precedent).</summary>
+        internal static string? PendingReplayPath;
+        internal static string? PendingReplayScenarioPath;
+
         // ── Inspector ─────────────────────────────────────────────────────────
 
         /// <summary>AI opponent difficulty. Change in the Godot Inspector before running.</summary>
@@ -345,6 +363,17 @@ namespace ProjectChimera.Core
             // diverge). Both peers load the identical, agreement-gated scenario, so a raw pre-parse here (before the
             // validated apply in ScenarioLoadPhase) reads the same count the server reads. ClampActivePlayers keeps
             // N=2 for today's 2-slot default (byte-identical to the old hardcoded 2).
+            // Story 9.11 (P1): consume a pending replay handoff from the browser's Play (survives ReloadCurrentScene).
+            // Point ScenarioPath at the replay's scenario so it loads FRESH into a clean tick-0 world below; the
+            // autoplay tail then runs TryLoadReplay so the re-gate compares against the correctly-loaded scenario.
+            if (PendingReplayPath != null)
+            {
+                ReplayPath = PendingReplayPath;
+                if (!string.IsNullOrEmpty(PendingReplayScenarioPath)) ScenarioPath = PendingReplayScenarioPath;
+                PendingReplayPath = null;
+                PendingReplayScenarioPath = null;
+            }
+
             int activePlayers = ClampActivePlayers(PeekScenarioPlayerSlots(ScenarioPath));
             var factions = new FactionRegistry(activePlayers);
 
@@ -454,6 +483,8 @@ namespace ProjectChimera.Core
                 new MatchLifecycleController(_ctx),
                 new ReplayStatusPhase(_ctx),
                 new ContentBrowserPhase(_ctx),
+                new ReplayBrowserPhase(_ctx),   // Story 9.11 — replay browser (hotkey N) + in-playback controls overlay
+
                 new MainMenuPhase(_ctx),
                 new TriggerEditorPhase(_ctx),
                 new DslGraphEditorPhase(_ctx),   // Story 7.10 — after TriggerEditor so _ctx.TriggerPanel exists (T2↔T3 wiring)
@@ -524,10 +555,14 @@ namespace ProjectChimera.Core
                 : 0UL;
             GD.Print($"[MainScene] Match-agreement hash (algo v{Definitions.MatchAgreementHash.AlgoVersion}): 0x{_ctx.LobbyUi.MatchAgreementHash:X16}");
 
-            // If a replay file is specified via the Inspector, load it now and
-            // enter Play mode immediately — no lobby, no network required.
+            // If a replay file is specified via the Inspector OR handed off from the browser's Play (P1), load it now
+            // and enter Play mode immediately — no lobby, no network required. On success, reset the playback control
+            // session (1x, reveal-all, no pending seek).
             if (!string.IsNullOrEmpty(ReplayPath))
+            {
                 _ctx.MatchLifecycle.TryLoadReplay(ReplayPath);
+                if (_ctx.ReplayPlayer != null) BeginReplayPlaybackSession();
+            }
 
 #if DEBUG
             // Story 1.9a (Task 10 loopback smoke, DEBUG-only): if launched with `-- --autojoin <ip:port>`, this
@@ -660,6 +695,12 @@ namespace ProjectChimera.Core
                 _ctx.ContentBrowser.ToggleVisible();
                 GetViewport().SetInputAsHandled();
             }
+            else if (key.Keycode == Key.N)
+            {
+                // Story 9.11: N opens the replay browser (freed in Story 9.7 when the dev lobby keybind was removed).
+                _ctx.ReplayBrowser.ToggleVisible();
+                GetViewport().SetInputAsHandled();
+            }
             else if (key.Keycode == Key.L)
             {
                 _ctx.TriggerPanel.Toggle();
@@ -769,6 +810,69 @@ namespace ProjectChimera.Core
             if (_ctx.GameState.Mode == GameMode.Edit) _ctx.GameState.Toggle();
         }
 
+        // ── Replay playback controls (Story 9.11) ────────────────────────────────
+        // Presentation-only: these mutate ONLY the local playback flags + the view-only fog viewer. They never touch
+        // sim state or the checksum — determinism is unaffected (seek/speed/pause are pure re-sim).
+
+        /// <summary>Reset the playback control state at the start of a replay session (called by ReplayBrowserPhase
+        /// after a successful <c>TryLoadReplay</c>): playing at 1x, reveal-all perspective, no pending seek.</summary>
+        public void BeginReplayPlaybackSession()
+        {
+            _replayPaused      = false;
+            _replaySpeed       = 1;
+            _replaySeekTo      = -1;
+            _replayPerspective = -1;
+            if (_ctx.FogBridge != null) _ctx.FogBridge.RevealAll = true;
+        }
+
+        /// <summary>Pause / resume replay stepping.</summary>
+        public void ReplayTogglePause() => _replayPaused = !_replayPaused;
+
+        /// <summary>Set the replay speed (sim ticks stepped per frame): 1/2/4/8. Resumes if paused.</summary>
+        public void ReplaySetSpeed(int speed)
+        {
+            _replaySpeed  = ReplayFormat.ClampSpeed(speed);
+            _replayPaused = false;
+        }
+
+        /// <summary>Request a fast, render-free re-sim FORWARD to <paramref name="targetTick"/> (no-op if not ahead —
+        /// there is no rewind in 1.0; backward navigation is a restart from tick 0).</summary>
+        public void ReplaySeekForward(uint targetTick)
+        {
+            if (_ctx.ReplayPlayer == null) return;
+            if (targetTick > _host.CurrentTick) _replaySeekTo = (int)targetTick;
+        }
+
+        /// <summary>Cycle the replay perspective: reveal-all → each roster player's fog → reveal-all. View-only — goes
+        /// through <c>Fog.SetViewer</c> / <c>FogBridge.RevealAll</c>, which are NOT folded into the checksum.</summary>
+        public void ReplayCyclePerspective()
+        {
+            var rp = _ctx.ReplayPlayer;
+            int n = rp?.Roster.Length ?? 0;
+            int next = _replayPerspective + 1;
+            if (next >= n) next = -1; // wrap back to reveal-all
+            _replayPerspective = next;
+
+            if (_replayPerspective < 0)
+            {
+                if (_ctx.FogBridge != null) _ctx.FogBridge.RevealAll = true;
+            }
+            else
+            {
+                if (_ctx.FogBridge != null) _ctx.FogBridge.RevealAll = false;
+                _ctx.Fog.SetViewer(rp!.Roster[_replayPerspective]);
+            }
+        }
+
+        /// <summary>Human-readable label for the current replay perspective (for the controls overlay).</summary>
+        private string CurrentPerspectiveLabel()
+        {
+            var rp = _ctx.ReplayPlayer;
+            if (_replayPerspective < 0 || rp == null || _replayPerspective >= rp.Roster.Length)
+                return "Reveal All";
+            return rp.Roster[_replayPerspective].ToString();
+        }
+
         public override void _Process(double delta)
         {
             if (_headless) return; // dedicated server: no presentation context (the DedicatedServer node self-polls)
@@ -776,16 +880,50 @@ namespace ProjectChimera.Core
             {
                 if (_ctx.ReplayPlayer != null)
                 {
-                    // Replay mode: feed recorded commands instead of live network/input.
-                    // Always advances one tick per frame — no stalling.
-                    _ctx.ReplayPlayer.Flush(_host.CurrentTick);
-                    _host.StepOnce();
+                    // Replay mode: feed recorded commands instead of live network/input. Story 9.11 adds pause /
+                    // speed (1/2/4/8) / seek-forward — all pure re-sim (deterministic; no rewind snapshots, no
+                    // checksum effect). Backward navigation is a restart-from-tick-0 (not implemented here — no rewind
+                    // in 1.0); seek-forward fast-loops Flush+StepOnce to the target without a per-frame render.
+                    var rp = _ctx.ReplayPlayer;
+                    _ctx.ReplayControls?.SetActive(true);
 
-                    if (_ctx.ReplayPlayer.IsFinished)
+                    if (_replaySeekTo >= 0)
+                    {
+                        // P4: advance a BOUNDED batch of ticks this frame (not the whole seek at once) so a long seek
+                        // spans several frames instead of freezing the window on the main thread. Keep the target set
+                        // until reached; clear it once we arrive (or the replay ends).
+                        uint target = (uint)_replaySeekTo;
+                        int budget = REPLAY_SEEK_TICKS_PER_FRAME;
+                        while (_host.CurrentTick < target && !rp.IsFinished && budget-- > 0)
+                        {
+                            rp.Flush(_host.CurrentTick);
+                            _host.StepOnce();
+                        }
+                        if (_host.CurrentTick >= target || rp.IsFinished)
+                            _replaySeekTo = -1;
+                    }
+                    else if (!_replayPaused)
+                    {
+                        int steps = _replaySpeed < 1 ? 1 : _replaySpeed;
+                        for (int s = 0; s < steps && !rp.IsFinished; s++)
+                        {
+                            rp.Flush(_host.CurrentTick);
+                            _host.StepOnce();
+                        }
+                    }
+
+                    if (rp.IsFinished)
                     {
                         GD.Print($"[Replay] Finished at tick {_host.CurrentTick}.");
                         _ctx.ReplayPlayer = null;
                         if (_ctx.ReplayStatusLabel != null) _ctx.ReplayStatusLabel.Visible = false;
+                        _ctx.ReplayControls?.SetActive(false);
+                    }
+                    else
+                    {
+                        _ctx.ReplayControls?.UpdateReadout(
+                            _host.CurrentTick, rp.LastTick, _replayPaused, _replaySpeed,
+                            CurrentPerspectiveLabel(), seeking: _replaySeekTo >= 0);
                     }
                 }
                 else if (_ctx.Lockstep.IsOnline)
@@ -1386,8 +1524,11 @@ namespace ProjectChimera.Core
             // Notify chat before closing it.
             _ctx.ChatOverlay.AddSystemMessage(winnerPlayer > 0 ? $"Player {winnerPlayer} wins! GG" : "Match over — defeat. GG");
 
-            // Finalise replay recording — match is over.
-            _ctx.MatchLifecycle.StopRecording();
+            // Finalise replay recording — match is over. Story 9.11: write the result trailer (winner + finalTick +
+            // completed) so the browser shows the outcome, and capture the file path FIRST (StopRecording clears the
+            // recorder handle) for the "Save Replay" affordance below. The file is always retained on disk.
+            string? savedReplayPath = _ctx.ReplayRecorder?.FilePath;
+            _ctx.MatchLifecycle.StopRecording(winnerPlayer, completed: true);
 
             // ── Gather stats ─────────────────────────────────────────────────
             ulong elapsedMs = _matchStartMs > 0 ? Time.GetTicksMsec() - _matchStartMs : 0;
@@ -1512,6 +1653,18 @@ namespace ProjectChimera.Core
 
             vbox.AddChild(new HSeparator());
 
+            // ── Save Replay (Story 9.11) ──────────────────────────────────────
+            // The auto-recorded .chmr is ALWAYS retained on disk; this affordance only renames/annotates it. Present
+            // only when a recording was active (absent during replay playback, where there is no recorder).
+            if (!string.IsNullOrEmpty(savedReplayPath))
+            {
+                var saveBtn = new Button { Text = "Save Replay", CustomMinimumSize = new Vector2(200, 40) };
+                saveBtn.AddThemeFontSizeOverride("font_size", 16);
+                string capturedPath = savedReplayPath!;
+                saveBtn.Pressed += () => PromptSaveReplay(capturedPath);
+                vbox.AddChild(saveBtn);
+            }
+
             // ── Hint ─────────────────────────────────────────────────────────
             var hint = new Label
             {
@@ -1526,6 +1679,76 @@ namespace ProjectChimera.Core
             GD.Print($"[WinCondition] {(winnerPlayer > 0 ? $"Player {winnerPlayer} wins" : "Match over — no victor")} — {duration} — " +
                      $"P1: {p1Kills}k/{p1Built}u/{p1Ore}ore  " +
                      $"P2: {p2Kills}k/{p2Built}u/{p2Ore}ore. Press F5 to return to Edit.");
+        }
+
+        /// <summary>Story 9.11 — the score-screen "Save Replay" affordance: a small rename dialog over the just-
+        /// recorded .chmr. The file is already on disk; confirming just renames it (never re-encodes / discards).</summary>
+        private void PromptSaveReplay(string path)
+        {
+            if (string.IsNullOrEmpty(path)) return;
+
+            var dlg = new AcceptDialog { Title = "Save Replay", DialogHideOnOk = true };
+            var vb  = new VBoxContainer();
+            vb.AddThemeConstantOverride("separation", 8);
+            vb.AddChild(new Label { Text = "Rename this replay:" });
+            var edit = new LineEdit
+            {
+                Text              = System.IO.Path.GetFileNameWithoutExtension(path),
+                CustomMinimumSize = new Vector2(320, 0),
+            };
+            vb.AddChild(edit);
+            dlg.AddChild(vb);
+            dlg.AddCancelButton("Cancel");
+            dlg.Confirmed += () =>
+            {
+                string? error = RenameReplayFile(path, edit.Text);
+                dlg.QueueFree();
+                if (error != null) ShowReplayMessage("Save failed", error);
+            };
+            dlg.Canceled  += () => dlg.QueueFree();
+            AddChild(dlg);
+            dlg.PopupCentered(new Vector2I(380, 150));
+        }
+
+        /// <summary>Rename a .chmr on disk to <paramref name="newBaseName"/> (invalid chars sanitized). NEVER clobbers
+        /// a different existing replay ("a replay is never silently discarded"): returns a human-readable error on
+        /// refusal, or null on success. A blank/failed rename leaves the original file in place.</summary>
+        private static string? RenameReplayFile(string path, string newBaseName)
+        {
+            newBaseName = (newBaseName ?? "").Trim();
+            if (newBaseName.Length == 0) return "Name cannot be empty.";
+            foreach (char c in System.IO.Path.GetInvalidFileNameChars())
+                newBaseName = newBaseName.Replace(c, '_');
+
+            string dir  = System.IO.Path.GetDirectoryName(path) ?? "";
+            string dest = System.IO.Path.Combine(dir, newBaseName + ".chmr");
+            if (string.Equals(dest, path, StringComparison.OrdinalIgnoreCase)) return null; // unchanged — no-op
+            if (System.IO.File.Exists(dest)) return "A replay with that name already exists.";
+            try
+            {
+                System.IO.File.Move(path, dest, overwrite: false); // fail-closed: never overwrite another replay
+                GD.Print($"[Replay] Saved replay as {dest}");
+                return null;
+            }
+            catch (Exception e)
+            {
+                GD.PrintErr($"[Replay] Rename failed: {e.Message}");
+                return e.Message;
+            }
+        }
+
+        /// <summary>Public entry for MatchLifecycleController to surface a replay load refusal/error (P6) — a corrupt/
+        /// legacy/newer-format file or a scenario re-gate mismatch shows a dialog instead of a silently-inert Play.</summary>
+        public void ShowReplayLoadError(string reason) => ShowReplayMessage("Cannot play replay", reason);
+
+        /// <summary>Small info dialog for replay Save/Load feedback (P2/P6).</summary>
+        private void ShowReplayMessage(string title, string text)
+        {
+            var dlg = new AcceptDialog { Title = title, DialogText = text };
+            dlg.Confirmed += () => dlg.QueueFree();
+            dlg.Canceled  += () => dlg.QueueFree();
+            AddChild(dlg);
+            dlg.PopupCentered(new Vector2I(440, 150));
         }
 
         /// <summary>
@@ -1889,6 +2112,10 @@ namespace ProjectChimera.Core
             _ctx.MatchLifecycle.StopRecording();
             _ctx.ReplayPlayer = null;
             if (_ctx.ReplayStatusLabel != null) _ctx.ReplayStatusLabel.Visible = false;
+
+            // Story 9.11: tear down the replay playback overlay + reset its control state.
+            _ctx.ReplayControls?.SetActive(false);
+            _replayPaused = false; _replaySpeed = 1; _replaySeekTo = -1; _replayPerspective = -1;
 
             // Reset spectator fog reveal + the Story 7.12 per-player defeat banner.
             if (_ctx.FogBridge != null) _ctx.FogBridge.RevealAll = false;
