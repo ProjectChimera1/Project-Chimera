@@ -86,7 +86,11 @@ namespace ProjectChimera.Core.Definitions
             // same profile); never a silent clamp. XpCeiling is the same saturation the runtime enforces, so a persisted
             // xp above it is by definition unreachable through legitimate play. Level lower-bound is < 0 (NOT < 1): an
             // inventory-only profile whose manifest omits hero.level legitimately mints level == 0 today.
-            if (level < 0 || xp.Raw < 0 || xp.Raw > HeroXpSystem.XpCeiling.Raw)
+            // Story 9.12: the range predicate is now the ONE canonical rule in HeroProfileValidator.IsLevelXpInRange
+            // (behaviour-identical to the former inline `level < 0 || xp.Raw < 0 || xp.Raw > XpCeiling.Raw`), so this
+            // apply gate, the client pre-flight, and the TS server RPC never drift. Scoped to the RANGE branch ONLY — the
+            // other validator rules (identity/attributes/inventory) are NOT gated here, keeping this apply path byte-identical.
+            if (!HeroProfileValidator.IsLevelXpInRange(level, xp.Raw))
             {
                 log?.Warn($"[HeroProfileLoader] Profile '{profile.ProfileId}' has an out-of-range level ({level}) or xp " +
                           $"(raw {xp.Raw}, ceiling {HeroXpSystem.XpCeiling.Raw}) - rejected deterministically; 0 minted.");

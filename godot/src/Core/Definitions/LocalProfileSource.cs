@@ -17,7 +17,7 @@ namespace ProjectChimera.Core.Definitions
     /// <see cref="LoadAll"/> return an empty list — never a throw. Deterministic: <see cref="NextProfileId"/> derives the
     /// next id from the current store state (no wall-clock, no RNG, no <c>Guid</c>).</para>
     /// </summary>
-    public sealed class LocalProfileSource
+    public sealed class LocalProfileSource : IProfileSource
     {
         /// <summary>The single list file inside the injected directory holding every saved profile.</summary>
         public const string ProfilesFileName = "profiles.json";

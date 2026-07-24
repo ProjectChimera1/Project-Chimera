@@ -1,9 +1,11 @@
 #nullable enable
 using System;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using Godot;
 using ProjectChimera.Core;                 // Faction
-using ProjectChimera.Core.Definitions;      // ScenarioData, PlayerProfile, LocalProfileSource, HeroProfileLoader, FactionDefinition, UnitDefinition
+using ProjectChimera.Core.Definitions;      // ScenarioData, PlayerProfile, IProfileSource, HeroProfileLoader, OnlineHeroLaunchGate, AttestationOutcome, FactionDefinition, UnitDefinition
+using ProjectChimera.Multiplayer;            // NakamaService (Story 9.12 online attest gate)
 using ProjectChimera.UI.Components;          // ChimeraComponents, ChimeraListRow, ListRowGroup, ChimeraMark, ChimeraDialog, ChimeraToastHost, ChimeraTooltip
 using ProjectChimera.UI.Theme;               // ThemeTokens, ThemeBuilder, AccentController
 using GodotTheme = Godot.Theme;              // the ProjectChimera.UI.Theme namespace shadows the bare Theme type
@@ -36,11 +38,31 @@ namespace ProjectChimera.UI
         private GodotTheme        _theme  = null!;
         private AccentController?  _accent;
 
-        // ── Deps (wired by HeroPickerPhase after AddChild) ──
+        // ── Deps (wired by HeroPickerPhase / LobbyUi after AddChild) ──
         private ScenarioData?          _scenario;
-        private LocalProfileSource?    _source;
+        private IProfileSource?        _source;
         private FactionDefinition?[]   _slotFactionDefs = System.Array.Empty<FactionDefinition?>();
         private Action<PlayerProfile?> _launch = _ => { };
+
+        /// <summary>Story 9.12: when set (online mode via <see cref="EnableOnlineAttestation"/>), a Deploy is gated on a
+        /// successful SERVER attestation of the selected profile (<see cref="NakamaService.AttestHeroProfileAsync"/> →
+        /// <see cref="OnlineHeroLaunchGate"/>); an unattested/invalid profile — or a failed/errored attestation call
+        /// (fail-closed) — keeps the player in the picker with a surfaced reason and never reaches the launch callback.
+        /// Null (the default) = offline: the launch path is unchanged.</summary>
+        private NakamaService? _online;
+
+        /// <summary>Story 9.12: the online source (same object as <see cref="_source"/> when online) — used for its ASYNC
+        /// load/save so the online picker never blocks the Godot main thread on a Nakama round-trip (P2). Null offline.</summary>
+        private OnlineProfileSource? _onlineSource;
+
+        /// <summary>Story 9.12 (P3): true while a server attestation await is in flight — the footer is disabled and a
+        /// late continuation must not act on a dismissed overlay.</summary>
+        private bool _serverOpInFlight;
+
+        /// <summary>Story 9.12: when set (online mode), a profile is deployable only when the placed hero it matches is
+        /// owned by THIS faction (the server-assigned <c>_assignedFaction</c>'s <see cref="FactionDefinition"/>). Null
+        /// (offline / faction not yet assigned) leaves the compatibility check slot-agnostic (unchanged behaviour).</summary>
+        private FactionDefinition? _localFactionFilter;
 
         /// <summary>Story 3.13 (D6) / Story 3.16 / DW-27 / DW-32: supplies the end-of-match hero harvest (live Level/Xp +
         /// carried loadout) captured on return-to-Edit — so Save/Overwrite persist the REAL grown values + loadout instead
@@ -58,6 +80,7 @@ namespace ProjectChimera.UI
         private Godot.Button    _saveBtn      = null!;
         private Godot.Button    _overwriteBtn = null!;
         private Godot.Button    _deleteBtn    = null!;
+        private Godot.Button    _playWithoutBtn = null!;   // Story 9.12 (P3): disabled during an attest await
         private ChimeraToastHost _toastHost   = null!;
 
         private readonly ListRowGroup _group = new();
@@ -75,14 +98,34 @@ namespace ProjectChimera.UI
         /// <summary>Bind the overlay to the live scenario + the offline disk rail + per-slot faction defs (for card
         /// metadata) + the phase's launch callback. Called by <c>HeroPickerPhase</c> after <c>AddChild</c>. Hidden by
         /// default; shown by <see cref="RequestSkirmishLaunch"/>.</summary>
-        public void Initialize(ScenarioData? scenario, LocalProfileSource source,
+        public void Initialize(ScenarioData? scenario, IProfileSource source,
                                FactionDefinition?[] slotFactionDefs, Action<PlayerProfile?> launch)
         {
             _scenario        = scenario;
             _source          = source;
+            _onlineSource    = source as OnlineProfileSource; // non-null online → drives the async (non-blocking) load/save
             _slotFactionDefs = slotFactionDefs ?? System.Array.Empty<FactionDefinition?>();
             _launch          = launch ?? (_ => { });
         }
+
+        /// <summary>Story 9.12: put the picker in ONLINE mode — a Deploy then requires a successful server attestation
+        /// (via <paramref name="nakama"/>) before the launch callback fires. Offline callers never call this, so their
+        /// path is unchanged.</summary>
+        public void EnableOnlineAttestation(NakamaService nakama) => _online = nakama;
+
+        /// <summary>Story 9.12 (online): restrict deployable heroes to those placed for <paramref name="factionDef"/>
+        /// (the local player's server-assigned faction). Null = slot-agnostic (offline / faction not yet assigned).
+        /// Re-callable as the server assigns/updates the local faction; refreshes the card list if visible.</summary>
+        public void SetLocalFactionFilter(FactionDefinition? factionDef)
+        {
+            _localFactionFilter = factionDef;
+            if (_canvas != null && _canvas.Visible) Refresh();
+        }
+
+        /// <summary>Story 9.12: show the picker for the ONLINE lobby flow (attestation-gated). Unlike the offline
+        /// <see cref="RequestSkirmishLaunch"/> it ALWAYS shows — the online rail requires a picked-and-attested hero
+        /// before the player may Ready.</summary>
+        public void ShowForOnline() => Show();
 
         /// <summary>
         /// The offline Play-Skirmish launch authority (D-4). When the loaded scenario's persistence manifest is Enabled,
@@ -206,11 +249,11 @@ namespace ProjectChimera.UI
             // Spacer pushes the non-blocking "play without a hero" to the right.
             footer.AddChild(new Control { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill });
 
-            var playWithout = ChimeraComponents.Button("Play without a saved hero", ChimeraComponents.ButtonVariant.Ghost);
-            playWithout.Pressed += () => { Hide(); _launch(null); };
-            AttachFieldTip(playWithout, "Play without a saved hero",
-                "Start the match now with no saved hero — nothing is minted. Always available.");
-            footer.AddChild(playWithout);
+            _playWithoutBtn = ChimeraComponents.Button("Play without a saved hero", ChimeraComponents.ButtonVariant.Ghost);
+            _playWithoutBtn.Pressed += OnPlayWithoutPressed;
+            AttachFieldTip(_playWithoutBtn, "Play without a saved hero",
+                "Start the match now with no saved hero — nothing is minted. Always available (offline).");
+            footer.AddChild(_playWithoutBtn);
 
             // ── Toast host for "Saved" feedback ──
             _toastHost = ChimeraToastHost.Create();
@@ -223,17 +266,58 @@ namespace ProjectChimera.UI
 
         private void Refresh()
         {
+            // Story 9.12 (P2): online, the profile list comes from Nakama — load it ASYNCHRONOUSLY and marshal the result
+            // back to the main thread, so the picker never blocks the Godot main thread on a network round-trip. Offline
+            // is a synchronous disk read (unchanged).
+            if (_online != null) { RefreshOnlineAsync(); return; }
+
+            ClearCards();
+            PopulateCards(_source?.LoadAll() ?? System.Array.Empty<PlayerProfile>());
+        }
+
+        /// <summary>Story 9.12 (P2): clear the card list + show a "loading" status, then prefetch the single server-owned
+        /// profile off-thread and marshal the populate back to the main thread. Never blocks.</summary>
+        private void RefreshOnlineAsync()
+        {
+            ClearCards();
+            _statusLabel.Visible = true;
+            _statusLabel.Text = "Loading your hero from the server…";
+            UpdateButtonStates();
+            _ = PrefetchThenPopulateAsync();
+        }
+
+        private async System.Threading.Tasks.Task PrefetchThenPopulateAsync()
+        {
+            try { if (_onlineSource != null) await _onlineSource.PrefetchAsync(); }
+            catch { /* fail-soft: an unreachable server yields the empty (no-hero) list, never a throw */ }
+
+            // Marshal back to the Godot main thread — no off-thread scene mutation from the awaited continuation.
+            Callable.From(() =>
+            {
+                if (!IsInstanceValid(this) || _canvas == null || !_canvas.Visible) return; // picker dismissed mid-load
+                PopulateCards(_onlineSource?.LoadAll() ?? System.Array.Empty<PlayerProfile>());
+            }).CallDeferred();
+        }
+
+        /// <summary>Remove all card rows and reset the authoritative selection.</summary>
+        private void ClearCards()
+        {
             foreach (Node c in _listHost.GetChildren()) { _listHost.RemoveChild(c); c.QueueFree(); }
             // The group's stale reference to a now-freed row is guarded by IsInstanceValid on the next Select — safe to
             // leave; the authoritative selection is _selected, reset here.
             _selected = null;
+        }
 
-            IReadOnlyList<PlayerProfile> profiles = _source?.LoadAll() ?? System.Array.Empty<PlayerProfile>();
-
+        /// <summary>Build the slot cards for <paramref name="profiles"/> (0 or 1 online; N offline) and refresh buttons.</summary>
+        private void PopulateCards(IReadOnlyList<PlayerProfile> profiles)
+        {
+            ClearCards();
             if (profiles.Count == 0)
             {
                 _statusLabel.Visible = true;
-                _statusLabel.Text = "No saved heroes yet. Save this scenario's hero, or play without one.";
+                _statusLabel.Text = _online != null
+                    ? "No hero saved on the server yet. Save this scenario's hero to play online."
+                    : "No saved heroes yet. Save this scenario's hero, or play without one.";
             }
             else
             {
@@ -259,7 +343,11 @@ namespace ProjectChimera.UI
                 // non-hero unit sharing the id no longer shows deployable then mints nothing (D-3).
                 int fIdx = u.Slot + 1; // slot 0 → Player1
                 if (fIdx < 0 || fIdx >= _slotFactionDefs.Length) continue;
-                UnitDefinition? def = _slotFactionDefs[fIdx]?.GetUnit(u.UnitId);
+                FactionDefinition? fdef = _slotFactionDefs[fIdx];
+                // Story 9.12 (online): only heroes placed for the local player's assigned faction are deployable — a
+                // profile never lands on another slot's same-id hero. Null filter (offline / unassigned) is slot-agnostic.
+                if (_localFactionFilter != null && fdef?.Id != _localFactionFilter.Id) continue;
+                UnitDefinition? def = fdef?.GetUnit(u.UnitId);
                 if (def != null && def.IsHero) return true;
             }
             return false;
@@ -360,22 +448,120 @@ namespace ProjectChimera.UI
 
         private void UpdateButtonStates()
         {
+            // Story 9.12 (P3): while a server attestation is in flight the whole footer is frozen — no button may fire a
+            // second launch/save or dismiss the overlay under the awaited continuation.
+            if (_serverOpInFlight) { SetFooterEnabled(false); return; }
+
             bool hasSelection = _selected != null;
             _deployBtn.Disabled    = !hasSelection;
             _overwriteBtn.Disabled = !hasSelection;
-            _deleteBtn.Disabled    = !hasSelection;
+            // Story 9.12 (P5): online heroes are server-owned (No-Client-Write, no delete RPC in this slice) — a client
+            // cannot delete them, so the Delete affordance is disabled online rather than showing a false success toast.
+            _deleteBtn.Disabled    = !hasSelection || _online != null;
+            _deleteBtn.TooltipText = _online != null ? "Online heroes are server-owned and can't be deleted in this build." : "";
             // Save only needs a placeable hero in the scenario (no selection required).
             _saveBtn.Disabled = !TryResolvePrimaryHero(out _, out _, out _, out _);
+            // Story 9.12: "Play without a saved hero" is offline-only. Online it satisfies no attestation gate (the lobby
+            // ignores a null profile) yet would still Hide() the picker, silently leaving the player un-readied with the
+            // picker dismissed — a confusing dead-end contradicting "keep the player until an attested profile". Disable
+            // it online so the only online exits are an attested Deploy or Cancel (its tooltip already says "(offline)").
+            _playWithoutBtn.Disabled = _online != null;
+        }
+
+        /// <summary>Story 9.12 (P3): enable/disable every footer button as a unit for the duration of an async server
+        /// round-trip (attest / online save), so no stale click drives Ready/launch on a dismissed overlay.</summary>
+        private void SetFooterEnabled(bool enabled)
+        {
+            _deployBtn.Disabled      = !enabled;
+            _saveBtn.Disabled        = !enabled;
+            _overwriteBtn.Disabled   = !enabled;
+            _deleteBtn.Disabled      = !enabled;
+            _playWithoutBtn.Disabled = !enabled;
         }
 
         // ── Actions ─────────────────────────────────────────────────────────────────
 
+        /// <summary>Story 9.12: "Play without a saved hero" — offline launches straight to Play (mints nothing). Online
+        /// this does NOT satisfy the attestation gate (the lobby's launch callback ignores a null profile), so the player
+        /// stays un-readied; disabled entirely during an attest await (P3).</summary>
+        private void OnPlayWithoutPressed()
+        {
+            if (_serverOpInFlight) return;
+            Hide();
+            _launch(null);
+        }
+
         private void OnDeployPressed()
         {
-            if (_selected == null) return;
+            if (_selected == null || _serverOpInFlight) return;
             PlayerProfile chosen = _selected;
+
+            // Story 9.12: online mode gates the launch on a successful SERVER attestation. Offline (the default) launches
+            // straight away, exactly as before.
+            if (_online != null) { _ = DeployWithAttestationAsync(chosen); return; }
+
             Hide();
             _launch(chosen); // stash-and-launch: the phase sets PendingHeroProfile + mints before the hash
+        }
+
+        /// <summary>Story 9.12: attest the chosen profile with the server, then gate the launch on
+        /// <see cref="OnlineHeroLaunchGate.CanEnterMatch"/>. On any failure (invalid/unattested OR a failed/errored/timed-out
+        /// attestation call — FAIL-CLOSED) the player stays in the picker with the reason surfaced; only an
+        /// attested-and-valid profile reaches the launch callback, so a tampered/unattested profile can never enter online
+        /// play. <b>All post-<c>await</c> scene/UI mutation is marshaled to the main thread</b> via
+        /// <see cref="Callable"/>.<c>CallDeferred</c> — the Nakama continuation runs off the Godot main thread.</summary>
+        private async Task DeployWithAttestationAsync(PlayerProfile chosen)
+        {
+            // P10: a blank ProfileId can never bind server-side — treat as fail-closed rather than attesting "whatever
+            // is stored".
+            if (string.IsNullOrEmpty(chosen.ProfileId))
+            {
+                ShowStatus("Cannot enter match — the selected hero has no id. Pick a saved hero.");
+                return;
+            }
+
+            // Pre-await mutations run on the main thread (this is a UI signal handler). P3: freeze the WHOLE footer so no
+            // sibling button (Play-without / Save / Delete) can fire under the awaited continuation.
+            _serverOpInFlight = true;
+            SetFooterEnabled(false);
+            ShowStatus("Attesting hero with the server…");
+
+            AttestationOutcome outcome;
+            try { outcome = await _online!.AttestHeroProfileAsync(chosen.ProfileId); }
+            catch { outcome = AttestationOutcome.CallFailed; } // defensive: the async method is already guarded
+
+            // Marshal the result-handling (which touches Godot nodes) back onto the main thread — no off-thread scene
+            // mutation from the awaited continuation.
+            Callable.From(() => FinishOnlineDeploy(outcome, chosen)).CallDeferred();
+        }
+
+        /// <summary>Story 9.12: main-thread continuation of <see cref="DeployWithAttestationAsync"/> — refuses the launch
+        /// fail-closed on a failed gate (keeping the player in the picker with a reason), else launches. P3: bails if the
+        /// overlay was dismissed while the attest was in flight, so a late attestation never launches a torn-down flow.</summary>
+        private void FinishOnlineDeploy(AttestationOutcome outcome, PlayerProfile chosen)
+        {
+            _serverOpInFlight = false;
+
+            // P3: the overlay was dismissed (cancel / disconnect / play-without freed the canvas) while attesting — do
+            // NOT launch. The lobby's own online-mode guard is the second line of defence.
+            if (!IsInstanceValid(this) || _canvas == null || !_canvas.Visible)
+                return;
+
+            if (!OnlineHeroLaunchGate.CanEnterMatch(outcome))
+            {
+                string why = !outcome.CallSucceeded
+                    ? "the server could not be reached or returned an unexpected reply — try again"
+                    : outcome.Reason == ProfileInvalidReason.None
+                        ? "no attested hero on the server"
+                        : $"the server rejected it ({outcome.Reason})";
+                ShowStatus($"Cannot enter match — {why}. Save a valid hero, then pick an attested one.");
+                SetFooterEnabled(true);
+                UpdateButtonStates();
+                return;
+            }
+
+            Hide();
+            _launch(chosen);
         }
 
         /// <summary>Story 3.13 (D6): the harvested end-of-match Level/Xp for <paramref name="heroDefId"/> if the last
@@ -404,10 +590,46 @@ namespace ProjectChimera.UI
                 profileId, unitId, factionId, display, sig, level, xp,
                 _scenario.PersistenceManifest.DeriveProfileShape(),
                 HeroHarvestResolver.ResolveInventory(in h, unitId)); // Story 3.16: capture the live loadout when the shape carries hero.inventory
-            _source.Save(profile);
 
+            // Story 9.12 (P2): online, Save routes through the ASYNC validating server RPC (no main-thread block). Offline
+            // is the synchronous disk write (unchanged).
+            if (_online != null) { _ = SaveOnlineAsync(profile, display); return; }
+
+            _source.Save(profile);
             _toastHost.Show("Saved", $"{display} saved as a new hero slot.", ChimeraToastHost.ToastVariant.Ok);
             Refresh();
+        }
+
+        /// <summary>Story 9.12 (P2): persist a profile online through the async validating RPC, freezing the footer for the
+        /// round-trip and marshaling the result back to the main thread (mirrors the attest path). Never blocks.</summary>
+        private async Task SaveOnlineAsync(PlayerProfile profile, string display)
+        {
+            _serverOpInFlight = true;
+            SetFooterEnabled(false);
+            ShowStatus("Saving your hero to the server…");
+
+            StorageWriteResult result;
+            try { result = _onlineSource != null ? await _onlineSource.SaveAsync(profile) : StorageWriteResult.Failed("no_source"); }
+            catch (Exception e) { result = StorageWriteResult.Failed(e.Message); }
+
+            Callable.From(() => FinishOnlineSave(result, display)).CallDeferred();
+        }
+
+        private void FinishOnlineSave(StorageWriteResult result, string display)
+        {
+            _serverOpInFlight = false;
+            if (!IsInstanceValid(this) || _canvas == null || !_canvas.Visible) return; // picker dismissed mid-save
+
+            if (!result.Ok)
+            {
+                ShowStatus($"Could not save hero to the server: {result.Reason ?? "unknown"}.");
+                SetFooterEnabled(true);
+                UpdateButtonStates();
+                return;
+            }
+            _toastHost.Show("Saved", $"{display} saved to the server.", ChimeraToastHost.ToastVariant.Ok);
+            SetFooterEnabled(true);
+            Refresh(); // re-loads the server object (async) → the saved hero appears
         }
 
         private void OnOverwritePressed()
@@ -434,6 +656,13 @@ namespace ProjectChimera.UI
                     target.ProfileId, target.HeroDefId, target.FactionId, target.DisplayName, target.SignatureAbility,
                     level, xp, _scenario.PersistenceManifest.DeriveProfileShape(),
                     inventory); // Story 3.16
+                // Story 9.12 (P2): online overwrite routes through the async server RPC (no main-thread block).
+                if (_online != null)
+                {
+                    string label = string.IsNullOrEmpty(target.DisplayName) ? target.HeroDefId : target.DisplayName;
+                    _ = SaveOnlineAsync(rebuilt, label);
+                    return;
+                }
                 _source.Save(rebuilt);
                 _toastHost.Show("Saved", "Saved hero overwritten.", ChimeraToastHost.ToastVariant.Ok);
                 Refresh();
@@ -444,6 +673,13 @@ namespace ProjectChimera.UI
         private void OnDeletePressed()
         {
             if (_source == null || _selected == null) return;
+            // Story 9.12 (P5): online heroes are server-owned (No-Client-Write, no delete RPC in this slice) — never a
+            // false "deleted" toast. The button is already disabled online; guard defensively with an honest message.
+            if (_online != null)
+            {
+                ShowStatus("Online heroes are server-owned and can't be deleted in this build.");
+                return;
+            }
             PlayerProfile target = _selected;
 
             var dialog = ChimeraDialog.Create("Delete saved hero?",

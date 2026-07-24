@@ -26,7 +26,9 @@ namespace ProjectChimera.Core.Bootstrap
             // Resolve the offline profile directory on the Godot edge; hand the OS-absolute path to the Godot-free rail.
             string folder = _ctx.SettingsMgr?.Current?.HeroProfileFolder ?? "user://hero_profiles";
             string absFolder = ProjectSettings.GlobalizePath(folder);
-            var source = new LocalProfileSource(absFolder);
+            // Story 9.12: the picker depends on the IProfileSource seam. Offline uses the LocalProfileSource disk rail
+            // (unchanged); the online path (LobbyUi) swaps in an OnlineProfileSource (server-RPC-only writes).
+            IProfileSource source = new LocalProfileSource(absFolder);
 
             _ctx.HeroPicker = new HeroPickerOverlay();
             _ctx.Scene.AddChild(_ctx.HeroPicker);
@@ -36,6 +38,17 @@ namespace ProjectChimera.Core.Bootstrap
             // so the picker persists real grown values. The harvest is captured long AFTER picker init, so hand the picker a
             // live-read closure — not a snapshot — over the single value-typed carrier (default None ⇒ falls back as before).
             _ctx.HeroPicker.HarvestProvider = () => _ctx.Harvest;
+
+            // Story 9.12: give the online lobby (built earlier by MatchLifecycleController) live access to the scenario +
+            // per-slot faction defs so its online hero picker — backed by the server-owned OnlineProfileSource, gated on
+            // attestation — can compatibility-filter by the local player's server-assigned faction. Wired here (not in
+            // MatchLifecycleController, which stays untouched per the spec) because this phase already resolves both, and
+            // it runs after the lobby exists. Read lazily at picker-build time (well after setup fully populates them).
+            if (_ctx.LobbyUi != null)
+            {
+                _ctx.LobbyUi.ScenarioProvider        = () => _ctx.Scenario;
+                _ctx.LobbyUi.SlotFactionDefsProvider = () => _ctx.SlotFactionDefs;
+            }
 
             GD.Print("[HeroPicker] Initialized — offline Play-Skirmish hero picker (shown when the scenario's persistence manifest is enabled).");
         }

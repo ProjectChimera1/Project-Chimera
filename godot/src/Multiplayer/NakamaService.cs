@@ -2,8 +2,10 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Text.Json;
 using System.Threading.Tasks;
 using Nakama;
+using ProjectChimera.Core.Definitions;         // PlayerProfile, AttestationOutcome, ProfileInvalidReason (Story 9.12)
 using ProjectChimera.Multiplayer.Matchmaking; // MatchmakerConfig
 using ProjectChimera.Multiplayer.Party;        // PartyService
 
@@ -232,6 +234,108 @@ namespace ProjectChimera.Multiplayer
             Enqueue(() => OnDisconnected?.Invoke());
         }
 
+        // ── Server-validated online hero profile (Story 9.12, FR-7c / AR-12) ───────────────
+        //
+        // The online profile is a Nakama STORAGE OBJECT the SERVER owns: written ONLY by the validating server RPC with
+        // permissionRead=1 (owner-read) / permissionWrite=0 (no client write). This client READS it (owner-read) but
+        // NEVER calls WriteStorageObjects for it — the only write path is WriteHeroProfileViaRpcAsync below. The RPC ids
+        // + storage collection/key are the C# half of the contract mirrored by the TS module in
+        // docs/server-deploy/nakama-modules (they MUST match on both sides). Every method is fail-soft/fail-closed: NO
+        // unguarded exception escapes (a read failure ⇒ null; a write failure ⇒ a Failed result; an attest failure ⇒
+        // CallSucceeded=false = fail-closed).
+
+        /// <summary>Nakama storage collection holding each user's single server-owned hero profile object.</summary>
+        public const string HeroProfileCollection = "heroes";
+        /// <summary>Storage key of the single per-user hero profile object within <see cref="HeroProfileCollection"/>.</summary>
+        public const string HeroProfileKey = "profile";
+        /// <summary>Server RPC id that validates + writes the owner-read/no-client-write profile object.</summary>
+        public const string RpcWriteHeroProfile  = "rpc_write_hero_profile";
+        /// <summary>Server RPC id that reads the stored object, re-validates it, and returns an attestation.</summary>
+        public const string RpcAttestHeroProfile = "rpc_attest_hero_profile";
+
+        /// <summary>
+        /// Read this user's server-owned hero profile via owner-read <c>ReadStorageObjects</c> (NEVER a write). Returns
+        /// the deserialized <see cref="PlayerProfile"/>, or <c>null</c> when no object exists / not connected / the
+        /// stored value is unparseable / the read throws (fail-soft — mirrors <see cref="LocalProfileSource.LoadAll"/>'s
+        /// empty-store row; no unguarded exception escapes).
+        /// </summary>
+        public async Task<PlayerProfile?> ReadHeroProfileAsync()
+        {
+            if (_client == null || _session == null) return null;
+            try
+            {
+                IApiStorageObjects result = await _client.ReadStorageObjectsAsync(_session, new IApiReadStorageObjectId[]
+                {
+                    new StorageObjectId { Collection = HeroProfileCollection, Key = HeroProfileKey, UserId = _session.UserId },
+                });
+
+                foreach (IApiStorageObject obj in result.Objects)
+                {
+                    if (string.IsNullOrEmpty(obj.Value)) continue;
+                    try { return JsonSerializer.Deserialize<PlayerProfile>(obj.Value); }
+                    catch { return null; } // corrupt stored value → treat as "no profile", never a throw
+                }
+                return null;
+            }
+            catch
+            {
+                return null; // Nakama unreachable / read error → fail-soft (never a throw out of this method)
+            }
+        }
+
+        /// <summary>
+        /// Persist <paramref name="profile"/> through the validating <c>rpc_write_hero_profile</c> server RPC — the ONLY
+        /// write path (this method NEVER calls <c>WriteStorageObjects</c>). The server validates the payload and, only
+        /// if valid, writes the owner-read/no-client-write object; an invalid payload returns <c>ok:false</c> with a
+        /// reason and writes nothing. Any error (not connected / RPC throws / bad reply) ⇒ a <see cref="StorageWriteResult"/>
+        /// with <c>Ok = false</c> — no unguarded exception escapes.
+        /// </summary>
+        public async Task<StorageWriteResult> WriteHeroProfileViaRpcAsync(PlayerProfile profile)
+        {
+            if (_client == null || _session == null)
+                return StorageWriteResult.Failed("not_connected");
+            try
+            {
+                string payload = JsonSerializer.Serialize(profile);
+                IApiRpc rpc = await _client.RpcAsync(_session, RpcWriteHeroProfile, payload);
+                return AttestationReplyParser.ParseWriteResult(rpc?.Payload);
+            }
+            catch (Exception e)
+            {
+                return StorageWriteResult.Failed(e.Message);
+            }
+        }
+
+        /// <summary>
+        /// Ask the server to attest the stored profile for <paramref name="profileId"/> via
+        /// <c>rpc_attest_hero_profile</c>: the server reads the owner-read object, re-validates it, and returns
+        /// <c>{attested, reason}</c>. Maps to an <see cref="AttestationOutcome"/> the pure
+        /// <see cref="OnlineHeroLaunchGate"/> gates on. Not connected / RPC exception / timeout ⇒
+        /// <see cref="AttestationOutcome.CallFailed"/> (<c>CallSucceeded = false</c> = FAIL-CLOSED) — never fail-open
+        /// into an online match on an attestation error.
+        /// </summary>
+        public async Task<AttestationOutcome> AttestHeroProfileAsync(string profileId)
+        {
+            // P10: the server id-binding is only meaningful with a concrete id; a blank id would let the TS handler
+            // skip the id-match check and attest whatever is stored. The caller (the hero picker) always passes the
+            // selected profile's non-empty ProfileId — guard fail-closed if that contract is ever violated.
+            if (string.IsNullOrEmpty(profileId))
+                return AttestationOutcome.CallFailed;
+            if (_client == null || _session == null)
+                return AttestationOutcome.CallFailed;
+
+            string payload = JsonSerializer.Serialize(new Dictionary<string, string> { ["profileId"] = profileId });
+            try
+            {
+                IApiRpc rpc = await _client.RpcAsync(_session, RpcAttestHeroProfile, payload);
+                return AttestationReplyParser.ParseAttestation(rpc?.Payload);
+            }
+            catch
+            {
+                return AttestationOutcome.CallFailed; // Nakama unreachable / RPC error / timeout → fail-closed
+            }
+        }
+
         // ── Helpers ───────────────────────────────────────────────────────────────
 
         private void Enqueue(Action a) => _pending.Enqueue(a);
@@ -245,4 +349,7 @@ namespace ProjectChimera.Multiplayer
         string ServerIp,
         int    ServerPort
     );
+
+    // StorageWriteResult moved to ProjectChimera.Core.Definitions (AttestationReplyParser.cs) so the fail-closed reply
+    // parsing is Godot-free/SDK-free and Tier-1 testable (Story 9.12, P4).
 }

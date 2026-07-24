@@ -3,7 +3,8 @@ using Godot;
 using System;
 using System.Threading.Tasks;
 using ProjectChimera.Core;            // Faction, FactionRegistry
-using ProjectChimera.UI;              // FactionPalette, FactionPaletteGodot
+using ProjectChimera.Core.Definitions; // ScenarioData, FactionDefinition, PlayerProfile, OnlineProfileSource wiring (Story 9.12)
+using ProjectChimera.UI;              // FactionPalette, FactionPaletteGodot, HeroPickerOverlay (Story 9.12)
 using ProjectChimera.UI.Components;   // ChimeraComponents (kit)
 using ProjectChimera.UI.Theme;        // ThemeTokens, ThemeBuilder, AccentController
 using GodotTheme = Godot.Theme;       // the ProjectChimera.UI.Theme namespace shadows the bare Theme type
@@ -34,6 +35,25 @@ namespace ProjectChimera.Multiplayer
 
         private ENetTransport _transport = null!;
         private NakamaService _nakama    = null!;
+
+        // ── Story 9.12: server-validated online hero rail (the LIVE production caller) ──────
+
+        /// <summary>The ONLINE hero-profile source over the owned <see cref="_nakama"/> (server-RPC-only writes, never a
+        /// raw client storage write). Constructed in <see cref="Initialize"/> so the online picker is backed by the
+        /// server storage object, NOT the offline <c>LocalProfileSource</c>.</summary>
+        private OnlineProfileSource? _onlineProfiles;
+
+        /// <summary>The reused hero picker, put in ONLINE mode (attestation-gated). Built lazily on first online show.</summary>
+        private HeroPickerOverlay? _onlinePicker;
+
+        /// <summary>True once the player has picked a hero whose profile the server ATTESTED — the fail-closed gate on
+        /// Ready for an online match. Reset on close/cancel/disconnect.</summary>
+        private bool _onlineHeroAttested;
+
+        /// <summary>Story 9.12: live providers for the scenario + per-slot faction defs the online picker needs for
+        /// compatibility (set by <c>MatchLifecycleController</c>; read at picker-build time, after setup completes).</summary>
+        public Func<ScenarioData?>? ScenarioProvider { get; set; }
+        public Func<FactionDefinition?[]>? SlotFactionDefsProvider { get; set; }
 
         // ── Nakama config (Inspector-exported on MainScene, passed via Initialize) ─
 
@@ -149,6 +169,11 @@ namespace ProjectChimera.Multiplayer
             _nakama.OnMatchFound  += HandleNakamaMatchFound;
             _nakama.OnStatusText  += SetStatus;
             _nakama.OnDisconnected += () => SetStatus("Matchmaking server disconnected.");
+
+            // Story 9.12: construct the ONLINE hero-profile rail over the owned _nakama. This is the production caller
+            // that makes the server-validated rail LIVE — the online picker (surfaced before Ready) is backed by this
+            // server storage object, never the offline LocalProfileSource. Writes route only through the validating RPC.
+            _onlineProfiles = new OnlineProfileSource(_nakama);
         }
 
         public override void _Ready()
@@ -204,6 +229,7 @@ namespace ProjectChimera.Multiplayer
             _readyConfirmed     = false;
             _peerReadyConfirmed = false;
             _assignedFaction    = Core.Faction.Neutral;
+            _onlineHeroAttested = false; // Story 9.12: re-require attestation next online match
             _readyModel.Reset();
         }
 
@@ -365,6 +391,15 @@ namespace ProjectChimera.Multiplayer
 
         private void OnReadyPressed()
         {
+            // Story 9.12: FAIL-CLOSED online hero gate. In an online (Nakama) match the player cannot Ready until a hero
+            // profile has ATTESTED with the server. Surface the online picker (backed by OnlineProfileSource) instead of
+            // readying; the launch callback (OnOnlineHeroChosen) flips _onlineHeroAttested and re-enters this path.
+            if (_onlineModeActive && !_onlineHeroAttested)
+            {
+                ShowOnlineHeroPicker();
+                return;
+            }
+
             _readyConfirmed    = true;
             _readyBtn.Disabled = true;
             _readyModel.SetOccupied(LocalSlot(), true);
@@ -386,6 +421,57 @@ namespace ProjectChimera.Multiplayer
             TryStartGame();
         }
 
+        // ── Story 9.12: online hero picker (the live server-validated rail) ─────────────────
+
+        /// <summary>Surface the ONLINE hero picker (backed by <see cref="_onlineProfiles"/>), attestation-gated. Built
+        /// lazily so the scenario + per-slot faction defs (populated during setup) are read at show time.</summary>
+        private void ShowOnlineHeroPicker()
+        {
+            EnsureOnlinePicker();
+            _onlinePicker!.SetLocalFactionFilter(ResolveLocalFactionDef()); // refresh in case the server just assigned us
+            _onlinePicker.ShowForOnline();
+            SetStatus("Pick and attest your online hero with the server, then you can Ready.");
+        }
+
+        private void EnsureOnlinePicker()
+        {
+            if (_onlinePicker != null) return;
+            _onlinePicker = new HeroPickerOverlay();
+            AddChild(_onlinePicker);
+            ScenarioData? scenario = ScenarioProvider?.Invoke();
+            FactionDefinition?[] defs = SlotFactionDefsProvider?.Invoke() ?? Array.Empty<FactionDefinition?>();
+            // Back the picker with the SERVER source (never the offline LocalProfileSource) and enable the attest gate.
+            _onlinePicker.Initialize(scenario, _onlineProfiles!, defs, OnOnlineHeroChosen);
+            _onlinePicker.EnableOnlineAttestation(_nakama);
+        }
+
+        /// <summary>The launch callback from the online picker: fires ONLY after a successful server attestation (the
+        /// picker's fail-closed <see cref="HeroPickerOverlay"/> gate). A null profile ("play without a hero") does NOT
+        /// satisfy the online gate — the player stays blocked. On a real attested profile, flip the gate and re-enter
+        /// the Ready path.</summary>
+        private void OnOnlineHeroChosen(PlayerProfile? profile)
+        {
+            if (profile == null) return; // fail-closed: an online match requires an attested hero
+            // P3: a late attestation must not ready a cancelled/disconnected lobby. If online mode was torn down while
+            // the attest was in flight (Cancel / peer disconnect resets _onlineModeActive), drop the result silently —
+            // the transport is gone and OnReadyPressed would otherwise skip the online gate and "ready" a dead match.
+            if (!_onlineModeActive || !_transport.IsConnected) return;
+            _onlineHeroAttested = true;
+            SetStatus($"Hero '{(string.IsNullOrEmpty(profile.DisplayName) ? profile.ProfileId : profile.DisplayName)}' " +
+                      "attested by the server. Readying…");
+            OnReadyPressed(); // now passes the online gate → the real Ready path
+        }
+
+        /// <summary>The local player's server-assigned <see cref="FactionDefinition"/> for the online compatibility
+        /// filter, or null when unassigned (Neutral) / out of range — then the picker stays slot-agnostic.</summary>
+        private FactionDefinition? ResolveLocalFactionDef()
+        {
+            if (_assignedFaction == Core.Faction.Neutral) return null;
+            FactionDefinition?[] defs = SlotFactionDefsProvider?.Invoke() ?? Array.Empty<FactionDefinition?>();
+            int idx = (int)_assignedFaction; // SlotFactionDefs is indexed by (int)Faction (Player1 == 1)
+            return idx >= 0 && idx < defs.Length ? defs[idx] : null;
+        }
+
         private void OnCancelPressed()
         {
             _transport.Disconnect();
@@ -398,6 +484,7 @@ namespace ProjectChimera.Multiplayer
             _peerReadyConfirmed = false;
             _onlineModeActive   = false;
             _isHostRole         = false;
+            _onlineHeroAttested = false; // Story 9.12
             _readyModel.Reset();
             RebuildSlotGrid();
             SetStatus("Disconnected.");
@@ -438,6 +525,7 @@ namespace ProjectChimera.Multiplayer
             _readyConfirmed     = false;
             _peerReadyConfirmed = false;
             _onlineModeActive   = false;
+            _onlineHeroAttested = false; // Story 9.12
             _readyModel.Reset();
             RebuildSlotGrid();
         }

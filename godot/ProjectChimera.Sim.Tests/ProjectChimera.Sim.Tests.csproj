@@ -36,6 +36,15 @@
     <Compile Include="..\src\UGC\ModIoService.cs"      LinkBase="Sim\UGC" />
   </ItemGroup>
 
+  <!-- Story 9.12: the SHARED C#<->TS hero-profile validation oracle. Embedded (read via manifest stream, like the
+       goldens) so HeroProfileValidatorTests drives HeroProfileValidator off the SAME cases the TS vitest suite runs —
+       the two validators cannot silently drift. The single source of truth lives under the nakama-module tree. -->
+  <ItemGroup>
+    <EmbeddedResource Include="..\..\docs\server-deploy\nakama-modules\test\fixtures\validation-cases.json">
+      <LogicalName>validation-cases.json</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+
   <ItemGroup>
     <!-- Golden baseline: embedded so it's read via manifest stream (portable across Windows/Linux — no
          file-path or line-ending fragility, required for the 1.10c cross-platform gate). The <None Remove>

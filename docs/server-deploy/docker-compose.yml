@@ -39,6 +39,11 @@ services:
       - "/bin/sh"
       - "-ecx"
       - >
+        { test -f /nakama/data/modules/index.js ||
+          { echo 'FATAL (Story 9.12): hero-profile module not built. Run
+          `npm --prefix docs/server-deploy/nakama-modules install && npm --prefix docs/server-deploy/nakama-modules run build`
+          BEFORE `docker compose up` — otherwise the online hero RPCs are missing and every player is fail-closed out of
+          online play.'; exit 1; }; } &&
         /nakama/nakama migrate up
           --database.address postgres:localdb@postgres:5432/nakama &&
         exec /nakama/nakama
@@ -59,6 +64,12 @@ services:
       NAKAMA_SERVER_KEY: ${NAKAMA_SERVER_KEY:-defaultkey}
     volumes:
       - nakama-data:/nakama/data
+      # Story 9.12: mount the bundled server runtime module. BUILD IT FIRST (see nakama-modules/README / the README's
+      # "Server-validated hero profiles" section): `npm --prefix docs/server-deploy/nakama-modules run build` produces
+      # build/index.js. `build/` is gitignored, so this path is empty until built. Nakama loads every .js under
+      # /nakama/data/modules on startup — this registers rpc_write_hero_profile and rpc_attest_hero_profile and
+      # enforces the Owner-Read / No-Client-Write hero-profile storage object.
+      - ./nakama-modules/build:/nakama/data/modules:ro
 
 volumes:
   postgres-data:

@@ -1,0 +1,198 @@
+{
+  "_comment": "Story 9.12 — the SHARED C#<->TS hero-profile validation oracle. Consumed by BOTH the C# xUnit suite (godot/ProjectChimera.Sim.Tests/Definitions/HeroProfileValidatorTests.cs, embedded) AND the TS vitest suite (test/validation.test.ts). One source of truth so HeroProfileValidator.cs and validation.ts cannot silently drift. Each case: `name`, `expect_valid`, `expect_reason` (none|identity|range|inventory|attributes), and a `profile` in the exact snake_case shape System.Text.Json emits for PlayerProfile. XP ceiling raw = 30000 * 65536 = 1966080000.",
+  "xp_ceiling_raw": 1966080000,
+  "cases": [
+    {
+      "name": "valid_well_formed",
+      "expect_valid": true,
+      "expect_reason": "none",
+      "profile": {
+        "profile_id": "grommash#1",
+        "hero_def_id": "grommash",
+        "faction_id": "rebels",
+        "display_name": "Grommash",
+        "values": [ { "key": "hero.level", "raw": 3 }, { "key": "hero.xp", "raw": 786432 } ],
+        "inventory": []
+      }
+    },
+    {
+      "name": "valid_xp_exactly_at_ceiling_inclusive",
+      "expect_valid": true,
+      "expect_reason": "none",
+      "profile": {
+        "profile_id": "grommash#1",
+        "hero_def_id": "grommash",
+        "values": [ { "key": "hero.level", "raw": 1 }, { "key": "hero.xp", "raw": 1966080000 } ],
+        "inventory": []
+      }
+    },
+    {
+      "name": "valid_legacy_slotless_inventory_multiple_minus_one",
+      "expect_valid": true,
+      "expect_reason": "none",
+      "profile": {
+        "profile_id": "grommash#1",
+        "hero_def_id": "grommash",
+        "values": [ { "key": "hero.level", "raw": 1 } ],
+        "inventory": [ { "item_id": "ring", "charges": 0, "slot": -1 }, { "item_id": "potion", "charges": 2, "slot": -1 } ]
+      }
+    },
+    {
+      "name": "range_negative_level",
+      "expect_valid": false,
+      "expect_reason": "range",
+      "profile": {
+        "profile_id": "grommash#1",
+        "hero_def_id": "grommash",
+        "values": [ { "key": "hero.level", "raw": -1 } ],
+        "inventory": []
+      }
+    },
+    {
+      "name": "range_negative_xp",
+      "expect_valid": false,
+      "expect_reason": "range",
+      "profile": {
+        "profile_id": "grommash#1",
+        "hero_def_id": "grommash",
+        "values": [ { "key": "hero.level", "raw": 1 }, { "key": "hero.xp", "raw": -1 } ],
+        "inventory": []
+      }
+    },
+    {
+      "name": "range_xp_above_ceiling",
+      "expect_valid": false,
+      "expect_reason": "range",
+      "profile": {
+        "profile_id": "grommash#1",
+        "hero_def_id": "grommash",
+        "values": [ { "key": "hero.level", "raw": 1 }, { "key": "hero.xp", "raw": 1966080001 } ],
+        "inventory": []
+      }
+    },
+    {
+      "name": "identity_blank_profile_id",
+      "expect_valid": false,
+      "expect_reason": "identity",
+      "profile": {
+        "profile_id": "   ",
+        "hero_def_id": "grommash",
+        "values": [ { "key": "hero.level", "raw": 1 } ],
+        "inventory": []
+      }
+    },
+    {
+      "name": "identity_blank_hero_def_id",
+      "expect_valid": false,
+      "expect_reason": "identity",
+      "profile": {
+        "profile_id": "grommash#1",
+        "hero_def_id": "",
+        "values": [ { "key": "hero.level", "raw": 1 } ],
+        "inventory": []
+      }
+    },
+    {
+      "name": "inventory_negative_charges",
+      "expect_valid": false,
+      "expect_reason": "inventory",
+      "profile": {
+        "profile_id": "grommash#1",
+        "hero_def_id": "grommash",
+        "values": [ { "key": "hero.level", "raw": 1 } ],
+        "inventory": [ { "item_id": "ring", "charges": -1, "slot": 0 } ]
+      }
+    },
+    {
+      "name": "inventory_duplicate_slot",
+      "expect_valid": false,
+      "expect_reason": "inventory",
+      "profile": {
+        "profile_id": "grommash#1",
+        "hero_def_id": "grommash",
+        "values": [ { "key": "hero.level", "raw": 1 } ],
+        "inventory": [ { "item_id": "ring", "charges": 0, "slot": 2 }, { "item_id": "potion", "charges": 0, "slot": 2 } ]
+      }
+    },
+    {
+      "name": "attributes_negative_raw",
+      "expect_valid": false,
+      "expect_reason": "attributes",
+      "profile": {
+        "profile_id": "grommash#1",
+        "hero_def_id": "grommash",
+        "values": [ { "key": "hero.level", "raw": 1 }, { "key": "hero.strength", "raw": -5 } ],
+        "inventory": []
+      }
+    },
+    {
+      "name": "attributes_duplicate_key",
+      "expect_valid": false,
+      "expect_reason": "attributes",
+      "profile": {
+        "profile_id": "grommash#1",
+        "hero_def_id": "grommash",
+        "values": [ { "key": "hero.level", "raw": 1 }, { "key": "hero.level", "raw": 2 } ],
+        "inventory": []
+      }
+    },
+    {
+      "name": "range_checked_before_attributes_negative_level",
+      "expect_valid": false,
+      "expect_reason": "range",
+      "profile": {
+        "profile_id": "grommash#1",
+        "hero_def_id": "grommash",
+        "values": [ { "key": "hero.level", "raw": -3 } ],
+        "inventory": []
+      }
+    }
+  ],
+  "_ts_only_comment": "P1 boundary cases the TS validator must reject explicitly. These CANNOT round-trip through the C# PlayerProfile (System.Text.Json throws at deserialization: an out-of-Int32 `raw` overflows the `int` property; a non-array `values`/`inventory` is a type mismatch), so C# is fail-closed against them at the deserialization boundary rather than inside Validate. The C# test (TsOnlyBoundaryCases_CSharpRejectsAtTheDeserializationBoundary) asserts C# rejects each; the vitest suite asserts the TS validator returns the matching reason.",
+  "ts_only_cases": [
+    {
+      "name": "xp_raw_above_int32_max_wraps_under_naive_truncation",
+      "expect_valid": false,
+      "expect_reason": "range",
+      "profile": {
+        "profile_id": "grommash#1",
+        "hero_def_id": "grommash",
+        "values": [ { "key": "hero.level", "raw": 1 }, { "key": "hero.xp", "raw": 4294967296 } ],
+        "inventory": []
+      }
+    },
+    {
+      "name": "attribute_raw_above_int32_max",
+      "expect_valid": false,
+      "expect_reason": "attributes",
+      "profile": {
+        "profile_id": "grommash#1",
+        "hero_def_id": "grommash",
+        "values": [ { "key": "hero.level", "raw": 1 }, { "key": "hero.strength", "raw": 4294967296 } ],
+        "inventory": []
+      }
+    },
+    {
+      "name": "values_present_but_not_an_array",
+      "expect_valid": false,
+      "expect_reason": "attributes",
+      "profile": {
+        "profile_id": "grommash#1",
+        "hero_def_id": "grommash",
+        "values": "not-an-array",
+        "inventory": []
+      }
+    },
+    {
+      "name": "inventory_present_but_not_an_array",
+      "expect_valid": false,
+      "expect_reason": "inventory",
+      "profile": {
+        "profile_id": "grommash#1",
+        "hero_def_id": "grommash",
+        "values": [ { "key": "hero.level", "raw": 1 } ],
+        "inventory": { "item_id": "ring", "charges": 0, "slot": 0 }
+      }
+    }
+  ]
+}
