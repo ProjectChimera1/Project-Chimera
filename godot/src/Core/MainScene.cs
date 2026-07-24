@@ -549,11 +549,28 @@ namespace ProjectChimera.Core
             // fail-closed before tick 0 (server-attested + P2P HandshakeGate). Folds the ruleset (EffectCaps
             // structural caps), the initial input delay, the roster + faction-count (from the applied model), and
             // the StartStateHash above. Fail-closed to 0 for an unapplied model, mirroring the hashes above.
+            // Story 9.16: gather the loaded CONTENT definitions the applied scenario references — the distinct faction
+            // defs, the ability + item registries, and the damage table — and fold them into MatchAgreementHash via
+            // ContentHash so a content-byte mismatch (a unit stat, a damage cell, an ability effect, an extra ability
+            // file that reindexes the registry) rejects fail-closed at the handshake instead of desyncing mid-match.
+            // Computed ONCE here at load time over the already-materialized registries/defs (the Start/Ready path only
+            // READS the cached value — no start-button recompute). Presentation-only gather (this is the presentation
+            // layer); the fold itself is Godot-free.
+            var loadedFactions = new System.Collections.Generic.List<Definitions.FactionDefinition>();
+            if (_ctx.SlotFactionDefs != null)
+                foreach (Definitions.FactionDefinition? fd in _ctx.SlotFactionDefs)
+                    if (fd != null) loadedFactions.Add(fd);
             _ctx.LobbyUi.MatchAgreementHash = (_ctx.ScenarioApplied && hashModel != null)
                 ? Definitions.MatchAgreementHash.Compute(
-                    ProjectChimera.Multiplayer.LockstepManager.INPUT_DELAY, hashModel, _host.Heroes)
+                    ProjectChimera.Multiplayer.LockstepManager.INPUT_DELAY, hashModel, _host.Heroes,
+                    loadedFactions, _ctx.AbilityRegistry, _host.ItemRegistry, _ctx.DamageTable)
                 : 0UL;
+            // Story 9.16: cache the LOCAL per-domain content breakdown for the handshake-block "which domain" surfacing.
+            _ctx.LobbyUi.ContentBreakdown = (_ctx.ScenarioApplied && hashModel != null)
+                ? Definitions.ContentHash.Describe(loadedFactions, _ctx.AbilityRegistry, _host.ItemRegistry, _ctx.DamageTable).ToString()
+                : null;
             GD.Print($"[MainScene] Match-agreement hash (algo v{Definitions.MatchAgreementHash.AlgoVersion}): 0x{_ctx.LobbyUi.MatchAgreementHash:X16}");
+            GD.Print($"[MainScene] Content breakdown: {_ctx.LobbyUi.ContentBreakdown}");
 
             // If a replay file is specified via the Inspector OR handed off from the browser's Play (P1), load it now
             // and enter Play mode immediately — no lobby, no network required. On success, reset the playback control

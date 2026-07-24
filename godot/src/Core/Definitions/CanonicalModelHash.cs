@@ -662,7 +662,10 @@ namespace ProjectChimera.Core.Definitions
                     break;
                 case ProjectChimera.Dsl.EffectActionNode ea:
                     h = MixStr(h, ea.Kind);
-                    h = MixEffect(h, ea.Effect); // the embedded effect subgraph is sim-semantic — typed walk
+                    // Story 9.16: the embedded effect subgraph folds through the SHARED CanonicalFold walk (extracted
+                    // verbatim from this class), so a run_effect embed and an ability/item EffectGraph hash identically.
+                    // Byte-preserving — CanonicalFold's MixInt/MixStr are the same FNV primitives this class uses.
+                    h = CanonicalFold.MixEffect(h, ea.Effect);
                     break;
                 case ProjectChimera.Dsl.ExprLiteralNode lit:
                     h = MixStr(h, lit.Kind);
@@ -803,84 +806,10 @@ namespace ProjectChimera.Core.Definitions
             return h;
         }
 
-        /// <summary>The embedded run_effect payload (v8): a TYPED effect-tree walk (kind string + semantic fields;
-        /// Fixed via .Raw; enums as names) — never serialized bytes. Null child ⇒ a 0 marker; a present node ⇒ a 1
-        /// marker first (so absent vs default-valued children cannot alias). Depth is bounded by the JSON parser's
-        /// MaxDepth, so the recursion is safe on any FromJson-parsed graph.</summary>
-        private static ulong MixEffect(ulong h, ProjectChimera.Effects.EffectNode? e)
-        {
-            if (e is null) return MixInt(h, 0);
-            h = MixInt(h, 1);
-            switch (e)
-            {
-                case ProjectChimera.Effects.DirectHpDeltaEffect d:
-                    h = MixStr(h, "direct_hp_delta");
-                    h = MixInt(h, d.Delta.Raw);
-                    h = MixStr(h, d.RequireTag.ToString());
-                    break;
-                case ProjectChimera.Effects.HealEffect he:
-                    h = MixStr(h, "heal");
-                    h = MixInt(h, he.Amount.Raw);
-                    h = MixStr(h, he.RequireTag.ToString());
-                    break;
-                case ProjectChimera.Effects.DamageEffect dm:
-                    h = MixStr(h, "damage");
-                    h = MixInt(h, dm.Amount.Raw);
-                    h = MixStr(h, dm.Type.ToString());
-                    h = MixStr(h, dm.RequireTag.ToString());
-                    break;
-                case ProjectChimera.Effects.ApplyModifierEffect am:
-                    h = MixStr(h, "apply_modifier");
-                    h = MixModifier(h, am.Modifier);
-                    h = MixStr(h, am.RequireTag.ToString());
-                    break;
-                case ProjectChimera.Effects.SequenceEffect s:
-                    h = MixStr(h, "sequence");
-                    h = MixInt(h, s.Children?.Length ?? 0);
-                    foreach (ProjectChimera.Effects.EffectNode? child in s.Children ?? Array.Empty<ProjectChimera.Effects.EffectNode>())
-                        h = MixEffect(h, child);
-                    break;
-                case ProjectChimera.Effects.SearchAreaEffect sa:
-                    h = MixStr(h, "search_area");
-                    h = MixInt(h, sa.Radius.Raw);
-                    h = MixStr(h, sa.Filter.ToString());
-                    h = MixStr(h, sa.RequireTag.ToString());
-                    h = MixEffect(h, sa.Child);
-                    break;
-                case ProjectChimera.Effects.PersistentEffect p:
-                    h = MixStr(h, "persistent");
-                    h = MixEffect(h, p.InitialEffect);
-                    h = MixEffect(h, p.PeriodEffect);
-                    h = MixEffect(h, p.ExpireEffect);
-                    h = MixInt(h, p.PeriodTicks);
-                    h = MixInt(h, p.PeriodCount);
-                    h = MixInt(h, p.Lifelong ? 1 : 0);
-                    break;
-                default:
-                    h = MixStr(h, e.GetType().Name); // total/never-throw for a future kind
-                    break;
-            }
-            return h;
-        }
-
-        /// <summary>An <c>apply_modifier</c> payload (v8): every semantic Modifier field in fixed order.</summary>
-        private static ulong MixModifier(ulong h, ProjectChimera.Effects.Modifier? m)
-        {
-            if (m is null) return MixInt(h, 0);
-            h = MixInt(h, 1);
-            h = MixInt(h, m.Id);
-            h = MixInt(h, m.DurationTicks);
-            h = MixStr(h, m.Stacking.ToString());
-            h = MixInt(h, m.MaxStacks);
-            h = MixInt(h, m.MaxHealthDelta.Raw);
-            h = MixInt(h, m.AttackDamageDelta.Raw);
-            h = MixInt(h, m.MoveSpeedDelta.Raw);
-            h = MixInt(h, m.ArmorDelta.Raw);
-            h = MixInt(h, (int)m.Status); // deliberate ordinal fold: Status is a [Flags] enum — a combined value has no single NAME, and the bit layout is append-only/stable ("fixing" this to a name fold would churn the hash)
-            h = MixEffect(h, m.PeriodEffect);
-            h = MixInt(h, m.PeriodTicks);
-            return h;
-        }
+        // Story 9.16: the typed effect-tree walk (MixEffect/MixModifier) moved verbatim to the shared
+        // CanonicalFold helper so this class and ContentHash fold an effect subgraph byte-identically (one
+        // implementation, no drift). CanonicalFold.MixEffect/MixModifier replace the former private methods here;
+        // the call site above (EffectActionNode) delegates to it. Output is unchanged (goldens guard it).
 
         /// <summary>
         /// Story 7.8 (v9): the custom-UI widget tree — a TYPED recursive fold (never JSON bytes). Absent OR empty

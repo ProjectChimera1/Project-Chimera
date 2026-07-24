@@ -170,8 +170,15 @@ namespace ProjectChimera.Sim.Tests.Meta
         /// <summary>Story 9.4 — the single 64-bit start-state-agreement hash on the widened Ready packet. v1 =
         /// initial (AlgoVersion + RulesetHash + initial-delay + faction-count + roster + StartStateHash). Story 9.14
         /// bumped v1→v2: the per-slot TEAM ordinal now folds beside each roster ordinal (a team mismatch fails the
-        /// start closed). A bump changes the handshake value — update this pin in the same commit.</summary>
-        private const int ExpectedMatchAgreementHashAlgoVersion = 2;
+        /// start closed). Story 9.16 bumped v2→v3: <see cref="ContentHash"/> (the loaded content definitions) now
+        /// folds in immediately after RulesetHash (a content-byte mismatch fails the start closed). A bump changes
+        /// the handshake value — update this pin in the same commit.</summary>
+        private const int ExpectedMatchAgreementHashAlgoVersion = 3;
+
+        /// <summary>Story 9.16 — the net-new content-definitions fingerprint (factions/units/buildings/research, the
+        /// ability + item registries, the damage table) folded into <see cref="MatchAgreementHash"/>. v1 = initial.
+        /// A bump changes the value old clients compute for the handshake — update this pin in the same commit.</summary>
+        private const int ExpectedContentHashAlgoVersion = 1;
 
         /// <summary>.chmr replay file-format version. Story 7.9 bumped 2→3 (DslEvent orders). Story 9.11 bumped 3→4
         /// ("replay v2": self-describing tagged body via the frozen MergedTickPacket envelope + a result trailer, and
@@ -235,6 +242,11 @@ namespace ProjectChimera.Sim.Tests.Meta
                 $"{ExpectedMatchAgreementHashAlgoVersion}. This is the single 64-bit start-state-agreement value on " +
                 $"the widened Ready packet; a bump changes the handshake value. Update " +
                 $"{nameof(ExpectedMatchAgreementHashAlgoVersion)} in the same commit.");
+
+            Assert.True(ContentHash.AlgoVersion == ExpectedContentHashAlgoVersion,
+                $"ContentHash.AlgoVersion is {ContentHash.AlgoVersion}, expected {ExpectedContentHashAlgoVersion}. " +
+                $"This fingerprints the loaded content definitions folded into MatchAgreementHash; a bump changes " +
+                $"the handshake value. Update {nameof(ExpectedContentHashAlgoVersion)} in the same commit.");
         }
 
         [Fact]

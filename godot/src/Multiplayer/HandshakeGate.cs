@@ -13,6 +13,13 @@ namespace ProjectChimera.Multiplayer
     /// initial-delay + roster + faction-count + start-state), so the P2P start gate now covers the full agreement
     /// surface, not just map content. Formatted as <c>X16</c>. The fail-closed hash-0 posture is unchanged.
     ///
+    /// Story 9.16 — the <c>MatchAgreementHash</c> now also folds a content-definitions fingerprint, so a content-byte
+    /// mismatch blocks here. On a block, the caller's LOCAL per-domain content fingerprint (ruleset-caps / factions /
+    /// abilities / items / damage-table) is appended so a human can COMPARE it line-by-line with the peer's. It is NOT
+    /// automatic remote-domain naming: the wire carries one combined value (no sub-hash exchange), and it covers only
+    /// the 5 CONTENT domains — a mismatch caused by a non-content component (roster / teams / start-state / scenario /
+    /// initial-delay) will show all-matching content here.
+    ///
     /// Pure function: no logging, no side effects; <c>LobbyUi</c> surfaces the returned reason as its status text.
     /// </summary>
     public static class HandshakeGate
@@ -27,24 +34,41 @@ namespace ProjectChimera.Multiplayer
         ///   • either hash 0 → block ("start-state hash not computed" — a validated scenario was never applied);
         ///   • nonzero mismatch → block (the established mismatch message);
         ///   • equal nonzero → allow.
+        /// <paramref name="localBreakdown"/> (Story 9.16) is the LOCAL per-domain content fingerprint, appended to any
+        /// block reason for line-by-line comparison with the peer's (NOT automatic remote-domain naming; content-only
+        /// — a non-content mismatch shows all-matching content); null/empty appends nothing.
         /// </summary>
-        public static string? CheckStart(ulong localHash, ulong peerHash, bool peerHashParsed = true)
+        public static string? CheckStart(ulong localHash, ulong peerHash, bool peerHashParsed = true,
+            string? localBreakdown = null)
         {
             if (!peerHashParsed) peerHash = 0UL; // unparseable Ready ≡ "not computed" — routes into the block below
 
             if (localHash == 0UL || peerHash == 0UL)
-                return "CANNOT START — start-state hash not computed!\n" +
-                       $"Your match: 0x{localHash:X16}\n" +
-                       $"Peer match: 0x{peerHash:X16}\n" +
-                       "A hash of 0 means no validated scenario was applied on that peer.";
+                return WithBreakdown(
+                    "CANNOT START — start-state hash not computed!\n" +
+                    $"Your match: 0x{localHash:X16}\n" +
+                    $"Peer match: 0x{peerHash:X16}\n" +
+                    "A hash of 0 means no validated scenario was applied on that peer.", localBreakdown);
 
             if (peerHash != localHash)
-                return "START-STATE MISMATCH — cannot start!\n" +
-                       $"Your match: 0x{localHash:X16}\n" +
-                       $"Peer match: 0x{peerHash:X16}\n" +
-                       "Both players must load the same scenario, ruleset, and roster.";
+                return WithBreakdown(
+                    "START-STATE MISMATCH — cannot start!\n" +
+                    $"Your match: 0x{localHash:X16}\n" +
+                    $"Peer match: 0x{peerHash:X16}\n" +
+                    "Both players must run the same game build/version and load the same scenario, ruleset, and roster.\n" +
+                    "(A different build's match-agreement algorithm always mismatches here even with identical content.)", localBreakdown);
 
             return null; // equal nonzero — start allowed
         }
+
+        /// <summary>Append the LOCAL content fingerprint to a block reason for line-by-line peer comparison (Story
+        /// 9.16). Framed as a comparison aid, not an automatic cause: it is this side's OWN fingerprint and covers only
+        /// the content domains, so the block may still originate in a non-content component (roster/teams/start-state/
+        /// scenario/delay), which shows all-matching content. Null/empty appends nothing.</summary>
+        private static string WithBreakdown(string reason, string? localBreakdown) =>
+            string.IsNullOrEmpty(localBreakdown)
+                ? reason
+                : reason + "\nYour LOCAL content fingerprint (compare with your peer's line; the mismatch may instead " +
+                           "be in a non-content component — roster/teams/start-state/scenario):\n  " + localBreakdown;
     }
 }

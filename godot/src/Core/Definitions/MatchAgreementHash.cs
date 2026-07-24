@@ -1,5 +1,7 @@
 #nullable enable
+using System.Collections.Generic;
 using ProjectChimera.Core; // FactionRegistry, HeroStore
+using ProjectChimera.Combat; // DamageTable
 
 namespace ProjectChimera.Core.Definitions
 {
@@ -10,6 +12,9 @@ namespace ProjectChimera.Core.Definitions
     /// <c>HandshakeGate</c>. A canonical FNV-64 folding, in order:
     ///   1. <see cref="AlgoVersion"/> (namespaces the hash; a bump moves the value alone),
     ///   2. <see cref="RulesetHash.Compute"/> (the Effect-Graph structural-cap fingerprint),
+    ///   2b. <see cref="ContentHash.Compute"/> (Story 9.16 — the loaded CONTENT definitions: factions/units/buildings/
+    ///      research, the full ability + item registries, and the damage table — so a content-byte mismatch rejects
+    ///      pre-tick instead of desyncing from the first combat tick; folded immediately after the ruleset),
     ///   3. the initial input delay (LockstepManager.INPUT_DELAY, passed in so this type stays Godot-free),
     ///   4. the active player count N (faction-count) — derived from the applied model's player slots,
     ///   5. each roster faction ordinal for slots 0..N-1 (via <see cref="FactionRegistry.ToFaction"/>),
@@ -30,7 +35,7 @@ namespace ProjectChimera.Core.Definitions
         /// <summary>Algorithm version of THIS hash. Mixed FIRST so a bump moves the value alone. Bump only when the
         /// folded set/order changes (independent of <see cref="RulesetHash.AlgoVersion"/> and
         /// <see cref="StartStateHash.AlgoVersion"/>, which fold in as components).</summary>
-        public const int AlgoVersion = 2; // Story 9.14: bumped 1→2 — the per-slot Team ordinal now folds into the roster loop
+        public const int AlgoVersion = 3; // Story 9.16: bumped 2→3 — ContentHash (loaded content defs) now folds in after the ruleset
 
         private const ulong Offset = 14695981039346656037UL; // FNV-64 offset basis (same primitive as StartStateHash)
         private const ulong Prime  = 1099511628211UL;        // FNV-64 prime
@@ -41,12 +46,22 @@ namespace ProjectChimera.Core.Definitions
         /// LockstepManager). N (the active player count + roster) is taken from <paramref name="model"/>'s
         /// <see cref="ScenarioData.PlayerSlots"/>. Never returns 0 (sentinel).
         /// </summary>
-        public static ulong Compute(int initialDelay, ScenarioData model, HeroStore heroes)
+        public static ulong Compute(int initialDelay, ScenarioData model, HeroStore heroes,
+            IReadOnlyList<FactionDefinition> loadedFactions,
+            AbilityRegistry abilities,
+            ItemRegistry items,
+            DamageTable damage)
         {
             ulong h = Offset;
 
             h = MixInt(h, AlgoVersion);                 // namespaces the hash
             h = MixULong(h, RulesetHash.Compute());     // structural-cap ruleset fingerprint
+            // Story 9.16: the loaded CONTENT-definitions fingerprint, folded immediately AFTER the ruleset. The content
+            // params are REQUIRED (no default) so a caller can never silently fold EMPTY content and then fail to match
+            // a real-content peer (a split-brain the old optional-param form allowed) — MainScene passes the real
+            // loaded content; a caller with genuinely no content passes the explicit empties (ContentHash tolerates
+            // an empty faction list / empty registries / the default table).
+            h = MixULong(h, ContentHash.Compute(loadedFactions, abilities, items, damage));
             h = MixInt(h, initialDelay);                // initial input-delay budget
 
             // Active player count + roster — derived deterministically from the applied model's player slots

@@ -1,6 +1,8 @@
 #nullable enable
+using System.Collections.Generic;
 using ProjectChimera.Core;             // Fixed, HeroStore, HeroId, FactionRegistry
-using ProjectChimera.Core.Definitions; // MatchAgreementHash, RulesetHash, StartStateHash, ScenarioData
+using ProjectChimera.Core.Definitions; // MatchAgreementHash, RulesetHash, StartStateHash, ContentHash, ScenarioData
+using ProjectChimera.Combat;           // DamageTable
 using Xunit;
 
 namespace ProjectChimera.Sim.Tests.Validation
@@ -40,12 +42,23 @@ namespace ProjectChimera.Sim.Tests.Validation
             return s;
         }
 
+        private static readonly List<FactionDefinition> EmptyFactions = new();
+
+        /// <summary>Story 9.16 — the content params are now REQUIRED on <see cref="MatchAgreementHash.Compute"/> (no
+        /// null default, closing the split-brain fold-empty-content hole). This terse test wrapper supplies explicit
+        /// EMPTIES by default so a test that isn't exercising the content fold reads cleanly, while the content tests
+        /// pass real content positionally.</summary>
+        private static ulong Agree(int delay, ScenarioData m, HeroStore h,
+            IReadOnlyList<FactionDefinition>? f = null, AbilityRegistry? a = null, ItemRegistry? i = null, DamageTable? d = null)
+            => MatchAgreementHash.Compute(delay, m, h,
+                f ?? EmptyFactions, a ?? AbilityRegistry.Empty, i ?? ItemRegistry.Empty, d ?? DamageTable.Default);
+
         [Fact]
         public void Compute_IsDeterministic_AndNonZero()
         {
             var m = BuildModel();
-            ulong a = MatchAgreementHash.Compute(4, m, TwoHeroes());
-            ulong b = MatchAgreementHash.Compute(4, m, TwoHeroes());
+            ulong a = Agree(4, m, TwoHeroes());
+            ulong b = Agree(4, m, TwoHeroes());
             Assert.Equal(a, b);
             Assert.NotEqual(0UL, a);
         }
@@ -87,6 +100,7 @@ namespace ProjectChimera.Sim.Tests.Validation
             ulong h = Offset;
             h = Mix(h, MatchAgreementHash.AlgoVersion);
             h = MixULong(h, RulesetHash.Compute());
+            h = MixULong(h, ContentHash.Compute(EmptyFactions, AbilityRegistry.Empty, ItemRegistry.Empty, DamageTable.Default)); // Story 9.16: folded immediately after the ruleset (the Agree wrapper's empties)
             h = Mix(h, initialDelay);
             int n = model.PlayerSlots.Length;
             h = Mix(h, n);
@@ -98,7 +112,7 @@ namespace ProjectChimera.Sim.Tests.Validation
             h = MixULong(h, StartStateHash.Compute(model, heroes));
             ulong expected = h == 0UL ? 1UL : h;
 
-            Assert.Equal(expected, MatchAgreementHash.Compute(initialDelay, model, heroes));
+            Assert.Equal(expected, Agree(initialDelay, model, heroes));
         }
 
         [Fact]
@@ -106,8 +120,8 @@ namespace ProjectChimera.Sim.Tests.Validation
         {
             var m = BuildModel();
             Assert.NotEqual(
-                MatchAgreementHash.Compute(4, m, TwoHeroes()),
-                MatchAgreementHash.Compute(5, m, TwoHeroes()));
+                Agree(4, m, TwoHeroes()),
+                Agree(5, m, TwoHeroes()));
         }
 
         [Fact]
@@ -115,16 +129,16 @@ namespace ProjectChimera.Sim.Tests.Validation
         {
             // A 2-player vs a 3-player model folds a different N + one extra roster ordinal.
             Assert.NotEqual(
-                MatchAgreementHash.Compute(4, BuildModel(players: 2), TwoHeroes()),
-                MatchAgreementHash.Compute(4, BuildModel(players: 3), TwoHeroes()));
+                Agree(4, BuildModel(players: 2), TwoHeroes()),
+                Agree(4, BuildModel(players: 3), TwoHeroes()));
         }
 
         [Fact]
         public void DifferentContent_MovesTheHash()
         {
             Assert.NotEqual(
-                MatchAgreementHash.Compute(4, BuildModel(supplyBump: 0f),  TwoHeroes()),
-                MatchAgreementHash.Compute(4, BuildModel(supplyBump: 25f), TwoHeroes()));
+                Agree(4, BuildModel(supplyBump: 0f),  TwoHeroes()),
+                Agree(4, BuildModel(supplyBump: 25f), TwoHeroes()));
         }
 
         [Fact]
@@ -134,16 +148,17 @@ namespace ProjectChimera.Sim.Tests.Validation
             // hero-level mismatch — which the scenario content hash cannot see — must be handshake-rejectable.
             var m = BuildModel();
             Assert.NotEqual(
-                MatchAgreementHash.Compute(4, m, TwoHeroes(levelOfFirst: 4)),
-                MatchAgreementHash.Compute(4, m, TwoHeroes(levelOfFirst: 7)));
+                Agree(4, m, TwoHeroes(levelOfFirst: 4)),
+                Agree(4, m, TwoHeroes(levelOfFirst: 7)));
         }
 
         // ── Story 9.14: the per-slot team folds into the handshake hash (a team mismatch fails the start closed) ──
 
         [Fact]
-        public void AlgoVersion_IsTwo_AfterTeamFold()
+        public void AlgoVersion_IsThree_AfterContentFold()
         {
-            Assert.Equal(2, MatchAgreementHash.AlgoVersion);
+            // Story 9.16: bumped 2→3 when ContentHash folded in after the ruleset.
+            Assert.Equal(3, MatchAgreementHash.AlgoVersion);
         }
 
         [Fact]
@@ -160,8 +175,8 @@ namespace ProjectChimera.Sim.Tests.Validation
             teamed.PlayerSlots[2].Team = 2;
             teamed.PlayerSlots[3].Team = 2; // {P3,P4} → P4's canonical id becomes 3 (was 4 in FFA)
             Assert.NotEqual(
-                MatchAgreementHash.Compute(4, ffa, TwoHeroes()),
-                MatchAgreementHash.Compute(4, teamed, TwoHeroes()));
+                Agree(4, ffa, TwoHeroes()),
+                Agree(4, teamed, TwoHeroes()));
         }
 
         [Fact]
@@ -178,8 +193,8 @@ namespace ProjectChimera.Sim.Tests.Validation
             foreach (var s in teamed.PlayerSlots)
                 if (s.Slot == 3 || s.Slot == 4) s.Team = 1; // team the gapped-region pair → P5's canonical id moves 5→4
             Assert.NotEqual(
-                MatchAgreementHash.Compute(4, ffa, TwoHeroes()),
-                MatchAgreementHash.Compute(4, teamed, TwoHeroes()));
+                Agree(4, ffa, TwoHeroes()),
+                Agree(4, teamed, TwoHeroes()));
         }
 
         [Fact]
@@ -189,8 +204,55 @@ namespace ProjectChimera.Sim.Tests.Validation
             // the value once, but two FFA models with identical rosters still hash identically (the fold is inert).
             var a = BuildModel(players: 3);
             var b = BuildModel(players: 3);
-            Assert.Equal(MatchAgreementHash.Compute(4, a, TwoHeroes()),
-                         MatchAgreementHash.Compute(4, b, TwoHeroes()));
+            Assert.Equal(Agree(4, a, TwoHeroes()),
+                         Agree(4, b, TwoHeroes()));
+        }
+
+        // ── Story 9.16: the CONTENT fold — a content-byte mismatch moves the value + StartStateHash is untouched ──
+
+        private static List<FactionDefinition> OneFaction(float attackDamage = 10f) => new()
+        {
+            new FactionDefinition
+            {
+                Id = "alpha",
+                Units = new List<UnitDefinition> { new UnitDefinition { Id = "warrior", AttackDamage = attackDamage } },
+            },
+        };
+
+        [Fact]
+        public void DifferentContent_UnitStat_MovesTheHash()
+        {
+            // A single unit's attack_damage differing on one peer must move MatchAgreementHash → the gate blocks
+            // fail-closed pre-tick (the I/O-matrix "unit stat mutation" row, end-to-end through the folded content).
+            var m = BuildModel();
+            Assert.NotEqual(
+                Agree(4, m, TwoHeroes(), OneFaction(attackDamage: 10f), AbilityRegistry.Empty, ItemRegistry.Empty, DamageTable.Default),
+                Agree(4, m, TwoHeroes(), OneFaction(attackDamage: 11f), AbilityRegistry.Empty, ItemRegistry.Empty, DamageTable.Default));
+        }
+
+        [Fact]
+        public void SameContent_HashesEqual()
+        {
+            var m = BuildModel();
+            Assert.Equal(
+                Agree(4, m, TwoHeroes(), OneFaction(), AbilityRegistry.Empty, ItemRegistry.Empty, DamageTable.Default),
+                Agree(4, m, TwoHeroes(), OneFaction(), AbilityRegistry.Empty, ItemRegistry.Empty, DamageTable.Default));
+        }
+
+        [Fact]
+        public void ContentFold_DoesNotTouchStartStateHash()
+        {
+            // The whole point of folding content into MatchAgreementHash (not StartStateHash): the hero-start-state
+            // golden and StartStateHash.AlgoVersion must not move. StartStateHash is content-independent by construction.
+            var m = BuildModel();
+            ulong ss = StartStateHash.Compute(m, TwoHeroes());
+            Assert.Equal(ss, StartStateHash.Compute(m, TwoHeroes())); // determinism
+            // Two MatchAgreementHash computes with DIFFERENT content both fold the SAME StartStateHash value — the
+            // difference lives only in the ContentHash component, never in StartStateHash.
+            Assert.NotEqual(
+                Agree(4, m, TwoHeroes(), OneFaction(10f), AbilityRegistry.Empty, ItemRegistry.Empty, DamageTable.Default),
+                Agree(4, m, TwoHeroes(), OneFaction(12f), AbilityRegistry.Empty, ItemRegistry.Empty, DamageTable.Default));
+            Assert.Equal(2, StartStateHash.AlgoVersion); // unchanged by this story
         }
 
         [Fact]
@@ -201,7 +263,7 @@ namespace ProjectChimera.Sim.Tests.Validation
             var m = BuildModel();
             var heroes = TwoHeroes();
             ulong startState = StartStateHash.Compute(m, heroes);
-            ulong agreement  = MatchAgreementHash.Compute(4, m, heroes);
+            ulong agreement  = Agree(4, m, heroes);
             Assert.NotEqual(startState, agreement);
         }
     }

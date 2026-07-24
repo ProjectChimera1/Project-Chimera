@@ -84,6 +84,16 @@ namespace ProjectChimera.Multiplayer
         public ulong MatchAgreementHash { get; set; }
 
         /// <summary>
+        /// Story 9.16 — the LOCAL per-domain content <see cref="Definitions.ContentHash.Breakdown"/> string
+        /// (ruleset-caps / factions / abilities / items / damage-table), computed by MainScene alongside
+        /// <see cref="MatchAgreementHash"/>. Surfaced on a handshake BLOCK as a COMPARISON aid (the human compares it
+        /// line-by-line with the peer's) — NOT automatic remote-domain naming: the wire carries one combined value (no
+        /// sub-hash exchange), and it covers only the 5 content domains, so a block caused by a non-content component
+        /// (roster / teams / start-state / scenario / delay) shows all-matching content. Null until MainScene sets it.
+        /// </summary>
+        public string? ContentBreakdown { get; set; }
+
+        /// <summary>
         /// Story 9.4 — true when this match's delay is SERVER-dictated (a dedicated server assigned our faction, or
         /// online/Nakama mode), so the client must run as a delay follower (<c>LockstepManager.ServerDictatedDelay</c>).
         /// False for a P2P host match. Set in <see cref="FireMatchStart"/> before <see cref="Close"/> resets state.
@@ -586,7 +596,8 @@ namespace ProjectChimera.Multiplayer
                         _peerReadyConfirmed = false;
                         return;
                     }
-                    string? block = HandshakeGate.CheckStart(MatchAgreementHash, peerHash, peerHashParsed: parsed);
+                    string? block = HandshakeGate.CheckStart(MatchAgreementHash, peerHash, peerHashParsed: parsed,
+                        localBreakdown: ContentBreakdown); // Story 9.16: surface the local per-domain content breakdown on a block
                     if (block != null)
                     {
                         SetStatus(block);

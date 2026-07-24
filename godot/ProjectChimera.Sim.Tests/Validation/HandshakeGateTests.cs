@@ -77,5 +77,51 @@ namespace ProjectChimera.Sim.Tests.Validation
         {
             Assert.Null(HandshakeGate.CheckStart(0xC0FFEEu, 0xC0FFEEu, peerHashParsed: true));
         }
+
+        // ── Story 9.16: a content mismatch blocks, and the LOCAL per-domain breakdown is surfaced on the block ──
+
+        [Fact]
+        public void ContentMismatch_Blocks_AndSurfacesTheLocalBreakdown()
+        {
+            // A nonzero mismatch (the content-fold now moves the combined value) blocks, and the local per-domain
+            // breakdown is appended so the diverging domain is nameable (the I/O-matrix "handshake block surfacing" row).
+            const string breakdown =
+                "ruleset-caps=0x0000000000000001 factions=0x00000000DEADBEEF abilities=0x0000000000000002 " +
+                "items=0x0000000000000003 damage-table=0x00000000CAFEF00D";
+            string? reason = HandshakeGate.CheckStart(0x1111111111111111UL, 0x2222222222222222UL,
+                localBreakdown: breakdown);
+            Assert.NotNull(reason);
+            Assert.Contains("MISMATCH", reason);
+            Assert.Contains("LOCAL content fingerprint", reason);
+            Assert.Contains("compare with your peer", reason);        // framed as a comparison aid, not auto-naming
+            Assert.Contains("non-content component", reason);         // honest caveat surfaced
+            Assert.Contains("damage-table=", reason);                 // the domain lines are present for comparison
+            Assert.Contains("factions=", reason);
+        }
+
+        [Fact]
+        public void NotComputedBlock_AlsoSurfacesTheBreakdown_WhenProvided()
+        {
+            string? reason = HandshakeGate.CheckStart(0UL, 0xC0FFEEu, localBreakdown: "factions=0x1 items=0x2");
+            Assert.NotNull(reason);
+            Assert.Contains("not computed", reason);
+            Assert.Contains("LOCAL content fingerprint", reason);
+        }
+
+        [Fact]
+        public void NullBreakdown_AppendsNothing_BackCompat()
+        {
+            // Older callers (or a peer with no computed content) pass null → the block reason is exactly as before.
+            string? reason = HandshakeGate.CheckStart(0x1111111111111111UL, 0x2222222222222222UL);
+            Assert.NotNull(reason);
+            Assert.DoesNotContain("LOCAL content fingerprint", reason);
+        }
+
+        [Fact]
+        public void EqualNonzero_Allows_EvenWithABreakdownProvided()
+        {
+            // The breakdown is only appended to BLOCK reasons; an allow still returns null.
+            Assert.Null(HandshakeGate.CheckStart(0xC0FFEEu, 0xC0FFEEu, localBreakdown: "factions=0x1"));
+        }
     }
 }

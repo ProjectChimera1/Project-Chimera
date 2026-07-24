@@ -190,7 +190,7 @@ development_status:
   9-13-per-client-command-rate-throttle-anti-spam-on-the-dedicated-server: done
   9-14-teams-alliances-lobby-teams-wired-into-the-sim-alliance-model: done
   9-15-four-player-verified-end-to-end: done
-  9-16-full-content-pre-match-hash-handshake: backlog
+  9-16-full-content-pre-match-hash-handshake: done
   epic-9-retrospective: optional
   epic-12: backlog
   12-1-import-ui-validation-caps-runtime-gltf-ingest-assignment-packaging-hash-coverage: backlog
