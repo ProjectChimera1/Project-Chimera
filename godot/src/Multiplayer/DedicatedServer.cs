@@ -105,6 +105,18 @@ namespace ProjectChimera.Multiplayer
         /// (HandleReady) alongside <see cref="_builder"/>/<see cref="_delayController"/>. Null until the match starts.</summary>
         private Server.DropController? _dropController;
 
+        /// <summary>Story 9.13: the Godot-free per-slot command-rate throttle (anti-spam, NOT anti-cheat). Gates each
+        /// inbound <c>TickCommands</c> packet through <c>TryAdmit(slot, wall-clock ms)</c> so a misbehaving/malicious
+        /// client cannot flood the merged fan-in. Its decision (drop/accept) NEVER enters the sim, the builder, or any
+        /// checksum. Sized to <see cref="ServerTransport.MAX_SLOTS"/> and constructed at InGame (HandleReady)
+        /// alongside <see cref="_builder"/>/<see cref="_delayController"/>/<see cref="_dropController"/>; reset per
+        /// slot on connect so a recycled slot never inherits the prior occupant's count.</summary>
+        private Server.CommandRateLimiter? _rateLimiter;
+
+        /// <summary>Story 9.13: rate-limit at which the throttled-drop diagnostic is printed — one line per this many
+        /// dropped packets per slot, never one line per drop (keeps a flood from spamming the server console).</summary>
+        private const long RATE_LIMIT_LOG_EVERY = 128;
+
         /// <summary>Story 9.6: scratch buffer for an injected empty single-faction packet (0 orders → HEADER_BYTES).
         /// Reused across pumps — the frozen-slot drain never allocates per tick.</summary>
         private readonly byte[] _injectBuf = new byte[TickCommandPacket.HEADER_BYTES];
@@ -235,6 +247,11 @@ namespace ProjectChimera.Multiplayer
 
         private void HandleConnect(int slot)
         {
+            // Story 9.13: a slot can be recycled (a prior occupant disconnected, a new client connects into the same
+            // slot). Reset the command-rate throttle for this slot so the new occupant never inherits the prior one's
+            // admission count (SoA-recycle-trap discipline). Null-safe: no-op until a match's limiter exists.
+            _rateLimiter?.Reset(slot);
+
             // Story 9.7 (SD-9): the player/spectator split is the DYNAMIC SlotAllocation.Classify over the per-match
             // ExpectedPlayers boundary (not the fixed MAX_PLAYERS 1v1 partition). A slot at/above the player count is
             // a spectator for THIS match.
@@ -418,7 +435,26 @@ namespace ProjectChimera.Multiplayer
 
                 case PacketType.TickCommands:
                     if (_state == State.InGame)
-                        FanInTickCommands(slot, data, len);
+                    {
+                        // Story 9.13: gate the fan-in through the per-slot command-rate throttle. Slot is
+                        // transport-authoritative; the clock is injected wall-clock ms (Time.GetTicksMsec), never a
+                        // client-influenceable or valid-submit-gated tick. A non-admit is a SILENT no-op — no
+                        // server→client packet, no DesyncAlert, no FanInTickCommands call (mirrors Story 9.3's
+                        // silent-drop contract). The console diagnostic is itself throttled (never one line per drop).
+                        if (_rateLimiter == null || _rateLimiter.TryAdmit(slot, (ulong)Time.GetTicksMsec()))
+                            FanInTickCommands(slot, data, len);
+                        else
+                        {
+                            // Story 9.13: silent drop (no client packet, no fan-in). The diagnostic is throttled —
+                            // one line on the FIRST drop, then one per RATE_LIMIT_LOG_EVERY — so a real flood can't
+                            // spam the console, yet a low-volume drop still leaves a trace. Gated on dropped > 0 so an
+                            // (unreachable-while-sized-to-MAX_SLOTS) out-of-range slot never logs a "0 dropped" line.
+                            long dropped = _rateLimiter.DroppedCount(slot);
+                            if (dropped == 1 || (dropped > 0 && dropped % RATE_LIMIT_LOG_EVERY == 0))
+                                GD.Print($"[Server] Command-rate throttle active on slot {slot} " +
+                                         $"({dropped} packets dropped this match).");
+                        }
+                    }
                     break;
 
                 case PacketType.TickCommandsMerged:
@@ -558,6 +594,11 @@ namespace ProjectChimera.Multiplayer
                 // cache the frozen-slot drain's broadcast sink (BroadcastCommands reaches every peer + spectator).
                 _dropController  = new Server.DropController(connected);
                 _injectBroadcast = (buf, n) => _transport.BroadcastCommands(buf, n);
+
+                // Story 9.13: stand up the per-slot command-rate throttle. Sized to MAX_SLOTS (not `connected`) so the
+                // slot argument HandlePacket already resolved via ServerTransport.FindSlot indexes it directly, and a
+                // spectator/higher slot never runs off the end. Anti-spam only — its accept/drop never enters the sim.
+                _rateLimiter = new Server.CommandRateLimiter(ServerTransport.MAX_SLOTS);
 
                 // Story 1.9a (D5): stand up the server-authority core for this match. expectedPeerCount = the
                 // connected PLAYER count (spectators excluded — D6). The transport seams are wrapped in lambdas
