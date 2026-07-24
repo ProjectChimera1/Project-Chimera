@@ -20,6 +20,18 @@
        the Godot-free guarantee). -->
   <Import Project="..\SimSources.props" />
 
+  <!-- Story 9.8: the Godot-free proof-of-play/publish cores live in src/UGC (beside ModIoService), which is
+       deliberately OUTSIDE SimSources.props (and thus outside the banned-API analyzer's globbed set — they use
+       System.Security.Cryptography / off-tick, presentation-side wall-clock). Included here as single files so they
+       are Tier-1 unit-testable WITHOUT being swept into the determinism analyzer gate. ProofOfPlayToken.cs lives in
+       src/Core/Definitions and is already globbed by SimSources.props. -->
+  <ItemGroup>
+    <Compile Include="..\src\UGC\ProofOfPlaySigner.cs" LinkBase="Sim\UGC" />
+    <Compile Include="..\src\UGC\ProofOfPlayStore.cs"  LinkBase="Sim\UGC" />
+    <Compile Include="..\src\UGC\PublishGate.cs"       LinkBase="Sim\UGC" />
+    <Compile Include="..\src\UGC\ProofOfPlayMint.cs"   LinkBase="Sim\UGC" />
+  </ItemGroup>
+
   <ItemGroup>
     <!-- Golden baseline: embedded so it's read via manifest stream (portable across Windows/Linux — no
          file-path or line-ending fragility, required for the 1.10c cross-platform gate). The <None Remove>

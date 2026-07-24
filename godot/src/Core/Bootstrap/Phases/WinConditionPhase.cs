@@ -2,6 +2,7 @@
 using Godot;
 using System;
 using ProjectChimera.Core.Definitions;
+using ProjectChimera.UGC;
 using ProjectChimera.UI;
 
 namespace ProjectChimera.Core.Bootstrap
@@ -379,6 +380,19 @@ namespace ProjectChimera.Core.Bootstrap
             string outDir = System.IO.Path.GetDirectoryName(scenAbs)!;
             string outZip = System.IO.Path.Combine(outDir, $"{slug}.chimera.zip");
 
+            // Story 9.8 — load the proof-of-play token (minted on a prior self-victory, keyed by scenario identity)
+            // and capture ≥1 screenshot, so the packaged manifest carries the token + screenshots the publish gate
+            // requires. Both are best-effort: a missing token / failed grab simply yields a package the gate later
+            // refuses (with the specific reason), never a failed export.
+            string scenarioId = ProofOfPlayMint.ResolveScenarioId(_ctx.Scenario);
+            ProofOfPlayToken? token = null;
+            try { new ProofOfPlayStore(ProjectSettings.GlobalizePath(ProofOfPlayMint.TokenDirGodotPath)).TryLoad(scenarioId, out token); }
+            catch (Exception ex) { GD.PrintErr($"[MapIO] Proof-of-play load failed: {ex.Message}"); }
+
+            var screenshotPaths = new System.Collections.Generic.List<string>();
+            string? shot = CaptureScreenshot(scenarioId);
+            if (shot != null) screenshotPaths.Add(shot);
+
             var opts = new ContentPackager.PackOptions
             {
                 DisplayName     = mapName,
@@ -386,6 +400,8 @@ namespace ProjectChimera.Core.Bootstrap
                 Description     = _ctx.Scenario.Description ?? "",
                 PlayerCount     = playerCount,
                 PreviewPngBytes = previewPng,
+                Token           = token,
+                ScreenshotPaths = screenshotPaths,
                 Tags            = new System.Collections.Generic.List<string>
                 {
                     playerCount switch { 4 => "2v2", 3 => "ffa3", _ => "1v1" }
@@ -433,6 +449,32 @@ namespace ProjectChimera.Core.Bootstrap
             catch (Exception ex)
             {
                 GD.PrintErr($"[MapIO] Preview render failed: {ex.Message}");
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// Story 9.8 — capture the current viewport frame to a PNG under <c>user://tokens/screenshots/</c> and return
+        /// its absolute path (null on any failure ⇒ no screenshot bundled, the gate then refuses with the specific
+        /// reason). One shot satisfies the ≥1-screenshot min-quality floor; the creator can add more out-of-band.
+        /// </summary>
+        private string? CaptureScreenshot(string scenarioId)
+        {
+            try
+            {
+                Image img = _ctx.Scene.GetViewport().GetTexture().GetImage();
+                if (img == null) return null;
+                string dirAbs = ProjectSettings.GlobalizePath(ProofOfPlayMint.TokenDirGodotPath + "/screenshots");
+                System.IO.Directory.CreateDirectory(dirAbs);
+                string shotAbs = System.IO.Path.Combine(dirAbs,
+                    $"{ProofOfPlayStore.Sanitize(scenarioId)}_shot.png");
+                Error err = img.SavePng(shotAbs);
+                if (err != Error.Ok) { GD.PrintErr($"[MapIO] Screenshot save failed: {err}"); return null; }
+                return shotAbs;
+            }
+            catch (Exception ex)
+            {
+                GD.PrintErr($"[MapIO] Screenshot capture failed: {ex.Message}");
                 return null;
             }
         }

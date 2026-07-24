@@ -138,5 +138,32 @@ namespace ProjectChimera.Core.Definitions
         /// </summary>
         [JsonPropertyName("terrain_hash")]
         public uint TerrainHash { get; set; }
+
+        // ── Story 9.8 — proof-of-play + quality/IP-consent gate fields ───────────
+
+        /// <summary>
+        /// Story 9.8 — the locally-signed proof-of-play token proving the creator beat this scenario. Written at pack
+        /// time from <c>PackOptions.Token</c>; read by <c>ProjectChimera.UGC.PublishGate</c> before upload (which
+        /// verifies the signature and re-derives the canonical hash to reject a stale/tampered token). Null = no proof
+        /// (the gate refuses the upload). Omitted when null so a pre-9.8 package round-trips byte-identically.
+        /// </summary>
+        [JsonPropertyName("proof_of_play")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public ProofOfPlayToken? ProofOfPlay { get; set; }
+
+        /// <summary>
+        /// Story 9.8 — zip-relative paths of the bundled screenshots, e.g. <c>"screenshots/shot_00.png"</c>. The
+        /// min-quality floor requires ≥1; the publish gate counts these. Empty (the default) = no screenshots.
+        /// </summary>
+        [JsonPropertyName("screenshots")]
+        public List<string> Screenshots { get; set; } = new();
+
+        /// <summary>
+        /// Story 9.8 — explicit IP-ownership consent recorded at publish (the creator affirms they own/have the right
+        /// to distribute this content; the platform takes only a non-exclusive host/distribute right). The publish
+        /// gate refuses the upload unless this is true. Defaults false.
+        /// </summary>
+        [JsonPropertyName("ip_consent")]
+        public bool IpConsent { get; set; }
     }
 }

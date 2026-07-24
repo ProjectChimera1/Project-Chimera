@@ -1,4 +1,8 @@
 #nullable enable
+using System;
+using Godot;
+using ProjectChimera.Core.Definitions;
+using ProjectChimera.UGC;
 
 namespace ProjectChimera.Core.Bootstrap
 {
@@ -44,8 +48,66 @@ namespace ProjectChimera.Core.Bootstrap
             // play_sound → audio (presentation-output only).
             ctx.ScenarioDirector.OnPlaySound = _ => ctx.AudioMgr?.PlayBuildingPlaced();
 
-            // victory → game-over overlay (presentation-output only).
-            ctx.ScenarioDirector.OnVictory = winnerSlot => ctx.Scene.ShowGameOver(winnerSlot + 1);
+            // victory → game-over overlay (presentation-output only) + Story 9.8 proof-of-play mint. The mint is a
+            // presentation-side POST-MATCH side effect: it reads only the model already held by the context
+            // (ctx.Scenario) and the local-faction identity (never sim tick state, per the C3 rule), so it touches
+            // neither the sim loop nor SimChecksum nor CanonicalModelHash.AlgoVersion.
+            ctx.ScenarioDirector.OnVictory = winnerSlot =>
+            {
+                ctx.Scene.ShowGameOver(winnerSlot + 1);
+                TryMintProofOfPlay(ctx, winnerSlot);
+            };
+        }
+
+        /// <summary>
+        /// Story 9.8 — mint + persist a signed proof-of-play token, but ONLY when the winning slot is the LOCAL
+        /// faction (a loss, or another faction's win, mints nothing). The token binds to the CANONICAL model identity
+        /// via <see cref="CanonicalModelHash.Compute"/> (the full 64-bit value, not the wire fold) so any later content
+        /// edit re-derives to a mismatch and the publish gate treats it as stale. Fail-soft: any provisioning / IO
+        /// error is logged and swallowed — a mint failure must never crash the game-over path.
+        /// </summary>
+        private static void TryMintProofOfPlay(SceneContext ctx, int winnerSlot)
+        {
+            if (ctx.Scenario == null) return;
+
+            try
+            {
+                // Mint only on a LOCAL-faction win. Review P1: Lockstep may be null at victory (e.g. offline paths that
+                // never reset it) — the repo-wide null-safe pattern (CameraPhase/MinimapPhase/MainScene) defaults to
+                // Player1 so this can never throw out from under the game-over path.
+                Faction localFaction = ctx.Lockstep?.EffectiveLocalFaction ?? Faction.Player1;
+                if (!ProofOfPlayMint.ShouldMint(winnerSlot, localFaction)) return;
+
+                // Review P3: resolve/provision the signing key WITHOUT ever rotating a corrupt existing one — that would
+                // invalidate every previously-minted token. A corrupt key ⇒ skip this mint, leaving the stored value
+                // intact.
+                SigningKeyStatus keyStatus = ProofOfPlayMint.GetOrProvisionSigningKey(ctx.SecretStore, out byte[] key);
+                if (keyStatus == SigningKeyStatus.CorruptExisting)
+                {
+                    GD.PrintErr("[ProofOfPlay] Existing signing key is unreadable — skipping mint (key left intact, " +
+                                "not rotated, so prior tokens still verify).");
+                    return;
+                }
+
+                ulong  hash = CanonicalModelHash.Compute(ctx.Scenario);
+                string scenarioId = ProofOfPlayMint.ResolveScenarioId(ctx.Scenario);
+
+                // Wall-clock read is presentation-side / off the sim tick path — the sanctioned RS0030 exemption
+                // pattern (see ContentPackageManifest.CreatedAt).
+#pragma warning disable RS0030
+                string mintedAt = DateTime.UtcNow.ToString("o");
+#pragma warning restore RS0030
+
+                ProofOfPlayToken token = ProofOfPlaySigner.Create(hash, PublishGate.WinOutcome, mintedAt, scenarioId, key);
+
+                var store = new ProofOfPlayStore(ProjectSettings.GlobalizePath(ProofOfPlayMint.TokenDirGodotPath));
+                store.Save(scenarioId, token);
+                GD.Print($"[ProofOfPlay] Minted win token for '{scenarioId}' (hash {token.ScenarioHash}).");
+            }
+            catch (Exception ex)
+            {
+                GD.PrintErr($"[ProofOfPlay] Mint failed: {ex.Message}");
+            }
         }
     }
 }

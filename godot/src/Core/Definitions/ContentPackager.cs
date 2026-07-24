@@ -56,6 +56,19 @@ namespace ProjectChimera.Core.Definitions
             public byte[]? PreviewPngBytes { get; set; }
             /// <summary>Additional faction JSON files to bundle. Absolute paths.</summary>
             public List<string> FactionPaths { get; set; } = new();
+
+            /// <summary>Story 9.8 — the signed proof-of-play token to embed in the manifest. Null = none embedded (the
+            /// publish gate will refuse the upload). Written verbatim into <see cref="ContentPackageManifest.ProofOfPlay"/>.</summary>
+            public ProofOfPlayToken? Token { get; set; }
+
+            /// <summary>Story 9.8 — absolute on-disk paths to screenshot PNGs to bundle. Each is copied into the package
+            /// at <c>screenshots/shot_NN.png</c> and recorded in <see cref="ContentPackageManifest.Screenshots"/>.
+            /// Empty (the default) = no screenshots (the publish gate requires ≥1).</summary>
+            public List<string> ScreenshotPaths { get; set; } = new();
+
+            /// <summary>Story 9.8 — explicit IP-ownership consent, written into
+            /// <see cref="ContentPackageManifest.IpConsent"/>. Defaults false (the publish gate refuses without it).</summary>
+            public bool IpConsent { get; set; }
         }
 
         /// <summary>
@@ -84,6 +97,18 @@ namespace ProjectChimera.Core.Definitions
             foreach (var fp in options.FactionPaths)
                 if (File.Exists(fp))
                     factionEntries.Add("factions/" + Path.GetFileName(fp));
+
+            // Story 9.8: enumerate the on-disk screenshots into canonical zip-relative paths (screenshots/shot_NN.png).
+            // Only existing files contribute; the index is assigned in list order so the manifest and the written
+            // entries stay in lock-step. Recorded on the manifest below and counted by the publish gate.
+            var screenshotEntries = new List<string>();
+            var screenshotSources = new List<string>();
+            foreach (var sp in options.ScreenshotPaths ?? new List<string>())
+            {
+                if (!File.Exists(sp)) continue;
+                screenshotEntries.Add($"screenshots/shot_{screenshotEntries.Count:D2}.png");
+                screenshotSources.Add(sp);
+            }
 
             // Story 6.2: enumerate the terrain region files (ordinal-sorted by name so the aggregate integrity hash
             // is order-independent), record them zip-relative under map/terrain/, and fold their filename+bytes.
@@ -122,6 +147,12 @@ namespace ProjectChimera.Core.Definitions
                 ScenarioHash    = scenarioHash,
                 TerrainFiles    = terrainEntries,
                 TerrainHash     = terrainHash,
+                // Story 9.8: proof-of-play token + screenshots + IP-ownership consent (the pre-publish quality/IP gate
+                // fields). The gate at upload verifies the token, re-derives the canonical hash for staleness, and
+                // enforces thumbnail/description/screenshots/consent before ModIoService.UploadModAsync.
+                ProofOfPlay     = options.Token,
+                Screenshots     = screenshotEntries,
+                IpConsent       = options.IpConsent,
                 // AR-36 allow-list (Story 1.10b): packaging-time wall-clock stamped when EXPORTING a
                 // .chimera.zip — never tick-reachable and never folded into the sim/start-state hash, so it is
                 // an explicit RS0030 exemption (keeps the banned-API release gate at a clean zero baseline). A
@@ -161,6 +192,10 @@ namespace ProjectChimera.Core.Definitions
             // map/terrain/ (Story 6.2, optional) — the same ordinal-sorted file set the manifest recorded/hashed.
             foreach (var f in terrainFiles)
                 WriteEntry(archive, "map/terrain/" + Path.GetFileName(f), File.ReadAllBytes(f));
+
+            // screenshots/ (Story 9.8, optional) — the same list order the manifest recorded, so entry names match.
+            for (int i = 0; i < screenshotEntries.Count; i++)
+                WriteEntry(archive, screenshotEntries[i], File.ReadAllBytes(screenshotSources[i]));
 
             return manifest;
         }
@@ -295,6 +330,30 @@ namespace ProjectChimera.Core.Definitions
                 FactionPaths  = factionOuts,
                 TerrainFiles  = terrainOuts,
             };
+        }
+
+        // ── Rewrite manifest in place (Story 9.8, publish-time consent) ──────────
+
+        /// <summary>
+        /// Story 9.8 (review P2) — overwrite the <c>manifest.json</c> entry of an existing .chimera.zip with
+        /// <paramref name="manifest"/>, leaving every other entry untouched (ZipArchiveMode.Update). Used at publish
+        /// time to record the creator's live IP-ownership consent (and any gate-evaluated fields) INTO the shipped
+        /// package before upload, so the on-disk zip reflects the consent the gate approved — not the export-time
+        /// default. Godot-free (System.IO.Compression) so it is Tier-1 testable.
+        /// </summary>
+        /// <param name="zipPath">Absolute path to the .chimera.zip to update in place.</param>
+        /// <param name="manifest">The manifest to serialize over the existing <c>manifest.json</c>.</param>
+        public static void RewriteManifest(string zipPath, ContentPackageManifest manifest)
+        {
+            if (!File.Exists(zipPath))
+                throw new FileNotFoundException("Package file not found.", zipPath);
+
+            using var archive = ZipFile.Open(zipPath, ZipArchiveMode.Update);
+            archive.GetEntry("manifest.json")?.Delete();
+            var entry = archive.CreateEntry("manifest.json", CompressionLevel.Optimal);
+            byte[] data = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(manifest, _jsonOpts));
+            using var s = entry.Open();
+            s.Write(data, 0, data.Length);
         }
 
         // ── Read manifest only (for content browser preview) ─────────────────────

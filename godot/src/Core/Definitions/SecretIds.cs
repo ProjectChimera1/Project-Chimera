@@ -20,5 +20,10 @@ namespace ProjectChimera.Core.Definitions
 
         /// <summary>The mod.io read-only API key id — backs <c>user://secrets/modio.key</c>.</summary>
         public const string ModIo = "modio";
+
+        /// <summary>Story 9.8 — the per-install proof-of-play HMAC signing key id — backs
+        /// <c>user://secrets/proof_of_play.key</c>. Provisioned presentation-side (32 random bytes, hex-encoded) on
+        /// first self-victory; never stored in <c>SettingsData</c> or a Godot <c>[Export]</c>.</summary>
+        public const string ProofOfPlay = "proof_of_play";
     }
 }

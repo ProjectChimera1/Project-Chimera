@@ -33,7 +33,8 @@ namespace ProjectChimera.Core.Bootstrap
 
             _ctx.ContentBrowser = new ContentBrowserPanel();
             _ctx.Scene.AddChild(_ctx.ContentBrowser);
-            _ctx.ContentBrowser.Initialize("user://packages/", modIo);
+            // Story 9.8: hand the secret store so the Local-tab publish gate can verify a package's proof-of-play token.
+            _ctx.ContentBrowser.Initialize("user://packages/", modIo, _ctx.SecretStore);
             _ctx.ContentBrowser.OnLoadMap += HandleLoadMap;
 
             GD.Print("[ContentBrowser] Initialized — press O in Edit mode to open. " +

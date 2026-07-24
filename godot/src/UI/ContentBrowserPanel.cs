@@ -39,6 +39,9 @@ namespace ProjectChimera.UI
 
         private string         _scanDir = "";
         private ModIoService?  _modIo;
+        // Story 9.8: the secret store supplies the per-install proof-of-play HMAC key so the publish gate can VERIFY a
+        // package's token before upload. Null ⇒ no key available ⇒ the gate fails a token as invalid (fail-closed).
+        private ISecretStore?  _secretStore;
 
         // ── Tab containers ────────────────────────────────────────────────────
 
@@ -87,13 +90,16 @@ namespace ProjectChimera.UI
         /// </summary>
         /// <param name="scanDirectory">Godot path (user:// or res://) to scan for local packages.</param>
         /// <param name="modIo">Optional mod.io service. When null, the Online tab is hidden.</param>
-        public void Initialize(string scanDirectory, ModIoService? modIo = null)
+        /// <param name="secretStore">Story 9.8 — optional secret store holding the proof-of-play HMAC key, used by the
+        /// pre-publish gate to verify a package's token. Null ⇒ the gate fails-closed on any token.</param>
+        public void Initialize(string scanDirectory, ModIoService? modIo = null, ISecretStore? secretStore = null)
         {
             Layer   = 10; // above HUD (8) and chat overlay (8)
             Visible = false;
 
             _scanDir = ProjectSettings.GlobalizePath(scanDirectory);
             _modIo   = modIo;
+            _secretStore = secretStore;
 
             WireModIoEvents();
 
@@ -358,33 +364,88 @@ namespace ProjectChimera.UI
             loadBtn.Pressed += () => { Visible = false; OnLoadMap?.Invoke(capturedZip); };
             rightCol.AddChild(loadBtn);
 
-            // "Upload to mod.io" — only shown when mod.io service is configured and logged in.
+            // "Upload to mod.io" — only shown when mod.io service is configured and logged in. Story 9.8: gated behind
+            // an explicit IP-ownership consent checkbox AND the unified PublishGate (proof-of-play token + thumbnail +
+            // description ≥100 + ≥1 screenshot + consent) — refused with the located reason(s) on failure.
             if (_modIo != null)
             {
+                string capturedZipForUpload = zipPath;
+                ContentPackageManifest capturedManifest = manifest;
+
+                // Refusal/status line for this card's publish gate.
+                var gateStatus = new Label
+                {
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                    AutowrapMode        = TextServer.AutowrapMode.Word,
+                    Visible             = false,
+                };
+                gateStatus.AddThemeFontSizeOverride("font_size", 10);
+                gateStatus.AddThemeColorOverride("font_color", new Color(0.95f, 0.55f, 0.4f));
+
                 var uploadBtn = new Button
                 {
                     Text             = _modIo.IsLoggedIn ? "Upload to mod.io" : "Log in to upload",
-                    Disabled         = !_modIo.IsLoggedIn,
                     CustomMinimumSize = new Vector2(130, 30),
                 };
                 uploadBtn.AddThemeFontSizeOverride("font_size", 12);
-                string capturedZipForUpload = zipPath;
-                ContentPackageManifest capturedManifest = manifest;
+
+                // IP-ownership consent: upload disabled until checked (and logged in).
+                var consentCheck = new CheckBox
+                {
+                    Text = "I own / may distribute this",
+                };
+                consentCheck.AddThemeFontSizeOverride("font_size", 10);
+                void SyncUploadEnabled() =>
+                    uploadBtn.Disabled = !(_modIo!.IsLoggedIn && consentCheck.ButtonPressed);
+                consentCheck.Toggled += _ => SyncUploadEnabled();
+                SyncUploadEnabled();
+                rightCol.AddChild(consentCheck);
+
                 uploadBtn.Pressed += () =>
                 {
-                    if (_modIo is { IsLoggedIn: true })
+                    if (_modIo is not { IsLoggedIn: true }) return;
+
+                    // Consent is a LIVE choice — stamp it onto the (in-memory) manifest the gate evaluates. The token +
+                    // screenshots + thumbnail already rode in from packaging.
+                    capturedManifest.IpConsent = consentCheck.ButtonPressed;
+                    ulong  currentHash = ComputeCurrentCanonicalHash(capturedZipForUpload);
+                    byte[] key = LoadSigningKey();
+
+                    var result = ProjectChimera.UGC.PublishGate.Check(
+                        capturedManifest, capturedManifest.ProofOfPlay, currentHash, key);
+                    if (!result.Passed)
                     {
-                        uploadBtn.Text     = "Uploading…";
-                        uploadBtn.Disabled = true;
-                        _modIo.UploadModAsync(
-                            capturedZipForUpload,
-                            capturedManifest.DisplayName,
-                            capturedManifest.Description,
-                            capturedManifest.Version,
-                            capturedManifest.Tags);
+                        gateStatus.Text    = "Cannot publish: " + string.Join("; ", result.Reasons);
+                        gateStatus.Visible = true;
+                        return;
                     }
+
+                    // Story 9.8 (review P2): persist the approved consent (and evaluated fields) INTO the shipped zip
+                    // so the on-disk package records ip_consent:true, not the export-time default. Follow-up review:
+                    // fail CLOSED — the intent requires consent be written into the manifest and ONLY THEN the upload;
+                    // if the record cannot be written, refuse rather than ship a package that records ip_consent:false
+                    // while uploading (the IP-consent record is the whole reason this field exists).
+                    try { ContentPackager.RewriteManifest(capturedZipForUpload, capturedManifest); }
+                    catch (Exception ex)
+                    {
+                        GD.PrintErr($"[ContentBrowser] Manifest rewrite failed: {ex.Message}");
+                        gateStatus.Text    = "Cannot publish: could not record IP-ownership consent into the package.";
+                        gateStatus.Visible = true;
+                        return;
+                    }
+
+                    gateStatus.Visible = false;
+                    uploadBtn.Text     = "Uploading…";
+                    uploadBtn.Disabled = true;
+                    _modIo.UploadModAsync(
+                        capturedZipForUpload,
+                        capturedManifest.DisplayName,
+                        capturedManifest.Description,
+                        capturedManifest.Version,
+                        capturedManifest.Tags);
                 };
                 rightCol.AddChild(uploadBtn);
+                rightCol.AddChild(gateStatus);
             }
 
             return card;
@@ -831,6 +892,44 @@ namespace ProjectChimera.UI
                 if (op == "auth_request")  _requestCodeBtn.Disabled  = false;
                 if (op == "auth_exchange") _exchangeCodeBtn.Disabled = false;
             };
+        }
+
+        // ── Story 9.8 publish-gate inputs ─────────────────────────────────────
+
+        /// <summary>Re-derive the CURRENT canonical model hash of a package's scenario (extract scenario.json → load →
+        /// <see cref="CanonicalModelHash.Compute"/>) so the gate can detect an edited-after-win (stale) token.
+        /// Fail-closed: any error returns 0, which never matches a real token hash ⇒ the gate rejects it as stale.</summary>
+        private static ulong ComputeCurrentCanonicalHash(string zipPath)
+        {
+            string tmp = Path.Combine(
+                ProjectSettings.GlobalizePath("user://tmp"), "publish_gate_" + Guid.NewGuid().ToString("N"));
+            try
+            {
+                var result   = ContentPackager.Unpack(zipPath, tmp);
+                var scenario = ScenarioSerializer.LoadFromFile(result.ScenarioPath);
+                return scenario == null ? 0UL : CanonicalModelHash.Compute(scenario);
+            }
+            catch (Exception ex)
+            {
+                GD.PrintErr($"[ContentBrowser] Canonical hash compute failed: {ex.Message}");
+                return 0UL; // fail-closed → the gate treats the token as stale
+            }
+            finally
+            {
+                try { if (Directory.Exists(tmp)) Directory.Delete(tmp, recursive: true); } catch { /* best-effort */ }
+            }
+        }
+
+        /// <summary>Load the per-install proof-of-play HMAC key (hex) from the secret store. Absent/unreadable ⇒ empty
+        /// key, so the gate's signature verify fails-closed and refuses the token as invalid.</summary>
+        private byte[] LoadSigningKey()
+        {
+            try
+            {
+                string hex = _secretStore?.Get(SecretIds.ProofOfPlay) ?? "";
+                return string.IsNullOrEmpty(hex) ? Array.Empty<byte>() : Convert.FromHexString(hex);
+            }
+            catch { return Array.Empty<byte>(); }
         }
 
         // ── Shared card builder helpers ───────────────────────────────────────
