@@ -15,16 +15,18 @@ namespace ProjectChimera.UI
     /// themed button component, and a mono version/build footer.
     ///
     /// Honesty invariant (amended UX-DR68): nothing here advertises an unbuilt system — no ranked/MMR, no
-    /// live online count, no Multiplayer/Campaign destination. Skirmish is offline (vs AI, 1–4 players).
-    /// Multiplayer is owned by Epic 9, Campaign/Tutorial by Story 13.1, the final honesty sweep by 11.12.
+    /// live online count. Story 9.7 UN-DEFERS the Multiplayer destination (the lobby is now real: N-slot
+    /// LAN/matchmaking), so it is a legitimate entry; Campaign/Tutorial stay owned by Story 13.1, the final
+    /// honesty sweep by 11.12. Skirmish is offline (vs AI, 1–4 players).
     ///
     /// Modes:
-    ///   Play      — enter Play mode immediately with the current scenario (offline, vs AI).
-    ///   Create    — enter Edit mode (map/scenario editor).
-    ///   Browse    — open ContentBrowserPanel to load a community map.
+    ///   Play        — enter Play mode immediately with the current scenario (offline, vs AI).
+    ///   Multiplayer — open the multiplayer lobby (Story 9.7: Direct LAN/IP + Nakama matchmaking, N-slot).
+    ///   Create      — enter Edit mode (map/scenario editor).
+    ///   Browse      — open ContentBrowserPanel to load a community map.
     ///   Generate Map (AI) — auxiliary editor entry (kept reachable, off the primary five).
-    ///   Settings  — toggle the SettingsPanel.
-    ///   Quit      — exit the application.
+    ///   Settings    — toggle the SettingsPanel.
+    ///   Quit        — exit the application.
     ///
     /// Usage (MainMenuPhase): new MainMenuOverlay(); AddChild(...); Initialize(version); wire the events.
     /// </summary>
@@ -33,6 +35,7 @@ namespace ProjectChimera.UI
         // ── Events (public contract — preserved verbatim from the pre-restyle overlay) ──────────
 
         public event Action? OnPlaySkirmish;
+        public event Action? OnMultiplayer; // Story 9.7 — open the multiplayer lobby
         public event Action? OnCreate;
         public event Action? OnBrowse;
         public event Action? OnGenerateMap;
@@ -107,6 +110,11 @@ namespace ProjectChimera.UI
                 "Play Skirmish",
                 "Load the current map and start an offline match against the AI (1–4 players).",
                 () => { Visible = false; OnPlaySkirmish?.Invoke(); });
+
+            AddNavButton(nav, "Multiplayer", ChimeraComponents.ButtonVariant.Secondary, ChimeraComponents.ButtonSize.Lg,
+                "Multiplayer",
+                "Play against other people — Direct LAN/IP or online matchmaking (up to 4 players).",
+                () => { Visible = false; OnMultiplayer?.Invoke(); });
 
             AddNavButton(nav, "Create", ChimeraComponents.ButtonVariant.Secondary, ChimeraComponents.ButtonSize.Lg,
                 "Create",

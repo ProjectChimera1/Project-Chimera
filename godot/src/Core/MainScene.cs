@@ -262,7 +262,13 @@ namespace ProjectChimera.Core
                 // Story 1.9b review (P1): inject the presentation log sink so the dedicated server actually PRINTS
                 // its FR-39 determinism verdict (per-window lines + MATCH SUMMARY) to the server console. Without
                 // this, Log defaults to NullLogSink and every AC1 verdict line is silently dropped in production.
-                var server = new ProjectChimera.Multiplayer.DedicatedServer { SimHost = serverSimHost, Log = _logSink };
+                var server = new ProjectChimera.Multiplayer.DedicatedServer
+                {
+                    SimHost = serverSimHost, Log = _logSink,
+                    // Story 9.7: the scenario-derived player count (set by BuildHeadlessServerSimHost) — the count the
+                    // match must collect before StartGame, matching the client FactionRegistry(N).
+                    ExpectedPlayerCount = _serverExpectedPlayers,
+                };
                 AddChild(server);
                 server.Start(port);
 
@@ -334,9 +340,13 @@ namespace ProjectChimera.Core
             // FactionDefinition lookups; see FactionRegistry.SlotDefinitions. TODO(5.1) partially resolved:
             // this is the "hold per-slot FactionDefinition[]" half; deriving ActiveFactions from assigned
             // slots (the TODO's other half) is intentionally NOT done — see FactionRegistry's ctor comment.
-            // activeFactionCount=2 is behaviour-preserving today (Ore[P1]+Ore[P2], byte-identical); deriving it
-            // from the loaded scenario's assigned slots remains a future story's job, not this one's.
-            var factions = new FactionRegistry(2);
+            // Story 9.7: the active-player count now DERIVES from the loaded scenario's PlayerSlots.Count (the only
+            // source of N, fed identically to the server's activeFactionCount so client/server checksum spans cannot
+            // diverge). Both peers load the identical, agreement-gated scenario, so a raw pre-parse here (before the
+            // validated apply in ScenarioLoadPhase) reads the same count the server reads. ClampActivePlayers keeps
+            // N=2 for today's 2-slot default (byte-identical to the old hardcoded 2).
+            int activePlayers = ClampActivePlayers(PeekScenarioPlayerSlots(ScenarioPath));
+            var factions = new FactionRegistry(activePlayers);
 
             // Default slot assignments — overwritten per-slot by the ResolveSlotFactionDefs pre-pass
             _slotFactionDefs = factions.SlotDefinitions;
@@ -642,13 +652,10 @@ namespace ProjectChimera.Core
             // Edit-mode-only shortcuts.
             if (_ctx.GameState.Mode != GameMode.Edit) return;
 
-            if (key.Keycode == Key.N)
-            {
-                if (_ctx.LobbyUi.Visible) _ctx.LobbyUi.Close();
-                else _ctx.LobbyUi.Show();
-                GetViewport().SetInputAsHandled();
-            }
-            else if (key.Keycode == Key.O)
+            // Story 9.7: the dev-only Edit-mode `N` lobby toggle is REMOVED — the multiplayer lobby is now reached
+            // from the real MainMenu "Multiplayer" destination (MainMenuPhase.OnMultiplayer → LobbyUi.Show), not a
+            // hidden keybind. `N` is now free.
+            if (key.Keycode == Key.O)
             {
                 _ctx.ContentBrowser.ToggleVisible();
                 GetViewport().SetInputAsHandled();
@@ -2009,13 +2016,56 @@ namespace ProjectChimera.Core
                 if (System.IO.File.Exists(fAbs)) slotDefs[(int)f] = FactionDefinition.LoadFromFile(fAbs);
             }
 
+            // Story 9.7: derive N from the scenario's PlayerSlots.Count (the SAME clamp the client uses), so the
+            // server's checksum span + the DedicatedServer's ExpectedPlayerCount match the client's FactionRegistry(N).
+            int serverActivePlayers = ClampActivePlayers(model.PlayerSlots?.Length ?? 0);
+            _serverExpectedPlayers = serverActivePlayers;
+
             // ServerBootstrap validates (fail-closed: invalid ⇒ null + log via the seam) and applies through the
-            // shared spine. activeFactionCount=2 mirrors the client's new FactionRegistry(2) (1v1 today).
-            SimulationHost? host = ServerBootstrap.Build(model, slotDefs, damageTable, _logSink, activeFactionCount: 2, abilityRegistry: abilityRegistry);
+            // shared spine. activeFactionCount mirrors the client's FactionRegistry(N) derived from the same scenario.
+            SimulationHost? host = ServerBootstrap.Build(model, slotDefs, damageTable, _logSink,
+                activeFactionCount: serverActivePlayers, abilityRegistry: abilityRegistry);
             if (host != null)
-                GD.Print("[ServerBootstrap] Validated server sim spine built + applied (AR-38).");
+                GD.Print($"[ServerBootstrap] Validated server sim spine built + applied (AR-38), N={serverActivePlayers} players.");
             return host;
         }
+
+        /// <summary>Story 9.7: the scenario-derived expected player count for the headless dedicated server (fed to
+        /// <c>DedicatedServer.ExpectedPlayerCount</c>). Set by <see cref="BuildHeadlessServerSimHost"/>; defaults to 2
+        /// when the scenario is missing (the server then runs as relay + quorum only).</summary>
+        private int _serverExpectedPlayers = 2;
+
+        /// <summary>Story 9.7: peek only the PlayerSlots count of a scenario file (a cheap raw parse, no validation)
+        /// so the client can size its <c>FactionRegistry(N)</c> before ScenarioLoadPhase applies the validated model.
+        /// Returns 0 on any missing/parse failure (→ ClampActivePlayers falls back to 2).</summary>
+        private int PeekScenarioPlayerSlots(string scenarioPath)
+        {
+            // Story 9.7 (P5): uses ScenarioSerializer.LoadFromFile — the SAME loader the headless server derives N
+            // from (BuildHeadlessServerSimHost), so client + server read the identical PlayerSlots.Count. On a
+            // missing/parse failure we do NOT silently downgrade: LOG it (the log seam) and fall back to 2.
+            try
+            {
+                string abs = ProjectSettings.GlobalizePath(scenarioPath);
+                ScenarioData? model = ScenarioSerializer.LoadFromFile(abs);
+                if (model == null)
+                {
+                    _logSink.Warn($"[MainScene] Scenario '{scenarioPath}' missing/parse-failed for N-derivation — defaulting to 2 players.");
+                    return 0;
+                }
+                return model.PlayerSlots?.Length ?? 0;
+            }
+            catch (Exception e)
+            {
+                _logSink.Warn($"[MainScene] Scenario N-derivation threw for '{scenarioPath}' ({e.Message}) — defaulting to 2 players.");
+                return 0;
+            }
+        }
+
+        /// <summary>Story 9.7: clamp a scenario's raw PlayerSlots count into a legal SIM active-player count via the
+        /// Godot-free, Tier-1-tested <see cref="ProjectChimera.Multiplayer.PlayerCountPolicy.SimActivePlayers"/>
+        /// (fewer than 2 → 2, byte-identical to the pre-9.7 1v1; capped at <see cref="FactionRegistry.PLAYER_COUNT"/>).</summary>
+        private static int ClampActivePlayers(int rawSlotCount)
+            => ProjectChimera.Multiplayer.PlayerCountPolicy.SimActivePlayers(rawSlotCount);
 
         /// <summary>
         /// Parse "--port N" from Godot command-line args (after the "--" separator).

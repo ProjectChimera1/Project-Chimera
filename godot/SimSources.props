@@ -56,6 +56,16 @@
          allows) extracted from LobbyUi so it is Tier-1 unit-testable (HandshakeGateTests). Single-file include —
          the DelayMath precedent; the rest of src/Multiplayer stays Godot/ENet-coupled and un-globbed. -->
     <Compile Include="$(MSBuildThisFileDirectory)src\Multiplayer\HandshakeGate.cs"   LinkBase="Sim\Multiplayer" />
+    <!-- Story 9.7: new Godot-free decision cores — the N-player matchmaker parameterization, the N-slot lobby
+         readiness model, the pure party model, and the Godot-free faction/team palette table. Single-file/folder
+         includes (the DelayMath/HandshakeGate precedent) so each is Tier-1 unit-testable while the rest of
+         src/Multiplayer + src/UI stays Godot-coupled and un-globbed. (SlotAllocation/AssignedRoster live under
+         src/Multiplayer/Server/** and are already folder-globbed below.) -->
+    <Compile Include="$(MSBuildThisFileDirectory)src\Multiplayer\Matchmaking\MatchmakerConfig.cs" LinkBase="Sim\Multiplayer\Matchmaking" />
+    <Compile Include="$(MSBuildThisFileDirectory)src\Multiplayer\PlayerCountPolicy.cs"            LinkBase="Sim\Multiplayer" />
+    <Compile Include="$(MSBuildThisFileDirectory)src\Multiplayer\LobbyReadyModel.cs"              LinkBase="Sim\Multiplayer" />
+    <Compile Include="$(MSBuildThisFileDirectory)src\Multiplayer\Party\PartyState.cs"             LinkBase="Sim\Multiplayer\Party" />
+    <Compile Include="$(MSBuildThisFileDirectory)src\UI\FactionPalette.cs"                        LinkBase="Sim\UI" />
 
     <!-- Story 6.2: the linear editor undo/redo stack (src/CreationSuite/EditorHistory.cs) is pure C# (Action
          delegate pairs over two Stacks, no Godot types) — included as a single file so its shared-LIFO contract,

@@ -152,6 +152,13 @@
          goldens above are NOT re-recorded (the rewrite touches the wire, not the sim fold — AlgoVersion unchanged). -->
     <None Remove="Golden\golden-merged-n2.golden.txt" />
     <EmbeddedResource Include="Golden\golden-merged-n2.golden.txt" />
+
+    <!-- Story 9.7 — the RAISED-count (N=3 / N=4) merged-tick FR-39 goldens. NEW files proving the raised player
+         count merges deterministically across two runs (same MergedTickBuilder+Applier, same AlgoVersion 21). -->
+    <None Remove="Golden\golden-merged-n3.golden.txt" />
+    <EmbeddedResource Include="Golden\golden-merged-n3.golden.txt" />
+    <None Remove="Golden\golden-merged-n4.golden.txt" />
+    <EmbeddedResource Include="Golden\golden-merged-n4.golden.txt" />
   </ItemGroup>
 
   <ItemGroup>

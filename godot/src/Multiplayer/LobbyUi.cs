@@ -2,19 +2,24 @@
 using Godot;
 using System;
 using System.Threading.Tasks;
+using ProjectChimera.Core;            // Faction, FactionRegistry
+using ProjectChimera.UI;              // FactionPalette, FactionPaletteGodot
+using ProjectChimera.UI.Components;   // ChimeraComponents (kit)
+using ProjectChimera.UI.Theme;        // ThemeTokens, ThemeBuilder, AccentController
+using GodotTheme = Godot.Theme;       // the ProjectChimera.UI.Theme namespace shadows the bare Theme type
 
 namespace ProjectChimera.Multiplayer
 {
     /// <summary>
-    /// Pre-game lobby overlay: Direct IP (LAN/dev) and Online (Nakama matchmaking) modes.
+    /// Pre-game lobby overlay (Story 9.7 rebuild, UX-DR69): Direct IP (LAN/dev) and Online (Nakama matchmaking)
+    /// modes on the Chimera design kit. Adds an N-slot grid (2-4) with per-slot colorblind dots + glyphs
+    /// (<see cref="FactionPalette"/>), ready pills, a ping display, a scenario header with a version-match hash
+    /// check, a pre-match lobby chat pane (over the <see cref="PacketType.LobbyChat"/> packet), and a host
+    /// <b>Start</b> button gated on <see cref="LobbyReadyModel.AllReady"/>.
     ///
-    /// Direct mode:
-    ///   Host → open ENet port, wait for peer → Ready → StartGame.
-    ///   Join  → connect to IP:port → Ready → StartGame.
-    ///
-    /// Online mode:
-    ///   Email + password → auth with Nakama → Find Match → Nakama groups 2 players →
-    ///   auto-joins dedicated server at configured address → Ready/StartGame as normal.
+    /// The lobby handshake wire (Hello / Ready / StartGame, <see cref="HandshakeGate"/>, PROTOCOL_VERSION checks) is
+    /// UNCHANGED — this is a presentation rebuild over the same protocol. Slot occupancy shown is best-effort from
+    /// what the client can observe (no new roster wire): the local assigned slot + peer connect/ready events.
     ///
     /// This is a CanvasLayer Node added as a child of MainScene.
     /// </summary>
@@ -38,6 +43,10 @@ namespace ProjectChimera.Multiplayer
         public string GameServerIp  { get; set; } = "localhost";
         public int    GameServerPort { get; set; } = 7777;
 
+        /// <summary>Story 9.7: the number of player slots this match expects (from the loaded scenario's
+        /// PlayerSlots). Drives the N-slot grid + the all-ready Start gate. Defaults to 2.</summary>
+        public int PlayerCount { get; set; } = 2;
+
         // ── Scenario hash (set by MainScene after scenario load) ─────────────────
 
         /// <summary>
@@ -57,8 +66,7 @@ namespace ProjectChimera.Multiplayer
         /// <summary>
         /// Story 9.4 — true when this match's delay is SERVER-dictated (a dedicated server assigned our faction, or
         /// online/Nakama mode), so the client must run as a delay follower (<c>LockstepManager.ServerDictatedDelay</c>).
-        /// False for a P2P host match (the DelayProposal negotiation stays the 2-player behavior). Set in
-        /// <see cref="FireMatchStart"/> before <see cref="Close"/> resets lobby state, so the match wiring can read it.
+        /// False for a P2P host match. Set in <see cref="FireMatchStart"/> before <see cref="Close"/> resets state.
         /// </summary>
         public bool ServerDictated { get; private set; }
 
@@ -80,10 +88,21 @@ namespace ProjectChimera.Multiplayer
 
         // ── UI refs — shared ──────────────────────────────────────────────────────
 
-        private Label  _titleLabel  = null!;
-        private Label  _statusLabel = null!;
-        private Button _readyBtn    = null!;
-        private Button _cancelBtn   = null!;
+        private Label   _titleLabel  = null!;
+        private Label   _statusLabel = null!;
+        private Label   _scenarioHeader = null!;
+        private Label   _pingLabel   = null!;
+        private Button  _readyBtn    = null!;
+        private Button  _startBtn    = null!;
+        private Button  _cancelBtn   = null!;
+        private VBoxContainer _slotGrid = null!;
+        private RichTextLabel _chatLog  = null!;
+        private LineEdit      _chatInput = null!;
+
+        // ── Kit context ────────────────────────────────────────────────────────────
+
+        private GodotTheme       _theme  = null!;
+        private AccentController? _accent;
 
         // ── State ─────────────────────────────────────────────────────────────────
 
@@ -91,6 +110,22 @@ namespace ProjectChimera.Multiplayer
         private bool         _peerReadyConfirmed;
         private Core.Faction _assignedFaction = Core.Faction.Neutral;
         private bool         _onlineModeActive;
+        private bool         _isHostRole;
+
+        /// <summary>Story 9.7: the N-slot readiness model — the presentation + all-ready-Start-gate source.</summary>
+        private LobbyReadyModel _readyModel = new(FactionRegistry.PLAYER_COUNT);
+
+        // Story 9.7 (P2): scratch for decoding the server's authoritative lobby-roster snapshot.
+        private readonly bool[] _rosterOccupied = new bool[TickCommandPacket.MAX_ROSTER_SLOTS];
+        private readonly bool[] _rosterReady    = new bool[TickCommandPacket.MAX_ROSTER_SLOTS];
+
+        // ── Lobby ping (Story 9.7) ─────────────────────────────────────────────────
+
+        private byte   _pingSeq;
+        private uint   _lastPingMs;
+        private double _sincePing;
+        private int    _lastRttMs = -1;
+        private const double LOBBY_PING_INTERVAL_SEC = 1.0;
 
         // ── Setup ──────────────────────────────────────────────────────────────────
 
@@ -108,7 +143,8 @@ namespace ProjectChimera.Multiplayer
                 NakamaPort   = NakamaPort,
                 NakamaKey    = NakamaKey,
                 GameServerIp   = GameServerIp,
-                GameServerPort = GameServerPort
+                GameServerPort = GameServerPort,
+                TargetPlayerCount = PlayerCount
             };
             _nakama.OnMatchFound  += HandleNakamaMatchFound;
             _nakama.OnStatusText  += SetStatus;
@@ -118,8 +154,23 @@ namespace ProjectChimera.Multiplayer
         public override void _Ready()
         {
             Layer = 20;
+            EnsureKitInitialized();
             BuildUi();
             Visible = false;
+        }
+
+        private void EnsureKitInitialized()
+        {
+            _theme = ResourceLoader.Load<GodotTheme>(ThemeBuilder.ThemePath, cacheMode: ResourceLoader.CacheMode.Ignore)
+                     ?? ThemeBuilder.Build();
+
+            if (!ChimeraComponents.IsInitialized)
+            {
+                _accent = new AccentController { Name = "AccentController" };
+                AddChild(_accent);
+                _accent.Initialize(_theme);
+                ChimeraComponents.Initialize(_theme, _accent);
+            }
         }
 
         // ── Visibility ────────────────────────────────────────────────────────────
@@ -127,8 +178,24 @@ namespace ProjectChimera.Multiplayer
         public new void Show()
         {
             Visible = true;
+            _readyModel = new LobbyReadyModel(FactionRegistry.PLAYER_COUNT);
             _readyBtn.Visible = false;
-            SetStatus("Enter IP to join, click Host, or use Online matchmaking.");
+            _startBtn.Visible = false;
+
+            // Story 9.7 (P4): P2P Direct Host uses ENet maxPeers=1 — it can only ever seat 2. For an N>2 scenario,
+            // disable the Host path (use a dedicated server / matchmaking) so a 3–4-slot sim can't start a 2-human
+            // match. Join (to a dedicated server) and Online matchmaking stay available.
+            bool p2pHostAllowed = PlayerCount <= 2;
+            _hostBtn.Disabled = !p2pHostAllowed;
+            _hostBtn.TooltipText = p2pHostAllowed
+                ? ""
+                : $"This {PlayerCount}-player scenario needs a dedicated server — Direct Host (P2P) seats only 2.";
+
+            RebuildSlotGrid();
+            UpdateScenarioHeader();
+            SetStatus(p2pHostAllowed
+                ? "Enter IP to join, click Host, or use Online matchmaking."
+                : $"{PlayerCount}-player scenario: Join a dedicated server or use Online matchmaking (P2P Host seats only 2).");
         }
 
         public void Close()
@@ -137,6 +204,7 @@ namespace ProjectChimera.Multiplayer
             _readyConfirmed     = false;
             _peerReadyConfirmed = false;
             _assignedFaction    = Core.Faction.Neutral;
+            _readyModel.Reset();
         }
 
         // ── Frame ────────────────────────────────────────────────────────────────
@@ -146,26 +214,34 @@ namespace ProjectChimera.Multiplayer
             if (!Visible) return;
             _transport.Poll();
             _nakama.DrainEvents();   // marshal Nakama background events to main thread
+
+            // Story 9.7: lobby-side RTT probe so the grid can show a real ping (the server + a P2P peer both echo
+            // a Ping with a Pong). Only while connected.
+            if (_transport.IsConnected)
+            {
+                _sincePing += delta;
+                if (_sincePing >= LOBBY_PING_INTERVAL_SEC)
+                {
+                    _sincePing  = 0;
+                    _lastPingMs = (uint)Time.GetTicksMsec();
+                    _transport.SendReliable(TickCommandPacket.MakePing(_pingSeq, _lastPingMs));
+                    _pingSeq++;
+                }
+            }
+
 #if DEBUG
             // Loopback smoke (auto-join): ready as soon as the connection is established, INDEPENDENT of the
-            // server's Hello packet arriving. The Hello (faction assignment) is reliable and still arrives to
-            // set the faction before StartGame, but readiness must not hinge on its timing — a single delayed/
-            // missed Hello otherwise leaves the lobby stuck on "Ready! Waiting" forever. Fires once (OnReadyPressed
-            // sets _readyConfirmed). The connect event itself is reliable, so this always fires after connecting.
+            // server's Hello packet arriving.
             if (_autoReady && !_readyConfirmed && _transport.IsConnected) OnReadyPressed();
 #endif
         }
 
 #if DEBUG
         // ── Story 1.9a (Task 10 loopback smoke, DEBUG-only) ────────────────────────
-        // Auto-connect to a dedicated server and auto-ready with NO user interaction, reusing the real
-        // JoinGame + Ready path, so a one-click launcher can stand up server + 2 clients into a live match
-        // (then F9 induces a one-peer desync). Never compiled into a release build.
 
         private bool _autoReady;
 
-        /// <summary>Connect to a dedicated server (ip:port) and auto-ready. Made Visible so _Process polls the
-        /// transport during the handshake; the lobby closes itself on StartGame (FireMatchStart → Close).</summary>
+        /// <summary>Connect to a dedicated server (ip:port) and auto-ready with NO user interaction.</summary>
         public void AutoJoinDedicated(string ip, int port)
         {
             Show();                 // so _Process(delta) polls the transport during the handshake
@@ -190,9 +266,13 @@ namespace ProjectChimera.Multiplayer
             var err  = _transport.HostGame(port);
             if (err == Error.Ok)
             {
+                _isHostRole = true;
                 SetStatus($"Hosting on port {port}. Waiting for player…");
                 _hostBtn.Disabled = true;
                 _joinBtn.Disabled = true;
+                // Host is the local player in slot 0 (P2P) until/unless a server assigns otherwise.
+                _readyModel.SetOccupied(0, true);
+                RebuildSlotGrid();
             }
             else
             {
@@ -234,8 +314,8 @@ namespace ProjectChimera.Multiplayer
             _findBtn.Disabled      = true;
             _cancelFindBtn.Visible = true;
             _onlineModeActive      = true;
+            _nakama.TargetPlayerCount = PlayerCount;
 
-            // Fire-and-forget; NakamaService enqueues status updates.
             _ = ConnectAndSearchAsync(email, password);
         }
 
@@ -269,8 +349,6 @@ namespace ProjectChimera.Multiplayer
 
         private void HandleNakamaMatchFound(MatchFoundInfo info)
         {
-            // Both players connect to the configured dedicated server.
-            // DedicatedServer.cs assigns factions via Hello packets.
             _cancelFindBtn.Visible = false;
             SetStatus($"Match found! Joining server {info.ServerIp}:{info.ServerPort}…");
 
@@ -281,7 +359,6 @@ namespace ProjectChimera.Multiplayer
                 _findBtn.Disabled = false;
                 _onlineModeActive = false;
             }
-            // HandlePeerConnected will fire when DedicatedServer responds
         }
 
         // ── Shared lobby flow ──────────────────────────────────────────────────────
@@ -290,6 +367,8 @@ namespace ProjectChimera.Multiplayer
         {
             _readyConfirmed    = true;
             _readyBtn.Disabled = true;
+            _readyModel.SetOccupied(LocalSlot(), true);
+            _readyModel.SetReady(LocalSlot(), true);
             // Story 9.4: the widened Ready carries our PROTOCOL_VERSION + the 64-bit match-agreement hash.
             _transport.SendReliable(TickCommandPacket.MakeReady(TickCommandPacket.PROTOCOL_VERSION, MatchAgreementHash));
 #if DEBUG
@@ -297,6 +376,13 @@ namespace ProjectChimera.Multiplayer
 #endif
             string hashStr = ScenarioHash != 0 ? $"  [map 0x{ScenarioHash:X8}]" : "";
             SetStatus($"Ready! Waiting for other player…{hashStr}");
+            RebuildSlotGrid();
+            TryStartGame();
+        }
+
+        private void OnStartPressed()
+        {
+            // Host-only explicit Start (P2P). Enabled only when all-ready; delegates to the same TryStartGame path.
             TryStartGame();
         }
 
@@ -307,9 +393,13 @@ namespace ProjectChimera.Multiplayer
             _joinBtn.Disabled  = false;
             _findBtn.Disabled  = false;
             _readyBtn.Visible  = false;
+            _startBtn.Visible  = false;
             _readyConfirmed     = false;
             _peerReadyConfirmed = false;
             _onlineModeActive   = false;
+            _isHostRole         = false;
+            _readyModel.Reset();
+            RebuildSlotGrid();
             SetStatus("Disconnected.");
         }
 
@@ -324,22 +414,32 @@ namespace ProjectChimera.Multiplayer
             _readyBtn.Visible  = true;
             _readyBtn.Disabled = false;
 
-            // In direct P2P mode, host sends Hello to identify itself.
-            // In dedicated-server mode (direct or online), the server sends Hello first.
+            // P2P HOST knows it is a 2-player match the instant a peer connects (ENet maxPeers=1): mark both slots.
+            // Story 9.7 (P2b): a JOINER (dedicated OR P2P) does NOT infer occupancy from the raw ENet connect — it
+            // waits for the authoritative Hello (P2P host confirm → slots 0+1) or the server LobbyRoster (dedicated),
+            // so no phantom slot lingers on the dedicated path.
             if (_transport.IsHost && !_onlineModeActive)
+            {
+                _readyModel.SetOccupied(0, true);
+                _readyModel.SetOccupied(1, true);
                 _transport.SendReliable(TickCommandPacket.MakeHello());
+            }
+            RebuildSlotGrid();
         }
 
         private void HandlePeerDisconnected()
         {
             SetStatus("Peer disconnected.");
             _readyBtn.Visible   = false;
+            _startBtn.Visible   = false;
             _hostBtn.Disabled   = false;
             _joinBtn.Disabled   = false;
             _findBtn.Disabled   = false;
             _readyConfirmed     = false;
             _peerReadyConfirmed = false;
             _onlineModeActive   = false;
+            _readyModel.Reset();
+            RebuildSlotGrid();
         }
 
         private void HandlePacket(byte[] data, int len, int channel)
@@ -353,8 +453,7 @@ namespace ProjectChimera.Multiplayer
 #if DEBUG
                     GD.Print("[Lobby] Hello packet received from server.");
 #endif
-                    // Story 9.4: validate the peer/server PROTOCOL_VERSION fail-closed (the D3.8 gap). A version
-                    // skew — or an unparseable Hello (version 0) — blocks the start; we never mark ready.
+                    // Story 9.4: validate the peer/server PROTOCOL_VERSION fail-closed (the D3.8 gap).
                     if (!TickCommandPacket.TryReadHello(data, len, out var f, out ushort helloVer)
                         || helloVer != TickCommandPacket.PROTOCOL_VERSION)
                     {
@@ -367,15 +466,21 @@ namespace ProjectChimera.Multiplayer
                     }
                     if (f != Core.Faction.Neutral)
                     {
+                        // Dedicated server assigned our faction/slot. Mark OUR slot; the server LobbyRoster fills the rest.
                         _assignedFaction = f;
+                        _readyModel.SetOccupied(LocalSlot(), true);
                         SetStatus($"Server assigned faction: {f}. Click Ready when set up.");
                     }
                     else
                     {
+                        // P2P host confirmed (Neutral Hello): a 2-player match — mark host (slot 0) + self (slot 1).
+                        _readyModel.SetOccupied(0, true);
+                        _readyModel.SetOccupied(1, true);
                         SetStatus("Host confirmed. Click Ready when set up.");
                     }
                     _readyBtn.Visible  = true;
                     _readyBtn.Disabled = false;
+                    RebuildSlotGrid();
 #if DEBUG
                     TryAutoReady();   // Story 1.9a loopback smoke: auto-ready once the server assigns a faction
 #endif
@@ -383,12 +488,7 @@ namespace ProjectChimera.Multiplayer
 
                 case PacketType.Ready:
                 {
-                    // Story 7.7 / 9.4 — the pure HandshakeGate decision over the 64-bit match-agreement hash: hash 0
-                    // (not computed) BLOCKS (fail-closed), a nonzero mismatch blocks, equal nonzero allows. An
-                    // UNPARSEABLE Ready payload routes through the gate as peerHash 0 (peerHashParsed: false) so it
-                    // blocks — it must never mark the peer ready and bypass the check. Story 9.4 ALSO validates the
-                    // peer's PROTOCOL_VERSION here (the version is not folded into the hash, so a version skew with a
-                    // matching scenario would otherwise slip past the hash gate — fail-closed).
+                    // Story 7.7 / 9.4 — the pure HandshakeGate decision over the 64-bit match-agreement hash.
                     bool parsed = TickCommandPacket.TryReadReady(data, len, out ushort peerVer, out ulong peerHash);
                     if (parsed && peerVer != TickCommandPacket.PROTOCOL_VERSION)
                     {
@@ -406,7 +506,12 @@ namespace ProjectChimera.Multiplayer
                         return;
                     }
                     _peerReadyConfirmed = true;
+                    // P2P: the ready peer occupies slot 1 (from the host's view) or slot 0 (from the joiner's view).
+                    int peerSlot = _isHostRole ? 1 : 0;
+                    _readyModel.SetOccupied(peerSlot, true);
+                    _readyModel.SetReady(peerSlot, true);
                     SetStatus("Other player is ready!");
+                    RebuildSlotGrid();
                     TryStartGame();
                     break;
                 }
@@ -414,12 +519,54 @@ namespace ProjectChimera.Multiplayer
                 case PacketType.StartGame:
                     FireMatchStart(isHost: false);
                     break;
+
+                case PacketType.Ping:
+                    // Answer an inbound lobby ping so the sender can measure RTT.
+                    if (len >= 6)
+                        _transport.SendReliable(TickCommandPacket.MakePong(data[1],
+                            (uint)(data[2] | (data[3] << 8) | (data[4] << 16) | (data[5] << 24))));
+                    break;
+
+                case PacketType.Pong:
+                    if (TickCommandPacket.TryReadPong(data, len, out byte seq, out uint senderMs)
+                        && seq == (byte)(_pingSeq - 1))
+                    {
+                        int rtt = (int)((uint)Time.GetTicksMsec() - senderMs);
+                        if (rtt >= 0 && rtt < 10_000) { _lastRttMs = rtt; UpdatePing(); }
+                    }
+                    break;
+
+                case PacketType.LobbyChat:
+                    if (TickCommandPacket.TryReadLobbyChat(data, len, out Core.Faction chatFaction, out string chatMsg))
+                        AppendChat(chatFaction, chatMsg);
+                    break;
+
+                case PacketType.LobbyRoster:
+                    // Story 9.7 (P2): the authoritative pre-match roster/ready snapshot from a dedicated server —
+                    // the ONLY way this client observes remote slots on the dedicated path. Drives the N-slot grid.
+                    if (TickCommandPacket.TryReadLobbyRoster(data, len, out int rn, _rosterOccupied, _rosterReady))
+                    {
+                        for (int s = 0; s < rn; s++)
+                        {
+                            _readyModel.SetOccupied(s, _rosterOccupied[s]);
+                            _readyModel.SetReady(s, _rosterReady[s]);
+                        }
+                        RebuildSlotGrid();
+                        TryStartGame(); // re-evaluate the (host-only P2P) start gate / button-enable
+                    }
+                    break;
             }
         }
 
         private void TryStartGame()
         {
-            if (!_readyConfirmed || !_peerReadyConfirmed) return;
+            // Story 9.7 (P4): ONE predicate — LobbyReadyModel.AllReady(PlayerCount) — gates BOTH the Start-button
+            // enable AND the start execution (no more two-peer _readyConfirmed/_peerReadyConfirmed disagreeing with
+            // the button). For N=2 P2P this equals both peers ready; for N>2 dedicated it reflects the server roster.
+            bool allReady = _readyModel.AllReady(PlayerCount);
+            if (_startBtn != null) _startBtn.Disabled = !allReady;
+
+            if (!allReady) return;
 
             if (_transport.IsHost && !_onlineModeActive)
             {
@@ -435,14 +582,106 @@ namespace ProjectChimera.Multiplayer
                 ? _assignedFaction
                 : (isHost ? Core.Faction.Player1 : Core.Faction.Player2);
 
-            // Story 9.4: a dedicated server assigns our faction (or online/Nakama mode) ⇒ delay is server-dictated;
-            // a P2P host match (Neutral Hello, direct mode) keeps the DelayProposal negotiation. Captured BEFORE
-            // Close() resets _assignedFaction / _onlineModeActive so the match wiring can read ServerDictated.
             ServerDictated = _assignedFaction != Core.Faction.Neutral || _onlineModeActive;
 
             GD.Print($"[Lobby] Match starting — faction: {localFaction} (serverAssigned={_assignedFaction != Core.Faction.Neutral}, online={_onlineModeActive}, serverDictated={ServerDictated})");
             Close();
             OnMatchStart?.Invoke(isHost, localFaction);
+        }
+
+        // ── Lobby chat ─────────────────────────────────────────────────────────────
+
+        private void OnChatSubmitted(string text)
+        {
+            string msg = text.Trim();
+            _chatInput.Text = "";
+            if (string.IsNullOrEmpty(msg) || !_transport.IsConnected) return;
+            Core.Faction f = LobbyLocalFaction();
+            _transport.SendReliable(TickCommandPacket.MakeLobbyChat(f, msg));
+            AppendChat(f, msg); // optimistic echo (the dedicated server rebroadcasts to sender too)
+        }
+
+        private void AppendChat(Core.Faction faction, string message)
+        {
+            var entry = FactionPalette.ForFaction(faction);
+            string safe = message.Replace("[", "（").Replace("]", "）");
+            _chatLog.PushColor(entry.ToColor());
+            _chatLog.AddText($"{entry.Glyph} {entry.Name}: ");
+            _chatLog.Pop();
+            _chatLog.AddText(safe + "\n");
+        }
+
+        // ── Slot grid + header ──────────────────────────────────────────────────────
+
+        private int LocalSlot()
+            => _assignedFaction != Core.Faction.Neutral ? (int)_assignedFaction - 1 : (_isHostRole ? 0 : 1);
+
+        private Core.Faction LobbyLocalFaction()
+            => _assignedFaction != Core.Faction.Neutral ? _assignedFaction
+             : FactionRegistry.ToFaction(_isHostRole ? 0 : 1);
+
+        /// <summary>Rebuild the N-slot grid: each row = a colorblind dot + glyph + faction name + a ready pill.</summary>
+        private void RebuildSlotGrid()
+        {
+            foreach (Node c in _slotGrid.GetChildren()) c.QueueFree();
+
+            int n = PlayerCount < 2 ? 2 : (PlayerCount > FactionRegistry.PLAYER_COUNT ? FactionRegistry.PLAYER_COUNT : PlayerCount);
+            for (int slot = 0; slot < n; slot++)
+            {
+                var entry = FactionPalette.ForSlot(slot);
+                var row = new HBoxContainer();
+                row.AddThemeConstantOverride("separation", ChimeraComponents.Const(ThemeTokens.S2));
+
+                // Colorblind dot (color) — never the sole signal; the glyph + name accompany it.
+                var dot = new ColorRect
+                {
+                    Color = entry.ToColor(),
+                    CustomMinimumSize = new Vector2(14, 14),
+                    SizeFlagsVertical = Control.SizeFlags.ShrinkCenter,
+                };
+                row.AddChild(dot);
+
+                var glyphLabel = new Label { Text = entry.Glyph };
+                glyphLabel.AddThemeColorOverride("font_color", entry.ToColor());
+                row.AddChild(glyphLabel);
+
+                var nameLabel = new Label { Text = entry.Name, CustomMinimumSize = new Vector2(60, 0) };
+                row.AddChild(nameLabel);
+
+                bool occupied = _readyModel.IsOccupied(slot);
+                bool ready    = _readyModel.IsReady(slot);
+                string tagText = !occupied ? "OPEN" : ready ? "READY" : "NOT READY";
+                var tagVariant = !occupied ? ChimeraComponents.TagVariant.Neutral
+                               : ready ? ChimeraComponents.TagVariant.Ok
+                               : ChimeraComponents.TagVariant.Danger;
+                row.AddChild(ChimeraComponents.Tag(tagText, tagVariant));
+
+                _slotGrid.AddChild(row);
+            }
+
+            UpdatePing();
+            if (_startBtn != null)
+            {
+                bool canStart = _transport != null && _transport.IsHost && !_onlineModeActive;
+                _startBtn.Visible  = canStart;
+                _startBtn.Disabled = !(_readyModel.AllReady(PlayerCount) || (_readyConfirmed && _peerReadyConfirmed));
+            }
+        }
+
+        private void UpdateScenarioHeader()
+        {
+            // Story 9.7 (UX-DR69): a scenario header with the version-match hash check surfaced. A computed
+            // (non-zero) MatchAgreementHash means a validated start-state exists on this client; 0 means the lobby
+            // will BLOCK the start (HandshakeGate fail-closed).
+            string hashState = MatchAgreementHash != 0
+                ? $"hash 0x{MatchAgreementHash:X16} ✓"
+                : "hash NOT COMPUTED — start will be blocked";
+            _scenarioHeader.Text = $"Scenario version-match: {hashState}   ·   {PlayerCount} players";
+        }
+
+        private void UpdatePing()
+        {
+            _pingLabel.Text = _lastRttMs < 0 ? "Ping: —" : $"Ping: {_lastRttMs} ms";
         }
 
         // ── Tab switching ─────────────────────────────────────────────────────────
@@ -459,155 +698,190 @@ namespace ProjectChimera.Multiplayer
             _onlineTab.Visible = true;
         }
 
-        // ── UI construction ───────────────────────────────────────────────────────
+        // ── UI construction (Chimera kit) ───────────────────────────────────────────
 
         private void BuildUi()
         {
-            var bg = new ColorRect { Color = new Color(0, 0, 0, 0.75f) };
-            bg.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
-            AddChild(bg);
-
-            var root = new PanelContainer();
-            root.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.Center);
-            root.CustomMinimumSize = new Vector2(430, 380);
-            root.GrowHorizontal = Control.GrowDirection.Both;
-            root.GrowVertical   = Control.GrowDirection.Both;
+            var root = new Control();
+            root.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
+            root.Theme = _theme;
+            root.MouseFilter = Control.MouseFilterEnum.Stop;
             AddChild(root);
 
-            var vbox = new VBoxContainer { CustomMinimumSize = new Vector2(410, 0) };
-            vbox.AddThemeConstantOverride("separation", 10);
-            root.AddChild(vbox);
+            var bg = new ColorRect { Color = new Color(0, 0, 0, 0.75f) };
+            bg.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
+            root.AddChild(bg);
 
-            _titleLabel = MakeLabel("Multiplayer Lobby", 22, bold: true);
+            var center = new CenterContainer();
+            center.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
+            root.AddChild(center);
+
+            var panel = ChimeraComponents.Panel();
+            panel.CustomMinimumSize = new Vector2(560, 560);
+            center.AddChild(panel);
+
+            var vbox = new VBoxContainer { CustomMinimumSize = new Vector2(520, 0) };
+            vbox.AddThemeConstantOverride("separation", ChimeraComponents.Const(ThemeTokens.S3));
+            panel.AddChild(vbox);
+
+            _titleLabel = MakeHeading("MULTIPLAYER LOBBY", ThemeTokens.T2xl);
             vbox.AddChild(_titleLabel);
-            vbox.AddChild(MakeSeparator());
 
-            // ── Mode tab toggle ────────────────────────────────────────────────────
+            _scenarioHeader = MakeBody("Scenario version-match: —", ThemeTokens.TextMid, ThemeTokens.Tsm);
+            vbox.AddChild(_scenarioHeader);
+
+            // ── Slot grid ──────────────────────────────────────────────────────────
+            var slotHeader = MakeBody("Slots", ThemeTokens.TextLo, ThemeTokens.Txs);
+            vbox.AddChild(slotHeader);
+            _slotGrid = new VBoxContainer();
+            _slotGrid.AddThemeConstantOverride("separation", ChimeraComponents.Const(ThemeTokens.S1));
+            vbox.AddChild(_slotGrid);
+
+            _pingLabel = MakeBody("Ping: —", ThemeTokens.TextLo, ThemeTokens.Txs);
+            vbox.AddChild(_pingLabel);
+
+            vbox.AddChild(new HSeparator());
+
+            // ── Mode tab toggle ─────────────────────────────────────────────────────
             var tabRow = new HBoxContainer();
-            tabRow.AddThemeConstantOverride("separation", 4);
-            var directTabBtn = MakeButton("Direct (LAN / IP)");
-            var onlineTabBtn = MakeButton("Online (Matchmaking)");
-            directTabBtn.CustomMinimumSize = new Vector2(195, 32);
-            onlineTabBtn.CustomMinimumSize = new Vector2(195, 32);
+            tabRow.AddThemeConstantOverride("separation", ChimeraComponents.Const(ThemeTokens.S1));
+            var directTabBtn = ChimeraComponents.Button("Direct (LAN / IP)", ChimeraComponents.ButtonVariant.Secondary);
+            var onlineTabBtn = ChimeraComponents.Button("Online (Matchmaking)", ChimeraComponents.ButtonVariant.Secondary);
             directTabBtn.Pressed += ShowDirectTab;
             onlineTabBtn.Pressed += ShowOnlineTab;
             tabRow.AddChild(directTabBtn);
             tabRow.AddChild(onlineTabBtn);
             vbox.AddChild(tabRow);
 
-            vbox.AddChild(MakeSeparator());
-
-            // ── Direct tab ─────────────────────────────────────────────────────────
+            // ── Direct tab ───────────────────────────────────────────────────────────
             _directTab = new VBoxContainer();
-            _directTab.AddThemeConstantOverride("separation", 8);
+            ((VBoxContainer)_directTab).AddThemeConstantOverride("separation", ChimeraComponents.Const(ThemeTokens.S2));
 
             var portRow = new HBoxContainer();
-            portRow.AddChild(MakeLabel("Port:", 14));
+            portRow.AddChild(ChimeraComponents.FieldLabel("Port"));
             _portSpin = new SpinBox { MinValue = 1024, MaxValue = 65535, Value = 7777,
                                       CustomMinimumSize = new Vector2(110, 0) };
             portRow.AddChild(_portSpin);
-            _directTab.AddChild(portRow);
+            ((VBoxContainer)_directTab).AddChild(portRow);
 
             var ipRow = new HBoxContainer();
-            ipRow.AddChild(MakeLabel("IP (join):", 14));
-            _ipField = new LineEdit
-            {
-                PlaceholderText     = "192.168.1.x",
-                SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
-                CustomMinimumSize   = new Vector2(200, 0)
-            };
+            ipRow.AddChild(ChimeraComponents.FieldLabel("IP (join)"));
+            _ipField = ChimeraComponents.Input("192.168.1.x");
+            _ipField.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
             ipRow.AddChild(_ipField);
-            _directTab.AddChild(ipRow);
+            ((VBoxContainer)_directTab).AddChild(ipRow);
 
             var actionRow = new HBoxContainer();
-            actionRow.AddThemeConstantOverride("separation", 8);
-            _hostBtn = MakeButton("Host Game");
-            _joinBtn = MakeButton("Join Game");
+            actionRow.AddThemeConstantOverride("separation", ChimeraComponents.Const(ThemeTokens.S2));
+            _hostBtn = ChimeraComponents.Button("Host Game", ChimeraComponents.ButtonVariant.Primary);
+            _joinBtn = ChimeraComponents.Button("Join Game", ChimeraComponents.ButtonVariant.Secondary);
             _hostBtn.Pressed += OnHostPressed;
             _joinBtn.Pressed += OnJoinPressed;
             actionRow.AddChild(_hostBtn);
             actionRow.AddChild(_joinBtn);
-            _directTab.AddChild(actionRow);
+            ((VBoxContainer)_directTab).AddChild(actionRow);
 
             vbox.AddChild(_directTab);
 
-            // ── Online tab ─────────────────────────────────────────────────────────
-            _onlineTab = new VBoxContainer();
-            _onlineTab.AddThemeConstantOverride("separation", 8);
-            _onlineTab.Visible = false;
+            // ── Online tab ───────────────────────────────────────────────────────────
+            _onlineTab = new VBoxContainer { Visible = false };
+            ((VBoxContainer)_onlineTab).AddThemeConstantOverride("separation", ChimeraComponents.Const(ThemeTokens.S2));
 
             var emailRow = new HBoxContainer();
-            emailRow.AddChild(MakeLabel("Email:", 14));
-            _emailField = new LineEdit
-            {
-                PlaceholderText     = "you@example.com",
-                SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
-                CustomMinimumSize   = new Vector2(230, 0)
-            };
+            emailRow.AddChild(ChimeraComponents.FieldLabel("Email"));
+            _emailField = ChimeraComponents.Input("you@example.com");
+            _emailField.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
             emailRow.AddChild(_emailField);
-            _onlineTab.AddChild(emailRow);
+            ((VBoxContainer)_onlineTab).AddChild(emailRow);
 
             var passRow = new HBoxContainer();
-            passRow.AddChild(MakeLabel("Password:", 14));
-            _passwordField = new LineEdit
-            {
-                PlaceholderText     = "••••••••",
-                Secret              = true,
-                SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
-                CustomMinimumSize   = new Vector2(230, 0)
-            };
+            passRow.AddChild(ChimeraComponents.FieldLabel("Password"));
+            _passwordField = ChimeraComponents.Input("••••••••");
+            _passwordField.Secret = true;
+            _passwordField.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
             passRow.AddChild(_passwordField);
-            _onlineTab.AddChild(passRow);
+            ((VBoxContainer)_onlineTab).AddChild(passRow);
 
             var findRow = new HBoxContainer();
-            findRow.AddThemeConstantOverride("separation", 8);
-            _findBtn       = MakeButton("Find Match");
-            _cancelFindBtn = MakeButton("Cancel Search");
+            findRow.AddThemeConstantOverride("separation", ChimeraComponents.Const(ThemeTokens.S2));
+            _findBtn       = ChimeraComponents.Button("Find Match", ChimeraComponents.ButtonVariant.Primary);
+            _cancelFindBtn = ChimeraComponents.Button("Cancel Search", ChimeraComponents.ButtonVariant.Secondary);
             _cancelFindBtn.Visible = false;
             _findBtn.Pressed       += OnFindMatchPressed;
             _cancelFindBtn.Pressed += OnCancelFindPressed;
             findRow.AddChild(_findBtn);
             findRow.AddChild(_cancelFindBtn);
-            _onlineTab.AddChild(findRow);
+            ((VBoxContainer)_onlineTab).AddChild(findRow);
 
-            _onlineTab.AddChild(MakeLabel(
+            ((VBoxContainer)_onlineTab).AddChild(MakeBody(
                 $"Matchmaking server: {NakamaHost}:{NakamaPort}\nGame server: {GameServerIp}:{GameServerPort}",
-                11));
+                ThemeTokens.TextLo, ThemeTokens.Txs));
 
             vbox.AddChild(_onlineTab);
 
-            // ── Shared bottom ──────────────────────────────────────────────────────
-            vbox.AddChild(MakeSeparator());
+            vbox.AddChild(new HSeparator());
 
-            _statusLabel = MakeLabel("Choose Direct or Online to begin.", 13);
+            // ── Lobby chat ───────────────────────────────────────────────────────────
+            _chatLog = new RichTextLabel
+            {
+                BbcodeEnabled     = true,
+                ScrollFollowing   = true,
+                CustomMinimumSize = new Vector2(0, 100),
+            };
+            vbox.AddChild(_chatLog);
+
+            var chatRow = new HBoxContainer();
+            chatRow.AddThemeConstantOverride("separation", ChimeraComponents.Const(ThemeTokens.S1));
+            _chatInput = ChimeraComponents.Input("Type to chat in the lobby…");
+            _chatInput.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+            _chatInput.MaxLength = 200;
+            _chatInput.TextSubmitted += OnChatSubmitted;
+            chatRow.AddChild(_chatInput);
+            vbox.AddChild(chatRow);
+
+            vbox.AddChild(new HSeparator());
+
+            _statusLabel = MakeBody("Choose Direct or Online to begin.", ThemeTokens.TextMid, ThemeTokens.Tsm);
             _statusLabel.AutowrapMode = TextServer.AutowrapMode.Word;
             vbox.AddChild(_statusLabel);
 
+            // ── Shared bottom (Ready / Start / Cancel) ───────────────────────────────
             var bottomRow = new HBoxContainer();
-            bottomRow.AddThemeConstantOverride("separation", 8);
-            _readyBtn  = MakeButton("✓  Ready");
-            _cancelBtn = MakeButton("Cancel");
+            bottomRow.AddThemeConstantOverride("separation", ChimeraComponents.Const(ThemeTokens.S2));
+            _readyBtn = ChimeraComponents.Button("✓  Ready", ChimeraComponents.ButtonVariant.Primary);
+            _startBtn = ChimeraComponents.Button("Start", ChimeraComponents.ButtonVariant.Primary);
+            _cancelBtn = ChimeraComponents.Button("Cancel", ChimeraComponents.ButtonVariant.Danger);
             _readyBtn.Visible = false;
+            _startBtn.Visible = false;
+            _startBtn.Disabled = true;
             _readyBtn.Pressed  += OnReadyPressed;
+            _startBtn.Pressed  += OnStartPressed;
             _cancelBtn.Pressed += OnCancelPressed;
             bottomRow.AddChild(_readyBtn);
+            bottomRow.AddChild(_startBtn);
             bottomRow.AddChild(_cancelBtn);
             vbox.AddChild(bottomRow);
         }
 
         // ── UI helpers ────────────────────────────────────────────────────────────
 
-        private static Label MakeLabel(string text, int size, bool bold = false)
+        private Label MakeHeading(string text, StringName sizeToken)
         {
-            var lbl = new Label { Text = text };
-            lbl.AddThemeFontSizeOverride("font_size", size);
-            return lbl;
+            var l = new Label { Text = text };
+            l.AddThemeFontOverride("font", _theme.GetFont(ThemeTokens.FontDisplay, ThemeTokens.Type));
+            l.AddThemeFontSizeOverride("font_size", _theme.GetFontSize(sizeToken, ThemeTokens.Type));
+            l.AddThemeColorOverride("font_color", _theme.GetColor(ThemeTokens.TextHi, ThemeTokens.Type));
+            return l;
         }
 
-        private static Button MakeButton(string text) =>
-            new Button { Text = text, CustomMinimumSize = new Vector2(130, 36) };
-
-        private static HSeparator MakeSeparator() => new HSeparator();
+        private Label MakeBody(string text, StringName colorToken, StringName sizeToken)
+        {
+            var l = new Label { Text = text };
+            l.AddThemeFontOverride("font", _theme.GetFont(ThemeTokens.FontUi, ThemeTokens.Type));
+            l.AddThemeFontSizeOverride("font_size", _theme.GetFontSize(sizeToken, ThemeTokens.Type));
+            l.AddThemeColorOverride("font_color", _theme.GetColor(colorToken, ThemeTokens.Type));
+            return l;
+        }
 
         private void SetStatus(string msg) => _statusLabel.Text = msg;
     }

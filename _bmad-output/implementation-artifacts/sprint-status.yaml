@@ -181,7 +181,7 @@ development_status:
   # 9-5 (local-faction) is sequenced before 9-6/9-7 (2026-07-01): the local-faction fix must land before MP verification stories.
   9-5-local-faction-parameterization-remove-every-player1-hardcode-from-the-presentation-layer: done
   9-6-deterministic-disconnect-freeze-and-continue-drop-policy: done
-  9-7-nakama-n-player-matchmaking-parties-api-server-side-slot-assignment-lobby-matchmaking-ui: backlog
+  9-7-nakama-n-player-matchmaking-parties-api-server-side-slot-assignment-lobby-matchmaking-ui: done
   9-8-proof-of-play-token-pre-publish-quality-ip-consent-gate-publish-chimera-zip-to-mod-io: backlog
   9-9-content-hash-integrity-verification-on-download-runtime-binary-asset-ingest: backlog
   9-10-content-browser-delegating-browse-search-tag-sort-subscribe-rate-to-mod-io: backlog

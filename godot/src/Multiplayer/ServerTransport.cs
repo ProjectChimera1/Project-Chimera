@@ -1,13 +1,16 @@
 #nullable enable
 using System;
 using Godot;
+using ProjectChimera.Multiplayer.Server; // SlotAllocation (dynamic player/spectator split)
 
 namespace ProjectChimera.Multiplayer
 {
     /// <summary>
     /// Low-level ENet transport for the dedicated server role.
-    /// Accepts up to <see cref="MAX_SLOTS"/> peers, assigns them numbered slots (0 = P1, 1 = P2),
-    /// and provides per-slot send / broadcast helpers.
+    /// Accepts up to <see cref="MAX_SLOTS"/> peers, assigns them numbered slots (slot s → Player(s+1) for the first
+    /// <see cref="MAX_PLAYERS"/> slots; the remaining slots are spectators), and provides per-slot send / broadcast
+    /// helpers. Story 9.7: raised from a fixed 1v1 (2 players / 2 spectators) to N≤4 players with dynamic spectator
+    /// headroom; the player/spectator split is decided per accept-slot by <see cref="SlotAllocation.Classify"/>.
     ///
     /// The server never connects outward — it only accepts inbound connections.
     ///
@@ -19,9 +22,13 @@ namespace ProjectChimera.Multiplayer
     {
         // ── Constants ─────────────────────────────────────────────────────────────
 
-        /// <summary>Slots 0–1 are the two players. Slots 2–3 are spectators.</summary>
-        public const int MAX_SLOTS      = 4;
-        public const int MAX_PLAYERS    = 2;
+        /// <summary>Story 9.7: the transport slot ceiling — up to <see cref="MAX_PLAYERS"/> players plus spectator
+        /// headroom. Slots 0..MAX_PLAYERS-1 are players; MAX_PLAYERS..MAX_SLOTS-1 are spectators.</summary>
+        public const int MAX_SLOTS      = 8;
+        /// <summary>Story 9.7: raised 2→4 (verified ship ceiling; the wire/builder architect for 8 as a constant bump).
+        /// PINNED to the Godot-free <see cref="PlayerCountPolicy.MpSeatCeiling"/> so the transport seat ceiling and the
+        /// matchmaker/lobby target ceiling can never drift.</summary>
+        public const int MAX_PLAYERS    = PlayerCountPolicy.MpSeatCeiling;
         public const int CHANNEL_COUNT  = 2;
         public const int CH_RELIABLE    = 0;
         public const int CH_COMMANDS    = 1;
@@ -83,7 +90,11 @@ namespace ProjectChimera.Multiplayer
                     case ENetConnection.EventType.Connect:
                     {
                         int slot = FindFreeSlot();
-                        if (slot < 0)
+                        // Story 9.7: the player/spectator/reject decision is the Godot-free SlotAllocation.Classify
+                        // (dynamic split by MAX_PLAYERS), not a fixed 2/2 partition. A full transport (FindFreeSlot
+                        // == -1) or an out-of-ceiling slot classifies as Rejected → drop the peer.
+                        var role = SlotAllocation.Classify(slot, MAX_PLAYERS, MAX_SLOTS);
+                        if (role == SlotRole.Rejected)
                         {
                             GD.PrintErr("[Server] No free slot — rejecting peer.");
                             peer.PeerDisconnect();
@@ -91,7 +102,7 @@ namespace ProjectChimera.Multiplayer
                         }
                         _slots[slot] = peer;
                         ConnectedCount++;
-                        GD.Print($"[Server] Peer connected → slot {slot}.");
+                        GD.Print($"[Server] Peer connected → slot {slot} ({role}).");
                         OnSlotConnected?.Invoke(slot);
                         break;
                     }

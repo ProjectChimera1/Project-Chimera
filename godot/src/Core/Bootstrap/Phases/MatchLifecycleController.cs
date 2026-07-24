@@ -46,22 +46,53 @@ namespace ProjectChimera.Core.Bootstrap
             // consumes checksums), so this OnHalt is the live halt path. Offers only "Return to Menu".
             _ctx.Lockstep.OnHalt += (tick, canonical, hasCanonical) => _ctx.Scene.ShowHalt(tick, canonical, hasCanonical);
 
+            // Story 9.7: read the game-server + Nakama endpoint from versioned SettingsData (the Story 8.1
+            // provider-config pattern), falling back to the MainScene Inspector exports when a field is unset
+            // (empty string / 0 port). So a deployed build can point at a configured static endpoint without an
+            // editor rebuild, while dev/editor runs keep the export defaults.
+            var settings = _ctx.SettingsMgr?.Current;
             _ctx.LobbyUi = new LobbyUi
             {
-                NakamaHost     = _ctx.Scene.NakamaHost,
-                NakamaPort     = _ctx.Scene.NakamaPort,
-                NakamaKey      = _ctx.Scene.NakamaKey,
-                GameServerIp   = _ctx.Scene.GameServerIp,
-                GameServerPort = _ctx.Scene.GameServerPort
+                NakamaHost     = NonEmpty(settings?.NakamaHost,   _ctx.Scene.NakamaHost),
+                NakamaPort     = Positive(settings?.NakamaPort,   _ctx.Scene.NakamaPort),
+                NakamaKey      = NonEmpty(settings?.NakamaKey,    _ctx.Scene.NakamaKey),
+                GameServerIp   = NonEmpty(settings?.GameServerIp, _ctx.Scene.GameServerIp),
+                GameServerPort = Positive(settings?.GameServerPort, _ctx.Scene.GameServerPort),
+                // Story 9.7: the N-slot grid + all-ready gate + matchmaker size derive from the loaded scenario.
+                PlayerCount    = LobbyPlayerCount(),
             };
             _ctx.Scene.AddChild(_ctx.LobbyUi);
             _ctx.LobbyUi.Initialize(_ctx.Transport);
             _ctx.LobbyUi.OnMatchStart += OnMatchStart;
 
+            // Story 9.7 / 9.6-carryover: subscribe the previously-unconsumed LockstepManager.OnPlayerDropped so an
+            // in-match freeze-and-continue surfaces in the chat/roster ("Player <faction> dropped — slot frozen").
+            // Presentation-only — the determinism truth is the merged stream the server keeps broadcasting.
+            _ctx.Lockstep.OnPlayerDropped += (faction, applyAtTick) =>
+            {
+                _ctx.Log.Info($"[Drop] Player {faction} dropped — slot frozen (idle from tick {applyAtTick}).");
+                if (_ctx.ChatOverlay is { Visible: true })
+                    _ctx.ChatOverlay.AddSystemMessage($"Player {faction} dropped — slot frozen. Match continues.");
+            };
+
             _ctx.ChatOverlay = new MatchChatOverlay();
             _ctx.Scene.AddChild(_ctx.ChatOverlay);
             // Chat is inactive until a match starts (Visible=false by default).
         }
+
+        /// <summary>Story 9.7 (P3): the scenario-derived MATCHMAKER/LOBBY target — clamped to the transport SEAT
+        /// ceiling (<see cref="PlayerCountPolicy.MpSeatCeiling"/> == ServerTransport.MAX_PLAYERS), never the larger
+        /// sim faction ceiling: never queue/group/expect more players than the transport seats.</summary>
+        private int LobbyPlayerCount()
+            => PlayerCountPolicy.MpTargetPlayers(_ctx.Scenario?.PlayerSlots?.Length ?? 0);
+
+        /// <summary>Prefer a non-empty configured string; else the export fallback.</summary>
+        private static string NonEmpty(string? configured, string fallback)
+            => string.IsNullOrEmpty(configured) ? fallback : configured!;
+
+        /// <summary>Prefer a positive configured port; else the export fallback.</summary>
+        private static int Positive(int? configured, int fallback)
+            => configured is int v && v > 0 ? v : fallback;
 
         private void OnMatchStart(bool isHost, Faction localFaction)
         {
@@ -149,9 +180,12 @@ namespace ProjectChimera.Core.Bootstrap
                 if (!System.IO.Directory.Exists(replayDir))
                     System.IO.Directory.CreateDirectory(replayDir);
 
-                // Timestamp-based filename so each match gets a unique file.
+                // Timestamp-based filename so each match gets a unique file. Story 9.7: player-count-aware suffix
+                // (was the fixed "_1v1") derived from the loaded scenario's PlayerSlots — e.g. "_2p"/"_4p".
                 string timestamp = System.DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss");
-                string filePath  = System.IO.Path.Combine(replayDir, $"{timestamp}_1v1.chmr");
+                int players = _ctx.Scenario?.PlayerSlots?.Length ?? 0;
+                if (players < 2) players = 2;
+                string filePath  = System.IO.Path.Combine(replayDir, $"{timestamp}_{players}p.chmr");
 
                 // Match seed: a fixed default for now (the real MP seed handshake is Epic 9). The EntityWorld's RNG
                 // already starts at this value; record it so a replay restores the identical stream origin (D6).

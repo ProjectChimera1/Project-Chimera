@@ -30,6 +30,10 @@ namespace ProjectChimera.Core.Bootstrap
                 _ctx.HeroPicker.RequestSkirmishLaunch();
             };
 
+            // Story 9.7: the Multiplayer destination — un-defers the honesty-gated slot. Opens the rebuilt N-slot
+            // lobby (Direct LAN/IP + Nakama matchmaking). Replaces the dev-only Edit-mode `N` keybind as the entry.
+            _ctx.MainMenu.OnMultiplayer += () => _ctx.LobbyUi.Show();
+
             _ctx.MainMenu.OnCreate += () =>
             {
                 // Ensure we're in Edit mode.

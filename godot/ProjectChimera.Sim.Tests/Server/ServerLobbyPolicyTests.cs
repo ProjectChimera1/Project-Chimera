@@ -1,5 +1,6 @@
 #nullable enable
 using ProjectChimera.Core;                 // Faction
+using ProjectChimera.Multiplayer;          // TickCommandPacket, HaltReason (Story 9.7 N=3/4 cases)
 using ProjectChimera.Multiplayer.Server;    // ServerLobbyPolicy
 using Xunit;
 
@@ -78,6 +79,49 @@ namespace ProjectChimera.Sim.Tests.Server
             Assert.Equal(1, connected); // the spectator is excluded
             Assert.Equal(1, ready);
             Assert.False(ServerLobbyPolicy.ShouldStart(connected, ready, MaxPlayers)); // 1 != 2 → no start
+        }
+
+        // ── Story 9.7: N=3 / N=4 raised-count cases ────────────────────────────────
+
+        [Theory]
+        [InlineData(3, 3, 3, true)]
+        [InlineData(4, 4, 4, true)]
+        [InlineData(3, 2, 3, false)]  // one player not yet connected
+        [InlineData(4, 3, 4, false)]  // one player not yet ready
+        [InlineData(4, 4, 3, false)]  // more connected than expected (over-fill) → no start
+        public void ShouldStart_ScalesToN(int connected, int ready, int expected, bool starts)
+        {
+            Assert.Equal(starts, ServerLobbyPolicy.ShouldStart(connected, ready, expected));
+        }
+
+        [Theory]
+        [InlineData(3)]
+        [InlineData(4)]
+        public void CheckStartStateAgreement_AllAgreeAtN_Allows(int n)
+        {
+            var hashes   = new ulong[n];
+            var versions = new ushort[n];
+            for (int i = 0; i < n; i++) { hashes[i] = 0xABCDEF12u; versions[i] = TickCommandPacket.PROTOCOL_VERSION; }
+            Assert.Null(ServerLobbyPolicy.CheckStartStateAgreement(hashes, versions, n));
+        }
+
+        [Fact]
+        public void CheckStartStateAgreement_OneDisagreeingHashAtN4_Blocks()
+        {
+            var hashes   = new ulong[] { 0xAAAAu, 0xAAAAu, 0xBBBBu, 0xAAAAu }; // slot 2 diverges
+            var versions = new ushort[4];
+            for (int i = 0; i < 4; i++) versions[i] = TickCommandPacket.PROTOCOL_VERSION;
+            Assert.Equal(HaltReason.StartStateDisagreement,
+                ServerLobbyPolicy.CheckStartStateAgreement(hashes, versions, 4));
+        }
+
+        [Fact]
+        public void CountConnectedReadyPlayers_SpanToExpected_AtN4()
+        {
+            static bool Connected(int s) => s < 4;                 // slots 0..3 players
+            static bool Ready(int s) => s is 0 or 1 or 2 or 3;
+            Assert.Equal(4, ServerLobbyPolicy.CountConnectedPlayers(Connected, 4));
+            Assert.Equal(4, ServerLobbyPolicy.CountReadyPlayers(Connected, Ready, 4));
         }
     }
 }

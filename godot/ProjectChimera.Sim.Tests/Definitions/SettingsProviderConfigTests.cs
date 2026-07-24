@@ -104,6 +104,24 @@ namespace ProjectChimera.Sim.Tests.Definitions
         }
 
         [Fact]
+        public void MigrateForward_ExplicitNullEndpointFields_NormalizedToEmpty_AndSchemaBumped()
+        {
+            // Story 9.7: a settings.json written before the multiplayer endpoint fields existed (or with any of
+            // them explicitly `null`) deserializes those properties to null. MigrateForward must normalize the
+            // three string endpoint fields to "" — the schema-v2 migration contract — so lobby composition's
+            // null/empty fallback (MatchLifecycleController) never has to distinguish null from "". It must also
+            // stamp SchemaVersion to the current version so a subsequent Save persists the bump.
+            const string json =
+                "{ \"game_server_ip\": null, \"nakama_host\": null, \"nakama_key\": null }";
+            var loaded = JsonSerializer.Deserialize<SettingsData>(json, Opts)!.MigrateForward();
+
+            Assert.Equal("", loaded.GameServerIp);
+            Assert.Equal("", loaded.NakamaHost);
+            Assert.Equal("", loaded.NakamaKey);
+            Assert.Equal(SettingsData.CurrentSchemaVersion, loaded.SchemaVersion);
+        }
+
+        [Fact]
         public void FromJson_LoadSeam_DeserializesAndMigrates()
         {
             // Pins the SettingsManager.Load seam contract (the Node itself is Godot-coupled / un-unit-testable):

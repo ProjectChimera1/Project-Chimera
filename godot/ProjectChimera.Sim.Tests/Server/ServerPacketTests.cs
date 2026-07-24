@@ -111,5 +111,81 @@ namespace ProjectChimera.Sim.Tests.Server
             byte[] delayDir = TickCommandPacket.MakeDelayDirective(4, 42u);
             Assert.False(TickCommandPacket.TryReadDropDirective(delayDir, delayDir.Length, out _, out _));
         }
+
+        // ── Story 9.7: pre-match LobbyChat packet ──────────────────────────────────
+
+        [Theory]
+        [InlineData((byte)ProjectChimera.Core.Faction.Player1, "gg")]
+        [InlineData((byte)ProjectChimera.Core.Faction.Player4, "hello there, 4-player lobby")]
+        [InlineData((byte)ProjectChimera.Core.Faction.Neutral, "")]
+        public void LobbyChat_RoundTrips(byte factionByte, string msg)
+        {
+            var faction = (ProjectChimera.Core.Faction)factionByte;
+            byte[] b = TickCommandPacket.MakeLobbyChat(faction, msg);
+            Assert.Equal((byte)PacketType.LobbyChat, b[0]);
+
+            Assert.True(TickCommandPacket.TryReadLobbyChat(b, b.Length, out var f, out string m));
+            Assert.Equal(faction, f);
+            Assert.Equal(msg, m);
+        }
+
+        [Fact]
+        public void LobbyChat_TruncatedOrWrongType_ParsesFalse()
+        {
+            byte[] b = TickCommandPacket.MakeLobbyChat(ProjectChimera.Core.Faction.Player2, "hi");
+            Assert.False(TickCommandPacket.TryReadLobbyChat(b, 2, out _, out _)); // truncated (header needs 4)
+
+            // A Chat packet is NOT a LobbyChat (distinct discriminator 0x20 vs 0x21).
+            byte[] chat = TickCommandPacket.MakeChat(ProjectChimera.Core.Faction.Player1, "hi");
+            Assert.False(TickCommandPacket.TryReadLobbyChat(chat, chat.Length, out _, out _));
+
+            // P9: a valid packet whose DECLARED msgLen exceeds the PASSED len — the OOB guard for the GetString read.
+            byte[] valid = TickCommandPacket.MakeLobbyChat(ProjectChimera.Core.Faction.Player1, "0123456789"); // 10 msg bytes → 14 total
+            Assert.Equal(14, valid.Length);
+            Assert.False(TickCommandPacket.TryReadLobbyChat(valid, 8, out _, out _)); // 8 < 4 + 10 → false, no OOB read
+            Assert.True(TickCommandPacket.TryReadLobbyChat(valid, valid.Length, out _, out _)); // full len → ok
+        }
+
+        // ── Story 9.7 (P2): server→client LobbyRoster snapshot ─────────────────────
+
+        [Fact]
+        public void LobbyRoster_RoundTrips()
+        {
+            var occ = new bool[TickCommandPacket.MAX_ROSTER_SLOTS];
+            var rdy = new bool[TickCommandPacket.MAX_ROSTER_SLOTS];
+            occ[0] = true; rdy[0] = true;   // slot 0 occupied + ready
+            occ[1] = true; rdy[1] = false;  // slot 1 occupied, not ready
+            occ[2] = false;                 // slot 2 open
+            byte[] b = TickCommandPacket.MakeLobbyRoster(3, occ, rdy);
+            Assert.Equal((byte)PacketType.LobbyRoster, b[0]);
+
+            var occOut = new bool[TickCommandPacket.MAX_ROSTER_SLOTS];
+            var rdyOut = new bool[TickCommandPacket.MAX_ROSTER_SLOTS];
+            Assert.True(TickCommandPacket.TryReadLobbyRoster(b, b.Length, out int n, occOut, rdyOut));
+            Assert.Equal(3, n);
+            Assert.True(occOut[0]);  Assert.True(rdyOut[0]);
+            Assert.True(occOut[1]);  Assert.False(rdyOut[1]);
+            Assert.False(occOut[2]); Assert.False(rdyOut[2]);
+        }
+
+        [Fact]
+        public void LobbyRoster_TruncatedOrWrongType_ParsesFalse()
+        {
+            var occ = new bool[TickCommandPacket.MAX_ROSTER_SLOTS];
+            var rdy = new bool[TickCommandPacket.MAX_ROSTER_SLOTS];
+            byte[] b = TickCommandPacket.MakeLobbyRoster(4, occ, rdy);
+            Assert.False(TickCommandPacket.TryReadLobbyRoster(b, 3, out _, occ, rdy)); // declared 4 slots, len too short
+            byte[] chat = TickCommandPacket.MakeLobbyChat(ProjectChimera.Core.Faction.Player1, "x");
+            Assert.False(TickCommandPacket.TryReadLobbyRoster(chat, chat.Length, out _, occ, rdy)); // wrong type
+        }
+
+        [Fact]
+        public void LobbyChat_ClampsOverlongMessage()
+        {
+            string big = new string('x', 500);
+            byte[] b = TickCommandPacket.MakeLobbyChat(ProjectChimera.Core.Faction.Player1, big);
+            Assert.True(TickCommandPacket.TryReadLobbyChat(b, b.Length, out _, out string m));
+            Assert.Equal(TickCommandPacket.MAX_CHAT_BYTES, m.Length);
+        }
     }
 }

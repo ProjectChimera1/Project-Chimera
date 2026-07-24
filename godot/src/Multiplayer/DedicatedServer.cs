@@ -31,12 +31,26 @@ namespace ProjectChimera.Multiplayer
     {
         // ── Server state machine ──────────────────────────────────────────────────
 
-        private enum State { Waiting, OneConnected, BothConnected, BothReady, InGame }
+        /// <summary>Story 9.7: N-aware lobby states (de-binary-fied from the old
+        /// {Waiting,OneConnected,BothConnected,BothReady} 1v1 shape). <c>Waiting</c> = no players connected;
+        /// <c>Lobby</c> = ≥1 player connected/readying but the match has not started; <c>InGame</c> = the match is
+        /// live. Only <c>InGame</c> gates behavior; the earlier lobby distinctions were cosmetic and do not scale.</summary>
+        private enum State { Waiting, Lobby, InGame }
 
         // ── Config ────────────────────────────────────────────────────────────────
 
         /// <summary>Default port — can be overridden by command-line arg "--port N".</summary>
         public const int DEFAULT_PORT = 7777;
+
+        /// <summary>
+        /// Story 9.7: the number of players THIS match expects before it may start (and the merged fan-in width /
+        /// checksum quorum size). Derived from the loaded scenario's <c>PlayerSlots.Count</c> and injected by
+        /// MainScene's headless edge (the SAME count fed to the client's <c>FactionRegistry(N)</c> and the server's
+        /// <c>activeFactionCount</c>, so client/server checksum spans cannot diverge). Defaults to
+        /// 2 when unset (the pre-9.7 1v1 default; the loopback self-test and MainScene set their own). Clamped into
+        /// [1, <see cref="ServerTransport.MAX_PLAYERS"/>] on read.
+        /// </summary>
+        public int ExpectedPlayerCount { get; init; } = PlayerCountPolicy.MpFloor;
 
         // ── Faction → slot mapping ────────────────────────────────────────────────
         // Slot s → Player(s+1) (first come first served). N-shaped: derived from FactionRegistry.ToFaction so the
@@ -52,10 +66,14 @@ namespace ProjectChimera.Multiplayer
             return a;
         }
 
-        /// <summary>The player count this match expects before it may start (and the merged fan-in width). The
-        /// relay ships N≤2; enabling &gt;2 live players is Story 9.7/9.15, but the count machine + builder are
-        /// N-shaped so that is a constant bump, not a rearchitecture.</summary>
-        private static int ExpectedPlayers => ServerTransport.MAX_PLAYERS;
+        /// <summary>The player count this match expects before it may start (and the merged fan-in width) — the
+        /// scenario-derived <see cref="ExpectedPlayerCount"/>, clamped into [1, <see cref="ServerTransport.MAX_PLAYERS"/>].
+        /// Story 9.7 raised the ceiling to 4 and made the count per-match (from the scenario) rather than the fixed
+        /// 1v1 <c>MAX_PLAYERS</c>.</summary>
+        private int ExpectedPlayers =>
+            ExpectedPlayerCount < 1 ? 1
+            : ExpectedPlayerCount > ServerTransport.MAX_PLAYERS ? ServerTransport.MAX_PLAYERS
+            : ExpectedPlayerCount;
 
         // ── State ─────────────────────────────────────────────────────────────────
 
@@ -63,9 +81,17 @@ namespace ProjectChimera.Multiplayer
         private State           _state     = State.Waiting;
         private readonly bool[] _ready     = new bool[ServerTransport.MAX_SLOTS];
 
+        /// <summary>Story 9.7 (P2): reusable scratch for the lobby roster/ready snapshot broadcast (no per-broadcast alloc).</summary>
+        private readonly bool[] _rosterOccupied = new bool[ServerTransport.MAX_PLAYERS];
+        private readonly bool[] _rosterReady    = new bool[ServerTransport.MAX_PLAYERS];
+
         /// <summary>Story 9.3: the authoritative per-tick merged fan-in. Constructed at InGame (HandleReady) with
         /// the connected player count. Null until the match starts.</summary>
         private Server.MergedTickBuilder? _builder;
+
+        /// <summary>Story 9.7: the frozen server-authoritative slot→faction roster, snapshotted at StartGame from the
+        /// connected player slots (arrival order). The single source downstream faction-stamps from. Null until start.</summary>
+        private Server.AssignedRoster? _roster;
 
         // ── Story 9.4: server-dictated delay + start-state agreement ───────────────
 
@@ -189,7 +215,7 @@ namespace ProjectChimera.Multiplayer
             {
                 _sincePing = 0;
                 var ping = TickCommandPacket.MakePing(_pingSeq++, (uint)Time.GetTicksMsec());
-                for (int s = 0; s < ServerTransport.MAX_PLAYERS; s++)
+                for (int s = 0; s < ExpectedPlayers; s++)
                     if (_transport.IsSlotConnected(s)) _transport.SendReliableTo(s, ping);
             }
 
@@ -209,11 +235,16 @@ namespace ProjectChimera.Multiplayer
 
         private void HandleConnect(int slot)
         {
-            if (slot >= ServerTransport.MAX_PLAYERS)
+            // Story 9.7 (SD-9): the player/spectator split is the DYNAMIC SlotAllocation.Classify over the per-match
+            // ExpectedPlayers boundary (not the fixed MAX_PLAYERS 1v1 partition). A slot at/above the player count is
+            // a spectator for THIS match.
+            if (Server.SlotAllocation.Classify(slot, ExpectedPlayers, ServerTransport.MAX_SLOTS)
+                != Server.SlotRole.Player)
             {
                 // Spectator slot — send Neutral faction assignment, no state-machine effect.
                 GD.Print($"[Server] Spectator connected → slot {slot}.");
                 _transport.SendReliableTo(slot, TickCommandPacket.MakeHello(Faction.Neutral));
+                BroadcastLobbyRoster(); // so the new spectator sees the current lobby state
                 return;
             }
 
@@ -221,12 +252,9 @@ namespace ProjectChimera.Multiplayer
             GD.Print($"[Server] Slot {slot} connected → assigned {f}.");
             _transport.SendReliableTo(slot, TickCommandPacket.MakeHello(f));
 
-            int playerCount = CountConnectedPlayers();
-            _state = playerCount >= ServerTransport.MAX_PLAYERS
-                ? State.BothConnected
-                : State.OneConnected;
-
-            GD.Print($"[Server] State → {_state}.");
+            _state = State.Lobby;
+            GD.Print($"[Server] State → {_state} ({CountConnectedPlayers()}/{ExpectedPlayers} players connected).");
+            BroadcastLobbyRoster(); // Story 9.7 (P2): occupancy changed
         }
 
         private void HandleDisconnect(int slot)
@@ -234,7 +262,7 @@ namespace ProjectChimera.Multiplayer
             GD.Print($"[Server] Slot {slot} disconnected.");
             _ready[slot] = false;
 
-            if (slot >= ServerTransport.MAX_PLAYERS) return; // spectator — no state change
+            if (slot >= ExpectedPlayers) return; // spectator — no state change
 
             // Story 9.6: an in-match disconnect is NO LONGER treated as match-over. The transport has already
             // cleared this slot, so CountConnectedPlayers() is the surviving player count. If any survivor remains,
@@ -281,26 +309,25 @@ namespace ProjectChimera.Multiplayer
             }
 
             int playerCount = CountConnectedPlayers();
-            _state = playerCount >= ServerTransport.MAX_PLAYERS
-                ? State.BothConnected
-                : State.OneConnected;
+            _state = playerCount > 0 ? State.Lobby : State.Waiting;
+            BroadcastLobbyRoster(); // Story 9.7 (P2): occupancy/ready changed (lobby-phase only; no-op InGame)
         }
 
         /// <summary>Story 9.6: the connected PLAYER slots other than <paramref name="droppedSlot"/> — the set that
-        /// must ACK a drop directive before the freeze commits. Spectators (slots ≥ MAX_PLAYERS) are excluded.</summary>
+        /// must ACK a drop directive before the freeze commits. Spectators (slots ≥ ExpectedPlayers) are excluded.</summary>
         private int[] SurvivingPlayerSlots(int droppedSlot)
         {
             var survivors = new System.Collections.Generic.List<int>();
-            for (int s = 0; s < ServerTransport.MAX_PLAYERS; s++)
+            for (int s = 0; s < ExpectedPlayers; s++)
                 if (s != droppedSlot && _transport.IsSlotConnected(s)) survivors.Add(s);
             return survivors.ToArray();
         }
 
         /// <summary>Story 9.6: map a DropAck's (transport-untrusted) faction byte back to a player slot via the
         /// authoritative <see cref="SLOT_FACTION"/> table — never trusting it as a slot index. −1 if no slot matches.</summary>
-        private static int FactionToSlot(Faction faction)
+        private int FactionToSlot(Faction faction)
         {
-            for (int s = 0; s < ServerTransport.MAX_PLAYERS; s++)
+            for (int s = 0; s < ExpectedPlayers; s++)
                 if (SLOT_FACTION[s] == faction) return s;
             return -1;
         }
@@ -344,7 +371,7 @@ namespace ProjectChimera.Multiplayer
                 case PacketType.Pong:
                     // Story 9.4: the client's echo of a server RTT probe. rtt = now - the senderMs we stamped into
                     // the Ping. Slot is transport-authoritative (this callback's slot), never a packet byte.
-                    if (_state == State.InGame && _delayController != null && slot < ServerTransport.MAX_PLAYERS &&
+                    if (_state == State.InGame && _delayController != null && slot < ExpectedPlayers &&
                         TickCommandPacket.TryReadPong(data, len, out _, out uint pongMs))
                         _delayController.RecordRtt(slot, (float)Time.GetTicksMsec() - pongMs);
                     break;
@@ -353,7 +380,7 @@ namespace ProjectChimera.Multiplayer
                     // Story 9.4: a player acknowledges the pending server-dictated delay. When every player has
                     // ACKed the (delay, applyAtTick) pair, log the commit and advance the controller so the next
                     // directive may issue.
-                    if (_state == State.InGame && _delayController != null && slot < ServerTransport.MAX_PLAYERS &&
+                    if (_state == State.InGame && _delayController != null && slot < ExpectedPlayers &&
                         TickCommandPacket.TryReadDelayAck(data, len, out byte ackDelay, out uint ackApplyAt))
                     {
                         _delayController.RecordAck(slot, ackDelay, ackApplyAt);
@@ -371,7 +398,7 @@ namespace ProjectChimera.Multiplayer
                     // SLOT_FACTION (never trusted as a slot index). When every survivor has ACKed the same
                     // (droppedSlot, applyAtTick), commit the freeze, drop the leaver from the checksum quorum, and
                     // begin injecting empty commands so the merged stream keeps flowing.
-                    if (_state == State.InGame && _dropController != null && slot < ServerTransport.MAX_PLAYERS &&
+                    if (_state == State.InGame && _dropController != null && slot < ExpectedPlayers &&
                         TickCommandPacket.TryReadDropAck(data, len, out byte dropAckFaction, out uint dropApplyAt))
                     {
                         int droppedSlot = FactionToSlot((Faction)dropAckFaction);
@@ -411,7 +438,7 @@ namespace ProjectChimera.Multiplayer
                     // a tick's bucket complete on the wrong reporter set — masking a real player desync, or
                     // tripping a false HALT. The collector's verdicts emit DesyncAlert (to a minority) or Halt
                     // (no majority) via ServerHost's seams.
-                    if (_state == State.InGame && _serverHost != null && slot < ServerTransport.MAX_PLAYERS &&
+                    if (_state == State.InGame && _serverHost != null && slot < ExpectedPlayers &&
                         TickCommandPacket.TryReadChecksum(data, len, out uint ckTick, out uint ckHash))
                         _serverHost.OnChecksum(slot, ckTick, ckHash);
                     break;
@@ -424,7 +451,7 @@ namespace ProjectChimera.Multiplayer
                     if (TickCommandPacket.TryReadChat(data, len, out _, out string chatMsg))
                     {
                         Faction stamped = Server.ServerLobbyPolicy.StampChatFaction(
-                            slot, SLOT_FACTION, ServerTransport.MAX_PLAYERS);
+                            slot, SLOT_FACTION, ExpectedPlayers);
                         _transport.BroadcastReliable(TickCommandPacket.MakeChat(stamped, chatMsg));
                     }
                     else
@@ -434,6 +461,23 @@ namespace ProjectChimera.Multiplayer
                         GD.PrintErr($"[DedicatedServer] Dropped undecodable Chat from slot {slot} ({len} bytes).");
                     }
                     break;
+
+                case PacketType.LobbyChat:
+                    // Story 9.7 (P1): relay PRE-MATCH lobby chat to every connected peer so chat works on the
+                    // dedicated/online path (not just P2P). Mirrors the in-match Chat relay: RE-STAMP the sender's
+                    // AUTHORITATIVE faction from its transport slot (never the spoofable client byte), re-encode via
+                    // MakeLobbyChat, and BroadcastReliable.
+                    if (TickCommandPacket.TryReadLobbyChat(data, len, out _, out string lobbyMsg))
+                    {
+                        Faction stampedLobby = Server.ServerLobbyPolicy.StampChatFaction(
+                            slot, SLOT_FACTION, ExpectedPlayers);
+                        _transport.BroadcastReliable(TickCommandPacket.MakeLobbyChat(stampedLobby, lobbyMsg));
+                    }
+                    else
+                    {
+                        GD.PrintErr($"[DedicatedServer] Dropped undecodable LobbyChat from slot {slot} ({len} bytes).");
+                    }
+                    break;
             }
         }
 
@@ -441,8 +485,8 @@ namespace ProjectChimera.Multiplayer
 
         private void HandleReady(int slot, byte[] data, int len)
         {
-            if (slot >= ServerTransport.MAX_PLAYERS) return; // spectators don't send Ready
-            if (_state == State.InGame) return;              // match already started — ignore late/duplicate Ready
+            if (slot >= ExpectedPlayers) return; // spectators don't send Ready
+            if (_state == State.InGame) return;  // match already started — ignore late/duplicate Ready
 
             // Story 1.9a: RECORD the ready even if the other player hasn't connected yet (it was previously
             // DROPPED unless the server was already BothConnected). A client that readies the instant it connects
@@ -459,6 +503,8 @@ namespace ProjectChimera.Multiplayer
             _readyHash[slot]    = readyHash;
             GD.Print($"[Server] Slot {slot} is Ready (protocol v{readyVersion}, match hash 0x{readyHash:X16}).");
 
+            BroadcastLobbyRoster(); // Story 9.7 (P2): ready state changed — refresh every client's grid
+
             // Story 9.3: N-shaped count machine — start once `connected == expected && ready == expected` (no
             // `_ready[0] && _ready[1]` two-slot literal). `expected` is the match's player width (MAX_PLAYERS today).
             int connected  = CountConnectedPlayers();
@@ -474,15 +520,34 @@ namespace ProjectChimera.Multiplayer
                 {
                     GD.PrintErr($"[Server] Start-state agreement FAILED ({disagreement}) — broadcasting HALT, not starting.");
                     _transport.BroadcastReliable(TickCommandPacket.MakeHalt(0u, disagreement.Value));
-                    _state = State.BothReady;
+                    _state = State.Lobby;
                     return;
                 }
 
+                // Story 9.7 (AC1): FREEZE the server-authoritative roster from the connected player slots (arrival
+                // order) at StartGame — the single source every downstream faction-stamp reads from (slot →
+                // FactionRegistry.ToFaction), never a client packet byte. A duplicate/absent/out-of-range slot
+                // rejects the build → HALT (fail-closed) rather than starting a match whose slots we can't attest.
+                var arrivalSlots = new System.Collections.Generic.List<int>(connected);
+                for (int s = 0; s < ExpectedPlayers; s++)
+                    if (_transport.IsSlotConnected(s)) arrivalSlots.Add(s);
+                if (!Server.AssignedRoster.TryFreeze(arrivalSlots, connected, out var roster, out string? rosterErr)
+                    || roster == null)
+                {
+                    GD.PrintErr($"[Server] AssignedRoster freeze FAILED ({rosterErr}) — broadcasting HALT, not starting.");
+                    _transport.BroadcastReliable(TickCommandPacket.MakeHalt(0u, HaltReason.StartStateDisagreement));
+                    _state = State.Lobby;
+                    return;
+                }
+                _roster = roster;
+
                 _state = State.InGame;
 
-                // Story 9.3: stand up the authoritative merged fan-in for this match — expected = the connected
-                // player count (== ExpectedPlayers at the gate). Spectators are NOT counted (they never submit).
-                _builder = new Server.MergedTickBuilder(connected, SLOT_FACTION);
+                // Story 9.3/9.7: stand up the authoritative merged fan-in for this match — expected = the connected
+                // player count (== ExpectedPlayers at the gate), faction-stamped from the frozen AssignedRoster (its
+                // slot→faction array is identical to SLOT_FACTION for the occupied prefix, but sourced from the
+                // attested roster). Spectators are NOT counted (they never submit).
+                _builder = new Server.MergedTickBuilder(connected, _roster.SlotFactions());
 
                 // Story 9.4: stand up the server delay authority alongside the fan-in. The initial delay baseline is
                 // LockstepManager.INPUT_DELAY (the delay the clients start at), so no directive issues until a
@@ -509,7 +574,7 @@ namespace ProjectChimera.Multiplayer
             }
             else
             {
-                _state = State.BothReady;
+                _state = State.Lobby;
             }
         }
 
@@ -544,10 +609,25 @@ namespace ProjectChimera.Multiplayer
         // Both counting helpers + the start gate delegate to the Godot-free Server.ServerLobbyPolicy so the policy
         // is Tier-1 unit-testable (spectators — slots >= MAX_PLAYERS — are excluded by the maxPlayers bound).
         private int CountConnectedPlayers()
-            => Server.ServerLobbyPolicy.CountConnectedPlayers(_transport.IsSlotConnected, ServerTransport.MAX_PLAYERS);
+            => Server.ServerLobbyPolicy.CountConnectedPlayers(_transport.IsSlotConnected, ExpectedPlayers);
 
         private int CountReadyPlayers()
-            => Server.ServerLobbyPolicy.CountReadyPlayers(_transport.IsSlotConnected, s => _ready[s], ServerTransport.MAX_PLAYERS);
+            => Server.ServerLobbyPolicy.CountReadyPlayers(_transport.IsSlotConnected, s => _ready[s], ExpectedPlayers);
+
+        /// <summary>Story 9.7 (P2): broadcast the authoritative pre-match lobby roster/ready snapshot to every peer so
+        /// each client's N-slot grid reflects remote-slot occupancy + readiness (unobservable otherwise on the
+        /// dedicated path). Suppressed once InGame (the roster is a lobby-phase signal only).</summary>
+        private void BroadcastLobbyRoster()
+        {
+            if (_state == State.InGame) return;
+            int n = ExpectedPlayers;
+            for (int s = 0; s < n; s++)
+            {
+                _rosterOccupied[s] = _transport.IsSlotConnected(s);
+                _rosterReady[s]    = _rosterOccupied[s] && _ready[s];
+            }
+            _transport.BroadcastReliable(TickCommandPacket.MakeLobbyRoster(n, _rosterOccupied, _rosterReady));
+        }
 
         // ── Cleanup ───────────────────────────────────────────────────────────────
 

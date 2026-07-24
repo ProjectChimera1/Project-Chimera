@@ -65,6 +65,21 @@ namespace ProjectChimera.Multiplayer
         /// Relayed by DedicatedServer to all connected peers.
         /// </summary>
         Chat          = 0x20,
+        /// <summary>
+        /// Story 9.7: PRE-MATCH lobby chat (no <see cref="LockstepManager"/> yet). Same wire layout as
+        /// <see cref="Chat"/> — type(1) + faction(1) + msgLen(2 LE) + msgBytes(UTF-8, max 200) — but a DISTINCT type
+        /// so it rides <c>ENetTransport</c> directly during the lobby (before the sim/lockstep stack exists) without
+        /// colliding with the in-match Chat relay. Rendered in the lobby chat pane with faction color + name.
+        /// </summary>
+        LobbyChat     = 0x21,
+        /// <summary>
+        /// Story 9.7: server → client ONLY. The authoritative LOBBY roster/ready snapshot (pre-match), broadcast by
+        /// <c>DedicatedServer</c> whenever a player slot's occupancy or readiness changes, so every client's N-slot
+        /// lobby grid shows the true state of remote slots (which it cannot otherwise observe on the dedicated path).
+        /// Wire: type(1) + slotCount(1) + slotCount bytes, one per slot (bit0 = occupied, bit1 = ready). Additive
+        /// lobby-phase packet — it does NOT touch the merged envelope or PROTOCOL_VERSION.
+        /// </summary>
+        LobbyRoster   = 0x22,
         /// <summary>RTT probe sent by either peer. Wire: type(1) + seq(1) + senderMs(4 LE).</summary>
         Ping          = 0x40,
         /// <summary>RTT probe reply. Same wire format as Ping — echoes seq + senderMs back.</summary>
@@ -798,6 +813,98 @@ namespace ProjectChimera.Multiplayer
             if (msgLen < 0 || msgLen > MAX_CHAT_BYTES) return false;
             if (len < 4 + msgLen) return false;
             message = System.Text.Encoding.UTF8.GetString(buf, 4, msgLen);
+            return true;
+        }
+
+        // ── Lobby chat packet helpers (Story 9.7) ──────────────────────────────
+
+        /// <summary>
+        /// Story 9.7 — serialise a PRE-MATCH lobby chat message. Same layout as <see cref="MakeChat"/>
+        /// (type(1) + faction(1) + msgLen(2 LE) + msgBytes) but with the <see cref="PacketType.LobbyChat"/>
+        /// discriminator so it rides <c>ENetTransport</c> during the lobby before the lockstep stack exists.
+        /// </summary>
+        public static byte[] MakeLobbyChat(Core.Faction faction, string message)
+        {
+            byte[] msgBytes = System.Text.Encoding.UTF8.GetBytes(message);
+            if (msgBytes.Length > MAX_CHAT_BYTES)
+            {
+                // Story 9.7 (P6): truncate on a UTF-8 CODEPOINT boundary, not a raw byte boundary — a cut in the
+                // middle of a multibyte sequence would decode to a replacement glyph for recipients. Walk the cut
+                // point back off any continuation bytes (0x80–0xBF) so the surviving prefix is well-formed.
+                int cut = MAX_CHAT_BYTES;
+                while (cut > 0 && (msgBytes[cut] & 0xC0) == 0x80) cut--;
+                System.Array.Resize(ref msgBytes, cut);
+            }
+
+            int total = 4 + msgBytes.Length;
+            var buf = new byte[total];
+            buf[0] = (byte)PacketType.LobbyChat;
+            buf[1] = (byte)faction;
+            buf[2] = (byte)msgBytes.Length;
+            buf[3] = (byte)(msgBytes.Length >> 8);
+            msgBytes.CopyTo(buf, 4);
+            return buf;
+        }
+
+        /// <summary>Parse a <see cref="PacketType.LobbyChat"/> packet. Returns false (dropped, no crash) if malformed.</summary>
+        public static bool TryReadLobbyChat(byte[] buf, int len, out Core.Faction faction, out string message)
+        {
+            faction = Core.Faction.Neutral; message = "";
+            if (len < 4) return false;
+            if ((PacketType)buf[0] != PacketType.LobbyChat) return false;
+            faction = (Core.Faction)buf[1];
+            int msgLen = buf[2] | (buf[3] << 8);
+            if (msgLen < 0 || msgLen > MAX_CHAT_BYTES) return false;
+            if (len < 4 + msgLen) return false;
+            message = System.Text.Encoding.UTF8.GetString(buf, 4, msgLen);
+            return true;
+        }
+
+        // ── Lobby roster packet helpers (Story 9.7) ────────────────────────────
+
+        /// <summary>Max player slots a lobby-roster snapshot carries (== the transport seat ceiling). References the
+        /// Godot-free <see cref="PlayerCountPolicy.MpSeatCeiling"/> (not the Godot-coupled ServerTransport) so this
+        /// codec stays Tier-1-compilable.</summary>
+        public const int MAX_ROSTER_SLOTS = PlayerCountPolicy.MpSeatCeiling;
+
+        /// <summary>
+        /// Story 9.7 — serialise a lobby roster/ready snapshot (server → client). Wire: type(1) + slotCount(1) +
+        /// slotCount bytes, one per slot (bit0 = occupied, bit1 = ready). <paramref name="occupied"/> and
+        /// <paramref name="ready"/> are read for slots 0..<paramref name="slotCount"/>-1.
+        /// </summary>
+        public static byte[] MakeLobbyRoster(int slotCount, bool[] occupied, bool[] ready)
+        {
+            if (slotCount < 0) slotCount = 0;
+            if (slotCount > MAX_ROSTER_SLOTS) slotCount = MAX_ROSTER_SLOTS;
+            var buf = new byte[2 + slotCount];
+            buf[0] = (byte)PacketType.LobbyRoster;
+            buf[1] = (byte)slotCount;
+            for (int s = 0; s < slotCount; s++)
+            {
+                byte b = 0;
+                if (s < occupied.Length && occupied[s]) b |= 0x01;
+                if (s < ready.Length    && ready[s])    b |= 0x02;
+                buf[2 + s] = b;
+            }
+            return buf;
+        }
+
+        /// <summary>Parse a <see cref="PacketType.LobbyRoster"/> packet into caller-owned arrays (at least
+        /// <see cref="MAX_ROSTER_SLOTS"/> long). Returns false (dropped, no crash) if malformed/truncated.</summary>
+        public static bool TryReadLobbyRoster(byte[] buf, int len, out int slotCount, bool[] occupied, bool[] ready)
+        {
+            slotCount = 0;
+            if (len < 2) return false;
+            if ((PacketType)buf[0] != PacketType.LobbyRoster) return false;
+            int n = buf[1];
+            if (n > MAX_ROSTER_SLOTS || len < 2 + n) return false;
+            for (int s = 0; s < n; s++)
+            {
+                byte b = buf[2 + s];
+                if (s < occupied.Length) occupied[s] = (b & 0x01) != 0;
+                if (s < ready.Length)    ready[s]    = (b & 0x02) != 0;
+            }
+            slotCount = n;
             return true;
         }
 

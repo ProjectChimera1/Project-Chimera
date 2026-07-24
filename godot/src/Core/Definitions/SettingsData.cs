@@ -16,8 +16,10 @@ namespace ProjectChimera.Core.Definitions
 
         /// <summary>Story 8.1: the settings schema version, stamped by <see cref="MigrateForward"/> on load. The
         /// current version this build writes. Bump when a forward-incompatible field shape is added so a future
-        /// <see cref="MigrateForward"/> can normalize older files.</summary>
-        public const int CurrentSchemaVersion = 1;
+        /// <see cref="MigrateForward"/> can normalize older files. Story 9.7: bumped 1→2 for the multiplayer
+        /// endpoint fields (server/Nakama host/port/key), whose null-string values <see cref="MigrateForward"/>
+        /// normalizes to "".</summary>
+        public const int CurrentSchemaVersion = 2;
 
         /// <summary>Story 8.1: the persisted schema version. An older <c>settings.json</c> that predates this field
         /// deserializes to <c>0</c>; <see cref="MigrateForward"/> stamps <see cref="CurrentSchemaVersion"/> so a
@@ -113,6 +115,31 @@ namespace ProjectChimera.Core.Definitions
         [JsonPropertyName("hero_profile_folder")]
         public string HeroProfileFolder { get; set; } = "user://hero_profiles";
 
+        // ── Multiplayer endpoint (Story 9.7, provider-config pattern from Story 8.1) ──
+
+        /// <summary>Story 9.7: the dedicated ENet game-server host. Empty = fall back to the MainScene
+        /// <c>GameServerIp</c> Inspector export (the pre-9.7 source). Read at lobby composition, preferring a
+        /// non-empty configured value.</summary>
+        [JsonPropertyName("game_server_ip")]
+        public string GameServerIp { get; set; } = "";
+
+        /// <summary>Story 9.7: the dedicated ENet game-server port. 0 = fall back to the MainScene
+        /// <c>GameServerPort</c> Inspector export.</summary>
+        [JsonPropertyName("game_server_port")]
+        public int GameServerPort { get; set; } = 0;
+
+        /// <summary>Story 9.7: the Nakama matchmaking host. Empty = fall back to the MainScene <c>NakamaHost</c> export.</summary>
+        [JsonPropertyName("nakama_host")]
+        public string NakamaHost { get; set; } = "";
+
+        /// <summary>Story 9.7: the Nakama port. 0 = fall back to the MainScene <c>NakamaPort</c> export.</summary>
+        [JsonPropertyName("nakama_port")]
+        public int NakamaPort { get; set; } = 0;
+
+        /// <summary>Story 9.7: the Nakama server key. Empty = fall back to the MainScene <c>NakamaKey</c> export.</summary>
+        [JsonPropertyName("nakama_key")]
+        public string NakamaKey { get; set; } = "";
+
         // ── Onboarding ────────────────────────────────────────────────────────
 
         /// <summary>Story 5.9 (NFR-2): whether the first-time "Your First Scenario" guided onboarding overlay has
@@ -144,6 +171,12 @@ namespace ProjectChimera.Core.Definitions
             // Explicit JSON null (`"llm_base_url": null`) deserializes the property to null; normalize it to "" so
             // "no override" is a single representation and Story 8.2's base-URL resolution never sees a null.
             LlmBaseUrl ??= "";
+
+            // Story 9.7: normalize the multiplayer endpoint strings the same way (explicit JSON null → "" so the
+            // "fall back to the export" test is a single is-empty check).
+            GameServerIp ??= "";
+            NakamaHost   ??= "";
+            NakamaKey    ??= "";
 
             SchemaVersion = CurrentSchemaVersion;
             return this;

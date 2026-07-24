@@ -4,11 +4,13 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nakama;
+using ProjectChimera.Multiplayer.Matchmaking; // MatchmakerConfig
+using ProjectChimera.Multiplayer.Party;        // PartyService
 
 namespace ProjectChimera.Multiplayer
 {
     /// <summary>
-    /// Nakama matchmaking integration for Project Chimera 1v1.
+    /// Nakama matchmaking integration for Project Chimera (N-player, Story 9.7).
     ///
     /// Architecture:
     ///   - A dedicated Godot server (DedicatedServer.cs) runs on a known VPS address.
@@ -41,6 +43,14 @@ namespace ProjectChimera.Multiplayer
         public string GameServerIp   { get; set; } = "localhost";
         public int    GameServerPort { get; set; } = 7777;
 
+        /// <summary>Story 9.7: the target match size the matchmaker groups for (2..8). Drives
+        /// <see cref="MatchmakerConfig"/> — no longer the hardcoded 1v1 pin. Defaults to 2 (1v1).</summary>
+        public int    TargetPlayerCount { get; set; } = 2;
+
+        /// <summary>Story 9.7: the matchmaker game-key prefix (parameterized per player count as
+        /// <c>{GameKey}_{P}p</c>). Kept configurable so distinct rulesets/queues don't cross-match.</summary>
+        public string GameKey { get; set; } = MatchmakerConfig.DefaultGameKey;
+
         // ── Events (fired via DrainEvents on the main thread) ─────────────────────
 
         /// <summary>Fires when Nakama groups 2 players. Connect ENet immediately after.</summary>
@@ -57,6 +67,14 @@ namespace ProjectChimera.Multiplayer
         public bool IsConnected => _socket?.IsConnected == true;
         public bool IsSearching => _searchTicket != null;
         public string? Username => _session?.Username;
+
+        /// <summary>The authenticated user's Nakama id (for party leadership checks). Empty until connected.</summary>
+        public string UserId => _session?.UserId ?? "";
+
+        /// <summary>Story 9.7: the parties API adapter (over Nakama <see cref="IParty"/>), created on connect. Null
+        /// until <see cref="ConnectAsync"/>/<see cref="ConnectDeviceAsync"/> establishes the socket. Its events are
+        /// drained on the main thread by this service's <see cref="DrainEvents"/> (shared queue).</summary>
+        public PartyService? Party { get; private set; }
 
         private IClient?           _client;
         private ISession?          _session;
@@ -88,6 +106,8 @@ namespace ProjectChimera.Multiplayer
             _socket = Socket.From(_client);
             _socket.ReceivedMatchmakerMatched += HandleMatchmakerMatched;
             _socket.Closed                    += HandleSocketClosed;
+            // Story 9.7: stand up the parties adapter over the same socket; its events ride this service's drain.
+            Party = new PartyService(_socket, Enqueue);
 
             await _socket.ConnectAsync(_session, appearOnline: true);
             Enqueue(() => OnStatusText?.Invoke("Connected. Ready to find a match."));
@@ -109,6 +129,8 @@ namespace ProjectChimera.Multiplayer
             _socket = Socket.From(_client);
             _socket.ReceivedMatchmakerMatched += HandleMatchmakerMatched;
             _socket.Closed                    += HandleSocketClosed;
+            // Story 9.7: stand up the parties adapter over the same socket; its events ride this service's drain.
+            Party = new PartyService(_socket, Enqueue);
 
             await _socket.ConnectAsync(_session, appearOnline: true);
             Enqueue(() => OnStatusText?.Invoke("Connected. Ready to find a match."));
@@ -117,8 +139,10 @@ namespace ProjectChimera.Multiplayer
         // ── Matchmaking ───────────────────────────────────────────────────────────
 
         /// <summary>
-        /// Adds this player to the Nakama 1v1 matchmaker queue.
-        /// OnMatchFound fires (via DrainEvents) when a second player is grouped.
+        /// Adds this player to the Nakama N-player matchmaker queue (Story 9.7). The match size + game-key are
+        /// parameterized by <see cref="TargetPlayerCount"/>/<see cref="GameKey"/> via <see cref="MatchmakerConfig"/>
+        /// — no longer the hardcoded 1v1 / <c>chimera_1v1</c> pin. OnMatchFound fires (via DrainEvents) when the
+        /// matchmaker groups the target count.
         /// </summary>
         public async Task FindMatchAsync()
         {
@@ -127,17 +151,17 @@ namespace ProjectChimera.Multiplayer
             if (_searchTicket != null)
                 return; // already searching
 
-            Enqueue(() => OnStatusText?.Invoke("Searching for opponent…"));
+            var config = MatchmakerConfig.ForPlayerCount(TargetPlayerCount, GameKey);
+
+            Enqueue(() => OnStatusText?.Invoke(
+                config.MaxCount == 2 ? "Searching for opponent…" : $"Searching for a {config.MaxCount}-player match…"));
 
             _searchTicket = await _socket.AddMatchmakerAsync(
-                query: "*",
-                minCount: 2,
-                maxCount: 2,
-                stringProperties: new Dictionary<string, string>
-                {
-                    ["game"] = "chimera_1v1"
-                },
-                numericProperties: new Dictionary<string, double>()
+                query: config.Query,
+                minCount: config.MinCount,
+                maxCount: config.MaxCount,
+                stringProperties: new Dictionary<string, string>(config.StringProperties()),
+                numericProperties: new Dictionary<string, double>(config.NumericProperties())
             );
         }
 
@@ -155,6 +179,8 @@ namespace ProjectChimera.Multiplayer
         public async Task DisconnectAsync()
         {
             _searchTicket = null;
+            Party?.Detach();
+            Party = null;
             if (_socket != null)
             {
                 _socket.ReceivedMatchmakerMatched -= HandleMatchmakerMatched;
@@ -183,25 +209,23 @@ namespace ProjectChimera.Multiplayer
         {
             _searchTicket = null;
 
-            // Determine faction: lexicographically lower userId becomes Player1.
-            // Both players connect to the same dedicated server; DedicatedServer.cs
-            // assigns factions via Hello packets regardless of this hint.
-            string selfId     = _session?.UserId ?? "";
-            string opponentId = GetOpponentUserId(matched);
-            bool   isLower    = string.Compare(selfId, opponentId, StringComparison.Ordinal) < 0;
-            var    hint       = isLower ? Core.Faction.Player1 : Core.Faction.Player2;
-
-            var info = new MatchFoundInfo(GameServerIp, GameServerPort, hint);
+            // Story 9.7: the client-side lexicographic faction hint is DELETED. Slot/faction is now
+            // server-authoritative — every matched player connects to the same dedicated server, which assigns the
+            // faction from the transport accept-slot via its frozen AssignedRoster (the Hello packet). MatchFoundInfo
+            // therefore carries the endpoint ONLY.
+            var info = new MatchFoundInfo(GameServerIp, GameServerPort);
 
             Enqueue(() =>
             {
-                OnStatusText?.Invoke($"Match found! Connecting as {hint}…");
+                OnStatusText?.Invoke($"Match found! Joining server {info.ServerIp}:{info.ServerPort}…");
                 OnMatchFound?.Invoke(info);
             });
         }
 
         private void HandleSocketClosed()
         {
+            Party?.Detach();
+            Party         = null;
             _socket       = null;
             _searchTicket = null;
             _session      = null;
@@ -211,23 +235,14 @@ namespace ProjectChimera.Multiplayer
         // ── Helpers ───────────────────────────────────────────────────────────────
 
         private void Enqueue(Action a) => _pending.Enqueue(a);
-
-        private static string GetOpponentUserId(IMatchmakerMatched matched)
-        {
-            string selfId = matched.Self.Presence.UserId;
-            foreach (var user in matched.Users)
-                if (user.Presence.UserId != selfId)
-                    return user.Presence.UserId;
-            return string.Empty;
-        }
     }
 
     // ── Value types ───────────────────────────────────────────────────────────────
 
-    /// <summary>Passed to NakamaService.OnMatchFound.</summary>
+    /// <summary>Passed to NakamaService.OnMatchFound. Story 9.7: endpoint ONLY — the faction is server-assigned
+    /// (the lexicographic client hint was deleted).</summary>
     public record MatchFoundInfo(
-        string       ServerIp,
-        int          ServerPort,
-        Core.Faction SuggestedFaction
+        string ServerIp,
+        int    ServerPort
     );
 }
