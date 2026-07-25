@@ -17,6 +17,15 @@
     "label": "Separate content-lint step",
     "resolution": ""
   },
+  "DW-124": {
+    "answered_at": "2026-07-25",
+    "bundle_name": "",
+    "effect": "keep-open",
+    "intent": "Defer the choice to whenever distinct AI presets are actually designed",
+    "key": "1",
+    "label": "Keep open until a faction-AI story",
+    "resolution": ""
+  },
   "DW-2": {
     "answered_at": "2026-07-25",
     "bundle_name": "",
