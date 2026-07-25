@@ -25,5 +25,14 @@
     "key": "1",
     "label": "Repurpose it",
     "resolution": ""
+  },
+  "DW-37": {
+    "answered_at": "2026-07-25",
+    "bundle_name": "",
+    "effect": "build",
+    "intent": "Sort ScenarioApplier's Items (and ideally the unit/building loops) by the same canonical key before Create; golden re-baseline",
+    "key": "1",
+    "label": "Canonicalize placement order",
+    "resolution": ""
   }
 }
