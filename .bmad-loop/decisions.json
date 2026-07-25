@@ -71,6 +71,15 @@
     "label": "Author a correct-course determinism story",
     "resolution": ""
   },
+  "DW-162": {
+    "answered_at": "2026-07-25",
+    "bundle_name": "",
+    "effect": "keep-open",
+    "intent": "Defer the contradiction again",
+    "key": "3",
+    "label": "Keep open",
+    "resolution": ""
+  },
   "DW-2": {
     "answered_at": "2026-07-25",
     "bundle_name": "",

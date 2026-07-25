@@ -1640,6 +1640,7 @@ location: godot/src/Core/Definitions/MapSizes (MaxHalfExtent == FlowField.WORLD_
 severity: low
 reason: Positions exactly on the +128 boundary clamp col/row 128→127. Deterministic, affects only the exact boundary line, same pre-existing WorldToCell clamp convention as DW-158. Fix: give Large a small sub-128 margin, or document the edge as the intended playable ceiling.
 status: open
+decision: 2026-07-25 Keep open — Defer the contradiction again
 decision: 2026-07-19 Give Large a sub-128 margin — Reduce Large's MaxHalfExtent below 128 so no playable cell sits on the clamp boundary; requires a golden re-baseline.
 decision: 2026-07-16 Keep open
 
