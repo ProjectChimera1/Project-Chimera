@@ -2028,6 +2028,7 @@ source_spec: `_bmad-output/implementation-artifacts/spec-7-13-complete-the-trigg
 severity: low
 reason: Deterministic (drop-newest, identical on every peer → no desync), but the cap is low enough that the loss is normal-case behavior in mass combat, not a pathological edge. A designer/tuning decision: raise the cap, or accept documented saturation. Flagged by the Blind review layer.
 status: open
+decision: 2026-07-25 Raise the cap — Increase DslSimEventFeed.Capacity to cover worst-case AoE ticks (with a memory/cost note)
 decision: 2026-07-19 Keep open as a tuning item
 
 ### DW-193: No direct test pins the `ClearForReset` → re-apply of a *trigger-carrying* scenario re-seeding `TriggerEnabledStore` non-additively; the re-baseline differential guard only proves the zero-trigger fold

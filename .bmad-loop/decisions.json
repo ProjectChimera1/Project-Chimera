@@ -80,6 +80,15 @@
     "label": "Keep open",
     "resolution": ""
   },
+  "DW-192": {
+    "answered_at": "2026-07-25",
+    "bundle_name": "",
+    "effect": "build",
+    "intent": "Increase DslSimEventFeed.Capacity to cover worst-case AoE ticks (with a memory/cost note)",
+    "key": "2",
+    "label": "Raise the cap",
+    "resolution": ""
+  },
   "DW-2": {
     "answered_at": "2026-07-25",
     "bundle_name": "",
