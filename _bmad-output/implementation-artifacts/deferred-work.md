@@ -1452,6 +1452,7 @@ location: godot/src/CreationSuite/TerrainBrush.cs (SnapshotRegions/PushStrokeUnd
 severity: medium
 reason: Each stroke deep-`Duplicate`s height+control Images (before AND after) per touched region onto an uncapped shared EditorHistory — a long sculpt session pins hundreds of MB–GB of undo memory. A cap/coalescing policy also affects the shared entity-undo semantics, so it needs a deliberate design, not a drive-by patch.
 status: open
+decision: 2026-07-25 Byte-capped coalescing shared policy — Add a byte/size cap to EditorHistory dropping oldest entries beyond the cap, shared across terrain + entity undo
 decision: 2026-07-15 Bounded/coalescing history policy — Introduce a size/byte-capped, coalescing EditorHistory policy shared across terrain-stroke and entity undo, dropping oldest entries beyond the cap.
 decision: 2026-07-15 Bounded/coalescing history policy — Introduce a size/byte-capped, coalescing EditorHistory policy shared across terrain-stroke and entity undo, dropping oldest entries beyond the cap.
 

@@ -44,6 +44,15 @@
     "label": "Build a New Scenario empty-canvas flow",
     "resolution": ""
   },
+  "DW-140": {
+    "answered_at": "2026-07-25",
+    "bundle_name": "",
+    "effect": "build",
+    "intent": "Add a byte/size cap to EditorHistory dropping oldest entries beyond the cap, shared across terrain + entity undo",
+    "key": "1",
+    "label": "Byte-capped coalescing shared policy",
+    "resolution": ""
+  },
   "DW-2": {
     "answered_at": "2026-07-25",
     "bundle_name": "",
