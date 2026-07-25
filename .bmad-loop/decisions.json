@@ -26,6 +26,15 @@
     "label": "Keep open until a faction-AI story",
     "resolution": ""
   },
+  "DW-126": {
+    "answered_at": "2026-07-25",
+    "bundle_name": "",
+    "effect": "build",
+    "intent": "Create a Scenario Settings surface (map name/author, win condition, per-slot starting resources) and fold the win-condition control into it, removing/redirecting the duplicate.",
+    "key": "build",
+    "label": "Build a unified Scenario Settings panel",
+    "resolution": ""
+  },
   "DW-2": {
     "answered_at": "2026-07-25",
     "bundle_name": "",
