@@ -1503,6 +1503,7 @@ location: godot/src/Core/ScenarioLoadPhase.cs (BuildAndInjectElevationGrid)
 severity: medium
 reason: `Terrain3DData.get_height` does float bilinear interpolation whose last bit can differ across ARM/x64 (FMA/rounding); `Fixed.FromFloat`'s `(int)(v*65536)` truncation can then cross a boundary → divergent `Elevation.Raw` → SimChecksum desync between heterogeneous peers. NOT reachable today: all shipped/golden scenarios are flat (Elevation==0) and every TICKING client is x64 (the server is a relay+quorum collector and does not tick — the companion "headless server desync" finding was REJECTED on that evidence). Becomes real when a sculpted map ships on cross-platform clients. Proper fix reads RAW per-region height-map cells per the epic's "never Godot Image interpolation" rule. Flagged as the epic-6 retro's standing determinism watch-item.
 status: open
+decision: 2026-07-25 Read raw heightmap cells now — Rewrite BuildAndInjectElevationGrid to read raw per-region heightmap cells (no Godot Image interpolation), pre-empting the divergence.
 decision: 2026-07-19 Defer until cross-platform
 
 ### DW-147: MovementSystem blocked-cell rejection tests only endpoint cells — a fast unit can tunnel a 1-cell wall in one tick

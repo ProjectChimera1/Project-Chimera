@@ -53,6 +53,15 @@
     "label": "Byte-capped coalescing shared policy",
     "resolution": ""
   },
+  "DW-146": {
+    "answered_at": "2026-07-25",
+    "bundle_name": "",
+    "effect": "build",
+    "intent": "Rewrite BuildAndInjectElevationGrid to read raw per-region heightmap cells (no Godot Image interpolation), pre-empting the divergence.",
+    "key": "build-now",
+    "label": "Read raw heightmap cells now",
+    "resolution": ""
+  },
   "DW-2": {
     "answered_at": "2026-07-25",
     "bundle_name": "",
