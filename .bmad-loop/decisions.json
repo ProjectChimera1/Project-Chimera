@@ -16,5 +16,14 @@
     "key": "2",
     "label": "Scope now via correct-course",
     "resolution": ""
+  },
+  "DW-26": {
+    "answered_at": "2026-07-25",
+    "bundle_name": "",
+    "effect": "build",
+    "intent": "Give it runtime meaning again \u2014 a per-hero XP-gain multiplier or bounty override layered on victim XpBounty",
+    "key": "1",
+    "label": "Repurpose it",
+    "resolution": ""
   }
 }
