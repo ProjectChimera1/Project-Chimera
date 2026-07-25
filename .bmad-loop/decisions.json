@@ -8,6 +8,15 @@
     "label": "Defer to a post-1.0 MP-resilience slice; keep open",
     "resolution": ""
   },
+  "DW-104": {
+    "answered_at": "2026-07-25",
+    "bundle_name": "",
+    "effect": "build",
+    "intent": "Add the disk-existence check in a presentation-layer/editor Save-edge content lint, keeping the sim validator filesystem-free (2026-07-19 decision)",
+    "key": "1",
+    "label": "Separate content-lint step",
+    "resolution": ""
+  },
   "DW-2": {
     "answered_at": "2026-07-25",
     "bundle_name": "",
