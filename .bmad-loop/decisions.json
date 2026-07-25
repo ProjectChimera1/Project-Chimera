@@ -7,5 +7,14 @@
     "key": "2",
     "label": "Defer to a post-1.0 MP-resilience slice; keep open",
     "resolution": ""
+  },
+  "DW-2": {
+    "answered_at": "2026-07-25",
+    "bundle_name": "",
+    "effect": "build",
+    "intent": "Add PRD FRs + Epic-9-style stories for v1 replay-from-start reconnect",
+    "key": "2",
+    "label": "Scope now via correct-course",
+    "resolution": ""
   }
 }

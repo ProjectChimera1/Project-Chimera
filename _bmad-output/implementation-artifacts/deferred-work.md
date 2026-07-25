@@ -101,6 +101,7 @@ origin: migrated from legacy ledger ("Design direction: MP disconnect resilience
 location: n/a
 reason: **Reconnect = replay the command log to catch up.** The Epic-9 stateful server buffers the whole command stream; a rejoining client re-downloads it, fast-forward-simulates to the live tick, then resumes. Reuses the existing deterministic sim + `.chmr` replay machinery. v1 = replay-from-start (fine for short matches); v2 = periodic state snapshots + tail replay (needs a NEW save/restore of live SoA sim state — bigger lift).
 status: open
+decision: 2026-07-25 Scope now via correct-course — Add PRD FRs + Epic-9-style stories for v1 replay-from-start reconnect
 
 **How other RTS solved it (reference):** WC3 / classic SC = freeze-and-continue (= our 9.5 floor; no takeover/rejoin). AoE2: Definitive Edition = added true reconnect (state restore). Supreme Commander / FAF = reconnect via replay-to-rejoiner + "Full Share" army-handoff (a takeover variant). Beyond All Reason (Spring engine) = server logs all commands, reconnect replays the log — the exact model Epic 9's server is becoming. Civ / Paradox = the AI-takeover poster child, but turn-based / server-authoritative (easier than real-time lockstep).
 
