@@ -34,5 +34,14 @@
     "key": "1",
     "label": "Canonicalize placement order",
     "resolution": ""
+  },
+  "DW-38": {
+    "answered_at": "2026-07-25",
+    "bundle_name": "",
+    "effect": "build",
+    "intent": "Soften the ItemDefinition/validator docstrings to allow WC3-style buff-consumables and add hybrid apply/consume coverage",
+    "key": "1",
+    "label": "Permit hybrids + document",
+    "resolution": ""
   }
 }
