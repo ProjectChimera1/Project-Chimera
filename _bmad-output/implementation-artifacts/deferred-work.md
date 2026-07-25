@@ -102,6 +102,7 @@ location: n/a
 reason: **Reconnect = replay the command log to catch up.** The Epic-9 stateful server buffers the whole command stream; a rejoining client re-downloads it, fast-forward-simulates to the live tick, then resumes. Reuses the existing deterministic sim + `.chmr` replay machinery. v1 = replay-from-start (fine for short matches); v2 = periodic state snapshots + tail replay (needs a NEW save/restore of live SoA sim state — bigger lift).
 status: open
 decision: 2026-07-25 Scope now via correct-course — Add PRD FRs + Epic-9-style stories for v1 replay-from-start reconnect
+decision: 2026-07-25 Scope now via correct-course — Add PRD FRs + Epic-9-style stories for v1 replay-from-start reconnect
 
 **How other RTS solved it (reference):** WC3 / classic SC = freeze-and-continue (= our 9.5 floor; no takeover/rejoin). AoE2: Definitive Edition = added true reconnect (state restore). Supreme Commander / FAF = reconnect via replay-to-rejoiner + "Full Share" army-handoff (a takeover variant). Beyond All Reason (Spring engine) = server logs all commands, reconnect replays the log — the exact model Epic 9's server is becoming. Civ / Paradox = the AI-takeover poster child, but turn-based / server-authoritative (easier than real-time lockstep).
 
@@ -564,6 +565,7 @@ location: UnitDefinitionValidator.cs
 reason: summary: The shipped hero-centric `HeroDefinition.XpPerKill` (`xp_per_kill`, default 100) is superseded by the victim-centric `UnitDefinition.XpBounty` (Story 3.13's runtime XP source) but is still validated, round-tripped by `FactionWriter`, and surfaced in the Unit Card Editor as a functional "XP per kill" knob that the runtime no longer consumes — a misleading authoring surface. evidence: `HeroXpSystem` credits `victim.XpBounty` only (grep: no `XpPerKill` reference in the Combat runtime). `HeroDefinition.XpPerKill` remains authored/validated (`UnitDefinitionValidator.cs` hero.xp_per_kill rule) and editor-exposed. Story 3.13 D5 deliberately left it untouched (removing it would perturb Story 3.7's validator/editor/writer/tests); the clean reconciliation (remove or repurpose the field + its editor/validator/writer surface) is a focused follow-up. Flagged by the Intent-Alignment review layer (Divergence 2).
 status: open
 decision: 2026-07-25 Repurpose it — Give it runtime meaning again — a per-hero XP-gain multiplier or bounty override layered on victim XpBounty
+decision: 2026-07-25 Repurpose it — Give it runtime meaning again — a per-hero XP-gain multiplier or bounty override layered on victim XpBounty
 decision: 2026-07-08 Repurpose it — Give xp_per_kill runtime meaning again — e.g. a per-hero XP-gain multiplier or a per-hero bounty override layered onto the victim's XpBounty — so the authoring knob is no longer misleading.
 
 ### DW-27: The end-of-match harvest of live `HeroStore.Level`/`Xp` into the deployed `PlayerProfile` (`MainScene.ResetToAuthoredStart` capture) and the picker Save/Overwrite rewire (`HeroPickerOverlay.ResolveHeroProgress`) have NO automated coverage — a wrong-way change (e.g. dropping the harvested value and re-persisting the level-1/0 placeholder) would silently regress AC3 with the whole suite green.
@@ -655,6 +657,7 @@ location: n/a
 reason: summary: `ScenarioApplier` creates placed items in `ScenarioData.Items` array order (packed refs 0,1,2… follow array order) while `StartStateHash` canonicalizes item order (sorts by item_id/X/Z) before folding, so two scenarios with the same item set in different array order hash identically yet assign different runtime refs — a `PickupItem`/inventory ref could resolve to a different physical item per peer. evidence: Only triggers when peers load differently-ordered-but-same-set item arrays (tampered/divergent files); byte-identical files assign identical refs. This is a pre-existing architectural property shared with unit/building placement (entity ids also follow array order while `CanonicalModelHash` sorts them). Closure: canonicalize placement order in `ScenarioApplier` (sort before `Create`) for items and, ideally, the pre-existing unit/building loops too, or fold array order into the hash. Flagged by the Blind Hunter review layer (F2).
 status: open
 decision: 2026-07-25 Canonicalize placement order — Sort ScenarioApplier's Items (and ideally the unit/building loops) by the same canonical key before Create; golden re-baseline
+decision: 2026-07-25 Canonicalize placement order — Sort ScenarioApplier's Items (and ideally the unit/building loops) by the same canonical key before Create; golden re-baseline
 decision: 2026-07-19 Canonicalize placement order — Sort ScenarioApplier's Items (and the unit/building loops) by the same canonical key before Create so runtime refs match the hash order. Requires a golden re-baseline.
 
 ### DW-38: `ItemDefinitionValidator` permits a charged consumable (`charges > 0`) to also carry non-zero stat deltas, crossing the `ItemDefinition`/validator docs' asserted stat-item-XOR-consumable archetype split; the crossing is untested.
@@ -663,6 +666,7 @@ source_spec: `_bmad-output/implementation-artifacts/spec-3-15-item-inventory-sim
 location: n/a
 reason: summary: `ItemDefinitionValidator` permits a charged consumable (`charges > 0`) to also carry non-zero stat deltas, crossing the `ItemDefinition`/validator docs' asserted stat-item-XOR-consumable archetype split; the crossing is untested. evidence: The validator checks `charges>0 ⇒ effect present` and `charges==0 ⇒ no effect`, but never `charges>0 ⇒ no stat deltas`. The runtime handles a hybrid consistently (applies the carried modifier, removes it on consume-to-zero), so this is a design/doc decision (allow hybrid buff-consumables like some WC3 items, or enforce the XOR) rather than a bug. Closure: either add the XOR rule + a reject oracle, or soften the doc comments to permit hybrids and add coverage. Flagged by the Blind Hunter review layer (F6).
 status: open
+decision: 2026-07-25 Permit hybrids + document — Soften the ItemDefinition/validator docstrings to allow WC3-style buff-consumables and add hybrid apply/consume coverage
 decision: 2026-07-25 Permit hybrids + document — Soften the ItemDefinition/validator docstrings to allow WC3-style buff-consumables and add hybrid apply/consume coverage
 decision: 2026-07-08 Permit hybrids + document — Soften the ItemDefinition/validator docstrings to allow buff-consumables (WC3-style: a charged item that also grants a passive stat bonus) and add coverage for the hybrid apply/consume path. Least restrictive for creators; matches what the runtime already does.
 
@@ -1175,6 +1179,7 @@ reason: summary: `FactionValidator.ValidateComplete` (Story 5.2) — the one val
 closure: add a `File.Exists`/`ResourceLoader.Exists`-backed disk-existence check to `ValidateComplete`'s mesh_path loop (or a new, explicitly-named third method, given DW-99's existing concern about `Validate`/`ValidateComplete` ambiguity) — evaluate whether this belongs in the sim-layer validator at all (it reads the filesystem, a presentation-layer concern) versus a separate content-authoring lint step, before implementing.
 status: open
 decision: 2026-07-25 Separate content-lint step — Add the disk-existence check in a presentation-layer/editor Save-edge content lint, keeping the sim validator filesystem-free (2026-07-19 decision)
+decision: 2026-07-25 Separate content-lint step — Add the disk-existence check in a presentation-layer/editor Save-edge content lint, keeping the sim validator filesystem-free (2026-07-19 decision)
 decision: 2026-07-19 Separate content-lint step — Add the disk-existence check in a presentation-layer/content-authoring lint (e.g. at the editor Save/discovery edge) rather than the pure sim validator.
 decision: 2026-07-16 Add File.Exists to ValidateComplete — Add a File.Exists/ResourceLoader.Exists-backed check to ValidateComplete's mesh_path loop with a located error.
 
@@ -1329,6 +1334,7 @@ reason: summary: this story piloted both showcase factions (alpha/beta) through 
 closure: a future story must either (a) wire `AiOpponentSystem` to read `FactionDefinition.AiPreset` and vary its scoring weights/thresholds per preset (mirroring how `AiDifficulty` already does this), expanding the closed set beyond `"balanced"` first if distinct presets are meant to exist, or (b) explicitly retire the "each side run by its ai_preset" framing in favor of the difficulty-only reality if per-preset AI behavior is never built. Out of this story's scope — it is integration/validation-only over the existing 5.1-5.7 systems, and adding preset-driven AI behavior would be new production capability.
 status: open
 decision: 2026-07-25 Keep open until a faction-AI story — Defer the choice to whenever distinct AI presets are actually designed
+decision: 2026-07-25 Keep open until a faction-AI story — Defer the choice to whenever distinct AI presets are actually designed
 
 ### DW-125: `AsymmetryPlaytestValidationTests`' harness constants (`InitialWaveSize = 5`, the AI/opposing base positions `(45,0,0)`/`(-45,0,0)`) hand-copy `AiOpponentSystem`'s internal attack-threshold and `P1_BASE` values rather than referencing them symbolically
 source_spec: `_bmad-output/implementation-artifacts/spec-5-8-playtest-validate-asymmetry-ai-playability-of-the-showcase-factions-fr-20-fr-18.md`
@@ -1452,6 +1458,7 @@ location: godot/src/CreationSuite/TerrainBrush.cs (SnapshotRegions/PushStrokeUnd
 severity: medium
 reason: Each stroke deep-`Duplicate`s height+control Images (before AND after) per touched region onto an uncapped shared EditorHistory — a long sculpt session pins hundreds of MB–GB of undo memory. A cap/coalescing policy also affects the shared entity-undo semantics, so it needs a deliberate design, not a drive-by patch.
 status: open
+decision: 2026-07-25 Byte-capped coalescing shared policy — Add a byte/size cap to EditorHistory dropping oldest entries beyond the cap, shared across terrain + entity undo
 decision: 2026-07-25 Byte-capped coalescing shared policy — Add a byte/size cap to EditorHistory dropping oldest entries beyond the cap, shared across terrain + entity undo
 decision: 2026-07-15 Bounded/coalescing history policy — Introduce a size/byte-capped, coalescing EditorHistory policy shared across terrain-stroke and entity undo, dropping oldest entries beyond the cap.
 decision: 2026-07-15 Bounded/coalescing history policy — Introduce a size/byte-capped, coalescing EditorHistory policy shared across terrain-stroke and entity undo, dropping oldest entries beyond the cap.
@@ -1622,6 +1629,7 @@ severity: medium
 reason: Story 6.7 ships "map size" as authored playable half-extents (Small 80 / Medium 120 / Large 128, `ScenarioData.MapBounds`) inside the FIXED ±128 grid identity, per the epic RISK NOTE. Truly resizing the grids is a determinism-critical refactor: it changes the pathability persist format (invalidating every stored scenario's `pathability_blocked`) and forces re-baselining every CanonicalModelHash/StartStateHash/golden fixture. Requires a dedicated correct-course story parameterizing the four sim grids from a single map-size truth source in lockstep, `GridDimensionConsistencyTests` extended per-size, and an explicit one-time golden re-baseline. Until then the fixed 80/120/128 set is the shipped contract.
 status: open
 decision: 2026-07-25 Author a correct-course determinism story — Parameterize the four sim grids from one map-size truth source in lockstep, extend GridDimensionConsistencyTests per-size, do a one-time golden re-baseline
+decision: 2026-07-25 Author a correct-course determinism story — Parameterize the four sim grids from one map-size truth source in lockstep, extend GridDimensionConsistencyTests per-size, do a one-time golden re-baseline
 decision: 2026-07-19 Author a dedicated correct-course determinism story — Parameterize the four sim grids from one map-size truth source in lockstep, extend GridDimensionConsistencyTests per-size, and do a one-time golden re-baseline.
 decision: 2026-07-16 Keep open
 
@@ -1640,6 +1648,7 @@ location: godot/src/Core/Definitions/MapSizes (MaxHalfExtent == FlowField.WORLD_
 severity: low
 reason: Positions exactly on the +128 boundary clamp col/row 128→127. Deterministic, affects only the exact boundary line, same pre-existing WorldToCell clamp convention as DW-158. Fix: give Large a small sub-128 margin, or document the edge as the intended playable ceiling.
 status: open
+decision: 2026-07-25 Keep open — Defer the contradiction again
 decision: 2026-07-25 Keep open — Defer the contradiction again
 decision: 2026-07-19 Give Large a sub-128 margin — Reduce Large's MaxHalfExtent below 128 so no playable cell sits on the clamp boundary; requires a golden re-baseline.
 decision: 2026-07-16 Keep open
@@ -2028,6 +2037,7 @@ source_spec: `_bmad-output/implementation-artifacts/spec-7-13-complete-the-trigg
 severity: low
 reason: Deterministic (drop-newest, identical on every peer → no desync), but the cap is low enough that the loss is normal-case behavior in mass combat, not a pathological edge. A designer/tuning decision: raise the cap, or accept documented saturation. Flagged by the Blind review layer.
 status: open
+decision: 2026-07-25 Raise the cap — Increase DslSimEventFeed.Capacity to cover worst-case AoE ticks (with a memory/cost note)
 decision: 2026-07-25 Raise the cap — Increase DslSimEventFeed.Capacity to cover worst-case AoE ticks (with a memory/cost note)
 decision: 2026-07-19 Keep open as a tuning item
 
