@@ -1,0 +1,11 @@
+{
+  "DW-1": {
+    "answered_at": "2026-07-25",
+    "bundle_name": "",
+    "effect": "keep-open",
+    "intent": "",
+    "key": "2",
+    "label": "Defer to a post-1.0 MP-resilience slice; keep open",
+    "resolution": ""
+  }
+}

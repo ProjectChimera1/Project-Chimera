@@ -94,6 +94,7 @@ origin: migrated from legacy ledger ("Design direction: MP disconnect resilience
 location: godot/src/AI/AiOpponentSystem.cs
 reason: **AI takeover = freeze-and-continue with AI commands instead of empty ones.** `AiOpponentSystem` runs INSIDE the deterministic sim, so every peer computes identical AI moves with no extra netcode — no machine "hosts" the bot. Host-enable = a ruleset flag folded into `rulesetHash` (all peers agree on the rule). Same trigger as 9.5 (server-dictated at applyTick, ACK-gated, tick-counted). - **HARD PREREQUISITE:** `AiOpponentSystem` is **NOT deterministic today** — it uses `float`/`Math.*` (13 occurrences in `godot/src/AI/AiOpponentSystem.cs`; see also the 2026-06-09 deferral "Float math in the AI utility scorer"). It MUST be converted to `Fixed` before ANY AI runs in lockstep MP (takeover or otherwise). Shared prerequisite with the adaptive-AI work (Story 10.11). - Smaller: the AI must adopt a mid-game base/economy (it normally starts from scratch) — a new entry condition.
 status: open
+decision: 2026-07-25 Defer to a post-1.0 MP-resilience slice; keep open
 
 ### DW-2: Reconnect = replay the command log to catch up.
 origin: migrated from legacy ledger ("Design direction: MP disconnect resilience — AI takeover + reconnect (captured 2026-06-24, NOT yet scoped)"), 2026-07-08
