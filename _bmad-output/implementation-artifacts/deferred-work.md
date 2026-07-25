@@ -1353,6 +1353,7 @@ location: `godot/src/Core/Bootstrap/Phases/ScenarioLoadPhase.cs` (`LoadAndApplyS
 reason: summary: confirmed by this story's own Design Notes (no `new ScenarioData()` call, no Create/New-Scenario UI anywhere in the codebase) — building a true empty-canvas origination flow is Epic-6-scale scope this story doesn't own. Onboarding instead coaches the creator to place a base + units onto whichever scenario booted (fallback/default/JSON), which still satisfies the story's testable "produce a playable scenario in under 15 minutes" bar without inventing scope the epic didn't ask for. Not a defect — a deliberate, spec-documented scope boundary.
 closure: when a future epic (Epic 6-scale) adds a real "New Scenario" empty-canvas flow, onboarding step 4 (and its instructional copy) should be revisited to offer starting from a blank canvas as an alternative to editing the boot-time scenario. Not urgent — no creator-facing complaint, and the current flow is fully functional for its stated 15-minute-playable goal.
 status: open
+decision: 2026-07-25 Build a New Scenario empty-canvas flow — Add a Create/New-Scenario UI that originates a blank ScenarioData, and revisit onboarding step 4 to offer starting from a blank canvas.
 
 ### DW-128: Onboarding step 1's unit "template" list is a small curated fixed array (`UnitCardPanel.CuratedTemplateUnits`), not a browsable gallery
 source_spec: `_bmad-output/implementation-artifacts/spec-5-9-added-your-first-scenario-guided-onboarding-15-min-playable.md`

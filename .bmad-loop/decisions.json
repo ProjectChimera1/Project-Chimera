@@ -35,6 +35,15 @@
     "label": "Build a unified Scenario Settings panel",
     "resolution": ""
   },
+  "DW-127": {
+    "answered_at": "2026-07-25",
+    "bundle_name": "",
+    "effect": "build",
+    "intent": "Add a Create/New-Scenario UI that originates a blank ScenarioData, and revisit onboarding step 4 to offer starting from a blank canvas.",
+    "key": "build",
+    "label": "Build a New Scenario empty-canvas flow",
+    "resolution": ""
+  },
   "DW-2": {
     "answered_at": "2026-07-25",
     "bundle_name": "",
