@@ -62,6 +62,15 @@
     "label": "Read raw heightmap cells now",
     "resolution": ""
   },
+  "DW-160": {
+    "answered_at": "2026-07-25",
+    "bundle_name": "",
+    "effect": "build",
+    "intent": "Parameterize the four sim grids from one map-size truth source in lockstep, extend GridDimensionConsistencyTests per-size, do a one-time golden re-baseline",
+    "key": "2",
+    "label": "Author a correct-course determinism story",
+    "resolution": ""
+  },
   "DW-2": {
     "answered_at": "2026-07-25",
     "bundle_name": "",

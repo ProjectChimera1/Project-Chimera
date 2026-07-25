@@ -1621,6 +1621,7 @@ location: godot/src/Core/FogOfWarSystem.cs (own 128 constants) + FlowField.WORLD
 severity: medium
 reason: Story 6.7 ships "map size" as authored playable half-extents (Small 80 / Medium 120 / Large 128, `ScenarioData.MapBounds`) inside the FIXED ±128 grid identity, per the epic RISK NOTE. Truly resizing the grids is a determinism-critical refactor: it changes the pathability persist format (invalidating every stored scenario's `pathability_blocked`) and forces re-baselining every CanonicalModelHash/StartStateHash/golden fixture. Requires a dedicated correct-course story parameterizing the four sim grids from a single map-size truth source in lockstep, `GridDimensionConsistencyTests` extended per-size, and an explicit one-time golden re-baseline. Until then the fixed 80/120/128 set is the shipped contract.
 status: open
+decision: 2026-07-25 Author a correct-course determinism story — Parameterize the four sim grids from one map-size truth source in lockstep, extend GridDimensionConsistencyTests per-size, do a one-time golden re-baseline
 decision: 2026-07-19 Author a dedicated correct-course determinism story — Parameterize the four sim grids from one map-size truth source in lockstep, extend GridDimensionConsistencyTests per-size, and do a one-time golden re-baseline.
 decision: 2026-07-16 Keep open
 
