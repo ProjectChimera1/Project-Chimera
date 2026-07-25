@@ -458,7 +458,8 @@ origin: migrated from legacy ledger ("Deferred from: dev of story-3.4 (2026-07-0
 source_spec: `_bmad-output/implementation-artifacts/spec-3-9-offline-hero-persistence-rail-save-load-hero-picker-deterministic-init-time-apply.md`
 location: n/a
 reason: summary: The boot-time StartStateHash is the empty-store value; the deployed-hero hash is recomputed only at Launch and GD.Print-logged, never put on the wire. evidence: MainScene computes StartStateHash at _Ready with a null PendingHeroProfile (empty store); HeroPickerPhase.Launch recomputes post-mint but only logs it. Consistent with 3.2's D-3 (StartStateHash off the wire until Epic 9). When Epic 9 wires it into the attested multi-hash handshake it must consume the post-mint (init-time/Launch-time) value, or the deployed hero is silently omitted.
-status: open
+status: done 2026-07-24
+resolution: already resolved: MainScene.cs:538-567 — HeroProfileLoader.LoadInto mints the deployed profile then MatchAgreementHash.Compute folds the post-mint StartStateHash onto the Ready packet (LobbyUi.cs:418); Story 9.16.
 
 ### DW-15: The preserve-hero-progress branch of the Edit↔Play reset always re-mints hero.level + hero.xp, ignoring which attributes the scenario's Story-3.8 PersistenceManifest actually selects to carry forward.
 origin: migrated from legacy ledger ("Deferred from: dev of story-3.4 (2026-07-06)"), 2026-07-08
@@ -1034,7 +1035,8 @@ status: open
 source_spec: `_bmad-output/implementation-artifacts/spec-4-10-researchstore-simchecksum-fold-golden-rebaseline.md`
 location: godot/src/Core/SimChecksum.cs (the v14 ResearchStore fold's `foreach (Faction f in factions.ActiveFactions)` loop), godot/src/Core/ResearchStore.cs (`FACTION_COUNT = 5`)
 reason: summary: the crash is reachable only once a match actually activates a 5th+ faction, which no shipped scenario does today, and the exact same unguarded-index pattern already exists for `ResourceStore`'s per-faction fold (`SimChecksum.cs`'s Ore/Crystal/SupplyUsed/etc. loop, since Story 1.3b) and `ModifierStore`/other per-faction stores — this story's fold is one more consumer of a pre-existing, already-accepted architectural ceiling, not a new defect it introduces. evidence: `ResearchStore`'s ctor hardcodes `FACTION_COUNT = 5`; `EnsureCapacity` silent-no-ops out-of-range factions defensively, but the fold's direct array indexing has no equivalent guard. Flagged independently by the Blind Hunter and Edge Case Hunter review layers. Closure: when 5+ active factions become real (tracked wherever `FactionRegistry.PLAYER_COUNT`'s 8-player ceiling is actually wired up), widen `ResearchStore`/`ResourceStore`/every other per-faction store's fixed arrays together in one pass, or add a shared bounds-checked accessor.
-status: open
+status: done 2026-07-24
+resolution: already resolved: ResearchStore.cs:24 FACTION_COUNT = FactionRegistry.FACTION_ARRAY_SIZE (9); arrays sized 57-64; SimChecksum.cs:535 fold indexes max Player8=8<9. Story 9.2 widening.
 
 ### DW-88: `ResearchSystem.CompleteResearch` (Story 4.9) scans every entity up to `world.HighWaterMark` (up to 4096) on every single research completion to apply the cumulative modifier faction-wide, an O(n) full-world scan on a comparatively rare, event-driven action rather than a per-tick one.
 source_spec: `_bmad-output/implementation-artifacts/spec-4-10-researchstore-simchecksum-fold-golden-rebaseline.md`
@@ -1084,13 +1086,15 @@ status: open
 source_spec: `_bmad-output/implementation-artifacts/spec-5-1-factionregistry-canonical-faction-slot-constants-ar-3.md`
 location: godot/src/Core/FactionRegistry.cs (ctor validates `activePlayerCount` against `PLAYER_COUNT=8`; `SlotDefinitions`/`SLOT_DEFINITIONS_SIZE` are hardcoded to 5)
 reason: summary: constructing `new FactionRegistry(5..8)` (already ctor-legal today) and then indexing `SlotDefinitions`/`GetSlotDefinition` for `Player5..Player8` silently returns null via the bounds check rather than reflecting real slot data. evidence: same root cause as the existing story-1.3a deferral above (ctor accepts up to `PLAYER_COUNT=8` while the `Faction` enum and every sibling per-faction array top out at 5/Player4) — Story 5.1 adds one more (currently dormant) surface of that pre-existing, already-tracked tension. No live caller constructs `FactionRegistry(5..8)` and then touches `SlotDefinitions` (only `MainScene._Ready`/`BuildHeadlessServerSimHost`, both `FactionRegistry(2)`, populate it). closure: Story 9.2, alongside the enum/array-size widening it already owns — ensure `SLOT_DEFINITIONS_SIZE` grows in lockstep with `PLAYER_COUNT`/`FACTION_ARRAY_SIZE` when the enum widens.
-status: open
+status: done 2026-07-24
+resolution: already resolved: FactionRegistry.cs:36 SLOT_DEFINITIONS_SIZE = FACTION_ARRAY_SIZE (9); SlotDefinitions sized to it (:42). Story 9.2 widened enum to Player8.
 
 ### DW-95: Bounds-checking for `(Faction)(slot+1)`-derived indices is duplicated three ways, not centralized
 source_spec: `_bmad-output/implementation-artifacts/spec-5-1-factionregistry-canonical-faction-slot-constants-ar-3.md`
 location: godot/src/Core/Bootstrap/Phases/ScenarioLoadPhase.cs (ResolveSlotFactionDefs, no guard), godot/src/Core/MainScene.cs (BuildHeadlessServerSimHost, has an inline `if ((int)f < 0 || (int)f >= slotDefs.Length) continue;` guard), godot/src/Core/Sim/ScenarioApplier.cs (separate private `InFactionRange` method)
 reason: summary: Story 5.1 centralized the `(Faction)(slot+1)` cast itself into `FactionRegistry.ToFaction`, but the range-validation that must accompany every use of that cast's result remains three independently-written checks (one missing entirely, one inline, one a private method on a different class) instead of one canonical bounds-checked path. evidence: pre-existing pattern — none of the three sites' bounds-check shape changed in this diff, only the cast expression did; confirmed by adversarial review (Blind Hunter) and independently by the Edge Case Hunter, who traced `ScenarioLoadPhase.ResolveSlotFactionDefs`'s missing guard as concretely reachable for a scenario slot >= 4. closure: a future story could route all three through `FactionRegistry.GetSlotDefinition`/an equivalent bounds-checked setter, once `ScenarioApplier`'s decoupling from `FactionRegistry` (it takes a raw array, not a registry reference) is revisited — out of Story 5.1's and this deferral's scope to design.
-status: open
+status: done 2026-07-24
+resolution: already resolved: MainScene.cs:381 _slotFactionDefs = factions.SlotDefinitions (size 9); ScenarioLoadPhase.cs:376 writes with faction index max Player8=8<9. Story 9.2.
 decision: 2026-07-19 Add the missing guard only — Add the inline guard ScenarioLoadPhase lacks (cheap), leaving the three-way duplication in place.
 decision: 2026-07-16 Centralize bounds-check — Route all three sites through one FactionRegistry.GetSlotDefinition-style bounded accessor/setter.
 
@@ -1098,7 +1102,8 @@ decision: 2026-07-16 Centralize bounds-check — Route all three sites through o
 source_spec: `_bmad-output/implementation-artifacts/spec-5-1-factionregistry-canonical-faction-slot-constants-ar-3.md`
 location: godot/src/Core/Bootstrap/Phases/ScenarioLoadPhase.cs:112 (`_ctx.SlotFactionDefs[(int)faction] = def;`)
 reason: summary: identical to the already-tracked story-1.8c deferral ("`ResolveSlotFactionDefs` throws `IndexOutOfRangeException` for player slots 4-7 (→ Story 9.2)") — recorded again here because the Edge Case Hunter independently rediscovered it during this story's review and it remains unfixed; Story 5.1's `ToFaction` cast substitution on the line above did not touch this write or add a guard (out of scope — AC3 for this story concerns lookups/reads, not writes). evidence: a scenario player slot >= 4 with a valid on-disk `faction_json` reaches this line before `ScenarioValidator`'s shadow-mode (non-blocking on master) rejection. closure: unchanged from the 1.8c deferral — Story 9.2, or an optional cheap interim guard (`if ((int)faction >= _ctx.SlotFactionDefs.Length) continue;`).
-status: open
+status: done 2026-07-24
+resolution: already resolved: ScenarioLoadPhase.cs:376 writes into MainScene.cs:381's size-9 FactionRegistry.SlotDefinitions; valid slots 0-7 -> factions 1-8 all <9. Story 9.2 (named blocker) landed.
 
 ## Deferred from: review of spec-5-2-faction-schema-extension-validator-ar-39-ar-12-fr-18-data (2026-07-10)
 
