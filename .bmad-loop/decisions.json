@@ -142,5 +142,14 @@
     "key": "fold",
     "label": "Fold gather state into SimChecksum",
     "resolution": ""
+  },
+  "DW-90": {
+    "answered_at": "2026-07-27",
+    "bundle_name": "",
+    "effect": "build",
+    "intent": "Add a 'produces' category to BuildingDefinition and gate all producer grids on the single declared category so only one grid renders.",
+    "key": "one-category-gate",
+    "label": "One active producer category per building",
+    "resolution": ""
   }
 }
