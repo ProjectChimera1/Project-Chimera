@@ -2364,6 +2364,7 @@ source_spec: `spec-9-11-replay-v2-tagged-body-scenario-re-gate-replay-ux-browser
 severity: low
 reason: The follow-up-review damping cap (limits.max_followup_reviews = 1) was spent with the story finalized (status: done, verify green) while the review pass still recommended an independent follow-up. The work was committed by bmad-loop run 20260724-024337-acea; this entry preserves the lingering recommendation for a deliberate later review.
 status: open
+decision: 2026-07-27 Schedule the deliberate later review
 
 - source_spec: `{implementation_artifacts}/spec-9-13-per-client-command-rate-throttle-anti-spam-on-the-dedicated-server.md`
   summary: The server's merged-tick fan-in (`MergedTickBuilder.TryBuild`) waits for ALL Expected slots to submit tick T with no timeout or force-advance, so any slot whose tick-T packet never arrives — a mis-set throttle cap, a silent app-level drop, or an uncooperative client — stalls every client on that tick with no recovery short of a transport disconnect (which triggers freeze-and-continue).
