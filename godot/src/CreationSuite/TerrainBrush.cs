@@ -364,9 +364,42 @@ namespace ProjectChimera.CreationSuite
                 after.Add(new RegionSnapshot(b.Loc, b.OriginWorld, h, c));
             }
 
+            // DW-140: weigh the stroke by its snapshot memory cost (before + after height/control Images) so the
+            // shared history's byte cap bounds real terrain-undo memory. Cheap entity ops pass 0 (the default).
+            long estimatedBytes = SnapshotBytes(before) + SnapshotBytes(after);
+
             _history.Push(
                 redo: () => RestoreRegions(after),
-                undo: () => RestoreRegions(before));
+                undo: () => RestoreRegions(before),
+                estimatedBytes: estimatedBytes);
+        }
+
+        /// <summary>Sum the estimated CPU-memory cost of a region-snapshot list — Height + Control Image of every
+        /// region (null-safe). Feeds the shared history's DW-140 byte cap so a long sculpt can't pin unbounded undo
+        /// memory.</summary>
+        private static long SnapshotBytes(List<RegionSnapshot> snaps)
+        {
+            long total = 0;
+            foreach (var s in snaps)
+                total += EstimateImageBytes(s.Height) + EstimateImageBytes(s.Control);
+            return total;
+        }
+
+        /// <summary>Estimate one Image's CPU-memory footprint as width × height × bytes-per-pixel(format). Null ⇒ 0.
+        /// Covers the formats Terrain3D height (Rf) and control (Rf/Rgf) maps use; unknown formats assume 4 bpp.</summary>
+        private static long EstimateImageBytes(Image? img)
+        {
+            if (img == null) return 0;
+            int bpp = img.GetFormat() switch
+            {
+                Image.Format.Rf   => 4,
+                Image.Format.Rgf  => 8,
+                Image.Format.Rgba8 => 4,
+                Image.Format.Rgb8 => 3,
+                Image.Format.R8   => 1,
+                _                 => 4,
+            };
+            return (long)img.GetWidth() * img.GetHeight() * bpp;
         }
 
         /// <summary>

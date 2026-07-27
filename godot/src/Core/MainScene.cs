@@ -1978,6 +1978,14 @@ namespace ProjectChimera.Core
             // 3. Clear every store to its authored-start (post-ctor) state — in place, no host reconstruction.
             _host.ClearForReset();
 
+            // 3a. DW-138: wipe the shared editor undo/redo history the instant ClearForReset re-mints the stores.
+            //     This is past the fail-closed vetoes above, so every id-invalidating path (incl. the build-defect
+            //     empty-board early-return below) is covered: ClearForReset + re-apply reassigns slot ids, so any
+            //     surviving undo/redo closure would replay a stale-id op — and Story 6.1 routes those closures into
+            //     ScenarioData, so a post-F5 Ctrl+Z/Y could strip or re-add a scenario entry that no longer matches
+            //     the live entity, corrupting the persisted board. Clearing here kills that closure before it can run.
+            _ctx.Placer.History.Clear();
+
             // 3b. DW-157 (Story 14.8): rebuild the static PathabilityGrid from the CURRENT edited ScenarioData and
             //     re-inject it into the SAME 3 sinks the boot path (ScenarioLoadPhase.BuildAndInjectPathabilityGrid)
             //     fans it out to. Boot builds this grid ONCE and the applier previously re-threaded its STALE cached
@@ -2116,6 +2124,12 @@ namespace ProjectChimera.Core
         /// </summary>
         internal void ResetMatchOnReturnToEdit()
         {
+            // DW-138: wipe the shared editor undo/redo history on the return-to-Edit seam too. ResetToAuthoredStart
+            // already clears it after ClearForReset for the offline F5 loop; this second site additionally covers the
+            // online/replay path that returns directly to Edit via this method WITHOUT going through
+            // ResetToAuthoredStart's ClearForReset. A double Clear() on the common (offline) path is a harmless no-op.
+            _ctx.Placer.History.Clear();
+
             // Dismiss any active game-over overlay
             if (_ctx.GameOverOverlay != null) _ctx.GameOverOverlay.Visible = false;
             _gameOver     = false;

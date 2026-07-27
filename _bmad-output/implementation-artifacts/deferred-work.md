@@ -1456,7 +1456,8 @@ source_spec: `_bmad-output/implementation-artifacts/spec-6-1-verify-harden-the-c
 location: `godot/src/UI/EntityPlacer.cs` (`_history` / `EditorHistory`) + `godot/src/Core/MainScene.cs` (`ResetToAuthoredStart` / `ResetMatchOnReturnToEdit` — neither clears `_history`).
 reason: summary: The undo/redo history survives an Edit→Play→Edit toggle (only the internal `_redoStack` is ever cleared). This was already a latent hazard for the live stores (post-F5 undo closures reference stale `capturedId` slot ids after `ClearForReset` + re-apply). Story 6.1's sync now routes those same closures into `_ctx.Scenario` too, so a post-F5 Ctrl+Z/Y can strip or re-add a scenario entry that no longer corresponds to the current live entity — corrupting the persisted board. Pre-existing root cause (stale-history-after-reset), newly reaching `ScenarioData` via this diff. Surfaced by the Verification Gap review layer. MEDIUM consequence, narrow trigger (requires an F5 toggle followed by an undo).
 closure: clear (or otherwise invalidate) `EntityPlacer._history` inside `ResetToAuthoredStart` / on return to Edit so no undo/redo closure can outlive the reset that made its captured ids stale. Fixes both the pre-existing live-store hazard and the new `ScenarioData` exposure in one place.
-status: open
+status: done 2026-07-27
+resolution: resolved by sweep bundle dw-editor-history-core
 
 ### DW-139: Follow-up review still recommended for 6-6-doodads-props-placement-editor-multi-select-copy-paste-rotation-named-cameras-water-floor after the review budget was exhausted
 origin: review-budget-followup
@@ -1473,7 +1474,8 @@ origin: code review of spec-6-2-persist-sculpted-terrain-height-painted-textures
 location: godot/src/CreationSuite/TerrainBrush.cs (SnapshotRegions/PushStrokeUndo) + godot/src/CreationSuite/EditorHistory.cs
 severity: medium
 reason: Each stroke deep-`Duplicate`s height+control Images (before AND after) per touched region onto an uncapped shared EditorHistory — a long sculpt session pins hundreds of MB–GB of undo memory. A cap/coalescing policy also affects the shared entity-undo semantics, so it needs a deliberate design, not a drive-by patch.
-status: open
+status: done 2026-07-27
+resolution: resolved by sweep bundle dw-editor-history-core
 decision: 2026-07-25 Byte-capped coalescing shared policy — Add a byte/size cap to EditorHistory dropping oldest entries beyond the cap, shared across terrain + entity undo
 decision: 2026-07-25 Byte-capped coalescing shared policy — Add a byte/size cap to EditorHistory dropping oldest entries beyond the cap, shared across terrain + entity undo
 decision: 2026-07-15 Bounded/coalescing history policy — Introduce a size/byte-capped, coalescing EditorHistory policy shared across terrain-stroke and entity undo, dropping oldest entries beyond the cap.
