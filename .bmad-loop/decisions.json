@@ -80,6 +80,15 @@
     "label": "Keep open",
     "resolution": ""
   },
+  "DW-180": {
+    "answered_at": "2026-07-27",
+    "bundle_name": "",
+    "effect": "keep-open",
+    "intent": "",
+    "key": "defer",
+    "label": "Keep deferred to the Epic 10 live-verification batch",
+    "resolution": ""
+  },
   "DW-192": {
     "answered_at": "2026-07-25",
     "bundle_name": "",
