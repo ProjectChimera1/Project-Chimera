@@ -427,6 +427,6 @@ action_items:
     status: "open"
   - epic: 9
     id: "A7-E9"
-    action: "ScenarioType registry - PRODUCT DECISION (A4-E8 carried, unmade for a second consecutive epic): build-now / build-in-epic-N / wont-build, with the deferred-work entry updated. Story 8.3 parameterized MapGeneratorContext map clamps stay inert until this is decided."
+    action: "ScenarioType registry + MAP SIZE - PRODUCT DECISION. DECIDED (Alec 2026-07-26): route through a /bmad-brainstorming session, then /bmad-correct-course carrying the brainstorm verdict; Alec kicks this off in a NEW session. Driver: he has scenario ideas that may need different map sizes and wants feasibility known up front. Prep brief written at _bmad-output/planning-artifacts/map-size-brainstorm-brief.md with live-source constraints - headline: SMALLER maps are free today (map_03 already ships at 90; shipped range 90-120), LARGER maps are NOT possible without changing three hardcoded grids (FlowField 128x128 @ 2 units, PathabilityGrid 128x128, SpatialHash 32x32 @ 10 units) that pin the world to 256x256 (-128..+128) and are all determinism-critical, so growing the world moves goldens and likely bumps SimChecksum.AlgoVersion. Zero of those grids derive from map_bounds today. Also found: ScenarioValidator gates map_bounds only against the 16.16 ceiling (32768), never against WORLD_HALF_EXTENT, so an oversized map validates clean then strands units off the flow field - file as deferred work regardless of verdict."
     owner: "Alec"
     status: "open"
