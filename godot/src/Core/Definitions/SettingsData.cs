@@ -39,7 +39,7 @@ namespace ProjectChimera.Core.Definitions
 
         /// <summary>Story 8.1: the selected model — either a curated pick from the provider's catalog list OR a
         /// free-text override; both persist and round-trip verbatim. An empty value is reset to
-        /// <see cref="LlmProviderCatalog.DefaultModel"/> (<c>claude-sonnet-4-6</c>) by <see cref="MigrateForward"/>.
+        /// <see cref="LlmProviderCatalog.DefaultModel"/> (<c>claude-sonnet-5</c>) by <see cref="MigrateForward"/>.
         /// No separate override field is needed — one persisted model field holds either kind.</summary>
         [JsonPropertyName("llm_model")]
         public string LlmModel { get; set; } = LlmProviderCatalog.DefaultModel;

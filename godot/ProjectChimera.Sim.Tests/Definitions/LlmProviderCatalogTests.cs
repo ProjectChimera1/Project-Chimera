@@ -6,7 +6,7 @@ namespace ProjectChimera.Sim.Tests.Definitions
 {
     /// <summary>
     /// Story 8.1 — the curated <see cref="LlmProviderCatalog"/>: three providers present (anthropic/ollama/
-    /// openrouter), default model <c>claude-sonnet-4-6</c>, each provider has a base URL + ≥1 curated model, and
+    /// openrouter), default model <c>claude-sonnet-5</c>, each provider has a base URL + ≥1 curated model, and
     /// <see cref="LlmProviderCatalog.TryGet"/> resolves known ids and rejects unknown ones. Godot-free / Tier-1.
     /// </summary>
     public class LlmProviderCatalogTests
@@ -23,7 +23,7 @@ namespace ProjectChimera.Sim.Tests.Definitions
         [Fact]
         public void DefaultModel_IsClaudeSonnet46()
         {
-            Assert.Equal("claude-sonnet-4-6", LlmProviderCatalog.DefaultModel);
+            Assert.Equal("claude-sonnet-5", LlmProviderCatalog.DefaultModel);
         }
 
         [Fact]

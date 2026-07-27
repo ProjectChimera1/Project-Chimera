@@ -8,7 +8,7 @@ namespace ProjectChimera.Sim.Tests.Definitions
     /// <summary>
     /// Story 8.1 — the versioned provider config on <see cref="SettingsData"/>: new fields round-trip through the
     /// SAME serializer shape <c>SettingsManager.Load/Save</c> use; an old file lacking the fields loads to safe
-    /// defaults (provider <c>anthropic</c>, model <c>claude-sonnet-4-6</c>, schema version stamped by
+    /// defaults (provider <c>anthropic</c>, model <c>claude-sonnet-5</c>, schema version stamped by
     /// <see cref="SettingsData.MigrateForward"/>) with no error; a free-text model override persists verbatim; the
     /// catalog still exposes the provider's curated model list; and the API key is NEVER written into the JSON.
     /// Godot-free / Tier-1, mirroring <c>SettingsDataRoundTripTests</c>.
@@ -28,7 +28,7 @@ namespace ProjectChimera.Sim.Tests.Definitions
         {
             var s = new SettingsData();
             Assert.Equal("anthropic", s.LlmProvider);
-            Assert.Equal("claude-sonnet-4-6", s.LlmModel);
+            Assert.Equal("claude-sonnet-5", s.LlmModel);
             Assert.Equal("", s.LlmBaseUrl);
         }
 
@@ -75,7 +75,7 @@ namespace ProjectChimera.Sim.Tests.Definitions
             loaded.MigrateForward();
 
             Assert.Equal("anthropic", loaded.LlmProvider);
-            Assert.Equal("claude-sonnet-4-6", loaded.LlmModel);
+            Assert.Equal("claude-sonnet-5", loaded.LlmModel);
             Assert.Equal(SettingsData.CurrentSchemaVersion, loaded.SchemaVersion);
         }
 
@@ -90,7 +90,7 @@ namespace ProjectChimera.Sim.Tests.Definitions
         public void MigrateForward_EmptyModel_ResetToDefault()
         {
             var s = new SettingsData { LlmModel = "" }.MigrateForward();
-            Assert.Equal("claude-sonnet-4-6", s.LlmModel);
+            Assert.Equal("claude-sonnet-5", s.LlmModel);
         }
 
         [Fact]
@@ -133,7 +133,7 @@ namespace ProjectChimera.Sim.Tests.Definitions
             var loaded = SettingsData.FromJson(legacyJson, Opts);
 
             Assert.Equal("anthropic", loaded.LlmProvider);
-            Assert.Equal("claude-sonnet-4-6", loaded.LlmModel);
+            Assert.Equal("claude-sonnet-5", loaded.LlmModel);
             Assert.Equal("", loaded.LlmBaseUrl);
             Assert.Equal(SettingsData.CurrentSchemaVersion, loaded.SchemaVersion);
         }
@@ -183,7 +183,7 @@ namespace ProjectChimera.Sim.Tests.Definitions
             string json = JsonSerializer.Serialize(new SettingsData
             {
                 LlmProvider = "anthropic",
-                LlmModel    = "claude-sonnet-4-6",
+                LlmModel    = "claude-sonnet-5",
             }.MigrateForward(), Opts);
 
             Assert.DoesNotContain("api_key", json);

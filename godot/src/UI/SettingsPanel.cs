@@ -300,7 +300,7 @@ namespace ProjectChimera.UI
             v.AddChild(_modelSelect);
 
             v.AddChild(ChimeraComponents.FieldLabel("Model override (optional — free text)"));
-            _modelOverride = ChimeraComponents.Input("e.g. claude-sonnet-4-6 or a custom tag");
+            _modelOverride = ChimeraComponents.Input("e.g. claude-sonnet-5 or a custom tag");
             v.AddChild(_modelOverride);
 
             // Base-URL override.

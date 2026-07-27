@@ -23,7 +23,7 @@ namespace ProjectChimera.Core.Definitions
         public const string DefaultProviderId = "anthropic";
 
         /// <summary>The forward-migrating default model — a fresh or unknown-model settings file lands here.</summary>
-        public const string DefaultModel = "claude-sonnet-4-6";
+        public const string DefaultModel = "claude-sonnet-5";
 
         /// <summary>One curated provider entry: stable id + display name + default base URL + curated model list.</summary>
         public sealed class ProviderInfo
@@ -49,7 +49,7 @@ namespace ProjectChimera.Core.Definitions
             new("anthropic", "Anthropic (Claude)", "https://api.anthropic.com", new[]
             {
                 "claude-opus-4-8",
-                "claude-sonnet-4-6",
+                "claude-sonnet-5",
                 "claude-haiku-4-5",
             }),
             new("ollama", "Ollama (local)", "http://localhost:11434", new[]
@@ -60,7 +60,7 @@ namespace ProjectChimera.Core.Definitions
             }),
             new("openrouter", "OpenRouter", "https://openrouter.ai/api/v1", new[]
             {
-                "anthropic/claude-sonnet-4-6",
+                "anthropic/claude-sonnet-5",
                 "openai/gpt-4o",
                 "meta-llama/llama-3.1-70b-instruct",
             }),
