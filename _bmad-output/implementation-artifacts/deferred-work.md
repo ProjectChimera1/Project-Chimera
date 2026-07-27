@@ -2436,6 +2436,7 @@ source_spec: `spec-9-14-teams-alliances-lobby-teams-wired-into-the-sim-alliance-
 severity: low
 reason: The follow-up-review damping cap (limits.max_followup_reviews = 1) was spent with the story finalized (status: done, verify green) while the review pass still recommended an independent follow-up. The work was committed by bmad-loop run 20260724-143824-31e0; this entry preserves the lingering recommendation for a deliberate later review.
 status: open
+decision: 2026-07-27 Schedule the deliberate later review
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-9-15-four-player-verified-end-to-end.md`
   summary: `LoopbackDesyncSelfTest` sends a hardcoded `GOOD` checksum rather than each peer's computed sim checksum, so no automated artifact runs N independent sims that compute + compare their own checksums (the literal "4-client zero-desync end-to-end" surface is proven only by the manual two-machine LAN runbook, not headlessly).
