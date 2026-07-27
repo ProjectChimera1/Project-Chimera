@@ -1901,7 +1901,9 @@ origin: review-budget-followup
 source_spec: `spec-7-8-custom-runtime-ui-read-rail-declarative-widget-tree-version-stamped-readback.md`
 severity: low
 reason: Review budget (2 cycles) was exhausted with the story finalized (status: done, verify green) while the review pass kept recommending an independent follow-up. The work was committed by bmad-loop run 20260716-100752-2040; this entry preserves the lingering follow-up recommendation for a deliberate later review.
-status: open
+status: done 2026-07-27
+resolution: closed by human decision: No known defect; the surface has since been safely extended, so the leftover review recommendation can be accepted.
+decision: 2026-07-27 Close as accepted — No known defect; the surface has since been safely extended, so the leftover review recommendation can be accepted.
 
 ### DW-175: ComputeFileHash is EOL-sensitive and pre-existing CRLF files persist; sibling WriteIndented writers still emit Environment.NewLine on Windows
 origin: a4-e3-crlf-root-cause-fix
