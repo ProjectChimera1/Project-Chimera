@@ -1,8 +1,8 @@
 {
   "account": "chimera",
   "github_user": "ProjectChimera1",
-  "auto_commit": true,
-  "auto_push": true,
-  "branch": "main",
+  "auto_commit": false,
+  "auto_push": false,
+  "branch": "master",
   "commit_prefix": "[AutoSave]"
 }
