@@ -65,6 +65,18 @@ namespace ProjectChimera.Sim.Tests.Definitions
         }
 
         [Fact]
+        public void MoveSpeedOverCap_IsKeyedError_ButNonSpeedDeltaBelowItemCapIsNot()
+        {
+            // DW-42, editor surface: ValidateFields enforces the tight move-speed cap independently of the sim Validate
+            // path. A move_speed_delta just over 50 badges the "move_speed_delta" field; a non-speed delta above the
+            // move cap but under the ±1000 item cap does NOT badge — proving the tight cap is wired to move_speed only.
+            Assert.True(HasKey(V.ValidateFields(
+                new ItemDefinition { Id = "boots", Charges = 0, MoveSpeedDelta = Fixed.FromInt(51) }), "move_speed_delta"));
+            Assert.False(HasKey(V.ValidateFields(
+                new ItemDefinition { Id = "vitality", Charges = 0, MaxHealthDelta = Fixed.FromInt(200) }), "max_health_delta"));
+        }
+
+        [Fact]
         public void MissingIconFile_IsKeyedError_WhenExistenceDelegateSaysNo()
         {
             var def = new ItemDefinition { Id = "ring", Charges = 0, Icon = "res://missing.png" };
@@ -73,6 +85,15 @@ namespace ProjectChimera.Sim.Tests.Definitions
             Assert.False(HasKey(V.ValidateFields(def, _ => true), "icon"));
             // No delegate → icon check skipped (Godot-free callers).
             Assert.False(HasKey(V.ValidateFields(def, null), "icon"));
+        }
+
+        [Fact]
+        public void TraversalId_IsKeyedError()
+        {
+            // DW-47: a traversal / out-of-charset id is a keyed "id" error so the editor badges it before Persist().
+            Assert.True(HasKey(V.ValidateFields(new ItemDefinition { Id = "../../foo", Charges = 0 }), "id"));
+            // A clean, filename-safe id yields no "id" error.
+            Assert.False(HasKey(V.ValidateFields(new ItemDefinition { Id = "ring_of_vigor", Charges = 0 }), "id"));
         }
 
         [Fact]

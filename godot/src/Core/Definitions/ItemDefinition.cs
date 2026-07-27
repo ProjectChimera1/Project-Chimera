@@ -8,11 +8,15 @@ namespace ProjectChimera.Core.Definitions
     /// Data-driven item definition loaded from JSON (Story 3.15, FR-64/FR-7a). One entry per item type. Mirrors
     /// <see cref="AbilityDefinition"/> (PascalCase auto-props + snake_case <c>[JsonPropertyName]</c>, <see cref="Fixed"/>
     /// gameplay numbers quantized once at parse by <c>FixedJsonConverter</c> via <c>ContentJson.Options</c> — never
-    /// <c>float</c> in a tick). Two archetypes distinguished by <see cref="Charges"/>:
+    /// <c>float</c> in a tick). <see cref="Charges"/> selects the effect-graph behaviour, and the four stat deltas are an
+    /// INDEPENDENT axis — either archetype may carry them:
     ///   • <b>stat item</b> (<c>charges == 0</c>): applies its <see cref="MaxHealthDelta"/>/<see cref="AttackDamageDelta"/>/
     ///     <see cref="MoveSpeedDelta"/>/<see cref="ArmorDelta"/> as a permanent <c>Modifier</c> while carried (removed on drop);
     ///   • <b>charged consumable</b> (<c>charges &gt; 0</c>): fires its <see cref="EffectGraph"/> through the SAME
-    ///     <c>EffectExecutor</c> abilities use, decrements a charge, and is deleted at zero.
+    ///     <c>EffectExecutor</c> abilities use, decrements a charge, and is deleted at zero — AND may ALSO carry the four
+    ///     stat deltas as a permanent carried modifier (a WC3-style HYBRID buff-consumable, e.g. a potion that buffs while
+    ///     held and heals on use). There is no XOR between charges and stat deltas; the carried modifier materializes on
+    ///     pickup and is removed when the last charge is consumed (see <c>ItemSystem</c>).
     ///
     /// Deserialize ONLY through <c>ContentJson.Options</c> and validate through <see cref="ItemDefinitionValidator"/>
     /// before any use (nothing runnable escapes the gate).

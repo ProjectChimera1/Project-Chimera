@@ -114,6 +114,95 @@ namespace ProjectChimera.Sim.Tests.Definitions
             Assert.Contains("MAX_ITEM_STAT_DELTA", r.Error!);
         }
 
+        // ── move_speed_delta cap (DW-42): a far tighter per-stat cap than the ±1000 the other three deltas keep, so a
+        //    validated item cannot set a speed that tunnels a hero through pathing (~1000 wu/tick) or freezes it at 0. ──
+
+        [Fact]
+        public void MoveSpeedDelta_JustAboveCap_FailsClosed()
+        {
+            int over = ItemDefinitionValidator.MAX_MOVE_SPEED_DELTA.ToInt() + 1;
+            var r = V(new ItemDefinition { Id = "boots", Charges = 0, MoveSpeedDelta = Fixed.FromInt(over) });
+            Assert.False(r.Ok);
+            Assert.Contains("move_speed_delta", r.Error!);
+            Assert.Contains("MAX_MOVE_SPEED_DELTA", r.Error!);
+        }
+
+        [Fact]
+        public void MoveSpeedDelta_JustBelowNegativeCap_FailsClosed()
+        {
+            // The cap is a SYMMETRIC magnitude bound; the -1000-scale FREEZE extreme lives on the negative half. Pin it
+            // explicitly (review): the positive over-cap test above cannot catch a regression that drops CheckDelta's
+            // `delta < -cap` half, which would re-open the freeze the story closed while every other test still passes.
+            int under = -(ItemDefinitionValidator.MAX_MOVE_SPEED_DELTA.ToInt() + 1);
+            var r = V(new ItemDefinition { Id = "boots", Charges = 0, MoveSpeedDelta = Fixed.FromInt(under) });
+            Assert.False(r.Ok);
+            Assert.Contains("move_speed_delta", r.Error!);
+            Assert.Contains("MAX_MOVE_SPEED_DELTA", r.Error!);
+        }
+
+        [Fact]
+        public void MoveSpeedDelta_AtCap_Passes()
+        {
+            // The magnitude bound is inclusive at ±MAX_MOVE_SPEED_DELTA.
+            var r = V(new ItemDefinition { Id = "boots", Charges = 0,
+                MoveSpeedDelta = ItemDefinitionValidator.MAX_MOVE_SPEED_DELTA });
+            Assert.True(r.Ok, r.Error);
+        }
+
+        [Fact]
+        public void MoveSpeedDelta_AtNegativeCap_Passes()
+        {
+            // The inclusive boundary holds on the negative side too — a -50 curse/slow item stays authorable BY DESIGN.
+            var r = V(new ItemDefinition { Id = "boots", Charges = 0,
+                MoveSpeedDelta = -ItemDefinitionValidator.MAX_MOVE_SPEED_DELTA });
+            Assert.True(r.Ok, r.Error);
+        }
+
+        [Fact]
+        public void MoveCap_AppliesOnlyToMoveSpeed_NotOtherDeltas()
+        {
+            // The tight move-speed cap (50) applies ONLY to move_speed_delta; the other three keep ±1000. This asserts
+            // the BEHAVIOR (not a constant relationship): the SAME magnitude 60 — above the move cap, under the item
+            // cap — must FAIL on move_speed_delta but PASS on max_health_delta. Fails if the caps were swapped.
+            var speed = V(new ItemDefinition { Id = "boots", Charges = 0, MoveSpeedDelta = Fixed.FromInt(60) });
+            Assert.False(speed.Ok);
+            Assert.Contains("move_speed_delta", speed.Error!);
+
+            var health = V(new ItemDefinition { Id = "vitality", Charges = 0, MaxHealthDelta = Fixed.FromInt(60) });
+            Assert.True(health.Ok, health.Error);
+
+            // The SAME mid-band magnitude must also pass on attack_damage_delta and armor_delta — each CheckDelta call in
+            // the chain wires its OWN cap, so a copy/paste slip that passed MAX_MOVE_SPEED_DELTA for one of these would
+            // wrongly reject a legit 60-point buff. Pin all three non-speed deltas, not just max_health.
+            var attack = V(new ItemDefinition { Id = "blade", Charges = 0, AttackDamageDelta = Fixed.FromInt(60) });
+            Assert.True(attack.Ok, attack.Error);
+            var armor = V(new ItemDefinition { Id = "plate", Charges = 0, ArmorDelta = Fixed.FromInt(60) });
+            Assert.True(armor.Ok, armor.Error);
+
+            // And a hundreds-scale non-speed delta (200) — far above the move cap — still passes on max_health.
+            var big = V(new ItemDefinition { Id = "vitality2", Charges = 0, MaxHealthDelta = Fixed.FromInt(200) });
+            Assert.True(big.Ok, big.Error);
+        }
+
+        [Fact]
+        public void HybridBuffConsumable_Passes()
+        {
+            // DW-38: charges > 0 + a stat delta + an effect graph is a valid WC3-style hybrid buff-consumable — no XOR.
+            var r = V(new ItemDefinition { Id = "elixir", Charges = 2,
+                MaxHealthDelta = Fixed.FromInt(50), EffectGraph = new HealEffect(Fixed.FromInt(75)) });
+            Assert.True(r.Ok, r.Error);
+            Assert.Equal("elixir", r.Value.Value.Id);
+        }
+
+        [Fact]
+        public void TraversalId_FailsClosed_SimGate()
+        {
+            // DW-47: a path-traversal id must be rejected before it can reach Persist()'s Path.Combine/File.Move.
+            var r = V(new ItemDefinition { Id = "../../foo", Charges = 0 });
+            Assert.False(r.Ok);
+            Assert.Contains("id", r.Error!);
+        }
+
         // ── Shop costs (Story 3.16 review): the SIM gate must reject a negative/out-of-range cost, not just the editor
         //    ValidateFields — a negative cost ADDS resource on buy (SpendOre(faction, -cost) refunds), an infinite-resource
         //    exploit. The sim Validate is the sole Validated<> minter, so this is where it must fail closed. ──

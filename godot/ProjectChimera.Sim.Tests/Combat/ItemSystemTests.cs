@@ -268,6 +268,119 @@ namespace ProjectChimera.Sim.Tests.Combat
             Assert.Equal(HeroStore.INVENTORY_EMPTY, h.Heroes.Inventory[slot * HeroStore.INVENTORY_SLOTS + 0]);
         }
 
+        // ── DW-38: a HYBRID buff-consumable (charges > 0 AND a stat delta AND an effect graph) applies its carried
+        //    modifier on pickup and removes it when the last charge is consumed — the behaviour the softened docs sanction. ──
+        [Fact]
+        public void HybridConsumable_AppliesModifierOnCarry_RemovesOnConsumeToZero()
+        {
+            var h = new Harness();
+            var modSys = new ModifierSystem();
+            h.Modifiers = new ModifierStore(h.World, modSys);
+            modSys.AttachStore(h.Modifiers);
+            h.Registry = new ItemRegistry(new[]
+            {
+                new ItemDefinition { Id = "elixir", Charges = 1, MaxHealthDelta = Fixed.FromInt(40),
+                                     EffectGraph = new HealEffect(Fixed.FromInt(10)) },
+            });
+            h.Sys = new ItemSystem(h.World, h.Heroes, h.Items, h.Modifiers, h.Registry, events: null);
+            h.Sys.ConfigureUsableSlots(HeroStore.INVENTORY_SLOTS);
+
+            var (e, slot) = MintHero(h, 100, 5, 5);
+            int itemRef = h.Items.Create(0, 1, new FixedVec3(Fixed.FromInt(5), Fixed.Zero, Fixed.FromInt(5)));
+
+            // Carry it — the pickup path applies the hybrid's carried stat modifier.
+            OrderApplier.Apply(h.World, Pickup(e, itemRef), Faction.Player1, items: h.Sys);
+            h.Sys.Tick(h.World, SimulationLoop.FixedDt);
+            Assert.True(h.Items.Held[FirstSlot(h, itemRef)]);
+            Assert.Equal(Fixed.FromInt(140), h.World.EffectiveMaxHealth[e]); // 100 base + 40 carried modifier
+
+            // Use to zero charges → item freed, slot cleared, carried modifier removed.
+            OrderApplier.Apply(h.World, new UnitOrder(e, UnitCommand.UseItem, Fixed.FromRaw(0), Fixed.Zero),
+                               Faction.Player1, items: h.Sys);
+
+            Assert.False(h.Items.TryResolveRef(itemRef, out _));                                       // freed at zero
+            Assert.Equal(HeroStore.INVENTORY_EMPTY, h.Heroes.Inventory[slot * HeroStore.INVENTORY_SLOTS + 0]);
+            Assert.Equal(Fixed.FromInt(100), h.World.EffectiveMaxHealth[e]);                           // modifier removed → base
+        }
+
+        // ── DW-38 (review): a HYBRID dropped BEFORE its last charge (charges still > 0) must also shed its carried
+        //    modifier and return to the ground — the drop path, distinct from the consume-to-zero path above. ──
+        [Fact]
+        public void HybridConsumable_DroppedBeforeLastCharge_RemovesModifier_AndReturnsToGround()
+        {
+            var h = new Harness();
+            var modSys = new ModifierSystem();
+            h.Modifiers = new ModifierStore(h.World, modSys);
+            modSys.AttachStore(h.Modifiers);
+            h.Registry = new ItemRegistry(new[]
+            {
+                new ItemDefinition { Id = "elixir", Charges = 2, MaxHealthDelta = Fixed.FromInt(40),
+                                     EffectGraph = new HealEffect(Fixed.FromInt(10)) },
+            });
+            h.Sys = new ItemSystem(h.World, h.Heroes, h.Items, h.Modifiers, h.Registry, events: null);
+            h.Sys.ConfigureUsableSlots(HeroStore.INVENTORY_SLOTS);
+
+            var (e, slot) = MintHero(h, 100, 5, 5);
+            int itemRef = h.Items.Create(0, 2, new FixedVec3(Fixed.FromInt(5), Fixed.Zero, Fixed.FromInt(5)));
+
+            OrderApplier.Apply(h.World, Pickup(e, itemRef), Faction.Player1, items: h.Sys);
+            h.Sys.Tick(h.World, SimulationLoop.FixedDt);
+            Assert.Equal(Fixed.FromInt(140), h.World.EffectiveMaxHealth[e]); // 100 base + 40 carried modifier
+
+            // Drop while charges are still 2 → modifier removed, item back on the ground at the carrier's position.
+            h.World.Position[e] = new FixedVec3(Fixed.FromInt(9), Fixed.Zero, Fixed.FromInt(9));
+            OrderApplier.Apply(h.World, new UnitOrder(e, UnitCommand.DropItem, Fixed.FromRaw(0), Fixed.Zero),
+                               Faction.Player1, items: h.Sys);
+
+            Assert.Equal(Fixed.FromInt(100), h.World.EffectiveMaxHealth[e]); // carried modifier removed → base
+            Assert.Equal(HeroStore.INVENTORY_EMPTY, h.Heroes.Inventory[slot * HeroStore.INVENTORY_SLOTS + 0]);
+            Assert.True(h.Items.TryResolveRef(itemRef, out int isl));
+            Assert.False(h.Items.Held[isl]);                                // back on the ground (charges intact)
+            Assert.Equal(2, h.Items.Charges[isl]);                          // NOT consumed — a drop, not a use
+            Assert.Equal(Fixed.FromInt(9), h.Items.PosX[isl]);
+        }
+
+        // ── DW-38 (review): the load-bearing claim is "removed when the LAST charge is consumed". A 1-charge test only
+        //    proves 1→0 removal; it cannot catch a regression that sheds the buff on ANY use. Use a 2-charge hybrid down
+        //    to a NON-zero count and assert the carried modifier PERSISTS, then vanishes only at the last charge. ──
+        [Fact]
+        public void HybridConsumable_PartialConsume_RetainsModifier_UntilLastCharge()
+        {
+            var h = new Harness();
+            var modSys = new ModifierSystem();
+            h.Modifiers = new ModifierStore(h.World, modSys);
+            modSys.AttachStore(h.Modifiers);
+            h.Registry = new ItemRegistry(new[]
+            {
+                new ItemDefinition { Id = "elixir", Charges = 2, MaxHealthDelta = Fixed.FromInt(40),
+                                     EffectGraph = new HealEffect(Fixed.FromInt(10)) },
+            });
+            h.Sys = new ItemSystem(h.World, h.Heroes, h.Items, h.Modifiers, h.Registry, events: null);
+            h.Sys.ConfigureUsableSlots(HeroStore.INVENTORY_SLOTS);
+
+            var (e, slot) = MintHero(h, 100, 5, 5);
+            int itemRef = h.Items.Create(0, 2, new FixedVec3(Fixed.FromInt(5), Fixed.Zero, Fixed.FromInt(5)));
+
+            OrderApplier.Apply(h.World, Pickup(e, itemRef), Faction.Player1, items: h.Sys);
+            h.Sys.Tick(h.World, SimulationLoop.FixedDt);
+            Assert.Equal(Fixed.FromInt(140), h.World.EffectiveMaxHealth[e]); // 100 base + 40 carried modifier
+
+            // Use ONCE (charges 2 → 1): item stays held and the carried modifier MUST persist — it is not the last charge.
+            OrderApplier.Apply(h.World, new UnitOrder(e, UnitCommand.UseItem, Fixed.FromRaw(0), Fixed.Zero),
+                               Faction.Player1, items: h.Sys);
+            Assert.True(h.Items.TryResolveRef(itemRef, out int isl));
+            Assert.True(h.Items.Held[isl]);                                 // still carried
+            Assert.Equal(1, h.Items.Charges[isl]);                          // one charge spent
+            Assert.Equal(Fixed.FromInt(140), h.World.EffectiveMaxHealth[e]); // buff STILL applied mid-consume
+
+            // Use again (charges 1 → 0): now the last charge → item freed and the carried modifier removed.
+            OrderApplier.Apply(h.World, new UnitOrder(e, UnitCommand.UseItem, Fixed.FromRaw(0), Fixed.Zero),
+                               Faction.Player1, items: h.Sys);
+            Assert.False(h.Items.TryResolveRef(itemRef, out _));            // freed at zero
+            Assert.Equal(HeroStore.INVENTORY_EMPTY, h.Heroes.Inventory[slot * HeroStore.INVENTORY_SLOTS + 0]);
+            Assert.Equal(Fixed.FromInt(100), h.World.EffectiveMaxHealth[e]); // modifier removed → base
+        }
+
         private static int FirstSlot(Harness h, int itemRef)
         {
             Assert.True(h.Items.TryResolveRef(itemRef, out int isl));

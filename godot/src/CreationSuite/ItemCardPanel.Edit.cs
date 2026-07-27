@@ -18,6 +18,9 @@ namespace ProjectChimera.CreationSuite
         // Validated<T> gate will reject: stat deltas clamp to ItemDefinitionValidator.MAX_ITEM_STAT_DELTA and costs
         // clamp to the 16.16 integer ceiling (short.MaxValue) that CheckCost enforces.
         private static readonly int DeltaCap = ItemDefinitionValidator.MAX_ITEM_STAT_DELTA.ToInt();
+        // move_speed_delta clamps to its own much tighter cap (DW-42) so the Speed spinner can never dial in a value the
+        // fail-closed MAX_MOVE_SPEED_DELTA gate rejects.
+        private static readonly int MoveSpeedCap = ItemDefinitionValidator.MAX_MOVE_SPEED_DELTA.ToInt();
         private const int CostCap = short.MaxValue;
 
         // ── Form construction ────────────────────────────────────────────────────
@@ -43,7 +46,7 @@ namespace ProjectChimera.CreationSuite
             AddNumFloat(_bodyHost, "Attack", "attack_damage_delta", "Attack delta", "Flat attack-damage granted while carried.",
                 () => _current!.AttackDamageDelta.ToFloat(), v => _current!.AttackDamageDelta = Fixed.FromFloat(v), -DeltaCap, DeltaCap);
             AddNumFloat(_bodyHost, "Speed", "move_speed_delta", "Move-speed delta", "Flat move-speed granted while carried.",
-                () => _current!.MoveSpeedDelta.ToFloat(), v => _current!.MoveSpeedDelta = Fixed.FromFloat(v), -DeltaCap, DeltaCap);
+                () => _current!.MoveSpeedDelta.ToFloat(), v => _current!.MoveSpeedDelta = Fixed.FromFloat(v), -MoveSpeedCap, MoveSpeedCap);
             AddNumFloat(_bodyHost, "Armor", "armor_delta", "Armor delta", "Flat armor granted while carried.",
                 () => _current!.ArmorDelta.ToFloat(), v => _current!.ArmorDelta = Fixed.FromFloat(v), -DeltaCap, DeltaCap);
 
@@ -271,12 +274,20 @@ namespace ProjectChimera.CreationSuite
             dlg.Confirmed += () =>
             {
                 if (idx >= 0 && idx < _items.Count && _items[idx] == target) _items.RemoveAt(idx);
-                try
+                // DW-47 (review): the id feeds File.Delete here just as it feeds Persist()'s Path.Combine/File.Move.
+                // The Delete button is NOT validity-gated (unlike Save, which rides DoSave→Revalidate), so a hand-typed
+                // traversal id (e.g. "../../foo") could otherwise escape the items directory on disk. Fail closed with the
+                // SINGLE shared charset convention: an out-of-charset id can never have produced a legit on-disk file, so
+                // skip the filesystem delete and only drop the in-memory row.
+                if (UnitDefinitionValidator.SanitizeId(id) == id)
                 {
-                    string abs = Path.Combine(ProjectSettings.GlobalizePath(_itemsDir), id + ".json");
-                    if (File.Exists(abs)) File.Delete(abs);
+                    try
+                    {
+                        string abs = Path.Combine(ProjectSettings.GlobalizePath(_itemsDir), id + ".json");
+                        if (File.Exists(abs)) File.Delete(abs);
+                    }
+                    catch (Exception ex) { ShowError("Delete failed: " + ex.Message); }
                 }
-                catch (Exception ex) { ShowError("Delete failed: " + ex.Message); }
                 if (_index >= _items.Count) _index = Math.Max(0, _items.Count - 1);
                 _history.Push(
                     redo: () => { int i = _items.IndexOf(target); if (i >= 0) _items.RemoveAt(i); Refresh(); },
