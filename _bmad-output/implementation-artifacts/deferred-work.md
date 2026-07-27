@@ -984,6 +984,7 @@ source_spec: `_bmad-output/implementation-artifacts/spec-4-7-per-resource-collec
 location: godot/src/Core/SimChecksum.cs, godot/src/Core/EntityWorld.cs
 reason: summary: per-worker gather state (GatherState/CarryAmount/GatherTarget) is not folded into SimChecksum. evidence: pre-existing since `GatheringSystem`'s worker state machine was first built (well before Story 4.7) — this story's fold work was scoped to `ResourceNodeStore` (the net-new mutable node-side state), not the pre-existing worker-side fields, which were never in this story's Code Map. Surfaced incidentally while reviewing this story's checksum-coverage additions. Closure: fold `GatherState`/`CarryAmount`/`GatherTarget` into `SimChecksum`'s per-entity loop in a future desync-hardening pass. Flagged by the Blind Hunter review layer.
 status: open
+decision: 2026-07-27 Fold gather state into SimChecksum — Add GatherState/CarryAmount/GatherTarget/CarryResourceType to SimChecksum's per-entity loop and re-record the affected goldens on Windows, tightening the desync tripwire to catch a gather-only divergence the tick it happens.
 
 ### DW-79: `GatheringSystem.FindBestNode`'s `requires_structure` gate check (`StructureGateOpen` → `FactionHasStructureNear`) performs a full `BuildingStore` scan per candidate node per Idle worker per tick — an O(nodes × buildings) cost whenever any node is gated, versus the pre-4.7 O(nodes) scan.
 source_spec: `_bmad-output/implementation-artifacts/spec-4-7-per-resource-collection-models-income-streaming-requires-structure-crystal-production.md`

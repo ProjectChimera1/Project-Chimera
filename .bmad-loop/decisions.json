@@ -133,5 +133,14 @@
     "key": "free-row",
     "label": "Free the HeroStore row on editor delete",
     "resolution": ""
+  },
+  "DW-78": {
+    "answered_at": "2026-07-27",
+    "bundle_name": "",
+    "effect": "build",
+    "intent": "Add GatherState/CarryAmount/GatherTarget/CarryResourceType to SimChecksum's per-entity loop and re-record the affected goldens on Windows, tightening the desync tripwire to catch a gather-only divergence the tick it happens.",
+    "key": "fold",
+    "label": "Fold gather state into SimChecksum",
+    "resolution": ""
   }
 }
