@@ -381,6 +381,133 @@ namespace ProjectChimera.Sim.Tests.Combat
             Assert.Equal(Fixed.FromInt(100), h.World.EffectiveMaxHealth[e]); // modifier removed → base
         }
 
+        // ── DW-34: hero already at the per-entity modifier cap picks up a STAT item → the claim is DENIED, the item stays
+        //    on the ground, the tentative inventory slot is cleared, no stat bonus materializes, an OrderDenied fires. ──
+        [Fact]
+        public void Pickup_WhenHeroAtModifierCap_Denied_ItemStaysOnGround()
+        {
+            // Wire a real event queue so the denial cue is observable.
+            var h = new Harness();
+            var modSys = new ModifierSystem();
+            h.Modifiers = new ModifierStore(h.World, modSys);
+            modSys.AttachStore(h.Modifiers);
+            h.Registry = new ItemRegistry(new[]
+            {
+                // Same registry as Build(): "potion"(0) < "ring"(1) by Id ordinal, so RingDefId=1 resolves.
+                new ItemDefinition { Id = "ring", Charges = 0, MaxHealthDelta = Fixed.FromInt(50),
+                                     AttackDamageDelta = Fixed.FromInt(5), ArmorDelta = Fixed.FromInt(2) },
+                new ItemDefinition { Id = "potion", Charges = 3, EffectGraph = new HealEffect(Fixed.FromInt(75)) },
+            });
+            var events = new CombatEventQueue();
+            h.Sys = new ItemSystem(h.World, h.Heroes, h.Items, h.Modifiers, h.Registry, events);
+            h.Sys.ConfigureUsableSlots(HeroStore.INVENTORY_SLOTS);
+
+            var (e, slot) = MintHero(h, 100, 5, 5);
+            // Fill the modifier ring to EffectCaps.MaxModifiersPerEntity with unique-id, zero-delta permanent modifiers
+            // (occupancy only — EffectiveMaxHealth stays at the base so the "no bonus materialized" assert is exact).
+            for (int i = 0; i < EffectCaps.MaxModifiersPerEntity; i++)
+            {
+                var filler = new Modifier(0x5000_0000 + i, durationTicks: -1, StackRule.Ignore, maxStacks: 1,
+                                          maxHealthDelta: Fixed.Zero, attackDamageDelta: Fixed.Zero,
+                                          moveSpeedDelta: Fixed.Zero, status: StatusFlags.None,
+                                          periodEffect: null, periodTicks: 0, armorDelta: Fixed.Zero);
+                Assert.True(h.Modifiers.Apply(e, filler, e, Faction.Player1)); // ring not yet full → accepted
+            }
+            Assert.Equal(EffectCaps.MaxModifiersPerEntity, h.Modifiers.CountAt(e)); // ring is full
+            Assert.Equal(Fixed.FromInt(100), h.World.EffectiveMaxHealth[e]);        // base, no item bonus yet
+
+            // Matrix row 5 (direct): Apply on a full ring with a fresh id REFUSES with false and leaves the ring unchanged.
+            var probe = new Modifier(0x5000_00FF, durationTicks: -1, StackRule.Ignore, maxStacks: 1,
+                                     maxHealthDelta: Fixed.Zero, attackDamageDelta: Fixed.Zero,
+                                     moveSpeedDelta: Fixed.Zero, status: StatusFlags.None,
+                                     periodEffect: null, periodTicks: 0, armorDelta: Fixed.Zero);
+            Assert.False(h.Modifiers.Apply(e, probe, e, Faction.Player1));           // full → refused
+            Assert.Equal(EffectCaps.MaxModifiersPerEntity, h.Modifiers.CountAt(e));  // ring unchanged by the refusal
+
+            int itemRef = h.Items.Create(RingDefId, 0, new FixedVec3(Fixed.FromInt(5), Fixed.Zero, Fixed.FromInt(5)));
+            OrderApplier.Apply(h.World, Pickup(e, itemRef), Faction.Player1, items: h.Sys);
+            h.Sys.Tick(h.World, SimulationLoop.FixedDt);
+
+            // Denied: item stays on the ground, no carrier, inventory slot rolled back to empty, no stat bonus, Idle.
+            Assert.True(h.Items.TryResolveRef(itemRef, out int isl));
+            Assert.False(h.Items.Held[isl]);
+            Assert.Equal(ItemStore.NO_CARRIER, h.Items.CarrierHeroSlot[isl]);
+            Assert.Equal(HeroStore.INVENTORY_EMPTY, h.Heroes.Inventory[slot * HeroStore.INVENTORY_SLOTS + 0]);
+            Assert.Equal(Fixed.FromInt(100), h.World.EffectiveMaxHealth[e]); // no silently-inert bonus
+            Assert.Equal(EffectCaps.MaxModifiersPerEntity, h.Modifiers.CountAt(e)); // ring unchanged (item modifier refused)
+            Assert.Equal(UnitCommand.Idle, h.World.CommandState[e]);
+
+            bool denied = false, pickedUp = false;
+            for (int i = 0; i < events.Count; i++)
+            {
+                if (events.Get(i).Type == CombatEventType.OrderDenied) denied = true;
+                if (events.Get(i).Type == CombatEventType.ItemPickedUp) pickedUp = true;
+            }
+            Assert.True(denied);    // the denial cue fired
+            Assert.False(pickedUp); // and NOT a pickup cue — the deny/rollback path must never also emit ItemPickedUp
+        }
+
+        // ── DW-39: a ground item OUTSIDE PickupRadius → the far tick STEERS (writes MoveTarget + Moving, no claim); once
+        //    the hero reaches the item the near tick CLAIMS it with the stat modifier applied. Covers the steering branch. ──
+        [Fact]
+        public void Pickup_ItemOutsideRadius_SteersThenClaimsOnArrival()
+        {
+            var h = Build();
+            var (e, slot) = MintHero(h, 100, 0, 0);
+            // Item well outside PickupRadius (=2 units) so the far branch runs.
+            var itemPos = new FixedVec3(Fixed.FromInt(10), Fixed.Zero, Fixed.FromInt(10));
+            int itemRef = h.Items.Create(RingDefId, 0, itemPos);
+
+            OrderApplier.Apply(h.World, Pickup(e, itemRef), Faction.Player1, items: h.Sys);
+
+            // Far tick: steers toward the item, does NOT claim.
+            h.Sys.Tick(h.World, SimulationLoop.FixedDt);
+            Assert.Equal(Fixed.FromInt(10), h.World.MoveTarget[e].X);
+            Assert.Equal(Fixed.FromInt(10), h.World.MoveTarget[e].Z);
+            Assert.True((h.World.Flags[e] & EntityFlags.Moving) != 0);            // Moving flag set
+            Assert.Equal(UnitCommand.PickupItem, h.World.CommandState[e]);        // order still active
+            Assert.True(h.Items.TryResolveRef(itemRef, out int isl));
+            Assert.False(h.Items.Held[isl]);                                      // not claimed yet
+            Assert.Equal(HeroStore.INVENTORY_EMPTY, h.Heroes.Inventory[slot * HeroStore.INVENTORY_SLOTS + 0]);
+
+            // Model arrival by hand (no MovementSystem in this Tier-1 test), then tick again → claims.
+            h.World.Position[e] = itemPos;
+            h.Sys.Tick(h.World, SimulationLoop.FixedDt);
+
+            Assert.True(h.Items.Held[isl]);                                        // claimed into the first free slot
+            Assert.Equal(itemRef, h.Heroes.Inventory[slot * HeroStore.INVENTORY_SLOTS + 0]);
+            Assert.Equal(Fixed.FromInt(150), h.World.EffectiveMaxHealth[e]);       // stat modifier materialized
+            Assert.Equal(UnitCommand.Idle, h.World.CommandState[e]);              // order completed
+        }
+
+        // ── DW-34 (matrix row 3): a NON-stat item (a consumable, no stat delta) picked up while the hero is at the
+        //    modifier cap still CLAIMS normally — the cap-deny gates on HasStatModifier and never blanket-denies at the cap. ──
+        [Fact]
+        public void Pickup_NonStatItemAtModifierCap_ClaimsNormally()
+        {
+            var h = Build();
+            var (e, slot) = MintHero(h, 100, 5, 5);
+            // Saturate the modifier ring (same filler recipe as the stat-item cap-deny test).
+            for (int i = 0; i < EffectCaps.MaxModifiersPerEntity; i++)
+            {
+                var filler = new Modifier(0x5000_0000 + i, durationTicks: -1, StackRule.Ignore, maxStacks: 1,
+                                          maxHealthDelta: Fixed.Zero, attackDamageDelta: Fixed.Zero,
+                                          moveSpeedDelta: Fixed.Zero, status: StatusFlags.None,
+                                          periodEffect: null, periodTicks: 0, armorDelta: Fixed.Zero);
+                Assert.True(h.Modifiers.Apply(e, filler, e, Faction.Player1));
+            }
+
+            // PotionDefId is a consumable with no stat delta → HasStatModifier == false → it never consults the ring.
+            int itemRef = h.Items.Create(PotionDefId, 3, new FixedVec3(Fixed.FromInt(5), Fixed.Zero, Fixed.FromInt(5)));
+            OrderApplier.Apply(h.World, Pickup(e, itemRef), Faction.Player1, items: h.Sys);
+            h.Sys.Tick(h.World, SimulationLoop.FixedDt);
+
+            Assert.True(h.Items.TryResolveRef(itemRef, out int isl));
+            Assert.True(h.Items.Held[isl]);                                            // claimed despite the full ring
+            Assert.Equal(itemRef, h.Heroes.Inventory[slot * HeroStore.INVENTORY_SLOTS + 0]);
+            Assert.Equal(UnitCommand.Idle, h.World.CommandState[e]);                   // order completed, not denied
+        }
+
         private static int FirstSlot(Harness h, int itemRef)
         {
             Assert.True(h.Items.TryResolveRef(itemRef, out int isl));

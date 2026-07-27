@@ -173,12 +173,25 @@ namespace ProjectChimera.Combat
                 return;
             }
 
-            // Ground → held (same instance; the ref stays stable while carried).
+            // Ground → held (same instance; the ref stays stable while carried). Tentative — a stat item whose modifier
+            // the carrier's full modifier ring refuses (DW-34) is rolled back below so a capped hero never consumes an
+            // item into a slot for zero stat benefit.
             _items.Held[itemSlot]            = true;
             _items.CarrierHeroSlot[itemSlot] = heroSlot;
-            _heroes.Inventory[heroSlot * HeroStore.INVENTORY_SLOTS + free] = itemRef;
+            int invIdx = heroSlot * HeroStore.INVENTORY_SLOTS + free;
+            _heroes.Inventory[invIdx] = itemRef;
 
-            ApplyStatModifierIfAny(entityId, itemSlot, itemRef);
+            if (!ApplyStatModifierIfAny(entityId, itemSlot, itemRef))
+            {
+                // Modifier refused (hero at EffectCaps.MaxModifiersPerEntity) → roll back the three tentative claim
+                // writes so the deny is state-identical to never having attempted it, then deny like a full inventory.
+                _items.Held[itemSlot]            = false;
+                _items.CarrierHeroSlot[itemSlot] = ItemStore.NO_CARRIER;
+                _heroes.Inventory[invIdx]        = HeroStore.INVENTORY_EMPTY;
+                _events?.Push(CombatEventType.OrderDenied, world.Position[entityId]);
+                EndPickupOrder(world, entityId);
+                return;
+            }
 
             _events?.Push(CombatEventType.ItemPickedUp, world.Position[entityId]);
             EndPickupOrder(world, entityId);
@@ -295,21 +308,28 @@ namespace ProjectChimera.Combat
 
         // ─────────────────────────────────────────── Internals ───────────────────────────────────────────
 
-        private void ApplyStatModifierIfAny(int entityId, int itemSlot, int itemRef)
+        /// <summary>Apply the carried stat modifier for the item at <paramref name="itemSlot"/>. Returns <c>true</c> when
+        /// nothing needed applying (non-stat item) OR the modifier installed; <c>false</c> only when a stat item's
+        /// modifier was REFUSED by a full modifier ring (the DW-34 cap-deny signal the pickup site rolls back on).</summary>
+        private bool ApplyStatModifierIfAny(int entityId, int itemSlot, int itemRef)
         {
             ItemDefinition? def = _registry.TryGet(_items.DefId[itemSlot]);
-            ApplyItemStatModifier(_modifiers, _world, def, entityId, itemRef);
+            return ApplyItemStatModifier(_modifiers, _world, def, entityId, itemRef);
         }
 
         /// <summary>Story 3.16: the SHARED init/runtime stat-modifier apply, used by BOTH the pickup/buy runtime path
         /// (<see cref="ApplyStatModifierIfAny"/>) and the persisted-inventory re-mint
         /// (<c>HeroProfileLoader.ReMintInventory</c>), so a carried stat item applies the SAME deterministic per-item
         /// modifier (<see cref="ItemModifierId"/>) whether it was picked up, bought, or reloaded from a saved profile.
-        /// A non-stat item (no non-zero delta) or a dead/unresolvable entity is a deterministic no-op.</summary>
-        public static void ApplyItemStatModifier(ModifierStore modifiers, EntityWorld world,
+        /// A non-stat item (no non-zero delta) or a dead/unresolvable entity is a deterministic no-op.
+        /// <para><b>Returns</b> <c>true</c> when there was nothing to apply (null/non-stat def → no modifier depends on
+        /// the ring) or the modifier was installed; <c>false</c> only when a stat item's modifier was REFUSED by a full
+        /// modifier ring (DW-34). The persisted re-mint (<c>HeroProfileLoader.ReMintInventory</c>) and the buy path keep
+        /// their current behavior — they ignore the result and do not deny.</para></summary>
+        public static bool ApplyItemStatModifier(ModifierStore modifiers, EntityWorld world,
                                                  ItemDefinition? def, int entityId, int itemRef)
         {
-            if (def is null || !def.HasStatModifier) return;
+            if (def is null || !def.HasStatModifier) return true; // nothing to apply → claim succeeds
             var mod = new Modifier(
                 ItemModifierId(itemRef),
                 durationTicks: -1,               // permanent while carried (removed by RemoveByModifierId on drop)
@@ -322,7 +342,7 @@ namespace ProjectChimera.Combat
                 periodEffect: null,
                 periodTicks: 0,
                 armorDelta:        def.ArmorDelta);
-            modifiers.Apply(entityId, mod, entityId, world.FactionOf[entityId]);
+            return modifiers.Apply(entityId, mod, entityId, world.FactionOf[entityId]);
         }
 
         private int FirstFreeSlot(int heroSlot)

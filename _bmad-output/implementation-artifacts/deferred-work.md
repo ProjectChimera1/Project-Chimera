@@ -634,7 +634,8 @@ origin: migrated from legacy ledger ("Deferred from: code review of story-3.15 (
 source_spec: `_bmad-output/implementation-artifacts/spec-3-15-item-inventory-sim-pickups-slots-stat-effects-charges.md`
 location: n/a
 reason: summary: `ItemSystem.ApplyStatModifierIfAny` ignores the return value of `ModifierStore.Apply`, so a hero already at `MaxModifiersPerEntity` (growth + passives + several carried items) that picks up another stat item claims the item and fills the slot but gains no stat bonus and no denial cue — a silently inert item. evidence: `_modifiers.Apply(...)` returns a success/slot indicator that is discarded at the pickup site; on drop, `RemoveByModifierId` finds nothing (consistent). Deterministic across peers (same cap, same order) so no desync and no resource loss, but the item is silently useless. Degenerate — requires a hero at the per-entity modifier cap. Fix options: check the `Apply` result and deny the pickup (keep the item on the ground) or push a feedback cue. Flagged by the Edge Case review layer (#3).
-status: open
+status: done 2026-07-27
+resolution: resolved by sweep bundle dw-item-pickup-robustness
 
 ### DW-35: `EntityPlacer.PlaceItem`'s undo/redo captures the packed item ref from the original `Create`, so place→undo→redo→undo leaks the redone ground item (redo's new ref is discarded; undo resolves the now-dead original ref and `TryResolveRef` fails to destroy the live instance).
 origin: migrated from legacy ledger ("Deferred from: code review of story-3.15 (2026-07-08)"), 2026-07-08
@@ -676,7 +677,8 @@ origin: migrated from legacy ledger ("Deferred from: code review of story-3.15 (
 source_spec: `_bmad-output/implementation-artifacts/spec-3-15-item-inventory-sim-pickups-slots-stat-effects-charges.md`
 location: n/a
 reason: summary: The pickup move-to (traversal) path has no automated coverage — every `ItemSystemTests` case and the item golden spawn the item on top of the hero, so only the immediate-proximity claim is exercised; the `sqrDist > range → write MoveTarget → return` steering branch is untested. evidence: Claim resolution, full-inventory denial, two-hero race, use/drop/death are all covered, but a regression in the steering branch (wrong MoveTarget, never reaching claim range) would ship green. Also relatedly: pickup steers via a direct `world.MoveTarget` write (not FlowFieldBridge) with no order timeout, so a hero ordered onto an unreachable item steers into an obstacle indefinitely (gameplay, not determinism). Closure: a test that spawns an item away from the hero and asserts it navigates then claims; consider routing pickup steering through the flow-field path and adding an unreachable-item timeout. Flagged by the Intent-Alignment (B) + Blind Hunter (F11) review layers.
-status: open
+status: done 2026-07-27
+resolution: resolved by sweep bundle dw-item-pickup-robustness
 
 ### DW-40: Manual `DropItem` has no player-facing UI trigger and no replay/golden coverage — `SelectionSystem` wires right-click→pickup and `T`→use but nothing issues a `DropItem` order, so in-game drop is reachable only via hero death; the AC4 replay/golden covers drop only as death-drop, not a manual `DropItem` order.
 origin: migrated from legacy ledger ("Deferred from: code review of story-3.15 (2026-07-08)"), 2026-07-08

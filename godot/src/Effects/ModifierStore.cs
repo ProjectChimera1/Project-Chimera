@@ -118,10 +118,15 @@ namespace ProjectChimera.Effects
         /// DETERMINISTICALLY (drops it; never overflows the per-entity ring). Persistent instances carry
         /// <c>_modifier == null</c> so they never match the same-id stacking scan (a <c>Modifier.Id == 0</c> can't
         /// collide with one).
+        /// <para><b>Returns</b> <c>true</c> when the modifier was installed OR an existing same-id instance was handled
+        /// (Refresh/Stack/Ignore); <c>false</c> when it was REFUSED because the target is dead/stale or the per-entity
+        /// ring is full. The return value is not folded into any checksum — every path's behavior/state is unchanged;
+        /// callers that ignore the result (the pre-DW-34 default) are byte-identical. The DW-34 pickup site reads it to
+        /// deny a ground-item claim when the carrier is at the modifier cap.</para>
         /// </summary>
-        public void Apply(int targetId, Modifier mod, int casterId, Faction casterFaction)
+        public bool Apply(int targetId, Modifier mod, int casterId, Faction casterFaction)
         {
-            if (!_world.IsAlive(targetId)) return; // IsAlive also bounds-checks the id
+            if (!_world.IsAlive(targetId)) return false; // IsAlive also bounds-checks the id
 
             int @base = targetId * EffectCaps.MaxModifiersPerEntity;
             int n = _count[targetId];
@@ -135,7 +140,7 @@ namespace ProjectChimera.Effects
 
             if (existing < 0)
             {
-                if (n >= EffectCaps.MaxModifiersPerEntity) return; // full → refuse (drop), never overflow
+                if (n >= EffectCaps.MaxModifiersPerEntity) return false; // full → refuse (drop), never overflow
                 int slot = @base + n;
                 _modifierId[slot]    = mod.Id;
                 _modifier[slot]      = mod;
@@ -149,7 +154,7 @@ namespace ProjectChimera.Effects
 
                 ApplyStatDeltas(targetId, mod.AttackDamageDelta, mod.MaxHealthDelta, mod.MoveSpeedDelta, mod.ArmorDelta, isApply: true);
                 _world.StatusFlagsOf[targetId] |= mod.Status;
-                return;
+                return true; // fresh install accepted
             }
 
             int eslot = @base + existing;
@@ -175,6 +180,7 @@ namespace ProjectChimera.Effects
                 case StackRule.Ignore:
                     break; // active instance → ignore the re-apply entirely
             }
+            return true; // an existing same-id instance was handled (Refresh/Stack/Ignore)
         }
 
         /// <summary>
