@@ -810,7 +810,10 @@ namespace ProjectChimera.CreationSuite
             // disabled until the creator fills them in (the I/O-matrix "Missing required field" row): unlike a
             // unit's cost_ore (defaults to 50), these building-only required-nullable fields have no sensible
             // non-authored default (BuildingDefinitionValidator rejects a still-null value either way).
-            var def = new BuildingDefinition { Id = UniqueId("new_building"), DisplayName = "New Building", Category = "Structure" };
+            // DW-55: author Hp explicitly so a freshly-created building is hp-authored (HpAuthored=true) and is not
+            // falsely flagged "hp required but missing" by BuildingDefinitionValidator. The SpinBox already
+            // seeds/edits from def.Hp; 100 mirrors UnitDefinition's default.
+            var def = new BuildingDefinition { Id = UniqueId("new_building"), DisplayName = "New Building", Category = "Structure", Hp = 100f };
             _faction.Buildings.Add(def);
             _index = _faction.Buildings.Count - 1;
             BuildingDefinition captured = def;

@@ -72,13 +72,15 @@ namespace ProjectChimera.Core.Definitions
 
             string id = def.Id ?? "";
 
-            // Review pass (Story 4.1): Hp is no longer vestigial once a resolved def is threaded through
-            // BuildingStore.Create (BuildingSystem.PlaceBuildingDirect/QueueWorkerBuild), so a non-positive value is
-            // rejected the same as the other now-load-bearing fields. This does NOT catch an omitted `hp` silently
-            // defaulting to UnitDefinition's 100f (Hp is inherited as a non-nullable float, unlike the three
-            // required-nullable fields below) — closing that fully requires either a UnitDefinition-wide nullable-Hp
-            // change or JSON-presence tracking, both out of proportion here; deferred (see deferred-work.md).
-            if (def.Hp <= 0f)
+            // DW-55: Hp is load-bearing once a resolved def is threaded through BuildingStore.Create
+            // (BuildingSystem.PlaceBuildingDirect/QueueWorkerBuild). A building that never AUTHORED hp (it silently
+            // defaults to UnitDefinition's 100f) is now a distinct located "required but missing" error — the
+            // BuildingDefinition.HpAuthored presence flag (set through any Hp assignment path) tells an omitted hp
+            // apart from an authored 100. An authored-but-non-positive hp still reports the pre-existing error.
+            if (!def.HpAuthored)
+                errors.Add(("hp", Located(id, "hp",
+                    "is required but missing (a building's HP must be authored).")));
+            else if (!float.IsFinite(def.Hp) || def.Hp <= 0f)
                 errors.Add(("hp", Located(id, "hp",
                     "must be a positive value (a building's HP must be authored above zero).")));
 

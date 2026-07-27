@@ -135,14 +135,16 @@ namespace ProjectChimera.Sim.Tests.Definitions
         [Fact]
         public void Validate_AllFieldsPresent_IsOk()
         {
-            var def = new BuildingDefinition { Id = "barracks", ConstructionTime = 10f, SupplyBonus = 0, ProducesCategory = "Melee" };
+            var def = new BuildingDefinition { Id = "barracks", Hp = 100f, ConstructionTime = 10f, SupplyBonus = 0, ProducesCategory = "Melee" };
             Assert.True(BuildingDefinitionValidator.Validate(def).Ok);
         }
 
         [Fact]
         public void Validate_AllThreeMissing_ReturnsThreeLocatedErrors()
         {
-            var def = new BuildingDefinition { Id = "barracks" };
+            // Hp authored (100) so this isolates the THREE required-nullable fields — an un-authored hp would add a
+            // fourth located "hp required" error (DW-55).
+            var def = new BuildingDefinition { Id = "barracks", Hp = 100f };
             BuildingValidationResult result = BuildingDefinitionValidator.Validate(def);
             Assert.False(result.Ok);
             Assert.Equal(3, result.Errors.Count);
@@ -150,6 +152,70 @@ namespace ProjectChimera.Sim.Tests.Definitions
             Assert.Contains(result.Errors, e => e.FieldPath == "supply_bonus");
             Assert.Contains(result.Errors, e => e.FieldPath == "produces_category");
             Assert.All(result.Errors, e => Assert.Contains("barracks", e.Message));
+        }
+
+        // ── DW-55: omitted-vs-authored hp presence tracking ──────────────────────
+
+        [Fact]
+        public void Validate_HpNeverAuthored_ReturnsLocatedRequiredError()
+        {
+            // A hand-built building that never assigns Hp: it silently inherits UnitDefinition's 100f default, but
+            // HpAuthored is false, so the validator emits a distinct "required but missing" located error.
+            var def = new BuildingDefinition { Id = "barracks", ConstructionTime = 10f, SupplyBonus = 0, ProducesCategory = "Melee" };
+            Assert.False(def.HpAuthored);
+            Assert.Equal(100f, def.Hp); // inherited default is still readable — the getter returns base.Hp
+
+            BuildingValidationResult result = BuildingDefinitionValidator.Validate(def);
+            Assert.Contains(result.Errors, e => e.FieldPath == "hp" && e.Message.Contains("required") && e.Message.Contains("barracks"));
+        }
+
+        [Fact]
+        public void Validate_HpAuthoredAt100_ReturnsNoHpError()
+        {
+            // Authoring hp=100 (even though it equals the inherited default) sets HpAuthored=true — no hp error.
+            var def = new BuildingDefinition { Id = "barracks", Hp = 100f, ConstructionTime = 10f, SupplyBonus = 0, ProducesCategory = "Melee" };
+            Assert.True(def.HpAuthored);
+            Assert.DoesNotContain(BuildingDefinitionValidator.Validate(def).Errors, e => e.FieldPath == "hp");
+        }
+
+        [Fact]
+        public void LoadFromFile_BuildingOmittingHp_Throws_LocatedRequiredError()
+        {
+            // A faction JSON building that omits the "hp" key entirely: STJ leaves Hp at 100 but HpAuthored false, so
+            // the load throws a located "hp required but missing" error naming the building id.
+            string json = $$"""
+            {
+              "id": "test_faction",
+              "display_name": "Test Faction",
+              "units": [],
+              "buildings": [
+                { "id": "command_center", "display_name": "HQ", "category": "Structure", {{ValidBuildingFields}} }
+              ]
+            }
+            """;
+            string path = WriteTempFaction(json);
+            try
+            {
+                var ex = Assert.Throws<InvalidOperationException>(() => FactionDefinition.LoadFromFile(path));
+                Assert.Contains("command_center", ex.Message);
+                Assert.Contains("hp", ex.Message);
+                Assert.Contains("required", ex.Message);
+            }
+            finally { File.Delete(path); }
+        }
+
+        [Fact]
+        public void LoadFromFile_BuildingAuthoringHp100_LoadsWithoutHpError()
+        {
+            // The complement to the omitted-hp throw: an authored "hp": 100 loads cleanly (HpAuthored=true).
+            string path = WriteTempFaction(FactionJsonWithHp(100, ValidBuildingFields));
+            try
+            {
+                FactionDefinition def = FactionDefinition.LoadFromFile(path);
+                Assert.Equal(100f, def.Buildings[0].Hp);
+                Assert.True(def.Buildings[0].HpAuthored);
+            }
+            finally { File.Delete(path); }
         }
 
         [Fact]
@@ -167,7 +233,7 @@ namespace ProjectChimera.Sim.Tests.Definitions
 
         private static BuildingDefinition ValidBuilding(string id = "barracks") => new()
         {
-            Id = id, Category = "Structure", ConstructionTime = 10f, SupplyBonus = 0, ProducesCategory = "Melee",
+            Id = id, Category = "Structure", Hp = 100f, ConstructionTime = 10f, SupplyBonus = 0, ProducesCategory = "Melee",
         };
 
         [Fact]

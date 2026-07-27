@@ -494,6 +494,13 @@ namespace ProjectChimera.Core.Definitions
         private static void ApplyBuildingFields(JsonObject obj, BuildingDefinition d)
         {
             ApplyFields(obj, d);
+            // DW-55: hp is REQUIRED for a building (BuildingDefinitionValidator rejects an omitted hp), so an authored
+            // hp is always serialized — overriding ApplyFields' shared PutFloat, which omits hp at its 100 default (a
+            // building written with an authored default 100 would otherwise round-trip to a file that fails to reload).
+            // Gated on HpAuthored so a never-authored hp is NOT silently materialized into 100 on the write side,
+            // preserving the omitted-vs-authored distinction. Every building that reaches the writer via load/DoCreate/
+            // clone is HpAuthored=true, so hp is still always emitted for real content.
+            if (d.HpAuthored) obj["hp"] = d.Hp; else obj.Remove("hp");
             if (d.ConstructionTime.HasValue) obj["construction_time"] = d.ConstructionTime.Value; else obj.Remove("construction_time");
             if (d.SupplyBonus.HasValue) obj["supply_bonus"] = d.SupplyBonus.Value; else obj.Remove("supply_bonus");
             if (!string.IsNullOrEmpty(d.ProducesCategory)) obj["produces_category"] = d.ProducesCategory; else obj.Remove("produces_category");

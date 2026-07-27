@@ -51,11 +51,17 @@ namespace ProjectChimera.Core.Definitions
             var errors = new List<string>();
             if (def == null) return errors;
 
-            foreach (UnitDefinition u in def.Units)
+            foreach (UnitDefinition u in def.Units ?? new List<UnitDefinition>())
+            {
+                if (u is null) continue;   // DW-101: malformed JSON null element — skipped, never an NRE
                 ValidateEntry(errors, "unit", u.Id ?? "", u.Cost);
+            }
 
-            foreach (BuildingDefinition b in def.Buildings)
+            foreach (BuildingDefinition b in def.Buildings ?? new List<BuildingDefinition>())
+            {
+                if (b is null) continue;   // DW-101
                 ValidateEntry(errors, "building", b.Id ?? "", b.Cost);
+            }
 
             return errors;
         }

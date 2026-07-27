@@ -121,6 +121,51 @@ namespace ProjectChimera.Sim.Tests.Definitions
             Assert.Empty(ResourceCostValidator.Validate(null!));
         }
 
+        // ── DW-101: null Units/Buildings LIST and null ELEMENT (malformed-but-parseable JSON) ────────────────
+
+        [Fact]
+        public void NullUnitsAndBuildingsLists_Validate_NoThrow()
+        {
+            var def = new FactionDefinition { Units = null!, Buildings = null! };
+            var ex = Record.Exception(() => ResourceCostValidator.Validate(def));
+            Assert.Null(ex);
+            Assert.Empty(ResourceCostValidator.Validate(def));
+        }
+
+        [Fact]
+        public void NullUnitElement_Validate_SkipsNull_StillValidatesSurvivor()
+        {
+            var def = new FactionDefinition
+            {
+                Units = new List<UnitDefinition>
+                {
+                    null!,
+                    new UnitDefinition { Id = "archer", Cost = new Dictionary<string, int> { { "gems", 5 } } },
+                },
+            };
+
+            var ex = Record.Exception(() => ResourceCostValidator.Validate(def));
+            Assert.Null(ex);
+            Assert.Contains(ResourceCostValidator.Validate(def), e => e.Contains("archer") && e.Contains("gems"));
+        }
+
+        [Fact]
+        public void NullBuildingElement_Validate_SkipsNull_StillValidatesSurvivor()
+        {
+            var def = new FactionDefinition
+            {
+                Buildings = new List<BuildingDefinition>
+                {
+                    null!,
+                    new BuildingDefinition { Id = "barracks", Cost = new Dictionary<string, int> { { "gems", 5 } } },
+                },
+            };
+
+            var ex = Record.Exception(() => ResourceCostValidator.Validate(def));
+            Assert.Null(ex);
+            Assert.Contains(ResourceCostValidator.Validate(def), e => e.Contains("barracks") && e.Contains("gems"));
+        }
+
         // ── FactionDefinition.LoadFromFile wiring (throws with located error) ────
 
         [Fact]

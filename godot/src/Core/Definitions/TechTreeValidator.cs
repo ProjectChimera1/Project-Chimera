@@ -49,8 +49,9 @@ namespace ProjectChimera.Core.Definitions
             // masking a cycle reachable only through the duplicate's own, distinct prerequisites.
             var buildingIds = new HashSet<string>();
             var buildingById = new Dictionary<string, BuildingDefinition>();
-            foreach (BuildingDefinition b in def.Buildings)
+            foreach (BuildingDefinition b in def.Buildings ?? new List<BuildingDefinition>())
             {
+                if (b is null) continue;   // DW-100: malformed JSON null element — skipped, never an NRE
                 if (string.IsNullOrEmpty(b.Id)) continue;
                 if (!buildingById.TryAdd(b.Id, b))
                 {
@@ -61,8 +62,9 @@ namespace ProjectChimera.Core.Definitions
             }
 
             // ── Referential lint: buildings ─────────────────────────────────────
-            foreach (BuildingDefinition b in def.Buildings)
+            foreach (BuildingDefinition b in def.Buildings ?? new List<BuildingDefinition>())
             {
+                if (b is null) continue;   // DW-100
                 string id = b.Id ?? "";
                 foreach (string prereq in b.Prerequisites ?? Array.Empty<string>())
                 {
@@ -72,8 +74,9 @@ namespace ProjectChimera.Core.Definitions
             }
 
             // ── Referential lint: units ──────────────────────────────────────────
-            foreach (UnitDefinition u in def.Units)
+            foreach (UnitDefinition u in def.Units ?? new List<UnitDefinition>())
             {
+                if (u is null) continue;   // DW-100
                 string id = u.Id ?? "";
                 foreach (string prereq in u.Prerequisites ?? Array.Empty<string>())
                 {
@@ -117,15 +120,17 @@ namespace ProjectChimera.Core.Definitions
             if (def == null) return null;
 
             BuildingDefinition? target = null;
-            foreach (BuildingDefinition b in def.Buildings)
+            foreach (BuildingDefinition b in def.Buildings ?? new List<BuildingDefinition>())
             {
+                if (b is null) continue;   // DW-100
                 if (b.Id == targetId) { target = b; break; }
             }
             if (target == null) return null;   // unresolved target — the editor never calls this with one (defensive no-op)
 
             bool sourceIsBuilding = false;
-            foreach (BuildingDefinition b in def.Buildings)
+            foreach (BuildingDefinition b in def.Buildings ?? new List<BuildingDefinition>())
             {
+                if (b is null) continue;   // DW-100
                 if (b.Id == sourceId) { sourceIsBuilding = true; break; }
             }
             if (!sourceIsBuilding)
@@ -154,8 +159,9 @@ namespace ProjectChimera.Core.Definitions
         {
             var buildingIds = new HashSet<string>();
             var buildingById = new Dictionary<string, BuildingDefinition>();
-            foreach (BuildingDefinition b in def.Buildings)
+            foreach (BuildingDefinition b in def.Buildings ?? new List<BuildingDefinition>())
             {
+                if (b is null) continue;   // DW-100
                 if (string.IsNullOrEmpty(b.Id)) continue;
                 if (!buildingById.TryAdd(b.Id, b)) continue;   // duplicate id — already reported by Validate's own check
                 buildingIds.Add(b.Id);
@@ -166,8 +172,9 @@ namespace ProjectChimera.Core.Definitions
                 color[id] = Color.White;
 
             var path = new List<string>();
-            foreach (BuildingDefinition b in def.Buildings)
+            foreach (BuildingDefinition b in def.Buildings ?? new List<BuildingDefinition>())
             {
+                if (b is null) continue;   // DW-100
                 if (string.IsNullOrEmpty(b.Id)) continue;
                 if (color[b.Id] != Color.White) continue;
                 string? cycleMessage = Visit(b.Id, buildingById, buildingIds, color, path);

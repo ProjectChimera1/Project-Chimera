@@ -219,6 +219,126 @@ namespace ProjectChimera.Sim.Tests.Definitions
             Assert.True(FactionValidator.Validate(def).Ok);
         }
 
+        // ── DW-111: duplicate building id (FactionValidator's own self-contained check) ────────
+
+        private static ResearchDefinition ValidResearch(string id) =>
+            new() { Id = id, Levels = { new ResearchLevel { TimeTicks = 10 } } };
+
+        [Fact]
+        public void DuplicateBuildingId_Validate_ReturnsLocatedError_NamingRepeatedId()
+        {
+            FactionDefinition def = ValidFaction();
+            def.Buildings.Add(ValidBuilding("command_center")); // reuses the first building's id — the repeat
+
+            FactionValidationResult result = FactionValidator.Validate(def);
+            Assert.False(result.Ok);
+            Assert.Contains(result.Errors, e =>
+                e.FieldPath == "buildings" && e.Message.Contains("command_center") && e.Message.Contains("duplicate"));
+        }
+
+        [Fact]
+        public void DistinctBuildingIds_Validate_IsOk()
+        {
+            FactionDefinition def = ValidFaction();
+            def.Buildings.Add(ValidBuilding("barracks")); // a second, distinct building — no duplicate
+            Assert.True(FactionValidator.Validate(def).Ok);
+        }
+
+        // ── DW-111: duplicate research id ────────────────────────────────────
+
+        [Fact]
+        public void DuplicateResearchId_Validate_ReturnsLocatedError_NamingRepeatedId()
+        {
+            FactionDefinition def = ValidFaction();
+            def.Research.Add(ValidResearch("armor_up"));
+            def.Research.Add(ValidResearch("armor_up")); // the repeat
+
+            FactionValidationResult result = FactionValidator.Validate(def);
+            Assert.False(result.Ok);
+            Assert.Contains(result.Errors, e =>
+                e.FieldPath == "research" && e.Message.Contains("armor_up") && e.Message.Contains("duplicate"));
+        }
+
+        [Fact]
+        public void DistinctResearchIds_Validate_IsOk()
+        {
+            FactionDefinition def = ValidFaction();
+            def.Research.Add(ValidResearch("armor_up"));
+            def.Research.Add(ValidResearch("speed_up"));
+            Assert.True(FactionValidator.Validate(def).Ok);
+        }
+
+        // ── DW-89: cross-namespace collision — a research id equal to a building id ────────────
+
+        [Fact]
+        public void ResearchIdCollidesWithBuildingId_Validate_ReturnsLocatedError()
+        {
+            FactionDefinition def = ValidFaction();
+            def.Research.Add(ValidResearch("command_center")); // same id as the building — cross-namespace collision
+
+            FactionValidationResult result = FactionValidator.Validate(def);
+            Assert.False(result.Ok);
+            Assert.Contains(result.Errors, e =>
+                e.FieldPath == "research" && e.Message.Contains("command_center") && e.Message.Contains("collides"));
+        }
+
+        // ── DW-115: negative / NaN starting resources ────────────────────────
+
+        [Fact]
+        public void NegativeStartingOre_Validate_ReturnsLocatedError()
+        {
+            FactionDefinition def = ValidFaction();
+            def.StartingOre = -1f;
+
+            FactionValidationResult result = FactionValidator.Validate(def);
+            Assert.False(result.Ok);
+            Assert.Contains(result.Errors, e => e.FieldPath == "starting_ore");
+        }
+
+        [Fact]
+        public void NaNStartingOre_Validate_ReturnsLocatedError()
+        {
+            FactionDefinition def = ValidFaction();
+            def.StartingOre = float.NaN;
+
+            FactionValidationResult result = FactionValidator.Validate(def);
+            Assert.False(result.Ok);
+            Assert.Contains(result.Errors, e => e.FieldPath == "starting_ore");
+        }
+
+        [Fact]
+        public void NegativeStartingCrystal_Validate_ReturnsLocatedError()
+        {
+            FactionDefinition def = ValidFaction();
+            def.StartingCrystal = -50f;
+
+            FactionValidationResult result = FactionValidator.Validate(def);
+            Assert.False(result.Ok);
+            Assert.Contains(result.Errors, e => e.FieldPath == "starting_crystal");
+        }
+
+        [Fact]
+        public void NaNStartingCrystal_Validate_ReturnsLocatedError()
+        {
+            // Mirrors NaNStartingOre — the crystal branch has its own !float.IsFinite guard (a separate code line from
+            // ore), so NaN crystal must be covered independently: NaN < 0f is false, so the negative-only tests miss it.
+            FactionDefinition def = ValidFaction();
+            def.StartingCrystal = float.NaN;
+
+            FactionValidationResult result = FactionValidator.Validate(def);
+            Assert.False(result.Ok);
+            Assert.Contains(result.Errors, e => e.FieldPath == "starting_crystal");
+        }
+
+        [Fact]
+        public void NonNegativeStartingResources_Validate_IsOk()
+        {
+            FactionDefinition def = ValidFaction();
+            def.StartingOre = 0f;      // zero is allowed
+            def.StartingCrystal = 500f;
+            Assert.True(FactionValidator.Validate(def).Ok);
+        }
+
         // ── Missing mesh_path (ValidateComplete-only) ────────────────────────
 
         [Fact]
@@ -617,6 +737,20 @@ namespace ProjectChimera.Sim.Tests.Definitions
                 var ex = Assert.Throws<InvalidOperationException>(() => FactionDefinition.LoadFromFile(path));
                 Assert.Contains("duplicate unit id", ex.Message);
                 Assert.Contains("worker", ex.Message);
+            }
+            finally { File.Delete(path); }
+        }
+
+        [Fact]
+        public void LoadFromFile_NegativeStartingOre_Throws_LocatedError()
+        {
+            // DW-115: proves the new starting-resource check throws THROUGH the loader (not just in the direct
+            // Validate call), with a located starting_ore error.
+            string path = WriteTempFaction(ValidFactionJson(extraTopLevel: "\"starting_ore\": -1,"));
+            try
+            {
+                var ex = Assert.Throws<InvalidOperationException>(() => FactionDefinition.LoadFromFile(path));
+                Assert.Contains("starting_ore", ex.Message);
             }
             finally { File.Delete(path); }
         }

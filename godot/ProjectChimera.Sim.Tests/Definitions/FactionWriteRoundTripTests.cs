@@ -711,6 +711,57 @@ namespace ProjectChimera.Sim.Tests.Definitions
             Assert.Equal(new[] { "armor_up", "speed_up" }, b.AvailableResearch);
         }
 
+        // ── DW-55: a building's hp is now ALWAYS serialized (it is required) — even at the 100 default, so the
+        //    written file always reloads. Unlike a unit, whose default hp is omitted. ──
+
+        [Fact]
+        public void SyncFactionBuildings_BuildingHpAtDefault_IsAlwaysWritten_AndReloads()
+        {
+            FactionDefinition f = Parse(Faction);
+            f.Buildings.Add(new BuildingDefinition
+            {
+                Id = "outpost", Category = "Structure", Hp = 100f,   // the default value — must still be written
+                ConstructionTime = 8f, SupplyBonus = 0, ProducesCategory = "None",
+            });
+
+            string outJson = FactionWriter.SyncFactionBuildings(Faction, f.Buildings);
+
+            Assert.Contains("\"hp\"", BuildingJson(outJson, "outpost"));   // hp present despite equaling the default
+            FactionDefinition reloaded = Parse(outJson);
+            BuildingDefinition rb = reloaded.GetBuilding("outpost")!;
+            Assert.Equal(100f, rb.Hp);
+            Assert.True(rb.HpAuthored);   // reloaded from a written "hp" key → authored
+        }
+
+        [Fact]
+        public void SerializeBuildingClean_AlwaysWritesHp()
+        {
+            // A raw-hatch serialize of a building whose hp equals the default still emits the key (required field).
+            var b = new BuildingDefinition
+            {
+                Id = "wall", Category = "Structure", Hp = 100f,
+                ConstructionTime = 5f, SupplyBonus = 0, ProducesCategory = "None",
+            };
+            string json = FactionWriter.SerializeBuildingClean(b);
+            Assert.Contains("\"hp\"", json);
+        }
+
+        [Fact]
+        public void SerializeBuildingClean_HpNeverAuthored_OmitsHp()
+        {
+            // The false branch of the HpAuthored gate: a building that never authored hp (HpAuthored=false, hp still
+            // reads its inherited 100 default) must NOT materialize an "hp" key on write — the omitted-vs-authored
+            // distinction is preserved on the write side, matching the else-Remove pattern of the sibling fields.
+            var b = new BuildingDefinition
+            {
+                Id = "ghost_wall", Category = "Structure",   // Hp deliberately never assigned → HpAuthored=false
+                ConstructionTime = 5f, SupplyBonus = 0, ProducesCategory = "None",
+            };
+            Assert.False(b.HpAuthored);
+            string json = FactionWriter.SerializeBuildingClean(b);
+            Assert.DoesNotContain("\"hp\"", json);
+        }
+
         [Fact]
         public void SerializeBuildingClean_RoundTrips_NoParsedGettersOrBallooning()
         {

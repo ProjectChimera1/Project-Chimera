@@ -1,5 +1,6 @@
 #nullable enable
 using System;
+using System.Collections.Generic;
 using System.IO;
 using ProjectChimera.Core.Definitions;
 using Xunit;
@@ -221,6 +222,52 @@ namespace ProjectChimera.Sim.Tests.Definitions
             finally { File.Delete(path); }
         }
 
+        // ── DW-100: null Units/Buildings LIST and null ELEMENT (malformed-but-parseable JSON) ────────────────
+
+        [Fact]
+        public void Validate_NullUnitsAndBuildingsLists_NoThrow()
+        {
+            // "units": null / "buildings": null leaves the lists null after deserialize — Validate must treat each
+            // as empty, never NRE.
+            var def = new FactionDefinition { Units = null!, Buildings = null! };
+            var ex = Record.Exception(() => TechTreeValidator.Validate(def));
+            Assert.Null(ex);
+            Assert.Empty(TechTreeValidator.Validate(def));
+        }
+
+        [Fact]
+        public void Validate_NullUnitElement_SkipsNull_StillLintsSurvivor()
+        {
+            // "units": [null, {archer with a dangling prereq}] — the null is skipped, the real archer is still linted.
+            var def = new FactionDefinition();
+            def.Buildings.Add(new BuildingDefinition { Id = "barracks" });
+            def.Units = new List<UnitDefinition>
+            {
+                null!,
+                new UnitDefinition { Id = "archer", Prerequisites = new[] { "ghost" } },
+            };
+
+            var ex = Record.Exception(() => TechTreeValidator.Validate(def));
+            Assert.Null(ex);
+            Assert.Contains(TechTreeValidator.Validate(def), e => e.Contains("archer") && e.Contains("ghost"));
+        }
+
+        [Fact]
+        public void Validate_NullBuildingElement_SkipsNull_StillLintsSurvivor()
+        {
+            // "buildings": [null, {barracks with a dangling prereq}] — null skipped, barracks still linted.
+            var def = new FactionDefinition();
+            def.Buildings = new List<BuildingDefinition>
+            {
+                null!,
+                new BuildingDefinition { Id = "barracks", Prerequisites = new[] { "ghost" } },
+            };
+
+            var ex = Record.Exception(() => TechTreeValidator.Validate(def));
+            Assert.Null(ex);
+            Assert.Contains(TechTreeValidator.Validate(def), e => e.Contains("barracks") && e.Contains("ghost"));
+        }
+
         [Fact]
         public void Validate_NullPrerequisitesOnBuildingAndUnit_NoThrowNoErrors()
         {
@@ -342,6 +389,27 @@ namespace ProjectChimera.Sim.Tests.Definitions
             string? err = TechTreeValidator.ValidateProposedEdge(def, "a", "nonexistent");
 
             Assert.Null(err);
+        }
+
+        [Fact]
+        public void ValidateProposedEdge_NullBuildingElementOrNullList_NoThrow()
+        {
+            // DW-100: ValidateProposedEdge's two scan loops (target lookup + source-is-building) must tolerate a null
+            // Buildings element and a null Buildings list — a null-safety class its Validate sibling covers, but which
+            // was previously untested on this method's own loops.
+            var withNullElement = new FactionDefinition();
+            withNullElement.Buildings = new List<BuildingDefinition>
+            {
+                null!,
+                new BuildingDefinition { Id = "a" },
+                new BuildingDefinition { Id = "b" },
+            };
+            var ex1 = Record.Exception(() => TechTreeValidator.ValidateProposedEdge(withNullElement, "a", "b"));
+            Assert.Null(ex1);
+
+            var nullList = new FactionDefinition { Buildings = null! };
+            var ex2 = Record.Exception(() => TechTreeValidator.ValidateProposedEdge(nullList, "a", "b"));
+            Assert.Null(ex2);
         }
 
         [Fact]

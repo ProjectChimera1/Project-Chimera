@@ -174,6 +174,47 @@ namespace ProjectChimera.Core.Definitions
                         $"duplicate unit id '{u.Id}' (another unit already uses this id).")));
             }
 
+            // ── DW-111: duplicate building id (self-contained; may co-report with TechTreeValidator's own check) ──
+            // (def.Buildings and its elements are non-null here — the structural pre-check early-returned otherwise.)
+            // A blank id is treated as "missing" and skipped, mirroring the duplicate-unit-id loop above.
+            var buildingIds = new Dictionary<string, BuildingDefinition>();
+            foreach (BuildingDefinition b in def.Buildings ?? new List<BuildingDefinition>())
+            {
+                if (b is null || string.IsNullOrWhiteSpace(b.Id)) continue;
+                if (!buildingIds.TryAdd(b.Id, b))
+                    errors.Add(("buildings", Located(id, "buildings",
+                        $"duplicate building id '{b.Id}' (another building already uses this id).")));
+            }
+
+            // ── DW-111: duplicate research id (self-contained; may co-report with ResearchValidator's own check) ──
+            // def.Research is NOT covered by the structural pre-check (which guards only Units/Buildings), so a null
+            // list or null element is guarded here directly.
+            var researchIds = new Dictionary<string, ResearchDefinition>();
+            foreach (ResearchDefinition r in def.Research ?? new List<ResearchDefinition>())
+            {
+                if (r is null || string.IsNullOrWhiteSpace(r.Id)) continue;
+                if (!researchIds.TryAdd(r.Id, r))
+                    errors.Add(("research", Located(id, "research",
+                        $"duplicate research id '{r.Id}' (another research entry already uses this id).")));
+            }
+
+            // ── DW-89: cross-namespace collision — a research id must not also be a building id ─────────────────
+            // The one check no sub-validator covers (TechTreeValidator checks building ids, ResearchValidator checks
+            // research ids, but neither compares the two namespaces). List-all across every colliding research id.
+            foreach (string researchId in researchIds.Keys)
+                if (buildingIds.ContainsKey(researchId))
+                    errors.Add(("research", Located(id, "research",
+                        $"research id '{researchId}' collides with a building id (ids must be unique across buildings and research).")));
+
+            // ── DW-115: starting resources must be a finite value >= 0 (rejects negatives, NaN, and +/-Infinity) ──
+            // Field paths named exactly starting_ore/starting_crystal — DW-114's wizard StepForError routing keys on them.
+            if (!float.IsFinite(def.StartingOre) || def.StartingOre < 0f)
+                errors.Add(("starting_ore", Located(id, "starting_ore",
+                    $"must be a finite value >= 0 (found {def.StartingOre}).")));
+            if (!float.IsFinite(def.StartingCrystal) || def.StartingCrystal < 0f)
+                errors.Add(("starting_crystal", Located(id, "starting_crystal",
+                    $"must be a finite value >= 0 (found {def.StartingCrystal}).")));
+
             return errors.Count == 0 ? FactionValidationResult.Valid : new FactionValidationResult(errors);
         }
 

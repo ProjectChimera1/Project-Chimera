@@ -15,6 +15,37 @@ namespace ProjectChimera.Core.Definitions
     /// </summary>
     public class BuildingDefinition : UnitDefinition
     {
+        /// <summary>Tracks whether <c>hp</c> was assigned through a <see cref="BuildingDefinition"/>-typed reference
+        /// (JSON deserialize, object initializer, or a <c>BuildingDefinition</c>-typed <c>def.Hp = v</c>) — false when
+        /// hp was never authored that way. Set by the <see cref="Hp"/> setter shadow below (DW-55). NOTE: the shadow is
+        /// non-virtual, so a write through a <see cref="UnitDefinition"/>-typed reference binds the base setter and does
+        /// NOT set this flag — every DW-55 authoring path (deserialize/initializer/clone/DoCreate) is
+        /// BuildingDefinition-typed, so this is correct in practice.</summary>
+        private bool _hpAuthored;
+
+        /// <summary>
+        /// DW-55: a buildings-only <c>new</c>-shadow of <see cref="UnitDefinition.Hp"/> whose ONLY job is to record
+        /// whether <c>hp</c> was ever authored. The getter returns <c>base.Hp</c> verbatim (so <c>BuildingStore.Create</c>,
+        /// cloning, and every existing <c>def.Hp</c> read are byte-unchanged); the setter forwards to <c>base.Hp</c> AND
+        /// flags <see cref="_hpAuthored"/>. STJ binds this derived member (verified on net8 in-box System.Text.Json — no
+        /// member-collision, single <c>"hp"</c> key on serialize), so an omitted <c>hp</c> leaves <see cref="HpAuthored"/>
+        /// false while still defaulting to 100, letting <see cref="BuildingDefinitionValidator"/> distinguish an omitted
+        /// <c>hp</c> from an authored <c>100</c>. Deliberately buildings-only — <see cref="UnitDefinition.Hp"/> is left
+        /// untouched to avoid the UnitDefinition-wide blast radius that touches unit spawning/validation.
+        /// </summary>
+        [JsonPropertyName("hp")]
+        public new float Hp
+        {
+            get => base.Hp;
+            set { base.Hp = value; _hpAuthored = true; }
+        }
+
+        /// <summary>DW-55: true when <see cref="Hp"/> was assigned through a <see cref="BuildingDefinition"/>-typed
+        /// reference (see <see cref="_hpAuthored"/> for the non-virtual-shadow caveat); false when never authored that
+        /// way. Excluded from JSON — a computed presence flag, never serialized.</summary>
+        [JsonIgnore]
+        public bool HpAuthored => _hpAuthored;
+
         /// <summary>Seconds to build this building (was baked per-<see cref="BuildingType"/> in the old switch).
         /// Required — null means "not authored", rejected at import by <see cref="BuildingDefinitionValidator"/>.</summary>
         [JsonPropertyName("construction_time")]

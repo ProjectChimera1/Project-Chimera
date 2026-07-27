@@ -427,11 +427,15 @@ namespace ProjectChimera.CreationSuite
             if (_faction == null) return;
             string id = node.Name.ToString();
 
-            ResearchDefinition? research = _faction.Research?.FirstOrDefault(r => r != null && r.Id == id);
+            // DW-89: resolve last-wins (LastOrDefault) so a clicked node binds the SAME def RebuildGraph rendered —
+            // RebuildGraph builds its researchById/buildingById dictionaries with a last-wins indexer assignment, so a
+            // FirstOrDefault here would mismatch it when two entries share an id (a state the cross-namespace/duplicate
+            // validators now block on save, but which can still occur mid-edit before a Save).
+            ResearchDefinition? research = _faction.Research?.LastOrDefault(r => r != null && r.Id == id);
             if (research != null) { _researchInspector.SelectAndShow(research); return; }
 
             if (_inspector == null) return;
-            BuildingDefinition? building = _faction.Buildings.FirstOrDefault(b => b.Id == id);
+            BuildingDefinition? building = _faction.Buildings?.LastOrDefault(b => b != null && b.Id == id);
             if (building != null) _inspector.SelectAndShow(building);
         }
 

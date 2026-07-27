@@ -98,11 +98,14 @@ namespace ProjectChimera.Core.Definitions
             return null;
         }
 
-        /// <summary>Find a unit definition by ID, or null if not found.</summary>
+        /// <summary>Find a unit definition by ID, or null if not found. A null <see cref="Units"/> list (malformed
+        /// JSON <c>"units": null</c>) OR a null element inside it is skipped, never an NRE (DW-103 — mirrors
+        /// <see cref="GetResearch"/>).</summary>
         public UnitDefinition? GetUnit(string id)
         {
+            if (Units == null) return null;
             foreach (var u in Units)
-                if (u.Id == id) return u;
+                if (u != null && u.Id == id) return u;
             return null;
         }
 
@@ -139,16 +142,19 @@ namespace ProjectChimera.Core.Definitions
         /// </summary>
         public int IndexOfUnit(string id)
         {
+            if (Units == null) return -1;   // DW-103: malformed JSON "units": null — never an NRE
             for (int i = 0; i < Units.Count; i++)
-                if (Units[i].Id == id) return i;
+                if (Units[i] != null && Units[i].Id == id) return i;   // DW-103: null element skipped
             return -1;
         }
 
-        /// <summary>Find the first unit with the given category string (case-insensitive), or null.</summary>
+        /// <summary>Find the first unit with the given category string (case-insensitive), or null. A null
+        /// <see cref="Units"/> list or a null element is skipped, never an NRE (DW-103).</summary>
         public UnitDefinition? GetUnitByCategory(string category)
         {
+            if (Units == null) return null;
             foreach (var u in Units)
-                if (string.Equals(u.Category, category, System.StringComparison.OrdinalIgnoreCase))
+                if (u != null && string.Equals(u.Category, category, System.StringComparison.OrdinalIgnoreCase))
                     return u;
             return null;
         }
@@ -164,9 +170,10 @@ namespace ProjectChimera.Core.Definitions
         public List<(int Index, UnitDefinition Def)> GetUnitsByCategory(string category)
         {
             var matches = new List<(int, UnitDefinition)>();
+            if (Units == null) return matches;   // DW-103: malformed JSON "units": null — never an NRE
             for (int i = 0; i < Units.Count; i++)
-                if (string.Equals(Units[i].Category, category, System.StringComparison.OrdinalIgnoreCase))
-                    matches.Add((i, Units[i]));
+                if (Units[i] != null && string.Equals(Units[i].Category, category, System.StringComparison.OrdinalIgnoreCase))
+                    matches.Add((i, Units[i]));   // DW-103: null element skipped
             return matches;
         }
 
