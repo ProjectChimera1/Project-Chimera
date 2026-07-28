@@ -232,6 +232,23 @@ development_status:
   14-7-remediation-dw-164-map-export-new-map-write-path-hard-validate-before-persist: done
   14-8-remediation-dw-157-rebuild-static-pathability-grid-on-edit-play-reapply: done
   epic-14-retrospective: optional
+  # ── Epic 15 (correct-course 2026-07-28, sprint-change-proposal-2026-07-28.md): deferred-work burn-down + MP reconnect.
+  # 15.4-15.9 are sweep-batch stories — execute as `bmad-loop sweep` bundle cycles (bundle names + DW ids enumerated per story in epics.md); a story is done when its bundles are committed and their DW entries closed. Interleave with Epic 11 per the Epic-9 retro sequencing.
+  epic-15: backlog
+  15-1-mp-reconnect-v1-command-log-rejoin-fast-forward-catch-up-fr-79-dw-2: backlog
+  15-2-map-size-determinism-unification-raw-heightmap-read-dw-160-dw-146-dw-162: backlog
+  15-3-status-effects-become-real-modifier-period-honesty: backlog
+  15-4-sim-correctness-sweep-combat-economy-gates: backlog
+  15-5-determinism-checksum-test-hardening-sweep: backlog
+  15-6-scenario-content-pipeline-fail-closed-sweep: backlog
+  15-7-mp-bootstrap-resilience-sweep: backlog
+  15-8-creation-suite-editor-fidelity-sweep: backlog
+  15-9-ability-command-card-authoring-sweep: backlog
+  15-10-scenario-settings-panel-new-scenario-empty-canvas-flow-dw-126-dw-127: backlog
+  15-11-ability-targeting-increments-ground-target-cast-ally-heal-other: backlog
+  15-12-energy-stack-mechanics: backlog
+  15-13-effect-vocabulary-completion-teleport-presentation-leaves: backlog
+  epic-15-retrospective: optional
 
 action_items:
   # Epic 5 retrospective action items — epic-5-retro-2026-07-11. Tracked here (not retro-doc-only) per Alec's decision. Fixes the 3-epic "actions evaporate" failure (retro §3.2).

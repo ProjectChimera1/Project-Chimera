@@ -383,6 +383,12 @@ _Added by the approved sprint-change proposal (`sprint-change-proposal-2026-07-0
 - **FR-77** — Replay UX: in-app replay browser, playback controls (pause/speed/seek-forward), player-perspective + fog toggle; makes FR-38a's "viewable" real.
 - **FR-78** — Human playtest gates: documented go/no-go protocols + executed passes for melee fun, creator usability, and human balance validation; failures spawn correct-course.
 
+### Correct-course requirement (2026-07-28 — FR-79)
+
+_Added by the approved sprint-change proposal (`sprint-change-proposal-2026-07-28.md`), executing Alec's recorded 2026-07-25 decision on DW-2 (MP reconnect scoped into 1.0)._
+
+- **FR-79** — MP reconnect v1: a disconnected multiplayer player can rejoin an in-progress match — the server flags the returning peer, streams the buffered command log, and the rejoining client content-gates then fast-forward-simulates to the live tick and resumes input (v1 = replay-from-start catch-up; the 9.6 freeze policy remains the fallback while disconnected).
+
 ---
 
 ### FR Coverage Map
@@ -477,6 +483,7 @@ _Added by the approved sprint-change proposal (`sprint-change-proposal-2026-07-0
 | FR-76 | Epic 10 | Deterministic multi-AI: per-slot instances + float→Fixed D2 close (Stories 10.10, 10.11) |
 | FR-77 | Epic 9 | Replay UX: browser + playback controls + perspective (Story 9.11) |
 | FR-78 | Epic 10 | Human playtest gates: fun/usability/balance (Story 10.15) |
+| FR-79 | Epic 15 | MP reconnect v1: command-log rejoin + fast-forward catch-up (Story 15.1) |
 
 ## Epic List
 
@@ -535,6 +542,9 @@ A 3-mission scripted tutorial arc (basics → economy/combat/heroes → full mat
 ### Epic 14: Retro Remediation (Epic-5/6 carryover + pre-Epic-7 gate)
 Deferred-work and retro-backed remediation stories tracked as digit-only keys: suppress the +MaxHealth research army-heal on re-apply (14.1/DW-85), close the Advanced-mode ai_preset validation bypass (14.2/DW-117), resolve FactionValidator signature/hero descriptor ids (14.3/DW-106), wire FactionValidator.ValidateComplete into the launch gate (14.4/DW-97), stop a routine editor map-save writing a default persistence_manifest (14.5, Epic-6 retro A2-E6), consolidate the editor tool docks + unify the hotkey map (14.6, Epic-6 retro A3-E6), hard-Validate the map Export/New-Map write path so a failing scenario can't ship as an unloadable package (14.7/DW-164 — the pre-Epic-7 hard gate), and rebuild the static pathability grid on Edit→Play re-apply (14.8/DW-157). *(Not FR-mapped — each is a named deferred-work item or retro finding; spec from its DW entry before dev. 14.1–14.5 done 2026-07-15; 14.7 must precede Epic 7, since its file (WinConditionPhase.cs) is what Epic 7's win-condition work builds on.)*
 **DW covered:** DW-85, DW-117, DW-106, DW-97, DW-164, DW-157 (14.5/14.6 are Epic-6 retro findings, not DW-numbered)
+
+### Epic 15: Deferred-Work Burn-Down & MP Reconnect
+Retire the verified deferred-work backlog (correct-course 2026-07-28: all 258 accumulated items verified against the codebase — 173 closed with evidence, the live remainder consolidated here) as themed sweep-batch stories executed at the bmad-loop sweep cadence, plus the decision-mandated builds: v1 MP reconnect (FR-79/DW-2), map-size determinism unification (DW-160/DW-146), making authored status effects real (DW-266 — the headline gap: all five StatusFlags are authorable and hashed but read by no system), the Scenario Settings/New-Scenario surfaces (DW-126/DW-127), and the fold-in feature increments Alec chose 2026-07-28 (ability targeting, energy/stack mechanics, effect-vocabulary completion). Runs interleaved with Epic 11 per the Epic-9 retro sequencing. Full partition + evidence: `sprint-change-proposal-2026-07-28.md`.
 
 ---
 
@@ -3310,6 +3320,8 @@ _Covers: FR-52. Depends on: 10.9a._
 
 ### Story 10.9: [ADDED] Gameplay HUD, controls strip, selection & default keybindings verify/harden
 
+_DW pointers (correct-course 2026-07-28): DW-49, DW-50, DW-177 — deferred live/HUD verification items land in this story's verify batch._
+
 As a player in a match,
 I want the in-match HUD, context controls strip, selection rules, and the canonical default keybindings to be correct, restyled, and remappable,
 So that the shipped game plays cleanly and a non-creator never sees authoring UI (NFR-3).
@@ -3331,6 +3343,8 @@ _Covers: UX-DR60, UX-DR61, UX-DR66, UX-DR71, UX-DR63, NFR-3. Depends on: 3.x des
 > ADDED by coverage review — in-match HUD/input verify, default keybinding set, and the NFR-3 acceptance gate were unowned.
 
 ### Story 10.10: Adaptive AI (pattern-tracking + counter-weighting + overlay) + multi-instance AI fill-any-slot
+
+_DW pointer (correct-course 2026-07-28): DW-124 — decide/consume `ai_preset` when distinct AI presets are designed here._
 
 As a solo developer,
 I want the AI opponent to observe P1's play pattern and shift its own scoring to counter it, plus a Tinkerer debug overlay that surfaces the per-action decision weights,
@@ -3373,6 +3387,8 @@ _Covers: FR-76. Depends on: 7.12, 11.1, 10.1._
 > Gap-closure (2026-07-01): closes "AI fills only one slot / skirmish advertises players nothing can fill". Instance state joins the 10.11 counter fold (extend, don't re-bump if sequenced together — state the disposition).
 
 ### Story 10.11: AI float→Fixed — close debt D2, make AI legal in lockstep multiplayer
+
+_DW pointer (correct-course 2026-07-28): DW-204 — the float scorer AND the hardcoded AI building costs (AiOpponentSystem.cs:34-37 must source from faction JSON) are both this story's scope._
 
 As the developer,
 I want the utility AI's decision math migrated to Fixed,
@@ -3430,6 +3446,8 @@ _Covers: FR-75. Depends on: 10.12._
 
 ### Story 10.14: Pathfinding quality bar — chokepoint flow, stuck-unit watchdog, arrival stability
 
+_DW pointers (correct-course 2026-07-28): DW-307 (plain-Move crowd ring completion) and the DW-241 pointer (Patrol/Follow request no nav path) belong to this story's arrival-stability scope._
+
 As a player,
 I want groups to flow through chokes and never wedge permanently,
 So that movement feels like a finished RTS instead of a physics demo.
@@ -3447,6 +3465,8 @@ _Covers: quality bar (gap register "no pathfinding-quality bar"). Depends on: 6.
 > Gap-closure (2026-07-01). The watchdog is sim behavior — designing it to be golden-neutral is an explicit AC so the fold rule is honored without a re-baseline; if tuning cannot avoid golden impact, stop and re-baseline explicitly with the change stated.
 
 ### Story 10.15: Human playtest gates — fun, usability, and balance verdicts on record
+
+_DW pointers (correct-course 2026-07-28): DW-180, DW-182 — the T3 node-graph editor human-driven mouse verify pass rides these gates._
 
 As the developer,
 I want structured human playtests with written go/no-go criteria at the three points that matter,
@@ -3485,6 +3505,8 @@ _Covers: FR-21 (paint half). Depends on: 6.1, 6.2._
 _Everything between "click Play" and "back at the menu with a score screen". Added by the 2026-07-01 sprint-change proposal; closes the session-layer blocker cluster. **Sequenced BEFORE Epic 9** — multiplayer verification needs this shell to exist. All UI built from the 3.1x design system (UX-DR70); UX-DR addenda authored per-story (the 3.11 precedent)._
 
 ### Story 11.1: The real skirmish setup screen + loading/match-start flow
+
+_DW pointer (correct-course 2026-07-28): DW-121 — first story to assign a LoadSelectedFaction failure surface; resolve the unresolved-discovered-faction path here._
 
 As a player,
 I want a skirmish setup screen with map selection and per-slot configuration,
@@ -3613,6 +3635,8 @@ _Covers: FR-67. Depends on: 11.6._
 > Gap-closure (2026-07-01). The honesty policy beats silent corruption: WC3 broke saves across patches too — the sin is failing opaquely, not the break itself.
 
 ### Story 11.4: Under-attack alerts/minimap pings/event cues + denial/acknowledgment feedback
+
+_DW pointer (correct-course 2026-07-28): DW-313 — cap/evict/coalesce policy for the toast stack lands with the real event-cue wiring._
 
 As a player,
 I want the game to tell me when something needs my attention — and where,
@@ -3932,6 +3956,8 @@ _Covers: D3 shipped-scenario contract, FR-21 (save path). Depends on: 3.8 (persi
 
 ### Story 14.6: Editor tool UX consolidation — single-active-dock arbitration + unified hotkey map
 
+_DW pointer (correct-course 2026-07-28): DW-154 — the dock-arbitration fix this entry is blocked on._
+
 As a map creator,
 I want exactly one tool panel active at a time and one place that shows me every editor hotkey,
 So that the six-plus Epic-6 tools stop overlapping each other and I can actually discover and trust the keybindings.
@@ -3983,3 +4009,48 @@ So that I don't have to fully reload the map to test pathing after every edit.
 _Covers: DW-157 (medium). Depends on: 6.5 (pathability paint), 6.6 (props/water), 6.2 (Edit→Play re-apply / `ResetToAuthoredStart`)._
 
 > Filed 2026-07-15 from the pre-Epic-7 sweep partition (bundle `pathability-and-movement-sim`; spec-6-6 Blind F1 + pass-2). The static grid is built once at boot (`ScenarioLoadPhase`; `ResetToAuthoredStart` reuses the boot grid), so an Edit-added obstacle is walked through in Play until a true reload — AC-consistent (the spec scoped "un-stamps on reload") and no desync risk, but high authoring-loop friction you hit constantly while iterating on Epic 7 triggers. Fix: rebuild the static grid from the current `ScenarioData` inside `ResetToAuthoredStart`/`ScenarioApplier.Apply`. Softer than 14.7 — should-precede, not a hard gate.
+
+## Epic 15: Deferred-Work Burn-Down & MP Reconnect
+
+_Added by the approved sprint-change proposal 2026-07-28 (`sprint-change-proposal-2026-07-28.md`). Sources: the 2026-07-26 sweep-triage partition (verified bundles/blocked/skip/decisions over the then-open DW entries) + the 2026-07-28 legacy-verification pass (all 127 pre-DW numbered items verified with file:line evidence; migrated as DW-202..DW-324). Sweep-batch stories (15.4–15.9) are executed as `bmad-loop sweep` bundle cycles — each named bundle is the work unit, its DW entries the spec source; a story is done when its bundles are committed and their DW entries closed. Determinism-sensitive items are isolated with their own golden re-baselines per the checksum-fold timing rule._
+
+### Story 15.1: MP reconnect v1 — command-log rejoin + fast-forward catch-up (FR-79, DW-2)
+The server flags a dropped-then-returning peer (identity = the 9.7 slot assignment), streams the buffered match command log, and the rejoining client re-runs the content/hash gates then fast-forward-simulates to the live tick and resumes input; lobby/loading UX shows "Rejoining…"; the 9.6 freeze policy remains the in-match behavior while the seat is empty. AC gate: 2-player LAN rejoin mid-match with post-catch-up checksum agreement; a failed content gate rejects the rejoin without disturbing the live match.
+
+### Story 15.2: Map-size determinism unification + raw heightmap read (DW-160, DW-146, DW-162)
+Parameterize the four sim grids from one map-size truth source in lockstep; rewrite `BuildAndInjectElevationGrid` to read raw per-region heightmap cells (no Godot float interpolation); extend `GridDimensionConsistencyTests` per size; one deliberate golden re-baseline; document +128 as the intended playable ceiling (closes the DW-162 contradiction).
+
+### Story 15.3: Status effects become real + modifier-period honesty (DW-266, DW-267, DW-270, DW-271, DW-272, DW-278, DW-323)
+Combat honours Disarmed, Movement honours Rooted/Stunned, AbilityCastSystem honours Silenced, DamageResolver honours Invulnerable (golden re-baseline); lethal-period-DoT Tier-1 test; bundle `ability-composer-lifelong-round-trip` (DW-323 — composer silently strips `lifelong`); bundle `modifier-period-semantics-and-authoring-warnings` (DurationTicks=0 semantics, Modifier-path 256-pulse truncation, stacked-DoT warning, a `Warnings` channel on `AbilityValidationResult` surfaced in the 2.5 editor).
+
+### Story 15.4: Sim correctness sweep — combat & economy gates
+Bundles: `noncombatant-command-gate` (DW-202, DW-206, DW-242), `trained-worker-gather-init` (DW-205), `gatherer-slot-release-on-death` (DW-207 — golden re-baseline), `gather-state-checksum-fold` (DW-78 — golden re-record), `searcharea-target-selection-correctness` (DW-249, DW-250, DW-252), `projectile-convergence-clamp` (DW-25), `modifier-subsystem-robustness` (DW-28, DW-83), `gathering-closed-gate-reidle` (DW-80), `map-bounds-out-of-range-guards` (DW-158, DW-159).
+
+### Story 15.5: Determinism, checksum & test hardening sweep
+Bundles: `scenario-applier-canonical-order` (DW-37), `sim-reset-and-clear-test-coverage` (DW-22, DW-196, DW-197, DW-198), `match-seed-plumbing` (DW-17, DW-225), `tier1-test-hardening` (DW-218, DW-221, DW-224, DW-226), `real-content-signature-test-hardening` (DW-107, DW-108), `canonical-hash-test-name-cleanup` (DW-194), `replay-research-parity-test` (DW-86), `nullable-directive-cleanup` (DW-213); plus the scheduled independent follow-up review pass on stories 9-11 and 9-14 (DW-199, DW-201).
+
+### Story 15.6: Scenario & content pipeline fail-closed sweep
+Bundles: `scenario-unit-id-validation` (DW-240), `scenario-store-capacity-fail-closed` (DW-230), `scenario-reapply-slot-faction-def-refresh` (DW-229, absorbing DW-10), `map-package-import-one-path` (DW-235, absorbing DW-82/DW-145/DW-156), `faction-load-fail-closed` (DW-62, DW-123, DW-317, co-locating DW-65), `faction-definer-wizard-hardening` (DW-112..119 open set), `faction-art-path-consistency` (DW-102, DW-104), `loader-duplicate-key-fail-closed` (DW-227), `load-time-recursion-hardening` (DW-59, DW-191), `settings-serialization-shared-options` (DW-134), `housekeeping-docs-and-normalization` (DW-46, DW-105, DW-175, DW-324), ContentJson loader unification (DW-274).
+
+### Story 15.7: MP & bootstrap resilience sweep
+Bundles: `minority-halt-quorum-rebase` (DW-237, DW-239 — the N≥3 quorum stall now live with 4-player MP), `scenecontext-producer-consumer-guards` (DW-232, DW-233 — the class already bit once in Epic 9), `lockstep-wiring-fail-loud` (DW-304), `passive-install-idempotence` (DW-300).
+
+### Story 15.8: Creation-suite editor fidelity sweep
+Bundles: `terrain-brush-stroke-lifecycle` redrive (DW-141..144), `card-editor-history-safety` (DW-64, DW-65, DW-69), `card-editor-field-fixes` (DW-71, DW-72, DW-133), `creation-suite-panel-infrastructure` (DW-23, DW-74, DW-76, DW-129), `tech-tree-editor-sync-undo` (DW-75, DW-92), `editor-item-placement-persistence` (DW-35, DW-137), `start-position-editor-fixes` (DW-161, DW-163, DW-167), `group-op-editor-fidelity` (DW-151, DW-153, DW-155 — human-driven verify per the DW-139 precedent), `hero-row-free-on-editor-delete` (DW-52), `onboarding-panel-fixes` (DW-130, DW-131, DW-135), `resource-node-placement-controls` (DW-77), `map-size-camera-minimap` (DW-165, DW-166), `hud-viewport-resize` (DW-223).
+
+### Story 15.9: Ability & command-card authoring sweep
+Bundles: `ability-cast-path-hardening` (DW-283, DW-284, DW-285), `ability-editor-composer-cleanup` (DW-293, DW-297), `ability-editor-precision-fidelity` (DW-296), `hero-xp-per-kill-repurpose` (DW-26), `command-card-producer-surfaces` (DW-31, DW-90, DW-91, DW-93, DW-168), `custom-building-render` (DW-169, DW-171), `building-def-creation-helper` (DW-172, DW-173), `trigger-custom-building-resolution` (DW-170), `dsl-graph-editor-node-inspector` (DW-179, DW-195), `win-condition-robustness` (DW-184, DW-188, DW-189, DW-190), `dsl-event-feed-capacity` (DW-192), `ai-opponent-tuning-and-test` (DW-63, DW-125).
+
+### Story 15.10: Scenario Settings panel + New-Scenario empty-canvas flow (DW-126, DW-127)
+The two recorded 2026-07-25 build decisions: a unified Scenario Settings surface (map name/author, win condition, per-slot starting resources) and a Create/New-Scenario flow originating a blank `ScenarioData` (revisits onboarding step 4 to offer starting from empty).
+
+### Story 15.11: Ability targeting increments — ground-target cast + ally-targeted heal-other (DW-280, DW-286, DW-290-as-AC)
+GroundPoint casting end-to-end: `UnitOrder` wire widen 11→12 + `ReplayRecorder.VERSION` bump, `EffectContext` ground-point field, cast reticle, validator + golden re-baseline. Ally-affinity hint on `AbilityDefinition` with an ally-capable click-picker. AC (DW-290): the card disable-gate and press-handler targeting sets fold into one shared is-castable predicate.
+
+### Story 15.12: Energy & stack mechanics (DW-264, DW-265, DW-272 behavior half)
+An authored energy-regen model (`regen_rate` on `UnitDefinition` + a regen path in the tick — goldens move), and the stacking design pass: per-stack expiry timers and per-stack periodic scaling where content wants them, with validator/authoring surfaces.
+
+### Story 15.13: Effect vocabulary completion — Teleport + presentation leaves (DW-248)
+Build the reserved `Teleport` effect leaf and the presentation leaves (`PlayVfx`/`PlaySound`/`ShakeScreen`, checksum-neutral presentation dispatch), closing the 2.1 reserved-vocabulary carve-off.
+
+**DW covered:** the Story-15 set enumerated above; full partition in `sprint-change-proposal-2026-07-28.md` §4. Blocked entries filed elsewhere: DW-49/50/177→10.9, DW-180/182→10.15, DW-121→11.1, DW-154→14-6, DW-124→10.10, DW-204→10.11, DW-307/DW-241-pointer→10.14, DW-238→10.5/10.8, DW-312/DW-320→10.6/10.7, DW-313→11.4, DW-1/DW-200→post-1.0, DW-36/43/54/57→named latent triggers.

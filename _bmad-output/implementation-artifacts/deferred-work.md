@@ -2,86 +2,6 @@
 
 Pre-existing issues surfaced by reviews; not caused by the story that logged them.
 
-## From spec-ai-deadlock-combat-gathering-fix (2026-06-09 review)
-
-1. **AI counts zero-damage units as combat units.** `AiOpponentSystem.BuildSnapshot` / `DoLaunchAttack` have no `AttackDamage > 0` filter; a zero-damage non-gatherer P2 unit (possible via data or trigger spawn) inflates wave counts and, once flipped to `AttackMove`, is skipped by CombatSystem's non-combatant gate and never exits the command — permanently leaked from the available pool. Fix: filter `world.AttackDamage[i] > Fixed.Zero` in both loops.
-2. **Rally points are not lockstep-replicated.** `SelectionSystem` writes `HasRallyPoint`/`RallyPoint` locally (no `EnqueueOrder`, not recorded in replays), so `SpawnTrainedUnit`'s rally branch can diverge between peers → desync vector. Route rally-set through the lockstep command stream.
-3. **Float math in the AI utility scorer.** `ScoreLaunchAttack` etc. use `float`/`Math.Min` for decisions that mutate sim state — violates the project determinism rule if AI ever runs during lockstep play. Companion issue: AI building costs are hardcoded constants (`AiOpponentSystem.cs:34-37`) that must mirror JSON. Candidate story alongside Mechanism 2 (AI economy recovery).
-4. **`SpawnTrainedUnit` never sets `GatherState`.** A production path that trains Workers (Mechanism-2 story) must set `GatherState.Idle` + `CarryCapacity` or trained workers will never gather (and would be combat-active). Handle inside the TrainWorker story.
-5. **`UnitCommand.Build` falls to CombatSystem's `default` case** (`TickIdleCombat`). Unreachable for gatherers (skipped) and currently nothing else gets Build, but it's a residual hole if Build is ever assigned to a non-gatherer. Add an explicit `case UnitCommand.Build: continue;`.
-6. **`AssignedGatherers` leaks on worker death** while assigned to a node (no decrement on death) — nodes can permanently lose gatherer capacity slots. (Also recorded in the investigation case file side findings.)
-7. **AttackMove arrive threshold unreachable under crowding.** `AMOVE_ARRIVE_SQR` = 0.5u² (CombatSystem.cs:38); a wave converging on one goal point holds an equilibrium ring at ~1.0u (separation vs seek), so no unit ever "arrives" — they hover in AttackMove forever and never return to the AI's available pool (not Idle/Stop), so they can't be re-waved. Observed in-engine at P1's CC during fix verification (2026-06-09). Fix candidates: widen arrive radius (e.g. 2–3u or scale with group size), or treat "no progress for N ticks near goal" as arrival. Pairs with the Mechanism-4 building-damage story — arrived waves currently have nothing to do at an enemy base anyway.
-
-## From code review of story-1.1 (2026-06-22)
-
-1. **Determinism boundary tests missing (→ Story 1.2).** `FixedSmokeTests` is happy-path only: no negative-multiply rounding direction (arithmetic `>>` rounds toward −∞ — the classic lockstep desync source), no division truncation direction, no overflow at the 16.16 limits (`FromInt`/`*` silently `(int)`-truncate a `long` past ±32768), no `Sqrt` of 0 / negative / non-perfect-square. Land real boundary/golden-checksum coverage with the Story 1.2 harness. Also add a comment that `Assert.Equal` on fixed-point division is only exact for power-of-two divisors.
-2. **No structural guard for the Godot-free folder contract (→ Story 1.10b / 1.10).** `ProjectChimera.Sim.Tests.csproj` globs `..\src\{Core,Combat,Economy,Navigation}\**\*.cs` and removes exactly two hand-named files (`MainScene.cs`, `StressTest.cs`). A future `using Godot;` file in those folders breaks the shared-source test build with a confusing far-from-source error, with no analyzer/architecture test to catch it early. Banned-Godot-API analyzer is Story 1.10b; folder-set match check is Story 1.10.
-3. **Sim.Tests runs in no routine build/CI (→ Story 1.10a).** Intentionally absent from `godot.sln` (per spec) and no CI workflow exists yet, so the Godot-free boundary test only executes on a manual `dotnet test <csproj>`. Until 1.10a wires it into CI, the guarantee is decorative between manual runs.
-4. **No `packages.lock.json` (→ Story 1.10a).** Top-level xUnit versions are pinned but transitive deps still float; restore is not bit-reproducible. Add a lock file + `RestoreLockedMode` when CI lands, and soften the csproj's "reproducible CI" comment.
-5. **6 pre-existing CS8632 nullable warnings (pre-existing cleanup).** `GatheringSystem.cs` (×2), `SimulationLoop.cs` (×3), `FlowFieldSystem.cs` (×1) carry `Type?` annotations without a file-level `#nullable enable`. Verified **identical in the game and test builds** — no divergence (disproves the review's initial divergence hypothesis; `Godot.NET.Sdk` does not enable nullable). Not caused by Story 1.1. Fix: add `#nullable enable` to those three files (or make the annotations unconditional).
-
-## From code review of story-1.3a (2026-06-23)
-
-1. **`FactionRegistry` accepts more players than the stores can hold (→ Story 9.2).** The ctor range-validates `activePlayerCount ∈ [1, PLAYER_COUNT=8]`, but the `Faction` enum only defines `Player1..Player4` and `ResourceStore.Ore` is `Fixed[5]`. Constructing `new FactionRegistry(5..8)` and feeding it to `SimChecksum.Compute` indexes `resources.Ore[(int)f]` out of bounds (`IndexOutOfRangeException`), and slots 5–8 cast to undefined `(Faction)` members. **Not triggerable today** — every live caller passes ≤4 (MainScene=2, GoldenScenario=2, MultiFactionScenario=4); `FactionRegistryTests.Ctor_AcceptsTheInclusiveBounds(8)` asserts the unusable state is "valid." Forward constant by design — Story 9.2 resizes the store arrays (5→9) and runs the exhaustive `(int)Faction` audit that closes this gap. **When 9.2 lands:** ensure the array resize precedes (or accompanies) any caller passing >4, and revisit the `Ctor_AcceptsTheInclusiveBounds(8)` assertion. (Surfaced by Blind + Edge Case hunters during the 1.3a review; deferred by Alec.)
-
-## From code review of story-1.3b (2026-06-23)
-
-1. **`Fixed.FromFloat(def.Amount)` residual at the ScenarioDirector compare site (→ Story 1.4).** The de-floated `resource_threshold` match and `resource_comparison` condition now convert the *authored* threshold to `Fixed` at the compare site (`ScenarioDirector.cs:~261,~300`). Two facets, both resolved by Story 1.4's `FixedJsonConverter` FromFloat sweep (which makes `TriggerEvent/TriggerCondition.Amount` a `Fixed` at parse): (a) fractional authored thresholds are quantized to 16.16 at the compare site; (b) an authored threshold ≥ 32768 overflows the `(int)(value*65536)` cast and wraps negative, inverting the comparison (never-fires→always-fires) — the old float compare had no such ceiling. Ore itself caps at ~32767.99 in 16.16, so the overflow case is pathological, but if 1.4 does not add range-checking, add a load-time validation that authored ore thresholds are ≤ Fixed max. (Surfaced by Blind + Edge Case hunters during the 1.3b review.)
-
-## From code review of story-1.4 (2026-06-23)
-
-_Note: 1.4's `FixedJsonConverter` largely resolves the 1.3b deferral above (≥32768 now rejected at the parse boundary), but the 1.4 review found a residual double→float rounding-band hole — logged as an OPEN patch on story 1.4, not deferred._
-
-1. **Converter `Write` is lossy (`ToFloat()`), no round-trip test (low priority, design tradeoff).** `FixedJsonConverter.Write` emits `value.ToFloat()` — a 32-bit `Fixed.Raw` through a 24-bit float mantissa, so a save→load→save cycle can shift large-magnitude / >16-fractional-bit authored values by ≥1 raw unit. **Not** a cross-machine desync (peers load identical bytes); purely authoring fidelity. The Write path is never in-tick and the canonical hash uses `.Raw`. Revisit only if exact authored round-trip becomes a requirement (e.g. a "no silent value drift on re-save" guarantee for the creation suite). [godot/src/Core/Definitions/FixedJsonConverter.cs:42]
-2. **JSON-omitted `Fixed` fields bypass the converter (future-proofing, pairs with Story 1.10b).** When a JSON document omits a field, the C# default initializer is used (`Fixed.FromInt(30)` / `Fixed.Zero`) — compile-time constants, so safe today. But a future fractional default authored directly on a definition as `= Fixed.FromFloat(1.5f)` would be an unguarded `FromFloat` *outside* the single-quantization-boundary, with nothing to catch it until the banned-API analyzer lands. Add this case to the Story 1.10b analyzer's scope. [godot/src/Core/Definitions/TriggerDefinition.cs]
-3. **Determinism-test durability (optional hardening).** Two new 1.4 tests lean on implementation details: `TimerDeterminismTests` uses null-forgiving reflection (`_timers`/`CollectEvents`/`FiredEvent`/`Type`/`Data`) that throws an opaque `NullReferenceException` if any member is renamed, and `TriggerOrderingTests` relies on .NET's internal introsort insertion-sort threshold (count 24 > 16) for its negative control to bite. Both negative controls are verified RED today, but a future BCL change or refactor could silently disable them. Optional: add an isolated comparator unit test (not coupled to the BCL threshold) and null-checked reflection lookups with clear failure messages. [godot/ProjectChimera.Sim.Tests/Golden/TimerDeterminismTests.cs, TriggerOrderingTests.cs]
-
-## From code review of story-2.9b (2026-07-02)
-
-_3-layer adversarial review (Blind · Edge Case · Acceptance, all Opus 4.8, fresh context) + lead verification against source. Scope was expanded to include the separately-committed `start_crystal` follow-up. **Story 2.9b proper reviewed CLEAN** — all 5 ACs met, all 6 Decisions honored, determinism fence intact (no new SoA field, no fold, `AlgoVersion` 8, pin `0x983D39AE`, 13 existing goldens byte-identical, 1 new golden). The items below are pre-existing classes, coverage/maintenance hardening, or from the bundled follow-up; none is a 2.9b AC failure. (The headline `StartCrystal`/`CanonicalModelHash` determinism gap was **FIXED** in this review — Alec chose fix-now: `CanonicalModelHash` `AlgoVersion` bumped 2→3 to fold `StartCrystal`, guarded by a new `ChangedStartCrystal_HashDiffers` teeth-test. NOT deferred — see the story's Review Findings "Resolution".)_
-
-1. **Negative unit `cost_crystal` grants crystal instead of costing it.** `BuildingSystem.TrainUnit` (`:341`) sets `costCrystal = def?.CostCrystal ?? 0f` with no lower-bound guard; `SpendCrystal(faction, negative)` computes `Crystal - (negative)` = an addition (`ResourceStore.cs:75-79`). A faction JSON authoring `"cost_crystal": -30` on a trainable unit *adds* 30 crystal on every train. Symmetric with the pre-existing unguarded `cost_ore` (`SpendOre` has the identical structure); the lenient faction/unit loader validates no unit costs (only `AbilityValidator` guards ability `CostCrystal < 0`). Fix candidate: a unit-cost validator, or clamp negatives to 0 at load, covering both ore and crystal. (Edge Case Hunter, 2.9b review.)
-2. **`start_crystal` / `start_ore` have no upper bound → 16.16 `Fixed` overflow at ≥ ~32768.** `ScenarioValidator` runs only `CheckNonNeg` on `start_crystal` (`:~115`); `ScenarioApplier.cs:88` then calls `Fixed.FromFloat(slot.StartCrystal)`, and `Fixed.Raw` is a 32-bit 16.16 int, so a value ≥ 32768 overflows to a garbage/negative balance. Symmetric with the identical `start_ore` gap and the same 16.16 ceiling logged in story-1.3b deferral #1 (there resolved for *trigger* thresholds by the `FixedJsonConverter` parse boundary — scenario start-resources bypass that converter). Fix candidate: a load-time upper-bound check for start-resource fields. (Edge Case Hunter, 2.9b review.)
-3. **The shipped `matter_infusion` ability's `apply_modifier`/`move_speed_delta` path is never exercised.** Every worker-cast unit test and the `worker-cast-crystal-cost` golden build `AbilityTestAbilities.SelfHeal(...)` (a heal effect) with matter_infusion-shaped *costs*; the actual move-speed modifier applied to a *worker* (which is moving during its gather cycle) is untested. AC1.4 ("gather loop bit-for-bit unchanged by the cast") was proven against a heal (touches Health), not the speed buff. Behavior is proven-by-construction (existing ModifierSystem + MovementSystem, all `Fixed`) — so this is coverage hardening, not a known defect. Fix candidate: a worker-cast test using an `apply_modifier`/`move_speed_delta` ability asserting gather-state + checksum determinism. (Blind Hunter, 2.9b review.)
-4. **Fallback crystal seed is a hardcoded literal duplicated in 3 comment-coupled places.** `ScenarioApplier.ApplyFallback` (`:159-160`) hardcodes `AddCrystal(P1/P2, 100)`, which must stay equal to `alpha_map_01.json`'s `start_crystal` (100) and `ScenarioLoadPhase.BuildFallbackMirror`'s `StartCrystal` (100). All three are 100 today; only the code comment couples them, and the fallback path is not golden-reachable, so a future divergence goes uncaught. Fix candidate: source the three from one constant, or add a test asserting they agree. (Blind + Edge Case Hunters, 2.9b review.)
-5. **Command-card ability/worker panel positions are cached once and go stale on window resize.** `CommandCardSystem.BuildAbilityPanel` computes `_abilityPanelNormalPos`/`_abilityPanelStackedPos` once from `vpSize`; on a viewport resize they don't recompute, and on a very short viewport the stacked position (`vpSize.Y - 368`) can push the ability card off the top of the screen. Pre-existing HUD compute-once pattern, now slightly more entrenched by the co-display stack. Presentation-only. (Blind Hunter, 2.9b review.)
-
-## From code review of story-1.5 (2026-06-23)
-
-1. **AC3 replay round-trip records zero orders (→ Epic 2).** `SimRngChecksumReplayTests.RecordThenReplay_ReproducesChecksumSequence` records no `RecordTick` payload and re-runs the same test system, so beyond the (verified) v2 seed-header round-trip it proves the same thing as the "twice" test. **By design for 1.5** (D6 seed-only, D7 no production system draws) and NOT an AC violation (Acceptance Auditor confirmed). The stronger "recorded behavior replays under RNG" proof naturally lands when a real system draws from `world.Rng` (Epic 2). [godot/ProjectChimera.Sim.Tests/Golden/SimRngChecksumReplayTests.cs:~348] (Surfaced by Blind + Acceptance Auditor.)
-2. **Recorder hardcodes `DEFAULT_RNG_SEED` rather than the match's actual seed (→ Epic 9).** `MainScene` constructs `new ReplayRecorder(filePath, ScenarioPath, EntityWorld.DEFAULT_RNG_SEED)`. Correct today — nothing reseeds in 1.5 — but a latent **silent desync**: when the Epic 9 MP seed handshake introduces a real per-match seed, a recording made on seed X would persist `DEFAULT_RNG_SEED` and replay a different stream. The robust fix needs a stored match-start seed (Epic 9 design); naively reading live `world.Rng.State` is wrong once draws have advanced it. Wire the recorded seed to the real match-start seed when the handshake lands. [godot/src/Core/MainScene.cs:~2113] (Surfaced by Blind Hunter.)
-3. **`ulong.MaxValue` seed never pinned as a stream (coverage hardening).** Seeds 0 and 12345 have independently-computed pinned `NextRaw` outputs; the max-seed boundary appears only as a "wrong seed" fixture, never asserted as a stream. Code is provably correct (the `unchecked` `_state += GAMMA` wraps — verified), so this is test-coverage hardening, not a defect. Optional: add one externally-computed max-seed assertion. [godot/ProjectChimera.Sim.Tests/Determinism/SimRngTests.cs] (Surfaced by Edge Case Hunter.)
-
-## From code review of story-1.6 (2026-06-23)
-
-1. **Loader does not fully fail-closed on duplicate JSON keys (post-1.0 / data-authoring UI).** `DamageTable.FromJson` deserializes `multipliers` into a `Dictionary<DamageType, Dictionary<ArmorType, Fixed>>`, so a duplicated row or cell key in `damage_table.json` (a plausible creator copy-paste, e.g. two `"Unarmored"` cells in one row) silently resolves **last-wins**: `System.Text.Json` de-duplicates, so `row.Count` and `Multipliers.Count` still equal `COUNT`, every `FromJson` validation check passes, and the earlier value is silently dropped — a silent, un-located balance change, contrary to AC4's "fail closed with a located error, never silent." Verified with a standalone .NET 8 repro (count=1, last value wins, no exception). **Not triggered by the shipped table** (it has no duplicate keys) — only future creator-authored content. A proper fix needs duplicate-key detection (parse via `JsonDocument`/`Utf8JsonReader` and reject when the raw property count ≠ distinct-key count), which STJ does not do natively for dictionaries. Related: the `row.Count != COUNT` dimension check (`DamageTable.cs:128`) is a weak guard — the real completeness guarantee is the per-cell `TryGetValue` (`:133`); the `WrongColumnCount` test does not isolate the dimension case. **Deferred by Alec (review decision 2026-06-23):** future-content-only edge case; shipped table has no duplicate keys; the data-authoring UI is the natural validation point — out of scope for 1.0's determinism floor. [godot/src/Combat/DamageTable.cs:115-142] (Surfaced by Blind + Edge Case hunters during the 1.6 review.)
-
-## From code review of story-1.7 (2026-06-23)
-
-1. **`default(Validated<T>)` can mint a fake "validated" value without the Proof token (→ Story 1.8b).** `Validated<T>` is a `readonly struct`, so `default(Validated<ScenarioData>)` produces a value with `Value == default` and no `ScenarioValidator.Proof` — bypassing the sole-minter guarantee the type exists to provide (and `ValidationResult.Fail` itself constructs one via `default`). **Harmless in 1.7** — the type is never consumed; every read goes through `ValidationResult.Ok` first, which gates `.Value`. It becomes a real validation-bypass vector only when **Story 1.8b** changes the scenario applier to require a `Validated<ScenarioData>` parameter. Close it at that consumption point: reject `default`/unproven instances (e.g. an internal `_isProven` flag the real mint sets and the applier asserts). **Deferred by Alec (review decision 2026-06-23):** harmless until 1.8b consumes the type; 1.8b is the natural place to enforce it. [godot/src/Core/Definitions/Validated.cs:19-29,59] (Surfaced by Blind Hunter during the 1.7 review.) **⚠ UPDATE (1.8b review 2026-06-24): NOT closed by 1.8b** — `ScenarioApplier.Apply` reads `v.Value` with no proven/non-default guard. Re-raised as an OPEN patch on story 1.8b (not re-deferred).
-
-## From code review of story-1.8b (2026-06-24)
-
-1. **`ResolveSlotFactionDefs` never resets `_slotFactionDefs` entries (latent on re-apply).** The presentation pre-pass writes a slot's resolved def only when `faction_json` is non-empty AND the file exists; otherwise it `continue`s, leaving whatever was there. The array is allocated once in `_Ready` and shared by reference with the applier for the process lifetime, so re-applying a scenario into the same `MainScene`/host after a slot's `faction_json` becomes missing keeps the previously-resolved def instead of reverting to the default. Behavior-preserving — the original inline code had the identical `if (!IsNullOrEmpty) { if (Exists) … }` shape — and not reachable on the single-apply production path; flagged only because the shared-in-place lifetime has no per-apply reset. [godot/src/Core/MainScene.cs:ResolveSlotFactionDefs] (Surfaced by Edge Case Hunter; auto-deferred — behavior-preserving.)
-2. **Scenario with > 64 resource nodes / > 64 buildings silently drops the overflow (pre-existing).** `Apply`/`ApplyFallback` call `Nodes.Create(...)` (returns -1 past `MAX_NODES=64`) and `BuildSys.PlaceBuildingDirect(...)` (returns -1 past `MAX_BUILDINGS=64`) without checking the return value, and the validator imposes no count cap, so a scenario authoring more than the store capacity silently loses the overflow with no located error. Identical to the original inline code (not introduced by 1.8b); `SpawnUnit` correctly propagates `Create`'s -1, so no out-of-bounds SoA write occurs. [godot/src/Core/Sim/ScenarioApplier.cs:Apply/ApplyFallback] (Surfaced by Edge Case Hunter; auto-deferred — pre-existing.)
-
-## Deferred from: code review of story-1.8c (2026-06-24)
-
-1. **`ResolveSlotFactionDefs` throws `IndexOutOfRangeException` for player slots 4–7 (→ Story 9.2).** The carved `ScenarioLoadPhase.ResolveSlotFactionDefs` indexes `_ctx.SlotFactionDefs[(int)(slot.Slot+1)]` into the `[5]`-sized array (`_slotFactionDefs = new FactionDefinition?[5]`), so a scenario with a player slot in {4,5,6,7} carrying an on-disk `faction_json` indexes 5–8 → crash. It runs (line 110) *before* the validator (line 111) that is designed to reject slots ≥4 (`ScenarioValidator.cs:~102`), and on master the validator is shadow-mode (`_failClosed=false`) so it wouldn't block anyway. **Behavior-preserving verbatim move** from the old `MainScene` (the deleted block is identical) — not introduced by 1.8c; only reachable for >4-faction scenarios. **Same `[5]`-array family as the 1.3a deferral (`ResourceStore.Ore`/`MatchStats`) and 1.8b #1** — all owned by **Story 9.2** (resizes the faction store arrays 5→9 and runs the exhaustive `(int)Faction` audit). Optional cheap guard if wanted before 9.2: `if ((int)faction >= _ctx.SlotFactionDefs.Length) continue;` (turns the crash into a skip; behavior-identical for supported slots 0–3). [godot/src/Core/Bootstrap/Phases/ScenarioLoadPhase.cs:100] (Surfaced by Edge Case Hunter; deferred.)
-2. **`SceneContext` `null!` cross-phase coupling is load-bearing and undefended (hardening for Epics 3–8).** The 22-phase strangle shares state via a mutable `SceneContext` whose handles are declared `= null!` and populated as phases run. The build is correct only under the implicit invariant "every consumer phase runs after its producer, and every deferred lambda fires after all 22 phases complete." Edge Case Hunter verified the invariant holds today (no read-before-write; all `ctx`-closing lambdas fire post-`_Ready`), but it is neither asserted nor guarded. **Epics 3–8 add the six editor phases** to this list — when they do, preserve producer-before-consumer ordering or null-guard the cross-phase `ctx` reads, else a new phase that fires a callback (mode change / sim tick) mid-bootstrap NREs past the golden gate (the architecture's named #1 residual risk). [godot/src/Core/Bootstrap/Phases/SceneContext.cs] (Surfaced by Blind Hunter; cross-validated safe-today by Edge Case Hunter; deferred as a design note.)
-3. **`PhaseOrderTest` cannot catch concrete-phase `Name` drift or duplicate canonical names (test hardening).** AC1 is met (the runner's `AssertOrder` throws loudly at every boot on any live-literal drift — never silent), but the Tier-1 test only pins `ScenePhaseOrder.Canonical`↔`ExpectedOrder` and runs Godot-free stub phases; it cannot reference the concrete `*Phase` types (the Godot-free boundary forbids it), so a rename of a real phase's `Name` keeps CI green and only fails at boot. Close the test-side gap with a Tier-2 GdUnit4 test that instantiates the real phases and asserts their `.Name` sequence == `Canonical`; cheap Tier-1 add: assert `Canonical` has no duplicate names. [godot/ProjectChimera.Sim.Tests/Bootstrap/PhaseOrderTest.cs] (Surfaced by Edge Case Hunter; deferred.)
-4. **Pre-existing duplicated logic now split across phase files (consolidate later).** `ScenarioLoadPhase.BuildFallbackMirror` duplicates the fallback layout in `ScenarioApplier.ApplyFallback` (two sources of truth for the default scenario), and `ContentBrowserPhase.HandleLoadMap` duplicates `WinConditionPhase.DoImport`'s `.chimera.zip` extract/copy. Both duplications pre-existed inside the monolithic `MainScene`; the strangle relocated them into separate files, making future drift easier to miss. Consolidate each pair to one helper when convenient. [godot/src/Core/Bootstrap/Phases/ScenarioLoadPhase.cs, ContentBrowserPhase.cs, WinConditionPhase.cs] (Surfaced by Blind Hunter; deferred — pre-existing.)
-
-## Deferred from: code review of story-1.9a (2026-06-24)
-
-1. **Quorum peer-set is fixed at construction — mid-match disconnect and N≥3 minority self-halt leave the desync guard silently dead (→ Epic 9: Story 9-5 disconnect policy, Story 9-2/9-3a N-scale).** `ServerHost`/`ServerChecksumCollector` are constructed once in `HandleReady` with `expectedPeerCount = CountConnectedPlayers()` and never re-base when the live peer set shrinks. (a) `HandleDisconnect` (`DedicatedServer.cs:124-143`) resets `_state` but never updates `_serverHost`; because `_state` leaves `InGame`, the `Checksum` case (`:173`) stops feeding the collector — so after any mid-match player drop the server's authoritative desync guard is silently dead for the rest of the match (no HALT, no log beyond the disconnect line). (b) At N≥3, a strict-majority-with-minority verdict makes `ServerHost.OnChecksum` send a `DesyncAlert` to the minority but it does **not** set `Halted`; the alerted minority halts and stops sending checksums (`LockstepManager.Flush` gated by `_halted`), so the fixed-N collector can never complete another bucket and the surviving majority continues diverged-unaware with no overlay. **Both are explicitly out of the 1.9a scope fence** — disconnect freeze/continue/drop policy is **Story 9-5**, and N≥3 / 8-player quorum is **Story 9-2 / 9-3a**. The 1v1-loopback shipping config constructs N=2, where any disagreement is no-majority → terminal broadcast HALT, so neither degraded path is reachable today. When Epic 9 makes the quorum N-adaptive, also make the server re-base `expectedPeerCount` (or HALT) on disconnect, and halt-or-continue-with-reduced-quorum the survivors when a minority self-halts. [godot/src/Multiplayer/DedicatedServer.cs:124, godot/src/Multiplayer/Server/ServerHost.cs OnChecksum, ServerChecksumCollector.cs] (Surfaced by Blind + Edge Case Hunters; verified live during the 1.9a review.)
-
-## Deferred from: code review of story-1.9b (2026-06-24)
-
-1. **LAN launcher's server/client/F9 triggers are `#if DEBUG` — silently no-ops against a future exported (non-DEBUG) build (→ Epic 10 / Story 10-7).** `lan-desync-smoke.ps1` launches `--server` (windowed) and `--autojoin`, and the F9 desync inducer is also DEBUG-gated. In `MainScene`, `isWindowedServer = HasCmdArg("--server")` is inside `#if DEBUG` (`MainScene.cs:211`); with DEBUG undefined the `-Role server` process boots as a normal client/menu (never a server), `--autojoin` is ignored, and F9 does nothing — while the script reports success (it only checks `Start-Process` fired). **Currently consistent and not a defect** — 1.9b runs from source via `godot --path` (a DEBUG build) per the runbook's pinned topology (D7), so every path is live today. It becomes a real trap only once an exported build exists. **Surfaced by THIS change** (the launcher is net-new in 1.9b) but only actionable at Epic 10. Fix when exports land: have the server role use `--headless` (the one non-DEBUG-gated server trigger, via `DisplayServer.GetName()=="headless"` / the `dedicated_server` feature) instead of `--server`, or guard/document the script's DEBUG/source-build requirement. [godot/tools/lan-desync-smoke.ps1; godot/src/Core/MainScene.cs:211] (Surfaced by Edge Case Hunter during the 1.9b review; deferred — latent until Epic 10 exports.)
-
-2. **Collector window: a valid-but-late checksum a full window (8 ticks) behind is silently abandoned (→ Epic 9 lag/disconnect policy).** In `ServerChecksumCollector.Record`, when an incoming tick `T+8` aliases the ring slot of a still-incomplete older tick `T` (`T % 8 == (T+8) % 8`), the partial older bucket is `Reset` — its already-collected reports discarded — and `_resolvedThrough` is **not** advanced past `T`; a subsequent report for `T` then hits the `b.TickOf > tick` guard (`:119`) and is dropped as stale, so tick `T` never produces a verdict. A genuine desync occurring exactly on an abandoned tick would go undetected (no DesyncAlert/Halt). Only reachable when a peer is ≥8 checksum-intervals behind, which lockstep would normally stall out first, so it is correct for the documented "≤2 ticks in flight" assumption — flagged as a structural boundary on the fixed `Window=8` ring, not a live bug. _Related and negligible: a `uint` executed-tick wraparound (~4.5 years @ 30 Hz) would permanently silence the collector, since `_resolvedThrough` (a non-wrap-aware `long`) would then exceed every post-wrap tick (`:112`)._ [godot/src/Multiplayer/Server/ServerChecksumCollector.cs:111-120] (Surfaced by Blind + Edge Case Hunters and the Acceptance Auditor; deferred.)
-
 ## Design direction: MP disconnect resilience — AI takeover + reconnect (captured 2026-06-24, NOT yet scoped)
 
 **Decision (Alec, 2026-06-24):** beyond Story 9.5's deterministic freeze-and-continue *floor*, Project Chimera should add (a) **host-toggleable AI takeover** of a dropped player's faction and (b) **player reconnect / rejoin**. Captured here as a direction — Alec parked scheduling; **not yet turned into PRD FRs or Epic 9 stories.** Surfaced from the 1.9a code-review conversation (relates to the disconnect-wedge deferral above).
@@ -95,6 +15,7 @@ location: godot/src/AI/AiOpponentSystem.cs
 reason: **AI takeover = freeze-and-continue with AI commands instead of empty ones.** `AiOpponentSystem` runs INSIDE the deterministic sim, so every peer computes identical AI moves with no extra netcode — no machine "hosts" the bot. Host-enable = a ruleset flag folded into `rulesetHash` (all peers agree on the rule). Same trigger as 9.5 (server-dictated at applyTick, ACK-gated, tick-counted). - **HARD PREREQUISITE:** `AiOpponentSystem` is **NOT deterministic today** — it uses `float`/`Math.*` (13 occurrences in `godot/src/AI/AiOpponentSystem.cs`; see also the 2026-06-09 deferral "Float math in the AI utility scorer"). It MUST be converted to `Fixed` before ANY AI runs in lockstep MP (takeover or otherwise). Shared prerequisite with the adaptive-AI work (Story 10.11). - Smaller: the AI must adopt a mid-game base/economy (it normally starts from scratch) — a new entry condition.
 status: open
 decision: 2026-07-25 Defer to a post-1.0 MP-resilience slice; keep open
+decision: 2026-07-28 correct-course — keep open; post-1.0 MP-resilience slice; hard prerequisite Story 10.11 (AI float→Fixed)
 
 ### DW-2: Reconnect = replay the command log to catch up.
 origin: migrated from legacy ledger ("Design direction: MP disconnect resilience — AI takeover + reconnect (captured 2026-06-24, NOT yet scoped)"), 2026-07-08
@@ -109,6 +30,7 @@ decision: 2026-07-25 Scope now via correct-course — Add PRD FRs + Epic-9-style
 **Recommended shape when scheduled (Epic 9, after 9.5):** (1) prerequisite — make `AiOpponentSystem` deterministic (float→Fixed); (2) AI-takeover-on-drop (host ruleset flag; extends 9.5 to inject AI commands instead of empty ones); (3) reconnect / rejoin (command-log catch-up via the server buffer + replay; v1 replay-from-start, v2 snapshot+tail). Would also close the open `game-architecture.md:2529` rejoin decision. If wanted in 1.0 → needs PRD FRs + Epic 9 stories via `correct-course`; otherwise a clean post-1.0 MP-resilience slice. (Captured from the 1.9a review conversation; see memory [[chimera-mp-disconnect-ai-takeover-reconnect]].)
 
 ---
+decision: 2026-07-28 correct-course — filed as Story 15.1 (Epic 15) + FR-79 (v1 replay-from-start reconnect)
 
 ## Deferred from: code review of story 1-10b (2026-06-24)
 
@@ -158,262 +80,9 @@ resolution: resolved by sweep bundle dw-analyzer-coverage-hardening
 
 **Also raised in the same review (NOT deferred — tracked on the story):** the float↔string RS0030 bans not firing (decision pending) and the CHM0005 name-only converter allow-list (patch) live in story 1-10b's `### Review Findings`.
 
-## Deferred from: code review of story 1.11 (2026-06-25)
-
-1. **`spawn_unit.unit_id` is not validated by the trigger gate (consistent with the pre-existing pre-placed-unit gap).** Story 1.11's new `ScenarioValidator` trigger pass validates `building_type` on events/conditions and spawn coordinates + faction on `spawn_unit` actions, but it does NOT validate the `spawn_unit` `unit_id` against a known-unit set — mirroring the pre-existing `units` loop (`ScenarioValidator.cs:152-162`), which likewise never validates pre-placed unit types. AC3a's explicit reject-list was "known building_type" (not unit type), so this is in-spec for 1.11. A malformed/LLM `unit_id` therefore reaches `ScenarioDirector` like a bad pre-placed unit type does today (a silent dead spawn, or an unverified at-spawn lookup depending on the spawn delegate). Close it in a future trigger/unit-type-validation hardening pass that adds a known-`unit_id` check to BOTH the trigger `spawn_unit` action and the pre-placed `units` loop. [godot/src/Core/Definitions/ScenarioValidator.cs:237] (Surfaced by Blind Hunter during the 1.11 review; deferred — pre-existing pattern.)
-
-## Deferred from: code review of story-1.12 (2026-06-25)
-
-_Verdict PASS (all 6 ACs met, determinism solid, 263 Tier-1 green). These two items are accepted-scope / documented, not defects._
-
-1. **Patrol/Follow request no navigation path, unlike Move/AttackMove.** `OrderApplier`'s Move/AttackMove cases invoke `onRequestPath`/`onRequestAttackMove` (presentation flow-field smoothing); the new Patrol/AttackTarget/Follow cases do not. AttackTarget documents why (moving target, re-aimed each tick); Patrol walks fixed waypoints that WOULD benefit from pathing and may clip obstacles in live play. Consistent with story Decision #4 ("direct steering is sufficient and is what the golden exercises"; the path delegates are null in the headless/golden harness). A live-play obstacle-avoidance polish item for a later presentation pass. [godot/src/Multiplayer/NetworkCommand.cs OrderApplier] (Surfaced by Blind Hunter; deferred — accepted scope.)
-2. **Zero-damage units can never Patrol/Follow.** The `if (world.AttackDamage[i] == Fixed.Zero) continue;` non-combatant guard sits BEFORE the per-command switch in `CombatSystem.Tick`, so a zero-damage non-gatherer is skipped entirely and its Patrol/Follow movement (partly non-combat) never runs. Explicitly flagged-not-built in the story (Task 2 EDGE note — an Epic-2 support/ability-unit concern), documented in-code at `CombatSystem.cs:88-93`, and harmless for all 1.12 shipped content (every order is issued to damage-bearing units; the golden + tests confirm). [godot/src/Combat/CombatSystem.cs:88-93] (Confirmed harmless by Edge Case Hunter; deferred — documented Epic-2 concern.)
-
-## Deferred from: code review of story-1.13 (2026-06-25)
-
-_Verdict PASS (all 6 ACs met, determinism solid). The one HIGH — live spawn paths didn't wire the new per-unit fields — was FIXED in-story via a shared `EntityWorld.ApplyUnitDefinition` mapper routed through the 3 definition-based spawn paths (building production + editor combat/worker placement). This is the one carve-off._
-
-1. **`RestoreUnit` (save/snapshot restore) does not carry the Story 1.13 per-unit fields.** `EntityPlacer.RestoreUnit` rebuilds a unit from a `UnitSnapshot`, which has no `collision_radius` / `separation_priority` / `category`, so a restored unit keeps the `Create()` defaults (1.0 / Normal / Melee) — a restored Ranged/Worker unit would front-line and ignore its authored radius/push-yield. **Editor undo / save-load only — NOT a lockstep path** (no desync; defaults are peer-identical). Closing it means widening `UnitSnapshot` (+ its capture site) to carry the 3 fields and restoring them here. Out of scope for 1.13 — the other 4 spawn paths are now wired through `ApplyUnitDefinition` (combat) or directly (worker). [godot/src/UI/EntityPlacer.cs:1077 RestoreUnit] (Surfaced by Edge Case Hunter during the 1.13 review; carved off by Alec — fix the definition-based paths now, defer the snapshot format.)
-
-## Deferred from: story 2.1 (2026-06-25) — D1 Effect-Graph keystone scope carve-offs
-
-_Story 2.1 deliberately builds the executable core of the closed vocabulary (DirectHpDelta/Heal/Damage leaves + Sequence/SearchArea composition + the work-stack executor) while DEFINING the rest of the closed shape AC1 demands. These are the planned not-yet-built pieces — each lands as a new **sealed** type in its owning story, so the set stays closed-to-creators and sealed-in-code (adding a sealed leaf later does not violate AC1)._
-
-1. **`ApplyModifierEffect` / `PersistentEffect` periodic execution → Story 2.2b.** Both TYPES are defined now (the first-class `Modifier` descriptor + the third composition node, so the closed shape is complete), but their execution resolves against the ModifierStore, which 2.1 does not build. In 2.1 the executor recognizes both and **fail-closes loudly** (`NotSupportedException`) rather than touching a nonexistent store; the 2.3 validator will keep modifier/persistent graphs off the executor until 2.2b. The throwing guard is the one the 2.2b dev replaces (a premature wire-up is caught, not silently mis-run). [godot/src/Effects/EffectExecutor.cs, ApplyModifierEffect.cs, PersistentEffect.cs]
-2. **`Air` / `Ground` / `Structure` `TargetFilter` evaluation → Story 2.9a.** The bits are reserved in the `TargetFilter` flag set but NOT evaluated in 2.1 (`TargetMatcher` evaluates only Self/Ally/Enemy/Neutral/Alive). Building targeting is not wired here. [godot/src/Effects/TargetFilter.cs, TargetMatcher.cs]
-3. **`SetVariable` leaf → Epic 7 (Trigger DSL).** The DSL variable store is the home for `SetVariable`; it is not part of the ability effect core. Added as a new sealed leaf when the DSL lands.
-4. **`FireProjectile` / `SpawnUnit` / `Teleport` / `Victory` / presentation leaves (`PlayVfx` / `PlaySound` / `ShakeScreen`) → their owning stories.** Each is added later as a new sealed leaf (the structural cap constants `MaxSpawnCount` / `MaxPersistentPeriods` are already named in `EffectCaps` so those stories never introduce a bare-literal cap). Presentation leaves are excluded from the hash by construction (they mutate no sim state).
-5. **`SearchArea` over-cap selection is deterministic-but-cell-ordered, not global lowest-id.** When more than `MaxHitsPerSearch` (64) entities are in radius, `QueryRadius` keeps the first buffer-full it encounters (deterministic cell-scan order) and those are then sorted ascending — selection stays deterministic, but is not a global "lowest 64 ids" pick. Authored radii keep counts ≤ 64 (where selection is exact). A global-priority selection (if ever needed) is a future refinement. [godot/src/Effects/SearchAreaEffect.cs FindTargets]
-
-## Deferred from: code review of story-2.1 (2026-06-25)
-
-_From `gds-code-review` (3-layer adversarial PASS — 0 Critical/High, zero desync). These are real-but-not-actionable-now items carved off the review; none blocks the keystone._
-
-1. **`SearchArea` truncates the hit buffer BEFORE the faction filter → enemy fan-out can undercount at high density.** `QueryRadius` (called with `excludeId = -1`) fills the 64-slot buffer with the first 64 entities of *any* faction in deterministic cell-scan order; only afterward does `FindTargets` filter by faction. So with e.g. 40 enemies + 40 allies in radius and `TargetFilter.Enemy`, allies consume buffer slots and enemies in later-scanned cells are dropped — effective enemy fan-out falls below both the real enemy count and the 64 cap. **Deterministic (no desync), bounded, no OOB.** Matters only at >64 in-radius density; authored radii are expected small. A proper fix passes the filter into `QueryRadius` (a `SpatialHash` API change, out of 2.1 scope). [godot/src/Effects/SearchAreaEffect.cs:53-72, godot/src/Navigation/SpatialHash.cs:180-186] (Surfaced by the Edge Case Hunter.)
-2. **No total-work / total-node-count bound on a graph.** `EffectBounds.Validate` caps composition depth (≤8) and per-`Sequence` children (≤8) but not the multiplicative total. A validated 8-deep all-`SearchArea` chain, each fanning to 64, is `64⁸` leaf executions — an effective hang. **AC2 is still MET** (the work-*stack* never grows beyond its pre-allocated 505 — this is a wall-clock concern, not an overflow). **Not creator-reachable until the Story 2.3 JSON loader** (2.1 graphs are C#-authored only). Recommend a `MaxTotalEffectNodes` and/or per-execution budget cap landed in the 2.3 content-validator and folded into the Epic-9 `rulesetHash`. [godot/src/Effects/EffectBounds.cs] (Surfaced by the orchestrator pass.)
-3. **Zero-alloc test does not exercise the lethal or 64-wide fan-out paths.** `Run_IsZeroAlloc_AfterWarmup` uses 8 enemies at 30000 HP with damage 1 and a null `Events` queue, so neither the `UnitKilled`-enqueue (lethal) path nor the full 64-wide `SearchArea` fan-out is measured — an allocation that only appears at scale or on the death path would pass unnoticed. Optional future strengthening (a lethal hit with an `Events` sink + a 64-wide fan-out under the same GC-delta assertion). [godot/ProjectChimera.Sim.Tests/Effects/EffectExecutorBoundsTests.cs:168-198] (Surfaced by the Blind Hunter.)
-4. **Load-time `EffectBounds.Validate` admits the deferred `Persistent`/`ApplyModifier` nodes that `Run` throws on → the 2.3 content-validator must reject them.** `Validate` only depth/width-checks a graph; it returns `IsValid=true` for one containing a `PersistentEffect`/`ApplyModifierEffect`, but `Run` throws `NotSupportedException` (the intentional 2.2b-replaceable guard). So "validated ⇒ runnable" does not hold for deferred-node graphs until the **Story 2.3** content-validator lands and rejects them at load. **Resolved Accept-by-design (Alec, 2026-06-25):** `EffectBounds` stays the purely-structural gate; node-kind admissibility is the 2.3 validator's job. No 2.1 production caller exists and the throw is deterministic (no desync). **Action for 2.3:** the content-validator MUST reject any graph reaching the executor that contains `PersistentEffect`/`ApplyModifierEffect` (until 2.2b ships their execution). [godot/src/Effects/EffectBounds.cs:81-88, godot/src/Effects/EffectExecutor.cs:113-125] (Surfaced by Blind + Edge Case Hunters; decision carved off by Alec.)
-
-## Deferred from: story 2.2a (2026-06-25) — D1 effective-stat pipeline scope carve-offs
-
-_Story 2.2a builds the effective-stat PIPELINE (`Base*`/`Effective*` arrays, `Energy`/`MaxEnergy`, the dirty-flag `ModifierSystem` at host index 3). Story 2.2b builds the `ModifierStore` that DRIVES it. These are the planned not-yet-built pieces. Per the standing fold-timing rule ([[chimera-checksum-fold-timing-rule]]), the new arrays are dormant (`Effective*==Base*`, `Energy==0`) and intentionally NOT hashed in 2.2a — `SimChecksum.cs` is untouched, `AlgoVersion` stays 5, all 7 goldens byte-identical._
-
-1. **The single SimChecksum fold → Story 2.2b (the one intentional re-baseline).** When `ModifierStore` first MUTATES an `Effective*` (a buff) or DEBITS `Energy` mid-match, those become peer-divergent sim truth and MUST fold into `SimChecksum`: fold `EffectiveAttackDamage`/`EffectiveMaxHealth`/`EffectiveMoveSpeed`/`Energy` (and any store-side state), bump `SimChecksum.AlgoVersion` **5→6**, re-baseline all goldens **once**, and re-pin `SimChecksumCoverageGuardTest`'s known-state hash (currently `0x5E7BE3D8`). The private `_dirty`/`_flat*Bonus` accumulators in `ModifierSystem` stay UNHASHED forever (transient recompute optimisation; the recompute is idempotent so peer dirty-timing can't diverge `Effective`). [godot/src/Core/SimChecksum.cs, godot/src/Effects/ModifierSystem.cs]
-2. **MaxHealth-buff Health semantics → Story 2.2b design.** When a `MaxHealthDelta` is applied or removed, does current `Health` heal up (to full / proportionally) or clamp down to the new ceiling? Irrelevant in 2.2a (`EffectiveMaxHealth == BaseMaxHealth`, no modifier exists); the Heal/DirectHpDelta clamp already reads `EffectiveMaxHealth`, so the ceiling is correct — only the on-apply/on-remove Health adjustment is open. [godot/src/Effects/HealEffect.cs, DirectHpDeltaEffect.cs]
-3. **Move-speed 1-tick lag → revisit in Story 2.2b if same-tick speed buffs are wanted.** `MovementSystem` is at host index 2, `ModifierSystem` at 3, so a move-speed delta applied on tick T is recomputed at T (index 3) but first READ by Movement at T+1. Deterministic (every peer lags identically) and invisible in 2.2a (`EffectiveMoveSpeed == BaseMoveSpeed`). The AR-9 reserved-slot contract (Modifier immediately before Combat) takes precedence; if same-tick speed buffs are needed, 2.2b decides between accepting the lag or moving the slot. [godot/src/Core/Sim/SimulationHost.cs, godot/src/Navigation/MovementSystem.cs]
-4. **Authored `MaxEnergy` on `UnitDefinition` → Story 2.2b/2.3.** `Energy`/`MaxEnergy` SoA exist as substrate but `UnitDefinition` has no energy field, so both are `Create`-defaulted to Zero and untouched by `ApplyUnitDefinition`. When an authored `MaxEnergy` (and starting `Energy`) lands, wire it through `ApplyUnitDefinition` per the single-mapper A2 rule (never hand-copy in a spawn path). [godot/src/Core/Definitions/UnitDefinition.cs, godot/src/Core/EntityWorld.cs ApplyUnitDefinition]
-5. **`ModifierStore` MUST clear an entity's accumulators + dirty on death/recycle → Story 2.2b (the SoA-recycle trap).** `ModifierSystem`'s private `_dirty`/`_flat*Bonus` are NOT reset by `EntityWorld.Create` (they live outside EntityWorld). In 2.2a nothing in production writes them (no `AccumulateBonus` caller), so recycled slots are safe today. Once 2.2b's store applies real modifiers, it MUST zero an entity's accumulators + dirty flag on `Destroy`/recycle, or a recycled slot inherits the prior occupant's buff (the exact class of bug the 1.12/1.13 reviews caught for EntityWorld SoA). [godot/src/Effects/ModifierSystem.cs]
-6. **`RestoreUnit` carrying the new per-unit fields → editor-snapshot widening (folds with the 1.13 `RestoreUnit` deferral).** `UnitSnapshot` does not carry the 2.2a `Energy`/`MaxEnergy` (nor the 1.13 separation/formation fields), so an editor undo/restore keeps the `Create` defaults for them. Editor undo / save-load only — NOT a lockstep path (no desync). Closing it means widening `UnitSnapshot` + its capture/restore sites (the same lift as the 1.13 `RestoreUnit` carve-off above). [godot/src/UI/EntityPlacer.cs RestoreUnit/UnitSnapshot]
-
-## Deferred from: code review of story-2.2a (2026-06-26)
-
-_3-layer adversarial review (Blind/Edge/Auditor) of 2.2a returned **PASS** — all 4 ACs independently verified MET, zero findings reachable in 2.2a. The items below are forward-looking (2.2b) and largely **confirm** the dev's own "story 2.2a" carve-offs above; recorded here are the review's genuinely-new facets and sharpenings._
-
-1. **`ModifierSystem` recycle cleanup must ALSO extend the A2 guard (sharpens story-2.2a item 5).** The recycle trap itself (zero `_dirty`/`_flat*Bonus[id]` on `Destroy`/recycle) is already item 5. The review's added point: 2.2a's headline was retro action-item A2 ("close the spawn-path/zombie-state defect class"), but it introduced a NEW per-entity store **outside** EntityWorld that neither `EntityWorld.Create/Destroy` resets nor `ApplyUnitDefinitionGuardTest` can see — so the A2 guard cannot catch a recycle regression for these arrays. 2.2b must (a) add `ClearEntity(id)` called from the destroy path AND (b) extend the A2 guard to assert a recycled slot carries no residual bonus. [godot/src/Effects/ModifierSystem.cs:36-46, godot/ProjectChimera.Sim.Tests/Core/ApplyUnitDefinitionGuardTest.cs]
-2. **Recompute has no lower-clamp / overflow guard; downstream readers assume `Effective ≥ 0` (new).** `Effective* = Base* + Σbonus` is a bare `Fixed` add. Dormant in 2.2a (`Effective==Base≥0`, no deltas). When 2.2b adds debuffs/large buffs: `CombatSystem`'s non-combatant gate is `EffectiveAttackDamage == Fixed.Zero` (not `<=`), so a negative effective damage is NOT skipped and flows into `DamageResolver.Apply` → negative damage HEALS the target; `MovementSystem` has no speed floor (negative = reverse motion); `Fixed.Clamp(h, Zero, EffectiveMaxHealth)` becomes a `max<min` clamp if a `MaxHealthDelta` drops the ceiling below current `Health`. 2.2b must set the negative/overflow policy (floor each `Effective*` at `Fixed.Zero` in the recompute, or model "can't attack" via `StatusFlags.Disarmed` per the story's own 2.2b note). [godot/src/Effects/ModifierSystem.cs:51-53, godot/src/Combat/CombatSystem.cs:93]
-3. **`EntityPlacer` snapshot captures `Effective` and restores it into `Base` (sharpens story-2.2a item 6).** Item 6 covers the snapshot not carrying the NEW fields. This added facet: for the EXISTING fields the capture reads `Effective*` (post-buff) and restore writes it to BOTH `Base*` and `Effective*` — so once 2.2b adds modifiers, an editor undo-restore bakes the transient buff into the authored base and drops the modifier (the unit comes back permanently stronger, no expiry). Editor undo / save-load only — NOT a lockstep path. Fix with item 6: capture `Base*` for the base fields and active modifiers separately. [godot/src/UI/EntityPlacer.cs:1095-1132]
-4. **A2 guard coverage is hand-maintained (durable lesson for all future SoA stories).** `ApplyUnitDefinitionGuardTest`'s parity assertions are a hand-maintained list and its runtime tooth covers only `ScenarioApplier.SpawnUnit`. Every future def-derived per-unit field must extend BOTH `ApplyUnitDefinition` AND the guard's assertion list together, or a partial-hand-copy spawn path that forgets the new field could escape — the same coverage-gap class as the SimChecksum coverage guard's hand-list. [godot/ProjectChimera.Sim.Tests/Core/ApplyUnitDefinitionGuardTest.cs]
-
-## Deferred from: story 2.2b (2026-06-26)
-
-_The ModifierStore shipped; these are explicit carve-offs flagged during dev. None block 2.2b's ACs._
-
-1. **`SearchArea` inside a period effect → later.** 2.2b period effects are DIRECT-TARGET only (`DirectHpDelta`/`Heal`/`Damage` on the host; `spatial: null` in the period `EffectContext`). A `SearchArea` leaf inside a `PeriodEffect` would need a per-tick `SpatialHash` rebuilt against the current snapshot before each pulse — not built. Add when an aura/AoE-DoT ability needs it (rebuild the hash in `ModifierStore.Advance` before running a search-bearing period, or restrict periods to direct-target at the validator). [godot/src/Effects/ModifierStore.cs RunEffect]
-2. **Independent per-stack expiry timers → later if a mechanic needs it.** A `StackRule.Stack` modifier uses a SINGLE slot with `_stackCount` and a SHARED duration — all stacks expire together (the simple, deterministic, foldable model; Decision #1). A mechanic wanting each stack to time out independently (e.g. a decaying-stack DoT) needs per-stack countdowns (a small ring per slot, or one slot per stack). Flag it then. [godot/src/Effects/ModifierStore.cs Apply/Advance]
-3. **Authored `MaxEnergy` / starting `Energy` on `UnitDefinition` → 2.2b/2.3.** 2.2b ships `TryDebitEnergy` + refuse only; `MaxEnergy` stays `Create`-defaulted to `Zero` and unauthored (`UnitDefinition` has no energy field). When abilities author energy pools, add the field and wire it through `EntityWorld.ApplyUnitDefinition` (the single-mapper A2 rule) — never hand-copied in a spawn path. [godot/src/Core/Definitions/UnitDefinition.cs, godot/src/Core/EntityWorld.cs ApplyUnitDefinition]
-4. **Energy REGEN model → when abilities/regen land (architecture-deferred).** Per-tick vs effect-only vs a dedicated `EnergySystem` is unresolved (`game-architecture.md:2526`); 2.2b ships debit only. No regen, no `EnergySystem`.
-5. **Combat/movement READING `StatusFlags` (Disarmed/Stunned/Rooted/Silenced/Invulnerable) → the abilities stories (2.4+/2.9a).** 2.2b correctly SETS/CLEARS `EntityWorld.StatusFlagsOf` (OR on apply, union-recompute on remove) and folds it into the checksum, but NO system honours a flag yet (a disarmed unit still attacks). Wire the reads when the abilities that impose them land. [godot/src/Combat/CombatSystem.cs, godot/src/Navigation/MovementSystem.cs]
-6. **A period `DamageEffect` that KILLS the host mid-`Advance` (lethal DoT with caster attribution) → verify when an ability uses it.** 2.2b periods are non-lethal (`DirectHpDelta`/`Heal` clamp at `[0,Max]`, no death sequence), so the re-entrancy hazard (host `Destroy` → `OnDestroy` → `ClearEntity` mid-slot-walk) cannot fire today; `Advance`/`RemoveSlot` carry defensive `IsAlive` breaks for it. When a lethal period ships, prove the kill attributes to `_casterFaction` and the walk stays safe under the cascade. [godot/src/Effects/ModifierStore.cs Advance/RemoveSlot]
-7. **`EntityPlacer` editor-snapshot capturing `Effective`/modifier state (with the 2.2a-review #3 + story-2.2a item 6) → editor-snapshot widening.** `UnitSnapshot` carries no modifier instances nor the `Base*`/`Effective*` split, so an editor undo-restore bakes a transient buff into the authored base and drops the modifier. Editor undo / save-load ONLY — NOT a lockstep path (no desync). Close with the broader snapshot widening. [godot/src/UI/EntityPlacer.cs]
-8. **Move-speed 1-tick lag (still present; Modifier@3 runs AFTER Movement@2) → revisit only if same-tick speed buffs are needed.** A `MoveSpeedDelta` applied this tick is read by `MovementSystem` next tick (one fixed 30 Hz frame, deterministic). Inherited from 2.2a; harmless for now. [godot/src/Core/Sim/SimulationHost.cs system order]
-
----
-
-## Deferred from: code review of story-2.2b (2026-06-26)
-
-_From `gds-code-review` (3-layer adversarial). All four are real but not actionable now — unreachable by 2.2b content (abilities/DoT authoring lands 2.3+); tracked for the story that first exercises them._
-
-1. **Runtime re-entrancy guard / deferred-application queue → Story 2.3 (`EffectBounds.Validate` content gate).** The store's dedicated `EffectExecutor` runs Initial/Period/Expire effects on one pre-allocated stack; an install-leaf (`ApplyModifierEffect`/`PersistentEffect`) nested inside any of the three phases would re-enter and clobber it / mutate `_count` mid-`Advance`. Unreachable in 2.2b (those phases use only `DirectHpDelta`/`Heal`/`Damage`). The proper fix (fail-closed `_running` guard, or a deferred-application queue so a period CAN install) is a design choice that belongs with the 2.3 content validator that keeps such graphs off the executor. The class doc was patched in review to stop overstating safety to the period phase only. [godot/src/Effects/ModifierStore.cs:457-462 RunEffect]
-2. **`Modifier.DurationTicks == 0` is not truly instantaneous.** It behaves like duration 1 — the bonus is live for one full tick (folded into the checksum, read by `CombatSystem` at index 4) before removal on the next `Advance`. `Modifier.cs:48` documents "0 = instantaneous/one-shot." No content authors duration-0 in 2.2b; reconcile the code-vs-doc semantic (true apply-then-revert one-shot, or fix the doc to "one tick") when one-shot modifiers are authored. [godot/src/Effects/ModifierStore.cs:141; godot/src/Effects/Modifier.cs:48]
-3. **Periodic `Modifier` truncates at 256 pulses while still active.** A periodic modifier longer than `EffectCaps.MaxPersistentPeriods` (e.g. `periodTicks=1`, `duration>256`) stops pulsing after 256 ticks yet keeps its stat bonus until duration expiry — a silent gameplay truncation. The spec mandates the 256 clamp (Dev Notes §Lifetime); the "alive-but-silent" consequence wasn't fully reasoned. Confirm the intended cap behaviour when long-lived periodic content is authored (e.g. expire the modifier when its periods run out, or lift the per-modifier ceiling). [godot/src/Effects/ModifierStore.cs:453, :235]
-4. **Stacked periodic `Modifier` doesn't scale its DoT/HoT per stack.** The `Stack` path re-adds stat deltas per stack (and reverts `delta × _stackCount`), but the period effect fires its flat authored amount once per slot — a 3-stack DoT ticks 1×, not 3×. The spec's Stack model only covers stat deltas. Decide whether stacks should multiply period damage (common in poison-stack designs) when DoT content is authored. [godot/src/Effects/ModifierStore.cs:240, :158-168]
-
----
-
-## Deferred from: story 2.3 (2026-06-26)
-
-_The AR-22 ability authoring surface shipped (`AbilityDefinition` + closed-registry `EffectNodeJsonConverter` + `ContentJson.Options` + `AbilityValidator`→`Validated<AbilityDefinition>` + fail-closed `AbilityLoader`). Determinism posture unchanged (AlgoVersion stays 6, all 8 goldens byte-identical, no new system). These are explicit carve-offs flagged during dev; none block 2.3's ACs._
-
-**Discharged by 2.3 (recorded for the trail):** the 2.2b-review item 1 (install-leaf re-entrancy in a Persistent phase) AND 2.2b carve-off 1 (`SearchArea` inside a `PeriodEffect`) are now **closed at the load-time validator** (AC5: `AbilityValidator` rejects `ApplyModifier`/nested `Persistent` inside any `Persistent` phase, and `SearchArea` inside a `Persistent.period_effect`). The 2.1-review #2 (total-work / 64⁸ hang) and #4 (node-kind admissibility) are closed by AC4 (`MaxSearchAreaDepth`/`MaxTotalEffectNodes`) + the closed registry (un-built kinds are unauthorable).
-
-1. **Converter `Write` / authoring round-trip → Story 2.5 (the Ability Editor).** `EffectNodeJsonConverter.Write` throws `NotSupportedException` — 2.3 only LOADS abilities (hand-/AI-authored JSON → validated runtime graph); nothing serializes one yet. The editor's save path (and the `save→reload` `Fixed.Raw` equality assertion) lands with 2.5. [godot/src/Core/Definitions/EffectNodeJsonConverter.cs Write]
-2. **Migrate `ScenarioSerializer` / `FactionDefinition` to `ContentJson.Options` → the D3 single-choke-point consolidation.** 2.3 introduces `ContentJson.Options` for abilities ONLY; the scenario + faction loaders keep their own `JsonSerializerOptions` (Story 1.7 explicitly fenced "do not unify"). Consolidate when the loader-unification story lands. [godot/src/Core/Definitions/ContentJson.cs, ScenarioSerializer.cs, FactionDefinition.cs]
-3. **Runtime ability-cast path → Story 2.4.** 2.3 validates the model; nothing casts yet. 2.4 wires the cast-time `EffectContext` + `ModifierStore`, the per-ability cooldown SoA (the FIRST per-entity ability state — MUST flow through `EntityWorld.ApplyUnitDefinition`, the A2 single-mapper rule), the `Fixed`-seconds→tick cooldown conversion, and the Energy/ore/crystal debit + command card. [Story 2.4]
-4. **Fold the structural caps into the Epic-9 `rulesetHash`.** `EffectCaps.MaxSearchAreaDepth` (=2) and `MaxTotalEffectNodes` (=64) join the existing `EffectCaps` set that the Epic-9 ruleset hash will cover, so two peers agree on the same content limits. Named now (CHM0004-clean); folded later. [godot/src/Effects/EffectCaps.cs]
-5. **✅ CLOSED by code-review of story 2.3 (2026-06-26)** — _was: "`SearchArea`/large graph inside `modifier.period_effect` is NOT validated by AC5 (silent no-op) → warning later."_ This item originally framed the gap as a harmless silent no-op, but the 3-layer review found the **dangerous sub-case it had missed**: an **install-leaf** (`ApplyModifier`/`Persistent`) inside `modifier.period_effect` re-enters `ModifierStore`'s shared-stack dedicated executor and mutates `_count` mid-`Advance` — the exact W1 re-entrancy hazard `ModifierStore`'s docstring states the 2.3 validator prevents (deterministic corruption when cast lands in 2.4). **Fix applied:** `AbilityValidator.WalkGraph` now descends into `modifier.period_effect` (inPersistentPhase + inPersistentPeriod = true), so the AC4 node/`SearchArea` counts AND the AC5 install-re-entrancy + period-shape rules now cover that subtree — install-leaves and `SearchArea` there are rejected fail-closed (+ teeth tests). The companion `SearchArea`-in-Persistent-initial/expire no-op was closed too (AC5(b) now spans all three phases). [godot/src/Core/Definitions/AbilityValidator.cs WalkGraph]
-6. **Re-surface the now-JSON-reachable 2.2b content concerns as ability-validator WARNINGS (not rejects).** The 2.2b-review items — stacked-DoT-not-scaled-per-stack, `DurationTicks==0` one-shot semantics, 256-pulse truncation-while-active — are now authorable as ability JSON. They are gameplay-correctness footguns (deterministic, not desync), so the ability validator may later emit non-fatal authoring warnings for them rather than hard-reject. [godot/src/Core/Definitions/AbilityValidator.cs; deferred-work §"code review of story-2.2b" items 2–4]
-
----
-
-## Deferred from: story 2.4a (2026-06-27)
-
-_The runtime ability-cast SPINE shipped (Part A, Tasks 1–7): `AbilityRegistry` + `UnitDefinition.abilities`/`max_energy`/`AbilityIndices`/`ResolveAbilities` + 5 EntityWorld SoA arrays (ability slots + the **folded** cooldown ring + transient cast intent) wired through `ApplyUnitDefinition` (A2) + `UnitCommand.CastAbility=10` on the unchanged 11-byte wire + the `AbilityCastSystem` (`ISimSystem`@index 3) + `ResourceStore` crystal API + the scheduled `SimChecksum` **fold AlgoVersion 6→7** (re-pinned known-state `0xEB4B548E`, all 8 goldens re-recorded + new cross-platform `ability-cast` golden). Proven headlessly (Tier-1 418 pass / 1 skip; full Godot build 0 errors; release analyzer 0 errors). The cast is NOT yet reachable in-game — see item 1._
-
-1. **Command-card UI + in-game wiring → Story 2.4b (Tasks 8–11).** Part A is the sim spine, exercised only by Tier-1 + the golden. The command-card ability section, `TargetUnit` click-targeting, the HUD energy/crystal readout, AND the MainScene game-wiring (build the `AbilityRegistry` from `resources/data/abilities/` via `AbilityRegistry.LoadFromDirectory`, call `UnitDefinition.ResolveAbilities` at scenario link, pass the registry into `SimulationHost.Create`, and attach abilities to a unit type via faction/scenario data) all land in 2.4b. Until then the host runs `AbilityCastSystem`@3 with the **empty** registry and no ability-bearing units → a deterministic no-op in-game (and on the dedicated server). Story 2.5 depends on 2.4b. [godot/src/UI/CommandCardSystem.cs, SelectionSystem.cs, MainScene.cs]
-2. **`GroundPoint`-targeted casting → a later coherent increment (wire widen + `EffectContext` + reticle).** 2.4a supports only `Self` + `TargetUnit` on the unchanged 11-byte `UnitOrder` (slot in `TargetX`, target id in `TargetZ`). A ground (x,z) cast needs BOTH 4-byte fields, so it forces a wire widen (11→12) + `ReplayRecorder.VERSION` 2→3 + an `EffectContext` ground-point field + a UI ground reticle. No shipped sample ability is `GroundPoint`, and `EffectContext` has no ground field — deferred as a unit. [godot/src/Multiplayer/NetworkCommand.cs UnitOrder, godot/src/Effects/EffectContext.cs]
-3. **Energy regen → a follow-up (Decision #5).** `ApplyUnitDefinition` starts a caster FULL (`Energy = MaxEnergy`); there is no per-tick regen, so energy is a one-shot pool (enough to demonstrate cast + affordability-refuse). A regen system + a `regen_rate` field (folded — `Energy` is already a v6 hashed field) is a follow-up. [godot/src/Effects/AbilityCastSystem.cs]
-4. **`RestoreUnit` ability restore → editor-snapshot widening (1.13 precedent).** `EntityPlacer.RestoreUnit` recreates a unit from a snapshot with NO `UnitDefinition`, so it carries no abilities/`MaxEnergy` (left at the `Create` defaults). Editor undo / save-load ONLY — NOT a lockstep path (no desync). Close with the broader `UnitSnapshot` widening already tracked in 2.2a item 7 / 1.13. [godot/src/UI/EntityPlacer.cs RestoreUnit]
-5. **Multi-ability units beyond `MAX_ABILITIES_PER_UNIT` (=4) → raise the const when content needs it.** `ResolveAbilities` clamps a unit's ability list to the cap (silently at the DTO layer — no logger there to report a drop). The cap is freely RAISABLE at zero determinism cost (the v7 fold is count-driven → no golden re-baseline to raise it); the practical ceiling is command-card real-estate (~6–8 buttons). Add a link-time drop log if/when units commonly exceed the cap. [godot/src/Core/EntityWorld.cs MAX_ABILITIES_PER_UNIT; godot/src/Core/Definitions/UnitDefinition.cs ResolveAbilities]
-
-**Consumers of this path (forward):** Story 2.7 (`CombatFeedbackProfile` — presentation-only "juice" on a cast, excluded from the checksum) and Story 2.9b (worker-cast ability path + multi-resource crystal cost) both build on the 2.4a cast spine.
-
-## From code review of story-2.4a (2026-06-28)
-
-_Review verdict PASS (4 adversarial lenses + independent Tier-1 418/1/0). One confirmed-low finding was raised as an OPEN patch on the story (the unfulfillable-target self-redirect); the three below were deferred as validator-gated / disclosed latent issues, not desync defects._
-
-1. **Debit return values discarded; a negative authored `CostEnergy` would partial-spend.** `AbilityCastSystem.TryCast` debit block (`:124-126`) ignores the bool results of `TryDebitEnergy`/`SpendOre`/`SpendCrystal`. Atomicity holds today ONLY because the three pre-checks (`:119-121`) guarantee each debit succeeds — but `ModifierStore.TryDebitEnergy` returns false WITHOUT mutating when `cost < 0`, while the pre-check `Energy[id] < CostEnergy` passes for a negative cost (a non-negative Energy is never `<` a negative). So an authored negative `CostEnergy` would skip the energy debit yet still run ore/crystal/effect/cooldown — a non-atomic partial outcome the ignored return would have surfaced. Gated today by the 2.3 `AbilityValidator` (no negative costs), so latent only; makes "check-all-then-debit-all" invisibly dependent on every pre-check staying in lockstep with each debit's internal predicate. Fix: assert/`Debug.Assert` the three returns are true post-debit, or pre-validate non-negative costs at attach. [godot/src/Effects/AbilityCastSystem.cs:124-126]
-2. **`SecondsToTicks` 16.16 overflow for cooldowns above ~1092s.** `(seconds * Fixed.FromInt(30)).ToInt()` — `seconds*30` exceeds the Fixed 16.16 integer range (~32767) for cooldowns ≳1093s and wraps negative, so `AbilityCooldownTicks` is set negative; the `> 0` gate is then never true and the `> 0` decrement never touches it → the ability becomes permanently castable. Absurd authored value, validator-gated, deterministic. Fix candidate: clamp the seconds input (or `Math.Max(0, …)` the tick result) at the conversion. [godot/src/Effects/AbilityCastSystem.cs SecondsToTicks]
-3. **Ability-resolution failures degrade silently (Task 1.3 logging unmet).** `UnitDefinition.ResolveAbilities` drops unknown ability ids (idx<0 not added) and stops at `MAX_ABILITIES_PER_UNIT` with NO log on either path — a literal departure from Task 1.3 ("log/skip" + "cap-overflow drops are logged, not silently truncated"); harmless at cap 4 with the 1-ability sample units (already noted in §story-2.4a item 5; `UnitDefinition` is a pure DTO with no log sink). Companion at cast time: `AbilityCastSystem.TryCast` no-ops when `regIdx < 0 || regIdx >= _registry.Count` — correct crash-free handling of the `AbilityRegistry.Empty` default and registry-mismatch wiring slips, but with no assert/diagnostic, so a 2.4b wiring slip (host built with `Empty` while units carry resolved indices, or `ResolveAbilities` never called at scenario link) silently no-casts every ability. Both deterministic (no desync). Fix: a debug-only diagnostic when a populated slot resolves to no registry entry, plus the Task 1.3 drop/overflow logging once a log sink exists. [godot/src/Core/Definitions/UnitDefinition.cs ResolveAbilities; godot/src/Effects/AbilityCastSystem.cs:108]
-
-## Deferred from: story 2.4b (2026-06-28)
-
-_The command-card ability UI + the in-game wiring that makes the 2.4a cast spine reachable in a real match shipped (presentation + wiring + data only — NO sim logic, NO new SoA, NO checksum fold; `AlgoVersion` stays 7, all 9 goldens byte-identical). The `AbilityRegistry` is built from `resources/data/abilities/` and injected into `SimulationHost.Create` on BOTH the client (`MainScene._Ready`) and the dedicated server (`ServerBootstrap.Build` resolves the slot defs' ability ids for MP-parity), `ResolveAbilities` runs at scenario link (up-front faction defs + per-slot `ScenarioLoadPhase`), `fireball` is attached to a pre-placed P1 `mage`, and the command card / `TargetUnit` click-to-cast / HUD energy+crystal readout are wired. Verified live in-engine: the Fireball button renders "50 energy · 6s CD", a cast debits energy 100→50, resolves the effect (target killed), and greys the button with a counting-down cooldown — zero runtime errors. Tier-1 424 pass / 1 skip + the new `AbilityWiringTeethTest`; full Godot build 0 errors; release analyzer 0 errors._
-
-1. **`GroundPoint`-targeted casting → still deferred (unchanged from §story-2.4a item 2).** The command card renders a `GroundPoint` ability **disabled** with a "[ground-cast: coming soon]" note (the 2.4a fence holds — no ground reticle built). The full path still needs the wire widen (11→12 byte `UnitOrder` packs both x AND z) + `ReplayRecorder.VERSION` 2→3 + an `EffectContext` ground-point field + a UI ground reticle, as a coherent later increment. No shipped sample is `GroundPoint`. [godot/src/UI/CommandCardSystem.cs RefreshAbilityCard (the disabled branch); godot/src/Multiplayer/NetworkCommand.cs UnitOrder]
-
-2. **Ally-targeted `TargetUnit` (heal-other) → needs a target-affinity hint on `AbilityDefinition` (Decision B).** 2.4b's lone `TargetUnit` sample (`fireball`) is offensive, so the cast-target click picks the nearest **enemy** via `SelectionSystem.FindNearestEnemyUnit` (enemy-only). A friendly-target ability (e.g. a single-target heal on an ally) needs a target-affinity flag on `AbilityDefinition` (Ally/Enemy/Any) so the click-picker chooses `FindNearestUnit` (friendly) vs `FindNearestEnemyUnit` — no sample needs it yet. Adds a content-model field + validator pass + a card/selection branch. [godot/src/Core/Definitions/AbilityDefinition.cs; godot/src/UI/SelectionSystem.cs FindNearestEnemyUnit/FindNearestUnit]
-
-3. **Energy regen → a follow-up (unchanged from §story-2.4a item 3, Decision #5).** A caster starts FULL (`Energy = MaxEnergy`) with no per-tick regen, so energy is a one-shot pool. The HUD now shows `Energy n/MaxEnergy` so the depletion is visible. A regen system + a `regen_rate` field (folded — `Energy` is already a v6 hashed field) remains a follow-up. [godot/src/Effects/AbilityCastSystem.cs]
-
-4. **Worker-cast command card → Story 2.9b (Decision C).** The ability section shows for a focused P1 unit with `AbilityCount>0` ONLY when it is NOT also a gatherer (`!workerSelected` — the worker card wins for a unit that is both). The worker-cast ability path (a gatherer that can also cast, sharing the command-card real-estate) lands in 2.9b. [godot/src/UI/CommandCardSystem.cs _Process gate]
-
-5. **Silent-no-cast diagnostic → now PARTLY guarded; full diagnostic still open (2.4a code-review item 3).** 2.4b adds `AbilityWiringTeethTest` (Tier-1): a unit referencing "fireball" MUST resolve to `AbilityCount==1` + the right registry index, and SKIPPING `ResolveAbilities` MUST leave `AbilityCount==0` — so a wiring slip that regresses the registry/resolve chain to `Empty`/unresolved now goes RED in Tier-1 (the green-masks-a-gap trap is closed for the resolve→apply contract). Still open: a debug-only RUNTIME diagnostic when a populated ability slot resolves to no registry entry at cast time (host built with `Empty` while units carry resolved indices) — the cast-time companion the teeth-test cannot reach. [godot/ProjectChimera.Sim.Tests/Core/AbilityWiringTeethTest.cs (the guard); godot/src/Effects/AbilityCastSystem.cs:108 (the remaining runtime diagnostic)]
-
-6. **No per-entity `UnitDefinition` link — presentation reads abilities from the per-entity SoA (a simplification, not a defect).** The command card reads the focused entity's abilities **straight from the per-entity `AbilityId`/`AbilityCount` SoA** by `focusId` (the registry-resolved indices `ApplyUnitDefinition` already copied), then maps the index → `AbilityDefinition` via the `AbilityRegistry` on `SceneContext`. This SUPERSEDES the 2.4a Task-8.1 seed's proposed `factionDef.Units[MeshType[focusId]].AbilityIndices` indirection — no `FactionDefinition`/`MeshType` lookup and no per-entity `UnitDefinition` reference exists or was added. Documented so a future reader doesn't re-introduce the indirection. [godot/src/UI/CommandCardSystem.cs RefreshAbilityCard]
-
-**Consumers of this path (forward):** Story 2.5 (Ability Editor — abilities "immediately attachable to a unit (2.4) and castable in a match") depends DIRECTLY on this story; Story 2.9b (worker-cast + multi-resource crystal cost) extends the card gate (item 4).
-
-## Deferred from: code review of story-2.4b (2026-06-28)
-
-_4-lens adversarial review (Blind · Edge-Case · Acceptance · Determinism). 0 Critical / 0 High; determinism fence verified clean (AlgoVersion 7, 9 goldens byte-identical, no sim-array write from presentation, client↔server registry parity). Two decisions resolved in-review (cast-arm recycle guard; AC6 verify rigor — see the story's Review Findings). These two are pre-existing/forward-looking and tracked here._
-
-1. **Ability (and faction) JSON content is determinism-relevant but is NOT covered by the pre-match content handshake.** The `Ready` packet hashes only the scenario file (`ScenarioSerializer.ComputeFileHash`, `NetworkCommand.cs:454-466`); faction JSONs were already unhashed, and 2.4b widens the surface by one directory — `resources/data/abilities/` now drives registry indices and per-entity `AbilityCount`/`AbilityId`. Two peers (or a peer vs the dedicated server) with divergent or missing ability files derive different ascending-`Id` indices → mismatched folded state → desync that surfaces only as an opaque terminal `HALT(NoMajority)` on the first caster-bearing match, with no diagnostic naming "abilities failed to load." `AbilityRegistry.LoadFromDirectory` returns `AbilityRegistry.Empty` with zero logging when the dir is missing/unreadable (the `onSkipped` callback fires per-invalid-file only). Same class as the unhashed faction files — proper fix is the **Epic 9** server-authoritative content-hash handshake (extend the pre-match agreement to faction + ability content, not just the scenario file). Low-cost interim hardening: a fail-loud `GD.PushWarning`/log when the server builds an `Empty` registry for a scenario that references casters. [godot/src/Multiplayer/NetworkCommand.cs:454-466 ComputeFileHash; godot/src/Core/Definitions/AbilityRegistry.cs:71 LoadFromDirectory; godot/src/Core/MainScene.cs (server registry build) → ServerBootstrap.cs]
-
-2. **Command-card disable-gate and press-handler targeting sets are coupled by assumption.** `RefreshAbilityCard` disables only `GroundPoint` + `null` targeting; `OnAbilityBtnPressed` acts only on `Self`/`None`/`TargetUnit` and `default:`-no-ops the rest. The two are complementary **only** while `AbilityTargeting` is exactly `{None, Self, TargetUnit, GroundPoint}`. A future 5th member (e.g. ally-target `TargetUnit` per §story-2.4b item 2, or a cone/line mode) would render an enabled, affordable button that silently does nothing on press (no feedback). Not a bug today — flagged so the targeting-mode expansion folds both into a single shared "is-castable-targeting" predicate (one source of truth for the disable gate and the press switch). [godot/src/UI/CommandCardSystem.cs RefreshAbilityCard / OnAbilityBtnPressed]
-
-## Deferred from: code review of story-2.5a (2026-06-29)
-
-_4-lens adversarial review (Blind · Edge-Case · Acceptance · Determinism) of the Ability Editor's shippable core. **PASS** — 0 Critical/High; all 6 ACs MET; determinism fence intact (AlgoVersion 7, 9 goldens byte-identical, `Write` unreachable from any tick/checksum); Tier-1 independently re-run 433/1-skip/0-fail; release analyzer gate (`-p:ChimeraRelease=true --no-incremental`) 0 errors. Two decisions resolved in-review (see the story's Review Findings — Fixed-precision posture + preset-detection coverage); two patches applied (Advanced-pill re-entry guard; `WriteNode` null-child guard). The items below are real-but-not-actionable-now and tracked here._
-
-1. **Header fields editable-but-ignored in Advanced mode + "Show JSON" overwrites raw edits.** In Advanced, the common header (Id/Name/Targeting) stays editable but Save re-parses `_jsonPane.Text` (the JSON wins; the header is ignored), and `ShowJson` re-renders the pane from the (possibly stale) Simple model. Not data corruption — the saved file is internally consistent — but a usability trap of the dual Simple/raw-JSON source-of-truth. Folds naturally into **Story 2.5b**, which replaces the raw-JSON-only Advanced view with the structured composer + a kept raw-JSON pane and must reconcile the two anyway. [godot/src/CreationSuite/AbilityEditorPanel.cs SwitchMode / ShowJson / BuildSimpleModel]
-
-2. **Advanced-mode Save writes an un-sanitized content `id` (filename ≠ id; ids can collide on one file).** `DoSave` sanitizes only the **filename** (`SanitizeId(def.Id)`), while `WriteFile` serializes `def` with its raw JSON `id`. So `"Fire Ball"` → file `fire_ball.json` with content `"id":"Fire Ball"`, and two distinct ids that sanitize to the same filename (`fire-ball`/`fire_ball`) collide on one file (the collision IS surfaced by the overwrite-confirm dialog). Partly by-design — the story's JSON contract says "identity is this field, not the filename," and Simple mode already sets `_params.Id = SanitizeId(...)`. `AbilityValidator` only checks `IsNullOrEmpty(id)`, never the charset. Cheap hardening if desired: block the Advanced save when `SanitizeId(def.Id) != def.Id` with a located-style error. [godot/src/CreationSuite/AbilityEditorPanel.cs DoSave/WriteFile; godot/src/Core/Definitions/AbilityValidator.cs:42]
-
-3. **Loaded fractional tunable values silently quantize in the Simple SpinBoxes.** The amount/cooldown/radius rows use `Step = 1`/`0.5`, coarser than `Fixed`'s 1/65536. A preset-shaped ability authored via raw JSON with a sub-step tunable (e.g. a Magic `damage` of `80.5`) detects as a preset and seeds the SpinBox; the model keeps the exact `Fixed` until the user touches that field, at which point `ValueChanged` snaps it to the step. The `TryDetectPreset` "lossless" guarantee explicitly covers only the **non-tunable** fields. By-design (Simple = coarse presets; raw-JSON is the precision path), documented here so it isn't mistaken for the data-loss class the lossless guard closes. [godot/src/CreationSuite/AbilityEditorPanel.cs RebuildSimpleRows]
-
-4. **`WriteNode` can emit `DamageType.COUNT` / reserved `TargetFilter` bits that `Read` rejects.** `Write` serializes whatever enum value an in-memory node holds, but `Read` hard-rejects `damage_type == COUNT` and any `Air/Ground/Structure` filter bit — so a directly-constructed graph carrying those produces JSON that fails its own loader (a defense-in-depth asymmetry vs the "exact inverse of Read" docstring). **Editor-unreachable today**: presets use `Magic`/`Enemy` only, and the raw-JSON `Read` path filters these on the way in, so no editor flow can put them into an in-memory graph. Symmetric Write-side guards (or a docstring caveat) would close it if a future path constructs effect nodes directly. [godot/src/Core/Definitions/EffectNodeJsonConverter.cs:97/119]
-
-## Deferred from: code review of story-2.5b (2026-06-29)
-
-_3-layer adversarial review (Blind Hunter · Edge Case Hunter · Acceptance Auditor, all Opus 4.8) + independent reviewer verification of the Advanced structured composer. **PASS** — 0 Critical; all 4 ACs MET; determinism fence independently re-verified (AlgoVersion 7, 9 goldens untouched, converter/validator at zero diff); in-UI caps guardrail confirmed to match `EffectBounds`/`WalkGraph` exactly (no off-by-one). 2 patches + 1 decision handled in-review (see the story's Review Findings). The items below are real-but-not-actionable-now and tracked here. Note: 2.5a deferred items 1 (header↔raw-JSON unsync) and 2 (un-sanitized Advanced id) were RESOLVED by 2.5b (AC2 reconciliation + Decision #8 guard); item 3 (Simple SpinBox coarse-quantize) is re-surfaced below as item 3 since the composer inherits it._
-
-1. **All-empty Persistent node validates + saves as a no-op ability.** A `Persistent` with all three phase slots (Initial/Period/Expire) empty passes `AbilityValidator`/`EffectBounds`/`WalkGraph` (no "Persistent needs ≥1 phase" rule) and writes a do-nothing ability — asymmetric with the 0-child `Sequence` reject and the inline-blocked empty `SearchArea`. Validator is intentionally untouched (Decision #6). Optional in-UI dim-note (the composer already does this for the empty Sequence) would warn the author. [godot/src/Core/Definitions/AbilityDraft.cs:213-216; AbilityValidator.cs WalkGraph]
-
-2. **`period_effect` paired with `period_ticks = 0` validates but never fires at runtime.** `ModifierStore` gates periodic execution on `PeriodEffect != null && PeriodTicks > 0`, but the composer's "Period (ticks)" SpinBox has `min = 0` and no validator rule rejects a present period child with a zero tick count — so an author can add a DoT/HoT that silently dies. Optional in-UI hint; validator unchanged per Decision #6. [godot/src/CreationSuite/AbilityEditorPanel.Advanced.cs:334-335; godot/src/Effects/ModifierStore.cs:205]
-
-3. **Loaded sub-step `Fixed` values display quantized in the composer SpinBoxes (display ≠ saved).** Inherited from 2.5a deferred item 3: Radius/cooldown/Move-Speed-Δ rows use `Step = 0.5` (amounts `Step = 1`), coarser than `Fixed`'s 1/65536. A loaded `4.3` radius *shows* `4.5` while the draft keeps the exact value until the field is deliberately edited (the snap fires only on a real `ValueChanged`, so untouched = preserved — no data loss). By-design (composer = coarse authoring; raw-JSON is the precision path), but the display can mislead an author into "approving" a number that differs from what is saved. Optional: a finer `Step` where exactness matters. [godot/src/CreationSuite/AbilityEditorPanel.cs:647-658 AddSpinRow]
-
-4. **`DraftNode.Depth()` / `SearchAreaDepth()` are Tier-1-tested but unused by the production guardrail.** The in-UI caps guardrail re-derives depth incrementally via `TreeCtx` (`CompDepth`/`SearchAncestors`) + `CountNodes()`; `Depth()`/`SearchAreaDepth()` are exercised only by `Metrics_CountDepthSearchArea_AreCorrect`. Harmless and conservative, but `Depth()` counts ALL nodes (returns 3 for seq→search→heal) whereas `EffectCaps.MaxEffectDepth` is composition-only (depth 2 for that shape) — a latent off-by-one trap if a future dev wires `Depth()` into a cap check believing it matches the validator. Optional: delete the unused helpers, or add a comment pinning their semantic vs the cap. [godot/src/Core/Definitions/AbilityDraft.cs:288-306]
-
-5. **Flag-combination multi-select (checkbox) UI for Filter/Status — future enhancement (Alec, 2026-06-29).** `TargetFilter`/`StatusFlags` are `[Flags]` and the data model supports combinations (e.g. a `Stunned + Silenced` debuff, an `Enemy + Alive` search filter), but the 2.5b composer offers single-select dropdowns (per AC5-COMPOSER's single-value scope). Alec wants checkbox sets as the clearer way for creators to author flag combinations directly in the visual editor. Real feature work — better as its own slice (a dedicated UI pass, or folded into Story 2.6 passive-ability mode). 2.5b ships the harden-now guard (a loaded combo displays faithfully + can't silently collapse), so this enhancement is additive, not a fix. [godot/src/CreationSuite/AbilityEditorPanel.Advanced.cs Filter/Status rows; DraftVocabulary.Filters/Statuses]
-
-## Deferred from: code review of story-2.6 (2026-06-30)
-
-_3-layer adversarial review (Blind Hunter · Edge Case Hunter · Acceptance Auditor, all Opus 4.8) + independent reviewer verification of the determinism fence. **PASS** — no Critical/High; all 6 ACs MET, all 11 decisions + every named constraint honored, zero scope creep. The single `EffectiveArmor` 7→8 fold is clean (a pure `Mix` addition, no reorder; the 4 protected version anchors untouched); Tier-1 **491 pass/1 skip/0 fail** independently re-run; the SoA-recycle trap is closed (`Create()` resets the 3 passive indices + armor to `-1`/Zero, guard test extended). A Critical-if-true phantom-passive concern (index-array `-1`-vs-`0`) was investigated and REFUTED. The 1 decision (aura modifier duration/stacking bound) + 1 patch (`period_count > 0` validator rule) are tracked in the story's Review Findings; the real-but-not-actionable-now items are below. (Note: items 1–2 here are the third sibling of the 2.5b period-no-op traps above — 2.6 closed empty-Persistent + `period_ticks=0` at the validator; `period_count=0` is the remaining one, now the in-review patch.)_
-
-1. **Periodic self-passive caps at 256 pulses, never renewed — the 2.2b period cap surfaced in a new context.** A `while_alive` `Persistent` self-passive is installed once at spawn; `EffectCaps.MaxPersistentPeriods = 256` bounds its pulses and nothing re-installs it on expiry, so `furnace_trickle` (period_ticks = 5) stops regenerating ~43 s into a match. AC3's literal "regenerates over several ticks" is met, but the **Story 2.10 Sanguine-Furnace showcase wants a lifelong HoT.** Pre-existing (the 256 cap is 2.2b, documented "don't fix"); 2.6 is just the first feature to install a lifelong periodic passive. Cheapest mitigation is data-only (raise the authored `period_ticks`/`period_count` so 256 pulses span a typical match); a true fix is a self-passive renewal mechanism (re-install on expiry) — a follow-up slice, fold into 2.10 planning. [godot/src/Effects/ModifierStore.cs `InstallPersistent`; godot/src/Effects/EffectCaps.cs `MaxPersistentPeriods`]
-
-2. **Self-passive spawn-install is not idempotent against a live re-`ApplyUnitDefinition` (latent — flagged by all 3 review layers).** `EntityWorld.OnUnitDefinitionApplied` fires `AbilityCastSystem.InstallSelfPassive` once per def-based spawn; `ModifierStore.InstallPersistent` has no same-id dedup. Today all spawn sites run `Create()`→`ApplyUnitDefinition` exactly once on a fresh slot, so the once-per-spawn invariant holds and there is NO desync/leak. But if a future upgrade/morph/tech path ever re-applies a def in place on a still-live entity, the seam fires again and stacks a **second** concurrent HoT (or re-adds a permanent modifier). Add an install-once guard (or dedup-by-ability-id in `InstallPersistent`) when such a re-apply path is introduced. [godot/src/Effects/AbilityCastSystem.cs `InstallSelfPassive`; godot/src/Effects/ModifierStore.cs `InstallPersistent`]
-
-3. **Editor `RestoreUnit` (undo/load) silently drops a unit's authored armor + passives — editor-only fidelity loss.** `RestoreUnit` routes through `EntityWorld.Create` (so there is **no** stale-state leak — fields reset cleanly to default), but it restores a fixed field list that excludes the new `BaseArmor`/`EffectiveArmor` and the three passive-registration indices (`UnitSnapshot` doesn't carry them), so a restored unit returns with `armor = 0` and no aura/on-hit/self-passive. Not a lockstep path → no desync. Consistent with the standing `UnitSnapshot`-widening carve-off (1.13/2.2a/2.4a — `RestoreUnit` carries no def); the new `armor` field should be added to that carve-off note. The real fix is the deferred `UnitSnapshot` widening. [godot/src/UI/EntityPlacer.cs `RestoreUnit`]
-
-## Deferred from: code review of story-2.8 (2026-07-01)
-
-_3-layer adversarial review (Blind Hunter · Edge Case Hunter · Acceptance Auditor, all Opus 4.8; Edge Case Hunter re-run twice after two 0-tool-use no-ops, then succeeded). **PASS — no Critical/High/Medium survived triage.** All three layers independently verified the determinism/MP surface SOUND: wire `-1` round-trip (`TargetX` = 4-byte raw `int`), `idx+1`/`255` sentinel packing (no `0`-idle/`255` collision; real indices ≤7 ≪ 254), `Train`-before-entity-guard ordering, single exec-tick ore spend, all Class-A switch arms + all three Class-B enum-indexed arrays extended, unfolded-`ProductionQueue` checksum (10 goldens byte-identical, AlgoVersion 8). The Blind Hunter's lone Medium (stale train grid on a CommandCenter) was verified a false positive (`RefreshCard:215` `if (isCC)` doesn't early-return → `else` → `HideTrainButtons`). 1 decision + 1 patch tracked in the story's Review Findings; 4 dismissed as noise. The real-but-not-actionable-now items are below._
-
-1. **Local player hardcoded to `Faction.Player1` in `IssueTrainCommand` (flagged blind+edge).** The command-card train seam guards `_buildings.FactionOf[bId] != Faction.Player1` and passes `expectedFaction: Faction.Player1` to `OrderApplier.Apply`. A client assigned Player2 would be blocked from training at its own buildings and (offline) apply under the wrong faction. **Not a regression** — mirrors the existing project-wide convention exactly (`SelectionSystem` hardcodes `Faction.Player1` for select/move/cast; the diff comment even names it), and unreachable while the local human is always P1. The *remote/replay* apply path already uses the packet's sender faction, so it correctly supports any faction — the asymmetry is only in local issuance. Fix is a systemic "local faction" plumb when P2-local / >2-player local assignment lands, not a 2.8 bug. [godot/src/UI/CommandCardSystem.cs `IssueTrainCommand` ~:1109; convention at SelectionSystem.cs:387,685,738]
-
-2. **`ProductionQueueValue` clamps a stored index ≥254 to the `255` fallback sentinel → ore spent but the fallback unit spawns (flagged blind).** `TrainUnit` validates `chosenUnitIndex < Units.Count` and spends ore *before* `ProductionQueueValue` encodes the choice; for a unit at list index ≥254 the byte can't represent `idx+1` (would hit/exceed the `255` sentinel) so it stores the fallback → `SpawnTrainedUnit` produces the generic fallback unit, not the paid-for one. **Accepted design boundary** of Decision 1 (reuse the unfolded `ProductionQueue` byte; the doc explicitly assumes "real indices bounded to < Units.Count ≪ 254"). Requires a single faction category with ≥255 units to reach — absurd vs the ~8-unit rosters. A dedicated `int[]` chosen-index array would lift the cap if creator rosters ever approach it. [godot/src/Economy/BuildingSystem.cs `ProductionQueueValue`]
-
-3. **`OrderApplier.Apply` `Train` no-ops silently when `BuildingSystem` is null — a determinism footgun on asymmetric wiring (flagged blind).** `buildings?.TrainUnitCommand(...)` returns silently rather than failing loud when `Buildings` is unwired. Wiring is unconditional in all real paths (`MatchLifecycleController` sets both `LockstepManager.Buildings` and `ReplayPlayer.Buildings`), and null is *intentional* on headless/golden paths (which never train via the wire), so this is **not reachable today**. The trap: if a future entry path ever constructs a `LockstepManager`/`ReplayPlayer` without wiring `Buildings`, that peer would skip training while others execute it → a silent desync masked as a graceful no-op. Hardening idea: distinguish "intentionally null (headless)" from "accidentally null" and fail loud on the latter. [godot/src/Multiplayer/NetworkCommand.cs Train branch; wiring at MatchLifecycleController.cs]
-
-## Deferred from: code review of story-2.9a (2026-07-01)
-
-_3-layer adversarial review (Blind Hunter · Edge Case Hunter · Acceptance Auditor, all Opus 4.8, fresh context) + independent reviewer verification of every finding against source. **PASS — no Critical/High.** All three layers independently confirmed the crash/desync surface is SOUND: the `TickAttackBuildingCombat` in-tick guard short-circuits `b < 0 || b >= Count` before `Alive[b]` (crash-safe — `BuildingStore` is append-only, slots NEVER reused, so a stale `CommandTarget` resolves to `!Alive` → clean revert, and the recycled-building hazard cannot exist); the ranged-vs-building projectile re-guards bounds+`Alive` at impact and drops harmlessly on death-in-flight/`Count`-growth; the building id never reaches entity space (`AttackTarget[id] = -1`); `AttackBuilding=12` rides the wire after the ownership guard with no version bump and no `(int)UnitCommand`-indexed array; determinism fence untouched (`AlgoVersion` 8, pin `0x983D39AE`, 10 existing goldens byte-identical); the AC6 reject-lift opens no fail-open hole (`TargetMatcher` is the sole `TargetFilter` evaluator). 2 decisions + 2 patches tracked in the story's Review Findings; 6 dismissed as noise. The real-but-not-actionable-now items are below._
-
-1. **Zero-damage non-gatherer can sit inert in `AttackBuilding` — pre-existing skip-before-switch pattern (flagged blind+edge).** A non-gathering unit with `EffectiveAttackDamage == 0` is skipped by the pre-switch guard at `CombatSystem.cs:111`, so it never reaches `TickAttackBuildingCombat`'s self-revert and lingers in `AttackBuilding` (a silent no-op state — never chases, never reverts) until re-ordered or re-armed. Reachable via a crafted/AI wire order (`OrderApplier` gates on `IsAlive`+faction only, not attack damage — the local UI picker's `EffectiveAttackDamage > 0` filter does not cover the wire path) or a future Epic-2 disarm debuff applied *after* the order. **Same class as `AttackTarget`/`Patrol`/`Follow` on zero-damage units** (the `:111` skip is pre-existing, not introduced by 2.9a); behaviour is defensible (inert-while-disarmed → resume-when-armed); no crash/desync. A future fix would normalize the whole zero-damage-non-gatherer command class, not just `AttackBuilding`. [godot/src/Combat/CombatSystem.cs:111 pre-switch guard; picker filter at SelectionSystem.cs:613]
-
-2. **Editor `RestoreUnit` (undo/load) silently drops a unit's authored `AttackDomainOf` — editor-only fidelity loss (flagged edge).** `RestoreUnit` routes through `EntityWorld.Create` (so there is **no** stale-state leak — the field resets cleanly to `AttackDomain.All`), but it restores a fixed field list that excludes the new `AttackDomainOf` (`UnitSnapshot` doesn't carry `attack_domains`), so a unit authored `["Air"]` returns as `All` (attacks every domain again). Not a lockstep path → no desync. Exactly the standing `UnitSnapshot`-widening carve-off already documented for `Category`/`collision_radius`/`separation_priority` (1.13) and `armor`/passives (2.6) at `EntityPlacer.cs:1120-1123`; **inert today** (no shipping unit authors a restricted `attack_domains`, and there is no fielded AA unit yet — a content decision for later). The story's completion note justifies the deferral via "workers never auto-attack," which covers workers but not restricted-domain *combat* units — the honest reason is the `UnitSnapshot`-widening carve-off. Recommend a 1-line update adding `AttackDomainOf` to that documented list. The real fix is the deferred `UnitSnapshot` widening. [godot/src/UI/EntityPlacer.cs RestoreUnit ~:1097-1124; carve-off note at :1120-1123]
-
-## Deferred from: code review of story-2.10 (2026-07-02)
-
-_gds-code-review **ultracode** (multi-layer adversarial, fresh context): 6 blind parallel finders (Blind Hunter · Edge Case Hunter · Acceptance Auditor + 3 story-risk hardening: Determinism Fence · Content Contract · Test Teeth) → dedup → per-finding adversarial verification against live source (19 agents, 6/6 layers, 0 errors). **PASS — no Critical/High/Medium survived triage.** All 5 ACs met; determinism fence intact (AlgoVersion 8, stamps 8/3/1/2, pin `0x983D39AE`, 14 goldens byte-identical + 1 new equal-exchange golden [LF-only, non-vacuous, spec-mandated in-code fixture]); zero sim `.cs` change (git diff confined to `resources/data/` + test project); shipped content correct on every axis (HP-XOR-matter both abilities, armor-independence via the `direct_hp_delta` leaf, `war_machine` excluded, `signature_mechanic`/`deferred_mechanics` load-and-ignore via the lenient faction loader, modifier ids 1100/1101 unique, HP costs ≪ unit HP). 18 raw → 12 candidates → **3 CONFIRMED (all low, test-teeth/doc) + 1 defer + 8 dismissed.** The 3 low patches are tracked in the story's Review Findings; the real-but-out-of-scope item is below._
-
-1. **Repeated `Spike Transmutation` self-cast can strand the Covenant Transmuter alive-but-stuck at 0 HP — no HP-affordability gate (flagged edge).** The cast pipeline gates only on cooldown/energy/ore/crystal (`AbilityCastSystem.cs:171-180`) — no Health floor. `spike_transmutation` costs 0 energy/ore/crystal, so its sole gate is the 10s cooldown; each cast runs `direct_hp_delta(-25)`, which clamps to `[0, EffectiveMaxHealth]` and (by the intentional Story 2.1 primitive design, `DirectHpDeltaEffect.cs:13-15`) deliberately never fires death. So ~6 benefit-less self-casts on a fresh Transmuter (hp 145) with zero incoming damage/heal drive Health to 0-alive — the exact "looks broken" state D-1/Regression-risks flagged, but the spec mitigation ("keep the HP cost well below the unit's HP") sizes only a SINGLE cast, not the cooldown-only-gated repeat path. **Not a 2.10 defect / not a desync:** fully deterministic, catastrophic paths guarded (clamp prevents negative HP, the primitive never self-kills), and any real combat hit routes through `DamageResolver` which DOES fire death — reaching the stranded state needs pathological benefit-less self-harm. This is a property of the reused 2.1 primitive, first made *reachable* on a skirmish-trainable unit by 2.10; the fix (a min-HP cast gate, or an explicit "0-HP-alive is acceptable" design ruling) is out of this content story's zero-`.cs` scope → **Story 2.13 / balance.** [godot/src/Effects/AbilityCastSystem.cs:171-180; primitive at DirectHpDeltaEffect.cs:13-15,30-33]
-
-## Deferred from: code review of story-2.13 (2026-07-05)
-
-_gds-code-review (3 parallel adversarial layers — Blind Hunter · Edge Case Hunter · Acceptance Auditor — Opus 4.8, fresh context). **Determinism PASS** (NO-FOLD fence intact — no fence file in the diff, AlgoVersion 9 / pin 0xFD72E97E / stamps 9/3/1/2, only the 3 declared goldens moved with headers at 9; every D-3 packed-ref holder verified). 4 of 5 fixes faithful. 3 decision-needed (Neutral-building auto-acquire · AI raze `>=` threshold · arrival 2-of-3) + 2 low patches (`cost_health` `IsAlive` guard · `SelectedBuildingId` stale-recycle) tracked in the story's Review Findings; the pre-existing item below is out of 2.13's scope._
-
-1. **A crowd of plain (non-queued, non-AttackMove) Move orders can still ring at ~1.0–1.7u in pure sim.** Story 2.13 widened only the two GOAL-completion thresholds (AttackMove settle + OrderQueue pop) to 2u; the low-level physical stop `MovementSystem.ARRIVE_THRESHOLD_SQR` stays at 0.5u (correctly — widening it strands every melee unit, attack_range 1.5 < 2u). Plain-Move completion rides that un-widened physical stop, so a crowd of plain Moves converging on one point can settle on the ~1.0u separation-vs-seek equilibrium ring and never zero velocity in pure sim. **Pre-existing** (the physical stop was always 0.5u; 2.13 did not change it) and **out of AC2 scope** (AttackMove + queued-Move only). Mitigated in real play: plain-Move arrival routes through the presentation `FlowFieldBridge` (single-unit handoff at 1.5u), so this only manifests in a hypothetical pure-sim plain-Move-crowd. Fix if it ever surfaces: a no-progress-near-goal detector, or route plain-Move-crowd completion through a goal-distance threshold too. [godot/src/Navigation/MovementSystem.cs:18-19; goal thresholds at ArrivalTuning.cs · OrderQueueSystem.cs · CombatSystem.cs:69]
-
-## Deferred from: code review of story-3.1a (2026-07-05)
-
-_gds-code-review (3 parallel adversarial layers — Blind Hunter · Edge Case Hunter · Acceptance Auditor, all Opus 4.8, fresh context) + independent lead verification against live source + build. **PASS — all 6 ACs met, no Critical/High correctness bug in 3.1a's own deliverables.** First pure-presentation story: no sim, no checksum, no determinism fence (correctly). Independently re-verified: build 0 err / 0 new warnings, 34 colors / 4 fonts / 10 font_sizes / 12 constants exact vs the Canonical Token Table, `tnum` tag `1953396077`="tnum", scope fence clean. 14 raw → 10 unique → 1 decision + 3 patch + 4 defer + 2 dismissed. Every survivor is forward-looking robustness of the accent-switch / chamfer mechanisms that 3.1b/3.1c build on (plus one live `main.tres` churn patch). 1 decision + 3 patches tracked in the story's Review Findings; the real-but-not-actionable-in-3.1a items are below._
-
-1. **AccentController registry has no unregister/clear → leak in the long-lived controller (flagged edge).** `_accentFillBoxes`/`_accentBorderBoxes` are add-only `List`s guarded only by `Contains` — no `Unregister`, no weak ref, no clear. `AccentController` lives in `src/UI/Theme` (the canonical app-wide controller, NOT the throwaway preview), so once 3.1b+ create/destroy panels that register accent styleboxes, boxes from freed UI accumulate (StyleBoxFlat is RefCounted → the strong ref pins the native alive) and are needlessly re-tinted on every `SwitchAccent`. Harmless in the one-shot proof; a real leak + wasted work for the long-lived controller. **Deferred** — the fix (weak refs, or an `Unregister`/`Clear` API called from component teardown) is coupled to 3.1b's not-yet-existing component lifecycle. Closely related to the story's open Decision (accent seam only tracks base accent) — if that is hardened in 3.1a, address registry lifecycle in the same pass. [godot/src/UI/Theme/AccentController.cs:292-314]
-
-2. **UX-DR11 shadow tokens are absent from the committed `main.tres` — AC4-literal gap (flagged auditor).** The Canonical Token Table lists `shadow-1/2/pop` (size+offset+alpha); `grep shadow main.tres` → no matches. The recipes live only in `ThemeTokens.ShadowRecipes` (C# data) + `ChimeraStyleBox.WithShadow`, and `shadow_1` IS realized on the preview panel. Strongly mitigated: a Godot Theme `constant` is int-only, so a composite recipe (size+offset+float-alpha+color) cannot be a single Theme entry; Task 3 softened to "record… as documented constants," which the C# data satisfies. **Recommend accept** — revisit only if a `.tres`-native shadow representation (e.g. decomposed int constants per recipe) is ever wanted. [godot/assets/ui/main.tres · recipes at ThemeTokens.cs:1024-1029]
-
-3. **`ChimeraStyleBox.Chamfer` has no `cut` bounds guard (flagged edge).** `Chamfer(int cut, …)` assigns `cut` straight to `CornerRadiusTopLeft/BottomRight` with no clamp; a negative `cut`, or a `cut` larger than half the smaller box dimension (e.g. `cut_lg=14` on a ~20px chip), silently produces a degenerate/capped shape rather than the intended facet. Safe for today's callers (the 5/8/14 constants); matters when 3.1b passes author-supplied ints to "the single place the recipe lives." Fix: clamp `cut` ≥ 0 (Godot already caps oversized radii). [godot/src/UI/Theme/ChimeraStyleBox.cs:390-413]
-
-4. **`cut-lg` (14) not exercised in the 3.1a in-engine proof (flagged auditor).** AC2 names cut / cut-sm / cut-lg; the throwaway proof renders cut(8, surface panel) + cut-sm(5, accent button) only. Near-zero risk — `Chamfer` is size-parametric so `cut-lg` renders the identical faceted TL+BR cut — but the visual gate did not demonstrate the third size AC2 enumerates. Add a `cut-lg` surface if re-verifying (the real gallery is 3.1c). [godot/src/UI/Theme/ThemePreview.cs]
-
-## Deferred from: code review of story-3.1c (2026-07-06)
-
-_gds-code-review (3 parallel adversarial layers — Blind Hunter · Edge Case Hunter · Acceptance Auditor, all Opus 4.8, fresh context) + independent lead verification of every finding against live source. **PASS — all 8 ACs met, scope-fence provably clean (git baseline→HEAD: the 5 Theme-layer files untouched), no Critical/High, no crash, no AC failure.** Third pure-presentation story (no sim/checksum/golden/fence). ~10 raw → 8 unique → 1 decision (AC5 linear-vs-cubic easing) + 4 patch (accent-registry per-show-binder churn [Med] · overlay tween-kill discipline · menu off-screen clamp · toast-margin token) + 3 defer + 2 dismissed (toast burst-overlap = false positive: `ResetSize` is synchronous; menu two-space gap = cosmetic). The Medium is the latest turn of the accent-seam-lifecycle class both prior 3.1 reviews converged on (3.1a deferred #1, closed in 3.1b): the registry's "bounded to live controls" invariant holds only for once-per-instance binders, and the new per-show binders (tooltip term, default-toast bar/icon) break it between accent switches — hardened in the 3.1c patch pass. Decision + patches tracked in the story's Review Findings; the not-actionable-now items are below._
-
-1. **Tooltip position is a one-shot snapshot — a keyboard-focus tooltip does not re-anchor when its target scrolls (flagged edge).** `ChimeraTooltip.Show` places the tip once from `_target.GetGlobalRect()` on a static high `CanvasLayer`; nothing re-anchors it. A hover tip hides on `MouseExited`, but a **keyboard-focus** tip persists until `FocusExited`, so scrolling the target's `ScrollContainer` (the gallery's `?`/input live inside one) leaves the tip pinned to its original screen spot, visually detached from the field. Low (scroll usually blurs focus). New 3.1c code, not pre-existing — **forward-punt to 3.3+**, when tooltips are attached across real scrolling editors and the correct behavior (hide-on-scroll vs re-anchor on `item_rect_changed`) is the clearer call. [godot/src/UI/Components/ChimeraTooltip.cs:90 Show]
-2. **Toast stack is uncapped — burst spam can grow it off-screen (flagged blind+edge).** `ChimeraToastHost.NextY` keeps adding `Size.Y + gap` with no max-visible cap, so a burst (e.g. many simultaneous alerts) stacks past the viewport bottom. Auto-dismiss still fires, so it self-heals; purely a transient-visual concern. New 3.1c code — **forward-punt to Epic 11**, where toasts wire to real MP/game events and the cap/evict/coalesce policy naturally belongs. [godot/src/UI/Components/ChimeraToastHost.cs:75 NextY]
-3. **Pre-existing: `ChimeraComponents.Reset()` can call into a freed `AccentController` on in-process re-Initialize (flagged edge).** `Initialize` calls `Reset()` first, which does `_accent.AccentChanged -= …` + `_accent.Clear()` on the **previous** controller; if a scene that initialized the factory was unloaded (freeing that controller) and another initializes it in the **same process**, those calls hit a freed `GodotObject` (→ `ObjectDisposedException`). Not caused by 3.1c (the Initialize/Reset logic is 3.1b's, unchanged; `ChimeraComponents.cs` core is not in this diff); `component_preview` already exercised the path and `/godot-verify`'s fresh-process launch starts with `_accent==null` so never trips it — but an in-editor scene reload could. Fix = an `IsInstanceValid(_accent)` guard at the top of `Reset`. [godot/src/UI/Components/ChimeraComponents.cs:98-110 Reset]
-
-## Deferred from: code review of story-3.2 (2026-07-06)
-
-_gds-code-review (3 parallel adversarial layers — Blind Hunter · Edge Case Hunter · Acceptance Auditor, all Opus 4.8, fresh context; the different-LLM / heightened **D-3** review for the riskiest Epic-3 story) + lead verification against source + a green Tier-1 run. **Determinism PASS** — the additive-only fence (D-1 defer) is intact, verified BOTH statically (git: `SimChecksum.cs`/`CanonicalModelHash.cs` untouched, AlgoVersion 9/3, 17 goldens byte-identical, pins `0xFD72E97E` / `ExpectedCanonicalHash` intact) AND behaviorally (25 fence-guard tests green, the 17 goldens replay byte-identical). HeroStore is genuinely DORMANT (no mid-match mutation — grep-confirmed no `.Mint(`/`.Destroy(`/hero-field write in `src/**`), so the deferred fold below is desync-safe. Stamps: 9/3/1/2 + new StartStateHash 1. 1 decision + 4 patches APPLIED in this review (dup-`HeroId` `Mint` guard · AC2 `deferred-work.md` entry [this] · hero-row independent-FNV pin · `Snapshot.md` repair · `MAX_HEROES≤256` tripwire); 2 dismissed as noise. The one genuinely-deferred item — the AC2-mandated planned future fold — is below._
-
-1. **The HeroStore per-tick `SimChecksum` fold → Story 3.13 (the AC2-deferred planned fold #1).** Story 3.2 ships HeroStore DORMANT — no system mutates it mid-match (the XP runtime is 3.13, load is 3.9) — so per the standing checksum-fold-timing rule ([[chimera-checksum-fold-timing-rule]]) it is intentionally NOT folded into the per-tick `SimChecksum` (`AlgoVersion` stays 9, all 17 goldens byte-identical — the exact 2.2a→2.2b precedent). 3.2 covers HeroStore via the NEW init-time `StartStateHash` (AC3) and establishes the ascending-`HeroId` `FoldOrder` contract (unit-tested, and now Mint-enforced for uniqueness). When Story 3.13's XP runtime first MUTATES `Level`/`Xp` mid-match, those become peer-divergent sim truth and MUST fold into `SimChecksum`: reuse `HeroStore.FoldOrder()` (ascending identity), fold `Level`/`Xp` (+ any store-side state), bump `SimChecksum.AlgoVersion` **9→10**, re-baseline all goldens once, re-pin `SimChecksumCoverageGuardTest`'s `ExpectedV9Hash`→`ExpectedV10Hash` (RED-run + paste `actual`), add coverage teeth (the guard does NOT auto-detect a new store — AR-15 names "Hero"), update `ExpectedSimChecksumAlgoVersion` in `VersionStampConsistencyTests`, and **reserve Story 3.14's revival fields (`Alive/AwaitingRevival`, `RevivalTimer`, revive-link) in the SAME bump** (3.13 AC2 — one bump, not two). Item fold #2 (Story 3.15 `ItemStore` + inventory) is a separate later bump. [godot/src/Core/SimChecksum.cs; godot/src/Core/HeroStore.cs `FoldOrder` + reserved-fields block :82-92]
-
-## Deferred from: code review of story-3.3 (2026-07-06)
-
-_gds-code-review in ultracode mode (5 fresh-context finder lenses — Blind · Edge-Case · Acceptance · Determinism/Boundary · Godot-Lifecycle — → dedup → 2 adversarial verifiers [refute + repro] per finding, 28 agents, all Opus 4.8) + lead verification of every kept finding against live source. **PASS** — 0 Critical/High-blocker; determinism / zero-fold boundary **independently verified clean** (no sim/store/checksum/golden touch; phase order lockstep across all three legs; `UnitCardText` Godot-free + additive; `_unitcard_sample.json` inert to all 18 goldens; stamps 9/3/1/2 + StartStateHash 1 untouched); all ACs met, scope fence clean, `LoadFactionFromPath` confirmed in-scope (D-1/Task-8). 15 raw → 11 unique → 7 kept / 4 double-refuted. 1 decision (kit reload-safety — recommend patch; extends the pre-existing 3.1c-deferred root at the 3.1c entry above) + 1 patch (ability-row `MouseFilter.Ignore`) tracked in the story's Review Findings; the real-but-not-actionable-now items are below._
-
-1. **Model-reference readout can claim "Renders <path>" while the preview shows the box placeholder.** `BuildBody` derives its "resolves" text from `ResourceLoader.Exists(meshPath)` alone (`UnitCardPanel.cs:388`), but the preview mesh comes from `MeshLoader.LoadFromGlb`, which box-placeholders whenever an existing resource yields no `MeshInstance3D` (animation-only / empty-node GLB), isn't a `PackedScene`, or fails to load. So an exists-but-no-mesh path shows the filename + a "Renders …" tooltip while the viewport shows a plain box — the AC1 model field contradicts the AC2 preview. **Latent today** (all 8 alpha units + the fixture use valid GLBs or clearly-missing paths; no exists-but-no-mesh asset exists). Fix = share ONE resolution outcome between the text and the preview (a `MeshLoader.ResolvesToMesh(path)` helper mirroring the existence + `PackedScene` + `FindFirstMesh` check, or thread `LoadFromGlb`'s used-placeholder result into `BuildBody`). Belongs with **Story 3.5** (model browse/assign), which reworks this path. [godot/src/CreationSuite/UnitCardPanel.cs:388,457; godot/src/UI/MeshLoader.cs:21-42]
-
-2. **`LoadFactionFromPath` leaves `FactionDefinition.LoadFromFile`'s parse/IO throw uncaught.** The public verify-harness entry guards `File.Exists` but then calls `LoadFromFile`, whose `File.ReadAllText` + `JsonSerializer.Deserialize` throw on malformed JSON / IO error (the `?? new FactionDefinition()` covers only a literal-null document); with no try/catch a bad faction file escapes as an unhandled exception (aborting the `/godot-verify` call), and a TOCTOU-deleted file throws similarly. Dev-harness-only, fed a known-good fixture, and it **mirrors the codebase-wide faction-load convention** (`AssetPreviewScene`, `ScenarioLoadPhase`, `MainScene` all call `LoadFromFile` unwrapped) — content-load hardening is explicitly owned by the future centralized `Validated<T>` fail-closed gate (game-architecture D3/A16), not a per-presentation-method patch. Cheap defense-in-depth if wanted: wrap the load mirroring the existing missing-file branch (`try { … } catch (System.Exception ex) { GD.PrintErr(...); return; }`). [godot/src/CreationSuite/UnitCardPanel.cs:107; godot/src/Core/Definitions/FactionDefinition.cs:110-115]
-
-3. **Forward-note (Story 3.4): `LoadFactionFromPath`'s `File.Exists` guard silently no-ops in an exported `.pck` build.** It gates on `System.IO.File.Exists(ProjectSettings.GlobalizePath(resPath))`; in a packaged build a `res://` faction path is not a real OS file, so `File.Exists` returns false and the method silently returns. Harmless for the editor-only verify harness (3.3), but if **Story 3.4**'s real unit-select flow reuses this entry point it must resolve `res://` through a `.pck`-aware channel (Godot `ResourceLoader`/`FileAccess`), not `System.IO` on a globalized path. Applies uniformly to every `System.IO`-on-`res://` data loader. [godot/src/CreationSuite/UnitCardPanel.cs:99-107]
-
 ## Deferred from: dev of story-3.4 (2026-07-06)
 
 _gds-dev-story [claude-opus-4-8], baseline `f7a54ef`. All 10 tasks + 6 ACs; PURE AUTHORING-TIME zero-fold (stamps 9/3/1/2 + StartStateHash 1, 18 goldens byte-identical, release gate 0-err/RS0030-clean); Tier-1 761 pass/1 skip/0 fail (+45 new). `/godot-verify` PASS on all AC6. Items surfaced during dev, not blockers:_
-
-1. **UX-DR33 primitive logged: `ChimeraValidationBadge` (the UX-DR55 located badge).** Net-new kit helper (`src/UI/Components/ChimeraValidationBadge.cs`) — a `TagVariant.Danger` pill + field-role `ChimeraTooltip` anchored to a control, with an `Ok` "valid" state and a `Clear`. Nothing in the 3.1 kit was a validation badge (`ChimeraMark` = decorative Seal; the AbilityEditor uses a single panel-level status line). Proven by 4-story reuse (**3.4/3.5/3.6/3.7** all badge the offending field). If 3.5-3.7 confirm the shape, consider promoting it to a `ChimeraComponents.ValidationBadge(...)` factory method alongside the other kit builders. [godot/src/UI/Components/ChimeraValidationBadge.cs]
-
-2. **Numeric-field undo granularity is focus-session, not per-arrow-click.** `NumInput` (SpinBox) fields snapshot the value on `FocusEntered` and commit ONE undo entry on `FocusExited`; a pure arrow-button tweak that never focuses the internal `LineEdit` still updates the model (so Save persists it correctly) but is not individually undoable until focus leaves the field. Low — the common type-a-value flow creates one clean undo step per field visit (verified in `/godot-verify`). A tighter model would push per-`ValueChanged` with a float-equality guard. [godot/src/CreationSuite/UnitCardPanel.Edit.cs `AddNumFloat`/`AddNumInt`]
-
-3. **Undo-of-Delete restores in-memory order but render slots re-materialize on Save→reload.** Delete's undo re-inserts the unit at its original in-memory index (order preserved), and `SyncFactionUnits` writes the list in that order. But `IndexOfUnit == EntityWorld.MeshType` render slots are only re-derived when a match reloads the faction (D-10's apply-next-match posture); the seamless no-restart round-trip is Story 3.10. No correctness bug (each reload is internally consistent). [godot/src/CreationSuite/UnitCardPanel.Edit.cs `DoDelete`]
-
-4. **Whole-faction-file re-indent on Save is git-diff noise, determinism-harmless.** `root.ToJsonString(WriteIndented)` reproduces STJ's exact 2-space style, which expands hand-authored single-line arrays (e.g. `color: [..]`) across lines the first time a faction file is saved through the editor. The story's determinism section predicted this: no faction-file byte hash is pinned (the retired algo-1 file-FNV is gone; `CanonicalModelHash` folds the model, not bytes). Untouched *values* + unknown keys (`_comment`, `signature_mechanic`) ARE preserved (proven by AC4 Tier-1 + the `/godot-verify` Save test: `hp` moved, `speed:3.5`/`attack_range:7.0`/`_comment` survived). [godot/src/Core/Definitions/FactionWriter.cs `IndentedOptions`]
 
 ### DW-9: The 6-archetype closed set is duplicated across `UnitDefinitionValidator._categories`, `BehaviorRegistry._archetypes`, and the validator's error string, so a future 7th `UnitCategory` can be added to one and missed in another (a behavior listing the new archetype would then be silently dropped at load).
 origin: migrated from legacy ledger ("Deferred from: dev of story-3.4 (2026-07-06)"), 2026-07-08
@@ -429,6 +98,7 @@ source_spec: `_bmad-output/implementation-artifacts/spec-3-8-persistence-manifes
 location: n/a
 reason: summary: Creation-suite editor panels do not rebind their held `ScenarioData` after a scenario is reloaded/imported at runtime — each captures `_scenario` (and its write-back path) once at `Initialize` and never again, so after a reload the panel edits a stale object and can save it back to the originally-captured path (silent data loss / wrong-target save). evidence: `PersistenceManifestPanel.SetScenario` (and the identically-shaped `TriggerEditorPanel.SetScenario`) exist but have zero callers repo-wide; the panels bind `_scenario` once in `Initialize`/`PersistenceManifestPhase`. This is a pre-existing cross-editor architectural gap surfaced (not caused) by Story 3.8 — the proper fix wires every editor's `SetScenario` into the scenario (re)load path (e.g. `MapGeneratorPanel.OnLoadRequested` / `ScenarioLoadPhase`), which is out of a single manifest-authoring story's scope.
 status: open
+decision: 2026-07-28 correct-course — bundle editor-panel-scenario-rebind absorbed into scenario-reapply-slot-faction-def-refresh (DW-229; Epic 15, Story 15.6)
 
 ### DW-11: HeroStore is additive across re-deploys with no clear on return-to-Edit; a re-deployed profile would leave stale live hero rows in the store (and hash).
 origin: migrated from legacy ledger ("Deferred from: dev of story-3.4 (2026-07-06)"), 2026-07-08
@@ -486,6 +156,7 @@ source_spec: `_bmad-output/implementation-artifacts/spec-3-10-added-edit-play-ro
 location: n/a
 reason: summary: When Epic 9 adds match-seed plumbing / non-default replay seeds, the in-place reset must reseed the RNG to the live match seed, not the hardcoded DEFAULT_RNG_SEED. evidence: EntityWorld.Clear reseeds to DEFAULT_RNG_SEED, which is correct today because no path reseeds the world to a non-default seed (the live replay/online transitions are now gated OUT of the reset entirely). The MP-seed handshake (Epic 9) will introduce a live match seed; the reset (offline-only today) must then capture and restore it, or a seeded reset would diverge from the seeded stream.
 status: open
+decision: 2026-07-28 correct-course — bundle match-seed-plumbing with DW-225 (Epic 15, Story 15.5); do not close independently
 
 ### DW-18: An in-place reset collapses every store's live/high-water count to 0 then repopulates within one frame; a presentation bridge that caches an instance count (rather than reading HighWaterMark each frame) could leave ghost MultiMesh instances after an Edit↔Play round-trip.
 origin: migrated from legacy ledger ("Deferred from: dev of story-3.4 (2026-07-06)"), 2026-07-08
@@ -567,6 +238,7 @@ status: open
 decision: 2026-07-25 Repurpose it — Give it runtime meaning again — a per-hero XP-gain multiplier or bounty override layered on victim XpBounty
 decision: 2026-07-25 Repurpose it — Give it runtime meaning again — a per-hero XP-gain multiplier or bounty override layered on victim XpBounty
 decision: 2026-07-08 Repurpose it — Give xp_per_kill runtime meaning again — e.g. a per-hero XP-gain multiplier or a per-hero bounty override layered onto the victim's XpBounty — so the authoring knob is no longer misleading.
+decision: 2026-07-28 correct-course — bundle hero-xp-per-kill-repurpose (Epic 15, Story 15.9)
 
 ### DW-27: The end-of-match harvest of live `HeroStore.Level`/`Xp` into the deployed `PlayerProfile` (`MainScene.ResetToAuthoredStart` capture) and the picker Save/Overwrite rewire (`HeroPickerOverlay.ResolveHeroProgress`) have NO automated coverage — a wrong-way change (e.g. dropping the harvested value and re-persisting the level-1/0 placeholder) would silently regress AC3 with the whole suite green.
 origin: migrated from legacy ledger ("Deferred from: code review of story-3.13 (2026-07-08)"), 2026-07-08
@@ -582,6 +254,7 @@ source_spec: `_bmad-output/implementation-artifacts/spec-3-13-heroxpsystem-kill-
 location: n/a
 reason: summary: A pathological large `Base*` stat combined with (validator-capped) per-level growth can still overflow an `Effective*` stat — the pre-existing unsaturated `ModifierSystem.AccumulateBonus` (`Fixed +=`, no clamp) effective-stat accumulation class, not unique to hero growth. Story 3.13 capped the growth CONTRIBUTION (`*_per_level < 256`, ≤99 stacks) so realistic authoring is safe; the residual requires an already-extreme base. evidence: `ModifierSystem.RecomputeEntity` sums `Base + Σ modifier deltas` with a zero-floor but no ceiling; any large modifier stack (hero growth, or authored buffs) can exceed the 16.16 Fixed range. A general saturation clamp on the effective-stat recompute (or a Base+modifier authoring bound) would close the whole class deterministically. Flagged by the Edge Case review layer (finding #4 residual).
 status: open
+seen-again: 2026-07-28 (correct-course verification — overflow half of legacy story-2.2a review item 2)
 
 ## Deferred from: follow-up code review of story-3.13 (2026-07-08)
 
@@ -625,7 +298,8 @@ origin: migrated from legacy ledger ("Deferred from: follow-up code review of st
 source_spec: `_bmad-output/implementation-artifacts/spec-3-14-hero-death-revival.md`
 location: n/a
 reason: summary: `CommandCardSystem.RefreshReviveButtons` filters awaiting heroes by `Alive`+`AwaitingRevival`+`OwnerFaction` but NOT by `SourceDef != null`, so a hypothetical live hero minted without a `SourceDef` would render a priced, affordable revive button that silently no-ops — `BuildingSystem.ReviveHeroCommand` rejects the order at its `SourceDef == null` guard (returning false, no spend) but pushes no `OrderDenied` cue, leaving a dead button and a hero stuck awaiting forever. evidence: Sim-side guards already prevent any resource loss (`ReviveHeroCommand` returns false with no debit when `SourceDef == null`, and `RespawnHero` re-checks it), and every PRODUCTION mint path now threads a def (`HeroProfileLoader`/`ScenarioApplier` → widened `HeroStore.Mint`), so this is only reachable if a future mint path (e.g. a persistence-restore rail) creates a live-ticked hero with a null `SourceDef`. Presentation-only and headless-unverifiable in this environment (`CommandCardSystem` is a Godot `Node`). Cheap closures if it ever becomes reachable: filter `SourceDef != null` in `RefreshReviveButtons`, and/or have `HandleHeroDeath` treat a null-`SourceDef` hero as off-field (not awaiting). Flagged by the Blind Hunter review layer (follow-up finding #2).
-status: open
+status: done 2026-07-28
+resolution: closed as accepted (correct-course 2026-07-28) — Unreachable today: every production mint path threads a SourceDef and the sim guards (ReviveHeroCommand/RespawnHero null-SourceDef checks) prevent resource loss, so no live hero with a null SourceDef can render a revive button. A cheap defensive filter can be added only if a future null-SourceDef mint path (e.g. a persistence-restore rail) is introduced.
 
 ## Deferred from: code review of story-3.15 (2026-07-08)
 
@@ -650,6 +324,7 @@ source_spec: `_bmad-output/implementation-artifacts/spec-3-15-item-inventory-sim
 location: n/a
 reason: summary: A charged consumable's effect graph executes at order-apply time (inside `OrderApplier.Apply` → `ItemSystem.UseItemCommand`), not at the index-9 `ItemSystem.Tick` position, so a future RNG-drawing consumable would draw from the shared `world.Rng` at a different interleave point than the documented system order. evidence: The only shipped consumable is a deterministic self-heal (no RNG), and the spec's Block-If forbids a random effect leaf until the reserved `SimRng` random-selection enforcement lands, so this is latent today. When a random consumable ships it should adopt the `AbilityCastSystem` deferred-intent pattern (execute in the system tick, not at dispatch) for online/replay RNG parity (Epic 9). Flagged by the Edge Case + Verification-Gap review layers.
 status: open
+decision: 2026-07-28 correct-course — keep open, latent; trigger = a RNG-drawing consumable shipping
 
 ### DW-37: `ScenarioApplier` creates placed items in `ScenarioData.Items` array order (packed refs 0,1,2… follow array order) while `StartStateHash` canonicalizes item order (sorts by item_id/X/Z) before folding, so two scenarios with the same item set in different array order hash identically yet assign different runtime refs — a `PickupItem`/inventory ref could resolve to a different physical item per peer.
 origin: migrated from legacy ledger ("Deferred from: code review of story-3.15 (2026-07-08)"), 2026-07-08
@@ -714,6 +389,7 @@ source_spec: `_bmad-output/implementation-artifacts/spec-3-15-item-inventory-sim
 location: n/a
 reason: summary: `ItemSystem.OnEntityDestroyed` early-returns (dropping nothing) if `_heroes.TryResolveRef(HeroIndex[entityId], …)` fails, so a PERMANENT (non-revivable) hero removal that tears down the `HeroStore` row BEFORE the `EntityWorld` entity would orphan the carried items (left `Held = true` with a dead `CarrierHeroSlot`, unreachable — a later `PickupItem` sees `Held` and voids). evidence: The death-drop's correctness silently depends on an un-asserted teardown order (entity destroyed while the hero row is still Alive). Every current path keeps the row for revival (the tests only exercise `world.Destroy(e)` / lethal `DamageResolver` with the row alive), so this is latent — not reachable until a permanent hero-removal path exists. Closure: when permanent hero removal lands, assert/guarantee the entity `Destroy` (and its `OnDestroy` drop) precedes the `HeroStore.Destroy(slot)`, or drop items keyed off the entity independently of the row resolve. Flagged by the Blind Hunter review layer (F4).
 status: open
+decision: 2026-07-28 correct-course — keep open, latent; trigger = a permanent (non-revivable) hero-removal path
 
 ### DW-44: In `SelectionSystem`, a right-click within `PICK_RADIUS` of a ground item issues `PickupItem` to only the first hero in a mixed selection and `return`s, so the other N selected units receive no move order at all (and it takes priority over an attack-move onto a nearby enemy) — "my army randomly stops moving near an item."
 origin: migrated from legacy ledger ("Deferred from: follow-up review of story-3.15 (2026-07-08)"), 2026-07-08
@@ -766,6 +442,7 @@ source_spec: `_bmad-output/implementation-artifacts/spec-3-16-item-authoring-sho
 location: n/a
 reason: summary: The shop Buy button (`CommandCardSystem.RefreshShopButtons`) is enabled on affordability + "an owned hero is in range" only; it never consults the resolved buyer's free-slot state, and `FindNearestOwnedHero` always targets the single NEAREST owned hero. If the nearest in-range hero has a full inventory but a farther in-range owned hero has room, the Buy button lights and priced, yet `BuyItemCommand`'s free-slot guard rejects (OrderDenied) — an affordable, in-range Buy that silently does nothing. evidence: The sim is correct (deterministic reject, zero resource loss); this is a presentation buyer-selection defect with a narrow trigger (2+ owned heroes at one shop, nearest full). Low consequence, no state corruption. The good fix (prefer the nearest in-range owned hero WITH a free slot) is UI logic that needs a live `/godot-verify` session to implement and confirm safely — out of scope for this headless unattended pass. Closure: fold into the story's prescribed `/godot-verify` HUD pass. Flagged by the Blind Hunter (#1) and Edge Case (#3) review layers.
 status: open
+decision: 2026-07-28 correct-course — keep open, blocked; filed to Story 10.9 (Epic 10 live-verify batch, A5-E9)
 
 ### DW-50: Icon TEXTURES are not rendered anywhere — the in-match 6-slot inventory grid, the shop Buy buttons, and the hero-picker slot card all identify items by name + `x{charges}` text + tooltip only. `CommandCardSystem` sets `Button.Text` and contains no `Texture`/`TextureRect`/`Button.Icon`, despite `ItemDefinition.Icon` being authored and validated (missing-file reject). AC4 reads "a 6-slot inventory grid shows carried items with icons".
 origin: migrated from legacy ledger ("Deferred from: follow-up review of story-3.16 (2026-07-08)"), 2026-07-08
@@ -773,6 +450,7 @@ source_spec: `_bmad-output/implementation-artifacts/spec-3-16-item-authoring-sho
 location: n/a
 reason: summary: Icon TEXTURES are not rendered anywhere — the in-match 6-slot inventory grid, the shop Buy buttons, and the hero-picker slot card all identify items by name + `x{charges}` text + tooltip only. `CommandCardSystem` sets `Button.Text` and contains no `Texture`/`TextureRect`/`Button.Icon`, despite `ItemDefinition.Icon` being authored and validated (missing-file reject). AC4 reads "a 6-slot inventory grid shows carried items with icons". evidence: The raw-Godot HUD matches the host file's established train/revive/worker/ability button pattern (all text buttons — the "reuse established patterns" constraint), so items are fully identifiable, but the explicit "with icons" acceptance surface is met as text, not graphics. Presentation-only; needs a live `/godot-verify` session to add texture loading (`ItemDefinition.Icon` res:// path → `Button.Icon`) across the three surfaces and confirm it renders — out of scope for this headless pass. Closure: fold icon rendering into the story's prescribed `/godot-verify` HUD/editor pass. Flagged by the Intent-Alignment review layer.
 status: open
+decision: 2026-07-28 correct-course — keep open, blocked; filed to Story 10.9 (Epic 10 live-verify batch, A5-E9)
 
 ## Deferred from: code review of story-3.17 (2026-07-08)
 
@@ -793,6 +471,7 @@ reason: summary: Deleting a hero-linked unit in the editor orphans its `HeroStor
 status: open
 decision: 2026-07-27 Free the HeroStore row on editor delete — In the editor delete path, free the HeroStore row and clear its EntityId back-reference (pairs with DW-51 'restore as plain unit').
 decision: 2026-07-08 Free the row on delete — In the editor delete path, free the HeroStore row and clear its EntityId back-reference (assumes DW-51 resolves to 'restore as plain unit'). Pairs with DW-51 option 2.
+decision: 2026-07-28 correct-course — bundle hero-row-free-on-editor-delete (Epic 15, Story 15.8)
 
 ### DW-53: Editor delete→undo restores a unit at full HP and full Energy — `SnapshotUnit` captures `BaseMaxHealth` (fed to `Create`, which sets `Health = MaxHealth`) and no current `Health`, and the def path re-derives `Energy = MaxEnergy`, so a damaged / energy-spent unit round-trips to full.
 origin: migrated from legacy ledger ("Deferred from: code review of story-3.17 (2026-07-08)"), 2026-07-08
@@ -809,6 +488,7 @@ source_spec: `_bmad-output/implementation-artifacts/spec-3-17-editor-undo-restor
 location: n/a
 reason: summary: `UnitSnapshot` pins the source `UnitDefinition` by reference for the entire undo-history lifetime and `RestoreUnit` re-applies it assuming its `AbilityIndices` are still resolved; nothing guarantees the def object stays alive/unmutated/resolved across a long editor session (e.g. an in-place reload/replace of the def). evidence: Theoretical today (defs are long-lived, resolved once at scenario link, and not mutated in place), but if a future editor feature reloads or edits a def in place, an undo could re-derive from a changed/unresolved def or silently drop abilities. Low likelihood; no current trigger. Flagged by the Blind Hunter review layer.
 status: open
+decision: 2026-07-28 correct-course — keep open, latent; trigger = an editor feature that reloads/edits a UnitDefinition in place
 
 ## Deferred from: code review of story-4.1 (2026-07-08)
 
@@ -839,13 +519,15 @@ location: n/a
 reason: summary: `BuildingType.Custom` — the enum sentinel this story's `TechTreeChecker` generalization was explicitly built to support as a prerequisite TARGET — still can't be resolved as a prerequisite SOURCE through `BuildingSystem.GetBuildingPlacePrereq`/`EntityPlacer.PlaceBuilding`'s prereq-lookup, because both resolve the building def via `TechTreeChecker.BuildingTypeId(BuildingType.Custom)` which returns `""`, and `GetBuilding("")` never matches a real building. evidence: Pre-existing since Story 4.1 introduced `BuildingType.Custom` (this exact `BuildingTypeId(type) → GetBuilding(id)` chain in both call sites predates this story; 4.2 only added the trailing display-name-resolution wrapper around it) — consistent with 4.1's own Design Notes, which already documented that `Custom` has no end-to-end placement route through `BuildingSystem`/the editor and deferred that to Stories 4.5/4.6. Closure: naturally resolved once 4.5/4.6 give a `Custom` building a real placement path that threads its authored id through instead of the enum-keyed lookup. Flagged by the Edge Case Hunter and Verification-Gap review layers.
 status: open
 seen-again: 2026-07-15 (epic-6 retro audit — story 6-8 shipped the placement-path threading and closed DW-68, but did NOT touch the prereq-SOURCE lookup this entry names: `TechTreeChecker.BuildingTypeId(BuildingType.Custom)` still returns "" in `GetBuildingPlacePrereq`. Still open.)
+decision: 2026-07-28 correct-course — keep open, latent; trigger = a Custom-building command-card/placement path enumerating authored ids
 
 ### DW-58: `TechTreeValidator.Validate` returns bare `string` error messages, unlike `BuildingDefinitionValidator`'s `(FieldPath, Message)` tuples — discarding any field-path structure a future consumer (e.g. an inline editor rejection) could key off to highlight the specific offending prerequisite edge.
 origin: migrated from legacy ledger ("Deferred from: code review of story-4.2 (2026-07-08)"), 2026-07-08
 source_spec: `_bmad-output/implementation-artifacts/spec-4-2-data-driven-tech-prerequisite-resolution-with-import-time-cycle-referential-lint.md`
 location: n/a
 reason: summary: `TechTreeValidator.Validate` returns bare `string` error messages, unlike `BuildingDefinitionValidator`'s `(FieldPath, Message)` tuples — discarding any field-path structure a future consumer (e.g. an inline editor rejection) could key off to highlight the specific offending prerequisite edge. evidence: Not a gap for this story's own consumer (`FactionDefinition.LoadFromFile` only ever wanted the message text, same as how it already discards `BuildingDefinitionValidator`'s field paths today), but Story 4.6's own acceptance criteria explicitly says its in-editor edge-drop rejection must be "consistent with the 4.2 import lint" — implying 4.6 will want to reuse this validator's cycle/referential logic for real-time UI feedback, where a structured field path would matter. Closure: revisit when Story 4.6 is implemented — retrofit `TechTreeValidator` to return located `(FieldPath, Message)` tuples if 4.6 needs them. Flagged by the Blind Hunter review layer.
-status: open
+status: done 2026-07-28
+resolution: closed as accepted (correct-course 2026-07-28) — The named revisit trigger (Story 4.6) landed and did NOT need (FieldPath,Message) tuples — the in-editor edge-drop rejection reuses ValidateProposedEdge returning a single string, and the only import-lint consumer wants message text. The anticipated consumer was satisfied without the retrofit; moot.
 
 ### DW-59: `TechTreeValidator.Visit`'s cycle detection is a plain recursive DFS (one C# stack frame per graph depth); an extremely long (thousands-deep) prerequisite chain could in principle overflow the call stack during faction load.
 origin: migrated from legacy ledger ("Deferred from: code review of story-4.2 (2026-07-08)"), 2026-07-08
@@ -869,7 +551,8 @@ origin: migrated from legacy ledger ("Deferred from: code review of story-4.3 (2
 source_spec: `_bmad-output/implementation-artifacts/spec-4-3-n-resource-registry-with-sparse-cost-maps-generalize-ore-crystal.md`
 location: n/a
 reason: summary: `BuildingDefinition.ConstructionCost` (`=> ResolvedCost`) still has zero real callers anywhere in the codebase. evidence: Pre-existing since Story 4.1 introduced the property as a computed placeholder — this story only replaced its body (the old inline `{"ore":CostOre,"crystal":CostCrystal}` derivation) with a delegation to the new `UnitDefinition.ResolvedCost`, it did not add or remove any consumer. `BuildingSystem`/`CommandCardSystem` all call `ResolvedCost`/`GetBuildingCost` directly, never `ConstructionCost`. Closure: remove `ConstructionCost` (or give it a real caller) once a consumer is actually needed, or once Story 4.5/4.6's building editor confirms whether it wants this exact name. Flagged by the Blind Hunter and Verification-Gap review layers.
-status: open
+status: done 2026-07-28
+resolution: closed as accepted (correct-course 2026-07-28) — Human decided 2026-07-19 'Keep for API stability / a future external tool'; ConstructionCost still has zero production callers, consistent with the decision. Settled.
 decision: 2026-07-19 Keep for API stability / a future external tool
 
 ### DW-62: `FactionDefinition.LoadFromFile` has no `try`/`catch` around `JsonSerializer.Deserialize` — a malformed JSON value for ANY field (e.g. `"cost": {"ore": null}` against the new non-nullable `Dictionary<string,int>` value type) throws a raw, unhandled `JsonException` instead of a located, aggregated error, unlike every field this story's own `ResourceCostValidator`/`TechTreeValidator`/`BuildingDefinitionValidator` gate reject with.
@@ -878,6 +561,7 @@ source_spec: `_bmad-output/implementation-artifacts/spec-4-3-n-resource-registry
 location: n/a
 reason: summary: `FactionDefinition.LoadFromFile` has no `try`/`catch` around `JsonSerializer.Deserialize` — a malformed JSON value for ANY field (e.g. `"cost": {"ore": null}` against the new non-nullable `Dictionary<string,int>` value type) throws a raw, unhandled `JsonException` instead of a located, aggregated error, unlike every field this story's own `ResourceCostValidator`/`TechTreeValidator`/`BuildingDefinitionValidator` gate reject with. evidence: Pre-existing for the entire loader — no field of any type (float, int, string, existing arrays) has ever been exception-shielded here; a malformed `cost_ore: "abc"` would throw identically today, pre-dating this story. The new `cost` map is simply the first `Dictionary`-typed authored field, so it's the first place this pre-existing gap becomes reachable through a nested/typed value rather than a top-level scalar. Closure: wrap the `Deserialize` call in a `try`/`catch (JsonException)` that folds a located parse failure into the same aggregate `errors` path, if/when malformed-JSON robustness (vs. malformed-but-well-typed content) becomes a real authoring concern. Flagged by the Edge Case Hunter review layer.
 status: open
+decision: 2026-07-28 correct-course — bundle faction-load-error-handling extended to faction-load-fail-closed (+DW-317 card-panel call sites; Epic 15, Story 15.6)
 
 ## Deferred from: code review of story-4.4 (2026-07-08)
 
@@ -900,6 +584,7 @@ source_spec: `_bmad-output/implementation-artifacts/spec-4-5-in-app-building-def
 location: godot/src/CreationSuite/BuildingCardPanel.cs, godot/src/CreationSuite/UnitCardPanel.cs
 reason: summary: reloading a faction file via `LoadFactionFromPath` doesn't clear stale undo history from the previously loaded faction. evidence: Same object-identity class of issue as DW-64, and equally pre-existing/mirrored from `UnitCardPanel.cs`. Only reachable via the manual verify/reload path, not normal play — low real-world frequency. Closure: clear `_history` in `LoadFactionFromPath` for both editors, alongside DW-64's fix. Flagged by the Blind Hunter review layer.
 status: open
+decision: 2026-07-28 correct-course — co-locate with faction-load-fail-closed (same method as the DW-317 call site)
 
 ### DW-66: `BuildingCardPanel`'s `_originalId` field (and the identical pre-existing `UnitCardPanel._originalId`) is captured at Bind time with a comment claiming it survives an id rename for persistence, but neither editor's actual Save path (`SyncFactionBuildings`/`SyncFactionUnits`) ever reads it — both match on-disk objects by the definition's CURRENT (post-edit) id, so renaming an id and saving via the simple form treats the on-disk record as orphaned and recreates a fresh JSON object at the new id, silently dropping any truly-unmodeled/custom JSON key that lived on the old-id object outside the `UnitDefinition`/`BuildingDefinition` schema.
 source_spec: `_bmad-output/implementation-artifacts/spec-4-5-in-app-building-definition-editor-unit-card-pattern-right-dock-inspector.md`
@@ -913,7 +598,8 @@ decision: 2026-07-16 Remove the claim — Delete the misleading doc comment and 
 source_spec: `_bmad-output/implementation-artifacts/spec-4-5-in-app-building-definition-editor-unit-card-pattern-right-dock-inspector.md`
 location: godot/src/Core/Definitions/FactionWriter.cs
 reason: summary: the single-edit `PatchFactionBuildingJson`/`BuildingEdit` writer surface has no current production caller, only test coverage. evidence: Deliberate, spec-directed parity with the identical pre-existing pattern — `UnitEdit`/`UnitEditKind`/`PatchFactionJson` have had the exact same "test-only, no panel caller" characteristic since Story 3.4, and this story's spec explicitly directed mirroring that surface for architectural consistency (a future single-edit consumer — e.g. an external tool, or a lighter-weight targeted-patch API — was the presumed rationale for the unit-side original, never realized). Not a functional defect; a maintainability/dead-code question. Closure: either find/document an intended future caller, or fold `PatchFactionJson`/`PatchFactionBuildingJson` down to test-only internal helpers if no production consumer ever materializes. Flagged by the Blind Hunter review layer.
-status: open
+status: done 2026-07-28
+resolution: closed as accepted (correct-course 2026-07-28) — Human decided 2026-07-19 'Keep the public single-edit API for architectural parity'; FactionWriter.PatchFactionBuildingJson/BuildingEdit remain test-only with panels calling SyncFactionBuildings — exactly the accepted parity state. Settled.
 decision: 2026-07-19 Keep the public single-edit API for architectural parity
 
 ### DW-68: A creator-authored brand-new building (a novel id with no `BuildingType` enum member) still cannot be selected or placed in a live match through any existing runtime path — `BuildingSystem.PlaceBuildingDirect`/`QueueWorkerBuild` resolve a definition via `TechTreeChecker.BuildingTypeId(type)` (no case for `Custom`, returns `""`), and `ScenarioApplier.ParseBuildingType` independently falls back an unrecognized type string to `BuildingType.CommandCenter` — both entry points are still closed-enum-keyed, so the definition this story lets a creator author and save is inert for actual gameplay until a future story threads an authored id through either path.
@@ -933,7 +619,8 @@ status: open
 source_spec: `_bmad-output/implementation-artifacts/spec-4-5-in-app-building-definition-editor-unit-card-pattern-right-dock-inspector.md`
 location: godot/src/CreationSuite/BuildingCardPanel.Edit.cs
 reason: summary: a raw-JSON-authored building with an invalid inherited unit-only field (e.g. `is_hero:true` with no `hero` block) has no badge home, leaving Save blocked with an unlocatable error. evidence: Mirrors the identical, already-accepted `ShowBadge` fallback comment in `UnitCardPanel.Edit.cs` ("no field control home for this key (should not happen)") — an inherited, low-priority gap class, not novel to this story. Very low real-world reachability for buildings specifically: no shipped building authors any hero/shop field, and the raw-JSON hatch is the only path that could introduce one. Closure: either give the Advanced tab a generic "other validation errors" list surfacing any unbadged (FieldPath, Message) pair by name, or accept the gap as-is (matches existing unit-editor precedent). Flagged by the Edge Case Hunter review layer.
-status: open
+status: done 2026-07-28
+resolution: closed as accepted (correct-course 2026-07-28) — Human decided 2026-07-19 'Accept the gap (matches existing unit-editor precedent)'; the unbadged inherited unit-only validation-key class is a low-reachability gap reachable only via the raw-JSON hatch, and the decision was to accept it. Settled.
 decision: 2026-07-19 Accept the gap (matches existing unit-editor precedent)
 
 ### DW-71: `BuildingCardPanel.Edit.cs`'s `AddRequiredNumFloat`/`AddRequiredNumInt` composites (new for this story — buildings are the first `UnitDefinition`-family content type with nullable-until-authored required fields) silently commit the field at its currently-displayed value (0) the moment focus leaves the control, even if the creator only clicked in and back out without an intentional edit.
@@ -955,7 +642,8 @@ status: open
 source_spec: `_bmad-output/implementation-artifacts/spec-4-6-visual-tech-tree-editor-tier-laned-graph-drag-out-port-to-wire-prerequisites.md`
 location: godot/src/CreationSuite/TechTreePanel.cs
 reason: summary: the AC's interactive/persistence/reload-round-trip behaviors are only verified manually, never by an automated regression test. evidence: consistent with the pre-existing lack of automated interaction tests across every CreationSuite editor (`BuildingCardPanel`, `UnitCardPanel`, `TriggerEditorPanel`, etc. — none have automated GraphEdit/Control-drag tests; the project's two-tier testing model only requires sim-layer logic to be Godot-free-testable). This story's own manual `/godot-verify` pass exercised all 8 I/O-matrix scenarios end-to-end (including the persistence round-trip and reload), so functional correctness at ship time is verified, but nothing guards against a future regression in the GraphEdit wiring itself. Closure: if/when this codebase adopts an automated harness for driving Godot Control/GraphEdit interaction (none exists today for any editor), extend it to `TechTreePanel`'s connect/disconnect/select/persist/reload paths. Flagged by the Blind Hunter and Intent Alignment Auditor review layers.
-status: open
+status: done 2026-07-28
+resolution: closed as accepted (correct-course 2026-07-28) — A Godot Control/GraphEdit interaction test the project's two-tier testing model deliberately excludes (only sim-layer logic must be Godot-free-testable); no automated harness for driving Godot Control interaction exists for any CreationSuite editor, so it is not actionable without first building one (no named story does).
 
 ### DW-74: `TechTreePanel` subscribes to `GameState.ModeChanged` in `Initialize` with no corresponding unsubscribe (no `_ExitTree` override), risking a dangling event handler if the panel is ever freed independently of `GameState`.
 source_spec: `_bmad-output/implementation-artifacts/spec-4-6-visual-tech-tree-editor-tier-laned-graph-drag-out-port-to-wire-prerequisites.md`
@@ -991,12 +679,14 @@ location: godot/src/Core/SimChecksum.cs, godot/src/Core/EntityWorld.cs
 reason: summary: per-worker gather state (GatherState/CarryAmount/GatherTarget) is not folded into SimChecksum. evidence: pre-existing since `GatheringSystem`'s worker state machine was first built (well before Story 4.7) — this story's fold work was scoped to `ResourceNodeStore` (the net-new mutable node-side state), not the pre-existing worker-side fields, which were never in this story's Code Map. Surfaced incidentally while reviewing this story's checksum-coverage additions. Closure: fold `GatherState`/`CarryAmount`/`GatherTarget` into `SimChecksum`'s per-entity loop in a future desync-hardening pass. Flagged by the Blind Hunter review layer.
 status: open
 decision: 2026-07-27 Fold gather state into SimChecksum — Add GatherState/CarryAmount/GatherTarget/CarryResourceType to SimChecksum's per-entity loop and re-record the affected goldens on Windows, tightening the desync tripwire to catch a gather-only divergence the tick it happens.
+decision: 2026-07-28 correct-course — bundle gather-state-checksum-fold (Epic 15, Story 15.4); golden re-record on Windows
 
 ### DW-79: `GatheringSystem.FindBestNode`'s `requires_structure` gate check (`StructureGateOpen` → `FactionHasStructureNear`) performs a full `BuildingStore` scan per candidate node per Idle worker per tick — an O(nodes × buildings) cost whenever any node is gated, versus the pre-4.7 O(nodes) scan.
 source_spec: `_bmad-output/implementation-artifacts/spec-4-7-per-resource-collection-models-income-streaming-requires-structure-crystal-production.md`
 location: godot/src/Economy/GatheringSystem.cs
 reason: summary: the new requires_structure gate check adds an O(buildings) inner scan to FindBestNode's per-node loop. evidence: bounded by `ResourceNodeStore.MAX_NODES` (64) and `BuildingStore.MAX_BUILDINGS` (64) today — worst case ~4096 ops per Idle worker per tick, negligible at this project's target scale (500-2000 entities @ 30 ticks/sec per root CLAUDE.md), and only Idle workers (not every entity) trigger it. Same "theoretical at current scale" class as the already-accepted DW-59 (TechTreeValidator's recursive DFS). Closure: revisit with a spatial index (mirrors any future SpatialHash-based query) if content scale or node/building counts ever grow enough for this to matter. Flagged by the Blind Hunter review layer.
-status: open
+status: done 2026-07-28
+resolution: closed as accepted (correct-course 2026-07-28) — Perf observation the entry itself classes as an accepted 'theoretical at current scale' deferral (bounded MAX_NODES×MAX_BUILDINGS, only Idle workers trigger it). No incident; revisit only if a spatial index is introduced or content scale grows.
 
 ### DW-80: A Streaming worker whose `requires_structure` gate closes permanently (the gating structure destroyed and never rebuilt) stays parked in `GatherState.Gathering` indefinitely, producing zero credit, rather than ever being freed to seek a different eligible node.
 source_spec: `_bmad-output/implementation-artifacts/spec-4-7-per-resource-collection-models-income-streaming-requires-structure-crystal-production.md`
@@ -1020,6 +710,7 @@ source_spec: `_bmad-output/implementation-artifacts/spec-4-8-researchdefinition-
 location: godot/ProjectChimera.Sim.Tests/Definitions/FactionWriteRoundTripTests.cs
 reason: summary: `Prerequisites`'s own round-trip behavior is unproven by any test, so the parity claim for the new `AvailableResearch` field rests only on "reads the same `PutStringArray` call," not a shared assertion that would catch the two diverging later. evidence: `grep -rl Prerequisites` across `ProjectChimera.Sim.Tests/Definitions` finds only tech-tree/layout/this-story's-new-file tests, no `Prerequisites`-specific round-trip test. Pre-existing gap (predates this story) surfaced incidentally by review. Closure: add a `Prerequisites` round-trip test alongside the existing `AvailableResearch` ones so both fields share one proven contract. Flagged by the Blind Hunter review layer.
 status: open
+decision: 2026-07-28 correct-course — bundle content-package-import-roundtrip merged into map-package-import-one-path (DW-235; Epic 15, Story 15.6)
 
 ### DW-83: `ModifierStore.Apply` silently drops a new modifier install when an entity's fixed 8-slot ring (`EffectCaps.MaxModifiersPerEntity`) is already full — no event, no log — and Story 4.9's permanent research modifiers are now one more producer that can hit this ceiling alongside item stat modifiers, hero growth stacks, and ability self-passives.
 source_spec: `_bmad-output/implementation-artifacts/spec-4-9-researchsystem-order-path-start-complete-cancel-modifier-application.md`
@@ -1033,7 +724,8 @@ decision: 2026-07-16 Diagnostic on refusal — Emit a diagnostic event/log on a 
 source_spec: `_bmad-output/implementation-artifacts/spec-4-9-researchsystem-order-path-start-complete-cancel-modifier-application.md`
 location: godot/src/Core/Bootstrap/Phases/MatchLifecycleController.cs, godot/src/Multiplayer/LockstepManager.cs, godot/src/Multiplayer/ReplayPlayer.cs
 reason: summary: `grep -rl "MatchLifecycleController" | grep -i test` finds no test file at all — the `_ctx.Lockstep.Buildings = _ctx.BuildSys` / `_ctx.Lockstep.Items = _ctx.Host.ItemSys` lines (pre-existing, Stories 2.8/3.15) and the new `_ctx.Lockstep.Research = _ctx.Host.ResearchSys` / `_ctx.ReplayPlayer.Research = _ctx.Host.ResearchSys` lines this story added are all equally unverified. evidence: confirmed by both the Blind Hunter and Verification Gap review layers independently; the gap predates Story 4.9 (Buildings/Items were never covered either) and this story's addition merely extends an existing, unaddressed testing debt rather than introducing a new one. Closure: a test that constructs the real bootstrap chain (or a narrow seam around `MatchLifecycleController.OnMatchStart`/`TryLoadReplay`) and asserts `_ctx.Lockstep.Buildings/Items/Research` and `_ctx.ReplayPlayer.Buildings/Items/Research` all reference the SAME instances as `_ctx.Host`'s, closing this for every wired system at once rather than one at a time.
-status: open
+status: done 2026-07-28
+resolution: closed as accepted (correct-course 2026-07-28) — MatchLifecycleController is Godot-dependent (using Godot; ISetupPhase), so the Godot-free sim test project cannot reference it — the same two-tier-model exclusion as DW-73. The forwarding half of this risk is covered buildably by DW-86; testing the wiring would require extracting a Godot-free seam first.
 
 ### DW-85: Completing a research level with a positive `max_health_delta` burst-heals every currently-alive faction unit by the FULL cumulative max-health bonus on every completion (not the level's increment), because `ResearchSystem.ApplyCumulativeModifier` does `RemoveByModifierId` + `Apply` and `ModifierStore.ApplyStatDeltas` heals current Health on any positive-MaxHealth apply (the documented Decision #3).
 source_spec: `_bmad-output/implementation-artifacts/spec-4-9-researchsystem-order-path-start-complete-cancel-modifier-application.md`
@@ -1059,7 +751,8 @@ resolution: already resolved: ResearchStore.cs:24 FACTION_COUNT = FactionRegistr
 source_spec: `_bmad-output/implementation-artifacts/spec-4-10-researchstore-simchecksum-fold-golden-rebaseline.md`
 location: godot/src/Economy/ResearchSystem.cs (`CompleteResearch`'s entity loop)
 reason: summary: the code comment justifies the ascending-id full-world scan by citing `SupplySystem.Tick`'s identical loop shape as precedent, but `SupplySystem` runs that scan every tick by design, while research completion is comparatively rare — the precedent undersells the cost difference and the loop is pre-existing (Story 4.9), unchanged by this story's checksum fold. evidence: read directly by the Blind Hunter review layer during this story's review; not a correctness defect (deterministic, ascending-id, no desync risk) — a performance characterization/comment-accuracy observation only, and out of this story's scope (which touches only the checksum fold, not `ResearchSystem`'s completion logic). Closure: if profiling ever shows this loop as hot (unlikely at today's `MAX_BUILDINGS`/unit-count scale), consider maintaining a per-faction alive-unit index instead of a full-world scan; at minimum, correct the comment's precedent framing.
-status: open
+status: done 2026-07-28
+resolution: closed as accepted (correct-course 2026-07-28) — A performance-characterization / comment-accuracy observation, not a correctness defect (deterministic, ascending-id, no desync); negligible at current MAX scale and an accepted 'revisit only if profiling shows it hot' deferral like DW-79. Only optional residue is a one-line comment reframing.
 
 ### DW-89: No uniqueness check prevents a research id from colliding with an existing building id (or vice versa) before both are added as same-`GraphEdit` `GraphNode`s — Godot's `AddChild` auto-renames the second node on a `Name` collision, silently breaking `TechTreePanel`'s by-name edge/selection resolution (`ConnectNode`, `OnConnectionRequest`, `OnNodeSelected`) for whichever entry lost the name.
 source_spec: `_bmad-output/implementation-artifacts/spec-4-11-research-authoring-command-card-buttons-upgrade-display.md`
@@ -1078,6 +771,7 @@ status: open
 decision: 2026-07-27 One active producer category per building — Add a 'produces' category to BuildingDefinition and gate all producer grids on the single declared category so only one grid renders.
 decision: 2026-07-20 One producer-category gate — Have a building declare one active 'produces' category and gate the grids on it.
 decision: 2026-07-16 One producer-category gate — Have a building declare one active 'produces' category and gate the grids on it.
+decision: 2026-07-28 correct-course — joins bundle command-card-producer-surfaces (Epic 15, Story 15.9)
 
 ### DW-91: The command card gates ALL research UI (including the faction-wide in-progress Cancel affordance) on the SELECTED building's own producer/offer status, but research is faction-wide — so (a) a building with `canProduce == true` never shows its authored `AvailableResearch` at all, and (b) once a research is in progress, selecting an owned building that offers no research hides the Cancel button, leaving no way to cancel that order from that card.
 source_spec: `_bmad-output/implementation-artifacts/spec-4-11-research-authoring-command-card-buttons-upgrade-display.md`
@@ -1230,14 +924,16 @@ source_spec: `_bmad-output/implementation-artifacts/spec-5-4-wire-the-two-signat
 location: `godot/ProjectChimera.Sim.Tests/Effects/SignatureMechanicRealContentTests.cs` (`SignatureMechanicScenario_TwoRuns_ByteIdenticalChecksums` calls `BuildCombinedScenarioHarness` — which calls `LoadRealContent`, hitting the filesystem via `AbilityRegistry.LoadFromDirectory` + two `FactionDefinition.LoadFromFile` calls — twice, once per run).
 reason: summary: this makes the determinism proof partially a proof that "the filesystem returns the same bytes twice in the same process," a weaker and slower claim than the in-memory two-run pattern most other golden scenarios use (e.g. `EqualExchangeScenario`/`GoldenScenario`, which build fixtures purely in code). Not a correctness bug — the test passed and ran in ~150ms — but a hermeticity/perf cost worth noting if this pattern is reused for larger scenarios. evidence: Blind Hunter, Story 5.4 review pass 1.
 closure: if this pattern is extended to larger/slower scenarios in a future story, consider loading real content once into shared static fixtures at class-load time rather than per-run, mirroring how `CanonicalScenarioTests` amortizes its own real-content loads. Not worth doing for this story's small, fast scenario alone.
-status: open
+status: done 2026-07-28
+resolution: closed as accepted (correct-course 2026-07-28) — Test-hermeticity/perf observation; the entry's own closure states it is 'not worth doing for this story's small, fast scenario alone' and is conditioned on a future extension to larger/slower scenarios that has not occurred.
 
 ### DW-110: `BuildCombinedScenarioHarness` issues cast intents inside the `build` callback rather than via `GoldenChecksumReplay.RunAndRecord`'s `perturb` hook
 source_spec: `_bmad-output/implementation-artifacts/spec-5-4-wire-the-two-signature-mechanics-via-d1-modifiers-fr-20-unique-mechanic.md`
 location: `godot/ProjectChimera.Sim.Tests/Effects/SignatureMechanicRealContentTests.cs` (`BuildCombinedScenarioHarness`'s `IssueSelfCast` calls, issued once per fresh `build()` invocation rather than through `RunAndRecord`'s per-iteration `perturb` parameter).
 reason: summary: this makes the "cast fires the same tick as the first `StepOnce`" invariant depend on `GoldenChecksumReplay.RunAndRecord`'s current calling convention (fresh `build()` per run, no re-issuance mid-run) rather than an explicit, harness-enforced contract — a future refactor of `RunAndRecord`'s semantics (e.g. rebuilding and reissuing per iteration) could silently break this test's assumption without a compiler error. Speculative; the harness's contract has not changed since it was introduced. evidence: Blind Hunter, Story 5.4 review pass 1.
 closure: no action needed unless `GoldenChecksumReplay.RunAndRecord`'s calling convention changes; if it does, audit every test using the `build`-callback-issues-intents pattern (not unique to this story) for the same assumption.
-status: open
+status: done 2026-07-28
+resolution: closed as accepted (correct-course 2026-07-28) — Speculative no-op note: only meaningful 'if GoldenChecksumReplay.RunAndRecord's calling convention changes' — it has not changed, so the entry remains an inert note.
 
 ### DW-111: `FactionValidator` checks duplicate `Units` ids but never duplicate `Buildings`/`Research` ids (pre-existing gap, pre-dates Story 5.5)
 source_spec: `_bmad-output/implementation-artifacts/spec-5-5-faction-definer-guided-wizard-flow-validator-gated-save-fr-17-ux-dr40.md`
@@ -1327,13 +1023,15 @@ location: `godot/src/Core/Definitions/FactionDefinition.cs` (`LoadSelectableFrom
 reason: summary: `LoadSelectableFromDirectory` returns raw, freshly-deserialized `FactionDefinition` objects straight from `JsonSerializer.Deserialize` + `FactionValidator.ValidateComplete` — it does neither ability-id resolution nor unit-tag validation, unlike every OTHER faction def actually used to spawn units in this codebase (`MainScene._Ready`'s `_factionDef`/`_factionDef2`, and `ScenarioLoadPhase.ResolveSlotFactionDefs`'s per-slot defs, both call `ResolveAbilities`/`ValidateAndDropUnits` before the def is considered spawn-ready). Today this is harmless — the discovered list is only ever console-printed, never assigned to a slot or spawned. But it is a latent trap for Story 11.1 (the future skirmish/lobby setup screen), which is the story epics.md itself says will consume this exact discovery list to let a human assign a faction to a player slot — if 11.1's author naively assigns a `LoadSelectableFromDirectory` result straight into `SlotFactionDefs` without separately resolving abilities/tags first, that slot's units would spawn with unresolved `AbilityIndices` and un-dropped unknown-tag units, silently diverging from every other faction-load path in the codebase. Surfaced by the Blind Hunter review layer during this story's own review pass.
 closure: when Story 11.1 (or whichever story first assigns a `LoadSelectableFromDirectory` result to a real match slot) wires this up, it must additionally call `ResolveAbilities`/`UnitTagValidator.ValidateAndDropUnits` on the chosen def before assignment — mirroring `MainScene._Ready`'s existing seeding order — or `LoadSelectableFromDirectory` itself should be extended to accept an `AbilityRegistry` and do this internally. Not done by Story 5.7 itself since the discovered list has no live consumer yet to get this order wrong against.
 status: open
+decision: 2026-07-28 correct-course — keep open, blocked; filed to Story 11.1 (skirmish setup screen)
 
 ### DW-122: Four near-identical "scan a directory, try/catch-deserialize each file, report skips via callback" loader methods now exist, with no shared helper
 source_spec: `_bmad-output/implementation-artifacts/spec-5-7-wizard-authored-factions-are-immediately-selectable-in-playtest-skirmish-fr-19-ux-dr80.md`
 location: `godot/src/Core/Definitions/AbilityRegistry.cs` (`LoadFromDirectory`), `BehaviorRegistry.LoadFromDirectory`, `ItemRegistry.LoadFromDirectory`, and now `FactionDefinition.LoadSelectableFromDirectory` — four independent, structurally near-identical directory-scan-and-validate loops (glob a directory, ordinal-sort filenames, try/catch-deserialize per file, report a skip via an `Action<string,...>` callback, collect the survivors).
 reason: summary: this story's `LoadSelectableFromDirectory` deliberately mirrors `AbilityRegistry.LoadFromDirectory`'s established pattern (named explicitly in this story's own spec Code Map) rather than inventing a new one — the right per-story call given three prior loaders already established the convention. But the convention itself has now been copy-pasted a fourth time with no shared extraction, the same "hand-duplicated in a THIRD independent place" class of issue this ledger already flags elsewhere (DW-98, for a different concern: the combat/economy category list). Surfaced by the Blind Hunter review layer during this story's own review pass; not a defect in THIS story's code (which correctly follows established precedent) so much as an observation that the precedent itself is due for a shared-helper extraction.
 closure: low priority, purely a DRY/maintainability concern with no behavioral impact — if a 5th such loader is ever added, extract a shared `LoadValidatedFromDirectory<T>(absDir, string pattern, Func<string, (bool ok, T value, string error)> tryParse, Action<string,string>? onExcluded)` helper (or similar) that all four (eventually five+) call sites delegate to, rather than continuing to hand-duplicate the loop.
-status: open
+status: done 2026-07-28
+resolution: closed as accepted (correct-course 2026-07-28) — Pure DRY/maintainability observation with no behavioral impact; the entry's own closure defers extracting the shared loader until a 5th such loader is added — that trigger has not occurred.
 
 ### DW-123: `ScenarioLoadPhase.ResolveSlotFactionDefs`'s `FactionDefinition.LoadFromFile(abs)` call still THROWS (uncaught) if a scenario-assigned faction file fails the lenient `Validate` check — pre-existing, not introduced by Story 5.7
 source_spec: `_bmad-output/implementation-artifacts/spec-5-7-wizard-authored-factions-are-immediately-selectable-in-playtest-skirmish-fr-19-ux-dr80.md`
@@ -1341,6 +1039,7 @@ location: `godot/src/Core/Bootstrap/Phases/ScenarioLoadPhase.cs` (`ResolveSlotFa
 reason: summary: if a scenario's `PlayerSlots[].FactionJson` names a file that was valid when the scenario was authored but is later hand-edited (or corrupted) to fail the lenient `FactionValidator.Validate` check (e.g. a genuinely malformed color array or duplicate unit id — NOT the roster-completeness axis this story's new `ValidateComplete` diagnostic covers), `LoadFromFile` throws uncaught, propagating out of `ResolveSlotFactionDefs` and aborting the entire scenario load / `MainScene._Ready` — a hard crash instead of a graceful "this slot's faction is broken" outcome. This is NOT new: `LoadFromFile`'s throwing behavior and this call site's lack of a guard both predate Story 5.7 (Story 5.2 authored `LoadFromFile`; `ResolveSlotFactionDefs`'s call to it predates this story's diff, which only added code AFTER this line). Surfaced incidentally by the Edge Case Hunter review layer while reviewing this story's diff, since the new `ValidateComplete` diagnostic sits immediately after this unguarded call.
 closure: wrap `ResolveSlotFactionDefs`'s `FactionDefinition.LoadFromFile(abs)` call in a try/catch (mirroring the graceful `ScenarioSerializer.LoadFromFile`-returns-null-on-parse-failure fallback pattern `LoadAndApplyScenario` already uses one level up), logging the located error and leaving that slot's `SlotFactionDefs` entry at its prior default rather than crashing the whole scene load. Low priority — requires a scenario file to be hand-edited to a genuinely malformed (not just incomplete) faction reference, which no current authoring surface produces.
 status: open
+decision: 2026-07-28 correct-course — bundle faction-load-error-handling extended to faction-load-fail-closed (+DW-317 card-panel call sites; Epic 15, Story 15.6)
 
 ### DW-124: `ai_preset` is validated data but not consumed by any runtime AI system — `AiOpponentSystem` always pilots via `AiDifficulty`, never `ai_preset`
 
@@ -1351,6 +1050,7 @@ closure: a future story must either (a) wire `AiOpponentSystem` to read `Faction
 status: open
 decision: 2026-07-25 Keep open until a faction-AI story — Defer the choice to whenever distinct AI presets are actually designed
 decision: 2026-07-25 Keep open until a faction-AI story — Defer the choice to whenever distinct AI presets are actually designed
+decision: 2026-07-28 correct-course — keep open, blocked; filed to Story 10.10 (faction-AI presets)
 
 ### DW-125: `AsymmetryPlaytestValidationTests`' harness constants (`InitialWaveSize = 5`, the AI/opposing base positions `(45,0,0)`/`(-45,0,0)`) hand-copy `AiOpponentSystem`'s internal attack-threshold and `P1_BASE` values rather than referencing them symbolically
 source_spec: `_bmad-output/implementation-artifacts/spec-5-8-playtest-validate-asymmetry-ai-playability-of-the-showcase-factions-fr-20-fr-18.md`
@@ -1382,7 +1082,8 @@ source_spec: `_bmad-output/implementation-artifacts/spec-5-9-added-your-first-sc
 location: `godot/src/CreationSuite/UnitCardPanel.cs` (`CuratedTemplateUnits` — hardcoded to `worker`/`infantry`/`archer`).
 reason: summary: the spec's own Boundaries/Never section explicitly scopes this to "a small fixed list of 2-3 existing unit ids, opened via one OnboardingPanel button through the existing Duplicate path" and explicitly excludes a curated-template gallery UI — so the fixed list itself is intentional, not a gap. UPDATE (review pass 1): the original silent-fallback concern (a missing curated id opening the editor with no explanation) is now PATCHED — `StartFromTemplate`/`MainScene.OpenUnitCardPanel` return whether the duplicate happened, and `OnboardingPanel` shows a distinct warning-colored note on the fallback path instead of staying silent. What remains open is narrower: today both shipped factions (alpha/beta) carry all three curated ids, so the fallback path is unreachable in practice.
 closure: low priority given today's unreachability — if/when a non-alpha/beta faction becomes a plausible boot default, consider widening `CuratedTemplateUnits` to something resolved dynamically (e.g. "first Worker-category unit found" + "first combat unit found") instead of a hardcoded id list.
-status: open
+status: done 2026-07-28
+resolution: closed as accepted (correct-course 2026-07-28) — The fixed 2-3 curated-id list is an explicit spec Boundaries/Never scope decision (no gallery UI), and the original silent-fallback concern is already patched with a distinct warning note; the only residual reachability is tracked separately by DW-135. Nothing to build here on its own.
 
 ### DW-129: `OnboardingPanel`'s `CanvasLayer` (Layer = 14) collides with `AbilityEditorPanel`'s (also Layer = 14)
 source_spec: `_bmad-output/implementation-artifacts/spec-5-9-added-your-first-scenario-guided-onboarding-15-min-playable.md`
@@ -1411,7 +1112,8 @@ source_spec: `_bmad-output/implementation-artifacts/spec-5-9-added-your-first-sc
 location: `godot/src/UI/OnboardingPanel.cs` (431 lines, no dedicated test file); only `godot/ProjectChimera.Sim.Tests/Bootstrap/PhaseOrderTest.cs` (bootstrap ordering) and `godot/ProjectChimera.Sim.Tests/Definitions/SettingsDataRoundTripTests.cs` (DTO serialization) touch anything related.
 reason: summary: flagged independently by the Blind Hunter review layer and the Intent Alignment Auditor. This is NOT a deviation this story introduced — no Creation Suite panel in the codebase has direct GdUnit4/Control-level test coverage (Godot `Control`-based UI logic is verified via live `/godot-verify` sessions project-wide, not automated tests) — but `OnboardingPanel` is unusually high-visibility (a first-time creator's first impression) and unusually large (431 lines) for a story with only a live-verification safety net.
 closure: if this project ever invests in GdUnit4 Control-level test infrastructure, `OnboardingPanel`'s step-navigation and win-condition-mutation logic is a strong first candidate; until then, treat any future change to this file as needing a live `/godot-verify` pass, not a `dotnet test` pass, to catch regressions.
-status: open
+status: done 2026-07-28
+resolution: closed as accepted (correct-course 2026-07-28) — Project-wide convention verifies Godot Control-based UI via live /godot-verify sessions, not automated GdUnit4/Control-level tests; a deliberate testing-approach boundary the project excludes, and the infrastructure to write such a test does not exist. Any future OnboardingPanel change goes through a live godot-verify pass.
 
 ## Deferred from: spec-5-9-added-your-first-scenario-guided-onboarding-15-min-playable (2026-07-11 review pass 2)
 
@@ -1520,6 +1222,7 @@ location: godot/src/CreationSuite/WinConditionPhase.cs (DoImport — `if (result
 severity: low
 reason: Only reachable via hand-built/third-party/cross-version packages (this system exports TerrainRef non-empty IFF terrain files are bundled), so tracked rather than patched into the settled change. Consequence: graceful flat fallback + a repeated "TerrainRef folder missing" PrintErr on every load instead of log-once. Fix: `else { imported.TerrainRef=""; SaveToFile(...); }` in the import path.
 status: open
+decision: 2026-07-28 correct-course — bundle content-package-import-roundtrip merged into map-package-import-one-path (DW-235; Epic 15, Story 15.6)
 
 ### DW-146: SimChecksum-folded elevation grid is built via Godot float get_height → Fixed.FromFloat — cross-platform determinism risk
 
@@ -1530,6 +1233,7 @@ reason: `Terrain3DData.get_height` does float bilinear interpolation whose last 
 status: open
 decision: 2026-07-25 Read raw heightmap cells now — Rewrite BuildAndInjectElevationGrid to read raw per-region heightmap cells (no Godot Image interpolation), pre-empting the divergence.
 decision: 2026-07-19 Defer until cross-platform
+decision: 2026-07-28 correct-course — filed as Story 15.2 (Epic 15, map-size determinism unification)
 
 ### DW-147: MovementSystem blocked-cell rejection tests only endpoint cells — a fast unit can tunnel a 1-cell wall in one tick
 
@@ -1597,6 +1301,7 @@ location: godot/src/CreationSuite/CameraTool.cs / WaterTool.cs / RegionTool.cs /
 severity: medium
 reason: Nothing arbitrates a single active tool panel; the pattern is shared with the already-shipped RegionTool/PathabilityTool (6.4/6.5). SCHEDULED: story key 14-6 (epic-6 retro action A3-E6 — single-active-dock arbitration + unified hotkey map) owns the closure.
 status: open
+decision: 2026-07-28 correct-course — keep open, blocked; filed to Story 14-6 (dock arbitration + hotkey map)
 
 ### DW-155: "One group op = one undo step" is unit-tested only against a HashSet proxy, not the real EntityPlacer group-op composition
 
@@ -1613,6 +1318,7 @@ location: godot/ProjectChimera.Sim.Tests (ScenarioDataPropsCamerasWaterTests —
 severity: low
 reason: The round-trip is proven at the ScenarioSerializer JSON layer one level below the AC's "package/import" clause; ContentPackager writes scenario.json wholesale so the data rides along, but a zip round-trip assertion would exercise the exact AC surface.
 status: open
+decision: 2026-07-28 correct-course — bundle content-package-import-roundtrip merged into map-package-import-one-path (DW-235; Epic 15, Story 15.6)
 
 ### DW-157: Blocking prop/water (and 6.5 painted cells) are not honored by the sim on an F5 Edit→Play re-apply — static PathabilityGrid is built once at boot
 
@@ -1650,6 +1356,7 @@ decision: 2026-07-25 Author a correct-course determinism story — Parameterize 
 decision: 2026-07-25 Author a correct-course determinism story — Parameterize the four sim grids from one map-size truth source in lockstep, extend GridDimensionConsistencyTests per-size, do a one-time golden re-baseline
 decision: 2026-07-19 Author a dedicated correct-course determinism story — Parameterize the four sim grids from one map-size truth source in lockstep, extend GridDimensionConsistencyTests per-size, and do a one-time golden re-baseline.
 decision: 2026-07-16 Keep open
+decision: 2026-07-28 correct-course — filed as Story 15.2 (Epic 15, map-size determinism unification)
 
 ### DW-161: Start-position "−" remove is not undoable, and "+" increments the picker count before a backing slot exists
 
@@ -1670,6 +1377,7 @@ decision: 2026-07-25 Keep open — Defer the contradiction again
 decision: 2026-07-25 Keep open — Defer the contradiction again
 decision: 2026-07-19 Give Large a sub-128 margin — Reduce Large's MaxHalfExtent below 128 so no playable cell sits on the clamp boundary; requires a golden re-baseline.
 decision: 2026-07-16 Keep open
+decision: 2026-07-28 correct-course — keep open; +128 ceiling documented as part of Story 15.2
 
 ### DW-163: Start-position editor assumes contiguous 0-based slots — a validator-legal non-contiguous set (e.g. {0,3}) drops markers and misroutes toggles/remove
 
@@ -1932,7 +1640,8 @@ origin: 7-9-review-defer
 source_spec: `spec-7-9-custom-runtime-ui-write-rail-dsleventcommand-on-lockstep-bus-replay-v2-dsl-event-record-local-only-action-whitelist.md`
 severity: low
 reason: `LockstepManager.EnqueueDslEvent`'s offline branch applies the raise immediately via `OrderApplier.Apply` at the moment of the button press (mirroring the F5 need for buttons to work single-player), whereas `EnqueueOrder` is a no-op offline. This is a structural inconsistency with the offline-order model: the raise happens at an input-driven point rather than a tick boundary, and — because it never enters a `TickCommandPacket` — it would be ABSENT from a `.chmr` replay if offline playtests are ever recorded. Live exposure is nil today (replay recording is online-only; offline is free-run), so this is a latent inconsistency, not an active defect. Surfaced by the Blind Hunter + Intent Alignment layers on Story 7.9. Closure = route offline DslEvent raises through the same per-tick queue/record path the online path uses (or explicitly document offline raises as non-recordable) if/when offline replay recording is added.
-status: open
+status: done 2026-07-28
+resolution: closed as accepted (correct-course 2026-07-28) — Latent structural inconsistency with no live exposure: offline (F5) DSL raises apply immediately rather than at a tick boundary and would be absent from a .chmr replay, but replay recording is online-only and offline is free-run, so the loss is unreachable. Only meaningful if offline replay recording is added, which is not on the roadmap.
 
 ### DW-177: Godot-coupled write-rail resolution (name→index, arg extraction) and offline sink wiring are Tier-1-inexpressible
 origin: 7-9-review-defer
@@ -1940,6 +1649,7 @@ source_spec: `spec-7-9-custom-runtime-ui-write-rail-dsleventcommand-on-lockstep-
 severity: low
 reason: The write rail's presentation glue lives in Godot-coupled code that `godot/SimSources.props` deliberately excludes from the Godot-free Tier-1 xUnit set: `CustomUiBridge` resolves a button's `EventName` to the custom-event registry index and extracts `arg0`/`arg1` from `ArgRaws` before calling `EnqueueDslEvent`, and the DSL sink is wired onto `LockstepManager`/`ReplayPlayer` in the excluded `MatchLifecycleController`/Bootstrap phase. A name→index resolution mismatch, an arg off-by-one, or a dropped sink assignment would not be caught by any automated test — only by an in-engine godot-verify pass. The determinism-critical decisions were extracted to Godot-free seams where feasible (`ButtonWidget.RaisesSimEvent`, `DslEventRateLimit.CanAccept`, `TryEnqueueExternalDslEvent`) and ARE tested; this entry covers the residual Godot-only glue. Surfaced by the Verification Gap layer on Story 7.9. Closure = an in-engine integration harness (a Godot-side test project) OR a manual godot-verify checklist run for a live per-player button/scoreboard (also the story's recommended follow-up).
 status: open
+decision: 2026-07-28 correct-course — keep open, blocked; filed to Story 10.9 (Epic 10 live-verify batch, A5-E9)
 
 ### DW-178: 7.9 write-rail in-engine verify checklist — pass-2 confirmed the DW-177 risk class is real (null-lockstep wiring defect found by review, fixed by getter), residual Godot-only surfaces enumerated
 origin: 7-9-review-2-defer
@@ -1967,6 +1677,7 @@ status: open
 decision: 2026-07-27 Keep deferred to the Epic 10 live-verification batch
 decision: 2026-07-19 Keep open for a human-driven mouse godot-verify pass
 verified: A2-E7 (2026-07-19) — NOT closable via the automated harness. godot-mcp `godot_input` has NO absolute-mouse cursor positioning (relative mouse-look only; confirmed in the tool contract + [[godot-mcp-ui-verify-via-signals]]), so the port→port wire DRAG, drag-off-port disconnect, and `GraphEdit` node-move interactions (checklist items 1/2/5) genuinely cannot be driven — they require a human-driven pass with a real mouse. `DeleteNodesRequest`/badge/T2→T3-open (items 3/4/6/7) are signal-driveable but were NOT exercised this session (budget). `followup_review_recommended: true` RETAINED on story 7-10. This entry stays open for the human-driven pass.
+decision: 2026-07-28 correct-course — keep open, blocked; filed to Story 10.15 (human-driven verify pass, with DW-182)
 
 ### DW-181: `TriggerGraph.IsGraphOnlyKind` ↔ `ToFlat` parity is asserted tautologically — a future graph-only kind added to ToFlat but not the predicate would silently drift
 origin: 7-10-review-defer
@@ -1984,13 +1695,15 @@ reason: The follow-up review pass on Story 7.10 patched several `DslGraphEditorP
 status: open
 decision: 2026-07-19 Keep open, bundled with the DW-180 human pass
 verified: A2-E7 (2026-07-19) — same harness limitation as DW-180: the wire-drag / drag-off-port / node-move steps need absolute-mouse gestures godot-mcp cannot inject, so this could not be discharged automatically. Bundled with DW-180 for one human-driven godot-verify session. Stays open.
+decision: 2026-07-28 correct-course — keep open, blocked; filed to Story 10.15 (human-driven verify pass, with DW-180)
 
 ### DW-183: Follow-up review still recommended for 7-10-t3-visual-node-graph-editor-view-additive-over-the-shared-ir after the review budget was exhausted
 origin: review-budget-followup
 source_spec: `spec-7-10-t3-visual-node-graph-editor-view-additive-over-the-shared-ir.md`
 severity: low
 reason: Review budget (2 cycles) was exhausted with the story finalized (status: done, verify green) while the review pass kept recommending an independent follow-up. The work was committed by bmad-loop run 20260717-190048-cec1; this entry preserves the lingering follow-up recommendation for a deliberate later review.
-status: open
+status: done 2026-07-28
+resolution: closed as accepted (correct-course 2026-07-28) — Leftover automated review-budget recommendation for Story 7.10 (shipped done/green; Epic 7 DONE and its surfaces since extended by 7.9/7.10 without regression). No identified code defect; running another speculative review pass is not a code change.
 
 ### DW-184: Assassination/Landmark presets can miss a target death via same-tick, same-faction EntityWorld slot recycle (no entity generation counter)
 origin: 7-11-review-defer
@@ -2020,7 +1733,8 @@ origin: review-budget-followup
 source_spec: `spec-7-11-win-condition-preset-templates-t1-sim-layer-winconditionsystem.md`
 severity: low
 reason: Review budget (2 cycles) was exhausted with the story finalized (status: done, verify green) while the review pass kept recommending an independent follow-up. The work was committed by bmad-loop run 20260717-223404-9791; this entry preserves the lingering follow-up recommendation for a deliberate later review.
-status: open
+status: done 2026-07-28
+resolution: closed as accepted (correct-course 2026-07-28) — Leftover automated review-budget recommendation for Story 7.11 (shipped done/green; Epic 7 fully retrospected/DONE). No actionable code defect; the follow-up-review recommendation is a review-loop artifact.
 
 ### DW-188: King of the Hill has no last-team-standing/elimination fallback — a mutual-annihilation KotH match never resolves
 origin: 7-12-review-defer
@@ -2387,6 +2101,7 @@ decision: 2026-07-27 Schedule the deliberate later review
 - source_spec: `{implementation_artifacts}/spec-9-13-per-client-command-rate-throttle-anti-spam-on-the-dedicated-server.md`
   summary: Only inbound `TickCommands` packets are rate-limited; the other client-sendable dispatch cases on the dedicated server (`Chat`, `LobbyChat`, `Ping`, `DelayAck`, `DropAck`, `Checksum`, and unknown/malformed types) have no per-client throttle, and `Chat`/`LobbyChat` each `BroadcastReliable` to every peer — an amplifying flood vector the command-rate throttle does not cover.
   evidence: `DedicatedServer.HandlePacket`'s `switch (type)` gates only the `TickCommands` arm through `CommandRateLimiter`; every sibling case is unthrottled (pre-existing — none had a limiter before 9.13). Out of scope for 9.13 (a "command-rate throttle" scoped to the command stream, anti-spam not anti-cheat, trusted-friends EA), but a genuine server-wide anti-DoS gap. Closure = a shared per-slot receive-edge limiter applied across the client-sendable packet types (Chat/LobbyChat first, given their broadcast amplification).
+decision: 2026-07-28 correct-course — scheduled follow-up review rides Story 15.5
 
 ### DW-200: Host-side (ENet DedicatedServer) StartGame identity enforcement + deterministic in-match deployment of the attested online hero
 
@@ -2443,6 +2158,7 @@ status: open
 - source_spec: `{implementation_artifacts}/spec-9-14-teams-alliances-lobby-teams-wired-into-the-sim-alliance-model.md`
   summary: A HELD auto-acquired unit `AttackTarget` is not alliance/faction-rechecked while retained — `CombatSystem.ValidateOrClearTarget` clears only on the target's death — so if that target's entity id is recycled into an allied (or same-faction) unit between ticks, the attacker fires on the now-ally for a tick, violating "an ally is never auto-attacked."
   evidence: `godot/src/Combat/CombatSystem.cs` `ValidateOrClearTarget` (~554-563) drops a held `AttackTarget` only when `!IsAlive`; Story 9.14 added allied-exclusion only at acquisition (`FindNearestEnemy*`, threaded `_alliances`) and on the per-tick forced paths (force-fire ~900, `TickAttackBuildingCombat` re-checks alliance every tick). Entity slots are shared across factions in one `EntityWorld`, so a teammate training a unit into a freed enemy slot in a 2v2 is reachable. Distinct from the existing projectile-primary-recycle defer (that entry is `ProjectileSystem.ApplySplash`/primary impact; this is the CombatSystem held unit-target path). The underlying recycle-into-friendly gap also pre-exists for same-faction (the force-fire comment at ~274-276 acknowledges it), so a holistic fix should cover both same-faction and allied. Obscure edge (one-tick window on a same-tick slot recycle). Closure = make `ValidateOrClearTarget` an instance method that also clears when `_alliances.AreAllied(FactionOf[id], FactionOf[target])` (and, for the pre-existing class, same-faction), mirroring the per-tick forced-path guards.
+decision: 2026-07-28 correct-course — keep open; post-1.0 fast-follow per bmad-loop-resolve 2026-07-24
 
 ### DW-201: Follow-up review still recommended for 9-14-teams-alliances-lobby-teams-wired-into-the-sim-alliance-model after the damping cap was spent
 origin: review-budget-followup
@@ -2491,3 +2207,1074 @@ decision: 2026-07-27 Schedule the deliberate later review
 - source_spec: `spec-item-definition-validator-hardening.md`
   summary: The DW-47 traversal-id charset guard on `ItemCardPanel.DoDelete`'s `File.Delete` (and the Save→`Persist()` gating for `Path.Combine`/`File.Move`) has no automated coverage — `ItemCardPanel` is a Godot `Node` outside the Tier-1 Godot-free test boundary, so the sole guard against a hand-typed traversal id reaching a filesystem sink is verified only by reading; deleting the `if (SanitizeId(id) == id)` line would reopen the sink with every test still green.
   evidence: `ItemCardPanel.Edit.cs:282-290` — the delete decision lives inline in a `dlg.Confirmed +=` lambda in a `: Node` class; a repo-wide search finds no test referencing `ItemCardPanel`. The validator-surface tests (`TraversalId_FailsClosed_SimGate`, `TraversalId_IsKeyedError`) assert only the validator's return value, never the sink. Pre-existing structural testability limitation (Godot presentation tier). Closure = extract the "may this id touch the on-disk file?" decision into a Godot-free static predicate (e.g. `ItemDefinitionValidator.IsFilenameSafeId`) reused by both charset gates + `DoDelete`, and unit-test it Tier-1; absent that, add an in-engine `/godot-verify` step.
+decision: 2026-07-28 correct-course — scheduled follow-up review rides Story 15.5
+
+---
+
+# Migrated legacy items (correct-course 2026-07-28)
+
+_The freeform pre-DW numbered sections were verified item-by-item against the codebase on 2026-07-28 (8 parallel evidence-backed verification passes) and migrated below as canonical DW entries DW-202..DW-324, preserving original file order. Full analysis: `_bmad-output/planning-artifacts/sprint-change-proposal-2026-07-28.md`._
+
+## From spec-ai-deadlock-combat-gathering-fix (2026-06-09 review) — migrated 2026-07-28
+
+### DW-202: AI wave logic counts zero-damage units as combat units and leaks them from the available pool
+origin: migrated from legacy ledger ("From spec-ai-deadlock-combat-gathering-fix (2026-06-09 review)"), 2026-07-28
+location: godot/src/AI/AiOpponentSystem.cs:222-225,411-454
+severity: high
+reason: BuildSnapshot's availability loop and DoLaunchAttack/DoRazeBuildings still have no `EffectiveAttackDamage > Fixed.Zero` filter (the 2.13-added filter at :218 covers only the EnemyThreatRemains branch). A zero-damage non-gatherer flipped to AttackMove is skipped by CombatSystem's non-combatant gate (CombatSystem.cs:126) and never exits the command — permanently leaked from the AI's available pool. Reachable via trigger spawn_unit of a zero-damage authored unit into the AI slot. Verified still-live 2026-07-28.
+status: open
+decision: 2026-07-28 correct-course — bundle noncombatant-command-gate (Epic 15, Story 15.4); fix together with DW-206/DW-242 (one gate hoist + filter)
+
+### DW-203: Rally points are not lockstep-replicated
+origin: migrated from legacy ledger ("From spec-ai-deadlock-combat-gathering-fix (2026-06-09 review)"), 2026-07-28
+location: godot/src/UI/SelectionSystem.cs
+severity: critical
+reason: SelectionSystem wrote HasRallyPoint/RallyPoint locally (no EnqueueOrder, not in replays) — a desync vector via SpawnTrainedUnit's rally branch.
+status: done 2026-07-28
+resolution: Story 2.12 — SetRallyPoint (SelectionSystem.cs:955-968) routes through `_lockstep.EnqueueOrder(UnitCommand.SetRally)` + shared OrderApplier; rally state folded into SimChecksum v9 (SimChecksum.cs:50-51); pinned by CommandApplyParityTests replay round-trip. Verified 2026-07-28.
+
+### DW-204: Float math in the AI utility scorer + hardcoded AI building costs
+origin: migrated from legacy ledger ("From spec-ai-deadlock-combat-gathering-fix (2026-06-09 review)"), 2026-07-28
+location: godot/src/AI/AiOpponentSystem.cs:34-37,54-55,242-351
+severity: high
+reason: All Score* methods still use float/Math.* (Story 2.13 Decision 4 explicitly declined the migration); illegal in lockstep MP until converted. Companion: AI building costs are hardcoded `Fixed.FromFloat` constants at :34-37 that must mirror EntityPlacer.BUILDING_COSTS and faction JSON — no single source. Verified still-live 2026-07-28.
+status: open
+decision: 2026-07-28 correct-course — owned by Story 10.11 (AI float→Fixed); hardcoded-cost data-sourcing added to 10.11's scope note
+
+### DW-205: SpawnTrainedUnit never sets GatherState/CarryCapacity — trained workers never gather
+origin: migrated from legacy ledger ("From spec-ai-deadlock-combat-gathering-fix (2026-06-09 review)"), 2026-07-28
+location: godot/src/Economy/BuildingSystem.cs:183-280
+severity: high
+reason: SpawnTrainedUnit ends at the rally/Stop branch without writing the caller-owned GatherState/CarryCapacity residue fields. Previously latent (CC production blocked); NOW REACHABLE since Story 6.8 — an authored custom building with `produces_category: "Worker"` trains workers that never gather and are combat-active. The correct 4-line reference implementation exists at ScenarioApplier.SpawnUnitAt (ScenarioApplier.cs:493-497). Verified 2026-07-28.
+status: open
+decision: 2026-07-28 correct-course — bundle trained-worker-gather-init (Epic 15, Story 15.4)
+
+### DW-206: UnitCommand.Build falls to CombatSystem's default case (TickIdleCombat)
+origin: migrated from legacy ledger ("From spec-ai-deadlock-combat-gathering-fix (2026-06-09 review)"), 2026-07-28
+location: godot/src/Combat/CombatSystem.cs:164-166
+severity: low
+reason: Build still routes to `default:` — latent (only workers receive Build today, and gatherers exit earlier), but the guard is `GatherState != Inactive`, not "is a worker": a non-gatherer that ever receives Build auto-chases enemies. One-line `case UnitCommand.Build: continue;`. Verified still-live 2026-07-28.
+status: open
+decision: 2026-07-28 correct-course — bundle noncombatant-command-gate (Epic 15, Story 15.4)
+
+### DW-207: AssignedGatherers leaks on worker death — nodes permanently lose gatherer capacity
+origin: migrated from legacy ledger ("From spec-ai-deadlock-combat-gathering-fix (2026-06-09 review)"), 2026-07-28
+location: godot/src/Economy/GatheringSystem.cs:320-326; godot/src/Economy/BuildingSystem.cs:784
+severity: high
+reason: ReleaseNode is only called from the en-route node-vanished branch; the main loop skips dead entities (:49) and no EntityWorld.OnDestroy subscriber exists for gathering (only ModifierStore + ItemSystem subscribe). Second leak site: the Build-interrupt at BuildingSystem.cs:784 clears GatherTarget without decrementing. Peer-identical (AssignedGatherers IS folded, v13) — a gameplay/capacity defect, not a desync. Fix will move goldens (folded counter changes) → isolated re-baseline per the checksum-fold timing rule. Verified 2026-07-28.
+status: open
+decision: 2026-07-28 correct-course — bundle gatherer-slot-release-on-death (Epic 15, Story 15.4); golden re-baseline expected
+
+### DW-208: AttackMove arrive threshold unreachable under crowding (wave hover deadlock)
+origin: migrated from legacy ledger ("From spec-ai-deadlock-combat-gathering-fix (2026-06-09 review)"), 2026-07-28
+location: godot/src/Combat/CombatSystem.cs:79-84; godot/src/Core/ArrivalTuning.cs
+severity: high
+reason: AMOVE_ARRIVE_SQR = 0.5u² held an equilibrium ring at ~1.0u so converging waves never "arrived".
+status: done 2026-07-28
+resolution: Story 2.13 — AMOVE_ARRIVE_SQR now reads ArrivalTuning.GoalArriveRadiusSqr (2u/4u², single-sourced with ORDER_ARRIVE_SQR; class doc names this deferral); pinned by ArrivalRadiusTests (AttackMoveWave_ConvergingOnOneGoal_AllReachIdle). Caveat: zero-damage units remain excluded by the pre-switch gate — that residue is DW-202/DW-242. Verified 2026-07-28.
+
+## From code review of story-1.1 (2026-06-22) — migrated 2026-07-28
+
+### DW-209: Determinism boundary tests missing for Fixed
+origin: migrated from legacy ledger ("From code review of story-1.1 (2026-06-22)"), 2026-07-28
+location: godot/ProjectChimera.Sim.Tests/Determinism/FixedBoundaryTests.cs
+severity: high
+reason: FixedSmokeTests was happy-path only (no negative-multiply rounding, division truncation, 16.16 overflow, Sqrt edge cases).
+status: done 2026-07-28
+resolution: Story 1.2 — FixedBoundaryTests.cs covers exactly the deferred cases (Multiply_NegativeProduct_FloorsAwayFromZero, Divide_NegativeResult_TruncatesTowardZero, overflow + Sqrt sections); header comment names this deferral. Verified 2026-07-28.
+
+### DW-210: No structural guard for the Godot-free folder contract
+origin: migrated from legacy ledger ("From code review of story-1.1 (2026-06-22)"), 2026-07-28
+location: godot/SimSources.props
+severity: medium
+reason: Sim.Tests globbed sim folders with hand-named removes; a future `using Godot;` file would break the shared-source build far from source.
+status: done 2026-07-28
+resolution: Story 1.10b — SimSources.props is the single source imported by BOTH Sim.Tests and Sim.Analysis (analyzer coverage cannot drift from the tested set); BannedSimApiAnalyzer CHM0001-0005 + GodotFreeBoundaryTest; CI job tier1-analyzer-gate. Residual (accepted): excludes still hand-named, no folder-set-equality test. Verified 2026-07-28.
+
+### DW-211: Sim.Tests runs in no routine build/CI
+origin: migrated from legacy ledger ("From code review of story-1.1 (2026-06-22)"), 2026-07-28
+location: .github/workflows/determinism-gate.yml
+severity: high
+reason: The Godot-free boundary test only executed on manual `dotnet test`.
+status: done 2026-07-28
+resolution: Story 1.10a/1.10c — determinism-gate.yml jobs tier1-golden-gate (Windows) and tier1-golden-gate-linux run the full Tier-1 suite on every push. Verified 2026-07-28.
+
+### DW-212: No packages.lock.json — restore not bit-reproducible
+origin: migrated from legacy ledger ("From code review of story-1.1 (2026-06-22)"), 2026-07-28
+location: godot/ProjectChimera.Sim.Tests/packages.lock.json
+severity: medium
+reason: Transitive deps floated.
+status: done 2026-07-28
+resolution: Story 1.10a — lock files exist for Sim.Tests + Analyzers; all CI restores use --locked-mode with SDK pinned via CI-only global.json (8.0.419). Verified 2026-07-28.
+
+### DW-213: CS8632 nullable annotations without #nullable enable (2 files remain)
+origin: migrated from legacy ledger ("From code review of story-1.1 (2026-06-22)"), 2026-07-28
+location: godot/src/Economy/GatheringSystem.cs:34-36; godot/src/Navigation/FlowFieldSystem.cs:114
+severity: low
+reason: Of the original 6 warnings, SimulationLoop.cs got `#nullable enable` (3 cleared); GatheringSystem (`MatchStats?`) and FlowFieldSystem (`out FlowField?`) still lack the directive. Two-line fix. Verified 2026-07-28.
+status: open
+decision: 2026-07-28 correct-course — bundle nullable-directive-cleanup (Epic 15, Story 15.5)
+
+## From code review of story-1.3a (2026-06-23) — migrated 2026-07-28
+
+### DW-214: FactionRegistry accepts more players than the stores can hold
+origin: migrated from legacy ledger ("From code review of story-1.3a (2026-06-23)"), 2026-07-28
+location: godot/src/Core/FactionRegistry.cs; godot/src/Economy/ResourceStore.cs:12
+severity: high
+reason: Faction enum stopped at Player4 while the ctor accepted 8; constructing >4 indexed out of bounds.
+status: done 2026-07-28
+resolution: Story 9.2 — PLAYER_COUNT=8, every store sized from FACTION_ARRAY_SIZE=9 (ResourceStore/MatchStats/ResearchStore/WinStateStore/AllianceStore); FactionRegistryTests re-pinned (Ctor_AcceptsTheInclusiveBounds(8) now genuinely valid, Ctor_RejectsOutOfRangeActiveCount(9) is the ceiling); MultiFaction8Scenario exercises end-to-end. Verified 2026-07-28.
+
+## From code review of story-1.3b (2026-06-23) — migrated 2026-07-28
+
+### DW-215: Fixed.FromFloat residual at the ScenarioDirector compare sites
+origin: migrated from legacy ledger ("From code review of story-1.3b (2026-06-23)"), 2026-07-28
+location: godot/src/Core/ScenarioDirector.cs
+severity: medium
+reason: Authored thresholds were converted at the compare site; ≥32768 wrapped negative.
+status: done 2026-07-28
+resolution: Story 1.4 — zero FromFloat calls remain in ScenarioDirector (compare sites read already-Fixed authored values); TriggerDefinition.Amount is `Fixed` parsed via FixedJsonConverter which rejects |v| ≥ 32768 with a located JsonException (FixedJsonConverter.cs:63-67) — both facets closed. Verified 2026-07-28.
+
+## From code review of story-1.4 (2026-06-23) — migrated 2026-07-28
+
+### DW-216: FixedJsonConverter.Write is lossy (ToFloat), no round-trip test
+origin: migrated from legacy ledger ("From code review of story-1.4 (2026-06-23)"), 2026-07-28
+location: godot/src/Core/Definitions/FixedJsonConverter.cs:77-78
+severity: low
+reason: Write still emits `value.ToFloat()` (24-bit mantissa); save→load→save can shift large/deep-fractional authored values ≥1 raw unit. Not a desync (peers load identical bytes); authoring fidelity only.
+status: done 2026-07-28
+resolution: Closed as accepted (correct-course 2026-07-28) — recorded design tradeoff; revisit only if a "no silent value drift on re-save" guarantee becomes a creation-suite requirement.
+
+### DW-217: JSON-omitted Fixed fields bypass the converter (future fractional defaults)
+origin: migrated from legacy ledger ("From code review of story-1.4 (2026-06-23)"), 2026-07-28
+location: godot/analyzers/ProjectChimera.Analyzers/BannedSimApiAnalyzer.cs:97-104
+severity: low
+reason: A future `= Fixed.FromFloat(1.5f)` field initializer would be an unguarded quantization outside the boundary.
+status: done 2026-07-28
+resolution: Story 1.10b — CHM0005 flags any FromFloat/ToFloat outside FixedJsonConverter, including field initializers; runs in CI (advisory master, -warnaserror release). Current defaults are compile-time Fixed constants. Verified 2026-07-28.
+
+### DW-218: Determinism-test durability — null-forgiving reflection in TimerDeterminismTests
+origin: migrated from legacy ledger ("From code review of story-1.4 (2026-06-23)"), 2026-07-28
+location: godot/ProjectChimera.Sim.Tests/Golden/TimerDeterminismTests.cs:47-83
+severity: low
+reason: Still uses `GetField(...)!`/`GetMethod(...)!` with no null-checked lookup — a rename produces an opaque NRE. The TriggerOrderingTests half is largely obsolete (per-tick Array.Sort replaced by stable OrderBy; the introsort-threshold coupling is now only a historical guard). Verified 2026-07-28.
+status: open
+decision: 2026-07-28 correct-course — bundle tier1-test-hardening (Epic 15, Story 15.5)
+
+## From code review of story-2.9b (2026-07-02) — migrated 2026-07-28
+
+### DW-219: Negative unit cost_crystal grants crystal instead of costing it
+origin: migrated from legacy ledger ("From code review of story-2.9b (2026-07-02)"), 2026-07-28
+location: godot/src/Core/Definitions/UnitDefinitionValidator.cs:343-350
+severity: high
+reason: TrainUnit had no lower-bound guard on authored costs.
+status: done 2026-07-28
+resolution: Epic 4/5 validators — UnitDefinitionValidator.CheckCost rejects v < 0 (message names the exploit) and v ≥ 32768, for cost_ore/cost_crystal and the 4.3 sparse cost map; whole-faction ResourceCostValidator wired at FactionValidator.cs:125; spend path is now check-all-then-spend-all. Verified 2026-07-28.
+
+### DW-220: start_crystal / start_ore had no upper bound (16.16 overflow ≥ 32768)
+origin: migrated from legacy ledger ("From code review of story-2.9b (2026-07-02)"), 2026-07-28
+location: godot/src/Core/Definitions/ScenarioValidator.cs:1313-1320
+severity: medium
+reason: ScenarioApplier converted via FromFloat with no ceiling.
+status: done 2026-07-28
+resolution: ScenarioValidator.CheckNonNeg now runs InRange(v) against Range=32768 before the ≥0 check; both start-resource fields plus supply/rate/revival/starting_amount inherit the gate. Verified 2026-07-28.
+
+### DW-221: matter_infusion's apply_modifier/move_speed_delta path never exercised by a worker-cast test
+origin: migrated from legacy ledger ("From code review of story-2.9b (2026-07-02)"), 2026-07-28
+location: godot/ProjectChimera.Sim.Tests/Effects/WorkerCastTests.cs:20-27
+severity: low
+reason: Worker-cast tests still use a SelfHeal with matter_infusion-shaped costs; no test applies a move-speed modifier to a mid-gather worker and asserts gather-state + checksum determinism. Coverage hardening, not a known defect. Verified 2026-07-28.
+status: open
+decision: 2026-07-28 correct-course — bundle tier1-test-hardening (Epic 15, Story 15.5)
+
+### DW-222: Fallback crystal seed literal duplicated in 3 comment-coupled places
+origin: migrated from legacy ledger ("From code review of story-2.9b (2026-07-02)"), 2026-07-28
+location: godot/src/Core/Sim/ScenarioApplier.cs:406-416
+severity: low
+reason: ApplyFallback/BuildFallbackMirror/alpha_map_01.json each hardcoded 100.
+status: done 2026-07-28
+resolution: Story 7.7 retired the legacy un-tokened writer — ONE code-side fallback model remains (ScenarioApplier.BuildFallbackMirror), consumed by ScenarioLoadPhase + MainScene and pinned by FallbackMirrorParityTests. Residual (accepted): still comment-coupled to alpha_map_01.json's start_crystal — agreement-test idea recorded in DW-324's housekeeping sweep. Verified 2026-07-28.
+
+### DW-223: Command-card ability/worker panel positions cached once — stale on window resize
+origin: migrated from legacy ledger ("From code review of story-2.9b (2026-07-02)"), 2026-07-28
+location: godot/src/UI/CommandCardSystem.cs:1294-1295 (+ sibling compute-once sites :949, :1097, :1171)
+severity: low
+reason: _abilityPanelNormalPos/_abilityPanelStackedPos still computed once from vpSize in BuildAbilityPanel; no viewport-resize subscription anywhere in the file. Presentation-only. Verified 2026-07-28.
+status: open
+decision: 2026-07-28 correct-course — bundle hud-viewport-resize (Epic 15, Story 15.8)
+
+## From code review of story-1.5 (2026-06-23) — migrated 2026-07-28
+
+### DW-224: No replay test records real orders through a system that draws from world.Rng
+origin: migrated from legacy ledger ("From code review of story-1.5 (2026-06-23)"), 2026-07-28
+location: godot/ProjectChimera.Sim.Tests/Golden/SimRngChecksumReplayTests.cs:108-145
+severity: low
+reason: The v4 successor test still records zero orders with a synthetic RNG loop. Order round-tripping (V4MultiTickOrders) and production RNG draws (random_choice via ScenarioDirector/DSL) are now separately covered, but no single test replays recorded orders through an Rng-drawing system. Verified 2026-07-28.
+status: open
+decision: 2026-07-28 correct-course — bundle tier1-test-hardening (Epic 15, Story 15.5)
+
+### DW-225: ReplayRecorder hardcodes DEFAULT_RNG_SEED — no per-match seed producer exists
+origin: migrated from legacy ledger ("From code review of story-1.5 (2026-06-23)"), 2026-07-28
+location: godot/src/Core/Bootstrap/Phases/MatchLifecycleController.cs:204
+severity: medium
+reason: Still constructs `new ReplayRecorder(..., EntityWorld.DEFAULT_RNG_SEED, ...)`. Epic 9 shipped the FORMAT side (v4 header carries a seed; ReplayPlayer reseeds world.Rng) but no per-match seed producer exists (SimulationHost.cs:188-190 explicitly defers it — "would move the golden"). Correct today, silently wrong the day a real match seed lands. Sibling half of DW-17 (in-place reset reseed) — must ship together. Verified 2026-07-28.
+status: open
+decision: 2026-07-28 correct-course — bundle match-seed-plumbing with DW-17 (Epic 15, Story 15.5)
+
+### DW-226: ulong.MaxValue seed never pinned as a SimRng stream
+origin: migrated from legacy ledger ("From code review of story-1.5 (2026-06-23)"), 2026-07-28
+location: godot/ProjectChimera.Sim.Tests/Determinism/SimRngTests.cs
+severity: low
+reason: Pinned streams exist only for seeds 0 and 12345; the max-seed boundary appears only as a wrong-seed fixture. ~5-line externally-computed assertion. Verified 2026-07-28.
+status: open
+decision: 2026-07-28 correct-course — bundle tier1-test-hardening (Epic 15, Story 15.5)
+
+## From code review of story-1.6 (2026-06-23) — migrated 2026-07-28
+
+### DW-227: DamageTable.FromJson silently last-wins on duplicate JSON keys
+origin: migrated from legacy ledger ("From code review of story-1.6 (2026-06-23)"), 2026-07-28
+location: godot/src/Combat/DamageTable.cs:98-149
+severity: medium
+reason: Unchanged — nested-dictionary Dto with only weak dimension-count checks; no JsonDocument/Utf8JsonReader raw-property-count pass, so a creator's duplicated row/cell key silently drops the earlier value (verified STJ behavior). Future-content-only (shipped table clean). Other dictionary-shaped loaders may share the class. Verified 2026-07-28.
+status: open
+decision: 2026-07-28 correct-course — bundle loader-duplicate-key-fail-closed (Epic 15, Story 15.6)
+
+## From code review of story-1.7 (2026-06-23) — migrated 2026-07-28
+
+### DW-228: default(Validated<T>) could mint a fake validated value (re-raised on 1.8b)
+origin: migrated from legacy ledger ("From code review of story-1.7 (2026-06-23)"), 2026-07-28
+location: godot/src/Core/Sim/ScenarioApplier.cs:129-141
+severity: high
+reason: A default struct bypassed the sole-minter Proof guarantee at the 1.8b consumption point.
+status: done 2026-07-28
+resolution: ScenarioApplier.Apply now guards at the consumption point before any store write (null-model reject, comment credits this deferral); a follow-up moved RevivalRuntime.Configure/ConfigureSupply below the guard; Story 7.7 deleted the failure-carrying overload and shadow mode. Verified 2026-07-28.
+
+## Deferred from: code review of story-1.8b (2026-06-24) — migrated 2026-07-28
+
+### DW-229: ResolveSlotFactionDefs never resets entries — and Edit↔Play never re-runs it
+origin: migrated from legacy ledger ("Deferred from: code review of story-1.8b (2026-06-24)"), 2026-07-28
+location: godot/src/Core/Bootstrap/Phases/ScenarioLoadPhase.cs:345-379; godot/src/Core/MainScene.cs:1930,2021-2041
+severity: high
+reason: ESCALATED from latent: still `continue`s on empty FactionJson with no per-apply reset (Snapshot/RestoreSlotFactionDefs only rolls back on validator REJECT), and the "single-apply path" premise is now false — MainScene.ResetToAuthoredStart (the 3.10 Edit↔Play loop) re-applies against the same _slotFactionDefs array and NEVER calls ResolveSlotFactionDefs. In-session faction_json changes (LLMService.cs:551, MapGeneratorPhase.cs:36-39) silently don't apply until a full scene reload; a cleared faction_json keeps the stale def. Verified 2026-07-28.
+status: open
+decision: 2026-07-28 correct-course — bundle scenario-reapply-slot-faction-def-refresh, absorbing bundle editor-panel-scenario-rebind (DW-10) (Epic 15, Story 15.6)
+
+### DW-230: Scenario with > 64 resource nodes / > 64 buildings silently drops the overflow
+origin: migrated from legacy ledger ("Deferred from: code review of story-1.8b (2026-06-24)"), 2026-07-28
+location: godot/src/Core/Sim/ScenarioApplier.cs:221,254-256
+severity: medium
+reason: Unchanged — Nodes.Create's -1 discarded, PlaceBuildingDirect/ById -1 assigned unchecked into buildingSlots; validator has no count cap. Slightly worse than logged: the -1 now flows into Story 7.11's landmark structure_index mapping, which the validator bounds only against authored buildings.Length, not successful placement. Verified 2026-07-28.
+status: open
+decision: 2026-07-28 correct-course — bundle scenario-store-capacity-fail-closed (Epic 15, Story 15.6)
+
+## Deferred from: code review of story-1.8c (2026-06-24) — migrated 2026-07-28
+
+### DW-231: ResolveSlotFactionDefs IndexOutOfRange for player slots 4-7
+origin: migrated from legacy ledger ("Deferred from: code review of story-1.8c (2026-06-24)"), 2026-07-28
+location: godot/src/Core/FactionRegistry.cs:36
+severity: high
+reason: The [5]-sized slot array crashed for slots 4-7. Same family as DW-96.
+status: done 2026-07-28
+resolution: Story 9.2 (=DW-96) — SLOT_DEFINITIONS_SIZE = FACTION_ARRAY_SIZE = 9; MainScene seeds from factions.SlotDefinitions. Narrow residual noted for next touch: ScenarioLoadPhase.cs:376 lacks the bounds one-liner its server-side mirror has (MainScene.cs:2269) for authored slots ≥ 8 ahead of the validator reject. Verified 2026-07-28.
+
+### DW-232: SceneContext null! cross-phase coupling is load-bearing and unguarded (40 phases; already bit once)
+origin: migrated from legacy ledger ("Deferred from: code review of story-1.8c (2026-06-24)"), 2026-07-28
+location: godot/src/Core/Bootstrap/Phases/SceneContext.cs
+severity: high
+reason: ESCALATED: 68 `null!` fields, zero guards, phase count grew 22→40, and the predicted failure fired in Epic 9 (CustomHudOverlayPhase captured SceneContext.Lockstep by value 13 phases early → permanently-null handle, silent no-op, invisible to all Tier-1 tests; fixed with a late-bound getter but no structural guard added). Verified 2026-07-28.
+status: open
+decision: 2026-07-28 correct-course — bundle scenecontext-producer-consumer-guards (Epic 15, Story 15.7): late-bound getters or a Required<T> accessor throwing with the producing phase's name
+
+### DW-233: PhaseOrderTest cannot catch concrete-phase Name drift or duplicate canonical names
+origin: migrated from legacy ledger ("Deferred from: code review of story-1.8c (2026-06-24)"), 2026-07-28
+location: godot/ProjectChimera.Sim.Tests/Bootstrap/PhaseOrderTest.cs
+severity: low
+reason: Unchanged — no duplicate-name assert (≈3 lines, Tier-1) and no Tier-2 GdUnit4 companion instantiating the real phases; value rose with 40 phases. Verified 2026-07-28.
+status: open
+decision: 2026-07-28 correct-course — rides bundle scenecontext-producer-consumer-guards (Epic 15, Story 15.7)
+
+### DW-234: BuildFallbackMirror vs ApplyFallback duplication (two fallback sources of truth)
+origin: migrated from legacy ledger ("Deferred from: code review of story-1.8c (2026-06-24)"), 2026-07-28
+location: godot/src/Core/Sim/ScenarioApplier.cs:395-416
+severity: medium
+reason: Two code paths authored the default scenario.
+status: done 2026-07-28
+resolution: Story 7.7 retired the legacy un-tokened ApplyFallback writer; single source BuildFallbackMirror pinned by FallbackMirrorParityTests. Stale text anchors noted in DW-324 housekeeping. Verified 2026-07-28.
+
+### DW-235: ContentBrowserPhase vs WinConditionPhase .chimera.zip import paths — drifted: browser loads terrain maps FLAT
+origin: migrated from legacy ledger ("Deferred from: code review of story-1.8c (2026-06-24)"), 2026-07-28
+location: godot/src/Core/Bootstrap/Phases/ContentBrowserPhase.cs:51-95; WinConditionPhase.cs:556-620
+severity: high
+reason: ESCALATED — the predicted drift happened: DoImport gained Story 6.2's TerrainFiles handling (copy + TerrainRef rewrite) and HandleLoadMap did NOT, so a terrain-bearing .chimera.zip loaded through the Content Browser silently loads flat with a stale TerrainRef. Distinct from DW-145 (zero-terrain else-branch), the Epic-14 ungated-SaveToFile bullet, and the Epic-9 stale imported_maps/<id> bullet — one shared ImportMapPackage helper closes all legs. Verified 2026-07-28.
+status: open
+decision: 2026-07-28 correct-course — bundle map-package-import-one-path, absorbing bundle content-package-import-roundtrip (DW-82, DW-145, DW-156) (Epic 15, Story 15.6)
+
+## Deferred from: code review of story-1.9a (2026-06-24) — migrated 2026-07-28
+
+### DW-236: Quorum peer-set fixed at construction — mid-match disconnect leg
+origin: migrated from legacy ledger ("Deferred from: code review of story-1.9a (2026-06-24)"), 2026-07-28
+location: godot/src/Multiplayer/Server/ServerChecksumCollector.cs:164-206
+severity: critical
+reason: After any mid-match drop the server's desync guard went silently dead.
+status: done 2026-07-28
+resolution: Story 9.6 — _expected is mutable with DropExpectedReporter (slot exclusion, floor 1, in-flight bucket re-tally); ServerHost.DropReporter routes through shared ProcessVerdict; DedicatedServer calls it on DropAck commit and HandleDisconnect no longer ends the match. Known 9.6 follow-ons remain separately ledgered. Verified 2026-07-28.
+
+### DW-237: N≥3 minority desync self-halt silently kills the surviving majority's desync guard
+origin: migrated from legacy ledger ("Deferred from: code review of story-1.9a (2026-06-24)"), 2026-07-28
+location: godot/src/Multiplayer/Server/ServerHost.cs:95-103; godot/src/Multiplayer/LockstepManager.cs:372,482-486
+severity: critical
+reason: ESCALATED from unreachable (N=2) to live (9.7/9.15 shipped 4-player MP: MpSeatCeiling=4). ProcessVerdict still sends DesyncAlert without Halted; the alerted minority halts, stops sending checksums while staying CONNECTED, so DropReporter never runs, _expected still counts it, no bucket completes → survivors' guard silently dead. Self-heals only if the human clicks the halt overlay and disconnects. Verified 2026-07-28.
+status: open
+decision: 2026-07-28 correct-course — bundle minority-halt-quorum-rebase (Epic 15, Story 15.7): drop an alerted minority from the quorum or force-disconnect/HALT it; pairs with the ledgered "drop-path HALT branch untested" 9.6 bullet. Doc rot: ServerChecksumCollector.cs:11,22-23 stale "MaxSlots=4 → 8 in 9.2" comment (9.2 correctly did NOT bump it; sim ceiling 8 vs MP seat ceiling 4 are deliberately different) → DW-324
+
+## Deferred from: code review of story-1.9b (2026-06-24) — migrated 2026-07-28
+
+### DW-238: LAN launcher's server/client/F9 triggers are #if DEBUG — no-ops in an exported build
+origin: migrated from legacy ledger ("Deferred from: code review of story-1.9b (2026-06-24)"), 2026-07-28
+location: godot/src/Core/MainScene.cs:262-265,584-600,658-675; godot/tools/lan-desync-smoke.ps1
+severity: medium
+reason: Unchanged and still correctly parked: --server/--autojoin/F9 remain DEBUG-gated; the non-DEBUG server trigger (headless / dedicated_server feature) exists at MainScene.cs:261. Latent until Epic 10 exports (10.5/10.8). Cheap interim: a "requires a source/DEBUG build" banner in the script header. Verified 2026-07-28.
+status: open
+decision: 2026-07-28 correct-course — filed to Stories 10.5/10.8 (Epic 10); banner one-liner rides DW-324 housekeeping
+
+### DW-239: Collector window: a valid-but-late checksum 8 ticks behind is silently abandoned
+origin: migrated from legacy ledger ("Deferred from: code review of story-1.9b (2026-06-24)"), 2026-07-28
+location: godot/src/Multiplayer/Server/ServerChecksumCollector.cs:124-128
+severity: medium
+reason: Code byte-identical — Reset of an older incomplete bucket on ring overrun; _resolvedThrough never advances past the abandoned tick so it never yields a verdict. Story 9.4's adaptive delay makes a far-behind peer MORE plausible than the original "≤2 in flight" premise. Cheap fix: advance _resolvedThrough to the evicted tick and log it as abandoned. Verified 2026-07-28.
+status: open
+decision: 2026-07-28 correct-course — bundle minority-halt-quorum-rebase (Epic 15, Story 15.7)
+
+## Deferred from: code review of story 1.11 (2026-06-25) — migrated 2026-07-28
+
+### DW-240: spawn_unit.unit_id (and pre-placed units) not validated by the scenario gate
+origin: migrated from legacy ledger ("Deferred from: code review of story 1.11 (2026-06-25)"), 2026-07-28
+location: godot/src/Core/Definitions/ScenarioValidator.cs:340-355,763-782
+severity: medium
+reason: Still no known-unit_id check in either the trigger spawn_unit action pass or the pre-placed units loop. Severity reduced since logged: the runtime now fails closed-and-loud (ScenarioDelegateBinder.cs:34-39 resolves the def, warns + returns on null) — the residual gap is no load-time reject / no editor feedback. The pre-placed half may need a fail-closed decision for existing scenarios. Verified 2026-07-28.
+status: open
+decision: 2026-07-28 correct-course — bundle scenario-unit-id-validation (Epic 15, Story 15.6)
+
+## Deferred from: code review of story-1.12 (2026-06-25) — migrated 2026-07-28
+
+### DW-241: Patrol/Follow request no navigation path, unlike Move/AttackMove
+origin: migrated from legacy ledger ("Deferred from: code review of story-1.12 (2026-06-25)"), 2026-07-28
+location: godot/src/Multiplayer/NetworkCommand.cs:388-414
+severity: low
+reason: Unchanged — Follow/Patrol/PatrolAppend invoke neither onRequestPath nor onRequestAttackMove (presentation-only delegates; null on headless/golden/replay). Obstacle-clipping polish, not correctness.
+status: done 2026-07-28
+resolution: Closed as accepted scope (correct-course 2026-07-28); pathing-quality pointer filed to Story 10.14. Verified 2026-07-28.
+
+### DW-242: Zero-damage units are locked out of Patrol/Follow/AttackBuilding by the pre-switch combat gate
+origin: migrated from legacy ledger ("Deferred from: code review of story-1.12 (2026-06-25)" + "Deferred from: code review of story-2.9a (2026-07-01)" item 1 — merged), 2026-07-28
+location: godot/src/Combat/CombatSystem.cs:121-126
+severity: medium
+reason: The `EffectiveAttackDamage == 0 → continue` gate still sits above the whole command switch (which now also carries AttackBuilding/PickupItem/Patrol/Follow), so zero-damage non-gatherers sit inert in those commands with no normalize-to-Idle. Fix = hoist pure-movement branches above the gate TOGETHER WITH DW-202's wave filter (else zero-damage units start auto-attacking). Verified 2026-07-28.
+status: open
+decision: 2026-07-28 correct-course — bundle noncombatant-command-gate (Epic 15, Story 15.4)
+
+## Deferred from: code review of story-1.13 (2026-06-25) — migrated 2026-07-28
+
+### DW-243: RestoreUnit (editor snapshot) did not carry the 1.13/2.2a per-unit fields
+origin: migrated from legacy ledger ("Deferred from: code review of story-1.13 (2026-06-25)" + "Deferred from: story 2.2a (2026-06-25)" item 6 — merged), 2026-07-28
+location: godot/src/Core/EntityWorld.cs:1043-1112
+severity: high
+reason: The editor snapshot dropped def-derived fields (collision_radius, separation_priority, category, Energy/MaxEnergy).
+status: done 2026-07-28
+resolution: Story 3.17 (=DW-24) — SnapshotUnit captures Def = SourceDefinition[id]; RestoreUnit routes through ApplyUnitDefinition re-deriving every def field, then replays caller-owned residue. Residuals separately tracked: DW-51 (closed), DW-52 (open), DW-53 (closed), DW-54 (open). Verified 2026-07-28.
+
+## Deferred from: story 2.1 (2026-06-25) — D1 Effect-Graph keystone scope carve-offs — migrated 2026-07-28
+
+### DW-244: ApplyModifierEffect / PersistentEffect periodic execution
+origin: migrated from legacy ledger ("Deferred from: story 2.1 (2026-06-25)"), 2026-07-28
+location: godot/src/Effects/EffectExecutor.cs:113-138
+severity: high
+reason: Both TYPE kinds existed but did not execute (2.1 guard).
+status: done 2026-07-28
+resolution: Story 2.2b — EffectExecutor dispatches Persistent→InstallPersistent and ApplyModifier→ModifierStore.Apply; ModifierSystem.Tick drives Advance; DotHotPeriodTests/LifelongHotTests/ModifierStoreApplyTests. Verified 2026-07-28.
+
+### DW-245: Air / Ground / Structure TargetFilter evaluation
+origin: migrated from legacy ledger ("Deferred from: story 2.1 (2026-06-25)"), 2026-07-28
+location: godot/src/Effects/TargetMatcher.cs:15-47
+severity: medium
+reason: Bits existed but were not evaluated.
+status: done 2026-07-28
+resolution: Story 2.9a — TargetMatcher maps DomainClassifier.Of() onto the flag bits with the AND-constraint; shared classifier in AttackDomain.cs; AbilityDomainFilterTests. Verified 2026-07-28.
+
+### DW-246: SetVariable leaf → Trigger DSL home
+origin: migrated from legacy ledger ("Deferred from: story 2.1 (2026-06-25)"), 2026-07-28
+location: godot/src/Dsl/NodeBase.cs:630
+severity: medium
+reason: The DSL variable store was always the chartered home.
+status: done 2026-07-28
+resolution: Epic 7 — set_variable landed as a DSL ActionNode kind (typed/validated ScenarioValidator.cs:750-761,983-1003; executed ScenarioDirector.cs:123); the effect vocabulary correctly stayed at 8 closed kinds. Verified 2026-07-28.
+
+### DW-247: FireProjectile / SpawnUnit / Victory reserved effect leaves
+origin: migrated from legacy ledger ("Deferred from: story 2.1 (2026-06-25)"), 2026-07-28
+location: godot/src/Dsl/NodeBase.cs:630; godot/src/Effects/EffectNodeJsonConverter.cs:40-60
+severity: medium
+reason: Reserved leaf vocabulary was unbuilt.
+status: done 2026-07-28
+resolution: SpawnUnit + Victory landed as DSL actions (MaxSpawnCount enforced at DslLoopGate/ScenarioValidator, folded in RulesetHash); FireProjectile obsolete-as-designed — Story 3.12 modelled projectiles as authored Delivery/ProjectileSpeed on UnitDefinition + ProjectileSystem, no effect leaf needed. Teleport/presentation residue split to DW-248. Verified 2026-07-28.
+
+### DW-248: Teleport + presentation effect leaves (PlayVfx/PlaySound/ShakeScreen) unbuilt
+origin: migrated from legacy ledger ("Deferred from: story 2.1 (2026-06-25)"), 2026-07-28
+location: godot/src/Effects/
+severity: low
+reason: Zero occurrences anywhere in src — unbuilt with no owning story in the 10-13 backlog. Feature vocabulary, not a defect. Verified 2026-07-28.
+status: open
+decision: 2026-07-28 correct-course — filed as Story 15.13 (effect vocabulary completion), per Alec's fold-into-Epic-15 decision
+
+### DW-249: SearchArea over-cap selection is cell-ordered, not global lowest-ID
+origin: migrated from legacy ledger ("Deferred from: story 2.1 (2026-06-25)"), 2026-07-28
+location: godot/src/Effects/SearchAreaEffect.cs:51-64; godot/src/Navigation/SpatialHash.cs:179
+severity: medium
+reason: Unchanged — QueryRadius has no filter/priority parameter; the caveat comment survives verbatim. Deterministic but not the documented contract. One SpatialHash API change closes this + DW-250. Verified 2026-07-28.
+status: open
+decision: 2026-07-28 correct-course — bundle searcharea-target-selection-correctness (Epic 15, Story 15.4)
+
+## Deferred from: code review of story-2.1 (2026-06-25) — migrated 2026-07-28
+
+### DW-250: SearchArea truncates the hit buffer BEFORE the faction filter — enemy fan-out under-selects
+origin: migrated from legacy ledger ("Deferred from: code review of story-2.1 (2026-06-25)"), 2026-07-28
+location: godot/src/Effects/SearchAreaEffect.cs:64-78
+severity: medium
+reason: Unchanged — 64-slot buffer fills unfiltered, sorts, THEN compacts by TargetMatcher; the recommended pass-filter-into-QueryRadius fix has not happened. Verified 2026-07-28.
+status: open
+decision: 2026-07-28 correct-course — bundle searcharea-target-selection-correctness (Epic 15, Story 15.4)
+
+### DW-251: No total-work / total-node-count bound on an effect graph
+origin: migrated from legacy ledger ("Deferred from: code review of story-2.1 (2026-06-25)"), 2026-07-28
+location: godot/src/Effects/EffectCaps.cs:81-89
+severity: high
+reason: EffectBounds capped depth but not total work.
+status: done 2026-07-28
+resolution: Story 2.3 — MaxTotalEffectNodes=64 + MaxSearchAreaDepth=2 enforced in AbilityValidator, folded into RulesetHash; NegativeAbilityValidationTests teeth (65-node reject). Verified 2026-07-28.
+
+### DW-252: Zero-alloc executor test misses the lethal and 64-wide fan-out paths
+origin: migrated from legacy ledger ("Deferred from: code review of story-2.1 (2026-06-25)"), 2026-07-28
+location: godot/ProjectChimera.Sim.Tests/Effects/EffectExecutorBoundsTests.cs:184-215
+severity: low
+reason: Byte-for-byte the flagged shape (8 high-HP enemies, no events queue): neither the UnitKilled-enqueue path nor a 64-wide fan-out is under the allocation delta. Natural regression net for the DW-249/250 fix. Verified 2026-07-28.
+status: open
+decision: 2026-07-28 correct-course — rides bundle searcharea-target-selection-correctness (Epic 15, Story 15.4)
+
+### DW-253: Load-time Validate admitted the deferred Persistent/ApplyModifier node kinds
+origin: migrated from legacy ledger ("Deferred from: code review of story-2.1 (2026-06-25)"), 2026-07-28
+location: godot/src/Effects/EffectNodeJsonConverter.cs:40-60
+severity: low
+reason: Premise expired — both kinds now execute.
+status: done 2026-07-28
+resolution: Obsolete — discharged by 2.2b execution + 2.3's closed JSON registry and AC5 shape rules (already recorded in the 2.3 carve-off notes). Verified 2026-07-28.
+
+## Deferred from: story 2.2a (2026-06-25) — D1 effective-stat pipeline scope carve-offs — migrated 2026-07-28
+
+### DW-254: The single SimChecksum fold for the effective-stat pipeline
+origin: migrated from legacy ledger ("Deferred from: story 2.2a (2026-06-25)"), 2026-07-28
+location: godot/src/Core/SimChecksum.cs:330-346
+severity: high
+reason: The one intentional re-baseline for Effective*/Energy/StatusFlags.
+status: done 2026-07-28
+resolution: Story 2.2b — per-entity fold of EffectiveAttackDamage/EffectiveMaxHealth/EffectiveMoveSpeed/Energy/StatusFlagsOf + per-slot ModifierStore state; v6 re-baseline documented at :92-98 (AlgoVersion since advanced to 21); ModifierSystem private accumulators correctly unhashed. Verified 2026-07-28.
+
+### DW-255: MaxHealth-buff Health semantics
+origin: migrated from legacy ledger ("Deferred from: story 2.2a (2026-06-25)"), 2026-07-28
+location: godot/src/Effects/ModifierStore.cs:453-472
+severity: medium
+reason: Open design decision: heal-up on apply vs ratio-preserve.
+status: done 2026-07-28
+resolution: Decided + implemented — ApplyStatDeltas heals up only on positive maxHealthChange with isApply:true, always re-clamps into [0, EffectiveMaxHealth]; rationale documented in-code (kills the wearing-off-debuff net-heal exploit). Verified 2026-07-28.
+
+### DW-256: Move-speed modifiers take effect one tick late (Modifier ordered after Movement)
+origin: migrated from legacy ledger ("Deferred from: story 2.2a (2026-06-25)" item 3 + "Deferred from: story 2.2b (2026-06-26)" item 8 — merged), 2026-07-28
+location: godot/src/Core/Sim/SimulationHost.cs:268,281
+severity: low
+reason: MovementSystem @3 vs ModifierSystem @6 — a MoveSpeedDelta applied on tick T is read at T+1. The AR-9 contract (Modifier immediately before Combat) takes precedence; order pinned by SystemOrderTest. Deterministic.
+status: done 2026-07-28
+resolution: Closed as accepted-by-design (correct-course 2026-07-28); revisit only if a same-tick speed buff is ever specced.
+
+### DW-257: Authored MaxEnergy on UnitDefinition
+origin: migrated from legacy ledger ("Deferred from: story 2.2a (2026-06-25)" item 4 + "Deferred from: story 2.2b (2026-06-26)" item 3 — merged), 2026-07-28
+location: godot/src/Core/Definitions/UnitDefinition.cs:313-316; godot/src/Core/EntityWorld.cs:1001-1002
+severity: medium
+reason: Energy SoA existed with no authored source.
+status: done 2026-07-28
+resolution: Story 2.4a — max_energy on UnitDefinition, written through the single mapper (starts full, Decision #5 no separate starting-energy field); validator/writer/editor/ContentHash coverage; A2 guard teeth (ApplyUnitDefinitionGuardTest:179-224). Verified 2026-07-28.
+
+### DW-258: ModifierStore must clear an entity's accumulators + dirty on death/recycle
+origin: migrated from legacy ledger ("Deferred from: story 2.2a (2026-06-25)"), 2026-07-28
+location: godot/src/Effects/ModifierStore.cs:103,339-351; godot/src/Effects/ModifierSystem.cs:109-118
+severity: critical
+reason: SoA-recycle trap for modifier state.
+status: done 2026-07-28
+resolution: world.OnDestroy += ClearEntity cascades to ModifierSystem.ClearEntity (zeroes all four _flat*Bonus + _dirty) before the id returns to the free list; ModifierRecycleGuardTest with inject→observe→revert teeth. Verified 2026-07-28.
+
+## Deferred from: code review of story-2.2a (2026-06-26) — migrated 2026-07-28
+
+### DW-259: ModifierSystem recycle cleanup must extend the A2 guard
+origin: migrated from legacy ledger ("Deferred from: code review of story-2.2a (2026-06-26)"), 2026-07-28
+location: godot/ProjectChimera.Sim.Tests/Effects/ModifierRecycleGuardTest.cs
+severity: medium
+reason: Both halves of the ask.
+status: done 2026-07-28
+resolution: Landed as a dedicated recycle guard (rather than an ApplyUnitDefinitionGuardTest extension): asserts a recycled slot carries no residual bonus; documented inject→observe→revert teeth. Intent met. Verified 2026-07-28.
+
+### DW-260: Effective-stat recompute lower-clamp / overflow guard
+origin: migrated from legacy ledger ("Deferred from: code review of story-2.2a (2026-06-26)"), 2026-07-28
+location: godot/src/Effects/ModifierSystem.cs:88-93,150-153
+severity: medium
+reason: Split verdict — lower-clamp landed; overflow half remains the DW-28 class.
+status: done 2026-07-28
+resolution: Lower-clamp shipped in 2.2b (Fixed.Max(Zero, Base+Σ) on all four stats, "cannot attack ⇒ Disarmed, never sub-zero" policy documented; MaxHealth clamp inversion closed). The unsaturated AccumulateBonus overflow half is exactly DW-28 (open) — seen-again noted there, no duplicate entry. Verified 2026-07-28.
+
+### DW-261: EntityPlacer snapshot captured Effective and restored it into Base
+origin: migrated from legacy ledger ("Deferred from: code review of story-2.2a (2026-06-26)"), 2026-07-28
+location: godot/src/Core/EntityWorld.cs:1046-1052,1057,1092-1097
+severity: medium
+reason: Live-modifier deltas would bake into Base and double-count on passive re-install.
+status: done 2026-07-28
+resolution: Story 3.17 — SnapshotUnit captures BaseMaxHealth/BaseMoveSpeed with an explicit comment naming this defect. Residual (low, def-less editor units only, carry no modifiers today): the def-less branch still captures EffectiveAttackDamage into both Base and Effective — noted alongside DW-54's snapshot cluster. Verified 2026-07-28.
+
+### DW-262: A2 guard coverage is hand-maintained
+origin: migrated from legacy ledger ("Deferred from: code review of story-2.2a (2026-06-26)"), 2026-07-28
+location: godot/ProjectChimera.Sim.Tests/Core/ApplyUnitDefinitionGuardTest.cs; godot/CLAUDE.md
+severity: low
+reason: Still true, now codified as a standing convention rather than fixed — godot/CLAUDE.md states the round-trip guard is a hand-enumerated regression net and the written rule IS the coverage for new residue fields.
+status: done 2026-07-28
+resolution: Closed as accepted convention (correct-course 2026-07-28) — not actionable as a story.
+
+## Deferred from: story 2.2b (2026-06-26) — migrated 2026-07-28
+
+### DW-263: SearchArea inside a period effect
+origin: migrated from legacy ledger ("Deferred from: story 2.2b (2026-06-26)"), 2026-07-28
+location: godot/src/Core/Definitions/AbilityValidator.cs:154-196
+severity: medium
+reason: Period effects were direct-target-only at runtime.
+status: done 2026-07-28
+resolution: Closed via the named validator branch — AbilityValidator rejects SearchArea in any Persistent phase and descends modifier.period_effect, so the direct-target-only executor can never receive a search-bearing period. Aura/AoE-DoT capability remains an unbuilt feature (not this defect). Verified 2026-07-28.
+
+### DW-264: Independent per-stack expiry timers (StackRule)
+origin: migrated from legacy ledger ("Deferred from: story 2.2b (2026-06-26)"), 2026-07-28
+location: godot/src/Effects/ModifierStore.cs:151-176
+severity: low
+reason: Single slot + shared duration unchanged; _stackCount scales stat deltas only. No shipped mechanic wants independent decay. Design carve-off, not a defect. Verified 2026-07-28.
+status: open
+decision: 2026-07-28 correct-course — filed as Story 15.12 (energy & stack mechanics), per Alec's fold-into-Epic-15 decision
+
+### DW-265: No energy regen model exists
+origin: migrated from legacy ledger ("Deferred from: story 2.2b (2026-06-26)" item 4 + "Deferred from: story 2.4a (2026-06-27)" item 3 + "Deferred from: story 2.4b (2026-06-28)" item 3 — merged), 2026-07-28
+location: godot/src/Core/EntityWorld.cs:998; godot/src/Effects/ModifierStore.cs:386-396
+severity: medium
+reason: Only Energy writers are the cast debit and start-full apply; zero regen_rate/EnergySystem hits in src or resources/data. Casters are one-tank-per-life. Behavioral change when built (Energy already folded → goldens move). Verified 2026-07-28.
+status: open
+decision: 2026-07-28 correct-course — filed as Story 15.12 (energy & stack mechanics), per Alec's fold-into-Epic-15 decision
+
+### DW-266: StatusFlags are authorable and hashed but read by NOTHING — authored stuns are silent no-ops
+origin: migrated from legacy ledger ("Deferred from: story 2.2b (2026-06-26)"), 2026-07-28
+location: godot/src/Combat/CombatSystem.cs; godot/src/Navigation/MovementSystem.cs; godot/src/Effects/AbilityCastSystem.cs
+severity: critical
+reason: HEADLINE GAP — StatusFlagsOf is written/folded (EntityWorld, ModifierStore, SimChecksum) but whole-repo grep shows zero reads in CombatSystem/MovementSystem/AbilityCastSystem, while all five flags (Disarmed/Stunned/Rooted/Silenced/Invulnerable) are authorable through the 2.5 editor and JSON. An authored stun costs energy, shows in the HUD, and does nothing. Determinism-relevant fix (golden re-baseline). Verified 2026-07-28.
+status: open
+decision: 2026-07-28 correct-course — Story 15.3 (status effects become real): Disarmed→CombatSystem gate, Rooted/Stunned→MovementSystem+combat, Silenced→AbilityCastSystem refuse, Invulnerable→DamageResolver
+
+### DW-267: Lethal period DamageEffect mid-Advance is unexercised by any test
+origin: migrated from legacy ledger ("Deferred from: story 2.2b (2026-06-26)"), 2026-07-28
+location: godot/src/Effects/ModifierStore.cs:252-255,314
+severity: low
+reason: Defensive machinery looks correct on inspection (alive-check breaks after a pulse; caster attribution via _casterFaction) but no shipped content authors a lethal period and SelfLethalCastTests covers cast-time only. Verification gap, not a known defect. Verified 2026-07-28.
+status: open
+decision: 2026-07-28 correct-course — test rides Story 15.3 (status effects become real)
+
+### DW-268: EntityPlacer snapshot of Effective/modifier state (2.2b facet)
+origin: migrated from legacy ledger ("Deferred from: story 2.2b (2026-06-26)"), 2026-07-28
+location: godot/src/Core/EntityWorld.cs:1043-1097
+severity: medium
+reason: Same surface as DW-261/DW-243.
+status: done 2026-07-28
+resolution: Story 3.17 closed the dangerous bake-the-buff half; transient modifier instances are dropped by design (Destroy→ClearEntity), def-derived passives re-install via the mapper. Def-less residual noted at DW-261. Verified 2026-07-28.
+
+## Deferred from: code review of story-2.2b (2026-06-26) — migrated 2026-07-28
+
+### DW-269: Runtime re-entrancy guard / deferred-application queue for ModifierStore
+origin: migrated from legacy ledger ("Deferred from: code review of story-2.2b (2026-06-26)"), 2026-07-28
+location: godot/src/Core/Definitions/AbilityValidator.cs:154-181
+severity: medium
+reason: A period graph that installs modifiers could mutate the store mid-Advance.
+status: done 2026-07-28
+resolution: Fenced at the load-time gate (2.3): ApplyModifier rejected in any Persistent phase, nested Persistent rejected, rules extended into modifier.period_effect. Runtime _running flag remains unbuilt = defense-in-depth only (non-ability installers all call Apply outside Advance); noted in DW-324's doc sweep (ModifierStore.cs:39 stale comment). Verified 2026-07-28.
+
+### DW-270: Modifier.DurationTicks == 0 is not truly instantaneous (doc-vs-code mismatch)
+origin: migrated from legacy ledger ("Deferred from: code review of story-2.2b (2026-06-26)"), 2026-07-28
+location: godot/src/Effects/ModifierStore.cs:151,281-284; godot/src/Effects/Modifier.cs:48
+severity: low
+reason: Unchanged — 0 stored verbatim, decrements to -1 then expires, so the bonus is live for one full tick while the doc says "instantaneous/one-shot". Verified 2026-07-28.
+status: open
+decision: 2026-07-28 correct-course — bundle modifier-period-semantics-and-authoring-warnings (Epic 15, Story 15.3)
+
+### DW-271: Periodic Modifier truncates at 256 pulses while still active (Modifier path — NOT closed by 2.13)
+origin: migrated from legacy ledger ("Deferred from: code review of story-2.2b (2026-06-26)"), 2026-07-28
+location: godot/src/Effects/ModifierStore.cs:270-275,532
+severity: medium
+reason: 2.13's lifelong re-arm is gated on `_persistent[slot] != null && Lifelong` — a Modifier's schedule is still hard-set to MaxPersistentPeriods with no re-arm and no duration coupling: periodTicks=1 + duration>256 goes silently pulse-less while keeping its stat bonus. (The 2.6-review persistent self-passive sibling IS closed by 2.13 — do not conflate.) Verified 2026-07-28.
+status: open
+decision: 2026-07-28 correct-course — bundle modifier-period-semantics-and-authoring-warnings (Epic 15, Story 15.3)
+
+### DW-272: Stacked periodic Modifier doesn't scale its DoT/HoT per stack
+origin: migrated from legacy ledger ("Deferred from: code review of story-2.2b (2026-06-26)"), 2026-07-28
+location: godot/src/Effects/ModifierStore.cs:320-324,536-541
+severity: low
+reason: Unchanged — RunEffect executes the period graph once per slot with no _stackCount term while RemoveSlot multiplies stat deltas by it; a 3-stack DoT ticks 1×. Design decision + validator warning first; behavior change waits for stacking content. Verified 2026-07-28.
+status: open
+decision: 2026-07-28 correct-course — warning half in bundle modifier-period-semantics-and-authoring-warnings (Story 15.3); behavior half rides Story 15.12
+
+## Deferred from: story 2.3 (2026-06-26) — migrated 2026-07-28
+
+### DW-273: EffectNode converter Write / authoring round-trip
+origin: migrated from legacy ledger ("Deferred from: story 2.3 (2026-06-26)"), 2026-07-28
+location: godot/src/Effects/EffectNodeJsonConverter.cs:60-74
+severity: high
+reason: 2.3 validated the model; nothing wrote it back.
+status: done 2026-07-28
+resolution: Story 2.5a — Write→WriteNode with documented exact-inverse-of-Read contract; pinned by AbilityRoundTripTests/AbilityDraftTests/AbilityPresetTests; editor saves via ContentJson.Options. Verified 2026-07-28.
+
+### DW-274: Migrate ScenarioSerializer / FactionDefinition to ContentJson.Options
+origin: migrated from legacy ledger ("Deferred from: story 2.3 (2026-06-26)"), 2026-07-28
+location: godot/src/Core/ScenarioSerializer.cs:31; godot/src/Core/Definitions/FactionDefinition.cs:191
+severity: low
+reason: Unchanged — both still carry private option sets while ContentJson.Options spread to items/DSL/LLM drafts. The D3 loader-unification residue; the open EOL/hash exposure recorded in the Epic-6 section touches the same ScenarioSerializer surface — do together. Verified 2026-07-28.
+status: open
+decision: 2026-07-28 correct-course — rides Story 15.6 (scenario & content pipeline sweep)
+
+### DW-275: Runtime ability-cast path
+origin: migrated from legacy ledger ("Deferred from: story 2.3 (2026-06-26)"), 2026-07-28
+location: godot/src/Core/Sim/SimulationHost.cs:274-277
+severity: high
+reason: 2.3 validated; nothing cast.
+status: done 2026-07-28
+resolution: Stories 2.4a/2.4b — AbilityCastSystem at pinned index 5, per-slot cooldown ring, command-card/HUD wiring. Verified 2026-07-28.
+
+### DW-276: Fold the structural caps into the Epic-9 rulesetHash
+origin: migrated from legacy ledger ("Deferred from: story 2.3 (2026-06-26)"), 2026-07-28
+location: godot/src/Core/Definitions/RulesetHash.cs:39-48
+severity: high
+reason: Caps had to be peer-agreed.
+status: done 2026-07-28
+resolution: Story 9.4 — full EffectCaps set folded (incl. MaxSearchAreaDepth/MaxTotalEffectNodes); consumed by MatchAgreementHash, replay header, match-start gate. Stale "reserved to fold" comments at EffectCaps.cs:8/79/87 → DW-324. Verified 2026-07-28.
+
+### DW-277: SearchArea/large-graph structural caps (closed in-review 2026-06-26)
+origin: migrated from legacy ledger ("Deferred from: story 2.3 (2026-06-26)" item 5, already marked ✅ CLOSED), 2026-07-28
+location: godot/src/Core/Definitions/AbilityValidator.cs
+severity: medium
+reason: Was closed by the 2.3 code review itself; carried here for zero-legacy completeness.
+status: done 2026-06-26
+resolution: Closed by code-review of story 2.3 (original marker preserved); AC5 shape rules + caps verified again 2026-07-28.
+
+### DW-278: Ability validator has no WARNING channel for authorable-but-inert content
+origin: migrated from legacy ledger ("Deferred from: story 2.3 (2026-06-26)" item 6 + residuals of the 2.5b review items 1-2 — merged), 2026-07-28
+location: godot/src/Core/Definitions/AbilityValidationResult.cs; godot/src/Core/Definitions/AbilityValidator.cs
+severity: medium
+reason: AbilityValidationResult still carries only Ok/Error/Value — zero non-fatal diagnostics anywhere in the validator, so the 2.2b-class footguns (DurationTicks=0 semantics, >256-pulse truncation, non-scaling stacked DoT, all-empty Persistent on an ACTIVE ability) remain authorable-and-silent. The 2.6 hard rules cover passives only. Verified 2026-07-28.
+status: open
+decision: 2026-07-28 correct-course — bundle modifier-period-semantics-and-authoring-warnings (Epic 15, Story 15.3): add a Warnings list + surface in the 2.5 editor status line
+
+## Deferred from: story 2.4a (2026-06-27) — migrated 2026-07-28
+
+### DW-279: Command-card UI + in-game cast wiring
+origin: migrated from legacy ledger ("Deferred from: story 2.4a (2026-06-27)"), 2026-07-28
+location: godot/src/UI/CommandCardSystem.cs:1330-1432
+severity: high
+reason: 2.4a was the sim spine only.
+status: done 2026-07-28
+resolution: Story 2.4b — ability card render + press handler, SelectionSystem.ArmCastTargeting/IssueCastAbilityCommand, registry via AbilityRegistry.LoadFromDirectory, server parity in ServerBootstrap, HUD energy; AbilityWiringTeethTest. Verified 2026-07-28.
+
+### DW-280: GroundPoint-targeted casting unbuilt (wire widen + EffectContext ground field + reticle)
+origin: migrated from legacy ledger ("Deferred from: story 2.4a (2026-06-27)" item 2 + "Deferred from: story 2.4b (2026-06-28)" item 1 — merged), 2026-07-28
+location: godot/src/Multiplayer/NetworkCommand.cs:154,462-466; godot/src/Effects/EffectContext.cs
+severity: medium
+reason: Unchanged — UnitOrder.SIZE=11, CastAbility packs slot/targetId only, EffectContext has no ground-point field, card renders "[ground-cast: coming soon]" disabled. Needs wire 11→12 + ReplayRecorder.VERSION bump + validator/golden re-baseline + reticle. Carry DW-290 (disable-gate/press-handler coupling) as an AC: fold both targeting sets into one shared is-castable predicate when the 5th mode lands. Verified 2026-07-28.
+status: open
+decision: 2026-07-28 correct-course — filed as Story 15.11 (ability targeting increments), per Alec's fold-into-Epic-15 decision
+
+### DW-281: RestoreUnit ability restore (editor snapshot)
+origin: migrated from legacy ledger ("Deferred from: story 2.4a (2026-06-27)"), 2026-07-28
+location: godot/src/Core/EntityWorld.cs:1043-1090
+severity: medium
+reason: Snapshot did not carry abilities/MaxEnergy.
+status: done 2026-07-28
+resolution: Story 3.17 — snapshot carries Def, RestoreUnit re-derives abilities/MaxEnergy through the single mapper; residuals tracked as DW-51/53/54. Verified 2026-07-28.
+
+### DW-282: MAX_ABILITIES_PER_UNIT (=4) raise + silent cap-drop
+origin: migrated from legacy ledger ("Deferred from: story 2.4a (2026-06-27)"), 2026-07-28
+location: godot/src/Core/EntityWorld.cs:141; godot/src/Core/Definitions/UnitDefinition.cs:387-407
+severity: low
+reason: Const still 4; content max is 2 per unit and passives now take dedicated slots (headroom grew). The silent-clamp logging half is DW-285's scope.
+status: done 2026-07-28
+resolution: Closed as obsolete-until-content-demands (correct-course 2026-07-28); raise the const when a roster actually approaches it.
+
+## From code review of story-2.4a (2026-06-28) — migrated 2026-07-28
+
+### DW-283: Ability cost debits discard return values — negative CostEnergy would partial-spend
+origin: migrated from legacy ledger ("From code review of story-2.4a (2026-06-28)"), 2026-07-28
+location: godot/src/Effects/AbilityCastSystem.cs:193,215-217,240-252
+severity: medium
+reason: Unchanged, and the check-then-debit surface GREW: a 4th cost (CostHealth, debited after the graph) now relies on the same pre-check/debit lockstep; TryDebitEnergy returns false without mutating on cost<0 while the pre-check passes negatives. Gated only by the authoring validator today. Cheap fail-closed asserts on the debit returns. Verified 2026-07-28.
+status: open
+decision: 2026-07-28 correct-course — bundle ability-cast-path-hardening (Epic 15, Story 15.9)
+
+### DW-284: SecondsToTicks 16.16 overflow for cooldowns above ~1092s — no validator upper bound
+origin: migrated from legacy ledger ("From code review of story-2.4a (2026-06-28)"), 2026-07-28
+location: godot/src/Effects/AbilityCastSystem.cs:81,255; godot/src/Core/Definitions/AbilityValidator.cs:81-82
+severity: low
+reason: Unchanged — conversion unclamped, validator has only the lower bound. ScenarioDirector guards its own conversion with Math.Max(1, ...) — precedent for the one-line fix + validator upper bound. Verified 2026-07-28.
+status: open
+decision: 2026-07-28 correct-course — bundle ability-cast-path-hardening (Epic 15, Story 15.9)
+
+### DW-285: Ability-resolution and cast failures degrade silently (link-time drops + runtime bare returns)
+origin: migrated from legacy ledger ("From code review of story-2.4a (2026-06-28)" item 3 + "Deferred from: story 2.4b (2026-06-28)" item 5 runtime half + the DW-282 log half — merged), 2026-07-28
+location: godot/src/Core/Definitions/UnitDefinition.cs:392,407; godot/src/Effects/AbilityCastSystem.cs:137,165,182
+severity: medium
+reason: ResolveAbilities still drops unknown ids and over-cap abilities with no log; TryCast (and now the aura/self-passive installers) bare-return on a bad registry index. Partly covered by AbilityWiringTeethTest; runtime diagnostic still absent. Adjacent-but-distinct: DW-107 (registry silent Empty), DW-121 (unresolved discovered factions). Verified 2026-07-28.
+status: open
+decision: 2026-07-28 correct-course — bundle ability-cast-path-hardening (Epic 15, Story 15.9)
+
+## Deferred from: story 2.4b (2026-06-28) — migrated 2026-07-28
+
+### DW-286: Ally-targeted TargetUnit (heal-other) needs a target-affinity hint
+origin: migrated from legacy ledger ("Deferred from: story 2.4b (2026-06-28)"), 2026-07-28
+location: godot/src/Core/Definitions/AbilityDefinition.cs:30-113; godot/src/UI/SelectionSystem.cs:396,912
+severity: low
+reason: No TargetAffinity field exists anywhere; AbilityTargeting is still the 4-value enum; click-picker is enemy-only (FindNearestEnemyUnit, hardcoded "click an enemy target" prompt). No shipped content blocked. Feature, not a defect. Verified 2026-07-28.
+status: open
+decision: 2026-07-28 correct-course — filed as Story 15.11 (ability targeting increments), per Alec's fold-into-Epic-15 decision
+
+### DW-287: Worker-cast command card (Decision C reversal)
+origin: migrated from legacy ledger ("Deferred from: story 2.4b (2026-06-28)"), 2026-07-28
+location: godot/src/UI/CommandCardSystem.cs:255-274
+severity: medium
+reason: Ability section hid for workers.
+status: done 2026-07-28
+resolution: Story 2.9b — the !workerSelected term is gone; abilitySelected computed independently; ability panel repositions to the stacked slot when co-displayed with the worker card. Verified 2026-07-28.
+
+### DW-288: No per-entity UnitDefinition link for presentation ability reads (documentation note)
+origin: migrated from legacy ledger ("Deferred from: story 2.4b (2026-06-28)"), 2026-07-28
+location: godot/src/UI/CommandCardSystem.cs:1340-1360
+severity: low
+reason: The card behavior it documents still holds (reads AbilityCount/AbilityId SoA by focusId), but its load-bearing clause is now false — Story 3.17 added EntityWorld.SourceDefinition[id].
+status: done 2026-07-28
+resolution: Closed as an obsolete documentation note (correct-course 2026-07-28).
+
+## Deferred from: code review of story-2.4b (2026-06-28) — migrated 2026-07-28
+
+### DW-289: Ability (and faction) JSON not covered by the pre-match content handshake
+origin: migrated from legacy ledger ("Deferred from: code review of story-2.4b (2026-06-28)"), 2026-07-28
+location: godot/src/Core/Definitions/ContentHash.cs; godot/src/Core/Definitions/MatchAgreementHash.cs
+severity: critical
+reason: Determinism-relevant content could differ between peers unhashed.
+status: done 2026-07-28
+resolution: Story 9.16 — ContentHash covers factions + full AbilityRegistry + ItemRegistry + DamageTable (its own doc names this closed vector); folded into MatchAgreementHash, gated fail-closed client-side (HandshakeGate.CheckStart) and server-side (DedicatedServer.HandleReady, unparsable→0→fail); per-domain Breakdown string answers the opaque-HALT complaint. Residual registry silent-Empty is DW-107. Verified 2026-07-28.
+
+### DW-290: Command-card disable-gate and press-handler targeting sets coupled by assumption
+origin: migrated from legacy ledger ("Deferred from: code review of story-2.4b (2026-06-28)"), 2026-07-28
+location: godot/src/UI/CommandCardSystem.cs:1370-1376,1419-1431
+severity: low
+reason: Still two separately-enumerated sets; safe while AbilityTargeting has exactly 4 members. No defect today.
+status: done 2026-07-28
+resolution: Closed as accepted-latent (correct-course 2026-07-28); carried as an explicit AC on Story 15.11 (fold both into one shared is-castable-targeting predicate when a 5th mode lands) — see DW-280.
+
+## Deferred from: code review of story-2.5a (2026-06-29) — migrated 2026-07-28
+
+### DW-291: Header fields editable-but-ignored in Advanced mode + Show JSON overwrites raw edits
+origin: migrated from legacy ledger ("Deferred from: code review of story-2.5a (2026-06-29)"), 2026-07-28
+location: godot/src/CreationSuite/AbilityEditorPanel.cs:448-465,614-617,682-686
+severity: medium
+reason: Advanced-mode desync between header widgets, raw pane, and tree.
+status: done 2026-07-28
+resolution: ShowJson serializes BuildAdvancedModel() in Advanced (in-code comment names this deferral); Advanced→Simple reconciles via ResolveAdvancedDef + lossless preset gate; DoSave folds the dirty raw pane back tree-canonically. Verified 2026-07-28.
+
+### DW-292: Advanced-mode Save wrote an un-sanitized content id
+origin: migrated from legacy ledger ("Deferred from: code review of story-2.5a (2026-06-29)"), 2026-07-28
+location: godot/src/CreationSuite/AbilityEditorPanel.cs:687-697
+severity: medium
+reason: Filename ≠ id; ids could collide.
+status: done 2026-07-28
+resolution: Decision-#8 guard — SanitizeId mismatch and empty-after-sanitize both refuse the save with a located error. (Pattern available for DW-47's item-editor sibling, noted there.) Verified 2026-07-28.
+
+### DW-293: WriteNode can emit DamageType.COUNT that Read rejects (write/read asymmetry, COUNT half)
+origin: migrated from legacy ledger ("Deferred from: code review of story-2.5a (2026-06-29)"), 2026-07-28
+location: godot/src/Effects/EffectNodeJsonConverter.cs:184-189,228-229
+severity: low
+reason: The TargetFilter half is OBSOLETE (2.9a lifted the Read reject; Air/Ground/Structure now authorable). The COUNT half is narrower but real: WriteEnum has no guard while ReadNode hard-rejects COUNT; editor-unreachable (DraftVocabulary excludes COUNT by design). Stale contradicted comment at AbilityEditorPanel.Advanced.cs:280-281 ("NEVER the reserved bits — AC5"). Verified 2026-07-28.
+status: open
+decision: 2026-07-28 correct-course — bundle ability-editor-composer-cleanup (Epic 15, Story 15.9)
+
+## Deferred from: code review of story-2.5b (2026-06-29) — migrated 2026-07-28
+
+### DW-294: All-empty Persistent node validates + saves as a no-op ability
+origin: migrated from legacy ledger ("Deferred from: code review of story-2.5b (2026-06-29)"), 2026-07-28
+location: godot/src/CreationSuite/AbilityEditorPanel.Advanced.cs:293-294; godot/src/Core/Definitions/AbilityValidator.cs:280-282
+severity: low
+reason: Authoring footgun.
+status: done 2026-07-28
+resolution: Both recommended mitigations landed — composer dim note + Story 2.6 hard validator rule for passives. Active-ability residual (validator intentionally untouched per Decision #6) rides DW-278's warning channel. Verified 2026-07-28.
+
+### DW-295: period_effect + period_ticks = 0 validates but never fires
+origin: migrated from legacy ledger ("Deferred from: code review of story-2.5b (2026-06-29)"), 2026-07-28
+location: godot/src/Core/Definitions/AbilityValidator.cs:283-291
+severity: medium
+reason: Authoring footgun.
+status: done 2026-07-28
+resolution: In-UI hints (composer + modifier-period twin) plus validator rules rejecting period_ticks<=0 and the period_count<=0 sibling for while_alive. Active residual rides DW-278. Verified 2026-07-28.
+
+### DW-296: Composer/Simple SpinBoxes display quantized values (display ≠ saved Fixed)
+origin: migrated from legacy ledger ("Deferred from: code review of story-2.5b (2026-06-29)" item 3 + "Deferred from: code review of story-2.5a (2026-06-29)" item 3 — merged), 2026-07-28
+location: godot/src/CreationSuite/AbilityEditorPanel.cs:885-897; AbilityEditorPanel.Advanced.cs:125,258-266,279,348
+severity: low
+reason: Unchanged — Step=1/0.5 rows snap on ValueChanged; no data loss but display≠saved persists for loaded fractional values. Verified 2026-07-28.
+status: open
+decision: 2026-07-28 correct-course — bundle ability-editor-precision-fidelity (Epic 15, Story 15.9)
+
+### DW-297: DraftNode.Depth()/SearchAreaDepth() are Tier-1-tested but unused by production
+origin: migrated from legacy ledger ("Deferred from: code review of story-2.5b (2026-06-29)"), 2026-07-28
+location: godot/src/CreationSuite/AbilityDraft.cs:277-309
+severity: low
+reason: Unchanged — only referenced from AbilityDraftTests; production re-derives via TreeCtx/CountNodes. Delete or pin semantics vs EffectCaps.MaxEffectDepth. Verified 2026-07-28.
+status: open
+decision: 2026-07-28 correct-course — bundle ability-editor-composer-cleanup (Epic 15, Story 15.9)
+
+### DW-298: Flag-combination multi-select (checkbox) UI for Filter/Status
+origin: migrated from legacy ledger ("Deferred from: code review of story-2.5b (2026-06-29)"), 2026-07-28
+location: godot/src/CreationSuite/AbilityEditorPanel.Advanced.cs:282,353,428-430,483
+severity: low
+reason: Single-select dropdowns couldn't author flag combinations.
+status: done 2026-07-28
+resolution: Story 2.6 Task 8 — AddFlagChecks checkbox sets for Filter and Status; former single-select builders removed (documented in-code). Verified 2026-07-28.
+
+## Deferred from: code review of story-2.6 (2026-06-30) — migrated 2026-07-28
+
+### DW-299: Periodic self-passive caps at 256 pulses, never renewed
+origin: migrated from legacy ledger ("Deferred from: code review of story-2.6 (2026-06-30)"), 2026-07-28
+location: godot/src/Effects/ModifierStore.cs:270-276
+severity: high
+reason: Lifelong regen passives went silently pulse-less.
+status: done 2026-07-28
+resolution: Story 2.13 AC4.1 — lifelong re-arm in the same slot when `_persistent[slot].Lifelong && HasPeriod`; flag plumbed through PersistentEffect/converter/CanonicalFold/validator; LifelongHotTests; shipped furnace content sets "lifelong": true; self-passives covered via the shared InstallPersistent machinery. (The plain-Modifier sibling remains open as DW-271 — distinct path.) Composer round-trip regression risk filed as DW-323. Verified 2026-07-28.
+
+### DW-300: Self-passive spawn-install is not idempotent against a live re-ApplyUnitDefinition
+origin: migrated from legacy ledger ("Deferred from: code review of story-2.6 (2026-06-30)"), 2026-07-28
+location: godot/src/Effects/AbilityCastSystem.cs:161-171; godot/src/Effects/ModifierStore.cs:266-269
+severity: medium
+reason: Latent, unchanged — no install-once guard, no same-id dedup (2.13's own comment names it). Precondition holds (every mapper caller runs on a fresh Create slot) but the seam now has TWO subscribers (InstallSelfPassive + ResearchSystem.ApplyCompletedResearch) — a future in-place re-apply (upgrade/morph/tech) double-fires both. Verified 2026-07-28.
+status: open
+decision: 2026-07-28 correct-course — bundle passive-install-idempotence (Epic 15, Story 15.7): 3-line dedup now beats waiting for the trap
+
+### DW-301: Editor RestoreUnit silently dropped authored armor + passives
+origin: migrated from legacy ledger ("Deferred from: code review of story-2.6 (2026-06-30)"), 2026-07-28
+location: godot/src/Core/EntityWorld.cs:1080-1090
+severity: high
+reason: Undo/load lost authored state.
+status: done 2026-07-28
+resolution: Story 3.17 — restore routes through the single mapper (BaseArmor/EffectiveArmor + the three passive indices + install seam); snapshot deliberately captures Base stats. Verified 2026-07-28.
+
+## Deferred from: code review of story-2.8 (2026-07-01) — migrated 2026-07-28
+
+### DW-302: Local player hardcoded to Faction.Player1 in IssueTrainCommand
+origin: migrated from legacy ledger ("Deferred from: code review of story-2.8 (2026-07-01)"), 2026-07-28
+location: godot/src/UI/CommandCardSystem.cs:38-44,756-765
+severity: high
+reason: MP-hostile hardcode.
+status: done 2026-07-28
+resolution: Story 9.5 — _localFaction Func wired by CameraPhase to EffectiveLocalFaction; IssueTrainCommand guards ownership and passes _localFaction(); all sibling building seams converted. Cosmetic residual: the P1/P2 title ternary at :312 (label text only). Verified 2026-07-28.
+
+### DW-303: ProductionQueueValue clamps a stored index ≥254 to the 255 fallback sentinel
+origin: migrated from legacy ledger ("Deferred from: code review of story-2.8 (2026-07-01)"), 2026-07-28
+location: godot/src/Economy/BuildingSystem.cs:419-427
+severity: low
+reason: Requires a ≥255-unit single-faction roster; documented accepted invariant.
+status: done 2026-07-28
+resolution: Closed as accepted design boundary (correct-course 2026-07-28); if creator rosters ever grow, a dedicated int[] chosen-index array belongs to a creator-content story.
+
+### DW-304: OrderApplier building commands no-op silently when BuildingSystem is null
+origin: migrated from legacy ledger ("Deferred from: code review of story-2.8 (2026-07-01)"), 2026-07-28
+location: godot/src/Multiplayer/NetworkCommand.cs:208-216
+severity: low
+reason: Unchanged and the surface GREW — the null-elvis pattern spread from Train to SetRally (and the Revive/Research family): an accidental null wiring is a deterministic silent no-op indistinguishable from intentional headless-null. Unreachable today (wiring unconditional in MatchLifecycleController). Verified 2026-07-28.
+status: open
+decision: 2026-07-28 correct-course — bundle lockstep-wiring-fail-loud (Epic 15, Story 15.7)
+
+## Deferred from: code review of story-2.9a (2026-07-01) — migrated 2026-07-28
+
+### DW-305: Editor RestoreUnit silently dropped authored AttackDomainOf
+origin: migrated from legacy ledger ("Deferred from: code review of story-2.9a (2026-07-01)"), 2026-07-28
+location: godot/src/Core/EntityWorld.cs:983,1070-1089
+severity: medium
+reason: Undo/load lost the authored attack domain. (Item 1 of this section merged into DW-242.)
+status: done 2026-07-28
+resolution: Story 3.17 — ParsedAttackDomains written inside the single mapper which RestoreUnit now calls; docstring enumerates attack domain among re-derived fields; old hand-enumerated carve-off note removed. Verified 2026-07-28.
+
+## Deferred from: code review of story-2.10 (2026-07-02) — migrated 2026-07-28
+
+### DW-306: Repeated Spike Transmutation self-cast could strand the Covenant Transmuter 0-HP-alive
+origin: migrated from legacy ledger ("Deferred from: code review of story-2.10 (2026-07-02)"), 2026-07-28
+location: godot/src/Effects/AbilityCastSystem.cs:199; godot/resources/data/abilities/spike_transmutation.json
+severity: high
+reason: Health-cost self-cast could reduce the caster below viability.
+status: done 2026-07-28
+resolution: Story 2.13 AC5.3/D-4 — HP-affordability gate (`!AllowSelfLethal && Health <= CostHealth → refuse`, atomic, pre-debit; in-code comment names this item); content converted to cost_health/allow_self_lethal + apply_modifier; validator negative-cost reject. Verified 2026-07-28.
+
+## Deferred from: code review of story-2.13 (2026-07-05) — migrated 2026-07-28
+
+### DW-307: A crowd of plain Move orders can still ring at ~1.0-1.7u without completing
+origin: migrated from legacy ledger ("Deferred from: code review of story-2.13 (2026-07-05)"), 2026-07-28
+location: godot/src/Navigation/MovementSystem.cs:17-24
+severity: low
+reason: Unchanged and deliberate — ARRIVE_THRESHOLD_SQR stays 0.5u² (widening strands melee; guarded by MeleeUnitBelowArriveRadius_StillClosesAndStrikes); only the two GOAL thresholds moved in 2.13. Plain-Move completion still rides the physical stop. Verified 2026-07-28.
+status: open
+decision: 2026-07-28 correct-course — filed to Story 10.14 (pathfinding quality / arrival stability); do not bundle
+
+## Deferred from: code review of story-3.1a (2026-07-05) — migrated 2026-07-28
+
+### DW-308: AccentController registry had no unregister/clear — leak in long-lived controllers
+origin: migrated from legacy ledger ("Deferred from: code review of story-3.1a (2026-07-05)"), 2026-07-28
+location: godot/src/UI/Theme/AccentController.cs:86-89
+severity: medium
+reason: Freed StyleBoxes accumulated across accent switches.
+status: done 2026-07-28
+resolution: Story 3.1b — Unregister(box) + Clear() exist; ChimeraComponents.Reset() calls Clear() and PruneAccentHandlers runs on every accent switch/bind. Verified 2026-07-28.
+
+### DW-309: UX-DR11 shadow tokens absent from the committed main.tres
+origin: migrated from legacy ledger ("Deferred from: code review of story-3.1a (2026-07-05)"), 2026-07-28
+location: godot/assets/ui/main.tres; godot/src/UI/Theme/ThemeTokens.cs:171
+severity: low
+reason: Godot Theme constants are int-only — cannot hold size+offset+alpha+color; recipes are C#-side (ShadowRecipes + WithShadow).
+status: done 2026-07-28
+resolution: Closed as accepted-as-recorded (correct-course 2026-07-28); a .tres-native representation belongs to a future theme-format story (10.7) if ever wanted.
+
+### DW-310: ChimeraStyleBox.Chamfer had no cut bounds guard
+origin: migrated from legacy ledger ("Deferred from: code review of story-3.1a (2026-07-05)"), 2026-07-28
+location: godot/src/UI/Theme/ChimeraStyleBox.cs:29-34
+severity: low
+reason: Negative cut produced degenerate geometry.
+status: done 2026-07-28
+resolution: Story 3.1b D-5 — `cut = Mathf.Max(0, cut)` with a comment naming this deferral; upper bound intentionally left to Godot's draw-time radius cap. Verified 2026-07-28.
+
+### DW-311: cut-lg (14) not exercised in the 3.1a in-engine proof
+origin: migrated from legacy ledger ("Deferred from: code review of story-3.1a (2026-07-05)"), 2026-07-28
+location: godot/src/UI/Components/ChimeraDialog.cs:75-76
+severity: low
+reason: AC2 named it; only the preview used it.
+status: done 2026-07-28
+resolution: cut_lg is now a shipped production surface — every ChimeraDialog modal builds from Const(ThemeTokens.CutLg); the 3.1c gallery /godot-verify (dialog over scrim) was the in-engine proof. Verified 2026-07-28.
+
+## Deferred from: code review of story-3.1c (2026-07-06) — migrated 2026-07-28
+
+### DW-312: Tooltip position is a one-shot snapshot — keyboard-focus tooltips don't re-anchor on scroll
+origin: migrated from legacy ledger ("Deferred from: code review of story-3.1c (2026-07-06)"), 2026-07-28
+location: godot/src/UI/Components/ChimeraTooltip.cs:87-88,118
+severity: low
+reason: The punt condition materialized — UnitCardPanel wraps its form in a ScrollContainer with 35 tooltip attach sites; a keyboard-focus tip stays anchored to a stale rect until FocusExited. Decide hide-on-scroll vs re-anchor. Verified 2026-07-28.
+status: open
+decision: 2026-07-28 correct-course — filed to Story 10.6 (accessibility, keyboard-focus behavior home); bundle ui-tooltip-anchor-on-scroll if pulled earlier
+
+### DW-313: Toast stack is uncapped — burst spam can grow it off-screen
+origin: migrated from legacy ledger ("Deferred from: code review of story-3.1c (2026-07-06)"), 2026-07-28
+location: godot/src/UI/Components/ChimeraToastHost.cs:79-85
+severity: low
+reason: NextY() still sums over every entry with no max-visible cap/evict/coalesce (3.1c patch added reflow-tween discipline only). Self-healing/transient. Verified 2026-07-28.
+status: open
+decision: 2026-07-28 correct-course — filed to Story 11.4 (event cues — the toast→real-MP-event wiring story owns the cap/evict policy)
+
+### DW-314: ChimeraComponents.Reset() could call into a freed AccentController on scene reload
+origin: migrated from legacy ledger ("Deferred from: code review of story-3.1c (2026-07-06)"), 2026-07-28
+location: godot/src/UI/Components/ChimeraComponents.cs:77,104-114
+severity: medium
+reason: Pre-existing reload-safety hole.
+status: done 2026-07-28
+resolution: Story 3.3 review — IsInstanceValid guard around unsubscribe+Clear (lists/caches still dropped unconditionally); IsInitialized also validates the instance. Comments credit the 3.1c deferral. Verified 2026-07-28.
+
+## Deferred from: code review of story-3.2 (2026-07-06) — migrated 2026-07-28
+
+### DW-315: HeroStore per-tick SimChecksum fold
+origin: migrated from legacy ledger ("Deferred from: code review of story-3.2 (2026-07-06)"), 2026-07-28
+location: godot/src/Core/SimChecksum.cs:430-460
+severity: high
+reason: The AC2-deferred planned fold.
+status: done 2026-07-28
+resolution: Story 3.13 — HeroStore mutable state folded (v11, ascending HeroId, count-driven) incl. the 3.14 revival fields in the same bump; coverage teeth in SimChecksumCoverageGuardTest.AssertHeroStoreFoldedIntoChecksum; goldens re-pinned through each bump (now v21). Verified 2026-07-28.
+
+## Deferred from: code review of story-3.3 (2026-07-06) — migrated 2026-07-28
+
+### DW-316: Model-reference readout could claim "Renders <path>" while the preview shows the box placeholder
+origin: migrated from legacy ledger ("Deferred from: code review of story-3.3 (2026-07-06)"), 2026-07-28
+location: godot/src/UI/MeshLoader.cs:42-75; godot/src/CreationSuite/UnitCardPanel.Edit.cs:951-965
+severity: medium
+reason: Readout and preview resolved the mesh independently.
+status: done 2026-07-28
+resolution: Story 3.5 — MeshLoader gained `out bool usedPlaceholder` (true for missing path AND loaded-but-no-MeshInstance3D); the panel consumes the live render outcome (MeshError, D-3); the stale string no longer exists — Model row is a LineEdit + Browse/Box + located ChimeraValidationBadge. Verified 2026-07-28.
+
+### DW-317: LoadFactionFromPath leaves FactionDefinition.LoadFromFile's parse/IO throw uncaught
+origin: migrated from legacy ledger ("Deferred from: code review of story-3.3 (2026-07-06)"), 2026-07-28
+location: godot/src/CreationSuite/UnitCardPanel.cs:165; godot/src/CreationSuite/BuildingCardPanel.cs:117
+severity: medium
+reason: Same defect class as DW-62 (root: no try/catch around Deserialize in LoadFromFile) and DW-123 (ScenarioLoadPhase call site); still live at both card-panel call sites. Fixing DW-62 at the root subsumes these; co-locate DW-65's _history clear (same method). Verified 2026-07-28.
+status: open
+decision: 2026-07-28 correct-course — bundle faction-load-fail-closed = faction-load-error-handling (DW-62, DW-123) + these call sites (Epic 15, Story 15.6)
+
+### DW-318: Forward-note: LoadFactionFromPath File.Exists silent no-op in an exported .pck
+origin: migrated from legacy ledger ("Deferred from: code review of story-3.3 (2026-07-06)"), 2026-07-28
+location: godot/src/CreationSuite/UnitCardPanel.cs:157
+severity: low
+reason: The forward condition resolved false — Story 3.4 did NOT reuse this entry point; repo-wide grep shows zero callers (editor-only /godot-verify harness). The generic System.IO-on-res:// concern belongs to export/packaging stories.
+status: done 2026-07-28
+resolution: Closed as obsolete (correct-course 2026-07-28).
+
+## Deferred from: dev of story-3.4 (2026-07-06) — plain numbered items migrated 2026-07-28
+
+### DW-319: UX-DR33 primitive logged: ChimeraValidationBadge
+origin: migrated from legacy ledger ("Deferred from: dev of story-3.4 (2026-07-06)"), 2026-07-28
+location: godot/src/UI/Components/ChimeraValidationBadge.cs
+severity: low
+reason: Log-the-primitive ask.
+status: done 2026-07-28
+resolution: Over-delivered — consumed by 9 panels / 35 badge sites with 5.9 multi-badge fan-out. The optional ChimeraComponents.ValidationBadge factory promotion was not done (cosmetic API consistency; dropped — fold into 10.7 only if convenient). Verified 2026-07-28.
+
+### DW-320: Numeric-field undo granularity is focus-session, not per-arrow-click
+origin: migrated from legacy ledger ("Deferred from: dev of story-3.4 (2026-07-06)"), 2026-07-28
+location: godot/src/CreationSuite/UnitCardPanel.Edit.cs:360-392
+severity: low
+reason: Unchanged (snapshot on FocusEntered, one undo entry on FocusExited; pure arrow-button tweaks not individually undoable); replicated across sibling editors. Save persistence correct. Verified 2026-07-28.
+status: open
+decision: 2026-07-28 correct-course — filed to Stories 10.6/10.7 (UI polish); bundle editor-undo-granularity if pulled earlier
+
+### DW-321: Undo-of-delete restores in-memory order but render slots re-materialize on Save→reload
+origin: migrated from legacy ledger ("Deferred from: dev of story-3.4 (2026-07-06)"), 2026-07-28
+location: godot/src/Core/Sim/ScenarioApplier.cs:489
+severity: low
+reason: MeshType slot drift across save/reload.
+status: done 2026-07-28
+resolution: Story 3.10 — MeshType derives from the single FactionDefinition.IndexOfUnit coordinate at apply time everywhere; ResetToAuthoredStart clears + re-applies through the same applier; undo re-inserts at the original index so IndexOfUnit is stable. Verified 2026-07-28.
+
+### DW-322: Whole-faction-file re-indent on Save is git-diff noise
+origin: migrated from legacy ledger ("Deferred from: dev of story-3.4 (2026-07-06)"), 2026-07-28
+location: godot/src/Core/Definitions/FactionWriter.cs:105
+severity: low
+reason: Determinism-harmless as documented (no faction-file byte hash pinned; CanonicalModelHash folds the model); unknown-key preservation enforced by the token-preserving Put*/ApplyFields path.
+status: done 2026-07-28
+resolution: Closed as accepted (correct-course 2026-07-28) — won't-fix.
+
+## New findings — correct-course verification pass (2026-07-28)
+
+### DW-323: Advanced ability composer silently DROPS PersistentEffect.Lifelong on round-trip
+origin: correct-course legacy-verification pass, 2026-07-28
+location: godot/src/CreationSuite/AbilityDraft.cs:216-219,258-265
+severity: high
+reason: DraftNode has no Lifelong field — ToEffectNode constructs PersistentEffect with lifelong defaulting false and FromEffectNode doesn't capture it; no Lifelong anywhere in AbilityEditorPanel*. Opening furnace_trickle/furnace_pour in Advanced and saving strips the flag, silently re-introducing the 256-pulse defect Story 2.13 fixed; the validator cannot catch it (only rejects lifelong-without-period). Found while verifying DW-299's closure.
+status: open
+decision: 2026-07-28 correct-course — bundle ability-composer-lifelong-round-trip (Epic 15, Story 15.3): DraftNode.Lifelong + composer checkbox + round-trip test
+
+### DW-324: Stale-comment / doc-debt sweep surfaced by the verification pass
+origin: correct-course legacy-verification pass, 2026-07-28
+location: various (see reason)
+severity: low
+reason: Doc rot found while verifying closures: EffectCaps.cs:8,79,87 still say "reserved to fold into the Epic-9 rulesetHash" (9.4 folded them); Modifier.cs:48 says "0 = instantaneous" (see DW-270); ModifierStore.cs:39 describes the re-entrancy guard as unbuilt without noting the validator fence; ServerChecksumCollector.cs:11,22-23 stale "MaxSlots 4→8 in 9.2" (deliberately NOT bumped — sim ceiling 8 vs MP seat ceiling 4); AbilityEditorPanel.Advanced.cs:280-281 "NEVER the reserved Air/Ground/Structure bits" contradicted since 2.9a; the 2.9b fallback-seed entry's dead ApplyFallback:159-160 anchor; ScenarioLoadPhase.cs:440 comment-coupled fallback start positions; lan-desync-smoke.ps1 missing "requires source/DEBUG build" banner; optional FallbackMirror-vs-alpha_map_01 agreement test.
+status: open
+decision: 2026-07-28 correct-course — rides bundle housekeeping-docs-and-normalization (DW-46, DW-105, DW-175) (Epic 15, Story 15.6)
