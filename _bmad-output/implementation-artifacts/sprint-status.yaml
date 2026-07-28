@@ -165,7 +165,7 @@ development_status:
   epic-8-retrospective: done
   # Epic 11 is sequenced BEFORE Epic 9 (2026-07-01 sprint-change proposal): MP verification needs the session shell to exist.
   epic-11: backlog
-  11-1-the-real-skirmish-setup-screen-loading-match-start-flow: backlog
+  11-1-the-real-skirmish-setup-screen-loading-match-start-flow: done
   11-2-in-match-menu-pause-game-speed-concede-surrender-leave-victory-defeat-score-screen: backlog
   11-3-sp-save-load-full-world-serializer-slots-autosave-format-stability: backlog
   11-4-under-attack-alerts-minimap-pings-event-cues-denial-acknowledgment-feedback: backlog
