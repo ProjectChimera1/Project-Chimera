@@ -44,15 +44,6 @@
     "label": "Build a New Scenario empty-canvas flow",
     "resolution": ""
   },
-  "DW-140": {
-    "answered_at": "2026-07-25",
-    "bundle_name": "",
-    "effect": "build",
-    "intent": "Add a byte/size cap to EditorHistory dropping oldest entries beyond the cap, shared across terrain + entity undo",
-    "key": "1",
-    "label": "Byte-capped coalescing shared policy",
-    "resolution": ""
-  },
   "DW-146": {
     "answered_at": "2026-07-25",
     "bundle_name": "",
@@ -141,15 +132,6 @@
     "intent": "Sort ScenarioApplier's Items (and ideally the unit/building loops) by the same canonical key before Create; golden re-baseline",
     "key": "1",
     "label": "Canonicalize placement order",
-    "resolution": ""
-  },
-  "DW-38": {
-    "answered_at": "2026-07-25",
-    "bundle_name": "",
-    "effect": "build",
-    "intent": "Soften the ItemDefinition/validator docstrings to allow WC3-style buff-consumables and add hybrid apply/consume coverage",
-    "key": "1",
-    "label": "Permit hybrids + document",
     "resolution": ""
   },
   "DW-52": {
