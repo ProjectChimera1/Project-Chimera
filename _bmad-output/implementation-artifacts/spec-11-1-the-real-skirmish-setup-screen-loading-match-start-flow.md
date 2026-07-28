@@ -2,9 +2,9 @@
 title: 'Story 11.1 — The real skirmish setup screen + loading / match-start flow'
 type: 'feature'
 created: '2026-07-28'
-status: 'in-review'
+status: 'done'
 baseline_revision: 'ca5fa1c537f774a8090727569d1552c87b239b1e'
-final_revision: 'b9428da52874fd3d1a767003a7437976c0108180'
+final_revision: 'a9a65d9abe705e9431b9cdec467a111b548e9955'
 review_loop_iteration: 0
 followup_review_recommended: false
 context:
