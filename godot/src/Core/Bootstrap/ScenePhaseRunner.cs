@@ -20,12 +20,24 @@ namespace ProjectChimera.Core.Bootstrap
         public ScenePhaseRunner(IReadOnlyList<ISetupPhase> phases)
             => _phases = phases ?? throw new ArgumentNullException(nameof(phases));
 
-        /// <summary>Assert the live order matches the canonical order, then run each phase in sequence.</summary>
-        public void Run()
+        /// <summary>
+        /// Assert the live order matches the canonical order, then run each phase in sequence. Story 11.1: an optional
+        /// <paramref name="onPhaseStarting"/> progress seam is invoked immediately BEFORE each <c>phase.Run()</c> (after
+        /// <see cref="AssertOrder"/>) with <c>(1-based index, total phase count, phase name)</c> — the real per-phase
+        /// signal the loading screen renders. When null the behavior is byte-identical to before (no callback, same
+        /// synchronous foreach). The runner stays synchronous; smooth cross-frame animation is a non-goal.
+        /// </summary>
+        public void Run(System.Action<int, int, string>? onPhaseStarting = null)
         {
             AssertOrder();
+            int total = _phases.Count;
+            int index = 0;
             foreach (ISetupPhase phase in _phases)
+            {
+                index++;
+                onPhaseStarting?.Invoke(index, total, phase.Name);
                 phase.Run();
+            }
         }
 
         /// <summary>

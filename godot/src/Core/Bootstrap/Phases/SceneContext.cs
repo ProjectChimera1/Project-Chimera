@@ -141,6 +141,7 @@ namespace ProjectChimera.Core.Bootstrap
         public CreationSuite.FactionDefinerPanel FactionDefinerPanel = null!;  // Story 5.5 (FactionDefiner phase)
         public UI.OnboardingPanel OnboardingPanel = null!;  // Story 5.9 (Onboarding phase — last)
         public UI.HeroPickerOverlay HeroPicker = null!;  // Story 3.9 (HeroPicker phase) — offline Play-Skirmish hero picker + launch authority
+        public UI.SkirmishSetupOverlay SkirmishSetup = null!;  // Story 11.1 (MainMenu phase) — the skirmish setup screen reached from "Play"
         /// <summary>Story 3.9: the profile the player Deployed at the offline skirmish start, handed off to
         /// <c>HeroProfileLoader.LoadInto</c> to mint into <c>HeroStore</c> as init state; cleared after mint. Null ⇒
         /// nothing minted ("play without a saved hero" / persistence disabled).</summary>

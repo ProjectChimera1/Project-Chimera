@@ -22,12 +22,19 @@ namespace ProjectChimera.Core.Bootstrap
             _ctx.Scene.AddChild(_ctx.MainMenu);
             _ctx.MainMenu.Initialize(version: "0.1-alpha");
 
+            // Story 11.1: the real skirmish setup screen, constructed here (hidden) so both the "Play" button and the
+            // boot-failure fail-safe re-open can drive the same overlay. Back re-shows the title screen.
+            _ctx.SkirmishSetup = new SkirmishSetupOverlay();
+            _ctx.Scene.AddChild(_ctx.SkirmishSetup);
+            _ctx.SkirmishSetup.Initialize(_ctx.Scene, onBack: () => { if (_ctx.MainMenu != null) _ctx.MainMenu.Visible = true; });
+
             _ctx.MainMenu.OnPlaySkirmish += () =>
             {
-                // Story 3.9: single launch authority. Delegate to the hero picker — it shows the offline hero-picker
-                // overlay when the loaded scenario's persistence manifest is Enabled, else toggles straight to Play
-                // exactly as today (no double-toggle). The picker owns the PendingHeroProfile stash + mint.
-                _ctx.HeroPicker.RequestSkirmishLaunch();
+                // Story 11.1: "Play" now opens the skirmish setup screen (map/faction/team/AI selection) instead of
+                // launching straight into the hardcoded scenario. The menu is already hidden by the overlay's own
+                // Visible=false; the setup screen's Launch builds an in-memory ScenarioData and hands it to the
+                // existing PendingGeneratedScenario + ReloadCurrentScene boot path.
+                _ctx.SkirmishSetup.Open();
             };
 
             // Story 9.7: the Multiplayer destination — un-defers the honesty-gated slot. Opens the rebuilt N-slot

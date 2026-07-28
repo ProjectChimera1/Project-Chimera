@@ -5,6 +5,7 @@ using ProjectChimera.Combat;
 using ProjectChimera.Core.Bootstrap;
 using ProjectChimera.Core.Definitions;
 using ProjectChimera.Core.Sim;
+using ProjectChimera.Core.Skirmish;
 using ProjectChimera.CreationSuite;
 using ProjectChimera.Economy;
 using ProjectChimera.Multiplayer;
@@ -146,6 +147,26 @@ namespace ProjectChimera.Core
         internal static string? PendingReplayPath;
         internal static string? PendingReplayScenarioPath;
 
+        /// <summary>Story 11.1: cross-reload handoff for a skirmish launch from the setup screen. <see cref="LaunchSkirmish"/>
+        /// stashes the built <c>ScenarioData</c> on <c>ScenarioLoadPhase.PendingGeneratedScenario</c> (the existing
+        /// AI-map-generator path) and sets these, then reloads the scene; the fresh <c>_Ready</c> consumes them BEFORE
+        /// the sim host is built so it can override <see cref="AiLevel"/>, show the loading screen, auto-enter Play on
+        /// success, and fail-safe back to the setup screen on a boot exception. Static so they survive
+        /// <c>ReloadCurrentScene</c>. Consumed exactly once (read-then-clear).</summary>
+        internal static bool PendingSkirmishStart;
+        internal static AiDifficulty? PendingSkirmishAiLevel;
+        /// <summary>The retained setup config — kept across the launch reload so a boot failure can re-open the setup
+        /// screen pre-filled. Cleared on a successful start or after the fail-safe re-open consumes it.</summary>
+        internal static SkirmishSetup? PendingSkirmishConfig;
+        /// <summary>Set when a skirmish boot threw: the located error surfaced by the fail-safe re-open on the next boot
+        /// (paired with <see cref="PendingSkirmishConfig"/>). Null on a normal boot.</summary>
+        internal static string? PendingSkirmishError;
+
+        /// <summary>Story 11.1: true once a skirmish boot exception has been caught and a clean reload requested — makes
+        /// the per-frame callbacks (_Process/_Input/_UnhandledInput) no-op for the one frame before the scene reloads,
+        /// so a half-built scene never dereferences an unset presentation handle.</summary>
+        private bool _bootAborted;
+
         // ── Inspector ─────────────────────────────────────────────────────────
 
         /// <summary>AI opponent difficulty. Change in the Godot Inspector before running.</summary>
@@ -240,7 +261,10 @@ namespace ProjectChimera.Core
             CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
         }
 
-        public override void _Ready()
+        // Story 11.1 (review PATCH 3): async so the skirmish path can yield exactly ONE rendered frame after the loading
+        // overlay is added (so it visibly paints before the synchronous phase run). The non-skirmish boot never reaches
+        // that await, so it runs fully synchronously — byte-identical to the pre-patch void _Ready.
+        public override async void _Ready()
         {
 #if DEBUG
             // Story 1.9a (DEBUG-only): in-process loopback desync self-test. Verifies the full server→desync→HALT
@@ -374,7 +398,26 @@ namespace ProjectChimera.Core
                 PendingReplayScenarioPath = null;
             }
 
-            int activePlayers = ClampActivePlayers(PeekScenarioPlayerSlots(ScenarioPath));
+            // Story 11.1: consume a pending skirmish launch (survives ReloadCurrentScene, the PendingGeneratedScenario
+            // precedent). The built ScenarioData already lives on ScenarioLoadPhase.PendingGeneratedScenario; here we
+            // only read-and-clear the start flag + AI level so AiLevel is overridden BEFORE the sim host is built below.
+            // PendingSkirmishConfig / PendingSkirmishError are left intact so a boot exception can re-open the setup
+            // screen pre-filled; they are cleared on a successful start or by the fail-safe re-open on the next boot.
+            bool skirmishStart = PendingSkirmishStart;
+            PendingSkirmishStart = false;
+            if (skirmishStart && PendingSkirmishAiLevel.HasValue)
+                AiLevel = PendingSkirmishAiLevel.Value;
+            PendingSkirmishAiLevel = null;
+
+            // Story 11.1 (review PATCH 1): on a skirmish launch, N must come from the IN-MEMORY built scenario
+            // (ScenarioLoadPhase.PendingGeneratedScenario, set by LaunchSkirmish and consumed later in the phase run),
+            // NOT from the stale on-disk default map at ScenarioPath. PeekScenarioPlayerSlots(ScenarioPath) would size
+            // the FactionRegistry to the default map's slot count, mis-spanning the active set for any non-2-slot
+            // skirmish. Both paths route through ClampActivePlayers so the 2-slot floor/clamp is identical.
+            int rawSlots = skirmishStart
+                ? (ScenarioLoadPhase.PendingGeneratedScenario?.PlayerSlots?.Length ?? 0)
+                : PeekScenarioPlayerSlots(ScenarioPath);
+            int activePlayers = ClampActivePlayers(rawSlots);
             var factions = new FactionRegistry(activePlayers);
 
             // Default slot assignments — overwritten per-slot by the ResolveSlotFactionDefs pre-pass
@@ -500,8 +543,56 @@ namespace ProjectChimera.Core
                 new OnboardingPhase(_ctx),   // Story 5.9 — must be last (mirrors ScenePhaseOrder.Canonical); drives
                                               // panels every earlier phase has already constructed
             };
-            new ScenePhaseRunner(phases).Run();
+            // Story 11.1: for a skirmish launch, show the staged loading screen (topmost) and drive it from the runner's
+            // real per-phase progress seam, and WRAP the phase run so a boot exception fails safe back to the setup
+            // screen instead of crashing into a half-built scene. A normal boot passes a null seam (byte-identical).
+            LoadingScreenOverlay? loading = null;
+            if (skirmishStart)
+            {
+                loading = new LoadingScreenOverlay();
+                AddChild(loading);
+                loading.Initialize(ScenarioLoadPhase.PendingGeneratedScenario?.DisplayName
+                                   ?? PendingSkirmishConfig?.MapId ?? "Skirmish");
+                // PATCH 3: yield exactly one rendered frame so the overlay actually paints before the (fast, synchronous)
+                // phase run below — otherwise it is AddChild'd and QueueFree'd within the same synchronous _Ready and no
+                // frame is ever shown. Strictly gated to skirmishStart; the normal/editor boot never awaits. A late abort
+                // (the fail-safe reload) may have fired during the frame, so re-check _bootAborted before proceeding.
+                await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+                if (_bootAborted) return;
+            }
 
+            // Fail-safe (never a half-built crash): drop the pending scenario so the clean reload doesn't re-apply the
+            // bad model, retain the setup + located error, and reload to a fresh menu that re-opens the setup screen
+            // pre-filled. Guard the per-frame callbacks for the one frame until the reload takes effect. PATCH 4:
+            // shared by BOTH guarded regions (the phase run AND the post-run skirmish tail) so a throw anywhere on the
+            // skirmish boot path — including the prop renderer or HeroPicker.RequestSkirmishLaunch — fails safe.
+            void FailSafeSkirmishBoot(Exception ex)
+            {
+                GD.PrintErr($"[MainScene] Skirmish boot failed — returning to setup screen: {ex.Message}");
+                ScenarioLoadPhase.PendingGeneratedScenario = null;
+                PendingSkirmishError = ex.Message;
+                // PendingSkirmishConfig is already retained across the reload.
+                _bootAborted = true;
+                loading?.QueueFree();
+                GetTree().ReloadCurrentScene();
+            }
+
+            try
+            {
+                new ScenePhaseRunner(phases).Run(loading != null ? loading.OnPhaseStarting : (Action<int, int, string>?)null);
+            }
+            catch (Exception bootEx) when (skirmishStart)
+            {
+                FailSafeSkirmishBoot(bootEx);
+                return;
+            }
+
+            // PATCH 4: a SECOND guarded region over the post-run skirmish tail — the prop renderer construction, the
+            // hash computations, and _ctx.HeroPicker?.RequestSkirmishLaunch() — so a throw there also fails safe instead
+            // of crashing into a half-built scene. `when (skirmishStart)` keeps the normal boot path exactly unchanged
+            // (any exception propagates as before; the else-if reopen branch runs only when !skirmishStart).
+            try
+            {
             // Story 6.6 — the prop renderer (one MultiMesh per distinct prop mesh) reads the live scenario each frame.
             // Created AFTER the phase runner so ScenarioLoad has populated _ctx.Scenario; it late-binds via the getter
             // so it survives the F5 Edit→Play re-apply. Not a phase (no cross-phase dependency to sequence).
@@ -599,8 +690,56 @@ namespace ProjectChimera.Core
             }
 #endif
 
+            // Story 11.1: a skirmish launch booted cleanly — auto-enter Play via the existing single launch authority
+            // (the hero picker: shows the picker only when the scenario's persistence manifest is enabled, else toggles
+            // straight to Play, minting nothing), then free the loading overlay. Clear the retained config (success ⇒
+            // no fail-safe re-open).
+            if (skirmishStart)
+            {
+                PendingSkirmishConfig = null;
+                PendingSkirmishError  = null;
+                if (_ctx.MainMenu != null) _ctx.MainMenu.Visible = false;
+                _ctx.HeroPicker?.RequestSkirmishLaunch();
+                loading?.QueueFree();
+            }
+            // Story 11.1: fail-safe re-open — a previous skirmish boot threw, reloaded to this clean scene, and left the
+            // retained setup + located error. Re-open the setup screen pre-filled with the error surfaced (consumed once).
+            else if (PendingSkirmishConfig != null && !string.IsNullOrEmpty(PendingSkirmishError))
+            {
+                SkirmishSetup reopen = PendingSkirmishConfig;
+                string reopenError = PendingSkirmishError;
+                PendingSkirmishConfig = null;
+                PendingSkirmishError  = null;
+                if (_ctx.MainMenu != null) _ctx.MainMenu.Visible = false;
+                _ctx.SkirmishSetup?.Open(reopen, reopenError);
+            }
+            } // end PATCH 4 post-run guarded region
+            catch (Exception bootEx) when (skirmishStart)
+            {
+                FailSafeSkirmishBoot(bootEx);
+                return;
+            }
+
             GD.Print("[MainScene] Ready. F5=Play/Edit, Tab=cycle mode, Shift+Click=worker, " +
                      "L-Drag=box-select, R-Click=move, Ctrl+1-9=group. N=Multiplayer lobby.");
+        }
+
+        /// <summary>
+        /// Story 11.1 — commit a skirmish launch built on the setup screen. Mirrors <see cref="LoadGeneratedScenario"/>:
+        /// stash the in-memory <see cref="ScenarioData"/> on the existing <c>PendingGeneratedScenario</c> static (the
+        /// same fail-closed apply path), set the skirmish handoff statics (start flag, AI level, retained config), then
+        /// reload the scene. The fresh <c>_Ready</c> overrides <see cref="AiLevel"/>, shows the loading screen, and
+        /// auto-enters Play — or fails safe back to the setup screen pre-filled from <paramref name="retained"/>.
+        /// </summary>
+        public void LaunchSkirmish(ScenarioData built, AiDifficulty ai, SkirmishSetup retained)
+        {
+            Bootstrap.ScenarioLoadPhase.PendingGeneratedScenario = built;
+            PendingSkirmishStart   = true;
+            PendingSkirmishAiLevel = ai;
+            PendingSkirmishConfig  = retained;
+            PendingSkirmishError   = null;
+            GD.Print($"[Skirmish] Launching \"{built.DisplayName}\" (AI {ai}) — reloading scene.");
+            GetTree().ReloadCurrentScene();
         }
 
         /// <summary>
@@ -610,7 +749,7 @@ namespace ProjectChimera.Core
         /// </summary>
         public override void _Input(InputEvent @event)
         {
-            if (_headless) return; // dedicated server has no input / no _ctx
+            if (_headless || _bootAborted) return; // dedicated server has no input / no _ctx; _bootAborted = fail-safe reload pending
             if (_pendingBuildWorkerId < 0) return;
 
             if (@event is InputEventMouseButton mb && mb.Pressed)
@@ -644,7 +783,7 @@ namespace ProjectChimera.Core
 
         public override void _UnhandledInput(InputEvent @event)
         {
-            if (_headless) return; // dedicated server has no input / no _ctx
+            if (_headless || _bootAborted) return; // dedicated server has no input / no _ctx; _bootAborted = fail-safe reload pending
             if (@event is not InputEventKey key || !key.Pressed || key.Echo) return;
 
             // Escape — toggle settings panel (any mode).
@@ -892,7 +1031,7 @@ namespace ProjectChimera.Core
 
         public override void _Process(double delta)
         {
-            if (_headless) return; // dedicated server: no presentation context (the DedicatedServer node self-polls)
+            if (_headless || _bootAborted) return; // dedicated server: no presentation context; _bootAborted = fail-safe reload pending
             if (_ctx.GameState.Mode == GameMode.Play && !_gameOver)
             {
                 if (_ctx.ReplayPlayer != null)

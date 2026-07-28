@@ -18,6 +18,32 @@ namespace ProjectChimera.Core.Bootstrap
 
         public string Name => "FactionVisuals";
 
+        /// <summary>Story 11.1 — the deterministic per-slot-index team-color palette (2→4 honest extension). Index 0/1
+        /// are today's blue/red verbatim (golden/visual continuity); 2/3 add distinct green/gold for 3–4 player maps.
+        /// Color is a per-slot-index presentation choice, NOT a data channel — no <c>ScenarioPlayerSlot</c> color field.</summary>
+        /// <summary>Story 11.1 (review PATCH 7): single source of truth for the per-slot-index palette — the setup
+        /// screen's swatches (<c>SkirmishSetupOverlay</c>) reference THIS array so the setup-time color can never drift
+        /// from the in-match team color.</summary>
+        internal static readonly Color[] SlotColors =
+        {
+            new Color(0.2f, 0.5f, 1.0f), // slot 0 = blue
+            new Color(1.0f, 0.3f, 0.2f), // slot 1 = red
+            new Color(0.3f, 0.85f, 0.4f), // slot 2 = green
+            new Color(0.95f, 0.8f, 0.2f), // slot 3 = gold
+        };
+
+        /// <summary>Resolve a per-slot-index team color from <see cref="SlotColors"/>, clamped to the palette range.
+        /// Shared with the setup screen (PATCH 7) so both surfaces read one palette.</summary>
+        internal static Color SlotColorAt(int i)
+        {
+            if (i < 0) i = 0;
+            if (i >= SlotColors.Length) i = SlotColors.Length - 1;
+            return SlotColors[i];
+        }
+
+        /// <summary>Resolve a faction slot's team color from <see cref="SlotColors"/>, clamped to the palette range.</summary>
+        private static Color SlotColor(Faction faction) => SlotColorAt((int)faction);
+
         public void Run()
         {
             // Story 9.9 (review P1): populate the render/session AssetRegistry the bridges below read. The download-time
@@ -27,8 +53,11 @@ namespace ProjectChimera.Core.Bootstrap
             // user://imported_maps/<id>/; the reloaded scene identifies that map by its scenario path stem.
             IngestImportedAssets();
 
-            var p1Color = new Color(0.2f, 0.5f, 1.0f); // Player 1 = blue
-            var p2Color = new Color(1.0f, 0.3f, 0.2f); // Player 2 = red
+            // Story 11.1: per-slot-index color palette (honest 2→4 extension — no per-slot color data channel, so this
+            // stays deterministic by faction slot index). Index 0/1 keep today's blue/red exactly so goldens and visual
+            // continuity hold; index 2/3 give 3- and 4-player skirmishes distinct colors. Indexed by faction slot.
+            Color p1Color = SlotColor(Faction.Player1); // Player 1 = blue
+            Color p2Color = SlotColor(Faction.Player2); // Player 2 = red
 
             var p1Def = _ctx.SlotFactionDefs[(int)Faction.Player1] ?? _ctx.FactionDef;
             var p2Def = _ctx.SlotFactionDefs[(int)Faction.Player2] ?? _ctx.FactionDef2;
