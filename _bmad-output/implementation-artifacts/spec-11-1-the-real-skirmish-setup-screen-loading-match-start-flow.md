@@ -2,11 +2,11 @@
 title: 'Story 11.1 — The real skirmish setup screen + loading / match-start flow'
 type: 'feature'
 created: '2026-07-28'
-status: 'done'
+status: 'in-review'
 baseline_revision: 'ca5fa1c537f774a8090727569d1552c87b239b1e'
 final_revision: 'b9428da52874fd3d1a767003a7437976c0108180'
 review_loop_iteration: 0
-followup_review_recommended: true
+followup_review_recommended: false
 context:
   - '{project-root}/_bmad-output/implementation-artifacts/epic-11-context.md'
   - '{project-root}/godot/CLAUDE.md'
@@ -83,7 +83,7 @@ warnings: [oversized]
 - `godot/src/Core/Skirmish/SkirmishSetup.cs` -- NEW, Godot-free. Define `enum SlotKind { Open, Closed, Human, Ai }`, `SetupSlot { int Slot; SlotKind Kind; AiDifficulty Ai; string? FactionId; int Team; }`, and `SkirmishSetup { string MapId; List<SetupSlot> Slots; }`. Pure data. -- the config model shared by UI + transform + validator.
 - `godot/src/Core/Skirmish/SkirmishCatalog.cs` -- NEW, Godot-free. `IReadOnlyList<MapEntry> ScanMaps(string absScenariosDir)` (loads each `*.json` via `ScenarioSerializer.LoadFromFile`, lenient; `MapEntry { Id, DisplayName, ResPath, MapBounds, SuggestedPlayers, StartPositionCount, Author }`) and `IReadOnlyList<FactionEntry> ScanFactions(string absFactionsDir)` (`FactionEntry { Id, DisplayName, ResPath }`, `ValidateComplete`-gated, ordinal-sorted). Use `System.IO`; take absolute paths so it is Tier-1-testable with temp dirs. -- enumerate selectable maps + factions with their res:// paths (the FactionJson source, DW-121-safe).
 - `godot/src/Core/Skirmish/SkirmishSetupValidator.cs` -- NEW, Godot-free. `IReadOnlyList<string> Validate(SkirmishSetup setup, MapEntry map, IReadOnlyList<FactionEntry> factions)` returning ALL errors: exactly one Human slot; ≥1 Ai slot; ≤1 Ai slot (honest runtime limit); 2 ≤ active(Human+Ai) count ≤ `map.StartPositionCount`; every Human/Ai slot's `FactionId` resolves in `factions`; teams within `[0, activeCount]`. -- gate Launch with actionable messages.
-- `godot/src/Core/Skirmish/SkirmishSetupToScenario.cs` -- NEW, Godot-free. `ScenarioData Build(SkirmishSetup setup, ScenarioData baseMap, IReadOnlyList<FactionEntry> factions)`: clone `baseMap`; rebuild `PlayerSlots` so each active (Human/Ai) `SetupSlot` maps to a `ScenarioPlayerSlot` carrying `Slot`, `FactionJson` = the chosen faction's res:// path, `Team`, and the base map's `BaseX/BaseZ/StartOre/StartCrystal` for that slot index; drop Open/Closed slots; leave terrain/entities/win-condition untouched. Deterministic (same input → identical output). -- the pure transform that is the testable heart.
+- `godot/src/Core/Skirmish/SkirmishSetupToScenario.cs` -- NEW, Godot-free. `ScenarioData Build(SkirmishSetup setup, ScenarioData baseMap, IReadOnlyList<FactionEntry> factions)`: clone `baseMap`; rebuild `PlayerSlots` so each active (Human/Ai) `SetupSlot` maps to a `ScenarioPlayerSlot` carrying `Slot`, `FactionJson` = the chosen faction's res:// path, `Team`, and the base map's `BaseX/BaseZ/StartOre/StartCrystal` for that slot index; drop Open/Closed slots; leave terrain/win-condition untouched. **Also re-key the pre-placed `Buildings`/`Units`: keep only entities whose original slot is a paired base slot (remapped to its new contiguous owner index) and DROP the rest** — else a map with more start positions than active players (the shipped 4-start `quad_map_01` launched 1v1) leaves entities keyed to dropped slots that the applier's unguarded buildings loop spawns as ghost Player3/Player4 bases (follow-up-review PATCH); new arrays + copied elements so `baseMap` (whose arrays `ShallowClone` shares) is never mutated. Deterministic (same input → identical output). -- the pure transform that is the testable heart.
 - `godot/src/Core/Bootstrap/ScenePhaseRunner.cs` -- EDIT. Add an optional ctor param or `Run(Action<int,int,string>? onPhaseStarting = null)` invoked immediately before each `phase.Run()` with `(1-based index, ScenePhaseOrder.Canonical.Length, phase.Name)`, after `AssertOrder()`. No behavior change when null. -- the real per-phase progress seam.
 - `godot/src/UI/SkirmishSetupOverlay.cs` -- NEW, Godot-coupled `CanvasLayer` (mirror `LobbyUi`/`HeroPickerOverlay` construction from the theme kit). Left: map list from `SkirmishCatalog.ScanMaps` with properties (name, `MapBounds`, `SuggestedPlayers`, start-position count, author). Right: per-slot grid for the selected map (Kind option, AI-difficulty option when Ai, faction `OptionButton` from `ScanFactions`, team spinner) showing the deterministic slot color. Live-run `SkirmishSetupValidator`, disabling Launch and listing errors while any stand. Back returns to menu. Launch → task below. -- the screen itself.
 - `godot/src/UI/LoadingScreenOverlay.cs` -- NEW, Godot-coupled `CanvasLayer` (topmost). Shows map name + a "Loading… <phase> (i/N)" line updated from the progress seam; freed when Play begins. -- loading feedback.
@@ -146,6 +146,15 @@ warnings: [oversized]
   - `[high]` `[patch]` `SkirmishSetupToScenario.Build` human/AI control swap: active slots were renumbered by raw `Slot` only, so a Human placed in a higher setup slot than the AI landed on contiguous index 1 (offline `Player2` = AI-piloted) while the AI's config took index 0 (`Player1` = human-controlled) — the player silently controlled the faction/team they'd marked for the AI, and vice-versa (reachable via the freely-settable per-row Kind). Fixed by ordering active slots **Human-first, then by Slot**; added `Build_HumanSortsToContiguousIndex0_EvenWhenAiInLowerSlot` regression test.
   - `[low]` `[patch]` Verification gap: the transform test asserted only `StartOre`/`BaseX` of the four per-slot fields `Build` copies — added `StartCrystal`/`BaseZ` assertions (the fixture already seeds distinct values) so a drop of either can't stay green.
 
+### 2026-07-28 — Review pass (follow-up 3)
+- intent_gap: 0
+- bad_spec: 0
+- patch: 1: (high 0, medium 1, low 0)
+- defer: 2
+- reject: 11
+- addressed_findings:
+  - `[medium]` `[patch]` Orphaned pre-placed entities on a >2-start map launched 1v1: `SkirmishSetupToScenario.Build` rebuilt only `PlayerSlots` and left the `ShallowClone`'d `Buildings`/`Units` keyed to the base map's ORIGINAL slot ordinals. Launching the shipped 4-start `quad_map_01` ("Quad Standoff", `DestroyAllBuildings`) as the honest 1v1 (validator caps active slots at 2) left slot-2/3 buildings, which the applier's buildings loop (`ScenarioApplier.cs:238`, unguarded `(Faction)(b.Slot+1)`, and — unlike the units loop at `:271` — it still places a building for a faction with no resolved def, so `FACTION_ARRAY_SIZE=9` means `InFactionRange` never trips) spawns as **ghost Player3/Player4 pre-built bases** → un-ownable enemy structures and, under `DestroyAllBuildings`, an unwinnable match (no crash — `BuildingStore.Create` stores the faction as a value and `GetFactionDef` is bounds-safe). Fixed at the source: `Build` now re-keys kept `Buildings`/`Units` to the paired active slot's new contiguous index and DROPS entities for unpaired slots, with copied elements so `baseMap` is never mutated. Added `Build_DropsAndRemaps_PrePlacedEntities_ForDroppedSlots`, `Build_KeepsAllEntities_When2SlotMapLaunched1v1` (identity for the common 2-slot case), and `Build_DoesNotMutate_BaseMapEntities`. Full Tier-1 suite 3565/1skip/0 fail.
+
 ## Design Notes
 
 **Why in-memory `ScenarioData` handoff, not a re-apply path:** `ScenarioLoadPhase.PendingGeneratedScenario` + `ReloadCurrentScene()` already exists and is battle-tested by the AI map generator (`MainScene.LoadGeneratedScenario`). Reusing it means the skirmish scenario flows through the *identical* fail-closed apply + faction-resolution + alliance-seed pipeline — zero new sim code, zero determinism risk. Building a second post-selection re-apply path would duplicate that pipeline.
@@ -166,33 +175,22 @@ warnings: [oversized]
 - Launch the editor, click Play → the skirmish setup screen appears; pick a map, set slot1 to AI, pick factions/teams, Launch → loading screen shows, match starts with both rosters at the map's start positions; Esc/return works. This is the Epic-11 per-story in-engine gate (run via `/godot-verify` or the godot-mcp bridge with no idle session holding it).
 
 
-## Auto Run Result
+## Auto Run Result — follow-up review 3 (2026-07-28)
 
-Status: done (follow-up review pass 2 — `done` spec re-reviewed per `followup_review_recommended: true`)
+**Summary:** Follow-up adversarial review pass on the `done` Story 11.1. Four review lenses (adversarial, edge-case, verification-gap, intent-alignment) ran in parallel against the full diff since baseline `ca5fa1c`. One this-story defect confirmed and patched; two findings deferred; all others rejected as out-of-intent-scope, unreachable, or by-design.
 
-### Summary
-A fresh four-lens review (adversarial, edge-case, verification-gap, intent-alignment) of the full Story 11.1 diff (baseline `ca5fa1c`). It surfaced two **high**-severity, this-story-caused correctness bugs — both regressions/oversights that all prior passes and the whole Tier-1 suite missed because they live in the Godot-coupled presentation surface (`FactionVisualsPhase`) or only manifest in a non-default UI configuration (`Build`). Fixed as patches; no intent gap and no spec defect, so no re-derivation loopback.
+**Files changed this pass:**
+- `godot/src/Core/Skirmish/SkirmishSetupToScenario.cs` — `Build` now drops/re-keys the base map's pre-placed `Buildings`/`Units` to the active renumbered slot set (fixes ghost Player3/Player4 bases when a >2-start map is launched 1v1).
+- `godot/ProjectChimera.Sim.Tests/Skirmish/SkirmishSetupTests.cs` — added `Build_DropsAndRemaps_PrePlacedEntities_ForDroppedSlots`, `Build_KeepsAllEntities_When2SlotMapLaunched1v1`, `Build_DoesNotMutate_BaseMapEntities` (+ `BaseMapWithEntities` fixture helper).
+- Spec: corrected the `SkirmishSetupToScenario.cs` task line to require the entity drop/re-key (prevents a future re-derivation re-introducing the bug).
 
-### Files changed this pass
-- `godot/src/Core/Bootstrap/Phases/FactionVisualsPhase.cs` — P1: `SlotColor(Faction)` now shifts the 1-based faction ordinal by −1 into the 0-based palette (Player1=blue, Player2=red), fixing the team-color inversion the prior pass's PATCH-7 de-dup introduced.
-- `godot/src/Core/Skirmish/SkirmishSetupToScenario.cs` — P2: active slots are ordered Human-first (then by Slot) so the single Human always renumbers to contiguous index 0 (offline `Player1` = local human), eliminating the human/AI faction+team control swap.
-- `godot/ProjectChimera.Sim.Tests/Skirmish/SkirmishSetupTests.cs` — P2 regression test (`Build_HumanSortsToContiguousIndex0_EvenWhenAiInLowerSlot`) + P3 coverage (`StartCrystal`/`BaseZ` assertions on the 1v1 transform test).
+**Review findings breakdown:**
+- **Patched (1, medium):** orphaned pre-placed buildings/units on a >2-start map launched 1v1 → ghost enemy bases / unwinnable `DestroyAllBuildings`.
+- **Deferred (2):** (a) dev scratch maps (`123.json`, `my-new-map.json`) surface as selectable maps — content hygiene, pre-existing, per-intent code; (b) the in-match team-color slot→palette mapping (regressed twice) has no automated regression test — needs a Godot-free palette seam. Both appended to `deferred-work.md` as new entries.
+- **Rejected (11):** human-first reorder position/ownership (by design — human=Player1 offline); loading progress renders no per-phase repaint (intent makes smooth animation a non-goal); pre-phase fail-safe gap (intent scopes fail-safe to phase throws; the specified malformed-faction failure is inside the try); boot-error label clobbers validation on reopen (unreachable — only a valid config launches); validator slot-number vs renumbered scenario mismatch (user sees UI ordinals); prefill team-clamp on reopen (unreachable — fails validation); phantom `FactionId` on Open/Closed (harmless); TOCTOU stale `StartPositionCount`/origin-spawn default (exotic, guarded by defaults); fail-safe reopen with vanished map drops config (exotic); empty-faction-catalog generic message (minor UX, validator still blocks); MainScene handoff untested / AC2·AC5 manual-only (intent-accepted in-engine gate, Epic-10-deferred live verification).
 
-### Review findings breakdown
-- **Patches applied (3):** 2 high (color inversion, control swap), 1 low (transform test-coverage gap).
-- **Deferred (1 new):** setup swatch (`SlotColorFor` keyed by map row index) drifts from the in-match team color for non-row-0-contiguous active slots — cosmetic, contradicts PATCH-7's invariant, correct fix (color by active-rank on Revalidate) is more than a review patch. Appended to `deferred-work.md`.
-- **Recurred but already recorded (3, not re-appended):** `System.IO`-over-`GlobalizePath` breaks the catalog in exported PCK builds; `Build` leaves dropped-slot triggers/win-condition intact; `MainScene` skirmish orchestration (N-sizing, fail-safe re-open) has zero automated coverage. All three were logged by the immediately-preceding follow-up pass on this same spec — re-appending would duplicate.
-- **Rejected (8):** fail-safe pre-phase region (intent's stated failure mode — an applied scenario throwing in a phase — is inside the guarded region; the pre-region uses res:// defaults common to every boot); no intermediate per-phase repaint (explicit non-goal — "smooth per-phase animation is a non-goal"); boot-error label overwritten on the next edit (the error IS shown on re-open; a toast is transient by design); unfiltered catalog (per intent: list shipped `scenarios/*.json`); unbounded `SlotRow` for a hostile 500-slot map (requires malformed content; shipped maps are small); `Build` stacks players at origin only if the on-disk map shrinks between scan and launch (requires mid-session mutation; graceful default); palette clamp untested (presentation, not Tier-1-reachable); `async void _Ready` exception-marshaling change on the normal path (observable outcome — crash on boot error — unchanged).
+**Follow-up review recommendation:** `false`. This pass patched 1 finding: 0 high, 1 medium, 0 low. Score = 3×1 + 1×0 = 3 (< 5), no high severity → `false`.
 
-### Verification performed
-- `dotnet test godot/ProjectChimera.Sim.Tests/ProjectChimera.Sim.Tests.csproj --filter ~Skirmish` → **34/34 passed** (includes the new swap-fix test + StartCrystal/BaseZ assertions).
-- `dotnet test godot/ProjectChimera.Sim.Tests/ProjectChimera.Sim.Tests.csproj` (full Tier-1) → **3562 passed, 1 skipped, 0 failed**, no golden re-baseline.
-- `dotnet build godot/godot.csproj` → **0 errors**, 13 pre-existing warnings (no banned-API/AOT regressions). The P1 color fix lives in a Godot-coupled file not compiled by Tier-1, so the project build is its compile gate.
+**Verification:** `dotnet test godot/ProjectChimera.Sim.Tests/ProjectChimera.Sim.Tests.csproj` → **3565 passed, 1 skipped, 0 failed** (2m38s); the new drop/remap tests included; no golden re-baseline. The `dotnet build godot/godot.csproj` command is unaffected — no Godot-coupled files were touched; the one changed source file is the Godot-free transform already compiled (and now exercised) by the passing Tier-1 project.
 
-### Follow-up review recommendation: true
-Patched this pass: high 2, medium 0, low 1 → a high patch was applied, so `followup_review_recommended = true` (score `3×0 + 1×1 = 1`, but the high patch forces true). Rationale: two high-severity defects escaped every prior pass because they sit outside the Tier-1 net; the manual in-engine gate (`/godot-verify`) has still not run for this story and remains the load-bearing check for the color/control/loading behaviors — a further pass (ideally after in-engine verification) is warranted.
-
-### Residual risks
-- **In-engine behavior unverified.** The color fix, the control-assignment fix, the loading overlay, and the fail-safe re-open are all presentation/orchestration on the Godot surface — none is exercised by an automated test. Correct in-match team colors and correct human-controls-their-faction now rest on code inspection until the Epic-11 `/godot-verify` gate runs.
-- **Swatch-vs-in-match drift (deferred)** remains visible for non-row-0 human placements.
-- Residual artifact (not part of this change): `_bmad-output/implementation-artifacts/sprint-status.yaml` was already modified in the working tree at pass start; left in place.
+**Residual risks:** resource nodes with a positive `owner_slot` on a dropped slot are NOT re-keyed by `Build` (the shipped maps have only neutral `owner_slot=-1` nodes and the applier degrades an out-of-range owner to Neutral inertly, so no current content is affected); the two deferred items above remain open in the ledger.

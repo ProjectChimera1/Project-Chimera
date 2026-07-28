@@ -54,6 +54,10 @@ namespace ProjectChimera.Core.Skirmish
                 .ToList();
 
             var newSlots = new List<ScenarioPlayerSlot>();
+            // Maps each PAIRED base slot's ORIGINAL ordinal → the new contiguous index i that now owns that base
+            // position. Drives the pre-placed entity remap below: a base slot with no active pairing (e.g. slots 2/3
+            // of a 4-start map launched 1v1) is absent, so its pre-placed content is dropped rather than orphaned.
+            var origSlotToNew = new Dictionary<int, int>();
             for (int i = 0; i < activeSlots.Count; i++)
             {
                 SetupSlot s = activeSlots[i];
@@ -61,6 +65,7 @@ namespace ProjectChimera.Core.Skirmish
                 // (defaults when the base map declares fewer). NOT a Slot-ordinal match — the emitted Slot is the
                 // new contiguous index i, decoupled from the setup slot's original ordinal.
                 ScenarioPlayerSlot? baseSlot = i < baseSlots.Length ? baseSlots[i] : null;
+                if (baseSlot != null) origSlotToNew[baseSlot.Slot] = i;
                 string factionJson = (s.FactionId != null && factionByIdRes.TryGetValue(s.FactionId, out string? res))
                     ? res
                     : "";
@@ -78,6 +83,33 @@ namespace ProjectChimera.Core.Skirmish
             }
 
             built.PlayerSlots = newSlots.ToArray();
+
+            // Review PATCH (11.1 follow-up): the base map's pre-placed Buildings/Units are keyed by ORIGINAL slot
+            // ordinal. When the map declares more start positions than the launch has active players (e.g. the shipped
+            // 4-start quad_map_01 launched as the honest 1v1), the entities for the dropped slots would otherwise
+            // survive the ShallowClone still keyed to slots 2/3 — placed at apply time as ghost Player3/Player4 bases
+            // (the buildings loop in ScenarioApplier maps slot→(Faction)(slot+1) with no active-player check and, unlike
+            // the units loop, still places a building for a faction with no resolved def). That leaves un-ownable
+            // pre-built enemy bases and, under DestroyAllBuildings, an unwinnable match. Fix at the source: the built
+            // skirmish scenario must contain entities only for the players that exist. Keep only entities whose slot is
+            // a paired base slot, RE-KEYED to the new contiguous owner index; drop the rest. New arrays + copied
+            // elements so the caller's baseMap (whose arrays ShallowClone shares by reference) is never mutated.
+            // A 2-start map launched 1v1 keeps every entity with an identity remap → byte-identical to the base map.
+            built.Buildings = (baseMap.Buildings ?? System.Array.Empty<ScenarioBuilding>())
+                .Where(b => origSlotToNew.ContainsKey(b.Slot))
+                .Select(b => new ScenarioBuilding
+                {
+                    Type = b.Type, Slot = origSlotToNew[b.Slot], X = b.X, Z = b.Z, PreBuilt = b.PreBuilt, Rot = b.Rot,
+                })
+                .ToArray();
+            built.Units = (baseMap.Units ?? System.Array.Empty<ScenarioUnit>())
+                .Where(u => origSlotToNew.ContainsKey(u.Slot))
+                .Select(u => new ScenarioUnit
+                {
+                    UnitId = u.UnitId, Slot = origSlotToNew[u.Slot], X = u.X, Z = u.Z, Rot = u.Rot,
+                })
+                .ToArray();
+
             return built;
         }
     }

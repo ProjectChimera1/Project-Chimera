@@ -301,6 +301,63 @@ namespace ProjectChimera.Sim.Tests.Skirmish
             Assert.Equal(originalFaction, baseMap.PlayerSlots[0].FactionJson);
         }
 
+        /// <summary>Builds a base map with `slots` start positions and one pre-placed building + one pre-placed unit
+        /// per slot, each keyed to that slot's ORIGINAL ordinal (mirrors the shipped quad_map_01 authoring).</summary>
+        private static ScenarioData BaseMapWithEntities(int slots)
+        {
+            ScenarioData m = BaseMap(slots);
+            m.Buildings = Enumerable.Range(0, slots)
+                .Select(i => new ScenarioBuilding { Type = "CommandCenter", Slot = i, X = i * 10f, Z = i })
+                .ToArray();
+            m.Units = Enumerable.Range(0, slots)
+                .Select(i => new ScenarioUnit { UnitId = "worker", Slot = i, X = i * 10f, Z = i })
+                .ToArray();
+            return m;
+        }
+
+        [Fact]
+        public void Build_DropsAndRemaps_PrePlacedEntities_ForDroppedSlots()
+        {
+            // Review PATCH (11.1 follow-up): launch the honest 1v1 on a 4-start map that ships pre-placed buildings/
+            // units for all 4 slots (the shipped quad_map_01 shape). The two active slots pair to base positions 0/1;
+            // the entities for the dropped base slots 2/3 must NOT survive into the built scenario (they would spawn as
+            // ghost Player3/Player4 bases). Kept entities are re-keyed to the new contiguous owner index.
+            SkirmishSetup s = Setup("m1", Slot(0, SlotKind.Human, "alpha"), Slot(1, SlotKind.Ai, "beta"));
+            ScenarioData built = SkirmishSetupToScenario.Build(s, BaseMapWithEntities(4), Factions("alpha", "beta"));
+
+            // Only the two paired slots' entities survive, each re-keyed to the contiguous active index {0,1}.
+            Assert.Equal(new[] { 0, 1 }, built.Buildings.Select(b => b.Slot).OrderBy(x => x).ToArray());
+            Assert.Equal(new[] { 0, 1 }, built.Units.Select(u => u.Slot).OrderBy(x => x).ToArray());
+            // No entity keyed to a slot beyond the active set survives.
+            Assert.DoesNotContain(built.Buildings, b => b.Slot >= built.PlayerSlots.Length);
+            Assert.DoesNotContain(built.Units, u => u.Slot >= built.PlayerSlots.Length);
+        }
+
+        [Fact]
+        public void Build_KeepsAllEntities_When2SlotMapLaunched1v1()
+        {
+            // A 2-start map launched 1v1 drops nothing: every pre-placed entity is kept with an identity slot remap.
+            SkirmishSetup s = Setup("m1", Slot(0, SlotKind.Human, "alpha"), Slot(1, SlotKind.Ai, "beta"));
+            ScenarioData built = SkirmishSetupToScenario.Build(s, BaseMapWithEntities(2), Factions("alpha", "beta"));
+
+            Assert.Equal(new[] { 0, 1 }, built.Buildings.Select(b => b.Slot).OrderBy(x => x).ToArray());
+            Assert.Equal(new[] { 0, 1 }, built.Units.Select(u => u.Slot).OrderBy(x => x).ToArray());
+        }
+
+        [Fact]
+        public void Build_DoesNotMutate_BaseMapEntities()
+        {
+            // The pre-placed entity drop/remap must not touch the caller's baseMap (whose arrays ShallowClone shares).
+            ScenarioData baseMap = BaseMapWithEntities(4);
+            SkirmishSetup s = Setup("m1", Slot(0, SlotKind.Human, "alpha"), Slot(1, SlotKind.Ai, "beta"));
+            SkirmishSetupToScenario.Build(s, baseMap, Factions("alpha", "beta"));
+
+            Assert.Equal(4, baseMap.Buildings.Length);
+            Assert.Equal(4, baseMap.Units.Length);
+            Assert.Equal(new[] { 0, 1, 2, 3 }, baseMap.Buildings.Select(b => b.Slot).ToArray());
+            Assert.Equal(new[] { 0, 1, 2, 3 }, baseMap.Units.Select(u => u.Slot).ToArray());
+        }
+
         // ── Catalog: temp-dir scan ────────────────────────────────────────────────────
 
         [Fact]
