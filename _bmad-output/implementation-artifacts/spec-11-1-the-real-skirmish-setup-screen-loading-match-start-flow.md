@@ -174,6 +174,61 @@ warnings: [oversized]
 **Manual checks (in-engine, gated — cannot run headless here):**
 - Launch the editor, click Play → the skirmish setup screen appears; pick a map, set slot1 to AI, pick factions/teams, Launch → loading screen shows, match starts with both rosters at the map's start positions; Esc/return works. This is the Epic-11 per-story in-engine gate (run via `/godot-verify` or the godot-mcp bridge with no idle session holding it).
 
+### In-Engine Gate Result — /godot-verify, 2026-07-28
+
+**Verdict: FAIL** (1 high defect). Godot 4.6.3-stable-mono, driven over the godot-mcp bridge
+(Button `pressed` signal emission + tree-walk digests; no screenshots relied on for state).
+
+| AC | Result | Evidence |
+|----|--------|----------|
+| 1. Play → setup screen, menu hidden, maps listed | PASS | `MainMenuOverlay` content layer `visible=false`, setup content layer `visible=true` after `pressed`; 11 maps listed; selected map shows "Start positions: 2 / Suggested players: unspecified / Map bounds: 120 / Author: —" |
+| 2. Valid 1v1 → in-memory scenario, loading screen, enters Play with chosen factions/teams | **FAIL** | Loading screen + Play reached (watcher captured "Alpha Skirmish" / "Loading… Onboarding (40/40)"; HUD `[PLAY] Tick 0`). But the **chosen faction's starting units do not spawn** — see defect below |
+| 3. Invalid config → Launch disabled, all errors listed | PASS | Slot2→Open: `Launch.disabled=true`, "• At least one AI opponent is required."; both-AI: two errors listed simultaneously (aggregation, not first-fail) |
+| 4. Chosen faction resolves abilities / drops unknown-tag units (DW-121) | CAN'T VERIFY | Both shipped factions declare **no tags at all**, so the tag path is never exercised by shipped content; and the cross-faction side spawns nothing to inspect |
+| 5. Boot exception → fail-safe back to setup screen | NOT TESTED | Requires injecting a throwing phase; not attempted this pass |
+| 6. Progress callback fires once per phase, canonical order | PASS | Tier-1 `ScenePhaseRunner` seam tests pass; live loading text showed a real per-phase counter reaching `(40/40)` |
+| 7. Tier-1 green, no golden re-baselined | PASS | 3565 passed / 0 failed / 1 pre-existing skip; `git diff ca5fa1c..HEAD` touches **no** golden or checksum file |
+
+**[HIGH] Cross-faction launch silently deletes the non-authored player's starting units.**
+
+Measured at `Tick 0` in `[PLAY]`, post-reload (scene-instance-change–gated watcher, so the boot
+scene is not confounded with the launched scene):
+
+| Launch config | P1 units | P2 units | Total |
+|---|---|---|---|
+| `alpha_map_01` as authored on disk | 3 | 2 | 5 |
+| Skirmish, both slots = Crucible Covenant (`alpha`) | 2 | 2 | 4 |
+| Skirmish, slot2 = **Sanguine Court** (`beta`) | 2 | **0** | 2 |
+
+Root cause: every shipped scenario hardcodes alpha-faction unit ids in its pre-placed `units`
+(`alpha_map_01` places `unit_id: "worker"` for **both** slots), but the two factions have
+**disjoint rosters** — `alpha` = `worker, infantry, …, mage`; `beta` = `forgehand, footsoldier,
+…, wyvern`. When the setup screen assigns `beta` to a slot, `"worker"` does not resolve in that
+faction, and per `ScenarioLoadPhase.cs:362` "a dropped unit → GetUnit null → the applier's
+def==null skip → no EntityWorld slot" — the units vanish with no error. The AI opponent starts
+with **zero workers**, no income, and never recovers (observed at tick 1629: P2 30 ore / 1 unit
+vs P1 540 ore).
+
+This is a Story 11.1 regression by construction: the story introduced faction *choice*, and
+before it factions always came from the scenario file and therefore always matched the
+pre-placed unit ids. It also violates this spec's own stated boundary — "the setup screen must
+not advertise or launch a configuration the sim cannot pilot (Epic 11.7 honesty principle)":
+Sanguine Court is offered, launches without a single validator error, and silently cripples
+that player. `SkirmishSetupValidator` has no rule covering it.
+
+Suggested fix direction (not applied): either resolve pre-placed `units` per-slot through the
+chosen faction's roster (map a generic role → the faction's equivalent id), or have
+`SkirmishSetupToScenario.Build` re-key pre-placed unit ids to the assigned faction, or — the
+cheap honest floor — add a validator rule blocking a faction whose roster cannot satisfy the
+map's pre-placed unit ids.
+
+**[UNATTRIBUTED] P1 spawns 2 units where the scenario authors 3, even same-faction.**
+Reproduced on the both-alpha control above (4 total vs the file's 5). NOT confirmed as
+11.1-caused: the pre-launch boot HUD reads `[EDIT]` and carries a "Placing: P1 [Covenant
+Transmuter]" placement ghost, so its `P1: 3` may count a ghost rather than a real entity, making
+the EDIT-vs-PLAY comparison unsafe. Needs an isolated check of `SkirmishSetupToScenario.Build`
+output vs the applier before it can be assigned to this story or to pre-existing behavior.
+
 
 ## Auto Run Result — follow-up review 3 (2026-07-28)
 
