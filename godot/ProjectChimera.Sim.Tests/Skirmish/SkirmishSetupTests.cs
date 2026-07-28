@@ -279,8 +279,8 @@ namespace ProjectChimera.Sim.Tests.Skirmish
         public void ScanMaps_ReadsProperties_OrderedById()
         {
             using var dir = new TempDir();
-            WriteMap(dir.Path, "b.json", MapData("bravo", 4, bounds: 200f, author: "me"));
-            WriteMap(dir.Path, "a.json", MapData("alpha", 2, bounds: 120f, author: ""));
+            WriteMap(dir.Path, "b.json", MapData("bravo", 4, bounds: 200f, author: "me", suggestedPlayers: 4));
+            WriteMap(dir.Path, "a.json", MapData("alpha", 2, bounds: 120f, author: "", suggestedPlayers: 2));
 
             IReadOnlyList<MapEntry> maps = SkirmishCatalog.ScanMaps(dir.Path, "res://maps");
 
@@ -289,6 +289,8 @@ namespace ProjectChimera.Sim.Tests.Skirmish
             Assert.Equal("bravo", maps[1].Id);
             Assert.Equal(2, maps[0].StartPositionCount);
             Assert.Equal(4, maps[1].StartPositionCount);
+            Assert.Equal(2, maps[0].SuggestedPlayers);   // review patch: SuggestedPlayers flows through the scan
+            Assert.Equal(4, maps[1].SuggestedPlayers);
             Assert.Equal(200f, maps[1].MapBounds);
             Assert.Equal("me", maps[1].Author);
             Assert.Equal("res://maps/b.json", maps[1].ResPath);
@@ -342,6 +344,37 @@ namespace ProjectChimera.Sim.Tests.Skirmish
 
             MapEntry only = Assert.Single(maps);
             Assert.Equal("alpha", only.Id);
+        }
+
+        [Fact]
+        public void ScanFactions_SkipsMalformedJson_NoThrow()
+        {
+            // Review patch (verification gap): the lenient `catch { continue; }` on a malformed *_faction.json — the twin
+            // of ScanMaps_SkipsMalformedJson — was previously exercised by no test. A corrupt faction file must be skipped,
+            // never thrown out of ScanFactions (which would blank the whole setup-screen faction catalog).
+            using var dir = new TempDir();
+            WriteFaction(dir.Path, "alpha_faction.json", ValidFaction("alpha"));
+            File.WriteAllText(Path.Combine(dir.Path, "garbage_faction.json"), "{ not valid faction json ]]]");
+
+            IReadOnlyList<FactionEntry> factions = SkirmishCatalog.ScanFactions(dir.Path, "res://factions");
+
+            FactionEntry only = Assert.Single(factions);
+            Assert.Equal("alpha", only.Id);
+        }
+
+        [Fact]
+        public void ScanMaps_SkipsMapWithNoStartPositions()
+        {
+            // Review patch (finding D): a *.json in the scenarios dir with no start positions is not a launchable map and
+            // must not list as a phantom, permanently-unlaunchable entry.
+            using var dir = new TempDir();
+            WriteMap(dir.Path, "real.json", MapData("real", 2));
+            WriteMap(dir.Path, "phantom.json", MapData("phantom", 0)); // zero start positions → skipped
+
+            IReadOnlyList<MapEntry> maps = SkirmishCatalog.ScanMaps(dir.Path, "res://maps");
+
+            MapEntry only = Assert.Single(maps);
+            Assert.Equal("real", only.Id);
         }
 
         [Fact]
@@ -431,9 +464,9 @@ namespace ProjectChimera.Sim.Tests.Skirmish
 
         // ── Helpers (mirror FactionDiscoveryTests) ────────────────────────────────────
 
-        private static ScenarioData MapData(string id, int slots, float bounds = 120f, string author = "")
+        private static ScenarioData MapData(string id, int slots, float bounds = 120f, string author = "", int suggestedPlayers = 0)
         {
-            var m = new ScenarioData { Id = id, DisplayName = id, MapBounds = bounds };
+            var m = new ScenarioData { Id = id, DisplayName = id, MapBounds = bounds, SuggestedPlayers = suggestedPlayers };
             if (!string.IsNullOrEmpty(author)) m.Author = author;
             var ps = new ScenarioPlayerSlot[slots];
             for (int i = 0; i < slots; i++) ps[i] = new ScenarioPlayerSlot { Slot = i, FactionJson = "res://x.json" };

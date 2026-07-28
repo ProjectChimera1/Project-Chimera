@@ -4,6 +4,7 @@ type: 'feature'
 created: '2026-07-28'
 status: 'done'
 baseline_revision: 'ca5fa1c537f774a8090727569d1552c87b239b1e'
+final_revision: 'fa87eb213466120232d8b3e5bbefc047fee9c328'
 review_loop_iteration: 0
 followup_review_recommended: true
 context:
@@ -122,6 +123,18 @@ warnings: [oversized]
   - `[low]` `[patch]` De-duplicated the slot-color palette — `FactionVisualsPhase.SlotColors` is the single source; `SkirmishSetupOverlay` references it.
   - `[low]` `[patch]` Added the missing Tier-1 tests: validator team-range (in/out/boundary), empty/null-faction branch, allied-opponent rule + passing configs, contiguous-renumber transform, `ScanMaps` malformed-json-skip, `ScanMaps` + `ScanFactions` dedupe-by-Id.
 
+### 2026-07-28 — Review pass (follow-up)
+- intent_gap: 0
+- bad_spec: 0
+- patch: 4: (high 1, medium 0, low 3)
+- defer: 1
+- reject: 11
+- addressed_findings:
+  - `[high]` `[patch]` NullReferenceException on **every** skirmish launch: PATCH-3 made `_Ready` `async void` and yields one `ProcessFrame` BEFORE the phase runner, but `_ctx.GameState` (set only by `GameStatePhase`, which runs *inside* the runner) is still null during that frame, and `_Process`/`_Input`/`_UnhandledInput` guard only `_headless || _bootAborted` — so the resumed per-frame callbacks dereference `_ctx.GameState.Mode` and crash. Fixed: added `_bootPending` (true from construction, cleared after the phase run + post-run tail completes), added to all three callback guards. Synchronous/editor boot is byte-identical (no frame elapses inside `_Ready`, so the flag is never observed).
+  - `[low]` `[patch]` `SkirmishCatalog.ScanMaps` globbed every `*.json`, listing a non-map scenario fragment (0 start positions) as a phantom, permanently-unlaunchable map — now skips entries with no `PlayerSlots` (mirrors `ScanFactions`'s discovery-contract drop); locked in by `ScanMaps_SkipsMapWithNoStartPositions`.
+  - `[low]` `[patch]` Verification gap: `SkirmishCatalog.ScanFactions`'s lenient malformed-JSON skip (`catch { continue; }`) was exercised by no test, unlike its `ScanMaps` twin — added `ScanFactions_SkipsMalformedJson_NoThrow`.
+  - `[low]` `[patch]` Verification gap: `ScanMaps → MapEntry.SuggestedPlayers` was asserted by nothing (the fixture never set a non-default value) — extended the `MapData` helper + `ScanMaps_ReadsProperties_OrderedById` to set and assert it.
+
 ## Design Notes
 
 **Why in-memory `ScenarioData` handoff, not a re-apply path:** `ScenarioLoadPhase.PendingGeneratedScenario` + `ReloadCurrentScene()` already exists and is battle-tested by the AI map generator (`MainScene.LoadGeneratedScenario`). Reusing it means the skirmish scenario flows through the *identical* fail-closed apply + faction-resolution + alliance-seed pipeline — zero new sim code, zero determinism risk. Building a second post-selection re-apply path would duplicate that pipeline.
@@ -141,31 +154,3 @@ warnings: [oversized]
 **Manual checks (in-engine, gated — cannot run headless here):**
 - Launch the editor, click Play → the skirmish setup screen appears; pick a map, set slot1 to AI, pick factions/teams, Launch → loading screen shows, match starts with both rosters at the map's start positions; Esc/return works. This is the Epic-11 per-story in-engine gate (run via `/godot-verify` or the godot-mcp bridge with no idle session holding it).
 
-## Auto Run Result
-
-Status: done
-
-**Summary:** Replaced the hardcoded-scenario boot with a real offline skirmish setup screen and match-start flow. "Play" now opens a `SkirmishSetupOverlay` where the player picks a shipped map and configures its player slots (Human / AI+difficulty / Open / Closed, faction, team); Launch builds an in-memory `ScenarioData` from the map + config and hands it to the existing `PendingGeneratedScenario` + `ReloadCurrentScene` boot path (the AI-map-generator precedent), shows a loading screen driven by a new real per-phase `ScenePhaseRunner` progress seam, and auto-enters Play — or fails safe back to the pre-filled setup screen on a boot exception. Presentation/data only: zero new sim writes, zero `SimChecksum` change, no golden re-baseline. DW-121 is closed by construction (faction choices committed as `FactionJson` res:// paths, so the existing `ResolveSlotFactionDefs` resolves abilities + drops unknown-tag units).
-
-**Files changed:**
-- `godot/src/Core/Skirmish/SkirmishSetup.cs` (new) — Godot-free config model (`SlotKind`, `SetupSlot`, `SkirmishSetup`).
-- `godot/src/Core/Skirmish/SkirmishCatalog.cs` (new) — Godot-free `ScanMaps`/`ScanFactions` (temp-dir-testable; dedupe-by-Id; res:// path composition).
-- `godot/src/Core/Skirmish/SkirmishSetupValidator.cs` (new) — all-errors validator incl. the single-AI honesty limit and the all-allied-set opponent rule.
-- `godot/src/Core/Skirmish/SkirmishSetupToScenario.cs` (new) — pure transform; contiguous active-slot renumber with position-paired base positions; base map never mutated.
-- `godot/src/UI/SkirmishSetupOverlay.cs` (new) — the setup screen (map list + per-slot grid + live validation + Launch/Back).
-- `godot/src/UI/LoadingScreenOverlay.cs` (new) — loading screen driven by the progress seam.
-- `godot/src/Core/Bootstrap/ScenePhaseRunner.cs` — optional per-phase progress seam (null = byte-identical).
-- `godot/src/Core/Bootstrap/Phases/FactionVisualsPhase.cs` — 4-entry per-slot-index color palette (single source of truth; indices 0/1 unchanged).
-- `godot/src/Core/Bootstrap/Phases/MainMenuPhase.cs` — "Play" opens the setup overlay.
-- `godot/src/Core/Bootstrap/Phases/SceneContext.cs` — `SkirmishSetup` overlay handle.
-- `godot/src/Core/MainScene.cs` — consumed-once skirmish handoff statics, `activePlayers` from the built scenario, loading screen + one-frame present, fail-safe over the full skirmish boot, `LaunchSkirmish`, `_bootAborted` guards.
-- `godot/ProjectChimera.Sim.Tests/Skirmish/SkirmishSetupTests.cs` (new) — Tier-1 tests for validator/transform/catalog/progress-seam/DW-121, plus the review-added coverage.
-- `_bmad-output/implementation-artifacts/epic-11-context.md` (new) — compiled epic context.
-
-**Review findings:** 8 patches applied (1 high: contiguous renumber + activePlayers desync; 3 medium: allied-opponent rule, loading-screen paint, fail-safe extension; 4 low: map dedupe, team-spinner clamp, palette de-dup, missing Tier-1 tests). 2 deferred (res:// PCK-export scan; dropped-slot dangling trigger/win-condition refs). 5 rejected. 0 intent_gap, 0 bad_spec.
-
-**Follow-up review recommended:** true (patched severities — high 1, medium 3, low 4; a high-severity patch forces true; score 3×3 + 1×4 = 13 ≥ 5).
-
-**Verification:** `dotnet test godot/ProjectChimera.Sim.Tests` → 3559 passed / 0 failed / 1 skip, no golden re-baselined; `dotnet build godot/godot.csproj` → 0 errors; analyzer/AOT gate → 0 errors. Matrix audit: 9/10 rows covered by automated Tier-1 tests that ran+passed; the boot-failure fail-safe row is Godot scene-lifecycle logic (`MainScene` excluded from the Tier-1 compile) routed to the gated in-engine check per the spec's Verification section.
-
-**Residual risks:** (1) The in-engine gate (click Play → setup → Launch → loading → Play, and the fail-safe re-open) cannot run headless and is deferred to the Epic-11 per-story `/godot-verify` gate. (2) `_Ready` is now `async void` on the skirmish path (single awaited `ProcessFrame`); the normal boot never awaits and is unchanged, but the async boot is unverified headless. (3) Multi-AI, a color picker, and live minimap thumbnails are deliberately out of scope (multi-AI → Story 10-10) and blocked at validation rather than shipped broken.

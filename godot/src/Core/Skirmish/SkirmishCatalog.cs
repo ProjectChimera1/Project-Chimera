@@ -69,6 +69,11 @@ namespace ProjectChimera.Core.Skirmish
                 catch { continue; } // lenient: a malformed map never aborts the scan
 
                 if (map == null) continue;
+                // Review patch: only real playable maps are selectable. A *.json in the scenarios dir with no start
+                // positions (e.g. a fragment/saved non-map scenario) would otherwise list as a phantom entry that can
+                // never launch (activeCount > 0 always exceeds a 0 start-position map). Skip it — mirrors how ScanFactions
+                // drops files that fail the discovery contract.
+                if ((map.PlayerSlots?.Length ?? 0) <= 0) continue;
 
                 string fileName = Path.GetFileName(file);
                 string id = string.IsNullOrEmpty(map.Id) ? Path.GetFileNameWithoutExtension(fileName) : map.Id;

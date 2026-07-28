@@ -167,6 +167,15 @@ namespace ProjectChimera.Core
         /// so a half-built scene never dereferences an unset presentation handle.</summary>
         private bool _bootAborted;
 
+        /// <summary>Story 11.1 (review patch): true from construction until the phase run has built the presentation
+        /// handles (GameState etc.). The skirmish path yields one rendered frame (<c>await ProcessFrame</c>) BEFORE the
+        /// phase runner executes, and because <c>_Ready</c> is <c>async void</c> Godot resumes the per-frame callbacks
+        /// during that frame while <c>_ctx.GameState</c> is still null — so the callbacks must no-op until the run
+        /// completes. On the synchronous (non-skirmish) boot no frame elapses inside <c>_Ready</c>, so this is set and
+        /// cleared with no observable effect (byte-identical). Distinct from <c>_bootAborted</c>, which covers only the
+        /// post-throw reload window.</summary>
+        private bool _bootPending = true;
+
         // ── Inspector ─────────────────────────────────────────────────────────
 
         /// <summary>AI opponent difficulty. Change in the Godot Inspector before running.</summary>
@@ -720,6 +729,10 @@ namespace ProjectChimera.Core
                 return;
             }
 
+            // Review patch: the presentation handles (_ctx.GameState etc.) are now built — the per-frame callbacks may
+            // run. On the fail-safe path we returned above with _bootAborted set, so this line is not reached there.
+            _bootPending = false;
+
             GD.Print("[MainScene] Ready. F5=Play/Edit, Tab=cycle mode, Shift+Click=worker, " +
                      "L-Drag=box-select, R-Click=move, Ctrl+1-9=group. N=Multiplayer lobby.");
         }
@@ -749,7 +762,7 @@ namespace ProjectChimera.Core
         /// </summary>
         public override void _Input(InputEvent @event)
         {
-            if (_headless || _bootAborted) return; // dedicated server has no input / no _ctx; _bootAborted = fail-safe reload pending
+            if (_headless || _bootAborted || _bootPending) return; // dedicated server has no input / no _ctx; _bootAborted = fail-safe reload pending; _bootPending = phase run not yet built _ctx handles
             if (_pendingBuildWorkerId < 0) return;
 
             if (@event is InputEventMouseButton mb && mb.Pressed)
@@ -783,7 +796,7 @@ namespace ProjectChimera.Core
 
         public override void _UnhandledInput(InputEvent @event)
         {
-            if (_headless || _bootAborted) return; // dedicated server has no input / no _ctx; _bootAborted = fail-safe reload pending
+            if (_headless || _bootAborted || _bootPending) return; // dedicated server has no input / no _ctx; _bootAborted = fail-safe reload pending; _bootPending = phase run not yet built _ctx handles
             if (@event is not InputEventKey key || !key.Pressed || key.Echo) return;
 
             // Escape — toggle settings panel (any mode).
@@ -1031,7 +1044,7 @@ namespace ProjectChimera.Core
 
         public override void _Process(double delta)
         {
-            if (_headless || _bootAborted) return; // dedicated server: no presentation context; _bootAborted = fail-safe reload pending
+            if (_headless || _bootAborted || _bootPending) return; // dedicated server: no presentation context; _bootAborted = fail-safe reload pending; _bootPending = phase run not yet built _ctx handles
             if (_ctx.GameState.Mode == GameMode.Play && !_gameOver)
             {
                 if (_ctx.ReplayPlayer != null)
