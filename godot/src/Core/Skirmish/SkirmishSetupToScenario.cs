@@ -29,8 +29,10 @@ namespace ProjectChimera.Core.Skirmish
             // array so the base map's own slots are never touched.
             ScenarioData built = baseMap.ShallowClone();
 
+            IReadOnlyList<FactionEntry> factionList = factions ?? System.Array.Empty<FactionEntry>();
+
             var factionByIdRes = new Dictionary<string, string>(System.StringComparer.Ordinal);
-            foreach (FactionEntry f in factions ?? System.Array.Empty<FactionEntry>())
+            foreach (FactionEntry f in factionList)
                 factionByIdRes[f.Id] = f.ResPath; // last-wins; the catalog already deduped by id
 
             // The base map's slots ordered by Slot — we pair the i-th active slot with the i-th base slot BY POSITION
@@ -58,6 +60,10 @@ namespace ProjectChimera.Core.Skirmish
             // position. Drives the pre-placed entity remap below: a base slot with no active pairing (e.g. slots 2/3
             // of a 4-start map launched 1v1) is absent, so its pre-placed content is dropped rather than orphaned.
             var origSlotToNew = new Dictionary<int, int>();
+            // Per new contiguous index: the faction that index CHOSE, and the faction the paired base position's
+            // pre-placed units were AUTHORED against. Together these drive the cross-faction unit-id remap below.
+            var targetFactionByNew   = new Dictionary<int, FactionEntry?>();
+            var authoredFactionByNew = new Dictionary<int, FactionEntry?>();
             for (int i = 0; i < activeSlots.Count; i++)
             {
                 SetupSlot s = activeSlots[i];
@@ -69,6 +75,9 @@ namespace ProjectChimera.Core.Skirmish
                 string factionJson = (s.FactionId != null && factionByIdRes.TryGetValue(s.FactionId, out string? res))
                     ? res
                     : "";
+
+                targetFactionByNew[i]   = SkirmishRosterMap.ById(factionList, s.FactionId);
+                authoredFactionByNew[i] = SkirmishRosterMap.ByResPath(factionList, baseSlot?.FactionJson);
 
                 newSlots.Add(new ScenarioPlayerSlot
                 {
@@ -102,13 +111,34 @@ namespace ProjectChimera.Core.Skirmish
                     Type = b.Type, Slot = origSlotToNew[b.Slot], X = b.X, Z = b.Z, PreBuilt = b.PreBuilt, Rot = b.Rot,
                 })
                 .ToArray();
-            built.Units = (baseMap.Units ?? System.Array.Empty<ScenarioUnit>())
-                .Where(u => origSlotToNew.ContainsKey(u.Slot))
-                .Select(u => new ScenarioUnit
+            // Pre-placed UNITS additionally need their faction-specific id translated. The base map authored them
+            // against the base slot's own faction (alpha_map_01 places alpha's "worker" for both slots), but this slot
+            // may have CHOSEN a different faction whose roster is disjoint — beta has "forgehand", not "worker". An
+            // untranslated id resolves to no UnitDefinition and the applier's def==null skip drops the unit SILENTLY,
+            // which is how a cross-faction launch shipped an AI opponent with zero workers (in-engine gate, 2026-07-28).
+            // SkirmishRosterMap re-keys by role — (Category, ordinal-within-category) — so alpha's mage becomes beta's
+            // rune_caster. A same-faction launch takes the identity path, so it stays byte-identical to the base map.
+            // Buildings need no equivalent: ScenarioBuilding.Type is a shared BuildingType token, not a faction id.
+            var mappedUnits = new List<ScenarioUnit>();
+            foreach (ScenarioUnit u in baseMap.Units ?? System.Array.Empty<ScenarioUnit>())
+            {
+                if (u == null) continue;
+                if (!origSlotToNew.TryGetValue(u.Slot, out int newSlot)) continue; // orphaned slot → dropped (above)
+
+                targetFactionByNew.TryGetValue(newSlot, out FactionEntry? target);
+                authoredFactionByNew.TryGetValue(newSlot, out FactionEntry? authored);
+
+                string? mappedId = SkirmishRosterMap.MapUnitId(u.UnitId ?? "", authored, target);
+                // Unmappable (the chosen faction has no unit of that role at all): drop rather than emit an id that
+                // cannot resolve. SkirmishSetupValidator blocks this config before Launch, so the UI never gets here.
+                if (string.IsNullOrEmpty(mappedId)) continue;
+
+                mappedUnits.Add(new ScenarioUnit
                 {
-                    UnitId = u.UnitId, Slot = origSlotToNew[u.Slot], X = u.X, Z = u.Z, Rot = u.Rot,
-                })
-                .ToArray();
+                    UnitId = mappedId!, Slot = newSlot, X = u.X, Z = u.Z, Rot = u.Rot,
+                });
+            }
+            built.Units = mappedUnits.ToArray();
 
             return built;
         }

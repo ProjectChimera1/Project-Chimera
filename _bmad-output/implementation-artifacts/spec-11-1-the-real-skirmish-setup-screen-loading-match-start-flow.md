@@ -82,7 +82,8 @@ warnings: [oversized]
 **Execution:**
 - `godot/src/Core/Skirmish/SkirmishSetup.cs` -- NEW, Godot-free. Define `enum SlotKind { Open, Closed, Human, Ai }`, `SetupSlot { int Slot; SlotKind Kind; AiDifficulty Ai; string? FactionId; int Team; }`, and `SkirmishSetup { string MapId; List<SetupSlot> Slots; }`. Pure data. -- the config model shared by UI + transform + validator.
 - `godot/src/Core/Skirmish/SkirmishCatalog.cs` -- NEW, Godot-free. `IReadOnlyList<MapEntry> ScanMaps(string absScenariosDir)` (loads each `*.json` via `ScenarioSerializer.LoadFromFile`, lenient; `MapEntry { Id, DisplayName, ResPath, MapBounds, SuggestedPlayers, StartPositionCount, Author }`) and `IReadOnlyList<FactionEntry> ScanFactions(string absFactionsDir)` (`FactionEntry { Id, DisplayName, ResPath }`, `ValidateComplete`-gated, ordinal-sorted). Use `System.IO`; take absolute paths so it is Tier-1-testable with temp dirs. -- enumerate selectable maps + factions with their res:// paths (the FactionJson source, DW-121-safe).
-- `godot/src/Core/Skirmish/SkirmishSetupValidator.cs` -- NEW, Godot-free. `IReadOnlyList<string> Validate(SkirmishSetup setup, MapEntry map, IReadOnlyList<FactionEntry> factions)` returning ALL errors: exactly one Human slot; ≥1 Ai slot; ≤1 Ai slot (honest runtime limit); 2 ≤ active(Human+Ai) count ≤ `map.StartPositionCount`; every Human/Ai slot's `FactionId` resolves in `factions`; teams within `[0, activeCount]`. -- gate Launch with actionable messages.
+- `godot/src/Core/Skirmish/SkirmishSetupValidator.cs` -- NEW, Godot-free. `IReadOnlyList<string> Validate(SkirmishSetup setup, MapEntry map, IReadOnlyList<FactionEntry> factions)` returning ALL errors: exactly one Human slot; ≥1 Ai slot; ≤1 Ai slot (honest runtime limit); 2 ≤ active(Human+Ai) count ≤ `map.StartPositionCount`; every Human/Ai slot's `FactionId` resolves in `factions`; teams within `[0, activeCount]`; **and every pre-placed starting unit for that slot's paired base position must remap into the chosen faction's roster** (in-engine gate PATCH — see `SkirmishRosterMap` below; without it a faction that cannot field the map's starting army launches and is silently crippled). -- gate Launch with actionable messages.
+- `godot/src/Core/Skirmish/SkirmishRosterMap.cs` -- NEW, Godot-free. `MapUnitId(unitId, authored, target)` translating a map's pre-placed unit id into the roster of the faction a slot actually CHOSE, keyed by role = (`Category`, ordinal-within-category) resolved against the authored faction's roster; identity when authored==target (same `ResPath`), clamp to the last unit of a category when the target roster is shallower, `null` when the target has no unit of that category. **Required:** shipped maps author their starting army against ONE faction's ids (`alpha_map_01` places alpha's `"worker"` for both slots) and the factions have DISJOINT rosters, so without this remap a cross-faction launch resolves to no `UnitDefinition` and the applier's `def == null` skip drops that player's whole starting army silently. -- the cross-faction role translation.
 - `godot/src/Core/Skirmish/SkirmishSetupToScenario.cs` -- NEW, Godot-free. `ScenarioData Build(SkirmishSetup setup, ScenarioData baseMap, IReadOnlyList<FactionEntry> factions)`: clone `baseMap`; rebuild `PlayerSlots` so each active (Human/Ai) `SetupSlot` maps to a `ScenarioPlayerSlot` carrying `Slot`, `FactionJson` = the chosen faction's res:// path, `Team`, and the base map's `BaseX/BaseZ/StartOre/StartCrystal` for that slot index; drop Open/Closed slots; leave terrain/win-condition untouched. **Also re-key the pre-placed `Buildings`/`Units`: keep only entities whose original slot is a paired base slot (remapped to its new contiguous owner index) and DROP the rest** — else a map with more start positions than active players (the shipped 4-start `quad_map_01` launched 1v1) leaves entities keyed to dropped slots that the applier's unguarded buildings loop spawns as ghost Player3/Player4 bases (follow-up-review PATCH); new arrays + copied elements so `baseMap` (whose arrays `ShallowClone` shares) is never mutated. Deterministic (same input → identical output). -- the pure transform that is the testable heart.
 - `godot/src/Core/Bootstrap/ScenePhaseRunner.cs` -- EDIT. Add an optional ctor param or `Run(Action<int,int,string>? onPhaseStarting = null)` invoked immediately before each `phase.Run()` with `(1-based index, ScenePhaseOrder.Canonical.Length, phase.Name)`, after `AssertOrder()`. No behavior change when null. -- the real per-phase progress seam.
 - `godot/src/UI/SkirmishSetupOverlay.cs` -- NEW, Godot-coupled `CanvasLayer` (mirror `LobbyUi`/`HeroPickerOverlay` construction from the theme kit). Left: map list from `SkirmishCatalog.ScanMaps` with properties (name, `MapBounds`, `SuggestedPlayers`, start-position count, author). Right: per-slot grid for the selected map (Kind option, AI-difficulty option when Ai, faction `OptionButton` from `ScanFactions`, team spinner) showing the deterministic slot color. Live-run `SkirmishSetupValidator`, disabling Launch and listing errors while any stand. Back returns to menu. Launch → task below. -- the screen itself.
@@ -176,8 +177,10 @@ warnings: [oversized]
 
 ### In-Engine Gate Result — /godot-verify, 2026-07-28
 
-**Verdict: FAIL** (1 high defect). Godot 4.6.3-stable-mono, driven over the godot-mcp bridge
-(Button `pressed` signal emission + tree-walk digests; no screenshots relied on for state).
+**Verdict: FAIL → FIXED + RE-VERIFIED PASS** (see "Gate Fix" below). Godot 4.6.3-stable-mono,
+driven over the godot-mcp bridge (Button `pressed` signal emission + tree-walk digests; no
+screenshots relied on for state). The FAIL findings below are kept verbatim as the record of what
+the gate caught.
 
 | AC | Result | Evidence |
 |----|--------|----------|
@@ -228,6 +231,54 @@ Reproduced on the both-alpha control above (4 total vs the file's 5). NOT confir
 Transmuter]" placement ghost, so its `P1: 3` may count a ghost rather than a real entity, making
 the EDIT-vs-PLAY comparison unsafe. Needs an isolated check of `SkirmishSetupToScenario.Build`
 output vs the applier before it can be assigned to this story or to pre-existing behavior.
+→ Logged to `deferred-work.md` (11.1 source_spec section). Ruled OUT of the transform by
+`Build_SameFactionLaunch_LeavesPrePlacedUnitIdsUntouched`: all 3 slot-0 units are emitted into the
+built scenario, so the loss is downstream of this story's code.
+
+### Gate Fix — cross-faction role remap (2026-07-28)
+
+**Approach.** The role skeleton is real data, not a hardcoded table: both shipped factions declare
+the same `category` sequence position-for-position (`Worker, Melee, Melee, Melee, Ranged, Ranged,
+Siege, Air`), which the FMA redesign preserved. So a unit's ROLE is (`Category`,
+ordinal-within-category) resolved against the faction the map was authored against — alpha's `mage`
+is (Ranged, 1), which is beta's `rune_caster`. New `SkirmishRosterMap` performs that translation;
+`SkirmishCatalog` now carries the data it needs (`FactionEntry.Units` roster; `MapEntry`
+`SlotFactionResPaths` + `PrePlacedUnits`, both normalized to start POSITION so the validator and
+the transform pair slots identically). A community faction that follows the skeleton maps for free.
+
+**Degradation, deliberately not fail-open.** `FactionValidator.ValidateComplete` — the selectability
+gate — only guarantees a Worker plus one combat unit, NOT a full skeleton. A target faction with
+fewer units in a category clamps to the last one of that category (a shallower roster shouldn't cost
+a player their starting army); a target with NO unit of that category is unmappable, and
+`SkirmishSetupValidator` rule 8 blocks Launch with an actionable message rather than letting the
+applier drop it silently. Same-faction launches take the identity path, so the common case stays
+byte-identical to the base map.
+
+**Files changed:**
+- `godot/src/Core/Skirmish/SkirmishRosterMap.cs` — NEW, the role translation.
+- `godot/src/Core/Skirmish/SkirmishCatalog.cs` — `FactionEntry.Units`, `FactionUnitEntry`;
+  `MapEntry.SlotFactionResPaths` / `.PrePlacedUnits` + `MapPrePlacedUnit`; populated in both scans.
+- `godot/src/Core/Skirmish/SkirmishSetupToScenario.cs` — pre-placed units re-keyed through the remap
+  (buildings need none: `ScenarioBuilding.Type` is a shared `BuildingType` token, not a faction id).
+- `godot/src/Core/Skirmish/SkirmishSetupValidator.cs` — rule 8, the unmappable-role block.
+- `godot/ProjectChimera.Sim.Tests/Skirmish/SkirmishSetupTests.cs` — 8 new tests; fixtures now carry
+  real rosters and author `FactionJson` against alpha, because the production catalog always does.
+
+**Re-verification (same bridge, same launch that failed):**
+
+| Measurement | Before fix | After fix |
+|---|---|---|
+| Cross-faction 1v1 at `Tick 0/1 [PLAY]` | `P1: 2, P2: 0, Total: 2` | **`P1: 2, P2: 2, Total: 4`** |
+| Same-faction control | `P1: 2, P2: 2, Total: 4` | `P1: 2, P2: 2, Total: 4` (unchanged) |
+| AI economy under way (tick 344) | P2 30 ore / starved | **P2 110 ore, 2 supply, building** |
+| Launch gating | launched silently broken | no false block — `Launch.disabled=false`, 0 errors |
+
+Cross-faction now matches the same-faction control exactly. Tier-1: **3573 passed / 0 failed / 1
+pre-existing skip** (3566 + 8 new), two independent clean runs; no golden re-baselined. AC2 PASS.
+
+**AC4 note:** still not positively exercisable by shipped content — both factions declare no tags —
+but the DW-121 `FactionJson`→`ResolveSlotFactionDefs` route is now genuinely exercised for BOTH
+players on a cross-faction launch, where before the beta side spawned nothing at all.
 
 
 ## Auto Run Result — follow-up review 3 (2026-07-28)

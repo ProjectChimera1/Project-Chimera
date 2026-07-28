@@ -74,6 +74,41 @@ namespace ProjectChimera.Core.Skirmish
                     errors.Add("Opposing sides required — the human and the AI cannot be on the same team.");
             }
 
+            // 8) Every pre-placed starting unit must translate into the faction the slot chose. The map authors its
+            // starting army against ONE faction's ids; SkirmishRosterMap re-keys them by role, but a faction with no
+            // unit at all in some category (ValidateComplete only guarantees Worker + one combat unit) cannot supply an
+            // equivalent. Blocking here is the Epic-11.7 honesty floor: without it the launch succeeds and the units
+            // are dropped silently at apply time, handing that player a crippled start with no feedback.
+            var activeForRoster = slots.Where(s => s.Kind == SlotKind.Human || s.Kind == SlotKind.Ai)
+                                       .OrderBy(s => s.Kind == SlotKind.Human ? 0 : 1)
+                                       .ThenBy(s => s.Slot)
+                                       .ToList(); // MUST mirror SkirmishSetupToScenario's active ordering
+            for (int i = 0; i < activeForRoster.Count; i++)
+            {
+                FactionEntry? target = SkirmishRosterMap.ById(factions, activeForRoster[i].FactionId);
+                if (target == null) continue; // unknown/blank faction already reported by rule 5
+
+                string authoredPath = (map.SlotFactionResPaths != null && i < map.SlotFactionResPaths.Count)
+                    ? map.SlotFactionResPaths[i]
+                    : "";
+                FactionEntry? authored = SkirmishRosterMap.ByResPath(factions, authoredPath);
+
+                var missingRoles = new List<string>();
+                foreach (MapPrePlacedUnit p in map.PrePlacedUnits ?? System.Array.Empty<MapPrePlacedUnit>())
+                {
+                    if (p == null || p.Position != i) continue;
+                    if (SkirmishRosterMap.MapUnitId(p.UnitId, authored, target) != null) continue;
+
+                    string role = SkirmishRosterMap.CategoryOf(p.UnitId, authored);
+                    string label = string.IsNullOrEmpty(role) ? $"'{p.UnitId}'" : role;
+                    if (!missingRoles.Contains(label, System.StringComparer.Ordinal)) missingRoles.Add(label);
+                }
+
+                foreach (string role in missingRoles)
+                    errors.Add($"Slot {activeForRoster[i].Slot + 1}: {target.DisplayName} has no {role} unit, "
+                             + "so this map's starting army cannot be fielded.");
+            }
+
             return errors;
         }
     }

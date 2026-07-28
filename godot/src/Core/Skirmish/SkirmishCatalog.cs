@@ -21,6 +21,26 @@ namespace ProjectChimera.Core.Skirmish
         /// <summary>Number of authored start positions (= <c>PlayerSlots.Length</c>) — the cap on active slots.</summary>
         public int StartPositionCount { get; init; }
         public string Author { get; init; } = "";
+
+        /// <summary>
+        /// The faction <c>res://</c> path each authored start position was written AGAINST, indexed by POSITION in the
+        /// map's ascending-<c>Slot</c> order (the same positional pairing <see cref="SkirmishSetupToScenario"/> uses).
+        /// A map's pre-placed units name that faction's unit ids, so this is the source roster the role remap reads.
+        /// </summary>
+        public IReadOnlyList<string> SlotFactionResPaths { get; init; } = System.Array.Empty<string>();
+
+        /// <summary>The map's pre-placed starting units, normalized to start-POSITION (not raw slot ordinal) so the
+        /// validator and the transform agree on which player inherits which starting army.</summary>
+        public IReadOnlyList<MapPrePlacedUnit> PrePlacedUnits { get; init; } = System.Array.Empty<MapPrePlacedUnit>();
+    }
+
+    /// <summary>Story 11.1 — one pre-placed starting unit authored by a map, keyed by start POSITION.</summary>
+    public sealed class MapPrePlacedUnit
+    {
+        /// <summary>Index into the map's ascending-<c>Slot</c> start positions (NOT the raw <c>Slot</c> ordinal).</summary>
+        public int Position { get; init; }
+        /// <summary>The unit id as authored — an id in that position's authored faction roster.</summary>
+        public string UnitId { get; init; } = "";
     }
 
     /// <summary>Story 11.1 — a selectable faction with its <c>res://</c> path. The path is what a slot commits as
@@ -32,6 +52,24 @@ namespace ProjectChimera.Core.Skirmish
         public string DisplayName { get; init; } = "";
         /// <summary>The faction JSON's <c>res://</c> path (the <c>FactionJson</c> source).</summary>
         public string ResPath { get; init; } = "";
+
+        /// <summary>
+        /// This faction's roster in authored order — the coordinate space of the ROLE SKELETON. A map's pre-placed
+        /// units name one faction's ids, so launching a different faction must translate them; the translation key is
+        /// (<see cref="FactionUnitEntry.Category"/>, ordinal-within-category), resolved against this list. Ordered, not
+        /// a dictionary, because the ordinal IS the role coordinate.
+        /// </summary>
+        public IReadOnlyList<FactionUnitEntry> Units { get; init; } = System.Array.Empty<FactionUnitEntry>();
+    }
+
+    /// <summary>Story 11.1 — one roster entry: the unit's id plus its category, the two fields the role remap needs.
+    /// A flattened projection of <c>UnitDefinition</c> so the transform stays pure data (no def graph, no Godot).</summary>
+    public sealed class FactionUnitEntry
+    {
+        public string Id { get; init; } = "";
+        /// <summary>The <c>UnitCategory</c> token ("Worker"/"Melee"/"Ranged"/"Siege"/"Air"), matched case-insensitively
+        /// to mirror <c>FactionDefinition.GetUnitsByCategory</c>.</summary>
+        public string Category { get; init; } = "";
     }
 
     /// <summary>
@@ -79,15 +117,34 @@ namespace ProjectChimera.Core.Skirmish
                 string id = string.IsNullOrEmpty(map.Id) ? Path.GetFileNameWithoutExtension(fileName) : map.Id;
                 if (!seenIds.Add(id)) continue; // duplicate id → first file in ordinal filename order wins (mirrors ScanFactions)
 
+                // Positional normalization: the transform pairs the i-th ACTIVE setup slot with the i-th base slot in
+                // ascending-Slot order, so both the authored faction path and the pre-placed units are recorded by that
+                // same POSITION. A map declaring sparse ordinals (0, 2, 5) therefore stays consistent between the
+                // validator's pre-flight check and the transform's actual remap.
+                ScenarioPlayerSlot[] orderedSlots = (map.PlayerSlots ?? System.Array.Empty<ScenarioPlayerSlot>())
+                    .OrderBy(s => s.Slot).ToArray();
+                var positionOfSlot = new Dictionary<int, int>();
+                for (int i = 0; i < orderedSlots.Length; i++) positionOfSlot[orderedSlots[i].Slot] = i;
+
+                var prePlaced = new List<MapPrePlacedUnit>();
+                foreach (ScenarioUnit u in map.Units ?? System.Array.Empty<ScenarioUnit>())
+                {
+                    if (u == null) continue;
+                    if (!positionOfSlot.TryGetValue(u.Slot, out int pos)) continue; // orphaned → dropped by the transform too
+                    prePlaced.Add(new MapPrePlacedUnit { Position = pos, UnitId = u.UnitId ?? "" });
+                }
+
                 entries.Add(new MapEntry
                 {
-                    Id                 = id,
-                    DisplayName        = string.IsNullOrEmpty(map.DisplayName) ? map.Id : map.DisplayName,
-                    ResPath            = CombineRes(resScenariosDir, fileName),
-                    MapBounds          = map.MapBounds,
-                    SuggestedPlayers   = map.SuggestedPlayers,
-                    StartPositionCount = map.PlayerSlots?.Length ?? 0,
-                    Author             = map.Author ?? "",
+                    Id                  = id,
+                    DisplayName         = string.IsNullOrEmpty(map.DisplayName) ? map.Id : map.DisplayName,
+                    ResPath             = CombineRes(resScenariosDir, fileName),
+                    MapBounds           = map.MapBounds,
+                    SuggestedPlayers    = map.SuggestedPlayers,
+                    StartPositionCount  = map.PlayerSlots?.Length ?? 0,
+                    Author              = map.Author ?? "",
+                    SlotFactionResPaths = orderedSlots.Select(s => s.FactionJson ?? "").ToList(),
+                    PrePlacedUnits      = prePlaced,
                 });
             }
 
@@ -125,11 +182,21 @@ namespace ProjectChimera.Core.Skirmish
                 if (!FactionValidator.ValidateComplete(def).Ok) continue; // incomplete roster → not selectable
                 if (!seenIds.Add(def.Id)) continue;                       // duplicate id → first-file-wins
 
+                // Flatten the roster to (id, category) in AUTHORED ORDER — the role-skeleton coordinate space the
+                // cross-faction unit remap resolves against. A null element is skipped (DW-103 convention).
+                var roster = new List<FactionUnitEntry>();
+                foreach (UnitDefinition u in def.Units ?? new List<UnitDefinition>())
+                {
+                    if (u == null) continue;
+                    roster.Add(new FactionUnitEntry { Id = u.Id ?? "", Category = u.Category ?? "" });
+                }
+
                 entries.Add(new FactionEntry
                 {
                     Id          = def.Id,
                     DisplayName = string.IsNullOrEmpty(def.DisplayName) ? def.Id : def.DisplayName,
                     ResPath     = CombineRes(resFactionsDir, Path.GetFileName(file)),
+                    Units       = roster,
                 });
             }
 

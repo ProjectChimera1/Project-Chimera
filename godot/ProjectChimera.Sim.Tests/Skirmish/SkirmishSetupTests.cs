@@ -29,8 +29,33 @@ namespace ProjectChimera.Sim.Tests.Skirmish
             MapBounds = 120f, SuggestedPlayers = 2, StartPositionCount = startPositions, Author = "",
         };
 
+        /// <summary>Faction entries carrying a real role skeleton, because the production catalog always populates one
+        /// and the cross-faction unit remap resolves against it. "alpha" keeps the bare ids the shipped maps author
+        /// (<c>worker</c>/<c>infantry</c>/<c>archer</c>); every other faction gets DISJOINT ids at the same roles —
+        /// exactly the alpha-vs-beta shape that broke in-engine.</summary>
         private static IReadOnlyList<FactionEntry> Factions(params string[] ids) =>
-            ids.Select(i => new FactionEntry { Id = i, DisplayName = i, ResPath = $"res://factions/{i}_faction.json" }).ToList();
+            ids.Select(i => new FactionEntry
+            {
+                Id = i, DisplayName = i, ResPath = $"res://factions/{i}_faction.json", Units = Roster(i),
+            }).ToList();
+
+        private static IReadOnlyList<FactionUnitEntry> Roster(string factionId)
+        {
+            string p = factionId == "alpha" ? "" : factionId + "_";
+            return new List<FactionUnitEntry>
+            {
+                new() { Id = p + "worker",   Category = "Worker" },
+                new() { Id = p + "infantry", Category = "Melee"  },
+                new() { Id = p + "archer",   Category = "Ranged" },
+            };
+        }
+
+        /// <summary>A faction entry with a hand-authored roster, for the role-mapping edge cases.</summary>
+        private static FactionEntry FactionWith(string id, params (string Id, string Category)[] units) => new()
+        {
+            Id = id, DisplayName = id, ResPath = $"res://factions/{id}_faction.json",
+            Units = units.Select(u => new FactionUnitEntry { Id = u.Id, Category = u.Category }).ToList(),
+        };
 
         private static SetupSlot Slot(int slot, SlotKind kind, string? faction = "alpha", int team = 0,
                                       AiDifficulty ai = AiDifficulty.Normal) =>
@@ -46,7 +71,8 @@ namespace ProjectChimera.Sim.Tests.Skirmish
             for (int i = 0; i < slots; i++)
                 ps[i] = new ScenarioPlayerSlot
                 {
-                    Slot = i, FactionJson = "res://legacy.json",
+                    // Authored against "alpha" — the shipped-map shape: pre-placed ids come from ONE faction's roster.
+                    Slot = i, FactionJson = "res://factions/alpha_faction.json",
                     StartOre = 200f + i, StartCrystal = 10f + i, BaseX = -45f + i * 90f, BaseZ = i * 2f,
                 };
             m.PlayerSlots = ps;
@@ -342,6 +368,150 @@ namespace ProjectChimera.Sim.Tests.Skirmish
 
             Assert.Equal(new[] { 0, 1 }, built.Buildings.Select(b => b.Slot).OrderBy(x => x).ToArray());
             Assert.Equal(new[] { 0, 1 }, built.Units.Select(u => u.Slot).OrderBy(x => x).ToArray());
+        }
+
+        // ── Cross-faction role remap (in-engine gate regression, 2026-07-28) ─────────────
+
+        [Fact]
+        public void Build_RemapsPrePlacedUnitIds_IntoTheChosenFactionRoster()
+        {
+            // THE REGRESSION. The map authors "worker" (alpha's id) for BOTH slots. Slot 1 chooses beta, whose roster is
+            // disjoint. Before the fix the id survived untranslated, resolved to no UnitDefinition, and the applier's
+            // def==null skip dropped it silently — in-engine that shipped an AI opponent with P2: 0 units.
+            SkirmishSetup s = Setup("m1", Slot(0, SlotKind.Human, "alpha"), Slot(1, SlotKind.Ai, "beta"));
+            ScenarioData built = SkirmishSetupToScenario.Build(s, BaseMapWithEntities(2), Factions("alpha", "beta"));
+
+            // Nothing is lost: both players keep their starting army.
+            Assert.Equal(2, built.Units.Length);
+            Assert.Equal("worker",      built.Units.Single(u => u.Slot == 0).UnitId); // alpha → identity
+            Assert.Equal("beta_worker", built.Units.Single(u => u.Slot == 1).UnitId); // beta  → same role, its own id
+        }
+
+        [Fact]
+        public void Build_SameFactionLaunch_LeavesPrePlacedUnitIdsUntouched()
+        {
+            // The identity path: when both slots pick the faction the map was authored against, the remap must be a
+            // no-op so a same-faction launch stays byte-identical to the base map.
+            SkirmishSetup s = Setup("m1", Slot(0, SlotKind.Human, "alpha"), Slot(1, SlotKind.Ai, "alpha"));
+            ScenarioData built = SkirmishSetupToScenario.Build(s, BaseMapWithEntities(2), Factions("alpha", "beta"));
+
+            Assert.Equal(2, built.Units.Length);
+            Assert.All(built.Units, u => Assert.Equal("worker", u.UnitId));
+        }
+
+        [Fact]
+        public void MapUnitId_ResolvesByCategoryOrdinal_NotRosterIndex()
+        {
+            // alpha's SECOND Ranged unit must map to beta's SECOND Ranged unit even though the rosters interleave
+            // categories differently — the role key is (Category, ordinal-within-category), not the raw list index.
+            FactionEntry a = FactionWith("a", ("worker", "Worker"), ("archer", "Ranged"), ("mage", "Ranged"));
+            FactionEntry b = FactionWith("b", ("bolt", "Ranged"), ("cantor", "Ranged"), ("thrall", "Worker"));
+
+            Assert.Equal("bolt",   SkirmishRosterMap.MapUnitId("archer", a, b)); // (Ranged, 0)
+            Assert.Equal("cantor", SkirmishRosterMap.MapUnitId("mage",   a, b)); // (Ranged, 1)
+            Assert.Equal("thrall", SkirmishRosterMap.MapUnitId("worker", a, b)); // (Worker, 0)
+        }
+
+        [Fact]
+        public void MapUnitId_ClampsToLastOfCategory_WhenTargetRosterIsShallower()
+        {
+            // ValidateComplete only guarantees a Worker + one combat unit, so a selectable faction may have fewer units
+            // in a category. Field the closest analogue rather than costing that player a starting unit.
+            FactionEntry a = FactionWith("a", ("m1", "Melee"), ("m2", "Melee"), ("m3", "Melee"));
+            FactionEntry b = FactionWith("b", ("brute", "Melee"));
+
+            Assert.Equal("brute", SkirmishRosterMap.MapUnitId("m3", a, b));
+        }
+
+        [Fact]
+        public void MapUnitId_ReturnsNull_WhenTargetHasNoUnitInThatCategory()
+        {
+            // Unmappable → null, so the validator can block Launch instead of the applier dropping it silently.
+            FactionEntry a = FactionWith("a", ("griffin", "Air"));
+            FactionEntry b = FactionWith("b", ("thrall", "Worker"), ("brute", "Melee"));
+
+            Assert.Null(SkirmishRosterMap.MapUnitId("griffin", a, b));
+        }
+
+        [Fact]
+        public void Validate_BlocksLaunch_WhenChosenFactionCannotFieldAPrePlacedRole()
+        {
+            // The honesty backstop: a config whose starting army cannot be fielded must not launch. Map position 1
+            // pre-places an Air unit; the chosen faction has no Air unit at all.
+            var factions = new List<FactionEntry>
+            {
+                FactionWith("alpha", ("worker", "Worker"), ("griffin", "Air")),
+                FactionWith("beta",  ("forgehand", "Worker")),
+            };
+            MapEntry map = new()
+            {
+                Id = "m1", DisplayName = "m1", ResPath = "res://maps/m1.json",
+                MapBounds = 120f, SuggestedPlayers = 2, StartPositionCount = 2, Author = "",
+                SlotFactionResPaths = new[] { "res://factions/alpha_faction.json", "res://factions/alpha_faction.json" },
+                PrePlacedUnits = new[]
+                {
+                    new MapPrePlacedUnit { Position = 0, UnitId = "worker" },
+                    new MapPrePlacedUnit { Position = 1, UnitId = "griffin" },
+                },
+            };
+
+            var v = new SkirmishSetupValidator();
+            SkirmishSetup s = Setup("m1", Slot(0, SlotKind.Human, "alpha"), Slot(1, SlotKind.Ai, "beta"));
+            IReadOnlyList<string> errors = v.Validate(s, map, factions);
+
+            Assert.Contains(errors, e => e.Contains("no Air unit", StringComparison.Ordinal));
+            // The mappable Worker role on the same slot must NOT also raise an error.
+            Assert.DoesNotContain(errors, e => e.Contains("Worker unit", StringComparison.Ordinal));
+        }
+
+        [Fact]
+        public void Validate_AllowsLaunch_WhenEveryPrePlacedRoleMaps()
+        {
+            var factions = new List<FactionEntry>
+            {
+                FactionWith("alpha", ("worker", "Worker"), ("mage", "Ranged")),
+                FactionWith("beta",  ("forgehand", "Worker"), ("cantor", "Ranged")),
+            };
+            MapEntry map = new()
+            {
+                Id = "m1", DisplayName = "m1", ResPath = "res://maps/m1.json",
+                MapBounds = 120f, SuggestedPlayers = 2, StartPositionCount = 2, Author = "",
+                SlotFactionResPaths = new[] { "res://factions/alpha_faction.json", "res://factions/alpha_faction.json" },
+                PrePlacedUnits = new[]
+                {
+                    new MapPrePlacedUnit { Position = 0, UnitId = "mage" },
+                    new MapPrePlacedUnit { Position = 1, UnitId = "mage" },
+                },
+            };
+
+            var v = new SkirmishSetupValidator();
+            SkirmishSetup s = Setup("m1", Slot(0, SlotKind.Human, "alpha"), Slot(1, SlotKind.Ai, "beta"));
+            Assert.Empty(v.Validate(s, map, factions));
+        }
+
+        [Fact]
+        public void ScanFactions_PopulatesRoster_AndScanMaps_PopulatesPrePlacedUnits()
+        {
+            // The remap is only as good as the data the catalog hands it — assert both halves are actually populated.
+            using var factionDir = new TempDir();
+            WriteFaction(factionDir.Path, "alpha_faction.json", ValidFaction("alpha"));
+            IReadOnlyList<FactionEntry> factions =
+                SkirmishCatalog.ScanFactions(factionDir.Path, "res://factions");
+
+            FactionEntry alpha = Assert.Single(factions);
+            Assert.Equal(new[] { "worker", "melee" }, alpha.Units.Select(u => u.Id).ToArray());
+            Assert.Equal(new[] { "Worker", "Melee" }, alpha.Units.Select(u => u.Category).ToArray());
+
+            using var mapDir = new TempDir();
+            ScenarioData map = BaseMapWithEntities(2);
+            map.Id = "m1";
+            WriteMap(mapDir.Path, "m1.json", map);
+            MapEntry entry = Assert.Single(SkirmishCatalog.ScanMaps(mapDir.Path, "res://maps"));
+
+            Assert.Equal(new[] { 0, 1 }, entry.PrePlacedUnits.Select(p => p.Position).OrderBy(x => x).ToArray());
+            Assert.All(entry.PrePlacedUnits, p => Assert.Equal("worker", p.UnitId));
+            Assert.Equal(2, entry.SlotFactionResPaths.Count);
+            Assert.All(entry.SlotFactionResPaths, p => Assert.Equal("res://factions/alpha_faction.json", p));
         }
 
         [Fact]
