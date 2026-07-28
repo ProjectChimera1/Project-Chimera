@@ -202,6 +202,12 @@ namespace ProjectChimera.UI
         /// interleave in strict LIFO with no second parallel stack and no cross-corruption.</summary>
         public EditorHistory History => _history;
 
+        /// <summary>DW-144: the terrain brush, wired in TerrainBrushPhase after the brush is initialized. The Ctrl+Z/Y
+        /// handler consults <see cref="CreationSuite.TerrainBrush.IsPainting"/> to swallow undo/redo while a stroke's
+        /// live operate() is in flight, so History.Undo/Redo can't race the stroke's captured after-snapshot. Null
+        /// when no Terrain3D is present (PlaneMesh fallback) — the guard then no-ops and undo/redo behaves as before.</summary>
+        public CreationSuite.TerrainBrush? TerrainBrush { get; set; }
+
         // Tracks ore/crystal set per start-position slot (for undo of MoveStartPos). Story 6.7: sized to the engine
         // ceiling (4) rather than a hardcoded 2.
         private readonly float[] _slotStartOre     = { 200f, 200f, 200f, 200f };
@@ -399,6 +405,14 @@ namespace ProjectChimera.UI
             // Undo / redo — only in Edit mode
             if (editMode && key.CtrlPressed)
             {
+                // DW-144: while a terrain stroke's live operate() is in flight, swallow Ctrl+Z/Y so History.Undo/Redo
+                // can't run mid-stroke and race the RestoreRegions the finished stroke will build — which would
+                // corrupt the captured `after` state. Consume the event without touching the history.
+                if ((key.Keycode == Key.Z || key.Keycode == Key.Y) && TerrainBrush?.IsPainting == true)
+                {
+                    GetViewport().SetInputAsHandled();
+                    return;
+                }
                 if (key.Keycode == Key.Z)
                 {
                     _history.Undo();

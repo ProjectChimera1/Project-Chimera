@@ -25,6 +25,9 @@ namespace ProjectChimera.Core.Bootstrap
             // one undo stack (interleaved LIFO). Placer is published by the Camera phase (position 7) before this
             // TerrainBrush phase (position 11), guaranteed by PhaseOrderTest — so _ctx.Placer is non-null here.
             brush.Initialize(_ctx.Terrain, _ctx.Cam, _ctx.NavObstacles, _ctx.GameState, _ctx.Placer.History);
+            // DW-144: give EntityPlacer the brush reference so its Ctrl+Z/Y handler can swallow undo/redo while a
+            // terrain stroke is live (IsPainting), preventing History.Undo/Redo from racing the in-flight stroke.
+            _ctx.Placer.TerrainBrush = brush;
             GD.Print("[MainScene] TerrainBrush ready — press T in Edit mode to activate.");
         }
     }

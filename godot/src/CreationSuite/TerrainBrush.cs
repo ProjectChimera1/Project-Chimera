@@ -1,4 +1,5 @@
 #nullable enable
+using System;
 using System.Collections.Generic;
 using Godot;
 using ProjectChimera.Core;
@@ -75,16 +76,18 @@ namespace ProjectChimera.CreationSuite
         private List<RegionSnapshot>? _strokeBefore = null;
 
         /// <summary>A restorable snapshot of one Terrain3D region: its location, world origin, and duplicated
-        /// height/control CPU images (null when that map was absent).</summary>
+        /// height/control CPU images (null when that map was absent). <see cref="WasAbsent"/> marks a region that did
+        /// NOT exist at snapshot time (DW-141) — its images are null and its restore is a <c>remove_region</c>.</summary>
         private readonly struct RegionSnapshot
         {
             public readonly Vector2I Loc;
             public readonly Vector3  OriginWorld;
             public readonly Image?   Height;
             public readonly Image?   Control;
-            public RegionSnapshot(Vector2I loc, Vector3 originWorld, Image? height, Image? control)
+            public readonly bool     WasAbsent;
+            public RegionSnapshot(Vector2I loc, Vector3 originWorld, Image? height, Image? control, bool wasAbsent)
             {
-                Loc = loc; OriginWorld = originWorld; Height = height; Control = control;
+                Loc = loc; OriginWorld = originWorld; Height = height; Control = control; WasAbsent = wasAbsent;
             }
         }
 
@@ -95,6 +98,10 @@ namespace ProjectChimera.CreationSuite
         private int       _activeLayer  = 0;     // texture layer index (0–3)
         private bool      _isPainting   = false;
         private bool      _brushActive  = false; // toggled by T key
+
+        /// <summary>DW-144: true while a stroke's live operate() is in flight (BeginPaint→EndPaint). EntityPlacer reads
+        /// this to swallow Ctrl+Z/Y during a stroke so History.Undo/Redo can't race the captured after-snapshot.</summary>
+        public bool IsPainting => _isPainting;
 
         private Image?    _brushImage   = null;
         private Texture2D? _brushTexture = null;
@@ -153,6 +160,15 @@ namespace ProjectChimera.CreationSuite
             }
 
             bool inEdit = _gameState.Mode == GameMode.Edit;
+
+            // DW-144 safety net: a stroke can be left in-flight by a context the paint-input path can't observe —
+            // an Edit→Play switch mid-stroke (_Input early-returns before EndPaint), the brush deactivated by a
+            // non-T route, or a missed mouse-up / focus loss during the drag. A stranded _isPainting would then make
+            // EntityPlacer swallow every Ctrl+Z/Y until the next completed stroke, so finalize it here. During a
+            // genuine drag the LMB is held (IsMouseButtonPressed true) and _Process leaves it alone.
+            if (_isPainting && (!inEdit || !_brushActive || !Input.IsMouseButtonPressed(MouseButton.Left)))
+                EndPaint();
+
             if (_canvas != null)
                 _canvas.Visible = inEdit && _brushActive;
 
@@ -172,6 +188,11 @@ namespace ProjectChimera.CreationSuite
                 && key.Keycode == Key.T)
             {
                 _brushActive = !_brushActive;
+                // DW-142: toggling the brush off mid-drag must finalize the in-flight stroke via EndPaint. Otherwise
+                // _isPainting/_strokeBefore strand — leaking the pending snapshot + undo entry and causing buttonless
+                // painting the next time the brush is re-activated (mouse-motion paints with no LMB down).
+                if (!_brushActive && _isPainting)
+                    EndPaint();
                 GD.Print(_brushActive
                     ? "[TerrainBrush] Active — LMB paint | 1-5 mode | [/] size | T exit"
                     : "[TerrainBrush] Inactive.");
@@ -325,15 +346,25 @@ namespace ProjectChimera.CreationSuite
                 var loc = data.Call("get_region_location", probe).AsVector2I();
                 if (!seen.Add(loc)) continue;
 
+                var origin = new Vector3(loc.X * span, 0f, loc.Y * span);
+
                 var region = data.Call("get_region", loc).AsGodotObject();
-                if (region == null) continue; // brush hanging off the map edge — no region there
+                if (region == null)
+                {
+                    // DW-141: region absent pre-stroke (empty space the stroke may auto-create, or off the map edge).
+                    // Record a WasAbsent snapshot with null images so `before` is non-null and, if the stroke creates
+                    // this region, undo can remove_region it. An off-edge loc the brush never reaches stays absent in
+                    // `after`, so the no-op check ignores it and its remove_region is a guarded no-op (Design Notes).
+                    snaps.Add(new RegionSnapshot(loc, origin, null, null, true));
+                    continue;
+                }
 
                 var height  = region.Call("get_height_map").As<Image>();
                 var control = region.Call("get_control_map").As<Image>();
-                var origin  = new Vector3(loc.X * span, 0f, loc.Y * span);
                 snaps.Add(new RegionSnapshot(loc, origin,
                     height  != null ? (Image)height.Duplicate(true)  : null,
-                    control != null ? (Image)control.Duplicate(true) : null));
+                    control != null ? (Image)control.Duplicate(true) : null,
+                    false));
             }
             return snaps.Count > 0 ? snaps : null;
         }
@@ -353,6 +384,7 @@ namespace ProjectChimera.CreationSuite
             foreach (var b in before)
             {
                 var region = data.Call("get_region", b.Loc).AsGodotObject();
+                bool wasAbsent = region == null;   // post-stroke absence — WasAbsent=true means the stroke created nothing here
                 Image? h = null, c = null;
                 if (region != null)
                 {
@@ -361,8 +393,25 @@ namespace ProjectChimera.CreationSuite
                     h = hm != null ? (Image)hm.Duplicate(true) : null;
                     c = cm != null ? (Image)cm.Duplicate(true) : null;
                 }
-                after.Add(new RegionSnapshot(b.Loc, b.OriginWorld, h, c));
+                after.Add(new RegionSnapshot(b.Loc, b.OriginWorld, h, c, wasAbsent));
             }
+
+            // DW-143: skip pushing an undo command when the stroke changed nothing. `before` and `after` are
+            // index-aligned (both iterate `before`). A region "changed" iff it was created (absent before, present
+            // now) OR — both present — its Height OR Control bytes differ. A region absent in both is ignored (the
+            // harmless over-approximation from the 9-point probe box). No change ⇒ return before _history.Push so a
+            // later Ctrl+Z undoes the previous REAL op instead of being silently absorbed by an empty stroke.
+            bool changed = false;
+            for (int i = 0; i < before.Count; i++)
+            {
+                var bi = before[i];
+                var ai = after[i];
+                if (bi.WasAbsent && !ai.WasAbsent) { changed = true; break; }        // region created
+                if (!bi.WasAbsent && !ai.WasAbsent
+                    && (!ImageBytesEqual(bi.Height, ai.Height)
+                     || !ImageBytesEqual(bi.Control, ai.Control))) { changed = true; break; }
+            }
+            if (!changed) return; // _strokeBefore already cleared above
 
             // DW-140: weigh the stroke by its snapshot memory cost (before + after height/control Images) so the
             // shared history's byte cap bounds real terrain-undo memory. Cheap entity ops pass 0 (the default).
@@ -373,6 +422,13 @@ namespace ProjectChimera.CreationSuite
                 undo: () => RestoreRegions(before),
                 estimatedBytes: estimatedBytes);
         }
+
+        /// <summary>DW-143: byte-equality of two CPU Images (both null ⇒ equal; one null ⇒ differ). Runs once per
+        /// region at stroke END only (never on the hot per-sample ContinuePaint path) to decide whether a stroke
+        /// changed anything worth pushing an undo command for.</summary>
+        private static bool ImageBytesEqual(Image? a, Image? b)
+            => (a == null && b == null) || (a != null && b != null
+               && a.GetData().AsSpan().SequenceEqual(b.GetData()));
 
         /// <summary>Sum the estimated CPU-memory cost of a region-snapshot list — Height + Control Image of every
         /// region (null-safe). Feeds the shared history's DW-140 byte cap so a long sculpt can't pin unbounded undo
@@ -415,6 +471,19 @@ namespace ProjectChimera.CreationSuite
 
             foreach (var s in snaps)
             {
+                if (s.WasAbsent)
+                {
+                    // DW-141: this region did not exist at this snapshot's time. Restoring "absent" means removing it,
+                    // so a create-and-undo removes the auto-created region instead of leaving un-undoable residue.
+                    // Guarded: over-approximation on the probe box can list a loc no region ever occupied, so only
+                    // remove when a region is actually present now. remove_region(region, true) self-updates the maps
+                    // (mirrors the addon importer.gd's remove_region + update_maps) — no TYPE_MAX enum needed from C#.
+                    var region = data.Call("get_region", s.Loc).AsGodotObject();
+                    if (region != null)
+                        data.Call("remove_region", region, true);
+                    continue;
+                }
+
                 // import_images([height, control, color], regionOriginWorldPos, offset=0, scale=1). Color is left
                 // null (unchanged) — this story round-trips height + control only.
                 var images = new Godot.Collections.Array

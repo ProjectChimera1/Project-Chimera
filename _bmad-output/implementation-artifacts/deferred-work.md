@@ -1189,7 +1189,8 @@ origin: code review of spec-6-2 (terrain persistence), 2026-07-14 (epic-6 bmad-l
 location: godot/src/CreationSuite/TerrainBrush.cs (SnapshotRegions skips null get_region probes; RestoreRegions re-imports only snapshotted regions)
 severity: low
 reason: Painting into empty space makes Terrain3D auto-create a region with no pre-stroke snapshot, so undo leaves the new region in place. Fix needs was-absent tracking + remove_region on undo. Narrow (map-expansion strokes) but a real undo-correctness gap.
-status: open
+status: done 2026-07-28
+resolution: resolved by sweep bundle dw-terrain-brush-stroke-lifecycle
 
 ### DW-142: Pressing T mid-drag strands _isPainting — EndPaint never runs, leaking the pending stroke snapshot and its undo entry
 
@@ -1197,7 +1198,8 @@ origin: code review of spec-6-2 (terrain persistence), 2026-07-14 (epic-6 bmad-l
 location: godot/src/CreationSuite/TerrainBrush.cs (_Input early-returns on !_brushActive ~:189)
 severity: low
 reason: Pre-existing phantom-motion-paint input-state-machine root; 6.2's new aspect is the retained _strokeBefore Image snapshot and the lost undo entry. Mouse-release during a T-deactivated drag never reaches EndPaint, and the motion+_isPainting branch then paints buttonlessly on re-activation.
-status: open
+status: done 2026-07-28
+resolution: resolved by sweep bundle dw-terrain-brush-stroke-lifecycle
 
 ### DW-143: No-op terrain strokes push undo commands onto the shared EditorHistory — a later Ctrl+Z is silently absorbed
 
@@ -1205,7 +1207,8 @@ origin: code review of spec-6-2 (terrain persistence, review pass 3 Blind Hunter
 location: godot/src/CreationSuite/TerrainBrush.cs (EndPaint→PushStrokeUndo pushes whenever ≥1 region snapshotted, no before-vs-after equality check)
 severity: low
 reason: A stroke that changed nothing (e.g. paint-mode strokes while TOOL_TEXTURE write is broken [see story 10-16], or flatten on already-flat terrain) still pushes an undo command, so interleaved undo requires an extra Ctrl+Z that visibly does nothing. Clean fix needs cheap stroke-changed-anything detection on the hot path. No data loss.
-status: open
+status: done 2026-07-28
+resolution: resolved by sweep bundle dw-terrain-brush-stroke-lifecycle
 
 ### DW-144: Ctrl+Z is not blocked while a terrain stroke is in progress — undo races the live operate() and corrupts the undo entry
 
@@ -1213,7 +1216,8 @@ origin: code review of spec-6-2 (terrain persistence, review pass 3 Blind Hunter
 location: godot/src/UI/EntityPlacer.cs (_UnhandledInput Ctrl+Z handling) + godot/src/CreationSuite/TerrainBrush.cs (_isPainting)
 severity: low
 reason: Ctrl+Z with LMB held races RestoreRegions (writing the previous stroke's images) against the live operate() sculpting the same region; EndPaint then captures `after` from the mixed state. Narrow trigger, genuine concurrency hole; a clean fix is cross-node (EntityPlacer consults TerrainBrush._isPainting, or the brush swallows undo mid-stroke).
-status: open
+status: done 2026-07-28
+resolution: resolved by sweep bundle dw-terrain-brush-stroke-lifecycle
 
 ### DW-145: Import leaves a stale author-local TerrainRef when a package bundles zero terrain files
 
