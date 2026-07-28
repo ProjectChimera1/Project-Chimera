@@ -39,12 +39,18 @@ namespace ProjectChimera.Core.Skirmish
             ScenarioPlayerSlot[] baseSlots = (baseMap.PlayerSlots ?? System.Array.Empty<ScenarioPlayerSlot>())
                 .OrderBy(b => b.Slot).ToArray();
 
-            // The active (Human/Ai) setup slots, ordered by their original Slot. These are renumbered to CONTIGUOUS
-            // indices 0..k-1 below so the built scenario is Player1..Playerk contiguous — aligning with both the
-            // FactionRegistry active span and ResolveSlotFactionDefs' per-ordinal (by-slot-position) faction writes.
+            // The active (Human/Ai) setup slots, renumbered to CONTIGUOUS indices 0..k-1 below so the built scenario is
+            // Player1..Playerk contiguous — aligning with both the FactionRegistry active span and
+            // ResolveSlotFactionDefs' per-ordinal (by-slot-position) faction writes.
+            // Review PATCH (11.1 follow-up): the single Human MUST sort to contiguous index 0 so it becomes Player1 —
+            // offline the local human is hardwired to Player1 (LocalFactionPolicy.Effective) and the AI to Player2
+            // (AiOpponentSystem.AI_FACTION). Ordering by raw Slot alone let a Human placed in a higher slot than the AI
+            // land on index 1 (AI-piloted) while the AI's config took index 0 (human-controlled) — silently swapping who
+            // controls which faction/team. Human-first, then by Slot, keeps that swap impossible.
             var activeSlots = (setup.Slots ?? new List<SetupSlot>())
                 .Where(s => s.Kind == SlotKind.Human || s.Kind == SlotKind.Ai)
-                .OrderBy(s => s.Slot)
+                .OrderBy(s => s.Kind == SlotKind.Human ? 0 : 1)
+                .ThenBy(s => s.Slot)
                 .ToList();
 
             var newSlots = new List<ScenarioPlayerSlot>();

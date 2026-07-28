@@ -135,6 +135,17 @@ warnings: [oversized]
   - `[low]` `[patch]` Verification gap: `SkirmishCatalog.ScanFactions`'s lenient malformed-JSON skip (`catch { continue; }`) was exercised by no test, unlike its `ScanMaps` twin — added `ScanFactions_SkipsMalformedJson_NoThrow`.
   - `[low]` `[patch]` Verification gap: `ScanMaps → MapEntry.SuggestedPlayers` was asserted by nothing (the fixture never set a non-default value) — extended the `MapData` helper + `ScanMaps_ReadsProperties_OrderedById` to set and assert it.
 
+### 2026-07-28 — Review pass (follow-up 2)
+- intent_gap: 0
+- bad_spec: 0
+- patch: 3: (high 2, medium 0, low 1)
+- defer: 1
+- reject: 8
+- addressed_findings:
+  - `[high]` `[patch]` Team-color inversion regression introduced by the prior pass's PATCH 7 palette de-dup: `FactionVisualsPhase.SlotColor(Faction)` indexed the **1-based** `Faction` ordinal (Neutral=0, Player1=1, Player2=2) into the **0-based** palette, so Player 1 rendered **red** and Player 2 **green** — breaking the story's own "index 0/1 keep today's blue/red verbatim" continuity invariant on *every* match. Fixed to `SlotColorAt((int)faction - 1)` (Player1→blue, Player2→red, Player3→green, Player4→gold).
+  - `[high]` `[patch]` `SkirmishSetupToScenario.Build` human/AI control swap: active slots were renumbered by raw `Slot` only, so a Human placed in a higher setup slot than the AI landed on contiguous index 1 (offline `Player2` = AI-piloted) while the AI's config took index 0 (`Player1` = human-controlled) — the player silently controlled the faction/team they'd marked for the AI, and vice-versa (reachable via the freely-settable per-row Kind). Fixed by ordering active slots **Human-first, then by Slot**; added `Build_HumanSortsToContiguousIndex0_EvenWhenAiInLowerSlot` regression test.
+  - `[low]` `[patch]` Verification gap: the transform test asserted only `StartOre`/`BaseX` of the four per-slot fields `Build` copies — added `StartCrystal`/`BaseZ` assertions (the fixture already seeds distinct values) so a drop of either can't stay green.
+
 ## Design Notes
 
 **Why in-memory `ScenarioData` handoff, not a re-apply path:** `ScenarioLoadPhase.PendingGeneratedScenario` + `ReloadCurrentScene()` already exists and is battle-tested by the AI map generator (`MainScene.LoadGeneratedScenario`). Reusing it means the skirmish scenario flows through the *identical* fail-closed apply + faction-resolution + alliance-seed pipeline — zero new sim code, zero determinism risk. Building a second post-selection re-apply path would duplicate that pipeline.
@@ -154,3 +165,34 @@ warnings: [oversized]
 **Manual checks (in-engine, gated — cannot run headless here):**
 - Launch the editor, click Play → the skirmish setup screen appears; pick a map, set slot1 to AI, pick factions/teams, Launch → loading screen shows, match starts with both rosters at the map's start positions; Esc/return works. This is the Epic-11 per-story in-engine gate (run via `/godot-verify` or the godot-mcp bridge with no idle session holding it).
 
+
+## Auto Run Result
+
+Status: done (follow-up review pass 2 — `done` spec re-reviewed per `followup_review_recommended: true`)
+
+### Summary
+A fresh four-lens review (adversarial, edge-case, verification-gap, intent-alignment) of the full Story 11.1 diff (baseline `ca5fa1c`). It surfaced two **high**-severity, this-story-caused correctness bugs — both regressions/oversights that all prior passes and the whole Tier-1 suite missed because they live in the Godot-coupled presentation surface (`FactionVisualsPhase`) or only manifest in a non-default UI configuration (`Build`). Fixed as patches; no intent gap and no spec defect, so no re-derivation loopback.
+
+### Files changed this pass
+- `godot/src/Core/Bootstrap/Phases/FactionVisualsPhase.cs` — P1: `SlotColor(Faction)` now shifts the 1-based faction ordinal by −1 into the 0-based palette (Player1=blue, Player2=red), fixing the team-color inversion the prior pass's PATCH-7 de-dup introduced.
+- `godot/src/Core/Skirmish/SkirmishSetupToScenario.cs` — P2: active slots are ordered Human-first (then by Slot) so the single Human always renumbers to contiguous index 0 (offline `Player1` = local human), eliminating the human/AI faction+team control swap.
+- `godot/ProjectChimera.Sim.Tests/Skirmish/SkirmishSetupTests.cs` — P2 regression test (`Build_HumanSortsToContiguousIndex0_EvenWhenAiInLowerSlot`) + P3 coverage (`StartCrystal`/`BaseZ` assertions on the 1v1 transform test).
+
+### Review findings breakdown
+- **Patches applied (3):** 2 high (color inversion, control swap), 1 low (transform test-coverage gap).
+- **Deferred (1 new):** setup swatch (`SlotColorFor` keyed by map row index) drifts from the in-match team color for non-row-0-contiguous active slots — cosmetic, contradicts PATCH-7's invariant, correct fix (color by active-rank on Revalidate) is more than a review patch. Appended to `deferred-work.md`.
+- **Recurred but already recorded (3, not re-appended):** `System.IO`-over-`GlobalizePath` breaks the catalog in exported PCK builds; `Build` leaves dropped-slot triggers/win-condition intact; `MainScene` skirmish orchestration (N-sizing, fail-safe re-open) has zero automated coverage. All three were logged by the immediately-preceding follow-up pass on this same spec — re-appending would duplicate.
+- **Rejected (8):** fail-safe pre-phase region (intent's stated failure mode — an applied scenario throwing in a phase — is inside the guarded region; the pre-region uses res:// defaults common to every boot); no intermediate per-phase repaint (explicit non-goal — "smooth per-phase animation is a non-goal"); boot-error label overwritten on the next edit (the error IS shown on re-open; a toast is transient by design); unfiltered catalog (per intent: list shipped `scenarios/*.json`); unbounded `SlotRow` for a hostile 500-slot map (requires malformed content; shipped maps are small); `Build` stacks players at origin only if the on-disk map shrinks between scan and launch (requires mid-session mutation; graceful default); palette clamp untested (presentation, not Tier-1-reachable); `async void _Ready` exception-marshaling change on the normal path (observable outcome — crash on boot error — unchanged).
+
+### Verification performed
+- `dotnet test godot/ProjectChimera.Sim.Tests/ProjectChimera.Sim.Tests.csproj --filter ~Skirmish` → **34/34 passed** (includes the new swap-fix test + StartCrystal/BaseZ assertions).
+- `dotnet test godot/ProjectChimera.Sim.Tests/ProjectChimera.Sim.Tests.csproj` (full Tier-1) → **3562 passed, 1 skipped, 0 failed**, no golden re-baseline.
+- `dotnet build godot/godot.csproj` → **0 errors**, 13 pre-existing warnings (no banned-API/AOT regressions). The P1 color fix lives in a Godot-coupled file not compiled by Tier-1, so the project build is its compile gate.
+
+### Follow-up review recommendation: true
+Patched this pass: high 2, medium 0, low 1 → a high patch was applied, so `followup_review_recommended = true` (score `3×0 + 1×1 = 1`, but the high patch forces true). Rationale: two high-severity defects escaped every prior pass because they sit outside the Tier-1 net; the manual in-engine gate (`/godot-verify`) has still not run for this story and remains the load-bearing check for the color/control/loading behaviors — a further pass (ideally after in-engine verification) is warranted.
+
+### Residual risks
+- **In-engine behavior unverified.** The color fix, the control-assignment fix, the loading overlay, and the fail-safe re-open are all presentation/orchestration on the Godot surface — none is exercised by an automated test. Correct in-match team colors and correct human-controls-their-faction now rest on code inspection until the Epic-11 `/godot-verify` gate runs.
+- **Swatch-vs-in-match drift (deferred)** remains visible for non-row-0 human placements.
+- Residual artifact (not part of this change): `_bmad-output/implementation-artifacts/sprint-status.yaml` was already modified in the working tree at pass start; left in place.

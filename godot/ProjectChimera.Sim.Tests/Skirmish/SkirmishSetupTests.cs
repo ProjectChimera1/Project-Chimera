@@ -203,13 +203,41 @@ namespace ProjectChimera.Sim.Tests.Skirmish
             Assert.Equal("res://factions/alpha_faction.json", p0.FactionJson);
             Assert.Equal(1, p0.Team);
             Assert.Equal(-45f, p0.BaseX);      // carried from the base map slot 0
+            Assert.Equal(0f, p0.BaseZ);        // carried from the base map slot 0 (BaseZ = i*2)
             Assert.Equal(200f, p0.StartOre);
+            Assert.Equal(10f, p0.StartCrystal); // carried from the base map slot 0 (StartCrystal = 10 + i)
 
             ScenarioPlayerSlot p1 = built.PlayerSlots[1];
             Assert.Equal(1, p1.Slot);
             Assert.Equal("res://factions/beta_faction.json", p1.FactionJson);
             Assert.Equal(2, p1.Team);
             Assert.Equal(45f, p1.BaseX);       // carried from the base map slot 1
+            Assert.Equal(2f, p1.BaseZ);        // carried from the base map slot 1
+            Assert.Equal(11f, p1.StartCrystal); // carried from the base map slot 1
+        }
+
+        [Fact]
+        public void Build_HumanSortsToContiguousIndex0_EvenWhenAiInLowerSlot()
+        {
+            // Review PATCH (11.1 follow-up): the AI occupies the lower setup slot (0) and the Human a higher one (1).
+            // Offline the local human is Player1 (contiguous index 0) and the AI is Player2 (index 1). The Human MUST
+            // still land on index 0 with ITS faction/team — otherwise the player would silently control the AI's
+            // configured faction and the AI would pilot the player's. Human-first ordering guarantees this.
+            SkirmishSetup s = Setup("m1", Slot(0, SlotKind.Ai, "beta", team: 2),
+                                          Slot(1, SlotKind.Human, "alpha", team: 1));
+            ScenarioData built = SkirmishSetupToScenario.Build(s, BaseMap(2), Factions("alpha", "beta"));
+
+            Assert.Equal(2, built.PlayerSlots.Length);
+
+            ScenarioPlayerSlot p0 = built.PlayerSlots[0]; // Player1 = local human → the Human's config
+            Assert.Equal(0, p0.Slot);
+            Assert.Equal("res://factions/alpha_faction.json", p0.FactionJson);
+            Assert.Equal(1, p0.Team);
+
+            ScenarioPlayerSlot p1 = built.PlayerSlots[1]; // Player2 = AI → the AI's config
+            Assert.Equal(1, p1.Slot);
+            Assert.Equal("res://factions/beta_faction.json", p1.FactionJson);
+            Assert.Equal(2, p1.Team);
         }
 
         [Fact]

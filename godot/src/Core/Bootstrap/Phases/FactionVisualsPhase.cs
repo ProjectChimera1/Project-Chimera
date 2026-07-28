@@ -41,8 +41,12 @@ namespace ProjectChimera.Core.Bootstrap
             return SlotColors[i];
         }
 
-        /// <summary>Resolve a faction slot's team color from <see cref="SlotColors"/>, clamped to the palette range.</summary>
-        private static Color SlotColor(Faction faction) => SlotColorAt((int)faction);
+        /// <summary>Resolve a faction slot's team color from <see cref="SlotColors"/>, clamped to the palette range.
+        /// The <see cref="Faction"/> enum is 1-based for players (Neutral=0, Player1=1, Player2=2, …) while the palette
+        /// is 0-based (index 0 = Player1's blue), so the ordinal is shifted by −1: Player1→0 (blue), Player2→1 (red),
+        /// Player3→2 (green), Player4→3 (gold). Review PATCH (11.1 follow-up): without the −1, Player1 rendered red and
+        /// Player2 green — a color inversion that broke the "index 0/1 keep today's blue/red" continuity invariant.</summary>
+        private static Color SlotColor(Faction faction) => SlotColorAt((int)faction - 1);
 
         public void Run()
         {
