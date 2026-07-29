@@ -121,6 +121,30 @@ namespace ProjectChimera.Combat
             _nextId    = 0;
         }
 
+        /// <summary>
+        /// Story 11.3 (SP save/load): restore the private high-water mark + free-list after the persistence layer has
+        /// written the SoA arrays directly. Godot-free integer bookkeeping only; copies at most
+        /// <see cref="MAX_PROJECTILES"/> free-list entries (defensive).
+        /// </summary>
+        /// <summary>Story 11.3 (SP save/load): the active portion of the recycle free-list (LIFO order preserved) for a
+        /// save — the exact next slot <see cref="Spawn"/> will reuse. Returns a fresh copy.</summary>
+        public int[] CaptureFreeList()
+        {
+            var copy = new int[_freeCount];
+            System.Array.Copy(_freeList, copy, _freeCount);
+            return copy;
+        }
+
+        public void RestoreManagement(int nextId, int[] freeList, int freeCount)
+        {
+            _nextId = nextId < 0 ? 0 : (nextId > MAX_PROJECTILES ? MAX_PROJECTILES : nextId);
+            System.Array.Clear(_freeList);
+            int n = freeCount < 0 ? 0 : (freeCount > MAX_PROJECTILES ? MAX_PROJECTILES : freeCount);
+            if (freeList != null)
+                for (int i = 0; i < n && i < freeList.Length; i++) _freeList[i] = freeList[i];
+            _freeCount = n;
+        }
+
         /// <summary>Mark a projectile slot as free, returning it to the pool.</summary>
         public void Destroy(int id)
         {

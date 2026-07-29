@@ -169,6 +169,9 @@ namespace ProjectChimera.Core.Bootstrap
         /// <summary>Story 11.2 (FR-66): the in-match menu (Esc/F10) — Resume / Settings / Save / Load / Concede / Quit +
         /// game-speed + pause. Constructed by <c>GameOverOverlayPhase</c>; opened/wired by MainScene runtime.</summary>
         public UI.InMatchMenuOverlay InMatchMenu = null!;
+        /// <summary>Story 11.3 (FR-67): the SP save/load disk rail (Godot-free core over the globalized <c>user://saves/</c>
+        /// directory). Constructed by <c>GameOverOverlayPhase</c>; used by MainScene's IssueSave/IssueLoad/autosave.</summary>
+        public Persistence.ISaveStore SaveStore = null!;
         /// <summary>Story 11.2 (FR-66): the kit victory/defeat score screen (replaces the raw-node ShowGameOver body).
         /// Constructed by <c>GameOverOverlayPhase</c>; populated by <c>MainScene.ShowGameOver</c>.</summary>
         public UI.ScoreScreenOverlay ScoreScreen = null!;

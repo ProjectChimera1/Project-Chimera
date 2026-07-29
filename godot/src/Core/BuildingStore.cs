@@ -289,6 +289,30 @@ namespace ProjectChimera.Core
             Count      = 0;
         }
 
+        /// <summary>
+        /// Story 11.3 (SP save/load): restore the private high-water <see cref="Count"/> + free-list after the
+        /// persistence layer has written the SoA arrays (incl. the public <see cref="Generation"/>) directly. Godot-free
+        /// integer bookkeeping only; copies at most <see cref="MAX_BUILDINGS"/> free-list entries (defensive).
+        /// </summary>
+        /// <summary>Story 11.3 (SP save/load): the active portion of the recycle free-list (LIFO order preserved) for a
+        /// save — the exact next slot <see cref="Create"/> will reuse. Returns a fresh copy.</summary>
+        public int[] CaptureFreeList()
+        {
+            var copy = new int[_freeCount];
+            System.Array.Copy(_freeList, copy, _freeCount);
+            return copy;
+        }
+
+        public void RestoreManagement(int count, int[] freeList, int freeCount)
+        {
+            Count = count < 0 ? 0 : (count > MAX_BUILDINGS ? MAX_BUILDINGS : count);
+            System.Array.Clear(_freeList);
+            int n = freeCount < 0 ? 0 : (freeCount > MAX_BUILDINGS ? MAX_BUILDINGS : freeCount);
+            if (freeList != null)
+                for (int i = 0; i < n && i < freeList.Length; i++) _freeList[i] = freeList[i];
+            _freeCount = n;
+        }
+
         /// <summary>Destroy a building — marks the slot dead and returns it to the free-list for reuse (Story 2.13, AC3.1).</summary>
         public void Destroy(int id)
         {

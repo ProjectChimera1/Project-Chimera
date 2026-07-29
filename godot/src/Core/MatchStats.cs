@@ -112,6 +112,35 @@ namespace ProjectChimera.Core
         /// <summary>Enemy buildings razed by the given faction this match.</summary>
         public int BuildingsRazed(Faction f) => (int)f < FACTION_COUNT ? _buildingsRazed[(int)f] : 0;
 
+        // ── Story 11.3 (SP save/load): observational-counter capture/restore ──────
+        // MatchStats is unfolded (never in SimChecksum), so it does NOT affect byte-identical resume — but the 11.2
+        // score screen reads it, so a resumed long match must show its real kills/losses/economy, not a zeroed board.
+        // Captured/restored wholesale (six per-faction int arrays); no golden impact.
+
+        /// <summary>Story 11.3 — capture the six observational counter arrays for a save (fresh copies, fixed order:
+        /// kills, losses, unitsBuilt, oreMined, crystalMined, buildingsRazed).</summary>
+        public int[][] CaptureCounters() => new[]
+        {
+            (int[])_kills.Clone(), (int[])_losses.Clone(), (int[])_unitsBuilt.Clone(),
+            (int[])_oreMined.Clone(), (int[])_crystalMined.Clone(), (int[])_buildingsRazed.Clone(),
+        };
+
+        /// <summary>Story 11.3 — restore the six counter arrays from a save (same fixed order as
+        /// <see cref="CaptureCounters"/>). Copies element-wise, bounded defensively.</summary>
+        public void RestoreCounters(int[][] c)
+        {
+            if (c == null || c.Length < 6) return;
+            CopyInto(c[0], _kills); CopyInto(c[1], _losses); CopyInto(c[2], _unitsBuilt);
+            CopyInto(c[3], _oreMined); CopyInto(c[4], _crystalMined); CopyInto(c[5], _buildingsRazed);
+        }
+
+        private static void CopyInto(int[]? src, int[] dst)
+        {
+            if (src == null) return;
+            int n = src.Length < dst.Length ? src.Length : dst.Length;
+            for (int i = 0; i < n; i++) dst[i] = src[i];
+        }
+
         // ── Reset ─────────────────────────────────────────────────────────────
 
         /// <summary>Reset all counters (called when returning to Edit mode).</summary>

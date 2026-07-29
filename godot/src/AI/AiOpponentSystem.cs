@@ -111,6 +111,34 @@ namespace ProjectChimera.AI
             AdoptPreplacedBuildings();
         }
 
+        // ── Story 11.3 (SP save/load): per-match decision-state capture/restore ─────────────────────────────────
+        // The AI holds decision state OUTSIDE every store (_productionBuildingIds, the _cmdCenterExpId expansion latch,
+        // the _attackCooldown). A mid-match save that omitted it would resume with a fresh-boot AI (re-adopting only
+        // pre-placed buildings, an un-latched expansion, a zero cooldown), diverging the folded SimChecksum on the
+        // first tick the AI decides. These capture/restore the exact state (the same three fields ResetForMatch resets).
+
+        /// <summary>Story 11.3: capture the per-match AI decision state for a save. <paramref name="attackCooldownRaw"/>
+        /// is <see cref="Fixed.Raw"/> (no float ever). The returned production-building array is a fresh copy.</summary>
+        public int[] CaptureProductionBuildingIds() => _productionBuildingIds.ToArray();
+
+        /// <summary>Story 11.3: the supply-expansion CommandCenter packed ref (-1 = not committed) for a save.</summary>
+        public int CaptureCmdCenterExpId() => _cmdCenterExpId;
+
+        /// <summary>Story 11.3: the remaining attack-cooldown as <see cref="Fixed.Raw"/> for a save (no float).</summary>
+        public int CaptureAttackCooldownRaw() => _attackCooldown.Raw;
+
+        /// <summary>Story 11.3: overlay the per-match AI decision state from a save (SP load), replacing whatever
+        /// <see cref="ResetForMatch"/> re-adopted from the freshly re-applied scenario. <paramref name="attackCooldownRaw"/>
+        /// is <see cref="Fixed.Raw"/>.</summary>
+        public void RestoreSaveState(int[] productionBuildingIds, int cmdCenterExpId, int attackCooldownRaw)
+        {
+            _productionBuildingIds.Clear();
+            if (productionBuildingIds != null)
+                _productionBuildingIds.AddRange(productionBuildingIds);
+            _cmdCenterExpId = cmdCenterExpId;
+            _attackCooldown = Fixed.FromRaw(attackCooldownRaw);
+        }
+
         // ── ISimSystem ────────────────────────────────────────────────────────
 
         public void Tick(EntityWorld world, Fixed dt)

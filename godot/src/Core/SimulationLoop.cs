@@ -124,6 +124,21 @@ namespace ProjectChimera.Core
         }
 
         /// <summary>
+        /// Story 11.3 (SP save/load): restore the loop's tick counter to a saved value on load, leaving the
+        /// <see cref="EnableChecksums"/> store wiring untouched (those refs are host-lifetime). Mirrors
+        /// <see cref="ResetTick"/> but seeds <see cref="CurrentTick"/> to <paramref name="tick"/> so the next
+        /// <see cref="StepOnce"/> advances to <c>tick + 1</c> — the resumed match continues from where the save was
+        /// taken. The accumulator and interpolation alpha are cleared (transient, re-derived).
+        /// </summary>
+        public void RestoreTick(uint tick)
+        {
+            CurrentTick        = tick;
+            LastChecksum       = 0;
+            _accumulator       = 0f;
+            InterpolationAlpha = 0f;
+        }
+
+        /// <summary>
         /// Advance exactly one simulation tick, bypassing the accumulator.
         /// Used by LockstepManager in online mode — tick advancement is
         /// gated on both peers' commands arriving, not wall-clock time.

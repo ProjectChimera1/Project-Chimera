@@ -36,6 +36,13 @@ namespace ProjectChimera.Core.Bootstrap
             menu.Initialize();
             _ctx.InMatchMenu = menu;
 
+            // Story 11.3 — the SP save/load disk rail: resolve user://saves/ to an OS-absolute path on the Godot edge and
+            // hand it to the Godot-free LocalSaveStore (the HeroPickerPhase → LocalProfileSource pattern). Injected into
+            // the menu so its slot picker can show per-slot metadata; MainScene reads it for IssueSave/IssueLoad/autosave.
+            string absSaves = ProjectSettings.GlobalizePath("user://saves");
+            _ctx.SaveStore = new Persistence.LocalSaveStore(absSaves);
+            menu.SetSaveStore(_ctx.SaveStore);
+
             var score = new ScoreScreenOverlay();
             _ctx.Scene.AddChild(score);
             score.Initialize();

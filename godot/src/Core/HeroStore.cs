@@ -275,6 +275,31 @@ namespace ProjectChimera.Core
             Count      = 0;
         }
 
+        /// <summary>
+        /// Story 11.3 (SP save/load): restore the private high-water <see cref="Count"/> + free-list after the
+        /// persistence layer has written the SoA row arrays (incl. the public <see cref="Generation"/> and
+        /// <see cref="Inventory"/>) directly. Godot-free integer bookkeeping only; copies at most
+        /// <see cref="MAX_HEROES"/> free-list entries (defensive).
+        /// </summary>
+        /// <summary>Story 11.3 (SP save/load): the active portion of the recycle free-list (LIFO order preserved) for a
+        /// save — the exact next slot <see cref="Mint"/> will reuse. Returns a fresh copy.</summary>
+        public int[] CaptureFreeList()
+        {
+            var copy = new int[_freeCount];
+            System.Array.Copy(_freeList, copy, _freeCount);
+            return copy;
+        }
+
+        public void RestoreManagement(int count, int[] freeList, int freeCount)
+        {
+            Count = count < 0 ? 0 : (count > MAX_HEROES ? MAX_HEROES : count);
+            System.Array.Clear(_freeList);
+            int n = freeCount < 0 ? 0 : (freeCount > MAX_HEROES ? MAX_HEROES : freeCount);
+            if (freeList != null)
+                for (int i = 0; i < n && i < freeList.Length; i++) _freeList[i] = freeList[i];
+            _freeCount = n;
+        }
+
         /// <summary>Destroy a hero row — marks the slot dead and returns it to the free-list for reuse. Bounds +
         /// double-free guarded (mirrors BuildingStore.Destroy): never push a slot twice, which would hand the same
         /// slot to two future Mint() calls and corrupt the store. The stable identity itself PERSISTS in the profile

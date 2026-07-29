@@ -70,6 +70,11 @@ namespace ProjectChimera.Core.Sim
         /// <see cref="Buildings"/> so the 3.9 load path and the start-state hash read host truth (no parallel copies).
         /// </summary>
         public HeroStore Heroes { get; }
+        /// <summary>Story 11.3 — the loaded ability registry (id→index over validated <c>AbilityDefinition</c>s), or
+        /// <see cref="AbilityRegistry.Empty"/>. Exposed so the SP save/load path can build the
+        /// <c>CanonicalEffectDescriptorTable</c> that round-trips <see cref="ModifierStore"/> descriptor slots by
+        /// index. Read-only; identical on save and load (guarded by the save header's ContentHash).</summary>
+        public AbilityRegistry AbilityRegistry { get; }
         /// <summary>Story 3.15 — the item-instance store (ground + held). Folded into the per-tick <see cref="SimChecksum"/>
         /// (v12) alongside the per-hero inventory; populated by scenario placement + pickups.</summary>
         public ItemStore Items { get; }
@@ -196,6 +201,7 @@ namespace ProjectChimera.Core.Sim
             Heroes           = new HeroStore();   // Story 3.2 — the AR-12 hero substrate; folded into the per-tick checksum from Story 3.13 (XP runtime); populated by Story 3.9.
             Items            = new ItemStore();    // Story 3.15 — item instances (ground + held); folded into the per-tick checksum (v12).
             ItemRegistry     = itemRegistry ?? Definitions.ItemRegistry.Empty; // Story 3.15 — a null registry → Empty, so existing callers stay scenario-identical.
+            AbilityRegistry  = registry ?? Definitions.AbilityRegistry.Empty;  // Story 11.3 — stored so save/load can build the canonical descriptor table.
             CombatEvents     = new CombatEventQueue();
             _deathFeed       = new DeathFeed();    // Story 3.13 — transient per-tick death buffer for the XP runtime
             _revivalRuntime  = new RevivalRuleRuntime(); // Story 3.14 — resolved from RevivalRule.Default until a scenario reconfigures it
@@ -393,6 +399,15 @@ namespace ProjectChimera.Core.Sim
         /// once after the applier is built.</summary>
         public void SetReviveSpawn(System.Func<Definitions.UnitDefinition, Faction, Fixed, Fixed, int> fn)
             => _reviveSpawnOverride = fn;
+
+        /// <summary>Story 11.3 — the per-match AI decision state (production-building refs, expansion latch, attack
+        /// cooldown) that lives outside every store. Exposed so the SP save/load path can capture/restore it (the
+        /// same state <see cref="ClearForReset"/> resets via <c>ResetForMatch</c>). Read-only handle.</summary>
+        public AiOpponentSystem Ai => _ai;
+
+        /// <summary>Story 11.3 — restore the wrapped loop's tick counter to a saved value on load (SP save/load).
+        /// Delegates to <see cref="SimulationLoop.RestoreTick"/>; the checksum store wiring is untouched.</summary>
+        public void RestoreTick(uint tick) => _loop.RestoreTick(tick);
 
         /// <summary>Advance exactly one tick (lockstep / replay / golden path). Wraps SimulationLoop.StepOnce.</summary>
         public void StepOnce() => _loop.StepOnce();

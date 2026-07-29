@@ -1,6 +1,7 @@
 #nullable enable
 using Godot;
 using System;
+using ProjectChimera.Core.Persistence; // ISaveStore, SaveGameHeader, LocalSaveStore (Story 11.3 slot picker metadata)
 using ProjectChimera.UI.Components; // ChimeraComponents, ChimeraDialog
 using ProjectChimera.UI.Theme;       // ThemeTokens, ThemeBuilder, AccentController
 using GodotTheme = Godot.Theme;      // the ProjectChimera.UI.Theme namespace shadows the bare Theme type
@@ -33,6 +34,18 @@ namespace ProjectChimera.UI
         public event Action<float>? OnSpeedChanged;
         /// <summary>The player toggled the Pause switch (true = paused). Offline only.</summary>
         public event Action<bool>? OnPauseToggled;
+        /// <summary>Story 11.3 — the player chose a slot to SAVE to (offline only). Arg = slot name.</summary>
+        public event Action<string>? OnSave;
+        /// <summary>Story 11.3 — the player chose a slot to LOAD from (offline only). Arg = slot name.</summary>
+        public event Action<string>? OnLoad;
+
+        /// <summary>Story 11.3 — the SP save disk rail, injected by MainScene, used to render slot metadata in the
+        /// picker. Null before injection (the picker still renders, showing every slot as empty).</summary>
+        private ISaveStore? _saveStore;
+
+        /// <summary>Manual save slots offered in the picker (the dedicated autosave slot is written automatically, not
+        /// chosen here, but IS offered as a LOAD source).</summary>
+        private static readonly string[] ManualSlots = { "0", "1", "2" };
 
         private static readonly float[] Speeds = { 0.5f, 1f, 2f, 3f };
 
@@ -127,12 +140,10 @@ namespace ProjectChimera.UI
             // ── Menu actions ──
             _resumeBtn = AddAction(vbox, "Resume", ChimeraComponents.ButtonVariant.Primary, () => OnResume?.Invoke());
             _settingsBtn = AddAction(vbox, "Settings", ChimeraComponents.ButtonVariant.Secondary, () => OnSettings?.Invoke());
-            _saveBtn = AddAction(vbox, "Save (coming in 11.3)", ChimeraComponents.ButtonVariant.Ghost, null);
-            _loadBtn = AddAction(vbox, "Load (coming in 11.3)", ChimeraComponents.ButtonVariant.Ghost, null);
-            _saveBtn.Disabled = true;
-            _loadBtn.Disabled = true;
-            ChimeraTooltip.Attach(_saveBtn, "Save", "Mid-match save arrives in Story 11.3.", ChimeraTooltip.TooltipRole.Field);
-            ChimeraTooltip.Attach(_loadBtn, "Load", "Mid-match load arrives in Story 11.3.", ChimeraTooltip.TooltipRole.Field);
+            // Story 11.3 — real Save/Load, wired to the SP full-world serializer. Each opens a slot picker; the actual
+            // capture/write + read/restore happen in MainScene (which owns the sim host + disk rail). Online: disabled.
+            _saveBtn = AddAction(vbox, "Save", ChimeraComponents.ButtonVariant.Secondary, () => OpenSlotPicker(saving: true));
+            _loadBtn = AddAction(vbox, "Load", ChimeraComponents.ButtonVariant.Secondary, () => OpenSlotPicker(saving: false));
 
             _concedeBtn = AddAction(vbox, "Concede", ChimeraComponents.ButtonVariant.Danger, ConfirmConcede);
             _quitBtn = AddAction(vbox, "Quit to Menu", ChimeraComponents.ButtonVariant.Danger, ConfirmQuit);
@@ -195,8 +206,55 @@ namespace ProjectChimera.UI
             _pauseBtn.Visible   = !online;
             foreach (Button b in _speedBtns) b.Disabled = online;
 
-            // Save/Load are always disabled in 11.2 (built in 11.3), but stay VISIBLE so the layout is stable.
-            // Concede / Quit / Settings / Resume remain available in both modes.
+            // Story 11.3 — SP save/load + autosave are single-player only: gate Save/Load enabled-state on !online
+            // (they stay VISIBLE for a stable layout, mirroring the Speed disabling above). Autosave never runs online.
+            _saveBtn.Disabled = online;
+            _loadBtn.Disabled = online;
+        }
+
+        /// <summary>Story 11.3 — inject the SP save disk rail so the slot picker can show per-slot metadata (map +
+        /// tick). Safe to call once at bootstrap; null leaves every slot rendered as empty.</summary>
+        public void SetSaveStore(ISaveStore? store) => _saveStore = store;
+
+        /// <summary>Story 11.3 — the ChimeraDialog slot picker. In save mode it offers the manual slots; in load mode it
+        /// also offers the autosave slot, and only readable slots are choosable. Choosing a slot fires
+        /// <see cref="OnSave"/>/<see cref="OnLoad"/> and resumes the match.</summary>
+        private void OpenSlotPicker(bool saving)
+        {
+            if (_online) return;                 // SP only (defensive; the button is already disabled online)
+            if (_activeDialog != null) return;   // one dialog at a time
+
+            var body = new VBoxContainer();
+            body.AddThemeConstantOverride("separation", ChimeraComponents.Const(ThemeTokens.S2));
+
+            string[] slots = saving
+                ? ManualSlots
+                : new[] { "0", "1", "2", LocalSaveStore.AutosaveSlot };
+
+            ChimeraDialog? dlg = null;
+            foreach (string slot in slots)
+            {
+                SaveGameHeader hdr = _saveStore != null ? SaveGameHeader.Read(_saveStore.PathFor(slot)) : SaveGameHeader.Unreadable();
+                string label = slot == LocalSaveStore.AutosaveSlot ? "Autosave" : $"Slot {slot}";
+                string meta  = hdr.IsReadable ? $"{label}  —  {hdr.MapId}  ·  tick {hdr.Tick}" : $"{label}  —  {(saving ? "empty" : "no save")}";
+                var b = ChimeraComponents.Button(meta, ChimeraComponents.ButtonVariant.Secondary, ChimeraComponents.ButtonSize.Block);
+                b.Disabled = !saving && !hdr.IsReadable; // load: only choosable when a save exists
+                string captured = slot;
+                b.Pressed += () =>
+                {
+                    _activeDialog = null;
+                    if (dlg != null && GodotObject.IsInstanceValid(dlg)) dlg.QueueFree();
+                    if (saving) OnSave?.Invoke(captured); else OnLoad?.Invoke(captured);
+                    OnResume?.Invoke(); // close the menu + un-pause after the choice
+                };
+                body.AddChild(b);
+            }
+
+            dlg = ChimeraDialog.CreateCustom(saving ? "Save Game" : "Load Game", body);
+            dlg.AddCancel("Cancel");
+            dlg.Dismissed += () => { _activeDialog = null; };
+            _activeDialog = dlg;
+            dlg.Open(this);
         }
 
         private void ConfirmConcede()

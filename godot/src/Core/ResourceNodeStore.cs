@@ -131,6 +131,12 @@ namespace ProjectChimera.Core
         }
 
         /// <summary>
+        /// Story 11.3 (SP save/load): restore the private <see cref="Count"/> after the persistence layer has written
+        /// the SoA arrays directly (nodes are append-only, no free-list). Godot-free integer bookkeeping only.
+        /// </summary>
+        public void RestoreCount(int count) => _count = count < 0 ? 0 : (count > MAX_NODES ? MAX_NODES : count);
+
+        /// <summary>
         /// Story 3.10 (UX-DR62): restore this store to its EXACT post-construction state for the Edit↔Play reset —
         /// zero every SoA array and reset <see cref="Count"/> to 0. A cleared store is byte-for-byte equal to
         /// <c>new ResourceNodeStore()</c>. The re-apply's <see cref="Create"/> loop re-adds the authored nodes.

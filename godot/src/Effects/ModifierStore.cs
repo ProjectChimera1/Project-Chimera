@@ -445,6 +445,76 @@ namespace ProjectChimera.Effects
         /// <summary>Folded: the stack count at this slot.</summary>
         public int StackCountAt(int id, int slot) => _stackCount[id * EffectCaps.MaxModifiersPerEntity + slot];
 
+        // ─────────────────────────────────── Story 11.3 — SP save/load capture/restore ────────────────────────────
+        // The descriptor refs + caster id/faction are NOT folded (authored / peer-identical), but a mid-match SAVE must
+        // still round-trip them: the save serializes each descriptor by its CanonicalEffectDescriptorTable index (a
+        // Modifier vs a PersistentEffect), and its caster id/faction as ints. These accessors expose the un-folded slot
+        // state for capture; RestoreSlot/SetCount rebuild [0,_count) on load WITHOUT re-running InitialEffect.
+
+        /// <summary>Story 11.3 capture: the installing <see cref="Modifier"/> descriptor at this slot (null for a
+        /// PersistentEffect instance). Used to serialize the slot by its canonical descriptor index.</summary>
+        public Modifier? ModifierRefAt(int id, int slot) => _modifier[id * EffectCaps.MaxModifiersPerEntity + slot];
+
+        /// <summary>Story 11.3 capture: the installing <see cref="PersistentEffect"/> descriptor at this slot (null for
+        /// a Modifier instance).</summary>
+        public PersistentEffect? PersistentRefAt(int id, int slot) => _persistent[id * EffectCaps.MaxModifiersPerEntity + slot];
+
+        /// <summary>Story 11.3 capture: the caster entity id recorded at this slot.</summary>
+        public int CasterIdAt(int id, int slot) => _casterId[id * EffectCaps.MaxModifiersPerEntity + slot];
+
+        /// <summary>Story 11.3 capture: the caster faction recorded at this slot.</summary>
+        public Faction CasterFactionAt(int id, int slot) => _casterFaction[id * EffectCaps.MaxModifiersPerEntity + slot];
+
+        /// <summary>
+        /// Story 11.3 (SP save/load): OVERLAY one active modifier/persistent instance at <paramref name="slot"/> on
+        /// <paramref name="hostId"/> from a save, re-pointing its descriptor and writing its folded fields directly —
+        /// WITHOUT re-running <c>InitialEffect</c> (a restore is not a re-cast). For a <see cref="Modifier"/> instance it
+        /// re-accumulates the stat contribution (deltas × <paramref name="stackCount"/>) through the same
+        /// <c>ModifierSystem.AccumulateBonus</c> seam <see cref="Apply"/> uses and re-ORs the status union, so the next
+        /// tick's recompute reproduces the saved <c>Effective*</c> exactly. The caller writes slots ascending
+        /// <c>0..count</c> then calls <see cref="SetCount"/>. Must run AFTER <see cref="Clear"/> (which zeroes the
+        /// re-applied self-passives + accumulators) and after the EntityWorld overlay (so <c>StatusFlagsOf</c> is set).
+        /// </summary>
+        public void RestoreSlot(int hostId, int slot, int modifierId, int remainingTicks, int ticksUntilPeriod,
+                                int periodsRemaining, int stackCount, int casterId, Faction casterFaction,
+                                Modifier? modifier, PersistentEffect? persistent)
+        {
+            // Fail-closed against a corrupt save: reject an out-of-range host id or slot rather than writing OOB.
+            if ((uint)hostId >= (uint)EntityWorld.MAX_ENTITIES || (uint)slot >= (uint)EffectCaps.MaxModifiersPerEntity)
+                throw new System.IO.InvalidDataException($"SP load: modifier slot out of range (host {hostId}, slot {slot}).");
+            int sl = hostId * EffectCaps.MaxModifiersPerEntity + slot;
+            _modifierId[sl]       = modifierId;
+            _remainingTicks[sl]   = remainingTicks;
+            _ticksUntilPeriod[sl] = ticksUntilPeriod;
+            _periodsRemaining[sl] = periodsRemaining;
+            _stackCount[sl]       = stackCount;
+            _modifier[sl]         = modifier;
+            _persistent[sl]       = persistent;
+            _casterId[sl]         = casterId;
+            _casterFaction[sl]    = casterFaction;
+
+            // Rebuild the external stat-bonus accumulators for a Modifier instance (Persistent instances carry no stat
+            // deltas). Marks the entity dirty; the next ModifierSystem.Tick recomputes Effective = Base + Σbonus,
+            // reproducing the saved (directly-restored) Effective* — never touches Health (already restored).
+            if (modifier != null)
+            {
+                Fixed stacks = Fixed.FromInt(stackCount);
+                _system?.AccumulateBonus(hostId, modifier.AttackDamageDelta * stacks, modifier.MaxHealthDelta * stacks,
+                                         modifier.MoveSpeedDelta * stacks, modifier.ArmorDelta * stacks);
+                if ((uint)hostId < (uint)EntityWorld.MAX_ENTITIES) _world.StatusFlagsOf[hostId] |= modifier.Status;
+            }
+        }
+
+        /// <summary>Story 11.3 (SP save/load): set the active-instance count for <paramref name="id"/> after
+        /// <see cref="RestoreSlot"/> has written its <c>[0,count)</c> slots. Bounds-guarded.</summary>
+        public void SetCount(int id, int count)
+        {
+            if ((uint)id >= (uint)EntityWorld.MAX_ENTITIES) return;
+            if (count < 0) count = 0;
+            if (count > EffectCaps.MaxModifiersPerEntity) count = EffectCaps.MaxModifiersPerEntity;
+            _count[id] = count;
+        }
+
         // ────────────────────────────────────────────── Internals ───────────────────────────────────────────────
 
         /// <summary>

@@ -4,6 +4,7 @@ using ProjectChimera.AI;
 using ProjectChimera.Combat;
 using ProjectChimera.Core.Bootstrap;
 using ProjectChimera.Core.Definitions;
+using ProjectChimera.Core.Persistence; // Story 11.3 — SP full-world save/load serializer
 using ProjectChimera.Core.Sim;
 using ProjectChimera.Core.Skirmish;
 using ProjectChimera.CreationSuite;
@@ -14,6 +15,7 @@ using ProjectChimera.UGC;
 using ProjectChimera.UI;
 using System;
 using System.Globalization;
+using System.IO;
 using System.Linq;
 
 namespace ProjectChimera.Core
@@ -169,6 +171,24 @@ namespace ProjectChimera.Core
         /// <summary>Set when a skirmish boot threw: the located error surfaced by the fail-safe re-open on the next boot
         /// (paired with <see cref="PendingSkirmishConfig"/>). Null on a normal boot.</summary>
         internal static string? PendingSkirmishError;
+
+        /// <summary>Story 11.3 (FR-67): cross-reload handoff for an SP LOAD. <see cref="IssueLoad"/> reads + validates the
+        /// save (fail-closed), stashes the parsed state + header here, and re-launches via <see cref="LaunchSkirmish"/>;
+        /// the fresh <c>_Ready</c> re-applies the scenario through the setup-phase spine, then — in the post-phase tail —
+        /// overlays the saved mutable state via <c>SaveGameState.RestoreInto</c> (the hero post-phase-apply precedent).
+        /// Static so they survive <c>ReloadCurrentScene</c>; consumed once (read-then-clear).</summary>
+        internal static SaveGameState? PendingLoadedSave;
+        internal static SaveGameHeaderData? PendingLoadedSaveHeader;
+
+        /// <summary>Story 11.3: the launch record of the CURRENT match, retained across the successful boot (where
+        /// <see cref="PendingSkirmishConfig"/> is cleared) so a mid-match Save can stamp the save header's SkirmishSetup.</summary>
+        private SkirmishSetup? _currentSkirmishSetup;
+
+        /// <summary>Story 11.3: wall-clock seconds accumulated toward the next autosave (offline SP only). Reset on
+        /// return to Edit.</summary>
+        private float _autosaveAccum;
+        /// <summary>Story 11.3: seconds between periodic autosaves (SP-only).</summary>
+        private const float AUTOSAVE_INTERVAL_SECONDS = 120f;
 
         /// <summary>Story 11.1: true once a skirmish boot exception has been caught and a clean reload requested — makes
         /// the per-frame callbacks (_Process/_Input/_UnhandledInput) no-op for the one frame before the scene reloads,
@@ -648,6 +668,11 @@ namespace ProjectChimera.Core
                 items: _host.Items, registry: _host.ItemRegistry, // Story 3.16: re-mint persisted inventory before the hash
                 modifiers: _host.Modifiers, usableSlots: _host.ItemSys.UsableSlots, // Story 3.16 review: apply carried stat modifiers + honor the slot cap
                 ownerSlot: _ctx.Lockstep?.LocalFaction); // DW-13: mint the deployed profile into the local player's placed hero only (null at first boot / no profile is inert)
+
+            // Story 11.3 (FR-67) — NOTE: a pending SP LOAD is NOT overlaid here. The subsequent Edit→Play transition
+            // (RequestSkirmishLaunch → GameState.Toggle → ResetToAuthoredStart → ClearForReset) would WIPE anything
+            // restored at this point (observed: a loaded save resumed from tick 0). The overlay is applied at the END of
+            // ResetToAuthoredStart instead — AFTER that reset + re-apply — so the restored state is what enters [PLAY].
             ulong startStateHash = (_ctx.ScenarioApplied && hashModel != null)
                 ? Definitions.StartStateHash.Compute(hashModel, _host.Heroes)
                 : 0UL;
@@ -713,6 +738,7 @@ namespace ProjectChimera.Core
             // no fail-safe re-open).
             if (skirmishStart)
             {
+                _currentSkirmishSetup = PendingSkirmishConfig; // Story 11.3 — retain the launch record for save headers
                 PendingSkirmishConfig = null;
                 PendingSkirmishError  = null;
                 if (_ctx.MainMenu != null) _ctx.MainMenu.Visible = false;
@@ -781,6 +807,8 @@ namespace ProjectChimera.Core
             menu.OnPauseToggled += p => _paused = p;
             menu.OnConcede      += IssueConcede;
             menu.OnQuitToMenu   += QuitToMainMenu;
+            menu.OnSave         += IssueSave; // Story 11.3 — capture host → .chsav slot (offline SP)
+            menu.OnLoad         += IssueLoad; // Story 11.3 — read+validate a slot → reload spine → overlay saved state
             menu.OnSettings     += () =>
             {
                 // Hide the menu so its _Input yields Esc to the settings panel, and re-show it when Settings closes.
@@ -825,6 +853,103 @@ namespace ProjectChimera.Core
             if (_ctx.Lockstep == null) return; // defensive: no lockstep manager ⇒ nothing to concede through
             Faction local = _ctx.Lockstep.EffectiveLocalFaction;
             _ctx.Lockstep.EnqueueConcede(local);
+        }
+
+        // ── Story 11.3 (FR-67): SP save / load ─────────────────────────────────────────────────────────────────────
+
+        /// <summary>The distinct loaded faction definitions the applied scenario references (for the ContentHash stamp).</summary>
+        private System.Collections.Generic.List<FactionDefinition> GatherLoadedFactions()
+        {
+            var list = new System.Collections.Generic.List<FactionDefinition>();
+            if (_ctx.SlotFactionDefs != null)
+                foreach (FactionDefinition? fd in _ctx.SlotFactionDefs)
+                    if (fd != null) list.Add(fd);
+            return list;
+        }
+
+        /// <summary>Story 11.3 — capture the full mutable world off the host and write it to a <c>.chsav</c> slot. SP-only;
+        /// the match continues uninterrupted. A capture/write error is logged and the match plays on (never a crash).</summary>
+        private void IssueSave(string slot)
+        {
+            if (_ctx.Lockstep != null && _ctx.Lockstep.IsOnline) return;       // SP only
+            if (_ctx.GameState == null || _ctx.GameState.Mode != GameMode.Play || _gameOver) return;
+            ScenarioData? scenario = _ctx.Scenario ?? _ctx.FallbackMirror;
+            if (scenario == null || !_ctx.ScenarioApplied || _ctx.SaveStore == null) return;
+            try
+            {
+                var table = CanonicalEffectDescriptorTable.Build(_host.AbilityRegistry, _host.ItemRegistry);
+                SaveGameState state = SaveGameState.CaptureFrom(_host, table);
+                var header = new SaveGameHeaderData
+                {
+                    CanonicalModelHash = CanonicalModelHash.Compute(scenario),
+                    ContentHash        = ContentHash.Compute(GatherLoadedFactions(), _host.AbilityRegistry, _host.ItemRegistry, _ctx.DamageTable),
+                    Tick               = _host.CurrentTick,
+                    MapId              = _currentSkirmishSetup?.MapId ?? scenario.Id ?? "",
+                    Slots              = _currentSkirmishSetup?.Slots ?? new System.Collections.Generic.List<SetupSlot>(),
+                };
+                using var ms = new MemoryStream();
+                SaveGameFile.Write(ms, state, header);
+                _ctx.SaveStore.Write(slot, ms.ToArray());
+                GD.Print($"[Save] Wrote slot '{slot}' at tick {_host.CurrentTick}.");
+                ShowSaveLoadNotice($"Saved to {SlotLabel(slot)}.");
+            }
+            catch (InvalidOperationException ex)
+            {
+                // The descriptor Block-If: a live modifier/persistent is unreachable by the canonical table (content
+                // can't round-trip). Distinct from an I/O failure — the save cannot be represented, not a disk problem.
+                GD.PrintErr($"[Save] Cannot save slot '{slot}' — {ex.Message}");
+                ShowSaveLoadNotice("Save unavailable: this match's active effects can't be saved (content mismatch).");
+            }
+            catch (Exception ex)
+            {
+                // I/O failure (disk full, File.Replace conflict, permissions, …). Surface so autosave never fails
+                // silently forever while the player believes they're protected.
+                GD.PrintErr($"[Save] Failed to save slot '{slot}': {ex.Message}");
+                ShowSaveLoadNotice($"Save failed: {ex.Message}");
+            }
+        }
+
+        /// <summary>Surface a save/load outcome/error to the player via the HUD toast (the kit-adjacent notice surface;
+        /// visible during [PLAY]). Used so save/load failures are never silently swallowed to the console (#9/#10).</summary>
+        private void ShowSaveLoadNotice(string msg) => ShowTriggerMessage(msg, 6f);
+
+        private static string SlotLabel(string slot) =>
+            slot == LocalSaveStore.AutosaveSlot ? "the autosave slot" : $"slot {slot}";
+
+        /// <summary>Story 11.3 — read + validate a <c>.chsav</c> slot fail-closed, then reload through the setup-phase
+        /// spine and overlay the saved state in the post-phase tail. A missing/corrupt/drifted save is rejected with the
+        /// located message (no reload). The in-match load reuses the current match's scenario (byte-identical to the one
+        /// the save was taken in); cross-session load-from-menu would rebuild it from the header's SkirmishSetup.</summary>
+        private void IssueLoad(string slot)
+        {
+            if (_ctx.Lockstep != null && _ctx.Lockstep.IsOnline) return; // SP only
+            byte[]? bytes = _ctx.SaveStore?.Read(slot);
+            if (bytes == null) { GD.PrintErr($"[Load] Slot '{slot}' is empty or unreadable."); ShowSaveLoadNotice($"No save in {SlotLabel(slot)}."); return; }
+
+            SaveGameHeaderData header; SaveGameState state;
+            try
+            {
+                using var ms = new MemoryStream(bytes);
+                (header, state) = SaveGameFile.Read(ms, slot);
+            }
+            catch (InvalidDataException ex) { GD.PrintErr($"[Load] {ex.Message}"); ShowSaveLoadNotice($"Load failed: {ex.Message}"); return; } // fail-closed, no reload
+
+            ScenarioData? scenario = _ctx.Scenario ?? _ctx.FallbackMirror;
+            if (scenario == null) { GD.PrintErr("[Load] No scenario available to reload into."); ShowSaveLoadNotice("Load failed: no active map to resume into."); return; }
+            try
+            {
+                ulong curModel   = CanonicalModelHash.Compute(scenario);
+                ulong curContent = ContentHash.Compute(GatherLoadedFactions(), _host.AbilityRegistry, _host.ItemRegistry, _ctx.DamageTable);
+                header.ThrowIfContentMismatch(curModel, curContent, slot);
+            }
+            catch (InvalidDataException ex) { GD.PrintErr($"[Load] {ex.Message}"); ShowSaveLoadNotice($"Load failed: {ex.Message}"); return; }
+
+            // Stash the parsed state, dismiss the menu, and reload through the existing skirmish spine. The post-phase
+            // tail (guarded by FailSafeSkirmishBoot) applies SaveGameState.RestoreInto after the scenario re-apply.
+            PendingLoadedSave       = state;
+            PendingLoadedSaveHeader = header;
+            _ctx.InMatchMenu?.Close();
+            LaunchSkirmish(scenario, AiLevel, _currentSkirmishSetup ?? header.ToSkirmishSetup());
         }
 
         /// <summary>Quit-to-Menu from either overlay: end the match (Play→Edit reset, ModeChanged-wired), restore the
@@ -1225,7 +1350,19 @@ namespace ProjectChimera.Core
                     // game speed. Only the CADENCE (how many identical fixed ticks are consumed per real second) changes;
                     // each tick still runs the same FixedDt + system order, so the SimChecksum stream is invariant.
                     if (!_paused)
+                    {
                         _host.Update((float)delta * _gameSpeed);
+
+                        // Story 11.3 (FR-67) — periodic autosave (SP-only; this branch is offline, so autosave never
+                        // runs online). Writes the dedicated autosave slot on the interval without interrupting play;
+                        // IssueSave catches its own write errors, so a failure never stalls the tick loop.
+                        _autosaveAccum += (float)delta;
+                        if (_autosaveAccum >= AUTOSAVE_INTERVAL_SECONDS)
+                        {
+                            _autosaveAccum = 0f;
+                            IssueSave(LocalSaveStore.AutosaveSlot);
+                        }
+                    }
                 }
 
                 if (_playFrames == 0)
@@ -2289,6 +2426,29 @@ namespace ProjectChimera.Core
 
             // 7. Fold in the existing match-lifecycle/presentation reset (game-over, play frames, stats, replay, fog).
             ResetMatchOnReturnToEdit();
+
+            // 8. Story 11.3 (FR-67) — a pending SP LOAD overlays LAST, after EVERYTHING above (ClearForReset + re-apply +
+            //    re-mint + the lifecycle reset, all of which would otherwise wipe it): blast the saved mutable world over
+            //    the freshly-applied authored board and restore the saved tick, so the state entering [PLAY] IS the
+            //    resumed match (not the tick-0 authored start). Survives the scene reload as a static; consumed once.
+            //    The fail-closed content gate already ran in IssueLoad before the reload; a residual restore failure
+            //    (e.g. a descriptor index gone out of range) is surfaced and falls back to the authored board, never a crash.
+            if (PendingLoadedSave != null)
+            {
+                SaveGameState loaded = PendingLoadedSave;
+                PendingLoadedSave = null; PendingLoadedSaveHeader = null;
+                try
+                {
+                    var loadTable = CanonicalEffectDescriptorTable.Build(_host.AbilityRegistry, _host.ItemRegistry);
+                    loaded.RestoreInto(_host, loadTable, _slotFactionDefs);
+                    GD.Print($"[Load] Resumed match at tick {_host.CurrentTick}.");
+                }
+                catch (Exception ex)
+                {
+                    GD.PrintErr($"[Load] Failed to apply the saved state — starting at the authored board: {ex.Message}");
+                    ShowSaveLoadNotice($"Load failed: {ex.Message}");
+                }
+            }
             return true;
         }
 
@@ -2312,6 +2472,7 @@ namespace ProjectChimera.Core
             _ctx.ScoreScreen?.Hide();
             _gameSpeed = 1f;
             _paused    = false;
+            _autosaveAccum = 0f; // Story 11.3 — reset the autosave timer on return to Edit
             _reopenMenuAfterSettings = false;
             _gameOver     = false;
             _playFrames   = 0;

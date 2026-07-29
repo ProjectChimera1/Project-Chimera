@@ -511,6 +511,104 @@ namespace ProjectChimera.Dsl
             }
         }
 
+        // ── Story 11.3 (SP save/load): mutable-state snapshot/restore ──────────────
+        // A mid-match save must round-trip the LIVE variable/timer values (a resumed match whose globals/per-player/
+        // array/timer state reset to declared initials would diverge). The Global list + timer list can GROW mid-match
+        // (undeclared set_variable appends a Global/Int slot; create_timer appends a timer), so those are captured
+        // WHOLESALE (names + types + raws) and restored by rebuilding them; per-player + array values overlay onto the
+        // re-applied (identical) declaration structure. TriggerLocal scratch is per-firing/transient (inactive at any
+        // checksum boundary) and NEVER folded, so it is not captured.
+
+        /// <summary>Story 11.3 — an in-memory snapshot of the table's mutable state (raw ints + type bytes only, no
+        /// Godot, no float). The persistence layer serializes these fields to the versioned save blob.</summary>
+        public sealed class Snapshot
+        {
+            public string[] GlobalNames   = Array.Empty<string>();
+            public int[]    GlobalTypes   = Array.Empty<int>();   // (int)DslValueType
+            public int[]    GlobalRaw0    = Array.Empty<int>();
+            public int[]    GlobalRaw1    = Array.Empty<int>();
+            public int[]    PerPlayerRaw0 = Array.Empty<int>();   // flat [decl * PlayerSlots + slot]
+            public int[]    PerPlayerRaw1 = Array.Empty<int>();
+            public int[]    ArrayCounts   = Array.Empty<int>();   // live element count per array declaration
+            public int[][]  ArrayRaws     = Array.Empty<int[]>(); // live element raws per array declaration
+            public string[] TimerNames    = Array.Empty<string>();
+            public int[]    TimerRemaining = Array.Empty<int>();
+        }
+
+        /// <summary>Story 11.3 — capture the live mutable state for a save.</summary>
+        public Snapshot Capture()
+        {
+            var s = new Snapshot
+            {
+                GlobalNames = _gNames.ToArray(),
+                GlobalRaw0  = _gRaw0.ToArray(),
+                GlobalRaw1  = _gRaw1.ToArray(),
+                PerPlayerRaw0 = (int[])_pRaw0.Clone(),
+                PerPlayerRaw1 = (int[])_pRaw1.Clone(),
+                ArrayCounts   = (int[])_aCount.Clone(),
+                TimerNames     = _timerNames.ToArray(),
+                TimerRemaining = _timerRemaining.ToArray(),
+            };
+            s.GlobalTypes = new int[_gTypes.Count];
+            for (int i = 0; i < _gTypes.Count; i++) s.GlobalTypes[i] = (int)_gTypes[i];
+            s.ArrayRaws = new int[_aDeclCount][];
+            for (int i = 0; i < _aDeclCount; i++)
+            {
+                int n = _aCount[i];
+                var raws = new int[n];
+                Array.Copy(_aRaws[i], raws, n);
+                s.ArrayRaws[i] = raws;
+            }
+            return s;
+        }
+
+        /// <summary>
+        /// Story 11.3 — overlay a saved snapshot onto a table whose declaration structure was already rebuilt by the
+        /// load path's <see cref="InitFromDeclarations"/> (identical scenario). Globals + timers are replaced wholesale
+        /// (they can grow mid-match); per-player + array values overlay element-wise, bounded defensively against a
+        /// content drift the save header's ContentHash already fail-closes. TriggerLocal scratch is left at its reset
+        /// state (transient/never folded).
+        /// </summary>
+        public void Restore(Snapshot s)
+        {
+            if (s == null) return;
+
+            _gNames.Clear(); _gTypes.Clear(); _gRaw0.Clear(); _gRaw1.Clear();
+            for (int i = 0; i < s.GlobalNames.Length; i++)
+            {
+                _gNames.Add(s.GlobalNames[i]);
+                _gTypes.Add((DslValueType)(i < s.GlobalTypes.Length ? s.GlobalTypes[i] : 0));
+                _gRaw0.Add(i < s.GlobalRaw0.Length ? s.GlobalRaw0[i] : 0);
+                _gRaw1.Add(i < s.GlobalRaw1.Length ? s.GlobalRaw1[i] : 0);
+            }
+
+            int pp = Math.Min(_pRaw0.Length, s.PerPlayerRaw0.Length);
+            for (int i = 0; i < pp; i++) _pRaw0[i] = s.PerPlayerRaw0[i];
+            pp = Math.Min(_pRaw1.Length, s.PerPlayerRaw1.Length);
+            for (int i = 0; i < pp; i++) _pRaw1[i] = s.PerPlayerRaw1[i];
+
+            int ad = Math.Min(_aDeclCount, s.ArrayCounts.Length);
+            for (int i = 0; i < ad; i++)
+            {
+                int cnt = s.ArrayCounts[i];
+                if (cnt < 0) cnt = 0;
+                if (cnt > _aCap[i]) cnt = _aCap[i];
+                _aCount[i] = cnt;
+                if (s.ArrayRaws != null && i < s.ArrayRaws.Length && s.ArrayRaws[i] != null)
+                {
+                    int copy = Math.Min(cnt, s.ArrayRaws[i].Length);
+                    for (int k = 0; k < copy; k++) _aRaws[i][k] = s.ArrayRaws[i][k];
+                }
+            }
+
+            _timerNames.Clear(); _timerRemaining.Clear();
+            for (int i = 0; i < s.TimerNames.Length; i++)
+            {
+                _timerNames.Add(s.TimerNames[i]);
+                _timerRemaining.Add(i < s.TimerRemaining.Length ? s.TimerRemaining[i] : 0);
+            }
+        }
+
         // ── Checksum fold ────────────────────────────────────────────────────────
 
         /// <summary>

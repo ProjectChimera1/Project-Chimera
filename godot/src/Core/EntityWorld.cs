@@ -1132,6 +1132,35 @@ namespace ProjectChimera.Core
         }
 
         /// <summary>
+        /// Story 11.3 (SP save/load): restore the private allocation bookkeeping after a save-load overlay has written
+        /// the SoA arrays directly. The persistence layer writes every per-entity array element for <c>[0, nextId)</c>
+        /// (and the reference arrays via <see cref="ApplyUnitDefinition"/>'s def re-resolution), then calls this to set
+        /// the high-water mark, alive count, and the free list so <see cref="IsAlive"/>/<see cref="Create"/>/
+        /// <see cref="HighWaterMark"/> agree with the saved world. Copies at most <see cref="MAX_ENTITIES"/> free-list
+        /// entries (defensive). Godot-free integer bookkeeping only.
+        /// </summary>
+        /// <summary>Story 11.3 (SP save/load): the active portion of the recycle free-list (LIFO order preserved), so a
+        /// save round-trips the EXACT next-slot a <see cref="Create"/> will pop — a different order would land a
+        /// resumed match's next spawn at a different id and desync. Returns a fresh copy.</summary>
+        public int[] CaptureFreeList()
+        {
+            var copy = new int[_freeCount];
+            Array.Copy(_freeList, copy, _freeCount);
+            return copy;
+        }
+
+        public void RestoreAllocation(int nextId, int aliveCount, int[] freeList, int freeCount)
+        {
+            _nextId    = nextId < 0 ? 0 : (nextId > MAX_ENTITIES ? MAX_ENTITIES : nextId);
+            AliveCount = aliveCount;
+            Array.Clear(_freeList);
+            int n = freeCount < 0 ? 0 : (freeCount > MAX_ENTITIES ? MAX_ENTITIES : freeCount);
+            if (freeList != null)
+                for (int i = 0; i < n && i < freeList.Length; i++) _freeList[i] = freeList[i];
+            _freeCount = n;
+        }
+
+        /// <summary>
         /// Check if an entity ID is alive.
         /// </summary>
         public bool IsAlive(int id) =>

@@ -235,6 +235,43 @@ namespace ProjectChimera.Core
 
         private bool _firstTick = true;
 
+        // ── Story 11.3 (SP save/load): mutable trigger-runtime capture/restore ─────────────────────────────────────
+        // _triggerFired (run_once guard), _triggerCooldown (remaining ticks), and _firstTick are NOT folded but ARE
+        // mid-match-mutable and MUST persist across a save/load — a resumed match whose run_once triggers re-fire, or
+        // whose match-start pass re-runs, would diverge. The compiled _execs / subscriptions / regions / win config are
+        // rebuilt by the load path's LoadScenario (from the identical scenario), so they are NEVER serialized; these
+        // overlay ONLY the mutable per-exec runtime, indexed by _execs position (stable across the re-apply).
+
+        /// <summary>Story 11.3 capture: the run_once fired-guard flags, indexed by _execs position (fresh copy).</summary>
+        public bool[] CaptureTriggerFired() => (bool[])_triggerFired.Clone();
+
+        /// <summary>Story 11.3 capture: the per-exec remaining-cooldown ticks, indexed by _execs position (fresh copy).</summary>
+        public int[] CaptureTriggerCooldown() => (int[])_triggerCooldown.Clone();
+
+        /// <summary>Story 11.3 capture: whether the match-start pass is still pending (the first director tick).</summary>
+        public bool CaptureFirstTick() => _firstTick;
+
+        /// <summary>
+        /// Story 11.3 (SP load): overlay the mutable trigger runtime from a save AFTER <see cref="LoadScenario"/> has
+        /// rebuilt the exec list from the identical scenario (so the index space matches). Copies element-wise up to the
+        /// shorter of the saved and current lengths (defensive against a content-drift the header's ContentHash already
+        /// fail-closes). Never touches the compiled programs / subscriptions / regions.
+        /// </summary>
+        public void RestoreRuntimeState(bool[] triggerFired, int[] triggerCooldown, bool firstTick)
+        {
+            if (triggerFired != null)
+            {
+                int n = System.Math.Min(triggerFired.Length, _triggerFired.Length);
+                for (int i = 0; i < n; i++) _triggerFired[i] = triggerFired[i];
+            }
+            if (triggerCooldown != null)
+            {
+                int n = System.Math.Min(triggerCooldown.Length, _triggerCooldown.Length);
+                for (int i = 0; i < n; i++) _triggerCooldown[i] = triggerCooldown[i];
+            }
+            _firstTick = firstTick;
+        }
+
         // ── Presentation-layer delegates ──────────────────────────────────────
 
         /// <summary>Requests the presentation layer to spawn units. (unitId, factionSlot, x, z, count).</summary>
