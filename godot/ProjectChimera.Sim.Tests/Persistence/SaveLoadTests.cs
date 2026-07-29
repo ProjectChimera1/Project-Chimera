@@ -442,6 +442,64 @@ namespace ProjectChimera.Sim.Tests.Persistence
             return m;
         }
 
+        // ── #5d — the director's CHANGE-DETECTION snapshots survive the load (review fix) ─────────────────────────
+        // _prevBuildingDone / _prevFlags are mid-match-mutable but NOT serialized: LoadScenario seeds them from the
+        // AUTHORED board and the save overlay lands afterward. Without ScenarioDirector.ReseedChangeDetection the
+        // director's "previous" snapshot describes the authored map while the world describes the saved match, so the
+        // first resumed tick emits a spurious building_completed for every mid-match-built building — re-firing any
+        // non-run_once trigger and mutating FOLDED state. The trigger below is deliberately NOT run_once (a fired
+        // guard would mask the re-fire) and its add_resources lands in the checksum.
+
+        [Fact]
+        public void SaveLoad_ResumeByteIdentical_WithMidMatchBuiltBuilding()
+        {
+            ScenarioData model = BuildBuildingCompletedTriggerModel();
+
+            static void BuildBarracks(SimulationHost h)
+            {
+                int id = h.Buildings.Create(new FixedVec3(Fixed.FromInt(20), Fixed.Zero, Fixed.FromInt(-20)),
+                                            Faction.Player1, BuildingType.Barracks);
+                Assert.True(id >= 0);
+                h.Buildings.ConstructionTimer[id] = Fixed.Zero; // completed
+            }
+
+            // Reference: build, let the completion edge be consumed, then run uninterrupted.
+            Harness reference = BuildApplied(null, model);
+            Step(reference.Host, SaveAtTick);
+            BuildBarracks(reference.Host);
+            Step(reference.Host, 2); // the director now records the barracks as ALREADY done
+            List<GoldenChecksumReplay.Sample> refSeq = Capture(reference.Host, ResumeTicks);
+
+            // Save host: identical up to the save point, then round-trip through a file and resume.
+            Harness saved = BuildApplied(null, model);
+            Step(saved.Host, SaveAtTick);
+            BuildBarracks(saved.Host);
+            Step(saved.Host, 2);
+            SimulationHost resumed = SaveThenLoadIntoFresh(saved, null, out _, model);
+
+            Assert.Equal((uint)(SaveAtTick + 2), resumed.CurrentTick);
+            List<GoldenChecksumReplay.Sample> resumeSeq = Capture(resumed, ResumeTicks);
+
+            AssertSame(refSeq, resumeSeq,
+                       "resume re-fired a building_completed edge for a building constructed before the save");
+        }
+
+        private static ScenarioData BuildBuildingCompletedTriggerModel()
+        {
+            ScenarioData m = GoldenApplierScenario.BuildModel();
+            m.Triggers = new[]
+            {
+                new TriggerDefinition
+                {
+                    Name    = "barracks-bonus",
+                    RunOnce = false, // repeatable ON PURPOSE — a run_once guard would hide the spurious re-fire
+                    Events  = new[] { new TriggerEvent  { Type = "building_completed", Faction = 0 } },
+                    Actions = new[] { new TriggerAction { Type = "add_resources", Faction = 0, Amount = Fixed.FromInt(333) } },
+                },
+            };
+            return m;
+        }
+
         // ── #6 — a LONG-STABLE modifier (clean host at save time) resumes byte-identical (dirty-flag idempotence) ──
 
         [Fact]

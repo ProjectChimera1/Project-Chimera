@@ -3340,3 +3340,27 @@ decision: 2026-07-28 correct-course — rides bundle housekeeping-docs-and-norma
 - source_spec: `_bmad-output/implementation-artifacts/spec-11-4-under-attack-alerts-minimap-pings-event-cues-denial-acknowledgment-feedback.md`
   summary: A pure spectator/observer (whose `EffectiveLocalFaction` clamps to Player1) receives Player1's under-attack toasts, minimap flashes, and denial/ack cues as if they owned that faction.
   evidence: `MatchAlertBridge.Update` filters on `_localFaction()` which clamps observers to Player1 (pre-existing clamp). Spectator mode is not a 1.0-verified surface; low severity.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-11-4-under-attack-alerts-minimap-pings-event-cues-denial-acknowledgment-feedback.md`
+  summary: `MainScene.PendingLoadedSave` (static) is cleared only at the LAST statement of `ResetToAuthoredStart`, but that method has three earlier `return false` launch-gate vetoes and the boot is wrapped by `FailSafeSkirmishBoot` — a load whose relaunch trips a veto leaves the static armed across the scene reload, so the player's next unrelated skirmish overlays the stale save onto a different map.
+  evidence: Found by the post-merge ultra-review of 11-3/11-4 (2026-07-29), `MainScene.cs:2288`. Fix shape: clear the static in a `finally` (or at entry, into a local) so no early-return path can leave it armed. Not reproduced live; reasoned from the control flow.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-11-3-sp-save-load-full-world-serializer-slots-autosave-format-stability.md`
+  summary: `SaveGameState.Validate()` bounds the free-list LENGTHS for all five stores but never their ELEMENTS, so a save carrying an out-of-range or duplicated free-list id passes the whole fail-closed-before-mutation gate and detonates later.
+  evidence: Found by the post-merge ultra-review (2026-07-29), `SaveGameState.cs:980`; `RestoreAllocation`/`RestoreManagement` copy the lists verbatim. `EntityWorld.Create()` then pops `_freeList[--_freeCount]` and writes at that index (IndexOutOfRange), or a duplicate id hands one slot to two spawns. Only reachable from a corrupt/hand-edited save — the fail-closed posture says it should still be caught at validate time.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-11-3-sp-save-load-full-world-serializer-slots-autosave-format-stability.md`
+  summary: `RestoreResources` computes its loop bound from `Ore.Length` alone and then indexes `ResCrystal`/`ResSupply*`/`ResBase*` at the same `i` with no length check of their own; `RestoreResearch` and `RestoreWinState` repeat the pattern.
+  evidence: Found by the post-merge ultra-review (2026-07-29), `SaveGameState.cs:697`, `:782`, `:804`. Safe on the disk path only because `Validate` ran first, but `RestoreInto` is public and the in-memory `CaptureFrom`→`RestoreInto` path (used by tests) never validates. Bound each array by its own length, or make `RestoreInto` validate.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-11-3-sp-save-load-full-world-serializer-slots-autosave-format-stability.md`
+  summary: `CaptureBuildings` stores the live `b.ShopStock[i]` `string[]` BY REFERENCE and `RestoreBuildings` aliases it straight back, so the in-memory capture/restore path shares mutable arrays with the sim in both directions.
+  evidence: Found by the post-merge ultra-review (2026-07-29), `SaveGameState.cs:328` / `:690`. Harmless on the disk path (serialization copies), but every other reference-typed lane in the file is cloned or round-tripped by id — this one is inconsistent and a latent aliasing bug for any future in-memory snapshot use (rollback, MP state sync).
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-11-4-under-attack-alerts-minimap-pings-event-cues-denial-acknowledgment-feedback.md`
+  summary: `SelectionSystem.ConfirmOrder` fires the issue-time ack sound + ground marker unconditionally, independent of whether the order will be accepted — so a shift-queued order onto a unit whose order ring is already full produces the confirmation ack AND the new `QueueFull` denial toast + denial sound in the same frame for one click.
+  evidence: Found by the post-merge ultra-review (2026-07-29), `SelectionSystem.cs:634`. Note the issue-time-optimism itself is the deliberate GDD §6 design (and was rejected as a finding during 11.4's own review); the defect is only the contradictory DOUBLE feedback on the one guard that rejects synchronously at issue time. Cheapest fix: suppress the ack when the local ring-full precheck already knows the order cannot be queued.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-11-4-under-attack-alerts-minimap-pings-event-cues-denial-acknowledgment-feedback.md`
+  summary: Alt+LMB on the minimap drops a ping and returns, but the drag branch below tests only the left-button mask — so holding Alt+LMB and moving even one pixel still pans the camera to that minimap point, yanking the view to wherever the player just pinged.
+  evidence: Found by the post-merge ultra-review (2026-07-29), `MinimapBridge.cs:248`. Fix shape: track that the press was consumed as a ping and skip the pan/drag branch until the button releases. Currently unobservable in-game because the minimap panel renders off-screen at 1920x1080 (separate ledger entry above).

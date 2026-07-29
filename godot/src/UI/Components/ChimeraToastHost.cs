@@ -1,4 +1,5 @@
 #nullable enable
+using System;
 using System.Collections.Generic;
 using Godot;
 using ProjectChimera.UI.Theme;
@@ -36,7 +37,7 @@ namespace ProjectChimera.UI.Components
         // dismissals can't stack competing y-tweens on one toast (3.1c review). Slide-in/out use position:x.
         private readonly Dictionary<Control, Tween> _reflowTweens = new();
 
-        /// <summary>DW-313 (Story 11.4): per-toast lifetime bookkeeping so a same-(title,variant) toast can COALESCE
+        /// <summary>DW-313 (Story 11.4): per-toast lifetime bookkeeping so a same-(title, message, variant) toast can COALESCE
         /// (bump a count + restart its auto-dismiss lifetime) instead of adding a new one. Each live toast has exactly
         /// one entry; removed on dismiss.</summary>
         private sealed class ToastLife
@@ -62,13 +63,12 @@ namespace ProjectChimera.UI.Components
         /// the left and auto-dismissing after <paramref name="seconds"/>.
         /// </summary>
         /// <summary>Show a toast. Returns TRUE when a NEW toast was added, FALSE when it coalesced into an existing
-        /// same-(title,variant) toast (P7: the caller can suppress a duplicate sound when it coalesced).</summary>
+        /// same-(title, message, variant) toast (P7: the caller can suppress a duplicate sound when it coalesced).</summary>
         public bool Show(string title, string msg, ToastVariant variant = ToastVariant.Default, float seconds = 4f)
         {
-            // DW-313: COALESCE a same-(title,variant) toast — bump its count, REFRESH its message to the newest, and
-            // restart its lifetime — instead of stacking a duplicate that would march the stack off-screen under a
-            // repeated identity (e.g. a sustained under-attack raid, or rapid denials on one busy building). P2: the
-            // refresh means the CURRENT reason is shown, never the stale first one.
+            // DW-313: COALESCE a same-(title, message, variant) toast — bump its count and restart its lifetime —
+            // instead of stacking a duplicate that would march the stack off-screen under a repeated identity (e.g. a
+            // sustained under-attack raid, or the same denial spammed on one busy building).
             if (TryCoalesce(title, msg, variant, seconds)) return false;
 
             var toast = BuildToast(title, msg, variant, out Label msgLabel);
@@ -109,17 +109,26 @@ namespace ProjectChimera.UI.Components
             return true; // a new toast was added
         }
 
-        /// <summary>DW-313: if a live toast already shows this (title, variant), bump its count, REFRESH its message to
-        /// <paramref name="msg"/> (P2 — show the CURRENT reason, not the stale first one), and restart its auto-dismiss
-        /// lifetime. Returns true when a match was coalesced (so Show adds nothing).</summary>
+        /// <summary>DW-313: if a live toast already shows this exact (title, message, variant), bump its count and
+        /// restart its auto-dismiss lifetime. Returns true when a match was coalesced (so Show adds nothing).
+        ///
+        /// <para>Review fix: the identity previously keyed on (title, variant) alone and OVERWROTE the message with the
+        /// newest one. Every caller that reuses a title across distinct messages silently lost content —
+        /// <c>ObjectiveLogOverlay</c> shows one "New Objective" toast per activated objective, so two activating on the
+        /// same frame rendered as a single toast naming only the second; <c>HeroPickerOverlay</c>'s four "Saved"
+        /// messages collapsed the same way. Keying on the message keeps DW-313's anti-spam behaviour for genuine
+        /// repeats (identical toast fires again → count bump) while distinct messages get their own toast — which is
+        /// also the better denial behaviour, since two different rejection reasons are two things worth reading. The
+        /// <see cref="MaxVisibleToasts"/> cap still bounds the stack when many distinct toasts fire at once.</para>
+        /// </summary>
         private bool TryCoalesce(string title, string msg, ToastVariant variant, float seconds)
         {
             foreach (var kv in _lives)
             {
                 ToastLife e = kv.Value;
-                if (!GodotObject.IsInstanceValid(kv.Key) || e.Title != title || e.Variant != variant) continue;
+                if (!GodotObject.IsInstanceValid(kv.Key) || e.Title != title || e.Variant != variant
+                    || !string.Equals(e.BaseMsg, msg, StringComparison.Ordinal)) continue;
                 e.Count++;
-                e.BaseMsg = msg; // refresh to the newest message so a different denial reason isn't shown as the old one
                 if (GodotObject.IsInstanceValid(e.Msg))
                     e.Msg.Text = $"{e.BaseMsg}  (×{e.Count})";
                 e.Seconds = seconds;

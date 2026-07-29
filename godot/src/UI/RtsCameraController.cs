@@ -221,22 +221,65 @@ namespace ProjectChimera.UI
 
         // ── Story 11.4 (FR-74): viewport gate + minimap camera-box source ────────────────────────────────
 
-        /// <summary>Half of the ground-plane view extent (world units per axis) at the current zoom. Derived from the
-        /// zoom distance so it grows as the player zooms out. A generous factor (slightly larger than the true visible
-        /// rectangle) is intentional for the under-attack gate: it errs toward "on-screen" so a hit the player can
-        /// barely see does not raise an off-screen alert. Presentation-only; no camera behavior changes.</summary>
-        private float ViewHalfExtent() => _zoomDist * 0.85f;
+        /// <summary>How far along a corner ray that never meets the ground plane (it points at or above the horizon —
+        /// reachable at low pitch, where the top of the frustum clears horizontal) we still take a sample. Bounds the
+        /// box instead of letting it run to infinity; comfortably past the 256-unit map so the effect is "treat the
+        /// far distance as visible", which errs toward NOT raising an off-screen alert.</summary>
+        private const float MAX_GROUND_REACH = 512f;
 
         /// <summary>
-        /// Story 11.4 — the current camera view as an axis-aligned world-XZ rectangle centered on the ground pivot.
-        /// Used as the minimap camera-view box source and as the under-attack "outside viewport" gate. Ignores yaw
-        /// (an axis-aligned box is what the minimap draws); the extent is zoom-derived.
+        /// Story 11.4 — the current camera view as an axis-aligned world-XZ rectangle. Used as the minimap
+        /// camera-view box source and as the under-attack "outside viewport" gate.
+        ///
+        /// <para>Review fix: this was a symmetric <c>zoomDist * 0.85</c> square centered on the pivot, which the rig's
+        /// geometry does not produce. At the default pitch the visible ground runs roughly 49 units BEHIND the pivot
+        /// and 225 in FRONT, so the old box was wrong in both directions — it alerted for battles the player was
+        /// watching, and at <see cref="ZoomMax"/> it spanned 255x255 over a 256x256 map, where the alert could never
+        /// fire at all. Now the four viewport corners are projected onto the pivot's ground plane and the true
+        /// footprint's AABB is returned, which tracks pitch, FOV, aspect and yaw for free.</para>
         /// </summary>
         public Rect2 GetViewBounds()
         {
-            float half = ViewHalfExtent();
             Vector3 c = GlobalPosition;
-            return new Rect2(c.X - half, c.Z - half, half * 2f, half * 2f);
+
+            // Headless / not-yet-in-tree fallback: no viewport to project through, so keep the old zoom-derived
+            // square. Only reachable before _Ready or outside a running tree; never on the live gate path.
+            Viewport vp = _camera?.GetViewport();
+            if (vp == null)
+            {
+                float half = _zoomDist * 0.85f;
+                return new Rect2(c.X - half, c.Z - half, half * 2f, half * 2f);
+            }
+
+            Vector2 size = vp.GetVisibleRect().Size;
+            if (size.X <= 0f || size.Y <= 0f)
+            {
+                float half = _zoomDist * 0.85f;
+                return new Rect2(c.X - half, c.Z - half, half * 2f, half * 2f);
+            }
+
+            float minX = float.MaxValue, maxX = float.MinValue;
+            float minZ = float.MaxValue, maxZ = float.MinValue;
+
+            for (int corner = 0; corner < 4; corner++)
+            {
+                var screen = new Vector2((corner & 1) == 0 ? 0f : size.X,
+                                         (corner & 2) == 0 ? 0f : size.Y);
+                Vector3 origin = _camera.ProjectRayOrigin(screen);
+                Vector3 dir    = _camera.ProjectRayNormal(screen);
+
+                // Intersect with the pivot's ground plane (y = c.Y). dir.Y < 0 means the ray descends toward it;
+                // anything else clears the horizon and is clamped to MAX_GROUND_REACH along the ray instead.
+                float t = MAX_GROUND_REACH;
+                if (dir.Y < -0.0001f)
+                    t = Mathf.Min((origin.Y - c.Y) / -dir.Y, MAX_GROUND_REACH);
+
+                Vector3 hit = origin + dir * t;
+                minX = Mathf.Min(minX, hit.X); maxX = Mathf.Max(maxX, hit.X);
+                minZ = Mathf.Min(minZ, hit.Z); maxZ = Mathf.Max(maxZ, hit.Z);
+            }
+
+            return new Rect2(minX, minZ, maxX - minX, maxZ - minZ);
         }
 
         /// <summary>Story 11.4 — is the given world position currently inside the camera view (XZ)? The under-attack

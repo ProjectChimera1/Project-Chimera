@@ -272,6 +272,31 @@ namespace ProjectChimera.Core
             _firstTick = firstTick;
         }
 
+        /// <summary>
+        /// Story 11.3 (SP load) — review fix: re-seed the change-detection snapshots from the RESTORED world/buildings.
+        ///
+        /// <para><see cref="_prevFlags"/> and <see cref="_prevBuildingDone"/> are mid-match-mutable but are NOT
+        /// serialized. <see cref="LoadScenario"/> seeds them from the AUTHORED board, and the save overlay is applied
+        /// afterward — so without this call the director's "previous" snapshot describes the authored map while the
+        /// world describes the saved match. The first resumed tick then reports every player-built building as newly
+        /// completed (and every authored-alive-but-since-died entity as still alive), re-firing non-run_once triggers
+        /// and mutating FOLDED state: a resume that is not byte-identical.</para>
+        ///
+        /// <para>No save-format change is needed because <see cref="UpdateSnapshots"/> is the LAST step of the director
+        /// tick: between ticks the snapshots mirror the world exactly, so re-deriving them from the restored world
+        /// reproduces the saved values. Must be called AFTER the world/building stores are restored.</para>
+        ///
+        /// <para>Slots past the live ranges (entity <c>HighWaterMark</c>, <c>_buildings.Count</c>) are cleared rather
+        /// than restored: <see cref="CollectEvents"/> never reads them, and <see cref="UpdateSnapshots"/> rewrites each
+        /// slot before it can be read, so this matches what a fresh <see cref="LoadScenario"/> already does.</para>
+        /// </summary>
+        public void ReseedChangeDetection(EntityWorld world)
+        {
+            System.Array.Clear(_prevFlags, 0, _prevFlags.Length);
+            System.Array.Clear(_prevBuildingDone, 0, _prevBuildingDone.Length);
+            UpdateSnapshots(world);
+        }
+
         // ── Presentation-layer delegates ──────────────────────────────────────
 
         /// <summary>Requests the presentation layer to spawn units. (unitId, factionSlot, x, z, count).</summary>

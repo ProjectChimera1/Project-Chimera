@@ -580,7 +580,7 @@ namespace ProjectChimera.Core.Persistence
             RestoreAlliances(host.Alliances);
             RestoreTriggerEnabled(host.TriggerEnabled);
             RestoreModifiers(host.Modifiers, table);
-            RestoreDirector(host.ScenarioDirector);
+            RestoreDirector(host.ScenarioDirector, host.World);
             host.Vars.Restore(DslVars);
             RestoreLoopState(host.LoopState);
             RestoreDslEvents(host.DslEvents);
@@ -838,11 +838,17 @@ namespace ProjectChimera.Core.Persistence
             if (lastHost >= 0) m.SetCount(lastHost, slot);
         }
 
-        private void RestoreDirector(ScenarioDirector d)
+        private void RestoreDirector(ScenarioDirector d, EntityWorld w)
         {
             var fired = new bool[DirFired.Length];
             for (int i = 0; i < DirFired.Length; i++) fired[i] = DirFired[i] != 0;
             d.RestoreRuntimeState(fired, DirCooldown, DirFirstTick != 0);
+
+            // Review fix: LoadScenario seeded the director's change-detection snapshots from the AUTHORED board; the
+            // entity/building stores above now hold the SAVED match. Re-derive the snapshots from the restored world
+            // or the first resumed tick emits a spurious building_completed / unit_dies edge for every divergence,
+            // re-firing non-run_once triggers into folded state. Must stay AFTER RestoreEntities/RestoreBuildings.
+            d.ReseedChangeDetection(w);
         }
 
         private void RestoreLoopState(DslLoopState l)

@@ -128,6 +128,16 @@ warnings: [oversized]
 
 ## Review Triage Log
 
+### 2026-07-29 — Post-merge ultra-review follow-up (logged in the 11-4 spec)
+
+A post-merge ultra-review over `ca9da36..e6a3273` found a **high** defect in this story that the five in-story review
+layers missed: the `ScenarioDirector` change-detection snapshots (`_prevFlags` / `_prevBuildingDone`) are not
+serialized and were left seeded from the AUTHORED board after a load, so the first resumed tick re-fired
+`building_completed` for every player-built building — mutating folded state and making this story's byte-identical
+resume claim false in any scenario with building triggers. Fixed by `ScenarioDirector.ReseedChangeDetection`, with a
+load-bearing regression test (`SaveLoad_ResumeByteIdentical_WithMidMatchBuiltBuilding`). Three lower-severity save/load
+findings were deferred to `deferred-work.md`. Full triage lives in the 11-4 spec's Review Triage Log.
+
 ### 2026-07-29 — Review pass
 - intent_gap: 0
 - bad_spec: 0
