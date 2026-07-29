@@ -80,6 +80,14 @@ namespace ProjectChimera.Multiplayer
         /// lobby-phase packet — it does NOT touch the merged envelope or PROTOCOL_VERSION.
         /// </summary>
         LobbyRoster   = 0x22,
+        /// <summary>
+        /// Story 11.4 (FR-74): a minimap map-ping (Alt-click). Presentation-only display cue — it rides the RELIABLE
+        /// side-channel (like <see cref="Chat"/>), NOT the tick/checksum stream, so it folds NO sim state and needs no
+        /// PROTOCOL_VERSION bump (an additive packet, ignored by an older build). The initiator shows its ping locally
+        /// the instant it clicks; this replicates it to allies. Wire: type(1) + faction(1) + x(4 int LE) + z(4 int LE)
+        /// = 10 bytes (world XZ rounded to whole units — a ping needs no sub-unit precision).
+        /// </summary>
+        MapPing       = 0x23,
         /// <summary>RTT probe sent by either peer. Wire: type(1) + seq(1) + senderMs(4 LE).</summary>
         Ping          = 0x40,
         /// <summary>RTT probe reply. Same wire format as Ping — echoes seq + senderMs back.</summary>
@@ -210,7 +218,10 @@ namespace ProjectChimera.Multiplayer
             // directly; NEVER via .ToFloat() — the 1.12/2.4a packed-int lesson).
             if (cmd == UnitCommand.Train)
             {
-                buildings?.TrainUnitCommand(o.UnitId, expectedFaction, o.TargetX);
+                // Story 11.4 (FR-74): thread the presentation event sink so TrainUnit's afford/prereq/supply/queue-full
+                // rejections surface a guard-sourced OrderDenied cue. `events` null (golden/headless/replay) → silent,
+                // deterministic no-op (the queue is not a SimChecksum input).
+                buildings?.TrainUnitCommand(o.UnitId, expectedFaction, o.TargetX, events);
                 return;
             }
 
@@ -521,7 +532,10 @@ namespace ProjectChimera.Multiplayer
             int count = world.OrderQueueCount[id];
             if (count >= EntityWorld.MAX_ORDER_QUEUE)
             {
-                events?.Push(CombatEventType.OrderDenied, world.Position[id]);
+                // Story 11.4 (FR-74): stamp the commanding unit's faction + a QueueFull reason so MatchAlertBridge
+                // surfaces the ring-full reject as a local denial cue (presentation-only; the deterministic reject is
+                // still the folded OrderQueueCount, so a null sink / replay rejects identically).
+                events?.PushDenied(world.Position[id], world.FactionOf[id], DenialReason.QueueFull);
                 return; // ring full — deterministic reject (mirrors PatrolAppend's "route full → ignore", plus the event)
             }
             int slot = id * EntityWorld.MAX_ORDER_QUEUE + count;
@@ -927,6 +941,34 @@ namespace ProjectChimera.Multiplayer
                 if (s < ready.Length)    ready[s]    = (b & 0x02) != 0;
             }
             slotCount = n;
+            return true;
+        }
+
+        // ── Map-ping helpers (Story 11.4, FR-74) ──────────────────────────────
+
+        /// <summary>Serialise a minimap map-ping (10 bytes): type(1) + faction(1) + x(4 int LE) + z(4 int LE).
+        /// World XZ is rounded to whole units — a display ping needs no sub-unit precision.</summary>
+        public static byte[] MakeMapPing(Core.Faction faction, int worldX, int worldZ)
+        {
+            var buf = new byte[10];
+            buf[0] = (byte)PacketType.MapPing;
+            buf[1] = (byte)faction;
+            int pos = 2;
+            WriteInt(buf, ref pos, worldX);
+            WriteInt(buf, ref pos, worldZ);
+            return buf;
+        }
+
+        /// <summary>Parse a map-ping packet. Returns false (dropped, no crash) if malformed/truncated.</summary>
+        public static bool TryReadMapPing(byte[] buf, int len, out Core.Faction faction, out int worldX, out int worldZ)
+        {
+            faction = Core.Faction.Neutral; worldX = 0; worldZ = 0;
+            if (len < 10) return false;
+            if ((PacketType)buf[0] != PacketType.MapPing) return false;
+            faction = (Core.Faction)buf[1];
+            int pos = 2;
+            worldX = ReadInt(buf, ref pos);
+            worldZ = ReadInt(buf, ref pos);
             return true;
         }
 

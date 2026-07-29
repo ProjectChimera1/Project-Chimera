@@ -51,6 +51,16 @@ namespace ProjectChimera.Core.Definitions
         /// <summary>Death sound key/path under <c>res://resources/audio/sfx/</c>. Null ⇒ today's kill clip.</summary>
         [JsonPropertyName("death_sound")]
         public string? DeathSoundId { get; set; }
+
+        /// <summary>
+        /// Story 11.4 (FR-74) — per-unit order-acknowledgment sound key/path under <c>res://resources/audio/sfx/</c>,
+        /// played at ISSUE time when the player gives this unit an order (SelectionSystem, presentation-only). Null ⇒
+        /// the AudioManager default ack clip. Dual-loader safe: a declared primitive with default null, no enum — it
+        /// rides both the lenient faction loader and the strict <c>Disallow</c> ability loader. Presentation-domain,
+        /// excluded from <c>SimChecksum</c> like every other field here (the sim never reads it).
+        /// </summary>
+        [JsonPropertyName("ack_sound")]
+        public string? AckSoundId { get; set; }
     }
 
     /// <summary>

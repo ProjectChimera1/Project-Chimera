@@ -168,7 +168,9 @@ namespace ProjectChimera.Combat
             int free = FirstFreeSlot(heroSlot);
             if (free < 0)
             {
-                _events?.Push(CombatEventType.OrderDenied, world.Position[entityId]);
+                // Story 11.4 (FR-74, P6): a local hero's full-inventory reject must carry faction + reason so the
+                // denial cue is not filtered out as Neutral/None. Presentation-only (the queue is not folded).
+                _events?.PushDenied(world.Position[entityId], world.FactionOf[entityId], DenialReason.InventoryFull);
                 EndPickupOrder(world, entityId);
                 return;
             }
@@ -188,7 +190,9 @@ namespace ProjectChimera.Combat
                 _items.Held[itemSlot]            = false;
                 _items.CarrierHeroSlot[itemSlot] = ItemStore.NO_CARRIER;
                 _heroes.Inventory[invIdx]        = HeroStore.INVENTORY_EMPTY;
-                _events?.Push(CombatEventType.OrderDenied, world.Position[entityId]);
+                // Story 11.4 (FR-74, P6): modifier-capped reject → same faction+reason stamping as the full-inventory
+                // deny (it denies like a full inventory; the hero cannot take on another stat item).
+                _events?.PushDenied(world.Position[entityId], world.FactionOf[entityId], DenialReason.InventoryFull);
                 EndPickupOrder(world, entityId);
                 return;
             }

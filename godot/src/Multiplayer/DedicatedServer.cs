@@ -498,6 +498,18 @@ namespace ProjectChimera.Multiplayer
                     }
                     break;
 
+                case PacketType.MapPing:
+                    // Story 11.4 (FR-74): relay a minimap map-ping to every connected peer (presentation-only,
+                    // reliable side-channel, never folded). RE-STAMP the sender's authoritative faction from its
+                    // transport slot (never the spoofable client byte), mirroring the Chat relay.
+                    if (TickCommandPacket.TryReadMapPing(data, len, out _, out int pingX, out int pingZ))
+                    {
+                        Faction stampedPing = Server.ServerLobbyPolicy.StampChatFaction(
+                            slot, SLOT_FACTION, ExpectedPlayers);
+                        _transport.BroadcastReliable(TickCommandPacket.MakeMapPing(stampedPing, pingX, pingZ));
+                    }
+                    break;
+
                 case PacketType.LobbyChat:
                     // Story 9.7 (P1): relay PRE-MATCH lobby chat to every connected peer so chat works on the
                     // dedicated/online path (not just P2P). Mirrors the in-match Chat relay: RE-STAMP the sender's

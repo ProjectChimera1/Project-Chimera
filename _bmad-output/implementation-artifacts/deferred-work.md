@@ -3324,3 +3324,19 @@ decision: 2026-07-28 correct-course — rides bundle housekeeping-docs-and-norma
 - source_spec: `_bmad-output/implementation-artifacts/spec-11-3-sp-save-load-full-world-serializer-slots-autosave-format-stability.md`
   summary: Move full-world save serialization + disk I/O off the game thread (background write of an already-captured buffer) to avoid an autosave frame hitch.
   evidence: SaveGameState.CaptureFrom allocates ~70 arrays and SaveGameFile.Write does blocking File.WriteAllBytes + File.Replace, all synchronously in IssueSave / the _Process autosave branch; at the 500-2000 entity target (godot/CLAUDE.md) this will produce a visible hitch on every 120 s autosave.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-11-4-under-attack-alerts-minimap-pings-event-cues-denial-acknowledgment-feedback.md`
+  summary: The in-match minimap panel renders off-screen at 1920×1080 (root Control anchored bottom-right with zero offsets pins its 200×200 body to the (1920,1080) corner), so the minimap — including pre-11.4 dots/fog and the new 11.4 Alt-click pings, camera-view box, and alert flash — is not visible.
+  evidence: Confirmed in-engine during the 11.4 gate drive; the layout lives in `MinimapPhase` (not touched by 11.4), so this is pre-existing. 11.4's minimap LOGIC executes correctly (Alt-click `_gui_input` fires `OnLocalPing`, `AddPing`/`FlashAlert` run, `GetViewBounds` yields valid coords) but the panel itself is off-screen. SURFACE TO ALEC.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-11-4-under-attack-alerts-minimap-pings-event-cues-denial-acknowledgment-feedback.md`
+  summary: The 256-entry `CombatEventQueue` ring silently drops events when full, and denial/completion cues now share that lossy queue with no priority — a large single-tick battle (>256 hit pushes) can drop a denial or training-complete cue.
+  evidence: `CombatEventQueue.MAX_EVENTS=256` with silent drop-when-full (pre-existing); 11.4 adds `OrderDenied`/`TrainingComplete`/`ResearchComplete` consumption to the same queue. Reserving headroom or prioritising non-hit events is a queue-design change beyond this story's scope; self-healing and low-likelihood.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-11-4-under-attack-alerts-minimap-pings-event-cues-denial-acknowledgment-feedback.md`
+  summary: On the P2P transport path `SendMapPing` writes `LocalFaction` into the packet and the receiver trusts `buf[1]` verbatim; a modified P2P client could forge a ping's origin faction/color.
+  evidence: The `DedicatedServer` relay re-stamps the authoritative faction (anti-spoof), but the P2P receive path does not mirror it. MP anti-spoof hardening; MP is not shipping-verified for 1.0.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-11-4-under-attack-alerts-minimap-pings-event-cues-denial-acknowledgment-feedback.md`
+  summary: A pure spectator/observer (whose `EffectiveLocalFaction` clamps to Player1) receives Player1's under-attack toasts, minimap flashes, and denial/ack cues as if they owned that faction.
+  evidence: `MatchAlertBridge.Update` filters on `_localFaction()` which clamps observers to Player1 (pre-existing clamp). Spectator mode is not a 1.0-verified surface; low severity.

@@ -125,7 +125,7 @@ namespace ProjectChimera.Combat
 
             // Emit hit event at the impact position — BEFORE Apply, to preserve event order (Story 1.6 AC2).
             _events?.Push(isSplash ? CombatEventType.SplashHit : CombatEventType.RangedHit,
-                          _store.Position[projId], _store.Feedback[projId]); // Story 2.7 SD-4: the firing unit's override, snapshotted at Spawn
+                          _store.Position[projId], world.FactionOf[targetId], _store.Feedback[projId]); // Story 2.7 SD-4: firing unit's override, snapshotted at Spawn; Story 11.4: stamp the victim faction
 
             // Primary hit uses the armor SNAPSHOT captured at spawn (_store.TargetArmor), not live armor.
             // Story 7.5: the attacker id snapshotted at Spawn rides along for kill attribution (event.killer).
@@ -147,7 +147,7 @@ namespace ProjectChimera.Combat
         private void ApplyBuildingHit(int projId, int buildingId)
         {
             // Impact event at the shell's position — BEFORE damage, preserving event order (Story 1.6 AC2).
-            _events?.Push(CombatEventType.RangedHit, _store.Position[projId], _store.Feedback[projId]);
+            _events?.Push(CombatEventType.RangedHit, _store.Position[projId], _buildings!.FactionOf[buildingId], _store.Feedback[projId]); // Story 11.4: stamp the victim building's faction
             DamageResolver.ApplyToBuilding(_buildings!, buildingId, _store.Damage[projId], _store.DmgType[projId],
                                            _table, _events, _store.Owner[projId], _stats); // Story 11.2 — credit the razing faction
         }

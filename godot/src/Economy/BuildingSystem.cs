@@ -66,6 +66,13 @@ namespace ProjectChimera.Economy
         /// <summary>Story 7.13 — wire the trigger-DSL sim-event feed so completed training raises unit_trained.</summary>
         public void SetDslSimEvents(DslSimEventFeed? feed) => _dslSimEvents = feed;
 
+        // Story 11.4 (FR-74) — the presentation combat-event queue, so SpawnTrainedUnit can push a TrainingComplete cue
+        // when production finishes. Wired by SimulationHost after construction (mirrors SetDslSimEvents); null ⇒ no cue.
+        // The queue is NOT a SimChecksum input, so pushing here cannot move any golden.
+        private CombatEventQueue? _combatEvents;
+        /// <summary>Story 11.4 — wire the presentation combat-event queue so completed training raises a TrainingComplete cue.</summary>
+        public void SetCombatEvents(CombatEventQueue? events) => _combatEvents = events;
+
         public BuildingSystem(BuildingStore buildings, ResourceStore resources,
                               FactionDefinition? p1Faction = null,
                               FactionDefinition? p2Faction = null,
@@ -225,6 +232,11 @@ namespace ProjectChimera.Economy
 
             if (id < 0) return; // EntityWorld full
 
+            // Story 11.4 (FR-74) — production-completion cue: push TrainingComplete at the training building's position,
+            // carrying its faction, so MatchAlertBridge plays the cue ONLY for the local player. Presentation-only (the
+            // queue is not a SimChecksum input) → golden-safe. Null queue (bare tests / golden headless) → no-op.
+            _combatEvents?.Push(CombatEventType.TrainingComplete, _buildings.Position[buildingId], faction);
+
             // Story 7.13 — raise unit_trained at the production-completion site (the trained entity id + its faction
             // slot) into the trigger DSL sim-event feed. Null feed (bare tests) → no-op.
             _dslSimEvents?.Push(DslSimEventFeed.KindUnitTrained, (int)faction - 1, id, 0, 0);
@@ -350,16 +362,24 @@ namespace ProjectChimera.Economy
         /// this building produces, is HARD-REJECTED (returns false, spends nothing, queues nothing) — never train
         /// cross-category from a crafted or stale index (the Story 1.12 faction-guard lesson).
         /// </summary>
-        public bool TrainUnit(int buildingId, ResourceStore resources, int chosenUnitIndex = -1)
+        public bool TrainUnit(int buildingId, ResourceStore resources, int chosenUnitIndex = -1,
+                              CombatEventQueue? events = null)
         {
             if (buildingId < 0 || buildingId >= _buildings.Count) return false;
             if (!_buildings.Alive[buildingId]) return false;
             if (_buildings.IsUnderConstruction(buildingId)) return false;
             var bType = _buildings.Type[buildingId];
             if (bType == BuildingType.CommandCenter) return false;
-            if (_buildings.ProductionQueue[buildingId] != 0) return false; // already training
+            // Already training this building (queue depth 1) — a reason-less denial cue at the building (the player
+            // clicked a busy producer). QueueFull is the closest reason for "can't accept another order right now".
+            if (_buildings.ProductionQueue[buildingId] != 0)
+            {
+                events?.PushDenied(_buildings.Position[buildingId], _buildings.FactionOf[buildingId], DenialReason.QueueFull);
+                return false; // already training
+            }
 
             Faction faction = _buildings.FactionOf[buildingId];
+            FixedVec3 buildingPos = _buildings.Position[buildingId];
 
             // Story 6.8: resolve the category from the placed slot (def-aware for a Custom producer), so a custom
             // building trains its authored produces_category, not the enum switch's Melee default.
@@ -384,11 +404,18 @@ namespace ProjectChimera.Economy
 
             // Tech tree: check prerequisites before spending resources
             if (def != null && !TechTreeChecker.AreMet(_buildings, faction, def.Prerequisites))
+            {
+                events?.PushDenied(buildingPos, faction, DenialReason.PrereqMissing); // Story 11.4: guard-sourced reason
                 return false;
+            }
 
             // Supply cap: don't queue if the faction is already at cap
             byte supply = (byte)(def?.Supply ?? 1);
-            if (!resources.HasSupply(faction, supply)) return false;
+            if (!resources.HasSupply(faction, supply))
+            {
+                events?.PushDenied(buildingPos, faction, DenialReason.SupplyCapped); // Story 11.4: guard-sourced reason
+                return false;
+            }
 
             // Story 4.3: sparse cost-map spend — check-all-then-spend-all over the resolved cost map (generalizes
             // the Story 2.9b ore+crystal atomicity to N resources). A null def (empty-category fallback) has no
@@ -397,7 +424,11 @@ namespace ProjectChimera.Economy
             // never fails CanAfford) — AC2.3, byte-for-byte; a unit whose ore passes but crystal fails still spends
             // NOTHING (Spend's own check-all-then-spend-all).
             var cost = def?.ResolvedCost ?? new Dictionary<string, int> { { "ore", (int)FALLBACK_COST_ORE } };
-            if (!resources.CanAfford(faction, cost)) return false;
+            if (!resources.CanAfford(faction, cost))
+            {
+                events?.PushDenied(buildingPos, faction, DenialReasons.ForUnaffordableCost(resources, faction, cost)); // Story 11.4: which resource is short
+                return false;
+            }
             resources.Spend(faction, cost);
 
             // Persist the CONCRETE unit so SpawnTrainedUnit trains exactly this one (not a re-derived
@@ -435,12 +466,15 @@ namespace ProjectChimera.Economy
         /// one method; the deterministic ore/supply spend therefore happens HERE, at exec-tick, exactly once
         /// (never at UI click-time). Returns true if training was queued.
         /// </summary>
-        public bool TrainUnitCommand(int buildingId, Faction expectedFaction, int chosenUnitIndex)
+        public bool TrainUnitCommand(int buildingId, Faction expectedFaction, int chosenUnitIndex,
+                                     CombatEventQueue? events = null)
         {
             if (buildingId < 0 || buildingId >= _buildings.Count) return false;
             if (!_buildings.Alive[buildingId]) return false;
-            if (_buildings.FactionOf[buildingId] != expectedFaction) return false; // anti-cheat: own building only
-            return TrainUnit(buildingId, _resources, chosenUnitIndex);
+            if (_buildings.FactionOf[buildingId] != expectedFaction) return false; // anti-cheat: own building only (SILENT)
+            // Past the ownership guard this is the player's OWN building, so TrainUnit's affordability/prereq/supply
+            // rejections surface a guard-sourced OrderDenied cue (Story 11.4). `events` null (golden/replay/AI) → silent.
+            return TrainUnit(buildingId, _resources, chosenUnitIndex, events);
         }
 
         /// <summary>
@@ -506,12 +540,12 @@ namespace ProjectChimera.Economy
             // crafted/anti-cheat orders — no feedback, no position leak).
             if (!_resources.CanAffordOre(expectedFaction, costOre))
             {
-                events?.Push(CombatEventType.OrderDenied, _buildings.Position[buildingId]);
+                events?.PushDenied(_buildings.Position[buildingId], expectedFaction, DenialReason.NeedOre); // Story 11.4
                 return false;
             }
             if (!_resources.CanAffordCrystal(expectedFaction, costCrystal))
             {
-                events?.Push(CombatEventType.OrderDenied, _buildings.Position[buildingId]);
+                events?.PushDenied(_buildings.Position[buildingId], expectedFaction, DenialReason.NeedCrystal); // Story 11.4
                 return false;
             }
             _resources.SpendOre(expectedFaction, costOre);
@@ -552,20 +586,20 @@ namespace ProjectChimera.Economy
             // Past the ownership guard the order references the player's OWN building, so a subsequent rejection surfaces
             // a presentation-only OrderDenied cue at the shop (no cross-faction position leak).
             FixedVec3 shopPos = _buildings.Position[buildingId];
-            if (_buildings.IsUnderConstruction(buildingId)) { Deny(events, shopPos); return false; }
-            if (!_buildings.SellsItems[buildingId])          { Deny(events, shopPos); return false; }
+            if (_buildings.IsUnderConstruction(buildingId)) { Deny(events, shopPos, expectedFaction, DenialReason.InvalidTarget); return false; }
+            if (!_buildings.SellsItems[buildingId])          { Deny(events, shopPos, expectedFaction, DenialReason.InvalidTarget); return false; }
 
             string[] stock = _buildings.ShopStock[buildingId] ?? System.Array.Empty<string>();
-            if (stockIndex < 0 || stockIndex >= stock.Length) { Deny(events, shopPos); return false; }
+            if (stockIndex < 0 || stockIndex >= stock.Length) { Deny(events, shopPos, expectedFaction, DenialReason.InvalidTarget); return false; }
 
             int defIndex = items.Registry.IndexOf(stock[stockIndex]);
-            if (defIndex < 0) { Deny(events, shopPos); return false; } // dangling stock id (validation should have caught it)
+            if (defIndex < 0) { Deny(events, shopPos, expectedFaction, DenialReason.InvalidTarget); return false; } // dangling stock id (validation should have caught it)
             ItemDefinition? def = items.Registry.TryGet(defIndex);
-            if (def == null) { Deny(events, shopPos); return false; }
+            if (def == null) { Deny(events, shopPos, expectedFaction, DenialReason.InvalidTarget); return false; }
 
             // Buyer: a live hero owned by the same faction.
-            if (!items.TryResolveHero(heroEntityId, out int heroSlot)) { Deny(events, shopPos); return false; }
-            if (items.HeroFaction(heroEntityId) != expectedFaction)    { Deny(events, shopPos); return false; }
+            if (!items.TryResolveHero(heroEntityId, out int heroSlot)) { Deny(events, shopPos, expectedFaction, DenialReason.InvalidTarget); return false; }
+            if (items.HeroFaction(heroEntityId) != expectedFaction)    { Deny(events, shopPos, expectedFaction, DenialReason.InvalidTarget); return false; }
 
             // Proximity: the buyer must be within shop_radius of the shop (long-widened raw squared distance — cannot
             // overflow on a map-sized separation; the ItemSystem pickup-proximity form). Anti-cheat, not just a UI gate.
@@ -576,14 +610,14 @@ namespace ProjectChimera.Economy
             long dzr = (long)hp.Z.Raw - shopPos.Z.Raw;
             long sqrDist = ((dxr * dxr) >> 16) + ((dzr * dzr) >> 16);
             long rr = ((long)radius.Raw * radius.Raw) >> 16;
-            if (sqrDist > rr) { Deny(events, shopPos); return false; }
+            if (sqrDist > rr) { Deny(events, shopPos, expectedFaction, DenialReason.OutOfRange); return false; }
 
             // Room BEFORE any spend, so a rejected buy is a pure no-op.
-            if (!items.HeroHasFreeSlot(heroSlot)) { Deny(events, shopPos); return false; }
+            if (!items.HeroHasFreeSlot(heroSlot)) { Deny(events, shopPos, expectedFaction, DenialReason.InventoryFull); return false; }
 
             // Affordability: check BOTH before debiting EITHER (the partial-spend contract).
-            if (!resources.CanAffordOre(expectedFaction, def.CostOre))     { Deny(events, shopPos); return false; }
-            if (!resources.CanAffordCrystal(expectedFaction, def.CostCrystal)) { Deny(events, shopPos); return false; }
+            if (!resources.CanAffordOre(expectedFaction, def.CostOre))     { Deny(events, shopPos, expectedFaction, DenialReason.NeedOre); return false; }
+            if (!resources.CanAffordCrystal(expectedFaction, def.CostCrystal)) { Deny(events, shopPos, expectedFaction, DenialReason.NeedCrystal); return false; }
             resources.SpendOre(expectedFaction, def.CostOre);
             resources.SpendCrystal(expectedFaction, def.CostCrystal);
 
@@ -593,15 +627,17 @@ namespace ProjectChimera.Economy
                 // Item store full (astronomically unlikely — free-slot already passed). Refund atomically → net zero.
                 resources.AddOre(expectedFaction, def.CostOre);
                 resources.AddCrystal(expectedFaction, def.CostCrystal);
-                Deny(events, shopPos);
+                Deny(events, shopPos, expectedFaction, DenialReason.InventoryFull);
                 return false;
             }
             events?.Push(CombatEventType.ItemPickedUp, hp); // reuse the pickup event for a bought item landing in inventory
             return true;
         }
 
-        private static void Deny(CombatEventQueue? events, FixedVec3 pos) =>
-            events?.Push(CombatEventType.OrderDenied, pos);
+        // Story 11.4 (FR-74): guard-sourced denial — the rejecting guard stamps the SPECIFIC reason it just computed
+        // plus the acting faction onto the OrderDenied event; the reactive UI renders it, never re-derives it.
+        private static void Deny(CombatEventQueue? events, FixedVec3 pos, Faction faction, DenialReason reason) =>
+            events?.PushDenied(pos, faction, reason);
 
         /// <summary>Story 3.16: resolve the authored shop capability + stock + radius for the faction's building
         /// <paramref name="type"/> at placement (mirrors <see cref="ResolveRevivesHeroes"/>). Null faction/def ⇒ no shop.
@@ -748,7 +784,8 @@ namespace ProjectChimera.Economy
         /// insufficient ore, unmet prerequisites, or invalid worker).
         /// </summary>
         public int QueueWorkerBuild(int workerId, BuildingType type, FixedVec3 position,
-                                    Faction faction, ResourceStore resources, EntityWorld world)
+                                    Faction faction, ResourceStore resources, EntityWorld world,
+                                    CombatEventQueue? events = null)
         {
             if (!world.IsAlive(workerId)) return -1;
             if (world.GatherState[workerId] == GatherState.Inactive) return -1; // not a worker
@@ -756,12 +793,28 @@ namespace ProjectChimera.Economy
             // Prerequisite check
             BuildingDefinition? bdef = GetFactionDef(faction)?.GetBuilding(TechTreeChecker.BuildingTypeId(type));
             string[]? prereqs = bdef?.Prerequisites;
-            if (!TechTreeChecker.AreMet(_buildings, faction, prereqs)) return -1;
+            if (!TechTreeChecker.AreMet(_buildings, faction, prereqs))
+            {
+                events?.PushDenied(position, faction, DenialReason.PrereqMissing); // Story 11.4: guard-sourced reason
+                return -1;
+            }
 
             // Story 4.3: sparse cost-map spend (was ore-only — buildings never charged crystal, a latent gap this
             // generalization fixes as a direct consequence of routing through the real resolved cost map).
             var cost = GetBuildingCost(type, faction);
-            if (!resources.Spend(faction, cost)) return -1;
+            if (!resources.CanAfford(faction, cost))
+            {
+                events?.PushDenied(position, faction, DenialReasons.ForUnaffordableCost(resources, faction, cost)); // Story 11.4
+                return -1;
+            }
+            // Keep placement atomic on the actual spend: CanAfford named the denial reason above, but STILL honour
+            // Spend's own check-all-then-spend-all result (P8) so a future spend-fails-after-afford change can never
+            // leak a free build. A false here spends nothing (ResourceStore's contract).
+            if (!resources.Spend(faction, cost))
+            {
+                events?.PushDenied(position, faction, DenialReasons.ForUnaffordableCost(resources, faction, cost));
+                return -1;
+            }
 
             // Place building (starts under construction). Story 3.14: carry the authored revives_heroes capability so a
             // player-built revive building (not just scenario-placed) actually works. Story 4.1 (AC1/AC2): thread the

@@ -27,10 +27,29 @@ namespace ProjectChimera.UI.Components
         private const int LeftMargin = ComponentMetrics.ToastHostMargin;
         private const int TopMargin = ComponentMetrics.ToastHostMargin;
 
+        /// <summary>DW-313 (Story 11.4): the hard cap on visible toasts. Once exceeded, the oldest is evicted through
+        /// the existing dismiss slide-out so the stack never marches off-screen (NextY never sums an unbounded stack).</summary>
+        public const int MaxVisibleToasts = 5;
+
         private readonly List<Control> _toasts = new();
         // Active per-toast reflow (position:y) tweens, killed + rebuilt each Reflow so a rapid burst of
         // dismissals can't stack competing y-tweens on one toast (3.1c review). Slide-in/out use position:x.
         private readonly Dictionary<Control, Tween> _reflowTweens = new();
+
+        /// <summary>DW-313 (Story 11.4): per-toast lifetime bookkeeping so a same-(title,variant) toast can COALESCE
+        /// (bump a count + restart its auto-dismiss lifetime) instead of adding a new one. Each live toast has exactly
+        /// one entry; removed on dismiss.</summary>
+        private sealed class ToastLife
+        {
+            public string Title = "";
+            public ToastVariant Variant;
+            public Label Msg = null!;
+            public string BaseMsg = "";
+            public int Count = 1;
+            public float Seconds;
+            public Tween? Life;
+        }
+        private readonly Dictionary<Control, ToastLife> _lives = new();
 
         /// <summary>Create a toast host. Add it to the tree once; it lives for the UI session.</summary>
         public static ChimeraToastHost Create()
@@ -42,15 +61,26 @@ namespace ProjectChimera.UI.Components
         /// Show a toast: a display-font title + a smaller message, a variant-colored left bar, sliding in from
         /// the left and auto-dismissing after <paramref name="seconds"/>.
         /// </summary>
-        public void Show(string title, string msg, ToastVariant variant = ToastVariant.Default, float seconds = 4f)
+        /// <summary>Show a toast. Returns TRUE when a NEW toast was added, FALSE when it coalesced into an existing
+        /// same-(title,variant) toast (P7: the caller can suppress a duplicate sound when it coalesced).</summary>
+        public bool Show(string title, string msg, ToastVariant variant = ToastVariant.Default, float seconds = 4f)
         {
-            var toast = BuildToast(title, msg, variant);
+            // DW-313: COALESCE a same-(title,variant) toast — bump its count, REFRESH its message to the newest, and
+            // restart its lifetime — instead of stacking a duplicate that would march the stack off-screen under a
+            // repeated identity (e.g. a sustained under-attack raid, or rapid denials on one busy building). P2: the
+            // refresh means the CURRENT reason is shown, never the stale first one.
+            if (TryCoalesce(title, msg, variant, seconds)) return false;
+
+            var toast = BuildToast(title, msg, variant, out Label msgLabel);
             AddChild(toast);
             toast.ResetSize();
 
             float restX = LeftMargin;
             float y = NextY();
             _toasts.Add(toast);
+
+            var entry = new ToastLife { Title = title, Variant = variant, Msg = msgLabel, BaseMsg = msg, Seconds = seconds };
+            _lives[toast] = entry;
 
             double dur = ChimeraMotion.Seconds(ComponentMetrics.ToastSlideMs);
             if (dur <= 0.0)
@@ -69,10 +99,45 @@ namespace ProjectChimera.UI.Components
                 tw.TweenProperty(toast, "modulate", Colors.White, dur);
             }
 
-            // Auto-dismiss after the lifetime (the interval is a timeout, not motion — always applied).
+            StartLife(toast, entry);
+
+            // DW-313: cap the stack — evict the OLDEST through the existing dismiss slide-out + Reflow path once we
+            // exceed the cap, so NextY never sums an unbounded stack and the newest toast is always fully on-screen.
+            while (_toasts.Count > MaxVisibleToasts)
+                Dismiss(_toasts[0]);
+
+            return true; // a new toast was added
+        }
+
+        /// <summary>DW-313: if a live toast already shows this (title, variant), bump its count, REFRESH its message to
+        /// <paramref name="msg"/> (P2 — show the CURRENT reason, not the stale first one), and restart its auto-dismiss
+        /// lifetime. Returns true when a match was coalesced (so Show adds nothing).</summary>
+        private bool TryCoalesce(string title, string msg, ToastVariant variant, float seconds)
+        {
+            foreach (var kv in _lives)
+            {
+                ToastLife e = kv.Value;
+                if (!GodotObject.IsInstanceValid(kv.Key) || e.Title != title || e.Variant != variant) continue;
+                e.Count++;
+                e.BaseMsg = msg; // refresh to the newest message so a different denial reason isn't shown as the old one
+                if (GodotObject.IsInstanceValid(e.Msg))
+                    e.Msg.Text = $"{e.BaseMsg}  (×{e.Count})";
+                e.Seconds = seconds;
+                StartLife(kv.Key, e); // restart the lifetime (kills the prior one first)
+                return true;
+            }
+            return false;
+        }
+
+        /// <summary>Start (or restart) a toast's auto-dismiss timer. Kills any prior life tween first so a coalesce
+        /// refresh cannot leave two competing timers that dismiss the toast early.</summary>
+        private void StartLife(Control toast, ToastLife entry)
+        {
+            if (entry.Life != null && entry.Life.IsValid()) entry.Life.Kill();
             var life = CreateTween();
-            life.TweenInterval(seconds);
+            life.TweenInterval(entry.Seconds);
             life.TweenCallback(Callable.From(() => Dismiss(toast)));
+            entry.Life = life;
         }
 
         // Y for the next toast = below the current stack.
@@ -88,6 +153,11 @@ namespace ProjectChimera.UI.Components
         {
             if (!GodotObject.IsInstanceValid(toast) || !_toasts.Contains(toast)) return;
             _toasts.Remove(toast);
+            if (_lives.TryGetValue(toast, out ToastLife? e))
+            {
+                if (e.Life != null && e.Life.IsValid()) e.Life.Kill(); // stop a pending auto-dismiss on an already-evicted toast
+                _lives.Remove(toast);
+            }
 
             double dur = ChimeraMotion.Seconds(ComponentMetrics.ToastSlideMs);
             if (dur <= 0.0) { toast.QueueFree(); Reflow(); return; }
@@ -128,7 +198,7 @@ namespace ProjectChimera.UI.Components
             }
         }
 
-        private PanelContainer BuildToast(string title, string msg, ToastVariant variant)
+        private PanelContainer BuildToast(string title, string msg, ToastVariant variant, out Label msgLabel)
         {
             // Faceted surface with ZERO content margin so the accent bar is flush + full-height; the content
             // column carries its own padding.
@@ -199,6 +269,7 @@ namespace ProjectChimera.UI.Components
             textCol.AddChild(msgLbl);
             row.AddChild(textCol);
 
+            msgLabel = msgLbl; // DW-313: expose the message label so a coalesce refresh can update its text
             return pc;
         }
 

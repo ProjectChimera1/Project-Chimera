@@ -42,6 +42,13 @@ namespace ProjectChimera.UI
         private const string SND_BLDG_PLACED   = SFX_ROOT + "building_placed.ogg";
         private const string SND_TRAIN_DONE    = SFX_ROOT + "training_complete.ogg";
         private const string SND_UI_CLICK      = SFX_ROOT + "ui_click.ogg";
+        // Story 11.4 (FR-74) — match-feedback cues. All optional (graceful-silent until assets ship — the story's
+        // scope is the hook + a default clip, not voice-set production).
+        private const string SND_UNDER_ATTACK  = SFX_ROOT + "under_attack.ogg";
+        private const string SND_DENIED        = SFX_ROOT + "order_denied.ogg";
+        private const string SND_ORDER_ACK     = SFX_ROOT + "order_ack.ogg";
+        private const string SND_RESEARCH_DONE = SFX_ROOT + "research_complete.ogg";
+        private const string SND_PING          = SFX_ROOT + "minimap_ping.ogg";
 
         // ── State ─────────────────────────────────────────────────────────────
 
@@ -62,6 +69,12 @@ namespace ProjectChimera.UI
         private AudioStream? _sndBldgPlaced;
         private AudioStream? _sndTrainDone;
         private AudioStream? _sndUiClick;
+        // Story 11.4 (FR-74) match-feedback cues.
+        private AudioStream? _sndUnderAttack;
+        private AudioStream? _sndDenied;
+        private AudioStream? _sndOrderAck;
+        private AudioStream? _sndResearchDone;
+        private AudioStream? _sndPing;
 
         // ── Initialisation ────────────────────────────────────────────────────
 
@@ -85,9 +98,14 @@ namespace ProjectChimera.UI
             _sndBldgPlaced = TryLoad(SND_BLDG_PLACED);
             _sndTrainDone  = TryLoad(SND_TRAIN_DONE);
             _sndUiClick    = TryLoad(SND_UI_CLICK);
+            _sndUnderAttack  = TryLoad(SND_UNDER_ATTACK);
+            _sndDenied       = TryLoad(SND_DENIED);
+            _sndOrderAck     = TryLoad(SND_ORDER_ACK);
+            _sndResearchDone = TryLoad(SND_RESEARCH_DONE);
+            _sndPing         = TryLoad(SND_PING);
 
             int loaded = CountLoaded();
-            GD.Print($"[AudioManager] Ready — {loaded}/{7} SFX streams loaded from {SFX_ROOT}");
+            GD.Print($"[AudioManager] Ready — {loaded}/{12} SFX streams loaded from {SFX_ROOT}");
         }
 
         /// <summary>
@@ -149,6 +167,33 @@ namespace ProjectChimera.UI
 
         /// <summary>Play a soft UI click for button interactions.</summary>
         public void PlayUiClick() => PlayOneShot(_sndUiClick, 0.7f, false);
+
+        // ── Story 11.4 (FR-74) match-feedback cues (all graceful-silent until assets ship) ────────────────
+
+        /// <summary>Play the under-attack alert cue (a local unit/building took a hit off-screen).</summary>
+        public void PlayUnderAttack() => PlayOneShot(_sndUnderAttack, 1.0f, false);
+
+        /// <summary>Play the order-denied cue (a local Train/Build/Research/Cast/Shop order was rejected).</summary>
+        public void PlayDenied() => PlayOneShot(_sndDenied, 0.9f, false);
+
+        /// <summary>Play a research-complete cue.</summary>
+        public void PlayResearchComplete() => PlayOneShot(_sndResearchDone, 1.0f, false);
+
+        /// <summary>Play the minimap-ping cue.</summary>
+        public void PlayPing() => PlayOneShot(_sndPing, 0.9f, false);
+
+        /// <summary>Play the order-acknowledgment cue at ISSUE time. Resolves the selected unit's per-unit
+        /// <paramref name="ackSoundId"/> (from its <c>CombatFeedbackProfile.AckSoundId</c>) if authored, else the
+        /// default ack clip. Both graceful-silent when the asset is absent (the story ships the hook + one default).</summary>
+        public void PlayOrderAck(string? ackSoundId)
+        {
+            if (!string.IsNullOrEmpty(ackSoundId))
+            {
+                PlayOneShot(ResolveOverrideStream(ackSoundId), 0.8f, false); // graceful-silent if the override asset is absent
+                return;
+            }
+            PlayOneShot(_sndOrderAck, 0.8f, false);
+        }
 
         // ── Pool ──────────────────────────────────────────────────────────────
 
@@ -229,6 +274,11 @@ namespace ProjectChimera.UI
             if (_sndBldgPlaced != null) n++;
             if (_sndTrainDone  != null) n++;
             if (_sndUiClick    != null) n++;
+            if (_sndUnderAttack  != null) n++;
+            if (_sndDenied       != null) n++;
+            if (_sndOrderAck     != null) n++;
+            if (_sndResearchDone != null) n++;
+            if (_sndPing         != null) n++;
             return n;
         }
     }

@@ -550,6 +550,7 @@ namespace ProjectChimera.Core
                 new ObjectiveLogOverlayPhase(_ctx), // Story 7.14 — in-match quest log (read rail) + skippable briefing (own CanvasLayers)
                 new TriggerDebugOverlayPhase(_ctx), // Story 7.15 — trigger-debug overlay (variable watch + fired-log + fire counters + enabled; own CanvasLayer)
                 new MinimapPhase(_ctx),
+                new MatchAlertPhase(_ctx), // Story 11.4 (FR-74) — match-feedback bridge + order markers + shared toast host
                 new TerrainBrushPhase(_ctx),
                 new ScenarioLoadPhase(_ctx),
                 new RegionToolPhase(_ctx),   // Story 6.4 — after ScenarioLoad so _ctx.Scenario exists to mutate
@@ -988,13 +989,24 @@ namespace ProjectChimera.Core
             {
                 if (mb.ButtonIndex == MouseButton.Left)
                 {
+                    Faction buildFaction = _ctx.Lockstep?.EffectiveLocalFaction ?? Faction.Player1;
                     if (RaycastFloor(mb.Position, out Vector3 hit))
                     {
                         var pos = new FixedVec3(
                             Fixed.FromFloat(hit.X), Fixed.Zero, Fixed.FromFloat(hit.Z));
                         _buildSys.QueueWorkerBuild(
                             _pendingBuildWorkerId, _pendingBuildType, pos,
-                            _ctx.Lockstep?.EffectiveLocalFaction ?? Faction.Player1, _resources, _world);
+                            buildFaction, _resources, _world,
+                            _ctx.CombatEvents); // Story 11.4 (FR-74): surface a guard-sourced build denial cue
+                    }
+                    else
+                    {
+                        // Story 11.4 review (P3): clicking off a valid build surface (no ground hit) is an invalid
+                        // placement — surface the InvalidLocation cue from this UI placement-denial path (the sim guard
+                        // never sees a location for a raycast miss). Presentation-only (the queue is not folded).
+                        FixedVec3 wp = _world.IsAlive(_pendingBuildWorkerId)
+                            ? _world.Position[_pendingBuildWorkerId] : FixedVec3.Zero;
+                        _ctx.CombatEvents.PushDenied(wp, buildFaction, DenialReason.InvalidLocation);
                     }
                     CancelBuildPlacement();
                     GetViewport().SetInputAsHandled();
@@ -1412,6 +1424,11 @@ namespace ProjectChimera.Core
                     _buildGhost.Visible = true;
                 }
             }
+
+            // Story 11.4 (FR-74): drain the match-feedback bridge READ-ONLY here in the presentation tail — BEFORE
+            // CombatFeedbackBridge (a child Node, so its _Process runs after this parent _Process) performs the single
+            // CombatEventQueue.Clear(). Mirrors the AudioManager read-only-sibling posture; never clears the queue.
+            _ctx.MatchAlert?.Update(delta);
 
             // Drain LLM callbacks and update toast notification.
             _ctx.TriggerPanel.Update();
@@ -2289,6 +2306,12 @@ namespace ProjectChimera.Core
 
             // 3. Clear every store to its authored-start (post-ctor) state — in place, no host reconstruction.
             _host.ClearForReset();
+
+            // 3-0. Story 11.4 review (P4): reset the match-feedback presentation state on the SAME spine, so a new match
+            //      does not inherit the prior match's under-attack throttle-suppression window or stale minimap
+            //      ping/alert markers (either would silently swallow the first alert of a region in the new match).
+            _ctx.MatchAlert?.ResetForMatch();
+            _ctx.Minimap?.ClearMarkers();
 
             // 3a. DW-138: wipe the shared editor undo/redo history the instant ClearForReset re-mints the stores.
             //     This is past the fail-closed vetoes above, so every id-invalidating path (incl. the build-defect

@@ -135,7 +135,7 @@ namespace ProjectChimera.Economy
             var fdef = GetFactionDef(expectedFaction);
             if (fdef == null || researchIndex < 0 || researchIndex >= ResearchCount(fdef))
             {
-                Deny(buildingPos);
+                Deny(buildingPos, expectedFaction, DenialReason.InvalidTarget);
                 return false;
             }
             ResearchDefinition rdef = fdef.Research[researchIndex];
@@ -144,14 +144,14 @@ namespace ProjectChimera.Economy
             BuildingDefinition? bdef = fdef.GetBuilding(_buildings.DefinitionId[buildingId]);
             if (bdef == null || System.Array.IndexOf(bdef.AvailableResearch ?? System.Array.Empty<string>(), rdef.Id) < 0)
             {
-                Deny(buildingPos);
+                Deny(buildingPos, expectedFaction, DenialReason.InvalidTarget);
                 return false;
             }
 
             // Gate (3): no concurrent order for this faction.
             if (_research.InProgressIndex[f] != -1)
             {
-                Deny(buildingPos);
+                Deny(buildingPos, expectedFaction, DenialReason.QueueFull); // a research is already in progress for this faction
                 return false;
             }
 
@@ -160,7 +160,7 @@ namespace ProjectChimera.Economy
             int nextLevel = _research.CompletedLevels[f][researchIndex];
             if (nextLevel >= rdef.Levels.Count)
             {
-                Deny(buildingPos);
+                Deny(buildingPos, expectedFaction, DenialReason.InvalidTarget); // already fully researched
                 return false;
             }
 
@@ -168,7 +168,7 @@ namespace ProjectChimera.Economy
             // building prerequisite via TechTreeChecker (mirrors 4.8's UNION-of-building/research-ids resolution).
             if (!PrerequisitesMet(fdef, expectedFaction, f, rdef.Prerequisites))
             {
-                Deny(buildingPos);
+                Deny(buildingPos, expectedFaction, DenialReason.PrereqMissing);
                 return false;
             }
 
@@ -180,13 +180,13 @@ namespace ProjectChimera.Economy
             // ResearchCount). Cancel/Complete only ever touch a level THIS gate already validated non-null.
             if (level == null)
             {
-                Deny(buildingPos);
+                Deny(buildingPos, expectedFaction, DenialReason.InvalidTarget);
                 return false;
             }
             IReadOnlyDictionary<string, int> cost = level.Cost ?? EmptyCost;
             if (!_resources.CanAfford(expectedFaction, cost))
             {
-                Deny(buildingPos);
+                Deny(buildingPos, expectedFaction, DenialReasons.ForUnaffordableCost(_resources, expectedFaction, cost));
                 return false;
             }
 
@@ -317,7 +317,7 @@ namespace ProjectChimera.Economy
                 ApplyCumulativeModifier(world, id, faction, f, researchIndex, preserveCurrentHealth: true);
             }
 
-            _events?.Push(CombatEventType.ResearchComplete, _research.StartedAtPosition[f]);
+            _events?.Push(CombatEventType.ResearchComplete, _research.StartedAtPosition[f], faction); // Story 11.4: stamp the actor faction for the local-only completion cue
 
             // Idle — a subsequent Start begins the NEXT level with that level's own cost/time.
             _research.InProgressIndex[f] = -1;
@@ -426,6 +426,8 @@ namespace ProjectChimera.Economy
             return Fixed.FromRaw((int)sum);
         }
 
-        private void Deny(FixedVec3 pos) => _events?.Push(CombatEventType.OrderDenied, pos);
+        // Story 11.4 (FR-74): guard-sourced denial — the rejecting gate stamps the SPECIFIC reason it computed plus the
+        // acting faction; the reactive UI renders it, never re-derives it. `_events` null (golden/replay) → silent.
+        private void Deny(FixedVec3 pos, Faction faction, DenialReason reason) => _events?.PushDenied(pos, faction, reason);
     }
 }

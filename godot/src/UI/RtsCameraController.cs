@@ -218,5 +218,30 @@ namespace ProjectChimera.UI
 
         /// <summary>Returns the internal Camera3D for raycasting.</summary>
         public Camera3D GetCamera() => _camera;
+
+        // ── Story 11.4 (FR-74): viewport gate + minimap camera-box source ────────────────────────────────
+
+        /// <summary>Half of the ground-plane view extent (world units per axis) at the current zoom. Derived from the
+        /// zoom distance so it grows as the player zooms out. A generous factor (slightly larger than the true visible
+        /// rectangle) is intentional for the under-attack gate: it errs toward "on-screen" so a hit the player can
+        /// barely see does not raise an off-screen alert. Presentation-only; no camera behavior changes.</summary>
+        private float ViewHalfExtent() => _zoomDist * 0.85f;
+
+        /// <summary>
+        /// Story 11.4 — the current camera view as an axis-aligned world-XZ rectangle centered on the ground pivot.
+        /// Used as the minimap camera-view box source and as the under-attack "outside viewport" gate. Ignores yaw
+        /// (an axis-aligned box is what the minimap draws); the extent is zoom-derived.
+        /// </summary>
+        public Rect2 GetViewBounds()
+        {
+            float half = ViewHalfExtent();
+            Vector3 c = GlobalPosition;
+            return new Rect2(c.X - half, c.Z - half, half * 2f, half * 2f);
+        }
+
+        /// <summary>Story 11.4 — is the given world position currently inside the camera view (XZ)? The under-attack
+        /// alert fires only when this is FALSE (the player cannot already see the hit).</summary>
+        public bool IsInView(Vector3 worldPos)
+            => GetViewBounds().HasPoint(new Vector2(worldPos.X, worldPos.Z));
     }
 }

@@ -70,6 +70,21 @@ namespace ProjectChimera.UI
         // a null sink still rejects deterministically (the reject reads the folded OrderQueueCount); only the visual is skipped.
         private CombatEventQueue?   _combatEvents  = null;
 
+        // Story 11.4 (FR-74): issue-time order-acknowledgment deps. The ack sound + order-confirmed ground marker fire
+        // LOCALLY on the input frame (masking lockstep delay); the deterministic sim effect still lands at exec-tick.
+        // Both nullable — wired by MatchAlertPhase; a null dep just skips its half of the feedback.
+        private AudioManager?      _audioMgr     = null;
+        private OrderMarkerBridge? _orderMarkers = null;
+        // Own-view faction tint for the order-confirmed marker (matches the minimap own-colour).
+        private static readonly Color OrderMarkerTint = new Color(0.20f, 0.55f, 1.00f);
+
+        /// <summary>Story 11.4: inject the issue-time acknowledgment deps (audio cue + ground-marker pool).</summary>
+        public void SetFeedbackDeps(AudioManager audio, OrderMarkerBridge markers)
+        {
+            _audioMgr     = audio;
+            _orderMarkers = markers;
+        }
+
         // Story 9.5: the local player's faction, late-bound. Defaults to Player1 so every offline/single-player path and
         // any un-wired instance stay byte-identical to today; CameraPhase wires it to _ctx.Lockstep?.EffectiveLocalFaction
         // (offline/spectator clamps to Player1) so a client assigned Player2..Player8 selects/commands/casts on its OWN
@@ -610,6 +625,37 @@ namespace ProjectChimera.UI
         /// <summary>Spacing (world units) between adjacent units' destinations in a formation (Story 1.13).</summary>
         private static readonly Fixed FORMATION_SPACING = Fixed.FromInt(2);
 
+        // ── Story 11.4 (FR-74): issue-time order acknowledgment ─────────────────────────────
+
+        /// <summary>Fire the issue-time acknowledgment: an ack sound (the primary selected unit's authored
+        /// <c>AckSoundId</c>, else the default) + a short-lived order-confirmed ground marker at
+        /// <paramref name="worldTarget"/>. No-op when nothing is selected (no selection → no ack). Presentation-only —
+        /// fired on the input frame while the deterministic order still executes ticks later.</summary>
+        private void ConfirmOrder(Vector3 worldTarget)
+        {
+            string? ack = null;
+            bool any = false;
+            foreach (int id in _selectedList)
+            {
+                if (!_world.IsAlive(id)) continue;
+                any = true;
+                ack = _world.FeedbackProfile[id]?.AckSoundId; // primary selected unit's per-unit ack sound
+                break;
+            }
+            if (!any) return;
+            _audioMgr?.PlayOrderAck(ack);
+            _orderMarkers?.Spawn(worldTarget, OrderMarkerTint);
+        }
+
+        /// <summary>World position of the first alive selected unit (marker anchor for a stationary order), or the
+        /// origin if the selection is empty.</summary>
+        private Vector3 PrimarySelectionPos()
+        {
+            foreach (int id in _selectedList)
+                if (_world.IsAlive(id)) return _world.Position[id].ToGodotVector3();
+            return Vector3.Zero;
+        }
+
         private void IssueMoveCommand(Vector2 screenPos, bool queued = false)
         {
             Vector3 target;
@@ -653,6 +699,7 @@ namespace ProjectChimera.UI
                     _world.AttackTarget[id]  = -1;
                 }
             }
+            ConfirmOrder(target); // Story 11.4: issue-time ack + ground marker at the move target
         }
 
         /// <summary>
@@ -716,6 +763,7 @@ namespace ProjectChimera.UI
                 _world.CommandState[id] = UnitCommand.Stop;
                 _pathSystem?.CancelPath(id);
             }
+            ConfirmOrder(PrimarySelectionPos()); // Story 11.4: issue-time ack (marker at the selection)
             GD.Print($"[Selection] Stop issued to {_selectedList.Count} unit(s).");
         }
 
@@ -735,6 +783,7 @@ namespace ProjectChimera.UI
                 _world.CommandState[id] = UnitCommand.HoldPosition;
                 _pathSystem?.CancelPath(id);
             }
+            ConfirmOrder(PrimarySelectionPos()); // Story 11.4: issue-time ack (marker at the selection)
             GD.Print($"[Selection] Hold Position issued to {_selectedList.Count} unit(s).");
         }
 
@@ -780,6 +829,7 @@ namespace ProjectChimera.UI
                     _world.AttackTarget[id]  = -1;
                 }
             }
+            ConfirmOrder(target); // Story 11.4: issue-time ack + ground marker at the attack-move target
             GD.Print($"[Selection] Attack-Move issued to {ids.Length} unit(s).");
         }
 
@@ -804,6 +854,7 @@ namespace ProjectChimera.UI
                 var atkOrder = new UnitOrder(id, UnitCommand.AttackTarget, Fixed.FromRaw(enemyId), Fixed.Zero);
                 OrderApplier.Apply(_world, in atkOrder, _world.FactionOf[id]);
             }
+            if (_world.IsAlive(enemyId)) ConfirmOrder(_world.Position[enemyId].ToGodotVector3()); // Story 11.4: ack + marker at the target
             GD.Print($"[Selection] Attack issued on enemy {enemyId} to {_selectedList.Count} unit(s).");
         }
 
@@ -836,6 +887,8 @@ namespace ProjectChimera.UI
                 var atkOrder = new UnitOrder(id, UnitCommand.AttackBuilding, Fixed.FromRaw(packedRef), Fixed.Zero);
                 OrderApplier.Apply(_world, in atkOrder, _world.FactionOf[id]);
             }
+            if (_buildingStore != null && buildingId >= 0 && buildingId < _buildingStore.Count) // Story 11.4: ack + marker at the target building
+                ConfirmOrder(_buildingStore.Position[buildingId].ToGodotVector3());
             GD.Print($"[Selection] Attack-building issued on building {buildingId} to {_selectedList.Count} unit(s).");
         }
 
@@ -859,6 +912,7 @@ namespace ProjectChimera.UI
                 var order = new UnitOrder(id, cmd, Fixed.FromFloat(dest.X), Fixed.FromFloat(dest.Z));
                 OrderApplier.Apply(_world, in order, _world.FactionOf[id]);
             }
+            ConfirmOrder(target); // Story 11.4: issue-time ack + ground marker at the patrol waypoint
             GD.Print($"[Selection] Patrol ({(append ? "append" : "new")}) issued to {_selectedList.Count} unit(s).");
         }
 
@@ -876,6 +930,7 @@ namespace ProjectChimera.UI
                 var followOrder = new UnitOrder(id, UnitCommand.Follow, Fixed.FromRaw(friendlyId), Fixed.Zero);
                 OrderApplier.Apply(_world, in followOrder, _world.FactionOf[id]);
             }
+            if (_world.IsAlive(friendlyId)) ConfirmOrder(_world.Position[friendlyId].ToGodotVector3()); // Story 11.4: ack + marker at the escorted unit
             GD.Print($"[Selection] Follow issued on friendly {friendlyId} to {_selectedList.Count} unit(s).");
         }
 
@@ -967,6 +1022,8 @@ namespace ProjectChimera.UI
                 OrderApplier.Apply(_world, in order, _localFaction(), buildings: _buildSys);
             }
 
+            _audioMgr?.PlayOrderAck(null);              // Story 11.4: rally is a building order (no unit selection) → default ack
+            _orderMarkers?.Spawn(hit, OrderMarkerTint); // + order-confirmed marker at the rally point
             GD.Print($"[Selection] Rally point → building {buildingId} at ({hit.X:F1}, {hit.Z:F1})");
         }
 

@@ -78,6 +78,10 @@ namespace ProjectChimera.Multiplayer
         /// <summary>Fires when a chat message arrives. Args: (senderFaction, message).</summary>
         public event Action<Faction, string>? OnChatReceived;
 
+        /// <summary>Story 11.4 (FR-74): fires when an ally's minimap map-ping arrives on the reliable side-channel.
+        /// Args: (senderFaction, worldX, worldZ). Presentation-only — NOT in the tick/checksum stream.</summary>
+        public event Action<Faction, int, int>? OnMapPingReceived;
+
         /// <summary>
         /// Story 9.6 — fires when the server broadcasts a <see cref="PacketType.DropDirective"/>: a peer disconnected
         /// mid-match and its faction's slot is being frozen (empty commands injected each tick, sim continues).
@@ -526,6 +530,18 @@ namespace ProjectChimera.Multiplayer
         }
 
         /// <summary>
+        /// Story 11.4 (FR-74): replicate a minimap map-ping to the other peers over the RELIABLE side-channel (the
+        /// <see cref="SendChat"/> precedent). Presentation-only — it carries NO sim state into the tick/checksum, folds
+        /// nothing, and needs no PROTOCOL_VERSION bump (an additive packet). The initiator already shows its own ping
+        /// locally; offline / spectator is a no-op (local-only ping).
+        /// </summary>
+        public void SendMapPing(int worldX, int worldZ)
+        {
+            if (!IsOnline || IsSpectator) return;
+            _transport.SendReliable(TickCommandPacket.MakeMapPing(LocalFaction, worldX, worldZ));
+        }
+
+        /// <summary>
         /// Story 7.13 (Arm D) — raise a bounded player_chat CODE onto the REPLICATED, tick-stamped rail so every
         /// client (and replay) evaluates it on the identical tick. Rides the EXISTING 11-byte
         /// <see cref="UnitCommand.DslEvent"/> order via <see cref="EnqueueDslEvent"/> (eventIndex =
@@ -591,6 +607,12 @@ namespace ProjectChimera.Multiplayer
                 case PacketType.Chat:
                     if (TickCommandPacket.TryReadChat(data, len, out Faction chatFaction, out string chatMsg))
                         OnChatReceived?.Invoke(chatFaction, chatMsg);
+                    break;
+
+                case PacketType.MapPing:
+                    // Story 11.4 (FR-74): an ally's minimap ping — surface it (presentation-only, never folded).
+                    if (TickCommandPacket.TryReadMapPing(data, len, out Faction pingFaction, out int pingX, out int pingZ))
+                        OnMapPingReceived?.Invoke(pingFaction, pingX, pingZ);
                     break;
 
                 case PacketType.Ping:

@@ -182,21 +182,44 @@ namespace ProjectChimera.Effects
             if (regIdx < 0 || regIdx >= _registry.Count) return;    // empty / out-of-range slot
             AbilityDefinition ab = _registry.Get(regIdx);
 
-            // Gate cooldown (the command card greys the button on the identical predicate — AC1 parity).
-            if (world.AbilityCooldownTicks[abBase + slot] > 0) return;
+            // Gate cooldown (the command card greys the button on the identical predicate — AC1 parity). Story 11.4
+            // (FR-74): a rejected cast surfaces a guard-sourced OrderDenied cue at the caster (previously SILENT). The
+            // event is presentation-only (CombatEventQueue is not a SimChecksum input) and MatchAlertBridge filters it
+            // to the local faction, so an enemy/AI failed cast produces no local feedback. `_events` null → no-op.
+            if (world.AbilityCooldownTicks[abBase + slot] > 0)
+            {
+                _events?.PushDenied(world.Position[id], world.FactionOf[id], DenialReason.OnCooldown);
+                return;
+            }
 
             // Affordability — CHECK ALL three, mutate NOTHING yet (AC6 atomic: a failed crystal check must not have
             // debited energy/ore). Costs are int on the ability → Fixed.FromInt.
             Faction faction = world.FactionOf[id];
             Fixed oreCost     = Fixed.FromInt(ab.CostOre);
             Fixed crystalCost = Fixed.FromInt(ab.CostCrystal);
-            if (world.Energy[id] < ab.CostEnergy) return;
-            if (!_resources.CanAffordOre(faction, oreCost)) return;
-            if (!_resources.CanAffordCrystal(faction, crystalCost)) return;
+            if (world.Energy[id] < ab.CostEnergy)
+            {
+                _events?.PushDenied(world.Position[id], faction, DenialReason.NoEnergy);
+                return;
+            }
+            if (!_resources.CanAffordOre(faction, oreCost))
+            {
+                _events?.PushDenied(world.Position[id], faction, DenialReason.NeedOre);
+                return;
+            }
+            if (!_resources.CanAffordCrystal(faction, crystalCost))
+            {
+                _events?.PushDenied(world.Position[id], faction, DenialReason.NeedCrystal);
+                return;
+            }
             // Story 2.13 (AC5.3, D-4): a self HP-cost cast that would bring the caster to ≤0 HP is REFUSED — UNLESS the
             // ability is an intentional self-lethal ("suicide-bomber"). Checked BEFORE any debit (atomic refuse, reading
             // the folded Health), closing the §2.10 repeated-self-cast 0-HP-alive strand for every protected ability.
-            if (!ab.AllowSelfLethal && world.Health[id] <= Fixed.FromInt(ab.CostHealth)) return;
+            if (!ab.AllowSelfLethal && world.Health[id] <= Fixed.FromInt(ab.CostHealth))
+            {
+                _events?.PushDenied(world.Position[id], faction, DenialReason.InvalidTarget); // would be self-lethal
+                return;
+            }
 
             // Resolve + VALIDATE the target BEFORE any debit, so an unfulfillable cast refuses atomically (nothing
             // debited, no cooldown started) — the same contract as the cooldown/affordability refusals (AC6).
@@ -209,7 +232,10 @@ namespace ProjectChimera.Effects
             if (ab.ParsedTargeting == AbilityTargeting.Self || ab.ParsedTargeting == AbilityTargeting.None)
                 target = id;
             else if (target < 0 || !world.IsAlive(target))
+            {
+                _events?.PushDenied(world.Position[id], faction, DenialReason.InvalidTarget); // Story 11.4: no valid target
                 return;
+            }
 
             // Debit ALL (every gate passed → each refuse-when-insufficient call necessarily succeeds; atomic).
             _modifiers.TryDebitEnergy(id, ab.CostEnergy);

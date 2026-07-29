@@ -34,6 +34,12 @@
          (mirrors the UGC includes above; deliberately OUTSIDE SimSources.props / the determinism analyzer set —
          it is off-tick, Godot-free, presentation-adjacent HTTP glue). -->
     <Compile Include="..\src\UGC\ModIoService.cs"      LinkBase="Sim\UGC" />
+    <!-- Story 11.4 (FR-74): the Godot-free presentation policy cores — the under-attack region/time throttle and the
+         total denial-reason→text map — included as single files so the throttle policy + reason-map totality are
+         Tier-1 testable (they live under src/UI, which SimSources.props does NOT glob; deliberately OUTSIDE the
+         determinism analyzer set — they are presentation-side). -->
+    <Compile Include="..\src\UI\UnderAttackThrottle.cs" LinkBase="Sim\UI" />
+    <Compile Include="..\src\UI\DenialReasonText.cs"    LinkBase="Sim\UI" />
   </ItemGroup>
 
   <!-- Story 9.12: the SHARED C#<->TS hero-profile validation oracle. Embedded (read via manifest stream, like the

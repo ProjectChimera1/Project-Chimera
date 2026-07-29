@@ -96,6 +96,11 @@ namespace ProjectChimera.UI
         // in-progress status text read — mirrors `_items`.
         private ResearchSystem? _research;
         private ResearchStore?  _researchStore;
+
+        /// <summary>Story 11.4 (FR-74): the presentation combat-event sink, so an OFFLINE Train/Buy rejection surfaces a
+        /// guard-sourced OrderDenied cue (online routes through LockstepManager, which already threads its own queue).
+        /// Injected via <see cref="SetCombatEvents"/>; null until wired → offline denials stay silent (no crash).</summary>
+        private CombatEventQueue? _combatEvents;
         /// <summary>Shared empty cost map for a maxed/in-progress/prereq-locked slot (never mutated) — mirrors
         /// <see cref="ResearchSystem.EmptyCost"/>'s own private field, kept here since this file has no access to it.</summary>
         private static readonly Dictionary<string, int> EmptyResearchCost = new();
@@ -212,6 +217,11 @@ namespace ProjectChimera.UI
             _research      = researchSys;
             _researchStore = researchStore;
         }
+
+        /// <summary>Story 11.4 (FR-74): inject the presentation combat-event sink so an OFFLINE Train/Buy rejection
+        /// surfaces a guard-sourced OrderDenied cue. A setter (like <see cref="SetResearchDeps"/>); wired off the
+        /// scene context. Null until wired → offline denials stay silent.</summary>
+        public void SetCombatEvents(CombatEventQueue events) => _combatEvents = events;
 
         public override void _Ready()
         {
@@ -762,7 +772,7 @@ namespace ProjectChimera.UI
                                                     Fixed.FromRaw(chosenUnitIndex), Fixed.Zero) ?? true;
             if (!applyNow) return; // online: LockstepManager.Flush applies it at exec-tick (spend happens THERE, once)
             var order = new UnitOrder(bId, UnitCommand.Train, Fixed.FromRaw(chosenUnitIndex), Fixed.Zero);
-            OrderApplier.Apply(_world, in order, _localFaction(), buildings: _buildSys);
+            OrderApplier.Apply(_world, in order, _localFaction(), buildings: _buildSys, events: _combatEvents); // Story 11.4: offline denial cue
         }
 
         private void OnReviveSlotPressed(int slot)
@@ -818,7 +828,7 @@ namespace ProjectChimera.UI
                                                     Fixed.FromRaw(stockIndex), Fixed.FromRaw(heroEntity)) ?? true;
             if (!applyNow) return; // online: LockstepManager.Flush applies at exec-tick (spend + mint happen THERE, once)
             var order = new UnitOrder(bId, UnitCommand.BuyItem, Fixed.FromRaw(stockIndex), Fixed.FromRaw(heroEntity));
-            OrderApplier.Apply(_world, in order, _localFaction(), buildings: _buildSys, items: _itemSys);
+            OrderApplier.Apply(_world, in order, _localFaction(), buildings: _buildSys, items: _itemSys, events: _combatEvents); // Story 11.4: offline denial cue
         }
 
         private void OnResearchSlotPressed(int slot)

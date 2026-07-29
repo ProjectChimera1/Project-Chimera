@@ -132,6 +132,13 @@ namespace ProjectChimera.Core.Bootstrap
             // Story 2.12: also give the manager the event bus so a full-ring queued-order reject can emit OrderDenied
             // feedback on the online path (the same bus the offline SelectionSystem path uses); presentation-only.
             _ctx.Lockstep.CombatEvents = _ctx.CombatEvents;
+            // Story 11.4 (FR-74): surface an ally's minimap ping on the reliable side-channel (presentation-only, never
+            // folded). Remove-then-add keeps it idempotent if the manager instance is reused across matches.
+            if (_ctx.MatchAlert != null)
+            {
+                _ctx.Lockstep.OnMapPingReceived -= _ctx.MatchAlert.HandleMpPing;
+                _ctx.Lockstep.OnMapPingReceived += _ctx.MatchAlert.HandleMpPing;
+            }
             // Story 11.2 (FR-66): give the manager the folded WinStateStore so a Concede order (online exec-tick OR the
             // offline apply-now branch) latches the conceding faction's VERDICT_LOST on the SAME store the replay path
             // uses. Same instance across live/offline/replay → a concede resolves identically everywhere.

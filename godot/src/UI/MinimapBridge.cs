@@ -38,6 +38,20 @@ namespace ProjectChimera.UI
         private static readonly Color P2_COLOR   = new Color(1.00f, 0.25f, 0.25f);
         private static readonly Color BORDER_COL = new Color(0.12f, 0.12f, 0.12f, 0.90f);
         private static readonly Color BG_COL     = new Color(0.05f, 0.08f, 0.05f, 0.80f);
+        // Story 11.4 (FR-74): the camera-view box + the under-attack alert flash colour.
+        private static readonly Color CAM_BOX_COL = new Color(1.00f, 1.00f, 1.00f, 0.85f);
+        private static readonly Color ALERT_COL   = new Color(1.00f, 0.20f, 0.15f);
+
+        // Story 11.4 (FR-74): decaying minimap markers — Alt-click pings + under-attack alert flashes. A pulsing ring
+        // that expands + fades over its lifetime, drawn on the topmost dot overlay. Purely presentation.
+        private const float PING_TTL_SEC  = 2.4f;
+        private const float ALERT_TTL_SEC = 2.0f;
+        private struct Marker { public float WorldX, WorldZ, Age, Ttl, MaxRadius; public Color Color; }
+        private readonly System.Collections.Generic.List<Marker> _markers = new();
+
+        /// <summary>Story 11.4: invoked when the LOCAL player Alt-clicks the minimap (world XZ of the ping). Wired by
+        /// MatchAlertPhase to play the ping cue and replicate it to allies in MP. Null offline / until wired.</summary>
+        public System.Action<Vector3>? OnLocalPing;
 
         // Fog alpha values (R=G=B=0, only alpha varies)
         private const byte FOG_UNEXPLORED = 210;
@@ -178,13 +192,51 @@ namespace ProjectChimera.UI
         public override void _Process(double _delta)
         {
             if (_fog != null) UpdateFogTexture();
+            AgeMarkers((float)_delta);
             _dots?.QueueRedraw();
+        }
+
+        // ── Story 11.4 (FR-74): pings + alert flashes ──────────────────────────
+
+        /// <summary>Add a decaying ping ring at world XZ in the given colour (Alt-click ping, or an MP-replicated ping
+        /// from an ally). Shown immediately; expands + fades over <see cref="PING_TTL_SEC"/>.</summary>
+        public void AddPing(float worldX, float worldZ, Color color)
+            => _markers.Add(new Marker { WorldX = worldX, WorldZ = worldZ, Ttl = PING_TTL_SEC, MaxRadius = 10f, Color = color });
+
+        /// <summary>Add an under-attack alert flash at world XZ (a local unit/building was hit off-screen).</summary>
+        public void FlashAlert(float worldX, float worldZ)
+            => _markers.Add(new Marker { WorldX = worldX, WorldZ = worldZ, Ttl = ALERT_TTL_SEC, MaxRadius = 8f, Color = ALERT_COL });
+
+        /// <summary>Story 11.4 review (P4): drop all decaying ping/alert markers (on match reset), so a new match does
+        /// not carry the prior match's stale rings.</summary>
+        public void ClearMarkers() => _markers.Clear();
+
+        private void AgeMarkers(float delta)
+        {
+            for (int i = _markers.Count - 1; i >= 0; i--)
+            {
+                Marker m = _markers[i];
+                m.Age += delta;
+                if (m.Age >= m.Ttl) { _markers.RemoveAt(i); continue; }
+                _markers[i] = m;
+            }
         }
 
         // ── Click-to-pan ──────────────────────────────────────────────────────
 
         public override void _GuiInput(InputEvent @event)
         {
+            // Story 11.4 (FR-74): Alt+LMB drops a minimap PING (shown immediately for the initiator; replicated to
+            // allies in MP via OnLocalPing) rather than panning. Handled BEFORE the pan branch so Alt-click never pans.
+            if (@event is InputEventMouseButton alt && alt.Pressed && alt.ButtonIndex == MouseButton.Left && alt.AltPressed)
+            {
+                Vector3 world = MinimapToWorld(alt.Position);
+                AddPing(world.X, world.Z, P1_COLOR); // the initiator sees its own ping in the own-view colour
+                OnLocalPing?.Invoke(world);
+                AcceptEvent();
+                return;
+            }
+
             if (_camCtrl == null) return;
 
             if (@event is InputEventMouseButton mb &&
@@ -262,6 +314,26 @@ namespace ProjectChimera.UI
                 canvas.DrawRect(
                     new Rect2(px - Vector2.One * BLDG_RADIUS, Vector2.One * BLDG_RADIUS * 2f),
                     col);
+            }
+
+            // Story 11.4 (FR-74): decaying ping / alert-flash rings (drawn ABOVE the dots).
+            foreach (Marker m in _markers)
+            {
+                float t   = m.Ttl > 0f ? Mathf.Clamp(m.Age / m.Ttl, 0f, 1f) : 1f;
+                float r   = 2f + m.MaxRadius * t;            // expand outward
+                var   col = new Color(m.Color.R, m.Color.G, m.Color.B, 1f - t); // fade out
+                Vector2 c = WorldToMinimap(m.WorldX, m.WorldZ);
+                canvas.DrawArc(c, r, 0f, Mathf.Tau, 20, col, 1.5f);
+            }
+
+            // Story 11.4 (FR-74): the camera-view box — always drawn so the player knows what the main view covers.
+            if (_camCtrl != null)
+            {
+                Rect2 vb = _camCtrl.GetViewBounds(); // world XZ (position = min corner, size = extent)
+                Vector2 a = WorldToMinimap(vb.Position.X, vb.Position.Y);
+                Vector2 b = WorldToMinimap(vb.Position.X + vb.Size.X, vb.Position.Y + vb.Size.Y);
+                var box = new Rect2(a, b - a);
+                canvas.DrawRect(box, CAM_BOX_COL, filled: false, width: 1.0f);
             }
         }
 

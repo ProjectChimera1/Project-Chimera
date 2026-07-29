@@ -635,7 +635,7 @@ namespace ProjectChimera.Combat
             {
                 // Hitscan — instant damage. Event BEFORE Apply; attacker-cleanup AFTER, gated on death —
                 // operation order preserved exactly so the golden checksums stay byte-identical (Story 1.6 AC2).
-                _events?.Push(CombatEventType.MeleeHit, world.Position[target], world.FeedbackProfile[attacker]); // Story 2.7
+                _events?.Push(CombatEventType.MeleeHit, world.Position[target], world.FactionOf[target], world.FeedbackProfile[attacker]); // Story 2.7; Story 11.4: stamp the victim faction
 
                 var ctx = new DamageContext(world, target, world.ArmorTypeOf[target],
                                             world.FactionOf[attacker], _table, _events, _stats, _deaths,
@@ -688,7 +688,7 @@ namespace ProjectChimera.Combat
             else
             {
                 // Hitscan — instant matrix damage via the SINGLE shared building-damage entry point.
-                _events?.Push(CombatEventType.MeleeHit, _buildings!.Position[b], world.FeedbackProfile[attacker]);
+                _events?.Push(CombatEventType.MeleeHit, _buildings!.Position[b], _buildings!.FactionOf[b], world.FeedbackProfile[attacker]); // Story 11.4: stamp the victim building's faction
                 if (DamageResolver.ApplyToBuilding(_buildings!, b, world.EffectiveAttackDamage[attacker],
                                                    world.DamageTypeOf[attacker], _table, _events,
                                                    world.FactionOf[attacker], _stats)) // Story 11.2 — credit the razing faction

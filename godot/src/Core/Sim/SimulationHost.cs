@@ -317,6 +317,7 @@ namespace ProjectChimera.Core.Sim
             //    golden churn). CombatSystem [7] / ProjectileSystem [8] / HeroXpSystem [9] are retrieved from the
             //    fixed-order array (SystemOrderTest pins the indices); the two field-held systems wire directly. ──
             BuildSys.SetDslSimEvents(DslSimEvents);
+            BuildSys.SetCombatEvents(CombatEvents); // Story 11.4 (FR-74): production-completion cue rides the non-folded queue
             abilitySys.SetDslSimEvents(DslSimEvents);
             ((CombatSystem)_systems[7]).SetDslSimEvents(DslSimEvents);
             ((ProjectileSystem)_systems[8]).SetDslSimEvents(DslSimEvents);

@@ -95,6 +95,10 @@ namespace ProjectChimera.Core.Bootstrap
         public UI.TriggerDebugOverlay TriggerDebugOverlay = null!; // TriggerDebugOverlay (Story 7.15 — variable watch + fired-trigger log + fire counters + enabled state)
         public UI.MatchBriefingOverlay Briefing = null!;    // ObjectiveOverlay (Story 7.14 — skippable pre-match briefing)
         public UI.MinimapBridge Minimap     = null!;     // Minimap
+        // Story 11.4 (FR-74) — the match-feedback layer (MatchAlert phase).
+        public UI.MatchAlertBridge  MatchAlert   = null!; // MatchAlert — the read-only CombatEventQueue drainer (alerts/denials/cues)
+        public UI.OrderMarkerBridge OrderMarkers = null!; // MatchAlert — pooled issue-time order-confirmed ground markers
+        public UI.Components.ChimeraToastHost ToastHost = null!; // MatchAlert — the shared 3.1x toast stack (DW-313 cap/coalesce)
 
         // ── Multiplayer + match lifecycle (Multiplayer / ReplayStatus / MatchLifecycle) ────────────────────
         public MatchLifecycleController MatchLifecycle = null!; // Multiplayer phase / Task 5 (replay autoload + return-to-Edit reset drive it)

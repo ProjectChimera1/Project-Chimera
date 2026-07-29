@@ -113,7 +113,7 @@ namespace ProjectChimera.Combat
             // Derived attribution state, NOT folded into SimChecksum (the _prevFlags basis).
             world.KillerOf[id]        = attackerId;
             world.KillerFactionOf[id] = (int)killer - 1; // Neutral (0) → −1; player factions → slot
-            events?.Push(CombatEventType.UnitKilled, world.Position[id], world.FeedbackProfile[id]);
+            events?.Push(CombatEventType.UnitKilled, world.Position[id], world.FactionOf[id], world.FeedbackProfile[id]); // Story 11.4: stamp the victim faction
             stats?.RecordKill(world.FactionOf[id], killer);
             // Story 3.13: record the death for the XP runtime BEFORE Destroy recycles the slot (the corpse's
             // position/faction/bounty are unobservable afterward — D-1). Uniform for hitscan/projectile/self-lethal.
@@ -122,7 +122,7 @@ namespace ProjectChimera.Combat
             // identifies a hero entity with no HeroStore threading into this static kill path; the awaiting-revival STATE
             // transition is done separately (deterministically) by HeroXpSystem's link-based scan. Presentation-only event.
             if (world.HeroIndex[id] != EntityWorld.HERO_NONE)
-                events?.Push(CombatEventType.HeroFell, world.Position[id], world.FeedbackProfile[id]);
+                events?.Push(CombatEventType.HeroFell, world.Position[id], world.FactionOf[id], world.FeedbackProfile[id]); // Story 11.4: stamp the victim faction
             world.Destroy(id);
         }
 
@@ -149,7 +149,7 @@ namespace ProjectChimera.Combat
                 // recycles the slot, then credit the razer only when it is neither Neutral nor the building's OWN owner
                 // (a faction demolishing its own building — or a neutral building razed by nobody — must not count).
                 Faction owner = buildings.FactionOf[b];
-                events?.Push(CombatEventType.BuildingDestroyed, buildings.Position[b]);
+                events?.Push(CombatEventType.BuildingDestroyed, buildings.Position[b], owner); // Story 11.4: stamp the razed building's owner faction
                 buildings.Destroy(b);
                 // `stats` null / Neutral razer / self-raze ⇒ no-op; the counter is observational (unfolded).
                 if (razer != Faction.Neutral && razer != owner)
