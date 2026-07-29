@@ -280,6 +280,14 @@ pre-existing skip** (3566 + 8 new), two independent clean runs; no golden re-bas
 but the DW-121 `FactionJson`→`ResolveSlotFactionDefs` route is now genuinely exercised for BOTH
 players on a cross-faction launch, where before the beta side spawned nothing at all.
 
+### In-Engine Gate - 2026-07-28
+- surface: main menu Play -> skirmish setup screen -> Launch -> loading screen -> match start, cross-faction (Crucible Covenant vs Sanguine Court) on Alpha Skirmish
+- launched: godot_editor_edit run, then Play and Launch driven over the godot-mcp bridge via emitted Button `pressed` / OptionButton `item_selected` signals; counts read from a holder-attached watcher gated on MainScene instance change so the post-reload scene is measured, not the boot scene
+- digest: `FPS 428   [PLAY]   Tick 1   Hash -` / `P1: 2 units   P2: 2 units   Total: 4` / `Selected: -` (cross-faction, post-fix); same-faction control identical; pre-fix the same launch read `P1: 2 units   P2: 0 units   Total: 2`
+- asserted: alpha_map_01 authors 2 pre-placed units for start slot 1; the Sanguine Court slot spawned 0 of them before the fix and 2 after, matching the same-faction control exactly, and its economy ran (110 ore / 2 supply / building at tick 344 vs 30 ore / starved before)
+- caveat: start slot 0 shows 2 units against 3 authored, identically in BOTH the cross-faction and same-faction launches, so it is not a faction-remap defect; proven outside this story's transform by `Build_SameFactionLaunch_LeavesPrePlacedUnitIdsUntouched` and logged to deferred-work.md for an applier-level investigation
+- result: PASS
+
 
 ## Auto Run Result — follow-up review 3 (2026-07-28)
 

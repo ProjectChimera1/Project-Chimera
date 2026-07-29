@@ -6,6 +6,23 @@ Use MCP tools to: inspect scene tree, read/write scripts, run the project,
 capture debug output, and take editor screenshots.
 Always use MCP tools to verify changes compile and run correctly.
 
+### In-engine gate (REQUIRED, enforced)
+A change touching `src/UI/**`, `src/CreationSuite/**`, `src/Core/Bootstrap/**`,
+`src/Core/MainScene.cs`, `scenes/**`, or any `*.tscn`/`*.tres` is **not done** until it has been
+observed running. `tools/verify-in-engine-gate.ps1` enforces this as a bmad-loop `[verify]`
+command; run `/godot-verify` and append the `### In-Engine Gate` block to the story spec.
+
+Verify against the **authoring source with numbers** — the scenario JSON's per-slot entity counts,
+the faction JSON's roster, the spec's AC — not against how the screen looks. Story 11-1 passed
+three review passes and looked perfect in a screenshot while silently deleting the AI opponent's
+entire starting army on any cross-faction launch. Where a change adds a *choice* (faction, map,
+mode), exercise more than one value and compare the arms: that defect was invisible on the default.
+
+Traps: a scene reload creates a NEW `MainScene` — gate any watcher on the instance id changing or
+you will measure the pre-launch boot scene (which loads the same default map and looks valid).
+Compare both A/B arms in `[PLAY]` at the same tick; `[EDIT]` can carry a placement ghost that
+inflates entity counts. The bridge is single-client — if it won't connect, another session holds it.
+
 ## Build & Run
 - Build C#: Use the MCP `editor` tool or run `dotnet build` in this folder
 - Run project: Use the MCP `run_project` tool or press F5 in Godot

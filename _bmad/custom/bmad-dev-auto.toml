@@ -1,0 +1,136 @@
+# Project Chimera overrides for bmad-dev-auto.
+# Committed to the repo — applies to every bmad-loop dev/review session on this project.
+#
+# Merge rules (see .claude/skills/bmad-dev-auto/customize.toml):
+#   Strings replace · Lists append · Tables merge by key · Arrays of tables merge by `id`.
+#
+# WHY THIS FILE EXISTS
+# Epic 9's retro named the lesson: "a TOOLING action item is only done when it's load-bearing in
+# the done-gate, not when it's built." A1-E8 put the loop on native Windows specifically so agents
+# could drive the live editor through godot-mcp — and nothing ever required them to, so three
+# epics of Godot UI shipped unobserved. Story 11-1 then went `done` past THREE review passes
+# carrying a defect that silently deleted the AI opponent's entire starting army on any
+# cross-faction launch: invisible in the diff, invisible in Tier-1, obvious within seconds of
+# running the game. This file makes the in-engine check part of how a story reaches done.
+#
+# The mechanical enforcement is tools/verify-in-engine-gate.ps1, wired as a [verify] command in
+# .bmad-loop/policy.toml. This file is the agent-facing half: it tells sessions what to run and
+# what the artifact must contain, so the gate is satisfied by real work rather than discovered as
+# a wall at commit time.
+#
+# !! RECOVERY — the mechanical half lives in a GITIGNORED file !!
+# `bmad-loop init` gitignores .bmad-loop/policy.toml, so the [verify] wiring does NOT travel with
+# the repo and is lost on a fresh install, a new machine, or a policy regeneration. Losing it
+# silently downgrades this gate back to advisory — the exact failure mode it exists to prevent.
+# If .bmad-loop/policy.toml is ever recreated, restore this line under [verify]:
+#
+#   commands = ["powershell -NoProfile -ExecutionPolicy Bypass -File tools/verify-in-engine-gate.ps1"]
+#
+# Confirm it is live with: `bmad-loop status <run-id>` (the policy snapshot records verify.commands)
+# or by checking `.bmad-loop/runs/<id>/state.json` -> policy_snapshot.verify.commands on the next run.
+
+[workflow]
+
+persistent_facts = [
+  """
+IN-ENGINE GATE (Project Chimera, binding).
+
+A story whose diff touches Godot-coupled presentation code CANNOT reach `status: done` without an
+in-engine verification artifact in its spec file. Coupled surfaces are:
+  godot/src/UI/**, godot/src/CreationSuite/**, godot/src/Core/Bootstrap/**,
+  godot/src/Core/MainScene.cs, godot/scenes/**, and any *.tscn / *.tres.
+
+This is enforced mechanically by the `tools/verify-in-engine-gate.ps1` verify command, which the
+orchestrator runs after a clean review. A missing or placeholder artifact fails the story back to
+a repair session — so produce it as part of the work, not as an afterthought.
+
+HOW TO SATISFY IT
+Drive the actual running game over the godot-mcp bridge (the `/godot-verify` skill is the shortest
+path). Build first — C# is not hot-loaded, so `dotnet build godot/godot.csproj` must succeed before
+`godot_editor_edit run` or you are testing a stale assembly. Reach the story's surface the way a
+player would: emit Button `pressed` / OptionButton `item_selected` signals via `godot_exec`, since
+the bridge has no absolute-mouse click. Then append this block to the spec file:
+
+### In-Engine Gate - <YYYY-MM-DD>
+- surface: <which screen or flow was driven>
+- launched: <how the game was reached>
+- digest: <verbatim runtime-state / HUD text captured at the asserted moment>
+- asserted: <expected vs observed, quantified against the authoring source>
+- result: PASS
+
+WHAT MAKES THE ARTIFACT REAL
+- `digest` is text actually captured from the running game (a `godot_runtime_state` digest or
+  on-screen HUD text read via a tree walk) — never a description of what you saw.
+- `asserted` compares NUMBERS against the authoring source: the scenario JSON's per-slot entity
+  counts, the faction JSON's roster, the spec's own acceptance criteria. "The screen looked right"
+  is not an assertion. The 11-1 defect this gate exists for looked completely correct in a
+  screenshot; it was only visible by comparing spawned unit counts per player against the map file
+  at Tick 0, and by A/B-ing the two faction choices.
+- Prefer cheap text digests over screenshots for state. Use a screenshot only to judge appearance.
+- `result: PASS` only when every assertion held. If an assertion fails, that is a finding — fix the
+  code and re-run. Never record a passing artifact to clear the gate.
+
+MEASUREMENT TRAPS (learned the hard way on 11-1)
+- A scene reload makes a NEW MainScene. Gate any watcher on the MainScene instance id changing, or
+  you will measure the pre-launch boot scene and conclude the feature works when it does not.
+- The boot scene loads the same default map, so its HUD looks like a valid result. It is not a control.
+- `[EDIT]` state can carry a placement ghost that inflates entity counts. Compare like with like:
+  measure both arms of an A/B in `[PLAY]` at the same tick.
+- The bridge is single-client. If a tool call cannot connect, another session is holding it — say so
+  and stop; do not silently skip the gate.
+
+IF THE GATE CANNOT BE RUN
+If the Godot editor is not open or the bridge is unreachable, do NOT mark the story done and do NOT
+fabricate the artifact. Report it as a blocking environment condition. The verify command detects
+this case itself and pauses the run for an operator rather than charging the story an attempt.
+""",
+]
+
+# An extra review layer, appended to the four defaults (arrays of tables merge by `id`, so a new
+# id adds rather than replaces). The other layers read the diff; this one runs the software. It is
+# the only reviewer positioned to catch a defect that is correct on paper and wrong on screen.
+[[workflow.review_layers]]
+id = "in-engine-gate"
+name = "In-Engine Gate Auditor"
+instruction = """
+Launch a subagent with no prior conversation context, with this prompt:
+
+> You are the in-engine gate auditor for Project Chimera. Your job is to determine whether this
+> change actually behaves correctly in the running game — not whether the code reads correctly.
+>
+> First decide whether the gate applies. Inspect this diff:
+>
+> {diff_output}
+>
+> The gate applies if it touches any of: `godot/src/UI/**`, `godot/src/CreationSuite/**`,
+> `godot/src/Core/Bootstrap/**`, `godot/src/Core/MainScene.cs`, `godot/scenes/**`, `*.tscn`,
+> `*.tres`. If it does not apply, report exactly `GATE NOT APPLICABLE` and stop — do not run the
+> editor for a pure-simulation change.
+>
+> If it applies:
+> 1. Run `dotnet build godot/godot.csproj`. C# is not hot-loaded; a stale assembly invalidates
+>    everything downstream. If the build fails, report that as the finding and stop.
+> 2. Drive the running game over the godot-mcp tools (`godot_editor_edit run`, then `godot_exec`
+>    to emit Button `pressed` / OptionButton `item_selected` signals — there is no mouse click).
+>    Reach the surface this diff changes, the way a player would.
+> 3. Verify against the AUTHORING SOURCE, quantitatively. Read the scenario JSON, faction JSON, or
+>    spec acceptance criteria that define what SHOULD exist, then compare the running game's actual
+>    state to it — per-player entity counts, spawned ids, panel values. Use `godot_runtime_state`
+>    digests or HUD text read via a tree walk; screenshots are for appearance only and routinely
+>    look fine while the underlying state is wrong.
+> 4. Where the change introduces a CHOICE (a faction, a map, a mode, a difficulty), exercise more
+>    than one value of it and compare the arms against each other. The defect that created this
+>    gate was invisible in the default configuration and only appeared on the non-default choice.
+>
+> Measurement discipline: a scene reload creates a new MainScene, so gate any watcher on the
+> MainScene instance id changing or you will measure the pre-launch boot scene by mistake. The boot
+> scene loads the same default map and looks like a valid result. Compare both arms of an A/B in
+> `[PLAY]` at the same tick; `[EDIT]` may carry a placement ghost that inflates counts.
+>
+> If the bridge will not connect, report `GATE BLOCKED: godot-mcp bridge unreachable` and stop —
+> another client may be holding the single-client bridge. Never guess at the outcome.
+>
+> Report: what you drove, the verbatim digests you captured, each assertion as expected-vs-observed
+> with real numbers, and any divergence as a finding. Do not soften a divergence into a caveat — if
+> the running game disagrees with the authoring source, that is the finding.
+"""
