@@ -186,7 +186,12 @@ namespace ProjectChimera.Multiplayer
             // Story 7.9 — a narrow handle to ScenarioDirector.TryEnqueueExternalDslEvent (eventIndex, raiserSlot,
             // arg0, arg1) → bool. Null on golden/headless/replay-without-a-director paths → a DslEvent order is a
             // deterministic no-op (exactly like `buildings`/`items`/`research` == null for their commands).
-            Func<int, int, int, int, bool>? dslSink = null)
+            Func<int, int, int, int, bool>? dslSink = null,
+            // Story 11.2 (FR-66) — the folded WinStateStore handle for a Concede order (which names a faction, not an
+            // entity). Null on golden/headless/replay-without-win-state paths → a Concede is a deterministic no-op
+            // (goldens never issue Concede=22, so the dormant command changes no golden — the checksum-fold-timing
+            // rule). Threaded through BOTH live and replay apply paths (the one-switch parity rule).
+            WinStateStore? winState = null)
         {
             // Story 2.12 (Decision #2): mask the wire's queued flag (0x80) off the Command byte FIRST, so every
             // downstream compare + the command→state switch sees only the real 0-13 UnitCommand — never a flagged
@@ -271,6 +276,23 @@ namespace ProjectChimera.Multiplayer
             {
                 if (dslSink == null || expectedFaction == Faction.Neutral) return;
                 dslSink(o.UnitId, (int)expectedFaction - 1, o.TargetX, o.TargetZ);
+                return;
+            }
+
+            // Story 11.2 (FR-66): Concede NAMES A FACTION (the command's expectedFaction — the anti-cheat truth: a peer
+            // can only concede its own faction), NOT an entity — handle it beside DslEvent, BEFORE the entity-ownership
+            // guard (there is no entity to guard; the UnitId is unused/reserved). It latches the ALREADY-FOLDED
+            // WinStateStore.Verdict[expectedFaction]=VERDICT_LOST only when currently VERDICT_NONE (monotone — a
+            // re-concede or an already-resolved faction is a deterministic no-op, mirroring the store's own
+            // never-overwrite rule). WinConditionSystem's next ApplyLastTeamStanding then awards the sole remaining live
+            // team (AnyLost() is now true). `winState` null ⇒ deterministic no-op (golden/headless/replay-without-win-
+            // state), exactly like `buildings`/`dslSink` == null for their commands. A Neutral raiser (spectator stream —
+            // never carries a Concede) is dropped. No new folded store, no golden re-baseline.
+            if (cmd == UnitCommand.Concede)
+            {
+                if (winState != null && expectedFaction != Faction.Neutral
+                    && winState.Verdict[(int)expectedFaction] == WinStateStore.VERDICT_NONE)
+                    winState.Verdict[(int)expectedFaction] = WinStateStore.VERDICT_LOST;
                 return;
             }
 

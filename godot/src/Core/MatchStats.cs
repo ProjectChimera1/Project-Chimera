@@ -8,6 +8,10 @@ namespace ProjectChimera.Core
     ///
     /// Indexed by <see cref="Faction"/> cast to int (0–4).
     /// Faction.None (0) is ignored; Player1 = 1, Player2 = 2.
+    ///
+    /// <para><b>Class note (deliberately unfolded):</b> MatchStats is the observational scoreboard — it is NOT folded
+    /// into <c>SimChecksum</c> (see <c>SimChecksum.cs</c>). Adding a counter here therefore moves no golden and needs no
+    /// re-baseline (the checksum-fold-timing rule: only mid-match-mutable SIM state folds).</para>
     /// </summary>
     public class MatchStats
     {
@@ -24,6 +28,14 @@ namespace ProjectChimera.Core
 
         /// <summary>Total ore deposited by each faction's workers this match (integer units).</summary>
         private readonly int[] _oreMined = new int[FACTION_COUNT];
+
+        /// <summary>Story 11.2 — total crystal credited to each faction this match (integer units). The observational
+        /// twin of <see cref="_oreMined"/>, closing the score-screen's Crystal column. Unfolded (see class note).</summary>
+        private readonly int[] _crystalMined = new int[FACTION_COUNT];
+
+        /// <summary>Story 11.2 — enemy buildings RAZED BY each faction this match (razed[1] = P1's building-kill count).
+        /// The building twin of <see cref="_kills"/> (which counts unit kills). Unfolded (see class note).</summary>
+        private readonly int[] _buildingsRazed = new int[FACTION_COUNT];
 
         // ── Kill tracking ─────────────────────────────────────────────────────
 
@@ -74,6 +86,32 @@ namespace ProjectChimera.Core
         /// <summary>Total ore mined by the given faction this match (integer units).</summary>
         public int OreMined(Faction f) => (int)f < FACTION_COUNT ? _oreMined[(int)f] : 0;
 
+        /// <summary>Story 11.2 — record crystal credited to a faction's balance from a resource node (mirrors
+        /// <see cref="RecordOreMined"/> exactly, on the Crystal-kind credit path). Crystal-only.</summary>
+        /// <param name="amount">Amount in Fixed-point units — converted to int for storage.</param>
+        public void RecordCrystalMined(Faction faction, Fixed amount)
+        {
+            int f = (int)faction;
+            if (f > 0 && f < FACTION_COUNT) _crystalMined[f] += amount.ToInt();
+        }
+
+        /// <summary>Total crystal mined by the given faction this match (integer units).</summary>
+        public int CrystalMined(Faction f) => (int)f < FACTION_COUNT ? _crystalMined[(int)f] : 0;
+
+        // ── Building-razing tracking ──────────────────────────────────────────
+
+        /// <summary>Story 11.2 — record one enemy building razed BY <paramref name="razerFaction"/> (mirrors the killer
+        /// side of <see cref="RecordKill"/>). A Neutral/out-of-range razer is a no-op (buildings razed by nobody count
+        /// for nobody).</summary>
+        public void RecordBuildingRazed(Faction razerFaction)
+        {
+            int f = (int)razerFaction;
+            if (f > 0 && f < FACTION_COUNT) _buildingsRazed[f]++;
+        }
+
+        /// <summary>Enemy buildings razed by the given faction this match.</summary>
+        public int BuildingsRazed(Faction f) => (int)f < FACTION_COUNT ? _buildingsRazed[(int)f] : 0;
+
         // ── Reset ─────────────────────────────────────────────────────────────
 
         /// <summary>Reset all counters (called when returning to Edit mode).</summary>
@@ -81,10 +119,12 @@ namespace ProjectChimera.Core
         {
             for (int i = 0; i < FACTION_COUNT; i++)
             {
-                _kills[i]      = 0;
-                _losses[i]     = 0;
-                _unitsBuilt[i] = 0;
-                _oreMined[i]   = 0;
+                _kills[i]         = 0;
+                _losses[i]        = 0;
+                _unitsBuilt[i]    = 0;
+                _oreMined[i]      = 0;
+                _crystalMined[i]  = 0;
+                _buildingsRazed[i] = 0;
             }
         }
     }

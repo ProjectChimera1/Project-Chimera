@@ -115,5 +115,75 @@ namespace ProjectChimera.Sim.Tests.Combat
             // If live Unarmored armor were (wrongly) used → delta 655360. The supplied Heavy 0.5 → delta 327680.
             Assert.Equal(327_680, before - w.Health[target].Raw);
         }
+
+        // ── Story 11.2 — building-razed counter fires through the SINGLE building-death point ─────────────
+
+        private static int CreateBuilding(BuildingStore b, Faction faction, int hp)
+        {
+            int id = b.Create(FixedVec3.Zero, faction, BuildingType.Barracks);
+            b.Health[id] = Fixed.FromInt(hp);
+            return id;
+        }
+
+        [Fact]
+        public void ApplyToBuilding_LethalByEnemy_CreditsRazer_NotVictimOwner()
+        {
+            var b = new BuildingStore();
+            var stats = new MatchStats();
+            int enemyBuilding = CreateBuilding(b, Faction.Player2, hp: 1); // owned by P2
+
+            bool died = DamageResolver.ApplyToBuilding(b, enemyBuilding, Fixed.FromInt(100), DamageType.Siege,
+                                                       DamageTable.Default, events: null,
+                                                       razer: Faction.Player1, stats: stats);
+
+            Assert.True(died);
+            Assert.Equal(1, stats.BuildingsRazed(Faction.Player1)); // the razer is credited
+            Assert.Equal(0, stats.BuildingsRazed(Faction.Player2)); // the victim owner is NOT
+        }
+
+        [Fact]
+        public void ApplyToBuilding_SelfRaze_CreditsZero()
+        {
+            var b = new BuildingStore();
+            var stats = new MatchStats();
+            int ownBuilding = CreateBuilding(b, Faction.Player1, hp: 1);
+
+            // A faction destroying its OWN building must not be credited an enemy raze (fix #3).
+            DamageResolver.ApplyToBuilding(b, ownBuilding, Fixed.FromInt(100), DamageType.Siege,
+                                           DamageTable.Default, events: null,
+                                           razer: Faction.Player1, stats: stats);
+
+            Assert.Equal(0, stats.BuildingsRazed(Faction.Player1));
+        }
+
+        [Fact]
+        public void ApplyToBuilding_NeutralRazer_CreditsZero()
+        {
+            var b = new BuildingStore();
+            var stats = new MatchStats();
+            int building = CreateBuilding(b, Faction.Player2, hp: 1);
+
+            DamageResolver.ApplyToBuilding(b, building, Fixed.FromInt(100), DamageType.Siege,
+                                           DamageTable.Default, events: null,
+                                           razer: Faction.Neutral, stats: stats);
+
+            Assert.Equal(0, stats.BuildingsRazed(Faction.Player2));
+            Assert.Equal(0, stats.BuildingsRazed(Faction.Neutral));
+        }
+
+        [Fact]
+        public void ApplyToBuilding_SubLethal_NoRazeCredit()
+        {
+            var b = new BuildingStore();
+            var stats = new MatchStats();
+            int enemyBuilding = CreateBuilding(b, Faction.Player2, hp: 500);
+
+            bool died = DamageResolver.ApplyToBuilding(b, enemyBuilding, Fixed.FromInt(10), DamageType.Siege,
+                                                       DamageTable.Default, events: null,
+                                                       razer: Faction.Player1, stats: stats);
+
+            Assert.False(died);
+            Assert.Equal(0, stats.BuildingsRazed(Faction.Player1)); // survived → no credit
+        }
     }
 }

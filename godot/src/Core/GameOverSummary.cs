@@ -37,6 +37,10 @@ namespace ProjectChimera.Core
             public readonly int UnitsBuilt;
             /// <summary>Ore this faction mined.</summary>
             public readonly int OreMined;
+            /// <summary>Story 11.2 — crystal this faction mined.</summary>
+            public readonly int CrystalMined;
+            /// <summary>Story 11.2 — enemy buildings this faction razed.</summary>
+            public readonly int BuildingsRazed;
             /// <summary>Canonical faction color-key (RGBA bytes — never a Godot.Color).</summary>
             public readonly byte ColorR, ColorG, ColorB, ColorA;
             /// <summary>Colorblind glyph paired with the color (color is never the only signal).</summary>
@@ -45,16 +49,19 @@ namespace ProjectChimera.Core
             public readonly string Name;
 
             public GameOverRow(int slot, Faction faction, int verdict, int kills, int losses,
-                               int unitsBuilt, int oreMined, FactionPalette.Entry color)
+                               int unitsBuilt, int oreMined, int crystalMined, int buildingsRazed,
+                               FactionPalette.Entry color)
             {
-                Slot       = slot;
-                Faction    = faction;
-                Verdict    = verdict;
-                Won        = verdict == WinStateStore.VERDICT_WON;
-                Kills      = kills;
-                Losses     = losses;
-                UnitsBuilt = unitsBuilt;
-                OreMined   = oreMined;
+                Slot           = slot;
+                Faction        = faction;
+                Verdict        = verdict;
+                Won            = verdict == WinStateStore.VERDICT_WON;
+                Kills          = kills;
+                Losses         = losses;
+                UnitsBuilt     = unitsBuilt;
+                OreMined       = oreMined;
+                CrystalMined   = crystalMined;
+                BuildingsRazed = buildingsRazed;
                 ColorR     = color.R;
                 ColorG     = color.G;
                 ColorB     = color.B;
@@ -90,6 +97,7 @@ namespace ProjectChimera.Core
                 rows.Add(new GameOverRow(
                     slot, f, verdict,
                     stats.Kills(f), stats.Losses(f), stats.UnitsBuilt(f), stats.OreMined(f),
+                    stats.CrystalMined(f), stats.BuildingsRazed(f),
                     FactionPalette.ForFaction(f)));
             }
             return rows.ToArray();

@@ -255,14 +255,15 @@ namespace ProjectChimera.Economy
 
         /// <summary>Story 4.7 — dispatch a credit to the correct per-faction balance by resource kind, closing the
         /// Crystal-production dead path. Used both for credit-in-place (Streaming/Income, by node <see cref="ResourceKind"/>)
-        /// and for a GATHER worker's base deposit (by the CARRIED kind — see <c>TickMovingToBase</c>). Ore credits also
-        /// feed <see cref="MatchStats.RecordOreMined"/> (mirrors the pre-4.7 base-deposit call); there is no Crystal
-        /// equivalent in MatchStats today (mirrors every existing AddCrystal call site — none record stats either).</summary>
+        /// and for a GATHER worker's base deposit (by the CARRIED kind — see <c>TickMovingToBase</c>). Ore credits feed
+        /// <see cref="MatchStats.RecordOreMined"/> and (Story 11.2) Crystal credits feed
+        /// <see cref="MatchStats.RecordCrystalMined"/> — the observational score-screen counters (unfolded).</summary>
         private void CreditKind(ResourceKind kind, Faction faction, Fixed amount)
         {
             if (kind == ResourceKind.Crystal)
             {
                 _resources.AddCrystal(faction, amount);
+                _stats?.RecordCrystalMined(faction, amount); // Story 11.2 — the observational Crystal twin of the Ore credit below
             }
             else
             {

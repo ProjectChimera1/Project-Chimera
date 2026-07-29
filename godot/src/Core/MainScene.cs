@@ -115,6 +115,14 @@ namespace ProjectChimera.Core
         private bool           _localEliminated   = false;
         private Label?         _defeatBanner;
 
+        // ── Story 11.2 (FR-66): offline session-shell cadence controls — PRESENTATION-loop only. They scale/skip the
+        // wall-clock delta fed to _host.Update on the offline free-run branch; the sim's per-tick FixedDt and system
+        // order are UNTOUCHED, so the produced tick / SimChecksum stream is byte-identical to a 1× un-paused run (no
+        // determinism fold, no golden re-baseline). Ignored on the online-lockstep / replay branches (peer-gated). ──
+        private float          _gameSpeed         = 1f;    // {0.5,1,2,3} — multiplies the offline delta
+        private bool           _paused            = false; // true → skip _host.Update entirely (no accumulation)
+        private bool           _reopenMenuAfterSettings = false; // Settings was opened FROM the in-match menu → re-show it on close
+
         // ── Trigger system ────────────────────────────────────────────────────
 
         // ScenarioDirector handle moved to SceneContext.ScenarioDirector (Story 1.8c; binder uses ctx).
@@ -729,6 +737,10 @@ namespace ProjectChimera.Core
                 return;
             }
 
+            // Story 11.2 (FR-66): wire the session-shell overlays (in-match menu + score screen) now that _ctx is fully
+            // built. Not reached on the fail-safe path (returns above with _bootAborted set).
+            WireSessionShell();
+
             // Review patch: the presentation handles (_ctx.GameState etc.) are now built — the per-frame callbacks may
             // run. On the fail-safe path we returned above with _bootAborted set, so this line is not reached there.
             _bootPending = false;
@@ -753,6 +765,88 @@ namespace ProjectChimera.Core
             PendingSkirmishError   = null;
             GD.Print($"[Skirmish] Launching \"{built.DisplayName}\" (AI {ai}) — reloading scene.");
             GetTree().ReloadCurrentScene();
+        }
+
+        // ── Story 11.2 (FR-66): the in-match session shell (menu + score screen) ──────────────────────
+
+        /// <summary>Wire the in-match-menu + score-screen overlay events to the scene (called once from _Ready after the
+        /// phase runner built the overlays). Pure presentation wiring — no sim writes.</summary>
+        private void WireSessionShell()
+        {
+            var menu  = _ctx.InMatchMenu;
+            var score = _ctx.ScoreScreen;
+
+            menu.OnResume       += CloseInMatchMenuAndResume;
+            menu.OnSpeedChanged += s => _gameSpeed = s;
+            menu.OnPauseToggled += p => _paused = p;
+            menu.OnConcede      += IssueConcede;
+            menu.OnQuitToMenu   += QuitToMainMenu;
+            menu.OnSettings     += () =>
+            {
+                // Hide the menu so its _Input yields Esc to the settings panel, and re-show it when Settings closes.
+                _reopenMenuAfterSettings = true;
+                menu.Close();
+                if (!_ctx.SettingsPanel.Visible) _ctx.SettingsPanel.ToggleVisible();
+            };
+            _ctx.SettingsPanel.OnClosed += () =>
+            {
+                if (!_reopenMenuAfterSettings) return;
+                _reopenMenuAfterSettings = false;
+                if (_ctx.GameState.Mode == GameMode.Play && !_gameOver && _ctx.ReplayPlayer == null)
+                    menu.Open(_ctx.Lockstep.IsOnline, _gameSpeed);
+            };
+
+            score.OnPlayAgain  += ScorePlayAgain;
+            score.OnQuitToMenu += QuitToMainMenu;
+            score.OnSaveReplay += PromptSaveReplay;
+        }
+
+        /// <summary>Toggle the in-match menu (Esc/F10 in a live Play match). Opening it pauses the offline sim.</summary>
+        private void ToggleInMatchMenu()
+        {
+            if (_ctx.InMatchMenu.Visible) { CloseInMatchMenuAndResume(); return; }
+            bool online = _ctx.Lockstep.IsOnline;
+            _ctx.InMatchMenu.Open(online, _gameSpeed);
+            if (!online) _paused = true; // true single-player pause: opening the menu freezes the tick loop
+        }
+
+        /// <summary>Close the in-match menu and (offline) un-pause the sim.</summary>
+        private void CloseInMatchMenuAndResume()
+        {
+            _ctx.InMatchMenu.Close();
+            if (!_ctx.Lockstep.IsOnline) _paused = false;
+        }
+
+        /// <summary>Issue a Concede order for the local faction through the existing lockstep order-issue path (offline
+        /// applies immediately; online buffers for the exec-tick). The verdict latch resolves the opponent via the
+        /// deterministic WinConditionSystem on its next tick → the score screen shows DEFEAT.</summary>
+        private void IssueConcede()
+        {
+            if (_ctx.Lockstep == null) return; // defensive: no lockstep manager ⇒ nothing to concede through
+            Faction local = _ctx.Lockstep.EffectiveLocalFaction;
+            _ctx.Lockstep.EnqueueConcede(local);
+        }
+
+        /// <summary>Quit-to-Menu from either overlay: end the match (Play→Edit reset, ModeChanged-wired), restore the
+        /// default cadence, and re-show the main-menu overlay.</summary>
+        private void QuitToMainMenu()
+        {
+            _ctx.InMatchMenu.Close();
+            _ctx.ScoreScreen.Hide();
+            _reopenMenuAfterSettings = false;
+            if (_ctx.GameState.Mode == GameMode.Play) _ctx.GameState.Toggle(); // → Edit (ResetMatchOnReturnToEdit fires)
+            _gameSpeed = 1f; _paused = false;
+            if (_ctx.MainMenu != null) _ctx.MainMenu.Visible = true;
+        }
+
+        /// <summary>Score-screen "Play Again": end the current match (Play→Edit reset) then re-open the skirmish setup
+        /// screen (prefilled if a setup was retained), so the player can launch a fresh match.</summary>
+        private void ScorePlayAgain()
+        {
+            _ctx.ScoreScreen.Hide();
+            if (_ctx.GameState.Mode == GameMode.Play) _ctx.GameState.Toggle(); // → Edit (ResetMatchOnReturnToEdit fires)
+            _gameSpeed = 1f; _paused = false;
+            _ctx.SkirmishSetup?.Open();
         }
 
         /// <summary>
@@ -799,11 +893,33 @@ namespace ProjectChimera.Core
             if (_headless || _bootAborted || _bootPending) return; // dedicated server has no input / no _ctx; _bootAborted = fail-safe reload pending; _bootPending = phase run not yet built _ctx handles
             if (@event is not InputEventKey key || !key.Pressed || key.Echo) return;
 
-            // Escape — toggle settings panel (any mode).
-            if (key.Keycode == Key.Escape)
+            // Escape / F10 — the in-match menu in Play, the settings panel in Edit (Story 11.2 / FR-66).
+            // In PLAY (a live match — not replay playback, which owns its own controls) Esc/F10 toggles the in-match
+            // menu; opening it pauses the offline sim. When the menu (or a confirm dialog / the settings panel over it)
+            // is already open, THEIR _Input consumes Esc first (they run before _UnhandledInput), so this only OPENS.
+            // In EDIT, Esc keeps toggling the settings panel (unchanged); F10 is inert there.
+            if (key.Keycode == Key.Escape || key.Keycode == Key.F10)
             {
-                _ctx.SettingsPanel.ToggleVisible();
-                GetViewport().SetInputAsHandled();
+                // Score screen up (terminal, CanvasLayer 25): SWALLOW Esc/F10 — do NOT fall through to the settings
+                // toggle, which would flip a hidden panel (layer 15) rendered UNDER the score screen (dead input). The
+                // player resolves the match via the score screen's own actions.
+                if (_gameOver)
+                {
+                    GetViewport().SetInputAsHandled();
+                    return;
+                }
+                if (_ctx.GameState.Mode == GameMode.Play && _ctx.ReplayPlayer == null)
+                {
+                    ToggleInMatchMenu();
+                    GetViewport().SetInputAsHandled();
+                    return;
+                }
+                if (key.Keycode == Key.Escape)
+                {
+                    _ctx.SettingsPanel.ToggleVisible();
+                    GetViewport().SetInputAsHandled();
+                    return;
+                }
                 return;
             }
 
@@ -1104,8 +1220,12 @@ namespace ProjectChimera.Core
                 }
                 else
                 {
-                    // Offline: free-running fixed-timestep as before.
-                    _host.Update((float)delta);
+                    // Offline: free-running fixed-timestep. Story 11.2 — pause = skip _host.Update ENTIRELY (do not feed
+                    // 0, do not accumulate → no catch-up spiral on resume); otherwise SCALE the wall-clock delta by the
+                    // game speed. Only the CADENCE (how many identical fixed ticks are consumed per real second) changes;
+                    // each tick still runs the same FixedDt + system order, so the SimChecksum stream is invariant.
+                    if (!_paused)
+                        _host.Update((float)delta * _gameSpeed);
                 }
 
                 if (_playFrames == 0)
@@ -1493,6 +1613,16 @@ namespace ProjectChimera.Core
                 : $"0x{_host.LastChecksum:X8}";
             string onlineTag = _ctx.Lockstep.IsOnline ? "  ONLINE" : "";
 
+            // Story 11.2 — the offline speed/pause indicator on the clock line (presentation-only; the online branch is
+            // peer-gated and never scales/pauses, so it shows nothing here).
+            string speedTag = "";
+            if (!_ctx.Lockstep.IsOnline && !isEdit)
+            {
+                if (_paused) speedTag = "  ⏸ PAUSED";
+                else if (!Mathf.IsEqualApprox(_gameSpeed, 1f))
+                    speedTag = Mathf.IsEqualApprox(_gameSpeed, 0.5f) ? "  0.5×" : $"  {(int)_gameSpeed}×";
+            }
+
             // ── Line 2: unit counts ───────────────────────────────────────────
             int p1 = CountFaction(Faction.Player1);
             int p2 = CountFaction(Faction.Player2);
@@ -1507,7 +1637,7 @@ namespace ProjectChimera.Core
                     : $"{selCount} units{groupTag}";
 
             _ctx.HudLabel.Text =
-                $"FPS {Engine.GetFramesPerSecond()}   [{modeTag}]   Tick {_host.CurrentTick}   Hash {checksumStr}{onlineTag}\n" +
+                $"FPS {Engine.GetFramesPerSecond()}   [{modeTag}]   Tick {_host.CurrentTick}   Hash {checksumStr}{onlineTag}{speedTag}\n" +
                 $"P1: {p1} units   P2: {p2} units   Total: {_world.AliveCount}\n" +
                 (isEdit ? $"Placing: {_ctx.Placer.ModeLabel}" : $"Selected: {selInfo}");
 
@@ -1699,153 +1829,46 @@ namespace ProjectChimera.Core
             string? savedReplayPath = _ctx.ReplayRecorder?.FilePath;
             _ctx.MatchLifecycle.StopRecording(winnerPlayer, completed: true);
 
-            // ── Gather stats ─────────────────────────────────────────────────
-            ulong elapsedMs = _matchStartMs > 0 ? Time.GetTicksMsec() - _matchStartMs : 0;
-            uint  totalSec  = (uint)(elapsedMs / 1000);
-            string duration = $"{totalSec / 60}:{totalSec % 60:D2}";
+            // Story 11.2 — close the in-match menu if it was open when the match resolved (so the terminal score
+            // screen is not stacked under a live menu) and restore the default offline cadence.
+            _ctx.InMatchMenu?.Close();
+            _paused = false; _gameSpeed = 1f;
 
             // Story 9.15 — render EVERY active slot (up to 8), not just P1/P2. The Godot-free GameOverSummary builder
-            // emits one row per faction with a latched verdict (WON/LOST + kills/losses/built/ore + canonical color),
-            // correct even on a non-contiguous active set.
+            // emits one row per faction with a latched verdict (WON/LOST + kills/losses/built/razed/ore/crystal +
+            // canonical color), correct even on a non-contiguous active set.
             GameOverSummary.GameOverRow[] rows = GameOverSummary.Build(_matchStats, _host.WinState);
 
             // The winning factions (a team victory latches WON for every ally). Drives the sub-heading phrasing.
             var wonFactions = new System.Collections.Generic.List<GameOverSummary.GameOverRow>();
             foreach (GameOverSummary.GameOverRow r in rows) if (r.Won) wonFactions.Add(r);
 
-            // The winner's canonical color for the sub-heading (the team representative when >1 ally won; defeat-gray on no victor).
-            Color winnerColor = winnerPlayer > 0
-                ? FactionPalette.ForFaction((Faction)winnerPlayer).ToColor()
-                : new Color(0.8f, 0.2f, 0.2f);
-
-            // Clear previous children (safety guard against double-trigger)
-            foreach (Node child in _ctx.GameOverOverlay.GetChildren())
-            {
-                _ctx.GameOverOverlay.RemoveChild(child);
-                child.QueueFree();
-            }
-
-            // ── Card ─────────────────────────────────────────────────────────
-            var card = new PanelContainer();
-            card.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.Center);
-            card.CustomMinimumSize = new Vector2(560, 380);
-            _ctx.GameOverOverlay.AddChild(card);
-
-            var vbox = new VBoxContainer { Alignment = BoxContainer.AlignmentMode.Center };
-            vbox.AddThemeConstantOverride("separation", 14);
-            card.AddChild(vbox);
-
-            // ── Heading ───────────────────────────────────────────────────────
             // Story 9.15 — VICTORY iff the LOCAL player's OWN faction latched WON. winnerPlayer is the team REPRESENTATIVE
             // (lowest WON slot), NOT the local seat — keying VICTORY off it would show DEFEAT to a winning ally on a higher
             // slot while that same player's stat row reads WON (the 2v2 contradiction). Resolve the local faction via the
-            // policy-resolved, null-guarded accessor the sibling sites use (raw LocalFaction is stale offline-after-online
-            // and NREs when Lockstep is null, since it is declared null!).
+            // policy-resolved, null-guarded accessor (raw LocalFaction is stale offline-after-online and NREs when
+            // Lockstep is null, since it is declared null!).
             var localFaction = _ctx.Lockstep?.EffectiveLocalFaction ?? Faction.Player1;
             bool localWin = _host.WinState.Verdict[(int)localFaction] == WinStateStore.VERDICT_WON;
-            var heading = new Label
-            {
-                Text                = localWin ? "VICTORY" : "DEFEAT",
-                HorizontalAlignment = HorizontalAlignment.Center,
-            };
-            heading.AddThemeFontSizeOverride("font_size", 64);
-            heading.AddThemeColorOverride("font_color",
-                localWin ? new Color(1f, 0.85f, 0.1f) : new Color(0.8f, 0.2f, 0.2f));
-            vbox.AddChild(heading);
 
-            var winner = new Label
-            {
-                // A TEAM win (>1 faction latched WON) is an ALLIED victory, not one player's — enumerate the WON factions
-                // so the sub-line never contradicts the multi-row table. Single winner keeps the "Player N Wins!" phrasing;
-                // winnerPlayer 0 = "no victor" (LOST-only outcome — the DEFEAT heading already applies).
-                Text                = winnerPlayer <= 0 ? "No Victor — Match Over"
-                                    : wonFactions.Count > 1
-                                        ? $"Team Victory — {string.Join(", ", wonFactions.ConvertAll(w => w.Name))} Win!"
-                                        : $"Player {winnerPlayer} Wins!",
-                HorizontalAlignment = HorizontalAlignment.Center,
-            };
-            winner.AddThemeFontSizeOverride("font_size", 26);
-            winner.AddThemeColorOverride("font_color", winnerColor);
-            vbox.AddChild(winner);
+            // Sub-heading phrasing: a TEAM win (>1 faction latched WON) is an ALLIED victory, not one player's; single
+            // winner keeps "Player N Wins!"; winnerPlayer 0 = "no victor" (LOST-only outcome — DEFEAT already applies).
+            string winnerLine = winnerPlayer <= 0 ? "No Victor — Match Over"
+                              : wonFactions.Count > 1
+                                  ? $"Team Victory — {string.Join(", ", wonFactions.ConvertAll(w => w.Name))} Win!"
+                                  : $"Player {winnerPlayer} Wins!";
 
-            vbox.AddChild(new HSeparator());
+            // Story 11.2 — the kit-styled score screen replaces the raw-node body. Duration is the DETERMINISTIC sim
+            // tick count (MatchTicks/30), not a wall-clock read, so it is byte-consistent across peers/replays.
+            int matchTicks = (int)_host.WinState.MatchTicks;
+            _ctx.ScoreScreen.Show(rows, localWin, winnerLine, matchTicks, savedReplayPath);
 
-            // ── Duration ─────────────────────────────────────────────────────
-            var durLabel = new Label
-            {
-                Text                = $"Match Duration:  {duration}",
-                HorizontalAlignment = HorizontalAlignment.Center,
-            };
-            durLabel.AddThemeFontSizeOverride("font_size", 20);
-            durLabel.AddThemeColorOverride("font_color", Colors.LightGray);
-            vbox.AddChild(durLabel);
-
-            vbox.AddChild(new HSeparator());
-
-            // ── Per-player stat table (Story 9.15 — one row per active slot, up to 8) ─────────────
-            // Fixed-width column layout: Player | Result | Kills | Losses | Built | Ore. Replaces the former
-            // two-column (P1/P2-only) grid so slots 3–8 render.
-            void AddScoreRow(string c0, string c1, string c2, string c3, string c4, string c5,
-                             Color color, int fontSize)
-            {
-                var row = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.Center };
-                row.AddThemeConstantOverride("separation", 0);
-                void Cell(string text, float width, HorizontalAlignment align)
-                {
-                    var lbl = new Label { Text = text, HorizontalAlignment = align, CustomMinimumSize = new Vector2(width, 0) };
-                    lbl.AddThemeFontSizeOverride("font_size", fontSize);
-                    lbl.AddThemeColorOverride("font_color", color);
-                    row.AddChild(lbl);
-                }
-                Cell(c0, 120, HorizontalAlignment.Left);
-                Cell(c1, 90,  HorizontalAlignment.Center);
-                Cell(c2, 80,  HorizontalAlignment.Center);
-                Cell(c3, 80,  HorizontalAlignment.Center);
-                Cell(c4, 90,  HorizontalAlignment.Center);
-                Cell(c5, 110, HorizontalAlignment.Center);
-                vbox.AddChild(row);
-            }
-
-            // Header row (light gray) + one canonical-color-tinted row per active faction.
-            AddScoreRow("Player", "Result", "Kills", "Losses", "Built", "Ore", Colors.LightGray, 16);
-            foreach (GameOverSummary.GameOverRow r in rows)
-            {
-                Color rowColor = Color.Color8(r.ColorR, r.ColorG, r.ColorB, r.ColorA);
-                AddScoreRow($"{r.ColorGlyph} {r.Name}", r.VerdictLabel,
-                            $"{r.Kills}", $"{r.Losses}", $"{r.UnitsBuilt}", $"{r.OreMined:N0}",
-                            rowColor, 18);
-            }
-
-            vbox.AddChild(new HSeparator());
-
-            // ── Save Replay (Story 9.11) ──────────────────────────────────────
-            // The auto-recorded .chmr is ALWAYS retained on disk; this affordance only renames/annotates it. Present
-            // only when a recording was active (absent during replay playback, where there is no recorder).
-            if (!string.IsNullOrEmpty(savedReplayPath))
-            {
-                var saveBtn = new Button { Text = "Save Replay", CustomMinimumSize = new Vector2(200, 40) };
-                saveBtn.AddThemeFontSizeOverride("font_size", 16);
-                string capturedPath = savedReplayPath!;
-                saveBtn.Pressed += () => PromptSaveReplay(capturedPath);
-                vbox.AddChild(saveBtn);
-            }
-
-            // ── Hint ─────────────────────────────────────────────────────────
-            var hint = new Label
-            {
-                Text                = "Press F5 to return to Edit",
-                HorizontalAlignment = HorizontalAlignment.Center,
-            };
-            hint.AddThemeFontSizeOverride("font_size", 15);
-            hint.AddThemeColorOverride("font_color", new Color(0.55f, 0.55f, 0.55f));
-            vbox.AddChild(hint);
-
-            _ctx.GameOverOverlay.Visible = true;
+            int totalSec = matchTicks / 30;
             var summaryLine = new System.Text.StringBuilder();
             foreach (GameOverSummary.GameOverRow r in rows)
-                summaryLine.Append($"  {r.Name}:{r.VerdictLabel} {r.Kills}k/{r.UnitsBuilt}u/{r.OreMined}ore");
-            GD.Print($"[WinCondition] {(winnerPlayer > 0 ? $"Player {winnerPlayer} wins" : "Match over — no victor")} — {duration} —" +
-                     $"{summaryLine}. Press F5 to return to Edit.");
+                summaryLine.Append($"  {r.Name}:{r.VerdictLabel} {r.Kills}k/{r.UnitsBuilt}u/{r.BuildingsRazed}razed/{r.OreMined}ore/{r.CrystalMined}crys");
+            GD.Print($"[WinCondition] {(winnerPlayer > 0 ? $"Player {winnerPlayer} wins" : "Match over — no victor")} — {totalSec / 60}:{totalSec % 60:D2} —" +
+                     $"{summaryLine}.");
         }
 
         /// <summary>Story 9.11 — the score-screen "Save Replay" affordance: a small rename dialog over the just-
@@ -2284,6 +2307,12 @@ namespace ProjectChimera.Core
 
             // Dismiss any active game-over overlay
             if (_ctx.GameOverOverlay != null) _ctx.GameOverOverlay.Visible = false;
+            // Story 11.2 — dismiss the session-shell overlays and restore the default offline cadence on the return to Edit.
+            _ctx.InMatchMenu?.Close();
+            _ctx.ScoreScreen?.Hide();
+            _gameSpeed = 1f;
+            _paused    = false;
+            _reopenMenuAfterSettings = false;
             _gameOver     = false;
             _playFrames   = 0;
             _matchStartMs = 0;

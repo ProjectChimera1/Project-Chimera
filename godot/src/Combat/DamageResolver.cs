@@ -137,15 +137,23 @@ namespace ProjectChimera.Combat
         /// <c>buildings.Alive</c>, which are already folded into <see cref="SimChecksum"/> — no new fold.
         /// </summary>
         public static bool ApplyToBuilding(BuildingStore buildings, int b, Fixed amount, DamageType type,
-                                           DamageTable table, CombatEventQueue? events = null)
+                                           DamageTable table, CombatEventQueue? events = null,
+                                           Faction razer = Faction.Neutral, MatchStats? stats = null)
         {
             if (b < 0 || b >= buildings.Count || !buildings.Alive[b]) return false;
             Fixed damage = table.FinalDamage(amount, type, ArmorType.Fortified, Fixed.Zero);
             buildings.Health[b] = buildings.Health[b] - damage;
             if (buildings.Health[b] <= Fixed.Zero)
             {
+                // Story 11.2 — the razed column means "ENEMY buildings razed": read the victim's owner BEFORE Destroy
+                // recycles the slot, then credit the razer only when it is neither Neutral nor the building's OWN owner
+                // (a faction demolishing its own building — or a neutral building razed by nobody — must not count).
+                Faction owner = buildings.FactionOf[b];
                 events?.Push(CombatEventType.BuildingDestroyed, buildings.Position[b]);
                 buildings.Destroy(b);
+                // `stats` null / Neutral razer / self-raze ⇒ no-op; the counter is observational (unfolded).
+                if (razer != Faction.Neutral && razer != owner)
+                    stats?.RecordBuildingRazed(razer);
                 return true;
             }
             return false;

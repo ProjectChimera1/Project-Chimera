@@ -73,6 +73,9 @@ namespace ProjectChimera.Multiplayer
         public ProjectChimera.Combat.ItemSystem? Items;
         public ProjectChimera.Economy.ResearchSystem? Research;
         public Func<int, int, int, int, bool>? DslEventSink;
+        /// <summary>Story 11.2 (FR-66) — the host's folded WinStateStore, so a recorded Concede order resolves in replay
+        /// byte-identically to the live run (the one-switch parity rule). Null ⇒ a Concede is a deterministic no-op.</summary>
+        public WinStateStore? WinState;
 
         // ── Replay data ───────────────────────────────────────────────────────────
 
@@ -277,7 +280,7 @@ namespace ProjectChimera.Multiplayer
         {
             for (int i = 0; i < count; i++)
                 OrderApplier.Apply(_world, in orders[i], expectedFaction,
-                    OnRequestPath, OnRequestAttackMove, OnCancelPath, Buildings, null, Items, Research, DslEventSink);
+                    OnRequestPath, OnRequestAttackMove, OnCancelPath, Buildings, null, Items, Research, DslEventSink, WinState);
         }
     }
 }

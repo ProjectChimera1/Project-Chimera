@@ -149,7 +149,7 @@ namespace ProjectChimera.Combat
             // Impact event at the shell's position — BEFORE damage, preserving event order (Story 1.6 AC2).
             _events?.Push(CombatEventType.RangedHit, _store.Position[projId], _store.Feedback[projId]);
             DamageResolver.ApplyToBuilding(_buildings!, buildingId, _store.Damage[projId], _store.DmgType[projId],
-                                           _table, _events);
+                                           _table, _events, _store.Owner[projId], _stats); // Story 11.2 — credit the razing faction
         }
 
         /// <summary>

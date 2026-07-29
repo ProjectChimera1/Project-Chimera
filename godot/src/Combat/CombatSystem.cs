@@ -690,7 +690,8 @@ namespace ProjectChimera.Combat
                 // Hitscan — instant matrix damage via the SINGLE shared building-damage entry point.
                 _events?.Push(CombatEventType.MeleeHit, _buildings!.Position[b], world.FeedbackProfile[attacker]);
                 if (DamageResolver.ApplyToBuilding(_buildings!, b, world.EffectiveAttackDamage[attacker],
-                                                   world.DamageTypeOf[attacker], _table, _events))
+                                                   world.DamageTypeOf[attacker], _table, _events,
+                                                   world.FactionOf[attacker], _stats)) // Story 11.2 — credit the razing faction
                 {
                     // Building razed — drop the Attacking flag now; the next tick's guard reverts CommandState to Idle
                     // (BuildingStore has no IsAlive to catch it, but the in-tick bounds+Alive guard does — see above).

@@ -477,6 +477,49 @@ namespace ProjectChimera.Sim.Tests.Economy
             Assert.Equal(Fixed.Zero, resources.Ore[(int)Faction.Neutral]); // no phantom credit to index 0
         }
 
+        // ── Story 11.2 — MatchStats crystal counter fires through the real GatheringSystem credit seam ─────
+
+        [Fact]
+        public void Income_CrystalNode_WithWiredStats_RecordsCrystalMined_NotOreMined()
+        {
+            var world     = new EntityWorld();
+            var nodes     = new ResourceNodeStore();
+            var resources = new ResourceStore(Fixed.Zero);
+            var buildings = new BuildingStore();
+            var stats     = new MatchStats();
+            var sys       = new GatheringSystem(nodes, resources, buildings, stats); // stats WIRED
+
+            nodes.Create(V(0, 0), Fixed.FromInt(50), Fixed.FromInt(10), maxGatherers: 4,
+                collectionModel: ResourceCollectionModel.Income, resourceType: ResourceKind.Crystal,
+                ownerFaction: Faction.Player1, incomePeriodTicks: 1);
+
+            sys.Tick(world, Dt); // period elapses → 10 crystal credited
+
+            Assert.Equal(Fixed.FromInt(10), resources.Crystal[(int)Faction.Player1]);
+            Assert.Equal(10, stats.CrystalMined(Faction.Player1)); // the observational counter fired
+            Assert.Equal(0,  stats.OreMined(Faction.Player1));     // the Crystal branch does NOT bump Ore stats
+        }
+
+        [Fact]
+        public void Income_OreNode_WithWiredStats_DoesNotBumpCrystalMined()
+        {
+            var world     = new EntityWorld();
+            var nodes     = new ResourceNodeStore();
+            var resources = new ResourceStore(Fixed.Zero);
+            var buildings = new BuildingStore();
+            var stats     = new MatchStats();
+            var sys       = new GatheringSystem(nodes, resources, buildings, stats);
+
+            nodes.Create(V(0, 0), Fixed.FromInt(50), Fixed.FromInt(10), maxGatherers: 4,
+                collectionModel: ResourceCollectionModel.Income, resourceType: ResourceKind.Ore,
+                ownerFaction: Faction.Player1, incomePeriodTicks: 1);
+
+            sys.Tick(world, Dt); // 10 ore credited
+
+            Assert.Equal(10, stats.OreMined(Faction.Player1));
+            Assert.Equal(0,  stats.CrystalMined(Faction.Player1)); // Ore branch never touches the Crystal counter
+        }
+
         [Fact]
         public void Income_NonPositivePeriod_CreditsNothing_DefensiveGuard()
         {

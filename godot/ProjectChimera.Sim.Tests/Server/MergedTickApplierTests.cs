@@ -149,6 +149,41 @@ namespace ProjectChimera.Sim.Tests.Server
         }
 
         [Fact]
+        public void ConcedeSubBundle_WithWinState_LatchesLostForThatFactionOnly()
+        {
+            // Story 11.2 — proves the online-merge apply path THREADS the WinStateStore into OrderApplier: a P1
+            // sub-bundle carrying UnitCommand.Concede latches P1's verdict LOST (and only P1's). Without the threading
+            // (winState never forwarded to OrderApplier.Apply), the concede would silently no-op on every online peer.
+            var world = new EntityWorld();
+            int p2Unit = world.Create(new FixedVec3(Fixed.FromInt(10), Fixed.Zero, Fixed.Zero), Faction.Player2, Fixed.FromInt(50), Fixed.FromInt(3));
+            var win = new WinStateStore();
+
+            byte[] merged = BuildMerged(1u,
+                new UnitOrder(0, UnitCommand.Concede, Fixed.Zero, Fixed.Zero), // P1 concedes (faction re-stamped from slot)
+                Move(p2Unit, 1, 1), out int len);
+
+            MergedTickApplier.Apply(merged, len, world, winState: win);
+
+            Assert.Equal(WinStateStore.VERDICT_LOST, win.Verdict[(int)Faction.Player1]);
+            Assert.Equal(WinStateStore.VERDICT_NONE, win.Verdict[(int)Faction.Player2]);
+        }
+
+        [Fact]
+        public void ConcedeSubBundle_NullWinState_IsDeterministicNoOp()
+        {
+            // The golden/spectator path passes no winState → a Concede in the stream must be a harmless no-op (no throw).
+            var world = new EntityWorld();
+            int p2Unit = world.Create(new FixedVec3(Fixed.FromInt(10), Fixed.Zero, Fixed.Zero), Faction.Player2, Fixed.FromInt(50), Fixed.FromInt(3));
+            byte[] merged = BuildMerged(1u,
+                new UnitOrder(0, UnitCommand.Concede, Fixed.Zero, Fixed.Zero),
+                Move(p2Unit, 1, 1), out int len);
+
+            MergedTickApplier.Apply(merged, len, world); // winState omitted (null)
+
+            Assert.True((world.Flags[p2Unit] & EntityFlags.Moving) != 0); // the co-bundled Move still applied
+        }
+
+        [Fact]
         public void EmptyOrMalformed_IsNoOp()
         {
             var world = new EntityWorld();

@@ -258,7 +258,13 @@ namespace ProjectChimera.Core
             {
                 int team = KothWinningTeam();
                 if (team >= 0) { WinTeam(team); return; }
-                // KotH concludes ONLY by the hold-win (7.11 parity) — no elimination/last-team-standing fallback.
+                // KotH normally concludes ONLY by the hold-win (7.11 parity — no elimination fallback). Story 11.2:
+                // a CONCEDE (the only way a KotH faction latches VERDICT_LOST short of the hold-win) must still
+                // resolve, so fall through to last-team-standing instead of the old bare return that dead-ended the
+                // match. ApplyLastTeamStanding no-ops unless AnyLost() AND exactly one live team remains (or the
+                // double-elim tie) — and under KotH nobody latches LOST except via concede or the hold-win's WinTeam
+                // above — so a normal (no-concede) KotH match still concludes ONLY by the hold-win.
+                ApplyLastTeamStanding(liveTeamsBefore, highestEliminatedThisTick);
                 return;
             }
             if (_preset == WinPresetKind.TimedSurvival)

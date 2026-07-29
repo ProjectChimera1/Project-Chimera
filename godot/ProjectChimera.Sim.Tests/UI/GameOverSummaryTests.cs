@@ -41,6 +41,8 @@ namespace ProjectChimera.Sim.Tests.UI
             stats.RecordUnitBuilt(Faction.Player4);
             stats.RecordUnitBuilt(Faction.Player4);             // P4 built=2
             stats.RecordOreMined(Faction.Player2, Fixed.FromInt(50)); // P2 ore=50
+            stats.RecordCrystalMined(Faction.Player2, Fixed.FromInt(30)); // Story 11.2 — P2 crystal=30
+            stats.RecordBuildingRazed(Faction.Player1); // Story 11.2 — P1 razed=1
 
             GameOverSummary.GameOverRow[] rows = GameOverSummary.Build(stats, win);
 
@@ -65,6 +67,9 @@ namespace ProjectChimera.Sim.Tests.UI
             Assert.Equal(1,  rows[2].Losses);
             Assert.Equal(2,  rows[3].UnitsBuilt);
             Assert.Equal(50, rows[1].OreMined);
+            Assert.Equal(30, rows[1].CrystalMined);   // Story 11.2 — new Crystal column, per-faction, no drift
+            Assert.Equal(1,  rows[0].BuildingsRazed);  // Story 11.2 — new Razed column, credited to the razer
+            Assert.Equal(0,  rows[1].BuildingsRazed);  // P2 razed nothing
 
             // Canonical faction color-key per row (Okabe-Ito palette; distinct per slot).
             foreach (GameOverSummary.GameOverRow r in rows) AssertColorMatchesPalette(r);

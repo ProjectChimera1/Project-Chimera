@@ -132,6 +132,11 @@ namespace ProjectChimera.Multiplayer
         /// Must be the SAME instance the replay/offline paths use, or button raises diverge between live and replay.</summary>
         public Func<int, int, int, int, bool>? DslEventSink;
 
+        /// <summary>Story 11.2 (FR-66): the host's folded WinStateStore the shared OrderApplier latches on a Concede order
+        /// (which names a faction, not an entity). Wired by MainScene per match; null in headless/tests where Concede
+        /// no-ops. Must be the SAME instance the replay/offline paths use, or a concede diverges between live and replay.</summary>
+        public WinStateStore? WinState;
+
         // ── Public state ──────────────────────────────────────────────────────
 
         public bool IsOnline   { get; private set; }
@@ -348,6 +353,32 @@ namespace ProjectChimera.Multiplayer
             return false;
         }
 
+        /// <summary>
+        /// Story 11.2 (FR-66) — issue a Concede/surrender for <paramref name="faction"/> on the lockstep bus. Mirrors
+        /// <see cref="EnqueueDslEvent"/>: OFFLINE (single-player) it applies immediately through the SAME
+        /// <see cref="OrderApplier.Apply"/> the online/replay paths use (structural parity), latching
+        /// <c>WinStateStore.Verdict[faction]=VERDICT_LOST</c> that instant; ONLINE it buffers a
+        /// <see cref="UnitCommand.Concede"/> order for the exec-tick (applied identically on every peer, recorded to
+        /// replay) — the server re-stamps the sub-bundle's faction from the transport-authoritative slot (the anti-cheat
+        /// truth), so the buffered order carries no faction (like every other order). A spectator (Neutral) cannot concede
+        /// (it owns no faction). Returns true when applied now (offline), false when buffered/dropped.
+        /// </summary>
+        public bool EnqueueConcede(Faction faction)
+        {
+            if (!IsOnline)
+            {
+                var order = new UnitOrder(0, UnitCommand.Concede, Fixed.Zero, Fixed.Zero);
+                OrderApplier.Apply(_world, in order, faction,
+                    OnRequestPath, OnRequestAttackMove, OnCancelPath, Buildings, CombatEvents, Items, Research, DslEventSink, WinState);
+                return true;
+            }
+            if (IsSpectator) return false;
+
+            if (_pendingCount < TickCommandPacket.MAX_ORDERS)
+                _pendingOrders[_pendingCount++] = new UnitOrder(0, UnitCommand.Concede, Fixed.Zero, Fixed.Zero);
+            return false;
+        }
+
         // ── Per-tick flush ────────────────────────────────────────────────────
 
         /// <summary>
@@ -454,7 +485,7 @@ namespace ProjectChimera.Multiplayer
             MergedTickApplier.Apply(_mergedBytes[mod], _mergedLen[mod], _world,
                 OnRequestPath, OnRequestAttackMove, OnCancelPath,
                 Buildings, CombatEvents, Items, Research, DslEventSink,
-                Recorder != null ? _recordHook : null);
+                Recorder != null ? _recordHook : null, WinState);
         }
 
         // ── Checksum exchange ─────────────────────────────────────────────────

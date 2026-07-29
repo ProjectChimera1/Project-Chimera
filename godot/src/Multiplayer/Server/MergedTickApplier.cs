@@ -37,7 +37,8 @@ namespace ProjectChimera.Multiplayer.Server
             ItemSystem? items = null,
             ResearchSystem? research = null,
             Func<int, int, int, int, bool>? dslSink = null,
-            Action<Faction, UnitOrder[], int, int>? onSubBundle = null)
+            Action<Faction, UnitOrder[], int, int>? onSubBundle = null,
+            WinStateStore? winState = null)
         {
             // Caller-owned scratch (single apply per tick — a few KB, not a hot per-entity path).
             var factions    = new Faction[MergedTickPacket.MERGED_MAX_SUBBUNDLES];
@@ -58,7 +59,7 @@ namespace ProjectChimera.Multiplayer.Server
                 for (int i = 0; i < count; i++)
                     OrderApplier.Apply(world, in ordersFlat[baseIdx + i], faction,
                         onRequestPath, onRequestAttackMove, onCancelPath,
-                        buildings, events, items, research, dslSink);
+                        buildings, events, items, research, dslSink, winState);
             }
         }
     }

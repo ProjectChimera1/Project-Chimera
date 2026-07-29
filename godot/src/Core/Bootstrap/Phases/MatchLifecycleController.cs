@@ -36,6 +36,12 @@ namespace ProjectChimera.Core.Bootstrap
             // ScenarioDirector instance, so it survives every F5 Edit→Play re-apply.
             _ctx.Lockstep.DslEventSink = _ctx.Host.DslEventSink;
 
+            // Story 11.2 (FR-66): wire the folded WinStateStore UNCONDITIONALLY (like DslEventSink above) — the OFFLINE
+            // single-player Concede applies immediately through EnqueueConcede's apply-now branch and must latch the
+            // conceding faction's verdict without a lobby handshake. The store is the stable SimulationHost instance, so
+            // it survives every F5 Edit→Play re-apply. (OnMatchStart re-assigns the SAME instance for the online path.)
+            _ctx.Lockstep.WinState = _ctx.Host.WinState;
+
             // Checksum broadcasting is handled by the SINGLE SimulationHost sink set in _Ready (it forwards to
             // lockstep when ctx.Lockstep.IsOnline). Exactly one SetChecksumSink call per caller (D5).
             _ctx.Lockstep.OnDesync += (tick, local, remote) =>
@@ -126,6 +132,10 @@ namespace ProjectChimera.Core.Bootstrap
             // Story 2.12: also give the manager the event bus so a full-ring queued-order reject can emit OrderDenied
             // feedback on the online path (the same bus the offline SelectionSystem path uses); presentation-only.
             _ctx.Lockstep.CombatEvents = _ctx.CombatEvents;
+            // Story 11.2 (FR-66): give the manager the folded WinStateStore so a Concede order (online exec-tick OR the
+            // offline apply-now branch) latches the conceding faction's VERDICT_LOST on the SAME store the replay path
+            // uses. Same instance across live/offline/replay → a concede resolves identically everywhere.
+            _ctx.Lockstep.WinState = _ctx.Host.WinState;
 
             if (localFaction == Faction.Neutral)
             {
@@ -283,6 +293,9 @@ namespace ProjectChimera.Core.Bootstrap
                 // Story 7.9: give the replay the sim-side authorized-enqueue handle so a recorded (v3) button-originated
                 // DslEvent order re-raises the custom event identically to the live match (same director + queue).
                 _ctx.ReplayPlayer.DslEventSink = _ctx.Host.DslEventSink;
+                // Story 11.2 (FR-66): give the replay the folded WinStateStore so a recorded Concede order latches the
+                // conceding faction's VERDICT_LOST identically to the live match (the one-switch parity rule).
+                _ctx.ReplayPlayer.WinState = _ctx.Host.WinState;
 
                 if (_ctx.ReplayStatusLabel != null)
                 {

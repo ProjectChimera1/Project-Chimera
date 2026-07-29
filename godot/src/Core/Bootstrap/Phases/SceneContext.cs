@@ -166,6 +166,12 @@ namespace ProjectChimera.Core.Bootstrap
         // ── Win condition / game over (produced by WinConditionUi / GameOverOverlay) ───────────────────────
         public PanelContainer WinConditionPanel = null!;
         public Control        GameOverOverlay   = null!;
+        /// <summary>Story 11.2 (FR-66): the in-match menu (Esc/F10) — Resume / Settings / Save / Load / Concede / Quit +
+        /// game-speed + pause. Constructed by <c>GameOverOverlayPhase</c>; opened/wired by MainScene runtime.</summary>
+        public UI.InMatchMenuOverlay InMatchMenu = null!;
+        /// <summary>Story 11.2 (FR-66): the kit victory/defeat score screen (replaces the raw-node ShowGameOver body).
+        /// Constructed by <c>GameOverOverlayPhase</c>; populated by <c>MainScene.ShowGameOver</c>.</summary>
+        public UI.ScoreScreenOverlay ScoreScreen = null!;
         /// <summary>Story 5.9 review pass: re-sync the WinConditionUi corner panel's radio selection from the live
         /// <see cref="Definitions.ScenarioData.WinCondition"/> — set by <c>WinConditionPhase</c>, called by
         /// <c>OnboardingPanel</c> (via <c>MainScene.RefreshWinConditionUi</c>) after IT mutates the same field, so

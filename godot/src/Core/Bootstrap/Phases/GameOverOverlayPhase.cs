@@ -1,5 +1,6 @@
 #nullable enable
 using Godot;
+using ProjectChimera.UI;
 
 namespace ProjectChimera.Core.Bootstrap
 {
@@ -7,6 +8,11 @@ namespace ProjectChimera.Core.Bootstrap
     /// Story 1.8c "GameOverOverlay" phase (runtime position 16). Creates the full-screen game-over dimming overlay
     /// (hidden until MainScene.ShowGameOver populates it with live match data). Publishes ctx.GameOverOverlay.
     /// Behavior-identical to MainScene.SetupGameOverOverlay.
+    ///
+    /// <para>Story 11.2 (FR-66): ALSO constructs the session-shell overlays — the in-match menu
+    /// (<see cref="InMatchMenuOverlay"/>) and the kit victory/defeat score screen (<see cref="ScoreScreenOverlay"/>) —
+    /// here (rather than a new phase) so the canonical phase order stays untouched. Both are hidden until MainScene
+    /// opens them at runtime; the legacy dimming <see cref="ColorRect"/> is retained as a fallback container.</para>
     /// </summary>
     public sealed class GameOverOverlayPhase : ISetupPhase
     {
@@ -22,6 +28,18 @@ namespace ProjectChimera.Core.Bootstrap
             root.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
             _ctx.UiCanvas.AddChild(root);
             _ctx.GameOverOverlay = root;
+
+            // Story 11.2 — the in-match menu (Esc/F10) + the kit score screen. Own CanvasLayers (added to the scene,
+            // not UiCanvas), self-owning their kit context exactly like SettingsPanel. Hidden until MainScene shows them.
+            var menu = new InMatchMenuOverlay();
+            _ctx.Scene.AddChild(menu);
+            menu.Initialize();
+            _ctx.InMatchMenu = menu;
+
+            var score = new ScoreScreenOverlay();
+            _ctx.Scene.AddChild(score);
+            score.Initialize();
+            _ctx.ScoreScreen = score;
         }
     }
 }
