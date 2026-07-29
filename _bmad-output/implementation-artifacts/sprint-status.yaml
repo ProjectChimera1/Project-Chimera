@@ -167,7 +167,7 @@ development_status:
   epic-11: backlog
   11-1-the-real-skirmish-setup-screen-loading-match-start-flow: done
   11-2-in-match-menu-pause-game-speed-concede-surrender-leave-victory-defeat-score-screen: done
-  11-3-sp-save-load-full-world-serializer-slots-autosave-format-stability: backlog
+  11-3-sp-save-load-full-world-serializer-slots-autosave-format-stability: done
   11-4-under-attack-alerts-minimap-pings-event-cues-denial-acknowledgment-feedback: backlog
   11-5-buff-icons-multi-select-panel-and-subgroup-tabs: backlog
   11-6-production-queue-depth-5-with-queue-display-and-cancel-refund: backlog
