@@ -4,7 +4,7 @@ type: 'feature'
 created: '2026-07-30'
 status: 'done'
 baseline_revision: 'c64d49f6d573f7aa924f0b18681c520a870ae1ac'
-final_revision: '3a68c64e4882b17d35e6faaef98a5a11864a5271'
+final_revision: 'c7c1b783f8fcce69efb805c19102b750057a29c5'
 review_loop_iteration: 0
 followup_review_recommended: false
 context:
