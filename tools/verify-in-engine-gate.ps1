@@ -22,6 +22,10 @@
   Scoping comes from the active run's own state.json (`baseline_commit` + `spec_file`), so the
   diff range is exact rather than guessed. Verify commands get no story substitution from
   bmad-loop, which is why the state file is read directly.
+
+  `spec_file` is frequently EMPTY at the moment this runs (see Resolve-SpecFile), so the spec is
+  resolved by the spec-<story_key>.md convention as a fallback. Without that fallback the gate
+  fails every Godot-coupled story on its first dev attempt and burns a no-op repair session.
 #>
 
 [CmdletBinding()]
@@ -36,6 +40,11 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+
+# Where story specs live when the run's state.json does not say (it usually does not).
+$DefaultSpecFolder = '_bmad-output/implementation-artifacts'
+# Set by Get-ActiveRunTask from the run's state.spec_folder, when non-empty.
+$script:ActiveSpecFolder = ''
 
 # Presentation surfaces whose behavior cannot be judged from a diff or a headless test. Kept
 # deliberately narrow: pure-simulation stories (src/Core/Skirmish, src/Combat, ...) are fully
@@ -76,7 +85,44 @@ function Get-ActiveRunTask {
             if ($t.phase -notin @('done', 'deferred', 'escalated')) { $chosen = $t; break }
             $chosen = $t
         }
-        if ($chosen) { return $chosen }
+        if ($chosen) {
+            if ($state.PSObject.Properties.Name.Contains('spec_folder') -and $state.spec_folder) {
+                $script:ActiveSpecFolder = $state.spec_folder
+            }
+            return $chosen
+        }
+    }
+    return $null
+}
+
+function Resolve-SpecFile($task) {
+    <#
+      bmad-loop leaves task.spec_file EMPTY for a sprint-status-sourced run's first dev attempt:
+      the story is dispatched by key (`/bmad-dev-auto <story-key>`) and the path only reaches
+      state.json when the dev session's result_json is merged back - which happens AFTER this
+      verify command runs. Taking that empty value at face value failed the gate on stories that
+      had a perfectly good artifact: Story 11-5's dev-1 wrote a complete `result: PASS` block with
+      a real runtime digest and was still sent to a repair session that committed nothing. Runs
+      for 11-3 and 11-4 show the same empty field, so this is the normal case, not an edge one.
+
+      Fall back to the convention every spec in the folder follows: spec-<story_key>.md.
+    #>
+    if ($task.PSObject.Properties.Name.Contains('spec_file')) {
+        $declared = $task.spec_file
+        if ($declared -and (Test-Path $declared)) { return (Resolve-Path $declared).Path }
+    }
+
+    if (-not $task.PSObject.Properties.Name.Contains('story_key')) { return $null }
+    $key = $task.story_key
+    if (-not $key) { return $null }
+
+    $folders = @()
+    if ($script:ActiveSpecFolder) { $folders += $script:ActiveSpecFolder }
+    $folders += $DefaultSpecFolder
+    foreach ($f in $folders) {
+        $dir = if ([System.IO.Path]::IsPathRooted($f)) { $f } else { Join-Path $RepoRoot $f }
+        $candidate = Join-Path $dir "spec-$key.md"
+        if (Test-Path $candidate) { return (Resolve-Path $candidate).Path }
     }
     return $null
 }
@@ -113,8 +159,12 @@ if (-not $task) {
 
 $baseline = $null
 if ($task.PSObject.Properties.Name.Contains('baseline_commit')) { $baseline = $task.baseline_commit }
-$specFile = $null
-if ($task.PSObject.Properties.Name.Contains('spec_file')) { $specFile = $task.spec_file }
+$declaredSpec = ''
+if ($task.PSObject.Properties.Name.Contains('spec_file') -and $task.spec_file) { $declaredSpec = $task.spec_file }
+$specFile = Resolve-SpecFile $task
+if ($specFile -and -not $declaredSpec) {
+    Write-Section "state.json carried no spec_file; resolved by story_key -> $(Split-Path $specFile -Leaf)"
+}
 
 $changed = @(Get-ChangedPaths $baseline)
 if ($changed.Count -eq 0) {
@@ -157,7 +207,13 @@ function Fail-Gate($reason) {
     Write-Output 'Drive the real thing over the godot-mcp bridge (the /godot-verify skill is the'
     Write-Output 'shortest path), then append a completed block to the story spec:'
     Write-Output ''
-    Write-Output "  $specFile"
+    if ($specFile) {
+        Write-Output "  $specFile"
+    } else {
+        # Never print an empty path here - a bare "" reads as a tooling bug and sent the
+        # Story 11-5 repair session hunting for a file that was sitting on disk all along.
+        Write-Output "  $(Join-Path (Join-Path $RepoRoot $DefaultSpecFolder) "spec-$($task.story_key).md")"
+    }
     Write-Output ''
     Write-Output $required
     Write-Output ''
@@ -177,7 +233,9 @@ if (-not $specFile -or -not (Test-Path $specFile)) {
         Write-Section "spec file not found AND godot-mcp bridge is not listening on $BridgePort."
         exit 127
     }
-    Fail-Gate "story spec file not found at '$specFile' - cannot confirm the in-engine artifact."
+    $where = if ($declaredSpec) { "declared path '$declaredSpec'" }
+             else { "convention path for story_key '$($task.story_key)'" }
+    Fail-Gate "story spec not found at the $where - cannot confirm the in-engine artifact."
 }
 
 $spec = Get-Content $specFile -Raw

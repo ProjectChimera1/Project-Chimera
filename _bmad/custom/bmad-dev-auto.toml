@@ -84,6 +84,47 @@ If the Godot editor is not open or the bridge is unreachable, do NOT mark the st
 fabricate the artifact. Report it as a blocking environment condition. The verify command detects
 this case itself and pauses the run for an operator rather than charging the story an attempt.
 """,
+  """
+TERMINAL SECTION CONTRACT (bmad-loop handback, binding — REVIEW PASSES ESPECIALLY).
+
+Finish every session by appending a `## Auto Run Result` section to the spec file. This is how the
+orchestrator learns your session finished; it is NOT decoration and NOT optional on a review pass.
+
+WHY IT MATTERS MECHANICALLY
+bmad-loop's generic adapter has no result.json. It acquires your result by scanning the
+implementation-artifacts folder for a markdown file, modified at/after your session launched, that
+carries a real (non-fenced) `## Auto Run Result` heading. Frontmatter alone does NOT qualify. When
+the orchestrator re-opens a spec for a review pass it deliberately STRIPS the previous section (so a
+stale one cannot be mistaken for your output) — which means a review pass starts with no section and
+must write a fresh one.
+
+WHAT GOES WRONG WITHOUT IT (Story 11-5, 2026-07-30)
+The review pass fixed two real findings, set `status: done`, `followup_review_recommended: false`,
+appended its Review Triage Log, and committed — but wrote no `## Auto Run Result`. The orchestrator
+saw no result artifact, nudged the finished session awake, declared it stalled, then flipped the spec
+back off `done` and launched an entirely fresh review cycle on an already-converged story. Cost:
+~8.9M tokens on the stalled session plus a wasted review cycle, and it would have burned the
+remaining `max_review_cycles` the same way. Updating the frontmatter is not a handback.
+
+THE SHAPE
+Append at the end of the spec, unfenced, exactly this heading and a `Status:` line:
+
+## Auto Run Result
+
+Status: <done | in-review | blocked | in-progress>
+Blocking condition: <none, or the specific blocker>
+
+**Change:** <what this session changed and why, one paragraph>
+**Files changed:** <bulleted list with a clause on each file's role>
+**Verification:** <build/test results and gate outcomes, independently re-run>
+
+Rules:
+- Write it LAST, after the code, the tests and any In-Engine Gate block are settled.
+- `Status:` must agree with the frontmatter `status:` — they are cross-checked.
+- Keep the heading at `##` and outside any code fence; a fence-quoted heading is treated as
+  documentation and will not qualify as your result.
+- A review pass that changed nothing still writes one (`Status: done`, and say it converged).
+""",
 ]
 
 # An extra review layer, appended to the four defaults (arrays of tables merge by `id`, so a new
