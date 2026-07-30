@@ -143,8 +143,11 @@ namespace ProjectChimera.UI
         /// <summary>Cached ability-panel positions (Story 2.9b). Normal = the shared HUD slot (a standalone combat
         /// caster keeps this). Stacked = raised one worker-card height + an 8px gap so the ability card sits ABOVE the
         /// co-displayed worker (build) card. Computed ONCE in <see cref="BuildAbilityPanel"/>, not per-frame.</summary>
-        private Vector2 _abilityPanelNormalPos;
-        private Vector2 _abilityPanelStackedPos;
+        // Story 11.7 (AC-5): the ability panel is now anchored to the bottom-left corner (reflows on resize / UI-
+        // scale); its normal/stacked toggle is expressed as two OffsetTop values from that bottom anchor (height is a
+        // fixed 175, so OffsetBottom = top + 175). Both are negative (above the bottom edge).
+        private float _abilityPanelNormalTop;
+        private float _abilityPanelStackedTop;
 
         private static readonly BuildingType[] WORKER_BUILD_TYPES =
         {
@@ -284,7 +287,13 @@ namespace ProjectChimera.UI
             // overlapping); a standalone combat caster keeps it at the normal HUD slot. Repositioned only while
             // visible, right before the visibility flip.
             if (abilitySelected)
-                _abilityPanel.Position = workerSelected ? _abilityPanelStackedPos : _abilityPanelNormalPos;
+            {
+                // Story 11.7 (AC-5): the panel is bottom-left-anchored, so the stacked/normal swap sets the two
+                // vertical offsets from the bottom anchor rather than an absolute Position (height fixed at 175).
+                float top = workerSelected ? _abilityPanelStackedTop : _abilityPanelNormalTop;
+                _abilityPanel.OffsetTop    = top;
+                _abilityPanel.OffsetBottom = top + 175f;
+            }
             _abilityPanel.Visible = abilitySelected;
 
             // Story 3.16: a focused local-faction HERO shows its inventory grid (independent of the ability card — a hero often has both).
@@ -1015,8 +1024,6 @@ namespace ProjectChimera.UI
             var canvas = new CanvasLayer();
             AddChild(canvas);
 
-            var vpSize = GetViewport().GetVisibleRect().Size;
-
             // Story 2.8 review (AC4): tabular-figures font shared by the train grid + countdown so digits are
             // fixed-width and don't jitter. No BaseFont → derives from the default project font (documented
             // fallback), so text still renders even if the font lacks the feature.
@@ -1032,8 +1039,13 @@ namespace ProjectChimera.UI
             _panel = new Panel();
             // Story 2.8: taller (140 → 175) and raised (−150 → −185) to hold the per-unit train grid, matching the
             // worker/ability cards (which sit at −185 for their 175px height and share this HUD region).
-            _panel.Size     = new Vector2(420f, 175f);
-            _panel.Position = new Vector2(10f, vpSize.Y - 185f);
+            // Story 11.7 (AC-5): pinned to the bottom-left corner via anchors (not a cached viewport size), so Godot
+            // reflows it on window resize and UI-scale change. Offsets reproduce the former 420×175 rect at (10, −185).
+            _panel.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.BottomLeft);
+            _panel.OffsetLeft   = 10f;
+            _panel.OffsetTop    = -185f;
+            _panel.OffsetRight  = 10f + 420f;
+            _panel.OffsetBottom = -185f + 175f;
             _panel.Visible  = false;
             // Consume mouse events — prevent clicks inside the card from deselecting
             _panel.MouseFilter = Control.MouseFilterEnum.Stop;
@@ -1189,11 +1201,16 @@ namespace ProjectChimera.UI
         {
             var canvas = new CanvasLayer();
             AddChild(canvas);
-            var vpSize = GetViewport().GetVisibleRect().Size;
 
             _inventoryPanel = new Panel();
-            _inventoryPanel.Size     = new Vector2(6 * 96f + 16f, 118f);
-            _inventoryPanel.Position = new Vector2(vpSize.X - (6 * 96f + 16f) - 10f, vpSize.Y - 128f);
+            // Story 11.7 (AC-5): pinned to the bottom-right corner via anchors so it reflows on resize / UI-scale.
+            // Offsets reproduce the former (6*96+16)×118 rect inset 10px from the right and bottom edges.
+            const float invW = 6 * 96f + 16f;
+            _inventoryPanel.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.BottomRight);
+            _inventoryPanel.OffsetRight  = -10f;
+            _inventoryPanel.OffsetLeft   = -10f - invW;
+            _inventoryPanel.OffsetTop    = -128f;
+            _inventoryPanel.OffsetBottom = -128f + 118f;
             _inventoryPanel.Visible  = false;
             _inventoryPanel.MouseFilter = Control.MouseFilterEnum.Stop;
             var bg = new StyleBoxFlat();
@@ -1261,13 +1278,15 @@ namespace ProjectChimera.UI
             var canvas = new CanvasLayer();
             AddChild(canvas);
 
-            var vpSize = GetViewport().GetVisibleRect().Size;
-
             _workerPanel = new Panel();
             // Story 2.8: widened 420 → 530 so the 5th build button (Aviary) fits. Buttons lay at 10 + i*102 (width
             // 98), so button i=4 spans [418, 516] — the old 420-wide panel clipped it past the border.
-            _workerPanel.Size     = new Vector2(530f, 175f);
-            _workerPanel.Position = new Vector2(10f, vpSize.Y - 185f);
+            // Story 11.7 (AC-5): pinned to the bottom-left corner via anchors so it reflows on resize / UI-scale.
+            _workerPanel.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.BottomLeft);
+            _workerPanel.OffsetLeft   = 10f;
+            _workerPanel.OffsetTop    = -185f;
+            _workerPanel.OffsetRight  = 10f + 530f;
+            _workerPanel.OffsetBottom = -185f + 175f;
             _workerPanel.Visible  = false;
             _workerPanel.MouseFilter = Control.MouseFilterEnum.Stop;
 
@@ -1384,17 +1403,20 @@ namespace ProjectChimera.UI
             var canvas = new CanvasLayer();
             AddChild(canvas);
 
-            var vpSize = GetViewport().GetVisibleRect().Size;
-
             // Story 2.9b: cache the ability panel's two Y positions once (not per-frame). Normal = the shared HUD slot
             // (the sole pre-2.9b position — a standalone combat caster keeps it). Stacked = raised one worker-card
             // height (175) + an 8px gap (D-3) so the ability card sits ABOVE a co-displayed worker (build) card
             // instead of overlapping it. (Pre-2.9b only ONE of building/worker/ability showed at a time; worker+ability now co-display.)
-            _abilityPanelNormalPos  = new Vector2(10f, vpSize.Y - 185f);
-            _abilityPanelStackedPos = new Vector2(10f, vpSize.Y - 185f - 175f - 8f); // D-3: 8px gap above the worker card
+            // Story 11.7 (AC-5): expressed as OffsetTop values from the bottom-left anchor so the panel reflows on
+            // resize / UI-scale; the toggle swaps OffsetTop/OffsetBottom (see the visibility flip in _Process).
+            _abilityPanelNormalTop  = -185f;
+            _abilityPanelStackedTop = -185f - 175f - 8f; // D-3: 8px gap above the worker card
             _abilityPanel = new Panel();
-            _abilityPanel.Size     = new Vector2(420f, 175f);
-            _abilityPanel.Position = _abilityPanelNormalPos;
+            _abilityPanel.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.BottomLeft);
+            _abilityPanel.OffsetLeft   = 10f;
+            _abilityPanel.OffsetRight  = 10f + 420f;
+            _abilityPanel.OffsetTop    = _abilityPanelNormalTop;
+            _abilityPanel.OffsetBottom = _abilityPanelNormalTop + 175f;
             _abilityPanel.Visible  = false;
             _abilityPanel.MouseFilter = Control.MouseFilterEnum.Stop; // consume clicks so they don't deselect
 

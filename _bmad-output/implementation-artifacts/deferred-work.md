@@ -3391,3 +3391,15 @@ decision: 2026-07-28 correct-course — rides bundle housekeeping-docs-and-norma
 - source_spec: `_bmad-output/implementation-artifacts/spec-11-6-production-queue-depth-5-with-queue-display-and-cancel-refund.md`
   summary: A unit authored with TrainTime <= 0 makes a non-empty head whose timer is 0; TickProduction's "timer <= 0 -> continue" guard skips it forever, and it now also blocks the four slots queued behind it.
   evidence: BuildingSystem.TickProduction (godot/src/Economy/BuildingSystem.cs:183-184): idle is detected by an empty head slot, then a non-empty head with ProductionTimer <= 0 is skipped. At enqueue an idle head's timer is set to def.TrainTime (:452-453); TrainTime <= 0 -> timer 0 -> permanent skip. Pre-existing content-validation gap (no validator enforces TrainTime > 0); depth-5 widens the blast radius from one stuck order to the whole queue. Fix belongs in content validation, out of this story's scope.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-11-7-video-settings-the-mode-select-honesty-strip.md`
+  summary: SettingsData.MigrateForward stamps CurrentSchemaVersion unconditionally, so a settings.json written by a newer build (higher schema) is silently downgraded and its forward-only fields dropped on the next Save.
+  evidence: MigrateForward has no `if (SchemaVersion > CurrentSchemaVersion)` bail; pre-existing since Story 8.1, surfaced by the 11.7 review. Real cross-build data-loss on a version downgrade.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-11-7-video-settings-the-mode-select-honesty-strip.md`
+  summary: Editor/creation-suite panels (center-anchored, fixed CustomMinimumSize) are unverified at high UI-scale (1.5x) and 4K — the new UI-scale lever can shrink the logical viewport below a panel's fixed size and clip its controls.
+  evidence: Story 11.7 re-anchored only the HUD command-card panels; editor panels were not touched or driven at a non-default scale. AC3 names "editor layouts" and a 1080p/1440p/4K x 2-scale matrix; the in-engine gate sampled only 1080p + scale 1.5 on HUD.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-11-7-video-settings-the-mode-select-honesty-strip.md`
+  summary: The Graphics-tab Resolution dropdown stays enabled in Borderless/Fullscreen where ApplyVideo only issues WindowSetSize in windowed mode, so a resolution pick in those two modes silently no-ops with no UI feedback (no grey-out / hint).
+  evidence: SettingsManager.ApplyVideo (godot/src/UI/SettingsManager.cs) gates WindowSetSize behind `mode == WindowMode.Windowed` (a review-1 fix, correct — resizing fights borderless/exclusive). The review-2 patch stopped the spurious safe-revert arm for an inert resolution change, but the control itself still offers a setting it ignores in 2 of 3 modes. Real UX gap surfaced by the 11.7 review; fix (disable the resolution OptionButton on a window-mode `item_selected` when the mode is not windowed) is a live-interaction enhancement beyond any AC, so deferred rather than expanded into this story.

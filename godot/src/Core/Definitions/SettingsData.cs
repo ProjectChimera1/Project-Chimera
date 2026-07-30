@@ -18,8 +18,10 @@ namespace ProjectChimera.Core.Definitions
         /// current version this build writes. Bump when a forward-incompatible field shape is added so a future
         /// <see cref="MigrateForward"/> can normalize older files. Story 9.7: bumped 1→2 for the multiplayer
         /// endpoint fields (server/Nakama host/port/key), whose null-string values <see cref="MigrateForward"/>
-        /// normalizes to "".</summary>
-        public const int CurrentSchemaVersion = 2;
+        /// normalizes to "". Story 11.7: bumped 2→3 for the six video fields (resolution/window mode/vsync/quality
+        /// preset/UI scale), whose enum strings <see cref="MigrateForward"/> normalizes to their default on an unknown
+        /// value and whose <c>ui_scale</c> it clamps to [0.75, 1.5].</summary>
+        public const int CurrentSchemaVersion = 3;
 
         /// <summary>Story 8.1: the persisted schema version. An older <c>settings.json</c> that predates this field
         /// deserializes to <c>0</c>; <see cref="MigrateForward"/> stamps <see cref="CurrentSchemaVersion"/> so a
@@ -66,6 +68,40 @@ namespace ProjectChimera.Core.Definitions
         /// the property initializer on the controller never governs.</summary>
         [JsonPropertyName("edge_scroll_enabled")]
         public bool EdgeScrollEnabled { get; set; } = false;
+
+        // ── Video / Display (Story 11.7) ───────────────────────────────────────
+
+        /// <summary>Story 11.7: persisted window width, applied via <c>DisplayServer.WindowSetSize</c>. Primarily
+        /// meaningful in windowed/borderless mode. Defaults to 1920 (16:9 1080p). Absent in an older file → default.</summary>
+        [JsonPropertyName("resolution_width")]
+        public int ResolutionWidth { get; set; } = 1920;
+
+        /// <summary>Story 11.7: persisted window height (see <see cref="ResolutionWidth"/>). Defaults to 1080.</summary>
+        [JsonPropertyName("resolution_height")]
+        public int ResolutionHeight { get; set; } = 1080;
+
+        /// <summary>Story 11.7: the window mode — one of <c>windowed</c> / <c>borderless</c> (windowed-fullscreen) /
+        /// <c>fullscreen</c> (exclusive). Maps in <c>SettingsManager.ApplyVideo</c> to Godot's
+        /// <c>WindowMode.Windowed</c> / <c>WindowMode.Fullscreen</c> / <c>WindowMode.ExclusiveFullscreen</c>. An unknown
+        /// value is reset to the default (<c>windowed</c>) by <see cref="MigrateForward"/>.</summary>
+        [JsonPropertyName("window_mode")]
+        public string WindowMode { get; set; } = "windowed";
+
+        /// <summary>Story 11.7: whether vertical sync is enabled. Applied via <c>DisplayServer.WindowSetVsyncMode</c>.
+        /// Defaults on.</summary>
+        [JsonPropertyName("vsync")]
+        public bool Vsync { get; set; } = true;
+
+        /// <summary>Story 11.7: the render quality preset — <c>low</c> / <c>medium</c> / <c>high</c>. Drives shadows,
+        /// shadow-atlas size, and MSAA (see <c>SettingsManager.ApplyVideo</c> + <c>MainScene.ApplySettingsToSystems</c>).
+        /// An unknown value is reset to the default (<c>medium</c>) by <see cref="MigrateForward"/>.</summary>
+        [JsonPropertyName("quality_preset")]
+        public string QualityPreset { get; set; } = "medium";
+
+        /// <summary>Story 11.7: the UI content-scale (DPI) factor, applied via <c>GetWindow().ContentScaleFactor</c>.
+        /// Clamped by <see cref="MigrateForward"/> to [0.75, 1.5]. Defaults to 1.0.</summary>
+        [JsonPropertyName("ui_scale")]
+        public float UiScale { get; set; } = 1.0f;
 
         // ── Audio ─────────────────────────────────────────────────────────────
 
@@ -177,6 +213,27 @@ namespace ProjectChimera.Core.Definitions
             GameServerIp ??= "";
             NakamaHost   ??= "";
             NakamaKey    ??= "";
+
+            // Story 11.7: reset an unknown window-mode / quality-preset enum string to its default (a legacy/typo'd
+            // value that no longer maps), and clamp the UI scale into the supported band.
+            if (WindowMode is not ("windowed" or "borderless" or "fullscreen"))
+                WindowMode = "windowed";
+            if (QualityPreset is not ("low" or "medium" or "high"))
+                QualityPreset = "medium";
+            // Guard NaN/Inf before clamping — Math.Clamp passes NaN straight through, which would become a NaN
+            // ContentScaleFactor and blank the UI; a non-finite value falls back to the 1.0 default.
+            UiScale = float.IsFinite(UiScale) ? System.Math.Clamp(UiScale, 0.75f, 1.5f) : 1.0f;
+
+            // Story 11.7 review-2: guard a corrupt/hand-edited resolution. ApplyVideo caps to the screen with
+            // Mathf.Min but has no floor, so a sub-pixel width (e.g. resolution_width:1) would restore a 1×1 window
+            // on boot — where safe-revert never arms — locking the player out. Reset BOTH to the 1080p default if
+            // either falls outside a sane [640×480, 16384×16384] band (keeps the aspect coherent).
+            if (ResolutionWidth < 640 || ResolutionHeight < 480 ||
+                ResolutionWidth > 16384 || ResolutionHeight > 16384)
+            {
+                ResolutionWidth  = 1920;
+                ResolutionHeight = 1080;
+            }
 
             SchemaVersion = CurrentSchemaVersion;
             return this;

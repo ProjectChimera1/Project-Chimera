@@ -2195,6 +2195,12 @@ namespace ProjectChimera.Core
             // Minimap visibility.
             if (_ctx.Minimap != null) _ctx.Minimap.Visible = s.ShowMinimap;
 
+            // Story 11.7 (FR-66): the video quality tier's directional-shadow toggle — the one display knob that needs
+            // the scene light (the global bits apply in SettingsManager.ApplyVideo). low = shadows off; medium/high =
+            // on. Null-guarded like the camera/minimap pushes — the light is absent when no match is running.
+            if (_ctx.KeyLight != null)
+                _ctx.KeyLight.ShadowEnabled = s.QualityPreset != "low";
+
             // FPS display via HUD label (show in top-left if ShowFps is enabled;
             // the HUD already shows FPS in the first line — just log the preference for now).
             // Full implementation: toggle the FPS portion of _ctx.HudLabel in UpdateHud().

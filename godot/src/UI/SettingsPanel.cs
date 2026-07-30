@@ -21,7 +21,8 @@ namespace ProjectChimera.UI
     ///
     /// Persists all changes to user://settings.json exactly as before — <see cref="ApplyAndSave"/> /
     /// <see cref="ResetToDefaults"/> read and write the same <see cref="Core.Definitions.SettingsData"/>
-    /// fields. Graphics and Controls are honestly empty (live video / rebinding land in Story 11.12), not
+    /// fields. Story 11.7 fills the Graphics tab with live video settings (window mode / resolution / vsync /
+    /// quality preset / UI scale); Controls stays honestly empty (key rebinding lands in a later story), not
     /// padded with non-functional controls.
     ///
     /// Requires a <see cref="SettingsManager"/> node in the scene tree.
@@ -61,6 +62,45 @@ namespace ProjectChimera.UI
         private ChimeraSwitch _minimapBtn        = null!;
         private ChimeraSwitch _fpsBtn            = null!;
         private ChimeraSwitch _colorblindBtn     = null!;
+
+        // ── Story 11.7 — Graphics tab (live video settings) ────────────────────
+        private OptionButton  _windowModeSelect  = null!;
+        private OptionButton  _resolutionSelect  = null!;
+        private OptionButton  _qualitySelect     = null!;
+        private ChimeraSwitch _vsyncBtn          = null!;
+        private ChimeraSlider _uiScaleSlider     = null!;
+        // The resolution options offered in the dropdown (curated 16:9 set filtered to ≤ the screen, plus the
+        // persisted value), index-aligned with the OptionButton items.
+        private readonly List<Vector2I> _resolutionOptions = new();
+
+        // Window-mode / quality-preset id↔label tables (item index == array index; the id is the persisted enum).
+        private static readonly (string Id, string Label)[] WindowModes =
+        {
+            ("windowed",   "Windowed"),
+            ("borderless", "Borderless (Windowed Fullscreen)"),
+            ("fullscreen", "Fullscreen (Exclusive)"),
+        };
+        private static readonly (string Id, string Label)[] QualityPresets =
+        {
+            ("low",    "Low"),
+            ("medium", "Medium"),
+            ("high",   "High"),
+        };
+        // Curated 16:9 resolutions, filtered to ≤ the primary screen at build time.
+        private static readonly Vector2I[] ResolutionCandidates =
+        {
+            new(1280, 720), new(1600, 900), new(1920, 1080), new(2560, 1440), new(3840, 2160),
+        };
+
+        // Safe-revert (display-mode / resolution change) — a 15 s auto-revert confirm.
+        private ChimeraDialog? _safeRevertDialog;
+        private Godot.Timer?   _safeRevertTimer;
+        private Godot.Timer?   _safeRevertCountdownTimer;
+        private Label?         _safeRevertLabel;
+        private int            _safeRevertRemaining;
+        private string         _safeRevertPrevMode = "windowed";
+        private int            _safeRevertPrevW;
+        private int            _safeRevertPrevH;
 
         // ── Story 8.2 — AI Provider config section ─────────────────────────────
 
@@ -234,9 +274,105 @@ namespace ProjectChimera.UI
         private Control BuildGraphicsPage()
         {
             var v = NewPage();
-            AddEmptyState(v,
-                "No graphics settings yet. Live video options (resolution, quality, vsync) arrive in a later update.");
+            var s = _settings.Current;
+
+            AddSectionHeader(v, "Display");
+
+            // Window mode (Windowed / Borderless / Fullscreen).
+            v.AddChild(ChimeraComponents.FieldLabel("Window mode"));
+            _windowModeSelect = ChimeraComponents.Select();
+            for (int i = 0; i < WindowModes.Length; i++) _windowModeSelect.AddItem(WindowModes[i].Label, i);
+            v.AddChild(_windowModeSelect);
+            SyncWindowModeSelect();
+
+            // Resolution (curated 16:9 set filtered to ≤ the screen; the persisted value is always selectable).
+            v.AddChild(ChimeraComponents.FieldLabel("Resolution"));
+            _resolutionSelect = ChimeraComponents.Select();
+            v.AddChild(_resolutionSelect);
+            BuildResolutionOptions();
+            SyncResolutionSelect();
+
+            AddSectionHeader(v, "Quality");
+
+            // Quality preset (Low / Medium / High → shadows + shadow-atlas + MSAA).
+            v.AddChild(ChimeraComponents.FieldLabel("Quality preset"));
+            _qualitySelect = ChimeraComponents.Select();
+            for (int i = 0; i < QualityPresets.Length; i++) _qualitySelect.AddItem(QualityPresets[i].Label, i);
+            v.AddChild(_qualitySelect);
+            SyncQualitySelect();
+
+            _vsyncBtn = AddToggleRow(v, "VSync",
+                "Cap the frame rate to your monitor's refresh rate to remove screen tearing.",
+                s.Vsync);
+            _uiScaleSlider = AddSliderRow(v, "UI scale",
+                "Scale the HUD and menus for readability (0.75× to 1.5×).",
+                min: 0.75f, max: 1.5f, step: 0.25f, value: s.UiScale);
+
             return v;
+        }
+
+        /// <summary>Rebuild the resolution dropdown: the curated 16:9 candidates filtered to ≤ the primary screen,
+        /// plus the currently-persisted resolution so it is always selectable, sorted ascending.</summary>
+        private void BuildResolutionOptions()
+        {
+            _resolutionOptions.Clear();
+            _resolutionSelect.Clear();
+
+            Vector2I screen;
+            try { screen = DisplayServer.ScreenGetSize(); }
+            catch { screen = new Vector2I(int.MaxValue, int.MaxValue); }
+
+            foreach (var r in ResolutionCandidates)
+                if (r.X <= screen.X && r.Y <= screen.Y) _resolutionOptions.Add(r);
+
+            var cur = new Vector2I(_settings.Current.ResolutionWidth, _settings.Current.ResolutionHeight);
+            if (cur.X > 0 && cur.Y > 0 && !_resolutionOptions.Contains(cur)) _resolutionOptions.Add(cur);
+            if (_resolutionOptions.Count == 0) _resolutionOptions.Add(new Vector2I(1920, 1080));
+
+            _resolutionOptions.Sort((a, b) => a.X != b.X ? a.X.CompareTo(b.X) : a.Y.CompareTo(b.Y));
+            for (int i = 0; i < _resolutionOptions.Count; i++)
+                _resolutionSelect.AddItem($"{_resolutionOptions[i].X} × {_resolutionOptions[i].Y}", i);
+        }
+
+        private void SyncWindowModeSelect()
+        {
+            int idx = 0;
+            for (int i = 0; i < WindowModes.Length; i++)
+                if (string.Equals(WindowModes[i].Id, _settings.Current.WindowMode, StringComparison.Ordinal)) idx = i;
+            _windowModeSelect.Select(idx);
+        }
+
+        private void SyncQualitySelect()
+        {
+            int idx = 1; // medium fallback
+            for (int i = 0; i < QualityPresets.Length; i++)
+                if (string.Equals(QualityPresets[i].Id, _settings.Current.QualityPreset, StringComparison.Ordinal)) idx = i;
+            _qualitySelect.Select(idx);
+        }
+
+        private void SyncResolutionSelect()
+        {
+            var cur = new Vector2I(_settings.Current.ResolutionWidth, _settings.Current.ResolutionHeight);
+            int idx = _resolutionOptions.IndexOf(cur);
+            _resolutionSelect.Select(idx < 0 ? 0 : idx);
+        }
+
+        private string SelectedWindowModeId()
+        {
+            int i = _windowModeSelect.Selected;
+            return (i >= 0 && i < WindowModes.Length) ? WindowModes[i].Id : "windowed";
+        }
+
+        private string SelectedQualityId()
+        {
+            int i = _qualitySelect.Selected;
+            return (i >= 0 && i < QualityPresets.Length) ? QualityPresets[i].Id : "medium";
+        }
+
+        private Vector2I SelectedResolution()
+        {
+            int i = _resolutionSelect.Selected;
+            return (i >= 0 && i < _resolutionOptions.Count) ? _resolutionOptions[i] : new Vector2I(1920, 1080);
         }
 
         private Control BuildAudioPage()
@@ -651,6 +787,12 @@ namespace ProjectChimera.UI
         {
             var s = _settings.Current;
 
+            // Story 11.7: snapshot the previously-persisted display mode + resolution BEFORE overwriting, so
+            // MaybeArmSafeRevert can tell whether either changed (and, on timeout, what to revert to).
+            string prevWindowMode = s.WindowMode;
+            int    prevResW       = s.ResolutionWidth;
+            int    prevResH       = s.ResolutionHeight;
+
             s.CameraSpeed        = (float)_cameraSpeedSlider.Value;
             s.CameraZoomSpeed    = (float)_zoomSpeedSlider.Value;
             s.EdgeScrollEnabled  = _edgeScrollBtn.On;
@@ -660,6 +802,18 @@ namespace ProjectChimera.UI
             s.ShowMinimap        = _minimapBtn.On;
             s.ShowFps            = _fpsBtn.On;
             s.ColorblindMode     = _colorblindBtn.On;
+
+            // Story 11.7: the five live video settings.
+            if (_windowModeSelect != null)
+            {
+                s.WindowMode       = SelectedWindowModeId();
+                var res            = SelectedResolution();
+                s.ResolutionWidth  = res.X;
+                s.ResolutionHeight = res.Y;
+                s.QualityPreset    = SelectedQualityId();
+                s.Vsync            = _vsyncBtn.On;
+                s.UiScale          = (float)_uiScaleSlider.Value;
+            }
 
             // Story 8.2: persist the AI provider/model/baseUrl into SettingsData (round-trips through settings.json);
             // the API key goes ONLY to the secret store, never into settings.json.
@@ -678,11 +832,122 @@ namespace ProjectChimera.UI
             _settings.Apply();
             _settings.Save();
 
+            // Story 11.7: a display-mode or resolution change arms a 15 s safe-revert (an unusable mode can't lock
+            // the player out). VSync / quality / UI-scale changes do NOT — each is trivially reversible in place.
+            MaybeArmSafeRevert(prevWindowMode, prevResW, prevResH);
+
             GD.Print("[Settings] Applied and saved.");
+        }
+
+        // ── Story 11.7 — safe-revert (display-mode / resolution) ───────────────
+
+        /// <summary>If Apply changed the window mode or resolution from the prior persisted values, open a modal with
+        /// a live countdown that auto-reverts those two settings (re-syncing the dropdowns and re-persisting) after
+        /// 15 s unless the player confirms Keep. A no-op when neither changed.</summary>
+        private void MaybeArmSafeRevert(string prevMode, int prevW, int prevH)
+        {
+            var s = _settings.Current;
+            // Story 11.7 review-2: arm only on a change ApplyVideo actually applies to the display. A window-mode
+            // change always applies; a resolution change is applied (WindowSetSize) ONLY in windowed mode, so a
+            // resolution pick in borderless/fullscreen is inert and must not pop a spurious auto-revert countdown.
+            bool modeChanged = !string.Equals(s.WindowMode, prevMode, StringComparison.Ordinal);
+            bool resChanged  = (s.ResolutionWidth != prevW || s.ResolutionHeight != prevH)
+                               && s.WindowMode == "windowed";
+            if (!(modeChanged || resChanged)) return;
+
+            DisarmSafeRevert(); // supersede any prior armed revert (its window state is already stale)
+
+            _safeRevertPrevMode = prevMode;
+            _safeRevertPrevW    = prevW;
+            _safeRevertPrevH    = prevH;
+            _safeRevertRemaining = 15;
+
+            var body = new VBoxContainer();
+            body.AddThemeConstantOverride("separation", ChimeraComponents.Const(ThemeTokens.S2));
+            var msg = Body("Keep these display settings? They will revert automatically if you don't confirm — in case the new mode is unusable.",
+                ThemeTokens.TextMid, ThemeTokens.Tmd);
+            msg.AutowrapMode = TextServer.AutowrapMode.Word;
+            msg.CustomMinimumSize = new Vector2(360, 0);
+            body.AddChild(msg);
+            _safeRevertLabel = Body($"Reverting in {_safeRevertRemaining}s…", ThemeTokens.TextHi, ThemeTokens.Tlg);
+            body.AddChild(_safeRevertLabel);
+
+            var dlg = ChimeraDialog.CreateCustom("Keep display settings?", body);
+            dlg.AddConfirm("Keep");
+            dlg.Confirmed += OnSafeRevertKeep;   // explicit Keep → new values persist as-is
+            dlg.Dismissed += OnSafeRevertExpire; // Esc / scrim → the safe choice is to revert
+            dlg.Open(this);
+            _safeRevertDialog = dlg;
+
+            _safeRevertCountdownTimer = new Godot.Timer { WaitTime = 1.0, OneShot = false };
+            AddChild(_safeRevertCountdownTimer);
+            _safeRevertCountdownTimer.Timeout += OnSafeRevertTick;
+            _safeRevertCountdownTimer.Start();
+
+            _safeRevertTimer = new Godot.Timer { WaitTime = 15.0, OneShot = true };
+            AddChild(_safeRevertTimer);
+            _safeRevertTimer.Timeout += OnSafeRevertExpire;
+            _safeRevertTimer.Start();
+        }
+
+        private void OnSafeRevertTick()
+        {
+            _safeRevertRemaining--;
+            if (_safeRevertLabel != null && IsInstanceValid(_safeRevertLabel))
+                _safeRevertLabel.Text = $"Reverting in {Math.Max(0, _safeRevertRemaining)}s…";
+        }
+
+        /// <summary>Keep confirm: the new values stay; just tear down the timers and dialog reference.</summary>
+        private void OnSafeRevertKeep() => DisarmSafeRevert();
+
+        /// <summary>Timeout (or Esc/scrim dismiss): revert window mode + resolution to the prior values, re-apply,
+        /// re-persist, and re-sync the two dropdowns.</summary>
+        private void OnSafeRevertExpire()
+        {
+            // Guard against a second entry (both the 15 s Timer and a scrim/Esc Dismissed can target this) — once
+            // disarmed, the state is torn down and a re-entry would redundantly re-apply.
+            if (_safeRevertTimer == null && _safeRevertDialog == null) return;
+
+            var s = _settings.Current;
+            s.WindowMode       = _safeRevertPrevMode;
+            s.ResolutionWidth  = _safeRevertPrevW;
+            s.ResolutionHeight = _safeRevertPrevH;
+            _settings.Apply();
+            _settings.Save();
+
+            // Re-sync the two dropdowns to the reverted values (the prior resolution is guaranteed in the option list).
+            if (_windowModeSelect != null) SyncWindowModeSelect();
+            if (_resolutionSelect != null) { BuildResolutionOptions(); SyncResolutionSelect(); }
+
+            DisarmSafeRevert();
+        }
+
+        /// <summary>Free the safe-revert timers and dialog without reverting (idempotent). Called by Keep, by the
+        /// revert path after it applies, and by a superseding Apply / Reset.</summary>
+        private void DisarmSafeRevert()
+        {
+            if (_safeRevertCountdownTimer != null)
+            {
+                if (IsInstanceValid(_safeRevertCountdownTimer)) _safeRevertCountdownTimer.QueueFree();
+                _safeRevertCountdownTimer = null;
+            }
+            if (_safeRevertTimer != null)
+            {
+                if (IsInstanceValid(_safeRevertTimer)) _safeRevertTimer.QueueFree();
+                _safeRevertTimer = null;
+            }
+            if (_safeRevertDialog != null)
+            {
+                // QueueFree does not emit Dismissed, so tearing the dialog down here can't re-enter OnSafeRevertExpire.
+                if (IsInstanceValid(_safeRevertDialog)) _safeRevertDialog.QueueFree();
+                _safeRevertDialog = null;
+            }
+            _safeRevertLabel = null;
         }
 
         private void ResetToDefaults()
         {
+            DisarmSafeRevert(); // any in-flight revert would target now-stale values
             _settings.Current = new Core.Definitions.SettingsData();
             // Re-sync all widgets to defaults.
             _cameraSpeedSlider.Value = _settings.Current.CameraSpeed;
@@ -694,6 +959,17 @@ namespace ProjectChimera.UI
             _minimapBtn.SetOn(_settings.Current.ShowMinimap, animate: false);
             _fpsBtn.SetOn(_settings.Current.ShowFps, animate: false);
             _colorblindBtn.SetOn(_settings.Current.ColorblindMode, animate: false);
+
+            // Story 11.7: re-sync the Graphics widgets to the reset defaults.
+            if (_windowModeSelect != null)
+            {
+                SyncWindowModeSelect();
+                BuildResolutionOptions();
+                SyncResolutionSelect();
+                SyncQualitySelect();
+                _vsyncBtn.SetOn(_settings.Current.Vsync, animate: false);
+                _uiScaleSlider.Value = _settings.Current.UiScale;
+            }
 
             // Story 8.2: re-sync the AI Provider widgets to the reset defaults (the stored key is NOT cleared here —
             // "Reset to Defaults" governs settings.json fields, not the secret store; use "Clear key" for that).

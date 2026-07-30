@@ -74,6 +74,11 @@ namespace ProjectChimera.Core.Bootstrap
         public NavigationRegion3D  NavRegion       = null!;  // Navigation
         public NavObstacleManager  NavObstacles    = null!;  // Navigation
         public Node3D?             Terrain    = null;    // Terrain (null on PlaneMesh fallback)
+        /// <summary>Story 11.7 (FR-66): the scene key <see cref="DirectionalLight3D"/> produced by
+        /// <c>LightingPhase</c>. The video quality tier's <c>ShadowEnabled</c> toggle is the one display knob that
+        /// needs a scene handle, so it rides the <c>MainScene.ApplySettingsToSystems</c> bridge against this — null in
+        /// menus (no match running), so every bridge push is null-guarded.</summary>
+        public DirectionalLight3D? KeyLight = null;      // Lighting
         public FogOfWarBridge      FogBridge  = null!;   // Rendering
         public StartPositionBridge StartPosBridge = null!;  // ScenarioLoad
         public ScenarioData?       Scenario   = null;    // ScenarioLoad (live edited scenario; null on fallback)

@@ -171,7 +171,7 @@ development_status:
   11-4-under-attack-alerts-minimap-pings-event-cues-denial-acknowledgment-feedback: done
   11-5-buff-icons-multi-select-panel-and-subgroup-tabs: done
   11-6-production-queue-depth-5-with-queue-display-and-cancel-refund: done
-  11-7-video-settings-the-mode-select-honesty-strip: backlog
+  11-7-video-settings-the-mode-select-honesty-strip: done
   epic-11-retrospective: optional
   epic-9: done
   9-1-widen-simchecksum-add-server-side-checksum-collector-with-majority-vote-desync-attribution: done

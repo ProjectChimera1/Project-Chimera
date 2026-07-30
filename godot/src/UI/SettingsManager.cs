@@ -110,6 +110,7 @@ namespace ProjectChimera.UI
         public void Apply()
         {
             ApplyAudio();
+            ApplyVideo();
             OnSettingsChanged?.Invoke(Current);
         }
 
@@ -118,6 +119,74 @@ namespace ProjectChimera.UI
             SetBusVolume("Master", Current.MasterVolume);
             SetBusVolume("SFX",    Current.SfxVolume);
             SetBusVolume("Music",  Current.MusicVolume);
+        }
+
+        /// <summary>
+        /// Story 11.7 (FR-66): push the global video/display state that is reachable without a live match scene —
+        /// window mode, resolution, vsync, UI content-scale, MSAA, and the directional shadow-atlas size. Called from
+        /// <see cref="Apply"/> (which <c>_Ready</c> runs after <see cref="Load"/>), so a persisted display mode is
+        /// restored on relaunch before the first frame. The one scene-coupled knob — the directional light's
+        /// <c>ShadowEnabled</c> per quality tier — rides the <see cref="OnSettingsChanged"/> bridge into
+        /// <c>MainScene.ApplySettingsToSystems</c> instead (the light is absent in menus).
+        ///
+        /// Skipped on a headless/dedicated-server run (no real display server or 3D viewport to configure).
+        /// </summary>
+        private void ApplyVideo()
+        {
+            // No window/viewport to configure on a headless server (the dedicated-server boot path).
+            if (DisplayServer.GetName() == "headless" || OS.HasFeature("dedicated_server"))
+                return;
+
+            var s = Current;
+
+            // ── Window mode (Godot 4 map: borderless == windowed-fullscreen == WindowMode.Fullscreen) ──
+            DisplayServer.WindowMode mode = s.WindowMode switch
+            {
+                "fullscreen" => DisplayServer.WindowMode.ExclusiveFullscreen,
+                "borderless" => DisplayServer.WindowMode.Fullscreen,
+                _            => DisplayServer.WindowMode.Windowed,
+            };
+            DisplayServer.WindowSetMode(mode);
+
+            // ── Resolution — only meaningful in true Windowed mode. Borderless (WindowMode.Fullscreen) and exclusive
+            //    fullscreen own their own sizing, so a WindowSetSize there fights the mode. Clamp to the current
+            //    screen so a settings.json carrying a larger resolution than the display (e.g. 4K persisted, opened on
+            //    a 1080p monitor) can never force an off-screen window on boot restore (safe-revert only arms on
+            //    interactive changes, never on this restore path). ──
+            if (mode == DisplayServer.WindowMode.Windowed &&
+                s.ResolutionWidth > 0 && s.ResolutionHeight > 0)
+            {
+                Vector2I screen = DisplayServer.ScreenGetSize();
+                int w = screen.X > 0 ? Mathf.Min(s.ResolutionWidth,  screen.X) : s.ResolutionWidth;
+                int h = screen.Y > 0 ? Mathf.Min(s.ResolutionHeight, screen.Y) : s.ResolutionHeight;
+                DisplayServer.WindowSetSize(new Vector2I(w, h));
+            }
+
+            // ── VSync ──
+            DisplayServer.WindowSetVsyncMode(
+                s.Vsync ? DisplayServer.VSyncMode.Enabled : DisplayServer.VSyncMode.Disabled);
+
+            // ── UI content-scale (DPI lever) ──
+            var win = GetWindow();
+            if (win != null) win.ContentScaleFactor = s.UiScale;
+
+            // ── Quality tier → MSAA + shadow-atlas (the ShadowEnabled toggle rides the MainScene bridge) ──
+            var vp = GetViewport();
+            if (vp != null)
+                vp.Msaa3D = s.QualityPreset switch
+                {
+                    "high"   => Viewport.Msaa.Msaa4X,
+                    "medium" => Viewport.Msaa.Msaa2X,
+                    _        => Viewport.Msaa.Disabled,
+                };
+
+            int atlas = s.QualityPreset switch
+            {
+                "high"   => 8192,
+                "medium" => 4096,
+                _        => 2048, // low: shadows are disabled by the tier, so the atlas size is inert
+            };
+            RenderingServer.DirectionalShadowAtlasSetSize(atlas, true);
         }
 
         private static void SetBusVolume(string busName, float linear)

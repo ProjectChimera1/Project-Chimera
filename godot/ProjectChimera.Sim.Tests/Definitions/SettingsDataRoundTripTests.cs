@@ -73,5 +73,149 @@ namespace ProjectChimera.Sim.Tests.Definitions
             string json = JsonSerializer.Serialize(original, Opts);
             Assert.Contains("\"has_seen_onboarding\"", json);
         }
+
+        // ── Story 11.7 — the six video fields ──────────────────────────────────
+
+        [Fact]
+        public void Video_DefaultsAreSafe()
+        {
+            var s = new SettingsData();
+            Assert.Equal(1920, s.ResolutionWidth);
+            Assert.Equal(1080, s.ResolutionHeight);
+            Assert.Equal("windowed", s.WindowMode);
+            Assert.True(s.Vsync);
+            Assert.Equal("medium", s.QualityPreset);
+            Assert.Equal(1.0f, s.UiScale);
+        }
+
+        [Fact]
+        public void Video_SurvivesSerializeRoundTrip()
+        {
+            var original = new SettingsData
+            {
+                ResolutionWidth  = 2560,
+                ResolutionHeight = 1440,
+                WindowMode       = "fullscreen",
+                Vsync            = false,
+                QualityPreset    = "high",
+                UiScale          = 1.25f,
+            };
+
+            string json = JsonSerializer.Serialize(original, Opts);
+            var reloaded = SettingsData.FromJson(json, Opts);
+
+            Assert.Equal(2560, reloaded.ResolutionWidth);
+            Assert.Equal(1440, reloaded.ResolutionHeight);
+            Assert.Equal("fullscreen", reloaded.WindowMode);
+            Assert.False(reloaded.Vsync);
+            Assert.Equal("high", reloaded.QualityPreset);
+            Assert.Equal(1.25f, reloaded.UiScale);
+            Assert.Equal(SettingsData.CurrentSchemaVersion, reloaded.SchemaVersion);
+        }
+
+        [Fact]
+        public void Video_JsonKeys_AreSnakeCase()
+        {
+            var json = JsonSerializer.Serialize(new SettingsData(), Opts);
+            Assert.Contains("\"resolution_width\"", json);
+            Assert.Contains("\"resolution_height\"", json);
+            Assert.Contains("\"window_mode\"", json);
+            Assert.Contains("\"vsync\"", json);
+            Assert.Contains("\"quality_preset\"", json);
+            Assert.Contains("\"ui_scale\"", json);
+        }
+
+        [Fact]
+        public void Video_AbsentFromOldSaveFile_DefaultsToSafeValues()
+        {
+            // A pre-11.7 settings.json lacking the six video keys — must land on the defaults, not throw.
+            const string legacyJson = "{ \"camera_speed\": 1.0, \"master_volume\": 1.0 }";
+
+            var reloaded = SettingsData.FromJson(legacyJson, Opts);
+
+            Assert.Equal(1920, reloaded.ResolutionWidth);
+            Assert.Equal(1080, reloaded.ResolutionHeight);
+            Assert.Equal("windowed", reloaded.WindowMode);
+            Assert.True(reloaded.Vsync);
+            Assert.Equal("medium", reloaded.QualityPreset);
+            Assert.Equal(1.0f, reloaded.UiScale);
+        }
+
+        [Fact]
+        public void Video_UnknownWindowMode_ResetsToDefault()
+        {
+            const string json = "{ \"window_mode\": \"cinema\" }";
+            var reloaded = SettingsData.FromJson(json, Opts);
+            Assert.Equal("windowed", reloaded.WindowMode);
+        }
+
+        [Fact]
+        public void Video_UnknownQualityPreset_ResetsToDefault()
+        {
+            const string json = "{ \"quality_preset\": \"ultra\" }";
+            var reloaded = SettingsData.FromJson(json, Opts);
+            Assert.Equal("medium", reloaded.QualityPreset);
+        }
+
+        [Theory]
+        [InlineData(5.0f, 1.5f)]   // above the band → clamps down
+        [InlineData(0.1f, 0.75f)]  // below the band → clamps up
+        [InlineData(1.25f, 1.25f)] // in-band → preserved
+        public void Video_UiScale_IsClampedToBand(float input, float expected)
+        {
+            string json = $"{{ \"ui_scale\": {input.ToString(System.Globalization.CultureInfo.InvariantCulture)} }}";
+            var reloaded = SettingsData.FromJson(json, Opts);
+            Assert.Equal(expected, reloaded.UiScale);
+        }
+
+        [Theory]
+        [InlineData(float.NaN)]
+        [InlineData(float.PositiveInfinity)]
+        [InlineData(float.NegativeInfinity)]
+        public void Video_UiScale_NonFinite_FallsBackToOne(float bad)
+        {
+            // Math.Clamp passes NaN through, so a hand-corrupted non-finite ui_scale must be caught BEFORE the clamp
+            // or it becomes a NaN ContentScaleFactor → blank UI. (JSON literals can't carry NaN/Inf, so drive
+            // MigrateForward directly — the same normalization SettingsManager.Load runs.)
+            var s = new SettingsData { UiScale = bad }.MigrateForward();
+            Assert.Equal(1.0f, s.UiScale);
+        }
+
+        [Fact]
+        public void Video_ValidEnums_ArePreservedByMigration()
+        {
+            var s = new SettingsData { WindowMode = "borderless", QualityPreset = "low" }.MigrateForward();
+            Assert.Equal("borderless", s.WindowMode);
+            Assert.Equal("low", s.QualityPreset);
+        }
+
+        [Fact]
+        public void SchemaVersion_IsStampedTo3_OnLoad()
+        {
+            var reloaded = SettingsData.FromJson("{ }", Opts);
+            Assert.Equal(3, reloaded.SchemaVersion);
+            Assert.Equal(3, SettingsData.CurrentSchemaVersion);
+        }
+
+        [Theory]
+        [InlineData(1, 1)]         // sub-pixel → reset (would restore a 1×1 window on boot)
+        [InlineData(1920, 100)]    // height below the floor → reset
+        [InlineData(100000, 1080)] // absurd width above the cap → reset
+        public void Video_CorruptResolution_ResetsToDefault(int w, int h)
+        {
+            // A hand-corrupted/legacy resolution outside the sane band must fall back to 1080p — ApplyVideo has no
+            // floor, so a sub-pixel size would boot an unusable window where safe-revert never arms.
+            var s = new SettingsData { ResolutionWidth = w, ResolutionHeight = h }.MigrateForward();
+            Assert.Equal(1920, s.ResolutionWidth);
+            Assert.Equal(1080, s.ResolutionHeight);
+        }
+
+        [Fact]
+        public void Video_ValidResolution_IsPreservedByMigration()
+        {
+            var s = new SettingsData { ResolutionWidth = 2560, ResolutionHeight = 1440 }.MigrateForward();
+            Assert.Equal(2560, s.ResolutionWidth);
+            Assert.Equal(1440, s.ResolutionHeight);
+        }
     }
 }
