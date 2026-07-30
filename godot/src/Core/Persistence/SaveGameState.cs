@@ -325,7 +325,11 @@ namespace ProjectChimera.Core.Persistence
                 hr[i] = b.HasRallyPoint[i] ? 1 : 0; tc[i] = b.TrainedCount[i]; rh[i] = b.RevivesHeroes[i] ? 1 : 0;
                 si[i] = b.SellsItems[i] ? 1 : 0; srd[i] = b.ShopRadius[i].Raw; gen[i] = b.Generation[i];
                 BDefinitionId[i] = b.DefinitionId[i] ?? "";
-                BShopStock[i] = b.ShopStock[i] ?? Array.Empty<string>();
+                // Review fix: CLONE rather than alias the live string[]. Harmless on the disk path (serialization
+                // copies), but the in-memory CaptureFrom→RestoreInto path shared one mutable array with the sim in
+                // both directions — every other reference-typed lane in this file is cloned or round-tripped by id.
+                string[]? stock = b.ShopStock[i];
+                BShopStock[i] = stock == null || stock.Length == 0 ? Array.Empty<string>() : (string[])stock.Clone();
             }
         }
 
@@ -687,14 +691,22 @@ namespace ProjectChimera.Core.Persistence
                 b.HasRallyPoint[i] = hr[i] != 0; b.TrainedCount[i] = tc[i]; b.RevivesHeroes[i] = rh[i] != 0; b.SellsItems[i] = si[i] != 0;
                 b.ShopRadius[i] = Fixed.FromRaw(srd[i]); b.Generation[i] = gen[i];
                 b.DefinitionId[i] = i < BDefinitionId.Length ? BDefinitionId[i] : "";
-                b.ShopStock[i] = i < BShopStock.Length ? BShopStock[i] : Array.Empty<string>();
+                // Clone on the way back out too, so a restored store never shares its stock array with this state
+                // object (which the caller may restore again, or keep).
+                string[] stock = i < BShopStock.Length ? (BShopStock[i] ?? Array.Empty<string>()) : Array.Empty<string>();
+                b.ShopStock[i] = stock.Length == 0 ? Array.Empty<string>() : (string[])stock.Clone();
             }
             b.RestoreManagement(BCount, BFreeList, BFreeList.Length);
         }
 
         private void RestoreResources(ResourceStore r)
         {
+            // Review fix: the bound came from Ore alone while every sibling lane was indexed at the same i. Safe on the
+            // disk path only because Validate ran first — but RestoreInto is public and the in-memory
+            // CaptureFrom→RestoreInto path (used by tests) never validates. Bound by the shortest lane involved.
             int n = Math.Min(r.Ore.Length, ResOre.Length);
+            n = Math.Min(n, Math.Min(ResCrystal.Length, Math.Min(ResSupplyUsed.Length, ResSupplyCap.Length)));
+            n = Math.Min(n, Math.Min(ResBaseX.Length, Math.Min(ResBaseY.Length, ResBaseZ.Length)));
             for (int i = 0; i < n; i++)
             {
                 r.Ore[i] = Fixed.FromRaw(ResOre[i]); r.Crystal[i] = Fixed.FromRaw(ResCrystal[i]); r.SupplyUsed[i] = ResSupplyUsed[i]; r.SupplyCap[i] = ResSupplyCap[i];
@@ -779,10 +791,17 @@ namespace ProjectChimera.Core.Persistence
 
         private void RestoreResearch(ResearchStore r)
         {
+            // Review fix: bound by every per-faction lane, not InProgressIndex alone (see RestoreResources).
             int f = Math.Min(r.InProgressIndex.Length, ReschInProgress.Length);
+            f = Math.Min(f, Math.Min(ReschRemaining.Length, ReschCompleted.Length));
+            f = Math.Min(f, Math.Min(ReschStartedX.Length, Math.Min(ReschStartedY.Length, ReschStartedZ.Length)));
+            f = Math.Min(f, Math.Min(ReschCumHp.Length, Math.Min(ReschCumAtk.Length,
+                                     Math.Min(ReschCumMove.Length, ReschCumArmor.Length))));
             for (int i = 0; i < f; i++)
             {
                 int m = ReschCompleted[i].Length;
+                m = Math.Min(m, Math.Min(ReschCumHp[i].Length, Math.Min(ReschCumAtk[i].Length,
+                                         Math.Min(ReschCumMove[i].Length, ReschCumArmor[i].Length))));
                 r.EnsureCapacity((Faction)i, m);
                 r.InProgressIndex[i] = ReschInProgress[i]; r.RemainingTicks[i] = ReschRemaining[i];
                 r.StartedAtPosition[i] = new FixedVec3(Fixed.FromRaw(ReschStartedX[i]), Fixed.FromRaw(ReschStartedY[i]), Fixed.FromRaw(ReschStartedZ[i]));
@@ -801,7 +820,9 @@ namespace ProjectChimera.Core.Persistence
         private void RestoreWinState(WinStateStore w)
         {
             w.MatchTicks = WinMatchTicks;
+            // Review fix: bound by every lane read in the loop, not KothHoldTicks alone (see RestoreResources).
             int f = Math.Min(w.KothHoldTicks.Length, WinKoth.Length);
+            f = Math.Min(f, Math.Min(WinSurvival.Length, WinVerdict.Length));
             for (int i = 0; i < f; i++) { w.KothHoldTicks[i] = WinKoth[i]; w.SurvivalRemaining[i] = WinSurvival[i]; w.Verdict[i] = WinVerdict[i]; }
         }
 
@@ -980,10 +1001,28 @@ namespace ProjectChimera.Core.Persistence
         {
             void Fail(string why) => throw new InvalidDataException($"Save '{ctx}': {why}");
 
+            // Review fix: the length checks below bounded each free list but never its ELEMENTS, so a corrupt or
+            // hand-edited save carrying an out-of-range or duplicated slot id passed the whole fail-closed gate and
+            // detonated later — Create() pops _freeList[--_freeCount] and writes at that index (IndexOutOfRange), or a
+            // duplicate hands one slot to two spawns. Validate the contents here, where the posture says they belong.
+            void FreeList(string name, int[] list, int cap)
+            {
+                if (list == null) { Fail($"{name} free-list is null."); return; }
+                if (list.Length > cap) Fail($"{name} free-list too long.");
+                var seen = new bool[cap];
+                for (int i = 0; i < list.Length; i++)
+                {
+                    int slot = list[i];
+                    if ((uint)slot >= (uint)cap) Fail($"{name} free-list entry {i} = {slot} is outside [0, {cap}).");
+                    if (seen[slot]) Fail($"{name} free-list contains slot {slot} more than once.");
+                    seen[slot] = true;
+                }
+            }
+
             // ── EntityWorld ──
             if ((uint)EntHwm > EntityWorld.MAX_ENTITIES) Fail($"entity count {EntHwm} exceeds cap {EntityWorld.MAX_ENTITIES}.");
             if (EntAliveCount < 0 || EntAliveCount > EntityWorld.MAX_ENTITIES) Fail($"alive count {EntAliveCount} out of range.");
-            if (EntFreeList.Length > EntityWorld.MAX_ENTITIES) Fail("entity free-list too long.");
+            FreeList("entity", EntFreeList, EntityWorld.MAX_ENTITIES);
             if (Ent.Length != (int)EA.COUNT) Fail("entity lane count mismatch.");
             for (int e = 0; e < Ent.Length; e++) if (Ent[e] == null) Fail($"entity lane {e} is null.");
             for (int e = 0; e < (int)EA.PatrolWpX; e++) if (Ent[e].Length != EntHwm) Fail($"entity lane {(EA)e} length {Ent[e].Length} != {EntHwm}.");
@@ -1008,6 +1047,7 @@ namespace ProjectChimera.Core.Persistence
             for (int e = 0; e < Bld.Length; e++) { if (Bld[e] == null) Fail($"building lane {e} is null."); if (Bld[e].Length != BCount) Fail($"building lane {(BA)e} length mismatch."); }
             if (BDefinitionId.Length != BCount) Fail("building def-id lane length mismatch.");
             if (BShopStock.Length != BCount) Fail("building shop-stock lane length mismatch.");
+            FreeList("building", BFreeList, BuildingStore.MAX_BUILDINGS);
 
             // ── ResourceStore ── (fixed FACTION_ARRAY_SIZE)
             int fa = FactionRegistry.FACTION_ARRAY_SIZE;
@@ -1023,6 +1063,7 @@ namespace ProjectChimera.Core.Persistence
             // ── HeroStore ──
             if ((uint)HeroCount > HeroStore.MAX_HEROES) Fail($"hero count {HeroCount} exceeds cap.");
             if (Hero.Length != (int)HA.COUNT) Fail("hero lane count mismatch.");
+            FreeList("hero", HeroFreeList, HeroStore.MAX_HEROES);
             for (int e = 0; e < Hero.Length; e++)
             {
                 if (Hero[e] == null) Fail($"hero lane {e} is null.");
@@ -1035,11 +1076,13 @@ namespace ProjectChimera.Core.Persistence
             if ((uint)ItemCount > ItemStore.MAX_ITEMS) Fail($"item count {ItemCount} exceeds cap.");
             if (Item.Length != (int)IA.COUNT) Fail("item lane count mismatch.");
             for (int e = 0; e < Item.Length; e++) { if (Item[e] == null) Fail($"item lane {e} is null."); if (Item[e].Length != ItemCount) Fail($"item lane {(IA)e} length mismatch."); }
+            FreeList("item", ItemFreeList, ItemStore.MAX_ITEMS);
 
             // ── ProjectileStore ──
             if ((uint)ProjHwm > ProjectileStore.MAX_PROJECTILES) Fail($"projectile count {ProjHwm} exceeds cap.");
             if (Proj.Length != (int)PA.COUNT) Fail("projectile lane count mismatch.");
             for (int e = 0; e < Proj.Length; e++) { if (Proj[e] == null) Fail($"projectile lane {e} is null."); if (Proj[e].Length != ProjHwm) Fail($"projectile lane {(PA)e} length mismatch."); }
+            FreeList("projectile", ProjFreeList, ProjectileStore.MAX_PROJECTILES);
 
             // ── ResearchStore ── (per-faction outer arrays + consistent jagged inner lengths)
             if (ReschInProgress.Length != fa || ReschRemaining.Length != fa || ReschStartedX.Length != fa

@@ -243,6 +243,73 @@ namespace ProjectChimera.Sim.Tests.Persistence
             return ms.ToArray();
         }
 
+        // ── Review fix: Validate() bounds free-list ELEMENTS, not just the list length ─────────────────────────────
+        // A corrupt/hand-edited save carrying an out-of-range or duplicated slot id used to clear the whole
+        // fail-closed gate and detonate later inside Create() (IndexOutOfRange, or one slot handed to two spawns).
+
+        [Fact]
+        public void Validate_FreeListEntryOutOfRange_ThrowsWithMessage()
+        {
+            (SaveGameState state, _) = CaptureValid();
+            state.EntFreeList = new[] { EntityWorld.MAX_ENTITIES + 5 };
+            var ex = Assert.Throws<InvalidDataException>(() => state.Validate("t"));
+            Assert.Contains("free-list", ex.Message);
+            Assert.Contains("outside", ex.Message);
+        }
+
+        [Fact]
+        public void Validate_FreeListEntryNegative_ThrowsWithMessage()
+        {
+            (SaveGameState state, _) = CaptureValid();
+            state.BFreeList = new[] { -1 };
+            var ex = Assert.Throws<InvalidDataException>(() => state.Validate("t"));
+            Assert.Contains("free-list", ex.Message);
+        }
+
+        [Fact]
+        public void Validate_DuplicateFreeListEntry_ThrowsWithMessage()
+        {
+            (SaveGameState state, _) = CaptureValid();
+            state.EntFreeList = new[] { 3, 7, 3 };
+            var ex = Assert.Throws<InvalidDataException>(() => state.Validate("t"));
+            Assert.Contains("more than once", ex.Message);
+        }
+
+        [Fact]
+        public void Validate_CleanFreeList_Passes()
+        {
+            (SaveGameState state, _) = CaptureValid();
+            state.EntFreeList = new[] { 3, 7, 11 };
+            state.Validate("t"); // must not throw
+        }
+
+        // ── Review fix: ShopStock must not be ALIASED between the sim store and the save state ────────────────────
+
+        [Fact]
+        public void CaptureThenRestore_DoesNotAliasShopStockArrays()
+        {
+            Harness h = BuildApplied();
+            Step(h.Host, 5);
+            BuildingStore b = h.Host.Buildings;
+            Assert.True(b.Count > 0);
+            b.ShopStock[0] = new[] { "item_a", "item_b" };
+
+            var table = CanonicalEffectDescriptorTable.Build(h.Host.AbilityRegistry, h.Host.ItemRegistry);
+            SaveGameState state = SaveGameState.CaptureFrom(h.Host, table);
+
+            // Capture must have copied, not aliased: mutating the LIVE store cannot reach the captured state.
+            b.ShopStock[0][0] = "MUTATED";
+            Assert.Equal("item_a", state.BShopStock[0][0]);
+
+            // Restore must copy too: the restored store must not share the state's array either.
+            Harness dest = BuildApplied();
+            var destTable = CanonicalEffectDescriptorTable.Build(dest.Host.AbilityRegistry, dest.Host.ItemRegistry);
+            state.RestoreInto(dest.Host, destTable, dest.SlotDefs);
+            Assert.Equal("item_a", dest.Host.Buildings.ShopStock[0][0]);
+            dest.Host.Buildings.ShopStock[0][0] = "MUTATED_AGAIN";
+            Assert.Equal("item_a", state.BShopStock[0][0]);
+        }
+
         [Fact]
         public void Load_BadMagic_ThrowsWithMessage()
         {

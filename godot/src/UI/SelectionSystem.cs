@@ -630,16 +630,24 @@ namespace ProjectChimera.UI
         /// <summary>Fire the issue-time acknowledgment: an ack sound (the primary selected unit's authored
         /// <c>AckSoundId</c>, else the default) + a short-lived order-confirmed ground marker at
         /// <paramref name="worldTarget"/>. No-op when nothing is selected (no selection → no ack). Presentation-only —
-        /// fired on the input frame while the deterministic order still executes ticks later.</summary>
-        private void ConfirmOrder(Vector3 worldTarget)
+        /// fired on the input frame while the deterministic order still executes ticks later.
+        ///
+        /// <para>Review fix: when <paramref name="queued"/>, skip the ack unless at least one selected unit can still
+        /// take an order. A Shift-queued order onto units whose rings are all full is rejected by the shared guard,
+        /// which now raises a <c>QueueFull</c> denial toast + sound — acking as well produced the confirmation AND the
+        /// refusal for one click. The precheck reads the same FOLDED <c>OrderQueueCount</c> the guard rejects on, so
+        /// the two cannot disagree. Issue-time optimism is retained everywhere else (that IS the GDD §6 design); this
+        /// only covers the one guard that rejects synchronously at issue time.</para></summary>
+        private void ConfirmOrder(Vector3 worldTarget, bool queued = false)
         {
             string? ack = null;
             bool any = false;
             foreach (int id in _selectedList)
             {
                 if (!_world.IsAlive(id)) continue;
+                if (queued && _world.OrderQueueCount[id] >= EntityWorld.MAX_ORDER_QUEUE) continue; // ring full → this unit refuses
                 any = true;
-                ack = _world.FeedbackProfile[id]?.AckSoundId; // primary selected unit's per-unit ack sound
+                ack = _world.FeedbackProfile[id]?.AckSoundId; // primary accepting unit's per-unit ack sound
                 break;
             }
             if (!any) return;
@@ -699,7 +707,7 @@ namespace ProjectChimera.UI
                     _world.AttackTarget[id]  = -1;
                 }
             }
-            ConfirmOrder(target); // Story 11.4: issue-time ack + ground marker at the move target
+            ConfirmOrder(target, queued); // Story 11.4: issue-time ack + ground marker at the move target
         }
 
         /// <summary>
@@ -829,7 +837,7 @@ namespace ProjectChimera.UI
                     _world.AttackTarget[id]  = -1;
                 }
             }
-            ConfirmOrder(target); // Story 11.4: issue-time ack + ground marker at the attack-move target
+            ConfirmOrder(target, queued); // Story 11.4: issue-time ack + ground marker at the attack-move target
             GD.Print($"[Selection] Attack-Move issued to {ids.Length} unit(s).");
         }
 
@@ -854,7 +862,7 @@ namespace ProjectChimera.UI
                 var atkOrder = new UnitOrder(id, UnitCommand.AttackTarget, Fixed.FromRaw(enemyId), Fixed.Zero);
                 OrderApplier.Apply(_world, in atkOrder, _world.FactionOf[id]);
             }
-            if (_world.IsAlive(enemyId)) ConfirmOrder(_world.Position[enemyId].ToGodotVector3()); // Story 11.4: ack + marker at the target
+            if (_world.IsAlive(enemyId)) ConfirmOrder(_world.Position[enemyId].ToGodotVector3(), queued); // Story 11.4: ack + marker at the target
             GD.Print($"[Selection] Attack issued on enemy {enemyId} to {_selectedList.Count} unit(s).");
         }
 
@@ -888,7 +896,7 @@ namespace ProjectChimera.UI
                 OrderApplier.Apply(_world, in atkOrder, _world.FactionOf[id]);
             }
             if (_buildingStore != null && buildingId >= 0 && buildingId < _buildingStore.Count) // Story 11.4: ack + marker at the target building
-                ConfirmOrder(_buildingStore.Position[buildingId].ToGodotVector3());
+                ConfirmOrder(_buildingStore.Position[buildingId].ToGodotVector3(), queued);
             GD.Print($"[Selection] Attack-building issued on building {buildingId} to {_selectedList.Count} unit(s).");
         }
 

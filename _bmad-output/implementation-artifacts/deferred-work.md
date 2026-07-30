@@ -3342,24 +3342,34 @@ decision: 2026-07-28 correct-course — rides bundle housekeeping-docs-and-norma
   evidence: `MatchAlertBridge.Update` filters on `_localFaction()` which clamps observers to Player1 (pre-existing clamp). Spectator mode is not a 1.0-verified surface; low severity.
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-11-4-under-attack-alerts-minimap-pings-event-cues-denial-acknowledgment-feedback.md`
-  summary: `MainScene.PendingLoadedSave` (static) is cleared only at the LAST statement of `ResetToAuthoredStart`, but that method has three earlier `return false` launch-gate vetoes and the boot is wrapped by `FailSafeSkirmishBoot` — a load whose relaunch trips a veto leaves the static armed across the scene reload, so the player's next unrelated skirmish overlays the stale save onto a different map.
+  summary: **RESOLVED 2026-07-30** — `MainScene.PendingLoadedSave` (static) survived an early-return launch-gate veto and leaked into the next, unrelated skirmish.
   evidence: Found by the post-merge ultra-review of 11-3/11-4 (2026-07-29), `MainScene.cs:2288`. Fix shape: clear the static in a `finally` (or at entry, into a local) so no early-return path can leave it armed. Not reproduced live; reasoned from the control flow.
+  resolution: Split the body into `ResetToAuthoredStartCore` and wrapped it in a `try/finally` that disarms the statics (with a "Load discarded" notice) on any non-completing exit. Deliberately a FAILURE-path sweep, not consume-at-entry: `LaunchSkirmish` reaches this via `GetTree().ReloadCurrentScene()`, so the statics must survive the reload for whichever reset call actually enters Play — capturing at entry would let an earlier boot-sequence reset swallow the load. Success path unchanged, verified in-engine by a save/load round trip (loaded an autosave at tick 3599 from a live match at tick 2954; post-reload tick 3717 — it jumped UP past the pre-load tick, which a restart cannot do).
+  status: resolved
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-11-3-sp-save-load-full-world-serializer-slots-autosave-format-stability.md`
-  summary: `SaveGameState.Validate()` bounds the free-list LENGTHS for all five stores but never their ELEMENTS, so a save carrying an out-of-range or duplicated free-list id passes the whole fail-closed-before-mutation gate and detonates later.
+  summary: **RESOLVED 2026-07-30** — `SaveGameState.Validate()` bounded free-list LENGTHS for all five stores but never their ELEMENTS.
   evidence: Found by the post-merge ultra-review (2026-07-29), `SaveGameState.cs:980`; `RestoreAllocation`/`RestoreManagement` copy the lists verbatim. `EntityWorld.Create()` then pops `_freeList[--_freeCount]` and writes at that index (IndexOutOfRange), or a duplicate id hands one slot to two spawns. Only reachable from a corrupt/hand-edited save — the fail-closed posture says it should still be caught at validate time.
+  resolution: A `FreeList(name, list, cap)` local now range-checks every element and rejects duplicates, wired for entity/building/hero/item/projectile. Regression tests `Validate_FreeListEntryOutOfRange_`/`FreeListEntryNegative_`/`DuplicateFreeListEntry_ThrowsWithMessage` plus a clean-list positive; verified load-bearing (they fail with the fix reverted).
+  status: resolved
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-11-3-sp-save-load-full-world-serializer-slots-autosave-format-stability.md`
-  summary: `RestoreResources` computes its loop bound from `Ore.Length` alone and then indexes `ResCrystal`/`ResSupply*`/`ResBase*` at the same `i` with no length check of their own; `RestoreResearch` and `RestoreWinState` repeat the pattern.
+  summary: **RESOLVED 2026-07-30** — `RestoreResources`/`RestoreResearch`/`RestoreWinState` bounded their loops by one lane while indexing every sibling at the same `i`.
   evidence: Found by the post-merge ultra-review (2026-07-29), `SaveGameState.cs:697`, `:782`, `:804`. Safe on the disk path only because `Validate` ran first, but `RestoreInto` is public and the in-memory `CaptureFrom`→`RestoreInto` path (used by tests) never validates. Bound each array by its own length, or make `RestoreInto` validate.
+  resolution: Each loop now takes the minimum across every lane it actually reads (including the per-faction jagged inner lengths in `RestoreResearch`), so the public `RestoreInto` is safe on the in-memory path that never calls `Validate`.
+  status: resolved
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-11-3-sp-save-load-full-world-serializer-slots-autosave-format-stability.md`
-  summary: `CaptureBuildings` stores the live `b.ShopStock[i]` `string[]` BY REFERENCE and `RestoreBuildings` aliases it straight back, so the in-memory capture/restore path shares mutable arrays with the sim in both directions.
+  summary: **RESOLVED 2026-07-30** — `CaptureBuildings` stored the live `ShopStock` `string[]` by reference and `RestoreBuildings` aliased it straight back.
   evidence: Found by the post-merge ultra-review (2026-07-29), `SaveGameState.cs:328` / `:690`. Harmless on the disk path (serialization copies), but every other reference-typed lane in the file is cloned or round-tripped by id — this one is inconsistent and a latent aliasing bug for any future in-memory snapshot use (rollback, MP state sync).
+  resolution: Both directions now clone (empty stock still shares `Array.Empty<string>()`). Regression test `CaptureThenRestore_DoesNotAliasShopStockArrays` mutates the live store after capture and the restored store after restore, asserting the state object is untouched; verified load-bearing.
+  status: resolved
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-11-4-under-attack-alerts-minimap-pings-event-cues-denial-acknowledgment-feedback.md`
-  summary: `SelectionSystem.ConfirmOrder` fires the issue-time ack sound + ground marker unconditionally, independent of whether the order will be accepted — so a shift-queued order onto a unit whose order ring is already full produces the confirmation ack AND the new `QueueFull` denial toast + denial sound in the same frame for one click.
+  summary: **RESOLVED 2026-07-30** — `SelectionSystem.ConfirmOrder` acked unconditionally, so a Shift-queued order onto full order rings produced the confirmation AND the `QueueFull` refusal for one click.
   evidence: Found by the post-merge ultra-review (2026-07-29), `SelectionSystem.cs:634`. Note the issue-time-optimism itself is the deliberate GDD §6 design (and was rejected as a finding during 11.4's own review); the defect is only the contradictory DOUBLE feedback on the one guard that rejects synchronously at issue time. Cheapest fix: suppress the ack when the local ring-full precheck already knows the order cannot be queued.
+  resolution: `ConfirmOrder` takes a `queued` flag and, when set, acks only if some selected unit still has ring room — reading the same FOLDED `OrderQueueCount` the guard rejects on, so the two cannot disagree. Threaded through the four queued-capable issue paths (move, attack-move, attack-target, attack-building). Issue-time optimism is retained everywhere else; this covers only the guard that rejects synchronously at issue time.
+  status: resolved
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-11-4-under-attack-alerts-minimap-pings-event-cues-denial-acknowledgment-feedback.md`
   summary: **RESOLVED 2026-07-29** — Alt+LMB on the minimap dropped a ping AND panned the camera to the pinged point.

@@ -2259,6 +2259,37 @@ namespace ProjectChimera.Core
         /// </summary>
         internal bool ResetToAuthoredStart(bool preserveHeroProgress)
         {
+            // Review fix: the pending-load statics are consumed at step 8, the last statement of the core body — but
+            // that body has early `return false` launch-gate vetoes, and the boot is wrapped by FailSafeSkirmishBoot.
+            // A load whose relaunch tripped a veto (invalid scenario, incomplete roster) left the static armed across
+            // the scene reload, and the player's NEXT, unrelated skirmish silently overlaid the stale save onto a
+            // different map. Disarm it here on any non-completing exit.
+            //
+            // Deliberately a FAILURE-path sweep rather than a consume-at-entry: LaunchSkirmish reaches this through
+            // GetTree().ReloadCurrentScene(), so the statics must survive the reload and be read by whichever reset
+            // call actually enters Play. Capturing at entry would let an earlier reset in the boot sequence swallow
+            // the load. On the success path this wrapper changes nothing.
+            bool completed = false;
+            try
+            {
+                completed = ResetToAuthoredStartCore(preserveHeroProgress);
+                return completed;
+            }
+            finally
+            {
+                if (!completed && PendingLoadedSave != null)
+                {
+                    PendingLoadedSave = null;
+                    PendingLoadedSaveHeader = null;
+                    ShowSaveLoadNotice("Load discarded — the scenario could not enter Play.");
+                }
+            }
+        }
+
+        /// <summary>Body of <see cref="ResetToAuthoredStart"/>. Consumes the pending-load statics at its final step;
+        /// the wrapper above guarantees they are never left armed when this returns false or throws.</summary>
+        private bool ResetToAuthoredStartCore(bool preserveHeroProgress)
+        {
             // 1. Snapshot the live deployed hero's Level/Xp BEFORE anything clears (preserve path only). Pre-3.13 this
             //    equals the profile's authored values, but the seam is exercised now so Story 3.13 hooks in unchanged.
             // DW-27/DW-32: the plain-data capture is lifted into the Godot-free HeroHarvestResolver so the has-vs-fallback

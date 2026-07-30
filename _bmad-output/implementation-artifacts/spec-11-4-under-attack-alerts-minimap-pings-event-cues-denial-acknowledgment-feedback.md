@@ -200,6 +200,33 @@ feel change and is left to you.
 not end-to-end from a real off-screen combat event; MP ping replication remains code-reviewed only (single-client
 editor cannot host a peer, same posture as 11.3).
 
+### Deferred-findings burn-down — 2026-07-30: all 6 cleared
+
+The six findings the post-merge ultra-review deferred are now fixed; every ledger entry is marked `status: resolved`.
+Suite **3645 passed / 0 failed / 1 skipped** (+5 tests), build 0 errors, editor log clean, `AlgoVersion` pins untouched.
+
+| Finding | Fix | Evidence |
+|---|---|---|
+| Alt+LMB pinged AND panned | `_pingGesture` latch swallows the rest of the gesture, self-healing on a plain press | In-engine: Alt+click and Alt+drag leave the pivot at `(0,0,0)`; plain click still pans |
+| `PendingLoadedSave` leaked past a veto | body split to `ResetToAuthoredStartCore`, wrapped in `try/finally` that disarms a still-armed load | In-engine save/load round trip (below) |
+| Free-list ELEMENTS unvalidated | `FreeList(name, list, cap)` range-checks + rejects duplicates for all 5 stores | 4 new tests; 2 fail with the fix reverted |
+| `RestoreInto` lanes bounded by one array | each loop bounds by the min across every lane it reads | covered by the existing byte-identical resume tests |
+| `ShopStock` aliased in both directions | clone on capture and on restore | `CaptureThenRestore_DoesNotAliasShopStockArrays`, fails with the fix reverted |
+| Ack fired on a synchronously-rejected order | `ConfirmOrder(target, queued)` acks only if a selected unit has ring room | reads the same folded `OrderQueueCount` the guard rejects on |
+
+**On the `PendingLoadedSave` fix — a correction worth recording.** The first attempt consumed the statics at method
+entry. That is wrong here: `LaunchSkirmish` reaches `ResetToAuthoredStart` through `GetTree().ReloadCurrentScene()`,
+so the statics must survive the reload and be read by whichever reset call actually enters Play — consuming at entry
+lets an earlier boot-sequence reset swallow the load. The shipped fix is a failure-path sweep in a `finally`, which
+leaves the success path byte-identical. Verified in-engine: from a live match at tick **2954**, loading the autosave
+stamped **tick 3599** produced a post-reload tick of **3717** — the tick jumped UP past the pre-load value, which a
+restart-from-zero cannot do. (An earlier "load didn't rewind" reading was a flawed probe — it had pressed a slot in
+the SAVE picker, not the LOAD picker.)
+
+**Not covered by tests:** the `PendingLoadedSave` veto path and the ack suppression are Godot-side, outside the Tier-1
+link set. The veto branch specifically was reasoned + covered by the success-path in-engine check, not exercised with a
+deliberately invalid scenario.
+
 ## Design Notes
 
 **Why the non-folded bus is safe to extend.** `CombatEventQueue` is explicitly *not* a `SimChecksum` input — its own comments repeatedly assert that appending enum values and carrying presentation refs cannot move a golden, and `OrderDenied` was itself appended noting "Story 11.9 consumes this" (this merged story). Adding a `Faction`/`DenialReason` field and stamping it at push sites that already read that state is the same golden-safe operation; the determinism proof is "existing goldens still pass + `AlgoVersion` pins untouched", asserted in-memory, not a re-baseline.
