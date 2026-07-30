@@ -66,12 +66,17 @@ Execute all remaining layers in parallel wherever their execution methods allow:
    - **intent_gap** — Root cause is inside `<intent-contract>`. Save the attempted change as a patch file in `{implementation_artifacts}` and reference it from the triage-log entry, then revert code changes. Append the triage-log entry for this pass with `addressed_findings: none`, then HALT with status `blocked`, blocking condition `intent gap`, and include the unresolved questions and the saved patch path.
    - **bad_spec** — Root cause is outside `<intent-contract>`. Do not modify content inside `<intent-contract>`. Before reverting code: extract KEEP instructions for positive preservation (what worked well and must survive re-derivation). Revert code changes. Read the `## Spec Change Log` in `{spec_file}` and strictly respect all logged constraints when amending the sections outside `<intent-contract>` that contain the root cause. Append a new change-log entry recording: the triggering finding, what was amended, the known-bad state avoided, and the KEEP instructions. Append the triage-log entry for this pass, listing every bad_spec finding that triggered the spec amendment and implementation loopback under `addressed_findings`. Read fully and follow `./step-03-implement.md` to re-derive the code, then this step will run again.
    - **patch** — Auto-fix. These are the only findings that survive loopbacks. If the step-03 implementation subagent can be re-engaged with its context intact, send it all patch findings in one synchronous message — for each: the file, what is wrong, and what the fix must do. If it cannot be re-engaged, apply the patches yourself. Then re-run the commands in `{spec_file}`'s `## Verification` section (or perform its manual checks); if verification fails and the failure cannot be fixed, HALT with status `blocked` and blocking condition `patch verification failed`. Append the triage-log entry for this pass, listing every patch fixed in this pass under `addressed_findings`.
-   - **defer** — Append one new entry to `{deferred_work_file}` using this format. Do not modify existing entries or look for duplicates.
+   - **defer** — Append one new **canonical** entry to `{deferred_work_file}`. First determine `<n>`: read the file, find the highest existing `### DW-<number>` heading, and add 1. Do not modify existing entries or look for duplicates.
      ```markdown
-     - source_spec: `{spec_file}`
-       summary: <one sentence>
-       evidence: <why this is real>
+     ### DW-<n>: <short one-line title>
+     origin: deferred by review of `{spec_file}`, {date}
+     source_spec: `{spec_file}`
+     location: <file:line where the finding lives>
+     severity: <high|medium|low>
+     reason: <one-sentence summary> — Evidence: <why this is real>
+     status: open
      ```
+     The `### DW-<n>:` heading and the `status:` line are **both mandatory and must not be simplified away**. `bmad-loop sweep` triage parses *only* entries carrying both, so an entry missing either is invisible to the deferred-work burn-down and will never be swept (upstream bmad-code-org/bmad-loop#304). A flat `- source_spec:` bullet — the format this instruction used before 2026-07-30 — is exactly that invisible shape: it produced 160 unsweepable entries across Epics 7–11 before being migrated to DW-325…DW-484 by action item A1-E11.
    - **reject** — Drop silently.
 
 ## Finalize

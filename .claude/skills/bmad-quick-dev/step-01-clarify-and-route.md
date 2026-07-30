@@ -83,10 +83,15 @@ If the spec is an epic story and `{{.sprint_status}}` exists: find the `developm
    - HALT and ask human: `[S] Split — pick first goal, defer the rest` | `[K] Keep all goals — accept the risks`
    - On **S**: For each deferred goal, append one new entry to `{{.deferred_work_file}}` using this format. Do not modify existing entries or look for duplicates. Narrow scope to the first-mentioned goal. Continue routing.
      ```markdown
-     - source_spec: none
-       summary: <one sentence naming the deferred goal>
-       evidence: <why this was split from the current intent>
+     ### DW-<n>: <short one-line title>
+     origin: goal split out of a quick-dev intent, {date}
+     source_spec: none
+     location: <file:line where the finding lives>
+     severity: <high|medium|low>
+     reason: <one sentence naming the deferred goal> — Evidence: <why this was split from the current intent>
+     status: open
      ```
+     The `### DW-<n>:` heading and the `status:` line are **both mandatory and must not be simplified away**. `bmad-loop sweep` triage parses *only* entries carrying both, so an entry missing either is invisible to the deferred-work burn-down and will never be swept (upstream bmad-code-org/bmad-loop#304).
    - On **K**: Proceed as-is.
 5. Route — choose exactly one:
 

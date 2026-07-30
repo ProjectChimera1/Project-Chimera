@@ -28,12 +28,17 @@ If a layer's instruction requires subagents and none are available, generate one
 Deduplicate all review findings. Three categories only:
 
 - **patch** — trivially fixable. Auto-fix immediately.
-- **defer** — pre-existing issue not caused by this change. Append one new entry to `{{.deferred_work_file}}` using this format. Do not modify existing entries or look for duplicates.
+- **defer** — pre-existing issue not caused by this change. Append one new **canonical** entry to `{{.deferred_work_file}}`. First determine `<n>`: read the file, find the highest existing `### DW-<number>` heading, and add 1. Do not modify existing entries or look for duplicates.
   ```markdown
-  - source_spec: `{spec_file}`
-    summary: <one sentence>
-    evidence: <why this is real>
+  ### DW-<n>: <short one-line title>
+  origin: deferred by a quick-dev one-shot review of `{spec_file}`, {date}
+  source_spec: `{spec_file}`
+  location: <file:line where the finding lives>
+  severity: <high|medium|low>
+  reason: <one sentence> — Evidence: <why this is real>
+  status: open
   ```
+  The `### DW-<n>:` heading and the `status:` line are **both mandatory and must not be simplified away**. `bmad-loop sweep` triage parses *only* entries carrying both, so an entry missing either is invisible to the deferred-work burn-down and will never be swept (upstream bmad-code-org/bmad-loop#304).
 - **reject** — noise. Drop silently.
 
 If a finding is caused by this change but too significant for a trivial patch, HALT and present it to the human for decision before proceeding.

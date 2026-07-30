@@ -29,7 +29,19 @@ If `{spec_file}` exists and contains a Tasks/Subtasks section, append a `### Rev
 3. **`defer`** findings (checked off, marked deferred):
    `- [x] [Review][Defer] <Title> [<file>:<line>] — deferred, pre-existing`
 
-Also append each `defer` finding to `{deferred_work_file}` under a heading `## Deferred from: code review ({date})`. If `{spec_file}` is set, include its basename in the heading (e.g., `code review of story-3.3 (2026-03-18)`). One bullet per finding with description.
+Also append each `defer` finding to `{deferred_work_file}` as its own **canonical** entry. First determine `<n>`: read the file, find the highest existing `### DW-<number>` heading, and add 1; increment for each further finding. Do not modify existing entries.
+
+```markdown
+### DW-<n>: <short one-line title>
+origin: deferred by code review, {date}
+source_spec: `{spec_file}`
+location: <file>:<line>
+severity: <high|medium|low>
+reason: <one-sentence description> — Evidence: <why this is real>
+status: open
+```
+
+The `### DW-<n>:` heading and the `status:` line are **both mandatory and must not be simplified away**. `bmad-loop sweep` triage parses *only* entries carrying both, so an entry missing either is invisible to the deferred-work burn-down and will never be swept (upstream bmad-code-org/bmad-loop#304). Do NOT write findings as bare bullets under a `## Deferred from: ...` heading — that was this instruction's format before 2026-07-30 and it produced 160 unsweepable entries across Epics 7-11, migrated to DW-325...DW-484 by action item A1-E11. If `{spec_file}` is unset, write `source_spec: none`.
 
 ### 3. Present summary
 

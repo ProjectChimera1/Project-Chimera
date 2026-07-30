@@ -17,10 +17,15 @@
    - HALT and ask human: `[S] Split — carve off secondary goals` | `[K] Keep full spec — accept the risks`
    - On **S**: Propose the split — name each secondary goal. For each deferred goal, append one new entry to `{{.deferred_work_file}}` using this format. Do not modify existing entries or look for duplicates. Rewrite the current spec to cover only the main goal — do not surgically carve sections out; regenerate the spec for the narrowed scope. Continue to checkpoint.
      ```markdown
-     - source_spec: `{spec_file}`
-       summary: <one sentence naming the deferred goal>
-       evidence: <why this was split from the current spec>
+     ### DW-<n>: <short one-line title>
+     origin: goal split out of `{spec_file}`, {date}
+     source_spec: `{spec_file}`
+     location: <file:line where the finding lives>
+     severity: <high|medium|low>
+     reason: <one sentence naming the deferred goal> — Evidence: <why this was split from the current spec>
+     status: open
      ```
+     The `### DW-<n>:` heading and the `status:` line are **both mandatory and must not be simplified away**. `bmad-loop sweep` triage parses *only* entries carrying both, so an entry missing either is invisible to the deferred-work burn-down and will never be swept (upstream bmad-code-org/bmad-loop#304).
    - On **K**: Continue to checkpoint with full spec.
 
 ### CHECKPOINT 1
