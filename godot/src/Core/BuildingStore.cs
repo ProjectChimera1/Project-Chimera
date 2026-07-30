@@ -36,6 +36,12 @@ namespace ProjectChimera.Core
     {
         public const int MAX_BUILDINGS = 64;
 
+        /// <summary>Story 11.6 (FR-74): depth of the per-building production queue (head = slot 0, in production; slots
+        /// 1-4 waiting). <see cref="ProductionQueue"/> is a <c>MAX_BUILDINGS * QUEUE_DEPTH</c> row-major array: building
+        /// <c>b</c>'s head is at <see cref="HeadIndex"/>(b), its waiting slots at +1..+(QUEUE_DEPTH-1). Per-slot
+        /// encoding is unchanged from 2.8 (0 = empty, unitIndex+1 = concrete unit, 255 = empty-category fallback).</summary>
+        public const int QUEUE_DEPTH = 5;
+
         // ── Core data ──────────────────────────────────────────────────────────
         public readonly bool[]         Alive;
         public readonly FixedVec3[]    Position;
@@ -84,9 +90,12 @@ namespace ProjectChimera.Core
         public readonly Fixed[]        ConstructionDuration;
 
         // ── Production ─────────────────────────────────────────────────────────
-        /// <summary>Seconds remaining until the current training job finishes (0 = idle).</summary>
+        /// <summary>Seconds remaining until the HEAD training job finishes (0 = idle). One per building — only the
+        /// head (slot 0) has a running timer; waiting slots never accrue progress (Story 11.6, WC3 model).</summary>
         public readonly Fixed[]        ProductionTimer;
-        /// <summary>Entity archetype being trained (0 = nothing queued).</summary>
+        /// <summary>Story 11.6: the depth-5 production queue, <c>MAX_BUILDINGS * QUEUE_DEPTH</c> row-major. Building
+        /// <c>b</c>'s head is <see cref="HeadIndex"/>(b) (== <c>b*QUEUE_DEPTH</c>); waiting slots +1..+4. Per-slot byte:
+        /// 0 = empty, (unitIndex+1) = concrete unit, 255 = empty-category fallback sentinel (Story 2.8 encoding, kept).</summary>
         public readonly byte[]         ProductionQueue;
 
         // ── Rally point ─────────────────────────────────────────────────────────
@@ -133,7 +142,7 @@ namespace ProjectChimera.Core
             ConstructionTimer    = new Fixed[MAX_BUILDINGS];
             ConstructionDuration = new Fixed[MAX_BUILDINGS];
             ProductionTimer      = new Fixed[MAX_BUILDINGS];
-            ProductionQueue      = new byte[MAX_BUILDINGS];
+            ProductionQueue      = new byte[MAX_BUILDINGS * QUEUE_DEPTH];
             RallyPoint           = new FixedVec3[MAX_BUILDINGS];
             HasRallyPoint        = new bool[MAX_BUILDINGS];
             TrainedCount         = new int[MAX_BUILDINGS];
@@ -146,6 +155,32 @@ namespace ProjectChimera.Core
 
         /// <summary>Returns true while the building is still being constructed.</summary>
         public bool IsUnderConstruction(int id) => ConstructionTimer[id] > Fixed.Zero;
+
+        // ── Production-queue helpers (Story 11.6) ──────────────────────────────
+        /// <summary>Flat index of building <paramref name="b"/>'s HEAD production slot (== <c>b*QUEUE_DEPTH</c>). Its
+        /// waiting slots are +1..+(QUEUE_DEPTH-1). Deterministic, pure — the single row-major coordinate every reader uses.</summary>
+        public int HeadIndex(int b) => b * QUEUE_DEPTH;
+
+        /// <summary>Index of building <paramref name="b"/>'s first EMPTY queue slot (0..QUEUE_DEPTH-1), or -1 when all
+        /// slots are occupied (queue full). The queue is kept contiguous (append-at-first-empty + shift-on-remove), so
+        /// the first zero terminates the occupied run.</summary>
+        public int FirstEmptySlot(int b)
+        {
+            int head = b * QUEUE_DEPTH;
+            for (int k = 0; k < QUEUE_DEPTH; k++)
+                if (ProductionQueue[head + k] == 0) return k;
+            return -1;
+        }
+
+        /// <summary>Number of occupied slots in building <paramref name="b"/>'s queue (0..QUEUE_DEPTH). Counts the
+        /// contiguous run of non-empty slots from the head.</summary>
+        public int QueueLength(int b)
+        {
+            int head = b * QUEUE_DEPTH, n = 0;
+            for (int k = 0; k < QUEUE_DEPTH; k++)
+                if (ProductionQueue[head + k] != 0) n++; else break;
+            return n;
+        }
 
         /// <summary>
         /// Place a new building. Returns its ID, or -1 if the store is full.
@@ -174,7 +209,10 @@ namespace ProjectChimera.Core
             FactionOf[id]       = faction;
             Type[id]            = type;
             ProductionTimer[id] = Fixed.Zero;
-            ProductionQueue[id] = 0;
+            // Story 11.6: reset ALL QUEUE_DEPTH slots on (re)allocation (the SoA-recycle contract — a recycled slot must
+            // never inherit the prior building's queue). The queue is FOLDED into SimChecksum (v22) and read
+            // unconditionally, so every widened slot must be zeroed, or a recycled slot diverges the byte-identical guard.
+            { int q0 = id * QUEUE_DEPTH; for (int k = 0; k < QUEUE_DEPTH; k++) ProductionQueue[q0 + k] = 0; }
             TrainedCount[id]    = 0;
             // Story 2.12: reset the rally point on (re)allocation. Rally is FOLDED into SimChecksum (v9, D-1) and
             // read unconditionally, so a recycled slot must never inherit the prior building's rally (the SoA-recycle

@@ -225,6 +225,18 @@ namespace ProjectChimera.Multiplayer
                 return;
             }
 
+            // Story 11.6 (FR-74): CancelTrain ALSO names a BUILDING (UnitId = buildingId) — handle it beside Train,
+            // BEFORE the entity-ownership guard, for the same reason (the building id must not be misread as an
+            // EntityWorld slot). TargetX carries the queue slot index as a RAW int (0-4; read directly, NEVER via
+            // .ToFloat() — the packed-int lesson). BuildingSystem.CancelTrainCommand does the building-ownership
+            // anti-cheat + slot guards and the deterministic exec-tick 100% refund + remove/shift. NEVER persists as a
+            // CommandState. `buildings` null → deterministic no-op (golden/replay-without-buildings paths, like Train).
+            if (cmd == UnitCommand.CancelTrain)
+            {
+                buildings?.CancelTrainCommand(o.UnitId, expectedFaction, o.TargetX, events);
+                return;
+            }
+
             // Story 2.12 (AC3): SetRally ALSO names a BUILDING (UnitId = buildingId) — handle it beside Train, BEFORE
             // the entity guard, for the same reason. The rally point rides TargetX/TargetZ as Fixed raw (the Move
             // encoding); BuildingSystem.SetRallyCommand does the bounds + Alive + faction anti-cheat check then writes

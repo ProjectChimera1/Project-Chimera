@@ -109,23 +109,24 @@ namespace ProjectChimera.Sim.Tests.Golden
         /// hash still moves.)
         /// </summary>
         [Fact]
-        public void KnownWorldState_ProducesPinnedV20Hash()
+        public void KnownWorldState_ProducesPinnedV22Hash()
         {
-            // Algorithm version must be exactly 20 (Story 7.12's AllianceStore fold at v20, on top of 7.11's
-            // WinStateStore fold at v19). If this fails, the const below is stale.
-            Assert.Equal(21, SimChecksum.AlgoVersion);
+            // Algorithm version must be exactly 22 (Story 11.6's production-queue + head-timer fold at v22, on top of
+            // 7.13's TriggerEnabledStore fold at v21). If this fails, the const below is stale.
+            Assert.Equal(22, SimChecksum.AlgoVersion);
 
             uint actual = ComputeKnownStateHash();
 
-            // ── Pinned v20 hash for the fixed world built by ComputeKnownStateHash() ──────────────────────────
+            // ── Pinned v22 hash for the fixed world built by ComputeKnownStateHash() ──────────────────────────
             // An intentional SimChecksum algorithm change must update this value AND bump SimChecksum.AlgoVersion.
-            // The known-state world passes a NULL AllianceStore, so the v20 fold moves the hash from v19 purely by the
-            // added Mix((int)f) per active faction (a null store ≡ default FFA, team id == slot index) — Story 7.12's
-            // named, recorded AllianceStore-fold re-baseline (there is NO CHIMERA_GOLDEN_RECORD hook for this hand pin).
-            const uint ExpectedV20Hash = 0x1A47DE11; // re-pinned at v20 (7.12 AllianceStore fold) from this test's failure message
-            Assert.True(actual == ExpectedV20Hash,
-                $"Known-state v20 checksum changed: expected 0x{ExpectedV20Hash:X8}, actual 0x{actual:X8}. " +
-                $"If this is an INTENTIONAL algorithm change, re-pin ExpectedV20Hash to 0x{actual:X8} and bump " +
+            // The known-state world has one building (a CommandCenter) with an EMPTY production queue + ProductionTimer 0,
+            // so Story 11.6's v22 fold moves the hash from v21 purely by the added QUEUE_DEPTH×Mix(0) + Mix(0)-timer per
+            // building — the story's named, recorded production-queue-fold re-baseline (no CHIMERA_GOLDEN_RECORD hook for
+            // this hand pin).
+            const uint ExpectedV22Hash = 0x32911831; // re-pinned at v22 (11.6 production-queue fold) from this test's failure message
+            Assert.True(actual == ExpectedV22Hash,
+                $"Known-state v22 checksum changed: expected 0x{ExpectedV22Hash:X8}, actual 0x{actual:X8}. " +
+                $"If this is an INTENTIONAL algorithm change, re-pin ExpectedV22Hash to 0x{actual:X8} and bump " +
                 $"SimChecksum.AlgoVersion. If not, you broke the deterministic checksum — investigate.");
         }
 
@@ -331,6 +332,10 @@ namespace ProjectChimera.Sim.Tests.Golden
             //    Rally lives on BuildingStore (not EntityWorld), so it needs its own teeth (the EntityWorld helper above
             //    only mutates entity fields). Each of the three mixes must move the hash. ──
             AssertRallyPointFoldedIntoChecksum(registry);
+
+            // ── v22 (Story 11.6): the depth-5 production queue + head timer are folded — every queue slot AND the head
+            //    ProductionTimer must move the hash. Lives on BuildingStore (not EntityWorld), so it needs its own teeth. ──
+            AssertProductionQueueFoldedIntoChecksum(registry);
 
             // ── v6 (Story 2.2b): the ModifierStore per-instance state is folded ──
             // Installing a modifier on a live entity MUST move the hash; advancing a tick (which changes
@@ -887,6 +892,43 @@ namespace ProjectChimera.Sim.Tests.Golden
             uint movedZ = SimChecksum.Compute(world, buildings, resources, registry);
             Assert.True(movedX != movedZ,
                 "BuildingStore.RallyPoint.Z is NOT folded into SimChecksum: moving Z alone left the checksum unchanged (v9 D-1 fold).");
+        }
+
+        /// <summary>
+        /// Story 11.6 (v22) coverage teeth: the depth-5 production queue + head timer must move the checksum — the
+        /// FIRST-EVER fold of this store's queue/timer (the 2.8 depth-1 byte was left unfolded-while-dormant). Builds
+        /// an empty world + a single producer, hashes with an empty queue, then mutates EACH of the QUEUE_DEPTH slots
+        /// in turn (head AND every waiting slot) AND the head ProductionTimer — each MUST move the hash. A no-move at
+        /// any slot means a fold that reads only the head (or only some slots) would hide a queue divergence — a silent
+        /// desync surface, since the queue now feeds ResourceStore via cancel/refund and drives what spawns.
+        /// </summary>
+        private static void AssertProductionQueueFoldedIntoChecksum(FactionRegistry registry)
+        {
+            var world     = new EntityWorld();          // empty — isolates the building contribution
+            var resources = new ResourceStore(Fixed.Zero);
+            var buildings = new BuildingStore();
+            int b = buildings.Create(new FixedVec3(Fixed.FromInt(-14), Fixed.Zero, Fixed.Zero),
+                                     Faction.Player1, BuildingType.Barracks);
+            int head = buildings.HeadIndex(b);
+
+            uint prev = SimChecksum.Compute(world, buildings, resources, registry);
+
+            // Every one of the QUEUE_DEPTH slots must independently move the hash (a fold reading only the head — or
+            // only a subset — would pass on slot 0 and silently hide a waiting-slot divergence).
+            for (int k = 0; k < BuildingStore.QUEUE_DEPTH; k++)
+            {
+                buildings.ProductionQueue[head + k] = (byte)(k + 1);
+                uint moved = SimChecksum.Compute(world, buildings, resources, registry);
+                Assert.True(prev != moved,
+                    $"BuildingStore.ProductionQueue slot {k} is NOT folded into SimChecksum: setting it left the checksum unchanged (v22 fold).");
+                prev = moved;
+            }
+
+            // The head ProductionTimer (the completion countdown) must also move the hash — it was never folded before v22.
+            buildings.ProductionTimer[b] = Fixed.FromInt(3);
+            uint timerMoved = SimChecksum.Compute(world, buildings, resources, registry);
+            Assert.True(prev != timerMoved,
+                "BuildingStore.ProductionTimer is NOT folded into SimChecksum: moving the head timer left the checksum unchanged (v22 fold).");
         }
 
         /// <summary>

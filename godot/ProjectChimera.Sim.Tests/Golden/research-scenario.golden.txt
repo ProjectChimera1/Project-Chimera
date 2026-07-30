@@ -1,36 +1,36 @@
 # Project Chimera — research golden-checksum baseline (Story 4.10) — CROSS-PLATFORM SAFE (integer/Fixed only).
 # Format: "<tick> <hashHex8>" per line — tick decimal, hash 8 uppercase hex digits (no 0x).
-# checksum_algo_version: 21
+# checksum_algo_version: 22
 # Pins the SimChecksum (v14 — FIRST-EVER ResearchStore fold) sequence for ResearchScenario.Build() (a Player1 lab starting/completing 'armor_up' level 1, then starting level 2 of the same research; Player2 empty so the AI no-ops) stepped via StepOnce at ChecksumInterval=1. All hashed fields integer/Fixed → byte-identical Win↔Linux.
 # Samples: 30 (one line per sim tick).
 # Re-baseline (intentional behavior change only): set CHIMERA_GOLDEN_RECORD=1, run `dotnet test --filter FullyQualifiedName~ResearchGolden`, then `dotnet build` (refreshes the embedded copy) and commit. DO NOT hand-edit.
-1 78D07239
-2 CCA39792
-3 5BAF5487
-4 7787866B
-5 7BE264BB
-6 9B8211B8
-7 799D0DC9
-8 DB92D256
-9 960838DF
-10 5554EE1C
-11 C3C4E629
-12 732C96B0
-13 866F5881
-14 6F0E26DA
-15 F497AA33
-16 640D3114
-17 3BE40FA5
-18 0286AB4E
-19 4E991FB7
-20 7DC927F8
-21 3229A909
-22 101A99A2
-23 350D23FB
-24 4A8E605C
-25 0A77C7CD
-26 D0CDD796
-27 87360D1F
-28 658BD8C0
-29 16905DD1
-30 371A02EA
+1 0E91F519
+2 0CBA1AF2
+3 0645B727
+4 55BE3F8B
+5 511EF87B
+6 F25C4478
+7 A6BCC589
+8 455DCE16
+9 A347E19F
+10 BF1E56DC
+11 52D8ACE9
+12 C7E80490
+13 06CC1F61
+14 0812463A
+15 E2F8C493
+16 BA0D4674
+17 FF44E085
+18 4412E82E
+19 D2218017
+20 D287BBD8
+21 F264C069
+22 00FD9002
+23 5E9A32DB
+24 241499BC
+25 77E232AD
+26 6A742D76
+27 60B6667F
+28 3DD090A0
+29 C0A8C6B1
+30 B5F8074A

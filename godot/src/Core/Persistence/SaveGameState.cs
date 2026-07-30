@@ -174,7 +174,10 @@ namespace ProjectChimera.Core.Persistence
         private enum BA
         {
             Alive, PosX, PosY, PosZ, FactionOf, Type, Health, MaxHealth, SupplyBonus, ConstructionTimer,
-            ConstructionDuration, ProductionTimer, ProductionQueue, RallyX, RallyY, RallyZ, HasRally, TrainedCount,
+            // Story 11.6: ProductionQueue is the HEAD (slot 0); ProductionQueue1..4 are the widened waiting slots. Each
+            // lane stays length BCount (the strict per-lane validation contract), one lane per queue slot.
+            ConstructionDuration, ProductionTimer, ProductionQueue, ProductionQueue1, ProductionQueue2, ProductionQueue3,
+            ProductionQueue4, RallyX, RallyY, RallyZ, HasRally, TrainedCount,
             RevivesHeroes, SellsItems, ShopRadius, Generation, COUNT
         }
 
@@ -311,7 +314,9 @@ namespace ProjectChimera.Core.Persistence
             var al = A(BA.Alive); var px = A(BA.PosX); var py = A(BA.PosY); var pz = A(BA.PosZ); var fac = A(BA.FactionOf);
             var ty = A(BA.Type); var hp = A(BA.Health); var mh = A(BA.MaxHealth); var sb = A(BA.SupplyBonus);
             var cti = A(BA.ConstructionTimer); var cdu = A(BA.ConstructionDuration); var pti = A(BA.ProductionTimer);
-            var pq = A(BA.ProductionQueue); var rx = A(BA.RallyX); var ry = A(BA.RallyY); var rz = A(BA.RallyZ);
+            var pq = A(BA.ProductionQueue); var pq1 = A(BA.ProductionQueue1); var pq2 = A(BA.ProductionQueue2);
+            var pq3 = A(BA.ProductionQueue3); var pq4 = A(BA.ProductionQueue4);
+            var rx = A(BA.RallyX); var ry = A(BA.RallyY); var rz = A(BA.RallyZ);
             var hr = A(BA.HasRally); var tc = A(BA.TrainedCount); var rh = A(BA.RevivesHeroes); var si = A(BA.SellsItems);
             var srd = A(BA.ShopRadius); var gen = A(BA.Generation);
             BDefinitionId = new string[n]; BShopStock = new string[n][];
@@ -320,7 +325,11 @@ namespace ProjectChimera.Core.Persistence
                 al[i] = b.Alive[i] ? 1 : 0; px[i] = b.Position[i].X.Raw; py[i] = b.Position[i].Y.Raw; pz[i] = b.Position[i].Z.Raw;
                 fac[i] = (int)b.FactionOf[i]; ty[i] = (int)b.Type[i]; hp[i] = b.Health[i].Raw; mh[i] = b.MaxHealth[i].Raw;
                 sb[i] = b.SupplyBonus[i]; cti[i] = b.ConstructionTimer[i].Raw; cdu[i] = b.ConstructionDuration[i].Raw;
-                pti[i] = b.ProductionTimer[i].Raw; pq[i] = b.ProductionQueue[i];
+                pti[i] = b.ProductionTimer[i].Raw;
+                // Story 11.6: serialize all QUEUE_DEPTH slots (head + 4 waiting) per building, row-major.
+                int qh = b.HeadIndex(i);
+                pq[i]  = b.ProductionQueue[qh];     pq1[i] = b.ProductionQueue[qh + 1]; pq2[i] = b.ProductionQueue[qh + 2];
+                pq3[i] = b.ProductionQueue[qh + 3]; pq4[i] = b.ProductionQueue[qh + 4];
                 rx[i] = b.RallyPoint[i].X.Raw; ry[i] = b.RallyPoint[i].Y.Raw; rz[i] = b.RallyPoint[i].Z.Raw;
                 hr[i] = b.HasRallyPoint[i] ? 1 : 0; tc[i] = b.TrainedCount[i]; rh[i] = b.RevivesHeroes[i] ? 1 : 0;
                 si[i] = b.SellsItems[i] ? 1 : 0; srd[i] = b.ShopRadius[i].Raw; gen[i] = b.Generation[i];
@@ -678,7 +687,9 @@ namespace ProjectChimera.Core.Persistence
             var al = G(BA.Alive); var px = G(BA.PosX); var py = G(BA.PosY); var pz = G(BA.PosZ); var fac = G(BA.FactionOf);
             var ty = G(BA.Type); var hp = G(BA.Health); var mh = G(BA.MaxHealth); var sb = G(BA.SupplyBonus);
             var cti = G(BA.ConstructionTimer); var cdu = G(BA.ConstructionDuration); var pti = G(BA.ProductionTimer);
-            var pq = G(BA.ProductionQueue); var rx = G(BA.RallyX); var ry = G(BA.RallyY); var rz = G(BA.RallyZ);
+            var pq = G(BA.ProductionQueue); var pq1 = G(BA.ProductionQueue1); var pq2 = G(BA.ProductionQueue2);
+            var pq3 = G(BA.ProductionQueue3); var pq4 = G(BA.ProductionQueue4);
+            var rx = G(BA.RallyX); var ry = G(BA.RallyY); var rz = G(BA.RallyZ);
             var hr = G(BA.HasRally); var tc = G(BA.TrainedCount); var rh = G(BA.RevivesHeroes); var si = G(BA.SellsItems);
             var srd = G(BA.ShopRadius); var gen = G(BA.Generation);
             for (int i = 0; i < n; i++)
@@ -686,7 +697,12 @@ namespace ProjectChimera.Core.Persistence
                 b.Alive[i] = al[i] != 0; b.Position[i] = new FixedVec3(Fixed.FromRaw(px[i]), Fixed.FromRaw(py[i]), Fixed.FromRaw(pz[i]));
                 b.FactionOf[i] = (Faction)fac[i]; b.Type[i] = (BuildingType)ty[i]; b.Health[i] = Fixed.FromRaw(hp[i]); b.MaxHealth[i] = Fixed.FromRaw(mh[i]);
                 b.SupplyBonus[i] = sb[i]; b.ConstructionTimer[i] = Fixed.FromRaw(cti[i]); b.ConstructionDuration[i] = Fixed.FromRaw(cdu[i]);
-                b.ProductionTimer[i] = Fixed.FromRaw(pti[i]); b.ProductionQueue[i] = (byte)pq[i];
+                b.ProductionTimer[i] = Fixed.FromRaw(pti[i]);
+                // Story 11.6: restore all QUEUE_DEPTH slots (head + 4 waiting) per building, row-major.
+                int qh = b.HeadIndex(i);
+                b.ProductionQueue[qh]     = (byte)pq[i];  b.ProductionQueue[qh + 1] = (byte)pq1[i];
+                b.ProductionQueue[qh + 2] = (byte)pq2[i]; b.ProductionQueue[qh + 3] = (byte)pq3[i];
+                b.ProductionQueue[qh + 4] = (byte)pq4[i];
                 b.RallyPoint[i] = new FixedVec3(Fixed.FromRaw(rx[i]), Fixed.FromRaw(ry[i]), Fixed.FromRaw(rz[i]));
                 b.HasRallyPoint[i] = hr[i] != 0; b.TrainedCount[i] = tc[i]; b.RevivesHeroes[i] = rh[i] != 0; b.SellsItems[i] = si[i] != 0;
                 b.ShopRadius[i] = Fixed.FromRaw(srd[i]); b.Generation[i] = gen[i];

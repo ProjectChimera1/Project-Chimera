@@ -242,8 +242,18 @@ namespace ProjectChimera.Core
         ///        sequence (the re-baseline differential guard's clean control). Only scenarios that DECLARE triggers
         ///        move by their enabled bits. All ints → cross-platform safe. One scheduled re-baseline of the
         ///        trigger-carrying world goldens.
+        ///   v22 — Story 11.6: the depth-1 <see cref="BuildingStore.ProductionQueue"/> byte (left UNFOLDED-while-dormant
+        ///        by Story 2.8) widens to a real depth-5 mutable per-building queue that ALSO feeds <see cref="ResourceStore"/>
+        ///        via cancel/refund, so it crosses the "mutable sim truth" line (the checksum-fold-timing rule) and is
+        ///        folded into the building loop for the FIRST TIME: all <see cref="BuildingStore.QUEUE_DEPTH"/> queue
+        ///        slots (row-major, ascending slot) PLUS the head <see cref="BuildingStore.ProductionTimer"/> (.Raw) per
+        ///        building — the timer was likewise never folded before (production divergence surfaced only transitively
+        ///        via spawned-unit world state). All byte/Fixed.Raw → cross-platform safe. Every existing golden with a
+        ///        producer moves by its real queue/timer state; a producer-less scenario moves purely by the added
+        ///        QUEUE_DEPTH×Mix(0) + Mix(0)-timer per building — the story's ONE scheduled re-baseline of ALL per-tick
+        ///        goldens.
         /// </summary>
-        public const int AlgoVersion = 21;
+        public const int AlgoVersion = 22;
 
         /// <summary>
         /// Compute a full-state checksum for desync detection.
@@ -407,6 +417,17 @@ namespace ProjectChimera.Core
                 hash = Mix(hash, buildings.HasRallyPoint[i] ? 1 : 0);
                 hash = Mix(hash, buildings.RallyPoint[i].X.Raw);
                 hash = Mix(hash, buildings.RallyPoint[i].Z.Raw);
+
+                // ── Production queue (v22, Story 11.6) — the depth-5 queue + head timer, folded for the FIRST TIME.
+                // Widening the 2.8 depth-1 byte into a real mutable-mid-match queue that ALSO feeds ResourceStore via
+                // cancel/refund crosses the "mutable sim truth" line (the checksum-fold-timing rule). Fold all
+                // QUEUE_DEPTH slots row-major (ascending slot) so a peer divergence in ANY slot — head or waiting —
+                // desyncs detectably, PLUS the head ProductionTimer (.Raw), which drives when the head completes and
+                // was itself never folded. All byte/Fixed.Raw → cross-platform safe.
+                int qBase = i * BuildingStore.QUEUE_DEPTH;
+                for (int k = 0; k < BuildingStore.QUEUE_DEPTH; k++)
+                    hash = Mix(hash, buildings.ProductionQueue[qBase + k]);
+                hash = Mix(hash, buildings.ProductionTimer[i].Raw);
             }
 
             // ── Faction resources (all per-faction stores, active factions, ascending slot order) ──

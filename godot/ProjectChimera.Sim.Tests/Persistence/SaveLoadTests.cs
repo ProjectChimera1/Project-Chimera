@@ -405,9 +405,52 @@ namespace ProjectChimera.Sim.Tests.Persistence
         [Fact]
         public void SaveLoad_LeavesHashAlgoVersionsUnchanged()
         {
-            Assert.Equal(21, SimChecksum.AlgoVersion);
+            Assert.Equal(22, SimChecksum.AlgoVersion); // Story 11.6: production-queue + head-timer fold
             Assert.Equal(14, CanonicalModelHash.AlgoVersion);
             Assert.Equal(2, StartStateHash.AlgoVersion);
+        }
+
+        // ── Story 11.6 — a partially-filled depth-5 production queue + a running head timer round-trips and resumes
+        //    byte-identical. If any of the widened queue slots or the head timer failed to serialize/restore, the
+        //    resumed head would complete/advance on a different tick and the SimChecksum stream would diverge. ──
+
+        [Fact]
+        public void SaveLoad_ResumeByteIdentical_WithPartiallyFilledProductionQueue()
+        {
+            static void PerturbQueue(SimulationHost h)
+            {
+                // A live producer carrying a partial depth-5 queue (head + two waiting) and a running head timer — the
+                // exact "save mid-queue" state. Written directly onto the folded BuildingStore so the save must carry
+                // every widened slot; the encoded values need only be deterministic (both ref and save hosts get them).
+                int b = h.Buildings.Create(new FixedVec3(Fixed.FromInt(30), Fixed.Zero, Fixed.FromInt(-30)),
+                                           Faction.Player1, BuildingType.Barracks);
+                Assert.True(b >= 0);
+                h.Buildings.ConstructionTimer[b] = Fixed.Zero; // operational
+                int head = h.Buildings.HeadIndex(b);
+                // DISTINCT non-zero encodings in EVERY one of the five widened slots (not repeated 1s) so a dropped
+                // lane (e.g. pq4 never serialized) or a lane↔slot swap among pq/pq1/pq2 cannot round-trip green — an
+                // all-1s fill folds identically whether or not each lane maps to its own slot.
+                h.Buildings.ProductionQueue[head + 0] = 1; // head
+                h.Buildings.ProductionQueue[head + 1] = 2; // waiting
+                h.Buildings.ProductionQueue[head + 2] = 3; // waiting
+                h.Buildings.ProductionQueue[head + 3] = 4; // waiting
+                h.Buildings.ProductionQueue[head + 4] = 5; // waiting (the deepest lane — never non-zero before this)
+                h.Buildings.ProductionTimer[b] = Fixed.FromInt(4); // head running (completes within the resume window)
+            }
+
+            AssertResumeByteIdentical(PerturbQueue, abilities: null, k: SaveAtTick, n: ResumeTicks,
+                assertRestored: h =>
+                {
+                    // Every widened slot restored to ITS OWN distinct value + the head timer round-tripped.
+                    int b = h.Buildings.Count - 1; // the producer created by the perturb (last-created slot)
+                    int head = h.Buildings.HeadIndex(b);
+                    Assert.Equal((byte)1, h.Buildings.ProductionQueue[head + 0]);
+                    Assert.Equal((byte)2, h.Buildings.ProductionQueue[head + 1]);
+                    Assert.Equal((byte)3, h.Buildings.ProductionQueue[head + 2]);
+                    Assert.Equal((byte)4, h.Buildings.ProductionQueue[head + 3]);
+                    Assert.Equal((byte)5, h.Buildings.ProductionQueue[head + 4]);
+                    Assert.Equal(Fixed.FromInt(4).Raw, h.Buildings.ProductionTimer[b].Raw);
+                });
         }
 
         // ── #5a — recycle: non-empty free list + a bumped generation round-trip byte-identical ─────────────────

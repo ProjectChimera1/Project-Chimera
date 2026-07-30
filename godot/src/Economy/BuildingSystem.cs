@@ -44,6 +44,14 @@ namespace ProjectChimera.Economy
         /// </summary>
         private const byte PRODUCTION_FALLBACK = byte.MaxValue;
 
+        /// <summary>
+        /// Story 11.6 (FR-74): fraction of a cancelled production order's cost refunded to the faction — 100% (WC3
+        /// model). A <see cref="BuildingSystem"/> constant, NOT an authored <see cref="UnitDefinition"/> field (keeps
+        /// the content loader/whitelist untouched). The refund is re-resolved from <c>def.ResolvedCost</c> at cancel
+        /// time (the slot stores only the encoded unit index), so it is deterministic on every peer / in replay.
+        /// </summary>
+        private const int TRAIN_CANCEL_REFUND_FRACTION = 1;
+
         // Spawn offset (world units) from building centre
         private static readonly Fixed SPAWN_OFFSET = Fixed.FromFloat(3f);
 
@@ -172,17 +180,17 @@ namespace ProjectChimera.Economy
             {
                 if (!_buildings.Alive[i]) continue;
                 if (_buildings.IsUnderConstruction(i)) continue; // can't produce yet
-                if (_buildings.ProductionQueue[i] == 0) continue;
+                if (_buildings.ProductionQueue[_buildings.HeadIndex(i)] == 0) continue; // idle (head empty)
                 if (_buildings.ProductionTimer[i] <= Fixed.Zero) continue;
 
                 _buildings.ProductionTimer[i] = _buildings.ProductionTimer[i] - dt;
 
                 if (_buildings.ProductionTimer[i] <= Fixed.Zero)
                 {
-                    // Training complete — spawn unit
+                    // Head training complete — spawn the head unit, then pop-and-advance: shift slots 1..4 down and
+                    // start the promoted head's timer from its full TrainTime (Story 11.6). An empty next head goes idle.
                     SpawnTrainedUnit(world, i);
-                    _buildings.ProductionQueue[i] = 0;
-                    _buildings.ProductionTimer[i] = Fixed.Zero;
+                    AdvanceQueue(i);
                 }
             }
         }
@@ -196,7 +204,7 @@ namespace ProjectChimera.Economy
             // re-deriving first-of-category. Explicitly bounds-check the List indexer: the null-conditional
             // guards only a null FactionDefinition, NOT an out-of-range index (which would throw
             // ArgumentOutOfRangeException inside the tick — a "never throw in the tick" violation).
-            byte q = _buildings.ProductionQueue[buildingId];
+            byte q = _buildings.ProductionQueue[_buildings.HeadIndex(buildingId)]; // Story 11.6: the head slot (slot 0)
             var fdef = GetFactionDef(faction);
             UnitDefinition? def = null;
             int meshType = -1;
@@ -370,12 +378,13 @@ namespace ProjectChimera.Economy
             if (_buildings.IsUnderConstruction(buildingId)) return false;
             var bType = _buildings.Type[buildingId];
             if (bType == BuildingType.CommandCenter) return false;
-            // Already training this building (queue depth 1) — a reason-less denial cue at the building (the player
-            // clicked a busy producer). QueueFull is the closest reason for "can't accept another order right now".
-            if (_buildings.ProductionQueue[buildingId] != 0)
+            // Story 11.6: append to the first empty queue slot (depth-5). With all 5 slots occupied the queue is full —
+            // a reason-less denial cue at the building (the player clicked a full producer); no spend, nothing queued.
+            int freeSlot = _buildings.FirstEmptySlot(buildingId);
+            if (freeSlot < 0)
             {
                 events?.PushDenied(_buildings.Position[buildingId], _buildings.FactionOf[buildingId], DenialReason.QueueFull);
-                return false; // already training
+                return false; // queue full (all QUEUE_DEPTH slots occupied)
             }
 
             Faction faction = _buildings.FactionOf[buildingId];
@@ -431,12 +440,18 @@ namespace ProjectChimera.Economy
             }
             resources.Spend(faction, cost);
 
-            // Persist the CONCRETE unit so SpawnTrainedUnit trains exactly this one (not a re-derived
-            // first-of-category). Stored as (Units index + 1) so 0 stays "idle". An empty-category default
+            // Persist the CONCRETE unit at the first empty slot so SpawnTrainedUnit trains exactly this one (not a
+            // re-derived first-of-category). Stored as (Units index + 1) so 0 stays "empty". An empty-category default
             // (def == null) stores the reserved fallback sentinel, preserving today's graceful fallback spawn.
-            _buildings.ProductionQueue[buildingId] = ProductionQueueValue(faction, def, chosenUnitIndex);
-            float trainTime = def?.TrainTime ?? FALLBACK_TRAIN_TIME;
-            _buildings.ProductionTimer[buildingId] = Fixed.FromFloat(trainTime);
+            _buildings.ProductionQueue[_buildings.HeadIndex(buildingId) + freeSlot] =
+                ProductionQueueValue(faction, def, chosenUnitIndex);
+            // Story 11.6: only the HEAD (slot 0) runs a timer. Filling an empty HEAD (freeSlot == 0 ⇒ the queue was
+            // empty) starts it from full TrainTime; appending to a waiting slot leaves the running head timer untouched.
+            if (freeSlot == 0)
+            {
+                float trainTime = def?.TrainTime ?? FALLBACK_TRAIN_TIME;
+                _buildings.ProductionTimer[buildingId] = Fixed.FromFloat(trainTime);
+            }
             return true;
         }
 
@@ -475,6 +490,104 @@ namespace ProjectChimera.Economy
             // Past the ownership guard this is the player's OWN building, so TrainUnit's affordability/prereq/supply
             // rejections surface a guard-sourced OrderDenied cue (Story 11.4). `events` null (golden/replay/AI) → silent.
             return TrainUnit(buildingId, _resources, chosenUnitIndex, events);
+        }
+
+        /// <summary>
+        /// Apply a lockstep <see cref="UnitCommand.CancelTrain"/> command at exec-tick (Story 11.6, FR-74). Mirrors
+        /// <see cref="TrainUnitCommand"/>'s ownership guard (a player may cancel ONLY at a building of their OWN faction
+        /// — the anti-cheat building-command analogue; a foreign/out-of-range/empty-slot cancel is a SILENT deterministic
+        /// no-op). Refunds <see cref="TRAIN_CANCEL_REFUND_FRACTION"/> (100%) of the cancelled slot's unit cost — RE-RESOLVED
+        /// from <c>def.ResolvedCost</c> by the stored encoded index (the same re-resolve-from-def pattern
+        /// <see cref="ResearchSystem.CancelResearchCommand"/> uses, so the refund is deterministic on every peer / in
+        /// replay) — via <see cref="ResourceStore.Add"/>, then removes the slot and shifts slots <c>slot+1..4</c> down one.
+        /// Cancelling the HEAD (slot 0) discards its in-progress timer (WC3: progress lost) and starts the promoted new
+        /// head's timer from its full <c>TrainTime</c>; cancelling a waiting slot leaves the head timer untouched.
+        /// Supply is NEVER refunded (it is only gated at enqueue and consumed at spawn, exactly as today). Returns true
+        /// iff a slot was cancelled.
+        /// </summary>
+        public bool CancelTrainCommand(int buildingId, Faction expectedFaction, int slot,
+                                       CombatEventQueue? events = null)
+        {
+            if (buildingId < 0 || buildingId >= _buildings.Count) return false;
+            if (!_buildings.Alive[buildingId]) return false;
+            if (_buildings.FactionOf[buildingId] != expectedFaction) return false; // anti-cheat: own building only (SILENT)
+            if (slot < 0 || slot >= BuildingStore.QUEUE_DEPTH) return false;        // out-of-range slot → no-op
+
+            int head = _buildings.HeadIndex(buildingId);
+            byte q = _buildings.ProductionQueue[head + slot];
+            if (q == 0) return false; // empty slot → no-op, no refund
+
+            Faction faction = _buildings.FactionOf[buildingId];
+
+            // Refund 100% of the slot's cost, re-resolved from the stored encoded unit index (never the cost paid — the
+            // slot stores only the index). A fallback-sentinel (empty-category) slot spent the ore-only fallback cost at
+            // enqueue, so it refunds the identical ore-only fallback map — symmetric and deterministic.
+            var cost = ResolveQueuedCost(faction, q);
+            if (cost.Count > 0)
+            {
+                var refund = new Dictionary<string, int>(cost.Count);
+                foreach (var (key, amount) in cost) refund[key] = amount * TRAIN_CANCEL_REFUND_FRACTION;
+                _resources.Add(faction, refund);
+            }
+
+            // Remove the slot and shift the tail down one (a pure array move — waiting slots carry no running timer).
+            for (int k = slot; k < BuildingStore.QUEUE_DEPTH - 1; k++)
+                _buildings.ProductionQueue[head + k] = _buildings.ProductionQueue[head + k + 1];
+            _buildings.ProductionQueue[head + BuildingStore.QUEUE_DEPTH - 1] = 0;
+
+            // Cancelling the head discards its progress and (re)starts the promoted head from full time; an empty new
+            // head goes idle. Cancelling a waiting slot never touches the head timer.
+            if (slot == 0)
+            {
+                byte newHead = _buildings.ProductionQueue[head];
+                _buildings.ProductionTimer[buildingId] = newHead != 0
+                    ? Fixed.FromFloat(TrainTimeForQueued(faction, newHead))
+                    : Fixed.Zero;
+            }
+            return true;
+        }
+
+        /// <summary>Story 11.6: shift building <paramref name="buildingId"/>'s queue down one after the head completed —
+        /// slots 1..4 → 0..3, slot 4 cleared — then (re)start the promoted head's timer from its full <c>TrainTime</c>,
+        /// or set the building idle when the queue is now empty.</summary>
+        private void AdvanceQueue(int buildingId)
+        {
+            int head = _buildings.HeadIndex(buildingId);
+            for (int k = 0; k < BuildingStore.QUEUE_DEPTH - 1; k++)
+                _buildings.ProductionQueue[head + k] = _buildings.ProductionQueue[head + k + 1];
+            _buildings.ProductionQueue[head + BuildingStore.QUEUE_DEPTH - 1] = 0;
+
+            byte newHead = _buildings.ProductionQueue[head];
+            _buildings.ProductionTimer[buildingId] = newHead != 0
+                ? Fixed.FromFloat(TrainTimeForQueued(_buildings.FactionOf[buildingId], newHead))
+                : Fixed.Zero;
+        }
+
+        /// <summary>Story 11.6: the sparse resolved cost map for a queued slot's encoded value <paramref name="q"/>,
+        /// re-resolved from the faction def by index (mirrors <see cref="SpawnTrainedUnit"/>'s read). A fallback
+        /// sentinel / stale index resolves to the same ore-only fallback map <see cref="TrainUnit"/> spends for an
+        /// empty-category producer, so a cancel refunds exactly what enqueue took.</summary>
+        private IReadOnlyDictionary<string, int> ResolveQueuedCost(Faction faction, byte q)
+        {
+            UnitDefinition? def = ResolveQueuedDef(faction, q);
+            return def?.ResolvedCost ?? new Dictionary<string, int> { { "ore", (int)FALLBACK_COST_ORE } };
+        }
+
+        /// <summary>Story 11.6: the full <c>TrainTime</c> for a queued slot's encoded value (re-resolved by index), or
+        /// the fallback train time for a sentinel / stale index — the value a promoted head's fresh timer starts at.</summary>
+        private float TrainTimeForQueued(Faction faction, byte q) =>
+            ResolveQueuedDef(faction, q)?.TrainTime ?? FALLBACK_TRAIN_TIME;
+
+        /// <summary>Story 11.6: resolve a queued slot's encoded value (<c>unitIndex+1</c>, or <see cref="PRODUCTION_FALLBACK"/>)
+        /// back to its <see cref="UnitDefinition"/>, or null for the empty / fallback / stale-index cases (the graceful
+        /// fallback branch, exactly like <see cref="SpawnTrainedUnit"/>). Never throws.</summary>
+        private UnitDefinition? ResolveQueuedDef(Faction faction, byte q)
+        {
+            if (q == 0 || q == PRODUCTION_FALLBACK) return null;
+            var fdef = GetFactionDef(faction);
+            int idx = q - 1;
+            if (fdef != null && idx >= 0 && idx < fdef.Units.Count) return fdef.Units[idx];
+            return null;
         }
 
         /// <summary>

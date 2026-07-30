@@ -34,7 +34,7 @@ namespace ProjectChimera.Sim.Tests.Validation
         public void AlgoVersion_IsTwelve() => Assert.Equal(14, CanonicalModelHash.AlgoVersion);
 
         [Fact]
-        public void SimChecksumAlgoVersion_Stays20() => Assert.Equal(21, ProjectChimera.Core.SimChecksum.AlgoVersion);
+        public void SimChecksumAlgoVersion_Stays20() => Assert.Equal(22, ProjectChimera.Core.SimChecksum.AlgoVersion);
 
         [Fact]
         public void PresentButton_MovesHashVsNoUi()

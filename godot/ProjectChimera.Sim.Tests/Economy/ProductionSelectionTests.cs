@@ -264,19 +264,43 @@ namespace ProjectChimera.Sim.Tests.Economy
         [Fact]
         public void TrainUnit_EmptyCategory_TrainsFallback_QueueSentinelNotIdle()
         {
-            // A faction with NO Air unit: an Aviary default-trains the graceful fallback. ProductionQueue must
-            // become the reserved sentinel (non-zero), never 0 — else the already-training guard breaks.
+            // A faction with NO Air unit: an Aviary default-trains the graceful fallback. The head slot must
+            // become the reserved sentinel (non-zero), never 0 — else the idle guard breaks.
             var faction = TestFaction();
             faction.Units.RemoveAt(7); // drop the only Air unit
             var (sys, buildings, resources, world) = Harness(faction);
             int b = sys.PlaceBuildingDirect(BuildingType.Aviary, Faction.Player1, FixedVec3.Zero, preBuilt: true);
 
-            Assert.True(sys.TrainUnit(b, resources));              // empty category → fallback path
-            Assert.NotEqual(0, buildings.ProductionQueue[b]);      // busy, not idle
-            Assert.False(sys.TrainUnit(b, resources));             // already-training guard holds (no double-queue)
+            Assert.True(sys.TrainUnit(b, resources));                          // empty category → fallback path
+            Assert.NotEqual(0, buildings.ProductionQueue[buildings.HeadIndex(b)]); // head busy, not idle
+            // Story 11.6: a SECOND order now APPENDS to the depth-5 queue (was the 2.8 depth-1 reject) — succeeds.
+            Assert.True(sys.TrainUnit(b, resources));
+            Assert.Equal(2, buildings.QueueLength(b));                         // head + one waiting
 
             int u = SpawnNext(sys, world);
-            Assert.True(u >= 0);                                   // a fallback unit still spawns
+            Assert.True(u >= 0);                                              // a fallback unit still spawns
+        }
+
+        // Story 11.6: cancelling an EMPTY-CATEGORY (fallback-sentinel, 255) queued order must refund exactly the
+        // ore-only fallback cost it spent at enqueue — the ResolveQueuedCost fallback branch, otherwise untested
+        // (every other cancel test uses a concrete unit index). A wrong fallback refund would be an asymmetric leak.
+        [Fact]
+        public void CancelEmptyCategoryFallback_RefundsExactlyWhatEnqueueSpent()
+        {
+            var faction = TestFaction();
+            faction.Units.RemoveAt(7); // drop the only Air unit → the Aviary trains the graceful fallback
+            var (sys, buildings, resources, _) = Harness(faction);
+            int b = sys.PlaceBuildingDirect(BuildingType.Aviary, Faction.Player1, FixedVec3.Zero, preBuilt: true);
+
+            Fixed oreBeforeEnqueue = resources.Ore[(int)Faction.Player1];
+            Assert.True(sys.TrainUnit(b, resources));                                  // empty category → fallback spend
+            Assert.Equal((byte)byte.MaxValue, buildings.ProductionQueue[buildings.HeadIndex(b)]); // sentinel enqueued
+            Assert.True(resources.Ore[(int)Faction.Player1].Raw < oreBeforeEnqueue.Raw); // it DID spend the fallback cost
+
+            Assert.True(sys.CancelTrainCommand(b, Faction.Player1, 0));                // refund the fallback slot
+            // Full refund of exactly the fallback cost → ore is restored to its pre-enqueue value (spend == refund).
+            Assert.Equal(oreBeforeEnqueue.Raw, resources.Ore[(int)Faction.Player1].Raw);
+            Assert.Equal(0, buildings.QueueLength(b));                                 // slot removed
         }
 
         // ── Task 5 — Story 4.2: TechTreeChecker.FirstMissing now returns the RAW id (no enum/DisplayName switch);

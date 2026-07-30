@@ -1,6 +1,6 @@
 # Project Chimera — ability-cast golden-checksum baseline (Story 2.4a, AC3) — CROSS-PLATFORM SAFE (integer/Fixed only).
 # Format: "<tick> <hashHex8>" per line — tick decimal, hash 8 uppercase hex digits (no 0x).
-# checksum_algo_version: 21
+# checksum_algo_version: 22
 # Pins the SimChecksum (v7) sequence for AbilityCastScenario.Build() (one stationary P1 caster casts a Self battle_fury [ApplyModifier +atk/+move] via a CastAbility UnitOrder at tick 1; Player2 empty so the AI no-ops) stepped via StepOnce at ChecksumInterval=1. First golden with a LIVE ability cast — exercises the energy debit, the modifier install + same-tick recompute + expiry, and the v7 ability-cooldown tick-down. All hashed fields are integer/Fixed → byte-identical Win↔Linux; NOT Windows-gated, compared on both CI legs.
 # Samples: 300 (one line per sim tick).
 # Re-baseline (intentional behavior change only): set CHIMERA_GOLDEN_RECORD=1, run `dotnet test --filter FullyQualifiedName~AbilityCastGolden`, then `dotnet build` (refreshes the embedded copy) and commit. DO NOT hand-edit.

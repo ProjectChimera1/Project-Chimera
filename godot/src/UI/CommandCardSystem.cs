@@ -61,7 +61,11 @@ namespace ProjectChimera.UI
         // countdown use fixed-width digits and don't jitter. Built in BuildPanel, applied to the train buttons +
         // status label. FontVariation with no BaseFont derives from the default project font (documented fallback).
         private FontVariation _tabularFont       = null!;
-        private Label  _trainStatus        = null!;  // "Training…  Xs" in-flight label
+        // Story 11.6 (FR-74): the depth-5 production queue strip — one clickable slot button per queued order (head =
+        // slot 0 with live progress, waiting slots 1-4 as unit chips). Replaces the single "Training… Xs" label; clicking
+        // a slot issues CancelTrain for that slot index. Hidden when the selection is not a ready producer.
+        private const int MAX_QUEUE_SLOTS = BuildingStore.QUEUE_DEPTH;
+        private Button[] _queueBtns        = System.Array.Empty<Button>();
         private Label  _constructionLabel  = null!;  // "Under Construction  Xs"
 
         // ── Hero revival (Story 3.14) ──────────────────────────────────────────
@@ -334,7 +338,7 @@ namespace ProjectChimera.UI
                 HideReviveButtons();       // Story 3.14: also clear any revive buttons left over from a prior selection
                 HideShopButtons();         // Story 3.16: clear any shop buttons left over from a prior selection
                 HideResearchButtons();     // Story 4.11: clear any research buttons left over from a prior selection
-                _trainStatus.Visible       = false;
+                HideQueueStrip();          // Story 11.6: clear any queue-slot buttons left over from a prior selection
                 _supplyLabel.Visible       = false;
                 return;
             }
@@ -369,11 +373,10 @@ namespace ProjectChimera.UI
                                 $"production picker shows only {_trainBtns.Length}; units beyond the first " +
                                 $"{_trainBtns.Length} are not reachable via the command card " +
                                 $"(raise MAX_TRAIN_OPTIONS or split the category).");
-                bool isTraining = _buildings.ProductionQueue[bId] != 0;
-
-                _trainStatus.Visible = isTraining;
-                if (isTraining)
-                    _trainStatus.Text = $"Training…  {_buildings.ProductionTimer[bId].ToFloat():F1}s";
+                // Story 11.6: the queue is full when all QUEUE_DEPTH slots are occupied (no free append slot). The
+                // picker's per-button disable predicate swaps 2.8's "already training" for "queue full (5)".
+                bool queueFull = _buildings.FirstEmptySlot(bId) < 0;
+                RefreshQueueStrip(bId, faction); // depth-5 strip: head progress + waiting chips, click to cancel
 
                 for (int i = 0; i < _trainBtns.Length; i++)
                 {
@@ -404,9 +407,10 @@ namespace ProjectChimera.UI
                     string? missingPrereq = _buildSys.GetUnmetPrereq(bId, unitIndex); // per-candidate prereq
                     bool    prereqsMet    = missingPrereq == null;
 
-                    // Same predicate TrainUnit uses (prereq → supply → ore → crystal), plus the single in-flight job.
-                    // The spend itself happens deterministically at exec-tick, not here (this grey-out is prediction only).
-                    _trainBtns[i].Disabled = isTraining || !prereqsMet || !canAfford || !hasSupply || !crystalOk;
+                    // Same predicate TrainUnit uses (prereq → supply → ore → crystal), plus the queue-full gate (Story
+                    // 11.6: was 2.8's single-in-flight "already training"). The spend itself happens deterministically at
+                    // exec-tick, not here (this grey-out is prediction only).
+                    _trainBtns[i].Disabled = queueFull || !prereqsMet || !canAfford || !hasSupply || !crystalOk;
                     // Dim prereq-locked options (don't hide them) so the player sees what unlocks later.
                     _trainBtns[i].Modulate  = prereqsMet ? Colors.White : new Color(1f, 1f, 1f, 0.6f);
 
@@ -426,7 +430,7 @@ namespace ProjectChimera.UI
             else
             {
                 HideTrainButtons();
-                _trainStatus.Visible = false;
+                HideQueueStrip();
             }
 
             // ── Hero revival (Story 3.14): a revives_heroes building offers one revive button per awaiting hero of its
@@ -775,6 +779,79 @@ namespace ProjectChimera.UI
             OrderApplier.Apply(_world, in order, _localFaction(), buildings: _buildSys, events: _combatEvents); // Story 11.4: offline denial cue
         }
 
+        // ── Production queue strip (Story 11.6, FR-74) ────────────────────────
+
+        /// <summary>Render the depth-5 queue: the head (slot 0) as "name  Xs" with live countdown, waiting slots as
+        /// unit-name chips, empty slots hidden. Reads the folded <see cref="BuildingStore.ProductionQueue"/>/
+        /// <see cref="BuildingStore.ProductionTimer"/> directly (presentation-only). Names resolve from the building's
+        /// category roster; a fallback-sentinel slot shows a generic label.</summary>
+        private void RefreshQueueStrip(int bId, Faction faction)
+        {
+            var options = _buildSys.GetProductionUnits(_buildings.Type[bId], faction); // (Units index, def) of this category
+            int head = _buildings.HeadIndex(bId);
+            for (int k = 0; k < _queueBtns.Length; k++)
+            {
+                byte q = _buildings.ProductionQueue[head + k];
+                if (q == 0)
+                {
+                    _queueBtns[k].Visible = false;
+                    continue;
+                }
+                string name = QueueSlotName(options, q);
+                _queueBtns[k].Text = k == 0
+                    // head: unit + live countdown. Ceiling (not :F0 nearest-rounding) so a head still in production
+                    // never displays "0s" — it counts 8→7→…→1 and only the completion tick removes it from the head.
+                    ? $"{name}  {(int)System.Math.Ceiling(_buildings.ProductionTimer[bId].ToFloat())}s"
+                    : name;                                                     // waiting: just the unit
+                _queueBtns[k].TooltipText = k == 0
+                    ? $"{name} — in production. Click to cancel (full refund; progress lost)."
+                    : $"{name} — queued. Click to cancel (full refund).";
+                _queueBtns[k].Visible = true;
+            }
+        }
+
+        /// <summary>Resolve a queued slot's encoded byte (<c>unitIndex+1</c>, or 255 = empty-category fallback) to a
+        /// display name via the building's category roster. Presentation-only; a sentinel / unresolved index reads "Unit".</summary>
+        private static string QueueSlotName(System.Collections.Generic.List<(int Index, UnitDefinition Def)> options, byte q)
+        {
+            if (q == byte.MaxValue) return "Unit"; // PRODUCTION_FALLBACK sentinel (empty-category producer)
+            int idx = q - 1;
+            foreach (var (index, def) in options)
+                if (index == idx)
+                    return string.IsNullOrEmpty(def.DisplayName) ? def.Id : def.DisplayName;
+            return "Unit";
+        }
+
+        /// <summary>Hide every queue-strip slot button (used when the selection is not a ready producer).</summary>
+        private void HideQueueStrip()
+        {
+            for (int i = 0; i < _queueBtns.Length; i++)
+                _queueBtns[i].Visible = false;
+        }
+
+        private void OnQueueSlotPressed(int slot)
+        {
+            if (slot < 0 || slot >= _queueBtns.Length) return;
+            IssueCancelTrainCommand(_selection.SelectedBuildingId, slot);
+        }
+
+        /// <summary>
+        /// Issue a CancelTrain command for queue <paramref name="slot"/> at building <paramref name="bId"/>
+        /// (Story 11.6). Mirrors <see cref="IssueTrainCommand"/> exactly: online it is ENQUEUED (the deterministic
+        /// exec-tick refund happens once, THERE); offline it applies immediately via the SAME OrderApplier the
+        /// replay/online paths use. Only the LOCAL player's own building cancels. WIRE: TargetX = slot index (raw int).
+        /// </summary>
+        private void IssueCancelTrainCommand(int bId, int slot)
+        {
+            if (bId < 0 || bId >= _buildings.Count) return;
+            if (!_buildings.Alive[bId] || _buildings.FactionOf[bId] != _localFaction()) return;
+            bool applyNow = _lockstep?.EnqueueOrder(bId, UnitCommand.CancelTrain,
+                                                    Fixed.FromRaw(slot), Fixed.Zero) ?? true;
+            if (!applyNow) return; // online: LockstepManager.Flush applies it at exec-tick (refund happens THERE, once)
+            var order = new UnitOrder(bId, UnitCommand.CancelTrain, Fixed.FromRaw(slot), Fixed.Zero);
+            OrderApplier.Apply(_world, in order, _localFaction(), buildings: _buildSys, events: _combatEvents);
+        }
+
         private void OnReviveSlotPressed(int slot)
         {
             if (slot < 0 || slot >= _reviveHeroSlots.Length) return;
@@ -993,12 +1070,24 @@ namespace ProjectChimera.UI
             _supplyLabel.Visible = false;
             _panel.AddChild(_supplyLabel);
 
-            // ── Training status (in-flight "Training… Xs", above the grid) ────
-            _trainStatus = MakeLabel(new Vector2(10f, 52f), 13,
-                                    new Color(0.95f, 0.75f, 0.20f));
-            _trainStatus.AddThemeFontOverride("font", _tabularFont); // AC4: fixed-width ticking countdown
-            _trainStatus.Visible = false;
-            _panel.AddChild(_trainStatus);
+            // ── Production queue strip (Story 11.6) — a row of QUEUE_DEPTH clickable slot chips above the picker
+            //    grid. Head (slot 0) shows the unit + live countdown; waiting slots show the unit name. Clicking a
+            //    slot issues CancelTrain for that slot index. Fixed-width tabular font so the head countdown doesn't jitter.
+            _queueBtns = new Button[MAX_QUEUE_SLOTS];
+            for (int i = 0; i < MAX_QUEUE_SLOTS; i++)
+            {
+                var btn = new Button();
+                btn.Position = new Vector2(10f + i * 82f, 48f);
+                btn.Size     = new Vector2(78f, 22f);
+                btn.Visible  = false;
+                btn.ClipText = true; // a long unit name is clipped, never overflowing the compact chip
+                btn.AddThemeFontOverride("font", _tabularFont); // AC4: fixed-width ticking countdown
+                btn.AddThemeFontSizeOverride("font_size", 10);
+                int slot = i; // capture per-iteration for the lambda (carries the SLOT index)
+                btn.Pressed += () => OnQueueSlotPressed(slot);
+                _panel.AddChild(btn);
+                _queueBtns[i] = btn;
+            }
 
             // ── Train buttons — per-unit production picker (Story 2.8) ─────────
             // One button per unit of the selected building's category (grid mirrors the worker/ability grids:
