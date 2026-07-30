@@ -169,7 +169,7 @@ development_status:
   11-2-in-match-menu-pause-game-speed-concede-surrender-leave-victory-defeat-score-screen: done
   11-3-sp-save-load-full-world-serializer-slots-autosave-format-stability: done
   11-4-under-attack-alerts-minimap-pings-event-cues-denial-acknowledgment-feedback: done
-  11-5-buff-icons-multi-select-panel-and-subgroup-tabs: backlog
+  11-5-buff-icons-multi-select-panel-and-subgroup-tabs: done
   11-6-production-queue-depth-5-with-queue-display-and-cancel-refund: backlog
   11-7-video-settings-the-mode-select-honesty-strip: backlog
   epic-11-retrospective: optional
