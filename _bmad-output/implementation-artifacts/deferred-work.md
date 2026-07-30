@@ -705,6 +705,7 @@ source_spec: `_bmad-output/implementation-artifacts/spec-4-7-per-resource-collec
 location: godot/src/Economy/GatheringSystem.cs
 reason: summary: a Streaming worker at a permanently gate-closed node never re-idles to seek another node. evidence: a defensible reading of AC4's "credit is withheld... becomes eligible and begins producing" (same worker, same node resumes — not "worker reassigns elsewhere"), now proven-as-implemented by `RequiresStructure_StreamingGate_ClosesThenReopensMidGather_WithholdsThenResumesCredit` (this story's own review-patch test). Not exercised by any shipped scenario (none author `requires_structure` yet — see DW-77). Closure: a future design ruling on whether a permanently-gated Streaming worker should eventually re-idle and seek a different node (matching GATHER's node-vanishes-mid-cycle re-seek behavior) versus staying parked awaiting the same structure's return. Flagged by the Verification Gap Reviewer and Edge Case Hunter.
 status: open
+decision: 2026-07-30 Re-idle & re-seek after N ticks — After N ticks of a closed gate, free the worker to Idle to seek another eligible node, matching GATHER
 decision: 2026-07-20 Re-idle and re-seek — After N ticks of a closed gate, free the worker to Idle and seek a different eligible node (matching GATHER's node-vanishes re-seek).
 decision: 2026-07-16 Re-idle and re-seek — After N ticks of a closed gate, free the worker to Idle and seek a different eligible node (matching GATHER's node-vanishes re-seek).
 
@@ -1459,6 +1460,7 @@ location: godot/src/Core/Definitions/ScenarioValidator.cs (trigger building_type
 severity: medium
 reason: A scenario that places a custom building and references it in a trigger condition fails validation wholesale. Deliberately out of 6-8's intent — the trigger DSL is Epic 7 scope. Fix (Epic 7, alongside the 7.x trigger rebuild): extend trigger building resolution to accept authored building-def ids, mirroring the scenario-buildings gate.
 status: open
+decision: 2026-07-30 Add faction-qualified building ref to trigger DSL — Extend the trigger schema so a custom building can be named with its faction context, then resolve like the scenario-buildings gate
 
 ### DW-171: BuildingBridge render buckets freeze at Initialize — a mid-session-authored or third-faction custom building renders invisibly
 
@@ -1489,6 +1491,7 @@ origin: migrated from flat appender bullet, 2026-07-30 (A1-E11)
 source_spec: `_bmad-output/implementation-artifacts/spec-14-1-remediation-dw-85-suppress-the-maxhealth-research-army-heal-on-re-apply.md`
 reason: A net-negative-MaxHealth modifier (research/item/aura) can drive `EffectiveMaxHealth` to 0 and pin a unit at 0 HP while it stays alive — no system raises death from a modifier-driven ceiling collapse. — Evidence: `ModifierSystem.RecomputeEntity` floors `EffectiveMaxHealth` at 0 and `ModifierStore.ApplyStatDeltas`/the new DW-85 `ResearchSystem` restore both `Fixed.Clamp(Health, 0, EffectiveMaxHealth)`, so a 0 ceiling yields a 0-HP-alive "zombie". Pre-existing and shared across every +MaxHealth producer (not caused by DW-85 — the research restore mirrors the long-standing ModifierStore clamp); content-gated (no shipped content authors a net-negative max-health modifier today). Closure: decide whether a modifier-driven `EffectiveMaxHealth == 0` should kill the unit (and where that death is raised), or whether 0-HP-alive is intended for the "modifiers never kill" design.
 status: open
+decision: 2026-07-30 Raise death on ceiling==0 — Add a death trigger when a modifier drives the max-health ceiling to 0
 
 ### DW-326: Story 14.3's new wizard signature-resolution gate surfaces DW-107's silent-skip-on-invalid-ability behavior as a…
 origin: migrated from flat appender bullet, 2026-07-30 (A1-E11)
@@ -1502,6 +1505,7 @@ source_spec: `_bmad-output/implementation-artifacts/spec-14-4-remediation-dw-97-
 location: godot/src/Core/Definitions/FactionDefinition.cs:318
 reason: Client faction "selectable" (boot discovery) and "launchable" (the new Edit→Play gate) now disagree on a dangling `signature_mechanic_effect_id`: discovery reports the faction as selectable, but pressing Play hard-vetoes it with a signature error the boot console never showed. — Evidence: `FactionDefinition.LoadSelectableFromDirectory` (godot/src/Core/Definitions/FactionDefinition.cs:318) and the boot match-load shadow (godot/src/Core/Bootstrap/Phases/ScenarioLoadPhase.cs:337) both call `ValidateComplete(def)` with NO registry, so the signature-resolution check is dormant there; Story 14.4's launch gate threads the real `_abilityRegistry` (godot/src/Core/MainScene.cs:1621), so the same faction that appeared in the boot "selectable" set is blocked at Edit→Play with a `signature_mechanic_effect_id` error. A creator with a typo'd signature id sees it listed as selectable, assigns it, then is blocked with an error they never saw at boot. Deliberately out of Story 14.4's scope (intent = wire ValidateComplete into the launch gate only; threading a registry into the registry-less discovery/shadow paths is a separate change). Closure: either thread the ability registry into `LoadSelectableFromDirectory` (and the boot shadow) so all three client `ValidateComplete` sites agree, or explicitly document the intended shadow-lenient / gate-strict asymmetry at the discovery site.
 status: open
+decision: 2026-07-30 Thread registry into discovery + boot shadow — Make LoadSelectableFromDirectory and the boot shadow registry-aware so selectable == launchable
 
 ### DW-328: No Tier-1/integration test pins the a0c8d51 root mechanism itself — shared-`ScenarioData` instance aliasing where…
 origin: migrated from flat appender bullet, 2026-07-30 (A1-E11)
@@ -1528,7 +1532,9 @@ origin: migrated from flat appender bullet, 2026-07-30 (A1-E11)
 source_spec: `_bmad-output/implementation-artifacts/spec-14-7-remediation-dw-164-map-export-new-map-write-path-hard-validate-before-persist.md`
 location: MapGeneratorPanel.cs:254
 reason: Scenario write paths other than Export/New-Map still call `ScenarioSerializer.SaveToFile` without the hard `MapWriteGate` — `WinConditionPhase.DoImport` (re-saves an imported scenario after stamping TerrainRef), `MapGeneratorPanel`, and `PersistenceManifestPanel` — so an imported/generated/panel-saved unloadable scenario can still land in the scenarios folder ungated. — Evidence: Blind-hunter + intent-alignment noted DW-164's intent scopes to the Export/New-Map paths only; these three are pre-existing ungated writes (`WinConditionPhase.DoImport` SaveToFile, `MapGeneratorPanel.cs:254`, `PersistenceManifestPanel.cs:~338`). Import is the direct mirror of Export (an externally-authored package whose `scenario.json` hard-fails `CheckCoord` is copied into `res://resources/data/scenarios/`), though import content is also gated at apply/load time by `ScenarioLoadPhase`. Closure (post-14.7, if adopted): route these writes through `MapWriteGate.Check` too, or document the intended reliance on the load-time gate for imported/generated content.
-status: open
+status: done 2026-07-30
+resolution: closed by human decision: Keep write-gate scoped to Export/New-Map; document the intended reliance on ScenarioLoadPhase
+decision: 2026-07-30 Rely on the load-time gate — Keep write-gate scoped to Export/New-Map; document the intended reliance on ScenarioLoadPhase
 
 ### DW-332: With `slope_auto_block` on, a TERRAIN edit (e.g
 origin: migrated from flat appender bullet, 2026-07-30 (A1-E11)
@@ -1601,12 +1607,15 @@ status: open
 origin: migrated from flat appender bullet, 2026-07-30 (A1-E11)
 source_spec: `_bmad-output/implementation-artifacts/spec-7-3-typed-scoped-variables-deterministic-timers-and-verify-to-ship-eca.md`
 reason: The Trigger Editor "Manual (ECA)" form only authors variable read/write, display_message, and run_effect actions — not the full closed action vocabulary (spawn_unit / create_timer / add_resources / victory / defeat / play_sound), and hardcodes the `variable_comparison` operator to `==`. — Evidence: Story 7.3 delivered the AC3-required variable + run_effect authoring, but the broader FR-23 "basic ECA authoring" surface advertises action kinds the manual form cannot express; the raw-IR hatch is the current escape for them. Story 7.3 blind-hunter (low, UX completeness). Closure: extend the manual form to cover the remaining closed action/operator vocab (or fold into the Story 7.10 T3 visual editor).
-status: open
+status: done 2026-07-30
+resolution: closed by human decision: T3 visual editor is the full-vocab surface; manual form stays a quick-edit subset
+decision: 2026-07-30 Close as superseded by T3 — T3 visual editor is the full-vocab surface; manual form stays a quick-edit subset
 ### DW-343: Variable names that collide with expression keywords/built-ins (`true`, `false`, `count`, `min`, …) or contain…
 origin: migrated from flat appender bullet, 2026-07-30 (A1-E11)
 source_spec: `_bmad-output/implementation-artifacts/spec-7-4-fixed-point-arithmetic-and-boolean-expression-layer.md`
 reason: Variable names that collide with expression keywords/built-ins (`true`, `false`, `count`, `min`, …) or contain non-identifier characters are declarable (7.3 name policy accepts any non-empty string) but unreferenceable from CEL-shaped expression text — `true` parses as the Bool literal, not the variable. — Evidence: `ScenarioValidator` accepts any non-empty unique variable name while `ExprParser`'s grammar reads `[A-Za-z_][A-Za-z0-9_]*` identifiers and resolves keywords/built-ins first; raw-IR `expr_var` nodes can still reference such names, so the collision is authoring-surface-only. Story 7.4 edge-case-hunter (low). Closure: either lint/warn at declaration time on names shadowing the expression grammar, or add an escape syntax — a back-compat policy decision (existing scenarios may already carry such names).
 status: open
+decision: 2026-07-30 Lint/warn at declaration — Reject or warn on names shadowing the expression grammar
 ### DW-344: `distance(p, q)` degenerates to |ΔX| for any Point variable loaded from an authored scenario, because…
 origin: migrated from flat appender bullet, 2026-07-30 (A1-E11)
 source_spec: `_bmad-output/implementation-artifacts/spec-7-4-fixed-point-arithmetic-and-boolean-expression-layer.md`
@@ -1637,6 +1646,7 @@ origin: migrated from flat appender bullet, 2026-07-30 (A1-E11)
 source_spec: `_bmad-output/implementation-artifacts/spec-7-6-bounded-foreach-foreachbatched-loops-arrays-and-layer-3-fuel.md`
 reason: Fuel exhaustion and batched-drain suppression silently drop one-shot edge events (`match_start`, `unit_dies` edge-detects) for skipped/suppressed triggers — "re-evaluate next tick" holds only for polled events. — Evidence: `EvaluateTriggers` breaks the sweep on `FuelExhausted` and skips suppressed draining triggers, while `CollectEvents` clears `_firstTick`/`_prevFlags` edge state unconditionally each tick, so an event that fired on a skipped tick is gone forever; every fuel test uses the polled `unit_count_threshold` event, so the loss class is unexercised. Deterministic and spec-consistent ("skip this tick" / "suppressed while draining"), but a silent behavioral drop. Story 7.6 edge-case-hunter + blind-hunter (medium). Closure: when Story 7.5's event queue lands, re-queue unconsumed edge events for fuel-skipped/suppressed triggers (or document the loss as authored semantics in the DSL reference).
 status: open
+decision: 2026-07-30 Re-queue via DslEventQueue — Persist unconsumed edge events for skipped/suppressed triggers into the 7.5 queue
 ### DW-350: Gate/backstop invocation asymmetry plus silent-drop of stray data edges into the new 7.6 ports — a loop-free graph…
 origin: migrated from flat appender bullet, 2026-07-30 (A1-E11)
 source_spec: `_bmad-output/implementation-artifacts/spec-7-6-bounded-foreach-foreachbatched-loops-arrays-and-layer-3-fuel.md`
@@ -1738,6 +1748,7 @@ source_spec: `{implementation_artifacts}/spec-7-8-custom-runtime-ui-read-rail-de
 location: CustomUiGate.cs:62
 reason: The `custom_ui` widget array is fully parsed and allocated into memory BEFORE any cap is enforced — `CustomUiGate.Check` (the only `MaxWidgetCount` enforcement) runs after `WidgetBaseJsonConverter` has already materialized the whole `WidgetBase[]`, so a pathological flat array of millions of sibling widgets allocates before rejection. — Evidence: `WidgetBaseJsonConverter.ReadChildren`/root array read builds the full array with no streaming count guard; `CustomUiGate.cs:62` rejects `> MaxWidgetCount=256` only post-materialization. STJ `MaxDepth` bounds nesting depth but NOT breadth. This mirrors the project-wide parse-then-gate posture for every scenario collection (triggers/regions/units are equally unbounded at parse), so it is a latent DoS-surface class for untrusted/AI-gen/shared scenario files rather than a 7.8-specific regression; the handshake hash covers divergence but the file still parses first. Surfaced by the Blind Hunter review layer on Story 7.8. Closure = a streaming element-count ceiling during parse (applied uniformly across scenario collections, not just custom_ui) or an upstream byte/size guard on untrusted scenario input.
 status: open
+decision: 2026-07-30 Upstream byte/size guard — Cap untrusted scenario input size before deserialization (cheapest, uniform)
 
 ### DW-367: The director's `unit_dies` source (`_prevFlags` Alive-diff) merges a same-tick die→recycle→die on one entity slot…
 origin: migrated from flat appender bullet, 2026-07-30 (A1-E11)
@@ -1972,6 +1983,7 @@ origin: migrated from flat appender bullet, 2026-07-30 (A1-E11)
 source_spec: `_bmad-output/implementation-artifacts/spec-8-2-godot-free-illmprovider-anthropic-ollama-openrouter-four-state-availability-ui-test-connection.md`
 reason: LAN-hosted Ollama (a non-loopback private-range host, e.g. http://192.168.1.5:11434) is rejected by the loopback-only allowlist; consider widening the ollama policy to private/RFC-1918 ranges (or naming the loopback-only restriction in the unavailable message). — Evidence: `LlmHostAllowlist.IsAllowed` permits ollama only when `endpoint.IsLoopback`; running Ollama on another box on the LAN is a common setup and is rejected as NoProvider. Story 8.2 deliberately scoped "local Ollama" to loopback; after the 8.2 fix that routes EvaluateConfig through the factory, such a config now honestly shows unavailable rather than a false "ready", but the host itself remains unreachable through the stack. (Blind Hunter, Story 8.2 review.)
 status: open
+decision: 2026-07-30 Keep loopback-only but name the restriction in the unavailable message — Honest UX, minimal surface
 
 ### DW-371: A real `ScenarioType`/`GameMode` registry — an enum + per-type map-clamp preset table (min player slots, max…
 origin: migrated from flat appender bullet, 2026-07-30 (A1-E11)
@@ -1979,6 +1991,7 @@ source_spec: `_bmad-output/implementation-artifacts/spec-8-3-ai-generation-on-th
 location: godot/src/AI/LLMService.cs
 reason: A real `ScenarioType`/`GameMode` registry — an enum + per-type map-clamp preset table (min player slots, max combat units/slot, faction-path resolution) + a scenario-type selection UI that populates `MapGeneratorContext` — is deferred; Story 8.3 shipped only the trusted-context clamp mechanism with RTS-preserving defaults. — Evidence: The Epic 8 map-clamp requirement wants clamps relaxed "so non-RTS scenario types are not wrongly rejected," but no story defines a scenario-type schema, and the epic explicitly forbids sourcing relaxed limits from the untrusted scenario file (circular validation) and says to flag it for a decision. 8.3 parameterized the three RTS clamps (`MinPlayerSlots`=2, `MaxCombatUnitsPerSlot`=6, per-slot `FactionJsonResolver`) onto the TRUSTED `MapGeneratorContext` (godot/src/AI/LLMService.cs) with defaults that reproduce today's RTS behavior byte-for-byte, and proved the slice (relaxed context ⇒ previously-rejected scenario passes; default context ⇒ identical behavior; universal position/spacing/bounds passes always run). Closure = add a `ScenarioType` enum + per-type preset table + a scenario-type selection UI in the Map Generator that populates the context's clamp fields per selected type. No persisted `ScenarioType`/`MapType`/`GameMode` schema was introduced (per the spec's Never constraints). (Story 8.3.)
 status: open
+decision: 2026-07-30 Build ScenarioType enum + preset table + Map Generator selection UI — Enable non-RTS scenario types end-to-end
 
 ### DW-372: The map-clamp parameterization is only half-applied for non-2-slot scenarios — the map-gen prompt's SCHEMA and…
 origin: migrated from flat appender bullet, 2026-07-30 (A1-E11)
@@ -2000,6 +2013,7 @@ source_spec: `_bmad-output/implementation-artifacts/spec-8-3-ai-generation-on-th
 location: NodeKinds.cs
 reason: The trigger-gen prompt now advertises `player_chat` (required by the `NodeKinds`-driven staleness guard, since it is a member of `EventTypes`) and `Validate` accepts it, but the sim never raises `player_chat`, so an authored trigger keyed on it validates/saves/loads clean then silently never fires. — Evidence: `NodeKinds.cs:~610` notes `player_chat`'s "raise wire is a later commit"; Story 7.13 registered the event kind but did not wire its raise. 8.3 honestly enumerates the flat registry in the prompt (that is what the staleness guard enforces), which surfaces the not-yet-wired event to end users. Pre-existing DSL gap, not introduced by 8.3. Closure = wire the `player_chat` raise in the sim event source (or remove it from `NodeKinds.EventTypes` until wired, which the staleness guard would then track). (Blind Hunter, Story 8.3 review; pre-existing.)
 status: open
+decision: 2026-07-30 Wire a chat UI to SendPlayerChat — Make player_chat actually fire (a feature)
 
 ### DW-375: `LLMService` is not `IDisposable` — its owned `HttpClient`/`HttpClientHandler` (built on the `http: null` path)…
 origin: migrated from flat appender bullet, 2026-07-30 (A1-E11)
@@ -2053,6 +2067,7 @@ origin: migrated from flat appender bullet, 2026-07-30 (A1-E11)
 source_spec: `_bmad-output/implementation-artifacts/spec-8-5-ai-balance-analysis-of-a-faction-scenario-with-editable-suggestions.md`
 reason: The balance-analysis tunable-field vocabulary (`BalanceSuggestionApplier.TunableFields`) omits movement `speed` (arguably the highest-leverage balance stat) and `xp_bounty`, while including cosmetic `mesh_scale`; the prompt hard-restricts the model to the set and `ValidateBalanceReport` rejects anything outside it, so a Commander cannot get a speed suggestion at all. — Evidence: `speed` was excluded because it quantizes at the `EntityWorld.Create` ctor, outside this story's `ApplyUnitDefinition`-reuse quantize contract; `xp_bounty` is nullable/derived. Closure = a product decision on whether to add `speed`/`xp_bounty` (handling `speed`'s distinct quantize path and `xp_bounty`'s derived-when-null semantics) and whether to drop `mesh_scale`. (Blind Hunter, Story 8.5 review.)
 status: open
+decision: 2026-07-30 Add speed only, drop mesh_scale — Focus on real balance levers, cut cosmetic
 
 ### DW-383: ScenarioDirector `defeat` action resolves the winner as `OnVictory(1 - a.Faction)`, a 1v1-only "other faction…
 origin: migrated from flat appender bullet, 2026-07-30 (A1-E11)
@@ -2398,6 +2413,7 @@ location: godot/src/Multiplayer/DedicatedServer.cs (StartGame path / HandleReady
 severity: medium
 reason: Story 9.12 shipped the server-authoritative storage + validating RPC rail and a live, fail-closed CLIENT launch/Ready attestation gate (`OnlineHeroLaunchGate` over `NakamaService.AttestHeroProfileAsync`), but deliberately did NOT (a) enforce the attestation host-side, nor (b) deploy the attested hero into the lockstep match. Both are blocked on the SAME missing plumbing: the Nakama→ENet handoff (`MatchFoundInfo`) is endpoint-only and the `DedicatedServer` knows peers by transport slot alone — no Nakama userId/token reaches it, and no peer's profile reaches the other peers. Two remaining holes: (1) a friend who patches the game binary to skip the client-side gate (the decisive defense is already the server-owned No-Client-Write storage object + validating RPC — a client cannot forge the stored profile — but the host does not verify the gate ran); (2) minting one peer's hero would diverge `HeroStore` across peers → `StartStateHash` disagreement → online matches would fail to start, so deterministic cross-peer deployment needs a start-state fold this story's `Never`/`Block If` clauses forbid. Fix (post-1.0 fast-follow): add (a) a client→server attestation packet carrying a Nakama-issued credential; (b) server-side Nakama trust so the `DedicatedServer` can verify it; (c) a userId→slot bind in `AssignedRoster.TryFreeze` + a fail-closed gate in `HandleReady`; and (d) server distribution of every peer's attested profile so all peers mint an identical multi-hero `HeroStore` (a deterministic fold, re-baselining `StartStateHash`). 9.12 leaves the `DedicatedServer` StartGame path byte-unchanged and mints no hero into the online match.
 status: open
+decision: 2026-07-30 Build the full rail — Client→server credential packet, server-side trust, userId→slot bind in TryFreeze, fail-closed HandleReady gate, and server distribution of all peers' profiles minting an identical multi-hero HeroStore (StartStateHash re-baseline)
 
 ### DW-435: The live online hero rail may be unreachable end-to-end — a first-time online player can only obtain an attested…
 origin: migrated from flat appender bullet, 2026-07-30 (A1-E11)
@@ -2479,6 +2495,7 @@ source_spec: `{implementation_artifacts}/spec-9-14-teams-alliances-lobby-teams-w
 location: godot/src/Combat/CombatSystem.cs
 reason: A HELD auto-acquired unit `AttackTarget` is not alliance/faction-rechecked while retained — `CombatSystem.ValidateOrClearTarget` clears only on the target's death — so if that target's entity id is recycled into an allied (or same-faction) unit between ticks, the attacker fires on the now-ally for a tick, violating "an ally is never auto-attacked." — Evidence: `godot/src/Combat/CombatSystem.cs` `ValidateOrClearTarget` (~554-563) drops a held `AttackTarget` only when `!IsAlive`; Story 9.14 added allied-exclusion only at acquisition (`FindNearestEnemy*`, threaded `_alliances`) and on the per-tick forced paths (force-fire ~900, `TickAttackBuildingCombat` re-checks alliance every tick). Entity slots are shared across factions in one `EntityWorld`, so a teammate training a unit into a freed enemy slot in a 2v2 is reachable. Distinct from the existing projectile-primary-recycle defer (that entry is `ProjectileSystem.ApplySplash`/primary impact; this is the CombatSystem held unit-target path). The underlying recycle-into-friendly gap also pre-exists for same-faction (the force-fire comment at ~274-276 acknowledges it), so a holistic fix should cover both same-faction and allied. Obscure edge (one-tick window on a same-tick slot recycle). Closure = make `ValidateOrClearTarget` an instance method that also clears when `_alliances.AreAllied(FactionOf[id], FactionOf[target])` (and, for the pre-existing class, same-faction), mirroring the per-tick forced-path guards.
 status: open
+decision: 2026-07-30 Build now with DW-444 — Instance-method ValidateOrClearTarget clearing on allied/same-faction id-recycle, alongside DW-444
 decision: 2026-07-28 correct-course — keep open; post-1.0 fast-follow per bmad-loop-resolve 2026-07-24
 
 ### DW-201: Follow-up review still recommended for 9-14-teams-alliances-lobby-teams-wired-into-the-sim-alliance-model after the damping cap was spent
@@ -3640,6 +3657,7 @@ origin: migrated from flat appender bullet, 2026-07-30 (A1-E11)
 source_spec: `_bmad-output/implementation-artifacts/spec-11-1-the-real-skirmish-setup-screen-loading-match-start-flow.md`
 reason: `SkirmishSetupToScenario.Build` drops Open/Closed player slots but leaves the base map's triggers, win-condition spec, and scenario entities byte-identical — so a shipped map authored with per-slot triggers or a per-player-elimination win condition referencing a now-dropped slot boots with dangling references the setup screen never warns about. — Evidence: `Build` rebuilds only `PlayerSlots` (per its own doc-comment) and the transform has no trigger/win-condition reconciliation; reachable if a 3–4-start shipped map with per-slot trigger/win-condition logic is launched as a 1v1 (2 active slots). Low probability today (win-condition presets are mostly last-team-standing), needs a design decision on prune-vs-reject, so deferred rather than patched.
 status: open
+decision: 2026-07-30 Prune-and-reconcile — Strip/rewrite triggers and win-condition clauses referencing dropped slots during Build; add coverage test
 
 ### DW-459: The entire `MainScene` skirmish match-start orchestration — the async `_Ready` handoff…
 origin: migrated from flat appender bullet, 2026-07-30 (A1-E11)
@@ -3688,6 +3706,7 @@ origin: migrated from flat appender bullet, 2026-07-30 (A1-E11)
 source_spec: `_bmad-output/implementation-artifacts/spec-11-3-sp-save-load-full-world-serializer-slots-autosave-format-stability.md`
 reason: SP saves are not portable across machines and the format cannot detect it; make AiOpponentSystem Fixed-point (or fold a platform/runtime marker into the save header) before advertising cross-machine saves. — Evidence: AiOpponentSystem scoring runs on float (_aggressionWeight, ScoreLaunchAttack), which is not deterministic across CPU/JIT; the save header stamps only algo versions, so a save loaded on another machine can pick a different AI action on the first resumed tick and desync undetectably. 11.3 documents saves as same-machine for 1.0; this is the same float→Fixed dependency already noted for lockstep MP AI.
 status: open
+decision: 2026-07-30 Migrate AiOpponentSystem float→Fixed — Make saves genuinely portable; also unblocks lockstep MP AI (large effort)
 ### DW-467: Move full-world save serialization + disk I/O off the game thread (background write of an already-captured buffer)…
 origin: migrated from flat appender bullet, 2026-07-30 (A1-E11)
 source_spec: `_bmad-output/implementation-artifacts/spec-11-3-sp-save-load-full-world-serializer-slots-autosave-format-stability.md`
@@ -3772,6 +3791,7 @@ source_spec: `_bmad-output/implementation-artifacts/spec-11-6-production-queue-d
 location: godot/src/Economy/BuildingSystem.cs:422-427
 reason: Depth-5 production queue lets a player queue N units against unchanged live SupplyUsed (supply is consumed at spawn, never reserved at enqueue), so queuing can overshoot the supply cap by up to 4. — Evidence: BuildingSystem.TrainUnit (godot/src/Economy/BuildingSystem.cs:422-427) gates each enqueue with resources.HasSupply against SupplyUsed, which is recomputed from LIVE units and never incremented by enqueue; five enqueues therefore all see the same headroom. At depth-1 (2.8) at most one order was ever in flight so overshoot was impossible — the depth-5 widening (this story) introduces it. Deferred, not fixed: reserving supply on enqueue (WC3-strict) vs consume-at-spawn (the existing model, kept deliberately) is a design decision the intent does not specify; consequence is a self-correcting balance overshoot (own-ore overspend, deterministic across peers), not a crash/desync/free-resource exploit.
 status: open
+decision: 2026-07-30 Reserve supply at enqueue (WC3-strict) — Count queued supply against the cap to prevent overshoot
 
 ### DW-479: If SpawnTrainedUnit no-ops at the EntityWorld entity cap, TickProduction still calls AdvanceQueue and discards the…
 origin: migrated from flat appender bullet, 2026-07-30 (A1-E11)
