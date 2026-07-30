@@ -1556,14 +1556,16 @@ origin: migrated from flat appender bullet, 2026-07-30 (A1-E11)
 source_spec: `_bmad-output/implementation-artifacts/spec-7-2-graph-canonical-dsl-ir-foundation-closed-registry-converter-lossless-flat-to-graph-migration.md`
 location: TriggerGraph.cs
 reason: `TriggerGraph.ToFlat`/`FromJson` are fail-OPEN on a malformed/arbitrary graph — duplicate node ids silently corrupt (`byId[n.Id] = n` last-wins drops a node), dangling exec/data edges are silently skipped, a forked exec port takes first-match only, and an `EffectActionNode` wired mid action-chain silently truncates every downstream action — contradicting the module's fail-closed thesis. — Evidence: `TriggerGraph.cs` `ToFlat` builds `byId` with no uniqueness check and gathers events/conditions via `Where(... byId.ContainsKey)` (drops dangling), and the action walk stops at the first non-`ActionNode`. Unreachable in Story 7.2's LIVE path (the sole caller, `ScenarioDirector.LoadScenario`, only ever lowers `FromFlat`-produced graphs, which are unique-id/acyclic/single-successor and contain no `EffectActionNode`); becomes a live silent-data-loss path once Story 7.3 walks authored graphs directly. Corroborated by blind + edge-case reviewers. Closure belongs to Story 7.7 (the authoritative load-time graph validator, "no escape hatch"): reject non-unique ids, dangling/forked edges, and un-lowerable node placements with located errors before any walk. (A fail-closed acyclic-chain guard was already patched into `ToFlat` in 7.2 to prevent an unbounded-hang DoS; the remaining fail-open lossy cases are deferred here.)
-status: open
+status: done 2026-07-30
+resolution: already resolved: GraphStructureGate.cs Evaluate rejects duplicate node ids (:232), dangling/forked edges (:242/244/249/258/265), invoked unconditionally at both load gates (Story 7.7)
 
 ### DW-336: The graph edge structs (`ExecEdge`/`DataEdge`) have a weaker fail-closed story than nodes — a `DataEdge` JSON…
 origin: migrated from flat appender bullet, 2026-07-30 (A1-E11)
 source_spec: `_bmad-output/implementation-artifacts/spec-7-2-graph-canonical-dsl-ir-foundation-closed-registry-converter-lossless-flat-to-graph-migration.md`
 location: GraphEdge.cs
 reason: The graph edge structs (`ExecEdge`/`DataEdge`) have a weaker fail-closed story than nodes — a `DataEdge` JSON missing `wire` silently deserializes to the enum default `DataWireType.Boolean` (no located reject), and edge objects are not duplicate-key-scanned the way `NodeBaseJsonConverter` scans node objects. — Evidence: `GraphEdge.cs` `DataEdge` deserializes via its `[JsonConstructor]` under `DslJson.Options` (POCO path), so a missing `wire` fills the enum default rather than failing closed; harmless in 7.2 (Boolean is the only wire type) but a real gap once Story 7.4 adds Int/Fixed/… wire types. Blind-hunter finding. Closure: give edges the same fail-closed reading (required `wire` + duplicate-key scan) when the expanded wire vocabulary lands (7.4) or under the 7.7 validator gate.
-status: open
+status: done 2026-07-30
+resolution: already resolved: GraphEdge.cs:119-194 DataEdgeJsonConverter (Story 7.7) rejects missing 'wire' (:162), requires all five keys, scans duplicate keys (:170), case-sensitive wire parse (:148)
 
 ### DW-337: `ExecEdge`/`DataEdge.GetHashCode` uses `HashCode.Combine` (process-seed-randomized) — a latent determinism trap if…
 origin: migrated from flat appender bullet, 2026-07-30 (A1-E11)
@@ -1576,7 +1578,8 @@ origin: migrated from flat appender bullet, 2026-07-30 (A1-E11)
 source_spec: `_bmad-output/implementation-artifacts/spec-7-2-graph-canonical-dsl-ir-foundation-closed-registry-converter-lossless-flat-to-graph-migration.md`
 location: NodeBase.cs
 reason: `NodeKinds` (the closed `kind` registry consulted by `NodeBaseJsonConverter`) DUPLICATES `ScenarioValidator`'s private `_triggerEventTypes`/`_conditionTypes`/`_actionTypes` string sets with no cross-check guard, so extending the trigger vocabulary (e.g. Story 7.13) in one place and not the other silently diverges (a valid authored `kind` would be rejected at graph parse). — Evidence: `NodeBase.cs` `NodeKinds` hand-copies the three sets; `ScenarioValidator`'s copies are `private` and cannot be shared. No test asserts the two are equal. Latent in 7.2 (graph JSON is not the on-disk format yet, so the converter is not in the live path). The misleading "read, not modified" comment was corrected to "hand-kept copy" as a 7.2 patch. Blind-hunter finding. Closure: Story 7.7 (validator unification) should make the ECA vocabulary a single shared source of truth or add a test asserting `NodeKinds` == the validator's sets.
-status: open
+status: done 2026-07-30
+resolution: already resolved: ScenarioValidator.cs:1387 now aliases NodeKinds sets by reference and NodeKindsLockstepTests asserts the aliasing, replacing hand-copied string sets
 
 ### DW-339: `ScenarioDirector.RunEffect` rebuilds the entire SpatialHash on every invocation, so N `run_effect` triggers…
 origin: migrated from flat appender bullet, 2026-07-30 (A1-E11)
@@ -1638,12 +1641,14 @@ status: open
 origin: migrated from flat appender bullet, 2026-07-30 (A1-E11)
 source_spec: `_bmad-output/implementation-artifacts/spec-7-6-bounded-foreach-foreachbatched-loops-arrays-and-layer-3-fuel.md`
 reason: Gate/backstop invocation asymmetry plus silent-drop of stray data edges into the new 7.6 ports — a loop-free graph with an index-in edge (or a non-expression source into a branch cond-in port) rejects at the validator but loads silently at the `HasLoopConstructs`-guarded backstop; unreachable `spawn_unit` nodes reject at the validator scan but pass the backstop's exec-reachable walk. — Evidence: `ScenarioValidator` runs `DslLoopGate.CheckGraph` unconditionally; `ScenarioDirector.LoadScenario` guards it behind `HasLoopConstructs` (only `CheckSpawnCounts` is unconditional), and the gate's edge scans reject only the enumerated cases, silently ignoring unlisted stray edges the runtime then resolves by canonical order. Sanctioned flow always passes the validator, so exposure is direct/hand-crafted loads (defense-in-depth only). The `DslLoopGate` class doc now states the asymmetry precisely (7.6 review P13). Story 7.6 blind-hunter + edge-case-hunter (low). Closure: Story 7.7's structural validator should cover stray/forked data edges into all 7.6 ports and reconcile the two gates' invocation postures.
-status: open
+status: done 2026-07-30
+resolution: already resolved: ScenarioDirector.cs:499/522 GraphStructureGate.Check + DslLoopGate.CheckGraph now run unconditionally (no HasLoopConstructs guard); stray data edges rejected via NodePorts table
 ### DW-351: Nested `for_each` loops naming the same TriggerLocal `loop_var` load cleanly; the inner loop overwrites the…
 origin: migrated from flat appender bullet, 2026-07-30 (A1-E11)
 source_spec: `_bmad-output/implementation-artifacts/spec-7-6-bounded-foreach-foreachbatched-loops-arrays-and-layer-3-fuel.md`
 reason: Nested `for_each` loops naming the same TriggerLocal `loop_var` load cleanly; the inner loop overwrites the variable, so the outer body's remainder reads the inner loop's last element. — Evidence: `DslLoopGate` checks loop-var declaration/scope/type per node but never cross-node uniqueness along a nesting chain; deterministic but silently confusing authoring. Story 7.6 blind-hunter (low). Closure: add a located reject (or lint) for shadowed loop vars in Story 7.7's structural pass.
-status: open
+status: done 2026-07-30
+resolution: already resolved: DslLoopGate.cs:326-329 ActiveLoopVars now rejects nested for_each loop_var shadowing along a nesting chain (closed by Story 7.7)
 ### DW-352: Entity loops multiply the per-invocation `RunEffect` SpatialHash rebuild (up to 64 rebuilds per loop per tick…
 origin: migrated from flat appender bullet, 2026-07-30 (A1-E11)
 source_spec: `_bmad-output/implementation-artifacts/spec-7-6-bounded-foreach-foreachbatched-loops-arrays-and-layer-3-fuel.md`
@@ -1654,7 +1659,8 @@ origin: migrated from flat appender bullet, 2026-07-30 (A1-E11)
 source_spec: `_bmad-output/implementation-artifacts/spec-7-7-authoritative-server-side-load-time-validator-gate-no-escape-hatch.md`
 location: DedicatedServer.cs:223
 reason: Server-brokered matches never run the new HandshakeGate — `DedicatedServer.HandleReady` ignores the Ready packet's scenario-hash payload and broadcasts StartGame unchecked, so the fail-closed hash-0/mismatch lobby posture exists only in the P2P topology. — Evidence: `DedicatedServer.cs:223` takes only `slot` from Ready (never calls `TryReadReady`); `LobbyUi.cs:393` defers start to the server in online mode and starts on StartGame with no hash check; `MainScene.cs:487` documents the server-attested multi-hash handshake as Epic 9 / M5 (D-3) scope. Surfaced by the Verification Gap review layer on Story 7.7; closure = route HandleReady through `HandshakeGate.CheckStart` when Epic 9's attestation lands (note `LoopbackDesyncSelfTest` sends `MakeReady(0)` and will need its own hash).
-status: open
+status: done 2026-07-30
+resolution: already resolved: DedicatedServer.cs:549/565 HandleReady now calls TickCommandPacket.TryReadReady + ServerLobbyPolicy.CheckStartStateAgreement, fail-closed HALT on disagreement (Epic 9 9.4/9.7)
 ### DW-354: MapWriteGate call sites (Export/New-Map from 14.7 and Story 7.7's new MapGeneratorPanel AI-save) run the validator…
 origin: migrated from flat appender bullet, 2026-07-30 (A1-E11)
 source_spec: `_bmad-output/implementation-artifacts/spec-7-7-authoritative-server-side-load-time-validator-gate-no-escape-hatch.md`
@@ -2094,7 +2100,8 @@ status: open
 origin: migrated from flat appender bullet, 2026-07-30 (A1-E11)
 source_spec: `_bmad-output/implementation-artifacts/spec-9-3-server-authoritative-merged-tick-rewrite-build-client-gate-spectator-chat-n-2-fr-39-golden-gate.md`
 reason: On a mid-match player disconnect the merged-tick server neither shrinks `MergedTickBuilder.Expected` nor force-emits an empty sub-bundle for the departed slot, so the per-tick fan-in gate can never complete again and every surviving player + spectator stalls forever with no terminal HALT — the deterministic freeze-and-continue drop policy is Story 9.6. — Evidence: MergedTickBuilder.TryBuild requires all `Expected` slots to have arrived; DedicatedServer.HandleDisconnect notifies survivors but leaves `_builder.Expected` fixed and `_state` no longer InGame. Pre-rewrite relay also stalled on a missing stream, so this is preserved behavior, not a new defect. The epic sequences disconnect freeze-and-continue as Story 9.6 (9.3 → 9.4 → 9.6). Closure = 9.6's tick-counted empty-command injection + ACK-gated slot handling.
-status: open
+status: done 2026-07-30
+resolution: already resolved: DedicatedServer.cs:277-331 HandleDisconnect dictates drop via _dropController.NotifyDrop, ACK-gated commit + PumpFrozenInjection empty-command injection (Story 9.6 freeze-and-continue landed)
 
 ### DW-390: The client-side merged-arrival ring/gate in `LockstepManager` (HandleMergedTick keying, the Flush stall/apply…
 origin: migrated from flat appender bullet, 2026-07-30 (A1-E11)
@@ -3522,7 +3529,8 @@ origin: migrated from legacy ledger ("Deferred from: code review of story-3.1c (
 location: godot/src/UI/Components/ChimeraToastHost.cs:79-85
 severity: low
 reason: NextY() still sums over every entry with no max-visible cap/evict/coalesce (3.1c patch added reflow-tween discipline only). Self-healing/transient. Verified 2026-07-28.
-status: open
+status: done 2026-07-30
+resolution: already resolved: ChimeraToastHost.cs:33 MaxVisibleToasts=5 + :106 while(_toasts.Count>MaxVisibleToasts) evict — landed in Story 11.4
 decision: 2026-07-28 correct-course — filed to Story 11.4 (event cues — the toast→real-MP-event wiring story owns the cap/evict policy)
 
 ### DW-314: ChimeraComponents.Reset() could call into a freed AccentController on scene reload
