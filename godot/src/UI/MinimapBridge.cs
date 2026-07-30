@@ -113,8 +113,15 @@ namespace ProjectChimera.UI
             _camCtrl  = camCtrl;
 
             // ── Root sizing & anchoring ──────────────────────────────────────
+            // All four anchors sit at the bottom-right corner, so EVERY offset must be negative to walk the rect back
+            // on-screen. The previous code set only Right/Bottom: Left/Top stayed at 0, pinning the rect's top-left to
+            // the raw (viewport width, viewport height) corner and giving it a NEGATIVE size, so the whole 200x200
+            // panel — dots, fog, and 11.4's pings / camera box / alert flash — rendered off-screen at 1920x1080.
+            // (The `Size = ...` line it replaced could not help: with the anchors already at 1,1 the setter just moved
+            // Right/Bottom, which the two lines below then overwrote.)
             SetAnchorsAndOffsetsPreset(Control.LayoutPreset.BottomRight);
-            Size         = new Vector2(SIZE, SIZE);
+            OffsetLeft   = -(SIZE + MARGIN);
+            OffsetTop    = -(SIZE + MARGIN);
             OffsetRight  = -MARGIN;
             OffsetBottom = -MARGIN;
 

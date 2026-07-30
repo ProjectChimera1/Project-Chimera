@@ -151,6 +151,33 @@ Run after both stories were committed (`origin/master`=`ca9da36` .. `HEAD`=`e6a3
 - **defer (6):** `PendingLoadedSave` static survives an early-return launch-gate veto (stale save overlays the next skirmish); `Validate()` bounds free-list lengths but not elements (corrupt id escapes the fail-closed gate); `RestoreResources`/`RestoreResearch`/`RestoreWinState` bound every array by `Ore.Length` alone; `CaptureBuildings` aliases the live `ShopStock` `string[]` by reference; issue-time ack fires alongside the synchronous `QueueFull` denial for one click; Alt+LMB minimap ping also pans the camera on any pixel of drag. All appended to `deferred-work.md`.
 - **verification:** Tier-1 suite 3640 passed / 0 failed / 1 skipped (+1 new test); `dotnet build godot.csproj` 0 errors; `AlgoVersion` pins 21/14/2/3/1/1 unchanged; no golden or checksum file re-baselined. The camera and toast fixes are Godot `Node`/`Control` code, outside the Tier-1 link set — **not covered by an automated test and not yet re-observed in-engine.**
 
+### In-Engine Gate — 2026-07-29 (post-review-fix re-verification): **PASS**
+
+Godot 4.6.3, `res://scenes/main.tscn`, 1920x1080, live skirmish (Alpha Skirmish, P1 Human vs P2 AI). Driven through
+the real UI (main menu PLAY -> setup Launch -> briefing CONTINUE) via `pressed`-signal emission; camera zoom driven by
+real wheel events through `Viewport.push_input`. Editor error log clean (0 errors) across the whole session.
+
+| # | Criterion | Result | Evidence (numbers, not vibes) |
+|---|---|---|---|
+| 1 | Minimap panel renders on-screen | **PASS** | Rect `P(1712, 872) S(200, 200)` in a 1920x1080 viewport; `Rect2(0,0,1920,1080).encloses(minimap_rect) == true`. Offsets now `-208,-208,-8,-8` (were `0,0,-8,-8`, giving a NEGATIVE-size rect pinned to the raw corner). Screenshot confirms the panel with live unit dots bottom-right. |
+| 2 | 11.4 minimap features visible | **PASS** | All three render at their computed pixels: ping (green) expected `x1890 y894` -> observed top-right; alert flash (red) expected `x1734 y972` -> observed left-middle; camera-view box expected `x1726..1774 y1012..1034` -> observed as a white rect there. Box tracks the pivot (recomputed after a pan and matched). |
+| 3 | Corrected viewport gate | **PASS** | Default zoom (d=80), pivot origin: bounds `x -306.4..306.4`, `z -225.0..48.7` — asymmetric, ~225 forward / ~49 back, matching the rig geometry. `IsInView` at `z=-100/-200` = true (the old symmetric +/-68 box called these OFF-screen -> the false-alert bug); `z=-260`, `z=+80`, `x=400` = false. |
+| 3b | Alert still possible at max zoom | **PASS** | Wheel-driven to the `ZoomMax=150` clamp (bounds stable at `752x334` across 40 further notches). Map corners SW `(-128,128)` and SE `(128,128)` plus `(0,100)`/`(0,200)` all report NOT-in-view, so 4 of 6 probes can still raise an alert. The old `+/-127.5` box was 255x255 over a 256x256 map — the alert could never fire zoomed out. |
+| 4 | Toast coalescing | **PASS** | From 0 toasts: two DIFFERENT denial messages both returned `true` (new) -> child count **2**, both texts retained. The same message x2 more returned `false` (coalesced) -> count still **2**, rendered `"Not enough Ore.  (×3)"`. Previously the second distinct reason overwrote the first into a single toast. |
+
+**Confirmed live (already deferred, not a regression):** Alt+LMB on the minimap drops the ping *and* pans the camera —
+pivot moved to `(-79.36, 0, 74.24)`, the exact clicked world point. Newly observable because the panel is now on screen.
+
+**Observation for Alec (not a defect, worth a design call):** the corrected footprint shows the camera sees
+`613 x 274` world units at default zoom and `752 x 334` at max, against a `256 x 256` map — i.e. at default zoom the
+view is wider than the entire map, so the minimap camera-view box only reads as a meaningful sub-rect once zoomed
+in (at `ZoomMin` it is `61 x 27`). The old box *looked* more useful only because it was wrong. Worth revisiting the
+default zoom / FOV against map size.
+
+**Not covered:** the under-attack toast/SFX path was verified at the gate level (`IsInView`) and the toast level, but
+not end-to-end from a real off-screen combat event; MP ping replication remains code-reviewed only (single-client
+editor cannot host a peer, same posture as 11.3).
+
 ## Design Notes
 
 **Why the non-folded bus is safe to extend.** `CombatEventQueue` is explicitly *not* a `SimChecksum` input — its own comments repeatedly assert that appending enum values and carrying presentation refs cannot move a golden, and `OrderDenied` was itself appended noting "Story 11.9 consumes this" (this merged story). Adding a `Faction`/`DenialReason` field and stamping it at push sites that already read that state is the same golden-safe operation; the determinism proof is "existing goldens still pass + `AlgoVersion` pins untouched", asserted in-memory, not a re-baseline.
