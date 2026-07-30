@@ -74,7 +74,13 @@ namespace ProjectChimera.UI
             if (mod == null) return "?";
             Polarity p = Classify(mod);
             if (HasPeriod(mod))
-                return p == Polarity.Debuff ? "DoT" : "HoT";
+            {
+                // Derive the DoT/HoT glyph from the actual period sign — never assume beneficial (review #1).
+                // An indeterminate / net-neutral periodic (sign == 0) shows the neutral bullet, matching Classify's
+                // Neutral verdict and PolarityTint's grey, rather than falsely reading as a green "HoT" heal.
+                int sign = PeriodSign(mod.PeriodEffect);
+                return sign < 0 ? "DoT" : sign > 0 ? "HoT" : "•";
+            }
             return p switch
             {
                 Polarity.Buff => "↑",   // U+2191 (font-verified)

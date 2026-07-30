@@ -110,5 +110,16 @@ namespace ProjectChimera.Sim.Tests.UI
             Assert.Equal(ModifierPolarity.Polarity.Debuff, ModifierPolarity.Classify(damaging));
             Assert.Equal(ModifierPolarity.Polarity.Buff,   ModifierPolarity.Classify(healing));
         }
+
+        [Fact]
+        public void Indeterminate_periodic_glyphs_neutral_not_a_false_HoT()
+        {
+            // Review follow-up: a periodic modifier whose period sign is 0 (net-neutral / unrecognized effect) must
+            // NOT render as a green "HoT" heal — it glyphs the neutral bullet, matching its Neutral classification.
+            var neutralPeriodic = PeriodicMod(new DirectHpDeltaEffect(Fixed.Zero));
+            Assert.True(ModifierPolarity.HasPeriod(neutralPeriodic));
+            Assert.Equal(ModifierPolarity.Polarity.Neutral, ModifierPolarity.Classify(neutralPeriodic));
+            Assert.Equal("•", ModifierPolarity.Glyph(neutralPeriodic));
+        }
     }
 }

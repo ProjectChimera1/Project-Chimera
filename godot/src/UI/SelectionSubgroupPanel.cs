@@ -47,6 +47,13 @@ namespace ProjectChimera.UI
 
         private const int MAX_CELLS = 48; // cap the grid so a huge box-select cannot spawn unbounded nodes
 
+        // True while the panel is programmatically syncing the tab strip to state SelectionSystem already owns.
+        // ChimeraTabs.SetActive emits TabChanged unconditionally, so without this guard a programmatic sync would
+        // re-enter SelectionSystem.SetActiveSubgroup and spuriously reset _selectedInventorySlot / re-repoint focus on
+        // any structural rebuild — the "read-only panel" must never write selection state. Only genuine user tab
+        // clicks (emitted outside a sync) are forwarded to SelectionSystem.
+        private bool _syncingTabs;
+
         /// <summary>Wire the presentation reads and build the (initially hidden) UI under <paramref name="uiCanvas"/>.</summary>
         public void Initialize(SelectionSystem selection, EntityWorld world, ModifierStore modifiers, CanvasLayer uiCanvas)
         {
@@ -142,9 +149,14 @@ namespace ProjectChimera.UI
             _tabRow.Visible = subs.Count >= 2;
             _grid.Visible   = selCount >= 2;
 
-            // Reflect the active subgroup in the strip (Tab key / death may have moved it) without a redundant emit.
+            // Reflect the active subgroup in the strip (Tab key / death may have moved it). SetActive emits TabChanged,
+            // so guard the emit — this only mirrors state SelectionSystem already set; it must not write back to it.
             if (_tabs != null && activeIdx >= 0 && activeIdx < subs.Count && _tabs.Active != activeIdx)
+            {
+                _syncingTabs = true;
                 _tabs.SetActive(activeIdx);
+                _syncingTabs = false;
+            }
 
             // Live health tint per cell (green→red on current/EffectiveMaxHealth).
             foreach (var (cell, style, id) in _cells)
@@ -188,10 +200,20 @@ namespace ProjectChimera.UI
             _tabRow.AddChild(tabs);
             _tabs = tabs;
             if (activeIdx >= 0 && activeIdx < subs.Count && activeIdx != tabs.Active)
+            {
+                // Programmatic sync — guard the TabChanged emit so it does not re-enter SelectionSystem.
+                _syncingTabs = true;
                 tabs.SetActive(activeIdx);
+                _syncingTabs = false;
+            }
         }
 
-        private void OnTabChanged(int index) => _selection.SetActiveSubgroup(index);
+        // Forward only genuine user tab clicks; swallow the emits from our own programmatic SetActive syncs.
+        private void OnTabChanged(int index)
+        {
+            if (_syncingTabs) return;
+            _selection.SetActiveSubgroup(index);
+        }
 
         private void RebuildGridCells(IReadOnlyList<SelectionSubgroups.Subgroup> subs)
         {
@@ -399,14 +421,22 @@ namespace ProjectChimera.UI
             // damage → red "DoT" (debuff), heal → green "HoT" (buff). Never assume beneficial (review #1).
             PersistentEffect? pe = _modifiers.PersistentRefAt(focus, slot);
             int sign = pe != null ? ModifierPolarity.PeriodSign(pe.PeriodEffect) : 0;
-            bool damaging = sign < 0;
-            var btn = ChimeraComponents.IconButton(damaging ? "DoT" : "HoT");
+            // Three-way on the period sign — never assume beneficial (review #1): damage → red "DoT", heal → green
+            // "HoT", indeterminate/net-neutral (sign == 0) → neutral bullet, NOT a false green heal.
+            string glyph = sign < 0 ? "DoT" : sign > 0 ? "HoT" : "•";
+            Color tint   = sign < 0 ? new Color(1f, 0.55f, 0.45f)
+                         : sign > 0 ? new Color(0.6f, 0.9f, 0.6f)
+                                    : new Color(0.8f, 0.8f, 0.8f);
+            string term  = sign < 0 ? "Damage over time" : sign > 0 ? "Heal over time" : "Periodic effect";
+            string body  = sign < 0 ? "This unit is taking periodic damage."
+                         : sign > 0 ? "This unit is being periodically healed."
+                                    : "This unit has a periodic effect.";
+            var btn = ChimeraComponents.IconButton(glyph);
             btn.Disabled = true;
             btn.FocusMode = Control.FocusModeEnum.None; // review #7
             btn.AddThemeFontSizeOverride("font_size", ChimeraComponents.SizeOf(ThemeTokens.T2xs));
-            btn.Modulate = damaging ? new Color(1f, 0.55f, 0.45f) : new Color(0.6f, 0.9f, 0.6f);
-            ChimeraTooltip.Attach(btn, damaging ? "Damage over time" : "Heal over time",
-                                  damaging ? "This unit is taking periodic damage." : "This unit is being periodically healed.");
+            btn.Modulate = tint;
+            ChimeraTooltip.Attach(btn, term, body);
             _buffRow.AddChild(btn);
         }
 

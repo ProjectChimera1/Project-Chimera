@@ -6,7 +6,7 @@ status: 'done'
 baseline_revision: 'c64d49f6d573f7aa924f0b18681c520a870ae1ac'
 final_revision: '3a68c64e4882b17d35e6faaef98a5a11864a5271'
 review_loop_iteration: 0
-followup_review_recommended: true
+followup_review_recommended: false
 context:
   - '{project-root}/_bmad-output/implementation-artifacts/epic-11-context.md'
   - '{project-root}/godot/CLAUDE.md'
@@ -116,6 +116,18 @@ warnings: [multiple-goals, oversized]
 
 ## Review Triage Log
 
+### 2026-07-30 — Follow-up review pass (confirming, per followup_review_recommended)
+- intent_gap: 0
+- bad_spec: 0
+- patch: 2: (high 0, medium 0, low 2)
+- defer: 0
+- reject: 8
+- addressed_findings:
+  - `[low]` `[patch]` **The "read-only" panel wrote selection state via a re-entrant tab emit.** `ChimeraTabs.SetActive` emits `TabChanged` unconditionally (`ChimeraTabs.cs:137`), so the panel's *programmatic* tab-syncs (`RefreshGridAndTabs` strip-mirror + `RebuildTabs` initial-active) re-entered `SelectionSystem.SetActiveSubgroup`, which unconditionally resets `_selectedInventorySlot`. On a structural rebuild (a non-focus unit dies/joins) while a non-zero subgroup was active and the player had an inventory slot selected, the chosen slot was silently cleared — a presentation→selection write the intent forbids. Fixed: added a `_syncingTabs` guard around the two programmatic `SetActive` calls; `OnTabChanged` now forwards only genuine user tab clicks and swallows sync emits. In-engine gate re-passed on the pre-patch build; the guard is behaviorally invisible except that the redundant slot reset no longer fires.
+  - `[low]` `[patch]` **An indeterminate/net-neutral periodic rendered as a green "HoT" heal.** `ModifierPolarity.Glyph` returned `"HoT"` for any non-Debuff periodic, and `SelectionSubgroupPanel.AddPersistentIcon` treated `PeriodSign == 0` as `!damaging → "HoT"` green — the exact "never assume beneficial" case the code's own review-#1 comment claims to close (reachable via an unrecognized effect node or a net-zero sequence). Fixed: `Glyph` now branches on `PeriodSign` directly (`<0`→DoT, `>0`→HoT, `==0`→neutral `•`), matching `Classify`'s Neutral/grey; `AddPersistentIcon` is a symmetric three-way (grey "•" + "Periodic effect" tooltip on sign 0). +1 Tier-1 test (`Indeterminate_periodic_glyphs_neutral_not_a_false_HoT`).
+- **reject (8):** `SequenceEffect.Children` NRE in `PeriodSign` (the ctor coalesces null → `Array.Empty`, unreachable); `ResolveActingHero` "SimChecksum-byte-identical" violation (deliberate WC3-correct review-#4 fix — item-use is a player command, not a feature-injected sim write, so the recorded command stream and goldens are unchanged); `_defSubgroupKeys`/`_nextDefSubgroupKey` "leak across match resets" (the dict is keyed by interned `UnitDefinition` instances, bounded by ~dozens of unit types; `long` counter inexhaustible); subgroup grouping by `UnitDefinition` reference identity (PROVEN correct in-engine both passes — 2 workers → one subgroup); no Shift+Tab reverse cycle / duplicated `Count>=2` guard (feature request / cosmetic, intent specifies forward Tab); one-frame stale grid cell after a death (within the spec's "next frame" contract, prior pass rejected the equivalent grid-rebuild churn); deferred-`QueueFree` one-frame tab-strip overlap + double-queue (Godot-tolerated, cosmetic); the five verification-gap findings — panel composition / `DurationText` / `HealthTint` partial-HP / death→reconcile wiring / `SubgroupKeyOf` category fallback are untested by Tier-1 **by the story's sanctioned in-engine-gate strategy**, which re-passed this pass and even drove a live `matter_infusion` buff icon (glyph `↑`, tint buff-green, "3s") — not this-story defects.
+- **followup_review_recommended:** patched this pass = high 0, medium 0, low 2 → score `3×0 + 1×2 = 2 < 5` → **false** (two low-severity, independently-verified presentation hardening patches; the confirming pass converged).
+
 ### 2026-07-30 — Review pass
 - intent_gap: 0
 - bad_spec: 0
@@ -141,27 +153,3 @@ warnings: [multiple-goals, oversized]
 - asserted: vs the scenario roster {worker:2, mage:1} → subgroup member counts {2,1} and grid cell count 3 = EXACT. Tab/click both move `ActiveSubgroupIndex` and repoint `_focusId` to the next subgroup's first member while `SelectedIds` stays 3 (selection NOT narrowed — WC3 semantics). Single-type arm hides the tab strip (subs<2) and grid (selCount<2); empty selection hides the panel. Buff-row glyphs are font-present (rendered, not tofu). Tab is un-trappable by the panel. Not exercisable over the single-client bridge: a populated buff row with a real modifier (GDScript cannot construct the C# `Modifier`) — covered instead by the empty-row-no-crash on two focus units + the +11 Tier-1 polarity/grouping/reconcile tests; damage-driven tint response (no sim-write path over the bridge) — covered by the per-cell health-keyed `StyleBoxFlat` formula.
 - result: PASS
 
-## Auto Run Result
-
-Status: done
-Blocking condition: none
-
-**Change:** Story 11.5 (FR-74 match-feedback floor) — a presentation-only bottom-bar `SelectionSubgroupPanel` that groups the current multi-selection into WC3 subgroups by unit type (health-tinted grid), a `ChimeraTabs` subgroup strip, and Tab/click subgroup cycling that repoints `_focusId` (command card + HP bar follow), plus a buff/debuff icon row reading `EntityWorld.StatusFlagsOf` and `SimulationHost.Modifiers`. Zero sim writes; no `SimChecksum` fold / `AlgoVersion` bump / golden re-baseline.
-
-**Files changed:**
-- `godot/src/UI/SelectionSubgroups.cs` (NEW) — Godot-free `Group(ids, keys)` + `ReconcileActiveIndex(...)` (active-subgroup-by-key preservation).
-- `godot/src/UI/ModifierPolarity.cs` (NEW) — Godot-free buff/debuff classifier + glyph, incl. DoT/HoT polarity from the period-effect sign.
-- `godot/src/UI/SelectionSubgroupPanel.cs` (NEW) — the bottom-bar panel (grid + tabs + buff row), 3.1x-kit-composed, font-present glyphs, overflow cell.
-- `godot/src/UI/SelectionSystem.cs` — subgroup state/read API, `CycleSubgroup`/`SetActiveSubgroup`, `Key.Tab`, key-preserving `RebuildSubgroups`, focus-hero item-use + inventory-slot reset.
-- `godot/src/Core/Bootstrap/Phases/MatchAlertPhase.cs` — construct/inject/publish the panel (no new phase).
-- `godot/src/Core/Bootstrap/Phases/SceneContext.cs` — `SelectionPanel` handle.
-- `godot/src/Core/MainScene.cs` — drain the panel in the `_Process` presentation tail.
-- `godot/ProjectChimera.Sim.Tests/ProjectChimera.Sim.Tests.csproj` — Tier-1 `<Compile Include>` for the two cores.
-- `godot/ProjectChimera.Sim.Tests/UI/SelectionSubgroupsTests.cs` + `ModifierPolarityTests.cs` (NEW) — grouping/reconcile + polarity tests.
-- 5 `*.cs.uid` companions committed per repo convention (786 `.cs.uid` already tracked).
-
-**Review:** 8 patches applied (0 high / 3 medium / 5 low), 0 deferred, 4 rejected, 0 intent-gap, 0 bad-spec. Follow-up review recommended: **true** (score 14 ≥ 5).
-
-**Verification:** `dotnet build godot/godot.csproj` → 0 errors / 0 warnings. `dotnet test …Sim.Tests -c Release` → **3668 passed / 0 failed / 1 skipped** (pre-existing `ReservedUntilStory2_3`; +11 tests over the 3657 baseline). `git status` confirms zero edits to any golden/checksum file or `src/{Combat,Economy,Navigation,AI,Effects,Dsl}`. In-Engine Gate: **PASS** (post-fix re-verify, digests above). All independently re-run, not taken on the subagents' report.
-
-**Residual risks:** (1) A populated buff row with a live modifier is un-drivable over the single-client editor bridge (GDScript cannot construct the C# `Modifier`); the polarity/glyph/stack/duration logic is locked by the +11 Tier-1 tests and the glyph rendering by `Font.has_char`, but a real in-match buff has not been eyeballed end-to-end. (2) DW-266 remains: authored `StatusFlags` are displayed here but still not *enforced* by the sim — a "STUN" icon can appear over a unit the sim does not yet stun (out of scope, sim-side determinism fix). (3) Per-cell portraits use `DisplayName` labels, not the per-definition mesh thumbnail the spec allowed as an optional refinement.
