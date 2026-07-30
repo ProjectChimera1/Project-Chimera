@@ -53,6 +53,10 @@ namespace ProjectChimera.UI
         /// MatchAlertPhase to play the ping cue and replicate it to allies in MP. Null offline / until wired.</summary>
         public System.Action<Vector3>? OnLocalPing;
 
+        /// <summary>True while an Alt+LMB ping gesture is in flight (press seen, release pending). Suppresses the
+        /// click-to-pan branches for the rest of the gesture so a ping never doubles as a camera jump.</summary>
+        private bool _pingGesture;
+
         // Fog alpha values (R=G=B=0, only alpha varies)
         private const byte FOG_UNEXPLORED = 210;
         private const byte FOG_EXPLORED   = 110;
@@ -234,9 +238,15 @@ namespace ProjectChimera.UI
         public override void _GuiInput(InputEvent @event)
         {
             // Story 11.4 (FR-74): Alt+LMB drops a minimap PING (shown immediately for the initiator; replicated to
-            // allies in MP via OnLocalPing) rather than panning. Handled BEFORE the pan branch so Alt-click never pans.
+            // allies in MP via OnLocalPing) rather than panning.
+            //
+            // Review fix: this branch consumed only the PRESS. The matching RELEASE fell through to the pan branch
+            // below (which never tested mb.Pressed), and any drag between the two hit the motion branch, so an
+            // Alt-click both pinged AND yanked the camera to the pinged point — confirmed in-engine, the pivot landed
+            // on the clicked world position. _pingGesture now swallows the rest of the gesture.
             if (@event is InputEventMouseButton alt && alt.Pressed && alt.ButtonIndex == MouseButton.Left && alt.AltPressed)
             {
+                _pingGesture = true;
                 Vector3 world = MinimapToWorld(alt.Position);
                 AddPing(world.X, world.Z, P1_COLOR); // the initiator sees its own ping in the own-view colour
                 OnLocalPing?.Invoke(world);
@@ -244,17 +254,31 @@ namespace ProjectChimera.UI
                 return;
             }
 
-            if (_camCtrl == null) return;
-
-            if (@event is InputEventMouseButton mb &&
-                mb.ButtonIndex == MouseButton.Left)
+            if (@event is InputEventMouseButton mb && mb.ButtonIndex == MouseButton.Left)
             {
+                if (!mb.Pressed)
+                {
+                    // End of the gesture. Always clear the latch here (a stranded latch would swallow the next real
+                    // click) and never pan on release — the press and drag branches already moved the camera.
+                    bool wasPing = _pingGesture;
+                    _pingGesture = false;
+                    if (wasPing) { AcceptEvent(); return; }
+                    AcceptEvent();
+                    return;
+                }
+
+                // A plain (Alt-free) press starts a fresh pan gesture and self-heals a latch stranded by a release
+                // delivered outside this Control.
+                _pingGesture = false;
+                if (_camCtrl == null) return;
                 _camCtrl.PanTo(MinimapToWorld(mb.Position));
                 AcceptEvent();
             }
             else if (@event is InputEventMouseMotion motion &&
                      (motion.ButtonMask & MouseButtonMask.Left) != 0)
             {
+                if (_pingGesture) { AcceptEvent(); return; } // dragging after a ping must not pan
+                if (_camCtrl == null) return;
                 _camCtrl.PanTo(MinimapToWorld(motion.Position));
                 AcceptEvent();
             }
@@ -334,13 +358,28 @@ namespace ProjectChimera.UI
             }
 
             // Story 11.4 (FR-74): the camera-view box — always drawn so the player knows what the main view covers.
+            // Review follow-up: draw the camera's TRUE ground footprint (a trapezoid — the far edge is wider than the
+            // near one on a tilted camera) rather than its axis-aligned bounds, which overstated the view so badly at
+            // default zoom that the "box" covered the entire minimap.
             if (_camCtrl != null)
             {
-                Rect2 vb = _camCtrl.GetViewBounds(); // world XZ (position = min corner, size = extent)
-                Vector2 a = WorldToMinimap(vb.Position.X, vb.Position.Y);
-                Vector2 b = WorldToMinimap(vb.Position.X + vb.Size.X, vb.Position.Y + vb.Size.Y);
-                var box = new Rect2(a, b - a);
-                canvas.DrawRect(box, CAM_BOX_COL, filled: false, width: 1.0f);
+                if (_camCtrl.TryGetViewQuad(out Vector2 qtl, out Vector2 qtr, out Vector2 qbr, out Vector2 qbl))
+                {
+                    var ring = new Vector2[5];
+                    ring[0] = WorldToMinimap(qtl.X, qtl.Y);
+                    ring[1] = WorldToMinimap(qtr.X, qtr.Y);
+                    ring[2] = WorldToMinimap(qbr.X, qbr.Y);
+                    ring[3] = WorldToMinimap(qbl.X, qbl.Y);
+                    ring[4] = ring[0]; // close the ring
+                    canvas.DrawPolyline(ring, CAM_BOX_COL, 1.0f);
+                }
+                else
+                {
+                    Rect2 vb = _camCtrl.GetViewBounds(); // headless fallback — world XZ (position = min corner)
+                    Vector2 a = WorldToMinimap(vb.Position.X, vb.Position.Y);
+                    Vector2 b = WorldToMinimap(vb.Position.X + vb.Size.X, vb.Position.Y + vb.Size.Y);
+                    canvas.DrawRect(new Rect2(a, b - a), CAM_BOX_COL, filled: false, width: 1.0f);
+                }
             }
         }
 

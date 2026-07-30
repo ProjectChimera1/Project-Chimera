@@ -240,51 +240,97 @@ namespace ProjectChimera.UI
         /// </summary>
         public Rect2 GetViewBounds()
         {
-            Vector3 c = GlobalPosition;
+            if (!TryGetViewQuad(out Vector2 tl, out Vector2 tr, out Vector2 br, out Vector2 bl))
+                return FallbackBounds();
 
-            // Headless / not-yet-in-tree fallback: no viewport to project through, so keep the old zoom-derived
-            // square. Only reachable before _Ready or outside a running tree; never on the live gate path.
-            Viewport vp = _camera?.GetViewport();
-            if (vp == null)
-            {
-                float half = _zoomDist * 0.85f;
-                return new Rect2(c.X - half, c.Z - half, half * 2f, half * 2f);
-            }
-
-            Vector2 size = vp.GetVisibleRect().Size;
-            if (size.X <= 0f || size.Y <= 0f)
-            {
-                float half = _zoomDist * 0.85f;
-                return new Rect2(c.X - half, c.Z - half, half * 2f, half * 2f);
-            }
-
-            float minX = float.MaxValue, maxX = float.MinValue;
-            float minZ = float.MaxValue, maxZ = float.MinValue;
-
-            for (int corner = 0; corner < 4; corner++)
-            {
-                var screen = new Vector2((corner & 1) == 0 ? 0f : size.X,
-                                         (corner & 2) == 0 ? 0f : size.Y);
-                Vector3 origin = _camera.ProjectRayOrigin(screen);
-                Vector3 dir    = _camera.ProjectRayNormal(screen);
-
-                // Intersect with the pivot's ground plane (y = c.Y). dir.Y < 0 means the ray descends toward it;
-                // anything else clears the horizon and is clamped to MAX_GROUND_REACH along the ray instead.
-                float t = MAX_GROUND_REACH;
-                if (dir.Y < -0.0001f)
-                    t = Mathf.Min((origin.Y - c.Y) / -dir.Y, MAX_GROUND_REACH);
-
-                Vector3 hit = origin + dir * t;
-                minX = Mathf.Min(minX, hit.X); maxX = Mathf.Max(maxX, hit.X);
-                minZ = Mathf.Min(minZ, hit.Z); maxZ = Mathf.Max(maxZ, hit.Z);
-            }
-
+            float minX = Mathf.Min(Mathf.Min(tl.X, tr.X), Mathf.Min(br.X, bl.X));
+            float maxX = Mathf.Max(Mathf.Max(tl.X, tr.X), Mathf.Max(br.X, bl.X));
+            float minZ = Mathf.Min(Mathf.Min(tl.Y, tr.Y), Mathf.Min(br.Y, bl.Y));
+            float maxZ = Mathf.Max(Mathf.Max(tl.Y, tr.Y), Mathf.Max(br.Y, bl.Y));
             return new Rect2(minX, minZ, maxX - minX, maxZ - minZ);
         }
 
+        /// <summary>Headless / not-yet-in-tree fallback: no viewport to project through, so use the old zoom-derived
+        /// square. Only reachable before _Ready or outside a running tree; never on the live gate path.</summary>
+        private Rect2 FallbackBounds()
+        {
+            Vector3 c = GlobalPosition;
+            float half = _zoomDist * 0.85f;
+            return new Rect2(c.X - half, c.Z - half, half * 2f, half * 2f);
+        }
+
+        /// <summary>
+        /// Story 11.4 — the TRUE ground footprint of the camera: the four viewport corners projected onto the pivot's
+        /// ground plane, as world-XZ points in screen-corner order (top-left, top-right, bottom-right, bottom-left).
+        ///
+        /// <para>Review follow-up: a tilted perspective camera sees a TRAPEZOID, not a rectangle — the far edge is much
+        /// wider than the near one. Reporting its axis-aligned bounding box overstated the view badly (613x274 world
+        /// units at default zoom against a 256x256 map, i.e. "wider than the whole map"), which made the minimap
+        /// camera-view box useless and the under-attack gate far more permissive than the player's actual screen. The
+        /// quad is the honest shape; <see cref="GetViewBounds"/> keeps returning its AABB for callers that want a cheap
+        /// bound.</para>
+        ///
+        /// <para>Returns false when there is no viewport to project through (headless / pre-_Ready).</para>
+        /// </summary>
+        public bool TryGetViewQuad(out Vector2 tl, out Vector2 tr, out Vector2 br, out Vector2 bl)
+        {
+            tl = tr = br = bl = Vector2.Zero;
+
+            Viewport vp = _camera?.GetViewport();
+            if (vp == null) return false;
+            Vector2 size = vp.GetVisibleRect().Size;
+            if (size.X <= 0f || size.Y <= 0f) return false;
+
+            float planeY = GlobalPosition.Y;
+            tl = GroundHit(new Vector2(0f,      0f),      planeY);
+            tr = GroundHit(new Vector2(size.X,  0f),      planeY);
+            br = GroundHit(new Vector2(size.X,  size.Y),  planeY);
+            bl = GroundHit(new Vector2(0f,      size.Y),  planeY);
+            return true;
+        }
+
+        /// <summary>Project one screen point onto the ground plane y=<paramref name="planeY"/>, as world XZ. A ray that
+        /// clears the horizon (dir.Y >= 0, reachable at low pitch where the top of the frustum rises above horizontal)
+        /// is clamped to <see cref="MAX_GROUND_REACH"/> along its own direction rather than escaping to infinity.</summary>
+        private Vector2 GroundHit(Vector2 screen, float planeY)
+        {
+            Vector3 origin = _camera.ProjectRayOrigin(screen);
+            Vector3 dir    = _camera.ProjectRayNormal(screen);
+
+            float t = MAX_GROUND_REACH;
+            if (dir.Y < -0.0001f)
+                t = Mathf.Min((origin.Y - planeY) / -dir.Y, MAX_GROUND_REACH);
+
+            Vector3 hit = origin + dir * t;
+            return new Vector2(hit.X, hit.Z);
+        }
+
         /// <summary>Story 11.4 — is the given world position currently inside the camera view (XZ)? The under-attack
-        /// alert fires only when this is FALSE (the player cannot already see the hit).</summary>
+        /// alert fires only when this is FALSE (the player cannot already see the hit).
+        ///
+        /// <para>Tests the real trapezoid, not its bounding box: the AABB's corners lie well outside the visible
+        /// ground at any tilt, so a bounds test called hits "on screen" that the player could not see and silently
+        /// swallowed their alert.</para></summary>
         public bool IsInView(Vector3 worldPos)
-            => GetViewBounds().HasPoint(new Vector2(worldPos.X, worldPos.Z));
+        {
+            var p = new Vector2(worldPos.X, worldPos.Z);
+            if (!TryGetViewQuad(out Vector2 tl, out Vector2 tr, out Vector2 br, out Vector2 bl))
+                return FallbackBounds().HasPoint(p);
+            return PointInQuad(p, tl, tr, br, bl);
+        }
+
+        /// <summary>Crossing-number point-in-polygon over a 4-point ring. Handles the non-convex ring that horizon
+        /// clamping can produce, which a half-plane (all-same-side) test would get wrong.</summary>
+        private static bool PointInQuad(Vector2 p, Vector2 a, Vector2 b, Vector2 c, Vector2 d)
+            => RayCrosses(p, a, b) ^ RayCrosses(p, b, c) ^ RayCrosses(p, c, d) ^ RayCrosses(p, d, a);
+
+        /// <summary>Does the +X ray from <paramref name="p"/> cross edge a→b? Half-open in Y so a vertex shared by two
+        /// edges is counted exactly once.</summary>
+        private static bool RayCrosses(Vector2 p, Vector2 a, Vector2 b)
+        {
+            if ((a.Y > p.Y) == (b.Y > p.Y)) return false;
+            float t = (p.Y - a.Y) / (b.Y - a.Y);
+            return p.X < a.X + t * (b.X - a.X);
+        }
     }
 }

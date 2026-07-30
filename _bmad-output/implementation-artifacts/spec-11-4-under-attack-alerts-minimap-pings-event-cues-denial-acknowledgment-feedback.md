@@ -165,14 +165,36 @@ real wheel events through `Viewport.push_input`. Editor error log clean (0 error
 | 3b | Alert still possible at max zoom | **PASS** | Wheel-driven to the `ZoomMax=150` clamp (bounds stable at `752x334` across 40 further notches). Map corners SW `(-128,128)` and SE `(128,128)` plus `(0,100)`/`(0,200)` all report NOT-in-view, so 4 of 6 probes can still raise an alert. The old `+/-127.5` box was 255x255 over a 256x256 map — the alert could never fire zoomed out. |
 | 4 | Toast coalescing | **PASS** | From 0 toasts: two DIFFERENT denial messages both returned `true` (new) -> child count **2**, both texts retained. The same message x2 more returned `false` (coalesced) -> count still **2**, rendered `"Not enough Ore.  (×3)"`. Previously the second distinct reason overwrote the first into a single toast. |
 
-**Confirmed live (already deferred, not a regression):** Alt+LMB on the minimap drops the ping *and* pans the camera —
-pivot moved to `(-79.36, 0, 74.24)`, the exact clicked world point. Newly observable because the panel is now on screen.
+### Follow-up fixes — 2026-07-29 (both re-verified in-engine): **PASS**
 
-**Observation for Alec (not a defect, worth a design call):** the corrected footprint shows the camera sees
-`613 x 274` world units at default zoom and `752 x 334` at max, against a `256 x 256` map — i.e. at default zoom the
-view is wider than the entire map, so the minimap camera-view box only reads as a meaningful sub-rect once zoomed
-in (at `ZoomMin` it is `61 x 27`). The old box *looked* more useful only because it was wrong. Worth revisiting the
-default zoom / FOV against map size.
+Both items the gate raised were fixed rather than deferred.
+
+**1. Alt+LMB pinged AND panned the camera.** Root cause was wider than the review described: the Alt branch consumed
+only the PRESS, so the matching RELEASE leaked into the pan branch (which never tested `mb.Pressed`) and any drag
+leaked into the motion branch. A `_pingGesture` latch now swallows the remainder of the gesture, self-healing on a
+plain press so a release delivered outside the Control cannot strand it. Verified: Alt+click and Alt+drag both leave
+the pivot at `(0,0,0)`; a plain click still pans to `(-79.36, 0, 74.24)` — click-to-pan is not regressed.
+
+**2. The view footprint was reported as an AABB, not the real shape.** A tilted perspective camera sees a TRAPEZOID —
+far edge much wider than the near one — and its bounding box overstates it badly. That is what produced the
+"613 x 274 against a 256 x 256 map" reading: the AABB width is the FAR edge's width, while the near half of the
+screen shows far less ground. So this was mostly a measurement artifact, not a camera-tuning problem, and the fix is
+to stop using the AABB where the shape matters:
+
+- `TryGetViewQuad` returns the four ground-projected corners; `GetViewBounds` still returns their AABB for cheap-bound
+  callers.
+- `IsInView` now runs a crossing-number point-in-polygon over the quad (crossing-number, not a half-plane test, because
+  horizon clamping can make the ring non-convex). Verified in-engine at default zoom: the AABB's NEAR corners
+  `(±300, +40)` now report **outside** the view — they read "on screen" under the old bounds test and silently
+  swallowed the player's alert — while the genuinely wide far edge `(300, -220)` stays inside, and `(200, -100)` is
+  correctly outside because the trapezoid narrows toward the camera.
+- The minimap draws the quad as a polyline. Screenshot confirms a visible trapezoid (wide top / narrow bottom) where a
+  rectangle used to be.
+
+**Still open for Alec (design, not a defect):** even measured honestly the camera is wide — at `ZoomMax` the footprint
+reaches well past the `256 x 256` map, so the top zoom stops are not useful play positions. The usable range is roughly
+`ZoomMin`..~33 world units of distance. Worth trimming `ZoomMax` (currently 150) to match the map, but that is a
+feel change and is left to you.
 
 **Not covered:** the under-attack toast/SFX path was verified at the gate level (`IsInView`) and the toast level, but
 not end-to-end from a real off-screen combat event; MP ping replication remains code-reviewed only (single-client
