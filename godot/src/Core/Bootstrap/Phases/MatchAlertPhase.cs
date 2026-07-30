@@ -48,6 +48,13 @@ namespace ProjectChimera.Core.Bootstrap
                 _ctx.Host.Alliances); // P1: ally-only ping gate (WC3 semantics)
             _ctx.MatchAlert = bridge;
 
+            // Story 11.5 (FR-74): the bottom-bar multi-select subgroup panel + buff/debuff icon row. Pure presentation
+            // over the sim (Selection.Subgroups / World status+health / Host.Modifiers) — no new phase, no sim write.
+            var selectionPanel = new SelectionSubgroupPanel();
+            _ctx.Scene.AddChild(selectionPanel);
+            selectionPanel.Initialize(_ctx.Selection, _ctx.World, _ctx.Host.Modifiers, _ctx.UiCanvas);
+            _ctx.SelectionPanel = selectionPanel;
+
             // Issue-time acknowledgment: SelectionSystem plays the ack + spawns a marker on the input frame.
             _ctx.Selection.SetFeedbackDeps(_ctx.AudioMgr, markers);
             // Offline Train/Buy rejection cue (online routes through LockstepManager's own event queue).

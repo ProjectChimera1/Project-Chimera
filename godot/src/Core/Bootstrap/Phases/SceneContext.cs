@@ -99,6 +99,8 @@ namespace ProjectChimera.Core.Bootstrap
         public UI.MatchAlertBridge  MatchAlert   = null!; // MatchAlert — the read-only CombatEventQueue drainer (alerts/denials/cues)
         public UI.OrderMarkerBridge OrderMarkers = null!; // MatchAlert — pooled issue-time order-confirmed ground markers
         public UI.Components.ChimeraToastHost ToastHost = null!; // MatchAlert — the shared 3.1x toast stack (DW-313 cap/coalesce)
+        // Story 11.5 (FR-74) — the bottom-bar multi-select subgroup grid + buff/debuff icon row (MatchAlert phase).
+        public UI.SelectionSubgroupPanel SelectionPanel = null!; // MatchAlert — drained by MainScene._Process
 
         // ── Multiplayer + match lifecycle (Multiplayer / ReplayStatus / MatchLifecycle) ────────────────────
         public MatchLifecycleController MatchLifecycle = null!; // Multiplayer phase / Task 5 (replay autoload + return-to-Edit reset drive it)

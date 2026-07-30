@@ -1,0 +1,166 @@
+---
+title: 'Story 11.5 — Buff icons, multi-select panel, and subgroup tabs'
+type: 'feature'
+created: '2026-07-30'
+status: 'done'
+baseline_revision: 'c64d49f6d573f7aa924f0b18681c520a870ae1ac'
+review_loop_iteration: 0
+followup_review_recommended: true
+context:
+  - '{project-root}/_bmad-output/implementation-artifacts/epic-11-context.md'
+  - '{project-root}/godot/CLAUDE.md'
+warnings: [multiple-goals, oversized]
+---
+
+<intent-contract>
+
+## Intent
+
+**Problem:** The FR-74 match-feedback floor promised three selection/status readouts the HUD never got. Selecting a mixed army shows only a floating HP bar over one focus unit and a bare "N units selected" label — there is no type-grouped view of the selection, no WC3 subgroup tabs (Tab does nothing; the command card is stuck on whichever unit happened to be picked first), and a unit's active buffs/debuffs (its `ModifierStore` slots and `StatusFlags`) are invisible even though they are already tracked and folded into the sim. A player cannot see what is buffed, stunned, or how many of each unit type they have selected.
+
+**Approach:** A pure presentation layer over the untouched 30 Hz sim (the 2.7/11.4 posture — zero sim writes, `SimChecksum` byte-identical feature on vs off). Group the existing `SelectionSystem.SelectedIds` into WC3 subgroups by unit type (a new Godot-free pure function), make **Tab / a subgroup-tab click** cycle the active subgroup by repointing the existing `_focusId` (the command card and HP bar already follow focus, so they reflect the active subgroup for free). A new bottom-bar `SelectionSubgroupPanel` (composed from the 3.1x kit, built in `MatchAlertPhase`, drained in the `MainScene._Process` presentation tail) renders the type-grouped grid with per-unit health tints, the `ChimeraTabs` subgroup strip, and a buff/debuff icon row for the focus unit — reading status from `EntityWorld.StatusFlagsOf` and per-modifier detail (stack, remaining ticks, polarity) from `SimulationHost.Modifiers`. Subgroups are presentation-only selection state; the sim never sees them.
+
+## Boundaries & Constraints
+
+**Always:**
+- **Zero sim writes; `SimChecksum` byte-identical feature on vs off.** Every read is off an already-populated array — `SelectionSystem.SelectedIds`, `EntityWorld.Health`/`EffectiveMaxHealth`/`StatusFlagsOf`/`CategoryOf`/`SourceDefinition`, `SimulationHost.Modifiers.{CountAt,ModifierIdAt,RemainingTicksAt,StackCountAt,ModifierRefAt,PersistentRefAt}`. No `SimChecksum` fold, no hash `AlgoVersion` bump, no golden/checksum file re-baselined. No sim source file (`src/Core|Combat|Economy|Navigation|AI|Effects|Dsl`) is edited except the additive Tier-1 wiring; `SelectionSystem`/`CommandCardSystem` live in `src/UI` (presentation) and already do float display math.
+- **Subgroups are presentation-layer selection state — the sim never sees them.** Grouping, the active-subgroup index, and Tab cycling change only which existing `_focusId` is active; they never mutate `_selectedList` membership, enqueue an order, or touch a sim store. Orders still apply to the whole selection.
+- **Tab / click = "make this subgroup active" (WC3 semantics), non-destructive.** Cycling repoints `_focusId` to the active subgroup's first member so the command card (`RefreshAbilityCard(focusId)`), ability/worker/inventory cards, and HP bar follow it. It never narrows or drops the underlying multi-selection. Active-subgroup state resets on any selection change, survives `PruneDeadUnits` (clamp the index / reassign focus when a subgroup empties), and clears with `ClearSelection`.
+- **Buff/debuff source-of-truth partition (no double-display).** The five status icons come from bit-testing `EntityWorld.StatusFlagsOf[focus]` (`Stunned/Rooted/Silenced/Disarmed/Invulnerable`). Stat/DoT-HoT buff icons come from the focus unit's `ModifierStore` slots; each icon shows a polarity tint (buff vs debuff, classified from the modifier's stat deltas / status via a Godot-free classifier), a stack badge when `StackCountAt > 1`, and a remaining-duration readout `RemainingTicksAt / 30`s — **suppressed when `RemainingTicksAt == ModifierStore.PERMANENT`** (aura/passive). A hover tooltip describes the effect. Purely-status modifier slots (no deltas, no period) are not re-drawn as a buff icon — they are already shown via `StatusFlagsOf`.
+- **Panel visibility gates.** The subgroup grid + `ChimeraTabs` strip show when the selection holds 2+ own units; the tab strip appears only when 2+ distinct subgroups exist; the buff/debuff icon row reflects the current focus unit whenever exactly-or-at-least one unit is selected. Empty selection or a building-only selection → the whole panel is hidden. Every read guards `EntityWorld.IsAlive(id)` first.
+- **Compose from the 3.1x kit only.** `ChimeraComponents.Initialize` via the `EnsureKitInitialized()` idiom (reuse `MatchAlertPhase`'s), then `ChimeraComponents.Panel`, `ChimeraTabs.Create` (subgroup strip, `TabChanged` signal), `IconButton`/`Chip`/`ChimeraTooltip.Attach` for buff widgets. Per-type portrait thumbnails, if rendered, reuse the `MeshLoader`→`SubViewport` preview pattern (`UnitCardPanel`) **cached per `UnitDefinition`** (never per unit) with the `MeshLoader` placeholder-box fallback; the health tint is the mandatory per-unit signal and the type identity (thumbnail or `DisplayName`) the mandatory per-cell label.
+- **Subgroup grouping is a Godot-free pure function, unit-tested in Tier-1.** `SelectionSubgroups.Group(ids, keys)` → ordered subgroups (subgroup order = first appearance of its key in the input; member order = input order). `SelectionSystem` derives per-id keys from `SourceDefinition[id]` (fallback `CategoryOf[id]`) and wraps it. Pulled into `ProjectChimera.Sim.Tests` via a single `<Compile Include>` (the `UnderAttackThrottle` precedent).
+
+**Block If:**
+- Displaying `StatusFlagsOf`/`ModifierStore` state, grouping the selection, or Tab-cycling focus cannot be done without a sim write, a `SimChecksum` fold, an `AlgoVersion` bump, or a golden re-baseline. HALT `blocked`, condition `selection/buff display requires a determinism fold`.
+- The command card / HP bar do **not** already follow `_focusId`, so reflecting the active subgroup would require re-architecting the command-card selection source. HALT `blocked`, condition `command card cannot follow focus`.
+
+**Never:**
+- Any sim write, tick-order/`FixedDt`/tick-rate change, `SimChecksum` coverage or `AlgoVersion` change, or golden/checksum re-baseline from this layer.
+- **Making the sim act on `StatusFlags`** (enforcing stuns/roots/etc.) — that is DW-266, a separate sim-side/determinism fix, explicitly out of scope. 11.5 only *displays* the status the sim already records; a "Stunned" icon may appear over a unit the sim does not yet actually stun, and that is correct for this story.
+- Adding an authored icon/display/polarity field to `Modifier`/`CombatFeedbackProfile` (touches the content loader/whitelist and expands scope) — derive icon and polarity from existing modifier data instead.
+- Narrowing/mutating the real selection on a subgroup click; issuing orders per-subgroup; a new setup phase or any change to the `PhaseOrderTest`-pinned order (build in the existing `MatchAlertPhase`); rendering a live `SubViewport` per selected unit (cache per definition).
+
+## I/O & Edge-Case Matrix
+
+| Scenario | Input / State | Expected Output / Behavior | Error Handling |
+|----------|--------------|---------------------------|----------------|
+| Single unit selected | 1 own unit | No subgroup grid/tabs; buff/debuff icon row reflects that unit; HP bar as today | Dead id → guarded out |
+| Multi same-type | N units, 1 type | One subgroup, N health-tinted cells, no tab strip; buff row = focus | — |
+| Multi mixed-type | Units of ≥2 types | Subgroups per type, `ChimeraTabs` strip; active subgroup highlighted; grid shows all cells grouped | — |
+| Tab / click subgroup | Mixed selection, active subgroup k | Active subgroup → next / clicked; `_focusId` = its first member; command card, ability/worker/inventory cards, HP bar, and buff row all follow; selection membership unchanged | Single/zero subgroup → Tab passes through |
+| Unit in selection dies | A selected/focus unit dies | Next frame: grid refreshes from live `SelectedIds`; if the active subgroup emptied, index clamps and focus reassigns; no stale cell | Focus dead → reassign (existing `PruneDeadUnits`) |
+| Focus has buffs | Focus unit has modifiers + status flags | Status icons from `StatusFlagsOf`; stat/DoT icons from `ModifierStore` slots with stack badge + `RemainingTicks/30`s; polarity tint | 0 modifiers → empty/hidden buff row |
+| Permanent modifier | `RemainingTicksAt == PERMANENT` | Icon + stack badge, **no** duration readout | — |
+| Stacked modifier | `StackCountAt > 1` | One icon with a stack-count badge, single shared duration | — |
+| Building selected | A building is the selection | Panel hidden (building card path unchanged) | — |
+| Determinism | Same match, feature on vs a reference | `SimChecksum` stream byte-identical; `AlgoVersion` pins unchanged; no golden re-baselined | Divergence = test failure |
+
+</intent-contract>
+
+## Code Map
+
+- `godot/src/UI/SelectionSubgroups.cs` -- NEW, Godot-free pure grouping: `Group(IReadOnlyList<int> ids, IReadOnlyList<long> keys)` → ordered subgroups (key first-appearance order; member input order). Tier-1 included. -- the testable grouping policy.
+- `godot/src/UI/ModifierPolarity.cs` -- NEW, Godot-free pure classifier over `Effects.Modifier`/`StatusFlags`: `Classify(Modifier)` → Buff/Debuff/Neutral from stat deltas + status; a display-kind helper for glyph choice. Tier-1 included (`Effects` is already in `SimSources.props`). -- buff/debuff icon polarity + glyph.
+- `godot/src/UI/SelectionSystem.cs` -- presentation selection owner. `_focusId`/`_selectedSet`/`_selectedList` (:123-125), `SelectedIds` (:44), `FocusId` (:38), `AddToSelection` (:600), `ClearSelection` (:608), `PruneDeadUnits` (:1148/:1155), `_UnhandledInput` keyboard block (:489-540, Play-mode gate :362), `_world`. ADD: subgroup recompute on selection change (wrap `SelectionSubgroups.Group` with `SourceDefinition`/`CategoryOf` keys), `IReadOnlyList<...> Subgroups` + `int ActiveSubgroupIndex` + `CycleSubgroup(int dir)`/`SetActiveSubgroup(int)` (repoint `_focusId` to the active subgroup's first member), reset-on-change/clamp-on-prune/clear, and a `Key.Tab` case (consume the event) that calls `CycleSubgroup` when 2+ subgroups exist. -- subgroup state + Tab.
+- `godot/src/UI/SelectionSubgroupPanel.cs` -- NEW presentation Node (bottom-bar): read `SelectionSystem.Subgroups`/`ActiveSubgroupIndex`/`FocusId`, render the type-grouped health-tinted grid + `ChimeraTabs` strip (wire `TabChanged` → `SelectionSystem.SetActiveSubgroup`) + the focus unit's buff/debuff icon row from `EntityWorld.StatusFlagsOf` + `SimulationHost.Modifiers`; `Update()` per frame; visibility gates per the matrix. -- the panel.
+- `godot/src/Core/EntityWorld.cs` -- read-only sources: `Health` (:212), `EffectiveMaxHealth` (:216, use this not raw max), `StatusFlagsOf` (:261), `CategoryOf`, `SourceDefinition` (→ `UnitDefinition.DisplayName`), `IsAlive`. -- health tint + status flags + grouping keys.
+- `godot/src/Effects/ModifierStore.cs` -- read-only per-slot API: `CountAt` (:431), `ModifierIdAt` (:434), `RemainingTicksAt` (:437), `StackCountAt` (:446), `ModifierRefAt` (:456), `PersistentRefAt` (:460), `PERMANENT`=`int.MinValue` (:48). Reached via `SimulationHost.Modifiers` (`SimulationHost.cs:92`). `godot/src/Effects/Modifier.cs` fields (:45-75), `StatusFlags` (:21-30). -- per-modifier buff detail (pure reads).
+- `godot/src/UI/CommandCardSystem.cs` -- reads `_selection.FocusId` each frame; `RefreshAbilityCard(focusId)` (:299), `BuildPanel` (:936). **No change expected** — it already follows focus; listed so the implementer confirms the ability card refreshes when Tab moves focus. -- command-card follow (verify only).
+- `godot/src/Core/Bootstrap/Phases/MatchAlertPhase.cs` -- construct `SelectionSubgroupPanel` here (already calls `EnsureKitInitialized()` :29/:68-77, runs after Camera[Selection]/Hud[UiCanvas]); inject `_ctx.Selection`, `_ctx.World`, `_ctx.Host.Modifiers`, `_ctx.UiCanvas`, local-faction; publish on `_ctx`. -- lifecycle + wiring (no new phase).
+- `godot/src/Core/Bootstrap/Phases/SceneContext.cs` -- add `public SelectionSubgroupPanel SelectionPanel;` beside the other presentation handles (:65-101). -- publish.
+- `godot/src/Core/MainScene.cs` -- drain `_ctx.SelectionPanel?.Update();` in the presentation tail (:1428-1446, beside `_ctx.ObjectiveLog?.Update()`). -- per-frame refresh.
+- `godot/src/UI/Components/ChimeraTabs.cs` (`Create` :37, `TabChanged`, `SetActive` :132) + `ChimeraComponents.*` (`Panel`, `IconButton` `.Controls.cs:129`, `Chip` `.Surfaces.cs:95`) + `ChimeraTooltip` + `godot/src/UI/MeshLoader.cs`/`CreationSuite/UnitCardPanel.cs` (SubViewport preview :738-789/:887) -- the kit pieces to compose from.
+- `godot/ProjectChimera.Sim.Tests/ProjectChimera.Sim.Tests.csproj` (single-file `<Compile Include>` block :37-42) + `godot/ProjectChimera.Sim.Tests/UI/SelectionSubgroupsTests.cs` + `ModifierPolarityTests.cs` (NEW) -- Tier-1 wiring + tests; existing `Golden/GoldenChecksumReplay.cs` / `Sim/SimResetTests.cs` carry the `AlgoVersion`-pin / no-golden-re-baseline safety net.
+
+## Tasks & Acceptance
+
+**Execution — Godot-free presentation cores (Tier-1 testable):**
+- `godot/src/UI/SelectionSubgroups.cs` -- NEW: `Group(ids, keys)` returning ordered subgroups (key first-appearance order, member input order); handle empty input, single group, all-distinct. -- grouping policy.
+- `godot/src/UI/ModifierPolarity.cs` -- NEW: `Classify(Modifier)` → Buff/Debuff/Neutral (debuff if a `StatusFlags` is set or the net stat delta is harmful; buff if beneficial), plus a display-kind for glyph selection. -- polarity/glyph policy.
+
+**Execution — presentation (Godot-coupled, in-engine gated):**
+- `godot/src/UI/SelectionSystem.cs` -- add subgroup recompute (wrap `SelectionSubgroups.Group` over `_selectedList` with `SourceDefinition`/`CategoryOf` keys), `Subgroups`/`ActiveSubgroupIndex` read API, `CycleSubgroup`/`SetActiveSubgroup` (repoint `_focusId`), reset on selection change, clamp/reassign in `PruneDeadUnits`, clear in `ClearSelection`, and a consumed `Key.Tab` handler in the Play-mode `_UnhandledInput` keyboard block. -- subgroup state + Tab cycling.
+- `godot/src/UI/SelectionSubgroupPanel.cs` -- NEW panel Node: type-grouped health-tinted grid + `ChimeraTabs` subgroup strip (`TabChanged`→`SetActiveSubgroup`) + focus-unit buff/debuff icon row (status from `StatusFlagsOf`; stat/DoT from `ModifierStore` slots with stack badge + duration, `PERMANENT`→no timer; tooltip); visibility gates; `Update()` per frame; per-definition thumbnail cache with placeholder fallback. -- the readout.
+- `godot/src/Core/Bootstrap/Phases/MatchAlertPhase.cs` + `SceneContext.cs` + `godot/src/Core/MainScene.cs` -- construct/inject/publish the panel in `MatchAlertPhase`; add the `SelectionPanel` handle; drain it in the `_Process` presentation tail. No new phase; `PhaseOrderTest`-pinned order untouched. -- lifecycle + wiring.
+
+**Execution — tests:**
+- `godot/ProjectChimera.Sim.Tests/**` -- add `<Compile Include>` for `SelectionSubgroups.cs` + `ModifierPolarity.cs`; NEW xUnit: (a) grouping — order-preservation, single group, all-distinct, empty; (b) polarity — a beneficial modifier → Buff, a harmful/status modifier → Debuff; (c) confirm (via the existing `SimResetTests`/`GoldenChecksumReplay` staying green + a pin assertion) that no `AlgoVersion` pin moved and no golden was re-baselined (the story adds no sim code, so goldens cannot move). -- policy + determinism proof.
+
+**Acceptance Criteria:**
+- Given 2+ own units of one type are selected, when the panel renders, then it shows a type-grouped grid of health-tinted cells (green→red per current/`EffectiveMaxHealth`) with no tab strip; given 2+ distinct types, then a `ChimeraTabs` subgroup strip appears with the active subgroup highlighted.
+- Given a mixed multi-selection, when the player presses Tab or clicks a subgroup tab, then the active subgroup advances/selects, `_focusId` becomes that subgroup's first member, and the command card + ability/worker/inventory cards + HP bar reflect it, while the underlying multi-selection membership is unchanged and no order is issued.
+- Given the focus unit carries modifiers and/or status flags, when the buff row renders, then each of the five `StatusFlags` shows one status icon and each stat/DoT `ModifierStore` slot shows a polarity-tinted icon with a stack badge (`>1`) and a remaining-duration readout (`RemainingTicksAt/30`s) that is suppressed for `PERMANENT`; a unit with no modifiers shows an empty/hidden buff row.
+- Given a selected or focus unit dies, when the next frame renders, then the grid reflects the live selection, the active-subgroup index stays in range, focus reassigns, and no stale/dead cell remains.
+- Given the full Tier-1 suite runs, then the grouping + polarity tests pass, every hash `AlgoVersion` pin is unchanged, and no `SimChecksum` golden is re-baselined; and `dotnet build godot/godot.csproj` compiles with no banned-API/AOT regressions.
+
+## Design Notes
+
+**Why this is golden-safe by construction.** 11.5 edits only `src/UI` (presentation) + a bootstrap phase + Tier-1 wiring; it writes nothing in `src/Core|Combat|Economy|Navigation|AI|Effects|Dsl`. Every value it renders is read from an already-populated, already-folded array. The determinism proof is therefore "existing goldens still pass + `AlgoVersion` pins untouched," asserted in Tier-1 — not a re-baseline. `SelectionSystem`/`CommandCardSystem` already do `.ToFloat()` display math, so float in the panel is fine (presentation layer).
+
+**Tab reuses focus, so the command card is free.** `CommandCardSystem` and the floating HP bar already key off `_focusId` every frame. Centralizing subgroup state in `SelectionSystem` and having Tab/click repoint `_focusId` to the active subgroup's representative makes every focus-following surface reflect the active subgroup with no command-card change — this is the WC3 "front unit" semantic. Keep `ActiveSubgroupIndex` distinct from the existing `ActiveGroupIndex` (control groups) — different concepts.
+
+**Buff source partition avoids double-display.** `StatusFlagsOf` is the source for the five status icons; `ModifierStore` slots are the source for stat/DoT buff icons. A slot that is purely a status modifier (no deltas, no period) is already covered by `StatusFlagsOf`, so skip it in the modifier loop. Stacks share one duration (all expire together) → one icon + a stack badge, never N icons. `RemainingTicksAt == PERMANENT` (`int.MinValue`) → no timer.
+
+**DW-266 boundary.** `StatusFlagsOf` is authored + folded but no sim system reads it yet (authored stuns are silent no-ops). 11.5 makes the flags *visible*; it must not try to make them *enforced* — that is a determinism-relevant sim fix (golden re-baseline) tracked as DW-266 and forbidden by this story's zero-sim-write posture.
+
+## Verification
+
+**Commands:**
+- `dotnet test godot/ProjectChimera.Sim.Tests/ProjectChimera.Sim.Tests.csproj -c Release` -- expected: grouping + polarity tests pass within a green suite; `AlgoVersion` pins unchanged; no golden re-baselined.
+- `dotnet build godot/godot.csproj` -- expected: panel + `SelectionSystem` changes + phase wiring compile with no banned-API/AOT analyzer regressions.
+
+**Manual checks (in-engine, gated — Epic-11 per-story gate via `/godot-verify` / godot-mcp bridge):**
+- Launch a SP skirmish → `[PLAY]`. Box-select a mixed army: confirm the panel shows type subgroups with health-tinted cells and a `ChimeraTabs` strip. Press Tab (and click a tab): the active subgroup changes, the command card + HP bar switch to that type, and the selection is not narrowed (issue a move order → all units move). Select a unit under a buff/DoT (or a `StatusFlags` bit via a scenario/`godot_exec`): confirm status icons + a stat/DoT icon with the correct stack badge, polarity tint, and countdown (permanent → no timer). Damage a selected unit off-screen: its cell tint tracks health next frame. Verify against numbers and `git status` (no golden/checksum file changed; `AlgoVersion` pins intact) per the in-engine gate discipline; capture a `godot_runtime_state`/tree-walk digest of the subgroup counts vs the actual selection.
+
+## Review Triage Log
+
+### 2026-07-30 — Review pass
+- intent_gap: 0
+- bad_spec: 0
+- patch: 8: (high 0, medium 3, low 5)
+- defer: 0
+- reject: 4
+- addressed_findings:
+  - `[medium]` `[patch]` **DoT/HoT polarity was inverted — an enemy damage-over-time rendered as a green heal.** `ModifierPolarity.Classify` never inspected `PeriodEffect`, so a pure-periodic modifier (net-zero, no status) fell to Neutral and `Glyph` returned the HoT/heal marker. Fixed: added a Godot-free `PeriodSign(EffectNode?)` that walks the effect graph (`DamageEffect`→−1, `HealEffect`→+1, `DirectHpDeltaEffect`→sign, `Sequence` sums, `SearchArea` descends); `Classify`/`Glyph` now derive DoT=Debuff / HoT=Buff from it, and `SelectionSubgroupPanel.AddPersistentIcon` reads the bare `PersistentEffect.PeriodEffect` sign instead of hardcoding green. (Independently confirmed against code: `Classify`/`Glyph` at ModifierPolarity.cs:37-70.)
+  - `[medium]` `[patch]` **Active-subgroup identity was lost when an earlier subgroup was wiped.** `RebuildSubgroups(resetActive:false)` only clamped an out-of-range index, so killing an earlier subgroup shifted a later active one under the numeric index → tab-highlight/focus desync (trace: [Worker,Soldier,Mage], Tab→Soldier, workers die → active silently became Mage while focus stayed the live Soldier). Fixed: extracted Godot-free `SelectionSubgroups.ReconcileActiveIndex(groups, prevKey, prevIndex)` (follows the active subgroup by KEY, else clamps); `RebuildSubgroups` captures the old key and reconciles. +5 Tier-1 tests (earlier-removed, active-emptied, trailing-emptied, no-change, empty).
+  - `[medium]` `[patch]` **Hero item-use hit the wrong hero after a subgroup Tab.** The T-key/pickup path resolved the acting hero via `FirstSelectedHero()` (list order) while the inventory card follows `_focusId`; Tab let them diverge (card shows B, action hits A) and `_selectedInventorySlot` wasn't reset on the focus change. Fixed: `ResolveActingHero()` returns the focus unit when it is a hero (else `FirstSelectedHero()`), wired into T-key + pickup; `SetActiveSubgroup` now resets `_selectedInventorySlot` (mirrors `ClearSelection`).
+  - `[low]` `[patch]` **`Invulnerable` overridden by a net-negative stat.** The `Invulnerable`→Buff check sat after the `net<0`→Debuff early-return, so an invuln-with-penalty misclassified as Debuff. Fixed: hoisted the beneficial-status check above the net check, symmetric to how `HarmfulStatus` dominates.
+  - `[low]` `[patch]` **Buff-row glyphs would render as tofu.** The status/DoT/stat glyphs were multi-codepoint emoji (🔇🛡☠✚ …) the default theme font cannot render — and the previously-planned ▲/▼/◆ turned out to be **absent too** (verified via `Font.has_char` against `res://assets/ui/main.tres`). Fixed: switched to font-present ↑ (U+2191) / ↓ (U+2193) / • (U+2022) markers + ASCII tags (STUN/ROOT/SIL/DIS/INV, DoT/HoT, +N); confirmed `has_char`=true across all three theme fonts in-engine.
+  - `[low]` `[patch]` **`MAX_CELLS`=48 silently truncated the grid while the tab count showed the full total.** Fixed: the grid now counts alive members uncapped and appends a `+N` overflow cell when truncated; `DurationText` ceil hardened to `long` against a pathological near-`int.MaxValue` duration.
+  - `[low]` `[patch]` **Tab was trappable by Godot Control focus traversal** (click a tab, then Tab → UI focus traversal instead of subgroup cycle). Fixed: `FocusMode=None` on the panel's buff-row `IconButton`s and grid cells (kit `ChimeraTabs` buttons already set it); in-engine, `grab_focus()` on a panel control is now engine-refused and Tab still cycles after a panel interaction.
+  - `[low]` `[patch]` **Weak/again missing tests.** `SelectionSubgroupsTests` `no_id_lost_or_duplicated` asserted only the count sum → strengthened to a full id-multiset equality; added length-mismatch (shared-prefix) and null-input cases; `ModifierPolarityTests` gained pure-DoT (Debuff/DoT), pure-HoT (Buff/HoT), `DirectHpDelta` sign, and Invulnerable-with-net-negative→Buff cases.
+- **reject (4):** net-sum of incommensurable stat deltas mis-tinting a mixed-sign modifier (the spec authorized a delta-based heuristic; the raw sum is reasonable for the dominant single-dimension case and "improving" it risks regressions); grid signature rebuilds the whole ≤48-cell grid on a member death (bounded, presentation-only, death is occasional — acceptable); grouping relies on shared-`UnitDefinition` reference identity (the in-engine gate PROVED shared instances group correctly — 2 workers → one subgroup — so a guard for a hypothetical per-instance-def spawn path is speculative); `DurationText` overflow at a ~2.4-year authored duration (pathological; the free `long`-cast hardening was folded in anyway).
+- **followup_review_recommended:** patched this pass = high 0, medium 3, low 5 → score `3×3 + 1×5 = 14` ≥ 5 → **true** (8 patches over three surfaces warrant a confirming pass).
+
+### In-Engine Gate - 2026-07-30
+- surface: Live SP skirmish (Alpha Skirmish, alpha_map_01 slot 0 = worker×2 "Acolyte" ids 0,1 + mage×1 "Circle Savant" id 2), `[PLAY]`; the new `SelectionSubgroupPanel` (grid + `ChimeraTabs` strip + buff row) driven through box/click-select, `Key.Tab`, and `ChimeraTabs.SetActive`. Re-verified on the POST-review-fix build.
+- launched: `dotnet build godot/godot.csproj` (0 errors) → `res://scenes/main.tscn` → `[PLAY]` via `GameState.SetMode(1)`; MainScene instance id `38470157803` held constant across every measurement (no reload → boot scene never measured); selection driven by constructed `InputEvent`s into the real `_UnhandledInput`.
+- digest: mixed box-select → grid **3 cells**, tab strip **2 buttons** `ACOLYTE 2` / `CIRCLE SAVANT 1`, `ActiveSubgroupIndex=0`, `FocusId=0`, buff row **0 children** (no mods, no crash). Tab → active **0→1**, focus **0→2**, cells **3**; Tab → active **1→0** (wrap), focus **2→0**, cells **3**. Click-tab `SetActive(1)` → active **0→1**, focus **0→2**, cells **3**. Single mage select → subgroups **1**, tabRow visible=**false** (0 buttons), grid visible=**false** (selCount<2), panel present, no crash. Escape → PanelContainer visible=**false** (HideAll). Each grid cell owns a `StyleBoxFlat` bg **(0,1,0)** at full HP. `Font.has_char`=**true** for ↑/↓/• and every ASCII tag char across all three theme fonts (ChakraPetch/JetBrainsMono/SpaceGrotesk) — no tofu. Panel controls `focus_mode=0`; `grab_focus()` engine-refused; Tab still cycles after a panel interaction (nothing owns focus).
+- asserted: vs the scenario roster {worker:2, mage:1} → subgroup member counts {2,1} and grid cell count 3 = EXACT. Tab/click both move `ActiveSubgroupIndex` and repoint `_focusId` to the next subgroup's first member while `SelectedIds` stays 3 (selection NOT narrowed — WC3 semantics). Single-type arm hides the tab strip (subs<2) and grid (selCount<2); empty selection hides the panel. Buff-row glyphs are font-present (rendered, not tofu). Tab is un-trappable by the panel. Not exercisable over the single-client bridge: a populated buff row with a real modifier (GDScript cannot construct the C# `Modifier`) — covered instead by the empty-row-no-crash on two focus units + the +11 Tier-1 polarity/grouping/reconcile tests; damage-driven tint response (no sim-write path over the bridge) — covered by the per-cell health-keyed `StyleBoxFlat` formula.
+- result: PASS
+
+## Auto Run Result
+
+Status: done
+Blocking condition: none
+
+**Change:** Story 11.5 (FR-74 match-feedback floor) — a presentation-only bottom-bar `SelectionSubgroupPanel` that groups the current multi-selection into WC3 subgroups by unit type (health-tinted grid), a `ChimeraTabs` subgroup strip, and Tab/click subgroup cycling that repoints `_focusId` (command card + HP bar follow), plus a buff/debuff icon row reading `EntityWorld.StatusFlagsOf` and `SimulationHost.Modifiers`. Zero sim writes; no `SimChecksum` fold / `AlgoVersion` bump / golden re-baseline.
+
+**Files changed:**
+- `godot/src/UI/SelectionSubgroups.cs` (NEW) — Godot-free `Group(ids, keys)` + `ReconcileActiveIndex(...)` (active-subgroup-by-key preservation).
+- `godot/src/UI/ModifierPolarity.cs` (NEW) — Godot-free buff/debuff classifier + glyph, incl. DoT/HoT polarity from the period-effect sign.
+- `godot/src/UI/SelectionSubgroupPanel.cs` (NEW) — the bottom-bar panel (grid + tabs + buff row), 3.1x-kit-composed, font-present glyphs, overflow cell.
+- `godot/src/UI/SelectionSystem.cs` — subgroup state/read API, `CycleSubgroup`/`SetActiveSubgroup`, `Key.Tab`, key-preserving `RebuildSubgroups`, focus-hero item-use + inventory-slot reset.
+- `godot/src/Core/Bootstrap/Phases/MatchAlertPhase.cs` — construct/inject/publish the panel (no new phase).
+- `godot/src/Core/Bootstrap/Phases/SceneContext.cs` — `SelectionPanel` handle.
+- `godot/src/Core/MainScene.cs` — drain the panel in the `_Process` presentation tail.
+- `godot/ProjectChimera.Sim.Tests/ProjectChimera.Sim.Tests.csproj` — Tier-1 `<Compile Include>` for the two cores.
+- `godot/ProjectChimera.Sim.Tests/UI/SelectionSubgroupsTests.cs` + `ModifierPolarityTests.cs` (NEW) — grouping/reconcile + polarity tests.
+- 5 `*.cs.uid` companions committed per repo convention (786 `.cs.uid` already tracked).
+
+**Review:** 8 patches applied (0 high / 3 medium / 5 low), 0 deferred, 4 rejected, 0 intent-gap, 0 bad-spec. Follow-up review recommended: **true** (score 14 ≥ 5).
+
+**Verification:** `dotnet build godot/godot.csproj` → 0 errors / 0 warnings. `dotnet test …Sim.Tests -c Release` → **3668 passed / 0 failed / 1 skipped** (pre-existing `ReservedUntilStory2_3`; +11 tests over the 3657 baseline). `git status` confirms zero edits to any golden/checksum file or `src/{Combat,Economy,Navigation,AI,Effects,Dsl}`. In-Engine Gate: **PASS** (post-fix re-verify, digests above). All independently re-run, not taken on the subagents' report.
+
+**Residual risks:** (1) A populated buff row with a live modifier is un-drivable over the single-client editor bridge (GDScript cannot construct the C# `Modifier`); the polarity/glyph/stack/duration logic is locked by the +11 Tier-1 tests and the glyph rendering by `Font.has_char`, but a real in-match buff has not been eyeballed end-to-end. (2) DW-266 remains: authored `StatusFlags` are displayed here but still not *enforced* by the sim — a "STUN" icon can appear over a unit the sim does not yet stun (out of scope, sim-side determinism fix). (3) Per-cell portraits use `DisplayName` labels, not the per-definition mesh thumbnail the spec allowed as an optional refinement.

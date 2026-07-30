@@ -40,6 +40,11 @@
          determinism analyzer set — they are presentation-side). -->
     <Compile Include="..\src\UI\UnderAttackThrottle.cs" LinkBase="Sim\UI" />
     <Compile Include="..\src\UI\DenialReasonText.cs"    LinkBase="Sim\UI" />
+    <!-- Story 11.5 (FR-74): the Godot-free presentation cores — the WC3 subgroup grouping policy + the buff/debuff
+         polarity classifier — included as single files so their policy is Tier-1 testable (they live under src/UI,
+         which SimSources.props does NOT glob; deliberately OUTSIDE the determinism analyzer set — presentation-side). -->
+    <Compile Include="..\src\UI\SelectionSubgroups.cs" LinkBase="Sim\UI" />
+    <Compile Include="..\src\UI\ModifierPolarity.cs"   LinkBase="Sim\UI" />
   </ItemGroup>
 
   <!-- Story 9.12: the SHARED C#<->TS hero-profile validation oracle. Embedded (read via manifest stream, like the

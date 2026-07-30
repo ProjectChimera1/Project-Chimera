@@ -1429,6 +1429,7 @@ namespace ProjectChimera.Core
             // CombatFeedbackBridge (a child Node, so its _Process runs after this parent _Process) performs the single
             // CombatEventQueue.Clear(). Mirrors the AudioManager read-only-sibling posture; never clears the queue.
             _ctx.MatchAlert?.Update(delta);
+            _ctx.SelectionPanel?.Update(); // Story 11.5 (FR-74): refresh the multi-select subgroup grid + buff icon row
 
             // Drain LLM callbacks and update toast notification.
             _ctx.TriggerPanel.Update();

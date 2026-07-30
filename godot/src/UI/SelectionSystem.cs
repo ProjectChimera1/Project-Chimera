@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using Godot;
 using ProjectChimera.Core;
+using ProjectChimera.Core.Definitions; // UnitDefinition (Story 11.5: per-definition subgroup key)
 using ProjectChimera.Combat;     // CombatEventQueue (Story 2.12: OrderDenied feedback on a full-ring reject)
 using ProjectChimera.Economy;    // BuildingSystem (Story 2.12: rally rides the wire via BuildingSystem.SetRallyCommand)
 using ProjectChimera.Multiplayer;
@@ -42,6 +43,17 @@ namespace ProjectChimera.UI
 
         /// <summary>All currently selected entity IDs.</summary>
         public IReadOnlyList<int> SelectedIds => _selectedList;
+
+        // ── Subgroups (Story 11.5, FR-74) — presentation-only, WC3 type-grouped view of the selection ──────────────
+
+        /// <summary>The current selection grouped into WC3 subgroups by unit type (first-appearance key order; member
+        /// input order). Recomputed on every selection change; pruned/clamped on death. Presentation-only — the sim
+        /// never sees a subgroup.</summary>
+        public IReadOnlyList<SelectionSubgroups.Subgroup> Subgroups => _subgroups;
+
+        /// <summary>Index of the active subgroup (the one Tab/HP-bar/command-card follow), or -1 when none. Distinct
+        /// from <see cref="ActiveGroupIndex"/> (control groups — a different concept).</summary>
+        public int ActiveSubgroupIndex => _activeSubgroupIndex;
 
         // ── Constants ─────────────────────────────────────────────────────────────
 
@@ -123,6 +135,14 @@ namespace ProjectChimera.UI
         private int _focusId = -1;
         private readonly HashSet<int> _selectedSet  = new();
         private readonly List<int>    _selectedList = new();
+
+        // ── Subgroup state (Story 11.5) — presentation-only; never mutates selection membership ──
+        private readonly List<SelectionSubgroups.Subgroup> _subgroups = new();
+        private int _activeSubgroupIndex = -1;
+        // Stable per-UnitDefinition grouping key (reference-keyed; assigned lazily as new types appear). Positive keys
+        // (≥1) never collide with the CategoryOf fallback keys, which live in the negative space.
+        private readonly Dictionary<UnitDefinition, long> _defSubgroupKeys = new();
+        private long _nextDefSubgroupKey = 1;
 
         // ── Control groups (1–9) ─────────────────────────────────────────────────
 
@@ -466,7 +486,7 @@ namespace ProjectChimera.UI
                         // Story 3.15: right-click a ground item with a hero selected → PickupItem for the nearest hero.
                         // Story 3.16: the REST of a mixed selection is NOT stranded — it falls through to the normal
                         // move/attack path with the pickup hero EXCLUDED (closes the 3.15 "army stops near item" defer).
-                        int heroForPickup = FirstSelectedHero();
+                        int heroForPickup = ResolveActingHero(); // review #4: prefer the focus hero (card-consistent)
                         int groundItem = heroForPickup >= 0 ? FindNearestGroundItem(hit, PICK_RADIUS) : -1;
                         if (groundItem >= 0) IssuePickupCommand(heroForPickup, groundItem);
 
@@ -529,13 +549,21 @@ namespace ProjectChimera.UI
                     // Story 3.16: use-consumable affordance — use the item in the HUD-selected inventory slot (retires the
                     // 3.15 hard-coded slot 0). When no grid slot is selected, fall back to slot 0. Empty/non-consumable ⇒ no-op.
                     ResetPendingCommandClicks();
-                    int hero = FirstSelectedHero();
+                    int hero = ResolveActingHero(); // review #4: act on the FOCUS hero (matches the focus-following card)
                     if (hero >= 0) IssueUseItemCommand(hero, _selectedInventorySlot >= 0 ? _selectedInventorySlot : 0);
                 }
                 else if (key.Keycode == Key.Escape)
                 {
                     ResetPendingCommandClicks();
                     ClearSelection();
+                }
+                else if (key.Keycode == Key.Tab && _subgroups.Count >= 2)
+                {
+                    // Story 11.5 (FR-74): Tab cycles the active WC3 subgroup (repoints _focusId so the command card /
+                    // HP bar follow), non-destructively — the multi-selection is unchanged and no order is issued.
+                    // Consume ONLY when there are 2+ subgroups; a single/zero-subgroup Tab passes through.
+                    CycleSubgroup(+1);
+                    GetViewport().SetInputAsHandled();
                 }
             }
         }
@@ -554,6 +582,7 @@ namespace ProjectChimera.UI
             if (unitId >= 0)
             {
                 AddToSelection(unitId, setFocus: true);
+                RebuildSubgroups(resetActive: true); // Story 11.5: single-unit selection → one subgroup
                 return;
             }
 
@@ -595,6 +624,7 @@ namespace ProjectChimera.UI
                 if (screenRect.HasPoint(screen))
                     AddToSelection(i, setFocus: _focusId < 0);
             }
+            RebuildSubgroups(resetActive: true); // Story 11.5: a fresh box-select resets the active subgroup
         }
 
         private void AddToSelection(int id, bool setFocus)
@@ -616,6 +646,9 @@ namespace ProjectChimera.UI
             // Story 3.16 review: reset the HUD-selected inventory slot on every selection change, so slot 3 chosen for
             // hero A never leaks into hero B (whose T-hotkey would otherwise Use its own slot 3). -1 = none → falls back to 0.
             _selectedInventorySlot = -1;
+            // Story 11.5: subgroups are a view of the selection — clear them and the active-subgroup pointer.
+            _subgroups.Clear();
+            _activeSubgroupIndex = -1;
             _barRoot.Visible    = false;
             _multiLabel.Visible = false;
         }
@@ -1149,11 +1182,124 @@ namespace ProjectChimera.UI
         {
             if (_selectedSet.Count == 0) return;
 
+            int before = _selectedList.Count;
             _selectedList.RemoveAll(id => !_world.IsAlive(id));
             _selectedSet.RemoveWhere(id => !_world.IsAlive(id));
 
+            // Story 11.5: a death is NOT a fresh selection — rebuild the subgroup structure but PRESERVE/clamp the
+            // active-subgroup index rather than resetting it to 0. Only when membership actually shrank.
+            if (_selectedList.Count != before)
+                RebuildSubgroups(resetActive: false);
+
             if (_focusId >= 0 && !_world.IsAlive(_focusId))
-                _focusId = _selectedList.Count > 0 ? _selectedList[0] : -1;
+            {
+                // Reassign focus to the (clamped) active subgroup's first live member, else the first selected unit.
+                int reassigned = FirstActiveSubgroupMember();
+                _focusId = reassigned >= 0 ? reassigned
+                         : _selectedList.Count > 0 ? _selectedList[0] : -1;
+            }
+        }
+
+        // ── Subgroup helpers (Story 11.5) ──────────────────────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// Recompute the WC3 subgroups from the current (already-pruned) selection via the Godot-free
+        /// <see cref="SelectionSubgroups.Group"/>. <paramref name="resetActive"/> = true for a genuine selection change
+        /// (active subgroup resets to the first); false for a death (preserve the index, clamped into range).
+        /// Presentation-only — never mutates <c>_selectedList</c> / <c>_selectedSet</c> or enqueues an order.
+        /// </summary>
+        private void RebuildSubgroups(bool resetActive)
+        {
+            // Capture the OLD active subgroup's key so a non-reset rebuild can preserve it by identity even when an
+            // earlier subgroup was wiped and the indices shifted (Story 11.5 review #3).
+            bool hadActive = _activeSubgroupIndex >= 0 && _activeSubgroupIndex < _subgroups.Count;
+            long prevKey   = hadActive ? _subgroups[_activeSubgroupIndex].Key : 0L;
+            int  prevIndex = _activeSubgroupIndex;
+
+            _subgroups.Clear();
+            if (_selectedList.Count > 0)
+            {
+                var keys = new List<long>(_selectedList.Count);
+                for (int i = 0; i < _selectedList.Count; i++)
+                    keys.Add(SubgroupKeyOf(_selectedList[i]));
+                foreach (var g in SelectionSubgroups.Group(_selectedList, keys))
+                    _subgroups.Add(g);
+            }
+
+            if (_subgroups.Count == 0) { _activeSubgroupIndex = -1; return; }
+            if (resetActive || !hadActive)
+                _activeSubgroupIndex = 0;
+            else
+                // Preserve the active subgroup by KEY (falls back to a clamp when that subgroup itself emptied).
+                _activeSubgroupIndex = SelectionSubgroups.ReconcileActiveIndex(_subgroups, prevKey, prevIndex);
+        }
+
+        /// <summary>The subgroup grouping key for an entity: a stable per-<see cref="UnitDefinition"/> key (positive),
+        /// falling back to a per-<c>CategoryOf</c> key (negative, so it never collides with a def key) when the unit has
+        /// no source definition. A dead id gets a sentinel (it is pruned before this runs).</summary>
+        private long SubgroupKeyOf(int id)
+        {
+            if (!_world.IsAlive(id)) return long.MinValue;
+            UnitDefinition def = _world.SourceDefinition[id];
+            if (def != null)
+            {
+                if (!_defSubgroupKeys.TryGetValue(def, out long k))
+                {
+                    k = _nextDefSubgroupKey++;
+                    _defSubgroupKeys[def] = k;
+                }
+                return k;
+            }
+            return -1L - (long)_world.CategoryOf[id]; // fallback key space (negative)
+        }
+
+        /// <summary>The active subgroup's first live member id, or -1 (no/empty active subgroup).</summary>
+        private int FirstActiveSubgroupMember()
+        {
+            if (_activeSubgroupIndex < 0 || _activeSubgroupIndex >= _subgroups.Count) return -1;
+            var members = _subgroups[_activeSubgroupIndex].Members;
+            for (int i = 0; i < members.Count; i++)
+                if (_world.IsAlive(members[i])) return members[i];
+            return -1;
+        }
+
+        /// <summary>
+        /// Story 11.5: advance the active subgroup by <paramref name="dir"/> (wraps), repointing <c>_focusId</c> to the
+        /// new subgroup's first member. No-op with fewer than 2 subgroups. Does NOT narrow/mutate the selection or issue
+        /// an order — WC3 "make this subgroup active" semantics.
+        /// </summary>
+        public void CycleSubgroup(int dir)
+        {
+            if (_subgroups.Count < 2) return;
+            int count = _subgroups.Count;
+            int next = ((_activeSubgroupIndex + dir) % count + count) % count;
+            SetActiveSubgroup(next);
+        }
+
+        /// <summary>
+        /// Story 11.5: make subgroup <paramref name="index"/> active and repoint <c>_focusId</c> to its first live
+        /// member (the command card, ability/worker/inventory cards, and HP bar all follow focus). Bounds-guarded;
+        /// selection membership is untouched. Wired to <see cref="Components.ChimeraTabs"/>' <c>TabChanged</c> by the panel.
+        /// </summary>
+        public void SetActiveSubgroup(int index)
+        {
+            if (index < 0 || index >= _subgroups.Count) return;
+            _activeSubgroupIndex = index;
+            int member = FirstActiveSubgroupMember();
+            if (member >= 0) _focusId = member;
+            // Review #4: the inventory-slot selection is per-hero; moving focus to a different hero must not let a slot
+            // chosen for the old hero leak into the new one (mirror ClearSelection's reset). -1 = none → falls back to 0.
+            _selectedInventorySlot = -1;
+        }
+
+        /// <summary>Story 11.5 review #4: the hero the focus-following inventory card acts on — the FOCUS unit when it
+        /// is a hero (so the acting hero matches the card the player sees), else the first selected hero. Keeps the T /
+        /// pickup action from diverging from the card after a subgroup Tab.</summary>
+        private int ResolveActingHero()
+        {
+            if (_focusId >= 0 && _world.IsAlive(_focusId) && _world.HeroIndex[_focusId] != EntityWorld.HERO_NONE)
+                return _focusId;
+            return FirstSelectedHero();
         }
 
         private static Rect2 MakeRect(Vector2 a, Vector2 b) =>
@@ -1193,6 +1339,7 @@ namespace ProjectChimera.UI
                 AddToSelection(id, setFocus: _focusId < 0);
 
             ActiveGroupIndex = index;
+            RebuildSubgroups(resetActive: true); // Story 11.5: recalling a control group is a fresh selection
         }
 
         /// <summary>Map Key.Key1–Key.Key9 to 0-based group index, or -1 for other keys.</summary>
