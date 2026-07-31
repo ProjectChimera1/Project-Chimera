@@ -259,11 +259,14 @@ namespace ProjectChimera.Core.Bootstrap
                 // Play via GameState.SetMode(Play), emitting this same signal — they must NOT clear+re-apply (that
                 // would re-apply mid-online-match and clobber the replay's restored RNG seed → desync). For those, keep
                 // the pre-3.10 behavior: lifecycle-only reset on return to Edit, nothing on entering Play.
-                bool offlineEditorLoop = _ctx.ReplayPlayer == null && !_ctx.Lockstep.IsOnline;
+                // DW-22: the routing decision is the pure, Tier-1-tested ModeTransitionResetPolicy.Decide — the single
+                // source of truth. AuthoredStart ⟺ offline editor loop (!isOnline && !hasReplay), both directions.
+                var resetAction = ModeTransitionResetPolicy.Decide(
+                    _ctx.Lockstep.IsOnline, _ctx.ReplayPlayer != null, mode == (int)GameMode.Play);
 
                 if (mode == (int)GameMode.Play)
                 {
-                    if (offlineEditorLoop && !_ctx.Scene.ResetToAuthoredStart(_ctx.PersistenceTestMode))
+                    if (resetAction == ModeResetAction.AuthoredStart && !_ctx.Scene.ResetToAuthoredStart(_ctx.PersistenceTestMode))
                     {
                         // The set-true → revert → set-false bracket is correct ONLY because GameState.SetMode emits
                         // ModeChanged SYNCHRONOUSLY (GameState.cs) — the re-emitted Edit signal runs this handler and
@@ -280,7 +283,7 @@ namespace ProjectChimera.Core.Bootstrap
                     // Offline editor loop: restore the authored board. If re-validation somehow fails on the return
                     // path (unreachable today — no editing happens during Play), still reset lifecycle state so we
                     // never leave a played-out board in Edit. Online/replay: pre-3.10 lifecycle-only reset.
-                    if (!offlineEditorLoop || !_ctx.Scene.ResetToAuthoredStart(_ctx.PersistenceTestMode))
+                    if (resetAction != ModeResetAction.AuthoredStart || !_ctx.Scene.ResetToAuthoredStart(_ctx.PersistenceTestMode))
                         _ctx.Scene.ResetMatchOnReturnToEdit();
                 }
             };

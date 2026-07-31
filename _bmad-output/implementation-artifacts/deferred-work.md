@@ -210,7 +210,8 @@ origin: migrated from legacy ledger ("Deferred from: follow-up code review of st
 source_spec: `_bmad-output/implementation-artifacts/spec-3-10-added-edit-play-round-trip-loop-no-restart-playtest.md`
 location: n/a
 reason: summary: The offlineEditorLoop guard that gates the destructive reset away from online/replay transitions has zero automated coverage — the highest-blast-radius decision in the change is verified only by inspection. evidence: WinConditionPhase's ModeChanged handler routes ClearForReset+re-apply only when `_ctx.ReplayPlayer == null && !_ctx.Lockstep.IsOnline`; a regression that lets it fire during a live match/replay re-seeds the RNG to DEFAULT_RNG_SEED mid-session → lockstep desync / clobbered replay seed. The guard is correct today (ordering verified: GoOnline sets IsOnline and TryLoadReplay assigns ReplayPlayer before SetMode(Play)), but no test constructs WinConditionPhase/GameState or drives ModeChanged — the whole handler is Godot-coupled and this repo has no Godot integration-test project. Extracting the `(isOnline, hasReplay, targetMode) → shouldReset` decision into a pure static predicate would make this guard Tier-1 testable without a Godot harness; until then it is on the /godot-verify manual checklist.
-status: open
+status: done 2026-07-31
+resolution: resolved by sweep bundle dw-reset-guard-predicate-extraction
 
 ## Deferred from: code review of story-3.11 (2026-07-07)
 
