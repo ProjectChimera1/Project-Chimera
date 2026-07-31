@@ -120,7 +120,7 @@
     "answered_at": "2026-07-30",
     "bundle_name": "",
     "effect": "build",
-    "intent": "Client→server credential packet, server-side trust, userId→slot bind in TryFreeze, fail-closed HandleReady gate, and server distribution of all peers' profiles minting an identical multi-hero HeroStore (StartStateHash re-baseline)",
+    "intent": "Client\u2192server credential packet, server-side trust, userId\u2192slot bind in TryFreeze, fail-closed HandleReady gate, and server distribution of all peers' profiles minting an identical multi-hero HeroStore (StartStateHash re-baseline)",
     "key": "1",
     "label": "Build the full rail",
     "resolution": ""
@@ -138,7 +138,7 @@
     "answered_at": "2026-07-25",
     "bundle_name": "",
     "effect": "build",
-    "intent": "Give it runtime meaning again — a per-hero XP-gain multiplier or bounty override layered on victim XpBounty",
+    "intent": "Give it runtime meaning again \u2014 a per-hero XP-gain multiplier or bounty override layered on victim XpBounty",
     "key": "1",
     "label": "Repurpose it",
     "resolution": ""
@@ -160,24 +160,6 @@
     "key": "1",
     "label": "Thread registry into discovery + boot shadow",
     "resolution": ""
-  },
-  "DW-331": {
-    "answered_at": "2026-07-30",
-    "bundle_name": "",
-    "effect": "close",
-    "intent": "",
-    "key": "2",
-    "label": "Rely on the load-time gate",
-    "resolution": "Keep write-gate scoped to Export/New-Map; document the intended reliance on ScenarioLoadPhase"
-  },
-  "DW-342": {
-    "answered_at": "2026-07-30",
-    "bundle_name": "",
-    "effect": "close",
-    "intent": "",
-    "key": "2",
-    "label": "Close as superseded by T3",
-    "resolution": "T3 visual editor is the full-vocab surface; manual form stays a quick-edit subset"
   },
   "DW-343": {
     "answered_at": "2026-07-30",
@@ -275,7 +257,7 @@
     "effect": "build",
     "intent": "Make saves genuinely portable; also unblocks lockstep MP AI (large effort)",
     "key": "2",
-    "label": "Migrate AiOpponentSystem float→Fixed",
+    "label": "Migrate AiOpponentSystem float\u2192Fixed",
     "resolution": ""
   },
   "DW-478": {
