@@ -26,6 +26,15 @@
 #
 #   commands = ["powershell -NoProfile -ExecutionPolicy Bypass -File tools/verify-in-engine-gate.ps1"]
 #
+# Also restore under [limits] (set 2026-07-31, same gitignored-file hazard):
+#
+#   max_dev_attempts = 3
+#
+# Rationale: at the default of 2, a Godot-coupled bundle spends attempt 1 failing the gate and
+# attempt 2 producing the artifact, leaving nothing for a real defect (measured 3/3 in sweep run
+# 20260731-012409-44f9). Return it to 2 once dev sessions reliably run the gate before halting —
+# the "RUN THE GATE YOURSELF" paragraph below is the fix this setting is insuring against.
+#
 # Confirm it is live with: `bmad-loop status <run-id>` (the policy snapshot records verify.commands)
 # or by checking `.bmad-loop/runs/<id>/state.json` -> policy_snapshot.verify.commands on the next run.
 
@@ -35,14 +44,27 @@ persistent_facts = [
   """
 IN-ENGINE GATE (Project Chimera, binding).
 
-A story whose diff touches Godot-coupled presentation code CANNOT reach `status: done` without an
-in-engine verification artifact in its spec file. Coupled surfaces are:
+ANY unit of work whose diff touches Godot-coupled presentation code CANNOT reach `status: done`
+without an in-engine verification artifact in its spec file. This applies identically to a numbered
+story, a `bmad-loop sweep` DEFERRED-WORK BUNDLE, a remediation spec, and a one-off quick-dev change.
+If you are implementing a bundle described by a `bundles/<name>/intent.md`, this fact applies to you
+in full — the intent file lists only the ledger entries to resolve and says nothing about the gate,
+which is NOT an exemption. Coupled surfaces are:
   godot/src/UI/**, godot/src/CreationSuite/**, godot/src/Core/Bootstrap/**,
   godot/src/Core/MainScene.cs, godot/scenes/**, and any *.tscn / *.tres.
 
 This is enforced mechanically by the `tools/verify-in-engine-gate.ps1` verify command, which the
-orchestrator runs after a clean review. A missing or placeholder artifact fails the story back to
+orchestrator runs after a clean review. A missing or placeholder artifact fails the work back to
 a repair session — so produce it as part of the work, not as an afterthought.
+
+RUN THE GATE YOURSELF BEFORE YOU HALT. Do not let the verify command be how you discover the gate.
+If your diff touches any coupled surface above, drive the engine and append the artifact block in
+THIS session, then halt. Measured 2026-07-31 (sweep run 20260731-012409-44f9): 3 of 3 bundles
+failed dev attempt 1 on `rc=1 Godot-coupled changes detected` purely because the block was missing,
+and each burned a second dev attempt to add it. `max_dev_attempts` is small — a bundle that spends
+both attempts on the gate handshake has NO attempt left for a genuine defect, and will be deferred
+or escalated instead of fixed. You can verify the gate's verdict yourself at any time by running
+`powershell -NoProfile -ExecutionPolicy Bypass -File tools/verify-in-engine-gate.ps1`.
 
 HOW TO SATISFY IT
 Drive the actual running game over the godot-mcp bridge (the `/godot-verify` skill is the shortest
