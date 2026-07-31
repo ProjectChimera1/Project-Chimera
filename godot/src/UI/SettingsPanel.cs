@@ -45,9 +45,8 @@ namespace ProjectChimera.UI
 
         private SettingsManager _settings = null!;
 
-        // Kit context (self-owned; _accent only created when this overlay is the first kit consumer).
+        // Kit context.
         private GodotTheme        _theme  = null!;
-        private AccentController?  _accent;
 
         // Tab pages, toggled on TabChanged.
         private readonly List<Control> _pages = new();
@@ -129,7 +128,7 @@ namespace ProjectChimera.UI
             Layer     = 15; // above content browser (10)
             Visible   = false;
 
-            EnsureKitInitialized(); // MUST run before any ChimeraComponents.* call, or the factory throws
+            _theme = ChimeraComponents.EnsureInitialized(this); // MUST run before any ChimeraComponents.* call, or the factory throws
 
             // ── Anchor root (full-rect Control; the primary input blocker; carries the Theme) ──
             var anchorRoot = new Control();
@@ -163,7 +162,7 @@ namespace ProjectChimera.UI
             titleRow.AddThemeConstantOverride("separation", ChimeraComponents.Const(ThemeTokens.S3));
             vbox.AddChild(titleRow);
 
-            var title = Heading("Settings", ThemeTokens.Txl);
+            var title = ChimeraComponents.Heading("Settings", ThemeTokens.Txl);
             title.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
             title.SizeFlagsVertical   = Control.SizeFlags.ShrinkCenter;
             titleRow.AddChild(title);
@@ -216,22 +215,6 @@ namespace ProjectChimera.UI
             ChimeraTooltip.Attach(applyBtn, "Apply & Save",
                 "Apply changes live and persist them to disk.", ChimeraTooltip.TooltipRole.Field);
             btnRow.AddChild(applyBtn);
-        }
-
-        // ── Kit bootstrap (mirrors HeroPickerOverlay.EnsureKitInitialized) ─────────────────
-
-        private void EnsureKitInitialized()
-        {
-            _theme = ResourceLoader.Load<GodotTheme>(ThemeBuilder.ThemePath, cacheMode: ResourceLoader.CacheMode.Ignore)
-                     ?? ThemeBuilder.Build();
-
-            if (!ChimeraComponents.IsInitialized)
-            {
-                _accent = new AccentController { Name = "AccentController" };
-                AddChild(_accent);
-                _accent.Initialize(_theme);
-                ChimeraComponents.Initialize(_theme, _accent);
-            }
         }
 
         // ── Tab pages ─────────────────────────────────────────────────────────
@@ -471,7 +454,8 @@ namespace ProjectChimera.UI
             testRow.AddChild(_testSpinner);
             v.AddChild(testRow);
 
-            _aiStatusLabel = Body("", ThemeTokens.TextMid, ThemeTokens.Tsm);
+            _aiStatusLabel = ChimeraComponents.Body("", ThemeTokens.TextMid, ThemeTokens.Tsm);
+            _aiStatusLabel.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
             _aiStatusLabel.AutowrapMode = TextServer.AutowrapMode.Word;
             _aiStatusLabel.CustomMinimumSize = new Vector2(0, 40);
             v.AddChild(_aiStatusLabel);
@@ -708,7 +692,8 @@ namespace ProjectChimera.UI
             row.AddThemeConstantOverride("separation", ChimeraComponents.Const(ThemeTokens.S3));
             parent.AddChild(row);
 
-            var nameLbl = Body(label, ThemeTokens.TextMid, ThemeTokens.Tsm);
+            var nameLbl = ChimeraComponents.Body(label, ThemeTokens.TextMid, ThemeTokens.Tsm);
+            nameLbl.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
             nameLbl.CustomMinimumSize = new Vector2(150, 0);
             AttachFieldTip(nameLbl, label, tip);
             row.AddChild(nameLbl);
@@ -728,7 +713,8 @@ namespace ProjectChimera.UI
             row.AddThemeConstantOverride("separation", ChimeraComponents.Const(ThemeTokens.S3));
             parent.AddChild(row);
 
-            var nameLbl = Body(label, ThemeTokens.TextMid, ThemeTokens.Tsm);
+            var nameLbl = ChimeraComponents.Body(label, ThemeTokens.TextMid, ThemeTokens.Tsm);
+            nameLbl.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
             nameLbl.CustomMinimumSize = new Vector2(150, 0);
             nameLbl.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
             AttachFieldTip(nameLbl, label, tip);
@@ -744,33 +730,14 @@ namespace ProjectChimera.UI
 
         private void AddEmptyState(Control parent, string text)
         {
-            var lbl = Body(text, ThemeTokens.TextLo, ThemeTokens.Tmd);
+            var lbl = ChimeraComponents.Body(text, ThemeTokens.TextLo, ThemeTokens.Tmd);
+            lbl.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
             lbl.AutowrapMode = TextServer.AutowrapMode.Word;
             lbl.SizeFlagsVertical = Control.SizeFlags.ExpandFill;
             lbl.VerticalAlignment = VerticalAlignment.Center;
             parent.AddChild(lbl);
         }
 
-        // ── Small shared builders ───────────────────────────────────────────────
-
-        private Label Heading(string text, StringName sizeToken)
-        {
-            var l = new Label { Text = text };
-            l.AddThemeFontOverride("font", _theme.GetFont(ThemeTokens.FontDisplay, ThemeTokens.Type));
-            l.AddThemeFontSizeOverride("font_size", _theme.GetFontSize(sizeToken, ThemeTokens.Type));
-            l.AddThemeColorOverride("font_color", _theme.GetColor(ThemeTokens.TextHi, ThemeTokens.Type));
-            return l;
-        }
-
-        private Label Body(string text, StringName colorToken, StringName sizeToken)
-        {
-            var l = new Label { Text = text };
-            l.AddThemeFontOverride("font", _theme.GetFont(ThemeTokens.FontUi, ThemeTokens.Type));
-            l.AddThemeFontSizeOverride("font_size", _theme.GetFontSize(sizeToken, ThemeTokens.Type));
-            l.AddThemeColorOverride("font_color", _theme.GetColor(colorToken, ThemeTokens.Type));
-            l.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
-            return l;
-        }
 
         // A hover-AND-keyboard-focus field tip attached to a row's label (UX-DR53 / NFR-2). The label is made
         // a focus + hover target so the keyboard half fires; the interactive control beside it stays operable.
@@ -864,12 +831,14 @@ namespace ProjectChimera.UI
 
             var body = new VBoxContainer();
             body.AddThemeConstantOverride("separation", ChimeraComponents.Const(ThemeTokens.S2));
-            var msg = Body("Keep these display settings? They will revert automatically if you don't confirm — in case the new mode is unusable.",
+            var msg = ChimeraComponents.Body("Keep these display settings? They will revert automatically if you don't confirm — in case the new mode is unusable.",
                 ThemeTokens.TextMid, ThemeTokens.Tmd);
+            msg.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
             msg.AutowrapMode = TextServer.AutowrapMode.Word;
             msg.CustomMinimumSize = new Vector2(360, 0);
             body.AddChild(msg);
-            _safeRevertLabel = Body($"Reverting in {_safeRevertRemaining}s…", ThemeTokens.TextHi, ThemeTokens.Tlg);
+            _safeRevertLabel = ChimeraComponents.Body($"Reverting in {_safeRevertRemaining}s…", ThemeTokens.TextHi, ThemeTokens.Tlg);
+            _safeRevertLabel.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
             body.AddChild(_safeRevertLabel);
 
             var dlg = ChimeraDialog.CreateCustom("Keep display settings?", body);

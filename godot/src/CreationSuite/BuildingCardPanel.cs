@@ -38,9 +38,8 @@ namespace ProjectChimera.CreationSuite
         private const float PANEL_H = 700f;
         private const float MARGIN  = 12f;
 
-        // ── Kit context (self-owned; _accent only created when this panel is the first consumer) ──
+        // ── Kit context ──
         private GodotTheme        _theme  = null!;
-        private AccentController?  _accent;
 
         // ── Deps (wired by BuildingCardPhase after AddChild) ──
         private FactionDefinition? _faction;               // the building source (Buildings only — never _faction.Units)
@@ -82,7 +81,7 @@ namespace ProjectChimera.CreationSuite
         /// <inheritdoc/>
         public override void _Ready()
         {
-            EnsureKitInitialized();   // MUST run before any ChimeraComponents.* call, or the factory throws
+            _theme = ChimeraComponents.EnsureInitialized(this);   // MUST run before any ChimeraComponents.* call, or the factory throws
             BuildUi();
         }
 
@@ -139,24 +138,6 @@ namespace ProjectChimera.CreationSuite
             if (mode == (int)GameMode.Play) Close();   // hide in Play (authoring is Edit-only)
         }
 
-        // ── Kit bootstrap ─────────────────────────────────────────────────────────
-
-        private void EnsureKitInitialized()
-        {
-            // ALWAYS load the theme (the inner PanelContainer.Theme needs it regardless of factory state).
-            _theme = ResourceLoader.Load<GodotTheme>(ThemeBuilder.ThemePath, cacheMode: ResourceLoader.CacheMode.Ignore)
-                     ?? ThemeBuilder.Build();
-
-            // Guard ONLY the one-time factory bootstrap so a future startup phase makes this a clean no-op.
-            if (!ChimeraComponents.IsInitialized)
-            {
-                _accent = new AccentController { Name = "AccentController" };
-                AddChild(_accent);
-                _accent.Initialize(_theme);
-                ChimeraComponents.Initialize(_theme, _accent);
-            }
-        }
-
         // ── UI construction ──────────────────────────────────────────────────────
 
         private void BuildUi()
@@ -190,7 +171,7 @@ namespace ProjectChimera.CreationSuite
             titleRow.AddThemeConstantOverride("separation", ChimeraComponents.Const(ThemeTokens.S2));
             root.AddChild(titleRow);
 
-            var titleLbl = Heading("Building Editor", ThemeTokens.Tlg);
+            var titleLbl = ChimeraComponents.Heading("Building Editor", ThemeTokens.Tlg);
             titleLbl.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
             titleLbl.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
             titleRow.AddChild(titleLbl);
@@ -199,10 +180,10 @@ namespace ProjectChimera.CreationSuite
             _prevBtn.Pressed += () => Browse(-1);
             titleRow.AddChild(_prevBtn);
 
-            _counterLabel = Body("—", ThemeTokens.TextMid);
+            _counterLabel = ChimeraComponents.Body("—", ThemeTokens.TextMid);
+            _counterLabel.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
             _counterLabel.HorizontalAlignment = HorizontalAlignment.Center;
             _counterLabel.CustomMinimumSize = new Vector2(88, 0);
-            _counterLabel.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
             titleRow.AddChild(_counterLabel);
 
             _nextBtn = ChimeraComponents.IconButton("▶");
@@ -244,7 +225,8 @@ namespace ProjectChimera.CreationSuite
             contentCol.AddChild(_bodyHost);
 
             // Status line + toolbar (fixed below the scroll — the Unit Card save-row shape).
-            _statusLabel = Body("", ThemeTokens.TextLo);
+            _statusLabel = ChimeraComponents.Body("", ThemeTokens.TextLo);
+            _statusLabel.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
             _statusLabel.AutowrapMode = TextServer.AutowrapMode.Word;
             _statusLabel.Visible = false;
             root.AddChild(_statusLabel);
@@ -315,8 +297,10 @@ namespace ProjectChimera.CreationSuite
         private void BuildEmptyState()
         {
             _segment.Visible = false;
-            _headerHost.AddChild(Heading("Building Editor", ThemeTokens.Txl));
-            _bodyHost.AddChild(Body(_faction is null ? "No faction bound." : "This faction has no buildings — press New to add one.", ThemeTokens.TextLo));
+            _headerHost.AddChild(ChimeraComponents.Heading("Building Editor", ThemeTokens.Txl));
+            var emptyLbl = ChimeraComponents.Body(_faction is null ? "No faction bound." : "This faction has no buildings — press New to add one.", ThemeTokens.TextLo);
+            emptyLbl.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
+            _bodyHost.AddChild(emptyLbl);
         }
 
         // ── Read-only header ──────────────────────────────────────────────────────
@@ -325,12 +309,13 @@ namespace ProjectChimera.CreationSuite
         {
             _segment.Visible = true;
 
-            var title = Heading(string.IsNullOrEmpty(def.DisplayName) ? def.Id : def.DisplayName, ThemeTokens.T2xl);
+            var title = ChimeraComponents.Heading(string.IsNullOrEmpty(def.DisplayName) ? def.Id : def.DisplayName, ThemeTokens.T2xl);
             title.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
             title.AutowrapMode = TextServer.AutowrapMode.Word;
             _headerHost.AddChild(title);
 
-            var id = Body(def.Id, ThemeTokens.TextLo);
+            var id = ChimeraComponents.Body(def.Id, ThemeTokens.TextLo);
+            id.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
             id.AddThemeFontSizeOverride("font_size", _theme.GetFontSize(ThemeTokens.Txs, ThemeTokens.Type));
             _headerHost.AddChild(id);
 
@@ -351,23 +336,6 @@ namespace ProjectChimera.CreationSuite
         }
 
         // ── Small shared builders (mirror UnitCardPanel's) ───────────────────────
-
-        private Label Heading(string text, StringName sizeToken)
-        {
-            var l = new Label { Text = text };
-            l.AddThemeFontOverride("font", _theme.GetFont(ThemeTokens.FontDisplay, ThemeTokens.Type));
-            l.AddThemeFontSizeOverride("font_size", _theme.GetFontSize(sizeToken, ThemeTokens.Type));
-            l.AddThemeColorOverride("font_color", Tok(ThemeTokens.TextHi));
-            return l;
-        }
-
-        private Label Body(string text, StringName colorToken)
-        {
-            var l = new Label { Text = text };
-            l.AddThemeColorOverride("font_color", Tok(colorToken));
-            l.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
-            return l;
-        }
 
         private Color Tok(StringName token) => _theme.GetColor(token, ThemeTokens.Type);
 

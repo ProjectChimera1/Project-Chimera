@@ -129,7 +129,10 @@ namespace ProjectChimera.CreationSuite
 
             if (_presets.Units.Count == 0)
             {
-                _bodyHost.AddChild(Body("No units found in the scanned faction files.", ThemeTokens.TextLo));
+                var noUnitsLbl = ChimeraComponents.Body("No units found in the scanned faction files.", ThemeTokens.TextLo);
+                noUnitsLbl.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
+                noUnitsLbl.AutowrapMode = TextServer.AutowrapMode.Word;
+                _bodyHost.AddChild(noUnitsLbl);
                 return;
             }
 
@@ -152,7 +155,10 @@ namespace ProjectChimera.CreationSuite
             _bodyHost.AddChild(ChimeraComponents.FieldLabel("Buildings — pick from existing factions"));
             if (_presets.Buildings.Count == 0)
             {
-                _bodyHost.AddChild(Body("No buildings found in the scanned faction files.", ThemeTokens.TextLo));
+                var noBuildingsLbl = ChimeraComponents.Body("No buildings found in the scanned faction files.", ThemeTokens.TextLo);
+                noBuildingsLbl.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
+                noBuildingsLbl.AutowrapMode = TextServer.AutowrapMode.Word;
+                _bodyHost.AddChild(noBuildingsLbl);
             }
             else
             {
@@ -171,7 +177,10 @@ namespace ProjectChimera.CreationSuite
             _bodyHost.AddChild(ChimeraComponents.FieldLabel("Research — pick from existing factions"));
             if (_presets.Research.Count == 0)
             {
-                _bodyHost.AddChild(Body("No research entries found in the scanned faction files.", ThemeTokens.TextLo));
+                var noResearchLbl = ChimeraComponents.Body("No research entries found in the scanned faction files.", ThemeTokens.TextLo);
+                noResearchLbl.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
+                noResearchLbl.AutowrapMode = TextServer.AutowrapMode.Word;
+                _bodyHost.AddChild(noResearchLbl);
             }
             else
             {
@@ -201,7 +210,9 @@ namespace ProjectChimera.CreationSuite
             if (tip != null) AttachTip(cb, label, tip, ChimeraTooltip.TooltipRole.Field);
             row.AddChild(cb);
 
-            var lbl = Body(label, ThemeTokens.TextHi);
+            var lbl = ChimeraComponents.Body(label, ThemeTokens.TextHi);
+            lbl.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
+            lbl.AutowrapMode = TextServer.AutowrapMode.Word;
             row.AddChild(lbl);
             return row;
         }
@@ -222,9 +233,12 @@ namespace ProjectChimera.CreationSuite
             AttachTip(crystalInput, "Starting Crystal", "Crystal (the scarce resource) this faction starts a match with.", ChimeraTooltip.TooltipRole.Field);
             _bodyHost.AddChild(crystalInput);
 
-            _bodyHost.AddChild(Body(
+            var descriptorLbl = ChimeraComponents.Body(
                 "Descriptor-only this story — not yet wired into match-start economy (a future story extends ScenarioApplier).",
-                ThemeTokens.TextLo));
+                ThemeTokens.TextLo);
+            descriptorLbl.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
+            descriptorLbl.AutowrapMode = TextServer.AutowrapMode.Word;
+            _bodyHost.AddChild(descriptorLbl);
         }
 
         // ── Step 4: AI Preset + Hero/Persistence (Story 5.6, FR-18/AR-12) ─────────
@@ -242,7 +256,12 @@ namespace ProjectChimera.CreationSuite
             // blockable via the located "ai_preset" validator error until a creator clicks a button.
             _bodyHost.AddChild(ChimeraComponents.FieldLabel("AI Preset"));
             if (string.IsNullOrEmpty(_draft.AiPreset))
-                _bodyHost.AddChild(Body("No preset selected — Finish is blocked until you pick one.", ThemeTokens.TextLo));
+            {
+                var noPresetLbl = ChimeraComponents.Body("No preset selected — Finish is blocked until you pick one.", ThemeTokens.TextLo);
+                noPresetLbl.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
+                noPresetLbl.AutowrapMode = TextServer.AutowrapMode.Word;
+                _bodyHost.AddChild(noPresetLbl);
+            }
 
             var presetGrid = new GridContainer { Columns = 3 };
             presetGrid.AddThemeConstantOverride("h_separation", ChimeraComponents.Const(ThemeTokens.S2));
@@ -263,7 +282,12 @@ namespace ProjectChimera.CreationSuite
             _bodyHost.AddChild(ChimeraComponents.FieldLabel("Hero Unit"));
             var heroCandidates = _draft.Units.Where(u => u != null && u.IsHero).ToList();
             if (heroCandidates.Count == 0)
-                _bodyHost.AddChild(Body("No hero-flagged unit in the picked roster.", ThemeTokens.TextLo));
+            {
+                var noHeroLbl = ChimeraComponents.Body("No hero-flagged unit in the picked roster.", ThemeTokens.TextLo);
+                noHeroLbl.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
+                noHeroLbl.AutowrapMode = TextServer.AutowrapMode.Word;
+                _bodyHost.AddChild(noHeroLbl);
+            }
 
             var heroGrid = new GridContainer { Columns = 3 };
             heroGrid.AddThemeConstantOverride("h_separation", ChimeraComponents.Const(ThemeTokens.S2));

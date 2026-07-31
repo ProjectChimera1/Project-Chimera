@@ -34,9 +34,8 @@ namespace ProjectChimera.UI
         private const float PANEL_H = 560f;
         private const int   PORTRAIT = 48;
 
-        // ── Kit context (self-owned; _accent only created when this overlay is the first kit consumer) ──
+        // ── Kit context ──
         private GodotTheme        _theme  = null!;
-        private AccentController?  _accent;
 
         // ── Deps (wired by HeroPickerPhase / LobbyUi after AddChild) ──
         private ScenarioData?          _scenario;
@@ -91,7 +90,7 @@ namespace ProjectChimera.UI
         /// <inheritdoc/>
         public override void _Ready()
         {
-            EnsureKitInitialized();   // MUST run before any ChimeraComponents.* call, or the factory throws
+            _theme = ChimeraComponents.EnsureInitialized(this);   // MUST run before any ChimeraComponents.* call, or the factory throws
             BuildUi();
         }
 
@@ -149,21 +148,6 @@ namespace ProjectChimera.UI
 
         private void Hide() => _canvas.Visible = false;
 
-        // ── Kit bootstrap (mirrors PersistenceManifestPanel.EnsureKitInitialized) ──────────
-
-        private void EnsureKitInitialized()
-        {
-            _theme = ResourceLoader.Load<GodotTheme>(ThemeBuilder.ThemePath, cacheMode: ResourceLoader.CacheMode.Ignore)
-                     ?? ThemeBuilder.Build();
-
-            if (!ChimeraComponents.IsInitialized)
-            {
-                _accent = new AccentController { Name = "AccentController" };
-                AddChild(_accent);
-                _accent.Initialize(_theme);
-                ChimeraComponents.Initialize(_theme, _accent);
-            }
-        }
 
         // ── UI construction ────────────────────────────────────────────────────────
 
@@ -191,11 +175,12 @@ namespace ProjectChimera.UI
             _panel.AddChild(root);
 
             // ── Title ──
-            var title = Heading("Choose Your Hero", ThemeTokens.Tlg);
+            var title = ChimeraComponents.Heading("Choose Your Hero", ThemeTokens.Tlg);
             root.AddChild(title);
 
-            var subtitle = Body("Deploy a saved hero as your starting state, save the current hero, or play without one.",
+            var subtitle = ChimeraComponents.Body("Deploy a saved hero as your starting state, save the current hero, or play without one.",
                                 ThemeTokens.TextMid);
+            subtitle.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
             subtitle.AutowrapMode = TextServer.AutowrapMode.Word;
             root.AddChild(subtitle);
 
@@ -212,7 +197,8 @@ namespace ProjectChimera.UI
             _listHost.AddThemeConstantOverride("separation", ChimeraComponents.Const(ThemeTokens.S2));
             scroll.AddChild(_listHost);
 
-            _statusLabel = Body("", ThemeTokens.TextLo);
+            _statusLabel = ChimeraComponents.Body("", ThemeTokens.TextLo);
+            _statusLabel.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
             _statusLabel.AutowrapMode = TextServer.AutowrapMode.Word;
             _statusLabel.Visible = false;
             root.AddChild(_statusLabel);
@@ -368,10 +354,12 @@ namespace ProjectChimera.UI
             // Name + signature column.
             var nameCol = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill, SizeFlagsVertical = Control.SizeFlags.ShrinkCenter };
             nameCol.AddThemeConstantOverride("separation", 2);
-            var nameLbl = Heading(string.IsNullOrEmpty(profile.DisplayName) ? profile.HeroDefId : profile.DisplayName, ThemeTokens.Tmd);
+            var nameLbl = ChimeraComponents.Heading(string.IsNullOrEmpty(profile.DisplayName) ? profile.HeroDefId : profile.DisplayName, ThemeTokens.Tmd);
             nameCol.AddChild(nameLbl);
             string sig = string.IsNullOrEmpty(profile.SignatureAbility) ? "No signature ability" : $"Signature: {profile.SignatureAbility}";
-            nameCol.AddChild(Body(sig, ThemeTokens.TextLo));
+            var sigLbl = ChimeraComponents.Body(sig, ThemeTokens.TextLo);
+            sigLbl.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
+            nameCol.AddChild(sigLbl);
             row.Content.AddChild(nameCol);
 
             // Level readout.
@@ -727,24 +715,6 @@ namespace ProjectChimera.UI
             _statusLabel.Visible = true;
         }
 
-        // ── Small shared builders (mirror PersistenceManifestPanel) ────────────────────
-
-        private Label Heading(string text, StringName sizeToken)
-        {
-            var l = new Label { Text = text };
-            l.AddThemeFontOverride("font", _theme.GetFont(ThemeTokens.FontDisplay, ThemeTokens.Type));
-            l.AddThemeFontSizeOverride("font_size", _theme.GetFontSize(sizeToken, ThemeTokens.Type));
-            l.AddThemeColorOverride("font_color", _theme.GetColor(ThemeTokens.TextHi, ThemeTokens.Type));
-            return l;
-        }
-
-        private Label Body(string text, StringName colorToken)
-        {
-            var l = new Label { Text = text };
-            l.AddThemeColorOverride("font_color", _theme.GetColor(colorToken, ThemeTokens.Type));
-            l.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
-            return l;
-        }
 
         /// <summary>Attach a hover-AND-keyboard-focus tooltip (UX-DR53 / NFR-2). The keyboard half needs
         /// <c>FocusMode.All</c>; descendants are made mouse-transparent so the composite is the unambiguous hover target.</summary>

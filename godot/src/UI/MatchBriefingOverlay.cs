@@ -24,7 +24,6 @@ namespace ProjectChimera.UI
         private const float PANEL_H = 520f;
 
         private GodotTheme         _theme  = null!;
-        private AccentController?  _accent;
 
         private ColorRect       _scrim       = null!;
         private PanelContainer  _panel       = null!;
@@ -33,22 +32,9 @@ namespace ProjectChimera.UI
 
         public override void _Ready()
         {
-            EnsureKitInitialized();
+            _theme = ChimeraComponents.EnsureInitialized(this);
             BuildChrome();
             Visible = false;
-        }
-
-        private void EnsureKitInitialized()
-        {
-            _theme = ResourceLoader.Load<GodotTheme>(ThemeBuilder.ThemePath, cacheMode: ResourceLoader.CacheMode.Ignore)
-                     ?? ThemeBuilder.Build();
-            if (!ChimeraComponents.IsInitialized)
-            {
-                _accent = new AccentController { Name = "AccentController" };
-                AddChild(_accent);
-                _accent.Initialize(_theme);
-                ChimeraComponents.Initialize(_theme, _accent);
-            }
         }
 
         private void BuildChrome()
@@ -72,7 +58,7 @@ namespace ProjectChimera.UI
             root.AddThemeConstantOverride("separation", ChimeraComponents.Const(ThemeTokens.S4));
             _panel.AddChild(root);
 
-            _titleLabel = Heading("Briefing", ThemeTokens.Txl);
+            _titleLabel = ChimeraComponents.Heading("Briefing", ThemeTokens.Txl);
             root.AddChild(_titleLabel);
 
             var scroll = new ScrollContainer { SizeFlagsVertical = Control.SizeFlags.ExpandFill };
@@ -108,7 +94,12 @@ namespace ProjectChimera.UI
             foreach (Node c in _bodyHost.GetChildren()) c.QueueFree();
 
             if (!string.IsNullOrWhiteSpace(description))
-                _bodyHost.AddChild(Body(description!, ThemeTokens.TextMid));
+            {
+                var descBody = ChimeraComponents.Body(description!, ThemeTokens.TextMid);
+                descBody.AutowrapMode = TextServer.AutowrapMode.WordSmart;
+                descBody.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+                _bodyHost.AddChild(descBody);
+            }
 
             // A Hidden objective is "not yet revealed to the player" (see ObjectiveState.Hidden) and the in-match quest
             // log deliberately hides its row until a show_objective reveals it. The briefing must honor the same reveal-
@@ -123,17 +114,28 @@ namespace ProjectChimera.UI
             if (visibleObjectives.Count > 0)
             {
                 foreach (ResolvedObjective o in visibleObjectives)
-                    _bodyHost.AddChild(Body("•  " + o.Title, ThemeTokens.TextHi));
+                {
+                    var objBody = ChimeraComponents.Body("•  " + o.Title, ThemeTokens.TextHi);
+                    objBody.AutowrapMode = TextServer.AutowrapMode.WordSmart;
+                    objBody.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+                    _bodyHost.AddChild(objBody);
+                }
             }
             else
             {
-                _bodyHost.AddChild(Body("•  " + WinObjectiveText.GenericVictory, ThemeTokens.TextHi));
+                var genericBody = ChimeraComponents.Body("•  " + WinObjectiveText.GenericVictory, ThemeTokens.TextHi);
+                genericBody.AutowrapMode = TextServer.AutowrapMode.WordSmart;
+                genericBody.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+                _bodyHost.AddChild(genericBody);
             }
 
             if (!string.IsNullOrWhiteSpace(factionBlurb))
             {
                 _bodyHost.AddChild(SectionLabel("Faction"));
-                _bodyHost.AddChild(Body(factionBlurb!, ThemeTokens.TextMid));
+                var blurbBody = ChimeraComponents.Body(factionBlurb!, ThemeTokens.TextMid);
+                blurbBody.AutowrapMode = TextServer.AutowrapMode.WordSmart;
+                blurbBody.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+                _bodyHost.AddChild(blurbBody);
             }
 
             Visible = true;
@@ -144,29 +146,12 @@ namespace ProjectChimera.UI
 
         // ── Small label builders (mirror HeroPickerOverlay) ──
 
-        private Label Heading(string text, StringName sizeToken)
-        {
-            var l = new Label { Text = text };
-            l.AddThemeFontOverride("font", _theme.GetFont(ThemeTokens.FontDisplay, ThemeTokens.Type));
-            l.AddThemeFontSizeOverride("font_size", _theme.GetFontSize(sizeToken, ThemeTokens.Type));
-            l.AddThemeColorOverride("font_color", _theme.GetColor(ThemeTokens.TextHi, ThemeTokens.Type));
-            return l;
-        }
-
         private Label SectionLabel(string text)
         {
             var l = new Label { Text = text };
             l.AddThemeFontOverride("font", _theme.GetFont(ThemeTokens.FontDisplay, ThemeTokens.Type));
             l.AddThemeFontSizeOverride("font_size", _theme.GetFontSize(ThemeTokens.Tlg, ThemeTokens.Type));
             l.AddThemeColorOverride("font_color", _theme.GetColor(ThemeTokens.Accent, ThemeTokens.Type));
-            return l;
-        }
-
-        private Label Body(string text, StringName colorToken)
-        {
-            var l = new Label { Text = text, AutowrapMode = TextServer.AutowrapMode.WordSmart };
-            l.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-            l.AddThemeColorOverride("font_color", _theme.GetColor(colorToken, ThemeTokens.Type));
             return l;
         }
     }

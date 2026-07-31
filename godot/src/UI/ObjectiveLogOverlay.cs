@@ -28,7 +28,6 @@ namespace ProjectChimera.UI
         private const float PANEL_W = 340f;
 
         private GodotTheme         _theme  = null!;
-        private AccentController?  _accent;
         private ChimeraToastHost   _toastHost = null!;
 
         // ── Deps (late-bound; wired by the phase) ──
@@ -56,22 +55,9 @@ namespace ProjectChimera.UI
 
         public override void _Ready()
         {
-            EnsureKitInitialized();
+            _theme = ChimeraComponents.EnsureInitialized(this);
             BuildChrome();
             Visible = false;
-        }
-
-        private void EnsureKitInitialized()
-        {
-            _theme = ResourceLoader.Load<GodotTheme>(ThemeBuilder.ThemePath, cacheMode: ResourceLoader.CacheMode.Ignore)
-                     ?? ThemeBuilder.Build();
-            if (!ChimeraComponents.IsInitialized)
-            {
-                _accent = new AccentController { Name = "AccentController" };
-                AddChild(_accent);
-                _accent.Initialize(_theme);
-                ChimeraComponents.Initialize(_theme, _accent);
-            }
         }
 
         /// <summary>Wire the read rail + late-bound scenario / local-faction getters. Called by the phase after AddChild.</summary>
@@ -106,7 +92,7 @@ namespace ProjectChimera.UI
             root.AddThemeConstantOverride("separation", ChimeraComponents.Const(ThemeTokens.S3));
             panel.AddChild(root);
 
-            root.AddChild(Heading("Objectives"));
+            root.AddChild(ChimeraComponents.Heading("Objectives", ThemeTokens.Tlg));
 
             _rowHost = new VBoxContainer();
             _rowHost.AddThemeConstantOverride("separation", ChimeraComponents.Const(ThemeTokens.S2));
@@ -206,15 +192,6 @@ namespace ProjectChimera.UI
             StringName titleColor = state == (int)ObjectiveState.Active || state == (int)ObjectiveState.Hidden
                 ? ThemeTokens.TextHi : ThemeTokens.TextMid;
             row.Title.AddThemeColorOverride("font_color", _theme.GetColor(titleColor, ThemeTokens.Type));
-        }
-
-        private Label Heading(string text)
-        {
-            var l = new Label { Text = text };
-            l.AddThemeFontOverride("font", _theme.GetFont(ThemeTokens.FontDisplay, ThemeTokens.Type));
-            l.AddThemeFontSizeOverride("font_size", _theme.GetFontSize(ThemeTokens.Tlg, ThemeTokens.Type));
-            l.AddThemeColorOverride("font_color", _theme.GetColor(ThemeTokens.TextHi, ThemeTokens.Type));
-            return l;
         }
     }
 }

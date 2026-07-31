@@ -49,9 +49,8 @@ namespace ProjectChimera.UI
 
         private static readonly float[] Speeds = { 0.5f, 1f, 2f, 3f };
 
-        // Kit context (self-owned; _accent only created when this overlay is the first kit consumer).
+        // Kit context.
         private GodotTheme        _theme  = null!;
-        private AccentController? _accent;
 
         private bool _online;
         private ChimeraDialog? _activeDialog; // a live concede/quit confirm — Esc is owned by it while open
@@ -73,7 +72,7 @@ namespace ProjectChimera.UI
             Layer   = 14; // below the settings panel (15) so Settings opens over the menu
             Visible = false;
 
-            EnsureKitInitialized(); // MUST run before any ChimeraComponents.* call, or the factory throws
+            _theme = ChimeraComponents.EnsureInitialized(this); // MUST run before any ChimeraComponents.* call, or the factory throws
 
             var anchorRoot = new Control();
             anchorRoot.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
@@ -295,19 +294,5 @@ namespace ProjectChimera.UI
             }
         }
 
-        // ── Kit bootstrap (mirrors SettingsPanel.EnsureKitInitialized) ─────────
-        private void EnsureKitInitialized()
-        {
-            _theme = ResourceLoader.Load<GodotTheme>(ThemeBuilder.ThemePath, cacheMode: ResourceLoader.CacheMode.Ignore)
-                     ?? ThemeBuilder.Build();
-
-            if (!ChimeraComponents.IsInitialized)
-            {
-                _accent = new AccentController { Name = "AccentController" };
-                AddChild(_accent);
-                _accent.Initialize(_theme);
-                ChimeraComponents.Initialize(_theme, _accent);
-            }
-        }
     }
 }

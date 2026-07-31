@@ -39,9 +39,8 @@ namespace ProjectChimera.CreationSuite
         private const int   PREVIEW_H = 180;
         private const float TURNTABLE_SPEED = 30f; // deg/sec (AssetPreviewScene value, D-8)
 
-        // ── Kit context (self-owned; _accent only created when this panel is the first consumer) ──
+        // ── Kit context ──
         private GodotTheme        _theme  = null!;
-        private AccentController?  _accent;
 
         // ── Deps (wired by UnitCardPhase after AddChild) ──
         private FactionDefinition? _faction;               // the unit source (Units only — D-10)
@@ -121,7 +120,7 @@ namespace ProjectChimera.CreationSuite
         /// <inheritdoc/>
         public override void _Ready()
         {
-            EnsureKitInitialized();   // MUST run before any ChimeraComponents.* call, or the factory throws
+            _theme = ChimeraComponents.EnsureInitialized(this);   // MUST run before any ChimeraComponents.* call, or the factory throws
             BuildUi();
         }
 
@@ -194,9 +193,10 @@ namespace ProjectChimera.CreationSuite
             _aiCard.AddThemeConstantOverride("separation", ChimeraComponents.Const(ThemeTokens.S1));
             parent.AddChild(_aiCard);
 
-            _aiCard.AddChild(Heading("AI Draft, Commander", ThemeTokens.Tmd));
+            _aiCard.AddChild(ChimeraComponents.Heading("AI Draft, Commander", ThemeTokens.Tmd));
 
-            _aiAvailLabel = Body("", ThemeTokens.TextLo);
+            _aiAvailLabel = ChimeraComponents.Body("", ThemeTokens.TextLo);
+            _aiAvailLabel.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
             _aiAvailLabel.AutowrapMode = TextServer.AutowrapMode.Word;
             _aiAvailLabel.Visible = false;
             _aiCard.AddChild(_aiAvailLabel);
@@ -224,11 +224,13 @@ namespace ProjectChimera.CreationSuite
             _aiSpinner = ChimeraSpinner.Create(20);
             _aiSpinner.Visible = false;
             genRow.AddChild(_aiSpinner);
-            _aiSpinnerText = Body("Transmuting…", ThemeTokens.TextMid);
+            _aiSpinnerText = ChimeraComponents.Body("Transmuting…", ThemeTokens.TextMid);
+            _aiSpinnerText.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
             _aiSpinnerText.Visible = false;
             genRow.AddChild(_aiSpinnerText);
 
-            _aiStatusLabel = Body("", ThemeTokens.TextLo);
+            _aiStatusLabel = ChimeraComponents.Body("", ThemeTokens.TextLo);
+            _aiStatusLabel.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
             _aiStatusLabel.AutowrapMode = TextServer.AutowrapMode.Word;
             _aiStatusLabel.Visible = false;
             _aiCard.AddChild(_aiStatusLabel);
@@ -344,9 +346,10 @@ namespace ProjectChimera.CreationSuite
             _balanceCard.AddThemeConstantOverride("separation", ChimeraComponents.Const(ThemeTokens.S1));
             parent.AddChild(_balanceCard);
 
-            _balanceCard.AddChild(Heading("AI Balance Analysis, Commander", ThemeTokens.Tmd));
+            _balanceCard.AddChild(ChimeraComponents.Heading("AI Balance Analysis, Commander", ThemeTokens.Tmd));
 
-            _balanceAvailLabel = Body("", ThemeTokens.TextLo);
+            _balanceAvailLabel = ChimeraComponents.Body("", ThemeTokens.TextLo);
+            _balanceAvailLabel.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
             _balanceAvailLabel.AutowrapMode = TextServer.AutowrapMode.Word;
             _balanceAvailLabel.Visible = false;
             _balanceCard.AddChild(_balanceAvailLabel);
@@ -371,11 +374,13 @@ namespace ProjectChimera.CreationSuite
             _balanceSpinner = ChimeraSpinner.Create(20);
             _balanceSpinner.Visible = false;
             genRow.AddChild(_balanceSpinner);
-            _balanceSpinnerText = Body("Transmuting…", ThemeTokens.TextMid);
+            _balanceSpinnerText = ChimeraComponents.Body("Transmuting…", ThemeTokens.TextMid);
+            _balanceSpinnerText.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
             _balanceSpinnerText.Visible = false;
             genRow.AddChild(_balanceSpinnerText);
 
-            _balanceStatusLabel = Body("", ThemeTokens.TextLo);
+            _balanceStatusLabel = ChimeraComponents.Body("", ThemeTokens.TextLo);
+            _balanceStatusLabel.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
             _balanceStatusLabel.AutowrapMode = TextServer.AutowrapMode.Word;
             _balanceStatusLabel.Visible = false;
             _balanceCard.AddChild(_balanceStatusLabel);
@@ -444,9 +449,12 @@ namespace ProjectChimera.CreationSuite
             UnitDefinition? liveUnit = _faction?.Units?.FirstOrDefault(u => u != null && u.Id == s.UnitId);
             if (liveUnit != null && BalanceSuggestionApplier.TryReadField(liveUnit, s.Field, out double curVal))
                 curText = curVal.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
-            row.AddChild(Body($"{s.UnitId} · {s.Field}   (current {curText})", ThemeTokens.TextMid));
+            var suggestionLbl = ChimeraComponents.Body($"{s.UnitId} · {s.Field}   (current {curText})", ThemeTokens.TextMid);
+            suggestionLbl.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
+            row.AddChild(suggestionLbl);
 
-            var rationale = Body(s.Rationale, ThemeTokens.TextLo);
+            var rationale = ChimeraComponents.Body(s.Rationale, ThemeTokens.TextLo);
+            rationale.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
             rationale.AutowrapMode = TextServer.AutowrapMode.Word;
             row.AddChild(rationale);
 
@@ -612,24 +620,6 @@ namespace ProjectChimera.CreationSuite
             _turntable.RotateY(Mathf.DegToRad(TURNTABLE_SPEED * (float)delta));   // slow live turntable (D-8)
         }
 
-        // ── Kit bootstrap (D-2) ──────────────────────────────────────────────────
-
-        private void EnsureKitInitialized()
-        {
-            // ALWAYS load the theme (the inner PanelContainer.Theme needs it regardless of factory state).
-            _theme = ResourceLoader.Load<GodotTheme>(ThemeBuilder.ThemePath, cacheMode: ResourceLoader.CacheMode.Ignore)
-                     ?? ThemeBuilder.Build();
-
-            // Guard ONLY the one-time factory bootstrap so a future startup phase (3.11) makes this a clean no-op.
-            if (!ChimeraComponents.IsInitialized)
-            {
-                _accent = new AccentController { Name = "AccentController" };
-                AddChild(_accent);
-                _accent.Initialize(_theme);
-                ChimeraComponents.Initialize(_theme, _accent);
-            }
-        }
-
         // ── UI construction ──────────────────────────────────────────────────────
 
         private void BuildUi()
@@ -661,7 +651,7 @@ namespace ProjectChimera.CreationSuite
             titleRow.AddThemeConstantOverride("separation", ChimeraComponents.Const(ThemeTokens.S2));
             root.AddChild(titleRow);
 
-            var titleLbl = Heading("Unit Editor", ThemeTokens.Tlg);
+            var titleLbl = ChimeraComponents.Heading("Unit Editor", ThemeTokens.Tlg);
             titleLbl.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
             titleLbl.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
             titleRow.AddChild(titleLbl);
@@ -670,7 +660,8 @@ namespace ProjectChimera.CreationSuite
             _prevBtn.Pressed += () => Browse(-1);
             titleRow.AddChild(_prevBtn);
 
-            _counterLabel = Body("—", ThemeTokens.TextMid);
+            _counterLabel = ChimeraComponents.Body("—", ThemeTokens.TextMid);
+            _counterLabel.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
             _counterLabel.HorizontalAlignment = HorizontalAlignment.Center;
             _counterLabel.CustomMinimumSize = new Vector2(88, 0);
             _counterLabel.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
@@ -725,7 +716,8 @@ namespace ProjectChimera.CreationSuite
             contentCol.AddChild(_bodyHost);
 
             // Status line + toolbar (fixed below the scroll — the AbilityEditor save-row shape).
-            _statusLabel = Body("", ThemeTokens.TextLo);
+            _statusLabel = ChimeraComponents.Body("", ThemeTokens.TextLo);
+            _statusLabel.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
             _statusLabel.AutowrapMode = TextServer.AutowrapMode.Word;
             _statusLabel.Visible = false;
             root.AddChild(_statusLabel);
@@ -847,8 +839,10 @@ namespace ProjectChimera.CreationSuite
         private void BuildEmptyState()
         {
             _segment.Visible = false;
-            _headerHost.AddChild(Heading("Unit Editor", ThemeTokens.Txl));
-            _bodyHost.AddChild(Body(_faction is null ? "No faction bound." : "This faction has no units — press New to add one.", ThemeTokens.TextLo));
+            _headerHost.AddChild(ChimeraComponents.Heading("Unit Editor", ThemeTokens.Txl));
+            var emptyLbl = ChimeraComponents.Body(_faction is null ? "No faction bound." : "This faction has no units — press New to add one.", ThemeTokens.TextLo);
+            emptyLbl.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
+            _bodyHost.AddChild(emptyLbl);
         }
 
         // ── Read-only header (kept from 3.3; HERO tag stays read-only — Promote-to-Hero is 3.7) ──
@@ -857,12 +851,13 @@ namespace ProjectChimera.CreationSuite
         {
             _segment.Visible = true;
 
-            var title = Heading(string.IsNullOrEmpty(def.DisplayName) ? def.Id : def.DisplayName, ThemeTokens.T2xl);
+            var title = ChimeraComponents.Heading(string.IsNullOrEmpty(def.DisplayName) ? def.Id : def.DisplayName, ThemeTokens.T2xl);
             title.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
             title.AutowrapMode = TextServer.AutowrapMode.Word;
             _headerHost.AddChild(title);
 
-            var id = Body(def.Id, ThemeTokens.TextLo);
+            var id = ChimeraComponents.Body(def.Id, ThemeTokens.TextLo);
+            id.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
             id.AddThemeFontSizeOverride("font_size", _theme.GetFontSize(ThemeTokens.Txs, ThemeTokens.Type));
             _headerHost.AddChild(id);
 
@@ -928,23 +923,6 @@ namespace ProjectChimera.CreationSuite
         }
 
         // ── Small shared builders (kept from 3.3) ────────────────────────────────
-
-        private Label Heading(string text, StringName sizeToken)
-        {
-            var l = new Label { Text = text };
-            l.AddThemeFontOverride("font", _theme.GetFont(ThemeTokens.FontDisplay, ThemeTokens.Type));
-            l.AddThemeFontSizeOverride("font_size", _theme.GetFontSize(sizeToken, ThemeTokens.Type));
-            l.AddThemeColorOverride("font_color", Tok(ThemeTokens.TextHi));
-            return l;
-        }
-
-        private Label Body(string text, StringName colorToken)
-        {
-            var l = new Label { Text = text };
-            l.AddThemeColorOverride("font_color", Tok(colorToken));
-            l.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
-            return l;
-        }
 
         private Color Tok(StringName token) => _theme.GetColor(token, ThemeTokens.Type);
 

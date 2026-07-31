@@ -132,7 +132,6 @@ namespace ProjectChimera.Multiplayer
         // ── Kit context ────────────────────────────────────────────────────────────
 
         private GodotTheme       _theme  = null!;
-        private AccentController? _accent;
 
         // ── State ─────────────────────────────────────────────────────────────────
 
@@ -189,24 +188,11 @@ namespace ProjectChimera.Multiplayer
         public override void _Ready()
         {
             Layer = 20;
-            EnsureKitInitialized();
+            _theme = ChimeraComponents.EnsureInitialized(this);
             BuildUi();
             Visible = false;
         }
 
-        private void EnsureKitInitialized()
-        {
-            _theme = ResourceLoader.Load<GodotTheme>(ThemeBuilder.ThemePath, cacheMode: ResourceLoader.CacheMode.Ignore)
-                     ?? ThemeBuilder.Build();
-
-            if (!ChimeraComponents.IsInitialized)
-            {
-                _accent = new AccentController { Name = "AccentController" };
-                AddChild(_accent);
-                _accent.Initialize(_theme);
-                ChimeraComponents.Initialize(_theme, _accent);
-            }
-        }
 
         // ── Visibility ────────────────────────────────────────────────────────────
 

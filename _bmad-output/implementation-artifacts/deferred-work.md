@@ -220,7 +220,8 @@ origin: migrated from legacy ledger ("Deferred from: code review of story-3.11 (
 source_spec: `_bmad-output/implementation-artifacts/spec-3-11-added-apply-the-design-system-to-the-front-end-shell-title-mode-select-settings.md`
 location: n/a
 reason: summary: The kit-bootstrap (`EnsureKitInitialized`) and the `Heading`/`Body` label helpers are copy-pasted across `MainMenuOverlay`, `SettingsPanel`, and `HeroPickerOverlay` with minor drift — consolidate into a shared static helper or a base overlay type. evidence: Three near-identical copies now exist and have already diverged (e.g. `SettingsPanel.Body` forces `SizeFlagsVertical = ShrinkCenter`, `MainMenuOverlay.Body` does not, and `HeroPickerOverlay`'s helper takes a different parameter set), so the styling of "the same" element differs by consumer. This is a pre-existing per-overlay pattern that Story 3.11 extended by two copies; every new kit-consuming overlay repeats it and risks further drift. A shared `ChimeraOverlayBase` (or static helpers in the kit) owning bootstrap + Heading/Body would make the pattern single-sourced. Flagged by the Blind Hunter review layer.
-status: open
+status: done 2026-07-31
+resolution: resolved by sweep bundle dw-overlay-kit-bootstrap-consolidation
 
 ## Deferred from: code review of story-3.12 (2026-07-07)
 

@@ -509,7 +509,9 @@ namespace ProjectChimera.CreationSuite
             }
             else
             {
-                col.AddChild(Body("(none — free, or the legacy Ore/Crystal cost fields above apply)", ThemeTokens.TextLo));
+                var noneLbl = ChimeraComponents.Body("(none — free, or the legacy Ore/Crystal cost fields above apply)", ThemeTokens.TextLo);
+                noneLbl.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
+                col.AddChild(noneLbl);
             }
 
             // "+ Add resource" select: a leading no-op prompt at index 0, then every known resource id not already
@@ -651,7 +653,8 @@ namespace ProjectChimera.CreationSuite
 
         private void BuildRawPane(Control parent, BuildingDefinition def)
         {
-            var hint = Body("Edit this building's JSON directly. On Save a dirty pane wins — validated, then folded back.", ThemeTokens.TextLo);
+            var hint = ChimeraComponents.Body("Edit this building's JSON directly. On Save a dirty pane wins — validated, then folded back.", ThemeTokens.TextLo);
+            hint.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
             hint.AutowrapMode = TextServer.AutowrapMode.Word;
             hint.AddThemeFontSizeOverride("font_size", _theme.GetFontSize(ThemeTokens.Txs, ThemeTokens.Type));
             parent.AddChild(hint);

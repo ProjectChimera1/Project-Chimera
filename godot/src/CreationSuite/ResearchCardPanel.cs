@@ -47,9 +47,8 @@ namespace ProjectChimera.CreationSuite
 
         private const double StatMax = 32767;   // one below the 16.16 ceiling (mirrors BuildingCardPanel.Edit.cs)
 
-        // ── Kit context (self-owned; _accent only created when this panel is the first consumer) ──
+        // ── Kit context ──
         private GodotTheme        _theme  = null!;
-        private AccentController? _accent;
 
         // ── Deps (wired by TechTreePanel after AddChild) ──
         private FactionDefinition? _faction;               // the research source (Research only — never Units/Buildings)
@@ -93,7 +92,7 @@ namespace ProjectChimera.CreationSuite
 
         public override void _Ready()
         {
-            EnsureKitInitialized();   // MUST run before any ChimeraComponents.* call, or the factory throws
+            _theme = ChimeraComponents.EnsureInitialized(this);   // MUST run before any ChimeraComponents.* call, or the factory throws
             BuildUi();
         }
 
@@ -138,22 +137,6 @@ namespace ProjectChimera.CreationSuite
             if (key.CtrlPressed && key.Keycode == Key.Y) { _history.Redo(); GetViewport().SetInputAsHandled(); return; }
         }
 
-        // ── Kit bootstrap (mirrors BuildingCardPanel.EnsureKitInitialized) ──────────
-
-        private void EnsureKitInitialized()
-        {
-            _theme = ResourceLoader.Load<GodotTheme>(ThemeBuilder.ThemePath, cacheMode: ResourceLoader.CacheMode.Ignore)
-                     ?? ThemeBuilder.Build();
-
-            if (!ChimeraComponents.IsInitialized)
-            {
-                _accent = new AccentController { Name = "AccentController" };
-                AddChild(_accent);
-                _accent.Initialize(_theme);
-                ChimeraComponents.Initialize(_theme, _accent);
-            }
-        }
-
         // ── UI construction ──────────────────────────────────────────────────────
 
         private void BuildUi()
@@ -184,7 +167,7 @@ namespace ProjectChimera.CreationSuite
             titleRow.AddThemeConstantOverride("separation", ChimeraComponents.Const(ThemeTokens.S2));
             root.AddChild(titleRow);
 
-            var titleLbl = Heading("Research Editor", ThemeTokens.Tlg);
+            var titleLbl = ChimeraComponents.Heading("Research Editor", ThemeTokens.Tlg);
             titleLbl.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
             titleLbl.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
             titleRow.AddChild(titleLbl);
@@ -193,10 +176,10 @@ namespace ProjectChimera.CreationSuite
             _prevBtn.Pressed += () => Browse(-1);
             titleRow.AddChild(_prevBtn);
 
-            _counterLabel = Body("—", ThemeTokens.TextMid);
+            _counterLabel = ChimeraComponents.Body("—", ThemeTokens.TextMid);
+            _counterLabel.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
             _counterLabel.HorizontalAlignment = HorizontalAlignment.Center;
             _counterLabel.CustomMinimumSize = new Vector2(88, 0);
-            _counterLabel.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
             titleRow.AddChild(_counterLabel);
 
             _nextBtn = ChimeraComponents.IconButton("▶");
@@ -233,7 +216,8 @@ namespace ProjectChimera.CreationSuite
             _bodyHost.AddThemeConstantOverride("separation", ChimeraComponents.Const(ThemeTokens.S2));
             contentCol.AddChild(_bodyHost);
 
-            _statusLabel = Body("", ThemeTokens.TextLo);
+            _statusLabel = ChimeraComponents.Body("", ThemeTokens.TextLo);
+            _statusLabel.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
             _statusLabel.AutowrapMode = TextServer.AutowrapMode.Word;
             _statusLabel.Visible = false;
             root.AddChild(_statusLabel);
@@ -299,19 +283,22 @@ namespace ProjectChimera.CreationSuite
         private void BuildEmptyState()
         {
             _segment.Visible = false;
-            _headerHost.AddChild(Heading("Research Editor", ThemeTokens.Txl));
-            _bodyHost.AddChild(Body(_faction is null ? "No faction bound." : "This faction has no research — press New to add one.", ThemeTokens.TextLo));
+            _headerHost.AddChild(ChimeraComponents.Heading("Research Editor", ThemeTokens.Txl));
+            var emptyLbl = ChimeraComponents.Body(_faction is null ? "No faction bound." : "This faction has no research — press New to add one.", ThemeTokens.TextLo);
+            emptyLbl.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
+            _bodyHost.AddChild(emptyLbl);
         }
 
         private void BuildHeader(ResearchDefinition def)
         {
             _segment.Visible = true;
-            var title = Heading(string.IsNullOrEmpty(def.DisplayName) ? def.Id : def.DisplayName, ThemeTokens.T2xl);
+            var title = ChimeraComponents.Heading(string.IsNullOrEmpty(def.DisplayName) ? def.Id : def.DisplayName, ThemeTokens.T2xl);
             title.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
             title.AutowrapMode = TextServer.AutowrapMode.Word;
             _headerHost.AddChild(title);
 
-            var id = Body(def.Id, ThemeTokens.TextLo);
+            var id = ChimeraComponents.Body(def.Id, ThemeTokens.TextLo);
+            id.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
             id.AddThemeFontSizeOverride("font_size", _theme.GetFontSize(ThemeTokens.Txs, ThemeTokens.Type));
             _headerHost.AddChild(id);
 
@@ -492,7 +479,9 @@ namespace ProjectChimera.CreationSuite
             List<ResearchLevel> levels = def.Levels ?? new List<ResearchLevel>();
             if (levels.Count == 0)
             {
-                _levelsHost.AddChild(Body("(no levels — press + Add level below)", ThemeTokens.TextLo));
+                var noLevelsLbl = ChimeraComponents.Body("(no levels — press + Add level below)", ThemeTokens.TextLo);
+                noLevelsLbl.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
+                _levelsHost.AddChild(noLevelsLbl);
                 return;
             }
             for (int i = 0; i < levels.Count; i++)
@@ -564,7 +553,9 @@ namespace ProjectChimera.CreationSuite
             }
             else
             {
-                col.AddChild(Body("(free)", ThemeTokens.TextLo));
+                var freeLbl = ChimeraComponents.Body("(free)", ThemeTokens.TextLo);
+                freeLbl.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
+                col.AddChild(freeLbl);
             }
 
             var items = new List<string> { "+ Add resource…" };
@@ -723,7 +714,8 @@ namespace ProjectChimera.CreationSuite
 
         private void BuildRawPane(Control parent, ResearchDefinition def)
         {
-            var hint = Body("Edit this research's JSON directly. On Save a dirty pane wins — validated, then folded back.", ThemeTokens.TextLo);
+            var hint = ChimeraComponents.Body("Edit this research's JSON directly. On Save a dirty pane wins — validated, then folded back.", ThemeTokens.TextLo);
+            hint.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
             hint.AutowrapMode = TextServer.AutowrapMode.Word;
             hint.AddThemeFontSizeOverride("font_size", _theme.GetFontSize(ThemeTokens.Txs, ThemeTokens.Type));
             parent.AddChild(hint);
@@ -1068,23 +1060,6 @@ namespace ProjectChimera.CreationSuite
         }
 
         // ── Small shared builders (mirror BuildingCardPanel's) ───────────────────
-
-        private Label Heading(string text, StringName sizeToken)
-        {
-            var l = new Label { Text = text };
-            l.AddThemeFontOverride("font", _theme.GetFont(ThemeTokens.FontDisplay, ThemeTokens.Type));
-            l.AddThemeFontSizeOverride("font_size", _theme.GetFontSize(sizeToken, ThemeTokens.Type));
-            l.AddThemeColorOverride("font_color", Tok(ThemeTokens.TextHi));
-            return l;
-        }
-
-        private Label Body(string text, StringName colorToken)
-        {
-            var l = new Label { Text = text };
-            l.AddThemeColorOverride("font_color", Tok(colorToken));
-            l.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
-            return l;
-        }
 
         private Color Tok(StringName token) => _theme.GetColor(token, ThemeTokens.Type);
 

@@ -26,7 +26,6 @@ namespace ProjectChimera.UI
         public event Action<string>? OnSaveReplay;
 
         private GodotTheme        _theme  = null!;
-        private AccentController? _accent;
         private VBoxContainer     _body   = null!;
 
         /// <summary>Build the overlay shell (hidden). Call once at bootstrap.</summary>
@@ -37,7 +36,7 @@ namespace ProjectChimera.UI
 
             Visible = false;
 
-            EnsureKitInitialized();
+            _theme = ChimeraComponents.EnsureInitialized(this);
 
             var anchorRoot = new Control();
             anchorRoot.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
@@ -160,20 +159,6 @@ namespace ProjectChimera.UI
             Cell(c6, 90,  HorizontalAlignment.Center);
             Cell(c7, 90,  HorizontalAlignment.Center);
             _body.AddChild(row);
-        }
-
-        private void EnsureKitInitialized()
-        {
-            _theme = ResourceLoader.Load<GodotTheme>(ThemeBuilder.ThemePath, cacheMode: ResourceLoader.CacheMode.Ignore)
-                     ?? ThemeBuilder.Build();
-
-            if (!ChimeraComponents.IsInitialized)
-            {
-                _accent = new AccentController { Name = "AccentController" };
-                AddChild(_accent);
-                _accent.Initialize(_theme);
-                ChimeraComponents.Initialize(_theme, _accent);
-            }
         }
     }
 }

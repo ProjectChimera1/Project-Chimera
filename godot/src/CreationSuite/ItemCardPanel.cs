@@ -30,7 +30,6 @@ namespace ProjectChimera.CreationSuite
         private const int PANEL_W = 460;
 
         private GodotTheme     _theme  = null!;
-        private AccentController? _accent;
         private GameState?     _gameState;
         private string         _itemsDir = "res://resources/data/items";
 
@@ -70,7 +69,7 @@ namespace ProjectChimera.CreationSuite
 
         public override void _Ready()
         {
-            EnsureKitInitialized();
+            _theme = ChimeraComponents.EnsureInitialized(this);
             BuildUi();
             _panel.Visible = false;
         }
@@ -87,21 +86,6 @@ namespace ProjectChimera.CreationSuite
         private void OnModeChanged(int mode)
         {
             if (mode == (int)GameMode.Play) Close();
-        }
-
-        // ── Kit bootstrap (copied verbatim from UnitCardPanel) ─────────────────────
-
-        private void EnsureKitInitialized()
-        {
-            _theme = ResourceLoader.Load<GodotTheme>(ThemeBuilder.ThemePath, cacheMode: ResourceLoader.CacheMode.Ignore)
-                     ?? ThemeBuilder.Build();
-            if (!ChimeraComponents.IsInitialized)
-            {
-                _accent = new AccentController { Name = "AccentController" };
-                AddChild(_accent);
-                _accent.Initialize(_theme);
-                ChimeraComponents.Initialize(_theme, _accent);
-            }
         }
 
         // ── UI construction ────────────────────────────────────────────────────────

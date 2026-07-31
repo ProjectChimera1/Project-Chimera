@@ -60,7 +60,7 @@ namespace ProjectChimera.UI.Components
             col.AddThemeConstantOverride("separation", 18);
             margin.AddChild(col);
 
-            col.AddChild(Heading("Project Chimera — component kit  ·  Story 3.1b proof", ThemeTokens.T2xl));
+            col.AddChild(ChimeraComponents.Heading("Project Chimera — component kit  ·  Story 3.1b proof", ThemeTokens.T2xl));
 
             BuildAccentRow(col);
             BuildPanels(col);
@@ -84,7 +84,7 @@ namespace ProjectChimera.UI.Components
         // ── Accent switch (AC4): retints the WHOLE kit in one op ──
         private void BuildAccentRow(VBoxContainer col)
         {
-            col.AddChild(Heading("Accent switch (UX-DR4) — one op retints the entire kit", ThemeTokens.Tlg));
+            col.AddChild(ChimeraComponents.Heading("Accent switch (UX-DR4) — one op retints the entire kit", ThemeTokens.Tlg));
             var row = Row();
             foreach (var palette in ThemeTokens.AccentPalettes)
             {
@@ -97,7 +97,8 @@ namespace ProjectChimera.UI.Components
                 };
                 row.AddChild(btn);
             }
-            _currentAccentLabel = Body($"current: {_accent.CurrentAccent}");
+            _currentAccentLabel = ChimeraComponents.Body($"current: {_accent.CurrentAccent}", ThemeTokens.TextMid);
+            _currentAccentLabel.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
             row.AddChild(_currentAccentLabel);
             col.AddChild(row);
         }
@@ -105,7 +106,7 @@ namespace ProjectChimera.UI.Components
         // ── panel (DR13) + a cut-lg=14 surface (closes 3.1a deferred #4) ──
         private void BuildPanels(VBoxContainer col)
         {
-            col.AddChild(Heading("panel (DR13) — faceted cut-8; variants + cut-lg", ThemeTokens.Tlg));
+            col.AddChild(ChimeraComponents.Heading("panel (DR13) — faceted cut-8; variants + cut-lg", ThemeTokens.Tlg));
             var row = Row(16);
             row.AddChild(FilledPanel(ChimeraComponents.Panel(), "panel (surface-1) + shadow-1"));
             row.AddChild(FilledPanel(ChimeraComponents.Panel(ChimeraComponents.PanelVariant.Surface2), "panel --2 (surface-2)"));
@@ -118,7 +119,9 @@ namespace ProjectChimera.UI.Components
             var box = ChimeraStyleBox.Chamfer(cutLg, _theme.GetColor(ThemeTokens.Surface3, ThemeTokens.Type), _theme.GetColor(ThemeTokens.EdgeLight, ThemeTokens.Type));
             box.WithContentMargins(16, 12).WithShadow(ThemeTokens.GetShadow(ThemeTokens.Shadow2));
             big.AddThemeStyleboxOverride("panel", box);
-            big.AddChild(Body($"cut-lg = {cutLg}\n(dialog-scale facet)"));
+            var cutLgBody = ChimeraComponents.Body($"cut-lg = {cutLg}\n(dialog-scale facet)", ThemeTokens.TextMid);
+            cutLgBody.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
+            big.AddChild(cutLgBody);
             row.AddChild(big);
             col.AddChild(row);
         }
@@ -126,7 +129,7 @@ namespace ProjectChimera.UI.Components
         // ── btn (DR14) + icon-btn (DR15) ──
         private void BuildButtons(VBoxContainer col)
         {
-            col.AddChild(Heading("btn (DR14) — variants × sizes, :active depress, disabled", ThemeTokens.Tlg));
+            col.AddChild(ChimeraComponents.Heading("btn (DR14) — variants × sizes, :active depress, disabled", ThemeTokens.Tlg));
 
             var variants = Row(10);
             variants.AddChild(ChimeraComponents.Button("Primary", ChimeraComponents.ButtonVariant.Primary));
@@ -150,7 +153,7 @@ namespace ProjectChimera.UI.Components
             blockWrap.AddChild(block);
             col.AddChild(blockWrap);
 
-            col.AddChild(Heading("icon-btn (DR15) — 36×36, is-active, disabled (D-8)", ThemeTokens.Tlg));
+            col.AddChild(ChimeraComponents.Heading("icon-btn (DR15) — 36×36, is-active, disabled (D-8)", ThemeTokens.Tlg));
             var icons = Row(10);
             icons.AddChild(ChimeraComponents.IconButton("⚙"));            // gear
             icons.AddChild(ChimeraComponents.IconButton("▶", isActive: true)); // play (active)
@@ -162,7 +165,7 @@ namespace ProjectChimera.UI.Components
         // ── chip (DR17) + readout (DR18) + tag (DR19) + kbd (DR16) ──
         private void BuildReadouts(VBoxContainer col)
         {
-            col.AddChild(Heading("readout trio (DR17/18/19) + kbd (DR16, the sole ROUND element)", ThemeTokens.Tlg));
+            col.AddChild(ChimeraComponents.Heading("readout trio (DR17/18/19) + kbd (DR16, the sole ROUND element)", ThemeTokens.Tlg));
 
             var chips = Row(10);
             chips.AddChild(ChimeraComponents.Chip("128"));
@@ -185,18 +188,22 @@ namespace ProjectChimera.UI.Components
             col.AddChild(tags);
 
             var keys = Row(6);
-            keys.AddChild(Body("shortcut:"));
+            var shortcutBody = ChimeraComponents.Body("shortcut:", ThemeTokens.TextMid);
+            shortcutBody.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
+            keys.AddChild(shortcutBody);
             keys.AddChild(ChimeraComponents.Kbd("Ctrl"));
             keys.AddChild(ChimeraComponents.Kbd("Shift"));
             keys.AddChild(ChimeraComponents.Kbd("A"));
-            keys.AddChild(Body("(rounded 3px — contrast the facets)"));
+            var roundedBody = ChimeraComponents.Body("(rounded 3px — contrast the facets)", ThemeTokens.TextMid);
+            roundedBody.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
+            keys.AddChild(roundedBody);
             col.AddChild(keys);
         }
 
         // ── progress (DR20) ──
         private void BuildProgress(VBoxContainer col)
         {
-            col.AddChild(Heading("progress (DR20) — accent / --ok / --xp", ThemeTokens.Tlg));
+            col.AddChild(ChimeraComponents.Heading("progress (DR20) — accent / --ok / --xp", ThemeTokens.Tlg));
             col.AddChild(ProgressRow("accent", ChimeraComponents.Progress(ChimeraComponents.ProgressVariant.Default, 62)));
             col.AddChild(ProgressRow("--ok", ChimeraComponents.Progress(ChimeraComponents.ProgressVariant.Ok, 80)));
             col.AddChild(ProgressRow("--xp", ChimeraComponents.Progress(ChimeraComponents.ProgressVariant.Xp, 40)));
@@ -205,7 +212,7 @@ namespace ProjectChimera.UI.Components
         // ── input (DR22) + select + num-input (DR32) ──
         private void BuildInputs(VBoxContainer col)
         {
-            col.AddChild(Heading("input (DR22) + .select + num-input (DR32)", ThemeTokens.Tlg));
+            col.AddChild(ChimeraComponents.Heading("input (DR22) + .select + num-input (DR32)", ThemeTokens.Tlg));
 
             var fields = new VBoxContainer();
             fields.AddThemeConstantOverride("separation", 4);
@@ -226,7 +233,7 @@ namespace ProjectChimera.UI.Components
         // ── slider (DR21) ──
         private void BuildSlider(VBoxContainer col)
         {
-            col.AddChild(Heading("slider (DR21) — track + accent thumb, paired num-input", ThemeTokens.Tlg));
+            col.AddChild(ChimeraComponents.Heading("slider (DR21) — track + accent thumb, paired num-input", ThemeTokens.Tlg));
             var slider = ChimeraSlider.Create(35, 0, 100, 1);
             slider.CustomMinimumSize = new Vector2(320, 0);
             var wrap = Row();
@@ -237,7 +244,7 @@ namespace ProjectChimera.UI.Components
         // ── tabs (DR24) ──
         private void BuildTabs(VBoxContainer col)
         {
-            col.AddChild(Heading("tabs (DR24) — underline / --boxed / segment", ThemeTokens.Tlg));
+            col.AddChild(ChimeraComponents.Heading("tabs (DR24) — underline / --boxed / segment", ThemeTokens.Tlg));
             var row = Row(24);
             row.AddChild(ChimeraTabs.Create(ChimeraComponents.TabsVariant.Underline, "Overview", "Stats", "Abilities"));
             row.AddChild(ChimeraTabs.Create(ChimeraComponents.TabsVariant.Boxed, "One", "Two", "Three"));
@@ -248,7 +255,7 @@ namespace ProjectChimera.UI.Components
         // ── list-row (DR25) ──
         private void BuildListRows(VBoxContainer col)
         {
-            col.AddChild(Heading("list-row (DR25) — hover / selected / locked, single-select", ThemeTokens.Tlg));
+            col.AddChild(ChimeraComponents.Heading("list-row (DR25) — hover / selected / locked, single-select", ThemeTokens.Tlg));
             var list = new VBoxContainer { CustomMinimumSize = new Vector2(320, 0) };
             list.AddThemeConstantOverride("separation", 4);
             var group = new ListRowGroup();
@@ -268,7 +275,7 @@ namespace ProjectChimera.UI.Components
         // ── live tabular numbers (AC5) ──
         private void BuildLiveNumbers(VBoxContainer col)
         {
-            col.AddChild(Heading("live numbers (UX-DR34) — mono tabular, no column jitter", ThemeTokens.Tlg));
+            col.AddChild(ChimeraComponents.Heading("live numbers (UX-DR34) — mono tabular, no column jitter", ThemeTokens.Tlg));
             var tnum = _theme.GetFont(ThemeTokens.MonoTnum, ThemeTokens.Type);
             _liveCounter = new Label { Text = "000000" };
             _liveCounter.AddThemeFontOverride("font", tnum);
@@ -290,27 +297,12 @@ namespace ProjectChimera.UI.Components
             return h;
         }
 
-        private Label Heading(string text, StringName sizeToken)
-        {
-            var l = new Label { Text = text };
-            l.AddThemeFontOverride("font", _theme.GetFont(ThemeTokens.FontDisplay, ThemeTokens.Type));
-            l.AddThemeFontSizeOverride("font_size", _theme.GetFontSize(sizeToken, ThemeTokens.Type));
-            l.AddThemeColorOverride("font_color", _theme.GetColor(ThemeTokens.TextHi, ThemeTokens.Type));
-            return l;
-        }
-
-        private Label Body(string text)
-        {
-            var l = new Label { Text = text };
-            l.AddThemeColorOverride("font_color", _theme.GetColor(ThemeTokens.TextMid, ThemeTokens.Type));
-            l.SizeFlagsVertical = SizeFlags.ShrinkCenter;
-            return l;
-        }
-
         private Control FilledPanel(PanelContainer panel, string caption)
         {
             panel.CustomMinimumSize = new Vector2(180, 70);
-            panel.AddChild(Body(caption));
+            var captionLbl = ChimeraComponents.Body(caption, ThemeTokens.TextMid);
+            captionLbl.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
+            panel.AddChild(captionLbl);
             return panel;
         }
 
@@ -319,7 +311,8 @@ namespace ProjectChimera.UI.Components
             bar.CustomMinimumSize = new Vector2(240, ComponentMetrics.ProgressTrackHeight);
             bar.SizeFlagsVertical = SizeFlags.ShrinkCenter;
             var row = Row(12);
-            var lbl = Body(label);
+            var lbl = ChimeraComponents.Body(label, ThemeTokens.TextMid);
+            lbl.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
             lbl.CustomMinimumSize = new Vector2(60, 0);
             row.AddChild(lbl);
             row.AddChild(bar);

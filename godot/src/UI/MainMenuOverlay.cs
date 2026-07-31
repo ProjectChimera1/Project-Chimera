@@ -43,10 +43,9 @@ namespace ProjectChimera.UI
         public event Action? OnSettings;
         public event Action? OnQuit;
 
-        // ── Kit context (self-owned; _accent only created when this overlay is the first kit consumer) ──
+        // ── Kit context ──
 
         private GodotTheme        _theme  = null!;
-        private AccentController?  _accent;
 
         // ── State ─────────────────────────────────────────────────────────────
 
@@ -61,7 +60,7 @@ namespace ProjectChimera.UI
             Layer   = 20; // topmost — above everything
             Visible = true;
 
-            EnsureKitInitialized(); // MUST run before any ChimeraComponents.* call, or the factory throws
+            _theme = ChimeraComponents.EnsureInitialized(this); // MUST run before any ChimeraComponents.* call, or the factory throws
 
             // ── Anchor root (a CanvasLayer has no Theme — apply it on the root Control, which propagates) ──
             var root = new Control();
@@ -91,11 +90,11 @@ namespace ProjectChimera.UI
             col.AddChild(mark);
 
             // Wordmark (display font) + tagline (body).
-            var wordmark = Heading("PROJECT CHIMERA", ThemeTokens.T4xl);
+            var wordmark = ChimeraComponents.Heading("PROJECT CHIMERA", ThemeTokens.T4xl);
             wordmark.HorizontalAlignment = HorizontalAlignment.Center;
             col.AddChild(wordmark);
 
-            var tagline = Body("Build the game. Then play it.", ThemeTokens.TextMid, ThemeTokens.Tlg);
+            var tagline = ChimeraComponents.Body("Build the game. Then play it.", ThemeTokens.TextMid, ThemeTokens.Tlg);
             tagline.HorizontalAlignment = HorizontalAlignment.Center;
             col.AddChild(tagline);
 
@@ -169,22 +168,6 @@ namespace ProjectChimera.UI
             root.AddChild(_versionLabel);
         }
 
-        // ── Kit bootstrap (mirrors HeroPickerOverlay.EnsureKitInitialized) ─────────────────
-
-        private void EnsureKitInitialized()
-        {
-            _theme = ResourceLoader.Load<GodotTheme>(ThemeBuilder.ThemePath, cacheMode: ResourceLoader.CacheMode.Ignore)
-                     ?? ThemeBuilder.Build();
-
-            if (!ChimeraComponents.IsInitialized)
-            {
-                _accent = new AccentController { Name = "AccentController" };
-                AddChild(_accent);
-                _accent.Initialize(_theme);
-                ChimeraComponents.Initialize(_theme, _accent);
-            }
-        }
-
         // ── Helpers ────────────────────────────────────────────────────────────
 
         private void AddNavButton(VBoxContainer parent, string label,
@@ -199,22 +182,5 @@ namespace ProjectChimera.UI
             parent.AddChild(btn);
         }
 
-        private Label Heading(string text, StringName sizeToken)
-        {
-            var l = new Label { Text = text };
-            l.AddThemeFontOverride("font", _theme.GetFont(ThemeTokens.FontDisplay, ThemeTokens.Type));
-            l.AddThemeFontSizeOverride("font_size", _theme.GetFontSize(sizeToken, ThemeTokens.Type));
-            l.AddThemeColorOverride("font_color", _theme.GetColor(ThemeTokens.TextHi, ThemeTokens.Type));
-            return l;
-        }
-
-        private Label Body(string text, StringName colorToken, StringName sizeToken)
-        {
-            var l = new Label { Text = text };
-            l.AddThemeFontOverride("font", _theme.GetFont(ThemeTokens.FontUi, ThemeTokens.Type));
-            l.AddThemeFontSizeOverride("font_size", _theme.GetFontSize(sizeToken, ThemeTokens.Type));
-            l.AddThemeColorOverride("font_color", _theme.GetColor(colorToken, ThemeTokens.Type));
-            return l;
-        }
     }
 }

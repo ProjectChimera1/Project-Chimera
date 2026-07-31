@@ -44,9 +44,8 @@ namespace ProjectChimera.UI
             "Step 6 — Play it",
         };
 
-        // ── Kit context (self-owned; _accent only created when this panel is the first consumer) ──
+        // ── Kit context ──
         private GodotTheme        _theme  = null!;
-        private AccentController? _accent;
 
         // ── Deps (wired by OnboardingPhase after AddChild) ──
         private GameState?       _gameState;
@@ -74,7 +73,7 @@ namespace ProjectChimera.UI
         /// <inheritdoc/>
         public override void _Ready()
         {
-            EnsureKitInitialized();   // MUST run before any ChimeraComponents.* call, or the factory throws
+            _theme = ChimeraComponents.EnsureInitialized(this);   // MUST run before any ChimeraComponents.* call, or the factory throws
             BuildUi();
         }
 
@@ -151,22 +150,6 @@ namespace ProjectChimera.UI
             _elapsedLabel.Text = $"Elapsed {totalSec / 60:00}:{totalSec % 60:00}";
         }
 
-        // ── Kit bootstrap (mirrors FactionDefinerPanel.EnsureKitInitialized) ────────
-
-        private void EnsureKitInitialized()
-        {
-            _theme = ResourceLoader.Load<GodotTheme>(ThemeBuilder.ThemePath, cacheMode: ResourceLoader.CacheMode.Ignore)
-                     ?? ThemeBuilder.Build();
-
-            if (!ChimeraComponents.IsInitialized)
-            {
-                _accent = new AccentController { Name = "AccentController" };
-                AddChild(_accent);
-                _accent.Initialize(_theme);
-                ChimeraComponents.Initialize(_theme, _accent);
-            }
-        }
-
         // ── UI construction ──────────────────────────────────────────────────────
 
         private void BuildUi()
@@ -190,12 +173,13 @@ namespace ProjectChimera.UI
             titleRow.AddThemeConstantOverride("separation", ChimeraComponents.Const(ThemeTokens.S2));
             root.AddChild(titleRow);
 
-            var titleLbl = Heading("Your First Scenario", ThemeTokens.Tlg);
+            var titleLbl = ChimeraComponents.Heading("Your First Scenario", ThemeTokens.Tlg);
             titleLbl.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
             titleLbl.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
             titleRow.AddChild(titleLbl);
 
-            _elapsedLabel = Body("Elapsed 00:00", ThemeTokens.TextLo);
+            _elapsedLabel = ChimeraComponents.Body("Elapsed 00:00", ThemeTokens.TextLo);
+            _elapsedLabel.AutowrapMode = TextServer.AutowrapMode.Word;
             _elapsedLabel.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
             titleRow.AddChild(_elapsedLabel);
 
@@ -205,7 +189,9 @@ namespace ProjectChimera.UI
             titleRow.AddChild(skipBtn);
 
             // ── Step title ──
-            _stepTitleLabel = Body(StepTitles[0], ThemeTokens.TextHi);
+            _stepTitleLabel = ChimeraComponents.Body(StepTitles[0], ThemeTokens.TextHi);
+            _stepTitleLabel.AutowrapMode = TextServer.AutowrapMode.Word;
+            _stepTitleLabel.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
             root.AddChild(_stepTitleLabel);
 
             // ── Scrollable per-step body ──
@@ -223,8 +209,9 @@ namespace ProjectChimera.UI
             scroll.AddChild(_bodyHost);
 
             // ── Transient note (e.g. "Created from 'worker'…") ──
-            _noteLabel = Body("", ThemeTokens.Ok);
+            _noteLabel = ChimeraComponents.Body("", ThemeTokens.Ok);
             _noteLabel.AutowrapMode = TextServer.AutowrapMode.Word;
+            _noteLabel.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
             _noteLabel.Visible = false;
             root.AddChild(_noteLabel);
 
@@ -280,9 +267,12 @@ namespace ProjectChimera.UI
 
         private void BuildTemplateStep()
         {
-            _bodyHost.AddChild(Body(
+            var templateBody = ChimeraComponents.Body(
                 "Create your first unit from a starter template — this duplicates an existing unit so you can " +
-                "customize it freely. No JSON required.", ThemeTokens.TextMid));
+                "customize it freely. No JSON required.", ThemeTokens.TextMid);
+            templateBody.AutowrapMode = TextServer.AutowrapMode.Word;
+            templateBody.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
+            _bodyHost.AddChild(templateBody);
 
             var row = new HBoxContainer();
             row.AddThemeConstantOverride("separation", ChimeraComponents.Const(ThemeTokens.S2));
@@ -308,9 +298,12 @@ namespace ProjectChimera.UI
 
         private void BuildTuneStatsStep()
         {
-            _bodyHost.AddChild(Body(
+            var tuneBody = ChimeraComponents.Body(
                 "In the Unit Editor (still open from Step 1), tune one Combat stat (e.g. Attack Damage) and one " +
-                "Economy stat (e.g. Ore Cost) — both live in the Simple tab, no Advanced mode needed.", ThemeTokens.TextMid));
+                "Economy stat (e.g. Ore Cost) — both live in the Simple tab, no Advanced mode needed.", ThemeTokens.TextMid);
+            tuneBody.AutowrapMode = TextServer.AutowrapMode.Word;
+            tuneBody.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
+            _bodyHost.AddChild(tuneBody);
 
             var btn = ChimeraComponents.Button("Open Unit Editor [J]", ChimeraComponents.ButtonVariant.Secondary, ChimeraComponents.ButtonSize.Sm);
             btn.Pressed += () => _mainScene?.OpenUnitCardPanel();
@@ -322,9 +315,12 @@ namespace ProjectChimera.UI
 
         private void BuildPromoteHeroStep()
         {
-            _bodyHost.AddChild(Body(
+            var promoteBody = ChimeraComponents.Body(
                 "Toggle 'Promote to Hero' in the Unit Editor's Simple tab, then pick an Ultimate ability from the " +
-                "Ultimate row right there in Simple mode — no Advanced/raw-JSON panel needed.", ThemeTokens.TextMid));
+                "Ultimate row right there in Simple mode — no Advanced/raw-JSON panel needed.", ThemeTokens.TextMid);
+            promoteBody.AutowrapMode = TextServer.AutowrapMode.Word;
+            promoteBody.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
+            _bodyHost.AddChild(promoteBody);
 
             var btn = ChimeraComponents.Button("Open Unit Editor [J]", ChimeraComponents.ButtonVariant.Secondary, ChimeraComponents.ButtonSize.Sm);
             btn.Pressed += () => _mainScene?.OpenUnitCardPanel();
@@ -336,23 +332,32 @@ namespace ProjectChimera.UI
 
         private void BuildPlaceEntitiesStep()
         {
-            _bodyHost.AddChild(Body(
+            var placeBody = ChimeraComponents.Body(
                 "Use the always-on placement palette (top-right of the screen) to place a base and a few units: " +
                 "Tab cycles P1 Unit / P2 Unit / Ore Node, B cycles building type, click to place, Shift+click for " +
-                "a worker.", ThemeTokens.TextMid));
+                "a worker.", ThemeTokens.TextMid);
+            placeBody.AutowrapMode = TextServer.AutowrapMode.Word;
+            placeBody.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
+            _bodyHost.AddChild(placeBody);
         }
 
         // ── Step 5: Win condition ────────────────────────────────────────────────
 
         private void BuildWinConditionStep()
         {
-            _bodyHost.AddChild(Body("Choose how this scenario is won.", ThemeTokens.TextMid));
+            var winIntroBody = ChimeraComponents.Body("Choose how this scenario is won.", ThemeTokens.TextMid);
+            winIntroBody.AutowrapMode = TextServer.AutowrapMode.Word;
+            winIntroBody.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
+            _bodyHost.AddChild(winIntroBody);
 
             if (_scenario == null)
             {
-                _bodyHost.AddChild(Body(
+                var winNoScenarioBody = ChimeraComponents.Body(
                     "No editable scenario is loaded this session — the win condition can't be changed right now.",
-                    ThemeTokens.TextLo));
+                    ThemeTokens.TextLo);
+                winNoScenarioBody.AutowrapMode = TextServer.AutowrapMode.Word;
+                winNoScenarioBody.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
+                _bodyHost.AddChild(winNoScenarioBody);
                 return;
             }
 
@@ -388,9 +393,12 @@ namespace ProjectChimera.UI
 
         private void BuildPlayTestStep()
         {
-            _bodyHost.AddChild(Body(
+            var playBody = ChimeraComponents.Body(
                 "You're ready. Press F5 (or click below) to enter Play mode and watch your authored unit fight.",
-                ThemeTokens.TextMid));
+                ThemeTokens.TextMid);
+            playBody.AutowrapMode = TextServer.AutowrapMode.Word;
+            playBody.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
+            _bodyHost.AddChild(playBody);
 
             var btn = ChimeraComponents.Button("Enter Play Mode [F5]", ChimeraComponents.ButtonVariant.Primary, ChimeraComponents.ButtonSize.Sm);
             btn.Pressed += () => _mainScene?.EnterPlayMode();
@@ -411,26 +419,6 @@ namespace ProjectChimera.UI
         {
             _noteLabel.Visible = false;
             _noteLabel.Text = "";
-        }
-
-        // ── Small shared builders (mirror FactionDefinerPanel's) ─────────────────
-
-        private Label Heading(string text, StringName sizeToken)
-        {
-            var l = new Label { Text = text };
-            l.AddThemeFontOverride("font", _theme.GetFont(ThemeTokens.FontDisplay, ThemeTokens.Type));
-            l.AddThemeFontSizeOverride("font_size", _theme.GetFontSize(sizeToken, ThemeTokens.Type));
-            l.AddThemeColorOverride("font_color", Tok(ThemeTokens.TextHi));
-            return l;
-        }
-
-        private Label Body(string text, StringName colorToken)
-        {
-            var l = new Label { Text = text };
-            l.AddThemeColorOverride("font_color", Tok(colorToken));
-            l.AutowrapMode = TextServer.AutowrapMode.Word;
-            l.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
-            return l;
         }
 
         private Color Tok(StringName token) => _theme.GetColor(token, ThemeTokens.Type);

@@ -45,9 +45,8 @@ namespace ProjectChimera.CreationSuite
         // AddValidConnectionType change needed).
         private static readonly Color PortColorResearch = new(0.55f, 1.00f, 0.60f);
 
-        // ── Kit context (self-owned; _accent only created when this panel is the first consumer) ──
+        // ── Kit context ──
         private GodotTheme        _theme  = null!;
-        private AccentController? _accent;
 
         // ── Deps (wired by TechTreePhase after AddChild) ──
         private FactionDefinition? _faction;
@@ -69,7 +68,7 @@ namespace ProjectChimera.CreationSuite
         /// <inheritdoc/>
         public override void _Ready()
         {
-            EnsureKitInitialized();   // MUST run before any ChimeraComponents.* call, or the factory throws
+            _theme = ChimeraComponents.EnsureInitialized(this);   // MUST run before any ChimeraComponents.* call, or the factory throws
             BuildUi();
         }
 
@@ -109,22 +108,6 @@ namespace ProjectChimera.CreationSuite
         private void OnModeChanged(int mode)
         {
             if (mode == (int)GameMode.Play) Close();   // hide in Play (authoring is Edit-only)
-        }
-
-        // ── Kit bootstrap (mirrors BuildingCardPanel.EnsureKitInitialized) ──────────
-
-        private void EnsureKitInitialized()
-        {
-            _theme = ResourceLoader.Load<GodotTheme>(ThemeBuilder.ThemePath, cacheMode: ResourceLoader.CacheMode.Ignore)
-                     ?? ThemeBuilder.Build();
-
-            if (!ChimeraComponents.IsInitialized)
-            {
-                _accent = new AccentController { Name = "AccentController" };
-                AddChild(_accent);
-                _accent.Initialize(_theme);
-                ChimeraComponents.Initialize(_theme, _accent);
-            }
         }
 
         // ── UI construction ──────────────────────────────────────────────────────

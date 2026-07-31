@@ -54,9 +54,8 @@ namespace ProjectChimera.CreationSuite
         /// <c>ProjectSettings.GlobalizePath</c> at the Godot edge like <see cref="FACTIONS_DIR_RES"/>.</summary>
         private const string ABILITIES_DIR_RES = "res://resources/data/abilities";
 
-        // ── Kit context (self-owned; _accent only created when this panel is the first consumer) ──
+        // ── Kit context ──
         private GodotTheme        _theme  = null!;
-        private AccentController?  _accent;
 
         // ── Deps (wired by FactionDefinerPhase after AddChild) ──
         private GameState? _gameState;
@@ -97,7 +96,7 @@ namespace ProjectChimera.CreationSuite
         /// <inheritdoc/>
         public override void _Ready()
         {
-            EnsureKitInitialized();   // MUST run before any ChimeraComponents.* call, or the factory throws
+            _theme = ChimeraComponents.EnsureInitialized(this);   // MUST run before any ChimeraComponents.* call, or the factory throws
             BuildUi();
         }
 
@@ -137,23 +136,6 @@ namespace ProjectChimera.CreationSuite
             if (mode == (int)GameMode.Play) Close();   // hide in Play (authoring is Edit-only)
         }
 
-        // ── Kit bootstrap ─────────────────────────────────────────────────────────
-
-        private void EnsureKitInitialized()
-        {
-            // ALWAYS load the theme (the inner PanelContainer.Theme needs it regardless of factory state).
-            _theme = ResourceLoader.Load<GodotTheme>(ThemeBuilder.ThemePath, cacheMode: ResourceLoader.CacheMode.Ignore)
-                     ?? ThemeBuilder.Build();
-
-            // Guard ONLY the one-time factory bootstrap so a future startup phase makes this a clean no-op.
-            if (!ChimeraComponents.IsInitialized)
-            {
-                _accent = new AccentController { Name = "AccentController" };
-                AddChild(_accent);
-                _accent.Initialize(_theme);
-                ChimeraComponents.Initialize(_theme, _accent);
-            }
-        }
 
         // ── UI construction ──────────────────────────────────────────────────────
 
@@ -178,7 +160,7 @@ namespace ProjectChimera.CreationSuite
             titleRow.AddThemeConstantOverride("separation", ChimeraComponents.Const(ThemeTokens.S2));
             root.AddChild(titleRow);
 
-            var titleLbl = Heading("Faction Definer", ThemeTokens.Tlg);
+            var titleLbl = ChimeraComponents.Heading("Faction Definer", ThemeTokens.Tlg);
             titleLbl.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
             titleLbl.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
             titleRow.AddChild(titleLbl);
@@ -241,7 +223,8 @@ namespace ProjectChimera.CreationSuite
             _jsonPaneHost.AddChild(syncBtn);
 
             // Status line + Back/Next/Finish footer.
-            _statusLabel = Body("", ThemeTokens.TextLo);
+            _statusLabel = ChimeraComponents.Body("", ThemeTokens.TextLo);
+            _statusLabel.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
             _statusLabel.AutowrapMode = TextServer.AutowrapMode.Word;
             _statusLabel.Visible = false;
             root.AddChild(_statusLabel);
@@ -457,24 +440,6 @@ namespace ProjectChimera.CreationSuite
         }
 
         // ── Small shared builders (mirror BuildingCardPanel's) ───────────────────
-
-        private Label Heading(string text, StringName sizeToken)
-        {
-            var l = new Label { Text = text };
-            l.AddThemeFontOverride("font", _theme.GetFont(ThemeTokens.FontDisplay, ThemeTokens.Type));
-            l.AddThemeFontSizeOverride("font_size", _theme.GetFontSize(sizeToken, ThemeTokens.Type));
-            l.AddThemeColorOverride("font_color", Tok(ThemeTokens.TextHi));
-            return l;
-        }
-
-        private Label Body(string text, StringName colorToken)
-        {
-            var l = new Label { Text = text };
-            l.AddThemeColorOverride("font_color", Tok(colorToken));
-            l.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
-            l.AutowrapMode = TextServer.AutowrapMode.Word;
-            return l;
-        }
 
         private Color Tok(StringName token) => _theme.GetColor(token, ThemeTokens.Type);
 

@@ -535,7 +535,9 @@ namespace ProjectChimera.CreationSuite
             }
             else
             {
-                col.AddChild(Body("(none)", ThemeTokens.TextLo));
+                var noneLbl = ChimeraComponents.Body("(none)", ThemeTokens.TextLo);
+                noneLbl.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
+                col.AddChild(noneLbl);
             }
 
             // "Add" select: a leading no-op prompt at index 0, then every catalog entry not already attached.
@@ -869,7 +871,8 @@ namespace ProjectChimera.CreationSuite
 
         private void BuildRawPane(Control parent, UnitDefinition def)
         {
-            var hint = Body("Edit this unit's JSON directly (e.g. combat_feedback). On Save a dirty pane wins — validated, then folded back.", ThemeTokens.TextLo);
+            var hint = ChimeraComponents.Body("Edit this unit's JSON directly (e.g. combat_feedback). On Save a dirty pane wins — validated, then folded back.", ThemeTokens.TextLo);
+            hint.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
             hint.AutowrapMode = TextServer.AutowrapMode.Word;
             hint.AddThemeFontSizeOverride("font_size", _theme.GetFontSize(ThemeTokens.Txs, ThemeTokens.Type));
             parent.AddChild(hint);

@@ -26,7 +26,7 @@ namespace ProjectChimera.Core.Bootstrap
 
         public void Run()
         {
-            EnsureKitInitialized(); // the 3.1x kit must be up before any ChimeraComponents.* call (toast build)
+            ChimeraComponents.EnsureInitialized(_ctx.Scene); // the 3.1x kit must be up before any ChimeraComponents.* call (toast build)
 
             // Shared toast host (top-left transient stack; DW-313 cap/coalesce lives inside it).
             var toasts = ChimeraToastHost.Create();
@@ -67,20 +67,6 @@ namespace ProjectChimera.Core.Bootstrap
                 _ctx.AudioMgr?.PlayPing();
                 _ctx.Lockstep?.SendMapPing(Mathf.RoundToInt(world.X), Mathf.RoundToInt(world.Z));
             };
-        }
-
-        /// <summary>Ensure the 3.1x component kit is initialized (idempotent — a no-op once any earlier/later panel has
-        /// bootstrapped it). Mirrors the panels' own EnsureKitInitialized so a toast can build even if this phase is the
-        /// first kit consumer.</summary>
-        private void EnsureKitInitialized()
-        {
-            if (ChimeraComponents.IsInitialized) return;
-            GodotTheme theme = ResourceLoader.Load<GodotTheme>(ThemeBuilder.ThemePath, cacheMode: ResourceLoader.CacheMode.Ignore)
-                          ?? ThemeBuilder.Build();
-            var accent = new AccentController { Name = "AccentController" };
-            _ctx.Scene.AddChild(accent);
-            accent.Initialize(theme);
-            ChimeraComponents.Initialize(theme, accent);
         }
     }
 }

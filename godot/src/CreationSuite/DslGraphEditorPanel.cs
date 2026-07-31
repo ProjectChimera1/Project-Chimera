@@ -45,7 +45,6 @@ namespace ProjectChimera.CreationSuite
 
         // ── Kit context ──
         private GodotTheme        _theme = null!;
-        private AccentController? _accent;
 
         // ── Shell ──
         private CanvasLayer    _canvas      = null!;
@@ -89,7 +88,7 @@ namespace ProjectChimera.CreationSuite
 
         public override void _Ready()
         {
-            EnsureKitInitialized();   // MUST precede any ChimeraComponents.* call
+            _theme = ChimeraComponents.EnsureInitialized(this);   // MUST precede any ChimeraComponents.* call
             BuildUi();
         }
 
@@ -156,21 +155,6 @@ namespace ProjectChimera.CreationSuite
         public override void _ExitTree()
         {
             if (_gameState != null) _gameState.ModeChanged -= OnModeChanged;
-        }
-
-        // ── Kit bootstrap (mirrors TechTreePanel.EnsureKitInitialized) ──
-
-        private void EnsureKitInitialized()
-        {
-            _theme = ResourceLoader.Load<GodotTheme>(ThemeBuilder.ThemePath, cacheMode: ResourceLoader.CacheMode.Ignore)
-                     ?? ThemeBuilder.Build();
-            if (!ChimeraComponents.IsInitialized)
-            {
-                _accent = new AccentController { Name = "AccentController" };
-                AddChild(_accent);
-                _accent.Initialize(_theme);
-                ChimeraComponents.Initialize(_theme, _accent);
-            }
         }
 
         // ── UI construction ──

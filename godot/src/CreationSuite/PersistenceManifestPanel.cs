@@ -33,9 +33,8 @@ namespace ProjectChimera.CreationSuite
         private const float PANEL_H = 560f;
         private const float MARGIN  = 12f;
 
-        // ── Kit context (self-owned; _accent only created when this panel is the first consumer) ──
+        // ── Kit context ──
         private GodotTheme        _theme  = null!;
-        private AccentController?  _accent;
 
         // ── Deps (wired by PersistenceManifestPhase after AddChild) ──
         private ScenarioData? _scenario;
@@ -60,7 +59,7 @@ namespace ProjectChimera.CreationSuite
         /// <inheritdoc/>
         public override void _Ready()
         {
-            EnsureKitInitialized();   // MUST run before any ChimeraComponents.* call, or the factory throws
+            _theme = ChimeraComponents.EnsureInitialized(this);   // MUST run before any ChimeraComponents.* call, or the factory throws
             BuildUi();
         }
 
@@ -98,22 +97,6 @@ namespace ProjectChimera.CreationSuite
             if (mode == (int)GameMode.Play) _panel.Visible = false;   // hide in Play (authoring is Edit-only)
         }
 
-        // ── Kit bootstrap (mirrors UnitCardPanel.EnsureKitInitialized) ─────────────
-
-        private void EnsureKitInitialized()
-        {
-            _theme = ResourceLoader.Load<GodotTheme>(ThemeBuilder.ThemePath, cacheMode: ResourceLoader.CacheMode.Ignore)
-                     ?? ThemeBuilder.Build();
-
-            if (!ChimeraComponents.IsInitialized)
-            {
-                _accent = new AccentController { Name = "AccentController" };
-                AddChild(_accent);
-                _accent.Initialize(_theme);
-                ChimeraComponents.Initialize(_theme, _accent);
-            }
-        }
-
         // ── UI construction ────────────────────────────────────────────────────────
 
         private void BuildUi()
@@ -144,7 +127,7 @@ namespace ProjectChimera.CreationSuite
             titleRow.AddThemeConstantOverride("separation", ChimeraComponents.Const(ThemeTokens.S2));
             root.AddChild(titleRow);
 
-            var titleLbl = Heading("Hero Persistence", ThemeTokens.Tlg);
+            var titleLbl = ChimeraComponents.Heading("Hero Persistence", ThemeTokens.Tlg);
             titleLbl.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
             titleLbl.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
             titleRow.AddChild(titleLbl);
@@ -167,9 +150,9 @@ namespace ProjectChimera.CreationSuite
                 "When on, this scenario carries the selected hero progression forward between matches. When off, nothing persists (your selection is kept).");
             switchRow.AddChild(_masterSwitch);
 
-            var switchLbl = Body("Enable hero persistence for this scenario", ThemeTokens.TextMid);
-            switchLbl.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+            var switchLbl = ChimeraComponents.Body("Enable hero persistence for this scenario", ThemeTokens.TextMid);
             switchLbl.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
+            switchLbl.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
             switchLbl.AutowrapMode = TextServer.AutowrapMode.Word;
             switchRow.AddChild(switchLbl);
 
@@ -194,7 +177,8 @@ namespace ProjectChimera.CreationSuite
             _badge = ChimeraValidationBadge.Create();
             root.AddChild(_badge);
 
-            _statusLabel = Body("", ThemeTokens.TextLo);
+            _statusLabel = ChimeraComponents.Body("", ThemeTokens.TextLo);
+            _statusLabel.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
             _statusLabel.AutowrapMode = TextServer.AutowrapMode.Word;
             _statusLabel.Visible = false;
             root.AddChild(_statusLabel);
@@ -358,24 +342,6 @@ namespace ProjectChimera.CreationSuite
             _statusLabel.Visible = true;
         }
 
-        // ── Small shared builders (mirror UnitCardPanel) ────────────────────────────
-
-        private Label Heading(string text, StringName sizeToken)
-        {
-            var l = new Label { Text = text };
-            l.AddThemeFontOverride("font", _theme.GetFont(ThemeTokens.FontDisplay, ThemeTokens.Type));
-            l.AddThemeFontSizeOverride("font_size", _theme.GetFontSize(sizeToken, ThemeTokens.Type));
-            l.AddThemeColorOverride("font_color", _theme.GetColor(ThemeTokens.TextHi, ThemeTokens.Type));
-            return l;
-        }
-
-        private Label Body(string text, StringName colorToken)
-        {
-            var l = new Label { Text = text };
-            l.AddThemeColorOverride("font_color", _theme.GetColor(colorToken, ThemeTokens.Type));
-            l.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
-            return l;
-        }
 
         /// <summary>Attach a hover-AND-keyboard-focus tooltip (UX-DR53 / NFR-2). The keyboard half needs
         /// <c>FocusMode.All</c>; descendants are made mouse-transparent so the composite is the unambiguous hover target.</summary>
