@@ -71,6 +71,15 @@
     "label": "Keep open",
     "resolution": ""
   },
+  "DW-170": {
+    "answered_at": "2026-07-30",
+    "bundle_name": "",
+    "effect": "build",
+    "intent": "Extend the trigger schema so a custom building can be named with its faction context, then resolve like the scenario-buildings gate",
+    "key": "1",
+    "label": "Add faction-qualified building ref to trigger DSL",
+    "resolution": ""
+  },
   "DW-180": {
     "answered_at": "2026-07-27",
     "bundle_name": "",
@@ -107,6 +116,15 @@
     "label": "Scope now via correct-course",
     "resolution": ""
   },
+  "DW-200": {
+    "answered_at": "2026-07-30",
+    "bundle_name": "",
+    "effect": "build",
+    "intent": "Client→server credential packet, server-side trust, userId→slot bind in TryFreeze, fail-closed HandleReady gate, and server distribution of all peers' profiles minting an identical multi-hero HeroStore (StartStateHash re-baseline)",
+    "key": "1",
+    "label": "Build the full rail",
+    "resolution": ""
+  },
   "DW-201": {
     "answered_at": "2026-07-27",
     "bundle_name": "",
@@ -120,9 +138,72 @@
     "answered_at": "2026-07-25",
     "bundle_name": "",
     "effect": "build",
-    "intent": "Give it runtime meaning again \u2014 a per-hero XP-gain multiplier or bounty override layered on victim XpBounty",
+    "intent": "Give it runtime meaning again — a per-hero XP-gain multiplier or bounty override layered on victim XpBounty",
     "key": "1",
     "label": "Repurpose it",
+    "resolution": ""
+  },
+  "DW-325": {
+    "answered_at": "2026-07-30",
+    "bundle_name": "",
+    "effect": "build",
+    "intent": "Add a death trigger when a modifier drives the max-health ceiling to 0",
+    "key": "1",
+    "label": "Raise death on ceiling==0",
+    "resolution": ""
+  },
+  "DW-327": {
+    "answered_at": "2026-07-30",
+    "bundle_name": "",
+    "effect": "build",
+    "intent": "Make LoadSelectableFromDirectory and the boot shadow registry-aware so selectable == launchable",
+    "key": "1",
+    "label": "Thread registry into discovery + boot shadow",
+    "resolution": ""
+  },
+  "DW-331": {
+    "answered_at": "2026-07-30",
+    "bundle_name": "",
+    "effect": "close",
+    "intent": "",
+    "key": "2",
+    "label": "Rely on the load-time gate",
+    "resolution": "Keep write-gate scoped to Export/New-Map; document the intended reliance on ScenarioLoadPhase"
+  },
+  "DW-342": {
+    "answered_at": "2026-07-30",
+    "bundle_name": "",
+    "effect": "close",
+    "intent": "",
+    "key": "2",
+    "label": "Close as superseded by T3",
+    "resolution": "T3 visual editor is the full-vocab surface; manual form stays a quick-edit subset"
+  },
+  "DW-343": {
+    "answered_at": "2026-07-30",
+    "bundle_name": "",
+    "effect": "build",
+    "intent": "Reject or warn on names shadowing the expression grammar",
+    "key": "1",
+    "label": "Lint/warn at declaration",
+    "resolution": ""
+  },
+  "DW-349": {
+    "answered_at": "2026-07-30",
+    "bundle_name": "",
+    "effect": "build",
+    "intent": "Persist unconsumed edge events for skipped/suppressed triggers into the 7.5 queue",
+    "key": "1",
+    "label": "Re-queue via DslEventQueue",
+    "resolution": ""
+  },
+  "DW-366": {
+    "answered_at": "2026-07-30",
+    "bundle_name": "",
+    "effect": "build",
+    "intent": "Cap untrusted scenario input size before deserialization (cheapest, uniform)",
+    "key": "1",
+    "label": "Upstream byte/size guard",
     "resolution": ""
   },
   "DW-37": {
@@ -132,6 +213,78 @@
     "intent": "Sort ScenarioApplier's Items (and ideally the unit/building loops) by the same canonical key before Create; golden re-baseline",
     "key": "1",
     "label": "Canonicalize placement order",
+    "resolution": ""
+  },
+  "DW-370": {
+    "answered_at": "2026-07-30",
+    "bundle_name": "",
+    "effect": "build",
+    "intent": "Honest UX, minimal surface",
+    "key": "2",
+    "label": "Keep loopback-only but name the restriction in the unavailable message",
+    "resolution": ""
+  },
+  "DW-371": {
+    "answered_at": "2026-07-30",
+    "bundle_name": "",
+    "effect": "build",
+    "intent": "Enable non-RTS scenario types end-to-end",
+    "key": "1",
+    "label": "Build ScenarioType enum + preset table + Map Generator selection UI",
+    "resolution": ""
+  },
+  "DW-374": {
+    "answered_at": "2026-07-30",
+    "bundle_name": "",
+    "effect": "build",
+    "intent": "Make player_chat actually fire (a feature)",
+    "key": "1",
+    "label": "Wire a chat UI to SendPlayerChat",
+    "resolution": ""
+  },
+  "DW-382": {
+    "answered_at": "2026-07-30",
+    "bundle_name": "",
+    "effect": "build",
+    "intent": "Focus on real balance levers, cut cosmetic",
+    "key": "2",
+    "label": "Add speed only, drop mesh_scale",
+    "resolution": ""
+  },
+  "DW-446": {
+    "answered_at": "2026-07-30",
+    "bundle_name": "",
+    "effect": "build",
+    "intent": "Instance-method ValidateOrClearTarget clearing on allied/same-faction id-recycle, alongside DW-444",
+    "key": "1",
+    "label": "Build now with DW-444",
+    "resolution": ""
+  },
+  "DW-458": {
+    "answered_at": "2026-07-30",
+    "bundle_name": "",
+    "effect": "build",
+    "intent": "Strip/rewrite triggers and win-condition clauses referencing dropped slots during Build; add coverage test",
+    "key": "1",
+    "label": "Prune-and-reconcile",
+    "resolution": ""
+  },
+  "DW-466": {
+    "answered_at": "2026-07-30",
+    "bundle_name": "",
+    "effect": "build",
+    "intent": "Make saves genuinely portable; also unblocks lockstep MP AI (large effort)",
+    "key": "2",
+    "label": "Migrate AiOpponentSystem float→Fixed",
+    "resolution": ""
+  },
+  "DW-478": {
+    "answered_at": "2026-07-30",
+    "bundle_name": "",
+    "effect": "build",
+    "intent": "Count queued supply against the cap to prevent overshoot",
+    "key": "1",
+    "label": "Reserve supply at enqueue (WC3-strict)",
     "resolution": ""
   },
   "DW-52": {
@@ -150,6 +303,15 @@
     "intent": "Add GatherState/CarryAmount/GatherTarget/CarryResourceType to SimChecksum's per-entity loop and re-record the affected goldens on Windows, tightening the desync tripwire to catch a gather-only divergence the tick it happens.",
     "key": "fold",
     "label": "Fold gather state into SimChecksum",
+    "resolution": ""
+  },
+  "DW-80": {
+    "answered_at": "2026-07-30",
+    "bundle_name": "",
+    "effect": "build",
+    "intent": "After N ticks of a closed gate, free the worker to Idle to seek another eligible node, matching GATHER",
+    "key": "1",
+    "label": "Re-idle & re-seek after N ticks",
     "resolution": ""
   },
   "DW-90": {
