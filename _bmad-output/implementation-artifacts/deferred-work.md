@@ -109,7 +109,8 @@ origin: migrated from legacy ledger ("Deferred from: dev of story-3.4 (2026-07-0
 source_spec: `_bmad-output/implementation-artifacts/spec-3-8-persistence-manifest-authoring-which-attributes-carry-forward-through-the-validate-gate.md`
 location: n/a
 reason: summary: Creation-suite editor panels do not rebind their held `ScenarioData` after a scenario is reloaded/imported at runtime — each captures `_scenario` (and its write-back path) once at `Initialize` and never again, so after a reload the panel edits a stale object and can save it back to the originally-captured path (silent data loss / wrong-target save). evidence: `PersistenceManifestPanel.SetScenario` (and the identically-shaped `TriggerEditorPanel.SetScenario`) exist but have zero callers repo-wide; the panels bind `_scenario` once in `Initialize`/`PersistenceManifestPhase`. This is a pre-existing cross-editor architectural gap surfaced (not caused) by Story 3.8 — the proper fix wires every editor's `SetScenario` into the scenario (re)load path (e.g. `MapGeneratorPanel.OnLoadRequested` / `ScenarioLoadPhase`), which is out of a single manifest-authoring story's scope.
-status: open
+status: done 2026-07-31
+resolution: resolved by sweep bundle dw-scenario-reapply-slot-factiondef-refresh
 decision: 2026-07-28 correct-course — bundle editor-panel-scenario-rebind absorbed into scenario-reapply-slot-faction-def-refresh (DW-229; Epic 15, Story 15.6)
 
 ### DW-11: HeroStore is additive across re-deploys with no clear on return-to-Edit; a re-deployed profile would leave stale live hero rows in the store (and hash).
@@ -2823,7 +2824,8 @@ origin: migrated from legacy ledger ("Deferred from: code review of story-1.8b (
 location: godot/src/Core/Bootstrap/Phases/ScenarioLoadPhase.cs:345-379; godot/src/Core/MainScene.cs:1930,2021-2041
 severity: high
 reason: ESCALATED from latent: still `continue`s on empty FactionJson with no per-apply reset (Snapshot/RestoreSlotFactionDefs only rolls back on validator REJECT), and the "single-apply path" premise is now false — MainScene.ResetToAuthoredStart (the 3.10 Edit↔Play loop) re-applies against the same _slotFactionDefs array and NEVER calls ResolveSlotFactionDefs. In-session faction_json changes (LLMService.cs:551, MapGeneratorPhase.cs:36-39) silently don't apply until a full scene reload; a cleared faction_json keeps the stale def. Verified 2026-07-28.
-status: open
+status: done 2026-07-31
+resolution: resolved by sweep bundle dw-scenario-reapply-slot-factiondef-refresh
 decision: 2026-07-28 correct-course — bundle scenario-reapply-slot-faction-def-refresh, absorbing bundle editor-panel-scenario-rebind (DW-10) (Epic 15, Story 15.6)
 
 ### DW-230: Scenario with > 64 resource nodes / > 64 buildings silently drops the overflow
@@ -3841,4 +3843,20 @@ source_spec: `_bmad-output/planning-artifacts/map-size-brainstorm-brief.md` (V2 
 location: godot/src/Navigation/FlowFieldSystem.cs (`_cache`, Dictionary<int, FlowField> keyed by goal cell)
 severity: medium
 reason: `FlowFieldSystem._cache` has no eviction limit — a field is computed on demand per unique goal cell and lives until `RebuildObstacles` / `SetBuildingObstacle` / `SetStaticBlocked` / `InvalidateCache` clears the whole dictionary, so ~100 distinct move orders between building events holds ~20 MB. — Evidence: read during the 2026-07-30 map-size verdict work; the cache is cleared only on obstacle/terrain change, never bounded by size or age, and nothing evicts a stale goal cell. Not a determinism risk (the cache is a pure function of the grid and is rebuilt identically on every peer) and not a per-tick cost — this is a retained-memory issue. Worth fixing on its own merits, and a HARD PREREQUISITE for map-size Route B (`GRID_SIZE` 128→256), which would multiply each entry to ~800 KB / ~80 MB at the same order count. Fix: an LRU or size cap on the dictionary. Filed as a numbered entry so a sweep can actually pick it up — the retro action item A8-E11 had no ledger entry and was therefore invisible to triage.
+status: open
+
+### DW-486: Slot-faction re-resolution (Resolve composition, step-0 veto-rollback, DW-10 panel same-ref guard) has no executable assertion — only a happy-path in-engine gate + inspection
+origin: deferred by review of `_bmad-output/implementation-artifacts/spec-scenario-reapply-slot-factiondef-refresh.md`, 2026-07-31
+source_spec: `_bmad-output/implementation-artifacts/spec-scenario-reapply-slot-factiondef-refresh.md`
+location: godot/src/Core/Bootstrap/Phases/SlotFactionResolver.cs (Resolve branches); godot/src/Core/MainScene.cs:2348-2408 (RestorePreResolveSlotDefs veto paths); godot/src/CreationSuite/{DslGraphEditorPanel,PersistenceManifestPanel,TriggerEditorPanel}.cs (ReferenceEquals guard)
+severity: medium
+reason: The DW-229/DW-10 core behaviors carry no automated coverage — `SlotFactionResolverTests` exercises only the pure `SlotFactionReset.ToSeeded` copy, and the in-engine gate drove only the unchanged-scenario F5 happy path (where the reset is a no-op); the empty-skip/missing-file/overwrite branches of `Resolve`, the three fail-closed `RestorePreResolveSlotDefs` rollback paths, and the load-bearing panel same-reference guard are all verified only by inspection, so a regression in any of them (skip inverted, a rollback call dropped, a guard removed → unsaved DSL graph silently discarded) would ship with a green suite. — Evidence: three independent review lenses (adversarial, verification-gap, intent-alignment) landed on it; `SlotFactionResolverTests.cs` has 3 Facts all on `ToSeeded`, none constructing a `ScenarioData` or calling `Resolve`; the in-engine gate scope-note (spec line 107) concedes AC#2/AC#3 have no in-game trigger. Closing it is architecturally blocked in this story — the resolver is Godot-coupled (`ProjectSettings.GlobalizePath`/`LoadFromFile`), the panels extend `Control` (unreachable from the Godot-free Tier-1 assembly), and the live `_ctx.Scenario` is private/unreachable from GDScript; the spec makes a Godot-free test seam an explicit Block-If. A real closure needs either a decoupled resolution seam or a Godot-in-test harness. (The 2026-07-31 review triage log noted this defer but never wrote a numbered ledger entry, so it was invisible to sweep until now.)
+status: open
+
+### DW-487: Boot slot-faction resolution is not fail-closed on a LoadFromFile throw, unlike the F5 re-apply — a corrupt/roster-invalid faction_json crashes at launch instead of degrading to the fallback
+origin: deferred by review of `_bmad-output/implementation-artifacts/spec-scenario-reapply-slot-factiondef-refresh.md`, 2026-07-31
+source_spec: `_bmad-output/implementation-artifacts/spec-scenario-reapply-slot-factiondef-refresh.md`
+location: godot/src/Core/Bootstrap/Phases/ScenarioLoadPhase.cs:339-340 (ResolveSlotFactionDefs boot delegate to SlotFactionResolver.Resolve, no try/catch)
+severity: low
+reason: The boot path calls the shared `SlotFactionResolver.Resolve` with no try/catch, while the F5 re-apply (MainScene step-0, added by the 2026-07-31 review pass) now wraps the same call to fail closed; `FactionDefinition.LoadFromFile` throws on a corrupt file (IO/JSON) or a validator-rejected roster (InvalidOperationException), and the boot Snapshot/Restore bracket only fires on a downstream validation reject — so a throw escapes ahead of it and takes the whole launch down, an asymmetry the shared-resolver refactor makes concrete. — Evidence: pre-existing (the former inline boot resolver also had no try/catch), surfaced incidentally by the adversarial lens; reachable today by corrupting/invalidating a slot's faction_json file before launch. Fix: bracket the boot Resolve in the same fail-closed try/catch and fall through to `ApplyFallbackThroughApplier`, matching the F5 posture in one place.
 status: open

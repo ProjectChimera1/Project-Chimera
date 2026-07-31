@@ -51,6 +51,13 @@ namespace ProjectChimera.Core.Bootstrap
         public FactionDefinition  FactionDef   = null!;  // default P1 (alpha)
         public FactionDefinition  FactionDef2  = null!;  // default P2 (beta)
         public FactionDefinition?[] SlotFactionDefs = null!;
+        /// <summary>DW-229: a <c>_Ready</c>-time clone of the seeded per-slot faction defs
+        /// (<c>[Player1=_factionDef, Player2=_factionDef2, rest null]</c>). The shared
+        /// <see cref="SlotFactionResolver.Resolve"/> resets <see cref="SlotFactionDefs"/> to THIS baseline before
+        /// re-resolving per-slot faction JSON, so a cleared/repointed faction_json reverts to its default and
+        /// re-resolution is idempotent across Edit↔Play re-applies. Distinct backing array from
+        /// <see cref="SlotFactionDefs"/> — never aliased to it.</summary>
+        public FactionDefinition?[] SeededSlotFactionDefs = null!;
         /// <summary>Story 2.4b: the validated ability registry (built by MainScene._Ready from the abilities dir).
         /// The command card reads it to turn a per-entity <c>AbilityId</c> index into an <c>AbilityDefinition</c> for
         /// labels, and <c>ScenarioLoadPhase</c> reads it to resolve per-slot defs — the <see cref="SimulationHost"/>

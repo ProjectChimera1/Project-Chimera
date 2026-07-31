@@ -154,6 +154,10 @@ namespace ProjectChimera.CreationSuite
         /// <summary>Called when the scenario is reloaded (e.g. after Import or scene restart).</summary>
         public void SetScenario(ScenarioData? scenario)
         {
+            // DW-10: SetScenario means "the scenario object CHANGED". A same-reference re-bind (the in-place
+            // Edit↔Play re-apply) is a no-op so it can never discard unsaved editor state; only an actual object
+            // swap rebinds + refreshes. Captures the same-null case too.
+            if (ReferenceEquals(scenario, _scenario)) return;
             _scenario = scenario;
             RefreshList();
         }

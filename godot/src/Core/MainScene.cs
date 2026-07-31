@@ -49,6 +49,12 @@ namespace ProjectChimera.Core
         // Active per-slot definitions — resolved by the presentation pre-pass (ResolveSlotFactionDefs) from
         // slot.FactionJson and shared IN PLACE with ScenarioApplier (Story 1.8b). Elements are null until resolved.
         private FactionDefinition?[] _slotFactionDefs = null!;
+        /// <summary>DW-229: a _Ready-time clone of the seeded <see cref="_slotFactionDefs"/> defaults
+        /// ([Player1=_factionDef, Player2=_factionDef2, rest null]). Passed to
+        /// <see cref="Bootstrap.SlotFactionResolver.Resolve"/> as the reset baseline so the Edit↔Play re-apply
+        /// (and boot) revert a cleared/repointed slot faction_json to its default. A distinct array — never
+        /// aliased to _slotFactionDefs.</summary>
+        private FactionDefinition?[] _seededSlotFactionDefs = null!;
         /// <summary>Story 2.4b: registry of validated abilities (built from <see cref="ABILITIES_DIR"/>), injected
         /// into the host and published on <c>SceneContext</c> for the command card's label reads. Empty until _Ready builds it.</summary>
         private AbilityRegistry _abilityRegistry = AbilityRegistry.Empty;
@@ -461,6 +467,11 @@ namespace ProjectChimera.Core
             _slotFactionDefs = factions.SlotDefinitions;
             _slotFactionDefs[(int)Faction.Player1] = _factionDef;
             _slotFactionDefs[(int)Faction.Player2] = _factionDef2;
+            // DW-229: capture the seeded defaults NOW (a shallow clone of the contents), before any
+            // ResolveSlotFactionDefs pre-pass overwrites a slot. The shared SlotFactionResolver resets the live
+            // array back to this baseline on every apply, so a cleared/repointed slot faction_json reverts to its
+            // default instead of keeping a stale def. Cloned (not aliased) so it is never mutated by a later resolve.
+            _seededSlotFactionDefs = (FactionDefinition?[])_slotFactionDefs.Clone();
 
             // Damage multipliers (AR-26): load the creator-editable table. A malformed file fails closed
             // with a located error (DamageTable.FromJson); a MISSING file falls back to the canonical
@@ -514,6 +525,8 @@ namespace ProjectChimera.Core
                 Fog = _fog, Projectiles = _projectiles, CombatEvents = _combatEvents, DamageTable = _damageTable,
                 MatchStats = _matchStats, BuildSys = _buildSys, ScenarioDirector = _host.ScenarioDirector,
                 FactionDef = _factionDef, FactionDef2 = _factionDef2, SlotFactionDefs = _slotFactionDefs,
+                SeededSlotFactionDefs = _seededSlotFactionDefs, // DW-229: reset baseline for the shared resolver
+
                 AbilityRegistry = _abilityRegistry, // Story 2.4b: the command card reads this for ability labels
                 BehaviorRegistry = _behaviorRegistry, // Story 3.6: the Unit Card Editor reads this for the behavior picker + compat
             };
@@ -2293,10 +2306,60 @@ namespace ProjectChimera.Core
             }
         }
 
+        /// <summary>
+        /// DW-10: broadcast the live <c>_ctx.Scenario</c> to the three creation-suite panels that hold a
+        /// <c>ScenarioData</c> reference, enforcing the rebind invariant on the one in-place re-apply seam
+        /// (<see cref="ResetToAuthoredStartCore"/>). Each panel's <c>SetScenario</c> early-returns on a same-reference
+        /// bind, so a same-object F5 round-trip never discards unsaved editor state (e.g. an unsaved DSL graph); it
+        /// only rebinds/refreshes on an actual object swap. Null-guarded — panels may be unbuilt in a headless/menu path.
+        /// </summary>
+        private void RebindScenarioPanels()
+        {
+            _ctx.TriggerPanel?.SetScenario(_ctx.Scenario);
+            _ctx.PersistenceManifestPanel?.SetScenario(_ctx.Scenario);
+            _ctx.DslGraphEditorPanel?.SetScenario(_ctx.Scenario);
+        }
+
         /// <summary>Body of <see cref="ResetToAuthoredStart"/>. Consumes the pending-load statics at its final step;
         /// the wrapper above guarantees they are never left armed when this returns false or throws.</summary>
         private bool ResetToAuthoredStartCore(bool preserveHeroProgress)
         {
+            // 0. DW-229: re-run the ONE shared per-slot faction resolution against the LIVE edited scenario BEFORE the
+            //    validation/launch gates below, so an in-session faction_json change/clear takes effect on this F5
+            //    (the reset-then-resolve reverts a cleared slot to its default and picks up a repointed one) without a
+            //    scene reload — and so the gates see the refreshed defs. The array is mutated in place (aliased by the
+            //    applier), so snapshot it first and restore-on-veto — the re-apply must honor the SAME "world
+            //    unchanged on reject" contract the boot path keeps via ScenarioLoadPhase.Snapshot/RestoreSlotFactionDefs.
+            //    Scenario-only: the fallback (Scenario == null) path keeps the boot fallback's seeded defaults. Panel
+            //    rebind (DW-10) is deferred until AFTER the fail-closed gates pass (step 2c), so a vetoed apply never
+            //    rebinds a panel.
+            FactionDefinition?[] preResolveSlotDefs = (FactionDefinition?[])_slotFactionDefs.Clone();
+            // Restore the pre-resolve per-slot defs IN PLACE (the array is aliased by the applier/SceneContext and must
+            // never be reassigned) — the veto-rollback for every fail-closed exit below.
+            void RestorePreResolveSlotDefs()
+            {
+                for (int i = 0; i < _slotFactionDefs.Length; i++) _slotFactionDefs[i] = preResolveSlotDefs[i];
+            }
+            if (_ctx.Scenario != null)
+            {
+                try
+                {
+                    Bootstrap.SlotFactionResolver.Resolve(_ctx.Scenario, _slotFactionDefs, _seededSlotFactionDefs, _abilityRegistry);
+                }
+                catch (System.Exception ex)
+                {
+                    // A slot's faction_json repointed/edited to a corrupt or invalid file since boot makes
+                    // FactionDefinition.LoadFromFile throw (JSON/IO error, or InvalidOperationException on a rejected
+                    // roster). Fail closed exactly like the gates below rather than letting the throw escape the F5
+                    // handler (the wrapper is try/finally, not try/catch): restore the pre-resolve defs, surface the
+                    // located error, and veto the toggle (stay in Edit, world unchanged).
+                    RestorePreResolveSlotDefs();
+                    GD.PrintErr($"[Reset] Faction resolution failed — staying in Edit: {ex.Message}");
+                    ShowTriggerMessage($"Cannot enter Play — faction failed to load:\n{ex.Message}", 5f);
+                    return false;
+                }
+            }
+
             // 1. Snapshot the live deployed hero's Level/Xp BEFORE anything clears (preserve path only). Pre-3.13 this
             //    equals the profile's authored values, but the seam is exercised now so Story 3.13 hooks in unchanged.
             // DW-27/DW-32: the plain-data capture is lifted into the Godot-free HeroHarvestResolver so the has-vs-fallback
@@ -2321,6 +2384,7 @@ namespace ProjectChimera.Core
                 ValidationResult r = new ScenarioValidator().Validate(_ctx.Scenario!, _slotFactionDefs); // Story 6.8: authored-building-id gate
                 if (!r.Ok)
                 {
+                    RestorePreResolveSlotDefs(); // roll back the step-0 re-resolution — world unchanged on reject
                     GD.PrintErr($"[Reset] Edited scenario failed validation — staying in Edit: {r.Error}");
                     ShowTriggerMessage($"Cannot enter Play — invalid scenario:\n{r.Error}", 5f);
                     return false; // veto: nothing cleared, world unchanged
@@ -2337,10 +2401,18 @@ namespace ProjectChimera.Core
             string? factionBlock = Definitions.FactionLaunchGate.FirstIncompleteReason(_slotFactionDefs, _abilityRegistry);
             if (factionBlock != null)
             {
+                RestorePreResolveSlotDefs(); // roll back the step-0 re-resolution — world unchanged on reject
                 GD.PrintErr($"[Reset] {factionBlock.Replace("\n", " ")} — staying in Edit");
                 ShowTriggerMessage($"Cannot enter Play — {factionBlock}", 5f);
                 return false; // veto: nothing cleared, world unchanged
             }
+
+            // 2c. DW-10: the fail-closed gates have passed, so this re-apply is committed — NOW rebind the editor panels
+            //     that hold the ScenarioData reference. Each panel's SetScenario no-ops on a same-reference bind (the
+            //     in-place re-apply keeps the same object), so unsaved editor state survives; it only rebinds/refreshes
+            //     on an actual object swap. Deferred to here (not step 0) so a vetoed apply never rebinds a panel.
+            if (_ctx.Scenario != null)
+                RebindScenarioPanels();
 
             // 3. Clear every store to its authored-start (post-ctor) state — in place, no host reconstruction.
             _host.ClearForReset();

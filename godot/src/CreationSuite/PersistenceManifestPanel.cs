@@ -79,6 +79,9 @@ namespace ProjectChimera.CreationSuite
         /// <summary>Rebind after the scenario is reloaded (Import / scene restart) — mirrors <c>TriggerEditorPanel.SetScenario</c>.</summary>
         public void SetScenario(ScenarioData? scenario)
         {
+            // DW-10: same-reference re-bind (the in-place Edit↔Play re-apply) is a no-op — only an actual object
+            // swap (Import / scene restart) rebinds + refreshes. Captures the same-null case too.
+            if (ReferenceEquals(scenario, _scenario)) return;
             _scenario = scenario;
             if (_panel.Visible) Refresh();
         }

@@ -108,6 +108,11 @@ namespace ProjectChimera.CreationSuite
         /// render — or Save — a stale graph into the newly bound scenario.</summary>
         public void SetScenario(ScenarioData? scenario)
         {
+            // DW-10: a same-reference re-bind (the in-place Edit↔Play re-apply) must NOT drop _editGraph /
+            // _lastLoadedJson — this method deliberately resets both, so wiring it into the same-object re-apply
+            // path is only safe because of this guard. It rebinds + drops the model ONLY on an actual object swap
+            // (Import / scene restart). Captures the same-null case too.
+            if (ReferenceEquals(scenario, _scenario)) return;
             _scenario = scenario;
             _lastLoadedJson = null;
             _editGraph = new TriggerGraph();

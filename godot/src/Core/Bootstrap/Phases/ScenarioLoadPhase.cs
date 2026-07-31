@@ -337,46 +337,16 @@ namespace ProjectChimera.Core.Bootstrap
         }
 
         /// <summary>
-        /// Story 1.8b (D4) — presentation faction-resolution pre-pass. Resolves each player slot's res:// faction
-        /// JSON to an absolute OS path and populates ctx.SlotFactionDefs IN PLACE before the Godot-free applier
-        /// runs. The ONLY ProjectSettings.GlobalizePath on the scenario-apply path. Slots without an explicit
-        /// faction_json keep their _Ready-seeded defaults.
+        /// Story 1.8b (D4) — presentation faction-resolution pre-pass. Delegates to the ONE shared
+        /// <see cref="SlotFactionResolver.Resolve"/> (DW-229), which resets every slot to its _Ready-seeded default
+        /// then resolves each player slot's res:// faction JSON onto ctx.SlotFactionDefs IN PLACE before the
+        /// Godot-free applier runs. At first boot the reset is a no-op (the array already equals the seeded
+        /// defaults), so this stays behavior-identical to the former inline pre-pass; the same helper drives the
+        /// Edit↔Play re-apply so boot and re-apply can never diverge. The reject-rollback around this call
+        /// (SnapshotSlotFactionDefs / RestoreSlotFactionDefs) is unchanged.
         /// </summary>
-        private void ResolveSlotFactionDefs(ScenarioData scenario)
-        {
-            foreach (var slot in scenario.PlayerSlots ?? System.Array.Empty<ScenarioPlayerSlot>())
-            {
-                if (string.IsNullOrEmpty(slot.FactionJson)) continue;
-                var faction = FactionRegistry.ToFaction(slot.Slot); // resolved via the one canonical cast site
-                string abs = ProjectSettings.GlobalizePath(slot.FactionJson);
-                if (System.IO.File.Exists(abs))
-                {
-                    var def = FactionDefinition.LoadFromFile(abs);
-                    // Story 2.4b: back-fill this slot's freshly-loaded faction defs' ability ids → registry indices
-                    // BEFORE the applier spawns its units (ApplyUnitDefinition reads UnitDefinition.AbilityIndices,
-                    // empty until ResolveAbilities runs). The registry was built + published on the context by
-                    // MainScene._Ready, which runs before this phase (runtime position 12). Idempotent + drops unknown ids.
-                    foreach (var u in def.Units) u.ResolveAbilities(_ctx.AbilityRegistry);
-                    // Story 2.11 (AC2): closed-set tag validation — drop any unit carrying an unknown tag (fail-closed,
-                    // located error). Runs on BOTH legs (here + ServerBootstrap) so client/server stay in parity before
-                    // any SpawnUnit; a dropped unit → GetUnit null → the applier's def==null skip → no EntityWorld slot.
-                    foreach (string err in UnitTagValidator.ValidateAndDropUnits(def))
-                        GD.PrintErr($"[UnitTagValidator] {err} (unit dropped)");
-                    // Story 5.7 (FR-19/UX-DR80, DW-97 match-load closure): shadow-mode, non-blocking roster-
-                    // completeness diagnostic — mirrors the UnitTagValidator GD.PrintErr idiom immediately above.
-                    // Runs AFTER tag-drop so it reflects the roster that will actually spawn (a unit dropped for
-                    // an unknown tag could be this faction's only Worker/combat unit — checking pre-drop would
-                    // silently miss that). Never blocks the load (no new blocking policy invented per DW-97's own
-                    // closure note); just surfaces a located error if the roster fails ValidateComplete (e.g.
-                    // missing Worker role or a blank mesh_path) so it isn't a silent unplayable match start.
-                    FactionValidationResult completeResult = FactionValidator.ValidateComplete(def);
-                    if (!completeResult.Ok)
-                        foreach ((string _, string message) in completeResult.Errors)
-                            GD.PrintErr($"[FactionValidator] slot {slot.Slot} ({abs}): {message}");
-                    _ctx.SlotFactionDefs[(int)faction] = def;
-                }
-            }
-        }
+        private void ResolveSlotFactionDefs(ScenarioData scenario) =>
+            SlotFactionResolver.Resolve(scenario, _ctx.SlotFactionDefs, _ctx.SeededSlotFactionDefs, _ctx.AbilityRegistry);
 
         /// <summary>
         /// Story 1.8b / Story 7.7 — the fallback path (scenario JSON missing, unparseable, or REJECTED by the
