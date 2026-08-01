@@ -146,6 +146,19 @@ namespace ProjectChimera.Core.Definitions
             // (new bool[_triggers.Length]); reject it located, like the four collections above.
             if (m.Triggers is null)      return ValidationResult.Fail("scenario.triggers is null.");
 
+            // ── DW-230: fail-closed store-capacity caps. The applier writes resource nodes into a fixed
+            //    ResourceNodeStore (MAX_NODES) and buildings into a fixed BuildingStore (MAX_BUILDINGS); past the cap
+            //    the store's Create returns -1 and the overflow entry vanishes (silently, pre-fix). Reject an
+            //    over-capacity scenario AT THE GATE — located, naming the field, its count, and the cap — so overflow
+            //    is a diagnosed rejection, not a vanished entity. Checked here, after the null-collection checks
+            //    guarantee non-null. ──
+            if (m.ResourceNodes.Length > ResourceNodeStore.MAX_NODES)
+                return ValidationResult.Fail(
+                    $"scenario.resource_nodes has {m.ResourceNodes.Length} nodes, exceeding the store capacity of {ResourceNodeStore.MAX_NODES}.");
+            if (m.Buildings.Length > BuildingStore.MAX_BUILDINGS)
+                return ValidationResult.Fail(
+                    $"scenario.buildings has {m.Buildings.Length} buildings, exceeding the store capacity of {BuildingStore.MAX_BUILDINGS}.");
+
             // ── Story 6.6: structurally validate props / cameras / water BEFORE decoding the blocked union (their
             //    coords quantize into the footprint mask below, so a non-finite/out-of-range one must fail first) and
             //    before any position check. NULL collections (every existing scenario) ⇒ nothing to validate ⇒ the

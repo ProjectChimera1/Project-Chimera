@@ -349,7 +349,8 @@ origin: migrated from legacy ledger ("Deferred from: code review of story-3.15 (
 source_spec: `_bmad-output/implementation-artifacts/spec-3-15-item-inventory-sim-pickups-slots-stat-effects-charges.md`
 location: n/a
 reason: summary: `ScenarioApplier` creates placed items in `ScenarioData.Items` array order (packed refs 0,1,2… follow array order) while `StartStateHash` canonicalizes item order (sorts by item_id/X/Z) before folding, so two scenarios with the same item set in different array order hash identically yet assign different runtime refs — a `PickupItem`/inventory ref could resolve to a different physical item per peer. evidence: Only triggers when peers load differently-ordered-but-same-set item arrays (tampered/divergent files); byte-identical files assign identical refs. This is a pre-existing architectural property shared with unit/building placement (entity ids also follow array order while `CanonicalModelHash` sorts them). Closure: canonicalize placement order in `ScenarioApplier` (sort before `Create`) for items and, ideally, the pre-existing unit/building loops too, or fold array order into the hash. Flagged by the Blind Hunter review layer (F2).
-status: open
+status: done 2026-08-01
+resolution: resolved by sweep bundle dw-scenarioapplier-order-and-capacity
 decision: 2026-07-25 Canonicalize placement order — Sort ScenarioApplier's Items (and ideally the unit/building loops) by the same canonical key before Create; golden re-baseline
 decision: 2026-07-25 Canonicalize placement order — Sort ScenarioApplier's Items (and ideally the unit/building loops) by the same canonical key before Create; golden re-baseline
 decision: 2026-07-19 Canonicalize placement order — Sort ScenarioApplier's Items (and the unit/building loops) by the same canonical key before Create so runtime refs match the hash order. Requires a golden re-baseline.
@@ -2849,7 +2850,8 @@ origin: migrated from legacy ledger ("Deferred from: code review of story-1.8b (
 location: godot/src/Core/Sim/ScenarioApplier.cs:221,254-256
 severity: medium
 reason: Unchanged — Nodes.Create's -1 discarded, PlaceBuildingDirect/ById -1 assigned unchecked into buildingSlots; validator has no count cap. Slightly worse than logged: the -1 now flows into Story 7.11's landmark structure_index mapping, which the validator bounds only against authored buildings.Length, not successful placement. Verified 2026-07-28.
-status: open
+status: done 2026-08-01
+resolution: resolved by sweep bundle dw-scenarioapplier-order-and-capacity
 decision: 2026-07-28 correct-course — bundle scenario-store-capacity-fail-closed (Epic 15, Story 15.6)
 
 ## Deferred from: code review of story-1.8c (2026-06-24) — migrated 2026-07-28

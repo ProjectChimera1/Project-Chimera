@@ -218,13 +218,19 @@ namespace ProjectChimera.Core.Sim
                     }
                 }
 
-                _host.Nodes.Create(pos, Fixed.FromFloat(node.Supply), Fixed.FromFloat(node.Rate), node.MaxGatherers,
+                // DW-230: check the -1 full-store sentinel from Nodes.Create (formerly discarded, so an overflow node
+                // vanished silently). Warn + skip, mirroring the item-store guard below. The validator's resource_nodes
+                // count cap makes this unreachable on a gate-passed path; it is belt-and-suspenders for shadow/direct
+                // callers. Node placement stays in AUTHORED order (out of DW-37 scope — nodes are not ref-addressed).
+                int nodeSlot = _host.Nodes.Create(pos, Fixed.FromFloat(node.Supply), Fixed.FromFloat(node.Rate), node.MaxGatherers,
                     ParseCollectionModel(node.CollectionModel),
                     ParseResourceType(node.ResourceType),
                     string.IsNullOrEmpty(node.RequiresStructure) ? null : node.RequiresStructure,
                     Fixed.FromFloat(node.RequiresStructureRadius),
                     ownerFaction,
                     node.IncomePeriodTicks);
+                if (nodeSlot < 0)
+                    _log.Warn($"[ScenarioApplier] resource_node at ({node.X}, {node.Z}) could not be placed — the resource-node store is full (> {ResourceNodeStore.MAX_NODES}) — skipped.");
             }
 
             // ── 3. Buildings ──────────────────────────────────────────────────
@@ -232,7 +238,13 @@ namespace ProjectChimera.Core.Sim
             // Buildings array, so a Landmark-Destruction preset can resolve its structure_index to a runtime slot.
             ScenarioBuilding[] buildingsArr = s.Buildings ?? System.Array.Empty<ScenarioBuilding>();
             int[] buildingSlots = new int[buildingsArr.Length];
-            for (int bi = 0; bi < buildingsArr.Length; bi++)
+            // DW-37: PLACE buildings in the SAME canonical key order CanonicalModelHash sorts by, so the assigned
+            // BuildingStore slots (runtime refs) become a deterministic function of the order-independent set — two
+            // scenarios with the same buildings in different array order Create in identical slot order. The bodies
+            // still write buildingSlots[bi] by the AUTHORED index bi (Story 7.11 structure_index resolves against it),
+            // so only the CREATE order changes. A fixture already authored in canonical order yields the identity
+            // permutation (see CanonicalBuildingOrder) → byte-identical Create order → no golden move.
+            foreach (int bi in CanonicalBuildingOrder(buildingsArr))
             {
                 var b = buildingsArr[bi];
                 var faction = (Faction)(b.Slot + 1);
@@ -247,13 +259,21 @@ namespace ProjectChimera.Core.Sim
                 // for shadow-mode/direct callers). Anything else is an authored id → the by-id placement path
                 // (BuildingType.Custom or a snake_case built-in id). The former CommandCenter-swallowing default of
                 // ParseBuildingType no longer eats a custom id.
+                // DW-230: capture the placement return into a local so the -1 full-store sentinel can be diagnosed
+                // (warn), mirroring the item-store guard below, before it is recorded into buildingSlots[bi]. The
+                // validator's building count cap makes this unreachable on a gate-passed path; it is belt-and-suspenders
+                // for shadow/direct callers. A -1 slot is recorded verbatim — WinConditionSystem treats it as unresolved.
+                int placedSlot;
                 if (Enum.TryParse<BuildingType>(b.Type, out var bType)
                     && Enum.IsDefined(typeof(BuildingType), bType)
                     && bType.ToString() == b.Type
                     && bType != BuildingType.Custom)
-                    buildingSlots[bi] = _host.BuildSys.PlaceBuildingDirect(bType, faction, pos, b.PreBuilt);
+                    placedSlot = _host.BuildSys.PlaceBuildingDirect(bType, faction, pos, b.PreBuilt);
                 else
-                    buildingSlots[bi] = _host.BuildSys.PlaceBuildingDirectById(b.Type, faction, pos, b.PreBuilt);
+                    placedSlot = _host.BuildSys.PlaceBuildingDirectById(b.Type, faction, pos, b.PreBuilt);
+                if (placedSlot < 0)
+                    _log.Warn($"[ScenarioApplier] Scenario building '{b.Type}' (slot {b.Slot}) could not be placed — the building store is full (> {BuildingStore.MAX_BUILDINGS}) — recorded as unresolved.");
+                buildingSlots[bi] = placedSlot;
             }
 
             // ── 4. Units ──────────────────────────────────────────────────────
@@ -261,7 +281,13 @@ namespace ProjectChimera.Core.Sim
             // so an Assassination preset can resolve its leader_unit_index to a runtime entity id (-1 = not spawned).
             ScenarioUnit[] unitsArr = s.Units ?? System.Array.Empty<ScenarioUnit>();
             int[] unitEntityIds = new int[unitsArr.Length];
-            for (int ui = 0; ui < unitsArr.Length; ui++)
+            // DW-37: SPAWN units in the SAME canonical key order CanonicalModelHash sorts by, so the assigned
+            // EntityWorld ids (runtime refs) become a deterministic function of the order-independent set — two
+            // scenarios with the same units in different array order spawn identical ids. The body still writes
+            // unitEntityIds[ui] by the AUTHORED index ui (Story 7.11 leader_unit_index resolves against it), so only
+            // the SPAWN order changes. A fixture already authored in canonical order yields the identity permutation
+            // (see CanonicalUnitOrder) → byte-identical spawn order → no golden move.
+            foreach (int ui in CanonicalUnitOrder(unitsArr))
             {
                 unitEntityIds[ui] = -1;
                 var u = unitsArr[ui];
@@ -304,8 +330,14 @@ namespace ProjectChimera.Core.Sim
             // ── 4b. Items (Story 3.15) — place ground items + configure the usable inventory-slot cap ────────────
             // Configure the per-scenario usable inventory count (NULL ⇒ the full HeroStore.INVENTORY_SLOTS stride).
             _host.ItemSys.ConfigureUsableSlots(s.InventorySlotCount ?? HeroStore.INVENTORY_SLOTS);
-            foreach (var it in s.Items ?? System.Array.Empty<ScenarioItem>())
+            // DW-37: CREATE ground items in the SAME canonical key order StartStateHash sorts by, so the assigned
+            // ItemStore slots / packed refs become a deterministic function of the order-independent set — a
+            // PickupItem/inventory ref then resolves to the same physical item on every peer. Order-only change; a
+            // fixture already authored in canonical order yields the identity permutation → no golden move.
+            ScenarioItem[] itemsArr = s.Items ?? System.Array.Empty<ScenarioItem>();
+            foreach (int ii in CanonicalItemOrder(itemsArr))
             {
+                var it = itemsArr[ii];
                 int defId = _host.ItemRegistry.IndexOf(it.ItemId);
                 if (defId < 0)
                 {
@@ -509,6 +541,66 @@ namespace ProjectChimera.Core.Sim
         /// </summary>
         public void SetFactionBase(Faction faction, FixedVec3 pos) =>
             _host.Resources.FactionBase[(int)faction] = pos;
+
+        // ── DW-37: canonical placement-order permutations ────────────────────────────────────────────────────────
+        // Each helper returns an authored-index permutation sorted by the EXACT keys the corresponding hash sorts by
+        // (Units/Buildings → CanonicalModelHash; Items → StartStateHash), with the AUTHORED INDEX as the final
+        // tiebreaker. That last tiebreaker makes the order a STRICT TOTAL order deterministic across runtimes (no
+        // reliance on Array.Sort stability / platform internals) AND makes an already-canonical array yield the
+        // IDENTITY permutation — so a fixture authored in canonical order Creates byte-identically (no golden move).
+        // Load-time only (once per Apply), never a per-tick path, so the index alloc + Array.Sort here is fine. Core.Sim
+        // stays Godot- and LINQ-free (the comparator approach needs neither).
+
+        /// <summary>Units → (<c>Slot</c>, <c>UnitId</c> ordinal, quantized <c>X.Raw</c>, quantized <c>Z.Raw</c>),
+        /// authored-index tiebreaker. Matches <see cref="CanonicalModelHash"/>'s Units sort key exactly.</summary>
+        private static int[] CanonicalUnitOrder(ScenarioUnit[] u)
+        {
+            var idx = new int[u.Length];
+            for (int i = 0; i < idx.Length; i++) idx[i] = i;
+            Array.Sort(idx, (a, b) =>
+            {
+                int c = u[a].Slot.CompareTo(u[b].Slot);                                 if (c != 0) return c;
+                c = string.CompareOrdinal(u[a].UnitId, u[b].UnitId);                    if (c != 0) return c;
+                c = Fixed.FromFloat(u[a].X).Raw.CompareTo(Fixed.FromFloat(u[b].X).Raw); if (c != 0) return c;
+                c = Fixed.FromFloat(u[a].Z).Raw.CompareTo(Fixed.FromFloat(u[b].Z).Raw); if (c != 0) return c;
+                return a.CompareTo(b); // authored-index tiebreaker → strict total order (identity when canonical)
+            });
+            return idx;
+        }
+
+        /// <summary>Buildings → (<c>Slot</c>, <c>Type</c> ordinal, quantized <c>X.Raw</c>, quantized <c>Z.Raw</c>,
+        /// <c>PreBuilt</c>), authored-index tiebreaker. Matches <see cref="CanonicalModelHash"/>'s Buildings sort key exactly.</summary>
+        private static int[] CanonicalBuildingOrder(ScenarioBuilding[] bs)
+        {
+            var idx = new int[bs.Length];
+            for (int i = 0; i < idx.Length; i++) idx[i] = i;
+            Array.Sort(idx, (a, b) =>
+            {
+                int c = bs[a].Slot.CompareTo(bs[b].Slot);                                   if (c != 0) return c;
+                c = string.CompareOrdinal(bs[a].Type, bs[b].Type);                          if (c != 0) return c;
+                c = Fixed.FromFloat(bs[a].X).Raw.CompareTo(Fixed.FromFloat(bs[b].X).Raw);   if (c != 0) return c;
+                c = Fixed.FromFloat(bs[a].Z).Raw.CompareTo(Fixed.FromFloat(bs[b].Z).Raw);   if (c != 0) return c;
+                c = bs[a].PreBuilt.CompareTo(bs[b].PreBuilt);                               if (c != 0) return c;
+                return a.CompareTo(b); // authored-index tiebreaker → strict total order (identity when canonical)
+            });
+            return idx;
+        }
+
+        /// <summary>Items → (<c>ItemId</c> ordinal, quantized <c>X.Raw</c>, quantized <c>Z.Raw</c>), authored-index
+        /// tiebreaker. Matches <see cref="StartStateHash"/>'s placed-map-items sort key exactly.</summary>
+        private static int[] CanonicalItemOrder(ScenarioItem[] items)
+        {
+            var idx = new int[items.Length];
+            for (int i = 0; i < idx.Length; i++) idx[i] = i;
+            Array.Sort(idx, (a, b) =>
+            {
+                int c = string.CompareOrdinal(items[a].ItemId, items[b].ItemId);                    if (c != 0) return c;
+                c = Fixed.FromFloat(items[a].X).Raw.CompareTo(Fixed.FromFloat(items[b].X).Raw);      if (c != 0) return c;
+                c = Fixed.FromFloat(items[a].Z).Raw.CompareTo(Fixed.FromFloat(items[b].Z).Raw);      if (c != 0) return c;
+                return a.CompareTo(b); // authored-index tiebreaker → strict total order (identity when canonical)
+            });
+            return idx;
+        }
 
         /// <summary>Parse a building type string to its enum value (verbatim from the as-built MainScene helper).</summary>
         public static BuildingType ParseBuildingType(string type) => type switch

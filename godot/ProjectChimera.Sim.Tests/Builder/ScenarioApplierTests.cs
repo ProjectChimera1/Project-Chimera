@@ -312,10 +312,13 @@ namespace ProjectChimera.Sim.Tests.Builder
             Assert.True(r.Ok, r.Error);
             applier.Apply(r.Value);
 
-            // Exactly the hero is recorded (the worker is not), with its entity id (spawned 2nd → id 1) + unit id.
+            // Exactly the hero is recorded (the worker is not), with its unit id + spawned entity id. DW-37: units now
+            // SPAWN in CanonicalModelHash key order (Slot, UnitId ordinal, X.Raw, Z.Raw), not authored array order —
+            // both units are slot 0, and "warchief" < "worker" ordinally, so the hero spawns FIRST → entity id 0
+            // (was id 1 under the old authored-order spawn). Runtime ids are now a deterministic function of the set.
             Assert.Single(applier.LastAppliedHeroes);
             Assert.Equal("warchief", applier.LastAppliedHeroes[0].UnitId);
-            Assert.Equal(1,          applier.LastAppliedHeroes[0].EntityId);
+            Assert.Equal(0,          applier.LastAppliedHeroes[0].EntityId);
 
             // Re-Apply replaces the record (Clear at the top of Apply), it does not append.
             applier.Apply(r.Value);
@@ -543,6 +546,305 @@ namespace ProjectChimera.Sim.Tests.Builder
             Assert.False(host.Alliances.AreAllied(Faction.Player1, Faction.Player2)); // no distinct factions allied
             for (int f = 0; f < FactionRegistry.SLOT_DEFINITIONS_SIZE; f++)
                 Assert.Equal(f, host.Alliances.TeamId[f]);                            // byte-identical FFA default
+        }
+
+        // ── DW-37: deterministic placement order — runtime refs are a function of the (order-independent) SET, not the
+        //    authored array order. The applier now Creates units/buildings/items in the SAME canonical key order the
+        //    hashes sort by, with unitEntityIds/buildingSlots still indexed by authored position. ──
+
+        /// <summary>Apply <paramref name="model"/> to a fresh host carrying <see cref="AlphaFaction"/> (scout@0,
+        /// worker@1) + a 2-item registry, returning the host for store inspection.</summary>
+        private static SimulationHost ApplyToFreshHost(ScenarioData model)
+        {
+            var faction = AlphaFaction();
+            var slotDefs = SlotDefs(faction);
+            var itemRegistry = new ItemRegistry(new[]
+            {
+                new ItemDefinition { Id = "ring_of_vigor", Charges = 5, MaxHealthDelta = Fixed.FromInt(50) },
+                new ItemDefinition { Id = "amulet",        Charges = 3 },
+            });
+            var host = SimulationHost.Create(NullLogSink.Instance, new FactionRegistry(2), faction, faction,
+                                             itemRegistry: itemRegistry);
+            var applier = new ScenarioApplier(host, NullLogSink.Instance, slotDefs);
+            ValidationResult r = new ScenarioValidator().Validate(model);
+            Assert.True(r.Ok, r.Error);
+            applier.Apply(r.Value);
+            return host;
+        }
+
+        /// <summary>The alpha mirror with its units/buildings/items replaced by the given sets (same everything else).</summary>
+        private static ScenarioData ModelWith(ScenarioUnit[] units, ScenarioBuilding[] buildings, ScenarioItem[] items)
+        {
+            ScenarioData m = BuildAlphaModel();
+            m.Units = units;
+            m.Buildings = buildings;
+            m.Items = items;
+            return m;
+        }
+
+        [Fact]
+        public void Apply_ReorderedSameSet_ProducesIdenticalPlacement_DW37()
+        {
+            // AC: two Validated<ScenarioData> over the IDENTICAL unit/building/item SET but different array order must
+            // apply to identical runtime state — entity positions-by-id, building slots, and item packed refs. The set
+            // is NOT palindromic, so the two arrays' NAIVE (array-order) spawns would differ at id 0 — the match below
+            // is only possible because the applier canonicalizes placement order.
+            var uA = new[]
+            {
+                new ScenarioUnit { UnitId = "scout",  Slot = 0, X = -10f, Z =  0f },
+                new ScenarioUnit { UnitId = "worker", Slot = 0, X =  -5f, Z =  4f },
+                new ScenarioUnit { UnitId = "worker", Slot = 0, X =  -5f, Z = -4f },
+                new ScenarioUnit { UnitId = "worker", Slot = 1, X =  10f, Z =  0f },
+            };
+            var bA = new[]
+            {
+                new ScenarioBuilding { Type = "CommandCenter", Slot = 0, X = -45f, Z = 0f, PreBuilt = true },
+                new ScenarioBuilding { Type = "Barracks",      Slot = 0, X = -30f, Z = 6f, PreBuilt = true },
+                new ScenarioBuilding { Type = "CommandCenter", Slot = 1, X =  45f, Z = 0f, PreBuilt = true },
+            };
+            var iA = new[]
+            {
+                new ScenarioItem { ItemId = "ring_of_vigor", X =  3f, Z =  1f },
+                new ScenarioItem { ItemId = "amulet",        X = -2f, Z =  5f },
+                new ScenarioItem { ItemId = "amulet",        X = -2f, Z = -5f },
+            };
+            // Reversed orderings of the SAME sets.
+            var uB = new[] { uA[3], uA[2], uA[1], uA[0] };
+            var bB = new[] { bA[2], bA[1], bA[0] };
+            var iB = new[] { iA[2], iA[1], iA[0] };
+
+            SimulationHost a = ApplyToFreshHost(ModelWith(uA, bA, iA));
+            SimulationHost b = ApplyToFreshHost(ModelWith(uB, bB, iB));
+
+            // Units: identical count and per-id position/faction/mesh — spawn order is canonical regardless of input order.
+            Assert.True(a.World.AliveCount > 0);
+            Assert.Equal(a.World.AliveCount, b.World.AliveCount);
+            for (int id = 0; id < a.World.AliveCount; id++)
+            {
+                Assert.Equal(a.World.Position[id],  b.World.Position[id]);
+                Assert.Equal(a.World.FactionOf[id], b.World.FactionOf[id]);
+                Assert.Equal(a.World.MeshType[id],  b.World.MeshType[id]);
+            }
+
+            // Buildings: identical count and per-slot type/faction/position.
+            Assert.True(a.Buildings.Count > 0);
+            Assert.Equal(a.Buildings.Count, b.Buildings.Count);
+            for (int slot = 0; slot < a.Buildings.Count; slot++)
+            {
+                Assert.Equal(a.Buildings.Type[slot],      b.Buildings.Type[slot]);
+                Assert.Equal(a.Buildings.FactionOf[slot], b.Buildings.FactionOf[slot]);
+                Assert.Equal(a.Buildings.Position[slot],  b.Buildings.Position[slot]);
+            }
+
+            // Items: identical count and per-slot def/position (packed refs follow Create order).
+            Assert.True(a.Items.Count > 0);
+            Assert.Equal(a.Items.Count, b.Items.Count);
+            for (int slot = 0; slot < a.Items.Count; slot++)
+            {
+                Assert.Equal(a.Items.DefId[slot], b.Items.DefId[slot]);
+                Assert.Equal(a.Items.PosX[slot],  b.Items.PosX[slot]);
+                Assert.Equal(a.Items.PosZ[slot],  b.Items.PosZ[slot]);
+            }
+        }
+
+        [Fact]
+        public void Apply_CanonicalOrderFixture_IsANoOp_SpawnsInAuthoredOrder_DW37()
+        {
+            // AC: a set already authored in canonical order (Slot asc, UnitId ordinal asc, X.Raw asc, Z.Raw asc) Creates
+            // in byte-identical AUTHORED order — the canonical permutation is the identity, so no golden moves for such a
+            // fixture (the applier/replay goldens are authored this way, proven by the full suite staying green).
+            var units = new[]
+            {
+                new ScenarioUnit { UnitId = "scout",  Slot = 0, X = -10f, Z = -2f },
+                new ScenarioUnit { UnitId = "worker", Slot = 0, X =  -5f, Z = -1f },
+                new ScenarioUnit { UnitId = "worker", Slot = 0, X =  -5f, Z =  3f },
+                new ScenarioUnit { UnitId = "worker", Slot = 1, X =  10f, Z =  0f },
+            };
+
+            SimulationHost host = ApplyToFreshHost(
+                ModelWith(units, System.Array.Empty<ScenarioBuilding>(), System.Array.Empty<ScenarioItem>()));
+
+            Assert.Equal(units.Length, host.World.AliveCount);
+            for (int id = 0; id < units.Length; id++)
+                Assert.Equal(
+                    new FixedVec3(Fixed.FromFloat(units[id].X), Fixed.Zero, Fixed.FromFloat(units[id].Z)),
+                    host.World.Position[id]);
+        }
+
+        [Fact]
+        public void Apply_ShuffledUnits_AssassinationLeaderIndex_ResolvesAuthoredIndexEntity_DW37()
+        {
+            // AC: unitEntityIds stays indexed by AUTHORED array position even though spawn order is canonical. Two
+            // slot-0 units where "decoy" < "leader" ordinally ⇒ decoy spawns FIRST (entity id 0), leader SECOND (id 1).
+            // An Assassination preset naming leader_unit_index=0 (authored Units[0] == the leader) must resolve to the
+            // LEADER entity (id 1), not the first-spawned decoy (id 0) — destroying the leader makes its owner lose.
+            var faction = new FactionDefinition
+            {
+                Id = "alpha", DisplayName = "Alpha",
+                Units =
+                {
+                    new UnitDefinition { Id = "leader", Category = "Ranged", Hp = 50f, Speed = 3f },
+                    new UnitDefinition { Id = "decoy",  Category = "Ranged", Hp = 50f, Speed = 3f },
+                },
+            };
+            var slotDefs = SlotDefs(faction);
+            var host = SimulationHost.Create(NullLogSink.Instance, new FactionRegistry(2), faction, faction);
+            var applier = new ScenarioApplier(host, NullLogSink.Instance, slotDefs);
+
+            ScenarioData s = BuildAlphaModel();
+            s.Units = new[]
+            {
+                new ScenarioUnit { UnitId = "leader", Slot = 0, X =  10f, Z = 0f }, // authored index 0
+                new ScenarioUnit { UnitId = "decoy",  Slot = 0, X = -10f, Z = 0f }, // authored index 1
+            };
+            s.Buildings = System.Array.Empty<ScenarioBuilding>();
+            s.WinConditionSpec = new WinConditionSpec { Preset = WinPresetKind.Assassination, LeaderUnitIndex = 0 };
+
+            ValidationResult r = new ScenarioValidator().Validate(s);
+            Assert.True(r.Ok, r.Error);
+            applier.Apply(r.Value);
+
+            Assert.Equal(2, host.World.AliveCount);
+            // Canonical spawn order put decoy FIRST (id 0) and leader SECOND (id 1) — proving the reorder is real.
+            Assert.Equal(new FixedVec3(Fixed.FromFloat(-10f), Fixed.Zero, Fixed.Zero), host.World.Position[0]); // decoy
+            Assert.Equal(new FixedVec3(Fixed.FromFloat( 10f), Fixed.Zero, Fixed.Zero), host.World.Position[1]); // leader = authored[0]
+
+            Fixed dt = SimulationLoop.FixedDt;
+            host.WinState.MatchTicks = WinConditionSystem.GRACE_TICKS - 1;
+            host.WinCon.Tick(host.World, dt);
+            Assert.Equal(0, host.WinState.WinnerFaction()); // leader alive → no resolution
+
+            // Destroy the LEADER (entity id 1 = authored Units[0]). Owner P1 loses → P2 wins. Had leader_unit_index
+            // wrongly resolved by SPAWN order it would point at entity 0 (decoy) and this would never latch.
+            host.World.Destroy(1);
+            host.WinCon.Tick(host.World, dt);
+            Assert.Equal((int)Faction.Player2, host.WinState.WinnerFaction());
+        }
+
+        [Fact]
+        public void Apply_CanonicalOrderBuildings_IsANoOp_CreatesInAuthoredOrder_DW37()
+        {
+            // Drift guard: a BUILDINGS set already authored in canonical order (Slot asc, Type ordinal asc, X.Raw asc,
+            // Z.Raw asc, PreBuilt asc) must Create in byte-identical AUTHORED order — the canonical permutation is the
+            // identity, so no applier/replay golden carrying buildings moves. "Barracks" < "CommandCenter" ordinally, so
+            // the slot-0 Barracks authored FIRST must stay first; a comparator that drifted from CanonicalModelHash's
+            // buildings key would permute this and fail here (the units no-op test cannot catch a buildings-key drift).
+            var buildings = new[]
+            {
+                new ScenarioBuilding { Type = "Barracks",      Slot = 0, X = -40f, Z = 0f, PreBuilt = true },
+                new ScenarioBuilding { Type = "CommandCenter", Slot = 0, X = -45f, Z = 0f, PreBuilt = true },
+                new ScenarioBuilding { Type = "CommandCenter", Slot = 1, X =  45f, Z = 0f, PreBuilt = true },
+            };
+
+            SimulationHost host = ApplyToFreshHost(
+                ModelWith(System.Array.Empty<ScenarioUnit>(), buildings, System.Array.Empty<ScenarioItem>()));
+
+            Assert.Equal(buildings.Length, host.Buildings.Count);
+            Assert.Equal(BuildingType.Barracks,      host.Buildings.Type[0]);
+            Assert.Equal(Faction.Player1,            host.Buildings.FactionOf[0]);
+            Assert.Equal(new FixedVec3(Fixed.FromFloat(-40f), Fixed.Zero, Fixed.Zero), host.Buildings.Position[0]);
+            Assert.Equal(BuildingType.CommandCenter, host.Buildings.Type[1]);
+            Assert.Equal(Faction.Player1,            host.Buildings.FactionOf[1]);
+            Assert.Equal(new FixedVec3(Fixed.FromFloat(-45f), Fixed.Zero, Fixed.Zero), host.Buildings.Position[1]);
+            Assert.Equal(BuildingType.CommandCenter, host.Buildings.Type[2]);
+            Assert.Equal(Faction.Player2,            host.Buildings.FactionOf[2]);
+            Assert.Equal(new FixedVec3(Fixed.FromFloat( 45f), Fixed.Zero, Fixed.Zero), host.Buildings.Position[2]);
+        }
+
+        [Fact]
+        public void Apply_CanonicalOrderItems_IsANoOp_CreatesInAuthoredOrder_DW37()
+        {
+            // Drift guard: an ITEMS set already authored in canonical order (ItemId ordinal asc, X.Raw asc, Z.Raw asc)
+            // must Create in byte-identical AUTHORED order — the canonical permutation is the identity, so packed refs
+            // 0,1,2… follow authored order and no golden carrying items moves. "amulet" < "ring_of_vigor" ordinally, and
+            // the two amulets tie on X so Z orders them (-5 before 5). A drift from StartStateHash's item key permutes
+            // this and fails here (the units no-op test cannot catch an items-key drift).
+            var items = new[]
+            {
+                new ScenarioItem { ItemId = "amulet",        X = -2f, Z = -5f },
+                new ScenarioItem { ItemId = "amulet",        X = -2f, Z =  5f },
+                new ScenarioItem { ItemId = "ring_of_vigor", X =  3f, Z =  1f },
+            };
+
+            SimulationHost host = ApplyToFreshHost(
+                ModelWith(System.Array.Empty<ScenarioUnit>(), System.Array.Empty<ScenarioBuilding>(), items));
+
+            int amuletDef = host.ItemRegistry.IndexOf("amulet");
+            int ringDef   = host.ItemRegistry.IndexOf("ring_of_vigor");
+            Assert.Equal(items.Length, host.Items.Count);
+            Assert.Equal(amuletDef, host.Items.DefId[0]);
+            Assert.Equal(Fixed.FromFloat(-5f), host.Items.PosZ[0]);
+            Assert.Equal(amuletDef, host.Items.DefId[1]);
+            Assert.Equal(Fixed.FromFloat( 5f), host.Items.PosZ[1]);
+            Assert.Equal(ringDef,   host.Items.DefId[2]);
+            Assert.Equal(Fixed.FromFloat( 3f), host.Items.PosX[2]);
+        }
+
+        // ── DW-230: store-full defense-in-depth. The validator's count caps make an over-capacity SCENARIO
+        //    unreachable on a gate-passed path, but a store already filled to capacity by a prior direct/shadow
+        //    operation makes the applier's Create return the -1 full-store sentinel — the applier must WARN and skip
+        //    (nodes) / warn and record the -1 (buildings) rather than crash or silently discard. Reachable here by
+        //    pre-filling the store, then applying a gate-valid 1-entry scenario (1 <= cap, so it passes validation). ──
+
+        /// <summary>An <see cref="ILogSink"/> that captures warnings so the fail-closed store-full diagnostic can be asserted.</summary>
+        private sealed class CapturingLog : ILogSink
+        {
+            public readonly System.Collections.Generic.List<string> Warnings = new();
+            public void Info(string message) { }
+            public void Warn(string message) => Warnings.Add(message);
+        }
+
+        [Fact]
+        public void Apply_ResourceNodeStoreFull_WarnsAndSkips_NoCrash_DW230()
+        {
+            var faction = AlphaFaction();
+            var log = new CapturingLog();
+            var host = SimulationHost.Create(NullLogSink.Instance, new FactionRegistry(2), faction, faction);
+            var applier = new ScenarioApplier(host, log, SlotDefs(faction));
+
+            // Fill the resource-node store to capacity via the direct store path (bypassing the applier).
+            for (int i = 0; i < ResourceNodeStore.MAX_NODES; i++)
+                host.Nodes.Create(new FixedVec3(Fixed.Zero, Fixed.Zero, Fixed.Zero), Fixed.FromInt(100), Fixed.FromInt(5), 4);
+            Assert.Equal(ResourceNodeStore.MAX_NODES, host.Nodes.Count);
+
+            ScenarioData model = BuildAlphaModel();
+            model.ResourceNodes = new[] { new ScenarioResourceNode { X = 5f, Z = 5f, Supply = 100f, Rate = 5f, MaxGatherers = 4 } };
+            model.Buildings = System.Array.Empty<ScenarioBuilding>();
+            model.Units = System.Array.Empty<ScenarioUnit>();
+
+            ValidationResult r = new ScenarioValidator().Validate(model);
+            Assert.True(r.Ok, r.Error);
+            applier.Apply(r.Value); // must not throw on the -1 overflow
+
+            Assert.Equal(ResourceNodeStore.MAX_NODES, host.Nodes.Count); // the overflow node was skipped, not appended
+            Assert.Contains(log.Warnings, w => w.Contains("resource-node store is full"));
+        }
+
+        [Fact]
+        public void Apply_BuildingStoreFull_WarnsAndRecordsUnresolved_NoCrash_DW230()
+        {
+            var faction = AlphaFaction();
+            var log = new CapturingLog();
+            var host = SimulationHost.Create(NullLogSink.Instance, new FactionRegistry(2), faction, faction);
+            var applier = new ScenarioApplier(host, log, SlotDefs(faction));
+
+            // Fill the building store to capacity via the direct placement path (bypassing the applier).
+            for (int i = 0; i < BuildingStore.MAX_BUILDINGS; i++)
+                host.BuildSys.PlaceBuildingDirect(BuildingType.CommandCenter, Faction.Player1,
+                                                  new FixedVec3(Fixed.Zero, Fixed.Zero, Fixed.Zero), preBuilt: true);
+            Assert.Equal(BuildingStore.MAX_BUILDINGS, host.Buildings.Count);
+
+            ScenarioData model = BuildAlphaModel();
+            model.ResourceNodes = System.Array.Empty<ScenarioResourceNode>();
+            model.Buildings = new[] { new ScenarioBuilding { Type = "CommandCenter", Slot = 0, X = -45f, Z = 0f, PreBuilt = true } };
+            model.Units = System.Array.Empty<ScenarioUnit>();
+
+            ValidationResult r = new ScenarioValidator().Validate(model);
+            Assert.True(r.Ok, r.Error);
+            applier.Apply(r.Value); // must not throw on the -1 overflow
+
+            Assert.Equal(BuildingStore.MAX_BUILDINGS, host.Buildings.Count); // the overflow building was not placed
+            Assert.Contains(log.Warnings, w => w.Contains("building store is full"));
         }
 
         // Pinned canonical-model hash of BuildAlphaModel(). Recorded from CanonicalModelHash.Compute; an accidental
