@@ -904,6 +904,14 @@ namespace ProjectChimera.Core
         public void SetElevationGrid(ElevationGrid grid) => _elevationGrid = grid;
 
         /// <summary>
+        /// DW-153 — deterministic READ of the injected <see cref="ElevationGrid"/> terrain height at a world XZ (the
+        /// same grid <see cref="Elevation"/> is stamped from at spawn). Returns <see cref="Fixed.Zero"/> when no grid
+        /// is present (a flat/legacy map). Pure read — never mutates sim state, so it folds into no checksum. Used by
+        /// the editor's marquee hit-test and 3D selection markers so they sit on Story-6.3 raised ground.
+        /// </summary>
+        public Fixed SampleElevation(Fixed x, Fixed z) => _elevationGrid != null ? _elevationGrid.Sample(x, z) : Fixed.Zero;
+
+        /// <summary>
         /// Story 6.5: inject the load-time pathability grid (painted ∪ slope-derived blocked cells) BEFORE any
         /// spawn, so the fixed sim tick honors it. Godot decodes the painted bitset + derives slope cells and calls
         /// this via <c>ScenarioApplier</c>. Never reassigned per-tick — a load-time seam only. Null ⇒ blocking is a

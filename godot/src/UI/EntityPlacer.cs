@@ -109,7 +109,17 @@ namespace ProjectChimera.UI
         // a Custom building (whose enum is BuildingType.Custom) round-trips its real id into ScenarioData.Buildings[].Type.
         private System.Func<ScenarioSyncOp, object?, string, Faction, Vector3, bool, object?>? _onBuildingSync;
         private System.Func<ScenarioSyncOp, object?, string, Faction, Vector3, object?>?             _onUnitSync;
-        private System.Func<ScenarioSyncOp, object?, Vector3, float, float, int, object?>?           _onResourceNodeSync;
+        // DW-151: the resource-node sync carries the Story-4.7 economy field set (collection model / resource type /
+        // requires-structure id+radius / owner faction / income period) so a group-move/paste re-creates them in the
+        // persisted DTO, not just the live store. The single-entity placer + delete/re-add legs pass store defaults.
+        private System.Func<ScenarioSyncOp, object?, Vector3, float, float, int,
+                            ResourceCollectionModel, ResourceKind, string, Fixed, Faction, int, object?>? _onResourceNodeSync;
+
+        /// <summary>DW-137 — ground-item sync callback (place + undo/redo legs). Signature: (op, handle, item_id, pos)
+        /// → opaque handle (the affected <see cref="ScenarioItem"/>). MainScene owns the <c>ScenarioData.Items</c>
+        /// mutation (mirroring the building/unit/node/prop syncs), so EntityPlacer never mutates the scenario array
+        /// directly. Items are slot-less and rotation-less; matched by position only.</summary>
+        private System.Func<ScenarioSyncOp, object?, string, Vector3, object?>? _onItemSync;
 
         /// <summary>Story 6.6 — prop sync callback (place/delete + undo/redo legs). Signature:
         /// (op, handle, prop_id, pos, rot, scale, blocks_pathing) → opaque handle (the affected <c>ScenarioProp</c>).
@@ -140,7 +150,11 @@ namespace ProjectChimera.UI
         private const int START_SLOT_CEILING = 4; // (int)Faction.Player4 — 5–8 is Story 9.2
         private const int START_SLOT_MIN     = 2;
         private int   _startSlot      = 0;  // 0..3
-        private int   _startSlotCount = 2;  // how many start slots currently exist (2..4)
+        // PATCH 4 (A6): DISPLAY-VESTIGIAL after DW-163 — kept in sync via RefreshStartSlotCount() but no longer READ
+        // for any control flow (the palette/marker/"+"/"−" logic reads DeclaredStartSlots() by slot VALUE). Not
+        // authoritative; do not reintroduce count-derived slot logic against it. Left in place (not removed) because
+        // removal would ripple through the DW-161/DW-163 +/−/undo call sites for no behavioral gain.
+        private int   _startSlotCount = 2;  // (2..4) working slot count — display bookkeeping only
         private float _startOre       = 200f; // starting ore for the selected slot (mirrors _slotStartOre[_startSlot])
         private float _startCrystal   = 0f;   // starting crystal for the selected slot
 
@@ -188,9 +202,29 @@ namespace ProjectChimera.UI
             public readonly bool    Blocks;
             public readonly float   Supply, Rate;
             public readonly int     MaxGatherers;
+            // ── DW-151: identity-preserving capture for the multi-select move/copy/paste path ──────────────────────
+            /// <summary>Unit residue snapshot (worker SupplyCost/GatherState/CarryCapacity/MeshType + def) — restored
+            /// via <see cref="EntityWorld.RestoreUnit"/> so a moved/pasted worker stays a worker, not a combat unit.</summary>
+            public readonly UnitSnapshot? UnitSnap;
+            /// <summary>The source building's authored <c>pre_built</c> flag, carried into the re-created DTO.</summary>
+            public readonly bool    PreBuilt;
+            // The Story-4.7 resource-node field set, captured live and restored into BOTH the live store and the DTO.
+            public readonly ResourceCollectionModel ResourceCollectionModel;
+            public readonly ResourceKind             ResourceKind;
+            public readonly string                   RequiresStructureId;
+            public readonly Fixed                    RequiresStructureRadius;
+            public readonly Faction                  OwnerFaction;
+            public readonly int                      IncomePeriodTicks;
             public PropDescriptor(Selected.Kind cat, Vector3 pos, string id, Faction faction, float rot, float scale,
-                                  bool blocks, float supply, float rate, int maxGatherers)
-            { Category = cat; Pos = pos; Id = id; Faction = faction; Rot = rot; Scale = scale; Blocks = blocks; Supply = supply; Rate = rate; MaxGatherers = maxGatherers; }
+                                  bool blocks, float supply, float rate, int maxGatherers,
+                                  UnitSnapshot? unitSnap = null, bool preBuilt = false,
+                                  ResourceCollectionModel collectionModel = ResourceCollectionModel.Gather,
+                                  ResourceKind resourceKind = ResourceKind.Ore,
+                                  string requiresStructureId = "", Fixed requiresStructureRadius = default,
+                                  Faction ownerFaction = Faction.Neutral, int incomePeriodTicks = 0)
+            { Category = cat; Pos = pos; Id = id; Faction = faction; Rot = rot; Scale = scale; Blocks = blocks; Supply = supply; Rate = rate; MaxGatherers = maxGatherers;
+              UnitSnap = unitSnap; PreBuilt = preBuilt; ResourceCollectionModel = collectionModel; ResourceKind = resourceKind;
+              RequiresStructureId = requiresStructureId; RequiresStructureRadius = requiresStructureRadius; OwnerFaction = ownerFaction; IncomePeriodTicks = incomePeriodTicks; }
         }
 
         // Undo/redo history
@@ -267,11 +301,13 @@ namespace ProjectChimera.UI
                                ItemStore? items = null, ItemRegistry? itemRegistry = null,
                                System.Func<ScenarioSyncOp, object?, string, Faction, Vector3, bool, object?>? onBuildingSync = null,
                                System.Func<ScenarioSyncOp, object?, string, Faction, Vector3, object?>? onUnitSync = null,
-                               System.Func<ScenarioSyncOp, object?, Vector3, float, float, int, object?>? onResourceNodeSync = null,
+                               System.Func<ScenarioSyncOp, object?, Vector3, float, float, int,
+                                           ResourceCollectionModel, ResourceKind, string, Fixed, Faction, int, object?>? onResourceNodeSync = null,
                                System.Func<ScenarioSyncOp, object?, string, Vector3, float, float, bool, object?>? onPropSync = null,
                                System.Func<ScenarioData?>? scenarioGetter = null,
                                System.Action<int>? onStartSlotRemoved = null,
-                               System.Action<int, float, float>? onStartSlotEconomy = null)
+                               System.Action<int, float, float>? onStartSlotEconomy = null,
+                               System.Func<ScenarioSyncOp, object?, string, Vector3, object?>? onItemSync = null)
         {
             _camCtrl            = camCtrl;
             _world              = world;
@@ -290,6 +326,7 @@ namespace ProjectChimera.UI
             _scenarioGetter     = scenarioGetter;      // Story 6.6
             _onStartSlotRemoved = onStartSlotRemoved;  // Story 6.7
             _onStartSlotEconomy = onStartSlotEconomy;  // Story 6.7 (patch 3)
+            _onItemSync         = onItemSync;          // DW-137
 
             // Story 6.7: seed the working start-slot count from the loaded scenario (2..4) so the picker shows the
             // right number of slots on first open, and mirror each slot's authored ore/crystal into the working arrays.
@@ -303,6 +340,16 @@ namespace ProjectChimera.UI
                         _slotStartOre[s.Slot]     = s.StartOre;
                         _slotStartCrystal[s.Slot] = s.StartCrystal;
                     }
+                // PATCH 3 (E1): seed the SELECTION to the lowest DECLARED slot value, not the default 0. A scenario
+                // whose declared set excludes slot 0 (e.g. {3} or {1,2,3}) would otherwise render a phantom "P1"
+                // pending toggle and could create an undeclared slot 0 on the first placement. (The runtime "+"-armed
+                // pending logic, which intentionally arms an undeclared slot, is unaffected.)
+                // DW-163 patch: filter to slots below the picker ceiling. The mirror loop above already guards
+                // s.Slot < START_SLOT_CEILING; this seed must too, or a validator-legal set whose LOWEST slot is
+                // >= START_SLOT_CEILING (a 5–8-player {5,6} set) would index the length-CEILING _slotStartOre and
+                // crash the EntityPlacer constructor — the whole creation suite fails to init.
+                var declaredSeed = StartSlotMath.DeclaredBelowCeiling(scen0.PlayerSlots, START_SLOT_CEILING);
+                _startSlot    = declaredSeed.Length > 0 ? declaredSeed[0] : 0;
                 _startOre     = _slotStartOre[_startSlot];
                 _startCrystal = _slotStartCrystal[_startSlot];
             }
@@ -669,14 +716,33 @@ namespace ProjectChimera.UI
             int charges = _itemRegistry.Get(defId).Charges;
             int packed = _items.Create(defId, charges, pos);
             if (packed < 0) return;
+
+            // DW-137: mirror the placement into ScenarioData.Items so the item survives Save/reload AND the F5
+            // Edit→Play re-apply (which re-applies only _ctx.Scenario) instead of silently vanishing. itemId is the
+            // authored registry id; the sync matches by position only (items are slot-less).
+            string  itemId     = _itemRegistry.Get(defId).Id;
+            Vector3 wpos       = new Vector3(pos.X.ToFloat(), 0f, pos.Z.ToFloat());
+            object? syncHandle = _onItemSync?.Invoke(ScenarioSyncOp.Add, null, itemId, wpos);
+
             // DW-35: redo re-Creates a NEW packed ref each time — capture it in a box (the PlaceUnit pattern) so undo
             // destroys the LIVE instance. Pushing the ORIGINAL `packed` would leak the redone item: after
             // place→undo→redo the original ref no longer resolves, so the undo could never find (and destroy) the
             // instance the redo just re-created.
             int[] box = { packed };
             _history.Push(
-                redo: () => { int r = _items.Create(defId, charges, pos); if (r >= 0) box[0] = r; },
-                undo: () => { if (_items.TryResolveRef(box[0], out int slot)) _items.Destroy(slot); });
+                redo: () =>
+                {
+                    int r = _items.Create(defId, charges, pos); if (r >= 0) box[0] = r;
+                    // Guard the ReAdd on a successful Create (r >= 0), mirroring the PlaceUnit redo legs: a store-full
+                    // redo (r < 0) must NOT re-append the handle to ScenarioData.Items, or it strands a phantom item
+                    // entry with no live counterpart (which a Save between redo and undo would then persist).
+                    if (r >= 0 && syncHandle != null) _onItemSync?.Invoke(ScenarioSyncOp.ReAdd, syncHandle, itemId, wpos);
+                },
+                undo: () =>
+                {
+                    if (_items.TryResolveRef(box[0], out int slot)) _items.Destroy(slot);
+                    if (syncHandle != null) _onItemSync?.Invoke(ScenarioSyncOp.RemoveHandle, syncHandle, itemId, wpos);
+                });
         }
 
         private void PlaceUnit(FixedVec3 pos, bool asWorker)
@@ -833,7 +899,15 @@ namespace ProjectChimera.UI
             if (_nodes == null) { GD.PrintErr("[EntityPlacer] ResourceNodeStore not set."); return; }
             var supply = Fixed.FromFloat(_nodeSupply);
             var rate   = Fixed.FromFloat(_nodeRate);
-            int nodeId = _nodes.Create(pos, supply, rate, NODE_MAX_GATHERERS);
+            // DW-151 follow-up: create the LIVE node with the SAME plain-Gather schema defaults (radius 15, income
+            // period 30) that its persisted DTO carries below — NOT the store defaults (0/0). Otherwise a later
+            // group-move/paste (which re-derives its DTO by READING the live store in Describe) would capture 0/0 and
+            // ship income_period_ticks:0 in the moved DTO, re-introducing the exact latent Income footgun A1 fixed for
+            // the place path. These two fields are inert on a Gather node (requiresStructureId is "" so the radius is
+            // never consulted; IncomePeriodTicks only matters for an Income node) and are NOT folded into SimChecksum,
+            // so this is determinism-neutral and makes the freshly-placed live store byte-match the post-reload state.
+            int nodeId = _nodes.Create(pos, supply, rate, NODE_MAX_GATHERERS,
+                ResourceCollectionModel.Gather, ResourceKind.Ore, "", Fixed.FromFloat(15f), Faction.Neutral, 30);
             if (nodeId < 0) { GD.PrintErr("[EntityPlacer] ResourceNodeStore full."); return; }
             GD.Print($"[EntityPlacer] Placed ore node id={nodeId} supply={_nodeSupply:F0} rate={_nodeRate:F0} at ({pos.X},{pos.Z})");
 
@@ -848,7 +922,12 @@ namespace ProjectChimera.UI
             Vector3 wpos             = new Vector3(pos.X.ToFloat(), 0f, pos.Z.ToFloat());
             float   capturedSupplyF  = _nodeSupply;
             float   capturedRateF    = _nodeRate;
-            object? syncHandle       = _onResourceNodeSync?.Invoke(ScenarioSyncOp.Add, null, wpos, capturedSupplyF, capturedRateF, NODE_MAX_GATHERERS);
+            // DW-151/A1: a freshly placed node is a plain Gather/Ore node. Pass the ScenarioResourceNode SCHEMA
+            // defaults (radius 15, income period 30) — NOT the store defaults (0/0) — so a plain placed node's
+            // persisted DTO is byte-identical to the pre-widening object-initializer baseline (and never ships a
+            // latent income_period_ticks:0 that a later flip to collection_model:Income would credit every tick).
+            object? syncHandle       = _onResourceNodeSync?.Invoke(ScenarioSyncOp.Add, null, wpos, capturedSupplyF, capturedRateF, NODE_MAX_GATHERERS,
+                                                                   ResourceCollectionModel.Gather, ResourceKind.Ore, "", Fixed.FromFloat(15f), Faction.Neutral, 30);
             ApplyPlacementRot(syncHandle);
             _history.Push(
                 redo: () =>
@@ -857,12 +936,14 @@ namespace ProjectChimera.UI
                     capturedNodes.SupplyRemaining[capturedId] = capturedSupply;
                     capturedNodes.SupplyTotal[capturedId]     = capturedSupply;
                     capturedNodes.GatherRate[capturedId]      = capturedRate;
-                    _onResourceNodeSync?.Invoke(ScenarioSyncOp.ReAdd, syncHandle, wpos, capturedSupplyF, capturedRateF, NODE_MAX_GATHERERS);
+                    _onResourceNodeSync?.Invoke(ScenarioSyncOp.ReAdd, syncHandle, wpos, capturedSupplyF, capturedRateF, NODE_MAX_GATHERERS,
+                                                ResourceCollectionModel.Gather, ResourceKind.Ore, "", Fixed.FromFloat(15f), Faction.Neutral, 30);
                 },
                 undo: () =>
                 {
                     capturedNodes.Active[capturedId] = false;
-                    _onResourceNodeSync?.Invoke(ScenarioSyncOp.RemoveHandle, syncHandle, wpos, capturedSupplyF, capturedRateF, NODE_MAX_GATHERERS);
+                    _onResourceNodeSync?.Invoke(ScenarioSyncOp.RemoveHandle, syncHandle, wpos, capturedSupplyF, capturedRateF, NODE_MAX_GATHERERS,
+                                                ResourceCollectionModel.Gather, ResourceKind.Ore, "", Fixed.FromFloat(15f), Faction.Neutral, 30);
                 });
         }
 
@@ -938,6 +1019,30 @@ namespace ProjectChimera.UI
                 });
         }
 
+        // ── DW-163: declared start-slot set (by VALUE, not contiguous count) ──────────────────────────────────────
+
+        /// <summary>The scenario's declared start-slot VALUES, sorted ascending. Falls back to the 2-slot floor
+        /// <c>{0,1}</c> when no scenario is loaded (or it declares none) so the picker still shows P1/P2 — matching the
+        /// no-scenario fallback in <c>ScenarioLoadPhase.SetupStartPositionBridge</c>.</summary>
+        private int[] DeclaredStartSlots()
+        {
+            // DW-163 patch: restrict to slots below the picker ceiling so a validator-legal out-of-range slot (a
+            // 5–8-player {5,6} set) is never surfaced as a P-toggle nor used to index the length-CEILING economy
+            // arrays in the render/remove legs — it would otherwise crash on click/remove. Falls back to {0,1}.
+            var declared = StartSlotMath.DeclaredBelowCeiling(_scenarioGetter?.Invoke()?.PlayerSlots, START_SLOT_CEILING);
+            return declared.Length > 0 ? declared : new[] { 0, 1 };
+        }
+
+        /// <summary>True when <paramref name="slot"/> has a backing <see cref="ScenarioPlayerSlot"/> (is declared) — as
+        /// opposed to a "+"-armed PENDING slot that has none yet. Generalizes the old contiguous <c>slot &lt; count</c>
+        /// membership test so it stays correct for a non-contiguous set (byte-identical for a contiguous one).</summary>
+        private bool IsSlotDeclared(int slot) => System.Array.IndexOf(DeclaredStartSlots(), slot) >= 0;
+
+        /// <summary>Re-derive the working slot count from the LIVE declared set (clamped to [MIN,CEILING]) instead of
+        /// the old contiguous <c>max(count,slot+1)</c>/<c>=slot</c> heuristics — those mis-sized a non-contiguous set.</summary>
+        private void RefreshStartSlotCount()
+            => _startSlotCount = System.Math.Clamp(DeclaredStartSlots().Length, START_SLOT_MIN, START_SLOT_CEILING);
+
         private void MoveStartPosition(Vector3 worldPos)
         {
             var snapped = new Vector3(SnapValue(worldPos.X), 0f, SnapValue(worldPos.Z));
@@ -955,8 +1060,10 @@ namespace ProjectChimera.UI
             bool created = _onStartPosMoved?.Invoke(_startSlot, snapped, _startOre, _startCrystal) ?? false;
             _slotStartOre[_startSlot]     = _startOre;
             _slotStartCrystal[_startSlot] = _startCrystal;
-            // Placing slot N implies at least N+1 slots exist (2..4).
-            _startSlotCount = System.Math.Clamp(System.Math.Max(_startSlotCount, _startSlot + 1), START_SLOT_MIN, START_SLOT_CEILING);
+            // DW-163: re-derive the count from the live declared set (UpsertStartSlot appended by VALUE) rather than the
+            // old contiguous max(count, slot+1) heuristic. Preserves DW-161 deferred-grow: the declared count grows only
+            // when a placement actually created the slot.
+            RefreshStartSlotCount();
             // DW-161: when this placement CREATED a slot (the deferred "+" path — the count just grew), refresh the
             // picker so the newly-placed slot surfaces its P-toggle immediately instead of only after the next event.
             if (created) RefreshSubRow();
@@ -975,7 +1082,7 @@ namespace ProjectChimera.UI
                     {
                         _slotStartOre[capturedSlot]     = capturedNewOre;
                         _slotStartCrystal[capturedSlot] = capturedNewCrystal;
-                        _startSlotCount = System.Math.Clamp(System.Math.Max(_startSlotCount, capturedSlot + 1), START_SLOT_MIN, START_SLOT_CEILING);
+                        RefreshStartSlotCount();
                         RefreshSubRow();
                     }
                 },
@@ -984,10 +1091,13 @@ namespace ProjectChimera.UI
                     if (created)
                     {
                         // The placement CREATED the slot — undo removes it entirely rather than repositioning a phantom
-                        // at origin, and shrinks the working slot count back.
+                        // at origin. DW-163: re-derive the count from the now-shrunk declared set and clamp the selection
+                        // to a still-declared slot value (not the old contiguous count-1).
                         _onStartSlotRemoved?.Invoke(capturedSlot);
-                        _startSlotCount = System.Math.Max(START_SLOT_MIN, _startSlotCount - 1);
-                        if (_startSlot >= _startSlotCount) _startSlot = _startSlotCount - 1;
+                        RefreshStartSlotCount();
+                        int[] decl = DeclaredStartSlots();
+                        if (System.Array.IndexOf(decl, _startSlot) < 0)
+                            _startSlot = decl.Length > 0 ? StartSlotMath.MaxDeclared(decl) : 0;
                         RefreshSubRow();
                     }
                     else
@@ -1003,9 +1113,14 @@ namespace ProjectChimera.UI
         /// entry, so the two stay behaviourally identical.</summary>
         private void RemoveStartSlotAt(int slot)
         {
-            _onStartSlotRemoved?.Invoke(slot); // owner truncates PlayerSlots + hides the marker
-            _startSlotCount = slot;
-            if (_startSlot >= _startSlotCount) _startSlot = _startSlotCount - 1;
+            _onStartSlotRemoved?.Invoke(slot); // owner truncates PlayerSlots (by Slot VALUE) + hides the marker
+            // DW-163: re-derive the count from the live declared set (the slot was removed by value) rather than the old
+            // contiguous `_startSlotCount = slot` heuristic, which mis-sized a non-contiguous set. Clamp the selection to
+            // the highest still-declared slot value.
+            RefreshStartSlotCount();
+            int[] decl = DeclaredStartSlots();
+            if (System.Array.IndexOf(decl, _startSlot) < 0)
+                _startSlot = decl.Length > 0 ? StartSlotMath.MaxDeclared(decl) : 0;
             RefreshSubRow();
             RefreshGhostVisuals();
         }
@@ -1030,7 +1145,9 @@ namespace ProjectChimera.UI
             if (slot < 0 || slot >= START_SLOT_CEILING) return;
             _slotStartOre[slot]     = ore;
             _slotStartCrystal[slot] = crystal;
-            if (slot < _startSlotCount)
+            // DW-163: re-select + surface the slot only when it is still DECLARED (byte-identical to the old
+            // `slot < _startSlotCount` for a contiguous set, but correct for a non-contiguous one, e.g. slot 3 in {0,3}).
+            if (IsSlotDeclared(slot))
             {
                 _startSlot    = slot;
                 _startOre     = ore;
@@ -1358,28 +1475,35 @@ namespace ProjectChimera.UI
             }
             else if (_mode == PlacementMode.StartPos)
             {
-                // Story 6.7: 2–4 player-slot toggles (mapped to Player1..Player4 via FactionRegistry.ToFaction),
-                // with add/remove buttons capped at [2,4] (the engine ceiling Faction.Player4).
-                _startSlotCount = System.Math.Clamp(_startSlotCount, START_SLOT_MIN, START_SLOT_CEILING);
-                // DW-161: permit `_startSlot` to sit ONE beyond the count — that is the "+"-armed, not-yet-placed
-                // trailing slot (its count grows only when it is actually placed). Cap at the engine ceiling so the
-                // pending index never overruns the mirror arrays; only a genuinely out-of-range selection is clamped
-                // back to the last existing slot.
-                if (_startSlot > _startSlotCount)          _startSlot = _startSlotCount;
-                if (_startSlot >= START_SLOT_CEILING)      _startSlot = START_SLOT_CEILING - 1;
-                if (_startSlot < 0)                        _startSlot = 0;
+                // DW-163: render toggles by DECLARED slot VALUE (not a contiguous 0..count-1 loop) so a validator-legal
+                // non-contiguous set ({0,3}) shows P1+P4, not P1+P2. The scenario WRITE path (UpsertStartSlot/
+                // RemoveStartSlot) is already keyed by slot value and is unchanged.
+                int[] declared = DeclaredStartSlots();
+                RefreshStartSlotCount(); // working count == declared count, clamped [MIN,CEILING]
+
+                // Clamp the selection: keep it when declared OR a valid in-range "+"-armed pending slot; otherwise fall
+                // back to the highest declared slot value.
+                if (_startSlot < 0 || _startSlot >= START_SLOT_CEILING)
+                    _startSlot = declared.Length > 0 ? StartSlotMath.MaxDeclared(declared) : 0;
+
+                // The slots to render: every declared value, plus the "+"-armed pending slot (selected but not yet
+                // declared) so its toggle surfaces immediately (DW-161 deferred-grow).
+                var render = new System.Collections.Generic.List<int>(declared);
+                if (_startSlot >= 0 && _startSlot < START_SLOT_CEILING && System.Array.IndexOf(declared, _startSlot) < 0)
+                    render.Add(_startSlot);
+                render.Sort();
 
                 var slotGroup = new ButtonGroup();
-                for (int slot = 0; slot < _startSlotCount; slot++)
+                foreach (int slot in render)
                 {
                     int capturedSlot = slot;
                     var btn = new Button
                     {
-                        // Label is P{n} where n maps through FactionRegistry.ToFaction(slot) = Player{slot+1}.
-                        Text          = $"P{(int)FactionRegistry.ToFaction(slot)}",
+                        // Label P{value+1} — equivalent to the old FactionRegistry.ToFaction(slot)=Player{slot+1}.
+                        Text          = $"P{capturedSlot + 1}",
                         ToggleMode    = true,
                         ButtonGroup   = slotGroup,
-                        ButtonPressed = (slot == _startSlot),
+                        ButtonPressed = (capturedSlot == _startSlot),
                         CustomMinimumSize = new Vector2(36f, 0f),
                     };
                     btn.Pressed += () =>
@@ -1394,58 +1518,58 @@ namespace ProjectChimera.UI
                     _subRow.AddChild(btn);
                 }
 
-                // Add-slot ("+") — grows the set up to 4 and selects the new slot.
+                // Add-slot ("+") — arms the LOWEST undeclared slot (fills a gap first, e.g. {0,3}→1). Disabled once
+                // every slot below the ceiling is declared.
+                int lowestUndeclared = StartSlotMath.LowestUndeclared(declared, START_SLOT_CEILING);
                 var addBtn = new Button { Text = "+", CustomMinimumSize = new Vector2(28f, 0f),
-                                          Disabled = _startSlotCount >= START_SLOT_CEILING };
+                                          Disabled = lowestUndeclared < 0 };
                 addBtn.Pressed += () =>
                 {
-                    if (_startSlotCount < START_SLOT_CEILING)
-                    {
-                        // DW-161: select + arm the next trailing slot but do NOT grow `_startSlotCount` yet — the count
-                        // (and the backing PlayerSlot) grows only when the slot is actually placed on terrain
-                        // (MoveStartPosition), so a "+" with no placement leaves no phantom slot and needs no undo entry.
-                        _startSlot      = _startSlotCount; // pending trailing slot (index == current count)
-                        _startOre       = _slotStartOre[_startSlot];
-                        _startCrystal   = _slotStartCrystal[_startSlot];
-                        ArmPlacement();
-                        RefreshSubRow();
-                        RefreshGhostVisuals();
-                    }
+                    int target = StartSlotMath.LowestUndeclared(DeclaredStartSlots(), START_SLOT_CEILING);
+                    if (target < 0) return;
+                    // DW-161: arm the pending slot but do NOT grow the declared set yet — the backing PlayerSlot (and
+                    // the count) grows only when the slot is actually placed on terrain (MoveStartPosition), so a "+"
+                    // with no placement leaves no phantom slot and needs no undo entry.
+                    _startSlot      = target;
+                    _startOre       = _slotStartOre[_startSlot];
+                    _startCrystal   = _slotStartCrystal[_startSlot];
+                    ArmPlacement();
+                    RefreshSubRow();
+                    RefreshGhostVisuals();
                 };
                 _subRow.AddChild(addBtn);
 
-                // Remove-slot ("−") — drops the trailing slot down to a floor of 2.
+                // Remove-slot ("−") — removes the HIGHEST declared slot VALUE, down to a floor of 2.
                 var remBtn = new Button { Text = "−", CustomMinimumSize = new Vector2(28f, 0f),
-                                          Disabled = _startSlotCount <= START_SLOT_MIN };
+                                          Disabled = declared.Length <= START_SLOT_MIN };
                 remBtn.Pressed += () =>
                 {
-                    if (_startSlotCount > START_SLOT_MIN)
-                    {
-                        int removed = _startSlotCount - 1;
-                        // DW-161: capture the slot's pre-remove position + economy BEFORE removing, so the undo re-adds
-                        // it exactly (position from the live sim base, ore/crystal from the working mirror arrays).
-                        var basePt = _resources?.FactionBase[(int)FactionRegistry.ToFaction(removed)] ?? default;
-                        Vector3 capturedPos     = new Vector3(basePt.X.ToFloat(), 0f, basePt.Z.ToFloat());
-                        float   capturedOre     = _slotStartOre[removed];
-                        float   capturedCrystal = _slotStartCrystal[removed];
-                        RemoveStartSlotAt(removed);
-                        _history.Push(
-                            redo: () => RemoveStartSlotAt(removed),
-                            undo: () =>
-                            {
-                                // Re-add the slot via the move bridge (Upsert re-appends the PlayerSlot), then restore
-                                // the mirror economy and the working count/selection (clamped to [2,4]).
-                                _onStartPosMoved?.Invoke(removed, capturedPos, capturedOre, capturedCrystal);
-                                _slotStartOre[removed]     = capturedOre;
-                                _slotStartCrystal[removed] = capturedCrystal;
-                                _startSlotCount = System.Math.Clamp(removed + 1, START_SLOT_MIN, START_SLOT_CEILING);
-                                _startSlot      = System.Math.Clamp(removed, 0, _startSlotCount - 1);
-                                _startOre       = _slotStartOre[_startSlot];
-                                _startCrystal   = _slotStartCrystal[_startSlot];
-                                RefreshSubRow();
-                                RefreshGhostVisuals();
-                            });
-                    }
+                    int[] decl = DeclaredStartSlots();
+                    if (decl.Length <= START_SLOT_MIN) return;
+                    int removed = StartSlotMath.MaxDeclared(decl);
+                    // DW-161: capture the slot's pre-remove position + economy BEFORE removing, so the undo re-adds
+                    // it exactly (position from the live sim base, ore/crystal from the working mirror arrays).
+                    var basePt = _resources?.FactionBase[(int)FactionRegistry.ToFaction(removed)] ?? default;
+                    Vector3 capturedPos     = new Vector3(basePt.X.ToFloat(), 0f, basePt.Z.ToFloat());
+                    float   capturedOre     = _slotStartOre[removed];
+                    float   capturedCrystal = _slotStartCrystal[removed];
+                    RemoveStartSlotAt(removed);
+                    _history.Push(
+                        redo: () => RemoveStartSlotAt(removed),
+                        undo: () =>
+                        {
+                            // Re-add the slot via the move bridge (Upsert re-appends the PlayerSlot by value), then
+                            // restore the mirror economy and re-derive the count/selection from the live declared set.
+                            _onStartPosMoved?.Invoke(removed, capturedPos, capturedOre, capturedCrystal);
+                            _slotStartOre[removed]     = capturedOre;
+                            _slotStartCrystal[removed] = capturedCrystal;
+                            RefreshStartSlotCount();
+                            _startSlot      = removed;
+                            _startOre       = _slotStartOre[_startSlot];
+                            _startCrystal   = _slotStartCrystal[_startSlot];
+                            RefreshSubRow();
+                            RefreshGhostVisuals();
+                        });
                 };
                 _subRow.AddChild(remBtn);
 
@@ -1473,15 +1597,17 @@ namespace ProjectChimera.UI
                 oreLe.FocusEntered += () => oreSnap = _slotStartOre[oreEditSlot];
                 spin.ValueChanged  += v => { _startOre = (float)v; _slotStartOre[oreEditSlot] = _startOre;
                                              // DW-161 (review): only persist/coalesce for a slot with a backing PlayerSlot.
-                                             // A "+"-armed PENDING slot (index == _startSlotCount) has none — the owner
-                                             // persist would no-op and a coalesced undo entry would dangle; its edited
-                                             // economy instead rides into MoveStartPosition when the slot is placed.
-                                             if (oreEditSlot < _startSlotCount)
+                                             // A "+"-armed PENDING slot has none — the owner persist would no-op and a
+                                             // coalesced undo entry would dangle; its edited economy instead rides into
+                                             // MoveStartPosition when the slot is placed. DW-163: the pending test is now
+                                             // DECLARED-membership, not `slot < count` (which mis-classified a non-
+                                             // contiguous declared slot, e.g. slot 3 in {0,3}, as pending).
+                                             if (IsSlotDeclared(oreEditSlot))
                                                  _onStartSlotEconomy?.Invoke(oreEditSlot, _slotStartOre[oreEditSlot], _slotStartCrystal[oreEditSlot]); };
                 oreLe.FocusExited  += () =>
                 {
                     float now = _slotStartOre[oreEditSlot];
-                    if (now != oreSnap && oreEditSlot < _startSlotCount)
+                    if (now != oreSnap && IsSlotDeclared(oreEditSlot))
                         PushStartSlotEconomy(oreEditSlot, oreSnap, _slotStartCrystal[oreEditSlot], now, _slotStartCrystal[oreEditSlot]);
                     oreSnap = now;
                 };
@@ -1506,13 +1632,13 @@ namespace ProjectChimera.UI
                 float    crysSnap     = _slotStartCrystal[crysEditSlot];
                 crysLe.FocusEntered += () => crysSnap = _slotStartCrystal[crysEditSlot];
                 crysSpin.ValueChanged += v => { _startCrystal = (float)v; _slotStartCrystal[crysEditSlot] = _startCrystal;
-                                                // DW-161 (review): pending-slot guard, mirror of the ore spinner above.
-                                                if (crysEditSlot < _startSlotCount)
+                                                // DW-161/DW-163: declared-membership pending guard, mirror of the ore spinner above.
+                                                if (IsSlotDeclared(crysEditSlot))
                                                     _onStartSlotEconomy?.Invoke(crysEditSlot, _slotStartOre[crysEditSlot], _slotStartCrystal[crysEditSlot]); };
                 crysLe.FocusExited  += () =>
                 {
                     float now = _slotStartCrystal[crysEditSlot];
-                    if (now != crysSnap && crysEditSlot < _startSlotCount)
+                    if (now != crysSnap && IsSlotDeclared(crysEditSlot))
                         PushStartSlotEconomy(crysEditSlot, _slotStartOre[crysEditSlot], crysSnap, _slotStartOre[crysEditSlot], now);
                     crysSnap = now;
                 };
@@ -1815,13 +1941,17 @@ namespace ProjectChimera.UI
 
             // Story 6.1: remove the matching ScenarioData.ResourceNodes entry (identity-preserving) so an authored
             // Income/Crystal/owner-slotted node is restored intact on undo (never degraded to a plain Gather/Ore node).
-            object? syncHandle = _onResourceNodeSync?.Invoke(ScenarioSyncOp.RemoveMatch, null, wpos, 0f, 0f, 0);
+            // DW-151: RemoveMatch captures the REAL authored entry (4.7 fields intact) and ReAdd restores it by
+            // identity, so the delete/undo path preserves the node's economy fields without passing them here.
+            object? syncHandle = _onResourceNodeSync?.Invoke(ScenarioSyncOp.RemoveMatch, null, wpos, 0f, 0f, 0,
+                                                             ResourceCollectionModel.Gather, ResourceKind.Ore, "", default, Faction.Neutral, 0);
 
             _history.Push(
                 redo: () =>
                 {
                     capturedNodes.Active[id] = false;
-                    _onResourceNodeSync?.Invoke(ScenarioSyncOp.RemoveHandle, syncHandle, wpos, 0f, 0f, 0);
+                    _onResourceNodeSync?.Invoke(ScenarioSyncOp.RemoveHandle, syncHandle, wpos, 0f, 0f, 0,
+                                                ResourceCollectionModel.Gather, ResourceKind.Ore, "", default, Faction.Neutral, 0);
                 },
                 undo: () =>
                 {
@@ -1829,7 +1959,8 @@ namespace ProjectChimera.UI
                     capturedNodes.SupplyRemaining[id] = capturedSupply;
                     capturedNodes.SupplyTotal[id]     = capturedTotal;
                     capturedNodes.GatherRate[id]      = capturedRate;
-                    _onResourceNodeSync?.Invoke(ScenarioSyncOp.ReAdd, syncHandle, wpos, 0f, 0f, 0);
+                    _onResourceNodeSync?.Invoke(ScenarioSyncOp.ReAdd, syncHandle, wpos, 0f, 0f, 0,
+                                                ResourceCollectionModel.Gather, ResourceKind.Ore, "", default, Faction.Neutral, 0);
                 });
         }
 
@@ -1900,6 +2031,14 @@ namespace ProjectChimera.UI
             Vector3 wpos   = new Vector3(SnapValue(hit.X), 0f, SnapValue(hit.Z));
             float   rot    = _placementRot, scale = _propScale;
             bool    blocks = _propBlocks;
+
+            // DW-159: reject an off-map placement before the sync so it never persists to fail whole-scenario
+            // validation later (mirrors WaterTool.CommitDrag's bounds guard).
+            if (!WithinMapBounds(wpos))
+            {
+                GD.Print($"[EntityPlacer] Prop at ({wpos.X:F1},{wpos.Z:F1}) is outside map bounds (±{_scenarioGetter?.Invoke()?.MapBounds:F0}) — not placed.");
+                return;
+            }
 
             object? handle = _onPropSync?.Invoke(ScenarioSyncOp.Add, null, propId, wpos, rot, scale, blocks);
             if (handle == null) { GD.Print("[EntityPlacer] Prop not persisted (no scenario loaded)."); return; }
@@ -2020,7 +2159,9 @@ namespace ProjectChimera.UI
             for (int i = 0; i < hwm; i++)
             {
                 if ((_world.Flags[i] & EntityFlags.Alive) == 0) continue;
-                if (InBox(new Vector3(_world.Position[i].X.ToFloat(), 0.5f, _world.Position[i].Z.ToFloat())))
+                // DW-153: unproject at the entity's sampled terrain height so the hit-test tracks Story-6.3 raised
+                // ground (flat maps sample 0 ⇒ unchanged).
+                if (InBox(new Vector3(_world.Position[i].X.ToFloat(), _world.SampleElevation(_world.Position[i].X, _world.Position[i].Z).ToFloat() + 0.5f, _world.Position[i].Z.ToFloat())))
                     AddToSelection(new Selected(Selected.Kind.Unit, i, null));
             }
             // Buildings.
@@ -2028,7 +2169,7 @@ namespace ProjectChimera.UI
                 for (int i = 0; i < _buildings.Count; i++)
                 {
                     if (!_buildings.Alive[i]) continue;
-                    if (InBox(new Vector3(_buildings.Position[i].X.ToFloat(), 1f, _buildings.Position[i].Z.ToFloat())))
+                    if (InBox(new Vector3(_buildings.Position[i].X.ToFloat(), _world.SampleElevation(_buildings.Position[i].X, _buildings.Position[i].Z).ToFloat() + 1f, _buildings.Position[i].Z.ToFloat())))
                         AddToSelection(new Selected(Selected.Kind.Building, i, null));
                 }
             // Nodes.
@@ -2036,12 +2177,12 @@ namespace ProjectChimera.UI
                 for (int i = 0; i < _nodes.Count; i++)
                 {
                     if (!_nodes.Active[i]) continue;
-                    if (InBox(new Vector3(_nodes.Position[i].X.ToFloat(), 0.5f, _nodes.Position[i].Z.ToFloat())))
+                    if (InBox(new Vector3(_nodes.Position[i].X.ToFloat(), _world.SampleElevation(_nodes.Position[i].X, _nodes.Position[i].Z).ToFloat() + 0.5f, _nodes.Position[i].Z.ToFloat())))
                         AddToSelection(new Selected(Selected.Kind.Node, i, null));
                 }
             // Props.
             foreach (var p in CurrentProps())
-                if (InBox(new Vector3(p.X, 0.5f, p.Z)))
+                if (InBox(new Vector3(p.X, _world.SampleElevation(Fixed.FromFloat(p.X), Fixed.FromFloat(p.Z)).ToFloat() + 0.5f, p.Z)))
                     AddToSelection(new Selected(Selected.Kind.Prop, -1, p));
 
             GD.Print($"[EntityPlacer] Selection: {_selection.Count} object(s).");
@@ -2122,6 +2263,19 @@ namespace ProjectChimera.UI
             var descriptors = new List<PropDescriptor>();
             foreach (var s in _selection) descriptors.Add(Describe(s));
 
+            // DW-159: reject the WHOLE move atomically if ANY moved target lands off-map. Deletes precede creates, so a
+            // late per-item bounds reject inside BuildCreate would strand an already-deleted original — check every
+            // target BEFORE the first BuildDelete runs. Describe above is read-only, so nothing was mutated yet.
+            foreach (var d in descriptors)
+            {
+                var moved = d.Pos + new Vector3(SnapDelta(delta.X), 0f, SnapDelta(delta.Z));
+                if (!WithinMapBounds(moved))
+                {
+                    GD.Print($"[EntityPlacer] Move aborted — a target at ({moved.X:F1},{moved.Z:F1}) is outside map bounds (±{_scenarioGetter?.Invoke()?.MapBounds:F0}).");
+                    return;
+                }
+            }
+
             var deletes = new List<(System.Action redo, System.Action undo)>();
             foreach (var s in _selection) { var c = BuildDelete(s); if (c != null) deletes.Add(c.Value); }
 
@@ -2188,6 +2342,36 @@ namespace ProjectChimera.UI
 
         // ── Descriptor capture + create/delete builders (one op, no push) ─────
 
+        /// <summary>World-unit tolerance matching a live building row to its scenario entry (mirrors
+        /// <c>MainScene.SCENARIO_SYNC_EPS</c>).</summary>
+        private const float BUILDING_MATCH_EPS = 0.1f;
+
+        /// <summary>DW-151 — look up the authored <c>pre_built</c> flag of the <see cref="ScenarioBuilding"/> backing a
+        /// live building slot (matched by slot + position, the same key <c>MainScene.SyncBuilding</c> uses). Returns
+        /// false when no scenario entry matches (a cosmetic-only / undeclared-slot placement was never persisted).</summary>
+        private bool LookupBuildingPreBuilt(Faction faction, Vector3 pos)
+        {
+            var scen = _scenarioGetter?.Invoke();
+            if (scen?.Buildings == null) return false;
+            int slot = (int)faction - 1;
+            foreach (var b in scen.Buildings)
+                if (b.Slot == slot
+                    && System.Math.Abs(b.X - pos.X) <= BUILDING_MATCH_EPS
+                    && System.Math.Abs(b.Z - pos.Z) <= BUILDING_MATCH_EPS)
+                    return b.PreBuilt;
+            return false;
+        }
+
+        /// <summary>DW-159 — true when world point <paramref name="p"/> is inside the loaded scenario's ±MapBounds
+        /// square (mirroring <c>WaterTool.CommitDrag</c>'s guard). No scenario ⇒ bounds unknown ⇒ allow.</summary>
+        private bool WithinMapBounds(Vector3 p)
+        {
+            // DW-159: delegate to the Godot-free MapBoundsMath so the predicate is unit-testable. A null scenario
+            // yields a null bounds ⇒ allow (bounds unknown), byte-identical to the previous inline guard.
+            var scen = _scenarioGetter?.Invoke();
+            return MapBoundsMath.Within(p.X, p.Z, scen?.MapBounds);
+        }
+
         private PropDescriptor Describe(Selected s)
         {
             switch (s.Category)
@@ -2199,22 +2383,37 @@ namespace ProjectChimera.UI
                 }
                 case Selected.Kind.Unit:
                 {
+                    // DW-151: capture the full identity-preserving snapshot so BuildCreate re-homes it via RestoreUnit —
+                    // a moved/pasted worker keeps its worker residue (SupplyCost=0/GatherState/CarryCapacity/MeshType)
+                    // instead of respawning as a combat unit via DoSpawnCombatUnit.
                     UnitSnapshot snap = _world.SnapshotUnit(s.LiveId);
                     Vector3 pos = new Vector3(_world.Position[s.LiveId].X.ToFloat(), 0f, _world.Position[s.LiveId].Z.ToFloat());
-                    return new PropDescriptor(Selected.Kind.Unit, pos, snap.Def?.Id ?? "", snap.Faction, 0f, 1f, false, 0f, 0f, 0);
+                    return new PropDescriptor(Selected.Kind.Unit, pos, snap.Def?.Id ?? "", snap.Faction, 0f, 1f, false, 0f, 0f, 0,
+                        unitSnap: snap);
                 }
                 case Selected.Kind.Building:
                 {
                     Vector3 pos = new Vector3(_buildings!.Position[s.LiveId].X.ToFloat(), 0f, _buildings.Position[s.LiveId].Z.ToFloat());
                     // Story 6.8: descriptor carries the authored DefinitionId (not the enum name), so a copy/paste of a
                     // Custom building re-creates it as the right authored building.
-                    return new PropDescriptor(Selected.Kind.Building, pos, _buildings.DefinitionId[s.LiveId], _buildings.FactionOf[s.LiveId], 0f, 1f, false, 0f, 0f, 0);
+                    // DW-151: carry the source ScenarioBuilding's authored pre_built flag so a moved building persists
+                    // pre_built:true instead of resetting to false.
+                    return new PropDescriptor(Selected.Kind.Building, pos, _buildings.DefinitionId[s.LiveId], _buildings.FactionOf[s.LiveId], 0f, 1f, false, 0f, 0f, 0,
+                        preBuilt: LookupBuildingPreBuilt(_buildings.FactionOf[s.LiveId], pos));
                 }
                 default: // Node
                 {
                     Vector3 pos = new Vector3(_nodes!.Position[s.LiveId].X.ToFloat(), 0f, _nodes.Position[s.LiveId].Z.ToFloat());
+                    // DW-151: capture the full Story-4.7 field set from the live store so a moved/pasted node keeps its
+                    // collection model / resource type / requires-structure gate / owner / income period.
                     return new PropDescriptor(Selected.Kind.Node, pos, "", Faction.Neutral, 0f, 1f, false,
-                        _nodes.SupplyTotal[s.LiveId].ToFloat(), _nodes.GatherRate[s.LiveId].ToFloat(), NODE_MAX_GATHERERS);
+                        _nodes.SupplyTotal[s.LiveId].ToFloat(), _nodes.GatherRate[s.LiveId].ToFloat(), _nodes.MaxGatherers[s.LiveId],
+                        collectionModel:         _nodes.CollectionModel[s.LiveId],
+                        resourceKind:            _nodes.ResourceType[s.LiveId],
+                        requiresStructureId:     _nodes.RequiresStructureId[s.LiveId],
+                        requiresStructureRadius: _nodes.RequiresStructureRadius[s.LiveId],
+                        ownerFaction:            _nodes.OwnerFaction[s.LiveId],
+                        incomePeriodTicks:       _nodes.IncomePeriodTicks[s.LiveId]);
                 }
             }
         }
@@ -2297,16 +2496,27 @@ namespace ProjectChimera.UI
             var sup = n.SupplyRemaining[id]; var tot = n.SupplyTotal[id]; var rate = n.GatherRate[id];
             Vector3 wp = new Vector3(n.Position[id].X.ToFloat(), 0f, n.Position[id].Z.ToFloat());
             n.Active[id] = false;
-            object? h = _onResourceNodeSync?.Invoke(ScenarioSyncOp.RemoveMatch, null, wp, 0f, 0f, 0);
+            // DW-151: RemoveMatch/ReAdd preserve the node's authored 4.7 fields by identity, so the delete legs pass
+            // store defaults for the extended tail.
+            object? h = _onResourceNodeSync?.Invoke(ScenarioSyncOp.RemoveMatch, null, wp, 0f, 0f, 0, ResourceCollectionModel.Gather, ResourceKind.Ore, "", default, Faction.Neutral, 0);
             return (
-                redo: () => { n.Active[id] = false; _onResourceNodeSync?.Invoke(ScenarioSyncOp.RemoveHandle, h, wp, 0f, 0f, 0); },
-                undo: () => { n.Active[id] = true; n.SupplyRemaining[id] = sup; n.SupplyTotal[id] = tot; n.GatherRate[id] = rate; _onResourceNodeSync?.Invoke(ScenarioSyncOp.ReAdd, h, wp, 0f, 0f, 0); });
+                redo: () => { n.Active[id] = false; _onResourceNodeSync?.Invoke(ScenarioSyncOp.RemoveHandle, h, wp, 0f, 0f, 0, ResourceCollectionModel.Gather, ResourceKind.Ore, "", default, Faction.Neutral, 0); },
+                undo: () => { n.Active[id] = true; n.SupplyRemaining[id] = sup; n.SupplyTotal[id] = tot; n.GatherRate[id] = rate; _onResourceNodeSync?.Invoke(ScenarioSyncOp.ReAdd, h, wp, 0f, 0f, 0, ResourceCollectionModel.Gather, ResourceKind.Ore, "", default, Faction.Neutral, 0); });
         }
 
         /// <summary>Create a placement from a descriptor at <paramref name="at"/> (performs it now, returns the
         /// composable redo/undo + the resulting <see cref="Selected"/> so paste/move can re-select the copies).</summary>
         private (System.Action redo, System.Action undo, Selected selected)? BuildCreate(PropDescriptor d, Vector3 at)
         {
+            // DW-159: reject an off-map create (paste/duplicate) up front — returning null makes the caller skip this
+            // item so nothing persists outside ±MapBounds to fail whole-scenario validation later. (MoveSelection
+            // pre-checks ALL targets before any BuildDelete, so a move never reaches here off-map.)
+            if (!WithinMapBounds(at))
+            {
+                GD.Print($"[EntityPlacer] Create at ({at.X:F1},{at.Z:F1}) is outside map bounds — skipped.");
+                return null;
+            }
+
             var pos = new FixedVec3(Fixed.FromFloat(at.X), Fixed.Zero, Fixed.FromFloat(at.Z));
             switch (d.Category)
             {
@@ -2321,6 +2531,24 @@ namespace ProjectChimera.UI
                 }
                 case Selected.Kind.Unit:
                 {
+                    // DW-151: when a residue snapshot was captured (every marquee-selected unit), re-home it via the
+                    // identity-preserving RestoreUnit — this replays the worker overrides (SupplyCost=0/GatherState/
+                    // CarryCapacity/MeshType) exactly like the single-entity delete→undo path, so a moved/pasted worker
+                    // stays a worker rather than respawning as a combat unit through DoSpawnCombatUnit.
+                    if (d.UnitSnap is UnitSnapshot snap)
+                    {
+                        snap.Position = pos; // re-home the snapshot to the moved/pasted world position
+                        int rid = _world.RestoreUnit(snap);
+                        if (rid < 0) return null;
+                        object? rh = string.IsNullOrEmpty(d.Id) ? null : _onUnitSync?.Invoke(ScenarioSyncOp.Add, null, d.Id, d.Faction, at);
+                        var replay = snap; // captured copy (already re-homed) for the redo leg
+                        int[] rbox = { rid };
+                        return (
+                            redo: () => { int r = _world.RestoreUnit(replay); if (r >= 0) { rbox[0] = r; if (rh != null) _onUnitSync?.Invoke(ScenarioSyncOp.ReAdd, rh, d.Id, d.Faction, at); } },
+                            undo: () => { _world.Destroy(rbox[0]); if (rh != null) _onUnitSync?.Invoke(ScenarioSyncOp.RemoveHandle, rh, d.Id, d.Faction, at); },
+                            selected: new Selected(Selected.Kind.Unit, rid, null));
+                    }
+                    // Fallback (def-less capture, no snapshot): the pre-DW-151 combat-spawn path.
                     if (string.IsNullOrEmpty(d.Id)) return null;
                     UnitDefinition? def = (d.Faction == Faction.Player2 ? _faction2 : _faction)?.GetUnit(d.Id);
                     int id = DoSpawnCombatUnit(pos, d.Faction, def);
@@ -2344,25 +2572,33 @@ namespace ProjectChimera.UI
                     if (id < 0) return null;
                     Fixed dur = _buildings.ConstructionDuration[id];
                     var b = _buildings;
-                    object? h = _onBuildingSync?.Invoke(ScenarioSyncOp.Add, null, defId, d.Faction, at, false);
+                    // DW-151: carry the source building's authored pre_built into the persisted DTO (only Add reads it;
+                    // ReAdd/RemoveHandle pass it for signature consistency) so a moved pre_built:true building stays true.
+                    object? h = _onBuildingSync?.Invoke(ScenarioSyncOp.Add, null, defId, d.Faction, at, d.PreBuilt);
                     return (
                         // Review fix (F2, symmetric): redo re-writes Position/Type/Faction, not just `Alive[id]=true`.
                         // After an undo restored the slot to its pre-move state, a redo must re-apply the moved
                         // position rather than relying on residue the undo just overwrote.
-                        redo: () => { b.Alive[id] = true; b.Position[id] = pos; b.FactionOf[id] = d.Faction; b.Type[id] = type; b.DefinitionId[id] = defId; b.ConstructionTimer[id] = dur; b.ConstructionDuration[id] = dur; _onBuildingSync?.Invoke(ScenarioSyncOp.ReAdd, h, defId, d.Faction, at, false); },
-                        undo: () => { b.Destroy(id); _onBuildingSync?.Invoke(ScenarioSyncOp.RemoveHandle, h, defId, d.Faction, at, false); },
+                        redo: () => { b.Alive[id] = true; b.Position[id] = pos; b.FactionOf[id] = d.Faction; b.Type[id] = type; b.DefinitionId[id] = defId; b.ConstructionTimer[id] = dur; b.ConstructionDuration[id] = dur; _onBuildingSync?.Invoke(ScenarioSyncOp.ReAdd, h, defId, d.Faction, at, d.PreBuilt); },
+                        undo: () => { b.Destroy(id); _onBuildingSync?.Invoke(ScenarioSyncOp.RemoveHandle, h, defId, d.Faction, at, d.PreBuilt); },
                         selected: new Selected(Selected.Kind.Building, id, null));
                 }
                 default: // Node
                 {
                     if (_nodes == null) return null;
-                    int id = _nodes.Create(pos, Fixed.FromFloat(d.Supply), Fixed.FromFloat(d.Rate), d.MaxGatherers);
+                    // DW-151: re-create through the full 10-arg store Create so the live node keeps its Story-4.7 field
+                    // set, and pass the same fields into the sync so the persisted DTO does too.
+                    int id = _nodes.Create(pos, Fixed.FromFloat(d.Supply), Fixed.FromFloat(d.Rate), d.MaxGatherers,
+                        d.ResourceCollectionModel, d.ResourceKind, d.RequiresStructureId, d.RequiresStructureRadius, d.OwnerFaction, d.IncomePeriodTicks);
                     if (id < 0) return null;
                     var n = _nodes;
-                    object? h = _onResourceNodeSync?.Invoke(ScenarioSyncOp.Add, null, at, d.Supply, d.Rate, d.MaxGatherers);
+                    object? h = _onResourceNodeSync?.Invoke(ScenarioSyncOp.Add, null, at, d.Supply, d.Rate, d.MaxGatherers,
+                        d.ResourceCollectionModel, d.ResourceKind, d.RequiresStructureId, d.RequiresStructureRadius, d.OwnerFaction, d.IncomePeriodTicks);
                     return (
-                        redo: () => { n.Active[id] = true; n.SupplyRemaining[id] = Fixed.FromFloat(d.Supply); n.SupplyTotal[id] = Fixed.FromFloat(d.Supply); n.GatherRate[id] = Fixed.FromFloat(d.Rate); _onResourceNodeSync?.Invoke(ScenarioSyncOp.ReAdd, h, at, d.Supply, d.Rate, d.MaxGatherers); },
-                        undo: () => { n.Active[id] = false; _onResourceNodeSync?.Invoke(ScenarioSyncOp.RemoveHandle, h, at, d.Supply, d.Rate, d.MaxGatherers); },
+                        // The node store is append-only (no free list), so this slot is never recycled — undo only flips
+                        // Active off, and redo re-activates it with its (still-intact) 4.7 fields.
+                        redo: () => { n.Active[id] = true; n.SupplyRemaining[id] = Fixed.FromFloat(d.Supply); n.SupplyTotal[id] = Fixed.FromFloat(d.Supply); n.GatherRate[id] = Fixed.FromFloat(d.Rate); _onResourceNodeSync?.Invoke(ScenarioSyncOp.ReAdd, h, at, d.Supply, d.Rate, d.MaxGatherers, d.ResourceCollectionModel, d.ResourceKind, d.RequiresStructureId, d.RequiresStructureRadius, d.OwnerFaction, d.IncomePeriodTicks); },
+                        undo: () => { n.Active[id] = false; _onResourceNodeSync?.Invoke(ScenarioSyncOp.RemoveHandle, h, at, d.Supply, d.Rate, d.MaxGatherers, d.ResourceCollectionModel, d.ResourceKind, d.RequiresStructureId, d.RequiresStructureRadius, d.OwnerFaction, d.IncomePeriodTicks); },
                         selected: new Selected(Selected.Kind.Node, id, null));
                 }
             }
@@ -2454,7 +2690,10 @@ namespace ProjectChimera.UI
                 if (used)
                 {
                     Vector3 p = SelectedWorldPos(_selection[i]);
-                    _markerPool[i].Position = new Vector3(p.X, 0.15f, p.Z);
+                    // DW-153: sit the marker on the sampled terrain height so it no longer sinks below raised ground
+                    // (flat maps sample 0 ⇒ unchanged).
+                    float y = _world.SampleElevation(Fixed.FromFloat(p.X), Fixed.FromFloat(p.Z)).ToFloat() + 0.15f;
+                    _markerPool[i].Position = new Vector3(p.X, y, p.Z);
                 }
             }
         }

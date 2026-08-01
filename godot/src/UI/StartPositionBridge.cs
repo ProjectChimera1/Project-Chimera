@@ -31,21 +31,23 @@ namespace ProjectChimera.UI
         // ─────────────────────────────────────────────────────────────────────
 
         /// <summary>
-        /// Create up to <see cref="MAX_SLOTS"/> flag-pole meshes and add them to the scene. <paramref name="slotPositions"/>
-        /// supplies the initial world XZ for each PLACED slot (Y=0); markers beyond that count are built but hidden
-        /// until <see cref="EnsureVisible"/>/<see cref="SetPosition"/> reveals them (an added start position).
+        /// Create <see cref="MAX_SLOTS"/> flag-pole meshes and add them to the scene. DW-163: reveal each marker by
+        /// DECLARED slot VALUE, not by a contiguous count — <paramref name="positions"/> and <paramref name="present"/>
+        /// are both indexed by slot value (length <see cref="MAX_SLOTS"/>), so a non-contiguous <c>{0,3}</c> set shows
+        /// markers 0 and 3 at their bases with 1 and 2 hidden. Hidden markers are still built so
+        /// <see cref="EnsureVisible"/>/<see cref="SetPosition"/> can reveal them later (an added start position).
         /// </summary>
-        public void Initialize((float x, float z)[] slotPositions)
+        public void Initialize((float x, float z)[] positions, bool[] present)
         {
             for (int i = 0; i < MAX_SLOTS; i++)
             {
-                bool placed = i < slotPositions.Length;
-                float px = placed ? slotPositions[i].x : 0f;
-                float pz = placed ? slotPositions[i].z : 0f;
+                float px = (positions != null && i < positions.Length) ? positions[i].x : 0f;
+                float pz = (positions != null && i < positions.Length) ? positions[i].z : 0f;
+                bool  vis = present != null && i < present.Length && present[i];
 
                 _markers[i] = BuildFlagPole(SLOT_COLORS[i]);
                 _markers[i]!.Position = new Vector3(px, 0f, pz);
-                _markers[i]!.Visible  = placed;
+                _markers[i]!.Visible  = vis;
                 GetParent()!.AddChild(_markers[i]);
             }
         }

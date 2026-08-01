@@ -391,30 +391,32 @@ namespace ProjectChimera.Core.Bootstrap
         /// </summary>
         private void SetupStartPositionBridge()
         {
-            // Story 6.7: 2–4 start positions (capped at the engine ceiling). Size the placed-position array to the
-            // scenario's declared player-slot count so 3- and 4-player maps show all their markers.
-            int placed = _ctx.Scenario?.PlayerSlots?.Length ?? 2;
-            placed = System.Math.Clamp(placed, 2, StartPositionBridge.MAX_SLOTS);
-            var positions = new (float x, float z)[placed];
+            // DW-163: reveal markers by DECLARED slot VALUE, not by a contiguous count. Both arrays are indexed by
+            // slot value (length MAX_SLOTS) so a validator-legal non-contiguous set (e.g. {0,3}) shows markers 0 and 3
+            // at their bases and hides 1 and 2 — the old count-sized array dropped the slot-3 marker at load.
+            int max = StartPositionBridge.MAX_SLOTS;
+            var positions = new (float x, float z)[max];
+            var present   = new bool[max];
 
-            if (_ctx.Scenario != null)
+            if (_ctx.Scenario?.PlayerSlots != null)
             {
                 foreach (var slot in _ctx.Scenario.PlayerSlots)
                 {
-                    int idx = System.Math.Clamp(slot.Slot, 0, StartPositionBridge.MAX_SLOTS - 1);
-                    if (idx < positions.Length) positions[idx] = (slot.BaseX, slot.BaseZ);
+                    if (slot.Slot < 0 || slot.Slot >= max) continue;
+                    positions[slot.Slot] = (slot.BaseX, slot.BaseZ);
+                    present[slot.Slot]   = true;
                 }
             }
             else
             {
-                // Fallback positions matching ScenarioApplier.BuildFallbackMirror
-                positions[0] = (-45f, 0f);
-                positions[1] = (+45f, 0f);
+                // Fallback positions matching ScenarioApplier.BuildFallbackMirror (slots 0,1 present).
+                positions[0] = (-45f, 0f); present[0] = true;
+                positions[1] = (+45f, 0f); present[1] = true;
             }
 
             var startPosBridge = new StartPositionBridge();
             _ctx.Scene.AddChild(startPosBridge);
-            startPosBridge.Initialize(positions);
+            startPosBridge.Initialize(positions, present);
             _ctx.StartPosBridge = startPosBridge;
         }
     }

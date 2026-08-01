@@ -45,6 +45,13 @@
          which SimSources.props does NOT glob; deliberately OUTSIDE the determinism analyzer set — presentation-side). -->
     <Compile Include="..\src\UI\SelectionSubgroups.cs" LinkBase="Sim\UI" />
     <Compile Include="..\src\UI\ModifierPolarity.cs"   LinkBase="Sim\UI" />
+    <!-- DW-163: the Godot-free start-slot arithmetic (declared-set / lowest-undeclared / max-declared) extracted from
+         EntityPlacer.RefreshSubRow so the non-contiguous slot logic is Tier-1 testable without Godot. Lives under
+         src/UI (NOT globbed by SimSources.props), included as a single file like the presentation cores above. -->
+    <Compile Include="..\src\UI\StartSlotMath.cs" LinkBase="Sim\UI" />
+    <!-- DW-159: the Godot-free map-bounds predicate extracted from EntityPlacer.WithinMapBounds, included as a single
+         file (src/UI is not globbed by SimSources.props) so the off-map paste/move guard is Tier-1 testable. -->
+    <Compile Include="..\src\UI\MapBoundsMath.cs" LinkBase="Sim\UI" />
   </ItemGroup>
 
   <!-- Story 9.12: the SHARED C#<->TS hero-profile validation oracle. Embedded (read via manifest stream, like the

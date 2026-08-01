@@ -1171,7 +1171,8 @@ source_spec: `_bmad-output/implementation-artifacts/spec-6-1-verify-harden-the-c
 location: `godot/src/UI/EntityPlacer.cs` (`PlacementMode.Item`, Story 3.15) + `godot/src/Core/MainScene.cs` (Story 6.1 sync handlers) — no `_onItemSync` callback exists; `ScenarioData.Items` / `ScenarioItem` are never written by the editor.
 reason: summary: Story 6.1 added `ScenarioData` sync for buildings/units/resource-nodes (its explicitly enumerated scope) but the editor's Item placement mode has the same latent defect the story fixed for the other kinds — a placed item is never mirrored into `_ctx.Scenario.Items`, so it is silently lost on save/reload and on the F5 Edit→Play re-apply (`ResetToAuthoredStart` re-applies only `_ctx.Scenario`). Surfaced by the Blind Hunter review layer. Out of scope for 6.1 (the intent enumerates only buildings/units/resource-nodes), so deferred rather than folded in. MEDIUM consequence (placed items vanish with no signal).
 closure: mirror the buildings/units/resource-nodes sync for items — add an `_onItemSync` callback (same `ScenarioSyncOp` opaque-handle protocol) fired inside `PlaceItem`/`DeleteItem`'s `_history.Push` closures, and a `MainScene.SyncItem` handler mutating `_ctx.Scenario.Items`. Consider whether item placement should reuse the identity-preserving delete/undo pattern from 6.1.
-status: open
+status: done 2026-08-01
+resolution: resolved by sweep bundle dw-editor-placement-bounds-height-and-sync
 
 ### DW-138: `EntityPlacer._history` is not cleared across the F5 Edit→Play→Edit round-trip — a post-F5 undo can now corrupt `ScenarioData`
 source_spec: `_bmad-output/implementation-artifacts/spec-6-1-verify-harden-the-creation-suite-editor-terrain-sculpt-paint-entity-start-resource-win-placement-to-ship-bar.md`
@@ -1297,7 +1298,8 @@ origin: code review of spec-6-6-doodads-props-placement-editor-multi-select-copy
 location: godot/src/UI/EntityPlacer.cs (Describe captures only id/faction/position [+supply/rate for nodes]; BuildCreate respawns from scratch)
 severity: medium
 reason: A moved/duplicated worker respawns via the combat path losing worker overrides; a building loses its authored pre_built flag; a node loses its Story-4.7 collection/owner fields. Single-entity delete/undo paths ARE identity-preserving — only the multi-select move/copy/paste path is lossy. Authoring-fidelity only, no determinism/checksum impact.
-status: open
+status: done 2026-08-01
+resolution: resolved by sweep bundle dw-editor-placement-bounds-height-and-sync
 
 ### DW-152: Rotation persists on units/buildings/nodes but only props apply visual yaw at spawn
 
@@ -1316,7 +1318,8 @@ origin: code review of spec-6-6 (doodads/multi-select), 2026-07-14 (epic-6 bmad-
 location: godot/src/UI/EntityPlacer.cs (FinishMarquee unprojects at hard-coded heights; GroundPointOf intersects the y=0 plane)
 severity: low
 reason: Box-select misses entities on Story-6.3 elevated terrain and markers sink below raised ground. The SAME y=0 convention every existing editor tool uses — a pre-existing editor-wide limitation surfaced by the new marquee, not unique to 6.6.
-status: open
+status: done 2026-08-01
+resolution: resolved by sweep bundle dw-editor-placement-bounds-height-and-sync
 
 ### DW-154: No single-active right-dock arbitration — Camera/Water/Region/Pathability panels overlap when two are toggled
 
@@ -1367,7 +1370,8 @@ origin: code review of spec-6-6 (doodads/cameras/water; Blind F7 + Edge E2), pas
 location: godot/src/UI/EntityPlacer.cs (PlaceProp/BuildCreate/PasteClipboard/MoveSelection/DuplicateSelection — no ±MapBounds check; contrast WaterTool.CommitDrag)
 severity: low
 reason: Fail-closed (the validator rejects at next save/F5 — no corruption or determinism impact) but the whole-scenario rejection is a poor authoring experience and inconsistent with the water path. Fix: clamp/reject out-of-bounds creates at place/paste/move time with a status message, mirroring WaterTool.CommitDrag.
-status: open
+status: done 2026-08-01
+resolution: resolved by sweep bundle dw-editor-placement-bounds-height-and-sync
 
 ### DW-160: Variable map-size grid generalization — the escalation record (five hardcoded grid systems need one map-size source of truth)
 
@@ -1410,7 +1414,8 @@ origin: code review of spec-6-7 (map properties; Blind F3, Edge #1/#3, Verificat
 location: godot/src/Core/ScenarioLoadPhase.cs (SetupStartPositionBridge sizes by clamp(PlayerSlots.Length,2,4) then guards idx < positions.Length) + godot/src/UI/EntityPlacer.cs (toggles by loop index; "−" removes value _startSlotCount-1)
 severity: medium
 reason: ScenarioValidator permits any unique in-range slot set (no contiguity/slot-0 rule), so slot value 3 in a length-2 set is silently dropped at load and palette buttons misroute. The normal editor flow keeps slots contiguous — this bites hand-authored/generated maps; edit-time visual + a stale-base edge, not data corruption (review PATCH 2 hardened RemoveStartPosition's sim-base clear). Fix: size markers/toggles by max declared Slot+1 (clamped) and drive toggle identity from PlayerSlots[i].Slot, or add a validator contiguity rule.
-status: open
+status: done 2026-08-01
+resolution: resolved by sweep bundle dw-editor-placement-bounds-height-and-sync
 
 ### DW-164: The map Export / New-Map write path never runs a hard Validate() — a failing scenario still writes and ships as a package that won't load
 
@@ -3918,4 +3923,36 @@ source_spec: `_bmad-output/implementation-artifacts/spec-dw-28-325-modifier-effe
 location: godot/src/Combat/DamageResolver.cs (KillEntity — unconditionally pushes UnitKilled + RecordKill + Destroy)
 severity: low
 reason: `KillEntity` does not re-check `IsAlive` at entry; it unconditionally emits the UnitKilled event, records the kill/loss, and Destroys — so DW-325 having made `ApplyStatDeltas` a lethal path means a future `ApplyStatDeltas` variant (or a double-collapse in one tick) that reaches the kill without re-checking aliveness would double-Destroy → phantom UnitKilled / inflated loss count. — Evidence: adversarial lens; the DW-325 change guards its OWN call site (`ModifierStore.cs:566`) but the reused death primitive itself is not fail-closed, unlike the codebase's other phantom-death guards. Pre-existing/defense-in-depth (no current caller is unguarded). Closure = add a fail-closed `if (!world.IsAlive(id)) return;` at the top of `KillEntity`.
+status: open
+
+### DW-494: DW-153's fix samples terrain elevation for box-select/markers while the entity renderers still draw at y=0 — on raised terrain the marquee hit-test now floats above the visible mesh
+origin: deferred by review of `_bmad-output/implementation-artifacts/spec-editor-placement-bounds-height-and-sync.md`, 2026-08-01
+source_spec: `_bmad-output/implementation-artifacts/spec-editor-placement-bounds-height-and-sync.md`
+location: godot/src/UI/EntityPlacer.cs (`FinishMarquee`/`InBox` + marker-loop now offset Y by `_world.SampleElevation`) vs godot/src/UI/MultiMeshBridge.cs:~177 + godot/src/UI/PropRenderer.cs:~88 (units/props still rendered at world Y≈0; `ScenarioApplier` keeps `Position.Y == Fixed.Zero`, elevation lives only in the Elevation SoA which no renderer reads)
+severity: medium
+reason: DW-153 changed box-select and the 3D selection markers to unproject/place at the sampled `ElevationGrid` height, but the entity meshes themselves are still drawn at y≈0 (the presentation mesh-lift was explicitly out of the bundle's scope). On any Story-6.3 raised map the two now disagree: a box drawn around a unit's *visible* mesh (at y≈0) hit-tests the unit at y≈elevation and can miss it, and markers sit above their entities. Zero impact on flat maps (all shipped scenarios: Sample=0). Out of scope per the bundle intent's Never clause ("Do not lift the presentation renderers to terrain height"), so deferred not folded. — Evidence: adversarial + verification-gap lenses; confirmed no renderer reads `Elevation[]` and box-select/marker Y now come from `SampleElevation`. Closure = lift the MultiMesh/Building/Prop renderers to the sampled elevation so select, markers, and meshes share one ground-truth height (the DW-153-vs-render reconciliation), or document flat-map-only support.
+status: open
+
+### DW-495: DW-159's map-bounds guard covers prop-place/paste/move but NOT single-entity unit/building placement — and unlike items/props those ARE validator-bounds-checked, so an off-map single-placed unit/building still bricks whole-scenario validation
+origin: deferred by review of `_bmad-output/implementation-artifacts/spec-editor-placement-bounds-height-and-sync.md`, 2026-08-01
+source_spec: `_bmad-output/implementation-artifacts/spec-editor-placement-bounds-height-and-sync.md`
+location: godot/src/UI/EntityPlacer.cs (`PlaceUnit` ~:745, `PlaceBuilding`, `PlaceResourceNode` — no `WithinMapBounds` guard) vs godot/src/Core/Definitions/ScenarioValidator.cs (`CheckCoord` bounds-checks units + buildings)
+severity: medium
+reason: DW-159 added `WithinMapBounds` to `PlaceProp`/`BuildCreate`/`MoveSelection` only (the bundle intent enumerated exactly those). But a single-entity unit or building placed from the same ground raycast can land outside ±MapBounds just as a prop can — and units/buildings, unlike items and props, are bounds-validated by `ScenarioValidator.CheckCoord`, so an off-map single placement persists and then fails whole-scenario validation on Save/F5: the exact confusing-late-rejection failure class DW-159 exists to close, left open on the single-place paths. Pre-existing (unguarded before and after), surfaced by this bundle's guard being partial. — Evidence: adversarial + intent-alignment lenses. Closure = extend the `WithinMapBounds` reject to `PlaceUnit`/`PlaceBuilding`/`PlaceResourceNode` (and `PlaceItem` if a bounds rule is ever added for items).
+status: open
+
+### DW-496: EntityPlacer group-move is atomic only for OFF-MAP targets — a capacity-driven BuildCreate null (world/store full) after the originals are deleted strands the deleted original in the current view
+origin: deferred by review of `_bmad-output/implementation-artifacts/spec-editor-placement-bounds-height-and-sync.md`, 2026-08-01
+source_spec: `_bmad-output/implementation-artifacts/spec-editor-placement-bounds-height-and-sync.md`
+location: godot/src/UI/EntityPlacer.cs:~2276-2286 (`MoveSelection` deletes all originals via `BuildDelete` before `BuildCreate`; the DW-159 pre-check aborts only on bounds, not capacity)
+severity: low
+reason: `MoveSelection` deletes every selected original first, then re-creates each at the moved position; the up-front atomic-abort pre-check only tests `WithinMapBounds`. `BuildCreate` can still return null for a CAPACITY reason — `RestoreUnit` returns -1 when `EntityWorld` is full, and the 10-arg `ResourceNodeStore.Create` can fail when the node store is full (both newly reachable via this bundle's move path) — after the original was already `BuildDelete`d, leaving that entity deleted-but-not-recreated in the post-move view (only a `GD.Print`; recoverable via undo of the whole batch). Extreme trigger (editor at entity capacity), pre-existing delete-before-create ordering that the new null paths widened. — Evidence: adversarial + edge-case lenses. Closure = pre-flight capacity for every target before the first `BuildDelete`, or roll back the just-run deletes when any create yields null.
+status: open
+
+### DW-497: EntityPlacer unit create/undo legs `_world.Destroy(box[0])` with no identity re-check — a redo that fails at world capacity leaves a stale boxed id whose next undo destroys whatever unit recycled that slot
+origin: deferred by review of `_bmad-output/implementation-artifacts/spec-editor-placement-bounds-height-and-sync.md`, 2026-08-01
+source_spec: `_bmad-output/implementation-artifacts/spec-editor-placement-bounds-height-and-sync.md`
+location: godot/src/UI/EntityPlacer.cs:~2545 (`BuildCreate` Unit/RestoreUnit undo leg) + :~2557 (combat-fallback undo) + `PlaceUnit` :~771/:~801 (single-place undo legs)
+severity: low
+reason: The unit create history closures box the created id and undo via `_world.Destroy(box[0])` with no aliveness/generation re-check. Their redo legs guard `if (r >= 0) box[0] = r`, so if a redo's `DoSpawnCombatUnit`/`RestoreUnit` fails at world capacity, `box[0]` retains a now-stale id and the following undo destroys whatever unit has since recycled that free-list slot — corrupting an unrelated live unit. The sibling ITEM path avoids exactly this by routing undo through the generation-checked `_items.TryResolveRef` before `Destroy`; `EntityWorld.Destroy` has no such guard. Pre-existing across `PlaceUnit`; DW-151 added another instance following the same pattern. Extreme trigger (world at capacity + slot recycle). — Evidence: edge-case + adversarial lenses. Closure = gate the unit undo `Destroy` on the boxed id still being Alive (mirror the item path's resolve-before-destroy), or make `EntityWorld.Destroy` generation-safe.
 status: open

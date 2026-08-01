@@ -1641,9 +1641,16 @@ namespace ProjectChimera.Core
         }
 
         /// <summary>Story 6.1 — resource-node sync callback fired by <see cref="EntityPlacer"/>. Matched by position
-        /// (nodes have no slot). RemoveMatch returns the REAL authored entry so its economy fields survive undo.</summary>
+        /// (nodes have no slot). RemoveMatch returns the REAL authored entry so its economy fields survive undo.
+        /// DW-151: the signature carries the Story-4.7 economy field set so a group-move/paste re-creates the node's
+        /// authored collection model / resource type / requires-structure gate / owner slot / income period in the
+        /// persisted DTO (not only the live store). The single-entity placer + all delete/re-add legs pass store
+        /// defaults, so their persisted shape is unchanged for those paths.</summary>
         internal object? SyncResourceNode(EntityPlacer.ScenarioSyncOp op, object? handle,
-                                         Vector3 pos, float supply, float rate, int maxGatherers)
+                                         Vector3 pos, float supply, float rate, int maxGatherers,
+                                         ResourceCollectionModel collectionModel, ResourceKind resourceType,
+                                         string requiresStructureId, Fixed requiresStructureRadius,
+                                         Faction ownerFaction, int incomePeriodTicks)
         {
             var scen = _ctx.Scenario;
             if (scen == null) return null;
@@ -1651,7 +1658,10 @@ namespace ProjectChimera.Core
             {
                 case EntityPlacer.ScenarioSyncOp.Add:
                 {
-                    var entry = new ScenarioResourceNode { X = pos.X, Z = pos.Z, Supply = supply, Rate = rate, MaxGatherers = maxGatherers };
+                    // DW-151/A10: build the DTO through the single Godot-free mapper so the live→DTO conversion
+                    // (Faction→OwnerSlot, enum→string, empty id→null, Fixed→float) has one authoritative site.
+                    var entry = ResourceNodeDtoMap.ToDto(pos.X, pos.Z, supply, rate, maxGatherers,
+                        collectionModel, resourceType, requiresStructureId, requiresStructureRadius, ownerFaction, incomePeriodTicks);
                     scen.ResourceNodes = AppendEntry(scen.ResourceNodes, entry);
                     return entry;
                 }
@@ -1672,6 +1682,44 @@ namespace ProjectChimera.Core
                         return null;
                     }
                     scen.ResourceNodes = RemoveByIdentity(scen.ResourceNodes, match, out _);
+                    return match;
+                }
+            }
+            return null;
+        }
+
+        /// <summary>DW-137 — ground-item sync callback fired by <see cref="EntityPlacer.PlaceItem"/>. Mirrors
+        /// <see cref="SyncResourceNode"/> but items are SLOT-LESS and rotation-less, so it matches by position only and
+        /// carries no <c>SlotDeclared</c> guard. Persists an editor-placed item into <c>ScenarioData.Items</c> (a
+        /// nullable array read as <c>Items ?? empty</c>) so it survives Save/reload AND the F5 Edit→Play re-apply
+        /// instead of vanishing. Items are place-only in the editor (no delete branch), so RemoveMatch is unreachable
+        /// today but included for protocol symmetry. <c>Items</c> is not <c>ScenarioValidator</c>-checked, so a synced
+        /// item can never brick F5/Save.</summary>
+        internal object? SyncItem(EntityPlacer.ScenarioSyncOp op, object? handle, string itemId, Vector3 pos)
+        {
+            var scen = _ctx.Scenario;
+            if (scen == null) return null;
+            switch (op)
+            {
+                case EntityPlacer.ScenarioSyncOp.Add:
+                {
+                    var entry = new ScenarioItem { ItemId = itemId, X = pos.X, Z = pos.Z };
+                    scen.Items = AppendEntry(scen.Items, entry);
+                    return entry;
+                }
+                case EntityPlacer.ScenarioSyncOp.ReAdd:
+                    if (handle is ScenarioItem it) scen.Items = AppendEntry(scen.Items, it);
+                    return handle;
+                case EntityPlacer.ScenarioSyncOp.RemoveHandle:
+                    scen.Items = RemoveByIdentity(scen.Items, handle as ScenarioItem, out _);
+                    return null;
+                case EntityPlacer.ScenarioSyncOp.RemoveMatch:
+                {
+                    ScenarioItem? match = null;
+                    foreach (var e in scen.Items ?? Array.Empty<ScenarioItem>())
+                        if (PosMatch(e.X, e.Z, pos)) { match = e; break; }
+                    if (match == null) return null;
+                    scen.Items = RemoveByIdentity(scen.Items, match, out _);
                     return match;
                 }
             }
