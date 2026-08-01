@@ -91,6 +91,43 @@ public class FixedBoundaryTests
         Assert.Equal(2147418112, wrapped.Raw);
     }
 
+    // ── DW-28 saturating add: widens to 64-bit and CLAMPS to the int limits (never wraps) ──────────
+    //
+    // AddSaturating is the SEPARATE method the effective-stat recompute uses. Unlike operator+ (pinned
+    // to wrap above), it saturates at Fixed.MaxValue/MinValue so a pathological base + large modifier
+    // can never wrap negative and collapse the stat. operator+ semantics are UNCHANGED — the two
+    // Overflow_* tests above still pin the wrap.
+
+    [Fact]
+    public void AddSaturating_PositiveLimit_SaturatesToMaxValue_NotWrapNegative()
+    {
+        Fixed result = Fixed.AddSaturating(Fixed.MaxValue, Fixed.One);
+        // operator+ wraps this to -2147418113 (pinned above); AddSaturating must CLAMP to int.MaxValue.
+        Assert.Equal(int.MaxValue, result.Raw);
+        Assert.True(result.Raw > 0, "AddSaturating at the positive limit must saturate positive, never wrap negative.");
+    }
+
+    [Fact]
+    public void AddSaturating_NegativeLimit_SaturatesToMinValue_NotWrapPositive()
+    {
+        Fixed result = Fixed.AddSaturating(Fixed.MinValue, Fixed.NegOne);
+        // operator- wraps MinValue - One to +2147418112 (pinned above); AddSaturating must CLAMP to int.MinValue.
+        Assert.Equal(int.MinValue, result.Raw);
+        Assert.True(result.Raw < 0, "AddSaturating at the negative limit must saturate negative, never wrap positive.");
+    }
+
+    [Fact]
+    public void AddSaturating_InRangeOperands_EqualsOperatorPlus()
+    {
+        // For operands whose true sum stays inside [int.MinValue, int.MaxValue], AddSaturating must be
+        // byte-identical to operator+ (so the recompute swap moves no golden). Independently-derived raws:
+        // 10.5 (raw 688128) + (-3.25) (raw -212992) → true raw 475136 = 7.25.
+        Fixed a = Fixed.FromRaw(688128);
+        Fixed b = Fixed.FromRaw(-212992);
+        Assert.Equal(475136, Fixed.AddSaturating(a, b).Raw); // independent expectation
+        Assert.Equal((a + b).Raw, Fixed.AddSaturating(a, b).Raw); // == operator+ in range
+    }
+
     // ── Sqrt of degenerate / irrational inputs ────────────────────────────────────
 
     [Fact]

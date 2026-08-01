@@ -85,11 +85,13 @@ namespace ProjectChimera.Effects
             if (!world.IsAlive(id)) { _dirty[id] = false; return; }
 
             // Zero-floor (Story 2.2b): a debuff can never drive a stat below zero (which would heal/reverse/invert).
-            world.EffectiveAttackDamage[id] = Fixed.Max(Fixed.Zero, world.BaseAttackDamage[id] + _flatAttackDamageBonus[id]);
-            world.EffectiveMaxHealth[id]    = Fixed.Max(Fixed.Zero, world.BaseMaxHealth[id]    + _flatMaxHealthBonus[id]);
-            world.EffectiveMoveSpeed[id]    = Fixed.Max(Fixed.Zero, world.BaseMoveSpeed[id]    + _flatMoveSpeedBonus[id]);
+            // DW-28: sum with Fixed.AddSaturating (widen-then-clamp) so a pathological base + large bonus saturates at
+            // Fixed.MaxValue instead of the unchecked-int-add WRAP that could wrap negative and collapse to the floor.
+            world.EffectiveAttackDamage[id] = Fixed.Max(Fixed.Zero, Fixed.AddSaturating(world.BaseAttackDamage[id], _flatAttackDamageBonus[id]));
+            world.EffectiveMaxHealth[id]    = Fixed.Max(Fixed.Zero, Fixed.AddSaturating(world.BaseMaxHealth[id],    _flatMaxHealthBonus[id]));
+            world.EffectiveMoveSpeed[id]    = Fixed.Max(Fixed.Zero, Fixed.AddSaturating(world.BaseMoveSpeed[id],    _flatMoveSpeedBonus[id]));
             // Story 2.6: EffectiveArmor = max(0, BaseArmor + Σ armor deltas) — DamageResolver subtracts it (floored at 0).
-            world.EffectiveArmor[id]        = Fixed.Max(Fixed.Zero, world.BaseArmor[id]         + _flatArmorBonus[id]);
+            world.EffectiveArmor[id]        = Fixed.Max(Fixed.Zero, Fixed.AddSaturating(world.BaseArmor[id],         _flatArmorBonus[id]));
             _dirty[id] = false;
         }
 

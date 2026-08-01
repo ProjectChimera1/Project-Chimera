@@ -112,6 +112,26 @@ namespace ProjectChimera.Core
             Max(min, Min(max, value));
 
         /// <summary>
+        /// DW-28 saturating add: widens to a 64-bit accumulator, sums, and clamps to <c>[int.MinValue, int.MaxValue]</c>
+        /// BEFORE constructing the <see cref="Fixed"/> — so a SINGLE <c>Base + already-summed bonus</c> read saturates at
+        /// <see cref="MaxValue"/>/<see cref="MinValue"/> instead of wrapping negative like the unchecked int
+        /// <c>operator+</c>. Integer-only and deterministic. Used by the effective-stat recompute (which passes the base
+        /// and the net bonus). NOTE: this does NOT saturate a modifier STACK — the per-stack bonus is accumulated in
+        /// <c>ModifierSystem.AccumulateBonus</c> via the wrapping <c>+=</c>, so <see cref="AddSaturating"/> only ever sees
+        /// the already-summed bonus; a pathological stack could still wrap the accumulator itself (tracked as deferred
+        /// work). The wrapping <c>operator+</c> stays as-is for all other arithmetic (a widen-then-clamp cannot recover a
+        /// value that has ALREADY wrapped in the int add, so the saturation must live in the sum itself).
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static Fixed AddSaturating(Fixed a, Fixed b)
+        {
+            long sum = (long)a.Raw + b.Raw;
+            if (sum > int.MaxValue) sum = int.MaxValue;
+            else if (sum < int.MinValue) sum = int.MinValue;
+            return new Fixed((int)sum);
+        }
+
+        /// <summary>
         /// Integer square root via Newton's method in fixed-point.
         /// </summary>
         public static Fixed Sqrt(Fixed a)

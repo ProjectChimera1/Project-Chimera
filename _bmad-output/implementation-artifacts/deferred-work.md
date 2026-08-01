@@ -269,7 +269,8 @@ origin: migrated from legacy ledger ("Deferred from: code review of story-3.13 (
 source_spec: `_bmad-output/implementation-artifacts/spec-3-13-heroxpsystem-kill-credit-xp-leveling-stat-growth-runtime.md`
 location: n/a
 reason: summary: A pathological large `Base*` stat combined with (validator-capped) per-level growth can still overflow an `Effective*` stat — the pre-existing unsaturated `ModifierSystem.AccumulateBonus` (`Fixed +=`, no clamp) effective-stat accumulation class, not unique to hero growth. Story 3.13 capped the growth CONTRIBUTION (`*_per_level < 256`, ≤99 stacks) so realistic authoring is safe; the residual requires an already-extreme base. evidence: `ModifierSystem.RecomputeEntity` sums `Base + Σ modifier deltas` with a zero-floor but no ceiling; any large modifier stack (hero growth, or authored buffs) can exceed the 16.16 Fixed range. A general saturation clamp on the effective-stat recompute (or a Base+modifier authoring bound) would close the whole class deterministically. Flagged by the Edge Case review layer (finding #4 residual).
-status: open
+status: done 2026-08-01
+resolution: resolved by sweep bundle dw-modifier-effective-stat-clamp-and-death
 seen-again: 2026-07-28 (correct-course verification — overflow half of legacy story-2.2a review item 2)
 
 ## Deferred from: follow-up code review of story-3.13 (2026-07-08)
@@ -1495,7 +1496,8 @@ status: open
 origin: migrated from flat appender bullet, 2026-07-30 (A1-E11)
 source_spec: `_bmad-output/implementation-artifacts/spec-14-1-remediation-dw-85-suppress-the-maxhealth-research-army-heal-on-re-apply.md`
 reason: A net-negative-MaxHealth modifier (research/item/aura) can drive `EffectiveMaxHealth` to 0 and pin a unit at 0 HP while it stays alive — no system raises death from a modifier-driven ceiling collapse. — Evidence: `ModifierSystem.RecomputeEntity` floors `EffectiveMaxHealth` at 0 and `ModifierStore.ApplyStatDeltas`/the new DW-85 `ResearchSystem` restore both `Fixed.Clamp(Health, 0, EffectiveMaxHealth)`, so a 0 ceiling yields a 0-HP-alive "zombie". Pre-existing and shared across every +MaxHealth producer (not caused by DW-85 — the research restore mirrors the long-standing ModifierStore clamp); content-gated (no shipped content authors a net-negative max-health modifier today). Closure: decide whether a modifier-driven `EffectiveMaxHealth == 0` should kill the unit (and where that death is raised), or whether 0-HP-alive is intended for the "modifiers never kill" design.
-status: open
+status: done 2026-08-01
+resolution: resolved by sweep bundle dw-modifier-effective-stat-clamp-and-death
 decision: 2026-07-30 Raise death on ceiling==0 — Add a death trigger when a modifier drives the max-health ceiling to 0
 
 ### DW-326: Story 14.3's new wizard signature-resolution gate surfaces DW-107's silent-skip-on-invalid-ability behavior as a…
@@ -3864,4 +3866,52 @@ source_spec: `_bmad-output/implementation-artifacts/spec-scenario-reapply-slot-f
 location: godot/src/Core/Bootstrap/Phases/ScenarioLoadPhase.cs:339-340 (ResolveSlotFactionDefs boot delegate to SlotFactionResolver.Resolve, no try/catch)
 severity: low
 reason: The boot path calls the shared `SlotFactionResolver.Resolve` with no try/catch, while the F5 re-apply (MainScene step-0, added by the 2026-07-31 review pass) now wraps the same call to fail closed; `FactionDefinition.LoadFromFile` throws on a corrupt file (IO/JSON) or a validator-rejected roster (InvalidOperationException), and the boot Snapshot/Restore bracket only fires on a downstream validation reject — so a throw escapes ahead of it and takes the whole launch down, an asymmetry the shared-resolver refactor makes concrete. — Evidence: pre-existing (the former inline boot resolver also had no try/catch), surfaced incidentally by the adversarial lens; reachable today by corrupting/invalidating a slot's faction_json file before launch. Fix: bracket the boot Resolve in the same fail-closed try/catch and fall through to `ApplyFallbackThroughApplier`, matching the F5 posture in one place.
+status: open
+
+### DW-488: ModifierSystem.AccumulateBonus's `+=` accumulator stays unsaturated after the DW-28 recompute clamp — a large POSITIVE +MaxHealth stack that wraps the accumulator negative now KILLS the over-buffed unit via the new DW-325 trigger
+origin: deferred by review of `_bmad-output/implementation-artifacts/spec-dw-28-325-modifier-effective-stat-clamp-and-death.md`, 2026-08-01
+source_spec: `_bmad-output/implementation-artifacts/spec-dw-28-325-modifier-effective-stat-clamp-and-death.md`
+location: godot/src/Effects/ModifierSystem.cs:152-155 (AccumulateBonus `_flat*Bonus[id] += delta`, wrapping)
+severity: medium
+reason: DW-28 saturated the `Base + bonus` READ in `RecomputeEntity` but not the per-modifier accumulator write, so a stack of large +MaxHealth modifiers can wrap `_flatMaxHealthBonus` negative BEFORE the read; `AddSaturating(Base, wrappedNegative)` then saturates to `MinValue` → `Max(0,…)==0` → the new DW-325 trigger now KILLS the over-buffed unit (previously it was a benign 0-ceiling zombie), a strictly worse divergent outcome. — Evidence: adversarial + edge-case + intent-alignment lenses independently landed on it; `AddSaturating`'s own docstring concedes "a widen-then-clamp cannot recover a value that has ALREADY wrapped in the int add." Not closable by saturating the accumulator itself — per-step saturation would break `AccumulateBonus`'s order-independence invariant at the boundary; DW-28's intent offered "or a Base+modifier authoring bound" as the alternative. Full closure = a content-authoring cap on `MaxStacks × delta` magnitude (a validator rule). Content-gated + requires an already-extreme base; deterministic (no desync).
+status: open
+
+### DW-489: ModifierStore.Apply / RemoveByModifierId gained a "target may be destroyed on return" post-condition (DW-325); external callers were not audited and cannot distinguish "installed & alive" from "installed & host died"
+origin: deferred by review of `_bmad-output/implementation-artifacts/spec-dw-28-325-modifier-effective-stat-clamp-and-death.md`, 2026-08-01
+source_spec: `_bmad-output/implementation-artifacts/spec-dw-28-325-modifier-effective-stat-clamp-and-death.md`
+location: godot/src/Combat/ItemSystem.cs:255 (UseItem charge-zero RemoveByModifierId), :296 (DropOne revert), :349 (ApplyItemStatModifier returns Apply's bool as claim-success); godot/src/Effects/EffectExecutor.cs:136 + ApplyModifierEffect.cs:31 (mid-graph Apply)
+severity: medium
+reason: The DW-325 kill makes `Apply` and `RemoveByModifierId` able to `Destroy`+recycle the host, a post-condition they never had; only the 3 INTERNAL `ApplyStatDeltas` callers were guarded. `ItemSystem.ApplyItemStatModifier` returns `Apply`'s `true` ("installed") straight through as claim-success, and `RemoveByModifierId` is now lethal so a +MaxHealth item drop/consume can re-enter `DropAll`→`DropOne` on the in-flight slot and emit a duplicate `ItemDropped` event; a future creator-authored net-negative-MaxHealth ("cursed") item would equip onto/claim a corpse. — Evidence: adversarial + edge-case lenses; `ApplyItemStatModifier` verified to return the raw `Apply` bool with no post-`IsAlive` check, and the `DropOne`/`UseItem` re-entrancy paths reach the lethal `RemoveByModifierId` before their own event/Destroy writes. Content-gated (Block-If confirmed only `aura_guard.json`=0 and `ring_of_vigor.json`=+50 author MaxHealth). Closure = document the post-condition + audit/guard external `Apply`/`RemoveByModifierId` callers (or a tri-state result).
+status: open
+
+### DW-490: A modifier-driven ceiling-collapse death is hardcoded to killer Faction.Neutral with the DeathFeed omitted — a future ability-driven "reduce max HP to 0" finisher would grant its caster no kill credit or hero XP
+origin: deferred by review of `_bmad-output/implementation-artifacts/spec-dw-28-325-modifier-effective-stat-clamp-and-death.md`, 2026-08-01
+source_spec: `_bmad-output/implementation-artifacts/spec-dw-28-325-modifier-effective-stat-clamp-and-death.md`
+location: godot/src/Effects/ModifierStore.cs:567 (ApplyStatDeltas DW-325 kill: `DamageResolver.KillEntity(_world, id, Faction.Neutral, _events, _stats)` — no deaths/DeathFeed arg)
+severity: low
+reason: The ceiling-collapse death is attributed to no faction (killer Neutral, `deaths`/DeathFeed feed omitted) — a deliberate spec choice for an attacker-less rules death, but a creator CAN author a lethal −MaxHealth debuff whose `casterFaction` is a real player; such an ability-driven kill would then be invisible to scoring and hero XP, unlike every other lethal path. — Evidence: adversarial lens; `_casterFaction[slot]` is available at `Apply` but not threaded into `ApplyStatDeltas`, and the KillEntity call omits the DeathFeed argument every other lethal path passes. Content-gated (no such ability today); a design question deferred until ability-driven max-health-collapse finishers are authored. Closure = thread caster attribution + DeathFeed into the death (and decide XP-bounty policy).
+status: open
+
+### DW-491: The DW-325 ceiling-collapse kill is gated on the ABSOLUTE `EffectiveMaxHealth == 0`, not on a collapse TRANSITION — a live entity legitimately at ceiling 0, or a positive heal applied to one, is lethal
+origin: deferred by review of `_bmad-output/implementation-artifacts/spec-dw-28-325-modifier-effective-stat-clamp-and-death.md`, 2026-08-01
+source_spec: `_bmad-output/implementation-artifacts/spec-dw-28-325-modifier-effective-stat-clamp-and-death.md`
+location: godot/src/Effects/ModifierStore.cs:566-567 (`if (_world.IsAlive(id) && _world.EffectiveMaxHealth[id] == Fixed.Zero) KillEntity(...)`)
+severity: low
+reason: The kill fires whenever a MaxHealth-touching modifier leaves the host at ceiling 0 while alive, regardless of sign or prior ceiling — so an entity that legitimately sits at `EffectiveMaxHealth == 0` (e.g. a base-0 / item-sustained host) is killed by ANY MaxHealth modifier, and even a POSITIVE +MaxHealth heal applied to such a host satisfies the gate and is lethal, contradicting the "net-negative-MaxHealth only" wording in the same comment. — Evidence: adversarial + edge-case lenses; the gate has no sign check on `maxHealthChange` and no "ceiling WAS >0 and dropped to 0 this apply" transition test. Content-gated (no shipped content produces a base-0 live entity; the modifier-delta `!= 0` gate excludes the aura_guard=0 case). Closure = gate on a downward ceiling transition (or on `maxHealthChange < 0`) rather than the absolute value, if a legitimately-ceiling-0 live entity is ever introduced.
+status: open
+
+### DW-492: The DW-325 "no 0-HP zombie" invariant is enforced ONLY inside ApplyStatDeltas — RestoreSlot (SP load) and the Tick catch-all recompute can still reconstitute a living 0-ceiling unit
+origin: deferred by review of `_bmad-output/implementation-artifacts/spec-dw-28-325-modifier-effective-stat-clamp-and-death.md`, 2026-08-01
+source_spec: `_bmad-output/implementation-artifacts/spec-dw-28-325-modifier-effective-stat-clamp-and-death.md`
+location: godot/src/Effects/ModifierStore.cs (RestoreSlot re-accumulation, no death check) + godot/src/Effects/ModifierSystem.cs (Tick dirty-recompute path, no death check)
+severity: low
+reason: The ceiling-collapse death only runs on the apply/stack/remove paths through `ApplyStatDeltas`; `RestoreSlot` (save-game load) re-accumulates bonuses and the Tick catch-all recompute both compute `EffectiveMaxHealth` WITHOUT the death check, so a save produced with (future) net-negative-MaxHealth content, or a bonus dirtied outside the store, can load/recompute a living unit at ceiling 0 — the exact zombie DW-325 advertises as impossible, leaving the fresh-apply and loaded states divergent. — Evidence: adversarial + edge-case lenses; verified neither `RestoreSlot` nor the dirty-recompute in `RecomputeEntity` invokes `KillEntity`. Content-gated (requires net-negative-MaxHealth content, none shipped). Closure = run the ceiling==0 death check after load/dirty-recompute, or document that pre-existing ceiling-0 entities are intentionally not retro-killed and prove none can be created.
+status: open
+
+### DW-493: DamageResolver.KillEntity has no fail-closed `if (!IsAlive) return;` entry guard — the new lethal ApplyStatDeltas path's whole safety rests on a single inline call-site check
+origin: deferred by review of `_bmad-output/implementation-artifacts/spec-dw-28-325-modifier-effective-stat-clamp-and-death.md`, 2026-08-01
+source_spec: `_bmad-output/implementation-artifacts/spec-dw-28-325-modifier-effective-stat-clamp-and-death.md`
+location: godot/src/Combat/DamageResolver.cs (KillEntity — unconditionally pushes UnitKilled + RecordKill + Destroy)
+severity: low
+reason: `KillEntity` does not re-check `IsAlive` at entry; it unconditionally emits the UnitKilled event, records the kill/loss, and Destroys — so DW-325 having made `ApplyStatDeltas` a lethal path means a future `ApplyStatDeltas` variant (or a double-collapse in one tick) that reaches the kill without re-checking aliveness would double-Destroy → phantom UnitKilled / inflated loss count. — Evidence: adversarial lens; the DW-325 change guards its OWN call site (`ModifierStore.cs:566`) but the reused death primitive itself is not fail-closed, unlike the codebase's other phantom-death guards. Pre-existing/defense-in-depth (no current caller is unguarded). Closure = add a fail-closed `if (!world.IsAlive(id)) return;` at the top of `KillEntity`.
 status: open

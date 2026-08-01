@@ -153,6 +153,9 @@ namespace ProjectChimera.Effects
                 _count[targetId] = n + 1;
 
                 ApplyStatDeltas(targetId, mod.AttackDamageDelta, mod.MaxHealthDelta, mod.MoveSpeedDelta, mod.ArmorDelta, isApply: true);
+                // DW-325 re-entrancy: a ceiling-collapse kill inside ApplyStatDeltas fired OnDestroy→ClearEntity, wiping
+                // this host's slots/status/accumulators. Bail before writing status onto the dead (recycled) slot.
+                if (!_world.IsAlive(targetId)) return true;
                 _world.StatusFlagsOf[targetId] |= mod.Status;
                 return true; // fresh install accepted
             }
@@ -170,6 +173,9 @@ namespace ProjectChimera.Effects
                     {
                         _stackCount[eslot]++;
                         ApplyStatDeltas(targetId, mod.AttackDamageDelta, mod.MaxHealthDelta, mod.MoveSpeedDelta, mod.ArmorDelta, isApply: true); // each stack re-adds
+                        // DW-325 re-entrancy: a stack that collapsed the ceiling to 0 killed the host → ClearEntity
+                        // already wiped its slots; don't write status (or refresh eslot's duration below) on a dead slot.
+                        if (!_world.IsAlive(targetId)) return true;
                         _world.StatusFlagsOf[targetId] |= mod.Status; // idempotent re-OR
                     }
                     // Shared duration refreshed on every (re)apply — at the cap this is the only effect (refresh-only).
@@ -322,6 +328,10 @@ namespace ProjectChimera.Effects
                                         -(mod.MaxHealthDelta * stacks),
                                         -(mod.MoveSpeedDelta * stacks),
                                         -(mod.ArmorDelta * stacks), isApply: false);
+                // DW-325 re-entrancy: reverting a +MaxHealth contribution can drop the ceiling to 0 and kill the host →
+                // OnDestroy→ClearEntity already wiped its slots; bail before the status-union/compact touch dead slots
+                // (mirrors the existing post-expire-effect guard above).
+                if (!_world.IsAlive(hostId)) return;
             }
             RecomputeStatusUnion(hostId, excludeSlot: slot);
 
@@ -537,8 +547,24 @@ namespace ProjectChimera.Effects
             if (maxHealthChange.Raw != 0)
             {
                 // Heal-up ONLY when a positive MaxHealth modifier is APPLIED. A removal or a debuff clamps down only.
-                if (isApply && maxHealthChange > Fixed.Zero) _world.Health[id] += maxHealthChange;
+                // DW-28: saturate the heal (equivalent to += for all realistic values) so a large/stacked +MaxHealth
+                // heal can't wrap Health negative near Fixed.MaxValue → clamp to 0 → a live 0-HP zombie with a non-zero
+                // ceiling (the DW-325 kill never fires because EffectiveMaxHealth != 0). No golden moves.
+                if (isApply && maxHealthChange > Fixed.Zero) _world.Health[id] = Fixed.AddSaturating(_world.Health[id], maxHealthChange);
                 _world.Health[id] = Fixed.Clamp(_world.Health[id], Fixed.Zero, _world.EffectiveMaxHealth[id]);
+
+                // DW-325 (decision 2026-07-30 "Raise death on ceiling==0"): a net-negative-MaxHealth modifier that
+                // drives the ceiling to 0 (any ≤0 computed ceiling, floored to 0 by RecomputeEntity's Zero-floor — the
+                // `== Fixed.Zero` test below matches the floored result) leaves the host clamped to 0 HP but still
+                // alive — a "zombie". Kill it
+                // ONCE, through the SINGLE combat death sequence (UnitKilled event + Destroy) so no invented death path
+                // exists. Gated on maxHealthChange.Raw != 0 (this block) && EffectiveMaxHealth == 0 && IsAlive so it
+                // fires only on a genuine ceiling collapse. Killer = Faction.Neutral (no attacker): RecordKill counts
+                // the victim's loss but credits no kill/XP (killer index 0 is skipped). The kill fires
+                // OnDestroy→ClearEntity, wiping this host's slots + accumulators — every ApplyStatDeltas caller
+                // re-checks IsAlive before its next slot/status write.
+                if (_world.IsAlive(id) && _world.EffectiveMaxHealth[id] == Fixed.Zero)
+                    DamageResolver.KillEntity(_world, id, Faction.Neutral, _events, _stats);
             }
         }
 
