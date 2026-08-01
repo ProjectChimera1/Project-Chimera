@@ -1,6 +1,6 @@
 ---
 project: Project Chimera
-last_touched: 2026-04-16
+last_touched: 2026-08-01
 phase: Phase 5 — Polish & 1.0
 status: Active
 ---
@@ -15,11 +15,29 @@ status: Active
 Phases 0–4 are code-complete. Phase 5 is underway. Session 20 shipped worker-placed buildings + UI bug sweep. Session 21 (remote, away from computer) shipped Utility AI + Adaptive Input Delay.
 
 ## Next Action
-Merge the 6-panel layout + input guard fixes; no blockers remain (build clean, all geometry verified in-engine).
+Run the next bounded sweep cycle: `bmad-loop sweep --no-prompt --max-bundles 5`. See "Current State (2026-08-01)" below — read that before the legacy sections, which describe Sessions 20–21 and are years of work out of date.
 
 ---
 
 *Session type: bmad (prescribed workflow in active execution)*
+
+---
+
+## Current State (2026-08-01) — read this first
+
+**Everything below this block is legacy** (Sessions 20–21, worker construction, Utility AI smoke tests). It is retained for history, not as guidance. The live trackers are `_bmad-output/implementation-artifacts/sprint-status.yaml` and `deferred-work.md`.
+
+**Position:** Epics 1–11 done. Epic 11 retro complete (`epic-11-retro-2026-07-30.md`). **Epic 15 (Deferred-Work Burn-Down & MP Reconnect) is the current epic**, re-planned 2026-07-30 from 13 → 20 stories.
+
+**Ledger:** 487 numbered entries · 305 open · 175 done · **0 flat**. Every entry is sweepable — action item A1-E11 migrated 160 flat appender bullets (invisible to triage since Epic 7) to DW-325..DW-484 and patched all six appender sites so new defers are born canonical.
+
+**Determinism:** `SimChecksum.AlgoVersion` 22 · `CanonicalModelHash` 14 · `StartStateHash` 2. Goldens will move in stories 15-2, 15-3, 15-4 and 15-16 — isolate each re-baseline per the checksum-fold timing rule, do NOT batch them.
+
+**Sweep cadence proven.** Run `20260731-012409-44f9` landed 3/3 bundles clean (0 deferred, 0 escalated, 17.78M weighted). The in-engine gate DOES fire on sweep tasks and produced real artifact blocks. Two fixes shipped from it (`41e8061`): the gate fact now binds sweep bundles and not just "stories", and `max_dev_attempts` is 2 → 3 as insurance. **Watch for `attempt=1` on Godot-coupled bundles next cycle — that is the signal the instruction fix worked, and the cue to drop `max_dev_attempts` back to 2.**
+
+**Before any bmad-loop run:** close idle Claude sessions. The godot-mcp bridge on 127.0.0.1:6550 accepts ONE client, and an idle session grabs it at startup without ever calling a tool — that starves dev agents into a 127 ENV_FAULT operator pause. Check with `Get-NetTCPConnection -RemotePort 6550`.
+
+**Known stale pointer:** `CLAUDE.md` tells each session to read `CONTEXT.md`, but that file is deprecated and redirects here. Worth correcting the pointer.
 
 ---
 
