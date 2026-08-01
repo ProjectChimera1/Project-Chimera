@@ -160,6 +160,13 @@
          goldens above ARE re-baselined once for the v10 fold. -->
     <None Remove="Golden\delivery-scenario.golden.txt" />
     <EmbeddedResource Include="Golden\delivery-scenario.golden.txt" />
+    <!-- DW-25 — snap-branch golden (a high-speed single-target Projectile unit + a high-speed splash Projectile unit
+         whose shells take the step>=dist snap-to-goal clamp on final approach, over Neutral targets; Player2 empty so
+         the AI no-ops). Pins the snapped impact Position + snapped splash center that DeliveryScenario (speeds 6/18,
+         no overshoot) never exercises. Integer/Fixed-only → CROSS-PLATFORM SAFE, compared on both CI legs. NEW file;
+         no existing golden is re-recorded (no SimChecksum fold — the snap rides Position transitively). -->
+    <None Remove="Golden\projectile-snap-scenario.golden.txt" />
+    <EmbeddedResource Include="Golden\projectile-snap-scenario.golden.txt" />
     <None Remove="Golden\hero-xp-scenario.golden.txt" />
     <EmbeddedResource Include="Golden\hero-xp-scenario.golden.txt" />
     <None Remove="Golden\hero-revival-scenario.golden.txt" />

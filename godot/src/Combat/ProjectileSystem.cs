@@ -24,6 +24,15 @@ namespace ProjectChimera.Combat
         /// <summary>Squared hit-detection radius (0.5 world units → 0.25 sqr).</summary>
         private static readonly Fixed HIT_SQR = Fixed.FromFloat(0.5f) * Fixed.FromFloat(0.5f);
 
+        /// <summary>
+        /// DW-25: maximum shell lifetime in seconds. A shell that never enters the hit radius — a target fleeing faster
+        /// than <c>Speed*dt</c>, which the snap-to-goal clamp cannot help because the goal keeps receding — is dropped
+        /// harmlessly after this many seconds instead of orbiting forever and permanently leaking its pool slot. A
+        /// deliberately generous upper bound: real shots land within a couple seconds (small attack ranges), so a
+        /// legitimate shot is never dropped. NOT folded / NOT persisted (see <c>ProjectileStore.Age</c>).
+        /// </summary>
+        public static readonly Fixed MAX_LIFETIME = Fixed.FromInt(10);
+
         private readonly ProjectileStore   _store;
         private readonly CombatEventQueue? _events;
         private readonly MatchStats?        _stats;
@@ -110,10 +119,29 @@ namespace ProjectChimera.Combat
                     continue;
                 }
 
+                // DW-25: TTL backstop — age the shell and drop it harmlessly (no hit resolved, identical to the
+                // "target died in flight" drop) once it exceeds MAX_LIFETIME. Covers an UNREACHABLE goal (target
+                // fleeing faster than the shell), which the snap clamp below cannot fix because the goal keeps receding.
+                _store.Age[i] += dt;
+                if (_store.Age[i] >= MAX_LIFETIME)
+                {
+                    _store.Destroy(i);
+                    continue;
+                }
+
                 // Advance toward goal at THIS projectile's per-unit speed (Story 3.12 — was the global PROJECTILE_SPEED).
+                // DW-25 snap-to-goal clamp: when this tick's step would reach or pass the goal, land EXACTLY on the goal
+                // instead of overshooting it — a high-speed shell on final approach to a reachable target converges next
+                // tick (distSqr == 0 ≤ HIT_SQR) instead of orbiting forever. The non-overshoot else branch is kept
+                // byte-identical to the pre-DW-25 expression (Fixed multiply is not associative — re-ordering the
+                // operands would silently move the DeliveryScenario golden).
                 Fixed     dist = delta.Magnitude();
                 FixedVec3 dir  = delta / dist;
-                _store.Position[i] = _store.Position[i] + dir * _store.Speed[i] * dt;
+                Fixed     step = _store.Speed[i] * dt;
+                if (step >= dist)
+                    _store.Position[i] = goalPos;
+                else
+                    _store.Position[i] = _store.Position[i] + dir * _store.Speed[i] * dt;
             }
         }
 

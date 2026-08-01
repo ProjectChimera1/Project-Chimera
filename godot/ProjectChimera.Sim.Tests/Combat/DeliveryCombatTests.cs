@@ -98,5 +98,115 @@ namespace ProjectChimera.Sim.Tests.Combat
                 $"fast shell advanced to X={store.Position[fast].X} — expected ~18");
             Assert.True(store.Position[fast].X > store.Position[slow].X); // the faster unit's shell is strictly ahead
         }
+
+        // ── DW-25: snap-to-goal clamp + max-lifetime TTL (no more orbiting shells / pool leak) ──
+
+        [Fact]
+        public void HighSpeedShell_SnapsOntoGoal_AndIsDestroyed_NoOrbit()
+        {
+            // The bug: a per-tick step exceeding the hit radius on final approach overshoots every tick and orbits
+            // forever, leaking its pool slot. speed 5000 ⇒ step ~166 u/tick vs a 4 u gap.
+            var w = new EntityWorld();
+            int target = w.Create(V(4, 0), Faction.Player2, Fixed.FromInt(100), Fixed.FromInt(3)); // stationary, reachable
+            var store = new ProjectileStore();
+            var system = new ProjectileSystem(store);
+
+            int shell = store.Spawn(V(0, 0), target, V(4, 0), Fixed.FromInt(10), DamageType.Normal,
+                                    ArmorType.Unarmored, Faction.Player1, speed: Fixed.FromInt(5000));
+
+            // Tick 1: step ≫ remaining distance ⇒ snap EXACTLY onto the goal (no overshoot / no orbit).
+            system.Tick(w, Dt);
+            Assert.True(store.Alive[shell], "shell lands ON the goal this tick (hit resolves next tick), so it is still alive here");
+            Assert.Equal(w.Position[target].X, store.Position[shell].X); // landed exactly on the goal, never past it
+            Assert.Equal(w.Position[target].Z, store.Position[shell].Z);
+
+            // Tick 2: distSqr == 0 ≤ HIT_SQR ⇒ hit resolves, slot freed. It never orbits.
+            system.Tick(w, Dt);
+            Assert.False(store.Alive[shell], "shell destroyed (pool slot freed) once it reaches the goal — no eternal orbit");
+        }
+
+        [Fact]
+        public void UnreachableTarget_DroppedByTtl_HarmlesslyAndSlotFreed()
+        {
+            // A target the shell can never reach within its lifetime: at speed 6 the shell covers only ~60 u in the 10 s
+            // TTL window, so a stationary target 100 u away keeps distSqr comfortably above HIT_SQR every tick — the snap
+            // clamp cannot help (the goal is out of range). The TTL backstop must drop the shell after MAX_LIFETIME
+            // instead of it flying forever and leaking its pool slot. (Kept at ~100 u to stay inside 16.16 range —
+            // SqrMagnitude overflows for distances beyond ~180 u.)
+            var w = new EntityWorld();
+            int target = w.Create(V(100, 0), Faction.Player2, Fixed.FromInt(100), Fixed.FromInt(3)); // stationary, out of reach
+            var store = new ProjectileStore();
+            var system = new ProjectileSystem(store);
+
+            int shell = store.Spawn(V(0, 0), target, V(100, 0), Fixed.FromInt(10), DamageType.Normal,
+                                    ArmorType.Unarmored, Faction.Player1, speed: Fixed.FromInt(6));
+
+            Fixed hp0 = w.Health[target];
+
+            // dt = 1/30 s, MAX_LIFETIME = 10 s ⇒ ~300 ticks before the TTL fires. Bound the loop well past that.
+            bool observedFlyingBelowCap = false;
+            int ticks = 0;
+            while (store.Alive[shell] && ticks < 1000)
+            {
+                if (store.Age[shell] < ProjectileSystem.MAX_LIFETIME) observedFlyingBelowCap = true;
+                system.Tick(w, Dt);
+                ticks++;
+            }
+
+            Assert.False(store.Alive[shell], "shell should be dropped by the TTL backstop, not fly forever");
+            Assert.True(observedFlyingBelowCap, "shell should have aged up toward the cap while still flying (not dropped on tick 1)");
+            Assert.True(store.Age[shell] >= ProjectileSystem.MAX_LIFETIME, "shell was dropped precisely because Age reached MAX_LIFETIME");
+            Assert.True(ticks > 100, $"shell should have survived roughly 300 ticks before TTL, not {ticks}"); // proves it flew, not an early hit
+            Assert.Equal(hp0, w.Health[target]); // TTL drop is harmless — no damage dealt to the unreachable target
+        }
+
+        [Fact]
+        public void RecycledSlot_StartsWithZeroAge()
+        {
+            // A freed slot re-Spawned must NOT inherit the prior occupant's accumulated age.
+            var w = new EntityWorld();
+            var store = new ProjectileStore();
+            var system = new ProjectileSystem(store);
+            int target = w.Create(V(50, 0), Faction.Player2, Fixed.FromInt(100), Fixed.FromInt(3));
+
+            int first = store.Spawn(V(0, 0), target, V(50, 0), Fixed.FromInt(10), DamageType.Normal,
+                                    ArmorType.Unarmored, Faction.Player1, speed: Fixed.FromInt(6));
+            system.Tick(w, Dt);                       // age the first shell by one dt
+            Assert.True(store.Age[first] > Fixed.Zero);
+            store.Destroy(first);                     // free the slot
+
+            int recycled = store.Spawn(V(0, 0), target, V(50, 0), Fixed.FromInt(10), DamageType.Normal,
+                                       ArmorType.Unarmored, Faction.Player1, speed: Fixed.FromInt(6));
+            Assert.Equal(first, recycled);            // same physical slot came back off the free list
+            Assert.Equal(Fixed.Zero, store.Age[recycled]); // re-Spawn reset Age — no inherited flight time
+        }
+
+        [Fact]
+        public void NonOvershootAdvance_IsByteIdenticalToTheRawExpression()
+        {
+            // Guards the "non-overshoot advance path stays byte-identical" invariant: a slow shell far from its goal
+            // must land at exactly the pre-DW-25 position (same operand order — Fixed multiply is not associative).
+            var w = new EntityWorld();
+            int target = w.Create(V(100, 0), Faction.Player2, Fixed.FromInt(100), Fixed.FromInt(3)); // far ⇒ step ≪ dist
+            var store = new ProjectileStore();
+            var system = new ProjectileSystem(store);
+
+            FixedVec3 start = V(0, 0);
+            Fixed speed = Fixed.FromInt(6);
+            int shell = store.Spawn(start, target, V(100, 0), Fixed.FromInt(10), DamageType.Normal,
+                                    ArmorType.Unarmored, Faction.Player1, speed: speed);
+
+            // Recompute today's advance byte-for-byte: start + dir * speed * dt (identical operand order to the else branch).
+            FixedVec3 delta = w.Position[target] - start;
+            Fixed dist = delta.Magnitude();
+            FixedVec3 dir = delta / dist;
+            FixedVec3 expected = start + dir * speed * Dt;
+
+            system.Tick(w, Dt);
+
+            Assert.Equal(expected.X, store.Position[shell].X);
+            Assert.Equal(expected.Y, store.Position[shell].Y);
+            Assert.Equal(expected.Z, store.Position[shell].Z);
+        }
     }
 }

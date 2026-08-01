@@ -54,6 +54,15 @@ namespace ProjectChimera.Combat
         /// input); a recycled slot is always overwritten at Spawn.
         /// </summary>
         public readonly int[]        SourceId         = new int[MAX_PROJECTILES];
+        /// <summary>
+        /// DW-25: the TTL accumulator — seconds this shell has been in flight, aged by <c>dt</c> each tick in
+        /// <see cref="ProjectileSystem"/> and used to drop a shell that can never reach a target fleeing faster than it
+        /// travels (the backstop the snap-to-goal clamp cannot cover). Reset to <c>Fixed.Zero</c> at <see cref="Spawn"/>
+        /// (a recycled slot never inherits the prior occupant's age). NOT folded into SimChecksum (ProjectileStore is
+        /// never a checksum input) and NOT persisted (like <see cref="Feedback"/>) — a reload harmlessly resets the TTL
+        /// clock rather than churning the save format.
+        /// </summary>
+        public readonly Fixed[]      Age              = new Fixed[MAX_PROJECTILES];
 
         private readonly int[] _freeList  = new int[MAX_PROJECTILES];
         private int            _freeCount;
@@ -100,6 +109,7 @@ namespace ProjectChimera.Combat
             Feedback[id]         = feedback;
             TargetIsBuilding[id] = targetIsBuilding; // Story 2.9a — always overwritten (recycled slot never inherits)
             SourceId[id]         = sourceId;         // Story 7.5 — always overwritten (recycled slot never inherits)
+            Age[id]              = Fixed.Zero;        // DW-25 — recycled slot never inherits the prior occupant's flight age
             return id;
         }
 
@@ -117,6 +127,7 @@ namespace ProjectChimera.Combat
             System.Array.Clear(Speed);         // Story 3.12
             System.Array.Clear(Feedback);      System.Array.Clear(TargetIsBuilding); System.Array.Clear(_freeList);
             System.Array.Clear(SourceId);      // Story 7.5 (always overwritten at Spawn, but "cleared == fresh")
+            System.Array.Clear(Age);           // DW-25 (reset to Fixed.Zero at Spawn, but "cleared == fresh")
             _freeCount = 0;
             _nextId    = 0;
         }

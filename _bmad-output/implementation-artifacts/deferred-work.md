@@ -240,7 +240,8 @@ origin: migrated from legacy ledger ("Deferred from: follow-up code review of st
 source_spec: `_bmad-output/implementation-artifacts/spec-3-12-authorable-attack-delivery-flag-hitscan-vs-projectile-per-unit-projectile-speed.md`
 location: ProjectileSystem.cs:88-105
 reason: summary: A high authored `projectile_speed` (anything up to the validator's loose 32768 ceiling) makes a projectile overshoot the 0.5-unit hit radius every tick and never converge — `ProjectileSystem.Tick` has no snap-to-goal clamp and no max-lifetime/TTL — so the shell orbits its target forever, permanently leaking its `MAX_PROJECTILES` slot until the pool fills and the unit stops firing. evidence: `ProjectileSystem.Tick` (ProjectileSystem.cs:88-105) checks `distSqr <= HIT_SQR` (0.25) BEFORE advancing, then advances by the full `dir * Speed[i] * dt` with no clamp to the remaining distance and no lifetime cap. At the old hardcoded speed 18 (0.6 u/tick) the max overshoot is 0.1 < 0.5, so it always converged; making speed authorable (Story 3.12) up to 32768 exposes the latent non-convergence for any speed whose per-tick step can exceed the hit radius on the final approach (roughly speed > ~30, and non-convergent for plausible authored values like 40-60 depending on approach geometry). The proper fix (snap-to-goal clamp on the advance, and/or a sane speed cap + projectile TTL) is a projectile-TRACKING change — excluded by this story's intent boundary ("no changes to projectile visuals/tracking beyond honouring per-unit speed") — and would move impact positions/timing enough to require a full golden re-baseline, so it belongs in its own focused change. Flagged by the Blind Hunter review layer.
-status: open
+status: done 2026-08-01
+resolution: resolved by sweep bundle dw-projectile-ttl-snap-clamp
 
 ## Deferred from: code review of story-3.13 (2026-07-08)
 
