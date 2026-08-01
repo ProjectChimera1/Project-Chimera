@@ -2569,7 +2569,8 @@ origin: migrated from flat appender bullet, 2026-07-30 (A1-E11)
 source_spec: `spec-item-definition-validator-hardening.md`
 location: ItemRegistry.cs:70-71
 reason: `ItemRegistry.LoadFromDirectory` silently drops any item whose def fails `Validate` (the `else onSkipped?.Invoke(...)` branch), and this story's newly-tightened id charset (`SanitizeId`, which also lowercases/trims) and ±50 move-speed cap widen what now fails — so a hand-authored/community item JSON with a mis-cased/hyphenated id or `move_speed_delta` in (50,1000] vanishes at load with no user-visible diagnostic unless `onSkipped` is wired to a warning at the call site. — Evidence: `ItemRegistry.cs:70-71` — `if (r.Ok) defs.Add(r.Value.Value); else onSkipped?.Invoke(Path.GetFileName(file));` — the drop is unconditional and `onSkipped` is optional. No shipped content regresses today (the only item def, `ring_of_vigor.json`, has a clean id and `move_speed_delta: 0`), so this is latent, not a live break. Pre-existing registry behavior surfaced incidentally by the contract tightening; the tightening itself was directed by the intent. Closure = verify MainScene's `LoadFromDirectory` call wires `onSkipped` to a visible warning listing dropped item files (and consider the same for the move-speed migration).
-status: open
+status: done 2026-08-01
+resolution: already resolved: MainScene.cs:398-399 wires ItemRegistry.LoadFromDirectory's onSkipped callback to GD.Print('[Items] skipped invalid '+name) — the asked-for visible skip warning already exists.
 
 ### DW-456: The DW-47 traversal-id charset guard on `ItemCardPanel.DoDelete`'s `File.Delete` (and the Save→`Persist()` gating…
 origin: migrated from flat appender bullet, 2026-07-30 (A1-E11)
@@ -2770,7 +2771,8 @@ origin: migrated from legacy ledger ("From code review of story-2.9b (2026-07-02
 location: godot/src/UI/CommandCardSystem.cs:1294-1295 (+ sibling compute-once sites :949, :1097, :1171)
 severity: low
 reason: _abilityPanelNormalPos/_abilityPanelStackedPos still computed once from vpSize in BuildAbilityPanel; no viewport-resize subscription anywhere in the file. Presentation-only. Verified 2026-07-28.
-status: open
+status: done 2026-08-01
+resolution: already resolved: CommandCardSystem.cs:1411-1415 anchors the ability panel via SetAnchorsAndOffsetsPreset(LayoutPreset.BottomLeft) with anchor-relative offsets (Story 11.7 corner-anchor HUD rework); no vpSize compute-once remains (grep empty), so the stale-on-resize defect is gone.
 decision: 2026-07-28 correct-course — bundle hud-viewport-resize (Epic 15, Story 15.8)
 
 ## From code review of story-1.5 (2026-06-23) — migrated 2026-07-28
