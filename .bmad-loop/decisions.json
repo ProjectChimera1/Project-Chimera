@@ -143,15 +143,6 @@
     "label": "Repurpose it",
     "resolution": ""
   },
-  "DW-325": {
-    "answered_at": "2026-07-30",
-    "bundle_name": "",
-    "effect": "build",
-    "intent": "Add a death trigger when a modifier drives the max-health ceiling to 0",
-    "key": "1",
-    "label": "Raise death on ceiling==0",
-    "resolution": ""
-  },
   "DW-327": {
     "answered_at": "2026-07-30",
     "bundle_name": "",
@@ -186,15 +177,6 @@
     "intent": "Cap untrusted scenario input size before deserialization (cheapest, uniform)",
     "key": "1",
     "label": "Upstream byte/size guard",
-    "resolution": ""
-  },
-  "DW-37": {
-    "answered_at": "2026-07-25",
-    "bundle_name": "",
-    "effect": "build",
-    "intent": "Sort ScenarioApplier's Items (and ideally the unit/building loops) by the same canonical key before Create; golden re-baseline",
-    "key": "1",
-    "label": "Canonicalize placement order",
     "resolution": ""
   },
   "DW-370": {
