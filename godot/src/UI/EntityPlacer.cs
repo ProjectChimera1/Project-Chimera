@@ -669,9 +669,14 @@ namespace ProjectChimera.UI
             int charges = _itemRegistry.Get(defId).Charges;
             int packed = _items.Create(defId, charges, pos);
             if (packed < 0) return;
+            // DW-35: redo re-Creates a NEW packed ref each time — capture it in a box (the PlaceUnit pattern) so undo
+            // destroys the LIVE instance. Pushing the ORIGINAL `packed` would leak the redone item: after
+            // place→undo→redo the original ref no longer resolves, so the undo could never find (and destroy) the
+            // instance the redo just re-created.
+            int[] box = { packed };
             _history.Push(
-                redo: () => _items.Create(defId, charges, pos),
-                undo: () => { if (_items.TryResolveRef(packed, out int slot)) _items.Destroy(slot); });
+                redo: () => { int r = _items.Create(defId, charges, pos); if (r >= 0) box[0] = r; },
+                undo: () => { if (_items.TryResolveRef(box[0], out int slot)) _items.Destroy(slot); });
         }
 
         private void PlaceUnit(FixedVec3 pos, bool asWorker)
@@ -952,12 +957,28 @@ namespace ProjectChimera.UI
             _slotStartCrystal[_startSlot] = _startCrystal;
             // Placing slot N implies at least N+1 slots exist (2..4).
             _startSlotCount = System.Math.Clamp(System.Math.Max(_startSlotCount, _startSlot + 1), START_SLOT_MIN, START_SLOT_CEILING);
+            // DW-161: when this placement CREATED a slot (the deferred "+" path — the count just grew), refresh the
+            // picker so the newly-placed slot surfaces its P-toggle immediately instead of only after the next event.
+            if (created) RefreshSubRow();
 
             GD.Print($"[EntityPlacer] Start pos P{_startSlot + 1} → ({snapped.X:F1}, {snapped.Z:F1})  ore={_startOre:F0} crystal={_startCrystal:F0}");
 
             _history.Push(
                 // Redo re-invokes the move (Upsert re-creates the slot if it had been removed by the undo below).
-                redo: () => _onStartPosMoved?.Invoke(capturedSlot, capturedNewPos, capturedNewOre, capturedNewCrystal),
+                redo: () =>
+                {
+                    _onStartPosMoved?.Invoke(capturedSlot, capturedNewPos, capturedNewOre, capturedNewCrystal);
+                    // DW-161 (review): mirror the forward path — a redo that RE-creates the slot must also re-grow the
+                    // working count + refresh the picker. Otherwise undo→redo of a slot-creating placement leaves the
+                    // slot back in PlayerSlots but the picker under-counted (its P-toggle never re-renders until reload).
+                    if (created)
+                    {
+                        _slotStartOre[capturedSlot]     = capturedNewOre;
+                        _slotStartCrystal[capturedSlot] = capturedNewCrystal;
+                        _startSlotCount = System.Math.Clamp(System.Math.Max(_startSlotCount, capturedSlot + 1), START_SLOT_MIN, START_SLOT_CEILING);
+                        RefreshSubRow();
+                    }
+                },
                 undo: () =>
                 {
                     if (created)
@@ -974,6 +995,49 @@ namespace ProjectChimera.UI
                         _onStartPosMoved?.Invoke(capturedSlot, capturedOldPos, capturedOldOre, capturedOldCrystal);
                     }
                 });
+        }
+
+        /// <summary>DW-161 — remove the trailing start slot at <paramref name="slot"/> (its index == the resulting
+        /// count): truncate the owner's PlayerSlots + hide its flag marker, shrink the working count, clamp the
+        /// selection, and refresh the picker. Used by BOTH the "−" button and the redo leg of its coalesced undo
+        /// entry, so the two stay behaviourally identical.</summary>
+        private void RemoveStartSlotAt(int slot)
+        {
+            _onStartSlotRemoved?.Invoke(slot); // owner truncates PlayerSlots + hides the marker
+            _startSlotCount = slot;
+            if (_startSlot >= _startSlotCount) _startSlot = _startSlotCount - 1;
+            RefreshSubRow();
+            RefreshGhostVisuals();
+        }
+
+        /// <summary>DW-167 — push ONE coalesced undo entry for an in-place start-slot economy edit (ore+crystal),
+        /// committed on the spinner's focus-exit. Both legs route through <see cref="ApplyStartSlotEconomy"/> so the
+        /// mirror arrays, the owner persist callback, the selected-slot fields, and the visible spinner stay coherent.
+        /// The push is skipped by the caller when the value did not actually change (same-value edit = no entry).</summary>
+        private void PushStartSlotEconomy(int slot, float oldOre, float oldCrystal, float newOre, float newCrystal)
+        {
+            _history.Push(
+                redo: () => ApplyStartSlotEconomy(slot, newOre, newCrystal),
+                undo: () => ApplyStartSlotEconomy(slot, oldOre, oldCrystal));
+        }
+
+        /// <summary>DW-167 — apply an economy (ore/crystal) value to a start slot: write the mirror arrays, fire the
+        /// owner persist callback (StartCrystal is hash-folded), and — when the slot still exists — re-select it and
+        /// sync the selected-slot fields so the change is visible, then refresh the palette so the spinner reflects it.
+        /// Used by BOTH legs (redo=new, undo=old) of the coalesced entry.</summary>
+        private void ApplyStartSlotEconomy(int slot, float ore, float crystal)
+        {
+            if (slot < 0 || slot >= START_SLOT_CEILING) return;
+            _slotStartOre[slot]     = ore;
+            _slotStartCrystal[slot] = crystal;
+            if (slot < _startSlotCount)
+            {
+                _startSlot    = slot;
+                _startOre     = ore;
+                _startCrystal = crystal;
+            }
+            _onStartSlotEconomy?.Invoke(slot, ore, crystal);
+            RefreshSubRow();
         }
 
         // ── Mode cycling (keyboard) ───────────────────────────────────────────
@@ -1297,7 +1361,13 @@ namespace ProjectChimera.UI
                 // Story 6.7: 2–4 player-slot toggles (mapped to Player1..Player4 via FactionRegistry.ToFaction),
                 // with add/remove buttons capped at [2,4] (the engine ceiling Faction.Player4).
                 _startSlotCount = System.Math.Clamp(_startSlotCount, START_SLOT_MIN, START_SLOT_CEILING);
-                if (_startSlot >= _startSlotCount) _startSlot = _startSlotCount - 1;
+                // DW-161: permit `_startSlot` to sit ONE beyond the count — that is the "+"-armed, not-yet-placed
+                // trailing slot (its count grows only when it is actually placed). Cap at the engine ceiling so the
+                // pending index never overruns the mirror arrays; only a genuinely out-of-range selection is clamped
+                // back to the last existing slot.
+                if (_startSlot > _startSlotCount)          _startSlot = _startSlotCount;
+                if (_startSlot >= START_SLOT_CEILING)      _startSlot = START_SLOT_CEILING - 1;
+                if (_startSlot < 0)                        _startSlot = 0;
 
                 var slotGroup = new ButtonGroup();
                 for (int slot = 0; slot < _startSlotCount; slot++)
@@ -1331,8 +1401,10 @@ namespace ProjectChimera.UI
                 {
                     if (_startSlotCount < START_SLOT_CEILING)
                     {
-                        _startSlot      = _startSlotCount; // new trailing slot
-                        _startSlotCount++;
+                        // DW-161: select + arm the next trailing slot but do NOT grow `_startSlotCount` yet — the count
+                        // (and the backing PlayerSlot) grows only when the slot is actually placed on terrain
+                        // (MoveStartPosition), so a "+" with no placement leaves no phantom slot and needs no undo entry.
+                        _startSlot      = _startSlotCount; // pending trailing slot (index == current count)
                         _startOre       = _slotStartOre[_startSlot];
                         _startCrystal   = _slotStartCrystal[_startSlot];
                         ArmPlacement();
@@ -1350,11 +1422,29 @@ namespace ProjectChimera.UI
                     if (_startSlotCount > START_SLOT_MIN)
                     {
                         int removed = _startSlotCount - 1;
-                        _onStartSlotRemoved?.Invoke(removed); // owner truncates PlayerSlots + hides the marker
-                        _startSlotCount = removed;
-                        if (_startSlot >= _startSlotCount) _startSlot = _startSlotCount - 1;
-                        RefreshSubRow();
-                        RefreshGhostVisuals();
+                        // DW-161: capture the slot's pre-remove position + economy BEFORE removing, so the undo re-adds
+                        // it exactly (position from the live sim base, ore/crystal from the working mirror arrays).
+                        var basePt = _resources?.FactionBase[(int)FactionRegistry.ToFaction(removed)] ?? default;
+                        Vector3 capturedPos     = new Vector3(basePt.X.ToFloat(), 0f, basePt.Z.ToFloat());
+                        float   capturedOre     = _slotStartOre[removed];
+                        float   capturedCrystal = _slotStartCrystal[removed];
+                        RemoveStartSlotAt(removed);
+                        _history.Push(
+                            redo: () => RemoveStartSlotAt(removed),
+                            undo: () =>
+                            {
+                                // Re-add the slot via the move bridge (Upsert re-appends the PlayerSlot), then restore
+                                // the mirror economy and the working count/selection (clamped to [2,4]).
+                                _onStartPosMoved?.Invoke(removed, capturedPos, capturedOre, capturedCrystal);
+                                _slotStartOre[removed]     = capturedOre;
+                                _slotStartCrystal[removed] = capturedCrystal;
+                                _startSlotCount = System.Math.Clamp(removed + 1, START_SLOT_MIN, START_SLOT_CEILING);
+                                _startSlot      = System.Math.Clamp(removed, 0, _startSlotCount - 1);
+                                _startOre       = _slotStartOre[_startSlot];
+                                _startCrystal   = _slotStartCrystal[_startSlot];
+                                RefreshSubRow();
+                                RefreshGhostVisuals();
+                            });
                     }
                 };
                 _subRow.AddChild(remBtn);
@@ -1372,8 +1462,29 @@ namespace ProjectChimera.UI
                     Value             = _startOre,
                     CustomMinimumSize = new Vector2(80f, 0f),
                 };
-                spin.ValueChanged += v => { _startOre = (float)v; _slotStartOre[_startSlot] = _startOre;
-                                            _onStartSlotEconomy?.Invoke(_startSlot, _startOre, _startCrystal); };
+                // DW-167: coalesce spinner edits into ONE undo entry (mirror of BuildingCardPanel.Edit's
+                // FocusEntered-snap / ValueChanged-live-persist / FocusExited-commit pattern). `oreEditSlot` binds this
+                // spinner to the slot it was built for (RefreshSubRow rebuilds it whenever the selection changes, so it
+                // always equals the shown slot). The live ValueChanged still fires `_onStartSlotEconomy` so the
+                // hash-folded economy persists immediately; only the coalesced history push is added on commit.
+                int      oreEditSlot = _startSlot;
+                LineEdit oreLe       = spin.GetLineEdit();
+                float    oreSnap     = _slotStartOre[oreEditSlot];
+                oreLe.FocusEntered += () => oreSnap = _slotStartOre[oreEditSlot];
+                spin.ValueChanged  += v => { _startOre = (float)v; _slotStartOre[oreEditSlot] = _startOre;
+                                             // DW-161 (review): only persist/coalesce for a slot with a backing PlayerSlot.
+                                             // A "+"-armed PENDING slot (index == _startSlotCount) has none — the owner
+                                             // persist would no-op and a coalesced undo entry would dangle; its edited
+                                             // economy instead rides into MoveStartPosition when the slot is placed.
+                                             if (oreEditSlot < _startSlotCount)
+                                                 _onStartSlotEconomy?.Invoke(oreEditSlot, _slotStartOre[oreEditSlot], _slotStartCrystal[oreEditSlot]); };
+                oreLe.FocusExited  += () =>
+                {
+                    float now = _slotStartOre[oreEditSlot];
+                    if (now != oreSnap && oreEditSlot < _startSlotCount)
+                        PushStartSlotEconomy(oreEditSlot, oreSnap, _slotStartCrystal[oreEditSlot], now, _slotStartCrystal[oreEditSlot]);
+                    oreSnap = now;
+                };
                 _subRow.AddChild(spin);
 
                 // Starting crystal spinner (per selected slot)
@@ -1389,8 +1500,22 @@ namespace ProjectChimera.UI
                     Value             = _startCrystal,
                     CustomMinimumSize = new Vector2(80f, 0f),
                 };
-                crysSpin.ValueChanged += v => { _startCrystal = (float)v; _slotStartCrystal[_startSlot] = _startCrystal;
-                                                _onStartSlotEconomy?.Invoke(_startSlot, _startOre, _startCrystal); };
+                // DW-167: same coalescing shape as the ore spinner, for the crystal axis.
+                int      crysEditSlot = _startSlot;
+                LineEdit crysLe       = crysSpin.GetLineEdit();
+                float    crysSnap     = _slotStartCrystal[crysEditSlot];
+                crysLe.FocusEntered += () => crysSnap = _slotStartCrystal[crysEditSlot];
+                crysSpin.ValueChanged += v => { _startCrystal = (float)v; _slotStartCrystal[crysEditSlot] = _startCrystal;
+                                                // DW-161 (review): pending-slot guard, mirror of the ore spinner above.
+                                                if (crysEditSlot < _startSlotCount)
+                                                    _onStartSlotEconomy?.Invoke(crysEditSlot, _slotStartOre[crysEditSlot], _slotStartCrystal[crysEditSlot]); };
+                crysLe.FocusExited  += () =>
+                {
+                    float now = _slotStartCrystal[crysEditSlot];
+                    if (now != crysSnap && crysEditSlot < _startSlotCount)
+                        PushStartSlotEconomy(crysEditSlot, _slotStartOre[crysEditSlot], crysSnap, _slotStartOre[crysEditSlot], now);
+                    crysSnap = now;
+                };
                 _subRow.AddChild(crysSpin);
 
                 var hint = new Label { Text = " Click terrain" };
@@ -2144,12 +2269,25 @@ namespace ProjectChimera.UI
             // identifying state makes the undo self-sufficient rather than relying on slot residue.
             FixedVec3 origPos = _buildings.Position[id];
             Vector3 wp = new Vector3(origPos.X.ToFloat(), 0f, origPos.Z.ToFloat());
+            // DW-173: capture the full def-derived stat set at DELETE time and restore it verbatim on undo. A
+            // group-move deletes-then-recreates through the same LIFO slot, so BuildingStore.Create may recycle THIS
+            // slot for a different building and overwrite these fields; restoring identity/timers alone (as F2 did)
+            // would leave the undone building carrying the recycled occupant's Health/MaxHealth/SupplyBonus/shop/
+            // revive. Capturing actual post-Create stats here is the self-sufficient equivalent of the (non-existent)
+            // DW-172 CreateFromDefinition helper — it preserves exact runtime state without relying on slot residue.
+            Fixed     capHealth    = _buildings.Health[id];
+            Fixed     capMaxHealth = _buildings.MaxHealth[id];
+            int       capSupplyBon = _buildings.SupplyBonus[id];
+            bool      capRevives   = _buildings.RevivesHeroes[id];
+            bool      capSells     = _buildings.SellsItems[id];
+            string[]  capShopStock = _buildings.ShopStock[id];
+            Fixed     capShopRad   = _buildings.ShopRadius[id];
             var b = _buildings;
             b.Destroy(id);
             object? h = _onBuildingSync?.Invoke(ScenarioSyncOp.RemoveMatch, null, defId, faction, wp, false);
             return (
                 redo: () => { b.Destroy(id); _onBuildingSync?.Invoke(ScenarioSyncOp.RemoveHandle, h, defId, faction, wp, false); },
-                undo: () => { b.Alive[id] = true; b.Position[id] = origPos; b.FactionOf[id] = faction; b.Type[id] = type; b.DefinitionId[id] = defId; b.ConstructionTimer[id] = tim; b.ConstructionDuration[id] = dur; _onBuildingSync?.Invoke(ScenarioSyncOp.ReAdd, h, defId, faction, wp, false); });
+                undo: () => { b.Alive[id] = true; b.Position[id] = origPos; b.FactionOf[id] = faction; b.Type[id] = type; b.DefinitionId[id] = defId; b.ConstructionTimer[id] = tim; b.ConstructionDuration[id] = dur; b.Health[id] = capHealth; b.MaxHealth[id] = capMaxHealth; b.SupplyBonus[id] = capSupplyBon; b.RevivesHeroes[id] = capRevives; b.SellsItems[id] = capSells; b.ShopStock[id] = capShopStock; b.ShopRadius[id] = capShopRad; _onBuildingSync?.Invoke(ScenarioSyncOp.ReAdd, h, defId, faction, wp, false); });
         }
 
         private (System.Action redo, System.Action undo)? BuildDeleteNode(int id)

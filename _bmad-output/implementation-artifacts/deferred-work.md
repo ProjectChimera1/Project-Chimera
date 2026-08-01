@@ -333,7 +333,8 @@ origin: migrated from legacy ledger ("Deferred from: code review of story-3.15 (
 source_spec: `_bmad-output/implementation-artifacts/spec-3-15-item-inventory-sim-pickups-slots-stat-effects-charges.md`
 location: n/a
 reason: summary: `EntityPlacer.PlaceItem`'s undo/redo captures the packed item ref from the original `Create`, so place→undo→redo→undo leaks the redone ground item (redo's new ref is discarded; undo resolves the now-dead original ref and `TryResolveRef` fails to destroy the live instance). evidence: Editor-only (`EntityPlacer` is a Godot `Node`, headless-unverifiable); no sim/determinism impact. Items are ref-generation-stamped so the stale-ref mismatch bites here where other placement modes tolerate it. Cheap closure: capture the new ref inside the redo closure. Flagged by the Edge Case review layer (#5).
-status: open
+status: done 2026-08-01
+resolution: resolved by sweep bundle dw-editor-placement-undo-history-fidelity
 
 ### DW-36: A charged consumable's effect graph executes at order-apply time (inside `OrderApplier.Apply` → `ItemSystem.UseItemCommand`), not at the index-9 `ItemSystem.Tick` position, so a future RNG-drawing consumable would draw from the shared `world.Rng` at a different interleave point than the documented system order.
 origin: migrated from legacy ledger ("Deferred from: code review of story-3.15 (2026-07-08)"), 2026-07-08
@@ -1387,7 +1388,8 @@ origin: code review of spec-6-7 (map properties; Blind + Edge), 2026-07-15 (epic
 location: godot/src/UI/EntityPlacer.cs (remBtn.Pressed ~:1257 — no _history.Push; addBtn.Pressed ~:1239 — _startSlotCount++ before placement)
 severity: low
 reason: Removing a slot can't be undone, and undoing an earlier move of a since-removed slot can resurrect it, desyncing the picker's transient count from persisted PlayerSlots. Data-at-rest is covered (review PATCH 2: the placement-that-created-a-slot undo removes it; Save persists only placed slots) — this is interaction polish on a godot-verify surface. Fix: route "−" through EditorHistory (redo=remove, undo=re-add) and defer the count increment until a slot is placed.
-status: open
+status: done 2026-08-01
+resolution: resolved by sweep bundle dw-editor-placement-undo-history-fidelity
 
 ### DW-162: A Large (128) map's +X/+Z boundary line aliases into the last fog/flow/pathability cell
 
@@ -1441,7 +1443,8 @@ origin: code review of spec-6-7 (map properties; Blind F4 — surface introduced
 location: godot/src/UI/EntityPlacer.cs (spin.ValueChanged/crysSpin.ValueChanged → _onStartSlotEconomy → UpdateStartSlotEconomy, no _history.Push; contrast PlaceStartPosition which captures ore/crystal)
 severity: medium
 reason: An accidental economy edit to a placed slot persists immediately and can't be Ctrl+Z'd, breaking the "every editor mutation is one undo step" contract on a hash-folded value. A correct fix must coalesce spinner edits into single undo entries and refresh the mirror + spinner on undo/redo; needs in-engine verification (godot-verify surface).
-status: open
+status: done 2026-08-01
+resolution: resolved by sweep bundle dw-editor-placement-undo-history-fidelity
 
 ### DW-168: A placed Custom producer shows no in-match train buttons — command-card canProduce/GetProductionUnits are enum-only
 
@@ -1490,7 +1493,8 @@ origin: code review of spec-6-8 (custom placement; Edge Case Hunter), 2026-07-15
 location: godot/src/UI/EntityPlacer.cs (group-move undo ~:2132 sets Alive/Position/Faction/Type/DefinitionId/timers but not Health/MaxHealth/SupplyBonus/shop/revive)
 severity: low
 reason: Pre-existing (built-in undo also omitted def-derived stats) and BuildingStore recycling makes it unlikely — but 6-8 makes varied def-resolved stats reachable, so a resurrected building can carry a prior occupant's stats. Fix: restore the full def-derived set on undo by re-resolving from DefinitionId (ideally via the DW-172 CreateFromDefinition helper); verify in-engine.
-status: open
+status: done 2026-08-01
+resolution: resolved by sweep bundle dw-editor-placement-undo-history-fidelity
 
 ### DW-325: A net-negative-MaxHealth modifier (research/item/aura) can drive `EffectiveMaxHealth` to 0 and pin a unit at 0 HP…
 origin: migrated from flat appender bullet, 2026-07-30 (A1-E11)
