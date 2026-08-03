@@ -107,8 +107,12 @@ BUNDLE: ${name}
      dotnet build godot/godot.csproj
      dotnet test godot/ProjectChimera.Sim.Tests/ProjectChimera.Sim.Tests.csproj
    The suite baseline at launch is ${BASELINE} passing / 0 failing / 1 skipped; your additions only
-   grow it. ANY failure means success=false. Report the real numbers in testsPassed/testsFailed —
-   never a guess.
+   grow it. ANY failure means success=false — with ONE documented exception: a LONE failure of
+   CanonicalModelHashPerfTests…StaysUnderTheRegressionCeiling is a known CPU-contention timing
+   flake when several suites run concurrently. If it is the ONLY failure, re-run just that test
+   with --filter; if it passes in isolation, the suite counts as green (say so in summary). Any
+   other failure, or a repeat failure in isolation, is real. Report the real numbers in
+   testsPassed/testsFailed — never a guess.
 9. DO NOT EDIT deferred-work.md, sprint-status.yaml, or epics.md. Bookkeeping is a later serial
    phase; 80 agents editing one ledger is a guaranteed merge conflict. Record anything you would
    have filed in \`newFindings\` instead.
@@ -152,7 +156,9 @@ WHAT   : ${r.summary}
 3. After a clean merge, re-run the FULL suite:
      dotnet test D:/Projects/Project_Chimera/godot/ProjectChimera.Sim.Tests/ProjectChimera.Sim.Tests.csproj
    Baseline ${BASELINE} passing / 0 failing / 1 skipped at launch, and it only grows as merges
-   land. If the merge turns the
+   land. A LONE failure of CanonicalModelHashPerfTests…StaysUnderTheRegressionCeiling that passes
+   on an isolated --filter re-run is the documented CPU-contention flake — treat as green and note
+   it. If the merge turns the
    suite red, the two changes interact: fix it here if the fix is small and obvious, otherwise
    \`git reset --hard HEAD~1\` to undo the merge, set suitePassed=false, and explain in \`note\`.
 4. Report real numbers. Never claim a suite pass you did not observe.
