@@ -19,6 +19,9 @@ namespace ProjectChimera.Core.Definitions
     /// and <c>PersistenceManifestPanel</c> still write without it (ledgered, out of scope). Callers MUST invoke
     /// <see cref="Check"/> BEFORE any disk write (terrain save, scenario save, package pack) and abort — surfacing
     /// the returned located error — on a non-null return, so a rejected write leaves NOTHING partial on disk.
+    /// DW-329: for the two <c>WinConditionPhase</c> paths that ordering is no longer a call-site convention — it is
+    /// owned by <see cref="MapWritePipeline"/> (which consults this gate first) and pinned by Tier-1
+    /// <c>MapWritePipelineTests</c>.
     ///
     /// This is a HARD gate, distinct from and additive to the non-fatal <c>CollectAdvisories</c> layer: it MUST
     /// NOT be weakened into an advisory or warning-only surface. Since Story 7.7 the master LOAD gate is
