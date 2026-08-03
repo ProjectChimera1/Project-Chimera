@@ -276,7 +276,7 @@
       "id": "aviary",
       "display_name": "The Wraithwing Brood",
       "category": "Structure",
-      "mesh_path": "res://assets/models/factions/beta/wraithwing_brood.glb",
+      "mesh_path": "res://assets/models/factions/beta/bolt_sanctum.glb",
       "hp": 350,
       "speed": 0,
       "attack_damage": 0,

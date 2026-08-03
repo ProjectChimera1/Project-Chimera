@@ -206,8 +206,9 @@ namespace ProjectChimera.Core.Definitions
         /// via <see cref="FactionDefinition.JsonOptions"/> (the same lenient options — comments/trailing commas
         /// tolerated — every other loader in this codebase uses), then delegate UNCHANGED to <see cref="TryFinish"/>
         /// — the Advanced raw-JSON pane runs through the exact same <see cref="FactionValidator.ValidateComplete"/>
-        /// gate (including the <see cref="ClearStaleHeroReference"/> call inside it) as the Simple guided-wizard
-        /// path; no separate/weaker validation. A parse failure (malformed JSON) or a null deserialize result (e.g.
+        /// gate (including the <see cref="ClearStaleHeroReference"/> call inside it, and DW-104's <c>mesh_path</c>
+        /// disk-existence lint — <paramref name="meshExists"/> is threaded straight through) as the Simple
+        /// guided-wizard path; no separate/weaker validation. A parse failure (malformed JSON) or a null deserialize result (e.g.
         /// the literal <c>"null"</c>) is a located <c>("raw_json", …)</c> <see cref="FactionDefinerFinishResult.Failure"/>
         /// — never throws.
         ///
@@ -224,7 +225,7 @@ namespace ProjectChimera.Core.Definitions
         /// best-effort and guarded so it can never turn an accepted document into a throw.</para>
         /// </summary>
         public static FactionDefinerFinishResult TryFinishFromRawJson(string json, string factionsDirAbsolute,
-            AbilityRegistry? abilityRegistry = null)
+            AbilityRegistry? abilityRegistry = null, Func<string, bool>? meshExists = null)
         {
             FactionDefinition? parsed;
             try
@@ -268,7 +269,7 @@ namespace ProjectChimera.Core.Definitions
             }
             catch { /* re-inspection is best-effort; never turn an accepted doc into a throw */ }
 
-            return TryFinish(parsed, factionsDirAbsolute, abilityRegistry);
+            return TryFinish(parsed, factionsDirAbsolute, abilityRegistry, meshExists);
         }
 
         /// <summary>
@@ -284,9 +285,20 @@ namespace ProjectChimera.Core.Definitions
         /// <see cref="FactionDefinition.LoadFromFile"/>, then <see cref="File.Move(string, string, bool)"/> with
         /// <c>overwrite:false</c>. Never throws — every failure mode returns a located
         /// <see cref="FactionDefinerFinishResult"/>; a stray <c>.tmp</c> is cleaned up on any exception.
+        ///
+        /// <para><b>DW-104: the mesh_path disk-existence lint (recorded decision 2026-07-19, re-affirmed
+        /// 2026-07-25).</b> <see cref="FactionValidator.ValidateComplete"/> only knows whether <c>mesh_path</c> is
+        /// non-blank, so a DANGLING path shipped silently. Between that gate and the write, every authored
+        /// <c>res://</c> <c>mesh_path</c> is now checked for actual existence by <see cref="MeshAssetLint"/> — the
+        /// separate, explicitly-named content lint the decision asked for, so the sim validator itself stays
+        /// filesystem-free. <paramref name="meshExists"/> lets a caller inject a better probe (Godot's
+        /// <c>ResourceLoader.Exists</c>, which also understands import-remapped resources); when it is null the probe
+        /// is derived from <paramref name="factionsDirAbsolute"/> by walking up to the enclosing <c>project.godot</c>,
+        /// and when there is no such project tree on disk (an exported build, a unit test's bare temp directory) the
+        /// lint is skipped rather than rejecting every path it cannot resolve.</para>
         /// </summary>
         public static FactionDefinerFinishResult TryFinish(FactionDefinition def, string factionsDirAbsolute,
-            AbilityRegistry? abilityRegistry = null)
+            AbilityRegistry? abilityRegistry = null, Func<string, bool>? meshExists = null)
         {
             if (def == null)
                 return FactionDefinerFinishResult.Failure(new (string, string)[] { ("faction", "faction is null.") });
@@ -301,6 +313,14 @@ namespace ProjectChimera.Core.Definitions
             FactionValidationResult validation = FactionValidator.ValidateComplete(def, abilityRegistry);
             if (!validation.Ok)
                 return FactionDefinerFinishResult.Failure(validation.Errors.ToList());
+
+            // DW-104: the mesh_path disk-existence lint — deliberately NOT inside FactionValidator (see the method
+            // doc). Runs after the completeness gate so a blank mesh_path is reported once, by the validator that owns
+            // that axis, instead of twice.
+            IReadOnlyList<(string FieldPath, string Message)> missingMeshes = MeshAssetLint.FindMissingMeshFiles(
+                def, meshExists ?? MeshAssetLint.TryMakeResExistsProbe(factionsDirAbsolute));
+            if (missingMeshes.Count > 0)
+                return FactionDefinerFinishResult.Failure(missingMeshes);
 
             string id = def.Id ?? "";
             if (string.IsNullOrWhiteSpace(id))
