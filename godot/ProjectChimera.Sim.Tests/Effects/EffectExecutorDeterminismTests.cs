@@ -141,9 +141,10 @@ namespace ProjectChimera.Sim.Tests.Effects
         public void FindTargets_SortsAscending_EvenWhenCellScanOrderIsDescending()
         {
             // The two existing order tests feed ids that are ALREADY ascending out of the spatial hash, so the
-            // Array.Sort in FindTargets is inert there. This test arranges the ids so the cell-scan order is
-            // DESCENDING by id — the higher id sits in a spatially-EARLIER cell — making the sort load-bearing.
-            // Delete `Array.Sort` from SearchAreaEffect.FindTargets and this test turns RED (buffer[0] == high).
+            // ordering step in FindTargets is inert there. This test arranges the ids so the cell-scan order is
+            // DESCENDING by id — the higher id sits in a spatially-EARLIER cell — making the ordering load-bearing.
+            // (Story 15.4 moved that ordering from an Array.Sort in FindTargets into the sorted insertion inside
+            // SpatialHash.QueryRadiusLowestIds; strip it from either place and this test turns RED, buffer[0] == high.)
             var w = new EntityWorld();
             int caster = w.Create(FixedVec3.Zero, Faction.Player1, Fixed.FromInt(100), Fixed.FromInt(3)); // id 0, cell cx=16
             int low = w.Create(At(50), Faction.Player2, Fixed.FromInt(50), Fixed.FromInt(3));   // id 1 at x=+50 → cx=21 (scanned LATER)

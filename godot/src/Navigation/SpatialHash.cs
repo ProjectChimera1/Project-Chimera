@@ -175,6 +175,12 @@ namespace ProjectChimera.Navigation
         /// Fill <paramref name="resultBuffer"/> with IDs of alive entities within
         /// <paramref name="radius"/> of <paramref name="pos"/>, excluding <paramref name="excludeId"/>.
         /// Returns the number of results written (capped at resultBuffer.Length).
+        ///
+        /// <para>UNORDERED and unfiltered: results come out in cell-scan order, and when more entities are in
+        /// radius than the buffer holds this keeps the first buffer-full it encounters. That is deliberate for
+        /// its one caller — <c>MovementSystem</c>'s separation pass, a symmetric "who is crowding me" sample.
+        /// A caller that needs a PREDICATE and/or a well-defined over-cap selection (the effect-graph area
+        /// search) must use <see cref="QueryRadiusLowestIds{TFilter}"/> instead.</para>
         /// </summary>
         public int QueryRadius(EntityWorld world, FixedVec3 pos, Fixed radius, int excludeId, int[] resultBuffer)
         {
@@ -206,6 +212,97 @@ namespace ProjectChimera.Navigation
                         Fixed sqrDist = FixedVec3.SqrDistance(pos, world.Position[j]);
                         if (sqrDist <= sqrRadius)
                             resultBuffer[count++] = j;
+                    }
+                }
+            }
+
+            return count;
+        }
+
+        /// <summary>
+        /// FILTERED neighbour query that returns the globally LOWEST MATCHING entity ids inside
+        /// <paramref name="radius"/> of <paramref name="pos"/>, already sorted ASCENDING. Returns the number of
+        /// ids written; <c>resultBuffer[0..count)</c> is strictly ascending, so the caller needs no follow-up sort.
+        ///
+        /// <para>Two guarantees the unfiltered <see cref="QueryRadius"/> does not give:</para>
+        /// <list type="bullet">
+        ///   <item><paramref name="filter"/> is evaluated BEFORE a candidate may occupy a buffer slot, so a
+        ///   rejected entity can never crowd a match out of the results. (Filtering a buffer that was already
+        ///   truncated silently UNDER-selects: a 64-slot buffer that fills with the caster's own allies compacts
+        ///   down to zero enemies even though enemies were standing in the radius.)</item>
+        ///   <item>When more matches exist than <paramref name="resultBuffer"/> holds, the largest RETAINED id is
+        ///   displaced rather than the late-scanned candidate dropped — so the kept set is the lowest-N over the
+        ///   WHOLE radius, not the first-N in cell-scan order. Both peers therefore agree on the selection from
+        ///   the ids alone, independent of grid geometry.</item>
+        /// </list>
+        ///
+        /// <para>Deliberately a SEPARATE method from <see cref="QueryRadius"/> rather than a replacement:
+        /// <c>MovementSystem</c>'s separation pass uses the unfiltered query and its neighbour set feeds
+        /// <c>Position</c> — a <c>SimChecksum</c> input — so changing that query's truncation rule would move
+        /// every movement golden for no behavioural gain.</para>
+        ///
+        /// <para>Allocation-free: <typeparamref name="TFilter"/> is struct-constrained, so
+        /// <c>filter.Accepts</c> is a constrained (devirtualized) call — no delegate, no boxing — and the whole
+        /// query stays inside the effect executor's zero-alloc contract. Deterministic: integer-id comparisons
+        /// and Fixed distance only.</para>
+        /// </summary>
+        public int QueryRadiusLowestIds<TFilter>(EntityWorld world, FixedVec3 pos, Fixed radius, int excludeId,
+                                                 int[] resultBuffer, TFilter filter)
+            where TFilter : struct, IEntityQueryFilter
+        {
+            int maxResults = resultBuffer.Length;
+            if (maxResults <= 0) return 0;
+
+            int cx = WorldToCellAxis(pos.X);
+            int cz = WorldToCellAxis(pos.Z);
+            int cellRadius = (radius / CELL_SIZE).ToInt() + 1;
+            Fixed sqrRadius = radius * radius;
+            int count = 0;
+
+            for (int dz = -cellRadius; dz <= cellRadius; dz++)
+            {
+                int ncz = cz + dz;
+                if (ncz < 0 || ncz >= GRID_DIM) continue;
+
+                for (int dx = -cellRadius; dx <= cellRadius; dx++)
+                {
+                    int ncx = cx + dx;
+                    if (ncx < 0 || ncx >= GRID_DIM) continue;
+
+                    int cell = ncz * GRID_DIM + ncx;
+                    int start = _cellStart[cell];
+                    int cellCount = _cellCount[cell];
+
+                    // NOTE the missing `count < maxResults` loop bound (which QueryRadius has): a full buffer
+                    // must NOT end the scan here, because a later candidate may still be lower-id than the
+                    // largest id currently held. That is exactly what makes the selection global.
+                    for (int k = 0; k < cellCount; k++)
+                    {
+                        int j = _sortedIds[start + k];
+                        if (j == excludeId) continue;
+                        if (FixedVec3.SqrDistance(pos, world.Position[j]) > sqrRadius) continue;
+                        if (!filter.Accepts(world, j)) continue;
+
+                        if (count == maxResults)
+                        {
+                            // Buffer full — resultBuffer[count-1] is the largest id held. Keep the lowest ids:
+                            // ignore this candidate if it is not lower, else evict the largest (the shift below
+                            // overwrites it) and insert.
+                            if (j >= resultBuffer[count - 1]) continue;
+                            count--;
+                        }
+
+                        // Insertion into the ascending prefix. Entity ids are unique, so > is a TOTAL order
+                        // (no equal keys ⇒ nothing to reorder ⇒ deterministic, and CHM0003-free by construction:
+                        // this is an explicit insertion, not an unstable library sort).
+                        int p = count;
+                        while (p > 0 && resultBuffer[p - 1] > j)
+                        {
+                            resultBuffer[p] = resultBuffer[p - 1];
+                            p--;
+                        }
+                        resultBuffer[p] = j;
+                        count++;
                     }
                 }
             }
