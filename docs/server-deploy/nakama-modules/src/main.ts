@@ -30,6 +30,30 @@ export const RPC_ATTEST = 'rpc_attest_hero_profile';
  * a large-blob DoS. A payload whose sanitized form exceeds this is rejected, nothing written (P6). */
 export const MAX_STORED_PROFILE_BYTES = 8192;
 
+/** DW-436: cap on the RAW request payload string, checked FIRST — before any JSON.parse / validation work — so a
+ * multi-megabyte request can't buy CPU on Nakama's single-threaded goja runtime. Measured with `String.length`
+ * (UTF-16 code units — goja-safe; the C# wire is ASCII-escaped System.Text.Json output, so code units == bytes).
+ * 4x the stored cap: generous headroom over any legitimate profile (a real wire payload is a few hundred bytes),
+ * while the stored object itself stays bounded by MAX_STORED_PROFILE_BYTES after sanitization. */
+export const MAX_RAW_PAYLOAD_BYTES = 4 * MAX_STORED_PROFILE_BYTES; // 32768
+
+/** DW-436: cap on the `values`/`inventory` element COUNTS, checked before validateHeroProfile's O(n^2) duplicate
+ * scans. Deliberately chosen so it can never flip a verdict the byte caps would have allowed: >512 elements cannot
+ * serialize under MAX_STORED_PROFILE_BYTES (each element is ≥ ~19 bytes), so any payload this rejects was already
+ * doomed — the guard only moves the rejection BEFORE the quadratic work instead of after it. */
+export const MAX_PROFILE_ELEMENTS = 512;
+
+/** DW-436 guard: true when a profile-shaped object's PRESENT `values`/`inventory` arrays exceed
+ * MAX_PROFILE_ELEMENTS. Handler-only — a non-array container falls through to validateHeroProfile, which rejects it
+ * with the parity-mirrored reason (`attributes`/`inventory`), so the shared C#<->TS fixture behaviour is untouched. */
+function exceedsElementCaps(p: unknown): boolean {
+  if (!p || typeof p !== 'object') return false;
+  const obj = p as { values?: unknown; inventory?: unknown };
+  if (Array.isArray(obj.values) && obj.values.length > MAX_PROFILE_ELEMENTS) return true;
+  if (Array.isArray(obj.inventory) && obj.inventory.length > MAX_PROFILE_ELEMENTS) return true;
+  return false;
+}
+
 /**
  * Reconstruct the object to persist from ONLY the known PlayerProfile fields (P6) — junk/extra keys (top-level AND
  * nested in values/inventory entries) are dropped, so a forged payload cannot smuggle arbitrary data into storage.
@@ -62,11 +86,25 @@ export function handleWriteHeroProfile(
   payload: string,
   logger?: nkruntime.Logger,
 ): string {
+  // DW-436: reject an oversized RAW payload before ANY parse/validate work — the size caps below only ran after
+  // validateHeroProfile's O(n^2) duplicate scans, so a single large in-range payload could spike goja CPU.
+  if (typeof payload === 'string' && payload.length > MAX_RAW_PAYLOAD_BYTES) {
+    logger?.warn('rpc_write_hero_profile rejected oversized raw payload for user %s', userId);
+    return JSON.stringify({ ok: false, reason: 'too_large' });
+  }
+
   let profile: HeroProfile;
   try {
     profile = JSON.parse(payload || '{}');
   } catch (e) {
     return JSON.stringify({ ok: false, reason: 'bad_json' });
+  }
+
+  // DW-436: bound the element counts BEFORE the validator's quadratic duplicate-key/duplicate-slot scans. Anything
+  // this rejects could never have sanitized under MAX_STORED_PROFILE_BYTES anyway (see MAX_PROFILE_ELEMENTS).
+  if (exceedsElementCaps(profile)) {
+    logger?.warn('rpc_write_hero_profile rejected over-count profile for user %s', userId);
+    return JSON.stringify({ ok: false, reason: 'too_large' });
   }
 
   const result = validateHeroProfile(profile);
@@ -110,6 +148,12 @@ export function handleAttestHeroProfile(
   userId: string,
   payload: string,
 ): string {
+  // DW-436: a legitimate attest request is a tiny `{ profileId }` — an oversized one is unambiguous abuse, rejected
+  // fail-closed before JSON.parse buys any goja CPU.
+  if (typeof payload === 'string' && payload.length > MAX_RAW_PAYLOAD_BYTES) {
+    return JSON.stringify({ attested: false, reason: 'too_large' });
+  }
+
   let requestedId = '';
   try {
     const req = JSON.parse(payload || '{}');
@@ -124,6 +168,15 @@ export function handleAttestHeroProfile(
   }
 
   const stored = objects[0].value as HeroProfile;
+
+  // DW-436: guard the STORED object before the O(n^2) re-validation scans. Every SERVER-written object is under
+  // MAX_STORED_PROFILE_BYTES by construction, but a first-time raw client WriteStorageObjects (permissionWrite=0
+  // only protects an ALREADY-stored object) could have planted an oversized one — previously re-validated here with
+  // no size cap at all. Fail-closed on it instead of burning CPU scanning it (and never attest it).
+  if (exceedsElementCaps(stored) || JSON.stringify(stored).length > MAX_STORED_PROFILE_BYTES) {
+    return JSON.stringify({ attested: false, reason: 'too_large' });
+  }
+
   const result = validateHeroProfile(stored);
   if (!result.valid) {
     return JSON.stringify({ attested: false, reason: result.reason });

@@ -61,6 +61,13 @@
     <EmbeddedResource Include="..\..\docs\server-deploy\nakama-modules\test\fixtures\validation-cases.json">
       <LogicalName>validation-cases.json</LogicalName>
     </EmbeddedResource>
+    <!-- DW-438: the SHARED wire fixture — the EXACT JsonSerializer.Serialize(PlayerProfile) bytes the client RPC
+         sends. PlayerProfileWireParityTests pins the fixture byte-for-byte against the live serializer; the TS
+         csharp-roundtrip.test.ts feeds the same bytes to the validator + handlers. One source of truth, so a
+         wire-format drift cannot ship with the rule-parity suites green. -->
+    <EmbeddedResource Include="..\..\docs\server-deploy\nakama-modules\test\fixtures\csharp-serialized-profile.json">
+      <LogicalName>csharp-serialized-profile.json</LogicalName>
+    </EmbeddedResource>
   </ItemGroup>
 
   <ItemGroup>

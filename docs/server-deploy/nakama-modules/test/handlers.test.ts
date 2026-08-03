@@ -3,7 +3,14 @@
 // no-client-write permissions, no write on an invalid payload) and the attestation logic (not_found / valid / invalid /
 // id-mismatch) that the client's OnlineHeroLaunchGate depends on.
 import { describe, test, expect } from 'vitest';
-import { handleWriteHeroProfile, handleAttestHeroProfile, HERO_COLLECTION, HERO_KEY } from '../src/main.ts';
+import {
+  handleWriteHeroProfile,
+  handleAttestHeroProfile,
+  HERO_COLLECTION,
+  HERO_KEY,
+  MAX_RAW_PAYLOAD_BYTES,
+  MAX_PROFILE_ELEMENTS,
+} from '../src/main.ts';
 
 // ── A minimal in-memory mock of the Nakama runtime storage surface ──
 interface WriteReq {
@@ -126,6 +133,51 @@ describe('handleWriteHeroProfile', () => {
     expect(reply.reason).toBe('too_large');
     expect(nk.writes).toHaveLength(0);
   });
+
+  // ── DW-436: raw-payload / element-count guards run BEFORE parse + the validator's O(n^2) scans ──
+
+  test('DW-436: an oversized RAW payload is rejected even when its sanitized form would be small', () => {
+    // Junk keys are DROPPED by sanitizeProfile, so before DW-436 this 40KB payload passed the post-validate
+    // sanitized-size cap and was WRITTEN (ok:true). The raw guard must reject it before any parse/validate work.
+    const nk = mockNk();
+    const payload = JSON.stringify({
+      profile_id: 'g#online', hero_def_id: 'grommash',
+      values: [{ key: 'hero.level', raw: 1 }], inventory: [],
+      junk_blob: 'x'.repeat(MAX_RAW_PAYLOAD_BYTES + 1024),
+    });
+    expect(payload.length).toBeGreaterThan(MAX_RAW_PAYLOAD_BYTES);
+    const reply = JSON.parse(handleWriteHeroProfile(nk as any, USER, payload));
+    expect(reply.ok).toBe(false);
+    expect(reply.reason).toBe('too_large');
+    expect(nk.writes).toHaveLength(0);
+  });
+
+  test('DW-436: an over-count values array is rejected too_large BEFORE validation runs', () => {
+    // Empty-object entries would be rejected by the validator as `attributes` — the element-count guard must fire
+    // FIRST (reason too_large), proving the O(n^2) duplicate scan is never reached for an over-count payload.
+    const nk = mockNk();
+    const values = [];
+    for (let i = 0; i < MAX_PROFILE_ELEMENTS + 88; i++) values.push({});
+    const payload = JSON.stringify({ profile_id: 'g#online', hero_def_id: 'grommash', values, inventory: [] });
+    const reply = JSON.parse(handleWriteHeroProfile(nk as any, USER, payload));
+    expect(reply.ok).toBe(false);
+    expect(reply.reason).toBe('too_large');
+    expect(nk.writes).toHaveLength(0);
+  });
+
+  test('DW-436: an over-count inventory array is rejected too_large BEFORE validation runs', () => {
+    const nk = mockNk();
+    const inventory = [];
+    for (let i = 0; i < MAX_PROFILE_ELEMENTS + 1; i++) inventory.push({});
+    const payload = JSON.stringify({
+      profile_id: 'g#online', hero_def_id: 'grommash',
+      values: [{ key: 'hero.level', raw: 1 }], inventory,
+    });
+    const reply = JSON.parse(handleWriteHeroProfile(nk as any, USER, payload));
+    expect(reply.ok).toBe(false);
+    expect(reply.reason).toBe('too_large');
+    expect(nk.writes).toHaveLength(0);
+  });
 });
 
 describe('handleAttestHeroProfile', () => {
@@ -177,5 +229,53 @@ describe('handleAttestHeroProfile', () => {
     const nk = mockNk([seedValid('grommash#online')]);
     const reply = JSON.parse(handleAttestHeroProfile(nk as any, USER, ''));
     expect(reply.attested).toBe(true);
+  });
+
+  // ── DW-436: the attest path previously re-validated the stored object with NO size cap at all ──
+
+  test('DW-436: an oversized attest REQUEST payload is rejected fail-closed before parsing', () => {
+    // Before DW-436 a multi-megabyte request payload was JSON.parsed (goja CPU spent) and only THEN dispositioned
+    // (this one: id mismatch → `identity`). Now it is rejected outright (too_large) before any parse.
+    const nk = mockNk([seedValid('grommash#online')]);
+    const huge = '{"profileId":"' + 'x'.repeat(MAX_RAW_PAYLOAD_BYTES + 1024) + '"}';
+    const reply = JSON.parse(handleAttestHeroProfile(nk as any, USER, huge));
+    expect(reply.attested).toBe(false);
+    expect(reply.reason).toBe('too_large');
+  });
+
+  test('DW-436: a VALID but oversized STORED object (raw first-time client write) is NOT attested', () => {
+    // permissionWrite=0 only protects an already-stored object, so a first-time raw WriteStorageObjects could plant
+    // an object the write RPC would never store. This one is rule-VALID (unique keys, in-range ints) but far over
+    // MAX_STORED_PROFILE_BYTES — before DW-436 it re-validated clean and ATTESTED. Now: fail-closed too_large.
+    const planted: StoredObj = {
+      collection: HERO_COLLECTION, key: HERO_KEY, userId: USER, version: 'v1',
+      value: {
+        profile_id: 'g#online', hero_def_id: 'grommash',
+        values: [
+          { key: 'hero.level', raw: 1 },
+          { key: 'hero.' + 'x'.repeat(20000), raw: 1 }, // one huge (still unique) key → object >> 8192 bytes
+        ],
+        inventory: [],
+      },
+    };
+    const nk = mockNk([planted]);
+    const reply = JSON.parse(handleAttestHeroProfile(nk as any, USER, JSON.stringify({ profileId: 'g#online' })));
+    expect(reply.attested).toBe(false);
+    expect(reply.reason).toBe('too_large');
+  });
+
+  test('DW-436: an over-count STORED values array is rejected too_large BEFORE re-validation scans', () => {
+    // Empty-object entries would report `attributes` from the validator — too_large proves the element-count guard
+    // fired first, so the O(n^2) duplicate scans never ran over the planted object.
+    const values = [];
+    for (let i = 0; i < MAX_PROFILE_ELEMENTS + 1; i++) values.push({});
+    const planted: StoredObj = {
+      collection: HERO_COLLECTION, key: HERO_KEY, userId: USER, version: 'v1',
+      value: { profile_id: 'g#online', hero_def_id: 'grommash', values, inventory: [] },
+    };
+    const nk = mockNk([planted]);
+    const reply = JSON.parse(handleAttestHeroProfile(nk as any, USER, JSON.stringify({ profileId: 'g#online' })));
+    expect(reply.attested).toBe(false);
+    expect(reply.reason).toBe('too_large');
   });
 });
