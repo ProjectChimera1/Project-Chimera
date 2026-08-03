@@ -76,6 +76,13 @@ namespace ProjectChimera.Multiplayer
         /// <summary>Story 11.2 (FR-66) — the host's folded WinStateStore, so a recorded Concede order resolves in replay
         /// byte-identically to the live run (the one-switch parity rule). Null ⇒ a Concede is a deterministic no-op.</summary>
         public WinStateStore? WinState;
+        /// <summary>DW-304 — the diagnostic sink the shared <see cref="OrderApplier.Apply"/> WARNS through when a
+        /// recorded building-family order (Train/CancelTrain/SetRally/ReviveHero/BuyItem/StartResearch/CancelResearch)
+        /// is dropped because its executing system handle (<see cref="Buildings"/>/<see cref="Research"/>) is unwired —
+        /// on a production replay that means the playback silently diverges from the recording. Wired by
+        /// MatchLifecycleController beside <see cref="Buildings"/>; null (headless/parity tests that replay without
+        /// systems on purpose) ⇒ the drop stays the silent deterministic no-op. Diagnostics only — never sim state.</summary>
+        public ProjectChimera.Core.Sim.ILogSink? Log;
 
         // ── Replay data ───────────────────────────────────────────────────────────
 
@@ -280,7 +287,7 @@ namespace ProjectChimera.Multiplayer
         {
             for (int i = 0; i < count; i++)
                 OrderApplier.Apply(_world, in orders[i], expectedFaction,
-                    OnRequestPath, OnRequestAttackMove, OnCancelPath, Buildings, null, Items, Research, DslEventSink, WinState);
+                    OnRequestPath, OnRequestAttackMove, OnCancelPath, Buildings, null, Items, Research, DslEventSink, WinState, Log);
         }
     }
 }

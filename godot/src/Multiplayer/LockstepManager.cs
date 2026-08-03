@@ -113,6 +113,16 @@ namespace ProjectChimera.Multiplayer
         /// or human-vs-human training diverges. Story 2.12: ALSO the SetRally exec-tick handler (SetRallyCommand).</summary>
         public ProjectChimera.Economy.BuildingSystem? Buildings;
 
+        /// <summary>DW-304 — the diagnostic sink the shared OrderApplier WARNS through when a building-family command
+        /// (Train/CancelTrain/SetRally/ReviveHero/BuyItem/StartResearch/CancelResearch) is dropped because its executing
+        /// system handle (<see cref="Buildings"/>/<see cref="Research"/>) is unwired at apply time — on any live path
+        /// that drop is a LOST PLAYER ORDER (formerly a silent no-op indistinguishable from the intentional headless
+        /// null). Defaults to the Godot console sink (the <c>LoopbackDesyncSelfTest</c> precedent) so the scream needs
+        /// NO per-match wiring — the whole point is surviving exactly the wiring drift that would lose
+        /// <see cref="Buildings"/>. LockstepManager is Godot-coupled (never constructed in Tier-1), so the default
+        /// never leaks into the Godot-free assembly. Diagnostics only — never part of the deterministic state.</summary>
+        public ProjectChimera.Core.Sim.ILogSink Log = new ProjectChimera.UI.GodotLogSink();
+
         /// <summary>Story 3.15: the item/inventory runtime the shared OrderApplier uses to EXECUTE a UseItem / DropItem
         /// command (the deterministic charge-decrement / heal / ground-return on the canonical ItemStore/HeroStore).
         /// Wired by MainScene per match; null in headless/tests where UseItem/DropItem no-op. Must be the SAME instance
@@ -341,7 +351,8 @@ namespace ProjectChimera.Multiplayer
             {
                 var order = new UnitOrder(eventIndex, UnitCommand.DslEvent, Fixed.FromRaw(arg0), Fixed.FromRaw(arg1));
                 OrderApplier.Apply(_world, in order, Faction.Player1,
-                    OnRequestPath, OnRequestAttackMove, OnCancelPath, Buildings, CombatEvents, Items, Research, DslEventSink);
+                    OnRequestPath, OnRequestAttackMove, OnCancelPath, Buildings, CombatEvents, Items, Research, DslEventSink,
+                    log: Log);
                 return true;
             }
             if (IsSpectator) return false;
@@ -373,7 +384,8 @@ namespace ProjectChimera.Multiplayer
             {
                 var order = new UnitOrder(0, UnitCommand.Concede, Fixed.Zero, Fixed.Zero);
                 OrderApplier.Apply(_world, in order, faction,
-                    OnRequestPath, OnRequestAttackMove, OnCancelPath, Buildings, CombatEvents, Items, Research, DslEventSink, WinState);
+                    OnRequestPath, OnRequestAttackMove, OnCancelPath, Buildings, CombatEvents, Items, Research, DslEventSink,
+                    WinState, Log);
                 return true;
             }
             if (IsSpectator) return false;
@@ -489,7 +501,7 @@ namespace ProjectChimera.Multiplayer
             MergedTickApplier.Apply(_mergedBytes[mod], _mergedLen[mod], _world,
                 OnRequestPath, OnRequestAttackMove, OnCancelPath,
                 Buildings, CombatEvents, Items, Research, DslEventSink,
-                Recorder != null ? _recordHook : null, WinState);
+                Recorder != null ? _recordHook : null, WinState, Log);
         }
 
         // ── Checksum exchange ─────────────────────────────────────────────────
