@@ -529,28 +529,58 @@ namespace ProjectChimera.Dsl
             return null;
         }
 
+        /// <summary>The same-tick dispatch-graph cycle DFS (tri-color, path-naming).
+        /// DW-191 — EXPLICIT-STACK iterative walk, mirroring <c>DslLoopGate.RunCycleDfs</c>: this site's depth is
+        /// already bounded by the closed registry (≤ <see cref="EventBounds.MaxCustomEvents"/> events), but the two
+        /// cycle-DFS sites deliberately share one recursion-free shape. <paramref name="path"/> doubles as the node
+        /// stack with a parallel per-level next-child cursor; visit order, colors, and the located error string are
+        /// unchanged.</summary>
         private static string? CycleDfs(int e, List<int>[] targets, byte[] color, List<int> path, string[] names)
         {
             if (color[e] == 2) return null;
-            if (color[e] == 1)
-            {
-                // Back edge: name the cycle path from the first occurrence of e to here, then back to e.
-                int start = path.IndexOf(e);
-                var cycle = new List<string>();
-                for (int k = start; k < path.Count; k++) cycle.Add(names[path[k]]);
-                cycle.Add(names[e]);
-                return $"same-tick event dispatch cycle: {string.Join("→", cycle)} (break it with a next_tick raise).";
-            }
+            // color 1 is unreachable from ProveDagAndCaps' roots (path is empty between root calls); kept so the
+            // entry check stays shape-identical to the recursive form's.
+            if (color[e] == 1) return CycleError(e, path, names);
+
+            int baseDepth = path.Count; // ProveDagAndCaps passes an empty path; the walk unwinds back to it
+            var nextChild = new List<int> { 0 }; // per-level cursor, parallel to path[baseDepth..]
             color[e] = 1;
             path.Add(e);
-            foreach (int t in targets[e])
+
+            while (path.Count > baseDepth)
             {
-                string? cyc = CycleDfs(t, targets, color, path, names);
-                if (cyc != null) return cyc;
+                int cur = path[path.Count - 1];
+                int cursor = nextChild[nextChild.Count - 1];
+                List<int> tgts = targets[cur];
+                if (cursor < tgts.Count)
+                {
+                    nextChild[nextChild.Count - 1] = cursor + 1;
+                    int child = tgts[cursor];
+                    if (color[child] == 2) continue;                              // finished — skip
+                    if (color[child] == 1) return CycleError(child, path, names); // back edge — the cycle
+                    color[child] = 1; // white — descend
+                    path.Add(child);
+                    nextChild.Add(0);
+                }
+                else
+                {
+                    path.RemoveAt(path.Count - 1); // all targets walked — finish the node
+                    nextChild.RemoveAt(nextChild.Count - 1);
+                    color[cur] = 2;
+                }
             }
-            path.RemoveAt(path.Count - 1);
-            color[e] = 2;
             return null;
+        }
+
+        /// <summary>The located same-tick dispatch cycle reject: names the path from the first on-path occurrence
+        /// of <paramref name="e"/> to the walk head, then back to it (E1→E2→E1).</summary>
+        private static string CycleError(int e, List<int> path, string[] names)
+        {
+            int start = path.IndexOf(e);
+            var cycle = new List<string>();
+            for (int k = start; k < path.Count; k++) cycle.Add(names[path[k]]);
+            cycle.Add(names[e]);
+            return $"same-tick event dispatch cycle: {string.Join("→", cycle)} (break it with a next_tick raise).";
         }
 
         private static void ComputeCost(int e, List<int>[] subscribers, EventDispatchPlan plan,

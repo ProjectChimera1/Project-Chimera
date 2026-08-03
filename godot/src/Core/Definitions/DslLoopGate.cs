@@ -538,33 +538,64 @@ namespace ProjectChimera.Core.Definitions
         }
 
         /// <summary>Story 7.13 — tri-color DFS over the run_trigger target graph (edges = a trigger's run_trigger
-        /// targets). Names the cycle path (A→B→A). Reuses the EventDispatchPlan cycle-DFS shape.</summary>
+        /// targets). Names the cycle path (A→B→A). Reuses the EventDispatchPlan cycle-DFS shape.
+        /// DW-191 — EXPLICIT-STACK iterative walk: trigger count has no structural cap, so the recursive form's
+        /// depth equaled the longest acyclic run_trigger chain and pathological creator content (thousands of
+        /// chained triggers) could StackOverflow the load gate while proving VALID content valid.
+        /// <paramref name="path"/> doubles as the node stack (it already mirrored the recursion) with a parallel
+        /// per-level next-child cursor; visit order, colors, and the located error string are unchanged.</summary>
         private static string? RunCycleDfs(int triggerId, Dictionary<int, List<int>> runTargets,
             Dictionary<int, byte> color, List<int> path, Dictionary<int, NodeBase> byId)
         {
             if (color.TryGetValue(triggerId, out byte c))
             {
                 if (c == 2) return null;
-                if (c == 1)
-                {
-                    int start = path.IndexOf(triggerId);
-                    var cycle = new List<string>();
-                    for (int k = start; k < path.Count; k++) cycle.Add(TriggerNameOf(byId, path[k]));
-                    cycle.Add(TriggerNameOf(byId, triggerId));
-                    return $"run_trigger cycle: {string.Join("→", cycle)} (a trigger may not run itself, directly or transitively).";
-                }
+                // c == 1 is unreachable from CheckGraph's roots (path is empty between root calls); kept so the
+                // entry check stays shape-identical to the recursive form's.
+                if (c == 1) return RunCycleError(triggerId, path, byId);
             }
+
+            int baseDepth = path.Count; // CheckGraph passes an empty path; the walk unwinds back to it
+            var nextChild = new List<int> { 0 }; // per-level cursor, parallel to path[baseDepth..]
             color[triggerId] = 1;
             path.Add(triggerId);
-            if (runTargets.TryGetValue(triggerId, out List<int>? tgts))
-                foreach (int t in tgts)
+
+            while (path.Count > baseDepth)
+            {
+                int cur = path[path.Count - 1];
+                int cursor = nextChild[nextChild.Count - 1];
+                if (runTargets.TryGetValue(cur, out List<int>? tgts) && cursor < tgts.Count)
                 {
-                    string? cyc = RunCycleDfs(t, runTargets, color, path, byId);
-                    if (cyc != null) return cyc;
+                    nextChild[nextChild.Count - 1] = cursor + 1;
+                    int child = tgts[cursor];
+                    if (color.TryGetValue(child, out byte cc))
+                    {
+                        if (cc == 2) continue;                               // finished — skip
+                        if (cc == 1) return RunCycleError(child, path, byId); // back edge — the cycle
+                    }
+                    color[child] = 1; // white — descend
+                    path.Add(child);
+                    nextChild.Add(0);
                 }
-            path.RemoveAt(path.Count - 1);
-            color[triggerId] = 2;
+                else
+                {
+                    path.RemoveAt(path.Count - 1); // all targets walked — finish the node
+                    nextChild.RemoveAt(nextChild.Count - 1);
+                    color[cur] = 2;
+                }
+            }
             return null;
+        }
+
+        /// <summary>The located run_trigger cycle reject: names the path from the first on-path occurrence of
+        /// <paramref name="triggerId"/> to the walk head, then back to it (A→B→A).</summary>
+        private static string RunCycleError(int triggerId, List<int> path, Dictionary<int, NodeBase> byId)
+        {
+            int start = path.IndexOf(triggerId);
+            var cycle = new List<string>();
+            for (int k = start; k < path.Count; k++) cycle.Add(TriggerNameOf(byId, path[k]));
+            cycle.Add(TriggerNameOf(byId, triggerId));
+            return $"run_trigger cycle: {string.Join("→", cycle)} (a trigger may not run itself, directly or transitively).";
         }
 
         private static string TriggerNameOf(Dictionary<int, NodeBase> byId, int id) =>
