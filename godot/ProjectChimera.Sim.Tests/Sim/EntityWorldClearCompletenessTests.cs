@@ -201,6 +201,11 @@ namespace ProjectChimera.Sim.Tests.Sim
             w.Destroy(1);
             w.Destroy(4);
 
+            // DW-367: dirty the per-tick death log. The Destroys above are the NON-combat path (which never records);
+            // push a record directly so the per-field precondition sees the field moved off its fresh value and the
+            // sweep stays non-blind on it — Clear() must count-reset it (records past Count are unread by contract).
+            w.DeathLog.Push(1, 0, 2, 1);
+
             w.Rng.NextInt(1000); // advance the folded RNG state off DEFAULT_RNG_SEED
 
             // Story 6.5 sim-global: the pathability grid Clear() drops. The ctor only accepts an exactly
@@ -318,6 +323,17 @@ namespace ProjectChimera.Sim.Tests.Sim
                     continue;
                 }
 
+                if (a is DeathLog da && b is DeathLog db)
+                {
+                    // DW-367: like Rng, the death log is a fixed reference with mutable internal state (never
+                    // reassigned), so reference equality is meaningless — Clear() count-resets it. Compare the
+                    // OBSERVABLE state: Count plus every record up to Count (slots past Count are unread by
+                    // contract — the PatrolWaypoints discipline, so stale bytes there are not divergence).
+                    string? why = DescribeDeathLogDivergence(da, db);
+                    if (why is not null) diverged.Add((f.Name, why));
+                    continue;
+                }
+
                 if (a is Array ea && b is Array eb)
                 {
                     string? why = DescribeArrayDivergence(ea, eb);
@@ -373,6 +389,21 @@ namespace ProjectChimera.Sim.Tests.Sim
                 if (why is not null) return $"[{i}]{why}";
             }
 
+            return null;
+        }
+
+        /// <summary>DW-367: the death log's observable state (Count + the records up to Count) — the exact state the
+        /// director's unit_dies drain reads. Returns a located description of the first divergence, or null.</summary>
+        private static string? DescribeDeathLogDivergence(DeathLog expected, DeathLog actual)
+        {
+            if (expected.Count != actual.Count)
+                return $".Count: expected {expected.Count}, actual {actual.Count}";
+            for (int i = 0; i < expected.Count; i++)
+                if (expected.VictimAt(i) != actual.VictimAt(i) || expected.VictimSlotAt(i) != actual.VictimSlotAt(i) ||
+                    expected.KillerAt(i) != actual.KillerAt(i) || expected.KillerSlotAt(i) != actual.KillerSlotAt(i))
+                    return $"[{i}]: expected ({expected.VictimAt(i)}, {expected.VictimSlotAt(i)}, {expected.KillerAt(i)}, " +
+                           $"{expected.KillerSlotAt(i)}), actual ({actual.VictimAt(i)}, {actual.VictimSlotAt(i)}, " +
+                           $"{actual.KillerAt(i)}, {actual.KillerSlotAt(i)})";
             return null;
         }
 
