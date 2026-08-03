@@ -13,8 +13,9 @@ namespace ProjectChimera.Core.Definitions
     /// Checks: id present AND filename-safe (charset <c>[a-z0-9_]</c> via <see cref="UnitDefinitionValidator.SanitizeId"/>,
     /// so a traversal id like <c>../../foo</c> is rejected, AND not a Win32 reserved device basename via
     /// <see cref="UnitDefinitionValidator.IsReservedDeviceName"/> — DW-454, since <c>con</c>/<c>nul</c>/<c>com1</c>… all
-    /// SATISFY the charset yet make the <c>&lt;id&gt;.json</c> write throw on Windows — see the charset note below for
-    /// which gate protects the filesystem); <c>charges &gt;= 0</c>; each of the four modifier deltas finite &amp; within <see cref="Range"/> (the
+    /// SATISFY the charset yet make the <c>&lt;id&gt;.json</c> write throw on Windows; both folded into the single
+    /// <see cref="IsFilenameSafeId"/> decision (DW-456) that <c>ItemCardPanel.DoDelete</c> also guards its
+    /// <c>File.Delete</c> with — see the charset note below for which gate protects the filesystem); <c>charges &gt;= 0</c>; each of the four modifier deltas finite &amp; within <see cref="Range"/> (the
     /// <see cref="UnitDefinitionValidator"/> 16.16 ceiling) AND within its per-stat magnitude cap
     /// (<see cref="MAX_ITEM_STAT_DELTA"/> for max_health/attack/armor, the much tighter <see cref="MAX_MOVE_SPEED_DELTA"/>
     /// for move_speed so a validated item cannot tunnel a hero through pathing); the effect-graph COHERENCE
@@ -72,6 +73,52 @@ namespace ProjectChimera.Core.Definitions
         /// pre-existing <c>ModifierSystem</c> deferral — this cap closes only the item-contributed move-speed portion.</summary>
         public static readonly Fixed MAX_MOVE_SPEED_DELTA = Fixed.FromInt(50);
 
+        /// <summary>
+        /// DW-452: the item editor's "Speed" spinner bounds — the SINGLE Godot-free truth for the UX clamp, pinned by
+        /// Tier-1 (<c>ItemEditorIdAndClampTests</c>) to ±<see cref="MAX_MOVE_SPEED_DELTA"/> (Story 3.16 AC4). The clamp
+        /// is UX-only (<see cref="ValidateFields"/> fail-closes an over-cap value regardless), but <c>ItemCardPanel</c>
+        /// reads its "Speed" spinner range FROM HERE, so the range can no longer silently decouple from the validator
+        /// cap with every test still green — decoupling now requires changing this helper (a test fails) or bypassing
+        /// it in the panel (visible in review).
+        /// </summary>
+        public static (int Min, int Max) MoveSpeedSpinnerRange()
+        {
+            int cap = MAX_MOVE_SPEED_DELTA.ToInt();
+            return (-cap, cap);
+        }
+
+        /// <summary>
+        /// DW-456: THE single "may this id touch an on-disk item file?" decision — extracted Godot-free so the DW-47
+        /// traversal guard on <c>ItemCardPanel.DoDelete</c>'s <c>File.Delete</c> (previously an untestable inline check
+        /// in a Godot <c>Node</c> lambda) is Tier-1 tested instead of verified only by reading. True iff the id is
+        /// non-empty, charset-clean under the shared <see cref="UnitDefinitionValidator.SanitizeId"/> convention
+        /// (<c>[a-z0-9_]</c>, so a traversal id like <c>../../foo</c> is refused) and not a Win32 reserved device
+        /// basename (<see cref="UnitDefinitionValidator.IsReservedDeviceName"/>, DW-454). Fail-closed on null/empty:
+        /// such an id can never have produced a legit on-disk file (both id gates reject it before Save), so it must
+        /// never reach a filesystem sink. Load-bearing in all three surfaces — <see cref="Validate"/>,
+        /// <see cref="ValidateFields"/> and <c>ItemCardPanel.DoDelete</c> — so they cannot drift apart.
+        /// </summary>
+        public static bool IsFilenameSafeId(string? id) =>
+            !string.IsNullOrEmpty(id)
+            && UnitDefinitionValidator.SanitizeId(id) == id
+            && !UnitDefinitionValidator.IsReservedDeviceName(id);
+
+        /// <summary>
+        /// DW-453: the item editor's Create/Duplicate id mint — sanitize through the SHARED
+        /// <see cref="UnitDefinitionValidator.SanitizeId"/> convention (NOT the panel's old Unicode-aware local
+        /// sanitizer, whose <c>char.IsLetterOrDigit</c> kept letters like <c>é</c> that the DW-47 id gate rejects,
+        /// minting un-saveable ids from a base like <c>café</c>), substitute the item noun for an empty mint, then
+        /// dedup + reserved-basename-avoid via <see cref="UnitDefinitionValidator.MakeUniqueId"/>. Every minted id
+        /// satisfies <see cref="IsFilenameSafeId"/> (Tier-1 pinned), so New/Duplicate can never hand back an id its
+        /// own Save gate refuses.
+        /// </summary>
+        public static string MakeUniqueItemId(System.Collections.Generic.IEnumerable<string> existingIds, string? baseId)
+        {
+            string s = UnitDefinitionValidator.SanitizeId(baseId);
+            if (s.Length == 0) s = "item";
+            return UnitDefinitionValidator.MakeUniqueId(existingIds, s);
+        }
+
         /// <summary>Validate an <see cref="ItemDefinition"/>. Returns <see cref="ItemValidationResult.Pass"/> with a
         /// minted <see cref="Validated{T}"/> on success, or <see cref="ItemValidationResult.Fail"/> with a single
         /// located error on the FIRST failed check. Pure — never throws, never logs.</summary>
@@ -84,21 +131,18 @@ namespace ProjectChimera.Core.Definitions
             // ── (a) Identity ──
             if (string.IsNullOrEmpty(id))
                 return ItemValidationResult.Fail("item.id is null or empty.");
-            // Filename-safe charset (DW-47): the id becomes the JSON file name in Persist()'s Path.Combine/File.Move/
-            // File.Delete, so an id like "../../foo" would escape the items directory. This sim check is defense-in-depth
-            // for the sole-Validated<>-minter / content-load path; the guard that actually blocks Persist() is the editor
-            // ValidateFields gate (via DoSave→Revalidate). Reuse the SINGLE shared charset convention
-            // (UnitDefinitionValidator.SanitizeId) so both gates enforce the same rule.
-            if (UnitDefinitionValidator.SanitizeId(id) != id)
-                return Fail(id, "id", "contains characters outside [a-z0-9_]; rename before saving.");
-            // Reserved Windows device basename (DW-454): the charset rule above ADMITS con/prn/aux/nul/com1-9/lpt1-9 —
-            // they are all [a-z0-9_] — but Persist() then writes "<id>.json.tmp", which Win32 rejects for a reserved
-            // basename (with or without an extension), surfacing as an opaque generic "Save failed" with no field badge
-            // and no way to save the item. Rejected through the SHARED convention helper so this gate, ValidateFields
-            // and the unit/building gate cannot drift.
-            if (UnitDefinitionValidator.IsReservedDeviceName(id))
-                return Fail(id, "id",
-                    "is a Windows reserved device name (con|prn|aux|nul|com1-com9|lpt1-lpt9); the filesystem rejects '<id>.json' as a file name, so rename before saving.");
+            // Filename-safe id — DW-47 charset + DW-454 reserved basename, through THE single extracted decision
+            // (IsFilenameSafeId, DW-456) shared with ValidateFields and ItemCardPanel.DoDelete's File.Delete guard.
+            // The id becomes the JSON file name in Persist()'s Path.Combine/File.Move/File.Delete, so an id like
+            // "../../foo" would escape the items directory and a reserved basename like "con" makes the Win32 write
+            // throw. This sim check is defense-in-depth for the sole-Validated<>-minter / content-load path; the guard
+            // that actually blocks Persist() is the editor ValidateFields gate (via DoSave→Revalidate). Message
+            // selection keeps the order the gates always had: charset first, reserved basename second.
+            if (!IsFilenameSafeId(id))
+                return UnitDefinitionValidator.SanitizeId(id) != id
+                    ? Fail(id, "id", "contains characters outside [a-z0-9_]; rename before saving.")
+                    : Fail(id, "id",
+                        "is a Windows reserved device name (con|prn|aux|nul|com1-com9|lpt1-lpt9); the filesystem rejects '<id>.json' as a file name, so rename before saving.");
 
             // ── (b) Charges sign ──
             if (def.Charges < 0)
@@ -161,17 +205,18 @@ namespace ProjectChimera.Core.Definitions
 
             if (string.IsNullOrEmpty(id))
                 errors.Add(("id", "item.id is null or empty."));
-            else if (UnitDefinitionValidator.SanitizeId(id) != id)
-                // Filename-safe charset (DW-47): same rule as the sim Validate, keyed to the "id" field so the editor
-                // badges it before Persist() can use the id in a path.
-                errors.Add(("id", Located(id, "id", "contains characters outside [a-z0-9_]; rename before saving.")));
-            else if (UnitDefinitionValidator.IsReservedDeviceName(id))
-                // Reserved Windows device basename (DW-454): same rule as the sim Validate. THIS is the gate that
-                // actually protects the filesystem — ItemCardPanel.DoSave→Revalidate keeps Save disabled while invalid,
-                // whereas the sim Validate only runs AFTER Persist() has already written the temp file. Without it the
-                // reserved-name write throws and surfaces as a generic "Save failed" with no field badge.
-                errors.Add(("id", Located(id, "id",
-                    "is a Windows reserved device name (con|prn|aux|nul|com1-com9|lpt1-lpt9); the filesystem rejects '<id>.json' as a file name, so rename before saving.")));
+            else if (!IsFilenameSafeId(id))
+                // Filename-safe id — DW-47 charset + DW-454 reserved basename, through THE single extracted decision
+                // (IsFilenameSafeId, DW-456) shared with the sim Validate and ItemCardPanel.DoDelete's File.Delete
+                // guard, keyed to the "id" field so the editor badges it before Persist() can use the id in a path.
+                // THIS is the gate that actually protects the filesystem — ItemCardPanel.DoSave→Revalidate keeps Save
+                // disabled while invalid, whereas the sim Validate only runs AFTER Persist() has already written the
+                // temp file. One badge per id, never two (the D-9 per-field-badge contract): charset message first,
+                // reserved-basename message second.
+                errors.Add(("id", UnitDefinitionValidator.SanitizeId(id) != id
+                    ? Located(id, "id", "contains characters outside [a-z0-9_]; rename before saving.")
+                    : Located(id, "id",
+                        "is a Windows reserved device name (con|prn|aux|nul|com1-com9|lpt1-lpt9); the filesystem rejects '<id>.json' as a file name, so rename before saving.")));
 
             if (def.Charges < 0)
                 errors.Add(("charges", Located(id, "charges",
