@@ -60,6 +60,7 @@ namespace ProjectChimera.UI
         private ChimeraSlider _musicVolSlider    = null!;
         private ChimeraSwitch _minimapBtn        = null!;
         private ChimeraSwitch _fpsBtn            = null!;
+        private ChimeraSwitch _sharedVisionBtn   = null!; // DW-441 — shared team vision (Gameplay tab)
         private ChimeraSwitch _colorblindBtn     = null!;
 
         // ── Story 11.7 — Graphics tab (live video settings) ────────────────────
@@ -241,6 +242,13 @@ namespace ProjectChimera.UI
             _fpsBtn = AddToggleRow(v, "Show FPS",
                 "Display the current frame rate in the HUD.",
                 _settings.Current.ShowFps);
+
+            // DW-441: the shared-team-vision preference (Story 9.14's fog union) finally gets its user-facing
+            // control. Per-client and presentation-only — it only changes what YOUR fog reveals, never an ally's.
+            AddSectionHeader(v, "Team Play");
+            _sharedVisionBtn = AddToggleRow(v, "Shared team vision",
+                "Reveal what your allies can see in team matches. Affects only your own view — allies always keep their own vision.",
+                _settings.Current.SharedTeamVision);
 
             AddSectionHeader(v, "Onboarding");
             var replayBtn = ChimeraComponents.Button("Replay \"Your First Scenario\" Onboarding",
@@ -768,6 +776,7 @@ namespace ProjectChimera.UI
             s.MusicVolume        = (float)_musicVolSlider.Value;
             s.ShowMinimap        = _minimapBtn.On;
             s.ShowFps            = _fpsBtn.On;
+            s.SharedTeamVision   = _sharedVisionBtn.On; // DW-441 — applied live via MainScene.ApplySettingsToSystems
             s.ColorblindMode     = _colorblindBtn.On;
 
             // Story 11.7: the five live video settings.
@@ -927,6 +936,7 @@ namespace ProjectChimera.UI
             _musicVolSlider.Value    = _settings.Current.MusicVolume;
             _minimapBtn.SetOn(_settings.Current.ShowMinimap, animate: false);
             _fpsBtn.SetOn(_settings.Current.ShowFps, animate: false);
+            _sharedVisionBtn.SetOn(_settings.Current.SharedTeamVision, animate: false); // DW-441
             _colorblindBtn.SetOn(_settings.Current.ColorblindMode, animate: false);
 
             // Story 11.7: re-sync the Graphics widgets to the reset defaults.

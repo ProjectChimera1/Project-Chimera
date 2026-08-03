@@ -58,6 +58,14 @@ namespace ProjectChimera.Core.Bootstrap
             // (empty string / 0 port). So a deployed build can point at a configured static endpoint without an
             // editor rebuild, while dev/editor runs keep the export defaults.
             var settings = _ctx.SettingsMgr?.Current;
+
+            // DW-441: apply the persisted shared-team-vision preference to the live fog at boot. The initial
+            // SettingsManager.Apply() fires during SettingsPhase BEFORE MainScene's ApplySettingsToSystems bridge
+            // is subscribed, so the boot-time application must be pulled here (the camera does the same in
+            // CameraPhase); later Apply & Save changes ride the bridge. Absent settings ⇒ default ON (the
+            // pre-DW-441 hardwired behavior). Presentation-only — the fog grid is never folded into SimChecksum.
+            _ctx.Fog.SharedTeamVision = settings?.SharedTeamVision ?? true;
+
             _ctx.LobbyUi = new LobbyUi
             {
                 NakamaHost     = NonEmpty(settings?.NakamaHost,   _ctx.Scene.NakamaHost),

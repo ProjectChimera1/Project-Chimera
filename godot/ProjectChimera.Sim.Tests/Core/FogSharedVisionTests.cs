@@ -100,5 +100,47 @@ namespace ProjectChimera.Sim.Tests.Core
             host.Fog.Tick(host.World, Dt); // the LIVE host-owned fog (SharedTeamVision default true)
             Assert.True(host.Fog.IsVisible(50f, 50f)); // teammate's scouted tile is revealed on P1's fog
         }
+
+        // ── DW-441: the persisted settings preference drives the live fog ─────────────────────────────────────
+        // MatchLifecycleController.Run (boot) and MainScene.ApplySettingsToSystems (live Apply & Save) both push
+        // SettingsData.SharedTeamVision onto FogOfWarSystem.SharedTeamVision verbatim. This pins that Godot-free
+        // contract end-to-end: a settings.json opt-out really darkens allied sight, and toggling back on restores
+        // the union on the SAME live fog instance (no reconstruction) — exactly what the bridge push does mid-match.
+
+        [Fact]
+        public void SettingsPreference_PushedOntoLiveHostFog_TogglesAlliedUnion()
+        {
+            var opts = new System.Text.Json.JsonSerializerOptions
+            {
+                WriteIndented       = true,
+                ReadCommentHandling = System.Text.Json.JsonCommentHandling.Skip,
+                AllowTrailingCommas = true,
+            };
+
+            var host = SimulationHost.Create(NullLogSink.Instance, new FactionRegistry(2),
+                                             new FactionDefinition(), new FactionDefinition());
+            AllianceSeeder.Seed(host.Alliances, new ScenarioData
+            {
+                PlayerSlots = new[]
+                {
+                    new ScenarioPlayerSlot { Slot = 0, Team = 1 },
+                    new ScenarioPlayerSlot { Slot = 1, Team = 1 },
+                },
+            });
+            int ally = host.World.Create(V(50, 50), Faction.Player2, Fixed.FromInt(100), Fixed.FromInt(3));
+            host.World.VisionRange[ally] = Fixed.FromInt(12);
+
+            // A persisted opt-out (settings.json carries shared_team_vision:false) → the wiring push → dark tile.
+            var settings = SettingsData.FromJson("{ \"shared_team_vision\": false }", opts);
+            host.Fog.SharedTeamVision = settings.SharedTeamVision; // the exact push both wiring sites perform
+            host.Fog.Tick(host.World, Dt);
+            Assert.False(host.Fog.IsVisible(50f, 50f)); // opted out — teammate sight is no longer unioned
+
+            // A live re-enable (Apply & Save flips it back on) → the union returns on the next tick.
+            settings = SettingsData.FromJson("{ \"shared_team_vision\": true }", opts);
+            host.Fog.SharedTeamVision = settings.SharedTeamVision;
+            host.Fog.Tick(host.World, Dt);
+            Assert.True(host.Fog.IsVisible(50f, 50f));
+        }
     }
 }

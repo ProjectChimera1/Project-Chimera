@@ -127,6 +127,18 @@ namespace ProjectChimera.Core.Definitions
         [JsonPropertyName("show_fps")]
         public bool ShowFps { get; set; } = false;
 
+        // ── Team play (Story 9.14 / DW-441) ───────────────────────────────────
+
+        /// <summary>DW-441 (Story 9.14 follow-up): whether shared team vision is enabled — when true, your fog of war
+        /// UNIONS every ALLIED faction's sight, so a teammate's scouted area is revealed on your map; when false, only
+        /// your own units light your fog. Presentation-only: the fog grid is never folded into <c>SimChecksum</c>, so
+        /// this per-client preference can NEVER desync a match. Defaults ON (the pre-DW-441 hardwired behavior, and
+        /// what an older settings.json lacking the field lands on). Pushed onto
+        /// <c>FogOfWarSystem.SharedTeamVision</c> at boot by <c>MatchLifecycleController.Run</c> and on every
+        /// Apply &amp; Save by <c>MainScene.ApplySettingsToSystems</c>.</summary>
+        [JsonPropertyName("shared_team_vision")]
+        public bool SharedTeamVision { get; set; } = true;
+
         // ── Accessibility ─────────────────────────────────────────────────────
 
         /// <summary>
