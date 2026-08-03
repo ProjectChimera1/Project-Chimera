@@ -436,7 +436,8 @@ origin: migrated from legacy ledger ("Deferred from: story-3.16 review (2026-07-
 source_spec: `_bmad-output/implementation-artifacts/spec-3-16-item-authoring-shop-buildings-inventory-ui.md`
 location: godot/src/Core/EntityWorld.cs
 reason: summary: The `UnitCommand.UseItem = 16` / `DropItem = 17` doc comments in `godot/src/Core/EntityWorld.cs` say "Handled by OrderApplier BEFORE the entity guard", but `NetworkCommand.cs` correctly dispatches them AFTER the `IsAlive`/`FactionOf` ownership guard (the deliberate 3.15 anti-cheat fix). evidence: Pre-existing stale comment inherited from Story 3.15 (Story 3.16 did not touch those enum lines). Behavior is the safe one; the comment is wrong and is a latent anti-cheat trap — a future edit trusting the comment could move the dispatch before the guard, letting a player force an enemy hero to drop/use items. One-line doc fix. Flagged by the Blind Hunter review layer (F7).
-status: open
+status: done 2026-08-03
+resolution: resolved by sweep bundle dw-housekeeping-docs-normalization
 
 ## Deferred from: follow-up review of story-3.16 (2026-07-08)
 
@@ -919,7 +920,8 @@ source_spec: `_bmad-output/implementation-artifacts/spec-5-3-land-harden-the-fma
 location: `_bmad-output/fma-faction-design.md:122,150,167,183` — repeatedly states "no Air production building exists," both air units (griffin, wyvern) are "unbuildable except via scenario placement," and lists "Air production building + Air category mapping" as an open, not-yet-built needs-new-code epic.
 reason: summary: this narrative was accurate when the doc was authored (2026-06-21) but Story 2.8 (shipped ~2026-07-01, per its epics.md AC "Given an Air production building placed... the Air unit appears as a trainable option and trains correctly") built exactly this: a real `BuildingType.Aviary` mapped to the `"Air"` category, already wired into both `alpha_faction.json`/`beta_faction.json` as a cost/prereq-gated buildable building before this story touched either file. A future reader of the design doc (or an agent planning a later Epic 5 story) could be misled into re-litigating "should we build an Air producer" when it already shipped. Flagged by the Blind Hunter review layer during Story 5.3's review. Not caused by Story 5.3 (the doc predates and is untouched by this story; touching a planning-phase design doc is outside this story's data-only boundaries).
 closure: add a dated addendum note near the top of `fma-faction-design.md` (or its own "Open Decisions" section) recording that Decision #1 ("AIR THIS MILESTONE?") was resolved YES by Story 2.8, and that the Air-production-building epic in the "Needs-new-code epics" table has since shipped — a documentation-only fix, no code/data change.
-status: open
+status: done 2026-08-03
+resolution: resolved by sweep bundle dw-housekeeping-docs-normalization
 
 ### DW-106: `FactionValidator` never resolves `signature_mechanic_effect_id` against the `AbilityRegistry` for any faction (systemic gap, pre-existing since Story 5.2)
 source_spec: `_bmad-output/implementation-artifacts/spec-5-4-wire-the-two-signature-mechanics-via-d1-modifiers-fr-20-unique-mechanic.md`
@@ -3672,7 +3674,8 @@ origin: correct-course legacy-verification pass, 2026-07-28
 location: various (see reason)
 severity: low
 reason: Doc rot found while verifying closures: EffectCaps.cs:8,79,87 still say "reserved to fold into the Epic-9 rulesetHash" (9.4 folded them); Modifier.cs:48 says "0 = instantaneous" (see DW-270); ModifierStore.cs:39 describes the re-entrancy guard as unbuilt without noting the validator fence; ServerChecksumCollector.cs:11,22-23 stale "MaxSlots 4→8 in 9.2" (deliberately NOT bumped — sim ceiling 8 vs MP seat ceiling 4); AbilityEditorPanel.Advanced.cs:280-281 "NEVER the reserved Air/Ground/Structure bits" contradicted since 2.9a; the 2.9b fallback-seed entry's dead ApplyFallback:159-160 anchor; ScenarioLoadPhase.cs:440 comment-coupled fallback start positions; lan-desync-smoke.ps1 missing "requires source/DEBUG build" banner; optional FallbackMirror-vs-alpha_map_01 agreement test.
-status: open
+status: done 2026-08-03
+resolution: resolved by sweep bundle dw-housekeeping-docs-normalization
 decision: 2026-07-28 correct-course — rides bundle housekeeping-docs-and-normalization (DW-46, DW-105, DW-175) (Epic 15, Story 15.6)
 
 ### DW-457: The skirmish map/faction catalog scans `res://` content via `System.IO.Directory` over…
@@ -3981,4 +3984,12 @@ source_spec: `_bmad-output/implementation-artifacts/spec-match-seed-plumbing.md`
 location: godot/src/Core/MainScene.cs:2478 (`MatchSeedProducer.Produce(Time.GetTicksUsec())`)
 severity: medium
 reason: The offline Edit→Play reset now mints a fresh wall-clock-entropy seed every launch (the intended per-match behavior), so two runs of the same authored scenario diverge on any tick-time RNG (combat crits, DSL `random`). This is by design for the bundle's stated intent (a per-match seed), but it weakens the project's in-engine A/B verification methodology — the gate discipline relies on comparing arms of a choice, and RNG-touching content can no longer be reproduced run-to-run because there is no debug/env flag to pin the offline seed to a fixed value. Out of the bundle's intent (which asked for a per-match seed, not a repro pin), hence deferred rather than added. — Evidence: adversarial + verification-gap lenses. Closure = an opt-in override (env var or debug setting) read as the offline entropy when set, so a verification/repro run can fix the seed while normal play stays per-match.
+status: open
+
+### DW-500: Sibling loopback-desync-smoke.ps1 (and .cmd) lacks the F9 DEBUG-build banner that lan-desync-smoke.ps1 just gained, leaving the same silent-F9-no-op trap undocumented on the loopback drill
+origin: deferred by review of `_bmad-output/implementation-artifacts/spec-housekeeping-docs-normalization.md`, 2026-08-03
+source_spec: `_bmad-output/implementation-artifacts/spec-housekeeping-docs-normalization.md`
+location: godot/tools/loopback-desync-smoke.ps1:5,46 (and godot/tools/loopback-desync-smoke.cmd)
+severity: low
+reason: DW-324's banner fix added a "F9 desync drill requires a SOURCE/DEBUG build" warning to `lan-desync-smoke.ps1`, but that script explicitly calls itself the "Parameterized sibling of loopback-desync-smoke.ps1" and the loopback sibling still instructs the user to "press F9 to induce a one-peer desync" (lines 5, 46) with no DEBUG caveat. The F9 hotkey is compiled under `#if DEBUG` in `src/Core/MainScene.cs:1076-1087`, so on an exported/release build F9 is a silent no-op on the loopback drill exactly as on the LAN one — a tester running the loopback smoke against a release build sees a clean pass and wrongly concludes determinism was exercised. Pre-existing (the loopback script always lacked the banner); surfaced incidentally by this sweep, which corrected only the LAN sibling because the DW-324 intent named the "LAN smoke-test build requirement". — Evidence: edge-case-hunter lens; the loopback sibling's F9 instruction verified against `MainScene.cs:1076-1087` (`#if DEBUG`). Closure = add the same DEBUG-build banner (with the silent-no-op symptom) to `loopback-desync-smoke.ps1` and its `.cmd` launcher.
 status: open

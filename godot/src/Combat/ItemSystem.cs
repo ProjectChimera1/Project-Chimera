@@ -216,7 +216,9 @@ namespace ProjectChimera.Combat
         /// <paramref name="heroEntityId"/> (Story 3.15). Runs the authored effect graph through the shared executor,
         /// decrements a charge, and deletes the item (freeing the instance + clearing the slot + removing any modifier)
         /// at zero. An empty/invalid slot, a non-hero, or a non-consumable (0 charges / no effect) is a deterministic
-        /// no-op. Dispatched from <see cref="OrderApplier"/> before the entity guard (the Train/Revive pattern).</summary>
+        /// no-op. Dispatched from <see cref="OrderApplier"/> AFTER the IsAlive/FactionOf entity-ownership guard (the hero
+        /// entity is guarded like a normal unit command — the 3.15 anti-cheat that stops forcing an ENEMY hero to use
+        /// items; NOT the Train/Revive pre-guard pattern).</summary>
         public void UseItemCommand(int heroEntityId, int slot, CombatEventQueue? events = null)
         {
             if (!ResolveHeroSlot(heroEntityId, out int heroSlot)) return;

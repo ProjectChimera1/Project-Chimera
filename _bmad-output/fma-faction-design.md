@@ -9,6 +9,15 @@ status: design complete — asset manifest derived; engine epics feed GDS planni
 > Role skeleton (8 units + 4 buildings + role ids) kept → zero structural code change.
 > Themed asset prompts: `_bmad-output/asset-generation-manifest.md`.
 
+> **Addendum — 2026-08-03 (DW-105): AIR resolved YES.** Design Decision #1 "AIR THIS MILESTONE?" — still
+> marked open in the body below, where the griffin and wyvern entries say "no Air production building exists"
+> and the needs-new-code table lists "Air production building + Air category mapping" — was
+> resolved **YES by Story 2.8**, which shipped `BuildingType.Aviary` mapped to the `"Air"` category and wired
+> into `alpha_faction.json` / `beta_faction.json` as a cost/prereq-gated buildable. The griffin/wyvern are now
+> **trainable** (not scenario-placement-only), and the "Air production building + Air category mapping"
+> needs-new-code epic has **shipped**. This dated addendum supersedes the stale "no Air building" statements in
+> the body below; those paragraphs are intentionally left unrewritten.
+
 # THE LAW OF EQUAL EXCHANGE
 ### World Bible — Project Chimera RTS Showcase
 *Tone: the spirit of Fullmetal Alchemist. Original universe. No trademarked nouns.*

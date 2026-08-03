@@ -1,6 +1,14 @@
 # ============================================================================
 #  Story 1.9b — two-machine LAN determinism launcher (FR-39, the #1 ship gate).
 #
+#  ⚠ THE F9 DESYNC DRILL BELOW REQUIRES A SOURCE / DEBUG BUILD. The F9 desync-injection hotkey is
+#    compiled under `#if DEBUG` (src/Core/MainScene.cs) and is ABSENT from an exported release build,
+#    so run this against the editor / `dotnet build` (Debug) game to exercise the F9 step. On a
+#    release/export build F9 is a SILENT no-op — no error, no log — so the match never desyncs and
+#    a clean run there means the drill was NOT exercised, NOT that determinism held. The
+#    clean-pass [Determinism] window + MATCH SUMMARY readout (src/Multiplayer/Server/ServerHost.cs)
+#    is NOT DEBUG-gated and works in any build.
+#
 #  Parameterized sibling of loopback-desync-smoke.ps1: instead of forcing
 #  127.0.0.1, you pick a -Role and (for clients) the dedicated server's LAN IP.
 #  Each invocation launches exactly ONE process, so you can compose the pinned

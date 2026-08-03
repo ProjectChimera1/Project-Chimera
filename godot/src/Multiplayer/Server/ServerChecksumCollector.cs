@@ -8,8 +8,10 @@ namespace ProjectChimera.Multiplayer.Server
     /// Server-side strict-majority desync collector (AR-40 fork #2, Story 1.9a). Buffers slot-tagged 32-bit
     /// checksums per EXECUTED sim tick within a bounded window; when all expected peers have reported for a
     /// tick it declares the strict-majority (<c>&gt; N/2</c>) hash canonical and names the minority slot(s),
-    /// or "no canonical" on no majority. N-shaped (any N≥2; <see cref="MaxSlots"/>=4 in 1.0 — 8 is a constant
-    /// bump + the Faction-enum extension in Story 9.2, not a rewrite).
+    /// or "no canonical" on no majority. N-shaped (any N≥2; <see cref="MaxSlots"/>=4 = the MP seat/player
+    /// ceiling, PlayerCountPolicy.MpSeatCeiling). NOTE: ServerTransport.MAX_SLOTS is now 8 (players + spectator
+    /// headroom, Story 9.7); this ceiling deliberately tracks the seat/player ceiling (4), not that transport
+    /// ceiling — only seated players report sim checksums.
     ///
     /// <para>This is server-side networking — NOT part of the 30 Hz sim tick — so it is exempt from the in-tick
     /// determinism rules (it allocates the minority list lazily). BUT its OUTPUT is order-stable: the minority
@@ -19,7 +21,7 @@ namespace ProjectChimera.Multiplayer.Server
     /// </summary>
     public sealed class ServerChecksumCollector
     {
-        /// <summary>ServerTransport ceiling in 1.0 (N≤4; 8 = a constant bump, Story 9.2). Mirrors ServerTransport.MAX_SLOTS.</summary>
+        /// <summary>Checksum-reporting peer ceiling — a hand-kept literal (4) deliberately equal to the MP seat/player ceiling (PlayerCountPolicy.MpSeatCeiling == ServerTransport.MAX_PLAYERS == 4), NOT a symbolic pin to it. NOT ServerTransport.MAX_SLOTS (== 8, players + spectator headroom, Story 9.7) — deliberately left at 4; see the class summary.</summary>
         public const int MaxSlots = 4;
 
         /// <summary>
