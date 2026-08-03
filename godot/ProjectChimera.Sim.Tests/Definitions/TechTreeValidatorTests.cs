@@ -281,6 +281,78 @@ namespace ProjectChimera.Sim.Tests.Definitions
             Assert.Empty(TechTreeValidator.Validate(def));
         }
 
+        // ── DW-59: deep-chain stack safety (explicit-stack iterative cycle DFS) ──
+
+        [Fact]
+        public void DeepPrerequisiteChain_100kDeep_AcyclicValidatesClean_NoStackOverflow()
+        {
+            // DW-59 regression: Visit was a plain recursive DFS — one C# call-stack frame per depth level —
+            // so a creator-authored (or malicious-scale) chain this deep overflowed the call stack during
+            // faction load, and StackOverflowException kills the test host process uncatchably (this test
+            // crashes the whole run against the recursive version; 100k frames ≈ 15 MB of stack, far past
+            // any default). The explicit-stack rewrite bounds depth by heap memory instead.
+            var def = new FactionDefinition();
+            const int depth = 100_000;
+            for (int i = 0; i < depth; i++)
+            {
+                def.Buildings.Add(new BuildingDefinition
+                {
+                    Id = $"b{i}",
+                    Prerequisites = i + 1 < depth ? new[] { $"b{i + 1}" } : Array.Empty<string>(),
+                });
+            }
+
+            var errors = TechTreeValidator.Validate(def);
+
+            Assert.Empty(errors);
+        }
+
+        [Fact]
+        public void DeepPrerequisiteChain_100kDeep_CycleClosingAtTheDeepEnd_StillDetectedWithExactChainTail()
+        {
+            // The cycle sits at the BOTTOM of the chain, so the DFS must survive the full 100k-frame descent
+            // before it can even reach it — and the first-fail message must still name the exact closing pair
+            // (path-slice extraction unchanged by the DW-59 iterative rewrite). The deepest building points
+            // back at its parent: b99999 requires b99998, which is Gray on the path → "b99998 -> b99999 -> b99998".
+            var def = new FactionDefinition();
+            const int depth = 100_000;
+            for (int i = 0; i < depth; i++)
+            {
+                def.Buildings.Add(new BuildingDefinition
+                {
+                    Id = $"b{i}",
+                    Prerequisites = i + 1 < depth ? new[] { $"b{i + 1}" } : new[] { $"b{depth - 2}" },
+                });
+            }
+
+            var errors = TechTreeValidator.Validate(def);
+
+            string cycle = Assert.Single(errors);
+            Assert.Equal($"tech tree cycle: b{depth - 2} -> b{depth - 1} -> b{depth - 2}.", cycle);
+        }
+
+        [Fact]
+        public void DeepChain_MidChainSiblingBranches_TraversalOrderAndBlackSkipUnchanged()
+        {
+            // Order-preservation guard for the DW-59 rewrite: a node with TWO prerequisites must examine
+            // them in array order, fully retreating (blackening) the first subtree before descending the
+            // second, and a Black re-encounter must be skipped silently — the first cycle found in that
+            // DFS order is the ONE reported (first-fail), byte-identical message included.
+            var def = new FactionDefinition();
+            // root → left (clean, shared leaf) then root → right → right2 → right (the cycle the DFS
+            // reaches SECOND); leaf is re-encountered Black via right2.
+            def.Buildings.Add(new BuildingDefinition { Id = "root", Prerequisites = new[] { "left", "right" } });
+            def.Buildings.Add(new BuildingDefinition { Id = "left", Prerequisites = new[] { "leaf" } });
+            def.Buildings.Add(new BuildingDefinition { Id = "leaf" });
+            def.Buildings.Add(new BuildingDefinition { Id = "right", Prerequisites = new[] { "right2" } });
+            def.Buildings.Add(new BuildingDefinition { Id = "right2", Prerequisites = new[] { "leaf", "right" } });
+
+            var errors = TechTreeValidator.Validate(def);
+
+            string cycle = Assert.Single(errors);
+            Assert.Equal("tech tree cycle: right -> right2 -> right.", cycle);
+        }
+
         // ── Valid acyclic chain (existing shipped content) ───────────────────────
 
         [Fact]

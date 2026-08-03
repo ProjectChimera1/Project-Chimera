@@ -23,6 +23,8 @@ namespace ProjectChimera.Core.Definitions
     ///    leaves and can never participate in a cycle; restricting the walk to buildings keeps this
     ///    O(buildings) with no loss of correctness). Unlike checks 1-2, this is FIRST-FAIL: it stops after the
     ///    first cycle found and reports the exact chain, including the closing repeated id (e.g. <c>"a -> b -> a"</c>).
+    ///    The walk is an explicit-stack iteration, not recursion (DW-59) — an arbitrarily deep authored
+    ///    prerequisite chain can never overflow the call stack during faction load.
     ///
     /// A null <c>Prerequisites</c> array (malformed JSON <c>"prerequisites": null</c>) is treated as empty —
     /// never throws an NRE. Pure C#, no logging, no throw — the caller (<see cref="FactionDefinition.LoadFromFile"/>)
@@ -183,18 +185,47 @@ namespace ProjectChimera.Core.Definitions
             return null;
         }
 
-        /// <summary>DFS visit of one building node. Returns a formatted cycle message the instant a gray
-        /// (in-progress) node is re-encountered, unwinding without further work; returns null on a clean
+        /// <summary>DFS visit of one building node via an explicit heap stack (DW-59: this was a plain
+        /// recursion — one C# call-stack frame per graph-depth level — which an unbounded creator-authored
+        /// or malicious-scale prerequisite chain thousands of levels deep could overflow during faction
+        /// load, and a StackOverflowException kills the whole process uncatchably). Traversal order,
+        /// 3-color semantics, first-fail behavior, and the emitted message are unchanged from the
+        /// recursive original. Returns a formatted cycle message the instant a gray (in-progress) node is
+        /// re-encountered, abandoning the walk without further work; returns null on a clean
         /// (fully-black) subtree.</summary>
         private static string? Visit(string id, Dictionary<string, BuildingDefinition> buildingById,
             HashSet<string> buildingIds, Dictionary<string, Color> color, List<string> path)
         {
-            color[id] = Color.Gray;
-            path.Add(id);
+            // Three parallel lists = one frame per Gray node on the current DFS chain: the node id, its
+            // Prerequisites array (looked up ONCE on push, exactly like the recursive version's one lookup
+            // per Visit entry), and the index of its next unexamined prerequisite (the "resume point" the
+            // call stack used to remember). `path` mirrors frameIds push-for-push/pop-for-pop because the
+            // cycle-extraction slice below reads it — same shared-parameter contract as before.
+            var frameIds = new List<string>();
+            var framePrereqs = new List<string[]>();
+            var frameNext = new List<int>();
 
-            BuildingDefinition? building = buildingById.TryGetValue(id, out BuildingDefinition? bd) ? bd : null;
-            foreach (string prereq in building?.Prerequisites ?? Array.Empty<string>())
+            Push(id);
+
+            while (frameIds.Count > 0)
             {
+                int top = frameIds.Count - 1;
+                string[] prereqs = framePrereqs[top];
+
+                if (frameNext[top] >= prereqs.Length)
+                {
+                    // Every prerequisite of the top node examined and clean — retreat (the recursive epilogue).
+                    path.RemoveAt(path.Count - 1);
+                    color[frameIds[top]] = Color.Black;
+                    frameIds.RemoveAt(top);
+                    framePrereqs.RemoveAt(top);
+                    frameNext.RemoveAt(top);
+                    continue;
+                }
+
+                string prereq = prereqs[frameNext[top]];
+                frameNext[top]++;
+
                 if (!buildingIds.Contains(prereq)) continue; // unknown-id already reported by the referential lint above
 
                 Color prereqColor = color[prereq];
@@ -210,15 +241,24 @@ namespace ProjectChimera.Core.Definitions
                     return $"tech tree cycle: {string.Join(" -> ", chain)}.";
                 }
                 if (prereqColor == Color.White)
-                {
-                    string? result = Visit(prereq, buildingById, buildingIds, color, path);
-                    if (result != null) return result;
-                }
+                    Push(prereq);
+                // Black prereq: already-proven-clean subtree — skip, same as the recursive version.
             }
 
-            path.RemoveAt(path.Count - 1);
-            color[id] = Color.Black;
             return null;
+
+            // The recursive prologue: mark Gray, extend the shared path, and open a frame with the node's
+            // prerequisite list hoisted (null Prerequisites / unknown id defensively → empty, matching the
+            // original's `building?.Prerequisites ?? Array.Empty<string>()`).
+            void Push(string nodeId)
+            {
+                color[nodeId] = Color.Gray;
+                path.Add(nodeId);
+                BuildingDefinition? building = buildingById.TryGetValue(nodeId, out BuildingDefinition? bd) ? bd : null;
+                frameIds.Add(nodeId);
+                framePrereqs.Add(building?.Prerequisites ?? Array.Empty<string>());
+                frameNext.Add(0);
+            }
         }
     }
 }
