@@ -572,29 +572,21 @@ namespace ProjectChimera.Multiplayer
 
                 case PacketType.Ready:
                 {
-                    // Story 7.7 / 9.4 — the pure HandshakeGate decision over the 64-bit match-agreement hash.
-                    bool parsed = TickCommandPacket.TryReadReady(data, len, out ushort peerVer, out ulong peerHash);
-                    if (parsed && peerVer != TickCommandPacket.PROTOCOL_VERSION)
+                    // Story 7.7 / 9.4 / DW-360 — the FULL parse → version gate → HandshakeGate marshalling (parsed
+                    // flag, local/peer hash argument order, peer-slot resolution) is the Godot-free
+                    // ReadyPacketRouting.Route (Tier-1-tested); this handler only APPLIES the returned decision.
+                    // Story 9.16: the local per-domain content breakdown is surfaced on a block via the same route.
+                    ReadyRouteDecision decision = ReadyPacketRouting.Route(
+                        data, len, MatchAgreementHash, ContentBreakdown, _isHostRole);
+                    if (!decision.PeerReady)
                     {
-                        SetStatus("CANNOT START — peer protocol version mismatch.\n" +
-                                  $"Peer protocol: v{peerVer}\n" +
-                                  $"Your protocol: v{TickCommandPacket.PROTOCOL_VERSION}");
-                        _peerReadyConfirmed = false;
-                        return;
-                    }
-                    string? block = HandshakeGate.CheckStart(MatchAgreementHash, peerHash, peerHashParsed: parsed,
-                        localBreakdown: ContentBreakdown); // Story 9.16: surface the local per-domain content breakdown on a block
-                    if (block != null)
-                    {
-                        SetStatus(block);
+                        SetStatus(decision.BlockReason ?? "CANNOT START.");
                         _peerReadyConfirmed = false; // don't allow TryStartGame
                         return;
                     }
                     _peerReadyConfirmed = true;
-                    // P2P: the ready peer occupies slot 1 (from the host's view) or slot 0 (from the joiner's view).
-                    int peerSlot = _isHostRole ? 1 : 0;
-                    _readyModel.SetOccupied(peerSlot, true);
-                    _readyModel.SetReady(peerSlot, true);
+                    _readyModel.SetOccupied(decision.PeerSlot, true);
+                    _readyModel.SetReady(decision.PeerSlot, true);
                     SetStatus("Other player is ready!");
                     RebuildSlotGrid();
                     TryStartGame();

@@ -15,16 +15,14 @@ namespace ProjectChimera.Core.Bootstrap
     /// </summary>
     public static class ScenarioDelegateBinder
     {
-        /// <summary>The per-unit lateral spawn offset, 2.5 world units = 163840 raw in 16.16 (Story 7.1). A named
-        /// <see cref="Fixed"/> constant so the trigger spawn fan-out stays Fixed-only — no in-tick float offset.</summary>
-        private static readonly Fixed SpawnLateralOffset = Fixed.FromRaw(163840); // 2.5
-
         /// <summary>Wire all four ScenarioDirector On* delegates from the context (called by TriggerEditorPhase).</summary>
         public static void Bind(SceneContext ctx)
         {
             // spawn_unit → the Godot-free applier (sim→sim; the one On* that legitimately writes sim truth).
             // x/z arrive as Fixed; route through the Fixed-native SpawnUnitAt with a Fixed lateral offset so no
-            // Fixed.FromFloat and no float arithmetic runs on this path (Story 7.1).
+            // Fixed.FromFloat and no float arithmetic runs on this path (Story 7.1). The fan-out coordinate is
+            // ScenarioDelegateMath.FanOutX (DW-333) — Godot-free and Tier-1-asserted, so the determinism-relevant
+            // offset arithmetic this binder ships is the exact code the sim suite pins.
             ctx.ScenarioDirector.OnSpawnUnit = (unitId, slot, x, z, count) =>
             {
                 var faction    = (Faction)(slot + 1);
@@ -38,12 +36,14 @@ namespace ProjectChimera.Core.Bootstrap
                     return;
                 }
                 for (int i = 0; i < count; i++)
-                    ctx.Applier.SpawnUnitAt(def, faction, x + Fixed.FromInt(i) * SpawnLateralOffset, z);
+                    ctx.Applier.SpawnUnitAt(def, faction, ScenarioDelegateMath.FanOutX(x, i), z);
             };
 
             // display_message → HUD toast (presentation-output only). Convert Fixed→float at THIS presentation
-            // boundary (never in the tick): duration seconds feed the HUD toast timer.
-            ctx.ScenarioDirector.OnDisplayMessage = (text, dur) => ctx.Scene.ShowTriggerMessage(text, dur.ToFloat());
+            // boundary (never in the tick): duration seconds feed the HUD toast timer (the Godot-free,
+            // Tier-1-asserted ScenarioDelegateMath.ToastDurationSeconds — DW-333).
+            ctx.ScenarioDirector.OnDisplayMessage = (text, dur) =>
+                ctx.Scene.ShowTriggerMessage(text, ScenarioDelegateMath.ToastDurationSeconds(dur));
 
             // play_sound → audio (presentation-output only).
             ctx.ScenarioDirector.OnPlaySound = _ => ctx.AudioMgr?.PlayBuildingPlaced();
