@@ -66,7 +66,7 @@ namespace ProjectChimera.Core.Bootstrap
                 _ctx.Host.World,                        // Story 3.13: establish the entity→hero link (D-8) for the XP runtime
                 _ctx.Host.Items, _ctx.Host.ItemRegistry, // Story 3.16: re-mint the persisted inventory before the hash below
                 _ctx.Host.Modifiers, _ctx.Host.ItemSys.UsableSlots, // Story 3.16 review: apply carried stat modifiers + honor the slot cap
-                ownerSlot: _ctx.Lockstep?.LocalFaction); // DW-13: mint the deployed profile into the local player's placed hero only
+                ownerSlot: _ctx.Lockstep?.HeroMintOwnerSlot); // DW-13: mint into the local player's placed hero only; DW-407: clamped (offline → Player1, never a stale prior-match faction; spectator → Neutral = no mint)
 
             ScenarioData? model = _ctx.Scenario ?? _ctx.FallbackMirror;
             if (_ctx.ScenarioApplied && model != null)

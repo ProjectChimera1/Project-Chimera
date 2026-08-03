@@ -36,9 +36,10 @@ namespace ProjectChimera.Core.Bootstrap
                 enabledGetter: () => _ctx.Host?.TriggerEnabled,
                 scenarioGetter: () => _ctx.Scenario,
                 // The engine Faction enum is 1-based; the DSL per-player store is 0-based — convert via
-                // PlayerSlotForFaction. Late-bound: Lockstep is created many phases later.
+                // PlayerSlotForFaction. Late-bound: Lockstep is created many phases later. DW-407: read the CLAMPED
+                // EffectiveLocalFaction (offline/spectator → Player1), never the stale-prone raw LocalFaction.
                 localFactionGetter: () => _ctx.Lockstep != null
-                    ? DslVarReadback.PlayerSlotForFaction((int)_ctx.Lockstep.LocalFaction)
+                    ? DslVarReadback.PlayerSlotForFaction((int)_ctx.Lockstep.EffectiveLocalFaction)
                     : 0,
                 // Click-to-navigate crosses the Play→Edit boundary (an inherent mode switch, not a defect):
                 // MainScene switches to Edit, opens the flat trigger editor, and focuses the authored trigger row.
