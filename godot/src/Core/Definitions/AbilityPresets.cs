@@ -52,7 +52,7 @@ namespace ProjectChimera.Core.Definitions
             public Fixed Amount { get; set; } = Fixed.Zero;
             /// <summary>AoE radius (AoE Nuke only).</summary>
             public Fixed Radius { get; set; } = Fixed.Zero;
-            /// <summary>Buff duration in ticks (Self Buff only; &lt;0 = permanent, 0 = one-shot).</summary>
+            /// <summary>Buff duration in ticks (Self Buff only; &lt;0 = permanent, 0 = ONE TICK — not instantaneous, DW-270).</summary>
             public int DurationTicks { get; set; }
         }
 

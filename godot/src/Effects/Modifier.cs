@@ -45,7 +45,19 @@ namespace ProjectChimera.Effects
         /// <summary>Identity used for stacking — two modifiers stack against each other iff their ids match.</summary>
         public readonly int Id;
 
-        /// <summary>Lifetime in sim ticks (0 = instantaneous/one-shot; &lt;0 = permanent until dispelled).</summary>
+        /// <summary>
+        /// Lifetime in sim ticks. <c>&gt; 0</c> = that many ticks of effect; <c>&lt; 0</c> = PERMANENT until dispelled
+        /// (stored as the <c>ModifierStore.PERMANENT</c> sentinel and never decremented).
+        /// <para><b><c>0</c> is a ONE-TICK modifier, NOT an instantaneous one</b> (DW-270 — this doc used to claim
+        /// "instantaneous/one-shot", which the store has never implemented). A 0-duration modifier installs exactly
+        /// like any other: it takes a slot in the target's ring, its stat deltas and <see cref="Status"/> flags go live
+        /// immediately (so combat later in the SAME tick reads them, and a <see cref="PeriodTicks"/> of 1 fires one
+        /// pulse), and the next <c>ModifierStore.Advance</c> decrements <c>0 → −1</c> and expires it. So the bonus is
+        /// observable for one full sim tick. For a genuinely instantaneous change use a direct leaf
+        /// (<c>direct_hp_delta</c> / <c>heal</c> / <c>damage</c>) — a modifier's job is a TIMED effect. Authoring a
+        /// <c>duration_ticks: 0</c> raises a non-fatal <c>AbilityValidator</c> warning so the one-tick semantics are
+        /// never a silent surprise (DW-278).</para>
+        /// </summary>
         public readonly int DurationTicks;
 
         /// <summary>Behaviour when a same-id modifier is re-applied.</summary>
