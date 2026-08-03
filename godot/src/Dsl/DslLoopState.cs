@@ -15,8 +15,9 @@ namespace ProjectChimera.Dsl
     /// top-level-only / one-per-trigger by the load gate, so no nested-resume machinery exists.
     ///
     /// Fuel: <see cref="ResetFuel"/> runs at the START of every director tick; <see cref="Charge"/> mirrors the
-    /// static load-gate cost model (action = 1, expression = op count, run_effect = embedded node count, loop /
-    /// branch entry = 1). <see cref="FuelExhausted"/> (consumed ≥ <see cref="DslBounds.MaxDslOpsPerTick"/>) is
+    /// static load-gate cost model (action = 1, expression = op count, run_effect = embedded node count with
+    /// SearchArea child subtrees weighted by <c>EffectCaps.MaxSearchTargets</c> — DW-347, loop / branch entry
+    /// = 1). <see cref="FuelExhausted"/> (consumed ≥ <see cref="DslBounds.MaxDslOpsPerTick"/>) is
     /// checked only at whole-trigger / whole-drain-row boundaries, so exhaustion never tears a trigger.
     /// </summary>
     public sealed class DslLoopState

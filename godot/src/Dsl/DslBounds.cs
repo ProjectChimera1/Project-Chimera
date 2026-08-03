@@ -49,9 +49,10 @@ namespace ProjectChimera.Dsl
 
         /// <summary>
         /// Maximum static worst-case op cost of a single trigger's action chain (action = 1, expression =
-        /// compiled op count, run_effect = embedded effect-node count, for_each = 1 + iterationCap × body,
-        /// branch = 1 + condition + max(then, else), for_each_batched = 1 + batch_size × body). Exceeding it is a
-        /// LOAD reject naming this constant — the bounded-by-construction gate.
+        /// compiled op count, run_effect = embedded effect-node count with SearchArea child subtrees weighted by
+        /// <c>EffectCaps.MaxSearchTargets</c> — the worst-case per-target fan-out, DW-347 —, for_each = 1 +
+        /// iterationCap × body, branch = 1 + condition + max(then, else), for_each_batched = 1 + batch_size ×
+        /// body). Exceeding it is a LOAD reject naming this constant — the bounded-by-construction gate.
         /// </summary>
         public const int MaxDslOpsPerTrigger = 4096;
 
@@ -111,10 +112,14 @@ namespace ProjectChimera.Dsl
         /// Fuel charges fired-chain execution only: actions, their value/index expressions, run_effect embeds,
         /// loop iterations, and batched drains. Trigger CONDITION evaluation and event collection are NOT
         /// charged — each condition expression is bounded per-expression by <c>ExprBounds</c>, but their sum
-        /// scales with the trigger count outside this budget. Charging mirrors the static cost model;
-        /// exhaustion halts the sweep deterministically at a whole-trigger boundary (the in-flight trigger
-        /// completes; remaining triggers skip this tick and re-evaluate next tick). The consumed-this-tick
-        /// value folds into <c>SimChecksum</c> via <see cref="DslLoopState"/>.
+        /// scales with the trigger count outside this budget. Also NOT metered (DW-352): the run_effect
+        /// SpatialHash rebuild — an O(world) pass the director performs lazily at most once per tick plus once
+        /// after each world-mutating effect/spawn (kept correct by the dirty flag, invisible to fuel by design).
+        /// Charging mirrors the static cost model; exhaustion halts the sweep deterministically at a
+        /// whole-trigger boundary (the in-flight trigger completes; remaining triggers skip this tick and
+        /// re-evaluate next tick — one-shot EDGE events they missed persist via the DW-349 re-queue rail on
+        /// <c>DslEventQueue</c>). The consumed-this-tick value folds into <c>SimChecksum</c> via
+        /// <see cref="DslLoopState"/>.
         /// </summary>
         public const int MaxDslOpsPerTick = 16384;
     }

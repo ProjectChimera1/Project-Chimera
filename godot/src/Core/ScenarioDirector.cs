@@ -103,6 +103,40 @@ namespace ProjectChimera.Core
         private readonly int[] _pendingChatCode   = new int[EventBounds.MaxNextTickEventQueue];
         private int _pendingChatCount;
 
+        // ── DW-349 — the edge-event RE-QUEUE rail (the recorded decision: persist unconsumed edge events for
+        // fuel-skipped/suppressed triggers via the 7.5 DslEventQueue). A one-shot base occurrence a trigger never
+        // got to evaluate — the sweep broke on FuelExhausted before reaching it, or its batched continuation row
+        // suppressed it — is enqueued as RequeueRailBase + kind with P3 = the TARGET exec index, and redelivered
+        // next tick as a base occurrence visible to THAT exec alone (FiredEvent.TargetExec), so already-served
+        // triggers can never double-fire. Polled kinds (thresholds) re-emit every tick and never ride the rail.
+        // The transient decode buffer below mirrors the player_chat rail posture: filled by the tick-start
+        // dequeue, drained into the base buffer by CollectEvents, EMPTY at the checksum boundary → NOT folded
+        // (the folded persistence is the DslEventQueue rows themselves). ──
+
+        /// <summary>DW-349 — the redeliverable one-shot (edge) base-event kinds, in RAIL-ORDINAL order (the
+        /// queue code is <c>EventBounds.RequeueRailBase + index</c>). Interned literals — no per-tick strings.</summary>
+        private static readonly string[] RequeueKindNames =
+            { "match_start", "unit_dies", "building_completed", "timer_expires",
+              "unit_damaged", "unit_trained", "ability_cast", "hero_level", "player_chat" };
+
+        private readonly int[] _pendingRequeueKind   = new int[EventBounds.MaxNextTickEventQueue];
+        private readonly int[] _pendingRequeueSlot   = new int[EventBounds.MaxNextTickEventQueue];
+        private readonly int[] _pendingRequeueP0     = new int[EventBounds.MaxNextTickEventQueue];
+        private readonly int[] _pendingRequeueP1     = new int[EventBounds.MaxNextTickEventQueue];
+        private readonly int[] _pendingRequeueP2     = new int[EventBounds.MaxNextTickEventQueue];
+        private readonly int[] _pendingRequeueTarget = new int[EventBounds.MaxNextTickEventQueue];
+        private int _pendingRequeueCount;
+
+        // The fixed-width scratch handed to DslEventQueue.Enqueue for a re-queue row (zero per-tick allocation).
+        private readonly int[] _requeueScratch = new int[EventBounds.MaxEventParams];
+
+        // DW-349 — timer_expires carries a NAME string, which cannot ride the int-only queue: the closed timer-name
+        // universe (declared timers + create_timer action names — the same load-computable set the base-buffer
+        // sizing walks) is index-encoded at LoadScenario in first-seen order. Emission stamps the index into the
+        // occurrence's P0; redelivery decodes it back to the loaded reference (no per-tick string construction).
+        private string[] _timerNameTable = Array.Empty<string>();
+        private Dictionary<string, int> _timerNameIndex = new(StringComparer.Ordinal);
+
         // Story 7.4 — compiled expression programs, indexed by _execs position. Compiled ONCE per LoadScenario
         // (the two-phase contract: compile at load, zero-allocation eval in the tick). _condPrograms[i] are the
         // Bool programs ANDed with the trigger's legacy conditions. Empty for every expression-free (legacy)
@@ -131,7 +165,8 @@ namespace ProjectChimera.Core
             public int[] Weights = Array.Empty<int>();
             public int   WeightTotal;          // precomputed sum of Weights (the draw bound)
             public int[]? Snapshot;            // for_each loop-entry snapshot buffer (UpTo / array capacity)
-            public int RunEffectCost;          // run_effect: embedded effect-node count (the fuel charge)
+            public int RunEffectCost;          // run_effect: embedded node count, SearchArea subtrees ×MaxSearchTargets (DW-347)
+            public bool RunEffectMutatesWorld; // DW-339/DW-352: the embedded graph can kill/mutate hash-visible world state
             public int BatchRow = -1;          // for_each_batched: its DslLoopState continuation row
             // Story 7.5 — the compiled raise plan for a TOP-LEVEL raise_event item (null on every other kind;
             // raise_event inside a body/then/else sub-chain is rejected at BOTH load gates, so a nested raise
@@ -212,6 +247,21 @@ namespace ProjectChimera.Core
         // The remaining sinks are injected from SimulationHost via SetEffectRuntime once every store exists.
         private readonly EffectExecutor _effectExecutor = new EffectExecutor();
         private readonly SpatialHash    _effectSpatial  = new SpatialHash();
+
+        // DW-339/DW-352 — the dirty-flagged rebuild guard for _effectSpatial: false at every tick start (positions
+        // moved between director ticks), set true by the LAZY rebuild at the first run_effect of the tick, and
+        // re-cleared after any operation that can mutate hash-visible world state (a kill-capable embedded effect
+        // ran, or a spawn_unit leaf fired — production OnSpawnUnit spawns synchronously into the sim world and can
+        // recycle a slot). N run_effects with provably non-mutating graphs (heal-only) now share ONE O(world)
+        // rebuild per tick, while mid-loop kills/spawns stay visible to later iterations — byte-identical results
+        // to the old rebuild-per-invocation, so no golden moves. NOT folded (the hash itself never folds; only
+        // effect RESULTS do, and those are unchanged).
+        private bool _effectSpatialBuilt;
+
+        /// <summary>DW-339/DW-352 test seam — cumulative count of run_effect SpatialHash rebuilds this director
+        /// performed. Observation-only (never folded, never read by the tick); lets a regression test prove the
+        /// at-most-once-unless-dirtied contract without exposing the hash.</summary>
+        internal int EffectSpatialRebuildCount { get; private set; }
         private DamageTable       _damageTable  = DamageTable.Default;
         private ModifierStore?    _modifiers;
         private CombatEventQueue? _combatEvents;
@@ -507,6 +557,19 @@ namespace ProjectChimera.Core
             string? spawnErr = DslLoopGate.CheckSpawnCounts(execs);
             if (spawnErr != null) throw new System.Text.Json.JsonException(spawnErr);
 
+            // DW-340 — the modifier-runtime wiring gate: an embedded run_effect whose graph contains an
+            // apply_modifier/persistent node NEEDS the ModifierStore SetEffectRuntime injects; without one the
+            // EffectExecutor throws NotSupportedException MID-TICK the first time such an effect fires.
+            // Production always wires the store before any LoadScenario (SimulationHost ctor order), so this
+            // rejects only the fragile path the ledger names: a director built off the host path (test helpers,
+            // future non-host callers) loading modifier-bearing trigger content. Fail-closed at load with a
+            // located reject — never a deterministic-looking crash later. Runs pre-commit (failure-atomic).
+            if (_modifiers is null)
+            {
+                string? modErr = CheckModifierEffectsNeedStore(execs);
+                if (modErr != null) throw new System.Text.Json.JsonException(modErr);
+            }
+
             {
                 var declaredRegions = new HashSet<string>(StringComparer.Ordinal);
                 if (scenario.Regions != null)
@@ -560,17 +623,29 @@ namespace ProjectChimera.Core
             // load-computable; the whole-graph node walk also covers create_timer actions nested inside 7.6
             // container bodies, which the flat top-level Actions projection omits) + the 4 polled threshold
             // events + match_start.
-            var timerNames = new HashSet<string>(StringComparer.Ordinal);
+            // DW-349 — the same walk now ALSO produces the ORDERED timer-name table (first-seen order: declared
+            // timers, then graph create_timer nodes in node order — deterministic, both sources are load-stable
+            // lists), which index-encodes timer_expires payloads for the re-queue rail (names cannot ride the
+            // int-only DslEventQueue). Built as locals; committed below (failure atomicity).
+            var timerNames    = new HashSet<string>(StringComparer.Ordinal);
+            var timerNameList = new List<string>();
             if (scenario.Timers != null)
                 foreach (ScenarioTimer t in scenario.Timers)
-                    if (!string.IsNullOrEmpty(t.Name)) timerNames.Add(t.Name);
+                    if (!string.IsNullOrEmpty(t.Name) && timerNames.Add(t.Name))
+                        timerNameList.Add(t.Name);
             foreach (NodeBase n in graph.Nodes)
-                if (n is ActionNode { Kind: "create_timer" } ct && !string.IsNullOrEmpty(ct.TimerName))
-                    timerNames.Add(ct.TimerName!);
+                if (n is ActionNode { Kind: "create_timer" } ct && !string.IsNullOrEmpty(ct.TimerName)
+                    && timerNames.Add(ct.TimerName!))
+                    timerNameList.Add(ct.TimerName!);
+            var timerNameIndex = new Dictionary<string, int>(timerNameList.Count, StringComparer.Ordinal);
+            for (int i = 0; i < timerNameList.Count; i++) timerNameIndex[timerNameList[i]] = i;
             // Story 7.13 — add headroom for the sim-event feed drain (unit_damaged/unit_trained/ability_cast/
             // hero_level occurrences collected into the base buffer alongside the polled events) AND for Arm D's
             // player_chat pending buffer (up to EventBounds.MaxNextTickEventQueue occurrences drain into this SAME
             // base buffer), so the sizing is correct-by-construction rather than relying on entity/building headroom.
+            // DW-349 — the re-queue rail's redelivered occurrences ALSO drain into this base buffer, but they share
+            // the SAME MaxNextTickEventQueue-capacity queue with the chat rail (chat rows + re-queue rows ≤ one
+            // queue full), so the existing single MaxNextTickEventQueue term covers both rails together.
             // Story 9.2 — the threshold poll now emits 2 events (resource + unit_count) per ACTIVE faction, up to
             // 2*PLAYER_COUNT at N=8; reserve that plus 1 (match_start) rather than the old compile-time `+ 5`.
             var baseEvents = new FiredEvent[EntityWorld.MAX_ENTITIES + BuildingStore.MAX_BUILDINGS + timerNames.Count + (2 * FactionRegistry.PLAYER_COUNT + 1) + DslSimEventFeed.Capacity + EventBounds.MaxNextTickEventQueue];
@@ -670,6 +745,9 @@ namespace ProjectChimera.Core
             _baseEventCount   = 0;
             _workHead = _workCount = 0;
             _pendingChatCount = 0; // Story 7.13 (Arm D) — a re-load never inherits a pending player_chat occurrence
+            _pendingRequeueCount = 0; // DW-349 — nor a pending re-queued edge occurrence
+            _timerNameTable = timerNameList.ToArray(); // DW-349 — the timer_expires index-encoding table
+            _timerNameIndex = timerNameIndex;
             _frameCount = 0;
             _eventQueue.Clear();
 
@@ -1028,7 +1106,12 @@ namespace ProjectChimera.Core
                     }
 
                     case EffectActionNode eff:
+                        // DW-347: the SAME shared cost function the load gate charges (SearchArea subtrees
+                        // weighted by MaxSearchTargets), so static model and runtime charge cannot drift.
                         ci.RunEffectCost = DslLoopGate.CountEffectNodes(eff.Effect);
+                        // DW-339/DW-352: classify once at compile whether executing this graph can mutate
+                        // hash-visible world state (kills/installs) — drives the spatial-index dirty flag.
+                        ci.RunEffectMutatesWorld = DslLoopGate.EffectCanMutateWorld(eff.Effect);
                         break;
 
                     case ActionNode act when NodeKinds.IsArrayActionKind(act.Kind):
@@ -1208,12 +1291,18 @@ namespace ProjectChimera.Core
                 // (per-tick scratch, NOT folded — the depth cap is a within-tick seatbelt).
                 _runDepth = 0;
 
+                // DW-339 — the run_effect spatial index goes stale between director ticks (movement systems ran):
+                // clear the built flag so the FIRST run_effect of this tick lazily rebuilds it (at most once per
+                // tick unless a world mutation re-dirties it below).
+                _effectSpatialBuilt = false;
+
                 if (_execs.Count == 0)
                 {
                     // Story 7.13 — a trigger-less scenario still drains the sim-event feed producers pushed (no
                     // subscriber matches, but the feed must not accumulate across ticks).
                     _simEventFeed.Clear();
                     _pendingChatCount = 0; // Story 7.13 (Arm D) — parity: the player_chat rail must not accumulate either
+                    _pendingRequeueCount = 0; // DW-349 — parity: nor the edge-event re-queue rail
                     // Review (7.3 follow-up): declared ScenarioData.Timers made trigger-less timers representable, and
                     // the folded remaining-ticks must still decrement per the "declared timers start active" contract —
                     // pre-7.3 the early-out was safe because timers could only exist via trigger actions. An empty table
@@ -1235,13 +1324,16 @@ namespace ProjectChimera.Core
                 _workHead = 0;
                 _workCount = 0;
                 _pendingChatCount = 0; // Story 7.13 (Arm D) — re-fill the transient player_chat rail from this dequeue
+                _pendingRequeueCount = 0; // DW-349 — re-fill the transient edge-event re-queue rail from this dequeue
                 int pending = _eventQueue.Count;
                 for (int i = 0; i < pending; i++)
                 {
+                    int code = _eventQueue.EventIndexAt(i);
+
                     // Story 7.13 (Arm D) — a player_chat-rail entry (marked with the reserved sentinel) is a BUILT-IN,
                     // dispatched by the base sweep (not a _subscribedEvent), so it must NOT seed the custom work-list.
                     // Stash (sender=P0, code=P1) on the transient rail; CollectEvents drains it into a base occurrence.
-                    if (_eventQueue.EventIndexAt(i) == EventBounds.PlayerChatRailCode)
+                    if (code == EventBounds.PlayerChatRailCode)
                     {
                         if (_pendingChatCount < _pendingChatSender.Length) // deterministic drop-newest (cannot overflow in practice)
                         {
@@ -1252,13 +1344,32 @@ namespace ProjectChimera.Core
                         continue;
                     }
 
+                    // DW-349 — a re-queue-rail entry is a PERSISTED one-shot base occurrence (kind = code − base,
+                    // payload P0..P2, P3 = the target exec): stash it on the transient rail; CollectEvents
+                    // redelivers it as a base occurrence visible to its target trigger alone.
+                    if ((uint)(code - EventBounds.RequeueRailBase) < (uint)RequeueKindNames.Length)
+                    {
+                        if (_pendingRequeueCount < _pendingRequeueKind.Length) // deterministic drop-newest (cannot overflow in practice)
+                        {
+                            int r = _pendingRequeueCount++;
+                            _pendingRequeueKind[r]   = code - EventBounds.RequeueRailBase;
+                            _pendingRequeueSlot[r]   = _eventQueue.RaiserAt(i);
+                            _pendingRequeueP0[r]     = _eventQueue.ParamAt(i, 0);
+                            _pendingRequeueP1[r]     = _eventQueue.ParamAt(i, 1);
+                            _pendingRequeueP2[r]     = _eventQueue.ParamAt(i, 2);
+                            _pendingRequeueTarget[r] = _eventQueue.ParamAt(i, 3);
+                        }
+                        continue;
+                    }
+
                     if (_workCount >= _workList.Length) continue; // custom work-list full → drop-newest (existing seatbelt)
                     ref FiredEvent ev = ref _workList[_workCount++];
                     ev.Type        = CustomEventType;
-                    ev.CustomIndex = _eventQueue.EventIndexAt(i);
+                    ev.CustomIndex = code;
                     ev.Slot        = _eventQueue.RaiserAt(i);
                     ev.Numeric     = 0;
                     ev.Data        = null;
+                    ev.TargetExec  = -1; // DW-349 — custom occurrences are never target-restricted
                     ev.P0 = _eventQueue.ParamAt(i, 0);
                     ev.P1 = _eventQueue.ParamAt(i, 1);
                     ev.P2 = _eventQueue.ParamAt(i, 2);
@@ -1352,14 +1463,17 @@ namespace ProjectChimera.Core
         // ── Event collection ──────────────────────────────────────────────────
 
         /// <summary>Append one base event to the preallocated buffer (bounds-guarded drop-newest — unreachable
-        /// under the load-time sizing, kept as the fail-closed backstop).</summary>
+        /// under the load-time sizing, kept as the fail-closed backstop). DW-349: <paramref name="targetExec"/>
+        /// ≥ 0 marks a REDELIVERED occurrence visible to that exec alone (−1 — every fresh emission — is
+        /// unrestricted); written unconditionally because buffer slots are reused across ticks.</summary>
         private void AddBaseEvent(string type, int slot, int numeric, string? data,
-                                  int p0 = 0, int p1 = 0, int p2 = 0, int p3 = 0)
+                                  int p0 = 0, int p1 = 0, int p2 = 0, int p3 = 0, int targetExec = -1)
         {
             if (_baseEventCount >= _baseEvents.Length) return; // defensive drop-newest (sizing covers worst case)
             ref FiredEvent ev = ref _baseEvents[_baseEventCount++];
             ev.Type = type; ev.Slot = slot; ev.Numeric = numeric; ev.Data = data;
             ev.CustomIndex = -1;
+            ev.TargetExec = targetExec;
             ev.P0 = p0; ev.P1 = p1; ev.P2 = p2; ev.P3 = p3;
         }
 
@@ -1370,6 +1484,35 @@ namespace ProjectChimera.Core
         private void CollectEvents(EntityWorld world)
         {
             _baseEventCount = 0;
+
+            // ── DW-349 — redeliver the PERSISTED edge occurrences the tick-start dequeue stashed on the re-queue
+            //    rail, FIRST (they are the oldest — the "dequeued events dispatch before this tick's" posture),
+            //    each visible to its TARGET exec alone (TargetExec), so an already-served trigger never re-fires.
+            //    Payload decode is total: building_completed re-derives its type name from the P0 type index and
+            //    timer_expires its name from the load-built table (both loaded references — no per-tick string);
+            //    an undecodable index (unreachable for gate-loaded content) drops the row deterministically. ──
+            for (int i = 0; i < _pendingRequeueCount; i++)
+            {
+                int kind = _pendingRequeueKind[i];
+                if ((uint)kind >= (uint)RequeueKindNames.Length) continue; // defensive (dequeue range-checked)
+                string? data = null;
+                if (kind == 2) // building_completed — P0 = (int)BuildingType
+                {
+                    int bt = _pendingRequeueP0[i];
+                    if ((uint)bt >= (uint)BuildingTypeNames.Length) continue; // decode miss → deterministic drop
+                    data = BuildingTypeNames[bt];
+                }
+                else if (kind == 3) // timer_expires — P0 = timer-name table index
+                {
+                    int ti = _pendingRequeueP0[i];
+                    if ((uint)ti >= (uint)_timerNameTable.Length) continue; // decode miss → deterministic drop
+                    data = _timerNameTable[ti];
+                }
+                AddBaseEvent(RequeueKindNames[kind], _pendingRequeueSlot[i], 0, data,
+                    p0: _pendingRequeueP0[i], p1: _pendingRequeueP1[i], p2: _pendingRequeueP2[i],
+                    targetExec: _pendingRequeueTarget[i]);
+            }
+            _pendingRequeueCount = 0;
 
             // match_start fires on the very first tick after LoadScenario().
             if (_firstTick)
@@ -1402,8 +1545,10 @@ namespace ProjectChimera.Core
                 bool isDone  = isAlive && _buildings.ConstructionTimer[i] <= Fixed.Zero;
 
                 if (isAlive && !wasDone && isDone)
+                    // DW-349 — P0 carries the int building type so a re-queue of this occurrence can ride the
+                    // int-only DslEventQueue (FiredEvent is transient/never folded; nothing else reads its P0).
                     AddBaseEvent("building_completed", (int)_buildings.FactionOf[i] - 1, 0,
-                        BuildingTypeNameOf(_buildings.Type[i]));
+                        BuildingTypeNameOf(_buildings.Type[i]), p0: (int)_buildings.Type[i]);
             }
 
             // Timers — decrement each ACTIVE timer and collect expiries in CREATION-INDEX (declaration) order via the
@@ -1412,7 +1557,10 @@ namespace ProjectChimera.Core
             _expiredTimers.Clear();
             _vars.TimerTickAndCollectExpired(_expiredTimers);
             for (int i = 0; i < _expiredTimers.Count; i++)
-                AddBaseEvent("timer_expires", -1, 0, _expiredTimers[i]);
+                // DW-349 — P0 carries the timer's load-table index (−1 = not in the closed universe, which only a
+                // direct test poking the var table can produce) so a re-queue can ride the int-only queue.
+                AddBaseEvent("timer_expires", -1, 0, _expiredTimers[i],
+                    p0: _timerNameIndex.TryGetValue(_expiredTimers[i], out int tni) ? tni : -1);
 
             // Threshold events — polled every tick so triggers can react to sustained states. Story 9.2: iterate
             // every ACTIVE faction (slots 0..ActiveCount-1) rather than the literal first two; a null registry
@@ -1485,8 +1633,15 @@ namespace ProjectChimera.Core
             {
                 // Story 7.6 — the fuel seatbelt halts the SWEEP at a whole-trigger boundary: the in-flight
                 // trigger completed (it charged past the budget mid-run, untorn), and every remaining trigger
-                // skips this tick and simply re-evaluates next tick — identically on every peer.
-                if (_loopState.FuelExhausted) break;
+                // skips this tick and simply re-evaluates next tick — identically on every peer. DW-349: that
+                // "re-evaluates next tick" only reaches POLLED events by itself — one-shot EDGE occurrences the
+                // skipped tail would have matched are PERSISTED onto the DslEventQueue re-queue rail first
+                // (targeted per skipped trigger), so they redeliver instead of vanishing.
+                if (_loopState.FuelExhausted)
+                {
+                    RequeueEdgeEventsForSkippedSweepTail(idx);
+                    break;
+                }
 
                 TriggerGraph.TriggerExec ex = _execs[idx];
                 if (idx < _subscribedEvent.Length && _subscribedEvent[idx] >= 0)   continue; // Story 7.5 — drain-only
@@ -1496,8 +1651,14 @@ namespace ProjectChimera.Core
                 // bound is the reset-window guard (review P8): SimulationHost.ClearForReset clears LoopState
                 // rows while this director's bookkeeping survives until the re-apply's LoadScenario — a tick in
                 // that window must treat the stale row index as "no active row", never index cleared storage.
+                // DW-349: the suppressed trigger's matching EDGE occurrences persist onto the re-queue rail
+                // (targeted at it) so they redeliver once the drip completes, instead of vanishing.
                 if (_batchRowOfTrigger[idx] >= 0 && _batchRowOfTrigger[idx] < _loopState.RowCount
-                    && _loopState.RowActive(_batchRowOfTrigger[idx])) continue;
+                    && _loopState.RowActive(_batchRowOfTrigger[idx]))
+                {
+                    RequeueEdgeEventsFor(idx, ex, fromEvent: 0);
+                    continue;
+                }
 
                 if (idx < _paramReading.Length && _paramReading[idx])
                 {
@@ -1510,10 +1671,16 @@ namespace ProjectChimera.Core
                         // Story 7.6 parity (merge review): a batched row ACTIVATED by an earlier same-tick
                         // occurrence suppresses the remaining occurrences — the drain's per-dispatch re-check;
                         // without it a second occurrence re-fires the chain and re-activates the row, clobbering
-                        // the in-flight drip snapshot.
+                        // the in-flight drip snapshot. DW-349: those remaining occurrences are the suppression
+                        // loss class — persist the matching EDGE ones (targeted at this trigger) before breaking.
                         if (_batchRowOfTrigger[idx] >= 0 && _batchRowOfTrigger[idx] < _loopState.RowCount
-                            && _loopState.RowActive(_batchRowOfTrigger[idx])) break;
+                            && _loopState.RowActive(_batchRowOfTrigger[idx]))
+                        {
+                            RequeueEdgeEventsFor(idx, ex, fromEvent: e);
+                            break;
+                        }
                         ref FiredEvent f = ref _baseEvents[e];
+                        if (f.TargetExec >= 0 && f.TargetExec != idx)        continue; // DW-349 targeted redelivery
                         if (!MatchesAnyDef(ex.Events, in f))                 continue;
                         LoadBuiltinFrame(in f);
                         if (!AllConditionsMet(ex.Conditions, world))         continue;
@@ -1525,7 +1692,7 @@ namespace ProjectChimera.Core
                 }
 
                 _frameCount = 0; // legacy path: no dispatch frame (its programs cannot read event params anyway)
-                if (!AnyEventMatches(ex.Events))                                    continue;
+                if (!AnyEventMatches(ex.Events, idx))                               continue;
                 if (!AllConditionsMet(ex.Conditions, world))                        continue;
                 // Story 7.4: compiled condition-expression programs AND with the legacy conditions above
                 // (multi-condition semantics). Pre-checked Bool postfix programs; zero-allocation eval.
@@ -1533,6 +1700,103 @@ namespace ProjectChimera.Core
 
                 FireTrigger(idx, ex, world);
             }
+        }
+
+        // ── DW-349 — the edge-event re-queue arms (the recorded decision: persist via DslEventQueue) ─────────
+
+        /// <summary>
+        /// DW-349 — the FUEL-BREAK arm: the sweep halted at exec <paramref name="fromExec"/>, so every non-drain-only
+        /// trigger from there on never evaluated this tick's base events. For each one-shot EDGE occurrence, persist
+        /// one queue row PER skipped trigger that (a) would have passed its enabled/run-once/cooldown gates this tick
+        /// (a gate-blocked skip is AUTHORED semantics — polled parity — not the loss class) and (b) statically
+        /// matches the occurrence — targeted at that trigger, so redelivery can never touch an already-served one.
+        /// An already-targeted (persisted) occurrence re-queues only for its own target when that target is in the
+        /// skipped tail — persistence across consecutive exhausted ticks. Occurrence-major, ascending exec — a
+        /// deterministic enqueue order; a full queue drops newest (the documented DslEventQueue seatbelt).
+        /// </summary>
+        private void RequeueEdgeEventsForSkippedSweepTail(int fromExec)
+        {
+            for (int e = 0; e < _baseEventCount; e++)
+            {
+                ref FiredEvent f = ref _baseEvents[e];
+                int kind = RequeueKindOf(in f);
+                if (kind < 0) continue;
+
+                if (f.TargetExec >= 0)
+                {
+                    int j = f.TargetExec;
+                    if (j >= fromExec && j < _execs.Count && RequeueEligible(j)
+                        && MatchesAnyDef(_execs[j].Events, in f))
+                        TryRequeue(in f, kind, j);
+                    continue;
+                }
+
+                for (int j = fromExec; j < _execs.Count; j++)
+                    if (RequeueEligible(j) && MatchesAnyDef(_execs[j].Events, in f))
+                        TryRequeue(in f, kind, j);
+            }
+        }
+
+        /// <summary>
+        /// DW-349 — the BATCHED-SUPPRESSION arm: trigger <paramref name="idx"/> is suppressed (its continuation row
+        /// is draining), so base occurrences from <paramref name="fromEvent"/> on are unconsumed for it. Persist the
+        /// matching EDGE ones targeted at it; while the drip keeps running they re-arrive targeted and re-persist
+        /// through this same arm, and once the row completes they dispatch. Gate state was already checked by the
+        /// caller (the suppression checks run after/inside the enabled/fired/cooldown gates).
+        /// </summary>
+        private void RequeueEdgeEventsFor(int idx, TriggerGraph.TriggerExec ex, int fromEvent)
+        {
+            for (int e = fromEvent; e < _baseEventCount; e++)
+            {
+                ref FiredEvent f = ref _baseEvents[e];
+                int kind = RequeueKindOf(in f);
+                if (kind < 0) continue;
+                if (f.TargetExec >= 0 && f.TargetExec != idx) continue; // another trigger's persisted occurrence
+                if (!MatchesAnyDef(ex.Events, in f)) continue;
+                TryRequeue(in f, kind, idx);
+            }
+        }
+
+        /// <summary>DW-349 — a skipped trigger is worth a persistence row only when the sweep WOULD have evaluated
+        /// the occurrence had it reached it: not a drain-only custom subscriber (those never consume base events),
+        /// enabled, not run-once-spent, not cooling. Conditions are deliberately NOT pre-evaluated — they are state
+        /// predicates re-checked at redelivery dispatch, the "re-evaluate next tick" contract.</summary>
+        private bool RequeueEligible(int j) =>
+            (j >= _subscribedEvent.Length || _subscribedEvent[j] < 0)
+            && _triggerEnabled.IsEnabled(j) && !_triggerFired[j] && _triggerCooldown[j] == 0;
+
+        /// <summary>DW-349 — the re-queue-rail kind ordinal of a base occurrence (−1 = not persistable: custom
+        /// occurrences ride the work list, polled thresholds re-emit every tick by construction).</summary>
+        private static int RequeueKindOf(in FiredEvent f)
+        {
+            if (f.CustomIndex >= 0) return -1;
+            return f.Type switch
+            {
+                "match_start"        => 0,
+                "unit_dies"          => 1,
+                "building_completed" => 2,
+                "timer_expires"      => 3,
+                "unit_damaged"       => 4,
+                "unit_trained"       => 5,
+                "ability_cast"       => 6,
+                "hero_level"         => 7,
+                "player_chat"        => 8,
+                _                    => -1, // resource_threshold / unit_count_threshold — polled, never persisted
+            };
+        }
+
+        /// <summary>DW-349 — enqueue one persistence row: <c>RequeueRailBase + kind</c>, raiser = the occurrence
+        /// slot, P0..P2 = payload raws, P3 = the target exec. A timer occurrence whose name failed to index-encode
+        /// at emission (P0 &lt; 0 — unreachable for loaded content) is dropped deterministically; a full queue
+        /// drops newest (the documented seatbelt, identical on every peer — the queue folds into SimChecksum).</summary>
+        private void TryRequeue(in FiredEvent f, int kind, int targetExec)
+        {
+            if (kind == 3 && f.P0 < 0) return; // timer name outside the closed load universe — cannot be encoded
+            _requeueScratch[0] = f.P0;
+            _requeueScratch[1] = f.P1;
+            _requeueScratch[2] = f.P2;
+            _requeueScratch[3] = targetExec;
+            _eventQueue.Enqueue(EventBounds.RequeueRailBase + kind, f.Slot, _requeueScratch, EventBounds.MaxEventParams);
         }
 
         /// <summary>Fire one trigger dispatch: trigger-local scope around the compiled top-level chain (Story 7.3
@@ -1607,6 +1871,7 @@ namespace ProjectChimera.Core
             ev.Slot        = raiser;
             ev.Numeric     = 0;
             ev.Data        = null;
+            ev.TargetExec  = -1; // DW-349 — custom occurrences are never target-restricted (buffer slots are reused)
             ev.P0 = paramCount > 0 ? paramRaws[0] : 0;
             ev.P1 = paramCount > 1 ? paramRaws[1] : 0;
             ev.P2 = paramCount > 2 ? paramRaws[2] : 0;
@@ -1688,11 +1953,19 @@ namespace ProjectChimera.Core
 
         // ── Event matching ────────────────────────────────────────────────────
 
-        private bool AnyEventMatches(EventNode[] evDefs)
+        /// <summary>DW-349 — <paramref name="execIdx"/> is the asking trigger: a redelivered occurrence
+        /// (<c>TargetExec</c> ≥ 0) matches ONLY its target exec, so a trigger already served on the fire tick can
+        /// never re-fire from the persistence rail. Fresh occurrences (−1, every pre-349 emission) are unrestricted
+        /// — legacy behavior byte-identical.</summary>
+        private bool AnyEventMatches(EventNode[] evDefs, int execIdx)
         {
             foreach (var def in evDefs)
                 for (int e = 0; e < _baseEventCount; e++)
-                    if (EventMatches(def, in _baseEvents[e])) return true;
+                {
+                    ref FiredEvent f = ref _baseEvents[e];
+                    if (f.TargetExec >= 0 && f.TargetExec != execIdx) continue; // DW-349 targeted redelivery
+                    if (EventMatches(def, in f)) return true;
+                }
             return false;
         }
 
@@ -1831,7 +2104,8 @@ namespace ProjectChimera.Core
         /// Story 7.6 — execute ONE compiled item. Zero heap allocation: loop snapshots fill the item's
         /// preallocated buffer; recursion depth is bounded by the load-gate nesting cap. Fuel is charged
         /// mirroring the static cost model (action = 1 + its expression op counts, run_effect = embedded node
-        /// count, loop/branch entry = 1 + condition ops; Story 7.5: raise_event = 1, its arg-expression ops
+        /// count with SearchArea child subtrees weighted by EffectCaps.MaxSearchTargets — DW-347, loop/branch
+        /// entry = 1 + condition ops; Story 7.5: raise_event = 1, its arg-expression ops
         /// deliberately uncharged — the same accepted undercount class as condition expressions).
         /// <paramref name="anchor"/> is the current entity of the nearest enclosing ENTITY-source loop (-1 =
         /// none → run_effect keeps its legacy lowest-id-alive anchor).
@@ -1877,7 +2151,7 @@ namespace ProjectChimera.Core
 
                 case EffectActionNode effectNode:
                     _loopState.Charge(item.RunEffectCost);
-                    RunEffect(effectNode, world, anchor);
+                    RunEffect(effectNode, world, anchor, item.RunEffectMutatesWorld);
                     break;
 
                 case RaiseEventNode:
@@ -2146,9 +2420,16 @@ namespace ProjectChimera.Core
             {
                 case "spawn_unit":
                     if (!string.IsNullOrEmpty(a.UnitId))
+                    {
                         // Story 7.6: the runtime SEATBELT is the named structural cap (the validator gate is the
                         // loud reject for authored counts beyond it — no literal 50 remains).
                         OnSpawnUnit?.Invoke(a.UnitId, a.Faction, a.X, a.Z, Math.Min(a.Count, EffectCaps.MaxSpawnCount));
+                        // DW-339/DW-352 — production OnSpawnUnit spawns synchronously into the sim world (and may
+                        // RECYCLE a freed slot at a new position): the run_effect spatial index is stale now, so a
+                        // later same-tick SearchArea must rebuild before it queries (conservative when the delegate
+                        // is null/presentation-deferred — an extra rebuild is never wrong).
+                        _effectSpatialBuilt = false;
+                    }
                     break;
                 case "display_message":
                     if (!string.IsNullOrEmpty(a.Text))
@@ -2218,8 +2499,19 @@ namespace ProjectChimera.Core
         /// <para>Story 7.6 — <paramref name="anchorOverride"/>: inside an ENTITY-source loop body the effect
         /// anchors at the CURRENT entity (caster = primary target = that unit); every non-loop run_effect passes
         /// -1 and keeps the legacy lowest-id-alive anchor.</para>
+        ///
+        /// <para>DW-339/DW-352 — the SearchArea spatial index is rebuilt LAZILY, at most once per tick, guarded by
+        /// <see cref="_effectSpatialBuilt"/>: a chain of N run_effects shares one O(world) rebuild UNLESS an
+        /// intervening operation could have mutated hash-visible world state — a kill-capable embedded graph
+        /// (<paramref name="canMutateWorld"/>, classified conservatively at compile) or a spawn_unit leaf (which
+        /// spawns synchronously into the sim world in production and can recycle a slot) re-dirties the flag, so
+        /// mid-loop kills/spawns stay visible to later iterations: results are byte-identical to the historical
+        /// rebuild-per-invocation, only the redundant rebuilds are gone. The rebuild itself is deliberately NOT
+        /// fuel-charged (fuel meters authored chain work; this is engine bookkeeping — see
+        /// <c>DslBounds.MaxDslOpsPerTick</c>).</para>
         /// </summary>
-        private void RunEffect(EffectActionNode node, EntityWorld world, int anchorOverride = -1)
+        private void RunEffect(EffectActionNode node, EntityWorld world, int anchorOverride = -1,
+            bool canMutateWorld = true)
         {
             if (node.Effect is null) return;
 
@@ -2239,11 +2531,57 @@ namespace ProjectChimera.Core
             }
 
             Faction anchorFaction = anchor >= 0 ? world.FactionOf[anchor] : Faction.Neutral;
-            _effectSpatial.Rebuild(world); // rebuild for SearchArea fan-out (director runs last in the tick)
+            if (!_effectSpatialBuilt)
+            {
+                _effectSpatial.Rebuild(world); // DW-339: lazily, at most once per tick unless re-dirtied below
+                _effectSpatialBuilt = true;
+                EffectSpatialRebuildCount++;   // observation-only test seam (never folded)
+            }
             var ctx = new EffectContext(world, casterId: anchor, primaryTargetId: anchor, casterFaction: anchorFaction,
                                         _damageTable, spatial: _effectSpatial, _combatEvents, _matchStats,
                                         modifierStore: _modifiers, deaths: _deaths);
             _effectExecutor.Run(node.Effect, in ctx);
+
+            // DW-352 — a graph that can kill (or otherwise mutate what the hash captures) invalidates the index
+            // for the NEXT run_effect: mid-loop kills must be visible to later iterations.
+            if (canMutateWorld) _effectSpatialBuilt = false;
+        }
+
+        /// <summary>
+        /// DW-340 — the load-time wiring backstop behind <c>LoadScenario</c>: with NO <see cref="ModifierStore"/>
+        /// wired (<see cref="SetEffectRuntime"/> not called, or called with null), any embedded run_effect graph
+        /// containing an apply_modifier/persistent node would throw <c>NotSupportedException</c> MID-TICK on its
+        /// first fire. Walk every exec chain (all container nesting) and return the first located error, or null.
+        /// </summary>
+        private static string? CheckModifierEffectsNeedStore(List<TriggerGraph.TriggerExec> execs)
+        {
+            foreach (TriggerGraph.TriggerExec ex in execs)
+            {
+                string? err = CheckModifierEffectsNeedStore(ex.Items, ex.Trigger.Name);
+                if (err != null) return err;
+            }
+            return null;
+        }
+
+        private static string? CheckModifierEffectsNeedStore(TriggerGraph.ExecItem[] items, string triggerName)
+        {
+            foreach (TriggerGraph.ExecItem it in items)
+            {
+                if (it.Node is EffectActionNode eff && DslLoopGate.EffectRequiresModifierStore(eff.Effect))
+                    return $"trigger '{triggerName}' run_effect node {eff.Id}: the embedded effect graph contains an " +
+                           "apply_modifier/persistent node, but this director has no ModifierStore wired — call " +
+                           "SetEffectRuntime with a ModifierStore before LoadScenario, or remove the modifier-bearing effect.";
+                string? err = CheckModifierEffectsNeedStore(it.Body, triggerName)
+                    ?? CheckModifierEffectsNeedStore(it.Then, triggerName)
+                    ?? CheckModifierEffectsNeedStore(it.Else, triggerName);
+                if (err != null) return err;
+                foreach (TriggerGraph.ExecItem[] br in it.Branches)
+                {
+                    err = CheckModifierEffectsNeedStore(br, triggerName);
+                    if (err != null) return err;
+                }
+            }
+            return null;
         }
 
         // ── Helpers ───────────────────────────────────────────────────────────
@@ -2300,6 +2638,7 @@ namespace ProjectChimera.Core
             public int     Numeric;     // typed numeric payload: ore raw-Fixed integer, or unit count
             public string? Data;        // string payload: building type, timer name (null when unused)
             public int     CustomIndex; // custom-event registry index (-1 = a built-in event)
+            public int     TargetExec;  // DW-349: -1 = every trigger may match; >= 0 = a REDELIVERED occurrence visible to that exec alone
             public int     P0, P1, P2, P3; // Story 7.5 payload raws (EventBounds.MaxEventParams slots)
         }
     }

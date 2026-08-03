@@ -123,5 +123,20 @@ namespace ProjectChimera.Dsl
         /// <c>TryEnqueueExternalDslEvent</c> (no mutation, no throw), identical on every peer and in replay.
         /// </summary>
         public const int MaxChatCode = 1024;
+
+        /// <summary>
+        /// DW-349 — the RESERVED queue-code BASE of the built-in EDGE-EVENT RE-QUEUE rail. A one-shot base
+        /// occurrence (match_start, unit_dies, building_completed, timer_expires, unit_damaged, unit_trained,
+        /// ability_cast, hero_level, player_chat — the <c>ScenarioDirector.RequeueKindNames</c> ordinal order)
+        /// that a fuel-exhausted sweep break or a batched-drain suppression prevented a SPECIFIC trigger from
+        /// evaluating is PERSISTED into the checksummed <c>DslEventQueue</c> as <c>RequeueRailBase + kind</c>,
+        /// raiser = the occurrence's faction slot, params P0..P2 = the payload raws and P3 = the TARGET exec
+        /// index — redelivered next tick to THAT trigger alone, so an already-served trigger can never
+        /// double-fire on the redelivery. Polled kinds (the thresholds) re-emit every tick and never ride this
+        /// rail. Distinct from every custom-event registry index (<c>0..MaxCustomEvents-1</c>) and from
+        /// <see cref="PlayerChatRailCode"/> (0xFF00); never accepted from the external wire
+        /// (<c>TryEnqueueExternalDslEvent</c> range-rejects it). 0xFE00 = 65024.
+        /// </summary>
+        public const int RequeueRailBase = 0xFE00;
     }
 }
