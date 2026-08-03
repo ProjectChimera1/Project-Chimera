@@ -62,23 +62,16 @@ namespace ProjectChimera.CreationSuite
         // topology/position edits. Updated on both load (ReloadModel) and save (Save).
         private string? _lastLoadedJson;
 
-        // ── Per-render port maps (keyed by GraphNode Name) ──
-        private readonly Dictionary<string, List<PortDef>> _inByOrdinal  = new();
-        private readonly Dictionary<string, List<PortDef>> _outByOrdinal = new();
+        // ── Per-render port maps (keyed by GraphNode Name; specs served by the Godot-free NodePortCatalog seam) ──
+        private readonly Dictionary<string, List<GraphPortSpec>> _inByOrdinal  = new();
+        private readonly Dictionary<string, List<GraphPortSpec>> _outByOrdinal = new();
         private readonly Dictionary<string, Dictionary<(bool IsData, int IrPort), int>> _inOrdinalOf  = new();
         private readonly Dictionary<string, Dictionary<(bool IsData, int IrPort), int>> _outOrdinalOf = new();
         private readonly Dictionary<string, Dictionary<(bool IsData, int IrPort), int>> _outSlotOf    = new();
 
-        /// <summary>A single GraphNode port: its IR port index, exec-vs-data space, wire type (data only), label.</summary>
-        private readonly struct PortDef
-        {
-            public readonly bool IsData;
-            public readonly int IrPort;
-            public readonly DataWireType Wire;
-            public readonly string Label;
-            public PortDef(bool isData, int irPort, string label, DataWireType wire = DataWireType.Boolean)
-            { IsData = isData; IrPort = irPort; Label = label; Wire = wire; }
-        }
+        // ── Selected-node inspector (DW-179/DW-195): the field rows for the selected graph-channel node ──
+        private VBoxContainer _inspectorList = null!;
+        private string?       _selectedName;
 
         // ── Palette kinds — EXACTLY the closed NodeKinds union (the spec's Never-clause contract), served by the
         //    Godot-free NodePaletteFactory seam (default construction is Tier-1-tested to round-trip per kind). ──
@@ -230,7 +223,25 @@ namespace ProjectChimera.CreationSuite
             _graph.ConnectionRequest    += OnConnectionRequest;
             _graph.DisconnectionRequest += OnDisconnectionRequest;
             _graph.DeleteNodesRequest   += OnDeleteNodesRequest;
+            _graph.NodeSelected         += OnNodeSelected;
+            _graph.NodeDeselected       += OnNodeDeselected;
             body.AddChild(_graph);
+
+            // Selected-node property inspector (DW-179): field rows served by the Godot-free NodeFieldCatalog
+            // seam, rendered in the card-editor field-row + ChimeraValidationBadge pattern.
+            var inspectorSide = new VBoxContainer { CustomMinimumSize = new Vector2(300, 0) };
+            inspectorSide.AddChild(new Label { Text = "Inspector" });
+            var inspectorScroll = new ScrollContainer
+            {
+                SizeFlagsVertical = Control.SizeFlags.ExpandFill,
+                CustomMinimumSize = new Vector2(300, 0),
+                HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled,
+            };
+            _inspectorList = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+            _inspectorList.AddThemeConstantOverride("separation", ChimeraComponents.Const(ThemeTokens.S2));
+            inspectorScroll.AddChild(_inspectorList);
+            inspectorSide.AddChild(inspectorScroll);
+            body.AddChild(inspectorSide);
 
             _panel.Visible = false;
         }
@@ -371,6 +382,15 @@ namespace ProjectChimera.CreationSuite
                 DrawEdges(TriggerGraph.FromFlat(t2), "f");
 
             RefreshErrorBadges();
+
+            // Restore the pre-rebuild selection (GraphNodes are recreated), then refresh the inspector — a
+            // deleted/renamed selection clears (the inspector falls back to its placeholder).
+            if (_selectedName != null)
+            {
+                if (_graph.GetNodeOrNull<GraphNode>(_selectedName) is GraphNode sel) sel.Selected = true;
+                else _selectedName = null;
+            }
+            RebuildInspector();
         }
 
         private void RenderChannel(TriggerGraph graph, string prefix, bool readOnly, float xOffset = 0f)
@@ -411,30 +431,30 @@ namespace ProjectChimera.CreationSuite
         /// recording the IR-port↔Godot-ordinal maps this panel translates connection signals through.</summary>
         private void BuildPorts(GraphNode gn, string name, NodeBase n)
         {
-            PortsOf(n, out List<PortDef> inputs, out List<PortDef> outputs);
-            var inList = new List<PortDef>();
-            var outList = new List<PortDef>();
+            PortsOf(n, out List<GraphPortSpec> inputs, out List<GraphPortSpec> outputs);
+            var inList = new List<GraphPortSpec>();
+            var outList = new List<GraphPortSpec>();
             var inOrd = new Dictionary<(bool, int), int>();
             var outOrd = new Dictionary<(bool, int), int>();
             var outSlot = new Dictionary<(bool, int), int>();
 
             int slot = 0;
-            foreach (PortDef pd in inputs)
+            foreach (GraphPortSpec pd in inputs)
             {
                 gn.AddChild(new Label { Text = pd.Label });
                 Color c = pd.IsData ? DataInColor : ExecColor;
                 gn.SetSlot(slot, true, pd.IsData ? DATA_TYPE : EXEC_TYPE, c, false, 0, Transparent);
-                inOrd[(pd.IsData, pd.IrPort)] = inList.Count;
+                inOrd[(pd.IsData, pd.Port)] = inList.Count;
                 inList.Add(pd);
                 slot++;
             }
-            foreach (PortDef pd in outputs)
+            foreach (GraphPortSpec pd in outputs)
             {
                 gn.AddChild(new Label { Text = pd.Label, HorizontalAlignment = HorizontalAlignment.Right });
                 Color c = pd.IsData ? Color.FromHtml(DataWireColorPalette.HexFor(pd.Wire)) : ExecColor;
                 gn.SetSlot(slot, false, 0, Transparent, true, pd.IsData ? DATA_TYPE : EXEC_TYPE, c);
-                outOrd[(pd.IsData, pd.IrPort)] = outList.Count;
-                outSlot[(pd.IsData, pd.IrPort)] = slot;
+                outOrd[(pd.IsData, pd.Port)] = outList.Count;
+                outSlot[(pd.IsData, pd.Port)] = slot;
                 outList.Add(pd);
                 slot++;
             }
@@ -494,7 +514,7 @@ namespace ProjectChimera.CreationSuite
             string from = fromNode.ToString(), to = toNode.ToString();
             if (from == to) { ShowStatus("A node cannot wire to itself.", danger: true); return; }
             if (IsFlat(from) || IsFlat(to)) { ShowStatus("Flat (T2) triggers are read-only here — edit them in the T2 editor (L).", danger: true); return; }
-            if (!TryPortDefs(from, (int)fromPort, to, (int)toPort, out PortDef src, out PortDef dst, out int srcId, out int dstId))
+            if (!TryPortDefs(from, (int)fromPort, to, (int)toPort, out GraphPortSpec src, out GraphPortSpec dst, out int srcId, out int dstId))
             { ShowStatus("Ports could not be resolved for this drag — re-open the panel and try again.", danger: true); return; }
             if (src.IsData != dst.IsData) { ShowStatus("Cannot wire an exec port to a data port.", danger: true); return; }
 
@@ -515,16 +535,16 @@ namespace ProjectChimera.CreationSuite
                     { ShowStatus($"Rejected: a condition input requires a Boolean source (this source produces {st}).", danger: true); return; }
                 }
                 DataWireType wire = InferWire(srcId, dstId, dst);
-                da = new DataEdge(srcId, src.IrPort, dstId, dst.IrPort, wire);
+                da = new DataEdge(srcId, src.Port, dstId, dst.Port, wire);
                 // Same endpoints = same connection regardless of stamped wire (a re-drag after a variable's
                 // declared type changed must not stack a near-duplicate edge into a fan-in port).
                 if (_editGraph.DataEdges.Any(x =>
-                        x.Src == srcId && x.SrcPort == src.IrPort && x.Dst == dstId && x.DstPort == dst.IrPort))
+                        x.Src == srcId && x.SrcPort == src.Port && x.Dst == dstId && x.DstPort == dst.Port))
                 { ShowStatus("That wire already exists.", danger: false); return; }
             }
             else
             {
-                ex = new ExecEdge(srcId, src.IrPort, dstId, dst.IrPort);
+                ex = new ExecEdge(srcId, src.Port, dstId, dst.Port);
                 if (_editGraph.ExecEdges.Any(x => x.Equals(ex.Value)))
                 { ShowStatus("That wire already exists.", danger: false); return; }
             }
@@ -548,12 +568,12 @@ namespace ProjectChimera.CreationSuite
         {
             string from = fromNode.ToString(), to = toNode.ToString();
             if (IsFlat(from) || IsFlat(to)) return; // flat edges are read-only
-            if (!TryPortDefs(from, (int)fromPort, to, (int)toPort, out PortDef src, out PortDef dst, out int srcId, out int dstId))
+            if (!TryPortDefs(from, (int)fromPort, to, (int)toPort, out GraphPortSpec src, out GraphPortSpec dst, out int srcId, out int dstId))
             { ShowStatus("Ports could not be resolved for this disconnect — re-open the panel and try again.", danger: true); return; }
             if (src.IsData)
-                _editGraph.DataEdges.RemoveAll(e => e.Src == srcId && e.SrcPort == src.IrPort && e.Dst == dstId && e.DstPort == dst.IrPort);
+                _editGraph.DataEdges.RemoveAll(e => e.Src == srcId && e.SrcPort == src.Port && e.Dst == dstId && e.DstPort == dst.Port);
             else
-                _editGraph.ExecEdges.RemoveAll(e => e.Src == srcId && e.SrcPort == src.IrPort && e.Dst == dstId && e.DstPort == dst.IrPort);
+                _editGraph.ExecEdges.RemoveAll(e => e.Src == srcId && e.SrcPort == src.Port && e.Dst == dstId && e.DstPort == dst.Port);
             CapturePositions();
             RebuildGraph();
             ShowStatus("Disconnected.", danger: false);
@@ -636,12 +656,159 @@ namespace ProjectChimera.CreationSuite
             }
         }
 
+        // ── Selected-node property inspector (DW-179 + DW-195's target-field half) ──────────────────────────────
+        //
+        // Field rows are served by the Godot-free NodeFieldCatalog seam (per-kind editable fields with validating
+        // string Set accessors), rendered in the card-editor field-row + ChimeraValidationBadge pattern. A field
+        // error badges the ROW and never mutates the model; a successful edit re-renders the graph (titles and
+        // ports can depend on field values — e.g. random_choice weights add branch ports) and re-runs the located
+        // structural gate, so semantic errors badge the node immediately.
+
+        private void OnNodeSelected(Node node)
+        {
+            if (node is not GraphNode gn) return;
+            _selectedName = gn.Name;
+            RebuildInspector();
+        }
+
+        private void OnNodeDeselected(Node node)
+        {
+            if (node is GraphNode gn && string.Equals(_selectedName, gn.Name, StringComparison.Ordinal))
+            {
+                _selectedName = null;
+                RebuildInspector();
+            }
+        }
+
+        /// <summary>Re-render the inspector pane for the current selection (placeholder when nothing is selected,
+        /// a read-only notice for flat-channel nodes, else one validated field row per editable field).</summary>
+        private void RebuildInspector()
+        {
+            foreach (Node c in _inspectorList.GetChildren().ToList()) { _inspectorList.RemoveChild(c); c.QueueFree(); }
+
+            if (_selectedName == null)
+            {
+                _inspectorList.AddChild(new Label { Text = "(select a node)", AutowrapMode = TextServer.AutowrapMode.Word });
+                return;
+            }
+            if (IsFlat(_selectedName))
+            {
+                _inspectorList.AddChild(new Label
+                {
+                    Text = "Flat (T2) trigger — read-only here. Edit it in the T2 Trigger Editor (L).",
+                    AutowrapMode = TextServer.AutowrapMode.Word,
+                });
+                return;
+            }
+            if (!int.TryParse(_selectedName.AsSpan(1), out int id)
+                || _editGraph.Nodes.FirstOrDefault(x => x.Id == id) is not NodeBase node)
+            {
+                _inspectorList.AddChild(new Label { Text = "(node not found — re-open the panel)", AutowrapMode = TextServer.AutowrapMode.Word });
+                return;
+            }
+
+            var header = new Label { Text = $"{TitleFor(node)}  (id {id})", AutowrapMode = TextServer.AutowrapMode.Word };
+            header.AddThemeColorOverride("font_color", _theme.GetColor(ThemeTokens.TextHi, ThemeTokens.Type));
+            _inspectorList.AddChild(header);
+
+            IReadOnlyList<NodeFieldDef> fields = NodeFieldCatalog.FieldsOf(node);
+            if (fields.Count == 0)
+            {
+                _inspectorList.AddChild(new Label
+                {
+                    Text = node is EffectActionNode
+                        ? "(no editable fields — a run_effect payload is authored via the ability editor pattern)"
+                        : "(no editable fields)",
+                    AutowrapMode = TextServer.AutowrapMode.Word,
+                });
+                return;
+            }
+            foreach (NodeFieldDef f in fields) AddInspectorRow(f);
+        }
+
+        /// <summary>One field row: label + editor control + validation badge (the card-editor pattern). Set errors
+        /// badge the row and leave the model untouched; success clears the badge and re-renders deferred (the
+        /// emitting control is freed by the rebuild, so it must not happen mid-signal).</summary>
+        private void AddInspectorRow(NodeFieldDef f)
+        {
+            ChimeraValidationBadge badge = ChimeraValidationBadge.Create();
+
+            void Apply(string text)
+            {
+                if (text == f.Get()) { badge.Clear(); return; }   // unchanged → no-op (no rebuild churn)
+                string? err = f.Set(text);
+                if (err != null)
+                {
+                    badge.ShowError(err);
+                    ShowStatus($"{f.Label}: {err}", danger: true);
+                    return;
+                }
+                badge.Clear();
+                OnModelEdited($"Set {f.Label}.");
+            }
+
+            Control control;
+            switch (f.Editor)
+            {
+                case NodeFieldEditorKind.Bool:
+                {
+                    ChimeraSwitch sw = ChimeraSwitch.Create(f.Get() == "true");
+                    sw.Toggled += on => Apply(on ? "true" : "false");
+                    control = sw;
+                    break;
+                }
+                case NodeFieldEditorKind.Choice:
+                {
+                    OptionButton sel = ChimeraComponents.Select(f.Choices!.ToArray());
+                    sel.Selected = IndexOfChoice(f.Choices!, f.Get());
+                    sel.ItemSelected += idx => { if (idx >= 0 && idx < f.Choices!.Count) Apply(f.Choices[(int)idx]); };
+                    control = sel;
+                    break;
+                }
+                default:
+                {
+                    LineEdit input = ChimeraComponents.Input(text: f.Get());
+                    input.TextSubmitted += Apply;
+                    input.FocusExited += () => Apply(input.Text);
+                    control = input;
+                    break;
+                }
+            }
+
+            var row = new HBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+            row.AddThemeConstantOverride("separation", ChimeraComponents.Const(ThemeTokens.S2));
+            Label lbl = ChimeraComponents.FieldLabel(f.Label);
+            lbl.CustomMinimumSize = new Vector2(96, 0);
+            lbl.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
+            row.AddChild(lbl);
+            control.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+            row.AddChild(control);
+            row.AddChild(badge);
+            _inspectorList.AddChild(row);
+        }
+
+        private static int IndexOfChoice(IReadOnlyList<string> choices, string value)
+        {
+            for (int i = 0; i < choices.Count; i++)
+                if (string.Equals(choices[i], value, StringComparison.Ordinal)) return i;
+            return -1;
+        }
+
+        /// <summary>A field edit landed in the model: keep unsaved canvas positions, then re-render graph +
+        /// inspector DEFERRED (the edit arrives from a control the rebuild frees). Persistence stays with Save.</summary>
+        private void OnModelEdited(string msg)
+        {
+            CapturePositions();
+            ShowStatus(msg, danger: false);
+            Callable.From(RebuildGraph).CallDeferred();
+        }
+
         // ── Helpers ──
 
         private static bool IsFlat(string name) => name.StartsWith("f", StringComparison.Ordinal);
 
         private bool TryPortDefs(string from, int fromPort, string to, int toPort,
-            out PortDef src, out PortDef dst, out int srcId, out int dstId)
+            out GraphPortSpec src, out GraphPortSpec dst, out int srcId, out int dstId)
         {
             src = default; dst = default; srcId = dstId = -1;
             if (!_outByOrdinal.TryGetValue(from, out var outs) || fromPort < 0 || fromPort >= outs.Count) return false;
@@ -653,7 +820,7 @@ namespace ProjectChimera.CreationSuite
         /// <summary>Typed wire for a NEW data edge, delegated to the Godot-free <see cref="DataWireInference"/>
         /// seam (the authoritative type check remains the pre-tick validator). Passes the source id, whether the
         /// destination is a condition-in / branch-cond-in sink, and the declared-variable/array maps.</summary>
-        private DataWireType InferWire(int srcId, int dstId, PortDef dst)
+        private DataWireType InferWire(int srcId, int dstId, GraphPortSpec dst)
         {
             BuildDeclMaps(out var declMap, out var arrayDecls);
             return DataWireInference.InferWireType(_editGraph, srcId, IsCondSink(dstId, dst), declMap, arrayDecls);
@@ -662,12 +829,12 @@ namespace ProjectChimera.CreationSuite
         /// <summary>True when the destination is a Boolean-by-contract sink: a trigger's condition-in port or a
         /// branch's cond-in port (destination node KIND + port — never the bare port number, which collides with
         /// <c>ActionValueInPort</c>).</summary>
-        private bool IsCondSink(int dstId, PortDef dst)
+        private bool IsCondSink(int dstId, GraphPortSpec dst)
         {
             NodeBase? dstNode = _editGraph.Nodes.FirstOrDefault(n => n.Id == dstId);
             return dst.IsData
-                && ((dstNode is TriggerNode && dst.IrPort == TriggerGraph.TriggerConditionInPort)
-                    || (dstNode is BranchNode && dst.IrPort == TriggerGraph.BranchCondInPort));
+                && ((dstNode is TriggerNode && dst.Port == TriggerGraph.TriggerConditionInPort)
+                    || (dstNode is BranchNode && dst.Port == TriggerGraph.BranchCondInPort));
         }
 
         private void BuildDeclMaps(
@@ -686,75 +853,15 @@ namespace ProjectChimera.CreationSuite
             }
         }
 
-        /// <summary>The input/output IR ports of a node kind, mapped to GraphNode slots. Exec and data ports share
-        /// a numeric space but are disambiguated by <see cref="PortDef.IsData"/>.</summary>
-        private static void PortsOf(NodeBase n, out List<PortDef> inputs, out List<PortDef> outputs)
+        /// <summary>The input/output IR ports of a node kind, mapped to GraphNode slots — served by the Godot-free
+        /// <see cref="NodePortCatalog"/> seam (DW-195: every dedicated-leaf kind now renders exec ports, so a
+        /// palette-dragged leaf is wireable). Exec and data ports share a numeric space but are disambiguated by
+        /// <see cref="GraphPortSpec.IsData"/>.</summary>
+        private static void PortsOf(NodeBase n, out List<GraphPortSpec> inputs, out List<GraphPortSpec> outputs)
         {
-            inputs = new List<PortDef>();
-            outputs = new List<PortDef>();
-            switch (n)
-            {
-                case TriggerNode:
-                    inputs.Add(new PortDef(false, TriggerGraph.TriggerEventInPort, "event"));
-                    inputs.Add(new PortDef(true, TriggerGraph.TriggerConditionInPort, "cond", DataWireType.Boolean));
-                    outputs.Add(new PortDef(false, TriggerGraph.TriggerExecOutPort, "then"));
-                    break;
-                case EventNode:
-                    outputs.Add(new PortDef(false, TriggerGraph.EventExecOutPort, "fire"));
-                    break;
-                case ConditionNode:
-                    outputs.Add(new PortDef(true, TriggerGraph.ConditionDataOutPort, "bool", DataWireType.Boolean));
-                    break;
-                case ActionNode a:
-                    inputs.Add(new PortDef(false, TriggerGraph.ActionExecInPort, "in"));
-                    inputs.Add(new PortDef(true, TriggerGraph.ActionValueInPort, "val", DataWireType.Int));
-                    if (a.Kind == "array_set")
-                        inputs.Add(new PortDef(true, TriggerGraph.ActionIndexInPort, "idx", DataWireType.Int));
-                    outputs.Add(new PortDef(false, TriggerGraph.ActionExecOutPort, "out"));
-                    break;
-                case EffectActionNode:
-                    inputs.Add(new PortDef(false, TriggerGraph.ActionExecInPort, "in"));
-                    outputs.Add(new PortDef(false, TriggerGraph.ActionExecOutPort, "out"));
-                    break;
-                case RaiseEventNode:
-                    inputs.Add(new PortDef(false, TriggerGraph.ActionExecInPort, "in"));
-                    inputs.Add(new PortDef(true, TriggerGraph.RaiseArgInPort0, "arg0", DataWireType.Int));
-                    inputs.Add(new PortDef(true, TriggerGraph.RaiseArgInPort1, "arg1", DataWireType.Int));
-                    inputs.Add(new PortDef(true, TriggerGraph.RaiseArgInPort2, "arg2", DataWireType.Int));
-                    inputs.Add(new PortDef(true, TriggerGraph.RaiseArgInPort3, "arg3", DataWireType.Int));
-                    outputs.Add(new PortDef(false, TriggerGraph.ActionExecOutPort, "out"));
-                    break;
-                case ForEachNode:
-                case ForEachBatchedNode:
-                    inputs.Add(new PortDef(false, TriggerGraph.ActionExecInPort, "in"));
-                    outputs.Add(new PortDef(false, TriggerGraph.ActionExecOutPort, "next"));
-                    outputs.Add(new PortDef(false, TriggerGraph.ForEachBodyOutPort, "body"));
-                    break;
-                case BranchNode:
-                    inputs.Add(new PortDef(false, TriggerGraph.ActionExecInPort, "in"));
-                    inputs.Add(new PortDef(true, TriggerGraph.BranchCondInPort, "cond", DataWireType.Boolean));
-                    outputs.Add(new PortDef(false, TriggerGraph.ActionExecOutPort, "next"));
-                    outputs.Add(new PortDef(false, TriggerGraph.BranchThenOutPort, "then"));
-                    outputs.Add(new PortDef(false, TriggerGraph.BranchElseOutPort, "else"));
-                    break;
-                case ExprUnaryNode:
-                case ExprArrayGetNode:
-                    inputs.Add(new PortDef(true, TriggerGraph.ExprOperandPort0, "a", DataWireType.Int));
-                    outputs.Add(new PortDef(true, TriggerGraph.ExprDataOutPort, "out", DataWireType.Int));
-                    break;
-                case ExprBinaryNode:
-                case ExprCallNode:
-                    inputs.Add(new PortDef(true, TriggerGraph.ExprOperandPort0, "a", DataWireType.Int));
-                    inputs.Add(new PortDef(true, TriggerGraph.ExprOperandPort1, "b", DataWireType.Int));
-                    outputs.Add(new PortDef(true, TriggerGraph.ExprDataOutPort, "out", DataWireType.Int));
-                    break;
-                case ExprLiteralNode:
-                case ExprVarNode:
-                case ExprArrayLenNode:
-                case ExprEventParamNode:
-                    outputs.Add(new PortDef(true, TriggerGraph.ExprDataOutPort, "out", DataWireType.Int));
-                    break;
-            }
+            inputs = new List<GraphPortSpec>();
+            outputs = new List<GraphPortSpec>();
+            NodePortCatalog.PortsOf(n, inputs, outputs);
         }
 
         private static string TitleFor(NodeBase n) => n switch
@@ -776,6 +883,18 @@ namespace ProjectChimera.CreationSuite
             ExprArrayGetNode ag  => $"get: {ag.Name}",
             ExprArrayLenNode al  => $"len: {al.Name}",
             ExprEventParamNode p => $"event.{p.Name}",
+            // DW-195 — the dedicated action-leaf kinds render their kind + target instead of the raw class name.
+            OrderUnitsNode ou    => $"order: {ou.Command}",
+            MoveCameraNode mc    => $"camera: {mc.CameraName}",
+            CinematicModeNode cm => $"cinematic: {(cm.Enabled ? "on" : "off")}",
+            PlayVfxNode pv       => $"vfx: {pv.VfxId}",
+            RandomChoiceNode rc  => $"random ({rc.Weights.Length} case{(rc.Weights.Length == 1 ? "" : "s")})",
+            EnableTriggerNode en => $"enable trigger #{en.TargetTriggerId}",
+            DisableTriggerNode d => $"disable trigger #{d.TargetTriggerId}",
+            RunTriggerNode rt    => $"run trigger #{rt.TargetTriggerId}",
+            ShowObjectiveNode so     => $"show obj: {so.ObjectiveId}",
+            CompleteObjectiveNode co => $"complete obj: {co.ObjectiveId}",
+            FailObjectiveNode fo     => $"fail obj: {fo.ObjectiveId}",
             _                    => n.GetType().Name,
         };
 
