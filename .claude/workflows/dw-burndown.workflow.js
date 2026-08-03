@@ -201,6 +201,12 @@ ${rs.flatMap((r) => (r.newFindings || []).map((f) => `  - ${f.title} | ${f.locat
 `
 
 // ────────────────────────────────────────── execution ──────────────────────────────────────────
+// agent() THROWS when a subagent completes without calling StructuredOutput. parallel() swallows
+// that into null, but the direct awaits (merge loop, ledger, triage) do not — one report-less
+// agent killed the 2026-08-03 overnight run 4 chunks in. Catch → null; null is already handled.
+const safeAgent = (prompt, opts) =>
+  agent(prompt, opts).catch((e) => { log(`agent ${opts?.label ?? ''} died report-less: ${e.message}`); return null })
+
 log(`${NAMES.length} Godot-free bundles, chunks of ${CHUNK} (16GB / 6-core ceiling)`)
 
 const allMerged = []
@@ -231,7 +237,7 @@ for (let i = 0; i < NAMES.length; i += CHUNK) {
   phase('Merge')
   const merged = []
   for (const r of ok) {
-    const m = await agent(mergePrompt(r), {
+    const m = await safeAgent(mergePrompt(r), {
       label: `merge:${r.bundle}`, phase: 'Merge', schema: MERGE, model: MODEL, effort: 'high',
     })
     if (m && m.merged && m.suitePassed) { merged.push(r); allMerged.push(r) }
@@ -241,7 +247,10 @@ for (let i = 0; i < NAMES.length; i += CHUNK) {
   // Per-chunk so a crash loses at most one chunk of bookkeeping, never the whole run.
   if (merged.length) {
     phase('Ledger')
-    await agent(ledgerPrompt(merged), { label: `ledger:chunk-${n}`, phase: 'Ledger', model: 'opus', effort: 'high' })
+    // model stays 'opus' until run wf_bbdf1721-ebb is fully done: changing opts here would
+    // invalidate ledger:chunk-1..3's resume cache and re-file their findings as duplicates.
+    // TODO after that run: switch to MODEL.
+    await safeAgent(ledgerPrompt(merged), { label: `ledger:chunk-${n}`, phase: 'Ledger', model: 'opus', effort: 'high' })
   }
 
   log(`chunk ${n}/${total} done — merged ${merged.length}/${chunk.length}; running total ${allMerged.length}`)
@@ -289,7 +298,7 @@ if (!OPTS.skipReview && allMerged.length) {
   log(`review sweep: ${flat.length} findings across ${found.length} lenses`)
 
   if (flat.length) {
-    review = await agent(
+    review = await safeAgent(
       `Triage these review findings from the Chimera deferred-work burn-down, then FILE them.\n\n` +
       `${JSON.stringify(flat, null, 1)}\n\n` +
       `1. Drop duplicates (several lenses may report one defect) and anything you cannot confirm by reading the code.\n` +
