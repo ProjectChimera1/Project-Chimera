@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using ProjectChimera.AI;                 // AiOpponentSystem (P1_BASE / DifficultyProfile — DW-125), AiDifficulty
 using ProjectChimera.Core;               // EntityWorld, Fixed, FixedVec3, Faction, FactionRegistry, UnitCategory, GatherState, UnitCommand, BuildingType
 using ProjectChimera.Core.Definitions;   // AbilityRegistry, AbilityDefinition, FactionDefinition, UnitDefinition
 using ProjectChimera.Core.Sim;           // SimulationHost, NullLogSink, ScenarioData
@@ -41,10 +42,21 @@ namespace ProjectChimera.Sim.Tests.Golden
 
         // ── Scenario constants ───────────────────────────────────────────────────────────────────────────────
 
-        /// <summary>Equal to <see cref="ProjectChimera.AI.AiOpponentSystem"/>'s Normal-difficulty attack threshold,
-        /// so the AI's pre-placed initial wave is immediately conscriptable into a <c>LaunchAttack</c> (Idle/Stop
-        /// both count, per <c>AiSnapshot.AvailableCombatUnits</c>).</summary>
-        private const int InitialWaveSize = 5;
+        /// <summary>DW-125 — the difficulty this harness pins on the AI slot, passed EXPLICITLY to
+        /// <see cref="SimulationHost.Create"/> instead of relying on its default, so the threshold read below and
+        /// the AI actually piloting the match can never describe two different difficulties.</summary>
+        private const AiDifficulty HarnessAiDifficulty = AiDifficulty.Normal;
+
+        /// <summary>The AI's own attack threshold for <see cref="HarnessAiDifficulty"/>, so the AI's pre-placed
+        /// initial wave is immediately conscriptable into a <c>LaunchAttack</c> (Idle/Stop both count, per
+        /// <c>AiSnapshot.AvailableCombatUnits</c>).
+        ///
+        /// DW-125 — read SYMBOLICALLY from <see cref="AiOpponentSystem.DifficultyProfile"/> rather than
+        /// hand-copying the literal <c>5</c>: a future difficulty-curve retune now resizes this wave with the real
+        /// bar instead of leaving a wave that silently no longer meets it (a test that keeps passing in a degraded
+        /// way). <c>static readonly</c>, not <c>const</c>, because it is now computed from production code.</summary>
+        private static readonly int InitialWaveSize =
+            AiOpponentSystem.DifficultyProfile(HarnessAiDifficulty).AttackThreshold;
 
         /// <summary>Real-content defenders guarding the opposing (non-AI-piloted) base, so the AI's eventual
         /// attack wave engages REAL combat instead of marching to empty ground (unlike the deliberately-starved
@@ -62,8 +74,22 @@ namespace ProjectChimera.Sim.Tests.Golden
         //   InitialWaveSize                                      -> AI (Player2) real Worker-category unit
         //   InitialWaveSize+1 .. InitialWaveSize+OpposingDefenderCount -> opposing (Player1) real Melee defenders
         //   InitialWaveSize+1+OpposingDefenderCount (alpha only) -> isolated Player2 Equal-Exchange caster
-        private const int AiWorkerEntityId              = InitialWaveSize;
-        private const int EqualExchangeCasterEntityId   = InitialWaveSize + 1 + OpposingDefenderCount;
+        // (static readonly, not const, because InitialWaveSize is now read from AiOpponentSystem — DW-125.
+        //  Declared AFTER it so C#'s textual static-initializer order gives them the resolved wave size.)
+        private static readonly int AiWorkerEntityId            = InitialWaveSize;
+        private static readonly int EqualExchangeCasterEntityId  = InitialWaveSize + 1 + OpposingDefenderCount;
+
+        /// <summary>The AI (Player2) base this harness authors. Deliberately the harness's OWN geometry —
+        /// <see cref="AiOpponentSystem"/> has no P2-base constant to import (its five structure-placement positions
+        /// cluster around x≈36..54; this sits in the middle of them) — but it is only MEANINGFUL relative to the
+        /// AI's real attack destination, so <see cref="AssertHarnessGeometryMatchesTheAi"/> pins that coupling
+        /// loudly instead of leaving it to a comment (DW-125).</summary>
+        private static readonly FixedVec3 AiBasePos = new(Fixed.FromInt(45), Fixed.Zero, Fixed.Zero);
+
+        /// <summary>Minimum AI-base-to-enemy-base separation this harness's premise needs: the AI's initial wave
+        /// must genuinely have to MARCH (and so must start well outside every real roster's attack range) rather
+        /// than being in contact at spawn. Comfortably above any shipped unit's range.</summary>
+        private static readonly Fixed MinBaseSeparation = Fixed.FromInt(30);
 
         // ── Real-content resolution (mirrors SignatureMechanicRealContentTests.ResolveDataDir/LoadRealContent) ──
 
@@ -128,14 +154,17 @@ namespace ProjectChimera.Sim.Tests.Golden
         private static GoldenHarness BuildAiPilotedHarness(
             FactionDefinition aiRoster, FactionDefinition opposingRoster, AbilityRegistry registry)
         {
+            AssertHarnessGeometryMatchesTheAi();
+
             SimulationHost host = SimulationHost.Create(
-                NullLogSink.Instance, new FactionRegistry(2), opposingRoster, aiRoster, registry: registry);
+                NullLogSink.Instance, new FactionRegistry(2), opposingRoster, aiRoster,
+                aiLevel: HarnessAiDifficulty, registry: registry);
             host.ChecksumInterval = 1;
             EntityWorld world = host.World;
 
             // ── AI (Player2) base: a live, real CommandCenter + ample ore so it can afford to build its own
             //    Barracks (AiOpponentSystem's hardcoded COST_BARRACKS), train from its real roster, and expand. ──
-            var aiCcPos = new FixedVec3(Fixed.FromInt(45), Fixed.Zero, Fixed.Zero);
+            FixedVec3 aiCcPos = AiBasePos;
             int aiCc = host.BuildSys.PlaceBuildingDirect(BuildingType.CommandCenter, Faction.Player2, aiCcPos, preBuilt: true);
             if (aiCc < 0) throw new InvalidOperationException("BuildAiPilotedHarness: AI CommandCenter failed to place.");
             host.Resources.FactionBase[(int)Faction.Player2] = aiCcPos;
@@ -173,10 +202,11 @@ namespace ProjectChimera.Sim.Tests.Golden
             host.Nodes.Create(new FixedVec3(Fixed.FromInt(55), Fixed.Zero, Fixed.FromInt(10)),
                               Fixed.FromInt(500), Fixed.FromInt(7), 3);
 
-            // ── Opposing (Player1) base + defenders: real content, positioned at AiOpponentSystem's HARDCODED
-            //    attack destination (P1_BASE = (-45,0,0)) so the AI's eventual attack wave engages REAL combat
-            //    instead of marching to empty ground. Stop (never chase) — a defended base, not a second AI. ──
-            var p1BasePos = new FixedVec3(Fixed.FromInt(-45), Fixed.Zero, Fixed.Zero);
+            // ── Opposing (Player1) base + defenders: real content, positioned AT AiOpponentSystem's attack
+            //    destination — read SYMBOLICALLY from AiOpponentSystem.P1_BASE (DW-125), never hand-copied as
+            //    (-45,0,0) — so the AI's eventual attack wave engages REAL combat instead of marching to empty
+            //    ground. Stop (never chase) — a defended base, not a second AI. ──
+            FixedVec3 p1BasePos = AiOpponentSystem.P1_BASE;
             int p1Cc = host.BuildSys.PlaceBuildingDirect(BuildingType.CommandCenter, Faction.Player1, p1BasePos, preBuilt: true);
             if (p1Cc < 0) throw new InvalidOperationException("BuildAiPilotedHarness: opposing CommandCenter failed to place.");
             UnitDefinition? defenderDef = opposingRoster.GetUnitByCategory("Melee");
@@ -184,7 +214,9 @@ namespace ProjectChimera.Sim.Tests.Golden
                 throw new InvalidOperationException($"BuildAiPilotedHarness: '{opposingRoster.Id}' has no Melee unit for defenders.");
             for (int i = 0; i < OpposingDefenderCount; i++)
             {
-                int u = world.Create(new FixedVec3(Fixed.FromInt(-42), Fixed.Zero, Fixed.FromInt(i * 2 - 3)),
+                // DW-125: parked 3u in front of the AI's real destination (P1_BASE + offset), so retuning P1_BASE
+                // relocates the defenders WITH the wave instead of stranding them on ground it no longer visits.
+                int u = world.Create(p1BasePos + new FixedVec3(Fixed.FromInt(3), Fixed.Zero, Fixed.FromInt(i * 2 - 3)),
                                       Faction.Player1, Fixed.FromFloat(defenderDef.Hp), Fixed.FromFloat(defenderDef.Speed));
                 world.ApplyUnitDefinition(u, defenderDef);
                 world.CommandState[u] = UnitCommand.Stop;
@@ -209,6 +241,44 @@ namespace ProjectChimera.Sim.Tests.Golden
 
             host.ScenarioDirector.LoadScenario(new ScenarioData());
             return new GoldenHarness(host, aiWorker);
+        }
+
+        /// <summary>
+        /// DW-125 — fail LOUDLY (rather than silently degrade) if a future retune of <see cref="AiOpponentSystem"/>
+        /// invalidates this harness's own authored geometry. Two of the three mirrored values are now imported
+        /// symbolically (<see cref="InitialWaveSize"/>, <see cref="AiOpponentSystem.P1_BASE"/>); the third —
+        /// <see cref="AiBasePos"/> — has no production constant to import, so its couplings are asserted instead:
+        ///   1. the AI base and the AI's attack destination sit on OPPOSITE sides of the map origin (otherwise
+        ///      "the wave marches out and fights" collapses into contact at spawn, and the AI's own structure
+        ///      placements — clustered on the positive X side — would land on top of the enemy base);
+        ///   2. that separation stays beyond <see cref="MinBaseSeparation"/>, so the pre-placed defenders and the
+        ///      AI's initial wave genuinely start out of weapons range;
+        ///   3. the attack threshold is a positive unit count, so the initial wave is never empty (an empty wave
+        ///      would make every FR-18 'fights' assertion vacuous rather than failing).
+        /// </summary>
+        private static void AssertHarnessGeometryMatchesTheAi()
+        {
+            FixedVec3 enemyBase = AiOpponentSystem.P1_BASE;
+
+            if (!(AiBasePos.X > Fixed.Zero && enemyBase.X < Fixed.Zero))
+                throw new InvalidOperationException(
+                    $"BuildAiPilotedHarness geometry drifted: the AI base ({AiBasePos.X.Raw} raw X) and " +
+                    $"AiOpponentSystem.P1_BASE ({enemyBase.X.Raw} raw X) must sit on OPPOSITE sides of the origin " +
+                    "for this harness's march-out-and-fight premise to hold. Re-author AiBasePos for the new P1_BASE.");
+
+            Fixed separation = AiBasePos.X - enemyBase.X;
+            if (separation < MinBaseSeparation)
+                throw new InvalidOperationException(
+                    $"BuildAiPilotedHarness geometry drifted: AI base to AiOpponentSystem.P1_BASE separation is " +
+                    $"{separation.Raw} raw (< {MinBaseSeparation.Raw} raw) — the initial wave and the opposing " +
+                    "defenders would start inside weapons range, so the test would no longer prove the AI DECIDED " +
+                    "to attack. Re-author AiBasePos for the new P1_BASE.");
+
+            if (InitialWaveSize <= 0)
+                throw new InvalidOperationException(
+                    $"BuildAiPilotedHarness geometry drifted: AiOpponentSystem's {HarnessAiDifficulty} attack " +
+                    $"threshold is {InitialWaveSize}, so this harness would author an EMPTY initial wave and the " +
+                    "FR-18 'fights' assertions would become vacuous.");
         }
 
         /// <summary>Issue a slot-0 self-cast intent through the shared, real <see cref="OrderApplier"/> (mirrors

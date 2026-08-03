@@ -47,7 +47,19 @@ namespace ProjectChimera.AI
         private static readonly FixedVec3 POS_ARCHERY      = new(Fixed.FromFloat( 42f), Fixed.Zero, Fixed.FromFloat( 12f));
         private static readonly FixedVec3 POS_SIEGE        = new(Fixed.FromFloat( 42f), Fixed.Zero, Fixed.FromFloat(-12f));
         private static readonly FixedVec3 POS_CC_EXPANSION = new(Fixed.FromFloat( 54f), Fixed.Zero, Fixed.Zero);
-        private static readonly FixedVec3 P1_BASE          = new(Fixed.FromFloat(-45f), Fixed.Zero, Fixed.Zero);
+
+        /// <summary>
+        /// The AI's hardcoded march destination — the Player1 base — written into
+        /// <see cref="EntityWorld.CommandGoal"/>/<see cref="EntityWorld.MoveTarget"/> by
+        /// <see cref="DoLaunchAttack"/>.
+        ///
+        /// DW-125: <c>internal</c> rather than <c>private</c> so the Tier-1 fixtures that must place real
+        /// defenders exactly where this wave will ARRIVE reference this field symbolically instead of
+        /// hand-copying <c>(-45,0,0)</c>. The Godot-free test assembly compiles these sources directly
+        /// (godot/SimSources.props), so no <c>InternalsVisibleTo</c> is needed. Retuning the value here now moves
+        /// those fixtures with it, instead of silently degrading them into a wave that marches to empty ground.
+        /// </summary>
+        internal static readonly FixedVec3 P1_BASE = new(Fixed.FromFloat(-45f), Fixed.Zero, Fixed.Zero);
 
         // ── Difficulty weights ────────────────────────────────────────────────
 
@@ -55,6 +67,29 @@ namespace ProjectChimera.AI
         private readonly float _techWeight;        // scales tech-up scores  (0–1)
         private readonly int   _attackThreshold;  // available (Idle/Stop) units needed before considering an attack wave
         private readonly Fixed _attackCooldownMax;
+
+        /// <summary>
+        /// The per-difficulty tuning curve. The constructor consumes THIS method — it is the single source of
+        /// truth, not a second copy of one — so a value read from here can never drift from the value the AI
+        /// actually runs on.
+        ///
+        /// DW-125: <c>internal</c> so the Tier-1 fixtures that must author a wave sized exactly at the attack
+        /// threshold read <c>AttackThreshold</c> from here instead of hand-copying the literal <c>5</c>;
+        /// a future difficulty-curve retune then moves those fixtures with it (or fails them loudly) instead of
+        /// leaving a wave that silently no longer meets the real bar. Visible without <c>InternalsVisibleTo</c>
+        /// because the test project compiles these sources directly (godot/SimSources.props).
+        ///
+        /// The <c>float</c> weights are the AI scorer's known, deliberate float debt (D2 — same-machine
+        /// determinism only, see <see cref="ScoreLaunchAttack"/>); extracting them here is behavior-neutral and
+        /// moves no value, so nothing folded into <c>SimChecksum</c> changes.
+        /// </summary>
+        internal static (float AggressionWeight, float TechWeight, int AttackThreshold, float AttackCooldownSeconds)
+            DifficultyProfile(AiDifficulty difficulty) => difficulty switch
+            {
+                AiDifficulty.Easy => (0.40f, 0.50f, 8, 40f),
+                AiDifficulty.Hard => (0.90f, 0.90f, 3, 15f),
+                _                 => (0.65f, 0.70f, 5, 25f), // Normal
+            };
 
         // ── Dependencies ──────────────────────────────────────────────────────
 
@@ -82,12 +117,9 @@ namespace ProjectChimera.AI
             _resources = resources;
             _buildSys  = buildSys;
 
-            (_aggressionWeight, _techWeight, _attackThreshold, float cooldownS) = difficulty switch
-            {
-                AiDifficulty.Easy => (0.40f, 0.50f, 8, 40f),
-                AiDifficulty.Hard => (0.90f, 0.90f, 3, 15f),
-                _                 => (0.65f, 0.70f, 5, 25f), // Normal
-            };
+            // DW-125: read the curve from the shared DifficultyProfile above rather than inlining the tuple here,
+            // so the values the tests reference and the values this instance runs on are literally the same ones.
+            (_aggressionWeight, _techWeight, _attackThreshold, float cooldownS) = DifficultyProfile(difficulty);
             _attackCooldownMax = Fixed.FromFloat(cooldownS);
 
             // Adopt any production buildings the scenario pre-placed for the AI.
