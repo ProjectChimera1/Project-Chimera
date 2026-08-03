@@ -121,11 +121,16 @@ build — give the sim real work. Let the match run long enough that the **adapt
 - **Server console (Machine A's server window):** a stream of
   `[Determinism] tick N: all 2 peers matched 0x........ (window #k)` lines — one per comparison window,
   with **no** `DESYNC`/`HALT` line. On match end (or when you close a client), the server prints
-  `[Determinism] MATCH SUMMARY: {k} windows compared, 0 desync — PASS.`
+  `[Determinism] MATCH SUMMARY: {k} windows compared, 0 desync, 0 abandoned — PASS.`
 - **Each client HUD (top line):** `… Hash 0x........  ONLINE`. The hash on **both** machines must be the
   **same value** at the same tick, every window.
 
-If the summary says `… 0 desync — PASS` and the HUD hashes matched throughout → **determinism PASS.**
+If the summary says `… 0 desync, 0 abandoned — PASS` and the HUD hashes matched throughout →
+**determinism PASS.**
+
+A non-zero **abandoned** count (DW-239) is not a desync — it means a peer fell a full ring-window behind and
+those ticks were never compared at all, so the PASS covers less of the match than `{k}` suggests. Each one
+also prints its own `[Determinism] tick N: comparison window ABANDONED …` line.
 
 ---
 

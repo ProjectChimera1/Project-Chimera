@@ -30,6 +30,13 @@ namespace ProjectChimera.Multiplayer.Server
         /// </summary>
         private const int Window = 8;
 
+        // DW-239: a ring overrun (a newer tick re-keying a still-incomplete older bucket) ABANDONS that older
+        // comparison window — its partial reports are discarded and no verdict can ever be emitted for it. Nothing
+        // recorded that before, so windows silently vanished from the FR-39 evidence trail (a "300 windows compared,
+        // 0 desync — PASS" readout could hide any number of never-compared windows). The abandonment is now counted,
+        // surfaced through this seam, and made MONOTONIC via _resolvedThrough (below).
+        private readonly Action<uint, int>? _onWindowAbandoned;
+
         /// <summary>
         /// The verdict returned by <see cref="Record"/> once a tick's bucket fills (all expected peers reported).
         /// Until then <see cref="Complete"/> is false (see <see cref="Pending"/>).
@@ -84,27 +91,45 @@ namespace ProjectChimera.Multiplayer.Server
         // ignored by Record, and its contribution is cleared from any active bucket by DropExpectedReporter.
         private readonly bool[] _excluded = new bool[MaxSlots];
 
-        // Highest tick for which a verdict has already been emitted; -1 = none. Any incoming tick at or below
-        // this is already resolved (or stale) and is dropped — this both implements the "stale checksums for
-        // non-matching ticks are dropped" rule and prevents an evicted bucket from being re-completed twice.
+        // Highest tick this collector will ever act on again; -1 = none. Advanced when a verdict is emitted AND
+        // (DW-239) when a ring overrun abandons an older incomplete bucket. Any incoming tick at or below this is
+        // already resolved / abandoned / stale and is dropped — this implements the "stale checksums for
+        // non-matching ticks are dropped" rule, prevents an evicted bucket from being re-completed twice, and keeps
+        // verdict emission MONOTONIC (a window older than an abandoned one can no longer surface after it, which
+        // would hand the caller an out-of-order verdict for a window the ring had already given up on).
         private long _resolvedThrough = -1;
 
         /// <summary>
         /// Create a collector expecting <paramref name="expectedPeerCount"/> reporting player peers (spectators
         /// are excluded — D6). N=2 ⇒ a 1-vs-1 mismatch is NOT a majority. Throws if the count is outside [2, MaxSlots].
         /// </summary>
-        public ServerChecksumCollector(int expectedPeerCount)
+        /// <param name="expectedPeerCount">Reporting player peers to quorum over, in [2, <see cref="MaxSlots"/>].</param>
+        /// <param name="onWindowAbandoned">
+        /// DW-239 — optional observability seam invoked as <c>(abandonedTick, reportsLost)</c> when a ring overrun
+        /// discards a still-incomplete comparison window (a peer fell a full <see cref="Window"/> behind). Never
+        /// fires for an empty bucket (nothing was lost). The collector owns no log sink, so the caller
+        /// (<see cref="ServerHost"/>) turns this into the console line + the MATCH SUMMARY count.
+        /// </param>
+        public ServerChecksumCollector(int expectedPeerCount, Action<uint, int>? onWindowAbandoned = null)
         {
             if (expectedPeerCount < 2 || expectedPeerCount > MaxSlots)
                 throw new ArgumentOutOfRangeException(nameof(expectedPeerCount),
                     $"expectedPeerCount must be in [2, {MaxSlots}] (got {expectedPeerCount}).");
             _expected = expectedPeerCount;
+            _onWindowAbandoned = onWindowAbandoned;
             _ring = new Bucket[Window];
             for (int i = 0; i < Window; i++) _ring[i] = new Bucket();
         }
 
         /// <summary>Number of reporting peers this collector quorums over.</summary>
         public int ExpectedPeerCount => _expected;
+
+        /// <summary>
+        /// DW-239 — comparison windows the ring ABANDONED before every expected peer reported (a newer tick overran
+        /// a still-incomplete older bucket). These windows are never compared and never yield a verdict, so they are
+        /// NOT part of the compared/desync totals; they are the "how much did we fail to verify" counter.
+        /// </summary>
+        public int AbandonedWindows { get; private set; }
 
         /// <summary>
         /// Record one peer's checksum for an EXECUTED tick. Stale inputs (a tick already resolved, or an older
@@ -124,6 +149,7 @@ namespace ProjectChimera.Multiplayer.Server
             if (b.Active && b.TickOf != tick)
             {
                 if (b.TickOf > tick) return Verdict.Pending; // older tick colliding with a live newer bucket → stale
+                AbandonWindow(b);                            // DW-239: record + close out the window we are about to lose
                 b.Reset(tick);                               // newer tick overruns an older incomplete bucket → reuse
             }
             else if (!b.Active)
@@ -203,6 +229,31 @@ namespace ProjectChimera.Multiplayer.Server
             // Ascending by tick so the caller routes re-tallied windows in a stable, monotonic order.
             results.Sort((x, y) => x.tick.CompareTo(y.tick));
             return results;
+        }
+
+        /// <summary>
+        /// DW-239 — close out a comparison window the ring is about to discard (a newer tick overran this still-
+        /// incomplete older bucket, so its partial reports are lost and no verdict can ever be emitted for it).
+        ///
+        /// <para>Two effects. (1) OBSERVABILITY: counts it in <see cref="AbandonedWindows"/> and notifies the
+        /// injected seam — before this, an abandoned window vanished silently, so the FR-39 evidence trail could
+        /// read "k windows compared, 0 desync — PASS" while quietly never comparing a stretch of the match. An
+        /// EMPTY bucket (a <see cref="DropExpectedReporter"/> leftover whose only reporter was the dropped slot)
+        /// lost nothing, so it is closed out without being counted or reported. (2) MONOTONICITY: advances
+        /// <see cref="_resolvedThrough"/> to the abandoned tick, so every later report at or below it is dropped by
+        /// the cheap stale check instead of resurrecting a window OLDER than one the ring already gave up on (which
+        /// would hand the caller a verdict out of tick order). Any bucket still sitting at or below the new
+        /// high-water is by definition ≥ <see cref="Window"/> ticks behind the reporting frontier — the documented
+        /// "genuinely stale" case — and is swept on the next <see cref="DropExpectedReporter"/>.</para>
+        /// </summary>
+        private void AbandonWindow(Bucket b)
+        {
+            if (b.Count > 0)
+            {
+                AbandonedWindows++;
+                _onWindowAbandoned?.Invoke(b.TickOf, b.Count);
+            }
+            if ((long)b.TickOf > _resolvedThrough) _resolvedThrough = (long)b.TickOf;
         }
 
         /// <summary>

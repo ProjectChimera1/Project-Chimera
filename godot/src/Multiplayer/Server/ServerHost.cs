@@ -1,5 +1,6 @@
 #nullable enable
 using System;
+using System.Collections.Generic;   // IReadOnlyList — the re-tallied window list a quorum reduction returns
 using ProjectChimera.Core.Sim;   // ILogSink — the Godot-free logging seam (also used by SimulationHost/ServerBootstrap)
 
 namespace ProjectChimera.Multiplayer.Server
@@ -10,7 +11,9 @@ namespace ProjectChimera.Multiplayer.Server
     /// over INJECTED transport seams — never the concrete <c>ServerTransport</c> and never Godot:
     /// <list type="bullet">
     ///   <item>all peers agree ⇒ a clean window — tally it and log the per-window PASS line (Story 1.9b);</item>
-    ///   <item>strict majority with a minority ⇒ a <c>DesyncAlert</c> (carrying the canonical hash) to each minority slot;</item>
+    ///   <item>strict majority with a minority ⇒ a <c>DesyncAlert</c> (carrying the canonical hash) to each minority slot, then
+    ///         (DW-237) that slot is DROPPED from the quorum — the alert is terminal client-side, so the alerted peer
+    ///         stops reporting while staying CONNECTED and would otherwise freeze the survivors' quorum forever;</item>
     ///   <item>no strict majority ⇒ a broadcast <c>Halt</c> and a terminal <see cref="Halted"/> flag.</item>
     /// </list>
     /// In production <see cref="DedicatedServer"/> injects <c>_transport.SendReliableTo</c> / <c>BroadcastReliable</c>
@@ -51,10 +54,19 @@ namespace ProjectChimera.Multiplayer.Server
         /// <summary>The running FR-39 verdict: true while no desync window has been observed.</summary>
         public bool Passing => DesyncCount == 0;
 
+        /// <summary>
+        /// DW-239 — comparison windows the collector's ring ABANDONED before every expected peer reported (a peer
+        /// fell a full ring-window behind, so a newer tick re-keyed its bucket). An abandoned window was never
+        /// compared, so it is NOT a desync and does NOT flip <see cref="Passing"/> — but it is also NOT part of
+        /// <see cref="WindowsCompared"/>, so without this counter a stretch of never-verified match time was
+        /// invisible in the FR-39 readout. Reported by <see cref="LogSummary"/> alongside the verdict.
+        /// </summary>
+        public int AbandonedWindows { get; private set; }
+
         public ServerHost(int expectedPeerCount, ILogSink log,
                           Action<int, byte[]> sendReliableTo, Action<byte[]> broadcastReliable)
         {
-            _collector = new ServerChecksumCollector(expectedPeerCount);
+            _collector = new ServerChecksumCollector(expectedPeerCount, OnWindowAbandoned);
             _log = log ?? throw new ArgumentNullException(nameof(log));
             _sendReliableTo = sendReliableTo ?? throw new ArgumentNullException(nameof(sendReliableTo));
             _broadcastReliable = broadcastReliable ?? throw new ArgumentNullException(nameof(broadcastReliable));
@@ -72,6 +84,18 @@ namespace ProjectChimera.Multiplayer.Server
             ServerChecksumCollector.Verdict v = _collector.Record(tick, slot, hash);
             if (!v.Complete) return;
             ProcessVerdict(tick, v);
+        }
+
+        /// <summary>
+        /// DW-239 — the collector abandoned an in-flight comparison window (a peer fell a full ring-window behind so
+        /// a newer tick re-keyed its bucket). Count it and say so on the console: the window is gone, it will never
+        /// yield a verdict, and it must not hide inside a "k windows compared, 0 desync — PASS" readout.
+        /// </summary>
+        private void OnWindowAbandoned(uint tick, int reportsLost)
+        {
+            AbandonedWindows++;
+            _log.Warn($"[Determinism] tick {tick}: comparison window ABANDONED — a reporter fell a full window behind " +
+                      $"({reportsLost} of {ExpectedPeerCount} reports discarded); this tick is never compared.");
         }
 
         /// <summary>
@@ -100,6 +124,26 @@ namespace ProjectChimera.Multiplayer.Server
                 foreach (int s in v.Minority)
                     _sendReliableTo(s, TickCommandPacket.MakeDesyncAlert(tick, v.Canonical));
                 _log.Warn($"[Determinism] tick {tick}: DESYNC — minority slot(s) {string.Join(",", v.Minority)} diverged from canonical 0x{v.Canonical:X8}.");
+
+                // DW-237 — REBASE THE QUORUM ONTO THE SURVIVING MAJORITY. A DesyncAlert is TERMINAL client-side
+                // (LockstepManager.HandlePacket → RaiseHalt): the alerted peer stops advancing its sim and therefore
+                // stops sending checksums, yet it stays CONNECTED — so the disconnect-driven DropReporter never runs,
+                // the collector keeps counting it as an expected reporter, and NO later bucket can ever complete. The
+                // survivors' desync guard would be silently dead for the rest of the match (self-healing only if the
+                // human closes the halt overlay and the peer actually disconnects). Dropping the alerted reporter here
+                // keeps the majority's guard live at the reduced quorum, and re-tallies any window that is now
+                // complete without it. Idempotent with the later disconnect-driven DropReporter for the same slot.
+                // NOTE: this is bound to the alert being terminal — if a DesyncAlert ever becomes recoverable
+                // (rejoin/resync), the alerted reporter must be re-admitted instead of dropped here.
+                foreach (int s in v.Minority)
+                {
+                    if (Halted) break; // a HALT (from a re-tally below) is terminal — stop rebasing
+                    IReadOnlyList<(uint tick, ServerChecksumCollector.Verdict v)> reTallied =
+                        _collector.DropExpectedReporter(s);
+                    _log.Warn($"[Determinism] tick {tick}: slot {s} dropped from the checksum quorum (an alerted " +
+                              $"minority HALTs locally but stays connected) — quorum rebased to {ExpectedPeerCount} reporter(s).");
+                    RouteReTalliedWindows(reTallied);
+                }
             }
             else
             {
@@ -126,7 +170,18 @@ namespace ProjectChimera.Multiplayer.Server
         public void DropReporter(int slot)
         {
             if (Halted) return;
-            foreach ((uint tick, ServerChecksumCollector.Verdict v) in _collector.DropExpectedReporter(slot))
+            RouteReTalliedWindows(_collector.DropExpectedReporter(slot));
+        }
+
+        /// <summary>
+        /// Route the windows a quorum reduction just completed (ascending by tick) through the shared
+        /// <see cref="ProcessVerdict"/> logic. Shared by the disconnect path (<see cref="DropReporter"/>) and the
+        /// DW-237 alerted-minority rebase so both keep the observability counters and the alert/HALT behavior
+        /// identical. Stops at the first HALT — a HALT is terminal.
+        /// </summary>
+        private void RouteReTalliedWindows(IReadOnlyList<(uint tick, ServerChecksumCollector.Verdict v)> windows)
+        {
+            foreach ((uint tick, ServerChecksumCollector.Verdict v) in windows)
             {
                 if (Halted) break; // a HALT is terminal — stop routing further re-tallied windows
                 ProcessVerdict(tick, v);
@@ -135,14 +190,18 @@ namespace ProjectChimera.Multiplayer.Server
 
         /// <summary>
         /// Emit the terminal FR-39 verdict line. Call on match end / player disconnect / server shutdown so a human
-        /// reading the dedicated-server console sees the summary: "{N} windows compared, {D} desync — PASS|FAIL|INCONCLUSIVE".
-        /// INCONCLUSIVE when no window was ever completed — nothing was actually compared, so it is NOT a clean pass
-        /// (Story 1.9b review: a 0-window match must not masquerade as PASS in a console/log scan).
+        /// reading the dedicated-server console sees the summary: "{N} windows compared, {D} desync, {A} abandoned —
+        /// PASS|FAIL|INCONCLUSIVE". INCONCLUSIVE when no window was ever completed — nothing was actually compared, so
+        /// it is NOT a clean pass (Story 1.9b review: a 0-window match must not masquerade as PASS in a console/log
+        /// scan). DW-239: the abandoned count is reported too — those windows were never compared, so a non-zero
+        /// abandoned count qualifies how much of the match the PASS actually covers (it is NOT a desync and does not
+        /// flip the verdict).
         /// </summary>
         public void LogSummary()
         {
             string verdict = WindowsCompared == 0 ? "INCONCLUSIVE" : Passing ? "PASS" : "FAIL";
-            _log.Info($"[Determinism] MATCH SUMMARY: {WindowsCompared} windows compared, {DesyncCount} desync — {verdict}.");
+            _log.Info($"[Determinism] MATCH SUMMARY: {WindowsCompared} windows compared, {DesyncCount} desync, " +
+                      $"{AbandonedWindows} abandoned — {verdict}.");
         }
     }
 }
