@@ -1,3 +1,4 @@
+#nullable enable
 using ProjectChimera.Core;
 
 namespace ProjectChimera.Economy
@@ -18,6 +19,12 @@ namespace ProjectChimera.Economy
     /// any node conditionally eligible. All GATHER-node behavior when <c>collection_model</c> is omitted/"Gather"
     /// is byte-identical to pre-4.7 (the new branches are dead code on that path).
     ///
+    /// A node's <c>AssignedGatherers</c> counter is a real capacity reservation (FindBestNode skips a saturated node),
+    /// so every way a worker can STOP occupying a node has to give the slot back. Three of the four used to leak
+    /// (DW-207): the worker dying at the node, and a Build command interrupting it, both silently burned capacity
+    /// forever. All four now route through the one static <see cref="ReleaseGatherSlot"/> path — the tick loop, the
+    /// <see cref="EntityWorld.OnDestroy"/> subscription this system installs, and <c>BuildingSystem.QueueWorkerBuild</c>.
+    ///
     /// CombatSystem skips any entity with GatherState != Inactive, so workers never
     /// auto-attack — even when their unit data carries attack damage.
     /// MovementSystem handles their physical movement via MoveTarget + Moving flag.
@@ -28,17 +35,47 @@ namespace ProjectChimera.Economy
         private static readonly Fixed ARRIVE_AT_NODE_SQR  = Fixed.FromFloat(1.8f) * Fixed.FromFloat(1.8f);
         private static readonly Fixed ARRIVE_AT_BASE_SQR  = Fixed.FromFloat(3.0f) * Fixed.FromFloat(3.0f);
 
+        /// <summary>
+        /// DW-80 — how many CONSECUTIVE ticks a Streaming worker tolerates a closed <c>requires_structure</c> gate
+        /// before it hands its gather slot back and re-idles to seek a different eligible node. Whole ticks (never
+        /// dt-accumulated), one second at the fixed sim rate, sourced from <see cref="SimulationLoop.TICKS_PER_SECOND"/>
+        /// so it can never drift from the real tick rate.
+        ///
+        /// <para>The grace window exists to PRESERVE Story 4.7's AC4 reading — a gate that closes and reopens mid-gather
+        /// withholds then resumes credit for the SAME worker at the SAME node — while still honouring the recorded
+        /// 2026-07-30 decision that a PERMANENTLY closed gate must not park a worker at zero production forever
+        /// (matching GATHER's node-vanishes-mid-cycle re-seek). Re-idling is cheap even when no alternative node exists:
+        /// <see cref="FindBestNode"/> itself checks the gate, so the worker simply stays Idle where it stands and
+        /// re-acquires this very node the tick the gate reopens.</para>
+        /// </summary>
+        public const int STREAMING_GATE_GRACE_TICKS = SimulationLoop.TICKS_PER_SECOND;
+
         private readonly ResourceNodeStore _nodes;
         private readonly ResourceStore     _resources;
         private readonly BuildingStore     _buildings;
         private readonly MatchStats?        _stats;
 
-        public GatheringSystem(ResourceNodeStore nodes, ResourceStore resources, BuildingStore buildings, MatchStats? stats = null)
+        /// <param name="world">
+        /// DW-207 — OPTIONAL death seam. When supplied, this system subscribes <see cref="EntityWorld.OnDestroy"/> so a
+        /// worker that dies (or is editor-deleted) while holding a node's gather slot RELEASES it, instead of leaking
+        /// <see cref="ResourceNodeStore.AssignedGatherers"/> capacity that no living worker can ever hand back. The main
+        /// <see cref="Tick"/> loop cannot do this: it skips dead entities, and a recycled slot has already been reset by
+        /// <see cref="EntityWorld.Create"/> by the time anything could notice. Nullable so the isolated-store test
+        /// callers that never destroy an entity keep compiling unchanged; <c>SimulationHost</c> always passes the world.
+        /// Subscribes AFTER <c>ModifierStore.ClearEntity</c> / <c>ItemSystem</c>'s death-drop (construction order), which
+        /// is irrelevant to correctness here — the three subscribers touch disjoint state — but is fixed and therefore
+        /// deterministic on every peer.
+        /// </param>
+        public GatheringSystem(ResourceNodeStore nodes, ResourceStore resources, BuildingStore buildings, MatchStats? stats = null,
+                               EntityWorld? world = null)
         {
             _nodes     = nodes;
             _resources = resources;
             _buildings = buildings;
             _stats     = stats;
+
+            if (world != null)
+                world.OnDestroy += id => ReleaseGatherSlot(world, nodes, id);
         }
 
         public void Tick(EntityWorld world, Fixed dt)
@@ -136,8 +173,25 @@ namespace ProjectChimera.Economy
             // tick's Streaming credit entirely (no gather, no supply drain, no credit) rather than reassigning;
             // the worker stays put and resumes the instant the gate reopens. GATHER is unaffected (checked only
             // once, at FindBestNode assignment time) — never gated live, matching the Always/Never contract.
+            //
+            // DW-80: the "stays put" half is BOUNDED. A gate that closes PERMANENTLY (the gating structure destroyed and
+            // never rebuilt) used to park the worker in Gathering at zero production forever. After
+            // STREAMING_GATE_GRACE_TICKS consecutive closed ticks the worker gives its slot back (so another faction's
+            // worker can claim it) and re-idles to seek a different eligible node — GATHER's node-vanishes re-seek
+            // behaviour, per the recorded decision. Anything shorter than the grace window is still a pure withhold.
             if (streaming && !StructureGateOpen(node, world.FactionOf[id]))
+            {
+                world.GateClosedTicks[id]++;
+                if (world.GateClosedTicks[id] >= STREAMING_GATE_GRACE_TICKS)
+                {
+                    ReleaseNode(world, id);                // hands the reserved slot back, clears GatherTarget + the streak
+                    world.GatherState[id] = GatherState.Idle;
+                }
                 return;
+            }
+            // Gate open (or a GATHER node, which is never live-gated) — the streak must be CONSECUTIVE, so a reopen
+            // resets it. Without this, N separate one-tick closures would eventually evict a perfectly productive worker.
+            world.GateClosedTicks[id] = 0;
 
             // Gather from node this tick
             Fixed rate      = _nodes.GatherRate[node];
@@ -313,18 +367,49 @@ namespace ProjectChimera.Economy
         {
             world.GatherTarget[workerId] = nodeIdx;
             _nodes.AssignedGatherers[nodeIdx]++;
+            world.GateClosedTicks[workerId] = 0; // DW-80: a fresh assignment starts a fresh closed-gate streak
             world.MoveTarget[workerId]   = _nodes.Position[nodeIdx];
             world.Flags[workerId]       |= EntityFlags.Moving;
             world.GatherState[workerId]  = GatherState.MovingToResource;
         }
 
-        private void ReleaseNode(EntityWorld world, int workerId)
+        private void ReleaseNode(EntityWorld world, int workerId) => ReleaseGatherSlot(world, _nodes, workerId);
+
+        /// <summary>
+        /// DW-207 — the SINGLE gather-slot release path: hand <paramref name="workerId"/>'s reserved slot back to its
+        /// <see cref="ResourceNodeStore.AssignedGatherers"/> counter (when it actually holds one) and clear its
+        /// <see cref="EntityWorld.GatherTarget"/>. Static + public because the release must also happen from outside the
+        /// tick loop — on death (<see cref="EntityWorld.OnDestroy"/>) and on a Build-command interrupt
+        /// (<c>BuildingSystem.QueueWorkerBuild</c>) — and a second implementation at either site is exactly how the
+        /// counter leaked in the first place: a node whose gatherers died at it permanently lost that much capacity, so
+        /// <see cref="FindBestNode"/> skipped it as saturated forever.
+        ///
+        /// <para>ONLY <see cref="GatherState.MovingToResource"/> and <see cref="GatherState.Gathering"/> hold a
+        /// reservation. <see cref="GatherState.MovingToBase"/> deliberately does NOT: <see cref="TickGathering"/> already
+        /// decremented at that transition (a worker walking a load home is not occupying the node) even though it leaves
+        /// <see cref="EntityWorld.GatherTarget"/> pointing at the node it just left. Releasing on that state too would
+        /// DOUBLE-decrement and steal a live worker's slot — the mirror-image defect. <see cref="GatherState.Idle"/>
+        /// always carries GatherTarget = −1, and the <c>node &gt;= 0</c> test makes a second call idempotent.</para>
+        ///
+        /// <para>Mutates the folded <c>AssignedGatherers</c> counter, so it must stay integer-only and be reachable in
+        /// the same order on every peer: <see cref="EntityWorld.Destroy"/> fires its hook synchronously, in the same
+        /// deterministic sequence, before the id returns to the free list.</para>
+        /// </summary>
+        public static void ReleaseGatherSlot(EntityWorld world, ResourceNodeStore nodes, int workerId)
         {
             int node = world.GatherTarget[workerId];
-            if (node >= 0 && _nodes.Active[node] && _nodes.AssignedGatherers[node] > 0)
-                _nodes.AssignedGatherers[node]--;
-            world.GatherTarget[workerId] = -1;
+            if (node >= 0 && HoldsGatherSlot(world.GatherState[workerId])
+                && nodes.Active[node] && nodes.AssignedGatherers[node] > 0)
+                nodes.AssignedGatherers[node]--;
+            world.GatherTarget[workerId]    = -1;
+            world.GateClosedTicks[workerId] = 0; // DW-80: no node, no streak
         }
+
+        /// <summary>DW-207 — the two <see cref="GatherState"/>s that occupy one of a node's
+        /// <see cref="ResourceNodeStore.MaxGatherers"/> slots. See <see cref="ReleaseGatherSlot"/> for why
+        /// <see cref="GatherState.MovingToBase"/> is excluded.</summary>
+        private static bool HoldsGatherSlot(GatherState state) =>
+            state == GatherState.MovingToResource || state == GatherState.Gathering;
 
         private void SetMoveToBase(EntityWorld world, int id)
         {

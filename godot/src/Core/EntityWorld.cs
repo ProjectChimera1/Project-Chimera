@@ -626,6 +626,23 @@ namespace ProjectChimera.Core
         // SimChecksum and NOT snapshot residue, exactly like CarryAmount.
         public readonly ResourceKind[] CarryResourceType;
         public readonly Fixed[]       CarryCapacity;  // Max carry per trip
+        /// <summary>
+        /// DW-80 — CONSECUTIVE whole simulation ticks this worker has sat in <see cref="Core.GatherState.Gathering"/>
+        /// at a Streaming node whose <c>requires_structure</c> gate is CLOSED. Reset to 0 the moment the gate reopens
+        /// (so the streak is genuinely consecutive), on every fresh node assignment, and on the re-idle itself; once it
+        /// reaches <c>GatheringSystem.STREAMING_GATE_GRACE_TICKS</c> the worker hands its gather slot back and re-idles
+        /// to seek a different eligible node instead of producing zero forever (the recorded 2026-07-30 decision).
+        ///
+        /// <para>Whole ticks, never dt-accumulated and never wall-clock (the <c>IncomeTicksElapsed</c> discipline), so
+        /// it is cross-platform-identical. NOT folded into <see cref="SimChecksum"/> and NOT persisted by
+        /// <c>SaveGameState</c> — deliberately the exact posture of every other field of this worker state machine
+        /// (<see cref="GatherState"/>/<see cref="GatherTarget"/>/<see cref="CarryAmount"/> are all unfolded; only the
+        /// node-side <c>AssignedGatherers</c> is). A resumed save therefore restarts the grace window, which is
+        /// behaviourally indistinguishable from a fresh boot re-seeking the same node. RUNTIME state, NOT def-derived:
+        /// defaulted in <see cref="Create"/> (the mandatory recycle-trap reset), and NOT snapshot residue (the
+        /// <see cref="CarryAmount"/> posture — a delete→undo restarts the window).</para>
+        /// </summary>
+        public readonly int[]         GateClosedTicks;
 
         // --- Worker construction ---
         /// <summary>
@@ -742,6 +759,7 @@ namespace ProjectChimera.Core
             CarryAmount    = new Fixed[MAX_ENTITIES];
             CarryResourceType = new ResourceKind[MAX_ENTITIES]; // Story 4.7 — defaults to Ore (0)
             CarryCapacity  = new Fixed[MAX_ENTITIES];
+            GateClosedTicks = new int[MAX_ENTITIES];            // DW-80 — closed-gate streak (NOT folded; 0 == fresh, no Array.Fill needed)
             BuildTarget    = new int[MAX_ENTITIES];
 
             _freeList = new int[MAX_ENTITIES];
@@ -889,6 +907,11 @@ namespace ProjectChimera.Core
             CarryAmount[id]   = Fixed.Zero;
             CarryResourceType[id] = ResourceKind.Ore; // Story 4.7 — recycled slot must not inherit the prior occupant's carry kind
             CarryCapacity[id] = Fixed.Zero;
+            // DW-80: MANDATORY recycle-reset of the closed-gate streak. A recycled slot must NEVER inherit the prior
+            // occupant's partial grace window (the 1.12/1.13/2.6 SoA-recycle defect class) — it would re-idle a brand-new
+            // worker early, or (worse) never, depending on the corpse. Unfolded, so this line's ONLY teeth are
+            // RecycledSlot_CarriesNoPriorGateClosedStreak.
+            GateClosedTicks[id] = 0;
             BuildTarget[id]   = -1;
 
             AliveCount++;
@@ -1217,6 +1240,7 @@ namespace ProjectChimera.Core
             Array.Clear(AuraAbilityIndex);      Array.Clear(OnHitAbilityIndex);     Array.Clear(SelfPassiveAbilityIndex);
             Array.Clear(HeroIndex);             Array.Clear(GatherState);           Array.Clear(GatherTarget);
             Array.Clear(CarryAmount);           Array.Clear(CarryResourceType);     Array.Clear(CarryCapacity);         Array.Clear(BuildTarget);
+            Array.Clear(GateClosedTicks);       // DW-80 (0 == the fresh-ctor state)
             Array.Clear(_freeList);
 
             // Re-apply the ctor sentinel fills (a default 0 would falsely alias slot/id 0 for these).

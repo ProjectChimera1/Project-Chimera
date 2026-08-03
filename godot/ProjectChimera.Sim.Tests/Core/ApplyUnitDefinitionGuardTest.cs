@@ -3,6 +3,7 @@ using ProjectChimera.Combat;            // DamageType, ArmorType (Parsed* compar
 using ProjectChimera.Core;              // EntityWorld, Fixed, FixedVec3, Faction, FactionRegistry, UnitCategory, SeparationPriority
 using ProjectChimera.Core.Definitions;  // UnitDefinition
 using ProjectChimera.Core.Sim;          // SimulationHost, ScenarioApplier, NullLogSink
+using ProjectChimera.Economy;           // GatheringSystem.STREAMING_GATE_GRACE_TICKS (DW-80 recycle guard)
 using Xunit;
 
 namespace ProjectChimera.Sim.Tests.Core
@@ -407,6 +408,29 @@ namespace ProjectChimera.Sim.Tests.Core
 
             // No grid injected ⇒ Create re-samples to Fixed.Zero; the new occupant must carry NO prior elevation.
             Assert.Equal(Fixed.Zero.Raw, w.Elevation[reused].Raw);
+        }
+
+        // ── DW-80 — GateClosedTicks is the Streaming requires_structure closed-gate streak: RUNTIME state written only by
+        //    GatheringSystem (never def-derived, so ApplyUnitDefinition does not touch it — the HeroIndex/order-ring
+        //    posture). A recycled slot must be reset in Create so a new worker never inherits a corpse's partial grace
+        //    window, which would evict it from a perfectly open node after only a tick or two of its OWN closure. This is
+        //    the SOLE teeth on that mandatory reset: the field is UNFOLDED (the GatherState/GatherTarget/CarryAmount
+        //    posture), so no checksum fold catches an omission, and default(int)==0 makes the reset line look redundant. ──
+        [Fact]
+        public void RecycledSlot_CarriesNoPriorGateClosedStreak()
+        {
+            var w = new EntityWorld();
+            int first = w.Create(FixedVec3.Zero, Faction.Player1, Fixed.FromInt(100), Fixed.FromInt(3));
+            // Dirty the streak on the first occupant, as if it had sat at a gate-closed Streaming node for a while.
+            w.GateClosedTicks[first] = GatheringSystem.STREAMING_GATE_GRACE_TICKS - 1;
+            Assert.NotEqual(0, w.GateClosedTicks[first]);
+
+            w.Destroy(first);
+            int reused = w.Create(FixedVec3.Zero, Faction.Player2, Fixed.FromInt(50), Fixed.FromInt(3));
+            Assert.Equal(first, reused); // same id off the free list
+
+            // The new occupant must start its own grace window from zero — proves the mandatory Create() recycle-reset.
+            Assert.Equal(0, w.GateClosedTicks[reused]);
         }
 
         // ── Story 3.17 — editor delete→undo restore fidelity. SnapshotUnit + RestoreUnit route a def-based unit back
