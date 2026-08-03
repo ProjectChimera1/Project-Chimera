@@ -1583,14 +1583,16 @@ origin: migrated from flat appender bullet, 2026-07-30 (A1-E11)
 source_spec: `_bmad-output/implementation-artifacts/spec-7-1-trigger-layer-determinism-prerequisites-ordering-fixed-culture.md`
 location: ScenarioDelegateBinder.cs:37
 reason: The trigger `spawn_unit` fan-out offset (`x + i·2.5` in Fixed) and the `OnDisplayMessage` Fixed→float presentation conversion in `ScenarioDelegateBinder` are unverified — the binder needs a Godot `SceneContext`, so the Godot-free Sim.Tests suite cannot drive it. — Evidence: `ScenarioDelegateBinder.cs:37` computes the determinism-relevant multi-unit spawn coordinate (feeds `SpawnUnitAt` → sim truth); a wrong `SpawnLateralOffset.Raw` (163840 ≠ 2.5) or broken accumulation would ship with no failing test. `ScenarioDirectorSpawnActionTests` captures `OnSpawnUnit` and so bypasses the binder arithmetic entirely. Fix path: extract the fan-out offset into a Godot-free pure helper the sim suite can assert, or stand up a GdUnit4 integration harness. (Story 7.1 review — verification-gap + blind + edge-case reviewers.)
-status: open
+status: done 2026-08-03
+resolution: workflow burn-down bundle godot-free-seam-test-extraction — new Godot-free ScenarioDelegateMath (src/Core/Bootstrap/, inside the Tier-1 glob) now owns the spawn_unit fan-out coordinate (x + i*2.5, Fixed-only, SpawnLateralOffset raw 163840) and the display_message Fixed->float toast conversion; ScenarioDelegateBinder routes through it and 6 new tests pin the raw constant, per-unit accumulation, sign boundary, and presentation conversion.
 
 ### DW-334: `LLMService`'s AI-generated-trigger validation guard (spawn map-bounds reject + `display_message` duration…
 origin: migrated from flat appender bullet, 2026-07-30 (A1-E11)
 source_spec: `_bmad-output/implementation-artifacts/spec-7-1-trigger-layer-determinism-prerequisites-ordering-fixed-culture.md`
 location: LLMService.cs
 reason: `LLMService`'s AI-generated-trigger validation guard (spawn map-bounds reject + `display_message` duration auto-fix), adapted to Fixed by Story 7.1, has no test at all — a pre-existing untested surface. — Evidence: `LLMService.cs:~314-321` compares Fixed-vs-Fixed for the out-of-map-bounds spawn reject and auto-fixes `Duration <= Fixed.Zero` to `Fixed.FromInt(4)`; repo-wide search finds zero test references to `LLMService`/`ValidateAction`/`ScenarioContext`, so inverting the bounds check or breaking the auto-fix leaves the whole suite green. Fix path: a Godot-free unit test constructing a `ScenarioContext` and asserting the reject + auto-fix (mirrors how the sim suite tests `ScenarioValidator`). (Story 7.1 review — verification-gap reviewer.)
-status: open
+status: done 2026-08-03
+resolution: workflow burn-down bundle llm-scenario-validation-hardening — the entry's 'zero test references to LLMService' evidence was stale (Story 8.3 added construct-membership/clamp tests) but the named surface, the Pass 6 range/safety guard, was genuinely untested; added LlmTriggerRangeSafetyTests (12 tests): Fixed-vs-Fixed spawn map-bounds reject incl. boundary-inclusive accept and context-driven bounds, spawn count auto-clamp to 1..50, display_message duration<=0 auto-fix to Fixed 4s (explicit-0, negative, positive-preserved), and create_timer non-positive-duration reject.
 
 ### DW-335: `TriggerGraph.ToFlat`/`FromJson` are fail-OPEN on a malformed/arbitrary graph — duplicate node ids silently…
 origin: migrated from flat appender bullet, 2026-07-30 (A1-E11)
@@ -1627,12 +1629,14 @@ origin: migrated from flat appender bullet, 2026-07-30 (A1-E11)
 source_spec: `_bmad-output/implementation-artifacts/spec-7-3-typed-scoped-variables-deterministic-timers-and-verify-to-ship-eca.md`
 location: ScenarioDirector.cs
 reason: `ScenarioDirector.RunEffect` rebuilds the entire SpatialHash on every invocation, so N `run_effect` triggers firing in one tick cost N full `Rebuild(world)` passes. — Evidence: The new graph-walk executor's `run_effect` path (`ScenarioDirector.cs`, RunEffect) rebuilds the spatial index per call rather than once per tick; deterministic and correct, but O(N·world) per tick and unbounded in the number of run_effect triggers. Surfaced by the Story 7.3 blind-hunter review (perf, low). Closure: rebuild the SpatialHash at most once per tick (or lazily/dirty-flagged) before draining run_effect actions.
-status: open
+status: done 2026-08-03
+resolution: workflow burn-down bundle dsl-runtime-fuel-hardening — ScenarioDirector.RunEffect rebuilds its SpatialHash lazily at most once per tick behind a dirty flag; a compile-time-classified kill-capable effect graph (DslLoopGate.EffectCanMutateWorld, conservative) or a spawn_unit leaf re-dirties it, so mid-tick kills/spawns stay visible to later run_effects — results byte-identical to rebuild-per-invocation (proven by the spawn-then-search behavioral test).
 ### DW-340: `ScenarioDirector.RunEffect` throws `NotSupportedException` mid-tick if the director was constructed without…
 origin: migrated from flat appender bullet, 2026-07-30 (A1-E11)
 source_spec: `_bmad-output/implementation-artifacts/spec-7-3-typed-scoped-variables-deterministic-timers-and-verify-to-ship-eca.md`
 reason: `ScenarioDirector.RunEffect` throws `NotSupportedException` mid-tick if the director was constructed without `SetEffectRuntime` (no `ModifierStore`) and an embedded effect uses apply_modifier/persistent. — Evidence: `EffectExecutor` throws when a `PersistentEffect`/`ApplyModifierEffect` runs without a `ModifierStore`; production is wired via `SimulationHost.SetEffectRuntime`, but any `ScenarioDirector` built off the `SimulationHost` path (test helpers, future non-host callers) crashes on such an effect. Story 7.3 blind-hunter (low, fragility). Closure: fail-closed at the validator/load gate (reject modifier-bearing trigger effects when no ModifierStore is wired) or make RunEffect degrade deterministically.
-status: open
+status: done 2026-08-03
+resolution: workflow burn-down bundle dsl-runtime-fuel-hardening — LoadScenario now rejects fail-closed (located JsonException, pre-commit/failure-atomic) when content embeds apply_modifier/persistent run_effects and no ModifierStore is wired; production is unaffected (SimulationHost wires the store in its ctor, before any LoadScenario).
 ### DW-341: `DslVarTable.FoldInto` folds a Point-typed variable's second component (Raw1/Z) which is never populated or…
 origin: migrated from flat appender bullet, 2026-07-30 (A1-E11)
 source_spec: `_bmad-output/implementation-artifacts/spec-7-3-typed-scoped-variables-deterministic-timers-and-verify-to-ship-eca.md`
@@ -1670,7 +1674,8 @@ status: open
 origin: migrated from flat appender bullet, 2026-07-30 (A1-E11)
 source_spec: `_bmad-output/implementation-artifacts/spec-7-6-bounded-foreach-foreachbatched-loops-arrays-and-layer-3-fuel.md`
 reason: Fuel charges `run_effect` at its static embedded-node count, so a `SearchAreaEffect` executing its child per matched target (up to `MaxSearchTargets=64`) does up to ~64x uncharged work — weakest exactly inside entity loops (iterations x search-targets). — Evidence: `CompiledItem.RunEffectCost` = `DslLoopGate.CountEffectNodes` (static), while `EffectExecutor` fans `SearchArea` children out per target; the spec's cost model prescribes "run_effect = embedded node count," so the implementation matches intent but the model undercounts dynamic fan-out. Story 7.6 blind-hunter (medium, seatbelt accuracy). Closure: weight `SearchArea` nodes by `MaxSearchTargets` (worst-case, static — keeps determinism and the load-gate product check aligned) in both the static model and runtime charging; note any charging change forces a golden re-baseline (fuel folds into `SimChecksum`).
-status: open
+status: done 2026-08-03
+resolution: workflow burn-down bundle dsl-runtime-fuel-hardening — DslLoopGate.CountEffectNodes, the single function behind both the static MaxDslOpsPerTrigger product check and the runtime fuel charge, now weights SearchAreaEffect child subtrees by EffectCaps.MaxSearchTargets (multiplicative for nested searches, saturating long walk, visit-cap behavior byte-identical for weight-free graphs). ZERO goldens moved — no golden content embeds run_effect/SearchArea. One existing fixture (ForEachExecutionTests mid-loop-death) shrunk up_to 64->32 to stay under the now-honest cost gate, assertions unchanged.
 ### DW-348: Loop/array nodes not exec-reachable from any trigger chain skip all of `DslLoopGate`'s semantic checks (undeclared…
 origin: migrated from flat appender bullet, 2026-07-30 (A1-E11)
 source_spec: `_bmad-output/implementation-artifacts/spec-7-6-bounded-foreach-foreachbatched-loops-arrays-and-layer-3-fuel.md`
@@ -1680,7 +1685,8 @@ status: open
 origin: migrated from flat appender bullet, 2026-07-30 (A1-E11)
 source_spec: `_bmad-output/implementation-artifacts/spec-7-6-bounded-foreach-foreachbatched-loops-arrays-and-layer-3-fuel.md`
 reason: Fuel exhaustion and batched-drain suppression silently drop one-shot edge events (`match_start`, `unit_dies` edge-detects) for skipped/suppressed triggers — "re-evaluate next tick" holds only for polled events. — Evidence: `EvaluateTriggers` breaks the sweep on `FuelExhausted` and skips suppressed draining triggers, while `CollectEvents` clears `_firstTick`/`_prevFlags` edge state unconditionally each tick, so an event that fired on a skipped tick is gone forever; every fuel test uses the polled `unit_count_threshold` event, so the loss class is unexercised. Deterministic and spec-consistent ("skip this tick" / "suppressed while draining"), but a silent behavioral drop. Story 7.6 edge-case-hunter + blind-hunter (medium). Closure: when Story 7.5's event queue lands, re-queue unconsumed edge events for fuel-skipped/suppressed triggers (or document the loss as authored semantics in the DSL reference).
-status: open
+status: done 2026-08-03
+resolution: workflow burn-down bundle dsl-runtime-fuel-hardening (per the recorded owner decision) — unconsumed one-shot EDGE occurrences for fuel-skipped or batched-suppressed triggers now persist on a reserved DslEventQueue rail (EventBounds.RequeueRailBase + kind, P3 = target exec index; timer names index-encoded via a load-built table, building types via their int enum value) and redeliver next tick to the target trigger alone; served triggers cannot double-fire, polled thresholds never ride the rail, and persistence re-queues across consecutive suppressed ticks (the three persistence tests were empirically confirmed to FAIL with the rail neutered). Non-goals (authored-gate skips, custom-event drain losses) filed as new entries.
 decision: 2026-07-30 Re-queue via DslEventQueue — Persist unconsumed edge events for skipped/suppressed triggers into the 7.5 queue
 ### DW-350: Gate/backstop invocation asymmetry plus silent-drop of stray data edges into the new 7.6 ports — a loop-free graph…
 origin: migrated from flat appender bullet, 2026-07-30 (A1-E11)
@@ -1698,7 +1704,8 @@ resolution: already resolved: DslLoopGate.cs:326-329 ActiveLoopVars now rejects 
 origin: migrated from flat appender bullet, 2026-07-30 (A1-E11)
 source_spec: `_bmad-output/implementation-artifacts/spec-7-6-bounded-foreach-foreachbatched-loops-arrays-and-layer-3-fuel.md`
 reason: Entity loops multiply the per-invocation `RunEffect` SpatialHash rebuild (up to 64 rebuilds per loop per tick; batched rows more) and the fuel model charges none of it — extends the 7.3 rebuild-per-invocation ledger entry with the 7.6 loop/fuel dimension. — Evidence: `RunEffect` calls `_effectSpatial.Rebuild(world)` per invocation; a `for_each` body reaches it once per iteration, and `run_effect` fuel cost is the static embedded-node count, so the O(world) rebuild is invisible to `MaxDslOpsPerTrigger`/`MaxDslOpsPerTick`. Per-iteration rebuild is semantically correct (mid-loop kills must be visible to later iterations) — any optimization must preserve that. Story 7.6 blind-hunter (low, perf). Closure: dirty-flag the spatial index (rebuild only after world mutations) and document what fuel does not meter.
-status: open
+status: done 2026-08-03
+resolution: workflow burn-down bundle dsl-runtime-fuel-hardening — closed together with DW-339: the RunEffect SpatialHash rebuild is now dirty-flagged to at most once per tick (re-dirtied by kill-capable graphs and spawn_unit leaves), so an entity loop no longer multiplies O(world) rebuilds, and MaxDslOpsPerTick now documents what fuel does not meter.
 ### DW-353: Server-brokered matches never run the new HandshakeGate — `DedicatedServer.HandleReady` ignores the Ready packet's…
 origin: migrated from flat appender bullet, 2026-07-30 (A1-E11)
 source_spec: `_bmad-output/implementation-artifacts/spec-7-7-authoritative-server-side-load-time-validator-gate-no-escape-hatch.md`
@@ -1743,7 +1750,8 @@ origin: migrated from flat appender bullet, 2026-07-30 (A1-E11)
 source_spec: `_bmad-output/implementation-artifacts/spec-7-7-authoritative-server-side-load-time-validator-gate-no-escape-hatch.md`
 location: SimSources.props
 reason: The `LobbyUi` Ready-packet handler wiring that feeds `HandshakeGate.CheckStart` (parsed-flag routing, local/peer hash argument slots, and NOT setting `_peerReadyConfirmed` when the gate blocks) has no automated coverage — only the pure `CheckStart` decision is unit-tested. — Evidence: `HandshakeGateTests` exhaustively pins `CheckStart` (incl. the `peerHashParsed:false` block), but `LobbyUi` is not globbed into the Tier-1 assembly (`SimSources.props` includes only `Multiplayer\Server\**` + single-file `HandshakeGate`), so the Godot-side handler is verified only by diff inspection. A regression that passes `peerHashParsed:true` unconditionally, swaps the hash arg slots, or marks the peer ready before consulting the gate would re-open the fail-open start with every test still green. Distinct from the already-ledgered boot/F5 substitution glue entry (that one covers `ScenarioLoadPhase`/`ResetToAuthoredStart`, not the lobby handler). Surfaced by the Verification Gap + Intent Alignment review layers on Story 7.7. Closure = extract the handler's parsed-flag+arg marshalling into a Godot-free helper (as `HandshakeGate`/`FactionLaunchGate` already were) and unit-test it, or add a Tier-2 lobby test.
-status: open
+status: done 2026-08-03
+resolution: workflow burn-down bundle godot-free-seam-test-extraction — new ReadyPacketRouting + ReadyRouteDecision (src/Multiplayer/, added as a SimSources.props single-file include) own LobbyUi's Ready-handler parse -> protocol-version gate -> parsed-flag + local/peer hash-argument marshalling into HandshakeGate.CheckStart -> peer-slot resolution; a Blocked decision structurally cannot mark the peer ready, and 10 new tests drive real MakeReady wire bytes end-to-end (a deliberate arg-slot-swap mutation was confirmed to fail exactly the intended test).
 ### DW-361: Story 7.7 moved `ScenarioApplier.Apply`'s `RevivalRuntime.Configure`/`Resources.ConfigureSupply` calls below the…
 origin: migrated from flat appender bullet, 2026-07-30 (A1-E11)
 source_spec: `_bmad-output/implementation-artifacts/spec-7-7-authoritative-server-side-load-time-validator-gate-no-escape-hatch.md`
@@ -1769,20 +1777,23 @@ origin: migrated from flat appender bullet, 2026-07-30 (A1-E11)
 source_spec: `{implementation_artifacts}/spec-7-8-custom-runtime-ui-read-rail-declarative-widget-tree-version-stamped-readback.md`
 location: godot/src/Dsl/CustomUiGate.cs
 reason: `CustomUiGate` does not bound-check the widget tree's geometry — `CanvasWidth`/`CanvasHeight` and per-widget `W`/`H` may be zero/negative/absurd and still pass the gate, and those raw values are folded into the MP handshake hash. — Evidence: `godot/src/Dsl/CustomUiGate.cs` validates caps/ids/anchors/binds but no geometry ranges; the renderer defensively defaults `<=0` canvas dims to 1920/1080 and a 0×0 widget simply renders invisibly, so this is author-error hardening rather than a live defect (peers sharing one scenario file cannot diverge). A future hardening pass could reject non-positive canvas dims / degenerate geometry with a located error and enforce the "fixed 16:9 canvas" claim.
-status: open
+status: done 2026-08-03
+resolution: workflow burn-down bundle custom-ui-gate-hardening — CustomUiGate now rejects non-positive geometry with located errors: canvas_w/canvas_h checked once at tree level before the widget walk, every widget's W/H must be >= 1 (X/Y offsets stay free; negative anchored insets remain legal, pinned by a regression test); the CustomUiBuilderPanel W/H spinboxes now floor at 1 so the sanctioned editor cannot author a tree its own reload rejects. Covered by CustomUiGateGeometryTests (14 tests). The entry's 'absurd' upper-bound and 'enforce the fixed 16:9 canvas' suggestions need an owner decision and are filed as a separate residue entry.
 
 ### DW-365: A repeater's `Rows` and a `ProgressBar`'s `Max` have no LOWER-bound gate (only the `Rows > MaxListRows` upper…
 origin: migrated from flat appender bullet, 2026-07-30 (A1-E11)
 source_spec: `{implementation_artifacts}/spec-7-8-custom-runtime-ui-read-rail-declarative-widget-tree-version-stamped-readback.md`
 reason: A repeater's `Rows` and a `ProgressBar`'s `Max` have no LOWER-bound gate (only the `Rows > MaxListRows` upper cap), so an authored `rows:0`/negative or `max:0` passes `CustomUiGate` and is folded into the v9 canonical hash as a distinct value, yet the renderer silently overrides it — the hash claims a semantic difference the runtime erases. — Evidence: `CustomUiGate.CheckWidget` checks only `w.ExpectsArrayBind && w.MaxRows > DslBounds.MaxListRows`; `CanonicalModelHash.MixWidget` folds `Rows`/`Max` raw; but `CustomUiBridge.RebuildRows` does `rowCap = b.Model.MaxRows > 0 ? b.Model.MaxRows : DslBounds.MaxListRows` — so `rows:0` renders up to 64 rows (author intent discarded), and `WidgetFormat.Fraction` returns 0.0 for `max<=0`. Not a desync (peers share one file) and low consequence (weird authored value → default), but hash and render disagree on the meaning of 0/negative. Surfaced by the Blind Hunter + Edge Case Hunter review layers on Story 7.8. Distinct from the general "geometry ranges unchecked" entry above (that covers canvas/W/H invisibility; this is the repeater-cap / progress-denominator fold-vs-render divergence). Closure = add lower-bound gate checks (`Rows >= 1`, `Max >= 1`) with located errors, or make the renderer honor the folded value instead of defaulting.
-status: open
+status: done 2026-08-03
+resolution: workflow burn-down bundle custom-ui-gate-hardening — lower bounds added: a repeater's rows >= 1 (upper MaxListRows cap kept) and a ProgressBar's max >= 1, both with located errors, closing the fold-vs-render divergence where the hash folded raw 0/negative values the renderer silently overrode.
 
 ### DW-366: The `custom_ui` widget array is fully parsed and allocated into memory BEFORE any cap is enforced —…
 origin: migrated from flat appender bullet, 2026-07-30 (A1-E11)
 source_spec: `{implementation_artifacts}/spec-7-8-custom-runtime-ui-read-rail-declarative-widget-tree-version-stamped-readback.md`
 location: CustomUiGate.cs:62
 reason: The `custom_ui` widget array is fully parsed and allocated into memory BEFORE any cap is enforced — `CustomUiGate.Check` (the only `MaxWidgetCount` enforcement) runs after `WidgetBaseJsonConverter` has already materialized the whole `WidgetBase[]`, so a pathological flat array of millions of sibling widgets allocates before rejection. — Evidence: `WidgetBaseJsonConverter.ReadChildren`/root array read builds the full array with no streaming count guard; `CustomUiGate.cs:62` rejects `> MaxWidgetCount=256` only post-materialization. STJ `MaxDepth` bounds nesting depth but NOT breadth. This mirrors the project-wide parse-then-gate posture for every scenario collection (triggers/regions/units are equally unbounded at parse), so it is a latent DoS-surface class for untrusted/AI-gen/shared scenario files rather than a 7.8-specific regression; the handshake hash covers divergence but the file still parses first. Surfaced by the Blind Hunter review layer on Story 7.8. Closure = a streaming element-count ceiling during parse (applied uniformly across scenario collections, not just custom_ui) or an upstream byte/size guard on untrusted scenario input.
-status: open
+status: done 2026-08-03
+resolution: workflow burn-down bundle custom-ui-gate-hardening (per the recorded owner decision) — new ScenarioSerializer.MaxScenarioFileBytes = 8 MiB + GuardScenarioInputSize enforced at BOTH untrusted entries: LoadFromFile checks the on-disk FileInfo.Length before reading the file, and LLMService.ValidateScenario checks the AI-generated string's UTF-8 byte count before pass-1 deserialization, uniformly bounding the parse-then-gate allocation gap for every scenario collection. Pinned by ScenarioInputSizeGuardTests (5 tests, incl. proof the file guard trips BEFORE parse).
 decision: 2026-07-30 Upstream byte/size guard — Cap untrusted scenario input size before deserialization (cheapest, uniform)
 
 ### DW-367: The director's `unit_dies` source (`_prevFlags` Alive-diff) merges a same-tick die→recycle→die on one entity slot…
@@ -2042,7 +2053,8 @@ origin: migrated from flat appender bullet, 2026-07-30 (A1-E11)
 source_spec: `_bmad-output/implementation-artifacts/spec-8-3-ai-generation-on-the-provider-stack-triggers-new-dsl-constructs-maps.md`
 location: godot/src/AI/LLMService.cs
 reason: `LLMService.ValidateScenario` never checks player-slot indices are unique or in range — an (untrusted) scenario declaring two slots both "slot":0 passes the length-based min-slots check, both resolve to the same faction, and Pass 7 merges their combat counts under key 0, yielding a degenerate one-faction scenario past the gate. — Evidence: Pass 2 checks only `PlayerSlots.Length >= MinPlayerSlots` then indexes faction-JSON and (Pass 7) combat counts by `slot.Slot` (godot/src/AI/LLMService.cs:~529). Pre-existing on the RTS path (the old code had the identical length-only check and slot-keyed combat count); the "min player slots" name implies a player-count guarantee a length check does not provide, and relaxing the clamp widens the hole. Closure = validate slot indices are distinct and within [0, PlayerSlots.Length) (or [0, MinPlayerSlots)) before the faction-path/combat-count passes. (Blind Hunter, Story 8.3 review; pre-existing.)
-status: open
+status: done 2026-08-03
+resolution: workflow burn-down bundle llm-scenario-validation-hardening — LLMService.ValidateScenario Pass 2 now validates declared player-slot indices are unique and within [0, PlayerSlots.Length) (a permutation of 0..Length-1) with located errors, BEFORE the trusted faction-path forcing and the Pass 7 combat-count merge; the check is universal (fires under relaxed non-RTS clamps too). Proven genuine by reverting LLMService.cs to the run base and watching exactly the 4 reject tests fail.
 
 ### DW-374: The trigger-gen prompt now advertises `player_chat` (required by the `NodeKinds`-driven staleness guard, since it…
 origin: migrated from flat appender bullet, 2026-07-30 (A1-E11)
@@ -2188,7 +2200,8 @@ status: open
 origin: migrated from flat appender bullet, 2026-07-30 (A1-E11)
 source_spec: `_bmad-output/implementation-artifacts/spec-9-3-server-authoritative-merged-tick-rewrite-build-client-gate-spectator-chat-n-2-fr-39-golden-gate.md`
 reason: The server-side `DedicatedServer` delegation to the tested cores is exercised by no automated test — the fan-in wiring (`FanInTickCommands`: slot/len into `_builder.Submit`, `TryBuild`, then `BroadcastCommands`), the `Chat` re-stamp branch (decode → `ServerLobbyPolicy.StampChatFaction` → `MakeChat` re-encode → rebroadcast), and the client-sent-`TickCommandsMerged` hard-reject dispatch — so an adapter-level transposition (wrong slot/len, omitted broadcast, dropped chat re-encode letting a spoofed faction byte through) would ship green while every underlying unit primitive passes in isolation. — Evidence: DedicatedServer is Godot-coupled and constructed only in src/ + LoopbackDesyncSelfTest (which routes no command/chat packet through the merged path); MergedTickBuilder/ServerLobbyPolicy/MergedTickPacket are Tier-1-tested individually but their composition in HandlePacket/FanInTickCommands is not. Server-node sibling of the already-deferred client-ring coverage gap; the intent accepts Godot-coupled nodes as untestable-at-Tier-1 by design, so residual risk is low (thin wiring, twice-reviewed). Closure = extract the server delegation seams into Godot-free helpers (the builder/applier/lobby-policy extraction pattern this story already used) or add a loopback path that drives a command + a chat packet end-to-end through the merged fan-in.
-status: open
+status: done 2026-08-03
+resolution: workflow burn-down bundle godot-free-seam-test-extraction — new ServerPacketRelay (src/Multiplayer/Server/, folder-globbed) owns the DedicatedServer fan-in composition (slot/len -> MergedTickBuilder.Submit -> monotonic frontier advance -> TryBuild -> broadcast), the dispatch-level client-sent-TickCommandsMerged hard-reject, and the Chat decode -> ServerLobbyPolicy.StampChatFaction -> MakeChat re-encode pipeline; DedicatedServer is now a thin adapter and 12 new tests pin the transposition classes the entry feared (wrong slot/len, omitted broadcast, spoofed chat faction byte, spectator->Neutral, undecodable drop).
 
 ### DW-395: The dedicated server's Pong handler folds any Pong into the per-slot RTT EWMA without checking the ping seq…
 origin: migrated from flat appender bullet, 2026-07-30 (A1-E11)
@@ -4343,4 +4356,53 @@ status: open
 origin: workflow burn-down run, 2026-08-03
 location: godot/src/Multiplayer/NetworkCommand.cs (UseItem/DropItem via `items`, DslEvent via `dslSink`, Concede via `winState`)
 reason: DW-304's fail-loud warning was deliberately scoped to the building-command family, so UseItem/DropItem, DslEvent, and Concede still take the silent null-elvis deterministic no-op path when their handle is null. Widening it was deliberately NOT done: DW-304 and the lockstep-wiring-fail-loud bundle intent name the building-command family only, and MergedTickApplierTests explicitly locks Concede-with-null-winState as a silent deterministic no-op, so a blanket widening would break an intentional contract. If fail-loud is wanted for these handles it needs its own decided entry that first settles which of them are legitimately-null headless seams and which are wiring bugs.
+status: open
+
+### DW-541: DedicatedServer's LobbyChat and MapPing relay branches remain inline, the same seam shape DW-394 just extracted for in-match Chat
+origin: workflow burn-down run, 2026-08-03
+location: godot/src/Multiplayer/DedicatedServer.cs (case PacketType.LobbyChat ~line 520; case PacketType.MapPing ~line 508)
+severity: medium
+reason: DW-394 names only the in-match Chat re-stamp branch, so the identically-shaped LobbyChat and MapPing decode -> StampChatFaction -> re-encode -> BroadcastReliable compositions were left inline to respect bundle scope. Their StampChatFaction primitive is Tier-1-tested and ServerPacketRelay.RestampChat now provides the obvious extraction template (parameterize the TryRead/Make codec pair), but their compositions are still verified only by diff inspection — an adapter-level transposition there would ship green. Closure = route both branches through a parameterized ServerPacketRelay re-stamp helper and pin them with the same transposition tests DW-394's close added for Chat.
+status: open
+
+### DW-542: The LLM scenario gate does not check units'/buildings' Slot references against the declared player slots, so an out-of-range placement passes as 'validated'
+origin: workflow burn-down run, 2026-08-03
+location: godot/src/AI/LLMService.cs ValidateScenario Passes 4/7 (u.Slot, b.Slot)
+severity: medium
+reason: Adjacent to but outside DW-373's prescribed closure (which names player-slot DECLARATION indices only). A generated scenario whose units/buildings declare e.g. slot 3 in a 2-slot map passes the LLM gate — 'validated' is surfaced to the creator — and only rejects later at the ScenarioValidator load gate ('references no declared player_slot'), so the AI-generation UX promises a scenario the loader will refuse. Same papercut class as DW-373 but for placement slot refs; related known entry DW-240 covers the unvalidated unit_id half. Not fixed in the llm-scenario-validation-hardening bundle to stay within its named scope. Closure = validate every unit/building Slot against the declared slot set in the same pass that now validates the declarations, with located errors.
+status: open
+
+### DW-543: Per-occurrence trigger dispatch keeps running after fuel exhaustion within one trigger, stretching the whole-trigger-boundary contract across N occurrences
+origin: workflow burn-down run, 2026-08-03
+location: godot/src/Core/ScenarioDirector.cs — EvaluateTriggers, the param-reading occurrence loop
+severity: low
+reason: FuelExhausted is checked only at the sweep's per-trigger boundary, so a param-reading trigger that exhausts the budget mid-occurrence keeps dispatching its remaining matching occurrences that tick (each a full FireTrigger). Deterministic and arguably 'the in-flight trigger completes', but it stretches the documented whole-trigger-boundary contract across N occurrences of a single trigger, making the per-tick fuel ceiling less honest than it reads. Out of the dsl-runtime-fuel-hardening bundle's scope (named by none of its five entries); left unchanged to avoid altering established dispatch semantics without a recorded owner decision. Closure = an owner decision on whether the boundary is per-trigger or per-occurrence, then make the check match it.
+status: open
+
+### DW-544: The DW-349 re-queue rail's non-goals (authored-gate skips never persist) are test-pinned but undocumented in the creator-facing DSL reference
+origin: workflow burn-down run, 2026-08-03
+location: godot/src/Core/ScenarioDirector.cs — RequeueEligible / the enabled-fired-cooldown continue
+severity: low
+reason: By design the DW-349 rail persists only fuel-break and batched-suppression losses: an edge occurrence skipped because the trigger was disabled, run-once-spent, or cooling (including a cooldown armed by an earlier same-tick occurrence) is dropped exactly as before — authored-semantics parity with polled events — and a pending TARGETED redelivery is likewise dropped if its trigger has been disabled/spent by the time it arrives. This is deliberate and test-pinned in code, but the creator-facing DSL reference does not state it, so authors will reasonably expect cooldown-suppressed edge events to replay. Doc-only closure = state the rail's persistence scope and its non-goals in the DSL reference's trigger/event section.
+status: open
+
+### DW-545: DrainWorkList still abandons remaining same-tick custom occurrences on fuel exhaustion — a surviving loss class DW-349 did not close
+origin: workflow burn-down run, 2026-08-03
+location: godot/src/Core/ScenarioDirector.cs — DrainWorkList
+severity: medium
+reason: Fuel exhaustion during the custom-event drain abandons the remaining same-tick work items (documented as an accepted-loss class in the method doc). DW-349's owner decision scoped the re-queue rail to base EDGE events, so custom occurrences are still silently dropped; extending persistence to them would change DrainWorkList semantics and the cascade-bound analysis and therefore needs its own decision. Filed so the ledger distinguishes this surviving loss class from the one DW-349 closed rather than reading the fuel-drop problem as fully solved. Closure = an owner decision on custom-occurrence persistence, then either extend the rail or record the loss as authored semantics in the DSL reference.
+status: open
+
+### DW-546: DW-364 residue: absurd-but-positive custom_ui geometry and the documented 'fixed 16:9 canvas' claim are still unenforced
+origin: workflow burn-down run, 2026-08-03
+location: godot/src/Dsl/CustomUiGate.cs (Check, canvas block)
+severity: low
+reason: The custom-ui-gate-hardening bundle scoped DW-364 to rejecting NON-POSITIVE canvas/widget geometry, which closes that entry's substance (the hash-vs-render divergence exists only for <=0 values — the renderer uses huge positive values verbatim, so hash and render agree there). DW-364's 'absurd' wording and its 'enforce the fixed 16:9 canvas claim' suggestion additionally imply NEW named upper-bound caps and/or a w*9==h*16 ratio rule, which is an authoring-contract change (it would reject already-authorable trees) and was deliberately not invented unattended. Closure = an owner decision on the upper caps / ratio rule, then named DslBounds constants + located gate errors, or a doc fix retiring the fixed-16:9 claim.
+status: open
+
+### DW-547: LLMService.ValidateScenario deserializes ScenarioData with ad-hoc JsonSerializerOptions instead of the shared ContentJson.ScenarioOptions
+origin: workflow burn-down run, 2026-08-03
+location: godot/src/AI/LLMService.cs:540 (pass-1 schema deserialize)
+severity: medium
+reason: The DW-274 posture unification routed file loads through ContentJson.ScenarioOptions, but the AI-generation path still builds its own options (PropertyNameCaseInsensitive + a bare FixedJsonConverter), so the AI-gen scenario parse posture — enum handling, unknown-key behavior, converter order — can silently drift from the file format's, and the gate then validates a differently-parsed object than the loader will produce. Same defect class as the test-replica entry covering ObjectiveSerializationTests' local options, but on a production path. Pre-existing and out of the llm-scenario-validation-hardening / custom-ui-gate-hardening bundles' scope (DW-366 only added the size guard at this seam); left untouched to avoid changing accepted AI output shapes without a decision. Closure = point the pass-1 deserialize at ContentJson.ScenarioOptions and confirm no shipped/generated shape regresses.
 status: open
