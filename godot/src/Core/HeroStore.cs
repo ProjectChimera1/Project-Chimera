@@ -116,6 +116,11 @@ namespace ProjectChimera.Core
         public readonly Fixed[]  DamagePerLevelOf    = new Fixed[MAX_HEROES];
         /// <summary>Flat armor growth per level above 1 (<see cref="Fixed"/>). Set in <see cref="Mint"/>.</summary>
         public readonly Fixed[]  ArmorPerLevelOf     = new Fixed[MAX_HEROES];
+        /// <summary>DW-26: per-hero XP-gain MULTIPLIER (from <c>HeroDefinition.XpPerKill / 100</c>, <see cref="Fixed"/>) —
+        /// each kill credit to this hero is <c>victim.XpBounty × this</c>. Neutral <see cref="Fixed.One"/> = full bounty
+        /// (the pre-DW-26 behaviour). Set in <see cref="Mint"/> (null → <see cref="Fixed.One"/>); NON-folded (def-derived
+        /// constant, the <see cref="BaseXpOf"/> posture) — a divergence surfaces transitively via the folded <see cref="Xp"/>.</summary>
+        public readonly Fixed[]  XpGainFactorOf      = new Fixed[MAX_HEROES];
 
         // ── RESERVED for Story 3.14 (death & revival), declared + folded NOW so 3.14 needs no second AlgoVersion bump
         //    (Story 3.13 D-2). Written to their zero/false defaults in Mint; folded at defaults into SimChecksum v11. ─
@@ -187,7 +192,8 @@ namespace ProjectChimera.Core
         public int Mint(HeroId id, int entityId, int level, Fixed xp,
                         int maxLevel = 0, Fixed baseXp = default, Fixed xpGrowth = default, Fixed xpShareRadius = default,
                         Fixed healthPerLevel = default, Fixed damagePerLevel = default, Fixed armorPerLevel = default,
-                        UnitDefinition? sourceDef = null, Faction ownerFaction = default)
+                        UnitDefinition? sourceDef = null, Faction ownerFaction = default,
+                        Fixed? xpGainFactor = null)
         {
             // Contract (AC2 / FoldOrder producer-independence): a HeroId is UNIQUE across LIVE rows. FoldOrder sorts by
             // HeroId with a strict-'>' (stable) insertion sort, so two live rows sharing an id would fold in mint-order-
@@ -224,6 +230,10 @@ namespace ProjectChimera.Core
             HealthPerLevelOf[slot] = healthPerLevel;
             DamagePerLevelOf[slot] = damagePerLevel;
             ArmorPerLevelOf[slot]  = armorPerLevel;
+            // DW-26: per-hero XP-gain multiplier. A caller that passes none (tests, persistence restore) gets the neutral
+            // Fixed.One (full bounty) — a Fixed default param cannot BE Fixed.One and default(Fixed) is Zero (which would
+            // silently zero every non-passing caller's kill XP), so the nullable-null → One mapping is deliberate.
+            XpGainFactorOf[slot]   = xpGainFactor ?? Fixed.One;
             // Story 3.13 mutable growth-tracking + Story 3.14 reserved revival state — zeroed on (re)mint so a recycled
             // slot never inherits prior growth/revival state (folded into SimChecksum v11).
             GrowthStacksApplied[slot] = 0;
@@ -261,7 +271,7 @@ namespace ProjectChimera.Core
             System.Array.Clear(GrowthStacksApplied);
             System.Array.Clear(MaxLevelOf);       System.Array.Clear(BaseXpOf);         System.Array.Clear(XpGrowthOf);
             System.Array.Clear(XpShareRadiusOf);  System.Array.Clear(HealthPerLevelOf); System.Array.Clear(DamagePerLevelOf);
-            System.Array.Clear(ArmorPerLevelOf);
+            System.Array.Clear(ArmorPerLevelOf);   System.Array.Clear(XpGainFactorOf); // DW-26 (a re-Mint re-seeds it to One)
             // Story 3.14 reserved revival state + non-folded constants.
             System.Array.Clear(Alive3_14);        System.Array.Clear(AwaitingRevival);  System.Array.Clear(RevivalTimer);
             System.Array.Clear(RevivalLink);      System.Array.Clear(SourceDef);        System.Array.Clear(OwnerFaction);

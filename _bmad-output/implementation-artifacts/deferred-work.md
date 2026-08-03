@@ -251,7 +251,8 @@ origin: migrated from legacy ledger ("Deferred from: code review of story-3.13 (
 source_spec: `_bmad-output/implementation-artifacts/spec-3-13-heroxpsystem-kill-credit-xp-leveling-stat-growth-runtime.md`
 location: UnitDefinitionValidator.cs
 reason: summary: The shipped hero-centric `HeroDefinition.XpPerKill` (`xp_per_kill`, default 100) is superseded by the victim-centric `UnitDefinition.XpBounty` (Story 3.13's runtime XP source) but is still validated, round-tripped by `FactionWriter`, and surfaced in the Unit Card Editor as a functional "XP per kill" knob that the runtime no longer consumes — a misleading authoring surface. evidence: `HeroXpSystem` credits `victim.XpBounty` only (grep: no `XpPerKill` reference in the Combat runtime). `HeroDefinition.XpPerKill` remains authored/validated (`UnitDefinitionValidator.cs` hero.xp_per_kill rule) and editor-exposed. Story 3.13 D5 deliberately left it untouched (removing it would perturb Story 3.7's validator/editor/writer/tests); the clean reconciliation (remove or repurpose the field + its editor/validator/writer surface) is a focused follow-up. Flagged by the Intent-Alignment review layer (Divergence 2).
-status: open
+status: done 2026-08-03
+resolution: resolved by sweep bundle dw-hero-xp-per-kill-repurpose
 decision: 2026-07-25 Repurpose it — Give it runtime meaning again — a per-hero XP-gain multiplier or bounty override layered on victim XpBounty
 decision: 2026-07-25 Repurpose it — Give it runtime meaning again — a per-hero XP-gain multiplier or bounty override layered on victim XpBounty
 decision: 2026-07-08 Repurpose it — Give xp_per_kill runtime meaning again — e.g. a per-hero XP-gain multiplier or a per-hero bounty override layered onto the victim's XpBounty — so the authoring knob is no longer misleading.

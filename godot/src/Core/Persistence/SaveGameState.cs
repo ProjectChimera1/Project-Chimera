@@ -193,8 +193,8 @@ namespace ProjectChimera.Core.Persistence
         private enum HA
         {
             Alive, EntityId, Level, Xp, GrowthStacksApplied, MaxLevelOf, BaseXpOf, XpGrowthOf, XpShareRadiusOf,
-            HealthPerLevelOf, DamagePerLevelOf, ArmorPerLevelOf, Alive3_14, AwaitingRevival, RevivalTimer, RevivalLink,
-            OwnerFaction, Generation, Inventory, COUNT
+            HealthPerLevelOf, DamagePerLevelOf, ArmorPerLevelOf, XpGainFactorOf, Alive3_14, AwaitingRevival, RevivalTimer,
+            RevivalLink, OwnerFaction, Generation, Inventory, COUNT
         }
 
         // ── ItemStore array positions. ──
@@ -385,6 +385,7 @@ namespace ProjectChimera.Core.Persistence
             var al = A(HA.Alive, n); var eid = A(HA.EntityId, n); var lv = A(HA.Level, n); var xp = A(HA.Xp, n);
             var gsa = A(HA.GrowthStacksApplied, n); var ml = A(HA.MaxLevelOf, n); var bx = A(HA.BaseXpOf, n); var xg = A(HA.XpGrowthOf, n);
             var xsr = A(HA.XpShareRadiusOf, n); var hpl = A(HA.HealthPerLevelOf, n); var dpl = A(HA.DamagePerLevelOf, n); var apl = A(HA.ArmorPerLevelOf, n);
+            var xgf = A(HA.XpGainFactorOf, n); // DW-26: non-folded per-hero XP-gain multiplier (curve-constant parity)
             var a314 = A(HA.Alive3_14, n); var awr = A(HA.AwaitingRevival, n); var rti = A(HA.RevivalTimer, n); var rlk = A(HA.RevivalLink, n);
             var of = A(HA.OwnerFaction, n); var gen = A(HA.Generation, n);
             var inv = A(HA.Inventory, n * HeroStore.INVENTORY_SLOTS);
@@ -394,6 +395,7 @@ namespace ProjectChimera.Core.Persistence
                 al[i] = h.Alive[i] ? 1 : 0; eid[i] = h.EntityId[i]; lv[i] = h.Level[i]; xp[i] = h.Xp[i].Raw;
                 gsa[i] = h.GrowthStacksApplied[i]; ml[i] = h.MaxLevelOf[i]; bx[i] = h.BaseXpOf[i].Raw; xg[i] = h.XpGrowthOf[i].Raw;
                 xsr[i] = h.XpShareRadiusOf[i].Raw; hpl[i] = h.HealthPerLevelOf[i].Raw; dpl[i] = h.DamagePerLevelOf[i].Raw; apl[i] = h.ArmorPerLevelOf[i].Raw;
+                xgf[i] = h.XpGainFactorOf[i].Raw; // DW-26
                 a314[i] = h.Alive3_14[i] ? 1 : 0; awr[i] = h.AwaitingRevival[i] ? 1 : 0; rti[i] = h.RevivalTimer[i].Raw; rlk[i] = h.RevivalLink[i];
                 of[i] = (int)h.OwnerFaction[i]; gen[i] = h.Generation[i];
                 HeroId[i] = h.Id[i].Value; HeroDefId[i] = h.SourceDef[i]?.Id ?? "";
@@ -757,6 +759,7 @@ namespace ProjectChimera.Core.Persistence
             var al = G(HA.Alive); var eid = G(HA.EntityId); var lv = G(HA.Level); var xp = G(HA.Xp);
             var gsa = G(HA.GrowthStacksApplied); var ml = G(HA.MaxLevelOf); var bx = G(HA.BaseXpOf); var xg = G(HA.XpGrowthOf);
             var xsr = G(HA.XpShareRadiusOf); var hpl = G(HA.HealthPerLevelOf); var dpl = G(HA.DamagePerLevelOf); var apl = G(HA.ArmorPerLevelOf);
+            var xgf = G(HA.XpGainFactorOf); // DW-26
             var a314 = G(HA.Alive3_14); var awr = G(HA.AwaitingRevival); var rti = G(HA.RevivalTimer); var rlk = G(HA.RevivalLink);
             var of = G(HA.OwnerFaction); var gen = G(HA.Generation); var inv = G(HA.Inventory);
             for (int i = 0; i < n; i++)
@@ -764,6 +767,7 @@ namespace ProjectChimera.Core.Persistence
                 h.Alive[i] = al[i] != 0; h.Id[i] = new HeroId(HeroId[i]); h.EntityId[i] = eid[i]; h.Level[i] = lv[i]; h.Xp[i] = Fixed.FromRaw(xp[i]);
                 h.GrowthStacksApplied[i] = gsa[i]; h.MaxLevelOf[i] = ml[i]; h.BaseXpOf[i] = Fixed.FromRaw(bx[i]); h.XpGrowthOf[i] = Fixed.FromRaw(xg[i]);
                 h.XpShareRadiusOf[i] = Fixed.FromRaw(xsr[i]); h.HealthPerLevelOf[i] = Fixed.FromRaw(hpl[i]); h.DamagePerLevelOf[i] = Fixed.FromRaw(dpl[i]); h.ArmorPerLevelOf[i] = Fixed.FromRaw(apl[i]);
+                h.XpGainFactorOf[i] = Fixed.FromRaw(xgf[i]); // DW-26
                 h.Alive3_14[i] = a314[i] != 0; h.AwaitingRevival[i] = awr[i] != 0; h.RevivalTimer[i] = Fixed.FromRaw(rti[i]); h.RevivalLink[i] = rlk[i];
                 h.OwnerFaction[i] = (Faction)of[i]; h.Generation[i] = gen[i];
                 h.SourceDef[i] = ResolveDef(slotDefs, of[i], i < HeroDefId.Length ? HeroDefId[i] : "");

@@ -323,7 +323,11 @@ namespace ProjectChimera.Core.Sim
                         Fixed.FromFloat(hd?.DamagePerLevel ?? 0f),
                         Fixed.FromFloat(hd?.ArmorPerLevel ?? 0f),
                         def,        // Story 3.14: the respawn def (a revival re-spawns a fresh entity from it)
-                        faction));  // Story 3.14: the owning faction (revive-order anti-cheat + respawn ownership)
+                        faction,    // Story 3.14: the owning faction (revive-order anti-cheat + respawn ownership)
+                        // DW-26: resolve the per-hero XP-gain multiplier here at the single float→Fixed boundary. Default
+                        // 100 (or a null hero-def) → 100/100 = an exact ×1.0 in 16.16 (Fixed.One is raw 65536), so every
+                        // existing hero credits the full victim bounty unchanged — no golden move, no SimChecksum fold.
+                        Fixed.FromFloat((hd?.XpPerKill ?? 100f) / 100f)));
                 }
             }
 

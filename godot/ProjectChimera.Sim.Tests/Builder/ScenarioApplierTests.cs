@@ -372,6 +372,10 @@ namespace ProjectChimera.Sim.Tests.Builder
             Assert.Equal(Fixed.FromFloat(17f).Raw,   placed.HealthPerLevel.Raw);
             Assert.Equal(Fixed.FromFloat(3f).Raw,    placed.DamagePerLevel.Raw);
             Assert.Equal(Fixed.FromFloat(2f).Raw,    placed.ArmorPerLevel.Raw);
+            // DW-26: the applier is also the single float→Fixed boundary for the per-hero XP-gain multiplier — the
+            // authored xp_per_kill=10 resolves to a 0.1 factor (10 / 100). A dropped resolve would ship the neutral default.
+            Assert.NotNull(placed.XpGainFactor);
+            Assert.Equal(Fixed.FromFloat(0.1f).Raw,  placed.XpGainFactor!.Value.Raw);
         }
 
         [Fact]

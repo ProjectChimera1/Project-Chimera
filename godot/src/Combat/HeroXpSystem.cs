@@ -108,11 +108,22 @@ namespace ProjectChimera.Combat
                     long rr = ((long)r.Raw * r.Raw) >> 16; // r validator-capped (<128) → safe, widened for uniformity
                     if (sqrDist > rr) continue; // out of range
 
-                    // Widen to long so the raw add can never wrap int32 (a bounty near the ceiling added to an
+                    // DW-26: scale the victim bounty by THIS hero's XP-gain multiplier (xp_per_kill / 100, resolved to
+                    // Fixed at the applier boundary). Compute in WIDENED long raw — a large factor × a near-ceiling bounty
+                    // overflows a 16.16 Fixed '*' — and saturate the credit to [0, XpCeiling] before it is banked. The
+                    // neutral Fixed.One (raw 65536) makes (bountyRaw × 65536) >> 16 == bountyRaw EXACTLY, so every hero
+                    // authored 100 (or minted without a factor) credits the full bounty, bit-identical to the pre-DW-26
+                    // runtime — no golden move, no SimChecksum fold.
+                    long factorRaw = _heroes.XpGainFactorOf[slot].Raw;
+                    long creditedRaw = ((long)death.Bounty.Raw * factorRaw) >> 16;
+                    if (creditedRaw > XpCeiling.Raw) creditedRaw = XpCeiling.Raw;
+                    else if (creditedRaw < 0) creditedRaw = 0;
+
+                    // Widen to long so the raw add can never wrap int32 (a credit near the ceiling added to an
                     // already-near-ceiling Xp, or ≥2 deaths in one tick, would overflow a Fixed '+' and wrap NEGATIVE —
                     // the one-sided '> XpCeiling' check could not catch that). Saturate high, floor at 0 (defensive; the
-                    // resolved bounty is clamped ≥ 0). D4: "clamped, no overflow, no exception".
-                    long sum = (long)_heroes.Xp[slot].Raw + death.Bounty.Raw;
+                    // resolved credit is clamped ≥ 0 above). D4: "clamped, no overflow, no exception".
+                    long sum = (long)_heroes.Xp[slot].Raw + creditedRaw;
                     if (sum > XpCeiling.Raw) sum = XpCeiling.Raw;
                     else if (sum < 0) sum = 0;
                     _heroes.Xp[slot] = Fixed.FromRaw((int)sum);

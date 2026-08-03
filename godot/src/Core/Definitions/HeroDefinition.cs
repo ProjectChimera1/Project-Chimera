@@ -35,12 +35,16 @@ namespace ProjectChimera.Core.Definitions
         [JsonPropertyName("xp_growth")]
         public float XpGrowth { get; set; } = 1.15f;
 
-        /// <summary>XP granted per enemy kill credited to this hero. Validated finite &amp; &gt;= 0.
-        /// <para>Story 3.13 (D5): SUPERSEDED, not removed. The runtime is victim-<c>xp_bounty</c> driven (each enemy
-        /// carries its own bounty on <see cref="UnitDefinition.XpBounty"/>), so this hero-centric field is the wrong
-        /// home for the same concept and is left untouched here (removing it would perturb 3.7's validator/editor/
-        /// writer/tests). The <see cref="ProjectChimera.Combat.HeroXpSystem"/> does NOT consume it; its cleanup is
-        /// deferred to a later reconciliation.</para></summary>
+        /// <summary>Per-hero XP-gain multiplier, as a PERCENTAGE, layered on the victim's <c>xp_bounty</c>. Validated
+        /// finite &amp; &gt;= 0. The default 100 = 100% = a neutral ×1.0.
+        /// <para>DW-26: repurposed from the pre-Story-3.13 "flat XP per kill" (which the victim-centric runtime never
+        /// consumed) into a live per-hero gain scalar. The runtime is STILL victim-<c>xp_bounty</c> driven (each enemy
+        /// carries its own bounty on <see cref="UnitDefinition.XpBounty"/>); this factor scales what THIS hero banks
+        /// from a kill: each credit becomes <c>victim.XpBounty × (xp_per_kill / 100)</c>. 100 credits the full bounty
+        /// (bit-identical to the old runtime); 200 = double; 50 = half; 0 = earns no kill XP. Resolved float→
+        /// <see cref="ProjectChimera.Core.Fixed"/> at the single applier load boundary (like <see cref="BaseXp"/>/
+        /// <see cref="XpGrowth"/>) and consumed by <see cref="ProjectChimera.Combat.HeroXpSystem"/> as the non-folded
+        /// per-hero <c>XpGainFactorOf</c>; a divergence surfaces transitively through the folded <c>Xp</c>/<c>Level</c>.</para></summary>
         [JsonPropertyName("xp_per_kill")]
         public float XpPerKill { get; set; } = 100f;
 

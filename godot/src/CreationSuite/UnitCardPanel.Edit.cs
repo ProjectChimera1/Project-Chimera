@@ -776,7 +776,8 @@ namespace ProjectChimera.CreationSuite
                 1, () => h.BaseXp, v => h.BaseXp = v, def);
             AddNumFloat(parent, "XP growth", "hero.xp_growth", "XP Growth", "Per-level multiplier on the XP requirement (≥ 1).",
                 0.05, () => h.XpGrowth, v => h.XpGrowth = v, def);
-            AddNumFloat(parent, "XP per kill", "hero.xp_per_kill", "XP Per Kill", "XP granted per enemy kill credited to this hero.",
+            AddNumFloat(parent, "XP gain %", "hero.xp_per_kill", "XP Gain %",
+                "This hero's XP-gain rate as a percentage of the kill's XP bounty. 100 = normal (full bounty); 200 = double; 50 = half; 0 = earns no kill XP.",
                 1, () => h.XpPerKill, v => h.XpPerKill = v, def);
             // Story 3.13 — the runtime XP-share radius + per-level stat growth.
             AddNumFloat(parent, "XP share radius", "hero.xp_share_radius", "XP Share Radius",

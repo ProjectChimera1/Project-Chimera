@@ -37,10 +37,15 @@ namespace ProjectChimera.Core.Definitions
         /// owning <see cref="Faction"/>, so the widened <see cref="HeroStore.Mint"/> can store them as the respawn def +
         /// ownership constant (a revival re-spawns a fresh entity from that def, owned by that faction). Defaulted so the
         /// pre-3.14 construction still compiles.</summary>
+        /// <summary>DW-26: the placed hero also carries its resolved per-hero XP-gain multiplier (<c>xp_per_kill / 100</c>,
+        /// captured float→<see cref="Fixed"/> at the applier boundary), threaded into <see cref="HeroStore.Mint"/> so the
+        /// XP runtime scales each kill credit. Nullable-null (the default) → the neutral <see cref="Fixed.One"/> in Mint,
+        /// so every pre-DW-26 construction (persistence tests, bare callers) still credits the full bounty.</summary>
         public readonly record struct PlacedHero(int EntityId, string UnitId,
             int MaxLevel = 0, Fixed BaseXp = default, Fixed XpGrowth = default, Fixed XpShareRadius = default,
             Fixed HealthPerLevel = default, Fixed DamagePerLevel = default, Fixed ArmorPerLevel = default,
-            UnitDefinition? SourceDef = null, Faction OwnerFaction = default);
+            UnitDefinition? SourceDef = null, Faction OwnerFaction = default,
+            Fixed? XpGainFactor = null);
 
         /// <summary>
         /// The DETERMINISTIC hero identity for <paramref name="profile"/> = FNV-64 of its stable <see cref="PlayerProfile.ProfileId"/>
@@ -122,7 +127,8 @@ namespace ProjectChimera.Core.Definitions
                 int slot = heroes.Mint(id, placed.EntityId, level, xp,
                                        placed.MaxLevel, placed.BaseXp, placed.XpGrowth, placed.XpShareRadius,
                                        placed.HealthPerLevel, placed.DamagePerLevel, placed.ArmorPerLevel,
-                                       placed.SourceDef, placed.OwnerFaction); // Story 3.14: respawn def + owner faction
+                                       placed.SourceDef, placed.OwnerFaction, // Story 3.14: respawn def + owner faction
+                                       placed.XpGainFactor);                  // DW-26: per-hero XP-gain multiplier
                 if (slot >= 0)
                 {
                     minted++;

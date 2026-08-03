@@ -34,7 +34,8 @@ namespace ProjectChimera.Sim.Tests.Combat
         /// <summary>Build a fixture with one Player1 hero at <paramref name="level"/>, curve baseXp 50 / growth 1.0 /
         /// share radius <paramref name="shareRadius"/> / +10 hp, +2 dmg, +1 armor per level, linked via HeroIndex.</summary>
         private static Fixture MakeHero(int level = 1, int shareRadius = 10, int maxLevel = MaxLevel,
-                                        int baseXp = 50, Fixed? growth = null, FixedVec3 pos = default)
+                                        int baseXp = 50, Fixed? growth = null, FixedVec3 pos = default,
+                                        Fixed? xpGainFactor = null)
         {
             var world = new EntityWorld();
             var modSys = new ModifierSystem();
@@ -50,7 +51,8 @@ namespace ProjectChimera.Sim.Tests.Combat
             int slot = heroes.Mint(new HeroId(42), ent, level, Fixed.Zero,
                 maxLevel: maxLevel, baseXp: Fixed.FromInt(baseXp), xpGrowth: growth ?? Fixed.One,
                 xpShareRadius: Fixed.FromInt(shareRadius),
-                healthPerLevel: Fixed.FromInt(10), damagePerLevel: Fixed.FromInt(2), armorPerLevel: Fixed.FromInt(1));
+                healthPerLevel: Fixed.FromInt(10), damagePerLevel: Fixed.FromInt(2), armorPerLevel: Fixed.FromInt(1),
+                xpGainFactor: xpGainFactor);
             world.HeroIndex[ent] = heroes.PackRef(slot);
 
             return new Fixture
@@ -124,6 +126,43 @@ namespace ProjectChimera.Sim.Tests.Combat
         }
 
         [Fact]
+        public void SharedKill_TwoHeroesDifferentFactors_EachBanksPerItsOwnFactor()
+        {
+            // DW-26 regression net: two heroes in the SAME world/HeroStore, both in range of ONE shared DeathRecord, but
+            // with DIFFERENT XP-gain factors — each must bank per ITS OWN slot's factor. A refactor that hoists
+            // factorRaw/creditedRaw out of the per-hero credit loop (crediting every shared hero at order[0]'s factor)
+            // would pass SharedKill (equal factors) and the two-fixture 2× test, but FAILS here. High baseXp so no level-up.
+            var world = new EntityWorld();
+            var modSys = new ModifierSystem();
+            var modifiers = new ModifierStore(world, modSys);
+            modSys.AttachStore(modifiers);
+            var deaths = new DeathFeed();
+            var heroes = new HeroStore();
+
+            int entA = world.Create(FixedVec3.Zero, Faction.Player1, Fixed.FromInt(100), Fixed.FromInt(3));
+            int entB = world.Create(new FixedVec3(Fixed.FromInt(1), Fixed.Zero, Fixed.Zero),
+                                    Faction.Player1, Fixed.FromInt(100), Fixed.FromInt(3));
+            // Hero A: neutral ×1.0. Hero B: ×2.0. Distinct HeroIds + distinct entities. baseXp high → no level-up.
+            int slotA = heroes.Mint(new HeroId(1), entA, level: 1, xp: Fixed.Zero,
+                maxLevel: MaxLevel, baseXp: Fixed.FromInt(30000), xpGrowth: Fixed.One, xpShareRadius: Fixed.FromInt(100),
+                healthPerLevel: Fixed.Zero, damagePerLevel: Fixed.Zero, armorPerLevel: Fixed.Zero,
+                xpGainFactor: Fixed.FromFloat(1.0f));
+            int slotB = heroes.Mint(new HeroId(2), entB, level: 1, xp: Fixed.Zero,
+                maxLevel: MaxLevel, baseXp: Fixed.FromInt(30000), xpGrowth: Fixed.One, xpShareRadius: Fixed.FromInt(100),
+                healthPerLevel: Fixed.Zero, damagePerLevel: Fixed.Zero, armorPerLevel: Fixed.Zero,
+                xpGainFactor: Fixed.FromFloat(2.0f));
+            world.HeroIndex[entA] = heroes.PackRef(slotA);
+            world.HeroIndex[entB] = heroes.PackRef(slotB);
+
+            var sys = new HeroXpSystem(heroes, modifiers, deaths);
+            deaths.Push(FixedVec3.Zero, Faction.Neutral, Fixed.FromInt(30)); // ONE shared death
+            sys.Tick(world, Dt);
+
+            Assert.Equal(Fixed.FromInt(30).Raw, heroes.Xp[slotA].Raw); // A banks ×1.0 of the bounty
+            Assert.Equal(Fixed.FromInt(60).Raw, heroes.Xp[slotB].Raw); // B banks ×2.0 — from the SAME death, its own factor
+        }
+
+        [Fact]
         public void DeadHero_IsSkipped_NoThrow()
         {
             var f = MakeHero(shareRadius: 100);
@@ -131,6 +170,89 @@ namespace ProjectChimera.Sim.Tests.Combat
             f.Deaths.Push(FixedVec3.Zero, Faction.Neutral, Fixed.FromInt(30));
             f.Sys.Tick(f.World, Dt); // must not throw
             Assert.Equal(Fixed.Zero.Raw, f.Heroes.Xp[f.HeroSlot].Raw); // no XP granted to a dead hero
+        }
+
+        // ── DW-26: per-hero XP-gain multiplier (xp_per_kill / 100) layered on the victim bounty ──────────────────
+
+        [Fact]
+        public void UnsetFactor_StoresNeutralOne_AndCreditsFullBounty()
+        {
+            // The I/O "unset caller" row: Mint without a factor stores the neutral Fixed.One (NOT default(Fixed)=Zero,
+            // which would silently zero every non-passing caller's kill XP). A neutral hero credits the full bounty.
+            var f = MakeHero(shareRadius: 10, baseXp: 30000); // baseXp high → the credit never triggers a level-up
+            Assert.Equal(Fixed.One.Raw, f.Heroes.XpGainFactorOf[f.HeroSlot].Raw);
+
+            f.Deaths.Push(new FixedVec3(Fixed.FromInt(5), Fixed.Zero, Fixed.Zero), Faction.Neutral, Fixed.FromInt(30));
+            f.Sys.Tick(f.World, Dt);
+            Assert.Equal(Fixed.FromInt(30).Raw, f.Heroes.Xp[f.HeroSlot].Raw); // ×1.0 exact
+        }
+
+        [Fact]
+        public void NeutralFactor100Percent_CreditsFullBounty_Exact()
+        {
+            var f = MakeHero(shareRadius: 10, baseXp: 30000, xpGainFactor: Fixed.FromFloat(1.0f));
+            f.Deaths.Push(new FixedVec3(Fixed.FromInt(5), Fixed.Zero, Fixed.Zero), Faction.Neutral, Fixed.FromInt(30));
+            f.Sys.Tick(f.World, Dt);
+            Assert.Equal(Fixed.FromInt(30).Raw, f.Heroes.Xp[f.HeroSlot].Raw);
+        }
+
+        [Fact]
+        public void AmplifiedFactor200Percent_DoublesTheCredit()
+        {
+            var f = MakeHero(shareRadius: 10, baseXp: 30000, xpGainFactor: Fixed.FromFloat(2.0f));
+            f.Deaths.Push(new FixedVec3(Fixed.FromInt(5), Fixed.Zero, Fixed.Zero), Faction.Neutral, Fixed.FromInt(30));
+            f.Sys.Tick(f.World, Dt);
+            Assert.Equal(Fixed.FromInt(60).Raw, f.Heroes.Xp[f.HeroSlot].Raw); // 30 × 2.0
+        }
+
+        [Fact]
+        public void ReducedFactor50Percent_HalvesTheCredit()
+        {
+            var f = MakeHero(shareRadius: 10, baseXp: 30000, xpGainFactor: Fixed.FromFloat(0.5f));
+            f.Deaths.Push(new FixedVec3(Fixed.FromInt(5), Fixed.Zero, Fixed.Zero), Faction.Neutral, Fixed.FromInt(30));
+            f.Sys.Tick(f.World, Dt);
+            Assert.Equal(Fixed.FromInt(15).Raw, f.Heroes.Xp[f.HeroSlot].Raw); // 30 × 0.5
+        }
+
+        [Fact]
+        public void ZeroFactor_EarnsNoKillXp_NeverLevels()
+        {
+            // An authored xp_per_kill=0 → an explicit Fixed.Zero factor (NOT the neutral default) → 0% credit.
+            var f = MakeHero(shareRadius: 10, baseXp: 50, xpGainFactor: Fixed.Zero);
+            for (int i = 0; i < 5; i++)
+            {
+                f.Deaths.Push(new FixedVec3(Fixed.FromInt(5), Fixed.Zero, Fixed.Zero), Faction.Neutral, Fixed.FromInt(60));
+                f.Sys.Tick(f.World, Dt);
+            }
+            Assert.Equal(Fixed.Zero.Raw, f.Heroes.Xp[f.HeroSlot].Raw);
+            Assert.Equal(1, f.Heroes.Level[f.HeroSlot]); // never levels from kills
+        }
+
+        [Fact]
+        public void TwoHeroes_200VersusNeutral100_Accumulate2x_SameBounty()
+        {
+            // AC1: a hero authored 200% accumulates exactly twice the XP of an identical 100% hero for the same bounty.
+            var a = MakeHero(shareRadius: 10, baseXp: 30000, xpGainFactor: Fixed.FromFloat(1.0f));
+            var b = MakeHero(shareRadius: 10, baseXp: 30000, xpGainFactor: Fixed.FromFloat(2.0f));
+            var pos = new FixedVec3(Fixed.FromInt(5), Fixed.Zero, Fixed.Zero);
+            a.Deaths.Push(pos, Faction.Neutral, Fixed.FromInt(37));
+            b.Deaths.Push(pos, Faction.Neutral, Fixed.FromInt(37));
+            a.Sys.Tick(a.World, Dt);
+            b.Sys.Tick(b.World, Dt);
+            Assert.Equal(2 * a.Heroes.Xp[a.HeroSlot].Raw, b.Heroes.Xp[b.HeroSlot].Raw);
+        }
+
+        [Fact]
+        public void HighFactorNearCeilingBounty_SaturatesAtXpCeiling_NoOverflowNoThrow()
+        {
+            // A large factor × a large bounty overflows a raw 16.16 Fixed '*'; the widened-long credit must saturate at
+            // XpCeiling, never wrap negative or throw. baseXp high so this row exercises the credit clamp, not leveling.
+            var f = MakeHero(level: 1, shareRadius: 10, maxLevel: 100, baseXp: 30000,
+                             xpGainFactor: Fixed.FromInt(100)); // ×100
+            f.Deaths.Push(new FixedVec3(Fixed.FromInt(5), Fixed.Zero, Fixed.Zero), Faction.Neutral, Fixed.FromInt(20000));
+            f.Sys.Tick(f.World, Dt); // must not throw / overflow
+            Assert.True(f.Heroes.Xp[f.HeroSlot] >= Fixed.Zero, "XP must never wrap negative");
+            Assert.True(f.Heroes.Xp[f.HeroSlot] <= HeroXpSystem.XpCeiling);
         }
 
         // ── Default bounty ─────────────────────────────────────────────────────────

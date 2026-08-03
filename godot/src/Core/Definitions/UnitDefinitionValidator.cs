@@ -419,6 +419,9 @@ namespace ProjectChimera.Core.Definitions
             if (!float.IsFinite(h.XpGrowth) || h.XpGrowth < 1f || h.XpGrowth >= HeroGrowthCap)
                 errors.Add(("hero.xp_growth", Located(kind, id, "hero.xp_growth",
                     $"={h.XpGrowth} must be finite and in [1, {(int)HeroGrowthCap}).")));
+            // DW-26: xp_per_kill is a PERCENTAGE XP-gain multiplier (100 = normal, layered on the victim's XP bounty),
+            // not a flat XP amount. The [0, Range) bound is unchanged: 0 is valid (earns no kill XP), the upper bound
+            // stays the generic Range, and the applier resolves it to a Fixed factor (xp_per_kill / 100) at load.
             if (!float.IsFinite(h.XpPerKill) || h.XpPerKill < 0f || h.XpPerKill >= Range)
                 errors.Add(("hero.xp_per_kill", Located(kind, id, "hero.xp_per_kill",
                     $"={h.XpPerKill} must be finite and in [0, {(int)Range}).")));

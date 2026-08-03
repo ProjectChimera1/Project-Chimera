@@ -484,7 +484,8 @@ namespace ProjectChimera.Sim.Tests.Persistence
                 // A persistent hero row (folded Level/Xp/growth).
                 int slot = h.Heroes.Mint(new HeroId(777), entityId: 0, level: 3, xp: Fixed.FromInt(50),
                                          maxLevel: 10, baseXp: Fixed.FromInt(100), xpGrowth: Fixed.FromInt(1),
-                                         xpShareRadius: Fixed.FromInt(8));
+                                         xpShareRadius: Fixed.FromInt(8),
+                                         xpGainFactor: Fixed.FromFloat(2f)); // DW-26: non-neutral multiplier must round-trip
                 if (h.World.HighWaterMark > 0) h.World.HeroIndex[0] = h.Heroes.PackRef(slot);
 
                 // Completed research + cumulative deltas (the jagged per-faction arrays). Idle (InProgressIndex stays
@@ -509,6 +510,8 @@ namespace ProjectChimera.Sim.Tests.Persistence
                 assertRestored: h =>
                 {
                     Assert.Equal(1, LiveHeroes(h));
+                    // DW-26: the non-folded per-hero XP-gain multiplier round-trips exactly (the hero keeps its ×2.0).
+                    Assert.Equal(Fixed.FromFloat(2f).Raw, h.Heroes.XpGainFactorOf[0].Raw);
                     Assert.Equal(2, h.Research.CompletedLevels[(int)Faction.Player1][0]);
                     Assert.Equal(42, h.Vars.GetInt("saved_flag", 0));
                     Assert.True(h.Projectiles.HighWaterMark >= 1);
