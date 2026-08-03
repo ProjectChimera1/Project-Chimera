@@ -225,7 +225,36 @@ namespace ProjectChimera.Sim.Tests.Definitions
         }
 
         [Fact]
-        public void DisallowedAssetExtension_RejectedAtUnpack() // review P4
+        public void DisallowedAssetExtension_RejectedAtUnpack() // review P4 (rebuilt for DW-424)
+        {
+            string work = NewTempDir();
+            try
+            {
+                string scen = WriteScenario(work);
+                string zip = Path.Combine(work, "map.chimera.zip");
+                // DW-424 closed the old setup route: Pack now refuses to bundle a non-.glb, so the Unpack-side
+                // gate can only be reached by a hand-crafted/tampered archive. Build one: add a disallowed entry
+                // and list it in the manifest — Unpack must still reject it (defense in depth for hostile zips).
+                var manifest = ContentPackager.Pack(scen, zip,
+                    new ContentPackager.PackOptions { DisplayName = "Bad" });
+                using (var archive = ZipFile.Open(zip, ZipArchiveMode.Update))
+                {
+                    var entry = archive.CreateEntry("assets/model.gltf");
+                    using var s = entry.Open();
+                    s.Write(new byte[] { 1, 2, 3, 4 }, 0, 4);
+                }
+                manifest.AssetFiles = new() { "assets/model.gltf" };
+                ContentPackager.RewriteManifest(zip, manifest);
+
+                var ex = Assert.Throws<InvalidDataException>(
+                    () => ContentPackager.Unpack(zip, Path.Combine(work, "extract")));
+                Assert.Contains("disallowed extension", ex.Message);
+            }
+            finally { Directory.Delete(work, recursive: true); }
+        }
+
+        [Fact]
+        public void DisallowedAssetExtension_RejectedAtPack() // DW-424
         {
             string work = NewTempDir();
             try
@@ -233,16 +262,36 @@ namespace ProjectChimera.Sim.Tests.Definitions
                 string scen = WriteScenario(work);
                 string srcDir = Path.Combine(work, "src_assets");
                 Directory.CreateDirectory(srcDir);
-                // Pack does not gate extension; a non-.glb (here .gltf) is bundled + hashed, then rejected at Unpack.
+                // Pre-DW-424 this packed cleanly and every downloader's Unpack then rejected it — a
+                // self-invalidating package discovered only after publish. Pack must now fail fast at export.
                 string bad = WriteAsset(srcDir, "model.gltf", new byte[] { 1, 2, 3, 4 });
 
                 string zip = Path.Combine(work, "map.chimera.zip");
-                ContentPackager.Pack(scen, zip,
-                    new ContentPackager.PackOptions { DisplayName = "Bad", AssetPaths = new() { bad } });
+                var ex = Assert.Throws<ArgumentException>(() => ContentPackager.Pack(scen, zip,
+                    new ContentPackager.PackOptions { DisplayName = "Bad", AssetPaths = new() { bad } }));
+                Assert.Contains("Disallowed asset extension", ex.Message);
+                Assert.False(File.Exists(zip)); // rejected before any output is produced
+            }
+            finally { Directory.Delete(work, recursive: true); }
+        }
 
-                var ex = Assert.Throws<InvalidDataException>(
-                    () => ContentPackager.Unpack(zip, Path.Combine(work, "extract")));
-                Assert.Contains("disallowed extension", ex.Message);
+        [Fact]
+        public void OversizedAsset_RejectedAtPack() // DW-424
+        {
+            string work = NewTempDir();
+            try
+            {
+                string scen = WriteScenario(work);
+                string srcDir = Path.Combine(work, "src_assets");
+                Directory.CreateDirectory(srcDir);
+                // One byte over the cap: mirrors Unpack's per-entry uncompressed-size gate at export time.
+                string big = WriteAsset(srcDir, "big.glb", new byte[AssetValidator.MaxAssetBytes + 1]);
+
+                string zip = Path.Combine(work, "map.chimera.zip");
+                var ex = Assert.Throws<ArgumentException>(() => ContentPackager.Pack(scen, zip,
+                    new ContentPackager.PackOptions { DisplayName = "Big", AssetPaths = new() { big } }));
+                Assert.Contains("over the", ex.Message);
+                Assert.False(File.Exists(zip)); // rejected before any output is produced
             }
             finally { Directory.Delete(work, recursive: true); }
         }

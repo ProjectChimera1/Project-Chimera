@@ -77,6 +77,15 @@ namespace ProjectChimera.Core.Definitions
             public List<string> AssetPaths { get; set; } = new();
         }
 
+        /// <summary>DW-423 regression seam — invoked by <see cref="Pack"/> after all integrity hashes
+        /// (scenario/terrain/asset) are computed and before any archive entry is written: exactly the window the
+        /// old hash-then-re-read TOCTOU lived in. Tests assign a delegate that mutates the on-disk source files
+        /// to prove the packaged bytes are the hashed snapshots; production never sets it (null ⇒ no-op).
+        /// ThreadStatic so a parallel test class packing concurrently can never observe another test's hook.</summary>
+#pragma warning disable CS0649 // assigned only by the Tier-1 test assembly (which compiles this file directly)
+        [ThreadStatic] internal static Action? PackTestHookAfterHash;
+#pragma warning restore CS0649
+
         /// <summary>
         /// Pack a scenario file (and optional extras) into a .chimera.zip.
         /// </summary>
@@ -95,8 +104,12 @@ namespace ProjectChimera.Core.Definitions
             // Generate a slug ID from the display name.
             string id = Slugify(options.DisplayName);
 
-            // Hash the scenario bytes for integrity verification.
-            uint scenarioHash = ScenarioSerializer.ComputeFileHash(scenarioAbsPath);
+            // Hash the scenario bytes for integrity verification. DW-423: read the bytes ONCE — the exact
+            // buffer hashed here is the buffer written into the archive below, so a source file mutated
+            // mid-Pack can no longer produce a package whose recorded hash disagrees with its own packaged
+            // bytes (the hash-then-rewrite TOCTOU that made a package fail its own Unpack).
+            byte[] scenarioBytes = File.ReadAllBytes(scenarioAbsPath);
+            uint scenarioHash = ScenarioSerializer.ComputeHash(scenarioBytes);
 
             // Build faction_files list (zip-relative paths).
             var factionEntries = new List<string>();
@@ -118,19 +131,24 @@ namespace ProjectChimera.Core.Definitions
 
             // Story 6.2: enumerate the terrain region files (ordinal-sorted by name so the aggregate integrity hash
             // is order-independent), record them zip-relative under map/terrain/, and fold their filename+bytes.
+            // DW-423: each region is read ONCE into a snapshot — the same bytes are hashed here and written below.
             var terrainEntries = new List<string>();
+            var terrainSnapshots = new List<(string Leaf, byte[] Bytes)>();
             uint terrainHash = 0u;
-            string[] terrainFiles = Array.Empty<string>();
             if (!string.IsNullOrEmpty(terrainDir) && Directory.Exists(terrainDir))
             {
-                terrainFiles = Directory.EnumerateFiles(terrainDir, "*.res", SearchOption.TopDirectoryOnly)
-                                        .OrderBy(p => Path.GetFileName(p), StringComparer.Ordinal)
-                                        .ToArray();
+                string[] terrainFiles = Directory.EnumerateFiles(terrainDir, "*.res", SearchOption.TopDirectoryOnly)
+                                                 .OrderBy(p => Path.GetFileName(p), StringComparer.Ordinal)
+                                                 .ToArray();
                 foreach (var f in terrainFiles)
-                    terrainEntries.Add("map/terrain/" + Path.GetFileName(f));
+                {
+                    string leaf = Path.GetFileName(f);
+                    terrainEntries.Add("map/terrain/" + leaf);
+                    terrainSnapshots.Add((leaf, File.ReadAllBytes(f)));
+                }
                 // Review pass 2 (EC10): keep TerrainHash==0 the unambiguous "no terrain bundled" sentinel — an empty
                 // terrain dir must not stamp a non-zero FNV-of-nothing that contradicts an empty TerrainFiles list.
-                terrainHash = terrainFiles.Length == 0 ? 0u : HashFiles(terrainFiles);
+                terrainHash = terrainSnapshots.Count == 0 ? 0u : HashNamedBytes(terrainSnapshots);
             }
 
             // Story 9.9: enumerate the bundled custom assets (GLB meshes) into canonical zip-relative paths
@@ -138,8 +156,9 @@ namespace ProjectChimera.Core.Definitions
             // manifest and the written entries stay in lock-step, mirroring screenshots); the AssetHash folds the same
             // set ordinal-sorted by filename (so the aggregate integrity hash is input-order-independent, mirroring
             // terrain). AssetHash==0 is the unambiguous "no assets bundled" sentinel.
+            // DW-423: each asset is read ONCE into a snapshot — the same bytes are hashed here and written below.
             var assetEntries = new List<string>();
-            var assetSources = new List<string>();
+            var assetSnapshots = new List<(string Leaf, byte[] Bytes)>();
             var assetLeaves  = new HashSet<string>(StringComparer.Ordinal);
             foreach (var ap in options.AssetPaths ?? new List<string>())
             {
@@ -153,12 +172,37 @@ namespace ProjectChimera.Core.Definitions
                     throw new ArgumentException(
                         $"Duplicate asset file name '{leaf}': bundled asset names must be unique " +
                         $"(each maps to assets/{leaf}).", nameof(options));
+
+                // DW-424: mirror Unpack's extension + size rejects at Pack (fail fast at export) through the SAME
+                // AssetValidator core the runtime ingest gate uses — previously a non-.glb or over-cap source packed
+                // cleanly and every downloader's Unpack rejected it, a self-invalidating package discovered only
+                // after publish. Stat-based pre-gate so an over-cap source is rejected without ever loading it.
+                GateAsset(ap, leaf, new FileInfo(ap).Length);
+
+                // DW-423: the single byte snapshot folded into AssetHash below AND written into the archive.
+                byte[] bytes = File.ReadAllBytes(ap);
+
+                // DW-424 (snapshot re-gate): the snapshot's length is what Unpack's per-entry size check will
+                // measure; if the source grew between the stat and the read, reject the snapshot too.
+                GateAsset(ap, leaf, bytes.LongLength);
+
                 assetEntries.Add("assets/" + leaf);
-                assetSources.Add(ap);
+                assetSnapshots.Add((leaf, bytes));
             }
-            uint assetHash = assetSources.Count == 0
+            uint assetHash = assetSnapshots.Count == 0
                 ? 0u
-                : HashFiles(assetSources.OrderBy(p => Path.GetFileName(p), StringComparer.Ordinal));
+                : HashNamedBytes(assetSnapshots.OrderBy(s => s.Leaf, StringComparer.Ordinal));
+
+            // DW-424 — the Pack-side twin of Unpack's per-entry extension/size rejects (kept locally so the two
+            // pack/unpack gates read side by side in one file). Static local ⇒ no capture; nameof is compile-time.
+            static void GateAsset(string sourcePath, string leaf, long byteLength)
+            {
+                var gate = AssetValidator.Validate(leaf, byteLength);
+                if (!gate.Ok)
+                    throw new ArgumentException(
+                        $"Cannot pack asset '{sourcePath}': {gate.Reason} A package bundling it would fail " +
+                        $"its own integrity check at every downloader's Unpack.", nameof(options));
+            }
 
             var manifest = new ContentPackageManifest
             {
@@ -198,6 +242,11 @@ namespace ProjectChimera.Core.Definitions
 #pragma warning restore RS0030
             };
 
+            // DW-423 regression seam — fires between integrity-hash computation and archive writing, the window
+            // the old hash-then-re-read TOCTOU lived in. Tests mutate the on-disk sources here to prove the
+            // packaged bytes are the hashed snapshots, not a re-read. Null (no-op) in production.
+            PackTestHookAfterHash?.Invoke();
+
             // Delete existing output file if present.
             if (File.Exists(outputZipPath)) File.Delete(outputZipPath);
 
@@ -207,8 +256,8 @@ namespace ProjectChimera.Core.Definitions
             string manifestJson = JsonSerializer.Serialize(manifest, _jsonOpts);
             WriteEntry(archive, "manifest.json", Encoding.UTF8.GetBytes(manifestJson));
 
-            // scenario.json
-            WriteEntry(archive, "scenario.json", File.ReadAllBytes(scenarioAbsPath));
+            // scenario.json — the SAME byte snapshot ScenarioHash covered (DW-423), never a re-read.
+            WriteEntry(archive, "scenario.json", scenarioBytes);
 
             // preview/preview.png (Story 6.7, optional) — the auto-generated top-down minimap preview. Takes
             // precedence over the legacy on-disk thumbnail so a package never carries two conflicting preview slots.
@@ -225,17 +274,19 @@ namespace ProjectChimera.Core.Definitions
                 WriteEntry(archive, "factions/" + Path.GetFileName(fp), File.ReadAllBytes(fp));
             }
 
-            // map/terrain/ (Story 6.2, optional) — the same ordinal-sorted file set the manifest recorded/hashed.
-            foreach (var f in terrainFiles)
-                WriteEntry(archive, "map/terrain/" + Path.GetFileName(f), File.ReadAllBytes(f));
+            // map/terrain/ (Story 6.2, optional) — the same ordinal-sorted snapshots TerrainHash folded (DW-423).
+            foreach (var (leaf, bytes) in terrainSnapshots)
+                WriteEntry(archive, "map/terrain/" + leaf, bytes);
 
             // screenshots/ (Story 9.8, optional) — the same list order the manifest recorded, so entry names match.
+            // (Screenshots are NOT integrity-hashed, so a write-time re-read carries no TOCTOU hash risk.)
             for (int i = 0; i < screenshotEntries.Count; i++)
                 WriteEntry(archive, screenshotEntries[i], File.ReadAllBytes(screenshotSources[i]));
 
-            // assets/ (Story 9.9, optional) — the same list order the manifest recorded, so entry names match.
+            // assets/ (Story 9.9, optional) — the same list order the manifest recorded, so entry names match;
+            // the bytes are the same snapshots AssetHash folded (DW-423), never a re-read.
             for (int i = 0; i < assetEntries.Count; i++)
-                WriteEntry(archive, assetEntries[i], File.ReadAllBytes(assetSources[i]));
+                WriteEntry(archive, assetEntries[i], assetSnapshots[i].Bytes);
 
             return manifest;
         }
@@ -432,17 +483,49 @@ namespace ProjectChimera.Core.Definitions
         /// </summary>
         /// <param name="zipPath">Absolute path to the .chimera.zip to update in place.</param>
         /// <param name="manifest">The manifest to serialize over the existing <c>manifest.json</c>.</param>
-        public static void RewriteManifest(string zipPath, ContentPackageManifest manifest)
+        public static void RewriteManifest(string zipPath, ContentPackageManifest manifest) =>
+            RewriteManifest(zipPath, () => Encoding.UTF8.GetBytes(JsonSerializer.Serialize(manifest, _jsonOpts)));
+
+        /// <summary>
+        /// DW-421 core (internal so the atomicity contract is fault-injection testable) — the previous
+        /// implementation deleted <c>manifest.json</c> and re-wrote it inside one <c>ZipArchiveMode.Update</c>
+        /// session on the SHIPPED zip, so a throw between the delete and the commit-on-Dispose flushed a package
+        /// whose only manifest had already been deleted: permanently unreadable by every future
+        /// <see cref="ReadManifest"/>/<see cref="Unpack"/>. Now atomic: (1) serialize BEFORE touching any file, so
+        /// a serializer throw leaves the package untouched; (2) stage the rewrite on a temp copy beside the
+        /// original (same directory ⇒ same volume ⇒ <see cref="File.Move(string,string,bool)"/> is an atomic
+        /// rename) and only swap it over the shipped zip after the updated archive fully committed on Dispose.
+        /// A throw anywhere — serialize, entry write, or the Update-mode commit itself — unwinds with the
+        /// original .chimera.zip intact.
+        /// </summary>
+        internal static void RewriteManifest(string zipPath, Func<byte[]> serializeManifest)
         {
             if (!File.Exists(zipPath))
                 throw new FileNotFoundException("Package file not found.", zipPath);
 
-            using var archive = ZipFile.Open(zipPath, ZipArchiveMode.Update);
-            archive.GetEntry("manifest.json")?.Delete();
-            var entry = archive.CreateEntry("manifest.json", CompressionLevel.Optimal);
-            byte[] data = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(manifest, _jsonOpts));
-            using var s = entry.Open();
-            s.Write(data, 0, data.Length);
+            // (1) Serialize first — before the original is copied or opened.
+            byte[] data = serializeManifest();
+
+            // (2) Stage on a temp sibling, then atomically replace the original on success.
+            string tmpPath = zipPath + ".rewrite.tmp";
+            try
+            {
+                File.Copy(zipPath, tmpPath, overwrite: true);
+                using (var archive = ZipFile.Open(tmpPath, ZipArchiveMode.Update))
+                {
+                    archive.GetEntry("manifest.json")?.Delete();
+                    var entry = archive.CreateEntry("manifest.json", CompressionLevel.Optimal);
+                    using var s = entry.Open();
+                    s.Write(data, 0, data.Length);
+                }
+                File.Move(tmpPath, zipPath, overwrite: true);
+            }
+            catch
+            {
+                // Best-effort cleanup of the staged copy; the shipped original is untouched either way.
+                try { File.Delete(tmpPath); } catch { /* leave the temp file rather than mask the real error */ }
+                throw;
+            }
         }
 
         // ── Read manifest only (for content browser preview) ─────────────────────
@@ -509,13 +592,22 @@ namespace ProjectChimera.Core.Definitions
         /// asset integrity hash. Mirrors <see cref="ScenarioSerializer.ComputeFileHash"/> so all three integrity
         /// checks share one algorithm family.
         /// </summary>
-        private static uint HashFiles(IEnumerable<string> absFiles)
+        private static uint HashFiles(IEnumerable<string> absFiles) =>
+            HashNamedBytes(absFiles.Select(f => (Path.GetFileName(f), File.ReadAllBytes(f))));
+
+        /// <summary>
+        /// DW-423 — the byte-snapshot core of <see cref="HashFiles"/>: folds each (Name, Bytes) pair exactly as
+        /// HashFiles folds filename+content (HashFiles now delegates here, so the two can never drift). Pack
+        /// hashes the in-memory snapshots it is about to write (read-once, closing the hash-then-re-read TOCTOU);
+        /// Unpack keeps hashing the files it just extracted via the path-based wrapper.
+        /// </summary>
+        private static uint HashNamedBytes(IEnumerable<(string Name, byte[] Bytes)> files)
         {
             uint hash = FNV_OFFSET;
-            foreach (var f in absFiles)
+            foreach (var (name, bytes) in files)
             {
-                foreach (byte b in Encoding.UTF8.GetBytes(Path.GetFileName(f))) { hash ^= b; hash *= FNV_PRIME; }
-                foreach (byte b in File.ReadAllBytes(f)) { hash ^= b; hash *= FNV_PRIME; }
+                foreach (byte b in Encoding.UTF8.GetBytes(name)) { hash ^= b; hash *= FNV_PRIME; }
+                foreach (byte b in bytes) { hash ^= b; hash *= FNV_PRIME; }
             }
             return hash;
         }
