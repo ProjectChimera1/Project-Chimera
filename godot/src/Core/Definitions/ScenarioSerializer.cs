@@ -1,7 +1,6 @@
 #nullable enable
 using System.IO;
 using System.Text.Json;
-using System.Text.Json.Serialization;
 
 namespace ProjectChimera.Core.Definitions
 {
@@ -10,6 +9,13 @@ namespace ProjectChimera.Core.Definitions
     ///
     /// Pass absolute OS paths (not res:// paths) — resolve with
     /// <c>ProjectSettings.GlobalizePath()</c> in the presentation layer before calling.
+    ///
+    /// <para>
+    /// DW-274: both directions go through <see cref="ContentJson.ScenarioOptions"/> — this class carries NO private
+    /// <see cref="JsonSerializerOptions"/> of its own, so the scenario format's posture cannot drift from the rest of
+    /// the content pipeline. Read <see cref="ContentJson.ScenarioOptions"/>'s docs before changing anything about it:
+    /// its <c>WriteIndented</c> + converter ORDER are what every scenario golden hash is pinned on.
+    /// </para>
     ///
     /// <para>
     /// The scenario JSON encodes the complete map setup: terrain, faction assignments,
@@ -28,23 +34,18 @@ namespace ProjectChimera.Core.Definitions
         /// </summary>
         public const int CurrentSchemaVersion = 1;
 
-        private static readonly JsonSerializerOptions _options = new()
-        {
-            ReadCommentHandling = JsonCommentHandling.Skip,
-            AllowTrailingCommas = true,
-            WriteIndented       = true,
-            Converters          = { new JsonStringEnumConverter(), new FixedJsonConverter(), new WidgetBaseJsonConverter() },
-        };
-
         /// <summary>
         /// Load a <see cref="ScenarioData"/> from a JSON file on disk.
-        /// Returns null if the file does not exist or fails to parse.
+        /// Returns null if the file does not exist (or if the JSON is the literal <c>null</c>). A MALFORMED file
+        /// propagates the <see cref="JsonException"/> to the caller — fail-closed, located: a scenario that cannot be
+        /// parsed must never be mistaken for "no scenario here". (DW-274 doc correction: this method never caught
+        /// parse failures; the old "or fails to parse" wording described behavior it did not have.)
         /// </summary>
         public static ScenarioData? LoadFromFile(string absolutePath)
         {
             if (!File.Exists(absolutePath)) return null;
             string json = File.ReadAllText(absolutePath);
-            return JsonSerializer.Deserialize<ScenarioData>(json, _options);
+            return JsonSerializer.Deserialize<ScenarioData>(json, ContentJson.ScenarioOptions);
         }
 
         /// <summary>
@@ -156,7 +157,7 @@ namespace ProjectChimera.Core.Definitions
             // (\r\n on Windows, \n on Linux), which made this method's bytes — and every golden hash
             // pinned on them — platform-dependent. Linux output is already LF, so this is a no-op
             // there and no goldens move. Switch to JsonSerializerOptions.NewLine if/when on .NET 9.
-            return JsonSerializer.Serialize(copy, _options).Replace("\r\n", "\n");
+            return JsonSerializer.Serialize(copy, ContentJson.ScenarioOptions).Replace("\r\n", "\n");
         }
 
         /// <summary>
