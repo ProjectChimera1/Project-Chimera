@@ -1,8 +1,9 @@
 #nullable enable
 using System;
-using ProjectChimera.Core;    // EntityWorld, Faction, UnitOrder
-using ProjectChimera.Combat;  // CombatEventQueue, ItemSystem
-using ProjectChimera.Economy; // BuildingSystem, ResearchSystem
+using ProjectChimera.Core;     // EntityWorld, Faction, UnitOrder
+using ProjectChimera.Core.Sim; // ILogSink (DW-304: forwarded so a systemless building-command drop warns)
+using ProjectChimera.Combat;   // CombatEventQueue, ItemSystem
+using ProjectChimera.Economy;  // BuildingSystem, ResearchSystem
 
 namespace ProjectChimera.Multiplayer.Server
 {
@@ -38,7 +39,11 @@ namespace ProjectChimera.Multiplayer.Server
             ResearchSystem? research = null,
             Func<int, int, int, int, bool>? dslSink = null,
             Action<Faction, UnitOrder[], int, int>? onSubBundle = null,
-            WinStateStore? winState = null)
+            WinStateStore? winState = null,
+            // DW-304: the client live path forwards its ILogSink so a building-family order dropped for a null
+            // system handle WARNS (a lost player order); the golden/spectator pass null → the drop stays the
+            // silent deterministic no-op it always was. Diagnostics only — never part of the deterministic state.
+            ILogSink? log = null)
         {
             // Caller-owned scratch (single apply per tick — a few KB, not a hot per-entity path).
             var factions    = new Faction[MergedTickPacket.MERGED_MAX_SUBBUNDLES];
@@ -59,7 +64,7 @@ namespace ProjectChimera.Multiplayer.Server
                 for (int i = 0; i < count; i++)
                     OrderApplier.Apply(world, in ordersFlat[baseIdx + i], faction,
                         onRequestPath, onRequestAttackMove, onCancelPath,
-                        buildings, events, items, research, dslSink, winState);
+                        buildings, events, items, research, dslSink, winState, log);
             }
         }
     }

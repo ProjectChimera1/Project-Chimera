@@ -2,6 +2,7 @@
 using System;
 using System.Runtime.InteropServices;
 using ProjectChimera.Core;
+using ProjectChimera.Core.Sim; // ILogSink (DW-304: systemless building-command drops warn instead of vanishing)
 using ProjectChimera.Combat;  // CombatEventQueue / CombatEventType (Story 2.12: OrderDenied on a full-ring reject)
 using ProjectChimera.Economy; // BuildingSystem (Story 2.8: Train command applies at exec-tick; 2.12: SetRally)
 
@@ -199,7 +200,15 @@ namespace ProjectChimera.Multiplayer
             // entity). Null on golden/headless/replay-without-win-state paths → a Concede is a deterministic no-op
             // (goldens never issue Concede=22, so the dormant command changes no golden — the checksum-fold-timing
             // rule). Threaded through BOTH live and replay apply paths (the one-switch parity rule).
-            WinStateStore? winState = null)
+            WinStateStore? winState = null,
+            // DW-304 — the injected diagnostic seam (AR-4 ILogSink, NEVER a static ambient sink / Console). When a
+            // building-family command (Train/CancelTrain/SetRally/ReviveHero/BuyItem/StartResearch/CancelResearch)
+            // arrives while the system handle that executes it (`buildings`/`research`) is null, the drop stays the
+            // SAME deterministic no-op it always was — but it now WARNS through this sink, so an accidentally
+            // unwired live path (a lost player order) is no longer indistinguishable from the intentional
+            // golden/headless/replay-without-systems null. Null (goldens/tests that expect the silent no-op) ⇒
+            // exactly the pre-DW-304 behavior. Diagnostics only: a sink must never mutate sim state.
+            ILogSink? log = null)
         {
             // Story 2.12 (Decision #2): mask the wire's queued flag (0x80) off the Command byte FIRST, so every
             // downstream compare + the command→state switch sees only the real 0-13 UnitCommand — never a flagged
@@ -221,7 +230,8 @@ namespace ProjectChimera.Multiplayer
                 // Story 11.4 (FR-74): thread the presentation event sink so TrainUnit's afford/prereq/supply/queue-full
                 // rejections surface a guard-sourced OrderDenied cue. `events` null (golden/headless/replay) → silent,
                 // deterministic no-op (the queue is not a SimChecksum input).
-                buildings?.TrainUnitCommand(o.UnitId, expectedFaction, o.TargetX, events);
+                if (buildings == null) { WarnSystemlessDrop(log, cmd, o.UnitId, expectedFaction, nameof(BuildingSystem)); return; }
+                buildings.TrainUnitCommand(o.UnitId, expectedFaction, o.TargetX, events);
                 return;
             }
 
@@ -233,7 +243,8 @@ namespace ProjectChimera.Multiplayer
             // CommandState. `buildings` null → deterministic no-op (golden/replay-without-buildings paths, like Train).
             if (cmd == UnitCommand.CancelTrain)
             {
-                buildings?.CancelTrainCommand(o.UnitId, expectedFaction, o.TargetX, events);
+                if (buildings == null) { WarnSystemlessDrop(log, cmd, o.UnitId, expectedFaction, nameof(BuildingSystem)); return; }
+                buildings.CancelTrainCommand(o.UnitId, expectedFaction, o.TargetX, events);
                 return;
             }
 
@@ -243,7 +254,8 @@ namespace ProjectChimera.Multiplayer
             // the store. It NEVER persists as a CommandState. `buildings` null → deterministic no-op (golden/replay).
             if (cmd == UnitCommand.SetRally)
             {
-                buildings?.SetRallyCommand(o.UnitId, expectedFaction, Fixed.FromRaw(o.TargetX), Fixed.FromRaw(o.TargetZ));
+                if (buildings == null) { WarnSystemlessDrop(log, cmd, o.UnitId, expectedFaction, nameof(BuildingSystem)); return; }
+                buildings.SetRallyCommand(o.UnitId, expectedFaction, Fixed.FromRaw(o.TargetX), Fixed.FromRaw(o.TargetZ));
                 return;
             }
 
@@ -254,7 +266,8 @@ namespace ProjectChimera.Multiplayer
             // CommandState. `buildings` null → deterministic no-op (golden/replay-without-buildings paths).
             if (cmd == UnitCommand.ReviveHero)
             {
-                buildings?.ReviveHeroCommand(o.UnitId, expectedFaction, Fixed.FromRaw(o.TargetX), events);
+                if (buildings == null) { WarnSystemlessDrop(log, cmd, o.UnitId, expectedFaction, nameof(BuildingSystem)); return; }
+                buildings.ReviveHeroCommand(o.UnitId, expectedFaction, Fixed.FromRaw(o.TargetX), events);
                 return;
             }
 
@@ -265,7 +278,8 @@ namespace ProjectChimera.Multiplayer
             // spend + mint. NEVER persists as a CommandState. `buildings`/`items` null ⇒ deterministic no-op (golden/replay).
             if (cmd == UnitCommand.BuyItem)
             {
-                buildings?.BuyItemCommand(o.UnitId, expectedFaction, o.TargetX, o.TargetZ, items, events);
+                if (buildings == null) { WarnSystemlessDrop(log, cmd, o.UnitId, expectedFaction, nameof(BuildingSystem)); return; }
+                buildings.BuyItemCommand(o.UnitId, expectedFaction, o.TargetX, o.TargetZ, items, events);
                 return;
             }
 
@@ -278,12 +292,14 @@ namespace ProjectChimera.Multiplayer
             // research paths, like `buildings`/`items`).
             if (cmd == UnitCommand.StartResearch)
             {
-                research?.StartResearchCommand(o.UnitId, expectedFaction, o.TargetX);
+                if (research == null) { WarnSystemlessDrop(log, cmd, o.UnitId, expectedFaction, nameof(ResearchSystem)); return; }
+                research.StartResearchCommand(o.UnitId, expectedFaction, o.TargetX);
                 return;
             }
             if (cmd == UnitCommand.CancelResearch)
             {
-                research?.CancelResearchCommand(o.UnitId, expectedFaction);
+                if (research == null) { WarnSystemlessDrop(log, cmd, o.UnitId, expectedFaction, nameof(ResearchSystem)); return; }
+                research.CancelResearchCommand(o.UnitId, expectedFaction);
                 return;
             }
 
@@ -555,6 +571,22 @@ namespace ProjectChimera.Multiplayer
             world.OrderQueueTargetX[slot] = targetX;
             world.OrderQueueTargetZ[slot] = targetZ;
             world.OrderQueueCount[id]     = (byte)(count + 1);
+        }
+
+        /// <summary>
+        /// DW-304 — a building-family command reached <see cref="Apply"/> while the system handle that executes it
+        /// was null, so the order is being dropped as a deterministic no-op. Warn through the injected
+        /// <see cref="ILogSink"/> so a LIVE path whose match wiring drifted (the drop = a lost player order,
+        /// formerly indistinguishable from the intentional golden/headless/replay-without-systems null) fails
+        /// LOUD instead of silent. Never throws and never touches sim state — the deterministic no-op contract
+        /// (locked by OrderApplier_Train_NullBuildings_IsDeterministicNoOp and its CancelTrain sibling) holds
+        /// with or without a sink.
+        /// </summary>
+        private static void WarnSystemlessDrop(ILogSink? log, UnitCommand cmd, int wireId, Faction faction, string missingSystem)
+        {
+            log?.Warn($"[OrderApplier] {cmd} (wire id {wireId}, {faction}) DROPPED: {missingSystem} is not wired at " +
+                      "apply time, so the order is a deterministic no-op. Intentional only on golden/headless/" +
+                      "replay-without-systems paths; on a live match path this is broken wiring losing player orders (DW-304).");
         }
 
         /// <summary>
