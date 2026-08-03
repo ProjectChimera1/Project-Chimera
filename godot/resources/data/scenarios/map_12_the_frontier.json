@@ -2,7 +2,7 @@
   "id": "map_12_the_frontier",
   "display_name": "The Frontier",
   "terrain_ref": "",
-  "map_bounds": 160.0,
+  "map_bounds": 128.0,
   "win_condition": "DestroyAllBuildings",
 
   "player_slots": [
