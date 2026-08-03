@@ -121,8 +121,9 @@ namespace ProjectChimera.Multiplayer
         /// Reused across pumps — the frozen-slot drain never allocates per tick.</summary>
         private readonly byte[] _injectBuf = new byte[TickCommandPacket.HEADER_BYTES];
 
-        /// <summary>Story 9.6: cached broadcast sink for the frozen-slot drain (avoids a per-pump lambda alloc).
-        /// Assigned when the match starts (HandleReady).</summary>
+        /// <summary>Story 9.6: cached broadcast sink over <c>_transport.BroadcastCommands</c>, shared by the
+        /// frozen-slot drain AND the fan-in relay (<see cref="FanInTickCommands"/>) — avoids a per-pump/per-packet
+        /// lambda alloc. Assigned when the match starts (HandleReady), together with <see cref="_builder"/>.</summary>
         private System.Action<byte[], int>? _injectBroadcast;
 
         /// <summary>Per-slot Ready-packet agreement data collected before StartGame (protocol version + 64-bit
@@ -459,8 +460,10 @@ namespace ProjectChimera.Multiplayer
 
                 case PacketType.TickCommandsMerged:
                     // Story 9.3: the merged tick is server-authored (server → client ONLY). A client that sends
-                    // one is spoofing the authoritative stream — hard-reject, no state change. (The builder also
-                    // rejects it in Submit; this is the explicit dispatch-level guard.)
+                    // one is spoofing the authoritative stream — hard-reject, no state change. (Defense in depth:
+                    // Server.ServerPacketRelay.FanInTickCommands ALSO type-rejects merged-shaped bytes before the
+                    // builder, and MergedTickBuilder.Submit rejects them again — both Tier-1-tested (DW-394); this
+                    // arm is the outermost dispatch guard + the server-console diagnostic.)
                     GD.PrintErr($"[Server] Rejected merged-shaped packet from slot {slot} — TickCommandsMerged is server→client only.");
                     break;
 
@@ -481,14 +484,16 @@ namespace ProjectChimera.Multiplayer
                 // PacketType.DesyncAlert is now SERVER-GENERATED (clients never send it) — the old relay case is gone.
 
                 case PacketType.Chat:
+                {
                     // Story 9.3 (chat-spoof fix): the client's faction byte is spoofable, so RE-STAMP it from the
                     // sender's transport-authoritative slot before rebroadcasting (a spectator sender → Neutral).
-                    // The message text is re-encoded via MakeChat so no client-supplied faction byte survives.
-                    if (TickCommandPacket.TryReadChat(data, len, out _, out string chatMsg))
+                    // The decode → StampChatFaction → MakeChat re-encode pipeline is the Godot-free, Tier-1-tested
+                    // Server.ServerPacketRelay.RestampChat (DW-394), so no client-supplied faction byte survives.
+                    byte[]? restamped = Server.ServerPacketRelay.RestampChat(
+                        slot, data, len, SLOT_FACTION, ExpectedPlayers);
+                    if (restamped != null)
                     {
-                        Faction stamped = Server.ServerLobbyPolicy.StampChatFaction(
-                            slot, SLOT_FACTION, ExpectedPlayers);
-                        _transport.BroadcastReliable(TickCommandPacket.MakeChat(stamped, chatMsg));
+                        _transport.BroadcastReliable(restamped);
                     }
                     else
                     {
@@ -497,6 +502,7 @@ namespace ProjectChimera.Multiplayer
                         GD.PrintErr($"[DedicatedServer] Dropped undecodable Chat from slot {slot} ({len} bytes).");
                     }
                     break;
+                }
 
                 case PacketType.MapPing:
                     // Story 11.4 (FR-74): relay a minimap map-ping to every connected peer (presentation-only,
@@ -638,19 +644,17 @@ namespace ProjectChimera.Multiplayer
         /// <see cref="Server.MergedTickBuilder"/>. When the last expected player's submission completes the tick,
         /// broadcast the ONE merged packet to ALL peers (players + spectators) on CH_COMMANDS. All the
         /// determinism-critical work (faction re-stamp / spoof-drop / over-count-drop / merged-from-client
-        /// hard-reject / ascending sort / byte-ceiling drop) lives in the Godot-free builder — this node is a
-        /// thin adapter (transport in → builder → transport out).
+        /// hard-reject / ascending sort / byte-ceiling drop) lives in the Godot-free builder, and the COMPOSITION
+        /// (submit → frontier advance → build → broadcast) is the Godot-free, Tier-1-tested
+        /// <see cref="Server.ServerPacketRelay.FanInTickCommands"/> (DW-394) — this node is a thin adapter
+        /// (transport in → relay → transport out). The broadcast sink is the cached <see cref="_injectBroadcast"/>
+        /// (constructed alongside <see cref="_builder"/> at StartGame — no per-packet lambda alloc).
         /// </summary>
         private void FanInTickCommands(int fromSlot, byte[] data, int len)
         {
-            if (_builder == null) return; // not yet InGame
-            if (_builder.Submit(fromSlot, data, len, out uint tick))
-            {
-                // Story 9.4: track the frontier so a dictated delay directive's applyAtTick lands safely ahead of it.
-                if (tick > _latestSeenTick) _latestSeenTick = tick;
-                if (_builder.TryBuild(tick, out byte[] merged, out int mergedLen))
-                    _transport.BroadcastCommands(merged, mergedLen);
-            }
+            if (_builder == null || _injectBroadcast == null) return; // not yet InGame
+            Server.ServerPacketRelay.FanInTickCommands(_builder, fromSlot, data, len,
+                ref _latestSeenTick, _injectBroadcast);
 
             // Story 9.6: a survivor's submit just advanced the frontier — inject empties for any frozen slot so the
             // now-fannable ticks (survivor arrived, frozen slot silent) complete and the survivor unstalls.
