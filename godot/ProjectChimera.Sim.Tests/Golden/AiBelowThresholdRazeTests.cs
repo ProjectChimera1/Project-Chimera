@@ -31,14 +31,21 @@ namespace ProjectChimera.Sim.Tests.Golden
         /// HP is set low, so a genuine raze concludes in a few hundred ticks; a stall runs out the full budget.</summary>
         private const int MaxTicks = 6000;
 
+        /// <summary>DW-125 — the Normal attack threshold read SYMBOLICALLY from
+        /// <see cref="AiOpponentSystem.DifficultyProfile"/> instead of hand-copying the literal <c>5</c>, so the
+        /// below-threshold precondition below still fails loudly if a future difficulty-curve retune drops the real
+        /// bar under this fixture's 3-unit remnant (which would silently move it onto the full-wave path).</summary>
+        private static readonly int NormalAttackThreshold =
+            AiOpponentSystem.DifficultyProfile(AiDifficulty.Normal).AttackThreshold;
+
         [Fact]
         public void StarvedWinningAi_BelowThreshold_StillRazesAndConcludes()
         {
             GoldenHarness h = BuildStuckBelowThresholdAi();
             Assert.True(CountFactionBuildings(h, Faction.Player1) > 0,
                 "precondition: Player1 starts with a base to raze");
-            Assert.True(CountFactionUnits(h, Faction.Player2) < 5,
-                "precondition: the AI must be BELOW the Normal attack threshold (5) so this exercises the stall-breaker, not the full-wave path");
+            Assert.True(CountFactionUnits(h, Faction.Player2) < NormalAttackThreshold,
+                $"precondition: the AI must be BELOW the Normal attack threshold ({NormalAttackThreshold}) so this exercises the stall-breaker, not the full-wave path");
 
             int ticksToConclude = -1;
             for (int t = 0; t < MaxTicks; t++)
