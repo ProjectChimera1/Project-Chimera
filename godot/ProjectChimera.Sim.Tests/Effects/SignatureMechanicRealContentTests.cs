@@ -1,5 +1,6 @@
 #nullable enable
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using ProjectChimera.Combat;             // ArmorType
@@ -46,19 +47,52 @@ namespace ProjectChimera.Sim.Tests.Effects
         }
 
         /// <summary>
+        /// Shipped-roster floor for the REAL ability registry: 10 files lived under <c>resources/data/abilities/</c>
+        /// when this guard was written (DW-107). <see cref="AbilityRegistry.LoadFromDirectory"/> SILENTLY excludes
+        /// any file that fails <see cref="AbilityValidator"/>, and no callback can ever fire for a file that was
+        /// deleted outright — so without a count floor a bad roster edit shrinks the registry and every
+        /// "real content" test in this class keeps passing against less-than-shipped content. Revise this floor
+        /// only on a DELIBERATE shipped-roster change.
+        /// </summary>
+        private const int MIN_SHIPPED_ABILITY_COUNT = 10;
+
+        /// <summary>
         /// Loads the REAL shipped alpha/beta <see cref="FactionDefinition"/>s and the REAL
         /// <see cref="AbilityRegistry"/> (every validated ability under <c>resources/data/abilities/</c>), then
         /// resolves every roster unit's abilities against it — the exact scenario-link sequence
         /// <c>MainScene</c>/<c>ServerBootstrap</c> run (Story 2.4b), never skipped here.
+        /// DW-107: fails LOUD on both silent-shrink paths — a shipped file failing validation (via
+        /// <c>onSkipped</c>, previously left at its default <c>null</c>) and a shipped file disappearing
+        /// entirely (via the <see cref="MIN_SHIPPED_ABILITY_COUNT"/> floor, which a skip callback can never see).
         /// </summary>
         private static (FactionDefinition alpha, FactionDefinition beta, AbilityRegistry registry) LoadRealContent()
         {
-            AbilityRegistry registry = AbilityRegistry.LoadFromDirectory(ResolveDataDir("abilities"));
+            var skippedAbilityFiles = new List<string>();
+            AbilityRegistry registry = AbilityRegistry.LoadFromDirectory(ResolveDataDir("abilities"), skippedAbilityFiles.Add);
+            Assert.True(skippedAbilityFiles.Count == 0,
+                $"shipped ability file(s) failed validation and were silently excluded from the registry: {string.Join(", ", skippedAbilityFiles)}");
+            Assert.True(registry.Count >= MIN_SHIPPED_ABILITY_COUNT,
+                $"real ability registry holds {registry.Count} abilities, below the shipped floor of {MIN_SHIPPED_ABILITY_COUNT} — shipped content shrank (deleted/moved file?); revise MIN_SHIPPED_ABILITY_COUNT only on a deliberate roster change.");
             FactionDefinition alpha = FactionDefinition.LoadFromFile(Path.Combine(ResolveDataDir("factions"), "alpha_faction.json"));
             FactionDefinition beta  = FactionDefinition.LoadFromFile(Path.Combine(ResolveDataDir("factions"), "beta_faction.json"));
             foreach (UnitDefinition u in alpha.Units) u.ResolveAbilities(registry);
             foreach (UnitDefinition u in beta.Units)  u.ResolveAbilities(registry);
             return (alpha, beta, registry);
+        }
+
+        /// <summary>
+        /// DW-108: the pre-damage wound is DERIVED from the unit's real shipped <c>Hp</c> (one quarter of it),
+        /// never a fixed magic magnitude — so a future roster edit lowering a unit's Hp can never drive it to or
+        /// below zero before the regen loop runs, which would silently void the isolation these tests exist to
+        /// prove (the old fixed <c>-30</c> was safe only while every wounded unit stayed above 30 Hp). Uses the
+        /// same <see cref="Fixed.FromFloat"/> conversion the spawn calls above feed <c>world.Create</c>.
+        /// </summary>
+        private static Fixed QuarterHpWound(UnitDefinition def)
+        {
+            Fixed wound = Fixed.FromFloat(def.Hp) / Fixed.FromInt(4);
+            Assert.True(wound > Fixed.Zero,
+                $"derived pre-damage for '{def.Id}' (Hp={def.Hp}) is not positive — it cannot wound the unit below max, so a regen assertion against it would be vacuous.");
+            return wound;
         }
 
         /// <summary>A fully-wired real-content host (ChecksumInterval=1, parity with the goldens).</summary>
@@ -95,8 +129,10 @@ namespace ProjectChimera.Sim.Tests.Effects
                 Fixed.FromFloat(workerDef.Hp), Fixed.FromFloat(workerDef.Speed));
             world.ApplyUnitDefinition(alphaUnit, workerDef!);
 
-            world.Health[betaUnit]  -= Fixed.FromInt(30); // pre-damage both below max
-            world.Health[alphaUnit] -= Fixed.FromInt(30);
+            world.Health[betaUnit]  -= QuarterHpWound(forgehandDef); // pre-damage both below max — derived from each unit's REAL Hp (DW-108)
+            world.Health[alphaUnit] -= QuarterHpWound(workerDef);
+            Assert.True(world.Health[betaUnit] > Fixed.Zero && world.Health[alphaUnit] > Fixed.Zero,
+                "the derived pre-damage must leave both units alive — a dead unit voids the regen isolation under test (DW-108).");
             Fixed betaBefore  = world.Health[betaUnit];
             Fixed alphaBefore = world.Health[alphaUnit];
 
@@ -195,13 +231,13 @@ namespace ProjectChimera.Sim.Tests.Effects
             int betaUnit = world.Create(V(0, 0, 0), Faction.Neutral,
                 Fixed.FromFloat(forgehandDef.Hp), Fixed.FromFloat(forgehandDef.Speed));
             world.ApplyUnitDefinition(betaUnit, forgehandDef);
-            world.Health[betaUnit] -= Fixed.FromInt(30);
+            world.Health[betaUnit] -= QuarterHpWound(forgehandDef); // derived from the REAL Hp, never a magic magnitude (DW-108)
 
             UnitDefinition workerDef = alpha.GetUnit("worker")!;
             int alphaUnit = world.Create(V(20, 0, 0), Faction.Neutral,
                 Fixed.FromFloat(workerDef.Hp), Fixed.FromFloat(workerDef.Speed));
             world.ApplyUnitDefinition(alphaUnit, workerDef);
-            world.Health[alphaUnit] -= Fixed.FromInt(30);
+            world.Health[alphaUnit] -= QuarterHpWound(workerDef); // derived from the REAL Hp, never a magic magnitude (DW-108)
 
             int spikeIdx = registry.IndexOf("spike_transmutation");
             UnitDefinition infantryDef = alpha.GetUnit("infantry")!;
@@ -252,6 +288,65 @@ namespace ProjectChimera.Sim.Tests.Effects
             Assert.Equal("furnace_trickle", beta.SignatureMechanicEffectId);
             Assert.True(registry.IndexOf(beta.SignatureMechanicEffectId!) >= 0,
                 $"beta's signature_mechanic_effect_id '{beta.SignatureMechanicEffectId}' does not resolve to a real loadable ability.");
+        }
+
+        // ── DW-107 hardening teeth — the silent-skip seam LoadRealContent now guards ─────────────────────────
+
+        /// <summary>
+        /// Pins the exact trap DW-107 closes, on a synthetic directory (one REAL shipped ability copied
+        /// byte-for-byte + one validation-broken file): (a) with <c>onSkipped</c> left at its default the broken
+        /// file just vanishes from the registry with no signal — why an unguarded real-content load can silently
+        /// test less than shipped content — and (b) the <c>onSkipped</c> channel <see cref="LoadRealContent"/> now
+        /// wires actually fires, carrying the offending file name as its diagnostic payload.
+        /// </summary>
+        [Fact]
+        public void LoadFromDirectory_InvalidAbilityFile_ShrinksRegistrySilently_UnlessOnSkippedIsWired()
+        {
+            string dir = Path.Combine(Path.GetTempPath(), "chimera_dw107_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(dir);
+            try
+            {
+                // Valid: this class's own subject ability, the real shipped spike_transmutation.json.
+                File.Copy(Path.Combine(ResolveDataDir("abilities"), "spike_transmutation.json"),
+                          Path.Combine(dir, "spike_transmutation.json"));
+                // Invalid: "on_death" is outside the closed PassiveActivation set — the same shape
+                // OnDeathActivation_NotInClosedSet_CannotBeAuthored proves AbilityValidator rejects.
+                File.WriteAllText(Path.Combine(dir, "broken_probe.json"),
+                    "{ \"id\": \"broken_probe\", \"activation\": \"on_death\" }");
+
+                AbilityRegistry silent = AbilityRegistry.LoadFromDirectory(dir); // onSkipped defaulted — the DW-107 trap
+                Assert.Equal(1, silent.Count); // the broken file vanished with no signal at all
+                Assert.True(silent.IndexOf("spike_transmutation") >= 0);
+                Assert.Equal(-1, silent.IndexOf("broken_probe"));
+
+                var skipped = new List<string>();
+                AbilityRegistry guarded = AbilityRegistry.LoadFromDirectory(dir, skipped.Add);
+                Assert.Equal(1, guarded.Count);
+                string reported = Assert.Single(skipped);
+                Assert.Equal("broken_probe.json", reported); // the file-name diagnostic LoadRealContent surfaces on failure
+            }
+            finally
+            {
+                Directory.Delete(dir, recursive: true);
+            }
+        }
+
+        /// <summary>
+        /// DW-107 named guard: every test in this class routes through <see cref="LoadRealContent"/>'s skip/floor
+        /// asserts, but this fact exists so a shipped-content shrink fails under a name that says exactly that
+        /// instead of surfacing first as a confusing mechanic-behavior failure — and it pins the three signature
+        /// ability ids this class drives (furnace_pour is otherwise unasserted here) as present in the REAL registry.
+        /// </summary>
+        [Fact]
+        public void LoadRealContent_ShippedAbilityRoster_LoadsCompletely()
+        {
+            var (_, _, registry) = LoadRealContent(); // fails loud inside on any skip or a sub-floor count
+
+            Assert.True(registry.Count >= MIN_SHIPPED_ABILITY_COUNT,
+                $"registry.Count {registry.Count} fell below the shipped floor {MIN_SHIPPED_ABILITY_COUNT}.");
+            Assert.True(registry.IndexOf("furnace_trickle") >= 0, "shipped furnace_trickle is missing from the real registry.");
+            Assert.True(registry.IndexOf("furnace_pour") >= 0, "shipped furnace_pour is missing from the real registry.");
+            Assert.True(registry.IndexOf("spike_transmutation") >= 0, "shipped spike_transmutation is missing from the real registry.");
         }
     }
 }
