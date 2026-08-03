@@ -74,6 +74,28 @@ namespace ProjectChimera.Navigation
         }
 
         /// <summary>
+        /// DW-148 — the CELL-RELATIVE blocked test the sim's movement rejection needs: true when world (x, z)
+        /// resolves to a blocked cell that is NOT <paramref name="fromCell"/> (the flat index of the cell the unit
+        /// already occupies, from <see cref="CellOf"/>). Staying inside one's OWN cell is therefore never "entering
+        /// a blocked cell", so a unit that somehow starts inside a blocked cell can still shuffle within it and walk
+        /// out into a CLEAR neighbour — but it may no longer traverse ONWARD into a different blocked cell (pre-fix,
+        /// any unit already standing in a blocked cell was exempt from blocking entirely and walked straight through
+        /// walls). Identical to <see cref="IsBlocked"/> whenever <paramref name="fromCell"/> is a CLEAR cell (a
+        /// blocked destination is then necessarily a different cell), so the validated-map path is byte-identical.
+        /// Same clamped integer cell lookup — no floating point, no OOB read.
+        /// </summary>
+        public bool IsBlockedOutside(int fromCell, Fixed x, Fixed z)
+        {
+            int idx = CellOf(x, z);
+            return idx != fromCell && Blocked[idx];
+        }
+
+        /// <summary>The clamped flat <c>[row * GRID_SIZE + col]</c> cell index for world (x, z) — the grid's shared
+        /// cell identity (<see cref="FlowField.WorldToIndex"/>), exposed so a caller can name the cell a unit
+        /// currently occupies for <see cref="IsBlockedOutside"/> without duplicating the mapping.</summary>
+        public static int CellOf(Fixed x, Fixed z) => FlowField.WorldToIndex(x, z);
+
+        /// <summary>
         /// FNV-1a digest over the packed bitset for the <see cref="ProjectChimera.Core.Definitions.CanonicalModelHash"/>
         /// fold. Returns 0 when NO cell is blocked (so an all-clear grid is indistinguishable from an absent layer),
         /// else a non-zero fold (0→1 sentinel). Consistent with <see cref="DigestOfBase64"/>.

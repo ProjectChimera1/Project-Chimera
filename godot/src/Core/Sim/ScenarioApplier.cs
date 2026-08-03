@@ -160,6 +160,21 @@ namespace ProjectChimera.Core.Sim
             // (MovementSystem) keeps live units out of blocked cells uniformly. Null ⇒ no blocking (byte-identical).
             _host.World.SetPathabilityGrid(_pathability);
 
+            // ── DW-148: the load-time spawn-in-blocked-cell guard. The pre-tick ScenarioValidator gate only sees the
+            //    AUTHORED blocked layers (painted ∪ prop/water) — slope-DERIVED cells need the terrain heightmap, which
+            //    does not exist at that Godot-free gate — so a start base / unit / building / node / spawn_unit trigger
+            //    on a slope-auto-blocked cell shipped un-caught. THIS is the first point in the load where the resolved
+            //    union grid and the model sit side by side, and every lifecycle path funnels through here (boot,
+            //    Edit→Play re-apply, ServerBootstrap), so the check belongs at this chokepoint.
+            //    It is a LOUD LOCATED DIAGNOSTIC, deliberately not a second gate: the model already carries a
+            //    validation proof, and silently refusing to spawn authored content would be strictly worse than
+            //    reporting a bad placement (MovementSystem now confines such a unit to its own cell rather than letting
+            //    it walk through the terrain). Pure read — a null/all-clear grid is an exact no-op, so no flat/legacy
+            //    map (and no golden) changes behavior. ──
+            string? blockedSpawn = ScenarioValidator.CheckSpawnsNotBlocked(s, _pathability);
+            if (blockedSpawn != null)
+                _log.Warn($"[ScenarioApplier] DW-148 pathability guard: {blockedSpawn}");
+
             // ── 1. Player slots: faction def + starting ore + base deposit point ─
             foreach (var slot in s.PlayerSlots ?? System.Array.Empty<ScenarioPlayerSlot>())
             {

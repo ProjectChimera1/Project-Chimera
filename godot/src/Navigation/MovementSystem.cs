@@ -151,15 +151,23 @@ namespace ProjectChimera.Navigation
                 if (pathability != null && pathability.AnyBlocked)
                 {
                     FixedVec3 np = world.Position[i];
-                    // Only reject a CROSSING: a unit already standing in a blocked cell (never happens for a validated
-                    // map, but keep it deterministic) is not frozen — it may leave.
-                    if (!pathability.IsBlocked(pos.X, pos.Z) && pathability.IsBlocked(np.X, np.Z))
+                    // DW-148: reject any step that ENTERS a blocked cell the unit is not already standing in. The
+                    // reference cell is the unit's PRE-step cell, so:
+                    //   • a unit in a CLEAR cell behaves exactly as before (a blocked destination is necessarily a
+                    //     different cell) — byte-identical for every validated map, so no golden moves;
+                    //   • a unit that somehow starts INSIDE a blocked cell (a slope-derived spawn the Godot-free gate
+                    //     cannot see — see ScenarioValidator.CheckSpawnsNotBlocked) is CONFINED: it may shuffle within
+                    //     its own cell and walk out into a CLEAR neighbour, but it can no longer traverse ONWARD
+                    //     through the blocked region. Pre-fix such a unit was exempt from blocking entirely and walked
+                    //     through walls freely.
+                    int fromCell = PathabilityGrid.CellOf(pos.X, pos.Z);
+                    if (pathability.IsBlockedOutside(fromCell, np.X, np.Z))
                     {
-                        // Wall-slide: keep whichever single-axis move stays out of the blocked cell; otherwise fully
-                        // retain the pre-step position. Ascending id + Fixed-only ⇒ deterministic.
-                        if (!pathability.IsBlocked(np.X, pos.Z))
+                        // Wall-slide: keep whichever single-axis move stays out of a foreign blocked cell; otherwise
+                        // fully retain the pre-step position. Ascending id + Fixed-only ⇒ deterministic.
+                        if (!pathability.IsBlockedOutside(fromCell, np.X, pos.Z))
                             world.Position[i] = new FixedVec3(np.X, np.Y, pos.Z); // slide along X
-                        else if (!pathability.IsBlocked(pos.X, np.Z))
+                        else if (!pathability.IsBlockedOutside(fromCell, pos.X, np.Z))
                             world.Position[i] = new FixedVec3(pos.X, np.Y, np.Z); // slide along Z
                         else
                             world.Position[i] = pos;                              // hard stop at the boundary

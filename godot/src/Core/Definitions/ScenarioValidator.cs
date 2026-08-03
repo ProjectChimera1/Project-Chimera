@@ -109,12 +109,28 @@ namespace ProjectChimera.Core.Definitions
                 return ValidationResult.Fail(
                     $"scenario.checksum_algo_version={algoLow} must be >= 1 (omit the stamp entirely for a legacy file).");
 
-            // ── Map bounds: finite, > 0, and inside the Fixed range (it is a coordinate ceiling) ──
+            // ── Map bounds: finite, > 0, inside the Fixed range (it is a coordinate ceiling), and inside the FIXED
+            //    sim-grid extent ──
             if (!Finite(m.MapBounds) || m.MapBounds <= 0f)
                 return ValidationResult.Fail($"scenario.map_bounds={m.MapBounds} must be finite and > 0.");
             if (m.MapBounds >= Range)
                 return ValidationResult.Fail(
                     $"scenario.map_bounds={m.MapBounds} exceeds the 16.16 range [0, {Range}).");
+            // DW-158: the 16.16 range is NOT the real ceiling. The sim grids (flow field, fog, pathability) are FIXED
+            // at ±MapSizes.MaxHalfExtent (== FlowField.WORLD_HALF_INT == 128, pinned by GridDimensionConsistencyTests),
+            // and FlowField.WorldToCell CLAMPS anything past them onto the edge cells. So with an authored half-extent
+            // ABOVE 128 the every-coordinate ±map_bounds gate below admits positions the grid cannot represent, and two
+            // distinct far-out positions ALIAS onto one cell: a blocking prop / water volume outside the grid stamps an
+            // edge-cell footprint it does not occupy, which can then false-flag an UNRELATED in-grid start position as
+            // blocked (and vice-versa). Deterministic, but semantically wrong — reject the authoring lie here so every
+            // downstream ±map_bounds check is also a "fits the grid" check. map_bounds == 128 (MapSize.Large, the
+            // shipped maximum) stays legal: the exact +128 boundary line's clamp is the deliberately-documented
+            // playable ceiling (ledgered separately as DW-162), not this aliasing class.
+            if (m.MapBounds > MapSizes.MaxHalfExtent)
+                return ValidationResult.Fail(
+                    $"scenario.map_bounds={m.MapBounds} exceeds the fixed sim-grid half-extent {MapSizes.MaxHalfExtent} " +
+                    "(the flow-field / fog / pathability grids are fixed at ±128, so any position beyond that aliases " +
+                    "onto an edge cell); the supported map sizes are Small 80 / Medium 120 / Large 128.");
 
             float bounds = m.MapBounds;
 
@@ -1267,6 +1283,95 @@ namespace ProjectChimera.Core.Definitions
             return advisories;
         }
 
+        // ── DW-148: the LOAD-TIME spawn-in-blocked-cell guard (the resolved-union half the pre-tick gate cannot see) ──
+
+        /// <summary>
+        /// DW-148 — re-run the blocked-cell placement checks against the RESOLVED load-time pathability union
+        /// (painted ∪ blocking-prop/water footprint ∪ SLOPE-DERIVED steep cells), i.e. the grid
+        /// <c>ScenarioApplier.BuildPathabilityGrid</c> produces once the terrain heightmap exists.
+        ///
+        /// <para><b>Why this exists.</b> <see cref="Validate"/> — the Godot-free pre-tick gate — can only decode the
+        /// AUTHORED layers; slope-derived cells depend on the terrain heightmap, which is not available there (the same
+        /// blind spot <see cref="MapWriteGate"/> documents). So a start base / pre-placed unit / building / resource
+        /// node / <c>spawn_unit</c> trigger sitting on a slope-auto-blocked cell shipped completely un-caught: no unit
+        /// can legally occupy that cell, and (pre-DW-148) a unit that spawned inside one was exempt from blocking
+        /// altogether and walked through the terrain. This method closes the diagnosis half at the one point in the
+        /// load where the FULL blocked set and the model exist side by side.</para>
+        ///
+        /// <para>It checks the SAME five surfaces, in the SAME declaration order, through the SAME cell-identity
+        /// lookup (<see cref="PathabilityGrid.IsBlocked"/> over <c>FlowField.WorldToCell</c>) the authored-layer checks
+        /// in <see cref="Validate"/> use — one shared derivation, no second hand-copied stamp loop that could drift.
+        /// Returns the FIRST located error, or <c>null</c> when every placement is clear.</para>
+        ///
+        /// <para>Pure — never throws, never logs, mutates nothing. A null / all-clear grid (every flat and legacy map)
+        /// returns <c>null</c> immediately, so this is an exact no-op on the common path. It is a LOCATED DIAGNOSTIC,
+        /// not a second gate: the caller (<c>ScenarioApplier.Apply</c> — the Godot-free chokepoint every lifecycle path
+        /// funnels through: boot, Edit→Play re-apply, server bootstrap) already holds a validation proof for the model
+        /// and applies it regardless, because silently dropping authored content would be far worse than a reported
+        /// bad spawn; <c>MovementSystem</c> then confines such a unit to its own cell.</para>
+        /// </summary>
+        /// <param name="m">The scenario being applied (null ⇒ nothing to check).</param>
+        /// <param name="resolved">The resolved load-time union grid (null / all-clear ⇒ nothing to check).</param>
+        /// <returns>The first located "spawn is on a blocked cell" error, or null when all placements are clear.</returns>
+        public static string? CheckSpawnsNotBlocked(ScenarioData? m, PathabilityGrid? resolved)
+        {
+            if (m is null || resolved is null || !resolved.AnyBlocked) return null;
+
+            ScenarioPlayerSlot[] slots = m.PlayerSlots ?? Array.Empty<ScenarioPlayerSlot>();
+            for (int i = 0; i < slots.Length; i++)
+            {
+                ScenarioPlayerSlot s = slots[i];
+                if (s is null) continue; // Validate() already located a null element; never NRE here
+                string? e = CheckNotBlockedResolved($"scenario.player_slots[{i}]", "start base", s.BaseX, s.BaseZ, resolved);
+                if (e != null) return e;
+            }
+
+            ScenarioResourceNode[] nodes = m.ResourceNodes ?? Array.Empty<ScenarioResourceNode>();
+            for (int i = 0; i < nodes.Length; i++)
+            {
+                ScenarioResourceNode n = nodes[i];
+                if (n is null) continue;
+                string? e = CheckNotBlockedResolved($"scenario.resource_nodes[{i}]", "resource node", n.X, n.Z, resolved);
+                if (e != null) return e;
+            }
+
+            ScenarioBuilding[] buildings = m.Buildings ?? Array.Empty<ScenarioBuilding>();
+            for (int i = 0; i < buildings.Length; i++)
+            {
+                ScenarioBuilding b = buildings[i];
+                if (b is null) continue;
+                string? e = CheckNotBlockedResolved($"scenario.buildings[{i}]", "building position", b.X, b.Z, resolved);
+                if (e != null) return e;
+            }
+
+            ScenarioUnit[] units = m.Units ?? Array.Empty<ScenarioUnit>();
+            for (int i = 0; i < units.Length; i++)
+            {
+                ScenarioUnit u = units[i];
+                if (u is null) continue;
+                string? e = CheckNotBlockedResolved($"scenario.units[{i}]", "unit position", u.X, u.Z, resolved);
+                if (e != null) return e;
+            }
+
+            TriggerDefinition[] triggers = m.Triggers ?? Array.Empty<TriggerDefinition>();
+            for (int i = 0; i < triggers.Length; i++)
+            {
+                if (triggers[i] is null) continue;
+                TriggerAction[] actions = triggers[i].Actions ?? Array.Empty<TriggerAction>();
+                for (int a = 0; a < actions.Length; a++)
+                {
+                    TriggerAction act = actions[a];
+                    if (act is null || act.Type != "spawn_unit") continue;
+                    // X/Z are already Fixed here (Story 7.1) — passed straight through, no float boundary.
+                    string? e = CheckNotBlockedResolved(
+                        $"scenario.triggers[{i}].actions[{a}]", "spawn_unit position", act.X, act.Z, resolved);
+                    if (e != null) return e;
+                }
+            }
+
+            return null;
+        }
+
         // ── Helpers (return a located error string, or null when the field is OK) ──
 
         /// <summary>Story 6.7 (review pass 2) — the advisory out-of-bounds predicate. Matches the hard validator's
@@ -1357,6 +1462,24 @@ namespace ProjectChimera.Core.Definitions
             if (painted.IsBlocked(x, z))
                 return $"{path} {what} ({x}, {z}) is on an impassable (blocked) cell — painted, or a blocking prop / water footprint — no unit can occupy it.";
             return null;
+        }
+
+        /// <summary>
+        /// DW-148 — the <see cref="CheckSpawnsNotBlocked"/> counterpart of <see cref="CheckNotBlocked"/>: the SAME
+        /// clamped integer cell lookup, but against the RESOLVED load-time union grid, so the message can name the
+        /// slope-derived possibility the authored-layer check cannot produce (an author staring at a clean paint layer
+        /// needs to be told the terrain derived that cell). The <c>Fixed.FromFloat</c> is the same sanctioned load-time
+        /// boundary the authored-layer overload uses.
+        /// </summary>
+        private static string? CheckNotBlockedResolved(string path, string what, float x, float z, PathabilityGrid grid)
+            => CheckNotBlockedResolved(path, what, Fixed.FromFloat(x), Fixed.FromFloat(z), grid);
+
+        /// <summary><see cref="Fixed"/> overload (trigger <c>spawn_unit</c> X/Z are already Fixed — no conversion).</summary>
+        private static string? CheckNotBlockedResolved(string path, string what, Fixed x, Fixed z, PathabilityGrid grid)
+        {
+            if (!grid.IsBlocked(x, z)) return null;
+            return $"{path} {what} ({x}, {z}) is on an impassable (blocked) cell of the RESOLVED load-time pathability " +
+                   "grid — painted, a blocking prop / water footprint, or a SLOPE-DERIVED steep cell — no unit can occupy it.";
         }
 
         /// <summary>Story 6.8 — a known building type is an EXACT <see cref="BuildingType"/> enum name (case-sensitive;

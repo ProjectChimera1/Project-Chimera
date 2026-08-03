@@ -2,7 +2,7 @@
   "id": "map_10_mirror_lake",
   "display_name": "Mirror Lake",
   "terrain_ref": "",
-  "map_bounds": 130.0,
+  "map_bounds": 128.0,
   "win_condition": "DestroyAllBuildings",
 
   "player_slots": [
