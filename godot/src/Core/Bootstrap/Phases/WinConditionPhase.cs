@@ -313,15 +313,16 @@ namespace ProjectChimera.Core.Bootstrap
                 }
                 // Story 14.7 (DW-164) — HARD Validate before any write; nothing partial on disk on failure. This is a
                 // hard gate distinct from the non-fatal CollectAdvisories below; do NOT weaken it to an advisory. The
-                // blank has no pre-placed custom buildings → null faction defs is correct here.
-                string? gateError = MapWriteGate.Check(blank);
+                // blank has no pre-placed custom buildings → null faction defs is correct here. DW-329: the
+                // gate-before-write ORDER lives in the Godot-free MapWritePipeline so Tier-1 tests pin it
+                // (MapWritePipelineTests) — route every write through it, never call ScenarioSerializer directly.
+                string? gateError = MapWritePipeline.RunNewMap(blank, () => ScenarioSerializer.SaveToFile(blank, dest));
                 if (gateError != null)
                 {
                     statusLabel.Text = $"New map blocked — validation failed: {gateError}";
                     GD.PrintErr($"[MapIO] New map blocked — validation failed: {gateError}");
                     return;
                 }
-                ScenarioSerializer.SaveToFile(blank, dest);
                 // Story 6.7 (patch 12) — route the size display through the one MapSize helper.
                 statusLabel.Text = $"Created blank {blank.SuggestedPlayers}-player map " +
                                    $"({MapSizes.Label(MapSizes.FromBounds(blank.MapBounds))}).\n" +
@@ -342,41 +343,54 @@ namespace ProjectChimera.Core.Bootstrap
         private async System.Threading.Tasks.Task ExportMapPackage(Label statusLabel)
         {
             if (_ctx.Scenario == null) { statusLabel.Text = "No scenario loaded."; return; }
+            ScenarioData scenario = _ctx.Scenario; // non-null for the whole export (single-threaded button path)
 
-            // Story 14.7 (DW-164) — HARD Validate BEFORE any disk mutation. This must be the first statement after
-            // the null check so a rejected export leaves nothing partial on disk — no terrain files (this precedes
-            // SaveTerrainBesideScenario, which writes region files first), no scenario.json overwrite, no
-            // .chimera.zip. Pass the resolved per-slot faction defs so the verdict matches what reload produces
-            // (mirrors ScenarioLoadPhase.ValidateBeforeApply). This is a hard gate distinct from the non-fatal
-            // post-write CollectAdvisories; do NOT weaken it to an advisory.
-            string? gateError = MapWriteGate.Check(_ctx.Scenario, _ctx.SlotFactionDefs);
+            string scenAbs = ProjectSettings.GlobalizePath(_ctx.Scene.ScenarioPath);
+
+            // Story 14.7 (DW-164) — HARD Validate BEFORE any disk mutation, so a rejected export leaves nothing
+            // partial on disk — no terrain region files (SaveTerrainBesideScenario is the first write), no
+            // scenario.json overwrite, no .chimera.zip. Pass the resolved per-slot faction defs so the verdict
+            // matches what reload produces (mirrors ScenarioLoadPhase.ValidateBeforeApply). This is a hard gate
+            // distinct from the non-fatal post-write CollectAdvisories; do NOT weaken it to an advisory.
+            // DW-329: the gate→terrain→scenario→pack ORDER lives in the Godot-free MapWritePipeline so Tier-1
+            // tests pin it (MapWritePipelineTests) — route every write through it, never inline the sequence here.
+            string? gateError = await MapWritePipeline.RunExportAsync(
+                scenario, _ctx.SlotFactionDefs,
+                // Story 6.2: persist the LIVE terrain beside the scenario and stamp TerrainRef BEFORE serializing,
+                // so the saved JSON carries the ref and the pack stage can bundle the region files. Returns the
+                // terrain folder's absolute path (null when there is no terrain / on a save failure — TerrainRef is
+                // cleared in that case so a stale ref can't make the next load restore outdated terrain).
+                saveTerrain: () => SaveTerrainBesideScenario(scenAbs),
+                saveScenario: () =>
+                {
+                    try { ScenarioSerializer.SaveToFile(scenario, scenAbs); return true; }
+                    catch (Exception ex) { statusLabel.Text = $"Save failed: {ex.Message}"; return false; }
+                },
+                packAsync: terrainDir => PackExportedMap(statusLabel, scenario, scenAbs, terrainDir));
             if (gateError != null)
             {
                 statusLabel.Text = $"Export blocked — validation failed: {gateError}";
                 GD.PrintErr($"[MapIO] Export blocked — validation failed: {gateError}");
-                return;
             }
+        }
 
-            // Save current scenario state to disk first.
-            string scenAbs = ProjectSettings.GlobalizePath(_ctx.Scene.ScenarioPath);
-
-            // Story 6.2: persist the LIVE terrain beside the scenario and stamp TerrainRef BEFORE serializing, so the
-            // saved JSON carries the ref and the package below can bundle the region files. Returns the terrain
-            // folder's absolute path (null when there is no terrain / on a save failure — TerrainRef is cleared in
-            // that case so a stale ref can't make the next load restore outdated terrain).
-            string? terrainDir = SaveTerrainBesideScenario(scenAbs);
-
-            try { ScenarioSerializer.SaveToFile(_ctx.Scenario, scenAbs); }
-            catch (Exception ex) { statusLabel.Text = $"Save failed: {ex.Message}"; return; }
-
+        /// <summary>
+        /// The PACK stage of the export sequence — runs only after the hard gate passed and terrain +
+        /// scenario.json were persisted (<see cref="MapWritePipeline.RunExportAsync"/> owns that ordering, DW-329):
+        /// render the minimap preview, load the proof-of-play token, capture a screenshot, and pack the
+        /// .chimera.zip. Body moved verbatim from ExportMapPackage; behavior unchanged.
+        /// </summary>
+        private async System.Threading.Tasks.Task PackExportedMap(
+            Label statusLabel, ScenarioData scenario, string scenAbs, string? terrainDir)
+        {
             // Story 6.7 — auto-generate the top-down minimap preview into the package. Null on any render failure ⇒
             // the preview slot is simply omitted (pre-6.7 package parity). Rendered BEFORE Pack so the bytes are ready.
             byte[]? previewPng = await RenderMinimapPreview();
 
             // Story 6.7 — read the real authored metadata off the live ScenarioData (not placeholder LineEdits): the
             // Map-Properties panel bound DisplayName/Author/Description/SuggestedPlayers directly onto this model.
-            string mapName = string.IsNullOrEmpty(_ctx.Scenario.DisplayName) ? "My Map" : _ctx.Scenario.DisplayName;
-            int playerCount = _ctx.Scenario.PlayerSlots?.Length ?? 2;
+            string mapName = string.IsNullOrEmpty(scenario.DisplayName) ? "My Map" : scenario.DisplayName;
+            int playerCount = scenario.PlayerSlots?.Length ?? 2;
 
             // Determine output path: same directory as scenario, same slug name.
             string slug   = ContentPackager.Slugify(mapName);
@@ -387,7 +401,7 @@ namespace ProjectChimera.Core.Bootstrap
             // and capture ≥1 screenshot, so the packaged manifest carries the token + screenshots the publish gate
             // requires. Both are best-effort: a missing token / failed grab simply yields a package the gate later
             // refuses (with the specific reason), never a failed export.
-            string scenarioId = ProofOfPlayMint.ResolveScenarioId(_ctx.Scenario);
+            string scenarioId = ProofOfPlayMint.ResolveScenarioId(scenario);
             ProofOfPlayToken? token = null;
             try { new ProofOfPlayStore(ProjectSettings.GlobalizePath(ProofOfPlayMint.TokenDirGodotPath)).TryLoad(scenarioId, out token); }
             catch (Exception ex) { GD.PrintErr($"[MapIO] Proof-of-play load failed: {ex.Message}"); }
@@ -399,8 +413,8 @@ namespace ProjectChimera.Core.Bootstrap
             var opts = new ContentPackager.PackOptions
             {
                 DisplayName     = mapName,
-                Author          = string.IsNullOrEmpty(_ctx.Scenario.Author) ? "Unknown" : _ctx.Scenario.Author!,
-                Description     = _ctx.Scenario.Description ?? "",
+                Author          = string.IsNullOrEmpty(scenario.Author) ? "Unknown" : scenario.Author!,
+                Description     = scenario.Description ?? "",
                 PlayerCount     = playerCount,
                 PreviewPngBytes = previewPng,
                 Token           = token,
@@ -418,7 +432,7 @@ namespace ProjectChimera.Core.Bootstrap
                                    $"Hash: 0x{manifest.ScenarioHash:X8}" +
                                    (previewPng != null ? "\nPreview: preview/preview.png" : "\n(no preview)");
                 // Story 6.7 (patch 4) — surface AC2's non-blocking authoring advisories after a successful export.
-                var advisories = new ScenarioValidator().CollectAdvisories(_ctx.Scenario);
+                var advisories = new ScenarioValidator().CollectAdvisories(scenario);
                 if (advisories.Count > 0)
                     statusLabel.Text += "\n⚠ " + string.Join("; ", advisories);
                 GD.Print($"[MapIO] Exported package: {outZip}");
