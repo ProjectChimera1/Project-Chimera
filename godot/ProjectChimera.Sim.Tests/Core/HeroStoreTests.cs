@@ -234,6 +234,110 @@ namespace ProjectChimera.Sim.Tests.Core
         }
 
         [Fact]
+        public void DestroyByRef_HeroLinked_FreesSlot_ClearsEntityId_ReturnsTrue_CountUnchanged()
+        {
+            // DW-52 (I/O matrix row 1): the editor delete path frees a hero-linked unit's row via its packed handle
+            // (the value EntityWorld.HeroIndex[e] holds). The freed slot goes dead, its EntityId back-reference clears
+            // to -1, the call reports success, and Count stays a monotonic high-water mark (freeing does not shrink it).
+            var s = new HeroStore();
+            int slot = s.Mint(new HeroId(500), entityId: 7, level: 2, xp: Xp0);
+            int packed = s.PackRef(slot); // == world.HeroIndex[7]
+            Assert.Equal(1, s.Count);
+
+            Assert.True(s.DestroyByRef(packed));
+            Assert.False(s.Alive[slot]);
+            Assert.Equal(-1, s.EntityId[slot]); // dangling back-reference cleared
+            Assert.Equal(1, s.Count);           // high-water mark unchanged (slot went to the free-list)
+        }
+
+        [Fact]
+        public void DestroyByRef_HeroNoneSentinel_IsNoOp_ReturnsFalse()
+        {
+            // DW-52 (I/O matrix row 2): a non-hero unit carries EntityWorld.HERO_NONE (-1) in HeroIndex. DestroyByRef(-1)
+            // must resolve false and leave the store completely untouched (no row freed, no free-list push).
+            var s = new HeroStore();
+            int slot = s.Mint(new HeroId(600), entityId: 3, level: 1, xp: Xp0);
+
+            Assert.False(s.DestroyByRef(EntityWorld.HERO_NONE));
+            Assert.True(s.Alive[slot]);          // still live
+            Assert.Equal(3, s.EntityId[slot]);   // back-reference untouched
+            Assert.Equal(1, s.Count);
+            // The free-list was never pushed: a fresh mint appends a NEW high-water slot rather than reusing slot 0.
+            int fresh = s.Mint(new HeroId(601), entityId: 4, level: 1, xp: Xp0);
+            Assert.Equal(1, fresh);
+        }
+
+        [Fact]
+        public void DestroyByRef_StaleHandle_IsNoOp_DoesNotFreeReMintedOccupant()
+        {
+            // DW-52 (I/O matrix row 3): a handle to a since-recycled slot (generation bumped) must resolve false and
+            // NEVER free the NEW occupant of that slot — the ABA-armor the packed handle was built around.
+            var s = new HeroStore();
+            int slot = s.Mint(new HeroId(700), entityId: 1, level: 1, xp: Xp0);
+            int staleHandle = s.PackRef(slot);
+
+            s.Destroy(slot);
+            int reused = s.Mint(new HeroId(800), entityId: 2, level: 1, xp: Xp0); // generation bumped
+            Assert.Equal(slot, reused);
+
+            Assert.False(s.DestroyByRef(staleHandle)); // stale → no-op
+            Assert.True(s.Alive[reused]);              // the re-minted occupant is untouched
+            Assert.Equal(2, s.EntityId[reused]);
+        }
+
+        [Fact]
+        public void Destroy_ClearsEntityId()
+        {
+            // DW-52 (I/O matrix row 4 support): the bare Destroy clears the dead row's EntityId to -1 so every future
+            // caller yields a clean dead row (no dangling reference to a since-dead/recycled entity id).
+            var s = new HeroStore();
+            int slot = s.Mint(new HeroId(900), entityId: 42, level: 1, xp: Xp0);
+            Assert.Equal(42, s.EntityId[slot]);
+
+            s.Destroy(slot);
+            Assert.False(s.Alive[slot]);
+            Assert.Equal(-1, s.EntityId[slot]);
+
+            // Double-delete stays a guarded no-op (EntityId already -1; the slot is never double-pushed to the free-list).
+            s.Destroy(slot);
+            int reused = s.Mint(new HeroId(901), entityId: 5, level: 1, xp: Xp0);
+            Assert.Equal(slot, reused);                 // exactly one free-list entry consumed
+            int nextFresh = s.Mint(new HeroId(902), entityId: 6, level: 1, xp: Xp0);
+            Assert.Equal(1, nextFresh);                 // proves no double-push corrupted the free-list
+        }
+
+        [Fact]
+        public void DestroyByRef_ThroughRealHeroIndexArray_MirrorsTheEditorDeleteExpression()
+        {
+            // DW-52 (integration): pin the exact composition the editor delete path runs —
+            // `_heroes.DestroyByRef(_world.HeroIndex[id])` — against a REAL EntityWorld, not a hand-built handle.
+            // HeroStore/EntityWorld are pure sim, so this closes the "read through world.HeroIndex[id]" + "packed
+            // handle, not a bare slot" gap that EntityPlacer (a Godot Node) cannot cover in Sim.Tests.
+            var world  = new EntityWorld();
+            var heroes = new HeroStore();
+
+            // A hero-linked entity: HeroStore row + the back-link EntityWorld stores, exactly as HeroProfileLoader /
+            // HeroXpSystem wire it (`world.HeroIndex[e] = heroes.PackRef(slot)`).
+            const int heroEntity = 7;
+            int slot = heroes.Mint(new HeroId(1_000), entityId: heroEntity, level: 4, xp: Xp0);
+            world.HeroIndex[heroEntity] = heroes.PackRef(slot);
+
+            // A plain (non-hero) entity keeps the ctor default HERO_NONE (-1).
+            const int plainEntity = 8;
+            Assert.Equal(EntityWorld.HERO_NONE, world.HeroIndex[plainEntity]);
+
+            // The editor delegates by READING the handle out of the array — a bare-slot bug (passing `slot` when
+            // Generation != 0) or a dropped read would surface here.
+            Assert.True(heroes.DestroyByRef(world.HeroIndex[heroEntity]));
+            Assert.False(heroes.Alive[slot]);
+            Assert.Equal(-1, heroes.EntityId[slot]);        // dangling back-reference cleared
+
+            // The same expression on a non-hero unit's HERO_NONE handle is a clean no-op — the common case for every
+            // ordinary editor unit delete.
+            Assert.False(heroes.DestroyByRef(world.HeroIndex[plainEntity]));
+        }
+
+        [Fact]
         public void MaxHeroes_FitsPackRefSlotField()
         {
             // PackRef packs the slot into the low 8 bits (TryResolveRef reads packed & 0xFF); the cap MUST fit in 256 or

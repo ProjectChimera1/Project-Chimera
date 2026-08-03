@@ -313,12 +313,33 @@ namespace ProjectChimera.Core
         /// <summary>Destroy a hero row — marks the slot dead and returns it to the free-list for reuse. Bounds +
         /// double-free guarded (mirrors BuildingStore.Destroy): never push a slot twice, which would hand the same
         /// slot to two future Mint() calls and corrupt the store. The stable identity itself PERSISTS in the profile
-        /// (Story 3.9); Destroy only tears down the in-match row.</summary>
+        /// (Story 3.9); Destroy only tears down the in-match row.
+        ///
+        /// DW-52: also clears the freed slot's <see cref="EntityId"/> back-reference to -1 ("no linked entity",
+        /// mirroring <see cref="EntityWorld.HERO_NONE"/>). Without this the dead row's <see cref="EntityId"/> dangles at
+        /// a since-dead/recycled entity id. It is non-folded RUNTIME state (see the field doc), so clearing it is
+        /// invisible to <see cref="SimChecksum"/> / <see cref="Definitions.StartStateHash"/> / every golden.</summary>
         public void Destroy(int slot)
         {
             if (slot < 0 || slot >= Count || !Alive[slot]) return;
             Alive[slot] = false;
+            EntityId[slot] = -1;            // DW-52: clear the dangling back-reference (mirrors EntityWorld.HERO_NONE)
             _freeList[_freeCount++] = slot;
+        }
+
+        /// <summary>
+        /// DW-52: free the hero row addressed by a generation-stamped packed handle (<see cref="PackRef"/>) — the exact
+        /// value <see cref="EntityWorld.HeroIndex"/> stores per entity. Resolves the handle via <see cref="TryResolveRef"/>
+        /// (ABA-safe) and, iff it names a LIVE current occupant, frees that slot via <see cref="Destroy"/> and returns
+        /// <c>true</c>. A <see cref="EntityWorld.HERO_NONE"/> (-1) sentinel or any STALE handle (the slot was freed or
+        /// recycled, generation bumped) resolves <c>false</c> → clean no-op returning <c>false</c>, never freeing the
+        /// new occupant. This is the editor delete path's one-line hook (a non-hero unit's -1 handle no-ops for free).
+        /// </summary>
+        public bool DestroyByRef(int packedHeroRef)
+        {
+            if (!TryResolveRef(packedHeroRef, out int slot)) return false;
+            Destroy(slot);
+            return true;
         }
 
         /// <summary>

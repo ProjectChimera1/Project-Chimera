@@ -77,6 +77,9 @@ namespace ProjectChimera.UI
         private ResourceNodeStore?  _nodes;
         private ResourceStore?      _resources;
         private BuildingStore?      _buildings;
+        // DW-52: the hero store, so the editor delete path can free a hero-linked unit's HeroStore row (and clear its
+        // dangling EntityId back-reference) instead of leaking the row. Nullable — a delete no-ops when unset.
+        private HeroStore?          _heroes;
         private ItemStore?          _items;         // Story 3.15 — ground item instances (Item placement mode)
         private ItemRegistry?       _itemRegistry;  // Story 3.15 — id→index over validated item defs
         private int                 _itemIndex = 0; // Story 3.15 — which registry item to place (cycled by re-clicking the Item mode)
@@ -307,10 +310,12 @@ namespace ProjectChimera.UI
                                System.Func<ScenarioData?>? scenarioGetter = null,
                                System.Action<int>? onStartSlotRemoved = null,
                                System.Action<int, float, float>? onStartSlotEconomy = null,
-                               System.Func<ScenarioSyncOp, object?, string, Vector3, object?>? onItemSync = null)
+                               System.Func<ScenarioSyncOp, object?, string, Vector3, object?>? onItemSync = null,
+                               HeroStore? heroes = null)
         {
             _camCtrl            = camCtrl;
             _world              = world;
+            _heroes             = heroes;        // DW-52 — free hero rows on editor delete
             _nodes              = nodes;
             _resources          = resources;
             _buildings          = buildings;
@@ -1891,6 +1896,9 @@ namespace ProjectChimera.UI
             // armor/passives/abilities/feedback/tags/domain/delivery/collision/separation/category/XP no longer revert
             // to Create defaults on undo (the recurring RestoreUnit drop-debt).
             UnitSnapshot snap = _world.SnapshotUnit(id);
+            // DW-52: free the linked HeroStore row (if this is a hero) BEFORE tearing down the entity, so the row does
+            // not leak. HeroIndex[id] is the packed handle; a non-hero's HERO_NONE (-1) resolves false → clean no-op.
+            _heroes?.DestroyByRef(_world.HeroIndex[id]);
             _world.Destroy(id);
             GD.Print($"[EntityPlacer] Deleted unit id={id}");
 
@@ -2444,6 +2452,8 @@ namespace ProjectChimera.UI
         private (System.Action redo, System.Action undo)? BuildDeleteUnit(int id)
         {
             UnitSnapshot snap = _world.SnapshotUnit(id);
+            // DW-52: free the linked HeroStore row before entity teardown (non-hero HERO_NONE handle no-ops for free).
+            _heroes?.DestroyByRef(_world.HeroIndex[id]);
             _world.Destroy(id);
             string  unitId = snap.Def?.Id ?? "";
             Vector3 wp     = new Vector3(snap.Position.X.ToFloat(), 0f, snap.Position.Z.ToFloat());

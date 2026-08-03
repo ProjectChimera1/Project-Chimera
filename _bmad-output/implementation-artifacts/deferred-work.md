@@ -491,7 +491,8 @@ origin: migrated from legacy ledger ("Deferred from: code review of story-3.17 (
 source_spec: `_bmad-output/implementation-artifacts/spec-3-17-editor-undo-restoreunit-fidelity-widen-unitsnapshot.md`
 location: n/a
 reason: summary: Deleting a hero-linked unit in the editor orphans its `HeroStore` row — `EntityWorld.Destroy` does not free the row nor clear the store's back-reference `EntityId`, so the row leaks and its `EntityId` dangles at a dead/recycled entity. evidence: Pre-existing (`Destroy` never touched `HeroStore`; Story 3.17 did not change `Destroy`), surfaced incidentally by the hero-fields review. Inert while no editor flow deletes a re-minted hero, but couples with the hero-link-drop entry above — both want a defined lifecycle for "a hero unit is removed in the editor." Flagged by the Edge Case Hunter review layer.
-status: open
+status: done 2026-08-03
+resolution: resolved by sweep bundle dw-hero-row-free-on-editor-delete
 decision: 2026-07-27 Free the HeroStore row on editor delete — In the editor delete path, free the HeroStore row and clear its EntityId back-reference (pairs with DW-51 'restore as plain unit').
 decision: 2026-07-08 Free the row on delete — In the editor delete path, free the HeroStore row and clear its EntityId back-reference (assumes DW-51 resolves to 'restore as plain unit'). Pairs with DW-51 option 2.
 decision: 2026-07-28 correct-course — bundle hero-row-free-on-editor-delete (Epic 15, Story 15.8)
