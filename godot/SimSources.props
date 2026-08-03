@@ -76,6 +76,10 @@
          behind MatchChatOverlay. Single-file include (the FactionPalette precedent) so the 8-player speaker
          mapping is Tier-1 asserted while the overlay itself stays Godot-coupled and un-globbed. -->
     <Compile Include="$(MSBuildThisFileDirectory)src\UI\MatchChatFormat.cs"                       LinkBase="Sim\UI" />
+    <!-- DW-374: the Godot-free chat dash-command→bounded-code parser behind MatchChatOverlay's player_chat raise
+         (the MatchChatFormat precedent). Single-file include so the authorable "-N" → SendPlayerChat mapping is
+         Tier-1 asserted while the overlay itself stays Godot-coupled and un-globbed. -->
+    <Compile Include="$(MSBuildThisFileDirectory)src\UI\MatchChatCommands.cs"                     LinkBase="Sim\UI" />
 
     <!-- Story 6.2: the linear editor undo/redo stack (src/CreationSuite/EditorHistory.cs) is pure C# (Action
          delegate pairs over two Stacks, no Godot types) — included as a single file so its shared-LIFO contract,
