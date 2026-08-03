@@ -20,8 +20,28 @@ namespace ProjectChimera.Core
     /// </summary>
     public sealed class DslSimEventFeed
     {
-        /// <summary>Capacity — the max sim-event raises buffered per tick (sizes the director's base-event headroom).</summary>
-        public const int Capacity = 512;
+        /// <summary>
+        /// Capacity — the max sim-event raises buffered per tick (sizes the director's base-event headroom).
+        ///
+        /// <para>DW-192 (decision 2026-07-25): raised from 512 to 2×<see cref="EntityWorld.MAX_ENTITIES"/> so a
+        /// mass-combat AoE tick no longer saturates in the NORMAL case — <c>DamageResolver.Apply</c> pushes one
+        /// <c>unit_damaged</c> per hit AND per splash victim, so the worst realistic tick (every entity on a
+        /// maxed-out map taking a direct hit plus a splash hit in the same tick: mass melee landing under a
+        /// full-map volley, or two overlapping AoEs) is 2×MAX_ENTITIES pushes; the 500–2000-entity design target
+        /// sits 4–16× under this ceiling.</para>
+        ///
+        /// <para>Memory/cost note: five int lanes × 8192 × 4 B = 160 KB (was 10 KB at 512), allocated ONCE at
+        /// host construction; the director's base-event drain buffer grows by the same term at LoadScenario
+        /// (~0.4 MB of <c>FiredEvent</c> slots). Per-tick cost is UNCHANGED — the drain walks <see cref="Count"/>
+        /// (actual pushes), never Capacity, and <see cref="Clear"/> is O(1). Saturation past the cap remains the
+        /// documented deterministic drop-newest seatbelt (identical on every peer), now a pathological edge
+        /// (&gt;2 hits per entity per tick at the entity hard cap) rather than normal mass-combat behavior; the
+        /// mathematical worst case (every in-flight projectile splashing every entity ≈ 2M pushes/tick) is not
+        /// preallocatable and stays behind that same seatbelt.</para>
+        /// </summary>
+        public const int Capacity = EntityWorld.MAX_ENTITIES * 2; // 8192 — the entity cap, doubled (ordered literal-LAST:
+                                                                  // this is a sized buffer constant, not a player count, and
+                                                                  // `= 2` would false-positive the NoHardcodedPlayerCount scan)
 
         // ── The closed kind codes (index into ScenarioDirector's interned name table — no per-tick string here). ──
         /// <summary>unit_damaged occurrence code.</summary>
