@@ -89,6 +89,15 @@
     "label": "Keep deferred to the Epic 10 live-verification batch",
     "resolution": ""
   },
+  "DW-189": {
+    "answered_at": "2026-08-02",
+    "bundle_name": "",
+    "effect": "build",
+    "key": "1",
+    "label": "Route DSL victory/defeat through the N-faction team-aware resolver",
+    "resolution": "",
+    "intent": "Replace the 2-faction complement at ScenarioDirector.cs:2161-2166 (OnVictory?.Invoke(a.Faction) / Invoke(1 - a.Faction)) with per-faction WinStateStore verdict latching, exactly as the built-in N-faction team-aware WinConditionSystem already does; presentation consumes the latched verdicts. Ripples to the OnVictory contract and MainScene.ShowGameOver. Explicitly WC3-shaped per Alec 2026-08-02: victory and defeat are INDEPENDENT per-player declarations (WC3's 'Game - Defeat Player 3' says nothing about who won) - a trigger-authored map must support >2 players because higher-player lobbies are planned. Do NOT take option 2 (reject slot>=2 at load); that would permanently cap trigger-driven custom maps at 2 players."
+  },
   "DW-192": {
     "answered_at": "2026-07-25",
     "bundle_name": "",
@@ -142,6 +151,33 @@
     "key": "1",
     "label": "Repurpose it",
     "resolution": ""
+  },
+  "DW-264": {
+    "answered_at": "2026-08-02",
+    "bundle_name": "",
+    "effect": "build",
+    "key": "3",
+    "label": "Creator-selectable stacking-duration mode (individual / grouped / additive / single)",
+    "resolution": "",
+    "intent": "Make the stack-expiry model AUTHORABLE rather than picking one (Alec, 2026-08-02). Three of the four requested modes ALREADY EXIST in the closed StackRule enum (godot/src/Effects/Modifier.cs:7-15) and need no new work: 'additive timer (re-apply resets the timer)' = StackRule.Refresh; 'single stack only when not stackable' = StackRule.Ignore; 'grouped timer (all stacks expire together)' = today's StackRule.Stack, which scales deltas by _stackCount but shares one _remainingTicks (ModifierStore.cs:151,168-177). The ONLY missing mode is INDIVIDUAL per-stack expiry. Implement by splitting the existing Stack member into two explicit members - a grouped/shared-duration variant preserving exactly today's behavior, and a new independent variant carrying per-stack _remainingTicks - so no shipped content changes meaning. Breaks the single-slot shared-duration SoA; folded into SimChecksum, so this re-baselines goldens: ISOLATE that re-record per the checksum-fold timing rule, do not batch it with the DW-265 energy fold or the Epic-15 15-2/15-3/15-4 moves. Surface the mode in the ability editor's stacking dropdown alongside the existing values, and keep StackRule a closed enum (see the enum-indexed-array touch-site rule: patch BOTH switches AND any (int)enum-indexed arrays)."
+  },
+  "DW-265": {
+    "answered_at": "2026-08-02",
+    "bundle_name": "",
+    "effect": "build",
+    "key": "1",
+    "label": "Build energy regeneration, with an Intelligence attribute driving it",
+    "resolution": "",
+    "intent": "Alec 2026-08-02: 'Definitely build it' - energy must regenerate, and an Intelligence mechanic should drive it so a mana economy can be designed around it (WC3 model: Int scales max mana AND mana regen; Clarity Potions / Brilliance Aura / mana-burn counterplay all sit on top of that). Today EntityWorld.Energy is written ONLY by the cast debit and the start-full apply (EntityWorld.cs:243,1002, both commented 'no regen'), so every caster is one-tank-per-life. SCOPE WARNING - hero primary attributes DO NOT EXIST in this codebase: HeroDefinition (godot/src/Core/Definitions/HeroDefinition.cs) carries only flat health_per_level/damage_per_level/armor_per_level and there is no Strength/Agility/Intelligence anywhere in godot/src. So this spans two pieces and SHOULD be split into two stories rather than one bundle: (A) a flat per-unit authoring field (energy regen rate) + a folded per-tick EnergySystem write - covers non-hero casters, which in WC3 also used flat regen, not attributes; (B) a hero primary-attribute system (at minimum Intelligence, with per-level growth mirroring the existing *_per_level fields) that scales max energy and the regen rate, plus the validator/editor/writer surfaces. Energy is folded into SimChecksum, so (A) re-baselines goldens - isolate that re-record per the checksum-fold timing rule and keep it separate from the DW-264 stacking fold. Confirm the (A)/(B) split with Alec before dispatching."
+  },
+  "DW-312": {
+    "answered_at": "2026-08-02",
+    "bundle_name": "",
+    "effect": "build",
+    "key": "1",
+    "label": "Hide on scroll",
+    "resolution": "",
+    "intent": "Add a scroll/viewport-change listener that calls Hide() on the open tooltip, rather than re-anchoring. ChimeraTooltip.cs:118-126 snapshots the target GetGlobalRect() once in Show() with no scroll listener, so a keyboard-focus tip stays pinned to a stale rect until FocusExited while UnitCardPanel's ScrollContainer moves the target out from under it (~35 attach sites). Hide matches browser/native-toolkit behavior and needs no per-frame re-layout math (Alec, 2026-08-02). Godot-coupled -> in-engine gate applies."
   },
   "DW-327": {
     "answered_at": "2026-07-30",
@@ -215,6 +251,15 @@
     "label": "Add speed only, drop mesh_scale",
     "resolution": ""
   },
+  "DW-405": {
+    "answered_at": "2026-08-02",
+    "bundle_name": "",
+    "effect": "build",
+    "key": "2",
+    "label": "Add a build-order variant and route worker-build through EnqueueOrder",
+    "resolution": "",
+    "intent": "Alec 2026-08-02, emphatic: 'Multiplayer online building required - we must be able to perform everything online that we could offline. We're building the game to be multiplayer.' So take the PROPER fix, NOT the option-1 stopgap: MainScene.cs:1010 currently calls _buildSys.QueueWorkerBuild(...) directly - spending resources and setting CommandState=Build, both folded into SimChecksum - bypassing the _lockstep.EnqueueOrder seam every other order uses, so any online build placement desyncs immediately (N-player online at MpSeatCeiling=4 is live and unguarded TODAY). Add a build-order variant to the lockstep order vocabulary carrying BuildingType + placement position (EnqueueOrder's UnitCommand has no such variant; 9.5 excluded it) and route worker-build through it, matching WC3's model where EVERY command goes through one order queue and there is no local fast-path. Do NOT ship option 1 as the end state - blocking online building would make an online match a fixed-army skirmish rather than an RTS. Triage names Story 9.7/9.15 as the home for this plumbing. NOTE: the desync is live until this lands - if it will not be the next bundle dispatched, consider landing the option-1 guard as a temporary safety net in the meantime."
+  },
   "DW-446": {
     "answered_at": "2026-07-30",
     "bundle_name": "",
@@ -259,6 +304,15 @@
     "key": "free-row",
     "label": "Free the HeroStore row on editor delete",
     "resolution": ""
+  },
+  "DW-77": {
+    "answered_at": "2026-08-02",
+    "bundle_name": "",
+    "effect": "build",
+    "key": "1",
+    "label": "Build placement-tool authoring UI for the 6 fields",
+    "resolution": "",
+    "intent": "Surface collection_model/resource_type/requires_structure/owner_slot/income_period_ticks in the resource-node placement tool, replacing the legacy 4-arg ResourceNodeStore.Create call at EntityPlacer.PlaceResourceNode:831 with the full 6-field path the sim already carries. Editor-authorable, not scenario-JSON-only: Chimera is a creation platform and a shipped sim feature the editor cannot author is the wrong side of that trade (Alec, 2026-08-02). Godot-coupled -> in-engine gate applies."
   },
   "DW-78": {
     "answered_at": "2026-07-27",
