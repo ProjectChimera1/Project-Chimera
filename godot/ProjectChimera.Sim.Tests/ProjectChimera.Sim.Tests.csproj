@@ -209,6 +209,15 @@
     <EmbeddedResource Include="Golden\golden-merged-n3.golden.txt" />
     <None Remove="Golden\golden-merged-n4.golden.txt" />
     <EmbeddedResource Include="Golden\golden-merged-n4.golden.txt" />
+
+    <!-- DW-387 (Story 9.2 hardening) — the N=8 faction-expansion golden (8 active factions via FactionRegistry(8);
+         every slot 1..8 owns a unit, slots 1/3..8 hold distinct ore; Player2 STARVED — 0 ore, no base — so the
+         float AI scorer stays inert, same fence as the N=2/N=4 goldens). Pins the newly-active slots 5-8 fold
+         paths cross-process AND on both legs of the 1.10c Win↔Linux gate. Integer/Fixed-only → CROSS-PLATFORM
+         SAFE, compared on both CI legs. NEW file; no existing golden is re-recorded (no SimChecksum fold —
+         AlgoVersion unchanged). -->
+    <None Remove="Golden\golden-multifaction8.golden.txt" />
+    <EmbeddedResource Include="Golden\golden-multifaction8.golden.txt" />
   </ItemGroup>
 
   <ItemGroup>
