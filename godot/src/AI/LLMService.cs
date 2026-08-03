@@ -512,7 +512,8 @@ play_sound      — sound_id (string)");
         /// <summary>
         /// Validate a generated ScenarioData JSON through seven passes:
         /// 1. Schema — deserialization succeeds. (UNIVERSAL — always runs.)
-        /// 2. Player slots — at least <see cref="MapGeneratorContext.MinPlayerSlots"/> (RTS default 2); faction paths
+        /// 2. Player slots — at least <see cref="MapGeneratorContext.MinPlayerSlots"/> (RTS default 2); slot indices
+        ///    unique and within [0, PlayerSlots.Length) (UNIVERSAL — always runs; DW-373); faction paths
         ///    forced from the TRUSTED per-slot <see cref="MapGeneratorContext.ResolveFactionJson"/> mapping.
         /// 3. Building types — only valid BuildingType enum names.
         /// 4. Unit IDs — only IDs present in MapGeneratorContext.UnitIds.
@@ -544,6 +545,22 @@ play_sound      — sound_id (string)");
             // Pass 2 — player slots (Story 8.3: min-slots clamp from the trusted context; RTS default 2).
             if (scenario.PlayerSlots.Length < context.MinPlayerSlots)
                 return (null, $"Expected at least {context.MinPlayerSlots} player slots, got {scenario.PlayerSlots.Length}.");
+
+            // DW-373 — slot-index uniqueness + range (UNIVERSAL — structural, independent of the trusted clamp
+            // values). Distinct + within [0, PlayerSlots.Length) ⇒ the declared indices form a permutation of
+            // 0..Length-1, so the min-slots length check above really guarantees that many DISTINCT players.
+            // Without this, an (untrusted) scenario declaring two slots both "slot":0 passes the length-based
+            // check, both resolve to the SAME faction via the per-slot resolver below, and Pass 7 merges their
+            // combat counts under one key — a degenerate one-faction scenario sails past the gate.
+            var declaredSlots = new HashSet<int>();
+            for (int i = 0; i < scenario.PlayerSlots.Length; i++)
+            {
+                int slotIndex = scenario.PlayerSlots[i].Slot;
+                if (slotIndex < 0 || slotIndex >= scenario.PlayerSlots.Length)
+                    return (null, $"player_slots[{i}].slot={slotIndex} is outside [0, {scenario.PlayerSlots.Length}).");
+                if (!declaredSlots.Add(slotIndex))
+                    return (null, $"player_slots[{i}].slot={slotIndex} duplicates another player slot — slot indices must be unique.");
+            }
 
             // Force faction JSON paths from the TRUSTED per-slot resolver — LLMs often hallucinate these, and the
             // untrusted file must never dictate the path. RTS default = the existing slot-0/slot-1 mapping.
