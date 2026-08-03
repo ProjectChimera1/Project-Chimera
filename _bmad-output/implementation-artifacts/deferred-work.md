@@ -168,7 +168,8 @@ origin: migrated from legacy ledger ("Deferred from: dev of story-3.4 (2026-07-0
 source_spec: `_bmad-output/implementation-artifacts/spec-3-10-added-edit-play-round-trip-loop-no-restart-playtest.md`
 location: n/a
 reason: summary: When Epic 9 adds match-seed plumbing / non-default replay seeds, the in-place reset must reseed the RNG to the live match seed, not the hardcoded DEFAULT_RNG_SEED. evidence: EntityWorld.Clear reseeds to DEFAULT_RNG_SEED, which is correct today because no path reseeds the world to a non-default seed (the live replay/online transitions are now gated OUT of the reset entirely). The MP-seed handshake (Epic 9) will introduce a live match seed; the reset (offline-only today) must then capture and restore it, or a seeded reset would diverge from the seeded stream.
-status: open
+status: done 2026-08-03
+resolution: resolved by sweep bundle dw-match-seed-plumbing
 decision: 2026-07-28 correct-course — bundle match-seed-plumbing with DW-225 (Epic 15, Story 15.5); do not close independently
 
 ### DW-18: An in-place reset collapses every store's live/high-water count to 0 then repopulates within one frame; a presentation bridge that caches an instance count (rather than reading HighWaterMark each frame) could leave ghost MultiMesh instances after an Edit↔Play round-trip.
@@ -2804,7 +2805,8 @@ origin: migrated from legacy ledger ("From code review of story-1.5 (2026-06-23)
 location: godot/src/Core/Bootstrap/Phases/MatchLifecycleController.cs:204
 severity: medium
 reason: Still constructs `new ReplayRecorder(..., EntityWorld.DEFAULT_RNG_SEED, ...)`. Epic 9 shipped the FORMAT side (v4 header carries a seed; ReplayPlayer reseeds world.Rng) but no per-match seed producer exists (SimulationHost.cs:188-190 explicitly defers it — "would move the golden"). Correct today, silently wrong the day a real match seed lands. Sibling half of DW-17 (in-place reset reseed) — must ship together. Verified 2026-07-28.
-status: open
+status: done 2026-08-03
+resolution: resolved by sweep bundle dw-match-seed-plumbing
 decision: 2026-07-28 correct-course — bundle match-seed-plumbing with DW-17 (Epic 15, Story 15.5)
 
 ### DW-226: ulong.MaxValue seed never pinned as a SimRng stream
@@ -3958,4 +3960,20 @@ source_spec: `_bmad-output/implementation-artifacts/spec-editor-placement-bounds
 location: godot/src/UI/EntityPlacer.cs:~2545 (`BuildCreate` Unit/RestoreUnit undo leg) + :~2557 (combat-fallback undo) + `PlaceUnit` :~771/:~801 (single-place undo legs)
 severity: low
 reason: The unit create history closures box the created id and undo via `_world.Destroy(box[0])` with no aliveness/generation re-check. Their redo legs guard `if (r >= 0) box[0] = r`, so if a redo's `DoSpawnCombatUnit`/`RestoreUnit` fails at world capacity, `box[0]` retains a now-stale id and the following undo destroys whatever unit has since recycled that free-list slot — corrupting an unrelated live unit. The sibling ITEM path avoids exactly this by routing undo through the generation-checked `_items.TryResolveRef` before `Destroy`; `EntityWorld.Destroy` has no such guard. Pre-existing across `PlaceUnit`; DW-151 added another instance following the same pattern. Extreme trigger (world at capacity + slot recycle). — Evidence: edge-case + adversarial lenses. Closure = gate the unit undo `Destroy` on the boxed id still being Alive (mirror the item path's resolve-before-destroy), or make `EntityWorld.Destroy` generation-safe.
+status: open
+
+### DW-498: No automated regression coverage for the LiveMatchSeed plumbing — the offline reset wiring and the online reseed-to-DEFAULT invariant are guarded only by the manual in-engine gate
+origin: deferred by review of `_bmad-output/implementation-artifacts/spec-match-seed-plumbing.md`, 2026-08-03
+source_spec: `_bmad-output/implementation-artifacts/spec-match-seed-plumbing.md`
+location: godot/src/Core/Bootstrap/Phases/MatchLifecycleController.cs:157 (online `_ctx.World.Rng.Seed(_ctx.LiveMatchSeed)`) + godot/src/Core/MainScene.cs:2478-2481 (offline mint/reseed/store wiring)
+severity: medium
+reason: The pure `MatchSeedProducer` is exhaustively unit-tested, but the two seams that APPLY it have no automated test — no test file references `MatchLifecycleController` and `SimResetTests` only covers the sim-layer `ClearForReset` in isolation. The genuinely-new, load-bearing line is the online reseed at :157: pinning `LiveMatchSeed=DEFAULT` is behavior-identical to the old literal, but reseeding `World.Rng` back to DEFAULT is the new desync-prevention invariant (the session `EntityWorld` is reused, so an offline F5 playtest leaves a per-match seed resident). If a future Godot-layer refactor drops or reorders :157, an online match started after an offline playtest in the same session runs this peer on the leftover per-match seed while other peers run DEFAULT — a silent lockstep desync — with a fully green `dotnet test`. The offline wiring is likewise regressible (reorder before `ClearForReset`, or drop the `Rng.Seed`/`LiveMatchSeed` assignment) with a green suite. The change is CORRECT today (re-verified in-engine 2026-08-03); this is durability of the invariant, not a live defect. — Evidence: verification-gap + adversarial lenses; the online arm is documented as "verified by inspection only" in the spec. Closure = a testable seam (extract the reseed step, or a headless harness for `OnMatchStart`) that pre-dirties `World.Rng` to a non-DEFAULT value and asserts the online entry pins it back to DEFAULT, plus an offline-reset assertion that `LiveMatchSeed == World.Rng.State != DEFAULT`.
+status: open
+
+### DW-499: Per-launch varying offline match seed removes cross-launch reproducibility for RNG-touching content, with no debug/env override to PIN the offline seed for repro or A/B verification runs
+origin: deferred by review of `_bmad-output/implementation-artifacts/spec-match-seed-plumbing.md`, 2026-08-03
+source_spec: `_bmad-output/implementation-artifacts/spec-match-seed-plumbing.md`
+location: godot/src/Core/MainScene.cs:2478 (`MatchSeedProducer.Produce(Time.GetTicksUsec())`)
+severity: medium
+reason: The offline Edit→Play reset now mints a fresh wall-clock-entropy seed every launch (the intended per-match behavior), so two runs of the same authored scenario diverge on any tick-time RNG (combat crits, DSL `random`). This is by design for the bundle's stated intent (a per-match seed), but it weakens the project's in-engine A/B verification methodology — the gate discipline relies on comparing arms of a choice, and RNG-touching content can no longer be reproduced run-to-run because there is no debug/env flag to pin the offline seed to a fixed value. Out of the bundle's intent (which asked for a per-match seed, not a repro pin), hence deferred rather than added. — Evidence: adversarial + verification-gap lenses. Closure = an opt-in override (env var or debug setting) read as the offline entropy when set, so a verification/repro run can fix the seed while normal play stays per-match.
 status: open

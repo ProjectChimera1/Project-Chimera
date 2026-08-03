@@ -144,6 +144,18 @@ namespace ProjectChimera.Core.Bootstrap
             // uses. Same instance across live/offline/replay → a concede resolves identically everywhere.
             _ctx.Lockstep.WinState = _ctx.Host.WinState;
 
+            // DW-17 / DW-225 (review): this session's EntityWorld is REUSED across matches — nothing on the online
+            // entry path reloads the scene or reseeds the world (GoOnline/GoSpectate do not touch World.Rng), and the
+            // offline AuthoredStart reset now leaves World.Rng on a per-match seed. An online match must start EVERY
+            // peer's world on the SAME seed; today that is DEFAULT_RNG_SEED (there is no seed handshake yet — Epic 9).
+            // ESTABLISH that invariant here rather than assuming it: pin LiveMatchSeed AND reseed the live world to it,
+            // so the world, the recorded replay header, and every remote peer share one stream origin (covers both the
+            // spectator and player branches below). Without the reseed, an offline F5 playtest earlier in the same
+            // session would leave a per-match seed in World.Rng and desync this match. The Epic-9 handshake swaps
+            // DEFAULT_RNG_SEED here for the agreed shared seed.
+            _ctx.LiveMatchSeed = EntityWorld.DEFAULT_RNG_SEED;
+            _ctx.World.Rng.Seed(_ctx.LiveMatchSeed);
+
             if (localFaction == Faction.Neutral)
             {
                 // ── Spectator mode ────────────────────────────────────────────
@@ -162,6 +174,9 @@ namespace ProjectChimera.Core.Bootstrap
             else
             {
                 // ── Player mode ───────────────────────────────────────────────
+                // LiveMatchSeed + World.Rng were established to the shared online seed above (DEFAULT_RNG_SEED today),
+                // so StartRecording records the exact seed the world runs on — behavior-identical to the pre-change
+                // literal, but now an enforced invariant rather than an assumption.
                 // Auto-start replay recording before entering lockstep.
                 StartRecording();
                 _ctx.Lockstep.GoOnline(localFaction);
@@ -216,9 +231,11 @@ namespace ProjectChimera.Core.Bootstrap
                 var roster = new Faction[slotCount];
                 for (int i = 0; i < slotCount; i++) roster[i] = FactionRegistry.ToFaction(i);
 
-                // Match seed: a fixed default for now (the real MP seed handshake is Epic 9). The EntityWorld's RNG
-                // already starts at this value; record it so a replay restores the identical stream origin (D6).
-                _ctx.ReplayRecorder = new ReplayRecorder(filePath, _ctx.Scene.ScenarioPath, EntityWorld.DEFAULT_RNG_SEED,
+                // Match seed (DW-225): record the seed the live world was actually seeded to at match start — the
+                // single LiveMatchSeed seam, not a hardcoded literal — so a replay restores the identical stream origin
+                // (D6). Online this equals DEFAULT_RNG_SEED (pinned in OnMatchStart below; all peers agree until the
+                // Epic-9 seed handshake); the offline reset mints a per-match seed into the same field (DW-17).
+                _ctx.ReplayRecorder = new ReplayRecorder(filePath, _ctx.Scene.ScenarioPath, _ctx.LiveMatchSeed,
                     scenarioHash, rulesetHash, CanonicalModelHash.AlgoVersion, roster);
                 _ctx.Lockstep.Recorder = _ctx.ReplayRecorder;
 

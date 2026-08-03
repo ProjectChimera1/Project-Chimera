@@ -50,6 +50,12 @@ namespace ProjectChimera.Core.Bootstrap
         public ScenarioDirector   ScenarioDirector = null!;
         public FactionDefinition  FactionDef   = null!;  // default P1 (alpha)
         public FactionDefinition  FactionDef2  = null!;  // default P2 (beta)
+        /// <summary>DW-17 / DW-225: the seed the live world's RNG was last (re)seeded to at match start — the single
+        /// source of truth read by BOTH the offline AuthoredStart reset (which mints + applies a fresh per-match seed)
+        /// and the <c>ReplayRecorder</c> (which records this instead of a hardcoded literal). Defaults to
+        /// <see cref="EntityWorld.DEFAULT_RNG_SEED"/>; the online path pins it back to DEFAULT (all peers agree) until
+        /// the Epic-9 seed handshake supplies a networked seed.</summary>
+        public ulong LiveMatchSeed = EntityWorld.DEFAULT_RNG_SEED;
         public FactionDefinition?[] SlotFactionDefs = null!;
         /// <summary>DW-229: a <c>_Ready</c>-time clone of the seeded per-slot faction defs
         /// (<c>[Player1=_factionDef, Player2=_factionDef2, rest null]</c>). The shared

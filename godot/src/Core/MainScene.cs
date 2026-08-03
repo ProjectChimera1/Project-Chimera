@@ -2465,6 +2465,21 @@ namespace ProjectChimera.Core
             // 3. Clear every store to its authored-start (post-ctor) state — in place, no host reconstruction.
             _host.ClearForReset();
 
+            // 3-seed. DW-17 / DW-225: mint a fresh per-match seed and re-seed the live world to it AFTER ClearForReset
+            //     (which re-seeds to DEFAULT_RNG_SEED to preserve the "a cleared world == a fresh EntityWorld" invariant
+            //     the goldens/SimResetTests depend on — that reseed is NOT changed). The authored re-apply below draws
+            //     no RNG, so seeding before or after Apply is equivalent for the board; we seed here so every draw this
+            //     match makes (tick-time DSL/combat) rides the per-match stream, and so LiveMatchSeed is set before any
+            //     later step could read it. Offline-only: ModeTransitionResetPolicy returns AuthoredStart only when
+            //     !isOnline && !hasReplay, so a varying seed never reaches lockstep. Entropy = presentation-side
+            //     wall-clock (allowed here; the pure MatchSeedProducer stays wall-clock-free). LiveMatchSeed is the
+            //     single seam the recorder reads. The log reads back World.Rng.State (not just the produced value) so
+            //     the in-engine gate witnesses that the reseed actually landed on the live world's RNG.
+            ulong matchSeed = MatchSeedProducer.Produce(Time.GetTicksUsec());
+            _host.World.Rng.Seed(matchSeed);
+            _ctx.LiveMatchSeed = matchSeed;
+            GD.Print($"[MatchSeed] Offline match seed 0x{matchSeed:X16} (world.Rng=0x{_host.World.Rng.State:X16})");
+
             // 3-0. Story 11.4 review (P4): reset the match-feedback presentation state on the SAME spine, so a new match
             //      does not inherit the prior match's under-attack throttle-suppression window or stale minimap
             //      ping/alert markers (either would silently swallow the first alert of a region in the new match).
