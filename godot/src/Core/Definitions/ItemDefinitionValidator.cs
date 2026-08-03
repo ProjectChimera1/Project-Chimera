@@ -11,8 +11,10 @@ namespace ProjectChimera.Core.Definitions
     /// ValidatedSoleMinterTest allow-list, alongside ScenarioValidator + AbilityValidator).
     ///
     /// Checks: id present AND filename-safe (charset <c>[a-z0-9_]</c> via <see cref="UnitDefinitionValidator.SanitizeId"/>,
-    /// so a traversal id like <c>../../foo</c> is rejected — see the charset note below for which gate protects the
-    /// filesystem); <c>charges &gt;= 0</c>; each of the four modifier deltas finite &amp; within <see cref="Range"/> (the
+    /// so a traversal id like <c>../../foo</c> is rejected, AND not a Win32 reserved device basename via
+    /// <see cref="UnitDefinitionValidator.IsReservedDeviceName"/> — DW-454, since <c>con</c>/<c>nul</c>/<c>com1</c>… all
+    /// SATISFY the charset yet make the <c>&lt;id&gt;.json</c> write throw on Windows — see the charset note below for
+    /// which gate protects the filesystem); <c>charges &gt;= 0</c>; each of the four modifier deltas finite &amp; within <see cref="Range"/> (the
     /// <see cref="UnitDefinitionValidator"/> 16.16 ceiling) AND within its per-stat magnitude cap
     /// (<see cref="MAX_ITEM_STAT_DELTA"/> for max_health/attack/armor, the much tighter <see cref="MAX_MOVE_SPEED_DELTA"/>
     /// for move_speed so a validated item cannot tunnel a hero through pathing); the effect-graph COHERENCE
@@ -89,6 +91,14 @@ namespace ProjectChimera.Core.Definitions
             // (UnitDefinitionValidator.SanitizeId) so both gates enforce the same rule.
             if (UnitDefinitionValidator.SanitizeId(id) != id)
                 return Fail(id, "id", "contains characters outside [a-z0-9_]; rename before saving.");
+            // Reserved Windows device basename (DW-454): the charset rule above ADMITS con/prn/aux/nul/com1-9/lpt1-9 —
+            // they are all [a-z0-9_] — but Persist() then writes "<id>.json.tmp", which Win32 rejects for a reserved
+            // basename (with or without an extension), surfacing as an opaque generic "Save failed" with no field badge
+            // and no way to save the item. Rejected through the SHARED convention helper so this gate, ValidateFields
+            // and the unit/building gate cannot drift.
+            if (UnitDefinitionValidator.IsReservedDeviceName(id))
+                return Fail(id, "id",
+                    "is a Windows reserved device name (con|prn|aux|nul|com1-com9|lpt1-lpt9); the filesystem rejects '<id>.json' as a file name, so rename before saving.");
 
             // ── (b) Charges sign ──
             if (def.Charges < 0)
@@ -155,6 +165,13 @@ namespace ProjectChimera.Core.Definitions
                 // Filename-safe charset (DW-47): same rule as the sim Validate, keyed to the "id" field so the editor
                 // badges it before Persist() can use the id in a path.
                 errors.Add(("id", Located(id, "id", "contains characters outside [a-z0-9_]; rename before saving.")));
+            else if (UnitDefinitionValidator.IsReservedDeviceName(id))
+                // Reserved Windows device basename (DW-454): same rule as the sim Validate. THIS is the gate that
+                // actually protects the filesystem — ItemCardPanel.DoSave→Revalidate keeps Save disabled while invalid,
+                // whereas the sim Validate only runs AFTER Persist() has already written the temp file. Without it the
+                // reserved-name write throws and surfaces as a generic "Save failed" with no field badge.
+                errors.Add(("id", Located(id, "id",
+                    "is a Windows reserved device name (con|prn|aux|nul|com1-com9|lpt1-lpt9); the filesystem rejects '<id>.json' as a file name, so rename before saving.")));
 
             if (def.Charges < 0)
                 errors.Add(("charges", Located(id, "charges",
