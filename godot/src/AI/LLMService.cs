@@ -511,7 +511,8 @@ play_sound      — sound_id (string)");
 
         /// <summary>
         /// Validate a generated ScenarioData JSON through seven passes:
-        /// 1. Schema — deserialization succeeds. (UNIVERSAL — always runs.)
+        /// 1. Schema — the DW-366 upstream byte-size guard (≤ <see cref="ScenarioSerializer.MaxScenarioFileBytes"/>,
+        ///    checked BEFORE deserialization), then deserialization succeeds. (UNIVERSAL — always runs.)
         /// 2. Player slots — at least <see cref="MapGeneratorContext.MinPlayerSlots"/> (RTS default 2); faction paths
         ///    forced from the TRUSTED per-slot <see cref="MapGeneratorContext.ResolveFactionJson"/> mapping.
         /// 3. Building types — only valid BuildingType enum names.
@@ -532,6 +533,11 @@ play_sound      — sound_id (string)");
             ScenarioData scenario;
             try
             {
+                // DW-366 — upstream size guard, uniform with ScenarioSerializer.LoadFromFile: an AI-generated
+                // scenario string is untrusted input, so cap its byte size BEFORE deserialization materializes any
+                // collection (the per-collection gates all run post-parse). Over-cap → the guard's JsonException is
+                // caught below and surfaced as the pass-1 validation error.
+                ScenarioSerializer.GuardScenarioInputSize(Encoding.UTF8.GetByteCount(json), "generated scenario");
                 scenario = JsonSerializer.Deserialize<ScenarioData>(json,
                     new JsonSerializerOptions { PropertyNameCaseInsensitive = true, Converters = { new FixedJsonConverter() } })
                     ?? throw new InvalidOperationException("Deserialised to null.");

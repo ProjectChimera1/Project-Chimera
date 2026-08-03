@@ -18,8 +18,16 @@ namespace ProjectChimera.Dsl
     ///   • nesting depth ≤ <see cref="DslBounds.MaxWidgetDepth"/> (root = depth 1) — rejected naming the constant;
     ///   • duplicate widget ids reject;
     ///   • anchor validity (a defined 9-point <see cref="AnchorPoint"/>);
+    ///   • geometry sanity (DW-364): the canvas dims (<c>canvas_w</c>/<c>canvas_h</c>) and every widget's
+    ///     <c>W</c>/<c>H</c> must be POSITIVE (≥ 1; <c>X</c>/<c>Y</c> offsets MAY be negative — a right/bottom-
+    ///     anchored inset). The renderer silently defaulted a non-positive canvas to 1920×1080 and rendered a 0×0
+    ///     widget invisibly while <c>CanonicalModelHash</c> folded the RAW authored values into the MP handshake
+    ///     hash — degenerate geometry is now a located load reject, never a silent render-side rewrite;
     ///   • a data-bound repeater's authored row cap ≤ <see cref="DslBounds.MaxListRows"/> — rejected naming the
-    ///     constant;
+    ///     constant — AND ≥ 1, and a ProgressBar's <c>Max</c> ≥ 1 (DW-365): the renderer silently overrode
+    ///     <c>rows:0</c> (falling back to <see cref="DslBounds.MaxListRows"/>) and treated <c>max&lt;=0</c> as an
+    ///     empty bar while the canonical hash folded the raw authored value — hash and render disagreed on what
+    ///     0/negative meant, so the divergence now rejects at load;
     ///   • every <c>{variable}</c> bind resolves against the declared-variable registry AND type-matches: a scalar-
     ///     display widget (Label/Counter/ProgressBar/Timer) binds Int/Fixed; a repeater (Leaderboard/ItemList) binds
     ///     an <c>Array&lt;scalar&gt;</c>; a visibility bind resolves to a truthy scalar (Int/Fixed/Bool). An
@@ -38,6 +46,14 @@ namespace ProjectChimera.Dsl
             IReadOnlyList<ScenarioCustomEvent>? customEvents = null)
         {
             if (tree is null) return null; // absent custom_ui — nothing to validate
+
+            // ── DW-364 — canvas geometry (checked once, tree-level, BEFORE the widget walk). The renderer
+            // defensively defaults a non-positive canvas dim to 1920/1080 while CanonicalModelHash folds the RAW
+            // authored value — reject the divergence at load with a located error instead. ──
+            if (tree.CanvasWidth < 1)
+                return $"scenario.custom_ui.canvas_w={tree.CanvasWidth} must be >= 1 (integer canvas units on the fixed 16:9 reference canvas, default 1920x1080).";
+            if (tree.CanvasHeight < 1)
+                return $"scenario.custom_ui.canvas_h={tree.CanvasHeight} must be >= 1 (integer canvas units on the fixed 16:9 reference canvas, default 1920x1080).";
 
             // Story 7.9 — resolve declared custom events by NAME once (a button's raise target), and collect EVERY
             // widget id in the tree up-front so a local-action target may forward-reference a widget declared later.
@@ -97,9 +113,24 @@ namespace ProjectChimera.Dsl
             if (!Enum.IsDefined(w.Anchor))
                 return $"{path}.anchor='{w.Anchor}' is not a defined 9-point anchor.";
 
-            // ── Repeater row cap. ──
+            // ── DW-364 — widget geometry: W/H must be positive (X/Y MAY be negative — an anchored inset). A 0×0
+            // or negative-sized widget renders invisibly while its raw W/H fold into the handshake hash; a located
+            // load reject surfaces the author error instead. ──
+            if (w.W < 1)
+                return $"{path}.w={w.W} must be >= 1 (integer canvas units; a non-positive width renders invisibly).";
+            if (w.H < 1)
+                return $"{path}.h={w.H} must be >= 1 (integer canvas units; a non-positive height renders invisibly).";
+
+            // ── Repeater row cap (upper bound), then DW-365's LOWER bounds: an authored rows:0/negative or
+            // max:0/negative used to pass the gate and fold RAW into the canonical hash while the renderer silently
+            // overrode it (rowCap fallback to MaxListRows / an empty bar for max<=0) — the hash claimed a semantic
+            // difference the runtime erased. Reject the divergence at load with located errors. ──
             if (w.ExpectsArrayBind && w.MaxRows > DslBounds.MaxListRows)
                 return $"{path}.rows={w.MaxRows} exceeds DslBounds.MaxListRows={DslBounds.MaxListRows}.";
+            if (w.ExpectsArrayBind && w.MaxRows < 1)
+                return $"{path}.rows={w.MaxRows} must be >= 1 (the renderer would silently fall back to DslBounds.MaxListRows={DslBounds.MaxListRows} while the canonical hash folds the authored value).";
+            if (w is ProgressBarWidget pbw && pbw.Max < 1)
+                return $"{path}.max={pbw.Max} must be >= 1 (the progress denominator; a non-positive max would render as an empty bar while the canonical hash folds the authored value).";
 
             // ── Visibility bind (optional) — a declared truthy scalar (Int/Fixed/Bool), never TriggerLocal. ──
             if (w.VisibleBind is string vb)

@@ -134,7 +134,10 @@ namespace ProjectChimera.CreationSuite
             root.AddChild(LabeledRow("Anchor", _anchorOpt));
 
             _x = MakeSpin(-4096, 4096); _y = MakeSpin(-4096, 4096);
-            _w = MakeSpin(0, 4096); _h = MakeSpin(0, 4096);
+            // DW-364 — W/H floor at 1: CustomUiGate now rejects non-positive widget geometry at load, so the
+            // authoring surface must not be able to produce a tree its own reload would refuse (X/Y stay free —
+            // negative offsets are legal anchored insets).
+            _w = MakeSpin(1, 4096); _h = MakeSpin(1, 4096);
             root.AddChild(LabeledRow("X", _x)); root.AddChild(LabeledRow("Y", _y));
             root.AddChild(LabeledRow("W", _w)); root.AddChild(LabeledRow("H", _h));
 
@@ -226,7 +229,7 @@ namespace ProjectChimera.CreationSuite
             // Story 7.9 — a fresh Button defaults to the always-valid CloseSelf local action (passes CustomUiGate
             // with no further authoring); the author can pick another action or JSON-author an event raise.
             WidgetKind.Button       => new ButtonWidget { Id = id, W = 160, H = 48, Text = "Button", LocalAction = LocalUiAction.CloseSelf },
-            _                       => new PanelWidget { Id = id },
+            _                       => new PanelWidget { Id = id, W = 300, H = 120 }, // unreachable arm — but if it ever fired, a 0×0 widget would fail the DW-364 load gate
         };
 
         private void DeleteSelected()
