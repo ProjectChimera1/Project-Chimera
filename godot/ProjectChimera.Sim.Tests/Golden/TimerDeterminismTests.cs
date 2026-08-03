@@ -1,5 +1,6 @@
 #nullable enable
 using ProjectChimera.Dsl;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Reflection;
@@ -37,6 +38,10 @@ namespace ProjectChimera.Sim.Tests.Golden
         /// invoke the private <c>CollectEvents</c>, and return the emitted timer_expires names in emission order.
         /// Reflection is required: the store and the emission order are internal and not exposed on the public API
         /// (see the class remarks for why that is the whole point of the AR-16 nondeterminism).
+        ///
+        /// <para>DW-218: every lookup goes through <see cref="ReflectionProbe"/> (null-CHECKED), never the old
+        /// <c>GetField(…)!</c> idiom — a renamed member now fails with a diagnostic naming the owner type and the
+        /// member instead of an opaque <see cref="System.NullReferenceException"/> at some later use site.</para>
         /// </summary>
         private static List<string> EmittedTimerOrder(string[] creationOrder)
         {
@@ -44,10 +49,10 @@ namespace ProjectChimera.Sim.Tests.Golden
             // the table's dense _timerNames/_timerRemaining lists (still creation-index SoA), inject it into the
             // director, and invoke the (unchanged-behavior) CollectEvents emission path.
             var vars = new DslVarTable();
-            var namesField = typeof(DslVarTable).GetField("_timerNames", BindingFlags.NonPublic | BindingFlags.Instance)!;
-            var remField   = typeof(DslVarTable).GetField("_timerRemaining", BindingFlags.NonPublic | BindingFlags.Instance)!;
-            var names = (List<string>)namesField.GetValue(vars)!;
-            var remaining = (List<int>)remField.GetValue(vars)!;
+            FieldInfo namesField = ReflectionProbe.Field(typeof(DslVarTable), "_timerNames");
+            FieldInfo remField   = ReflectionProbe.Field(typeof(DslVarTable), "_timerRemaining");
+            var names     = ReflectionProbe.Read<List<string>>(namesField, vars);
+            var remaining = ReflectionProbe.Read<List<int>>(remField, vars);
             names.Clear();
             remaining.Clear();
             var director = new ScenarioDirector(new BuildingStore(), new ResourceStore(Fixed.Zero), vars);
@@ -70,24 +75,26 @@ namespace ProjectChimera.Sim.Tests.Golden
                 names.Add(name);
                 remaining.Add(1);
             }
-            var collect = typeof(ScenarioDirector).GetMethod("CollectEvents", BindingFlags.NonPublic | BindingFlags.Instance)!;
+            // Signature-checked (not name-only): an added/reordered CollectEvents parameter must fail with a named
+            // diagnostic here, not as a parameter-count throw out of Invoke.
+            MethodInfo collect = ReflectionProbe.Method(typeof(ScenarioDirector), "CollectEvents", typeof(EntityWorld));
             collect.Invoke(director, new object?[] { new EntityWorld() });
 
-            var eventsField = typeof(ScenarioDirector).GetField("_baseEvents", BindingFlags.NonPublic | BindingFlags.Instance)!;
-            var countField  = typeof(ScenarioDirector).GetField("_baseEventCount", BindingFlags.NonPublic | BindingFlags.Instance)!;
-            var buffer = (System.Array)eventsField.GetValue(director)!;
-            int count  = (int)countField.GetValue(director)!;
+            FieldInfo eventsField = ReflectionProbe.Field(typeof(ScenarioDirector), "_baseEvents");
+            FieldInfo countField  = ReflectionProbe.Field(typeof(ScenarioDirector), "_baseEventCount");
+            var buffer = ReflectionProbe.Read<System.Array>(eventsField, director);
+            int count  = ReflectionProbe.Read<int>(countField, director);
 
-            System.Type firedEventType = typeof(ScenarioDirector).GetNestedType("FiredEvent", BindingFlags.NonPublic)!;
-            FieldInfo typeF = firedEventType.GetField("Type")!;
-            FieldInfo dataF = firedEventType.GetField("Data")!;
+            System.Type firedEventType = ReflectionProbe.NestedType(typeof(ScenarioDirector), "FiredEvent");
+            FieldInfo typeF = ReflectionProbe.PublicField(firedEventType, "Type");
+            FieldInfo dataF = ReflectionProbe.PublicField(firedEventType, "Data");
 
             var order = new List<string>();
             for (int i = 0; i < count; i++)
             {
-                object fe = buffer.GetValue(i)!;
-                if ((string)typeF.GetValue(fe)! == "timer_expires")
-                    order.Add((string)dataF.GetValue(fe)!);
+                object fe = ReflectionProbe.ReadElement(buffer, i, "ScenarioDirector._baseEvents");
+                if (ReflectionProbe.Read<string>(typeF, fe) == "timer_expires")
+                    order.Add(ReflectionProbe.Read<string>(dataF, fe)); // timer_expires always carries the timer name
             }
             return order;
         }
@@ -148,6 +155,63 @@ namespace ProjectChimera.Sim.Tests.Golden
             Assert.False(didFire, "Timer must not fire on the tick it is created.");
             director.Tick(new EntityWorld(), Fixed.One); // tick 2: timer decrements 1→0 → timer_expires → message
             Assert.True(didFire, "Sub-frame timer must fire one tick later (clamped to 1 tick), not never.");
+        }
+
+        // ── DW-218 — the probe's own durability contract ───────────────────────────────────────────────────────────
+        // These are the regression teeth for the fix: EmittedTimerOrder above probes six private members by NAME, so
+        // the value of this test file rests entirely on a rename producing an ACTIONABLE failure. The old
+        // `GetField(...)!` idiom produced a NullReferenceException at the use site — no owner type, no member name,
+        // nothing pointing at "the test went stale". Asserting the typed, named diagnostic is what makes that
+        // impossible to reintroduce: restore the `!` idiom and these two go red.
+
+        [Fact]
+        public void ProbingARenamedMember_FailsWithAnActionableDiagnostic_NotAnOpaqueNre()
+        {
+            // A field/method/nested-type name that does NOT exist — i.e. exactly what a rename leaves behind.
+            var field = Assert.Throws<InvalidOperationException>(
+                () => ReflectionProbe.Field(typeof(DslVarTable), "_timerNames_RENAMED"));
+            Assert.Contains("DslVarTable", field.Message);          // names the OWNER...
+            Assert.Contains("_timerNames_RENAMED", field.Message);  // ...and the MEMBER
+
+            var method = Assert.Throws<InvalidOperationException>(
+                () => ReflectionProbe.Method(typeof(ScenarioDirector), "CollectEvents_RENAMED", typeof(EntityWorld)));
+            Assert.Contains("CollectEvents_RENAMED", method.Message);
+
+            // A signature change (not just a rename) must fail HERE, not later as a parameter-count throw from Invoke.
+            var signature = Assert.Throws<InvalidOperationException>(
+                () => ReflectionProbe.Method(typeof(ScenarioDirector), "CollectEvents", typeof(EntityWorld), typeof(Fixed)));
+            Assert.Contains("CollectEvents", signature.Message);
+
+            var nested = Assert.Throws<InvalidOperationException>(
+                () => ReflectionProbe.NestedType(typeof(ScenarioDirector), "FiredEvent_RENAMED"));
+            Assert.Contains("FiredEvent_RENAMED", nested.Message);
+
+            // A field whose TYPE changed under the probe is the other half of the stale-probe class: the old idiom's
+            // hard cast threw an InvalidCastException naming neither the field nor the expectation.
+            FieldInfo real = ReflectionProbe.Field(typeof(DslVarTable), "_timerRemaining");
+            var mistyped = Assert.Throws<InvalidOperationException>(
+                () => ReflectionProbe.Read<List<string>>(real, new DslVarTable()));
+            Assert.Contains("_timerRemaining", mistyped.Message);
+        }
+
+        [Fact]
+        public void ProbingTheRealMembers_Succeeds_SoTheProbeIsNotVacuous()
+        {
+            // The negative half above passes trivially if the probe rejects everything, so pin the positive half too:
+            // every member EmittedTimerOrder depends on resolves today, with the expected type.
+            var vars = new DslVarTable();
+            Assert.NotNull(ReflectionProbe.Read<List<string>>(ReflectionProbe.Field(typeof(DslVarTable), "_timerNames"), vars));
+            Assert.NotNull(ReflectionProbe.Read<List<int>>(ReflectionProbe.Field(typeof(DslVarTable), "_timerRemaining"), vars));
+            Assert.NotNull(ReflectionProbe.Method(typeof(ScenarioDirector), "CollectEvents", typeof(EntityWorld)));
+
+            System.Type fired = ReflectionProbe.NestedType(typeof(ScenarioDirector), "FiredEvent");
+            Assert.Equal(typeof(string), ReflectionProbe.PublicField(fired, "Type").FieldType);
+            Assert.NotNull(ReflectionProbe.PublicField(fired, "Data"));
+
+            var director = new ScenarioDirector(new BuildingStore(), new ResourceStore(Fixed.Zero), vars);
+            director.LoadScenario(new ScenarioData());
+            Assert.NotNull(ReflectionProbe.Read<System.Array>(ReflectionProbe.Field(typeof(ScenarioDirector), "_baseEvents"), director));
+            Assert.Equal(0, ReflectionProbe.Read<int>(ReflectionProbe.Field(typeof(ScenarioDirector), "_baseEventCount"), director));
         }
     }
 }

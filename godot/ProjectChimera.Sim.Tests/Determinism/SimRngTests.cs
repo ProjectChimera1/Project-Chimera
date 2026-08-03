@@ -25,6 +25,22 @@ namespace ProjectChimera.Sim.Tests.Determinism
         private const ulong Seed0_Draw3 = 0x06C45D188009454FUL;
         private const ulong Seed12345_Draw1 = 0x22118258A9D111A0UL;
 
+        // DW-226 — the MAX-SEED BOUNDARY, pinned as a real stream (it previously appeared only as a "deliberately
+        // wrong seed" fixture in SimRngChecksumReplayTests). ulong.MaxValue is the one seed where the very first
+        // `_state += GAMMA` OVERFLOWS the 64-bit state, so it is the boundary that proves the accumulate is unsigned
+        // wraparound arithmetic — not a checked add, not a saturating one, and not a 63-bit/signed slip. A peer that
+        // got this wrong would diverge on the first draw of any match whose seed lands near 2^64.
+        //
+        // Computed the same INDEPENDENT way as the constants above: a standalone SplitMix64 implementation, validated
+        // against the externally-citable seed=0 / seed=12345 pins in this same block before being trusted for the max
+        // seed. NOT produced by calling SimRng (the "a tautological assert proves nothing" rule, 1.1).
+        private const ulong SeedMax_Draw1 = 0xE4D971771B652C20UL;
+        private const ulong SeedMax_Draw2 = 0xE99FF867DBF682C9UL;
+        private const ulong SeedMax_Draw3 = 0x382FF84CB27281E9UL;
+
+        /// <summary>(2^64 − 1 + GAMMA) mod 2^64 == GAMMA − 1 — the wrapped state after one draw from the max seed.</summary>
+        private const ulong SeedMax_StateAfter1Draw = 0x9E3779B97F4A7C14UL;
+
         [Fact]
         public void NextRaw_MatchesIndependentlyComputedSplitMix64_Seed0()
         {
@@ -39,6 +55,52 @@ namespace ProjectChimera.Sim.Tests.Determinism
         {
             var rng = new SimRng(12345UL);
             Assert.Equal(Seed12345_Draw1, rng.NextRaw());
+        }
+
+        /// <summary>
+        /// DW-226 — <c>ulong.MaxValue</c> pinned as a real stream, not merely used as a wrong-seed fixture. Three draws
+        /// against independently computed SplitMix64 output, plus the wrapped state after the first draw: the max seed
+        /// is the ONLY seed whose first <c>_state += GAMMA</c> crosses 2^64, so this is the boundary that pins the
+        /// accumulate as unsigned wraparound (a checked/saturating/signed variant fails here and nowhere else).
+        /// </summary>
+        [Fact]
+        public void NextRaw_MatchesIndependentlyComputedSplitMix64_MaxSeed()
+        {
+            var rng = new SimRng(ulong.MaxValue);
+            Assert.Equal(ulong.MaxValue, rng.State); // State == seed before any draw, even at the ceiling
+
+            Assert.Equal(SeedMax_Draw1, rng.NextRaw());
+            // The wrap happened on that first draw: state advanced PAST 2^64 and came back to GAMMA − 1.
+            Assert.Equal(SeedMax_StateAfter1Draw, rng.State);
+            Assert.Equal(SeedMax_Draw2, rng.NextRaw());
+            Assert.Equal(SeedMax_Draw3, rng.NextRaw());
+
+            // Reseeding to the ceiling reproduces the identical stream (the replay-restore contract at the boundary).
+            rng.Seed(ulong.MaxValue);
+            Assert.Equal(SeedMax_Draw1, rng.NextRaw());
+        }
+
+        /// <summary>
+        /// DW-226 (companion) — the derived draws at the max seed. Every pinned raw has its HIGH BIT SET, which is
+        /// exactly where an accidental signed conversion in <see cref="SimRng.NextInt"/> (<c>%</c> on a negative
+        /// long/int instead of the unsigned raw) or in <see cref="SimRng.NextFixed"/>'s <c>&gt;&gt; 48</c> (an
+        /// arithmetic shift on a signed value) would produce a negative result. Expectations derived arithmetically
+        /// from the independently computed raws above, not from calling SimRng.
+        /// </summary>
+        [Fact]
+        public void DerivedDraws_AtMaxSeed_StayUnsigned()
+        {
+            // 0xE4D9…%3 == 2, 0xE99F…%3 == 0, 0x382F…%3 == 1 (unsigned modulo of the pinned raws).
+            var ints = new SimRng(ulong.MaxValue);
+            Assert.Equal(2, ints.NextInt(3));
+            Assert.Equal(0, ints.NextInt(3));
+            Assert.Equal(1, ints.NextInt(3));
+
+            // Top 16 bits of each pinned raw become the Fixed fractional part → always inside [0, ONE).
+            var fixeds = new SimRng(ulong.MaxValue);
+            Assert.Equal((int)(SeedMax_Draw1 >> 48), fixeds.NextFixed().Raw);
+            Assert.Equal((int)(SeedMax_Draw2 >> 48), fixeds.NextFixed().Raw);
+            Assert.InRange(new SimRng(ulong.MaxValue).NextFixed().Raw, 0, Fixed.ONE - 1);
         }
 
         [Fact]

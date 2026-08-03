@@ -52,6 +52,25 @@ namespace ProjectChimera.Sim.Tests.Effects
             EffectGraph = new DamageEffect(Fixed.FromInt(80), DamageType.Magic),
         };
 
+        /// <summary>
+        /// matter_infusion (DW-221) — the SHIPPED worker signature ability, mirrored field-for-field from
+        /// <c>resources/data/abilities/matter_infusion.json</c>: Self, 15 energy / 15 ore / 10 crystal, 20s cooldown,
+        /// <c>apply_modifier</c> of modifier id 1002 — 90 ticks, Refresh, max_stacks 1, <c>move_speed_delta: 1</c>,
+        /// status None, no period. Distinct from <see cref="SelfHeal"/>, which only borrowed matter_infusion's COSTS
+        /// while running a HealEffect — so the real apply_modifier / move-speed path had no worker-cast coverage.
+        /// Values match the JSON, so these tests double as a sanity check on the shipped data.
+        /// (Modifier ctor order matches BattleFury.)
+        /// </summary>
+        public static AbilityDefinition MatterInfusion() => new AbilityDefinition
+        {
+            Id = "matter_infusion", DisplayName = "Matter Infusion", Targeting = "Self",
+            CostEnergy = Fixed.FromInt(15), CostOre = 15, CostCrystal = 10,
+            Cooldown = Fixed.FromInt(20),
+            EffectGraph = new ApplyModifierEffect(new Modifier(
+                1002, 90, StackRule.Refresh, 1, Fixed.Zero, Fixed.Zero, Fixed.FromInt(1),
+                StatusFlags.None, null, 0)),
+        };
+
         /// <summary>A custom Self heal with explicit costs/cooldown for the affordability + cooldown-boundary tests.</summary>
         public static AbilityDefinition SelfHeal(int costEnergy, int costOre, int costCrystal, int cooldownSec, int heal) =>
             new AbilityDefinition
