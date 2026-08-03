@@ -88,6 +88,39 @@ namespace ProjectChimera.Core.Definitions
         public string[] AvailableResearch { get; set; } = System.Array.Empty<string>();
 
         /// <summary>
+        /// DW-169: OPTIONAL authored nav-obstacle footprint override, <c>[width_x, height_y, depth_z]</c> in world
+        /// units. When authored (and valid per <see cref="TryGetNavFootprint"/>) it is the building's navmesh-carve
+        /// box for <c>NavObstacleManager</c> — built-ins and customs alike. Omitted (the default, and the only value
+        /// shipped content carries): a built-in id keeps its legacy fixed footprint table entry, a Custom/authored id
+        /// derives its footprint from the mesh AABB (× <see cref="UnitDefinition.MeshScale"/>) with the guarded
+        /// 5×3×5 default as last resort — see <c>ProjectChimera.UI.BuildingNavFootprint</c> for the resolution order.
+        /// Presentation-only (navmesh carve size): NEVER folded into SimChecksum / CanonicalModelHash / StartStateHash.
+        /// Malformed values (wrong length / non-finite / non-positive) are a located import-time error
+        /// (<see cref="BuildingDefinitionValidator"/>). Omitted from serialization when null so existing content
+        /// re-saves byte-identically.
+        /// </summary>
+        [JsonPropertyName("nav_footprint")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public float[]? NavFootprint { get; set; }
+
+        /// <summary>
+        /// DW-169: the single validity rule for <see cref="NavFootprint"/>, shared by the import-time validator and
+        /// the footprint-resolution policy so they can never drift. Returns true — with the authored dimensions —
+        /// only when the field is authored as exactly 3 finite, strictly-positive values; false when omitted (null)
+        /// or malformed. Pure, Godot-free.
+        /// </summary>
+        public bool TryGetNavFootprint(out float x, out float y, out float z)
+        {
+            x = y = z = 0f;
+            float[]? fp = NavFootprint;
+            if (fp == null || fp.Length != 3) return false;
+            for (int i = 0; i < 3; i++)
+                if (!float.IsFinite(fp[i]) || fp[i] <= 0f) return false;
+            x = fp[0]; y = fp[1]; z = fp[2];
+            return true;
+        }
+
+        /// <summary>
         /// The minimum game version this definition requires, stamped via property initializer (deserialization only
         /// touches JSON-mapped members, so a freshly-constructed or JSON-loaded <see cref="BuildingDefinition"/> both
         /// carry this default) — matches <see cref="ContentPackageManifest.MinGameVersion"/>'s default. Excluded from

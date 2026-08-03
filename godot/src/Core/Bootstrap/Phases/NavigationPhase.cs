@@ -1,5 +1,6 @@
 #nullable enable
 using Godot;
+using ProjectChimera.Core.Definitions;
 using ProjectChimera.Navigation;
 using ProjectChimera.UI;
 
@@ -84,13 +85,59 @@ namespace ProjectChimera.Core.Bootstrap
 
             // NavObstacleManager watches BuildingStore and rebakes on any change. Kept on the context so
             // TerrainBrush can call MarkDirty() after sculpting.
+            // DW-169: the definition resolver + asset registry let it derive a building's footprint from its def
+            // (authored nav_footprint, or mesh AABB for customs) instead of a fixed 5×3×5 box. The resolver is a
+            // closure over _ctx read AT CALL time — this phase runs before ScenarioLoad populates SlotFactionDefs,
+            // but buildings (and thus footprint lookups) only exist after it.
             var navObstacles = new NavObstacleManager();
             _ctx.Scene.AddChild(navObstacles);
-            navObstacles.Initialize(_ctx.Buildings, navRegion, _ctx.Terrain);
+            navObstacles.Initialize(_ctx.Buildings, navRegion, _ctx.Terrain,
+                                    ResolveBuildingDef, _ctx.AssetRegistry);
             _ctx.NavObstacles = navObstacles;
 
             GD.Print($"[Navigation] Map RID={navMap}, walkable ±{HALF} units. NavObstacleManager + FlowFieldBridge active.");
         }
+
+        /// <summary>
+        /// DW-169: resolve a placed building slot's <see cref="BuildingDefinition"/> — the authoring source of
+        /// <c>nav_footprint</c>/<c>mesh_path</c>/<c>mesh_scale</c> — for NavObstacleManager's footprint derivation.
+        /// Reads the live per-slot faction defs off <c>_ctx</c> AT CALL time (ScenarioLoad replaces the array after
+        /// this phase runs): the owning slot's def first, then a deterministic ascending scan of the other slots
+        /// (covers Neutral-owned pre-placed buildings), then the seeded default P1/P2 defs (pre-scenario /
+        /// fallback-map placements). Null when no loaded faction carries the id — the policy then uses its guarded
+        /// default. Each def's <c>Buildings</c> list is null-guarded locally (malformed JSON <c>"buildings": null</c>)
+        /// so a footprint lookup can never NRE the frame poll.
+        /// </summary>
+        private BuildingDefinition? ResolveBuildingDef(int slot)
+        {
+            BuildingStore buildings = _ctx.Buildings;
+            if (buildings == null || slot < 0 || slot >= BuildingStore.MAX_BUILDINGS) return null;
+
+            string defId = buildings.DefinitionId[slot];
+            if (string.IsNullOrEmpty(defId)) return null;
+
+            FactionDefinition?[] slots = _ctx.SlotFactionDefs;
+            if (slots != null)
+            {
+                int owner = (int)buildings.FactionOf[slot];
+                if (owner >= 0 && owner < slots.Length)
+                {
+                    BuildingDefinition? d = FindBuilding(slots[owner], defId);
+                    if (d != null) return d;
+                }
+                for (int i = 0; i < slots.Length; i++)
+                {
+                    BuildingDefinition? d = FindBuilding(slots[i], defId);
+                    if (d != null) return d;
+                }
+            }
+            return FindBuilding(_ctx.FactionDef, defId) ?? FindBuilding(_ctx.FactionDef2, defId);
+        }
+
+        /// <summary>Null-tolerant per-faction building lookup (see <see cref="ResolveBuildingDef"/>): a null faction
+        /// def or a malformed null <c>Buildings</c> list yields null instead of throwing.</summary>
+        private static BuildingDefinition? FindBuilding(FactionDefinition? faction, string defId)
+            => faction?.Buildings == null ? null : faction.GetBuilding(defId);
 
         /// <summary>
         /// Initial NavMesh bake using Terrain3D geometry. Called once before any buildings are placed (buildings

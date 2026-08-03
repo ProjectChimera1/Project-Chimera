@@ -70,7 +70,8 @@ namespace ProjectChimera.UI
         };
         private const int TYPE_COUNT = 5; // Story 2.8: CommandCenter/Barracks/ArcheryRange/SiegeWorkshop/Aviary
         // Story 6.8 — fallback box for a Custom/authored building whose GLB is missing and which has no TYPE_FALLBACK
-        // enum slot. Matches NavObstacleManager.CUSTOM_FOOTPRINT so the visual and the nav obstacle agree.
+        // enum slot. Matches BuildingNavFootprint.CUSTOM_FOOTPRINT (DW-169: the nav tables moved there from
+        // NavObstacleManager) so the visual and the nav obstacle agree in the no-GLB case.
         private static readonly Vector3 CUSTOM_FALLBACK = new Vector3(5f, 3f, 5f);
 
         private static readonly Color P1_COLOR = new Color(0.2f, 0.5f, 1.0f);
