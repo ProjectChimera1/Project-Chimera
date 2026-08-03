@@ -52,6 +52,10 @@
     <!-- DW-159: the Godot-free map-bounds predicate extracted from EntityPlacer.WithinMapBounds, included as a single
          file (src/UI is not globbed by SimSources.props) so the off-map paste/move guard is Tier-1 testable. -->
     <Compile Include="..\src\UI\MapBoundsMath.cs" LinkBase="Sim\UI" />
+    <!-- DW-169: the Godot-free building nav-footprint resolution policy (authored nav_footprint > built-in table >
+         mesh AABB > guarded default) extracted from NavObstacleManager, included as a single file (src/UI is not
+         globbed by SimSources.props) so the resolution order is Tier-1 testable. -->
+    <Compile Include="..\src\UI\BuildingNavFootprint.cs" LinkBase="Sim\UI" />
   </ItemGroup>
 
   <!-- Story 9.12: the SHARED C#<->TS hero-profile validation oracle. Embedded (read via manifest stream, like the

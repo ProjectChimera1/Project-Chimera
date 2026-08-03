@@ -1,6 +1,8 @@
 #nullable enable
+using System;
 using Godot;
 using ProjectChimera.Core;
+using ProjectChimera.Core.Definitions;
 
 namespace ProjectChimera.UI
 {
@@ -30,20 +32,21 @@ namespace ProjectChimera.UI
         // One StaticBody3D per building slot (null = slot unused or building dead)
         private readonly StaticBody3D?[] _bodies = new StaticBody3D?[BuildingStore.MAX_BUILDINGS];
 
-        // Building footprint sizes — must match BuildingBridge.TYPE_FALLBACK exactly
-        private static readonly Vector3[] TYPE_SIZE =
-        {
-            new(6f, 4f, 6f), // CommandCenter
-            new(5f, 3f, 5f), // Barracks
-            new(4f, 3f, 5f), // ArcheryRange
-            new(5f, 3f, 7f), // SiegeWorkshop
-            new(5f, 3f, 7f), // Aviary (Story 2.8)
-        };
+        // DW-169: the footprint size tables (built-in TYPE_SIZE + the Story 6.8 CUSTOM_FOOTPRINT default) moved to
+        // the pure, Godot-free BuildingNavFootprint policy so the resolution order (authored nav_footprint > built-in
+        // table > mesh AABB > guarded default) is Tier-1 testable. The "must match BuildingBridge.TYPE_FALLBACK
+        // exactly" invariant lives on that table now.
 
-        // Story 6.8 — deterministic guarded footprint for a BuildingType.Custom / authored building with no enum
-        // member (its id resolves to no TYPE_SIZE slot). A fixed value keeps the nav bake deterministic and, crucially,
-        // never IndexOutOfRange's on a Custom building (enum value 5, past TYPE_SIZE's length).
-        private static readonly Vector3 CUSTOM_FOOTPRINT = new(5f, 3f, 5f);
+        /// <summary>DW-169: optional resolver mapping a building SLOT to its <see cref="BuildingDefinition"/> (the
+        /// authoring source of <c>nav_footprint</c> / <c>mesh_path</c> / <c>mesh_scale</c>). Wired by NavigationPhase
+        /// with a closure over the live per-slot faction defs; null (legacy callers/tests) keeps the pre-DW-169
+        /// table-only behavior exactly.</summary>
+        private Func<int, BuildingDefinition?>? _defOf;
+
+        /// <summary>DW-169: the shared render/session custom-asset registry (Story 9.9) so a downloaded custom
+        /// building's logical-id mesh resolves for footprint derivation exactly as it does for rendering. Null ⇒
+        /// res:// loads only.</summary>
+        private AssetRegistry? _assets;
 
         // Half-extent of the nav bake AABB — must cover the full walkable map
         private const float BAKE_HALF = 120f;
@@ -60,13 +63,20 @@ namespace ProjectChimera.UI
         /// Bind to the building store and the scene's NavigationRegion3D.
         /// Pass the Terrain3D node when using Terrain3D-based nav baking.
         /// Call once from MainScene._Ready() after both are initialised.
+        /// DW-169: <paramref name="definitionResolver"/> (slot → resolved <see cref="BuildingDefinition"/>) and
+        /// <paramref name="assetRegistry"/> enable definition-derived footprints (authored <c>nav_footprint</c> or
+        /// mesh AABB); both optional — omitted, footprints resolve from the legacy tables alone.
         /// </summary>
         public void Initialize(BuildingStore buildings, NavigationRegion3D region,
-                               Node3D? terrain = null)
+                               Node3D? terrain = null,
+                               Func<int, BuildingDefinition?>? definitionResolver = null,
+                               AssetRegistry? assetRegistry = null)
         {
             _buildings = buildings;
             _region    = region;
             _terrain   = terrain;
+            _defOf     = definitionResolver;
+            _assets    = assetRegistry;
         }
 
         public override void _Process(double delta)
@@ -158,17 +168,47 @@ namespace ProjectChimera.UI
             _bodies[id] = body;
         }
 
-        /// <summary>Story 6.8 — resolve building <paramref name="id"/>'s nav footprint from its
-        /// <see cref="BuildingStore.DefinitionId"/> (via <see cref="TechTreeChecker.BuildingTypeFromId"/>) instead of
-        /// indexing <see cref="TYPE_SIZE"/> by the raw enum value. A built-in id maps to its TYPE_SIZE slot
-        /// (byte-identical footprint); a Custom/authored id (no enum member) uses the guarded
-        /// <see cref="CUSTOM_FOOTPRINT"/> — never an IndexOutOfRange for the Custom sentinel (enum value 5).</summary>
+        /// <summary>DW-169 (supersedes the Story 6.8 fixed-custom-box resolve) — resolve building
+        /// <paramref name="id"/>'s nav footprint through the pure <see cref="BuildingNavFootprint"/> policy:
+        /// authored <c>nav_footprint</c> (built-ins and customs alike) > built-in table (byte-identical legacy
+        /// footprint) > mesh-AABB-derived size for a Custom/authored id (so a large custom building blocks what it
+        /// renders) > the guarded 5×3×5 default (never an IndexOutOfRange for the Custom sentinel, enum value 5).
+        /// The mesh branch is a lazy Func — built-ins never pay a GLB load.</summary>
         private Vector3 FootprintFor(int id)
         {
-            var t = TechTreeChecker.BuildingTypeFromId(_buildings.DefinitionId[id]);
-            if (t is BuildingType bt && (int)bt >= 0 && (int)bt < TYPE_SIZE.Length)
-                return TYPE_SIZE[(int)bt];
-            return CUSTOM_FOOTPRINT;
+            string defId            = _buildings.DefinitionId[id];
+            BuildingDefinition? def = _defOf?.Invoke(id);
+            BuildingNavFootprint.Size3 s =
+                BuildingNavFootprint.Resolve(defId, def, () => MeshDerivedSize(def));
+            return new Vector3(s.X, s.Y, s.Z);
+        }
+
+        /// <summary>DW-169: the mesh-AABB footprint source — loads the def's GLB (session asset registry first for
+        /// package logical ids, then res://) and returns its AABB size × <c>mesh_scale</c>, or null when there is no
+        /// def, no authored path, or only the box placeholder would load (a placeholder's AABB is NOT the authored
+        /// building's size, so it must fall to the guarded default instead of masquerading as a real footprint).
+        /// Invoked lazily by <see cref="BuildingNavFootprint.Resolve"/> and only for un-authored custom ids —
+        /// placement is a rare event (this class already sync-bakes on it), so a per-placement load is acceptable.</summary>
+        private BuildingNavFootprint.Size3? MeshDerivedSize(BuildingDefinition? def)
+        {
+            if (def == null || string.IsNullOrEmpty(def.MeshPath)) return null;
+
+            Mesh? mesh = null;
+            if (_assets != null && MeshPathId.IsPackageAssetId(def.MeshPath)
+                && _assets.TryGet(def.MeshPath, out Mesh registered))
+            {
+                mesh = registered; // Story 9.9 ingested custom asset — same resolution BuildingBridge renders with
+            }
+            else
+            {
+                Mesh loaded = MeshLoader.LoadFromGlb(def.MeshPath, Vector3.One, Colors.White,
+                                                     out bool usedPlaceholder);
+                if (!usedPlaceholder) mesh = loaded;
+            }
+            if (mesh == null) return null;
+
+            Vector3 size = mesh.GetAabb().Size * def.MeshScale;
+            return new BuildingNavFootprint.Size3(size.X, size.Y, size.Z);
         }
 
         /// <summary>Removes and frees the StaticBody3D for building <paramref name="id"/>.</summary>

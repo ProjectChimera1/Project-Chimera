@@ -104,6 +104,15 @@ namespace ProjectChimera.Core.Definitions
                 errors.Add(("command_card_producer", Located(id, "command_card_producer",
                     "must be one of train, research, shop, revive, none (or omit to derive).")));
 
+            // DW-169: nav_footprint is OPTIONAL, but when authored it must satisfy the SAME rule the footprint
+            // resolution policy applies (BuildingDefinition.TryGetNavFootprint — exactly [x, y, z], all finite and
+            // strictly positive). Reporting the malformed value here keeps "validated content" and "content the
+            // resolver honors" the same set — a typo'd footprint is a located import-time error, never a silent
+            // fall-through to the mesh-AABB/default footprint.
+            if (def.NavFootprint != null && !def.TryGetNavFootprint(out _, out _, out _))
+                errors.Add(("nav_footprint", Located(id, "nav_footprint",
+                    "must be exactly [width_x, height_y, depth_z] — 3 finite values, each greater than zero (or omit to derive from the mesh).")));
+
             // Story 4.5: reuse UnitDefinitionValidator's id/dup-id/enum/cost-range gate over this same def, kinded
             // "building" so every message reads "building '<id>'…" instead of "unit '<id>'…". IReadOnlyList<T>'s
             // covariance lets `siblings` (IReadOnlyList<BuildingDefinition>?) pass directly as the expected
