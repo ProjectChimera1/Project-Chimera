@@ -227,7 +227,11 @@ namespace ProjectChimera.CreationSuite
                 if (!check.Ok) { try { File.Delete(tmp); } catch { } ShowError("Save self-check failed: " + check.Error); return false; }
                 File.Move(tmp, abs, overwrite: true);
                 // A rename (id changed) leaves the old file behind — remove it so the id is authoritative.
-                if (!string.IsNullOrEmpty(_originalId) && _originalId != id)
+                // DW-456 (same sink class as DoDelete): _originalId comes from Bind() and can carry a HAND-AUTHORED
+                // traversal id — LoadItemsFromDir deserializes raw JSON with NO gate, so a file whose id field is
+                // "../../evil" binds, and fixing the id then saving would otherwise File.Delete OUTSIDE the items
+                // directory. Same fail-closed rule: an unsafe id can never have been a file this editor wrote.
+                if (ItemDefinitionValidator.IsFilenameSafeId(_originalId) && _originalId != id)
                 {
                     string old = Path.Combine(absDir, _originalId + ".json");
                     if (File.Exists(old)) File.Delete(old);
