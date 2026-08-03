@@ -164,5 +164,88 @@ namespace ProjectChimera.Sim.Tests.Combat
             InvalidDataException ex = Assert.Throws<InvalidDataException>(() => DamageTable.FromJson(@"{ }"));
             Assert.Contains("multipliers", ex.Message);
         }
+
+        // ── DW-227: duplicate JSON keys fail closed (STJ dictionaries are silently last-wins) ─────────
+
+        [Fact]
+        public void DuplicateCellKey_IsRejectedWithLocatedError()
+        {
+            // 'Light' authored twice in the Normal row (0.5 then 2.0). Pre-DW-227 System.Text.Json kept
+            // ONLY the last value — seven raw cells still bake to six DISTINCT keys, so the Count check
+            // passed and the earlier 0.5 was silently discarded (a stray paste line rebalanced the game).
+            string json = @"{ ""multipliers"": {
+                ""Normal"": { ""Unarmored"": 1.0, ""Light"": 0.5, ""Light"": 2.0, ""Medium"": 1.0, ""Heavy"": 1.0, ""Fortified"": 1.0, ""Hero"": 1.0 },
+                ""Pierce"": " + Row6 + @", ""Siege"": " + Row6 + @", ""Magic"": " + Row6 + @", ""Hero"": " + Row6 + @"
+            } }";
+            InvalidDataException ex = Assert.Throws<InvalidDataException>(() => DamageTable.FromJson(json));
+            Assert.Contains("Light", ex.Message);
+            Assert.Contains("Normal", ex.Message);
+        }
+
+        [Fact]
+        public void DuplicateRowKey_IsRejectedWithLocatedError()
+        {
+            // 'Siege' authored twice (a filler row, then the intended one) → the first is silently
+            // replaced pre-DW-227 (five distinct keys remain, so every dimension check passed).
+            string json = @"{ ""multipliers"": {
+                ""Normal"": " + Row6 + @", ""Pierce"": " + Row6 + @",
+                ""Siege"": " + Row6 + @",
+                ""Siege"": { ""Unarmored"": 0.5, ""Light"": 0.5, ""Medium"": 1.0, ""Heavy"": 1.0, ""Fortified"": 1.5, ""Hero"": 1.0 },
+                ""Magic"": " + Row6 + @", ""Hero"": " + Row6 + @"
+            } }";
+            InvalidDataException ex = Assert.Throws<InvalidDataException>(() => DamageTable.FromJson(json));
+            Assert.Contains("Siege", ex.Message);
+            Assert.Contains("duplicate", ex.Message);
+        }
+
+        [Theory]
+        [InlineData("normal")] // case variant — STJ enum keys bind case-insensitively
+        [InlineData("0")]      // stable integer form — STJ enum keys also bind by underlying value
+        public void DuplicateRowKey_ByCaseOrIntegerAlias_IsRejected(string alias)
+        {
+            // Aliased duplicates are the sneaky half of DW-227: 'normal' and '0' both bind to the SAME
+            // DamageType.Normal dictionary slot (probed STJ behaviour), so a raw exact-string comparison
+            // would miss them. The loader must reject them under STJ's own key semantics.
+            string json = @"{ ""multipliers"": {
+                ""Normal"": " + Row6 + @", """ + alias + @""": " + Row6 + @",
+                ""Pierce"": " + Row6 + @", ""Siege"": " + Row6 + @", ""Magic"": " + Row6 + @", ""Hero"": " + Row6 + @"
+            } }";
+            InvalidDataException ex = Assert.Throws<InvalidDataException>(() => DamageTable.FromJson(json));
+            Assert.Contains("duplicate row", ex.Message);
+        }
+
+        [Fact]
+        public void DuplicateCellKey_ByIntegerAlias_IsRejected()
+        {
+            // Same aliasing on the CELL axis: '1' is ArmorType.Light, so authoring both silently
+            // dropped the named 'Light' value pre-DW-227.
+            string json = @"{ ""multipliers"": {
+                ""Normal"": { ""Unarmored"": 1.0, ""Light"": 0.5, ""1"": 2.0, ""Medium"": 1.0, ""Heavy"": 1.0, ""Fortified"": 1.0, ""Hero"": 1.0 },
+                ""Pierce"": " + Row6 + @", ""Siege"": " + Row6 + @", ""Magic"": " + Row6 + @", ""Hero"": " + Row6 + @"
+            } }";
+            InvalidDataException ex = Assert.Throws<InvalidDataException>(() => DamageTable.FromJson(json));
+            Assert.Contains("duplicate cell", ex.Message);
+        }
+
+        [Fact]
+        public void DuplicateMultipliersObject_IsRejected()
+        {
+            // Two complete 'multipliers' tables at the root: STJ binds the Dto property last-wins, so a
+            // creator's whole first table was silently discarded pre-DW-227.
+            string allRows = @"{ ""Normal"": " + Row6 + @", ""Pierce"": " + Row6 + @", ""Siege"": " + Row6 + @", ""Magic"": " + Row6 + @", ""Hero"": " + Row6 + @" }";
+            string json = @"{ ""multipliers"": " + allRows + @", ""multipliers"": " + allRows + @" }";
+            InvalidDataException ex = Assert.Throws<InvalidDataException>(() => DamageTable.FromJson(json));
+            Assert.Contains("multipliers", ex.Message);
+            Assert.Contains("duplicate", ex.Message);
+        }
+
+        [Fact]
+        public void CanonicalTable_WithNoDuplicates_StillLoads()
+        {
+            // Positive guard for the DW-227 raw pass: the canonical shipped shape (comments, unique keys)
+            // must keep loading — the duplicate rejection must not over-trigger on valid content.
+            DamageTable t = DamageTable.FromJson(Canonical);
+            Assert.Equal(Fixed.FromInt(1).Raw, t.Get(DamageType.Hero, ArmorType.Hero).Raw);
+        }
     }
 }
