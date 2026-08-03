@@ -78,7 +78,7 @@ namespace ProjectChimera.Core.Definitions
     public sealed class DraftModifier
     {
         public int         Id               = 1;                  // author-assigned id; 1 is a sensible start (matches AbilityPresets.SelfBuffModifierId)
-        public int         DurationTicks;                          // <0 = permanent, 0 = one-shot
+        public int         DurationTicks;                          // <0 = permanent, 0 = ONE TICK (not instantaneous — DW-270)
         public StackRule   Stacking         = StackRule.Refresh;   // converter read-fallback
         public int         MaxStacks        = 1;                   // converter read-fallback
         public Fixed       MaxHealthDelta   = Fixed.Zero;

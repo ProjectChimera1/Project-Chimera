@@ -51,7 +51,7 @@ namespace ProjectChimera.Effects
         private readonly int[] _modifierId;        // Modifier.Id (0 for a pure PersistentEffect instance — see Apply scan)
         private readonly int[] _remainingTicks;    // duration countdown (PERMANENT sentinel = never expires by duration)
         private readonly int[] _ticksUntilPeriod;  // ticks until the next DoT/HoT pulse (0 when the instance has no period)
-        private readonly int[] _periodsRemaining;  // remaining pulses (Persistent: lifetime; Modifier: a MaxPersistentPeriods cap)
+        private readonly int[] _periodsRemaining;  // remaining pulses (Persistent: its lifetime; Modifier: a re-armed schedule width — DW-271)
         private readonly int[] _stackCount;         // simultaneous stacks (shared-duration model; all expire together)
 
         // ── Non-folded per-instance state (authored / peer-identical by construction; like a UnitDefinition ref) ──
@@ -148,6 +148,8 @@ namespace ProjectChimera.Effects
                 _casterId[slot]      = casterId;
                 _casterFaction[slot] = casterFaction;
                 _stackCount[slot]    = 1;
+                // DW-270: 0 is stored VERBATIM, so Advance decrements it to −1 and expires it at the end of the next
+                // tick — a 0-duration modifier is a ONE-TICK modifier, never an instantaneous one (see Modifier.DurationTicks).
                 _remainingTicks[slot] = mod.DurationTicks < 0 ? PERMANENT : mod.DurationTicks;
                 ResetPeriodSchedule(slot, mod);
                 _count[targetId] = n + 1;
@@ -261,6 +263,19 @@ namespace ProjectChimera.Effects
                             if (!_world.IsAlive(i)) break;
                             _ticksUntilPeriod[slot] = PeriodLengthOf(slot);
                             _periodsRemaining[slot]--;
+
+                            // DW-271: a MODIFIER's lifetime is its DURATION — `_periodsRemaining` is only the pulse
+                            // BUDGET that ResetPeriodSchedule armed (MaxPersistentPeriods, the store's schedule width),
+                            // never a lifetime. Draining it used to leave a still-active modifier silently pulse-less
+                            // while it kept its stat bonus (periodTicks 1 + duration > 256, or any PERMANENT periodic
+                            // modifier, went dead at pulse 256). Re-arm the SAME slot's already-folded budget in place —
+                            // the Story 2.13 lifelong-persistent pattern — so the pulse cadence lasts exactly as long as
+                            // the modifier does and expiry stays duration-governed (step 2 below). Fold-safe: the first
+                            // MaxPersistentPeriods pulses are byte-identical to the pre-fix schedule; only the tick that
+                            // used to write a terminal 0 differs. A PERSISTENT instance is NOT re-armed here — its period
+                            // count IS its lifetime, and only `Lifelong` refills it (step 2).
+                            if (_modifier[slot] != null && _periodsRemaining[slot] <= 0)
+                                _periodsRemaining[slot] = EffectCaps.MaxPersistentPeriods;
                         }
                     }
 
@@ -286,6 +301,8 @@ namespace ProjectChimera.Effects
                         expired = false;
                     else
                     {
+                        // A Modifier expires purely by DURATION (its pulse budget is re-armed above, DW-271). DW-270:
+                        // an authored duration of 0 lands here as 0 → −1 → expired, i.e. one full tick of effect.
                         _remainingTicks[slot]--;
                         expired = _remainingTicks[slot] <= 0;
                     }
@@ -620,12 +637,18 @@ namespace ProjectChimera.Effects
             _casterFaction[slot]    = Faction.Neutral;
         }
 
-        /// <summary>Reset a Modifier slot's period schedule on (re)apply: arm the period timer or clear it for a periodless modifier.</summary>
+        /// <summary>
+        /// Reset a Modifier slot's period schedule on (re)apply: arm the period timer or clear it for a periodless
+        /// modifier. <c>_periodsRemaining</c> is armed to <see cref="EffectCaps.MaxPersistentPeriods"/> — for a Modifier
+        /// that is a SCHEDULE WIDTH, not a lifetime: duration alone governs expiry, and <see cref="Advance"/> re-arms
+        /// the budget whenever it drains while the modifier is still active (DW-271), so the pulses last exactly as long
+        /// as the modifier.
+        /// </summary>
         private void ResetPeriodSchedule(int slot, Modifier mod)
         {
             bool hasPeriod = mod.PeriodEffect != null && mod.PeriodTicks > 0;
             _ticksUntilPeriod[slot] = hasPeriod ? mod.PeriodTicks : 0;
-            _periodsRemaining[slot] = hasPeriod ? EffectCaps.MaxPersistentPeriods : 0; // a Modifier's periods are bounded by the cap; duration governs expiry
+            _periodsRemaining[slot] = hasPeriod ? EffectCaps.MaxPersistentPeriods : 0;
         }
 
         /// <summary>Run an effect node against a fresh, direct-target (<c>spatial: null</c>) context for the host, on the dedicated executor.</summary>

@@ -300,7 +300,7 @@ namespace ProjectChimera.Core.Definitions
                 "status", "period_effect", "period_ticks");
 
             int id                 = ReadInt(el, "id", path, 0);
-            int durationTicks      = ReadInt(el, "duration_ticks", path, 0);   // <0 = permanent, 0 = one-shot
+            int durationTicks      = ReadInt(el, "duration_ticks", path, 0);   // <0 = permanent, 0 = ONE TICK (DW-270; AbilityValidator warns)
             StackRule stacking     = ReadEnum<StackRule>(el, "stacking", path, options, required: false, fallback: StackRule.Refresh);
             int maxStacks          = ReadInt(el, "max_stacks", path, 1);
             Fixed maxHealthDelta   = ReadFixedOpt(el, "max_health_delta", path, options, Fixed.Zero);
