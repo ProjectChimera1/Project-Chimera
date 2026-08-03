@@ -1,7 +1,6 @@
 #nullable enable
 using System;
 using System.IO;
-using System.Text;
 using System.Text.Json;
 using Godot;
 using ProjectChimera.Core;                // Fixed
@@ -19,8 +18,10 @@ namespace ProjectChimera.CreationSuite
         // clamp to the 16.16 integer ceiling (short.MaxValue) that CheckCost enforces.
         private static readonly int DeltaCap = ItemDefinitionValidator.MAX_ITEM_STAT_DELTA.ToInt();
         // move_speed_delta clamps to its own much tighter cap (DW-42) so the Speed spinner can never dial in a value the
-        // fail-closed MAX_MOVE_SPEED_DELTA gate rejects.
-        private static readonly int MoveSpeedCap = ItemDefinitionValidator.MAX_MOVE_SPEED_DELTA.ToInt();
+        // fail-closed MAX_MOVE_SPEED_DELTA gate rejects. DW-452: the range is READ FROM the Godot-free
+        // ItemDefinitionValidator.MoveSpeedSpinnerRange() helper that Tier-1 pins to ±MAX_MOVE_SPEED_DELTA, so this
+        // clamp can no longer silently decouple from the validator cap with every test still green.
+        private static readonly (int Min, int Max) MoveSpeedRange = ItemDefinitionValidator.MoveSpeedSpinnerRange();
         private const int CostCap = short.MaxValue;
 
         // ── Form construction ────────────────────────────────────────────────────
@@ -46,7 +47,7 @@ namespace ProjectChimera.CreationSuite
             AddNumFloat(_bodyHost, "Attack", "attack_damage_delta", "Attack delta", "Flat attack-damage granted while carried.",
                 () => _current!.AttackDamageDelta.ToFloat(), v => _current!.AttackDamageDelta = Fixed.FromFloat(v), -DeltaCap, DeltaCap);
             AddNumFloat(_bodyHost, "Speed", "move_speed_delta", "Move-speed delta", "Flat move-speed granted while carried.",
-                () => _current!.MoveSpeedDelta.ToFloat(), v => _current!.MoveSpeedDelta = Fixed.FromFloat(v), -MoveSpeedCap, MoveSpeedCap);
+                () => _current!.MoveSpeedDelta.ToFloat(), v => _current!.MoveSpeedDelta = Fixed.FromFloat(v), MoveSpeedRange.Min, MoveSpeedRange.Max);
             AddNumFloat(_bodyHost, "Armor", "armor_delta", "Armor delta", "Flat armor granted while carried.",
                 () => _current!.ArmorDelta.ToFloat(), v => _current!.ArmorDelta = Fixed.FromFloat(v), -DeltaCap, DeltaCap);
 
@@ -226,7 +227,11 @@ namespace ProjectChimera.CreationSuite
                 if (!check.Ok) { try { File.Delete(tmp); } catch { } ShowError("Save self-check failed: " + check.Error); return false; }
                 File.Move(tmp, abs, overwrite: true);
                 // A rename (id changed) leaves the old file behind — remove it so the id is authoritative.
-                if (!string.IsNullOrEmpty(_originalId) && _originalId != id)
+                // DW-456 (same sink class as DoDelete): _originalId comes from Bind() and can carry a HAND-AUTHORED
+                // traversal id — LoadItemsFromDir deserializes raw JSON with NO gate, so a file whose id field is
+                // "../../evil" binds, and fixing the id then saving would otherwise File.Delete OUTSIDE the items
+                // directory. Same fail-closed rule: an unsafe id can never have been a file this editor wrote.
+                if (ItemDefinitionValidator.IsFilenameSafeId(_originalId) && _originalId != id)
                 {
                     string old = Path.Combine(absDir, _originalId + ".json");
                     if (File.Exists(old)) File.Delete(old);
@@ -276,10 +281,12 @@ namespace ProjectChimera.CreationSuite
                 if (idx >= 0 && idx < _items.Count && _items[idx] == target) _items.RemoveAt(idx);
                 // DW-47 (review): the id feeds File.Delete here just as it feeds Persist()'s Path.Combine/File.Move.
                 // The Delete button is NOT validity-gated (unlike Save, which rides DoSave→Revalidate), so a hand-typed
-                // traversal id (e.g. "../../foo") could otherwise escape the items directory on disk. Fail closed with the
-                // SINGLE shared charset convention: an out-of-charset id can never have produced a legit on-disk file, so
-                // skip the filesystem delete and only drop the in-memory row.
-                if (UnitDefinitionValidator.SanitizeId(id) == id)
+                // traversal id (e.g. "../../foo") could otherwise escape the items directory on disk. Fail closed with
+                // THE single shared "may this id touch the on-disk file?" decision (DW-456 — Tier-1 tested, also
+                // load-bearing in both ValidateFields/Validate id gates): an out-of-charset, reserved-basename or empty
+                // id can never have produced a legit on-disk file, so skip the filesystem delete and only drop the
+                // in-memory row.
+                if (ItemDefinitionValidator.IsFilenameSafeId(id))
                 {
                     try
                     {
@@ -305,27 +312,13 @@ namespace ProjectChimera.CreationSuite
             return clone;
         }
 
-        private string UniqueId(string baseId)
-        {
-            string s = SanitizeId(baseId);
-            if (string.IsNullOrEmpty(s)) s = "item";
-            if (!IdExists(s)) return s;
-            for (int n = 2; ; n++)
-            {
-                string cand = $"{s}_{n}";
-                if (!IdExists(cand)) return cand;
-            }
-        }
-
-        private bool IdExists(string id) => _items.Exists(i => i.Id == id);
-
-        private static string SanitizeId(string id)
-        {
-            var sb = new StringBuilder();
-            foreach (char c in (id ?? "").ToLowerInvariant())
-                sb.Append(char.IsLetterOrDigit(c) || c == '_' ? c : '_');
-            return sb.ToString();
-        }
+        /// <summary>DW-453: mint Create/Duplicate ids through the SINGLE shared convention
+        /// (<see cref="ItemDefinitionValidator.MakeUniqueItemId"/> → <c>UnitDefinitionValidator.SanitizeId</c> +
+        /// <c>MakeUniqueId</c>'s dedup/reserved-basename avoidance) so a minted id ALWAYS satisfies the ValidateFields
+        /// id gate. The old LOCAL sanitizer here was Unicode-aware (<c>char.IsLetterOrDigit</c>), so duplicating a base
+        /// like "café" minted an id the DW-47 charset gate rejects — an un-saveable item needing a manual rename.</summary>
+        private string UniqueId(string baseId) =>
+            ItemDefinitionValidator.MakeUniqueItemId(_items.ConvertAll(i => i.Id), baseId);
 
         private static string FirstLine(string s)
         {
