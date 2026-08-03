@@ -681,7 +681,7 @@ namespace ProjectChimera.Core
                 world: _host.World, // Story 3.13: establish the entity→hero link (D-8) for the XP runtime
                 items: _host.Items, registry: _host.ItemRegistry, // Story 3.16: re-mint persisted inventory before the hash
                 modifiers: _host.Modifiers, usableSlots: _host.ItemSys.UsableSlots, // Story 3.16 review: apply carried stat modifiers + honor the slot cap
-                ownerSlot: _ctx.Lockstep?.LocalFaction); // DW-13: mint the deployed profile into the local player's placed hero only (null at first boot / no profile is inert)
+                ownerSlot: _ctx.Lockstep?.HeroMintOwnerSlot); // DW-13: mint into the local player's placed hero only (null at first boot / no profile is inert); DW-407: clamped (offline → Player1, spectator → Neutral = no mint)
 
             // Story 11.3 (FR-67) — NOTE: a pending SP LOAD is NOT overlaid here. The subsequent Edit→Play transition
             // (RequestSkirmishLaunch → GameState.Toggle → ResetToAuthoredStart → ClearForReset) would WIPE anything
@@ -1415,12 +1415,17 @@ namespace ProjectChimera.Core
                 else
                 {
                     // Match continues. If the LOCAL player has latched VERDICT_LOST, switch to the spectator reveal +
-                    // a non-terminal defeat banner and keep watching until the match fully resolves. LocalFaction is
-                    // Player1 offline (LockstepManager default).
-                    Faction local = _ctx.Lockstep.LocalFaction;
-                    if (!_localEliminated && local != Faction.Neutral
-                        && _host.WinState.Verdict[(int)local] == WinStateStore.VERDICT_LOST)
-                        OnLocalPlayerEliminated();
+                    // a non-terminal defeat banner and keep watching until the match fully resolves. DW-407: watch the
+                    // CLAMPED EffectiveLocalFaction (offline → Player1; raw LocalFaction would watch the stale
+                    // prior-match faction in an offline-after-online playtest), and skip a SPECTATOR explicitly — it
+                    // owns no faction, and Effective's Player1 REFERENCE view must not earn it the eliminated
+                    // treatment (previously the stale raw Neutral skipped this implicitly).
+                    if (!_localEliminated && !_ctx.Lockstep.IsSpectator)
+                    {
+                        Faction local = _ctx.Lockstep.EffectiveLocalFaction;
+                        if (_host.WinState.Verdict[(int)local] == WinStateStore.VERDICT_LOST)
+                            OnLocalPlayerEliminated();
+                    }
                 }
             }
             else if (_ctx.GameState.Mode == GameMode.Edit)
@@ -2603,13 +2608,13 @@ namespace ProjectChimera.Core
                     };
                 Definitions.HeroProfileLoader.LoadInto(_host.Heroes, _applier.LastAppliedHeroes, snapProfile, _logSink, _host.World,
                     _host.Items, _host.ItemRegistry, _host.Modifiers, _host.ItemSys.UsableSlots,
-                    ownerSlot: _ctx.Lockstep?.LocalFaction); // Story 3.16 + DW-13
+                    ownerSlot: _ctx.Lockstep?.HeroMintOwnerSlot); // Story 3.16 + DW-13; DW-407: clamped (offline → Player1, spectator → Neutral = no mint)
             }
             else
             {
                 Definitions.HeroProfileLoader.LoadInto(_host.Heroes, _applier.LastAppliedHeroes, _ctx.PendingHeroProfile, _logSink, _host.World,
                     _host.Items, _host.ItemRegistry, _host.Modifiers, _host.ItemSys.UsableSlots,
-                    ownerSlot: _ctx.Lockstep?.LocalFaction); // Story 3.16: re-mint the deployed profile's persisted inventory + carried stat modifiers; DW-13: local player's placed hero only
+                    ownerSlot: _ctx.Lockstep?.HeroMintOwnerSlot); // Story 3.16: re-mint the deployed profile's persisted inventory + carried stat modifiers; DW-13: local player's placed hero only; DW-407: clamped
             }
 
             // 6. Recompute + log the start-state hash so it reflects the re-applied board + re-minted heroes.
@@ -2691,7 +2696,8 @@ namespace ProjectChimera.Core
             // every F5 Edit↔Play re-apply, and nothing else resets these flags — so without this a subsequent OFFLINE
             // F5 playtest in the same process would see IsOnline still true and EffectiveLocalFaction still resolve to
             // the prior match's (e.g. Player2) faction, breaking selection/command/minimap/worker-build. GoOffline is a
-            // pure flag reset (no transport teardown); a following online match re-establishes everything via GoOnline.
+            // pure state reset (no transport teardown) — flags AND (DW-407) the stored LocalFaction, re-clamped to the
+            // offline reference Player1; a following online match re-establishes everything via GoOnline.
             _ctx.Lockstep.GoOffline();
             // Story 9.5: retarget the fog viewer back to Player1 (the offline reference). The fog's _faction is
             // independent of the lockstep flags above, so it needs its own reset. OnMatchStart's SetViewer mutated

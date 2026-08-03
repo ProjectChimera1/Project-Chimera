@@ -27,9 +27,10 @@ namespace ProjectChimera.Core.Bootstrap
         {
             var bridge = new CustomUiBridge { Name = "CustomUiBridge" };
             _ctx.Scene.AddChild(bridge);
-            // The local per-player slot for PerPlayer binds is resolved LIVE each frame from the engine faction
-            // (LockstepManager.LocalFaction — Player1 offline, the real slot at GoOnline; same live handle
-            // MatchChatOverlay reads). The engine Faction enum is 1-based (Player1=1) but the DSL per-player store is
+            // The local per-player slot for PerPlayer binds is resolved LIVE each frame from the CLAMPED engine
+            // faction (LockstepManager.EffectiveLocalFaction — Player1 offline/spectating, the real slot at GoOnline;
+            // DW-407: raw LocalFaction would read the stale prior-match slot in an offline-after-online session).
+            // The engine Faction enum is 1-based (Player1=1) but the DSL per-player store is
             // 0-based with slot 0 = Player1, so we MUST convert via DslVarReadback.PlayerSlotForFaction — passing the
             // raw engine int would read the NEXT player's slot (off-by-one; e.g. local Player1 → Player2's value).
             // Theme left to the bridge's default (null-safe — numeric labels fall back to the default font). The tree
@@ -40,7 +41,7 @@ namespace ProjectChimera.Core.Bootstrap
             // phase's MatchLifecycleController many phases later — a by-value handle here is permanently null (and
             // the scenario getter additionally survives the F5 Edit→Play re-apply).
             bridge.Initialize(_ctx.Host.Readback, () => _ctx.Scenario?.CustomUi,
-                localFactionGetter: () => DslVarReadback.PlayerSlotForFaction((int)_ctx.Lockstep.LocalFaction),
+                localFactionGetter: () => DslVarReadback.PlayerSlotForFaction((int)_ctx.Lockstep.EffectiveLocalFaction),
                 theme: null,
                 lockstepGetter: () => _ctx.Lockstep,
                 scenarioGetter: () => _ctx.Scenario);

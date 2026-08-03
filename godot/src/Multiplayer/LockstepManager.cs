@@ -167,10 +167,27 @@ namespace ProjectChimera.Multiplayer
 
         /// <summary>
         /// Story 9.5 — the effective local faction for the presentation layer. Offline OR spectator resolves to
-        /// <see cref="Faction.Player1"/> (nothing resets <see cref="LocalFaction"/> on the way back offline, so reading
-        /// it raw would leak a stale Player2/Neutral from a prior match); an online player gets its assigned faction.
+        /// <see cref="Faction.Player1"/>; an online player gets its assigned faction. Flag-driven, so it never
+        /// depends on the stored <see cref="LocalFaction"/> being reset — DW-407 additionally makes
+        /// <see cref="GoOffline"/> reset the stored value to <see cref="LocalFactionPolicy.OfflineLocalFaction"/>
+        /// (belt and braces: the stored tier and this clamp now agree offline). Presentation consumers read THIS
+        /// (or <see cref="HeroMintOwnerSlot"/> for the hero-mint owner filter), never raw <see cref="LocalFaction"/> —
+        /// pinned by <c>LocalFactionSingleSourceTests</c>.
         /// </summary>
         public Faction EffectiveLocalFaction => LocalFactionPolicy.Effective(IsOnline, IsSpectator, LocalFaction);
+
+        /// <summary>
+        /// DW-407 — the owner-slot filter for hero-profile minting (<c>HeroProfileLoader.LoadInto</c>'s
+        /// <c>ownerSlot</c>): the local player's clamped faction for a PLAYER (offline reference Player1 / online
+        /// assigned), but <see cref="Faction.Neutral"/> for a SPECTATOR. A spectator owns no faction — placed heroes
+        /// are player-owned, so Neutral matches none and mints nothing, exactly the pre-DW-407 raw behaviour
+        /// (<c>GoSpectate</c> sets the stored faction to Neutral). Clamping a spectator to Player1 here instead would
+        /// locally mint a stale offline profile into Player1's placed hero row — sim state the other clients never
+        /// build. Distinct from <see cref="EffectiveLocalFaction"/>, whose Player1 REFERENCE VIEW is a read-side
+        /// convention (fog viewer / selection / personalised readback) and must not be mistaken for "the spectator IS
+        /// Player1" on a write-shaped path like minting.
+        /// </summary>
+        public Faction HeroMintOwnerSlot => IsSpectator ? Faction.Neutral : EffectiveLocalFaction;
 
         /// <summary>Active input-delay ticks (adapted from RTT measurements).</summary>
         public int CurrentDelay => _currentDelay;
@@ -279,11 +296,20 @@ namespace ProjectChimera.Multiplayer
                      $"Initial delay: {_currentDelay} ticks ({_currentDelay * 33}ms at 30 Hz).");
         }
 
+        /// <summary>
+        /// Back to offline mode (the return-to-Edit seam — <c>MainScene.ResetMatchOnReturnToEdit</c>). Clears the
+        /// online flags AND (DW-407) re-clamps the stored <see cref="LocalFaction"/> to the offline reference
+        /// (<see cref="LocalFactionPolicy.OfflineLocalFaction"/>), so the stored value agrees with what
+        /// <see cref="EffectiveLocalFaction"/> resolves offline — without this a raw read after an online/spectate
+        /// match would still observe the stale Player2/Neutral <see cref="GoOnline"/>/<see cref="GoSpectate"/> left
+        /// behind. Pure state reset (no transport teardown); a following online match re-establishes everything.
+        /// </summary>
         public void GoOffline()
         {
-            IsOnline    = false;
-            IsSpectator = false;
-            IsStalling  = false;
+            IsOnline     = false;
+            IsSpectator  = false;
+            IsStalling   = false;
+            LocalFaction = LocalFactionPolicy.OfflineLocalFaction; // DW-407: one clamped source of truth offline
         }
 
         /// <summary>Spectator mode: both P1+P2 command streams arrive from the network.</summary>
@@ -335,8 +361,9 @@ namespace ProjectChimera.Multiplayer
         {
             // Offline (F5): apply-now through the shared applier — the raiser is ALWAYS Player1 (the offline
             // editor's local faction), structurally, never whatever LocalFaction a previous online/spectate session
-            // left behind (GoOnline/GoSpectate mutate it and nothing resets it on the way back offline; a stale
-            // Neutral would make every offline press a silent authorization drop).
+            // left behind (a stale Neutral would make every offline press a silent authorization drop). DW-407 makes
+            // GoOffline reset LocalFaction too, but the structural Player1 stays: defence in depth, and this path
+            // must hold even for an offline manager that never went online/offline through the seam.
             if (!IsOnline)
             {
                 var order = new UnitOrder(eventIndex, UnitCommand.DslEvent, Fixed.FromRaw(arg0), Fixed.FromRaw(arg1));

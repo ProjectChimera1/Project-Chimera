@@ -37,8 +37,10 @@ namespace ProjectChimera.Core.Bootstrap
                 scenarioGetter: () => _ctx.Scenario,
                 // The engine Faction enum is 1-based; the DSL store is 0-based — convert via PlayerSlotForFaction.
                 // Late-bound: Lockstep is created many phases later, so a by-value slot here would be permanently 0.
+                // DW-407: read the CLAMPED EffectiveLocalFaction (offline/spectator → Player1) — raw LocalFaction
+                // would personalise for the stale prior-match faction in an offline-after-online session.
                 localFactionGetter: () => _ctx.Lockstep != null
-                    ? DslVarReadback.PlayerSlotForFaction((int)_ctx.Lockstep.LocalFaction)
+                    ? DslVarReadback.PlayerSlotForFaction((int)_ctx.Lockstep.EffectiveLocalFaction)
                     : 0);
             _ctx.ObjectiveLog = log;
 
