@@ -717,7 +717,8 @@ resolution: closed as accepted (correct-course 2026-07-28) — Perf observation 
 source_spec: `_bmad-output/implementation-artifacts/spec-4-7-per-resource-collection-models-income-streaming-requires-structure-crystal-production.md`
 location: godot/src/Economy/GatheringSystem.cs
 reason: summary: a Streaming worker at a permanently gate-closed node never re-idles to seek another node. evidence: a defensible reading of AC4's "credit is withheld... becomes eligible and begins producing" (same worker, same node resumes — not "worker reassigns elsewhere"), now proven-as-implemented by `RequiresStructure_StreamingGate_ClosesThenReopensMidGather_WithholdsThenResumesCredit` (this story's own review-patch test). Not exercised by any shipped scenario (none author `requires_structure` yet — see DW-77). Closure: a future design ruling on whether a permanently-gated Streaming worker should eventually re-idle and seek a different node (matching GATHER's node-vanishes-mid-cycle re-seek behavior) versus staying parked awaiting the same structure's return. Flagged by the Verification Gap Reviewer and Edge Case Hunter.
-status: open
+status: done 2026-08-03
+resolution: resolved by sweep bundle dw-gathering-worker-lifecycle — Streaming gate no longer parks a worker forever: STREAMING_GATE_GRACE_TICKS = SimulationLoop.TICKS_PER_SECOND (30) consecutive closed ticks, tracked in a new per-worker EntityWorld.GateClosedTicks array (reset on reopen, on fresh assignment, in Create and in Clear), then the worker is freed to Idle to re-seek another eligible node — the recorded 2026-07-16/07-20/07-30 decision verbatim. Story 4.7 AC4 withhold-then-resume survives for any shorter closure. GateClosedTicks is deliberately UNFOLDED from SimChecksum (matching GatherState/GatherTarget/CarryAmount) and deliberately not persisted (DW-518). 16 new tests, proven RED. Gate: build 0 errors, 3730 passed / 0 failed / 1 skipped.
 decision: 2026-07-30 Re-idle & re-seek after N ticks — After N ticks of a closed gate, free the worker to Idle to seek another eligible node, matching GATHER
 decision: 2026-07-20 Re-idle and re-seek — After N ticks of a closed gate, free the worker to Idle and seek a different eligible node (matching GATHER's node-vanishes re-seek).
 decision: 2026-07-16 Re-idle and re-seek — After N ticks of a closed gate, free the worker to Idle and seek a different eligible node (matching GATHER's node-vanishes re-seek).
@@ -2431,6 +2432,7 @@ source_spec: `{implementation_artifacts}/spec-9-13-per-client-command-rate-throt
 location: MergedTickBuilder.cs:186
 reason: The server's merged-tick fan-in (`MergedTickBuilder.TryBuild`) waits for ALL Expected slots to submit tick T with no timeout or force-advance, so any slot whose tick-T packet never arrives — a mis-set throttle cap, a silent app-level drop, or an uncooperative client — stalls every client on that tick with no recovery short of a transport disconnect (which triggers freeze-and-continue). — Evidence: `MergedTickBuilder.cs:186` returns false and buffers whenever any slot has not arrived; the only silent-recovery path (`DropController`/`FrozenSlotInjector`) fires exclusively on a transport disconnect, never on a still-connected slot with a missing tick. Pre-existing property of the Story 9.3/9.6 backbone (not introduced by 9.13, and not reachable by 9.13 under legitimate play — the [2,12] input-delay pipeline bounds a lockstep client's in-flight backlog far below the 60/window cap). Latent robustness gap worth hardening for the 4-player e2e work (9.15): e.g. a bounded force-advance / missing-slot watchdog so a never-arriving slot degrades to freeze rather than an indefinite stall.
 status: open
+seen-again: 2026-08-03 (workflow burn-down bundle dw-minority-halt-quorum-rebase — ESCALATION, not just a re-sighting: this entry judged the still-connected-slot stall "not reachable under legitimate play", but a DESYNC SELF-HALT reaches it. LockstepManager turns a DesyncAlert into a terminal RaiseHalt while the peer stays CONNECTED, so it stops submitting TickCommands and MergedTickBuilder.TryBuild (godot/src/Multiplayer/Server/MergedTickBuilder.cs:185-186) never completes again; DedicatedServer.cs:412-434 only reaches NotifyDrop/freeze from a transport disconnect, so survivors stall until ENet finally times the halted peer out or the human closes the halt overlay. DW-237's fix rebased the CHECKSUM quorum so the survivors' desync guard survives an N>=3 minority halt, but with the command stream stalled they produce no new checksums to compare, so the command half must close for the guard to be useful. Closing it means firing a DropController DropDirective + all-survivor ACK dance from the desync path in the Godot-coupled DedicatedServer — unverifiable by the Godot-free Tier-1 gate, hence deliberately out of that bundle's scope)
 
 ### DW-434: Only inbound `TickCommands` packets are rate-limited; the other client-sendable dispatch cases on the dedicated…
 origin: migrated from flat appender bullet, 2026-07-30 (A1-E11)
@@ -2662,7 +2664,8 @@ origin: migrated from legacy ledger ("From spec-ai-deadlock-combat-gathering-fix
 location: godot/src/Economy/GatheringSystem.cs:320-326; godot/src/Economy/BuildingSystem.cs:784
 severity: high
 reason: ReleaseNode is only called from the en-route node-vanished branch; the main loop skips dead entities (:49) and no EntityWorld.OnDestroy subscriber exists for gathering (only ModifierStore + ItemSystem subscribe). Second leak site: the Build-interrupt at BuildingSystem.cs:784 clears GatherTarget without decrementing. Peer-identical (AssignedGatherers IS folded, v13) — a gameplay/capacity defect, not a desync. Fix will move goldens (folded counter changes) → isolated re-baseline per the checksum-fold timing rule. Verified 2026-07-28.
-status: open
+status: done 2026-08-03
+resolution: resolved by sweep bundle dw-gathering-worker-lifecycle — One static GatheringSystem.ReleaseGatherSlot(world, nodes, workerId) now serves all four release paths: the tick loop, the en-route node-vanished branch, a new EntityWorld.OnDestroy subscription (GatheringSystem takes an optional EntityWorld, wired by SimulationHost), and BuildingSystem.QueueWorkerBuild via a new BuildingSystem.SetResourceNodes seam (SimulationHost-wired, matching SetDslSimEvents/SetCombatEvents so ~30 test call sites are untouched — see DW-517). It releases ONLY from MovingToResource/Gathering: MovingToBase already decremented yet still points GatherTarget at the node, so a target-only release would double-decrement and steal a live worker slot (two regression tests pin that mirror-image defect closed). The entry predicted goldens would move; they did not — all 25 golden files are byte-unchanged and every golden/determinism test passes, since no golden scenario kills a gatherer or issues a build order.
 decision: 2026-07-28 correct-course — bundle gatherer-slot-release-on-death (Epic 15, Story 15.4); golden re-baseline expected
 
 ### DW-208: AttackMove arrive threshold unreachable under crowding (wave hover deadlock)
@@ -2932,7 +2935,8 @@ origin: migrated from legacy ledger ("Deferred from: code review of story-1.9a (
 location: godot/src/Multiplayer/Server/ServerHost.cs:95-103; godot/src/Multiplayer/LockstepManager.cs:372,482-486
 severity: critical
 reason: ESCALATED from unreachable (N=2) to live (9.7/9.15 shipped 4-player MP: MpSeatCeiling=4). ProcessVerdict still sends DesyncAlert without Halted; the alerted minority halts, stops sending checksums while staying CONNECTED, so DropReporter never runs, _expected still counts it, no bucket completes → survivors' guard silently dead. Self-heals only if the human clicks the halt overlay and disconnects. Verified 2026-07-28.
-status: open
+status: done 2026-08-03
+resolution: resolved by sweep bundle dw-minority-halt-quorum-rebase — ServerHost.ProcessVerdict now drops each alerted minority slot from the collector quorum immediately after sending its DesyncAlert, logs the rebase (slot + resulting quorum), and routes any window the reduced quorum now completes through the same clean/alert/HALT logic — the recorded decision's quorum-drop arm. Extracted RouteReTalliedWindows so the Story-9.6 disconnect path and the new rebase share one router; the drop is idempotent with the later disconnect-driven DropReporter so the quorum never double-decrements into a trivially-passing lone reporter, and recursion is bounded by MaxSlots. LockstepManager.cs needed no change — its terminal halt on DesyncAlert is the intended UX-DR64e behavior and the cause described here, not a fix site. Residual: the merged-tick command half is still starved by a halted-but-connected peer — filed as a seen-again escalation on DW-433.
 decision: 2026-07-28 correct-course — bundle minority-halt-quorum-rebase (Epic 15, Story 15.7): drop an alerted minority from the quorum or force-disconnect/HALT it; pairs with the ledgered "drop-path HALT branch untested" 9.6 bullet. Doc rot: ServerChecksumCollector.cs:11,22-23 stale "MaxSlots=4 → 8 in 9.2" comment (9.2 correctly did NOT bump it; sim ceiling 8 vs MP seat ceiling 4 are deliberately different) → DW-324
 
 ## Deferred from: code review of story-1.9b (2026-06-24) — migrated 2026-07-28
@@ -2950,7 +2954,8 @@ origin: migrated from legacy ledger ("Deferred from: code review of story-1.9b (
 location: godot/src/Multiplayer/Server/ServerChecksumCollector.cs:124-128
 severity: medium
 reason: Code byte-identical — Reset of an older incomplete bucket on ring overrun; _resolvedThrough never advances past the abandoned tick so it never yields a verdict. Story 9.4's adaptive delay makes a far-behind peer MORE plausible than the original "≤2 in flight" premise. Cheap fix: advance _resolvedThrough to the evicted tick and log it as abandoned. Verified 2026-07-28.
-status: open
+status: done 2026-08-03
+resolution: resolved by sweep bundle dw-minority-halt-quorum-rebase — ServerChecksumCollector now closes out an evicted window instead of silently Reset-ing it: it counts the window in AbandonedWindows, notifies an optional injected (tick, reportsLost) seam that ServerHost turns into a console Warn plus a new MATCH SUMMARY clause ("{N} windows compared, {D} desync, {A} abandoned — VERDICT"), and advances _resolvedThrough to the abandoned tick so verdict emission stays monotonic. An empty leftover bucket (a Story-9.6 drop artifact) lost nothing and is deliberately not counted; an abandoned window is not a desync so Passing/PASS-FAIL semantics are unchanged. The LAN runbook's documented summary line was updated to match. Makes the eviction observable but does not reject the input — the missing ACCEPT_WINDOW guard is DW-511.
 decision: 2026-07-28 correct-course — bundle minority-halt-quorum-rebase (Epic 15, Story 15.7)
 
 ## Deferred from: code review of story 1.11 (2026-06-25) — migrated 2026-07-28
@@ -3038,7 +3043,8 @@ origin: migrated from legacy ledger ("Deferred from: story 2.1 (2026-06-25)"), 2
 location: godot/src/Effects/SearchAreaEffect.cs:51-64; godot/src/Navigation/SpatialHash.cs:179
 severity: medium
 reason: Unchanged — QueryRadius has no filter/priority parameter; the caveat comment survives verbatim. Deterministic but not the documented contract. One SpatialHash API change closes this + DW-250. Verified 2026-07-28.
-status: open
+status: done 2026-08-03
+resolution: resolved by sweep bundle dw-searcharea-target-selection-correctness — New godot/src/Navigation/IEntityQueryFilter.cs + SpatialHash.QueryRadiusLowestIds<TFilter>: when the buffer is full the largest RETAINED id is evicted rather than the late-scanned candidate being dropped, so the kept set is the globally lowest-N over the whole radius and the written prefix comes out ascending — the contract the class doc always claimed. SearchAreaEffect.FindTargets consumes it and no longer Array.Sorts. TFilter is struct-constrained so the per-candidate test is devirtualized with no delegate and no boxing, preserving the zero-alloc contract. The unfiltered QueryRadius is left byte-identical on purpose: MovementSystem's separation pass uses it and its output feeds Position, a SimChecksum input — that half is DW-512. No cap constant changed (RulesetHash untouched); no golden moved or was re-recorded.
 decision: 2026-07-28 correct-course — bundle searcharea-target-selection-correctness (Epic 15, Story 15.4)
 
 ## Deferred from: code review of story-2.1 (2026-06-25) — migrated 2026-07-28
@@ -3048,7 +3054,8 @@ origin: migrated from legacy ledger ("Deferred from: code review of story-2.1 (2
 location: godot/src/Effects/SearchAreaEffect.cs:64-78
 severity: medium
 reason: Unchanged — 64-slot buffer fills unfiltered, sorts, THEN compacts by TargetMatcher; the recommended pass-filter-into-QueryRadius fix has not happened. Verified 2026-07-28.
-status: open
+status: done 2026-08-03
+resolution: resolved by sweep bundle dw-searcharea-target-selection-correctness — Root cause was ordering: the 64-slot buffer filled via the UNFILTERED QueryRadius, sorted, then compacted by TargetMatcher, so non-matching entities consumed slots before the filter ran (an Enemy-filtered nuke cast amid 64+ of the caster's own allies selected ZERO enemies while enemies stood in the radius). Fixed by evaluating the predicate BEFORE a candidate may occupy a slot, via the new SpatialHash.QueryRadiusLowestIds<TFilter>; the predicate is still the single TargetMatcher.Matches, wrapped as the new nested TargetMatcher.QueryFilter so no consumption site can drift. Proven RED without the fix (EnemyFanOut_IsNotStarved_ByACrowdOfLowerIdAllies and OverCap_MatchingEnemies_StillFillTheWholeFanOut_WhenAlliesCrowdTheRadius both fail on the pre-fix body).
 decision: 2026-07-28 correct-course — bundle searcharea-target-selection-correctness (Epic 15, Story 15.4)
 
 ### DW-251: No total-work / total-node-count bound on an effect graph
@@ -3064,7 +3071,8 @@ origin: migrated from legacy ledger ("Deferred from: code review of story-2.1 (2
 location: godot/ProjectChimera.Sim.Tests/Effects/EffectExecutorBoundsTests.cs:184-215
 severity: low
 reason: Byte-for-byte the flagged shape (8 high-HP enemies, no events queue): neither the UnitKilled-enqueue path nor a 64-wide fan-out is under the allocation delta. Natural regression net for the DW-249/250 fix. Verified 2026-07-28.
-status: open
+status: done 2026-08-03
+resolution: resolved by sweep bundle dw-searcharea-target-selection-correctness — Genuine new coverage added: Run_IsZeroAlloc_AcrossAFullWidthFanOut pins a full MaxSearchTargets width inside the allocation delta, and Run_IsZeroAlloc_OnTheLethalDeathSequence puts UnitKilled push -> RecordKill -> DeathFeed -> Destroy inside it (one pre-built world per measured run, since a dead entity cannot be re-killed, with every allocating construction outside the window). Also corrected two now-stale comments that asserted mechanisms this bundle moved (the Array.Sort negative control and the "caster eats a buffer slot so fan-out is 63" note). Gate: 3723 passed / 0 failed / 1 skipped; committed 6115b01.
 decision: 2026-07-28 correct-course — rides bundle searcharea-target-selection-correctness (Epic 15, Story 15.4)
 
 ### DW-253: Load-time Validate admitted the deferred Persistent/ApplyModifier node kinds
@@ -4018,6 +4026,7 @@ reason: Both sites have exactly DW-218's defect: `GetField("_triggerEventTypes",
 status: open
 
 ### DW-502: The burn-down worklist's stated Tier-1 baseline (3834 passing) does not match this checkout
+seen-again: 2026-08-03 (workflow burn-down chunk of 4 bundles — a FOURTH independent worktree measured 3714 passed / 0 failed / 1 skipped as its pre-change baseline, this one based on 024025e ("chore(snapshot): date stamp 2026-08-01") rather than the ee172b3 in the agents' env header. Two agents in this chunk spent gate time detaching to their parent commit to prove the 120-test gap was not their regression. Also worth checking against the ~49 tests in godot/analyzers/ProjectChimera.Analyzers.Tests, which the 3834 figure may be folding in)
 
 origin: workflow burn-down run, 2026-08-03
 location: D:/Projects/Project_Chimera/.claude/workflows (bundle dispatch instructions) vs git master ee172b3
@@ -4087,4 +4096,84 @@ origin: workflow burn-down run, 2026-08-03
 location: godot/src/Core/Bootstrap/Phases/ScenarioLoadPhase.cs (BuildAndInjectPathabilityGrid, ~line 265) and godot/src/Core/Definitions/MapWriteGate.cs (its doc comment explicitly excludes slope-derived cells from the loadability it certifies)
 severity: medium
 reason: ScenarioValidator.CheckSpawnsNotBlocked now exists and is called at the Godot-free ScenarioApplier.Apply chokepoint, but its output is only a located _log.Warn — an author who never reads the console still ships a map whose start base or trigger spawn sits inside terrain. Making the load fail closed (or surfacing a toast) and running the same check in the editor's save/export gate once an elevation grid is available both live in src/Core/Bootstrap and src/CreationSuite — Godot-coupled code that trips the mandatory in-engine gate the Godot-free burn-down track cannot satisfy. Deliberately left for a bmad-loop bundle; the pure API is ready to consume.
+status: open
+
+### DW-511: ServerChecksumCollector has no ACCEPT_WINDOW guard, so a client can evict honest in-flight comparison windows with far-future checksum ticks
+
+origin: workflow burn-down run, 2026-08-03
+location: godot/src/Multiplayer/Server/ServerChecksumCollector.cs:115-133 (Record) — compare the sibling guard at godot/src/Multiplayer/Server/MergedTickBuilder.cs:128-130
+severity: high
+reason: Record accepts any checksum tick a client claims and evicts the ring bucket it lands on, so a single misbehaving or malicious client can silently destroy the honest majority's in-flight comparison windows and blind the desync guard (a grief/starvation vector, sibling of DW-435/DW-436 on the command path). Pre-existing and unrelated to either entry the discovering bundle closed, and NOT fixable by copying MergedTickBuilder's ACCEPT_WINDOW: the collector's _resolvedThrough starts at -1 while real checksum ticks start at the checksum interval, so a naive window rejects the first legitimate report of every match. A correct fix must gate acceptance on a real frontier (e.g. MergedTickBuilder.EmittedThrough) and needs its own design + tests. DW-239's fix makes the symptom OBSERVABLE (each eviction now logs an ABANDONED line and increments AbandonedWindows) but does not reject the input.
+status: open
+
+### DW-512: MovementSystem's separation query has the same over-cap arbitrariness DW-249 described — and unlike SearchArea its output DOES feed SimChecksum
+
+origin: workflow burn-down run, 2026-08-03
+location: godot/src/Navigation/MovementSystem.cs:46,100 (_neighborBuffer = new int[32], SEPARATION_QUERY_RADIUS = 2.0) -> godot/src/Navigation/SpatialHash.cs QueryRadius
+severity: medium
+reason: The unfiltered SpatialHash.QueryRadius keeps the first 32 neighbours in cell-scan order, so in a crowd denser than 32 units inside a 2.0 radius (the 500-2000-entity target is well past that) WHICH neighbours push a unit is decided by grid geometry rather than any defined rule. It is deterministic across peers (same grid, same positions) so it is NOT a desync — it is a steering-quality/fairness issue. Deliberately left byte-identical by the searcharea-target-selection-correctness bundle because separation output flows into Position, a SimChecksum input, so re-ruling the truncation or raising the buffer moves every movement golden (formation-separation, ai-active, the merged-N goldens) — that needs its own deliberate re-baseline story, which the burn-down brief forbids. The pure API to consume already exists: SpatialHash.QueryRadiusLowestIds<TFilter>, and both QueryRadius overloads now carry a doc note pointing callers at it.
+status: open
+
+### DW-513: NoHardcodedPlayerCountTests' vacuous-pass guard structurally forbids the aliasing its own allowlist implies
+
+origin: workflow burn-down run, 2026-08-03
+location: godot/ProjectChimera.Sim.Tests/Meta/NoHardcodedPlayerCountTests.cs:66-67,103-107 vs godot/src/Multiplayer/Server/ServerChecksumCollector.cs:22
+severity: medium
+reason: The allowlist justifies ServerChecksumCollector.MaxSlots as "mirrors MpSeatCeiling", but the scan's regex only matches `const int <name> = (2|4|8|9)` and the test then asserts every allowlisted site was FOUND — so writing `MaxSlots = PlayerCountPolicy.MpSeatCeiling` (the actual anti-drift fix, value-identical 4==4) makes the scan miss the site and FAILS the guard. Verified empirically in the housekeeping-docs-normalization bundle: tried it, it broke, reverted to the literal and documented WHY in the constant's own doc so the next person does not repeat it. Net effect: the documented 4-to-8 seat bump still requires a manual second edit here, kept honest only by TwoCeilingPolicy_ConstantsAgree's equality assert. Fixing it means teaching the scan to accept an aliased-to-sanctioned-constant form — a change to a Tier-1 meta-guard, so it belongs with whoever owns the seat bump.
+status: open
+
+### DW-514: alpha_map_01.json (the shipped default map) carries what looks like committed editor-drag residue in its slot bases, and fields a different army than the fallback boot
+
+origin: workflow burn-down run, 2026-08-03
+location: godot/resources/data/scenarios/alpha_map_01.json:13-14,21-22,152-157
+severity: medium
+reason: Slot bases are base_x -38.88743 / base_z 0.047416687 and base_x 38.93686 / base_z -1.5269203 — asymmetric sub-unit float noise, i.e. the signature of a MoveStartPosition drag saved into a shipped map rather than an authored value; the map also carries an extra `mage` unit at slot 0 that ScenarioApplier.BuildFallbackMirror does not. Consequence: the fallback boot and the default map are no longer the same scenario, so "the game is always playable" and "the default map" exercise different starting states. Not fixed during the doc-debt sweep because correcting a shipped map's content is a content decision (and the map's CanonicalModelHash is consumed by the handshake), not a comment edit. The divergence is now documented in BuildFallbackMirror's doc comment and deliberately EXCLUDED from the new FallbackMirror-vs-alpha_map_01 agreement test, which is scoped to the economy/board seed that does agree. Adjacent to DW-463 (that slot-0 mage reaching Play as only 2 of 3 units) — the two may want to land together.
+status: open
+
+### DW-515: ScenarioLoadPhase's fallback marker branch only ever seeds 2 start-position markers, hardcoding the mirror's slot COUNT as well as its coordinates
+
+origin: workflow burn-down run, 2026-08-03
+location: godot/src/Core/Bootstrap/Phases/ScenarioLoadPhase.cs:396-413
+severity: low
+reason: The no-scenario branch writes positions[0] and positions[1] only, while StartPositionBridge.MAX_SLOTS is 4 and the with-scenario branch honours up to that — so a fallback boot shows 2 flag-poles regardless of context. Harmless today because BuildFallbackMirror itself declares exactly 2 slots (now pinned by FallbackMirror_StartPositions_MatchTheScenarioLoadPhaseMarkerFallback), so the branch is self-consistent, but it duplicates the mirror's slot count as a literal. Presentation-only, no sim/checksum effect. Left alone because making the mirror's slot count a real dependency touches src/Core/Bootstrap, which trips the mandatory in-engine gate the Godot-free burn-down track cannot satisfy.
+status: open
+
+### DW-516: DW-324's own enumerated list is partly stale: two of its nine items were already satisfied before the sweep ran, and one is another bundle's charter
+
+origin: workflow burn-down run, 2026-08-03
+location: _bmad-output/implementation-artifacts/deferred-work.md — the DW-324 reason line
+severity: low
+reason: Bookkeeping note filed as an entry because bundle dev sessions are forbidden from editing the ledger. Verified, not assumed: (a) the "ModifierStore.cs:39 describes the re-entrancy guard as unbuilt without noting the validator fence" item was fixed on 2026-06-26 — the paragraph has named the Story-2.3 content validator fence since then, and AbilityValidator genuinely rejects ApplyModifierEffect / nested PersistentEffect inside a PersistentEffect phase; (b) the "dead ApplyFallback:159-160 anchor" item was re-anchored when DW-222 closed on 2026-07-28 (the location now reads ScenarioApplier.cs:406-416). Separately, DW-324's remaining item Modifier.cs:48 ("0 = instantaneous") is DW-270's explicit charter in the modifier-period-authoring-warnings bundle and is the SAME LINE, so the housekeeping bundle deliberately left it to avoid a guaranteed merge conflict — DW-324 is recorded done but its list is only literally exhausted once DW-270's bundle merges.
+status: open
+
+### DW-517: BuildingSystem's resource-node seam is opt-in, so any construction that forgets to wire it silently keeps the DW-207 build-interrupt gatherer leak
+
+origin: workflow burn-down run, 2026-08-03
+location: godot/src/Economy/BuildingSystem.cs — SetResourceNodes / QueueWorkerBuild (~line 964)
+severity: medium
+reason: DW-207's fix releases a gather slot from QueueWorkerBuild through a new SetResourceNodes seam rather than a required constructor parameter — chosen to avoid churning ~30 existing BuildingSystem ctor call sites and to match the existing SetDslSimEvents / SetCombatEvents pattern. SimulationHost (the only production construction) wires it and MainScene uses _host.BuildSys, so the shipped path is covered, but a future construction that omits the call gets a BuildingSystem whose build-interrupt path silently leaks AssignedGatherers again, exactly as before the fix, with no test failing. A ctor-required ResourceNodeStore would be strictly safer; it is a wider refactor than a deferred-work bundle's blast radius.
+status: open
+
+### DW-518: EntityWorld.GateClosedTicks is not persisted by SaveGameState, so a loaded save restarts the Streaming-gate grace window
+
+origin: workflow burn-down run, 2026-08-03
+location: godot/src/Core/Persistence/SaveGameState.cs — the hand-enumerated EA array-position enum (vs godot/src/Core/EntityWorld.cs GateClosedTicks)
+severity: low
+reason: DW-80's fix added a per-worker GateClosedTicks counter that frees a Streaming worker to Idle after 30 consecutive closed-gate ticks. It is reset in Create (recycle trap) and cleared by EntityWorld.Clear, but deliberately NOT added to the save format: adding an EA member changes the save layout, which is outside a deferred-work bundle's blast radius, and the counter is transient runtime state whose reset is behaviourally indistinguishable from a fresh boot re-seeking the same node (a load simply restarts the 1-second grace window). Documented in the field's own doc comment rather than silently dropped. Worth folding in whenever the save format is next revised.
+status: open
+
+### DW-519: SaveGameState/EntityWorld field coverage has no reflection-driven completeness guard, unlike EntityWorld.Clear
+
+origin: workflow burn-down run, 2026-08-03
+location: godot/ProjectChimera.Sim.Tests/Persistence/SaveLoadTests.cs vs godot/ProjectChimera.Sim.Tests/Sim/EntityWorldClearCompletenessTests.cs
+severity: medium
+reason: Found while deciding where the new DW-80 counter had to be registered: EntityWorldClearCompletenessTests reflects over every EntityWorld field and would have failed had Clear() been forgotten, but nothing equivalent exists for the SAVE path — so a future per-entity array that genuinely MUST round-trip a save can be forgotten and ship green (the hand-enumerated EA position enum is the only record of what is covered). Pre-existing gap; the same class is already flagged in EntityWorldClearCompletenessTests' own SCOPE note for the sibling stores. Widening that reflection sweep to the persistence path is its own story.
+status: open
+
+### DW-520: A worker interrupted mid-carry by a Build command loses its load
+
+origin: workflow burn-down run, 2026-08-03
+location: godot/src/Economy/BuildingSystem.cs — ClearWorkerBuild (~line 895)
+severity: medium
+reason: ClearWorkerBuild forces GatherState.Idle on build completion regardless of CarryAmount, so a worker that was walking a load home when the build order landed re-seeks a node instead of finishing the delivery — the carry is then re-capped rather than banked, quietly costing the player a full load per interrupted worker. Observed while mapping the GatherState writers for DW-207. Pre-existing and mentioned by neither DW entry that bundle closed, so reported rather than fixed; the fix is presumably to preserve MovingToBase (or bank the carry) when CarryAmount > 0.
 status: open
