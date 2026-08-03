@@ -389,6 +389,16 @@ namespace ProjectChimera.Core
         /// </summary>
         public readonly int[] KillerFactionOf;
 
+        /// <summary>
+        /// DW-367 — the per-tick transient death LOG (one record per <c>DamageResolver.KillEntity</c>, the single
+        /// death choke point). Unlike the per-slot <see cref="KillerOf"/>/<see cref="KillerFactionOf"/> SoA (which a
+        /// same-tick die→recycle→die overwrites, losing the first kill's event and credit), the log carries EVERY
+        /// combat death of the tick with its own attribution for <c>ScenarioDirector</c>'s <c>unit_dies</c> source.
+        /// Same derived-attribution posture as the SoA pair: NOT folded into <see cref="SimChecksum"/> (drained +
+        /// wiped by the director at its flags-snapshot horizon; capped and inert when no director reads it).
+        /// </summary>
+        public readonly DeathLog DeathLog;
+
         // --- Separation / formation (Story 1.13, DG-2 / FR-54) ---
         /// <summary>
         /// Per-unit separation radius. Summed with a neighbour's (<c>CollisionRadius[i] + CollisionRadius[j]</c>)
@@ -724,6 +734,7 @@ namespace ProjectChimera.Core
             XpBounty       = new Fixed[MAX_ENTITIES];                    // Story 3.13 (folded v11; Create-defaulted to Zero)
             KillerOf        = new int[MAX_ENTITIES];                     // Story 7.5 (NOT folded — derived attribution; sentinel −1 via Array.Fill below)
             KillerFactionOf = new int[MAX_ENTITIES];                     // Story 7.5 (NOT folded; sentinel −1 via Array.Fill below)
+            DeathLog        = new DeathLog();                            // DW-367 (NOT folded — per-tick transient death log, wiped by the director)
             CollisionRadius      = new Fixed[MAX_ENTITIES];              // Story 1.13 (folded v5)
             SeparationPriorityOf = new SeparationPriority[MAX_ENTITIES]; // Story 1.13 (folded v5)
             CategoryOf           = new UnitCategory[MAX_ENTITIES];       // Story 1.13 (NOT folded — presentation-read)
@@ -1262,6 +1273,7 @@ namespace ProjectChimera.Core
             Array.Fill(HeroIndex, HERO_NONE);
             Array.Fill(KillerOf,        -1);    // Story 7.5 sentinel (matches the ctor fill)
             Array.Fill(KillerFactionOf, -1);    // Story 7.5 sentinel (matches the ctor fill)
+            DeathLog.Clear();                   // DW-367: count-only reset (records past Count are unread — the PatrolWaypoints discipline)
 
             _freeCount = 0;
             _nextId    = 0;

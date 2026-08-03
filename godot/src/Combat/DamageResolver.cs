@@ -103,16 +103,30 @@ namespace ProjectChimera.Combat
         /// <see cref="EntityWorld.Destroy"/> the entity. Reused verbatim by <see cref="Apply"/> on lethal damage AND by
         /// <c>AbilityCastSystem</c> when a <c>cost_health</c> self-cost brings the caster to ≤0 (AC5.4) — so a self-lethal
         /// cast dies through the EXACT same path, never an invented one. Caller ensures Health has already reached ≤0.
+        /// DW-493: fail-closed on a dead/recycled <paramref name="id"/> (a no-op — no event, no stats, no death record),
+        /// so the primitive itself can never double-kill even if a future caller forgets its own aliveness check.
         /// </summary>
         public static void KillEntity(EntityWorld world, int id, Faction killer, CombatEventQueue? events,
                                       MatchStats? stats, DeathFeed? deaths = null, int attackerId = -1)
         {
+            // DW-493: fail-closed entry guard on the reused death primitive itself. Every CURRENT caller checks
+            // aliveness at its own site (Apply's entry guard above; AbilityCastSystem's self-lethal pre-check;
+            // ModifierStore's ceiling-collapse gate), so this is a behavior-preserving no-op today — it exists so a
+            // FUTURE caller (or a double-collapse in one tick) that reaches the kill without re-checking cannot
+            // double-Destroy, emit a phantom UnitKilled/HeroFell, inflate RecordKill, or push a ghost death record.
+            if (!world.IsAlive(id)) return;
             // Story 7.5: the SINGLE write point for the killer-attribution SoA — the attacker entity id (−1 =
             // unknown) plus the killer faction SNAPSHOTTED as a slot (Neutral → −1; Player1 → 0), written BEFORE
             // Destroy recycles the slot so ScenarioDirector's death diff can read the unit_dies payload this tick.
             // Derived attribution state, NOT folded into SimChecksum (the _prevFlags basis).
             world.KillerOf[id]        = attackerId;
             world.KillerFactionOf[id] = (int)killer - 1; // Neutral (0) → −1; player factions → slot
+            // DW-367: record this death in the world's per-tick death LOG (victim id, victim faction slot, killer id,
+            // killer faction slot — snapshotted BEFORE Destroy recycles the slot). ScenarioDirector's unit_dies
+            // source drains the log so a same-tick die→recycle→die on one slot surfaces BOTH kills with their own
+            // attribution — the per-slot SoA above can only ever carry the last one. On capacity overflow the record
+            // deterministically drops and the director's flags-diff fallback covers the slot exactly as before.
+            world.DeathLog.Push(id, (int)world.FactionOf[id] - 1, attackerId, (int)killer - 1);
             events?.Push(CombatEventType.UnitKilled, world.Position[id], world.FactionOf[id], world.FeedbackProfile[id]); // Story 11.4: stamp the victim faction
             stats?.RecordKill(world.FactionOf[id], killer);
             // Story 3.13: record the death for the XP runtime BEFORE Destroy recycles the slot (the corpse's

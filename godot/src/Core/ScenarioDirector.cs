@@ -186,6 +186,11 @@ namespace ProjectChimera.Core
         private FiredEvent[] _baseEvents = Array.Empty<FiredEvent>();
         private int _baseEventCount;
 
+        // DW-367 — scratch for the ascending-victim-id STABLE order of the per-tick KillEntity death log (the
+        // unit_dies emission order: ascending slot, and same-slot records in kill order). Director-lifetime
+        // preallocation sized to the log cap — zero per-tick heap allocation on the event path (the 7.5 posture).
+        private readonly int[] _deathOrder = new int[DeathLog.CAPACITY];
+
         // The same-tick FIFO work list: seeded with the next-tick dequeue at tick start, appended by same-tick
         // raises in execution order, drained occurrence-major after the base sweep. Fixed capacity with
         // deterministic drop-newest overflow (EventBounds.MaxSameTickWorkList — a documented seatbelt for
@@ -573,7 +578,9 @@ namespace ProjectChimera.Core
             // base buffer), so the sizing is correct-by-construction rather than relying on entity/building headroom.
             // Story 9.2 — the threshold poll now emits 2 events (resource + unit_count) per ACTIVE faction, up to
             // 2*PLAYER_COUNT at N=8; reserve that plus 1 (match_start) rather than the old compile-time `+ 5`.
-            var baseEvents = new FiredEvent[EntityWorld.MAX_ENTITIES + BuildingStore.MAX_BUILDINGS + timerNames.Count + (2 * FactionRegistry.PLAYER_COUNT + 1) + DslSimEventFeed.Capacity + EventBounds.MaxNextTickEventQueue];
+            // DW-367 — a mid-tick recycled slot can now emit MORE than one unit_dies (one per logged kill), so the
+            // death term is MAX_ENTITIES (diff/fallback, one per slot) + DeathLog.CAPACITY (logged extras) headroom.
+            var baseEvents = new FiredEvent[EntityWorld.MAX_ENTITIES + DeathLog.CAPACITY + BuildingStore.MAX_BUILDINGS + timerNames.Count + (2 * FactionRegistry.PLAYER_COUNT + 1) + DslSimEventFeed.Capacity + EventBounds.MaxNextTickEventQueue];
 
             // Story 7.3: the typed/scoped variable + timer store declarations. The seconds→ticks conversion happens
             // HERE at the Core boundary (SecondsToTicks owns TICKS_PER_SECOND) so the table receives integer ticks
@@ -1378,15 +1385,42 @@ namespace ProjectChimera.Core
                 _firstTick = false;
             }
 
-            // Entity deaths — compare current Alive flag against previous snapshot (ascending entity id — the
-            // per-occurrence emission order). Payload (Story 7.5): victim id, killer id, killer faction slot —
-            // read from the attribution SoA DamageResolver.KillEntity wrote (both -1 for non-combat destroys).
+            // Entity deaths — the KillEntity death LOG is the primary source (DW-367): a same-tick die→recycle[→die]
+            // on one slot surfaces EVERY combat death with the attribution snapshotted at ITS kill, where the old
+            // flags-only diff merged them into one event carrying the last killer's credit — or lost the death
+            // entirely when the recycled occupant was still alive at collect time. Emission order is preserved:
+            // ascending victim id (stable-sorted, so two deaths on one slot emit in kill order). Each logged record
+            // is gated on the victim slot having been ALIVE at the last snapshot — exactly the old diff's horizon —
+            // so first-tick kills, same-tick spawn+die, and the director's own trigger-phase kills (logged after
+            // this collect, wiped by UpdateSnapshots before the next one) stay non-emitting, byte-identical to the
+            // legacy diff. Slots with NO log record fall back to that diff unchanged (non-combat destroys — editor
+            // deletes — where the attribution SoA reads −1/−1).
+            DeathLog deathLog = world.DeathLog;
+            int deathCount = deathLog.Count;
+            for (int k = 0; k < deathCount; k++) _deathOrder[k] = k;
+            for (int k = 1; k < deathCount; k++) // stable insertion sort by victim id (tiny n; zero alloc)
+            {
+                int rec = _deathOrder[k];
+                int vic = deathLog.VictimAt(rec);
+                int j = k - 1;
+                while (j >= 0 && deathLog.VictimAt(_deathOrder[j]) > vic) { _deathOrder[j + 1] = _deathOrder[j]; j--; }
+                _deathOrder[j + 1] = rec;
+            }
             int hwm = world.HighWaterMark;
+            int deathCursor = 0;
             for (int i = 0; i < hwm; i++)
             {
                 bool wasAlive = (_prevFlags[i] & EntityFlags.Alive) != 0;
-                bool isAlive  = world.IsAlive(i);
-                if (wasAlive && !isAlive)
+                bool logged   = false;
+                while (deathCursor < deathCount && deathLog.VictimAt(_deathOrder[deathCursor]) == i)
+                {
+                    int rec = _deathOrder[deathCursor++];
+                    logged = true;
+                    if (!wasAlive) continue; // outside the diff's horizon — never emitted before, never emitted now
+                    AddBaseEvent("unit_dies", deathLog.VictimSlotAt(rec), 0, null,
+                        p0: i, p1: deathLog.KillerAt(rec), p2: deathLog.KillerSlotAt(rec));
+                }
+                if (!logged && wasAlive && !world.IsAlive(i))
                 {
                     int slot = (int)world.FactionOf[i] - 1; // Player1=1 → slot 0
                     AddBaseEvent("unit_dies", slot, 0, null,
@@ -1675,6 +1709,13 @@ namespace ProjectChimera.Core
 
         private void UpdateSnapshots(EntityWorld world)
         {
+            // DW-367: the death log's horizon IS the flags snapshot — everything logged up to here was either
+            // emitted by this tick's CollectEvents (pre-collect kills) or must never emit (the director's own
+            // trigger-phase kills, which the legacy diff never surfaced: the loop below snapshots them dead before
+            // the next collect). The single wipe point; without it a stale record could ghost-emit after the slot
+            // recycles back to alive. ReseedChangeDetection reuses this method, so a save-load restore also starts
+            // with a clean log (no spurious post-restore unit_dies — the existing snapshot-reseed rationale).
+            world.DeathLog.Clear();
             int hwm = world.HighWaterMark;
             for (int i = 0; i < hwm; i++)
                 _prevFlags[i] = world.Flags[i];
