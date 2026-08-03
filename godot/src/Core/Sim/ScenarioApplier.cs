@@ -446,7 +446,18 @@ namespace ProjectChimera.Core.Sim
         /// un-tokened <c>ApplyFallback()</c> writer is RETIRED: every fallback boot now routes
         /// <c>Apply(Validate(BuildFallbackMirror()).Value)</c> — one writer path, one token type — with behavior
         /// parity to the legacy writer pinned by <c>FallbackMirrorParityTests</c> (SimChecksum + key world facts).
-        /// Keep these literal values in sync with alpha_map_01.json.
+        ///
+        /// <para><b>Relationship to alpha_map_01.json (DW-222 / DW-324 — corrected 2026-08-03).</b> This model was
+        /// SEEDED from that map, but "keep these literals in sync with alpha_map_01.json" is no longer the contract and
+        /// was never enforced: the shipped map has legitimately drifted (its start positions were moved in the editor to
+        /// ±38.9 with non-zero Z, and it gained a `mage` unit). This is an INDEPENDENT, always-valid safety net, not a
+        /// copy of a shipped map. What IS pinned as agreeing — by
+        /// <c>FallbackMirrorParityTests.FallbackMirror_AgreesWithAlphaMap01_OnTheSharedEconomyLiterals</c> — is the
+        /// economy/board seed both are expected to share: map bounds, win condition, per-slot start ore/crystal, the 8
+        /// resource nodes, and the 2 pre-built command centres. Start positions and the unit roster are DELIBERATELY
+        /// excluded from that pin (already divergent, and the mirror's own values are pinned separately by
+        /// <c>FallbackMirror_StartPositions_MatchTheScenarioLoadPhaseMarkerFallback</c>, which is what
+        /// <c>ScenarioLoadPhase</c>'s marker fallback duplicates).</para>
         /// </summary>
         /// <param name="slotFactionDefs">Optional (review follow-up) — the per-slot resolved faction defs (indexed
         /// by <c>(int)Faction</c>, the same length-5 array the applier holds). When threaded, each slot's worker

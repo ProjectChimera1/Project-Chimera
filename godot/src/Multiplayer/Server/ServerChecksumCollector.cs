@@ -8,10 +8,8 @@ namespace ProjectChimera.Multiplayer.Server
     /// Server-side strict-majority desync collector (AR-40 fork #2, Story 1.9a). Buffers slot-tagged 32-bit
     /// checksums per EXECUTED sim tick within a bounded window; when all expected peers have reported for a
     /// tick it declares the strict-majority (<c>&gt; N/2</c>) hash canonical and names the minority slot(s),
-    /// or "no canonical" on no majority. N-shaped (any N≥2; <see cref="MaxSlots"/>=4 = the MP seat/player
-    /// ceiling, PlayerCountPolicy.MpSeatCeiling). NOTE: ServerTransport.MAX_SLOTS is now 8 (players + spectator
-    /// headroom, Story 9.7); this ceiling deliberately tracks the seat/player ceiling (4), not that transport
-    /// ceiling — only seated players report sim checksums.
+    /// or "no canonical" on no majority. N-shaped (any N≥2; <see cref="MaxSlots"/>=4 — see the constant's own doc
+    /// for why that 4 is the MP SEAT ceiling and NOT the sim's 8-faction ceiling).
     ///
     /// <para>This is server-side networking — NOT part of the 30 Hz sim tick — so it is exempt from the in-tick
     /// determinism rules (it allocates the minority list lazily). BUT its OUTPUT is order-stable: the minority
@@ -21,7 +19,24 @@ namespace ProjectChimera.Multiplayer.Server
     /// </summary>
     public sealed class ServerChecksumCollector
     {
-        /// <summary>Checksum-reporting peer ceiling — a hand-kept literal (4) deliberately equal to the MP seat/player ceiling (PlayerCountPolicy.MpSeatCeiling == ServerTransport.MAX_PLAYERS == 4), NOT a symbolic pin to it. NOT ServerTransport.MAX_SLOTS (== 8, players + spectator headroom, Story 9.7) — deliberately left at 4; see the class summary.</summary>
+        /// <summary>
+        /// The REPORTING-PLAYER seat ceiling: mirrors <c>PlayerCountPolicy.MpSeatCeiling</c> (== the Godot-coupled
+        /// <c>ServerTransport.MAX_PLAYERS</c>), NOT <c>ServerTransport.MAX_SLOTS</c>. Those are different numbers:
+        /// MAX_SLOTS is 8 because slots <c>MAX_PLAYERS..MAX_SLOTS-1</c> are SPECTATOR seats, and spectators are
+        /// deliberately excluded from the quorum (D6) — so a collector sized to 8 would wait forever on reporters
+        /// that never report.
+        ///
+        /// <para>The 4 is therefore NOT stale-pending-a-bump: the sim's faction ceiling did go to 8, but the MP seat
+        /// ceiling was deliberately LEFT at 4 (see <c>PlayerCountPolicy</c>, "THE transport seat ceiling — the single
+        /// documented 4→8 bump point"). Raise it there and raise this with it —
+        /// <c>NoHardcodedPlayerCountTests.TwoCeilingPolicy_ConstantsAgree</c> asserts the two are EQUAL, so they
+        /// cannot silently drift.</para>
+        ///
+        /// <para>Deliberately a LITERAL rather than <c>= PlayerCountPolicy.MpSeatCeiling</c>: the same test's
+        /// <c>SourceScan_OnlyAllowlistedPlayerCountConstantsExist</c> half requires this site to be observable as an
+        /// allowlisted <c>const int … = 4</c> declaration, and aliasing the constant makes the scan miss it and fail
+        /// its vacuous-pass guard. Equality is enforced by assertion instead of by aliasing.</para>
+        /// </summary>
         public const int MaxSlots = 4;
 
         /// <summary>

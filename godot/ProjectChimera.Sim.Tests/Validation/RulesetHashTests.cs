@@ -1,4 +1,6 @@
 #nullable enable
+using System.Linq;
+using System.Reflection;
 using ProjectChimera.Core.Definitions; // RulesetHash
 using ProjectChimera.Effects;           // EffectCaps
 using Xunit;
@@ -77,6 +79,43 @@ namespace ProjectChimera.Sim.Tests.Validation
             ulong bumped = h == 0UL ? 1UL : h;
 
             Assert.NotEqual(bumped, RulesetHash.Compute());
+        }
+
+        /// <summary>
+        /// DW-324 — the COMPLETENESS guard behind <c>EffectCaps</c>'s corrected class doc ("every cap here folds into
+        /// RulesetHash"). The two tests above hand-enumerate the same 10 caps the production fold lists, so they are
+        /// blind to the real drift mode: a dev adds an 11th cap to <c>EffectCaps</c> and forgets to fold it, leaving a
+        /// structural bound that two mismatched builds can silently disagree on while the agreement hash still
+        /// matches. Reflection counts what is DECLARED; a mismatch fails here with the fix instructions.
+        ///
+        /// Deliberately a COUNT check, not an order-sensitive reflective re-fold: <c>Type.GetFields</c> makes no
+        /// declaration-order guarantee, and the byte-stream pin above already covers order. Bump the expected count
+        /// ONLY together with the <c>RulesetHash.Compute</c> fold + its <c>AlgoVersion</c>.
+        /// </summary>
+        [Fact]
+        public void EveryDeclaredEffectCap_IsFoldedIntoTheHash()
+        {
+            const int FoldedCapCount = 10; // MaxEffectDepth … MaxTotalEffectNodes, as folded by RulesetHash.Compute
+
+            string[] declared = typeof(EffectCaps)
+                .GetFields(BindingFlags.Public | BindingFlags.Static | BindingFlags.FlattenHierarchy)
+                .Where(f => f.IsLiteral && !f.IsInitOnly && f.FieldType == typeof(int))
+                .Select(f => f.Name)
+                .OrderBy(n => n, System.StringComparer.Ordinal)
+                .ToArray();
+
+            Assert.Equal(FoldedCapCount, declared.Length);
+            // Name the set too, so a RENAME (which the count alone would miss) also surfaces here.
+            Assert.Equal(
+                new[]
+                {
+                    nameof(EffectCaps.MaxEffectDepth), nameof(EffectCaps.MaxEffectFrames),
+                    nameof(EffectCaps.MaxHitsPerSearch), nameof(EffectCaps.MaxModifiersPerEntity),
+                    nameof(EffectCaps.MaxPersistentPeriods), nameof(EffectCaps.MaxSearchAreaDepth),
+                    nameof(EffectCaps.MaxSearchTargets), nameof(EffectCaps.MaxSequenceChildren),
+                    nameof(EffectCaps.MaxSpawnCount), nameof(EffectCaps.MaxTotalEffectNodes),
+                }.OrderBy(n => n, System.StringComparer.Ordinal).ToArray(),
+                declared);
         }
     }
 }

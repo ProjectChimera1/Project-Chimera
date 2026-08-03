@@ -1,5 +1,7 @@
 #nullable enable
 using System.Collections.Generic;
+using System.IO;
+using System.Runtime.CompilerServices;
 using ProjectChimera.Core;
 using ProjectChimera.Core.Definitions;
 using ProjectChimera.Core.Sim;
@@ -168,6 +170,108 @@ namespace ProjectChimera.Sim.Tests.Sim
             // And the no-args mirror keeps the conventional id everywhere (the parity/golden baseline).
             foreach (ScenarioUnit u in ScenarioApplier.BuildFallbackMirror().Units)
                 Assert.Equal("worker", u.UnitId);
+        }
+
+        // ── DW-324 doc-debt sweep: turn two COMMENT-COUPLED duplications into asserted couplings ──────────────
+
+        /// <summary>
+        /// DW-324 — <c>ScenarioLoadPhase.SetupStartPositionBridge</c>'s no-scenario branch hardcodes the flag-pole
+        /// marker positions <c>(-45,0)</c>/<c>(+45,0)</c> under a comment that says only "matching
+        /// ScenarioApplier.BuildFallbackMirror". Nothing enforced that. This does: it pins the MIRROR's slot-0/slot-1
+        /// bases to the exact literals that phase duplicates, so moving the mirror's bases without moving the markers
+        /// turns Tier-1 RED instead of silently drifting the fallback boot's markers off its own bases.
+        ///
+        /// The literals are written out deliberately (not read from the mirror on both sides) — a self-comparison
+        /// would be vacuous, which is the whole failure mode being closed.
+        /// </summary>
+        [Fact]
+        public void FallbackMirror_StartPositions_MatchTheScenarioLoadPhaseMarkerFallback()
+        {
+            ScenarioData mirror = ScenarioApplier.BuildFallbackMirror();
+
+            Assert.Equal(2, mirror.PlayerSlots.Length);          // the marker branch sizes its array to 2
+            ScenarioPlayerSlot s0 = SlotOf(mirror, 0);
+            ScenarioPlayerSlot s1 = SlotOf(mirror, 1);
+
+            Assert.Equal(-45f, s0.BaseX);
+            Assert.Equal(0f,   s0.BaseZ);
+            Assert.Equal(+45f, s1.BaseX);
+            Assert.Equal(0f,   s1.BaseZ);
+        }
+
+        /// <summary>
+        /// DW-324 (the "optional FallbackMirror-vs-alpha_map_01 agreement test" the sweep list records, closing
+        /// DW-222's accepted residual) — <c>BuildFallbackMirror</c>'s doc once claimed "keep these literal values in
+        /// sync with alpha_map_01.json" with nothing enforcing it. This asserts the agreement that IS real: the shared
+        /// economy/board seed — map bounds, win condition, per-slot start ore/crystal, the 8 resource nodes
+        /// (position/supply/rate/max-gatherers) and the 2 pre-built command centres.
+        ///
+        /// <para>DELIBERATELY NOT asserted: start positions and the unit roster. Those have legitimately diverged —
+        /// the shipped map's bases were moved in the editor to ±38.9 with non-zero Z and it gained a `mage` — so
+        /// asserting them would either be red on arrival or force a shipped map to be edited to satisfy a test. That
+        /// divergence is now stated in the mirror's own doc-comment instead of being implied to not exist.</para>
+        /// </summary>
+        [Fact]
+        public void FallbackMirror_AgreesWithAlphaMap01_OnTheSharedEconomyLiterals()
+        {
+            ScenarioData mirror = ScenarioApplier.BuildFallbackMirror();
+            ScenarioData? shipped = ScenarioSerializer.LoadFromFile(
+                Path.Combine(ScenariosDir(), "alpha_map_01.json"));
+            Assert.NotNull(shipped);
+
+            Assert.Equal(shipped!.MapBounds,    mirror.MapBounds);
+            Assert.Equal(shipped.WinCondition,  mirror.WinCondition);
+
+            // Per-slot starting economy (slot-keyed, not index-keyed — slot order is not a guarantee).
+            for (int slot = 0; slot <= 1; slot++)
+            {
+                ScenarioPlayerSlot m = SlotOf(mirror, slot);
+                ScenarioPlayerSlot s = SlotOf(shipped, slot);
+                Assert.Equal(s.StartOre,     m.StartOre);
+                Assert.Equal(s.StartCrystal, m.StartCrystal);
+            }
+
+            // The 8-node resource board, in order.
+            Assert.Equal(shipped.ResourceNodes.Length, mirror.ResourceNodes.Length);
+            for (int i = 0; i < mirror.ResourceNodes.Length; i++)
+            {
+                ScenarioResourceNode m = mirror.ResourceNodes[i];
+                ScenarioResourceNode s = shipped.ResourceNodes[i];
+                Assert.Equal(s.X, m.X);
+                Assert.Equal(s.Z, m.Z);
+                Assert.Equal(s.Supply, m.Supply);
+                Assert.Equal(s.Rate, m.Rate);
+                Assert.Equal(s.MaxGatherers, m.MaxGatherers);
+            }
+
+            // The 2 pre-built command centres.
+            Assert.Equal(shipped.Buildings.Length, mirror.Buildings.Length);
+            for (int i = 0; i < mirror.Buildings.Length; i++)
+            {
+                ScenarioBuilding m = mirror.Buildings[i];
+                ScenarioBuilding s = shipped.Buildings[i];
+                Assert.Equal(s.Type, m.Type);
+                Assert.Equal(s.Slot, m.Slot);
+                Assert.Equal(s.X, m.X);
+                Assert.Equal(s.Z, m.Z);
+                Assert.Equal(s.PreBuilt, m.PreBuilt);
+            }
+        }
+
+        /// <summary>The player slot declaring <paramref name="slot"/> (slot-keyed lookup, never array position).</summary>
+        private static ScenarioPlayerSlot SlotOf(ScenarioData s, int slot)
+        {
+            foreach (ScenarioPlayerSlot p in s.PlayerSlots)
+                if (p.Slot == slot) return p;
+            Assert.Fail($"scenario '{s.Id}' declares no player slot {slot}.");
+            return null!; // unreachable
+        }
+
+        // <repo>/godot/ProjectChimera.Sim.Tests/Sim/THIS.cs → <repo>/godot/resources/data/scenarios
+        private static string ScenariosDir([CallerFilePath] string thisFile = "")
+        {
+            string godot = Path.GetDirectoryName(Path.GetDirectoryName(Path.GetDirectoryName(thisFile)!)!)!;
+            return Path.Combine(godot, "resources", "data", "scenarios");
         }
 
         /// <summary>A minimal Worker-category unit def with a custom id (helper for the category-resolution pin).</summary>

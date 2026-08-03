@@ -7,9 +7,20 @@ namespace ProjectChimera.Effects
     /// analyzer's CHM0004 (magic-cap) advisory stays clean and so these are the single set folded, in file order,
     /// into the ruleset hash by <c>RulesetHash</c> (Story 9.4).
     ///
-    /// Two of these (<see cref="MaxSpawnCount"/>, <see cref="MaxPersistentPeriods"/>) are reserved for later
-    /// stories that add the corresponding leaves; they are named now so those stories never introduce a bare
-    /// literal cap.
+    /// <para><b>These caps ARE the ruleset fingerprint (Story 9.4 — no longer "later").</b>
+    /// <c>Core.Definitions.RulesetHash.Compute()</c> folds EVERY cap below, in FILE ORDER, into the FNV-64 that
+    /// <c>MatchAgreementHash</c> carries through the handshake — so two clients that disagree on any cap are
+    /// handshake-rejected instead of desyncing in-sim. Consequences for anyone editing this file:
+    /// changing a cap's VALUE moves the agreement hash (a wire-visible change); ADDING a cap requires folding it
+    /// into <c>RulesetHash</c> and bumping its <c>AlgoVersion</c>. <c>RulesetHashTests</c> pins both — it asserts
+    /// the fold against an independently hand-rolled byte stream AND that the number of caps declared here equals
+    /// the number folded, so a new-but-unfolded cap fails Tier-1 rather than shipping silently.</para>
+    ///
+    /// <para>Historical note: <see cref="MaxSpawnCount"/> and <see cref="MaxPersistentPeriods"/> were originally
+    /// named-but-unused placeholders. Both now have real enforcers — <c>MaxSpawnCount</c> bounds
+    /// <c>spawn_unit.count</c> in <c>ScenarioValidator</c>/<c>DslLoopGate</c> and clamps it at runtime in
+    /// <c>ScenarioDirector</c>; <c>MaxPersistentPeriods</c> caps a <c>PersistentEffect</c>'s scheduled pulses in
+    /// <c>ModifierStore</c>. Nothing here is "reserved" any more.</para>
     /// </summary>
     public static class EffectCaps
     {
@@ -76,15 +87,15 @@ namespace ProjectChimera.Effects
         /// fan-out per level (up to <see cref="MaxSearchTargets"/>^depth ≈ 64⁸ leaf executions — the hang the 2.1
         /// review surfaced). Bounding SearchArea nesting to 2 caps a single cast's area-fan-out at
         /// <see cref="MaxSearchTargets"/>² = 4096 executions (chain-lightning fits; 3-deep area cascades are
-        /// rejected). Enforced by <c>AbilityValidator</c>; folded into the ruleset hash by <c>RulesetHash</c> (Story 9.4).
+        /// rejected). Enforced by <c>AbilityValidator</c>; folded into <c>RulesetHash</c> (Story 9.4).
         /// </summary>
         public const int MaxSearchAreaDepth = 2;
 
         /// <summary>
         /// Maximum total node count in one ability's effect graph (Story 2.3, AC4) — the absolute graph-size
         /// ceiling that, together with <see cref="MaxSearchAreaDepth"/>, bounds the worst-case work of a single
-        /// cast. Enforced by <c>AbilityValidator</c>'s iterative node walk; folded into the ruleset hash by
-        /// <c>RulesetHash</c> (Story 9.4).
+        /// cast. Enforced by <c>AbilityValidator</c>'s iterative node walk; folded into <c>RulesetHash</c>
+        /// (Story 9.4).
         /// </summary>
         public const int MaxTotalEffectNodes = 64;
     }
