@@ -11,14 +11,31 @@ namespace ProjectChimera.Sim.Tests.Golden
     /// carry a full 8-player match with no <c>IndexOutOfRangeException</c>. Constructs the checksum with
     /// <c>new FactionRegistry(8)</c> so every per-faction store fold (Ore/Research/WinState/Alliance) reads
     /// slots 1..8 and the <see cref="ScenarioDirector"/> threshold poll spans slots 0..7. Every active faction
-    /// owns ≥1 unit AND a DISTINCT starting ore balance so slot 8 is genuinely written and hashed; P1's
-    /// gathering worker keeps the sequence dynamic. Two-run in-process byte-equality only (no committed golden) —
-    /// see <see cref="MultiFactionExpansionTests"/>.
+    /// owns ≥1 unit, and every faction EXCEPT Player2 holds a DISTINCT starting ore balance so slot 8 is
+    /// genuinely written and hashed; P1's gathering worker keeps the sequence dynamic.
+    ///
+    /// DW-387: this scenario is now ALSO pinned by a committed cross-process golden
+    /// (<c>golden-multifaction8.golden.txt</c>, see <see cref="MultiFactionExpansionTests"/>) that both legs of
+    /// the Story 1.10c Windows↔Linux gate verify. That imposes the same determinism fence as the other
+    /// cross-platform goldens (GoldenScenario / MultiFactionScenario): Player2 — the faction
+    /// <see cref="ProjectChimera.AI.AiOpponentSystem"/> plays — is STARVED (0 ore, no base, 3 fodder &lt; the
+    /// attack threshold of 5), so the AI's float utility scorer stays inert and the recorded sequence is
+    /// integer/Fixed-only. Giving P2 ore here would let the float scorer build (ScoreBuildBarracks fires at
+    /// ≥100 ore) and would silently turn this into a same-machine-only golden like ai-active.
     /// </summary>
     public static class MultiFaction8Scenario
     {
         /// <summary>300 ticks = 10s at 30 tps, ChecksumInterval = 1 → 300 samples.</summary>
         public const int DefaultTicks = 300;
+
+        /// <summary>
+        /// Entity id of the Player8 inert unit — the highest newly-active slot's entity, used by the DW-387
+        /// perturbation test to prove a slots-5-8 divergence is detected AND located against the committed
+        /// golden. Created 11th in <see cref="PopulateScenario"/> (after id 0..9), so its id is
+        /// deterministically 10; <see cref="Build"/> asserts the invariant so an accidental reordering fails
+        /// loudly instead of perturbing the wrong entity (mirrors <see cref="MultiFactionScenario.PerturbTargetId"/>).
+        /// </summary>
+        public const int Player8UnitId = 10;
 
         /// <summary>Construct a fresh, fully-wired 8-faction simulation. No static/shared mutable state.</summary>
         public static GoldenHarness Build()
@@ -73,7 +90,12 @@ namespace ProjectChimera.Sim.Tests.Golden
             CreateInert(world, Faction.Player5, new FixedVec3(Fixed.FromInt(-50), Fixed.Zero, Fixed.FromInt(50)));
             CreateInert(world, Faction.Player6, new FixedVec3(Fixed.FromInt(50), Fixed.Zero, Fixed.FromInt(-50)));
             CreateInert(world, Faction.Player7, new FixedVec3(Fixed.FromInt(-50), Fixed.Zero, Fixed.FromInt(-50)));
-            CreateInert(world, Faction.Player8, new FixedVec3(Fixed.FromInt(60), Fixed.Zero, Fixed.FromInt(60)));
+            int p8 = CreateInert(world, Faction.Player8, new FixedVec3(Fixed.FromInt(60), Fixed.Zero, Fixed.FromInt(60)));
+            if (p8 != Player8UnitId)
+                throw new System.InvalidOperationException(
+                    $"MultiFaction8Scenario invariant broken: the Player8 inert unit id was {p8}, expected " +
+                    $"{Player8UnitId}. It MUST keep a stable id so the DW-387 perturbation test targets the " +
+                    $"slot-8 entity, not an arbitrary one.");
 
             // ── P1 resource node + deposit base. ──
             nodes.Create(new FixedVec3(Fixed.FromInt(-12), Fixed.Zero, Fixed.FromInt(8)),
@@ -83,10 +105,14 @@ namespace ProjectChimera.Sim.Tests.Golden
             buildings.ConstructionTimer[cc] = Fixed.Zero;
             resources.FactionBase[(int)Faction.Player1] = new FixedVec3(Fixed.FromInt(-14), Fixed.Zero, Fixed.Zero);
 
-            // ── DISTINCT starting ore for EVERY active faction (Player1..Player8) — writes slot 8, the highest
-            //    newly-backed index, proving no OOB against the resized [9] arrays. ──
+            // ── DISTINCT starting ore for every active faction EXCEPT Player2 — writes slot 8, the highest
+            //    newly-backed index, proving no OOB against the resized [9] arrays. Player2 stays at 0 ON
+            //    PURPOSE (DW-387): P2 is the AI faction, and the cross-platform-golden fence requires the AI
+            //    starved (0 ore + no production building + 3 fodder < the attack threshold of 5) so its float
+            //    utility scorer never acts — same recipe as GoldenScenario / MultiFactionScenario. 120 ore here
+            //    previously let ScoreBuildBarracks (cost 100) fire on tick 1, folding a float-scored decision
+            //    into the sequence, which is exactly what the committed cross-process golden must not encode. ──
             resources.AddOre(Faction.Player1, Fixed.FromInt(200));
-            resources.AddOre(Faction.Player2, Fixed.FromInt(120));
             resources.AddOre(Faction.Player3, Fixed.FromInt(150));
             resources.AddOre(Faction.Player4, Fixed.FromInt(75));
             resources.AddOre(Faction.Player5, Fixed.FromInt(90));
@@ -107,10 +133,11 @@ namespace ProjectChimera.Sim.Tests.Golden
             world.ArmorTypeOf[u]  = ArmorType.Medium;
         }
 
-        /// <summary>One inert-by-construction unit (0 attack, no gather/move flag → perfectly stable).</summary>
-        private static void CreateInert(EntityWorld world, Faction faction, FixedVec3 pos)
+        /// <summary>One inert-by-construction unit (0 attack, no gather/move flag → perfectly stable).
+        /// Returns the created entity id so <see cref="PopulateScenario"/> can assert the P8 id invariant.</summary>
+        private static int CreateInert(EntityWorld world, Faction faction, FixedVec3 pos)
         {
-            world.Create(pos, faction, Fixed.FromInt(50), Fixed.FromInt(3));
+            return world.Create(pos, faction, Fixed.FromInt(50), Fixed.FromInt(3));
         }
     }
 }
