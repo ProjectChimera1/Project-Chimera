@@ -40,7 +40,8 @@ namespace ProjectChimera.Core.Definitions
     ///   • array-action rules (declared Array target; array_push/array_set REQUIRE an element-typed value-in
     ///     expression edge; array_set REQUIRES an Int index-in edge; array_clear takes neither);
     ///   • loop nesting ≤ <see cref="DslBounds.MaxLoopNesting"/>; static worst-case cost per trigger
-    ///     (action = 1, expression = op count, run_effect = embedded node count, for_each = 1 + cap × body,
+    ///     (action = 1, expression = op count, run_effect = embedded node count with SearchArea child subtrees
+    ///     weighted by <c>EffectCaps.MaxSearchTargets</c> — DW-347, for_each = 1 + cap × body,
     ///     branch = 1 + cond + max(then, else), for_each_batched = 1 + batch × body) ≤
     ///     <see cref="DslBounds.MaxDslOpsPerTrigger"/>.
     ///
@@ -758,23 +759,81 @@ namespace ProjectChimera.Core.Definitions
         private static long Sat(long v) => v < 0 || v > int.MaxValue ? int.MaxValue : v;
 
         /// <summary>
-        /// Count the nodes of an embedded run_effect subgraph — the static cost the executor pays per run_effect
-        /// (mirrors the AbilityValidator walk shape: Sequence children, SearchArea child, Persistent phases,
-        /// ApplyModifier period). Bounded by EffectBounds/EffectCaps at its own gate, so the walk always ends.
+        /// The static worst-case op cost of an embedded run_effect subgraph — the fuel the executor charges per
+        /// run_effect and the value the cap-product cost check consumes (mirrors the AbilityValidator walk shape:
+        /// Sequence children, SearchArea child, Persistent phases, ApplyModifier period).
+        ///
+        /// <para>DW-347 — a <see cref="SearchAreaEffect"/> fans its child out ONCE PER MATCHED TARGET (up to
+        /// <c>EffectCaps.MaxSearchTargets</c>), so its child SUBTREE is WEIGHTED by that worst-case fan-out —
+        /// multiplicatively for nested searches — in BOTH the static model and the runtime charge (they are this
+        /// ONE function, so they cannot drift). The pre-347 flat node count undercounted a search child by up to
+        /// 64×, weakest exactly inside entity loops (iterations × search targets). Worst-case static weighting
+        /// (never the live match count) keeps the charge deterministic and load-computable.</para>
+        ///
+        /// <para>Bounded by EffectBounds/EffectCaps at its own gate, so the walk always ends; the VISIT cap
+        /// (<c>EffectCaps.MaxTotalEffectNodes</c> node pops — returning the weighted total accumulated so far,
+        /// which for a weight-free graph is byte-identical to the pre-347 count clamp) and the saturating long
+        /// accumulator fail closed on hostile graphs handed directly to a load gate.</para>
         /// </summary>
         public static int CountEffectNodes(EffectNode? root)
         {
             if (root is null) return 0;
-            int total = 0;
+            long total = 0;
+            int visited = 0;
+            var stack = new Stack<(EffectNode Node, long Mult)>();
+            stack.Push((root, 1L));
+            while (stack.Count > 0)
+            {
+                (EffectNode n, long mult) = stack.Pop();
+                visited++;
+                total += mult;
+                if (visited >= EffectCaps.MaxTotalEffectNodes) return (int)Sat(total);
+                switch (n)
+                {
+                    case SequenceEffect seq:
+                        foreach (EffectNode c in seq.Children)
+                            if (c is not null) stack.Push((c, mult));
+                        break;
+                    case SearchAreaEffect sa:
+                        // DW-347: the child subtree runs up to MaxSearchTargets times per search execution.
+                        if (sa.Child is not null) stack.Push((sa.Child, Sat(mult * EffectCaps.MaxSearchTargets)));
+                        break;
+                    case PersistentEffect p:
+                        if (p.InitialEffect is not null) stack.Push((p.InitialEffect, mult));
+                        if (p.PeriodEffect is not null) stack.Push((p.PeriodEffect, mult));
+                        if (p.ExpireEffect is not null) stack.Push((p.ExpireEffect, mult));
+                        break;
+                    case ApplyModifierEffect am:
+                        if (am.Modifier?.PeriodEffect is not null) stack.Push((am.Modifier.PeriodEffect, mult));
+                        break;
+                }
+            }
+            return (int)Sat(total);
+        }
+
+        /// <summary>
+        /// DW-340 — true when the embedded run_effect subgraph contains a node that REQUIRES a
+        /// <c>ModifierStore</c> at execution time (<see cref="PersistentEffect"/> / <see cref="ApplyModifierEffect"/>
+        /// — <c>EffectExecutor</c> throws <c>NotSupportedException</c> on either when the context has no store).
+        /// <c>ScenarioDirector.LoadScenario</c> consults this to fail CLOSED at load (a located reject) when no
+        /// store was wired via <c>SetEffectRuntime</c>, instead of crashing mid-tick. Iterative walk, the
+        /// <see cref="CountEffectNodes"/> shape; an over-cap hostile graph classifies as requiring (fail-closed).
+        /// </summary>
+        public static bool EffectRequiresModifierStore(EffectNode? root)
+        {
+            if (root is null) return false;
+            int visited = 0;
             var stack = new Stack<EffectNode>();
             stack.Push(root);
             while (stack.Count > 0)
             {
                 EffectNode n = stack.Pop();
-                total++;
-                if (total >= EffectCaps.MaxTotalEffectNodes) return EffectCaps.MaxTotalEffectNodes;
+                if (++visited > EffectCaps.MaxTotalEffectNodes) return true; // hostile over-cap graph — fail closed
                 switch (n)
                 {
+                    case PersistentEffect:
+                    case ApplyModifierEffect:
+                        return true;
                     case SequenceEffect seq:
                         foreach (EffectNode c in seq.Children)
                             if (c is not null) stack.Push(c);
@@ -782,17 +841,46 @@ namespace ProjectChimera.Core.Definitions
                     case SearchAreaEffect sa:
                         if (sa.Child is not null) stack.Push(sa.Child);
                         break;
-                    case PersistentEffect p:
-                        if (p.InitialEffect is not null) stack.Push(p.InitialEffect);
-                        if (p.PeriodEffect is not null) stack.Push(p.PeriodEffect);
-                        if (p.ExpireEffect is not null) stack.Push(p.ExpireEffect);
-                        break;
-                    case ApplyModifierEffect am:
-                        if (am.Modifier?.PeriodEffect is not null) stack.Push(am.Modifier.PeriodEffect);
-                        break;
                 }
             }
-            return total;
+            return false;
+        }
+
+        /// <summary>
+        /// DW-339/DW-352 — true when EXECUTING the embedded run_effect subgraph can mutate world state the
+        /// run_effect <c>SpatialHash</c> captures (the alive-entity population: a damage / hp-delta leaf can kill,
+        /// and a persistent/modifier install applies an immediate effect that can). The director rebuilds its
+        /// shared spatial index lazily ONCE per tick and re-marks it dirty after such an effect ran — so mid-loop
+        /// kills stay visible to later iterations (the DW-352 constraint) while a run of provably non-mutating
+        /// effects (heal-only chains) shares a single rebuild. CONSERVATIVE by design: any leaf kind not proven
+        /// harmless classifies as mutating — an extra rebuild is never wrong, a skipped one can be.
+        /// </summary>
+        public static bool EffectCanMutateWorld(EffectNode? root)
+        {
+            if (root is null) return false;
+            int visited = 0;
+            var stack = new Stack<EffectNode>();
+            stack.Push(root);
+            while (stack.Count > 0)
+            {
+                EffectNode n = stack.Pop();
+                if (++visited > EffectCaps.MaxTotalEffectNodes) return true; // hostile over-cap graph — fail closed
+                switch (n)
+                {
+                    case HealEffect:
+                        break; // cannot change the alive set or any position — provably hash-inert
+                    case SequenceEffect seq:
+                        foreach (EffectNode c in seq.Children)
+                            if (c is not null) stack.Push(c);
+                        break;
+                    case SearchAreaEffect sa:
+                        if (sa.Child is not null) stack.Push(sa.Child);
+                        break;
+                    default:
+                        return true; // Damage / DirectHpDelta / Persistent / ApplyModifier / future leaves
+                }
+            }
+            return false;
         }
     }
 }

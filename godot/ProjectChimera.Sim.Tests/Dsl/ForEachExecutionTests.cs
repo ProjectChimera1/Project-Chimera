@@ -306,8 +306,12 @@ namespace ProjectChimera.Sim.Tests.Dsl
             int b = world.Create(new FixedVec3(Fixed.FromInt(2),   Fixed.Zero, Fixed.Zero), Faction.Player1, Fixed.FromInt(5),   Fixed.One);
             int c = world.Create(new FixedVec3(Fixed.FromInt(4),   Fixed.Zero, Fixed.Zero), Faction.Player1, Fixed.FromInt(100), Fixed.One);
 
+            // up_to 32 (was 64): DW-347 weights the SearchArea child by MaxSearchTargets, so the body now
+            // statically costs 4 + 65 = 69 ops — at up_to 64 the trigger (1 + 64×69 = 4417) exceeds
+            // MaxDslOpsPerTrigger and rejects at load. Only 3 units exist, so the iteration set (and every
+            // assertion below — this test is about the mid-loop-death anchor) is unchanged at 32.
             TriggerGraph g = TriggerGraph.BuildForEachTrigger("mid-death", "match_start", "faction_units",
-                arrayName: null, faction: 0, regionId: null, upTo: 64, loopVar: null,
+                arrayName: null, faction: 0, regionId: null, upTo: 32, loopVar: null,
                 bodyActions: new NodeBase[]
                 {
                     new ActionNode { Kind = "set_variable", Variable = "sum" }, // id 3 (helper layout)
