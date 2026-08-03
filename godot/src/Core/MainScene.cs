@@ -1400,27 +1400,25 @@ namespace ProjectChimera.Core
                 // RevealAll spectator view with a non-terminal defeat banner and KEEPS ticking; only when the match is
                 // FULLY resolved (a team won, or the no-victor form) does ShowGameOver fire once. Faction.Player1==1
                 // aligns with the 1-based overlay arg (no adapter math). The ScenarioDirector OnVictory escape hatch
-                // still works too.
-                int winnerFaction = _host.WinState.WinnerFaction();
-                if (winnerFaction != 0)
+                // still works too. DW-190: the decision itself (winner → team rep / no-victor gate on IsFullyResolved,
+                // NEVER any-latched IsResolved / local-elimination flip) lives in the Godot-free, Tier-1-tested
+                // GameOverPresentation.DecideOutcome — this branch only maps the decision onto Godot calls.
+                // LocalFaction is Player1 offline (LockstepManager default).
+                GameOverPresentation.OutcomeDecision outcome = GameOverPresentation.DecideOutcome(
+                    _host.WinState, _host.WinCon.IsFullyResolved(), _ctx.Lockstep.LocalFaction, _localEliminated);
+                switch (outcome.Kind)
                 {
-                    ShowGameOver(winnerFaction);
-                }
-                else if (_host.WinCon.IsFullyResolved())
-                {
-                    // Every active faction is latched but no team WON (a lone team wiped itself out): the no-victor
-                    // match-over form. 0 = "no victor" → ShowGameOver renders its defeat/match-over form.
-                    ShowGameOver(0);
-                }
-                else
-                {
-                    // Match continues. If the LOCAL player has latched VERDICT_LOST, switch to the spectator reveal +
-                    // a non-terminal defeat banner and keep watching until the match fully resolves. LocalFaction is
-                    // Player1 offline (LockstepManager default).
-                    Faction local = _ctx.Lockstep.LocalFaction;
-                    if (!_localEliminated && local != Faction.Neutral
-                        && _host.WinState.Verdict[(int)local] == WinStateStore.VERDICT_LOST)
+                    case GameOverPresentation.OutcomeKind.GameOver:
+                        // WinnerRep > 0 = the 1-based team-representative winner; 0 = every active faction latched
+                        // with no team WON (a lone team wiped itself out) → the no-victor / match-over defeat form.
+                        ShowGameOver(outcome.WinnerRep);
+                        break;
+                    case GameOverPresentation.OutcomeKind.EliminateLocal:
+                        // Match continues but the LOCAL player latched VERDICT_LOST: switch to the spectator reveal +
+                        // a non-terminal defeat banner and keep watching until the match fully resolves.
                         OnLocalPlayerEliminated();
+                        break;
+                    // OutcomeKind.Continue: match still running, no local flip needed this frame.
                 }
             }
             else if (_ctx.GameState.Mode == GameMode.Edit)
@@ -2055,29 +2053,21 @@ namespace ProjectChimera.Core
             // canonical color), correct even on a non-contiguous active set.
             GameOverSummary.GameOverRow[] rows = GameOverSummary.Build(_matchStats, _host.WinState);
 
-            // The winning factions (a team victory latches WON for every ally). Drives the sub-heading phrasing.
-            var wonFactions = new System.Collections.Generic.List<GameOverSummary.GameOverRow>();
-            foreach (GameOverSummary.GameOverRow r in rows) if (r.Won) wonFactions.Add(r);
-
-            // Story 9.15 — VICTORY iff the LOCAL player's OWN faction latched WON. winnerPlayer is the team REPRESENTATIVE
-            // (lowest WON slot), NOT the local seat — keying VICTORY off it would show DEFEAT to a winning ally on a higher
-            // slot while that same player's stat row reads WON (the 2v2 contradiction). Resolve the local faction via the
+            // Story 9.15 / DW-448 — the HEADLINE decision (VICTORY iff the LOCAL player's OWN faction latched WON —
+            // winnerPlayer is the team REPRESENTATIVE (lowest WON slot), NOT the local seat, so keying VICTORY off it
+            // would show DEFEAT to a winning ally on a higher slot while that same player's stat row reads WON (the
+            // 2v2 contradiction) — plus the "Team Victory — …" / "Player N Wins!" / "No Victor" sub-heading phrasing)
+            // is Godot-free and Tier-1-tested in GameOverPresentation.BuildHeadline. Resolve the local faction via the
             // policy-resolved, null-guarded accessor (raw LocalFaction is stale offline-after-online and NREs when
             // Lockstep is null, since it is declared null!).
             var localFaction = _ctx.Lockstep?.EffectiveLocalFaction ?? Faction.Player1;
-            bool localWin = _host.WinState.Verdict[(int)localFaction] == WinStateStore.VERDICT_WON;
-
-            // Sub-heading phrasing: a TEAM win (>1 faction latched WON) is an ALLIED victory, not one player's; single
-            // winner keeps "Player N Wins!"; winnerPlayer 0 = "no victor" (LOST-only outcome — DEFEAT already applies).
-            string winnerLine = winnerPlayer <= 0 ? "No Victor — Match Over"
-                              : wonFactions.Count > 1
-                                  ? $"Team Victory — {string.Join(", ", wonFactions.ConvertAll(w => w.Name))} Win!"
-                                  : $"Player {winnerPlayer} Wins!";
+            GameOverPresentation.Headline headline =
+                GameOverPresentation.BuildHeadline(rows, _host.WinState, localFaction, winnerPlayer);
 
             // Story 11.2 — the kit-styled score screen replaces the raw-node body. Duration is the DETERMINISTIC sim
             // tick count (MatchTicks/30), not a wall-clock read, so it is byte-consistent across peers/replays.
             int matchTicks = (int)_host.WinState.MatchTicks;
-            _ctx.ScoreScreen.Show(rows, localWin, winnerLine, matchTicks, savedReplayPath);
+            _ctx.ScoreScreen.Show(rows, headline.LocalWin, headline.WinnerLine, matchTicks, savedReplayPath);
 
             int totalSec = matchTicks / 30;
             var summaryLine = new System.Text.StringBuilder();
