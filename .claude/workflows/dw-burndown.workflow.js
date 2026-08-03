@@ -19,11 +19,11 @@ export const meta = {
 // swap and every suite run slows more than the extra parallelism buys. Workflow's own cap is
 // min(16, cores-2) and there is no knob to lower it, so concurrency is bounded HERE by chunking.
 const CHUNK = args?.chunkSize ?? 4
-const WORKLIST = args?.worklistPath ?? 'D:/Projects/Project_Chimera/.bmad-loop/workflow-worklist.json'
+const WORKLIST = args?.worklistPath ?? 'D:/Projects/Project_Chimera/.claude/workflows/dw-worklist.json'
 const NAMES = args?.bundleNames ?? []
 
 if (!NAMES.length) {
-  log('No bundleNames passed. Read .bmad-loop/workflow-worklist.json and pass a subset via args.')
+  log('No bundleNames passed. Read .claude/workflows/dw-worklist.json and pass a subset via args.')
   return { error: 'no bundleNames in args' }
 }
 
