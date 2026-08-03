@@ -1,0 +1,969 @@
+{
+  "source_triage": "D:\\Projects\\Project_Chimera\\.bmad-loop\\runs\\20260803-002039-5312\\triage.json",
+  "generated_for": "workflow track (Godot-free only)",
+  "godot_free_count": 86,
+  "godot_coupled_count": 29,
+  "coupled_bundles_left_for_bmad_loop": [
+    "ability-composer-fidelity",
+    "alliance-awareness-sim",
+    "boot-fail-closed-slot-faction",
+    "building-createfromdefinition-mapper",
+    "card-editor-history-reconcile",
+    "command-card-producer-surfaces",
+    "command-card-research-surfaces",
+    "content-package-import-roundtrip",
+    "editor-undo-granularity",
+    "elevation-grid-rebake-on-play",
+    "entityplacer-bounds-capacity-atomicity",
+    "faction-definer-wizard-fixes",
+    "faction-getbuilding-null-guard",
+    "faction-load-fail-closed",
+    "llmservice-lifecycle-and-draft-cleanup",
+    "map-package-import-one-path",
+    "map-size-camera-minimap",
+    "mapwritegate-slot-faction-defs",
+    "match-seed-plumbing",
+    "onboarding-panel-fixes",
+    "pathability-tool-shared-cellmap",
+    "resource-node-authoring-fields",
+    "scenecontext-producer-consumer-guards",
+    "settings-resolution-dropdown-gating",
+    "settings-serializer-godot-free",
+    "techtree-panel-lifecycle-and-undo",
+    "unit-card-clone-completeness",
+    "unit-card-ultimate-picker-reconcile",
+    "widgetformat-tests"
+  ],
+  "waves": [
+    {
+      "wave": 0,
+      "bundles": [
+        {
+          "name": "tier1-determinism-test-hardening",
+          "dw_ids": [
+            "DW-218",
+            "DW-221",
+            "DW-224",
+            "DW-226"
+          ],
+          "intent": "Remove null-forgiving reflection from TimerDeterminismTests (218), add a worker-cast matter_infusion move-speed test (221), a replay test through a world.Rng-drawing system (224), and pin ulong.MaxValue as a SimRng stream (226).",
+          "files": [
+            "SimRngChecksumReplayTests.cs",
+            "SimRngTests.cs",
+            "TimerDeterminismTests.cs",
+            "WorkerCastTests.cs"
+          ]
+        },
+        {
+          "name": "modifier-period-authoring-warnings",
+          "dw_ids": [
+            "DW-270",
+            "DW-271",
+            "DW-278"
+          ],
+          "intent": "Fix the DurationTicks==0 doc/code mismatch (270) and the 256-pulse truncation-while-active (271), and add the ability-validator WARNING channel for authorable-but-inert content (278).",
+          "files": [
+            "AbilityValidationResult.cs",
+            "AbilityValidator.cs",
+            "Modifier.cs",
+            "ModifierStore.cs"
+          ]
+        },
+        {
+          "name": "mesh-path-resolution-and-validation",
+          "dw_ids": [
+            "DW-102",
+            "DW-104",
+            "DW-427"
+          ],
+          "intent": "Fix the aviary mesh_path targets (102), add a mesh_path disk-existence content validator (104), and log the registry miss (available ids) on an unresolved MeshPath (427).",
+          "files": [
+            "FactionValidator.cs",
+            "alpha_faction.json",
+            "beta_faction.json"
+          ]
+        },
+        {
+          "name": "scenario-validator-spawn-and-bounds",
+          "dw_ids": [
+            "DW-148",
+            "DW-158"
+          ],
+          "intent": "Add a load-time spawn-in-blocked-cell guard against the resolved union pathability grid (148) and reject MapBounds beyond the +/-128 flow-grid extent, not just the 16.16 range (158).",
+          "files": [
+            "MovementSystem.cs",
+            "PathabilityGrid.cs",
+            "ScenarioValidator.cs"
+          ]
+        },
+        {
+          "name": "minority-halt-quorum-rebase",
+          "dw_ids": [
+            "DW-237",
+            "DW-239"
+          ],
+          "intent": "Keep the surviving majority's desync guard alive when an N>=3 minority self-halts: drop the alerted reporter and rebase quorum, and re-tally without the halted minority (per the recorded decision).",
+          "files": [
+            "LockstepManager.cs",
+            "ServerChecksumCollector.cs",
+            "ServerHost.cs"
+          ]
+        },
+        {
+          "name": "searcharea-target-selection-correctness",
+          "dw_ids": [
+            "DW-249",
+            "DW-250",
+            "DW-252"
+          ],
+          "intent": "SearchArea: global lowest-ID over-cap selection (249), apply the faction filter before truncating the hit buffer (250), and cover the lethal and 64-wide fan-out paths (252).",
+          "files": [
+            "EffectExecutorBoundsTests.cs",
+            "SearchAreaEffect.cs",
+            "SpatialHash.cs"
+          ]
+        },
+        {
+          "name": "housekeeping-docs-normalization",
+          "dw_ids": [
+            "DW-46",
+            "DW-105",
+            "DW-324"
+          ],
+          "intent": "Doc-debt sweep: fix the stale UseItem/DropItem dispatch-order comment (46), add a dated FMA air-unit design addendum (105), and clear the enumerated stale-comment/doc-debt list (324).",
+          "files": [
+            "EntityWorld.cs",
+            "fma-faction-design.md"
+          ]
+        },
+        {
+          "name": "gathering-worker-lifecycle",
+          "dw_ids": [
+            "DW-80",
+            "DW-207"
+          ],
+          "intent": "GatheringSystem: re-idle-and-re-seek a streaming worker whose requires_structure gate closes permanently (80); release the node and decrement AssignedGatherers on worker death or build-interrupt (207).",
+          "files": [
+            "BuildingSystem.cs",
+            "GatheringSystem.cs"
+          ]
+        },
+        {
+          "name": "ai-attack-threshold-symbolic-refs",
+          "dw_ids": [
+            "DW-125"
+          ],
+          "intent": "Replace AsymmetryPlaytestValidationTests' hand-copied AI attack-threshold and base-position constants with symbolic references to AiOpponentSystem.",
+          "files": [
+            "AiOpponentSystem.cs",
+            "AsymmetryPlaytestValidationTests.cs"
+          ]
+        },
+        {
+          "name": "scenario-serializer-contentjson",
+          "dw_ids": [
+            "DW-274"
+          ],
+          "intent": "Migrate ScenarioSerializer and FactionDefinition to the shared ContentJson.Options.",
+          "files": [
+            "FactionDefinition.cs",
+            "ScenarioSerializer.cs"
+          ]
+        },
+        {
+          "name": "unit-def-validator-strict-bounds",
+          "dw_ids": [
+            "DW-380",
+            "DW-454"
+          ],
+          "intent": "Add strictly-positive lower bounds for degenerate-at-zero stats (380) and a Windows reserved-basename reject to the id charset check (454).",
+          "files": [
+            "ItemDefinitionValidator.cs",
+            "UnitDefinitionValidator.cs"
+          ]
+        },
+        {
+          "name": "matchchat-and-trigger-player-5-8",
+          "dw_ids": [
+            "DW-384",
+            "DW-385"
+          ],
+          "intent": "Extend the chat overlay Player->name/color mapping to Player5-8 (385) and fix the TriggerEditorPanel custom-event raiser-slot Player4 cast (384).",
+          "files": [
+            "MatchChatOverlay.cs",
+            "TriggerEditorPanel.cs"
+          ]
+        },
+        {
+          "name": "signature-mechanic-test-hardening",
+          "dw_ids": [
+            "DW-107",
+            "DW-108"
+          ],
+          "intent": "Harden SignatureMechanicRealContentTests: assert a registry.Count minimum against silent-skip-on-invalid (107) and replace the fragile fixed-magnitude pre-damage (108).",
+          "files": [
+            "SignatureMechanicRealContentTests.cs"
+          ]
+        },
+        {
+          "name": "elimination-headline-godot-free",
+          "dw_ids": [
+            "DW-190",
+            "DW-448"
+          ],
+          "intent": "Extract the per-player-elimination (190) and local-win/team-victory headline (448) presentation decisions into Godot-free helpers with assertions.",
+          "files": [
+            "GameOverSummaryTests.cs"
+          ]
+        },
+        {
+          "name": "loader-duplicate-key-fail-closed",
+          "dw_ids": [
+            "DW-227"
+          ],
+          "intent": "Make DamageTable.FromJson reject duplicate JSON keys instead of silently last-wins.",
+          "files": [
+            "DamageTable.cs"
+          ]
+        },
+        {
+          "name": "lockstep-wiring-fail-loud",
+          "dw_ids": [
+            "DW-304"
+          ],
+          "intent": "Make OrderApplier building commands fail loud (assert/log) instead of silently no-oping when BuildingSystem is null.",
+          "files": [
+            "NetworkCommand.cs"
+          ]
+        },
+        {
+          "name": "godot-free-seam-test-extraction",
+          "dw_ids": [
+            "DW-333",
+            "DW-360",
+            "DW-394"
+          ],
+          "intent": "Extract Godot-coupled seams into Godot-free helpers with tests: ScenarioDelegateBinder fan-out offset arithmetic (333), the LobbyUi Ready-packet handler routing (360), and the DedicatedServer delegation seams (394).",
+          "files": [
+            "ScenarioDelegateBinder.cs"
+          ]
+        },
+        {
+          "name": "llm-scenario-validation-hardening",
+          "dw_ids": [
+            "DW-334",
+            "DW-373"
+          ],
+          "intent": "Add a Godot-free out-of-map-bounds trigger-action test (334) and validate player-slot index uniqueness/range in LLMService.ValidateScenario (373).",
+          "files": [
+            "LLMService.cs"
+          ]
+        },
+        {
+          "name": "dsl-runtime-fuel-hardening",
+          "dw_ids": [
+            "DW-339",
+            "DW-340",
+            "DW-347",
+            "DW-349",
+            "DW-352"
+          ],
+          "intent": "ScenarioDirector runtime: rebuild the effect SpatialHash at most once per tick (339,352), stop RunEffect throwing mid-tick when no runtime is set (340), weight SearchArea nodes by MaxSearchTargets in the fuel model (347), and route the fuel break through the landed DslEventQueue so one-shot edges aren't dropped (349).",
+          "files": [
+            "ScenarioDirector.cs"
+          ]
+        },
+        {
+          "name": "custom-ui-gate-hardening",
+          "dw_ids": [
+            "DW-364",
+            "DW-365",
+            "DW-366"
+          ],
+          "intent": "CustomUiGate: reject non-positive canvas/widget geometry (364), lower-bound Rows/Max (365), and add an upstream byte/size guard before allocating the widget array (366).",
+          "files": [
+            "CustomUiGate.cs"
+          ]
+        },
+        {
+          "name": "death-feed-and-kill-guard",
+          "dw_ids": [
+            "DW-367",
+            "DW-493"
+          ],
+          "intent": "Record a per-tick death list (id, killer, faction) at KillEntity for the director's unit_dies source (367) and add a fail-closed !IsAlive entry guard to KillEntity (493).",
+          "files": [
+            "DamageResolver.cs"
+          ]
+        },
+        {
+          "name": "player-chat-ui",
+          "dw_ids": [
+            "DW-374"
+          ],
+          "intent": "Wire a chat UI to LockstepManager.SendPlayerChat so player_chat actually fires (per the recorded build decision).",
+          "files": [
+            "NodeKinds.cs"
+          ]
+        },
+        {
+          "name": "n8-cross-process-golden",
+          "dw_ids": [
+            "DW-387"
+          ],
+          "intent": "Commit an N=8 cross-process determinism golden via the existing WSL cross-platform gate.",
+          "files": [
+            "MultiFactionExpansionTests.cs"
+          ]
+        },
+        {
+          "name": "mp-godot-free-test-extraction",
+          "dw_ids": [
+            "DW-390",
+            "DW-447"
+          ],
+          "intent": "Extract the LockstepManager merged-arrival ring/gate/seed into Godot-free units (390) and make the desync self-test compare each peer's real computed sim checksum instead of a hardcoded GOOD (447).",
+          "files": [
+            "LoopbackDesyncSelfTest.cs"
+          ]
+        },
+        {
+          "name": "merged-tick-applier-pooling",
+          "dw_ids": [
+            "DW-391"
+          ],
+          "intent": "Add a caller-owned/pooled overload of MergedTickApplier.Apply to eliminate the per-tick scratch-array allocation.",
+          "files": [
+            "MergedTickApplier.cs"
+          ]
+        },
+        {
+          "name": "local-faction-effective-consumers",
+          "dw_ids": [
+            "DW-407"
+          ],
+          "intent": "Route the remaining raw LockstepManager.LocalFaction consumers through EffectiveLocalFaction and reset it on GoOffline.",
+          "files": [
+            "CustomHudOverlayPhase.cs"
+          ]
+        },
+        {
+          "name": "contentpackager-atomic-and-symmetry",
+          "dw_ids": [
+            "DW-421",
+            "DW-423",
+            "DW-424"
+          ],
+          "intent": "Make ContentPackager.RewriteManifest atomic (421), close the Pack hash-then-write TOCTOU with one byte snapshot (423), and mirror Unpack's extension/size checks into Pack (424).",
+          "files": [
+            "ContentPackager.cs"
+          ]
+        },
+        {
+          "name": "item-editor-id-and-clamp",
+          "dw_ids": [
+            "DW-452",
+            "DW-453",
+            "DW-456"
+          ],
+          "intent": "Add a test for the item-editor Speed clamp (452), delegate id-mint to the shared SanitizeId (453), and extract the filename-safety predicate into a Godot-free static (456).",
+          "files": [
+            "ItemCardPanel.Edit.cs"
+          ]
+        },
+        {
+          "name": "save-io-off-thread",
+          "dw_ids": [
+            "DW-467"
+          ],
+          "intent": "Move full-world save serialization and disk I/O off the game thread (background-write an already-captured buffer).",
+          "files": [
+            "CLAUDE.md"
+          ]
+        },
+        {
+          "name": "flowfield-cache-bound",
+          "dw_ids": [
+            "DW-485"
+          ],
+          "intent": "Bound the unbounded FlowFieldSystem._cache so distinct destination cells don't accumulate ~200KB fields until the next terrain change.",
+          "files": [
+            "FlowFieldSystem.cs"
+          ]
+        },
+        {
+          "name": "fog-shared-team-vision-toggle",
+          "dw_ids": [
+            "DW-441"
+          ],
+          "intent": "Wire FogOfWarSystem.SharedTeamVision to a lobby/settings toggle passed through MatchLifecycleController/MainScene.",
+          "files": [
+            "FogOfWarSystem.cs"
+          ]
+        },
+        {
+          "name": "mapwritegate-and-scenario-test-coverage",
+          "dw_ids": [
+            "DW-329",
+            "DW-361"
+          ],
+          "intent": "Add automated coverage of the map Export/New-Map hard-validate ordering (329) and a Tier-1 test that a default Validated fallback still applies a non-default revival/supply baseline (361).",
+          "files": [
+            "ProjectChimera.Sim.Tests.cs"
+          ]
+        },
+        {
+          "name": "nakama-validator-guards",
+          "dw_ids": [
+            "DW-436",
+            "DW-438"
+          ],
+          "intent": "Add a raw-payload/element-count guard atop both Nakama TS hero-profile handlers before the O(n^2) scans (436) and a C#-to-TS round-trip parity test over a genuinely serialized PlayerProfile (438).",
+          "files": [
+            "PlayerProfile.cs"
+          ]
+        },
+        {
+          "name": "nav-footprint-from-definition",
+          "dw_ids": [
+            "DW-169"
+          ],
+          "intent": "Derive a custom building's nav footprint from its definition (authored field or mesh AABB) instead of the fixed 5x3x5 CUSTOM_FOOTPRINT.",
+          "files": [
+            "NavObstacleManager.cs"
+          ]
+        },
+        {
+          "name": "hero-row-free-on-editor-delete",
+          "dw_ids": [
+            "DW-52"
+          ],
+          "intent": "Free the HeroStore row and clear its back-reference EntityId when a hero-linked unit is deleted in the editor.",
+          "files": []
+        },
+        {
+          "name": "techtree-validator-iterative",
+          "dw_ids": [
+            "DW-59"
+          ],
+          "intent": "Convert TechTreeValidator.Visit's recursive cycle-DFS to an explicit-stack walk to avoid a load-time stack overflow on a very deep prerequisite chain.",
+          "files": []
+        },
+        {
+          "name": "team-color-slot-mapping",
+          "dw_ids": [
+            "DW-460",
+            "DW-462"
+          ],
+          "intent": "Reconcile the setup-screen slot swatch key with the in-match slot->palette mapping (460) and extract that mapping into a Godot-free seam for headless RGBA assertions (462).",
+          "files": []
+        },
+        {
+          "name": "dsl-graph-editor-node-editing",
+          "dw_ids": [
+            "DW-179",
+            "DW-195"
+          ],
+          "intent": "Add a selected-node property inspector to the T3 graph editor (179) and give the dedicated leaf kinds exec ports + a field editor so palette-dragged nodes are wireable/editable (195).",
+          "files": []
+        },
+        {
+          "name": "assassination-target-generation-safe",
+          "dw_ids": [
+            "DW-184"
+          ],
+          "intent": "Give the Assassination win-condition target a generation-safe identity (mirror the Landmark PackRef fix) so a same-tick slot recycle can't miss the death.",
+          "files": []
+        },
+        {
+          "name": "dsl-cycle-dfs-iterative",
+          "dw_ids": [
+            "DW-191"
+          ],
+          "intent": "Convert both recursive load-time cycle-DFS sites (DslLoopGate.RunCycleDfs and EventDispatchPlan.CycleDfs) to explicit-stack/bounded walks to avoid StackOverflow on a long acyclic chain.",
+          "files": []
+        },
+        {
+          "name": "dslsimeventfeed-capacity",
+          "dw_ids": [
+            "DW-192"
+          ],
+          "intent": "Raise DslSimEventFeed.Capacity above 512 (with a bounded memory cost) so a large AoE tick doesn't silently drop unit_damaged events.",
+          "files": []
+        },
+        {
+          "name": "canonical-hash-test-name-cleanup",
+          "dw_ids": [
+            "DW-194"
+          ],
+          "intent": "Fix the stale/misleading AlgoVersion test-method names across the CanonicalModelHash/SimChecksum test family.",
+          "files": []
+        },
+        {
+          "name": "reset-completeness-generalization",
+          "dw_ids": [
+            "DW-196",
+            "DW-198"
+          ],
+          "intent": "Generalize the type-agnostic reset-completeness sweep across the ~24 sibling stores so a dropped Array.Clear can't ship green (196), and extract the fight-precondition helper so the reset-determinism test can't go vacuous (198).",
+          "files": []
+        },
+        {
+          "name": "trigger-enabled-store-bounds",
+          "dw_ids": [
+            "DW-197"
+          ],
+          "intent": "Bound TriggerEnabledStore.IsEnabled by Count (return false out of range) and wipe the stale enabled tail on Reset/Clear.",
+          "files": []
+        },
+        {
+          "name": "dsl-var-and-legacy-authoring",
+          "dw_ids": [
+            "DW-341",
+            "DW-343",
+            "DW-345"
+          ],
+          "intent": "Extend the SimChecksum coverage guard for the now-populated Point Raw1/Z lane (341), lint variable names that shadow the expression grammar (343), and fix the legacy flat set_variable PerPlayer-Int authoring path (345).",
+          "files": []
+        },
+        {
+          "name": "dsl-graph-gate-hardening",
+          "dw_ids": [
+            "DW-348",
+            "DW-357",
+            "DW-358",
+            "DW-359"
+          ],
+          "intent": "Extend loop-body orphan checks (348), add a symmetric ExecEdge JSON converter (357), reject forked exec-IN (358), and reject loop-var shadowing across nesting/declarations (359).",
+          "files": []
+        },
+        {
+          "name": "secretids-per-provider-keys",
+          "dw_ids": [
+            "DW-368"
+          ],
+          "intent": "Store LLM API keys per-provider instead of one shared SecretIds.Llm key read for all cloud providers.",
+          "files": []
+        },
+        {
+          "name": "ollama-host-restriction-messaging",
+          "dw_ids": [
+            "DW-370"
+          ],
+          "intent": "Surface the ollama loopback-only restriction in the availability message (per the recorded keep-loopback-only decision).",
+          "files": []
+        },
+        {
+          "name": "koth-elimination-fallback",
+          "dw_ids": [
+            "DW-188"
+          ],
+          "intent": "Add a guarded King-of-the-Hill last-team-standing/elimination fallback so a mutual-annihilation match resolves (per the recorded build decision).",
+          "files": []
+        },
+        {
+          "name": "balance-tunable-vocabulary",
+          "dw_ids": [
+            "DW-382"
+          ],
+          "intent": "Add movement speed (and xp_bounty) to the balance-analysis tunable-field vocabulary and its reader/writer switches + prompt.",
+          "files": []
+        },
+        {
+          "name": "dedicated-server-log-and-rate-limit",
+          "dw_ids": [
+            "DW-392",
+            "DW-434"
+          ],
+          "intent": "Bound attacker-triggerable log writes with a per-peer protocol-violation counter (392) and add a shared per-slot receive-edge rate limiter across all client-sendable packet types (434).",
+          "files": []
+        },
+        {
+          "name": "dedicated-server-rtt-and-delay-frontier",
+          "dw_ids": [
+            "DW-395",
+            "DW-396",
+            "DW-397",
+            "DW-398",
+            "DW-400",
+            "DW-401"
+          ],
+          "intent": "DedicatedServer: check the Pong seq (395), fix the uint/ulong RTT clock-width mismatch (396), make ACK/RTT indexing and the start-state agreement gate slot-map-aware (397), clear stale ready hashes on the agreement-fail branch (398), add an ACK timeout/recovery (400), and reset the delay-frontier fields on match (dis)assembly (401).",
+          "files": []
+        },
+        {
+          "name": "lobby-protocol-version-recovery",
+          "dw_ids": [
+            "DW-402",
+            "DW-403"
+          ],
+          "intent": "Extract the client PROTOCOL_VERSION gate into a Godot-free helper (402) and recover the lobby to a ready state when a subsequently valid Hello arrives on the same connection (403).",
+          "files": []
+        },
+        {
+          "name": "minimap-onscreen-and-fog",
+          "dw_ids": [
+            "DW-406",
+            "DW-408",
+            "DW-468"
+          ],
+          "intent": "Honor RevealAll in the minimap fog read (406), gate minimap dot drawing by fog visibility (408), and fix the minimap panel off-screen anchor/offsets (468).",
+          "files": []
+        },
+        {
+          "name": "dedicated-server-drop-hardening",
+          "dw_ids": [
+            "DW-409",
+            "DW-411",
+            "DW-413",
+            "DW-414",
+            "DW-415",
+            "DW-416",
+            "DW-417"
+          ],
+          "intent": "Queue-or-escalate a concurrent drop and add RemoveSurvivor (409), extract the freeze/disconnect glue into a Godot-free helper with tests (411), add projectile-in-flight/health-regen elements to the drop golden (413), surface post-drop floor-1 checksum windows as inconclusive (414), test the N>=3 drop gate and the surviving-client Flush unstall (415,417), and de-relativize the mid-match-drop golden gate (416).",
+          "files": []
+        },
+        {
+          "name": "download-verify-cleanup-and-ingest",
+          "dw_ids": [
+            "DW-425",
+            "DW-426"
+          ],
+          "intent": "Clean/quarantine a failed-integrity download instead of leaving the extract behind (425) and ingest assets from the manifest rather than a raw imported_maps directory scan (426).",
+          "files": []
+        },
+        {
+          "name": "modio-browse-request-token",
+          "dw_ids": [
+            "DW-428"
+          ],
+          "intent": "Add an incrementing request-generation token to mod.io browse so stale/late responses are dropped.",
+          "files": []
+        },
+        {
+          "name": "replay-lifecycle-hardening",
+          "dw_ids": [
+            "DW-429",
+            "DW-430",
+            "DW-431",
+            "DW-432"
+          ],
+          "intent": "Record offline skirmish/AI matches (429), re-gate replays on rulesetHash (430), reset perspective/fog on natural replay finish (431), and assert (not silently drop) on the sub-bundle overflow (432).",
+          "files": []
+        },
+        {
+          "name": "determinism-gate-vitest",
+          "dw_ids": [
+            "DW-437"
+          ],
+          "intent": "Add the vitest/npm step for the Nakama TS validator to the determinism-gate CI workflow.",
+          "files": []
+        },
+        {
+          "name": "lobby-chat-echo-and-spectator-hello",
+          "dw_ids": [
+            "DW-419",
+            "DW-420"
+          ],
+          "intent": "Suppress the doubled local lobby-chat echo on the dedicated path (419) and add a spectator/dedicated Hello discriminator so a Neutral Hello isn't shown a bogus 2-player confirmation prompt (420).",
+          "files": []
+        },
+        {
+          "name": "skirmish-scenario-and-boot",
+          "dw_ids": [
+            "DW-458",
+            "DW-459",
+            "DW-461",
+            "DW-463",
+            "DW-465"
+          ],
+          "intent": "Prune/reconcile SkirmishSetupToScenario triggers/win-condition for dropped slots (458), extract the MainScene skirmish-boot decisions into pure helpers (459), remove dev scratch scenarios from res:// (461), fix the dropped slot-0 authored unit (463), and add a cold-boot load-from-menu entry point (465).",
+          "files": []
+        },
+        {
+          "name": "settings-schema-forward-bail",
+          "dw_ids": [
+            "DW-482"
+          ],
+          "intent": "Bail (don't downgrade-stamp CurrentSchemaVersion) when settings.json carries a newer schema version.",
+          "files": []
+        },
+        {
+          "name": "concede-buffer-retry",
+          "dw_ids": [
+            "DW-464"
+          ],
+          "intent": "Buffer/retry a dropped online concede (a rare high-intent order) and add 'surrendering...' feedback on the online in-match menu.",
+          "files": []
+        },
+        {
+          "name": "canonicalfold-effect-completeness",
+          "dw_ids": [
+            "DW-449"
+          ],
+          "intent": "Fold each effect/modifier's full field set (not just the type name) in CanonicalFold's default MixEffect/MixModifier arm.",
+          "files": []
+        },
+        {
+          "name": "slot-faction-injective-assert",
+          "dw_ids": [
+            "DW-412"
+          ],
+          "intent": "Assert SLOT_FACTION injectivity at BuildSlotFactions so a duplicate-faction FactionToSlot mis-map is caught.",
+          "files": []
+        },
+        {
+          "name": "combat-event-queue-capacity",
+          "dw_ids": [
+            "DW-469"
+          ],
+          "intent": "Give the 256-entry CombatEventQueue ring headroom or priority so denial/completion cues aren't silently dropped when full.",
+          "files": []
+        }
+      ]
+    },
+    {
+      "wave": 1,
+      "bundles": [
+        {
+          "name": "status-flags-become-real",
+          "dw_ids": [
+            "DW-266"
+          ],
+          "intent": "Make authored StatusFlags (stun/root/disarm/silence) actually affect combat/movement/casting instead of being hashed-but-unread silent no-ops.",
+          "files": [
+            "AbilityCastSystem.cs",
+            "CombatSystem.cs",
+            "MovementSystem.cs"
+          ]
+        },
+        {
+          "name": "gather-state-checksum-fold",
+          "dw_ids": [
+            "DW-78"
+          ],
+          "intent": "Fold worker GatherState/CarryAmount/GatherTarget into SimChecksum and re-record affected goldens on Windows.",
+          "files": [
+            "EntityWorld.cs",
+            "SimChecksum.cs"
+          ]
+        },
+        {
+          "name": "modifier-install-diagnostics",
+          "dw_ids": [
+            "DW-83"
+          ],
+          "intent": "Emit a diagnostic event/log on a refused (8-slot-full) modifier install so silent drops are observable.",
+          "files": [
+            "ModifierStore.cs",
+            "ResearchSystem.cs"
+          ]
+        },
+        {
+          "name": "replay-research-parity-test",
+          "dw_ids": [
+            "DW-86"
+          ],
+          "intent": "Add StartResearch/CancelResearch replay-vs-live round-trip coverage in CommandApplyParityTests.",
+          "files": [
+            "LockstepManager.cs",
+            "ReplayPlayer.cs"
+          ]
+        },
+        {
+          "name": "trigger-dsl-custom-building-ref",
+          "dw_ids": [
+            "DW-170"
+          ],
+          "intent": "Extend the trigger DSL to resolve faction-qualified custom (authored, non-enum) building references (per the recorded 2026-07-30 build decision).",
+          "files": [
+            "ScenarioDirector.cs",
+            "ScenarioValidator.cs"
+          ]
+        },
+        {
+          "name": "nullable-directive-cleanup",
+          "dw_ids": [
+            "DW-213"
+          ],
+          "intent": "Add #nullable enable (or remove the annotations) in the two remaining CS8632 files.",
+          "files": [
+            "FlowFieldSystem.cs",
+            "GatheringSystem.cs"
+          ]
+        },
+        {
+          "name": "hero-xp-per-kill-repurpose",
+          "dw_ids": [
+            "DW-26"
+          ],
+          "intent": "Repurpose or retire the runtime-dead HeroDefinition.XpPerKill authoring knob (validated, round-tripped and editor-surfaced but no runtime consumer) toward the victim-centric UnitDefinition.XpBounty source.",
+          "files": [
+            "UnitDefinitionValidator.cs"
+          ]
+        },
+        {
+          "name": "ai-supply-headroom-scoring",
+          "dw_ids": [
+            "DW-63"
+          ],
+          "intent": "Make AiOpponentSystem supply-headroom scoring aware of disabled supply gating so it can't saturate to a meaningless deeply-negative magnitude.",
+          "files": [
+            "AiOpponentSystem.cs"
+          ]
+        },
+        {
+          "name": "trained-worker-gather-init",
+          "dw_ids": [
+            "DW-205"
+          ],
+          "intent": "Set GatherState/CarryCapacity on SpawnTrainedUnit so trained workers can actually gather.",
+          "files": [
+            "BuildingSystem.cs"
+          ]
+        },
+        {
+          "name": "scenario-type-registry",
+          "dw_ids": [
+            "DW-371"
+          ],
+          "intent": "Build the ScenarioType/GameMode registry (enum + per-type map-clamp preset table + Map Generator selection UI) per the recorded build decision.",
+          "files": [
+            "LLMService.cs"
+          ]
+        },
+        {
+          "name": "ability-registry-into-faction-load",
+          "dw_ids": [
+            "DW-327"
+          ],
+          "intent": "Thread the ability registry into FactionDefinition.LoadSelectableFromDirectory and the boot match-load shadow so boot-discovery 'selectable' and the launch-gate 'launchable' stop disagreeing on a dangling ability ref.",
+          "files": [
+            "FactionDefinition.cs"
+          ]
+        }
+      ]
+    },
+    {
+      "wave": 2,
+      "bundles": [
+        {
+          "name": "ability-cast-path-hardening",
+          "dw_ids": [
+            "DW-283",
+            "DW-284",
+            "DW-285"
+          ],
+          "intent": "Guard the negative-cost partial-spend (283), add a SecondsToTicks 16.16 overflow validator upper bound for cooldowns (284), and stop silent link-time/runtime cast-failure drops (285).",
+          "files": [
+            "AbilityCastSystem.cs",
+            "AbilityValidator.cs",
+            "UnitDefinition.cs"
+          ]
+        },
+        {
+          "name": "movement-swept-cell-and-slope",
+          "dw_ids": [
+            "DW-147",
+            "DW-149"
+          ],
+          "intent": "Replace endpoint-only blocked-cell rejection with a swept-cell (DDA) crossing check (147) and sample slope derivation in both -X/-Z directions so far east/south edge cells auto-block correctly (149).",
+          "files": [
+            "MovementSystem.cs",
+            "PathabilityGrid.cs"
+          ]
+        },
+        {
+          "name": "noncombatant-command-gate",
+          "dw_ids": [
+            "DW-202",
+            "DW-206",
+            "DW-242"
+          ],
+          "intent": "Stop zero-damage units leaking from the AI combat pool (202), route UnitCommand.Build past CombatSystem's TickIdleCombat default (206), and let zero-damage units use Patrol/Follow/AttackBuilding (242).",
+          "files": [
+            "AiOpponentSystem.cs",
+            "CombatSystem.cs"
+          ]
+        },
+        {
+          "name": "modifier-robustness-and-ceiling",
+          "dw_ids": [
+            "DW-488",
+            "DW-491"
+          ],
+          "intent": "Add a content-authoring cap on MaxStacks x per-modifier delta magnitude to stop accumulator wrap (488) and gate the ceiling-collapse kill on a downward ceiling transition rather than absolute EffectiveMaxHealth==0 (491).",
+          "files": [
+            "ModifierStore.cs",
+            "ModifierSystem.cs"
+          ]
+        },
+        {
+          "name": "scenario-unit-id-validation",
+          "dw_ids": [
+            "DW-240"
+          ],
+          "intent": "Validate spawn_unit.unit_id and pre-placed unit ids in the scenario gate.",
+          "files": [
+            "ScenarioValidator.cs"
+          ]
+        },
+        {
+          "name": "n-player-winner-resolution",
+          "dw_ids": [
+            "DW-189",
+            "DW-383"
+          ],
+          "intent": "Resolve the DSL victory (189) and defeat (383) winner in an N-player-safe way instead of the 2-faction-only 1 - a.Faction.",
+          "files": [
+            "ScenarioDirector.cs"
+          ]
+        },
+        {
+          "name": "production-queue-correctness",
+          "dw_ids": [
+            "DW-478",
+            "DW-479",
+            "DW-481"
+          ],
+          "intent": "Reserve queued supply at enqueue (478), stop TickProduction discarding a completion when the entity cap blocks the spawn (479), and validate TrainTime > 0 so a 0-timer head can't fast-drain the queue (481).",
+          "files": [
+            "BuildingSystem.cs"
+          ]
+        }
+      ]
+    },
+    {
+      "wave": 3,
+      "bundles": [
+        {
+          "name": "passive-install-idempotence",
+          "dw_ids": [
+            "DW-300"
+          ],
+          "intent": "Make self-passive spawn-install idempotent against a live re-ApplyUnitDefinition.",
+          "files": [
+            "AbilityCastSystem.cs",
+            "ModifierStore.cs"
+          ]
+        }
+      ]
+    },
+    {
+      "wave": 4,
+      "bundles": [
+        {
+          "name": "modifier-lethal-period-tests",
+          "dw_ids": [
+            "DW-267"
+          ],
+          "intent": "Exercise the lethal period DamageEffect mid-Advance path with a test.",
+          "files": [
+            "ModifierStore.cs"
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -161,6 +161,15 @@
     "label": "Build energy regeneration (Story 15.12); hero attributes split to their own story",
     "resolution": ""
   },
+  "DW-272": {
+    "answered_at": "2026-08-03",
+    "bundle_name": "",
+    "effect": "build",
+    "intent": "Alec 2026-08-03: 'Move it to the story with the rest.' Ship the Story-15.3 validator warning so authors are told stacked periodics do not scale, and fold the BEHAVIOR half into Story 15.12 alongside the DW-264 stacking work rather than changing it standalone (avoids moving goldens twice). Today ModifierStore.cs:320-324 runs the period graph once per slot with no _stackCount term while RemoveSlot (:536-541) multiplies stat deltas by stack count, so a 3-stack DoT ticks 1x - self-inconsistent. SCOPE INPUT (Alec, same message) - 15.12's stacking work is now explicitly a CREATOR-AUTHORABLE BUFF/DEBUFF SYSTEM, not a single semantic choice. The creator must be able to set every dimension modern games offer, including at minimum: variable duration per application; stackable vs not; refresh-on-reapply that RESETS the timer but CONTINUES TICKING without dropping progress; per-tier damage bands (e.g. 10-12 dmg over 10s / 14-18 over 10s / 20-25 over 10s) driven by ability tier or attribute; duration EXTENSION on reapply as an alternative to reset; and reapply that upgrades to a STRONGER debuff instead of stacking. Rationale (Alec): Chimera must let a creator build an RPG, a DOTA-like, an MMORPG-adjacent game or a dungeon ARPG - so the buff/debuff vocabulary has to match what those genres expect, not just what an RTS needs. This is materially larger than DW-272 or DW-264 alone; if the 15.12 spec pass finds it does not fit one story, SPLIT the authoring-vocabulary half out the way Story 15.21 was split out of DW-265 - do not silently shrink it.",
+    "key": "1",
+    "label": "Move to Story 15.12 with the rest of the stacking work",
+    "resolution": ""
+  },
   "DW-312": {
     "answered_at": "2026-08-02",
     "bundle_name": "",
@@ -188,6 +197,15 @@
     "label": "Lint/warn at declaration",
     "resolution": ""
   },
+  "DW-346": {
+    "answered_at": "2026-08-03",
+    "bundle_name": "",
+    "effect": "keep-open",
+    "intent": "Alec 2026-08-03: 'We need this to be better than WC3's JASS system. Think more modern and we'll resolve this issue with research on current systems and how they address this issue and how to best apply it to realize our system and have it work smoothly.' Confirmed still open: every Charge site in ScenarioDirector is action/drain-side and DslLoopGate.WalkChain walks ex.Items only, never ConditionExprRoots, so thousands of individually-legal heavy CONDITIONS do unbounded per-tick work the seatbelt never meters. WC3/JASS's answer was a hard per-thread operation limit that halted the thread on trip - crude, but nothing escaped the meter; that is the FLOOR to beat, not the target. Keep open DELIBERATELY: closing it changes fuel values, which forces a SimChecksum AlgoVersion bump + golden re-record, so it must ride a PLANNED determinism pass rather than a sweep bundle. NEXT ACTION is a RESEARCH TASK, not a dev bundle: survey how current engines budget scripted / visual-scripting runtimes per frame - op or fuel metering, time-slicing with continuations, per-entity script budgets, static cost estimation at author time with an editor-side warning - then pick the model that fits a DETERMINISTIC LOCKSTEP sim, where the budget itself must be byte-identical on every peer. Prefer a design that warns the CREATOR at authoring time over one that silently throttles at runtime.",
+    "key": "3",
+    "label": "Keep open; resolve via research into modern trigger-runtime budgeting",
+    "resolution": ""
+  },
   "DW-349": {
     "answered_at": "2026-07-30",
     "bundle_name": "",
@@ -195,6 +213,15 @@
     "intent": "Persist unconsumed edge events for skipped/suppressed triggers into the 7.5 queue",
     "key": "1",
     "label": "Re-queue via DslEventQueue",
+    "resolution": ""
+  },
+  "DW-362": {
+    "answered_at": "2026-08-03",
+    "bundle_name": "",
+    "effect": "build",
+    "intent": "Alec 2026-08-03: 'Create a hotkey for it just to stand in place for now until we implement the correct UI in future epic/story.' godot/src/CreationSuite/CustomUiBuilderPanel.cs produces valid widget trees but has ZERO external references - no menu, hotkey, or bootstrap phase instantiates it, so AC #2 ('creator authors via the widget-palette builder') is not demonstrable in-engine. Add a dock/hotkey entry point through the spec-14-6 arbitration system so the panel is reachable and testable NOW; explicitly DEFER the feature polish (type-filtered bind dropdown, nested-child authoring, gate-on-save preflight) to the future UI story. Keep the stand-in obviously provisional so it is not mistaken for the shipped authoring surface. Godot-coupled -> in-engine gate applies -> route to bmad-loop, NOT the Godot-free workflow track.",
+    "key": "3",
+    "label": "Minimal reachability now: hotkey stand-in, real UI later",
     "resolution": ""
   },
   "DW-366": {
@@ -242,6 +269,15 @@
     "label": "Add speed only, drop mesh_scale",
     "resolution": ""
   },
+  "DW-393": {
+    "answered_at": "2026-08-03",
+    "bundle_name": "",
+    "effect": "build",
+    "intent": "Alec 2026-08-03: 'Get drop handling or better. Match WC3 standard or do it even better and match how current games do it.' Today MergedTickBuilder.TryBuild (Multiplayer/Server/MergedTickBuilder.cs:178-236) emits only when ALL Expected slots arrive, with no contiguous-emission guard and no resupply path, and drops are swallowed with no else-log - so one misbehaving or malicious client permanently freezes every surviving player AND spectator, undiagnosably. Fix: on a tick-bounded deadline substitute an EMPTY sub-bundle for the missing slot, advance _resolvedThrough, and rate-limit-log the drop. WC3's floor is 'Waiting for players' with a VISIBLE COUNTDOWN that expires and continues - the match must always make progress and a non-responsive peer never holds the lobby hostage. Beat that floor with modern practice: surface the stall in the UI (who, how long, countdown) rather than freezing silently. FORWARD-COMPATIBILITY (Alec, same message - design for this now even though it is not built here): the roadmap is (a) client-side RECONNECT so a dropped player rejoins and resumes, and (b) OPTIONAL AI takeover of a dropped player's faction while they are gone, which a CREATOR can enable or disable PER GAME MODE because some modes must not allow a player to be AI-controlled. So the empty-sub-bundle substitution must be ONE STRATEGY BEHIND A SEAM - not a hardcoded branch - with AI-command injection and rejoin-resume as sibling strategies. See DW-1 (AI takeover), DW-2 (reconnect, promoted to Story 15.1) and FR-79.",
+    "key": "1",
+    "label": "Force-emit with an empty sub-bundle; match-or-beat modern RTS drop handling",
+    "resolution": ""
+  },
   "DW-405": {
     "answered_at": "2026-08-02",
     "bundle_name": "",
@@ -251,6 +287,33 @@
     "label": "Add a build-order variant and route worker-build through EnqueueOrder",
     "resolution": ""
   },
+  "DW-410": {
+    "answered_at": "2026-08-03",
+    "bundle_name": "",
+    "effect": "build",
+    "key": "1",
+    "label": "Force-commit the freeze over ACKed survivors after a tick-bounded deadline",
+    "resolution": "",
+    "intent": "INFERRED from Alec's DW-393 answer 2026-08-03, which addressed drop handling AS A CLASS: 'Get drop handling or better. Match WC3 standard or do it even better and match how current games do it.' DW-410 is the same failure with a different trigger, so it takes the same answer. FLAGGED AS INFERRED - Alec did not name DW-410 explicitly; correct this entry if the intent differs. Today DropController commits the freeze only on AllAcked() over the survivor set, with no deadline, re-send, or force-commit - so ONE hung-but-transport-connected survivor leaves the freeze uncommitted forever, FrozenSlotInjector never runs, and every other survivor plus every spectator stalls. Reachable at N>=3 since 9-7/9-15 shipped. Fix: add a TICK-COUNTED ACK timeout that force-commits the freeze over the survivors that did ACK and treats the hung peer as itself dropped, so the match continues. Option 2 (abort to MATCH SUMMARY on timeout) is explicitly REJECTED: it contradicts the WC3 floor Alec named, where the 'Waiting for players' countdown expires and play CONTINUES - the match must always make progress. Aborting hands one hung client the power to end everyone's game, which is the same hostage dynamic DW-393 removes. Tick-counted, not wall-clock, so the deadline is identical on every peer (deterministic lockstep). Share the seam with DW-393's substitution strategy: empty-sub-bundle now, with AI-takeover injection and rejoin-resume as sibling strategies per Alec's per-game-mode AI-takeover requirement (DW-1, DW-2, Story 15.1, FR-79)."
+  },
+  "DW-422": {
+    "answered_at": "2026-08-03",
+    "bundle_name": "",
+    "effect": "keep-open",
+    "intent": "Alec 2026-08-03: 'Defer to the Import Manager Story.' ContentPackager.PackOptions.AssetPaths is referenced only inside ContentPackager.cs and no export/publish path feeds it, so packages currently bundle no custom .glb assets. Story 9.9 correctly shipped only the Pack API + integrity + runtime-ingest half; epics.md:3707 frames import->package->runtime-ingest asset resolution as a distinct Import Manager concern. Building the export producer alone would leave the flow half-wired. Keep open, owned by the Import Manager story (Epic 12 content-sync neighborhood); coordinate with DW-457's multi-source scan seam.",
+    "key": "2",
+    "label": "Defer to the planned Import Manager story",
+    "resolution": ""
+  },
+  "DW-445": {
+    "answered_at": "2026-08-03",
+    "bundle_name": "",
+    "effect": "build",
+    "intent": "Alec 2026-08-03: 'Match WC3 style but make it better and more up to date per modern standard RTS gaming.' Take option 2, the real fix, NOT the option-1 validator ban: pass AllianceStore into AiOpponentSystem and skip AreAllied(AI_FACTION, f) in BOTH FindNearestEnemyBuilding (AiOpponentSystem.cs:498) and DoRazeBuildings, mirroring the CombatSystem building-scan change. Today they skip only 'f == AI_FACTION || f == Faction.Neutral', so a teamed AI targets its own ally, CombatSystem's AreAllied guard rejects the order, and the AI reverts to Idle permanently - a live single-player skirmish defect. WC3's baseline is that computer allies simply work on a team ('2 players + 2 computers' was one of its most-played setups); modern RTS goes further with allied-aware target priority, so treat allied-skip as the FLOOR and prefer targets that do not duplicate an ally's current focus where that is cheap to compute deterministically. CONSTRAINT: AiOpponentSystem still runs on float, so teamed AI remains barred from lockstep MP until the float->Fixed migration (DW-204 / Story 10.11) regardless of this fix - this makes SINGLE-PLAYER correct, it does not unblock MP.",
+    "key": "2",
+    "label": "Thread AllianceStore into the AI pickers - WC3 baseline, modern execution",
+    "resolution": ""
+  },
   "DW-446": {
     "answered_at": "2026-07-30",
     "bundle_name": "",
@@ -258,6 +321,15 @@
     "intent": "Instance-method ValidateOrClearTarget clearing on allied/same-faction id-recycle, alongside DW-444",
     "key": "1",
     "label": "Build now with DW-444",
+    "resolution": ""
+  },
+  "DW-457": {
+    "answered_at": "2026-08-03",
+    "bundle_name": "",
+    "effect": "build",
+    "intent": "Alec 2026-08-03: 'Do the recommendation and migrate now, make sure that we are migrating with the understanding of what we will need in the future (fully functional online game, final product).' Replace System.IO.Directory.GetFiles over ProjectSettings.GlobalizePath with PCK-aware DirAccess across SkirmishCatalog.ScanMaps/ScanFactions (:98, :170) AND every sibling res:// scanner in one pass - FactionDefinition.LoadSelectableFromDirectory and the MainScene faction seeding are the known siblings; SWEEP for others rather than fixing the three by name. Today an EXPORTED PCK build shows 'No maps found' because the OS-directory scan only resolves in editor/unpacked runtime, and no existing test can catch it. Migrate with the shipping product in view: content will also arrive from DOWNLOADED/imported packages and mod content at runtime, not just the baked PCK, so the scan seam should be able to enumerate across MULTIPLE MOUNTED SOURCES rather than assuming one res:// root (see DW-422 / the Import Manager story and Epic 12 content sync). Cannot be verified without an exported PCK build - flag that as residual verification debt.",
+    "key": "1",
+    "label": "Migrate the whole res:// scan pattern to PCK-aware DirAccess now",
     "resolution": ""
   },
   "DW-458": {
@@ -286,6 +358,33 @@
     "key": "1",
     "label": "Reserve supply at enqueue (WC3-strict)",
     "resolution": ""
+  },
+  "DW-489": {
+    "answered_at": "2026-08-03",
+    "bundle_name": "",
+    "effect": "build",
+    "intent": "Alec 2026-08-03 asked whether a +MaxHealth buff EXPIRING can kill. VERIFIED IN CODE 2026-08-03 - IT CANNOT, and no change is wanted there: ModifierStore.ApplyStatDeltas heals up ONLY on a positive APPLY (:553), always re-clamps Health into [0, EffectiveMaxHealth] (:554), and the doc contract at :540 states 'never a death-on-expiry'. Buff expiry lowers the ceiling and clamps current HP down - exactly the WoW / standard-MMO behavior Alec described as correct. The ONLY lethal path is a ceiling driven to LITERALLY ZERO (:566, EffectiveMaxHealth == Fixed.Zero), i.e. a 0/0 unit, which is a different case from a buff wearing off. DW-489 itself is CALLER BOOKKEEPING, not game feel: because Apply/RemoveByModifierId can now destroy+recycle the host in that zero-ceiling case, and only the 3 internal ApplyStatDeltas callers were guarded, ItemSystem.ApplyItemStatModifier (:333) returns Apply's raw 'installed' bool as claim-success with no post-IsAlive check, and the now-lethal RemoveByModifierId lets a +MaxHealth item drop/consume re-enter DropAll->DropOne on the in-flight slot (ItemSystem.cs:255/:296), emitting a duplicate ItemDropped event. Fix = guard those external callers on IsAlive and document the post-condition on both methods; do NOT take option 2's tri-state API change for a latent, content-gated issue. RELATED, and closer to Alec's concern: DW-491 flags that the zero-ceiling kill is gated on the ABSOLUTE EffectiveMaxHealth == 0 rather than a collapse TRANSITION, so a unit legitimately sitting at ceiling 0 - or a positive heal applied to one - is lethal. SEQUENCE DW-491 WITH THIS FIX.",
+    "key": "1",
+    "label": "Audit + add IsAlive guards to the external callers",
+    "resolution": ""
+  },
+  "DW-494": {
+    "answered_at": "2026-08-03",
+    "bundle_name": "",
+    "effect": "build",
+    "intent": "Alec 2026-08-03: 'Elevated terrain needs to be taken into account for unit selection. Adopt the latest in RTS selection box technology.' Have MultiMeshBridge (~:177), PropRenderer (~:88) and the building renderer read Elevation[] and draw at SampleElevation so meshes, box-select hit-testing and 3D markers share ONE ground-truth height. DW-153 already moved box-select and markers onto sampled elevation while ScenarioApplier keeps Position.Y == Fixed.Zero and no renderer reads the Elevation SoA, so on a Story-6.3 raised map a marquee around a VISIBLE unit can miss it and markers float. Zero impact on flat maps (all shipped scenarios Sample=0). Modern RTS selection is screen-space-projected against actual rendered bounds rather than a flat ground-plane test - target that, not merely a y-offset patch. PROCESS NOTE (Alec, verbatim): 'this seems like it should be an obvious answer not requiring my decision on it - since we are creating a modern day RTS at the heart of it, it is obviously going to need at bare minimum this and many other RTS-like things.' STANDING GUIDANCE for future triage: do NOT raise a human decision for restoring baseline modern-RTS behavior; treat table-stakes RTS capability as assumed-yes and bundle it.",
+    "key": "1",
+    "label": "Lift the presentation renderers to sampled elevation",
+    "resolution": ""
+  },
+  "DW-71": {
+    "answered_at": "2026-08-03",
+    "bundle_name": "",
+    "effect": "close",
+    "intent": "",
+    "key": "1",
+    "label": "Keep the confirm-on-blur; the 2026-07-19 decision is superseded",
+    "resolution": "Alec 2026-08-03: 'Okay, superseded.' Keep the implemented behavior at BuildingCardPanel.Edit.cs:352-375 - FocusExited on a still-null required numeric field authors it at the displayed value - and mark the contradicting 2026-07-19 ledger decision SUPERSEDED. The code's documented rationale (lines 343-350) is the stronger argument: 0 is a legitimate authored value and a same-value '0' confirm would otherwise be unreachable through the Simple UI. No code change; update the stale decision text so the contradiction does not resurface in a later triage."
   },
   "DW-77": {
     "answered_at": "2026-08-02",
