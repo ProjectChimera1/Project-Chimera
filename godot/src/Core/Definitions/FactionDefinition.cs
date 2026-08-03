@@ -187,12 +187,16 @@ namespace ProjectChimera.Core.Definitions
 
         /// <summary>The lenient JSON options the faction/unit loader uses (comments + trailing commas tolerated; no
         /// Disallow, no converters). Public so tests and other unit-definition readers share ONE source of truth
-        /// instead of a hand-rolled replica that could silently drift from this loader (Story 2.7 review).</summary>
-        public static readonly JsonSerializerOptions JsonOptions = new()
-        {
-            ReadCommentHandling = JsonCommentHandling.Skip,
-            AllowTrailingCommas = true,
-        };
+        /// instead of a hand-rolled replica that could silently drift from this loader (Story 2.7 review).
+        /// <para>
+        /// DW-274: this is now an ALIAS for <see cref="ContentJson.LenientOptions"/> — the same instance, declared
+        /// beside the strict ability posture and the scenario posture so all three live in one file and the shared
+        /// authoring half (comments / trailing commas) cannot drift. The name is kept because ~12 call sites and the
+        /// Tier-1 suite reference it, and "the faction loader's options" is the discoverable spelling at those sites.
+        /// Why it stays lenient (a contract, not an omission) is documented on
+        /// <see cref="ContentJson.LenientOptions"/>; faction strictness belongs to <see cref="FactionValidator"/>.
+        /// </para></summary>
+        public static readonly JsonSerializerOptions JsonOptions = ContentJson.LenientOptions;
 
         /// <summary>
         /// Load a FactionDefinition from a JSON file on disk.
