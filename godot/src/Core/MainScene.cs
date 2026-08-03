@@ -196,6 +196,12 @@ namespace ProjectChimera.Core
         /// <summary>Story 11.3: seconds between periodic autosaves (SP-only).</summary>
         private const float AUTOSAVE_INTERVAL_SECONDS = 120f;
 
+        /// <summary>DW-467: the off-thread save writer — serializes + disk-writes an already-captured save buffer on a
+        /// background FIFO chain so IssueSave (and the 120 s autosave inside _Process) never blocks the game thread on
+        /// <c>SaveGameFile.Write</c> / <c>File.WriteAllBytes</c> / <c>File.Replace</c>. Lazily created over
+        /// <c>_ctx.SaveStore</c> on the first save; completions drain in <see cref="_Process"/> for the toast.</summary>
+        private BackgroundSaveWriter? _saveWriter;
+
         /// <summary>Story 11.1: true once a skirmish boot exception has been caught and a clean reload requested — makes
         /// the per-frame callbacks (_Process/_Input/_UnhandledInput) no-op for the one frame before the scene reloads,
         /// so a half-built scene never dereferences an unset presentation handle.</summary>
@@ -882,7 +888,11 @@ namespace ProjectChimera.Core
         }
 
         /// <summary>Story 11.3 — capture the full mutable world off the host and write it to a <c>.chsav</c> slot. SP-only;
-        /// the match continues uninterrupted. A capture/write error is logged and the match plays on (never a crash).</summary>
+        /// the match continues uninterrupted. A capture/write error is logged and the match plays on (never a crash).
+        /// DW-467: only the CAPTURE (which must read the live sim stores) runs here on the game thread; serialization +
+        /// the blocking disk write run on <see cref="_saveWriter"/>'s background chain over the already-captured
+        /// (deep-copied) buffers, so the 120 s autosave no longer produces a frame hitch. The success/failure toast is
+        /// completion-driven — drained from the writer's result queue in <see cref="_Process"/>.</summary>
         private void IssueSave(string slot)
         {
             if (_ctx.Lockstep != null && _ctx.Lockstep.IsOnline) return;       // SP only
@@ -899,13 +909,15 @@ namespace ProjectChimera.Core
                     ContentHash        = ContentHash.Compute(GatherLoadedFactions(), _host.AbilityRegistry, _host.ItemRegistry, _ctx.DamageTable),
                     Tick               = _host.CurrentTick,
                     MapId              = _currentSkirmishSetup?.MapId ?? scenario.Id ?? "",
-                    Slots              = _currentSkirmishSetup?.Slots ?? new System.Collections.Generic.List<SetupSlot>(),
+                    // DW-467: COPY the launch-record slot list — the header crosses to the writer thread and must
+                    // never alias a live list the game thread could touch.
+                    Slots              = _currentSkirmishSetup?.Slots != null
+                                           ? new System.Collections.Generic.List<SetupSlot>(_currentSkirmishSetup.Slots)
+                                           : new System.Collections.Generic.List<SetupSlot>(),
                 };
-                using var ms = new MemoryStream();
-                SaveGameFile.Write(ms, state, header);
-                _ctx.SaveStore.Write(slot, ms.ToArray());
-                GD.Print($"[Save] Wrote slot '{slot}' at tick {_host.CurrentTick}.");
-                ShowSaveLoadNotice($"Saved to {SlotLabel(slot)}.");
+                _saveWriter ??= new BackgroundSaveWriter(_ctx.SaveStore);
+                _saveWriter.Enqueue(slot, state, header);
+                GD.Print($"[Save] Captured slot '{slot}' at tick {_host.CurrentTick}; writing in the background.");
             }
             catch (InvalidOperationException ex)
             {
@@ -916,9 +928,9 @@ namespace ProjectChimera.Core
             }
             catch (Exception ex)
             {
-                // I/O failure (disk full, File.Replace conflict, permissions, …). Surface so autosave never fails
-                // silently forever while the player believes they're protected.
-                GD.PrintErr($"[Save] Failed to save slot '{slot}': {ex.Message}");
+                // A game-thread CAPTURE failure (table build / hash compute / snapshot). Disk-write failures now
+                // surface through the background writer's result drain in _Process — same toast, never silent.
+                GD.PrintErr($"[Save] Failed to capture slot '{slot}': {ex.Message}");
                 ShowSaveLoadNotice($"Save failed: {ex.Message}");
             }
         }
@@ -937,6 +949,10 @@ namespace ProjectChimera.Core
         private void IssueLoad(string slot)
         {
             if (_ctx.Lockstep != null && _ctx.Lockstep.IsOnline) return; // SP only
+            // DW-467: a background save write may still be in flight (save → immediate load of the same slot must see
+            // the NEW bytes, not the previous file). Bounded so a wedged disk can never hang the game thread forever —
+            // on timeout Read fail-softs exactly as it would for any unreadable slot.
+            _saveWriter?.WaitForIdle(10_000);
             byte[]? bytes = _ctx.SaveStore?.Read(slot);
             if (bytes == null) { GD.PrintErr($"[Load] Slot '{slot}' is empty or unreadable."); ShowSaveLoadNotice($"No save in {SlotLabel(slot)}."); return; }
 
@@ -986,6 +1002,15 @@ namespace ProjectChimera.Core
             if (_ctx.GameState.Mode == GameMode.Play) _ctx.GameState.Toggle(); // → Edit (ResetMatchOnReturnToEdit fires)
             _gameSpeed = 1f; _paused = false;
             _ctx.SkirmishSetup?.Open();
+        }
+
+        /// <summary>DW-467: flush any in-flight background save on teardown (scene reload or app quit). The pre-DW-467
+        /// synchronous path could never lose an issued save at exit; the off-thread path must not either — thread-pool
+        /// work is NOT awaited by process shutdown. Bounded wait; the store's temp-file + atomic-replace already
+        /// guarantees a cut-off write can't corrupt an existing slot, this guarantees it isn't LOST.</summary>
+        public override void _ExitTree()
+        {
+            _saveWriter?.WaitForIdle(10_000);
         }
 
         /// <summary>
@@ -1311,6 +1336,25 @@ namespace ProjectChimera.Core
         public override void _Process(double delta)
         {
             if (_headless || _bootAborted || _bootPending) return; // dedicated server: no presentation context; _bootAborted = fail-safe reload pending; _bootPending = phase run not yet built _ctx handles
+
+            // DW-467: surface background save completions on the game thread (mode-independent — a save issued just
+            // before a mode flip must still toast). Success/failure mirror the pre-DW-467 synchronous messages, so a
+            // disk failure is never silently swallowed while the player believes autosave protects them.
+            if (_saveWriter != null)
+                while (_saveWriter.TryDequeueResult(out BackgroundSaveWriter.SaveResult saveResult))
+                {
+                    if (saveResult.Success)
+                    {
+                        GD.Print($"[Save] Wrote slot '{saveResult.Slot}' at tick {saveResult.Tick}.");
+                        ShowSaveLoadNotice($"Saved to {SlotLabel(saveResult.Slot)}.");
+                    }
+                    else
+                    {
+                        GD.PrintErr($"[Save] Failed to save slot '{saveResult.Slot}': {saveResult.Error}");
+                        ShowSaveLoadNotice($"Save failed: {saveResult.Error}");
+                    }
+                }
+
             if (_ctx.GameState.Mode == GameMode.Play && !_gameOver)
             {
                 if (_ctx.ReplayPlayer != null)
