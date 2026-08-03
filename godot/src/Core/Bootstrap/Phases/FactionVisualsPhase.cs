@@ -18,35 +18,16 @@ namespace ProjectChimera.Core.Bootstrap
 
         public string Name => "FactionVisuals";
 
-        /// <summary>Story 11.1 — the deterministic per-slot-index team-color palette (2→4 honest extension). Index 0/1
-        /// are today's blue/red verbatim (golden/visual continuity); 2/3 add distinct green/gold for 3–4 player maps.
-        /// Color is a per-slot-index presentation choice, NOT a data channel — no <c>ScenarioPlayerSlot</c> color field.</summary>
-        /// <summary>Story 11.1 (review PATCH 7): single source of truth for the per-slot-index palette — the setup
-        /// screen's swatches (<c>SkirmishSetupOverlay</c>) reference THIS array so the setup-time color can never drift
-        /// from the in-match team color.</summary>
-        internal static readonly Color[] SlotColors =
-        {
-            new Color(0.2f, 0.5f, 1.0f), // slot 0 = blue
-            new Color(1.0f, 0.3f, 0.2f), // slot 1 = red
-            new Color(0.3f, 0.85f, 0.4f), // slot 2 = green
-            new Color(0.95f, 0.8f, 0.2f), // slot 3 = gold
-        };
-
-        /// <summary>Resolve a per-slot-index team color from <see cref="SlotColors"/>, clamped to the palette range.
-        /// Shared with the setup screen (PATCH 7) so both surfaces read one palette.</summary>
-        internal static Color SlotColorAt(int i)
-        {
-            if (i < 0) i = 0;
-            if (i >= SlotColors.Length) i = SlotColors.Length - 1;
-            return SlotColors[i];
-        }
-
-        /// <summary>Resolve a faction slot's team color from <see cref="SlotColors"/>, clamped to the palette range.
-        /// The <see cref="Faction"/> enum is 1-based for players (Neutral=0, Player1=1, Player2=2, …) while the palette
-        /// is 0-based (index 0 = Player1's blue), so the ordinal is shifted by −1: Player1→0 (blue), Player2→1 (red),
-        /// Player3→2 (green), Player4→3 (gold). Review PATCH (11.1 follow-up): without the −1, Player1 rendered red and
-        /// Player2 green — a color inversion that broke the "index 0/1 keep today's blue/red" continuity invariant.</summary>
-        private static Color SlotColor(Faction faction) => SlotColorAt((int)faction - 1);
+        /// <summary>Story 11.1 / DW-462 — resolve a faction slot's team color from the Godot-free
+        /// <see cref="TeamColorPalette"/> seam (channels pass through verbatim, so rendered colors are unchanged).
+        /// The palette + the 1-based <see cref="Faction"/> → 0-based palette −1 shift were extracted to
+        /// <c>Core/Bootstrap/TeamColorPalette.cs</c> so both are pinned by Tier-1 RGBA assertions
+        /// (<c>TeamColorSlotMappingTests</c>) — this phase is excluded from the sim glob and the shift shipped
+        /// inverted TWICE during 11.1 (Player1 red / Player2 green), each time caught only by human review.
+        /// PATCH 7's single-source invariant still holds, one level deeper: the setup screen's swatches read the SAME
+        /// seam (<c>SkirmishSetupOverlay</c> keys it by <c>SkirmishSetupToScenario.LaunchIndexBySlot</c>, DW-460), so
+        /// the setup-time color cannot drift from the in-match team color.</summary>
+        private static Color SlotColor(Faction faction) => TeamColorPalette.ColorForFaction(faction).ToColor();
 
         public void Run()
         {

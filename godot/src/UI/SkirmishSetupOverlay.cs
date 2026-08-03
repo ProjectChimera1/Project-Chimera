@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using Godot;
 using ProjectChimera.AI;                    // AiDifficulty
 using ProjectChimera.Core;                  // MainScene
+using ProjectChimera.Core.Bootstrap;         // TeamColorPalette (the DW-462 Godot-free palette seam)
 using ProjectChimera.Core.Definitions;       // ScenarioData, ScenarioSerializer
 using ProjectChimera.Core.Skirmish;          // SkirmishSetup, SkirmishCatalog, SkirmishSetupValidator, SkirmishSetupToScenario
 using ProjectChimera.UI.Theme;               // ThemeTokens, ThemeBuilder
@@ -270,7 +271,7 @@ namespace ProjectChimera.UI
             int count = Math.Max(0, map.StartPositionCount);
             for (int i = 0; i < count; i++)
             {
-                var row = new SlotRow(i, _factions, map.StartPositionCount, _theme, SlotColorFor(i), Revalidate);
+                var row = new SlotRow(i, _factions, map.StartPositionCount, _theme, Revalidate);
                 _slotHost.AddChild(row.Root);
                 _slotRows.Add(row);
             }
@@ -289,8 +290,25 @@ namespace ProjectChimera.UI
             }
         }
 
-        // PATCH 7: single source of truth — the in-match team palette. The setup swatch can never drift from it.
-        private static Color SlotColorFor(int i) => ProjectChimera.Core.Bootstrap.FactionVisualsPhase.SlotColorAt(i);
+        // ── Swatches (DW-460) ───────────────────────────────────────────────────────
+
+        /// <summary>DW-460 — recolor every row's swatch to the color that row will ACTUALLY render in-match. The
+        /// in-match team color is keyed by the slot's contiguous LAUNCH index (<see cref="SkirmishSetupToScenario"/>
+        /// renumbers active slots Human-first to 0..k-1), NOT by its setup-screen row ordinal — keying the swatch by
+        /// row index (the pre-DW-460 behavior, PATCH 7's palette-sharing notwithstanding) let a Human placed in row 2
+        /// (rows 0/1 Open) show a green swatch while playing Player1 blue. Recomputed on every
+        /// <see cref="Revalidate"/> so kind changes reshuffle the swatches live; Open/Closed rows launch no player
+        /// and show the neutral inactive grey. Reads the SAME Godot-free palette seam the in-match renderer consumes
+        /// (<c>TeamColorPalette</c>, DW-462) keyed by the SAME ordering the transform launches with
+        /// (<c>LaunchIndexBySlot</c>), so the two surfaces cannot drift.</summary>
+        private void RecolorSwatches(SkirmishSetup setup)
+        {
+            IReadOnlyDictionary<int, int> launchIndexBySlot = SkirmishSetupToScenario.LaunchIndexBySlot(setup.Slots);
+            for (int i = 0; i < _slotRows.Count; i++) // row i reads back as SetupSlot.Slot == i (BuildSlotRows order)
+                _slotRows[i].SetSwatchColor(launchIndexBySlot.TryGetValue(i, out int launchIndex)
+                    ? TeamColorPalette.SlotColorAt(launchIndex).ToColor()
+                    : TeamColorPalette.InactiveSlotColor.ToColor());
+        }
 
         // ── Validation ──────────────────────────────────────────────────────────────
 
@@ -318,7 +336,12 @@ namespace ProjectChimera.UI
                 if (r.CurrentKind == SlotKind.Human || r.CurrentKind == SlotKind.Ai) activeCount++;
             foreach (SlotRow r in _slotRows) r.SetTeamMax(activeCount);
 
-            IReadOnlyList<string> errors = _validator.Validate(ReadSetup(), _selectedMap, _factions);
+            SkirmishSetup setup = ReadSetup();
+
+            // DW-460: swatch colors depend on which slots are active and where the Human sits — recompute per change.
+            RecolorSwatches(setup);
+
+            IReadOnlyList<string> errors = _validator.Validate(setup, _selectedMap, _factions);
             if (errors.Count == 0)
             {
                 _launchBtn.Disabled = false;
@@ -376,19 +399,22 @@ namespace ProjectChimera.UI
         // ── Per-slot row ─────────────────────────────────────────────────────────────
 
         /// <summary>One player-slot row: a color swatch + Kind / AI-difficulty / faction option buttons + a team spinner.
-        /// Reads/writes the pure <see cref="SetupSlot"/>; re-validates the screen on any change.</summary>
+        /// Reads/writes the pure <see cref="SetupSlot"/>; re-validates the screen on any change. The swatch color is
+        /// OWNED by the screen's <see cref="RecolorSwatches"/> (DW-460 — it depends on the whole setup's active ranks,
+        /// not on this row alone), so a row is born neutral and recolored on every Revalidate.</summary>
         private sealed class SlotRow
         {
             public HBoxContainer Root { get; }
             private readonly int _slot;
             private readonly IReadOnlyList<FactionEntry> _factions;
+            private readonly ColorRect _swatch;
             private readonly OptionButton _kind;
             private readonly OptionButton _ai;
             private readonly OptionButton _faction;
             private readonly SpinBox _team;
 
             public SlotRow(int slot, IReadOnlyList<FactionEntry> factions, int startPositions,
-                           GodotTheme theme, Color color, Action onChanged)
+                           GodotTheme theme, Action onChanged)
             {
                 _slot = slot;
                 _factions = factions;
@@ -396,9 +422,10 @@ namespace ProjectChimera.UI
                 Root = new HBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
                 Root.AddThemeConstantOverride("separation", 8);
 
-                var swatch = new ColorRect { Color = color, CustomMinimumSize = new Vector2(16, 16),
-                                             SizeFlagsVertical = Control.SizeFlags.ShrinkCenter };
-                Root.AddChild(swatch);
+                _swatch = new ColorRect { Color = TeamColorPalette.InactiveSlotColor.ToColor(),
+                                          CustomMinimumSize = new Vector2(16, 16),
+                                          SizeFlagsVertical = Control.SizeFlags.ShrinkCenter };
+                Root.AddChild(_swatch);
 
                 var slotLbl = new Label { Text = $"Slot {slot + 1}", CustomMinimumSize = new Vector2(56, 0) };
                 slotLbl.AddThemeColorOverride("font_color", theme.GetColor(ThemeTokens.TextMid, ThemeTokens.Type));
@@ -445,6 +472,10 @@ namespace ProjectChimera.UI
 
             /// <summary>The currently-selected kind — lets the screen count active slots for the team-max clamp.</summary>
             public SlotKind CurrentKind => (SlotKind)_kind.GetItemId(_kind.Selected);
+
+            /// <summary>DW-460 — set the swatch to this slot's live in-match team color (or the inactive grey).
+            /// Called only by <see cref="RecolorSwatches"/>, which owns the rank computation.</summary>
+            public void SetSwatchColor(Color color) => _swatch.Color = color;
 
             /// <summary>PATCH 6: clamp the team spinner's max to the current active-slot count, so the UI never offers a
             /// team ordinal the validator rejects ("team must be between 0 and N"). Value is auto-clamped by the SpinBox.</summary>

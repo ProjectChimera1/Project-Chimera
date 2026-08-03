@@ -43,17 +43,10 @@ namespace ProjectChimera.Core.Skirmish
 
             // The active (Human/Ai) setup slots, renumbered to CONTIGUOUS indices 0..k-1 below so the built scenario is
             // Player1..Playerk contiguous — aligning with both the FactionRegistry active span and
-            // ResolveSlotFactionDefs' per-ordinal (by-slot-position) faction writes.
-            // Review PATCH (11.1 follow-up): the single Human MUST sort to contiguous index 0 so it becomes Player1 —
-            // offline the local human is hardwired to Player1 (LocalFactionPolicy.Effective) and the AI to Player2
-            // (AiOpponentSystem.AI_FACTION). Ordering by raw Slot alone let a Human placed in a higher slot than the AI
-            // land on index 1 (AI-piloted) while the AI's config took index 0 (human-controlled) — silently swapping who
-            // controls which faction/team. Human-first, then by Slot, keeps that swap impossible.
-            var activeSlots = (setup.Slots ?? new List<SetupSlot>())
-                .Where(s => s.Kind == SlotKind.Human || s.Kind == SlotKind.Ai)
-                .OrderBy(s => s.Kind == SlotKind.Human ? 0 : 1)
-                .ThenBy(s => s.Slot)
-                .ToList();
+            // ResolveSlotFactionDefs' per-ordinal (by-slot-position) faction writes. The ordering itself lives in
+            // ActiveSlotsInLaunchOrder (DW-460) — shared with the setup screen's swatch coloring so the two can never
+            // diverge.
+            IReadOnlyList<SetupSlot> activeSlots = ActiveSlotsInLaunchOrder(setup.Slots);
 
             var newSlots = new List<ScenarioPlayerSlot>();
             // Maps each PAIRED base slot's ORIGINAL ordinal → the new contiguous index i that now owns that base
@@ -141,6 +134,40 @@ namespace ProjectChimera.Core.Skirmish
             built.Units = mappedUnits.ToArray();
 
             return built;
+        }
+
+        /// <summary>
+        /// DW-460 — the single source of truth for the ACTIVE-slot launch order: Human first, then by ascending
+        /// setup-row ordinal. Review PATCH (11.1 follow-up): the single Human MUST sort to contiguous index 0 so it
+        /// becomes Player1 — offline the local human is hardwired to Player1 (LocalFactionPolicy.Effective) and the
+        /// AI to Player2 (AiOpponentSystem.AI_FACTION). Ordering by raw Slot alone let a Human placed in a higher
+        /// slot than the AI land on index 1 (AI-piloted) while the AI's config took index 0 (human-controlled) —
+        /// silently swapping who controls which faction/team. <see cref="Build"/> renumbers slots from exactly this
+        /// list, and the setup screen keys its color swatches from it (<see cref="LaunchIndexBySlot"/>) — sharing the
+        /// ONE ordering is what makes swatch/in-match color drift structurally impossible (the DW-460 defect:
+        /// swatches keyed by the map's start-position ROW index while the in-match color keys by the post-transform
+        /// contiguous index). Deterministic (stable LINQ sort); a null list yields an empty result.
+        /// </summary>
+        public static IReadOnlyList<SetupSlot> ActiveSlotsInLaunchOrder(IEnumerable<SetupSlot>? slots) =>
+            (slots ?? Enumerable.Empty<SetupSlot>())
+                .Where(s => s.Kind == SlotKind.Human || s.Kind == SlotKind.Ai)
+                .OrderBy(s => s.Kind == SlotKind.Human ? 0 : 1)
+                .ThenBy(s => s.Slot)
+                .ToList();
+
+        /// <summary>
+        /// DW-460 — for each ACTIVE setup slot (keyed by its <see cref="SetupSlot.Slot"/> row ordinal): the
+        /// contiguous launch index <see cref="Build"/> renumbers it to, which is also its team-color palette index
+        /// (<c>TeamColorPalette.SlotColorAt</c>). Open/Closed rows launch no player and get NO entry — the setup
+        /// screen renders those swatches with <c>TeamColorPalette.InactiveSlotColor</c>. Duplicate row ordinals
+        /// (never produced by the screen, one row per start position) resolve last-wins rather than throwing.
+        /// </summary>
+        public static IReadOnlyDictionary<int, int> LaunchIndexBySlot(IEnumerable<SetupSlot>? slots)
+        {
+            var bySlot = new Dictionary<int, int>();
+            IReadOnlyList<SetupSlot> ordered = ActiveSlotsInLaunchOrder(slots);
+            for (int i = 0; i < ordered.Count; i++) bySlot[ordered[i].Slot] = i;
+            return bySlot;
         }
     }
 }
