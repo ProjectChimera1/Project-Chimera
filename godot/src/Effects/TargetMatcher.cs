@@ -1,5 +1,6 @@
 #nullable enable
 using ProjectChimera.Core;
+using ProjectChimera.Navigation;
 
 namespace ProjectChimera.Effects
 {
@@ -77,6 +78,43 @@ namespace ProjectChimera.Effects
                 return true;
 
             return false;
+        }
+
+        /// <summary>
+        /// <see cref="TargetMatcher"/> packaged as an allocation-free <see cref="IEntityQueryFilter"/>, so a
+        /// <see cref="SearchAreaEffect"/>'s allegiance/domain/tag predicate can run INSIDE
+        /// <see cref="SpatialHash.QueryRadiusLowestIds{TFilter}"/> — in front of the hit-buffer truncation —
+        /// instead of compacting an already-truncated buffer afterwards (which under-selected whenever
+        /// non-matching entities crowded the buffer).
+        ///
+        /// A <c>readonly struct</c> consumed through a <c>struct</c> generic constraint: no delegate, no boxing,
+        /// no allocation on the executor's hot path. It carries only the caster-relative context
+        /// <see cref="Matches"/> needs; the world and the candidate id are supplied per-candidate by the query,
+        /// and the predicate itself is still the ONE <see cref="Matches"/> implementation, so the in-query filter
+        /// can never disagree with any other consumption site.
+        /// </summary>
+        internal readonly struct QueryFilter : IEntityQueryFilter
+        {
+            private readonly TargetFilter _filter;
+            private readonly int _casterId;
+            private readonly Faction _casterFaction;
+            private readonly UnitTag _requireTag;
+            private readonly AllianceStore? _alliances;
+
+            /// <summary>Capture the caster-relative half of a <see cref="Matches"/> call.</summary>
+            internal QueryFilter(TargetFilter filter, int casterId, Faction casterFaction,
+                                 UnitTag requireTag, AllianceStore? alliances)
+            {
+                _filter = filter;
+                _casterId = casterId;
+                _casterFaction = casterFaction;
+                _requireTag = requireTag;
+                _alliances = alliances;
+            }
+
+            /// <inheritdoc />
+            public bool Accepts(EntityWorld world, int entityId) =>
+                Matches(_filter, world, _casterId, _casterFaction, entityId, _requireTag, _alliances);
         }
     }
 }

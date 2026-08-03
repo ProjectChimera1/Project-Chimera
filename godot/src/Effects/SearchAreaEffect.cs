@@ -1,5 +1,4 @@
 #nullable enable
-using System;
 using ProjectChimera.Core;
 
 namespace ProjectChimera.Effects
@@ -43,14 +42,19 @@ namespace ProjectChimera.Effects
 
         /// <summary>
         /// Fill <paramref name="hitBuffer"/> (length <c>EffectCaps.MaxHitsPerSearch</c>) with the matched entity
-        /// ids in ASCENDING-id order and return the count (&lt;= <c>EffectCaps.MaxSearchTargets</c>). Allocation-free:
-        /// queries the rebuilt spatial hash into the caller's buffer, sorts it ascending (QueryRadius is
-        /// UNORDERED), then compacts out non-matching ids in place. Returns 0 if there is no spatial hash, the
-        /// center is not alive, or nothing matches.
+        /// ids in ASCENDING-id order and return the count (&lt;= <c>EffectCaps.MaxSearchTargets</c>). Returns 0 if
+        /// there is no spatial hash, the center is not alive, or nothing matches. Allocation-free: the
+        /// allegiance/domain/tag predicate is pushed INTO the spatial query as a
+        /// <see cref="TargetMatcher.QueryFilter"/> struct, which fills the caller's buffer already sorted
+        /// ascending — so there is no separate sort and no post-hoc compaction pass.
         ///
-        /// Note: when more than <c>MaxHitsPerSearch</c> entities are in radius, QueryRadius keeps the first
-        /// buffer-full it encounters (deterministic cell-scan order) and those are then sorted — selection stays
-        /// deterministic, though it is not a global "lowest ids first" pick. Authored radii keep counts small.
+        /// <para>SELECTION CONTRACT. Only MATCHING entities may occupy a buffer slot, and when more matches than
+        /// <c>MaxHitsPerSearch</c> are in radius the kept set is the GLOBALLY LOWEST ids in the whole radius —
+        /// not the first buffer-full in cell-scan order. Both halves are load-bearing, and both used to be wrong:
+        /// the buffer used to fill with UNFILTERED candidates and get compacted afterwards, so a crowd of
+        /// non-matching entities starved the fan-out (an Enemy nuke cast amid 64 of the caster's own allies
+        /// selected ZERO enemies), and over-cap selection followed grid geometry rather than the documented
+        /// ascending-id contract. Authored radii keep real counts small; the contract is what a peer can rely on.</para>
         /// </summary>
         internal int FindTargets(in EffectContext ctx, int[] hitBuffer)
         {
@@ -60,25 +64,14 @@ namespace ProjectChimera.Effects
                 return 0;
 
             FixedVec3 pos = world.Position[center];
-            // excludeId = -1: include everything in radius; Filter (Self/Ally/Enemy/Neutral) decides allegiance.
-            int count = ctx.Spatial.QueryRadius(world, pos, Radius, -1, hitBuffer);
+            var filter = new TargetMatcher.QueryFilter(
+                Filter, ctx.CasterId, ctx.CasterFaction, RequireTag, ctx.Alliances);
+            // excludeId = -1: no POSITIONAL exclusion — Filter (Self/Ally/Enemy/Neutral) decides allegiance, so
+            // e.g. an Enemy filter already rejects the caster (and now rejects it before it can eat a slot).
+            int count = ctx.Spatial.QueryRadiusLowestIds(world, pos, Radius, -1, hitBuffer, filter);
 
-            // QueryRadius returns UNORDERED — sort ascending-id so execution order is the deterministic contract
-            // (AC3). Ids in the buffer are unique, so Array.Sort over ints is a total order (the CHM0003 advisory
-            // is a false positive here: there are no equal keys to reorder).
-            Array.Sort(hitBuffer, 0, count);
-
-            // Compact out non-matching ids, preserving ascending order.
-            int w = 0;
-            for (int r = 0; r < count; r++)
-            {
-                int id = hitBuffer[r];
-                if (TargetMatcher.Matches(Filter, world, ctx.CasterId, ctx.CasterFaction, id, RequireTag, ctx.Alliances))
-                    hitBuffer[w++] = id;
-            }
-            count = w;
-
-            // Clamp fan-out to the structural cap (named constant — CHM0004 clean).
+            // Clamp fan-out to the structural cap (named constant — CHM0004 clean). Defensive while
+            // MaxHitsPerSearch == MaxSearchTargets; load-bearing the moment the buffer is sized larger.
             if (count > EffectCaps.MaxSearchTargets)
                 count = EffectCaps.MaxSearchTargets;
             return count;
