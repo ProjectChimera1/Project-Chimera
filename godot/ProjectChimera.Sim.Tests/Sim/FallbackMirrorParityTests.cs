@@ -200,6 +200,45 @@ namespace ProjectChimera.Sim.Tests.Sim
         }
 
         /// <summary>
+        /// Post-merge review fix — the COORDINATE pin above is not enough. <c>ScenarioLoadPhase</c>'s fallback arm must
+        /// also mark slots 0 and 1 PRESENT: <c>StartPositionBridge.Initialize</c> builds all four flag poles but takes
+        /// each one's <c>Visible</c> straight from <c>present[i]</c>, so a fallback boot that fills only
+        /// <c>positions[...]</c> renders both start-position markers INVISIBLE while the board itself looks populated.
+        ///
+        /// That is exactly what shipped: merge <c>c434df6</c> resolved this hunk wholesale to the
+        /// housekeeping-docs-normalization branch, which was cut from <c>024025e</c> — before DW-163 introduced the
+        /// <c>present</c> array — so the merged file kept master's array and <c>Initialize(positions, present)</c> call
+        /// but the branch's two <c>present</c>-less assignment lines. Neither side's diff showed a deletion.
+        ///
+        /// A source scan is the only available instrument: <c>src\Core\Bootstrap\Phases\**</c> is
+        /// <c>&lt;Compile Remove&gt;</c>d from SimSources.props (Godot-coupled), so this assembly cannot call the phase.
+        /// Comments are stripped before matching, so the explanatory comment above the real code cannot satisfy it.
+        /// </summary>
+        [Fact]
+        public void ScenarioLoadPhase_FallbackArm_MarksBothStartSlotsPresent()
+        {
+            string phase = PhaseFile();
+            Assert.True(File.Exists(phase), $"ScenarioLoadPhase.cs not found at '{phase}' (via [CallerFilePath]).");
+
+            // Strip comments, then collapse whitespace — a declaration split across lines still matches, and comment
+            // prose (which discusses these very flags) can never masquerade as code.
+            string blob = System.Text.RegularExpressions.Regex.Replace(File.ReadAllText(phase), @"/\*.*?\*/", " ",
+                              System.Text.RegularExpressions.RegexOptions.Singleline);
+            blob = System.Text.RegularExpressions.Regex.Replace(blob, @"//[^\n]*", " ");
+            blob = System.Text.RegularExpressions.Regex.Replace(blob, @"\s+", " ");
+
+            foreach (int slot in new[] { 0, 1 })
+                Assert.True(blob.Contains($"present[{slot}] = true"),
+                    $"ScenarioLoadPhase's no-scenario fallback arm no longer sets present[{slot}] = true. " +
+                    $"StartPositionBridge.Initialize reads Visible from present[i], so the fallback boot would render " +
+                    $"the slot-{slot} start-position flag pole INVISIBLE. Restore it next to positions[{slot}].");
+
+            // Vacuous-pass fence: the coordinate literals this pin is paired with must still be observable here too.
+            Assert.Contains("positions[0] = (-45f, 0f)", blob);
+            Assert.Contains("positions[1] = (+45f, 0f)", blob);
+        }
+
+        /// <summary>
         /// DW-324 (the "optional FallbackMirror-vs-alpha_map_01 agreement test" the sweep list records, closing
         /// DW-222's accepted residual) — <c>BuildFallbackMirror</c>'s doc once claimed "keep these literal values in
         /// sync with alpha_map_01.json" with nothing enforcing it. This asserts the agreement that IS real: the shared
@@ -272,6 +311,13 @@ namespace ProjectChimera.Sim.Tests.Sim
         {
             string godot = Path.GetDirectoryName(Path.GetDirectoryName(Path.GetDirectoryName(thisFile)!)!)!;
             return Path.Combine(godot, "resources", "data", "scenarios");
+        }
+
+        // <repo>/godot/ProjectChimera.Sim.Tests/Sim/THIS.cs → <repo>/godot/src/Core/Bootstrap/Phases/ScenarioLoadPhase.cs
+        private static string PhaseFile([CallerFilePath] string thisFile = "")
+        {
+            string godot = Path.GetDirectoryName(Path.GetDirectoryName(Path.GetDirectoryName(thisFile)!)!)!;
+            return Path.Combine(godot, "src", "Core", "Bootstrap", "Phases", "ScenarioLoadPhase.cs");
         }
 
         /// <summary>A minimal Worker-category unit def with a custom id (helper for the category-resolution pin).</summary>

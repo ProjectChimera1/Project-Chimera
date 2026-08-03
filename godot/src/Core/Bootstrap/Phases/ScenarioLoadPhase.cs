@@ -415,8 +415,15 @@ namespace ProjectChimera.Core.Bootstrap
                 // effect). The duplication is no longer comment-coupled (DW-324): the mirror's values are pinned by
                 // FallbackMirrorParityTests.FallbackMirror_StartPositions_MatchTheScenarioLoadPhaseMarkerFallback,
                 // which names these two literals — so moving the mirror's bases without moving these turns Tier-1 RED.
-                positions[0] = (-45f, 0f);
-                positions[1] = (+45f, 0f);
+                //
+                // The `present[...] = true` flags are LOAD-BEARING, not decoration: StartPositionBridge.Initialize
+                // builds every marker but sets Visible from `present[i]`, so dropping them boots the fallback with
+                // BOTH flag poles invisible. They were lost exactly that way once (merge c434df6 resolved this hunk
+                // wholesale to a branch cut from 024025e, which predated DW-163's `present` array), and no Tier-1 test
+                // could see it — this file is <Compile Remove>d from SimSources.props. The parity test above pins the
+                // COORDINATES only; MarkerVisibilityFlagsGuard (same test class) is what pins these two flags.
+                positions[0] = (-45f, 0f); present[0] = true;
+                positions[1] = (+45f, 0f); present[1] = true;
             }
 
             var startPosBridge = new StartPositionBridge();
