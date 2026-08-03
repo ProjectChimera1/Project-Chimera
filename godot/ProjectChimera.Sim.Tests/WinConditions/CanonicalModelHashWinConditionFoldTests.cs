@@ -29,7 +29,7 @@ namespace ProjectChimera.Sim.Tests.WinConditions
         }
 
         [Fact]
-        public void AlgoVersion_Pinned_At12() => Assert.Equal(14, CanonicalModelHash.AlgoVersion);
+        public void AlgoVersion_IsPinned() => Assert.Equal(14, CanonicalModelHash.AlgoVersion);
 
         [Fact]
         public void NoneSpec_And_NullSpec_HashIdentically()

@@ -134,10 +134,10 @@ namespace ProjectChimera.Sim.Tests.Definitions
         // ── AC1/AC3 determinism teeth: the profile is excluded from the hash by construction ──
 
         [Fact]
-        public void FeedbackProfile_IsExcludedFromSimChecksum_AndAlgoVersionIs10()
+        public void FeedbackProfile_IsExcludedFromSimChecksum_AndAlgoVersionIsPinned()
         {
             // 2.7 added NO fold of its own (FeedbackProfile is presentation-read, never hashed). The version has since
-            // moved to 10 for UNRELATED folds (3.12's Delivery + ProjectileSpeed); the FeedbackProfile exclusion teeth
+            // moved for UNRELATED folds (first 3.12's Delivery + ProjectileSpeed); the FeedbackProfile exclusion teeth
             // below are the real assertion — the version pin just tracks the current value (canonically pinned elsewhere).
             Assert.Equal(22, SimChecksum.AlgoVersion);
 
