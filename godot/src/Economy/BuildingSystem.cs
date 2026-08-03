@@ -90,6 +90,16 @@ namespace ProjectChimera.Economy
         /// <summary>Story 11.4 — wire the presentation combat-event queue so completed training raises a TrainingComplete cue.</summary>
         public void SetCombatEvents(CombatEventQueue? events) => _combatEvents = events;
 
+        // DW-207 — the resource nodes, so a Build command that interrupts a gathering worker RELEASES the node's
+        // reserved gatherer slot instead of only forgetting the target (which permanently burned that much of the
+        // node's MaxGatherers capacity). Wired by SimulationHost after construction (mirrors SetDslSimEvents /
+        // SetCombatEvents so the ~30 existing test call sites keep their signatures); null ⇒ the pre-DW-207 behaviour
+        // of clearing GatherTarget only, for the isolated-store callers that own no ResourceNodeStore at all.
+        private ResourceNodeStore? _nodes;
+        /// <summary>DW-207 — wire the node store so <see cref="QueueWorkerBuild"/> can release the interrupted worker's
+        /// reserved gather slot through the single <see cref="GatheringSystem.ReleaseGatherSlot"/> path.</summary>
+        public void SetResourceNodes(ResourceNodeStore? nodes) => _nodes = nodes;
+
         public BuildingSystem(BuildingStore buildings, ResourceStore resources,
                               FactionDefinition? p1Faction = null,
                               FactionDefinition? p2Faction = null,
@@ -1040,8 +1050,13 @@ namespace ProjectChimera.Economy
                 return -1;
             }
 
-            // Release current node assignment (slot count will reconcile next gather tick)
-            world.GatherTarget[workerId] = -1;
+            // Release the current node assignment. DW-207: the old comment here promised the slot count would
+            // "reconcile next gather tick" — nothing ever did, so every Build command issued to a worker that was
+            // en route to / standing at a node silently and permanently consumed one of that node's MaxGatherers
+            // slots. Route through the single GatheringSystem release path, which decrements AssignedGatherers only
+            // for the two states that actually hold a reservation (never MovingToBase, which already gave it back).
+            if (_nodes != null) GatheringSystem.ReleaseGatherSlot(world, _nodes, workerId);
+            world.GatherTarget[workerId] = -1; // unconditional: the unwired (null-store) callers keep today's behaviour
 
             // Issue Build command — MovementSystem moves the worker, GatheringSystem skips them
             world.BuildTarget[workerId]  = _buildings.PackRef(bId); // Story 2.13 D-3: packed ref (golden-neutral at gen 0)

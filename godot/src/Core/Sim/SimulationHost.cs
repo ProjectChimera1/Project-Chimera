@@ -270,7 +270,9 @@ namespace ProjectChimera.Core.Sim
                 //    system that spends resources and times an order, structurally parallel to BuildingSystem's own
                 //    production timer. ──
                 ResearchSys,                                                              // [1] ResearchSystem    (Economy)
-                new GatheringSystem(Nodes, Resources, Buildings, MatchStats),             // [2] GatheringSystem   (Economy) — Buildings (4.7): requires_structure gate
+                // DW-207: World is passed so the system can subscribe World.OnDestroy and release a dying worker's
+                // reserved gatherer slot (the leak the skip-dead main loop structurally cannot see).
+                new GatheringSystem(Nodes, Resources, Buildings, MatchStats, World),       // [2] GatheringSystem   (Economy) — Buildings (4.7): requires_structure gate
                 new MovementSystem(),                                                     // [3] MovementSystem    (Navigation)
                 // ── Story 2.12 shift-queue advance. Immediately AFTER MovementSystem so a queued
                 //    movement order's arrival is detected fresh THIS tick, and BEFORE AbilityCastSystem so a popped
@@ -318,6 +320,7 @@ namespace ProjectChimera.Core.Sim
             //    fixed-order array (SystemOrderTest pins the indices); the two field-held systems wire directly. ──
             BuildSys.SetDslSimEvents(DslSimEvents);
             BuildSys.SetCombatEvents(CombatEvents); // Story 11.4 (FR-74): production-completion cue rides the non-folded queue
+            BuildSys.SetResourceNodes(Nodes);       // DW-207: QueueWorkerBuild releases the interrupted worker's gather slot
             abilitySys.SetDslSimEvents(DslSimEvents);
             ((CombatSystem)_systems[7]).SetDslSimEvents(DslSimEvents);
             ((ProjectileSystem)_systems[8]).SetDslSimEvents(DslSimEvents);
