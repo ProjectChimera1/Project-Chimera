@@ -224,6 +224,15 @@ namespace ProjectChimera.Multiplayer
         private readonly byte[][] _mergedBytes;
         private readonly int[]    _mergedLen     = new int[BUFFER_SIZE];
 
+        // ── Merged-apply decode scratch (DW-391) ──────────────────────────────
+        // Caller-owned scratch passed to MergedTickApplier's pooled overload so the once-per-tick apply path
+        // never allocates (a gen-0 GC hitch is exactly what stalls a lockstep tick). Matches the preallocation
+        // discipline of _mergedBytes above and MergedTickBuilder's assembly scratch. Dirty reuse across ticks is
+        // safe: the applier overwrites every index it reads before reading it.
+        private readonly Faction[]   _applyFactions    = new Faction[MergedTickPacket.MERGED_MAX_SUBBUNDLES];
+        private readonly int[]       _applyOrderCounts = new int[MergedTickPacket.MERGED_MAX_SUBBUNDLES];
+        private readonly UnitOrder[] _applyOrdersFlat  = new UnitOrder[MergedTickPacket.MERGED_MAX_SUBBUNDLES * TickCommandPacket.MAX_ORDERS];
+
         // ── Send buffers ──────────────────────────────────────────────────────
 
         private readonly byte[] _sendBuf = new byte[
@@ -487,6 +496,7 @@ namespace ProjectChimera.Multiplayer
         {
             _recordTick = currentTick;
             MergedTickApplier.Apply(_mergedBytes[mod], _mergedLen[mod], _world,
+                _applyFactions, _applyOrderCounts, _applyOrdersFlat, // DW-391: pooled scratch — zero-alloc apply
                 OnRequestPath, OnRequestAttackMove, OnCancelPath,
                 Buildings, CombatEvents, Items, Research, DslEventSink,
                 Recorder != null ? _recordHook : null, WinState);
