@@ -51,6 +51,7 @@ namespace ProjectChimera.Core
         private const int FACTION_COUNT = FactionRegistry.FACTION_ARRAY_SIZE; // 9: WinStateStore / AllianceStore array size (Neutral + Player1..Player8)
 
         private readonly WinStateStore _store;
+        private readonly EntityWorld _world;      // DW-184: Configure packs the leader ref against the live world's generations
         private readonly BuildingStore _buildings;
         private readonly FactionRegistry _factions;
         private readonly AllianceStore _alliances;
@@ -72,15 +73,16 @@ namespace ProjectChimera.Core
         private int _regionIndex = -1;   // KotH: resolved region index (-1 = unresolved)
         private int _holdTicks;          // KotH: contiguous sole-hold ticks to win
         private Faction _survivalFaction = Faction.Neutral; // TimedSurvival: designated faction
-        private int _leaderEntityId = -1;                   // Assassination: resolved runtime entity id
+        private int _leaderRef = -1;                        // Assassination: generation-stamped EntityWorld.PackRef (DW-184); -1 = unresolved
         private Faction _leaderFaction = Faction.Neutral;
         private int _landmarkRef = -1;                      // Landmark: generation-stamped BuildingStore.PackRef (P6); -1 = unresolved
         private Faction _landmarkFaction = Faction.Neutral;
 
-        public WinConditionSystem(WinStateStore store, BuildingStore buildings, FactionRegistry factions,
-                                  AllianceStore alliances)
+        public WinConditionSystem(WinStateStore store, EntityWorld world, BuildingStore buildings,
+                                  FactionRegistry factions, AllianceStore alliances)
         {
             _store     = store;
+            _world     = world;
             _buildings = buildings;
             _factions  = factions;
             _alliances = alliances;
@@ -141,8 +143,13 @@ namespace ProjectChimera.Core
                 case WinPresetKind.Assassination:
                 {
                     int idx = spec.LeaderUnitIndex;
-                    if (unitEntityIds != null && idx >= 0 && idx < unitEntityIds.Length)
-                        _leaderEntityId = unitEntityIds[idx];
+                    // DW-184 (mirrors the Landmark P6 fix below): every CROSS-TICK entity reference must be
+                    // generation-stamped via EntityWorld.PackRef/TryResolveRef — a raw id is ABA-unsafe (a same-tick
+                    // same-faction slot recycle between the death systems and this evaluator would mask the leader's
+                    // death, making the target effectively immortal). Golden-neutral: at generation 0,
+                    // PackRef(id) == id. A -1 map entry (never spawned) keeps the -1 "unresolved" sentinel.
+                    if (unitEntityIds != null && idx >= 0 && idx < unitEntityIds.Length && unitEntityIds[idx] >= 0)
+                        _leaderRef = _world.PackRef(unitEntityIds[idx]);
                     ScenarioUnit[] units = scenario.Units ?? System.Array.Empty<ScenarioUnit>();
                     if (idx >= 0 && idx < units.Length)
                         _leaderFaction = FactionRegistry.ToFaction(units[idx].Slot);
@@ -182,7 +189,7 @@ namespace ProjectChimera.Core
             _regionIndex     = -1;
             _holdTicks       = 0;
             _survivalFaction = Faction.Neutral;
-            _leaderEntityId  = -1;
+            _leaderRef       = -1;
             _leaderFaction   = Faction.Neutral;
             _landmarkRef     = -1;
             _landmarkFaction = Faction.Neutral;
@@ -396,11 +403,12 @@ namespace ProjectChimera.Core
             // P3: an unresolved leader (passed param-validation but failed to spawn, so unitEntityIds[idx] == -1) means
             // the protected asset never existed → its owner's team loses deterministically. Grace-gated (the leader may
             // be a match_start spawn that lands AFTER this system on tick 1).
-            if (_leaderEntityId < 0) return _store.MatchTicks >= GRACE_TICKS;
-            // A RESOLVED leader dying is a real assassination, NEVER grace-gated. Dead if the slot is no longer alive,
-            // or was recycled to a different faction (defensive against the no-per-instance-id ABA edge — we latch the
-            // tick the leader dies, before any later-tick recycle).
-            return !world.IsAlive(_leaderEntityId) || world.FactionOf[_leaderEntityId] != _leaderFaction;
+            if (_leaderRef < 0) return _store.MatchTicks >= GRACE_TICKS;
+            // DW-184 (mirrors LandmarkDead's P6): deref the generation-stamped ref each tick — a failed resolve (died,
+            // or the slot recycled to a NEW unit, even same-faction on the same tick) or a faction flip means the
+            // DESIGNATED leader is gone → a real assassination, NEVER grace-gated. The old raw-id IsAlive+faction check
+            // could not see a same-tick same-faction recycle (no entity generation counter existed).
+            return !world.TryResolveRef(_leaderRef, out int id) || world.FactionOf[id] != _leaderFaction;
         }
 
         private bool LandmarkDead()

@@ -679,6 +679,33 @@ namespace ProjectChimera.Core
         /// </summary>
         public Action<int> OnUnitDefinitionApplied;
 
+        // ── Generation counter (DW-184 — the BuildingStore/HeroStore Story 2.13 D-3 pattern, applied to entities) ──
+        // Per-slot recycle generation, bumped each time Create() reuses a freed slot. Entity ids previously had NO
+        // generation counter, so any cross-tick holder of a bare id was ABA-unsafe: Destroy() frees the slot to the
+        // LIFO free-list immediately and a same-tick Create() pops it, so a raw-id + faction check can mistake the NEW
+        // occupant for the old one (the WinConditionSystem assassination-target masking DW-184 records). A cross-tick
+        // reference that must survive recycles is PACKED as (Generation[id] << REF_SLOT_BITS) | id via PackRef and
+        // validated on deref by TryResolveRef, so a stale ref reverts CLEANLY instead of ABA-retargeting.
+        //
+        // UNFOLDED — never a SimChecksum input (the exact BuildingStore.Generation posture): the recycle sequence is
+        // itself deterministic (driven by the deterministic Create/Destroy order), so peers agree without folding, and
+        // the folded Flags/alive state already covers divergence transitively. Golden-neutral: generation starts at 0,
+        // so PackRef(id) == id for every never-recycled entity.
+        //
+        // NOT persisted by SaveGameState (unlike BuildingStore.Generation, which backs packed refs stored in folded,
+        // persisted arrays like CommandTarget): the ONLY cross-tick holder of a packed ENTITY ref today is
+        // WinConditionSystem's apply-time _leaderRef, which the SP load path re-packs during its fresh re-apply
+        // (ClearForReset zeroes generations; apply-time spawns append at generation 0), and a resolved leader's death
+        // latches its folded WinStateStore verdict on the same tick it dies — so no save boundary can separate a
+        // bumped generation from its already-persisted consequence. If a future story stores packed ENTITY refs in
+        // persisted state, this array must join the SaveGameState entity lanes.
+        public readonly int[] Generation;
+
+        /// <summary>Bit width of the id (slot) half of a packed entity reference — <see cref="MAX_ENTITIES"/> (4096)
+        /// is exactly <c>1 &lt;&lt; 12</c>, so every id fits in the low 12 bits and the generation occupies the rest.</summary>
+        public const int REF_SLOT_BITS = 12;
+        private const int REF_SLOT_MASK = (1 << REF_SLOT_BITS) - 1;
+
         private int _nextId;
         private readonly int[] _freeList;
         private int _freeCount;
@@ -762,6 +789,7 @@ namespace ProjectChimera.Core
             GateClosedTicks = new int[MAX_ENTITIES];            // DW-80 — closed-gate streak (NOT folded; 0 == fresh, no Array.Fill needed)
             BuildTarget    = new int[MAX_ENTITIES];
 
+            Generation = new int[MAX_ENTITIES]; // DW-184 — per-slot recycle generation (UNFOLDED; 0 == never recycled)
             _freeList = new int[MAX_ENTITIES];
             _freeCount = 0;
             _nextId = 0;
@@ -791,10 +819,11 @@ namespace ProjectChimera.Core
             if (_freeCount > 0)
             {
                 id = _freeList[--_freeCount];
+                Generation[id]++; // DW-184: bump so stale packed refs to the prior occupant fail TryResolveRef
             }
             else if (_nextId < MAX_ENTITIES)
             {
-                id = _nextId++;
+                id = _nextId++;   // fresh slot — Generation stays 0 (never recycled)
             }
             else
             {
@@ -1200,6 +1229,30 @@ namespace ProjectChimera.Core
             id >= 0 && id < _nextId && (Flags[id] & EntityFlags.Alive) != 0;
 
         /// <summary>
+        /// DW-184 (the Story 2.13 AC3.4 pattern, applied to entities) — pack a live entity id into a
+        /// generation-stamped CROSS-TICK reference <c>(Generation[id] &lt;&lt; 12) | id</c> (id 0–4095 = low
+        /// <see cref="REF_SLOT_BITS"/> bits; generation = the upper bits). A holder that carries an entity id across
+        /// ticks — and must detect the slot recycling, not silently retarget the new occupant — stores this instead
+        /// of the bare id and validates it via <see cref="TryResolveRef"/> on deref. GOLDEN-NEUTRAL: at generation 0,
+        /// <c>PackRef(id) == id</c>.
+        /// </summary>
+        public int PackRef(int id) => (Generation[id] << REF_SLOT_BITS) | id;
+
+        /// <summary>
+        /// DW-184 — resolve a packed entity reference back to a live id. Returns true and the id iff the slot is in
+        /// bounds, ALIVE, and the generation still matches (the SAME entity occupies it). A stale ref — the entity
+        /// died, or its slot was recycled (generation bumped, even same-tick and same-faction) — returns false, so
+        /// the holder observes the death/recycle instead of ABA-retargeting the new occupant. The -1 "unresolved"
+        /// sentinel resolves false: its masked id is 4095 with an arithmetic-shift generation of -1, which no slot
+        /// ever holds (generations are non-negative).
+        /// </summary>
+        public bool TryResolveRef(int packed, out int id)
+        {
+            id = packed & REF_SLOT_MASK; // low 12 bits — always ≥ 0
+            return IsAlive(id) && Generation[id] == (packed >> REF_SLOT_BITS);
+        }
+
+        /// <summary>
         /// Snapshot previous positions for interpolation (call at start of each sim tick).
         /// </summary>
         public void SnapshotPositions()
@@ -1249,6 +1302,7 @@ namespace ProjectChimera.Core
             Array.Clear(HeroIndex);             Array.Clear(GatherState);           Array.Clear(GatherTarget);
             Array.Clear(CarryAmount);           Array.Clear(CarryResourceType);     Array.Clear(CarryCapacity);         Array.Clear(BuildTarget);
             Array.Clear(GateClosedTicks);       // DW-80 (0 == the fresh-ctor state)
+            Array.Clear(Generation);            // DW-184 — recycle generations restart at 0 (the fresh-ctor state)
             Array.Clear(_freeList);
 
             // Re-apply the ctor sentinel fills (a default 0 would falsely alias slot/id 0 for these).

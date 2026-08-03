@@ -238,6 +238,38 @@ namespace ProjectChimera.Sim.Tests.WinConditions
             Assert.Equal((int)Faction.Player2, h.WinState.WinnerFaction());
         }
 
+        // ── DW-184: the leader holds a generation-stamped ref — a same-tick same-faction recycle still loses ─────
+
+        [Fact]
+        public void Assassination_SameTickSlotRecycle_SameFaction_LossStillLatches()
+        {
+            var h = BuildHost();
+            int leader = h.World.Create(At(0, 0), Faction.Player1, Fixed.FromInt(10), Fixed.FromInt(3));
+            h.World.Create(At(5, 5), Faction.Player2, Fixed.FromInt(10), Fixed.FromInt(3)); // the winner
+            var scenario = new ScenarioData
+            {
+                Units = new[] { new ScenarioUnit { UnitId = "leader", Slot = 0, X = 0, Z = 0 } },
+                WinConditionSpec = new WinConditionSpec { Preset = WinPresetKind.Assassination, LeaderUnitIndex = 0 },
+            };
+            h.WinCon.Configure(scenario, RegionStore.Empty, new[] { leader }, null);
+
+            TickPastGrace(h);
+            Assert.Equal(0, h.WinState.WinnerFaction()); // leader alive → no verdict
+
+            // The ABA edge (DW-184, the Landmark P6 twin): the leader dies and its slot recycles into a NEW
+            // same-faction unit BEFORE the next win tick (EntityWorld.Destroy frees the slot to the LIFO free-list
+            // immediately; a same-tick Create pops it — entity ids had no generation counter). The old raw-id
+            // IsAlive+faction check saw an alive, same-faction unit and masked the assassination, leaving the
+            // leader effectively immortal; the generation-stamped packed ref must still latch the loss.
+            h.World.Destroy(leader);
+            int recycled = h.World.Create(At(0, 0), Faction.Player1, Fixed.FromInt(10), Fixed.FromInt(3));
+            Assert.Equal(leader, recycled); // precondition: the world really recycled the same slot
+
+            h.WinCon.Tick(h.World, Dt);
+            Assert.Equal((int)Faction.Player2, h.WinState.WinnerFaction()); // the DESIGNATED leader is gone → P1 loses
+            Assert.Equal(WinStateStore.VERDICT_LOST, h.WinState.Verdict[(int)Faction.Player1]);
+        }
+
         // ── Landmark Destruction ────────────────────────────────────────────────────────────────────────────────
 
         [Fact]
