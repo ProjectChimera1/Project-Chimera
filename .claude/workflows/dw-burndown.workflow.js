@@ -12,15 +12,25 @@ export const meta = {
 
 // ─────────────────────────────────────────── config ───────────────────────────────────────────
 // args: { bundleNames: string[], chunkSize?: number, worklistPath?: string, skipReview?: boolean }
+//       — or just the bundle-name array, or a JSON string of either (see the normalizer below).
 //
 // CHUNK SIZE IS A HARDWARE LIMIT, NOT A TUNING KNOB. This machine is a Ryzen 5 5600 (6 physical
 // cores / 12 logical) with 16 GB RAM. Every implement agent runs `dotnet build` plus the 3834-test
 // Tier-1 suite, each wanting ~1.5-3 GB and multiple cores. Above ~4 concurrent the box thrashes
 // swap and every suite run slows more than the extra parallelism buys. Workflow's own cap is
 // min(16, cores-2) and there is no knob to lower it, so concurrency is bounded HERE by chunking.
-const CHUNK = args?.chunkSize ?? 4
-const WORKLIST = args?.worklistPath ?? 'D:/Projects/Project_Chimera/.claude/workflows/dw-worklist.json'
-const NAMES = args?.bundleNames ?? []
+// Invoked as a slash command, `args` arrives as the RAW STRING the user typed, so a bare
+// `args.bundleNames` is always undefined and the run bails before spawning anything. Accept all
+// three shapes: JSON text, a bare array of bundle names, or the full options object.
+const parsed = typeof args === 'string' ? (() => { try { return JSON.parse(args) } catch { return {} } })() : (args ?? {})
+const OPTS = Array.isArray(parsed) ? { bundleNames: parsed } : parsed
+
+const CHUNK = OPTS.chunkSize ?? 4
+const WORKLIST = OPTS.worklistPath ?? 'D:/Projects/Project_Chimera/.claude/workflows/dw-worklist.json'
+const NAMES = OPTS.bundleNames ?? []
+const MODEL = OPTS.model ?? 'opus'          // fleet-wide model for every agent in this run
+const BASELINE = OPTS.baselineTests ?? 3834 // Tier-1 pass count on master at launch; grows as merges land
+const BASE = OPTS.baseSha ?? ''             // pre-run master SHA; anchors the final review diff range
 
 if (!NAMES.length) {
   log('No bundleNames passed. Read .claude/workflows/dw-worklist.json and pass a subset via args.')
@@ -92,11 +102,13 @@ BUNDLE: ${name}
    wrong, or it needs a deliberate isolated re-baseline that is NOT this bundle's job. Stop, set
    success=false, and explain in blockedReason. The same applies to CanonicalModelHash and
    StartStateHash.
-8. Gate — BOTH must pass, run them yourself, do not assume:
-     dotnet build D:/Projects/Project_Chimera/godot/godot.csproj
-     dotnet test D:/Projects/Project_Chimera/godot/ProjectChimera.Sim.Tests/ProjectChimera.Sim.Tests.csproj
-   The suite baseline is 3834 passing / 0 failing / 1 skipped. ANY failure means success=false.
-   Report the real numbers in testsPassed/testsFailed — never a guess.
+8. Gate — BOTH must pass, run them yourself, do not assume. Use RELATIVE paths from your worktree
+   root — you are gating YOUR checkout, not the main one at D:/Projects/Project_Chimera:
+     dotnet build godot/godot.csproj
+     dotnet test godot/ProjectChimera.Sim.Tests/ProjectChimera.Sim.Tests.csproj
+   The suite baseline at launch is ${BASELINE} passing / 0 failing / 1 skipped; your additions only
+   grow it. ANY failure means success=false. Report the real numbers in testsPassed/testsFailed —
+   never a guess.
 9. DO NOT EDIT deferred-work.md, sprint-status.yaml, or epics.md. Bookkeeping is a later serial
    phase; 80 agents editing one ledger is a guaranteed merge conflict. Record anything you would
    have filed in \`newFindings\` instead.
@@ -105,6 +117,11 @@ BUNDLE: ${name}
       git add -A && git commit -m "dw(${name}): <what changed> — <DW ids>"
     Report that branch name. If you could not finish, commit nothing, set success=false, and put the
     real reason in blockedReason — a partial commit is worse than none.
+
+NEVER run \`git stash\` (or pop/drop/clear) in any form. The stash stack is SHARED across every
+worktree of this repo; parallel agents stash-popping concurrently cross wires, and long-lived
+stashes in the stack hold real unmerged work that must not be touched. To compare against the
+pre-fix baseline use \`git show <sha>:<file>\` or a temp commit on your own branch — never the stash.
 
 Be honest. A truthful success=false costs one bundle; a false success=true corrupts the merge and
 the ledger. Your final message is the structured result, not prose for a human.
@@ -123,9 +140,19 @@ WHAT   : ${r.summary}
 2. On conflict: resolve it. You have both sides; keep BOTH intents — these are independent fixes to
    the same file, not competing versions. If the conflict is genuinely irreconcilable,
    \`git merge --abort\`, set merged=false, and list the conflicting paths.
+   CONFLICT DISCIPLINE — the branch was cut from a snapshot taken at RUN LAUNCH, so master's side
+   of every conflict may be many merges newer than the branch base. Taking the branch side of a
+   hunk wholesale has already destroyed two load-bearing lines in this burn-down (the fallback
+   \`present[]\` flags, restored in 4f6837b). For each conflicted file run
+   \`git diff $(git merge-base HEAD <branch>) HEAD -- <file>\` to see everything master gained
+   since the branch base, and keep ALL of it unless this bundle deliberately supersedes it. Files
+   Tier-1 cannot compile (Compile-Removed in SimSources.props, e.g. src/Core/Bootstrap/**) get NO
+   safety net from step 3 — re-read the merged result against BOTH parents before committing.
+   NEVER use \`git stash\` — the stack is shared across worktrees and holds real unmerged work.
 3. After a clean merge, re-run the FULL suite:
      dotnet test D:/Projects/Project_Chimera/godot/ProjectChimera.Sim.Tests/ProjectChimera.Sim.Tests.csproj
-   Baseline 3834 passing / 0 failing / 1 skipped, and it should only grow. If the merge turns the
+   Baseline ${BASELINE} passing / 0 failing / 1 skipped at launch, and it only grows as merges
+   land. If the merge turns the
    suite red, the two changes interact: fix it here if the fix is small and obvious, otherwise
    \`git reset --hard HEAD~1\` to undo the merge, set suitePassed=false, and explain in \`note\`.
 4. Report real numbers. Never claim a suite pass you did not observe.
@@ -142,12 +169,14 @@ NEW FINDINGS to file (surfaced but deliberately not fixed):
 ${rs.flatMap((r) => (r.newFindings || []).map((f) => `  - ${f.title} | ${f.location} | ${f.reason}`)).join('\n') || '  (none)'}
 
 1. In _bmad-output/implementation-artifacts/deferred-work.md, for each resolved DW id, change its
-   \`status: open\` line to \`status: done 2026-08-03\` and add a \`resolution:\` line naming the bundle.
+   \`status: open\` line to \`status: done <TODAY>\` and add a \`resolution:\` line naming the bundle.
+   <TODAY> is the REAL current date — run \`date +%F\` and use its output; this run can cross
+   midnight, so never copy a date from an earlier entry.
    THE LEDGER IS APPEND-ONLY — never rewrite, reorder, or delete an entry. Only flip status and add
    the resolution line.
 2. File each new finding as a canonical entry at the end, numbered from the current highest DW id:
      ### DW-<n>: <one-line title>
-     origin: workflow burn-down run, 2026-08-03
+     origin: workflow burn-down run, <TODAY>
      location: <file:line>
      reason: <what is wrong and why it matters>
      status: open
@@ -174,7 +203,7 @@ for (let i = 0; i < NAMES.length; i += CHUNK) {
   const built = (await parallel(chunk.map((name) => () =>
     agent(implPrompt(name), {
       label: `impl:${name}`, phase: 'Implement', schema: IMPL,
-      isolation: 'worktree', model: 'opus', effort: 'max',
+      isolation: 'worktree', model: MODEL, effort: 'max',
     })
   ))).filter(Boolean)
 
@@ -189,7 +218,7 @@ for (let i = 0; i < NAMES.length; i += CHUNK) {
   const merged = []
   for (const r of ok) {
     const m = await agent(mergePrompt(r), {
-      label: `merge:${r.bundle}`, phase: 'Merge', schema: MERGE, model: 'opus', effort: 'high',
+      label: `merge:${r.bundle}`, phase: 'Merge', schema: MERGE, model: MODEL, effort: 'high',
     })
     if (m && m.merged && m.suitePassed) { merged.push(r); allMerged.push(r) }
     else { allFailed.push({ ...r, blockedReason: `merge failed: ${m?.note || 'agent returned null'}` }) }
@@ -207,9 +236,11 @@ for (let i = 0; i < NAMES.length; i += CHUNK) {
 
 // ─────────────────────────────────── final multi-lens review ───────────────────────────────────
 let review = null
-if (!args?.skipReview && allMerged.length) {
+if (!OPTS.skipReview && allMerged.length) {
   phase('Review')
-  const range = `HEAD~${allMerged.length}..HEAD`
+  // HEAD~N undercounts — each chunk also lands a ledger commit on the first-parent line, plus any
+  // review fixes. Anchor on the recorded pre-run SHA whenever the caller supplied one.
+  const range = BASE ? `${BASE}..HEAD` : `HEAD~${allMerged.length}..HEAD`
   const LENSES = [
     ['correctness', 'Logic errors, off-by-one, wrong operator, inverted condition, unhandled null, wrong bounds. Prove each with concrete inputs producing a wrong output.'],
     ['determinism', 'Anything breaking deterministic lockstep: float in checksum-folded paths, non-deterministic iteration (Dictionary/HashSet order, LINQ), wall-clock reads, unseeded RNG, entities processed out of id order.'],
@@ -221,12 +252,15 @@ if (!args?.skipReview && allMerged.length) {
     agent(
       `Adversarially review the merged deferred-work burn-down in D:/Projects/Project_Chimera.\n\n` +
       `DIFF: \`git diff ${range}\` (${allMerged.length} merged bundles).\n` +
+      `Start from \`git log --first-parent --oneline ${range}\` and review EACH merge's diff ` +
+      `individually — at this bundle count one flat diff buries defects. Spend extra care on files ` +
+      `touched by more than one bundle.\n` +
       `BUNDLES: ${allMerged.map((r) => r.bundle).join(', ')}\n\n` +
       `LENS — ${key}: ${brief}\n\n` +
       `Each agent worked in isolation and saw only its own bundle; you see the whole. Report ONLY defects you can ` +
       `substantiate by reading the code — no speculation, no style notes. For each, give file:line, what breaks, and ` +
       `the concrete input/state that triggers it. Reporting nothing is a valid and useful result.`,
-      { label: `review:${key}`, phase: 'Review', model: 'opus', effort: 'max',
+      { label: `review:${key}`, phase: 'Review', model: MODEL, effort: 'max',
         schema: { type: 'object', required: ['lens', 'findings'], properties: {
           lens: { type: 'string' },
           findings: { type: 'array', items: { type: 'object',
@@ -251,7 +285,7 @@ if (!args?.skipReview && allMerged.length) {
       `3. File every confirmed medium/low as a canonical deferred-work entry (### DW-<n>: heading + status: open +\n` +
       `   origin/location/reason lines), numbered from the current highest id. The format is load-bearing.\n` +
       `4. Report: confirmed, dropped, fixed, filed.`,
-      { label: 'review:triage', phase: 'Review', model: 'opus', effort: 'max' }
+      { label: 'review:triage', phase: 'Review', model: MODEL, effort: 'max' }
     )
   }
 }
