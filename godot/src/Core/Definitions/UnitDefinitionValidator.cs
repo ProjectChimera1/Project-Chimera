@@ -97,6 +97,26 @@ namespace ProjectChimera.Core.Definitions
         /// <c>UnitDefinition.ResolveDelivery</c> string switch. A null <c>delivery</c> is legal (legacy range inference).</summary>
         private static readonly string[] _deliveries = { "Hitscan", "Projectile" };
 
+        /// <summary>
+        /// The Win32 RESERVED DEVICE basenames (DW-454). Every one of them satisfies the <c>[a-z0-9_]</c> charset
+        /// <see cref="SanitizeId"/> enforces, so the charset gate alone admits them — yet the Windows filesystem
+        /// (the primary platform) rejects ANY path whose basename is one of these, WITH OR WITHOUT an extension
+        /// (<c>con.json</c>, <c>con.json.tmp</c> are all the CON device). An id that reaches a <c>&lt;id&gt;.json</c>
+        /// write therefore throws an opaque IO error with no field badge and no way to save. Lowercase only: a valid
+        /// id is already lowercased by the charset rule, and <see cref="IsReservedDeviceName"/> compares
+        /// case-insensitively so the set stays correct even for a caller that checks a raw, un-sanitized string.
+        /// <c>com0</c>/<c>lpt0</c> are deliberately ABSENT — they are not reserved devices.
+        /// </summary>
+        private static readonly string[] _reservedBasenames =
+        {
+            "con", "prn", "aux", "nul",
+            "com1", "com2", "com3", "com4", "com5", "com6", "com7", "com8", "com9",
+            "lpt1", "lpt2", "lpt3", "lpt4", "lpt5", "lpt6", "lpt7", "lpt8", "lpt9",
+        };
+
+        /// <summary>The pipe-list form of <see cref="_reservedBasenames"/> for the located reject message (built once).</summary>
+        private const string ReservedPipeList = "con|prn|aux|nul|com1-com9|lpt1-lpt9";
+
 
         /// <summary>
         /// Validate a <paramref name="def"/> against its <paramref name="siblings"/> (the faction's <c>Units</c> list,
@@ -163,6 +183,15 @@ namespace ProjectChimera.Core.Definitions
                 if (SanitizeId(id) != id)
                     errors.Add(("id", Located(kind, id, "id",
                         "contains characters outside [a-z0-9_]; rename before saving.")));
+                // DW-454: the charset rule ADMITS every Windows reserved device basename (they are all [a-z0-9_]), but
+                // the Win32 filesystem rejects them as a path basename with or without an extension — so an id like
+                // "con" passes the charset gate and then throws an opaque IO error at any <id>.json write. Rejected
+                // here so the SHARED filename-safe id convention (SanitizeId, reused by the item/unit/building gates
+                // and by MakeUniqueId) is complete on the primary platform. `else if` — a non-sanitized id already
+                // badged above must not double-badge the same field.
+                else if (IsReservedDeviceName(id))
+                    errors.Add(("id", Located(kind, id, "id",
+                        $"is a Windows reserved device name ({ReservedPipeList}); the filesystem rejects it as a file basename, so rename before saving.")));
                 if (siblings != null && IsDuplicateId(def, id, siblings))
                     errors.Add(("id", Located(kind, id, "id",
                         "is a duplicate — another unit in this faction already uses this id.")));
@@ -208,14 +237,52 @@ namespace ProjectChimera.Core.Definitions
             CheckStat(errors, kind, id, "speed", def.Speed);
             CheckStat(errors, kind, id, "attack_damage", def.AttackDamage);
             CheckStat(errors, kind, id, "attack_range", def.AttackRange);
-            CheckStat(errors, kind, id, "attack_speed", def.AttackSpeed);
+            // Capture the generic result: the DW-380 strictly-positive follow-up below must not ALSO badge a value the
+            // range rule already rejected (a doubled badge on one control breaks the per-field-badge contract, D-9).
+            bool attackSpeedInRange = CheckStat(errors, kind, id, "attack_speed", def.AttackSpeed);
             CheckStat(errors, kind, id, "armor", def.Armor);
             CheckStat(errors, kind, id, "splash_radius", def.SplashRadius);
-            CheckStat(errors, kind, id, "collision_radius", def.CollisionRadius);
-            CheckStat(errors, kind, id, "mesh_scale", def.MeshScale);
             CheckStat(errors, kind, id, "max_energy", def.MaxEnergy);
             CheckStat(errors, kind, id, "vision_range", def.VisionRange);
             CheckStat(errors, kind, id, "train_time", def.TrainTime);
+
+            // ── DEGENERATE-AT-ZERO stats (DW-380). The generic CheckStat bound is [0, 32768) — INCLUSIVE of 0 — which
+            //    is right for every stat above (0 armor / 0 splash / 0 energy / an immobile 0-speed structure / a
+            //    0-damage non-combatant are all legitimate authoring), but WRONG for the three handled below
+            //    (collision_radius, mesh_scale, and — conditionally — attack_speed), where 0 is not a weaker value but
+            //    a broken one. Same shape as projectile_speed's rule (2): a strictly-positive lower
+            //    bound only where zero is degenerate, so both hand-authored edits AND the Story-8.5 balance-apply path
+            //    (BalanceSuggestionApplier routes its proposed value through this very gate) are gated identically. ──
+
+            //    collision_radius: EntityWorld.ClampCollisionRadius SILENTLY rewrites an authored <= 0 to
+            //    DEFAULT_COLLISION_RADIUS at spawn (Story 1.13 AC3, "no zero-radius divide"). The runtime is therefore
+            //    safe, but the AUTHOR is not told — they ask for 0 and get 1.0 with no feedback, and the value they
+            //    saved is not the value folded into SimChecksum. Reject it so the surprise surfaces as a field badge.
+            CheckStatPositive(errors, kind, id, "collision_radius", def.CollisionRadius,
+                "0 is silently rewritten to the engine default radius at spawn, so the saved value would not be the value the simulation uses");
+
+            //    mesh_scale: applied verbatim as the render scale (MultiMeshBridge / BuildingBridge / AssetPreviewScene
+            //    all read `def.MeshScale` with no zero guard), so 0 renders the unit INVISIBLE while it still fights —
+            //    an unplayable unit that no other rule catches. Presentation-only (ContentHash deliberately EXCLUDES
+            //    mesh_scale), so this reject moves no hash.
+            CheckStatPositive(errors, kind, id, "mesh_scale", def.MeshScale,
+                "0 scales the mesh to nothing, rendering the unit invisible while it still fights");
+
+            // ── attack_speed (DW-380) — TWO rules, the projectile_speed pattern. (1) the generic finite-&-[0, 32768)
+            //    CheckStat above, unconditional (the value is quantized and folded, so it must be representable for
+            //    every entity). (2) STRICTLY POSITIVE additionally when this entity actually DEALS damage: CombatSystem
+            //    re-arms the shot clock with `AttackCooldown[attacker] = AttackSpeed[attacker]`
+            //    (TryDealDamage / TryDealBuildingDamage), so attack_speed == 0 leaves the cooldown permanently expired
+            //    and the unit fires EVERY TICK — unbounded DPS, the degenerate case DW-380 names.
+            //    Gate rule (2) on attack_damage > 0, NOT on the archetype: every shipped non-combatant building
+            //    (command_center/barracks/archery_range/…) authors attack_speed 0 AND attack_damage 0, and a 0-damage
+            //    attack is a no-op whose cadence is irrelevant — so that posture stays valid, while a defensive tower
+            //    or unit that authors real damage with a 0 interval fails closed.
+            //    `attackSpeedInRange` short-circuits rule (2) when rule (1) already badged the field — a NEGATIVE
+            //    interval is non-positive too, and reporting it twice would double-badge one control.
+            if (attackSpeedInRange && def.AttackDamage > 0f && def.AttackSpeed <= 0f)
+                errors.Add(("attack_speed", Located(kind, id, "attack_speed",
+                    $"={def.AttackSpeed} must be strictly positive for an attacker (attack_damage={def.AttackDamage}) — a 0 interval re-arms the cooldown already expired, so it attacks every tick.")));
 
             // ── supply: an int count, but the same [0, 32768) bound (AC2 "(+ supply)") ──
             CheckIntBound(errors, kind, id, "supply", def.Supply);
@@ -315,13 +382,35 @@ namespace ProjectChimera.Core.Definitions
 
         // ── Rule helpers ─────────────────────────────────────────────────────────
 
-        /// <summary>Finite &amp; in [0, 32768) — the float stat rule. Appends a located error when it fails.</summary>
-        private static void CheckStat(List<(string, string)> errors, string kind, string id, string path, float v)
+        /// <summary>Finite &amp; in [0, 32768) — the float stat rule. Appends a located error when it fails. Returns
+        /// <c>true</c> when the value PASSED, so a caller layering a second, narrower rule on the same field (DW-380's
+        /// strictly-positive follow-ups) can skip it rather than double-badge one control. Every call site that ignores
+        /// the result behaves exactly as before.</summary>
+        private static bool CheckStat(List<(string, string)> errors, string kind, string id, string path, float v)
         {
             // Interpolate the value directly (the ScenarioValidator idiom) — an error string is display-only, never a
             // checksum input, so its number format is determinism-irrelevant; avoids the explicit float.ToString.
             if (!float.IsFinite(v) || v < 0f || v >= Range)
+            {
                 errors.Add((path, Located(kind, id, path, $"={v} must be finite and in [0, {(int)Range}).")));
+                return false;
+            }
+            return true;
+        }
+
+        /// <summary>
+        /// Finite &amp; in (0, 32768) — the STRICTLY-POSITIVE float stat rule (DW-380), for a stat where 0 is not a
+        /// weaker setting but a degenerate one. Identical range to <see cref="CheckStat"/> except the lower bound is
+        /// exclusive; the located message appends <paramref name="whyZeroIsBroken"/> so the badge tells the author WHY
+        /// their 0 was refused rather than just quoting a bound. Exactly one error per stat (never doubled with
+        /// <see cref="CheckStat"/> — a stat routed here is NOT also routed there).
+        /// </summary>
+        private static void CheckStatPositive(List<(string, string)> errors, string kind, string id, string path,
+                                              float v, string whyZeroIsBroken)
+        {
+            if (!float.IsFinite(v) || v <= 0f || v >= Range)
+                errors.Add((path, Located(kind, id, path,
+                    $"={v} must be finite and in (0, {(int)Range}) — {whyZeroIsBroken}.")));
         }
 
         /// <summary>Finite &amp; in [0, <paramref name="max"/>) — a float stat with a tighter-than-<see cref="Range"/> ceiling
@@ -502,18 +591,42 @@ namespace ProjectChimera.Core.Definitions
         }
 
         /// <summary>
+        /// True when <paramref name="id"/> is a Win32 RESERVED DEVICE basename (DW-454) — <c>con</c>, <c>prn</c>,
+        /// <c>aux</c>, <c>nul</c>, <c>com1</c>…<c>com9</c>, <c>lpt1</c>…<c>lpt9</c>. Every one of them passes the
+        /// <see cref="SanitizeId"/> <c>[a-z0-9_]</c> charset, so the charset gate alone lets them through and a
+        /// <c>&lt;id&gt;.json</c> write then throws on Windows (the primary platform) with no field badge. Compared
+        /// case-insensitively (Ordinal) and against the WHOLE id: reservation applies to the path basename, and a
+        /// basename is reserved with or without an extension (<c>con.json</c> IS the CON device), but a longer name
+        /// that merely CONTAINS one (<c>console</c>, <c>con_2</c>, <c>nullify</c>) is NOT reserved and stays authorable.
+        /// Godot-free pure string comparison, homed HERE beside <see cref="SanitizeId"/> so the item, unit and building
+        /// gates — and <see cref="MakeUniqueId"/> — all share the one filename-safe id convention.
+        /// </summary>
+        public static bool IsReservedDeviceName(string? id)
+        {
+            if (string.IsNullOrEmpty(id)) return false;
+            for (int i = 0; i < _reservedBasenames.Length; i++)
+                if (string.Equals(id, _reservedBasenames[i], System.StringComparison.OrdinalIgnoreCase)) return true;
+            return false;
+        }
+
+        /// <summary>
         /// Sanitize <paramref name="baseId"/> and, if it already appears in <paramref name="existingIds"/>, suffix it
         /// (<c>_2</c>, <c>_3</c>, …) until free — the single dedup convention shared by the Unit Card editor's manual
         /// New/Duplicate paths and the Story 8.4 AI-draft landing, so a generated unit whose id collides with the roster
         /// is inserted under a unique id (the roster stays duplicate-free without relying on the sibling-aware validator,
         /// which skips the dup rule when it is validated with no siblings). Godot-free so it is Tier-1 testable.
+        ///
+        /// <para>DW-454: a RESERVED device basename is treated exactly like a taken id, so a creator naming a unit
+        /// "CON" is minted <c>con_2</c> rather than the <c>con</c> that <see cref="Validate"/> now refuses. Without this
+        /// the shared minter would hand back an id its own validator rejects on Save. Only the un-suffixed candidate
+        /// needs the test — a <c>&lt;name&gt;_&lt;n&gt;</c> suffix can never be a reserved device name.</para>
         /// </summary>
         public static string MakeUniqueId(IEnumerable<string> existingIds, string baseId)
         {
             var taken = new HashSet<string>(existingIds ?? System.Array.Empty<string>());
             string id = SanitizeId(baseId);
             if (id.Length == 0) id = "new_unit";
-            if (!taken.Contains(id)) return id;
+            if (!taken.Contains(id) && !IsReservedDeviceName(id)) return id;
             for (int i = 2; i < 100000; i++)
             {
                 string candidate = $"{id}_{i}";
