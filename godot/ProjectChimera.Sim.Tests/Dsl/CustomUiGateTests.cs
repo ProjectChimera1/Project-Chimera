@@ -44,9 +44,9 @@ namespace ProjectChimera.Sim.Tests.Dsl
         public void ValidScalarAndArrayBinds_Pass()
         {
             var tree = Tree(
-                new CounterWidget { Id = 1, Bind = "score" },
-                new TimerWidget { Id = 2, Bind = "clock", VisibleBind = "show" },
-                new LeaderboardWidget { Id = 3, Bind = "board", Rows = 8 });
+                new CounterWidget { Id = 1, Bind = "score", W = 160, H = 40 },
+                new TimerWidget { Id = 2, Bind = "clock", VisibleBind = "show", W = 120, H = 40 },
+                new LeaderboardWidget { Id = 3, Bind = "board", Rows = 8, W = 240, H = 200 });
             var vars = Vars(("score", DslValueType.Int, VarScope.Global),
                             ("clock", DslValueType.Fixed, VarScope.Global),
                             ("show", DslValueType.Bool, VarScope.Global),
@@ -58,7 +58,7 @@ namespace ProjectChimera.Sim.Tests.Dsl
         [Fact]
         public void UnresolvedBind_Rejects_Located()
         {
-            var tree = Tree(new CounterWidget { Id = 1, Bind = "ghost" });
+            var tree = Tree(new CounterWidget { Id = 1, Bind = "ghost", W = 160, H = 40 });
             string? err = CustomUiGate.Check(tree, Vars(), NoArrays);
             Assert.NotNull(err);
             Assert.Contains("scenario.custom_ui.widgets[0].bind", err);
@@ -69,7 +69,7 @@ namespace ProjectChimera.Sim.Tests.Dsl
         public void TypeMismatchedScalarBind_Rejects()
         {
             // A Counter binds a Bool — a value bind must be Int/Fixed.
-            var tree = Tree(new CounterWidget { Id = 1, Bind = "flag" });
+            var tree = Tree(new CounterWidget { Id = 1, Bind = "flag", W = 160, H = 40 });
             var vars = Vars(("flag", DslValueType.Bool, VarScope.Global));
             string? err = CustomUiGate.Check(tree, vars, NoArrays);
             Assert.NotNull(err);
@@ -79,7 +79,7 @@ namespace ProjectChimera.Sim.Tests.Dsl
         [Fact]
         public void RepeaterBoundToScalar_Rejects()
         {
-            var tree = Tree(new LeaderboardWidget { Id = 1, Bind = "score" });
+            var tree = Tree(new LeaderboardWidget { Id = 1, Bind = "score", W = 240, H = 200 });
             var vars = Vars(("score", DslValueType.Int, VarScope.Global));
             string? err = CustomUiGate.Check(tree, vars, NoArrays);
             Assert.NotNull(err);
@@ -89,7 +89,7 @@ namespace ProjectChimera.Sim.Tests.Dsl
         [Fact]
         public void TriggerLocalBind_Rejects()
         {
-            var tree = Tree(new CounterWidget { Id = 1, Bind = "scratch" });
+            var tree = Tree(new CounterWidget { Id = 1, Bind = "scratch", W = 160, H = 40 });
             var vars = Vars(("scratch", DslValueType.Int, VarScope.TriggerLocal));
             string? err = CustomUiGate.Check(tree, vars, NoArrays);
             Assert.NotNull(err);
@@ -99,7 +99,7 @@ namespace ProjectChimera.Sim.Tests.Dsl
         [Fact]
         public void DuplicateId_Rejects()
         {
-            var tree = Tree(new CounterWidget { Id = 5 }, new TimerWidget { Id = 5 });
+            var tree = Tree(new CounterWidget { Id = 5, W = 160, H = 40 }, new TimerWidget { Id = 5, W = 120, H = 40 });
             string? err = CustomUiGate.Check(tree, Vars(), NoArrays);
             Assert.NotNull(err);
             Assert.Contains("duplicate", err!.ToLowerInvariant());
@@ -109,7 +109,7 @@ namespace ProjectChimera.Sim.Tests.Dsl
         public void OverWidgetCount_Rejects_NamingConst()
         {
             var widgets = new WidgetBase[DslBounds.MaxWidgetCount + 1];
-            for (int i = 0; i < widgets.Length; i++) widgets[i] = new PanelWidget { Id = i };
+            for (int i = 0; i < widgets.Length; i++) widgets[i] = new PanelWidget { Id = i, W = 10, H = 10 };
             string? err = CustomUiGate.Check(Tree(widgets), Vars(), NoArrays);
             Assert.NotNull(err);
             Assert.Contains("MaxWidgetCount", err!);
@@ -119,10 +119,10 @@ namespace ProjectChimera.Sim.Tests.Dsl
         public void OverDepth_Rejects_NamingConst()
         {
             // Build a chain deeper than MaxWidgetDepth.
-            WidgetBase leaf = new PanelWidget { Id = 999 };
+            WidgetBase leaf = new PanelWidget { Id = 999, W = 10, H = 10 };
             WidgetBase current = leaf;
             for (int i = 0; i < DslBounds.MaxWidgetDepth + 1; i++)
-                current = new PanelWidget { Id = i, Children = new[] { current } };
+                current = new PanelWidget { Id = i, W = 10, H = 10, Children = new[] { current } };
             string? err = CustomUiGate.Check(Tree(current), Vars(), NoArrays);
             Assert.NotNull(err);
             Assert.Contains("MaxWidgetDepth", err!);
@@ -131,7 +131,7 @@ namespace ProjectChimera.Sim.Tests.Dsl
         [Fact]
         public void OverListRows_Rejects_NamingConst()
         {
-            var tree = Tree(new LeaderboardWidget { Id = 1, Bind = "board", Rows = DslBounds.MaxListRows + 1 });
+            var tree = Tree(new LeaderboardWidget { Id = 1, Bind = "board", Rows = DslBounds.MaxListRows + 1, W = 240, H = 200 });
             var vars = Vars(("board", DslValueType.Array, VarScope.Global));
             var arrays = Arrays(("board", DslValueType.Int, 16));
             string? err = CustomUiGate.Check(tree, vars, arrays);
@@ -144,8 +144,8 @@ namespace ProjectChimera.Sim.Tests.Dsl
         {
             var tree = Tree(new PanelWidget
             {
-                Id = 1,
-                Children = new WidgetBase[] { new CounterWidget { Id = 2, Bind = "ghost" } },
+                Id = 1, W = 300, H = 120,
+                Children = new WidgetBase[] { new CounterWidget { Id = 2, Bind = "ghost", W = 160, H = 40 } },
             });
             string? err = CustomUiGate.Check(tree, Vars(), NoArrays);
             Assert.NotNull(err);

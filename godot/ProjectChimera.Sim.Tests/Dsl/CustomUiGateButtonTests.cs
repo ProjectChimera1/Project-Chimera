@@ -37,7 +37,7 @@ namespace ProjectChimera.Sim.Tests.Dsl
         {
             var tree = Tree(new ButtonWidget
             {
-                Id = 1, EventName = "buy", ArgRaws = new[] { 3 }, ArgTypes = new[] { DslValueType.Int },
+                Id = 1, W = 160, H = 48, EventName = "buy", ArgRaws = new[] { 3 }, ArgTypes = new[] { DslValueType.Int },
             });
             Assert.Null(CustomUiGate.Check(tree, NoVars, NoArrays, Events(Ev("buy", null, ("amount", DslValueType.Int)))));
         }
@@ -45,14 +45,14 @@ namespace ProjectChimera.Sim.Tests.Dsl
         [Fact]
         public void ValidParamlessEventButton_Passes()
         {
-            var tree = Tree(new ButtonWidget { Id = 1, EventName = "vote" });
+            var tree = Tree(new ButtonWidget { Id = 1, W = 160, H = 48, EventName = "vote" });
             Assert.Null(CustomUiGate.Check(tree, NoVars, NoArrays, Events(Ev("vote"))));
         }
 
         [Fact]
         public void ValidLocalActionButton_Passes()
         {
-            var tree = Tree(new ButtonWidget { Id = 1, LocalAction = LocalUiAction.CloseSelf });
+            var tree = Tree(new ButtonWidget { Id = 1, W = 160, H = 48, LocalAction = LocalUiAction.CloseSelf });
             Assert.Null(CustomUiGate.Check(tree, NoVars, NoArrays, Events()));
         }
 
@@ -60,8 +60,8 @@ namespace ProjectChimera.Sim.Tests.Dsl
         public void ToggleTargetingExistingWidget_Passes()
         {
             var tree = Tree(
-                new PanelWidget { Id = 2 },
-                new ButtonWidget { Id = 1, LocalAction = LocalUiAction.ToggleWidgetVisible, LocalTargetWidgetId = 2 });
+                new PanelWidget { Id = 2, W = 300, H = 120 },
+                new ButtonWidget { Id = 1, W = 160, H = 48, LocalAction = LocalUiAction.ToggleWidgetVisible, LocalTargetWidgetId = 2 });
             Assert.Null(CustomUiGate.Check(tree, NoVars, NoArrays, Events()));
         }
 
@@ -70,7 +70,7 @@ namespace ProjectChimera.Sim.Tests.Dsl
         [Fact]
         public void UndeclaredEvent_Rejects_Located()
         {
-            var tree = Tree(new ButtonWidget { Id = 1, EventName = "ghost" });
+            var tree = Tree(new ButtonWidget { Id = 1, W = 160, H = 48, EventName = "ghost" });
             string? err = CustomUiGate.Check(tree, NoVars, NoArrays, Events(Ev("buy")));
             Assert.NotNull(err);
             Assert.Contains("scenario.custom_ui.widgets[0].event", err);
@@ -83,7 +83,7 @@ namespace ProjectChimera.Sim.Tests.Dsl
             // The event declares 3 params (> MaxButtonEventParams = 2).
             var tree = Tree(new ButtonWidget
             {
-                Id = 1, EventName = "big",
+                Id = 1, W = 160, H = 48, EventName = "big",
                 ArgRaws = new[] { 1, 2, 3 },
                 ArgTypes = new[] { DslValueType.Int, DslValueType.Int, DslValueType.Int },
             });
@@ -98,7 +98,7 @@ namespace ProjectChimera.Sim.Tests.Dsl
         {
             var tree = Tree(new ButtonWidget
             {
-                Id = 1, EventName = "buy", ArgRaws = new[] { 1 }, ArgTypes = new[] { DslValueType.Bool },
+                Id = 1, W = 160, H = 48, EventName = "buy", ArgRaws = new[] { 1 }, ArgTypes = new[] { DslValueType.Bool },
             });
             string? err = CustomUiGate.Check(tree, NoVars, NoArrays, Events(Ev("buy", null, ("amount", DslValueType.Int))));
             Assert.NotNull(err);
@@ -108,7 +108,7 @@ namespace ProjectChimera.Sim.Tests.Dsl
         [Fact]
         public void WrongArgCount_Rejects()
         {
-            var tree = Tree(new ButtonWidget { Id = 1, EventName = "buy" }); // 0 args, event declares 1
+            var tree = Tree(new ButtonWidget { Id = 1, W = 160, H = 48, EventName = "buy" }); // 0 args, event declares 1
             string? err = CustomUiGate.Check(tree, NoVars, NoArrays, Events(Ev("buy", null, ("amount", DslValueType.Int))));
             Assert.NotNull(err);
             Assert.Contains("args", err!);
@@ -117,7 +117,7 @@ namespace ProjectChimera.Sim.Tests.Dsl
         [Fact]
         public void NeitherEventNorLocalAction_Rejects()
         {
-            var tree = Tree(new ButtonWidget { Id = 1 }); // no event, LocalAction defaults to None
+            var tree = Tree(new ButtonWidget { Id = 1, W = 160, H = 48 }); // no event, LocalAction defaults to None
             string? err = CustomUiGate.Check(tree, NoVars, NoArrays, Events());
             Assert.NotNull(err);
             Assert.Contains("no event or local action", err!);
@@ -126,7 +126,7 @@ namespace ProjectChimera.Sim.Tests.Dsl
         [Fact]
         public void ToggleTargetingMissingWidget_Rejects_Located()
         {
-            var tree = Tree(new ButtonWidget { Id = 1, LocalAction = LocalUiAction.ToggleWidgetVisible, LocalTargetWidgetId = 99 });
+            var tree = Tree(new ButtonWidget { Id = 1, W = 160, H = 48, LocalAction = LocalUiAction.ToggleWidgetVisible, LocalTargetWidgetId = 99 });
             string? err = CustomUiGate.Check(tree, NoVars, NoArrays, Events());
             Assert.NotNull(err);
             Assert.Contains("local_target", err!);
@@ -135,7 +135,7 @@ namespace ProjectChimera.Sim.Tests.Dsl
         [Fact]
         public void SetLocalUiVar_WithoutName_Rejects()
         {
-            var tree = Tree(new ButtonWidget { Id = 1, LocalAction = LocalUiAction.SetLocalUiVar });
+            var tree = Tree(new ButtonWidget { Id = 1, W = 160, H = 48, LocalAction = LocalUiAction.SetLocalUiVar });
             string? err = CustomUiGate.Check(tree, NoVars, NoArrays, Events());
             Assert.NotNull(err);
             Assert.Contains("local_var", err!);
@@ -145,7 +145,7 @@ namespace ProjectChimera.Sim.Tests.Dsl
         public void NullCustomEvents_TreatsEveryEventButtonAsUndeclared()
         {
             // With no registry passed, a raise target cannot resolve — the button rejects (fail-closed).
-            var tree = Tree(new ButtonWidget { Id = 1, EventName = "buy" });
+            var tree = Tree(new ButtonWidget { Id = 1, W = 160, H = 48, EventName = "buy" });
             string? err = CustomUiGate.Check(tree, NoVars, NoArrays, customEvents: null);
             Assert.NotNull(err);
             Assert.Contains("buy", err!);

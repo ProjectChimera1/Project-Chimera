@@ -27,10 +27,11 @@ namespace ProjectChimera.Sim.Tests.Validation
             },
         };
 
-        /// <summary>A gate-rejecting custom-UI tree: a Counter bound to an undeclared variable.</summary>
+        /// <summary>A gate-rejecting custom-UI tree: a Counter bound to an undeclared variable. Geometry is valid
+        /// (DW-364 rejects non-positive W/H BEFORE binds are checked) so the reject stays a BIND reject.</summary>
         private static CustomUiTree RejectingTree() => new()
         {
-            Widgets = new WidgetBase[] { new CounterWidget { Id = 1, Bind = "ghost" } },
+            Widgets = new WidgetBase[] { new CounterWidget { Id = 1, Bind = "ghost", W = 160, H = 40 } },
         };
 
         [Fact]
@@ -73,7 +74,7 @@ namespace ProjectChimera.Sim.Tests.Validation
             m.CustomEvents = new[] { new ScenarioCustomEvent { Name = "buy", AllowedRaisers = new[] { 0 } } };
             m.CustomUi = new CustomUiTree
             {
-                Widgets = new WidgetBase[] { new ButtonWidget { Id = 1, Text = "Buy", EventName = "buy" } },
+                Widgets = new WidgetBase[] { new ButtonWidget { Id = 1, W = 160, H = 48, Text = "Buy", EventName = "buy" } },
             };
         }
 

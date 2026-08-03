@@ -35,15 +35,48 @@ namespace ProjectChimera.Core.Definitions
         public const int CurrentSchemaVersion = 1;
 
         /// <summary>
+        /// DW-366 — the maximum byte size of UNTRUSTED scenario input (a .json file on disk, or an AI-generated
+        /// string) accepted for deserialization. Enforced BEFORE any read/parse by
+        /// <see cref="GuardScenarioInputSize"/> at both untrusted entries (<see cref="LoadFromFile"/> and
+        /// <c>LLMService.ValidateScenario</c>), closing the parse-then-gate gap: every per-collection cap
+        /// (<c>DslBounds.MaxWidgetCount</c>, the trigger/region/unit gates) runs only AFTER System.Text.Json has
+        /// already materialized the full collection, so a pathological flat array of millions of elements used to
+        /// allocate before rejection. One uniform upstream byte cap bounds that allocation for EVERY scenario
+        /// collection at once (the recorded 2026-07-30 decision: upstream size guard — cheapest, uniform). 8 MiB
+        /// is orders of magnitude above any legitimate scenario (the largest shipped map is ~4 KB; a maxed-out
+        /// authored file — full widget tree with per-widget editor bags, a large trigger corpus, painted
+        /// pathability — stays well under ~2 MiB) while still bounding hostile/degenerate input.
+        /// </summary>
+        public const long MaxScenarioFileBytes = 8L * 1024 * 1024;
+
+        /// <summary>
+        /// DW-366 — reject over-cap untrusted scenario input BEFORE it is read or parsed. Throws a located
+        /// <see cref="JsonException"/> naming <see cref="MaxScenarioFileBytes"/> (the fail-closed load posture: an
+        /// unloadable scenario must never be mistaken for "no scenario here"). Call with the input's byte count
+        /// (on-disk file length / UTF-8 byte count of a string) before deserializing scenario JSON.
+        /// </summary>
+        public static void GuardScenarioInputSize(long byteCount, string source)
+        {
+            if (byteCount > MaxScenarioFileBytes)
+                throw new JsonException(
+                    $"{source}: scenario input is {byteCount} bytes, exceeding ScenarioSerializer.MaxScenarioFileBytes={MaxScenarioFileBytes} — refusing to parse (DW-366 upstream size guard).");
+        }
+
+        /// <summary>
         /// Load a <see cref="ScenarioData"/> from a JSON file on disk.
         /// Returns null if the file does not exist (or if the JSON is the literal <c>null</c>). A MALFORMED file
         /// propagates the <see cref="JsonException"/> to the caller — fail-closed, located: a scenario that cannot be
         /// parsed must never be mistaken for "no scenario here". (DW-274 doc correction: this method never caught
-        /// parse failures; the old "or fails to parse" wording described behavior it did not have.)
+        /// parse failures; the old "or fails to parse" wording described behavior it did not have.) An OVER-CAP file
+        /// (&gt; <see cref="MaxScenarioFileBytes"/>) throws the same way via <see cref="GuardScenarioInputSize"/>,
+        /// checked against the on-disk length BEFORE the file is even read (DW-366).
         /// </summary>
         public static ScenarioData? LoadFromFile(string absolutePath)
         {
             if (!File.Exists(absolutePath)) return null;
+            // DW-366 — upstream size guard: check the on-disk length BEFORE reading, so an over-cap file never
+            // allocates its string, let alone its parsed collections.
+            GuardScenarioInputSize(new FileInfo(absolutePath).Length, absolutePath);
             string json = File.ReadAllText(absolutePath);
             return JsonSerializer.Deserialize<ScenarioData>(json, ContentJson.ScenarioOptions);
         }
