@@ -58,6 +58,15 @@
          the rest of src/Multiplayer (LockstepManager, ENet transports) is Godot/ENet-coupled. Its float RTT math
          trips the 1.10b advisory CHM0001, which is expected/correct (the delay value is never folded into the hash). -->
     <Compile Include="$(MSBuildThisFileDirectory)src\Multiplayer\DelayMath.cs"       LinkBase="Sim\Multiplayer" />
+    <!-- DW-390: the Godot-free merged-arrival ring/gate/seed decision extracted from LockstepManager (the
+         DelayMath precedent) so the Story-9.3 client gate — keying, the stall/apply predicate, bootstrap/delay-gap
+         seeding — is Tier-1 unit-testable (MergedArrivalRingTests). Pure integer/byte state, no float. -->
+    <Compile Include="$(MSBuildThisFileDirectory)src\Multiplayer\MergedArrivalRing.cs" LinkBase="Sim\Multiplayer" />
+    <!-- DW-447: the Godot-free independent per-peer sim (own SimulationHost + deterministic scripted orders +
+         real per-tick SimChecksum) shared by the in-Godot LoopbackDesyncSelfTest AND the Tier-1
+         IndependentPeerSimQuorumTests — so "N independent sims compute + compare their own checksums" is
+         exercised headlessly, not just by the manual LAN runbook. -->
+    <Compile Include="$(MSBuildThisFileDirectory)src\Multiplayer\LoopbackPeerSim.cs" LinkBase="Sim\Multiplayer" />
     <!-- Story 7.7: the pure lobby start-handshake decision (hash-0 blocks / mismatch blocks / equal-nonzero
          allows) extracted from LobbyUi so it is Tier-1 unit-testable (HandshakeGateTests). Single-file include —
          the DelayMath precedent; the rest of src/Multiplayer stays Godot/ENet-coupled and un-globbed. -->

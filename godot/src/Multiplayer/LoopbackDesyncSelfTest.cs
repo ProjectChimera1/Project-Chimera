@@ -11,20 +11,26 @@ namespace ProjectChimera.Multiplayer
     /// REAL <see cref="DedicatedServer"/> (ServerHost + quorum collector + Story-9.6 freeze machinery) and
     /// <see cref="PlayerCount"/> real <see cref="ENetTransport"/> clients over loopback ENet in ONE process,
     /// completes the N-player handshake (join → ready → start), then:
-    ///   • (1.9b) every peer sends matching checksums AND per-tick command packets so the server tallies
+    ///   • (1.9b) every peer sends checksums AND per-tick command packets so the server tallies
     ///     ≥<see cref="CleanWindowTarget"/> clean comparison windows (PASS) while the N-way merged fan-in flows; then
     ///   • (9.6) DISCONNECTS one peer and asserts freeze-and-continue: the survivors keep receiving merged ticks
     ///     (the server injects an empty command for the dropped slot each tick) and <c>Host.WindowsCompared</c>
     ///     keeps incrementing over the REDUCED quorum — no silent stall, no false HALT.
     /// Story 9.7 raised this from 2 to <see cref="PlayerCount"/>=3 in-process peers (N≥3), exercising the REAL
     /// N-player transport/lockstep merge over the raised count.
+    ///
+    /// DW-447: every checksum a peer sends is now its OWN sim's REAL computed hash — each peer steps an
+    /// INDEPENDENT <see cref="LoopbackPeerSim"/> (its own <c>SimulationHost</c> + stores, deterministic scripted
+    /// orders) and reports that sim's per-tick <c>SimChecksum</c>, replacing the former hardcoded <c>GOOD</c>
+    /// constant (under which the quorum was unanimous BY CONSTRUCTION and a real desync was structurally
+    /// invisible). The clean phase's <c>Passing</c> assertion is therefore now a genuine 4-independent-sims
+    /// zero-desync check over the real transport; a divergence between the peer sims FAILS the self-test.
     /// Exit 0 ONLY if BOTH the clean-PASS and the drop-and-continue phases pass. Prints "RESULT: PASS/FAIL …" and quits.
     /// Run: <c>godot --headless -- --loopback-test</c>.
     /// </summary>
     public partial class LoopbackDesyncSelfTest : Node
     {
         private const int  PORT = 49777;
-        private const uint GOOD = 0xA11AA11Au;
         /// <summary>Story 9.7 (P10): the N=4 ship ceiling in-process peers — exercises join→ready→start→merged
         /// agreement + drop-and-continue over the REAL transport/state machine at the full seat count (not just the
         /// in-process golden merge math).</summary>
@@ -44,6 +50,9 @@ namespace ProjectChimera.Multiplayer
             public Faction Faction = Faction.Neutral;
             public int MergedCount;   // TickCommandsMerged packets received
             public bool DropAcked;    // this (surviving) peer received a DropDirective and ACKed it
+            // DW-447: this peer's OWN independent simulation — the source of the real checksums it reports
+            // (fresh SimulationHost + stores per peer; nothing shared between the four).
+            public LoopbackPeerSim Sim = null!;
         }
 
         private enum Phase { Connecting, Agreeing, DropContinue, Done }
@@ -56,7 +65,6 @@ namespace ProjectChimera.Multiplayer
 
         private Phase  _phase = Phase.Connecting;
         private double _elapsed, _phaseStart, _lastSend;
-        private uint   _tick;
         private int    _cleanWindows;    // server-reported clean windows at the moment we drop a peer
         private int    _windowsAtDrop;   // Host.WindowsCompared captured at the drop
         private int    _mergedAtDrop;    // survivor's MergedCount captured at the drop
@@ -71,7 +79,7 @@ namespace ProjectChimera.Multiplayer
             _server.Start(PORT);
             for (int i = 0; i < PlayerCount; i++)
             {
-                _peers[i] = new Peer { Id = i };
+                _peers[i] = new Peer { Id = i, Sim = new LoopbackPeerSim() }; // DW-447: one independent sim per peer
                 SetupPeer(_peers[i]);
             }
             GD.Print($"[LoopbackTest] server + {PlayerCount} clients connecting on 127.0.0.1:{PORT} …");
@@ -134,12 +142,15 @@ namespace ProjectChimera.Multiplayer
                     if (_elapsed - _lastSend >= 0.05)
                     {
                         _lastSend = _elapsed;
-                        _tick++;
-                        // Every peer submits its per-tick command packet (drives the N-way merged fan-in) AND a checksum.
+                        // Every peer submits its per-tick command packet (drives the N-way merged fan-in) AND a
+                        // checksum. DW-447: each peer advances its OWN independent sim one tick and reports that
+                        // sim's REAL computed hash — the four sims stay in lockstep (same tick) only by actually
+                        // being deterministic, so the server's clean-window PASS is now a genuine zero-desync proof.
                         for (int i = 0; i < PlayerCount; i++)
                         {
-                            SendTick(_peers[i], _tick);
-                            SendChecksum(_peers[i], _tick, GOOD);
+                            (uint tick, uint hash) = _peers[i].Sim.Step();
+                            SendTick(_peers[i], tick);
+                            SendChecksum(_peers[i], tick, hash);
                         }
                     }
                     int windows = _server.Host?.WindowsCompared ?? 0;
@@ -169,14 +180,16 @@ namespace ProjectChimera.Multiplayer
                     if (_elapsed - _lastSend >= 0.05)
                     {
                         _lastSend = _elapsed;
-                        _tick++;
                         // Only the SURVIVORS keep playing — their ticks fan in, the server injects the frozen slot's
                         // empty command so the merged tick completes, and their checksums complete at reduced quorum.
+                        // DW-447: the survivors keep stepping their OWN sims and reporting real hashes; the dropped
+                        // peer's sim simply stops advancing (it reports nothing, exactly like a real disconnect).
                         for (int i = 0; i < PlayerCount; i++)
                         {
                             if (i == _droppedIndex) continue;
-                            SendTick(_peers[i], _tick);
-                            SendChecksum(_peers[i], _tick, GOOD);
+                            (uint tick, uint hash) = _peers[i].Sim.Step();
+                            SendTick(_peers[i], tick);
+                            SendChecksum(_peers[i], tick, hash);
                         }
                     }
 
