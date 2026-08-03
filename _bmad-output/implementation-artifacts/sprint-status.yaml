@@ -262,6 +262,14 @@ development_status:
   15-18-content-packaging-browsing-replay-lifecycle: backlog
   15-19-ai-draft-consolidation-llmservice-lifecycle: backlog
   15-20-hud-settings-save-system-polish: backlog
+  # 15-21 added 2026-08-03 from the DW-265 decision. NOT burn-down: no DW ids, no bundles (like 15-1 and 15-10).
+  #   DW-265 asked "should energy regenerate?"; Alec answered "yes, with an Intelligence mechanic driving it" —
+  #   but hero primary attributes DO NOT EXIST (HeroDefinition has only flat *_per_level; no Strength/Agility/
+  #   Intelligence anywhere in godot/src). Alec 2026-08-03: creators must be able to author their OWN attribute
+  #   model, seeded with modern ARPG presets (WC3/PoE/D3/D4/Last Epoch/Grim Dawn/Torchlight), full implementation.
+  #   15-12 builds FLAT regen only and must leave a seam this story drives. SEQUENCE AFTER 15-12.
+  #   Folds SimChecksum AND CanonicalModelHash — two more distinct golden movements, isolate per the fold rule.
+  15-21-creator-authorable-hero-attribute-system: backlog
   epic-15-retrospective: optional
 
 action_items:

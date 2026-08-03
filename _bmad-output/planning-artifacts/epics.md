@@ -4072,6 +4072,14 @@ GroundPoint casting end-to-end: `UnitOrder` wire widen 11→12 + `ReplayRecorder
 ### Story 15.12: Energy & stack mechanics (DW-264, DW-265, DW-272 behavior half)
 An authored energy-regen model (`regen_rate` on `UnitDefinition` + a regen path in the tick — goldens move), and the stacking design pass: per-stack expiry timers and per-stack periodic scaling where content wants them, with validator/authoring surfaces.
 
+**Decisions DW-264 + DW-265 (build, answered 2026-08-02/03) — scope resolved:**
+
+*DW-265 (energy regen) is the REGEN HALF ONLY.* Alec's answer was "build it, with an Intelligence mechanic driving it, so an economy can be built around it" — but hero primary attributes **do not exist** in this codebase (`HeroDefinition` carries only flat `health_per_level`/`damage_per_level`/`armor_per_level`; there is no Strength/Agility/Intelligence anywhere in `godot/src`), and the creator-authorable attribute model Alec wants is a feature in its own right. Split 2026-08-03: this story builds the flat authored `regen_rate` + folded per-tick regen path, which alone fixes one-tank-per-life and covers **non-hero** casters — the same thing WC3 did for non-hero units, which used flat regen rather than attributes. **Constraint for the implementer:** read the regen rate through a single seam that Story 15.21's attribute system can later drive, rather than hardcoding the flat authored field at the tick site.
+
+*DW-264 (stacking) is smaller than the entry implies.* Three of the four modes Alec asked for **already exist** in the closed `StackRule` enum (`godot/src/Effects/Modifier.cs:7-15`) and need no new work: "additive timer / re-apply resets the duration" = `Refresh`; "single stack when not stackable" = `Ignore`; "grouped timer / all stacks expire together" = today's `Stack`, which scales deltas by `_stackCount` but shares one `_remainingTicks` (`ModifierStore.cs:151,168-177`). The only missing mode is **individual per-stack expiry**. Implement by splitting `Stack` into two explicit members — a grouped variant preserving today's behavior byte-for-byte so no shipped content changes meaning, and a new independent variant carrying per-stack `_remainingTicks` — and surface the choice in the ability editor's existing stacking dropdown. `StackRule` is a closed enum: patch **both** switches and any `(int)`-indexed arrays (enum-indexed-array touch-site rule).
+
+**Determinism:** the regen fold and the stacking fold are two separate `SimChecksum` movements. Isolate each re-baseline from the other *and* from 15.2/15.3/15.4/15.16 per the checksum-fold timing rule — do not batch them.
+
 ### Story 15.13: Effect vocabulary completion — Teleport + presentation leaves (DW-248)
 Build the reserved `Teleport` effect leaf and the presentation leaves (`PlayVfx`/`PlaySound`/`ShakeScreen`, checksum-neutral presentation dispatch), closing the 2.1 reserved-vocabulary carve-off.
 
@@ -4124,7 +4132,46 @@ Bundles: `hud-and-settings-polish` (DW-468, DW-469, DW-483, DW-484 — `MinimapP
 
 The cold-boot save-load entry point (DW-465) is a genuine 1.0 gap rather than polish: saves written by 11.3 are currently only reachable from inside a running match. **Decision DW-466 (build, 2026-07-30) is *not* in this story** — cross-machine save portability resolves to migrating `AiOpponentSystem` float→Fixed, which is **Story 10.11**; see the note in the Epic-10 section.
 
-**DW covered:** the Story-15 set enumerated above; full partition in `sprint-change-proposal-2026-07-28.md` §4. Blocked entries filed elsewhere: DW-49/50/177→10.9, DW-180/182→10.15, DW-121→11.1, DW-154→14-6, DW-124→10.10, DW-204→10.11, DW-307/DW-241-pointer→10.14, DW-238→10.5/10.8, DW-312/DW-320→10.6/10.7, DW-313→11.4, DW-1/DW-200→post-1.0, DW-36/43/54/57→named latent triggers.
+---
+
+_Story 15.21 added 2026-08-03 from the DW-265 decision. It is **not** burn-down — no DW ids, no bundles. It is a net-new feature split out of DW-265 because the answer to "should energy regenerate?" turned out to require a system the codebase does not have._
+
+### Story 15.21: Creator-authorable hero attribute system
+
+**Why this exists.** DW-265 asked whether energy should regenerate. Alec's answer — build it, with an Intelligence mechanic driving it so an economy can be designed around it — collided with a fact found while recording the decision: **there are no attributes.** `HeroDefinition` (`godot/src/Core/Definitions/HeroDefinition.cs`) carries only flat `health_per_level` / `damage_per_level` / `armor_per_level`, and `Strength`/`Agility`/`Intelligence` appear nowhere in `godot/src` (the only `Strength` hits are camera shake and terrain-brush strength). Story 15.12 therefore builds flat regen only; this story builds the attribute model that drives it.
+
+**The requirement (Alec, 2026-08-03):** *"I want the creator to be able to easily implement their own attribute hero model. Our attributes should start off with standard latest top ARPG attribute lists as possibilities. This will require a full implementation."*
+
+So the attribute set is **data-driven and creator-defined**, not a fixed enum — consistent with the platform rule that every system is data-driven and creator-extensible. A creator authors *which* attributes exist, what each one is called, and what each one contributes to derived stats. Shipped presets seed the common models rather than constraining them.
+
+**Preset attribute models to ship as starting points** (creator picks one and edits, or starts empty):
+
+| Preset | Attributes |
+|---|---|
+| Warcraft III (RTS lineage) | Strength · Agility · Intelligence, one flagged **primary** (primary also grants attack damage) |
+| Path of Exile / PoE 2 | Strength · Dexterity · Intelligence |
+| Diablo III | Strength · Dexterity · Intelligence · Vitality |
+| Diablo IV | Strength · Intelligence · Willpower · Dexterity |
+| Last Epoch | Strength · Dexterity · Intelligence · Vitality · Attunement |
+| Grim Dawn | Physique · Cunning · Spirit |
+| Torchlight | Strength · Dexterity · Focus · Vitality |
+
+The WC3 row carries the **primary-attribute** concept specifically — it is the RTS-hero lineage Chimera descends from, and it is the one model in the list where an attribute feeds attack damage rather than only derived pools.
+
+**Scope — full implementation:**
+- An attribute-definition data model (id, display name, description) authored per faction/content pack, with a `Validated<T>` gate like every other definition.
+- Per-hero base values + per-level growth, mirroring the existing `*_per_level` convention on `HeroDefinition`.
+- A **derived-stat mapping** — creator-authored contributions from an attribute to a derived stat (the first consumer being Intelligence → max energy and energy regen, which is the seam Story 15.12 is required to leave open). Attack damage from the primary attribute is the WC3 case that proves the mapping is general.
+- Editor surfaces in the Unit Card Editor's hero section: preset picker, attribute list editing, per-hero values, derived-stat mapping.
+- Validator rules, JSON round-trip, and the authoring→sim quantization boundary (`float` authoring numbers → `Fixed` at the single load boundary, per the `HeroDefinition` convention).
+
+**Determinism:** attributes feed effective stats, so this folds into `SimChecksum` and moves goldens; it also adds authored definition fields, so expect `CanonicalModelHash` to move. Isolate both re-baselines from Story 15.12's regen and stacking folds — this is a third and fourth distinct movement, not a batch. Sequence **after** 15.12 so the regen seam exists to plug into.
+
+**Open design questions for the story's spec pass** (do not decide these in a dev session): whether attributes apply to non-hero units or heroes only; whether attribute points are spent on level-up (WC3 auto-allocates, ARPGs let the player choose) or purely authored growth; and whether the derived-stat mapping is a closed list of targetable stats or open to any effective-stat field.
+
+---
+
+**DW covered:** the Story-15 set enumerated above; full partition in `sprint-change-proposal-2026-07-28.md` §4. Blocked entries filed elsewhere: DW-49/50/177→10.9, DW-180/182→10.15, DW-121→11.1, DW-154→14-6, DW-124→10.10, DW-204→10.11, DW-307/DW-241-pointer→10.14, DW-238→10.5/10.8, DW-312/DW-320→10.6/10.7, DW-313→11.4, DW-1/DW-200→post-1.0, DW-36/43/54/57→named latent triggers. **Story 15.21 carries no DW ids** — it is a net-new feature split out of the DW-265 decision (2026-08-03), like 15.1 and 15.10 which are also bundle-less by design.
 
 ### Epic 15 bundle index — sweep run `20260730-122934-d7ae` (authoritative)
 
