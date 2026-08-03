@@ -2256,6 +2256,13 @@ namespace ProjectChimera.Core
             // Minimap visibility.
             if (_ctx.Minimap != null) _ctx.Minimap.Visible = s.ShowMinimap;
 
+            // DW-441: shared team vision — push the persisted preference onto the live fog so a mid-session
+            // Apply & Save takes effect on the very next fog tick (including mid-match). Presentation-only: the
+            // fog grid is never folded into SimChecksum, so this per-client setting can never desync an online
+            // match. Boot-time initial application lives in MatchLifecycleController.Run (the initial
+            // SettingsManager.Apply fires before this bridge is subscribed). Null-guarded like the pushes above.
+            if (_ctx.Fog != null) _ctx.Fog.SharedTeamVision = s.SharedTeamVision;
+
             // Story 11.7 (FR-66): the video quality tier's directional-shadow toggle — the one display knob that needs
             // the scene light (the global bits apply in SettingsManager.ApplyVideo). low = shadows off; medium/high =
             // on. Null-guarded like the camera/minimap pushes — the light is absent when no match is running.

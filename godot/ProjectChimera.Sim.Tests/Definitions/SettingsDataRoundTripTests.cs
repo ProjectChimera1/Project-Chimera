@@ -74,6 +74,55 @@ namespace ProjectChimera.Sim.Tests.Definitions
             Assert.Contains("\"has_seen_onboarding\"", json);
         }
 
+        // ── DW-441 — the shared-team-vision toggle (Story 9.14 follow-up) ──────
+
+        [Fact]
+        public void SharedTeamVision_DefaultsTrue()
+        {
+            // Default ON = the pre-DW-441 hardwired behavior (FogOfWarSystem.SharedTeamVision also defaults true),
+            // so adding the user-facing control changes nothing until a player deliberately opts out.
+            Assert.True(new SettingsData().SharedTeamVision);
+        }
+
+        [Fact]
+        public void SharedTeamVision_SurvivesSerializeRoundTrip_WhenFalse()
+        {
+            var original = new SettingsData { SharedTeamVision = false };
+
+            string json = JsonSerializer.Serialize(original, Opts);
+            var reloaded = SettingsData.FromJson(json, Opts);
+
+            Assert.False(reloaded.SharedTeamVision); // an explicit opt-out persists across sessions
+        }
+
+        [Fact]
+        public void SharedTeamVision_AbsentFromOldSaveFile_DefaultsTrue()
+        {
+            // A pre-DW-441 settings.json lacking the key must land on the safe default (shared vision ON —
+            // exactly what every teamed match did before the toggle existed), not throw or flip behavior.
+            const string legacyJson = "{ \"camera_speed\": 1.0, \"master_volume\": 1.0 }";
+
+            var reloaded = SettingsData.FromJson(legacyJson, Opts);
+
+            Assert.True(reloaded.SharedTeamVision);
+        }
+
+        [Fact]
+        public void SharedTeamVision_JsonKey_IsSnakeCase()
+        {
+            string json = JsonSerializer.Serialize(new SettingsData(), Opts);
+            Assert.Contains("\"shared_team_vision\"", json);
+        }
+
+        [Fact]
+        public void SharedTeamVision_False_IsPreservedByMigration()
+        {
+            // MigrateForward normalizes enum-shaped/corrupt fields; it must never reset a player's explicit
+            // shared-vision opt-out back to the default.
+            var s = new SettingsData { SharedTeamVision = false }.MigrateForward();
+            Assert.False(s.SharedTeamVision);
+        }
+
         // ── Story 11.7 — the six video fields ──────────────────────────────────
 
         [Fact]
