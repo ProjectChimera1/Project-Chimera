@@ -15,6 +15,11 @@ namespace ProjectChimera.UI
     ///   - Text input line shown when the player presses Enter or T
     ///   - Panel auto-hides after HIDE_AFTER_SECONDS of no new messages
     ///
+    /// DW-374 — a WC3-style dash-command ("-42") ALSO raises the bounded player_chat chat-code on the replicated,
+    /// tick-stamped lockstep rail (LockstepManager.SendPlayerChat) so an authored trigger subscribed to
+    /// player_chat actually fires; parsing lives in the Godot-free MatchChatCommands. Free text stays
+    /// display-only on the reliable SendChat side-channel — no string ever enters the tick.
+    ///
     /// Keybindings (Play mode only):
     ///   Enter — open input, or send current message and close
     ///   Escape — close input without sending
@@ -161,6 +166,15 @@ namespace ProjectChimera.UI
             AddMessage(MatchChatFormat.ChatLine(_localFaction, msg));
 
             _lockstep.SendChat(msg);
+
+            // DW-374 — the presentation-side chat-string→code map the Story 7.13 (Arm D) player_chat rail was
+            // built for: a dash-command ("-42") parses to a bounded chat code and rides SendPlayerChat
+            // (EnqueueDslEvent under the hood) so an authored player_chat trigger fires on the identical tick on
+            // every peer and in replay. Offline it applies immediately as Player1; a spectator's raise is a
+            // deterministic drop inside EnqueueDslEvent. The display string above is untouched — the typed
+            // command still shows in chat (WC3 behavior), but only the CODE is sim-visible.
+            if (MatchChatCommands.TryParseChatCode(msg, out int chatCode))
+                _lockstep.SendPlayerChat(chatCode);
         }
 
         // ── UI helpers ────────────────────────────────────────────────────────────
